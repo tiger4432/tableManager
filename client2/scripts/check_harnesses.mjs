@@ -1447,7 +1447,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 331],
+  ['subgraph_view_harness.mjs', 334],   // + QS1 and its mutant: Shift on Mark marks a control (lead 10-09)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1473,7 +1473,7 @@ const FLOORS = new Map([
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
-  ['walk_table_harness.mjs', 48],   // + Q1-Q2 and QM1: several edges into one node keep every value (lead 10-09)
+  ['walk_table_harness.mjs', 56],   // + Q1-Q2 and QM1: several edges into one node keep every value; S1-S4 and SM1-SM4: signed starts and checks (lead 10-09)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

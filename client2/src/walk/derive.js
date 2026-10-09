@@ -296,8 +296,9 @@ export function cutBudgets(axes, limits) {
 
 /** One step from some nodes along one predicate, to one type when named: the walk's arguments (lead 53050a4ec). The
  *  table's Next asks it both ways; the graph opens a lump the way the lump leaves its node (lead 11e5ea207). */
-export function stepAlong({ positive, predicate, farType, direction = 'both' }) {
-  return { positive: [...positive], follow: [predicate], ...(farType ? { collect: [farType] } : {}), direction, hops: 1 };
+export function stepAlong({ positive, negative, predicate, farType, direction = 'both' }) {
+  return { positive: [...positive], ...(negative && negative.length ? { negative: [...negative] } : {}),
+    follow: [predicate], ...(farType ? { collect: [farType] } : {}), direction, hops: 1 };
 }
 
 /** An edge's qualifiers as the walk answer carries them, or null - the one read the table's columns, the graph's

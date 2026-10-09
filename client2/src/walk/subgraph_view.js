@@ -22,6 +22,7 @@ import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
 import { staticTypes, cutBudgets, walkableRoutes, edgeQualifiers, qualifierWords, stepAlong } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
+import { markingIntent } from '../rnd_board/panel.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { FAILED, LOADING, unitText } from '../ui_words.js';
 import { localMinute } from '../server_time.js';
@@ -856,6 +857,8 @@ export class SubgraphView {
       { selector: 'node[kind = "node"][step > 1]', style: set({ 'border-style': 'dashed', 'border-color': t('--text') }) },
       { selector: 'node.is-seed', style: set({ 'border-width': 2, 'border-style': 'solid', 'border-color': t('--accent') }) },
       { selector: 'node.is-marked', style: set({ 'border-width': 3.4, 'border-style': 'solid', 'border-color': t('--accent') }) },
+      // A control: the board's control colour, dashed so it reads without colour too.
+      { selector: 'node.is-control', style: set({ 'border-style': 'dashed', 'border-color': t('--text-muted') }) },
       { selector: 'node.is-selected', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.16,
         'overlay-padding': 6.8, 'font-weight': 600 }) },
       { selector: 'node[kind = "lump"]', style: set({
@@ -1179,7 +1182,7 @@ export class SubgraphView {
     const mark = this._el('button', 'sg-mark', 'Mark');
     mark.setAttribute('type', 'button');
     mark.setAttribute('data-mark-node', id);
-    if (mark.addEventListener) mark.addEventListener('click', () => { this.toggleMark(id); });
+    if (mark.addEventListener) mark.addEventListener('click', (event) => { this.toggleMark(id, event); });
     this.markButton = mark;
     acts.appendChild(mark);
     const folded = this._isFolded(id);
@@ -1455,6 +1458,7 @@ export class SubgraphView {
           const id = n.id();
           n.toggleClass('is-seed', seeds.has(id));
           n.toggleClass('is-marked', Boolean(name) && this.markings.signOf(name, id) !== SIGN.ABSENT);
+          n.toggleClass('is-control', Boolean(name) && this.markings.signOf(name, id) === SIGN.CONTROL);
           n.toggleClass('is-selected', id === this.selected);
         });
         this.cy.edges('[kind = "edge"]').forEach((e) => {
@@ -1477,10 +1481,11 @@ export class SubgraphView {
     this.select(id);
   }
 
-  /** Mark or unmark one node in the marking this step writes; the store tells every part that reads it. */
-  toggleMark(id) {
+  /** Mark or unmark one node in the marking this step writes; the store tells every part that reads it. Shift makes it
+   *  a control - the board's markingIntent, one rule for the two screens (lead 10-09). */
+  toggleMark(id, event) {
     const name = this.writes();
-    if (name) this.markings.toggle(name, id, SIGN.CASE);
+    if (name) this.markings.toggle(name, id, markingIntent(event).sign);
   }
 
   /** Pick a node: the facts box is swapped; the picture is not laid out again. */

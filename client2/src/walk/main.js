@@ -38,10 +38,11 @@ import { walkTableView, nextRoutes } from './table_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
-import { SubgraphView } from './subgraph_view.js';
+import { SubgraphView, seedsOf } from './subgraph_view.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 import { entitySeedId } from '../rnd_board/api.js';
+import { markingIntent } from '../rnd_board/panel.js';
 // The words other screens already draw for the same facts, spelled once.
 import { CHOOSE, FAILED, LOADING, WALKING, unitText } from '../ui_words.js';
 import { UNKNOWN, UNPICKED } from '../absent.js';
@@ -105,6 +106,8 @@ export function boot(doc, host, deps) {
     // which one is shown: 0 is the form's walk.
     steps: [],
     at: 0,
+    // The start marking's names, as the form spelled each subject when its Walk put it there.
+    startLabels: new Map(),
   };
   const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
   const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
@@ -122,12 +125,18 @@ export function boot(doc, host, deps) {
   const graphMount = el(doc, 'div', 'wk-graph');
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
     worldChips: worlds.length > 1, declaration: () => state.decl });
-  /** The form's subject becomes the chain's first marking; no subject, no mark (the part says so). */
-  const showGraph = (opts) => {
-    const named = Object.keys(state.keys || {}).length > 0;
-    markings.replace(GRAPH_CHAIN[0], named ? [[entitySeedId(state.type, state.keys), SIGN.CASE]] : []);
-    graph.show(opts);
+  /** The Walk press puts the form's subject in the chain's first marking the way the board marks (lead 10-09): a press
+   *  replaces, Ctrl adds, Shift makes it a control. No subject, no mark (the part says so). */
+  const markStart = (event) => {
+    if (!Object.keys(state.keys || {}).length) { markings.replace(GRAPH_CHAIN[0], []); return; }
+    const intent = markingIntent(event);
+    const seed = entitySeedId(state.type, state.keys);
+    state.startLabels.set(seed, Object.values(state.keys).join(' · '));
+    if (intent.mode === 'add') markings.set(GRAPH_CHAIN[0], seed, intent.sign);
+    else markings.replace(GRAPH_CHAIN[0], [[seed, intent.sign]]);
   };
+  /** The graph walks the start marking as it stands. */
+  const showGraph = (opts) => { graph.show(opts); };
   // 🔴 체크칸은 선언된 술어 «전부» (소유자 10-06 「엣지 리스트 다 주고 체크하는걸 메인으로」).
   //    거르는 것은 걷기의 일입니다. R&D 걷기 상자는 동결이라 닿는 것만 그립니다.
   const declaredPredicates = () => (state.decl && state.decl.predicates) || [];
@@ -162,11 +171,16 @@ export function boot(doc, host, deps) {
     return out;
   }
 
-  async function fire() {
+  async function fire(event) {
     if (!state.type) return;
+    markStart(event);
     // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
     if (state.view === 'graph') { showGraph(); return; }
-    const asked = spec();
+    // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
+    // One + start alone is the form's subject, asked as before (walk_layout L7 · L8: the request does not change).
+    const starts = seedsOf(markings.entries(GRAPH_CHAIN[0]));
+    const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
+    const asked = { ...spec(), ...(signed ? starts : {}) };
     state.run = 'running'; state.result = null; state.reason = '';
     state.asked = { ...asked, keys: { ...asked.keys } };
     // A new start clears the steps and what their checks wrote, as the graph's new start does (lead 53050a4ec).
@@ -191,9 +205,9 @@ export function boot(doc, host, deps) {
     ? { run: state.run, result: state.result, reason: state.reason }
     : state.steps[state.at - 1]);
 
-  /** From the rows checked on step `at`, one step along `route`; it stands after `at`, the steps beyond it go. */
-  async function walkOn(at, ids, route) {
-    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to });
+  /** From the rows checked on step `at` (+ and -), one step along `route`; it stands after `at`, the steps beyond it go. */
+  async function walkOn(at, seeds, route) {
+    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to });
     const step = { title: `${route.predicate} → ${route.to}`, asked, run: 'running', result: null, reason: '' };
     state.steps = [...state.steps.slice(0, at), step];
     state.at = at + 1;
@@ -476,6 +490,18 @@ export function boot(doc, host, deps) {
       : (state.type ? '' : PICK_TYPE_FIRST));
     go.addEventListener('click', fire);
     root.append(go);
+    // The signed starts the walk goes from: Ctrl+Walk adds the subject, Shift+Walk makes it a control (lead 10-09).
+    const starts = markings.entries(GRAPH_CHAIN[0]);
+    if (starts.length) {
+      const line = el(doc, 'div', 'wk-starts');
+      line.append(el(doc, 'span', 'wk-label', 'Starts'));
+      for (const [id, sign] of starts) {
+        const control = sign === SIGN.CONTROL;
+        line.append(el(doc, 'span', control ? 'wk-start is-control' : 'wk-start',
+          `${control ? '−' : '+'} ${state.startLabels.get(id) || id}`));
+      }
+      root.append(line);
+    }
   }
 
   /**
@@ -508,8 +534,11 @@ export function boot(doc, host, deps) {
           const cb = el(doc, 'input');
           cb.type = 'checkbox';
           cb.setAttribute('data-row', row.id);
-          cb.checked = markings.signOf(checks, row.id) === SIGN.CASE;
-          cb.addEventListener('change', () => { markings.toggle(checks, row.id, SIGN.CASE); render(); });
+          const sign = markings.signOf(checks, row.id);
+          cb.checked = sign !== SIGN.ABSENT;
+          if (sign === SIGN.CONTROL) tr.className = 'is-control';
+          // A click, for its Shift: a checked row is a control with it, as the board marks (lead 10-09).
+          cb.addEventListener('click', (event) => { markings.toggle(checks, row.id, markingIntent(event).sign); render(); });
           td.append(cb);
           tr.append(td);
         }
@@ -536,12 +565,12 @@ export function boot(doc, host, deps) {
   function nextRow(at, section, checks) {
     const line = el(doc, 'div', 'wk-next');
     line.append(el(doc, 'span', 'wk-label', 'Next'));
-    const ids = section.rows.map((row) => row.id).filter((id) => markings.signOf(checks, id) === SIGN.CASE);
+    const seeds = seedsOf(section.rows.map((row) => [row.id, markings.signOf(checks, row.id)]));
     for (const route of nextRoutes(state.decl, section.type)) {
       const go = el(doc, 'button', 'wk-next-edge', `${route.predicate} → ${route.to}`);
       go.type = 'button';
-      setDisabledReason(go, ids.length ? '' : CHECK_ROWS_FIRST);
-      go.addEventListener('click', () => { if (ids.length) void walkOn(at, ids, route); });
+      setDisabledReason(go, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
+      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });
       line.append(go);
     }
     return line;
