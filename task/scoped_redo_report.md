@@ -76517,3 +76517,151 @@ test_[l-z]*: 1 failed, 3950 passed, 192 skipped, 2 xfailed, 7303 warnings
 
 - «batch failed» 의 열쇠는 예외 이름 하나 — 같은 예외 이름의 다른 원인은 다음 표시까지 안 나옵니다.
 - 삭제 실패 줄과 «batch failed» 줄의 셈은 성공으로 비우지 않습니다(비우는 자리는 소스 성공 하나). 체인 워커 재기동 때 다시 1.
+
+---
+
+## [10-09] 원천 행이 먹인 칸 찾기가 인덱스를 탄다 — 원천 하나씩 f0b625d23 (총괄 d28171060)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB(assy_test) · 이름 붙인 스크래치 스키마 assy_probe_origin_impl 하나에만 썼고, 끝에 지웠음({schema assy_probe_origin_impl dropped - left: 0}) · 그 밖에 지운 것 0
+🔴 아래 수는 전부 «이 박스»의 것입니다 — 운영의 cell_sources 크기 · 분포 · 통계는 못 봤습니다.
+
+### 원인 — 질의가 아니라 «통계가 믿는 것»에 따라 갈렸습니다
+
+```
+박스 스크래치  cell_sources 를 운영 모양으로(10 칸 중 7 칸에 원천, 원천 하나가 칸 7 개) — 모델의 선언 · 인덱스 그대로
+rows 3000000 · with origin 2100000 · distinct origins 300001 · stats n_distinct 181377.0 null_frac 0.303
+heap 414 MB · idx_sources_by_origin 32 MB
+box: PG 18.3 · random_page_cost 4 · effective_cache_size 4GB · shared_buffers 128MB · work_mem 4MB
+```
+같은 데이터에서 `origin_row_id` 의 n_distinct 만 낮춰 «원천 하나가 칸을 더 먹인다»고 믿게 했습니다(데이터는 그대로). 묶음 = 원천 1,000 개.
+
+```
+이미 찍힌 원천(다시 돌기)
+asking for 1000 origins stamped (a re-run)
+n_distinct 186900.0 (sampled)
+   IN literals (today)    INDEX est_rows=11252    13.700 ms
+   = ANY(array)           INDEX est_rows=11252    11.267 ms
+   unnest join            INDEX est_rows=11       9.851 ms
+   lateral per id         INDEX est_rows=11       9.746 ms
+n_distinct 50000.0 (set)
+   IN literals (today)    INDEX est_rows=41865    12.035 ms
+   = ANY(array)           INDEX est_rows=41865    11.921 ms
+   unnest join            INDEX est_rows=42       10.627 ms
+   lateral per id         INDEX est_rows=42       14.202 ms
+n_distinct 20000.0 (set)
+   IN literals (today)    INDEX est_rows=104836   11.971 ms
+   = ANY(array)           INDEX est_rows=104836   11.494 ms
+   unnest join            SEQ   est_rows=3000029  2509.724 ms
+   lateral per id         INDEX est_rows=105      14.099 ms
+n_distinct 5000.0 (set)
+   IN literals (today)    INDEX est_rows=421671   11.767 ms
+   = ANY(array)           INDEX est_rows=421671   12.606 ms
+   unnest join            SEQ   est_rows=2999934  2669.786 ms
+   lateral per id         INDEX est_rows=422      13.359 ms
+n_distinct 2000.0 (set)
+   IN literals (today)    INDEX est_rows=1056975  12.214 ms
+   = ANY(array)           INDEX est_rows=1056975  11.987 ms
+   unnest join            SEQ   est_rows=2999928  2523.342 ms
+   lateral per id         INDEX est_rows=1057     13.229 ms
+n_distinct 500.0 (set)
+   IN literals (today)    SEQ   est_rows=2262379  423.859 ms
+   = ANY(array)           SEQ   est_rows=2262379  395.780 ms
+   unnest join            SEQ   est_rows=2999955  3581.104 ms
+   lateral per id         INDEX est_rows=4206     17.356 ms
+
+아직 안 찍힌 원천(소급 첫 채우기)
+asking for 1000 origins NOT stamped (a first fill)
+n_distinct 179460.0 (sampled)
+   IN literals (today)    INDEX est_rows=11730    22.837 ms
+   = ANY(array)           INDEX est_rows=11730    9.309 ms
+   unnest join            INDEX est_rows=12       7.203 ms
+   lateral per id         INDEX est_rows=12       7.540 ms
+n_distinct 50000.0 (set)
+   IN literals (today)    INDEX est_rows=41945    10.394 ms
+   = ANY(array)           INDEX est_rows=41945    11.441 ms
+   unnest join            INDEX est_rows=42       9.551 ms
+   lateral per id         INDEX est_rows=42       14.720 ms
+n_distinct 20000.0 (set)
+   IN literals (today)    INDEX est_rows=104764   9.367 ms
+   = ANY(array)           INDEX est_rows=104764   9.991 ms
+   unnest join            SEQ   est_rows=2999831  3356.501 ms
+   lateral per id         INDEX est_rows=105      11.397 ms
+n_distinct 5000.0 (set)
+   IN literals (today)    INDEX est_rows=421527   9.146 ms
+   = ANY(array)           INDEX est_rows=421527   9.348 ms
+   unnest join            SEQ   est_rows=3000195  2603.938 ms
+   lateral per id         INDEX est_rows=422      9.853 ms
+n_distinct 2000.0 (set)
+   IN literals (today)    INDEX est_rows=1044740  9.674 ms
+   = ANY(array)           INDEX est_rows=1044740  8.860 ms
+   unnest join            SEQ   est_rows=3000115  3328.281 ms
+   lateral per id         INDEX est_rows=1045     10.049 ms
+n_distinct 500.0 (set)
+   IN literals (today)    SEQ   est_rows=2260670  425.571 ms
+   = ANY(array)           SEQ   est_rows=2260670  451.862 ms
+   unnest join            SEQ   est_rows=3000108  2494.322 ms
+   lateral per id         INDEX est_rows=4199     9.536 ms
+```
+옛 모양(IN 1,000 개 한 덩어리 · = ANY 도 같음)은 «원천 하나가 칸 수천»으로 믿는 순간 표 전체를 읽습니다(Seq Scan) — 실제로 찾는 칸이 0 이어도. unnest 조인은 더 일찍 무너집니다. LATERAL ... OFFSET 0 은 믿음과 상관없이 원천마다 인덱스 한 번입니다.
+운영에서 scans 가 안 늘던 것과 같은 모양이 아래 변이에서 그대로 나옵니다(Seq Scan · scans +0). 운영 통계가 정말 그만큼 믿는지는 못 봤습니다 — 고친 모양은 그 믿음에 기대지 않습니다.
+
+### 고친 것
+
+```
+cells_stamped_by  PostgreSQL 에서 unnest(:ids) CROSS JOIN LATERAL (… WHERE origin_row_id = o.id OFFSET 0)
+                  OFFSET 0 이 LATERAL 을 한 덩어리 조인으로 접지 못하게 막음 — 원천마다 idx_sources_by_origin
+                  그 밖 방언(SQLite)은 IN 그대로 · 묶음 크기 1,000 그대로 · 인덱스 선언 그대로
+자리 server/chain/cell_layer.py:146:            db.execute(STAMPED_BY_EACH_ORIGIN, {"ids": chunk}) if one_at_a_time else
+```
+
+### 게이트 — 제품의 cells_stamped_by 가 «보낸» 문장을 잡아 그대로 EXPLAIN (ANALYZE, BUFFERS)
+
+```
+고친 뒤
+statistics: sampled
+   re-run (stamped)           INDEX plan 14.646 ms   batch 0.140 s  cells 7000  scans +1000   [unnest(CAST(%(ids)s AS varchar[])) AS o(id)  CROSS JOIN LATE]
+   first fill (not stamped)   INDEX plan 8.342 ms    batch 0.031 s  cells 0     scans +1000   [unnest(CAST(%(ids)s AS varchar[])) AS o(id)  CROSS JOIN LATE]
+statistics: n_distinct 500 (an origin believed to feed ~4,200 cells)
+   re-run (stamped)           INDEX plan 17.280 ms   batch 0.031 s  cells 7000  scans +1000   [unnest(CAST(%(ids)s AS varchar[])) AS o(id)  CROSS JOIN LATE]
+   first fill (not stamped)   INDEX plan 11.652 ms   batch 0.015 s  cells 0     scans +1000   [unnest(CAST(%(ids)s AS varchar[])) AS o(id)  CROSS JOIN LATE]
+
+변이 — 옛 IN 모양으로 되돌림 (md5 같음)
+MUTANT the old IN shape
+statistics: sampled
+   re-run (stamped)           INDEX plan 25.724 ms   batch 0.094 s  cells 7000  scans +884   [cell_sources]
+   first fill (not stamped)   INDEX plan 10.553 ms   batch 0.031 s  cells 0     scans +900   [cell_sources]
+statistics: n_distinct 500 (an origin believed to feed ~4,200 cells)
+   re-run (stamped)           SEQ   plan 404.815 ms  batch 0.407 s  cells 7000  scans +0   [cell_sources]
+   first fill (not stamped)   SEQ   plan 408.728 ms  batch 0.407 s  cells 0     scans +0   [cell_sources]
+MD5 AFTER  same
+```
+scans = 그 묶음 하나 동안 idx_sources_by_origin 의 pg_stat_user_indexes.idx_scan 이 는 수 — 고친 뒤 원천마다 1.
+
+### ③ 소급 첫 채우기에서도 묶음마다 도나 — 예
+
+```
+replay 는 원천 행을 EDIT 으로 넣음      server/chain/replay.py:545:                            db, "EDIT", trigger_table, [row.row_id for row in page],
+EDIT 이면 그 행들이 «고친 원천»          server/chain/ingestion_worker.py:2147:                edited = [p.get("row_id") for e in trigger_events if e.event_type == "EDIT"
+묶음마다 그 원천의 옛 층을 거두러 감     server/chain/ingestion_worker.py:1890:                            _withdraw_and_tell(db, spec["trigger_table"], spec["origins"], "edited",
+거두기는 이 찾기부터                     server/chain/cell_layer.py:190:    for table_name, row_id, column, source_name, origin in cells_stamped_by(db, origin_row_ids):
+```
+그래서 첫 채우기에서 거둘 층이 없어도 묶음마다 원천 1,000 개를 찾습니다(위 «아직 안 찍힌 원천» 줄). 비용(박스 · 묶음 하나): 옛 모양이 통계에 따라 인덱스면 수십 ms, Seq Scan 이면 위 표의 그 시간(표 크기에 비례 — 박스 heap 은 위 수) · 고친 모양은 수십 ms 안. 줄일지(첫 채우기에서 거두기를 건너뛸지)는 총괄 판정.
+
+### 시험
+
+```
+PG 이 찾기를 지나는 파일 셋(지운 행 거두기 · 고친 행 거두기 · 체인 질의 상한) 한 번에: 23 passed, 32 deselected, 29 warnings · 8080 접촉 줄 0
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5915 warnings
+test_[l-z]*: 1 failed, 3950 passed, 192 skipped, 2 xfailed, 7336 warnings
+-> 실패는 알려진 박스 실패(와 흔들림)뿐
+```
+
+### 남은 것
+
+- 운영 통계(origin_row_id 의 n_distinct · null_frac)는 못 봤습니다. 고친 모양은 그것과 상관없이 인덱스를 타므로 확인은 RUN.md 의 Indexes 표 Scans 한 줄로 됩니다.
+- 운영 모양의 시험 칸은 저장소에 없습니다 — 수백만 행을 만드는 데 1 분이 넘어 묶음 시험에 못 넣었고, 게이트는 위 스크래치 측정입니다.
