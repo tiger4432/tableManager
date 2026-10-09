@@ -77925,3 +77925,70 @@ run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) —
 ```
 다음    5b-2 동기화 단계 -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
 ```
+
+---
+
+## [10-10 새벽] 5b-2 스키마 동기화가 기동 단계로 — 착지 40d94309b (총괄 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 스크래치 assy_impl_beat_1010(「dropped schema assy_impl_beat_1010 (19 tables) - left 0」) · public 「public relations 325 -> 325 · added [] · gone [] · rows changed {}」(행 수만 셈)
+
+```
+지은 것  run_chain_worker.py 의 import 때 동기화를 체인 워커 기동 단계 `sync_dynamic_tables_schema` 로 (import 엔 init_dynamic_models 만)
+        자리: 떠난 워커의 쿼리 끊기 «바로 뒤» · 모든 보정(동적 표 인덱스 포함) «앞» — 칸이 서야 그 칸의 인덱스
+        ⚠️ 끊기 뒤로 둔 것은 제가 고른 것: 그 자리 주석이 「First, before any startup work can queue behind them」 — 동기화의 ALTER 도 그 쿼리 뒤에 줄 설 수 있음
+        서버 경로(main.py)는 자기 기동에서 또 동기화 — 멱등
+게이트   ① 를 두 단계로(동기화 · 원장 보정): 붙잡힌 동안 「starting: <그 단계>, 89~92s」 · 단계 줄 11 · 첫 단계 끊기 · 동기화가 동적 표 인덱스 앞
+        네 자리 시험(test_a_schema_sync_gives_up…)이 체인 워커 자리를 chain/ingestion_worker.py 로
+```
+
+```
+변이(md5 전후 같음, 빨강 = 실패한 시험) — M5 가 이번 것(동기화를 단계에서 뺌 = import 때로 되돌림)
+  M1 first beat after the steps | md5 restored True | 3 failed, 61 passed, 3 deselected, 18 warnings in 2.89s
+      FAILED test_a_dead_pids_fresh_beat_is_a_restart_and_the_first_beat_is_starting
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+  M2 stand-down check back after the steps | md5 restored True | 1 failed, 63 passed, 3 deselected, 18 warnings in 2.98s
+      FAILED test_standing_down_is_not_silent
+  M3 health reads no starting state | md5 restored True | 2 failed, 62 passed, 3 deselected, 18 warnings in 3.02s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+  M4 the loop's first beat throttled | md5 restored True | 2 failed, 62 passed, 3 deselected, 18 warnings in 3.01s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+  M5 the schema sync back out of the steps | md5 restored True | 2 failed, 62 passed, 3 deselected, 18 warnings in 2.98s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+돌린 시험 바꾼 모듈을 부르거나 읽는 파일 30 개
+         비-PG  531 passed, 17 deselected, 420 warnings in 91.89s (0:01:31)
+         PG     17 passed, 59 deselected, 16 warnings in 77.00s (0:01:17)
+```
+
+```
+진짜 프로세스 줄 — 스크래치 API(18791) /health + 따로 띄운 run_chain_worker.py
+   설정에 sb_log.w 를 적고, 다른 연결이 sb_log 를 붙잡은 채(LOCK ACCESS SHARE) 워커를 다시 띄움
+   붙잡음 02:39:57 ~ 02:40:42
+  02:39:58 +  0.1s  chain ok           detail None                                               beat pid 8060
+  02:40:01 +  2.7s  chain starting     detail starting: end_queries_a_gone_chain_worker_left, 0s beat pid 55812
+  02:40:01 +  2.9s  chain starting     detail starting: sync_dynamic_tables_schema, 0s           beat pid 55812
+  02:40:02 +  3.4s  chain starting     detail starting: sync_dynamic_tables_schema, 1s           beat pid 55812
+    … (36 lines, one a second) …
+  02:40:39 + 40.4s  chain starting     detail starting: sync_dynamic_tables_schema, 38s          beat pid 55812
+  02:40:39 + 41.0s  chain starting     detail starting: ensure_dynamic_table_indexes, 0s         beat pid 55812
+  02:40:40 + 41.3s  chain starting     detail starting: analyze_stale_tables, 0s                 beat pid 55812
+  02:40:40 + 41.7s  chain ok           detail None                                               beat pid 55812
+   워커가 포기한 줄  [Schema Sync] column 'w' was not added to 'sb_log' - another session held the table past 20s. Retried at the next start or config save; until then eve …
+   기동 끝 줄       [Chain] startup 38.6 s - end_queries_a_gone_chain_worker_left 0.1 s · sync_dynamic_tables_schema 38.1 s · ensure_ledger_schema 0.0 s · restamp_moved_fingerprints 0.0 s ·  …
+```
+
+```
+관찰(짓지 않음)  동기화 단계가 38.1 s — 시한은 20 s 인데
+   서버(API)의 설정 감시가 같은 ALTER 를 먼저 줄 세웠고(02:40:19 에 20 s 로 포기), 워커의 ALTER 는 그 뒤에서 기다리다
+   앞 요청이 빠진 뒤 다시 기다려 02:40:39 에 포기. 재기동 때 서버 · 워처 · 체인이 같은 표에 ALTER 를 하면 한 표에서 20 s 가 몇 겹 될 수 있음
+   (PostgreSQL 의 lock_timeout 이 앞 요청이 빠질 때 다시 세는 것으로 보임 — 잰 것은 이 한 번)
+```
+
+```
+🔴 고침  제가 앞서 「동기화 ALTER 는 시한 없음」이라 말씀드렸고 보고(ca9554f08)에도 적었습니다 — 틀렸습니다
+        지시 3c26854c3 2026-09-27(구현 a696ee4e8 지시 뒤) 부터 ALTER 마다 DDL_LOCK_TIMEOUT(20 s). RUN.md 옛 줄(「시한 없음 — 소유자 물음」)을 읽고 코드를 안 봤습니다. 그 줄도 고침
+다음    6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
+```
