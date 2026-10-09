@@ -249,6 +249,37 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
     ok('B9 two on one page: opening one leaves the other shut and unasked', find(one.host, 'acct-keys').length === 1
       && find(two.host, 'acct-keys').length === 0 && !two.srv.calls.includes('GET /auth/keys'));
   }
+  {
+    // The keys window is drawn on the body (placeUnder, owner 10-09); a page with a layout, so it really moves there.
+    const ldoc = { documentElement: { clientWidth: 1536 } };
+    const laid = (tag) => {
+      const n = element(tag);
+      n.ownerDocument = ldoc;
+      n.parentNode = null;
+      n.style = {};
+      n.getBoundingClientRect = () => ({ left: 900, top: 20, right: 960, bottom: 44, width: 60, height: 24 });
+      n.remove = () => { const at = n.parentNode; if (at) { at.children = at.children.filter((c) => c !== n); n.parentNode = null; } };
+      const put = (c) => { if (c.parentNode && c.parentNode !== n) c.remove(); c.parentNode = n; n.children.push(c); return c; };
+      n.append = (...items) => { for (const i of items) if (i) put(i); };
+      n.appendChild = put;
+      return n;
+    };
+    ldoc.createElement = laid;
+    ldoc.body = laid('body');
+    const host = laid('div');
+    ldoc.body.appendChild(host);
+    const srv = server(FX.me_signed_in.body);
+    const part = new Badge(host, { doc: ldoc, fetch: srv.fetch, reload: () => {}, go: () => {}, clipboard: { writeText: async () => {} } });
+    await part.mount();
+    await click(host, 'acct-name');
+    part.render();
+    part.render();
+    const onBody = () => ldoc.body.children.filter((c) => c._classes.includes('acct-keys')).length;
+    const open = onBody();
+    await click(host, 'acct-name');
+    ok('B11 the keys window on the body is one window however often it is drawn, and none once shut',
+      open === 1 && onBody() === 0, JSON.stringify([open, onBody()]));
+  }
 
   console.log('\n── F. a failure line names whose refusal it is ──');
   {
@@ -376,6 +407,8 @@ const MUTANTS = [
   { name: 'a refused key says nothing', catches: ['B6'], file: 'badge', mutate: swap('    else this.error = await refusal(res);\n', '') },
   { name: 'Revoke deletes nothing', catches: ['B7'], file: 'badge',
     mutate: swap("{ method: 'DELETE' }", "{ method: 'GET' }") },
+  { name: 'a redraw leaves the keys window it moved to the body behind (lead QA 0056ebc9d)', catches: ['B11'], file: 'badge',
+    mutate: swap('    if (this.win && this.win.placedFrom) this.win.remove();\n', '') },
   { name: 'Log out only reloads', catches: ['B8'], file: 'badge', mutate: swap("    const res = await this.fetch(LOGOUT, { method: 'POST' });\n", '    const res = { ok: true };\n') },
   { name: 'a 200 reloads like the old server', catches: ['L1'], file: 'badge',
     mutate: swap('    if (res.status === 204) { this.reload(); return; }\n', '    if (res.ok) { this.reload(); return; }\n') },

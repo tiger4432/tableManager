@@ -1169,12 +1169,9 @@ async function refreshChainRule(name, extra = {}) {
   } catch (e) {                                              // noqa
     opts.unavailable = fetchFailureLine(null, 'Rule registry read failed');
   }
-  // The `run_in` list rides on this answer, as the ledger's `occurred_at_basis` rides on its
-  // authoring answer: the skeleton's `list` names it. No list in the answer, nothing added.
   chainRulePanel.setLists({
     ...(mappers === null ? {} : { mappers }),
     ...(tables === null ? {} : { tables }),
-    ...(body && Array.isArray(body.run_in) ? { run_in: body.run_in } : {}),
   });
   const view = chainRulePanel.render(body, opts);
   const count = byId('chain-rule-editor-count');
