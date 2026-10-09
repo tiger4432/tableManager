@@ -37417,3 +37417,30 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
        ③ 복사 · 평범 묶음 · 체인 도는 동안 그리드 검색 초 · 원장 거두기 전체 훑기
 쓰는 곳 assy_test 의 assy_app_speed_1009 하나(public 아님) · 끝나면 지운 것 0 으로 다시 적습니다
 ```
+
+---
+
+## [C 응용] 10-09 출처 찾기(cells_stamped_by)의 계획 — 운영 크기 표에서 lateral 은 Seq Scan 을 안 고르고, 되돌린 IN 이 고릅니다
+
+```
+잰 곳   박스 · assy_test · assy_app_speed_1009 · cell_sources 34,000,000 행(origin 찍힌 17,000,000 행) · 6211 MB · 모델 DDL 그대로
+        origin 하나가 칸 5 개 · 한 번에 묻는 origin 1,000 개(묶음 크기) · PG 18.3 · random_page_cost 4
+        «새» = 아직 아무 칸도 안 먹인 origin(새 행의 편집) · «찍힌» = 칸을 먹인 origin
+
+                      자연 ANALYZE(n_distinct 337239)          n_distinct 289 덮어씀(운영의 믿음)
+lateral   새           Index Scan · 4 ms                  Bitmap(index) · 7 ms
+(f0b625d23) 찍힌        Index Scan · 39 ms                 Bitmap(index) · 14 ms
+IN        새           Bitmap(index) · 2 ms               Seq Scan · 4.1 s · read 3,381 MB
+(아침 · 지금 main)  찍힌  Bitmap(index) · 11 ms              Seq Scan · 4.1 s · read 3,380 MB
+```
+```
+판정   lateral 안은 289 의 믿음에서도 origin 마다 인덱스(Bitmap)로 갑니다 — per-origin Seq Scan 없음
+       되돌린 IN(8c664d220)은 같은 믿음에서 «표 전체»를 읽습니다 — 1,000 origin 마다 한 번(박스 4 초대 · 3 GB 대)
+       자연 통계에서는 둘 다 인덱스입니다. 갈리는 것은 «통계가 289 를 믿을 때»뿐입니다
+누가 부르나  편집 회수(층을 찍는 규칙 — 조인 · 복사 · 파일 맵퍼 — 의 EDIT 묶음)와 삭제 회수
+       오토컨펌(decide)은 층을 안 찍습니다(stamps_origin False) — 그 묶음 8 번에서 cells_stamped_by 부름 0(박스)
+       -> 「오토컨펌이 느리다」의 원인은 이 줄이 아닙니다. 오토컨펌 칸은 단계별로 따로 재고 있습니다
+물음   운영 표의 pg_stats(origin_row_id 의 null_frac · n_distinct)와 reltuples 는 제가 못 봤습니다
+       289 가 지금도 참이면 main 은 아침의 전체 훑기로 돌아간 것입니다 — 되돌림을 유지할지는 총괄 판정
+가설   전체 훑기가 캐시를 밀어내 검색도 느려질 수 있습니다 — 안 쟀습니다(검색 초는 다음 칸에서 잽니다)
+```
