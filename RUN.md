@@ -71,7 +71,7 @@
 > 끝 상태      transfer 원자 205 = 기대 205 · 같은 코어 다이에 transfer 둘 0(처음 84) · 옛 판 원자 0 · 보류 agreed 205 · 껍데기 0
 > 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ «0 row(s) are marked» · ⑦ M 0 · ⑧ stale_atoms 0 · ⑨ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
 >              replay 미리보기의 scanned 와 ⑨ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
-> 착지 뒤 채움  구현자 6 표 선언 인덱스(idx_dt_log_dt_wafer_id 는 «이미 있음») · 7 VALUES CAST · 원장 해시 인덱스
+> 착지 뒤 채움  구현자 7 VALUES CAST · 원장 해시 인덱스(idx_ledger_events_source_raw_ref_hash) — 6 표 선언 인덱스는 시연 뒤(총괄 f9ebc82ea)
 > ```
 >
 > ### 시연 선언 (월 10-12) — 위 셋업이 끝난 뒤
