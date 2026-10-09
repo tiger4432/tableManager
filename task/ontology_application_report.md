@@ -37254,3 +37254,16 @@ A 에 계속 자라는 파일                      남은 것 []                
         그 탓에 시험 DB assy_test 에 남은 스크래치 스키마 assy_pytest_pg_48564_gw0(객체 778, 제가 만든 이름 하나)를 지웠습니다 — 남은 것 0 · 그 밖에 지운 것 0
         다시 돌린 것은 -k 로 그 파일만
 ```
+
+---
+
+## [C 응용] 10-09 (총괄 메시지) 텍스트 링크 «표 넷» 예시 — 샘플 · 가이드 (잼)
+
+```
+한 것   server/config/sample/table_config.json.sample 에 표 넷 — text_doc(글) · text_name(부르는 말) · text_link_word(연결 말) · text_cause_candidate(후보)
+        칸 · 키는 TEXT_LINKS_GUIDE §1 그대로(후보 키 = 글 id · sentence_no · cause_type · cause_key · phenomenon_type · phenomenon_key, 규칙으로 뽑는 쪽)
+        TEXT_LINKS_GUIDE §1 표 밑에 그 넷을 가리키는 한 줄. 샘플 표 수 46
+게이트  샘플을 읽는 서버 시험 58 파일 — 넣기 전 · 뒤 빨강 · 오류 이름이 같다(25, 그중 21 이 test_ontology_config_explorer — 넣기 전부터)
+        클라 table_config_panel_harness — 전 · 뒤 같은 초록
+        처음엔 글 칸을 TEXT 로 적었다가 그 하니스 E2 가 빨강(편집기가 받는 낱말은 string · number · datetime 셋) — string 으로
+```
