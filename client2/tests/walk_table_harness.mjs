@@ -163,6 +163,55 @@ async function suite(mod) {
   eq('C4 under the cap there is no cap note -- the absence is the answer',
     capNotes(exact).length, 0);
 
+  console.log(`${LF}-- signed starts and checks, the board's way (lead 10-09) --`);
+  {
+    const DECLS = { ok: true,
+      entities: [{ type: 'die@1', keys: ['mat_id'] }, { type: 'wafer@1', keys: ['wafer'] }],
+      predicates: [{ name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } }] };
+    const asked = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+      const u = String(url);
+      if (u.includes('/subgraph')) asked.push(u);
+      return { ok: true, status: 200, json: async () => (u.includes('/subgraph') ? RESULT : DECLS) };
+    } });
+    await settle();
+    const go = () => walkAll(host).find((e) => e.className === 'wk-go');
+    const click = (e, event = {}) => { for (const fn of (e && e.listeners.click) || []) fn(event); };
+    const query = (u) => new URLSearchParams((u || '').split('?')[1] || '');
+    handle.state.type = 'wafer@1';
+    handle.state.keys = { wafer: 'A' };
+    click(go());
+    await settle();
+    handle.state.keys = { wafer: 'B' };
+    click(go(), { ctrlKey: true, shiftKey: true });
+    await settle();
+    const starts = handle.graph.markings.entries('walk-start');
+    const q = query(asked[asked.length - 1]);
+    ok('S1 Walk puts the subject in the starts - a press replaces with +, Ctrl+Shift adds it as -; the walk asks both',
+      starts.length === 2 && starts[0][1] === SIGN.CASE && starts[1][1] === SIGN.CONTROL
+        && q.getAll('positive').join() === starts[0][0] && q.getAll('negative').join() === starts[1][0],
+      JSON.stringify({ starts, q: q.toString().slice(0, 200) }));
+    const said = walkAll(host).filter((e) => /^wk-start( is-control)?$/.test(e.className || '')).map((e) => e.textContent);
+    ok('S2 the rail says the starts with their signs', JSON.stringify(said) === JSON.stringify(['+ A', '− B']), JSON.stringify(said));
+    const box = (id) => walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === id);
+    click(box('n:1'), { shiftKey: true });
+    click(box('n:2'));
+    const row1 = walkAll(host).find((e) => e.tagName === 'tr' && e.children.includes(walkAll(host).find((c) => c.className === 'wk-check' && c.children.includes(box('n:1')))));
+    ok('S3 a Shift click checks a row as a control, drawn as one; a click checks it as +',
+      handle.graph.markings.signOf('walk-2', 'n:1') === SIGN.CONTROL && handle.graph.markings.signOf('walk-2', 'n:2') === SIGN.CASE
+        && Boolean(row1) && row1.className === 'is-control' && box('n:1').checked === true,
+      JSON.stringify(handle.graph.markings.entries('walk-2')));
+    const before = asked.length;
+    click(walkAll(host).find((e) => e.className === 'wk-next-edge'));
+    await settle();
+    const n = query(asked[before]);
+    ok('S4 Next walks on from the + rows with the - rows as negative',
+      asked.length === before + 1 && n.getAll('positive').join() === 'n:2' && n.getAll('negative').join() === 'n:1',
+      n.toString().slice(0, 200));
+  }
+
   console.log(`${LF}-- the type placeholder is no type (lead b417e2ad8) --`);
   {
     const asked = [];
@@ -307,7 +356,7 @@ async function suite(mod) {
     const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn(); };
     const tick = (h, id) => {
       const cb = walkAll(h).find((e) => e.attrs && e.attrs['data-row'] === id);
-      for (const fn of (cb && cb.listeners.change) || []) fn();
+      for (const fn of (cb && cb.listeners.click) || []) fn({});
     };
     const steps = (h) => walkAll(h).filter((e) => /^wk-step( is-on)?$/.test(e.className || ''));
     const rowsShown = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']);
@@ -410,6 +459,8 @@ const qualifierSuite = (TV) => {
   const one = gateCell(TV, RESULT);
   ok('Q2 one edge: the value as it came, a number', one.text === '7' && one.numeric === true, JSON.stringify(one));
 };
+// The suite's own count: a mutant of main.js runs the suite alone, so its shrink is measured against this.
+const suiteRan = ran;
 qualifierSuite(await import('../src/walk/table_view.js'));
 console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${ran} assertions`);
 const base = { ran, names: NAMES.slice(), failed: failures.length };
@@ -462,19 +513,28 @@ const MUTANTS = [
     from: '          subjBox.append(el(doc, \'div\', \'wk-note\', state.subjectsScanCut',
     to: '          subjBox.append(el(doc, \'div\', \'wk-note\', true' },
   // ── lead 53050a4ec: the table's continue ────────────────────────────────────────────────
+  // The board's markingIntent on the walk page (lead 10-09).
+  { id: 'SM1', what: 'the Walk takes no sign or Ctrl from the press', catches: 'S1',
+    from: '    const intent = markingIntent(event);\n    const seed', to: "    const intent = { mode: 'replace', sign: SIGN.CASE };\n    const seed" },
+  { id: 'SM2', what: 'the table walks the form\'s subject alone, not the starts', catches: 'S1',
+    from: '    const asked = { ...spec(), ...(signed ? starts : {}) };', to: '    const asked = spec();' },
+  { id: 'SM3', what: 'a check takes no sign from Shift', catches: 'S3',
+    from: "markings.toggle(checks, row.id, markingIntent(event).sign); render(); });", to: "markings.toggle(checks, row.id, SIGN.CASE); render(); });" },
+  { id: 'SM4', what: 'Next drops the - rows', catches: 'S4',
+    from: 'stepAlong({ positive: seeds.positive, negative: seeds.negative,', to: 'stepAlong({ positive: seeds.positive,' },
   { id: 'NM1', what: 'the Next walks from every row of the section, not the checked ones', catches: 'N2',
-    from: '    const ids = section.rows.map((row) => row.id).filter((id) => markings.signOf(checks, id) === SIGN.CASE);',
-    to: '    const ids = section.rows.map((row) => row.id);' },
+    from: '    const seeds = seedsOf(section.rows.map((row) => [row.id, markings.signOf(checks, row.id)]));',
+    to: '    const seeds = { positive: section.rows.map((row) => row.id), negative: [] };' },
   { id: 'NM2', what: 'a press with nothing checked still asks', catches: 'N2',
-    from: "      go.addEventListener('click', () => { if (ids.length) void walkOn(at, ids, route); });",
-    to: "      go.addEventListener('click', () => { void walkOn(at, ids, route); });" },
+    from: "      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });",
+    to: "      go.addEventListener('click', () => { void walkOn(at, seeds, route); });" },
   { id: 'NM3', what: 'the next step builds its own walk instead of the one step', catches: 'N4',
-    from: '    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to });',
-    to: '    const asked = { positive: ids, follow: [route.predicate] };' },
+    from: '    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to });',
+    to: '    const asked = { positive: seeds.positive, follow: [route.predicate] };' },
   // stepAlong's own default ('both') is imported by main.js and not swapped by this loader; the call site stands in.
   { id: 'NM7', what: 'the Next walks one way only', catches: 'N8',
-    from: '    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to });',
-    to: "    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to, direction: 'outgoing' });" },
+    from: '    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to });',
+    to: "    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to, direction: 'outgoing' });" },
   { id: 'NM4', what: 'the checks are kept apart from the graph\'s marking', catches: 'N3',
     from: "  const checksOf = (at) => GRAPH_CHAIN[at + 1] || '';", to: '  const checksOf = (at) => `table-${at}`;' },
   { id: 'NM5', what: 'a new start keeps the steps', catches: 'N7',
@@ -505,10 +565,10 @@ const runMutant = async (m) => {
 };
 
 const defects = await scoreMutants(MUTANTS.filter((m) => !m.control), runMutant,
-  { baselineRan: base.ran, baselineNames: base.names,
+  { baselineRan: suiteRan, baselineNames: base.names,
     title: `${LF}== defect mutants (each must be CAUGHT by the check it names) ==` });
 const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
-  { mustCatch: false, baselineRan: base.ran, baselineNames: base.names,
+  { mustCatch: false, baselineRan: suiteRan, baselineNames: base.names,
     title: `${LF}== controls (each must wake NOTHING) ==` });
 
 // table_view.js's own: the fold of several edges into one node.

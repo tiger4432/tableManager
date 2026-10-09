@@ -130,6 +130,12 @@ export const WALK_CSS = `
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-step.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .wk-table th.wk-check, .wk-table td.wk-check { width: 1%; }
+/* A control row and a control start: the board's control look (board.css .is-marked-control). */
+.wk-table tr.is-control td { background: var(--bg-inset); }
+.wk-table tr.is-control td.wk-check { box-shadow: inset 2px 0 0 var(--text-muted); }
+.wk-starts { display: flex; flex-flow: row wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
+.wk-start { font-family: var(--font-mono); }
+.wk-start.is-control { color: var(--text-muted); }
 .wk-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; display: block;
   overflow-x: auto; white-space: nowrap; }
 .wk-table th, .wk-table td { border-bottom: 1px solid var(--border);

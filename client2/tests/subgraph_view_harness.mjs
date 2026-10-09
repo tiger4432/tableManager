@@ -1304,6 +1304,20 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       JSON.stringify({ urls: none.s.urls.length, options: optionsOf(choiceOf(none.s, 'Points from')) }));
   }
 
+  console.log('\n[QS] Shift on Mark marks a control - the board\'s markingIntent (lead 10-09)');
+  if (want(["QS1"])) {
+    const s = await seat([DIE, STEP2]);
+    openAll(s);
+    const id = STEP2._marked;
+    press(s, id);
+    const button = byClass(s.host, 'sg-mark')[0];
+    if (button) button.dispatch('click', { shiftKey: true });
+    const n = s.view.cy && s.view.cy.getElementById(id);
+    say('QS1 a Shift press on Mark marks the node a control, and the picture draws it as one',
+      s.markings.signOf('s1', id) === SIGN.CONTROL && Boolean(n && n.nonempty() && n.hasClass('is-control')),
+      JSON.stringify(s.markings.entries('s1')));
+  }
+
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
   if (want(["Q1", "Q12", "Q2", "Q3", "Q4", "Q6"])) {
     const s = await seat([DIE, STEP2]);
@@ -1440,7 +1454,9 @@ const failures = [];
     M('M10', 'a press still marks (owner 10-03: a press only picks)', 'K1',
       '  press(id) {\n    this.select(id);\n', '  press(id) {\n    this.select(id);\n    this.toggleMark(id);\n'),
     M('Q1m', 'Mark marks nothing', 'K1',
-      '    if (name) this.markings.toggle(name, id, SIGN.CASE);\n', ''),
+      '    if (name) this.markings.toggle(name, id, markingIntent(event).sign);\n', ''),
+    M('QS1m', 'Mark takes no sign from Shift (lead 10-09)', 'QS1',
+      'this.markings.toggle(name, id, markingIntent(event).sign);', 'this.markings.toggle(name, id, SIGN.CASE);'),
     M('Q2m', 'Mark does not show its state', 'Q1',
       "      this.markButton.setAttribute('aria-pressed', String(on));\n", ''),
     M('Q3m', 'Mark is live past the chain\'s end', 'L2',
