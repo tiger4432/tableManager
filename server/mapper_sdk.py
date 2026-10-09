@@ -278,7 +278,8 @@ MAPPER_PARAMS: dict[str, tuple] = {}
 #: name -> what that mapper's output is, declared beside its logic for the same reason (총괄 016a766af):
 #: `columns` (rule -> the columns it writes - what a run that proposed nothing still owns),
 #: `stamps_origin` (bool, or rule -> bool: its cells carry the row they came from) and `at_load`
-#: (rules naming it -> [(rule, sentence)] it refuses; it may stamp the cells it pairs). A kind this
+#: (rules naming it -> [(rule, sentence)] it refuses; it may stamp the cells it pairs), and
+#: `source_name` - the retired `@mapper(source_name=)`, kept only to be told (09f3cd289). A kind this
 #: product builds passes its facts here too (`chain.dynamic_mappers.install`) - one home to read.
 MAPPER_FACTS: dict[str, dict] = {}
 
@@ -553,6 +554,10 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
     spells a column name. The argument exists for the case where a rule cannot supply it;
     when both are present the rule wins, because the rule is what the operator edits.
 
+    ⚰️ `source_name` IS RETIRED (총괄 09f3cd289 ①): a rule's write is chain_ingestion whatever it
+    names (`rule_run.layer_of_a_rules_write`, at the worker's write seat). It is still read - not
+    refused - and kept as this mapper's fact, so the loader can tell each rule it was renamed.
+
     🔴 AND `updated_by` DEFAULTS TO THE AUTHOR'S FUNCTION NAME. Provenance that has to be
     typed is provenance that gets copied from the last mapper and then names the wrong
     one; the function's own name cannot drift from the function.
@@ -619,7 +624,8 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
         # one would be a third thing to keep in step. `params` is the argument names this
         # mapper reads out of `params` -- the loader warns about a name nobody declared,
         # and only the mapper can declare it (its file is gitignored).
-        return register(name or fn.__name__, run, params)
+        return register(name or fn.__name__, run, params,
+                        facts={"source_name": source_name} if source_name != "chain_ingestion" else None)
     return decorate
 
 

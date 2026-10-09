@@ -77520,3 +77520,127 @@ cascade     안 씁니다(소유자 09-26). 처음엔 cascade 를 실었다가 �
 ### 다음
 
 층 이름 고정 ① (총괄 판정 — ② 쓴이 순위는 시연 뒤) -> 껍데기 행(판정 ㄱ — 다시 세기가 쓴 뒤 판정) -> SLOT_POOL · foreign_beat -> 표 선언 인덱스 -> VALUES CAST -> 원장 해시 인덱스
+
+---
+
+## [10-09 밤] 맵퍼가 쓰는 층 이름은 chain_ingestion 하나 ① 착지 — `9263f03a7` (총괄 09f3cd289 · 판정: ② 쓴이 순위는 시연 뒤)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: SQLite 메모리 · PG 는 assy_test 의 pg_engine 스크래치 스키마. 진짜 프로세스: assy_test 의 스크래치 스키마 assy_impl_layername_1009(끝에 DROP — dropped schema assy_impl_layername_1009 (19 tables) - left 0). public 전후 — public relations 325 -> 325 · added [] · gone [] · rows changed {}
+
+### 진짜 따로 띄운 프로세스 한 줄 — 재기동 뒤 인벤토리 같은 규칙 replay
+
+```
+규칙   ln_inv_formula — @mapper(source_name="dt_inventory") 인 맵퍼(x = a + '!'), 소유자 운영 맵퍼의 모양
+전     a=a2 · 화면 x=a1! · x 의 층 {'chain_ingestion': 'a1!', 'dt_inventory': 'a2!'}
+       (옛 chain_ingestion 층 4 가 맵퍼 이름 층 99 를 시각과 상관없이 이김 — 소유자 증상)
+재기동 체인 워커를 새로 띄움 — 선언을 읽으며
+   [ChainRules] ln_inv_formula: source_name 'dt_inventory' is written as chain_ingestion
+   [Chain] slot 1 started, pid 19476
+   [Chain] slot 2 started, pid 18332
+   [Chain] slot 1 (pid 19476) runs line 441fbfe0133a
+   [slot 1 pid 19476] [ChainRule] rule=ln_inv_formula kind=zz_ln_inventory target=ln_inv rows_in=1 rows_out=1 written=None refusal=None error=None elapsed=0.000s
+미리보기 chain_replay_cli.py replay ln_inv_formula
+   source rows scanned   : 1 in 1 page(s) · (no --apply: nothing was handed over)
+실행   같은 명령 + --apply -> [Retroactive] run_id=441fbfe0133a op=chain_replay DONE: {'rows_staged': 1, 'events_staged': 1, 'rows_scanned': 1} · rows handed over      : 1 in 1 outbox event(s)
+replay 사건(id · 종류 · only_rule · 상태)  [(4, 'EDIT', 'ln_inv_formula', 'SUCCESS')]
+뒤     화면 x=a2! · x 의 층 {'chain_ingestion': 'a2!', 'dt_inventory': 'a2!'} · 기다리는 사건 0
+       옛 chain_ingestion 자리에 새 값 — 맵퍼 이름 층(dt_inventory)은 남았고 값은 안 이김(지우려면 withdraw)
+```
+
+### 게이트 · 변이 · 실행
+
+```
+SQLite 새 파일 12 passed — ① 맵퍼가 적은 이름(dt_inventory · 괄호 행 층 · user · collision_merge · pipeline_parser)과
+       안 적은 칸 -> chain_ingestion · 데코레이터 이름은 선언을 읽을 때 한 줄 한 번 ② 옛 chain 층 위로 새 값 ④ 사람 층이 이김
+       ⑤ 자동확정 둘 · enrichment_backfill 은 그대로
+SQLite 바뀐 자리(워커 · rule_run · mapper_sdk)를 import 하는 파일 전부  7 failed, 2175 passed, 2 skipped, 138 deselected
+       빨강 ['test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_asked[False]', 'test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_asked[True]', 'test_a_runs_trigger_events_and_what_they_woke_carry_the_run[False]', 'test_a_runs_trigger_events_and_what_they_woke_carry_the_run[True]', 'test_opted_in_the_ping_pong_climbs_to_the_ceiling_and_stops', 'test_r1_never_writes_a_blank', 'test_the_repo_root_is_one_above_it']
+       그중 6 개는 «맵퍼가 제 이름 · 기본값 user 로 쓴다»에 기댄 픽스처 — 거르는 낱말을 chain_ingestion 으로,
+       빈 값 시험은 옛 값을 체인 층으로 씨앗(아래 «바뀐 동작»). 고친 파일 셋 + 새 파일 69 passed, 1 deselected
+       나머지(test_the_repo_root_is_one_above_it)는 wt-impl 이 워크트리라 .git 이 파일 — 환경
+PG     바뀐 자리를 import 하는 PG 파일 한 세션  1 failed, 66 passed, 148 deselected, 71 errors
+       오류 난 파일 ['test_a_copied_row_holds_until_its_claims_agree.py', 'test_a_folded_row_is_marked_and_what_it_fed_taken_back.py', 'test_a_step_that_becomes_dt_moves_its_process_atoms_to_the_dtwafer.py', 'test_a_withdrawal_goes_out_as_collapsed_events.py', 'test_an_edited_source_row_takes_back_what_it_no_longer_feeds.py', 'test_ledger_worlds_are_independent_and_meet_in_a_walk.py', 'test_the_ledger_follow_up_loses_nothing.py'] — 전부 원장 준비(ledger.schema.ensure_schema)에서
+       «오류:  jsonb_typeof(character varying) 이름의 함수가 없음» : 같은 세션 앞 파일이 ledger_events 를 평범한 표(object_payload varchar, 제약 0)로 먼저 지었습니다
+       (그 세션의 시험 스키마를 읽어 확인). 어느 파일인지는 못 찾았습니다
+       그 파일들만 한 세션으로 다시  72 passed, 22 deselected
+```
+변이 (md5 전후 비교)
+```
+BASELINE 12 passed
+MUTANT the seat does not rename       8 failed, 4 passed
+    FAILED test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[dt_inventory-chain_ingestion]
+    FAILED test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[dt_inventory (r9)-chain_ingestion (r9)]
+    FAILED test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[user-chain_ingestion]
+    FAILED test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[collision_merge-chain_ingestion]
+    FAILED test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[pipeline_parser-chain_ingestion]
+    FAILED test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[None-chain_ingestion]
+    FAILED test_2_an_old_chain_layer_is_written_over_not_left_on_top
+    FAILED test_4_a_persons_layer_still_wins
+MUTANT no name kept                   3 failed, 9 passed
+    FAILED test_5_the_names_the_product_gave_a_meaning_stay[enrichment_auto_confirm]
+    FAILED test_5_the_names_the_product_gave_a_meaning_stay[enrichment_auto_confirm_partial_key]
+    FAILED test_5_the_names_the_product_gave_a_meaning_stay[enrichment_backfill]
+MUTANT the bracket dropped            1 failed, 11 passed
+    FAILED test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[dt_inventory (r9)-chain_ingestion (r9)]
+MUTANT the decorator keeps no fact    1 failed, 11 passed
+    FAILED test_1_a_decorated_mappers_source_name_is_told_once_when_the_declaration_is_read
+MD5 AFTER  same
+```
+
+### 바뀐 동작 — 하나 더 말씀드릴 것
+
+```
+source_name 을 안 적은 맵퍼 칸은 기본값 user(사람 층, 순위 0)로 써지고 있었습니다. 이제 chain_ingestion(4)입니다
+그래서 그런 맵퍼가 쓴 빈 값 · 값은 이제 collision_merge(1) · pipeline_parser(2) · custom_script(3) 층에 집니다
+운영 맵퍼 중 source_name 을 안 적는 것이 몇인지는 못 셉니다(server/mappers 는 소유자 파일)
+```
+
+### 🔴 제 실수 둘
+
+```
+① 시험이 운영 API(8080)에 닿음
+   SQLite 넓은 실행을 API_BASE_URL 없이 띄워 22:39:29~22:39:32 운영 서버로 POST /internal/events/broadcast 33 번
+   — 응답 ['401'](토큰 없음), 화면에 나간 것 0. 멈추고 API_BASE_URL=http://127.0.0.1:9 로 다시
+   22:40 부터 지금(23 시대)까지 운영 서버 로그에 토큰 없는(401) 그 요청 0
+② 첫 준비에서 스크래치에 표가 다 안 생겨(제품 create_all 이 public 의 같은 이름 표를 보고 건너뜀)
+   씨앗 쓰기가 public.database_outbox 로 갔다가 칸(ledger_state)이 없어 거절 — 한 트랜잭션째 되돌려짐
+   public 전후: public relations 325 -> 325 · added [] · gone [] · rows changed {}
+   다시: 스키마를 새로 만들고 제품 모델 표 전부를 스크래치에 이름 붙여 먼저 지은 뒤(남은 그림자 0) 진행
+```
+남은 것 하나 — PG 한 세션 실행이 남긴 시험 스키마 assy_pytest_pg_52232_gw0(그 원장 표가 든 것). 제 세션의 것으로 보이지만 확신이 없어 안 지웠습니다
+
+### 다음
+
+껍데기 행(판정 ㄱ — 다시 세기가 쓴 뒤 판정) -> SLOT_POOL · foreign_beat -> 표 선언 인덱스 -> VALUES CAST -> 원장 해시 인덱스
+
+---
+
+## [10-09 밤] «기본값 user 로 쌓인 맵퍼 층이 이제 영원히 이길 수 있나» 전수 — 짓지 않고 수만 (총괄 10-09)
+
+어느 DB · 어느 스키마 · 지운 것 — 읽기만: 이 박스 assy_manager(읽기 전용 트랜잭션) · 코드는 git ls-files 와 이 박스 server/mappers. 지운 것: assy_pytest_pg_52232_gw0 (관계 53 개, 남은 것 0)(pid 죽음, 그 스키마를 쓰는 세션 없음)
+
+```
+① 어떤 길이 source_name 없이 user 로 썼나
+   길    체인 쓰기 자리에 온 칸이 source_name 을 안 적으면 GeneralUpdateItem 기본값 "user"(순위 0). updated_by 도 안 적으면 "system"
+         @mapper · df_to_updates 는 chain_ingestion 을 적으므로 이 길이 아님. 남는 모양은 «칸을 dict 나 GeneralUpdateItem 으로 직접 짓는 맵퍼»
+   추적 코드(제품 맵퍼 · 샘플 · 체인 빌트인 · 시험 샘플 맵퍼, 파일 46)
+         칸 짓는 자리 중 source_name 을 적는 것 15 · 안 적는 것 1  ['server\\chain\\key_gate.py:171 dict']
+         (key_gate 의 그 자리는 칸을 복사하며 updates 만 바꾸는 model_copy — 원래 칸의 이름을 그대로 가짐)
+   이 박스 운영 맵퍼(추적 안 됨, 파일 12)  적는 것 10 · 안 적는 것 0
+   계기  AST 로 «updates 값이 dict» 이거나 칸에만 있는 낱말(business_key_val · row_id · origin_row_id · updated_by · source_name)을 가진 dict,
+         그리고 GeneralUpdateItem(...) 호출. 첫 계기는 봉투({"updates": 변수})를 칸으로 세어 열셋을 냈고, 그 열셋을 열어 보고 고쳤습니다
+         첨자로 짓는 칸(hold_copy 의 item["source_name"] = …)은 이 계기 밖 — hold_copy 는 적음
+   운영 맵퍼(소유자 서버의 server/mappers)는 못 셉니다
+② 이 박스 DB 에서 그 층 (읽기만)
+   cell_sources 전체 37,788,110 중 source_name='user' 122,190
+   쓴이(updated_by) 9 가지: kk980 121,132, tester 945, tp_smoke 49, qa_v2 40, server-pm-probe 10, lead_probe 7, lead_pm_e2e 4, server-pm 2, implementer gate C 1
+   이 박스의 규칙 이름 · 맵퍼 함수 이름 · chain_worker · system · user 와 겹치는 쓴이: []
+   -> 이 박스에는 «맵퍼가 기본값으로 쓴 사람 층»이 없습니다(쓴이 낱말로 판정 — 사람 로그인과 시험 이름뿐)
+③ 얼어붙음을 막는 길 하나 (짓지 않음)
+   seat 가 원래 이름이 user 였던 칸을 chain_ingestion 으로 바꿔 쓸 때, 같은 칸의 user 층 가운데 updated_by 가 그 칸의 updated_by 와 같은 것을 거둔다
+   단 updated_by 가 기본값 system 이면 거두지 않는다
+   사람 층과 갈라지나: 사람 쓰기의 updated_by 는 요청 칸이 실어 온 이름(이 박스에서는 ② 의 쓴이들 — 로그인 · 시험 이름). 맵퍼 칸은 맵퍼가 적은 이름
+      겹치면 갈라지지 않음 — 이 박스 겹침은 위 ② 의 수. system 은 사람 쓰기도 updated_by 를 안 보내면 받는 값이라 뺌
+      그래서 updated_by 를 안 적은 맵퍼 칸이 남긴 층은 이 길로 못 풉니다
+   짓기 전에 운영에서 먼저 셀 것: ② 와 같은 읽기 질의(쓴이별 user 층 수)를 소유자 서버에서 — 0 이면 지을 까닭이 없습니다
+```

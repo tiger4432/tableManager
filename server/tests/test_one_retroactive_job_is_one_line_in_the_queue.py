@@ -51,7 +51,7 @@ def test_a_runs_trigger_events_and_what_they_woke_carry_the_run(db, monkeypatch,
 
     _drain(db, rules, max_depth=3)
 
-    wrote = [p for p in _events(db, PA) + _events(db, PB) if p.get("source_name") == "pp_layer"]
+    wrote = [p for p in _events(db, PA) + _events(db, PB) if p.get("source_name") == rule_run.CHAIN_SOURCE]
     assert wrote, "the replay wrote nothing, so the run's carry is not asked"
     assert {event_constants.run_of(p) for p in wrote} == {RUN}, wrote
 

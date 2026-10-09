@@ -1868,6 +1868,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | 심볼 (@`6c71084f`) | 무엇 | 앵커 |
 | --- | --- | --- |
 | `RULE_LOG_TAG = "ChainRule"` | 🔴 **어휘가 «하나»다.** 종류마다 다른 태그를 쓰던 것(맵퍼 `MAPPER_LOG_TAG` · builtin 자기 문장)이 이 한 낱말로 접혔다 — grep 이 «종류를 먼저 묻지» 않게 | :46 |
+| 🆕 `layer_of_a_rules_write(name)` | 규칙이 낸 칸의 층 이름 — 맵퍼가 무엇을 적든 `chain_ingestion`(괄호 행 층은 괄호 유지), 자동확정 둘 · enrichment backfill 만 그대로(10-09 총괄 09f3cd289 ①). 부르는 곳 둘: `ingestion_worker` 쓰기 고리(키 관문 바로 앞, 모든 제안 행이 지나는 자리) · `load_chain_rules` 의 `_RENAMED_LAYER`(`@mapper(source_name=)` 사실 → `say_the_declaration` 한 줄) | :65 |
 | `outgoing_depth(incoming)` · `chain_envelope(depth=None)` | 홉을 «세는» 자리와 접기 스코프를 «여는» 자리. 판정 423 이 `+1` 을 호출자에서 여기로 옮겼다 | :55 · :67 |
 | `builtin_kind(rule)` | ⚰️ **[판정 562] 은퇴했다 — 종류표가 없어져 이 물음 자체가 사라졌다.** 이 규칙이 «어느 빌트인 종류를 이름으로 대나»(표 멤버십). 이 좌석 «안»에서 여섯 번 불린다(:155 · :198 · :231 · :251 · :281 · :357). ⚠️ 판정 528 의 은퇴 목록에 «잘못» 올랐다가 **판정 530 으로 내려왔다**(응용 Q-85) | :124 |
 | ⚰️ **[총괄 2026-09-23 — 없어짐]** `writes_itself(rule)` | 「자기 행을 «자기가» 쓰나」를 물었다. 답이 «등록된 사실»로 옮겨가면서 물음 자체가 사라졌다(판정 562 의 다음 걸음). 🔴 되돌림 방지 대조군: `server/tests/test_a_rule_is_run_by_one_seat.py` 의 `assert not hasattr(rule_run, "writes_itself")` — 되살리면 그 줄이 먼저 운다 | — |

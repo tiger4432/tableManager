@@ -341,7 +341,10 @@ def test_r1_never_writes_a_blank(rep_env):
        R2 withdraw, and that is what the operator must be told.
     """
     _seed(rep_env, "crep_test_trigger", [{"src_key": "s1", "part_no": "P1", "qty": 5}])
-    _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "OLD"}], tx_id="pre")
+    # the old value is an earlier run's - a mapper's blank is the chain's layer (총괄 09f3cd289 ①), so it
+    # clears a chain value; the default `user` it was written under before beat a file's too
+    _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "OLD"}], source_name="chain_ingestion",
+          tx_id="pre")
     _clear_outbox(rep_env)
     assert _target(rep_env, "P1").note == "OLD", "the fixture is inert"
 

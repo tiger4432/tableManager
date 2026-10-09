@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **맵퍼가 쓰는 층 이름은 chain_ingestion 하나 — 체인 출력이 옛 체인 층에 덮이던 것 (총괄 09f3cd289 ①) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 순서        ① pull -> 체인 워커 · 서버 재기동
+>            ② chain_worker.log 에서 이름이 바뀐 규칙 확인 — @mapper(source_name=) 를 적은 규칙마다 한 줄, 선언을 새로 읽을 때만
+>               [ChainRules] <규칙>: source_name '<그 이름>' is written as chain_ingestion
+>            ③ 그 규칙 replay — 미리보기  python server/scripts/chain_replay_cli.py replay <규칙>
+>                             실행      같은 명령 + --apply   (소급 탭 «Chain replay» 와 같은 일)
+>               -> 같은 칸의 옛 chain_ingestion 층 자리에 새 값이 써진다(같은 이름 = 같은 자리)
+>            ④ 옛 이름 층(예: dt_inventory)은 남아도 순위 99 라 안 보인다. 지우려면
+>               python server/scripts/chain_replay_cli.py withdraw <표> <그 이름> --columns <칸,…>  -> 보고 --apply
+>               (소급 탭 «Withdraw a stale source (R2)» 와 같은 일)
+> 뜻          맵퍼가 무엇을 적든 그 칸의 층은 chain_ingestion. 괄호 행 층 X (<id>) 는 chain_ingestion (<id>).
+>            source_name 을 안 적은 칸(기본값 user — 사람 층으로 써지던 것)도 체인 층
+> 볼 것       replay 뒤 그 칸의 층(cell_sources)에 chain_ingestion 이 새 값 — 화면 값이 그것
+>            그대로인 것: 자동확정 두 이름 · enrichment_backfill
+> 안 바뀐 것   순위 — chain_ingestion (<id>) 행 층이 옛 plain chain_ingestion 층에 지는 것은 이번에 안 고침(총괄: 시연 뒤).
+>            일요일에 공식 표를 비우고 다시 채우면 옛 plain 층이 없어져 안 드러난다
+> 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 chain_ingestion 으로 써진 칸은 그대로)
+> ```
+
+---
+
 > ## [10-09] **접기를 «지우지 않고 표시»로 — 복사 규칙 on.exclude 가 표시된 행을 안 받고 그 층을 거두며, 보류를 다시 센다 (총괄 016a766af · 83c05cfbb) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```
