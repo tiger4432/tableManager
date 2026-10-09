@@ -37334,3 +37334,14 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
 지금     77733bc21 에서 은퇴한 칸(run_in · rule_rows · RETIRED_CELLS · routing_keys · _LIMIT_KEYS)을 부르는 시험 15 파일 전부 — 247 passed · 0 failed
 다음부터  은퇴 QA 는 «은퇴한 이름을 부르는 시험 전수»를 돌린다 — 손댄 파일이 아니라
 ```
+
+---
+
+## [C 응용] 10-09 41be19bb5(접기 — 빈 키 행은 그대로 · 고른 글자가 든 행 먼저) QA — 결함 없음 (잼)
+
+```
+잰 것   사설 워크트리 — sqlite 파일 20 passed · PG 두 파일(-k) 3 passed(assy_test 스크래치, 픽스처가 지움)
+        제 변이: 빈 값을 «첫 키 칸»에서만 물음 -> 4 빨강(test_rows_with_one_blank_key_part_are_left_as_they_are · test_an_empty_string_is_blank_as_null_is · test_the_preview_the_run_and_the_cli_say_the_rows_left_for_a_blank_key · test_a_preferred_fold_leaves_blank_key_rows_and_says_what_it_kept)
+읽은 것  견주기는 «들어 있다» · 대소문자 무시(icontains, 와일드카드 글자는 그대로 읽음) — 지시(1d2a7e0fd)의 낱말 그대로
+문서    BACKFILL_GUIDE 의 접기 줄은 착지가 이미 맞춤(prefer 두 칸 · 빈 키 행 그대로)
+```
