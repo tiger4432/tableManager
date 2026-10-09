@@ -1128,7 +1128,7 @@
       font-family: var(--font-mono);
       font-size: var(--fs-label);
       color: var(--text-dim);
-      word-break: break-all;
+      overflow-wrap: anywhere;
     }
     /* 운영자가 편집한 그 파일의 문법(JSON)으로 되읽어 주는 값 — 서버의 `_as_json`과 짝. */
     .cfg-jsonval {
@@ -1365,7 +1365,10 @@
     .ov-row-open,
     .ov-show-all,
     .chain-queue-panel .chain-queue-refresh,
-    #file-list-body .admin-btn {
+    #file-list-body .admin-btn,
+    #mapper-list-body .admin-btn,
+    #autoupdate-linked-body .admin-btn,
+    #retry-all-outbox-btn {
       height: auto;
       padding: 0;
       border: 0;
@@ -1379,11 +1382,17 @@
     .ov-row-open:focus,
     .ov-show-all:focus,
     .chain-queue-panel .chain-queue-refresh:focus,
-    #file-list-body .admin-btn:focus { outline: none; }
+    #file-list-body .admin-btn:focus,
+    #mapper-list-body .admin-btn:focus,
+    #autoupdate-linked-body .admin-btn:focus,
+    #retry-all-outbox-btn:focus { outline: none; }
     .ov-row-open:focus-visible,
     .ov-show-all:focus-visible,
     .chain-queue-panel .chain-queue-refresh:focus-visible,
-    #file-list-body .admin-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #file-list-body .admin-btn:focus-visible,
+    #mapper-list-body .admin-btn:focus-visible,
+    #autoupdate-linked-body .admin-btn:focus-visible,
+    #retry-all-outbox-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .ov-show-all { margin-top: var(--space-2); }
     .ov-row-body { border-bottom: 1px solid var(--border); }
     .ov-scroll { overflow-x: auto; }
@@ -1678,7 +1687,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DmlunO92.js"></script>
+  <script type="module" crossorigin src="/assets/admin-Dm6JqWdj.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-Mv2iG8s3.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">
@@ -2066,7 +2075,7 @@
                     <th style="width: 100px; text-align: center;">Status</th>
                     <th style="width: 70px; text-align: center;" title="Schedule on/off (Run Now works even when off)">Active</th>
                     <th style="width: 120px; text-align: center;">Actions</th>
-                    <th style="width: 220px;" title="Run the collector once per day from a start day (KST)">Backfill</th>
+                    <th title="Run the collector once per day from a start day (KST)">Backfill</th>
                   </tr>
                 </thead>
                 <tbody id="autoupdate-list-body"></tbody>
@@ -2083,7 +2092,7 @@
               <span class="stage-chip">Errors</span>
               <span class="section-title">Output ingestion failures</span>
               <span class="section-count" id="autoupdate-linked-count">—</span>
-              <span class="section-summary" title="Ingestion failures of files these collectors made (auto-update tables ∩ recent failure logs)">Files a collector made that failed in the parser — "collector SUCCESS ≠ data arrived"</span>
+              <span class="section-summary" data-clip-ok title="Files a collector made that failed in the parser — &quot;collector SUCCESS ≠ data arrived&quot;. Ingestion failures of files these collectors made (auto-update tables ∩ recent failure logs)">Files a collector made that failed in the parser — "collector SUCCESS ≠ data arrived"</span>
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body">
@@ -2139,7 +2148,7 @@
             <div class="section-header" data-section="sec-retroactive" id="retroactive-summary">
               <span class="section-title">Retroactive</span>
               <span class="section-count" id="retroactive-value">—</span>
-              <span class="section-summary" id="retroactive-sub"></span>
+              <span class="section-summary" id="retroactive-sub" data-clip-ok></span>
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body"><div class="cfg-body" id="retroactive-body"></div></div>

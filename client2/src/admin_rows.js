@@ -108,7 +108,7 @@ export function workspaceRowHtml(ws) {
 export function mapperRowHtml(mapper) {
   const funcCount = mapper.functions.length;
   return `
-      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(mapper.filename)}</td>
+      <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(mapper.filename)}</td>
       <td style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${escapeHtml(mapper.module_name)}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${funcCount}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
@@ -156,7 +156,7 @@ export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText, bac
     '<span class="badge badge-muted" style="margin-left: 8px; flex: none;">Inactive</span>';
   return `
       <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(col.table_name)}</td>
-      <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(col.script_name)}${inactiveBadge}</td>
+      <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(col.script_name)}${inactiveBadge}</td>
       <td style="font-family: var(--font-mono); font-size: var(--fs-button); text-align: center;">${escapeHtml(col.cron_expression)}</td>
       <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${escapeHtml(col.next_run || '')}">${escapeHtml(nextRunText)}</td>
       <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${escapeHtml(col.last_run || '')}">${escapeHtml(lastRunText)}</td>

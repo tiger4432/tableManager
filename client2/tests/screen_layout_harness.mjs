@@ -544,6 +544,9 @@ const DRIVE = {
       const box = document.querySelector('.folder-retry-include-box'); if (!box) return false;
       box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true }));
       return true; })()`))],
+    // The other tabs, each by its address (lead 10-09: the File tab showed two defects the first time it was opened).
+    ...[['Tables', 'tables'], ['Chain', 'chain'], ['Auto Update', 'autoupdate'], ['Retroactive', 'retroactive']]
+      .map(([name, hash]) => [name, (c) => evaluate(c, `location.hash = '#${hash}'; true`).then(() => sleep(1500))]),
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
@@ -660,12 +663,25 @@ const MUTANTS = [
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
-    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn {\n      height: auto;',
-      '    .ov-show-all,\n    #file-list-body .admin-btn {\n      height: auto;']] },
+    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn,\n',
+      '    .ov-show-all,\n    #file-list-body .admin-btn,\n']] },
   // A file row's Retry boxed at the base button height again, 36 px in its 14 px line (lead a4d135a06's round).
   { name: 'a file row Retry boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'file-list-body',
-    file: 'admin.html', edits: [['    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn {\n      height: auto;',
-      '    .chain-queue-panel .chain-queue-refresh {\n      height: auto;']] },
+    file: 'admin.html', edits: [['    #file-list-body .admin-btn,\n    #mapper-list-body .admin-btn,\n',
+      '    #mapper-list-body .admin-btn,\n']] },
+  // The admin tabs round (lead 10-09): what the gate found when it first opened Tables, Chain, Auto Update, Retroactive.
+  { name: 'the Chain and Auto Update row buttons boxed at the base button height', entry: 'admin.html', rule: 'size',
+    at: 'mapper-list-body', file: 'admin.html', edits: [['    #mapper-list-body .admin-btn,\n    #autoupdate-linked-body .admin-btn,\n    #retry-all-outbox-btn {\n',
+      '    #retry-all-outbox-btn {\n']] },
+  { name: 'the Backfill column back at 220px beside the collector names', entry: 'admin.html', rule: 'columns', at: 'sec-collectors',
+    file: 'admin.html', edits: [['<th title="Run the collector once per day from a start day (KST)">Backfill</th>',
+      '<th style="width: 220px;" title="Run the collector once per day from a start day (KST)">Backfill</th>']] },
+  { name: 'the path face breaking the server sentences between any two letters', entry: 'admin.html', rule: 'words', at: 'cfg-path',
+    file: 'admin.html', edits: [['      color: var(--text-dim);\n      overflow-wrap: anywhere;\n    }\n',
+      '      color: var(--text-dim);\n      word-break: break-all;\n    }\n']] },
+  { name: 'the Retroactive list line cut without saying so', entry: 'admin.html', rule: 'clip', at: 'retroactive-sub',
+    file: 'admin.html', edits: [['<span class="section-summary" id="retroactive-sub" data-clip-ok></span>',
+      '<span class="section-summary" id="retroactive-sub"></span>']] },
   { name: 'the ledger sources table back on its hand widths (Source 150px, the timestamp the rest)', entry: 'admin.html',
     rule: 'columns', at: 'ledger-sources', file: 'src/ledger_sources_panel.js', edits: [
       ["      if (fit) th.className = 'cell-fit';", "      th.style.width = { Source: '150px', State: '130px', Refused: '70px' }[label] || '';"],

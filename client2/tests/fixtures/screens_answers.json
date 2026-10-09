@@ -630,6 +630,1054 @@
 "status":200,
 "type":"application/json"
 },
+"/admin/chain/rules/raw":{
+"body":{
+"base":"sha256:05a9893d8ac0ecc5b8f6fcd71cdd155ae739bf6e879c1daf3d7401d24e53bbc8",
+"config_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\config\\chain_rules.json",
+"editable_unit":"rule",
+"error":null,
+"grammar":"unified",
+"rule_grammars":{
+"aaa":"unified",
+"dt_inventory_to_core_usage_map":"flat",
+"dt_inventory_to_standard_dt_map":"flat",
+"dt_log_to_core_usage_map":"flat",
+"dt_log_to_dt_map":"flat",
+"dt_log_to_primary_core_frame":"flat",
+"dt_metadata_to_dt_inventory":"flat",
+"dt_transform_update":"unified",
+"enrich_in_chain_probe":"unified",
+"inventory_confirmed":"unified",
+"lot_event_to_lot_slot_wafer":"flat",
+"production_to_inventory_reservation_batch":"flat",
+"test":"unified"
+},
+"rules":[
+"aaa",
+"dt_inventory_to_core_usage_map",
+"dt_inventory_to_standard_dt_map",
+"dt_log_to_core_usage_map",
+"dt_log_to_dt_map",
+"dt_log_to_primary_core_frame",
+"dt_metadata_to_dt_inventory",
+"dt_transform_update",
+"enrich_in_chain_probe",
+"inventory_confirmed",
+"lot_event_to_lot_slot_wafer",
+"production_to_inventory_reservation_batch",
+"test"
+],
+"skeleton":{
+"note":"The shape of ONE chain rule. Generated from `chain_bindings.routing_keys()`; the loader still decides what is good. server/tests/test_chain_skeleton.py counts the two against each other.",
+"root":{
+"fields":[
+{
+"key":"name",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":true
+},
+{
+"key":"trigger_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":true
+},
+{
+"key":"source_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"target_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"map_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"inventory_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"metadata_target_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"derivation_source_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"target_field",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"trigger_columns",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"require",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"exclude",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"source_exclude",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"enabled",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"is_batch",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_chain_trigger",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_map_metadata_upsert",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_replace_map",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_retraction",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"trigger_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"source_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"target_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"inventory_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"reference_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"derivation_source_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"max_group_attempts",
+"node":{
+"hint":"number",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"max_group_rows",
+"node":{
+"hint":"number",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"group_by",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"idempotent",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"origin",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"rows_per_run",
+"node":{
+"hint":"number",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"companion_of",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"mapper",
+"node":{
+"hint":"choice",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"params",
+"node":{
+"keyed_by":"name",
+"kind":"map",
+"member":"인자",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"mapper_module",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"mapper_function",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"reads",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"table",
+"of":{
+"hint":"ref",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"reference",
+"node":{
+"fields":[
+{
+"key":"table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"required":false
+},
+{
+"key":"key",
+"node":{
+"fields":[
+{
+"key":"columns",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"unique",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"skeleton_version":1,
+"unified_root":{
+"fields":[
+{
+"key":"name",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":true
+},
+{
+"key":"enabled",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"on",
+"node":{
+"fields":[
+{
+"key":"table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":true
+},
+{
+"key":"columns",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"require",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"exclude",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"required":false
+},
+{
+"key":"derive",
+"node":{
+"branches":{
+"decide":{
+"fields":[
+{
+"key":"key",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"fields",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"field",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"list_columns",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"aggregations",
+"node":{
+"keyed_by":"name",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"reference_views",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"view",
+"of":{
+"fields":[
+{
+"key":"label",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"query",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"query_ref",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"limit",
+"node":{
+"hint":"number",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"reads",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"table",
+"of":{
+"hint":"ref",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"candidate_for",
+"node":{
+"keyed_by":"name",
+"kind":"map",
+"member":"field",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+}
+],
+"kind":"record"
+}
+},
+"required":false
+},
+{
+"key":"auto_confirm",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"alignment",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"join":{
+"fields":[
+{
+"key":"on",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"pair",
+"of":{
+"fields":[
+{
+"key":"left",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"right",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+}
+},
+"required":false
+},
+{
+"key":"take",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"blank",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"mapper":{
+"fields":[
+{
+"key":"mapper",
+"node":{
+"hint":"choice",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"mapper_module",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"mapper_function",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"params",
+"node":{
+"keyed_by":"name",
+"kind":"map",
+"member":"인자",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+}
+],
+"kind":"record"
+}
+},
+"hint":"choice",
+"kind":"oneOf"
+},
+"required":true
+},
+{
+"key":"into",
+"node":{
+"branches":{
+"table":{
+"hint":"ref",
+"kind":"leaf"
+}
+},
+"hint":"choice",
+"kind":"oneOf"
+},
+"required":true
+},
+{
+"key":"key",
+"node":{
+"fields":[
+{
+"key":"columns",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"unique",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"required":false
+},
+{
+"key":"limits",
+"node":{
+"fields":[
+{
+"key":"group_by",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"max_group_rows",
+"node":{
+"hint":"number",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"max_group_attempts",
+"node":{
+"hint":"number",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"idempotent",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"rows_per_run",
+"node":{
+"hint":"number",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"required":false
+},
+{
+"key":"source_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"map_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"inventory_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"metadata_target_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"derivation_source_table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"target_field",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"source_exclude",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"column",
+"of":{
+"hint":"free",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"is_batch",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_chain_trigger",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_map_metadata_upsert",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_replace_map",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"allow_retraction",
+"node":{
+"hint":"flag",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"trigger_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"source_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"target_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"inventory_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"reference_job_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"derivation_source_column",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"origin",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"companion_of",
+"node":{
+"hint":"free",
+"kind":"leaf"
+},
+"required":false
+},
+{
+"key":"reads",
+"node":{
+"keyed_by":"index",
+"kind":"map",
+"member":"table",
+"of":{
+"hint":"ref",
+"kind":"leaf"
+}
+},
+"required":false
+},
+{
+"key":"reference",
+"node":{
+"fields":[
+{
+"key":"table",
+"node":{
+"hint":"ref",
+"kind":"leaf"
+},
+"required":false
+}
+],
+"kind":"record"
+},
+"required":false
+}
+],
+"kind":"record"
+}
+}
+},
+"captured":"2026-10-09T14:24:55+00:00 · server code 290d0f25c",
+"status":200,
+"type":"application/json"
+},
 "/admin/chain/rules/replayable?table=ledger_events&row_scoped=true":{
 "body":{
 "data":[],
@@ -6128,6 +7176,3375 @@
 ]
 },
 "captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
+"status":200,
+"type":"application/json"
+},
+"/admin/ledger/relations":{
+"body":{
+"declared_total":45,
+"missing_relations":[],
+"relations":[
+{
+"columns":[
+{
+"name":"base_id",
+"type":"character varying"
+},
+{
+"name":"bx",
+"type":"double precision"
+},
+{
+"name":"by",
+"type":"double precision"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"double precision"
+},
+{
+"name":"dt_x",
+"type":"double precision"
+},
+{
+"name":"dt_y",
+"type":"double precision"
+},
+{
+"name":"dt_seat",
+"type":"text"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"double precision"
+},
+{
+"name":"cx",
+"type":"double precision"
+},
+{
+"name":"cy",
+"type":"double precision"
+},
+{
+"name":"core_seat",
+"type":"text"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"bonding_core_die"
+},
+{
+"columns":[
+{
+"name":"base_id",
+"type":"character varying"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"double precision"
+},
+{
+"name":"event_time",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"bonding_core_lot"
+},
+{
+"columns":[
+{
+"name":"base_id",
+"type":"character varying"
+},
+{
+"name":"bx",
+"type":"double precision"
+},
+{
+"name":"by",
+"type":"double precision"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"cx",
+"type":"double precision"
+},
+{
+"name":"cy",
+"type":"double precision"
+},
+{
+"name":"core_seat",
+"type":"text"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"double precision"
+},
+{
+"name":"event_time",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"bonding_die_from_core"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"base_lot",
+"type":"character varying"
+},
+{
+"name":"base_slot",
+"type":"character varying"
+},
+{
+"name":"base_wafer_id",
+"type":"character varying"
+},
+{
+"name":"base_frame",
+"type":"character varying"
+},
+{
+"name":"core_frame",
+"type":"character varying"
+},
+{
+"name":"base_x_base",
+"type":"character varying"
+},
+{
+"name":"base_x_sign",
+"type":"double precision"
+},
+{
+"name":"base_x_offset",
+"type":"double precision"
+},
+{
+"name":"base_y_base",
+"type":"character varying"
+},
+{
+"name":"base_y_sign",
+"type":"double precision"
+},
+{
+"name":"base_y_offset",
+"type":"double precision"
+},
+{
+"name":"dt_x_base",
+"type":"character varying"
+},
+{
+"name":"dt_x_sign",
+"type":"double precision"
+},
+{
+"name":"dt_x_offset",
+"type":"double precision"
+},
+{
+"name":"dt_y_base",
+"type":"character varying"
+},
+{
+"name":"dt_y_sign",
+"type":"double precision"
+},
+{
+"name":"dt_y_offset",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"bonding_inventory"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"log_id",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"character varying"
+},
+{
+"name":"base_id",
+"type":"character varying"
+},
+{
+"name":"bx",
+"type":"double precision"
+},
+{
+"name":"by",
+"type":"double precision"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"double precision"
+},
+{
+"name":"cx",
+"type":"double precision"
+},
+{
+"name":"cy",
+"type":"double precision"
+},
+{
+"name":"bond_cell_key",
+"type":"character varying"
+},
+{
+"name":"bond_lot",
+"type":"character varying"
+},
+{
+"name":"bond_slot",
+"type":"character varying"
+},
+{
+"name":"bond_x",
+"type":"double precision"
+},
+{
+"name":"bond_y",
+"type":"double precision"
+},
+{
+"name":"b_bn",
+"type":"character varying"
+},
+{
+"name":"stack_height",
+"type":"double precision"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"double precision"
+},
+{
+"name":"dt_x",
+"type":"double precision"
+},
+{
+"name":"dt_y",
+"type":"double precision"
+},
+{
+"name":"bond_eqp",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"bonding_eqp",
+"type":"character varying"
+},
+{
+"name":"base_lot",
+"type":"character varying"
+},
+{
+"name":"base_slot",
+"type":"double precision"
+},
+{
+"name":"base_wafer_id",
+"type":"character varying"
+},
+{
+"name":"bonding_index",
+"type":"double precision"
+},
+{
+"name":"b_wx",
+"type":"double precision"
+},
+{
+"name":"b_wy",
+"type":"double precision"
+},
+{
+"name":"c_wx",
+"type":"double precision"
+},
+{
+"name":"c_wy",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"bonding_log"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"pkg_id",
+"type":"character varying"
+},
+{
+"name":"base",
+"type":"character varying"
+},
+{
+"name":"x",
+"type":"double precision"
+},
+{
+"name":"y",
+"type":"double precision"
+},
+{
+"name":"leg",
+"type":"character varying"
+},
+{
+"name":"base_wafer_id",
+"type":"character varying"
+},
+{
+"name":"base_x",
+"type":"double precision"
+},
+{
+"name":"base_y",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"bonding_map"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"core_usage_cell_key",
+"type":"character varying"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"character varying"
+},
+{
+"name":"core_x",
+"type":"double precision"
+},
+{
+"name":"core_y",
+"type":"double precision"
+},
+{
+"name":"used_count",
+"type":"double precision"
+},
+{
+"name":"used_dt_jobs",
+"type":"character varying"
+},
+{
+"name":"core_wafers",
+"type":"character varying"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"core_lot_slots",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"core_usage_map"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"core_key",
+"type":"character varying"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"chip_count",
+"type":"double precision"
+},
+{
+"name":"eventtime",
+"type":"character varying"
+},
+{
+"name":"core_cell_key",
+"type":"character varying"
+},
+{
+"name":"core_x",
+"type":"double precision"
+},
+{
+"name":"core_y",
+"type":"double precision"
+},
+{
+"name":"c_bn",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"core_wafer_map"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"lot_id",
+"type":"character varying"
+},
+{
+"name":"slot_id",
+"type":"double precision"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"step_seq",
+"type":"character varying"
+},
+{
+"name":"die_x",
+"type":"double precision"
+},
+{
+"name":"die_y",
+"type":"double precision"
+},
+{
+"name":"inchip_x",
+"type":"double precision"
+},
+{
+"name":"inchip_y",
+"type":"double precision"
+},
+{
+"name":"classname",
+"type":"character varying"
+},
+{
+"name":"radius_x",
+"type":"double precision"
+},
+{
+"name":"radius_y",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"defect"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"delam_uid",
+"type":"character varying"
+},
+{
+"name":"run_uid",
+"type":"character varying"
+},
+{
+"name":"base_wafer_id",
+"type":"character varying"
+},
+{
+"name":"base_x",
+"type":"double precision"
+},
+{
+"name":"base_y",
+"type":"double precision"
+},
+{
+"name":"stack_gate",
+"type":"double precision"
+},
+{
+"name":"inchip_x",
+"type":"double precision"
+},
+{
+"name":"inchip_y",
+"type":"double precision"
+},
+{
+"name":"extent_x",
+"type":"double precision"
+},
+{
+"name":"extent_y",
+"type":"double precision"
+},
+{
+"name":"interface",
+"type":"character varying"
+},
+{
+"name":"unit",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"delam_obs"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"dt_core_view_cell_key",
+"type":"character varying"
+},
+{
+"name":"dt_job",
+"type":"character varying"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"character varying"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"core_x",
+"type":"double precision"
+},
+{
+"name":"core_y",
+"type":"double precision"
+},
+{
+"name":"c_bn",
+"type":"character varying"
+},
+{
+"name":"core_index",
+"type":"double precision"
+},
+{
+"name":"dt_index",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"dt_core_view"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"cell_key",
+"type":"character varying"
+},
+{
+"name":"dt_job",
+"type":"character varying"
+},
+{
+"name":"dt_x",
+"type":"double precision"
+},
+{
+"name":"dt_y",
+"type":"double precision"
+},
+{
+"name":"dt_index",
+"type":"double precision"
+},
+{
+"name":"c_bn",
+"type":"character varying"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"character varying"
+},
+{
+"name":"dt_",
+"type":"double precision"
+},
+{
+"name":"dt_frame",
+"type":"text"
+},
+{
+"name":"core_frame",
+"type":"character varying"
+},
+{
+"name":"dt_x_base",
+"type":"character varying"
+},
+{
+"name":"dt_x_sign",
+"type":"double precision"
+},
+{
+"name":"dt_x_offset",
+"type":"double precision"
+},
+{
+"name":"dt_y_base",
+"type":"character varying"
+},
+{
+"name":"dt_y_sign",
+"type":"double precision"
+},
+{
+"name":"dt_y_offset",
+"type":"double precision"
+},
+{
+"name":"core_x_base",
+"type":"character varying"
+},
+{
+"name":"core_x_sign",
+"type":"double precision"
+},
+{
+"name":"core_x_offset",
+"type":"double precision"
+},
+{
+"name":"core_y_base",
+"type":"character varying"
+},
+{
+"name":"core_y_sign",
+"type":"double precision"
+},
+{
+"name":"core_y_offset",
+"type":"double precision"
+},
+{
+"name":"dt_eqp",
+"type":"character varying"
+},
+{
+"name":"dt_product",
+"type":"character varying"
+},
+{
+"name":"dt_type",
+"type":"character varying"
+},
+{
+"name":"core_wafer_list",
+"type":"character varying"
+},
+{
+"name":"dt_job_id",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"dt_inventory"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"dt_job",
+"type":"character varying"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"character varying"
+},
+{
+"name":"cell_count",
+"type":"double precision"
+},
+{
+"name":"dt_lot_confirmed",
+"type":"character varying"
+},
+{
+"name":"dt_slot_confirmed",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"dt_job_attribution"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"dt_id",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"character varying"
+},
+{
+"name":"tape_lot",
+"type":"character varying"
+},
+{
+"name":"tape_slot",
+"type":"character varying"
+},
+{
+"name":"tx",
+"type":"double precision"
+},
+{
+"name":"ty",
+"type":"double precision"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"character varying"
+},
+{
+"name":"cx",
+"type":"double precision"
+},
+{
+"name":"cy",
+"type":"double precision"
+},
+{
+"name":"dt_eqp",
+"type":"character varying"
+},
+{
+"name":"dt_cell_key",
+"type":"character varying"
+},
+{
+"name":"dt_job",
+"type":"character varying"
+},
+{
+"name":"product",
+"type":"character varying"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"character varying"
+},
+{
+"name":"dt_x",
+"type":"double precision"
+},
+{
+"name":"dt_y",
+"type":"double precision"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"core_x",
+"type":"double precision"
+},
+{
+"name":"core_y",
+"type":"double precision"
+},
+{
+"name":"c_bn",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"dt_index",
+"type":"double precision"
+},
+{
+"name":"dt_event_id",
+"type":"character varying"
+},
+{
+"name":"dt_job_id",
+"type":"character varying"
+},
+{
+"name":"b_wx",
+"type":"double precision"
+},
+{
+"name":"b_wy",
+"type":"double precision"
+},
+{
+"name":"core_wafer_id",
+"type":"character varying"
+},
+{
+"name":"c_wx",
+"type":"double precision"
+},
+{
+"name":"c_wy",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"dt_log"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"dt_id",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"character varying"
+},
+{
+"name":"tape_lot",
+"type":"character varying"
+},
+{
+"name":"tape_slot",
+"type":"character varying"
+},
+{
+"name":"tx",
+"type":"double precision"
+},
+{
+"name":"ty",
+"type":"double precision"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"character varying"
+},
+{
+"name":"cx",
+"type":"double precision"
+},
+{
+"name":"cy",
+"type":"double precision"
+},
+{
+"name":"dt_eqp",
+"type":"character varying"
+},
+{
+"name":"dt_cell_key",
+"type":"character varying"
+},
+{
+"name":"dt_job",
+"type":"character varying"
+},
+{
+"name":"product",
+"type":"character varying"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"character varying"
+},
+{
+"name":"dt_x",
+"type":"double precision"
+},
+{
+"name":"dt_y",
+"type":"double precision"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"core_x",
+"type":"double precision"
+},
+{
+"name":"core_y",
+"type":"double precision"
+},
+{
+"name":"c_bn",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"dt_index",
+"type":"double precision"
+},
+{
+"name":"dt_event_id",
+"type":"character varying"
+},
+{
+"name":"dt_job_id",
+"type":"character varying"
+},
+{
+"name":"b_wx",
+"type":"double precision"
+},
+{
+"name":"b_wy",
+"type":"double precision"
+},
+{
+"name":"core_wafer_id",
+"type":"character varying"
+},
+{
+"name":"c_wx",
+"type":"double precision"
+},
+{
+"name":"c_wy",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"dt_log_transferable"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"cell_key",
+"type":"character varying"
+},
+{
+"name":"dt_job",
+"type":"character varying"
+},
+{
+"name":"dt_x",
+"type":"double precision"
+},
+{
+"name":"dt_y",
+"type":"double precision"
+},
+{
+"name":"c_bn",
+"type":"character varying"
+},
+{
+"name":"core_wafer",
+"type":"character varying"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"character varying"
+},
+{
+"name":"core_x",
+"type":"double precision"
+},
+{
+"name":"core_y",
+"type":"double precision"
+},
+{
+"name":"dt_index",
+"type":"double precision"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"double precision"
+},
+{
+"name":"value",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"dt_map"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"b_wx",
+"type":"double precision"
+},
+{
+"name":"b_wy",
+"type":"double precision"
+},
+{
+"name":"c_wx",
+"type":"double precision"
+},
+{
+"name":"c_wy",
+"type":"double precision"
+},
+{
+"name":"core_wafer_id",
+"type":"character varying"
+},
+{
+"name":"dt_cell_key",
+"type":"character varying"
+},
+{
+"name":"dt_job",
+"type":"character varying"
+},
+{
+"name":"dt_job_id",
+"type":"character varying"
+},
+{
+"name":"dt_x",
+"type":"double precision"
+},
+{
+"name":"dt_y",
+"type":"double precision"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"product",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"dt_transfer_log"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"comment_uid",
+"type":"character varying"
+},
+{
+"name":"target_type",
+"type":"character varying"
+},
+{
+"name":"target_id",
+"type":"character varying"
+},
+{
+"name":"author",
+"type":"character varying"
+},
+{
+"name":"commented_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"body",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"entity_comment"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"event_uid",
+"type":"character varying"
+},
+{
+"name":"kind",
+"type":"character varying"
+},
+{
+"name":"target_type",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"chamber_id",
+"type":"character varying"
+},
+{
+"name":"started_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"ended_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"severity",
+"type":"character varying"
+},
+{
+"name":"summary",
+"type":"character varying"
+},
+{
+"name":"operator",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"eqp_event"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"run_uid",
+"type":"character varying"
+},
+{
+"name":"method",
+"type":"character varying"
+},
+{
+"name":"base_wafer_id",
+"type":"character varying"
+},
+{
+"name":"base_x",
+"type":"double precision"
+},
+{
+"name":"base_y",
+"type":"double precision"
+},
+{
+"name":"stack_gate",
+"type":"double precision"
+},
+{
+"name":"recipe_id",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"observed_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"work_id",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"inspection_run"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"part_no",
+"type":"character varying"
+},
+{
+"name":"category",
+"type":"character varying"
+},
+{
+"name":"stock_qty",
+"type":"double precision"
+},
+{
+"name":"unit_price",
+"type":"double precision"
+},
+{
+"name":"MAX",
+"type":"double precision"
+},
+{
+"name":"MIN",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"inventory_master"
+},
+{
+"columns":[
+{
+"name":"id",
+"type":"uuid"
+},
+{
+"name":"subject_type",
+"type":"text"
+},
+{
+"name":"subject_keys",
+"type":"jsonb"
+},
+{
+"name":"predicate",
+"type":"text"
+},
+{
+"name":"object_kind",
+"type":"text"
+},
+{
+"name":"object_payload",
+"type":"jsonb"
+},
+{
+"name":"occurred_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"occurred_at_basis",
+"type":"text"
+},
+{
+"name":"source_who",
+"type":"text"
+},
+{
+"name":"source_translator_ver",
+"type":"text"
+},
+{
+"name":"source_raw_ref",
+"type":"text"
+},
+{
+"name":"supersedes",
+"type":"uuid"
+},
+{
+"name":"source_event_id",
+"type":"uuid"
+},
+{
+"name":"source_event_state",
+"type":"text"
+}
+],
+"declared":true,
+"exists":true,
+"name":"ledger_events"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"event_id",
+"type":"character varying"
+},
+{
+"name":"lot",
+"type":"character varying"
+},
+{
+"name":"event_type",
+"type":"character varying"
+},
+{
+"name":"parent_lot",
+"type":"character varying"
+},
+{
+"name":"child_lot",
+"type":"character varying"
+},
+{
+"name":"slot_numbers",
+"type":"character varying"
+},
+{
+"name":"wafer_ids",
+"type":"character varying"
+},
+{
+"name":"equipment",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"lot_id",
+"type":"character varying"
+},
+{
+"name":"txn_seq",
+"type":"character varying"
+},
+{
+"name":"slotnumbers",
+"type":"character varying"
+},
+{
+"name":"waferids",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"lot_event"
+},
+{
+"columns":[
+{
+"name":"from_lot",
+"type":"character varying"
+},
+{
+"name":"from_slot",
+"type":"text"
+},
+{
+"name":"to_lot",
+"type":"character varying"
+},
+{
+"name":"to_slot",
+"type":"text"
+},
+{
+"name":"wafer",
+"type":"text"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"event_type",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"lot_slot_move"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"lot",
+"type":"character varying"
+},
+{
+"name":"slot",
+"type":"character varying"
+},
+{
+"name":"wafer",
+"type":"character varying"
+},
+{
+"name":"event_type",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"character varying"
+},
+{
+"name":"lot_slot_wafer_key",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"lot_slot_wafer"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"split_key",
+"type":"character varying"
+},
+{
+"name":"ref_table",
+"type":"character varying"
+},
+{
+"name":"map_key",
+"type":"character varying"
+},
+{
+"name":"value",
+"type":"character varying"
+},
+{
+"name":"split_desc",
+"type":"character varying"
+},
+{
+"name":"color",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"character varying"
+},
+{
+"name":"knobs",
+"type":"character varying"
+},
+{
+"name":"bands",
+"type":"character varying"
+},
+{
+"name":"mat_1h",
+"type":"character varying"
+},
+{
+"name":"mat_mid",
+"type":"character varying"
+},
+{
+"name":"mat_top",
+"type":"character varying"
+},
+{
+"name":"stack",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"map_split_registry"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"edge_id",
+"type":"character varying"
+},
+{
+"name":"model",
+"type":"character varying"
+},
+{
+"name":"from_quantity",
+"type":"character varying"
+},
+{
+"name":"to_quantity",
+"type":"character varying"
+},
+{
+"name":"dir",
+"type":"character varying"
+},
+{
+"name":"asserted_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"to_role",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"mechanism_edge"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"edge_id",
+"type":"character varying"
+},
+{
+"name":"model",
+"type":"character varying"
+},
+{
+"name":"from_quantity",
+"type":"character varying"
+},
+{
+"name":"to_quantity",
+"type":"character varying"
+},
+{
+"name":"dir",
+"type":"character varying"
+},
+{
+"name":"asserted_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"to_role",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"mechanism_edge_to_finding"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"edge_id",
+"type":"character varying"
+},
+{
+"name":"model",
+"type":"character varying"
+},
+{
+"name":"from_quantity",
+"type":"character varying"
+},
+{
+"name":"to_quantity",
+"type":"character varying"
+},
+{
+"name":"dir",
+"type":"character varying"
+},
+{
+"name":"asserted_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"to_role",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"mechanism_edge_to_quantity"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"txn_seq",
+"type":"character varying"
+},
+{
+"name":"lot_id",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"step_seq",
+"type":"character varying"
+},
+{
+"name":"rcp_id",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"timestamp with time zone"
+},
+{
+"name":"item_id",
+"type":"character varying"
+},
+{
+"name":"subitem_id",
+"type":"character varying"
+},
+{
+"name":"value",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"metro"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"txn_seq",
+"type":"character varying"
+},
+{
+"name":"lot_id",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"step_seq",
+"type":"character varying"
+},
+{
+"name":"rcp_id",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"event_time",
+"type":"timestamp with time zone"
+}
+],
+"declared":true,
+"exists":true,
+"name":"process_event"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"param_id",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"step",
+"type":"character varying"
+},
+{
+"name":"param",
+"type":"character varying"
+},
+{
+"name":"value",
+"type":"double precision"
+},
+{
+"name":"unit",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"recipe_id",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"timestamp with time zone"
+},
+{
+"name":"value_text",
+"type":"character varying"
+},
+{
+"name":"role",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"process_param"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"param_id",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"step",
+"type":"character varying"
+},
+{
+"name":"param",
+"type":"character varying"
+},
+{
+"name":"value",
+"type":"double precision"
+},
+{
+"name":"value_text",
+"type":"character varying"
+},
+{
+"name":"role",
+"type":"character varying"
+},
+{
+"name":"unit",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"recipe_id",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"timestamp with time zone"
+}
+],
+"declared":true,
+"exists":true,
+"name":"process_param_num"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"param_id",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"step",
+"type":"character varying"
+},
+{
+"name":"param",
+"type":"character varying"
+},
+{
+"name":"value",
+"type":"double precision"
+},
+{
+"name":"value_text",
+"type":"character varying"
+},
+{
+"name":"role",
+"type":"character varying"
+},
+{
+"name":"unit",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"recipe_id",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"timestamp with time zone"
+}
+],
+"declared":true,
+"exists":true,
+"name":"process_param_txt"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"plan_id",
+"type":"character varying"
+},
+{
+"name":"prod_line",
+"type":"character varying"
+},
+{
+"name":"model_name",
+"type":"character varying"
+},
+{
+"name":"target_qty",
+"type":"double precision"
+},
+{
+"name":"due_date",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"production_plan"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"base_lot",
+"type":"character varying"
+},
+{
+"name":"base_slot",
+"type":"double precision"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"double precision"
+},
+{
+"name":"dt_lot",
+"type":"character varying"
+},
+{
+"name":"dt_slot",
+"type":"double precision"
+}
+],
+"declared":true,
+"exists":true,
+"name":"slot_trace_for_bonding"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"dt_job_id",
+"type":"character varying"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"double precision"
+},
+{
+"name":"core_wafer_id",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"slot_trace_for_dt"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"obs_uid",
+"type":"character varying"
+},
+{
+"name":"run_uid",
+"type":"character varying"
+},
+{
+"name":"step",
+"type":"character varying"
+},
+{
+"name":"mat_type",
+"type":"character varying"
+},
+{
+"name":"mat_id",
+"type":"character varying"
+},
+{
+"name":"x",
+"type":"double precision"
+},
+{
+"name":"y",
+"type":"double precision"
+},
+{
+"name":"inchip_x",
+"type":"double precision"
+},
+{
+"name":"inchip_y",
+"type":"double precision"
+},
+{
+"name":"extent_x",
+"type":"double precision"
+},
+{
+"name":"extent_y",
+"type":"double precision"
+},
+{
+"name":"unit",
+"type":"character varying"
+},
+{
+"name":"val",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"step_defect_obs"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"run_uid",
+"type":"character varying"
+},
+{
+"name":"step",
+"type":"character varying"
+},
+{
+"name":"mat_type",
+"type":"character varying"
+},
+{
+"name":"mat_id",
+"type":"character varying"
+},
+{
+"name":"x",
+"type":"double precision"
+},
+{
+"name":"y",
+"type":"double precision"
+},
+{
+"name":"recipe_id",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"observed_at",
+"type":"timestamp with time zone"
+}
+],
+"declared":true,
+"exists":true,
+"name":"step_inspection_run"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"cell_key",
+"type":"character varying"
+},
+{
+"name":"product",
+"type":"character varying"
+},
+{
+"name":"type",
+"type":"character varying"
+},
+{
+"name":"x",
+"type":"double precision"
+},
+{
+"name":"y",
+"type":"double precision"
+},
+{
+"name":"val",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"valid_die_ref"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"void_uid",
+"type":"character varying"
+},
+{
+"name":"run_uid",
+"type":"character varying"
+},
+{
+"name":"base_wafer_id",
+"type":"character varying"
+},
+{
+"name":"base_x",
+"type":"double precision"
+},
+{
+"name":"base_y",
+"type":"double precision"
+},
+{
+"name":"stack_gate",
+"type":"double precision"
+},
+{
+"name":"inchip_x",
+"type":"double precision"
+},
+{
+"name":"inchip_y",
+"type":"double precision"
+},
+{
+"name":"radius_x",
+"type":"double precision"
+},
+{
+"name":"radius_y",
+"type":"double precision"
+},
+{
+"name":"unit",
+"type":"character varying"
+},
+{
+"name":"work_id",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"void_obs"
+},
+{
+"columns":[
+{
+"name":"void_uid",
+"type":"character varying"
+},
+{
+"name":"run_uid",
+"type":"character varying"
+},
+{
+"name":"base_wafer_id",
+"type":"character varying"
+},
+{
+"name":"base_x",
+"type":"double precision"
+},
+{
+"name":"base_y",
+"type":"double precision"
+},
+{
+"name":"stack_gate",
+"type":"double precision"
+},
+{
+"name":"inchip_x",
+"type":"double precision"
+},
+{
+"name":"inchip_y",
+"type":"double precision"
+},
+{
+"name":"radius_x",
+"type":"double precision"
+},
+{
+"name":"radius_y",
+"type":"double precision"
+},
+{
+"name":"unit",
+"type":"character varying"
+},
+{
+"name":"observed_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"recipe_id",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"void_obs_observed"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"wid_key",
+"type":"character varying"
+},
+{
+"name":"core_lot",
+"type":"character varying"
+},
+{
+"name":"core_slot",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"valid_from",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"wafer_id_status"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"map_pk",
+"type":"character varying"
+},
+{
+"name":"target_table",
+"type":"character varying"
+},
+{
+"name":"map_id",
+"type":"character varying"
+},
+{
+"name":"grid_metadata",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"wafer_map_metadata"
+},
+{
+"columns":[
+{
+"name":"row_id",
+"type":"character varying"
+},
+{
+"name":"business_key_val",
+"type":"character varying"
+},
+{
+"name":"created_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"updated_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"is_graph_synced",
+"type":"boolean"
+},
+{
+"name":"needs_graph_rollback",
+"type":"boolean"
+},
+{
+"name":"graph_synced_at",
+"type":"timestamp with time zone"
+},
+{
+"name":"proc_id",
+"type":"character varying"
+},
+{
+"name":"wafer_id",
+"type":"character varying"
+},
+{
+"name":"lot",
+"type":"character varying"
+},
+{
+"name":"slot",
+"type":"character varying"
+},
+{
+"name":"lot_id",
+"type":"character varying"
+},
+{
+"name":"slot_no",
+"type":"character varying"
+},
+{
+"name":"step",
+"type":"character varying"
+},
+{
+"name":"eqp_id",
+"type":"character varying"
+},
+{
+"name":"start_time",
+"type":"character varying"
+},
+{
+"name":"end_time",
+"type":"character varying"
+},
+{
+"name":"result",
+"type":"character varying"
+},
+{
+"name":"eventtime",
+"type":"character varying"
+},
+{
+"name":"recipe_id",
+"type":"character varying"
+},
+{
+"name":"knobs",
+"type":"character varying"
+}
+],
+"declared":true,
+"exists":true,
+"name":"wafer_process"
+}
+],
+"source":"table_config.json",
+"truncated":false,
+"undeclared":[]
+},
+"captured":"2026-10-09T14:24:55+00:00 · server code 290d0f25c",
 "status":200,
 "type":"application/json"
 },
@@ -33851,11 +38268,14 @@
 "status":200,
 "type":"application/json"
 },
-"/admin/outbox/failed?page=1&limit=3&tz=Asia%2FSeoul":{
+"/admin/outbox/failed?page=1&limit=1&tz=Asia%2FSeoul":{
 "body":"Internal Server Error",
-"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
+"captured":"2026-10-09T14:24:55+00:00 · server code 290d0f25c",
 "status":500,
 "type":"text/plain"
+},
+"/admin/outbox/failed?page=1&limit=3&tz=Asia%2FSeoul":{
+"same_as":"/admin/outbox/failed?page=1&limit=1&tz=Asia%2FSeoul"
 },
 "/admin/retroactive/operations":{
 "body":{
@@ -35985,6 +40405,64 @@
 }
 },
 "captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
+"status":200,
+"type":"application/json"
+},
+"/admin/tables/config/raw":{
+"body":{
+"base":"sha256:9559477acf26fe3421c568d24d42d384b0b9f057f13a3bdb9ee6587a2fee14a0",
+"config_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\config\\table_config.json",
+"editable_unit":"table",
+"error":null,
+"tables":[
+"bonding_core_die",
+"bonding_core_lot",
+"bonding_die_from_core",
+"bonding_inventory",
+"bonding_log",
+"bonding_map",
+"core_usage_map",
+"core_wafer_map",
+"defect",
+"delam_obs",
+"dt_core_view",
+"dt_inventory",
+"dt_job_attribution",
+"dt_log",
+"dt_log_transferable",
+"dt_map",
+"dt_transfer_log",
+"entity_comment",
+"eqp_event",
+"inspection_run",
+"inventory_master",
+"ledger_events",
+"lot_event",
+"lot_slot_move",
+"lot_slot_wafer",
+"map_split_registry",
+"mechanism_edge",
+"mechanism_edge_to_finding",
+"mechanism_edge_to_quantity",
+"metro",
+"process_event",
+"process_param",
+"process_param_num",
+"process_param_txt",
+"production_plan",
+"slot_trace_for_bonding",
+"slot_trace_for_dt",
+"step_defect_obs",
+"step_inspection_run",
+"valid_die_ref",
+"void_obs",
+"void_obs_observed",
+"wafer_id_status",
+"wafer_map_metadata",
+"wafer_process"
+]
+},
+"captured":"2026-10-09T14:24:55+00:00 · server code 290d0f25c",
 "status":200,
 "type":"application/json"
 },
@@ -94720,6 +99198,886 @@
 "user":null
 },
 "captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
+"status":200,
+"type":"application/json"
+},
+"/chain/graph":{
+"body":{
+"contested":[],
+"contested_tables":[
+{
+"table":"core_usage_map",
+"writers":[
+"dt_inventory_to_core_usage_map",
+"dt_log_to_core_usage_map"
+]
+},
+{
+"table":"dt_inventory",
+"writers":[
+"dt_metadata_to_dt_inventory",
+"dt_transform_update",
+"enrich_in_chain_probe",
+"enrichment_auto_confirm:enrich_in_chain_probe",
+"enrichment_dedup:enrich_in_chain_probe"
+]
+},
+{
+"table":"dt_log",
+"writers":[
+"inventory_confirmed",
+"inventory_confirmed:target",
+"test",
+"test:target"
+]
+},
+{
+"table":"dt_map",
+"writers":[
+"dt_inventory_to_standard_dt_map",
+"dt_log_to_dt_map"
+]
+}
+],
+"counts":{
+"chain_rules":15,
+"contested":0,
+"contested_tables":4,
+"edges":33,
+"enrichment_rules":1,
+"ledger_sources":15,
+"nodes":46
+},
+"cycles":[
+"allow_chain_trigger cycle: dt_inventory -> dt_inventory"
+],
+"edges":[
+{
+"allow_chain_trigger":false,
+"enabled":true,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"inventory_confirmed",
+"to":"dt_log",
+"trigger_columns":[
+"dt_job",
+"dt_lot",
+"dt_slot"
+]
+},
+{
+"allow_chain_trigger":false,
+"enabled":true,
+"from":"dt_log",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"inventory_confirmed:target",
+"to":"dt_log",
+"trigger_columns":[
+"dt_job"
+]
+},
+{
+"allow_chain_trigger":false,
+"decision_key":[
+"dt_job"
+],
+"enabled":true,
+"from":"dt_log",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"synthesized:enrich_in_chain_probe",
+"reads_unknown":1,
+"reference_views":[
+{
+"label":"관측된 dt_lot / dt_slot — 이 job 이 말하는 것",
+"reads":null,
+"required_binds":[
+"dt_job"
+]
+}
+],
+"rule":"enrichment_dedup:enrich_in_chain_probe",
+"to":"dt_inventory"
+},
+{
+"allow_chain_trigger":true,
+"decision_key":[
+"dt_job"
+],
+"enabled":true,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"synthesized:enrich_in_chain_probe",
+"reads_unknown":1,
+"reference_views":[
+{
+"label":"관측된 dt_lot / dt_slot — 이 job 이 말하는 것",
+"reads":null,
+"required_binds":[
+"dt_job"
+]
+}
+],
+"rule":"enrichment_auto_confirm:enrich_in_chain_probe",
+"to":"dt_inventory"
+},
+{
+"allow_chain_trigger":false,
+"enabled":true,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_transform_update",
+"to":"dt_inventory"
+},
+{
+"allow_chain_trigger":false,
+"enabled":true,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"test",
+"to":"dt_log",
+"trigger_columns":[
+"dt_job",
+"dt_lot"
+]
+},
+{
+"allow_chain_trigger":false,
+"enabled":true,
+"from":"dt_log",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"test:target",
+"to":"dt_log",
+"trigger_columns":[
+"dt_job"
+]
+},
+{
+"allow_chain_trigger":false,
+"enabled":false,
+"from":"dt_log",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_log_to_dt_map",
+"to":"dt_map"
+},
+{
+"allow_chain_trigger":true,
+"enabled":false,
+"from":"wafer_map_metadata",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_metadata_to_dt_inventory",
+"to":"dt_inventory"
+},
+{
+"allow_chain_trigger":true,
+"enabled":true,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_inventory_to_standard_dt_map",
+"to":"dt_map"
+},
+{
+"allow_chain_trigger":true,
+"enabled":true,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_inventory_to_standard_dt_map",
+"to":"wafer_map_metadata",
+"via":"allow_map_metadata_upsert"
+},
+{
+"allow_chain_trigger":false,
+"enabled":false,
+"from":"dt_log",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_log_to_primary_core_frame",
+"to":"dt_inventory"
+},
+{
+"allow_chain_trigger":true,
+"enabled":false,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_inventory_to_core_usage_map",
+"to":"core_usage_map"
+},
+{
+"allow_chain_trigger":true,
+"enabled":false,
+"from":"dt_inventory",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_inventory_to_core_usage_map",
+"to":"wafer_map_metadata",
+"via":"allow_map_metadata_upsert"
+},
+{
+"allow_chain_trigger":false,
+"enabled":false,
+"from":"dt_log",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_log_to_core_usage_map",
+"to":"core_usage_map"
+},
+{
+"allow_chain_trigger":false,
+"enabled":false,
+"from":"dt_log",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"dt_log_to_core_usage_map",
+"to":"wafer_map_metadata",
+"via":"allow_map_metadata_upsert"
+},
+{
+"allow_chain_trigger":false,
+"enabled":true,
+"from":"production_plan",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"production_to_inventory_reservation_batch",
+"to":"inventory_master"
+},
+{
+"allow_chain_trigger":false,
+"enabled":true,
+"from":"lot_event",
+"kind":"mapper",
+"max_group_attempts":null,
+"origin":"file",
+"rule":"lot_event_to_lot_slot_wafer",
+"to":"lot_slot_wafer"
+},
+{
+"from":"bonding_die_from_core",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"unknown_predicate",
+"message":"unknown predicate 'bonded_from'; did you mean 'derived_from'?",
+"path":"bundle.sources.bonded_from.bind.mappings.bonded-die-from-core-die.predicate"
+},
+"source":"bonded_from",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"bonding_core_die",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'bw_dt_seat' reads 'bonding_core_die', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.bw_dt_seat.relation"
+},
+"source":"bw_dt_seat",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"inspection_run",
+"kind":"ledger",
+"planned":true,
+"source":"die_inspection",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"dt_log",
+"kind":"ledger",
+"planned":true,
+"source":"dt_job",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"dt_log_transferable",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'dt_transfer' reads 'dt_log_transferable', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.dt_transfer.relation"
+},
+"source":"dt_transfer",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"lot_event",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"prepare_retired",
+"message":"a source has no prepare section since setup_version 6 - a computation writes a table through the chain and the source reads that table. Next: run scripts/migrate_ledger_config_to_v6.py",
+"path":"bundle.sources.lot_event.prepare"
+},
+"source":"lot_event",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"lot_slot_move",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'lot_slot_move' reads 'lot_slot_move', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.lot_slot_move.relation"
+},
+"source":"lot_slot_move",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"lot_slot_wafer",
+"kind":"ledger",
+"planned":true,
+"source":"lot_slot_wafer",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"mechanism_edge_to_finding",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'mechanism_edge_to_finding_causes' reads 'mechanism_edge_to_finding', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.mechanism_edge_to_finding_causes.relation"
+},
+"source":"mechanism_edge_to_finding_causes",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"mechanism_edge_to_quantity",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'mechanism_edge_to_quantity_causes' reads 'mechanism_edge_to_quantity', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.mechanism_edge_to_quantity_causes.relation"
+},
+"source":"mechanism_edge_to_quantity_causes",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"process_param_num",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'process_param_num_measure' reads 'process_param_num', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.process_param_num_measure.relation"
+},
+"source":"process_param_num_measure",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"process_param_txt",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'process_param_txt_measure' reads 'process_param_txt', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.process_param_txt_measure.relation"
+},
+"source":"process_param_txt_measure",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"dt_transfer_log",
+"kind":"ledger",
+"planned":true,
+"source":"transfer_event",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"void_obs_observed",
+"kind":"ledger",
+"planned":false,
+"refusal":{
+"code":"relation_not_a_row_table",
+"message":"source 'void_observation' reads 'void_obs_observed', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
+"path":"bundle.sources.void_observation.relation"
+},
+"source":"void_observation",
+"status":"active",
+"to":"(ledger)"
+},
+{
+"from":"wafer_process",
+"kind":"ledger",
+"planned":true,
+"source":"wafer_process_recipe",
+"status":"active",
+"to":"(ledger)"
+}
+],
+"generated_at":1791555896.164,
+"nodes":[
+{
+"declared":true,
+"id":"bonding_core_die",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"bonding_core_lot",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"bonding_die_from_core",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"bonding_inventory",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"bonding_log",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"bonding_map",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"core_usage_map",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"core_wafer_map",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"defect",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"delam_obs",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"dt_core_view",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"dt_inventory",
+"kind":"table",
+"wakes":{
+"chain":[
+"dt_inventory_to_standard_dt_map",
+"enrichment_auto_confirm:enrich_in_chain_probe"
+],
+"user":[
+"dt_inventory_to_standard_dt_map",
+"dt_transform_update",
+"enrichment_auto_confirm:enrich_in_chain_probe",
+"inventory_confirmed",
+"test"
+]
+}
+},
+{
+"declared":true,
+"id":"dt_job_attribution",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"dt_log",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[
+"enrichment_dedup:enrich_in_chain_probe",
+"inventory_confirmed:target",
+"test:target"
+]
+}
+},
+{
+"declared":true,
+"id":"dt_log_transferable",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"dt_map",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"dt_transfer_log",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"entity_comment",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"eqp_event",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"inspection_run",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"inventory_master",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"ledger_events",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"lot_event",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[
+"lot_event_to_lot_slot_wafer"
+]
+}
+},
+{
+"declared":true,
+"id":"lot_slot_move",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"lot_slot_wafer",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"map_split_registry",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"mechanism_edge",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"mechanism_edge_to_finding",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"mechanism_edge_to_quantity",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"metro",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"process_event",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"process_param",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"process_param_num",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"process_param_txt",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"production_plan",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[
+"production_to_inventory_reservation_batch"
+]
+}
+},
+{
+"declared":true,
+"id":"slot_trace_for_bonding",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"slot_trace_for_dt",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"step_defect_obs",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"step_inspection_run",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"valid_die_ref",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"void_obs",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"void_obs_observed",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"wafer_id_status",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"wafer_map_metadata",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"declared":true,
+"id":"wafer_process",
+"kind":"table",
+"wakes":{
+"chain":[],
+"user":[]
+}
+},
+{
+"id":"(ledger)",
+"kind":"ledger"
+}
+]
+},
+"captured":"2026-10-09T14:24:55+00:00 · server code 290d0f25c",
 "status":200,
 "type":"application/json"
 },
