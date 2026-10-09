@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **run_in: operation 은퇴 — 규칙은 체인 묶음에서만, 느린 규칙은 rows_per_run: 1 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    run_in: operation(작업 rule_rows 로 줄 세우기)이 은퇴했다. 모든 규칙은 체인 묶음에서 돈다
+>                rows_per_run: N = 이 규칙의 묶음 하나가 받는 트리거 행 수. 1 이면 글 하나 = 묶음 하나 — 틀린 답은 그 글만 FAILED
+>                적지 않으면 지금 그대로(자르지 않음). 다른 표의 줄은 다른 슬롯에서 돈다
+>                ⚠️ 한 이벤트에 여러 행이 묶인 것(소급 · 삭제 등)은 쪼개지 않고 통째로 간다
+> 할 일           LLM 규칙의 "run_in": "operation" 은 지워도 되고 그대로 둬도 된다(거절 안 함). "rows_per_run": 1 은 남긴다
+> 볼 줄          chain_worker.log (켜질 때 · 선언 내용이 바뀐 뒤 한 번):
+>                  [ChainRules] <규칙>: run_in is retired - this rule runs in the chain; rows_per_run splits its groups
+>                  = 그 규칙에 아직 run_in 이 적혀 있다. 체인에서 돈다
+> 확인           관리 화면 Retroactive 에 새 «Run a rule's queued rows» 실행이 더 안 생긴다(옛 실행은 목록에 «(retired)»로 남음)
+>                체인 대기열에서 그 글 표의 줄이 글 하나씩 줄어든다
+> 급할 때        git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+
+---
 > ## [10-09] **체인 고리 줄은 배정자만, 고리마다 한 줄, 선언이 바뀔 때만 — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```
@@ -788,6 +805,8 @@
 
 > ## [10-06] **체인 규칙 run_in 을 목록에서 고른다 (총괄 ff60fe669 ② · 클라 4256feacb 뒤) — 이주 «불필요» · 재기동 «필요»(API)**
 >
+> ⚰️ run_in 은 10-09 에 은퇴했다(총괄 72f419bd1) — 규칙은 체인 묶음에서 돈다. 느린 규칙은 rows_per_run: 1 · 맨 위 10-09 절
+>
 > ```
 > 재기동 뒤        관리 화면 체인 규칙 응답(/admin/chain/rules/raw)에 "run_in": ["chain", "operation"]
 >                규칙 폼의 run_in 칸(평면 · 통합 limits 둘 다)이 chain / operation 고르개
@@ -886,6 +905,8 @@
 ---
 
 > ## [10-06] **체인 규칙을 작업으로 · LLM 으로 후보 뽑기 (총괄 b5b335f2e · be0abe305 · 92d0483e5) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬 · 스케줄러)**
+>
+> ⚰️ run_in 은 10-09 에 은퇴했다(총괄 72f419bd1) — 규칙은 체인 묶음에서 돈다. 느린 규칙은 rows_per_run: 1 · 맨 위 10-09 절
 >
 > ```
 > 설치            LLM 을 쓸 때만: conda env assy_manager 에서 pip install openai

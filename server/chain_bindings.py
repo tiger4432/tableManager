@@ -256,7 +256,8 @@ RULE_ROUTING_OPTIONAL = tuple(
     "allow_replace_map", "allow_retraction",
     *COLUMN_BINDING_KEYS,
     "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
-    # 총괄 be0abe305 ②: WHEN the rule runs, and how many rows one queued run carries.
+    # 총괄 72f419bd1: how many trigger rows one group of the rule takes; `run_in` is retired and
+    # still read, so an old declaration loads (`RETIRED_CELLS`).
     "run_in", "rows_per_run",
     # S-270: 로더가 «짝으로 세운» 규칙이 자기가 어느 선언의 둘째 반쪽인지 적는 칸.
     # `origin` 과 «같은 부류»다 — 문법이 받기는 하지만 쓰는 것은 로더다. 여기 없으면
@@ -575,19 +576,19 @@ GROUP_BY_KEY = "group_by"
 #: S-152 and S-221 each closed once; a `true`-only cell would have been the third.
 IDEMPOTENT_KEY = "idempotent"
 
-#: 총괄 be0abe305 ②: WHEN a rule runs - inside the chain group that woke it (absent: today's
-#: answer), or as an operation that group queues, so a slow mapper holds no other group. HOW
-#: it runs is one either way: `ingestion_worker._process_chain_transaction_group_sync`.
+#: ⚰️ 총괄 72f419bd1 (소유자 「ㅇㅇ 은퇴해」): `run_in: operation` queued a rule's rows as
+#: operation runs - a second road beside the chain. Slots made it needless; a rule runs in the
+#: chain group alone. An old declaration still loads and is told once (`RETIRED_CELLS`).
 RUN_IN_KEY = "run_in"
 RUN_IN_CHAIN = "chain"
 RUN_IN_OPERATION = "operation"
 RUN_IN_VALUES = (RUN_IN_CHAIN, RUN_IN_OPERATION)
-#: How many trigger rows one queued run carries - a run holds the operations gate for its
-#: length, and between runs other operations get in (총괄 be0abe305 ③).
+#: How many trigger rows one chain group of THIS rule takes - the row budget cuts the batch to it
+#: (`event_constants.trim_events_to_row_budget`), so a rule of 1 runs one text a group and a
+#: wrong answer fails that text only (총괄 72f419bd1). Not written: no cut of its own.
 ROWS_PER_RUN_KEY = "rows_per_run"
-#: About a minute a run at the 10 s per text the fake model took (b5b335f2e ③). A real
-#: model's time was not measured.
-DEFAULT_ROWS_PER_RUN = 6
+#: Cells the loader still reads, so an old declaration loads, and the form no longer offers.
+RETIRED_CELLS = (RUN_IN_KEY,)
 
 
 #: S-188 ⓔ. The node vocabulary is the LEDGER skeleton's, verbatim: kinds `record`/`map`/
@@ -642,7 +643,8 @@ def skeleton():
     required = set(RULE_ROUTING_REQUIRED)
     fields = []
     for key in routing_keys():
-        fields.append({"key": key, "required": key in required, "node": _node_for(key)})
+        if key not in RETIRED_CELLS:
+            fields.append({"key": key, "required": key in required, "node": _node_for(key)})
     return {
         "skeleton_version": SKELETON_VERSION,
         "note": ("The shape of ONE chain rule. Generated from "
@@ -696,10 +698,6 @@ def _node_for(key):
         # Tracked code reads only `reference.table` (`reference_tables`); the rest is the
         # owner's mapper's. The form writes by path into the raw document, so those survive.
         return _record(_field(REFERENCE_TABLE_KEY, {"kind": "leaf", "hint": "ref"}))
-    if key == RUN_IN_KEY:
-        # A closed choice; the chain rules payload carries the list under the same name, as
-        # the ledger's does `occurred_at_basis` (총괄 ff60fe669 ②).
-        return {"kind": "leaf", "hint": "choice", "list": RUN_IN_KEY}
     if key in _LIST_CELLS:
         member, hint = _LIST_CELLS[key]
         return {"kind": "map", "keyed_by": "index", "member": member,
@@ -821,7 +819,7 @@ def _unified_root():
                required=True),
         _field(rule_shape.KEY_CELL, _key_node()),
         _field("limits", _record(*[_field(cell, _node_for(cell))
-                                   for cell in rule_shape._LIMIT_KEYS])),
+                                   for cell in rule_shape._LIMIT_KEYS if cell not in RETIRED_CELLS])),
         # 🔴 [판정 536 ① · 546 ①] THE FOURTEEN THE UNIFIED SHAPE HAD NO ROOM FOR. Measured
         #   2026-09-17: nine of the ten rules in this box carry cells the form could not
         #   draw, because they fell into `extra` - and `is_batch` alone decides how a rule

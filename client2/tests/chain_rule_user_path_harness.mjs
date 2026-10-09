@@ -804,42 +804,7 @@ async function suite(probe) {
      && Boolean(byCls('chain-rule-refusal-why')) && byCls('chain-rule-refusal-why').textContent === HELD.message,
      `R a rename the server holds back keeps the typing, under its sentence with Next first (${boxAt('name') ? boxAt('name').value : 'no form'})`);
 
-  // ── T. the run_in list rides on the rules/raw answer (order ac4d3a2ac; server ff60fe669 ②) ──
-  // The server's next skeleton names the cell's list (`hint: choice, list: run_in`) and puts the
-  // list at the top of the same answer. Lands BEFORE the server: no list in the answer, no change.
-  // Both shapes are made here, not read off the shipped file: since ac159b4bc the shipped file IS
-  // the choice shape, and T2 is the server before it (a free leaf, no list) -- a box not restarted.
-  const runInAs = (node) => JSON.parse(JSON.stringify(SKELETON), (key, value) => (
-    value && value.key === 'run_in' && value.node ? { ...value, node } : value));
-  const choiceSkeleton = runInAs({ kind: 'leaf', hint: 'choice', list: 'run_in' });
-  const freeSkeleton = runInAs({ kind: 'leaf', hint: 'free' });
-  const serveRunIn = (extra, skeleton) => {
-    answer = (call) => (call.url.includes('/admin/mappers/list') ? { status: 200, body: MAPPERS }
-      : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
-        : { status: 200, body: { ...rawView(askedName(call)), skeleton, ...extra } });
-  };
-  const runInCell = () => all(panelRoot()).find((el) => el.attrs && el.attrs['data-value'] === 'run_in'
-    && FIELD_TAGS.includes(el.tagName)) || null;
-  const noChoice = () => all(panelRoot()).find((el) => String(el.className || '').includes('oe-field-nochoice')
-    && String(el.textContent || '').includes('run_in')) || null;
-  serveRunIn({ run_in: ['chain', 'operation'] }, choiceSkeleton);
-  await refreshChainRule(RULE.name);
-  await flush();
-  const runIn = runInCell();
-  const runInOffered = runIn && runIn.tagName === 'SELECT'
-    ? all(runIn).filter((o) => o.tagName === 'OPTION').map((o) => o.value).filter(Boolean) : [];
-  ok(JSON.stringify(runInOffered) === '["chain","operation"]',
-     `T1 the answer's run_in list is the cell's two choices [${runInOffered.join(',')}]`);
-  serveRunIn({}, freeSkeleton);
-  await refreshChainRule(RULE.name);
-  await flush();
-  ok(Boolean(runInCell()) && runInCell().tagName === 'INPUT' && !noChoice(),
-     "T2 no list in the answer: today's screen, the cell is the text box");
-  serveRunIn({ run_in: [] }, choiceSkeleton);
-  await refreshChainRule(RULE.name);
-  await flush();
-  ok(!runInCell() && Boolean(noChoice()),
-     `T3 an empty list is a fact: "No choices", no picker (${noChoice() ? noChoice().textContent : 'nothing'})`);
+  // ⚰️ T. the run_in list rode on the rules/raw answer - `run_in` is retired (총괄 72f419bd1).
 
   // ── P. the failed list draws the failure RECORD, and names the rule the record names ─────
   // 🔴 order 45f5da3f5. Two rules on the event's table; the record names the SECOND. The drawer
@@ -992,9 +957,6 @@ const DEFECTS = [
   ['the page hands its own 30-second read to the form, which then has no document to draw',
     s => s.replace('if (!name) opts.background = true;', '')],
   // 🔴 C-101 ②. The list never leaves the page, and seven table cells go back to being typed.
-  // order ac4d3a2ac: the answer's run_in list is read but never handed to the panel.
-  ['the run_in list in the answer is not handed to the panel',
-    s => s.replace("    ...(body && Array.isArray(body.run_in) ? { run_in: body.run_in } : {}),\n", '')],
   ['the catalogue is read but never handed to the panel',
     s => s.replace('    ...(tables === null ? {} : { tables }),', '')],
   // ⚠️ S-207's class, on this route: `data` and `tables` are DIFFERENT QUESTIONS, and the mapper

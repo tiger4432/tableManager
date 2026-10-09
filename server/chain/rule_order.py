@@ -57,17 +57,18 @@ def forget_cycles():
     _FOUND.clear()
 
 
-def say_loops(logger_, declaration, ceiling=None) -> int:
-    """Each loop of the declaration, one line, once per declaration CONTENT - a re-read of the same
-    declaration says nothing (총괄 10-09). -> lines said."""
+def say_loops(logger_, declaration, ceiling=None, notes=()) -> int:
+    """Each loop of the declaration, one line, and each of `notes` - once per declaration CONTENT; a
+    re-read of the same declaration says nothing (총괄 10-09). -> lines said."""
     global _SAID_FOR
     stamp = json.dumps(declaration, sort_keys=True, default=str)
     if stamp == _SAID_FOR:
         return 0
     _SAID_FOR = stamp
-    for loop in sorted(_FOUND):
-        logger_.info(cycle_note(loop + loop[:1], ceiling))
-    return len(_FOUND)
+    lines = [cycle_note(loop + loop[:1], ceiling) for loop in sorted(_FOUND)] + list(notes)
+    for line in lines:
+        logger_.info(line)
+    return len(lines)
 
 
 def order_rules(rules: list, on_cycle=None) -> list:

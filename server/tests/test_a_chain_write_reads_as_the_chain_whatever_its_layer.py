@@ -328,7 +328,7 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     assert notes.pop("set_aside").startswith("Events set aside do not run")
     assert "nothing downstream runs" in notes.pop("rerun_set_aside")
     # A queued rule's run writes through the chain's own write, so it wakes what the chain's
-    # write wakes (총괄 be0abe305) - `test_a_rule_can_run_as_an_operation` reads the channel.
+    # write wakes (총괄 be0abe305). ⚰️ No group queues it now (`run_in` retired, 72f419bd1); old runs list.
     assert notes.pop("rule_rows").startswith("What it writes wakes the rules downstream")
     # Its deletions reach the ledger follow-up, which takes back what each row fed and wakes the
     # recount (총괄 d72dc0283) - `test_folded_duplicates_let_the_official_table_recount` measures it.

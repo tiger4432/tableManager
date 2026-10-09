@@ -379,17 +379,18 @@ def max_group_rows(rule) -> int:
     return rows if rows > 0 else NO_GROUP_MERGE
 
 
-def runs_as_operation(rule) -> bool:
-    """Whether the group that woke this rule queues it as an operation instead of running it
-    (총괄 be0abe305 ②) - the one seat that asks `run_in`. HOW it runs is the same either way."""
-    return (rule or {}).get(chain_bindings.RUN_IN_KEY) == chain_bindings.RUN_IN_OPERATION
-
-
-def rows_per_run(rule) -> int:
-    """How many trigger rows one queued run carries. A bad value is refused at load."""
+def rows_per_run(rule):
+    """How many trigger rows one chain group of this rule takes, or None - not written, no cut of
+    its own (총괄 72f419bd1). A bad value is refused at load."""
     value = (rule or {}).get(chain_bindings.ROWS_PER_RUN_KEY)
-    return (value if isinstance(value, int) and not isinstance(value, bool) and value > 0
-            else chain_bindings.DEFAULT_ROWS_PER_RUN)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def _rows_cap(event, rules):
+    """The smallest `rows_per_run` of the rules this event wakes, or None - the row budget's cap."""
+    caps = [rows_per_run(rule) for rule in rules
+            if rows_per_run(rule) is not None and _is_trigger_event(event) and fires(rule, event)]
+    return min(caps) if caps else None
 
 
 def _declared_attempts(source, where):
@@ -857,6 +858,8 @@ def load_chain_rules():
     #    않습니다」): a loop of rules is recorded as the loop of tables it runs through - each rule's
     #    trigger, in the direction the data flows - which is the cascade graph's word, so the
     #    same loop met by both walks is one key (`rule_order.loop_of`). Said by the dispatcher.
+    _RETIRED_RUN_IN[:] = [rule.get("name") for rule in rules
+                          if rule.get(chain_bindings.RUN_IN_KEY) == chain_bindings.RUN_IN_OPERATION]
     rule_order.forget_cycles()
     by_name = {rule.get("name"): rule for rule in rules}
 
@@ -953,11 +956,19 @@ def loaded_chain_rules():
     return copy.deepcopy(_LOADED_RULES)
 
 
-def say_the_loops():
-    """The dispatcher's line per chain loop of the declaration it last read - once per declaration
-    content (총괄 10-09: 배정자만 · 고리 하나 = 줄 하나 · 선언을 새로 읽을 때만). A slot and a request
-    path read through the same loader and say nothing. -> lines said."""
-    return rule_order.say_loops(logger, _RULES_DOCUMENT, event_constants.max_chain_depth(_RULES_DOCUMENT))
+#: The rules the last read of the declaration found still carrying the retired `run_in: operation`.
+_RETIRED_RUN_IN = []
+
+
+def say_the_declaration():
+    """The dispatcher's lines about the declaration it last read - one per chain loop, one per rule
+    still carrying the retired `run_in` - once per declaration content (총괄 10-09: 배정자만 · 고리
+    하나 = 줄 하나 · 선언을 새로 읽을 때만; 72f419bd1). A slot and a request path read through the
+    same loader and say nothing. -> lines said."""
+    return rule_order.say_loops(
+        logger, _RULES_DOCUMENT, event_constants.max_chain_depth(_RULES_DOCUMENT),
+        notes=["[ChainRules] %s: run_in is retired - this rule runs in the chain; rows_per_run "
+               "splits its groups" % name for name in _RETIRED_RUN_IN])
 
 
 def forget_loaded_chain_rules():
@@ -1270,7 +1281,7 @@ def _validate_chain_cascade_graph(rules) -> list:
             # triggers loop」, and the answer 「yes」 is not a fault: the drain enforces
             # `max_chain_depth`, so the loop is finite. Raising here KILLED the load and the
             # save route with it - a declaration that runs correctly could not be written.
-            # The dispatcher says it (`say_the_loops`), one line per loop (총괄 10-09).
+            # The dispatcher says it (`say_the_declaration`), one line per loop (총괄 10-09).
             from chain import rule_order
 
             found = trail + [node]
@@ -2426,8 +2437,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
             # and its backend a fact, so a pause cancels the wait too.
             with table_locks.hold(db, _group_target_tables(events, rules) | _group_read_tables(events, rules),
                                   on_wait=_waiting_for_a_table):
-                answer = _process_chain_transaction_group_sync(
-                    tx_id, events, db, [r for r in rules if not runs_as_operation(r)])
+                answer = _process_chain_transaction_group_sync(tx_id, events, db, rules)
         except Exception as exc:                            # noqa: BLE001
             # A stop the pause made - its stage boundary, or the query it cancelled - comes
             # back as the group's answer, for `process_pending_groups` to rewind (3840af307).
@@ -2435,8 +2445,6 @@ def _claimed_group_sync(tx_id, events, db, rules):
                 raise
             return False, "paused: %s" % (str(exc).strip().splitlines() or [""])[0], []
         if answer[0]:
-            _queue_operation_runs(tx_id, events, db,
-                                  [r for r in rules if runs_as_operation(r)])
             return answer
         claim = _group_claim()
         return False, _said_timeout(answer[1], claim.get("stage"),
@@ -2485,34 +2493,9 @@ def _said_timeout(error, stage, ran_seconds):
             seconds, stage or "(none named)", CHAIN_STATEMENT_TIMEOUT_SETTING)))
 
 
-def _queue_operation_runs(tx_id, events, db, rules):
-    """Each `run_in: operation` rule's trigger rows, queued as runs of `rows_per_run` rows that
-    call the same group body (총괄 be0abe305). In this group's session, so they commit with it -
-    a failed group queues nothing, and its retry queues once."""
-    from admin import retroactive
-
-    _record_pre_run_outcomes(rules, events)
-    for rule in rules:
-        if _rule_outcome_before_running(rule, events)[0] is not None:
-            continue
-        units = []
-        for event in events:
-            if not (_is_trigger_event(event) and fires(rule, event)):
-                continue
-            payload = get_payload_dict(event)
-            rows = (payload.get("row_ids") if event_constants.is_collapsed_payload(payload)
-                    else [payload.get("row_id")])
-            units.extend((event.event_uuid, row) for row in (rows or [None]))
-        size, runs = rows_per_run(rule), []
-        for start in range(0, len(units), size):
-            chunk = units[start:start + size]
-            runs.append(retroactive.publish(db, retroactive.RULE_ROWS_OP, {
-                "rule": rule.get("name"), "transaction": str(tx_id),
-                "events": list(dict.fromkeys(uuid for uuid, _row in chunk)),
-                "rows": [str(row) for _uuid, row in chunk if row is not None]})["run_id"])
-        activity.registry.record_outcome(
-            rule.get("name") or "<unnamed rule>", event_constants.RULE_OUTCOME_QUEUED_AS_OPERATION,
-            "run_id %s" % ", ".join(runs))
+# ⚰️ `_queue_operation_runs` stood here - a `run_in: operation` rule's rows queued as `rule_rows`
+#    operation runs, a second road beside the chain (총괄 72f419bd1). `rows_per_run` now cuts the
+#    chain's own batch (`_rows_cap` at the row budget).
 
 
 async def _await_group_beating(group, db):
@@ -4456,12 +4439,17 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
     # Re-charge the budget in ROWS so the batch stays the size it was before
     # the collapse. A prefix is kept, never a filter: the tail stays
     # processed_chain=False and returns in the same order next iteration.
-    trimmed = trim_events_to_row_budget(normalized_events, OUTBOX_GROUP_MAX_ROWS)
+    # 총괄 72f419bd1: and a rule's `rows_per_run` is a smaller budget for the events that wake it -
+    # one cut, so a rule of 1 runs one text a group.
+    trimmed = trim_events_to_row_budget(normalized_events, OUTBOX_GROUP_MAX_ROWS,
+                                        cap_of=lambda event: _rows_cap(event, rules))
     if len(trimmed) < len(normalized_events):
-        logger.info(
+        caps = [c for c in (_rows_cap(e, rules) for e in normalized_events[:len(trimmed) + 1]) if c]
+        # a declared rows_per_run cuts every batch of its rule - said at debug, it is the declaration
+        (logger.debug if caps else logger.info)(
             f"[OUTBOX-4] Deferring {len(normalized_events) - len(trimmed)} event(s) "
-            f"to the next iteration: this batch already covers ~{OUTBOX_GROUP_MAX_ROWS} "
-            f"ingested rows."
+            f"to the next iteration: this batch already covers ~{min(caps) if caps else OUTBOX_GROUP_MAX_ROWS} "
+            f"ingested rows{' (rows_per_run)' if caps else ''}."
         )
         normalized_events = trimmed
 
@@ -4663,7 +4651,7 @@ async def start_chain_ingestion_worker(db_session_factory):
         getattr(logger, _lvl)(_msg)
 
     rules = load_chain_rules()
-    say_the_loops()
+    say_the_declaration()
     logger.info(f"Loaded {len(rules)} active chain ingestion rules.")
     
     last_reload_event_id = 0
@@ -4791,7 +4779,7 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                 if reload_work:
                     rules = reload_rules(reload_work)
-                    say_the_loops()
+                    say_the_declaration()
                     # 4. ⑤ The index work again - the comment on its seat promises 「every reload」,
                     #    the rules-only one too: a join saved with `key.unique` gets its index now,
                     #    not at the next restart (총괄 76aa4b6ed ②).

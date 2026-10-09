@@ -98,8 +98,8 @@ def test_the_shape_is_generated_and_not_a_second_spelling(rules_file, client):
     stale SILENTLY, because nothing compares the two. So the cells are scored against the
     grammar rather than against a list written here."""
     skeleton = client.get(ROUTE).json()["skeleton"]
-    assert [f["key"] for f in skeleton["root"]["fields"]] == list(
-        chain_bindings.routing_keys())
+    assert [f["key"] for f in skeleton["root"]["fields"]] == [
+        key for key in chain_bindings.routing_keys() if key not in chain_bindings.RETIRED_CELLS]
     required = {f["key"] for f in skeleton["root"]["fields"] if f["required"]}
     assert required == set(chain_bindings.RULE_ROUTING_REQUIRED)
 

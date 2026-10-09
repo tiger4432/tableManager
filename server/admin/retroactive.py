@@ -806,7 +806,8 @@ def _run_rerun_set_aside(db, params, log, control=None):
     return {"rows_staged": staged, "tables": len(rows)}
 
 
-#: The run a chain group queues for a `run_in: operation` rule (총괄 be0abe305 ②).
+#: The run a chain group queued for a `run_in: operation` rule (총괄 be0abe305 ②). ⚰️ No group queues
+#: it now - `run_in` is retired (총괄 72f419bd1); it stays registered so its old runs still list.
 RULE_ROWS_OP = "rule_rows"
 
 
@@ -1545,8 +1546,9 @@ OPERATIONS = {
                             "nothing downstream runs; replay a row from the grid to cascade"),
     },
     RULE_ROWS_OP: {
-        "label": "Run a rule's queued rows",
-        "what_is_missing": "a rule declared run_in: operation has rows its chain group queued",
+        "label": "Run a rule's queued rows (retired)",
+        "what_is_missing": ("rows a run_in: operation rule's group queued before run_in was retired - "
+                            "rules run in the chain now"),
         "params": [_p("rule", help="the chain rule"),
                    _p("transaction", help="the transaction whose group queued the rows"),
                    _p("events", kind="csv", help="the outbox events that named the rows"),
