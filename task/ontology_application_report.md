@@ -37808,3 +37808,37 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
 판정   지운 행 0 · 표시된 행이 먹인 층을 거두고 보류가 다시 agreed · 원장이 그 키들의 원자를 냄 — pull 을 말해도 되는 줄입니다
        RUN.md 의 «실행 뒤 볼 줄» 셋이 그대로 찍힘 · «무엇을 쓰는지 아직 모릅니다» 줄 0
 ```
+
+---
+
+## [C 응용] 10-09 시연 이야기 넷 — 걷기 화면에서 됩니다 · Compare 에 차이와 missing 이 보입니다 · 모델 계측군은 박스 데이터로는 전부 missing
+
+```
+모양   운영 런처 · 5755172a4(걷기 착지 넷 · Compare 포함) · 그 커밋 클라 빌드 · 사설 인스턴스 · public 변화 0 · 스키마 셋 지움
+       박스 원장에서 두 base 둘레만 «읽어» 옮긴 원자 1753 · {'bonded_from': 141, 'in_container': 417, 'inspected': 135, 'measures': 521, 'observed': 199, 'of_kind': 199, 'transfer': 141} — 박스 DB 는 읽기만(읽기 전용 연결을 단언)
+       base 짝(박스 리허설용) 불 SYN-BW-103-11 · 양 SYN-BW-SPL-400-19 · 모델 세상 appdemo_vf(void_formation) · appdemo_vb(void_observation_bias)
+```
+```
+대본(누른 것 -> 본 것 · 걸린 초 = 그 걷기 요청의 브라우저 측 시간)
+ ①  Type wafer -> 키 SYN-BW-103-11 -> follow 비움(= 전부) · Collect wafer · node_limit 1000 -> Walk
+     -> 「Starts + SYN-BW-103-11」 · 4 걸음 · wafer 31                                                    0.727 s
+     키 SYN-BW-SPL-400-19 -> Ctrl+Shift+Walk
+     -> 「Starts + SYN-BW-103-11 · − SYN-BW-SPL-400-19」 · wafer 32                                         0.807 s
+ ②  같은 걷기의 표: 깊이 3 의 wafer 30 = 불량 base 가 본딩으로 받은 코어 웨이퍼(SYN-CW-001-* · SYN-CW-103-*). 양 base 는 코어 웨이퍼 0
+ ③  세상 칩 default + appdemo_vf(같은 폼 · 같은 시작) -> 주소 ?world=default&world=appdemo_vf · 6 걸음(leads_to 가 들어옴) · 노드 80
+                                                                                                      0.996 s
+ ④  Compare -> ROWS quantity · EDGE measures(나온 것 leads_to · measures) · VALUE value(나온 것 value · value_text · role · step · eqp_id) -> Compare
+     -> 행 48 · 두 쪽 다 값 3(pressure_MPa 0.22 vs 0.3305 · temp_C 150 vs 148.054 · time_s) · 불량 쪽만 값 22 · 불량 쪽 «—» 5 · 둘 다 missing 18
+        Compare 의 걷기 요청 셋                                                                        1.061 · 1.888 · 1.394 s
+```
+```
+본 것 넷(총괄께)
+ 1  Compare 는 차이와 missing 을 그립니다 — 위 짝으로는 «같은 레시피라 차이가 안 보이는» 일 없음
+ 2  다만 모델이 요구하는 계측군(void 에서 leads_to 로 닿은 quantity) 17 개는 두 base 모두 missing 입니다 — 박스의 measures 원자는 공정 변수
+    (clamp_kN · pressure_MPa · temp_C …)를 잴 뿐 모델의 quantity 이름(backside_damage · edge_gap …)을 재지 않습니다.
+    이야기 ④ «필요 계측군의 실자재 값»을 값으로 보이려면 모델 quantity 를 재는 원자가 있어야 합니다 — 운영 데이터는 못 봤습니다
+ 3  Compare 머리말이 「Rows: quantity reached by every predicate」 — 지시서의 «모델 술어로 닿은 것만»이 아니라 measures 로 닿은 공정 변수까지 행이 됩니다(클라 몫 · 여쭙기만)
+ 4  박스 선언에서 bonded_from 은 걷기 폼의 follow 목록에 없습니다 — 그 소스가 뷰(bonding_die_from_core)를 읽어 거절되기 때문 · follow=bonded_from 을 손으로 주면 422 predicate_not_declared.
+    «전부 따라가기»로는 원자 141 이 걸리므로 이야기 ② 는 그렇게 돌렸습니다. 운영 선언이 표를 읽으면 이 줄은 없습니다(운영 판 못 봤음)
+명령표  «시연 선언» 절에 이 대본을 붙입니다 — base 두 웨이퍼 id 는 «여기에 base 두 웨이퍼 id» 빈칸으로(소유자가 일요일에 고름)
+```
