@@ -35,6 +35,7 @@
 | `bonding_plan_config.json` | 본딩 계획 역할 | [bonding_plan](./config/bonding_plan_config.md) |
 | `transfer_plan_config.json` | DT/본딩 단계·역할 | [transfer_plan](./config/transfer_plan_config.md) |
 | **`ontology/ledger_config.json`** (🔴 파일이 아니라 **디렉터리 `server/config/ontology/`가 root**이고 그 안에 `.json`은 **이 하나뿐**이어야 한다 — 다른 `.json`이 있으면 `unlisted_config_file`로 로드가 거절되며 검사는 **재귀한다**. ⚠️ **이 파일은 gitignored가 아니라 «추적»된다** — 위 「대부분 gitignored」의 예외다) | Source→Ledger→Ontology | [ONTOLOGY_LEDGER_SETUP](./ONTOLOGY_LEDGER_SETUP.md) |
+| 🆕 `llm_config.json` (10-09 `6f0dc0498`) | 언어 모델 하나 — base_url · model · api_key · timeout_s · headers · proxy. 부를 때마다 읽음 · 요청마다 `llm_requests.log` 두 줄 | [TEXT_LINKS_GUIDE §6](./TEXT_LINKS_GUIDE.md) |
 | `effort_metric.json` | 화면 교정 공수 계기 | [effort_metric](./config/effort_metric.md) |
 | `suggest_config.json` | 컬럼 추천 | [suggest_config](./config/suggest_config.md) |
 | `audit_history_config.json` | 감사 이력 정책 | [audit_history](./config/audit_history_config.md) |

@@ -37345,3 +37345,20 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
 읽은 것  견주기는 «들어 있다» · 대소문자 무시(icontains, 와일드카드 글자는 그대로 읽음) — 지시(1d2a7e0fd)의 낱말 그대로
 문서    BACKFILL_GUIDE 의 접기 줄은 착지가 이미 맞춤(prefer 두 칸 · 빈 키 행 그대로)
 ```
+
+---
+
+## [C 응용] 10-09 6f0dc0498(LLM 은 llm_config.json 하나 · 요청마다 llm_requests.log) QA — 결함 하나(로그에 자격 증명) (잼)
+
+```
+잰 것   시험 파일(test_a_text_is_read_by_a_language_model) 28 passed — 사설 워크트리
+결함    llm_config.json 의 headers 에 적은 자격 증명이 llm_requests.log 에 «그대로» 남는다 — 가리는 것은 api_key 값 하나뿐(_masked)
+        재기  그 시험의 가짜 SDK(default_headers = Authorization + 적은 headers, SDK 가 짓는 대로) · 키 둘을 headers 에
+              로그의 headers  {'Authorization': 'Bearer ***', 'X-Gateway-Key': 'gw-secret-0123456789', 'api-key': 'az-secret-987'}
+              게이트웨이 키 파일에 True · Azure api-key 파일에 True · api_key 파일에 False(가려짐 — 카나리아)
+        왜 크나  사내 게이트웨이 · Azure 는 키를 api_key 가 아니라 머리말(api-key · x-api-key · Ocp-Apim-Subscription-Key)로 받는다
+              — 그런 운영에서는 «모든» 요청 로그 줄에 키가 평문. 커밋 문장 「headers … credentials redacted」와 다르다
+        고칠 모양 sent 줄의 headers 값을 가리기(이름만 남기기 · 또는 Authorization 처럼 «값 전부»를 ***) — 구현자 · 총괄 판정. 고치지 않았습니다
+은퇴     ASSY_LLM_* 를 «살아 있다»고 말하는 자리 0 (문서 · RUN.md · 서버 · 클라)
+문서    CONFIG_GUIDE 표 · config/README 표에 llm_config.json 행 — 둘 다 빠져 있었다
+```
