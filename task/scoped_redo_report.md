@@ -77085,3 +77085,61 @@ a partition made later gets the index: True
 - 이 PG(18.3)는 파티션 부모에 CONCURRENTLY 를 거절합니다. 그래서 길은 이렇습니다: 부모에 `CREATE INDEX … ON ONLY`(무효로 섬) → 파티션마다 `CREATE INDEX CONCURRENTLY` → `ALTER INDEX 부모 ATTACH PARTITION 파티션_인덱스`. 마지막 파티션이 붙으면 부모 인덱스가 유효가 되고, 그 뒤에 만들어지는 파티션은 저절로 그 인덱스를 받습니다(위에서 확인).
 - 지금 인덱스 마스터로는 안 됩니다. 마스터(database/models.py 의 index_states · ensure_model_indexes)는 SQLAlchemy 정적 모델의 Index 선언만 보는데, 원장 표는 그 모델이 아니고 ledger/schema.py 의 SQL 로 섭니다. 또 마스터의 빌드 문장은 표에 `CREATE INDEX CONCURRENTLY` 하나라서, 파티션 부모에는 위처럼 거절됩니다.
 - 원장 인덱스는 지금 ledger/schema.py 가 부모에 `CREATE INDEX IF NOT EXISTS`(막는 빌드)로 세웁니다.
+
+## [10-09] whole-source 가 선언이 바뀌어 남은 원자를 거둔다 — 착지 4897f9375 (총괄 e027f669d · census 미룸)
+
+**도착지와 대조**
+```
+「--whole-source 가 그 소스가 지금 안 읽는 표에서 나온 원자도 거둔다 · 선언에 없는 이름이면 그 이름의 원자 전부」  -> 섰다
+「census 가 «선언이 안 만드는 원자: 소스 × 표 × 술어 × 수»를 말한다」                                     -> 미룸(총괄 10-09) — 다음 커밋
+```
+**자리**: 고르기는 `_stale_refs` 하나(원장 원자의 ref 를 이름 있는 커서로 한 번 · `roleframe.claim_source_row_refs` 로 표), 지우기는 `store.withdraw` → `_withdraw_refs` 한 문장, 색인 줄은 `forget_row_refs(source=…)`(원자 먼저). 선언에 없는 이름을 묻는 자리는 `rescope_scope` 하나 — rescope 의 미리보기 · 실행과 어드민 judge 가 그것을 부른다. 은퇴 소스는 그대로 거절.
+
+**게이트(PG)**
+```
+6 passed   (test_whole_source_takes_back_what_the_declaration_no_longer_makes.py)
+변이 — md5 same
+MUTANT only an undeclared name is swept (the table filter back)   4 failed, 2 passed
+    FAILED test_a_source_moved_to_another_table_takes_back_the_old_tables_atoms
+    FAILED test_an_atom_with_no_index_line_is_reached
+    FAILED test_another_source_on_the_same_rows_keeps_its_atoms_and_lines
+    FAILED test_the_preview_says_what_the_run_takes_and_a_second_run_takes_nothing
+MUTANT aimed from the row index only                              1 failed, 5 passed
+    FAILED test_an_atom_with_no_index_line_is_reached
+MUTANT the index lines of every source go                         1 failed, 5 passed
+    FAILED test_another_source_on_the_same_rows_keeps_its_atoms_and_lines
+MUTANT the reader counts every source's refs                      1 failed, 5 passed
+    FAILED test_a_renamed_source_takes_back_every_atom_of_the_old_name
+같은 길을 지나는 기존 시험: sqlite 18 파일 354 passed, 22 skipped · PG 5 파일 27 passed, 18 deselected
+```
+게이트 ⑦(census 줄)은 census 와 함께 미룸.
+
+**쪽 하나의 실제 초(박스)** — 파티션 8 개를 지킨 원장 사본, 스키마 scratch_ws_page_1009(끝에 DROP · «gone» 확인), DELETE 는 되돌림:
+```
+copy: 2380869 atoms into 8 partitions in 31.6 s
+largest source 'dt_job' · 433095 refs
+DELETE   1000 refs  run 1     0.88 s  · 2000 atoms
+DELETE   1000 refs  run 2     1.10 s  · 2000 atoms
+DELETE  50000 refs  run 1     2.01 s  · 100000 atoms
+DELETE  50000 refs  run 2     1.53 s  · 100000 atoms
+```
+앞 보고의 «ANY 50,000 = 14.8 s» 는 박스 라이브 원장에서 잰 count 였다. 라이브가 느린 까닭으로 보이는 것(박스 상태, 운영 주장 아님):
+```
+relname · n_live_tup · n_dead_tup · last_autovacuum · last_vacuum · pg_relation_size
+('ledger_events', 0, 0, None, None, 0)
+('ledger_events_2025_12', 0, 5, None, None, 4112384)
+('ledger_events_2026_01', 520610, 65111, None, None, 368123904)
+('ledger_events_2026_05', 0, 0, None, None, 2711552)
+('ledger_events_2026_07', 16476, 1536, datetime.datetime(2026, 10, 2, 16, 8, 22, 73187, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 13312000)
+('ledger_events_2026_08', 670237, 4062, datetime.datetime(2026, 10, 2, 16, 19, 38, 158538, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 620437504)
+('ledger_events_2026_09', 23730, 23267, None, None, 624680960)
+('ledger_events_2026_10', 105052, 1470, datetime.datetime(2026, 10, 2, 16, 13, 41, 567573, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 92692480)
+('ledger_events_2026_11', 91492, 276, datetime.datetime(2026, 10, 2, 16, 15, 36, 100738, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 85377024)
+```
+
+**남은 것**
+- census(다음 커밋): 원장을 한 번 훑는 GROUP BY 의 실제 초를 재고, CLI 가 «원장 전체를 한 번 읽는다 · 박스 N 초/백만 원자»를 먼저 말한다.
+- `backfill._ref_row_keys` 는 ref 의 JSON 모양(`{"event","rows"}`)만 읽는다 — 한 행짜리 분자의 맨 ref(`<표>:<키>`)는 `count_orphan_atoms` 에서 «읽을 수 없는 ref»로 셀 수 있다(안 쟀다). 이 커밋은 두 모양을 다 읽는 `claim_source_row_refs` 를 썼다.
+- 하위 폴더(a14ea5693): 다시 보기 스레드가 subfolder_recheck_seconds 를 기다리는지 재는 칸 — 다음에 directory_watcher 를 만질 때(총괄 10-09).
+
+어느 DB · 어느 스키마 · 지운 것: 시험은 격리 시험 DB(run_pg_files) · 쪽 초는 박스 assy_manager 의 scratch_ws_page_1009(그 스키마 하나를 지움) · public 은 읽기만 · 그 밖 지운 것 0.
