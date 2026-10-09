@@ -65400,3 +65400,30 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
              replay_ingestion.py 는 그대로(파일 하나 «읽었음» 지우기 — 다른 일). 730dc208c 의 폴더 넓힘은 짓지 않는다
 클라(서버 뒤)  소급 탭이 새 연산을 저절로 그리는지 확인만 — 안 그리면 그 한 자리
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 🔴 지금 맨 앞(VALUES 조인 앞) — 접기가 «지우지 않고 표시», 복사 규칙이 표시된 행을 안 받는다 (소유자 10-09 「접는 거 아예 삭제하지 말고 공식 홀드에만 반영 못 해?」 · 「오토컨펌은 값을 못 갈아끼워?」 -> 총괄 안 셋 -> 「ㄱ」)**
+
+```
+지금(총괄이 코드로 읽음)
+   fold_duplicate_rows 는 진 행을 crud.delete_rows_batch 로 지운다 -> 원본 행이 사라진다
+   copy_rows_with_hold: 원본 행마다 자기 층 chain_ingestion(<row_id>) + origin_row_id 로 공식 표에 쓰고, _claims 가 원본 표에서 키마다 값 묶음 수를 셈(1 = agreed, 2+ = 홀드)
+      -> 홀드 셈에서만 빼면 진 행의 층이 남아 보이는 값이 그 행 것일 수 있다
+   규칙 칸 require(on.require): «이 칸들이 찬 행만 규칙에 넘긴다» — 반대(«찬 행은 안 넘긴다»)는 없음
+   오토컨펌은 후보 하나 · 빈 칸에만 · 순위 99 — 고르는 자리가 아님(판정 그대로)
+도착지  두 줄
+   「fold-rows … --mark-column <칸> 이면 진 행을 지우지 않고 그 칸에 «folded into <남긴 row_id>» 를 적는다 — 그 행이 공식 표에 먹인 층은 지울 때와 같은 문으로 거둔다」
+   「복사 규칙에 on.exclude: [<칸>] 을 적으면 그 칸이 찬 행은 규칙에 안 넘어가고 홀드 셈에도 안 든다 — 칸을 비우면 다시 든다」
+구현자
+   접기  mark_column(선택, CLI --mark-column) — 쓰기는 제품 쓰기 문(crud.apply_batch_updates, 이력 · 아웃박스 그대로) · 쪽마다 · 지움 0
+         표시된 행은 접기 순위에 안 든다(다시 돌리면 0) · 빈 키 · prefer 는 지금 그대로 · 결과에 rows_marked
+   넓힘  on.exclude 는 require 옆 «같은 자리» — 행을 넘길지 묻는 함수 하나가 require 와 exclude 를 같이 본다(둘째 거르기 금지)
+         copy_rows_with_hold 의 _claims 도 «그 함수의 SQL 모양»으로 같은 조건을 건다(값 있음 판정은 crud 의 그 함수)
+   층 거두기  행이 «넘기던 행 -> 안 넘기는 행»이 되면(exclude 칸이 참 · require 칸이 빔) 그 행이 그 규칙 target 에 먹인 층을 거둔다 — 행 삭제의 withdraw_by_origin 과 같은 문
+         먼저 전수: 오늘 require 를 잃은 행의 층은 거둬지나? 안 거둬지면 그것이 같은 결함 — 이번에 한 함수로 같이 닫는다(자리 수 · 오늘 답을 보고에)
+   홀드  층이 거둬지면 target 쪽 다시 세기 규칙이 그 키를 다시 센다(지금 있는 길) — exclude 를 본 셈으로 agreed
+   게이트  ① --mark-column: 진 행 표시 · 지움 0 · 값이 남긴 row_id ② on.exclude 규칙: 표시 행의 공식 표 층 거둠 · 홀드 agreed · 보이는 값 = 남긴 행 것
+           ③ 표시를 비우면 다시 듦(값이 다르면 다시 홀드) ④ 접기 다시 돌리면 0 ⑤ require 동작은 오늘과 같음(+ 잃은 행 층 — 전수 답대로)
+           ⑥ exclude 없는 규칙은 표시 행도 받음 — 변이: _claims 가 exclude 무시 -> ② 빨강 · 층 거두기 지움 -> ② 보이는 값 빨강 · 표시 행 순위에 넣음 -> ④ 빨강
+   같은 커밋  RUN.md(소유자 순서: 로그 표에 표시 칸 하나 -> 복사 규칙에 on.exclude -> fold-rows … --mark-column <칸> 미리보기 -> --apply) · RELEASE_LOG · chain_rules.md 의 require 절 옆
+클라(서버 뒤)  체인 규칙 폼이 on.exclude 를 스켈레톤으로 저절로 그리는지 확인만
+```

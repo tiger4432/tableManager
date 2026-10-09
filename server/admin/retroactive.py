@@ -17,6 +17,7 @@ remain guarded by the underlying operation.
 import json
 import logging
 import os
+import time
 import uuid
 
 import event_constants
@@ -571,6 +572,22 @@ def _count_ledger_rescope(db, params, scan_limit):
         said = backfill.rescope(db.get_bind(), _ledger_setup(params), source, None, None,
                                 apply=False, whole_source=True, world=_ledger_world(params))
         total, gone, atoms = said["relation_rows"], said["gone_rows"], said["gone_atoms"]
+        stale = said["stale_atoms"]
+        where = "; ".join("%s: %s" % (table, ", ".join("%s %d" % pair for pair in sorted(by.items())))
+                          for table, by in sorted(said["stale_tables"].items())) or "none"
+        extra = {"source": source, "whole_source": True, "relation_rows": total, "gone_rows": gone,
+                 "gone_atoms": atoms, "stale_atoms": stale, "stale_refs": said["stale_refs"],
+                 "stale_tables": said["stale_tables"]}
+        if total is None:
+            # 총괄 e027f669d: a name today's declaration does not have - its atoms, all of them
+            return {
+                "affected": stale, "affected_label": "atoms withdrawn",
+                "absence": ABSENCE_TRULY_NONE if not stale else None, "count_kind": COUNT_EXACT,
+                "scanned": stale, "scan_limit": None, "truncated": False,
+                "detail": (f"'{source}' is not in today's declaration: withdraws every atom it "
+                           f"wrote - {stale} atom(s) by table and predicate: {where}. Nothing is "
+                           f"re-translated. Cannot be undone."),
+                "extra": extra}
         return {
             "affected": total, "affected_label": "rows re-translated",
             "absence": None, "count_kind": COUNT_EXACT, "scanned": total,
@@ -579,9 +596,10 @@ def _count_ledger_rescope(db, params, scan_limit):
                        f"table) from today's declaration: page by page, each page's old "
                        f"atoms withdrawn and new ones written in one commit. Withdraws "
                        f"{atoms} atom(s) of {gone} row(s) the table no longer has. The "
-                       f"re-translation is not previewed - that would be the whole job."),
-            "extra": {"source": source, "whole_source": True, "relation_rows": total,
-                      "gone_rows": gone, "gone_atoms": atoms}}
+                       f"re-translation is not previewed - that would be the whole job. "
+                       f"Withdraws {stale} atom(s) it wrote from tables today's declaration "
+                       f"does not read, by table and predicate: {where}."),
+            "extra": extra}
     column = params["scope_column"]
     values = params.get("scope_values") or []
     preview = backfill.preview_rescope(
@@ -693,11 +711,14 @@ def _run_ledger_rescope(db, params, log, control=None):
         page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control),
         whole_source=bool(params.get("whole_source")), world=_ledger_world(params))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
-        f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
+        f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}"
+        + (f", from tables the declaration does not read {s['stale_withdrawn']}"
+           if "stale_withdrawn" in s else ""))
     _final_progress(control, s.get("rows_in_scope"), s)
     return {"withdrawn": s["withdrawn"], "attempted": s["attempted"],
             "inserted": s["inserted"], "deduped": s["deduped"],
-            "rows_in_scope": s["rows_in_scope"], "applied": s["applied"]}
+            "rows_in_scope": s["rows_in_scope"], "applied": s["applied"],
+            **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages") if key in s}}
 
 
 def _run_chain_replay(db, params, log, control=None):
@@ -1029,6 +1050,127 @@ def _judge_fold_duplicate_rows(params):
                                   + ([prefer[0]] if prefer else []))
     except cell_layer.ReplayRefused as e:
         raise RetroactiveRefused(str(e)) from None
+
+
+#: Seconds between two looks at the rows a re-read handed to the watcher - its poller's own cycle.
+REREAD_POLL_SECONDS = 3
+#: Files a re-read hands over at once; the next page waits until these are read, so a stop lands
+#: between pages and gives back only the page in hand (총괄 10-09).
+REREAD_PAGE_FILES = 100
+#: The refusal when nobody would read the files - a run waiting on them would hold the one gate
+#: every retroactive run passes (총괄 10-09).
+WATCHER_NOT_RUNNING = "the watcher is not running - start it, then run this again"
+
+
+def _reread_times(params):
+    """`since` · `until` as datetimes (ingested at or after · before), refused by name."""
+    from datetime import datetime
+
+    out = []
+    for name in ("since", "until"):
+        value = params.get(name)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            out.append(None)
+            continue
+        try:
+            out.append(datetime.fromisoformat(str(value).strip()))
+        except ValueError:
+            raise RetroactiveRefused(f"{name} is not a date or a time: {value!r} - write YYYY-MM-DD "
+                                     f"or YYYY-MM-DD HH:MM") from None
+    return out
+
+
+def _reread_pick(db, params):
+    """-> (rows to hand over, rows whose file is gone): the one selection (`ingestion.reread`),
+    then a file once - its newest row (총괄 976defaac)."""
+    from ingestion import reread
+
+    since, until = _reread_times(params)
+    picked = reread.select_logs(db, params.get("statuses") or reread.DEFAULT_REREAD_STATUSES,
+                                table=params["table"], folder=params.get("folder"),
+                                since=since, until=until)
+    return reread.split_missing(reread.one_per_file(picked))
+
+
+def _judge_reread_files(params):
+    from chain import cell_layer
+    from ingestion import reread
+    from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
+
+    try:
+        cell_layer.resolve_target(params["table"])
+    except cell_layer.ReplayRefused as e:
+        raise RetroactiveRefused(str(e)) from None
+    _reread_times(params)
+    unknown = [s for s in params.get("statuses") or () if s not in FILE_INGESTION_STATUS_VOCABULARY]
+    if unknown:
+        raise RetroactiveRefused(f"statuses {unknown} are not ingestion states - "
+                                 f"{', '.join(FILE_INGESTION_STATUS_VOCABULARY)}")
+    if not reread.watcher_running():
+        raise RetroactiveRefused(WATCHER_NOT_RUNNING)
+
+
+def _count_reread_files(db, params, scan_limit):
+    from ingestion import reread
+
+    present, missing = _reread_pick(db, params)
+    states = {}
+    for log, _rel in present:
+        states[log.status] = states.get(log.status, 0) + 1
+    folders = reread.by_top_folder(present) if params.get("folder") else {}
+    detail = (
+        f"{len(present)} file(s) will be read again by the watcher, one at a time, from where they "
+        f"lie, with today's parser - by state: "
+        + (", ".join("%s %d" % pair for pair in sorted(states.items())) or "none")
+        + (". By folder: " + ", ".join("%s %d" % pair for pair in folders.items()) if folders else "")
+        + f". {len(missing)} file(s) are not where their record says and are not handed over"
+        + (": " + ", ".join(log.filename or "?" for log, _rel in missing[:5])
+           + (" and %d more" % (len(missing) - 5) if len(missing) > 5 else "") if missing else "")
+        + ". A parser that changes the business key leaves the rows of the old key. The operations "
+          "gate is held until the last file is read - split a large folder.")
+    return {"affected": len(present), "affected_label": "files read again",
+            "absence": ABSENCE_TRULY_NONE if not present else None, "count_kind": COUNT_EXACT,
+            "scanned": len(present) + len(missing), "scan_limit": None, "truncated": False,
+            "detail": detail,
+            "extra": {"states": states, "folders": folders, "missing": len(missing)}}
+
+
+def _run_reread_files(db, params, log, control=None):
+    """Hand the files to the watcher `REREAD_PAGE_FILES` at a time, the next page once these are
+    read, a look every few seconds. A stop gives each row of the page in hand the watcher has not
+    taken yet its state back (총괄 976defaac)."""
+    from ingestion import reread
+
+    present, missing = _reread_pick(db, params)
+    files = [entry for entry, _rel in present]
+    log(f"[reread] {params['table']}: {len(files)} file(s) to hand to the watcher, "
+        f"{len(missing)} not where their record says")
+    checkpoint = _checkpoint(control)
+    stats = {"files": len(files), "missing": len(missing), "marked": 0, "read": 0, "restored": 0,
+             "stopped": False, "marked_rows": []}
+    read_before = 0
+    for start in range(0, len(files), REREAD_PAGE_FILES):
+        marked = reread.mark_for_reread(db, files[start:start + REREAD_PAGE_FILES])
+        stats["marked"] += len(marked)
+        stats["marked_rows"] += [{"id": i, "state": s} for i, s in marked]
+        ids = [row_id for row_id, _state in marked]
+        while True:
+            waiting = reread.still_in_hand(db, ids)
+            db.commit()                               # no transaction held across the wait
+            stats["read"] = read_before + len(ids) - waiting
+            if checkpoint is not None and checkpoint(stats["read"], len(files)):
+                stats["restored"] = reread.restore_unread(db, marked)
+                stats["stopped"] = True
+                log(f"[reread] stopped: {stats['restored']} file(s) not yet taken got their state back")
+                break
+            if not waiting:
+                break
+            time.sleep(REREAD_POLL_SECONDS)
+        read_before = stats["read"]
+        if stats["stopped"]:
+            break
+    _final_progress(control, stats["read"], stats)
+    return stats
 
 
 def _count_fold_written_notation(db, params, scan_limit):
@@ -1700,6 +1842,35 @@ OPERATIONS = {
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
                             "taken back and the rules that recount run"),
+    },
+    "reread_files": {
+        "label": "Re-read files",
+        "what_is_missing": "files read before the parser changed hold what the old parser made of them",
+        "params": [_p("table", help="the table the files went into"),
+                   _p("folder", required=False,
+                      help="only files under this folder (an archive or an external path); a "
+                           "folder boundary - A never takes AB"),
+                   _p("since", required=False, help="read in at or after (YYYY-MM-DD or YYYY-MM-DD HH:MM)"),
+                   _p("until", required=False, help="read in before (YYYY-MM-DD or YYYY-MM-DD HH:MM)"),
+                   _p("statuses", required=False, kind="csv",
+                      help="the ingestion states to take (SUCCESS, FAILED, SKIPPED when not given)")],
+        "count": _count_reread_files,
+        "run": _run_reread_files,
+        "judge": _judge_reread_files,
+        "cli": ("python -c \"from admin import retroactive; retroactive.run_here('reread_files', "
+                "{'table': '<table>', 'folder': '<folder>', 'since': '<date>', 'until': '<date>', "
+                "'statuses': 'SUCCESS,FAILED'})\" - the watcher reads them, as it reads a retry"),
+        # 총괄 976defaac: the rows go PENDING_RETRY and the watcher's poller reads each on its
+        # table's handler, where the file lies, dedup skipped - the retry door, widened.
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one commit per 1,000 rows handed over; then the watcher reads a file "
+                               "at a time - a stop gives the rows it has not taken their state back"),
+        "cli_only": [],
+        "downstream_note": ("Each file goes in again as an upsert - the rows it changes reach the "
+                            "chain as edits and the rules that read them run"),
     },
     "ledger_backfill": {
         "label": "Translate the rows not yet in the ledger",

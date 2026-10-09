@@ -77032,3 +77032,159 @@ TALLY after  8 run(s), 0 with a failure
 - 운영이 보관 켬인지 끔인지 — 문이 있어 어느 쪽이든 30 초마다 원장을 다시 묻지 않는다.
 - 도는 중 줄: 바퀴가 일꾼이 도는 때에 닿으면 #1 한 줄 — 일꾼마다 다시 #1 이라 큰 폴더는 처리마다 한 줄 나올 수 있다.
 - heavy 레인 칸이 지은 첫날 첫 실행에서 한 번 실패했다(출력을 못 남김). 위 «반복»이 그 뒤의 수다.
+
+## [10-09] 원장 ref 인덱스 재료 — 수만(짓지 않음 · 소유자께 여쭐 재료)
+
+어느 DB · 어느 스키마 · 지운 것: 박스 assy_manager · 스크래치 스키마 scratch_ws_index_1009(원장 사본 · 시험 파티션 표 — 끝에 그 스키마 하나를 DROP SCHEMA … CASCADE, 확인 «gone») · public 은 읽기만 · 그 밖 지운 것 0.
+
+**박스 원장**: ledger total bytes 3658743808 · heap bytes 1811447808 · atoms 2380869 · ref bytes max 26879 avg 278 · source_who max 33 · refs over 2000 bytes 792
+
+**사본에서 잰 것**(사본은 파티션 없는 한 표 — 운영 모양과 다르다):
+```
+copy the ledger (CREATE TABLE AS SELECT * FROM public.ledger_events) run 1    36.27 s
+copy: 2380869 atoms · 1622392832 bytes with toast
+plain btree (source_who, source_raw_ref)                       run 1    24.38 s
+   plain btree built
+btree (source_who, md5(source_raw_ref)) - blocking build       run 1    12.34 s
+   index 129523712 bytes · 54.4 bytes/atom
+same index CONCURRENTLY (writes not blocked)                   run 1    13.07 s
+largest source 'dt_job' · 433095 refs
+-- 1000 refs
+   today's shape plan  : ['Parallel Seq Scan']
+   today's shape (source_who + ANY refs)                       run 1     0.67 s
+   today's shape (source_who + ANY refs)                       run 2     0.75 s
+   md5 shape plan      : ['Bitmap Heap Scan', 'Bitmap Index Scan']
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 1     0.04 s
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 2     0.04 s
+   atoms under them: 2000
+-- 50000 refs
+   today's shape plan  : ['Parallel Seq Scan']
+   today's shape (source_who + ANY refs)                       run 1     2.04 s
+   today's shape (source_who + ANY refs)                       run 2     2.11 s
+   md5 shape plan      : ['Bitmap Index Scan', 'Parallel Bitmap Heap Scan']
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 1     2.67 s
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 2     2.71 s
+   atoms under them: 100000
+```
+
+**읽는 법**
+- md5 인덱스는 원자당 54.4 바이트입니다. 만드는 데 박스 원자 2380869 에서 막는 빌드 12.34 s, CONCURRENTLY 13.07 s 가 듭니다.
+- 쿼리가 인덱스를 타려면 겨냥 문장에 `md5(source_raw_ref) = ANY(…)` 를 같이 적어야 합니다. 지금 문장(`source_raw_ref = ANY`)으로는 인덱스가 있어도 Seq Scan 입니다(위 plan). 그래서 `_withdraw_refs` · `atoms_for_refs` 두 문장이 바뀌어야 합니다.
+- ref 1,000 개 쪽은 인덱스가 큰 차이를 냅니다. ref 50,000 개 쪽은 이 박스 크기에서 이득이 없습니다 — 걸리는 원자 10 만 개를 읽는 값이 원장 전체를 훑는 값과 비슷합니다. 운영 원장이 박스보다 크면 훑기만 그 배수로 늘고, 인덱스 쪽은 걸리는 원자 수에 묶입니다(가정, 안 쟀습니다).
+- 앞 보고의 «ANY 50,000 = 14.8 s» 는 운영 모양(파티션 8 개) 원장에서 잰 값이고, 여기 사본은 한 표라 같은 문장이 더 빠릅니다. 어느 차이(파티션 · 죽은 행 · 토스트) 때문인지는 가르지 않았습니다.
+- 평문 btree (source_who, source_raw_ref) 도 이 박스에서는 섰습니다. 다만 ref 최대 26879 바이트라 btree 한 줄 한도(약 2.7 KB)를 압축으로 겨우 넘기는 값이 있을 수 있고, 그런 ref 가 하나 들어오는 순간 «쓰기»가 실패합니다. row_ref 가 이미 md5 모양을 쓰는 까닭과 같습니다.
+
+**운영에서 쓰기를 막지 않고 세우는 길**
+```
+partitioned parent CONCURRENTLY refused: 오류:  "p" 파티션된 테이블 대상으로 동시에 인덱스를 만들 수 없음
+parent index ON ONLY - valid: False
+after p1 CONCURRENTLY + ATTACH - parent valid: False
+after p2 CONCURRENTLY + ATTACH - parent valid: True
+a partition made later gets the index: True
+```
+- 이 PG(18.3)는 파티션 부모에 CONCURRENTLY 를 거절합니다. 그래서 길은 이렇습니다: 부모에 `CREATE INDEX … ON ONLY`(무효로 섬) → 파티션마다 `CREATE INDEX CONCURRENTLY` → `ALTER INDEX 부모 ATTACH PARTITION 파티션_인덱스`. 마지막 파티션이 붙으면 부모 인덱스가 유효가 되고, 그 뒤에 만들어지는 파티션은 저절로 그 인덱스를 받습니다(위에서 확인).
+- 지금 인덱스 마스터로는 안 됩니다. 마스터(database/models.py 의 index_states · ensure_model_indexes)는 SQLAlchemy 정적 모델의 Index 선언만 보는데, 원장 표는 그 모델이 아니고 ledger/schema.py 의 SQL 로 섭니다. 또 마스터의 빌드 문장은 표에 `CREATE INDEX CONCURRENTLY` 하나라서, 파티션 부모에는 위처럼 거절됩니다.
+- 원장 인덱스는 지금 ledger/schema.py 가 부모에 `CREATE INDEX IF NOT EXISTS`(막는 빌드)로 세웁니다.
+
+## [10-09] whole-source 가 선언이 바뀌어 남은 원자를 거둔다 — 착지 4897f9375 (총괄 e027f669d · census 미룸)
+
+**도착지와 대조**
+```
+「--whole-source 가 그 소스가 지금 안 읽는 표에서 나온 원자도 거둔다 · 선언에 없는 이름이면 그 이름의 원자 전부」  -> 섰다
+「census 가 «선언이 안 만드는 원자: 소스 × 표 × 술어 × 수»를 말한다」                                     -> 미룸(총괄 10-09) — 다음 커밋
+```
+**자리**: 고르기는 `_stale_refs` 하나(원장 원자의 ref 를 이름 있는 커서로 한 번 · `roleframe.claim_source_row_refs` 로 표), 지우기는 `store.withdraw` → `_withdraw_refs` 한 문장, 색인 줄은 `forget_row_refs(source=…)`(원자 먼저). 선언에 없는 이름을 묻는 자리는 `rescope_scope` 하나 — rescope 의 미리보기 · 실행과 어드민 judge 가 그것을 부른다. 은퇴 소스는 그대로 거절.
+
+**게이트(PG)**
+```
+6 passed   (test_whole_source_takes_back_what_the_declaration_no_longer_makes.py)
+변이 — md5 same
+MUTANT only an undeclared name is swept (the table filter back)   4 failed, 2 passed
+    FAILED test_a_source_moved_to_another_table_takes_back_the_old_tables_atoms
+    FAILED test_an_atom_with_no_index_line_is_reached
+    FAILED test_another_source_on_the_same_rows_keeps_its_atoms_and_lines
+    FAILED test_the_preview_says_what_the_run_takes_and_a_second_run_takes_nothing
+MUTANT aimed from the row index only                              1 failed, 5 passed
+    FAILED test_an_atom_with_no_index_line_is_reached
+MUTANT the index lines of every source go                         1 failed, 5 passed
+    FAILED test_another_source_on_the_same_rows_keeps_its_atoms_and_lines
+MUTANT the reader counts every source's refs                      1 failed, 5 passed
+    FAILED test_a_renamed_source_takes_back_every_atom_of_the_old_name
+같은 길을 지나는 기존 시험: sqlite 18 파일 354 passed, 22 skipped · PG 5 파일 27 passed, 18 deselected
+```
+게이트 ⑦(census 줄)은 census 와 함께 미룸.
+
+**쪽 하나의 실제 초(박스)** — 파티션 8 개를 지킨 원장 사본, 스키마 scratch_ws_page_1009(끝에 DROP · «gone» 확인), DELETE 는 되돌림:
+```
+copy: 2380869 atoms into 8 partitions in 31.6 s
+largest source 'dt_job' · 433095 refs
+DELETE   1000 refs  run 1     0.88 s  · 2000 atoms
+DELETE   1000 refs  run 2     1.10 s  · 2000 atoms
+DELETE  50000 refs  run 1     2.01 s  · 100000 atoms
+DELETE  50000 refs  run 2     1.53 s  · 100000 atoms
+```
+앞 보고의 «ANY 50,000 = 14.8 s» 는 박스 라이브 원장에서 잰 count 였다. 라이브가 느린 까닭으로 보이는 것(박스 상태, 운영 주장 아님):
+```
+relname · n_live_tup · n_dead_tup · last_autovacuum · last_vacuum · pg_relation_size
+('ledger_events', 0, 0, None, None, 0)
+('ledger_events_2025_12', 0, 5, None, None, 4112384)
+('ledger_events_2026_01', 520610, 65111, None, None, 368123904)
+('ledger_events_2026_05', 0, 0, None, None, 2711552)
+('ledger_events_2026_07', 16476, 1536, datetime.datetime(2026, 10, 2, 16, 8, 22, 73187, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 13312000)
+('ledger_events_2026_08', 670237, 4062, datetime.datetime(2026, 10, 2, 16, 19, 38, 158538, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 620437504)
+('ledger_events_2026_09', 23730, 23267, None, None, 624680960)
+('ledger_events_2026_10', 105052, 1470, datetime.datetime(2026, 10, 2, 16, 13, 41, 567573, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 92692480)
+('ledger_events_2026_11', 91492, 276, datetime.datetime(2026, 10, 2, 16, 15, 36, 100738, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), None, 85377024)
+```
+
+**남은 것**
+- census(다음 커밋): 원장을 한 번 훑는 GROUP BY 의 실제 초를 재고, CLI 가 «원장 전체를 한 번 읽는다 · 박스 N 초/백만 원자»를 먼저 말한다.
+- `backfill._ref_row_keys` 는 ref 의 JSON 모양(`{"event","rows"}`)만 읽는다 — 한 행짜리 분자의 맨 ref(`<표>:<키>`)는 `count_orphan_atoms` 에서 «읽을 수 없는 ref»로 셀 수 있다(안 쟀다). 이 커밋은 두 모양을 다 읽는 `claim_source_row_refs` 를 썼다.
+- 하위 폴더(a14ea5693): 다시 보기 스레드가 subfolder_recheck_seconds 를 기다리는지 재는 칸 — 다음에 directory_watcher 를 만질 때(총괄 10-09).
+
+어느 DB · 어느 스키마 · 지운 것: 시험은 격리 시험 DB(run_pg_files) · 쪽 초는 박스 assy_manager 의 scratch_ws_page_1009(그 스키마 하나를 지움) · public 은 읽기만 · 그 밖 지운 것 0.
+
+## [10-09] 소급 «Re-read files» 착지 1b931478c (총괄 976defaac · 갈림 ㄱ ㄴ ㄹ 그대로 · ㄷ 은 «거절»로)
+
+**도착지와 대조**
+```
+「표 · 폴더 · 기간을 적으면 미리보기가 파일 수(상태별 · 폴더별 · 사라진 수)를 말하고,
+  실행하면 워처가 «지금 파서»로 있던 자리(아카이브든 외부 경로든)에서 하나씩 다시 읽는다」   -> 섰다
+「파서가 업무키를 바꾸면 옛 키 행은 남는다 — 미리보기 끝 한 줄」                            -> 섰다
+```
+**자리**: 고르기는 `ingestion.reread.select_logs` 하나 — retry-failed 라우트(statuses=FAILED)와 새 연산이 같이 부르고, 폴더 경계는 `_safe_relative_path`(옛 `main._failed_under_folder` 는 이리로 접힘). 읽는 쪽은 언제나 PENDING_RETRY → 워처 poller → `retry_one`. `one_per_file` · `split_missing` 은 새 연산만 쓴다 — retry-failed 의 답은 전과 같다(아래 기존 시험).
+**바꾼 것(총괄 답)**: 워처 하트비트가 없거나 낡으면 «the watcher is not running - start it, then run this again» 으로 거절. 자리는 판정(judge) 하나라 기록 전에 거절되고, 같은 판정을 지나는 미리보기도 같은 문장으로 거절된다(따로 갈래를 두지 않음). 표시는 100 개씩, 그 쪽이 다 읽히면 다음 쪽 — 멈추면 지금 쪽의 안 집힌 것만 되돌린다. 미리보기 끝에 «the operations gate is held until the last file is read - split a large folder».
+
+**게이트(sqlite — 워처 몫은 그 코드 그대로: poller 한 걸음 = `pending_retries` + `retry_one`)**
+```
+8 passed   (test_files_are_read_again_by_the_watcher.py)
+retry-failed 그대로: 28 passed   (test_failed_files_retry_by_folder · test_a_failed_external_file_retries_on_its_own_handler · test_a_stranded_claim_is_given_back)
+소급 등록부를 읽는 시험: 227 passed, 6 deselected
+변이 — md5 same
+BASELINE 13 passed
+MUTANT the states fixed to FAILED                 5 failed, 8 passed
+    FAILED test_a_file_that_went_in_is_read_again_from_its_archive_with_a_column_declared_since
+    FAILED test_a_folder_takes_what_is_under_it_and_never_its_neighbour
+    FAILED test_a_stop_gives_the_rows_not_taken_their_state_back
+    FAILED test_an_external_file_is_read_again_on_the_watchers_handler_with_its_new_options
+    FAILED test_the_preview_counts_what_the_run_hands_over_and_a_gone_file_is_not_handed
+MUTANT the folder by a prefix                     3 failed, 10 passed
+    FAILED test_a_folder_takes_what_is_under_it_and_never_its_neighbour
+    FAILED test_retry_takes_exactly_the_failed_files_under_the_folder
+    FAILED test_the_preview_counts_what_is_under_the_folder_and_writes_nothing
+MUTANT a stop gives nothing back                  1 failed, 12 passed
+    FAILED test_a_stop_gives_the_rows_not_taken_their_state_back
+MUTANT a file read twice is handed over twice     1 failed, 12 passed
+    FAILED test_the_preview_counts_what_the_run_hands_over_and_a_gone_file_is_not_handed
+MUTANT every file handed over at once             1 failed, 12 passed
+    FAILED test_the_next_page_waits_for_this_one
+MUTANT no watcher, not refused                    1 failed, 12 passed
+    FAILED test_with_no_watcher_running_it_is_refused_before_anything_is_recorded
+```
+⑤(retry-failed 의 답이 전과 같음)는 기존 retry 시험이 그대로 초록인 것으로, 폴더 경계 변이가 그 시험까지 빨갛게 하는 것으로(같은 함수) 잰다.
+
+**남은 것**
+- 클라: 소급 탭이 새 연산(params 다섯)을 저절로 그리는지 확인만 — 클라 레인 몫.
+- 실행이 마지막 파일까지 소급 관문을 붙든다 — 큰 폴더는 나눠서(RUN.md · 미리보기 한 줄).
+
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · 시험이 만든 파일은 pytest tmp · 지운 것 0.

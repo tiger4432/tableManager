@@ -6995,20 +6995,6 @@ def cancel_retroactive_run(run_id: str, request: Request, db: Session = Depends(
         raise HTTPException(status_code=500, detail=f"Could not stop the run: {e}")
 
 
-def _failed_under_folder(logs, folder):
-    """`(log, path below folder)` for each log whose file lies under `folder` - by folder
-    boundary (`C:\\a\\A` never takes `C:\\a\\AB`), case and separators as the filesystem
-    reads them: the external-root judgement, `_safe_relative_path` (총괄 fab40ed69 ②)."""
-    from directory_watcher import _safe_relative_path
-
-    picked = []
-    for log in logs:
-        rel = _safe_relative_path(log.filepath, folder) if log.filepath else None
-        if rel is not None:
-            picked.append((log, rel))
-    return picked
-
-
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                                       preview: bool = False, db: Session = Depends(get_db)):
@@ -7019,37 +7005,28 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
     import asyncio
     import json
 
-    query = db.query(models.FileIngestionLog).filter(
-        models.FileIngestionLog.status == "FAILED"
-    )
-    if log_id is not None:
-        query = query.filter(models.FileIngestionLog.id == log_id)
+    from ingestion import reread
 
-    failed_logs = query.all()
     # 🔴 [총괄 fab40ed69 ②, 소유자 「폴더 아래 선택해서 한꺼번에」] ONE SELECTION FOR THE PREVIEW AND
-    #    THE RETRY, so the number the screen shows is the number that runs.
-    picked = None
-    if log_id is None and not crud.is_blank_value(folder):
-        picked = _failed_under_folder(failed_logs, folder)
-        failed_logs = [log for log, _rel in picked]
-    if preview or (picked is not None and not picked):      # a preview never writes
-        by_folder = {}
-        for _log, rel in picked or ():
-            head = rel.split("/", 1)[0] if "/" in rel else "."
-            by_folder[head] = by_folder.get(head, 0) + 1
-        where = f" under {folder}" if picked is not None else ""
+    #    THE RETRY, so the number the screen shows is the number that runs - and the one the
+    #    retroactive «Re-read files» makes too (총괄 976defaac).
+    by_folder_asked = log_id is None and not crud.is_blank_value(folder)
+    picked = reread.select_logs(db, ("FAILED",), folder=folder if by_folder_asked else None,
+                                log_id=log_id)
+    failed_logs = [log for log, _rel in picked]
+    if preview or (by_folder_asked and not picked):      # a preview never writes
+        where = f" under {folder}" if by_folder_asked else ""
         return {"status": "preview" if preview else "success", "folder": folder,
-                "count": len(failed_logs), "by_folder": dict(sorted(by_folder.items())),
+                "count": len(failed_logs),
+                "by_folder": reread.by_top_folder(picked) if by_folder_asked else {},
                 "message": (f"{len(failed_logs)} failed file(s){where}" if failed_logs
                             else f"No failed file{where}")}
     if not failed_logs:
         return {"status": "success", "message": "No failed file ingestion logs found."}
-        
+
     # 만약 프로세스 분리(DECOUPLED) 모드라면 상태만 PENDING_RETRY로 변경하고 즉시 반환합니다.
     if os.getenv("DECOUPLED") == "True":
-        for log in failed_logs:
-            log.status = "PENDING_RETRY"
-        db.commit()
+        reread.mark_for_reread(db, failed_logs)
         return {
             "status": "success",
             "message": f"Decoupled mode: Marked {len(failed_logs)} logs as PENDING_RETRY. Standalone watcher will process them."
