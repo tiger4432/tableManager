@@ -60,6 +60,25 @@ def test_a_claimed_row_whose_params_are_refused_ends_failed(retro_env, monkeypat
     assert _row(retro_env).state == retroactive.RUN_FAILED
 
 
+def test_a_judgement_that_breaks_ends_the_row_failed_and_opens_the_gate(retro_env, monkeypatch):
+    """총괄 10-09: an ImportError in the child's judgement left the row running, and a running row
+    closes the operations gate for every run."""
+    run_id = _claimed(retro_env, monkeypatch)
+
+    def broken(params):
+        raise ImportError("No module named 'directory_watcher'")
+
+    retroactive.OPERATIONS["probe_op"]["judge"] = broken
+    assert run_id in (retroactive.gate_refusal(retro_env) or ""), "canary: the claimed row closes the gate"
+    with pytest.raises(ImportError):
+        retroactive.run_claimed(run_id, log=lambda *_: None)
+    retro_env.expire_all()
+    row = _row(retro_env)
+    assert (row.state, row.error) == (retroactive.RUN_FAILED, "the run could not be judged - ImportError: "
+                                                              "No module named 'directory_watcher'")
+    assert retroactive.gate_refusal(retro_env) is None
+
+
 def test_the_scheduler_starts_the_child_and_names_it_the_runner(retro_env, monkeypatch):
     import socket
 

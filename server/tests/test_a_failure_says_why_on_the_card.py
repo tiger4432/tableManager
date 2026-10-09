@@ -70,12 +70,13 @@ def test_the_status_is_carried_as_given_skipped_included():
         assert built(status)["status"] == status
 
 
-def test_a_success_detail_is_carried_too_rather_than_dropped_here():
-    """⚠️ THE SLOT MEANS 「detail」 ON SUCCESS (「키 결측으로 N행 스킵」). Dropping it here
-    would leave the screen no way to reach that fact at all. Whether the card READS it on the
-    success branch is a different open line (F-6) and is deliberately not decided here."""
+def test_a_success_detail_is_carried_as_a_note_and_never_as_an_error():
+    """⚠️ THE SLOT MEANS 「detail」 ON SUCCESS (「키 결측으로 N행 스킵」, a re-read's 「[resume-abort] …」).
+    Dropping it would leave the screen no way to reach that fact; carrying it as `error_msg` drew a
+    success as an error (총괄 10-09) - so it rides as `note` and `error_msg` stays absent."""
     msg = built("SUCCESS", "키 결측으로 3행 스킵")
-    assert msg["error_msg"] == "키 결측으로 3행 스킵"
+    assert (msg.get("note"), "error_msg" in msg) == ("키 결측으로 3행 스킵", False)
+    assert ("note" in built("SKIPPED", "no rows"), built("SKIPPED", "no rows")["error_msg"]) == (False, "no rows")
 
 
 def test_the_field_is_capped_and_the_sentence_is_capped_shorter():
@@ -112,6 +113,25 @@ def test_every_sender_goes_through_the_one_builder():
         "the three senders no longer all go through the one builder"
     assert '"event": "file_ingestion_completed"' not in main_src, \
         "a sender is spelling the payload by hand again"
+
+
+def test_the_watchers_success_sentence_reaches_the_screen_as_a_note(monkeypatch):
+    """총괄 10-09: the relay a decoupled watcher posts to - a re-read's SUCCESS with its
+    「[resume-abort] …」 sentence goes out with `note` and no `error_msg`."""
+    import asyncio
+    import json
+
+    import main
+
+    sent = []
+
+    async def capture(text):
+        sent.append(json.loads(text))
+    monkeypatch.setattr(main.manager, "broadcast", capture)
+    asyncio.run(main.internal_event_file_processed(table_name=TABLE, filename=FILE, status="SUCCESS",
+                                                    error_msg="[resume-abort] force re-read"))
+    assert [(m["status"], m.get("note"), "error_msg" in m) for m in sent] == [
+        ("SUCCESS", "[resume-abort] force re-read", False)]
 
 
 def test_the_builder_is_where_the_other_one_lives():
