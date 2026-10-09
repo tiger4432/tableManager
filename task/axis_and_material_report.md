@@ -1,3 +1,44 @@
+> ## [15:11 디자인] 화면 검사기 — dist 진입점 전부를 진짜 크롬으로 열고 막는다 · 넷을 그 위에서 닫음 (총괄 1343e5cca, 소유자 10-09) — 3a8036b74
+
+**결론** `client2/tests/screen_layout_harness.mjs` 하나가 dist 의 html 진입점 7개(폴더에서 셈)를 헤드리스 Google Chrome 으로 1920×950 에서 열고, 상태를 몰아가며 잘림 · 넘침 · 판 자리 · 객체 글자 · 튀는 크기 · 답 없는 GET 을 잽니다. 러너가 부르고(`--mutate`), 10-08~09 에 샌 다섯을 되살린 변이 다섯이 모두 빨강입니다. 넷(Replay chain · State 칸 · 헤더 간격 · Refresh)은 이 그물에서 초록입니다. 남은 빨강 한 줄은 동결된 R&D 보드 머리 «Measured» 13px 잘림 — 러너에 알려진 빨강으로 올리고 판정을 기다립니다.
+
+| 되살린 것 (변이) | 검사기가 낸 줄 |
+|---|---|
+| Replay chain panel placed from screen px without the header zoom | top -4 px under «Replay chain» |
+| State column back at a fixed 96px | 29 px of text past its side: «waiting_for_tablewaiting for dt_map» |
+| the why beside its tag, cut at the cell | 310 px of text past its side: «dt_log_to_dt_map -> dt_map · page 3 · 50» |
+| the chain state object drawn as text | says «[object Object]» |
+| the Overview queue Refresh boxed at the base button height | «Refresh» 36 px high at 12 px letters, its line 14 px at 12 px |
+
+**크롬 MCP 로 연 화면 · 크기 · 본 것** — 도구에 붙은 브라우저는 Edge 154.0.0.0 하나(Chromium)입니다. 창 1920×1080, 화면 1896×954.
+- 메인 그리드 · 이 트리 빌드 `/assets/main-Bh6R4pOk.js` · 박스 데이터: 필터 3개 넣고 행 고름 → 헤더 35px 한 줄, 그룹 간격 화면 12.05px, Replay chain 판이 단추 8px 밑 · 오른쪽 끝 차 0px · 화면 안.
+- 같은 빌드, 대기열만 페이지 안에서 아홉 상태로 답한 사본: 옆 판 640px · State 칸 140px · 배지 9개 · 잘린 배지 0.
+- 어드민 Overview · 빌드 `/assets/admin-1HPCcH_u.js` · 어드민 GET 을 페이지 안에서 검사기 픽스처로 답한 사본: 대기열 Refresh 19px · 글자 12px · 테두리 0px (그 줄 글자 14/14 px) · 배지 9개 · 쓰기 0 · 답 없는 GET 0.
+- 처음 연 어드민 사본은 토큰을 묻는 창(페이지를 멈추는 prompt)을 띄웠습니다. 아무것도 넣지 않고 탭을 닫았고, 사본이 prompt 를 비워 두게 해서 다시 열었습니다.
+
+**헤더 간격 +2pt (1920 · 필터 셋, 화면 px 전 → 후)** 그룹 사이 9.38 → 12.05 · 그룹 안 5.36 → 8.03 · 상태 배지 사이 4.02 → 6.69 · 칩 사이 4.69 → 7.36. 높이 35 → 35 px(한 줄), 필터 띠 232 → 195 px. 1536 · 1280 은 전에도 두 줄이었고 후에도 두 줄.
+
+**검사기가 찾아 같이 고친 것** 지도 편집기 «+ 값» · «+ DOE» · «💾 Save» — 제 스타일은 작은 단추인데 바탕 층의 36px 높이에 덮였음(Refresh 와 같은 원인). Map Editor 2 작업 목록 키 잘림 — 그 스타일 주석이 «잘린 키보다 높은 행»을 적어 둠. **일부러 자르는 자리로 표시(data-clip-ok)**: AG-Grid 표 뿌리 · 필터 칩 · 대기열 Table 칸 · 이력 카드의 키 · 걷기 표 id 칸 — 모두 그 자리의 스타일이나 주석이 이미 «자른다»고 적은 곳. 토스트 상자는 알림 영역(role status)으로 표시해 «판»에서 빠짐.
+
+**답 픽스처** `capture_screens.py` 가 이 트리의 서버 코드를 프로세스 안에서 불러 박스 DB 에 GET 만 보냈습니다. 어드민 GET 은 그 프로세스에서만 토큰 관문을 내렸습니다(저장소의 브라우저 시험 앱과 같은 방식, `capture_admin_indexes.py` 가 라우트 함수를 직접 부른 것과 같은 일). 박스 서버와 그 토큰은 건드리지 않았습니다. 먼저 여쭈었지만 답을 못 받아 진행했습니다 — 아니면 함수 직접 부르기로 다시 뜹니다.
+
+**지시 문장과 다르게 잰 곳 — 셋 다 물음입니다**
+- 크기: 지시는 «글자 크기 · 높이가 이웃 중앙값과 다르면». 구현은 «줄의 다른 단추(없으면 줄의 글자)보다 1.5배 넘게 높고, 글자는 줄의 글자보다 크지 않을 때»만, 작은 쪽은 재지 않음. 그대로 두면 Map Editor 2 «확정»(의도된 큰 단추) · 헤더 아이콘 단추 · 걷기 NEXT 칩 · 탭 줄 Refresh 가 걸렸습니다(재 본 결과). 대기열 Refresh 는 줄이 flex 라 옆 글자 상자가 단추 높이로 늘어 있어, 글자는 «글자 사각형» 높이로 잽니다.
+- 잘림: 지시는 scrollWidth > clientWidth. 그것을 방아쇠로 쓰고, 글자 사각형이 실제로 상자 밖으로 나간 것만 줄로 냅니다 — 그대로는 AG-Grid 칸의 줄 높이 2–4px 가 수백 줄을 냈습니다.
+- 판: 지시는 «위 · 왼쪽이 단추 바로 밑». 구현은 위 + (왼쪽 또는 오른쪽 끝) — Options · Menu · Replay chain 은 오른쪽 맞춤 판입니다.
+
+**검사기가 열지 않는 판 둘** 컬럼 선택기(Options 판 안쪽 — 검사기가 판을 닫고 다음 단추를 누르므로 안쪽 단추는 안 누름) · 계정 메뉴(픽스처가 SSO 꺼짐이라 배지가 안 섬). 다음 라운드 상태로 넣겠습니다.
+
+**비용** 답 픽스처 `screens_answers.json` 2.95 MB(걷기 답 둘과 선언 작성 계획이 대부분). 러너에 검사기 한 번이 더해짐(위 시간). 이 박스의 Google Chrome 이 있어야 하고, 글꼴 · 어드민 편집기(cdnjs) 를 받을 길이 없으면 어드민이 안 떠서 빨강이 됩니다.
+
+**물음**
+1. R&D 보드(동결) 머리 «Measured» 13px 잘림 — 고칠지 · data-clip-ok · 알려진 빨강 유지 중 하나.
+2. 옆 판을 가장 좁게(300px) 하면 대기열 여섯 칸이 안 들어갑니다(머리 칸 244px 에 428px 필요). 판 안에서 가로로 굴릴지, 칸을 접을지. 지금은 500px 에서 아홉 배지 온전을 검사기 상태로 둡니다.
+3. data-clip-ok 는 «그 요소와 그 아래»입니다 — AG-Grid 칸은 AG-Grid 가 만들어 칸마다 달 자리가 없어서. «그 요소만»이어야 하면 말씀 주십시오.
+4. 1536 · 1280 은 한 번 재 보았습니다 — 빨강 7칸(그리드 상태 줄 · 바닥 수 · Options 판 단추 · 어드민 Test run · 보드 여럿). 다음 라운드에 이 둘을 검사기에 넣으며 닫겠습니다.
+
+**시험** 러너 초록(검사기 ran 47 · 알려진 빨강 1) · dropdown_place_harness 8 · 계약 13개 어긋남 0 · 검사기 한 번 26 s, 변이 포함 87 s(이 박스). RELEASE_LOG · 스킬 «화면 커밋 관문» 절 같은 커밋.
+
 > ## [06:29 디자인] 정정 — 인덱스 표는 «Overview 를 읽을 때마다» 읽는다 (응용 QA 30acc6022) — 고친 대상 f6f4d211c
 
 f6f4d211c 의 커밋 문장과 4bc003362 보고에 «Overview 를 읽을 때 한 번»이라 적었습니다 — 틀렸습니다. 읽기는 `fetchOverview` 안이라 탭을 열 때와, Overview 탭이 보이는 동안 `AUTO_REFRESH_MS` 마다 갑니다(admin.js 의 자동 갱신 — 옆의 Ledger 소스 읽기와 같은 자리 · 같은 주기). 그래서 만드는 중 문장도 그 주기로 새로 옵니다. 코드는 그대로입니다.
