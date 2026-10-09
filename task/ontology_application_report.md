@@ -37963,3 +37963,17 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
 칸       붙잡힌 ALTER 는 넘어갔고 칸은 안 생김 — «column 'added_col' was not added to 'hb_tab' - another session held the table past 20s. Retried at the next start or config save»
 뜻(일요일) ⓪ 에서 로그 표에 fold_mark 를 더하고 재기동할 때 그 표를 누가 쥐고 있으면 같은 줄이 난다 — 표 ① 에 그 줄과 «한 번 더 재기동»(e64bdc91d)
 ```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 7a(VALUES CAST, 5777da3c4) 됩니다 · 형이 다른 키에서 비어 버린 보류는 다시 세기 replay 하나로 돌아옵니다
+
+```
+모양   운영 런처 · 앞 단계 소유자 코드 af8ef5701 -> pull 03c31a6e6 · fceb6b354 · 스크래치 셋(mix · mix2 · rhf) 지움 · 구현자와 차례
+세계   일요일 리허설 세계 그대로 + 변종 하나: 공식 표 core_x · core_y 를 글자로(로그 표는 숫자) — 구현자가 찾은 모양
+pull 전  같은 형 세계 보류 agreed 39 · 섞인 형 세계 0 ← 소유자 코드가 오류 없이 빈칸으로 덮음(리허설에서 재현)
+pull 뒤  섞인 형 세계에 replay official_dt_hold_recount (미리보기 2.2 s -> --apply 2.9 s) -> agreed 39 = 같은 형 세계의 39
+일요일 순서 섞인 형 세계도 ⑤ 뒤 agreed 6 -> ⑥ 뒤 205 -> 끝 상태 transfer 원자 205 · 두 transfer 다이 0 (같은 형 세계도 205 · 0)
+표       ①b 비어 버린 보류 다시 세기 — 명령 · 까닭 · 답 · 뜻 · 초(c3dc611d0). 이 표의 공식 표는 ⑥ 이 다시 채우므로 ①b 는 ⑥ 을 안 돌리는 다른 공식 표에
+public   이 세 판 사이 assy_test public.audit_logs 가 67 -> 70 -> 67 — 구현자의 PG 시험(test_ledger_v2_pg.py, 03:13)이 쓴 3 행과 누군가의 지움. 제 판 것 아님(구현자 확인)
+```
