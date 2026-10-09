@@ -65263,3 +65263,30 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
    둘 다 위 두 변이에서 빨강을 보고 착지
 응용 QA ① 판정  은퇴한 칸은 «읽고 알리고», 값으로 거절하지 않는다 — run_in 값 검사(「must be one of chain, operation」)를 은퇴. 「later」 같은 값도 알림 한 줄 + 체인에서 돎. 게이트 한 칸 + 변이
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 — 이 절이 043915ab0 의 줄 3(replay chunk_size)과 597664fb3 의 «줄 3 과 같은 커밋»을 대신한다. 순서는 그대로 LLM 선언 파일 다음**
+
+```
+찾은 것(총괄이 코드로 읽음)  53bdedde9 의 게이트는 «운영이 만들지 않는 모양»에서 초록이다
+   시험 _write 가 outbox_mode(OUTBOX_MODE_PER_ROW) — 글 하나 = 이벤트 하나를 «강제»한다
+   운영에서 글이 들어오는 길 셋은 전부 OUTBOX_MODE_COLLAPSED — 수집기(directory_watcher) · 그리드/API 저장(main.apply_batch_updates_endpoint) · 체인 쓰기(ingestion_worker)
+      + 소급 넣기(chain/rule_run.py)도 collapsed
+   database.py 의 접기 문은 한 flush 를 OUTBOX_COLLAPSE_CHUNK_ROWS(1,000) 씩 이벤트로 접는다 · trim_events_to_row_budget 는 이벤트를 쪼개지 않는다
+   -> 운영에서 파일 하나 · 붙여넣기 한 번으로 들어온 글 N 개(≤1,000)는 이벤트 하나 = 묶음 하나. rows_per_run 1 이 아무 일도 안 한다
+도착지  「rows_per_run 을 적은 규칙이 깨우는 표는 그 수(여럿이면 가장 작은 것)로 이벤트를 접는다 · 아니면 지금처럼 1,000 · only_rule 이벤트는 그 규칙의 수」
+   자리는 database.py 접기 문 «하나» — 수집 · 그리드 · 체인 · 소급이 모두 지나므로 replay chunk_size 를 따로 고치지 않는다
+   rows_per_run(rule) 함수 하나를 접기 문과 _rows_cap 이 같이 부른다(둘째 해석 금지). 묶음 자르기(_rows_cap)는 그대로 둔다 — 하나는 «이벤트 크기», 하나는 «한 묶음이 받는 행 수»
+제약
+   A  쓰기 경로가 값을 치르지 않는다 — 규칙은 이미 캐시된 읽기로(flush 마다 파일 읽기 0). database.py 가 chain.* 를 import 하면 고리 — 만들지 않는다
+      (event_constants 가 이미 규칙 문서를 읽는 자리(max_chain_depth)가 있다 — 그 근처에서 찾기)
+   B  재고 적는다 — 글 1 만 행 파일 하나: 이벤트 수 · 묶음 수 · 묶음당 배관 시간(박스) · 대기열 «줄» 수(줄 키는 run_id/transaction_id 라 안 늘어야 — 세어서)
+게이트(같은 커밋)
+   ① 한 flush(collapsed, 그리드 저장의 모드)로 글 셋 · rows_per_run 1 · 하나 틀린 답 -> 그 글만 FAILED · 둘은 후보 행
+   ② 대조군: 같은 flush · rows_per_run 없음 -> 셋 다 실패
+   ③ 소급 넣기(only_rule) 글 셋 -> 이벤트 셋
+   ④ rows_per_run 규칙을 안 깨우는 표의 flush -> 이벤트 크기 1,000 그대로
+   ⓐ ⓑ(597664fb3) — 안 깨우는 이벤트는 안 잘림 · 두 규칙 1 과 5 -> 1
+   은퇴한 칸은 값으로 거절하지 않음(597664fb3) — 한 칸 + 변이
+   변이  접기 문이 1,000 고정 -> ① 빨강 · _rows_cap 의 fires 지움 -> ⓐ 빨강 · min->max -> ⓑ 빨강
+같은 커밋  chain_rules.md · TEXT_LINKS_GUIDE §6 · RUN.md 의 「한 묶음에 넣은 이벤트는 쪼개지 않는다」 문장을 «파일 · 붙여넣기도 글마다»로 고침 · RELEASE_LOG
+```
