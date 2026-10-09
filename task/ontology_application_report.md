@@ -37949,3 +37949,17 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
 안 잰 것  구현자가 짚은 길 — run_chain_worker.py import 때 스키마 동기화(첫 박동 앞)는 이번에 안 붙잡았습니다
 표       일요일 표 ① 에 기동 중 · 기동 끝 볼 줄(319241d8b)
 ```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 5b-2(스키마 동기화가 기동 단계, 40d94309b) 됩니다 · 일요일 ⓪ 의 새 칸에 볼 줄 하나
+
+```
+모양   운영 런처 · a12771b7c · 스크래치 assy_app_reread_beat2 · public 변화 0 · 스키마 지움 · 구현자와 차례 · 두 판 같은 답
+붙잡기  띄워서 ok 뒤, 설정에 hb_tab.added_col 을 더하고 한 연결이 hb_tab 을 연 트랜잭션으로 쥠 -> 체인 워커만 죽임(감독자가 다시 띄움)
+/health  죽인 뒤 3.2 s 에 starting · «heartbeat was written by pid <옛 pid>, not by the supervised pid <새 pid>»(import 동안)
+         5.3 s 부터 «starting: sync_dynamic_tables_schema, N s» N = 36 · 35 까지 -> ok · foreign_beat 0
+기동 끝   «[Chain] startup … sync_dynamic_tables_schema 36.1 · 35.6 s …»
+칸       붙잡힌 ALTER 는 넘어갔고 칸은 안 생김 — «column 'added_col' was not added to 'hb_tab' - another session held the table past 20s. Retried at the next start or config save»
+뜻(일요일) ⓪ 에서 로그 표에 fold_mark 를 더하고 재기동할 때 그 표를 누가 쥐고 있으면 같은 줄이 난다 — 표 ① 에 그 줄과 «한 번 더 재기동»(e64bdc91d)
+```
