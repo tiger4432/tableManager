@@ -393,7 +393,10 @@ export function updateOffscreenIndicator() {
   if (!bar) return;
   const count = offscreenColumnCount(state.gridApi);
   const badge = elements.offscreenCols;
-  if (badge) {
+  // Written only when the count moves: this runs on every scroll frame, and the same words written again there
+  // re-styled the grid's section each frame (lead 10-09). The badge holds the count it last said.
+  if (badge && badge.dataset.count !== String(count)) {
+    badge.dataset.count = String(count);
     // Saying it is the whole point. A column that scrolled out of view with nothing on
     // screen to say so reads as a column that is GONE, and the next question is asked of
     // the table config rather than of the scrollbar.
