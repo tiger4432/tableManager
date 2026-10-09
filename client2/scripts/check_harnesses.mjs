@@ -1473,7 +1473,7 @@ const FLOORS = new Map([
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
-  ['walk_table_harness.mjs', 45],
+  ['walk_table_harness.mjs', 48],   // + Q1-Q2 and QM1: several edges into one node keep every value (lead 10-09)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

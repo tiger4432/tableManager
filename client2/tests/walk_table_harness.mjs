@@ -387,6 +387,31 @@ await suite(first.module);
 console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline: ${ran} assertions, `
   + `${failures.length} failure(s)`);
 failures.forEach((f) => console.log(`   x ${f}`));
+// ── Q: several edges into one node keep every value (lead 10-09, demo ①: the cell said the last edge's alone) ──
+const TWO = {
+  nodes: [
+    { id: 'q:1', type: 'die@1', label: 'D-1', depth: 1, keys: { mat_id: 'M-1' } },
+    { id: 'q:a', type: 'wafer@1', label: 'W-1', depth: 0, keys: { wafer: 'A' } },
+    { id: 'q:b', type: 'wafer@1', label: 'W-2', depth: 0, keys: { wafer: 'B' } },
+  ],
+  edges: [
+    { id: 'q:e1', source: 'q:a', target: 'q:1', predicate: 'inspected', qualifiers: { gate: 7 } },
+    { id: 'q:e2', source: 'q:b', target: 'q:1', predicate: 'inspected', qualifiers: { gate: 9 } },
+  ],
+};
+const gateCell = (TV, answer) => {
+  const die = TV.walkTableView(answer, DECL.entities, DECL.predicates).sections.find((s) => s.type === 'die@1');
+  const at = die.columns.findIndex((c) => c.kind === 'qualifier' && c.key === 'gate');
+  return die.rows[0].cells[at];
+};
+const qualifierSuite = (TV) => {
+  const two = gateCell(TV, TWO);
+  ok('Q1 two edges into one node: the cell says both values and whose', two.text === '2 edges · 7 (W-1) · 9 (W-2)', two.text);
+  const one = gateCell(TV, RESULT);
+  ok('Q2 one edge: the value as it came, a number', one.text === '7' && one.numeric === true, JSON.stringify(one));
+};
+qualifierSuite(await import('../src/walk/table_view.js'));
+console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${ran} assertions`);
 const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
@@ -486,8 +511,27 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
   { mustCatch: false, baselineRan: base.ran, baselineNames: base.names,
     title: `${LF}== controls (each must wake NOTHING) ==` });
 
-const scored = MUTANTS.length - defects.wrong - controls.wrong;
-console.log(`${LF}  ${scored}/${MUTANTS.length} scored as intended.`);
-const failed = base.failed + (MUTANTS.length - scored);
-console.log(`ASSERTIONS ${base.ran + MUTANTS.length} ${failed}`);
+// table_view.js's own: the fold of several edges into one node.
+const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
+const TV_MUTANTS = [
+  { id: 'QM1', what: 'several edges into one node: the last edge\'s value wins again', catches: 'Q1',
+    from: "      said[name] = list.length === 1 ? list[0].value\n", to: "      said[name] = list.length >= 1 ? list[list.length - 1].value\n" },
+];
+const tv = await scoreMutants(TV_MUTANTS, async (m) => {
+  ran = 0; NAMES.length = 0; failures = [];
+  const loaded = await loadWithProbe(TV_SRC, {
+    mutate: (text) => {
+      if (!text.includes(m.from)) throw new Error(`mutation anchor is GONE: ${m.id}`);
+      return text.split(m.from).join(m.to);
+    },
+  });
+  qualifierSuite(loaded.module);
+  return { ran, names: NAMES.slice(), failures: failures.slice() };
+}, { baselineNames: base.names, title: `${LF}== table_view mutants (each must be CAUGHT by the check it names) ==` });
+
+const all = MUTANTS.length + TV_MUTANTS.length;
+const scored = all - defects.wrong - controls.wrong - tv.wrong;
+console.log(`${LF}  ${scored}/${all} scored as intended.`);
+const failed = base.failed + (all - scored);
+console.log(`ASSERTIONS ${base.ran + all} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

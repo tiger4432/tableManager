@@ -50,18 +50,34 @@ export function isNumericText(text) {
  * 🔴 `target` 쪽에«만» 답니다. 씨앗 쪽에도 달면 씨앗 하나가 자기에게 닿은 «모든» 엣지의
  *    수식어를 다 이고 다니게 되고, 그러면 씨앗 행이 자기 것이 아닌 값을 보여 줍니다.
  * ⚠️ 양쪽 id 에 «자리»는 만듭니다 — 「닿았는데 수식어가 없다」와 「안 닿았다」는 다릅니다.
+ * 🔴 한 노드에 닿은 변이 여럿이면 «덮어쓰지 않습니다»(총괄 10-09: 마지막 변의 값만 남아 틀린 수를 보였다).
+ *    그 이름이 변 하나에서 오면 그 값, 여럿에서 오면 «N edges · 값 (누구의 값) · …» 한 줄입니다.
+ *    누구 = 변의 출발 노드의 `label`(응답의 이름).
  */
-export function qualifiersByNode(edges) {
-  const byNode = new Map();
+export function qualifiersByNode(edges, nodes = []) {
+  const labelOf = new Map((nodes || []).map((n) => [n.id, n.label || n.id]));
+  const got = new Map();
   for (const edge of edges || []) {
     const quals = edgeQualifiers(edge);
     if (!quals) continue;
     for (const id of [edge.target, edge.source]) {
-      if (!id || !byNode.has(id)) byNode.set(id, byNode.get(id) || {});
+      if (id && !got.has(id)) got.set(id, new Map());
     }
-    const at = byNode.get(edge.target) || {};
-    Object.assign(at, quals);
-    byNode.set(edge.target, at);
+    const at = got.get(edge.target);
+    if (!at) continue;
+    for (const [name, value] of Object.entries(quals)) {
+      if (!at.has(name)) at.set(name, []);
+      at.get(name).push({ value, from: labelOf.get(edge.source) || edge.source });
+    }
+  }
+  const byNode = new Map();
+  for (const [id, names] of got) {
+    const said = {};
+    for (const [name, list] of names) {
+      said[name] = list.length === 1 ? list[0].value
+        : `${list.length} edges · ${list.map((v) => `${valueText(v.value)} (${v.from})`).join(' · ')}`;
+    }
+    byNode.set(id, said);
   }
   return byNode;
 }
@@ -94,7 +110,7 @@ export function qualifierNamesOf(nodes, byNode) {
 export function walkTableView(result, entities, predicates = [], cap = ROW_CAP) {
   const nodes = (result && result.nodes) || [];
   const shown = nodes.slice(0, cap);
-  const byNode = qualifiersByNode((result && result.edges) || []);
+  const byNode = qualifiersByNode((result && result.edges) || [], nodes);
   const sections = [];
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
