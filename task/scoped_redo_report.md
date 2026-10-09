@@ -78028,3 +78028,69 @@ run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) —
 돌린 시험 복사 매퍼를 쓰는 파일 5 개 — 비-PG 24 passed, 34 deselected, 10 warnings in 2.62s · PG 34 passed, 11 deselected, 68 warnings in 242.96s (0:04:02)
 다음     7b 원장 해시 인덱스
 ```
+
+---
+
+## [10-10 새벽] 7b 원장 ref 해시 인덱스 · 거두기 한 장 크기 — 착지 e8baa5243 (총괄 7b · ⓑ ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 진짜 프로세스: assy_test 스크래치 assy_impl_ref_1010(지움) · 시험: isolated_pg 스크래치 + 가지 세계 w_ref7b(시험이 지움)
+🔴 public: 제 앞선 PG 묶음(03:06~03:13)이 기존 시험 tests/test_ledger_v2_pg.py 로 public.audit_logs 에 3 행을 흘림(응용 레인이 찾음) -> 총괄 지시로 그 셋만 지움
+   database assy_test · public.audit_logs 70 -> 67 · ids [580081, 580082, 580083] / COMMIT · 같은 판 public 대조 public relations 325 -> 325 · added [] · gone [] · rows changed {'audit_logs': (70, 67)}
+
+```
+지은 것  세워 둔 87ef0e725(온라인 파티션 짓기 · 스크립트 · ensure_schema 의 부모 ON ONLY)를 가져와
+        이름 idx_ledger_events_source_raw_ref_hash · 파티션 이름 <파티션>_ref_hash(소유자께 드린 SQL 과 같음)
+        붙음은 pg_inherits 로 — 반쯤 돌린 상태(부모만 · 만들고 안 붙인 파티션)를 이어 받음: 같은 이름의 valid 인덱스는 «붙이기만», 그렇게 말하고 따로 셈
+        거두기 한 장 크기를 고르는 자리 하나 backfill.stale_page_refs — 부모 valid 면 1,000 · 아니면 50,000 + 스크립트 명령, 로그 한 줄
+        원장 기동 DDL 오라클에 부모 문장 둘(새 설치) · 확인 하나(기존 설치)
+```
+
+```
+진짜 따로 띄운 CLI — 스크래치 원장을 소유자 SQL 반쯤 돌린 상태로 두고
+  the owner's SQL halfway: parent idx_ledger_events_source_raw_ref_hash ON ONLY, ledger_events_2026_09_ref_hash made and not attached, ledger_events_2026_10 without
+  == before
+    ledger_events_2026_09: ledger_events_2026_09_ref_hash (not attached)
+    ledger_events_2026_10: none
+    parent idx_ledger_events_source_raw_ref_hash valid: False
+  == whole-source of a name the declaration does not have, --apply (before the script)
+  [Ledger] idx_ledger_events_source_raw_ref_hash missing or not valid - 50000 refs a page, each reads the whole ledger; build it: python server/scripts/build_ledger_ref_index.py --apply --world default
+  == the script, preview
+  ledger_events_2026_09: would attach the ledger_events_2026_09_ref_hash already there
+  ledger_events_2026_10: would build ledger_events_2026_10_ref_hash CONCURRENTLY and attach it
+  ledger_events: 0 partition(s) built, 0 attached as they were, 0 already had it, 1 would be built, 1 attached as they are (add --apply) - the parent index is not valid yet
+  == the script, --apply
+  ledger_events_2026_09: attached the ledger_events_2026_09_ref_hash already there · 32768 bytes
+  ledger_events_2026_10: built ledger_events_2026_10_ref_hash in 0.0 s · 32768 bytes · attached
+  ledger_events: 1 partition(s) built, 1 attached as they were, 0 already had it - the parent index is valid
+  == after
+    ledger_events_2026_09: ledger_events_2026_09_ref_hash (attached)
+    ledger_events_2026_10: ledger_events_2026_10_ref_hash (attached)
+    parent idx_ledger_events_source_raw_ref_hash valid: True
+  == whole-source again, --apply
+  [Ledger] idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page
+  == the script, --apply again
+  ledger_events: 0 partition(s) built, 0 attached as they were, 2 already had it - the parent index is valid
+  dropped schema assy_impl_ref_1010 (63 tables) - left 0
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+```
+
+```
+변이(PG, md5 전후 같음, 빨강 = 실패한 시험)
+  baseline | 1 passed, 6 warnings in 2.40s
+  M1 the script names partitions <index>_<month> | md5 restored True | 1 failed, 6 warnings in 3.06s
+      FAILED test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it
+  M2 the page is 1,000 whatever the index | md5 restored True | 1 failed, 6 warnings in 2.60s
+      FAILED test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it
+  M3 an index there reads as valid | md5 restored True | 1 failed, 6 warnings in 2.68s
+      FAILED test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it
+돌린 시험 원장 조각을 부르거나 읽는 파일 32 개(test_ledger_v2_pg.py 뺌) — 비-PG 182 passed, 122 deselected, 11 warnings in 26.23s
+         PG 3 failed, 116 passed, 182 deselected, 109 warnings in 423.01s (0:07:03) · public 대조 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+         실패 test_an_install_that_predates_attributes_is_widened_once, test_two_independent_refusals_are_counted_and_named_in_one_run, test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+         같은 파일 · 같은 순서를 HEAD 의 파일로(제 새 시험 뺌) — 3 failed, 115 passed, 182 deselected, 109 warnings in 416.93s (0:06:56) · 같은 셋: 예 — 이 착지 전부터 있던 것
+         (원장 L1 둘은 「source … is not declared in shipped_ledger_…」, 등록 칸 하나는 혼자 돌리면 초록 — 앞 시험이 남긴 원자가 옛 제약을 어김)
+```
+
+```
+일요일   응용 레인이 리허설에 ⑧ 앞 «스크립트 미리보기 -> --apply» 를 넣어 두 판(인덱스 없음 · 소유자처럼 먼저 지어 둔 판)을 돌림
+다음     지시서 순서의 끝 — 6(표 선언 인덱스)은 시연 뒤
+```
