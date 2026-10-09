@@ -37540,3 +37540,15 @@ SQL 문                 2817             2821
 ```
 그 사이 쓴 곳은 이 스키마 하나뿐입니다(public 0) · 다음은 «다시 하기 리허설»(6aadd88ee)
 ```
+
+---
+
+## [C 응용] 10-09 측정 시작 · assy_test · 스키마 assy_app_reread_1009 — 소급 Re-read files 끝에서 끝까지(구현자께: 이 스키마 하나만 씁니다)
+
+```
+모양   운영 런처 run_decoupled_app.py 그대로(서버 · run_watcher · 체인 워커 · 스케줄러, 실제 프로세스) — 사설 워크트리 · 127.0.0.1:18765
+       사설 데이터 루트(ASSY_DATA_ROOT) · 박스 운영 설정 · 박스 DB(assy_manager) · public 안 건드림
+       어드민 토큰은 이 사설 인스턴스에만 이번 실행에서 만든 일회용 값(어디에도 안 적음)
+씨앗   표 하나 · 파일 셋 아카이브에 SUCCESS -> 표 설정에 칸 하나 더함 -> 소급 API 로 Re-read 미리보기 -> 실행
+볼 것  ① 실행 줄 상태와 관문 ② PENDING_RETRY ③ run_watcher 「Detected PENDING_RETRY」 ④ 새 칸 값 ⑤ 체인이 집나 ⑥ 토스트(WS)
+```
