@@ -37895,3 +37895,17 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
 남은 것  운영 이름(빈칸) · 구현자 3 · 5 · 6 · 7 이 착지하면 그 줄 · base 두 웨이퍼 id(빈칸)
 덤      설계 레인 요청으로 시연 인스턴스를 18766 에 «서버만» 띄워 두었습니다(체인 워커 없음) — «끝»을 받으면 내립니다
 ```
+
+---
+
+## [C 응용] 10-10 02ffdb968(경로가 시작 타입으로 돌아옴) 진짜 서버에서 — 박스 선언으로는 누르기가 코어 웨이퍼에 안 닿습니다 · 표 ② 는 follow 비움 그대로
+
+```
+모양   016707766 클라 빌드 · 서버만(체인 워커 없음) · 박스 원장 조각 · 내장 브라우저로 걷기 화면 · public 변화 0 · 스키마 셋 지움
+누른 것 -> 본 것   Type wafer · 불량 base · Collect wafer -> ROUTE TO WAFER 경로 넷
+                  «wafer → die → wafer · in_container» + «↻ transfer» -> wafer 1 개(base 뿐)
+                  follow 비움 -> 깊이 3 코어 웨이퍼 30 · 0.775 s
+까닭(박스 읽기만)  transfer 의 끝은 운반 자리(DTLotSlot) 141 개, 그 다이는 다른 원자가 없음 · 코어 웨이퍼는 bonded_from 으로 닿는데
+                  bonded_from 소스가 뷰를 읽어 거절돼 follow · 경로 목록에 없음. 운영 선언은 못 봤습니다
+표                일요일 표 ② 에 «누르기로는 안 닿는다» 두 줄(db37f3b6d) — 착지의 결함은 아닙니다, 판정은 총괄
+```
