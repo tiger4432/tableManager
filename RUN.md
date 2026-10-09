@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **파일 다시 읽기는 실패 재시도 문의 statuses — 소급 «Re-read files» 은퇴 (총괄 a4d135a06) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 화면           파일 인입 화면 Retry(폴더 · 미리보기)의 «Include files that went in» 토글 — 클라 레인이 붙인 뒤
+> 그 전 명령줄    운영 서버 PowerShell · 토큰은 본인 것
+>   미리보기      curl.exe --noproxy "*" -X POST -G "http://127.0.0.1:8080/admin/file-ingestion/retry-failed" -H "X-Admin-Token: <토큰>" --data-urlencode "statuses=SUCCESS,FAILED,SKIPPED" --data-urlencode "folder=<폴더>" --data-urlencode "preview=true"
+>   실행          같은 명령에서 preview 줄만 뺀다 (since / until 도 같은 모양: --data-urlencode "since=2026-10-09 18:00")
+> 답의 뜻         count = 넘길 파일 · by_state = 상태별 · by_folder = 바로 아래 폴더별
+>                missing = 기록이 말하는 자리에 없어 안 넘긴 수 · missing_files = 그 앞 다섯 이름
+>                실행 답 «N file(s) handed to the watcher» = 요청 안에서 PENDING_RETRY 로 표시함 (기다리지 않는다)
+> 볼 줄          watcher.log: Detected PENDING_RETRY log ID #<id> (<파일>). Processing... -> File processed: <파일> (SUCCESS) for <표>. -> Retry succeeded for log ID #<id>.
+>                화면에는 보통 인제션과 같은 토스트 (다시 읽기는 [resume-abort] … 재처리(force) 문장을 같이 싣는다)
+> 관문           소급 관문을 안 잡는다 — replay 가 돌아도 바로 표시되고, 다시 읽기가 replay 를 안 막는다
+> statuses 없음   오늘과 같은 실패 재시도(FAILED 만, 자리에 없는 파일도 넘김)
+> 소급 탭         «Re-read files» 는 없어졌다 — 옛 실행 기록은 «reread_files (retired)»
+> 급할 때         git revert <이 커밋> -> 서버 재기동
+> ```
+
+---
 > ## [10-09] **회수가 드러낸 값을 «접힌 사건»으로 내고, 이미 쌓인 회수의 행마다 사건을 한 명령으로 접는다 (총괄 eddf9e38e) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```
@@ -17,23 +36,6 @@
 > 재기동 뒤       회수 사건이 표마다 1,000 행에 하나 — python -m ledger followup 의 따라갈 일에 회수 때문에 «EDIT 한 행»이 쌓이지 않는다
 > 바뀐 깨움       회수 사건이 바꾼 칸 이름을 싣는다 — 그 칸을 깨움 칸으로 안 가진 규칙 · 그 칸을 안 읽는 원장 소스는 회수에 안 깬다(다른 접힌 쓰기와 같은 규칙)
 > 급할 때         git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 접은 사건은 그대로 돈다)
-> ```
-
----
-> ## [10-09] **소급 «Re-read files» — 파서를 바꾼 뒤 이미 들어간 파일을 워처가 지금 파서로 다시 읽는다 (총괄 976defaac) — 이주 «없음» · 재기동 «서버»(소급 탭에 새 연산)**
->
-> ```
-> 순서           소급 탭 «Re-read files» -> table(필수) · folder · since/until(YYYY-MM-DD[ HH:MM]) · statuses(기본 SUCCESS,FAILED,SKIPPED)
->               -> 미리보기 -> 실행
-> 미리보기 뜻      N file(s) will be read again by the watcher, one at a time, from where they lie, with today's parser - by state: … By folder: …
->               K file(s) are not where their record says and are not handed over: <이름> …   = 그 파일은 안 넘긴다
->               마지막 두 문장: 옛 키 행은 남는다 · 소급 관문을 마지막 파일까지 붙든다
-> 거절           the watcher is not running - start it, then run this again   = run_watcher 를 띄우고 다시
-> 많을 때         소급은 한 번에 하나 — 그동안 접기 · replay 가 기다린다. 큰 폴더는 하위 폴더로 나눠 여러 번
-> 진행           100 개씩 넘기고 그 쪽이 다 읽히면 다음 쪽. 진행률 = 읽힘 / 넘길 파일
-> 멈추기          × -> 지금 쪽에서 워처가 아직 안 집은 기록이 원래 상태로(실행 기록 marked_rows 에 id · 원래 상태)
-> 볼 줄          watcher.log: Detected PENDING_RETRY log ID #<id> (<파일>). Processing... -> Retry succeeded for log ID #<id>.
-> 파일 하나만      «읽었음» 기록만 지워 다음 훑기에 맡기기는 그대로 server/scripts/replay_ingestion.py --path
 > ```
 
 ---

@@ -347,16 +347,16 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 
 **끈 상태 확인:** 등록 때 워처 로그에 `External sources declared: N (M disabled).` 한 줄이 남습니다. `enabled: false` 항목은 통과도 거절도 아니어서 종전에는 「선언 안 함」과 「꺼 둠」이 로그에서 구분되지 않았습니다. 항목별 판정은 `conda run -n assy_manager python server/scripts/check_external_sources.py`가 그대로 보여 줍니다.
 
-## 1.12-ter 파서를 바꾼 뒤 이미 들어간 파일을 다시 읽기 — 소급 «Re-read files» (2026-10-09)
+## 1.12-ter 파서를 바꾼 뒤 이미 들어간 파일을 다시 읽기 — 실패 재시도 문의 `statuses` (2026-10-09)
 
-파서(워크스페이스 `scripts/` · 외부 소스의 `options` · `table_config` 의 칸)를 바꾼 뒤, 이미 들어간 파일을 **있던 자리에서**(아카이브든 외부 경로든) 지금 파서로 다시 읽힙니다(총괄 976defaac).
+파서(워크스페이스 `scripts/` · 외부 소스의 `options` · `table_config` 의 칸)를 바꾼 뒤, 이미 들어간 파일을 **있던 자리에서**(아카이브든 외부 경로든) 지금 파서로 다시 읽힙니다. 문은 실패 재시도와 같은 하나입니다 — POST `/admin/file-ingestion/retry-failed`(총괄 a4d135a06).
 
-- 소급 탭 «Re-read files» 에 `table` 을 적고, 고를 것이 있으면 `folder`(그 폴더 «아래» — `A` 는 `AB` 를 안 잡음) · `since` / `until`(인입 시각, `YYYY-MM-DD` 또는 `YYYY-MM-DD HH:MM`) · `statuses`(적지 않으면 SUCCESS · FAILED · SKIPPED)를 적습니다.
-- 미리보기가 다시 읽힐 파일 수(상태별 · 바로 아래 폴더별), 기록이 말하는 자리에 없는 파일 수와 앞 다섯 이름을 말합니다. 한 파일을 여러 번 읽었으면 가장 새 기록 하나만 다시 읽힙니다.
-- 실행하면 워처가 그 파일들을 **하나씩** 읽습니다 — 실패 재시도와 같은 길(`PENDING_RETRY` → 워처의 그 표 핸들러)이고, dedup 을 건너뜁니다(내용이 같아도 다시 읽음). 100 개씩 넘기고 그 쪽이 다 읽히면 다음 쪽을 넘깁니다.
-- ⚠️ 소급은 한 번에 하나라서, 마지막 파일이 읽힐 때까지 다른 소급(접기 · replay …)이 기다립니다 — 큰 폴더는 나눠서 돌립니다.
+- `statuses`(쉼표 — 들어간 파일까지면 `SUCCESS,FAILED,SKIPPED`, 적지 않으면 FAILED 만 = 실패 재시도) · `folder`(그 폴더 «아래» — `A` 는 `AB` 를 안 잡음) · `since` / `until`(인입 시각, `YYYY-MM-DD` 또는 `YYYY-MM-DD HH:MM`) · `preview`.
+- 미리보기(`preview=true`)가 다시 읽힐 파일 수 `count` · 상태별 `by_state` · 바로 아래 폴더별 `by_folder`, 기록이 말하는 자리에 없는 파일 수 `missing` 과 앞 다섯 이름 `missing_files` 를 말합니다. 한 파일을 여러 번 읽었으면 가장 새 기록 하나만 다시 읽힙니다.
+- 실행하면 요청 안에서 그 기록들을 `PENDING_RETRY` 로 표시하고(«N file(s) handed to the watcher»), 워처가 **하나씩** 읽습니다 — 워처의 그 표 핸들러로, dedup 을 건너뛰고(내용이 같아도 다시 읽음), 끝나면 보통 인제션과 같은 토스트가 옵니다.
+- 소급 관문을 안 잡습니다 — replay 가 돌아도 다시 읽기가 기다리지 않고, 다시 읽기가 replay 를 막지 않습니다.
 - ⚠️ 파서가 업무키를 바꾸면 옛 키의 행은 남습니다(업서트라 새 키 행이 따로 섭니다).
-- 멈추면(×) 지금 쪽에서 워처가 아직 안 집은 기록이 원래 상태로 돌아갑니다. 워처가 안 뛰면 «the watcher is not running - start it, then run this again» 으로 거절됩니다.
+- ⚰️ 소급 «Re-read files»(976defaac)는 은퇴했습니다 — 옛 실행 기록은 목록에 `reread_files (retired)` 로 남습니다.
 - 파일 하나의 «읽었음» 기록만 지워 다음 훑기에 맡기는 길은 그대로 `scripts/replay_ingestion.py --path` 입니다.
 
 ---
