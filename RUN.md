@@ -97,6 +97,21 @@
 >
 > ---
 >
+> ## [10-10] **체인 워커 기동 중엔 /health 가 «starting: <단계>, N s» — 1 분 넘는 기동이 foreign_beat 로 안 읽힌다 (총괄 bdb356d3f 5b) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 순서        pull -> 체인 워커 · 서버 재기동 (서버는 /health 판정이 바뀌어서)
+> 기동 중      /health  checks.workers.chain  status starting · detail "starting: <단계>, <N>s"  (CHAIN 뱃지 title 도 같은 문장)
+>             단계 이름은 함수 이름(앞 _ · 끝 _sync 뗌). 전부는 기동 끝 줄이 댄다
+> 기동 끝      chain_worker.log  [Chain] startup <합> s - <단계> <초> s · ...   <- 「왜 1분이나 걸려」의 답 = 초가 가장 큰 단계
+> 뜻          60 s 를 넘어도 그 단계 중이면 starting. 같은 단계의 N 이 계속 늘면 그 단계가 막힌 것(DDL 이면 앞선 질의 뒤)
+>             foreign_beat 는 이제 «감독자가 띄우지 않은 pid 가 chain 박동을 씀» — 둘째 체인 워커를 찾는다
+> 둘째 워커    살아 있는 다른 루프의 박동이 있으면 보정 «전»에 물러난다: [Chain Worker] NOT starting: another chain loop is already running (pid ...)
+> 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-09] **출처가 하나도 안 남은 행은 행째 지운다 — 체인 키만 남은 «껍데기» (총괄 5eee501eb · 판정 ㄱ) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```

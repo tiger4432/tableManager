@@ -172,6 +172,17 @@ def test_pid_mismatch_inside_the_startup_grace_is_only_degraded():
     assert payload["checks"]["workers"]["watcher"]["status"] == "starting"
 
 
+def test_another_pids_starting_beat_past_the_grace_is_foreign_beat():
+    """총괄 bdb356d3f 5b: `starting` is the worker's own word - a second chain worker saying it
+    does not speak for the supervised one."""
+    payload, code = run(
+        hbs={"chain": dict(fresh(), pid=999, state="starting", note="ensure_ledger_schema")},
+        sup=supervisor_status({"Chain": running("chain", pid=101,
+                                                uptime=health_mod.STARTUP_GRACE_SEC + 1)}))
+    assert code == 503
+    assert payload["checks"]["workers"]["chain"]["status"] == "foreign_beat"
+
+
 def test_matching_pid_is_the_control():
     """Same shape as the two tests above, differing only in the pid - so their
     failure really is caused by the mismatch."""

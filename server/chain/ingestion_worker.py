@@ -4617,14 +4617,49 @@ def _end_queries_a_gone_chain_worker_left_sync(db_session_factory):
         conn.commit()
 
 
+def _starting(steps, step):
+    """`step` as one startup step said in the beat (총괄 bdb356d3f 5b): `starting` and the step's
+    name, written as it begins - a startup that takes a minute reads as that step, not as the
+    dead predecessor's pid (`foreign_beat`). The beat's time is the step's start, so `/health`
+    counts its seconds; they also go into `steps` for the line at the end of startup."""
+    name = step.__name__.strip("_").removesuffix("_sync")
+
+    def run(*args):
+        started = time.time()
+        heartbeat.beat("chain", note=name, force=True, state="starting")
+        try:
+            return step(*args)
+        finally:
+            steps.append((name, time.time() - started))
+    return run
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     from runtime import system_reload
 
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
+    # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
+    # pick the same rows up twice and write one heartbeat file between them, so neither
+    # "is the chain alive" nor "which code is running" has an answer. Standing down
+    # SILENTLY would be the worse half of that - a process that does nothing and says
+    # nothing is indistinguishable from one that is working.
+    # ⚠️ BEFORE THE FIRST BEAT (32c1c23e5's seat; 총괄 bdb356d3f 5b): it reads the chain's beat,
+    #   and from the first beat on that beat is this process's own - a second process would
+    #   read itself and not stand down.
+    _other = another_chain_loop_is_running()
+    if _other:
+        logger.warning(
+            "[Chain Worker] NOT starting: another chain loop is already running (%s). "
+            "This process will not consume the outbox. Two loops on one queue pick the "
+            "same rows up twice and share one heartbeat, so neither can be observed. "
+            "If this is the process you meant to run, stop the other one first.", _other)
+        return
+    steps = []
+
     # First, before any startup work can queue behind them.
     try:
-        await asyncio.to_thread(_end_queries_a_gone_chain_worker_left_sync,
+        await asyncio.to_thread(_starting(steps, _end_queries_a_gone_chain_worker_left_sync),
                                 db_session_factory)
     except Exception as exc:
         logger.error("[Chain] could not look for database queries a gone chain worker left "
@@ -4633,7 +4668,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # 🔴 BEFORE ANY LEDGER LOOP STARTS (S-88). Both loops below write to the ledger, and
     # one of them was added the same day this gap was found.
     try:
-        await asyncio.to_thread(_ensure_ledger_schema_sync, db_session_factory)
+        await asyncio.to_thread(_starting(steps, _ensure_ledger_schema_sync), db_session_factory)
     except Exception as exc:
         logger.error("[Ledger] the ledger schema could not be ensured, so a column that "
                      "landed in code may be missing here: %s", exc)
@@ -4641,14 +4676,14 @@ async def start_chain_ingestion_worker(db_session_factory):
     # ensure above may have added the very column this reads, and both ledger loops below
     # refuse to run against a cursor whose fingerprint does not match.
     try:
-        await asyncio.to_thread(_restamp_moved_fingerprints_sync, db_session_factory)
+        await asyncio.to_thread(_starting(steps, _restamp_moved_fingerprints_sync), db_session_factory)
     except Exception as exc:
         logger.error("[Ledger] cursor fingerprints could not be re-stamped, so a source "
                      "whose declaration did not change may still refuse to run: %s", exc)
     # \U0001f534 판정 189. Separate from the ensure above because it STRENGTHENS: it can
     # refuse, and a refusal is a number an operator has to see rather than an error.
     try:
-        await asyncio.to_thread(_ensure_business_key_unique_indexes_sync,
+        await asyncio.to_thread(_starting(steps, _ensure_business_key_unique_indexes_sync),
                                 db_session_factory)
     except Exception as exc:
         logger.error("[Ledger] the business-key unique indexes could not be ensured, "
@@ -4657,7 +4692,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # depends on has to appear - the reload path alone leaves a restarted deployment
     # scanning.
     try:
-        await asyncio.to_thread(_ensure_alignment_decision_key_indexes_sync,
+        await asyncio.to_thread(_starting(steps, _ensure_alignment_decision_key_indexes_sync),
                                 db_session_factory)
     except Exception as exc:
         logger.error("[Chain] the alignment decision-key indexes could not be ensured, "
@@ -4665,7 +4700,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # 🔴 판정 245-b. Same seat, opposite direction: this one exists so a btree can come OFF
     # the cell write, which is the ingestion path's largest cost.
     try:
-        await asyncio.to_thread(_ensure_human_claims_index_sync, db_session_factory)
+        await asyncio.to_thread(_starting(steps, _ensure_human_claims_index_sync), db_session_factory)
     except Exception as exc:
         logger.error("[Chain] the human-claims index could not be ensured, so an "
                      "interactive withdraw may scan instead: %s", exc)
@@ -4673,7 +4708,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # lacks is invisible until a query is slow, and the grid's page query is the one that
     # goes slow.
     try:
-        await asyncio.to_thread(_ensure_dynamic_table_indexes_sync, db_session_factory)
+        await asyncio.to_thread(_starting(steps, _ensure_dynamic_table_indexes_sync), db_session_factory)
     except Exception as exc:
         logger.error("[Chain] the dynamic-table indexes could not be ensured, so a table "
                      "older than the declaration may still sort instead of scanning: %s",
@@ -4683,24 +4718,10 @@ async def start_chain_ingestion_worker(db_session_factory):
     # loaded before any of this landed still plans against statistics from before those
     # rows, which is what the owner is looking at.
     try:
-        await asyncio.to_thread(_analyze_stale_tables_sync, db_session_factory)
+        await asyncio.to_thread(_starting(steps, _analyze_stale_tables_sync), db_session_factory)
     except Exception as exc:
         logger.error("[Chain] stale table statistics could not be refreshed, so a page "
                      "query may sort instead of walking its index: %s", exc)
-
-    # 🔴 ONE LOOP PER QUEUE, AND IT SAYS SO WHEN IT STANDS DOWN. Two loops on one outbox
-    # pick the same rows up twice and write one heartbeat file between them, so neither
-    # "is the chain alive" nor "which code is running" has an answer. Standing down
-    # SILENTLY would be the worse half of that - a process that does nothing and says
-    # nothing is indistinguishable from one that is working.
-    _other = another_chain_loop_is_running()
-    if _other:
-        logger.warning(
-            "[Chain Worker] NOT starting: another chain loop is already running (%s). "
-            "This process will not consume the outbox. Two loops on one queue pick the "
-            "same rows up twice and share one heartbeat, so neither can be observed. "
-            "If this is the process you meant to run, stop the other one first.", _other)
-        return
 
     # 🔴 THIS PROCESS RUNS THE LOOP, AND THE QUEUE VIEW HAS TO KNOW THAT. Without it an
     # empty "running" list means both "no mapper is in flight" and "the loop is in
@@ -4715,7 +4736,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     for _lvl, _msg in internal_event_client.startup_lines("Chain Worker"):
         getattr(logger, _lvl)(_msg)
 
-    rules = load_chain_rules()
+    rules = _starting(steps, load_chain_rules)()
     say_the_declaration()
     logger.info(f"Loaded {len(rules)} active chain ingestion rules.")
     
@@ -4777,7 +4798,9 @@ async def start_chain_ingestion_worker(db_session_factory):
 
     # [Warmup] 콜드 스타트 제거: 매퍼 선(先)import + DB 풀 프라임 + HTTP 클라이언트 준비.
     #   sys.path에 server 디렉토리가 추가된 뒤에 실행해야 mappers.* import가 해석된다.
-    warmup_worker(rules, db_session_factory)
+    _starting(steps, warmup_worker)(rules, db_session_factory)
+    logger.info("[Chain] startup %.1f s - %s", sum(s for _n, s in steps),
+                " · ".join("%s %.1f s" % step for step in steps))
 
     # The ledger's follow-up runs BESIDE this loop and never inside it, so the chain's
     # transaction time is what it was (ruling 129-bis ㉩).
@@ -4808,7 +4831,9 @@ async def start_chain_ingestion_worker(db_session_factory):
         # refused, and for the same reason they ride the same note rather than a new
         # channel - see `_worker_note`.
         held = chain_control.paused()
-        heartbeat.beat("chain", note=_worker_note(), state="paused" if held else None)
+        # the first (no index work yet) is not throttled: it ends the startup's last `starting`
+        heartbeat.beat("chain", note=_worker_note(), state="paused" if held else None,
+                       force=index_work is None)
         if index_work is None:
             # ⑤ The index work starts only once the first beat is out, beside the loop.
             index_work = _start_index_work(rules, db_session_factory)

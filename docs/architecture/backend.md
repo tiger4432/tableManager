@@ -178,6 +178,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 |---|---|---|---|
 | running 아님 | — | `down` | 감시자가 프로세스 없음/실패로 본다 |
 | running | 없음 · uptime < 60s | `starting` | 기동 유예 — **경보 아님**(`degraded`까지만) |
+| running | 자기 pid 의 `starting` 박동 | `starting` | **[10-10 5b]** 기동 단계 중 — 유예 60 s 를 넘어도. detail 「starting: <단계>, N s」(CHAIN 뱃지 title) |
 | running | 없음 · 유예 경과 | `missing` | 프로세스는 도는데 **한 번도 박동한 적 없음** |
 | running | 다른 pid의 박동 | `foreign_beat` | 아래 pid 규율 참조 |
 | running | 정체(60초) | `wedged` | **살아 있는데 진행 없음** — pid 검사로는 안 보이는 케이스 |

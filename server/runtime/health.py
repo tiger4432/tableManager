@@ -354,6 +354,13 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                     "process is running but has never published a beat")
                 escalate(STATUS_UNHEALTHY)
                 problems.append(f"worker '{hb_name}': {entry['detail']}")
+        elif hb.get("state") == "starting":
+            # 🔴 STARTING IS SAID BY THE WORKER, WITH THE STEP IT IS ON (총괄 bdb356d3f 5b): it beats
+            #   as each startup step begins, so the beat's age is that step's seconds - a long step
+            #   is still starting, past STARTUP_GRACE_SEC too, not stale and not foreign_beat.
+            entry["status"] = "starting"
+            entry["detail"] = f"starting: {hb.get('note')}, {hb.get('age_seconds') or 0:.0f}s"
+            escalate(STATUS_DEGRADED)
         elif hb.get("stale"):
             # The case a pid check cannot see.
             entry["status"] = "wedged" if watched else "stale"
