@@ -77844,3 +77844,84 @@ MD5 AFTER  same
 순서    지시는 5b(foreign_beat) -> 5a 였는데 5a 를 먼저 끝냈습니다 — 응용 레인께 30 분 차례를 이미 알린 뒤라서
 다음    5b foreign_beat(ㄱ) -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
 ```
+
+---
+
+## [10-10 새벽] 5b 체인 워커 기동 중 «starting: <단계>, N s» — 착지 e032d526e · 문장 고침 d0976fe20 (총괄 bdb356d3f · ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 진짜 프로세스 줄: assy_test, 스크래치 assy_impl_beat_1010(「dropped schema assy_impl_beat_1010 (19 tables) - left 0」) · public 「public relations 325 -> 325 · added [] · gone [] · rows changed {}」(행 수만 셈). 시험의 PG 칸은 isolated_pg 스크래치
+
+```
+지은 것   기동 단계(보정 일곱 + 규칙 읽기 + 워밍업)마다 «시작할 때» 박동 state=starting · note=단계 이름(함수 이름에서 — `_starting`)
+         /health: 감독 pid 의 starting 박동이면 나이와 무관하게 starting(degraded) · detail 「starting: <단계>, <N>s」 — stale/wedged 앞에서 가름
+         다른 pid 의 박동은 지금대로 foreign_beat. 기동 끝 한 줄 「[Chain] startup <합> s - <단계> <초> s · …」
+         「둘째 루프면 물러남」 확인을 첫 박동 앞으로 — 32c1c23e5(09-05) 원래 자리. 9148caabf(09-09)가 원장 보정을 그 위에 끼우며 밀렸고 그 사유(원장 루프 시작 전)는 확인 뒤여도 참
+         루프의 첫 박동은 throttle 안 함(force) — 마지막 starting 을 바로 지움
+화면     CHAIN 뱃지 STARTING, title 이 그 detail(클라 변경 없음 — chainBadge 가 이미 detail 을 그림)
+```
+
+| 게이트 | 칸 |
+|---|---|
+| ① 진짜 start_chain_ingestion_worker + 진짜 박동 파일, 죽은 앞 pid 의 신선한 박동이 있는 재기동, 단계 하나 붙잡음 -> compute_health(감독 pid = 이 프로세스, 기동 120 s, 90 s 뒤 읽기) | starting · 「starting: ensure_ledger_schema, 89~92s」 · 기동 끝 줄에 단계 10 · 루프 뒤 ok |
+| ② 다른 pid 의 starting 박동 + 기동 61 s | foreign_beat |
+| ③ 살아 있는 다른 루프의 신선한 박동 | 보정 0 · 박동 0 으로 물러남 + 「NOT starting」 |
+| ③-b(총괄 더함) 죽은 pid 의 신선한 박동 | 물러나지 않고 첫 박동이 starting + 첫 단계 이름 |
+
+```
+변이(파일 md5 전후 같음 확인, 빨강 = 실패한 시험)
+  M1 first beat after the steps | md5 restored True | 2 failed, 61 passed, 3 deselected, 18 warnings in 2.76s
+      FAILED test_a_dead_pids_fresh_beat_is_a_restart_and_the_first_beat_is_starting
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step
+  M2 stand-down check back after the steps | md5 restored True | 1 failed, 62 passed, 3 deselected, 18 warnings in 2.81s
+      FAILED test_standing_down_is_not_silent
+  M3 health reads no starting state | md5 restored True | 1 failed, 62 passed, 3 deselected, 18 warnings in 2.89s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step
+  M4 the loop's first beat throttled | md5 restored True | 1 failed, 62 passed, 3 deselected, 18 warnings in 2.86s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step
+돌린 시험 바뀐 두 모듈(ingestion_worker · runtime/health)을 부르거나 박동을 바꿔 끼우는 파일 26 개
+         비-PG  446 passed, 15 deselected, 351 warnings in 41.94s
+         PG     15 passed, 52 deselected, 14 warnings in 84.63s (0:01:24)
+```
+
+```
+진짜 프로세스 줄 — 따로 띄운 스크래치 API(DECOUPLED, 18791)의 /health 를 0.2 초마다 + 따로 띄운 run_chain_worker.py
+첫 기동
+  02:19:31 +  0.1s  chain None         detail None                                               beat pid None
+  02:19:33 +  2.8s  chain starting     detail starting: ensure_business_key_unique_indexes, 0s   beat pid 32244
+  02:19:34 +  3.0s  chain starting     detail starting: analyze_stale_tables, 0s                 beat pid 32244
+  02:19:34 +  3.6s  chain ok           detail None                                               beat pid 32244
+재기동(워커를 죽이고 다시 띄움)
+  02:20:16 +  0.1s  chain ok           detail None                                               beat pid 32244
+  02:20:20 +  3.7s  chain starting     detail starting: ensure_dynamic_table_indexes, 0s         beat pid 56184
+  02:20:20 +  3.9s  chain starting     detail starting: analyze_stale_tables, 0s                 beat pid 56184
+  02:20:20 +  4.3s  chain ok           detail None                                               beat pid 56184
+기동 끝 줄
+  [Chain] startup 0.3 s - end_queries_a_gone_chain_worker_left 0.1 s · ensure_ledger_schema 0.0 s · restamp_moved_fingerprints 0.0 s · ensure_business_k …
+  [Chain] startup 0.3 s - end_queries_a_gone_chain_worker_left 0.0 s · ensure_ledger_schema 0.0 s · restamp_moved_fingerprints 0.0 s · ensure_business_k …
+```
+
+```
+이 줄이 «안» 잰 것   감독자 없는 스택이라 pid 대조(watched) 갈래는 안 돎 — 감독자 아래 foreign_beat 대 starting 은 총괄의 박스 재기동 줄
+                    재기동 표의 「ok · 죽은 pid」 몇 초는 감독자가 없을 때의 이미 적힌 동작(backend §1.3) — 이번 변경과 무관
+                    이 박스 보정은 0.3 s 라 60 s 넘는 단계는 시험 ①에서만 잼
+```
+
+### 🔴 남은 길 하나 — 첫 박동 «앞»에 아직 있는 보정
+
+```
+run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) — 설정에 새 칸이 있으면 ALTER TABLE, 시한 없음
+그것이 길면 지금처럼 foreign_beat(죽은 앞 pid). RUN.md 옛 줄도 이것을 이미 「소유자 물음으로 올라가 있음」이라 적어 둠
+문장은 고침(d0976fe20) — 「foreign_beat = 둘째 워커 «또는» 이 동기화」
+안     ㄱ 그 동기화를 start_chain_ingestion_worker 의 한 단계로(확인 뒤 · starting 박동) — main.py 경로는 서버 기동이 이미 동기화하므로 두 번 돎(멱등)
+       ㄴ 그대로 두고 문장만(지금)
+총괄 답 ㄱ — 동기화를 기동 단계로(확인 뒤 · _ensure_dynamic_table_indexes 앞). 게이트 「막힌 동안 starting: sync_dynamic_tables_schema, N s」 + 변이(import 때로 되돌림). 시한은 안 건드림
+       -> 5b-2 로 짓는 중
+```
+
+```
+응용 레인 진짜 프로세스(그쪽 보고 · 제가 잰 것 아님)  붙잡은 단계 ensure_human_claims_index 92 s 내내 starting · foreign_beat 0 · 둘째 워커 NOT starting
+```
+
+```
+다음    5b-2 동기화 단계 -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
+```
