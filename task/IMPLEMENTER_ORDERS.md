@@ -65335,3 +65335,20 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
            변이: 조건 지움 -> ② ③ 빨강 · '' 를 값으로 봄 -> ④ 빨강
    같은 커밋  RUN.md 의 fold-rows 절에 한 줄 · RELEASE_LOG · 소급 탭 설명(what_is_missing 옆 help)에 «a row with a blank key part is left as it is»
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 🔴 위 「빈 키 행」과 «같은 커밋» — 접기에서 남길 행의 «먼저 볼 조건» 하나 (소유자 10-09 「접기에서 job 에 auto 들어가 있는 거 1순위로 살리기 추가 가능?」)**
+
+```
+도착지  「--prefer-column <칸> --prefer-text <글자> 를 적으면, 같은 키에서 그 칸에 그 글자가 든 행을 먼저 남긴다 — 그 안에서 지금처럼 가장 이른(또는 늦은) 시간」
+   운영 명령 예  fold-rows <로그표> --keys dt_wafer_id,dtx,dty --order <시간칸> --prefer-column job --prefer-text auto
+   코드에 'auto' · 'job' 낱말 0 — 운영자가 적는 값
+구현자
+   소급 연산 fold_duplicate_rows 의 params 에 선택 칸 둘(prefer_column · prefer_text) + CLI 같은 이름 + 소급 탭 폼은 params 를 읽어 저절로
+   견주기  «들어 있다» · 대소문자 무시(AUTO · Auto 도) — 빈 칸은 안 든 것
+   순위  ① 조건에 맞는 행 먼저 ② 빈 시간 맨 뒤 ③ 시간(min · max) ④ row_id — _ranked_duplicates 의 ORDER BY 앞에 한 항
+   거절  둘 중 하나만 적음 · 표에 없는 칸 -> 칸 이름 대어 거절(지금 resolve_target 와 같은 문)
+   수  미리보기 · 결과에 «조건에 맞는 행을 남긴 키 수» · 표본의 남길 행 · 지울 행에 그 칸 값
+   게이트  ① 키 하나에 auto 행이 더 늦어도 auto 행이 남음 ② auto 행 둘 -> 그중 이른 것 ③ auto 없음 -> 가장 이른 것(지금 그대로) ④ 'AUTO_x' 도 맞음
+           ⑤ 하나만 적음 · 없는 칸 거절 ⑥ 빈 키 행 그대로(위 절) — 변이: 순위 항 지움 -> ① 빨강 · 대소문자 구분 -> ④ 빨강
+   같은 커밋  RUN.md fold-rows 절(위 명령 예) · RELEASE_LOG
+```
