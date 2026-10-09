@@ -37623,3 +37623,19 @@ SQL 문                 2817             2821
 홀드                      [('<blank>', 300), ('agreed', 700)]  [('<blank>', 300), ('agreed', 700)]
 판정   회수의 값 바꾸기가 접힌 사건으로 나가 원장이 «행마다 하나씩» 거두던 일이 사라졌습니다. 박스 수입니다
 ```
+
+---
+
+## [C 응용] 10-09 리허설(6aadd88ee) 착수 — 물음 하나(소유자 선언) · 단서 하나(재시도 문 줄)
+
+```
+물음   리허설이 «소유자의» 리허설이려면 운영 선언이 필요합니다. 박스에는 그 길(dt_log -> 인벤토리 식 -> official_dt 복사 + 홀드 -> transfer)이
+       없고, 샘플 transfer_explorer 의 원장 소스는 dt_log 를 바로 읽는 «옛 판» 모양입니다. 샘플로 지으면 닮은 것을 리허설하고,
+       명령표의 규칙 이름이 소유자 것과 어긋납니다. 행이 아니라 선언만 주시면 됩니다
+         ① chain_rules.json 의 그 길 규칙 — 인벤토리 식 규칙 · dt_log_to_official_dt · official_dt_hold_recount
+         ② table_config.json 의 dt_log · official_dt(· 인벤토리 식이 읽는 표) 항목
+         ③ ontology/ledger_config.json 에서 transfer 원자를 내는 소스 — 지금 것과 옛 판 이름
+       받기 전에는 샘플 모양으로 뼈대를 짓습니다 — 선언은 «데이터»로 갈아 끼우게
+단서   직전 보고의 재시도 문 줄은 «화면»이 아니라 라우트(POST retry-failed)에서 시작했습니다. ⑥ 은 서버가 WS 로 보낸
+       file_ingestion_completed 이지 그려진 토스트가 아닙니다. 클라의 «Include files that went in» 토글이 착지하면 브라우저 화면에서 다시 돕니다
+```
