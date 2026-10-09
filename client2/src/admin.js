@@ -3081,6 +3081,7 @@ function renderRetroactiveFailure(text) {
   if (!line || !valueEl || !subEl) return;
   valueEl.textContent = '―';
   subEl.textContent = text;
+  subEl.title = text;
   line.dataset.tone = 'muted';
   if (body) body.textContent = '';
 }
@@ -3098,6 +3099,8 @@ function renderRetroactive() {
   // 헤드라인은 연산 이름을 그대로 나열한다. 이 줄에는 요약할 「상태」가 없다 — 도구함에
   // 없는 판정을 지어내는 것이 목록보다 나쁘다.
   subEl.textContent = view.titles.map(cfgText).join(' · ');
+  // One line, cut on purpose: the whole list is its title.
+  subEl.title = subEl.textContent;
 
   body.textContent = '';
   if (view.empty) {

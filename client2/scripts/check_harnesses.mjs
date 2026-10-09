@@ -1762,7 +1762,7 @@ const FLOORS = new Map([
   // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
   //   and their two mutants (lead 10-09): 176 -> 184.
   // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
-  ['screen_layout_harness.mjs', 185],
+  ['screen_layout_harness.mjs', 189],   // 185 -> 189: the admin tabs round's four mutants (lead 10-09)
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],
