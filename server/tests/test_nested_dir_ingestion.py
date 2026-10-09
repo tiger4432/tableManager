@@ -662,10 +662,10 @@ def test_request_tree_ingest_rejects_non_direct_children_and_files(flat_env):
 
 
 # ---------------------------------------------------------------------------
-# Sweep integration: startup/periodic sweep triggers tree ingestion
+# The subfolder recheck triggers tree ingestion; the sweep leaves directories (총괄 2f487efb5)
 # ---------------------------------------------------------------------------
 
-def test_sweep_triggers_tree_ingest_for_directories(flat_env, monkeypatch):
+def test_the_recheck_not_the_sweep_triggers_tree_ingest_for_directories(flat_env, monkeypatch):
     ws, handler = flat_env["make_handler"]()
     swept = _stub_processing(handler)
     raws = ws / "raws"
@@ -681,8 +681,11 @@ def test_sweep_triggers_tree_ingest_for_directories(flat_env, monkeypatch):
                         lambda p: requested.append(os.path.abspath(p)))
     processed = ww.sweep_existing_files()
 
-    assert requested == [os.path.abspath(str(batch))]  # dir -> tree trigger
+    assert requested == []                             # the sweep leaves the dir
     assert processed == 1 and swept == ["direct.csv"]  # file -> normal sweep
+    ww.recheck_subfolders()
+    assert requested == [os.path.abspath(str(batch))]  # dir -> tree trigger
+    assert swept == ["direct.csv"]                     # and the recheck dispatches no file
 
 
 # ---------------------------------------------------------------------------

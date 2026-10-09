@@ -26,6 +26,7 @@ from maps import alignment_batch_counts
 from sqlalchemy import text as _sa_text
 from database import crud, schemas
 from utils import heartbeat
+from utils.logger import count_cleared, count_crossed
 
 # [B1/B2 follow-up] Name of the progress beat the ingestion path publishes.
 # It is the watcher's own beat: run_watcher.py's retry poller writes it too, and
@@ -404,6 +405,9 @@ STATEMENT_TIMEOUT_SETTING = "statement_timeout_seconds"
 #: Left out: the default; null or 0: no limit; not a positive number: the default.
 CHAIN_STATEMENT_TIMEOUT_SETTING = "chain_statement_timeout_seconds"
 CHAIN_STATEMENT_TIMEOUT_DEFAULT = 120.0
+#: Seconds between two looks at every raws/ subfolder (총괄 2f487efb5). Not a positive number: the default.
+SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
+SUBFOLDER_RECHECK_DEFAULT = 30.0
 
 
 def _timeout_seconds(settings, cell, absent):
@@ -428,6 +432,11 @@ def chain_statement_timeout(settings=None):
     the same read as `file_write_timeouts`, set by the same listener."""
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, CHAIN_STATEMENT_TIMEOUT_SETTING, CHAIN_STATEMENT_TIMEOUT_DEFAULT)
+
+
+def subfolder_recheck_seconds(settings=None) -> float:
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, SUBFOLDER_RECHECK_SETTING, None) or SUBFOLDER_RECHECK_DEFAULT
 
 
 #: How a lock-timeout failure's message begins - its rows are counted by it (`_lock_waits_before`).
@@ -1052,10 +1061,19 @@ DEFAULT_FLATTEN_NESTED_DIRS = True
 # the whole snapshot is the same, and only then are emptied folders removed.
 FLATTEN_STABILITY_INTERVAL_SECONDS = 1.0
 # Stop waiting after this long; the files still being written and every folder are
-# left, and the periodic sweep (PERIODIC_SWEEP_INTERVAL_SECONDS) re-triggers later.
+# left, and the subfolder recheck re-triggers later.
 FLATTEN_STABILITY_MAX_WAIT_SECONDS = 600
 # How many of the files still being written the deferral line names.
 FLATTEN_DEFERRED_NAMES_SHOWN = 5
+#: Why a raws/ subfolder still holds files - one line for all (`say_what_a_folder_left`, 총괄 2f487efb5):
+#: reason -> (level, next try). Counted per folder and reason, said at the 1st, 10th, 100th ...
+FOLDER_LEFT_REASONS = {
+    "running": (logging.INFO, "next look in {look:g} s"),
+    "still_writing": (logging.WARNING, "next look in {look:g} s"),
+    "kept": (logging.INFO, "next pass when it changes, else in {sweep:g} s"),
+    "incomplete": (logging.WARNING, "next pass when it changes, else in {sweep:g} s"),
+    "nested_off": (logging.INFO, "no pass while flatten_nested_dirs=false"),
+}
 
 # OS junk files discarded together with the folder (never ingested, never kept).
 # Exact names, case-insensitive, plus macOS AppleDouble "._*" sidecar files.
@@ -1609,10 +1627,13 @@ class IngestionHandler(FileSystemEventHandler):
         # [Deprecation] 레거시 워크스페이스 config.json 파싱 결과 캐시 (파일은 정적 자산 취급)
         self._legacy_config_cache = None
         # normcase abs paths of directories currently being tree-ingested -> when the
-        # worker started (the sweep's 「running for N min」 line, 총괄 10-07 ③).
+        # worker started (the 「running for N min」 line, 총괄 10-07 ③).
         # Guarded by _processing_lock; makes tree triggers idempotent and
-        # re-entrant (event + sweep firing on the same tree never race).
+        # re-entrant (event + recheck firing on the same tree never race).
         self._ingesting_dirs = {}
+        # (folder, reason) -> times a folder was found holding files for that reason
+        # (`say_what_a_folder_left`). Guarded by _processing_lock.
+        self._folder_left_counts = {}
         # Files whose last attempt waited past the lock timeout: left in place, unsealed, and
         # the sweep tries them again although their (mtime, size) is one it has tried (③ ㄴ).
         self.waiting_on_a_lock = set()
@@ -1837,7 +1858,7 @@ class IngestionHandler(FileSystemEventHandler):
     def request_tree_ingest(self, dir_path: str):
         """Request in-place ingestion of a directory that is a direct child of raws/.
 
-        Idempotent and re-entrant: a second trigger (watchdog event + sweep, or
+        Idempotent and re-entrant: a second trigger (watchdog event + recheck, or
         two events) on the same tree is a no-op while one is in flight.
         Runs in a short-lived daemon thread so the observer dispatch thread is
         never blocked by the quiescence wait (same HOL discipline as P1).
@@ -1852,11 +1873,8 @@ class IngestionHandler(FileSystemEventHandler):
         if not os.path.isdir(abs_dir):
             return None
         if not nested_dirs_enabled():
-            logger.info(
-                f"[{self.table_name}] Nested-directory ingestion disabled "
-                f"(flatten_nested_dirs=false) — leaving directory untouched (its files "
-                f"are NOT ingested): {os.path.basename(abs_dir)}"
-            )
+            self.say_what_a_folder_left(abs_dir, "nested_off", "nested-directory ingestion is off "
+                                        "(flatten_nested_dirs=false) - left untouched, its files are NOT ingested")
             return None
         key = os.path.normcase(abs_dir)
         with self._processing_lock:
@@ -1877,26 +1895,41 @@ class IngestionHandler(FileSystemEventHandler):
             import traceback
             logger.error(
                 f"[{self.table_name}] Tree ingestion failed for {abs_dir} "
-                f"(directory left in place; periodic sweep will retry):\n{traceback.format_exc()}"
+                f"(directory left in place; the subfolder recheck retries):\n{traceback.format_exc()}"
             )
         finally:
             with self._processing_lock:
                 self._ingesting_dirs.pop(key, None)
 
-    def say_a_tree_still_running(self, dir_path: str):
-        """The sweep asked for a folder whose tree worker is still at it: one line - since
-        when, and the file it is on (총괄 10-07 ③). Quiet for a folder nobody is ingesting."""
+    def say_a_tree_still_running(self, dir_path: str) -> bool:
+        """True when the folder's tree worker is still at it - said with since when and the file
+        it is on (총괄 10-07 ③). False, and that episode's count ends, when nobody is ingesting it."""
         abs_dir = os.path.abspath(dir_path)
+        folder = os.path.basename(abs_dir)
         with self._processing_lock:
             started = self._ingesting_dirs.get(os.path.normcase(abs_dir))
-        if started is None:
-            return
-        folder = os.path.basename(abs_dir)
+            if started is None:
+                count_cleared(self._folder_left_counts, (folder, "running"))
+                return False
         now_on = [claim["what"] for claim in heartbeat.open_claims()
                   if claim["name"] == HEARTBEAT_NAME and claim["facts"].get("folder") == folder]
-        logger.info("[%s] 📂 Tree ingestion of '%s' has been running for %d min (now: %s)",
-                    self.table_name, folder, (time.time() - started) // 60,
-                    ", ".join(now_on) or "no file")
+        self.say_what_a_folder_left(abs_dir, "running", "tree ingestion has been running for %d min (now: %s)"
+                                    % ((time.time() - started) // 60, ", ".join(now_on) or "no file"))
+        return True
+
+    def say_what_a_folder_left(self, abs_dir: str, reason: str, why: str):
+        """The one line for a raws/ subfolder that still holds files: folder · files · why · next try
+        (총괄 2f487efb5). `reason` is a FOLDER_LEFT_REASONS key; the 1st, 10th, 100th ... are said."""
+        folder = os.path.basename(abs_dir)
+        with self._processing_lock:
+            nth = count_crossed(self._folder_left_counts, (folder, reason))
+        if nth is None:
+            return
+        level, then = FOLDER_LEFT_REASONS[reason]
+        files = sum(len(names) for _d, _s, names in os.walk(abs_dir))
+        logger.log(level, "[%s] 📂 '%s': %d file(s) left - %s - %s - #%d for this folder and reason "
+                   "(said at the 1st, 10th, 100th ...)", self.table_name, folder, files, why,
+                   then.format(look=subfolder_recheck_seconds(), sweep=PERIODIC_SWEEP_INTERVAL_SECONDS), nth)
 
     @staticmethod
     def _snapshot_tree(abs_dir: str):
@@ -1940,7 +1973,7 @@ class IngestionHandler(FileSystemEventHandler):
         `take({relpath: (size, mtime)})` returns how many files this pass has dispatched.
         True  → tree is quiet - every file was handed over; emptied folders may go.
         False → directory vanished, or still changing after the max wait (the files
-                still being written and every folder are left; the sweep re-triggers).
+                still being written and every folder are left; the recheck re-triggers).
         """
         deadline = time.monotonic() + FLATTEN_STABILITY_MAX_WAIT_SECONDS
         prev = self._snapshot_tree(abs_dir)
@@ -1957,11 +1990,10 @@ class IngestionHandler(FileSystemEventHandler):
                 still = sorted(rel for kind, rel in cur if kind == "f" and rel not in written)
                 named = ", ".join(still[:FLATTEN_DEFERRED_NAMES_SHOWN])
                 more = ", …" if len(still) > FLATTEN_DEFERRED_NAMES_SHOWN else ""
-                logger.warning(
-                    f"[{self.table_name}] Tree ingestion deferred — {len(still)} file(s) still being "
-                    f"written after {FLATTEN_STABILITY_MAX_WAIT_SECONDS}s, {dispatched} finished file(s) "
-                    f"dispatched: {abs_dir} (still writing: {named}{more}; periodic sweep will retry)"
-                )
+                self.say_what_a_folder_left(abs_dir, "still_writing", (
+                    f"Tree ingestion deferred — {len(still)} file(s) still being written after "
+                    f"{FLATTEN_STABILITY_MAX_WAIT_SECONDS}s (still writing: {named}{more}; "
+                    f"{dispatched} finished file(s) dispatched)"))
                 return False
             prev = cur
         return False
@@ -2020,7 +2052,7 @@ class IngestionHandler(FileSystemEventHandler):
 
         A workspace file is archived on success as before, which is what empties
         the tree. A file that cannot be processed keeps its directory alive
-        (os.rmdir fails on non-empty), and the periodic sweep retries later."""
+        (os.rmdir fails on non-empty), and the subfolder recheck retries later."""
         t_name = self.table_name  # display only; processing snapshots per file
         dir_label = os.path.basename(abs_dir)
         raws_root = os.path.abspath(self.raws_path)
@@ -2066,8 +2098,8 @@ class IngestionHandler(FileSystemEventHandler):
             # that bites HARDER here: this dispatches every file of the tree on every
             # trigger, and it has no equivalent of the sweep's in-memory (mtime, size)
             # cache. When files are left in place the tree is never emptied, so each
-            # periodic sweep re-triggers it and re-pays ~92 ms per file — not once per
-            # restart, but every cycle, forever.
+            # recheck pass (a sweep interval apart when nothing changed) re-pays
+            # ~92 ms per file — not once per restart, but every cycle, forever.
             cleared = self.settle_already_terminal(
                 [(os.path.abspath(fp), fstat) for _m, fp, fstat in to_process])
             done["cleared"] += len(cleared)
@@ -2107,13 +2139,17 @@ class IngestionHandler(FileSystemEventHandler):
             except OSError:
                 removed_all = False
         settled = f", {done['cleared']} already concluded (tier-1)" if done["cleared"] else ""
-        if done["refused"] or not removed_all:
-            logger.warning(
-                f"[{t_name}] 📂 Tree ingestion incomplete for '{dir_label}': dispatched "
-                f"{done['dispatched']} file(s){settled}, {done['refused']} refused — directory preserved; "
-                f"periodic sweep will retry."
-            )
+        if not done["refused"] and not removed_all and not archive_processed_files_enabled():
+            self.say_what_a_folder_left(abs_dir, "kept", (
+                f"kept in place (archive_processed_files=false): dispatched {done['dispatched']} "
+                f"file(s){settled}"))
+        elif done["refused"] or not removed_all:
+            self.say_what_a_folder_left(abs_dir, "incomplete", (
+                f"Tree ingestion incomplete: dispatched {done['dispatched']} file(s){settled}, "
+                f"{done['refused']} refused — directory preserved"))
         else:
+            with self._processing_lock:
+                count_cleared(self._folder_left_counts, (dir_label,))
             logger.info(
                 f"[{t_name}] 📂 Tree ingested '{dir_label}': {done['dispatched']} file(s) "
                 f"processed in place{settled}, directory tree removed."
@@ -3897,6 +3933,10 @@ class WorkspaceWatcher:
         self._external_availability = {}
         self._stop_event = threading.Event()
         self._periodic_sweep_thread = None
+        self._subfolder_recheck_thread = None
+        # normcase abs subfolder -> (its `_snapshot_tree`, monotonic time) when a tree worker
+        # was last started on it by `recheck_subfolders`. Only that thread touches it.
+        self._subfolder_seen = {}
         self.on_refresh_callback = on_refresh_callback
         self.on_file_processed_callback = on_file_processed_callback
         self.on_progress_callback = on_progress_callback
@@ -4139,9 +4179,8 @@ class WorkspaceWatcher:
 
         - watchdog 이벤트 전용이던 워처가 다운타임(재기동 등) 중 도착한 파일을 영영
           방치하던 결함의 안전망. err/·archives/ 등은 raws/ 형제 폴더라 열거 대상이 아니다.
-          raws/ 직속 하위 디렉토리는 스윕 후보가 아니라 **트리 인제션 트리거**다 —
-          request_tree_ingest(비동기·멱등·정온 게이트)로 파일이 **제자리에서** 처리되고
-          비워진 폴더만 제거된다.
+          raws/ 직속 하위 디렉토리는 이 스윕이 안 본다 — `recheck_subfolders`(자기 스레드,
+          이 잠금 밖) 몫이다.
         - 동일 (mtime, size) 시그니처로 이미 시도한 파일은 재시도하지 않는다 — 처리 실패로
           raws/에 잔류한 파일이 주기 스윕마다 무한 재시도되는 루프 방지. 파일이 갱신되어
           시그니처가 바뀌면 다시 시도한다.
@@ -4175,19 +4214,9 @@ class WorkspaceWatcher:
                 for name in names:
                     fp = os.path.join(raw_path, name)
                     try:
-                        if os.path.isdir(fp):
-                            # A directory sitting in raws/ (dropped while the
-                            # server was down, or whose event was lost/deferred)
-                            # is tree-ingested, not swept. request_tree_ingest is
-                            # async, idempotent and quiescence-gated; its files are
-                            # dispatched in place by that worker and by later
-                            # sweeps. This pairing is also the floor for the
-                            # external-source watcher: a watchdog observer on a
-                            # share can miss events, and the periodic sweep is what
-                            # makes a miss temporary instead of permanent.
-                            if handler.request_tree_ingest(fp) is None:
-                                handler.say_a_tree_still_running(fp)
-                            continue
+                        # A directory is the subfolder recheck's (`recheck_subfolders`),
+                        # never this lock's: one slow file here held every collector's
+                        # subfolders (총괄 2f487efb5).
                         if not os.path.isfile(fp):
                             continue
                         st = os.stat(fp)
@@ -4421,8 +4450,56 @@ class WorkspaceWatcher:
                 waited = 0.0
                 self._sweep_safely(None, "periodic")
 
+    def recheck_subfolders(self) -> int:
+        """Look at every direct subfolder of every raws/. A file added to an EXISTING subfolder has
+        no event (the observer is not recursive), so this is how it is found. A tree worker
+        (`request_tree_ingest`) is asked for when the folder changed since the last one started, or
+        a sweep interval has passed since - a folder whose files stay (archive off, a locked file)
+        is walked here, not passed through tier-1 every look (총괄 2f487efb5). Returns workers started."""
+        started, present = 0, set()
+        for raw_path, handler in list(self.handlers_by_raw_path.items()):
+            try:
+                names = os.listdir(raw_path)
+            except OSError:
+                continue                       # the sweep says a raws/ it cannot list
+            for name in names:
+                fp = os.path.abspath(os.path.join(raw_path, name))
+                if not os.path.isdir(fp):
+                    continue
+                key = os.path.normcase(fp)
+                present.add(key)
+                if handler.say_a_tree_still_running(fp):
+                    continue
+                snapshot, last = handler._snapshot_tree(fp), self._subfolder_seen.get(key)
+                if last and last[0] == snapshot and time.monotonic() - last[1] < PERIODIC_SWEEP_INTERVAL_SECONDS:
+                    continue
+                if handler.request_tree_ingest(fp) is not None:
+                    self._subfolder_seen[key] = (snapshot, time.monotonic())
+                    started += 1
+        for key in [key for key in self._subfolder_seen if key not in present]:
+            del self._subfolder_seen[key]
+        return started
+
+    def _subfolder_recheck_loop(self):
+        """`recheck_subfolders` now, then every `subfolder_recheck_seconds` - on a thread of its own
+        and outside `_sweep_lock`, because the sweep processes raws/ files inline under that lock
+        and one slow file of any collector held every collector's subfolders (총괄 2f487efb5)."""
+        while True:
+            try:
+                self.recheck_subfolders()
+            except Exception as e:
+                logger.error(f"Subfolder recheck failed: {e}")
+            if self._stop_event.wait(subfolder_recheck_seconds()):
+                return
+
     def _ensure_periodic_sweep_running(self):
-        """[Startup Sweep] 이벤트 유실 안전망 — 저빈도 주기 재스캔 스레드 기동(1회)."""
+        """[Startup Sweep] 이벤트 유실 안전망 — 저빈도 주기 재스캔 스레드 기동(1회).
+        하위 폴더 다시 보기 스레드도 여기서 같이 뜬다(총괄 2f487efb5)."""
+        if self._subfolder_recheck_thread is None or not self._subfolder_recheck_thread.is_alive():
+            self._subfolder_recheck_thread = threading.Thread(
+                target=self._subfolder_recheck_loop, name="watcher-subfolder-recheck", daemon=True,
+            )
+            self._subfolder_recheck_thread.start()
         if self._periodic_sweep_thread is not None and self._periodic_sweep_thread.is_alive():
             return
         self._periodic_sweep_thread = threading.Thread(

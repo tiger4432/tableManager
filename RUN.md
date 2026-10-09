@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **raws 하위 폴더에 «나중에» 온 파일이 30 초 안에 들어간다 · 남은 파일은 한 줄로 까닭을 말한다 — 이주 «없음» · 재기동 «수집기»(따로 띄우면 run_watcher, 아니면 서버)**
+>
+> ```
+> 무엇이 바뀌나    하위 폴더 다시 보기가 자기 스레드(watcher-subfolder-recheck)에서 돈다 — 스윕의 잠금 밖
+>                기동 즉시 한 번, 그 뒤 subfolder_recheck_seconds(ingestion_settings.json, 적지 않으면 30)마다 raws/ 하위 폴더를 훑는다
+>                일꾼을 부르는 것은 «바뀐 폴더» · «마지막으로 부른 뒤 300 초(스윕 주기)가 지난 폴더»뿐 — 보관 끔으로 남는 폴더는 훑기만
+>                스윕(300 초)은 이제 하위 폴더를 안 본다 — 어느 수집기의 느린 raws 직속 파일이 모든 하위 폴더를 붙잡던 길이 없어졌다
+> 볼 줄          수집기 로그:
+>                  [<표>] 📂 '<폴더>': N file(s) left - <까닭> - <다음 시도> - #k for this folder and reason (said at the 1st, 10th, 100th ...)
+>                까닭과 그 뜻:
+>                  tree ingestion has been running for M min (now: <파일>)       = 그 폴더 일꾼이 아직 돈다. now 가 오래 같은 파일이면 그 파일이 걸린 것
+>                  Tree ingestion deferred — K file(s) still being written ...   = 아직 쓰는 중인 파일. 다 쓰면 다음 다시 보기에 들어간다
+>                  kept in place (archive_processed_files=false): dispatched N ... = 처리는 됐고 보관 끔이라 제자리. 남아 있어도 «인식 못 함»이 아니다
+>                  Tree ingestion incomplete: ... — directory preserved            = 처리 못 했거나 못 옮긴 파일. 바뀌면 다음 다시 보기, 아니면 300 초 뒤 다시
+>                  nested-directory ingestion is off (flatten_nested_dirs=false) ... = 하위 폴더 적재가 꺼져 있다. 그 파일은 안 들어간다
+>                같은 폴더 · 같은 까닭은 1 · 10 · 100 번째만 말한다. 폴더가 다 비워지면 셈이 비어 다음은 다시 #1
+>                전의 «Tree ingestion of '<폴더>' has been running …» · «… periodic sweep will retry» 줄은 이 줄로 바뀌었다
+> 확인           이미 있는 하위 폴더에 파일 하나를 넣는다 -> 30 초 안에 행이 들어간다 (전엔 최대 300 초, 붙잡히면 그 이상 · 로그 0 줄)
+> 비용           다시 보기마다 하위 폴더를 훑는다(DB 안 감) — 이 박스 2만 파일 폴더 1.13 · 1.14 · 1.15 s
+> 급할 때        git revert <이 커밋> -> 수집기 재기동
+> ```
+
+---
 > ## [10-09] **같은 원천 행이 한 묶음에 두 번 와도 그 칸을 한 번만 찾는다 — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```
