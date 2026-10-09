@@ -138,9 +138,10 @@ def test_the_first_beat_goes_out_before_the_index_work_and_the_loop_does_not_wai
     assert _Listener.waits >= 5
 
 
+@pytest.mark.parametrize("step", ["sync_dynamic_tables_schema", "ensure_ledger_schema"])
 def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypatch, tmp_path,
-                                                                      caplog):
-    """총괄 bdb356d3f 5b: a restart, the dead predecessor's beat still fresh on disk, and a startup
+                                                                      caplog, step):
+    """총괄 bdb356d3f 5b (· 5b-2 the schema sync): a restart, the dead predecessor's beat still fresh on disk, and a startup
     step held where a DDL would wait. Read 90 s into that step by /health with the supervisor at
     120 s up: `starting` and the step's name - not `foreign_beat` (the predecessor's pid) and not
     `wedged` (a beat 90 s old). Then each step's seconds are one line, and the loop's first beat
@@ -158,9 +159,11 @@ def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypat
         json.dump({"name": "chain", "pid": 2 ** 22 + 7, "ts": time.time(), "beats": 900}, f)
     held, release, read = threading.Event(), threading.Event(), {}
 
-    def _ensure_ledger_schema_sync(factory):
+    def hold(factory):
         held.set()
         release.wait(10)
+
+    hold.__name__ = "_%s_sync" % step                               # the step's name is the function's
 
     def judge(after):
         # the supervisor started THIS process 120 s ago; read `after` s past now
@@ -178,7 +181,7 @@ def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypat
         read["held"] = judge(90)
         release.set()
 
-    monkeypatch.setattr(worker, "_ensure_ledger_schema_sync", _ensure_ledger_schema_sync)
+    monkeypatch.setattr(worker, hold.__name__, hold)
     monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda *a: None)
     monkeypatch.setattr(worker, "OutboxListener", _Listener)
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
@@ -201,12 +204,15 @@ def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypat
 
     held_entry = read.get("held") or {}
     assert held_entry.get("status") == "starting", held_entry
-    seconds = re.fullmatch(r"starting: ensure_ledger_schema, (\d+)s", held_entry.get("detail") or "")
+    seconds = re.fullmatch(r"starting: %s, (\d+)s" % step, held_entry.get("detail") or "")
     assert seconds and 89 <= int(seconds.group(1)) <= 92, held_entry
     said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Chain] startup ")]
     assert len(said) == 1, said
     steps = said[0].split(" - ", 1)[1].split(" · ")
-    assert len(steps) == 10 and steps[1].startswith("ensure_ledger_schema "), said
+    names = [s.rsplit(" ", 2)[0] for s in steps]
+    assert len(names) == 11 and names[0] == "end_queries_a_gone_chain_worker_left", said
+    # a column stands before its index
+    assert names.index("sync_dynamic_tables_schema") < names.index("ensure_dynamic_table_indexes"), said
     assert _Listener.waits >= 5
     assert judge(0)["status"] == "ok", "the loop beat and the file still says starting"
 

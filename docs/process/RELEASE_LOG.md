@@ -16,7 +16,7 @@
 - **선언 예시** — 선언 없음.
 - **화면에서** — CHAIN 뱃지가 STARTING, 마우스를 올리면 「starting: <단계>, <N>s」. 기동이 끝나면 OK.
 - **필요한 조건** — 체인 워커 · 서버 재기동. 이주 없음.
-- **바뀐 동작** — 60 초를 넘어도 기동 단계 중이면 starting(degraded — 503 아님). 첫 박동 앞에 남은 것은 `run_chain_worker.py` 의 import 때 스키마 동기화(설정에 새 칸이 있을 때 ALTER TABLE) 하나 — 그것이 길면 지금처럼 foreign_beat. 둘째 체인 워커는 보정을 돌기 «전»에 물러납니다(전엔 보정 일곱을 돈 뒤). 기동 끝에 로그 한 줄 `[Chain] startup <합> s - <단계> <초> s · …`.
+- **바뀐 동작** — 60 초를 넘어도 기동 단계 중이면 starting(degraded — 503 아님). `run_chain_worker.py` 가 import 때 하던 스키마 동기화(설정에 새 칸이 있을 때 ALTER TABLE)도 기동 단계(`sync_dynamic_tables_schema`) — 첫 박동 앞엔 import 만 남아, foreign_beat 는 감독자가 띄우지 않은 프로세스의 박동입니다. 둘째 체인 워커는 보정을 돌기 «전»에 물러납니다(전엔 보정 일곱을 돈 뒤). 기동 끝에 로그 한 줄 `[Chain] startup <합> s - <단계> <초> s · …`.
 - **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · backend.md §1.3 표.
 
 ## 2026-10-09 · 출처가 하나도 안 남은 행은 행째 지운다 — 공식 표의 «껍데기» 행

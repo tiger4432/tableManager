@@ -4617,6 +4617,22 @@ def _end_queries_a_gone_chain_worker_left_sync(db_session_factory):
         conn.commit()
 
 
+def _sync_dynamic_tables_schema_sync(db_session_factory):
+    """The columns `table_config.json` declares and the database lacks, added (ALTER TABLE). A startup
+    step since 5b-2 (총괄 bdb356d3f ㄱ): at `run_chain_worker.py`'s import it ran before the first
+    beat, and a long ALTER read as the dead predecessor's pid (`foreign_beat`). The server's own
+    boot syncs too - twice is the same answer."""
+    from database import models
+
+    db = db_session_factory()
+    try:
+        engine = db.get_bind()
+    finally:
+        db.close()
+    models.sync_dynamic_tables_schema(engine)
+    logger.info("Dynamic database models and schema sync completed.")
+
+
 def _starting(steps, step):
     """`step` as one startup step said in the beat (총괄 bdb356d3f 5b): `starting` and the step's
     name, written as it begins - a startup that takes a minute reads as that step, not as the
@@ -4664,6 +4680,11 @@ async def start_chain_ingestion_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Chain] could not look for database queries a gone chain worker left "
                      "running, so startup may wait behind them: %s", exc)
+    # Before the dynamic-table indexes - a column stands before its index (5b-2).
+    try:
+        await asyncio.to_thread(_starting(steps, _sync_dynamic_tables_schema_sync), db_session_factory)
+    except Exception as exc:
+        logger.error(f"Failed to sync dynamic tables schema: {exc}")
 
     # 🔴 BEFORE ANY LEDGER LOOP STARTS (S-88). Both loops below write to the ledger, and
     # one of them was added the same day this gap was found.

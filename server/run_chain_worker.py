@@ -10,7 +10,7 @@ sys.path.append(script_dir)
 from utils.logger import get_process_logger
 logger = get_process_logger("Chain", "chain_worker.log")
 
-from database.database import SessionLocal, engine
+from database.database import SessionLocal
 from database import models
 from chain.ingestion_worker import start_chain_ingestion_worker
 
@@ -22,11 +22,7 @@ try:
     with open(config_path, "r", encoding="utf-8") as f:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)
-    try:
-        models.sync_dynamic_tables_schema(engine)
-        logger.info("Dynamic database models and schema sync completed.")
-    except Exception as e:
-        logger.error(f"Failed to sync dynamic tables schema: {e}")
+    # the schema sync is a startup step of the worker, after its first beat (5b-2)
 except Exception as e:
     logger.error(f"Failed to load table_config or init dynamic models: {e}")
 

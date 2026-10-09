@@ -31,8 +31,9 @@ HELD, FREE = "ss_held", "ss_free"
 CONFIG = {name: {"business_key": "k", "composite_key_source": ["k"],
                  "column_types": {"k": "string", "late": "string"},
                  "display_columns": ["k", "late"]} for name in (HELD, FREE)}
-#: The four seats the order names; each must reach the one function.
-CALLERS = ["main.py", "run_watcher.py", "run_chain_worker.py",
+#: The four seats the order names; each must reach the one function. The chain worker's is a startup
+#: step since 5b-2 (총괄 bdb356d3f) - in its loop module, not at `run_chain_worker.py`'s import.
+CALLERS = ["main.py", "run_watcher.py", os.path.join("chain", "ingestion_worker.py"),
            os.path.join("database", "config_watcher.py")]
 
 
