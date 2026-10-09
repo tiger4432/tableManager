@@ -5,7 +5,8 @@
 > ```
 > 리허설       운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러) 위에서 이 표의 명령을 순서대로 두 바퀴. 꼬인 dt_log 모양 220 행 —
 >              한 칩 두 이벤트 10 · 좌표 빈 행 5 · 수동 잡 5 · 인벤토리 칸이 옛 chain_ingestion 층(틀린 값)에 덮임 · 옛 판 소스 원자 215
->              초 = 그 리허설의 초(박스). 운영 크기의 초가 아니다
+>              초 = 명령이 돌아올 때까지(리허설 · 박스). 운영 크기의 초가 아니다. replay 의 «rows handed over» 뒤 체인이 쓰는 시간은
+>                   이 초 밖이다 — chain_worker.log 의 [ChainRule] rule=<규칙> … rows_in= 줄이 그 끝
 > 어디서       server 폴더(cd server) · PowerShell 창에 «직접» 친다
 >              ⚠️ 출력을 파이프(|)나 파일(>)로 받지 않는다 — 리허설에서 fold-rows 미리보기가 '«'(U+00AB) 를 cp949 로 못 써서 죽었다(exit 1).
 >                 받아야 하면 먼저  $env:PYTHONIOENCODING = "utf-8"   (창에 직접 친 경우는 이 박스에서 못 쟀다)
@@ -22,7 +23,7 @@
 > ⓪ 재기동 전 선언   table_config.json   «로그 표» 에 "fold_mark": "string"
 >                   chain_rules.json    «복사 규칙» 에 "exclude": ["fold_mark"]
 >                   ontology/ledger_config.json   transfer 소스는 «공식 표»를 읽고, «옛 판 소스» 이름은 sources 에 없다
-> ① git pull -> 서버 · 수집기 · 체인 워커 · 스케줄러 재기동                                   가라앉기 8 초
+> ① git pull -> 서버 · 수집기 · 체인 워커 · 스케줄러 재기동                                   재기동 뒤 기다리는 사건 0
 >    볼 줄   chain_worker.log  [ChainRules] dt_inventory_core_xy: source_name 'dt_inventory' is written as chain_ingestion
 >            «인벤토리 식 규칙»이 맵퍼를 mapper_module · mapper_function 으로 적었으면 이 줄은 0 개(값은 ③ 에서 그래도 바로잡힘 · 237d313db)
 > ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.7 · 2.9 초
@@ -48,6 +49,7 @@
 > ⑦ 옛 판 소스 거두기          python -m ledger.backfill --source «옛 판 소스» --whole-source   -> --apply          2.2 · 3.0 초
 >    답      미리보기 relation_rows None(= 선언에 없는 이름) · stale_atoms 215 / 실행 stale_withdrawn 215
 >    뜻      같은 코어 다이에 transfer 둘 123 -> 0
+>            relation_rows 가 None 이 아니라 수면 ⓪ 에서 «옛 판 소스»를 sources 에서 안 뺀 것 — 그때 --apply 는 거두지 않고 다시 번역한다
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
 > ⑧ 공식 표 소스 다시 번역      python -m ledger.backfill --source «공식 표 소스» --whole-source   -> --apply        2.1 · 3.5 초
 >    답      미리보기 relation_rows 205 · stale_atoms 0 / 실행 «rows 205, withdrawn 205, written 205 of 205»
