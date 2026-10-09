@@ -37212,3 +37212,20 @@ A 에 계속 자라는 파일                      남은 것 []                
         사람 값(user)이 남는 것은 초록으로 박아 두었다 — 사람이 고친 값은 일부러 이긴다
 고칠 모양 행마다 층의 서열을 무엇으로 볼지(쓴 이의 서열 = 4 로 보면 먼저 적힌 층은 시간으로 지고, 나중 층 · user 는 여전히 이긴다)는 총괄 판정. 고치지 않았습니다
 ```
+
+---
+
+## [C 응용] 10-09 3a8036b74(화면 레이아웃 게이트 — 진짜 Chrome) QA — 게이트가 «돌 때마다» 다르게 빨갛다 · 한 번 (잼)
+
+```
+잰 것   client2/tests/screen_layout_harness.mjs — 이 박스 · 공유 트리에서 읽기만(Chrome 프로필은 임시 폴더) · --mutate 없이
+        돌린 4 번(저장한 것) — 알려진 빨강(R&D 보드 «Measured» 13 px) 하나뿐 3 번 · 빨강이 둘 더 1 번
+        더 빨간 그 번: index.html answers — 그리드가 필터 «둘만» 걸린 요청 {predicate, subject_type} 을 보냈고 screens_answers.json 에 그 답이 없다
+                      그 탓에 span#performance-log 에 「no answer in screens_answers.json」이 찍혀 clip 세 줄까지 빨강
+        답 파일이 가진 필터 묶음  {object_kind, predicate} · {object_kind, predicate, subject_type}
+까닭    하네스가 칸 셋(subject_type · predicate · object_kind)에 한 고리로 값을 넣는다 — 그리드의 디바운스가 그 사이에 어느 «중간 묶음»을 보낼지는 시각에 달렸다
+        녹화(capture_screens.py)도 한 번의 시각이라 그때 나온 중간 묶음 둘만 담겼다
+        -> 화면 결함이 없는데도 가끔 빨강 — 러너 바닥(ran 47 · failed 1)이 그 번엔 어긋난다
+고칠 모양 중간 묶음까지 답을 담기 · 필터를 한 번에 넣기 · 마지막 요청만 재기 — 디자인 레인 · 총괄 판정. 고치지 않았습니다
+문서    CODE_MAP dropdown.js 절에 placeUnder(소비자 셋 · 재는 하니스)
+```
