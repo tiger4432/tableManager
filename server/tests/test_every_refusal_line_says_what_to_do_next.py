@@ -188,20 +188,9 @@ def test_the_write_gate_names_both_halves_and_both_send_you_to_the_data():
 # ⚠️ ⓒ — one author, measured rather than trusted
 # ---------------------------------------------------------------------------
 
-def test_the_cycle_note_goes_through_the_author_it_claimed_to_follow(caplog):
-    """🔴 [S-247-b] ONE AUTHOR QUIETLY BECAME TWO, IN THE ROUND THAT MADE IT ONE. This
-    line's own docstring said it was 「in the shape S-247 gave every operator line」 while
-    spelling that shape BY HAND - and the tell was measurable without reading it:
-    `nothing_to_do` had zero callers, so the vocabulary entry had no reader at all. That is
-    the same defect this whole day has been about, committed by me, in the fix for it."""
-    from chain import rule_order
-
-    note = rule_order.cycle_note(["there", "back", "there"], 5)
-
-    assert note.startswith("[ChainRules:there -> back -> there] ")
-    assert NEXT in note
-    assert operator_line.nothing_to_do(
-        "더 긴 고리가 필요하면 chain_rules.json 의 max_chain_depth") in note
+# ⚰️ `test_the_cycle_note_goes_through_the_author_it_claimed_to_follow` (S-247-b) stood here: the
+#    cycle note is no operator line now - 총괄 10-09 gave it one short line of its own
+#    (`test_the_chain_loop_line_is_said_once_by_the_dispatcher`).
 
 
 def test_the_nothing_action_says_only_what_is_true_of_every_caller():
@@ -218,7 +207,7 @@ def test_the_nothing_action_says_only_what_is_true_of_every_caller():
     ("database.crud", "refuse_virtual_join_duplicates"),
     ("database.crud", "apply_batch_updates"),
     ("chain.unique_key", "describe"),
-    ("chain.rule_order", "cycle_note"),
+    # ⚰️ ("chain.rule_order", "cycle_note") - a loop is no refusal: 총괄 10-09 gave it one short line.
 ])
 def test_every_seat_goes_through_the_one_renderer(module_name, function_name):
     """🔴 ONE AUTHOR, OR THE SHAPE DRIFTS SEAT BY SEAT. The screen's sentences already had

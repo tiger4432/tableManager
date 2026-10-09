@@ -44,13 +44,12 @@ def test_names_an_opt_in_chain_cycle_without_killing_the_load(caplog):
 
     rule_order.forget_cycles()
     with caplog.at_level(logging.INFO):
-        worker._validate_chain_cascade_graph([
+        found = worker._validate_chain_cascade_graph([
             {"name": "a_to_b", "trigger_table": "a", "target_table": "b", "allow_chain_trigger": True},
             {"name": "b_to_a", "trigger_table": "b", "target_table": "a", "allow_chain_trigger": True},
         ])
 
-    said = " ".join(record.getMessage() for record in caplog.records)
-    assert "고리" in said and "max_chain_depth" in said, said
+    assert found and rule_order._FOUND == {("a", "b")}       # recorded for the dispatcher to say (총괄 10-09)
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
