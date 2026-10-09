@@ -81,8 +81,9 @@ def test_the_key_and_limit_cells_come_from_their_own_lists():
 
     assert [f["key"] for f in _field(root, "key")["node"]["fields"]] == \
         list(rule_shape.KEY_CELLS)
+    # a retired cell is read, so an old declaration loads, and offered by no form (총괄 72f419bd1)
     assert [f["key"] for f in _field(root, "limits")["node"]["fields"]] == \
-        list(rule_shape._LIMIT_KEYS)
+        [k for k in rule_shape._LIMIT_KEYS if k not in chain_bindings.RETIRED_CELLS]
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +141,8 @@ def test_the_flat_shape_is_untouched():
     would be this round breaking the grammar it was extending."""
     root = chain_bindings.skeleton()["root"]
 
-    assert [f["key"] for f in root["fields"]] == list(chain_bindings.routing_keys())
+    assert [f["key"] for f in root["fields"]] == [
+        k for k in chain_bindings.routing_keys() if k not in chain_bindings.RETIRED_CELLS]
 
 
 def test_no_branch_names_a_closed_list_nobody_serves():

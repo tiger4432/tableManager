@@ -65290,3 +65290,65 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
    변이  접기 문이 1,000 고정 -> ① 빨강 · _rows_cap 의 fires 지움 -> ⓐ 빨강 · min->max -> ⓑ 빨강
 같은 커밋  chain_rules.md · TEXT_LINKS_GUIDE §6 · RUN.md 의 「한 묶음에 넣은 이벤트는 쪼개지 않는다」 문장을 «파일 · 붙여넣기도 글마다»로 고침 · RELEASE_LOG
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 — 선언이 바뀌며 남은 원자를 `--whole-source` 가 거둔다 (소유자 10-09 「거두기 했는데 transfer 원자 남아있음 · 예전에 dt_log 에서 했던 버전 거임」 -> 총괄 안 셋 -> 「거두기는 ㄱ」). 순서: LLM 선언 파일 바로 다음(VALUES 조인 앞)**
+
+```
+지금(총괄이 코드로 읽음)  거두는 문은 전부 «그 소스가 지금 읽는 표의 행»을 겨냥한다
+   rescope / rows_gone_from_the_source / 첫 번역 찾기 — row_ref 를 x.relation = plan.relation AND x.source_who = <소스> 로 거른다
+   선언에 없는 이름은 rescope_scope -> _require_declared_source 에서 거절(unknown_source)
+   -> 소스가 dt_log 를 더는 안 읽거나 이름이 바뀌면, 예전 선언이 만든 원자는 어느 문도 겨냥하지 않는다(운영: transfer 가 남음)
+   은퇴 소스(status retired)의 원자는 판정 198(S-103)대로 남긴다 — 이 일과 다른 경우, 그대로
+도착지  두 줄
+   「선언을 바꾼 뒤 python -m ledger.backfill --source <소스> --whole-source 를 돌리면, 그 소스가 지금 안 읽는 표에서 나온 원자도 거둔다.
+     선언에 없는 이름이면 그 이름의 원자를 전부 거둔다(다시 만들 것 없음)」
+   「python -m ledger census 가 «선언이 안 만드는 원자: 소스 × 표 × 술어 × 수»를 말한다 — 이름을 몰라도 보인다」
+구현자
+   넓힘  --whole-source(그리고 어드민 ledger_rescope 의 whole_source) 하나를 넓힌다. 새 CLI 칸 · 새 소급 연산 없음
+   겨냥  원자의 source_raw_ref 로(count_orphan_atoms 의 _group_ref_identities 가 이미 표 이름을 읽어 냄) — row_ref 만 보지 않는다
+         09-08 이전에 써진 원자는 row_ref 가 없을 수 있다(d8b58f2de 이 「한 번 채우기」를 남은 일로 적음 · 88eb8d93a) — 운영이 그것을 돌렸는지 모름
+   지우기  store._withdraw_refs 한 문장(둘째 DELETE 철자 금지) + 그 (소스, 표) 짝의 row_ref 줄도 지움(forget_row_refs 의 순서 규칙 그대로 — 원자 먼저, 장부 나중)
+   은퇴 소스  지금처럼 이름 대어 거절 · 원자 그대로
+   미리보기  표 · 술어마다 원자 수(지금 whole-source 미리보기 문장에 한 줄 더) · 실행은 _written("ledger_rescope") — 기록 · 관문 · 취소 · pace 그대로, 쪽마다
+   census  선언 계획에 없는 (source_who, 표) 짝마다 한 줄. 원장 행이 운영 규모(수천만)라 GROUP BY 가 무엇을 읽는지 박스에서 재고(EXPLAIN) 적기 — 인덱스가 없으면 «없다»고 적고 멈춤
+   게이트  ① 소스가 dt_log -> 공식 표로 옮김 -> dt_log 원자 거둠 · 공식 표 원자 그대로
+           ② 이름 바뀐 소스 -> 옛 이름 --whole-source 가 옛 원자 전부 거둠 · 새 이름 원자 그대로
+           ③ row_ref 없는 옛 원자(09-08 이전 모양)도 닿음
+           ④ 은퇴 소스 -> 거절 · 원자 그대로   ⑤ 같은 행에 다른 소스가 쓴 원자 그대로
+           ⑥ 미리보기 수 = 실행 수 · 다시 돌리면 0   ⑦ census 줄이 ① ② 짝을 말함
+           변이: 표 거르기 되살림 -> ① 빨강 · row_ref 로만 겨냥 -> ③ 빨강 · source_who 빼기 -> ⑤ 빨강
+   같은 커밋  RUN.md(소유자 명령 하나: census 로 이름 보기 -> 그 이름으로 --whole-source 미리보기 -> --apply) · RELEASE_LOG · 원장 안내 문서의 whole-source 문장
+```
+
+> **[총괄 -> 구현자] 10-09 밤 🔴 지금 맨 앞(하위 폴더 묶음이 끝나면 LLM 파일보다 먼저) — 중복 행 접기는 키에 빈 칸이 있는 행을 건드리지 않는다 (소유자 10-09 「빈 거끼리 접어지나」 -> 「ㅇㅇ 있어」: 좌표가 빈 행은 진짜 서로 다른 행)**
+
+```
+지금(총괄이 코드로 읽음)  replay._ranked_duplicates 가 키를 crud.blank_to_null 로 접어 PARTITION BY — 빈 값끼리 한 키
+   -> dt_wafer_id 는 있고 dtx · dty 가 빈 행은 웨이퍼마다 한 행만 남고, 셋 다 빈 행은 표 전체에서 한 행만 남는다
+   미리보기 표본은 키 순서 앞 셋이라 빈 키(맨 뒤 정렬)가 안 보인다 — 운영자가 모르고 지운다
+도착지  「키 칸 중 하나라도 빈 행은 접지 않는다 — 미리보기와 결과가 «키가 빈 행 N 개는 그대로 둠»을 말한다」
+구현자
+   _ranked_duplicates 에 «키 칸이 전부 값 있음» 조건 하나(빈 판정은 crud 의 그 함수 — 둘째 판정 금지). 칸 · 선택 인자 없음
+   수  stats 에 rows_blank_key(그대로 둔 행 수) · count 문장 · CLI 결과 줄 · 실행 기록에 같은 수
+   게이트  ① 키 셋 다 있는 중복 -> 가장 이른 것만 남음(지금 그대로) ② dtx 만 빈 행 둘(같은 웨이퍼) -> 둘 다 남음
+           ③ 셋 다 빈 행 셋 -> 셋 다 남음 ④ '' 와 NULL 둘 다 빈 것 ⑤ 미리보기 rows_blank_key = 실제 남은 수
+           변이: 조건 지움 -> ② ③ 빨강 · '' 를 값으로 봄 -> ④ 빨강
+   같은 커밋  RUN.md 의 fold-rows 절에 한 줄 · RELEASE_LOG · 소급 탭 설명(what_is_missing 옆 help)에 «a row with a blank key part is left as it is»
+```
+
+> **[총괄 -> 구현자] 10-09 밤 🔴 위 「빈 키 행」과 «같은 커밋» — 접기에서 남길 행의 «먼저 볼 조건» 하나 (소유자 10-09 「접기에서 job 에 auto 들어가 있는 거 1순위로 살리기 추가 가능?」)**
+
+```
+도착지  「--prefer-column <칸> --prefer-text <글자> 를 적으면, 같은 키에서 그 칸에 그 글자가 든 행을 먼저 남긴다 — 그 안에서 지금처럼 가장 이른(또는 늦은) 시간」
+   운영 명령 예  fold-rows <로그표> --keys dt_wafer_id,dtx,dty --order <시간칸> --prefer-column job --prefer-text auto
+   코드에 'auto' · 'job' 낱말 0 — 운영자가 적는 값
+구현자
+   소급 연산 fold_duplicate_rows 의 params 에 선택 칸 둘(prefer_column · prefer_text) + CLI 같은 이름 + 소급 탭 폼은 params 를 읽어 저절로
+   견주기  «들어 있다» · 대소문자 무시(AUTO · Auto 도) — 빈 칸은 안 든 것
+   순위  ① 조건에 맞는 행 먼저 ② 빈 시간 맨 뒤 ③ 시간(min · max) ④ row_id — _ranked_duplicates 의 ORDER BY 앞에 한 항
+   거절  둘 중 하나만 적음 · 표에 없는 칸 -> 칸 이름 대어 거절(지금 resolve_target 와 같은 문)
+   수  미리보기 · 결과에 «조건에 맞는 행을 남긴 키 수» · 표본의 남길 행 · 지울 행에 그 칸 값
+   게이트  ① 키 하나에 auto 행이 더 늦어도 auto 행이 남음 ② auto 행 둘 -> 그중 이른 것 ③ auto 없음 -> 가장 이른 것(지금 그대로) ④ 'AUTO_x' 도 맞음
+           ⑤ 하나만 적음 · 없는 칸 거절 ⑥ 빈 키 행 그대로(위 절) — 변이: 순위 항 지움 -> ① 빨강 · 대소문자 구분 -> ④ 빨강
+   같은 커밋  RUN.md fold-rows 절(위 명령 예) · RELEASE_LOG
+```

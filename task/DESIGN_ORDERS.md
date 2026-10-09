@@ -37177,3 +37177,17 @@ QA  운영 모양: 끝난 소급 줄 × · 넣는 중 × · CLI 소급(실행 �
 ② client2/tests/fixtures/screens_answers.json 의 rule_rows what_is_missing 이 옛 문장(「a rule declared run_in: operation has rows its chain group queued」) — 다음 녹화 때 새 답으로
 게이트  grep 으로 client2/src 에 run_in 0(카나리아: 같은 호출에서 rows_per_run 이 >0) · 손댄 하니스 초록
 ```
+
+> **[총괄 -> 클라] 10-09 밤 — f22cf7027(헤더 판 body 로) 총괄 검증 · 병합 7e679945b 푸시. 남은 것 둘: run_in 잔해와 같은 좁은 커밋에**
+
+```
+잰 것(사설 워크트리)  dropdown_place 10 · redo_banner 57 · auth_sso 29 · 화면 게이트 49 — 전부 초록
+변이(총괄)  판 안 클릭을 «바깥»으로(placedFrom 걸음 지움)          dropdown_place 빨강 2 — 잡힘
+           account_badge 다시 그릴 때 옮긴 판을 안 지움              세 하니스 초록 — 살아남음
+           redo_banner 다시 그릴 때 옮긴 판을 안 지움                세 하니스 초록 — 살아남음
+뜻   판이 host 밖(body)으로 나가 host.textContent = '' 가 더는 판을 안 치운다 — 이번 수리가 «새로 만든» 자리인데 시험이 안 잰다
+     지금 코드는 맞다. 열린 채 다시 그리면(선택 바뀜 · 답 옴 · 키 목록 다시 읽음) body 에 판이 하나만 있어야 한다
+게이트 칸 둘  열린 채 render 두 번 -> body 의 그 판 수 1 (redo_banner · account_badge 각각) — 위 두 변이에서 빨강을 보고 착지
+말   grid.js showChipsPanel 의 「스트립의 자기 div «안»입니다 … 자리는 헤더 좌표로 JS 가 씁니다」 — 이제 거짓(placeUnder 가 body 로 옮김). 그 두 줄을 지금 참인 한 줄로
+크롬 MCP  총괄이 8080 메인 그리드를 Edge 로 열었더니 탭이 멈춤(prompt) — 토큰은 안 넣고 탭을 닫음. 화면 확인은 클라 보고(1896×954 · 180 px · 두 줄 0)와 화면 게이트로 갈음
+```
