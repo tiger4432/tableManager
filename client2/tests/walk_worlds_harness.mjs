@@ -57,8 +57,10 @@ async function seen(M) {
     await wpage.fire();
     await settle();
     const chips = walkAll(mount).filter((n) => String(n.className || '').split(/\s+/).includes('branch-picker__chip'));
+    // What the walk asked before any press: a press now walks again on the page (lead 10-09), counted in V9.
+    const asked = urls.slice();
     for (const chip of chips) chip.dispatch('click', {});
-    return { urls, picked, chips: chips.map((c) => `${c._text}|${c.attrs['aria-pressed']}`) };
+    return { urls: asked, picked, chips: chips.map((c) => `${c._text}|${c.attrs['aria-pressed']}`) };
   };
   out.none = await page([]);
   out.two = await page(['w1', 'default']);
@@ -99,6 +101,37 @@ async function seen(M) {
   };
   out.many = await facts(['w1', 'default']);
   out.one = await facts(['w1']);
+  // ── a world picked on a walked page: walked again there, the same starts, no leaving (lead 10-09) ──
+  {
+    const urls = [];
+    const picked = [];
+    const doc = makeDoc('light');
+    doc.head = doc.createElement('head');
+    const host = doc.createElement('div');
+    const mount = doc.createElement('div');
+    const fetchImpl = async (url) => {
+      urls.push(String(url));
+      return { ok: true, status: 200, json: async () => (String(url).includes('/declaration') ? DECL
+        : { state: 'ok', seed: { id: 's' }, nodes: [], edges: [] }) };
+    };
+    const wpage = M.page.boot(doc, host, { apiBase: '', fetchImpl, world: ['default'], branchMount: mount,
+      pickWorld: (names) => picked.push(names) });
+    await settle();
+    wpage.state.type = 'wafer@1';
+    wpage.state.keys = { wafer: 'W1' };
+    await wpage.fire();
+    await settle();
+    const starts = JSON.stringify(wpage.graph.markings.entries('walk-start'));
+    const before = urls.length;
+    const chip = walkAll(mount).find((n) => String(n.className || '').split(/\s+/).includes('branch-picker__chip') && n._text === 'w1');
+    if (chip) chip.dispatch('click', {});
+    await settle();
+    const after = urls.slice(before);
+    const tail = (u) => (u.split('?')[1] || '').split('&').filter((p) => p.startsWith('world=')).join('&');
+    out.switch = { picked, decl: after.filter((u) => u.includes('/declaration')).map(tail),
+      walk: after.filter((u) => u.includes('/subgraph')).map(tail),
+      same: JSON.stringify(wpage.graph.markings.entries('walk-start')) === starts && wpage.state.keys.wafer === 'W1' };
+  }
   return out;
 }
 
@@ -133,6 +166,11 @@ function suite(out) {
   eq('V7 two or more read: under each edge line of the facts, a row per world that says it - its chip and its evidence',
     [out.many.lines > 0, out.many.tagged > 0, out.many.words, out.many.evidence], [true, true, ['default', 'w1'], true]);
   eq('V8 one world read: no world chip', [out.one.lines > 0, out.one.tagged], [true, 0]);
+  eq('V9 a world picked on a walked page: the address is told the new list, the declaration and the walk are asked again on it, in order',
+    [out.switch.picked, out.switch.decl.length > 0 && out.switch.decl.every((t) => t === 'world=default&world=w1'),
+      out.switch.walk.length > 0 && out.switch.walk.every((t) => t === 'world=default&world=w1')],
+    [[['default', 'w1']], true, true]);
+  eq('X1 ...with the same form and the same signed starts', out.switch.same, true);
   return { ran: names.length, names, failures };
 }
 
@@ -163,6 +201,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'worldChips: worlds.length > 1', 'worldChips: true') },
   { id: 'W6', what: 'the page never tells the graph it reads several', catches: 'V7', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, 'worldChips: worlds.length > 1', 'worldChips: false') },
+  { id: 'W7', what: 'a world picked does not walk again', catches: 'V9', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, "    if (state.type && (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0]))) await walkStarts();\n", '') },
+  { id: 'W8', what: 'a world picked leaves the seat on the old worlds', catches: 'V9', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, '    worlds = worldList(names);\n', '') },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;

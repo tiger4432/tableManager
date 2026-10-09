@@ -78,7 +78,8 @@ const el = (doc, tag, cls, text) => {
  * @param {HTMLElement} host
  * @param {{apiBase?: string, fetchImpl?: Function, world?: string|string[], branchMount?: HTMLElement,
  *          pickWorld?: Function}} [deps]
- *   `world` - the worlds the walk reads, in the order picked (none: the operating one); `pickWorld(names)`.
+ *   `world` - the worlds the walk reads, in the order picked (none: the operating one); `pickWorld(names)` - the
+ *   page's address follows a pick (the walk itself walks again on the new worlds, no reload: lead 10-09).
  */
 export function boot(doc, host, deps) {
   const options = deps || {};
@@ -86,7 +87,7 @@ export function boot(doc, host, deps) {
   // 자기 규칙을 «자기가» 들고 앉습니다. 호스트는 아무것도 안 챙깁니다.
   ensureWalkStyles(doc);
   // THE WALK'S ONE WORLD SEAT (lead 99032248f), as the board's: every request goes through this fetch.
-  const worlds = worldList(options.world);
+  let worlds = worldList(options.world);
   const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);
   const walk = createWalkBoxWalk({ apiBase, fetchImpl });
 
@@ -174,6 +175,11 @@ export function boot(doc, host, deps) {
   async function fire(event) {
     if (!state.type) return;
     markStart(event);
+    await walkStarts();
+  }
+
+  /** The walk from the start marking as it stands - a Walk press, and a world picked (lead 10-09). */
+  async function walkStarts() {
     // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
     if (state.view === 'graph') { showGraph(); return; }
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
@@ -746,7 +752,18 @@ export function boot(doc, host, deps) {
     render();
   }
 
-  const picker = options.branchMount ? new BranchPicker(options.branchMount, { doc, onPickSet: options.pickWorld }) : null;
+  /** Picking worlds walks again on them and the page stays (lead 10-09): the declaration is read on the new worlds,
+   *  then the same form and the same signed starts walk again; the address follows through `pickWorld`. */
+  async function pickWorlds(names) {
+    worlds = worldList(names);
+    graph.worldChips = worlds.length > 1;
+    if (options.pickWorld) options.pickWorld(worlds);
+    await load();
+    if (state.type && (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0]))) await walkStarts();
+  }
+
+  const picker = options.branchMount
+    ? new BranchPicker(options.branchMount, { doc, onPickSet: (names) => { void pickWorlds(names); } }) : null;
   if (picker) picker.show({ current: worlds });
   load();
   return { state, spec, fire, render, graph };
@@ -758,10 +775,10 @@ if (typeof document !== 'undefined') {
   const host = document.getElementById('wk-host');
   if (host) {
     import('../config.js').then(({ API_BASE }) => {
-      // The worlds are the page: picking loads the walk again on them.
+      // A pick walks again on the page; the address follows, so a reload opens the same worlds.
       boot(document, host, { apiBase: API_BASE, world: new URL(location.href).searchParams.getAll('world'),
         branchMount: document.getElementById('wk-branch'),
-        pickWorld: (names) => { location.assign(addressFor(location.href, names)); } });
+        pickWorld: (names) => { history.replaceState(history.state, '', addressFor(location.href, names)); } });
     });
   }
 }
