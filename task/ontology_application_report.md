@@ -37663,3 +37663,19 @@ fold-rows 미리보기 -> 실행           1.7 · 2.5   410 · 0       접은 �
         ③ 좌표 빈 행 5 개는 원장 문에서 «정체성 없음»으로 거절되고 매번 그 줄이 나옵니다
 남은 것  운영 선언(직전 물음) — 오면 인벤토리 식 · 공식 표 복사 + 홀드 · 새 판 소스를 세계에 넣고, 구현자 2~4 가 착지하는 대로 칸을 채웁니다
 ```
+
+---
+
+## [C 응용] 10-09 시연 ③ 먼저 잴 것 — default 세상만으로 이미 사슬이 납니다 · 선언을 나눠야 모델 바꾸기가 보입니다
+
+```
+잰 곳   돌고 있는 박스 서버(읽기 GET 만) · 세상 지정 없음(= 운영 세상)
+씨앗    quantity 노드 20 개 전부(key-values 가 준 것 · 훑은 노드 22) · follow=leads_to
+답      hops 1 과 hops 3 이 같음 — 노드 {'quantity': 21, 'defect_kind': 2} · 변 {'leads_to': 22}
+        -> quantity 에서 leads_to 한 걸음에 defect_kind 에 닿고, 더 걸어도 안 늘어남(사슬 길이 한 걸음)
+까닭    leads_to@1 를 쓰는 소스 2 개(mechanism_edge_to_finding_causes, mechanism_edge_to_quantity_causes)가 when 없이 default 에 있음 — 세상 폴더(ontology_worlds)도 없음
+판정    지금 그대로면 모델 세상을 얹어도 default 의 사슬이 늘 같이 보입니다. 총괄 길대로 갑니다:
+        default 에서 그 소스 둘을 빼고 --whole-source 로 옛 원자를 거둔 뒤, 모델 세상 둘(Empty)에 when: {model} 로 나눠 넣기
+어디서  server/config 는 제가 쓰지 않습니다 — 사설 인스턴스(박스 설정 사본 · 스크래치 스키마 · 메커니즘 표 사본)에서 그 길을 끝까지 돌리고,
+        «시연 선언» 절(어느 파일 · 어느 칸 · 세상 만드는 순서 · backfill 명령 · 박스 초)을 일요일 명령표에 적습니다. 실제 박스 설정은 총괄께서
+```
