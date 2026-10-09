@@ -307,6 +307,7 @@ function renderTree(state) {
         //    fixed four times today.
         for (const reason of unread.reasons || []) {
           const why = h('div', 'oe-tree-why');
+          why.setAttribute('data-wrap-ok', '');
           if (reason.code) why.append(h('code', 'oe-tree-why-code', reason.code));
           why.append(h('code', '', reason.path), h('span', '', reason.message));
           group.append(why);
@@ -699,6 +700,7 @@ function renderRaw(state) {
     // this is the only place the new declaration's own name appears on screen.
     if (state.draft.creates_declaration) {
       const title = h('div', 'oe-title-block');
+      title.setAttribute('data-wrap-ok', '');
       title.append(h('h1', '', state.draft.target_id), h('p', '', state.draft.target_kind));
       editor.append(title);
     }
@@ -1009,8 +1011,11 @@ function renderInspector(state) {
   article.setAttribute('aria-live', 'polite');
   const head = h('div', 'oe-panel-head');
   const title = h('div', 'oe-title-block');
+  title.setAttribute('data-wrap-ok', '');
   title.append(h('h1', '', state.selection.canonical_id), h('p', '', `${state.selection.kind} · ${state.selection.config_path}`));
   const actions = h('div', 'oe-head-actions');
+  // The buttons wrap as one: short of room the status takes the line above, the buttons stay a row (lead 10-09).
+  const buttons = h('div', 'oe-head-buttons');
   const mode = state.viewContext?.mode || 'active';
   // 🔴 DECLARED IS NOT THE SAME AS RUN, AND ONLY A SOURCE CAN SAY SO. Every other kind
   // keeps the badge it had. A source that no batch has ever been compiled from is 미검증 --
@@ -1031,7 +1036,7 @@ function renderInspector(state) {
     const run = button('Test run', 'test-run', state.selection.canonical_id,
                        'oe-edit-action');
     run.disabled = Boolean(state.testRunning);
-    actions.append(run);
+    buttons.append(run);
   }
   if (state.draft) {
     actions.append(h('span', `oe-status oe-status--${state.draft.lifecycle_status}`, `◇ DRAFT · ${state.draft.lifecycle_status}`));
@@ -1042,11 +1047,12 @@ function renderInspector(state) {
     // 🔴 C-120. 사유가 «원문 탭»에 있었습니다 — 그 탭을 안 열면 이 버튼은 말 없이 꺼진
     //    버튼입니다. 「고장인가 · 아직인가 · 권한이 없나」가 그때 구별되지 않습니다.
     setDisabledReason(draftButton, state.draft.preview_valid ? '' : DRAFT_UNVERIFIED);
-    actions.append(activeButton, draftButton);
+    buttons.append(activeButton, draftButton);
   }
   if (!state.draft && state.selection.config_file === 'ledger_config.json') {
-    actions.append(button('Edit draft', 'create-draft', '', 'oe-edit-action'));
+    buttons.append(button('Edit draft', 'create-draft', '', 'oe-edit-action'));
   }
+  actions.append(buttons);
   head.append(title, actions);
   article.append(head);
   // 🔴 C-42. 「돌 게 있나」 — 소유자가 운영에서 물은 그것입니다. 이 화면은 소스가 «선언됐고
@@ -1797,6 +1803,7 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls) {
   if (depth > 0) name.append(depthGuides(depth));
   row.append(name);
   const value = h('div', 'oe-node-value');
+  value.setAttribute('data-wrap-ok', '');
   if (valueEl) value.append(valueEl);
   row.append(value);
   const state = h('div', 'oe-node-state');
@@ -2677,6 +2684,7 @@ function renderIntegrity(state) {
   const aside = h('aside', 'oe-panel');
   const head = h('div', 'oe-panel-head');
   const title = h('div', 'oe-title-block');
+  title.setAttribute('data-wrap-ok', '');
   title.append(h('h1', '', 'Integrity'), h('p', '', state.viewContext?.context_token || 'No compiled context'));
   head.append(title);
   const body = h('div', 'oe-side-body');

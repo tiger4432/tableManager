@@ -1752,10 +1752,10 @@ const FLOORS = new Map([
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
   // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.
   ['dropdown_place_harness.mjs', 10],
-  // The screens in real Chrome (lead 1343e5cca): 7 dist entries x 7 checks at 1920x950 (clip · overflow · panel · text ·
-  // size · columns · answers) + 7 mutants - the five that leaked on 10-08/09, the ledger table's hand widths, and
-  // Options and Menu drawn inside the zoomed header with their rows in two (owner 10-09; 55 -> 56).
-  ['screen_layout_harness.mjs', 56],
+  // The screens in real Chrome (lead 1343e5cca): 7 dist entries x 8 checks (clip · overflow · panel · text · size ·
+  // columns · words · answers) at 1920x950, 1536x864 and 1280x720 + 8 mutants - the five that leaked on 10-08/09, the
+  // ledger table's hand widths, Options and Menu inside the zoomed header, the Rules column's names broken (lead 10-09).
+  ['screen_layout_harness.mjs', 176],
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

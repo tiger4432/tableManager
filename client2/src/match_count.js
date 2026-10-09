@@ -3,9 +3,10 @@
 //
 // 🔴 개수는 «늦게 옵니다» (소유자 승인 2026-09-02). 행을 먼저 그리고, 개수는 두 번째 요청이
 //    오면 채웁니다. 그래서 화면은 이제 «세 가지»를 구별해야 합니다:
-//       숫자   `Matches: 12`     센 결과
-//       null   `Matches: …`      «아직 모릅니다» -- 세는 중
-//       0      `Matches: 0`      «진짜 없습니다»
+//       숫자   `12`     센 결과
+//       null   `…`      «아직 모릅니다» -- 세는 중
+//       0      `0`      «진짜 없습니다»
+//    「Matches:」 낱말은 index.html 의 제 칸에 있습니다 — 좁으면 낱말이 먼저 비킵니다(C-99 ②, 총괄 10-09).
 //    null 을 0 으로 그리면 「일치 없음」이라는 «거짓»이고, 빈칸으로 두면 고장으로 읽힙니다.
 //
 // 🔴 이 파일이 생긴 이유: 「Matches:」를 쓰는 자리가 «다섯»이었습니다 --
@@ -24,9 +25,9 @@ export function isCounted(total) {
   return typeof total === 'number' && Number.isFinite(total);
 }
 
-/** 화면에 적을 한 줄. */
+/** 화면에 적을 수. */
 export function matchCountText(total) {
-  return `Matches: ${isCounted(total) ? total : COUNTING}`;
+  return `${isCounted(total) ? total : COUNTING}`;
 }
 
 /** 다섯 자리가 부르는 «한 함수». 표기와 표지를 같이 답니다. */

@@ -267,7 +267,7 @@ export function updateLoadedCount(forcedCount = null) {
   const displayedCount = state.gridApi.getDisplayedRowCount();
 
   if (state.viewMode === 'infinite') {
-    elements.exposedRowsCount.textContent = `Loaded: 1 - ${displayedCount}`;
+    elements.exposedRowsCount.textContent = `1 - ${displayedCount}`;
   } else {
     const forced = forcedCount !== null ? forcedCount : displayedCount;
     const startRow = forced === 0 ? 0 : state.currentSkip + 1;
@@ -275,12 +275,12 @@ export function updateLoadedCount(forcedCount = null) {
 
     if (startRow === endRow) {
       if (startRow === 0) {
-        elements.exposedRowsCount.textContent = `Loaded: 0`;
+        elements.exposedRowsCount.textContent = `0`;
       } else {
-        elements.exposedRowsCount.textContent = `Loaded: ${startRow}`;
+        elements.exposedRowsCount.textContent = `${startRow}`;
       }
     } else {
-      elements.exposedRowsCount.textContent = `Loaded: ${startRow} - ${endRow}`;
+      elements.exposedRowsCount.textContent = `${startRow} - ${endRow}`;
     }
   }
 }

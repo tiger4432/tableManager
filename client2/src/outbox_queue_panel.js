@@ -102,6 +102,8 @@ const COLUMNS = Object.freeze([
   Object.freeze({ key: 'state', label: 'State' }),
   Object.freeze({ key: 'rules', label: 'Rules' }),
 ]);
+// The columns measured from what they hold, and the CSS width each one sets.
+const FIT = Object.freeze([['.queue-state .tag', '--queue-state-w'], ['.queue-rule-name', '--queue-rules-w']]);
 
 /** 조립식 부품: 자기 div 하나, mount·deps 를 생성자로, 모듈 상태 «없음». */
 export class OutboxQueuePanel {
@@ -114,21 +116,22 @@ export class OutboxQueuePanel {
     mount.appendChild(this.root);
     // A hidden tab measures 0: the column is fitted again when the panel shows or changes width.
     const view = this.doc.defaultView;
-    if (view && view.ResizeObserver) new view.ResizeObserver(() => this._fitState()).observe(this.root);
+    if (view && view.ResizeObserver) new view.ResizeObserver(() => this._fitColumns()).observe(this.root);
   }
 
-  /** The State column as wide as its widest tag plus the cell's padding (owner 10-09: the tag was cut at 96px);
-   *  the Rules column (1fr) gives the room. */
-  _fitState() {
+  /** State and Rules as wide as their widest tag / rule name plus the cell's padding: the tag was cut at 96px (owner
+   *  10-09), a rule name broke letter by letter (owner 09-23 「접지말고」, lead 10-09). A narrower panel rolls the box. */
+  _fitColumns() {
     const view = this.doc.defaultView;
     if (!view || !view.getComputedStyle) return;
-    let need = 0;
-    for (const tag of this.root.querySelectorAll('.queue-state .tag')) {
-      const cell = tag.closest('.queue-cell');
-      const cs = view.getComputedStyle(cell);
-      need = Math.max(need, tag.offsetWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth));
+    for (const [sel, prop] of FIT) {
+      let need = 0;
+      for (const el of this.root.querySelectorAll(sel)) {
+        const cs = view.getComputedStyle(el.closest('.queue-cell'));
+        need = Math.max(need, el.offsetWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth));
+      }
+      if (need) this.root.style.setProperty(prop, `${Math.ceil(need)}px`);
     }
-    if (need) this.root.style.setProperty('--queue-state-w', `${Math.ceil(need)}px`);
   }
 
   _line(cls, text) { return line(this.doc, cls, text); }
@@ -239,7 +242,7 @@ export class OutboxQueuePanel {
       body.appendChild(line);
     }
     scroll.appendChild(body);
-    this._fitState();
+    this._fitColumns();
     return view;
   }
 }

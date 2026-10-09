@@ -12,8 +12,10 @@
 //   size      a button half again taller than the other items of its line, its letters no larger than theirs
 //   columns   a table row whose long text cell runs past three lines while a short cell beside it leaves more than
 //             half its width empty (owner 10-09: a narrow Source beside a wide Last)
+//   words     a word broken between two of its letters (lead 10-09: a rule name in four pieces); data-wrap-ok on text
+//             broken on purpose. A break after - or / is the browser's own, and letters outside a-z 0-9 _ are not read
 //   answers   a GET the fixtures do not answer, or a screen that could not be driven
-// One line per finding: entry · size · state · element path · what. Sizes: 1920x950 (1536 and 1280 next).
+// One line per finding: entry · size · state · element path · what. Sizes: 1920x950, 1536x864, 1280x720.
 // Chrome hands every request here (DevTools Fetch). Files come from dist, GETs from fixtures/screens_answers.json
 // (capture_screens.py), the two queues from fixtures/chain_states.json; no request reaches a server of ours. A GET with
 // no answer is a red line - an unanswered screen draws empty and measures nothing. Other methods are refused and
@@ -34,8 +36,8 @@ const CLIENT = path.resolve(HERE, '..');
 const FIX = path.join(HERE, 'fixtures');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const ORIGIN = 'http://screens.test';
-const SIZES = [[1920, 950]];
-const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns'];
+const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
+const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns', 'words'];
 const TOL = 12;
 const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const only = argOf('--only');
@@ -328,6 +330,31 @@ function screensLib(TOL) {
         break;
       }
     }
+    // words: in a text that runs over lines, two letters of one word on two lines
+    const letter = /\w/;
+    const texts = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    for (let n = texts.nextNode(); n; n = texts.nextNode()) {
+      const t = n.textContent;
+      if (t.trim().length < 2 || !shown(n.parentElement) || n.parentElement.closest('[data-wrap-ok]')) continue;
+      const whole = document.createRange();
+      whole.selectNodeContents(n);
+      if (new Set([...whole.getClientRects()].filter((r) => r.width).map((r) => Math.round(r.top))).size < 2) continue;
+      let prev = null;
+      for (let i = 0; i < t.length; i += 1) {
+        const one = document.createRange();
+        one.setStart(n, i);
+        one.setEnd(n, i + 1);
+        const box = [...one.getClientRects()].find((r) => r.width);
+        if (!box) continue;
+        if (prev && prev.i === i - 1 && box.top > prev.box.top + prev.box.height / 2 && letter.test(t[i - 1]) && letter.test(t[i])) {
+          const from = t.lastIndexOf(' ', i) + 1;
+          const to = t.indexOf(' ', i) < 0 ? t.length : t.indexOf(' ', i);
+          lines.push({ rule: 'words', path: pathOf(n.parentElement), what: `«${t.slice(from, to).slice(0, 40)}» breaks between «${t[i - 1]}» and «${t[i]}»` });
+          break;
+        }
+        prev = { box, i };
+      }
+    }
     return lines;
   }
 
@@ -552,6 +579,11 @@ const MUTANTS = [
     says: /breaks into/, file: 'src/main.js', edits: [
       ['      if (!isVisible) placeUnder(elements.settingsDropdown, elements.settingsMenuBtn);\n', ''],
       ['      if (!isVisible) placeUnder(elements.navDropdown, elements.navMenuBtn);\n', '']] },
+  // A rule name in a 48px column, broken letter by letter (lead 10-09; owner 09-23 「접지말고」).
+  { name: 'the Rules column back at 48px, its names broken anywhere', entry: 'index.html', rule: 'words', at: 'queue-rule-name',
+    file: 'src/style.css', edits: [
+      ['minmax(var(--queue-rules-w, 48px), 1fr)', 'minmax(48px, 1fr)'],
+      ['                   flex: none; white-space: nowrap; }', '                   flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',
     file: 'src/style.css', edits: [['max(96px, var(--queue-state-w, 96px))', '96px']] },
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',
