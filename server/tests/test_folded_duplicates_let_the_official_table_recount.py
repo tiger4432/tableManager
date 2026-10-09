@@ -47,6 +47,20 @@ def test_folding_the_logs_duplicates_lets_the_hold_read_agreed(world):
     assert sorted(hw.said(world)) == [("J1", "7.0"), ("J2", "5.0")]                 # the ledger's spelling
 
 
+def test_on_postgresql_the_preferred_text_matches_in_any_case_and_a_blank_key_row_stays(world):
+    """총괄 1d2a7e0fd ④ · 9c8b9f919 where it runs: PostgreSQL's LIKE minds case, SQLite's does not."""
+    hw.push(world, [{"log_id": "A1", **hw.KEY, "netdie": 7},
+                    {"log_id": "X_AUTO_2", **hw.KEY, "netdie": 8},
+                    {"log_id": "N1", "dt_job": "J3", "netdie": 1},
+                    {"log_id": "N2", "dt_job": "J3", "netdie": 2}])
+    done = replay.fold_duplicate_rows(world["db"], hw.LOG, hw.KEYS, "log_id", apply=True, log=lambda m: None,
+                                      prefer_column="log_id", prefer_text="auto")
+    assert (done["rows_deleted"], done["keys_preferred"], done["rows_blank_key"]) == (1, 1, 2)
+    world["db"].expire_all()
+    left = sorted(r.log_id for r in world["db"].query(hw.models.DYNAMIC_TABLES[hw.LOG]).all())
+    assert left == ["N1", "N2", "X_AUTO_2"]
+
+
 def _official(world):
     world["db"].expire_all()
     return {r.dt_job: (r.netdie, r.hold) for r in world["db"].query(hw.models.DYNAMIC_TABLES[hw.OFFICIAL]).all()}

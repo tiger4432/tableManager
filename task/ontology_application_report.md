@@ -37334,3 +37334,31 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
 지금     77733bc21 에서 은퇴한 칸(run_in · rule_rows · RETIRED_CELLS · routing_keys · _LIMIT_KEYS)을 부르는 시험 15 파일 전부 — 247 passed · 0 failed
 다음부터  은퇴 QA 는 «은퇴한 이름을 부르는 시험 전수»를 돌린다 — 손댄 파일이 아니라
 ```
+
+---
+
+## [C 응용] 10-09 41be19bb5(접기 — 빈 키 행은 그대로 · 고른 글자가 든 행 먼저) QA — 결함 없음 (잼)
+
+```
+잰 것   사설 워크트리 — sqlite 파일 20 passed · PG 두 파일(-k) 3 passed(assy_test 스크래치, 픽스처가 지움)
+        제 변이: 빈 값을 «첫 키 칸»에서만 물음 -> 4 빨강(test_rows_with_one_blank_key_part_are_left_as_they_are · test_an_empty_string_is_blank_as_null_is · test_the_preview_the_run_and_the_cli_say_the_rows_left_for_a_blank_key · test_a_preferred_fold_leaves_blank_key_rows_and_says_what_it_kept)
+읽은 것  견주기는 «들어 있다» · 대소문자 무시(icontains, 와일드카드 글자는 그대로 읽음) — 지시(1d2a7e0fd)의 낱말 그대로
+문서    BACKFILL_GUIDE 의 접기 줄은 착지가 이미 맞춤(prefer 두 칸 · 빈 키 행 그대로)
+```
+
+---
+
+## [C 응용] 10-09 6f0dc0498(LLM 은 llm_config.json 하나 · 요청마다 llm_requests.log) QA — 결함 하나(로그에 자격 증명) (잼)
+
+```
+잰 것   시험 파일(test_a_text_is_read_by_a_language_model) 28 passed — 사설 워크트리
+결함    llm_config.json 의 headers 에 적은 자격 증명이 llm_requests.log 에 «그대로» 남는다 — 가리는 것은 api_key 값 하나뿐(_masked)
+        재기  그 시험의 가짜 SDK(default_headers = Authorization + 적은 headers, SDK 가 짓는 대로) · 키 둘을 headers 에
+              로그의 headers  {'Authorization': 'Bearer ***', 'X-Gateway-Key': 'gw-secret-0123456789', 'api-key': 'az-secret-987'}
+              게이트웨이 키 파일에 True · Azure api-key 파일에 True · api_key 파일에 False(가려짐 — 카나리아)
+        왜 크나  사내 게이트웨이 · Azure 는 키를 api_key 가 아니라 머리말(api-key · x-api-key · Ocp-Apim-Subscription-Key)로 받는다
+              — 그런 운영에서는 «모든» 요청 로그 줄에 키가 평문. 커밋 문장 「headers … credentials redacted」와 다르다
+        고칠 모양 sent 줄의 headers 값을 가리기(이름만 남기기 · 또는 Authorization 처럼 «값 전부»를 ***) — 구현자 · 총괄 판정. 고치지 않았습니다
+은퇴     ASSY_LLM_* 를 «살아 있다»고 말하는 자리 0 (문서 · RUN.md · 서버 · 클라)
+문서    CONFIG_GUIDE 표 · config/README 표에 llm_config.json 행 — 둘 다 빠져 있었다
+```

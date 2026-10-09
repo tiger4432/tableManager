@@ -1,5 +1,65 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **raws 하위 폴더에 «나중에» 온 파일이 30 초 안에 들어간다 · 남은 파일은 한 줄로 까닭을 말한다 — 이주 «없음» · 재기동 «수집기»(따로 띄우면 run_watcher, 아니면 서버)**
+>
+> ```
+> 무엇이 바뀌나    하위 폴더 다시 보기가 자기 스레드(watcher-subfolder-recheck)에서 돈다 — 스윕의 잠금 밖
+>                기동 즉시 한 번, 그 뒤 subfolder_recheck_seconds(ingestion_settings.json, 적지 않으면 30)마다 raws/ 하위 폴더를 훑는다
+>                일꾼을 부르는 것은 «바뀐 폴더» · «마지막으로 부른 뒤 300 초(스윕 주기)가 지난 폴더»뿐 — 보관 끔으로 남는 폴더는 훑기만
+>                스윕(300 초)은 이제 하위 폴더를 안 본다 — 어느 수집기의 느린 raws 직속 파일이 모든 하위 폴더를 붙잡던 길이 없어졌다
+> 볼 줄          수집기 로그:
+>                  [<표>] 📂 '<폴더>': N file(s) left - <까닭> - <다음 시도> - #k for this folder and reason (said at the 1st, 10th, 100th ...)
+>                까닭과 그 뜻:
+>                  tree ingestion has been running for M min (now: <파일>)       = 그 폴더 일꾼이 아직 돈다. now 가 오래 같은 파일이면 그 파일이 걸린 것
+>                  Tree ingestion deferred — K file(s) still being written ...   = 아직 쓰는 중인 파일. 다 쓰면 다음 다시 보기에 들어간다
+>                  kept in place (archive_processed_files=false): dispatched N ... = 처리는 됐고 보관 끔이라 제자리. 남아 있어도 «인식 못 함»이 아니다
+>                  Tree ingestion incomplete: ... — directory preserved            = 처리 못 했거나 못 옮긴 파일. 바뀌면 다음 다시 보기, 아니면 300 초 뒤 다시
+>                  nested-directory ingestion is off (flatten_nested_dirs=false) ... = 하위 폴더 적재가 꺼져 있다. 그 파일은 안 들어간다
+>                같은 폴더 · 같은 까닭은 1 · 10 · 100 번째만 말한다. 폴더가 다 비워지면 셈이 비어 다음은 다시 #1
+>                전의 «Tree ingestion of '<폴더>' has been running …» · «… periodic sweep will retry» 줄은 이 줄로 바뀌었다
+> 확인           이미 있는 하위 폴더에 파일 하나를 넣는다 -> 30 초 안에 행이 들어간다 (전엔 최대 300 초, 붙잡히면 그 이상 · 로그 0 줄)
+> 비용           다시 보기마다 하위 폴더를 훑는다(DB 안 감) — 이 박스 2만 파일 폴더 1.13 · 1.14 · 1.15 s
+> 급할 때        git revert <이 커밋> -> 수집기 재기동
+> ```
+
+---
+> ## [10-09] **같은 원천 행이 한 묶음에 두 번 와도 그 칸을 한 번만 찾는다 — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    cell_layer.cells_stamped_by 가 원천 id 를 한 번씩만 보낸다(순서 유지)
+>                고친 원천 목록은 EDIT 사건마다 행 id 를 하나씩 모으므로 같은 행이 한 묶음에 두 번 올 수 있다 —
+>                원천마다 묻는 모양(아래 절)은 그때 두 번 답해 보호(user) 층 셈이 부풀었다. 거두는 칸은 전에도 같았다
+> 볼 줄          chain_worker.log: [ChainRetract] table=<표> ... protected_skipped=N
+>                  = 거두지 않고 둔 사람 값 칸 수 그대로. 전엔 겹친 만큼 컸다
+> 급할 때        git revert <이 커밋> -> 체인 워커 재기동
+> ```
+
+---
+> ## [10-09] **LLM 선언 파일 llm_config.json · 요청 로그 llm_requests.log (총괄 043915ab0 ①) — 이주 «없음» · 재기동 «필요 없음»(부를 때마다 파일을 읽는다)**
+>
+> ```
+> 적는 곳        server/config/llm_config.json — 모양은 server/config/sample/llm_config.json.sample
+>               base_url · model · api_key · timeout_s(초, 기본 60) · headers(덧붙일 요청 머리, 기본 없음) · proxy
+> proxy          없거나 null = 시스템 프록시를 안 읽고 base_url 로 바로 간다
+>               프록시를 거쳐야 하면 "proxy": "http://<호스트>:<포트>"
+> 할 일          샘플을 server/config/llm_config.json 으로 복사해 값을 넣는다 — 재기동 없음(부를 때마다 읽음)
+> 확인 한 줄      cd server; python -c "from utils import llm; print(llm.ask_json('Reply with a JSON object with one key ok set to 1'))"
+>                 -> {'ok': 1} 이면 닿았다. LlmRefused 문장이면 그 문장이 칸 이름을 댄다
+> 옮기기          ASSY_LLM_* 환경변수는 은퇴했다 — 값을 파일로 옮긴다. 파일 없이 환경변수만 있으면 부를 때 거절:
+>                 ASSY_LLM_* environment variables are not read any more - write server/config/llm_config.json (sample: config/sample/llm_config.json.sample)
+> 볼 로그         server/llm_requests.log — 부를 때마다 두 줄
+>                 {"sent": <시각>, "id": …, "url": "<base_url>/chat/completions", "model": …, "headers": {… "Authorization": "Bearer ***" …}, "payload": {…}, "proxy": …}
+>                 {"received": <시각>, "id": <같은 id>, "status": 200, "answer": {…}, "ms": …}
+>                 실패면 둘째 줄이 "status": <숫자 또는 null>, "error": "<예외 이름>: <문장>"
+> 뜻             sent 줄 뒤에 timeout_s 만큼 지나 status null 의 error = 그 주소에 못 닿음(프록시 · 방화벽 쪽)
+>               status 숫자 = 상대가 답했다. 401 · 403 은 키 · 권한, 404 는 base_url 경로 · 모델 이름부터 본다
+> 키 확인         Select-String -Path server\llm_requests.log -Pattern '<키 앞 여섯 글자>' | Measure-Object   -> Count 0
+> 크기           요청 하나 ≈ 3285 바이트(이 박스 · 사전 50 구절 · 글 600 자 · 답 3 링크) -> 글 1 만 개 ≈ 33 MB. 사전 · 글이 길면 그만큼 는다
+>               돌려 쓰기 없음 — 커지면 파일을 다른 곳으로 옮긴다(줄마다 열고 닫으므로 다음 부름이 새로 만든다)
+> httpx          0.26 보다 낮으면 부를 때 거절: httpx <지금 판> cannot take a proxy - 0.26 or later is needed: pip install -U httpx
+> 격리 스택       devenv bootstrap 이 이 파일도 복사한다 — 격리 스택도 같은 키로 같은 모델을 부른다
+> 급할 때         파일 이름을 바꾼다 -> 다음 부름부터 거절(그 글의 묶음만 실패, 다른 표는 그대로)
+> ```
 > ## [10-09] **run_in: operation 은퇴 — 규칙은 체인 묶음에서만, 느린 규칙은 rows_per_run: 1 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
@@ -36,7 +96,11 @@
 > 실행       python server/scripts/chain_replay_cli.py fold-rows <로그 표> --keys dt_wafer_id --order <시간 칸> --pace slow --apply
 >            (가장 늦은 것을 남기려면 --keep max · 소급 탭 «Fold duplicate rows» 도 같은 연산)
 > 답의 뜻    미리보기: 「K key(s) of (dt_wafer_id) … M row(s) go, R stay … For example dt_wafer_id=…: keeps <시간>, deletes <시간>」 — keeps 가 진짜인지 본다. 아무것도 안 씀
->            실행: 「fold-rows '<표>': M of M row(s) deleted in P page(s), K key(s)」 — 그리드 삭제 문으로 지움(층 · 이력 같이, 원자 · 먹인 층은 원장 따라가기가 거둠). STOPPED 면 다시 돌리면 남은 것만
+>            실행: 「fold-rows '<표>': M of M row(s) deleted in P page(s), K key(s), B row(s) with a blank key part left as they are」 — 그리드 삭제 문으로 지움(층 · 이력 같이, 원자 · 먹인 층은 원장 따라가기가 거둠). STOPPED 면 다시 돌리면 남은 것만
+> 빈 키      키 칸 하나라도 빈('' 또는 NULL) 행은 접지 않고 그대로 둔다(총괄 9c8b9f919) — 미리보기 「B row(s) with a blank key part are left as they are.」 의 B 가 그 수
+> 먼저 남길 행  python server/scripts/chain_replay_cli.py fold-rows <로그 표> --keys dt_wafer_id,dtx,dty --order <시간 칸> --prefer-column job --prefer-text auto
+>            같은 키에서 job 에 auto 가 든 행(AUTO · Auto 도)을 먼저 남기고, 그 안에서 가장 이른 시간(총괄 1d2a7e0fd). 둘 중 하나만 적으면 거절
+>            미리보기 「a row whose job holds 'auto' (any case) stays first - P key(s) keep one」 + 표본에 「keeps <시간> (job=…), deletes <시간> (job=…)」
 > ```
 
 ---
@@ -910,8 +974,7 @@
 >
 > ```
 > 설치            LLM 을 쓸 때만: conda env assy_manager 에서 pip install openai
-> 환경변수         ASSY_LLM_BASE_URL · ASSY_LLM_MODEL · ASSY_LLM_API_KEY · ASSY_LLM_TIMEOUT_S(초, 기본 60)
->                서버 트리를 띄우는 셸에 — 띄운 뒤에는 못 준다
+> 환경변수         ⚰️ 10-09 은퇴 — server/config/llm_config.json 하나에 적는다(맨 위 10-09 «LLM 선언 파일» 절)
 > 재기동 뒤        run_in: operation 규칙의 트리거 표에 쓰면 체인 데몬 로그에
 >                [Retroactive] queued run_id=<id> op=rule_rows params={'rule': '<규칙>', ...}
 > 뜻              묶음이 맵퍼 대신 작업을 줄 세우고 다음 묶음으로 갔다. 스케줄러가 작업을 하나씩 돈다

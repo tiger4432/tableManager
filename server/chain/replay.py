@@ -774,28 +774,58 @@ FOLD_ROWS_PAGE = 1000
 FOLD_ROWS_SAMPLE_KEYS, FOLD_ROWS_SAMPLE_ROWS = 3, 4
 
 
-def _ranked_duplicates(model, keys, order, keep):
-    """Every row with its place among the rows of its key (`n`, 1 = kept) and how many share
-    the key (`c`). Keys compare blank = NULL = NULL (`crud.blank_to_null`); by `order` - `min`
-    earliest, `max` latest - a blank `order` last; a tie, the smaller row_id kept."""
-    from sqlalchemy import String, case, cast, func, select
+def _blank_key(model, keys):
+    """A row with a blank part in its key (`crud.blank_sql_condition`) - not folded: rows whose
+    coordinates are blank are different rows (총괄 9c8b9f919 · 소유자 10-09 「ㅇㅇ 있어」)."""
+    from sqlalchemy import String, cast, or_
 
     from database import crud
 
-    parts = [crud.blank_to_null(cast(getattr(model, k), String)) for k in keys]
+    return or_(*[crud.blank_sql_condition(cast(getattr(model, k), String)) for k in keys])
+
+
+def _prefer_of(prefer_column, prefer_text):
+    """(column, text) the fold keeps first, or None - both written or neither (총괄 1d2a7e0fd)."""
+    from database import crud
+
+    column = None if crud.is_blank_value(prefer_column) else str(prefer_column).strip()
+    text = None if crud.is_blank_value(prefer_text) else str(prefer_text).strip()
+    if (column is None) != (text is None):
+        raise ReplayRefused("prefer_column and prefer_text go together - write both or neither "
+                            f"(given: {'prefer_column' if column else 'prefer_text'})")
+    return (column, text) if column else None
+
+
+def _ranked_duplicates(model, keys, order, keep, prefer=None):
+    """Every row whose key has a value in each part, with its place among the rows of its key
+    (`n`, 1 = kept) and how many share the key (`c`): first a row whose `prefer` column holds its
+    text (any case), then by `order` - `min` earliest, `max` latest - a blank `order` last; a tie,
+    the smaller row_id kept."""
+    from sqlalchemy import String, case, cast, false, func, literal, not_, select
+
+    from database import crud
+
+    parts = [cast(getattr(model, k), String) for k in keys]
     by = getattr(model, order)
-    ranked = [case((crud.blank_sql_condition(cast(by, String)), 1), else_=0),
+    preferred = (cast(getattr(model, prefer[0]), String).icontains(prefer[1], autoescape=True)
+                 if prefer else false())
+    ranked = [case((preferred, 0), else_=1), case((crud.blank_sql_condition(cast(by, String)), 1), else_=0),
               by.asc() if keep == "min" else by.desc(), model.row_id.asc()]
     return select(model.row_id.label("row_id"), by.label("order_value"),
+                  (getattr(model, prefer[0]) if prefer else literal(None)).label("prefer_value"),
+                  case((preferred, 1), else_=0).label("preferred"),
                   *[part.label("k%d" % i) for i, part in enumerate(parts)],
                   func.row_number().over(partition_by=parts, order_by=ranked).label("n"),
-                  func.count().over(partition_by=parts).label("c")).subquery()
+                  func.count().over(partition_by=parts).label("c")).where(
+                      not_(_blank_key(model, keys))).subquery()
 
 
 def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min",
                         apply: bool = False, pace: str = None, log=logger.info,
-                        checkpoint=None) -> dict:
-    """Per key one row stays - the first by `order` (`_ranked_duplicates`) - and the rest are
+                        checkpoint=None, prefer_column=None, prefer_text=None) -> dict:
+    """Per key one row stays - the first by `order` (`_ranked_duplicates`; a row whose
+    `prefer_column` holds `prefer_text` before the rest; a row with a blank key part is not
+    touched, `_blank_key`) - and the rest are
     deleted through the product's delete door, `crud.delete_rows_batch`, a page at a time, so
     their layers, holds and ledger atoms are taken back as for a deletion from the grid (총괄
     d72dc0283 · 소유자 10-09 「해당 dtwaferid 중에서 최소 시간으로 접으면 되긴 함」). The rows to
@@ -810,15 +840,20 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
         raise ReplayRefused("name at least one key column - the rows that fold share its values")
     if keep not in ("min", "max"):
         raise ReplayRefused(f"keep is 'min' (the earliest {order}) or 'max' (the latest), not '{keep}'")
-    model, _col_types = resolve_target(table_name, list(keys) + [order])
+    prefer = _prefer_of(prefer_column, prefer_text)
+    model, _col_types = resolve_target(table_name, list(keys) + [order] + ([prefer[0]] if prefer else []))
     pages_per_cycle, rest_seconds = resolve_pace(pace)
-    ranked = _ranked_duplicates(model, keys, order, keep)
-    rows, to_go, folded_keys = db.execute(select(
+    ranked = _ranked_duplicates(model, keys, order, keep, prefer)
+    rows, to_go, folded_keys, preferred_keys = db.execute(select(
         func.count(), func.count().filter(ranked.c.n > 1),
-        func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1))).select_from(ranked)).one()
-    stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows": rows,
-             "keys_folded": folded_keys, "rows_to_delete": to_go, "rows_kept": rows - to_go,
-             "rows_deleted": 0, "pages": 0, "stopped": False, "sample": []}
+        func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1)),
+        func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1, ranked.c.preferred == 1)))
+        .select_from(ranked)).one()
+    blank = db.execute(select(func.count()).select_from(model).where(_blank_key(model, keys))).scalar()
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows": rows + blank,
+             "keys_folded": folded_keys, "keys_preferred": preferred_keys, "rows_to_delete": to_go,
+             "rows_kept": rows + blank - to_go, "rows_blank_key": blank, "rows_deleted": 0, "pages": 0,
+             "stopped": False, "sample": []}
     key_cols = [ranked.c["k%d" % i] for i in range(len(keys))]
     sample = {}
     for row in db.execute(select(ranked).where(ranked.c.c > 1, ranked.c.n <= FOLD_ROWS_SAMPLE_ROWS)
@@ -828,10 +863,11 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
         if key not in sample and len(sample) == FOLD_ROWS_SAMPLE_KEYS:
             break
         one = sample.setdefault(key, {"key": dict(zip(keys, key)), "rows": row.c, "kept": None, "deleted": []})
+        seen = {"row_id": row.row_id, order: row.order_value, **({prefer[0]: row.prefer_value} if prefer else {})}
         if row.n == 1:
-            one["kept"] = {"row_id": row.row_id, order: row.order_value}
+            one["kept"] = seen
         else:
-            one["deleted"].append({"row_id": row.row_id, order: row.order_value})
+            one["deleted"].append(seen)
     stats["sample"] = list(sample.values())
     if apply and to_go:
         ids = [r for (r,) in db.execute(select(ranked.c.row_id).where(ranked.c.n > 1)
@@ -847,8 +883,11 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 time.sleep(rest_seconds)
     log(f"[fold-rows] '{table_name}' {stats['mode']}: {folded_keys} key(s) of ({', '.join(keys)}) "
-        f"hold more than one row - keep the {'earliest' if keep == 'min' else 'latest'} {order}, "
-        f"{to_go} row(s) to delete, {stats['rows_deleted']} deleted")
+        f"hold more than one row - keep "
+        + (f"a row whose {prefer[0]} holds '{prefer[1]}' ({preferred_keys} key(s)), then " if prefer else "")
+        + f"the {'earliest' if keep == 'min' else 'latest'} {order}, "
+        f"{to_go} row(s) to delete, {stats['rows_deleted']} deleted, {blank} row(s) with a blank key "
+        f"part left as they are")
     return stats
 
 

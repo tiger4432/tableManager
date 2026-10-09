@@ -209,7 +209,7 @@ def test_a_top_level_file_that_waited_on_a_lock_is_swept_again(box):
 
 
 @pytest.mark.pg
-def test_the_stalled_line_and_the_sweep_line_say_the_folder_the_file_and_the_holder(box, monkeypatch, caplog):
+def test_the_stalled_line_and_the_folder_line_say_the_folder_the_file_and_the_holder(box, monkeypatch, caplog):
     box["settings"](lock_timeout_seconds=4)
     monkeypatch.setattr(heartbeat, "DEFAULT_STALL_AFTER_SEC", 0.5)
     monkeypatch.setattr(dw, "HEARTBEAT_SLICE_SECONDS", 0.2)
@@ -233,7 +233,7 @@ def test_the_stalled_line_and_the_sweep_line_say_the_folder_the_file_and_the_hol
             time.sleep(1.0)                    # five more slices of the loop, the claim still stalled
             with handler._processing_lock:                         # its tree worker, two minutes in
                 handler._ingesting_dirs[os.path.normcase(os.path.abspath(batch))] = time.time() - 125
-            watcher.sweep_existing_files()
+            watcher.recheck_subfolders()                           # the subfolder look says it (2f487efb5)
     finally:
         watcher._stop_event.set()
         stuck.join(10)
@@ -243,9 +243,10 @@ def test_the_stalled_line_and_the_sweep_line_say_the_folder_the_file_and_the_hol
     assert len(stalled) == 1, stalled                             # once per episode
     assert stalled[0].startswith("[Watcher] ingest f1.csv: stalled ")
     assert "(folder batch · db pid " in stalled[0] and "on pid %d " % locker.pid in stalled[0], stalled
-    running = [r.getMessage() for r in caplog.records if "Tree ingestion of 'batch'" in r.getMessage()]
-    assert running == ["[%s] 📂 Tree ingestion of 'batch' has been running for 2 min (now: ingest f1.csv)"
-                       % TABLE], running
+    running = [r.getMessage() for r in caplog.records if "tree ingestion has been running" in r.getMessage()]
+    assert running == ["[%s] 📂 'batch': 1 file(s) left - tree ingestion has been running for 2 min (now: ingest"
+                       " f1.csv) - next look in 30 s - #1 for this folder and reason (said at the 1st, 10th, 100th"
+                       " ...)" % TABLE], running
 
 
 @pytest.mark.pg

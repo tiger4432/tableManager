@@ -76752,3 +76752,283 @@ MUTANT rows_per_run defaults to six again                 1 failed, 9 passed
 **클라 레인 몫 한 줄**: client2/src/admin.js 가 응답의 run_in 목록을 아직 읽습니다(그 목록은 이제 안 옵니다 — 죽은 줄). 서버 변경은 없습니다.
 
 어느 DB · 어느 스키마 · 지운 것: 이 착지의 시험은 sqlite 메모리뿐 · 지운 것 0.
+
+## [10-09] 중복 행 접기 — 빈 키 행 그대로 · 먼저 남길 행 착지 41be19bb5 (총괄 9c8b9f919 · 1d2a7e0fd)
+
+**도착지와 대조**
+```
+「키 칸 중 하나라도 빈 행은 접지 않는다 — 미리보기와 결과가 «키가 빈 행 N 개는 그대로 둠»을 말한다」   -> 섰다
+「--prefer-column <칸> --prefer-text <글자> 를 적으면 그 칸에 그 글자가 든 행을 먼저 남긴다 — 그 안에서 지금처럼 시간」 -> 섰다
+```
+**자리**: 빈 판정은 `_blank_key` 하나(키 칸마다 crud.blank_sql_condition 의 OR)이고, 순위에서 빼는 자리와 세는 자리가 같이 부릅니다. prefer 짝 검사는 `_prefer_of` 하나이고, 판정(judge)과 실행이 같이 부릅니다.
+
+**게이트**
+```
+sqlite  20 passed   (test_duplicate_rows_fold_to_one_per_key.py)
+PG      3 passed   (test_folded_duplicates_let_the_official_table_recount.py — 새 PG 칸 하나)
+레지스트리를 읽는 시험 파일 10 개   225 passed, 3 skipped
+변이 (sqlite) — 빨강 = 시험 실패 · md5 same
+MUTANT the blank-key condition is gone    5 failed, 15 passed
+    FAILED test_a_preferred_fold_leaves_blank_key_rows_and_says_what_it_kept
+    FAILED test_an_empty_string_is_blank_as_null_is
+    FAILED test_rows_whose_key_is_all_blank_are_left_as_they_are
+    FAILED test_rows_with_one_blank_key_part_are_left_as_they_are
+    FAILED test_the_preview_the_run_and_the_cli_say_the_rows_left_for_a_blank_key
+MUTANT '' is read as a value              1 failed, 19 passed
+    FAILED test_an_empty_string_is_blank_as_null_is
+MUTANT the preferred term is not ranked   4 failed, 16 passed
+    FAILED test_a_preferred_fold_leaves_blank_key_rows_and_says_what_it_kept
+    FAILED test_a_preferred_row_stays_though_it_is_later
+    FAILED test_of_two_preferred_rows_the_earliest_stays
+    FAILED test_the_text_is_matched_in_any_case
+MUTANT the text is matched in its own case 20 passed
+변이 (PG) — md5 same
+MUTANT the text is matched in its own case (PG) 1 failed, 2 passed
+    FAILED test_on_postgresql_the_preferred_text_matches_in_any_case_and_a_blank_key_row_stays
+```
+대소문자 변이는 sqlite 에서 살아남습니다 — SQLite 의 LIKE 는 ASCII 대소문자를 안 가립니다. 운영은 PostgreSQL 이라 PG 칸을 더해 거기서 빨강을 봤습니다.
+
+**같이 착지한 것**: 77733bc21 — run_in 착지(53bdedde9)가 test_the_skeleton_declares_the_unified_grammar 두 칸을 main 에서 빨갛게 만든 것을 착지 뒤 전체 묶음에서 찾아 고침.
+
+**남은 것**
+- 하위 폴더 착지: test_a_folder_stuck_behind_a_lock_is_said_and_let_go 의 stalled_line 칸이 파일째 돌릴 때 흔들림(「pid … is not in pg_stat_activity」). 같은 조건 대조는 아직 안 쟀다.
+- 층 순위(시연 뒤): 행 층 이름이 합치기 이름과 같은 함수를 빌려 두 뜻 — 틀린 뜻 하나를 은퇴. ㄱ · ㄴ · ㄷ 의 영향 칸 수는 아직 안 셌다.
+- 클라 레인: client2/tests/fixtures/screens_answers.json 에 rule_rows 의 옛 what_is_missing 문장이 남아 있다(캡처 픽스처).
+
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · PG 는 격리 시험 DB(run_pg_files 가 고르는 assy_test) · 지운 것 0(시험이 스스로 치움).
+
+## [10-09] LLM 선언 파일 · 요청 로그 착지 6f0dc0498 (총괄 043915ab0 ① · 소유자 「환경설정으로 하지 말고 선언 파일로」 · 「요청 주소 및 페이로드 전부 로그」)
+
+**도착지와 대조**
+```
+LLM 설정은 server/config/llm_config.json 하나 · 부를 때마다 읽음 · proxy 없음 = 시스템 프록시 안 읽고 바로   -> 섰다
+ASSY_LLM_* 은퇴 · 파일 없이 남아 있으면 옮기라는 거절 문장                                         -> 섰다
+부를 때마다 llm_requests.log 두 줄(보냄 · 받음) · 키는 어디에도 없음                                 -> 섰다
+```
+**자리**: 설정 읽기 `settings()` 하나 · 클라이언트 짓기 `_client(cells)` 하나 · 로그 쓰기 `_log` 하나(키 가리기는 줄 전체에) · 로그 자리는 다른 프로세스 로그와 같은 `paths.log_path`(돌려 쓰기 없음 — 그 함수에 없음).
+**거절**: 파일 없음(환경변수가 남았으면 그 문장) · 필수 칸 빔 · 칸 모양이 틀림(headers · timeout_s · proxy — 한 문장 꼴 «<칸> in config/llm_config.json is not …»). 지시의 «셋»에 timeout_s · proxy 모양을 같은 꼴로 얹었습니다 — 거절하지 않으면 timeout_s 는 부를 때 엉뚱한 예외, proxy 는 잡히지 않는 TypeError 가 됩니다.
+
+**게이트**
+```
+시험  28 passed   (test_a_text_is_read_by_a_language_model.py — 가짜 openai 모듈로 «칸이 닿는 것»만. 실제 송신은 운영)
+변이  7/7 빨강 · md5 same
+MUTANT the file is read once and kept                 9 failed, 19 passed
+    FAILED test_a_changed_file_reaches_the_next_call
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[None-env0-no
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[None-env1-ASSY_LLM_*
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells2-env2-does
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells3-env3-timeout_s
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells4-env4-headers
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells5-env5-proxy
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None]
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+MUTANT the log line is not masked                     1 failed, 27 passed
+    FAILED test_the_key_reaches_no_refusal_and_no_log
+MUTANT httpx reads the system proxy                   2 failed, 26 passed
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None]
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+MUTANT the file's proxy is not passed                 1 failed, 27 passed
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+MUTANT no line before the call                        4 failed, 24 passed
+    FAILED test_a_call_writes_what_it_sent_and_what_came_back
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None]
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+    FAILED test_the_key_reaches_no_refusal_and_no_log
+MUTANT the retired values are not named               1 failed, 27 passed
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[None-env1-ASSY_LLM_*
+MUTANT a log that cannot be written stops the call    1 failed, 27 passed
+    FAILED test_a_log_that_cannot_be_written_does_not_stop_the_call
+예시  릴리스 항목의 선언 예시를 제품 로더(settings)로 읽음:
+  example -> {'base_url': 'http://<서버>/v1', 'model': '<모델>', 'api_key': '***', 'timeout_s': 60.0, 'headers': {}, 'proxy': None}
+  sample -> refused: config/llm_config.json does not set base_url, model, api_key
+```
+**크기(박스)**: 요청 하나 ≈ 3285 바이트(이 박스 · 사전 50 구절 · 글 600 자 · 답 3 링크) -> 글 1 만 개 ≈ 33 MB. 사전 · 글이 길면 그만큼 는다
+
+**운영에서 볼 것**: httpx 가 0.26 보다 낮으면 «httpx <판> cannot take a proxy - 0.26 or later is needed» 거절(이 박스 0.28.1 · openai 없음). 확인 한 줄과 로그 줄 뜻은 RUN.md 맨 위 절.
+
+**남은 것**
+- 두 프로세스(슬롯 둘)가 같은 llm_requests.log 에 동시에 쓸 때 줄이 섞이는지는 안 쟀다 — 줄마다 write 한 번.
+- SDK 의 다시 시도(기본 2 번)는 받은 줄 하나의 ms 안에 든다.
+
+어느 DB · 어느 스키마 · 지운 것: DB 안 씀 · 지운 것 0.
+
+## [10-09] 원장 한 번 훑기를 쪽마다 치르는 길 — 수만(짓지 않음) · 하위 폴더 흔들림 재기
+
+**박스 수**(localhost:5432/assy_manager · 원자 2380869 · 소스 15 · 가장 큰 소스 dt_job 원자 866192 · ref 433095) — 읽기 전용 · 되돌림. DELETE 는 돌리지 않고 같은 술어의 count(*) 로 잼(훑기는 같고 DELETE 는 쓰기가 더 든다). 두 번씩 잼:
+```
+census: GROUP BY source_who, predicate over the ledger     run 1     0.80 s
+census: GROUP BY source_who, predicate over the ledger     run 2     0.56 s
+DISTINCT refs of the largest source (whole)                run 1     4.04 s
+DISTINCT refs of the largest source (whole)                run 2     4.13 s
+count(*) source_who + ANY(1000 refs) - the per-page predicate run 1     2.06 s
+count(*) source_who + ANY(1000 refs) - the per-page predicate run 2     2.07 s
+   atoms under those refs: 2000
+count(*) source_who + ANY(50000 refs) - the per-page predicate run 1    14.72 s
+count(*) source_who + ANY(50000 refs) - the per-page predicate run 2    14.81 s
+   atoms under those refs: 100000
+count(*) source_who + ANY(1 ref) - one small page          run 1     0.56 s
+count(*) source_who + ANY(1 ref) - one small page          run 2     0.54 s
+row_ref: one relation and 1,000 of its row ids (index)     run 1     0.07 s
+row_ref: one relation and 1,000 of its row ids (index)     run 2     0.00 s
+row_ref: refs for 1,000 deleted rows (row_refs_for)        run 1     0.08 s
+row_ref: refs for 1,000 deleted rows (row_refs_for)        run 2     0.07 s
+```
+원장(ledger_events)에는 source_who 로 시작하는 인덱스가 없다 — `_withdraw_refs` · `atoms_for_refs` 는 부를 때마다 모든 파티션을 훑는다(위 «ANY(1 ref)» 가 바닥값).
+
+**길마다 — 쪽 하나에 원장 훑기 몇 번인가**
+
+| 길 | 쪽 하나 | 원장 훑기 | 박스 쪽 하나 |
+|---|---|---|---|
+| ㉠ 행 삭제 따라가기 `withdraw_deleted_rows` | DELETE 사건 하나(fold-rows 는 1,000 행마다 하나) | ref 가 있는 소스마다 1 (`store.withdraw`) · 앞의 row_refs_for 는 인덱스 | 소스 하나에 ref 1,000 이면 «ANY(1000)» 줄 |
+| ㉡ rescope (--whole-source 포함) | 1,000 행 | 소스 하나에 2 (미리보기 `atoms_for_refs` + `_withdraw_refs`) · 끝에 사라진 행 몫 소스마다 1 | «ANY(1000)» 줄의 두 배 |
+| ㉡ 실시간 EDIT 따라가기(같은 rescope) | EDIT 사건 하나 | 그 표를 읽는 소스마다 2 | 위와 같음 |
+| ㉢ 새 행 번역 CREATE | CREATE 사건 하나 | 0 — `withdraw=False` 라 겨냥이 None, `_withdraw_refs` 는 바로 0 을 돌려줌 | — |
+
+**오늘 밤 소유자 fold-rows 100 만 행**: DELETE 사건 1,000 개 × (그 로그 표를 읽고 ref 가 있는 소스 수) 번 훑기. 박스에서 사건 하나·소스 하나가 «ANY(1000)» 줄 정도다. 운영 원장이 박스의 몇 배인지는 이 박스에서 셀 수 없다 — 바닥값(ANY 1 ref)이 원자 수에 비례한다고 보면 그 배수만큼 길어진다(가정, 안 쟀다).
+
+**하위 폴더 stalled_line 흔들림** — 같은 파일을 통째로, 하위 폴더 커밋 앞 코드와 지금 코드를 번갈아 혼자서:
+```
+round 1 before 1 failed, 4 passed, 3 deselected
+    FAILED test_the_stalled_line_and_the_sweep_line_say_the_folder_the_file_and_the_holder
+round 1 after  5 passed, 3 deselected
+round 2 before 5 passed, 3 deselected
+round 2 after  5 passed, 3 deselected
+round 3 before 5 passed, 3 deselected
+round 3 after  5 passed, 3 deselected
+round 4 before 5 passed, 3 deselected
+round 4 after  5 passed, 3 deselected
+round 5 before 5 passed, 3 deselected
+round 5 after  5 passed, 3 deselected
+round 6 before 5 passed, 3 deselected
+round 6 after  5 passed, 3 deselected
+round 7 before 5 passed, 3 deselected
+round 7 after  5 passed, 3 deselected
+round 8 before 5 passed, 3 deselected
+round 8 after  5 passed, 3 deselected
+TALLY before 8 run(s), 1 with a failure
+TALLY after  8 run(s), 0 with a failure
+```
+앞 코드에서도 같은 단언(「pid … is not in pg_stat_activity」)이 빨갰다 — 하위 폴더 커밋이 만든 흔들림이 아니다. 앞 번 전체 묶음 · 반복에서 지금 코드가 4 번 중 2 번 빨갰던 때 다른 세션의 PG 시험이 같이 돌았는지는 모른다.
+
+어느 DB · 어느 스키마 · 지운 것: 박스 assy_manager(public, 읽기 전용 · 되돌림) · 시험 DB(run_pg_files) · 지운 것 0.
+
+---
+
+## [10-09] 하위 폴더에 나중에 온 파일 — 따로 도는 다시 보기 · 남은 파일 줄 하나 a14ea5693 · 원본 id 한 번씩 096faf4b7 (총괄 2f487efb5 · ③)
+
+어느 DB · 어느 스키마 · 지운 것 — 하위 폴더 시험은 sqlite 메모리 · PG 시험은 격리 시험 DB 의 실행마다 스크래치 스키마(끝에 지움) · 원본 칸은 자기가 넣은 행 하나를 자기가 지움 · 그 밖 지운 것 0
+
+### 무엇을 지었나
+
+```
+바퀴     recheck_subfolders · 스레드 watcher-subfolder-recheck · _sweep_lock 밖
+         기동 즉시 한 번, 그 뒤 subfolder_recheck_seconds(ingestion_settings.json · 양수 아니면 30)
+문       일꾼은 «마지막 시작 뒤 바뀐 폴더» 또는 «마지막 시작 뒤 스윕 주기(PERIODIC_SWEEP_INTERVAL_SECONDS) 지난 폴더»만
+         모양(_snapshot_tree, DB 안 감)은 일꾼을 «시작했을 때만» 적는다 -> 꺼짐 · 도는 중은 매 바퀴 다시 묻고 센다
+스윕     하위 폴더를 안 본다(폴더 갈래를 지움)
+줄       say_what_a_folder_left — 폴더 · 파일 수 · 까닭 · 다음 시도 · #k (1 · 10 · 100), 셈 키 = (폴더, 까닭)
+         까닭 표 FOLDER_LEFT_REASONS 하나: running · still_writing · kept · incomplete · nested_off
+         접힌 것: 도는 중 줄(say_a_tree_still_running 은 이제 묻고 말하는 자리 -> bool) · deferred · incomplete · 중첩 끔
+         그대로 둔 낱말: 31802478c 의 "Tree ingestion deferred" · "N file(s) still being written" · "still writing: x;"
+                        · "M finished file(s) dispatched" / 거부 칸의 "Tree ingestion incomplete" / 중첩 끔 칸의 "are NOT ingested"
+         셈 비움: 트리가 다 지워지면 그 폴더 전부 · 바퀴가 일꾼 안 도는 것을 보면 running
+③       cells_stamped_by 가 id 를 한 번씩(순서 유지) — sqlite 의 IN 도 같은 줄을 지나 묶음 사이 겹침도 한 번
+말       "periodic sweep will retry" 를 말하던 줄 · 독스트링 · CODE_MAP · INGESTION_GUIDE · PRIMITIVES · 설정 안내 · 샘플 -> 다시 보기
+```
+
+### 바꾼 단언(깨진 것이 아니라 뜻이 바뀐 것)
+
+```
+test_a_folder_stuck_behind_a_lock_is_said_and_let_go   도는 중 줄 등식 -> 새 줄 · 부르는 것 sweep_existing_files -> recheck_subfolders
+                                                       칸 이름 ..._the_sweep_line_... -> ..._the_folder_line_...
+test_nested_dir_ingestion                              스윕이 폴더를 부르던 칸 -> 스윕은 안 부르고 다시 보기가 부름
+                                                       (test_the_recheck_not_the_sweep_triggers_tree_ingest_for_directories)
+```
+
+### 시험 — test_a_late_file_in_a_raws_subfolder_goes_in.py
+
+```
+test_folder_emptied_and_removed_then_made_again
+test_folder_kept_by_a_file_that_stays
+test_a_growing_file_in_the_folder
+test_same_name_as_the_first
+test_two_levels_down
+test_late_files_while_the_first_is_being_ingested
+test_every_file_on_the_heavy_lane
+test_files_not_archived
+test_a_late_file_goes_in_while_another_collectors_file_holds_the_sweep
+test_a_folder_whose_worker_is_still_at_it_is_said_once_per_episode
+test_an_unchanged_folder_of_20000_kept_files_gets_no_worker_until_a_sweep_interval
+test_nested_ingestion_off_is_said_at_the_1st_and_10th_of_25_looks
+```
+붙잡힌 칸(응용 초안의 빨강)은 «들어감» + 남은 keep.csv 의 줄 한 줄 등식. 2만 파일 칸의 일꾼은 부른 수만 세는 대역.
+
+### 변이 — md5 같음
+
+```
+BASELINE test_a_late_ 12 passed
+BASELINE test_the_ori 3 passed, 6 warnings
+MUTANT the recheck back inside the sweep's lock (no thread of its own) 1 failed, 11 passed
+    FAILED test_a_late_file_goes_in_while_another_collectors_file_holds_the_sweep
+MUTANT no gate: every look asks for a worker                          1 failed, 11 passed
+    FAILED test_an_unchanged_folder_of_20000_kept_files_gets_no_worker_until_a_sweep_interval
+MUTANT archive off is not a reason of its own                         1 failed, 11 passed
+    FAILED test_files_not_archived
+MUTANT each origin not once                                           1 failed, 2 passed, 6 warnings
+    FAILED test_an_origin_asked_twice_counts_a_protected_layer_once
+```
+
+### PG
+
+```
+FILE test_a_folder_stuck_behind_a_lock_is_said_and_let_go.py: 1 failed, 4 passed, 3 deselected, 14 warnings
+  ERROR    Watcher.DirectoryWatcher:directory_watcher.py:3706 [lock_probe_parts] ❌ Failed to apply local batch update: OperationalError: 오류:  잠금 대기 시간 초과로 작업을 취소합
+  ERROR    Watcher.DirectoryWatcher:directory_watcher.py:3815 [lock_probe_parts] Outer error during batch injection loop: LockWaitedOut: waited past the lock time
+  FAILED tests\test_a_folder_stuck_behind_a_lock_is_said_and_let_go.py::test_the_stalled_line_and_the_folder_line_say_the_folder_the_file_and_the_holder
+FILE test_the_origin_lookup_takes_its_index.py: 3 passed, 6 warnings
+```
+
+### 비용 — 이 박스 수(운영 주장 아님)
+
+```
+2만 파일 폴더 훑기(바퀴가 매번 하는 것)        1.13 · 1.14 · 1.15 s
+보관 끔 · 다 끝난 2만 파일 한 번 통과(일꾼)     4.96 s + tier-1 20000 파일 = 40 묶음(원장 시간 뺌 — 대역)
+-> 문이 없으면 30 초마다 통과, 있으면 바뀔 때 · 스윕 주기마다
+```
+
+### 반복 — 하위 폴더 시험 파일을 연달아
+
+```
+run 1: 12 passed
+run 2: 12 passed
+run 3: 12 passed
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4166 passed, 212 skipped, 1 xfailed
+test_live_mapper_and_tracked_sample_are_byte_identical
+test_live_mapper_matches_tracked_sample
+test_the_sample_is_written_in_the_one_format_both_writers_use
+test_[l-z]*: 3 failed, 3950 passed, 195 skipped, 2 xfailed
+test_the_flat_shape_is_untouched
+test_the_key_and_limit_cells_come_from_their_own_lists
+test_the_repo_root_is_one_above_it
+```
+
+test_the_skeleton_declares_the_unified_grammar 두 칸은 이 착지 몫이 아니라 run_in 착지(53bdedde9)의 몫 — 77733bc21 에서 고쳤다.
+
+### PG 흔들림 — test_a_folder_stuck_behind_a_lock_is_said_and_let_go 의 stalled_line 칸
+
+```
+TALLY before 8 run(s), 1 with a failure
+TALLY after  8 run(s), 0 with a failure
+```
+파일 통째로, 하위 폴더 커밋 앞 코드와 지금 코드를 번갈아 혼자서. 앞 코드에서도 같은 단언(「pid … is not in pg_stat_activity」)이 빨갰다 — 이 커밋의 흔들림이 아니다. 따로 둔다(총괄).
+
+### 모르는 것
+
+- 운영이 보관 켬인지 끔인지 — 문이 있어 어느 쪽이든 30 초마다 원장을 다시 묻지 않는다.
+- 도는 중 줄: 바퀴가 일꾼이 도는 때에 닿으면 #1 한 줄 — 일꾼마다 다시 #1 이라 큰 폴더는 처리마다 한 줄 나올 수 있다.
+- heavy 레인 칸이 지은 첫날 첫 실행에서 한 번 실패했다(출력을 못 남김). 위 «반복»이 그 뒤의 수다.

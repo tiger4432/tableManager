@@ -1,0 +1,8 @@
+{
+  "base_url": "",
+  "model": "",
+  "api_key": "",
+  "timeout_s": 60,
+  "headers": {},
+  "proxy": null
+}

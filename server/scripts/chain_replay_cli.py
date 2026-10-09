@@ -176,6 +176,8 @@ def main(argv=None):
     p.add_argument("--keys", required=True, help="comma-separated key columns")
     p.add_argument("--order", required=True, help="the column that picks the row to keep")
     p.add_argument("--keep", default="min", choices=["min", "max"], help="min (earliest, default) | max")
+    p.add_argument("--prefer-column", default=None, help="with --prefer-text: a row whose column holds it stays first")
+    p.add_argument("--prefer-text", default=None, help="the text (any case) --prefer-column holds")
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
     p.add_argument("--apply", action="store_true")
 
@@ -235,11 +237,16 @@ def main(argv=None):
                 print(_report_replay(s))
         elif args.cmd == "fold-rows":
             params = {"table": args.table, "keys": args.keys, "order": args.order,
-                      "keep": args.keep, "pace": args.pace}
+                      "keep": args.keep, "pace": args.pace,
+                      **({"prefer_column": args.prefer_column} if args.prefer_column is not None else {}),
+                      **({"prefer_text": args.prefer_text} if args.prefer_text is not None else {})}
             if args.apply:
                 s = written("fold_duplicate_rows", params)
                 print(f"\nfold-rows '{args.table}': {s['rows_deleted']} of {s['rows_to_delete']} row(s) "
                       f"deleted in {s['pages']} page(s), {s['keys_folded']} key(s)"
+                      + (f" ({s['keys_preferred']} kept a row whose {args.prefer_column} holds "
+                         f"'{args.prefer_text}')" if args.prefer_column else "")
+                      + f", {s['rows_blank_key']} row(s) with a blank key part left as they are"
                       + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
             else:
                 print("\n" + retroactive.count(db, "fold_duplicate_rows", params)["detail"]
