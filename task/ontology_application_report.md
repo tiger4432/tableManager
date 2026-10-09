@@ -37239,3 +37239,18 @@ A 에 계속 자라는 파일                      남은 것 []                
          덤 하나: retroactive.publish 가 그룹 세션을 스스로 commit 한다 — _queue_operation_runs 의 「실패한 그룹은 아무것도 안 줄 세운다」가 참이 아니다(첫 시도가 실패해도 작업이 남는다)
          그룹 «안»에서 publish 를 부르는 곳은 그 하나뿐(나머지는 라우트) — 은퇴와 같이 사라진다. 은퇴 뒤에 남는 원인은 찾지 못했다
 ```
+
+---
+
+## [C 응용] 10-09 5e2084133(겹친 행을 키마다 하나로 접기) QA — 결함 없음 · 제 실수 하나 (잼)
+
+```
+잰 것   사설 워크트리
+        sqlite 시험 파일(test_duplicate_rows_fold_to_one_per_key)   9 passed
+        「빈 값은 맨 뒤」 항을 뺀 변이                              test_a_blank_order_value_is_last 하나만 빨강
+        PG 시험 파일(보류 복사 세상 위 · 원장 따라가기까지)            2 passed — assy_test 스크래치(픽스처가 지움)
+문서    BACKFILL_GUIDE 증상 표에 한 줄(소급 탭 · CLI fold-rows · 보고만 -> --apply · 되돌릴 수 없음)
+제 실수  PG 파일 하나를 돌리려다 실행기에 경로를 넘겨 PG 시험 «전체»가 30 분 돌았습니다 — 그 프로세스를 멈췄고
+        그 탓에 시험 DB assy_test 에 남은 스크래치 스키마 assy_pytest_pg_48564_gw0(객체 778, 제가 만든 이름 하나)를 지웠습니다 — 남은 것 0 · 그 밖에 지운 것 0
+        다시 돌린 것은 -k 로 그 파일만
+```
