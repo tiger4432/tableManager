@@ -2,6 +2,7 @@
 // page's head bar; with SSO off (`/auth/me` says `sso: false`) it draws nothing. A new key is shown once, in the answer
 // that made it - it is kept nowhere and is gone when the window closes or the list is read again.
 import { localMinute } from './server_time.js';
+import { placeUnder } from './dropdown.js';
 
 const ME = '/auth/me';
 const KEYS = '/auth/keys';
@@ -104,6 +105,8 @@ export class AccountBadge {
   }
 
   render() {
+    if (this.win && this.win.placedFrom) this.win.remove();
+    this.win = null;
     this.host.textContent = '';
     const me = this.me;
     if (!me || me.sso !== true || !me.user) return;
@@ -112,8 +115,9 @@ export class AccountBadge {
     name.setAttribute('aria-expanded', String(this.open));
     box.append(name, this._button('Log out', 'acct-logout', () => void this.logout()));
     if (this.error && !this.open) box.append(this._el('span', 'acct-error', this.error));
-    if (this.open) box.append(this._window());
+    if (this.open) box.append(this.win = this._window());
     this.host.append(box);
+    if (this.win) placeUnder(this.win, name);
   }
 
   _window() {

@@ -1747,13 +1747,13 @@ const FLOORS = new Map([
   // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
   ['index_table_panel_harness.mjs', 15],
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
-  // dropdown.js placeUnder, puts every panel a header control places from screen px under it and on screen; four
-  // mutants, the parent's scale left out among them.
-  ['dropdown_place_harness.mjs', 8],
+  // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
+  // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.
+  ['dropdown_place_harness.mjs', 10],
   // The screens in real Chrome (lead 1343e5cca): 7 dist entries x 7 checks at 1920x950 (clip · overflow · panel · text ·
-  // size · columns · answers) + 6 mutants - the five that leaked on 10-08/09 and the ledger table's hand widths.
-  // Off the debt list the day the R&D board's «Measured» head was fixed (lead 10-09).
-  ['screen_layout_harness.mjs', 55],
+  // size · columns · answers) + 7 mutants - the five that leaked on 10-08/09, the ledger table's hand widths, and
+  // Options and Menu drawn inside the zoomed header with their rows in two (owner 10-09; 55 -> 56).
+  ['screen_layout_harness.mjs', 56],
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

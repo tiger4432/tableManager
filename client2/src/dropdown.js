@@ -22,9 +22,10 @@ export function watchForDismiss(doc, host, close) {
   const onKey = (event) => { if (event && event.key === 'Escape') close(); };
   const onDown = (event) => {
     // 자기 div 안을 누른 것은 «바깥»이 아닙니다 -- 줄을 누르는 것도 클릭이라,
-    // 이 걸음이 없으면 열자마자 자기가 자기를 닫습니다.
+    // 이 걸음이 없으면 열자마자 자기가 자기를 닫습니다. placeUnder 가 body 로 옮긴 판은
+    // 그 판이 열린 자리(placedFrom)를 거쳐 올라갑니다.
     let node = event && event.target;
-    while (node) { if (node === host) return; node = node.parentNode; }
+    while (node) { if (node === host) return; node = node.placedFrom || node.parentNode; }
     close();
   };
   doc.addEventListener('keydown', onKey);
@@ -42,28 +43,33 @@ const GAP = 8;
 const MARGIN = 8;
 
 /**
- * A panel just under the control that opened it, kept on screen - every panel a header control places from screen px
- * comes through here (lead 10-09: Replay chain's opened away from its button after the header went to --header-zoom).
+ * A panel just under the control that opened it, kept on screen - every panel a header control opens comes through
+ * here: the filter fold, Replay chain / Re-translate, Options, Menu, the column selector, the account's keys.
  *
- * 🔴 The rectangles are px on screen; `top` and `left` are the panel's offset parent's own px. A parent drawn under
- *    CSS zoom holds 1/scale of its px in one screen px, so every screen distance is divided by that scale; a parent
- *    at no zoom has scale 1.
+ * 🔴 It is drawn on the body, at the page's own size. Inside the header (drawn at --header-zoom) a panel's box shrank
+ *    to 0.67 while its words were set back to 11px, and its rows broke in two (owner 10-09); its place had needed the
+ *    zoom divided out as well (10-08). On the body, `position: fixed` takes the control's screen rectangle as it is.
+ *    The panel keeps where it was opened as `placedFrom`, so watchForDismiss reads a click on it as inside.
+ * A document with no layout (a node stub) is left as it is.
  *
- * @param panel   positioned absolutely and shown - it needs a size to be measured
+ * @param panel   shown - it needs a size to be measured
  * @param anchor  the control it hangs under
  * @param opts    `align`: which edges meet the control's ('right' default, or 'left'); `gap` under it
  */
 export function placeUnder(panel, anchor, { align = 'right', gap = GAP } = {}) {
   const doc = panel.ownerDocument;
-  const a = anchor.getBoundingClientRect();
-  const parent = panel.offsetParent || doc.body;
-  const o = parent.getBoundingClientRect();
-  const scale = (parent.offsetWidth ? o.width / parent.offsetWidth : 1) || 1;
+  if (!doc || !doc.body || !anchor.getBoundingClientRect || !panel.getBoundingClientRect) return;
+  if (panel.parentNode !== doc.body) {
+    panel.placedFrom = panel.parentNode;
+    doc.body.appendChild(panel);
+  }
+  panel.style.position = 'fixed';
   panel.style.right = 'auto';
-  panel.style.top = `${Math.round((a.bottom - o.top + gap) / scale)}px`;
+  panel.style.bottom = 'auto';
+  const a = anchor.getBoundingClientRect();
+  panel.style.top = `${Math.round(a.bottom + gap)}px`;
   const width = panel.getBoundingClientRect().width;
-  const wanted = align === 'left' ? a.left - o.left : a.right - o.left - width;
-  const least = MARGIN - o.left;
-  const most = (doc.documentElement.clientWidth || 0) - MARGIN - width - o.left;
-  panel.style.left = `${Math.round(Math.max(least, Math.min(wanted, most)) / scale)}px`;
+  const wanted = align === 'left' ? a.left : a.right - width;
+  const most = (doc.documentElement.clientWidth || 0) - MARGIN - width;
+  panel.style.left = `${Math.round(Math.max(MARGIN, Math.min(wanted, most)))}px`;
 }
