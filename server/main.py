@@ -2851,7 +2851,7 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
             log_objs = db.query(models.AuditLog).filter(
                 models.AuditLog.table_name == table_name,
                 models.AuditLog.row_id.in_(batch.row_ids),
-                models.AuditLog.column_name == "DELETE"
+                models.AuditLog.column_name == crud.ROW_DELETION_COLUMN
             ).all()
             bk_map = get_deleted_rows_business_keys_bulk(db, table_name, [l.row_id for l in log_objs])
             for log in log_objs:

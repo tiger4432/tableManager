@@ -8,7 +8,9 @@ the same way as one frame. Each row's columns land under that row's own layer
 `chain_ingestion (<row_id>)` with `origin_row_id`; one query per 1,000 keys counts, per key, the
 distinct value sets of `columns` among the source rows of that key. Exactly one is AGREED; none
 (every source row deleted) or two and more holds the row blank. The hold is one item per key in
-the same updates (one commit), under the plain chain layer - its blank is a chain write.
+the same updates (one commit), under the plain chain layer - its blank is a chain write. A row
+that blank leaves with only the chain's keys goes after the write (총괄 5eee501eb - the chain's
+write seat asks `cell_layer.shells`).
 
 Two rules call it. On the source table it copies and holds; on the target table (trigger =
 target, `source_table` named) it only recounts the hold - a source row deleted or moved to another key

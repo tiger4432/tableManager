@@ -189,6 +189,12 @@ def main(argv=None):
     p = sub.add_parser("fold-withdraw-events")
     p.add_argument("--apply", action="store_true")
 
+    # 총괄 5eee501eb: the rows left with only the chain's keys - the chain's write seat's judgement.
+    p = sub.add_parser("remove-shells")
+    p.add_argument("table")
+    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--apply", action="store_true")
+
     args = parser.parse_args(argv)
 
     from database import crud, models
@@ -263,6 +269,15 @@ def main(argv=None):
             else:
                 print("\n" + retroactive.count(db, "fold_duplicate_rows", params)["detail"]
                       + "\n-> add --apply to " + verb)
+        elif args.cmd == "remove-shells":
+            params = {"table": args.table, "pace": args.pace}
+            if args.apply:
+                s = written("remove_shell_rows", params)
+                print(f"\nremove-shells '{args.table}': {s['rows_deleted']} of {s['rows_to_delete']} row(s) deleted "
+                      f"in {s['pages']} page(s)"
+                      + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
+            else:
+                print("\n" + retroactive.count(db, "remove_shell_rows", params)["detail"] + "\n-> add --apply to delete")
         elif args.cmd == "fold-withdraw-events":
             if args.apply:
                 from chain import cell_layer

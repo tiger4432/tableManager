@@ -89,6 +89,26 @@
 >
 > ---
 >
+> ## [10-09] **출처가 하나도 안 남은 행은 행째 지운다 — 체인 키만 남은 «껍데기» (총괄 5eee501eb · 판정 ㄱ) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 순서        ① pull -> 체인 워커 · 서버 재기동
+>            ② 이미 쌓인 껍데기 — 둘 중 하나
+>               미리보기  python server/scripts/chain_replay_cli.py remove-shells <공식 표>
+>               실행      같은 명령 + --apply   (소급 탭 «Remove rows with no source left» 와 같은 일)
+>               또는 공식 표를 비우고 다시 채우기(일요일 순서) — 그러면 쓸기가 필요 없다
+> 미리보기 뜻   N row(s) of '<표>' show nothing outside their keys; M of them have only the chain's key layers left
+>              M 이 지울 수. N - M 은 사람 · 파일이 키를 썼거나 사람 층(빈 값 포함)이 있어 남는다
+> 껍데기란      키 칸 밖에 값 있는 층 0(체인이 쓴 빈 칸은 없는 것으로) · 키 칸 층은 체인 것뿐 · 사람 층 0(빈 값이어도)
+>              그리고 화면에 키 밖 값이 없음
+> 그 뒤로       회수와 다시 세기 뒤 그런 행이 되면 체인이 그 쓰기 바로 뒤 지운다
+>              chain_worker.log  [ChainShell] table=<표> rows_deleted=N - only the chain's keys were left
+>              지운 행마다 이력 한 줄(updated_by chain_shell_rows) · 원장은 그 행의 원자를 거둔다 · 그 삭제는 어떤 규칙도 안 깨운다
+> 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 지운 행은 원본을 다시 넣으면 다시 생긴다)
+> ```
+
+---
+
 > ## [10-09] **맵퍼가 쓰는 층 이름은 chain_ingestion 하나 — 체인 출력이 옛 체인 층에 덮이던 것 (총괄 09f3cd289 ①) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```

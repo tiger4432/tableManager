@@ -27,6 +27,9 @@ os.environ["DATABASE_URL"] = os.environ.get(
 # monkeypatch, so the suite's behaviour does not depend on whose shell it runs
 # in. Tests for the configured case live in test_admin_auth.py.
 os.environ.pop("ASSY_ADMIN_TOKEN", None)
+# [Isolation] The web server's address too (총괄 10-09): unset it is this box's live API on 8080, and a run
+# without it sent broadcasts there (refused 401). Given none, a closed local port; a test that needs one sets it.
+os.environ.setdefault("API_BASE_URL", "http://127.0.0.1:9")
 
 import contextlib
 

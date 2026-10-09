@@ -1795,6 +1795,31 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                 f"stale rows may remain: "
                                 f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
+                # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
+                #    the grid's delete (its layers, a history line, one DELETE, which wakes no rule). Asked
+                #    here, after the write, and not at the withdrawal: the recount that empties a hold has
+                #    not run there yet. A row the write only keyed is not asked.
+                with alignment_batch_counts.stage("shells"):
+                    from chain import cell_layer
+
+                    keys = cell_layer.key_columns(target_table)
+                    # the columns this write wrote blank, outside the keys - read off its items, no query
+                    blanked = {column for item in batch_data.updates for column, value in (item.updates or {}).items()
+                               if column not in keys and crud.is_blank_value(value)}
+                    gone = cell_layer.shells(db, target_table, [
+                        row_id for row_id, column in changed_cells if column in blanked]) if blanked else []
+                    if gone:
+                        # the upsert broadcast below reads its rows back - not the gone ones (their
+                        # identity, so an expired row is not loaded to be asked)
+                        from sqlalchemy import inspect as identity_of
+                        gone_ids = set(gone)
+                        results = [(row, is_new) for row, is_new in results
+                                   if identity_of(row).identity[0] not in gone_ids]
+                        crud.delete_rows_batch(db, target_table, gone, cell_layer.SHELL_DELETER)
+                        deleted_row_ids = list(deleted_row_ids or []) + gone
+                        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left",
+                                    target_table, len(gone))
+
                 # [M3] Absent-only wafer_map_metadata auto-registration for
                 # chain-created maps. Uses the VALIDATED batch items (same
                 # column names the upsert wrote). One existence check per
@@ -2064,10 +2089,25 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # ⚠️ PARTIAL IS DELIBERATELY NOT REFUSED. Some rows missing is the documented
     # delete-between case and the warning above names it; ALL of them missing, for an
     # event that named some, is the shape that cannot be a legitimate answer.
-    unreadable = [e for e in valid_events
-                  if event_constants.is_collapsed_payload(get_payload_dict(e))
-                  and (get_payload_dict(e).get("row_ids") or ())
-                  and not expanded.get(outbox_expand.event_key(e))]
+    #
+    # 🔴 [총괄 10-09 · 5eee501eb] WIDENED, NOT REVERSED: a named row with a deletion history line
+    #    (`crud.deleted_rows`) is GONE, not unreadable - the chain's own write deletes a shell row
+    #    while a second event of the same withdrawal still names it, and the map purge and the job
+    #    retraction delete rows the same way. An event whose rows are all gone has nothing to do and
+    #    leaves the group - no rule is handed it. A named row with no such line, unreadable, is
+    #    refused as before.
+    from database import crud
+
+    read_nothing = [e for e in valid_events
+                    if event_constants.is_collapsed_payload(get_payload_dict(e))
+                    and (get_payload_dict(e).get("row_ids") or ())
+                    and not expanded.get(outbox_expand.event_key(e))]
+    unreadable = [e for e in read_nothing
+                  if set(map(str, get_payload_dict(e)["row_ids"]))
+                  - crud.deleted_rows(db, e.table_name, get_payload_dict(e)["row_ids"])]
+    valid_events = [e for e in valid_events if e not in read_nothing or e in unreadable]
+    if not valid_events:
+        return True, None, broadcast_messages
     if unreadable:
         named = ", ".join(
             "%s(%d rows)" % (getattr(e, "event_uuid", "?"),

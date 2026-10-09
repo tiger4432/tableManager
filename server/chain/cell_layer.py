@@ -102,6 +102,51 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list):
 
     return sources, pins
 
+#: Who deleted a shell row - the history line's name, the chain's write seat and the sweep alike (5eee501eb).
+SHELL_DELETER = "chain_shell_rows"
+
+
+def key_columns(table_name: str) -> set:
+    """The columns a row of this table is known by - its `composite_key_source`, else its `business_key`
+    (what `crud.unfilled_key_columns` reads too)."""
+    from database import crud
+
+    config = crud.TABLE_CONFIG.get(table_name) or {}
+    return {str(c) for c in (config.get("composite_key_source") or [config.get("business_key")]) if c}
+
+
+def shells(db, table_name: str, row_ids) -> list:
+    """is_shell, for each of these rows (총괄 5eee501eb · 판정 ㄱ, 소유자 10-09 「키값만 남아 있네」): no layer
+    outside the key columns holds a value - a blank the chain wrote is none - every key-column layer is the
+    chain's, and no person's layer anywhere, blank or not. And the row shows nothing outside its keys, so a
+    value no layer carries is not taken for nothing. The chain's write seat and the sweep ask this one."""
+    from database import crud, models
+
+    model = models.DYNAMIC_TABLES.get(table_name)
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    if model is None or not ids:
+        return []
+    keys = key_columns(table_name)
+    shown = [c for c in (crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {} if c not in keys]
+    if not shown:      # every row of a table declared only by its keys is its keys - none is a shell
+        return []
+    found = []
+    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
+        chunk = ids[i:i + DEFAULT_CHUNK_SIZE]
+        layers, _pins = _load_cell_state(db, table_name, chunk)
+        by_row = {}
+        for (row_id, column), named in layers.items():
+            by_row.setdefault(row_id, []).extend((column, name, entry["value"]) for name, entry in named.items())
+        for row in db.query(model).filter(model.row_id.in_(chunk)).all():
+            if any(not crud.is_blank_value(getattr(row, column, None)) for column in shown):
+                continue
+            if all(crud.layer_writer(name) != crud.USER_SOURCE and (
+                    crud.layer_writer(name) == crud.CHAIN_SOURCE if column in keys else crud.is_blank_value(value))
+                   for column, name, value in by_row.get(row.row_id, ())):
+                found.append(row.row_id)
+    return found
+
+
 def _resolve_cell(table_name: str, col_types: dict, row, col: str,
                   cell_sources: dict, pin, exclude_source: str = None) -> dict:
     """Re-answer "what should this cell display" from its STORED layers.

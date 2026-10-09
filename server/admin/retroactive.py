@@ -1069,6 +1069,36 @@ def _judge_fold_duplicate_rows(params):
         raise RetroactiveRefused(str(e)) from None
 
 
+def _count_remove_shell_rows(db, params, scan_limit):
+    from chain import replay
+
+    s = replay.remove_shell_rows(db, params["table"], log=lambda m: logger.debug(m))
+    shown = "; ".join(", ".join("%s=%s" % pair for pair in one.items()) for one in s["sample"])
+    return {
+        "affected": s["rows_to_delete"],
+        "absence": ABSENCE_TRULY_NONE if not s["rows_to_delete"] else None,
+        "affected_label": "rows to delete",
+        "count_kind": COUNT_EXACT,
+        "scanned": s["rows_read"],
+        "scan_limit": scan_limit,
+        "truncated": False,
+        "detail": (f"{s['rows_read']} row(s) of '{params['table']}' show nothing outside their keys; "
+                   f"{s['rows_to_delete']} of them have only the chain's key layers left - no value, no "
+                   f"person's layer - and go as a grid delete does, a history line with each. Cannot be undone."
+                   + (f" For example {shown}." if shown else "")),
+        "extra": {key: s[key] for key in ("rows_read", "rows_to_delete", "sample")},
+    }
+
+
+def _run_remove_shell_rows(db, params, log, control=None):
+    from chain import replay
+
+    s = replay.remove_shell_rows(db, params["table"], apply=True, pace=params.get("pace"), log=log,
+                                 checkpoint=_checkpoint(control))
+    _final_progress(control, s["rows_deleted"], s)
+    return {key: s[key] for key in ("rows_deleted", "rows_to_delete", "rows_read", "pages", "stopped")}
+
+
 def _count_fold_withdrawal_events(db, params, scan_limit):
     from chain import cell_layer
 
@@ -1780,6 +1810,26 @@ OPERATIONS = {
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
                             "taken back and the rules that recount run; with a mark column the rules "
                             "that exclude by it run on the marked rows and take back what they fed"),
+    },
+    "remove_shell_rows": {
+        "label": "Remove rows with no source left",
+        "what_is_missing": "rows the chain filled whose sources are all gone - only the chain's keys are left",
+        "params": [_p("table"), _pace_param()],
+        "count": _count_remove_shell_rows,
+        "run": _run_remove_shell_rows,
+        "judge": _judge_table,
+        "cli": "server/scripts/chain_replay_cli.py remove-shells <table> [--pace slow] --apply",
+        # 총괄 5eee501eb: the judgement the chain's write seat asks (cell_layer.shells), through
+        # crud.delete_rows_batch - each row's layers and a history line go with it.
+        "deletes": "table rows left with only the chain's key layers, with their cell layers",
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
+                               "lands between pages and a re-run finds only what is left"),
+        "cli_only": [],
+        "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
+                            "taken back; the deletion wakes no rule"),
     },
     "fold_withdrawal_events": {
         "label": "Fold row-by-row withdrawal events",
