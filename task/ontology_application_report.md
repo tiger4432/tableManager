@@ -37229,3 +37229,13 @@ A 에 계속 자라는 파일                      남은 것 []                
 고칠 모양 중간 묶음까지 답을 담기 · 필터를 한 번에 넣기 · 마지막 요청만 재기 — 디자인 레인 · 총괄 판정. 고치지 않았습니다
 문서    CODE_MAP dropdown.js 절에 placeUnder(소비자 셋 · 재는 하니스)
 ```
+
+---
+
+## [C 응용] 10-09 rule_rows 취소 재현 — 72f419bd1 로 멈춤 · 한 줄
+
+```
+찾은 것  cancelled 를 쓰는 자리는 셋(request_cancel = 사람 × · Cancel · 앱 멈춤 / cancel_requested 를 본 끝 / 실행 중 BaseException)이고, 박스(sqlite · 그룹 몸통 · claim -> run_claimed · 가짜 LLM)에선 두 작업 다 done — 재현 못 함
+         덤 하나: retroactive.publish 가 그룹 세션을 스스로 commit 한다 — _queue_operation_runs 의 「실패한 그룹은 아무것도 안 줄 세운다」가 참이 아니다(첫 시도가 실패해도 작업이 남는다)
+         그룹 «안»에서 publish 를 부르는 곳은 그 하나뿐(나머지는 라우트) — 은퇴와 같이 사라진다. 은퇴 뒤에 남는 원인은 찾지 못했다
+```
