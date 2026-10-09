@@ -22,10 +22,18 @@
                      · 클라: 상태 칸 + 근거 줄바꿈 · 헤더 한 줄(0.67 · 11px) · 덩어리 열기 · waiting_for_table · slot pid · × already 토스트 · 원장 줄 멈춤/live off
    ✅ 10-09 시연 전 마지막  인덱스 마스터(9acf4243e · 901b01f07 · 58 통과 · 선언 49, 빠지면 체인 워커가 하나씩 만듦, build_missing_indexes 기본 켬)
                      · 원장 실패 줄 1·10·100 + 성공하면 셈 비움(92091395f · cc85f2a78) · 어드민 인덱스 표(f6f4d211c)
-   레인       구현자 · 클라 대기(시연 전 일 끝)
+   ✅ 10-09 저녁 착지·총괄 확인  출처 찾기가 origin 하나씩 인덱스로(f0b625d23 · 665d2aa82) · 중복 행 접기 «Fold duplicate rows»(5e2084133)
+                     · 고리 줄은 선언 읽을 때 고리마다 한 줄(cc4f567a1) · run_in: operation 은퇴 — 느린 규칙은 rows_per_run 1(53bdedde9 · 시험 10 · 변이 셋 중 둘 살아남음 -> 게이트 칸 둘 지시)
+                     · 클라: 화면 게이트(크롬으로 모든 화면 · 3a8036b74) · 오버뷰 칸 폭이 글 많은 칸으로(61fc140a7)
+   구현자 줄  LLM 선언 파일 llm_config.json + 요청 로그(키 파일에 · 환경변수 은퇴) -> 복사 홀드 세기 VALUES 조인 -> replay 가 rows_per_run 을 넣기 크기로(+ 게이트 칸 둘)
+              -> 하위 폴더 다시 보기(2f487efb5 착지 중) -> 대기열 줄 rules 칸 -> 표 선언 인덱스 -> foreign_beat 문장   (043915ab0 · 597664fb3)
+   클라 줄    헤더 팝오버 원래 크기 한 줄(먼저) -> run_in 잔해 둘 -> 1536/1280 화면 게이트 -> Job 칸 rules(서버 뒤)
+   시연 뒤   층 순위 — merged_layer_name 이 «행 층»과 «합치기 층» 두 뜻(905235e5c) · 틀린 뜻 하나 은퇴
    시연 뒤   시각 format 미리 채우기(요청 안 스캔 문제) · expand 인자 은퇴 · already/already_processed 말 정리 · 맵퍼가 필요한 인덱스 선언 자리(복사 key_columns) · 옆 패널 접기 · subgraph_view 하니스 9 분
    응용 QA   test_ledger_l1_pg 둘이 main 에서 빨강(shipped 선언에 소스 없음) — 판정 재료 · b2fe1f02f 운영 모양 QA
-   소유자(운영)  상태 칸 클라 착지 뒤 pull + 재기동(서버 · 체인 워커) · RUN.md 의 빼 둔 행 broadcast_at SQL 한 번 · chain_statement_timeout_seconds 0(소급 묶음엔 2 분이 짧았음 — 총괄 판단 착오)
+   소유자(운영)  공식 표 다시 하기: pull + 재기동 -> 옛 줄 빼 두기 -> empty_table 공식 표 -> fold-rows 로그 표(dt_wafer_id · 최소 시간) -> 복사 규칙 replay(--business-keys) -> 원장 backfill --whole-source
+                · LLM: 선언 파일 착지 뒤 llm_config.json 적기(규칙에서 run_in 지우고 rows_per_run 1)
+                · 상태 칸 클라 착지 뒤 pull + 재기동(서버 · 체인 워커) · RUN.md 의 빼 둔 행 broadcast_at SQL 한 번 · chain_statement_timeout_seconds 0(소급 묶음엔 2 분이 짧았음 — 총괄 판단 착오)
                 · 인덱스 idx_sources_by_origin · idx_audit_user_recorrection · 원본 표 키 복합 인덱스 확인 · IT 에 /auth/signed-out 등록(나중)
    물음        막질별 두께 선언 — 계측 표가 세로(한 행 값 하나)인지 가로(막질마다 칸)인지 · 옆 패널 접기 단추(시연 뒤 제안) · 소급 진행률을 «워커가 처리한 행 / 넘긴 행»으로(제안)
 10-08 소유자  측정 사건 노드 선언(코드 없음) — 문장을 «더하기만», measures@1 은 남긴다
