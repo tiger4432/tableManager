@@ -65114,3 +65114,18 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
    게이트 하니스(낱말 여덟 × 패널 둘 · 같은 함수) + 변이 + 진짜 빌드 스샷(running 줄 하나 · set_aside 줄 하나)
 순서  구현자: 그리드 모집단(afa1b6302) -> 이것 -> 슬롯 / 클라: 그리드 100 % 맞추기 -> 이것(서버 뒤) -> 덩어리 열기
 ```
+
+> **[총괄 -> 구현자] 10-09 🔴 지금 — 복사 맵퍼가 운영에서 여전히 느리다 · 느린 질의는 `cell_sources WHERE origin_row_id IN (…)` 인데 운영 «Indexes» 표에서 idx_sources_by_origin 이 present 이고 scans 가 안 는다 (소유자 10-08 「select cell sources ~~ · 오리진 로우 아이디」 · 10-09 「인덱스 스캔이 안 느네 소스오리진」 · 「복사맵퍼는 여전히 느린데」)**
+
+```
+지금(총괄이 코드로 읽음)  chain/cell_layer.cells_stamped_by — origin_row_id.in_(1,000 개 글자) · table_name 거르기 없음 · withdraw_by_origin 이 부름
+   origin_row_id 는 String · 부분 인덱스 idx_sources_by_origin (origin_row_id) WHERE origin_row_id IS NOT NULL
+   운영 cell_sources 는 수천만 행 · 복사가 행마다 층을 쓰며 origin_row_id 가 붙은 행이 빠르게 늘었다
+물음  큰 cell_sources 에서 이 질의가 그 인덱스를 «반드시» 타나 — 안 타면 왜(통계 · IN 1,000 개 추정 · 부분 인덱스 술어 증명 · 형 변환)
+할 것
+   ① PG 스크래치에서 운영 모양으로 재기 — cell_sources 수백만 행 이상(origin_row_id 있는 행 비율을 운영처럼 크게) · IN 1,000 개 · EXPLAIN (ANALYZE, BUFFERS) 전후. 박스 수임을 밝힘
+   ② 안 타는 모양이면 «타게» 고친다 — 질의 모양(예: = ANY(:ids::text[]) · unnest 조인)이나 쪽 크기. 인덱스 정의를 바꾸면 선언(models · info)과 같은 커밋 — 인덱스 마스터가 운영에서 만든다
+   ③ 복사 소급(처음 채우기)에서 이 찾기가 «매 묶음» 도는지 — 거둘 층이 없는 첫 채우기에서도 1,000 개씩 찾는다면 그 비용을 수로 적는다(줄일지는 총괄 판정)
+게이트  운영 모양 스크래치에서 plan 이 idx_sources_by_origin(또는 고친 인덱스) · 묶음 하나 시간 전후 · 변이(옛 질의 모양 -> Seq Scan)
+같은 커밋  RUN.md(운영에서 확인할 줄: Indexes 표 scans 가 묶음마다 는다) · RELEASE_LOG
+```
