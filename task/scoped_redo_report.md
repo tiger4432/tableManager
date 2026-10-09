@@ -77384,3 +77384,55 @@ run_claimed 이 실행 «전» 판정(연산 찾기 · 표 모델 · validate)�
 ### 다음
 
 접기 표시(016a766af · 83c05cfbb) — 맵퍼 등록에 쓰는 칸 · 원천 도장 사실, copy_rows_with_hold 의 칸 목록, «기동 뒤 첫 묶음» 칸 포함. 지금 시작합니다
+
+---
+
+## [10-09 밤] 작은 고침 둘 — 성공 토스트 문장은 note · 판정에서 깨진 소급 실행은 failed — `18c1bd08f` (총괄 10-09)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험 SQLite 메모리 · 진짜 프로세스 증명은 스크래치 폴더 SQLite 파일 DB · PG 안 씀 · 지운 것 0 · 라이브 프로세스 0 건드림(제가 띄운 API 서버 · run_watcher · 웹소켓 기록기 셋만 멈춤)
+
+### 진짜 따로 띄운 프로세스 한 줄 — 소유자 CLI 그대로
+
+```
+자리     스크래치 루트에 진짜 DECOUPLED API 서버(uvicorn, 127.0.0.1:18798) · 진짜 run_watcher.py · 웹소켓 기록기(화면이 받는 메시지)
+명령     RUN.md 의 curl 줄 그대로(X-Admin-Token 스크래치 토큰), statuses=SUCCESS,FAILED,SKIPPED
+미리보기 «1 file(s)» count 1 · by_state {'SUCCESS': 1}
+실행     «1 file(s) handed to the watcher»
+워처
+   [Watcher] [2026-10-09 20:28:04,064] INFO - Detected PENDING_RETRY log ID #1 (parts.csv). Processing...
+   [Watcher] [2026-10-09 20:28:04,126] INFO - Retry succeeded for log ID #1.
+화면이 받은 file_ingestion_completed
+   status SUCCESS · note 없음 · error_msg 없음
+   status SUCCESS · note 있음 «[resume-abort] 체크포인트를 사용할 수 없어…» · error_msg 없음
+```
+처음 인입 하나와 다시 읽기 하나입니다. 다시 읽기의 재처리 안내는 note 로 왔고 error_msg 는 없습니다. 이 줄은 04b40d64b(다시 읽기)의 «소유자 CLI 로 돈 한 줄»이기도 합니다.
+
+### 게이트 · 변이 · 실행
+
+```
+게이트  메시지 한 자리: SUCCESS 문장 -> note, error_msg 없음 · SKIPPED -> error_msg
+        중계(분리 워처가 POST 하는 내부 문) -> 브로드캐스트에 note
+        판정이 ImportError -> 행 failed «the run could not be judged - ImportError: …» · gate_refusal None (전에는 관문 닫힘 — 카나리아)
+SQLite  토스트 · run_claimed 를 지나는 파일 전부   161 passed
+```
+변이 (md5 전후 비교)
+```
+BASELINE 25 passed
+MUTANT a SUCCESS sentence back in error_msg     2 failed, 23 deselected
+    FAILED test_a_success_detail_is_carried_as_a_note_and_never_as_an_error
+    FAILED test_the_watchers_success_sentence_reaches_the_screen_as_a_note
+MUTANT only a refusal ends the row              1 failed, 24 deselected
+    FAILED test_a_judgement_that_breaks_ends_the_row_failed_and_opens_the_gate
+MD5 AFTER  same
+```
+
+### 안 한 것
+
+```
+판정에서 깨지는 소급의 «진짜 스케줄러 자식» 한 줄 — 오늘 등록된 연산 중 판정이 깨지는 것이 없습니다(그 증상의 reread_files 는 은퇴).
+   게이트가 진짜 run_claimed 를 부르는 것으로 대신합니다
+```
+
+### 다음
+
+접기 표시(016a766af · 83c05cfbb + 맵퍼 «쓰는 칸» 사실 + 기동 뒤 첫 묶음 칸) — WIP 를 최신 main 위로 옮겨 두었고 이어서 짓습니다
