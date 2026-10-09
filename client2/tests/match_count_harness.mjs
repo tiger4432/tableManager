@@ -3,7 +3,7 @@
 // The match count leaves the first paint: rows are drawn, and `total` arrives from a second
 // request afterwards. Until it lands the screen holds a state it never had before — «we do not
 // know yet» — and this repo's oldest rule is that an absence and an unknown may not paint the
-// same pixel. `Matches: 0` says "your filter matched nothing". Painting that while the server is
+// same pixel. `0` under «Matches:» says "your filter matched nothing". Painting that while the server is
 // still counting is a lie the operator acts on: they widen a filter that was never narrow.
 //
 // 🔴 THE SECOND HALF IS PAGING, and it fails silently in the other direction. `Math.ceil(null /
@@ -63,8 +63,8 @@ console.log('\n── A. THREE ANSWERS, THREE TEXTS ─────────�
   const counted = X.matchCountText(12);
   const none = X.matchCountText(0);
   const unknown = X.matchCountText(null);
-  ok('A1 a number is the number', counted === 'Matches: 12', counted);
-  ok('A2 zero is zero', none === 'Matches: 0', none);
+  ok('A1 a number is the number', counted === '12', counted);
+  ok('A2 zero is zero', none === '0', none);
   // 🔴 THE PAIR THIS FILE EXISTS FOR. Either of these alone passes with the defect in place.
   ok('A3 an unknown count is neither of those', unknown !== none && unknown !== counted, unknown);
   ok('A4 ... and it says it is still counting', unknown.includes(X.COUNTING), unknown);
@@ -89,7 +89,7 @@ console.log('\n── B. THE ELEMENT IS MARKED, AND ZERO IS NOT UNKNOWN ──�
   const none = mkEl();
   X.setMatchCount(none, 0);
   ok('B3 zero is a COUNTED answer and carries no mark',
-    !none.has('is-counting') && none.textContent === 'Matches: 0',
+    !none.has('is-counting') && none.textContent === '0',
     { mark: none.has('is-counting'), text: none.textContent });
   ok('B4 a missing element is not an error', (() => {
     try { X.setMatchCount(null, 3); return true; } catch (e) { return false; }
@@ -133,8 +133,8 @@ const swap = (from, to) => (src) => {
 
 const DEFECTS = [
   ['M1 an unknown count falls back to zero',
-    swap('return `Matches: ${isCounted(total) ? total : COUNTING}`;',
-      'return `Matches: ${isCounted(total) ? total : 0}`;')],
+    swap('return `${isCounted(total) ? total : COUNTING}`;',
+      'return `${isCounted(total) ? total : 0}`;')],
   ['M2 the counting mark is blank, so unknown reads as an empty field',
     swap("export const COUNTING = '…';", "export const COUNTING = '';")],
   ['M3 anything non-null counts, so `null` prints itself',
@@ -169,8 +169,8 @@ function verdict(M) {
   const unknown = M.pagingView(null, 0, LIMIT);
   const none = M.pagingView(0, 0, LIMIT);
   const counted = M.pagingView(120, 0, LIMIT);
-  return M.matchCountText(12) !== 'Matches: 12'
-    || M.matchCountText(0) !== 'Matches: 0'
+  return M.matchCountText(12) !== '12'
+    || M.matchCountText(0) !== '0'
     || M.matchCountText(null) === M.matchCountText(0)
     || !M.matchCountText(null).includes(M.COUNTING)
     || String(M.COUNTING).length === 0

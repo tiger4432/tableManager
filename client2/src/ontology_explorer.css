@@ -438,6 +438,8 @@
 }
 #ontology-explorer-root .oe-title-block p { margin: 0; color: var(--oe-ink-meta); font-size: var(--fs-tag); overflow-wrap: anywhere; }
 #ontology-explorer-root .oe-head-actions { display: flex; align-items: center; gap: 10.2px; flex-wrap: wrap; justify-content: flex-end; }
+#ontology-explorer-root .oe-head-buttons { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end; }
+#ontology-explorer-root .oe-head-buttons:empty { display: none; }
 #ontology-explorer-root .oe-status {
   font-family: var(--oe-font-head); font-size: var(--fs-h6); white-space: nowrap;
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;

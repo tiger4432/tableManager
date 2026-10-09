@@ -136,7 +136,7 @@
             class="log-indicator-area"
             style="display: flex; align-items: center; gap: 8px"
           >
-            <span id="performance-log" class="glass-log-badge">Ready</span>
+            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
             <!-- Mockup 2b joins these three into ONE control: the count, the commit and
                  the abandon are one decision, and three loose buttons read as three. -->
             <span class="tx-action-group">
@@ -386,11 +386,13 @@
           <!-- 상태 바 (PyQt의 Zero-Lag Sync 디자인 반영) -->
           <footer class="grid-footer">
             <div class="status-left">
-              <span id="exposed-rows">Loaded: 0</span>
+              <span class="count-word" data-clip-ok>Loaded:</span>
+              <span id="exposed-rows" class="count-num">0</span>
               <span class="divider">/</span>
               <!-- 아무것도 안 불러온 상태는 «0 건»이 아니라 «모르는» 것입니다.
                    개수가 늦게 오게 되면서 이 기본값이 첫 화면의 거짓이 됩니다. -->
-              <span id="total-rows" class="is-counting">Matches: …</span>
+              <span class="count-word" data-clip-ok>Matches:</span>
+              <span id="total-rows" class="count-num is-counting">…</span>
               <!-- Mockup 2b's range readout. Written by the function that already computes
                    the rectangle, so it cannot disagree with what is highlighted. -->
               <span id="range-readout" class="range-readout"></span>
