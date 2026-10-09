@@ -27,6 +27,9 @@
 > ① git pull -> 서버 · 수집기 · 체인 워커 · 스케줄러 재기동                                   재기동 뒤 기다리는 사건 0
 >    볼 줄   chain_worker.log  [ChainRules] dt_inventory_core_xy: source_name 'dt_inventory' is written as chain_ingestion
 >            «인벤토리 식 규칙»이 맵퍼를 mapper_module · mapper_function 으로 적었으면 이 줄은 0 개(값은 ③ 에서 그래도 바로잡힘 · 237d313db)
+>    기동 중 메인 화면 뱃지 «CHAIN: STARTING» · 그 title «starting: <단계>, N s» — 1 분 넘어도 그 단계 중이면 정상 (e032d526e)
+>            리허설: 단계 하나(ensure_human_claims_index)를 92 s 붙잡아도 내내 starting · foreign_beat 0
+>    기동 끝 chain_worker.log «[Chain] startup <합> s - <단계> <초> s · …» — 가장 긴 단계가 «왜 오래 걸렸나»의 답
 > ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.5 · 2.2 초
 >    답      «No waiting withdrawal event goes row by row - 0 row(s)» 면 접을 것 없음
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
@@ -65,7 +68,7 @@
 > 끝 상태      transfer 원자 205 = 기대 205 · 같은 코어 다이에 transfer 둘 0(처음 84) · 옛 판 원자 0 · 보류 agreed 205 · 껍데기 0
 > 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ «0 row(s) are marked» · ⑦ M 0 · ⑧ stale_atoms 0 · ⑨ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
 >              replay 미리보기의 scanned 와 ⑨ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
-> 착지 뒤 채움  구현자 5 SLOT_POOL · 6 표 선언 인덱스(idx_dt_log_dt_wafer_id 는 «이미 있음») · 7 VALUES CAST · 원장 해시 인덱스
+> 착지 뒤 채움  구현자 6 표 선언 인덱스(idx_dt_log_dt_wafer_id 는 «이미 있음») · 7 VALUES CAST · 원장 해시 인덱스
 > ```
 >
 > ### 시연 선언 (월 10-12) — 위 셋업이 끝난 뒤
