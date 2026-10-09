@@ -77143,3 +77143,48 @@ relname · n_live_tup · n_dead_tup · last_autovacuum · last_vacuum · pg_rela
 - 하위 폴더(a14ea5693): 다시 보기 스레드가 subfolder_recheck_seconds 를 기다리는지 재는 칸 — 다음에 directory_watcher 를 만질 때(총괄 10-09).
 
 어느 DB · 어느 스키마 · 지운 것: 시험은 격리 시험 DB(run_pg_files) · 쪽 초는 박스 assy_manager 의 scratch_ws_page_1009(그 스키마 하나를 지움) · public 은 읽기만 · 그 밖 지운 것 0.
+
+## [10-09] 소급 «Re-read files» 착지 1b931478c (총괄 976defaac · 갈림 ㄱ ㄴ ㄹ 그대로 · ㄷ 은 «거절»로)
+
+**도착지와 대조**
+```
+「표 · 폴더 · 기간을 적으면 미리보기가 파일 수(상태별 · 폴더별 · 사라진 수)를 말하고,
+  실행하면 워처가 «지금 파서»로 있던 자리(아카이브든 외부 경로든)에서 하나씩 다시 읽는다」   -> 섰다
+「파서가 업무키를 바꾸면 옛 키 행은 남는다 — 미리보기 끝 한 줄」                            -> 섰다
+```
+**자리**: 고르기는 `ingestion.reread.select_logs` 하나 — retry-failed 라우트(statuses=FAILED)와 새 연산이 같이 부르고, 폴더 경계는 `_safe_relative_path`(옛 `main._failed_under_folder` 는 이리로 접힘). 읽는 쪽은 언제나 PENDING_RETRY → 워처 poller → `retry_one`. `one_per_file` · `split_missing` 은 새 연산만 쓴다 — retry-failed 의 답은 전과 같다(아래 기존 시험).
+**바꾼 것(총괄 답)**: 워처 하트비트가 없거나 낡으면 «the watcher is not running - start it, then run this again» 으로 거절. 자리는 판정(judge) 하나라 기록 전에 거절되고, 같은 판정을 지나는 미리보기도 같은 문장으로 거절된다(따로 갈래를 두지 않음). 표시는 100 개씩, 그 쪽이 다 읽히면 다음 쪽 — 멈추면 지금 쪽의 안 집힌 것만 되돌린다. 미리보기 끝에 «the operations gate is held until the last file is read - split a large folder».
+
+**게이트(sqlite — 워처 몫은 그 코드 그대로: poller 한 걸음 = `pending_retries` + `retry_one`)**
+```
+8 passed   (test_files_are_read_again_by_the_watcher.py)
+retry-failed 그대로: 28 passed   (test_failed_files_retry_by_folder · test_a_failed_external_file_retries_on_its_own_handler · test_a_stranded_claim_is_given_back)
+소급 등록부를 읽는 시험: 227 passed, 6 deselected
+변이 — md5 same
+BASELINE 13 passed
+MUTANT the states fixed to FAILED                 5 failed, 8 passed
+    FAILED test_a_file_that_went_in_is_read_again_from_its_archive_with_a_column_declared_since
+    FAILED test_a_folder_takes_what_is_under_it_and_never_its_neighbour
+    FAILED test_a_stop_gives_the_rows_not_taken_their_state_back
+    FAILED test_an_external_file_is_read_again_on_the_watchers_handler_with_its_new_options
+    FAILED test_the_preview_counts_what_the_run_hands_over_and_a_gone_file_is_not_handed
+MUTANT the folder by a prefix                     3 failed, 10 passed
+    FAILED test_a_folder_takes_what_is_under_it_and_never_its_neighbour
+    FAILED test_retry_takes_exactly_the_failed_files_under_the_folder
+    FAILED test_the_preview_counts_what_is_under_the_folder_and_writes_nothing
+MUTANT a stop gives nothing back                  1 failed, 12 passed
+    FAILED test_a_stop_gives_the_rows_not_taken_their_state_back
+MUTANT a file read twice is handed over twice     1 failed, 12 passed
+    FAILED test_the_preview_counts_what_the_run_hands_over_and_a_gone_file_is_not_handed
+MUTANT every file handed over at once             1 failed, 12 passed
+    FAILED test_the_next_page_waits_for_this_one
+MUTANT no watcher, not refused                    1 failed, 12 passed
+    FAILED test_with_no_watcher_running_it_is_refused_before_anything_is_recorded
+```
+⑤(retry-failed 의 답이 전과 같음)는 기존 retry 시험이 그대로 초록인 것으로, 폴더 경계 변이가 그 시험까지 빨갛게 하는 것으로(같은 함수) 잰다.
+
+**남은 것**
+- 클라: 소급 탭이 새 연산(params 다섯)을 저절로 그리는지 확인만 — 클라 레인 몫.
+- 실행이 마지막 파일까지 소급 관문을 붙든다 — 큰 폴더는 나눠서(RUN.md · 미리보기 한 줄).
+
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · 시험이 만든 파일은 pytest tmp · 지운 것 0.
