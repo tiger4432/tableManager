@@ -65227,3 +65227,23 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
 응용  rule_rows 취소 재현은 «멈춤» — 그 길이 은퇴한다. 찾은 것이 있으면 한 줄만 보고(은퇴 뒤에도 남는 원인이면 그것이 결함)
 순서  복사 다시 채우기 속도 재기(급함) -> 이것 -> 고리 줄 -> 하위 폴더 착지 -> 층 순위 -> 대기열 줄 rules 칸 -> 표 인덱스 -> foreign_beat
 ```
+
+> **[총괄 -> 구현자] 10-09 저녁 — 지금 줄 하나로 다시 적음(메시지가 늦게 닿아 갈림 답이 안 보였던 것들 포함). 이 절이 앞 메시지보다 이긴다**
+
+```
+1  🔴 LLM 선언 파일(소유자 「환경설정으로 하지 말고 선언 파일로」 · 「외부 요청 주소 · 페이로드 전부 로그 깔끔하게」)
+   server/config/llm_config.json(gitignore) + config/sample/llm_config.json.sample — base_url · model · api_key · timeout_s · headers{} · proxy
+   proxy 없음/null = 프록시 없이 바로(httpx trust_env=False 를 OpenAI(http_client=…)로) — 운영 증상 「전사 차단」은 윈도우 시스템 프록시를 탄 것
+   부를 때마다 파일을 읽음 · ASSY_LLM_* 환경변수는 은퇴(파일 없고 환경변수만 있으면 «옮기라» 거절 문장)
+   로그 llm_requests.log 하나 — 요청마다 JSON 두 줄(보냄: 시각 · id · 실제 URL · 모델 · 헤더(키 ***) · 페이로드 전문 · proxy / 받음: id · 상태 · ms · 답 전문 또는 오류)
+   시험: 칸이 클라이언트에 닿음 · 거절 셋 · 파일 바꾸면 다음 부름에 반영 · 로그 두 줄 · 로그 전체에 키 문자열 0 + 변이
+2  복사 홀드 세기 hold_copy._claims 를 VALUES 조인(값 있는 키) + NULL 키 따로 — «지금 모양과 같은 답» 대조 + 2 만 · 100 만 행 시간(안 ㄷ 의 ㄴ; ㄱ 키 인덱스는 소유자가 10-08 에 이미 만듦)
+3  run_in 은퇴 뒤따름(53bdedde9 의 ①): 묶인 이벤트는 쪼개지 않는다 — 대신 replay 가 그 규칙의 rows_per_run 을 넣기 쪽 크기(chunk_size)로 쓴다. LLM 소급이 행 하나 = 이벤트 하나로 들어가 묶음 자르기와 맞물림
+   게이트: rows_per_run 1 규칙 replay -> 이벤트 N · 글 하나 틀린 답 -> 그 글만 FAILED
+4  하위 폴더(impl-subfolder-2f487efb5) 착지
+5  대기열 줄 rules 칸(소급 줄 = only_rule · 보통 줄 = 그리드와 같은 판정) — 클라가 Job 칸에 그림
+6  표 인덱스(06e8c22c3) -> foreign_beat 문장 -> operator_line.nothing_to_do 지우기(다음 손댈 때)
+판정만(짓지 않음)
+   층 순위(905235e5c): 시연 뒤. merged_layer_name 이 «행 층»과 «합치기 층» 두 뜻 — 틀린 뜻 하나를 은퇴하는 일로. 운영 증상은 소유자의 다시 하기로 사라짐
+   rule_rows 취소 원인: 길이 은퇴해 멈춤(은퇴 뒤에도 남는 원인이면 결함으로 따로)
+```
