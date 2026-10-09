@@ -37173,3 +37173,118 @@ A 에 계속 자라는 파일                      남은 것 []                
         PostgreSQL 도 옛 IN 을 보내는 변이   test_the_lookup_takes_the_origin_index_under_a_low_belief 이 빨강(Seq Scan on cell_sources) · 대조 칸은 그대로 1 passed
         -> 운영이 믿던 통계(n_distinct 300) 아래에서 «모양»을 잰다. 앞 보고(f0b625d23 QA)의 「옛 Seq Scan 은 박스 40 만 행에서 안 나왔다」를 이 칸이 메운다
 ```
+
+---
+
+## [C 응용] 10-09 (총괄 메시지) 보류는 agreed 로 풀렸는데 공식 표 시간 칸이 옛 겉값 — 재현 · 원인 한 줄 · 시험 초안 (잼)
+
+```
+원인 한 줄   crud.compute_priority_value — 공식 칸의 보이는 값은 그 칸의 «모든» 층에서 서열 -> 최신 순으로 고른다
+   복사 맵퍼(copy_rows_with_hold)의 행마다 층 「chain_ingestion (<원천 row_id>)」은 SOURCE_PRIORITY 에 없는 이름이라 99
+   같은 칸에 «등록된 이름»의 층이 하나라도 있으면(user 0 · collision_merge 1 · pipeline_parser 2 · custom_script 3 · 그냥 chain_ingestion 4)
+   그 층이 시간과 상관없이 늘 보인다. 그 층은 원천 도장(origin_row_id)이 없어 원천 행을 지워도 안 거둬진다
+   보류는 원천 표의 행만 센다(_claims) -> 하나 남으면 agreed. 칸은 그 층의 옛 값 그대로 — 소유자가 본 모양
+박스 시험과 다른 점  박스 시험의 공식 칸에는 복사 층만 있다. 그러면 지운 쪽 층이 거둬지고 남은 행 값이 보인다(아래 여덟 칸)
+잰 것   PG 시험 DB assy_test · pg_engine 스크래치 스키마(픽스처가 지움) · support.hold_world 에 datetime 칸 evt_time 하나 더 복사
+        같은 키 두 행(netdie 같고 시간만 다름) · 그리드 삭제 라우트 몸통(crud.delete_rows_batch, API 채널) · 원장 따라가기 · 워커의 거두기
+        층이 복사뿐일 때 — 맵퍼 묶음/한 행 × 지운 쪽(late_shown = 보이던 층, early_hidden = 안 보이던 층) × 한 묶음/두 묶음
+        batch-late-one_batch           2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        batch-late-two_batches         2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        batch-early-one_batch          2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        batch-early-two_batches        2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        one_row-late-one_batch         2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        one_row-late-two_batches       2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        one_row-early-one_batch        2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        one_row-early-two_batches      2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        같은 칸에 다른 층 하나(값 09:00) — 그냥 chain_ingestion 이 두 복사보다 «먼저» / 사이에 · user 가 사이에
+        batch-chain_before             2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        batch-chain_between            2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        batch-user_between             2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        one_row-chain_before           2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        one_row-chain_between          2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        one_row-user_between           2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        그냥 chain_ingestion 층이 «더 오래돼도» 보인다 — 층 목록(앞 4 자리 · 도장 · 값 · 적힌 시각) [('50a4', '50a4', '2026-10-09T10:05:00+09:00', '15:18:48.245583'), ('c5e0', 'c5e0', '2026-10-09T10:00:00+09:00', '15:18:45.814458'), ('tion', None, '2026-10-09T09:00:00+09:00', '15:18:43.879773')]
+모르는 것 운영 그 칸에 어떤 층이 있나 — 운영이라 못 봤다
+        가르는 것: 그 칸의 층 목록에 「chain_ingestion (…)」 아닌 층이 있으면 이 원인이다. 없으면 이 원인이 아니고 다시 잰다
+        두 행의 ingested_at 이 같은 경우는 안 만들었다 — 한 프로세스 안에선 layer_instant 가 늘 1 µs 띄운다
+시험 초안 task/evidence/hold_time_after_delete_draft_test.py — a102798fc 에서 10 passed · 2 failed
+        빨강 = test_an_older_plain_chain_layer_does_not_outrank_the_surviving_copy (묶음 · 한 행 두 칸) — 「먼저 적힌 그냥 체인 층은 남은 복사를 못 이긴다」를 단언한다
+        사람 값(user)이 남는 것은 초록으로 박아 두었다 — 사람이 고친 값은 일부러 이긴다
+고칠 모양 행마다 층의 서열을 무엇으로 볼지(쓴 이의 서열 = 4 로 보면 먼저 적힌 층은 시간으로 지고, 나중 층 · user 는 여전히 이긴다)는 총괄 판정. 고치지 않았습니다
+```
+
+---
+
+## [C 응용] 10-09 3a8036b74(화면 레이아웃 게이트 — 진짜 Chrome) QA — 게이트가 «돌 때마다» 다르게 빨갛다 · 한 번 (잼)
+
+```
+잰 것   client2/tests/screen_layout_harness.mjs — 이 박스 · 공유 트리에서 읽기만(Chrome 프로필은 임시 폴더) · --mutate 없이
+        돌린 4 번(저장한 것) — 알려진 빨강(R&D 보드 «Measured» 13 px) 하나뿐 3 번 · 빨강이 둘 더 1 번
+        더 빨간 그 번: index.html answers — 그리드가 필터 «둘만» 걸린 요청 {predicate, subject_type} 을 보냈고 screens_answers.json 에 그 답이 없다
+                      그 탓에 span#performance-log 에 「no answer in screens_answers.json」이 찍혀 clip 세 줄까지 빨강
+        답 파일이 가진 필터 묶음  {object_kind, predicate} · {object_kind, predicate, subject_type}
+까닭    하네스가 칸 셋(subject_type · predicate · object_kind)에 한 고리로 값을 넣는다 — 그리드의 디바운스가 그 사이에 어느 «중간 묶음»을 보낼지는 시각에 달렸다
+        녹화(capture_screens.py)도 한 번의 시각이라 그때 나온 중간 묶음 둘만 담겼다
+        -> 화면 결함이 없는데도 가끔 빨강 — 러너 바닥(ran 47 · failed 1)이 그 번엔 어긋난다
+고칠 모양 중간 묶음까지 답을 담기 · 필터를 한 번에 넣기 · 마지막 요청만 재기 — 디자인 레인 · 총괄 판정. 고치지 않았습니다
+문서    CODE_MAP dropdown.js 절에 placeUnder(소비자 셋 · 재는 하니스)
+```
+
+---
+
+## [C 응용] 10-09 rule_rows 취소 재현 — 72f419bd1 로 멈춤 · 한 줄
+
+```
+찾은 것  cancelled 를 쓰는 자리는 셋(request_cancel = 사람 × · Cancel · 앱 멈춤 / cancel_requested 를 본 끝 / 실행 중 BaseException)이고, 박스(sqlite · 그룹 몸통 · claim -> run_claimed · 가짜 LLM)에선 두 작업 다 done — 재현 못 함
+         덤 하나: retroactive.publish 가 그룹 세션을 스스로 commit 한다 — _queue_operation_runs 의 「실패한 그룹은 아무것도 안 줄 세운다」가 참이 아니다(첫 시도가 실패해도 작업이 남는다)
+         그룹 «안»에서 publish 를 부르는 곳은 그 하나뿐(나머지는 라우트) — 은퇴와 같이 사라진다. 은퇴 뒤에 남는 원인은 찾지 못했다
+```
+
+---
+
+## [C 응용] 10-09 5e2084133(겹친 행을 키마다 하나로 접기) QA — 결함 없음 · 제 실수 하나 (잼)
+
+```
+잰 것   사설 워크트리
+        sqlite 시험 파일(test_duplicate_rows_fold_to_one_per_key)   9 passed
+        「빈 값은 맨 뒤」 항을 뺀 변이                              test_a_blank_order_value_is_last 하나만 빨강
+        PG 시험 파일(보류 복사 세상 위 · 원장 따라가기까지)            2 passed — assy_test 스크래치(픽스처가 지움)
+문서    BACKFILL_GUIDE 증상 표에 한 줄(소급 탭 · CLI fold-rows · 보고만 -> --apply · 되돌릴 수 없음)
+제 실수  PG 파일 하나를 돌리려다 실행기에 경로를 넘겨 PG 시험 «전체»가 30 분 돌았습니다 — 그 프로세스를 멈췄고
+        그 탓에 시험 DB assy_test 에 남은 스크래치 스키마 assy_pytest_pg_48564_gw0(객체 778, 제가 만든 이름 하나)를 지웠습니다 — 남은 것 0 · 그 밖에 지운 것 0
+        다시 돌린 것은 -k 로 그 파일만
+```
+
+---
+
+## [C 응용] 10-09 (총괄 메시지) 텍스트 링크 «표 넷» 예시 — 샘플 · 가이드 (잼)
+
+```
+한 것   server/config/sample/table_config.json.sample 에 표 넷 — text_doc(글) · text_name(부르는 말) · text_link_word(연결 말) · text_cause_candidate(후보)
+        칸 · 키는 TEXT_LINKS_GUIDE §1 그대로(후보 키 = 글 id · sentence_no · cause_type · cause_key · phenomenon_type · phenomenon_key, 규칙으로 뽑는 쪽)
+        TEXT_LINKS_GUIDE §1 표 밑에 그 넷을 가리키는 한 줄. 샘플 표 수 46
+게이트  샘플을 읽는 서버 시험 58 파일 — 넣기 전 · 뒤 빨강 · 오류 이름이 같다(25, 그중 21 이 test_ontology_config_explorer — 넣기 전부터)
+        클라 table_config_panel_harness — 전 · 뒤 같은 초록
+        처음엔 글 칸을 TEXT 로 적었다가 그 하니스 E2 가 빨강(편집기가 받는 낱말은 string · number · datetime 셋) — string 으로
+```
+
+---
+
+## [C 응용] 10-09 cc4f567a1(체인 고리 줄은 배정자가 선언 내용마다 한 번) QA — 결함 없음 (잼)
+
+```
+잰 것   손댄 시험 다섯 파일 — 사설 워크트리 · sqlite   42 passed
+        같은 선언을 다시 읽어도 말하게 한 변이           test_the_dispatcher_says_a_loop_once_and_a_slot_or_a_respawn_says_nothing 하나만 빨강
+문서    operator_line 을 부르는 자리 — 부모 파일 6 · 자리 11 -> 지금 파일 5 · 자리 10 (rule_order 가 나감)
+        CODE_MAP 「누가 부르나」 행에 그 수 · PRIMITIVES 다섯째 자리 항목에 ⚰️ 한 줄
+```
+
+---
+
+## [C 응용] 10-09 미뤄 둔 일 — 어디까지
+
+```
+test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, 「L1 PG 둘의 not declared · b2fe1f02f 운영 모양 QA」 절)
+텍스트 링크 표 넷 예시       52260d079 · 그다음 가이드 한 줄 고침
+하위 폴더 · 층 순위 QA      고친 커밋을 기다림 — 재현 보고 9f2b16a21 · 905235e5c 뒤로 수집기 · crud · 보류 복사 맵퍼를 고친 커밋 없음
+```

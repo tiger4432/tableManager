@@ -94,7 +94,6 @@ def test_the_operator_line_says_which_rules_lost_their_order():
     false, and 상설 ①'s discriminant is 「이 줄이 참인가」."""
     said = rule_order.cycle_note(["r1_enrich", "r2_join_reference", "r1_enrich"], ceiling=5)
 
-    assert "max_chain_depth=5" in said
-    assert "끼리만" in said, (
-        "the line still reads as though every rule in the set fell back to declaration "
-        "order: %s" % said)
+    # 총괄 10-09: the short line names the loop and its cap and says nothing about order at all, so it
+    # cannot read as 「the whole set fell back to declaration order」 either.
+    assert said == "[ChainRules] loop: r1_enrich -> r2_join_reference -> r1_enrich · capped at max_chain_depth=5"

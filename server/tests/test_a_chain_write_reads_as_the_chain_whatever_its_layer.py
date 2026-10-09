@@ -330,6 +330,9 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     # A queued rule's run writes through the chain's own write, so it wakes what the chain's
     # write wakes (총괄 be0abe305) - `test_a_rule_can_run_as_an_operation` reads the channel.
     assert notes.pop("rule_rows").startswith("What it writes wakes the rules downstream")
+    # Its deletions reach the ledger follow-up, which takes back what each row fed and wakes the
+    # recount (총괄 d72dc0283) - `test_folded_duplicates_let_the_official_table_recount` measures it.
+    assert notes.pop("fold_duplicate_rows").startswith("Each deleted row reaches the chain as a deletion")
     assert notes and set(notes.values()) == {retroactive.DOWNSTREAM_NOTE}
 
 

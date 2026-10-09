@@ -853,9 +853,17 @@ def load_chain_rules():
     #    `allow_chain_trigger` edges and is about a RUNTIME LOOP; this one walks every
     #    producer→consumer edge and is about an IMPOSSIBLE ORDER. Two questions, two edge
     #    sets - naming them the same thing is how one name comes to carry two meanings.
-    rules = rule_order.order_rules(
-        rules, on_cycle=lambda trail: rule_order.say_cycle_once(
-            logger, trail, event_constants.max_chain_depth(_RULES_DOCUMENT)))
+    #    🔴 BUT ONE LOOP IS ONE LINE (총괄 10-09 「두 자리가 같은 함수를 부르되, 한 번 말한 고리는 다시 말하지
+    #    않습니다」): a loop of rules is recorded as the loop of tables it runs through - each rule's
+    #    trigger, in the direction the data flows - which is the cascade graph's word, so the
+    #    same loop met by both walks is one key (`rule_order.loop_of`). Said by the dispatcher.
+    rule_order.forget_cycles()
+    by_name = {rule.get("name"): rule for rule in rules}
+
+    def tables_of(trail):
+        tables = [by_name[name].get("trigger_table") for name in reversed(rule_order.loop_of(trail))]
+        return tables + tables[:1]
+    rules = rule_order.order_rules(rules, on_cycle=lambda trail: rule_order.found_cycle(tables_of(trail)))
 
     # 🔴 THE SET, BY NAME, EVERY LOAD (S-234 0단계). On 2026-09-14 eight rules were running
     # that the operator had not written and the boot line said only "8"; separately a rule
@@ -943,6 +951,13 @@ def loaded_chain_rules():
     if _LOADED_RULES is None:
         return load_chain_rules()
     return copy.deepcopy(_LOADED_RULES)
+
+
+def say_the_loops():
+    """The dispatcher's line per chain loop of the declaration it last read - once per declaration
+    content (총괄 10-09: 배정자만 · 고리 하나 = 줄 하나 · 선언을 새로 읽을 때만). A slot and a request
+    path read through the same loader and say nothing. -> lines said."""
+    return rule_order.say_loops(logger, _RULES_DOCUMENT, event_constants.max_chain_depth(_RULES_DOCUMENT))
 
 
 def forget_loaded_chain_rules():
@@ -1251,15 +1266,15 @@ def _validate_chain_cascade_graph(rules) -> list:
     cycles = []
     def visit(node, trail):
         if node in visiting:
-            # 🔴 [판정 402] SAID ONCE, NEVER RAISED. This walk answers 「do the opt-in chain
+            # 🔴 [판정 402] RECORDED, NEVER RAISED. This walk answers 「do the opt-in chain
             # triggers loop」, and the answer 「yes」 is not a fault: the drain enforces
             # `max_chain_depth`, so the loop is finite. Raising here KILLED the load and the
             # save route with it - a declaration that runs correctly could not be written.
+            # The dispatcher says it (`say_the_loops`), one line per loop (총괄 10-09).
             from chain import rule_order
 
             found = trail + [node]
-            rule_order.say_cycle_once(logger, found,
-                                      event_constants.max_chain_depth(_RULES_DOCUMENT))
+            rule_order.found_cycle(found)
             cycles.append("allow_chain_trigger cycle: " + " -> ".join(found))
             return
         if node in visited:
@@ -4648,6 +4663,7 @@ async def start_chain_ingestion_worker(db_session_factory):
         getattr(logger, _lvl)(_msg)
 
     rules = load_chain_rules()
+    say_the_loops()
     logger.info(f"Loaded {len(rules)} active chain ingestion rules.")
     
     last_reload_event_id = 0
@@ -4775,6 +4791,7 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                 if reload_work:
                     rules = reload_rules(reload_work)
+                    say_the_loops()
                     # 4. ⑤ The index work again - the comment on its seat promises 「every reload」,
                     #    the rules-only one too: a join saved with `key.unique` gets its index now,
                     #    not at the next restart (총괄 76aa4b6ed ②).

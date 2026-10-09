@@ -766,6 +766,92 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
     return stats
 
 
+#: Who deleted, in the history of each row `fold_duplicate_rows` takes.
+FOLD_ROWS_BY = "fold_duplicate_rows"
+#: Rows one `crud.delete_rows_batch` takes - a page; a stop and a pace land between pages.
+FOLD_ROWS_PAGE = 1000
+#: Keys the dry run shows, and rows of each.
+FOLD_ROWS_SAMPLE_KEYS, FOLD_ROWS_SAMPLE_ROWS = 3, 4
+
+
+def _ranked_duplicates(model, keys, order, keep):
+    """Every row with its place among the rows of its key (`n`, 1 = kept) and how many share
+    the key (`c`). Keys compare blank = NULL = NULL (`crud.blank_to_null`); by `order` - `min`
+    earliest, `max` latest - a blank `order` last; a tie, the smaller row_id kept."""
+    from sqlalchemy import String, case, cast, func, select
+
+    from database import crud
+
+    parts = [crud.blank_to_null(cast(getattr(model, k), String)) for k in keys]
+    by = getattr(model, order)
+    ranked = [case((crud.blank_sql_condition(cast(by, String)), 1), else_=0),
+              by.asc() if keep == "min" else by.desc(), model.row_id.asc()]
+    return select(model.row_id.label("row_id"), by.label("order_value"),
+                  *[part.label("k%d" % i) for i, part in enumerate(parts)],
+                  func.row_number().over(partition_by=parts, order_by=ranked).label("n"),
+                  func.count().over(partition_by=parts).label("c")).subquery()
+
+
+def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min",
+                        apply: bool = False, pace: str = None, log=logger.info,
+                        checkpoint=None) -> dict:
+    """Per key one row stays - the first by `order` (`_ranked_duplicates`) - and the rest are
+    deleted through the product's delete door, `crud.delete_rows_batch`, a page at a time, so
+    their layers, holds and ledger atoms are taken back as for a deletion from the grid (총괄
+    d72dc0283 · 소유자 10-09 「해당 dtwaferid 중에서 최소 시간으로 접으면 되긴 함」). The rows to
+    go are chosen once; a stop lands between pages and a re-run finds only what is left.
+    """
+    from sqlalchemy import and_, func, select
+
+    from database import crud
+
+    keys = [k for k in (keys or []) if k]
+    if not keys:
+        raise ReplayRefused("name at least one key column - the rows that fold share its values")
+    if keep not in ("min", "max"):
+        raise ReplayRefused(f"keep is 'min' (the earliest {order}) or 'max' (the latest), not '{keep}'")
+    model, _col_types = resolve_target(table_name, list(keys) + [order])
+    pages_per_cycle, rest_seconds = resolve_pace(pace)
+    ranked = _ranked_duplicates(model, keys, order, keep)
+    rows, to_go, folded_keys = db.execute(select(
+        func.count(), func.count().filter(ranked.c.n > 1),
+        func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1))).select_from(ranked)).one()
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows": rows,
+             "keys_folded": folded_keys, "rows_to_delete": to_go, "rows_kept": rows - to_go,
+             "rows_deleted": 0, "pages": 0, "stopped": False, "sample": []}
+    key_cols = [ranked.c["k%d" % i] for i in range(len(keys))]
+    sample = {}
+    for row in db.execute(select(ranked).where(ranked.c.c > 1, ranked.c.n <= FOLD_ROWS_SAMPLE_ROWS)
+                          .order_by(*key_cols, ranked.c.n)
+                          .limit(FOLD_ROWS_SAMPLE_KEYS * FOLD_ROWS_SAMPLE_ROWS)):
+        key = tuple(row._mapping["k%d" % i] for i in range(len(keys)))
+        if key not in sample and len(sample) == FOLD_ROWS_SAMPLE_KEYS:
+            break
+        one = sample.setdefault(key, {"key": dict(zip(keys, key)), "rows": row.c, "kept": None, "deleted": []})
+        if row.n == 1:
+            one["kept"] = {"row_id": row.row_id, order: row.order_value}
+        else:
+            one["deleted"].append({"row_id": row.row_id, order: row.order_value})
+    stats["sample"] = list(sample.values())
+    if apply and to_go:
+        ids = [r for (r,) in db.execute(select(ranked.c.row_id).where(ranked.c.n > 1)
+                                        .order_by(ranked.c.row_id))]
+        for start in range(0, len(ids), FOLD_ROWS_PAGE):
+            if checkpoint is not None and checkpoint(stats["rows_deleted"], len(ids)):
+                stats["stopped"] = True
+                log(f"[fold-rows] stopped by request after {stats['rows_deleted']} of {len(ids)} rows")
+                break
+            stats["rows_deleted"] += crud.delete_rows_batch(
+                db, table_name, ids[start:start + FOLD_ROWS_PAGE], FOLD_ROWS_BY)
+            stats["pages"] += 1
+            if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
+                time.sleep(rest_seconds)
+    log(f"[fold-rows] '{table_name}' {stats['mode']}: {folded_keys} key(s) of ({', '.join(keys)}) "
+        f"hold more than one row - keep the {'earliest' if keep == 'min' else 'latest'} {order}, "
+        f"{to_go} row(s) to delete, {stats['rows_deleted']} deleted")
+    return stats
+
+
 #: The writer of the history line a notation backfill leaves on each cell it folds.
 NOTATION_BACKFILL_SOURCE = "notation_backfill"
 

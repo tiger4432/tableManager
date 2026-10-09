@@ -231,7 +231,7 @@ def test_the_loader_hands_the_worker_rules_in_that_order(load):
     assert load([CONSUMER, PRODUCER]) == ["a_producer", "b_consumer"]
 
 
-def test_a_cycle_at_load_names_itself_and_does_not_stop_the_chain(load, caplog):
+def test_a_cycle_at_load_names_itself_and_does_not_stop_the_chain(load, caplog, monkeypatch):
     """⛔ ONE UNORDERABLE PAIR MUST NOT COST THE OTHER RULES. This loader's posture is
     「거절된 분자는 세고 건너뛴다」 - raising here would turn a bad pair into 「no chain at
     all」, which is the failure S-177 and S-180 both exist to prevent. The cycle is named in
@@ -243,17 +243,19 @@ def test_a_cycle_at_load_names_itself_and_does_not_stop_the_chain(load, caplog):
 
     with caplog.at_level(logging.INFO):
         names = load([there, back])
+        monkeypatch.setattr(rule_order, "_SAID_FOR", None)
+        worker.say_the_loops()                            # the dispatcher says it (총괄 10-09)
 
     assert names == ["there", "back"], "the rules still load, in the declaration's order"
     said = " ".join(record.getMessage() for record in caplog.records)
-    assert "고리" in said and "there" in said, said
+    assert "[ChainRules] loop: x -> y -> x" in said, said
     # ⚰️ AND THE CYCLE IS NOT AN ERROR ANY MORE (판정 402). The operator watched this scroll
     # past on every load; a shape the product handles is not something to alarm about.
     # ⚠️ ABOUT THE CYCLE LINE ONLY - this loader emits other ERROR lines for other reasons
     # (a rule set that differs from the previous load, for one), and swallowing those into
     # this assertion would make it fail for facts it is not about.
     assert not [r for r in caplog.records
-                if r.levelno >= logging.ERROR and "고리" in r.getMessage()], (
+                if r.levelno >= logging.ERROR and "loop:" in r.getMessage()], (
         "a cycle is still being reported as a fault")
 
 
@@ -312,28 +314,6 @@ def test_a_switched_off_producer_no_longer_orders_its_consumer():
         "reads_t", "fills_t_but_off"]
 
 
-def test_the_cycle_line_is_said_once_rather_than_on_every_load():
-    """🔴 THE DRAIN RE-READS THE RULES FILE EVERY BATCH, so a line said on every load is a
-    line that scrolls the log - which is exactly what the operator reported. Once per trail
-    per process, and a declaration change forgets it."""
-    import logging
-
-    class _Spy(logging.Logger):
-        def __init__(self):
-            super().__init__("s249")
-            self.said = []
-
-        def info(self, message, *args):
-            self.said.append(message % args if args else message)
-
-    rule_order.forget_cycles()
-    spy = _Spy()
-    trail = ["a", "b", "a"]
-
-    assert rule_order.say_cycle_once(spy, trail, 3) is True
-    assert rule_order.say_cycle_once(spy, trail, 3) is False
-    assert len(spy.said) == 1
-
-    rule_order.forget_cycles()
-    assert rule_order.say_cycle_once(spy, trail, 3) is True
-    assert len(spy.said) == 2
+# ⚰️ `test_the_cycle_line_is_said_once_rather_than_on_every_load` (once per trail per process) stood
+#    here: once per loop, by the dispatcher, per declaration content is
+#    `test_the_chain_loop_line_is_said_once_by_the_dispatcher` (총괄 10-09).

@@ -1274,5 +1274,109 @@
       "incomparable",
       "evidence"
     ]
+  },
+  "text_doc": {
+    "__comment": "The texts a cause is read from - one meeting note, one 8D section. docs/guide/TEXT_LINKS_GUIDE.md §1 (the «글» table). A chain rule wakes on this table and writes text_cause_candidate.",
+    "business_key": "doc_id",
+    "column_types": {
+      "doc_id": "string",
+      "title": "string",
+      "body": "string"
+    },
+    "display_columns": [
+      "doc_id",
+      "title",
+      "body"
+    ]
+  },
+  "text_name": {
+    "__comment": "What the texts call a node: one row per phrase, several phrases for one node. docs/guide/TEXT_LINKS_GUIDE.md §1 (the «부르는 말» table). Filled by a person; the product ships it EMPTY.",
+    "business_key": "name_key",
+    "composite_key_source": [
+      "node_type",
+      "node_key",
+      "phrase"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "name_key": "string",
+      "node_type": "string",
+      "node_key": "string",
+      "phrase": "string"
+    },
+    "display_columns": [
+      "name_key",
+      "node_type",
+      "node_key",
+      "phrase"
+    ]
+  },
+  "text_link_word": {
+    "__comment": "The words that join a cause to what it causes, list names, deny or rate a sentence. docs/guide/TEXT_LINKS_GUIDE.md §1 (the «연결 말» table): meaning cause | and | negation | suspected | confirmed; side before | after for a cause, blank otherwise. One phrase with two meanings is two rows. Filled by a person.",
+    "business_key": "link_key",
+    "composite_key_source": [
+      "phrase",
+      "meaning"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "link_key": "string",
+      "phrase": "string",
+      "meaning": "string",
+      "side": "string"
+    },
+    "display_columns": [
+      "link_key",
+      "phrase",
+      "meaning",
+      "side"
+    ]
+  },
+  "text_cause_candidate": {
+    "__comment": "The rows the mapper reads out of a text: a cause, what it causes, the sentence that said so. docs/guide/TEXT_LINKS_GUIDE.md §1 (the «후보» table). Keyed as the rules extractor writes it; read by a language model, key it by the phrases instead (§6).",
+    "business_key": "candidate_key",
+    "composite_key_source": [
+      "doc_id",
+      "sentence_no",
+      "cause_type",
+      "cause_key",
+      "phenomenon_type",
+      "phenomenon_key"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "candidate_key": "string",
+      "doc_id": "string",
+      "sentence_no": "number",
+      "sentence": "string",
+      "cause_type": "string",
+      "cause_key": "string",
+      "cause_phrase": "string",
+      "phenomenon_type": "string",
+      "phenomenon_key": "string",
+      "phenomenon_phrase": "string",
+      "link": "string",
+      "polarity": "string",
+      "certainty": "string",
+      "extractor": "string",
+      "evidence": "string"
+    },
+    "display_columns": [
+      "candidate_key",
+      "doc_id",
+      "sentence_no",
+      "sentence",
+      "cause_type",
+      "cause_key",
+      "cause_phrase",
+      "phenomenon_type",
+      "phenomenon_key",
+      "phenomenon_phrase",
+      "link",
+      "polarity",
+      "certainty",
+      "extractor",
+      "evidence"
+    ]
   }
 }

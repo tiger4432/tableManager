@@ -134,6 +134,8 @@ NAME_OPS = {
     "resolve": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "fold_file_layers": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "fold_written_notation": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
+    "fold_duplicate_rows": ({"table": "no_such_table", "keys": "part_no", "order": "note"},
+                            {"table": "retro_test_target", "keys": "part_no", "order": "note"}),
     "withdraw": ({"table": "no_such_table", "source": "retro_src"},
                  {"table": "retro_test_target", "source": "retro_src"}),
     "ledger_backfill": ({"source": "no_such_source"}, {"source": "dt_job"}),

@@ -15,53 +15,59 @@ sides import it, the same prescription `chain/mapper_call.py` got (S-214, 판정
 invisible here, exactly as it is to every other declaration-driven guard - 「선언으로 표현할 수
 없는 교차 테이블 의존」 stays the sanctioned blind spot it is written down as.
 """
+import json
+
 from chain import rule_shape
 
 
-#: Cycles already announced in this process, by trail. The drain re-reads the rules file
-#: every batch, so a line said on every load is a line that scrolls the log - which is what
-#: the operator saw ("사이클 오류 계속 뜨네") before 판정 402.
-_SAID = set()
+#: The loops the last read of the declaration met, by `loop_of`, from both seats - the order walk
+#: and the cascade graph. Said by the dispatcher alone (`say_loops`); a slot reads and keeps quiet.
+_FOUND = set()
+#: The declaration content the dispatcher last said its loops for.
+_SAID_FOR = None
+
+
+def loop_of(trail) -> tuple:
+    """The loop a trail closes, one key whichever node a walk started from (총괄 10-09 「고리 하나 = 줄
+    하나」): the descent cut (from the first visit of the node it ends on), the repeat dropped, turned
+    to begin at its smallest name."""
+    nodes = [str(node) for node in trail]
+    loop = nodes[nodes.index(nodes[-1]):-1] or nodes[-1:]
+    start = loop.index(min(loop))
+    return tuple(loop[start:] + loop[:start])
 
 
 def cycle_note(trail, ceiling=None) -> str:
-    """The ONE sentence about a cycle, in the shape S-247 gave every operator line.
+    """The one line about a loop (소유자 「고리 홉상한 어쩌고 … 엄청 길게」 -> 총괄's short line).
 
-    🔴 [판정 402] A CYCLE IS A SHAPE, NOT AN ERROR. `dt_log → dt_inventory` by mapper and
-    `dt_inventory → dt_log` by join is an INTENDED loop, and what makes it finite is the hop
-    ceiling the drain already enforces (`max_chain_depth`). Refusing it at load time refused a
-    declaration that works, twice a second, in a log the operator needs for other things.
-
-    🔴 [S-247-b] AND IT GOES THROUGH THE ONE AUTHOR NOW. This line's own docstring claimed
-    it was 「in the shape S-247 gave every operator line」 while SPELLING that shape by hand -
-    which is how one author quietly becomes two. Measured by the code-map pass: the seed was
-    already there, because `operator_line.nothing_to_do` had zero callers and this had zero
-    imports.
-    """
-    import operator_line
-
-    return operator_line.line(
-        "ChainRules", " -> ".join(str(node) for node in trail),
-        "고리 (이 고리의 규칙들«끼리만» 선언 순 · 나머지 규칙의 순서는 그대로 · "
-        "홉 상한 max_chain_depth=%s 이 막습니다)"
-        % (ceiling if ceiling is not None else "기본값"),
-        operator_line.nothing_to_do(
-            "더 긴 고리가 필요하면 chain_rules.json 의 max_chain_depth"))
+    🔴 [판정 402] A CYCLE IS A SHAPE, NOT AN ERROR - intended (a mapper one way, a join back) and
+    finite by `max_chain_depth`, the cell to change for a longer one."""
+    loop = loop_of(trail)
+    return "[ChainRules] loop: %s · capped at max_chain_depth=%s" % (
+        " -> ".join(loop + loop[:1]), ceiling if ceiling is not None else "default")
 
 
-def say_cycle_once(logger_, trail, ceiling=None) -> bool:
-    """Say it the first time this process meets this trail. Returns whether it spoke."""
-    key = tuple(trail)
-    if key in _SAID:
-        return False
-    _SAID.add(key)
-    logger_.info(cycle_note(trail, ceiling))
-    return True
+def found_cycle(trail):
+    """Both seats that meet a loop record it here - the order walk, the cascade graph."""
+    _FOUND.add(loop_of(trail))
 
 
 def forget_cycles():
-    """선언이 바뀌면 다시 말한다 — 기억은 «이 선언에 대한» 것이다."""
-    _SAID.clear()
+    """A read of the declaration begins: the loops are this read's."""
+    _FOUND.clear()
+
+
+def say_loops(logger_, declaration, ceiling=None) -> int:
+    """Each loop of the declaration, one line, once per declaration CONTENT - a re-read of the same
+    declaration says nothing (총괄 10-09). -> lines said."""
+    global _SAID_FOR
+    stamp = json.dumps(declaration, sort_keys=True, default=str)
+    if stamp == _SAID_FOR:
+        return 0
+    _SAID_FOR = stamp
+    for loop in sorted(_FOUND):
+        logger_.info(cycle_note(loop + loop[:1], ceiling))
+    return len(_FOUND)
 
 
 def order_rules(rules: list, on_cycle=None) -> list:
