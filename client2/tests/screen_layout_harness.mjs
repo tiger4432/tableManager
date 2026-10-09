@@ -6,7 +6,8 @@
 //             side - and neither it nor an element around it carries data-clip-ok (a cut made on purpose)
 //   overflow  the page scrolls sideways, or a visible element outside every clipping box sits off the screen
 //   panel     a panel a header button opens hangs right under it (its top, and its left or right edge, within TOL),
-//             on screen, and its first control takes a click
+//             on screen, its first control takes a click, and none of its rows breaks into two lines (data-wrap-ok
+//             on a panel that wraps on purpose)
 //   text      visible text says [object ...], undefined or NaN
 //   size      a button half again taller than the other items of its line, its letters no larger than theirs
 //   columns   a table row whose long text cell runs past three lines while a short cell beside it leaves more than
@@ -364,6 +365,21 @@ function screensLib(TOL) {
       const hit = document.elementFromPoint(f.left + f.width / 2, f.top + f.height / 2);
       if (!(hit === first || first.contains(hit))) lines.push({ rule: 'panel', path: pathOf(first), what: `first control covered by ${hit ? pathOf(hit) : 'nothing'}` });
     }
+    // A row of the panel is one line (owner 10-09: the header's panels came out narrower and their rows broke in two);
+    // a panel that wraps on purpose says so with data-wrap-ok.
+    if (!panel.closest('[data-wrap-ok]')) {
+      for (const el of panel.querySelectorAll('*')) {
+        if (!shown(el)) continue;
+        const tops = new Set();
+        for (const n of el.childNodes) {
+          if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(n);
+          for (const r of range.getClientRects()) if (r.width) tops.add(Math.round(r.top));
+        }
+        if (tops.size > 1) lines.push({ rule: 'panel', path: pathOf(el), what: `«${label(el)}» breaks into ${tops.size} lines in the panel «${label(now)}» opened` });
+      }
+    }
     panel.setAttribute('data-screens-open', '');
     open = { key, panel };
     return { opener: key, panel: pathOf(panel), lines };
@@ -479,6 +495,8 @@ async function runScreens(dist, label, one = only) {
           panels.push(opened.opener.split('|')[1]);
           await settle(chrome, log, 400, 3000);
           add(`${state}, «${opened.opener.split('|')[1]}» open`, [...opened.lines, ...await evaluate(chrome, "window.__screens.measure('[data-screens-open]')")]);
+          if (shots) writeFileSync(path.join(shots, `${entry}_${size}_panel-${opened.opener.split('|')[1].replace(/[^a-z0-9]+/gi, '-')}.png`),
+            Buffer.from((await chrome.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
           await evaluate(chrome, 'window.__screens.close()');
         }
         } catch (err) {
@@ -520,8 +538,14 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
-  { name: 'Replay chain panel placed from screen px without the header zoom', entry: 'index.html', rule: 'panel', at: 'redo-panel',
-    file: 'src/dropdown.js', edits: [['const scale = (parent.offsetWidth ? o.width / parent.offsetWidth : 1) || 1;', 'const scale = 1;']] },
+  // A panel left inside the header is placed in the header's zoomed px (10-08).
+  { name: 'Replay chain panel placed inside the zoomed header', entry: 'index.html', rule: 'panel', at: 'redo-panel', says: /under/,
+    file: 'src/dropdown.js', edits: [['    doc.body.appendChild(panel);\n', '']] },
+  // Options and Menu hung from their buttons by CSS inside the header: narrowed by its zoom, their rows in two (10-09).
+  { name: 'Options and Menu drawn inside the zoomed header, their rows in two', entry: 'index.html', rule: 'panel', at: '',
+    says: /breaks into/, file: 'src/main.js', edits: [
+      ['      if (!isVisible) placeUnder(elements.settingsDropdown, elements.settingsMenuBtn);\n', ''],
+      ['      if (!isVisible) placeUnder(elements.navDropdown, elements.navMenuBtn);\n', '']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',
     file: 'src/style.css', edits: [['max(96px, var(--queue-state-w, 96px))', '96px']] },
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',
@@ -559,7 +583,8 @@ if (MUTATE) {
     ran += 1;
     const out = await buildMutant(m);
     try {
-      const got = (await runScreens(out, 'mutant', m.entry)).found.filter((f) => f.rule === m.rule && f.path.includes(m.at));
+      const got = (await runScreens(out, 'mutant', m.entry)).found
+        .filter((f) => f.rule === m.rule && f.path.includes(m.at) && (!m.says || m.says.test(f.what)));
       if (!got.length) failed += 1;
       console.log(`${got.length ? '✓' : '✗'} mutant «${m.name}» ${got.length ? `red: ${got[0].path} · ${got[0].what}` : `ESCAPED - no ${m.rule} line at ${m.at}`}`);
     } finally {

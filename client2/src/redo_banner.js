@@ -185,6 +185,9 @@ export class RedoBanner {
     // A redraw (a pressed row's answer, a new selection) keeps the rows where they were scrolled,
     // or the row just pressed scrolls away with its answer.
     const scrolled = this.list && this.listFor === this.open ? this.list.scrollTop : 0;
+    // The panel placeUnder moved to the body is not under the host: it goes on its own.
+    if (this.box && this.box.placedFrom) this.box.remove();
+    this.box = null;
     this.host.textContent = '';
     const rows = this.getSelection() || [];
     const row = this.sourceRow();
@@ -200,6 +203,7 @@ export class RedoBanner {
     if (this.open) {
       const box = this.panel(rows, row);
       this.host.appendChild(box);
+      this.box = box;
       this.place(box, bar);
       if (scrolled && this.list) this.list.scrollTop = scrolled;
       // The answer lengthens the pressed row; its last line is where the answer is.

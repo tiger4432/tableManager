@@ -542,6 +542,7 @@ function setupEventListeners() {
       e.stopPropagation();
       const isVisible = elements.settingsDropdown.style.display === 'flex';
       elements.settingsDropdown.style.display = isVisible ? 'none' : 'flex';
+      if (!isVisible) placeUnder(elements.settingsDropdown, elements.settingsMenuBtn);
       // Close other dropdowns
       if (elements.navDropdown) elements.navDropdown.style.display = 'none';
       if (elements.columnSelectorDropdown) elements.columnSelectorDropdown.style.display = 'none';
@@ -553,6 +554,7 @@ function setupEventListeners() {
       e.stopPropagation();
       const isVisible = elements.navDropdown.style.display === 'flex';
       elements.navDropdown.style.display = isVisible ? 'none' : 'flex';
+      if (!isVisible) placeUnder(elements.navDropdown, elements.navMenuBtn);
       // Close other dropdowns
       if (elements.settingsDropdown) elements.settingsDropdown.style.display = 'none';
       if (elements.columnSelectorDropdown) elements.columnSelectorDropdown.style.display = 'none';

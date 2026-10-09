@@ -602,8 +602,8 @@ const DEFECTS = [
     swap('    if (this.dismiss) this.dismiss();', '    if (false) this.dismiss();')],
   // M10 and M11 live in `dropdown.js`. They say so, and are scored against that file's own copy.
   ['M10 a click INSIDE the part closes it too',
-    swap('    while (node) { if (node === host) return; node = node.parentNode; }',
-      '    while (node) { node = node.parentNode; }'), 'dropdown'],
+    swap('    while (node) { if (node === host) return; node = node.placedFrom || node.parentNode; }',
+      '    while (node) { node = node.placedFrom || node.parentNode; }'), 'dropdown'],
   ['M11 any key closes it, not just Escape',
     swap("if (event && event.key === 'Escape') close();", 'close();'), 'dropdown'],
   ['M12 the line is drawn as a button but never wired to run',
