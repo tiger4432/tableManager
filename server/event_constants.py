@@ -1039,9 +1039,8 @@ def file_ingestion_completed_message(table_name, filename, status, error_msg=Non
     같은 이유로 만들어진 그 자리이고, 손으로 세 번 쓴 페이로드는 «세 갈래로» 갈린다 —
     다음 사람이 둘만 고치는 것이 이 결함의 재발 경로다 (기준 ④).
 
-    ⚠️ `error_msg` 는 SUCCESS 에도 실린다. 그 슬롯은 성공에서 «detail»(예: 「키 결측으로 N행
-    스킵」)을 나르고, 그것을 여기서 «버리면» 화면이 그 사실에 닿을 길이 없어진다. 오늘 카드가
-    그 값을 성공 갈래에서 «안 읽는» 것은 별개의 줄(F-6)이고, 여기서 미리 접지 않는다.
+    ⚠️ 발신자의 넷째 칸은 성공에서 «detail»(예: 「키 결측으로 N행 스킵」)을 나른다. 버리지 않고
+    SUCCESS 면 `note` 로, 그 밖이면 `error_msg` 로 싣는다(총괄 10-09 — 한 칸이 두 뜻이라 성공이 오류로 그려졌다).
 
     🔴 문장은 «안 짓는다» (총괄 69aad666e). SUCCESS / 그 밖 두 갈래의 한국어 문장이 SKIPPED 를
        「실패」로 부르게 했고, 그래서 워처가 건너뜀을 SUCCESS 로 보냈다. 이제 상태를 그대로 나르고,
@@ -1055,7 +1054,9 @@ def file_ingestion_completed_message(table_name, filename, status, error_msg=Non
         "status": status,
     }
     if reason:
-        msg["error_msg"] = reason[:MAX_INGESTION_ERROR_CHARS]
+        # 🔴 총괄 10-09: on SUCCESS the sentence is a NOTE (a re-read's 「[resume-abort] … force」, 「키 결측으로
+        #    N행 스킵」), not an error - one field meant two things and a screen drew a success as an error.
+        msg["note" if status == "SUCCESS" else "error_msg"] = reason[:MAX_INGESTION_ERROR_CHARS]
     return msg
 
 

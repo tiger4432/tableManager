@@ -2920,8 +2920,12 @@ def run_claimed(run_id: str, log=print) -> dict:
         # Before `validate`: its judgments look tables up (총괄 8e54a261b ④).
         models.init_dynamic_models(crud.TABLE_CONFIG)
         params = validate(op, params)
-    except RetroactiveRefused as e:
-        _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
+    except Exception as e:                       # noqa: BLE001 - any judgement that breaks ends the row
+        # 🔴 총괄 10-09: a judgement that raised anything but a refusal (an ImportError in the scheduler's
+        #    child) left the row running - and a running row closes the operations gate for every run.
+        _mark_run(run_id, state=RUN_FAILED, finished=True,
+                  error=str(e) if isinstance(e, RetroactiveRefused)
+                  else "the run could not be judged - %s: %s" % (type(e).__name__, e))
         raise
     heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
     _restamp_runner(run_id, runner_identity())
