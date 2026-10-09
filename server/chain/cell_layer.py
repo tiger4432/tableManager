@@ -137,7 +137,8 @@ def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -
     """
     from database import models
 
-    ids = [str(item) for item in (origin_row_ids or ()) if item]
+    # Each origin once, in order: per origin, a repeat would be answered twice (QA c762f6820 · 총괄 ③).
+    ids = list(dict.fromkeys(str(item) for item in (origin_row_ids or ()) if item))
     one_at_a_time = db.get_bind().dialect.name == "postgresql"
     found = []
     for i in range(0, len(ids), chunk_size):

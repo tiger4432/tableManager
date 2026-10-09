@@ -97,6 +97,24 @@ def test_the_lookup_takes_the_origin_index_under_a_low_belief(origins):
 
 
 @pytest.mark.pg
+def test_an_origin_asked_twice_counts_a_protected_layer_once(origins):
+    """QA c762f6820 · 총괄 ③: an edited row comes once per EDIT event, so one batch can name it twice. One
+    `IN` answered it once; per origin it was answered twice and protected_skipped doubled."""
+    with origins.begin() as conn:
+        conn.execute(text("INSERT INTO cell_sources (table_name, row_id, column_name, source_name, value,"
+                          " origin_row_id) VALUES ('t', 'r-dup', 'c0', 'user', '\"v\"'::json, 'o-dup')"))
+    session = sessionmaker(bind=origins)()
+    try:
+        assert cell_layer.cells_stamped_by(session, ["o-dup", "o-dup"]) == [("t", "r-dup", "c0", "user", "o-dup")]
+        stats = cell_layer.withdraw_by_origin(session, ["o-dup", "o-dup"], log=lambda *a: None)
+    finally:
+        session.close()
+        with origins.begin() as conn:
+            conn.execute(text("DELETE FROM cell_sources WHERE origin_row_id = 'o-dup'"))
+    assert stats["protected_skipped"] == 1 and stats["cells_withdrawn"] == 0, stats
+
+
+@pytest.mark.pg
 def test_one_in_list_reads_the_whole_table_under_the_same_belief(origins):
     """The control: under this belief the old shape - one `IN (1,000)` - is a Seq Scan, so the cell above
     measures the shape rather than a table too small to scan."""
