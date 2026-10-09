@@ -1450,7 +1450,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 334],   // + QS1 and its mutant: Shift on Mark marks a control (lead 10-09)
+  ['subgraph_view_harness.mjs', 335],   // + QS1 and its mutant: Shift on Mark marks a control (lead 10-09)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1480,7 +1480,7 @@ const FLOORS = new Map([
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
-  ['walk_layout_harness.mjs', 27],
+  ['walk_layout_harness.mjs', 28],   // + L15: a route back to the start type, pressed (lead 10-09)
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
@@ -1568,7 +1568,7 @@ const FLOORS = new Map([
   // the board part: the walk box
   // 87 -> 99: RC1-RC11, the loop chips (lead 5d5b8d750). 99 -> 98 (lead 10-06): B8, the two-screen
   // follow compare, leaves until the board follows the walk page; H3 scores this box only.
-  ['rnd_board_walk_box_harness.mjs', 98],
+  ['rnd_board_walk_box_harness.mjs', 101],   // + RC12-RC14: routes back to the start type (lead 10-09)
   // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
   // with the run row's own computed facts (Not computed yet / factors N · computed HH:MM, one read),
   // two instances on one screen, the real chain's run rows through the real route (J), and the

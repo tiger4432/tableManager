@@ -319,6 +319,21 @@ async function suite(mods) {
     const viaKind = pathsBetween(DECL_BOX, 'wafer', 'defect_kind').find((r) => r.follow.includes('leads_to'));
     ok('RC7 a loop the route already walks as a step is not a chip (leads_to on quantity -> defect_kind)',
       viaKind && !viaKind.loops.some((l) => l.predicate === 'leads_to'), JSON.stringify(viaKind));
+    // A route back to the start type (lead 10-09): the start is reached again only on arriving.
+    const back = pathsBetween(DECL_BOX, 'wafer', 'wafer');
+    const out = back.find((r) => r.follow.join() === 'in_container');
+    ok('RC12 wafer -> wafer: die by in_container and back, two hops, die\'s two loops as its chips',
+      Boolean(out) && out.chain.join(' ') === 'wafer die wafer' && out.hops === 2
+        && out.loops.map((l) => l.predicate).sort().join('+') === 'bonded_from+transfer'
+        && JSON.stringify(routeWith(out, new Set(['bonded_from']))) === JSON.stringify({ follow: ['in_container', 'bonded_from'], hops: 3 }),
+      JSON.stringify(out));
+    ok('RC13 ... and every route back passes its start type only at its two ends',
+      back.length > 1 && back.every((r) => r.chain[0] === 'wafer' && r.chain[r.chain.length - 1] === 'wafer'
+        && !r.chain.slice(1, -1).includes('wafer')), JSON.stringify(back.map((r) => r.chain)));
+    const dd = pathsBetween(DECL_BOX, 'die', 'die');
+    ok('RC14 a self-loop is still a chip, not a route back by itself (owner 10-02): die -> die goes out and back',
+      dd.length > 0 && dd.every((r) => r.hops > 1 && !r.follow.includes('bonded_from') && !r.follow.includes('transfer')),
+      JSON.stringify(dd.map((r) => [r.chain.join('>'), r.follow.join('+')])));
 
     // ── both callers: the same rows, chips off by default, a chip on fills follow and one hop ──
     const bdoc = makeDoc();
@@ -896,6 +911,14 @@ const MUTANTS = [
     to: "if (edge.from !== edge.to || edge.from !== at" },
   { name: 'a-loop-chip-adds-no-hop', catches: ['RC5 ', 'RC10 '], file: 'api.js',
     from: "hops: route.hops + picked.length };", to: "hops: route.hops };" },
+  // A route back to the start type (lead 10-09).
+  { name: 'a-route-never-comes-back', catches: ['RC12 '], file: 'api.js',
+    from: "      if (seen.has(next) && next !== to) continue;", to: "      if (seen.has(next)) continue;" },
+  { name: 'a-route-walks-on-past-its-destination', catches: ['RC13 '], file: 'api.js',
+    from: "    if (chain.length && at === to) { out.push(chain.slice()); return; }",
+    to: "    if (chain.length && at === to) { out.push(chain.slice()); if (chain.length > 2) return; }" },
+  { name: 'a-self-loop-onto-the-destination-is-a-route', catches: ['RC14 '], file: 'api.js',
+    from: "      if (edge.from === edge.to) continue;", to: "      if (edge.from === edge.to && edge.from !== to) continue;" },
   { name: 'a-loop-at-the-destination-is-offered', catches: ['RC2 '], file: 'api.js',
     from: "for (const at of chain.slice(0, -1)) {", to: "for (const at of chain) {" },
   { name: 'the-box-route-ignores-its-chips', catches: ['RC10 '],

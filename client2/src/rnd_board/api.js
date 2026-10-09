@@ -1709,6 +1709,9 @@ export function typeGraph(declaration) {
  * or out used to be another follow set, so the rows multiplied (box declaration: die -> wafer 12).
  * A loop is still a step of the route (owner 2026-08-29) -- it is offered on every row it can
  * join, and a predicate the route already walks as a step is not offered again.
+ *
+ * A ROUTE MAY END WHERE IT STARTS (lead 10-09: wafer -> die -> wafer). The destination is the one type a route
+ * reaches twice, on arriving; the cap stays, so the one such route it leaves out is the one through every type.
  */
 export function pathsBetween(declaration, from, to) {
   const { types, edges } = typeGraph(declaration);
@@ -1723,7 +1726,7 @@ export function pathsBetween(declaration, from, to) {
       if (edge.from === at) next = edge.to;
       else if (edge.to === at) next = edge.from;
       else continue;
-      if (seen.has(next)) continue;
+      if (seen.has(next) && next !== to) continue;
       seen.add(next);
       chain.push({ predicate: edge.predicate, next });
       walkOn(next, seen, chain);

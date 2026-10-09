@@ -1676,6 +1676,8 @@ const failures = [];
     M('I2m', 'a picked lump\'s walk collects everything on the way, not the type picked', 'I2',
       '        collect: [pick.picked] } : null };', '        } : null };'),
     M('I3m', 'the pick is not kept', 'I3', '    rememberPick(this.storage, key, { from: type });\n', ''),
+    M('I1n', 'Points from offers the members\' own type now that a route can come back to it', 'I1',
+      '        .filter((type) => !from.includes(type))\n', ''),
     M('I5m', 'Points from offers only the types the picture already shows', 'I5',
       '        .filter((type) => from.some(',
       '        .filter((type) => this.layout.nodes.some((n) => n.type === type) && from.some('),

@@ -1,3 +1,39 @@
+> ## [00:50 디자인] ① 시작 타입으로 돌아오는 경로 착지 02ffdb968 · ② 시연 대본 5 분 — 짜증 표 (총괄 10-09)
+
+### ① 돌아오는 경로
+
+Type 과 Collect 가 같은 타입(wafer → wafer)이면 이제 경로가 나옵니다. 누르면 follow · hops 가 채워지고, die 의 자기 고리(transfer · bonded_from)는 그 줄의 칩입니다.
+
+**지적하신 주석의 판단** — subgraph_view 의 «A route never ends where it starts, so the members' own type is not offered» 는 까닭이 아니라 경로 함수의 성질을 옮겨 적은 것이었습니다(pathsBetween 이 시작 타입을 «이미 지난 타입»으로 넣어 두 번 못 지나게 함). 돌아오는 길을 막을 이유는 거기 없었습니다. 그 성질에 기대던 것은 총괄 10-08 지시 «Points from 은 구성원 자신의 타입 제외» 였고, 이제 그 지시는 자기 거르기 한 줄로 지킵니다(변이 I1n 이 I1 에서 잡힘).
+
+- 바꾼 것: 도착 타입만 두 번 지날 수 있음 — 거기 닿으면 경로가 끝납니다. 보드 걷기 상자는 도착지 목록에서 시작 타입을 이미 빼서 그대로입니다.
+- 게이트: rnd_board_walk_box 101(RC12 돌아오는 길과 그 칩 · RC13 시작 타입은 두 끝에서만 · RC14 자기 고리는 여전히 칩, 변이 셋 잡힘) · walk_layout 28(L15 화면에서 누름 · 칩) · subgraph_view --control 335 · 화면 게이트 walk 세 크기 24/24.
+- 크롬 MCP(Edge 154.0.0.0, 빌드된 walk 페이지 probe 사본 · 박스 선언, /assets/walk-BQfsATsn.js, 1528×827): Type wafer · Collect wafer → «Route to wafer4 routes», 줄 4 개. «wafer → die → wafer · in_container» 를 누르니 follow in_container · hops 2, 칩 «↻ transfer» 를 누르니 in_container+transfer · hops 3. 쓰기 0.
+
+**여쭐 것 둘**
+1. 길이 상한(타입 수 − 1)은 말씀대로 두었습니다. 그래서 «모든 타입을 한 바퀴 돌아오는 길» 하나는 빠집니다 — 타입이 둘뿐인 선언이면 돌아오는 길 전부가 빠집니다(박스 선언은 타입이 많아 해당 없음). 돌아오는 길에만 상한을 타입 수로 둘까요?
+2. die → die 처럼 자기 고리 하나(bonded_from)로 돌아오는 1 걸음 줄은 «자기 고리는 줄이 아니라 칩»(소유자 10-02) 때문에 내지 않았습니다. 낼까요?
+
+### ② 시연 대본 5 분 — 응용 레인 인스턴스(18766, 박스 원장에서 옮긴 원자 · 세상 칩 셋, 빌드 /assets/walk-DjDr_KZI.js)
+
+대본: wafer SYN-BW-103-11 → Collect wafer · node_limit 1000 → Walk / SYN-BW-SPL-400-19 Ctrl+Shift+Walk / 세상 appdemo_vf / Compare(quantity · measures · value). 쓰기 요청 0(막고 셈), GET 14.
+
+| 항목 | 어떤 상황에서 막히나 | 크기 |
+|---|---|---|
+| 🔴 Compare 접은 칸이 한 줄로 늘어남 (제 ③ 의 결함) | 코어 웨이퍼 30 장이 같은 계측을 하면 칸이 «31 edges · 값 (누구) · …» 한 줄 — 가장 넓은 칸 4366 px, 표 4681 px(보이는 폭 1070 px), − 열이 왼쪽에서 4937 px 에 있어 스크롤해야 보임. 같은 접기를 걷기 표(①)도 씀 | 접기 함수 한 곳 — 줄 수 안 쟀다 |
+| 모델 세상 칩만 누르면 운영 세상이 빠짐 | «appdemo_vf» 만 누르면 그 세상만 남아 선언에 wafer 가 없어 걷기가 거절됨(«type 'wafer' is not declared in world appdemo_vf …»). default 를 먼저 누르고 모델 세상을 눌러야 함. 칩에 «Operating · default · 1 · default · appdemo_vb · 2 · appdemo_vf» 처럼 default 가 두 번 보임 | 안 쟀다 — «세상은 독립, 겹침은 걸을 때 여럿 고르기»(소유자 10-04)와 부딪히는지 먼저 여쭘 |
+| 같은 타입으로는 경로 목록이 빔 | Type wafer · Collect wafer 에 «No route from wafer to wafer» — follow · hops 를 손으로 | ① 로 고침(02ffdb968), 이 인스턴스 빌드엔 아직 없음 |
+| Walk 단추에 Ctrl · Shift 안내가 없음 | 둘째 base 를 대조로 넣는 법(Ctrl+Shift)을 화면이 말하지 않음 — Walk 의 title 없음 | 작음 — title 한 줄 |
+| 표 제목이 마지막 시작 하나만 말함 | 시작이 «+ SYN-BW-103-11 · − SYN-BW-SPL-400-19» 인데 제목은 «wafer SYN-BW-SPL-400-19 → wafer» | 작음 |
+| 표에 어느 시작에서 닿았는지가 없음 | 깊이 3 의 wafer 30 장이 불량 base 쪽인지 표만으로 모름(대조 표시 줄 0) | 안 쟀다 — 서버가 노드마다 그 수를 주는지부터 |
+| 세상을 바꿔도 Collect wafer 표가 그대로 | 모델 세상을 더해도 표는 wafer 32 행 그대로, «Nodes 32 (collect: wafer) · Edges 1619 (all)» 의 Edges 수만 바뀜 — 모델의 효과는 Compare 나 Graph 로 가야 보임 | 대본 순서로 풀 수 있음(③ 에서 바로 Compare) |
+| 표의 키 칸과 Label 칸이 같은 글자, id 칸이 김 | 머리 «Depth · wafer · Label · id» — 시연 화면에 같은 글자 두 칸 · 긴 원장 id | 작음 |
+| Compare 행이 계측 전부 | «Rows: quantity reached by every predicate» — 행 48 중 두 쪽 다 missing 18 · 양쪽 값 3 · + 쪽만 27. 모델 술어로 닿은 것만 보려면 follow 를 골라야 하는데 그 길이 화면에 안 보임 | 안 쟀다 |
+
+**제 추천** 첫 줄(제 결함)은 시연 전에 고치겠습니다 — 접은 칸을 «N edges · 값 k 가지»로 줄이고 전체는 마우스(title)로, 혹은 « · » 에서만 줄바꿈. 어느 쪽으로 할지 말씀해 주십시오. Walk 안내 · 표 제목 · 키/Label 겹침은 작아서 같이 할 수 있습니다. 세상 칩은 소유자 판정에 닿을 수 있어 여쭙니다.
+
+**전체 러너** 어드민 탭 착지 뒤: 하니스 172 중 게이트 170 전부 초록, 알려진 빨강 2 그대로, 1951 초. 이번 착지 뒤 전체 러너는 지금 뒤에서 돕니다.
+
 > ## [23:53 디자인] 어드민 나머지 네 탭을 화면 게이트에 — 처음 열자 잡힌 것 넷을 고침 2599f238d (총괄 10-09)
 
 화면 게이트가 이제 Tables · Chain · Auto Update · Retroactive 를 주소로 엽니다. 답 없던 GET 5 개는 캡처했습니다. 처음 열자 잡힌 것을 File 탭 때(fc5f863b2)와 같은 방식으로 고쳤습니다.

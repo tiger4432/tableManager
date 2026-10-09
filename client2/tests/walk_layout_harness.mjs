@@ -70,7 +70,7 @@ const ok = (name, cond, detail) => {
 };
 const eq = (name, got, want) => ok(name, String(got) === String(want), `got ${got}, want ${want}`);
 
-async function stand(mod) {
+async function stand(mod, decl = DECL) {
   const asked = [];
   const doc = makeDoc();
   const host = doc.createElement('div');
@@ -79,7 +79,7 @@ async function stand(mod) {
     asked.push(u);
     if (u.includes('/key-values')) return { ok: true, status: 200, json: async () => ({ nodes: [], scanned: 0 }) };
     if (u.includes('/subgraph')) return { ok: true, status: 200, json: async () => RESULT };
-    return { ok: true, status: 200, json: async () => DECL };
+    return { ok: true, status: 200, json: async () => decl };
   } });
   await settle();
   const all = () => walkAll(host);
@@ -217,6 +217,27 @@ async function suite(mod, css = REAL_CSS) {
     Boolean(go) && holder === kids[kids.length - 1] && kids.length > 1
       && ruled(`.${footCls}`, 'flex: none') && ruled(`.wk-rail > .${formCls}`, 'overflow-y: auto'),
     JSON.stringify({ footCls, formCls, kids: kids.length, last: holder === kids[kids.length - 1] }));
+
+  // A route back to the start type (lead 10-09: demo step 2 by a click, no follow or hops typed by hand). A third type:
+  // the route list's cap is the types less one, so with two types a route back (two steps) does not fit.
+  console.log(`${LF}-- a route back to the start type --`);
+  const back = await stand(mod, { ...DECL, entities: [...DECL.entities, { type: 'lot', keys: ['lot'] }],
+    predicates: [...DECL.predicates, { name: 'holds', subjects: ['lot'], object: { types: ['wafer'] } }] });
+  await back.act.type('wafer');
+  await back.act.add('wafer');
+  const rowOf = () => back.find((e) => e.className === 'wk-path'
+    && e.children.some((c) => c.textContent === 'wafer \u2192 die \u2192 wafer')
+    && e.children.some((c) => String(c.textContent).endsWith(' in_container')));
+  const filled = () => `${[...back.handle.state.follow].sort().join(',')}|${back.handle.state.hops}`;
+  const row = rowOf();
+  if (row) { fire(row, 'click'); await settle(); }
+  const pressed = filled();
+  const box = back.find((e) => classes(e).includes('wk-route') && walkAll(e).includes(rowOf()));
+  const chip = box && walkAll(box).find((e) => classes(e).includes('wk-loopchip'));
+  if (chip) { fire(chip, 'click'); await settle(); }
+  ok('L15 wafer collected from wafer: the route back wafer -> die -> wafer by in_container; pressed, it fills follow and hops; its loop chip adds one',
+    Boolean(row) && pressed === 'in_container|2' && filled() === 'in_container,transfer|3',
+    `${Boolean(row)} | ${pressed} | ${filled()}`);
 }
 
 const first = await loadWithProbe(SRC, {});
