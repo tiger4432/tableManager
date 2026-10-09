@@ -65562,3 +65562,15 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
 게이트  표시 뒤 실행이 done · 관문 열림(gate_refusal None) · 표시 수 = 미리보기 수 · 워처가 읽으면 SUCCESS — 변이: 기다림 되살림 -> 관문 열림 칸 빨강
 같은 커밋  RUN.md · RELEASE_LOG · INGESTION_GUIDE 의 그 절
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 — 45efe02d9 에 덧붙임(같은 커밋): 반대 방향도 — replay 가 도는 동안 Re-read 가 줄 서지 않는다 (소유자 10-09 「역으로 체인 리플레이도 파일 읽기를 막겠네」)**
+
+```
+지금  Re-read 도 소급 실행이라 시작할 때 gate_refusal 을 지난다 -> 큰 replay 가 몇 시간 돌면 «표시만 하는» Re-read 가 그 뒤에서 몇 시간 queued(운영의 「반응이 없다」가 이것일 수 있음)
+      같은 표시를 하는 retry-failed 라우트는 관문을 안 지난다 — 같은 일인데 관문 답이 둘
+도착지  「관문이 지킬 것이 없는 연산은 관문을 안 지나고, 관문을 닫지도 않는다 — Re-read files 가 그 하나」
+구현자  OPERATIONS 항목의 칸 하나(예: "needs_gate": False — 이름은 기존 칸 모양에 맞춰). 기본 True(지금 그대로)
+        in_flight(관문의 «한» 판단)가 needs_gate False 인 실행을 «닫는 실행»에서 빼고, 그런 연산의 시작은 gate_refusal 을 안 묻는다 — 판단 자리는 그 한 곳
+        reread_files 만 False. 다른 연산 0 바뀜
+게이트  replay 실행 중(가짜 in_flight) -> Re-read 가 바로 돎 · Re-read 실행 중 -> gate_refusal None · 다른 연산 둘이면 지금처럼 닫힘 — 변이: 칸을 안 읽음 -> 앞 둘 빨강
+```
