@@ -76665,3 +76665,52 @@ test_[l-z]*: 1 failed, 3950 passed, 192 skipped, 2 xfailed, 7336 warnings
 
 - 운영 통계(origin_row_id 의 n_distinct · null_frac)는 못 봤습니다. 고친 모양은 그것과 상관없이 인덱스를 타므로 확인은 RUN.md 의 Indexes 표 Scans 한 줄로 됩니다.
 - 운영 모양의 시험 칸은 저장소에 없습니다 — 수백만 행을 만드는 데 1 분이 넘어 묶음 시험에 못 넣었고, 게이트는 위 스크래치 측정입니다.
+
+---
+
+## [10-09] 원본 찾기 게이트를 PG 시험으로 · 고칠 길 셋을 수로 665d2aa82 (총괄 d28171060)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB(assy_test) · 시험은 자기 스크래치 스키마(assy_pytest_origin_<실행>)를 만들고 지움 · 비교 측정은 assy_probe_origin_impl 하나를 만들고 끝에 지움 · 그 밖에 지운 것 0
+
+### 시험 — test_the_origin_lookup_takes_its_index.py
+
+```
+server/tests/test_the_origin_lookup_takes_its_index.py:78:def test_the_lookup_takes_the_origin_index_under_a_low_belief(origins):
+server/tests/test_the_origin_lookup_takes_its_index.py:100:def test_one_in_list_reads_the_whole_table_under_the_same_belief(origins):
+ROWS = 200_000
+BELIEVED_DISTINCT = 300
+칸 하나   제품의 cells_stamped_by 가 «보낸» 문장을 잡아 EXPLAIN — idx_sources_by_origin 이 있고 Seq Scan on cell_sources 가 없음 · 찾은 칸 수도 단언
+칸 둘     대조 — 같은 통계에서 옛 IN(1,000) 은 Seq Scan. 이 칸이 없으면 칸 하나가 «너무 작은 표라 인덱스»를 잴 수 있음
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE 2 passed, 6 warnings
+MUTANT the old IN shape                         1 failed, 1 passed, 6 warnings
+    FAILED test_the_lookup_takes_the_origin_index_under_a_low_belief
+```
+
+### 고칠 길 셋 — 박스 운영 모양 스크래치(300 만 행)에서 같은 묶음 하나
+
+```
+DB: isolated test database · schema assy_probe_origin_impl
+built 3000000 rows in 61 s (load 26 s, then indexes and ANALYZE)
+actual distinct origins: 300001 · rows 3000000 · batch 1000 origins
+sampled (target 100)                       pg_stats n_distinct 178769.0   old IN INDEX 21.998 ms    per-origin INDEX 10.213 ms
+statistics target 1000                     pg_stats n_distinct 299365.0   old IN INDEX 11.678 ms    per-origin INDEX 10.090 ms
+n_distinct = 300 (production's belief)     pg_stats n_distinct 300.0      old IN SEQ   414.425 ms   per-origin INDEX 13.611 ms
+n_distinct = -0.1 (the owner's override)   pg_stats n_distinct -0.1       old IN INDEX 11.518 ms    per-origin INDEX 10.869 ms
+schema assy_probe_origin_impl dropped - left: 0
+```
+- 소유자의 응급 처치(n_distinct = -0.1)는 이 스크래치에서 옛 IN 도 인덱스로 돌려놓습니다.
+- 통계 목표 1000 은 이 박스에선 추정을 실제에 가깝게 했지만, 이 박스 데이터는 고르게 퍼져 운영의 289 같은 낮은 추정이 저절로 안 나옵니다 — 운영에서 통계 목표만으로 고쳐지는지는 이 박스로 못 말합니다.
+- 고친 모양(원천마다)은 네 경우 모두 인덱스입니다 — 다음 ANALYZE 가 다시 틀어져도 탑니다.
+- n_distinct 고정을 제품 선언으로 가질지는 판정 몫(수만 적음).
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5930 warnings
+test_[l-z]*: 1 failed, 3950 passed, 194 skipped, 2 xfailed, 7303 warnings
+```
