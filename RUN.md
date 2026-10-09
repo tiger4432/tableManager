@@ -76,7 +76,9 @@
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 걸린 초)
 >    ①  Type wafer · 키 «불량» · follow 비움 · Collect wafer · node_limit 1000 -> Walk       -> «Starts + 불량» · 노드 31        0.727 s
 >       키 «양품» -> Ctrl+Shift+Walk                                                         -> «Starts + 불량 · − 양품» · wafer 32   0.807 s
->    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30
+>    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30   (016707766 에서 다시 걸음: 30 · 0.775 s)
+>        누르기로는 안 닿는다(박스 선언) — Route to wafer «wafer → die → wafer · in_container» + «↻ transfer» 는 wafer 1 개(base 뿐).
+>        transfer 의 끝은 운반 자리(DTLotSlot) 141 개뿐 · 코어 웨이퍼는 bonded_from 으로 닿는데 follow 목록에 bonded_from 이 없다 — 운영 판 못 봤다
 >    ③  세상 칩 default + «모델 세상 1» -> 같은 폼 · 같은 시작으로 다시 걷는다 · 6 걸음 · 노드 80                       0.996 s
 >    ④  Compare · ROWS quantity · EDGE measures · VALUE value -> 행 48 · 두 쪽 값 3 · 불량 쪽만 22 · 둘 다 missing 18      1.061 · 1.888 · 1.394 s
 >       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 «둘 다 missing» 이 된다
