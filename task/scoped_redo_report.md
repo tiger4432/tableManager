@@ -76851,3 +76851,63 @@ MUTANT a log that cannot be written stops the call    1 failed, 27 passed
 - SDK 의 다시 시도(기본 2 번)는 받은 줄 하나의 ms 안에 든다.
 
 어느 DB · 어느 스키마 · 지운 것: DB 안 씀 · 지운 것 0.
+
+## [10-09] 원장 한 번 훑기를 쪽마다 치르는 길 — 수만(짓지 않음) · 하위 폴더 흔들림 재기
+
+**박스 수**(localhost:5432/assy_manager · 원자 2380869 · 소스 15 · 가장 큰 소스 dt_job 원자 866192 · ref 433095) — 읽기 전용 · 되돌림. DELETE 는 돌리지 않고 같은 술어의 count(*) 로 잼(훑기는 같고 DELETE 는 쓰기가 더 든다). 두 번씩 잼:
+```
+census: GROUP BY source_who, predicate over the ledger     run 1     0.80 s
+census: GROUP BY source_who, predicate over the ledger     run 2     0.56 s
+DISTINCT refs of the largest source (whole)                run 1     4.04 s
+DISTINCT refs of the largest source (whole)                run 2     4.13 s
+count(*) source_who + ANY(1000 refs) - the per-page predicate run 1     2.06 s
+count(*) source_who + ANY(1000 refs) - the per-page predicate run 2     2.07 s
+   atoms under those refs: 2000
+count(*) source_who + ANY(50000 refs) - the per-page predicate run 1    14.72 s
+count(*) source_who + ANY(50000 refs) - the per-page predicate run 2    14.81 s
+   atoms under those refs: 100000
+count(*) source_who + ANY(1 ref) - one small page          run 1     0.56 s
+count(*) source_who + ANY(1 ref) - one small page          run 2     0.54 s
+row_ref: one relation and 1,000 of its row ids (index)     run 1     0.07 s
+row_ref: one relation and 1,000 of its row ids (index)     run 2     0.00 s
+row_ref: refs for 1,000 deleted rows (row_refs_for)        run 1     0.08 s
+row_ref: refs for 1,000 deleted rows (row_refs_for)        run 2     0.07 s
+```
+원장(ledger_events)에는 source_who 로 시작하는 인덱스가 없다 — `_withdraw_refs` · `atoms_for_refs` 는 부를 때마다 모든 파티션을 훑는다(위 «ANY(1 ref)» 가 바닥값).
+
+**길마다 — 쪽 하나에 원장 훑기 몇 번인가**
+
+| 길 | 쪽 하나 | 원장 훑기 | 박스 쪽 하나 |
+|---|---|---|---|
+| ㉠ 행 삭제 따라가기 `withdraw_deleted_rows` | DELETE 사건 하나(fold-rows 는 1,000 행마다 하나) | ref 가 있는 소스마다 1 (`store.withdraw`) · 앞의 row_refs_for 는 인덱스 | 소스 하나에 ref 1,000 이면 «ANY(1000)» 줄 |
+| ㉡ rescope (--whole-source 포함) | 1,000 행 | 소스 하나에 2 (미리보기 `atoms_for_refs` + `_withdraw_refs`) · 끝에 사라진 행 몫 소스마다 1 | «ANY(1000)» 줄의 두 배 |
+| ㉡ 실시간 EDIT 따라가기(같은 rescope) | EDIT 사건 하나 | 그 표를 읽는 소스마다 2 | 위와 같음 |
+| ㉢ 새 행 번역 CREATE | CREATE 사건 하나 | 0 — `withdraw=False` 라 겨냥이 None, `_withdraw_refs` 는 바로 0 을 돌려줌 | — |
+
+**오늘 밤 소유자 fold-rows 100 만 행**: DELETE 사건 1,000 개 × (그 로그 표를 읽고 ref 가 있는 소스 수) 번 훑기. 박스에서 사건 하나·소스 하나가 «ANY(1000)» 줄 정도다. 운영 원장이 박스의 몇 배인지는 이 박스에서 셀 수 없다 — 바닥값(ANY 1 ref)이 원자 수에 비례한다고 보면 그 배수만큼 길어진다(가정, 안 쟀다).
+
+**하위 폴더 stalled_line 흔들림** — 같은 파일을 통째로, 하위 폴더 커밋 앞 코드와 지금 코드를 번갈아 혼자서:
+```
+round 1 before 1 failed, 4 passed, 3 deselected
+    FAILED test_the_stalled_line_and_the_sweep_line_say_the_folder_the_file_and_the_holder
+round 1 after  5 passed, 3 deselected
+round 2 before 5 passed, 3 deselected
+round 2 after  5 passed, 3 deselected
+round 3 before 5 passed, 3 deselected
+round 3 after  5 passed, 3 deselected
+round 4 before 5 passed, 3 deselected
+round 4 after  5 passed, 3 deselected
+round 5 before 5 passed, 3 deselected
+round 5 after  5 passed, 3 deselected
+round 6 before 5 passed, 3 deselected
+round 6 after  5 passed, 3 deselected
+round 7 before 5 passed, 3 deselected
+round 7 after  5 passed, 3 deselected
+round 8 before 5 passed, 3 deselected
+round 8 after  5 passed, 3 deselected
+TALLY before 8 run(s), 1 with a failure
+TALLY after  8 run(s), 0 with a failure
+```
+앞 코드에서도 같은 단언(「pid … is not in pg_stat_activity」)이 빨갰다 — 하위 폴더 커밋이 만든 흔들림이 아니다. 앞 번 전체 묶음 · 반복에서 지금 코드가 4 번 중 2 번 빨갰던 때 다른 세션의 PG 시험이 같이 돌았는지는 모른다.
+
+어느 DB · 어느 스키마 · 지운 것: 박스 assy_manager(public, 읽기 전용 · 되돌림) · 시험 DB(run_pg_files) · 지운 것 0.
