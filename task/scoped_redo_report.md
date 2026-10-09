@@ -78094,3 +78094,24 @@ run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) —
 일요일   응용 레인이 리허설에 ⑧ 앞 «스크립트 미리보기 -> --apply» 를 넣어 두 판(인덱스 없음 · 소유자처럼 먼저 지어 둔 판)을 돌림
 다음     지시서 순서의 끝 — 6(표 선언 인덱스)은 시연 뒤
 ```
+
+---
+
+## [10-10 새벽] test_ledger_v2_pg 가 public 에 안 쓰게 — 착지 3098965bf (총괄 ㄷ)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 시험 스크래치(픽스처가 지움) · 첫 변이 판이 남긴 빈 public 표 둘 + 스크래치 스키마를 비었는지 단언하고 지움:
+   dropped public tables ['v2s6_input_rows_35888_gw0', 'v2s6_reference_rows_35888_gw0'] · schema assy_ledger_v2_s6_35888_gw0 (4 tables) - left 0 · public 대조 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+
+```
+원인     원장 묶음 영수증(runtime_v2._batch_receipt)이 원자 연결에서 이름만으로 audit_logs 에 씀 — 스크래치에 그 표가 없어 public 으로 떨어짐
+고침     픽스처가 스크래치에 AuditLog 표를 세움(checkfirst=False) + 그 이름이 어느 스키마로 풀리는지 단언 — 픽스처 try 안(거절돼도 정리가 돎). 제품 코드 0
+게이트   고친 판 4 passed, 6 warnings in 5.59s
+            public 쓰기 수(pg_stat_user_tables ins+upd+del, 표마다, flush 뒤) public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+            public 관계 · 행 수 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+        변이(세우는 줄 지움) 6 warnings, 4 errors in 1.44s — E                   AssertionError: audit_logs resolves to 'public', not the scratch schema - the receipt would land there
+            public 쓰기 수 public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+            public 관계 · 행 수 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+배운 것  처음 변이 판은 단언이 try «밖»이라 거절된 판이 픽스처의 public 원천 표 둘과 스크래치를 남겼음 — 그래서 try 안으로 옮김
+        계기의 «잡는 힘»은 이 판들로는 못 보임(쓰기가 0 이라) — 행 수 대조를 같이 붙임
+다음     일요일까지 대기 — 새 일은 지시서로
+```
