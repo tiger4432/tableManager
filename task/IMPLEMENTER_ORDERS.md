@@ -65290,3 +65290,32 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
    변이  접기 문이 1,000 고정 -> ① 빨강 · _rows_cap 의 fires 지움 -> ⓐ 빨강 · min->max -> ⓑ 빨강
 같은 커밋  chain_rules.md · TEXT_LINKS_GUIDE §6 · RUN.md 의 「한 묶음에 넣은 이벤트는 쪼개지 않는다」 문장을 «파일 · 붙여넣기도 글마다»로 고침 · RELEASE_LOG
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 — 선언이 바뀌며 남은 원자를 `--whole-source` 가 거둔다 (소유자 10-09 「거두기 했는데 transfer 원자 남아있음 · 예전에 dt_log 에서 했던 버전 거임」 -> 총괄 안 셋 -> 「거두기는 ㄱ」). 순서: LLM 선언 파일 바로 다음(VALUES 조인 앞)**
+
+```
+지금(총괄이 코드로 읽음)  거두는 문은 전부 «그 소스가 지금 읽는 표의 행»을 겨냥한다
+   rescope / rows_gone_from_the_source / 첫 번역 찾기 — row_ref 를 x.relation = plan.relation AND x.source_who = <소스> 로 거른다
+   선언에 없는 이름은 rescope_scope -> _require_declared_source 에서 거절(unknown_source)
+   -> 소스가 dt_log 를 더는 안 읽거나 이름이 바뀌면, 예전 선언이 만든 원자는 어느 문도 겨냥하지 않는다(운영: transfer 가 남음)
+   은퇴 소스(status retired)의 원자는 판정 198(S-103)대로 남긴다 — 이 일과 다른 경우, 그대로
+도착지  두 줄
+   「선언을 바꾼 뒤 python -m ledger.backfill --source <소스> --whole-source 를 돌리면, 그 소스가 지금 안 읽는 표에서 나온 원자도 거둔다.
+     선언에 없는 이름이면 그 이름의 원자를 전부 거둔다(다시 만들 것 없음)」
+   「python -m ledger census 가 «선언이 안 만드는 원자: 소스 × 표 × 술어 × 수»를 말한다 — 이름을 몰라도 보인다」
+구현자
+   넓힘  --whole-source(그리고 어드민 ledger_rescope 의 whole_source) 하나를 넓힌다. 새 CLI 칸 · 새 소급 연산 없음
+   겨냥  원자의 source_raw_ref 로(count_orphan_atoms 의 _group_ref_identities 가 이미 표 이름을 읽어 냄) — row_ref 만 보지 않는다
+         09-08 이전에 써진 원자는 row_ref 가 없을 수 있다(d8b58f2de 이 「한 번 채우기」를 남은 일로 적음 · 88eb8d93a) — 운영이 그것을 돌렸는지 모름
+   지우기  store._withdraw_refs 한 문장(둘째 DELETE 철자 금지) + 그 (소스, 표) 짝의 row_ref 줄도 지움(forget_row_refs 의 순서 규칙 그대로 — 원자 먼저, 장부 나중)
+   은퇴 소스  지금처럼 이름 대어 거절 · 원자 그대로
+   미리보기  표 · 술어마다 원자 수(지금 whole-source 미리보기 문장에 한 줄 더) · 실행은 _written("ledger_rescope") — 기록 · 관문 · 취소 · pace 그대로, 쪽마다
+   census  선언 계획에 없는 (source_who, 표) 짝마다 한 줄. 원장 행이 운영 규모(수천만)라 GROUP BY 가 무엇을 읽는지 박스에서 재고(EXPLAIN) 적기 — 인덱스가 없으면 «없다»고 적고 멈춤
+   게이트  ① 소스가 dt_log -> 공식 표로 옮김 -> dt_log 원자 거둠 · 공식 표 원자 그대로
+           ② 이름 바뀐 소스 -> 옛 이름 --whole-source 가 옛 원자 전부 거둠 · 새 이름 원자 그대로
+           ③ row_ref 없는 옛 원자(09-08 이전 모양)도 닿음
+           ④ 은퇴 소스 -> 거절 · 원자 그대로   ⑤ 같은 행에 다른 소스가 쓴 원자 그대로
+           ⑥ 미리보기 수 = 실행 수 · 다시 돌리면 0   ⑦ census 줄이 ① ② 짝을 말함
+           변이: 표 거르기 되살림 -> ① 빨강 · row_ref 로만 겨냥 -> ③ 빨강 · source_who 빼기 -> ⑤ 빨강
+   같은 커밋  RUN.md(소유자 명령 하나: census 로 이름 보기 -> 그 이름으로 --whole-source 미리보기 -> --apply) · RELEASE_LOG · 원장 안내 문서의 whole-source 문장
+```
