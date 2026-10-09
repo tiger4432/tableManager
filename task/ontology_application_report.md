@@ -37639,3 +37639,121 @@ SQL 문                 2817             2821
 단서   직전 보고의 재시도 문 줄은 «화면»이 아니라 라우트(POST retry-failed)에서 시작했습니다. ⑥ 은 서버가 WS 로 보낸
        file_ingestion_completed 이지 그려진 토스트가 아닙니다. 클라의 «Include files that went in» 토글이 착지하면 브라우저 화면에서 다시 돕니다
 ```
+
+---
+
+## [C 응용] 10-09 리허설 기계 — 운영 런처 위에서 명령을 차례로 두 바퀴 · 지금은 샘플 닮은꼴로만 돌렸습니다
+
+```
+기계   세계 폴더 하나 = 선언(config) · 씨앗(파일) · 명령 목록 · 끝 상태 질의. 운영 런처를 띄우고 씨앗을 파일로 넣은 뒤
+       명령을 server 폴더에서 소유자처럼 치고, 명령마다 체인 · 원장이 가라앉을 때까지 기다려 끝 상태를 묻습니다. 두 바퀴째가 «다시 돌리면»
+       bf546e79e · assy_test 스크래치 스키마 · public 에서 바뀐 행 0
+세계   샘플 transfer_explorer 닮은꼴(운영 선언이 오면 갈아 끼움) — dt_log 를 바로 읽는 «옛 판» 소스 하나 · 규칙 없음
+       씨앗 dt_log 220 행 — 다른 잡에 다시 나온 코어 다이 · 좌표 빈 행 · auto 잡
+                                 박스 초      끝 상태(transfer 원자 · 두 번 옮겨진 코어 다이)
+씨앗 뒤                            -          430 · 10
+fold-rows 미리보기 -> 실행           1.7 · 2.5   410 · 0       접은 행 10
+--whole-source 미리보기 -> 실행      2.3 · 4.2   410 · 0       다시 쓴 원자 1025
+두 바퀴째                          접은 행 0 · 미리보기 잃은 행 0 · 낡은 원자 0 · 끝 상태 410 · 0
+```
+```
+본 것   ① 접기가 지운 행의 원자는 원장 후속이 거둡니다 — 두 번 옮겨진 코어 다이가 접기 실행 뒤 0
+        ② --whole-source --apply 는 바뀐 것이 없어도 소스 전부를 거두고 다시 씁니다(두 바퀴 모두 1025/1025 · 1025/1025) — «다시 돌리면 0» 의 신호는
+           실행이 아니라 미리보기의 «잃은 행 0 · 낡은 원자 0» 입니다. 명령표에 그렇게 적겠습니다
+        ③ 좌표 빈 행 5 개는 원장 문에서 «정체성 없음»으로 거절되고 매번 그 줄이 나옵니다
+남은 것  운영 선언(직전 물음) — 오면 인벤토리 식 · 공식 표 복사 + 홀드 · 새 판 소스를 세계에 넣고, 구현자 2~4 가 착지하는 대로 칸을 채웁니다
+```
+
+---
+
+## [C 응용] 10-09 시연 ③ 먼저 잴 것 — default 세상만으로 이미 사슬이 납니다 · 선언을 나눠야 모델 바꾸기가 보입니다
+
+```
+잰 곳   돌고 있는 박스 서버(읽기 GET 만) · 세상 지정 없음(= 운영 세상)
+씨앗    quantity 노드 20 개 전부(key-values 가 준 것 · 훑은 노드 22) · follow=leads_to
+답      hops 1 과 hops 3 이 같음 — 노드 {'quantity': 21, 'defect_kind': 2} · 변 {'leads_to': 22}
+        -> quantity 에서 leads_to 한 걸음에 defect_kind 에 닿고, 더 걸어도 안 늘어남(사슬 길이 한 걸음)
+까닭    leads_to@1 를 쓰는 소스 2 개(mechanism_edge_to_finding_causes, mechanism_edge_to_quantity_causes)가 when 없이 default 에 있음 — 세상 폴더(ontology_worlds)도 없음
+판정    지금 그대로면 모델 세상을 얹어도 default 의 사슬이 늘 같이 보입니다. 총괄 길대로 갑니다:
+        default 에서 그 소스 둘을 빼고 --whole-source 로 옛 원자를 거둔 뒤, 모델 세상 둘(Empty)에 when: {model} 로 나눠 넣기
+어디서  server/config 는 제가 쓰지 않습니다 — 사설 인스턴스(박스 설정 사본 · 스크래치 스키마 · 메커니즘 표 사본)에서 그 길을 끝까지 돌리고,
+        «시연 선언» 절(어느 파일 · 어느 칸 · 세상 만드는 순서 · backfill 명령 · 박스 초)을 일요일 명령표에 적습니다. 실제 박스 설정은 총괄께서
+```
+
+---
+
+## [C 응용] 10-09 재시도 문 다시 읽기를 «화면에서» — 어드민 토글부터 메인 그리드 값까지 됩니다
+
+```
+모양   운영 런처(서버 · run_watcher · 체인 워커 · 스케줄러) · 85daaf2b1 · 그 커밋의 클라를 워크트리에서 빌드해 사설 서버가 냄
+       내장 브라우저 두 탭 — 메인 화면 / 어드민. 어드민 토큰 없는 인스턴스(재시도 문은 토큰이 없으면 열림 — 화면에 아무것도 안 넣음)
+       public 에서 바뀐 행 0 · 스크래치 스키마 지움
+누른 것과 본 것
+   1 어드민 > File Ingestion > «Retry failed files under a folder»
+     «Include files that went in» 켬 — 폴더 칸이 비면 Preview 가 꺼져 있음(툴팁 «Type or pick a folder»)
+   2 아카이브 폴더를 적고 Preview  -> «3 file(s) under …\archives · SUCCESS 3» · 버튼이 «Retry 3» 으로
+   3 Retry 3  -> «3 file(s) handed to the watcher» · 목록의 세 줄이 PENDING_RETRY -> 새로고침하면 SUCCESS
+   4 메인 화면  -> 파일마다 진행 카드 «✅ File loaded 100% · rr_f0/1/2.csv · Loaded and verified» + 토스트 하나 «✅✅ File loaded — rr_f0.csv»
+   5 메인 그리드  -> VENDOR 칸이 9 행 다 섬(새로고침 뒤) · 이력 판에 묶음 «vendor: 비어있음 -> vendor: V2»
+DB 쪽   기록 [(1, 'SUCCESS'), (2, 'SUCCESS'), (3, 'SUCCESS')] · vendor 선 행 9 · run_watcher 「Detected PENDING_RETRY」 줄 셋
+판정   소유자가 쓸 화면에서 시작해 끝까지 돕니다 — pull 을 말해도 되는 줄입니다
+```
+```
+본 것(제 레인 일 아님 · 여쭙기만)
+   ① 토스트 문구에 체크 표시가 두 번(«✅✅ File loaded») — 진행 카드 제목(✅ 포함)에 토스트가 또 붙이는 모양. 파일 셋에 토스트는 첫 파일 하나만
+   ② 이력 판의 «비어있음» · «신규 데이터 생성» 은 서버가 적는 문장(crud.py 의 요약 문장)이 화면에 그대로 그려진 것 — UI 영어 상설과 어긋남.
+      저장되는 문장이라 바꾸면 옛 이력과 새 이력의 말이 갈립니다 — 바꿀지는 총괄 판정
+   ③ 그리드 위 «declaration unreadable — server refused (503)» 는 제 인스턴스에 토큰이 없어서 생긴 것(토큰 없는 서버는 그 문을 닫음) — 운영 증상 아님
+```
+
+---
+
+## [C 응용] 10-09 시연 응용 몫 — 하는 일과 물음 둘
+
+```
+하는 일   ③ 모델 나누기를 사설 인스턴스(박스 설정 사본 · 스크래치 스키마 · mechanism_edge 사본)에서 끝까지 —
+           default 에서 메커니즘 소스 둘 빼기 -> --whole-source 로 옛 원자 거둠 -> Empty 세상 둘 만들기(bootstrap) ->
+           세상마다 그 소스 둘을 read.exclude_when {"when": {"model": <다른 모델>}} 로 -> 세상마다 backfill -> 걷기에서 세상 바꿔 사슬이 갈리는지
+         그 순서 · 파일 · 칸 · 명령 · 박스 초를 일요일 명령표의 «시연 선언» 절로
+         ①②④ 는 클라 착지가 오는 대로 걷기 화면에서 «누른 것 · 본 것 · 걸린 초»
+박스 사실(읽기만)  mechanism_edge 의 model 셋 — void_formation 18 · delam_formation 3 · void_observation_bias 1
+         void 관측이 있는 base 웨이퍼 2662 개 · 웨이퍼당 2~199 개(가운데 37.0)
+물음 ①  모델 세상 둘을 어느 모델로 — 제 안: void_formation 하나 · void_observation_bias 하나(둘 다 void 로 끝나고 delam 은 이야기 밖)
+물음 ②  양불 base 짝 — 박스 DB 에 새로 심지 않고 있는 웨이퍼에서 고르겠습니다(저는 박스 DB 에 안 씁니다)
+         제 안: 불 SYN-BW-103-11(199 개) · 양 SYN-BW-SPL-400-19(2 개). 같은 랏 안에서는 짝이 안 납니다 — SYN-BW-103 랏의 최소도 155 개
+```
+
+---
+
+## [C 응용] 10-09 시연 ③ 모델 나누기 — 운영 런처에서 끝까지 됩니다 · 다만 박스 선언은 «다시 써야» 섭니다
+
+```
+모양   운영 런처 · f116890f9 · 박스 설정 사본(소유자 명령 migrate_ledger_config_to_v6.py --apply 로 v6) · 스크래치 스키마 + 세상 스키마 둘(w_appdemo_*)
+       박스 mechanism_edge 행 사본(읽기만) [('delam_formation', 'finding', 2), ('delam_formation', 'quantity', 1), ('void_formation', 'finding', 7), ('void_formation', 'quantity', 11), ('void_observation_bias', 'quantity', 1)] · 끝나고 셋 다 지움 · public 에서 바뀐 행 0
+먼저 알 것  박스의 메커니즘 소스 둘은 «뷰»(mechanism_edge_to_quantity / _to_finding)를 읽습니다. 소스는 row_id 있는 «표»만 읽는다는 규칙
+         (09-25 c193986a8)으로 오늘 main 에서는 둘 다 거절됩니다 — 박스 서버의 걷기에 보인 leads_to 변 22 는 이 선언으로는 다시 못 씁니다(언제 쓰였는지는 안 봤습니다)
+         -> 시연 선언은 표 mechanism_edge 를 읽고, 역할(to_role) · 모델(model)을 read.exclude_when 으로 거릅니다
+```
+```
+단계                                              박스 초   결과(걷기 = 모든 quantity 에서 follow=leads_to)
+A  default 에 다시 쓴 두 소스 -> backfill 각각          3.6 · 3.0   원자 13 · 9 -> 22 변 · quantity 21 · defect_kind delam, void
+B  default 에서 두 소스를 뺌 -> --whole-source 각각     3.3 · 3.1   거둔 원자 13 · 9 -> 0 변
+C  Empty 세상 둘(bootstrap) -> 세상마다 선언 -> backfill   2.9~3.4   vf 원자 11 · 7 · vb 원자 1 · 0
+D  세상 vf(void_formation)                              -        18 변 · quantity 18 · defect_kind void
+   세상 vb(void_observation_bias)                       -        1 변 · quantity 2 · defect_kind 없음
+   vf + vb                                              -        19 변 · quantity 20 · defect_kind void
+```
+```
+시연 선언 절(일요일 명령표에 들어갈 초안)
+   파일 ①  config/ontology/ledger_config.json — sources 에서 mechanism_edge_to_quantity_causes · mechanism_edge_to_finding_causes 를 뺌
+           -> python -m ledger.backfill --source <그 이름> --whole-source --apply   (server 폴더 · 이름마다 · 옛 원자를 거둠)
+   만들기   선언 화면 «Empty» 로 세상 둘(또는 POST /admin/ontology-explorer/bootstrap?world=<이름>)
+   파일 ②  config/ontology_worlds/<세상>/ledger_config.json — entities 에 quantity · defect_kind, vocabulary 에 leads_to,
+           sources 에 위 두 이름을 박스 것 그대로 두되 칸 둘만 다르게:
+             "relation": "mechanism_edge"
+             "read": {..., "exclude_when": [{"when": {"to_role": "<다른 역할>"}}, {"when": {"model": "<다른 모델>"}}, ...]}
+           -> python -m ledger.backfill --source <이름> --world <세상> --whole-source --apply   (세상마다 · 이름마다)
+   박스가 아직 setup_version 5 이면 맨 앞에 python server/scripts/migrate_ledger_config_to_v6.py --apply (운영 판은 못 봤습니다)
+본 것    vb 모델은 변 하나뿐이고 void 가 아니라 quantity «void_observed» 에서 멈춥니다 — 세상을 바꾸면 «사슬 18 -> 1» 로 갈리지만
+         vb 쪽은 void 결함까지 닿지 않습니다. 둘째 모델을 이걸로 둘지는 직전 물음 ① 그대로입니다
+```
