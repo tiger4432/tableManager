@@ -37173,3 +37173,42 @@ A 에 계속 자라는 파일                      남은 것 []                
         PostgreSQL 도 옛 IN 을 보내는 변이   test_the_lookup_takes_the_origin_index_under_a_low_belief 이 빨강(Seq Scan on cell_sources) · 대조 칸은 그대로 1 passed
         -> 운영이 믿던 통계(n_distinct 300) 아래에서 «모양»을 잰다. 앞 보고(f0b625d23 QA)의 「옛 Seq Scan 은 박스 40 만 행에서 안 나왔다」를 이 칸이 메운다
 ```
+
+---
+
+## [C 응용] 10-09 (총괄 메시지) 보류는 agreed 로 풀렸는데 공식 표 시간 칸이 옛 겉값 — 재현 · 원인 한 줄 · 시험 초안 (잼)
+
+```
+원인 한 줄   crud.compute_priority_value — 공식 칸의 보이는 값은 그 칸의 «모든» 층에서 서열 -> 최신 순으로 고른다
+   복사 맵퍼(copy_rows_with_hold)의 행마다 층 「chain_ingestion (<원천 row_id>)」은 SOURCE_PRIORITY 에 없는 이름이라 99
+   같은 칸에 «등록된 이름»의 층이 하나라도 있으면(user 0 · collision_merge 1 · pipeline_parser 2 · custom_script 3 · 그냥 chain_ingestion 4)
+   그 층이 시간과 상관없이 늘 보인다. 그 층은 원천 도장(origin_row_id)이 없어 원천 행을 지워도 안 거둬진다
+   보류는 원천 표의 행만 센다(_claims) -> 하나 남으면 agreed. 칸은 그 층의 옛 값 그대로 — 소유자가 본 모양
+박스 시험과 다른 점  박스 시험의 공식 칸에는 복사 층만 있다. 그러면 지운 쪽 층이 거둬지고 남은 행 값이 보인다(아래 여덟 칸)
+잰 것   PG 시험 DB assy_test · pg_engine 스크래치 스키마(픽스처가 지움) · support.hold_world 에 datetime 칸 evt_time 하나 더 복사
+        같은 키 두 행(netdie 같고 시간만 다름) · 그리드 삭제 라우트 몸통(crud.delete_rows_batch, API 채널) · 원장 따라가기 · 워커의 거두기
+        층이 복사뿐일 때 — 맵퍼 묶음/한 행 × 지운 쪽(late_shown = 보이던 층, early_hidden = 안 보이던 층) × 한 묶음/두 묶음
+        batch-late-one_batch           2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        batch-late-two_batches         2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        batch-early-one_batch          2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        batch-early-two_batches        2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        one_row-late-one_batch         2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        one_row-late-two_batches       2026-10-09 10:05:00+09:00 -> 2026-10-09 10:00:00+09:00 · 남은 행 값으로 True
+        one_row-early-one_batch        2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        one_row-early-two_batches      2026-10-09 10:05:00+09:00 -> 2026-10-09 10:05:00+09:00 · 남은 행 값으로 True
+        같은 칸에 다른 층 하나(값 09:00) — 그냥 chain_ingestion 이 두 복사보다 «먼저» / 사이에 · user 가 사이에
+        batch-chain_before             2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        batch-chain_between            2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        batch-user_between             2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        one_row-chain_before           2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        one_row-chain_between          2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        one_row-user_between           2026-10-09 09:00:00+09:00 -> 2026-10-09 09:00:00+09:00 · A 로 False · 다른 층 값 그대로 True
+        그냥 chain_ingestion 층이 «더 오래돼도» 보인다 — 층 목록(앞 4 자리 · 도장 · 값 · 적힌 시각) [('50a4', '50a4', '2026-10-09T10:05:00+09:00', '15:18:48.245583'), ('c5e0', 'c5e0', '2026-10-09T10:00:00+09:00', '15:18:45.814458'), ('tion', None, '2026-10-09T09:00:00+09:00', '15:18:43.879773')]
+모르는 것 운영 그 칸에 어떤 층이 있나 — 운영이라 못 봤다
+        가르는 것: 그 칸의 층 목록에 「chain_ingestion (…)」 아닌 층이 있으면 이 원인이다. 없으면 이 원인이 아니고 다시 잰다
+        두 행의 ingested_at 이 같은 경우는 안 만들었다 — 한 프로세스 안에선 layer_instant 가 늘 1 µs 띄운다
+시험 초안 task/evidence/hold_time_after_delete_draft_test.py — a102798fc 에서 10 passed · 2 failed
+        빨강 = test_an_older_plain_chain_layer_does_not_outrank_the_surviving_copy (묶음 · 한 행 두 칸) — 「먼저 적힌 그냥 체인 층은 남은 복사를 못 이긴다」를 단언한다
+        사람 값(user)이 남는 것은 초록으로 박아 두었다 — 사람이 고친 값은 일부러 이긴다
+고칠 모양 행마다 층의 서열을 무엇으로 볼지(쓴 이의 서열 = 4 로 보면 먼저 적힌 층은 시간으로 지고, 나중 층 · user 는 여전히 이긴다)는 총괄 판정. 고치지 않았습니다
+```
