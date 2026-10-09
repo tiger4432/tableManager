@@ -90,7 +90,7 @@ import {
 } from './retroactive_view.js';
 import { RunLines } from './run_lines.js';
 import { collectorBackfillView, BACKFILL_OP } from './collector_backfill.js';
-import { FolderRetryPanel } from './folder_retry.js';
+import { FolderRetryPanel, INCLUDE_STATUSES } from './folder_retry.js';
 import { setDisabledReason } from './disabled_reason.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
@@ -4241,17 +4241,19 @@ function seatFolderRetry() {
   folderRetryPanel = new FolderRetryPanel(mount, {
     doc: document,
     rows: () => fileData,
-    preview: (folder) => folderRetryCall(folder, true),
-    retry: (folder) => folderRetryCall(folder, false),
+    preview: (folder, include) => folderRetryCall(folder, true, include),
+    retry: (folder, include) => folderRetryCall(folder, false, include),
     onRetried: () => fetchData({ silent: true }),
   });
 }
-/** One route, two asks: `preview` writes nothing and counts; without it the same selection runs. */
-async function folderRetryCall(folder, preview) {
+/** One route, two asks: `preview` writes nothing and counts; without it the same selection runs. `include` asks for
+ *  the files that went in too (lead a4d135a06). */
+async function folderRetryCall(folder, preview, include) {
   let res = null;
   try {
     res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed?folder=${encodeURIComponent(folder)}`
-      + (preview ? '&preview=true' : ''), { method: 'POST' });
+      + (preview ? '&preview=true' : '') + (include ? `&statuses=${encodeURIComponent(INCLUDE_STATUSES)}` : ''),
+      { method: 'POST' });
   } catch (err) {
     console.error('[FolderRetry] request failed', folder, preview, err);
   }

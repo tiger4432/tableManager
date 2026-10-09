@@ -42,7 +42,7 @@ export function fileLogRowHtml(log, { withStatus, timeStr }) {
     : 'color: var(--text-dim);';
   return `
     <td>${escapeHtml(log.id)}</td>
-    <td style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(log.filename)}</td>
+    <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(log.filename)}</td>
     <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(log.table_name)}</td>
     ${withStatus ? `<td style="text-align: center;">${statusBadge}</td>` : ''}
     <td style="text-align: center; ${retryStyle}">${escapeHtml(log.retry_count)}</td>
@@ -67,7 +67,7 @@ export function activeIngestionRowHtml(item, { elapsedText }) {
     : (isCount(item.processed_rows) && Number(item.processed_rows) > 0
       ? localeCountText(item.processed_rows) : '-');
   return `
-      <td style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text); word-break: break-all;">${escapeHtml(item.filename)}</td>
+      <td data-wrap-ok style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text); word-break: break-all;">${escapeHtml(item.filename)}</td>
       <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(item.table_name)}</td>
       <td style="text-align: center;">${laneBadge}</td>
       <td>

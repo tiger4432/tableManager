@@ -15,6 +15,8 @@
 //   words     a word broken between two of its letters (lead 10-09: a rule name in four pieces); data-wrap-ok on text
 //             broken on purpose. A break after - or / is the browser's own, and letters outside a-z 0-9 _ are not read
 //   answers   a GET the fixtures do not answer, or a screen that could not be driven
+//   cells     what one screen asks of itself after one of its states (CELLS): the grid's header message - a press on
+//             the button beside it reaches the button, and its title is its whole sentence (lead 10-09)
 // One line per finding: entry · size · state · element path · what. Sizes: 1920x950, 1536x864, 1280x720.
 // Chrome hands every request here (DevTools Fetch). Files come from dist, GETs from fixtures/screens_answers.json
 // (capture_screens.py), the two queues from fixtures/chain_states.json; no request reaches a server of ours. A GET with
@@ -72,6 +74,39 @@ const answerOf = (u) => {
   const a = ANSWERS[u.pathname + u.search];
   return a && a.same_as ? ANSWERS[a.same_as] : a || null;
 };
+// Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
+const CELLS = [
+  { entry: 'index.html', after: 'loaded', rule: 'beside the message', expr: `(() => {
+  const log = document.getElementById('performance-log');
+  if (!log || !log.getClientRects().length) return 'no header message on the page';
+  const r = log.getBoundingClientRect();
+  const mid = (r.top + r.bottom) / 2, centre = (r.left + r.right) / 2;
+  const near = [...document.querySelectorAll('header button, header select, header input, header a[href]')]
+    .filter((b) => b.getClientRects().length && getComputedStyle(b).visibility === 'visible')
+    .map((b) => ({ b, box: b.getBoundingClientRect() })).filter((x) => x.box.width && x.box.top <= mid && x.box.bottom >= mid);
+  const at = (x) => (x.box.left + x.box.right) / 2;
+  const left = near.filter((x) => at(x) < centre).sort((p, q) => at(q) - at(p))[0];
+  const right = near.filter((x) => at(x) > centre).sort((p, q) => at(p) - at(q))[0];
+  if (!left && !right) return 'no control beside the header message';
+  for (const x of [left, right].filter(Boolean)) {
+    for (const px of [x.box.left + 2, at(x), x.box.right - 2]) {
+      const hit = document.elementFromPoint(px, (x.box.top + x.box.bottom) / 2);
+      if (!hit || !(hit === x.b || x.b.contains(hit))) {
+        return \`a press on «\${(x.b.textContent || x.b.title || '').trim().slice(0, 24)}» at x \${Math.round(px)} reaches \${hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing'}\`;
+      }
+    }
+  }
+  return null;
+})()` },
+  { entry: 'index.html', after: 'loaded', rule: 'message title', expr: `(() => {
+  const log = document.getElementById('performance-log');
+  if (!log) return 'no header message on the page';
+  const t = log.textContent;
+  if (!t.trim()) return 'the header message is empty';
+  if (getComputedStyle(log).pointerEvents === 'none') return 'the header message takes no pointer, so its title never shows';
+  return log.title === t ? null : \`its title «\${log.title.slice(0, 30)}» is not its sentence «\${t.slice(0, 30)}»\`;
+})()` },
+];
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json',
   '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.txt': 'text/plain', '.ico': 'image/x-icon' };
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
@@ -488,6 +523,13 @@ const DRIVE = {
     ['Overview, every row unfolded', (c) => evaluate(c, `(() => {
       for (const row of document.querySelectorAll('.ov-row[aria-expanded="false"]')) row.click();
       return true; })()`).then(() => sleep(800))],
+    // The Retry row with «Include files that went in» turned on (lead a4d135a06).
+    ['File Ingestion, files that went in included', (c) => evaluate(c, `(() => {
+      location.hash = '#file';
+      return true; })()`).then(() => sleep(1500)).then(() => evaluate(c, `(() => {
+      const box = document.querySelector('.folder-retry-include-box'); if (!box) return false;
+      box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true }));
+      return true; })()`))],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
@@ -518,6 +560,10 @@ async function runScreens(dist, label, one = only) {
           await step(chrome, log);
           await settle(chrome, log);
           add(state, await evaluate(chrome, 'window.__screens.measure()'));
+          for (const cell of CELLS.filter((c) => c.entry === entry && c.after === state)) {
+            const why = await evaluate(chrome, cell.expr);
+            if (why) add(state, [{ rule: cell.rule, path: '#performance-log', what: why }]);
+          }
           if (shots) writeFileSync(path.join(shots, `${entry}_${size}_${state.replace(/[^a-z0-9]+/gi, '-')}.png`),
             Buffer.from((await chrome.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
         }
@@ -555,7 +601,7 @@ const t0 = Date.now();
 const { entries, found } = await runScreens(path.join(CLIENT, 'dist'), 'dist');
 for (const entry of entries) {
   for (const [w, h] of SIZES) {
-    for (const rule of [...RULES, 'answers']) {
+    for (const rule of [...RULES, 'answers', ...CELLS.filter((c) => c.entry === entry).map((c) => c.rule)]) {
       ran += 1;
       const mine = found.filter((f) => f.entry === entry && f.size === `${w}x${h}` && f.rule === rule);
       if (mine.length) failed += 1;
@@ -584,6 +630,12 @@ const MUTANTS = [
     file: 'src/style.css', edits: [
       ['minmax(var(--queue-rules-w, 48px), 1fr)', 'minmax(48px, 1fr)'],
       ['                   flex: none; white-space: nowrap; }', '                   flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }']] },
+  // The header message laid over the button beside it, and its title no longer following its text (lead 10-09).
+  { name: 'the header message laid over the button beside it', entry: 'index.html', rule: 'beside the message', at: 'performance-log',
+    file: 'src/style.css', edits: [['.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; }',
+      '.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; position: absolute; inset: 0 0 auto 0; z-index: 5; }']] },
+  { name: 'the header message title not following its text', entry: 'index.html', rule: 'message title', at: 'performance-log',
+    file: 'src/main.js', edits: [['      followTitle(elements.performanceLog);\n', '']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',
     file: 'src/style.css', edits: [['max(96px, var(--queue-state-w, 96px))', '96px']] },
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',
@@ -594,7 +646,12 @@ const MUTANTS = [
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
-    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh {\n      height: auto;', '    .ov-show-all {\n      height: auto;']] },
+    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn {\n      height: auto;',
+      '    .ov-show-all,\n    #file-list-body .admin-btn {\n      height: auto;']] },
+  // A file row's Retry boxed at the base button height again, 36 px in its 14 px line (lead a4d135a06's round).
+  { name: 'a file row Retry boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'file-list-body',
+    file: 'admin.html', edits: [['    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn {\n      height: auto;',
+      '    .chain-queue-panel .chain-queue-refresh {\n      height: auto;']] },
   { name: 'the ledger sources table back on its hand widths (Source 150px, the timestamp the rest)', entry: 'admin.html',
     rule: 'columns', at: 'ledger-sources', file: 'src/ledger_sources_panel.js', edits: [
       ["      if (fit) th.className = 'cell-fit';", "      th.style.width = { Source: '150px', State: '130px', Refused: '70px' }[label] || '';"],

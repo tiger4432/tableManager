@@ -1036,7 +1036,7 @@ const FLOORS = new Map([
   // New with lead f0e668bb8: File Ingestion's retry under a folder. The number on Retry is the
   // server's preview count, a changed folder needs a new preview, 0 is off with the server's words.
   // 17 -> 18 (E3, lead a30c55a13): the suggested folders are the FAILED rows' only.
-  ['folder_retry_harness.mjs', 18],
+  ['folder_retry_harness.mjs', 23],   // + F1-F5: «Include files that went in» (lead a4d135a06)
   //
   // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
   // sends, Pause asking once, two instances and a re-read.
@@ -1387,7 +1387,7 @@ const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 66],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3)
+  ['grid_view_readonly_harness.mjs', 69],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],
@@ -1446,7 +1446,8 @@ const FLOORS = new Map([
   // a lump's head says every axis its walk cut and the nodes left bare (lead 161757c35).
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
-  ['subgraph_view_harness.mjs', 239],
+  // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
+  ['subgraph_view_harness.mjs', 331],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1755,7 +1756,10 @@ const FLOORS = new Map([
   // The screens in real Chrome (lead 1343e5cca): 7 dist entries x 8 checks (clip · overflow · panel · text · size ·
   // columns · words · answers) at 1920x950, 1536x864 and 1280x720 + 8 mutants - the five that leaked on 10-08/09, the
   // ledger table's hand widths, Options and Menu inside the zoomed header, the Rules column's names broken (lead 10-09).
-  ['screen_layout_harness.mjs', 176],
+  // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
+  //   and their two mutants (lead 10-09): 176 -> 184.
+  // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
+  ['screen_layout_harness.mjs', 185],
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],
@@ -2009,11 +2013,15 @@ const shrank = [];      // came in UNDER its ceiling ― good; re-baseline when 
 
 // 🔴 ONE RULE (lead c4ccdeec3): a harness that reads --mutate runs here WITH it. Mutants kept behind
 //    a flag the gate never passed never ran here, and their anchors died with nobody seeing (10-06).
-const readsMutate = (name) => readFileSync(path.join(TESTS_DIR, name), 'utf8')
-  .includes("process.argv.includes('--mutate')");
+//    The same for --control (lead 10-09: subgraph_view_harness's unmutated subsets).
+const FLAGS = ['--mutate', '--control'];
+const flagsOf = (name) => {
+  const text = readFileSync(path.join(TESTS_DIR, name), 'utf8');
+  return FLAGS.filter((f) => text.includes(`process.argv.includes('${f}')`));
+};
 
 for (const name of harnesses) {
-  const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name), ...(readsMutate(name) ? ['--mutate'] : [])],
+  const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name), ...flagsOf(name)],
     { cwd: REPO_ROOT, encoding: 'utf8' });
   const ok = run.status === 0;
   const known = KNOWN_RED.get(name);

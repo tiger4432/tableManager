@@ -30,9 +30,8 @@ const ALLOW_READ = new Set(['main.js']);
 // Known violations that predate this guard and belong to another owner. Listed, not
 // silenced: the guard fails if any of them is REMOVED without updating this list, so the
 // debt cannot rot invisibly, and it fails immediately for any NEW file.
-const KNOWN = new Map([
-  ['admin.js', { count: 2, owner: 'client-pm', note: 'JSON payload copy + transaction id copy - both write paths, both dead on plain HTTP' }],
-]);
+// Empty since 10-09: admin.js's two writes went through clipboard_write.js (ec00cb905), the account badge's Copy too.
+const KNOWN = new Map([]);
 
 const SYMBOL = /navigator\s*\.\s*clipboard/g;
 

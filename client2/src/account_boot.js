@@ -3,6 +3,7 @@
 import './account_badge.css';
 import { installLoginGate } from './auth_gate.js';
 import { AccountBadge } from './account_badge.js';
+import { writeClipboardRich } from './clipboard_write.js';
 
 installLoginGate(window);
 const host = document.getElementById('account-badge');
@@ -12,6 +13,7 @@ if (host) {
     fetch: (url, init) => window.fetch(url, init),
     reload: () => window.location.reload(),
     go: (url) => window.location.assign(url),
-    clipboard: navigator.clipboard || null,
+    // The copy event, not the browser's clipboard object: that one is missing on the plain-HTTP LAN (lead 10-09).
+    clipboard: { writeText: (text) => writeClipboardRich('', text) },
   }).mount();
 }

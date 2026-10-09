@@ -8,7 +8,10 @@
 // board's MarkingStore, outside the part, as the page holds them. The stub document has no layout engine, so the
 // part runs Cytoscape headless; every cell reads the part's own Cytoscape instance and its own DOM.
 //
-// Run: node client2/tests/subgraph_view_harness.mjs
+// Run: node client2/tests/subgraph_view_harness.mjs [--control]
+// A mutant runs only the blocks holding the check it names (lead 10-09). --control runs each mutant's blocks on the
+// unmutated part as well, and every one must be green: a block that leans on one skipped would otherwise redden a
+// named check with no mutant. The narrow gate of a commit that edits this file passes it, and the runner does.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1686,6 +1689,24 @@ const failures = [];
        title: '\n  [mutants] - each must be caught by the check it names.' });
   pass += MUTANTS.length - scored.wrong;
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
+
+  if (process.argv.includes('--control')) {
+    const asks = [...new Map(MUTANTS.map((mu) => [JSON.stringify([].concat(mu.catches)), mu.catches])).values()];
+    const t0 = Date.now();
+    let red = 0;
+    for (const only of asks) {
+      const quiet = console.log;
+      console.log = () => {};
+      let got;
+      try { got = await suite(real, createWalkBoxWalk, REAL_CSS, FOLD_DECL, only); } finally { console.log = quiet; }
+      if (got.failures.length) {
+        red += 1;
+        failures.push(`control ${[].concat(only).join('/')}`);
+        console.log(`  CONTROL ${[].concat(only).join('/')} red on unmutated code: ${got.failures.slice(0, 2).join(' | ')}`);
+      } else pass += 1;
+    }
+    console.log(`\n  [control] ${asks.length} mutant subsets on unmutated code, ${red} red, ${Math.round((Date.now() - t0) / 1000)} s`);
+  }
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

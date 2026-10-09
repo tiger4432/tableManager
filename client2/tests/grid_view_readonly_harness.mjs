@@ -642,6 +642,39 @@ async function suite(M) {
     M.timeline.releaseNavigationGuard('');
   }
 
+  // ── O: the offscreen badge is written only when its count moves (lead 10-09: it runs on every scroll frame) ──
+  {
+    const savedApi = realState.gridApi;
+    const savedNode = nodes.get('offscreen-cols');
+    const node = fakeNode('offscreen-cols');
+    let writes = 0;
+    let said = '';
+    let title = '';
+    Object.defineProperty(node, 'textContent', { get: () => said, set: (v) => { writes += 1; said = v; } });
+    Object.defineProperty(node, 'title', { get: () => title, set: (v) => { writes += 1; title = v; } });
+    node.style = new Proxy({}, { set: (t, k, v) => { writes += 1; t[k] = v; return true; } });
+    nodes.set('offscreen-cols', node);
+    document.getElementById('grid-filter-bar');
+    // Ten columns of 100 px; the view's right edge decides how many are past it.
+    let right = 300;
+    const cols = Array.from({ length: 10 }, (_, i) => ({ getPinned: () => null, getLeft: () => i * 100, getActualWidth: () => 100 }));
+    realState.gridApi = { getHorizontalPixelRange: () => ({ left: 0, right }), getAllDisplayedColumns: () => cols };
+    try {
+      M.grid.updateOffscreenIndicator();
+      ok(writes > 0 && said.includes('7'), `O1 the badge says the columns past the right edge [${said}]`);
+      writes = 0;
+      M.grid.updateOffscreenIndicator();
+      M.grid.updateOffscreenIndicator();
+      ok(writes === 0, `O2 the same count again writes nothing to the page [${writes} writes]`);
+      right = 500;
+      M.grid.updateOffscreenIndicator();
+      ok(writes > 0 && said.includes('5'), `O3 a new count is written [${said}]`);
+    } finally {
+      realState.gridApi = savedApi;
+      if (savedNode) nodes.set('offscreen-cols', savedNode); else nodes.delete('offscreen-cols');
+    }
+  }
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -651,6 +684,8 @@ await suite(REAL);
 // -- mutants ---------------------------------------------------------------------------
 // Each names the FILE it edits; the rest of the bundle stays real.
 const DEFECTS = [
+  ['grid.js: the offscreen badge is written on every scroll frame again', 'grid',
+    s => s.replace("  if (badge && badge.dataset.count !== String(count)) {", '  if (badge) {')],
   ['state.js: any announced kind counts as a view', 'state',
     s => s.replace("  return state.currentTableKind === 'view';", '  return !!state.currentTableKind;')],
   ['api.js: the kind is taken without checking it is a string', 'api',

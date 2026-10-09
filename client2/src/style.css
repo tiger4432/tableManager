@@ -2864,8 +2864,11 @@ body.resizing-active .history-sidebar {
 }
 .app-header .tx-action-group { flex: 0 0 auto; }
 /* The status MESSAGE is what gives way instead. It is a reading; the three controls beside
-   it are not, and a button whose label is cut is a button you have to guess at. */
-.app-header #performance-log { flex: 0 1 auto; min-width: 0; }
+   it are not, and a button whose label is cut is a button you have to guess at.
+   C-118 made the badge pointer-events: none because its text spilled over the button beside it and ate that press.
+   Here it is cut inside its own box, so that reason is gone: it takes the pointer and shows its whole sentence as
+   its title (lead 10-09; the screen gate presses the buttons beside it at every size). */
+.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; }
 .app-header .tx-action-group > * + * { border-left: 1px solid var(--warning); }
 .app-header #tx-pending-badge { border-radius: 0; padding: 0 10px; font-family: var(--font-mono); font-size: var(--fs-button); font-weight: 700; color: var(--warning); }
 .app-header #tx-apply-btn { border-radius: 0; padding: 0 11px; background: var(--success-weak); color: var(--success); font-weight: 700; font-size: var(--fs-button); }
