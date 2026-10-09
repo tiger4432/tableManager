@@ -469,7 +469,7 @@ const DRIVE = {
       if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
       const tab = document.getElementById('tab-queue'); if (tab) tab.click();
       return true; })()`)],
-    // Dragged to 500 px: the queue's six columns need about 484 - all whole without rolling.
+    // Dragged to 500 px: wider than the six columns' least widths or not, every cell whole (the box rolls).
     ['side panel dragged to 500 px', (c) => evaluate(c, `(() => {
       const bar = document.getElementById('main-split-resizer'); const box = document.querySelector('.main-layout'); if (!bar || !box) return false;
       const x = box.getBoundingClientRect().right - 500;

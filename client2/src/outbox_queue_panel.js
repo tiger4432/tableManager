@@ -102,8 +102,6 @@ const COLUMNS = Object.freeze([
   Object.freeze({ key: 'state', label: 'State' }),
   Object.freeze({ key: 'rules', label: 'Rules' }),
 ]);
-// The columns measured from what they hold, and the CSS width each one sets.
-const FIT = Object.freeze([['.queue-state .tag', '--queue-state-w'], ['.queue-rule-name', '--queue-rules-w']]);
 
 /** 조립식 부품: 자기 div 하나, mount·deps 를 생성자로, 모듈 상태 «없음». */
 export class OutboxQueuePanel {
@@ -124,14 +122,19 @@ export class OutboxQueuePanel {
   _fitColumns() {
     const view = this.doc.defaultView;
     if (!view || !view.getComputedStyle) return;
-    for (const [sel, prop] of FIT) {
+    const widest = (sel) => {
       let need = 0;
       for (const el of this.root.querySelectorAll(sel)) {
         const cs = view.getComputedStyle(el.closest('.queue-cell'));
         need = Math.max(need, el.offsetWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth));
       }
-      if (need) this.root.style.setProperty(prop, `${Math.ceil(need)}px`);
-    }
+      return Math.ceil(need);
+    };
+    // The names written out: css_token_definition_harness reads a setProperty'd name as the token's definition.
+    const state = widest('.queue-state .tag');
+    const rules = widest('.queue-rule-name');
+    if (state) this.root.style.setProperty('--queue-state-w', `${state}px`);
+    if (rules) this.root.style.setProperty('--queue-rules-w', `${rules}px`);
   }
 
   _line(cls, text) { return line(this.doc, cls, text); }
