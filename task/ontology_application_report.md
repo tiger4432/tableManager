@@ -37313,3 +37313,14 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
         ③ client2/tests/fixtures/screens_answers.json 의 rule_rows «what_is_missing» 이 옛 문장(「a rule declared run_in: operation has rows its chain group queued」) — 다음 녹화 때 바뀜, 클라 레인 몫
 문서    RUNTIME_MAP ⑥-b 의 rule_rows 줄에 ⚰️ · CODE_MAP retroactive.py 머리에 ⚰️ — 나머지(chain_rules.md · TEXT_LINKS_GUIDE §6 · CODE_MAP 1580 · RUN.md)는 착지가 이미 맞춤
 ```
+
+---
+
+## [C 응용] 10-09 f22cf7027(머리 버튼의 판을 body 에 페이지 크기로) QA — 결함 없음 (잼)
+
+```
+잰 것   이 박스 · 공유 트리에서 읽기만 — 화면 게이트(--mutate 없이) 49 통과 · 0 실패 · dropdown_place_harness 10 통과 · 0 실패
+읽은 것  body 로 옮긴 판이 남는가 — placeUnder 를 부르는 자리 4(account_badge.js · grid.js · main.js · redo_banner.js)
+        다시 그리는 둘(account_badge.js · redo_banner.js)은 그리기 전에 옮긴 판을 지운다 · grid 필터 판은 닫을 때 지운다 · main 의 셋은 페이지에 하나뿐인 고정 요소
+문서    CODE_MAP dropdown.js — 제 3a8036b74 줄(「부모 배율로 나눈다」)이 거짓이 됐다 -> body · fixed · placedFrom 로 고침, 소비자 넷
+```

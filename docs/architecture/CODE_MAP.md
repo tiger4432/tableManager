@@ -5401,14 +5401,14 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - **`loadReplayableRules(table) -> Promise<Array<object>|null>`** 🆕㊱ :32(~~:24 @`c904b389`~~) — `GET ${API_BASE}/admin/chain/rules/replayable?table=${encodeURIComponent(table)}` 🆕㊱ :39 **+ `'&row_scoped=true'` :40**, 헤더 `[ADMIN_TOKEN_HEADER]: readAdminToken()`. import 둘: `API_BASE`(`config.js`) :15 · `{ADMIN_TOKEN_HEADER, readAdminToken}`(`admin_token.js`) :16. `^export` 1.<br>  🆕㊱ 🔴 **[`0c6a70c1` S-270] `row_scoped=true` 를 «항상» 싣는다 — 조건이 아니다.** 배너가 보내는 payload 에는 `row_ids` «뿐»이라 이 화면에서 고를 수 있는 소급은 «전부 행 범위»이고, 조인의 참조 쪽이 통째 소급에서 거절되는 사유(S-242)는 «범위 전체»의 논증이라 여기서는 참이 아니다 — 행을 고른 순간 그 규칙이 «유일하게 맞는» 규칙이고, 대상 쪽은 이 그리드에서 «고를 수 없는» 표를 트리거로 한다. ⚠️ **이 인자를 빼면 화면은 그 규칙을 다시 «안 보여 주고» 운영자는 조인 체인만 빠진 목록을 본다** — 소유자가 2026-09-16 아침에 신고한 그 모양이다(소스 주석 :21~:28). 짝 하니스 `client2/tests/replay_rules_harness.mjs`(🆕㊱ **507줄** @`6ea4f7b2`).
 - **소비자**: `main.js::redoBannerFollows(table)` :230(호출 :237 @`2c93ae9f` — 구 :254) «하나». **채점자**: `client2/tests/replay_rules_harness.mjs`(🆕 **501줄** @`eea69cbc` — 329; import 기반 — `client2/scripts/check_harnesses.mjs` :1473(@`2c93ae9f` — :1465) 에 🆕 **46** 건으로 등록 — 28; C-112·C-113·C-114 가 각각 더했다) — 세 상태 · 배너 줄의 `trigger → target` · `kind` 배지(`join`/`mapper`) · 배지 없음(서버가 안 말함). `redo_banner_harness.mjs`(🆕 825줄, 51 건 — 811)도 객체 목록으로 갈아탔다(`c87080e3`).
 
-### 🆕⑰ `dropdown.js` (🆕 **69줄** @`3a8036b74` · 38줄, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
+### 🆕⑰ `dropdown.js` (🆕 **75줄** @`f22cf7027` · 69줄 @`3a8036b74` · 38줄, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
 
 > 🔴 **«둘째»가 나와서 생긴 파일이다**(상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). 첫째는 Re-translate 드롭다운, 둘째는 필터 칩 펼침. 비슷한 것을 하나 더 그리는 대신 «닫는 방법»을 한 곳에 뒀다.
 > 🔴 **떼는 것까지가 이 함수다.** 안 떼면 닫힌 드롭다운이 계속 클릭을 먹고, 그다음 **열려 있는 것이 남의 바깥 클릭에 닫힌다.** 🔴 **그 고장은 오류를 내지 않는다.**
 
 - **`watchForDismiss(doc, host, close) -> detach | null`** — 바깥 클릭과 Esc. `host` «밑»을 누른 것은 바깥이 아니다. 문서 스텁이면 되므로 맨 node 로 채점된다.
 - **소비자**: `grid.js`(필터 칩 펼침) · `redo_banner.js`.
-- 🆕 10-09 `3a8036b74` **`placeUnder(panel, anchor, {align='right', gap=8})`** — 머리 버튼이 여는 패널을 그 버튼 «바로 밑», 화면 안(가장자리 8px)에. 화면 px 를 패널 부모의 배율로 나눈다(머리 `--header-zoom` 밑에서 Replay chain 패널이 버튼에서 떨어졌던 것). 소비자 `grid.js`(필터 펼침) · `redo_banner.js`(다시 돌리기 패널) · `main.js`(칸 고르기). 재는 곳 = `client2/tests/screen_layout_harness.mjs`(진짜 Chrome) · `dropdown_place_harness.mjs`
+- 🆕 10-09 `3a8036b74` **`placeUnder(panel, anchor, {align='right', gap=8})`** — 머리 버튼이 여는 패널을 그 버튼 «바로 밑», 화면 안(가장자리 8px)에. 🆕 10-09 `f22cf7027` 패널을 «body 로 옮겨» `position: fixed` 로 그린다 — 머리(`--header-zoom`) 안에선 판이 0.67 로 줄어 줄이 두 줄로 꺾였다. 연 자리는 `panel.placedFrom` 에 남고 `watchForDismiss` 가 그 길로 「안」을 읽는다. ~~화면 px 를 패널 부모의 배율로 나눈다~~(3a8036b74, 그 뒤 은퇴). 소비자 `account_badge.js` · `grid.js` · `main.js` · `redo_banner.js` — 다시 그리는 `account_badge.js` · `redo_banner.js` 는 그리기 전에 옮긴 판을 지운다. 재는 곳 = `client2/tests/screen_layout_harness.mjs`(진짜 Chrome) · `dropdown_place_harness.mjs`
 
 ### 🆕⑰ `match_count.js` (**58줄**, `f7a3c372`·`07068feb` 신설) — 「몇 건인가」를 **«세 상태»로** 답하는 한 곳
 
