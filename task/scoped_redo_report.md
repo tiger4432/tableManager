@@ -77759,3 +77759,30 @@ MD5 AFTER  same
 ### 다음
 
 /admin/outbox/failed 500(dc220ed10) -> SLOT_POOL · foreign_beat -> 표 선언 인덱스 -> VALUES CAST -> 원장 해시 인덱스
+
+---
+
+## [10-10 새벽] /admin/outbox/failed 500 — 원인은 이 박스 DB 의 이주 누락 (총괄 dc220ed10) — 짓지 않고 잼
+
+어느 DB · 어느 스키마 · 지운 것 — 이 박스 assy_manager, 모든 연결 읽기 전용(default_transaction_read_only) · 쓴 것 0 · 지운 것 0
+
+```
+재기    지금 코드(wt-impl = origin/main)로 그 라우트를 시험 클라이언트로 부름(관리자 의존성만 시험처럼 덮음 — 토큰 안 씀)
+        -> psycopg2.errors.UndefinedColumn: 오류:  database_outbox.ledger_state 칼럼 없음
+박스의 500  server.log 의 500 줄 4 개 — 모두 testserver(다른 레인의 시험 클라이언트)
+        2026-10-09 14:22:36  http://testserver/admin/outbox/failed?page=1&limit=3&tz=Asia%2FSeoul
+        2026-10-09 15:15:01  http://testserver/admin/outbox/failed?page=1&limit=3&tz=Asia%2FSeoul
+        2026-10-09 22:58:50  http://testserver/admin/outbox/failed?page=1&limit=1&tz=Asia%2FSeoul
+        2026-10-09 23:24:56  http://testserver/admin/outbox/failed?page=1&limit=1&tz=Asia%2FSeoul
+까닭    ledger_state 는 3bce75e88 2026-10-02 21:59:57 +0900 에 모델에 들어옴 — 기존 DB 는 migrations/add_outbox_ledger_state.py --apply(앱을 멈추고)
+        그 스크립트의 보고 모드(읽기 전용): server_version=18.3 · column=ledger_state exists=False · index=idx_outbox_ledger_pending valid=None
+        이 박스의 운영 프로세스 기동 시각 — pid 8652 2026-09-30 10:37:16 / pid 12020 2026-09-30 10:37:14 / pid 35736 2026-09-30 10:37:11 / pid 37840 2026-09-30 10:37:16  (그 칸을 모르는 코드라 멀쩡)
+전수    모델 표 13 개를 이 박스 DB 와 대조 — 빠진 칸 {'database_outbox': ['ledger_state']} · 없는 표 ['auth_api_keys', 'auth_login_states', 'auth_sessions'](서버가 뜰 때 create_all 이 만듦)
+        의심했던 오늘의 칸(cancelled_columns · broadcast_at · chain_state_of)은 원인 아님
+위험    지금 코드로 다시 뜨는 프로세스는 이 이주 없이 DatabaseOutbox 를 읽는 모든 자리에서 같은 오류(서버 라우트 · 체인 워커)
+여쭌 것 ① 이 박스 DB 에 이주 적용(운영 프로세스를 멈춰야 함 — 제 몫 아님) ② 일요일 명령표에 소유자 DB 보고 모드 한 줄
+        ③ 기동 때 «모델 칸이 DB 에 없음»을 이름 대어 말하기(짓지 않음)
+총괄 답  ① 적용 안 함(소유자 몫) — 이 항목은 «코드 결함 아님 · 이 박스 DB 에 이주 안 돎»으로 닫힘
+        ② 안 넣음 — 소유자 쪽은 10-02 뒤 코드의 체인 워커가 아웃박스를 읽으며 돌고 있음(소유자 10-09) ③ 시연 뒤 후보
+        덧: idx_audit_row_history 를 억지로 태우지 않음(껍데기 행 EXPLAIN)
+```
