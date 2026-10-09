@@ -37679,3 +37679,29 @@ fold-rows 미리보기 -> 실행           1.7 · 2.5   410 · 0       접은 �
 어디서  server/config 는 제가 쓰지 않습니다 — 사설 인스턴스(박스 설정 사본 · 스크래치 스키마 · 메커니즘 표 사본)에서 그 길을 끝까지 돌리고,
         «시연 선언» 절(어느 파일 · 어느 칸 · 세상 만드는 순서 · backfill 명령 · 박스 초)을 일요일 명령표에 적습니다. 실제 박스 설정은 총괄께서
 ```
+
+---
+
+## [C 응용] 10-09 재시도 문 다시 읽기를 «화면에서» — 어드민 토글부터 메인 그리드 값까지 됩니다
+
+```
+모양   운영 런처(서버 · run_watcher · 체인 워커 · 스케줄러) · 85daaf2b1 · 그 커밋의 클라를 워크트리에서 빌드해 사설 서버가 냄
+       내장 브라우저 두 탭 — 메인 화면 / 어드민. 어드민 토큰 없는 인스턴스(재시도 문은 토큰이 없으면 열림 — 화면에 아무것도 안 넣음)
+       public 에서 바뀐 행 0 · 스크래치 스키마 지움
+누른 것과 본 것
+   1 어드민 > File Ingestion > «Retry failed files under a folder»
+     «Include files that went in» 켬 — 폴더 칸이 비면 Preview 가 꺼져 있음(툴팁 «Type or pick a folder»)
+   2 아카이브 폴더를 적고 Preview  -> «3 file(s) under …\archives · SUCCESS 3» · 버튼이 «Retry 3» 으로
+   3 Retry 3  -> «3 file(s) handed to the watcher» · 목록의 세 줄이 PENDING_RETRY -> 새로고침하면 SUCCESS
+   4 메인 화면  -> 파일마다 진행 카드 «✅ File loaded 100% · rr_f0/1/2.csv · Loaded and verified» + 토스트 하나 «✅✅ File loaded — rr_f0.csv»
+   5 메인 그리드  -> VENDOR 칸이 9 행 다 섬(새로고침 뒤) · 이력 판에 묶음 «vendor: 비어있음 -> vendor: V2»
+DB 쪽   기록 [(1, 'SUCCESS'), (2, 'SUCCESS'), (3, 'SUCCESS')] · vendor 선 행 9 · run_watcher 「Detected PENDING_RETRY」 줄 셋
+판정   소유자가 쓸 화면에서 시작해 끝까지 돕니다 — pull 을 말해도 되는 줄입니다
+```
+```
+본 것(제 레인 일 아님 · 여쭙기만)
+   ① 토스트 문구에 체크 표시가 두 번(«✅✅ File loaded») — 진행 카드 제목(✅ 포함)에 토스트가 또 붙이는 모양. 파일 셋에 토스트는 첫 파일 하나만
+   ② 이력 판의 «비어있음» · «신규 데이터 생성» 은 서버가 적는 문장(crud.py 의 요약 문장)이 화면에 그대로 그려진 것 — UI 영어 상설과 어긋남.
+      저장되는 문장이라 바꾸면 옛 이력과 새 이력의 말이 갈립니다 — 바꿀지는 총괄 판정
+   ③ 그리드 위 «declaration unreadable — server refused (503)» 는 제 인스턴스에 토큰이 없어서 생긴 것(토큰 없는 서버는 그 문을 닫음) — 운영 증상 아님
+```
