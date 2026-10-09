@@ -20,7 +20,7 @@
 | `negation` | 부정 — 문장의 후보가 `negated` | 비움 |
 | `suspected` · `confirmed` | 추정 · 확인 — 문장에 둘 다 있으면 `suspected` | 비움 |
 
-샘플: `server/config/sample/table_config.json.sample` 의 `text_doc`(글) · `text_name`(부르는 말) · `text_link_word`(연결 말) · `text_cause_candidate`(후보) — 표 설정에 그대로 옮겨 이름만 바꾼다. 행은 비어 있다.
+샘플: `server/config/sample/table_config.json.sample` 의 `text_doc`(글) · `text_name`(부르는 말) · `text_link_word`(연결 말) · `text_cause_candidate`(후보) — 표 설정에 옮겨 이름만 바꿔 쓴다.
 
 같은 말을 두 행에 적으면 두 뜻이다 — 「무관」 = `cause`(`before`) 한 행 + `negation` 한 행.
 `*_phrase` · `link` 는 글에 «적힌 그대로»다. 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다(LLM 으로 뽑으면 §6 의 키).
