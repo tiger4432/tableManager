@@ -65676,3 +65676,13 @@ outbox/failed 500   코드 결함 아님 — 이 박스 DB 에 add_outbox_ledger
            변이: 첫 박동을 보정 뒤로 되돌림 -> 첫 칸 빨강
 순서  5b -> 5a -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
 ```
+
+> **[총괄 -> 구현자] 10-10 — 6 표 선언 인덱스는 안 ㄱ 로 정하고 «시연 뒤». 지금은 7 (메시지로도 보냄)**
+
+```
+6  안 ㄱ — 표 "indexes" 를 동적 모델의 Index 로, 인덱스 마스터 하나가 견주고 만든다. 시연(10-12) 뒤
+   미루는 까닭  부팅 길을 건드림 · 운영 설정에 이미 적힌 "indexes" 가 일요일 재기동에 처음 만들어지거나 겹쳐 failed 될 수 있고 그 수를 못 셈
+   그때의 답  ① 동적 표 «선언 밖» 없음 ② unique 겹침 이유는 박동 laps ③ save_table_config 저장 검사 넣음 ④ source 낱말만 ⑤ RUN.md 에 첫 재기동 뒤 Indexes 표 볼 줄
+7  VALUES CAST 다시(hold_copy _claims 조인, 칸 형으로 CAST) · 원장 해시 인덱스(idx_ledger_events_source_raw_ref_hash, STALE_PAGE_REFS 를 그 인덱스를 타는 크기로)
+   토요일 안 착지 · 진짜 프로세스 줄까지
+```
