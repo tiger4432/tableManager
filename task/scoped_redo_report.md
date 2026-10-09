@@ -77188,3 +77188,37 @@ MUTANT no watcher, not refused                    1 failed, 12 passed
 - 실행이 마지막 파일까지 소급 관문을 붙든다 — 큰 폴더는 나눠서(RUN.md · 미리보기 한 줄).
 
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · 시험이 만든 파일은 pytest tmp · 지운 것 0.
+
+## [10-09] VALUES 조인 착지 65566df13 (총괄 043915ab0 ②) · 접기 표시(016a766af) 착수 전 전수
+
+**VALUES 조인** — `hold_copy._claims` 가 값 있는 키를 VALUES 로 조인하고 NULL 든 키를 따로 묻는다. 같은 답:
+```
+새 대조 시험(sqlite · PG)과 홀드 시험: sqlite 23 passed, 33 deselected · PG 34 passed, 11 deselected
+박스 PG, 1,000 키 한 묶음, 같은 답 단언:
+CLAIMS rows   20000 · keys 1000 · today (row IN)   run 1    0.623 s · keys answered 1000
+CLAIMS rows   20000 · keys 1000 · today (row IN)   run 2    0.571 s · keys answered 1000
+CLAIMS rows   20000 · keys 1000 · VALUES join      run 1    0.076 s · keys answered 1000
+CLAIMS rows   20000 · keys 1000 · VALUES join      run 2    0.050 s · keys answered 1000
+CLAIMS rows   20000 · same answer: True
+CLAIMS rows 1000000 · keys 1000 · today (row IN)   run 2    7.688 s · keys answered 1000
+CLAIMS rows 1000000 · keys 1000 · VALUES join      run 1    0.169 s · keys answered 1000
+CLAIMS rows 1000000 · keys 1000 · VALUES join      run 2    0.480 s · keys answered 1000
+CLAIMS rows 1000000 · same answer: True
+변이 — md5 same
+MUTANT the keys holding a NULL are not asked    1 failed, 25 deselected
+    FAILED test_the_claims_on_sqlite_are_what_the_rows_say
+MUTANT the VALUES columns joined one off        1 failed, 25 deselected
+    FAILED test_the_claims_on_sqlite_are_what_the_rows_say
+```
+
+**전수 — require 를 잃은 행이 공식 표에 먹인 층이 거둬지나** (hold world · PG 시험 DB · 탐침은 커밋 안 함)
+```
+REQUIRE-LOSS seen_before=True · A2 layers on the official table 4 -> 0 · official (8.0, None) -> (7.0, 'agreed')
+[Chain] [2026-10-09 18:46:04,792] WARNING - [ChainRetract] hc_copy: 이 규칙이 무엇을 쓰는지 아직 모릅니다(이 프로세스에서 낸 행이 없음) — 고친 원천 행 1 개가 먹이던 옛 층을 거두지 않았습니다
+REQUIRE-LOSS seen_before=False · A2 layers on the official table 4 -> 4 · official (8.0, None) -> (8.0, None)
+```
+- 읽은 길: 행을 넘길지 묻는 자리는 `rule_run.held_back` 하나(require). 고친 행의 층 거두기는 `edited`(그 사건의 EDIT 행 전부 — held_back 전)를 origins 로 `_withdraw_and_tell` → `cell_layer.withdraw_by_origin` 한 문.
+- 답: 이 프로세스가 그 규칙이 쓰는 칸을 알면 거둔다(4 -> 0, 공식 값이 남은 행 것으로 agreed). 모르면(기동 뒤 그 규칙이 아직 아무것도 안 낸 프로세스, 그 묶음에서 규칙이 아무 행도 안 받음) 거두지 않고 경고 한 줄만 낸다(4 -> 4).
+- 까닭: `rule_run.columns_a_rule_writes` 가 이번 실행의 행 → 선언(`dynamic_mappers.columns_declared_for`) → 이 프로세스가 본 것 순으로 답하는데, `copy_rows_with_hold` 는 선언 답이 없다. 그 칸은 params(key_columns · columns · hold_column)로 정해져 있다.
+
+어느 DB · 어느 스키마 · 지운 것: PG 시험 DB(run_pg_files)의 실행 스크래치 · 탐침 표는 끝에 DROP · 지운 것 0.

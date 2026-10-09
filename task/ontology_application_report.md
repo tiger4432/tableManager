@@ -37406,3 +37406,14 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
            데이터는 안 망가진다(취소하면 되돌림). 기다리는 동안 감시자 박동을 물어 서 있으면 한 줄로 말할지 · 멈출지는 총괄 판정
 문서    BACKFILL_GUIDE 증상 표에 Re-read files 줄(INGESTION_GUIDE §1.12-ter · CODE_MAP 은 착지가 맞춤)
 ```
+
+---
+
+## [C 응용] 10-09 측정 시작 · assy_test · 스키마 assy_app_speed_1009 (1c96c4ca6 · 오토컨펌 칸 · 8c664d220 의 EXPLAIN 먼저)
+
+```
+순서   ① 운영 크기 cell_sources(34M 행 — models.py 주석의 운영 수) · n_distinct 289 덮어쓰기 -> lateral 안 · IN 이 무엇을 고르나(EXPLAIN)
+       ② 오토컨펌 1,000 행 묶음 단계별 초 — f6114c47c · f0b625d23 · 422d075c7 · 5250ca1bd · 096faf4b7 · main 앞뒤
+       ③ 복사 · 평범 묶음 · 체인 도는 동안 그리드 검색 초 · 원장 거두기 전체 훑기
+쓰는 곳 assy_test 의 assy_app_speed_1009 하나(public 아님) · 끝나면 지운 것 0 으로 다시 적습니다
+```
