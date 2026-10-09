@@ -105,7 +105,8 @@
 >             단계 이름은 함수 이름(앞 _ · 끝 _sync 뗌). 전부는 기동 끝 줄이 댄다
 > 기동 끝      chain_worker.log  [Chain] startup <합> s - <단계> <초> s · ...   <- 「왜 1분이나 걸려」의 답 = 초가 가장 큰 단계
 > 뜻          60 s 를 넘어도 그 단계 중이면 starting. 같은 단계의 N 이 계속 늘면 그 단계가 막힌 것(DDL 이면 앞선 질의 뒤)
->             foreign_beat 는 이제 «감독자가 띄우지 않은 pid 가 chain 박동을 씀» — 둘째 체인 워커를 찾는다
+>             foreign_beat 가 보이면 둘 중 하나 — 둘째 체인 워커, 또는 첫 박동 «앞»에 남은 하나:
+>             run_chain_worker.py 의 import 때 스키마 동기화(설정에 새 칸이 있을 때 ALTER TABLE · 시한 없음)
 > 둘째 워커    살아 있는 다른 루프의 박동이 있으면 보정 «전»에 물러난다: [Chain Worker] NOT starting: another chain loop is already running (pid ...)
 > 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동
 > ```
@@ -3341,7 +3342,7 @@
 > 남은 쿼리    체인 워커가 기동할 때 «이미 없는» 이전 체인 워커의 연결(이름 assy_chain · 이 프로세스보다 먼저 열림)을 끊고 하나마다 한 줄
 >             assy_retroactive · 스크립트 · 다른 프로세스 이름은 안 건드림. 다른 체인 루프가 살아 있으면 아무것도 안 끊음
 >             ⚠️ 이 착지 «뒤 첫 재기동»에는 못 끊음 — 이전 코드의 연결은 이름이 없음(diagnose 의 app=-). 두 번째 재기동부터 스스로 풂
-> foreign_beat 박동 파일의 pid 가 감독자가 띄운 pid 가 아님 — 새 워커가 첫 박동 전에 막혀 있고(기동 인덱스 작업이 남은 쿼리 뒤에서 기다림) 파일엔 옛 pid 가 남은 것
+> foreign_beat 박동 파일의 pid 가 감독자가 띄운 pid 가 아님 — 새 워커가 첫 박동 전에 막혀 있고(기동 인덱스 작업이 남은 쿼리 뒤에서 기다림) 파일엔 옛 pid 가 남은 것 — 10-10 뒤로 기동 보정은 starting 으로 읽히고, 첫 박동 앞엔 import 때 스키마 동기화만 남음(10-10 절)
 > 워처 청크 줄  " | blocked by pid N: …" 가 " | waiting Lock:… on pid N (<이름>, <state> <시간>): …" 로 바뀜 — 같은 함수의 문장
 > 스위치      없음(로그 · health 문장만). 멈춤 문턱은 워처와 같은 300 s
 > 되돌리기    git revert 뒤 네 프로세스 재기동

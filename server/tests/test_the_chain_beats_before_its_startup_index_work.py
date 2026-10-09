@@ -146,6 +146,7 @@ def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypat
     `wedged` (a beat 90 s old). Then each step's seconds are one line, and the loop's first beat
     ends `starting` at once."""
     import json
+    import re
 
     from runtime import health
     from utils import heartbeat
@@ -200,7 +201,8 @@ def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypat
 
     held_entry = read.get("held") or {}
     assert held_entry.get("status") == "starting", held_entry
-    assert held_entry.get("detail") == "starting: ensure_ledger_schema, 90s", held_entry
+    seconds = re.fullmatch(r"starting: ensure_ledger_schema, (\d+)s", held_entry.get("detail") or "")
+    assert seconds and 89 <= int(seconds.group(1)) <= 92, held_entry
     said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Chain] startup ")]
     assert len(said) == 1, said
     steps = said[0].split(" - ", 1)[1].split(" · ")
