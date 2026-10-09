@@ -37103,3 +37103,45 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         -> 만드는 중 문장이 30 s 마다 새로 온다. 결함 아님
 문서    CODE_MAP — 클라 모듈 표에 index_table_panel.js 줄 · GET /admin/indexes 줄에 소비자
 ```
+
+---
+
+## [C 응용] 10-09 2f487efb5(raws 하위 폴더에 «나중에» 온 파일이 남음) — 재현 · 원인 한 줄 · 시험 초안 (잼)
+
+```
+원인 한 줄   WorkspaceWatcher.sweep_existing_files
+   «이미 있는» 하위 폴더 안에 새 파일이 생기면 이벤트가 없다(관찰자 raws 에 recursive=False)
+   그 폴더를 다시 보는 길은 이 스윕의 request_tree_ingest 하나뿐인데, 스윕은 주기 루프 스레드에서 _sweep_lock 을 쥔 채
+   raws «직속» 파일을 그 자리에서 처리한다(handler._handle_event(fp) — 보통 줄: heavy 임계 아래이고 그 워크스페이스 직렬 잠금이 비었을 때.
+   heavy 로 가거나 잠금이 차 있으면 큐로 간다) -> 어느 수집기든 그 처리가 안 끝나는 동안 스윕이 없다
+   그동안 나중 파일은 로그 0 줄로 남는다 — 정지 줄(_say_what_stalled_files_wait_on)도 그 주기 루프만 부른다(부르는 곳 1)
+   안 붙잡혀도 다음 스윕까지 기다린다: 300 s(기다린 시간만 센다 — 앞 스윕이 걸린 시간이 더해진다)
+   새 폴더 · raws 직속 파일은 이벤트로 바로 들어간다 — 「다른 수집기는 잘 돈다」와 맞는 모양이다
+잰 것   진짜 WorkspaceWatcher(관찰자 · 주기 스윕 · heavy 줄 · 처리 -> sqlite 메모리) · 박스 · 시계만 줄임(스윕 3 s · 폴링 0.2 s · 트리 최대 6 s — 운영 비 600:300 유지)
+        파일 1 이 들어간 뒤 같은 A 에 2 · 3, 스윕 네 바퀴 뒤
+A 가 비워져 지워진 뒤 다시 생김                남은 것 []                         _ingesting_dirs {}
+A 가 안 지워짐(열린 파일 하나가 남음)            남은 것 []                         _ingesting_dirs {}
+A 에 계속 자라는 파일                      남은 것 []                         _ingesting_dirs {'a': 1.3}
+이름이 1 과 같음(덮어씀)                    남은 것 []                         _ingesting_dirs {}
+두 단계 아래(raws/A/B)                  남은 것 []                         _ingesting_dirs {}
+1 을 처리하는 중에 2 · 3                  남은 것 []                         _ingesting_dirs {}
+전부 무거운 줄(heavy)                    남은 것 []                         _ingesting_dirs {}
+보관 끔(archive_processed_files=false) 남은 것 ['A/f2.csv', 'A/f3.csv']   _ingesting_dirs {}
+다른 수집기 직속 파일 하나가 스윕 안에서 안 끝남       남은 것 ['A/f2.csv', 'A/f3.csv']   _ingesting_dirs {}
+  └ 그 파일이 끝난 뒤                     남은 것 []                         _ingesting_dirs {}
+        v8 의 나중 행 ['L0-1', 'L0-2', 'L1-1', 'L1-2'] — 파일은 그 설정대로 제자리(행은 들어감)
+        v9 붙잡힌 동안 수집기 로그 0 줄(필터 없이 전부 찍음) · _sweep_lock 잡힘 · 끝나자 다음 스윕(3 s 안)에 2 · 3 들어감
+        실제 시계(스윕 300 s · 폴링 1.0 s) · A 안 지워짐 · 붙잡힘 없음: 기동 3 s 뒤에 쓴 파일이 297 초 뒤 들어감(들어감 True) · 그 사이 로그 0 줄
+        붙잡는 것이 «무한»이 아니어도 같다 — 다른 수집기 raws 직속 파일 N 개를 두고 기동(멈춤 없음 · 시계 줄임), 나중 파일이 들어가기까지
+          직속 0 개 -> 2.5 s · 직속 10 개 -> 10.3 s · 직속 20 개 -> 20.6 s
+          기동 스윕이 그 N 개를 그 자리에서 다 처리한 끝(「🧹 Sweep: N candidate file(s) …」 10 개 = 기동 10.3 s · 20 개 = 기동 20.6 s) 직후에 들어갔다
+        -> 다음 스윕까지 = 300 s + 앞 스윕이 직속 파일을 그 자리에서 처리한 시간(박스 파일당 ≈1 s, 디바운스 1 s 가 대부분)
+           운영에 닿는 모양 하나: 재기동 뒤 첫 스윕이 밀린 raws 직속 파일을 다 처리하는 동안 — 그 길이는 안 쟀다
+모르는 것 운영에서 스윕이 «무엇에 · 얼마나» 붙잡히나 — 안 쟀다
+        붙잡을 수 있는 것: raws 직속 파일의 그 자리 처리(파싱 · 업서트 · 잠금 대기) · 같은 루프가 이어서 도는 외부 소스 스윕
+시험 초안 task/evidence/late_file_in_subfolder_draft_test.py — 진짜 WorkspaceWatcher 아홉 칸(위 v1~v9)
+        d34058e75 에서 8 passed · 1 failed — 빨강 하나 = test_a_late_file_goes_in_while_another_collectors_file_holds_the_sweep
+        그 칸은 「붙잡혀도 들어간다」를 단언한다 — 고칠 것이 「남긴 까닭 로그 한 줄」뿐이면 그 칸은 빨강으로 남는다
+        어느 단언을 게이트로 할지(들어감 · 로그 한 줄 · 둘 다)는 총괄 판정. 그 칸 끝에 로그 한 줄 자리(구현자 몫)
+고칠 모양 하위 폴더 다시 보기가 직속 파일 처리와 같은 스레드 · 같은 잠금에 묶여 있는 것 — 어디서 떼어낼지는 구현자 · 총괄 판정. 고치지 않았습니다
+```
