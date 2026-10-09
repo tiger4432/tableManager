@@ -178,6 +178,10 @@ def main(argv=None):
     p.add_argument("--keep", default="min", choices=["min", "max"], help="min (earliest, default) | max")
     p.add_argument("--prefer-column", default=None, help="with --prefer-text: a row whose column holds it stays first")
     p.add_argument("--prefer-text", default=None, help="the text (any case) --prefer-column holds")
+    # 총괄 016a766af · 83c05cfbb: mark instead of delete, and only the rows of one kind
+    p.add_argument("--mark-column", default=None, help="a text column: mark the rows that fold there, delete none")
+    p.add_argument("--only-column", default=None, help="with --only-text: only rows whose column holds it fold")
+    p.add_argument("--only-text", default=None, help="the text (any case) --only-column holds")
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
     p.add_argument("--apply", action="store_true")
 
@@ -242,19 +246,23 @@ def main(argv=None):
         elif args.cmd == "fold-rows":
             params = {"table": args.table, "keys": args.keys, "order": args.order,
                       "keep": args.keep, "pace": args.pace,
-                      **({"prefer_column": args.prefer_column} if args.prefer_column is not None else {}),
-                      **({"prefer_text": args.prefer_text} if args.prefer_text is not None else {})}
+                      **{cell: getattr(args, cell) for cell in ("prefer_column", "prefer_text", "mark_column",
+                                                                 "only_column", "only_text")
+                         if getattr(args, cell) is not None}}
+            verb, done = ("mark", "marked") if args.mark_column else ("delete", "deleted")
             if args.apply:
                 s = written("fold_duplicate_rows", params)
-                print(f"\nfold-rows '{args.table}': {s['rows_deleted']} of {s['rows_to_delete']} row(s) "
-                      f"deleted in {s['pages']} page(s), {s['keys_folded']} key(s)"
+                print(f"\nfold-rows '{args.table}': {s['rows_' + done]} of {s['rows_to_' + verb]} row(s) "
+                      f"{done} in {s['pages']} page(s), {s['keys_folded']} key(s)"
                       + (f" ({s['keys_preferred']} kept a row whose {args.prefer_column} holds "
                          f"'{args.prefer_text}')" if args.prefer_column else "")
-                      + f", {s['rows_blank_key']} row(s) with a blank key part left as they are"
+                      + f", {s['rows_blank_key']} row(s) with a blank key part"
+                      + (f" and {s['rows_out_of_scope']} out of scope" if args.only_column else "")
+                      + " left as they are"
                       + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
             else:
                 print("\n" + retroactive.count(db, "fold_duplicate_rows", params)["detail"]
-                      + "\n-> add --apply to delete")
+                      + "\n-> add --apply to " + verb)
         elif args.cmd == "fold-withdraw-events":
             if args.apply:
                 from chain import cell_layer

@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **접기를 «지우지 않고 표시»로 — 복사 규칙 on.exclude 가 표시된 행을 안 받고 그 층을 거두며, 보류를 다시 센다 (총괄 016a766af · 83c05cfbb) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 순서           ① 로그 표(table_config)에 글자 칸 하나 — 예: "fold_mark": "string"
+>               ② 복사 규칙에 on.exclude: ["fold_mark"] (평면 규칙은 "exclude") -> 저장 -> 체인 워커 · 서버 재기동
+>                  다시 세기 규칙에는 로더가 source_exclude 를 찍는다(손으로 안 적음)
+>               ③ 좌표가 틀린 수동 행이 섞였으면 범위 칸으로 자동 행끼리만 — 좌표 바로잡기(층 이름 고정 착지 뒤 인벤토리 replay)가 먼저
+>               ④ 미리보기  python server/scripts/chain_replay_cli.py fold-rows <로그 표> --keys <키 칸,…> --order <고를 칸> --mark-column fold_mark [--only-column <칸> --only-text <글자>]
+>               ⑤ 실행      같은 명령 + --apply   (소급 탭 «Fold duplicate rows» 의 mark_column · only_column · only_text 와 같은 일)
+> 미리보기 뜻      N row(s) are marked, M stay · K row(s) outside (범위 밖, 그대로) · J row(s) marked before rank no more
+>               the rules that exclude by fold_mark (<규칙>) run on them and take back what they fed; then the recount rules (<규칙>) run on the rows they fed
+>               no recount rule paired - holds stay as they are   = 다시 세기 짝이 없다(보류는 그대로)
+> 실행 뒤 볼 줄    chain_worker.log
+>                 [Chain] slot N (pid …) runs line <실행 id>
+>                 [Chain] <복사 규칙>: N row(s) not handed over - excluding column(s) filled: fold_mark=N
+>                 [ChainRetract] table=<로그 표> edited_rows=N … cells_withdrawn=…
+>                 [ChainRule] rule=<다시 세기 규칙> … rows_in=…
+>               «이 규칙이 무엇을 쓰는지 아직 모릅니다» 줄 = 그 맵퍼가 쓰는 칸을 등록 안 했다(copy_rows_with_hold 는 등록함)
+> 되돌리기        표시 칸을 비우면 그 행이 다시 규칙에 들어간다(값이 다르면 다시 보류)
+> 다시 돌리면      표시된 행은 순위에 안 든다 — 미리보기 N 이 0 이면 끝
+> 급할 때         git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 적힌 표시는 남는다 — 지우려면 그 칸을 비운다)
+> ```
+
+---
 > ## [10-09] **성공 토스트의 문장은 note 칸으로 · 판정에서 깨진 소급 실행은 failed 로 끝난다 (총괄 10-09) — 이주 «없음» · 재기동 «서버 · 스케줄러»**
 >
 > ```

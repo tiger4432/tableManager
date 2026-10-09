@@ -188,8 +188,10 @@ def test_the_axis_set_is_the_difference_between_the_two_lists():
     # 13 -> 15 (총괄 fe020274d): `allow_replace_map` · `allow_retraction` joined the list.
     #   `key` joined it too but is the unified shape's own cell, so it is not an axis cell.
     # 15 -> 22 (총괄 ed70c3970): the seven `chain_bindings.COLUMN_BINDING_KEYS`.
+    # 22 -> 23 (총괄 016a766af): `source_exclude`, the loader-stamped twin of `on.exclude` - an axis
+    #   cell like `companion_of`; `exclude` itself folds under `on` beside `require`.
     axis = known - folded - {rule_shape.KEY_CELL}
     assert set(rule_shape.axis_keys()) == axis
-    assert len(axis) == 22, (
+    assert len(axis) == 23, (
         "the axis set moved to %d - a cell was added to one list and not the other: %s"
         % (len(axis), sorted(axis)))

@@ -983,46 +983,65 @@ def _run_fold_file_layers(db, params, log, control=None):
                                     "layers_after", "rows_scanned")}
 
 
+def _fold_args(params):
+    """The fold's own cells of the operation's params - one spelling for the count, the run and the judge."""
+    return {key: params.get(key) for key in ("prefer_column", "prefer_text", "mark_column",
+                                             "only_column", "only_text")}
+
+
 def _count_fold_duplicate_rows(db, params, scan_limit):
     from chain import replay
 
     s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params["order"],
                                    keep=params.get("keep", "min"), log=lambda m: logger.debug(m),
-                                   prefer_column=params.get("prefer_column"),
-                                   prefer_text=params.get("prefer_text"))
+                                   **_fold_args(params))
+    _keys, _model, prefer, scope, mark = replay.fold_target(params["table"], params["keys"], params["order"],
+                                                            params.get("keep", "min"), **_fold_args(params))
     which = "earliest" if params.get("keep", "min") == "min" else "latest"
-    prefer = replay._prefer_of(params.get("prefer_column"), params.get("prefer_text"))
+    losers = s["rows_to_mark" if mark else "rows_to_delete"]
 
     def said(row):
         return "%s%s" % (row.get(params["order"]), " (%s=%s)" % (prefer[0], row.get(prefer[0])) if prefer else "")
     shown = "; ".join(
-        "%s: keeps %s, deletes %s%s" % (
+        "%s: keeps %s, %s %s%s" % (
             ", ".join("%s=%s" % pair for pair in one["key"].items()),
-            said(one["kept"] or {}),
+            said(one["kept"] or {}), "marks" if mark else "deletes",
             ", ".join(said(d) for d in one["deleted"]),
             " and %d more" % (one["rows"] - 1 - len(one["deleted"]))
             if one["rows"] - 1 > len(one["deleted"]) else "")
         for one in s["sample"])
     return {
-        "affected": s["rows_to_delete"],
-        "absence": ABSENCE_TRULY_NONE if not s["rows_to_delete"] else None,
-        "affected_label": "rows to delete",
+        "affected": losers,
+        "absence": ABSENCE_TRULY_NONE if not losers else None,
+        "affected_label": "rows to mark" if mark else "rows to delete",
         "count_kind": COUNT_EXACT,
         "scanned": s["rows"],
         "scan_limit": scan_limit,
         "truncated": False,
         "detail": (
             f"{s['keys_folded']} key(s) of ({', '.join(params['keys'])}) in '{params['table']}' "
-            f"hold more than one row: {s['rows_to_delete']} row(s) go, {s['rows_kept']} stay. Per key "
+            f"hold more than one row: {losers} row(s) {'are marked' if mark else 'go'}, {s['rows_kept']} stay. Per key "
             + (f"a row whose {prefer[0]} holds '{prefer[1]}' (any case) stays first - {s['keys_preferred']} "
                f"key(s) keep one - then " if prefer else "")
             + f"the {which} {params['order']} stays (a blank one last, a tie the smaller row id). "
             f"{s['rows_blank_key']} row(s) with a blank key part are left as they are."
+            + (f" Only rows whose {scope[0]} holds '{scope[1]}' (any case) fold - {s['rows_out_of_scope']} "
+               f"row(s) outside are left as they are." if scope else "")
+            + (f" {s['rows_already_marked']} row(s) marked before rank no more." if mark else "")
             + (f" For example {shown}." if shown else "")
-            + " Each row goes as a grid delete does - its layers and a history line with it, and "
-              "the chain takes back what it fed. Cannot be undone."),
-        "extra": {key: s[key] for key in ("keys_folded", "keys_preferred", "rows_to_delete", "rows_kept",
-                                          "rows_blank_key", "sample")},
+            + (f" Each is marked «{replay.FOLD_MARK % '<the row kept>'}» in {mark} - nothing is deleted - and "
+               f"the rules that exclude by {mark} ({', '.join(s['rules_woken']) or 'none'}) run on them and take "
+               f"back what they fed; "
+               + (f"then the recount rules ({', '.join(s['rules_recounting'])}) run on the rows they fed. "
+                  if s["rules_recounting"]
+                  else "no recount rule paired - holds stay as they are. ")
+               + "Empty the mark to bring a row back." if mark else
+               " Each row goes as a grid delete does - its layers and a history line with it, and "
+               "the chain takes back what it fed. Cannot be undone.")),
+        "extra": {key: s[key] for key in ("keys_folded", "keys_preferred", "rows_kept", "rows_blank_key",
+                                          "rows_out_of_scope", "rows_already_marked", "rules_woken",
+                                          "rules_recounting", "sample")
+                  } | {"rows_to_mark" if mark else "rows_to_delete": losers},
     }
 
 
@@ -1032,22 +1051,20 @@ def _run_fold_duplicate_rows(db, params, log, control=None):
     s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params["order"],
                                    keep=params.get("keep", "min"), apply=True,
                                    pace=params.get("pace"), log=log, checkpoint=_checkpoint(control),
-                                   prefer_column=params.get("prefer_column"),
-                                   prefer_text=params.get("prefer_text"))
-    _final_progress(control, s["rows_deleted"], s)
-    return {key: s[key] for key in ("rows_deleted", "rows_to_delete", "keys_folded", "keys_preferred",
-                                    "rows_blank_key", "pages", "stopped")}
+                                   **_fold_args(params))
+    done = "rows_marked" if "rows_marked" in s else "rows_deleted"
+    _final_progress(control, s[done], s)
+    return {key: s[key] for key in (done, "rows_to_mark" if done == "rows_marked" else "rows_to_delete",
+                                    "keys_folded", "keys_preferred", "rows_blank_key", "rows_out_of_scope",
+                                    "pages", "stopped")}
 
 
 def _judge_fold_duplicate_rows(params):
-    from chain import cell_layer
-
-    from chain import replay
+    from chain import cell_layer, replay
 
     try:
-        prefer = replay._prefer_of(params.get("prefer_column"), params.get("prefer_text"))
-        cell_layer.resolve_target(params["table"], list(params["keys"]) + [params["order"]]
-                                  + ([prefer[0]] if prefer else []))
+        replay.fold_target(params["table"], params["keys"], params["order"], params.get("keep", "min"),
+                           **_fold_args(params))
     except cell_layer.ReplayRefused as e:
         raise RetroactiveRefused(str(e)) from None
 
@@ -1737,15 +1754,23 @@ OPERATIONS = {
                       help="a column whose text puts a row first among its key's rows; with prefer_text"),
                    _p("prefer_text", required=False,
                       help="the text that column holds (any case) for the row to stay first"),
+                   _p("mark_column", required=False,
+                      help="a text column: the rows that fold are marked there instead of deleted - "
+                           "the rules that exclude by it stop taking them"),
+                   _p("only_column", required=False,
+                      help="only rows whose column holds only_text fold; the rest are left as they are"),
+                   _p("only_text", required=False, help="the text only_column holds (any case)"),
                    _pace_param()],
         "count": _count_fold_duplicate_rows,
         "run": _run_fold_duplicate_rows,
         "judge": _judge_fold_duplicate_rows,
         "cli": ("server/scripts/chain_replay_cli.py fold-rows <table> --keys <a,b> --order <column> "
-                "[--keep min|max] [--prefer-column <column> --prefer-text <text>] [--pace slow] --apply"),
+                "[--keep min|max] [--prefer-column <column> --prefer-text <text>] [--mark-column <column>] "
+                "[--only-column <column> --only-text <text>] [--pace slow] --apply"),
         # 총괄 d72dc0283: through crud.delete_rows_batch, the grid's delete - each row's layers
-        # and history line go with it and the chain takes back what it fed.
-        "deletes": "table rows (all but one per key), with their cell layers",
+        # and history line go with it and the chain takes back what it fed. With mark_column
+        # (016a766af) nothing is deleted.
+        "deletes": "table rows (all but one per key), with their cell layers - none with mark_column",
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
@@ -1753,7 +1778,8 @@ OPERATIONS = {
                                "lands between pages and a re-run finds only what is left"),
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
-                            "taken back and the rules that recount run"),
+                            "taken back and the rules that recount run; with a mark column the rules "
+                            "that exclude by it run on the marked rows and take back what they fed"),
     },
     "fold_withdrawal_events": {
         "label": "Fold row-by-row withdrawal events",

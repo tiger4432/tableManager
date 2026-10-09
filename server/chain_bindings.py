@@ -247,10 +247,21 @@ COLUMN_BINDING_KEYS = (
 #: have filled to be handed to the rule at all. Beside `trigger_columns` - both are words about
 #: the trigger rows, and the unified grammar keeps them under `on` (`on.require`).
 REQUIRE_KEY = "require"
+#: 총괄 016a766af (소유자 「접는 거 아예 삭제하지 말고 공식 홀드에만 반영」): trigger-table columns a row must
+#: have EMPTY to be handed to the rule - `require`'s other half, beside it under `on` (`on.exclude`).
+EXCLUDE_KEY = "exclude"
+#: The `exclude` a rule recounting another rule's output reads - stamped at load by the mapper that
+#: pairs the two, not written by hand (총괄 016a766af ㄴ).
+SOURCE_EXCLUDE_KEY = "source_exclude"
+#: The cells that decide whether a trigger row is handed to the rule at all (`rule_run.held_back`).
+ROW_GATE_KEYS = (REQUIRE_KEY, EXCLUDE_KEY)
+#: What a refusal of an unknown gate column says, per cell.
+_GATE_WORDS = {REQUIRE_KEY: ("requires", "no row could ever be handed to it"),
+               EXCLUDE_KEY: ("excludes by", "no row could ever be held back")}
 
 RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
-    "target_field", "trigger_columns", REQUIRE_KEY, "enabled", "is_batch",
+    "target_field", "trigger_columns", REQUIRE_KEY, EXCLUDE_KEY, SOURCE_EXCLUDE_KEY, "enabled", "is_batch",
     "allow_chain_trigger", "allow_map_metadata_upsert",
     # 총괄 fe020274d: write permissions `dt_map_derivation` reads off the rule, not arguments.
     "allow_replace_map", "allow_retraction",
@@ -442,26 +453,29 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
                     "nothing would put the whole table in one group"
                     % (missing, candidate.get("trigger_table"))))
 
-    # 총괄 49052cbdd: `require` names trigger-table columns a row must have filled. A name the
-    # table does not have is never filled, so the rule would never receive a row - refused by
-    # name, the way an unknown `trigger_columns` entry is named.
-    if REQUIRE_KEY in candidate:
-        written = candidate.get(REQUIRE_KEY)
+    # 총괄 49052cbdd: `require` names trigger-table columns a row must have filled - and `exclude`
+    # (016a766af) columns it must have empty. A name the table does not have is never filled, so
+    # `require` would hand over no row and `exclude` would hold none back - refused by name, the
+    # way an unknown `trigger_columns` entry is named.
+    for key in ROW_GATE_KEYS:
+        if key not in candidate:
+            continue
+        written = candidate.get(key)
         names = (written if isinstance(written, list) and written
                  and all(isinstance(n, str) and n.strip() for n in written) else None)
         if names is None:
             issues.append(validation.DeclarationValidationError(
-                "bad_require", path + "." + REQUIRE_KEY,
-                "require must be a list of column names, got %r" % (written,)))
+                "bad_" + key, path + "." + key,
+                "%s must be a list of column names, got %r" % (key, written)))
         else:
             known = declared_columns(str(candidate.get("trigger_table") or ""))
             unknown = sorted(set(names) - known) if known is not None else []
             if unknown:
                 issues.append(validation.DeclarationValidationError(
-                    "unknown_require_column", path + "." + REQUIRE_KEY,
-                    "rule %s requires %s that '%s' does not have; no row could ever be handed "
-                    "to it. Fix the names or remove the cell."
-                    % (candidate.get("name"), unknown, candidate.get("trigger_table"))))
+                    "unknown_%s_column" % key, path + "." + key,
+                    "rule %s %s %s that '%s' does not have; %s. Fix the names or remove the cell."
+                    % (candidate.get("name"), _GATE_WORDS[key][0], unknown,
+                       candidate.get("trigger_table"), _GATE_WORDS[key][1])))
 
     target = str(candidate.get("target_table") or "")
     if target in (derived_tables or ()):
@@ -622,6 +636,7 @@ _SKELETON_HINTS = {
 #: Routing cells whose value is a LIST of names -> (member, item hint). `trigger_columns` is
 #: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below.
 _LIST_CELLS = {"trigger_columns": ("column", "free"), REQUIRE_KEY: ("column", "free"),
+               EXCLUDE_KEY: ("column", "free"), SOURCE_EXCLUDE_KEY: ("column", "free"),
                READS_KEY: ("table", "ref")}
 
 
@@ -805,7 +820,7 @@ def _unified_root():
         #   Marking `on` itself required too made the window say 「on」 where it said 「on.table」.
         _field("on", _record(_field("table", _leaf("trigger_table"), required=True),
                              _field("columns", _node_for("trigger_columns")),
-                             _field(REQUIRE_KEY, _node_for(REQUIRE_KEY)))),
+                             *[_field(key, _node_for(key)) for key in ROW_GATE_KEYS])),
         _field("derive", {"kind": "oneOf", "hint": "choice",
                           "branches": {kind: derive_branches[kind]
                                        for kind in rule_shape.DECLARED_KINDS}},

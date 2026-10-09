@@ -243,10 +243,10 @@ def _missing(spec: dict, left_table: str, left_model, right_model) -> str:
                 right_col, spec.get("right_table"))
         if not hasattr(left_model, into_col):
             return "target column %r does not exist on %r" % (into_col, left_table)
-    for required in _required(spec):
-        if not hasattr(right_model, required):
-            return "require column %r does not exist on %r" % (
-                required, spec.get("right_table"))
+    for word, columns in (("require", _required(spec)), ("exclude", _excluded(spec))):
+        for column in columns:
+            if not hasattr(right_model, column):
+                return "%s column %r does not exist on %r" % (word, column, spec.get("right_table"))
     return ""
 
 
@@ -255,6 +255,13 @@ def _required(spec: dict) -> list:
     import chain_bindings
 
     return [str(column) for column in spec.get(chain_bindings.REQUIRE_KEY) or ()]
+
+
+def _excluded(spec: dict) -> list:
+    """The value-table columns an answer row must have empty (`on.exclude`, 총괄 016a766af)."""
+    import chain_bindings
+
+    return [str(column) for column in spec.get(chain_bindings.EXCLUDE_KEY) or ()]
 
 
 class _Answer:
@@ -316,7 +323,9 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     # 🔴 [총괄 2276e38cf] A value row with an empty `require` column is not an answer, from
     #   whichever side the join woke - the SQL twin of the seat's `crud.is_blank_value`.
     filled = [crud.not_blank_sql_condition(crud.column_text_sql(getattr(right_model, column)))
-              for column in _required(spec)]
+              for column in _required(spec)] + [
+        crud.blank_sql_condition(crud.column_text_sql(getattr(right_model, column)))
+        for column in _excluded(spec)]
     answers = {}
     width = len(right_key)
     for chunk in crud._chunks(sorted(set(left.values())), keyset_scan.DEFAULT_CHUNK_SIZE):

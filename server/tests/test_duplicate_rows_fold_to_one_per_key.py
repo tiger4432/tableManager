@@ -23,8 +23,8 @@ from database import crud, models, schemas                             # noqa: E
 TABLE = "fold_rows_log"
 TABLES = {TABLE: {"business_key": "log_id", "composite_key_source": ["log_id"],
                   "column_types": {"log_id": "string", "wafer": "string", "lot": "string",
-                                   "ts": "string", "v": "number", "job": "string"},
-                  "display_columns": ["log_id", "wafer", "lot", "ts", "v", "job"]}}
+                                   "ts": "string", "v": "number", "job": "string", "mark": "string"},
+                  "display_columns": ["log_id", "wafer", "lot", "ts", "v", "job", "mark"]}}
 
 
 @pytest.fixture(name="db")
@@ -270,3 +270,65 @@ def test_a_preferred_fold_leaves_blank_key_rows_and_says_what_it_kept(db):
     ran = retroactive.OPERATIONS["fold_duplicate_rows"]["run"](db, params, lambda m: None)
     assert (ran["rows_deleted"], ran["keys_preferred"], ran["rows_blank_key"]) == (1, 1, 2)
     assert _left(db) == ["a2", "p1", "p2"]
+
+
+# 총괄 83c05cfbb (소유자 10-09 「수동 중에 좌표 변환 잘못돼서 겹치는 거는 지워져서 원래 다른 진짜 정보가 날아갈까 봐」): only
+# the rows whose column holds the text fold - two events of one chip; a manual row is a different row.
+SCOPE = {"only_column": "job", "only_text": "auto"}
+
+
+def test_only_the_rows_in_scope_fold_and_the_rest_are_left_and_counted(db):
+    _seed(db, [{"log_id": "a1", "wafer": "W1", "ts": "2026-10-01 10:00:00", "job": "auto_1"},
+               {"log_id": "a2", "wafer": "W1", "ts": "2026-10-01 10:05:00", "job": "AUTO_2"},
+               {"log_id": "m1", "wafer": "W1", "ts": "2026-10-01 09:00:00", "job": "manual"},
+               {"log_id": "a3", "wafer": "W2", "ts": "2026-10-01 11:00:00", "job": "auto"},
+               {"log_id": "m2", "wafer": "W2", "ts": "2026-10-01 11:05:00", "job": "manual"}])
+    preview = retroactive.count(db, "fold_duplicate_rows",
+                                {"table": TABLE, "keys": "wafer", "order": "ts", **SCOPE})
+    done = _fold(db, **SCOPE)
+    assert (done["rows_to_delete"], done["keys_folded"], done["rows_out_of_scope"]) == (1, 1, 2)
+    assert _left(db) == ["a1", "a3", "m1", "m2"], "W1's manual row stays; W2 has one row in scope - none folds"
+    assert preview["extra"]["rows_out_of_scope"] == done["rows_out_of_scope"]
+    assert "Only rows whose job holds 'auto' (any case) fold - 2 row(s) outside" in preview["detail"]
+
+
+@pytest.mark.parametrize("half", [{"only_column": "job"}, {"only_text": "auto"}])
+def test_a_scope_written_half_is_refused_by_name(db, half):
+    with pytest.raises(retroactive.RetroactiveRefused, match="only_column and only_text go together"):
+        retroactive.validate("fold_duplicate_rows", {"table": TABLE, "keys": "wafer", "order": "ts", **half})
+
+
+# 총괄 016a766af (소유자 「접는 거 아예 삭제하지 말고」): the rows that fold are marked, never deleted - what the
+# rules that exclude by the mark take back is measured on PostgreSQL
+# (`test_a_folded_row_is_marked_and_what_it_fed_taken_back`).
+def test_a_mark_deletes_nothing_names_the_row_kept_and_a_marked_row_ranks_no_more(db, monkeypatch):
+    monkeypatch.setattr(replay, "load_rules", lambda: [])
+    _seed(db, [{"log_id": "a2", "wafer": "W1", "ts": "2026-10-01 10:05:00"},
+               {"log_id": "a1", "wafer": "W1", "ts": "2026-10-01 10:00:00"},
+               {"log_id": "a3", "wafer": "W1", "ts": "2026-10-01 10:09:00"},
+               {"log_id": "b1", "wafer": "W2", "ts": "2026-10-01 11:00:00"}])
+    done = _fold(db, mark_column="mark")
+    marks = {r.log_id: r.mark for r in db.query(models.DYNAMIC_TABLES[TABLE]).all()}
+    kept = replay.FOLD_MARK % _row_id(db, "a1")
+    assert (done["rows_to_mark"], done["rows_marked"], done["rules_woken"]) == (2, 2, [])
+    assert (_left(db), marks) == (["a1", "a2", "a3", "b1"], {"a1": None, "a2": kept, "a3": kept, "b1": None})
+    again = _fold(db, mark_column="mark")
+    assert (again["rows_to_mark"], again["rows_already_marked"]) == (0, 2)
+
+
+def test_a_mark_with_no_recount_paired_says_the_holds_stay(db, monkeypatch):
+    copy = {"name": "fr_copy", "trigger_table": TABLE, "target_table": "elsewhere", "exclude": ["mark"]}
+    monkeypatch.setattr(replay, "load_rules", lambda: [copy])
+    _seed(db, [{"log_id": "a1", "wafer": "W1", "ts": "2026-10-01 10:00:00"},
+               {"log_id": "a2", "wafer": "W1", "ts": "2026-10-01 10:05:00"}])
+    said = retroactive.count(db, "fold_duplicate_rows",
+                             {"table": TABLE, "keys": "wafer", "order": "ts", "mark_column": "mark"})
+    assert (said["extra"]["rules_woken"], said["extra"]["rules_recounting"]) == (["fr_copy"], [])
+    assert "the rules that exclude by mark (fr_copy) run on them and take back what they fed; no recount rule " \
+           "paired - holds stay as they are." in said["detail"], said["detail"]
+
+
+def test_a_mark_column_that_is_not_text_is_refused(db):
+    with pytest.raises(retroactive.RetroactiveRefused, match="mark_column 'v' is a number column"):
+        retroactive.validate("fold_duplicate_rows", {"table": TABLE, "keys": "wafer", "order": "ts",
+                                                     "mark_column": "v"})
