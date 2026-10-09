@@ -77992,3 +77992,39 @@ run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) —
         지시 3c26854c3 2026-09-27(구현 a696ee4e8 지시 뒤) 부터 ALTER 마다 DDL_LOCK_TIMEOUT(20 s). RUN.md 옛 줄(「시한 없음 — 소유자 물음」)을 읽고 코드를 안 봤습니다. 그 줄도 고침
 다음    6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
 ```
+
+---
+
+## [10-10 새벽] 7a 복사 규칙의 보류 세기 — VALUES 조인 + DB 칸 형 CAST — 착지 5777da3c4 (총괄 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 스크래치 assy_impl_cast_1010(판마다 만들고 지움: dropped schema assy_impl_cast_1010 (21 tables) - left 0) · public public relations 325 -> 325 · added [] · gone [] · rows changed {}(행 수만 셈)
+
+```
+지은 것  hold_copy._claims — 물은 키를 VALUES 로 조인(`=`, NULL 칸 키는 NULL-safe 둘째 질의)
+        PG 는 값마다 원천 칸의 «DB 실제 형»으로 CAST(_key_types, pg_attribute) · SQLite 는 칸 친화라 CAST 없음
+        답은 VALUES 행에 실은 순번으로 «물은 키»에 — 🔴 지시 밖 하나: 아래 «HEAD 코드» 줄이 그 까닭(조용히 틀리던 길)
+게이트   되돌렸던 키 모양 시험을 되살리고 형이 다른 표 하나(text 칸에 7 · integer 칸에 '1' · double 칸에 2 · NULL 칸) — SQLite · PG
+```
+
+진짜 따로 띄운 체인 워커 + 슬롯, 같은 판 셋 — 원천 hc_log.dt_x integer(DB) · 공식 hc_official.dt_x text · 키가 글자로 들어온 2,000 행(파일 인입 모양), 규칙 복사 + 다시 세기
+
+| 코드 | 보류 agreed | 보류 빈칸 | 실패 사건 | 오류 |
+|---|---|---|---|---|
+| CAST 없는 VALUES(되돌렸던 모양) | 2000 | 0 | 2 | 연산자 없음: integer = text |
+| HEAD 코드(옛 row IN) | 0 | 2000 | 0 | - |
+| 이 착지 | 2000 | 0 | 0 | - |
+
+```
+뜻      CAST 없는 VALUES 는 박스의 그 오류를 그대로 재현. HEAD 의 옛 row IN 은 오류가 없어 «보이지 않게» 보류를 전부 빈칸으로 덮었음
+        (DB 가 돌려준 키 3 과 물은 '3' 이 달라 찾기가 빗나감) — 운영에서 키 칸 형이 다른 공식 표가 있으면 지금도 그럴 수 있음
+변이(PG 칸, md5 전후 같음, 빨강 = 실패한 시험)
+  baseline | 1 passed, 1 deselected, 6 warnings in 2.27s
+  M1 no CAST in PostgreSQL | md5 restored True | 1 failed, 1 deselected, 6 warnings in 3.13s
+      FAILED test_the_claims_on_postgresql_are_what_the_rows_say
+  M2 the NULL keys compared with = | md5 restored True | 1 failed, 1 deselected, 6 warnings in 2.98s
+      FAILED test_the_claims_on_postgresql_are_what_the_rows_say
+  M3 the VALUES columns one off | md5 restored True | 1 failed, 1 deselected, 6 warnings in 2.93s
+      FAILED test_the_claims_on_postgresql_are_what_the_rows_say
+돌린 시험 복사 매퍼를 쓰는 파일 5 개 — 비-PG 24 passed, 34 deselected, 10 warnings in 2.62s · PG 34 passed, 11 deselected, 68 warnings in 242.96s (0:04:02)
+다음     7b 원장 해시 인덱스
+```
