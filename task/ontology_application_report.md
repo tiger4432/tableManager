@@ -37267,3 +37267,14 @@ A 에 계속 자라는 파일                      남은 것 []                
         클라 table_config_panel_harness — 전 · 뒤 같은 초록
         처음엔 글 칸을 TEXT 로 적었다가 그 하니스 E2 가 빨강(편집기가 받는 낱말은 string · number · datetime 셋) — string 으로
 ```
+
+---
+
+## [C 응용] 10-09 cc4f567a1(체인 고리 줄은 배정자가 선언 내용마다 한 번) QA — 결함 없음 (잼)
+
+```
+잰 것   손댄 시험 다섯 파일 — 사설 워크트리 · sqlite   42 passed
+        같은 선언을 다시 읽어도 말하게 한 변이           test_the_dispatcher_says_a_loop_once_and_a_slot_or_a_respawn_says_nothing 하나만 빨강
+문서    operator_line 을 부르는 자리 — 부모 파일 6 · 자리 11 -> 지금 파일 5 · 자리 10 (rule_order 가 나감)
+        CODE_MAP 「누가 부르나」 행에 그 수 · PRIMITIVES 다섯째 자리 항목에 ⚰️ 한 줄
+```
