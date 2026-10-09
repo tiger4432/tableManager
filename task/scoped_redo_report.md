@@ -77305,3 +77305,82 @@ MD5 AFTER same
 ### 다음
 
 Re-read 관문 놓기(45efe02d9 · 7f8a6b241 · marked_rows 문장) + SLOT_POOL 재기 -> 접기 표시(016a766af · 83c05cfbb) -> 껍데기 행(5eee501eb) -> 층 이름 고정 -> VALUES CAST -> 원장 해시 인덱스
+
+---
+
+## [10-09 밤] 다시 읽기 = 실패 재시도 문 넓힘 · 소급 «Re-read files» 은퇴 — `04b40d64b` (총괄 a4d135a06)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 SQLite 메모리 · 따로 띄운 프로세스 증명은 스크래치 폴더의 SQLite 파일 DB(PG 안 씀) · 지운 것 0 · 라이브 프로세스 0 건드림(제가 띄운 run_watcher 와 수신기 둘만 멈춤)
+
+### 도착지
+
+```
+「Retry 에 Include files that went in 을 켜면 성공한 파일까지 워처가 지금 파서로 다시 읽는다 — 누르면 바로 N files handed to the watcher」
+서버 반쪽은 닿았습니다. 화면 토글은 클라 레인 몫이고, 그 전에는 RUN.md 의 curl 한 줄로 됩니다
+```
+
+### 따로 띄운 프로세스로 돌린 한 줄 (총괄 요청)
+
+```
+자리     스크래치 데이터 루트 · SQLite 파일 DB · 토스트 받는 곳 127.0.0.1:18799 기록기(라이브 8080 아님)
+         진짜 run_watcher.py 프로세스 하나 + 라우트 몸통을 부른 다른 프로세스 하나
+라우트 답 count 1 · by_state {'SUCCESS': 1} · missing 0 · «1 file(s) handed to the watcher»
+표시 뒤   [(1, 'parts.csv', 'PENDING_RETRY')]
+워처 로그
+   [Watcher] [2026-10-09 20:15:50,645] INFO - File processed: parts.csv (SUCCESS) for rr_parts.
+   [Watcher] [2026-10-09 20:16:10,294] INFO - Detected PENDING_RETRY log ID #1 (parts.csv). Processing...
+   [Watcher] [2026-10-09 20:16:10,357] INFO - File processed: parts.csv (SUCCESS) for rr_parts.
+   [Watcher] [2026-10-09 20:16:10,366] INFO - Retry succeeded for log ID #1.
+토스트    file-processed 2 번 — parts.csv SUCCESS, parts.csv SUCCESS (처음 인입 · 다시 읽기)
+```
+⚠️ 다시 읽기의 토스트는 SUCCESS 인데 error_msg 칸에 «[resume-abort] 체크포인트를 사용할 수 없어 처음부터 재처리 — 사유: 사용자 명시 재처리(for…» 문장이 같이 실립니다(재처리 강제 안내, 지금 동작 · 안 고침). 클라가 그 칸을 오류로 그리면 오해할 수 있어 클라 레인에 알릴지 여쭙니다.
+
+### 게이트 · 변이 · 실행
+
+```
+게이트  ① 들어간 파일 셋 + statuses=SUCCESS -> 셋 표시 · 미리보기 수와 같음   ② statuses 없음 -> 실패 파일만(오늘 답)
+        ③ 소급 관문이 닫혀 있어도(도는 replay 행 + 살아 있는 runner) 바로 표시   ④ 진짜 retry_one 이 읽고 토스트 콜백 한 번
+        그 밖  아카이브 다시 읽기(그 뒤 선언한 칸) · 외부 파일 새 옵션 · 폴더 경계 · 두 번 읽은 파일 하나 · 사라진 파일 안 넘김 · since · 상태 아닌 낱말 400
+지시의 ③(토스트)은 이미 됩니다 — 재시도 길이 워처 핸들러의 on_file_processed_callback(보통 인제션과 같은 것)을 부릅니다. 고칠 것 없이 게이트 ④로 고정했습니다
+```
+변이 (md5 전후 비교)
+```
+BASELINE 9 passed
+MUTANT ④ the file-processed callback not called   1 failed, 8 deselected
+    FAILED test_the_watcher_reads_it_and_says_so_once_as_any_file_it_reads
+MUTANT ① statuses not read                        1 failed, 8 deselected
+    FAILED test_files_that_went_in_are_marked_in_the_request_as_many_as_the_preview_said
+MUTANT a file read twice goes twice               1 failed, 8 deselected
+    FAILED test_a_file_read_twice_goes_once_and_a_gone_file_is_not_handed
+MUTANT ③ the operations gate holds it             1 failed, 8 deselected
+    FAILED test_a_closed_operations_gate_does_not_hold_it
+MD5 AFTER  same
+```
+실행
+```
+라우트 · 등록부 · 재시도 길을 지나는 SQLite 파일 전부   298 passed, 6 deselected
+빈 데이터 루트(박스의 gitignore 설정 없이)            42 passed
+   -> 총괄 QA 의 «라이브 설정 의존»: 외부 void 파일의 키가 inspection_run 선언에서 나오는데 시험이 그 표를 선언 안 했습니다.
+      공유 고정 장치가 샘플의 inspection_run 을 같이 선언합니다
+```
+
+### 은퇴한 것
+
+```
+소급 reread_files · 쪽 기다림 · 소급 관문 · 워처 확인 · 되돌리기(still_in_hand · restore_unread · watcher_running)
+옛 실행 기록은 목록에 «reread_files (retired)» — 등록부에 없는 연산의 실행은 그렇게 읽힙니다
+RUN.md 의 옛 Re-read 절은 빠지고 새 절이 들어갔습니다
+```
+
+### 여쭐 것 하나 — 응용 레인 발견 아래에 남는 결함 (짓지 않았습니다)
+
+```
+run_claimed 이 실행 «전» 판정(연산 찾기 · 표 모델 · validate)에서 RetroactiveRefused 만 잡습니다
+그래서 판정이 다른 예외(응용이 잰 ImportError 같은 것)를 내면 행이 running 으로 남습니다
+이번에 은퇴한 연산의 증상이었지만, 다른 연산의 판정도 같은 자리를 지납니다. 고칠지 여쭙니다
+관문이 언제 풀리는지(그 행의 runner 판정)는 안 쟀습니다
+```
+
+### 다음
+
+접기 표시(016a766af · 83c05cfbb) — 맵퍼 등록에 쓰는 칸 · 원천 도장 사실, copy_rows_with_hold 의 칸 목록, «기동 뒤 첫 묶음» 칸 포함. 지금 시작합니다

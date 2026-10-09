@@ -333,8 +333,6 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     # Its deletions reach the ledger follow-up, which takes back what each row fed and wakes the
     # recount (총괄 d72dc0283) - `test_folded_duplicates_let_the_official_table_recount` measures it.
     assert notes.pop("fold_duplicate_rows").startswith("Each deleted row reaches the chain as a deletion")
-    # A re-read file goes in through the watcher's upsert, a file write like any other (총괄 976defaac).
-    assert notes.pop("reread_files").startswith("Each file goes in again as an upsert")
     # Its collapsed events run as the row-by-row ones would have, every rule (총괄 eddf9e38e ②).
     assert notes.pop("fold_withdrawal_events").startswith("The chain runs the collapsed events")
     assert notes and set(notes.values()) == {retroactive.DOWNSTREAM_NOTE}

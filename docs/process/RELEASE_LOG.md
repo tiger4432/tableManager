@@ -28,6 +28,15 @@
 - **바뀐 동작** — `npm run build` 의 사전 검사(클립보드 규약)가 다시 초록입니다 — 남은 빚 목록이 비었습니다(admin.js 는 ec00cb905 에서 이미 옮겼습니다).
 - **자세히** — 이 항목과 같은 커밋.
 
+## 2026-10-09 · 파일 다시 읽기는 실패 재시도 문에서 — 소급 «Re-read files» 은퇴
+
+- **무엇** — 총괄 a4d135a06 (소유자 10-09 「파일 다시 읽기는 그냥 안 돎」 · 「다시 읽기는 뭐가 어려운지 모르겠네」 · 「알아서 해」). 이미 들어간 파일을 지금 파서로 다시 읽는 일을 운영에서 이미 도는 실패 재시도 문(POST `/admin/file-ingestion/retry-failed`)이 합니다. `statuses` · `since` · `until` 을 받고, 요청 안에서 바로 PENDING_RETRY 로 표시합니다. 워처가 그 파일을 있던 자리에서 읽고, 보통 인제션과 같은 토스트를 냅니다. 소급 «Re-read files» 는 은퇴했습니다.
+- **선언 예시** — 선언은 없습니다. `statuses=SUCCESS,FAILED,SKIPPED` · `folder=<폴더>` · `preview=true`.
+- **화면에서** — 소급 탭에서 «Re-read files» 가 빠집니다(옛 실행 기록은 «reread_files (retired)»). 파일 인입 화면 Retry 판의 «Include files that went in» 토글은 클라 레인이 붙입니다.
+- **필요한 조건** — 서버 재기동. 이주 없음.
+- **바뀐 동작** — 다시 읽기가 소급 관문을 잡지 않아, replay 와 서로 기다리지 않습니다. statuses 를 안 적은 재시도는 오늘과 같습니다(FAILED 만). DECOUPLED 표시 답의 문장이 «N file(s) handed to the watcher» 로 바뀌었고, 답에 상태별 · 사라진 파일 수가 붙습니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · INGESTION_GUIDE §1.12-ter.
+
 ## 2026-10-09 · 회수가 드러낸 값을 접힌 사건으로 내고, 쌓인 회수 사건을 한 번에 접는다
 
 - **무엇** — 총괄 eddf9e38e (소유자 10-09 「느려짐 원인이 회수인 것 같다」 · 「2 분 안에 끝나는 체인 없음」). 행이 지워지거나 고쳐져 그 행이 채운 칸을 거둘 때(회수), 드러난 값을 바꾸며 행마다 사건을 하나씩 냈습니다. 이제 표마다 1,000 행에 접힌 사건 하나를 냅니다. 이미 쌓인 회수의 행마다 사건은 소급 «Fold row-by-row withdrawal events»(명령줄 `fold-withdraw-events`)가 표마다 접힌 사건으로 바꿉니다.

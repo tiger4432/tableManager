@@ -24,7 +24,12 @@ from tests.test_external_source_watcher import VOID_INFO, _write_voids
 
 PARTS = {"business_key": "part_no", "column_types": {
     "part_no": "string", "category": "string", "stock_qty": "number"}}
-TABLES = {"void_obs": VOID_INFO, "rt_parts": PARTS}
+#: The table a void's key is composed by (`void_sat_format.compose_run_uid`), from the shipped sample -
+#: without it a void row went in only on a box whose gitignored table_config declares it (총괄 10-09 QA).
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "sample",
+                       "table_config.json.sample"), encoding="utf-8") as _sample:
+    RUN = json.load(_sample)["inspection_run"]
+TABLES = {"void_obs": VOID_INFO, "rt_parts": PARTS, "inspection_run": RUN}
 NO_UNIT = {"voids": [{"base_x": 3, "base_y": 4, "gate": 2, "inchip_x": 10.5,
                       "inchip_y": 20.25, "radius_x": 1.5, "radius_y": 2.5}]}
 

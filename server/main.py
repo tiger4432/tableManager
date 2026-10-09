@@ -6997,40 +6997,55 @@ def cancel_retroactive_run(run_id: str, request: Request, db: Session = Depends(
 
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
-                                      preview: bool = False, db: Session = Depends(get_db)):
+                                      preview: bool = False, statuses: str = None,
+                                      since: str = None, until: str = None,
+                                      db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다.
 
-    `folder` 면 그 폴더 «아래» FAILED 전부 · `preview` 면 쓰지 않고 몇 개인지와 바로 아래 폴더별 수만."""
+    `folder` 면 그 폴더 «아래» FAILED 전부 · `preview` 면 쓰지 않고 몇 개인지와 바로 아래 폴더별 수만.
+    `statuses`(쉼표, 없으면 FAILED) · `since`/`until`(인입 시각)이면 들어간 파일도 — 지금 파서로 다시 읽기
+    (총괄 a4d135a06: 은퇴한 소급 «Re-read files» 의 일이 이 문이다)."""
     import os
     import asyncio
     import json
 
     from ingestion import reread
 
+    try:
+        states, (start, end) = reread.states_of(statuses), reread.times_of(since, until)
+    except ValueError as refused:
+        raise HTTPException(status_code=400, detail=str(refused))
     # 🔴 [총괄 fab40ed69 ②, 소유자 「폴더 아래 선택해서 한꺼번에」] ONE SELECTION FOR THE PREVIEW AND
-    #    THE RETRY, so the number the screen shows is the number that runs - and the one the
-    #    retroactive «Re-read files» makes too (총괄 976defaac).
+    #    THE RETRY, so the number the screen shows is the number that runs.
     by_folder_asked = log_id is None and not crud.is_blank_value(folder)
-    picked = reread.select_logs(db, ("FAILED",), folder=folder if by_folder_asked else None,
-                                log_id=log_id)
+    picked = reread.select_logs(db, states, folder=folder if by_folder_asked else None,
+                                since=start, until=end, log_id=log_id)
+    missing = []
+    if states != reread.RETRY_STATUSES:
+        # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
+        # Failed files keep today's answer.
+        picked, missing = reread.split_missing(reread.one_per_file(picked))
     failed_logs = [log for log, _rel in picked]
+    by_state = {}
+    for log in failed_logs:
+        by_state[log.status] = by_state.get(log.status, 0) + 1
+    said = {"folder": folder, "count": len(failed_logs), "by_state": dict(sorted(by_state.items())),
+            "by_folder": reread.by_top_folder(picked) if by_folder_asked else {},
+            "missing": len(missing), "missing_files": [log.filename for log, _rel in missing[:5]]}
+    what = "failed file" if states == reread.RETRY_STATUSES else "file"
     if preview or (by_folder_asked and not picked):      # a preview never writes
         where = f" under {folder}" if by_folder_asked else ""
-        return {"status": "preview" if preview else "success", "folder": folder,
-                "count": len(failed_logs),
-                "by_folder": reread.by_top_folder(picked) if by_folder_asked else {},
-                "message": (f"{len(failed_logs)} failed file(s){where}" if failed_logs
-                            else f"No failed file{where}")}
+        return {"status": "preview" if preview else "success", **said,
+                "message": (f"{len(failed_logs)} {what}(s){where}" if failed_logs
+                            else f"No {what}{where}")}
     if not failed_logs:
-        return {"status": "success", "message": "No failed file ingestion logs found."}
+        return {"status": "success", **said, "message": f"No {what} ingestion logs found."}
 
     # 만약 프로세스 분리(DECOUPLED) 모드라면 상태만 PENDING_RETRY로 변경하고 즉시 반환합니다.
     if os.getenv("DECOUPLED") == "True":
         reread.mark_for_reread(db, failed_logs)
-        return {
-            "status": "success",
-            "message": f"Decoupled mode: Marked {len(failed_logs)} logs as PENDING_RETRY. Standalone watcher will process them."
-        }
+        return {"status": "success", **said,
+                "message": f"{len(failed_logs)} file(s) handed to the watcher"}
         
     from directory_watcher import IngestionHandler
     success_count = 0

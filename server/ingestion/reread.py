@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Pick ingestion log rows and hand them to the watcher to read again - the one selection the
-retry-failed route and the retroactive «Re-read files» share (총괄 fab40ed69 ② · 976defaac).
+"""Pick ingestion log rows and hand them to the watcher to read again - the selection of the one
+door that does it, POST /admin/file-ingestion/retry-failed (총괄 fab40ed69 ② · a4d135a06): failed
+files, or with `statuses` files that went in - a re-read with today's parser.
 
 The reading is always the watcher's: a row marked PENDING_RETRY is claimed by `run_watcher`'s
 poller and read by `retry_one` on the table's own handler - from where the file lies (its
 archive, or the external path it was read from), with the parser as it is now, dedup skipped.
+⚰️ The retroactive «Re-read files» (976defaac) is retired: it put a run, the operations gate and a
+wait page by page on top of this mark, and did not run in production (총괄 a4d135a06).
 """
 from __future__ import annotations
 
@@ -12,13 +15,44 @@ import os
 
 #: The state that puts a row in the watcher's hands.
 REREAD_STATUS = "PENDING_RETRY"
-#: A row the watcher has not finished: still waiting, or claimed and being read.
-IN_HAND = ("PENDING_RETRY", "PENDING")
-#: What a re-read takes when no state is named: a file whose reading ended. PENDING and
-#: PENDING_RETRY are in the watcher's hands already.
-DEFAULT_REREAD_STATUSES = ("SUCCESS", "FAILED", "SKIPPED")
+#: What the retry door takes when no state is named - today's answer, failed files.
+RETRY_STATUSES = ("FAILED",)
 #: Rows one mark commits.
 MARK_PAGE = 1000
+
+
+def states_of(text):
+    """The `statuses` a request names (comma-separated) - `RETRY_STATUSES` when it names none; a
+    word that is no ingestion state is refused by name (ValueError)."""
+    from database import crud
+    from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
+
+    states = tuple(dict.fromkeys(s.strip() for s in str(text or "").split(",") if not crud.is_blank_value(s)))
+    unknown = [s for s in states if s not in FILE_INGESTION_STATUS_VOCABULARY]
+    if unknown:
+        raise ValueError(f"statuses {unknown} are not ingestion states - "
+                         f"{', '.join(FILE_INGESTION_STATUS_VOCABULARY)}")
+    return states or RETRY_STATUSES
+
+
+def times_of(since, until):
+    """`since` · `until` (ingested at or after · before) as datetimes, None when blank; a value
+    that is no date or time is refused by name (ValueError)."""
+    from datetime import datetime
+
+    from database import crud
+
+    out = []
+    for name, value in (("since", since), ("until", until)):
+        if crud.is_blank_value(value):
+            out.append(None)
+            continue
+        try:
+            out.append(datetime.fromisoformat(str(value).strip()))
+        except ValueError:
+            raise ValueError(f"{name} is not a date or a time: {value!r} - write YYYY-MM-DD "
+                             f"or YYYY-MM-DD HH:MM") from None
+    return tuple(out)
 
 
 def select_logs(db, statuses, table=None, folder=None, since=None, until=None, log_id=None):
@@ -83,38 +117,3 @@ def mark_for_reread(db, logs, page=MARK_PAGE):
             log.status = REREAD_STATUS
         db.commit()
     return marked
-
-
-def still_in_hand(db, ids):
-    """How many of `ids` the watcher has not finished."""
-    from database import models
-
-    model = models.FileIngestionLog
-    return sum(db.query(model).filter(model.id.in_(ids[start:start + MARK_PAGE]),
-                                      model.status.in_(IN_HAND)).count()
-               for start in range(0, len(ids), MARK_PAGE))
-
-
-def restore_unread(db, marked):
-    """Give each row of `marked` the watcher has not claimed yet (still PENDING_RETRY) its state
-    back. A row being read (PENDING) is left to finish. -> how many were restored."""
-    from database import models
-
-    model = models.FileIngestionLog
-    restored = 0
-    for start in range(0, len(marked), MARK_PAGE):
-        chunk = dict(marked[start:start + MARK_PAGE])
-        for log in db.query(model).filter(model.id.in_(list(chunk)), model.status == REREAD_STATUS):
-            log.status = chunk[log.id]
-            restored += 1
-        db.commit()
-    return restored
-
-
-def watcher_running():
-    """Whether the watcher's heartbeat is fresh - the poller that reads marked rows beats it."""
-    from directory_watcher import HEARTBEAT_NAME
-    from utils import heartbeat
-
-    beat = heartbeat.read_all().get(HEARTBEAT_NAME)
-    return bool(beat) and not beat.get("stale")

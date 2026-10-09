@@ -136,7 +136,6 @@ NAME_OPS = {
     "fold_written_notation": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "fold_duplicate_rows": ({"table": "no_such_table", "keys": "part_no", "order": "note"},
                             {"table": "retro_test_target", "keys": "part_no", "order": "note"}),
-    "reread_files": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "withdraw": ({"table": "no_such_table", "source": "retro_src"},
                  {"table": "retro_test_target", "source": "retro_src"}),
     "ledger_backfill": ({"source": "no_such_source"}, {"source": "dt_job"}),
@@ -284,10 +283,7 @@ def test_a_known_collector_is_still_queued(retro_env, planted_collector):
 
 
 @pytest.mark.parametrize("op", sorted(NAME_OPS))
-def test_a_known_table_or_source_is_still_queued(retro_env, shipped_ledger, op, monkeypatch):
-    from ingestion import reread
-    # `reread_files` is refused while no watcher reads - its own file measures that (총괄 10-09)
-    monkeypatch.setattr(reread, "watcher_running", lambda: True)
+def test_a_known_table_or_source_is_still_queued(retro_env, shipped_ledger, op):
     out = retroactive.publish(retro_env, op, dict(NAME_OPS[op][1]))
 
     assert out["status"] == "queued"
