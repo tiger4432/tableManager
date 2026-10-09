@@ -36,7 +36,11 @@
 > 실행       python server/scripts/chain_replay_cli.py fold-rows <로그 표> --keys dt_wafer_id --order <시간 칸> --pace slow --apply
 >            (가장 늦은 것을 남기려면 --keep max · 소급 탭 «Fold duplicate rows» 도 같은 연산)
 > 답의 뜻    미리보기: 「K key(s) of (dt_wafer_id) … M row(s) go, R stay … For example dt_wafer_id=…: keeps <시간>, deletes <시간>」 — keeps 가 진짜인지 본다. 아무것도 안 씀
->            실행: 「fold-rows '<표>': M of M row(s) deleted in P page(s), K key(s)」 — 그리드 삭제 문으로 지움(층 · 이력 같이, 원자 · 먹인 층은 원장 따라가기가 거둠). STOPPED 면 다시 돌리면 남은 것만
+>            실행: 「fold-rows '<표>': M of M row(s) deleted in P page(s), K key(s), B row(s) with a blank key part left as they are」 — 그리드 삭제 문으로 지움(층 · 이력 같이, 원자 · 먹인 층은 원장 따라가기가 거둠). STOPPED 면 다시 돌리면 남은 것만
+> 빈 키      키 칸 하나라도 빈('' 또는 NULL) 행은 접지 않고 그대로 둔다(총괄 9c8b9f919) — 미리보기 「B row(s) with a blank key part are left as they are.」 의 B 가 그 수
+> 먼저 남길 행  python server/scripts/chain_replay_cli.py fold-rows <로그 표> --keys dt_wafer_id,dtx,dty --order <시간 칸> --prefer-column job --prefer-text auto
+>            같은 키에서 job 에 auto 가 든 행(AUTO · Auto 도)을 먼저 남기고, 그 안에서 가장 이른 시간(총괄 1d2a7e0fd). 둘 중 하나만 적으면 거절
+>            미리보기 「a row whose job holds 'auto' (any case) stays first - P key(s) keep one」 + 표본에 「keeps <시간> (job=…), deletes <시간> (job=…)」
 > ```
 
 ---
