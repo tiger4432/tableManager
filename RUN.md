@@ -79,6 +79,9 @@
 >    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30
 >    ③  세상 칩 default + «모델 세상 1» -> 같은 폼 · 같은 시작으로 다시 걷는다 · 6 걸음 · 노드 80                       0.996 s
 >    ④  Compare · ROWS quantity · EDGE measures · VALUE value -> 행 48 · 두 쪽 값 3 · 불량 쪽만 22 · 둘 다 missing 18      1.061 · 1.888 · 1.394 s
+>       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 «둘 다 missing» 이 된다
+>         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
+>         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
 > 걸린 것     모델 계측군 17 개는 박스 데이터로는 두 base 모두 missing — 박스 measures 는 공정 변수만 잰다(운영 판 못 봤다)
 > ```
 >
