@@ -76796,3 +76796,58 @@ MUTANT the text is matched in its own case (PG) 1 failed, 2 passed
 - 클라 레인: client2/tests/fixtures/screens_answers.json 에 rule_rows 의 옛 what_is_missing 문장이 남아 있다(캡처 픽스처).
 
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · PG 는 격리 시험 DB(run_pg_files 가 고르는 assy_test) · 지운 것 0(시험이 스스로 치움).
+
+## [10-09] LLM 선언 파일 · 요청 로그 착지 6f0dc0498 (총괄 043915ab0 ① · 소유자 「환경설정으로 하지 말고 선언 파일로」 · 「요청 주소 및 페이로드 전부 로그」)
+
+**도착지와 대조**
+```
+LLM 설정은 server/config/llm_config.json 하나 · 부를 때마다 읽음 · proxy 없음 = 시스템 프록시 안 읽고 바로   -> 섰다
+ASSY_LLM_* 은퇴 · 파일 없이 남아 있으면 옮기라는 거절 문장                                         -> 섰다
+부를 때마다 llm_requests.log 두 줄(보냄 · 받음) · 키는 어디에도 없음                                 -> 섰다
+```
+**자리**: 설정 읽기 `settings()` 하나 · 클라이언트 짓기 `_client(cells)` 하나 · 로그 쓰기 `_log` 하나(키 가리기는 줄 전체에) · 로그 자리는 다른 프로세스 로그와 같은 `paths.log_path`(돌려 쓰기 없음 — 그 함수에 없음).
+**거절**: 파일 없음(환경변수가 남았으면 그 문장) · 필수 칸 빔 · 칸 모양이 틀림(headers · timeout_s · proxy — 한 문장 꼴 «<칸> in config/llm_config.json is not …»). 지시의 «셋»에 timeout_s · proxy 모양을 같은 꼴로 얹었습니다 — 거절하지 않으면 timeout_s 는 부를 때 엉뚱한 예외, proxy 는 잡히지 않는 TypeError 가 됩니다.
+
+**게이트**
+```
+시험  28 passed   (test_a_text_is_read_by_a_language_model.py — 가짜 openai 모듈로 «칸이 닿는 것»만. 실제 송신은 운영)
+변이  7/7 빨강 · md5 same
+MUTANT the file is read once and kept                 9 failed, 19 passed
+    FAILED test_a_changed_file_reaches_the_next_call
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[None-env0-no
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[None-env1-ASSY_LLM_*
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells2-env2-does
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells3-env3-timeout_s
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells4-env4-headers
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[cells5-env5-proxy
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None]
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+MUTANT the log line is not masked                     1 failed, 27 passed
+    FAILED test_the_key_reaches_no_refusal_and_no_log
+MUTANT httpx reads the system proxy                   2 failed, 26 passed
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None]
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+MUTANT the file's proxy is not passed                 1 failed, 27 passed
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+MUTANT no line before the call                        4 failed, 24 passed
+    FAILED test_a_call_writes_what_it_sent_and_what_came_back
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None]
+    FAILED test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+    FAILED test_the_key_reaches_no_refusal_and_no_log
+MUTANT the retired values are not named               1 failed, 27 passed
+    FAILED test_no_file_a_retired_environment_value_or_a_bad_cell_is_refused_by_name[None-env1-ASSY_LLM_*
+MUTANT a log that cannot be written stops the call    1 failed, 27 passed
+    FAILED test_a_log_that_cannot_be_written_does_not_stop_the_call
+예시  릴리스 항목의 선언 예시를 제품 로더(settings)로 읽음:
+  example -> {'base_url': 'http://<서버>/v1', 'model': '<모델>', 'api_key': '***', 'timeout_s': 60.0, 'headers': {}, 'proxy': None}
+  sample -> refused: config/llm_config.json does not set base_url, model, api_key
+```
+**크기(박스)**: 요청 하나 ≈ 3285 바이트(이 박스 · 사전 50 구절 · 글 600 자 · 답 3 링크) -> 글 1 만 개 ≈ 33 MB. 사전 · 글이 길면 그만큼 는다
+
+**운영에서 볼 것**: httpx 가 0.26 보다 낮으면 «httpx <판> cannot take a proxy - 0.26 or later is needed» 거절(이 박스 0.28.1 · openai 없음). 확인 한 줄과 로그 줄 뜻은 RUN.md 맨 위 절.
+
+**남은 것**
+- 두 프로세스(슬롯 둘)가 같은 llm_requests.log 에 동시에 쓸 때 줄이 섞이는지는 안 쟀다 — 줄마다 write 한 번.
+- SDK 의 다시 시도(기본 2 번)는 받은 줄 하나의 ms 안에 든다.
+
+어느 DB · 어느 스키마 · 지운 것: DB 안 씀 · 지운 것 0.
