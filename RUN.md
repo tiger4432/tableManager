@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **LLM 선언 파일 llm_config.json · 요청 로그 llm_requests.log (총괄 043915ab0 ①) — 이주 «없음» · 재기동 «필요 없음»(부를 때마다 파일을 읽는다)**
+>
+> ```
+> 적는 곳        server/config/llm_config.json — 모양은 server/config/sample/llm_config.json.sample
+>               base_url · model · api_key · timeout_s(초, 기본 60) · headers(덧붙일 요청 머리, 기본 없음) · proxy
+> proxy          없거나 null = 시스템 프록시를 안 읽고 base_url 로 바로 간다
+>               프록시를 거쳐야 하면 "proxy": "http://<호스트>:<포트>"
+> 할 일          샘플을 server/config/llm_config.json 으로 복사해 값을 넣는다 — 재기동 없음(부를 때마다 읽음)
+> 확인 한 줄      cd server; python -c "from utils import llm; print(llm.ask_json('Reply with a JSON object with one key ok set to 1'))"
+>                 -> {'ok': 1} 이면 닿았다. LlmRefused 문장이면 그 문장이 칸 이름을 댄다
+> 옮기기          ASSY_LLM_* 환경변수는 은퇴했다 — 값을 파일로 옮긴다. 파일 없이 환경변수만 있으면 부를 때 거절:
+>                 ASSY_LLM_* environment variables are not read any more - write server/config/llm_config.json (sample: config/sample/llm_config.json.sample)
+> 볼 로그         server/llm_requests.log — 부를 때마다 두 줄
+>                 {"sent": <시각>, "id": …, "url": "<base_url>/chat/completions", "model": …, "headers": {… "Authorization": "Bearer ***" …}, "payload": {…}, "proxy": …}
+>                 {"received": <시각>, "id": <같은 id>, "status": 200, "answer": {…}, "ms": …}
+>                 실패면 둘째 줄이 "status": <숫자 또는 null>, "error": "<예외 이름>: <문장>"
+> 뜻             sent 줄 뒤에 timeout_s 만큼 지나 status null 의 error = 그 주소에 못 닿음(프록시 · 방화벽 쪽)
+>               status 숫자 = 상대가 답했다. 401 · 403 은 키 · 권한, 404 는 base_url 경로 · 모델 이름부터 본다
+> 키 확인         Select-String -Path server\llm_requests.log -Pattern '<키 앞 여섯 글자>' | Measure-Object   -> Count 0
+> 크기           요청 하나 ≈ 3285 바이트(이 박스 · 사전 50 구절 · 글 600 자 · 답 3 링크) -> 글 1 만 개 ≈ 33 MB. 사전 · 글이 길면 그만큼 는다
+>               돌려 쓰기 없음 — 커지면 파일을 다른 곳으로 옮긴다(줄마다 열고 닫으므로 다음 부름이 새로 만든다)
+> httpx          0.26 보다 낮으면 부를 때 거절: httpx <지금 판> cannot take a proxy - 0.26 or later is needed: pip install -U httpx
+> 격리 스택       devenv bootstrap 이 이 파일도 복사한다 — 격리 스택도 같은 키로 같은 모델을 부른다
+> 급할 때         파일 이름을 바꾼다 -> 다음 부름부터 거절(그 글의 묶음만 실패, 다른 표는 그대로)
+> ```
 > ## [10-09] **run_in: operation 은퇴 — 규칙은 체인 묶음에서만, 느린 규칙은 rows_per_run: 1 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
@@ -914,8 +939,7 @@
 >
 > ```
 > 설치            LLM 을 쓸 때만: conda env assy_manager 에서 pip install openai
-> 환경변수         ASSY_LLM_BASE_URL · ASSY_LLM_MODEL · ASSY_LLM_API_KEY · ASSY_LLM_TIMEOUT_S(초, 기본 60)
->                서버 트리를 띄우는 셸에 — 띄운 뒤에는 못 준다
+> 환경변수         ⚰️ 10-09 은퇴 — server/config/llm_config.json 하나에 적는다(맨 위 10-09 «LLM 선언 파일» 절)
 > 재기동 뒤        run_in: operation 규칙의 트리거 표에 쓰면 체인 데몬 로그에
 >                [Retroactive] queued run_id=<id> op=rule_rows params={'rule': '<규칙>', ...}
 > 뜻              묶음이 맵퍼 대신 작업을 줄 세우고 다음 묶음으로 갔다. 스케줄러가 작업을 하나씩 돈다

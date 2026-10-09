@@ -86,7 +86,9 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <규�
 ## 6. LLM 으로 뽑기
 
 1. 맵퍼가 `find_links` 대신 `ask_links(글, 부르는 말 행)` 을 부르고, 규칙에 `"rows_per_run": 1` 을 적는다
-2. LLM 은 환경변수 넷으로 고른다 — `ASSY_LLM_BASE_URL` · `ASSY_LLM_MODEL` · `ASSY_LLM_API_KEY` · `ASSY_LLM_TIMEOUT_S`(초, 기본 60). 코드에는 어느 쪽도 없다
+2. LLM 은 선언 파일 하나로 고른다 — `server/config/llm_config.json`(모양: `server/config/sample/llm_config.json.sample`): `base_url` · `model` · `api_key` · `timeout_s`(초, 기본 60) · `headers`(덧붙일 요청 머리) · `proxy`(없거나 null 이면 시스템 프록시를 안 읽고 바로 간다). 부를 때마다 읽으므로 고친 값은 다음 부름부터 쓰인다. 코드에는 어느 값도 없다. ⚰️ 환경변수 `ASSY_LLM_*` 는 은퇴했다 — 파일 없이 환경변수만 있으면 옮기라는 거절 문장이 난다
+3. 부를 때마다 `server/llm_requests.log` 에 JSON 두 줄 — 보낸 것(시각 · id · URL · 모델 · 머리 · 페이로드 · 프록시)과 받은 것(같은 id · 상태 · ms · 답 또는 오류). 키는 `***` 로 가린다
+4. `devenv bootstrap` 이 이 파일도 복사한다 — 격리 스택도 같은 모델을 부른다
 
 ```python
 import pandas as pd
@@ -121,7 +123,7 @@ def text_cause_links_llm(df, db):
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
 - `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다.
 - 운영자 지시는 셋째 인자 — `ask_links(text, names, instruction="<지시>")`. 프롬프트에 들어가는 낱말은 사전 행 · 지시 · 글뿐이다.
-- 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 근거 문장이 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 작업이 실패하고, 작업의 error 에 체인 격리와 같은 기록(`error_log` 모양)이 남는다. 관리 화면에서 다시 돌린다.
+- 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 근거 문장이 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 묶음이 실패하고(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED), 사건의 `error_log` 에 체인 격리 기록이 남는다. 관리 화면에서 실패한 사건을 다시 돌린다.
 - LLM 을 한 번 더 부르는 다른 쓰임새는 `ask_json(프롬프트)` — 답한 JSON 객체를 준다.
 
 ## 7. 원장으로 — 확정한 후보만 `leads_to`
