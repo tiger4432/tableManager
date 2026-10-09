@@ -37585,3 +37585,41 @@ SQL 문                 2817             2821
 둘 다 그 전엔 0 행). 그 6 행만 지웠고 두 표는 다시 0 행입니다. 그 뒤로는 띄우기 전에 제품 표 전부를 스크래치 스키마에 먼저 만들고
 실행 전후 public 전 표의 행 수를 대조합니다 — 위 측정은 그렇게 다시 잰 것입니다
 ```
+
+---
+
+## [C 응용] 10-09 진짜 프로세스로 돌린 두 착지 — 재시도 문 다시 읽기(04b40d64b) 됨 · 회수 묶기(af8ef5701) 됨
+
+```
+모양   운영 런처 run_decoupled_app.py(서버 · run_watcher · 체인 워커와 슬롯 · 스케줄러) · 사설 워크트리 · assy_test 스크래치 스키마
+       띄우기 전 제품 표 전부를 스크래치에 먼저 · 실행 전후 public 전 표 행 수 대조 — 두 실행 다 바뀐 행 0
+```
+
+### 재시도 문 다시 읽기 — c8e5f09c8(04b40d64b · 18c1bd08f 포함)
+
+```
+씨앗   파일 셋 SUCCESS · archives -> 표 설정에 칸 하나(vendor) -> 그 칸이 DB 에 섬
+요청   POST /admin/file-ingestion/retry-failed?statuses=SUCCESS&preview=true  -> 3 file(s)
+       같은 요청에서 preview 빼고                                               -> 3 file(s) handed to the watcher
+① 실행 줄 · 관문   없음(요청이 표시하고 끝) — 소급 문을 안 잡음
+② 기록   첫 관측 ['PENDING', 'PENDING_RETRY', 'PENDING_RETRY'] -> 3 초 안에 셋 다 SUCCESS
+③ run_watcher   「Detected PENDING_RETRY log ID」 3 줄 · 「Retry succeeded」 3 줄
+④ 새 칸   vendor 가 선 행 9 / 9
+⑤ 체인   다시 읽기가 낸 rr_parts 사건 3 개 전부 처리 · 복사 규칙 줄 3
+⑥ 화면   WS 에 파일마다 file_ingestion_completed · SUCCESS — 보통 파일 인입과 같은 토스트 사건 3 개
+판정   운영 모양에서 끝까지 돕니다. 소유자께 pull 을 말해도 되는 줄입니다(토스트 문구 «note» 칸은 이번에 안 봤습니다)
+```
+
+### 회수 묶기 — 같은 씨앗, 같은 삭제, 커밋만 다름
+
+```
+씨앗   hold_world 의 세계(로그 -> 공식 표 복사 + 다시 세기 -> 공식 표를 읽는 원장 소스) · 로그 1000 행을 파일로 -> 원자 1000
+삭제   그리드의 삭제 라우트(POST /tables/hc_log/rows/batch_delete)로 로그 300 행 · 기대 원자 700
+                          ce4730c7d(앞 · af8ef5701^)                    af8ef5701(뒤)
+공식 표 EDIT 행마다         300 개 · 행 300 · 체인 처리 300 · 원장 드레인 197 없음
+공식 표 EDIT 접힌           2 개 · 행 600 · 체인 처리 2 · 원장 드레인 0     3 개 · 행 900 · 체인 처리 3 · 원장 드레인 3
+원자(마지막 관측)           803                                  700
+다 거둔 때                 삭제 602 초 뒤에도 안 끝남 · 기다리는 사건 105      삭제 12 초 뒤 마지막 변화 · 기다리는 사건 0
+홀드                      [('<blank>', 300), ('agreed', 700)]  [('<blank>', 300), ('agreed', 700)]
+판정   회수의 값 바꾸기가 접힌 사건으로 나가 원장이 «행마다 하나씩» 거두던 일이 사라졌습니다. 박스 수입니다
+```
