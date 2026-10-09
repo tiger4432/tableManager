@@ -65651,3 +65651,28 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
        오늘 바뀐 칸(cancelled_columns · broadcast_at · chain_state_of)이 그 라우트의 직렬화를 깼는지 먼저 의심 — 바뀐 날짜와 함께 적기
        진짜 프로세스 줄: 박스와 같은 데이터 모양의 사설 인스턴스에서 Chain 탭이 실패 수를 그림
 ```
+
+> **[총괄 -> 구현자] 10-10 — 순서 5 를 지시서에 적는다(10-09 밤엔 메시지로만 보냄) · 8223b1be0 정정**
+
+```
+껍데기 행 95cffa5af  검증 통과(총괄 사설 워크트리: PG 5 · SQLite 5 초록, 변이 둘 빨강 — 사람 층 검사 지움 PG 2 · deleted_rows 좁히기 지움 SQLite 3)
+outbox/failed 500   코드 결함 아님 — 이 박스 DB 에 add_outbox_ledger_state 가 안 돌았음(fcb092f88). 적용 · 명령표 줄 · 기동 칸 검사 모두 짓지 않음
+5a SLOT_POOL — 재고 나서 고침
+   소유자 10-09 「DB 조회해서 배치로 읽어서 변환 후 쓰는 것들이 느림」, 시점은 슬롯(422d075c7) 이후
+   의심  slots.SLOT_POOL 2+2. 묶음 하나가 동시에 쥐는 연결 = 바깥 db · drain_events 가 SessionLocal 로 여는 세션 ·
+         table_locks 의 AUTOCOMMIT 잠금 연결 · _newest_reload · 맵퍼 · 조인 · 자동확정이 자기 세션/엔진으로 읽는 것
+         합이 4 를 넘으면 다섯째가 pool_timeout(30 s)까지 기다림 -> DB 를 읽는 맵퍼만 느려지는 모양
+   재기  진짜 슬롯 프로세스, 운영 모양 규칙(복사 · 조인 · 읽는 맵퍼) 묶음 하나에서 풀 체크아웃이 기다린 횟수와 초. 2+2 와 5+5 의 묶음 초
+   고침  기다림이 있으면 SLOT_POOL = 묶음이 실제로 쥐는 수 + 여유, 센 수를 상수 옆에. 게이트 «한 묶음 동안 풀 기다림 0»
+         기다림 0 이면 짓지 않고 수만 보고
+   참고  느림의 큰 원인은 dt_log(dt_wafer_id) 인덱스 없음이었다(소유자가 만듦). 이건 «남은 원인이 있나»다
+5b foreign_beat + starting 60 초 — 8223b1be0 의 원인은 총괄이 틀렸다
+   slots.py 가 기동 때 GROUP_BEAT 를 chain-slot-<n> 으로 바꾼다(422d075c7). 슬롯이 chain.json 을 덮는 자리 없음
+   남는 길  재기동 직후 죽은 앞 프로세스의 chain.json 이 남고, 새 워커는 첫 박동 «전에» 기동 보정을 차례로 한다
+            -> 60 초(STARTUP_GRACE_SEC) 안엔 starting, 넘으면 foreign_beat
+   짓기(구현자 안 ㄱ)  기동하자마자 보정들 «앞에서» 첫 박동을 state=starting 으로. note 에 «지금 보정 단계 이름 + 몇 초째»
+            단계별 초는 기동 끝 로그 한 줄로도 — 소유자 물음 「왜 1분이나 걸려」에 화면이 답한다
+   게이트  기동 60 초가 지나도 보정 중이면 starting(단계 이름), foreign_beat 아님 · 진짜 둘째 체인 워커면 foreign_beat
+           변이: 첫 박동을 보정 뒤로 되돌림 -> 첫 칸 빨강
+순서  5b -> 5a -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
+```
