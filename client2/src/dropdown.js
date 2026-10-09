@@ -36,3 +36,34 @@ export function watchForDismiss(doc, host, close) {
     }
   };
 }
+
+/** Gap between a control and its panel, and a panel's least distance from the window's edge - screen px. */
+const GAP = 8;
+const MARGIN = 8;
+
+/**
+ * A panel just under the control that opened it, kept on screen - every panel a header control places from screen px
+ * comes through here (lead 10-09: Replay chain's opened away from its button after the header went to --header-zoom).
+ *
+ * 🔴 The rectangles are px on screen; `top` and `left` are the panel's offset parent's own px. A parent drawn under
+ *    CSS zoom holds 1/scale of its px in one screen px, so every screen distance is divided by that scale; a parent
+ *    at no zoom has scale 1.
+ *
+ * @param panel   positioned absolutely and shown - it needs a size to be measured
+ * @param anchor  the control it hangs under
+ * @param opts    `align`: which edges meet the control's ('right' default, or 'left'); `gap` under it
+ */
+export function placeUnder(panel, anchor, { align = 'right', gap = GAP } = {}) {
+  const doc = panel.ownerDocument;
+  const a = anchor.getBoundingClientRect();
+  const parent = panel.offsetParent || doc.body;
+  const o = parent.getBoundingClientRect();
+  const scale = (parent.offsetWidth ? o.width / parent.offsetWidth : 1) || 1;
+  panel.style.right = 'auto';
+  panel.style.top = `${Math.round((a.bottom - o.top + gap) / scale)}px`;
+  const width = panel.getBoundingClientRect().width;
+  const wanted = align === 'left' ? a.left - o.left : a.right - o.left - width;
+  const least = MARGIN - o.left;
+  const most = (doc.documentElement.clientWidth || 0) - MARGIN - width - o.left;
+  panel.style.left = `${Math.round(Math.max(least, Math.min(wanted, most)) / scale)}px`;
+}

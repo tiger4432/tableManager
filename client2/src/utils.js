@@ -58,6 +58,8 @@ function toastContainer() {
   if (!c) {
     c = document.createElement('div');
     c.id = 'toast-container';
+    c.setAttribute('role', 'status');
+    c.setAttribute('aria-live', 'polite');
     document.body.appendChild(c);
   }
   return c;

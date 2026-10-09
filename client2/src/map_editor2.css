@@ -684,9 +684,7 @@ body {
   min-width: 0;
   font-family: var(--font-mono);
   font-size: 0.88rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .me2-wl-sub {

@@ -112,6 +112,23 @@ export class OutboxQueuePanel {
     this.root = this.doc.createElement('div');
     this.root.className = 'queue-panel';
     mount.appendChild(this.root);
+    // A hidden tab measures 0: the column is fitted again when the panel shows or changes width.
+    const view = this.doc.defaultView;
+    if (view && view.ResizeObserver) new view.ResizeObserver(() => this._fitState()).observe(this.root);
+  }
+
+  /** The State column as wide as its widest tag plus the cell's padding (owner 10-09: the tag was cut at 96px);
+   *  the Rules column (1fr) gives the room. */
+  _fitState() {
+    const view = this.doc.defaultView;
+    if (!view || !view.getComputedStyle) return;
+    let need = 0;
+    for (const tag of this.root.querySelectorAll('.queue-state .tag')) {
+      const cell = tag.closest('.queue-cell');
+      const cs = view.getComputedStyle(cell);
+      need = Math.max(need, tag.offsetWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth));
+    }
+    if (need) this.root.style.setProperty('--queue-state-w', `${Math.ceil(need)}px`);
   }
 
   _line(cls, text) { return line(this.doc, cls, text); }
@@ -132,6 +149,7 @@ export class OutboxQueuePanel {
     const el = this._line(`audit-cell queue-cell ${cls}-cell`, '');
     const inner = this._line(cls, text);
     if (text) inner.setAttribute('title', text);
+    inner.setAttribute('data-clip-ok', '');
     el.appendChild(inner);
     return el;
   }
@@ -217,6 +235,7 @@ export class OutboxQueuePanel {
       body.appendChild(line);
     }
     this.root.appendChild(body);
+    this._fitState();
     return view;
   }
 }

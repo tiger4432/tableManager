@@ -515,7 +515,8 @@ export function boot(doc, host, deps) {
         }
         for (const cell of row.cells) {
           const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);
-          if (cell.kind === 'id') td.className = 'wk-id';
+          // The id is picked, not read (styles.js .wk-id): cut on purpose.
+          if (cell.kind === 'id') { td.className = 'wk-id'; td.setAttribute('data-clip-ok', ''); }
           tr.append(td);
         }
         tbody.append(tr);

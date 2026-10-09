@@ -534,7 +534,7 @@ export function createGlobalTimelineItemDom(group) {
       <div class="audit-cell audit-user">${escapeHtml(user)}</div>
       <div class="audit-cell audit-kind"><span class="audit-pill ${kind.cls}">${kind.label}</span></div>
       <div class="audit-cell audit-target">
-        <span class="audit-target-key">${escapeHtml(targetKey)}</span>
+        <span class="audit-target-key" data-clip-ok>${escapeHtml(targetKey)}</span>
         <span class="audit-target-col">${escapeHtml(targetCol)}</span>
       </div>
       <div class="audit-cell audit-change">

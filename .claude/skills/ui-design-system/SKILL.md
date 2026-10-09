@@ -75,6 +75,19 @@ row       padding 6.8 · gap 6.8 · list rows 7 12 (mockup figures, kept as stat
 ## 7. Assembly (조립식) — see CLAUDE.md UI 상설
 - A part is a class with its own div, receives its mount and deps, holds no module state; two instances on one page must not interfere. Layout (grid placement, order) lives OUTSIDE the part in the page.
 
+## 8. 화면 커밋 관문 — the screen gate (lead 1343e5cca, owner 10-09 「이런 잘림 같은 ui 요소는 사전에 차단하면 안 됨?」)
+```
+checker  client2/tests/screen_layout_harness.mjs - the runner calls it with --mutate; a finding blocks the landing
+         every html entry in client2/dist, in real Chrome at 1920x950, driven through its states (filters, a row picked,
+         the queues' nine states, a long table name, the side panel narrowed, each header panel opened)
+         clip · overflow · panel under its button · [object ...] / undefined / NaN · a button boxed out of its line
+         answers come from client2/tests/fixtures/screens_answers.json - a GET it lacks is red: capture_screens.py
+a cut made on purpose  data-clip-ok on that element (it and what is under it). Never a list inside the checker
+a new screen or state   a step in the checker's DRIVE, in the same commit as the screen
+report   every screen commit's report carries one line: «크롬 MCP 로 연 화면 · 크기 · 본 것» - Claude in Chrome, the
+         built page, opened by hand. Without it the lead does not merge, and the lead opens the same screen first
+```
+
 ## How to apply — every UI round
 ```
 1 mockup   a new screen or a layout change -> draw it first on the Design canvas (Artifact type "Design", the project's
