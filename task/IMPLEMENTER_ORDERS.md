@@ -65209,3 +65209,21 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
    같은 커밋  RUN.md(운영 순서: ① 공식 표 다시 세기 규칙(allow_chain_trigger) 있는지 ② 미리보기 ③ pace slow 로 실행 ④ 대기열 · 홀드 칸 볼 줄) · RELEASE_LOG
 순서  이것 -> 하위 폴더(2f487efb5) -> 고리 줄 -> 표 인덱스 -> foreign_beat
 ```
+
+> **[총괄 -> 구현자 · 응용] 10-09 — run_in: operation 은퇴 · 규칙은 체인 «하나»로만 돈다 · 「한 묶음에 넣을 행 수」를 체인이 지킨다 (소유자 10-09 「왜 이렇게 이상한 구조로 만든 거야?」 -> 총괄 제안 -> 「ㅇㅇ 은퇴해」)**
+
+```
+왜  run_in: operation 은 «체인 프로세스 하나가 막힌다»를 피하려고 옆에 만든 둘째 길이었다. 슬롯(422d075c7)으로 그 까닭이 사라졌고,
+    오늘 그 길에서 rule_rows 가 오류 없이 cancelled 로 끝나는 결함이 났다(소유자 운영). 같은 일의 길이 둘 = 문 가르기
+도착지  두 줄
+   「규칙은 체인 묶음에서만 돈다. 느린 규칙(LLM)은 그 규칙 칸 rows_per_run 에 1 을 적으면 글 하나가 묶음 하나가 된다 — 하나가 실패해도 그 글만」
+   「run_in 을 적은 옛 선언은 읽을 때 한 줄로 알리고 체인에서 돈다」
+구현자
+   은퇴  run_in 갈래 · _queue_operation_runs · rule_rows 연산의 «새로 줄 세우기». 이미 있는 rule_rows 실행 행은 역사로 읽힌다(지우지 않음). 새 rule_rows 는 안 생긴다
+   넓힘  rows_per_run 은 «이 규칙이 한 묶음에 받는 트리거 행 수» — 체인이 그 규칙의 묶음을 그 수로 자른다(이미 있는 «행 예산 자르기» 자리를 넓힘, 둘째 자르기 금지). 적지 않으면 지금 그대로
+   옛 선언  run_in: "operation" 이 있으면 선언 읽을 때 «run_in is retired - this rule runs in the chain; rows_per_run splits its groups» 한 줄(선언을 새로 읽을 때만) · 거절하지 않는다
+   은퇴 전수  run_in · rule_rows · operation 을 든 자리(문서 chain_rules.md · TEXT_LINKS_GUIDE §6 · 폼 목록 · 시험 · RUN.md · 스켈레톤)를 같은 커밋에서 고친다
+   게이트  rows_per_run 1 인 LLM 가짜 규칙 · 글 셋 중 하나가 틀린 답 -> 그 글만 FAILED · 둘은 후보 행 · 다른 표 줄은 다른 슬롯에서 끝남 / run_in 적은 옛 선언 -> 한 줄 + 체인에서 돎 / 새 rule_rows 0 + 변이
+응용  rule_rows 취소 재현은 «멈춤» — 그 길이 은퇴한다. 찾은 것이 있으면 한 줄만 보고(은퇴 뒤에도 남는 원인이면 그것이 결함)
+순서  복사 다시 채우기 속도 재기(급함) -> 이것 -> 고리 줄 -> 하위 폴더 착지 -> 층 순위 -> 대기열 줄 rules 칸 -> 표 인덱스 -> foreign_beat
+```
