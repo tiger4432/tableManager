@@ -353,7 +353,13 @@ def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = Fal
     # withdrawal is the AuditLog rows below, and they still carry
     # `source_name=R2_AUDIT_SOURCE` - the outbox `source_name` is the loop-filter
     # CHANNEL, not the provenance record.
-    with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):
+    # 🔴 [총괄 eddf9e38e] COLLAPSED, CHOSEN HERE: a withdrawal is the fourth path that carries
+    #    volume - in per-row mode each revealed row was one event, and a 1,000-row delete fed
+    #    1,000 of them to the chain and the ledger follow-up (ca0d23b08: drain 1,003).
+    import event_constants
+    from database.context import outbox_mode
+    with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME), \
+            outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
         for i in range(0, len(all_row_ids), chunk_size):
             if checkpoint is not None and checkpoint(i):
                 stats["stopped"] = True
@@ -453,3 +459,106 @@ def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = Fal
         f"({stats['revealed']} revealed another source, {stats['emptied']} left empty, "
         f"{stats['pinned_skipped']} skipped as human-pinned)")
     return stats
+
+
+#: Waiting events one page of the withdrawal fold reads, and commits, at once (총괄 eddf9e38e).
+FOLD_PAGE_EVENTS = 10000
+
+
+def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS, checkpoint=None,
+                           log=logger.info) -> dict:
+    """The per-row events withdrawals staged before they wrote collapsed (총괄 eddf9e38e ②), folded per
+    table into collapsed ones - `stage_collapsed_event`, 1,000 rows each - and deleted in the SAME
+    commit. Chosen by the withdrawal's mark alone (who `R2_AUDIT_SOURCE`, source `R1_SOURCE_NAME`) and
+    the one state seat (`event_constants.chain_state_of`): waiting folds; a line the chain runs now
+    (`runtime.running.chain_lines_running`) and a RETRYING event are left - counted apart.
+    ⚠️ The purge doors never delete a waiting event; this one does because its replacement lands in
+    the same transaction - its rows, and its envelope but the transaction: depth, channel, cascade,
+    written_by and run are set per group (a run's own `run_id` would move them onto its line), the
+    transaction is new per group in the withdrawal's shape. Locked like `set_aside._mark` (5250ca1bd).
+    -> `{"by_table": {table: [events, collapsed events]}, "rows", "retrying", "running", "pages",
+    "stopped"}` - the dry run counts what apply does, page by page."""
+    import event_constants
+    from contextlib import ExitStack
+    from sqlalchemy import delete
+    from database import crud
+    from database.context import cascade, channel, request_chain_depth, retroactive_run, written_by
+    from database.database import stage_collapsed_event
+    from database.models import DatabaseOutbox as outbox
+    from runtime import running
+
+    chunk = event_constants.OUTBOX_COLLAPSE_CHUNK_ROWS
+    p = outbox.payload
+    read = (db.query(outbox.id, outbox.table_name, outbox.event_type, outbox.status,
+                     event_constants.queue_line_key(outbox), p["row_id"].as_string(), p["row_ids"],
+                     p[event_constants.CHAIN_DEPTH_KEY].as_integer(), p[event_constants.CHANNEL_KEY].as_string(),
+                     p[event_constants.CASCADE_KEY].as_boolean(), p[event_constants.WRITTEN_BY_KEY],
+                     p[event_constants.RUN_KEY].as_string())
+            .filter(outbox.processed_chain == False,  # noqa: E712 - 부분 인덱스의 술어 철자
+                    p["updated_by"].as_string() == R2_AUDIT_SOURCE,
+                    p["source_name"].as_string() == R1_SOURCE_NAME))
+    out = {"by_table": {}, "rows": 0, "retrying": 0, "running": 0, "pages": 0, "stopped": False}
+    after, folded = 0, 0
+    while True:
+        if checkpoint is not None and checkpoint(folded):
+            out["stopped"] = True
+            log(f"[withdraw fold] stopped by request after {folded} event(s)")
+            break
+        found = read.filter(outbox.id > after).order_by(outbox.id).limit(page).all()
+        if not found:
+            break
+        after, out["pages"] = found[-1][0], out["pages"] + 1
+        chosen, lines = {}, running.chain_lines_running()
+        for event_id, table, kind, status, line, row_id, row_ids, depth, chan, casc, wrote, run in found:
+            if event_constants.is_collapsed_payload({"row_ids": row_ids}) or not row_id:
+                continue
+            state = event_constants.chain_state_of(False, status, running=lines.get(line))["state"]
+            if state == event_constants.CHAIN_STATE_RETRYING:
+                out["retrying"] += 1
+            elif state != event_constants.CHAIN_STATE_WAITING:
+                out["running"] += 1
+            else:
+                chosen[event_id] = (table, kind, row_id,
+                                    (depth, chan, bool(casc), tuple(sorted(wrote or ())), run))
+        if apply and chosen:
+            # 🔴 IN ID ORDER, ONLY WHAT STILL WAITS - a row a group ends meanwhile is waited for, then
+            #    no longer waiting: it keeps that ending and stays out of the fold.
+            ids, held = sorted(chosen), []
+            for start in range(0, len(ids), chunk):
+                held += [i for (i,) in db.query(outbox.id).filter(
+                    outbox.id.in_(ids[start:start + chunk]), outbox.processed_chain == False)  # noqa: E712
+                    .order_by(outbox.id).with_for_update()]
+            chosen = {i: chosen[i] for i in held}
+        groups = {}
+        for table, kind, row_id, envelope in chosen.values():
+            groups.setdefault((table, kind, envelope), {})[row_id] = None
+            out["by_table"].setdefault(table, [0, 0])[0] += 1
+        for (table, kind, (depth, chan, casc, wrote, run)), rows in groups.items():
+            out["by_table"][table][1] += -(-len(rows) // chunk)
+            out["rows"] += len(rows)
+            if apply:
+                with ExitStack() as stack:
+                    stack.enter_context(crud.transaction_context(
+                        R2_AUDIT_SOURCE, f"{R2_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}", R1_SOURCE_NAME))
+                    for door in (channel(chan), cascade(casc), written_by(wrote), retroactive_run(run)):
+                        stack.enter_context(door)
+                    stack.callback(request_chain_depth.reset, request_chain_depth.set(depth))
+                    stage_collapsed_event(db, kind, table, list(rows))
+        if apply and chosen:
+            ids = sorted(chosen)
+            for start in range(0, len(ids), chunk):
+                db.execute(delete(outbox).where(outbox.id.in_(ids[start:start + chunk]))
+                           .execution_options(synchronize_session=False))
+            db.commit()
+        folded += len(chosen)
+    log("[withdraw fold] %s: %s" % ("apply" if apply else "dry-run", fold_said(out)))
+    return out
+
+
+def fold_said(s) -> str:
+    """`fold_withdrawal_events`' answer in one sentence - its log line, the preview and the CLI."""
+    return (("; ".join("'%s' %d event(s) -> %d" % (t, b, a) for t, (b, a) in sorted(s["by_table"].items()))
+             or "No waiting withdrawal event goes row by row")
+            + " - %d row(s). Left as they are: %d event(s) the chain already tried (RETRYING), %d on a line "
+              "the chain runs now." % (s["rows"], s["retrying"], s["running"])
+            + (" STOPPED by request - run it again for the rest." if s.get("stopped") else ""))

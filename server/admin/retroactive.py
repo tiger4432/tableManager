@@ -1052,6 +1052,37 @@ def _judge_fold_duplicate_rows(params):
         raise RetroactiveRefused(str(e)) from None
 
 
+def _count_fold_withdrawal_events(db, params, scan_limit):
+    from chain import cell_layer
+
+    s = cell_layer.fold_withdrawal_events(db, log=lambda m: logger.debug(m))
+    before = sum(b for b, _a in s["by_table"].values())
+    return {
+        "affected": before,
+        "absence": ABSENCE_TRULY_NONE if not before else None,
+        "affected_label": "row-by-row withdrawal events to fold",
+        "count_kind": COUNT_EXACT,
+        "scanned": None,
+        "scan_limit": None,
+        "truncated": False,
+        "detail": (cell_layer.fold_said(s) + " Each table's events become collapsed ones naming the same "
+                   "rows, 1,000 rows each, in the commit that deletes them; the chain reads those rows as "
+                   "they are when it runs."),
+        "extra": {key: s[key] for key in ("by_table", "rows", "retrying", "running")},
+    }
+
+
+def _run_fold_withdrawal_events(db, params, log, control=None):
+    from chain import cell_layer
+
+    s = cell_layer.fold_withdrawal_events(db, apply=True, log=log, checkpoint=_checkpoint(control))
+    folded = sum(b for b, _a in s["by_table"].values())
+    _final_progress(control, folded, s)
+    return {"events_folded": folded, "events_made": sum(a for _b, a in s["by_table"].values()),
+            "rows": s["rows"], "left_retrying": s["retrying"], "left_running": s["running"],
+            "pages": s["pages"], "stopped": s["stopped"]}
+
+
 #: Seconds between two looks at the rows a re-read handed to the watcher - its poller's own cycle.
 REREAD_POLL_SECONDS = 3
 #: Files a re-read hands over at once; the next page waits until these are read, so a stop lands
@@ -1842,6 +1873,25 @@ OPERATIONS = {
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
                             "taken back and the rules that recount run"),
+    },
+    "fold_withdrawal_events": {
+        "label": "Fold row-by-row withdrawal events",
+        "what_is_missing": "withdrawals queued one chain event per row before they wrote collapsed ones",
+        "params": [],
+        "count": _count_fold_withdrawal_events,
+        "run": _run_fold_withdrawal_events,
+        "judge": None,
+        "cli": "server/scripts/chain_replay_cli.py fold-withdraw-events --apply",
+        # 총괄 eddf9e38e ②: replaced in the same commit by collapsed events naming the same rows.
+        "deletes": "waiting chain events a withdrawal staged row by row, replaced by collapsed ones",
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one commit per page of 10,000 events; a stop lands between pages and "
+                               "a re-run finds only what is left"),
+        "cli_only": [],
+        "downstream_note": ("The chain runs the collapsed events as it would have run the row-by-row "
+                            "ones - every rule on those rows, reading them as they are then"),
     },
     "reread_files": {
         "label": "Re-read files",

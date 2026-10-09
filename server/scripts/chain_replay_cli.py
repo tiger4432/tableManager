@@ -181,6 +181,10 @@ def main(argv=None):
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
     p.add_argument("--apply", action="store_true")
 
+    # 총괄 eddf9e38e ②: the per-row events withdrawals queued, folded into collapsed ones per table.
+    p = sub.add_parser("fold-withdraw-events")
+    p.add_argument("--apply", action="store_true")
+
     args = parser.parse_args(argv)
 
     from database import crud, models
@@ -251,6 +255,13 @@ def main(argv=None):
             else:
                 print("\n" + retroactive.count(db, "fold_duplicate_rows", params)["detail"]
                       + "\n-> add --apply to delete")
+        elif args.cmd == "fold-withdraw-events":
+            if args.apply:
+                from chain import cell_layer
+                print("\nfold-withdraw-events: " + cell_layer.fold_said(written("fold_withdrawal_events", {})))
+            else:
+                print("\n" + retroactive.count(db, "fold_withdrawal_events", {})["detail"]
+                      + "\n-> add --apply to fold")
         elif args.cmd == "resolve":
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
             print(_report_resolve(written("resolve", {
