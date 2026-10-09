@@ -37933,3 +37933,19 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
 가짜     표 fake_measure 32 행 -> 소스 fake_measures -> 원자 32 · 표 fake_mechanism_edge 1 행 -> 소스 fake_mechanism_edge_to_finding_causes(appdemo_vb) -> 원자 1
          원장에는 backfill 로만 · role 칸 fake. 누르는 순서와 보이는 수는 총괄께 메시지로 드렸습니다. 소유자 «끝»까지 둡니다
 ```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 5b(기동 단계 이름 · 첫 박동을 보정 앞으로, e032d526e) 됩니다
+
+```
+모양   운영 런처 · e032d526e · 사설 인스턴스 · 스크래치 assy_app_reread_beat · public 변화 0 · 스키마 지움 · 구현자와 차례(알림 · 내림)
+붙잡기  스크래치에서 사람 칸 인덱스를 지우고, 한 연결이 cell_sources 에 SHARE UPDATE EXCLUSIVE(인덱스 짓기만 막고 읽기 · 쓰기는 안 막음)를 쥔 채 띄움
+/health  매초 checks.workers.chain — «starting: ensure_human_claims_index, N s» 가 N = 92 까지 내내 starting · foreign_beat 0
+         풀어 준 뒤(98.6 s) «starting: warmup_worker, …» -> 102.8 s 에 ok
+화면     메인 화면 뱃지 «CHAIN: STARTING» · title «starting: ensure_human_claims_index, 76s» (붙잡은 동안)
+기동 끝   chain_worker.log «[Chain] startup 92.8 s - …» — 단계마다 초
+둘째 워커  같은 인스턴스에 run_chain_worker.py 하나 더 -> «NOT starting: another chain loop is already running (pid 39668, last beat 0.6s ago)» · exit 0 · /health 는 그대로 ok
+안 잰 것  구현자가 짚은 길 — run_chain_worker.py import 때 스키마 동기화(첫 박동 앞)는 이번에 안 붙잡았습니다
+표       일요일 표 ① 에 기동 중 · 기동 끝 볼 줄(319241d8b)
+```
