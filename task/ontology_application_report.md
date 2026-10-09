@@ -37362,3 +37362,24 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
 은퇴     ASSY_LLM_* 를 «살아 있다»고 말하는 자리 0 (문서 · RUN.md · 서버 · 클라)
 문서    CONFIG_GUIDE 표 · config/README 표에 llm_config.json 행 — 둘 다 빠져 있었다
 ```
+
+---
+
+## [C 응용] 10-09 a14ea5693(raws 하위 폴더에 나중에 온 파일) QA — 제 2f487efb5 재현이 닫힘 · 흔들리는 칸 하나 · 그리고 096faf4b7 닫힘 (잼)
+
+```
+잰 것   사설 워크트리 · 이 커밋
+        감시자를 import 하는 시험 48 파일 — 786 passed · 1 failed(test_api::test_chained_ingestion — 박스 전용 맵퍼가 없어 늘 빨강, 이 커밋과 무관)
+        그중 PG 증명(-k) — 40 passed · 1 failed (아래 흔들림)
+        실제 시계 · 붙잡힘 없이 · A 가 안 지워진 채  나중 파일 30 s 뒤 들어감 — 고치기 전 297 s(스윕 300 s 를 기다림)
+        실제 시계 · 다른 수집기 파일이 스윕을 붙잡은 채(_sweep_lock 잡힘 True)  나중 파일 30.0 s 뒤 들어감 — 고치기 전 «붙잡힌 동안 안 들어감»
+        변이: 다시 보기를 _sweep_lock 안에서 돌림 -> 2 빨강(test_folder_emptied_and_removed_then_made_again · test_a_late_file_goes_in_while_another_collectors_file_holds_the_sweep) — 원인을 되살리면 운다
+흔들림  test_a_folder_stuck_behind_a_lock_is_said_and_let_go::test_the_stalled_line_and_the_folder_line_say_the_folder_the_file_and_the_holder
+        이 커밋에서 혼자 4 번 중 1 번 빨강 + 묶음 실행 한 번 빨강 — 단언 「pid 43900 is not in pg_stat_activity - its connection is gone」
+        구현자 a1e2ce680 은 「고친 뒤 8 번 중 0」이라 했다 — 이 박스에선 다시 난다. 커밋 앞 코드에서도 났다(구현자 재기)는 점은 같다 — 이 커밋이 만든 것은 아니다
+        그 줄이 든 db pid(파일 작업이 적어 둔 연결)가 pg_stat_activity 에 없어 잠근 쪽 pid 를 못 댄다 — 그 연결이 언제 · 왜 바뀌는지는 안 쟀다(시험 엔진은 NullPool) — 총괄 판정
+문서    착지가 이미 맞춤 — 스윕 설명(코드 · CODE_MAP)이 「하위 폴더는 recheck_subfolders 몫」 · 옛 「트리 인제션 트리거」 문장 0
+        제 초안(task/evidence/late_file_in_subfolder_draft_test.py)의 아홉 칸은 server/tests/test_a_late_file_in_a_raws_subfolder_goes_in.py 로 옮겨졌다
+
+096faf4b7(원천 하나를 한 번만) — 제 c762f6820 재기를 이 커밋에서 다시: 같은 원천 두 번에 새 2 행 · 옛 2 행 · user 층 셈 1(한 번이면 1) — 닫힘
+```
