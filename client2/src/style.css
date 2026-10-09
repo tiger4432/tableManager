@@ -3101,9 +3101,7 @@ body.resizing-active .history-sidebar {
 
 /* 🔴 «방향»만 이 판이 선언합니다 -- 껍데기는 column 이지만 칩은 가로로 감싸는 것이 맞습니다
    (총괄 판정: 그건 결함이 아닙니다).
-   🔴 자리는 JS 가 씁니다. 이 판의 «위치 조상»은 헤더여야 합니다 -- 스트립 안에 position 을
-   가진 조상을 두면 스트립의 `overflow: hidden` 이 판을 잘라 내고, 잘린 판은 «보이지도 눌리지도»
-   않습니다 (실측 2026-09-02: elementFromPoint 가 판 대신 뒤의 라벨을 돌려줬습니다).
+   자리는 placeUnder 가 씁니다 — body 위에 고정, 헤더 배율 밖(소유자 10-09).
    여기서 칩은 «감쌉니다» -- 헤더 폭과 무관한 자리라 감싸도 헤더가 안 자랍니다. */
 .filter-chips-panel {
   flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center;

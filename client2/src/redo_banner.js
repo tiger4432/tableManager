@@ -212,16 +212,9 @@ export class RedoBanner {
     }
   }
 
-  /** 판을 버튼 줄 «밑»에 앉힙니다.
-   *
-   * 🔴 판을 버튼 줄 «안»에 넣으면 안 됩니다. 그러면 위치 조상이 그 줄이 되고, 그 줄은
-   *    `overflow: hidden` 인 버튼 그룹 «안»에 있어서 판이 통째로 잘립니다 -- 박스는 있고
-   *    레이아웃도 되는데 elementFromPoint 가 «뒤의 그리드»를 돌려줍니다 (실측 2026-09-02,
-   *    다섯 줄 전부). 밖에 두면 위치 조상이 헤더라 안 잘리고, 그래서 «자리는 여기서» 씁니다.
-   *
-   * 🔴 그냥 `right: 0` 으로 두면 그 0 이 «헤더의 오른쪽 끝»입니다 -- 판이 버튼에서 660px
-   *    떨어져 떴습니다 (x 1620 / 버튼 958). 오른쪽 끝을 «버튼 줄»에 맞춥니다.
-   */
+  /** 판을 버튼 줄 «밑»에 앉힙니다 — placeUnder 가 body 로 옮겨 오른쪽 끝을 버튼 줄에 맞춥니다(헤더 배율 밖, 소유자
+   *  10-09). host 에서 태어나므로 판 안 클릭은 여전히 host «안»입니다(placedFrom). 헤더 안에 두던 때는 버튼 그룹의
+   *  `overflow: hidden` 에 잘리고(09-02) 배율에 밀렸습니다(10-08). */
   place(box, bar) {
     if (!box.getBoundingClientRect || !bar.getBoundingClientRect) return;
     placeUnder(box, bar);

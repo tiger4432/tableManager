@@ -504,9 +504,8 @@ function showChipsPanel(all, bar, more) {
   if (!bar) return;
   if (!chipsPanel) {
     chipsPanel = document.createElement('div');
-    // 🔴 스트립의 자기 div «안»입니다 (조립식). 그런데 그 안에 position 을 가진 조상을 두면
-    //    스트립의 `overflow: hidden` 이 판을 잘라 내고, 잘린 판은 «보이지도 눌리지도» 않습니다.
-    //    그래서 자리는 헤더 좌표로 «JS 가» 씁니다.
+    // 스트립의 자기 div 에서 태어나고, placeUnder 가 body 로 옮겨 «+N» 밑에 둡니다(헤더 배율 밖, 소유자 10-09).
+    // 판 안을 누른 것은 placedFrom 을 거쳐 여전히 스트립 «안»입니다.
     chipsPanel.className = 'glass-dropdown-panel filter-chips-panel';
     bar.appendChild(chipsPanel);
   }

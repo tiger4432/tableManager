@@ -1426,7 +1426,8 @@ const FLOORS = new Map([
   // 76 -> 83 (lead c6a8c069c: from on the wire, none for a new rule, a refused rename re-read by the name opened (E, G, R)).
   // 83 -> 87 (lead 43f4823dc: a rename answered in place - picked, one line, its note; rule_name_held in its own words).
   // -> 99 (lead be5457365): a x on a line already set aside says so once, then the queue is read again (V, one defect).
-  ['chain_rule_user_path_harness.mjs', 99],
+  // 99 -> 96 (53bdedde9, run_in retired): its T section - the run_in list on the rules answer - went with it, three checks.
+  ['chain_rule_user_path_harness.mjs', 96],
   // New (lead a2c41fed3): the table registry walked through admin.js - + Add table opens a name box,
   // a paste, a save with no from; a picked table as today. The panel harness hands forNew directly.
   ['table_config_user_path_harness.mjs', 15],
@@ -1545,7 +1546,8 @@ const FLOORS = new Map([
   ['match_count_harness.mjs', 20],
   // the banner that offers a re-run, and what it refuses to offer one for
   // 53 -> 57 (lead ece405110): the click replay sends cascade, the hand-off to the tab does not.
-  ['redo_banner_harness.mjs', 57],
+  // 57 -> 58 (lead QA 0056ebc9d): the panel placeUnder moved to the body is one panel however often it is drawn (L1, M20).
+  ['redo_banner_harness.mjs', 58],
   // the board part: composition
   // 42 -> 44 (lead 09-30, H10): the head's marking 1 place says the board's question.
   // -> 46 (lead dcd159739, T6): a cell holding only spaces is absent, by the screen's one blank rule.
@@ -1768,7 +1770,8 @@ const FLOORS = new Map([
   ['test_run_atoms_harness.mjs', 21],
   // New 2026-10-07 (lead 2095014ee). Company SSO on the screen: the login door, the admin door over SSO's refusals,
   // the account part and its keys, the socket's 4401.
-  ['auth_sso_harness.mjs', 29],
+  // 29 -> 30 (lead QA 0056ebc9d): the keys window on the body is one window however often it is drawn (B11 and its mutant).
+  ['auth_sso_harness.mjs', 30],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

@@ -33019,6 +33019,96 @@
 },
 {
 "cancellable":true,
+"cli":"server/scripts/chain_replay_cli.py fold-rows <table> --keys <a,b> --order <column> [--keep min|max] [--pace slow] --apply",
+"cli_only":[],
+"commit_granularity":"one commit per page of 1,000 rows (crud.delete_rows_batch); a stop lands between pages and a re-run finds only what is left",
+"deletes":"table rows (all but one per key), with their cell layers",
+"downstream_note":"Each deleted row reaches the chain as a deletion - what it fed is taken back and the rules that recount run",
+"label":"Fold duplicate rows",
+"op":"fold_duplicate_rows",
+"params":[
+{
+"choices":null,
+"cli":true,
+"form":true,
+"help":"",
+"name":"table",
+"required":true,
+"type":"string"
+},
+{
+"choices":null,
+"cli":true,
+"form":true,
+"help":"the columns whose values make a key; rows sharing them fold to one",
+"name":"keys",
+"required":true,
+"type":"csv"
+},
+{
+"choices":null,
+"cli":true,
+"form":true,
+"help":"the column that picks the row to keep",
+"name":"order",
+"required":true,
+"type":"string"
+},
+{
+"choices":[
+{
+"label":"Keep the earliest",
+"value":"min"
+},
+{
+"label":"Keep the latest",
+"value":"max"
+}
+],
+"cli":true,
+"form":true,
+"help":"which row of a key stays, by order; earliest when not given",
+"name":"keep",
+"required":false,
+"type":"string"
+},
+{
+"choices":[
+{
+"label":"Fast - as before",
+"value":"fast",
+"when":"When it is urgent: the service is quiet, or the next step waits for this one"
+},
+{
+"label":"Slow - while in service",
+"value":"slow",
+"when":"When screens or the API slow down with it. Takes longer, crowds others less"
+},
+{
+"label":"Very slow - overnight",
+"value":"trickle",
+"when":"When staying out of the way matters more than when it finishes"
+},
+{
+"label":"Background - measuring, not finishing",
+"value":"background",
+"when":"Always-on work such as the census. A lap may be as slow as it likes; others must not slow down meanwhile"
+}
+],
+"cli":true,
+"form":true,
+"help":"how hard to push. Slowing yields between units of work so the database stays free for everything else; the paces and their names are declared in server/pacing.json. Retroactive runs go ONE AT A TIME, so a slower pace also makes whatever is queued behind this wait that much longer",
+"name":"pace",
+"required":false,
+"type":"string"
+}
+],
+"reads_as":"number",
+"restartable":true,
+"what_is_missing":"rows that should be one per key went in more than once"
+},
+{
+"cancellable":true,
 "cli":"python -c \"from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<table>', 'pace': '<pace>', 'limit': N, 'chunk_size': N})\" - pace, limit and chunk_size optional",
 "cli_only":[],
 "commit_granularity":"one commit per page of rows; a stop lands between pages and a re-run finds only what is left",
@@ -33361,7 +33451,7 @@
 "commit_granularity":"one commit for the run - its rows are one group's write",
 "deletes":null,
 "downstream_note":"What it writes wakes the rules downstream, as the chain's own write does",
-"label":"Run a rule's queued rows",
+"label":"Run a rule's queued rows (retired)",
 "op":"rule_rows",
 "params":[
 {
@@ -33403,7 +33493,7 @@
 ],
 "reads_as":"number",
 "restartable":true,
-"what_is_missing":"a rule declared run_in: operation has rows its chain group queued"
+"what_is_missing":"rows a run_in: operation rule's group queued before run_in was retired - rules run in the chain now"
 },
 {
 "cancellable":true,
@@ -33502,7 +33592,7 @@
 }
 ]
 },
-"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
+"captured":"2026-10-09T08:15:45+00:00 · server code 8ff9564c8",
 "status":200,
 "type":"application/json"
 },

@@ -570,6 +570,52 @@ console.log('\n── K. THE CLICK REPLAY CASCADES; THE HAND-OFF TO THE TAB DOES
     !!handed && handed.op === 'chain_replay' && !('cascade' in handed.params), handed);
 }
 
+// ── L. THE PANEL ON THE BODY (owner 10-09, lead QA 0056ebc9d) ───────────────────────
+/** mkDoc with a layout: elements measure, `appendChild` moves, `remove()` takes off - so placeUnder moves the panel to
+ *  the body the way a page does, and the part's redraw has to take it off again. */
+function mkLayoutDoc() {
+  const doc = mkDoc();
+  const make = doc.createElement;
+  const own = (n) => {
+    n.ownerDocument = doc;
+    n.style = n.style || {};
+    n.getBoundingClientRect = () => ({ left: 900, top: 20, right: 960, bottom: 44, width: 60, height: 24 });
+    n.remove = () => { const p = n.parentNode; if (p) { p.children.splice(p.children.indexOf(n), 1); n.parentNode = null; } };
+    const append = n.appendChild.bind(n);
+    n.appendChild = (c) => { if (c.parentNode && c.parentNode !== n && c.remove) c.remove(); return append(c); };
+    return n;
+  };
+  doc.createElement = (tag) => own(make(tag));
+  doc.body = own(make('body'));
+  doc.documentElement = { clientWidth: 1536 };
+  return doc;
+}
+/** Opened and drawn twice more, how many panels stand on the body; and after it is shut. */
+function panelsOnBody(M) {
+  const doc = mkLayoutDoc();
+  const host = doc.createElement('div');
+  doc.body.appendChild(host);
+  const rows = [envelope({ lot_id: 'L1', wafer_id: 'W1' })];
+  const part = new M.RedoBanner(host, { doc, sources: SOURCES, getSelection: () => rows, readValue: readEnvelope,
+    businessKey: 'lot_id', handOff: () => {} });
+  part.setRelation('dt_log');
+  part.render();
+  buttons(host).find((b) => b.dataset.redo === 'chain').click();
+  part.render();
+  part.render();
+  const count = () => doc.body.children.filter((n) => String(n.className).includes('redo-panel')).length;
+  const open = count();
+  part.close();
+  return { open, shut: count() };
+}
+console.log('\n── L. THE PANEL ON THE BODY ─────────────────────────────────────────');
+{
+  const real = await import('../src/redo_banner.js');
+  const got = panelsOnBody(real);
+  ok('L1 the panel placed on the body is one panel however often it is drawn, and none once shut',
+    got.open === 1 && got.shut === 0, got);
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}. `
@@ -634,6 +680,9 @@ const DEFECTS = [
     swap('row_ids: keys, cascade: true }', 'row_ids: keys }')],
   ['M19 the hand-off carries cascade into the Retroactive tab',
     swap("params: { row_ids: values.join(',') } };", "params: { row_ids: values.join(','), cascade: true } };")],
+  // lead QA 0056ebc9d: the panel left on the body at each redraw, and no cell saw it
+  ['M20 a redraw leaves the panel it moved to the body behind',
+    swap('    if (this.box && this.box.placedFrom) this.box.remove();\n', '')],
 ];
 
 const CONTROLS = [
@@ -668,7 +717,7 @@ const CATCHES = {
   M16: 'R23', M17: 'R24',
   // C-120. M1 은 R1(꺼짐)이 잡고, M1b 는 R25(왜)가 잡습니다 — 실제 run 에서 읽었습니다.
   M1b: 'R25',
-  M18: 'R26', M19: 'R27',
+  M18: 'R26', M19: 'R27', M20: 'R28',
 };
 /** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
 const named = (list) => list.map(([name, mutate, where]) => ({
@@ -889,6 +938,8 @@ async function runMutant({ name, mutate, where }) {
             && chainCalls[0].params.cascade === true],
         ['R27 ...and the hand-off to the Retroactive tab does not',
           () => !!handed && !('cascade' in handed.params)],
+        ['R28 the panel on the body is one however often it is drawn, none once shut',
+          () => { const got = panelsOnBody(M); return got.open === 1 && got.shut === 0; }],
       ];
       // Recorded once, so the 「unexercised」 line below is COMPUTED from the checks that
       // actually ran rather than typed out beside them -- a hand-written list of names drifts
