@@ -275,6 +275,13 @@ MAPPER_REGISTRY: dict[str, object] = {}
 #: `{name: kind}` says what each must be too - `list` is checked (총괄 67dffd619).
 MAPPER_PARAMS: dict[str, tuple] = {}
 
+#: name -> what that mapper's output is, declared beside its logic for the same reason (총괄 016a766af):
+#: `columns` (rule -> the columns it writes - what a run that proposed nothing still owns),
+#: `stamps_origin` (bool, or rule -> bool: its cells carry the row they came from) and `at_load`
+#: (rules naming it -> [(rule, sentence)] it refuses; it may stamp the cells it pairs). A kind this
+#: product builds passes its facts here too (`chain.dynamic_mappers.install`) - one home to read.
+MAPPER_FACTS: dict[str, dict] = {}
+
 #: Has anyone walked the mapper package in THIS process yet. Not "did it succeed" -
 #: a package that cannot be imported will not import on the second ask either, and
 #: retrying per name would walk it once per rule in a file of refusals.
@@ -299,6 +306,7 @@ def reset_registry():
     """
     MAPPER_REGISTRY.clear()
     MAPPER_PARAMS.clear()
+    MAPPER_FACTS.clear()
     global _DISCOVERY_ATTEMPTED
     _DISCOVERY_ATTEMPTED = False
 
@@ -315,8 +323,9 @@ def _origin(fn):
     return getattr(fn, "__module__", "?")
 
 
-def register(name: str, fn, params=()):
-    """One registration. Separate from the decorator so `discover` and a test share it."""
+def register(name: str, fn, params=(), facts=None):
+    """One registration. Separate from the decorator so `discover` and a test share it.
+    `facts`: what its output is (`MAPPER_FACTS`)."""
     existing = MAPPER_REGISTRY.get(name)
     # 🔴 「SAME NAME」 IS DECIDED BY ORIGIN, NOT BY OBJECT IDENTITY. A reload re-imports the
     # module, and the decorator then builds a NEW wrapper for the SAME source -- identity
@@ -330,6 +339,10 @@ def register(name: str, fn, params=()):
             f"Rename one - a rule naming '{name}' cannot say which it meant.")
     MAPPER_REGISTRY[name] = fn
     MAPPER_PARAMS[name] = dict(params) if isinstance(params, dict) else tuple(params)
+    if facts:
+        MAPPER_FACTS[name] = dict(facts)
+    else:
+        MAPPER_FACTS.pop(name, None)
     return fn
 
 

@@ -185,22 +185,31 @@ def label_for(name):
 
 
 
+def _facts(name):
+    """What the mapper registered as `name` declares about its output - a kind this product builds
+    and a file mapper alike, one home (`mapper_sdk.MAPPER_FACTS`, 총괄 016a766af)."""
+    import mapper_sdk
+
+    return mapper_sdk.MAPPER_FACTS.get(name) or {}
+
+
 def columns_declared_for(rule):
-    """The columns a rule naming a kind the product builds writes, read from its declaration - None
-    when the kind does not say (총괄 10-08: a run that proposed nothing still knows what it owns)."""
-    facts = TEMPLATE_FACTS.get((rule or {}).get("mapper")) or {}
+    """The columns a rule's mapper declares it writes - None when it does not say (총괄 10-08: a run
+    that proposed nothing still knows what it owns)."""
+    facts = _facts((rule or {}).get("mapper"))
     return facts["columns"](rule) if facts.get("columns") else None
 
 
-def stamps_origin(name) -> bool:
-    """Does what this mapper writes carry the row it came from? Unknown names: False.
+def stamps_origin(name, rule=None):
+    """Does what this mapper writes carry the row it came from? True · False · None - it does not say.
 
-    ⚠️ False MEANS 「this product cannot say it does」, which for a mapper written by the
-    owner is the honest answer - `GeneralUpdateItem.origin_row_id` is on the schema every
-    mapper builds, so a file mapper CAN stamp, and whether the live ones do is not countable
-    from here (`server/mappers/` is gitignored).
+    ⚠️ None for a file mapper that declares nothing is the honest answer - `GeneralUpdateItem.
+    origin_row_id` is on the schema every mapper builds, so it CAN stamp, and whether the live
+    ones do is not countable from here (`server/mappers/` is gitignored). A fact may depend on
+    the rule (`copy_rows_with_hold`: the copy stamps, the recount does not).
     """
-    return bool((TEMPLATE_FACTS.get(name) or {}).get("stamps_origin"))
+    value = _facts(name).get("stamps_origin")
+    return bool(value(rule or {})) if callable(value) else value
 
 
 #: kind name -> the function built for it. The key is the `mapper` cell a translated rule
@@ -267,7 +276,7 @@ def install() -> tuple:
     _install_templates()
     for name, fn in TEMPLATES.items():
         params = (TEMPLATE_FACTS.get(name) or {}).get("params")
-        mapper_sdk.register(name, fn, params or ())
+        mapper_sdk.register(name, fn, params or (), facts=TEMPLATE_FACTS.get(name))
         if params is None:
             # ⚠️ ABSENT, NOT EMPTY. `chain_bindings` checks a declaration's arguments
             #    only when `MAPPER_PARAMS` HAS an entry; an empty tuple is a

@@ -784,31 +784,38 @@ def _blank_key(model, keys):
     return or_(*[crud.blank_sql_condition(cast(getattr(model, k), String)) for k in keys])
 
 
-def _prefer_of(prefer_column, prefer_text):
-    """(column, text) the fold keeps first, or None - both written or neither (총괄 1d2a7e0fd)."""
+def _prefer_of(column, text, names=("prefer_column", "prefer_text")):
+    """(column, text) of one pair, or None - both written or neither: the fold's prefer (총괄
+    1d2a7e0fd) and its scope (`only_column` · `only_text`, 83c05cfbb) - one reading."""
     from database import crud
 
-    column = None if crud.is_blank_value(prefer_column) else str(prefer_column).strip()
-    text = None if crud.is_blank_value(prefer_text) else str(prefer_text).strip()
+    column = None if crud.is_blank_value(column) else str(column).strip()
+    text = None if crud.is_blank_value(text) else str(text).strip()
     if (column is None) != (text is None):
-        raise ReplayRefused("prefer_column and prefer_text go together - write both or neither "
-                            f"(given: {'prefer_column' if column else 'prefer_text'})")
+        raise ReplayRefused("%s and %s go together - write both or neither (given: %s)"
+                            % (names[0], names[1], names[0] if column else names[1]))
     return (column, text) if column else None
 
 
-def _ranked_duplicates(model, keys, order, keep, prefer=None):
-    """Every row whose key has a value in each part, with its place among the rows of its key
-    (`n`, 1 = kept) and how many share the key (`c`): first a row whose `prefer` column holds its
-    text (any case), then by `order` - `min` earliest, `max` latest - a blank `order` last; a tie,
-    the smaller row_id kept."""
+def _holds(model, pair):
+    """A row whose `pair[0]` column holds `pair[1]` (any case) - prefer and scope ask this one."""
+    from sqlalchemy import String, cast
+
+    return cast(getattr(model, pair[0]), String).icontains(pair[1], autoescape=True)
+
+
+def _ranked_duplicates(model, keys, order, keep, prefer=None, among=()):
+    """Every row whose key has a value in each part (and that meets `among`), with its place among
+    the rows of its key (`n`, 1 = kept), the row kept (`kept`) and how many share the key (`c`):
+    first a row whose `prefer` column holds its text (any case), then by `order` - `min` earliest,
+    `max` latest - a blank `order` last; a tie, the smaller row_id kept."""
     from sqlalchemy import String, case, cast, false, func, literal, not_, select
 
     from database import crud
 
     parts = [cast(getattr(model, k), String) for k in keys]
     by = getattr(model, order)
-    preferred = (cast(getattr(model, prefer[0]), String).icontains(prefer[1], autoescape=True)
-                 if prefer else false())
+    preferred = _holds(model, prefer) if prefer else false()
     ranked = [case((preferred, 0), else_=1), case((crud.blank_sql_condition(cast(by, String)), 1), else_=0),
               by.asc() if keep == "min" else by.desc(), model.row_id.asc()]
     return select(model.row_id.label("row_id"), by.label("order_value"),
@@ -816,23 +823,15 @@ def _ranked_duplicates(model, keys, order, keep, prefer=None):
                   case((preferred, 1), else_=0).label("preferred"),
                   *[part.label("k%d" % i) for i, part in enumerate(parts)],
                   func.row_number().over(partition_by=parts, order_by=ranked).label("n"),
+                  func.first_value(model.row_id).over(partition_by=parts, order_by=ranked).label("kept"),
                   func.count().over(partition_by=parts).label("c")).where(
-                      not_(_blank_key(model, keys))).subquery()
+                      not_(_blank_key(model, keys)), *among).subquery()
 
 
-def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min",
-                        apply: bool = False, pace: str = None, log=logger.info,
-                        checkpoint=None, prefer_column=None, prefer_text=None) -> dict:
-    """Per key one row stays - the first by `order` (`_ranked_duplicates`; a row whose
-    `prefer_column` holds `prefer_text` before the rest; a row with a blank key part is not
-    touched, `_blank_key`) - and the rest are
-    deleted through the product's delete door, `crud.delete_rows_batch`, a page at a time, so
-    their layers, holds and ledger atoms are taken back as for a deletion from the grid (총괄
-    d72dc0283 · 소유자 10-09 「해당 dtwaferid 중에서 최소 시간으로 접으면 되긴 함」). The rows to
-    go are chosen once; a stop lands between pages and a re-run finds only what is left.
-    """
-    from sqlalchemy import and_, func, select
-
+def fold_target(table_name, keys, order, keep="min", prefer_column=None, prefer_text=None,
+                mark_column=None, only_column=None, only_text=None):
+    """What a fold names, judged once - by the fold and by the operation's judge before anything is
+    recorded. -> (keys, model, prefer pair, scope pair, mark column) or `ReplayRefused`."""
     from database import crud
 
     keys = [k for k in (keys or []) if k]
@@ -841,19 +840,69 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     if keep not in ("min", "max"):
         raise ReplayRefused(f"keep is 'min' (the earliest {order}) or 'max' (the latest), not '{keep}'")
     prefer = _prefer_of(prefer_column, prefer_text)
-    model, _col_types = resolve_target(table_name, list(keys) + [order] + ([prefer[0]] if prefer else []))
+    scope = _prefer_of(only_column, only_text, ("only_column", "only_text"))
+    mark = None if crud.is_blank_value(mark_column) else str(mark_column).strip()
+    model, col_types = resolve_target(table_name, list(keys) + [order] + ([prefer[0]] if prefer else [])
+                                      + ([scope[0]] if scope else []) + ([mark] if mark else []))
+    if mark and col_types.get(mark) != "string":
+        raise ReplayRefused(f"mark_column '{mark}' is a {col_types.get(mark)} column - the mark is text, "
+                            f"declare a string column for it")
+    return keys, model, prefer, scope, mark
+
+
+def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min",
+                        apply: bool = False, pace: str = None, log=logger.info,
+                        checkpoint=None, prefer_column=None, prefer_text=None,
+                        mark_column=None, only_column=None, only_text=None) -> dict:
+    """Per key one row stays - the first by `order` (`_ranked_duplicates`; a row whose
+    `prefer_column` holds `prefer_text` before the rest; a row with a blank key part is not
+    touched, `_blank_key`) - and the rest are
+    deleted through the product's delete door, `crud.delete_rows_batch`, a page at a time, so
+    their layers, holds and ledger atoms are taken back as for a deletion from the grid (총괄
+    d72dc0283 · 소유자 10-09 「해당 dtwaferid 중에서 최소 시간으로 접으면 되긴 함」). The rows to
+    go are chosen once; a stop lands between pages and a re-run finds only what is left.
+
+    `mark_column` (총괄 016a766af, 소유자 「접는 거 아예 삭제하지 말고」): the rest are not deleted - each
+    gets «folded into <the kept row>» there through the product's write door, and every rule on the
+    table whose `exclude` names that column runs on them through the replay door (no channel ·
+    `only_rule` · EDIT): it is not handed them any more, so what they fed is taken back (`edited`).
+    A marked row ranks no more. `only_column` · `only_text` (83c05cfbb): only rows whose column holds
+    the text rank - the rest stay as they are, counted.
+    """
+    from sqlalchemy import String, and_, cast, func, not_, select
+
+    from database import crud
+
+    keys, model, prefer, scope, mark = fold_target(table_name, keys, order, keep, prefer_column, prefer_text,
+                                                   mark_column, only_column, only_text)
     pages_per_cycle, rest_seconds = resolve_pace(pace)
-    ranked = _ranked_duplicates(model, keys, order, keep, prefer)
+    marked = crud.not_blank_sql_condition(cast(getattr(model, mark), String)) if mark else None
+    in_scope = _holds(model, scope) if scope else None
+    ranked = _ranked_duplicates(model, keys, order, keep, prefer, among=[
+        c for c in (in_scope, not_(marked) if mark else None) if c is not None])
     rows, to_go, folded_keys, preferred_keys = db.execute(select(
         func.count(), func.count().filter(ranked.c.n > 1),
         func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1)),
         func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1, ranked.c.preferred == 1)))
         .select_from(ranked)).one()
-    blank = db.execute(select(func.count()).select_from(model).where(_blank_key(model, keys))).scalar()
-    stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows": rows + blank,
-             "keys_folded": folded_keys, "keys_preferred": preferred_keys, "rows_to_delete": to_go,
-             "rows_kept": rows + blank - to_go, "rows_blank_key": blank, "rows_deleted": 0, "pages": 0,
-             "stopped": False, "sample": []}
+    keyed = not_(_blank_key(model, keys))
+    woken = _excluding_by(table_name, mark) if mark else []
+    recounts = _recounting(woken, mark) if woken else []
+
+    def counted(*where):
+        return db.execute(select(func.count()).select_from(model).where(*where)).scalar()
+    blank = counted(_blank_key(model, keys))
+    # by difference: a NULL scope column holds no text, and NOT of its test is NULL, not true
+    out_of_scope = counted(keyed) - counted(keyed, in_scope) if scope else 0
+    already = counted(keyed, *([in_scope] if scope else []), marked) if mark else 0
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
+             "rows": rows + blank + out_of_scope + already, "keys_folded": folded_keys,
+             "keys_preferred": preferred_keys, "rows_to_mark" if mark else "rows_to_delete": to_go,
+             "rows_kept": rows + blank + out_of_scope + already - to_go, "rows_blank_key": blank,
+             "rows_out_of_scope": out_of_scope, "rows_already_marked": already,
+             "rows_marked" if mark else "rows_deleted": 0, "pages": 0, "stopped": False, "sample": [],
+             "rules_woken": [rule.get("name") for rule in woken], "rules_recounting": [
+                 rule.get("name") for rule in recounts]}
     key_cols = [ranked.c["k%d" % i] for i in range(len(keys))]
     sample = {}
     for row in db.execute(select(ranked).where(ranked.c.c > 1, ranked.c.n <= FOLD_ROWS_SAMPLE_ROWS)
@@ -869,16 +918,18 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
         else:
             one["deleted"].append(seen)
     stats["sample"] = list(sample.values())
+    done = "rows_marked" if mark else "rows_deleted"
     if apply and to_go:
-        ids = [r for (r,) in db.execute(select(ranked.c.row_id).where(ranked.c.n > 1)
-                                        .order_by(ranked.c.row_id))]
-        for start in range(0, len(ids), FOLD_ROWS_PAGE):
-            if checkpoint is not None and checkpoint(stats["rows_deleted"], len(ids)):
+        losers = [(r, k) for r, k in db.execute(select(ranked.c.row_id, ranked.c.kept).where(ranked.c.n > 1)
+                                               .order_by(ranked.c.row_id))]
+        for start in range(0, len(losers), FOLD_ROWS_PAGE):
+            if checkpoint is not None and checkpoint(stats[done], len(losers)):
                 stats["stopped"] = True
-                log(f"[fold-rows] stopped by request after {stats['rows_deleted']} of {len(ids)} rows")
+                log(f"[fold-rows] stopped by request after {stats[done]} of {len(losers)} rows")
                 break
-            stats["rows_deleted"] += crud.delete_rows_batch(
-                db, table_name, ids[start:start + FOLD_ROWS_PAGE], FOLD_ROWS_BY)
+            page = losers[start:start + FOLD_ROWS_PAGE]
+            stats[done] += (_mark_folded(db, table_name, mark, page, woken, recounts) if mark else
+                            crud.delete_rows_batch(db, table_name, [r for r, _k in page], FOLD_ROWS_BY))
             stats["pages"] += 1
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 time.sleep(rest_seconds)
@@ -886,9 +937,71 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
         f"hold more than one row - keep "
         + (f"a row whose {prefer[0]} holds '{prefer[1]}' ({preferred_keys} key(s)), then " if prefer else "")
         + f"the {'earliest' if keep == 'min' else 'latest'} {order}, "
-        f"{to_go} row(s) to delete, {stats['rows_deleted']} deleted, {blank} row(s) with a blank key "
-        f"part left as they are")
+        f"{to_go} row(s) to {'mark' if mark else 'delete'}, {stats[done]} {'marked' if mark else 'deleted'}, "
+        f"{blank} row(s) with a blank key part"
+        + (f", {out_of_scope} out of scope" if scope else "")
+        + (f", {already} marked before" if mark else "") + " left as they are")
     return stats
+
+
+#: What a folded row's mark says (총괄 016a766af) - the row it folded into.
+FOLD_MARK = "folded into %s"
+
+
+def _excluding_by(table_name, mark):
+    """The enabled rules on `table_name` whose `exclude` names `mark` - what a marked row is for."""
+    import chain_bindings
+
+    return [rule for rule in load_rules() if rule.get("trigger_table") == table_name
+            and mark in (rule.get(chain_bindings.EXCLUDE_KEY) or ())]
+
+
+def _recounting(woken, mark):
+    """The rules that recount on the targets of `woken` by `mark` - a rule on such a target whose
+    `source_exclude` (stamped at load by the mapper that pairs them) names it."""
+    import chain_bindings
+
+    targets, names = {r.get("target_table") for r in woken}, {r.get("name") for r in woken}
+    return [rule for rule in load_rules() if rule.get("trigger_table") in targets and rule.get("name") not in names
+            and mark in (rule.get(chain_bindings.SOURCE_EXCLUDE_KEY) or ())]
+
+
+def _mark_folded(db, table_name, mark, page, woken, recounts=()) -> int:
+    """One page of the fold by mark (총괄 016a766af): «folded into <kept>» in `mark` through the
+    product's write door (collapsed - a page is volume), then for every rule in `woken` the page's
+    rows through the replay door - no channel, `only_rule`, EDIT (총괄 c2995cdd8's shape): 소유자 09-26
+    「소급은 연쇄 안 함」 means no rule at random, and these are the rules the mark exists for (총괄 10-09).
+    🔴 Then, in the same run line, the rules that recount on those rules' target (`recounts`) on the
+    rows the page fed - its downstream is run by running it too (event_constants CHANNEL_RETROACTIVE,
+    소유자 09-26); no `cascade`: the withdrawal goes out on the retroactive channel and wakes no rule
+    (총괄 10-09 - the grid's click replay is the one exception the owner made).
+    -> rows marked."""
+    import event_constants
+    from chain import cell_layer
+    from database import crud, schemas
+    from database.context import channel, outbox_mode
+    from database.database import stage_collapsed_event
+
+    with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+        crud.apply_batch_updates(db, table_name, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(row_id=row_id, updates={mark: FOLD_MARK % kept},
+                                      source_name=FOLD_ROWS_BY, updated_by=FOLD_ROWS_BY)
+            for row_id, kept in page]))
+    db.commit()
+    fed = {}
+    if recounts:
+        for target, row_id, *_rest in cell_layer.cells_stamped_by(db, [row_id for row_id, _kept in page]):
+            fed.setdefault(target, set()).add(row_id)
+    with channel(None):
+        for rule in woken:
+            stage_collapsed_event(db, "EDIT", table_name, [row_id for row_id, _kept in page],
+                                  only_rule=rule.get("name"), replay=True)
+        for rule in recounts:
+            if fed.get(rule.get("trigger_table")):
+                stage_collapsed_event(db, "EDIT", rule.get("trigger_table"), sorted(fed[rule.get("trigger_table")]),
+                                      only_rule=rule.get("name"), replay=True)
+    db.commit()
+    return len(page)
 
 
 #: The writer of the history line a notation backfill leaves on each cell it folds.

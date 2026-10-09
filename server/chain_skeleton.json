@@ -103,6 +103,32 @@
         }
       },
       {
+        "key": "exclude",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "source_exclude",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
         "key": "enabled",
         "required": false,
         "node": {
@@ -404,6 +430,19 @@
             },
             {
               "key": "require",
+              "required": false,
+              "node": {
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "column",
+                "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              }
+            },
+            {
+              "key": "exclude",
               "required": false,
               "node": {
                 "kind": "map",
@@ -805,6 +844,19 @@
         "node": {
           "kind": "leaf",
           "hint": "free"
+        }
+      },
+      {
+        "key": "source_exclude",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
         }
       },
       {

@@ -77436,3 +77436,87 @@ MD5 AFTER  same
 ### 다음
 
 접기 표시(016a766af · 83c05cfbb + 맵퍼 «쓰는 칸» 사실 + 기동 뒤 첫 묶음 칸) — WIP 를 최신 main 위로 옮겨 두었고 이어서 짓습니다
+
+---
+
+## [10-09 밤] 접기 표시 + 범위 + on.exclude + 표시 행 층 거두기 + 맵퍼 «쓰는 칸» 사실 착지 — `df370a25f` (총괄 016a766af · 83c05cfbb)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: assy_test 의 pg_engine 스크래치 스키마(hold 세상 표 DROP) · SQLite 메모리. 진짜 프로세스: assy_test 의 스크래치 스키마 assy_impl_foldmark_1009(끝에 DROP — dropped schema assy_impl_foldmark_1009 (20 tables) - left 0). 🔴 public 에 한 번 떨어졌다가 되돌림(아래)
+
+### 진짜 따로 띄운 프로세스 한 줄 — 재기동 직후 체인 워커 + 슬롯, 소유자 CLI 그대로
+
+```
+전     공식 표 [{'dt_job': 'J1', 'netdie': 9.0, 'hold': None}] · B 가 먹인 층 4
+재기동 체인 워커를 멈추고 새로 띄움 -> 슬롯 둘 새로 뜸(이 프로세스들은 아무 규칙도 안 돈 상태)
+미리보기 chain_replay_cli.py fold-rows hc_log --keys dt_job,dt_x,dt_y --order log_id --mark-column fold_mark
+   1 key(s) of (dt_job, dt_x, dt_y) in 'hc_log' hold more than one row: 1 row(s) are marked, 1 stay. Per key the earliest log_id stays (a blank one last, a tie the smaller row id). 0 row(s) with a blank key part are left as they are. 0 row(s) marked before rank no more. For example dt_job=J1, dt_x=1, dt_y=2: keeps A, marks B. Each is marked «folded into <the row kept>» in fold_mark - nothing is deleted - and the rules that exclude by fold_mark (hc_copy) run on them and take back what they fed; then hc_recount recount the rows they fed. Empty the mark to bring a row back.
+실행   같은 명령 + --apply -> fold-rows 'hc_log': 1 of 1 row(s) marked in 1 page(s), 1 key(s), 0 row(s) with a blank key part left as they are
+체인 워커 · 슬롯 줄
+   [Chain] slot 1 started, pid 7976
+   [Chain] slot 2 started, pid 53408
+   [Chain] slot 1 (pid 7976) runs line 5482b0c908e7
+   [slot 1 pid 7976] [Chain] hc_copy: 1 row(s) not handed over - excluding column(s) filled: fold_mark=1
+   [slot 1 pid 7976] [withdraw] apply: 4 cell(s) withdrawn (4 revealed another source, 0 left empty, 0 skipped as human-pinned)
+   [slot 1 pid 7976] [ChainRetract] table=hc_log edited_rows=1 groups=1 cells_withdrawn=4 protected_skipped=0 rows_told=1
+   [slot 1 pid 7976] [ChainRule] rule=hc_recount kind=copy_rows_with_hold target=hc_official rows_in=1 rows_out=1 written=None refusal=None error=None elapsed=0.031s
+replay 사건(id · 표 · only_rule · 행 · 상태)  [(6, 'hc_log', 'hc_copy', 1, 'SUCCESS'), (7, 'hc_official', 'hc_recount', 1, 'SUCCESS')]  — 같은 실행 줄, 복사 다음 다시 세기
+뒤     공식 표 [{'dt_job': 'J1', 'netdie': 7.0, 'hold': 'agreed'}] · B 가 먹인 층 0 · B 표시 «folded into 01a12090-4aaa-75fc-ac82-f86535aeba4d» · 기다리는 사건 0
+«이 규칙이 무엇을 쓰는지 아직 모릅니다» 줄 0 번
+```
+
+### 게이트 · 변이 · 실행
+
+```
+PG     표시 행 층 4 -> 0(기동 뒤 첫 묶음, 아직 모릅니다 줄 없음) · 남긴 행 값 · 보류 agreed · 원장 7 · 복사 -> 다시 세기 순서
+       · 회수가 낸 사건은 어떤 규칙도 안 깨움 · 표시 비우면 다시 듦 · exclude 없는 규칙은 계속 받음 · require 잃은 행도 새 프로세스에서 거둠
+       · 두 반쪽 source_exclude · 복사 규칙끼리 다르면 다시 세기 거절
+SQLite 범위 안 행만 접고 범위 밖은 셈 · 범위 반쪽만 적으면 거절 · 표시는 아무것도 안 지우고 다시 돌리면 0 · 짝 없으면 그 문장 · 글자 칸 아니면 거절
+SQLite 바뀐 자리를 지나는 파일 전부   1 failed, 1993 passed, 4 skipped, 141 deselected  (빨강은 ['test_the_repo_root_is_one_above_it'] — wt-impl 이 워크트리라 .git 이 파일, 제 변경과 무관)
+PG     바뀐 자리를 지나는 파일 전부   3 failed, 240 passed, 195 deselected
+       빨강 ['test_a_line_held_in_one_slot_does_not_hold_a_line_in_another', 'test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row', 'test_two_independent_refusals_are_counted_and_named_in_one_run']
+       원장 둘은 기준(c8e5f09c8, 제 변경 전)에서도 빨강: 2 failed, 1 passed, 27 deselected · ['test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row', 'test_two_independent_refusals_are_counted_and_named_in_one_run']
+          까닭 «sources.process_param_num_measure: source 'process_param_num_measure' is not declared in shipped_ledger_fp3abrcm» — 제 변경은 원장을 안 건드림
+       슬롯 파일 하나만 다시 — 제 브랜치 1회 1 failed, 14 passed test_a_pause_rewinds_the_held_group_and_resume_runs_the_line / 2회 15 passed / 3회 1 failed, 14 passed test_a_line_held_in_one_slot_does_not_hold_a_line_in_another / 4회 15 passed / 5회 15 passed · 기준 1회 15 passed / 2회 15 passed
+          빨강 칸이 돌 때마다 다름. 제 브랜치는 slots · dispatcher · runtime 파일 diff 0
+```
+변이 (md5 전후 비교)
+```
+BASELINE pg 6 passed · sqlite 26 passed
+MUTANT _claims ignores exclude            pg     1 failed, 5 deselected
+    FAILED test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed
+MUTANT the edit withdrawal removed        pg     1 failed, 5 deselected
+    FAILED test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed
+MUTANT a marked row ranks again           lite   1 failed, 25 deselected
+    FAILED test_a_mark_deletes_nothing_names_the_row_kept_and_a_marked_row_ranks_no_more
+MUTANT the scope not asked                lite   1 failed, 25 deselected
+    FAILED test_only_the_rows_in_scope_fold_and_the_rest_are_left_and_counted
+MUTANT the recount events not staged      pg     1 failed, 5 deselected
+    FAILED test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed
+MUTANT the copy's columns fact removed    pg     1 failed, 5 deselected
+    FAILED test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed
+MUTANT the recount not paired             pg     1 failed, 5 deselected
+    FAILED test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed
+MD5 AFTER  same
+```
+
+### 🔴 제 실수 — assy_test public 에 빈 표 (보고 드린 것)
+
+```
+까닭   제품 엔진이 connect_args 의 options 로 URL 의 search_path 를 덮어써서, 첫 준비가 public 으로 떨어졌습니다
+되돌림 실행 전 목록에 없던 표 9 · 뷰 1 만, 행 0 일 때만 지움 -> public 53 표 그대로 · 행 변화 0
+인덱스 인덱스 마스터 판정(models.index_states)을 public 에 돌림 — 선언 49 · {'missing': 4, 'present': 45} · 선언 밖 [['cell_sources', 'ix_cell_sources_column_name'], ['cell_sources', 'ix_cell_sources_table_name']]
+       선언 밖 둘은 cell_sources 의 ix_ 둘 — 이번 실행은 지금 선언으로만 짓기 때문에 이번 것이 아닙니다
+다시   스크래치 폴더의 sitecustomize 가 모든 연결에 search_path 를 그 스키마(, public)로 걸고, 표 짓기 «전» current_schema() 를 단언
+       public 관계 · 인덱스 · 행을 전후로 셈: public relations 325 -> 325 · added [] · gone [] · rows changed {}
+```
+
+### 판단 둘 (총괄 판정대로)
+
+```
+replay 길   표시 쓰기는 소급 채널이라 아무 규칙도 안 깨웁니다. 표시 쪽마다 exclude 규칙, 이어 짝 다시 세기 규칙만 replay 문으로 돕니다
+cascade     안 씁니다(소유자 09-26). 처음엔 cascade 를 실었다가 총괄 판정으로 뒤집었습니다
+```
+
+### 다음
+
+층 이름 고정 ① (총괄 판정 — ② 쓴이 순위는 시연 뒤) -> 껍데기 행(판정 ㄱ — 다시 세기가 쓴 뒤 판정) -> SLOT_POOL · foreign_beat -> 표 선언 인덱스 -> VALUES CAST -> 원장 해시 인덱스

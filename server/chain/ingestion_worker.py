@@ -838,6 +838,16 @@ def load_chain_rules():
                 operator_line.rename_one_declaration(files)))
             refused_here.append((name, "name_claimed_twice"))
 
+    # 🔴 [총괄 016a766af] A MAPPER THAT READS ANOTHER RULE OF ITS KIND PAIRS THEM HERE, with the set in
+    #    hand (`mapper_sdk.MAPPER_FACTS[...]["at_load"]`) - the hold recount counts by its copy rule's
+    #    `exclude`, stamped as `source_exclude`. What it refuses is named and dropped like any refusal.
+    for mapper_name, facts in sorted(mapper_sdk.MAPPER_FACTS.items()):
+        mine = [rule for rule in rules if chain_bindings.mapper_cells(rule)[0] == mapper_name]
+        for rule, sentence in (facts["at_load"](mine) if facts.get("at_load") and mine else ()):
+            logger.error("[ChainRules] %s refused: pair_mismatch - %s", rule.get("name"), sentence)
+            refused_here.append((rule.get("name"), "pair_mismatch"))
+            rules = [kept_rule for kept_rule in rules if kept_rule is not rule]
+
     # 🔴 [S-156, 판정 385] THE DERIVED ORDER, READ HERE, ONCE. `rule_order` orders producers
     #    before consumers from `trigger_table` ↔ `target_table` - the same derivation replay
     #    has always used - and the worker's rule loop walks `rules` in this order, so the
@@ -1042,7 +1052,9 @@ def wake_columns(rule) -> list:
     wanted = list(rule.get("trigger_columns") or ())
     if not wanted:
         return []
-    return wanted + [c for c in rule.get(chain_bindings.REQUIRE_KEY) or () if c not in wanted]
+    # an `exclude` column set or emptied moves a row in or out the same way (총괄 016a766af)
+    gates = [c for key in chain_bindings.ROW_GATE_KEYS for c in rule.get(key) or ()]
+    return wanted + [c for c in dict.fromkeys(gates) if c not in wanted]
 
 
 #: 🔴 [판정 500] EVERY SEAT THAT PICKS UP A RULE WHEN A TABLE CHANGES, AND EACH ANSWERS FOR

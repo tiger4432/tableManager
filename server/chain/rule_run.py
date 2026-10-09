@@ -259,16 +259,14 @@ def stamps_its_origin(rule):
     """Does this rule's output say which row it came from? True · False · None (not known yet).
 
     🔴 [총괄 4c3417ccb ③] ASKED OF THE OUTPUT - the last run of this rule that proposed rows. Until
-    a run says, a kind the product builds answers with its declared fact and a file mapper is not
-    known yet.
+    a run says, the mapper's declared fact answers (`mapper_sdk.register(…, facts=)`), and a mapper
+    that declares nothing is not known yet.
     """
     seen = _ORIGIN_SEEN.get((rule or {}).get("name"))
     if seen is not None:
         return seen
-    mapper_name = (rule or {}).get("mapper")
-    if dynamic_mappers.label_for(mapper_name) is not None:
-        return dynamic_mappers.stamps_origin(mapper_name)
-    return None
+    # what its mapper declares - a kind the product builds, or a file mapper (총괄 016a766af)
+    return dynamic_mappers.stamps_origin((rule or {}).get("mapper"), rule)
 
 
 def columns_a_rule_writes(rule, items=()):
@@ -276,8 +274,9 @@ def columns_a_rule_writes(rule, items=()):
 
     This run's rows when it proposed any. 🔴 [총괄 10-08] A run that proposed none still owns what it
     wrote before - a join whose value row moved to a key no left row carries proposes nothing, and
-    its old cells have to go - so then a kind the product builds answers from its declaration
-    (`dynamic_mappers.columns_declared_for`) and any other mapper with what it last wrote in this process.
+    its old cells have to go - so then its mapper's declaration answers (`dynamic_mappers.
+    columns_declared_for` - a kind the product builds, or a file mapper that registered `columns`,
+    총괄 016a766af), and a mapper that declares nothing with what it last wrote in this process.
     """
     columns = {column for item in items or () for column in (item_cell(item, "updates") or ())}
     if columns:
@@ -438,28 +437,37 @@ def held_back(rule, handed) -> tuple:
     product's one judgement (`crud.is_blank_value`). Asked HERE because every kind and every
     replay hands its rows through this seat - and the enrichment backfill calls it too
     (총괄 2276e38cf ③), so the live chain and the backfill cannot answer `require` apart.
-    The line is said here for the same reason: one event, one sentence, whoever asked."""
+    The line is said here for the same reason: one event, one sentence, whoever asked.
+
+    `exclude` (총괄 016a766af) is the other half, judged in the same pass: a row with any of
+    those columns filled is not handed over either."""
     import chain_bindings
 
     wanted = list((rule or {}).get(chain_bindings.REQUIRE_KEY) or ())
-    if not wanted:
+    shut = list((rule or {}).get(chain_bindings.EXCLUDE_KEY) or ())
+    if not wanted and not shut:
         return handed, {}
     from database import crud
 
-    kept, empty = [], collections.Counter()
+    kept, empty, filled = [], collections.Counter(), collections.Counter()
     for payload in handed:
         data = payload.get("data") if isinstance(payload, dict) else None
-        blank = [column for column in wanted
-                 if crud.is_blank_value(((data or {}).get(column) or {}).get("value"))]
-        if blank:
+        cells = {column: ((data or {}).get(column) or {}).get("value") for column in wanted + shut}
+        blank = [column for column in wanted if crud.is_blank_value(cells[column])]
+        excluding = [column for column in shut if not crud.is_blank_value(cells[column])]
+        if blank or excluding:
             empty.update(blank)
+            filled.update(excluding)
         else:
             kept.append(payload)
-    if empty:
-        logger.info("[Chain] %s: %d row(s) not handed over - required column(s) empty: %s",
+    if empty or filled:
+        said = ([("required column(s) empty", empty)] if empty else []) + (
+            [("excluding column(s) filled", filled)] if filled else [])
+        logger.info("[Chain] %s: %d row(s) not handed over - %s",
                     (rule or {}).get("name") or "<unnamed rule>", len(handed) - len(kept),
-                    ", ".join("%s=%d" % pair for pair in sorted(empty.items())))
-    return kept, dict(empty)
+                    "; ".join("%s: %s" % (words, ", ".join("%s=%d" % pair for pair in sorted(c.items())))
+                              for words, c in said))
+    return kept, {**empty, **filled}
 
 
 def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,

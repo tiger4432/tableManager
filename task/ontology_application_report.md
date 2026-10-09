@@ -37773,3 +37773,38 @@ D  세상 vf(void_formation)                              -        18 변 · qua
 제 안     ㉠ — 이야기 넷이 걷는 것만 옮기면 박스는 그대로이고, 원자 수 · 시각은 박스 그대로 보입니다
 함께      직전 물음 둘(모델 세상 둘 · 양불 base 짝)이 정해지면 ㉠ 로 바로 갑니다
 ```
+
+---
+
+## [C 응용] 10-09 시연 ③ 을 걷기 «화면»에서 — 세상 칩 바꾸기가 다시 읽기 없이 다시 걷습니다 · 둘째 모델은 void 에 안 닿습니다
+
+```
+모양   운영 런처 · c7ee5424b(걷기 값 칸 · 부호 시작 · 세상 바꾸기 착지 포함) · 그 커밋 클라 빌드 · 직전 보고의 모델 세상 둘 · public 변화 0 · 스키마 셋 지움
+누른 것  walk.html -> 세상 칩 appdemo_vf -> 시작 타입이 그 세상 선언(defect_kind · quantity)으로, follow 가 leads_to 하나로 바뀜
+         -> 시작 defect_kind · 키 목록 «void (7)» -> leads_to 켬 -> Walk
+본 것    appdemo_vf          Nodes 19 · Edges 18 · 3 걸음 · void 의 값 칸 «7 edges · + (outgassing) · + (backside_damage) · …»(변마다 값 — 덮어쓰지 않음)
+         vb 칩 더함(vf + vb)   Nodes 19 · Edges 18 · 주소 ?world=appdemo_vf&world=appdemo_vb · 페이지 다시 안 읽음
+         vf 칩 뺌(vb 만)        Nodes 1 · Edges 0 · 주소 ?world=appdemo_vb · 페이지 다시 안 읽음
+판정    화면 쪽은 이야기 ③ 이 그대로 돕니다. 막는 것은 «둘째 모델»입니다 — void_observation_bias 는 변 하나라 void 에서 걸으면 아무것도 안 나옵니다
+        -> 물음 ① 을 다시 여쭙니다: 둘째 세상을 무엇으로(박스 모델 셋 중 void 에 닿는 것은 void_formation 하나). 소유자가 «다른 가설의 모델»을
+           새로 적는 이야기라면 그 세상의 mechanism_edge 행(모델 칸만 다른)을 누가 · 어디에 적을지가 시연 선언 절에 들어가야 합니다
+```
+
+---
+
+## [C 응용] 10-09 진짜 프로세스로 — 접기 표시(df370a25f) 됩니다 · RUN.md 순서 그대로
+
+```
+모양   운영 런처 · a0928d89e · RUN.md 의 순서 그대로: 로그 표에 fold_mark(글자) · 복사 규칙 exclude: ["fold_mark"] · 띄우기(= 재기동)
+       세계 hold_world(로그 -> 공식 표 복사 + 다시 세기 -> 공식 표를 읽는 원장 소스) · 키 400 개 중 100 개를 값 다른 두 줄로 · public 변화 0 · 스키마 지움
+                                   로그 행   표시   공식 표 보류 빈   늦은 값이 선 공식 행   원자
+씨앗 뒤                              500      0      100             100                  300
+fold-rows --mark-column 미리보기      2.5 초 — 「100 row(s) are marked, 400 stay」
+fold-rows --mark-column --apply      3.4 초(+ 가라앉기 26 초)
+실행 뒤                              500      100    0               0                    400
+둘째 바퀴(미리보기 · 실행)              표시 0 · 수 전부 그대로
+chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) filled: fold_mark=100」
+                  「[ChainRetract] table=hc_log edited_rows=100 … cells_withdrawn=400」 · 다시 세기 rows_in=100
+판정   지운 행 0 · 표시된 행이 먹인 층을 거두고 보류가 다시 agreed · 원장이 그 키들의 원자를 냄 — pull 을 말해도 되는 줄입니다
+       RUN.md 의 «실행 뒤 볼 줄» 셋이 그대로 찍힘 · «무엇을 쓰는지 아직 모릅니다» 줄 0
+```

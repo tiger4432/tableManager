@@ -41,7 +41,9 @@ KEY = {"dt_job": "J1", "dt_x": 1, "dt_y": 2}
 TABLES = {
     LOG: {"business_key": "log_id", "composite_key_source": ["log_id"],
           "column_types": {"log_id": "string", "dt_job": "string", "dt_x": "number",
-                           "dt_y": "number", "netdie": "number"},
+                           "dt_y": "number", "netdie": "number",
+                           # the fold's mark and a row's kind (총괄 016a766af · 83c05cfbb)
+                           "fold_mark": "string", "kind": "string"},
           "display_columns": ["log_id", "dt_job", "dt_x", "dt_y", "netdie"]},
     OFFICIAL: {"composite_key_source": KEYS,
                "column_types": {"dt_job": "string", "dt_x": "number", "dt_y": "number",
@@ -76,9 +78,10 @@ def sample(name):
         return json.load(fh)
 
 
-def build(pg_engine, monkeypatch, tmp_path, batch=False):
+def build(pg_engine, monkeypatch, tmp_path, batch=False, exclude=()):
     """The world, yielded; the caller wraps it as its own fixture. `batch`: both rules declare
-    `is_batch` (the mapper is handed the batch) or neither (one row a call)."""
+    `is_batch` (the mapper is handed the batch) or neither (one row a call). `exclude`: the copy
+    rule's `on.exclude` (총괄 016a766af)."""
     mapper_sdk.discover()
     import mappers.hold_copy                                         # noqa: F401 - registers
     saved = dict(crud.TABLE_CONFIG)
@@ -117,7 +120,8 @@ def build(pg_engine, monkeypatch, tmp_path, batch=False):
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
     rules_path = tmp_path / "chain_rules.json"
-    rules_path.write_text(json.dumps({"rules": [{**RULE, "is_batch": batch},
+    rules_path.write_text(json.dumps({"rules": [{**RULE, "is_batch": batch,
+                                                 **({"exclude": list(exclude)} if exclude else {})},
                                                 {**RECOUNT, "is_batch": batch}]}),
                           encoding="utf-8")
     monkeypatch.setattr(worker, "RULES_PATH", str(rules_path))
