@@ -65,28 +65,38 @@ def copy_rows_with_hold(db, payloads, rule=None):
 
 
 def _claims(db, source, keys, columns, batch_keys) -> dict:
-    """{key: distinct value sets of `columns` among `source`'s rows of that key} - one query."""
+    """{key: distinct value sets of `columns` among `source`'s rows of that key}. The keys with a
+    value in every column join a VALUES list (총괄 043915ab0 ②: the row `IN` became an OR chain the
+    planner answered with a scan of the whole table); a key holding a NULL is compared NULL-safe,
+    by itself, in a second query only when there is one. A VALUES list's columns are column1,
+    column2 ... in PostgreSQL and SQLite alike."""
     from mapper_sdk import sql
 
-    params, valued, nulled = {}, [], []
-    for n, key in enumerate(batch_keys):
-        for i, value in enumerate(key):
-            params["k%d_%d" % (n, i)] = value
-        if any(value is None for value in key):
-            nulled.append(" AND ".join('"%s" IS NOT DISTINCT FROM :k%d_%d' % (name, n, i)
-                                       for i, name in enumerate(keys)))
-        else:
-            valued.append("(%s)" % ", ".join(":k%d_%d" % (n, i) for i in range(len(keys))))
-    where = (["(%s) IN (%s)" % (", ".join('"%s"' % name for name in keys), ", ".join(valued))]
-             if valued else []) + ["(%s)" % clause for clause in nulled]
-    names = ", ".join('"%s"' % name for name in dict.fromkeys(keys + columns))
-    found = sql(db, 'SELECT %s, COUNT(*) AS n FROM (SELECT DISTINCT %s FROM "%s" WHERE %s) claims '
-                    'GROUP BY %s' % (", ".join('"%s"' % name for name in keys), names, source,
-                                     " OR ".join(where), ", ".join('"%s"' % name for name in keys)),
-                params)
-    found = found.astype(object).where(found.notna(), None)
-    return {tuple(record[name] for name in keys): int(record["n"])
-            for record in found.to_dict("records")}
+    valued = [(n, key) for n, key in enumerate(batch_keys) if all(value is not None for value in key)]
+    nulled = [(n, key) for n, key in enumerate(batch_keys) if any(value is None for value in key)]
+
+    def params_of(group):
+        return {"k%d_%d" % (n, i): value for n, key in group for i, value in enumerate(key)}
+
+    froms = []
+    if valued:
+        values = ", ".join("(%s)" % ", ".join(":k%d_%d" % (n, i) for i in range(len(keys))) for n, _ in valued)
+        on = " AND ".join('s."%s" = k.column%d' % (name, i + 1) for i, name in enumerate(keys))
+        froms.append(('"%s" s JOIN (VALUES %s) AS k ON %s' % (source, values, on), params_of(valued)))
+    if nulled:
+        match = " OR ".join("(%s)" % " AND ".join('s."%s" IS NOT DISTINCT FROM :k%d_%d' % (name, n, i)
+                                                  for i, name in enumerate(keys)) for n, _ in nulled)
+        froms.append(('"%s" s WHERE %s' % (source, match), params_of(nulled)))
+    names = ", ".join('s."%s" AS "%s"' % (name, name) for name in dict.fromkeys(keys + columns))
+    grouped = ", ".join('"%s"' % name for name in keys)
+    claims = {}
+    for where, params in froms:
+        found = sql(db, 'SELECT %s, COUNT(*) AS n FROM (SELECT DISTINCT %s FROM %s) claims GROUP BY %s'
+                        % (grouped, names, where, grouped), params)
+        found = found.astype(object).where(found.notna(), None)
+        claims.update({tuple(record[name] for name in keys): int(record["n"])
+                       for record in found.to_dict("records")})
+    return claims
 
 
 def _register():
