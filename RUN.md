@@ -1,5 +1,92 @@
 # 지금 돌리면 되는 것
 
+> ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 237d313db)**
+>
+> ```
+> 리허설       운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러) 위에서 이 표의 명령을 순서대로 두 바퀴. 꼬인 dt_log 모양 220 행 —
+>              한 칩 두 이벤트 10 · 좌표 빈 행 5 · 수동 잡 5 · 인벤토리 칸이 옛 chain_ingestion 층(틀린 값)에 덮임 · 옛 판 소스 원자 215
+>              초 = 명령이 돌아올 때까지(리허설 · 박스). 운영 크기의 초가 아니다. replay 의 «rows handed over» 뒤 체인이 쓰는 시간은
+>                   이 초 밖이다 — chain_worker.log 의 [ChainRule] rule=<규칙> … rows_in= 줄이 그 끝
+> 어디서       server 폴더(cd server) · PowerShell 창에 «직접» 친다
+>              ⚠️ 출력을 파이프(|)나 파일(>)로 받지 않는다 — 리허설에서 fold-rows 미리보기가 '«'(U+00AB) 를 cp949 로 못 써서 죽었다(exit 1).
+>                 받아야 하면 먼저  $env:PYTHONIOENCODING = "utf-8"   (창에 직접 친 경우는 이 박스에서 못 쟀다)
+> 이름         리허설 이름                     운영에서 — 소유자가 채운다
+>              dt_log                          «로그 표»
+>              official_dt                     «공식 표»
+>              dt_inventory_core_xy            «인벤토리 식 규칙»          (맵퍼가 적던 층 이름 dt_inventory -> «옛 층 이름»)
+>              official_dt_copy                «복사 규칙»
+>              dt_log (원장 소스)               «옛 판 소스»               official_dt (원장 소스) -> «공식 표 소스»
+>              core_wafer,core_x,core_y        «공식 표 키 칸»             event_time · dt_job_id · AUTO -> «고를 칸» · «범위 칸» · «범위 글자»
+> ```
+>
+> ```
+> ⓪ 재기동 전 선언   table_config.json   «로그 표» 에 "fold_mark": "string"
+>                   chain_rules.json    «복사 규칙» 에 "exclude": ["fold_mark"]
+>                   ontology/ledger_config.json   transfer 소스는 «공식 표»를 읽고, «옛 판 소스» 이름은 sources 에 없다
+> ① git pull -> 서버 · 수집기 · 체인 워커 · 스케줄러 재기동                                   재기동 뒤 기다리는 사건 0
+>    볼 줄   chain_worker.log  [ChainRules] dt_inventory_core_xy: source_name 'dt_inventory' is written as chain_ingestion
+>            «인벤토리 식 규칙»이 맵퍼를 mapper_module · mapper_function 으로 적었으면 이 줄은 0 개(값은 ③ 에서 그래도 바로잡힘 · 237d313db)
+> ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.7 · 2.9 초
+>    답      «No waiting withdrawal event goes row by row - 0 row(s)» 면 접을 것 없음
+>    멈춤    소급 탭 × — 쪽 사이에서 선다
+> ③ 좌표 바로잡기             python scripts/chain_replay_cli.py replay «인벤토리 식 규칙»   -> --apply          2.4 · 3.6 초
+>    답      미리보기 source rows scanned : 220 · 실행 rows handed over : 220
+>    뜻      core x,y 가 chain_ingestion 자리에 새 값 — 맞는 행 43 -> 215 / 215
+>            공식 표는 이 단계에서 안 움직인다(보류 agreed 39 -> 39) — 스크립트 replay 는 연쇄하지 않는다(소유자 09-26). ⑥ 이 그 일
+>    멈춤    소급 탭 실행 목록의 Cancel(10-08 «일 하나를 끈다») — 이 리허설에서는 안 쟀다
+> ④ (골라서) 옛 층 이름 거두기  python scripts/chain_replay_cli.py withdraw «로그 표» «옛 층 이름» --columns core_x,core_y   -> --apply    1.7 · 2.4 초
+>    답      칸마다 «(now from 'chain_ingestion'; remaining ['chain_ingestion'])» — 보이는 값은 그대로
+>    멈춤    안 쟀다
+> ⑤ 접기 표시                 python scripts/chain_replay_cli.py fold-rows «로그 표» --keys «공식 표 키 칸» --order «고를 칸» --mark-column fold_mark --only-column «범위 칸» --only-text «범위 글자»   -> --apply    2.8 · 3.9 초
+>    답      미리보기 «10 row(s) are marked, 210 stay» · 키 칸 빈 행 5 그대로 / 실행 «10 of 10 row(s) marked» · 범위 밖 5 그대로
+>    뜻      지운 행 0 — 표시된 행은 «복사 규칙»이 안 받고, 그 행이 먹인 층을 거둔다(보류 agreed 39 -> 45)
+>    되돌리기 fold_mark 칸을 비운다 · 멈춤 안 쟀다
+> ⑥ 복사 replay               python scripts/chain_replay_cli.py replay «복사 규칙»          -> --apply          2.4 · 3.2 초
+>    답      source rows scanned : 220 (표시된 행 포함 — 규칙이 거른다)
+>    뜻      공식 표 보류 agreed 45 -> 205 · 껍데기 행 82 -> 0 · 공식 표 소스 원자 6 -> 205
+>            일부 행만이면 --business-keys <«로그 표» 키,…> (표 키가 여러 칸이면 --row-ids)
+>    멈춤    ③ 과 같음 — 안 쟀다
+> ⑦ 옛 판 소스 거두기          python -m ledger.backfill --source «옛 판 소스» --whole-source   -> --apply          2.2 · 3.0 초
+>    답      미리보기 relation_rows None(= 선언에 없는 이름) · stale_atoms 215 / 실행 stale_withdrawn 215
+>    뜻      같은 코어 다이에 transfer 둘 123 -> 0
+>            relation_rows 가 None 이 아니라 수면 ⓪ 에서 «옛 판 소스»를 sources 에서 안 뺀 것 — 그때 --apply 는 거두지 않고 다시 번역한다
+>    멈춤    소급 탭 × — 쪽 사이에서 선다
+> ⑧ 공식 표 소스 다시 번역      python -m ledger.backfill --source «공식 표 소스» --whole-source   -> --apply        2.1 · 3.5 초
+>    답      미리보기 relation_rows 205 · stale_atoms 0 / 실행 «rows 205, withdrawn 205, written 205 of 205»
+>    멈춤    소급 탭 × — 쪽 사이에서 선다
+> 끝 상태      transfer 원자 205 = 기대 205 · 같은 코어 다이에 transfer 둘 0(처음 84) · 옛 판 원자 0 · 보류 agreed 205 · 껍데기 0
+> 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ «0 row(s) are marked» · ⑦ stale_atoms 0 · ⑧ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
+>              replay 미리보기의 scanned 와 ⑧ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
+> 착지 뒤 채움  구현자 3 껍데기 행 지우기 · 5 SLOT_POOL · 6 표 선언 인덱스(idx_dt_log_dt_wafer_id 는 «이미 있음») · 7 VALUES CAST · 원장 해시 인덱스
+> ```
+>
+> ### 시연 선언 (월 10-12) — 위 셋업이 끝난 뒤
+>
+> ```
+> 0  ledger_config.json 이 setup_version 5 이면 먼저   python scripts/migrate_ledger_config_to_v6.py --apply   (운영 판은 못 봤다)
+> 1  ontology/ledger_config.json 의 sources 에서 mechanism_edge_to_quantity_causes · mechanism_edge_to_finding_causes 를 뺀다
+>    python -m ledger.backfill --source <그 이름> --whole-source --apply          이름마다 · 옛 원자를 거둔다 · 3.3 · 3.1 초
+> 2  선언 화면 «Empty» 로 세상 둘 — «모델 세상 1»(void_formation) · «모델 세상 2»(void_observation_bias)
+> 3  config/ontology_worlds/<세상>/ledger_config.json — entities quantity · defect_kind · vocabulary leads_to · sources 에 1 의 두 소스를 그대로 두고 칸 둘만
+>      "relation": "mechanism_edge"
+>      "read": {"exclude_when": [{"when": {"to_role": "<다른 역할>"}}, {"when": {"model": "<다른 모델>"}}, …]}
+>    python -m ledger.backfill --source <이름> --world <세상> --whole-source --apply   세상마다 · 이름마다 · 2.9~3.4 초
+>    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
+> 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
+> 대본 (걷기 화면 · 누른 것 -> 본 것 · 걸린 초)
+>    ①  Type wafer · 키 «불량» · follow 비움 · Collect wafer · node_limit 1000 -> Walk       -> «Starts + 불량» · 노드 31        0.727 s
+>       키 «양품» -> Ctrl+Shift+Walk                                                         -> «Starts + 불량 · − 양품» · wafer 32   0.807 s
+>    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30
+>    ③  세상 칩 default + «모델 세상 1» -> 같은 폼 · 같은 시작으로 다시 걷는다 · 6 걸음 · 노드 80                       0.996 s
+>    ④  Compare · ROWS quantity · EDGE measures · VALUE value -> 행 48 · 두 쪽 값 3 · 불량 쪽만 22 · 둘 다 missing 18      1.061 · 1.888 · 1.394 s
+>       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 «둘 다 missing» 이 된다
+>         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
+>         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
+> 걸린 것     모델 계측군 17 개는 박스 데이터로는 두 base 모두 missing — 박스 measures 는 공정 변수만 잰다(운영 판 못 봤다)
+> ```
+>
+> ---
+>
 > ## [10-09] **맵퍼가 쓰는 층 이름은 chain_ingestion 하나 — 체인 출력이 옛 체인 층에 덮이던 것 (총괄 09f3cd289 ①) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```

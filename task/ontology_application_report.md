@@ -37842,3 +37842,56 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
     «전부 따라가기»로는 원자 141 이 걸리므로 이야기 ② 는 그렇게 돌렸습니다. 운영 선언이 표를 읽으면 이 줄은 없습니다(운영 판 못 봤음)
 명령표  «시연 선언» 절에 이 대본을 붙입니다 — base 두 웨이퍼 id 는 «여기에 base 두 웨이퍼 id» 빈칸으로(소유자가 일요일에 고름)
 ```
+
+---
+
+## [C 응용] 10-09 진짜 프로세스로 — 층 이름 chain_ingestion 고정(9263f03a7): 값은 바로잡힙니다 · RUN.md ② 의 줄은 규칙을 mapper_module · mapper_function 으로 적으면 안 찍힙니다
+
+```
+모양   운영 런처 · 9a2edb659 · RUN.md 순서 그대로(재기동 -> ② 로그 줄 -> ③ replay -> ④ 옛 이름 거두기) · public 변화 0 · 스키마 지움
+세계   표 ln_inv · 맵퍼 @mapper(source_name="dt_inventory") 가 x = a + "!" · 규칙은 mapper_module · mapper_function 으로
+       착지 전 모양을 심음 — x 칸마다 옛 chain_ingestion 층(값 old)과 맵퍼 이름 층(값 a!) · 100 행
+                                    x 가 a! 인 행   x 칸의 층
+씨앗(착지 전 모양)                      0              [('chain_ingestion', 100), ('dt_inventory', 100)]
+재기동 뒤                              0              그대로
+③ replay 미리보기 · --apply  2.6 · 5.3 초   100            [('chain_ingestion', 100), ('dt_inventory', 100)]   <- 옛 chain_ingestion 자리에 새 값
+④ withdraw dt_inventory --columns x  2.1 · 2.4 초   100            [('chain_ingestion', 100)]
+둘째 바퀴 replay                        그대로
+```
+```
+걸린 것   RUN.md ② 「[ChainRules] <규칙>: source_name '<그 이름>' is written as chain_ingestion」
+          같은 세계 · 같은 맵퍼를 규칙 철자만 바꿔 재기동(4230f0920)
+             mapper 칸으로 적음                      그 줄 1 개 — [ChainRules] ln_rule: source_name 'dt_inventory' is written as chain_ingestion
+             mapper_module · mapper_function 으로 적음  그 줄 0 개
+             (계기 확인: 두 번 다 「Loaded 1 active chain ingestion rules.」 가 같은 로그에 있음)
+까닭      ingestion_worker 의 _RENAMED_LAYER 가 맵퍼 사실(MAPPER_FACTS)을 mapper_cells(rule)[0] — mapper 칸 — 으로만 찾습니다.
+          mapper_module · mapper_function 으로 적은 규칙은 그 칸이 비어 있어 못 찾습니다
+          같은 모양 하나 더 — 같은 함수의 at_load 짝짓기(「mine = … mapper_cells(rule)[0] == mapper_name」)도 mapper 칸으로만 짝을 찾습니다
+뜻        값은 바로잡힙니다(위 표는 그 철자로 돌린 것). 걸리는 것은 «어느 규칙을 replay 할지» 알려 주는 줄 하나입니다
+누가 닿나  저장소에 커밋된 맵퍼 중 @mapper(source_name=) 를 적은 것 0 개 · 박스 맵퍼 중 0 개(데코레이터 맵퍼 1 개)
+          박스 규칙 13 개 중 8 개가 mapper_module · mapper_function 철자 · 운영 맵퍼와 운영 규칙은 못 봤습니다
+          -> 운영에 source_name 을 적은 데코레이터 맵퍼가 그 철자 규칙에 걸려 있으면, 소유자는 ② 에서 0 줄을 보고 ③ 을 건너뜁니다
+여쭐 것   구현자가 그 자리에서 두 철자를 다 읽게 하나(at_load 짝짓기 포함) · 아니면 RUN.md ② 문장을 고치나 — 판정은 총괄
+```
+
+---
+
+## [C 응용] 10-10 일요일 셋업 명령표를 RUN.md 맨 위에 올렸습니다(ef570ffe2) — 다시 하기 리허설이 운영 런처에서 끝 상태에 닿습니다
+
+```
+모양   운영 런처 · 237d313db · 두 단계 — 풀 «전» 선언으로 띄워 꼬임을 만든 뒤 내리고, 풀 «뒤» 선언으로 다시 띄움(= 표의 ①)
+       꼬인 dt_log 220 행 · 스크래치 스키마 · public 변화 0 · 스키마 지움 · 이 판의 연결 끊김 0
+       선언은 샘플 닮은꼴입니다 — 운영 선언은 아직 못 받았습니다(bf546e79e). 표의 이름 칸은 빈칸
+끝 상태 transfer 원자 205 = 기대 205(씨앗에서 셈) · 같은 코어 다이에 transfer 둘 84 -> 0 · 옛 판 원자 215 -> 0 · 둘째 바퀴 미리보기 전부 0
+```
+```
+본 것 넷
+ 1  ③ 인벤토리 replay 만으로는 공식 표가 안 움직입니다(보류 agreed 39 -> 39) — 스크립트 replay 는 연쇄하지 않는다는 소유자 09-26 판정 그대로입니다.
+    그래서 ⑥ 복사 replay 가 표에 있습니다(지시서 순서 그대로). 빠뜨리면 공식 표가 틀린 키로 남습니다
+ 2  출력을 파이프 · 파일로 받으면 fold-rows 미리보기가 '«' 를 cp949 로 못 써서 죽습니다(exit 1). 표 맨 위에 경고와 $env:PYTHONIOENCODING 한 줄을 넣었습니다.
+    창에 직접 친 경우는 이 박스 Bash 로는 못 잽니다. --apply 쪽 출력도 같은 글자를 쓰는지는 안 봤습니다
+ 3  ① 의 볼 줄은 규칙이 mapper 칸으로 적혔을 때만 나옵니다(237d313db) — 표에 적었습니다
+ 4  첫 판의 둘째 바퀴는 구현자 체인 워커와 서로 연결을 끊어(그 판의 둘째 바퀴 인벤토리 replay 에서 슬롯 1 이 끊김) 무효입니다 — 차례 규칙대로 알리고 다시 돌린 판으로만 썼습니다
+남은 것  운영 이름(빈칸) · 구현자 3 · 5 · 6 · 7 이 착지하면 그 줄 · base 두 웨이퍼 id(빈칸)
+덤      설계 레인 요청으로 시연 인스턴스를 18766 에 «서버만» 띄워 두었습니다(체인 워커 없음) — «끝»을 받으면 내립니다
+```
