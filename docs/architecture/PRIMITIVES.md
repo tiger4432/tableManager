@@ -79,6 +79,7 @@
 - **언제 재사용**: 「A 가 B 를 읽어 쓴 것을 B 가 사라지면 거둬야 한다」가 필요한 **모든** 쓰기. 회수 문을 새로 만들지 말고 출처 행으로는 `withdraw_by_origin`, 층 이름 하나로는 `withdraw_source` 를 부른다 — 둘 다 같은 한 벌(`cell_layer._withdraw_cells`)을 지난다. `withdraw_source` 는 `columns`+`row_ids`+`apply` 셋을 **다 넘겨야** 겨냥한다.
 - **함정**:
   - 🔴 **마이그레이션은 «선행 조건»이지 최적화가 아니다.** `create_all` 은 있는 표에 컬럼을 안 더하므로, 안 돌리면 `apply_batch_updates` 를 지나는 쓰기가 **전부** `UndefinedColumn` 으로 죽는다.
+  - 🆕 10-09 `f0b625d23` **찾기는 원천마다 하나씩**(PostgreSQL `cell_layer.STAMPED_BY_EACH_ORIGIN`) — `IN (1,000)` 한 덩어리는 통계가 «원천 하나가 칸 수천»이라 믿으면 표 전체를 읽는다. 같은 원천이 두 번 오면 두 번 답한다(`IN` 은 한 번) — 철회는 집합으로 접혀 같고, `protected_skipped` 셈만 는다
   - 🔴 **`source_name` 만으로 좁히면 표 전체 철회가 된다** — `chain_ingestion` 은 공유 채널 이름이라 그것만으로는 한 규칙의 승자를 못 가른다. 🆕 [10-07 ②] (columns × rows) 곱도 못 가른다 — 같은 이름으로 다른 원천 행이 찍은 칸이 곱 안에 들어온다. 도장이 찍힌 **층 하나씩**(`cells_stamped_by`)이 가른다.
   - 🔴 **「못 한다」를 NULL 로 말하지 마라.** NULL 은 이미 「도장이 생기기 전에 쓰였다」 뜻이다 — 한 철자에 뜻 둘은 이 라운드가 고치려던 바로 그 결함이다. 그래서 답은 `retraction_refusal` 이 **이름으로** 한다. 🆕 [10-07 ③] 그 답은 «규칙의 출력에 출처가 실렸나»(`rule_run.stamps_its_origin` — 이 프로세스에서 그 규칙이 마지막으로 낸 행들)다. 안 돈 규칙은 «아직 모름»이라 말하지 않고, 제품이 짓는 종류는 돌기 전에는 선언된 사실이 답한다. `@mapper` 의 출력 행은 입력 행에서 왔으면 기본으로 도장이 찍힌다(`mapper_sdk.ORIGIN_MARK`).
   - ⚠️ **여러 입력 행에서 나온 셀은 일부러 NULL 이다** — 반쪽 출처를 적으면 자기 몫이 아닌 행 때문에 셀을 거둬 간다. 같은 이유로 `enrichment_auto_confirm` 은 **일부러 도장을 안 찍는다**(답이 한 행이 아니라 뷰 위 탐색에서 오므로).

@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **원천 행이 먹인 칸 찾기가 인덱스를 탄다(복사 · 조인의 고친 행 거두기, 지운 행 거두기) — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    cell_layer.cells_stamped_by 가 PostgreSQL 에서 원천 하나씩 idx_sources_by_origin 으로 찾는다
+>                전엔 IN (1,000 개) 한 덩어리 — 통계가 «원천 하나가 칸 수천»이라 믿으면 cell_sources 를 통째로 읽었다(Seq Scan)
+>                지나는 길: 고친 원천 행이 먹이던 층 거두기(묶음마다) · 지운 행이 먹인 층 거두기
+>                소급 첫 채우기도 replay 가 EDIT 으로 넣으므로 묶음마다 이 찾기를 지난다(거둘 층이 없어도)
+> 확인           어드민 Overview «Indexes» 표에서 idx_sources_by_origin 의 Scans 가 묶음마다 그 묶음의 원천 행 수만큼 는다
+>                  = 탄다. 전엔 이 수가 안 늘었다
+>                pg_stat_activity 에 «cell_sources ... origin_row_id IN (...)» 대신 «unnest(...) ... CROSS JOIN LATERAL» 이 보인다
+> 급할 때        git revert <이 커밋> -> 체인 워커 재기동
+> ```
+
+---
 > ## [10-09] **원장 따라가기의 소스 실패 줄 #N 은 «이번 고장»에서 몇 번째 — 그 소스가 한 번 성공하면 다시 #1 — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```
