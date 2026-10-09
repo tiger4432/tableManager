@@ -77032,3 +77032,56 @@ TALLY after  8 run(s), 0 with a failure
 - 운영이 보관 켬인지 끔인지 — 문이 있어 어느 쪽이든 30 초마다 원장을 다시 묻지 않는다.
 - 도는 중 줄: 바퀴가 일꾼이 도는 때에 닿으면 #1 한 줄 — 일꾼마다 다시 #1 이라 큰 폴더는 처리마다 한 줄 나올 수 있다.
 - heavy 레인 칸이 지은 첫날 첫 실행에서 한 번 실패했다(출력을 못 남김). 위 «반복»이 그 뒤의 수다.
+
+## [10-09] 원장 ref 인덱스 재료 — 수만(짓지 않음 · 소유자께 여쭐 재료)
+
+어느 DB · 어느 스키마 · 지운 것: 박스 assy_manager · 스크래치 스키마 scratch_ws_index_1009(원장 사본 · 시험 파티션 표 — 끝에 그 스키마 하나를 DROP SCHEMA … CASCADE, 확인 «gone») · public 은 읽기만 · 그 밖 지운 것 0.
+
+**박스 원장**: ledger total bytes 3658743808 · heap bytes 1811447808 · atoms 2380869 · ref bytes max 26879 avg 278 · source_who max 33 · refs over 2000 bytes 792
+
+**사본에서 잰 것**(사본은 파티션 없는 한 표 — 운영 모양과 다르다):
+```
+copy the ledger (CREATE TABLE AS SELECT * FROM public.ledger_events) run 1    36.27 s
+copy: 2380869 atoms · 1622392832 bytes with toast
+plain btree (source_who, source_raw_ref)                       run 1    24.38 s
+   plain btree built
+btree (source_who, md5(source_raw_ref)) - blocking build       run 1    12.34 s
+   index 129523712 bytes · 54.4 bytes/atom
+same index CONCURRENTLY (writes not blocked)                   run 1    13.07 s
+largest source 'dt_job' · 433095 refs
+-- 1000 refs
+   today's shape plan  : ['Parallel Seq Scan']
+   today's shape (source_who + ANY refs)                       run 1     0.67 s
+   today's shape (source_who + ANY refs)                       run 2     0.75 s
+   md5 shape plan      : ['Bitmap Heap Scan', 'Bitmap Index Scan']
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 1     0.04 s
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 2     0.04 s
+   atoms under them: 2000
+-- 50000 refs
+   today's shape plan  : ['Parallel Seq Scan']
+   today's shape (source_who + ANY refs)                       run 1     2.04 s
+   today's shape (source_who + ANY refs)                       run 2     2.11 s
+   md5 shape plan      : ['Bitmap Index Scan', 'Parallel Bitmap Heap Scan']
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 1     2.67 s
+   md5 shape (source_who + ANY md5 + ANY refs)                 run 2     2.71 s
+   atoms under them: 100000
+```
+
+**읽는 법**
+- md5 인덱스는 원자당 54.4 바이트입니다. 만드는 데 박스 원자 2380869 에서 막는 빌드 12.34 s, CONCURRENTLY 13.07 s 가 듭니다.
+- 쿼리가 인덱스를 타려면 겨냥 문장에 `md5(source_raw_ref) = ANY(…)` 를 같이 적어야 합니다. 지금 문장(`source_raw_ref = ANY`)으로는 인덱스가 있어도 Seq Scan 입니다(위 plan). 그래서 `_withdraw_refs` · `atoms_for_refs` 두 문장이 바뀌어야 합니다.
+- ref 1,000 개 쪽은 인덱스가 큰 차이를 냅니다. ref 50,000 개 쪽은 이 박스 크기에서 이득이 없습니다 — 걸리는 원자 10 만 개를 읽는 값이 원장 전체를 훑는 값과 비슷합니다. 운영 원장이 박스보다 크면 훑기만 그 배수로 늘고, 인덱스 쪽은 걸리는 원자 수에 묶입니다(가정, 안 쟀습니다).
+- 앞 보고의 «ANY 50,000 = 14.8 s» 는 운영 모양(파티션 8 개) 원장에서 잰 값이고, 여기 사본은 한 표라 같은 문장이 더 빠릅니다. 어느 차이(파티션 · 죽은 행 · 토스트) 때문인지는 가르지 않았습니다.
+- 평문 btree (source_who, source_raw_ref) 도 이 박스에서는 섰습니다. 다만 ref 최대 26879 바이트라 btree 한 줄 한도(약 2.7 KB)를 압축으로 겨우 넘기는 값이 있을 수 있고, 그런 ref 가 하나 들어오는 순간 «쓰기»가 실패합니다. row_ref 가 이미 md5 모양을 쓰는 까닭과 같습니다.
+
+**운영에서 쓰기를 막지 않고 세우는 길**
+```
+partitioned parent CONCURRENTLY refused: 오류:  "p" 파티션된 테이블 대상으로 동시에 인덱스를 만들 수 없음
+parent index ON ONLY - valid: False
+after p1 CONCURRENTLY + ATTACH - parent valid: False
+after p2 CONCURRENTLY + ATTACH - parent valid: True
+a partition made later gets the index: True
+```
+- 이 PG(18.3)는 파티션 부모에 CONCURRENTLY 를 거절합니다. 그래서 길은 이렇습니다: 부모에 `CREATE INDEX … ON ONLY`(무효로 섬) → 파티션마다 `CREATE INDEX CONCURRENTLY` → `ALTER INDEX 부모 ATTACH PARTITION 파티션_인덱스`. 마지막 파티션이 붙으면 부모 인덱스가 유효가 되고, 그 뒤에 만들어지는 파티션은 저절로 그 인덱스를 받습니다(위에서 확인).
+- 지금 인덱스 마스터로는 안 됩니다. 마스터(database/models.py 의 index_states · ensure_model_indexes)는 SQLAlchemy 정적 모델의 Index 선언만 보는데, 원장 표는 그 모델이 아니고 ledger/schema.py 의 SQL 로 섭니다. 또 마스터의 빌드 문장은 표에 `CREATE INDEX CONCURRENTLY` 하나라서, 파티션 부모에는 위처럼 거절됩니다.
+- 원장 인덱스는 지금 ledger/schema.py 가 부모에 `CREATE INDEX IF NOT EXISTS`(막는 빌드)로 세웁니다.
