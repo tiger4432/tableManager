@@ -33,6 +33,11 @@
 >    ⓪ 의 새 칸 재기동 때 체인 워커가 «starting: sync_dynamic_tables_schema» 단계에서 ALTER 한다. 그 표를 다른 연결이 쥐고 있으면 넘어간다:
 >            chain_worker.log «column '<칸>' was not added to '<표>' - another session held the table past 20s. Retried at the next start or config save»
 >            이 줄이 있으면 ⑤ 전에 체인 워커를 한 번 더 재기동 — 리허설(5b-2 40d94309b): 붙잡은 ALTER 가 칸 없이 넘어갔다(그 단계 36.1 s)
+> ①b 비어 버린 보류 다시 세기  python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply          2.2 · 2.9 초
+>    까닭    pull 전 코드는 원천 키 칸과 공식 표 키 칸의 형이 다르면 보류를 오류 없이 빈칸으로 덮었다(7a 5777da3c4 가 고침)
+>    답      source rows scanned : N · rows handed over : N (리허설 205) — 다시 세기 규칙마다, 그 규칙의 공식 표 전부
+>    뜻      리허설(공식 표 키 글자 · 로그 표 숫자): pull 전 agreed 0 -> 이 명령 뒤 39 = 같은 꼬임의 같은 형 세계 39 (03c31a6e6)
+>            이 표의 공식 표는 ⑥ 이 다시 채운다 — 이 줄은 ⑥ 을 안 돌리는 다른 공식 표에. 멈춤은 ③ 과 같다(안 쟀다)
 > ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.5 · 2.2 초
 >    답      «No waiting withdrawal event goes row by row - 0 row(s)» 면 접을 것 없음
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
@@ -71,7 +76,7 @@
 > 끝 상태      transfer 원자 205 = 기대 205 · 같은 코어 다이에 transfer 둘 0(처음 84) · 옛 판 원자 0 · 보류 agreed 205 · 껍데기 0
 > 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ «0 row(s) are marked» · ⑦ M 0 · ⑧ stale_atoms 0 · ⑨ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
 >              replay 미리보기의 scanned 와 ⑨ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
-> 착지 뒤 채움  구현자 7 VALUES CAST · 원장 해시 인덱스(idx_ledger_events_source_raw_ref_hash) — 6 표 선언 인덱스는 시연 뒤(총괄 f9ebc82ea)
+> 착지 뒤 채움  구현자 7b 원장 해시 인덱스(idx_ledger_events_source_raw_ref_hash) — 6 표 선언 인덱스는 시연 뒤(총괄 f9ebc82ea)
 > ```
 >
 > ### 시연 선언 (월 10-12) — 위 셋업이 끝난 뒤
