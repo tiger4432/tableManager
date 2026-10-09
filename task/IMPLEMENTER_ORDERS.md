@@ -65319,3 +65319,19 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
            변이: 표 거르기 되살림 -> ① 빨강 · row_ref 로만 겨냥 -> ③ 빨강 · source_who 빼기 -> ⑤ 빨강
    같은 커밋  RUN.md(소유자 명령 하나: census 로 이름 보기 -> 그 이름으로 --whole-source 미리보기 -> --apply) · RELEASE_LOG · 원장 안내 문서의 whole-source 문장
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 🔴 지금 맨 앞(하위 폴더 묶음이 끝나면 LLM 파일보다 먼저) — 중복 행 접기는 키에 빈 칸이 있는 행을 건드리지 않는다 (소유자 10-09 「빈 거끼리 접어지나」 -> 「ㅇㅇ 있어」: 좌표가 빈 행은 진짜 서로 다른 행)**
+
+```
+지금(총괄이 코드로 읽음)  replay._ranked_duplicates 가 키를 crud.blank_to_null 로 접어 PARTITION BY — 빈 값끼리 한 키
+   -> dt_wafer_id 는 있고 dtx · dty 가 빈 행은 웨이퍼마다 한 행만 남고, 셋 다 빈 행은 표 전체에서 한 행만 남는다
+   미리보기 표본은 키 순서 앞 셋이라 빈 키(맨 뒤 정렬)가 안 보인다 — 운영자가 모르고 지운다
+도착지  「키 칸 중 하나라도 빈 행은 접지 않는다 — 미리보기와 결과가 «키가 빈 행 N 개는 그대로 둠»을 말한다」
+구현자
+   _ranked_duplicates 에 «키 칸이 전부 값 있음» 조건 하나(빈 판정은 crud 의 그 함수 — 둘째 판정 금지). 칸 · 선택 인자 없음
+   수  stats 에 rows_blank_key(그대로 둔 행 수) · count 문장 · CLI 결과 줄 · 실행 기록에 같은 수
+   게이트  ① 키 셋 다 있는 중복 -> 가장 이른 것만 남음(지금 그대로) ② dtx 만 빈 행 둘(같은 웨이퍼) -> 둘 다 남음
+           ③ 셋 다 빈 행 셋 -> 셋 다 남음 ④ '' 와 NULL 둘 다 빈 것 ⑤ 미리보기 rows_blank_key = 실제 남은 수
+           변이: 조건 지움 -> ② ③ 빨강 · '' 를 값으로 봄 -> ④ 빨강
+   같은 커밋  RUN.md 의 fold-rows 절에 한 줄 · RELEASE_LOG · 소급 탭 설명(what_is_missing 옆 help)에 «a row with a blank key part is left as it is»
+```
