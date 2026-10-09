@@ -521,9 +521,9 @@ export function createGlobalTimelineItemDom(group) {
   // 소유자가 본 것이 그쪽입니다.
   const targetTable = auditTargetTable(group);
   const rowKey = baseLog.business_key || baseLog.row_id.slice(0, 8);
-  const targetKey = isSummary
-    ? (targetTable || baseLog.table_name)
-    : (targetTable ? `${targetTable} · ${rowKey}` : rowKey);
+  const keyTable = isSummary ? (targetTable || baseLog.table_name) : targetTable;
+  const keyRow = isSummary ? '' : (targetTable ? ` · ${rowKey}` : rowKey);
+  const targetKey = `${keyTable}${keyRow}`;
   const targetCol = isSummary
     ? `${group.total_count} ROWS`
     : baseLog.column_name;
@@ -534,7 +534,7 @@ export function createGlobalTimelineItemDom(group) {
       <div class="audit-cell audit-user">${escapeHtml(user)}</div>
       <div class="audit-cell audit-kind"><span class="audit-pill ${kind.cls}">${kind.label}</span></div>
       <div class="audit-cell audit-target">
-        <span class="audit-target-key" data-clip-ok>${escapeHtml(targetKey)}</span>
+        <span class="audit-target-key" title="${escapeHtml(targetKey)}"><span class="audit-target-table" data-clip-ok>${escapeHtml(keyTable)}</span><span class="audit-target-row">${escapeHtml(keyRow)}</span></span>
         <span class="audit-target-col">${escapeHtml(targetCol)}</span>
       </div>
       <div class="audit-cell audit-change">
@@ -587,7 +587,7 @@ export function createGlobalTimelineItemDom(group) {
             // 이제 그룹의 로그를 «전부» 들고 있습니다. 그러면 접힌 줄의 … 가 거짓말이 됩니다 --
             // «더 있을 수 있다»는 표시인데 이제 없다는 것을 압니다. 그 칸만 고칩니다:
             // 줄을 통째로 다시 그리면 방금 펌친 것이 접힙니다.
-            const keyEl = li.querySelector('.audit-target-key');
+            const keyEl = li.querySelector('.audit-target-table');
             if (keyEl) keyEl.textContent = auditTargetTable(group) || keyEl.textContent;
             renderSubDetails(detailsContainer, group.logs);
           } catch (err) {

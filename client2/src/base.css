@@ -160,6 +160,9 @@
 :where(th:last-child, td:last-child) { padding-right: 0; }
 :where(tbody tr:last-child td) { border-bottom: 0; }
 :where(.num) { text-align: right; font-variant-numeric: tabular-nums; }
+/* A short cell - a time, a count, a state word, an id - is as wide as its words, on one line; the row's long text cells
+   take what is left (owner 10-09 「당연히 내용 많은 칸이 넓어야 하는 거 아니야?」). */
+:where(.cell-fit) { width: 1%; white-space: nowrap; }
 :where(tbody tr:hover) { background: var(--tint-row); }
 
 /* ── form row — a label over its control, a hint under it ───────────────────────── */

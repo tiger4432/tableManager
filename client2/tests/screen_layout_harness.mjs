@@ -9,6 +9,8 @@
 //             on screen, and its first control takes a click
 //   text      visible text says [object ...], undefined or NaN
 //   size      a button half again taller than the other items of its line, its letters no larger than theirs
+//   columns   a table row whose long text cell runs past three lines while a short cell beside it leaves more than
+//             half its width empty (owner 10-09: a narrow Source beside a wide Last)
 //   answers   a GET the fixtures do not answer, or a screen that could not be driven
 // One line per finding: entry · size · state · element path · what. Sizes: 1920x950 (1536 and 1280 next).
 // Chrome hands every request here (DevTools Fetch). Files come from dist, GETs from fixtures/screens_answers.json
@@ -17,7 +19,8 @@
 // counted; a page that leaves (a link, Log out) is answered 204 and stays. Another origin's file (the fonts, the
 // admin's editor) is fetched as the page asks: without the editor the admin page stops booting, without the fonts
 // every width is measured in another face.
-// --mutate: the five that leaked on 10-08/09 are built back one at a time (vite, a temp folder) and each must be red.
+// --mutate: the five that leaked on 10-08/09, and the ledger table's hand widths (owner 10-09), are built back one at a
+// time (vite, a temp folder) and each must be red.
 //   node client2/tests/screen_layout_harness.mjs [--mutate] [--only <entry.html>] [--shots <dir>]
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
@@ -31,7 +34,7 @@ const FIX = path.join(HERE, 'fixtures');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const ORIGIN = 'http://screens.test';
 const SIZES = [[1920, 950]];
-const RULES = ['clip', 'overflow', 'panel', 'text', 'size'];
+const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns'];
 const TOL = 12;
 const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const only = argOf('--only');
@@ -288,6 +291,42 @@ function screensLib(TOL) {
         lines.push({ rule: 'size', path: pathOf(b), what: `«${label(b)}» ${Math.round(r.height)} px high at ${font} px letters, its line ${Math.round(h)} px at ${f} px` });
       }
     }
+    // columns: one line per table - a row where a cell runs past three lines while a neighbouring column is more than
+    // half empty all the way down (its widest cell decides; a column as wide as its longest word is not slack)
+    const tables = new Map();
+    for (const tr of scope.querySelectorAll('tr, [role="row"]')) {
+      if (!shown(tr)) continue;
+      const table = tr.closest('table, [role="table"], [role="grid"], [role="treegrid"]') || tr.parentElement;
+      const cells = [...tr.children].filter(shown).map((c) => {
+        const b = c.getBoundingClientRect();
+        const s = css(c);
+        const left = b.left + parseFloat(s.paddingLeft);
+        const width = b.width - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+        const tops = new Set();
+        let right = left;
+        const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          if (!n.textContent.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(n);
+          for (const r of range.getClientRects()) if (r.width) { tops.add(Math.round(r.top)); right = Math.max(right, r.right); }
+        }
+        return { c, lines: tops.size, width, empty: width - (right - left) };
+      });
+      if (!tables.has(table)) tables.set(table, []);
+      tables.get(table).push(cells);
+    }
+    for (const [table, rows] of tables) {
+      const empty = (i) => Math.min(...rows.filter((r) => r[i] && r[i].lines > 0).map((r) => r[i].empty));
+      for (const cells of rows) {
+        const t = cells.findIndex((x) => x.lines > 3);
+        if (t < 0) continue;
+        const l = cells.findIndex((x, i) => i !== t && x.lines > 0 && empty(i) > x.width / 2);
+        if (l < 0) continue;
+        lines.push({ rule: 'columns', path: pathOf(table), what: `«${label(cells[t].c)}» runs to ${cells[t].lines} lines while the column of «${label(cells[l].c)}» leaves ${Math.round(empty(l))} of ${Math.round(cells[l].width)} px empty` });
+        break;
+      }
+    }
     return lines;
   }
 
@@ -367,13 +406,21 @@ const DRIVE = {
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
-    ['three filters', (c) => evaluate(c, `(() => {
-      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    // One filter at a time, each one's load waited out: typed together, which half-set the grid's debounce sent
+    // depended on the clock and the answers held only some (application QA 4bd46df68: red in one run of four).
+    ['three filters', async (c, log) => {
       for (const [col, v] of [['subject_type', 'die'], ['predicate', 'in_container'], ['object_kind', 'entity_ref']]) {
-        const input = [...document.querySelectorAll('.ag-floating-filter input')].find((i) => (i.closest('[col-id]') || {}).getAttribute && i.closest('[col-id]').getAttribute('col-id') === col);
-        if (input) { set.call(input, v); input.dispatchEvent(new Event('input', { bubbles: true })); }
+        await evaluate(c, `(() => {
+          const input = [...document.querySelectorAll('.ag-floating-filter input')].find((i) => i.closest('[col-id]') && i.closest('[col-id]').getAttribute('col-id') === ${JSON.stringify(col)});
+          if (!input) return false;
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(v)});
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          return true; })()`);
+        await sleep(900);
+        await settle(c, log);
+        await until(c, GRID_LOADED);
       }
-      return true; })()`).then(() => sleep(900)).then(() => until(c, GRID_LOADED))],
+    }],
     ['row picked, Queue tab', (c) => evaluate(c, `(() => {
       const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="0"] .ag-cell');
       if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
@@ -389,6 +436,9 @@ const DRIVE = {
   ],
   'admin.html': [
     ['Overview', async () => true],
+    ['Overview, every row unfolded', (c) => evaluate(c, `(() => {
+      for (const row of document.querySelectorAll('.ov-row[aria-expanded="false"]')) row.click();
+      return true; })()`).then(() => sleep(800))],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
@@ -416,7 +466,7 @@ async function runScreens(dist, label, one = only) {
         let state = 'loaded';
         for (const [name, step] of states) {
           state = name;
-          await step(chrome);
+          await step(chrome, log);
           await settle(chrome, log);
           add(state, await evaluate(chrome, 'window.__screens.measure()'));
           if (shots) writeFileSync(path.join(shots, `${entry}_${size}_${state.replace(/[^a-z0-9]+/gi, '-')}.png`),
@@ -483,6 +533,10 @@ const MUTANTS = [
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
     file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh {\n      height: auto;', '    .ov-show-all {\n      height: auto;']] },
+  { name: 'the ledger sources table back on its hand widths (Source 150px, the timestamp the rest)', entry: 'admin.html',
+    rule: 'columns', at: 'ledger-sources', file: 'src/ledger_sources_panel.js', edits: [
+      ["      if (fit) th.className = 'cell-fit';", "      th.style.width = { Source: '150px', State: '130px', Refused: '70px' }[label] || '';"],
+      ["    if (fit) td.className = 'cell-fit';", '']] },
 ];
 async function buildMutant(m) {
   const { build } = await import('vite');

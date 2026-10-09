@@ -36,10 +36,12 @@ export function indexTableView(body) {
 }
 
 // The state beside the name, so a missing, invalid or building index is seen before the table scrolls (lead d71f931c7).
-const DECLARED_COLUMNS = Object.freeze([['name', 'Name'], ['state', 'State'], ['table', 'Table'], ['columns', 'Columns'],
-  ['purpose', 'Purpose'], ['serves', 'Serves'], ['size', 'Size', 'num'], ['scans', 'Scans', 'num']]);
-const OUTSIDE_COLUMNS = Object.freeze([['name', 'Name'], ['valid', 'Valid'], ['table', 'Table'],
-  ['size', 'Size', 'num'], ['scans', 'Scans', 'num']]);
+// Purpose and Serves carry the words and take the room; the rest are as wide as theirs (`cell-fit`, owner 10-09).
+const DECLARED_COLUMNS = Object.freeze([['name', 'Name', 'cell-fit'], ['state', 'State', 'cell-fit'], ['table', 'Table', 'cell-fit'],
+  ['columns', 'Columns', 'cell-fit'], ['purpose', 'Purpose'], ['serves', 'Serves'], ['size', 'Size', 'num cell-fit'],
+  ['scans', 'Scans', 'num cell-fit']]);
+const OUTSIDE_COLUMNS = Object.freeze([['name', 'Name'], ['valid', 'Valid', 'cell-fit'], ['table', 'Table'],
+  ['size', 'Size', 'num cell-fit'], ['scans', 'Scans', 'num cell-fit']]);
 
 export class IndexTablePanel {
   constructor(mount, deps = {}) {

@@ -255,10 +255,11 @@ export class LedgerSourcesPanel {
     return el;
   }
 
-  _td(text, align) {
+  _td(text, align, fit = false) {
     const td = this.doc.createElement('td');
     td.textContent = text;
     if (align) td.style.textAlign = align;
+    if (fit) td.className = 'cell-fit';
     return td;
   }
 
@@ -421,13 +422,14 @@ export class LedgerSourcesPanel {
     const hr = doc.createElement('tr');
     // ⚰️ C-54. 「원자」와 「분자」가 나갔습니다 — 그 수를 서버가 더 이상 «안 보냅니다»(얼어붙어
     //    있었습니다). 빈 칸으로 남기면 「안 쟀다」로 읽히므로 칸째 없앱니다.
-    for (const [label, width, align] of [
-      ['Source', '150px', ''], ['State', '130px', ''],
-      ['Refused', '70px', 'center'], ['Last', '', ''],
+    // Source carries the most words and takes the room; the other three are as wide as theirs (owner 10-09).
+    for (const [label, fit, align] of [
+      ['Source', false, ''], ['State', true, ''],
+      ['Refused', true, 'center'], ['Last', true, ''],
     ]) {
       const th = doc.createElement('th');
       th.textContent = label;
-      if (width) th.style.width = width;
+      if (fit) th.className = 'cell-fit';
       if (align) th.style.textAlign = align;
       hr.appendChild(th);
     }
@@ -448,12 +450,12 @@ export class LedgerSourcesPanel {
       // 🔴 서버의 낱말 그대로. `data-state` 로 나가지만 «색은 없습니다».
       // 🔴 C-54. 상태 낱말 옆에 «서버가 준 뜻» 한 줄(툴팁). 다섯 낱말 중 넷은 이 박스에
       //    안 나타나므로, 뜻이 없으면 조작자는 그 낱말을 «추측»합니다.
-      const tdState = this._td(r.stateName || r.state);
+      const tdState = this._td(r.stateName || r.state, '', true);
       if (r.stateMeaning) tdState.title = r.stateMeaning;
       tr.appendChild(tdState);
       // 🔴 「몇 개」 옆에 「무슨 사유로 몇 개」. 수만 있으면 운영자가 수까지 가고 멈춥니다.
       //    ⚠️ 칸을 «늘리지 않습니다» — 같은 칸 안에서 줄로 쌓입니다.
-      const tdRefused = this._td(r.moleculesRefused, 'center');
+      const tdRefused = this._td(r.moleculesRefused, 'center', true);
       for (const reason of r.refusalReasons) {
         const line = this._line('ledger-sources-reason', `${reason.label} · ${reason.count}`);
         line.setAttribute('data-reason', reason.name);
@@ -475,7 +477,7 @@ export class LedgerSourcesPanel {
         tdRefused.appendChild(line);
       }
       tr.appendChild(tdRefused);
-      tr.appendChild(this._td(r.updatedAt));
+      tr.appendChild(this._td(r.updatedAt, '', true));
 
       tbody.appendChild(tr);
     }

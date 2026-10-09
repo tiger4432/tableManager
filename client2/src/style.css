@@ -2762,7 +2762,12 @@ body.resizing-active .history-sidebar {
    each its own line rather than joining them with a separator nobody can scan. */
 .audit-target { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
 .audit-target-key { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text); }
-.audit-target-key, .queue-table { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-table { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The row id is the key the operator finds the row by: it stays whole and the table name gives way first; the whole is
+   the title (lead 10-09). */
+.audit-target-key { display: flex; max-width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; }
+.audit-target-table { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.audit-target-row { flex: 0 0 auto; }
 /* 🔴 규칙은 «접지 않는다» (소유자 2026-09-23). 이름이 한 줄씩 서고, 넘치면 «칸 안»에서 흐른다 —
    표 밖으로 나가면 그게 다음 결함이다.
    ⚠️ 이 블록은 «반드시» 위 `.audit-cell, .queue-cell` 뒤에 있어야 한다 — 그 규칙이 같은

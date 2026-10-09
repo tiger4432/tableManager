@@ -80,9 +80,12 @@ row       padding 6.8 · gap 6.8 · list rows 7 12 (mockup figures, kept as stat
 checker  client2/tests/screen_layout_harness.mjs - the runner calls it with --mutate; a finding blocks the landing
          every html entry in client2/dist, in real Chrome at 1920x950, driven through its states (filters, a row picked,
          the queues' nine states, a long table name, the side panel narrowed, each header panel opened)
-         clip · overflow · panel under its button · [object ...] / undefined / NaN · a button boxed out of its line
+         clip · overflow · panel under its button · [object ...] / undefined / NaN · a button boxed out of its line ·
+         a long text cell past three lines while a short column beside it is half empty
          answers come from client2/tests/fixtures/screens_answers.json - a GET it lacks is red: capture_screens.py
 a cut made on purpose  data-clip-ok on that element (it and what is under it). Never a list inside the checker
+a table's columns      a short cell (a time, a count, a state word, an id) carries cell-fit - as wide as its words, one line;
+                       the long text cells take the rest. No hand px widths on columns (owner 10-09)
 a new screen or state   a step in the checker's DRIVE, in the same commit as the screen
 report   every screen commit's report carries one line: «크롬 MCP 로 연 화면 · 크기 · 본 것» - Claude in Chrome, the
          built page, opened by hand. Without it the lead does not merge, and the lead opens the same screen first
