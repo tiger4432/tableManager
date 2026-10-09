@@ -49,8 +49,10 @@
 >    멈춤    ③ 과 같음 — 안 쟀다
 > ⑦ 남은 껍데기 쓸기           python scripts/chain_replay_cli.py remove-shells «공식 표»      -> --apply          1.6 · 2.5 초
 >    답      «N row(s) of '«공식 표»' show nothing outside their keys; M of them have only the chain's key layers left» — M 이 지울 수
->    뜻      리허설: ① 직후 미리보기 M 82 · ⑥ 뒤 M 0(⑥ 이 다시 채움) · 실행 «0 of 0 row(s) deleted». 그 뒤 체인이 행을 비우면 체인이 바로 지운다
->            (chain_worker.log [ChainShell] — 이 리허설 0 줄). ⑥ 앞에서 쓸면 어떻게 되는지는 안 쟀다 — 그래서 ⑥ 뒤
+>    뜻      리허설: ① 직후 미리보기 M 82 · ⑥ 뒤 M 0(⑥ 이 다시 채움) · 실행 «0 of 0 row(s) deleted»
+>            ⑥ 앞에서 쓸면 82 행을 지우고 ⑥ 이 다시 만든다(공식 표 123 -> 205 · 껍데기 판) — 그래서 ⑥ 뒤
+>            그 뒤로는 체인이 지운다 — 그리드에서 원천 행을 지우면 그 공식 행이 «[ChainShell] table=official_dt rows_deleted=1 - only the chain's keys were left» 와 함께 사라지고
+>            사람이 적은 칸이 있는 행은 남는다 · 소급 탭 «Remove rows with no source left» 의 count 가 이 미리보기와 같은 수(82)
 >    멈춤    소급 탭 × — 쪽 사이(95cffa5af)
 > ⑧ 옛 판 소스 거두기          python -m ledger.backfill --source «옛 판 소스» --whole-source   -> --apply          2.1 · 3.3 초
 >    답      미리보기 relation_rows None(= 선언에 없는 이름) · stale_atoms 215 / 실행 stale_withdrawn 215
