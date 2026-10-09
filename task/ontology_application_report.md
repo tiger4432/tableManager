@@ -37162,3 +37162,14 @@ A 에 계속 자라는 파일                      남은 것 []                
         안 거를지 · 셈만 고칠지는 총괄 판정
 문서    PRIMITIVES 출처 도장 항목 «함정»에 원천마다 찾기 · 겹침 한 줄
 ```
+
+---
+
+## [C 응용] 10-09 665d2aa82(원천 찾기 게이트를 PG 시험으로) QA — 결함 없음 (잼)
+
+```
+잰 것   test_the_origin_lookup_takes_its_index.py — 사설 워크트리 · PG 시험 DB assy_test 스크래치(픽스처가 지움)
+        이 커밋                         2 passed
+        PostgreSQL 도 옛 IN 을 보내는 변이   test_the_lookup_takes_the_origin_index_under_a_low_belief 이 빨강(Seq Scan on cell_sources) · 대조 칸은 그대로 1 passed
+        -> 운영이 믿던 통계(n_distinct 300) 아래에서 «모양»을 잰다. 앞 보고(f0b625d23 QA)의 「옛 Seq Scan 은 박스 40 만 행에서 안 나왔다」를 이 칸이 메운다
+```
