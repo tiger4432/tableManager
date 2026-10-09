@@ -515,6 +515,10 @@ body.resizing-active .history-sidebar {
 .queue-at, .queue-population, .queue-page { font-family: var(--font-mono); }
 .queue-reason { color: var(--warning); }
 .queue-rows { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+/* 옆 판이 여섯 칸보다 좁으면 머리와 행이 이 상자 안에서만 같이 가로로 굴립니다 — 칸은 접지 않고, 판 · 페이지는
+   안 굴립니다(총괄 10-09). */
+.queue-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-x: auto; overflow-y: hidden; }
+.queue-scroll > .queue-head, .queue-scroll > .queue-rows { min-width: min-content; }
 /* 10.5px 모노로 재서 잡은 폭: scheduler 50 · DELETE 38 · 「13시간 12분」 63, + 셀 여백 16.
    State 는 가장 넓은 배지에 맞춘다(--queue-state-w, OutboxQueuePanel._fitState) — 96px 에서 WAITING_FOR_TABLE 이 잘렸다.
    판이 좁아지면 Table(줄임표 · title)이 40px 까지, Rules 가 48px 까지 양보한다 — 앞의 셋은 낱말 폭이라 안 준다. */

@@ -210,11 +210,15 @@ export class OutboxQueuePanel {
       return view;
     }
 
+    // Head and rows roll sideways together in one box when the panel is narrower than the six columns (lead 10-09).
+    const scroll = this.doc.createElement('div');
+    scroll.className = 'queue-scroll';
+    this.root.appendChild(scroll);
     const head = this.doc.createElement('div');
     head.className = 'audit-head queue-head';
     // 🔴 머리 칸은 «행 칸의 이름»을 안 쓴다 — `.queue-rules` 가 머리줄 글꼴까지 덮는다.
     for (const col of COLUMNS) head.appendChild(this._cell(`queue-h-${col.key}`, col.label));
-    this.root.appendChild(head);
+    scroll.appendChild(head);
 
     const body = this.doc.createElement('div');
     body.className = 'queue-rows';
@@ -234,7 +238,7 @@ export class OutboxQueuePanel {
       line.appendChild(this._rulesCell(row.rules));
       body.appendChild(line);
     }
-    this.root.appendChild(body);
+    scroll.appendChild(body);
     this._fitState();
     return view;
   }
