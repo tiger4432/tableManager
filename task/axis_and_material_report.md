@@ -1,3 +1,37 @@
+> ## [22:55 디자인] 시연 ③ Compare 보기 착지 08a4412a6 — + 시작과 − 시작을 나란히 (총괄 10-09)
+
+**모양** 승인하신 그대로입니다. (가) 행 걷기는 폼의 걷기를 모든 시작(+ · −)을 positive 로, (나) 셋째 보기 «Compare». 덧붙이신 셋: 머리줄 «Rows: 타입 reached by follow» 에 follow 가 Edge 를 품으면 «rows include Edge» · 부호 밑 «no Edge edge from what 부호 reached» · whose 라벨은 걷기 표 규칙 그대로(한 줄, 표 안에서 굴림)라 안 잘립니다.
+
+| 게이트 | 수 |
+|---|---|
+| compare_view (새) | 30 = 칸 16 + 변이 14, 변이마다 이름 댄 칸이 잡음 |
+| 같은 화면 두 인스턴스 간섭 없음 | I1 |
+| 세상 바꾸면 다시 물음 | G4 (다른 보기에서 바꾸면 옛 비교를 안 그림 G5) |
+| 좁은 게이트 | walk_layout 27 · walk_worlds 18 · walk_table 56 · walk_route_fill 80 · rnd_board_walk_box 98 · explorer_open_path 130 · disabled_reason 25 · walk_wire 95 · css_token_definition 7 · layered_graph 30 · subgraph_view --control 334 |
+| 화면 게이트 walk 세 크기 | 24/24, 새 DRIVE 걸음 «Compare, a + and a - start» |
+
+**크롬 MCP 로 연 화면 · 크기 · 본 것** — Edge 154.0.0.0, 빌드된 walk 페이지의 probe 사본 (/assets/walk-DjDr_KZI.js, 1528×827). wafer LEAD-P3-A Walk → Compare → recipe · processed_with · step → LEAD-S65C-WP-01 을 Ctrl+Shift Walk: Starts «+ LEAD-P3-A − LEAD-S65C-WP-01», 머리줄 «Rows: recipe reached by every predicate», 표 «recipe | + LEAD-P3-A | − LEAD-S65C-WP-01» / «SYN-R-CMP-01 | CMP | CMP», 걷기 셋(행 걷기 positive 2). 잘린 칸 0(표 scroll 1085 = client 1085). 그 뒤 «model_a» 칩: 같은 페이지, 주소 «?v=8&world=model_a», 셋 다 model_a 로 다시 묻고 같은 표. 쓰기 0.
+
+**제가 정한 것 셋 — 아니면 말씀해 주십시오**
+1. Compare 보기에서 Walk 를 누르면 비교를 다시 묻습니다(Graph 보기에서 Walk 가 그래프를 다시 그리는 것과 같은 모양). 승인하신 다섯 줄에는 없던 동작입니다.
+2. 엣지는 있는데 고른 값이 없으면 «—»(absent.js 의 ABSENT)로, 빨간 «missing»(엣지 없음)과 다르게 그립니다.
+3. «missing» 설명 줄은 그 부호 열에 missing 칸이 있을 때만 씁니다 — 크롬 MCP 에서 빈칸이 없는 표 밑에 두 줄이 늘 나와서 줄였습니다.
+
+**같이 고친 것** Walk 누름이 걷기 전에 페이지를 한 번 그립니다. Graph · Compare 보기에서 Walk 밑 «Starts» 줄이 누르기 전 마킹에 머물렀습니다 — 크롬 MCP 에서 «+ LEAD-P3-A» 만 남은 것을 보고 찾았고, Graph 보기에는 ②(6ed448142)부터 있던 결함입니다. G6 + 변이 K13.
+
+**이 박스 데이터** 두 기준 웨이퍼가 같은 레시피 · 같은 step 이라 + 와 − 가 같고 missing 칸이 없습니다. 시연에서 차이를 보이려면 두 기준이 다른 엣지를 가져야 합니다 — 응용 레인의 시연 데이터 물음(9fb891626)에 달려 있습니다.
+
+**전체 러너** ①②④ 뒤: 하니스 171 중 게이트 169 전부 초록, 알려진 빨강 2 그대로, 1624 초. ③ 뒤 전체 러너는 지금 뒤에서 돕니다.
+
+**제안(짓지 않음)**
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 두 열 값이 다른 행을 위로 · 표시 | 행이 수십이면 차이 찾기를 눈으로 해야 함 | 안 쟀다 |
+| 머리줄에 행 수 · 부호마다 missing 수 | 표를 다 안 내려도 «몇 중 몇» | 안 쟀다 |
+| 칸을 누르면 그 엣지들을 Graph 에서 | «누구 값»을 그림에서 확인 | 안 쟀다 |
+
+**다음** 어드민 나머지 탭(Tables · Chain · Auto Update · Retroactive) DRIVE.
+
 > ## [20:46 디자인] 저녁 착지 여섯 — 러너 빨강 고침 · 클립보드 · 배지(가로 스크롤) · 상태 문구 title · subgraph --control · Retry 판 «Include files that went in» (총괄 10-09)
 
 | 커밋 | 무엇 |
