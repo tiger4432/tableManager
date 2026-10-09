@@ -77786,3 +77786,61 @@ MD5 AFTER  same
         ② 안 넣음 — 소유자 쪽은 10-02 뒤 코드의 체인 워커가 아웃박스를 읽으며 돌고 있음(소유자 10-09) ③ 시연 뒤 후보
         덧: idx_audit_row_history 를 억지로 태우지 않음(껍데기 행 EXPLAIN)
 ```
+
+---
+
+## [10-10 새벽] SLOT_POOL — 묶음 하나에서 풀 한도까지 기다린 체크아웃 0 — 짓지 않고 수만 (총괄 bdb356d3f 5a)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 스크래치 assy_impl_pool_1010(판마다 새로 만들고 지움: 2+2 「dropped schema assy_impl_pool_1010 (21 tables) - left 0」 · 5+5 「dropped schema assy_impl_pool_1010 (21 tables) - left 0」) · public 쓴 것 0(아래 «떠돈 워커» 포함)
+코드 84a35f0bd(wt-impl). 판마다 진짜 따로 띄운 `run_chain_worker.py` + 그 슬롯 두 프로세스. 응용 레인께 차례를 알리고 돌림 · 끝나고 «내림»
+
+```
+모양    원천 표 하나(hc_log) 2,000 행을 사람 한 번의 쓰기로 -> 묶음 하나
+        규칙 넷: 복사(copy_rows_with_hold) · 그 다시 세기 · 선언 조인 · DB 를 읽는 맵퍼(스크래치 맵퍼, 끝나고 지움)
+계기    모든 QueuePool 체크아웃을 잼(스크래치 sitecustomize — 제품 파일 안 고침). 0.05 s 이상 걸린 것 + 동시에 쥔 수의 최고
+        슬롯의 풀만 바꿈(5+5 판은 그 프로세스의 ASSY_DB_POOL_SIZE/MAX_OVERFLOW 만)
+끝 상태  2+2 {'waiting': 0, 'official': 2000, 'lot_seen': 2000, 'seen': 2000, 'failed': 0}
+        5+5 {'waiting': 0, 'official': 2000, 'lot_seen': 2000, 'seen': 2000, 'failed': 0}
+```
+
+| | 2+2 (지금 값) | 5+5 |
+|---|---|---|
+| 슬롯 풀 | ['2+2'] · 슬롯 2 | ['5+5'] · 슬롯 2 |
+| 슬롯이 동시에 쥔 연결 최고 | 2 | 2 |
+| 0.05 s 이상 걸린 체크아웃(워커+슬롯) | 8 (0.08~0.46 s) | 8 (0.09~0.22 s) |
+| 그중 풀 한도에서 기다린 것 | 0 | 0 |
+| 워커 본체 풀 · 최고 | ['20+10'] · 4 | ['20+10'] · 4 |
+
+```
+묶음 초  [Latency] 줄의 mapper 칸(규칙 + 쓰기)
+        2+2  slot 1 mapper 6656 ms notify 8406 ms · slot 2 mapper 1234 ms notify 2313 ms
+        5+5  slot 1 mapper 6969 ms notify 8422 ms · slot 2 mapper 1422 ms notify 2360 ms
+        첫 판(제품 값 그대로 2+2, 계기 앞 버전) slot 1 mapper 6782 ms notify 8406 ms · slot 2 mapper 1156 ms notify 2359 ms
+규칙 초  2+2  pp_copy 0.41s · pp_join 0.01s · pp_join:target 0.11s · pp_reader 0.11s · pp_recount 0.42s
+        5+5  pp_copy 0.44s · pp_join 0.00s · pp_join:target 0.12s · pp_reader 0.12s · pp_recount 0.44s
+판정    풀 한도에서 기다린 체크아웃 0 — 지시대로 SLOT_POOL 은 짓지 않음
+        슬롯은 이 묶음 동안 연결을 «2 개»까지만 동시에 쥠 — 풀을 넓혀도 같은 수, 묶음 초도 같은 범위
+        0.05 s 넘은 체크아웃은 모두 한도 «아래» = 새 연결을 여는 시간. 같은 계기를 단 CLI(풀 20+10, 한 개만 씀)도 0.12~0.13 s 로 같은 크기
+        DB 를 읽는 맵퍼는 2,000 행에 0.1 s 대 — 이 모양에선 «남은 느림의 원인»을 못 찾음
+안 잰 것 자동확정 규칙은 이 묶음에 없었음 · 소유자 실제 맵퍼의 질의 모양 · 동시에 여러 묶음(슬롯 둘이 동시에 큰 묶음)
+덧      끝까지 걸린 초(seconds.txt — 5+5 「end-to-end seconds: 21.9」)는 대부분 notify — 이 박스는 API_BASE_URL 을 127.0.0.1:9 로 막아 통지가 재시도 끝에 실패. 풀과 무관
+```
+
+### 🔴 떠돈 워커 — 2+2 판에서 제 워커가 스키마를 지운 뒤에도 돌았습니다
+
+```
+무엇    정리 단계가 워커 pid 를 못 읽음(윈도 파이썬에 /c/... 경로를 넘겨 파일 없음 -> pid 빈칸 -> 아무것도 안 죽임) -> 그대로 스키마 지움
+        워커는 search_path 의 스크래치가 사라지자 assy_test public 을 봄
+        01:46:19 ~ 01:56:34 「ledger_state 칼럼 없음」(이 DB public 에 그 칸이 없음) — 루프 205 · 통지 스윕 102 · 원장 행 세기 태스크 1
+        제가 찾아 죽임(부모가 제 bash 인 것 확인)
+쓴 것   실패한 SQL 308 개의 첫 낱말 ['SELECT'] — 모두 읽기. 루프 첫 질의(SYSTEM_RELOAD 찾기)와 통지 스윕이 SELECT 에서 멈춤
+        아웃박스 정리(삭제)는 1 시간 주기라 기동 때 한 번(스키마 지우기 전) 뿐
+        public 대조(죽인 뒤): public relations 325 -> 325 · added [] · gone [] · rows changed {}
+        ⚠️ 이 대조는 «표 수·행 수»만 셉니다 — 기존 행의 칸이 바뀐 것은 못 셉니다. «쓴 것 0»의 근거는 위 SQL 목록입니다
+고침    pid 를 bash 에서 읽고, 비었거나 죽인 뒤에도 살아 있으면 스키마를 «안 지우고» 멈춤. 5+5 판에서 「stopped」 줄 확인 · 프로세스 목록에 운영 워커만
+```
+
+```
+순서    지시는 5b(foreign_beat) -> 5a 였는데 5a 를 먼저 끝냈습니다 — 응용 레인께 30 분 차례를 이미 알린 뒤라서
+다음    5b foreign_beat(ㄱ) -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
+```
