@@ -1446,7 +1446,8 @@ const FLOORS = new Map([
   // a lump's head says every axis its walk cut and the nodes left bare (lead 161757c35).
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
-  ['subgraph_view_harness.mjs', 239],
+  // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
+  ['subgraph_view_harness.mjs', 331],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -2011,11 +2012,15 @@ const shrank = [];      // came in UNDER its ceiling ― good; re-baseline when 
 
 // 🔴 ONE RULE (lead c4ccdeec3): a harness that reads --mutate runs here WITH it. Mutants kept behind
 //    a flag the gate never passed never ran here, and their anchors died with nobody seeing (10-06).
-const readsMutate = (name) => readFileSync(path.join(TESTS_DIR, name), 'utf8')
-  .includes("process.argv.includes('--mutate')");
+//    The same for --control (lead 10-09: subgraph_view_harness's unmutated subsets).
+const FLAGS = ['--mutate', '--control'];
+const flagsOf = (name) => {
+  const text = readFileSync(path.join(TESTS_DIR, name), 'utf8');
+  return FLAGS.filter((f) => text.includes(`process.argv.includes('${f}')`));
+};
 
 for (const name of harnesses) {
-  const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name), ...(readsMutate(name) ? ['--mutate'] : [])],
+  const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name), ...flagsOf(name)],
     { cwd: REPO_ROOT, encoding: 'utf8' });
   const ok = run.status === 0;
   const known = KNOWN_RED.get(name);
