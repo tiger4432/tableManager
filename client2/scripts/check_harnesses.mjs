@@ -1755,7 +1755,9 @@ const FLOORS = new Map([
   // The screens in real Chrome (lead 1343e5cca): 7 dist entries x 8 checks (clip · overflow · panel · text · size ·
   // columns · words · answers) at 1920x950, 1536x864 and 1280x720 + 8 mutants - the five that leaked on 10-08/09, the
   // ledger table's hand widths, Options and Menu inside the zoomed header, the Rules column's names broken (lead 10-09).
-  ['screen_layout_harness.mjs', 176],
+  // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
+  //   and their two mutants (lead 10-09): 176 -> 184.
+  ['screen_layout_harness.mjs', 184],
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

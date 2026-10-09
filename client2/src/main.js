@@ -118,6 +118,15 @@ let viewMode = 'pagination'; // 'pagination' | 'infinite'
 let allDataLoaded = false;
 
 // Initialize Application
+/** The header message is cut inside its box when the header is short of room; its whole sentence rides as its title
+ *  (lead 10-09). Every writer sets its text, so the title follows the text here, in one place. */
+function followTitle(el) {
+  if (!el || typeof MutationObserver === 'undefined') return;
+  const sync = () => { el.title = el.textContent; };
+  sync();
+  new MutationObserver(sync).observe(el, { childList: true, characterData: true, subtree: true });
+}
+
 async function init() {
   // 웹 브라우저에서 접근 시, 백그라운드에서 로컬 데스크톱 앱 자동 실행을 시도하던 로직을 사용자 요청에 따라 주석 처리합니다.
   /*
@@ -160,6 +169,7 @@ async function init() {
       }
 
       initTheme();
+      followTitle(elements.performanceLog);
       // V1 instrument: start counting human effort before any listener can fire.
       // Invisible by design — no UI, no badge. See effort_meter.js.
       startSession();
