@@ -39,6 +39,8 @@ import { walkTableView, nextRoutes } from './table_view.js';
 import { setDisabledReason } from '../disabled_reason.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
 import { SubgraphView, seedsOf } from './subgraph_view.js';
+// The comparison of the start marking's signs (lead 10-09, demo ③) — a part with its own div, placed here.
+import { CompareView } from './compare_view.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 import { entitySeedId } from '../rnd_board/api.js';
@@ -126,6 +128,9 @@ export function boot(doc, host, deps) {
   const graphMount = el(doc, 'div', 'wk-graph');
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
     worldChips: worlds.length > 1, declaration: () => state.decl });
+  const compareMount = el(doc, 'div', 'wk-compare');
+  const compare = new CompareView(compareMount, { doc, walk, markings, startsName: GRAPH_CHAIN[0], spec,
+    declaration: () => state.decl, labelOf: (id) => state.startLabels.get(id) || id });
   /** The Walk press puts the form's subject in the chain's first marking the way the board marks (lead 10-09): a press
    *  replaces, Ctrl adds, Shift makes it a control. No subject, no mark (the part says so). */
   const markStart = (event) => {
@@ -175,6 +180,8 @@ export function boot(doc, host, deps) {
   async function fire(event) {
     if (!state.type) return;
     markStart(event);
+    // The Starts line shows the marking as it stands in every view; the graph and the comparison walk without one.
+    render();
     await walkStarts();
   }
 
@@ -182,6 +189,8 @@ export function boot(doc, host, deps) {
   async function walkStarts() {
     // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
     if (state.view === 'graph') { showGraph(); return; }
+    // The comparison asks its own walks from the same marking and form.
+    if (state.view === 'compare') { await compare.ask(); return; }
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
     // One + start alone is the form's subject, asked as before (walk_layout L7 · L8: the request does not change).
     const starts = seedsOf(markings.entries(GRAPH_CHAIN[0]));
@@ -617,9 +626,9 @@ export function boot(doc, host, deps) {
         ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
         : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`));
     }
-    // ── Table | Graph ───────────────────────────────────────────────────────
+    // ── Table | Graph | Compare ─────────────────────────────────────────────
     const views = el(doc, 'div', 'wk-views');
-    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {
+    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph'], ['compare', 'Compare']]) {
       const button = el(doc, 'button', 'wk-view' + (state.view === name ? ' is-on' : ''), word);
       button.type = 'button';
       button.setAttribute('data-view', name);
@@ -717,6 +726,7 @@ export function boot(doc, host, deps) {
       renderGo(foot);
       renderHead(main);
       if (state.view === 'graph') main.append(graphMount);
+      else if (state.view === 'compare') { compare.render(); main.append(compareMount); }
       else { renderSteps(main); renderResult(main); }
     }
     rail.append(body, foot);
@@ -758,6 +768,8 @@ export function boot(doc, host, deps) {
     worlds = worldList(names);
     graph.worldChips = worlds.length > 1;
     if (options.pickWorld) options.pickWorld(worlds);
+    // An answer read on the old worlds no longer stands: the compare view asks again below, another view forgets it.
+    compare.forget();
     await load();
     if (state.type && (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0]))) await walkStarts();
   }
@@ -766,7 +778,7 @@ export function boot(doc, host, deps) {
     ? new BranchPicker(options.branchMount, { doc, onPickSet: (names) => { void pickWorlds(names); } }) : null;
   if (picker) picker.show({ current: worlds });
   load();
-  return { state, spec, fire, render, graph };
+  return { state, spec, fire, render, graph, compare };
 }
 
 // 🔴 부팅은 «이 파일 끝»에서만. bare node 로 이 모듈을 읽어도 DOM 을 안 건드려야

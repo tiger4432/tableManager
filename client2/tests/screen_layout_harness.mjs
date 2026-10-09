@@ -481,6 +481,20 @@ const DRIVE = {
       await until(c, "document.querySelector('.wk-main table, .wk-main svg, .wk-main canvas')");
     }],
     ['Graph', (c) => press(c, 'Graph').then(() => sleep(1500))],
+    // Compare (lead 10-09, demo ③): picked from the declaration, then a second subject marked a control (Ctrl+Shift
+    // on Walk) - a + column and a - column, its whose labels whole.
+    ['Compare, a + and a - start', async (c) => {
+      await press(c, 'Compare');
+      await until(c, "document.querySelector('.cmp-select')");
+      await choose(c, '.cmp-select', [0, "x.value === 'recipe'"]);
+      await choose(c, '.cmp-select', [1, "x.value === 'processed_with'"]);
+      await choose(c, '.cmp-select', [2, "x.value === 'step'"]);
+      await choose(c, '.wk-select', [1, 'i === 2']);
+      await sleep(300);
+      await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Walk' && !x.disabled);
+        if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, shiftKey: true })); return Boolean(b); })()`);
+      await until(c, "document.querySelector('.cmp-table')");
+    }],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],

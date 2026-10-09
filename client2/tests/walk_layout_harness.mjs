@@ -132,7 +132,7 @@ async function suite(mod, css = REAL_CSS) {
   ok('L1 every form control is in the rail', controls.length > 5 && stray.length === 0,
     `${controls.length} controls, ${stray.map((e) => e.className).join(',')} outside`);
   const views = controls.filter((e) => e.attrs && e.attrs['data-view'] !== undefined);
-  ok('L2 Table | Graph and the result are in the main part', views.length === 2
+  ok('L2 Table | Graph | Compare and the result are in the main part', views.length === 3
     && views.every((e) => inMain.has(e)) && walkAll(main || { children: [] }).some((e) => e.className === 'wk-result'),
     `${views.length} views`);
 

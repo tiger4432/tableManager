@@ -158,11 +158,18 @@ export const WALK_CSS = `
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-rowlabel { overflow-wrap: anywhere; }
 
-/* Table | Graph — which view of the walk the page shows (lead c9bf53033). */
+/* Table | Graph | Compare — which view of the walk the page shows (lead c9bf53033, 10-09). */
 .wk-views { display: flex; gap: 6.8px; }
 .wk-view { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-view.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* Compare: the walk table's own rules (a row one line, the table scrolls inside itself), so a whose is never cut. */
+.cmp-view { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.cmp-picks { display: flex; flex-flow: row wrap; align-items: flex-end; gap: var(--space-3); }
+.cmp-pick { display: flex; flex-direction: column; gap: var(--space-1); flex: 1 1 12em; min-width: 0; }
+.cmp-go { flex: none; width: auto; padding: 0 var(--space-5); }
+.cmp-heading { font-weight: 600; overflow-wrap: anywhere; }
+.wk-table td.cmp-missing { color: var(--danger); }
 
 /* Subgraph viewer. Corners 0, hairlines, colours from the roles in tokens.css only. A type's colour is a
    palette token (--cat-1..9 in tokens.css, TYPE_COLOURS of them) by its declaration index. A declaration

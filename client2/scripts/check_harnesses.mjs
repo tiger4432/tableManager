@@ -1397,6 +1397,9 @@ const FLOORS = new Map([
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
+  // New with lead 10-09 (demo ③): the Compare view - its picks from the declaration, the walks it asks, the table it
+  // reads, its seat on the walk page, two parts on one screen. Floor = first run.
+  ['compare_view_harness.mjs', 30],
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
