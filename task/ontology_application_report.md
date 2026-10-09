@@ -37705,3 +37705,20 @@ DB 쪽   기록 [(1, 'SUCCESS'), (2, 'SUCCESS'), (3, 'SUCCESS')] · vendor 선 �
       저장되는 문장이라 바꾸면 옛 이력과 새 이력의 말이 갈립니다 — 바꿀지는 총괄 판정
    ③ 그리드 위 «declaration unreadable — server refused (503)» 는 제 인스턴스에 토큰이 없어서 생긴 것(토큰 없는 서버는 그 문을 닫음) — 운영 증상 아님
 ```
+
+---
+
+## [C 응용] 10-09 시연 응용 몫 — 하는 일과 물음 둘
+
+```
+하는 일   ③ 모델 나누기를 사설 인스턴스(박스 설정 사본 · 스크래치 스키마 · mechanism_edge 사본)에서 끝까지 —
+           default 에서 메커니즘 소스 둘 빼기 -> --whole-source 로 옛 원자 거둠 -> Empty 세상 둘 만들기(bootstrap) ->
+           세상마다 그 소스 둘을 read.exclude_when {"when": {"model": <다른 모델>}} 로 -> 세상마다 backfill -> 걷기에서 세상 바꿔 사슬이 갈리는지
+         그 순서 · 파일 · 칸 · 명령 · 박스 초를 일요일 명령표의 «시연 선언» 절로
+         ①②④ 는 클라 착지가 오는 대로 걷기 화면에서 «누른 것 · 본 것 · 걸린 초»
+박스 사실(읽기만)  mechanism_edge 의 model 셋 — void_formation 18 · delam_formation 3 · void_observation_bias 1
+         void 관측이 있는 base 웨이퍼 2662 개 · 웨이퍼당 2~199 개(가운데 37.0)
+물음 ①  모델 세상 둘을 어느 모델로 — 제 안: void_formation 하나 · void_observation_bias 하나(둘 다 void 로 끝나고 delam 은 이야기 밖)
+물음 ②  양불 base 짝 — 박스 DB 에 새로 심지 않고 있는 웨이퍼에서 고르겠습니다(저는 박스 DB 에 안 씁니다)
+         제 안: 불 SYN-BW-103-11(199 개) · 양 SYN-BW-SPL-400-19(2 개). 같은 랏 안에서는 짝이 안 납니다 — SYN-BW-103 랏의 최소도 155 개
+```
