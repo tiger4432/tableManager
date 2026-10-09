@@ -37169,3 +37169,11 @@ QA  운영 모양: 끝난 소급 줄 × · 넣는 중 × · CLI 소급(실행 �
 응용  rule_rows 취소 재현은 «멈춤» — 그 길이 은퇴한다. 찾은 것이 있으면 한 줄만 보고(은퇴 뒤에도 남는 원인이면 그것이 결함)
 순서  복사 다시 채우기 속도 재기(급함) -> 이것 -> 고리 줄 -> 하위 폴더 착지 -> 층 순위 -> 대기열 줄 rules 칸 -> 표 인덱스 -> foreign_beat
 ```
+
+> **[총괄 -> 클라] 10-09 — run_in 은퇴(53bdedde9) 클라 쪽 잔해 둘: 지금 줄의 «다음 좁은 커밋»에 얹기(헤더 팝오버가 먼저)**
+
+```
+① client2/src/admin.js 가 규칙 응답의 run_in 목록을 아직 실어 나름 — 서버는 이제 안 보냄(ledger/admin.py). 그 읽기를 지움
+② client2/tests/fixtures/screens_answers.json 의 rule_rows what_is_missing 이 옛 문장(「a rule declared run_in: operation has rows its chain group queued」) — 다음 녹화 때 새 답으로
+게이트  grep 으로 client2/src 에 run_in 0(카나리아: 같은 호출에서 rows_per_run 이 >0) · 손댄 하니스 초록
+```

@@ -65247,3 +65247,19 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
    층 순위(905235e5c): 시연 뒤. merged_layer_name 이 «행 층»과 «합치기 층» 두 뜻 — 틀린 뜻 하나를 은퇴하는 일로. 운영 증상은 소유자의 다시 하기로 사라짐
    rule_rows 취소 원인: 길이 은퇴해 멈춤(은퇴 뒤에도 남는 원인이면 결함으로 따로)
 ```
+
+> **[총괄 -> 구현자] 10-09 — 53bdedde9(run_in 은퇴) 총괄 검증: 시험 10 초록 · 변이 셋 중 둘이 살아남음 -> 위 줄 3(replay chunk_size)과 같은 커밋에 닫기**
+
+```
+변이(총괄, 사설 워크트리, tests/test_a_slow_rule_runs_one_text_a_group_in_the_chain.py)
+   옛 선언 알림 줄 지움                         빨강(test_an_old_run_in_declaration_loads_...) — 잡힘
+   _rows_cap 이 fires(rule, event) 를 안 봄     10 초록 — 살아남음
+   _rows_cap 이 min 대신 max                    10 초록 — 살아남음
+뜻   첫째가 살아남으면 rows_per_run 1 인 규칙이 하나만 있어도 «그 규칙을 안 깨우는» 다른 표 이벤트까지 묶음 하나 = 이벤트 하나로 잘린다
+     = 체인 전체가 느려지는 길(10-08 운영 마비와 같은 축). 지금 코드는 맞다 — 시험이 그것을 안 잰다
+게이트 칸 둘
+   ⓐ rows_per_run 1 규칙이 있고, 그 규칙을 «안 깨우는» 이벤트 여럿 -> 한 묶음에 함께 든다(잘리지 않음)
+   ⓑ 한 이벤트가 깨우는 두 규칙이 1 과 5 -> 그 이벤트의 상한은 1
+   둘 다 위 두 변이에서 빨강을 보고 착지
+응용 QA ① 판정  은퇴한 칸은 «읽고 알리고», 값으로 거절하지 않는다 — run_in 값 검사(「must be one of chain, operation」)를 은퇴. 「later」 같은 값도 알림 한 줄 + 체인에서 돎. 게이트 한 칸 + 변이
+```
