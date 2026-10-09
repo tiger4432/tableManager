@@ -302,3 +302,47 @@ def test_the_record_says_which_os_account_ran_it(retro_env, monkeypatch):
     monkeypatch.setattr(getpass, "getuser", lambda: (_ for _ in ()).throw(OSError()))
     retroactive.run_here("probe_op", {"pages": 1}, log=lambda *_: None)
     assert _row(retro_env).requested_by is None
+
+
+def test_the_withdrawal_fold_previews_then_folds_as_a_run(retro_env, capsys):
+    """총괄 eddf9e38e ②: `chain_replay_cli.py fold-withdraw-events` - the preview's sentence, then
+    `--apply` through the run record; three per-row withdrawal events become one."""
+    import os
+    import sys
+    import uuid
+
+    from chain import cell_layer
+    from database import crud, schemas
+    from utils.payload_helper import get_payload_dict
+
+    scripts = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    if scripts not in sys.path:
+        sys.path.append(scripts)
+    import chain_replay_cli
+
+    crud.apply_batch_updates(retro_env, "retro_test_target", schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(business_key_val="P%d" % i, updates={"part_no": "P%d" % i},
+                                  source_name="user", updated_by="t") for i in range(3)]))
+    retro_env.commit()
+    model = models.DYNAMIC_TABLES["retro_test_target"]
+    tx = "%s_%s" % (cell_layer.R2_AUDIT_SOURCE, uuid.uuid4().hex[:8])
+    with crud.transaction_context(cell_layer.R2_AUDIT_SOURCE, tx, cell_layer.R1_SOURCE_NAME):
+        for row in retro_env.query(model).all():
+            row.note = "revealed"
+        retro_env.commit()
+
+    def withdrawal_events():
+        return [get_payload_dict(e) for e in retro_env.query(models.DatabaseOutbox)
+                if get_payload_dict(e).get("updated_by") == cell_layer.R2_AUDIT_SOURCE]
+
+    assert chain_replay_cli.main(["fold-withdraw-events"]) == 0
+    said = capsys.readouterr().out
+    assert "'retro_test_target' 3 event(s) -> 1 - 3 row(s)." in said and said.rstrip().endswith(
+        "-> add --apply to fold"), said
+    assert len(withdrawal_events()) == 3
+    assert chain_replay_cli.main(["fold-withdraw-events", "--apply"]) == 0
+    said = capsys.readouterr().out
+    assert "fold-withdraw-events: 'retro_test_target' 3 event(s) -> 1 - 3 row(s)." in said, said
+    assert [len(p.get("row_ids") or ()) for p in withdrawal_events()] == [3]
+    assert retro_env.query(models.RetroactiveRun).filter(
+        models.RetroactiveRun.op == "fold_withdrawal_events").one().state == retroactive.RUN_DONE

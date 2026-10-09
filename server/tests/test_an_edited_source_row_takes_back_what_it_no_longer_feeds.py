@@ -185,7 +185,7 @@ def test_a_row_filled_from_another_row_loses_only_that_layer_when_it_moves_away(
     assert _events(db, since) == [
         ("EDIT", ["p"], event_constants.CHANNEL_API),
         ("EDIT", ["z"], event_constants.CHANNEL_CHAIN),       # er_z writes P2
-        ("EDIT", [], event_constants.CHANNEL_CHAIN),          # P1's z emptied (per row: no columns)
+        ("EDIT", ["z"], event_constants.CHANNEL_CHAIN),       # P1's z emptied (collapsed since eddf9e38e)
         ("EDIT", ["k", "z"], event_constants.CHANNEL_CHAIN),  # P1 lost a layer on k and z
     ]
     assert all(get_payload_dict(e).get(event_constants.WRITTEN_BY_KEY) == ["er_z"]

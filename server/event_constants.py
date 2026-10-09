@@ -873,12 +873,13 @@ MAX_AUDIT_VALUE_CHARS = 4096
 OUTBOX_MODE_PER_ROW = "per_row"
 
 #: Collapsed events - one row per (table, event_type) per flush, naming row_ids.
-#: Opted into explicitly by the three write paths that carry volume: ingestion
-#: (`directory_watcher`), the chain worker, and the product door
-#: (`main.apply_batch_updates_endpoint`, S-82). NOT inferred from `request_source`
-#: (that is a FILENAME on the ingestion path, not a channel) and NOT inferred from
-#: row count - inference is how a FOURTH caller would collapse without anyone
-#: having decided that it should.
+#: Opted into explicitly by the four write paths that carry volume: ingestion
+#: (`directory_watcher`), the chain worker, the product door
+#: (`main.apply_batch_updates_endpoint`, S-82), and a withdrawal's revealed values
+#: (`cell_layer._withdraw_cells`, 총괄 eddf9e38e - a 1,000-row delete staged 1,000 one-row
+#: edits). NOT inferred from `request_source` (that is a FILENAME on the ingestion path,
+#: not a channel) and NOT inferred from row count - inference is how a FIFTH caller
+#: would collapse without anyone having decided that it should.
 OUTBOX_MODE_COLLAPSED = "collapsed"
 
 #: Max row_ids carried by ONE collapsed event. Also the project-wide 1,000-row

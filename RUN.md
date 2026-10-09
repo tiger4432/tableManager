@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **회수가 드러낸 값을 «접힌 사건»으로 내고, 이미 쌓인 회수의 행마다 사건을 한 명령으로 접는다 (총괄 eddf9e38e) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 순서           git pull -> 체인 워커 · 서버 재기동 -> 쌓인 것 접기 미리보기 -> --apply
+> 미리보기        python server/scripts/chain_replay_cli.py fold-withdraw-events                (안 씀)
+>               '<표>' N event(s) -> M - R row(s). Left as they are: T event(s) the chain already tried (RETRYING), U on a line the chain runs now.
+>               N = 회수가 행마다 낸, 체인이 아직 안 돈 사건 · M = 바뀔 접힌 사건(표마다 1,000 행에 하나) · R = 그 사건들이 가리키는 행
+>               T · U = 안 접고 두는 것 — 체인이 이미 시도한 것 · 지금 체인이 도는 줄. 체인이 끝내면 그대로 지나간다
+>               No waiting withdrawal event goes row by row = 접을 것 없음
+> 실행           python server/scripts/chain_replay_cli.py fold-withdraw-events --apply        (소급 탭 «Fold row-by-row withdrawal events» 와 같은 일)
+>               fold-withdraw-events: <같은 문장> -> 다시 미리보기에서 N 이 없으면 끝
+> 쪽             사건 10,000 개마다 한 커밋(cell_layer.FOLD_PAGE_EVENTS) — 새 사건 넣기와 옛 사건 지우기가 같은 커밋
+> 멈추기          소급 탭의 × — 쪽 사이에서 선다. 다시 돌리면 남은 것만
+> 큐에서          접힌 사건은 새 id 라 큐 뒤로 간다. 체인은 그 행을 «돌 때의 값»으로 다시 읽는다
+> 재기동 뒤       회수 사건이 표마다 1,000 행에 하나 — python -m ledger followup 의 따라갈 일에 회수 때문에 «EDIT 한 행»이 쌓이지 않는다
+> 바뀐 깨움       회수 사건이 바꾼 칸 이름을 싣는다 — 그 칸을 깨움 칸으로 안 가진 규칙 · 그 칸을 안 읽는 원장 소스는 회수에 안 깬다(다른 접힌 쓰기와 같은 규칙)
+> 급할 때         git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 접은 사건은 그대로 돈다)
+> ```
+
+---
 > ## [10-09] **소급 «Re-read files» — 파서를 바꾼 뒤 이미 들어간 파일을 워처가 지금 파서로 다시 읽는다 (총괄 976defaac) — 이주 «없음» · 재기동 «서버»(소급 탭에 새 연산)**
 >
 > ```

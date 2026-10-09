@@ -174,8 +174,9 @@ def fixture_shipped_ledger(tmp_path, monkeypatch):
 def test_every_operation_is_judged_before_it_is_recorded():
     """Canary: no operation is left for its run to be the first to judge its names."""
     assert sorted(op for op, spec in retroactive.OPERATIONS.items()
-                  if spec["judge"] is None) == []
-    assert (set(NAME_OPS) | set(RULE_OPS) | set(COLLECTOR_OPS) | set(SET_ASIDE_OPS)
+                  if spec["judge"] is None) == NO_NAME_OPS
+    assert [op for op in NO_NAME_OPS if retroactive.OPERATIONS[op]["params"]] == []
+    assert (set(NAME_OPS) | set(RULE_OPS) | set(COLLECTOR_OPS) | set(SET_ASIDE_OPS) | set(NO_NAME_OPS)
             == set(retroactive.OPERATIONS))
 
 
@@ -219,6 +220,9 @@ COLLECTOR_OPS = ["collector_backfill"]
 
 #: The emergency stop's pair - a scope of tables, rules or transactions; a rule is judged by name.
 SET_ASIDE_OPS = ["rerun_set_aside", "set_aside"]
+
+#: Operations that take no parameter - no name to judge (the withdrawal fold, eddf9e38e).
+NO_NAME_OPS = ["fold_withdrawal_events"]
 
 
 @pytest.mark.parametrize("op", SET_ASIDE_OPS)
