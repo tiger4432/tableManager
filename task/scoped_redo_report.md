@@ -77612,3 +77612,35 @@ source_name 을 안 적은 맵퍼 칸은 기본값 user(사람 층, 순위 0)로
 ### 다음
 
 껍데기 행(판정 ㄱ — 다시 세기가 쓴 뒤 판정) -> SLOT_POOL · foreign_beat -> 표 선언 인덱스 -> VALUES CAST -> 원장 해시 인덱스
+
+---
+
+## [10-09 밤] «기본값 user 로 쌓인 맵퍼 층이 이제 영원히 이길 수 있나» 전수 — 짓지 않고 수만 (총괄 10-09)
+
+어느 DB · 어느 스키마 · 지운 것 — 읽기만: 이 박스 assy_manager(읽기 전용 트랜잭션) · 코드는 git ls-files 와 이 박스 server/mappers. 지운 것: assy_pytest_pg_52232_gw0 (관계 53 개, 남은 것 0)(pid 죽음, 그 스키마를 쓰는 세션 없음)
+
+```
+① 어떤 길이 source_name 없이 user 로 썼나
+   길    체인 쓰기 자리에 온 칸이 source_name 을 안 적으면 GeneralUpdateItem 기본값 "user"(순위 0). updated_by 도 안 적으면 "system"
+         @mapper · df_to_updates 는 chain_ingestion 을 적으므로 이 길이 아님. 남는 모양은 «칸을 dict 나 GeneralUpdateItem 으로 직접 짓는 맵퍼»
+   추적 코드(제품 맵퍼 · 샘플 · 체인 빌트인 · 시험 샘플 맵퍼, 파일 46)
+         칸 짓는 자리 중 source_name 을 적는 것 15 · 안 적는 것 1  ['server\\chain\\key_gate.py:171 dict']
+         (key_gate 의 그 자리는 칸을 복사하며 updates 만 바꾸는 model_copy — 원래 칸의 이름을 그대로 가짐)
+   이 박스 운영 맵퍼(추적 안 됨, 파일 12)  적는 것 10 · 안 적는 것 0
+   계기  AST 로 «updates 값이 dict» 이거나 칸에만 있는 낱말(business_key_val · row_id · origin_row_id · updated_by · source_name)을 가진 dict,
+         그리고 GeneralUpdateItem(...) 호출. 첫 계기는 봉투({"updates": 변수})를 칸으로 세어 열셋을 냈고, 그 열셋을 열어 보고 고쳤습니다
+         첨자로 짓는 칸(hold_copy 의 item["source_name"] = …)은 이 계기 밖 — hold_copy 는 적음
+   운영 맵퍼(소유자 서버의 server/mappers)는 못 셉니다
+② 이 박스 DB 에서 그 층 (읽기만)
+   cell_sources 전체 37,788,110 중 source_name='user' 122,190
+   쓴이(updated_by) 9 가지: kk980 121,132, tester 945, tp_smoke 49, qa_v2 40, server-pm-probe 10, lead_probe 7, lead_pm_e2e 4, server-pm 2, implementer gate C 1
+   이 박스의 규칙 이름 · 맵퍼 함수 이름 · chain_worker · system · user 와 겹치는 쓴이: []
+   -> 이 박스에는 «맵퍼가 기본값으로 쓴 사람 층»이 없습니다(쓴이 낱말로 판정 — 사람 로그인과 시험 이름뿐)
+③ 얼어붙음을 막는 길 하나 (짓지 않음)
+   seat 가 원래 이름이 user 였던 칸을 chain_ingestion 으로 바꿔 쓸 때, 같은 칸의 user 층 가운데 updated_by 가 그 칸의 updated_by 와 같은 것을 거둔다
+   단 updated_by 가 기본값 system 이면 거두지 않는다
+   사람 층과 갈라지나: 사람 쓰기의 updated_by 는 요청 칸이 실어 온 이름(이 박스에서는 ② 의 쓴이들 — 로그인 · 시험 이름). 맵퍼 칸은 맵퍼가 적은 이름
+      겹치면 갈라지지 않음 — 이 박스 겹침은 위 ② 의 수. system 은 사람 쓰기도 updated_by 를 안 보내면 받는 값이라 뺌
+      그래서 updated_by 를 안 적은 맵퍼 칸이 남긴 층은 이 길로 못 풉니다
+   짓기 전에 운영에서 먼저 셀 것: ② 와 같은 읽기 질의(쓴이별 user 층 수)를 소유자 서버에서 — 0 이면 지을 까닭이 없습니다
+```
