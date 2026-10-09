@@ -1,3 +1,33 @@
+> ## [20:46 디자인] 저녁 착지 여섯 — 러너 빨강 고침 · 클립보드 · 배지(가로 스크롤) · 상태 문구 title · subgraph --control · Retry 판 «Include files that went in» (총괄 10-09)
+
+| 커밋 | 무엇 |
+|---|---|
+| aaa5d2c9c | 94688b7cd 뒤 러너 빨강(css_token_definition): 대기열 폭 두 이름을 setProperty 에 글자로 다시 적음 |
+| 3061c23b1 | 계정 배지 새 키 Copy 가 앱의 복사 길로 — 운영 평문 HTTP 에서 아무 일도 안 하던 것. 빌드 사전 검사 다시 초록 |
+| 987caffac | 오프스크린 배지는 개수가 바뀔 때만 씀 — 가로 스크롤 프레임당 −19 %(이 박스) |
+| 724fbd621 | 헤더 상태 문구가 마우스를 받고 title = 전체 문장(C-118 의 까닭이 사라짐), 검사기 칸 둘 + 변이 둘 |
+| 0f737e755 | subgraph 하니스 --control(변이마다의 부분을 변이 없이) — 러너가 플래그를 넘김, 바닥 239 → 331 |
+| fc5f863b2 | 파일 인입 Retry 판 «Include files that went in» + 미리보기 답 그대로 · 검사기가 File Ingestion 탭을 엶 |
+
+**가로 스크롤 재기** (소유자 「메인 그리드 좌우로 마우스 스크롤도 느린데」). 헤드리스 Google Chrome 1920×950, 행은 박스 서버, 가로 휠 60칸 오른쪽 · 60칸 왼쪽. 스크롤 동안 메인 스레드 ms ÷ 프레임(이 박스 수):
+
+| 조건 | 아침 f6114c47c | 지금 main | 지금 + 배지 고침 |
+|---|---|---|---|
+| 필터 없음 · 대기열 닫힘 | 1.44 | 1.44 | 1.17 |
+| 대기열 열림 | 0.85 | 0.81 | 0.73 |
+| 필터 셋 | 1.35 | 1.42 | 1.15 |
+| 필터 셋 · 대기열 열림 | 0.83 | 0.89 | 0.77 |
+
+아침과 지금은 잡음 범위에서 같고, 필터 유무도 같습니다. 배지 고침만 줄입니다. 크롬 MCP 의 Edge 창은 숨겨져 있어(requestAnimationFrame 초당 0) 프레임 시간을 거기서 잴 수 없었습니다.
+
+**크롬 MCP 로 연 화면 · 크기 · 본 것**
+- 상태 문구 1280×720: 문구 잘림, pointer auto, title = 문장, 양옆 단추 «Replay chain» · «⚙️ Options» 를 누르면 그 단추가 받음.
+- Retry 판 (/assets/admin-CYjd0sFU.js, 1528×827): «Include files that went in» 를 켜고 Preview → «14 file(s) under C:/ws/lot», 줄 FAILED 2 · SKIPPED 1 · SUCCESS 11 / a · 9 / b · 5 / Missing 10: m1.csv, m2.csv, m3.csv, m4.csv, m5.csv, …, «Retry 14» → Retry 뒤 «14 file(s) handed to the watcher». 요청 둘 다 statuses=SUCCESS,FAILED,SKIPPED. POST 는 페이지 안에서 서버 모양으로 답함(서버에 안 닿음).
+
+**검사기가 File Ingestion 탭을 열자 바로 둘이 잡혔습니다** — 줄 안 «Retry» 단추 36 px(14 px 줄), 파일 이름이 글자 사이에서 끊김(일부러 break-all 이라 data-wrap-ok). 둘 다 이 커밋에서 닫았습니다.
+**제안(짓지 않음)** 어드민의 나머지 탭(Tables · Chain · Auto Update · Retroactive)도 검사기 DRIVE 에 한 걸음씩 — 이번처럼 열자마자 잡히는 것이 있을 것입니다. 탭마다 GET 답을 capture_screens 로 뜨면 됩니다. 크기는 안 쟀습니다.
+**물음** 없음. 전체 러너는 이 보고를 쓰는 지금 뒤에서 돕니다.
+
 > ## [18:58 디자인] 1536 · 1280 — 대기열 Rules 칸은 가장 긴 이름만큼 · 아래 줄은 낱말이 먼저 비킴(C-99 ② 좁힘) · OE 머리 단추 한 줄 · 화면 관문 세 크기 + «낱말 중간 접힘» (총괄 10-09) — 94688b7cd
 
 **크롬 MCP 로 연 화면 · 크기 · 본 것** — Edge 154.0.0.0. 창 크기 바꾸기가 이 창에서 뷰포트를 안 바꿔서, 빌드된 페이지를 그 크기의 iframe 에 열었습니다(대기열은 검사기와 같은 아홉 줄을 페이지 안에서 답, 그리드 행은 박스 서버).
