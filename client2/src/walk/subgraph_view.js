@@ -687,7 +687,8 @@ export class SubgraphView {
     if (!this.lumpSeen.choices.has(key)) {
       const declaration = this.declaration();
       this.lumpSeen.choices.set(key, ((declaration && declaration.entities) || []).map((e) => e.type)
-        // A route never ends where it starts, so the members' own type is not offered.
+        // The members' own type is not offered (lead 10-08); a route can come back to it (lead 10-09).
+        .filter((type) => !from.includes(type))
         .filter((type) => from.some((a) => walkableRoutes(declaration, a, type).length)));
     }
     return this.lumpSeen.choices.get(key);
