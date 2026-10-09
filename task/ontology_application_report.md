@@ -37977,3 +37977,18 @@ pull 뒤  섞인 형 세계에 replay official_dt_hold_recount (미리보기 2.2
 표       ①b 비어 버린 보류 다시 세기 — 명령 · 까닭 · 답 · 뜻 · 초(c3dc611d0). 이 표의 공식 표는 ⑥ 이 다시 채우므로 ①b 는 ⑥ 을 안 돌리는 다른 공식 표에
 public   이 세 판 사이 assy_test public.audit_logs 가 67 -> 70 -> 67 — 구현자의 PG 시험(test_ledger_v2_pg.py, 03:13)이 쓴 3 행과 누군가의 지움. 제 판 것 아님(구현자 확인)
 ```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 7b(원장 ref 해시 인덱스, e8baa5243) 됩니다 · 소유자가 SQL 로 먼저 지어 둔 것도 «already»
+
+```
+모양   운영 런처 · 일요일 리허설 · 소유자 코드 af8ef5701 -> pull 355ba2092 · 00b9a071b · 두 판 · public 변화 0 · 스키마 지움 · 구현자 · 총괄과 차례
+(가) 인덱스 없음   ⑦ 뒤 build_ledger_ref_index.py 미리보기 «ledger_events: 0 partition(s) built, 0 attached as they were, 0 already had it, 1 would be built, 0 attached as they are (add --apply) - the parent index is not valid yet»
+                  -> --apply «ledger_events: 1 partition(s) built, 0 attached as they were, 0 already had it - the parent index is valid» · 둘째 바퀴 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid»
+(나) 소유자 판     pull 전에(소유자 코드에서) CREATE INDEX idx_ledger_events_source_raw_ref_hash ON ledger_events USING hash (source_raw_ref)
+                  -> 파티션 것은 자동 이름 ledger_events_2026_10_source_raw_ref_idx -> pull 뒤 스크립트 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid» — 다시 안 짓고 이름 다른 자식도 붙은 것으로 읽음
+거두기             두 판 다 ⑧ · ⑨ 의 로그 «[Ledger] idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page»
+끝 상태           두 판 다 transfer 205 · 두 transfer 다이 0 · 둘째 바퀴 미리보기 0
+표               ⑦b(e926b0c0e) — «착지 뒤 채움»은 이제 없음(6 은 시연 뒤)
+```
