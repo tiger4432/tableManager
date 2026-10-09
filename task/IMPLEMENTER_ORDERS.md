@@ -65574,3 +65574,21 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
         reread_files 만 False. 다른 연산 0 바뀜
 게이트  replay 실행 중(가짜 in_flight) -> Re-read 가 바로 돎 · Re-read 실행 중 -> gate_refusal None · 다른 연산 둘이면 지금처럼 닫힘 — 변이: 칸을 안 읽음 -> 앞 둘 빨강
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 — 작은 일(Re-read 관문 커밋 다음): 슬롯이 체인 워커의 하트비트를 자기 pid 로 쓴다 -> foreign_beat (소유자 10-09 「자꾸 체인 포린비트는 왜 떠? 서버 재기동 때 정리가 제대로 안 되는 거야?」)**
+
+```
+원인(총괄이 코드로 읽음) — 재기동 정리 문제가 아니다
+   묶음 몸통 ingestion_worker 2409 · 2432 가 heartbeat.work_claim(GROUP_BEAT="chain") · heartbeat.beat("chain", force=True) 를 부른다
+   422d075c7 뒤 이 몸통은 «슬롯 프로세스»에서 돈다 -> chain.json 을 슬롯 pid 로 씀
+   배정자(감독이 띄운 pid)도 같은 파일을 자기 pid 로 씀 -> 파일의 pid 가 둘 사이를 오감
+   runtime/health.py 가 «hb pid != 감독 pid» 를 foreign_beat 로 판정 -> 묶음이 돌 때마다 뜨고 사라짐(소유자 「자꾸」)
+   그 주석의 까닭(× 가 그 파일에서 pid 를 읽음)은 슬롯 뒤로 slot_pid(줄의 chain-slot-<n> holds lap)가 대신한다 — 확인할 것
+도착지  「묶음의 일 표지(work claim)는 그 묶음을 도는 프로세스의 하트비트 이름에 선다 — 슬롯이면 chain-slot-<n>, 배정자 혼자면 chain」
+   chain.json 은 배정자 pid 만 쓴다 -> foreign_beat 는 «정말 다른 체인 워커가 둘»일 때만
+구현자  GROUP_BEAT 를 그 프로세스의 이름(heartbeat.own_name() 이 슬롯에서 chain-slot-<n>)으로 — 한 함수가 답함
+        체인 상태 자리(chain_state_of · runtime.running.work_facts · health 의 chain_state)가 «도는 묶음»을 슬롯 하트비트들에서 읽는지 전수 — 안 읽으면 같은 커밋에서 그 자리를 넓힘
+        × (stop_line)가 pid 를 읽는 곳 전수 — chain.json 에 기대는 곳이 남아 있으면 줄의 slot_pid 로
+게이트  슬롯 하나가 묶음을 도는 동안 health 의 chain 이 ok(foreign_beat 아님) · 진짜 둘째 체인 워커(다른 pid 가 chain.json)면 foreign_beat
+        대기열 상태가 running + 그 묶음 · × 가 그 슬롯을 끔 — 변이: GROUP_BEAT 를 "chain" 으로 되돌림 -> 첫 칸 빨강
+```
