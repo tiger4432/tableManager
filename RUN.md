@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **소급 «Re-read files» — 파서를 바꾼 뒤 이미 들어간 파일을 워처가 지금 파서로 다시 읽는다 (총괄 976defaac) — 이주 «없음» · 재기동 «서버»(소급 탭에 새 연산)**
+>
+> ```
+> 순서           소급 탭 «Re-read files» -> table(필수) · folder · since/until(YYYY-MM-DD[ HH:MM]) · statuses(기본 SUCCESS,FAILED,SKIPPED)
+>               -> 미리보기 -> 실행
+> 미리보기 뜻      N file(s) will be read again by the watcher, one at a time, from where they lie, with today's parser - by state: … By folder: …
+>               K file(s) are not where their record says and are not handed over: <이름> …   = 그 파일은 안 넘긴다
+>               마지막 두 문장: 옛 키 행은 남는다 · 소급 관문을 마지막 파일까지 붙든다
+> 거절           the watcher is not running - start it, then run this again   = run_watcher 를 띄우고 다시
+> 많을 때         소급은 한 번에 하나 — 그동안 접기 · replay 가 기다린다. 큰 폴더는 하위 폴더로 나눠 여러 번
+> 진행           100 개씩 넘기고 그 쪽이 다 읽히면 다음 쪽. 진행률 = 읽힘 / 넘길 파일
+> 멈추기          × -> 지금 쪽에서 워처가 아직 안 집은 기록이 원래 상태로(실행 기록 marked_rows 에 id · 원래 상태)
+> 볼 줄          watcher.log: Detected PENDING_RETRY log ID #<id> (<파일>). Processing... -> Retry succeeded for log ID #<id>.
+> 파일 하나만      «읽었음» 기록만 지워 다음 훑기에 맡기기는 그대로 server/scripts/replay_ingestion.py --path
+> ```
+
+---
 > ## [10-09] **선언이 바뀌어 남은 원자를 --whole-source 가 거둔다 (총괄 e027f669d) — 이주 «없음» · 재기동 «서버»(소급 탭에서 쓸 때) · 명령줄은 그대로**
 >
 > ```
