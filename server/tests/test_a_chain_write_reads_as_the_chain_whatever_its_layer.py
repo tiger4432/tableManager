@@ -29,7 +29,7 @@ import event_constants                                                # noqa: E4
 import mapper_sdk                                                     # noqa: E402
 from admin import retroactive                                         # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
-from chain import replay, rule_shape                                  # noqa: E402
+from chain import replay, rule_run, rule_shape                        # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
 from database.context import channel                                  # noqa: E402
 from database.database import Base                                    # noqa: E402
@@ -50,8 +50,9 @@ TABLES = {
          "column_types": {"k": "string", "n": "string"}, "display_columns": ["k", "n"]},
 }
 
-#: Writes the other table's row with n + 1, under a layer that is NOT `chain_ingestion` - the
-#: shape of the auto-confirm write, for any mapper that names its own layer.
+#: Writes the other table's row with n + 1, naming a layer that is NOT `chain_ingestion` - the seat
+#: writes it as `chain_ingestion` (총괄 09f3cd289 ①), so the auto-confirm cells above are the
+#: non-chain layer now; these still say the channel is what is read.
 BUMP = """
 def bump(db, payload, rule=None):
     handed = payload if isinstance(payload, list) else [payload]
@@ -211,7 +212,7 @@ def test_opted_in_the_ping_pong_climbs_to_the_ceiling_and_stops(db):
     refused = _drain(db, _bumpers(opt_in=True), max_depth=4)
 
     written = [p for p in _events(db, PA) + _events(db, PB)
-               if p.get("source_name") == "pp_layer"]
+               if p.get("source_name") == rule_run.CHAIN_SOURCE]
     assert sorted(p[event_constants.CHAIN_DEPTH_KEY] for p in written) == [1, 2, 3, 4, 5]
     assert {p.get(event_constants.CHANNEL_KEY) for p in written} == {"chain"}
     assert refused == [5], "one event past the ceiling, refused once"
@@ -283,7 +284,7 @@ def test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_ask
 
     _drain(db, rules, max_depth=3)
 
-    wrote = [p for p in _events(db, PB) if p.get("source_name") == "pp_layer"]
+    wrote = [p for p in _events(db, PB) if p.get("source_name") == rule_run.CHAIN_SOURCE]
     first = wrote[0]
     assert first.get(event_constants.CHANNEL_KEY) == "retroactive", wrote
     assert first.get(event_constants.CASCADE_KEY, False) is cascade
@@ -292,7 +293,7 @@ def test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_ask
         return
     # Asked to cascade, the downstream woke and went on as the chain goes - opted-in rules
     # only, bounded by the ceiling, and without the replay's key on the chain's own hops.
-    later = [p for p in _events(db, PA) + wrote[1:] if p.get("source_name") == "pp_layer"]
+    later = [p for p in _events(db, PA) + wrote[1:] if p.get("source_name") == rule_run.CHAIN_SOURCE]
     assert later and _values(db, PA, "n") != ["0"]
     assert {p.get(event_constants.CHANNEL_KEY) for p in later} == {"chain"}
     assert not any(event_constants.CASCADE_KEY in p for p in later)

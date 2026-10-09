@@ -870,6 +870,10 @@ def load_chain_rules():
     #    same loop met by both walks is one key (`rule_order.loop_of`). Said by the dispatcher.
     _RETIRED_RUN_IN[:] = [rule.get("name") for rule in rules
                           if rule.get(chain_bindings.RUN_IN_KEY) == chain_bindings.RUN_IN_OPERATION]
+    # 총괄 09f3cd289 ①: a mapper that names its layer is written as chain_ingestion - told per rule
+    _RENAMED_LAYER[:] = [(rule.get("name"), named) for rule in rules for named in [(mapper_sdk.MAPPER_FACTS.get(
+        chain_bindings.mapper_cells(rule)[0]) or {}).get("source_name")]
+        if named and rule_run.layer_of_a_rules_write(named) != named]
     rule_order.forget_cycles()
     by_name = {rule.get("name"): rule for rule in rules}
 
@@ -968,17 +972,22 @@ def loaded_chain_rules():
 
 #: The rules the last read of the declaration found still carrying the retired `run_in: operation`.
 _RETIRED_RUN_IN = []
+#: (rule, the name its mapper declared) for each rule whose layer the seat writes as chain_ingestion.
+_RENAMED_LAYER = []
 
 
 def say_the_declaration():
     """The dispatcher's lines about the declaration it last read - one per chain loop, one per rule
-    still carrying the retired `run_in` - once per declaration content (총괄 10-09: 배정자만 · 고리
+    still carrying the retired `run_in`, one per rule whose mapper names its own layer (09f3cd289) -
+    once per declaration content (총괄 10-09: 배정자만 · 고리
     하나 = 줄 하나 · 선언을 새로 읽을 때만; 72f419bd1). A slot and a request path read through the
     same loader and say nothing. -> lines said."""
     return rule_order.say_loops(
         logger, _RULES_DOCUMENT, event_constants.max_chain_depth(_RULES_DOCUMENT),
         notes=["[ChainRules] %s: run_in is retired - this rule runs in the chain; rows_per_run "
-               "splits its groups" % name for name in _RETIRED_RUN_IN])
+               "splits its groups" % name for name in _RETIRED_RUN_IN]
+        + ["[ChainRules] %s: source_name '%s' is written as %s" % (name, named, rule_run.CHAIN_SOURCE)
+           for name, named in _RENAMED_LAYER])
 
 
 def forget_loaded_chain_rules():
@@ -1619,6 +1628,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     replace_map=replace_map,
                     scope=scope,
                 )
+                # 🔴 [총괄 09f3cd289 ①] THE LAYER IS THE CHAIN'S, WHATEVER THE MAPPER WROTE - here, where
+                #    every proposed row passes. A mapper's own name ranked 99 under the old chain layer's 4.
+                for item in batch_data.updates:
+                    item.source_name = rule_run.layer_of_a_rules_write(item.source_name)
 
                 # [ChainKeyGate] 🔴 THE GATE. Every chain-emitted row reaches
                 # `apply_batch_updates` through this loop and only through this loop, so

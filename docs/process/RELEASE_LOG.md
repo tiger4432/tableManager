@@ -10,6 +10,15 @@
 ---
 
 
+## 2026-10-09 · 맵퍼가 쓰는 층 이름은 chain_ingestion 하나 — 체인 출력이 옛 체인 층에 덮이지 않는다
+
+- **무엇** — 총괄 09f3cd289 ① (소유자 10-09 「이거 체인 출력이 예전 체인에 덮여 있네」 · 「모든 맵퍼의 소스네임은 chain_ingestion 에서 못 바꾸게 해야 할 듯」). 맵퍼가 자기 이름(예: `dt_inventory`)으로 쓰면 순위 99 라, 같은 칸의 옛 `chain_ingestion` 층(4)이 시각과 상관없이 이겼습니다. 이제 규칙이 낸 칸은 무엇을 적든 `chain_ingestion` 층으로 써지고 같은 자리의 옛 층을 덮어씁니다.
+- **선언 예시** — 선언으로 바꿀 자리가 없습니다. `@mapper(source_name="dt_inventory")` 는 은퇴 — 적혀 있으면 `[ChainRules] <규칙>: source_name 'dt_inventory' is written as chain_ingestion` 한 줄.
+- **화면에서** — 새 화면 없음. replay 뒤 그 칸의 층(`cell_sources`)에 새 값이 `chain_ingestion` 으로 앉고 화면 값이 그것이 됩니다. 옛 이름 층은 남아도 값은 안 이깁니다.
+- **필요한 조건** — 체인 워커 · 서버 재기동, 그 규칙 replay(`chain_replay_cli.py replay <규칙> --apply`). 이주 없음.
+- **바뀐 동작** — 괄호 행 층 `X (<id>)` 은 `chain_ingestion (<id>)`. `source_name` 을 안 적은 칸은 기본값 `user`(사람 층, 순위 0)로 써지던 것이 체인 층이 됩니다. 그대로인 이름: 자동확정 둘 · `enrichment_backfill`. 순위를 «쓴이»로 매기는 것(행 층 대 옛 plain 층)은 시연 뒤.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · chain_ingestion_guide 반환 계약 · chain_rules.md `mapper_module` 행.
+
 ## 2026-10-09 · 걷기: Compare 보기 — + 시작과 − 시작을 나란히
 
 - **무엇** — 총괄 10-09(시연 ③). 걷기 화면의 셋째 보기 «Compare». 행은 고른 타입의 노드(모든 시작에서 폼의 걷기로 닿은 것), 열은 + 시작과 − 시작, 칸은 그 부호의 시작에서 닿은 «고른 엣지»의 «고른 값»입니다. 엣지가 여럿이면 «N edges · 값 (누구)» 로 다 보이고, 엣지가 없으면 빨간 «missing»(그 열 밑에 무슨 뜻인지 한 줄), 엣지는 있는데 값이 없으면 «—» 입니다.

@@ -231,7 +231,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 | `trigger_table` | 워커 · 리플레이 · bindings(역할 read) | 이 표의 변경이 발화. 순환 검사의 «엣지 출발점». 🔴 **정확히 한 트리거** |
 | `target_table` | 워커 · 리플레이 · SDK · bindings(역할 write) | 맵퍼 행이 가는 표. «엣지 도착점». `@mapper` 는 «이 선언»에서 비즈니스 키 층을 정한다 — 규칙이 안 주면 데코레이터 인자로 |
 | `source_table` | bindings(역할 read) · 맵퍼 | 맵퍼가 «읽는» 표. 엣지가 «아니다» — `trigger_table` 과 뜻이 겹쳐 보여 바꿔 읽기 쉽다 |
-| `mapper_module` / `mapper_function` | 워커 · 리플레이 | `server/mappers/<module>.py` 의 함수. 🔴 맵퍼 파일은 gitignore(`.sample` 만 출하) |
+| `mapper_module` / `mapper_function` | 워커 · 리플레이 | `server/mappers/<module>.py` 의 함수. 🔴 맵퍼 파일은 gitignore(`.sample` 만 출하). 🆕 10-09 맵퍼가 적은 `source_name` 은 무엇이든 층 `chain_ingestion` 으로 써진다(자동확정 둘 · enrichment backfill 만 그대로) — 선언으로 바꿀 자리 없음(총괄 09f3cd289) |
 | `is_batch` | 워커 · 리플레이 | `true` = DataFrame 배치 모드(트랜잭션 그룹 하나를 한 번에). 🔴 배치 맵퍼는 dict «하나»를 돌려준다 — 목록을 주면 오류 없이 `mapper_items: 0` |
 | `allow_chain_trigger` | 워커 | 체인이 만든 이벤트(`source_name: "chain_ingestion"`)를 «받겠다»는 옵트인. 없으면 지나감. 순환 검사가 보는 엣지는 «이 옵트인이 걸린 것»뿐. 깊이 상한은 5-A |
 | `allow_map_metadata_upsert` | 워커 · 리플레이 | 맵퍼가 «맵 메타 봉투»(`map_metadata_updates`)를 낼 수 있게. 🔴 그 쓰기는 `wafer_map_metadata` 에 착지하며 «자기 체인 이벤트를 낸다» = 둘째 엣지(2026-09-04). 2026-09-07 부터 «자동 등록»은 은퇴(S-38) — 등록된 메타만 갱신 |
