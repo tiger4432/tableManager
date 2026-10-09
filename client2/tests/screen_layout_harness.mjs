@@ -442,11 +442,17 @@ const DRIVE = {
       if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
       const tab = document.getElementById('tab-queue'); if (tab) tab.click();
       return true; })()`)],
-    // Dragged to 500 px: the queue's six columns need about 484 (its floor of 300 cannot hold them - reported 10-09).
+    // Dragged to 500 px: the queue's six columns need about 484 - all whole without rolling.
     ['side panel dragged to 500 px', (c) => evaluate(c, `(() => {
       const bar = document.getElementById('main-split-resizer'); const box = document.querySelector('.main-layout'); if (!bar || !box) return false;
       const x = box.getBoundingClientRect().right - 500;
       const at = (t) => (t === 'mousedown' ? bar : document).dispatchEvent(new MouseEvent(t, { bubbles: true, clientX: x, clientY: 300 }));
+      at('mousedown'); at('mousemove'); at('mouseup');
+      return true; })()`).then(() => sleep(600))],
+    // At the panel's floor the queue rolls sideways inside its own box, its columns whole (lead 10-09).
+    ['side panel at its narrowest', (c) => evaluate(c, `(() => {
+      const bar = document.getElementById('main-split-resizer'); if (!bar) return false;
+      const at = (t) => (t === 'mousedown' ? bar : document).dispatchEvent(new MouseEvent(t, { bubbles: true, clientX: innerWidth, clientY: 300 }));
       at('mousedown'); at('mousemove'); at('mouseup');
       return true; })()`).then(() => sleep(600))],
   ],
