@@ -37552,3 +37552,36 @@ SQL 문                 2817             2821
 씨앗   표 하나 · 파일 셋 아카이브에 SUCCESS -> 표 설정에 칸 하나 더함 -> 소급 API 로 Re-read 미리보기 -> 실행
 볼 것  ① 실행 줄 상태와 관문 ② PENDING_RETRY ③ run_watcher 「Detected PENDING_RETRY」 ④ 새 칸 값 ⑤ 체인이 집나 ⑥ 토스트(WS)
 ```
+
+---
+
+## [C 응용] 10-09 소급 Re-read files 끝에서 끝까지 — 끊긴 겹: 스케줄러 자식의 관문에서 import 가 죽고, 실행 줄은 running 에 머뭄
+
+```
+한 줄   스케줄러 자식(admin/retroactive_run.py)은 server 만 sys.path 에 넣는다 -> 관문 reread.watcher_running() 의
+        `from directory_watcher import HEARTBEAT_NAME`(reread.py 116 번째 줄)가 ModuleNotFoundError -> run_claimed 는
+        RetroactiveRefused 만 잡아 실패를 줄에 안 적는다 -> 줄은 running 그대로, 파일 하나 안 넘어감
+```
+```
+잰 곳   박스 · a4d135a06 의 사설 워크트리 · 운영 런처 run_decoupled_app.py 그대로(서버 · run_watcher · 체인 워커 · 스케줄러)
+        assy_test 의 assy_app_reread_1009 · 사설 데이터 루트 · 이 실행이 public 에서 바꾼 행 0(실행 전후 전 표 행 수 대조)
+단계    0  파일 셋 -> 감시자가 읽어 SUCCESS · archives · 행 9 · 체인 복사 규칙이 공식 표에 9
+        설정 표 설정에 칸 하나(vendor) -> 그 칸이 DB 에 섬
+        미리보기(서버 안) 200 — 「3 file(s) will be read again ... SUCCESS 3」
+        ① 실행 queued -> 스케줄러가 자식을 띄워 running — 그 자식이 1.4 초 만에 위 한 줄로 죽음(retroactive.log)
+           216 초 뒤에도 줄은 running · finished_at 없음 · 오류 없음 — 화면은 «도는 중»으로 남습니다
+        ② PENDING_RETRY 로 바뀐 기록 0  ③ run_watcher 「Detected PENDING_RETRY」 0  ④ 새 칸 값 0  ⑤ 체인이 집을 사건 0
+        ⑥ 코드  재시도 길 _process_archived_file_sync 는 성공 · 실패 둘 다 on_file_processed_callback 을 부릅니다
+           (이번엔 그 길까지 못 갔으므로 화면 토스트는 못 봤습니다)
+미리보기는 왜 통과   서버 프로세스에는 parsers 가 sys.path 에 있어 같은 import 가 삽니다 — 같은 관문이 프로세스에 따라 답이 갈립니다
+멈춥니다  총괄 지시대로 이 한 줄이 대조군입니다. 새 retry-failed(a4d135a06)가 착지하면 같은 방식으로 돌립니다
+```
+
+### 이 측정에서 제가 한 실수 하나 — 고쳤고 다시 쟀습니다
+
+```
+첫 실행은 제품 프로세스의 create_all 이 public 에 이미 있는 같은 이름 표(53 개)를 «있다»고 보고 건너뛰어,
+파일 기록 · 체크포인트를 assy_test 의 public 에 썼습니다 — 6 행(file_ingestion_checkpoints 3 · file_ingestion_logs 3,
+둘 다 그 전엔 0 행). 그 6 행만 지웠고 두 표는 다시 0 행입니다. 그 뒤로는 띄우기 전에 제품 표 전부를 스크래치 스키마에 먼저 만들고
+실행 전후 public 전 표의 행 수를 대조합니다 — 위 측정은 그렇게 다시 잰 것입니다
+```
