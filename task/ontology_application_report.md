@@ -37722,3 +37722,38 @@ DB 쪽   기록 [(1, 'SUCCESS'), (2, 'SUCCESS'), (3, 'SUCCESS')] · vendor 선 �
 물음 ②  양불 base 짝 — 박스 DB 에 새로 심지 않고 있는 웨이퍼에서 고르겠습니다(저는 박스 DB 에 안 씁니다)
          제 안: 불 SYN-BW-103-11(199 개) · 양 SYN-BW-SPL-400-19(2 개). 같은 랏 안에서는 짝이 안 납니다 — SYN-BW-103 랏의 최소도 155 개
 ```
+
+---
+
+## [C 응용] 10-09 시연 ③ 모델 나누기 — 운영 런처에서 끝까지 됩니다 · 다만 박스 선언은 «다시 써야» 섭니다
+
+```
+모양   운영 런처 · f116890f9 · 박스 설정 사본(소유자 명령 migrate_ledger_config_to_v6.py --apply 로 v6) · 스크래치 스키마 + 세상 스키마 둘(w_appdemo_*)
+       박스 mechanism_edge 행 사본(읽기만) [('delam_formation', 'finding', 2), ('delam_formation', 'quantity', 1), ('void_formation', 'finding', 7), ('void_formation', 'quantity', 11), ('void_observation_bias', 'quantity', 1)] · 끝나고 셋 다 지움 · public 에서 바뀐 행 0
+먼저 알 것  박스의 메커니즘 소스 둘은 «뷰»(mechanism_edge_to_quantity / _to_finding)를 읽습니다. 소스는 row_id 있는 «표»만 읽는다는 규칙
+         (09-25 c193986a8)으로 오늘 main 에서는 둘 다 거절됩니다 — 박스 서버의 걷기에 보인 leads_to 변 22 는 이 선언으로는 다시 못 씁니다(언제 쓰였는지는 안 봤습니다)
+         -> 시연 선언은 표 mechanism_edge 를 읽고, 역할(to_role) · 모델(model)을 read.exclude_when 으로 거릅니다
+```
+```
+단계                                              박스 초   결과(걷기 = 모든 quantity 에서 follow=leads_to)
+A  default 에 다시 쓴 두 소스 -> backfill 각각          3.6 · 3.0   원자 13 · 9 -> 22 변 · quantity 21 · defect_kind delam, void
+B  default 에서 두 소스를 뺌 -> --whole-source 각각     3.3 · 3.1   거둔 원자 13 · 9 -> 0 변
+C  Empty 세상 둘(bootstrap) -> 세상마다 선언 -> backfill   2.9~3.4   vf 원자 11 · 7 · vb 원자 1 · 0
+D  세상 vf(void_formation)                              -        18 변 · quantity 18 · defect_kind void
+   세상 vb(void_observation_bias)                       -        1 변 · quantity 2 · defect_kind 없음
+   vf + vb                                              -        19 변 · quantity 20 · defect_kind void
+```
+```
+시연 선언 절(일요일 명령표에 들어갈 초안)
+   파일 ①  config/ontology/ledger_config.json — sources 에서 mechanism_edge_to_quantity_causes · mechanism_edge_to_finding_causes 를 뺌
+           -> python -m ledger.backfill --source <그 이름> --whole-source --apply   (server 폴더 · 이름마다 · 옛 원자를 거둠)
+   만들기   선언 화면 «Empty» 로 세상 둘(또는 POST /admin/ontology-explorer/bootstrap?world=<이름>)
+   파일 ②  config/ontology_worlds/<세상>/ledger_config.json — entities 에 quantity · defect_kind, vocabulary 에 leads_to,
+           sources 에 위 두 이름을 박스 것 그대로 두되 칸 둘만 다르게:
+             "relation": "mechanism_edge"
+             "read": {..., "exclude_when": [{"when": {"to_role": "<다른 역할>"}}, {"when": {"model": "<다른 모델>"}}, ...]}
+           -> python -m ledger.backfill --source <이름> --world <세상> --whole-source --apply   (세상마다 · 이름마다)
+   박스가 아직 setup_version 5 이면 맨 앞에 python server/scripts/migrate_ledger_config_to_v6.py --apply (운영 판은 못 봤습니다)
+본 것    vb 모델은 변 하나뿐이고 void 가 아니라 quantity «void_observed» 에서 멈춥니다 — 세상을 바꾸면 «사슬 18 -> 1» 로 갈리지만
+         vb 쪽은 void 결함까지 닿지 않습니다. 둘째 모델을 이걸로 둘지는 직전 물음 ① 그대로입니다
+```
