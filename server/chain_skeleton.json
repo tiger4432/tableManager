@@ -247,15 +247,6 @@
         }
       },
       {
-        "key": "run_in",
-        "required": false,
-        "node": {
-          "kind": "leaf",
-          "hint": "choice",
-          "list": "run_in"
-        }
-      },
-      {
         "key": "rows_per_run",
         "required": false,
         "node": {
@@ -755,15 +746,6 @@
               "node": {
                 "kind": "leaf",
                 "hint": "flag"
-              }
-            },
-            {
-              "key": "run_in",
-              "required": false,
-              "node": {
-                "kind": "leaf",
-                "hint": "choice",
-                "list": "run_in"
               }
             },
             {

@@ -85,7 +85,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <규�
 
 ## 6. LLM 으로 뽑기
 
-1. 맵퍼가 `find_links` 대신 `ask_links(글, 부르는 말 행)` 을 부르고, 규칙에 `"run_in": "operation"` 을 적는다
+1. 맵퍼가 `find_links` 대신 `ask_links(글, 부르는 말 행)` 을 부르고, 규칙에 `"rows_per_run": 1` 을 적는다
 2. LLM 은 환경변수 넷으로 고른다 — `ASSY_LLM_BASE_URL` · `ASSY_LLM_MODEL` · `ASSY_LLM_API_KEY` · `ASSY_LLM_TIMEOUT_S`(초, 기본 60). 코드에는 어느 쪽도 없다
 
 ```python
@@ -112,13 +112,11 @@ def text_cause_links_llm(df, db):
   "allow_retraction": true,
   "trigger_job_column": "<글 id 칸>",
   "target_job_column": "<글 id 칸>",
-  "run_in": "operation",
   "rows_per_run": 1
 }
 ```
 
-- `run_in: operation` — 글을 넣은 묶음은 LLM 을 안 부르고 작업(`rule_rows`)으로 줄 세운 뒤 다음 묶음으로 간다. LLM 이 다른 표의 체인을 안 막는다([chain_rules](./config/chain_rules.md)).
-- `rows_per_run: 1` — 작업 하나 = 글 하나. 틀린 답은 그 글의 작업만 실패시키고, 다른 글은 다른 작업이라 계속 돈다.
+- `rows_per_run: 1` — 체인 묶음 하나 = 글 하나. 틀린 답은 그 글의 묶음만 실패시키고, 다른 글은 다음 묶음이라 계속 돈다. 다른 표의 줄은 다른 슬롯에서 돌아 LLM 이 막지 않는다([chain_rules](./config/chain_rules.md)). ⚰️ `run_in: operation`(작업 `rule_rows` 로 줄 세우기)은 은퇴했다 — 적혀 있어도 체인에서 돈다.
 - 노드 키는 «부르는 말» 사전의 말에서만 온다. 사전에 없는 말이 원인·현상이면 `*_type` · `*_key` 가 비고 `*_phrase` 만 찬다.
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
 - `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다.

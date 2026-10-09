@@ -244,7 +244,7 @@ def test_a_cycle_at_load_names_itself_and_does_not_stop_the_chain(load, caplog, 
     with caplog.at_level(logging.INFO):
         names = load([there, back])
         monkeypatch.setattr(rule_order, "_SAID_FOR", None)
-        worker.say_the_loops()                            # the dispatcher says it (총괄 10-09)
+        worker.say_the_declaration()                            # the dispatcher says it (총괄 10-09)
 
     assert names == ["there", "back"], "the rules still load, in the declaration's order"
     said = " ".join(record.getMessage() for record in caplog.records)

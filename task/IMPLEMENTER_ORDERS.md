@@ -65227,3 +65227,66 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
 응용  rule_rows 취소 재현은 «멈춤» — 그 길이 은퇴한다. 찾은 것이 있으면 한 줄만 보고(은퇴 뒤에도 남는 원인이면 그것이 결함)
 순서  복사 다시 채우기 속도 재기(급함) -> 이것 -> 고리 줄 -> 하위 폴더 착지 -> 층 순위 -> 대기열 줄 rules 칸 -> 표 인덱스 -> foreign_beat
 ```
+
+> **[총괄 -> 구현자] 10-09 저녁 — 지금 줄 하나로 다시 적음(메시지가 늦게 닿아 갈림 답이 안 보였던 것들 포함). 이 절이 앞 메시지보다 이긴다**
+
+```
+1  🔴 LLM 선언 파일(소유자 「환경설정으로 하지 말고 선언 파일로」 · 「외부 요청 주소 · 페이로드 전부 로그 깔끔하게」)
+   server/config/llm_config.json(gitignore) + config/sample/llm_config.json.sample — base_url · model · api_key · timeout_s · headers{} · proxy
+   proxy 없음/null = 프록시 없이 바로(httpx trust_env=False 를 OpenAI(http_client=…)로) — 운영 증상 「전사 차단」은 윈도우 시스템 프록시를 탄 것
+   부를 때마다 파일을 읽음 · ASSY_LLM_* 환경변수는 은퇴(파일 없고 환경변수만 있으면 «옮기라» 거절 문장)
+   로그 llm_requests.log 하나 — 요청마다 JSON 두 줄(보냄: 시각 · id · 실제 URL · 모델 · 헤더(키 ***) · 페이로드 전문 · proxy / 받음: id · 상태 · ms · 답 전문 또는 오류)
+   시험: 칸이 클라이언트에 닿음 · 거절 셋 · 파일 바꾸면 다음 부름에 반영 · 로그 두 줄 · 로그 전체에 키 문자열 0 + 변이
+2  복사 홀드 세기 hold_copy._claims 를 VALUES 조인(값 있는 키) + NULL 키 따로 — «지금 모양과 같은 답» 대조 + 2 만 · 100 만 행 시간(안 ㄷ 의 ㄴ; ㄱ 키 인덱스는 소유자가 10-08 에 이미 만듦)
+3  run_in 은퇴 뒤따름(53bdedde9 의 ①): 묶인 이벤트는 쪼개지 않는다 — 대신 replay 가 그 규칙의 rows_per_run 을 넣기 쪽 크기(chunk_size)로 쓴다. LLM 소급이 행 하나 = 이벤트 하나로 들어가 묶음 자르기와 맞물림
+   게이트: rows_per_run 1 규칙 replay -> 이벤트 N · 글 하나 틀린 답 -> 그 글만 FAILED
+4  하위 폴더(impl-subfolder-2f487efb5) 착지
+5  대기열 줄 rules 칸(소급 줄 = only_rule · 보통 줄 = 그리드와 같은 판정) — 클라가 Job 칸에 그림
+6  표 인덱스(06e8c22c3) -> foreign_beat 문장 -> operator_line.nothing_to_do 지우기(다음 손댈 때)
+판정만(짓지 않음)
+   층 순위(905235e5c): 시연 뒤. merged_layer_name 이 «행 층»과 «합치기 층» 두 뜻 — 틀린 뜻 하나를 은퇴하는 일로. 운영 증상은 소유자의 다시 하기로 사라짐
+   rule_rows 취소 원인: 길이 은퇴해 멈춤(은퇴 뒤에도 남는 원인이면 결함으로 따로)
+```
+
+> **[총괄 -> 구현자] 10-09 — 53bdedde9(run_in 은퇴) 총괄 검증: 시험 10 초록 · 변이 셋 중 둘이 살아남음 -> 위 줄 3(replay chunk_size)과 같은 커밋에 닫기**
+
+```
+변이(총괄, 사설 워크트리, tests/test_a_slow_rule_runs_one_text_a_group_in_the_chain.py)
+   옛 선언 알림 줄 지움                         빨강(test_an_old_run_in_declaration_loads_...) — 잡힘
+   _rows_cap 이 fires(rule, event) 를 안 봄     10 초록 — 살아남음
+   _rows_cap 이 min 대신 max                    10 초록 — 살아남음
+뜻   첫째가 살아남으면 rows_per_run 1 인 규칙이 하나만 있어도 «그 규칙을 안 깨우는» 다른 표 이벤트까지 묶음 하나 = 이벤트 하나로 잘린다
+     = 체인 전체가 느려지는 길(10-08 운영 마비와 같은 축). 지금 코드는 맞다 — 시험이 그것을 안 잰다
+게이트 칸 둘
+   ⓐ rows_per_run 1 규칙이 있고, 그 규칙을 «안 깨우는» 이벤트 여럿 -> 한 묶음에 함께 든다(잘리지 않음)
+   ⓑ 한 이벤트가 깨우는 두 규칙이 1 과 5 -> 그 이벤트의 상한은 1
+   둘 다 위 두 변이에서 빨강을 보고 착지
+응용 QA ① 판정  은퇴한 칸은 «읽고 알리고», 값으로 거절하지 않는다 — run_in 값 검사(「must be one of chain, operation」)를 은퇴. 「later」 같은 값도 알림 한 줄 + 체인에서 돎. 게이트 한 칸 + 변이
+```
+
+> **[총괄 -> 구현자] 10-09 밤 — 이 절이 043915ab0 의 줄 3(replay chunk_size)과 597664fb3 의 «줄 3 과 같은 커밋»을 대신한다. 순서는 그대로 LLM 선언 파일 다음**
+
+```
+찾은 것(총괄이 코드로 읽음)  53bdedde9 의 게이트는 «운영이 만들지 않는 모양»에서 초록이다
+   시험 _write 가 outbox_mode(OUTBOX_MODE_PER_ROW) — 글 하나 = 이벤트 하나를 «강제»한다
+   운영에서 글이 들어오는 길 셋은 전부 OUTBOX_MODE_COLLAPSED — 수집기(directory_watcher) · 그리드/API 저장(main.apply_batch_updates_endpoint) · 체인 쓰기(ingestion_worker)
+      + 소급 넣기(chain/rule_run.py)도 collapsed
+   database.py 의 접기 문은 한 flush 를 OUTBOX_COLLAPSE_CHUNK_ROWS(1,000) 씩 이벤트로 접는다 · trim_events_to_row_budget 는 이벤트를 쪼개지 않는다
+   -> 운영에서 파일 하나 · 붙여넣기 한 번으로 들어온 글 N 개(≤1,000)는 이벤트 하나 = 묶음 하나. rows_per_run 1 이 아무 일도 안 한다
+도착지  「rows_per_run 을 적은 규칙이 깨우는 표는 그 수(여럿이면 가장 작은 것)로 이벤트를 접는다 · 아니면 지금처럼 1,000 · only_rule 이벤트는 그 규칙의 수」
+   자리는 database.py 접기 문 «하나» — 수집 · 그리드 · 체인 · 소급이 모두 지나므로 replay chunk_size 를 따로 고치지 않는다
+   rows_per_run(rule) 함수 하나를 접기 문과 _rows_cap 이 같이 부른다(둘째 해석 금지). 묶음 자르기(_rows_cap)는 그대로 둔다 — 하나는 «이벤트 크기», 하나는 «한 묶음이 받는 행 수»
+제약
+   A  쓰기 경로가 값을 치르지 않는다 — 규칙은 이미 캐시된 읽기로(flush 마다 파일 읽기 0). database.py 가 chain.* 를 import 하면 고리 — 만들지 않는다
+      (event_constants 가 이미 규칙 문서를 읽는 자리(max_chain_depth)가 있다 — 그 근처에서 찾기)
+   B  재고 적는다 — 글 1 만 행 파일 하나: 이벤트 수 · 묶음 수 · 묶음당 배관 시간(박스) · 대기열 «줄» 수(줄 키는 run_id/transaction_id 라 안 늘어야 — 세어서)
+게이트(같은 커밋)
+   ① 한 flush(collapsed, 그리드 저장의 모드)로 글 셋 · rows_per_run 1 · 하나 틀린 답 -> 그 글만 FAILED · 둘은 후보 행
+   ② 대조군: 같은 flush · rows_per_run 없음 -> 셋 다 실패
+   ③ 소급 넣기(only_rule) 글 셋 -> 이벤트 셋
+   ④ rows_per_run 규칙을 안 깨우는 표의 flush -> 이벤트 크기 1,000 그대로
+   ⓐ ⓑ(597664fb3) — 안 깨우는 이벤트는 안 잘림 · 두 규칙 1 과 5 -> 1
+   은퇴한 칸은 값으로 거절하지 않음(597664fb3) — 한 칸 + 변이
+   변이  접기 문이 1,000 고정 -> ① 빨강 · _rows_cap 의 fires 지움 -> ⓐ 빨강 · min->max -> ⓑ 빨강
+같은 커밋  chain_rules.md · TEXT_LINKS_GUIDE §6 · RUN.md 의 「한 묶음에 넣은 이벤트는 쪼개지 않는다」 문장을 «파일 · 붙여넣기도 글마다»로 고침 · RELEASE_LOG
+```

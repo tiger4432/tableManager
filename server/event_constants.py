@@ -101,14 +101,12 @@ RULE_OUTCOME_FAILED = "failed"
 #:    상태이고, 그것과 「옛 서버라 이 칸이 없다」는 다른 사실이다 — 부재는 뒤엣것 «하나»만
 #:    뜻해야 한다(판정 45 게이트 ②와 같은 규율).
 RULE_OUTCOME_NEVER_EVALUATED = "never_evaluated"
-#: 총괄 be0abe305: a `run_in: operation` rule its group handed to operation runs - the reason
-#: names the runs. Not 「did not run」: it runs there, in another process.
-RULE_OUTCOME_QUEUED_AS_OPERATION = "queued:operation"
+# ⚰️ RULE_OUTCOME_QUEUED_AS_OPERATION ("queued:operation") - `run_in: operation` retired (총괄 72f419bd1).
 
 RULE_OUTCOMES = frozenset({
     RULE_OUTCOME_SKIPPED_DISABLED, RULE_OUTCOME_SKIPPED_NOT_TRIGGERED,
     RULE_OUTCOME_RAN_UNCHANGED, RULE_OUTCOME_RAN_CHANGED,
-    RULE_OUTCOME_FAILED, RULE_OUTCOME_NEVER_EVALUATED, RULE_OUTCOME_QUEUED_AS_OPERATION,
+    RULE_OUTCOME_FAILED, RULE_OUTCOME_NEVER_EVALUATED,
 })
 
 #: 규칙 «목록»의 두 상태 — 위의 OUTCOME 과 다른 물음이다. 저쪽은 「한 그룹에 무엇을 했나」,
@@ -935,7 +933,7 @@ def payload_row_count(payload) -> int:
 
 
 def trim_events_to_row_budget(events, budget: int = OUTBOX_GROUP_MAX_ROWS,
-                              payload_of=None):
+                              payload_of=None, cap_of=None):
     """Keep the id-ordered PREFIX of `events` whose ingested-row total fits `budget`.
 
     A prefix, never a filter: the tail is left `processed_chain=False` and is
@@ -943,6 +941,9 @@ def trim_events_to_row_budget(events, budget: int = OUTBOX_GROUP_MAX_ROWS,
     no ordering is inverted. At least one event is always returned - a single
     chunk larger than the budget must still make progress rather than wedge the
     drain forever.
+
+    `cap_of(event)`: a smaller budget that event brings - the `rows_per_run` of a rule it wakes,
+    or None (총괄 72f419bd1). The batch keeps to the smallest cap of what it holds.
     """
     if not events:
         return events
@@ -952,6 +953,8 @@ def trim_events_to_row_budget(events, budget: int = OUTBOX_GROUP_MAX_ROWS,
     total = 0
     for ev in events:
         cost = payload_row_count(payload_of(ev))
+        cap = cap_of(ev) if cap_of is not None else None
+        budget = budget if cap is None else min(budget, cap)
         if kept and total + cost > budget:
             break
         kept.append(ev)

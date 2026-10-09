@@ -37288,3 +37288,28 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
 텍스트 링크 표 넷 예시       52260d079 · 그다음 가이드 한 줄 고침
 하위 폴더 · 층 순위 QA      고친 커밋을 기다림 — 재현 보고 9f2b16a21 · 905235e5c 뒤로 수집기 · crud · 보류 복사 맵퍼를 고친 커밋 없음
 ```
+
+---
+
+## [C 응용] 10-09 61fc140a7(Overview 표 칸 너비 · 화면 게이트가 필터를 하나씩) QA — 제 4bd46df68 의 흔들림 닫힘 (잼)
+
+```
+잰 것   client2/tests/screen_layout_harness.mjs — 이 박스 · 공유 트리에서 읽기만 · --mutate 없이 4 번
+        1 번째 49 통과 · 0 실패 · 2 번째 49 통과 · 0 실패 · 3 번째 49 통과 · 0 실패 · 4 번째 49 통과 · 0 실패
+        -> 전엔 넷 중 하나가 중간 필터 묶음 탓에 빨강이었다. 이제 필터를 하나씩 넣고 그 읽기를 기다린다
+문서    CODE_MAP base.css 행에 :where(.cell-fit) 한 줄
+```
+
+---
+
+## [C 응용] 10-09 53bdedde9(run_in: operation 은퇴) QA — 결함 아님 · 남은 것 셋 (잼)
+
+```
+잰 것   손댄 서버 시험 일곱 파일 75 passed · 클라 chain_rule_user_path_harness 96 초록 — 사설 워크트리
+        「묶음에 넣을 행 수 상한」을 없앤 변이   test_one_text_a_group_and_a_wrong_answer_fails_that_text_only 하나만 빨강
+남은 것  ① 은퇴한 칸의 «값»이 아직 규칙을 거절한다 — rule_refusals 에 run_in 이 «later» 인 규칙: [('bad_run_in', "run_in must be one of chain, operation, got 'later'")]
+           (없음 · «operation» 은 거절 0). 그 거절은 load 에서 치명이라 그 규칙이 안 돈다. 문장도 칸이 살아 있는 것처럼 말한다 — 거둘지 총괄 판정
+        ② client2/src/admin.js 가 규칙 응답의 run_in 목록을 아직 실어 나른다(서버는 안 보냄 — ledger/admin.py 에 ⚰️) — 클라 레인 몫
+        ③ client2/tests/fixtures/screens_answers.json 의 rule_rows «what_is_missing» 이 옛 문장(「a rule declared run_in: operation has rows its chain group queued」) — 다음 녹화 때 바뀜, 클라 레인 몫
+문서    RUNTIME_MAP ⑥-b 의 rule_rows 줄에 ⚰️ · CODE_MAP retroactive.py 머리에 ⚰️ — 나머지(chain_rules.md · TEXT_LINKS_GUIDE §6 · CODE_MAP 1580 · RUN.md)는 착지가 이미 맞춤
+```

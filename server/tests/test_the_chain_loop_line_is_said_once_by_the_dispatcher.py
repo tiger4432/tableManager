@@ -66,20 +66,20 @@ def test_the_dispatcher_says_a_loop_once_and_a_slot_or_a_respawn_says_nothing(de
         worker.load_chain_rules()
     assert _loop_lines(caplog) == []
     worker.load_chain_rules()                                         # the dispatcher's read
-    assert worker.say_the_loops() == 1
+    assert worker.say_the_declaration() == 1
     assert _loop_lines(caplog) == ["[ChainRules] loop: loop_a -> loop_b -> loop_a · capped at max_chain_depth=4"]
     for _ in range(10):                                               # the same declaration again
         worker.load_chain_rules()
-        worker.say_the_loops()
+        worker.say_the_declaration()
     assert len(_loop_lines(caplog)) == 1
     declared(RULES, depth=6)                                          # the declaration changed
     worker.load_chain_rules()
-    worker.say_the_loops()
+    worker.say_the_declaration()
     assert _loop_lines(caplog)[1:] == ["[ChainRules] loop: loop_a -> loop_b -> loop_a · capped at max_chain_depth=6"]
 
 
 def test_only_the_dispatchers_loop_says_the_loops():
-    """The seat is the call: `say_the_loops` is called by the dispatcher's loop and by nothing a
+    """The seat is the call: `say_the_declaration` is called by the dispatcher's loop and by nothing a
     slot runs - a slot reads the same declaration through the same loader."""
     def callers(path):
         tree = ast.parse(open(os.path.join(SERVER_DIR, path), encoding="utf-8").read())
@@ -87,7 +87,7 @@ def test_only_the_dispatchers_loop_says_the_loops():
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 found += [fn.name for node in ast.walk(fn) if isinstance(node, ast.Call)
-                          and getattr(node.func, "attr", getattr(node.func, "id", None)) == "say_the_loops"]
+                          and getattr(node.func, "attr", getattr(node.func, "id", None)) == "say_the_declaration"]
         return found
     assert callers("chain/ingestion_worker.py") == ["start_chain_ingestion_worker"] * 2
     assert callers("chain/slots.py") == []

@@ -72,7 +72,8 @@ def test_the_skeleton_names_exactly_the_routing_cells():
     operator a box whose value is then refused; a cell the loader accepts but the skeleton
     omits is a field no form can ever fill."""
     fields = [f["key"] for f in _load(CHAIN_SKELETON)["root"]["fields"]]
-    assert fields == list(chain_bindings.routing_keys())
+    # a retired cell is read, so an old declaration loads, and offered by no form (총괄 72f419bd1)
+    assert fields == [k for k in chain_bindings.routing_keys() if k not in chain_bindings.RETIRED_CELLS]
     assert len(fields) == len(set(fields))
 
 

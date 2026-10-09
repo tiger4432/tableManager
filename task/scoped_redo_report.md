@@ -76714,3 +76714,41 @@ schema assy_probe_origin_impl dropped - left: 0
 test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5930 warnings
 test_[l-z]*: 1 failed, 3950 passed, 194 skipped, 2 xfailed, 7303 warnings
 ```
+
+## [10-09] run_in: operation 은퇴 착지 53bdedde9 (총괄 72f419bd1)
+
+**도착지 두 줄과 대조**
+```
+「규칙은 체인 묶음에서만 돈다. rows_per_run 에 1 을 적으면 글 하나가 묶음 하나 — 하나가 실패해도 그 글만」  -> 섰다 (one_text_a_group 칸 · without_rows_per_run 대조군)
+「run_in 을 적은 옛 선언은 읽을 때 한 줄로 알리고 체인에서 돈다」                                      -> 섰다 (an_old_run_in_declaration 칸)
+```
+
+**은퇴한 것**: 규칙을 «작업»으로 미루던 갈래와 그 큐잉 함수, 묶음에서 그 규칙을 빼던 거르기, 활동 결과 낱말 하나.
+**넓힌 것**: 기존 «행 예산 자르기» 함수에 인자 하나(cap_of). 묶음은 담은 이벤트가 깨우는 규칙들의 rows_per_run 중 가장 작은 수를 지킨다. 둘째 자르기는 없다.
+**남긴 것**: rule_rows 연산은 등록부에 남아 옛 실행 행이 목록에 읽힌다. 라벨 «(retired)». 새로 줄 세우는 자리는 없다.
+
+**갈림 셋 — 답이 없어 알린 기본값대로 갔습니다**
+```
+① 묶인 이벤트 하나에 행이 여럿이면 쪼개지 않고 통째로 간다 (RUN.md · chain_rules.md 에 적음)
+② 옛 선언 한 줄은 고리 줄과 같은 자리(배정자, 선언 내용이 바뀔 때만). 그 자리 이름 say_the_loops -> say_the_declaration
+③ rule_rows 는 등록부에 남김 (위)
+```
+
+**게이트**
+```
+새 시험 test_a_slow_rule_runs_one_text_a_group_in_the_chain.py  10 passed
+변이 4/4 빨강 (빨강 = 시험 실패) · 변이 전후 md5 same
+MUTANT the cut ignores rows_per_run                       1 failed, 9 passed
+    FAILED test_one_text_a_group_and_a_wrong_answer_fails_that_text_only
+MUTANT a cap applies only when it is the first event's    1 failed, 9 passed
+    FAILED test_the_batch_keeps_to_the_smallest_cap_of_what_it_holds[caps0-1]
+MUTANT the retired cell is not told                       1 failed, 9 passed
+    FAILED test_an_old_run_in_declaration_loads_runs_in_the_chain_and_is_told_once
+MUTANT rows_per_run defaults to six again                 1 failed, 9 passed
+    FAILED test_rows_per_run_not_written_is_no_cut_and_the_form_offers_no_run_in
+```
+총괄 게이트의 «다른 표 줄은 다른 슬롯에서 끝남» 칸은 새로 짓지 않았습니다. 그 성질은 슬롯 시험 test_a_queue_line_runs_in_a_slot_of_its_own.py 의 «한 슬롯에 붙잡힌 줄이 다른 슬롯의 줄을 붙잡지 않는다» 칸이 이미 잽니다. slots.py 는 이 커밋에 없지만, 고친 묶음 몸통(drain_events)을 슬롯이 부르므로 착지 뒤 트리에서 그 파일을 다시 돌리는 중이고 결과는 전체 묶음 보고에 붙입니다.
+
+**클라 레인 몫 한 줄**: client2/src/admin.js 가 응답의 run_in 목록을 아직 읽습니다(그 목록은 이제 안 옵니다 — 죽은 줄). 서버 변경은 없습니다.
+
+어느 DB · 어느 스키마 · 지운 것: 이 착지의 시험은 sqlite 메모리뿐 · 지운 것 0.
