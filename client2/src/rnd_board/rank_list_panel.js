@@ -115,7 +115,8 @@ export class RankListPanel extends WalkedListPanel {
         { key: 'rank', label: 'Rank', width: '2.5rem', kind: 'rank' },
         { key: 'quantity', label: 'Quantity · Model', kind: 'two_line', subKey: 'model' },
         { key: 'hops', label: 'Hops', width: '2rem', kind: 'number' },
-        { key: 'measured', label: 'Measured', width: '3rem' },
+        // 4rem holds the head word «MEASURED» (3rem cut it by 13 px at 1920 - the screen gate, lead 10-09).
+        { key: 'measured', label: 'Measured', width: '4rem' },
         { key: 'state', label: 'State', width: '8rem', kind: 'badge' },
       ],
       rows: m.candidates.map((c) => this._rankRow(c, m)),

@@ -1,5 +1,5 @@
 {
-"_what":"REAL server output: GET answers of this tree's server code (TestClient, startup not run) on the box database, last captured 2026-10-09T05:36:24.337022+00:00 by capture_screens.py.",
+"_what":"REAL server output: GET answers of this tree's server code (TestClient, startup not run) on the box database by capture_screens.py; each answer says when and with which commit («captured»).",
 "answers":{
 "/admin/auto-update/status":{
 "body":{
@@ -10,7 +10,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 14:24:00",
+"next_run":"2026-10-09 15:16:00",
 "runner":null,
 "script_name":"generate_bonding.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\bonding_log\\auto_update\\generate_bonding.py",
@@ -23,7 +23,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 15:00:00",
+"next_run":"2026-10-09 16:00:00",
 "runner":null,
 "script_name":"fetch_data copy.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\bonding_map\\auto_update\\fetch_data copy.py",
@@ -36,7 +36,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 15:00:00",
+"next_run":"2026-10-09 16:00:00",
 "runner":null,
 "script_name":"fetch_data.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\bonding_map\\auto_update\\fetch_data.py",
@@ -49,7 +49,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 14:24:00",
+"next_run":"2026-10-09 15:15:00",
 "runner":null,
 "script_name":"generate_core_defect.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\core_defect_map\\auto_update\\generate_core_defect.py",
@@ -62,7 +62,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 14:24:00",
+"next_run":"2026-10-09 15:15:00",
 "runner":null,
 "script_name":"generate_dt_log.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\dt_log\\auto_update\\generate_dt_log.py",
@@ -75,7 +75,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 14:24:00",
+"next_run":"2026-10-09 15:15:00",
 "runner":null,
 "script_name":"generate_dt_map.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\dt_map\\auto_update\\generate_dt_map.py",
@@ -88,7 +88,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 14:24:00",
+"next_run":"2026-10-09 15:15:00",
 "runner":null,
 "script_name":"generate_eds_fail.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\eds_fail_map\\auto_update\\generate_eds_fail.py",
@@ -101,7 +101,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 14:23:00",
+"next_run":"2026-10-09 15:15:00",
 "runner":null,
 "script_name":"fetch_inventory.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\inventory_master\\auto_update\\fetch_inventory.py",
@@ -127,7 +127,7 @@
 "last_error":null,
 "last_run":null,
 "last_status":"SKIPPED",
-"next_run":"2026-10-09 14:24:00",
+"next_run":"2026-10-09 15:15:00",
 "runner":null,
 "script_name":"generate_wafer_process.py",
 "script_path":"C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\wafer_process\\auto_update\\generate_wafer_process.py",
@@ -135,9 +135,10 @@
 "window":null
 }
 ],
-"last_updated":"2026-10-09 14:22:02",
+"last_updated":"2026-10-09 15:14:04",
 "status":"success"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -210,6 +211,7 @@
 "invalid":[],
 "refused":2
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -217,6 +219,7 @@
 "body":{
 "paused":null
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -623,6 +626,7 @@
 ],
 "status":"success"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -631,6 +635,7 @@
 "data":[],
 "status":"success"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -3751,6 +3756,7 @@
 ]
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -3760,6 +3766,7 @@
 "status":"success",
 "total":0
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -4157,6 +4164,7 @@
 "status":"success",
 "total":35
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -4194,7 +4202,7 @@
 "include":[],
 "name":"idx_audit_logs_timestamp_brin",
 "purpose":"all audit rows in a time range, at 72 kB",
-"scans":1425,
+"scans":1437,
 "serves":"dashboard edits today",
 "size_bytes":90112,
 "state":"present",
@@ -4259,7 +4267,7 @@
 ],
 "name":"idx_audit_user_recorrection",
 "purpose":"human edits in a time window, without reading the table",
-"scans":2196,
+"scans":2218,
 "serves":"dashboard re-correction rate",
 "size_bytes":22757376,
 "state":"present",
@@ -4407,7 +4415,7 @@
 "include":[],
 "name":"idx_overwrites_lookup_col",
 "purpose":"one overwrite mark per cell",
-"scans":12689,
+"scans":12793,
 "serves":"layering upsert",
 "size_bytes":19324928,
 "state":"present",
@@ -4650,7 +4658,7 @@
 "include":[],
 "name":"idx_outbox_reload",
 "purpose":"the newest reload event",
-"scans":747584,
+"scans":750798,
 "serves":"config reload trigger",
 "size_bytes":16384,
 "state":"present",
@@ -4686,7 +4694,7 @@
 "include":[],
 "name":"idx_outbox_undelivered",
 "purpose":"run events not yet broadcast",
-"scans":188039,
+"scans":188673,
 "serves":"broadcast safety sweep",
 "size_bytes":40960,
 "state":"present",
@@ -4705,7 +4713,7 @@
 "include":[],
 "name":"idx_outbox_unprocessed",
 "purpose":"events the chain has not run yet, oldest first",
-"scans":999026,
+"scans":1002059,
 "serves":"chain queue, GET /admin/chain/queue",
 "size_bytes":385024,
 "state":"present",
@@ -4800,7 +4808,7 @@
 "include":[],
 "name":"ix_file_ingestion_logs_status",
 "purpose":"ingestion log rows in one state",
-"scans":661685,
+"scans":663765,
 "serves":"watcher retries (PENDING, PENDING_RETRY), ingestion log filter",
 "size_bytes":245760,
 "state":"present",
@@ -5015,7 +5023,7 @@
 ],
 "name":"idx_effort_window",
 "purpose":"effort rows in a time window, without reading the table",
-"scans":1315,
+"scans":1337,
 "serves":"dashboard effort average",
 "size_bytes":32768,
 "state":"present",
@@ -5117,6 +5125,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -5150,7 +5159,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:21:35.595518+00:00",
+"measured_at":"2026-10-09T06:10:36.726913+00:00",
 "refused":"source_refused",
 "relation":"bonding_die_from_core",
 "remedy":"the loader refused this source (bundle.sources.bonded_from.relation): source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5159,7 +5168,7 @@
 "source":"bonded_from",
 "state":"not_measured",
 "translator_ver":"ledger-v2:4d26ba54fb386fabb9d7b1681f599698c65186f3c20cf40e6e5d53c2acccedb2",
-"updated_at":"2026-10-09T14:21:35.596220+09:00",
+"updated_at":"2026-10-09T15:10:36.727332+09:00",
 "world":"default"
 },
 {
@@ -5169,7 +5178,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:21:35.597521+00:00",
+"measured_at":"2026-10-09T06:10:36.733913+00:00",
 "refused":"source_refused",
 "relation":"bonding_core_die",
 "remedy":"the loader refused this source (bundle.sources.bw_dt_seat.relation): source 'bw_dt_seat' reads 'bonding_core_die', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5178,7 +5187,7 @@
 "source":"bw_dt_seat",
 "state":"not_measured",
 "translator_ver":"ledger-v2:58226374de7dd0606101a63b4baaa899ad589187a65c87a218255a9ddd1aa27e",
-"updated_at":"2026-10-09T14:21:35.597882+09:00",
+"updated_at":"2026-10-09T15:10:36.734387+09:00",
 "world":"default"
 },
 {
@@ -5192,22 +5201,22 @@
 "indexed_rows":{
 "estimate":117742,
 "exact":true,
-"measured_at":"2026-10-09T05:21:35.599518+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T05:21:35.599518+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T05:21:35.599518+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"inspection_run",
 "relation_rows":{
 "estimate":117662,
 "exact":false,
-"measured_at":"2026-10-09T05:21:35.599518+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"die_inspection"
@@ -5215,7 +5224,7 @@
 "source":"die_inspection",
 "state":"ran_and_wrote",
 "translator_ver":"ledger-v2:b991e0f24c52b1d97fc797fc5bf3e8a5b44cebfc0b49c13b7d8a9b514ec972ea",
-"updated_at":"2026-10-09T14:21:35.600196+09:00",
+"updated_at":"2026-10-09T15:10:36.741613+09:00",
 "world":"default"
 },
 {
@@ -5228,17 +5237,17 @@
 "indexed_rows":{
 "estimate":467638,
 "exact":true,
-"measured_at":"2026-10-09T05:22:35.625170+00:00",
+"measured_at":"2026-10-09T06:11:36.754690+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T05:22:35.625170+00:00",
+"measured_at":"2026-10-09T06:11:36.754690+00:00",
 "not_comparable":"this source reads by group (dt_job), so the relation's 535559 ROWS and the index's 467638 GROUPS are different units; the remainder is not published rather than published wrong.",
 "relation":"dt_log",
 "relation_rows":{
 "estimate":535559,
 "exact":false,
-"measured_at":"2026-10-09T05:22:35.625170+00:00",
+"measured_at":"2026-10-09T06:11:36.754690+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"dt_job"
@@ -5246,7 +5255,7 @@
 "source":"dt_job",
 "state":"ran_and_wrote",
 "translator_ver":"ledger-v2:9804e6c6d013375c208328296fefd0f37fbdb0ac61f50b3651e86a423919e873",
-"updated_at":"2026-10-09T14:22:35.626769+09:00",
+"updated_at":"2026-10-09T15:11:36.756355+09:00",
 "world":"default"
 },
 {
@@ -5256,7 +5265,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:16:35.503916+00:00",
+"measured_at":"2026-10-09T06:12:36.780172+00:00",
 "refused":"source_refused",
 "relation":"dt_log_transferable",
 "remedy":"the loader refused this source (bundle.sources.dt_transfer.relation): source 'dt_transfer' reads 'dt_log_transferable', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5265,7 +5274,7 @@
 "source":"dt_transfer",
 "state":"not_measured",
 "translator_ver":"ledger-v2:06d32967694585aad41213e3b49a31e8cdafb8894b78ec49a5525fab51182f18",
-"updated_at":"2026-10-09T14:16:35.504558+09:00",
+"updated_at":"2026-10-09T15:12:36.781067+09:00",
 "world":"default"
 },
 {
@@ -5283,17 +5292,17 @@
 "indexed_rows":{
 "estimate":3570,
 "exact":true,
-"measured_at":"2026-10-09T05:16:35.505922+00:00",
+"measured_at":"2026-10-09T06:12:36.803206+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T05:16:35.505922+00:00",
+"measured_at":"2026-10-09T06:12:36.803206+00:00",
 "not_comparable":"this source reads by group (event_group_key), so the relation's 3632 ROWS and the index's 3570 GROUPS are different units; the remainder is not published rather than published wrong.",
 "relation":"lot_event",
 "relation_rows":{
 "estimate":3632,
 "exact":false,
-"measured_at":"2026-10-09T05:16:35.505922+00:00",
+"measured_at":"2026-10-09T06:12:36.803206+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"lot_event"
@@ -5301,7 +5310,7 @@
 "source":"lot_event",
 "state":"ran_and_wrote",
 "translator_ver":"ledger-v2:7e98e3c875dcb604a0f858b39961214e7f5857ba4695e66b709ddfa6c05284df",
-"updated_at":"2026-10-09T14:16:35.507710+09:00",
+"updated_at":"2026-10-09T15:12:36.805784+09:00",
 "world":"default"
 },
 {
@@ -5311,7 +5320,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:17:35.525103+00:00",
+"measured_at":"2026-10-09T06:13:36.822298+00:00",
 "refused":"source_refused",
 "relation":"lot_slot_move",
 "remedy":"the loader refused this source (bundle.sources.lot_slot_move.relation): source 'lot_slot_move' reads 'lot_slot_move', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5320,7 +5329,7 @@
 "source":"lot_slot_move",
 "state":"not_measured",
 "translator_ver":"ledger-v2:0ba4ff14da5095672446c547f9eb8a59a9791c4984b88676429934c252d5ac0a",
-"updated_at":"2026-10-09T14:17:35.525912+09:00",
+"updated_at":"2026-10-09T15:13:36.822932+09:00",
 "world":"default"
 },
 {
@@ -5333,22 +5342,22 @@
 "indexed_rows":{
 "estimate":37325,
 "exact":true,
-"measured_at":"2026-10-09T05:17:35.528100+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T05:17:35.528100+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T05:17:35.528100+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"lot_slot_wafer",
 "relation_rows":{
 "estimate":37325,
 "exact":false,
-"measured_at":"2026-10-09T05:17:35.528100+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"lot_slot_wafer"
@@ -5356,7 +5365,7 @@
 "source":"lot_slot_wafer",
 "state":"ran_and_wrote",
 "translator_ver":"ledger-v2:5e24d8572bf267fe3d213079b616126816df45bb60fd217bb36127364de8eb65",
-"updated_at":"2026-10-09T14:17:35.528932+09:00",
+"updated_at":"2026-10-09T15:13:36.834233+09:00",
 "world":"default"
 },
 {
@@ -5366,7 +5375,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:18:35.529420+00:00",
+"measured_at":"2026-10-09T06:14:36.865712+00:00",
 "refused":"source_refused",
 "relation":"mechanism_edge_to_finding",
 "remedy":"the loader refused this source (bundle.sources.mechanism_edge_to_finding_causes.relation): source 'mechanism_edge_to_finding_causes' reads 'mechanism_edge_to_finding', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5375,7 +5384,7 @@
 "source":"mechanism_edge_to_finding_causes",
 "state":"not_measured",
 "translator_ver":"ledger-v2:2fc9f9bca09f79848f23dc498f4eca6da88d2a46edb034c7c3f0518f1e6b92cf",
-"updated_at":"2026-10-09T14:18:35.530118+09:00",
+"updated_at":"2026-10-09T15:14:36.866463+09:00",
 "world":"default"
 },
 {
@@ -5385,7 +5394,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:18:35.531420+00:00",
+"measured_at":"2026-10-09T06:14:36.870708+00:00",
 "refused":"source_refused",
 "relation":"mechanism_edge_to_quantity",
 "remedy":"the loader refused this source (bundle.sources.mechanism_edge_to_quantity_causes.relation): source 'mechanism_edge_to_quantity_causes' reads 'mechanism_edge_to_quantity', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5394,7 +5403,7 @@
 "source":"mechanism_edge_to_quantity_causes",
 "state":"not_measured",
 "translator_ver":"ledger-v2:e43cb9eea9898ea402fc6c9b5c9b9002ad7d8449bb8328e7f4074bc9153f5cfa",
-"updated_at":"2026-10-09T14:18:35.531755+09:00",
+"updated_at":"2026-10-09T15:14:36.871835+09:00",
 "world":"default"
 },
 {
@@ -5404,7 +5413,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:18:35.532425+00:00",
+"measured_at":"2026-10-09T06:14:36.872711+00:00",
 "refused":"source_refused",
 "relation":"process_param_num",
 "remedy":"the loader refused this source (bundle.sources.process_param_num_measure.relation): source 'process_param_num_measure' reads 'process_param_num', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5413,7 +5422,7 @@
 "source":"process_param_num_measure",
 "state":"not_measured",
 "translator_ver":"ledger-v2:d45308937d16870f61dae9981a6e0a064eb500b2170fb7d270945fa63064e65c",
-"updated_at":"2026-10-09T14:18:35.533058+09:00",
+"updated_at":"2026-10-09T15:14:36.873359+09:00",
 "world":"default"
 },
 {
@@ -5423,7 +5432,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:18:35.533423+00:00",
+"measured_at":"2026-10-09T06:14:36.873710+00:00",
 "refused":"source_refused",
 "relation":"process_param_txt",
 "remedy":"the loader refused this source (bundle.sources.process_param_txt_measure.relation): source 'process_param_txt_measure' reads 'process_param_txt', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5432,7 +5441,7 @@
 "source":"process_param_txt_measure",
 "state":"not_measured",
 "translator_ver":"ledger-v2:5018dd9671eee1507d6760ec8bab17c4b8a692ddeaa599fe21dacccd0847f9ea",
-"updated_at":"2026-10-09T14:18:35.534027+09:00",
+"updated_at":"2026-10-09T15:14:36.874686+09:00",
 "world":"default"
 },
 {
@@ -5445,22 +5454,22 @@
 "indexed_rows":{
 "estimate":1405,
 "exact":true,
-"measured_at":"2026-10-09T05:18:35.534421+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T05:18:35.534421+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T05:18:35.534421+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"dt_transfer_log",
 "relation_rows":{
 "estimate":1405,
 "exact":false,
-"measured_at":"2026-10-09T05:18:35.534421+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"transfer_event"
@@ -5468,7 +5477,7 @@
 "source":"transfer_event",
 "state":"ran_and_wrote",
 "translator_ver":"ledger-v2:e230dbec3311131f06399c3e814ebb106c6d315c4828621bffc2540ea3657f99",
-"updated_at":"2026-10-09T14:18:35.535969+09:00",
+"updated_at":"2026-10-09T15:14:36.887366+09:00",
 "world":"default"
 },
 {
@@ -5478,7 +5487,7 @@
 "refusals":"none",
 "refusals_unaccounted":0,
 "row_census":{
-"measured_at":"2026-10-09T05:19:35.544799+00:00",
+"measured_at":"2026-10-09T06:08:36.643295+00:00",
 "refused":"source_refused",
 "relation":"void_obs_observed",
 "remedy":"the loader refused this source (bundle.sources.void_observation.relation): source 'void_observation' reads 'void_obs_observed', which is not a table that has row_id (view); a ledger source must read a table that has row_id",
@@ -5487,7 +5496,7 @@
 "source":"void_observation",
 "state":"not_measured",
 "translator_ver":"ledger-v2:c9f6b7b4a906362bc9edc7a93e2af2c640e3a638ffd890032538883e0463556c",
-"updated_at":"2026-10-09T14:19:35.545434+09:00",
+"updated_at":"2026-10-09T15:08:36.644168+09:00",
 "world":"default"
 },
 {
@@ -5501,22 +5510,22 @@
 "indexed_rows":{
 "estimate":478718,
 "exact":true,
-"measured_at":"2026-10-09T05:19:35.546379+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T05:19:35.546379+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T05:19:35.546379+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"wafer_process",
 "relation_rows":{
 "estimate":473032,
 "exact":false,
-"measured_at":"2026-10-09T05:19:35.546379+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"wafer_process_recipe"
@@ -5524,7 +5533,7 @@
 "source":"wafer_process_recipe",
 "state":"ran_and_wrote",
 "translator_ver":"ledger-v2:7c6652202c410680a44b345aeb7fb7309677db6773f082a6da0a817df2f66137",
-"updated_at":"2026-10-09T14:19:35.548256+09:00",
+"updated_at":"2026-10-09T15:08:36.654423+09:00",
 "world":"default"
 }
 ],
@@ -7549,6 +7558,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -7766,6 +7776,7 @@
 ],
 "status":"success"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -27507,6 +27518,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -28589,6 +28601,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -29797,6 +29810,7 @@
 "timestamp"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -30003,13 +30017,14 @@
 "relation":"inspection_run",
 "total_rows":117742
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
 "/admin/ontology-explorer/view?q=&page=1&limit=100&view_mode=active":{
 "body":{
 "active_snapshot":{
-"compiled_at":"2026-10-09T05:36:04.860260+00:00",
+"compiled_at":"2026-10-09T06:15:01.130637+00:00",
 "snapshot_hash":"c0a99ed757c5f376e9943047c12062a6a8c5990dfae98d9e1cce9f1c99d7114c",
 "valid":false
 },
@@ -32815,6 +32830,7 @@
 "preview_snapshot_hash":null
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -32829,11 +32845,13 @@
 "default"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
 "/admin/outbox/failed?page=1&limit=3&tz=Asia%2FSeoul":{
 "body":"Internal Server Error",
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":500,
 "type":"text/plain"
 },
@@ -33484,6 +33502,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -34873,6 +34892,7 @@
 "running":"Running"
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -36015,6 +36035,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -36022,6 +36043,7 @@
 "body":{
 "reason":"desktop_build_absent"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":404,
 "type":"application/json"
 },
@@ -36035,6 +36057,7 @@
 "nav_preserved":0
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -36440,22 +36463,22 @@
 "indexed_rows":{
 "estimate":117742,
 "exact":true,
-"measured_at":"2026-10-09T04:46:34.779810+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T04:46:34.779810+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T04:46:34.779810+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"inspection_run",
 "relation_rows":{
 "estimate":117662,
 "exact":false,
-"measured_at":"2026-10-09T04:46:34.779810+00:00",
+"measured_at":"2026-10-09T06:10:36.739955+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"die_inspection",
@@ -36488,17 +36511,17 @@
 "indexed_rows":{
 "estimate":467638,
 "exact":true,
-"measured_at":"2026-10-09T04:47:34.790346+00:00",
+"measured_at":"2026-10-09T06:11:36.754690+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T04:47:34.790346+00:00",
+"measured_at":"2026-10-09T06:11:36.754690+00:00",
 "not_comparable":"this source reads by group (dt_job), so the relation's 535559 ROWS and the index's 467638 GROUPS are different units; the remainder is not published rather than published wrong.",
 "relation":"dt_log",
 "relation_rows":{
 "estimate":535559,
 "exact":false,
-"measured_at":"2026-10-09T04:47:34.790346+00:00",
+"measured_at":"2026-10-09T06:11:36.754690+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"dt_job",
@@ -36583,22 +36606,22 @@
 "indexed_rows":{
 "estimate":37325,
 "exact":true,
-"measured_at":"2026-10-09T04:49:34.828942+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T04:49:34.828942+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T04:49:34.828942+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"lot_slot_wafer",
 "relation_rows":{
 "estimate":37325,
 "exact":false,
-"measured_at":"2026-10-09T04:49:34.828942+00:00",
+"measured_at":"2026-10-09T06:13:36.832951+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"lot_slot_wafer",
@@ -36678,22 +36701,22 @@
 "indexed_rows":{
 "estimate":1405,
 "exact":true,
-"measured_at":"2026-10-09T04:50:34.839820+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T04:50:34.839820+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T04:50:34.839820+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"dt_transfer_log",
 "relation_rows":{
 "estimate":1405,
 "exact":false,
-"measured_at":"2026-10-09T04:50:34.839820+00:00",
+"measured_at":"2026-10-09T06:14:36.886416+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"transfer_event",
@@ -36742,22 +36765,22 @@
 "indexed_rows":{
 "estimate":478718,
 "exact":true,
-"measured_at":"2026-10-09T04:51:34.844602+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "method":"rows_indexed (counted at write time)"
 },
 "indexed_rows_counted_now":false,
-"measured_at":"2026-10-09T04:51:34.844602+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "not_yet":{
 "estimate":0,
 "exact":true,
-"measured_at":"2026-10-09T04:51:34.844602+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "method":"relation_rows - indexed_rows"
 },
 "relation":"wafer_process",
 "relation_rows":{
 "estimate":473032,
 "exact":false,
-"measured_at":"2026-10-09T04:51:34.844602+00:00",
+"measured_at":"2026-10-09T06:08:36.653291+00:00",
 "method":"pg_class.reltuples (planner estimate, no scan)"
 },
 "source":"wafer_process_recipe",
@@ -36794,6 +36817,7 @@
 "default"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -36804,6 +36828,7 @@
 "reason":"gap_table_mismatch"
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":503,
 "type":"application/json"
 },
@@ -37126,6 +37151,7 @@
 "type":"wafer",
 "values_truncated":true
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -37162,7 +37188,7 @@
 ]
 }
 ],
-"generated_at":"2026-10-09T05:11:14.348195+00:00",
+"generated_at":"2026-10-09T06:15:02.375182+00:00",
 "limits":{
 "actions":6000,
 "claims":6000,
@@ -37312,6 +37338,7 @@
 }
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -37349,7 +37376,7 @@
 ]
 }
 ],
-"generated_at":"2026-10-09T05:11:14.482879+00:00",
+"generated_at":"2026-10-09T06:15:02.508090+00:00",
 "limits":{
 "actions":6000,
 "claims":6000,
@@ -37499,6 +37526,7 @@
 }
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -40835,7 +40863,7 @@
 ]
 }
 ],
-"generated_at":"2026-10-09T04:53:25.636824+00:00",
+"generated_at":"2026-10-09T06:15:02.716876+00:00",
 "limits":{
 "actions":6000,
 "claims":6000,
@@ -49116,6 +49144,7 @@
 }
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -55780,7 +55809,7 @@
 ]
 }
 ],
-"generated_at":"2026-10-09T04:53:25.858037+00:00",
+"generated_at":"2026-10-09T06:15:03.111250+00:00",
 "limits":{
 "actions":6000,
 "claims":6000,
@@ -64709,6 +64738,7 @@
 }
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -71373,7 +71403,7 @@
 ]
 }
 ],
-"generated_at":"2026-10-09T04:53:26.092294+00:00",
+"generated_at":"2026-10-09T06:15:03.498899+00:00",
 "limits":{
 "actions":6000,
 "claims":6000,
@@ -80302,6 +80332,7 @@
 }
 }
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -80395,6 +80426,7 @@
 },
 "status":"success"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -82584,6 +82616,7 @@
 "table":"valid_die_ref",
 "truncated":false
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -84920,7 +84953,7 @@
 "unscorable"
 ],
 "stats":{
-"build_ms":2655.999999959022,
+"build_ms":2782.0000000065193,
 "map_pairs":73,
 "metas_read":1
 },
@@ -87575,6 +87608,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87609,6 +87643,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87643,6 +87678,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87686,6 +87722,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87730,6 +87767,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87773,6 +87811,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87816,6 +87855,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87850,6 +87890,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87884,6 +87925,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87918,6 +87960,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -87962,6 +88005,7 @@
 "doe"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -88006,6 +88050,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -91426,6 +91471,7 @@
 "returned":100,
 "truncated":true
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -91435,6 +91481,7 @@
 "sso":false,
 "user":null
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -91465,6 +91512,7 @@
 "today_updates":0,
 "uncounted_tables":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -91526,12 +91574,13 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
 "/health":{
 "body":{
-"checked_at":"2026-10-09T13:53:32.422237+09:00",
+"checked_at":"2026-10-09T15:15:10.865708+09:00",
 "checks":{
 "config_backup":{
 "age_days":3,
@@ -91546,7 +91595,7 @@
 "status":"ok"
 },
 "database":{
-"latency_ms":0.7,
+"latency_ms":1.27,
 "status":"ok"
 },
 "outbox":{
@@ -91609,12 +91658,12 @@
 "failed_children":[],
 "pid":35736,
 "status":"ok",
-"updated_age_seconds":3.73
+"updated_age_seconds":1.71
 },
 "workers":{
 "chain":{
-"age_seconds":1.15,
-"beats":312933,
+"age_seconds":1.54,
+"beats":315363,
 "heartbeat":"chain",
 "pid":37840,
 "restarts":0,
@@ -91623,7 +91672,7 @@
 "supervisor_state":"running"
 },
 "graph":{
-"age_seconds":4829901.4,
+"age_seconds":4834799.85,
 "beats":162,
 "detail":"beating, but no launcher roster declares it",
 "heartbeat":"graph",
@@ -91631,7 +91680,7 @@
 "status":"off_roster"
 },
 "ledger":{
-"age_seconds":1190861.03,
+"age_seconds":1195759.48,
 "beats":1,
 "detail":"beating, but no launcher roster declares it",
 "heartbeat":"ledger",
@@ -91639,8 +91688,8 @@
 "status":"off_roster"
 },
 "scheduler":{
-"age_seconds":3.22,
-"beats":125878,
+"age_seconds":1.38,
+"beats":126856,
 "heartbeat":"scheduler",
 "pid":39232,
 "restarts":0,
@@ -91649,8 +91698,8 @@
 "supervisor_state":"running"
 },
 "watcher":{
-"age_seconds":1.64,
-"beats":241218,
+"age_seconds":0.3,
+"beats":243092,
 "heartbeat":"watcher",
 "pid":8652,
 "restarts":0,
@@ -91663,12 +91712,13 @@
 "problems":[],
 "status":"ok"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
 "/runtime":{
 "body":{
-"generated_at":1791523373.515,
+"generated_at":1791526510.882,
 "loops":[
 {
 "alive":true,
@@ -91679,7 +91729,7 @@
 },
 {
 "alive":true,
-"beat_age_seconds":2.98,
+"beat_age_seconds":0.31,
 "board":"2",
 "knob":"config/ingestion_settings.json",
 "loop":"watcher",
@@ -91689,13 +91739,13 @@
 {
 "alive":true,
 "attached_at":1790732239.1475763,
-"beat_age_seconds":0.85,
+"beat_age_seconds":1.56,
 "board":"3",
 "depth":0,
 "knob":"config/chain_rules.json",
-"last_age_seconds":0.85,
-"last_at":1791523372.66,
-"last_seconds":2.016,
+"last_age_seconds":1.56,
+"last_at":1791526509.317,
+"last_seconds":2.0,
 "log_filename":"chain_worker.log",
 "loop":"chain",
 "outcomes":{
@@ -91777,7 +91827,7 @@
 },
 "process":"chain",
 "purge_capped":false,
-"purged_at":1791522209.5890872,
+"purged_at":1791525811.388604,
 "purged_rows":0,
 "reloaded_at":1790732397.9223816,
 "rules_base":"sha256:05a9893d8ac0ecc5b8f6fcd71cdd155ae739bf6e879c1daf3d7401d24e53bbc8",
@@ -91787,11 +91837,11 @@
 },
 {
 "alive":true,
-"beat_age_seconds":0.85,
+"beat_age_seconds":1.56,
 "board":"3-a",
 "knob":"config/chain_rules.json",
-"last_age_seconds":1163.94,
-"last_at":1791522209.573,
+"last_age_seconds":699.51,
+"last_at":1791525811.375,
 "loop":"outbox_purge",
 "pace":3600.0,
 "process":"chain",
@@ -91799,9 +91849,9 @@
 },
 {
 "alive":true,
-"beat_age_seconds":0.85,
+"beat_age_seconds":1.56,
 "board":"3-b",
-"last_age_seconds":791133.02,
+"last_age_seconds":794270.39,
 "last_at":1790732240.488,
 "loop":"listen",
 "process":"chain",
@@ -91811,18 +91861,18 @@
 },
 {
 "alive":true,
-"beat_age_seconds":0.85,
+"beat_age_seconds":1.56,
 "board":"3-c",
 "found":"none",
-"last_age_seconds":2.86,
-"last_at":1791523370.649,
+"last_age_seconds":3.57,
+"last_at":1791526507.312,
 "loop":"replay_sweep",
 "process":"chain",
 "when":"always"
 },
 {
 "alive":true,
-"beat_age_seconds":0.85,
+"beat_age_seconds":1.56,
 "board":"4",
 "knob":"config/pacing.json",
 "loop":"ledger_followup",
@@ -91831,13 +91881,13 @@
 },
 {
 "alive":true,
-"beat_age_seconds":0.85,
+"beat_age_seconds":1.56,
 "board":"5",
 "depth":15,
 "knob":"config/pacing.json",
-"last_age_seconds":137.96,
-"last_at":1791523235.549,
-"last_seconds":360.078,
+"last_age_seconds":334.22,
+"last_at":1791526176.663,
+"last_seconds":360.109,
 "loop":"ledger_census",
 "pace":60.0,
 "process":"chain",
@@ -91845,7 +91895,7 @@
 },
 {
 "alive":true,
-"beat_age_seconds":0.47,
+"beat_age_seconds":1.4,
 "board":"6",
 "knob":"config/auto_update.json",
 "loop":"scheduler",
@@ -91869,6 +91919,7 @@
 }
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92012,6 +92063,7 @@
 "default"
 ]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92067,6 +92119,7 @@
 "table_name":"bonding_core_die",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92099,6 +92152,7 @@
 "table_name":"bonding_core_lot",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92147,6 +92201,7 @@
 "table_name":"bonding_die_from_core",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92206,6 +92261,7 @@
 "table_name":"bonding_inventory",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92265,6 +92321,7 @@
 "table_name":"bonding_log",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92301,6 +92358,7 @@
 "table_name":"bonding_map",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92308,6 +92366,7 @@
 "body":{
 "detail":"Table 'contrast_run' not found"
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":404,
 "type":"application/json"
 },
@@ -92354,6 +92413,7 @@
 "table_name":"core_usage_map",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92400,6 +92460,7 @@
 "table_name":"core_wafer_map",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92446,6 +92507,7 @@
 "table_name":"defect",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92496,6 +92558,7 @@
 "table_name":"delam_obs",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92542,6 +92605,7 @@
 "table_name":"dt_core_view",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92739,6 +92803,7 @@
 "target_offset":-1,
 "total":488166
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92797,6 +92862,7 @@
 "table_name":"dt_inventory",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92827,6 +92893,7 @@
 "table_name":"dt_job_attribution",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92891,6 +92958,7 @@
 "table_name":"dt_log",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92957,6 +93025,7 @@
 "table_name":"dt_log_transferable",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -92998,6 +93067,7 @@
 "table_name":"dt_map",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -93044,6 +93114,7 @@
 "table_name":"dt_transfer_log",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -93078,6 +93149,7 @@
 "table_name":"entity_comment",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -93120,6 +93192,7 @@
 "table_name":"eqp_event",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -93169,6 +93242,7 @@
 "table_name":"inspection_run",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -93203,6 +93277,7 @@
 "table_name":"inventory_master",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -93211,6 +93286,7 @@
 "table_name":"ledger_events",
 "total":2380869
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -93219,11 +93295,24 @@
 "table_name":"ledger_events",
 "total":156365
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
 "/tables/ledger_events/data/count?filters=%7B%22subject_type%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22die%22%7D%2C%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%2C%22object_kind%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22entity_ref%22%7D%7D":{
 "same_as":"/tables/ledger_events/data/count?filters=%7B%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%2C%22object_kind%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22entity_ref%22%7D%7D"
+},
+"/tables/ledger_events/data/count?filters=%7B%22subject_type%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22die%22%7D%2C%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%7D":{
+"same_as":"/tables/ledger_events/data/count?filters=%7B%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%2C%22object_kind%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22entity_ref%22%7D%7D"
+},
+"/tables/ledger_events/data/count?filters=%7B%22subject_type%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22die%22%7D%7D":{
+"body":{
+"table_name":"ledger_events",
+"total":680993
+},
+"captured":"2026-10-09T06:45:25+00:00 · server code 7eb020924",
+"status":200,
+"type":"application/json"
 },
 "/tables/ledger_events/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true":{
 "body":{
@@ -98336,6 +98425,7 @@
 "target_offset":-1,
 "total":null
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103450,10 +103540,17 @@
 "target_offset":-1,
 "total":null
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
 "/tables/ledger_events/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true&filters=%7B%22subject_type%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22die%22%7D%2C%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%2C%22object_kind%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22entity_ref%22%7D%7D":{
+"same_as":"/tables/ledger_events/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true&filters=%7B%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%2C%22object_kind%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22entity_ref%22%7D%7D"
+},
+"/tables/ledger_events/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true&filters=%7B%22subject_type%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22die%22%7D%2C%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%7D":{
+"same_as":"/tables/ledger_events/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true&filters=%7B%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%2C%22object_kind%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22entity_ref%22%7D%7D"
+},
+"/tables/ledger_events/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true&filters=%7B%22subject_type%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22die%22%7D%7D":{
 "same_as":"/tables/ledger_events/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true&filters=%7B%22predicate%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22in_container%22%7D%2C%22object_kind%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22contains%22%2C%22filter%22%3A%22entity_ref%22%7D%7D"
 },
 "/tables/ledger_events/schema":{
@@ -103502,6 +103599,7 @@
 "table_name":"ledger_events",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103540,6 +103638,7 @@
 "table_name":"lot_event",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103582,6 +103681,7 @@
 "table_name":"lot_slot_move",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103615,6 +103715,7 @@
 "table_name":"lot_slot_wafer",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103670,6 +103771,7 @@
 "table_name":"map_split_registry",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103710,6 +103812,7 @@
 "table_name":"mechanism_edge",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103751,6 +103854,7 @@
 "table_name":"mechanism_edge_to_finding",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103792,6 +103896,7 @@
 "table_name":"mechanism_edge_to_quantity",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103834,6 +103939,7 @@
 "table_name":"metro",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103870,6 +103976,7 @@
 "table_name":"process_event",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103914,6 +104021,7 @@
 "table_name":"process_param",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -103959,6 +104067,7 @@
 "table_name":"process_param_num",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104004,6 +104113,7 @@
 "table_name":"process_param_txt",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104038,6 +104148,7 @@
 "table_name":"production_plan",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104077,6 +104188,7 @@
 "table_name":"slot_trace_for_bonding",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104111,6 +104223,7 @@
 "table_name":"slot_trace_for_dt",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104163,6 +104276,7 @@
 "table_name":"step_defect_obs",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104210,6 +104324,7 @@
 "table_name":"step_inspection_run",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104252,6 +104367,7 @@
 "table_name":"valid_die_ref",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104302,6 +104418,7 @@
 "table_name":"void_obs",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104353,6 +104470,7 @@
 "table_name":"void_obs_observed",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104389,6 +104507,7 @@
 "table_name":"wafer_id_status",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -104460,6 +104579,7 @@
 "target_offset":-1,
 "total":1
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -105158,6 +105278,7 @@
 "target_offset":-1,
 "total":12
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -105191,6 +105312,7 @@
 "table_name":"wafer_map_metadata",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 },
@@ -105241,6 +105363,7 @@
 "table_name":"wafer_process",
 "virtual_columns":[]
 },
+"captured":"2026-10-09T06:14:59+00:00 · server code 7eb020924",
 "status":200,
 "type":"application/json"
 }

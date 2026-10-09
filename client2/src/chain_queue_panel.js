@@ -193,6 +193,9 @@ export function chainStateWhy(chainState) {
 
 /** The state cell both queues draw: the token, then `chainStateWhy` under it, read to the end (base.css), and in its title;
  *  then the slot process running the line when one is sent - the pid an operator kills (lead, slot 422d075c7). */
+/** The queue list's short columns - each as wide as its words (`cell-fit`); Waiting takes the rest. */
+const QUEUE_FIT = new Set(['tx', 'tables', 'rows', 'owners', 'act']);
+
 export function chainStateCell(doc, chainState, slotPid = null) {
   const cell = doc.createElement('div');
   cell.className = 'queue-line-state';
@@ -589,6 +592,7 @@ export class ChainQueuePanel {
     const td = this.doc.createElement('td');
     td.textContent = text;
     if (col) td.setAttribute('data-col', col);
+    if (QUEUE_FIT.has(col)) td.className = 'cell-fit';
     return td;
   }
 
@@ -736,8 +740,8 @@ export class ChainQueuePanel {
     return view;
   }
 
-  /** The list (A): Job / Transaction · Waiting · Tables · Rows · Drained by. No px widths — the Tables
-   *  column takes what is left, the rest take their content (admin.html `.chain-queue-table`). */
+  /** The list (A): Job / Transaction · Waiting · Tables · Rows · Drained by. No px widths — Waiting (the state and its
+   *  why) takes what is left, the others are as wide as their words (`cell-fit`, owner 10-09). */
   _table(rows) {
     const doc = this.doc;
     const table = doc.createElement('table');
@@ -752,6 +756,7 @@ export class ChainQueuePanel {
       const th = doc.createElement('th');
       th.textContent = label;
       th.setAttribute('data-col', col);
+      if (QUEUE_FIT.has(col)) th.className = 'cell-fit';
       hr.appendChild(th);
     }
     thead.appendChild(hr);

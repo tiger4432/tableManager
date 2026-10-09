@@ -274,7 +274,6 @@
     /* px 고정 폭 없음 — Tables 칸이 남는 폭, 나머지는 내용 폭. */
     .chain-queue-table .table-header th,
     .chain-queue-table .table-row td { white-space: nowrap; }
-    .chain-queue-table [data-col="tables"] { width: 100%; white-space: normal; overflow-wrap: anywhere; }
     /* The state's why stays on one line here like every other cell: allowed to wrap, Tables took the width and
        the why folded into 71px (base.css wraps it for the grid's fixed State column). */
     .chain-queue-table .queue-line-state-why { white-space: nowrap; }
@@ -636,13 +635,12 @@
       margin-top: 2px;
       white-space: normal;
     }
-    /* 사유는 «서버 낱말»입니다 — 수 아래에 줄로 쌓이고, 칸을 늘리지 않습니다. */
+    /* 사유는 «서버 낱말»입니다 — 수 아래에 한 줄씩 쌓이고, Refused 칸이 그 줄만큼 넓어집니다(cell-fit, 소유자 10-09). */
     .ledger-sources-reason {
       color: var(--text-dim);
       font-family: var(--font-mono);
       margin-top: 2px;
-      white-space: normal;
-      overflow-wrap: anywhere;
+      white-space: nowrap;
       text-align: left;
     }
     /* 🔴 부호가 다르면 픽셀도 다릅니다. `under`(<0)는 «장부 결함»이라고 서버가 자기
@@ -1676,19 +1674,19 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-1HPCcH_u.js"></script>
+  <script type="module" crossorigin src="/assets/admin-gg2yjJoM.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-Q23oROCf.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">
-  <link rel="modulepreload" crossorigin href="/assets/queue_poll-DlixyfXu.js">
+  <link rel="modulepreload" crossorigin href="/assets/queue_poll-D8YGr6OB.js">
   <link rel="modulepreload" crossorigin href="/assets/branch_picker-BlDIgQH7.js">
   <link rel="modulepreload" crossorigin href="/assets/clipboard_write-BNvLtxze.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CUYmTmql.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-Bkn2-lCK.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-Cm-KMlOu.css">
-  <link rel="stylesheet" crossorigin href="/assets/admin-DPHdcsuU.css">
-  <link rel="stylesheet" crossorigin href="/assets/base-C-W9ijXA.css">
+  <link rel="stylesheet" crossorigin href="/assets/admin-dqysiS8i.css">
+  <link rel="stylesheet" crossorigin href="/assets/base-0D6z4SYq.css">
 </head>
 <body>
   <header>
