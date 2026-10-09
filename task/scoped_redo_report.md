@@ -77644,3 +77644,118 @@ source_name 을 안 적은 맵퍼 칸은 기본값 user(사람 층, 순위 0)로
       그래서 updated_by 를 안 적은 맵퍼 칸이 남긴 층은 이 길로 못 풉니다
    짓기 전에 운영에서 먼저 셀 것: ② 와 같은 읽기 질의(쓴이별 user 층 수)를 소유자 서버에서 — 0 이면 지을 까닭이 없습니다
 ```
+
+---
+
+## [10-10 새벽] 껍데기 행 착지 — 회수와 다시 세기 뒤 키만 남은 행은 지운다 · 쓸기 · S-158 넓힘 — `95cffa5af` (총괄 5eee501eb · 판정 ㄱ ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: SQLite 메모리 · PG 는 pg_engine 스크래치. 진짜 프로세스: assy_test 의 스크래치 assy_impl_shell_1010(dropped schema assy_impl_shell_1010 (64 tables) - left 0). EXPLAIN 재기: 스크래치 assy_impl_auditplan_1009(끝에 지움) · 이 박스 assy_manager 는 읽기 전용. public — public relations 325 -> 325 · added [] · gone [] · rows changed {}
+체인 워커 차례 — 응용 레인에 «N 분» 알리고 띄웠고 끝에 «내림». 이번 판 끊김 0 · «못 읽음» 미룸 0
+
+### 진짜 따로 띄운 프로세스 — 재기동한 체인 워커 + 슬롯, 소유자 CLI · 그리드 삭제 문
+
+```
+선언    hc_copy(on.exclude fold_mark) · hc_recount · 원장 소스 hc_official(보류 빈 행은 안 읽음) — hold 세상 그대로
+전      원본 A (J1,1,2) 7 · B (J1,3,4) 9 · C (J1,5,6) 11 이 기다림 + 이미 쌓인 껍데기 둘 (J0,8,1) (J0,8,2)
+워커    {'J0,8,1': (None, ''), 'J0,8,2': (None, ''), 'J1,1,2': (7.0, 'agreed'), 'J1,3,4': (9.0, 'agreed'), 'J1,5,6': (11.0, 'agreed')} · 원장 원자 3
+쓸기    remove-shells hc_official
+           2 row(s) of 'hc_official' show nothing outside their keys; 2 of them have only the chain's key layers left - no value, no person's layer - and go as a …
+        + --apply   remove-shells 'hc_official': 2 of 2 row(s) deleted in 1 page(s)
+        다시        0 row(s) of 'hc_official' show nothing outside their keys; 0 …
+그리드 삭제 A  grid delete of A: 1 row(s) (crud.delete_rows_batch — batch_delete 라우트가 부르는 문)
+        뒤 {'J1,3,4': (9.0, 'agreed'), 'J1,5,6': (11.0, 'agreed')} · 이력 3 · 원자 2 · 기다림 0
+접기 표시  fold-rows hc_log --keys dt_job --order log_id --mark-column fold_mark --apply  (C 는 (J1,5,6) 의 유일한 행)
+           fold-rows 'hc_log': 1 of 1 row(s) marked in 1 page(s), 1 key(s), 0 row(s) with a blank key part left as they are
+        뒤 {'J1,3,4': (9.0, 'agreed')} · 이력 4 · 원자 1 · 기다림 0
+워커 줄
+   [Chain] slot 1 started, pid 816
+   [Chain] slot 2 started, pid 22752
+   [ChainRetract] table=hc_log deleted_rows=1 groups=1 cells_withdrawn=4 protected_skipped=0 rows_told=1
+   [slot 1 pid 816] [ChainShell] table=hc_official rows_deleted=1 - only the chain's keys were left
+   [slot 1 pid 816] [Chain] hc_copy: 1 row(s) not handed over - excluding column(s) filled: fold_mark=1
+   [slot 1 pid 816] [ChainRetract] table=hc_log edited_rows=1 groups=1 cells_withdrawn=4 protected_skipped=0 rows_told=1
+   [slot 1 pid 816] [ChainShell] table=hc_official rows_deleted=1 - only the chain's keys were left
+```
+
+### 게이트 · 변이 · 실행
+
+```
+PG     test_a_row_left_with_only_the_chains_keys_is_deleted  5 passed
+       ① 원본 다 지움 -> 행 지워짐 · 이력 한 줄 · 원장 0 · 그 DELETE 는 규칙 안 깨움 · 삭제 뒤 규칙 실행 0
+       ② 사람 층(비운 칸 하나뿐 — 카나리아로 확인)이면 남음 ③ 다른 원본이 주장하면 남음
+       ④ 접기 표시가 키의 유일한 행 -> 그 행 지워짐 ⑤ 쓸기 미리보기 = 지운 수 · 다시 0 ⑥ 사람 · 파일이 키를 썼거나 값이 있으면 남음
+SQLite test_an_event_naming_only_deleted_rows_has_nothing_to_do  5 passed — 지우는 문 셋(그리드 삭제 · map purge · 작업 단위 회수)마다
+       지운 행만 가리킨 사건 -> SUCCESS · 규칙 호출 0 / 이력 없이 못 읽는 행 -> rows_not_visible(전처럼) / 규칙이 키만 쓴 행은 안 물음
+SQLite 바뀐 자리(워커 · cell_layer · replay · retroactive · CLI)를 import 하는 파일  1 failed, 2451 passed, 2 skipped, 165 deselected  빨강 ['test_the_repo_root_is_one_above_it'] (워크트리 환경)
+PG     같은 기준의 PG 파일(원장을 짓는 파일 먼저) 3 failed, 162 passed, 180 deselected
+       빨강 ['test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid[batch]', 'test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid[one_row]', 'test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row']
+       -> 둘 다 옛 동작(«원본이 다 지워진 키는 보류로 남는다» · 1,000 행 회수의 사건 목록)을 단언 — 새 동작으로 고친 뒤 두 파일 28 passed
+```
+변이 (md5 전후 비교)
+```
+BASELINE lite 5 passed · pg 5 passed
+MUTANT the history judgement gone         lite 3 failed, 2 passed · pg 1 failed, 4 passed
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the grid's delete]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the map purge]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the job retraction]
+    FAILED test_1_every_source_gone_the_official_row_goes
+MUTANT gone-only events still handed      lite 3 failed, 2 passed · pg 1 failed, 4 passed
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the grid's delete]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the map purge]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the job retraction]
+    FAILED test_1_every_source_gone_the_official_row_goes
+MUTANT a person's layer not asked         lite 5 passed · pg 2 failed, 3 passed
+    FAILED test_2_a_persons_layer_even_one_that_emptied_a_cell_keeps_the_row
+    FAILED test_5_and_6_the_sweep_takes_the_shells_already_there_and_nothing_a_person_or_a_file_keyed
+MUTANT key layers' writer not asked       lite 5 passed · pg 1 failed, 4 passed
+    FAILED test_5_and_6_the_sweep_takes_the_shells_already_there_and_nothing_a_person_or_a_file_keyed
+MUTANT the seat deletes nothing           lite 5 passed · pg 2 failed, 3 passed
+    FAILED test_1_every_source_gone_the_official_row_goes
+    FAILED test_4_the_fold_marked_the_only_row_of_a_key_and_that_official_row_goes
+MUTANT the seat asks every changed row    lite 1 failed, 4 passed · pg 5 passed
+    FAILED test_a_row_a_rule_only_keyed_is_not_asked
+MD5 AFTER  same
+```
+
+### S-158 넓힘 — 판정과 EXPLAIN
+
+```
+판정   이름 댄 행 중 삭제 이력 줄(audit_logs column_name='DELETE')이 있으면 «없어짐». 행이 다 없어진 사건은 묶음에서 빠짐
+       이력 없이 못 읽는 행은 전처럼 거절 · 미룸. 좁힌 것은 이력 있는 행뿐(커밋에 S-158 인용)
+질의   crud.deleted_rows — (table_name, row_id IN …, column_name) 1,000 개씩
+이 박스(assy_manager, 읽기 전용) table dt_log · deletion lines on it 72231 · asked 1000 ids · found 1000
+   Unique  (actual time=2.848..5.104 rows=1000.00 loops=1)
+   ->  Index Scan using ix_audit_logs_row_id on audit_logs  (actual time=2.845..4.921 rows=1000.00 loops=1)
+   Execution Time: 5.153 ms
+   이 박스에는 idx_audit_row_history 가 없음(models 는 선언 · 운영은 add_audit_history_keyset_indexes.sql)
+선언 인덱스가 다 있는 스크래치(20만 줄) asked 1000 ids of t3 · found 334
+   Unique  (actual time=10.301..10.384 rows=334.00 loops=1)
+   ->  Sort  (actual time=10.299..10.312 rows=334.00 loops=1)
+   ->  Bitmap Heap Scan on audit_logs  (actual time=8.766..9.665 rows=334.00 loops=1)
+   ->  BitmapAnd  (actual time=8.645..8.646 rows=0.00 loops=1)
+   ->  Bitmap Index Scan on ix_audit_logs_table_name  (actual time=0.143..0.143 rows=1000.00 loops=1)
+   ->  Bitmap Index Scan on ix_audit_logs_row_id  (actual time=8.479..8.479 rows=1000.00 loops=1)
+   Execution Time: 10.432 ms
+   둘 다 idx_audit_row_history 를 고르지 않았습니다 — 플래너가 row_id 인덱스(와 table_name 인덱스)를 골랐고 1,000 개에 수 ms
+```
+
+### 🔴 체인 워커 충돌 (총괄께 알린 것)
+
+```
+체인 워커는 뜰 때 같은 DB 의 assy_chain · assy_chainslot* 이전 연결을 다 끊고, 죽은 슬롯 이름의 연결도 DB 전체에서 끊습니다
+10-10 00:12~00:18 제 스크래치 워커와 응용 레인 스택이 서로의 슬롯을 끊었습니다(제 슬롯 두 번 «server closed the connection»)
+판정 ① — 레인 사이 차례(알림 · 내림). 이번 증명은 그 규칙대로 돌렸습니다
+21:08(접기 표시) · 22:57(층 이름) 증명은 그때 다른 스택이 같은 DB 에 있었는지 안 쟀습니다 — 결과(층 4 -> 0 · agreed · x=a2!)는 그대로 둡니다
+```
+
+### 관찰 둘 (짓지 않음)
+
+```
+① 껍데기가 지워질 때마다 «[ChainRetract] hc_recount: 「mapper」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다» 경고 한 줄
+   다시 세기는 자기 표(지워진 그 행)에 쓰므로 그 칸은 행과 같이 갑니다 — 이 경우엔 맞지 않는 경고로 보입니다. 이번 증명에서 3 번
+② 쓸기 미리보기가 0 행일 때도 «Cannot be undone» 문장이 붙습니다
+```
+
+### 다음
+
+/admin/outbox/failed 500(dc220ed10) -> SLOT_POOL · foreign_beat -> 표 선언 인덱스 -> VALUES CAST -> 원장 해시 인덱스
