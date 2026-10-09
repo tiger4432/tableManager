@@ -1036,7 +1036,7 @@ const FLOORS = new Map([
   // New with lead f0e668bb8: File Ingestion's retry under a folder. The number on Retry is the
   // server's preview count, a changed folder needs a new preview, 0 is off with the server's words.
   // 17 -> 18 (E3, lead a30c55a13): the suggested folders are the FAILED rows' only.
-  ['folder_retry_harness.mjs', 18],
+  ['folder_retry_harness.mjs', 23],   // + F1-F5: «Include files that went in» (lead a4d135a06)
   //
   // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
   // sends, Pause asking once, two instances and a re-read.
@@ -1758,7 +1758,8 @@ const FLOORS = new Map([
   // ledger table's hand widths, Options and Menu inside the zoomed header, the Rules column's names broken (lead 10-09).
   // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
   //   and their two mutants (lead 10-09): 176 -> 184.
-  ['screen_layout_harness.mjs', 184],
+  // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
+  ['screen_layout_harness.mjs', 185],
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

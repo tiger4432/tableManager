@@ -29,20 +29,29 @@ const SERVER = {
   [EMPTY]: { status: 'preview', folder: EMPTY, count: 0, by_folder: {}, message: `No failed file under ${EMPTY}` },
 };
 const RETRIED = 'Decoupled mode: Marked 3 logs as PENDING_RETRY. Standalone watcher will process them.';
+// The same folder asked with the files that went in (server 04b40d64b's shape).
+const SERVER_IN = { status: 'preview', folder: LOT, count: 14, by_state: { FAILED: 2, SKIPPED: 1, SUCCESS: 11 }, by_folder: { a: 14 },
+  missing: 10, missing_files: ['m1.csv', 'm2.csv', 'm3.csv', 'm4.csv', 'm5.csv'], message: `14 file(s) under ${LOT}` };
 
 function seat(M, answers = {}) {
-  const calls = { preview: [], retry: [], refreshed: 0 };
+  const calls = { preview: [], retry: [], include: [], retryInclude: [], refreshed: 0 };
   const mount = makeNode(doc, 'div');
   doc.body.appendChild(mount);
   const part = new M.FolderRetryPanel(mount, {
     doc,
     rows: () => ROWS,
-    preview: async (folder) => {
+    preview: async (folder, include) => {
       calls.preview.push(folder);
+      calls.include.push(include);
       if (answers.previewFails) return { ok: false, text: 'Preview failed · 503' };
+      if (include && folder === LOT) return { ok: true, body: SERVER_IN };
       return { ok: true, body: SERVER[folder] || { status: 'preview', folder, count: 0, by_folder: {}, message: `No failed file under ${folder}` } };
     },
-    retry: async (folder) => { calls.retry.push(folder); return { ok: true, body: { status: 'success', message: RETRIED } }; },
+    retry: async (folder, include) => {
+      calls.retry.push(folder);
+      calls.retryInclude.push(include);
+      return { ok: true, body: { status: 'success', message: RETRIED } };
+    },
     onRetried: () => { calls.refreshed += 1; },
   });
   const cls = (c) => walk(mount).find((n) => String(n.className || '').split(/\s+/).includes(c));
@@ -130,6 +139,30 @@ async function suite(M) {
     ok(!options.some((o) => o.startsWith('D:')), `E3 ... from the FAILED rows only — a loaded file's folders are not offered [${options}]`);
   }
 
+  // ── F: the files that went in (lead a4d135a06): the toggle rides on the ask, and its preview is its own ────
+  {
+    const s = seat(M);
+    s.type(LOT);
+    await s.press('folder-retry-preview');
+    ok(s.calls.include[0] === false, `F1 off, the preview asks for the failed files only [${s.calls.include}]`);
+    const box = s.cls('folder-retry-include-box');
+    box.checked = true;
+    box.dispatch('change', {});
+    const run = s.cls('folder-retry-run');
+    ok(run.disabled === true && run.textContent === 'Retry' && run.attrs.title === M.FOLDER_RETRY_WORDS.previewFirst,
+      `F2 turning it on drops the old preview: Retry is off until this is previewed [${run.textContent}]`);
+    await s.press('folder-retry-preview');
+    ok(s.calls.include[1] === true && run.textContent === 'Retry 14',
+      `F3 on, the preview asks for the files that went in too, and Retry carries that count [${s.calls.include} · ${run.textContent}]`);
+    const rows = walk(s.cls('folder-retry-by')).filter((n) => n.tagName === 'DIV' && n !== s.cls('folder-retry-by'))
+      .map((n) => n.textContent);
+    const want = ['FAILED 2 · SKIPPED 1 · SUCCESS 11', 'a · 14', `${M.FOLDER_RETRY_WORDS.missing} 10: m1.csv, m2.csv, m3.csv, m4.csv, m5.csv, …`];
+    ok(JSON.stringify(rows) === JSON.stringify(want),
+      `F4 the answer as it came: by state, each folder, the files not where their record says [${rows}]`);
+    await s.press('folder-retry-run');
+    ok(s.calls.retryInclude[0] === true && s.calls.retry[0] === LOT, `F5 Retry sends the toggle its preview had [${s.calls.retryInclude}]`);
+  }
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -147,7 +180,15 @@ const DEFECTS = [
   ['the suggestions take every row, not the failed ones',
     (s) => s.replace('.filter((r) => r && isFailedStatus(r.status))', '.filter((r) => r)')],
   ['a changed folder keeps the old preview',
-    (s) => s.replace('return this.seen && this.seen.folder === this.folder() ? this.seen : null;', 'return this.seen;')],
+    (s) => s.replace('return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include() ? this.seen : null;',
+      'return this.seen && this.seen.include === this.include() ? this.seen : null;')],
+  ['a turned toggle keeps the old preview',
+    (s) => s.replace('return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include() ? this.seen : null;',
+      'return this.seen && this.seen.folder === this.folder() ? this.seen : null;')],
+  ['the toggle is not sent',
+    (s) => s.replace('const got = await this.preview(folder, include);', 'const got = await this.preview(folder, false);')],
+  ['the files not where their record says are not drawn',
+    (s) => s.replace("          ...(missing ? [`${FOLDER_RETRY_WORDS.missing} ${missing}: ${names.join(', ')}${missing > names.length ? ', …' : ''}`] : []),\n", '')],
   ['0 failed leaves Retry on',
     (s) => s.replace(": seen.count > 0 ? '' : seen.message", ": ''")],
 ];

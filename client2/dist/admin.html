@@ -899,6 +899,7 @@
     /* The field takes the free space of a wide row; a button that wraps onto its own line fills it. */
     .folder-retry-controls > * { flex: 1 1 auto; }
     .folder-retry-controls .folder-retry-folder { flex: 999 1 auto; min-width: 0; }
+    .folder-retry-controls .folder-retry-include { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
     .folder-retry-said, .folder-retry-by { overflow-wrap: anywhere; }
     /* Backfill (lead 09f0be40f) — the button or the date entry, then this collector's latest run. */
     .au-backfill-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
@@ -1363,7 +1364,8 @@
     .ov-row[data-tone="unknown"] .ov-row-word { color: var(--text-dim); }
     .ov-row-open,
     .ov-show-all,
-    .chain-queue-panel .chain-queue-refresh {
+    .chain-queue-panel .chain-queue-refresh,
+    #file-list-body .admin-btn {
       height: auto;
       padding: 0;
       border: 0;
@@ -1376,10 +1378,12 @@
     }
     .ov-row-open:focus,
     .ov-show-all:focus,
-    .chain-queue-panel .chain-queue-refresh:focus { outline: none; }
+    .chain-queue-panel .chain-queue-refresh:focus,
+    #file-list-body .admin-btn:focus { outline: none; }
     .ov-row-open:focus-visible,
     .ov-show-all:focus-visible,
-    .chain-queue-panel .chain-queue-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .chain-queue-panel .chain-queue-refresh:focus-visible,
+    #file-list-body .admin-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .ov-show-all { margin-top: var(--space-2); }
     .ov-row-body { border-bottom: 1px solid var(--border); }
     .ov-scroll { overflow-x: auto; }
@@ -1674,7 +1678,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-BVFOPi_y.js"></script>
+  <script type="module" crossorigin src="/assets/admin-CYjd0sFU.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-Mv2iG8s3.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">

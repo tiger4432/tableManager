@@ -523,6 +523,13 @@ const DRIVE = {
     ['Overview, every row unfolded', (c) => evaluate(c, `(() => {
       for (const row of document.querySelectorAll('.ov-row[aria-expanded="false"]')) row.click();
       return true; })()`).then(() => sleep(800))],
+    // The Retry row with «Include files that went in» turned on (lead a4d135a06).
+    ['File Ingestion, files that went in included', (c) => evaluate(c, `(() => {
+      location.hash = '#file';
+      return true; })()`).then(() => sleep(1500)).then(() => evaluate(c, `(() => {
+      const box = document.querySelector('.folder-retry-include-box'); if (!box) return false;
+      box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true }));
+      return true; })()`))],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
@@ -639,7 +646,12 @@ const MUTANTS = [
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
-    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh {\n      height: auto;', '    .ov-show-all {\n      height: auto;']] },
+    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn {\n      height: auto;',
+      '    .ov-show-all,\n    #file-list-body .admin-btn {\n      height: auto;']] },
+  // A file row's Retry boxed at the base button height again, 36 px in its 14 px line (lead a4d135a06's round).
+  { name: 'a file row Retry boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'file-list-body',
+    file: 'admin.html', edits: [['    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn {\n      height: auto;',
+      '    .chain-queue-panel .chain-queue-refresh {\n      height: auto;']] },
   { name: 'the ledger sources table back on its hand widths (Source 150px, the timestamp the rest)', entry: 'admin.html',
     rule: 'columns', at: 'ledger-sources', file: 'src/ledger_sources_panel.js', edits: [
       ["      if (fit) th.className = 'cell-fit';", "      th.style.width = { Source: '150px', State: '130px', Refused: '70px' }[label] || '';"],
