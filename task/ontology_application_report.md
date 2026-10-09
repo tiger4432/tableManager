@@ -37789,3 +37789,22 @@ D  세상 vf(void_formation)                              -        18 변 · qua
         -> 물음 ① 을 다시 여쭙니다: 둘째 세상을 무엇으로(박스 모델 셋 중 void 에 닿는 것은 void_formation 하나). 소유자가 «다른 가설의 모델»을
            새로 적는 이야기라면 그 세상의 mechanism_edge 행(모델 칸만 다른)을 누가 · 어디에 적을지가 시연 선언 절에 들어가야 합니다
 ```
+
+---
+
+## [C 응용] 10-09 진짜 프로세스로 — 접기 표시(df370a25f) 됩니다 · RUN.md 순서 그대로
+
+```
+모양   운영 런처 · a0928d89e · RUN.md 의 순서 그대로: 로그 표에 fold_mark(글자) · 복사 규칙 exclude: ["fold_mark"] · 띄우기(= 재기동)
+       세계 hold_world(로그 -> 공식 표 복사 + 다시 세기 -> 공식 표를 읽는 원장 소스) · 키 400 개 중 100 개를 값 다른 두 줄로 · public 변화 0 · 스키마 지움
+                                   로그 행   표시   공식 표 보류 빈   늦은 값이 선 공식 행   원자
+씨앗 뒤                              500      0      100             100                  300
+fold-rows --mark-column 미리보기      2.5 초 — 「100 row(s) are marked, 400 stay」
+fold-rows --mark-column --apply      3.4 초(+ 가라앉기 26 초)
+실행 뒤                              500      100    0               0                    400
+둘째 바퀴(미리보기 · 실행)              표시 0 · 수 전부 그대로
+chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) filled: fold_mark=100」
+                  「[ChainRetract] table=hc_log edited_rows=100 … cells_withdrawn=400」 · 다시 세기 rows_in=100
+판정   지운 행 0 · 표시된 행이 먹인 층을 거두고 보류가 다시 agreed · 원장이 그 키들의 원자를 냄 — pull 을 말해도 되는 줄입니다
+       RUN.md 의 «실행 뒤 볼 줄» 셋이 그대로 찍힘 · «무엇을 쓰는지 아직 모릅니다» 줄 0
+```
