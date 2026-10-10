@@ -2,6 +2,8 @@
 // time of its way's last edge, coloured by its group; numbers on a value axis, words in lanes (the most frequent first,
 // the rest «others»); the server's time page (the implementer's contract, faked here) adds the row's other edges, colour
 // by where their far end was reached; Load earlier / later widen it. Module, part and page; two parts on one screen.
+// The axis (lead 10-10, on the box): the pages' windows and the pressed side's walked points - another side's walked
+// point two days off stands at the edge, the window's points keep the width.
 //
 // CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
 import { fileURLToPath } from 'node:url';
@@ -38,6 +40,46 @@ const PAGE = {
   page: { mode: 'around', around: T(5), size: 1000, rows: 3, window: { from: T(1), to: T(7) }, earlier: 'E1', has_earlier: true,
     later: 'L1', has_later: false, not_event_time: 0 },
 };
+// The same walk with the − wafer's edge two days before the page's window.
+const WALK_FAR = { ...WALK, edges: [WALK.edges[0], { ...WALK.edges[1], occurred_at: '2026-09-29T05:00:00+00:00' }] };
+const TIME = /\d\d-\d\d \d\d:\d\d/;
+
+/** The walk page with `answer` walked: a press on the quantity's + cell, then Load earlier. */
+async function pageRun(M, answer) {
+  const urls = [];
+  const DECL = { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
+  const doc = makeDoc('light');
+  doc.head = doc.createElement('head');
+  const host = doc.createElement('div');
+  const handle = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+    const u = String(url);
+    urls.push(u);
+    const body = u.includes('around=') || u.includes('later=') || u.includes('earlier=') ? PAGE : DECL;
+    return { ok: true, status: 200, json: async () => body };
+  } });
+  await settle();
+  handle.state.type = 'wafer';
+  handle.state.asked = { type: 'wafer', keys: {}, positive: ['wp'], negative: ['wn'] };
+  handle.state.run = 'done';
+  handle.state.result = answer;
+  handle.render();
+  // The quantity section's + cell (the wafer section comes first and holds 30.5 too, read the other way).
+  const cell = walkAll(host).filter((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-col'] === '0' && /30\.5/.test(n._text || '')).pop();
+  if (cell) cell.dispatch('click', {});
+  await settle();
+  const q = (u) => Object.fromEntries(new URLSearchParams(String(u || '').split('?')[1] || ''));
+  const asks = urls.filter((u) => u.includes('around=') || u.includes('later=') || u.includes('earlier='));
+  const title = (walkAll(host).find((n) => n.className === 'wk-trend-title') || {})._text;
+  const dots = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key']).map((n) => n.attrs['data-key']).sort();
+  const edges = walkAll(host).filter((n) => n.tagName === 'TEXT' && has(n, 'wk-trend-edge')).map((n) => n._text.replace(TIME, 'TIME'));
+  const note = (walkAll(host).find((n) => n.className === 'wk-note' && TIME.test(n._text || '')) || {})._text || '';
+  const earlier = walkAll(host).find((n) => n.tagName === 'BUTTON' && n._text === 'Load earlier');
+  if (earlier) earlier.dispatch('click', {});
+  await settle();
+  const asks2 = urls.filter((u) => u.includes('earlier='));
+  return { cell: Boolean(cell), title, ask: asks.length ? q(asks[0]) : null, dots, earlier: asks2.length ? q(asks2[0]).earlier : null,
+    edges, local: note.endsWith('local time') };
+}
 
 async function seen(M) {
   const out = {};
@@ -53,7 +95,8 @@ async function seen(M) {
   const model = M.trend.trendModel([...walk, ...words, { t: null, value: 1, group: 0, key: 'x' }, { t: 4, value: true, group: 1, key: 'b' }]);
   out.model = [model.numbers.map((p) => p.value), model.lanes, model.words.filter((p) => p.lane === M.trend.OTHERS).map((p) => p.word),
     model.untimed, model.v];
-  out.t0 = [M.trend.walkedTime(walk, WALK.generated_at) === Date.parse(T(5)), M.trend.walkedTime([], WALK.generated_at) === Date.parse(T(12))];
+  out.t0 = [M.trend.walkedTime(walk, WALK.generated_at) === Date.parse(T(5)), M.trend.walkedTime([], WALK.generated_at) === Date.parse(T(12)),
+    M.trend.walkedTime(walk, WALK.generated_at, 0) === Date.parse(T(3))];
   // ── the part ──
   const part = () => {
     const doc = makeDoc('light');
@@ -89,39 +132,24 @@ async function seen(M) {
   b.show({ title: 'B', model: M.trend.trendModel(words), groups: ['Positive'], t0: null });
   const circles = (m) => walkAll(m).filter((n) => n.tagName === 'CIRCLE' && n.attrs['data-key']).length;
   out.two = [circles(m1), circles(m2), m1.children[0].children.length, m2.children[0].children.length];
+  // ── another side's walked point two days off (lead 10-10) ──
+  const farGroups = groupsOf(WALK_FAR, STARTS);
+  const farWalk = M.trend.walkPoints(indexGraph(WALK_FAR), farGroups, 'q1', COLUMN);
+  const farModel = M.trend.trendModel(M.trend.mergePoints(farWalk, M.trend.pagePoints(PAGE, farGroups, 'q1', COLUMN,
+    new Set(farWalk.map((p) => p.key)))), undefined, { windows: [M.trend.windowOf(PAGE)], group: 0 });
+  const far = part();
+  far.view.show({ title: 'far', model: farModel, groups: ['Positive', 'Negative'], t0: Date.parse(T(3)) });
+  const svg = walkAll(far.mount).find((n) => n.tagName === 'SVG' && n.attrs && n.attrs.viewBox);
+  const width = svg ? Number(String(svg.attrs.viewBox).split(' ')[2]) : 0;
+  const xs = walkAll(far.mount).filter((n) => n.tagName === 'CIRCLE' && n.attrs['data-key']).map((n) => Number(n.attrs.cx));
+  out.far = [farModel.t && farModel.t.map((t) => new Date(t).toISOString()), farModel.outside.map((o) => [o.group, o.before, o.n]),
+    xs.length, width > 0 && (Math.max(...xs) - Math.min(...xs)) / width >= 0.7,
+    walkAll(far.mount).filter((n) => n.tagName === 'TEXT' && has(n, 'wk-trend-edge')).map((n) => n._text.replace(TIME, 'TIME'))];
   // ── the page ──
-  {
-    const urls = [];
-    const DECL = { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
-    const doc = makeDoc('light');
-    doc.head = doc.createElement('head');
-    const host = doc.createElement('div');
-    const handle = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
-      const u = String(url);
-      urls.push(u);
-      const body = u.includes('around=') || u.includes('later=') || u.includes('earlier=') ? PAGE : DECL;
-      return { ok: true, status: 200, json: async () => body };
-    } });
-    await settle();
-    handle.state.type = 'wafer';
-    handle.state.asked = { type: 'wafer', keys: {}, positive: ['wp'], negative: ['wn'] };
-    handle.state.run = 'done';
-    handle.state.result = WALK;
-    handle.render();
-    // The quantity section's + cell (the wafer section comes first and holds 30.5 too, read the other way).
-    const cell = walkAll(host).filter((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-col'] === '0' && /30\.5/.test(n._text || '')).pop();
-    if (cell) cell.dispatch('click', {});
-    await settle();
-    const q = (u) => Object.fromEntries(new URLSearchParams(String(u || '').split('?')[1] || ''));
-    const asks = urls.filter((u) => u.includes('around=') || u.includes('later=') || u.includes('earlier='));
-    const title = (walkAll(host).find((n) => n.className === 'wk-trend-title') || {})._text;
-    const pageDots = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key']).map((n) => n.attrs['data-key']).sort();
-    const earlier = walkAll(host).find((n) => n.tagName === 'BUTTON' && n._text === 'Load earlier');
-    if (earlier) earlier.dispatch('click', {});
-    await settle();
-    const asks2 = urls.filter((u) => u.includes('earlier='));
-    out.pageRun = [Boolean(cell), title, asks.length ? q(asks[0]) : null, pageDots, asks2.length ? q(asks2[0]).earlier : null];
-  }
+  const run = await pageRun(M, WALK);
+  out.pageRun = [run.cell, run.title, run.ask, run.dots, run.earlier];
+  const farRun = await pageRun(M, WALK_FAR);
+  out.farPage = [farRun.ask && farRun.ask.around, farRun.dots, farRun.edges, farRun.local];
   return out;
 }
 
@@ -142,7 +170,8 @@ function suite(out) {
   eq('T3 the walk\'s points with a page\'s: one point a key', out.merged, ['c1', 'c2', 'c3', 'c4']);
   eq('T4 numbers on the value axis; words in lanes - the most frequent first, past eight «others»; a point without a time counted',
     out.model, [[30.5, 11], ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'others'], ['I', 'J', '✓'], 1, [11, 30.5]]);
-  eq('T5 the walked time: the latest walked point\'s, else the answer\'s', out.t0, [true, true]);
+  eq('T5 the walked time: the pressed side\'s latest walked point\'s (any side\'s when none is named), else the answer\'s', out.t0,
+    [true, true, true]);
   eq('T6 a dot a point: its group\'s colour, other rows faint, the walked ringed', out.dots,
     [['c1', 'is-g0', true], ['c2', 'is-g1', true], ['c3', 'is-g0', false], ['c4', 'is-other', false]]);
   eq('T7 the walked time dashed', out.dashed, true);
@@ -154,7 +183,11 @@ function suite(out) {
   eq('T11 two parts on one screen: each draws its own', out.two, [2, 11, 3, 3]);
   eq('T12 the page: a press on a value cell opens its trend, asks the server\'s page around the walked time, draws both, and Load earlier asks past the page',
     out.pageRun, [true, 'Q1 · measures (in) · value', { id: 'q1', follow: 'measures', direction: 'incoming', hops: '1',
-      around: new Date(Date.parse(T(5))).toISOString(), page: '1000' }, ['c1', 'c2', 'c3', 'c4'], 'E1']);
+      around: new Date(Date.parse(T(3))).toISOString(), page: '1000' }, ['c1', 'c2', 'c3', 'c4'], 'E1']);
+  eq('T13 another side\'s walked point two days off the window: the axis is the window and the pressed side\'s walked points, the window\'s points take most of its width, the far one says itself at the edge - the part, then the page (local time said)',
+    [out.far, out.farPage], [[[new Date(Date.parse(T(1))).toISOString(), new Date(Date.parse(T(7))).toISOString()], [[1, true, 1]], 3, true,
+      ['\u25c0 Negative walked TIME']],
+    [new Date(Date.parse(T(3))).toISOString(), ['c1', 'c3', 'c4'], ['\u25c0 Negative walked TIME'], true]]);
   return { ran: names.length, names, failures };
 }
 
@@ -192,6 +225,15 @@ const MUTANTS = [
     mutate: (t) => swap(t, "spec.hasLater === false ? TREND_WORDS.noLater : ''", "''") },
   { id: 'TM9', what: 'the walked time not dashed', catches: 'T7', ...VIEW,
     mutate: (t) => swap(t, 'if (spec.t0 !== null && spec.t0 >= t0 && spec.t0 <= t1) {', 'if (false) {') },
+  // The axis the lead found on the box (10-10), and what holds it.
+  { id: 'TM10', what: 'the axis every timed point again', catches: 'T13', ...TREND,
+    mutate: (t) => swap(t, 'const all = ts.length ? ts : timed.map((p) => p.t);', 'const all = timed.map((p) => p.t);') },
+  { id: 'TM11', what: 'the page draws without its windows and side', catches: 'T13', ...PAGE_,
+    mutate: (t) => swap(t, 'trendModel(points, undefined, { windows: t.pages.map(windowOf).filter(Boolean), group: t.group })', 'trendModel(points)') },
+  { id: 'TM12', what: 'no edge marker', catches: 'T13', ...VIEW,
+    mutate: (t) => swap(t, 'outside.filter((o) => o.before === before).forEach(', '[].forEach(') },
+  { id: 'TM13', what: 'the page asks around any side\'s latest walked point', catches: 'T12', ...PAGE_,
+    mutate: (t) => swap(t, 'walkedTime(own, r.generated_at, t.group)', 'walkedTime(own, r.generated_at)') },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;

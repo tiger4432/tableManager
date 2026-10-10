@@ -176,8 +176,15 @@ async function suite(mod, css = REAL_CSS) {
   bare.act.key('mat_id', 'M-1');
   await bare.act.plus();
   await bare.act.walk();
-  eq('L8 a type and a key, nothing else: the same request as before', bare.asked.filter((u) => u.includes('/subgraph'))[0],
-    BEFORE.bare);
+  eq('L8 a type and a key, nothing else: the same request as before, and node_limit at the server\'s most (lead 34d91c09d 9)',
+    bare.asked.filter((u) => u.includes('/subgraph'))[0], `${BEFORE.bare}&node_limit=${mod.NODE_LIMIT}`);
+  const limit = bare.find((e) => e.tagName === 'label' && e.children.some((c) => c.textContent === 'node_limit')
+    && e.children.some((c) => c.tagName === 'input'));
+  const limitInput = limit && limit.children.find((c) => c.tagName === 'input');
+  const counts = (bare.find((e) => e.className === 'wk-counts') || { textContent: '' }).textContent;
+  ok('L17 node_limit starts at the server\'s most and goes no higher; the counts line says how long the walk took (lead 34d91c09d 9)',
+    Boolean(limitInput) && limitInput.value === '1000' && limitInput.max === '1000' && / · \d+\.\d s$/.test(counts),
+    `${limitInput && limitInput.value} ${limitInput && limitInput.max} | ${counts}`);
   const sentFollow = (p) => {
     const url = p.asked.filter((u) => u.includes('/subgraph')).pop() || '';
     return new URLSearchParams(url.split('?')[1] || '').getAll('follow').join(',');
@@ -201,8 +208,8 @@ async function suite(mod, css = REAL_CSS) {
   const asked = title();
   page.act.key('mat_id', 'M-2');
   await page.act.unchip('wafer');
-  ok('L9 the title names the walk that was sent, and stays after the form changes',
-    asked === 'die M-1 · 12 → wafer' && title() === asked, `${asked} | ${title()}`);
+  ok('L9 the title names the walk that was sent - its baskets and what it collects (lead 34d91c09d 6) - and stays after the form changes',
+    asked === '+ 1 → wafer' && title() === asked, `${asked} | ${title()}`);
   ok('L10 × takes a collected type out and + Type offers it again',
     !page.find((e) => e.attrs && e.attrs['data-collect'] === 'wafer')
       && page.find((e) => e.className === 'wk-add').children.some((o) => o.value === 'wafer'));
@@ -295,6 +302,10 @@ const MUTANTS = [
   { id: 'W13', what: 'a route press no longer ticks anything', catches: 'L3 open',
     mutate: (t) => swap(t, '      state.follow = new Set([...state.follow, ...followFromRoute(allPredicates(), asked.follow)]);',
       '') },
+  { id: 'W14', what: 'node_limit left to the server again', catches: 'L8 a type',
+    mutate: (t) => swap(t, 'nodeLimit: String(NODE_LIMIT),', "nodeLimit: '',") },
+  { id: 'W15', what: 'the counts line says no time', catches: 'L17 ',
+    mutate: (t) => swap(t, ': `Nodes ${r.nodes.length} · Edges ${r.edges.length}`) + took));', ': `Nodes ${r.nodes.length} · Edges ${r.edges.length}`)));') },
 ];
 const run = async (m) => {
   ran = 0; NAMES.length = 0; failures = [];

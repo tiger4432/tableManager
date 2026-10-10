@@ -99,15 +99,16 @@ const SIGNED = {
     { id: 'd:3', type: 'die@1', label: 'D-3', depth: 2, keys: { mat_id: 'M-3' } },
     { id: 'd:4', type: 'die@1', label: 'D-4', depth: 1, keys: { mat_id: 'M-4' } },
   ],
-  edges: [{ id: 'e:a3', source: 's:a', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 7 } },
-    { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 9 } },
-    { id: 'e:a4', source: 's:a', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 1 } },
-    { id: 'e:c4', source: 's:c', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 2 } }],
+  edges: [{ id: 'e:a3', source: 's:a', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 7, note: null } },
+    { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 9, note: null } },
+    { id: 'e:a4', source: 's:a', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 1, note: null } },
+    { id: 'e:c4', source: 's:c', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 2, note: null } }],
   propagation: { ranked: [{ id: 'd:1', reach: [2, 0] }, { id: 'd:2', reach: [0, 1] }, { id: 'd:3', reach: [1, 1] },
     { id: 'd:4', reach: [2, 0] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
 const GATE_IN = 'inspected (in) · gate';
+const NOTE_IN = 'inspected (in) · note';
 const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
 
 let ran = 0;
@@ -489,17 +490,51 @@ async function suite(mod) {
     const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec')
       .find((sec) => sec.children[0] && /^die/.test(sec.children[0].textContent)) || { children: [] };
     const table = () => walkAll(dieSec()).find((e) => has(e, 'wk-sides')) || { children: [] };
-    const headRow = () => (walkAll(table()).filter((e) => e.tagName === 'tr')[1] || { children: [] }).children
+    // The head rows: the group, the step, the value's name (lead 34d91c09d (나)); the rows below carry their id.
+    const headRows = () => walkAll(table()).filter((e) => e.tagName === 'tr' && !(e.attrs && e.attrs['data-row-id']));
+    const headRow = () => (headRows()[headRows().length - 1] || { children: [] }).children
       .filter((c) => c.className !== 'wk-check').map((c) => c.textContent);
+    const stepRow = () => (headRows().length === 3 ? headRows()[1].children : []).filter((c) => c.className !== 'wk-check')
+      .map((c) => [c.textContent, c.colSpan]);
     const rowOf = (id) => walkAll(table()).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id);
     const tds = (id) => ((rowOf(id) || { children: [] }).children).filter((c) => c.className !== 'wk-check')
       .map((c) => (c.children.find((k) => k.className === 'wk-centrelabel') || c).textContent);
-    ok('Z13 two groups: the + columns, the node in the centre, the − columns, then delta',
-      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([[GATE_IN, 'mat_id', GATE_IN, 'Δ'], ['7', 'M-3', '9', '−2']]),
+    ok('Z13 two groups: the + columns, the node in the centre, delta beside it, the − columns (34d91c09d, as the lead answered)',
+      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['gate', 'mat_id', 'Δ', 'gate'], ['7', 'M-3', '−2', '9']]),
       JSON.stringify([headRow(), tds('d:3')]));
+    ok('Z27 the step once over the columns that share it, the value\'s name under each (34d91c09d)',
+      JSON.stringify(stepRow()) === JSON.stringify([['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1]]), JSON.stringify(stepRow()));
     const copy = walkAll(rowOf('d:3') || { children: [] }).find((e) => e.className === 'wk-copyid');
-    ok('Z16 the id is behind a press in the centre, not a column', Boolean(copy) && copy.attrs['data-id'] === 'd:3'
-      && !headRow().includes('id'), JSON.stringify(headRow()));
+    ok('Z16 the id is behind a press in the centre, not a column - an icon, its name for a reader (34d91c09d 5)',
+      Boolean(copy) && copy.attrs['data-id'] === 'd:3' && copy.textContent === '' && copy.attrs['aria-label'] === 'Copy id'
+      && !headRow().includes('id'), JSON.stringify([headRow(), copy && copy.textContent]));
+    const fire = (b) => { for (const fn of (b && b.listeners.click) || []) fn({ stopPropagation() {} }); };
+    // Several values (34d91c09d 1): the first and «+N»; a press on «+N» unfolds them all, another folds.
+    const moreOf = () => walkAll(rowOf('d:4') || { children: [] }).find((e) => e.className === 'wk-more');
+    const cellOf4 = () => ((rowOf('d:4') || { children: [] }).children.find((c) => c.children.includes(moreOf())));
+    const said = () => (cellOf4() ? [cellOf4()._text, moreOf().textContent, has(cellOf4(), 'is-open')] : null);
+    const shut = said();
+    fire(moreOf());
+    const opened = said();
+    fire(moreOf());
+    ok('Z24 several values in a cell: the first and «+N»; pressed, every one in the cell; pressed again, folded (34d91c09d 1)',
+      JSON.stringify([shut, opened, said()]) === JSON.stringify([['1', '+1', false], ['1 · 2', 'Less', true], ['1', '+1', false]]),
+      JSON.stringify([shut, opened, said()]));
+    const bands = walkAll(host).filter((e) => has(e, 'wk-sidehead')).map((e) => [e.attrs['data-sign'], has(e, 'wk-plus'), has(e, 'wk-minus')]);
+    ok('Z25 a band its sign\'s class - + one colour, − the other (34d91c09d 4)',
+      JSON.stringify(bands.slice(0, 2)) === JSON.stringify([['+', true, false], ['\u2212', false, true]]), JSON.stringify(bands));
+    // A column no row has a value in (34d91c09d 7): folded, said by its count; pressed, it stands in each group.
+    const foldOf = () => walkAll(dieSec()).find((e) => has(e, 'wk-emptycols'));
+    const folded = [foldOf() && foldOf().textContent, headRow()];
+    fire(foldOf());
+    const unfolded = [foldOf() && foldOf().attrs['aria-pressed'], headRow()];
+    const unfoldedSteps = stepRow();
+    fire(foldOf());
+    ok('Z26 «1 empty column»: pressed, the column stands in each group; pressed again, folded',
+      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]) === JSON.stringify([['1 empty column', ['gate', 'mat_id', 'Δ', 'gate']],
+        ['true', ['note', 'gate', 'mat_id', 'Δ', 'gate', 'note']], ['gate', 'mat_id', 'Δ', 'gate'],
+        [['inspected (in)', 2], ['', 1], ['', 1], ['inspected (in)', 2]]]),
+      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]));
     const press = (value) => {
       const b = walkAll(host).find((e) => e.attrs && e.attrs['data-rows'] === value);
       for (const fn of (b && b.listeners.click) || []) fn({});
@@ -525,11 +560,13 @@ async function suite(mod) {
     };
     const route = pick(0, (t) => t.startsWith('inspected (in) → '));
     const value = route && pick(1, (t) => t === 'key · wafer');
-    const ADDED = 'inspected (in) → wafer@1 · wafer';
+    const ADDED_STEP = 'inspected (in) → wafer@1';
     ok('Z15 + Column: a route the rows take, then what its end holds - a column each group, the + side reversed',
-      JSON.stringify([route, value, headRow(), tds('d:3')]) === JSON.stringify([true, true,
-        [ADDED, GATE_IN, 'mat_id', GATE_IN, ADDED, 'Δ'], ['A', '7', 'M-3', '9', 'B', '−2']]),
-      JSON.stringify([route, value, headRow(), tds('d:3')]));
+      JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]) === JSON.stringify([true, true,
+        ['wafer', 'gate', 'mat_id', 'Δ', 'gate', 'wafer'],
+        [[ADDED_STEP, 1], ['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1], [ADDED_STEP, 1]],
+        ['A', '7', 'M-3', '−2', '9', 'B']]),
+      JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]));
   }
 }
 
@@ -576,6 +613,12 @@ const sideSuite = (TV) => {
     const got = row && at >= 0 ? row.byGroup[group][at] : null;
     return got ? (got.missing ? `[${got.text}]` : got.text) : null;
   };
+  const raw = (table, type, id, head, group) => {
+    const sec = table.sections.find((x) => x.type === type);
+    const at = sec ? sec.heads.indexOf(head) : -1;
+    const row = sec && sec.rows.find((r) => r.id === id);
+    return row && at >= 0 ? row.byGroup[group][at] : null;
+  };
   const plain = view({ positive: ['s:a', 's:c'], negative: [] });
   ok('Z1 no - start: the one table it always was, every node in it, no group', plain.groups === null
     && plain.sections.every((x) => !x.groups) && rowIds(plain) === ALL, `${JSON.stringify(plain.groups)} ${rowIds(plain)}`);
@@ -591,8 +634,9 @@ const sideSuite = (TV) => {
   ok('Z5 a cell reads its group\'s edges only: the node both reached says each group\'s own value',
     cell(two, 'die@1', 'd:3', GATE_IN, 0) === '7' && cell(two, 'die@1', 'd:3', GATE_IN, 1) === '9',
     `${cell(two, 'die@1', 'd:3', GATE_IN, 0)} | ${cell(two, 'die@1', 'd:3', GATE_IN, 1)}`);
-  ok('Z6 several edges in one group: every value, none overwritten', cell(two, 'die@1', 'd:4', GATE_IN, 0) === '2 values · 1 · 2',
-    cell(two, 'die@1', 'd:4', GATE_IN, 0));
+  const d4 = raw(two, 'die@1', 'd:4', GATE_IN, 0) || {};
+  ok('Z6 several edges in one group: every value kept, none overwritten - the first said, «+N» the rest (34d91c09d 1)',
+    JSON.stringify([d4.text, d4.rest, d4.values]) === JSON.stringify(['1', '+1', ['1', '2']]), JSON.stringify(d4));
   const blind = view(SIGNED_STARTS, { ...SIGNED, propagation: null });
   ok('Z7 an answer that ranks nothing: one table, said to be both signs', blind.groups === null && blind.unsplit === true
     && rowIds(blind) === ALL, `${JSON.stringify(blind.groups)} ${blind.unsplit}`);
@@ -600,9 +644,9 @@ const sideSuite = (TV) => {
   const bareDie = bare.sections.find((x) => x.type === 'die@1') || { heads: [], rows: [] };
   const d3 = bareDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
   const d1 = bareDie.rows.find((r) => r.id === 'd:1') || { byGroup: [[], []] };
-  ok('Z8 a type with no column: how each group reached it - its last predicate and steps; missing where it did not',
-    JSON.stringify([bareDie.heads, d3.byGroup.map((g) => g.map((c) => c.text)), d1.byGroup[1].map((c) => c.missing)])
-      === JSON.stringify([['via', 'depth'], [['inspected', '1'], ['inspected', '1']], [true, true]]),
+  ok('Z8 a type with no column: how each group reached it - its last predicate and steps; missing where it did not, once across both',
+    JSON.stringify([bareDie.heads, d3.byGroup.map((g) => g.map((c) => c.text)), d1.byGroup[1].map((c) => [c.missing, c.span])])
+      === JSON.stringify([['via', 'depth'], [['inspected', '1'], ['inspected', '1']], [[true, 2]]]),
     JSON.stringify([bareDie.heads, d3.byGroup, d1.byGroup[1]]));
   const die = two.sections.find((x) => x.type === 'die@1') || { groups: [], heads: [], centreHeads: [], deltaHeads: [], rows: [] };
   const wafer = two.sections.find((x) => x.type === 'wafer@1') || { heads: [] };
@@ -622,9 +666,26 @@ const sideSuite = (TV) => {
   ok('Z18 an added column: its route\'s far node, a column of each group',
     cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 0) === 'A' && cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 1) === 'B',
     `${cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 0)} ${cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 1)}`);
+  const capped = TV.cellWords({ missing: false, values: [1, 2], more: true });
   ok('Z19 words: several values past the cap, and a difference without its float tail',
-    JSON.stringify([TV.cellWords({ missing: false, values: [1, 2], more: true }).text, TV.deltaWords(0.22 - 0.3305), TV.deltaWords(19.5)])
-      === JSON.stringify(['2+ values · 1 · 2', '−0.1105', '+19.5']), TV.deltaWords(0.22 - 0.3305));
+    JSON.stringify([capped.text, capped.rest, TV.deltaWords(0.22 - 0.3305), TV.deltaWords(19.5)])
+      === JSON.stringify(['1', '+1+', '−0.1105', '+19.5']), JSON.stringify(capped));
+  // The nine (lead 34d91c09d).
+  const moreDie = more.sections.find((x) => x.type === 'die@1') || { rows: [] };
+  const m1 = moreDie.rows.find((r) => r.id === 'd:1') || { byGroup: [[], []] };
+  const m3 = moreDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
+  ok('Z21 a side that did not reach the node: one missing cell across its columns; a side that did: a cell a column (34d91c09d 3)',
+    JSON.stringify([m1.byGroup[1].map((c) => [c.text, c.span]), m3.byGroup[0].length]) === JSON.stringify([[['missing', 2]], 2]),
+    JSON.stringify([m1.byGroup[1], m3.byGroup[0].length]));
+  const eqp = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e) => ({ ...e, qualifiers: { ...e.qualifiers, eqp: 'E' } })) });
+  const eqpDie = eqp.sections.find((x) => x.type === 'die@1') || { heads: [] };
+  ok('Z22 the number columns nearest the node, the rest outward, each in its order (34d91c09d 2)',
+    JSON.stringify(eqpDie.heads) === JSON.stringify([GATE_IN, 'inspected (in) · eqp']), JSON.stringify(eqpDie.heads));
+  const open = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), new Set(['die@1']));
+  const openDie = open.sections.find((x) => x.type === 'die@1') || { heads: [] };
+  ok('Z23 a column no row has a value in folds, counted; its type opened, it stands (34d91c09d 7)',
+    JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]) === JSON.stringify([[GATE_IN], { count: 1, open: false },
+      [GATE_IN, NOTE_IN], { count: 1, open: true }]), JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]));
 };
 qualifierSuite(await import('../src/walk/table_view.js'));
 sideSuite(await import('../src/walk/table_view.js'));
@@ -634,17 +695,31 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
   { id: 'NZ1', what: 'the page draws no band a group', catches: 'Z9',
-    from: '    thead.append(band, head);', to: '    thead.append(head);' },
+    from: '    thead.append(band, ...(section.parts', to: '    thead.append(...(section.parts' },
   { id: 'NZ2', what: 'the Next row gone from above its table', catches: 'Z9',
     from: '      // Next above its table, once (lead 3375edd9b).\n      if (checks) sec.append(nextRow(at, section, checks));\n', to: '' },
   { id: 'NZ3', what: 'the Compare view back', catches: 'Z10',
     from: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {",
     to: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph'], ['compare', 'Compare']]) {" },
   { id: 'NZ4', what: 'the + side not reversed', catches: 'Z15',
-    from: '      const heads = pair && i === 0 ? [...section.heads].reverse() : section.heads;', to: '      const heads = section.heads;' },
+    from: '      const parts = pair && i === 0 ? [...section.parts].reverse() : section.parts;', to: '      const parts = section.parts;' },
   { id: 'NZ5', what: 'the node first, not in the centre', catches: 'Z13',
-    from: '    if (pair) { side(section.groups[0], 0); centre(); side(section.groups[1], 1); } else { centre(); section.groups.forEach(side); }',
-    to: '    { centre(); section.groups.forEach(side); }' },
+    from: '    if (pair) { side(section.groups[0], 0); centre(); delta(); side(section.groups[1], 1); } else { centre(); section.groups.forEach(side); }',
+    to: '    { centre(); section.groups.forEach(side); delta(); }' },
+  { id: 'NZ11', what: 'delta last again, past the − side', catches: 'Z13',
+    from: '      if (pair) { group(0); node(); deltas(); group(1); }', to: '      if (pair) { group(0); node(); group(1); deltas(); }' },
+  { id: 'NZ12', what: 'the step said in every head again', catches: 'Z26',
+    from: '        if (k > 0 && parts[k - 1].step === p.step) {', to: '        if (false) {' },
+  { id: 'NZ13', what: 'no step row', catches: 'Z27',
+    from: '    thead.append(band, ...(section.parts.some((p) => p.step) ? [steps] : []), head);', to: '    thead.append(band, head);' },
+  { id: 'NZ7', what: 'several values on one line again', catches: 'Z24',
+    from: '      if (cell.rest) {', to: '      if (false) {' },
+  { id: 'NZ8', what: 'one band colour for both signs', catches: 'Z25',
+    from: '`wk-sidehead ${cls}`', to: "'wk-sidehead'" },
+  { id: 'NZ9', what: 'the empty-column press does nothing', catches: 'Z26',
+    from: 'if (state.emptyOpen.has(section.type)) state.emptyOpen.delete(section.type); else state.emptyOpen.add(section.type);', to: '' },
+  { id: 'NZ10', what: 'Copy id in words again', catches: 'Z16',
+    from: "copy.append(el(doc, 'span', 'wk-copyicon'));", to: "copy.append(el(doc, 'span', 'wk-copyicon', 'Copy id'));" },
   { id: 'NZ6', what: 'the filter draws every row', catches: 'Z14',
     from: "(state.rowFilter === 'differs' ? row.differs : row.missing)", to: 'true' },
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
@@ -753,8 +828,8 @@ const TV_MUTANTS = [
     from: '  const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));',
     to: '  const members = nodes.filter((n) => groups[0].inside.has(n.id));' },
   { id: 'ZM2', what: 'the node\'s own columns a group\'s, not the centre\'s', catches: 'Z17',
-    from: '    const centre = all.filter((c) => !c.steps.length);\n    const columns = all.filter((c) => c.steps.length);',
-    to: '    const centre = [];\n    const columns = all;' },
+    from: '    const ownAll = all.filter((c) => !c.steps.length);\n    const ownCells = rows.map((node) => ownAll.map((c) => cellOf(index, new Set([node.id]), node.id, c)));\n    const sideAll = all.filter((c) => c.steps.length);',
+    to: '    const ownAll = [];\n    const ownCells = rows.map(() => []);\n    const sideAll = all;' },
   { id: 'ZM3', what: 'groups even without a - start', catches: 'Z1 ',
     from: '  const groups = negative.length\n    ? groupsOf(', to: '  const groups = true\n    ? groupsOf(' },
   { id: 'ZM4', what: 'no delta column', catches: 'Z12',
@@ -769,6 +844,12 @@ const TV_MUTANTS = [
     from: ', ...(added.get(type) || [])];', to: '];' },
   { id: 'ZM9', what: 'a difference keeps its float tail', catches: 'Z19',
     from: '  const n = Number(delta.toPrecision(10));', to: '  const n = delta;' },
+  { id: 'ZM10', what: 'a side that did not reach: a missing cell a column again', catches: 'Z21',
+    from: '        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];\n', to: '' },
+  { id: 'ZM11', what: 'the columns in their found order, numbers anywhere', catches: 'Z22',
+    from: "\n      .sort((p, q) => (kindsAll[q] === 'number') - (kindsAll[p] === 'number'));", to: ';' },
+  { id: 'ZM12', what: 'an empty column drawn', catches: 'Z23',
+    from: '.filter((c) => keep || !sideEmpty[c])', to: '.filter(() => true)' },
   { id: 'QM1', what: 'several edges into one node: the last edge\'s value wins again', catches: 'Q1',
     from: "      said[name] = list.length === 1 ? list[0].value\n", to: "      said[name] = list.length >= 1 ? list[list.length - 1].value\n" },
 ];

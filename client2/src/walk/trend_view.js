@@ -12,6 +12,8 @@ const W = 900;
 const PAD = { l: 136, r: 16, t: 14, b: 30 };
 const NUMBER_H = 200;
 const LANE_H = 26;
+/** A line above the picture for each walked point off the axis on one side (lead 10-10). */
+const EDGE_H = 18;
 
 export const TREND_WORDS = Object.freeze({
   title: 'Trend',
@@ -24,6 +26,9 @@ export const TREND_WORDS = Object.freeze({
   other: 'Other rows',
   walked: 'Dashed: the walked time',
   untimed: (n) => `${unitText(n, 'point')} without a time`,
+  // The axis is in this screen's time; the server's windows are UTC (lead 10-10).
+  local: 'local time',
+  edge: (word, time, n) => `${word} walked ${time}${n > 1 ? ` (+${n - 1})` : ''}`,
 });
 
 export class TrendView {
@@ -66,7 +71,7 @@ export class TrendView {
     const head = this._el('div', 'wk-trend-head');
     head.append(this._el('span', 'wk-label', TREND_WORDS.title), this._el('span', 'wk-trend-title', spec.title));
     const points = model.numbers.length + model.words.length;
-    const said = model.t ? `${unitText(points, 'point')} · ${localMinute(new Date(model.t[0]).toISOString())} → ${localMinute(new Date(model.t[1]).toISOString())}` : '';
+    const said = model.t ? `${unitText(points, 'point')} · ${localMinute(new Date(model.t[0]).toISOString())} → ${localMinute(new Date(model.t[1]).toISOString())} ${TREND_WORDS.local}` : '';
     head.append(this._el('span', 'wk-note', [said, model.untimed ? TREND_WORDS.untimed(model.untimed) : ''].filter(Boolean).join(' · ')));
     const acts = this._el('span', 'wk-trend-acts');
     if (spec.onEarlier) acts.append(this._button(TREND_WORDS.earlier, spec.onEarlier, spec.hasEarlier === false ? TREND_WORDS.noEarlier : ''));
@@ -79,13 +84,16 @@ export class TrendView {
       return;
     }
     const numberH = model.numbers.length ? NUMBER_H : 0;
-    const H = PAD.t + numberH + model.lanes.length * LANE_H + PAD.b;
+    const outside = model.outside || [];
+    const edges = Math.max(outside.filter((o) => o.before).length, outside.filter((o) => !o.before).length);
+    const top = PAD.t + edges * EDGE_H;
+    const H = top + numberH + model.lanes.length * LANE_H + PAD.b;
     const svg = this._svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'wk-trend-svg', role: 'img', 'aria-label': `${TREND_WORDS.title} · ${spec.title}` });
     const [t0, t1] = model.t[0] === model.t[1] ? [model.t[0] - 3600000, model.t[1] + 3600000] : model.t;
     const x = (t) => PAD.l + ((t - t0) / (t1 - t0)) * (W - PAD.l - PAD.r);
     if (numberH) {
       const [v0, v1] = model.v[0] === model.v[1] ? [model.v[0] - 1, model.v[1] + 1] : model.v;
-      const y = (v) => PAD.t + (1 - (v - v0) / (v1 - v0)) * (numberH - 10);
+      const y = (v) => top + (1 - (v - v0) / (v1 - v0)) * (numberH - 10);
       for (const v of [v0, (v0 + v1) / 2, v1]) {
         svg.append(this._svg('line', { x1: PAD.l, x2: W - PAD.r, y1: y(v), y2: y(v), class: 'wk-trend-grid' }));
         svg.append(this._svg('text', { x: PAD.l - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'wk-trend-word' }, String(Number(v.toPrecision(6)))));
@@ -93,7 +101,7 @@ export class TrendView {
       for (const p of model.numbers) svg.append(this._dot(x(p.t), y(p.value), p));
     }
     model.lanes.forEach((lane, i) => {
-      const ly = PAD.t + numberH + i * LANE_H + LANE_H / 2;
+      const ly = top + numberH + i * LANE_H + LANE_H / 2;
       svg.append(this._svg('line', { x1: PAD.l, x2: W - PAD.r, y1: ly, y2: ly, class: 'wk-trend-grid' }));
       svg.append(this._svg('text', { x: PAD.l - 8, y: ly + 4, 'text-anchor': 'end', class: `wk-trend-word${lane === OTHERS ? ' is-others' : ''}` }, lane));
       for (const p of model.words.filter((w) => w.lane === lane)) svg.append(this._dot(x(p.t), ly + jitter(p.key), p));
@@ -104,7 +112,15 @@ export class TrendView {
         localMinute(new Date(t).toISOString()).slice(5)));
     }
     if (spec.t0 !== null && spec.t0 >= t0 && spec.t0 <= t1) {
-      svg.append(this._svg('line', { x1: x(spec.t0), x2: x(spec.t0), y1: PAD.t, y2: H - PAD.b, class: 'wk-trend-t0' }));
+      svg.append(this._svg('line', { x1: x(spec.t0), x2: x(spec.t0), y1: top, y2: H - PAD.b, class: 'wk-trend-t0' }));
+    }
+    // A walked point off the axis says itself at that edge, in its group's colour; it does not stretch the axis.
+    for (const before of [true, false]) {
+      outside.filter((o) => o.before === before).forEach((o, i) => {
+        const word = TREND_WORDS.edge(o.group === null ? TREND_WORDS.other : spec.groups[o.group], localMinute(new Date(o.t).toISOString()).slice(5), o.n);
+        svg.append(this._svg('text', { x: before ? PAD.l : W - PAD.r, y: PAD.t + i * EDGE_H + 12, 'text-anchor': before ? 'start' : 'end',
+          class: `wk-trend-edge ${o.group === null ? 'is-other' : `is-g${o.group}`}` }, before ? `◀ ${word}` : `${word} ▶`));
+      });
     }
     this.root.append(svg);
     const legend = this._el('div', 'wk-trend-legend');

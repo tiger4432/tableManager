@@ -46,33 +46,60 @@ export function mergePoints(walk, page) {
 
 const isNumber = (v) => typeof v === 'number' && Number.isFinite(v);
 
+/** A time page's window, ms: the first and last time it holds; none for an empty page. */
+export function windowOf(answer) {
+  const w = answer && answer.page && answer.page.window;
+  const span = w ? [Date.parse(w.from), Date.parse(w.to)] : [];
+  return span.length && span.every(Number.isFinite) ? span : null;
+}
+
+/**
+ * The time axis (lead 10-10, on the box: one side's walked point two days off squeezed 2,000 points into one line at the
+ * right): the time pages' windows and the pressed side's walked points. Without either, every timed point.
+ */
+function axisOf(timed, frame) {
+  const ts = [...(frame.windows || []).flat(),
+    ...timed.filter((p) => p.walked && p.group === frame.group).map((p) => p.t)];
+  const all = ts.length ? ts : timed.map((p) => p.t);
+  return all.length ? [Math.min(...all), Math.max(...all)] : null;
+}
+
 /**
  * The chart's model: the numbers on a value axis, the rest in lanes - one a value, the most frequent first, past
- * `lanes` the rest in «others» - the time span, the value span, and how many points had no time.
+ * `lanes` the rest in «others» - the time span, the value span, and how many points had no time. A point outside the
+ * axis is not drawn; each group's before and after it say themselves at the edge (`outside`: the nearest time, how many).
  */
-export function trendModel(points, lanes = LANES) {
-  const timed = points.filter((p) => p.t !== null);
+export function trendModel(points, lanes = LANES, frame = {}) {
+  const span = axisOf(points.filter((p) => p.t !== null), frame);
+  const timed = points.filter((p) => p.t !== null && p.t >= span[0] && p.t <= span[1]);
+  const outside = [];
+  for (const p of points.filter((x) => x.t !== null && (x.t < span[0] || x.t > span[1]))) {
+    const before = p.t < span[0];
+    const at = outside.find((o) => o.group === p.group && o.before === before);
+    if (!at) outside.push({ group: p.group, before, t: p.t, n: 1 });
+    else { at.n += 1; if (before ? p.t > at.t : p.t < at.t) at.t = p.t; }
+  }
   const numbers = timed.filter((p) => isNumber(p.value));
   const words = timed.filter((p) => !isNumber(p.value)).map((p) => ({ ...p, word: valueWords(p.value) }));
   const counts = new Map();
   for (const p of words) counts.set(p.word, (counts.get(p.word) || 0) + 1);
   const order = [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([w]) => w);
   const kept = new Set(order.slice(0, lanes));
-  const ts = timed.map((p) => p.t);
   const vs = numbers.map((p) => p.value);
   return {
     numbers,
     words: words.map((p) => ({ ...p, lane: kept.has(p.word) ? p.word : OTHERS })),
     lanes: [...order.slice(0, lanes), ...(order.length > lanes ? [OTHERS] : [])],
-    t: ts.length ? [Math.min(...ts), Math.max(...ts)] : null,
+    t: timed.length ? span : null,
     v: vs.length ? [Math.min(...vs), Math.max(...vs)] : null,
-    untimed: points.length - timed.length,
+    untimed: points.filter((p) => p.t === null).length,
+    outside,
   };
 }
 
-/** The walked time: the latest walked point's, else the answer's own time. */
-export function walkedTime(points, asOf) {
-  const ts = points.filter((p) => p.walked && p.t !== null).map((p) => p.t);
+/** The walked time: the pressed side's latest walked point's (any side's when none is named), else the answer's. */
+export function walkedTime(points, asOf, group) {
+  const ts = points.filter((p) => p.walked && p.t !== null && (group === undefined || p.group === group)).map((p) => p.t);
   if (ts.length) return Math.max(...ts);
   const t = Date.parse(asOf);
   return Number.isFinite(t) ? t : null;
