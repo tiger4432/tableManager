@@ -144,11 +144,11 @@ export const WALK_CSS = `
 .wk-basket { display: flex; flex-direction: column; gap: var(--space-2); }
 .wk-baskethead { display: flex; align-items: center; gap: var(--space-2); }
 .wk-basketcount { font-variant-numeric: tabular-nums; color: var(--text-dim); }
-.wk-basketadd, .wk-basketremove { margin-left: auto; padding: 0 var(--space-2); font: inherit; background: none;
-  border: 0; border-radius: 0; cursor: pointer; }
-.wk-basketadd { font-weight: 700; color: var(--accent); }
-.wk-basketadd[disabled] { opacity: 0.45; cursor: default; }
-.wk-basketremove { flex: none; color: var(--text-dim); }
+.wk-basketadd { align-self: flex-start; min-height: 44px; padding: 0 var(--space-4); font: inherit; font-weight: 600;
+  color: var(--accent); background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+.wk-basketadd[disabled] { opacity: 0.45; cursor: not-allowed; }
+.wk-basketremove { flex: none; margin-left: auto; padding: 0 var(--space-2); font: inherit; color: var(--text-dim);
+  background: none; border: 0; border-radius: 0; cursor: pointer; }
 .wk-basketrow { display: flex; align-items: baseline; gap: var(--space-2); padding-top: var(--space-1);
   border-top: 1px solid var(--border); }
 .wk-basketlabel { min-width: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }

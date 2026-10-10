@@ -49,7 +49,7 @@ import { entitySeedId } from '../rnd_board/api.js';
 import { markingIntent } from '../rnd_board/panel.js';
 // The words other screens already draw for the same facts, spelled once.
 import { CHOOSE, FAILED, LOADING, WALKING, unitText } from '../ui_words.js';
-import { UNKNOWN, UNPICKED } from '../absent.js';
+import { UNKNOWN, UNPICKED, isBlank } from '../absent.js';
 // The worlds the walk reads (lead 99032248f): one seat, every request through it; the picker is a part.
 import { withWorld, worldList, addressFor } from '../world.js';
 import { BranchPicker } from '../branch_picker.js';
@@ -128,14 +128,24 @@ export function boot(doc, host, deps) {
   const graphMount = el(doc, 'div', 'wk-graph');
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
     worldChips: worlds.length > 1, declaration: () => state.decl });
-  /** The node PICK A NODE holds now, as a basket takes it; none until a type and a key are given. */
-  const pickedNode = () => (state.type && Object.keys(state.keys || {}).length
-    ? { id: entitySeedId(state.type, state.keys), label: Object.values(state.keys).join(' · '), type: state.type, keys: { ...state.keys } }
-    : null);
+  /** The form's subject as the baskets' + takes it - picked from the list or typed; none until a type and a key. */
+  const pickedNode = () => {
+    const keys = Object.fromEntries(Object.entries(state.keys || {}).filter(([, v]) => !isBlank(v)));
+    return state.type && Object.keys(keys).length
+      ? { id: entitySeedId(state.type, keys), label: Object.values(keys).join(' · '), type: state.type, keys }
+      : null;
+  };
   const sideMount = el(doc, 'div', 'wk-side');
   const baskets = new StartBaskets(sideMount, { doc, markings, name: GRAPH_CHAIN[0], picked: pickedNode });
   /** A start's name as its basket took it. */
   const startLabel = (id) => (baskets.describe(id) || {}).label;
+  // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
+  const goReason = () => (state.run === 'running'
+    ? RUNNING
+    : (seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length ? '' : BASKET_WORDS.noStart));
+  // Walk follows the baskets as they change, not only when the page redraws.
+  let goButton = null;
+  markings.subscribe(GRAPH_CHAIN[0], () => { if (goButton) setDisabledReason(goButton, goReason()); });
   const compareMount = el(doc, 'div', 'wk-compare');
   const compare = new CompareView(compareMount, { doc, walk, markings, startsName: GRAPH_CHAIN[0], spec,
     declaration: () => state.decl, labelOf: (id) => startLabel(id) || id });
@@ -322,7 +332,8 @@ export function boot(doc, host, deps) {
       const input = el(doc, 'input', 'wk-input');
       input.type = 'text';
       input.value = state.keys[k] === undefined ? '' : state.keys[k];
-      input.addEventListener('input', () => { state.keys[k] = input.value; });
+      // A typed key is the subject too: the baskets' + follows it (only the baskets redraw, the caret stays).
+      input.addEventListener('input', () => { state.keys[k] = input.value; baskets.render(); });
       grid.append(cell(k, input));
     }
     if (keys.length) start.append(grid);
@@ -495,10 +506,8 @@ export function boot(doc, host, deps) {
   function renderGo(root) {
     const go = el(doc, 'button', 'wk-go', state.run === 'running' ? RUNNING : 'Walk');
     go.type = 'button';
-    // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
-    setDisabledReason(go, state.run === 'running'
-      ? RUNNING
-      : (seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length ? '' : BASKET_WORDS.noStart));
+    goButton = go;
+    setDisabledReason(go, goReason());
     go.addEventListener('click', () => { void fire(); });
     root.append(go);
   }

@@ -380,9 +380,7 @@ const PART_DEFECTS = [
    (s) => s.replace("    setDisabledReason(btn, this.nodeType ? '' : PICK_START_TYPE);",
                     "    if (!this.nodeType) btn.setAttribute('disabled', 'disabled');")],
   ['M9 「날리기」가 말 없이 꺼진다 -> K2/K3', WALKPAGE,
-   (s) => s.replace("    setDisabledReason(go, state.run === 'running'\n      ? RUNNING\n"
-                    + "      : (seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length ? '' : BASKET_WORDS.noStart));",
-                    "    go.disabled = state.run === 'running' || !seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length;")],
+   (s) => s.replace("    setDisabledReason(go, goReason());", "    go.disabled = Boolean(goReason());")],
 ];
 const CONTROLS = [
   ['좌석의 주석 한 낱말', SEAT, (s) => s.replace('넷»이었습니다', '다섯»이었습니다')],
