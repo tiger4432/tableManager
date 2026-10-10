@@ -1065,7 +1065,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[Y] a new start keeps nothing of the last picture: no mark, no fold, no opened lump (lead 10-07)');
-  if (want(["Y1", "Y2", "Y3", "Y4", "Y5", "Y6"])) {
+  if (want(["Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7"])) {
     const markings = new MarkingStore();
     const s = await seat([BUNDLES, OPENED, WAFER], { markings, chain: ['y0', 'y1', 'y2'] });
     // The last picture: an unsent lump walked and opened, then a node marked that the next start does not reach.
@@ -1123,6 +1123,16 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     say('Y6 the same start walked anew is a new picture: its marks go, on the node drawn again too',
       r.urls.length === 1 && r.markings.count('r1') === 0 && Boolean(again) && again.nonempty() && !again.hasClass('is-marked'),
       JSON.stringify({ urls: r.urls.length, r1: r.markings.count('r1'), marked: again && again.nonempty() && again.hasClass('is-marked') }));
+    // The page's chosen branch drawn again from its start (lead 5ea461e04): its marks are the steps' checks - kept.
+    if (node) press(r, node.id());
+    mark(r.host);
+    r.urls.length = 0;
+    await r.view.show({ keep: true });
+    await settle();
+    const kept = node && r.view.cy.getElementById(node.id());
+    say('Y7 the page\'s branch drawn again from the same start: walked once, its marks kept, on the node drawn again too',
+      r.urls.length === 1 && r.markings.count('r1') === 1 && Boolean(kept) && kept.nonempty() && kept.hasClass('is-marked'),
+      JSON.stringify({ urls: r.urls.length, r1: r.markings.count('r1'), marked: kept && kept.nonempty() && kept.hasClass('is-marked') }));
   }
 
   console.log('\n[U] a lump on its way says so; pressed again meanwhile it asks nothing more (lead 10-07)');
@@ -1873,11 +1883,12 @@ const failures = [];
     M('X2m', 'a press that wanders past the library\'s 4 px drags again (lead 5f1eb137e)', 'X2',
       '      boxSelectionEnabled: false, desktopTapThreshold: TAP_SLOP });', '      boxSelectionEnabled: false });'),
     M('Y1m', 'a new start keeps the last picture\'s marks (lead 10-07)', 'Y1',
-      '    for (const name of this.watched) if (name !== start) this.markings.clear(name);\n', ''),
+      '    if (!opts.keep) for (const name of this.watched) if (name !== start) this.markings.clear(name);\n', ''),
     { ...M('Y2m', 'the same start shown again loses its marks', 'Y5'),
-      mutate: (t) => swap(swap(t, '    for (const name of this.watched) if (name !== start) this.markings.clear(name);\n', ''),
+      mutate: (t) => swap(swap(t, '    if (!opts.keep) for (const name of this.watched) if (name !== start) this.markings.clear(name);\n', ''),
         '    if (opts.reuse && key === this.asked',
         '    for (const name of this.watched) if (name !== start) this.markings.clear(name);\n    if (opts.reuse && key === this.asked') },
+    M('Y7m', 'the page\'s branch drawn again loses its steps\' checks', 'Y7', '    if (!opts.keep) for (const name', '    if (true) for (const name'),
     M('Y3m', 'a new start clears every name on the page, not only its chain', 'Y4',
       'for (const name of this.watched) if (name !== start) this.markings.clear(name);',
       'for (const name of this.markings.names().filter((n) => n !== start)) this.markings.clear(name);'),

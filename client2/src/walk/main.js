@@ -123,7 +123,7 @@ export function boot(doc, host, deps) {
 
   const state = {
     decl: null, declState: 'loading', declReason: '',
-    type: '', keys: {}, follow: new Set(), collect: new Set(),
+    type: '', keys: {}, follow: new Set(), collect: new Set(), leaf: 0,
     direction: '', hops: '', nodeLimit: String(NODE_LIMIT), fanoutLimit: '',
     // How long the shown walk took, ms (lead 34d91c09d 9: a slower walk says so in the counts line).
     run: 'idle', result: null, reason: '', took: null,
@@ -166,9 +166,10 @@ export function boot(doc, host, deps) {
   /** The graph's names past the table's steps, made when it asks; a new table step drops them. */
   const tail = [];
   /** The marking the graph's step k walks from (0: the start) - its Mark writes the next: the form walk's checks, each
-   *  step's, then the graph's own. */
+   *  step's on the chosen branch (lead 5ea461e04), then the graph's own. */
   const chainAt = (k) => {
-    const names = [START, state.marks, ...state.steps.map((s) => s.marks)];
+    if (k === 0) return START;
+    const names = [START, state.marks, ...pathTo(state.leaf).map((s) => s.marks)];
     while (names.length + tail.length <= k) tail.push(nextMarks());
     return [...names, ...tail][k];
   };
@@ -206,6 +207,18 @@ export function boot(doc, host, deps) {
   markings.subscribe(START, () => { if (goButton) setDisabledReason(goButton, goReason()); });
   /** The graph walks the start marking as it stands. */
   const showGraph = (opts) => { graph.show(opts); };
+  /** The graph on the chosen branch (lead 5ea461e04): from the start, then on from each step's checks as far as they go;
+   *  the same branch drawn already is not walked again. */
+  let drawnBranch = null;
+  async function showBranch() {
+    const branch = JSON.stringify([state.marks, ...pathTo(state.leaf).map((s) => s.marks)]);
+    if (branch === drawnBranch && graph.state === 'done') return;
+    drawnBranch = branch;
+    await graph.show({ keep: true });
+    while (graph.state === 'done' && graph.steps.length <= pathTo(state.leaf).length && markings.count(graph.writes())) {
+      await graph.continueWalk();
+    }
+  }
   // 🔴 체크칸은 선언된 술어 «전부» (소유자 10-06 「엣지 리스트 다 주고 체크하는걸 메인으로」).
   //    거르는 것은 걷기의 일입니다. R&D 걷기 상자는 동결이라 닿는 것만 그립니다.
   const declaredPredicates = () => (state.decl && state.decl.predicates) || [];
@@ -269,7 +282,7 @@ export function boot(doc, host, deps) {
     state.asked = { ...asked, keys: { ...asked.keys }, positive: starts.positive, negative: starts.negative };
     // A new start clears the steps and what their checks wrote, as the graph's new start does (lead 53050a4ec).
     dropMarks([{ marks: state.marks }, ...state.steps]);
-    state.steps = []; state.at = 0; state.marks = nextMarks();
+    state.steps = []; state.at = 0; state.leaf = 0; state.marks = nextMarks();
     render();
     const began = Date.now();
     const res = await walk(asked);
@@ -283,27 +296,40 @@ export function boot(doc, host, deps) {
     render();
   }
 
-  // ── the table's steps (lead 53050a4ec): a step's checked rows are the page's marking the graph reads too ──
+  // ── the table's steps (lead 53050a4ec), a tree (lead 5ea461e04): the form's walk is step 0, each Next a child of
+  //    the step it was pressed on; `leaf` ends the chosen branch, `at` is the step shown on it ──
+  let stepSeq = 0;
+  const stepOf = (id) => state.steps.find((s) => s.id === id) || null;
+  /** The steps from the form's walk down to `id`, the form's walk not among them. */
+  const pathTo = (id) => { const out = []; for (let s = stepOf(id); s; s = stepOf(s.parent)) out.unshift(s); return out; };
+  /** A step and every step walked on from it. */
+  const subtree = (id) => [stepOf(id), ...state.steps.filter((s) => s.parent === id).flatMap((s) => subtree(s.id))];
   /** The marking a step's checks write - its own, the graph's chain after its start. */
-  const checksOf = (at) => (at === 0 ? state.marks : state.steps[at - 1].marks);
+  const checksOf = (at) => (at === 0 ? state.marks : stepOf(at).marks);
   /** The step shown: the form's walk, or one walked on from it. */
   const shownStep = () => (state.at === 0
     ? { run: state.run, result: state.result, reason: state.reason, took: state.took }
-    : state.steps[state.at - 1]);
+    : stepOf(state.at));
 
-  /** From the rows checked on step `at` (+ and -), one step along `route`; it stands after `at`, the steps beyond it go.
-   *  The form's knobs ride along; the step's own hops is its one. */
+  /** From the rows checked on step `at` (+ and -), one step along `route`: a child of `at`, its siblings kept; the same
+   *  edge from `at` again walks that branch again - it and the steps under it go, their markings with them. The form's
+   *  knobs ride along; the step's own hops is its one. */
   async function walkOn(at, seeds, route) {
     const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
-    const step = { title: `${route.predicate} → ${route.to}`, asked, run: 'running', result: null, reason: '', marks: nextMarks() };
-    dropMarks(state.steps.slice(at));
-    state.steps = [...state.steps.slice(0, at), step];
-    state.at = at + 1;
+    const title = `${route.predicate} → ${route.to}`;
+    const step = { id: (stepSeq += 1), parent: at, title, asked, run: 'running', result: null, reason: '', marks: nextMarks() };
+    const again = state.steps.find((s) => s.parent === at && s.title === title);
+    const dropped = again ? subtree(again.id) : [];
+    dropMarks(dropped);
+    const place = again ? state.steps.indexOf(again) : state.steps.length;
+    state.steps = [...state.steps.slice(0, place), step, ...state.steps.slice(place)].filter((s) => !dropped.includes(s));
+    state.at = step.id;
+    state.leaf = step.id;
     render();
     const began = Date.now();
     const res = await walk(asked);
     step.took = Date.now() - began;
-    if (state.steps[at] !== step) return;   // walked over meanwhile
+    if (!state.steps.includes(step)) return;   // walked over meanwhile
     if (res && res.ok) { step.run = 'done'; step.result = res; }
     else { step.run = 'failed'; step.reason = (res && res.message) || UNKNOWN; }
     render();
@@ -896,18 +922,32 @@ export function boot(doc, host, deps) {
     return line;
   }
 
-  /** The steps walked: the form's walk, then each step on from it; a press shows that step's table again. */
+  /** The steps walked, a tree (lead 5ea461e04): a row a level of the chosen branch - its step lit among its siblings -
+   *  and a row of the steps walked on from its end. A press shows that step; one off the branch chooses its own. */
   function renderSteps(root) {
     if (!state.steps.length) return;
-    const line = el(doc, 'div', 'wk-steps');
-    const titles = [askedTitle(state.asked || {}), ...state.steps.map((s) => s.title)];
-    titles.forEach((title, i) => {
-      const b = el(doc, 'button', 'wk-step' + (state.at === i ? ' is-on' : ''), `Step ${i + 1} · ${title}`);
-      b.type = 'button';
-      b.addEventListener('click', () => { state.at = i; render(); });
-      line.append(b);
+    const box = el(doc, 'div', 'wk-steps');
+    const branch = [0, ...pathTo(state.leaf).map((s) => s.id)];
+    const kids = (id) => state.steps.filter((s) => s.parent === id).map((s) => s.id);
+    [[0], ...branch.map(kids)].forEach((ids, depth) => {
+      if (!ids.length) return;
+      const row = el(doc, 'div', 'wk-steprow');
+      for (const id of ids) {
+        const title = id === 0 ? askedTitle(state.asked || {}) : stepOf(id).title;
+        const b = el(doc, 'button', 'wk-step' + (branch.includes(id) ? ' is-on' : ''), `Step ${depth + 1} · ${title}`);
+        b.type = 'button';
+        b.setAttribute('data-step', String(id));
+        if (id === state.at) b.setAttribute('aria-current', 'step');
+        b.addEventListener('click', () => {
+          if (!branch.includes(id)) state.leaf = id;
+          state.at = id;
+          render();
+        });
+        row.append(b);
+      }
+      box.append(row);
     });
-    root.append(line);
+    root.append(box);
   }
 
   /** What the shown walk asked (lead 34d91c09d 6): the baskets' counts and the types it collects - not the box's last
@@ -946,7 +986,7 @@ export function boot(doc, host, deps) {
       button.setAttribute('data-view', name);
       button.addEventListener('click', () => {
         state.view = name;
-        if (name === 'graph' && state.type) showGraph({ reuse: true });
+        if (name === 'graph' && state.type) void showBranch();
         render();
       });
       views.append(button);
