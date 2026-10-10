@@ -1,3 +1,12 @@
+> ## [06:12 디자인] E2a 고침 — 트렌드의 시간 쪽은 «닻 · 걸음 · 열»의 것 착지 da09b9247 (총괄 10-11, 응용 18766)
+
+- **무엇** — 트렌드를 쥔 자리(renderTrend) 하나에서 쪽 열쇠(닻 id · 술어 · 방향 · 열)를 잡고, 바뀌면 쪽 · 걸은 시각 · 앞뒤 커서를 비우고 그리고 나서 새로 묻습니다. openTrend 는 더 묻지 않습니다. 구획 트렌드의 행 = 그 구획의 지금 행.
+- **본 것 하나** — Step 1 로 돌아가면 그 스텝의 같은 타입 구획도 Trend 로 서서 그 닻의 쪽을 하나 묻습니다(트렌드가 스텝이 아니라 페이지의 것 — E2a 그대로). 바꿀지는 물음으로 둡니다.
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built walk page as a probe copy on the box as it is, /assets/walk-Dms0ilPf.js, 1920x1080): SYN-BW-103-11 in +, Walk; temp_C checked, Next measures → wafer, the wafer section's Trend: its page from temp_C, 1004 dots; Step 1, temp_C off and clamp_kN on, the same Next: the section still Trend, its page from clamp_kN, 1000 dots - 0 of them from temp_C's page (its 1000 edges read again by its own URL). Between them Step 1's own wafer section stood as a Trend and asked its page from SYN-BW-103-11 (the trend is the page's, not a step's - E2a as it was). Writes 0.
+- **게이트** — trend 44 with --mutate --control (TS5 the step walked again from another row: the new rows' points and the new anchor's own page, none from the old; TSm7 the old page kept, TSm8 the rows it was opened on; TSm3 TSm6 re-aimed); walk_table 150 with --mutate --control; screen gate 249 with --mutate; walk_layout 34, node_search 45, subgraph_view 279, start_baskets 24, walk_worlds 18, walk_wire 95, rnd_board_walk_box 104, fold_views 19, reach_table 33, walk_route_fill 80.
+
+다음: D(CONTROL · B) — 3-way 병합으로 E1 위에 얹는 중. 평표가 은퇴해 ZD5 는 한 쪽 맞대기 표로 다시 쓰고, 평표를 겨누던 DM9 · DM10 은 은퇴, DM6 은 B 의 쪽으로 다시 겨눔.
+
 > ## [05:19 디자인] E2a — 구획마다 Table | Trend, 시간 쪽은 행들이 만나는 한 노드에서 착지 eb1efa71f (총괄 10-10 E2a)
 
 - **무엇** — 구획 머리에 Table | Trend. Trend 는 그 구획 행 전부의 값(고른 열)이 점. 값 칸 트렌드와 같은 읽기 · 같은 출처. 시간 쪽의 닻은 pageAnchor 한 자리: 행 하나면 그 행, 행들이 한 끝에서 만나면 그 끝(걸음 반대), 아니면 없음(머리에 Walk only). 점의 출처 = 엣지의 닻 아닌 끝.
