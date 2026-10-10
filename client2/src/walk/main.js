@@ -39,8 +39,6 @@ import { walkTableView, nextRoutes } from './table_view.js';
 import { setDisabledReason } from '../disabled_reason.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
 import { SubgraphView, seedsOf } from './subgraph_view.js';
-// The comparison of the start marking's signs (lead 10-09, demo ③) — a part with its own div, placed here.
-import { CompareView } from './compare_view.js';
 // The start baskets (lead bc63378e5) - the start marking's editor, a part with its own div in the right panel.
 import { StartBaskets, BASKET_WORDS } from './start_baskets.js';
 // PICK A NODE by first letters (lead bccbdd601) - a part with its own div.
@@ -143,8 +141,6 @@ export function boot(doc, host, deps) {
     ask: (prefix) => fetchKeyValues({ apiBase, fetchImpl, type: state.type, startsWith: prefix, limit: SEARCH_LIMIT }),
     onType: (text) => { if (search.axis) state.keys[search.axis] = text; baskets.render(); },
     onPick: (node) => { state.keys = { ...node.keys }; render(); } });
-  /** A start's name as its basket took it. */
-  const startLabel = (id) => (baskets.describe(id) || {}).label;
   // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
   const goReason = () => (state.run === 'running'
     ? RUNNING
@@ -152,9 +148,6 @@ export function boot(doc, host, deps) {
   // Walk follows the baskets as they change, not only when the page redraws.
   let goButton = null;
   markings.subscribe(GRAPH_CHAIN[0], () => { if (goButton) setDisabledReason(goButton, goReason()); });
-  const compareMount = el(doc, 'div', 'wk-compare');
-  const compare = new CompareView(compareMount, { doc, walk, markings, startsName: GRAPH_CHAIN[0], spec,
-    declaration: () => state.decl, labelOf: (id) => startLabel(id) || id });
   /** The graph walks the start marking as it stands. */
   const showGraph = (opts) => { graph.show(opts); };
   // 🔴 체크칸은 선언된 술어 «전부» (소유자 10-06 「엣지 리스트 다 주고 체크하는걸 메인으로」).
@@ -201,8 +194,6 @@ export function boot(doc, host, deps) {
     if (!markings.count(GRAPH_CHAIN[0])) return;
     // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
     if (state.view === 'graph') { showGraph(); return; }
-    // The comparison asks its own walks from the same marking and form.
-    if (state.view === 'compare') { await compare.ask(); return; }
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
     // One + start alone is asked by its type and keys, as the form asked it (walk_layout L7 · L8: the request does not change).
     const starts = seedsOf(markings.entries(GRAPH_CHAIN[0]));
@@ -497,28 +488,42 @@ export function boot(doc, host, deps) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
     const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
-    if (!view.zones) { renderSections(box, view); return; }
-    // With a − start, a zone per sign (lead 55f854fc5 ②): its starts by name, then the nodes they reached.
-    const labelOf = (id) => startLabel(id) || ((r.nodes || []).find((n) => n.id === id) || {}).label || id;
-    for (const zone of view.zones) {
-      const z = el(doc, 'div', 'wk-zone' + (zone.sign === '−' ? ' is-control' : ''));
-      z.setAttribute('data-sign', zone.sign);
-      z.append(el(doc, 'div', 'wk-zonehead', `Walked from ${zone.sign} ${zone.starts.map(labelOf).join(' · ')}`));
-      renderSections(z, zone);
-      box.append(z);
-    }
+    renderSections(box, view);
   }
 
-  /** One table's sections and what it did not draw - the walk's one table, or one sign's zone. */
+  /** The table's sections and what it did not draw; side by side, a group head per sign above its columns. */
   function renderSections(box, view) {
     const at = state.at;
     const checks = checksOf(at);
     for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));
+      // Next above its table, once (lead 3375edd9b).
+      if (checks) sec.append(nextRow(at, section, checks));
 
       const table = el(doc, 'table', 'wk-table');
       const thead = el(doc, 'thead');
+      if (section.groups) {
+        // The sign bands, run by run over the columns: a side's run under its basket's word and its row count, the
+        // node's own columns under a blank head.
+        const gr = el(doc, 'tr');
+        if (checks) gr.append(el(doc, 'th', 'wk-check'));
+        for (let i = 0; i < section.columns.length;) {
+          const sign = section.columns[i].side;
+          let end = i;
+          while (end < section.columns.length && section.columns[end].side === sign) end += 1;
+          const group = sign && section.groups.find((g) => g.sign === sign);
+          const th = group
+            ? el(doc, 'th', 'wk-sidehead' + (sign === '−' ? ' is-control' : ''),
+              `${sign === '−' ? BASKET_WORDS.negative : BASKET_WORDS.positive} · ${unitText(group.count, 'node')}`)
+            : el(doc, 'th', 'wk-ownhead');
+          if (group) th.setAttribute('data-sign', sign);
+          th.colSpan = end - i;
+          gr.append(th);
+          i = end;
+        }
+        thead.append(gr);
+      }
       const hr = el(doc, 'tr');
       if (checks) hr.append(el(doc, 'th', 'wk-check'));
       for (const column of section.columns) hr.append(el(doc, 'th', '', column.name));
@@ -542,7 +547,7 @@ export function boot(doc, host, deps) {
           tr.append(td);
         }
         for (const cell of row.cells) {
-          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);
+          const td = el(doc, 'td', cell.missing ? 'wk-missing' : (cell.numeric ? 'wk-num' : ''), cell.text);
           // The id is picked, not read (styles.js .wk-id): cut on purpose.
           if (cell.kind === 'id') { td.className = 'wk-id'; td.setAttribute('data-clip-ok', ''); }
           tr.append(td);
@@ -551,7 +556,6 @@ export function boot(doc, host, deps) {
       }
       table.append(tbody);
       sec.append(table);
-      if (checks) sec.append(nextRow(at, section, checks));
       box.append(sec);
     }
 
@@ -610,9 +614,11 @@ export function boot(doc, host, deps) {
         ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
         : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`));
     }
-    // ── Table | Graph | Compare ─────────────────────────────────────────────
+    // ── Table | Graph ───────────────────────────────────────────────────────
+    // ⚰️ Compare retired 10-10 (lead 3375edd9b, owner «Compare 접어»): the walk table side by side is the one screen that
+    //    sets the signs against each other - its group per sign, its missing cells, its «predicate · name» heads.
     const views = el(doc, 'div', 'wk-views');
-    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph'], ['compare', 'Compare']]) {
+    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {
       const button = el(doc, 'button', 'wk-view' + (state.view === name ? ' is-on' : ''), word);
       button.type = 'button';
       button.setAttribute('data-view', name);
@@ -711,7 +717,6 @@ export function boot(doc, host, deps) {
       renderGo(foot);
       renderHead(main);
       if (state.view === 'graph') main.append(graphMount);
-      else if (state.view === 'compare') { compare.render(); main.append(compareMount); }
       else { renderSteps(main); renderResult(main); }
     }
     rail.append(body, foot);
@@ -742,8 +747,6 @@ export function boot(doc, host, deps) {
     worlds = worldList(names);
     graph.worldChips = worlds.length > 1;
     if (options.pickWorld) options.pickWorld(worlds);
-    // An answer read on the old worlds no longer stands: the compare view asks again below, another view forgets it.
-    compare.forget();
     await load();
     if (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0])) await walkStarts();
   }
@@ -752,7 +755,7 @@ export function boot(doc, host, deps) {
     ? new BranchPicker(options.branchMount, { doc, onPickSet: (names) => { void pickWorlds(names); } }) : null;
   if (picker) picker.show({ current: worlds });
   load();
-  return { state, spec, fire, render, graph, compare, baskets };
+  return { state, spec, fire, render, graph, baskets };
 }
 
 // 🔴 부팅은 «이 파일 끝»에서만. bare node 로 이 모듈을 읽어도 DOM 을 안 건드려야

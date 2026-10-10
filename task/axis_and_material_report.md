@@ -1,3 +1,18 @@
+> ## [15:10 디자인] ④ 좌우 맞대기 표 착지 648f16681 — Compare 를 접음 · 앞서 기다림 빨강 + «atoms» 단위 31423a292 (총괄 3375edd9b · 10-10)
+
+- **지은 것** — − 시작이 있으면 표 하나에 노드 하나가 한 줄. 노드 칸(깊이 · 키 · 라벨) 뒤에 «Positive» 열 묶음, «Negative» 열 묶음, 맨 끝에 id. 칸은 그 쪽이 걸은 변의 엣지 속성 · 노드 속성, 못 닿은 쪽은 빨간 «missing», 닿았는데 값이 없으면 빈칸. 엣지 속성 열 머리는 «술어 · 속성». 엣지 · 노드 속성이 없는 타입은 쪽마다 «Reached» 칸 하나. NEXT 는 표 위. − 시작이 없으면 전과 같은 표.
+- **Compare 은퇴** — 보기 버튼 · 부품 · 하니스를 지우고 묘비. 약속을 든 자리: RUN.md 시연 대본 ④(응용 레인이 다시 씀 — 손대지 않음), docs/architecture/frontend.md 걷기 줄(Compare 와 ③ 때 은퇴한 Walk Ctrl/Shift 가 남아 있어 그 구절만 고침), RELEASE_LOG 10-09 항목(이력이라 둠).
+- **화면에서 고친 것** — 화면 게이트 스샷(1536)에서 − 묶음이 표 상자 밖으로 잘렸습니다. id 가 노드와 두 쪽 사이에 있었고, 묶음 머리가 시작 이름을 한 줄로 늘였기 때문입니다. id 를 두 쪽 뒤로, 머리는 지시서대로 «부호 색 띠 · 그 쪽 행 수»(바구니 낱말로 «Positive · 2 nodes» — 시작 이름은 바구니에 보임)로 줄이고 줄바꿈을 허용했습니다. 1280 에서는 여전히 표가 제 상자 안에서 옆으로 굴러 − 쪽이 오른쪽 끝에 걸칩니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-DMv4SzUP.js, 2481x1226): wafer LEAD-P3-A found by first letters into Positive, LEAD-S65C-WP-01 into Negative, Walk (200); views Table | Graph; Next above each table; wafer · 2: «Positive · 1 node» / «Negative · 1 node», columns Depth | wafer | Label | Reached | Reached | id, 2 rows, 2 missing; recipe · 1: «Positive · 1 node» / «Negative · 1 node», columns Depth | recipe | Label | processed_with · step | processed_with · step | id, 1 rows, 0 missing; missing drawn rgb(194, 47, 47). Writes 0.
+- **게이트** — walk_table 79 (Z1-Z12 the view and the page; NZ1 NZ2 NZ3 ZM1 ZM2 ZM3 ZM4 ZM5 ZM6 ZM7 ZM8 ZM9 ZM10 caught), walk_layout 29, walk_worlds 18, start_baskets 22, node_search 39, disabled_reason 25, css_token_definition 7, walk_wire 95, explorer_open_path 130, walk_route_fill 80, rnd_board_walk_box 104; screen gate on the walk page 24 (its side-by-side step waits for two bands; no wait ran out).
+
+### 5 분 써 보면 걸리는 것 (제안 — 짓지 않음)
+
+| 항목 | 어떤 상황에서 막히나 | 크기 |
+|---|---|---|
+| 1280 에서 − 쪽이 오른쪽 끝 | 세 칸 배치에서 가운데가 좁아 표를 옆으로 굴려야 − 쪽이 다 보임. 키와 같은 «Label» 열이 폭을 먹음(앞선 짜증 표의 «키 = Label 중복») | 안 쟀다 — Label 이 키와 같으면 안 그리기, 또는 오른쪽 바구니 접기 |
+| «Reached» 열이 «reached» 글자로 가득 | 엣지 속성이 없는 타입에서 대부분 칸이 «reached» 라 «missing» 만 눈에 띄어야 할 자리가 시끄러움 | 작음 — reached 를 «✓» 같은 짧은 표시로(소유자께 여쭐 것) |
+
 > ## [14:09 디자인] 찾는 상자 착지 a55bf5732 · id 철자 고침 착지 619855bc9 (총괄 bccbdd601 · 10-10)
 
 ### 찾는 상자

@@ -97,10 +97,14 @@ const SIGNED = {
     { id: 'd:1', type: 'die@1', label: 'D-1', depth: 1, keys: { mat_id: 'M-1' } },
     { id: 'd:2', type: 'die@1', label: 'D-2', depth: 1, keys: { mat_id: 'M-2' } },
     { id: 'd:3', type: 'die@1', label: 'D-3', depth: 2, keys: { mat_id: 'M-3' } },
+    { id: 'd:4', type: 'die@1', label: 'D-4', depth: 1, keys: { mat_id: 'M-4' } },
   ],
   edges: [{ id: 'e:a3', source: 's:a', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 7 } },
-    { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 9 } }],
-  propagation: { ranked: [{ id: 'd:1', reach: [2, 0] }, { id: 'd:2', reach: [0, 1] }, { id: 'd:3', reach: [1, 1] }] },
+    { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 9 } },
+    { id: 'e:a4', source: 's:a', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 1 } },
+    { id: 'e:c4', source: 's:c', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 2 } }],
+  propagation: { ranked: [{ id: 'd:1', reach: [2, 0] }, { id: 'd:2', reach: [0, 1] }, { id: 'd:3', reach: [1, 1] },
+    { id: 'd:4', reach: [2, 0] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
 
@@ -453,7 +457,7 @@ async function suite(mod) {
           === JSON.stringify([SAME._start.id, ...outSide, ...inSide].sort()),
       `${sameAsked.length} ${sameRows.length} out ${outSide.size} in ${inSide.size}`);
   }
-  // ── the page: a zone per sign when the walk had a - start (lead 55f854fc5 ②) ──
+  // ── the page: side by side when the walk had a - start (lead 3375edd9b) ──
   {
     const doc = makeDoc();
     const host = doc.createElement('div');
@@ -464,13 +468,21 @@ async function suite(mod) {
     handle.state.run = 'done';
     handle.state.result = SIGNED;
     handle.render();
-    const zones = walkAll(host).filter((e) => /^wk-zone( is-control)?$/.test(e.className || ''));
-    const heads = zones.map((z) => walkAll(z).filter((e) => e.className === 'wk-zonehead').map((e) => e.textContent).join());
-    const rowsIn = zones.map((z) => walkAll(z).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']).sort().join(','));
-    ok('Z6 the page: a zone per sign, named by its starts, each with the rows its sign reached',
-      JSON.stringify(heads) === JSON.stringify(['Walked from + A · C', 'Walked from − B'])
-        && JSON.stringify(rowsIn) === JSON.stringify(['d:1,d:3,s:a,s:c', 'd:2,d:3,s:b']),
-      `${JSON.stringify(heads)} ${JSON.stringify(rowsIn)}`);
+    const heads = walkAll(host).filter((e) => /^wk-sidehead( is-control)?$/.test(e.className || '')).map((e) => e.textContent);
+    const missing = walkAll(host).filter((e) => e.className === 'wk-missing').length;
+    const secs = walkAll(host).filter((e) => e.className === 'wk-sec');
+    const nextFirst = secs.length > 0 && secs.every((sec) => {
+      const next = sec.children.findIndex((c) => c.className === 'wk-next');
+      return next >= 0 && next < sec.children.findIndex((c) => c.className === 'wk-table');
+    });
+    ok('Z9 the page: a table a type, a band per sign in the baskets\' words with its rows, missing in red, Next above',
+      JSON.stringify(heads) === JSON.stringify(['Positive · 2 nodes', 'Negative · 1 node', 'Positive · 3 nodes', 'Negative · 2 nodes'])
+        && missing === 6 && nextFirst,
+      `${JSON.stringify(heads)} ${missing} ${nextFirst}`);
+    const views = walkAll(host).filter((e) => e.attrs && e.attrs['data-view']).map((e) => e.attrs['data-view']);
+    const compared = walkAll(host).filter((e) => /(^| )cmp-/.test(e.className || '')).length;
+    ok('Z10 no way to Compare: the views are Table and Graph, nothing of it drawn',
+      views.join() === 'table,graph' && compared === 0, `${views} ${compared}`);
   }
 }
 
@@ -494,8 +506,8 @@ const TWO = {
 };
 const gateCell = (TV, answer) => {
   const die = TV.walkTableView(answer, DECL.entities, DECL.predicates).sections.find((s) => s.type === 'die@1');
-  const at = die.columns.findIndex((c) => c.kind === 'qualifier' && c.key === 'gate');
-  return die.rows[0].cells[at];
+  const at = die.columns.findIndex((c) => c.kind === 'qualifier' && c.key === 'inspected · gate');
+  return at >= 0 ? die.rows[0].cells[at] : { text: null, numeric: null };
 };
 const qualifierSuite = (TV) => {
   const two = gateCell(TV, TWO);
@@ -505,42 +517,69 @@ const qualifierSuite = (TV) => {
 };
 // The suite's own count: a mutant of main.js runs the suite alone, so its shrink is measured against this.
 const suiteRan = ran;
-// ── the walk table by the sign of the start that reached each node (lead 55f854fc5 ②) ──
+// ── the walk table side by side (lead 3375edd9b; the signs by the server's reach, lead 55f854fc5 ②) ──
 const rowIds = (table) => table.sections.flatMap((sec) => sec.rows.map((r) => r.id)).sort().join(',');
-const zoneSuite = (TV) => {
+const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
+const GATE = 'inspected · gate';
+const sideSuite = (TV) => {
   const view = (starts, result = SIGNED) => TV.walkTableView(result, DECL.entities, DECL.predicates, undefined, starts);
-  const plain = view({ positive: ['s:a', 's:c'], negative: [] });
-  ok('Z1 no - start: the one table it always was, every node in it', plain.zones === null && rowIds(plain) === 'd:1,d:2,d:3,s:a,s:b,s:c',
-    `${JSON.stringify(plain.zones)} ${rowIds(plain)}`);
-  const two = view(SIGNED_STARTS);
-  const zone = (sign) => ((two.zones || []).find((z) => z.sign === sign) || { sections: [] });
-  ok('Z2 a - start: a zone per sign, each its starts and the nodes its reach says', (two.zones || []).map((z) => z.sign).join() === '+,−'
-    && rowIds(zone('+')) === 'd:1,d:3,s:a,s:c' && rowIds(zone('−')) === 'd:2,d:3,s:b', `${rowIds(zone('+'))} | ${rowIds(zone('−'))}`);
-  ok('Z3 a node reached from both signs stands in both zones', rowIds(zone('+')).includes('d:3') && rowIds(zone('−')).includes('d:3'),
-    `${rowIds(zone('+'))} | ${rowIds(zone('−'))}`);
-  ok('Z4 two starts of one sign walk in one zone together', JSON.stringify(zone('+').starts) === JSON.stringify(['s:a', 's:c'])
-    && rowIds(zone('+')).includes('s:a') && rowIds(zone('+')).includes('s:c'), JSON.stringify(zone('+').starts));
-  const gateOf = (zoneView) => {
-    const die = (zoneView.sections || []).find((sec) => sec.type === 'die@1');
-    const at = die ? die.columns.findIndex((col) => col.kind === 'qualifier' && col.key === 'gate') : -1;
-    const row = die && die.rows.find((r) => r.id === 'd:3');
-    return row && at >= 0 ? row.cells[at].text : null;
+  const cell = (table, type, id, key, side) => {
+    const sec = table.sections.find((x) => x.type === type);
+    const at = sec ? sec.columns.findIndex((c) => (c.key === key || c.kind === key) && c.side === side) : -1;
+    const row = sec && sec.rows.find((r) => r.id === id);
+    const got = row && at >= 0 ? row.cells[at] : null;
+    return got ? (got.missing ? `[${got.text}]` : got.text) : null;
   };
-  ok('Z7 a zone\'s cells read the edges walked inside it: the node both reached says each sign\'s own value',
-    gateOf(zone('+')) === '7' && gateOf(zone('−')) === '9', `${gateOf(zone('+'))} | ${gateOf(zone('−'))}`);
+  const plain = view({ positive: ['s:a', 's:c'], negative: [] });
+  ok('Z1 no - start: the one table it always was, every node in it, no side', plain.sides === null
+    && plain.sections.every((x) => x.groups === null) && rowIds(plain) === ALL, `${JSON.stringify(plain.sides)} ${rowIds(plain)}`);
+  ok('Z11 an edge attribute\'s column is its predicate\'s and its name\'s',
+    plain.sections.some((x) => x.columns.some((c) => c.kind === 'qualifier' && c.name === GATE)),
+    plain.sections.flatMap((x) => x.columns.map((c) => c.name)).join(','));
+  const two = view(SIGNED_STARTS);
+  ok('Z2 a node a row: one row whichever sides reached it', rowIds(two) === ALL
+    && two.sections.every((x) => new Set(x.rows.map((r) => r.id)).size === x.rows.length), rowIds(two));
+  ok('Z3 reached on one side only: the other side says missing',
+    cell(two, 'die@1', 'd:1', GATE, '−') === '[missing]' && cell(two, 'die@1', 'd:2', GATE, '+') === '[missing]',
+    `${cell(two, 'die@1', 'd:1', GATE, '−')} | ${cell(two, 'die@1', 'd:2', GATE, '+')}`);
+  ok('Z4 reached but no value is blank, not missing',
+    cell(two, 'die@1', 'd:1', GATE, '+') === '' && cell(two, 'die@1', 'd:2', GATE, '−') === '',
+    `${cell(two, 'die@1', 'd:1', GATE, '+')} | ${cell(two, 'die@1', 'd:2', GATE, '−')}`);
+  ok('Z5 a cell reads its side\'s edges only: the node both reached says each side\'s own value',
+    cell(two, 'die@1', 'd:3', GATE, '+') === '7' && cell(two, 'die@1', 'd:3', GATE, '−') === '9',
+    `${cell(two, 'die@1', 'd:3', GATE, '+')} | ${cell(two, 'die@1', 'd:3', GATE, '−')}`);
+  ok('Z6 several edges on one side: every value and whose', cell(two, 'die@1', 'd:4', GATE, '+') === '2 edges · 1 (A) · 2 (C)',
+    cell(two, 'die@1', 'd:4', GATE, '+'));
   const blind = view(SIGNED_STARTS, { ...SIGNED, propagation: null });
-  ok('Z5 an answer that ranks nothing: one table, said to be both signs', blind.zones === null && blind.unsplit === true
-    && rowIds(blind) === 'd:1,d:2,d:3,s:a,s:b,s:c', `${JSON.stringify(blind.zones)} ${blind.unsplit}`);
+  ok('Z7 an answer that ranks nothing: one table, said to be both signs', blind.sides === null && blind.unsplit === true
+    && rowIds(blind) === ALL, `${JSON.stringify(blind.sides)} ${blind.unsplit}`);
+  const wafer = two.sections.find((x) => x.type === 'wafer@1') || { groups: [] };
+  ok('Z8 a band per sign with its starts and its rows; a type with no edge column gets one Reached cell a side',
+    JSON.stringify((wafer.groups || []).map((g) => [g.sign, g.starts, g.span, g.count]))
+      === JSON.stringify([['+', ['s:a', 's:c'], 1, 2], ['−', ['s:b'], 1, 1]])
+      && cell(two, 'wafer@1', 's:c', 'reached', '+') === 'reached' && cell(two, 'wafer@1', 's:c', 'reached', '−') === '[missing]'
+      && cell(two, 'wafer@1', 's:b', 'reached', '+') === '[missing]',
+    `${JSON.stringify(wafer.groups)} ${cell(two, 'wafer@1', 's:c', 'reached', '+')}`);
+  const die = two.sections.find((x) => x.type === 'die@1') || { columns: [] };
+  const order = die.columns.map((c) => (c.side ? c.side : c.kind));
+  ok('Z12 the id after both sides: the node\'s own columns, the + run, the − run, then the id',
+    order.filter((k) => k === 'id').length === 1 && order[order.length - 1] === 'id' && order.indexOf('+') > order.indexOf('label') && order.lastIndexOf('+') < order.indexOf('−'),
+    order.join(','));
 };
 qualifierSuite(await import('../src/walk/table_view.js'));
-zoneSuite(await import('../src/walk/table_view.js'));
+sideSuite(await import('../src/walk/table_view.js'));
 console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${ran} assertions`);
 const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
-  { id: 'NZ1', what: 'the page draws one table even with a - start', catches: 'Z6',
-    from: '    if (!view.zones) { renderSections(box, view); return; }', to: '    { renderSections(box, view); return; }' },
+  { id: 'NZ1', what: 'the page draws no band per sign', catches: 'Z9',
+    from: '      if (section.groups) {', to: '      if (false) {' },
+  { id: 'NZ2', what: 'the Next row gone from above its table', catches: 'Z9',
+    from: '      // Next above its table, once (lead 3375edd9b).\n      if (checks) sec.append(nextRow(at, section, checks));\n', to: '' },
+  { id: 'NZ3', what: 'the Compare view back', catches: 'Z10',
+    from: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {",
+    to: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph'], ['compare', 'Compare']]) {" },
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
   { id: 'M1', what: 'the renderer names its own columns again',
     catches: 'V2 the column labels',
@@ -559,8 +598,8 @@ const MUTANTS = [
     to: '        for (const cell of [...row.cells].reverse()) {' },
   { id: 'M3', what: 'the numeric class is dropped',
     catches: 'V5 the numeric class',
-    from: "          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);",
-    to: "          const td = el(doc, 'td', '', cell.text);" },
+    from: "          const td = el(doc, 'td', cell.missing ? 'wk-missing' : (cell.numeric ? 'wk-num' : ''), cell.text);",
+    to: "          const td = el(doc, 'td', cell.missing ? 'wk-missing' : '', cell.text);" },
   { id: 'M4', what: 'the cap note prints the total instead of what was hidden',
     catches: 'C3 the total is not what is printed',
     from: '      box.append(el(doc, \'div\', \'wk-note\', `${view.hidden} more not drawn`));',
@@ -643,20 +682,30 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
-  { id: 'ZM1', what: 'reach read off the other index', catches: 'Z2',
+  { id: 'ZM1', what: 'reach read off the other index', catches: 'Z3',
     from: "{ '+': Number((row.reach || [])[0]) || 0, '−': Number((row.reach || [])[1]) || 0 }",
     to: "{ '+': Number((row.reach || [])[1]) || 0, '−': Number((row.reach || [])[0]) || 0 }" },
-  { id: 'ZM2', what: 'a node reached from both stands only in the + zone', catches: 'Z3',
-    from: "own.has(n.id) || (reach.get(n.id) || {})[sign] > 0)",
-    to: "own.has(n.id) || ((reach.get(n.id) || {})[sign] > 0 && !(sign === '−' && (reach.get(n.id) || {})['+'] > 0)))" },
-  { id: 'ZM3', what: 'zones even without a - start', catches: 'Z1',
+  { id: 'ZM2', what: 'a node both reached stands on the + side only', catches: 'Z5',
+    from: "own.has(n.id) || (reach.get(n.id) || {})[sign] > 0).map((n) => n.id));",
+    to: "own.has(n.id) || ((reach.get(n.id) || {})[sign] > 0 && !(sign === '−' && (reach.get(n.id) || {})['+'] > 0))).map((n) => n.id));" },
+  { id: 'ZM3', what: 'sides even without a - start', catches: 'Z1 ',
     from: "  const reach = negative.length ? reachBySign(result) : null;", to: "  const reach = reachBySign(result);" },
-  { id: 'ZM4', what: 'only the first start of a sign walks in its zone', catches: 'Z4',
+  { id: 'ZM4', what: 'only the first start of a sign stands on its side', catches: 'Z8',
     from: "    const own = new Set(ids);", to: "    const own = new Set(ids.slice(0, 1));" },
-  { id: 'ZM5', what: 'an answer that ranks nothing still split, its zones holding the starts alone', catches: 'Z5',
+  { id: 'ZM5', what: 'an answer that ranks nothing still split, its sides holding the starts alone', catches: 'Z7',
     from: "  if (!Array.isArray(ranked)) return null;", to: "  if (!Array.isArray(ranked)) return new Map();" },
-  { id: 'ZM6', what: 'a zone reads every edge of the walk', catches: 'Z7',
-    from: "    return { sign, starts: [...ids], ...tableOf(members, read) };", to: "    return { sign, starts: [...ids], ...tableOf(members) };" },
+  { id: 'ZM6', what: 'a side reads every edge of the walk', catches: 'Z5',
+    from: "    const read = qualifiersByNode(edges.filter((e) => inside.has(e.source) && inside.has(e.target)), nodes.filter((n) => inside.has(n.id)));",
+    to: "    const read = byNode;" },
+  { id: 'ZM7', what: 'reached but no value drawn missing', catches: 'Z4',
+    from: "          if (!side.inside.has(node.id)) return", to: "          if (!side.inside.has(node.id) || !side.read.has(node.id)) return" },
+  { id: 'ZM8', what: 'a node drawn once a side', catches: 'Z2',
+    from: "  const members = sides ? nodes.filter((n) => sides.some((side) => side.inside.has(n.id))) : nodes;",
+    to: "  const members = sides ? sides.flatMap((side) => nodes.filter((n) => side.inside.has(n.id))) : nodes;" },
+  { id: 'ZM9', what: 'an edge attribute\'s column by its name alone, predicates mixed', catches: 'Z11',
+    from: "      const key = `${edge.predicate} · ${name}`;", to: "      const key = name;" },
+  { id: 'ZM10', what: 'the id between the node and its sides again', catches: 'Z12',
+    from: "    const all = [...own.filter((column) => column.kind !== 'id'),", to: "    const all = [...own," },
   { id: 'QM1', what: 'several edges into one node: the last edge\'s value wins again', catches: 'Q1',
     from: "      said[name] = list.length === 1 ? list[0].value\n", to: "      said[name] = list.length >= 1 ? list[list.length - 1].value\n" },
 ];
@@ -669,7 +718,7 @@ const tv = await scoreMutants(TV_MUTANTS, async (m) => {
     },
   });
   qualifierSuite(loaded.module);
-  zoneSuite(loaded.module);
+  sideSuite(loaded.module);
   return { ran, names: NAMES.slice(), failures: failures.slice() };
 }, { baselineNames: base.names, title: `${LF}== table_view mutants (each must be CAUGHT by the check it names) ==` });
 

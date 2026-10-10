@@ -1397,9 +1397,6 @@ const FLOORS = new Map([
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
-  // New with lead 10-09 (demo ③): the Compare view - its picks from the declaration, the walks it asks, the table it
-  // reads, its seat on the walk page, two parts on one screen. Floor = first run.
-  ['compare_view_harness.mjs', 28],   // G6 · K13 retired with the Starts line (lead bc63378e5)
   // New with lead bc63378e5: the start baskets - + puts the picked node in, x takes it out, + on the other moves it,
   // Walk asks them as they are, an empty Positive keeps Walk off, Ctrl/Shift on Walk mark nothing. Floor = first run.
   ['start_baskets_harness.mjs', 22],   // + B11 B12: a key typed goes in; Walk follows the baskets (lead 10-10)
@@ -1481,7 +1478,7 @@ const FLOORS = new Map([
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
-  ['walk_table_harness.mjs', 68],   // M9 moved to node_search NS5 with the dropdown (lead bccbdd601)
+  ['walk_table_harness.mjs', 79],   // the table side by side, Compare folded in (lead 3375edd9b)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

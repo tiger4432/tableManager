@@ -500,25 +500,14 @@ const DRIVE = {
       await until(c, "document.querySelector('.wk-main table, .wk-main svg, .wk-main canvas')");
     }],
     ['Graph', (c) => press(c, 'Graph').then(() => sleep(1500))],
-    // Compare (lead 10-09, demo ③): picked from the declaration, then a second subject in the Negative basket and Walk -
-    // a + column and a - column, its whose labels whole.
-    ['Compare, a + and a - start', async (c) => {
-      await press(c, 'Compare');
-      await until(c, "document.querySelector('.cmp-select')");
-      await choose(c, '.cmp-select', [0, "x.value === 'recipe'"]);
-      await choose(c, '.cmp-select', [1, "x.value === 'processed_with'"]);
-      await choose(c, '.cmp-select', [2, "x.value === 'step'"]);
+    // The table side by side (lead 3375edd9b): a second subject in the Negative basket, then Walk - a band per sign.
+    ['Table, + and - side by side', async (c) => {
+      await press(c, 'Table');
       await pickRow(c, 1);
       await sleep(300);
       await basket(c, '−');
       await press(c, 'Walk');
-      await until(c, "document.querySelector('.cmp-table')");
-    }],
-    // The table walked from a + and a - start (lead 55f854fc5 ②): a zone per sign.
-    ['Table, a zone per sign', async (c) => {
-      await press(c, 'Table');
-      await press(c, 'Walk');
-      await until(c, "document.querySelectorAll('.wk-zone').length > 1");
+      await until(c, "document.querySelectorAll('.wk-sidehead').length > 1");
     }],
   ],
   'index.html': [
