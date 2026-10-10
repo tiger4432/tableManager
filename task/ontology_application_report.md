@@ -38179,3 +38179,21 @@ RUN.md      대본 ③ · ④ 를 이 표로 다시 생성(d530aac4a) — 박스
 18766       9f8c9b8bb fake data · two bases · Collect quantity · Walk -> Nodes 48 (collect: quantity) · Edges 1650 (all) · 0.8 s · adhesive_residue + cell «28+1» pressed -> «Trend · adhesive_residue · measures (in) · value» · «3 points · 2026-11-24 03:49 → 2026-11-24 03:49 local time» · 2 Positive walked + 1 Negative walked · axis 10 · 19 · 28 · one request around=2026-11-23T18:49:00.000Z · 0.070 s · the fake rows share one time, so a trend here stands as one vertical stack
 RUN.md      대본 ③ 초 · ④ 문장(Δ 는 계측군 바로 오른쪽 · 못 닿은 쪽은 칸 하나) 다시 생성(f5967e851). 트렌드 줄은 대본에 안 넣음 — 넣을지 여쭘
 ```
+
+---
+
+## [C 응용] 10-10 18766 가짜 계측을 시각에 퍼뜨림 — 트렌드 1,000 점에서 Load earlier · later 로 1,402 점까지 · 걷기는 안 잘림
+
+```
+빌드      3c27f67f7 walk-Dzuz73ZU.js · 18766 relaunched with the time-spread seed (fake_hist.py) · fake_measure 3870 rows (the 50 originals untouched + a pool of 100 fake wafers FAKE-W-001..100, step FAKE-HIST, role fake) · default backfill written 3870 of 3870 · scheme worlds read only the 50 (ed measures 50 · ev 150)
+모양      every fake quantity 60 pool points over the 30 days before and after the walked time (2026-11-24 03:49) · local_gap and moisture_uptake 1400 each (701 before · 700 after with the bases) · values drift with time
+걷기      default · two bases · collect quantity: nodes 48 · edges 1650 · 4 hops · claims_scanned 2836 (cap 6000) — as before the spread · scheme worlds still 32 of 32 pairs equal
+표        local_gap + 53 | Δ +33 | − 20 (one value a side)
+트렌드     local_gap + cell pressed (element click - the pane did not draw for a coordinate click) -> «1000 points · 2026-11-02 18:42 → 2026-12-15 12:55 local time» · walked 2 (Positive · Negative) · other rows 998 · Load earlier on · Load later on · one request around=2026-11-23T18:49:00.000Z 0.250 s
+넓히기     Load earlier (button press) -> «1201 points · 2026-10-25 03:49 → …» · earlier off «Nothing earlier» · 0.111 s | Load later -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49» · later off «Nothing later» · 0.091 s
+보통 계측군  adhesive_residue + cell «28+1» -> «63 points · 2026-10-25 03:49 → 2026-12-24 03:49» · walked 3 (Positive 2 · Negative 1) · other 60 · both Load off (all in one page)
+그림      the trend draws points (circles), no connecting line element - a line of points across the weeks, not a drawn polyline
+먼저 해 본 것(안 남김)  (not kept) the series on the bases themselves (700 rows per base on two quantities, 30 per other row): every row is its own current claim, the walk scanned 6000 claims (the cap) and stopped at 3 hops - nodes 34 · edges 1200 · «Cut · claims 6000», the model quantities fell out of the table
+뜻        한 행 = 한 claim 이라, 같은 웨이퍼에 시각만 다른 행이 쌓이면 걷기 예산(claims 6,000)을 그 웨이퍼에서 먹는다 —
+          운영에서 base 웨이퍼 하나가 같은 계측을 수백 번 받는 표가 있으면 시연 걷기도 잘릴 수 있음(운영 판 못 봤다)
+```
