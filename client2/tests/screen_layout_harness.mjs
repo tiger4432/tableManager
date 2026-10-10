@@ -495,6 +495,13 @@ const DRIVE = {
         if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, shiftKey: true })); return Boolean(b); })()`);
       await until(c, "document.querySelector('.cmp-table')");
     }],
+    // The table walked from a + and a - start (lead 55f854fc5 ②): a zone per sign.
+    ['Table, a zone per sign', async (c) => {
+      await press(c, 'Table');
+      await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Walk' && !x.disabled);
+        if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, shiftKey: true })); return Boolean(b); })()`);
+      await until(c, "document.querySelectorAll('.wk-zone').length > 1");
+    }],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],

@@ -524,9 +524,24 @@ export function boot(doc, host, deps) {
    * 🔴 C-72. 이 함수는 «아무것도 정하지 않습니다» — 구획도 컬럼도 셀 글자도 못 그린 수도
    *    `walkTableView` 가 답하고, 여기서는 그 답을 DOM 으로 옮기기만 합니다.
    */
-  function renderTable(box, r) {
+  function renderTable(box, r, starts) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
-    const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || []);
+    const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts);
+    if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
+    if (!view.zones) { renderSections(box, view); return; }
+    // With a − start, a zone per sign (lead 55f854fc5 ②): its starts by name, then the nodes they reached.
+    const labelOf = (id) => state.startLabels.get(id) || ((r.nodes || []).find((n) => n.id === id) || {}).label || id;
+    for (const zone of view.zones) {
+      const z = el(doc, 'div', 'wk-zone' + (zone.sign === '−' ? ' is-control' : ''));
+      z.setAttribute('data-sign', zone.sign);
+      z.append(el(doc, 'div', 'wk-zonehead', `Walked from ${zone.sign} ${zone.starts.map(labelOf).join(' · ')}`));
+      renderSections(z, zone);
+      box.append(z);
+    }
+  }
+
+  /** One table's sections and what it did not draw - the walk's one table, or one sign's zone. */
+  function renderSections(box, view) {
     const at = state.at;
     const checks = checksOf(at);
     for (const section of view.sections) {
@@ -694,7 +709,8 @@ export function boot(doc, host, deps) {
       if (!r.nodes.length) {
         box.append(el(doc, 'div', 'wk-note', r.message || 'No node reached'));
       }
-      renderTable(box, r);
+      const askedOf = state.at === 0 ? state.asked : shown.asked;
+      renderTable(box, r, { positive: (askedOf && askedOf.positive) || [], negative: (askedOf && askedOf.negative) || [] });
     }
     root.append(box);
   }

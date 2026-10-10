@@ -88,6 +88,22 @@ const RESULT = {
   edges: [{ id: 'e:1', source: 'n:3', target: 'n:1', predicate: 'inspected', qualifiers: { gate: 7 } }],
 };
 
+// Two + starts and one −; a die reached from + only, one from − only, one from both. The answer's reach is the server's.
+const SIGNED = {
+  nodes: [
+    { id: 's:a', type: 'wafer@1', label: 'A', depth: 0, keys: { wafer: 'A' } },
+    { id: 's:c', type: 'wafer@1', label: 'C', depth: 0, keys: { wafer: 'C' } },
+    { id: 's:b', type: 'wafer@1', label: 'B', depth: 0, keys: { wafer: 'B' } },
+    { id: 'd:1', type: 'die@1', label: 'D-1', depth: 1, keys: { mat_id: 'M-1' } },
+    { id: 'd:2', type: 'die@1', label: 'D-2', depth: 1, keys: { mat_id: 'M-2' } },
+    { id: 'd:3', type: 'die@1', label: 'D-3', depth: 2, keys: { mat_id: 'M-3' } },
+  ],
+  edges: [{ id: 'e:a3', source: 's:a', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 7 } },
+    { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 9 } }],
+  propagation: { ranked: [{ id: 'd:1', reach: [2, 0] }, { id: 'd:2', reach: [0, 1] }, { id: 'd:3', reach: [1, 1] }] },
+};
+const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
+
 let ran = 0;
 const NAMES = [];
 let failures = [];
@@ -428,6 +444,25 @@ async function suite(mod) {
           === JSON.stringify([SAME._start.id, ...outSide, ...inSide].sort()),
       `${sameAsked.length} ${sameRows.length} out ${outSide.size} in ${inSide.size}`);
   }
+  // ── the page: a zone per sign when the walk had a - start (lead 55f854fc5 ②) ──
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    handle.state.type = 'wafer@1';
+    handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
+    handle.state.run = 'done';
+    handle.state.result = SIGNED;
+    handle.render();
+    const zones = walkAll(host).filter((e) => /^wk-zone( is-control)?$/.test(e.className || ''));
+    const heads = zones.map((z) => walkAll(z).filter((e) => e.className === 'wk-zonehead').map((e) => e.textContent).join());
+    const rowsIn = zones.map((z) => walkAll(z).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']).sort().join(','));
+    ok('Z6 the page: a zone per sign, named by its starts, each with the rows its sign reached',
+      JSON.stringify(heads) === JSON.stringify(['Walked from + A · C', 'Walked from − B'])
+        && JSON.stringify(rowsIn) === JSON.stringify(['d:1,d:3,s:a,s:c', 'd:2,d:3,s:b']),
+      `${JSON.stringify(heads)} ${JSON.stringify(rowsIn)}`);
+  }
 }
 
 // ═══ baseline ═══════════════════════════════════════════════════════════════════════════
@@ -461,12 +496,42 @@ const qualifierSuite = (TV) => {
 };
 // The suite's own count: a mutant of main.js runs the suite alone, so its shrink is measured against this.
 const suiteRan = ran;
+// ── the walk table by the sign of the start that reached each node (lead 55f854fc5 ②) ──
+const rowIds = (table) => table.sections.flatMap((sec) => sec.rows.map((r) => r.id)).sort().join(',');
+const zoneSuite = (TV) => {
+  const view = (starts, result = SIGNED) => TV.walkTableView(result, DECL.entities, DECL.predicates, undefined, starts);
+  const plain = view({ positive: ['s:a', 's:c'], negative: [] });
+  ok('Z1 no - start: the one table it always was, every node in it', plain.zones === null && rowIds(plain) === 'd:1,d:2,d:3,s:a,s:b,s:c',
+    `${JSON.stringify(plain.zones)} ${rowIds(plain)}`);
+  const two = view(SIGNED_STARTS);
+  const zone = (sign) => ((two.zones || []).find((z) => z.sign === sign) || { sections: [] });
+  ok('Z2 a - start: a zone per sign, each its starts and the nodes its reach says', (two.zones || []).map((z) => z.sign).join() === '+,−'
+    && rowIds(zone('+')) === 'd:1,d:3,s:a,s:c' && rowIds(zone('−')) === 'd:2,d:3,s:b', `${rowIds(zone('+'))} | ${rowIds(zone('−'))}`);
+  ok('Z3 a node reached from both signs stands in both zones', rowIds(zone('+')).includes('d:3') && rowIds(zone('−')).includes('d:3'),
+    `${rowIds(zone('+'))} | ${rowIds(zone('−'))}`);
+  ok('Z4 two starts of one sign walk in one zone together', JSON.stringify(zone('+').starts) === JSON.stringify(['s:a', 's:c'])
+    && rowIds(zone('+')).includes('s:a') && rowIds(zone('+')).includes('s:c'), JSON.stringify(zone('+').starts));
+  const gateOf = (zoneView) => {
+    const die = (zoneView.sections || []).find((sec) => sec.type === 'die@1');
+    const at = die ? die.columns.findIndex((col) => col.kind === 'qualifier' && col.key === 'gate') : -1;
+    const row = die && die.rows.find((r) => r.id === 'd:3');
+    return row && at >= 0 ? row.cells[at].text : null;
+  };
+  ok('Z7 a zone\'s cells read the edges walked inside it: the node both reached says each sign\'s own value',
+    gateOf(zone('+')) === '7' && gateOf(zone('−')) === '9', `${gateOf(zone('+'))} | ${gateOf(zone('−'))}`);
+  const blind = view(SIGNED_STARTS, { ...SIGNED, propagation: null });
+  ok('Z5 an answer that ranks nothing: one table, said to be both signs', blind.zones === null && blind.unsplit === true
+    && rowIds(blind) === 'd:1,d:2,d:3,s:a,s:b,s:c', `${JSON.stringify(blind.zones)} ${blind.unsplit}`);
+};
 qualifierSuite(await import('../src/walk/table_view.js'));
+zoneSuite(await import('../src/walk/table_view.js'));
 console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${ran} assertions`);
 const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  { id: 'NZ1', what: 'the page draws one table even with a - start', catches: 'Z6',
+    from: '    if (!view.zones) { renderSections(box, view); return; }', to: '    { renderSections(box, view); return; }' },
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
   { id: 'M1', what: 'the renderer names its own columns again',
     catches: 'V2 the column labels',
@@ -490,7 +555,7 @@ const MUTANTS = [
   { id: 'M4', what: 'the cap note prints the total instead of what was hidden',
     catches: 'C3 the total is not what is printed',
     from: '      box.append(el(doc, \'div\', \'wk-note\', `${view.hidden} more not drawn`));',
-    to: '      box.append(el(doc, \'div\', \'wk-note\', `${r.nodes.length} more not drawn`));' },
+    to: '      box.append(el(doc, \'div\', \'wk-note\', `${view.shown + view.hidden} more not drawn`));' },
   { id: 'M6', what: 'the type placeholder carries its text as its value again',
     catches: 'P1 picking the placeholder',
     from: "    none.value = '';\n", to: '' },
@@ -574,6 +639,20 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'ZM1', what: 'reach read off the other index', catches: 'Z2',
+    from: "{ '+': Number((row.reach || [])[0]) || 0, '−': Number((row.reach || [])[1]) || 0 }",
+    to: "{ '+': Number((row.reach || [])[1]) || 0, '−': Number((row.reach || [])[0]) || 0 }" },
+  { id: 'ZM2', what: 'a node reached from both stands only in the + zone', catches: 'Z3',
+    from: "own.has(n.id) || (reach.get(n.id) || {})[sign] > 0)",
+    to: "own.has(n.id) || ((reach.get(n.id) || {})[sign] > 0 && !(sign === '−' && (reach.get(n.id) || {})['+'] > 0)))" },
+  { id: 'ZM3', what: 'zones even without a - start', catches: 'Z1',
+    from: "  const reach = negative.length ? reachBySign(result) : null;", to: "  const reach = reachBySign(result);" },
+  { id: 'ZM4', what: 'only the first start of a sign walks in its zone', catches: 'Z4',
+    from: "    const own = new Set(ids);", to: "    const own = new Set(ids.slice(0, 1));" },
+  { id: 'ZM5', what: 'an answer that ranks nothing still split, its zones holding the starts alone', catches: 'Z5',
+    from: "  if (!Array.isArray(ranked)) return null;", to: "  if (!Array.isArray(ranked)) return new Map();" },
+  { id: 'ZM6', what: 'a zone reads every edge of the walk', catches: 'Z7',
+    from: "    return { sign, starts: [...ids], ...tableOf(members, read) };", to: "    return { sign, starts: [...ids], ...tableOf(members) };" },
   { id: 'QM1', what: 'several edges into one node: the last edge\'s value wins again', catches: 'Q1',
     from: "      said[name] = list.length === 1 ? list[0].value\n", to: "      said[name] = list.length >= 1 ? list[list.length - 1].value\n" },
 ];
@@ -586,6 +665,7 @@ const tv = await scoreMutants(TV_MUTANTS, async (m) => {
     },
   });
   qualifierSuite(loaded.module);
+  zoneSuite(loaded.module);
   return { ran, names: NAMES.slice(), failures: failures.slice() };
 }, { baselineNames: base.names, title: `${LF}== table_view mutants (each must be CAUGHT by the check it names) ==` });
 

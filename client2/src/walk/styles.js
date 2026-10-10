@@ -133,6 +133,10 @@ export const WALK_CSS = `
 /* A control row and a control start: the board's control look (board.css .is-marked-control). */
 .wk-table tr.is-control td { background: var(--bg-inset); }
 .wk-table tr.is-control td.wk-check { box-shadow: inset 2px 0 0 var(--text-muted); }
+/* A sign's zone of the walk table (lead 55f854fc5 ②): its starts named above it; the − zone in the control look. */
+.wk-zone { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); }
+.wk-zonehead { font-weight: 600; overflow-wrap: anywhere; }
+.wk-zone.is-control .wk-zonehead { color: var(--text-muted); }
 .wk-starts { display: flex; flex-flow: row wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
 .wk-start { font-family: var(--font-mono); }
 .wk-start.is-control { color: var(--text-muted); }
