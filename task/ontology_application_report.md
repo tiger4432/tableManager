@@ -38057,3 +38057,19 @@ RUN.md     대본 ① · ② 를 위 수로 다시 생성(61d6e5836) — Ctrl+Sh
            같은 id 짓기 줄은 e07f6382c(바구니 전)에도 있음 — 코드로 봄, 그 빌드 화면에서는 안 눌러 봄
 고치기      클라 레인 몫 — 응용은 안 고침
 ```
+
+---
+
+## [C 응용] 10-10 id 철자 고침(619855bc9) 을 18766 에서 — 거절은 사라짐 · 타이핑한 코어 웨이퍼 다이는 «다른 노드»를 부른다
+
+```
+빌드     2d46fc435 walk-bcNdYCqE.js · instance 18766 server-only · box slice + fake data
+누른 것   Type die · typed SYN-CW-103-15 · 0 · 11 · Wafer · Positive + Add · Walk
+본 것     no «Failed» line · id sent ["die",{"mat_id":"SYN-CW-103-15","mat_type":"Wafer","x":"0","y":"11"}] (sorted) · 0.104 s · Nodes 1 · Edges 0 · Asked 12 hops · reached 0 hops · die 1 (the start alone)
+원장      this die: {"x": 0.0, "y": 11.0, "mat_id": "SYN-CW-103-15", "mat_type": "Wafer"} in_container 1 - x and y held as numbers, the typed id names them as text
+          die subjects by key JSON type: SYN-BW number bonded_from 282 · bw_dt_seat 141 · void_observation 199 · string die_inspection 135 · SYN-CW number bonded_from 141
+          distinct dies: SYN-BW text-keyed 85 · number-keyed 141 · text-keyed also held number-keyed (same mat_id, x, y) 38 · SYN-CW text 0 · number 141
+뜻       고침은 됨(정렬된 id · 거절 줄 없음). 남은 것은 클라 커밋이 «안 한 것»으로 적은 그 자리 — 친 키는 글자, 원장이 숫자로 든 키는 다른 노드
+          이 데이터(박스 조각 + 가짜)에서는 같은 다이가 소스에 따라 글자 · 숫자 두 철자로 들어 있어 두 노드가 된 것도 있음(위 38)
+          보드의 «숫자 키 타입은 시연 뒤 소유자께» 물음의 자료 — 응용은 안 고침 · 운영 데이터는 못 봄
+```
