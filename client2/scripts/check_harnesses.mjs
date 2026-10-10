@@ -1403,7 +1403,7 @@ const FLOORS = new Map([
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
   ['node_search_harness.mjs', 39],   // + NS15: the row count says it counts atoms (lead 10-10)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
-  ['reach_table_harness.mjs', 36],
+  ['reach_table_harness.mjs', 33],   // 36 -> 33: R13 R14 and FM10 retired with viaDepth - the table's Route reads the answer's evidence, walk_table Z29-Z32 (lead 1333a5ec9)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
   ['trend_harness.mjs', 26],   // 21 -> 26: the axis the lead found on the box (10-10)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
@@ -1456,7 +1456,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 355],   // 335 -> 355: the lump opens in one layer - LM10-LM14, PL and their mutants (leads df11f9e81, 2f25c883a)
+  ['subgraph_view_harness.mjs', 369],   // -> 369: the Paths box between two marked nodes - PA1-PA4, PAm1-PAm6 (leads 55f854fc5, df11f9e81)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1482,7 +1482,10 @@ const FLOORS = new Map([
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
-  ['walk_table_harness.mjs', 108],   // 106 -> 108: the node axis in the middle of its box (lead 10-10)
+  // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
+  // nodes call the same simplePaths.
+  ['paths_harness.mjs', 22],
+  ['walk_table_harness.mjs', 120],   // 108 -> 120: Route, the walk's own paths - Z29-Z32, RM1-RM5, NZ15 (leads df11f9e81, 1333a5ec9)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
@@ -1574,7 +1577,7 @@ const FLOORS = new Map([
   // the board part: the walk box
   // 87 -> 99: RC1-RC11, the loop chips (lead 5d5b8d750). 99 -> 98 (lead 10-06): B8, the two-screen
   // follow compare, leaves until the board follows the walk page; H3 scores this box only.
-  ['rnd_board_walk_box_harness.mjs', 104],   // + RC12-RC14: routes back to the start type (lead 10-09)
+  ['rnd_board_walk_box_harness.mjs', 104],   // RC12-RC14's three mutants moved with the search to paths_harness PM1-PM3 (lead df11f9e81)
   // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
   // with the run row's own computed facts (Not computed yet / factors N · computed HH:MM, one read),
   // two instances on one screen, the real chain's run rows through the real route (J), and the

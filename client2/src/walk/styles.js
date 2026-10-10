@@ -322,6 +322,23 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-tool { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 /* What a lump holds, ticked open (lead 03bc94b6b): beside the lump, inside the picture's box. */
+/* The Paths box (lead 55f854fc5, placement 가): at the picture's top right, scrolling inside itself. */
+.sg-paths { position: absolute; z-index: 1; top: var(--space-2); right: var(--space-2); width: 340px;
+  max-width: calc(100% - var(--space-4)); max-height: calc(100% - var(--space-4)); overflow: auto; display: flex;
+  flex-direction: column; gap: var(--space-2); padding: var(--space-3); background: var(--bg-surface);
+  border: 1px solid var(--border-strong); box-shadow: var(--shadow-pop); }
+.sg-paths[hidden] { display: none; }
+.sg-paths-head { font-weight: 600; overflow-wrap: anywhere; }
+.sg-paths-edges { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.sg-paths-edge { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--wk-h-small);
+  font-size: var(--wk-fs-line); }
+.sg-paths-kinds { display: flex; flex-direction: column; gap: var(--space-1); }
+.sg-paths-kind { display: flex; align-items: center; gap: var(--space-2); min-height: var(--wk-h); padding: var(--space-1) var(--space-3);
+  font: inherit; text-align: left; color: var(--text); background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 0; cursor: pointer; }
+.sg-paths-kind.is-on { color: var(--accent); background: var(--accent-weak); border-color: var(--accent); }
+.sg-paths-words { min-width: 0; overflow-wrap: anywhere; font-size: var(--wk-fs-line); }
+.sg-paths-count { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .sg-pick { position: absolute; z-index: 2; width: 272px; max-width: calc(100% - var(--space-4)); display: flex;
   flex-direction: column; background: var(--bg-surface); border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-pop); }

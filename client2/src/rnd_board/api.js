@@ -45,6 +45,7 @@
 //    들고 있었는데 `api.js` 한 줄만 그 문을 안 지났고, 개인 로더 여섯이 같은 줄을 각자 들고
 //    있었습니다. 이제 일곱이 «한 문»(`moduleUrl`)을 지납니다.
 import { declaredKeys } from '../walk/derive.js';
+import { simplePaths } from '../walk/paths.js';
 import { UNPICKED, isBlank } from '../absent.js';
 import { SERVER_REFUSED } from '../ui_words.js';
 
@@ -1716,27 +1717,8 @@ export function typeGraph(declaration) {
 export function pathsBetween(declaration, from, to) {
   const { types, edges } = typeGraph(declaration);
   const limit = Math.max(1, types.length - 1);
-  const out = [];
-  const walkOn = (at, seen, chain) => {
-    if (chain.length && at === to) { out.push(chain.slice()); return; }
-    if (chain.length >= limit) return;
-    for (const edge of edges) {
-      if (edge.from === edge.to) continue;
-      let next = null;
-      if (edge.from === at) next = edge.to;
-      else if (edge.to === at) next = edge.from;
-      else continue;
-      if (seen.has(next) && next !== to) continue;
-      seen.add(next);
-      chain.push({ predicate: edge.predicate, next });
-      walkOn(next, seen, chain);
-      chain.pop();
-      seen.delete(next);
-    }
-  };
-  if (from && to && types.includes(from) && types.includes(to)) {
-    walkOn(from, new Set([from]), []);
-  }
+  // The one simple-path search (walk/paths.js): the paths between two marked nodes are the same search.
+  const out = from && to && types.includes(from) && types.includes(to) ? simplePaths(edges, from, to, limit).paths : [];
   // 🔴 «follow 집합»이 경로의 신원입니다. walk 이 받는 것은 {follow, hops} 이고, 같은 follow 에
   //    홉만 다른 둘은 «다른 길이 아니라» 「몇 번 반복하나」입니다(소유자: 반복 횟수는 사용자 축).
   //    ⚠️ 접을 때 «가장 짧은» 홉을 답니다 -- 그 경로가 최소 몇 홉을 요구하는지가 hops 의 뜻입니다.

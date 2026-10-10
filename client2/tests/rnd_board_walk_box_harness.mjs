@@ -920,14 +920,8 @@ const MUTANTS = [
     to: "if (edge.from !== edge.to || edge.from !== at" },
   { name: 'a-loop-chip-adds-no-hop', catches: ['RC5 ', 'RC10 '], file: 'api.js',
     from: "hops: route.hops + picked.length };", to: "hops: route.hops };" },
-  // A route back to the start type (lead 10-09).
-  { name: 'a-route-never-comes-back', catches: ['RC12 '], file: 'api.js',
-    from: "      if (seen.has(next) && next !== to) continue;", to: "      if (seen.has(next)) continue;" },
-  { name: 'a-route-walks-on-past-its-destination', catches: ['RC13 '], file: 'api.js',
-    from: "    if (chain.length && at === to) { out.push(chain.slice()); return; }",
-    to: "    if (chain.length && at === to) { out.push(chain.slice()); if (chain.length > 2) return; }" },
-  { name: 'a-self-loop-onto-the-destination-is-a-route', catches: ['RC14 '], file: 'api.js',
-    from: "      if (edge.from === edge.to) continue;", to: "      if (edge.from === edge.to && edge.from !== to) continue;" },
+  // A route back to the start type (lead 10-09): its three mutants moved with the search to walk/paths.js -
+  // paths_harness PM1 (never comes back) · PM2 (walks on past its destination) · PM3 (a self-loop a step).
   { name: 'a-loop-at-the-destination-is-offered', catches: ['RC2 '], file: 'api.js',
     from: "for (const at of chain.slice(0, -1)) {", to: "for (const at of chain) {" },
   { name: 'the-box-route-ignores-its-chips', catches: ['RC10 '],
