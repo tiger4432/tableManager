@@ -78261,3 +78261,141 @@ public: 게이트 전체(새 시험 · 기존 하니스 PG · 변이) 전후 pub
          빈 later= · earlier= 는 «안 물음»으로 읽혀 걷기로 답함 — since · until 의 빈칸과 같은 규칙
          노드 끝(길이 2~3) · 화면은 시연 뒤 / 클라 착지
 ```
+
+## [10-10 밤] bonded_from 을 다시 Follow 로 — 재기만 (총괄 fe72e5c32) — 쓰기 0
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 assy_manager 는 연결마다 읽기 전용 · 스크래치는 «파일»만(박스 선언 두 파일의 사본 bf_root_* · HEAD 서버 export bf_tree) · DB 쓰기 0 · 운영 설정 두 파일 md5 전후 같음
+
+```
+원인    소스가 거절돼서 술어가 빠지는 것이 «아님» — 소스 이름과 술어 이름이 같아(bonded_from) 거르는 고리가 술어를 뺌
+        resolve_declarations 는 «종류|이름» 으로 탓하고, 빼는 자리는 종류를 안 보고 «그 이름을 가진 첫 칸»
+        박스 선언에서 두 칸에 같은 이름이 있는 것: ['bonded_from']
+        2 회차 — 소스가 뷰를 읽어 거절됐는데 vocabulary 에서 bonded_from 을 뺌 · 3 회차 — 소스가 「모르는 술어」로 다시 빠짐
+        덤 — 같은 키의 3 회차가 2 회차 기록을 덮어 화면의 거절 사유가 「unknown predicate」(진짜 사유는 «뷰를 읽음»)
+```
+
+```
+같은 선언 · 같은 카탈로그(파일만) — bf_holder
+  sections and kinds: {'sources': 'source_plan', 'virtual_joins': 'virtual_join', 'vocabulary': 'predicate', 'entities': 'entity'}
+  names held by two sections: ['bonded_from']
+  == A today: rounds 4 · fell 11 · bonded_from in vocabulary: False · sources left 5
+     round 2  source_plan|bonded_from        taken from section vocabulary   relation_not_a_row_table
+     round 3  source_plan|bonded_from        taken from section sources      unknown_predicate
+  == B source renamed: rounds 3 · fell 10 · bonded_from in vocabulary: True · sources left 5
+     round 2  source_plan|bonded_from_src    taken from section sources      relation_not_a_row_table
+  == C drop from the kind's own section: rounds 3 · fell 10 · bonded_from in vocabulary: True · sources left 5
+     round 2  source_plan|bonded_from        taken from section sources      relation_not_a_row_table
+  == product resolve_declarations today: bonded_from in vocabulary: False · invalid['source_plan|bonded_from'].raw holds a source
+```
+
+```
+제품이 읽는 자리 그대로 — /declaration(걷기 화면 Follow 목록) · follow 판정 · 로더가 남기는 소스
+  == today (HEAD, box declaration copy)
+  tree wt-impl · root bf_root_today
+    /declaration predicates 13 · bonded_from False
+    follow accepts 13 · bonded_from False
+    sources the loader keeps: ['die_inspection', 'dt_job', 'lot_slot_wafer', 'transfer_event', 'wafer_process_recipe']
+    predicates: ['derived_from', 'has_netdie', 'has_wafer', 'in_container', 'inspected', 'leads_to', 'measures', 'observed', 'of_kind', 'processed_with', 'register', 'slot_map', 'transfer']
+    NOT read lines: 10
+  == ㄱ resolver fix (export + patch, box declaration copy)
+  tree bf_tree · root bf_root_today
+    /declaration predicates 14 · bonded_from True
+    follow accepts 14 · bonded_from True
+    sources the loader keeps: ['die_inspection', 'dt_job', 'lot_slot_wafer', 'transfer_event', 'wafer_process_recipe']
+    predicates: ['bonded_from', 'derived_from', 'has_netdie', 'has_wafer', 'in_container', 'inspected', 'leads_to', 'measures', 'observed', 'of_kind', 'processed_with', 'register', 'slot_map', 'transfer']
+    NOT read lines: 10
+  == ㄴ source renamed (HEAD)
+  tree wt-impl · root bf_root_renamed
+    /declaration predicates 14 · bonded_from True
+    follow accepts 14 · bonded_from True
+    sources the loader keeps: ['die_inspection', 'dt_job', 'lot_slot_wafer', 'transfer_event', 'wafer_process_recipe']
+    predicates: ['bonded_from', 'derived_from', 'has_netdie', 'has_wafer', 'in_container', 'inspected', 'leads_to', 'measures', 'observed', 'of_kind', 'processed_with', 'register', 'slot_map', 'transfer']
+    NOT read lines: 10
+  == ㄹ source retired (HEAD)
+  tree wt-impl · root bf_root_retired
+    /declaration predicates 14 · bonded_from True
+    follow accepts 14 · bonded_from True
+    sources the loader keeps: ['bonded_from', 'die_inspection', 'dt_job', 'lot_slot_wafer', 'transfer_event', 'wafer_process_recipe']
+    predicates: ['bonded_from', 'derived_from', 'has_netdie', 'has_wafer', 'in_container', 'inspected', 'leads_to', 'measures', 'observed', 'of_kind', 'processed_with', 'register', 'slot_map', 'transfer']
+    NOT read lines: 9
+```
+
+```
+걷기 라우트 자체 — evidence_subgraph(follow=bonded_from, hops 1, outgoing), 박스 원장 읽기 전용
+  == today (HEAD)
+  bf_root_today · {"x": 0.0, "y": 0.0, "mat_id": "ZZ-DOE-BW-01", "mat_type": "Wafer"} · 422 predicate_not_declared · predicate 'bonded_from' is not declared in world default - pick one from 'declared'
+  == ㄱ resolver fix
+  bf_root_today · {"x": 0.0, "y": 0.0, "mat_id": "ZZ-DOE-BW-01", "mat_type": "Wafer"} · 200 · 1.12 s · edges 1 ['bonded_from'] · far nodes ['ZZ-DOE-CW-01 / 0 / 0 / Wafer']
+  == ㄴ renamed
+  bf_root_renamed · {"x": 0.0, "y": 0.0, "mat_id": "ZZ-DOE-BW-01", "mat_type": "Wafer"} · 200 · 0.97 s · edges 1 ['bonded_from'] · far nodes ['ZZ-DOE-CW-01 / 0 / 0 / Wafer']
+  == ㄹ retired
+  bf_root_retired · {"x": 0.0, "y": 0.0, "mat_id": "ZZ-DOE-BW-01", "mat_type": "Wafer"} · 200 · 1.11 s · edges 1 ['bonded_from'] · far nodes ['ZZ-DOE-CW-01 / 0 / 0 / Wafer']
+```
+
+```
+ㄱ (추천) 고리가 «탓한 종류의 칸»에서만 뺀다 — config_explorer.resolve_declarations 한 곳
+   운영자 할 일  없음 (서버 · 체인 워커 재기동 — 총괄)
+   좋은 점      원장 다시 쓰기 0 행 · 지금 bonded_from 원자 18,609 개가 그대로 Follow 됨 · 빠지는 소스는 지금과 같은 열
+                거절 사유가 진짜 사유(뷰를 읽음)로 · 이름이 겹치는 다른 선언에도 같은 답
+   위험        선언을 읽는 모든 자리가 지나는 함수 — 이름이 겹칠 때만 답이 바뀜(겹침 없는 박스 선언에서 빠지는 것 · 남는 것이 같음은 위 표)
+   크기        함수 안 +10 −9 줄(아래 diff 에서 셈) + 시험 한 칸(소스와 술어가 같은 이름 · 소스 거절 -> 술어 남음) · 변이 한 번 — 안 지었다
+   되돌림      git revert <그 커밋> -> 재기동
+ㄹ 박스 선언에서 그 소스를 status: retired (설정 한 줄)
+   운영자 할 일  sources.bonded_from.status = "retired" — 소유자 파일
+   좋은 점      코드 0 · 원장 0 행 · 은퇴한 소스는 어디서나 이름으로 거절돼 원자가 남음(_require_declared_source)
+   위험        「뷰를 읽어 거절됨」 대신 「운영자가 멈춤」으로 보임 · 이름 겹침 결함은 그대로 남음
+   되돌림      status 를 "active" 로
+ㄴ 박스 선언에서 소스 이름을 바꿈 (bonded_from -> 다른 이름)
+   좋은 점      코드 0 · 원장 0 행
+   위험 🔴     옛 이름이 «선언에 없는 소스»가 됨 — 어드민 소급의 «통째 다시 읽기»를 옛 이름에 누르면 그 소스 원자 55,827 개를 거둠
+                (backfill.rescope_scope: 선언이 이름 대지 않는 소스 = 쓴 원자 전부 거둠 · 드라이런은 안 돌림) · 나중 번역의 source_who 가 바뀜
+   추천 안 함
+ㄷ 지시서의 길 — 그 소스를 체인이 쓰는 표로
+   ① 안 쟀다 — 박스에 그 표를 쓰는 체인 규칙 · 매퍼가 없음(규칙 13 개 중 bonding 0 · bonding_core_die 를 읽는 매퍼 0) -> 새 코드
+      raw ref = «관계 이름 + order_by 칸 값»(event_frame, row_id 아님) -> 표 이름을 뷰와 같게(운영 DB 에서 DROP VIEW) 하면 ref 55,827 개가 그대로 맞고,
+      다른 이름이면 뷰 18,609 행 전부가 새 ref -> 원자 55,827 개 새로 + 옛것의 처리(거둠 · 겹침)는 안 쟀다 · 초도 안 쟀다
+   ② 소스가 거절되지 않으니 이름 겹침이 안 일어나 bonded_from 이 남음 — ㄱ 없이도
+   시연 전 아님 — 새 매퍼 · 규칙 · 운영 DB DDL
+```
+
+```
+박스 원장(읽기 전용) — 그 소스와 뷰
+  뷰 bonding_die_from_core 18,609 행(bonding_core_die 위의 뷰) · 그 소스가 쓴 원자 bonded_from 18,609 · in_container 37,218 · 합 55,827
+  지금 박스 선언: setup_version 5 · 회차 4 · 기록(invalid) 10 · 실제로 뺀 것 11(소스 10 + 술어 bonded_from — 같은 키를 3 회차가 덮어 하나가 기록에서 사라짐)
+```
+
+```
+ㄱ 의 diff (스크래치 export 에만 적용 — 어느 트리에도 안 씀)
+  --- a/ledger/config_explorer.py
+  +++ b/ledger/config_explorer.py
+  @@ -1270,3 +1270,5 @@
+       """
+  -    from .config_authoring import isolation_key
+  +    from .config_authoring import _ISOLATION_KIND_BY_SECTION, isolation_key
+  +
+  +    section_of = {kind: section for section, kind in _ISOLATION_KIND_BY_SECTION.items()}
+   
+  @@ -1288,10 +1290,9 @@
+           for key in sorted(per):
+  -            _, _, canonical_id = key.partition("|")
+  -            for holder in working.values():
+  -                if isinstance(holder, dict) and canonical_id in holder:
+  -                    # Keep what was written. The declaration leaves the bundle but the
+  -                    # operator has to be able to open it again and finish it, and this is
+  -                    # the only place its text is still in hand.
+  -                    fell.append((key, per[key], holder.pop(canonical_id)))
+  -                    break
+  +            kind, _, canonical_id = key.partition("|")
+  +            holder = working.get(section_of.get(kind))
+  +            if isinstance(holder, dict) and canonical_id in holder:
+  +                # Keep what was written. The declaration leaves the bundle but the
+  +                # operator has to be able to open it again and finish it, and this is
+  +                # the only place its text is still in hand.
+  +                fell.append((key, per[key], holder.pop(canonical_id)))
+           if not fell:
+```
+
+```
+시연 전   ㄱ — 원장 0 행 · 되돌림 한 줄 · 재기동 필요 / ㄹ — 원장 0 행 · 코드 0 · 소유자 설정 한 줄 / ㄴ · ㄷ — 아님
+물음      ㄷ 의 원장 다시 쓰기를 스크래치에서 재려면 표 이름(뷰와 같게 · 다르게)을 먼저 정해 주셔야 함
+```
