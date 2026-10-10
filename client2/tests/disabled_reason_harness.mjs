@@ -146,7 +146,7 @@ const DECL = {
   predicates: [{ name: 'bonded_from', subjects: ['die@1'], objects: ['die@1'] }],
 };
 /** 같은 선언, 전선이 «응답 본문»으로 받는 모양. `ok` 는 HTTP 쪽 말이라 본문에 없습니다. */
-const DECL_BODY = { entities: DECL.entities, predicates: DECL.predicates, collect: [] };
+const DECL_BODY = { entities: DECL.entities, predicates: DECL.predicates };
 async function walkBoxSuite(WalkBoxPanel) {
   const seat = async (type) => {
     const host = doc.createElement('div');
@@ -191,7 +191,7 @@ async function walkPageSuite(boot) {
   const go = walk(host).find((n) => String(n.tagName || '').toLowerCase() === 'button'
     && (n.textContent || '') === 'Walk');
   ok(Boolean(go) && go.disabled === true, 'K1 타입이 없으면 「Walk」가 꺼진다', go && go.disabled);
-  ok(Boolean(go) && titleOf(go) === 'Pick a node type first',
+  ok(Boolean(go) && titleOf(go) === 'Add a start to Positive first',
      'K2 그리고 «둘 중 어느 것»을 기다리는지 말한다', go && titleOf(go));
   ok(mute(host).length === 0, 'K3 말 없이 꺼진 컨트롤이 하나도 없다',
      mute(host).map((n) => n.className));
@@ -381,8 +381,8 @@ const PART_DEFECTS = [
                     "    if (!this.nodeType) btn.setAttribute('disabled', 'disabled');")],
   ['M9 「날리기」가 말 없이 꺼진다 -> K2/K3', WALKPAGE,
    (s) => s.replace("    setDisabledReason(go, state.run === 'running'\n      ? RUNNING\n"
-                    + "      : (state.type ? '' : PICK_TYPE_FIRST));",
-                    "    go.disabled = !state.type || state.run === 'running';")],
+                    + "      : (seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length ? '' : BASKET_WORDS.noStart));",
+                    "    go.disabled = state.run === 'running' || !seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length;")],
 ];
 const CONTROLS = [
   ['좌석의 주석 한 낱말', SEAT, (s) => s.replace('넷»이었습니다', '다섯»이었습니다')],

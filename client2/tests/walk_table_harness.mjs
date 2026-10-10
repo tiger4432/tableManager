@@ -196,21 +196,25 @@ async function suite(mod) {
     const go = () => walkAll(host).find((e) => e.className === 'wk-go');
     const click = (e, event = {}) => { for (const fn of (e && e.listeners.click) || []) fn(event); };
     const query = (u) => new URLSearchParams((u || '').split('?')[1] || '');
+    // The starts go in the baskets (lead bc63378e5): A by Positive's +, B by Negative's +, then Walk.
+    const basket = (sign) => walkAll(host).find((e) => e.attrs && e.attrs['data-sign'] === sign && e.className.startsWith('wk-basket'));
+    const plus = (sign) => click(walkAll(basket(sign) || { children: [] }).find((e) => e.className === 'wk-basketadd'));
     handle.state.type = 'wafer@1';
     handle.state.keys = { wafer: 'A' };
-    click(go());
-    await settle();
+    plus('+');
     handle.state.keys = { wafer: 'B' };
-    click(go(), { ctrlKey: true, shiftKey: true });
+    plus('−');
+    click(go());
     await settle();
     const starts = handle.graph.markings.entries('walk-start');
     const q = query(asked[asked.length - 1]);
-    ok('S1 Walk puts the subject in the starts - a press replaces with +, Ctrl+Shift adds it as -; the walk asks both',
+    ok('S1 the baskets are the starts - A in Positive as +, B in Negative as -; Walk asks both',
       starts.length === 2 && starts[0][1] === SIGN.CASE && starts[1][1] === SIGN.CONTROL
         && q.getAll('positive').join() === starts[0][0] && q.getAll('negative').join() === starts[1][0],
       JSON.stringify({ starts, q: q.toString().slice(0, 200) }));
-    const said = walkAll(host).filter((e) => /^wk-start( is-control)?$/.test(e.className || '')).map((e) => e.textContent);
-    ok('S2 the rail says the starts with their signs', JSON.stringify(said) === JSON.stringify(['+ A', '− B']), JSON.stringify(said));
+    const said = ['+', '−'].map((sign) => walkAll(basket(sign) || { children: [] })
+      .filter((e) => e.className === 'wk-basketlabel').map((e) => e.textContent).join());
+    ok('S2 each basket names its starts', JSON.stringify(said) === JSON.stringify(['A', 'B']), JSON.stringify(said));
     const box = (id) => walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === id);
     click(box('n:1'), { shiftKey: true });
     click(box('n:2'));
@@ -407,6 +411,8 @@ async function suite(mod) {
       third === 3 && steps(host).length === 3 && steps(host)[0].className === 'wk-step is-on'
         && rowsShown(host).join() === 'n:1,n:2', `${third} ${rowsShown(host)}`);
     handle.state.view = 'table';
+    handle.state.keys = { mat_id: 'M-1' };
+    handle.baskets.add(SIGN.CASE);
     void handle.fire();
     await settle();
     ok('N7 a new start clears the steps and what their checks wrote',
@@ -579,10 +585,8 @@ const MUTANTS = [
     to: '          subjBox.append(el(doc, \'div\', \'wk-note\', true' },
   // ── lead 53050a4ec: the table's continue ────────────────────────────────────────────────
   // The board's markingIntent on the walk page (lead 10-09).
-  { id: 'SM1', what: 'the Walk takes no sign or Ctrl from the press', catches: 'S1',
-    from: '    const intent = markingIntent(event);\n    const seed', to: "    const intent = { mode: 'replace', sign: SIGN.CASE };\n    const seed" },
   { id: 'SM2', what: 'the table walks the form\'s subject alone, not the starts', catches: 'S1',
-    from: '    const asked = { ...spec(), ...(signed ? starts : {}) };', to: '    const asked = spec();' },
+    from: '    const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };', to: '    const asked = spec();' },
   { id: 'SM3', what: 'a check takes no sign from Shift', catches: 'S3',
     from: "markings.toggle(checks, row.id, markingIntent(event).sign); render(); });", to: "markings.toggle(checks, row.id, SIGN.CASE); render(); });" },
   { id: 'SM4', what: 'Next drops the - rows', catches: 'S4',

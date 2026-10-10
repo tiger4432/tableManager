@@ -25,7 +25,7 @@
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { fetchDeclaration, createWalkBoxWalk, routeWith, fetchKeyValues, PICK_TYPE_FIRST }
+import { fetchDeclaration, createWalkBoxWalk, routeWith, fetchKeyValues }
   from '../rnd_board/api.js';
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06).
 import { ensureWalkStyles } from './styles.js';
@@ -41,6 +41,8 @@ import { setDisabledReason } from '../disabled_reason.js';
 import { SubgraphView, seedsOf } from './subgraph_view.js';
 // The comparison of the start marking's signs (lead 10-09, demo ③) — a part with its own div, placed here.
 import { CompareView } from './compare_view.js';
+// The start baskets (lead bc63378e5) - the start marking's editor, a part with its own div in the right panel.
+import { StartBaskets, BASKET_WORDS } from './start_baskets.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 import { entitySeedId } from '../rnd_board/api.js';
@@ -109,8 +111,6 @@ export function boot(doc, host, deps) {
     // which one is shown: 0 is the form's walk.
     steps: [],
     at: 0,
-    // The start marking's names, as the form spelled each subject when its Walk put it there.
-    startLabels: new Map(),
   };
   const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
   const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
@@ -128,19 +128,17 @@ export function boot(doc, host, deps) {
   const graphMount = el(doc, 'div', 'wk-graph');
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
     worldChips: worlds.length > 1, declaration: () => state.decl });
+  /** The node PICK A NODE holds now, as a basket takes it; none until a type and a key are given. */
+  const pickedNode = () => (state.type && Object.keys(state.keys || {}).length
+    ? { id: entitySeedId(state.type, state.keys), label: Object.values(state.keys).join(' · '), type: state.type, keys: { ...state.keys } }
+    : null);
+  const sideMount = el(doc, 'div', 'wk-side');
+  const baskets = new StartBaskets(sideMount, { doc, markings, name: GRAPH_CHAIN[0], picked: pickedNode });
+  /** A start's name as its basket took it. */
+  const startLabel = (id) => (baskets.describe(id) || {}).label;
   const compareMount = el(doc, 'div', 'wk-compare');
   const compare = new CompareView(compareMount, { doc, walk, markings, startsName: GRAPH_CHAIN[0], spec,
-    declaration: () => state.decl, labelOf: (id) => state.startLabels.get(id) || id });
-  /** The Walk press puts the form's subject in the chain's first marking the way the board marks (lead 10-09): a press
-   *  replaces, Ctrl adds, Shift makes it a control. No subject, no mark (the part says so). */
-  const markStart = (event) => {
-    if (!Object.keys(state.keys || {}).length) { markings.replace(GRAPH_CHAIN[0], []); return; }
-    const intent = markingIntent(event);
-    const seed = entitySeedId(state.type, state.keys);
-    state.startLabels.set(seed, Object.values(state.keys).join(' · '));
-    if (intent.mode === 'add') markings.set(GRAPH_CHAIN[0], seed, intent.sign);
-    else markings.replace(GRAPH_CHAIN[0], [[seed, intent.sign]]);
-  };
+    declaration: () => state.decl, labelOf: (id) => startLabel(id) || id });
   /** The graph walks the start marking as it stands. */
   const showGraph = (opts) => { graph.show(opts); };
   // 🔴 체크칸은 선언된 술어 «전부» (소유자 10-06 「엣지 리스트 다 주고 체크하는걸 메인으로」).
@@ -177,25 +175,24 @@ export function boot(doc, host, deps) {
     return out;
   }
 
-  async function fire(event) {
-    if (!state.type) return;
-    markStart(event);
-    // The Starts line shows the marking as it stands in every view; the graph and the comparison walk without one.
-    render();
+  /** Walk: the baskets as they are (lead bc63378e5). Ctrl and Shift on it retired - the baskets add and sign. */
+  async function fire() {
     await walkStarts();
   }
 
   /** The walk from the start marking as it stands - a Walk press, and a world picked (lead 10-09). */
   async function walkStarts() {
+    if (!markings.count(GRAPH_CHAIN[0])) return;
     // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
     if (state.view === 'graph') { showGraph(); return; }
     // The comparison asks its own walks from the same marking and form.
     if (state.view === 'compare') { await compare.ask(); return; }
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
-    // One + start alone is the form's subject, asked as before (walk_layout L7 · L8: the request does not change).
+    // One + start alone is asked by its type and keys, as the form asked it (walk_layout L7 · L8: the request does not change).
     const starts = seedsOf(markings.entries(GRAPH_CHAIN[0]));
     const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
-    const asked = { ...spec(), ...(signed ? starts : {}) };
+    const one = signed ? null : baskets.describe(starts.positive[0]);
+    const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };
     state.run = 'running'; state.result = null; state.reason = '';
     state.asked = { ...asked, keys: { ...asked.keys } };
     // A new start clears the steps and what their checks wrote, as the graph's new start does (lead 53050a4ec).
@@ -498,25 +495,12 @@ export function boot(doc, host, deps) {
   function renderGo(root) {
     const go = el(doc, 'button', 'wk-go', state.run === 'running' ? RUNNING : 'Walk');
     go.type = 'button';
-    // 🔴 C-120. 꺼진 이유가 «둘»입니다. 「걷는 중」은 라벨과 «같은 상수»이고, 타입이 없을 때의
-    //    문장은 이 화면의 전선이 같은 사실에 이미 쓰는 말(`PICK_TYPE_FIRST`)입니다.
+    // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
     setDisabledReason(go, state.run === 'running'
       ? RUNNING
-      : (state.type ? '' : PICK_TYPE_FIRST));
-    go.addEventListener('click', fire);
+      : (seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length ? '' : BASKET_WORDS.noStart));
+    go.addEventListener('click', () => { void fire(); });
     root.append(go);
-    // The signed starts the walk goes from: Ctrl+Walk adds the subject, Shift+Walk makes it a control (lead 10-09).
-    const starts = markings.entries(GRAPH_CHAIN[0]);
-    if (starts.length) {
-      const line = el(doc, 'div', 'wk-starts');
-      line.append(el(doc, 'span', 'wk-label', 'Starts'));
-      for (const [id, sign] of starts) {
-        const control = sign === SIGN.CONTROL;
-        line.append(el(doc, 'span', control ? 'wk-start is-control' : 'wk-start',
-          `${control ? '−' : '+'} ${state.startLabels.get(id) || id}`));
-      }
-      root.append(line);
-    }
   }
 
   /**
@@ -530,7 +514,7 @@ export function boot(doc, host, deps) {
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
     if (!view.zones) { renderSections(box, view); return; }
     // With a − start, a zone per sign (lead 55f854fc5 ②): its starts by name, then the nodes they reached.
-    const labelOf = (id) => state.startLabels.get(id) || ((r.nodes || []).find((n) => n.id === id) || {}).label || id;
+    const labelOf = (id) => startLabel(id) || ((r.nodes || []).find((n) => n.id === id) || {}).label || id;
     for (const zone of view.zones) {
       const z = el(doc, 'div', 'wk-zone' + (zone.sign === '−' ? ' is-control' : ''));
       z.setAttribute('data-sign', zone.sign);
@@ -746,7 +730,9 @@ export function boot(doc, host, deps) {
       else { renderSteps(main); renderResult(main); }
     }
     rail.append(body, foot);
-    host.append(rail, main);
+    // The baskets read the form's picked node for their «+»: drawn with the page.
+    baskets.render();
+    host.append(rail, main, sideMount);
   }
 
   async function loadSubjects() {
@@ -787,14 +773,14 @@ export function boot(doc, host, deps) {
     // An answer read on the old worlds no longer stands: the compare view asks again below, another view forgets it.
     compare.forget();
     await load();
-    if (state.type && (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0]))) await walkStarts();
+    if (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0])) await walkStarts();
   }
 
   const picker = options.branchMount
     ? new BranchPicker(options.branchMount, { doc, onPickSet: (names) => { void pickWorlds(names); } }) : null;
   if (picker) picker.show({ current: worlds });
   load();
-  return { state, spec, fire, render, graph, compare };
+  return { state, spec, fire, render, graph, compare, baskets };
 }
 
 // 🔴 부팅은 «이 파일 끝»에서만. bare node 로 이 모듈을 읽어도 DOM 을 안 건드려야

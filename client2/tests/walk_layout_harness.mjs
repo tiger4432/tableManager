@@ -107,6 +107,8 @@ async function stand(mod, decl = DECL) {
       s.value = d; fire(s, 'change');
     },
     walk: async () => { fire(find((e) => e.className === 'wk-go'), 'click'); await settle(); },
+    // The picked node into the Positive basket (lead bc63378e5: Walk walks the baskets).
+    plus: async () => { fire(find((e) => e.className === 'wk-basketadd'), 'click'); await settle(); },
   };
   const ticked = () => all().filter((e) => e.attrs && e.attrs['data-follow'] !== undefined
     && e.children.some((c) => c.tagName === 'input' && c.checked)).map((e) => e.attrs['data-follow']).join(',');
@@ -125,16 +127,22 @@ async function suite(mod, css = REAL_CSS) {
   const rail = page.find((e) => e.className === 'wk-rail');
   const main = page.find((e) => e.className === 'wk-main');
   const inside = (box) => new Set(box ? walkAll(box) : []);
+  const side = page.find((e) => e.className === 'wk-side');
   const inRail = inside(rail);
   const inMain = inside(main);
+  const inSide = inside(side);
   const controls = page.all().filter((e) => ['select', 'input', 'button'].includes(e.tagName));
-  const stray = controls.filter((e) => !(e.attrs && e.attrs['data-view'] !== undefined) && !inRail.has(e));
+  const stray = controls.filter((e) => !(e.attrs && e.attrs['data-view'] !== undefined) && !inRail.has(e) && !inSide.has(e));
   ok('L1 every form control is in the rail', controls.length > 5 && stray.length === 0,
     `${controls.length} controls, ${stray.map((e) => e.className).join(',')} outside`);
   const views = controls.filter((e) => e.attrs && e.attrs['data-view'] !== undefined);
   ok('L2 Table | Graph | Compare and the result are in the main part', views.length === 3
     && views.every((e) => inMain.has(e)) && walkAll(main || { children: [] }).some((e) => e.className === 'wk-result'),
     `${views.length} views`);
+  const adds = controls.filter((e) => e.className === 'wk-basketadd');
+  ok('L16 the start baskets are a part of their own, after the result: both + in it, nothing of the form',
+    Boolean(side) && adds.length === 2 && adds.every((e) => inSide.has(e)) && !controls.some((e) => inSide.has(e) && inRail.has(e))
+      && page.host.children[page.host.children.length - 1] === side, `${Boolean(side)} ${adds.length}`);
 
   // 🔴 THE CHECK LIST IS THE MAIN PICK, THE ROUTES THE AID (owner 10-06, lead bf3653401).
   console.log(`${LF}-- Follow: every declared predicate, open, before the routes --`);
@@ -159,12 +167,14 @@ async function suite(mod, css = REAL_CSS) {
   page.act.direction('outgoing');
   page.act.key('hops', '3');
   page.act.key('node_limit', '200');
+  await page.act.plus();
   await page.act.walk();
   const sent = page.asked.filter((u) => u.includes('/subgraph'));
   eq('L7 the full set of choices: the same request as before the layout', sent[0], BEFORE.full);
   const bare = await stand(mod);
   await bare.act.type('die');
   bare.act.key('mat_id', 'M-1');
+  await bare.act.plus();
   await bare.act.walk();
   eq('L8 a type and a key, nothing else: the same request as before', bare.asked.filter((u) => u.includes('/subgraph'))[0],
     BEFORE.bare);
@@ -176,6 +186,7 @@ async function suite(mod, css = REAL_CSS) {
   await one.act.type('die');
   one.act.key('mat_id', 'M-1');
   await one.act.tick('transfer');
+  await one.act.plus();
   await one.act.walk();
   eq('L13 one box of three ticked: only that one goes as follow', sentFollow(one), 'transfer');
   const kept = await stand(mod);
