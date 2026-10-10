@@ -99,7 +99,8 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    클라 walk-CffOP4e8.js · main 의 dist 는 walk-CffOP4e8.js (같음) · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>    빌드    main 의 dist walk-CaI0U1g6.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>            누른 빌드 — walk-CaI0U1g6.js (= main) 에서 ③ 출처 · ④ 점 출처 · ⑦ · ⑦ No more  /  walk-CffOP4e8.js (main 아님 — 마지막에 다시 누름) 에서 ①② · ① · ③ · ③ 칩 순서 · ④ · ④ 쪽 넘김 · ⑤ · ⑥ · ⑧
 >    누름    단추 · 칸 · 목록은 진짜 클릭. 그래프의 노드 · 덩어리는 cytoscape tap — 이 박스의 브라우저 창이 그래프를 안 그려 좌표 클릭이 안 먹음
 >            «모델 세상 1» = 리허설의 appdemo_vf
 >    ①  바구니   Type wafer · PICK A NODE 에 «불량» 앞글자 -> 목록(리허설 «SYN-BW-103-11 · 278 atoms»)에서 고름 -> Positive «+ Add» · «양품» 도 같이 -> Negative «+ Add» · Collect wafer -> Walk
@@ -115,8 +116,11 @@
 >                줄 49 · 두 쪽 값 16 · + 쪽만 25 · − 쪽만 2 · − 빨간 missing 27 · + «—» 8 · − «—» 4 · Δ 보이는 줄 5
 >                pressure_MPa  + 0.22 | Δ −0.1105 | − 0.3305
 >                Route «measures | measures» 16 · «measures | missing» 13 · «measures | measures → leads_to» 3 · «measures → leads_to | measures» 2 · «measures → leads_to | measures → leads_to» 1 · «in_container → bonded_from → in_container → measures | missing» 14
+>       출처     값마다 밑에 «준 노드 · 그 쪽 길» — default 세상 · Collect quantity 만으로 누름: bond_temp + 값 «+2» -> «35.5» «SYN-BW-103-11 · start» · «21.5» «SYN-CW-103-01 · in_container → bonded_from → in_container» · «23.5» «SYN-CW-103-02 · in_container → bonded_from → in_container»
+>                − 값 «13» «SYN-BW-SPL-400-19 · start» · 출처 줄 258 개 중 «ledger-entity:» 0
 >       뜻       한 줄 = 한 계측군 · 빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · «—» = 닿았는데 값이 없음 · 값이 여럿이면 첫 값과 «+N»(누르면 펼침)
 >                Route «measures → leads_to» = 모델 세상의 leads_to 를 한 번 더 걸어 닿은 계측군
+>                출처 = 그 값을 준 노드(선언된 키 순서)와 그 쪽 시작에서 그 노드까지 서버가 걸은 길 — 코어 웨이퍼 값이 base 값과 섞여도 누구 것인지 보인다
 >                칩 순서는 답을 안 바꾼다 — 리허설 «모델 세상 1» 먼저든 default 먼저든 노드 81 · 엣지 1668, 노드와 엣지 전부 같음
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
 >       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 194 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
@@ -124,6 +128,7 @@
 >       쪽 넘김  점이 많은 계측군(리허설 가짜 행 local_gap)의 + 값 «53» 을 누름 -> «1000 points · 2026-11-02 18:42 → 2026-12-15 12:55 local time» · Load earlier · Load later 켜짐
 >                Load earlier -> «1201 points · 2026-10-25 03:49 → 2026-12-15 12:55 local time» · 그 단추 꺼짐 «Nothing earlier» · Load later -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 그 단추 꺼짐 «Nothing later»
 >                요청마다 page=1000 · 215 ms · 85 ms · 88 ms
+>       점 출처  bond_temp + 값을 누름 -> «bond_temp · measures (in) · value» «64 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 걸은 점 4 개마다 title 에 ③ 의 출처 그대로 · 시간 쪽으로 온 다른 줄 점은 출처 없음
 >       뜻       누른 쪽의 걸은 시각 근방 1,000 점이 먼저 · Load earlier / Load later 가 1,000 점씩 넓힌다 · 꺼짐 글씨 = 그 쪽에 더 없음
 >                주황 Positive · 청록 Negative · 회색 다른 줄 · 점선 = 걸은 시각
 >    ⑤  그래프   Graph
@@ -134,15 +139,17 @@
 >       본 것    그려짐 1 · 다른 노드 움직임 0 · 그 다이에 점선 큰 덩어리 «? next · not walked» · 묶음은 «← in_container 158 more die»
 >       뜻       묶음에서 연 노드는 서버가 그 노드에서 걸은 적이 없다 — 점선이 그 말이다
 >    ⑦  not walked   그 점선을 누름
->       본 것    요청 1 개 (hops=1&direction=both&world=appdemo_vf&world=default) · 덩어리 «? next · not walked» · 창 «Behind SYN-BW-103-11 / 1 / 6 / Wafer» «8 next · 0 behind» · 가지 bonded_from → die 1 · observed → defect 6 · transfer → die 1
+>       본 것    default 세상 · Collect quantity 로 누름 · 요청 1 개 (hops=1&direction=both) · 덩어리 «? next · not walked» · 창 «From SYN-BW-103-11 / 1 / 6 / Wafer» «8 next · 0 behind» · 가지 bonded_from → die 1 · observed → defect 6 · transfer → die 1
 >                All -> «Open 8» -> 그려짐 8 (die 2 · defect 6) · 움직임 0 · 새 작은 덩어리 0 · 새 노드마다 «? next · not walked»
+>       더 없으면  같은 묶음에서 글자 키 다이를 열고 그 «? next · not walked» 누름 -> 요청 (hops=1&direction=both) · 덩어리 0 · 상태 줄 «No more · from SYN-BW-103-11 / 0 / 6 / Wafer»
 >       뜻       그 노드에서 한 걸음(모든 술어 · 양방향)을 그 자리에서 더 걷는다. 새로 온 노드도 서버가 거기서 안 걸었으니 다시 점선
+>                창 머리 «From <노드>» = 그 덩어리의 주인 · «behind» 는 접힌 채 남는 수 한 뜻 · 더 걸을 것이 없으면 «No more · from <노드>»
 >    ⑧  덩어리 한 겹   양품 base 를 누름 -> «Fold branches» -> 그 base 의 큰 덩어리 하나 «≤ 79 next · 2 behind | 74 die · 5 quantity» -> 누름
 >       본 것    창 하나 «Behind SYN-BW-SPL-400-19» «≤ 79 next · 2 behind» · 가지 ← in_container die 47 · inspected → die 47 · measures → quantity 5
 >                All -> 요청 2 개 · «52 next · 2 behind» · «Open 52» -> 그려짐 52 (die 47 · quantity 5) · 움직임 0 · 새 작은 덩어리 0 · base 의 덩어리 없음
 >       뜻       next = 한 걸음 너머 서로 다른 노드 수(Open 이 그리는 수) · behind = 그 너머에 접힌 채 남는 수
 >                «≤» = 안 보낸 묶음이 있어 가지끼리 겹침을 아직 모름 — All 이 그 묶음을 걸은 뒤 정확한 수(리허설: 두 가지가 같은 다이)
->    ⑨  값 칸 출처(C) · 빈 걷기의 서버 문장과 «0 atoms»(H) · 이어 걷기 = 바구니 하나 걷기(E1) · 마킹 체인 무제한(F) · 표 ⇄ 트렌드 토글과 창 제목 «From»(E2) · CONTROL 엣지 묶음(D) · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
+>    ⑨  빈 걷기의 서버 문장과 «0 atoms»(H) · 이어 걷기 = 바구니 하나 걷기(E1) · 마킹 체인 무제한(F) · 표 ⇄ 트렌드 토글(E2) · CONTROL 엣지 묶음(D) · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
 >    시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ③ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
