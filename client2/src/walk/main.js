@@ -38,7 +38,7 @@ import { walkTableView, nextRoutes, ROUTE } from './table_view.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
 import { routesFrom, valuesAt } from './reach_table.js';
 // The trend of a column (lead f984ab01d): the model and the part that draws it.
-import { walkPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, PAGE_ROWS } from './trend.js';
+import { walkPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, pageAnchor, PAGE_ROWS } from './trend.js';
 import { TrendView } from './trend_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
@@ -592,8 +592,8 @@ export function boot(doc, host, deps) {
       state.emptyOpen);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
     box.append(rowFilterBar());
-    renderSections(box, view);
-    if (state.trend) renderTrend(box, view, r);
+    renderSections(box, view, r);
+    if (state.trend && state.trend.at === 'below') renderTrend(box, view, r);
   }
 
   /** All rows · Differs · Missing (lead 5cf5c3401): which rows of the side by side table are drawn. */
@@ -730,7 +730,7 @@ export function boot(doc, host, deps) {
           if (cell.col !== undefined && !cell.missing) {
             c.className += ' wk-pick';
             c.setAttribute('data-col', String(cell.col));
-            c.addEventListener('click', () => openTrend(section.type, row.id, columnKey(section.columns[cell.col]), i));
+            c.addEventListener('click', () => openTrend(section.type, [row.id], columnKey(section.columns[cell.col]), i, 'below'));
           }
           tr.append(c);
         }
@@ -760,10 +760,11 @@ export function boot(doc, host, deps) {
     return copy;
   }
 
-  /** A column's trend for one row (lead f984ab01d): the walk's points now, the server's time page after. The column is
-   *  held by what it reads, not its place - a fold or a number column added moves places (lead 34d91c09d 2, 7). */
-  function openTrend(type, row, col, group) {
-    state.trend = { type, row, col, group, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null };
+  /** A column's trend over rows (lead f984ab01d; a section's, lead 10-10 E2): the walk's points now, the server's time
+   *  page after. The column is held by what it reads, not its place - a fold or a number column added moves places (lead
+   *  34d91c09d 2, 7). `at`: under the tables (a value cell's) or in its section's place (the section's). */
+  function openTrend(type, rows, col, group, at) {
+    state.trend = { type, rows, col, group, at, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null };
     render();
     void loadTrend('around');
   }
@@ -780,13 +781,12 @@ export function boot(doc, host, deps) {
   async function loadTrend(mode) {
     const t = state.trend;
     const view = t && t.view;
-    const at = view && trendColumn(view);
-    if (!at || at.column.steps.length !== 1 || at.column.value.on !== 'edge') return;
-    const step = at.column.steps[0];
+    const anchor = view && t.anchor;
+    if (!anchor) return;
     const ask = mode === 'around' ? { around: t.t0 === null ? null : new Date(t.t0).toISOString() }
       : mode === 'earlier' ? { earlier: t.earlier } : { later: t.later };
     if (!Object.values(ask)[0]) return;
-    const got = await fetchTimePage({ apiBase, fetchImpl, id: t.row, predicate: step.predicate, direction: step.direction,
+    const got = await fetchTimePage({ apiBase, fetchImpl, id: anchor.id, predicate: anchor.predicate, direction: anchor.direction,
       page: PAGE_ROWS, ...ask });
     if (state.trend !== t || !got.ok) return;
     t.pages.push(got.answer);
@@ -795,24 +795,27 @@ export function boot(doc, host, deps) {
     render();
   }
 
-  /** The open trend under the tables. */
+  /** The open trend, where it stands. */
   function renderTrend(box, view, r) {
     const t = state.trend;
     const at = trendColumn(view);
     if (!at) return;
-    const own = walkPoints(view.index, view.groups, t.row, at.column);
+    const own = t.rows.flatMap((x) => walkPoints(view.index, view.groups, x, at.column).map((p) => ({ ...p, row: x })));
     const walked = new Set(own.map((p) => p.key));
+    t.anchor = pageAnchor(t.rows, own, at.column);
     // A point says who gave it, as its cell does (lead 99ed68cb7 C): the same read, the same seat.
-    const points = t.pages.reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.row, at.column, walked)), own)
-      .map((p) => ({ ...p, source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group], p.node) }));
+    const points = (t.anchor ? t.pages : []).reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.anchor.id, at.column, walked)), own)
+      // Who gave a point: the end of its edge that is not the anchor - a row read toward the end they share names the row.
+      .map((p) => ({ ...p, source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group],
+        t.anchor && p.row && p.node === t.anchor.id ? p.row : p.node) }));
     if (t.t0 === null) t.t0 = walkedTime(own, r.generated_at, t.group);
     // The view the next page is read against: the trend's own, not a second computing of the table.
     t.view = view;
-    const row = at.section.rows.find((x) => x.id === t.row);
+    const row = t.rows.length === 1 ? at.section.rows.find((x) => x.id === t.rows[0]) : null;
     const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
     // The axis: the pages' windows and the pressed side's walked points; another side's far off stands at the edge.
     const model = trendModel(points, undefined, { windows: t.pages.map(windowOf).filter(Boolean), group: t.group });
-    trendView.show({ title: `${row ? row.label : t.row} · ${at.section.columnHeads[at.col]}`, model,
+    trendView.show({ title: `${row ? row.label : at.section.heading} · ${at.section.columnHeads[at.col]}`, model, walkOnly: !t.anchor,
       groups: at.section.groups.map((g) => word(g.sign)), t0: t.t0,
       ...(t.pages.length ? { onEarlier: () => { void loadTrend('earlier'); }, onLater: () => { void loadTrend('later'); },
         hasEarlier: Boolean(t.hasEarlier), hasLater: Boolean(t.hasLater) } : {}),
@@ -890,21 +893,54 @@ export function boot(doc, host, deps) {
   }
 
   /** The table's sections and what it did not draw. */
-  function renderSections(box, view) {
+  function renderSections(box, view, r) {
     const at = state.at;
     const checks = checksOf(at);
     for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));
+      const t = state.trend;
+      const trended = Boolean(t && t.at === 'section' && t.type === section.type);
+      sec.append(sectionViews(section, trended));
       // Next above its table, once (lead 3375edd9b).
       if (checks) sec.append(nextRow(at, section, checks));
-      sec.append(columnPicker(section, view.index), formulaTable(section, checks));
+      if (trended) renderTrend(sec, view, r);
+      else sec.append(columnPicker(section, view.index), formulaTable(section, checks));
       box.append(sec);
     }
 
     if (view.hidden) {
       box.append(el(doc, 'div', 'wk-note', `${view.hidden} more not drawn`));
     }
+  }
+
+  /** Table | Trend on a section's head (lead 10-10 E2); its trend picks the value column, every row a point or more. */
+  function sectionViews(section, trended) {
+    const bar = el(doc, 'span', 'wk-secviews');
+    for (const [name, word] of [['table', 'Table'], ['trend', 'Trend']]) {
+      const b = el(doc, 'button', 'wk-view' + ((name === 'trend') === trended ? ' is-on' : ''), word);
+      b.type = 'button';
+      b.setAttribute('data-section-view', name);
+      b.setAttribute('aria-pressed', String((name === 'trend') === trended));
+      setDisabledReason(b, name === 'trend' && !section.columns.length ? 'No value column' : '');
+      b.addEventListener('click', () => {
+        if (name === 'table') { state.trend = null; render(); return; }
+        if (!trended && section.columns.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.columns[0]), undefined, 'section');
+      });
+      bar.append(b);
+    }
+    if (trended) {
+      const pick = el(doc, 'select', 'wk-select wk-trendcol');
+      section.columns.forEach((c, i) => {
+        const o = el(doc, 'option', '', section.columnHeads[i]);
+        o.value = columnKey(c);
+        if (columnKey(c) === state.trend.col) o.selected = true;
+        pick.append(o);
+      });
+      pick.addEventListener('change', () => openTrend(section.type, state.trend.rows, pick.value, undefined, 'section'));
+      bar.append(pick);
+    }
+    return bar;
   }
 
   /** Under a section: the declared edges one step from its type; each walks on from the rows checked of it. */
