@@ -43,6 +43,8 @@ import { SubgraphView, seedsOf } from './subgraph_view.js';
 import { CompareView } from './compare_view.js';
 // The start baskets (lead bc63378e5) - the start marking's editor, a part with its own div in the right panel.
 import { StartBaskets, BASKET_WORDS } from './start_baskets.js';
+// PICK A NODE by first letters (lead bccbdd601) - a part with its own div.
+import { NodeSearch, SEARCH_LIMIT } from './node_search.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 import { entitySeedId } from '../rnd_board/api.js';
@@ -98,8 +100,6 @@ export function boot(doc, host, deps) {
   const state = {
     decl: null, declState: 'loading', declReason: '',
     type: '', keys: {}, follow: new Set(), collect: new Set(),
-    subjects: null, subjectsState: 'idle', subjectsReason: '',
-    subjectsScanned: null, subjectsScanCut: false, subjectsListCut: false,
     direction: '', hops: '', nodeLimit: '',
     run: 'idle', result: null, reason: '',
     // What the shown result was asked with - the form can change after the walk.
@@ -137,6 +137,12 @@ export function boot(doc, host, deps) {
   };
   const sideMount = el(doc, 'div', 'wk-side');
   const baskets = new StartBaskets(sideMount, { doc, markings, name: GRAPH_CHAIN[0], picked: pickedNode });
+  // The box is the key it searches by: what is typed is that key, a node picked fills every key.
+  const searchMount = el(doc, 'div', '');
+  const search = new NodeSearch(searchMount, { doc,
+    ask: (prefix) => fetchKeyValues({ apiBase, fetchImpl, type: state.type, startsWith: prefix, limit: SEARCH_LIMIT }),
+    onType: (text) => { if (search.axis) state.keys[search.axis] = text; baskets.render(); },
+    onPick: (node) => { state.keys = { ...node.keys }; render(); } });
   /** A start's name as its basket took it. */
   const startLabel = (id) => (baskets.describe(id) || {}).label;
   // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
@@ -278,49 +284,17 @@ export function boot(doc, host, deps) {
         Object.entries(state.keys).filter(([k]) => allowedKeys.has(k)));
       state.result = null; state.run = 'idle';
       render();
-      loadSubjects();
+      void openSearch();
     });
     start.append(cell('Type', sel, 'wk-cell wk-cell-row'));
 
-    // 🔴 고르는 것은 «키 하나의 값»이 아니라 «노드 하나»입니다. 한 번 고르면 아래 키 칸이
+    // 🔴 고르는 것은 «키 하나의 값»이 아니라 «노드 하나»입니다. 한 번 고르면 키 칸이
     //    «전부» 찹니다 — 칸마다 따로 고르게 하면 «그 조합은 없는» 씨앗을 만들 수 있습니다.
-    // 🔵 직접 입력은 «남습니다» — 목록이 상한에 걸릴 수 있습니다.
+    // 🔵 친 키는 «남습니다» — 고르지 않으면 그 키 그대로가 노드입니다.
     if (state.type) {
       const subjBox = field('Pick a node', 'wk-sub');
-      if (state.subjectsState === 'loading') {
-        subjBox.append(el(doc, 'div', 'wk-note', LOADING));
-      } else if (state.subjectsState === 'failed') {
-        subjBox.append(el(doc, 'div', 'wk-fail', `Node list · ${state.subjectsReason}`));
-      } else if (state.subjectsState === 'ready') {
-        const list = state.subjects || [];
-        if (!list.length) {
-          // 🔴 「봤는데 없다」와 「다 못 봤다」는 다릅니다. N 은 응답의 `scanned` — 읽은 «노드» 수입니다.
-          subjBox.append(el(doc, 'div', 'wk-note', state.subjectsScanCut
-            ? `Not every node read (up to ${state.subjectsScanned})`
-            : 'No node of this type in the ledger'));
-        } else {
-          const ssel = el(doc, 'select', 'wk-select');
-          ssel.append(el(doc, 'option', '', '— pick, or type the keys below —'));
-          list.forEach((s, i) => {
-            const vals = Object.values(s.keys || {}).map((v) => String(v)).join(' · ');
-            const o = el(doc, 'option', '', s.count ? `${vals}  (${s.count})` : vals);
-            o.value = String(i);
-            ssel.append(o);
-          });
-          ssel.addEventListener('change', () => {
-            const picked = list[Number(ssel.value)];
-            if (!picked) return;
-            // 통째로 갈아 끼웁니다 — 앞서 손으로 친 값이 «섞이면» 그것이 없는 조합입니다.
-            state.keys = { ...picked.keys };
-            render();
-          });
-          subjBox.append(ssel);
-          if (state.subjectsListCut) {
-            subjBox.append(el(doc, 'div', 'wk-note',
-              `${unitText(list.length, 'node')} listed · not all · type the keys below if missing`));
-          }
-        }
-      }
+      search.setText(search.axis ? state.keys[search.axis] : '');
+      subjBox.append(searchMount);
       start.append(subjBox);
     }
 
@@ -328,7 +302,9 @@ export function boot(doc, host, deps) {
     if (!state.type) start.append(el(doc, 'div', 'wk-note', 'Pick a type for its keys'));
     else if (!keys.length) start.append(el(doc, 'div', 'wk-note', 'This type has no keys'));
     const grid = el(doc, 'div', 'wk-keys');
-    for (const k of keys) {
+    // The key the box stands for has no second cell.
+    const cells = keys.filter((k) => k !== search.axis);
+    for (const k of cells) {
       const input = el(doc, 'input', 'wk-input');
       input.type = 'text';
       input.value = state.keys[k] === undefined ? '' : state.keys[k];
@@ -336,7 +312,7 @@ export function boot(doc, host, deps) {
       input.addEventListener('input', () => { state.keys[k] = input.value; baskets.render(); });
       grid.append(cell(k, input));
     }
-    if (keys.length) start.append(grid);
+    if (cells.length) start.append(grid);
     root.append(start);
   }
 
@@ -744,24 +720,11 @@ export function boot(doc, host, deps) {
     host.append(rail, main, sideMount);
   }
 
-  async function loadSubjects() {
-    if (!state.type) { state.subjectsState = 'idle'; state.subjects = null; return; }
-    const forType = state.type;
-    state.subjectsState = 'loading'; state.subjects = null; render();
-    const got = await fetchKeyValues({ apiBase, fetchImpl, type: forType });
-    // 타입이 그새 바뀌었으면 «옛 답»을 앉히지 않습니다.
-    if (state.type !== forType) return;
-    if (got && got.ok) {
-      state.subjectsState = 'ready';
-      state.subjects = got.nodes;
-      state.subjectsScanned = got.scanned;
-      state.subjectsScanCut = got.scanTruncated;
-      state.subjectsListCut = got.valuesTruncated;
-    } else {
-      state.subjectsState = 'failed';
-      state.subjectsReason = (got && got.message) || UNKNOWN;
-    }
-    render();
+  /** A type picked: the box asks its first nodes, and its answer names the key the box stands for. */
+  async function openSearch() {
+    if (!state.type) return;
+    // 타입이 그새 바뀌었으면 «옛 답»을 앉히지 않습니다 (the box drops an answer asked before the newer one).
+    if (await search.open()) render();
   }
 
   async function load() {

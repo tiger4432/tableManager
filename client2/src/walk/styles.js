@@ -76,6 +76,19 @@ export const WALK_CSS = `
 .wk-keys { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .wk-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .wk-sub { display: flex; flex-direction: column; gap: var(--space-1); }
+/* PICK A NODE (lead bccbdd601): the box, then the nodes that start with what is typed - in the rail's flow, scrolling
+   inside itself past ten rows. */
+.wk-search { display: flex; flex-direction: column; gap: var(--space-1); }
+.wk-search [hidden] { display: none; }
+.wk-searchlist { display: flex; flex-direction: column; max-height: 440px; overflow-y: auto;
+  background: var(--bg-surface); border: 1px solid var(--border); }
+.wk-searchitem { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3);
+  cursor: pointer; }
+.wk-searchitem + .wk-searchitem { border-top: 1px solid var(--border); }
+.wk-searchitem:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.wk-searchitem.is-active { background: var(--accent-weak); }
+.wk-searchkey { min-width: 0; font-family: 'JetBrains Mono', monospace; overflow-wrap: anywhere; }
+.wk-searchcount { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-dim); }
 /* Collect: the picked types are chips (× takes one out); the rest are behind one + Type dropdown. */
 .wk-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .wk-chip, .wk-add { min-height: 44px; padding: 0 var(--space-4); border-radius: 999px; font: inherit;

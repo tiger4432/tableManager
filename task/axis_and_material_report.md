@@ -1,3 +1,25 @@
+> ## [14:09 디자인] 찾는 상자 착지 a55bf5732 · id 철자 고침 착지 619855bc9 (총괄 bccbdd601 · 10-10)
+
+### 찾는 상자
+
+- **지은 것** — 걷기 화면 PICK A NODE 가 상자 하나입니다. 타입을 고르면 한 번 물어(앞글자 없이) 상자 이름이 서버가 찾는 키가 되고, 앞글자를 치면 잠깐 쉰 뒤 한 번 물어 그 글자로 시작하는 노드 20 개가 아래에 뜹니다. 누르거나 ↑↓ · Enter 로 고르고, 고르지 않으면 친 키 그대로가 노드입니다(«+ Add» · Walk 가 같은 함수로 씀). 50 개 드롭다운과 그 아래 줄은 은퇴했습니다.
+- **키 칸** — 키가 하나인 타입은 상자가 곧 그 키 칸입니다. 복합 키는 상자가 서버가 찾는 첫 키(박스의 die 는 x), 나머지 키는 키 칸. 서버가 앞글자로 못 찾는 타입은 상자 대신 사유 한 줄과 키 칸 전부.
+- **화면 게이트에서 찾은 것** — 처음 돌린 화면 게이트가 «기다림이 전부 시간 초과»인데도 초록이었습니다(상자가 첫 답 동안 감춰져 있고, 헤드리스의 focus() 는 focus 이벤트를 안 내서 목록이 안 열림 → 걷기 상태를 하나도 안 잼). 상자가 보일 때까지 기다렸다가 «누르게» 고쳤고, 기다림을 찍는 사본으로 기다림 24 개 참 · 시간 초과 0 를 확인했습니다. 상자를 누르면 목록이 열리게 한 것도 이때 넣었습니다(Esc 로 닫은 뒤 다시 여는 길).
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-CRqAWR-e.js, 2481x1226): Type wafer -> the box named «wafer», «First letters · any case», no key cell beside it; pressed: 20 rows LEAD-P3-A .. LEAD-S82-0014, «20 nodes shown · not all · type more»; typed «nab115-w0»: one ask (type=wafer&starts_with=nab115-w0&limit=20), rows NAB115-W01 .. NAB115-W09 - keys the first 50 never held; pressed NAB115-W07: the box NAB115-W07, the list closed, + Add on -> Positive NAB115-W07 -> Walk asked ["wafer",{"wafer":"NAB115-W07"}], the box answered 200, 3 rows. Writes 0.
+- **게이트** — node_search 38 (T1-T24 the part, the wire, the page; NS1-NS14 caught), walk_table 68 (F2 reads the box; M8 «a type picked opens no box»; M9 moved to NS5), start_baskets 22, walk_layout 29, walk_worlds 18, disabled_reason 25, css_token_definition 7, walk_wire 95, explorer_open_path 130, walk_route_fill 80, rnd_board_walk_box 104, compare_view 28; screen gate on the walk page 24.
+
+### id 철자 고침 (총괄 검증 · 병합 3ace4d006)
+
+다이처럼 키가 여럿인 타입을 쳐서 걸면 422 였던 것 — 화면이 id 를 키 칸 순서로 지었고 서버는 키 이름 정렬 순서를 요구합니다. entitySeedId 하나가 서버와 같은 철자로 씁니다. 숫자 키(선언에 키 형 칸 없음)는 시연 뒤 소유자께 여쭐 것으로 보드에 있습니다.
+
+### 5 분 써 보면 걸리는 것 (제안 — 짓지 않음)
+
+| 항목 | 어떤 상황에서 막히나 | 크기 |
+|---|---|---|
+| 목록 줄 오른쪽 수에 단위가 없음 | «NAB115-W07  8» 의 8 은 그 노드를 이름 부르는 원자 수인데, 웨이퍼 수 · 다이 수로 읽힐 수 있음(옛 드롭다운의 «(8)» 과 같은 수) | 작음 — 낱말 하나나 title |
+| 고른 뒤 «+ Add» 가 멀다 | 상자는 왼쪽 레일, «+ Add» 는 오른쪽 바구니 — 1920 폭에서 마우스가 화면을 가로지름. 키보드로는 고른 뒤 바구니까지 갈 길이 없음 | 안 쟀다 — 상자 옆 «+» 나 줄 더블클릭 |
+| die 의 상자가 x | 서버가 jsonb 첫 키로 찾아 die 는 «x» 로 찾음 — mat_id 로 찾고 싶은 운영자에겐 낯섦(보드: 선언이 이름 대는 키로 찾기는 시연 뒤) | 서버 일 |
+
 > ## [12:55 디자인] ③ 바구니 고침 착지 063c24f1c — 친 키도 «+ Add» 로 들어가고, Walk 가 바구니를 따라 켜지고 꺼짐 (총괄 10-10)
 
 - **고친 것 하나 (지시)** — «+» 가 넣는 노드는 폼의 지금 주제입니다. 목록에서 고른 것이든 키를 친 것이든 같은 함수(pickedNode)가 짓고, 빈 키는 정본 빈 값 판정(absent.js isBlank)이 거릅니다. 키를 치면 바구니만 다시 그려 «+ Add» 가 바로 켜집니다(입력 칸 커서는 그대로).

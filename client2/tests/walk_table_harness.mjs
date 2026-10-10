@@ -291,10 +291,13 @@ async function suite(mod) {
     const listed = await stand({ nodes: [{ keys: { recipe: 'R-1' }, count: 3 }], scanned: 1,
       scan_truncated: false, values_truncated: false });
     await listed.pick('recipe@1');
-    const offered = byTag(listed.host, 'option').map((e) => e.textContent);
-    ok('F2 the seed field is Pick a node and offers the node the server listed',
+    // The box (lead bccbdd601), focused as the browser does: its rows are the server's nodes, keys and count.
+    const boxIn = walkAll(listed.host).find((e) => e.attrs && e.attrs.role === 'combobox');
+    for (const fn of (boxIn && boxIn.listeners.focus) || []) fn({});
+    const offered = byClass(listed.host, 'wk-searchitem').map((e) => e.children.map((c) => c.textContent).join(' '));
+    ok('F2 the seed field is Pick a node and its box, focused, offers the node the server listed',
       walkAll(listed.host).some((e) => e.className === 'wk-label' && e.textContent === 'Pick a node')
-        && offered.includes('R-1  (3)'), offered.join(' | '));
+        && offered.includes('R-1 3'), offered.join(' | '));
     // 🔴 EVERY DECLARED PREDICATE, WHATEVER THE TYPE (owner 10-06, lead bf3653401) — the walk filters, not the list.
     const ALL = DECL2.predicates.map((p) => p.name).join(',');
     eq('F6 static recipe@1 draws every declared predicate', follow(listed.host), ALL);
@@ -576,13 +579,10 @@ const MUTANTS = [
     catches: 'F8 changing the type',
     from: '        Object.entries(state.keys).filter(([k]) => allowedKeys.has(k)));',
     to: '        Object.entries(state.keys).filter(([k]) => allowedKeys.has(k))); state.follow = new Set();' },
-  { id: 'M8', what: 'the node list reads the retired wire cell',
+  { id: 'M8', what: 'a type picked opens no box',
     catches: 'F2 the seed field',
-    from: '      state.subjects = got.nodes;', to: '      state.subjects = got.subjects;' },
-  { id: 'M9', what: 'a list read to the end and empty reads as not read to the end',
-    catches: 'F4 read and empty',
-    from: '          subjBox.append(el(doc, \'div\', \'wk-note\', state.subjectsScanCut',
-    to: '          subjBox.append(el(doc, \'div\', \'wk-note\', true' },
+    from: '      void openSearch();\n', to: '' },
+  // M9 (an empty list read as not read to the end) is the search box's now: node_search_harness NS5.
   // ── lead 53050a4ec: the table's continue ────────────────────────────────────────────────
   // The board's markingIntent on the walk page (lead 10-09).
   { id: 'SM2', what: 'the table walks the form\'s subject alone, not the starts', catches: 'S1',

@@ -1825,12 +1825,16 @@ export const PICK_TYPE_FIRST = 'Pick a node type first';
  * 🔴 그리고 세 사실을 «따로» 나릅니다. `scanned` 0 과 `scan_truncated` 는 「봤는데 없다」와
  *    「다 못 봤다」이고, `values_truncated` 는 「목록이 상한에 걸렸다」입니다. 하나로 접으면
  *    「없음」이 「못 셌음」과 같은 픽셀이 됩니다.
+ * `startsWith` asks the nodes whose key starts with it (lead bccbdd601); blank asks the first ones, as before. Every
+ * answer says the key it searches by (`prefix_axis`), whether case counts (`prefix_case`), or why it cannot
+ * (`prefix_refusal`, with `prefix_axis` null).
  */
 export async function fetchKeyValues(params) {
-  const { apiBase, fetchImpl, type, limit } = params || {};
+  const { apiBase, fetchImpl, type, limit, startsWith } = params || {};
   if (!type) return { ok: false, message: PICK_TYPE_FIRST };
   const query = new URLSearchParams();
   query.set('type', String(type));
+  if (startsWith) query.set('starts_with', String(startsWith));
   if (limit) query.set('limit', String(limit));
   try {
     const res = await (fetchImpl || fetch)(`${apiBase || ''}/api/ledger/key-values?${query}`);
@@ -1843,6 +1847,9 @@ export async function fetchKeyValues(params) {
       scanned: typeof body.scanned === 'number' ? body.scanned : null,
       scanTruncated: body.scan_truncated === true,
       valuesTruncated: body.values_truncated === true,
+      prefixAxis: typeof body.prefix_axis === 'string' && body.prefix_axis ? body.prefix_axis : null,
+      prefixCase: typeof body.prefix_case === 'string' ? body.prefix_case : null,
+      prefixRefusal: typeof body.prefix_refusal === 'string' ? body.prefix_refusal : '',
     };
   } catch (err) {
     return { ok: false, message: `Node list unreachable — ${err && err.message}` };
