@@ -98,9 +98,11 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 걸린 초)
->    ①  Type wafer · 키 «불량» · follow 비움 · Collect wafer · node_limit 1000 -> Walk       -> «Starts + 불량» · 노드 31        0.727 s
->       키 «양품» -> Ctrl+Shift+Walk                                                         -> «Starts + 불량 · − 양품» · wafer 32   0.807 s
->    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30   (016707766 에서 다시 걸음: 30 · 0.775 s)
+>    ①  Type wafer · 키 «불량» 치고 Positive «+ Add» · follow 비움 · Collect wafer · node_limit 1000 -> Walk   -> 표 하나 · 노드 31     0.702 s
+>       키 «양품» 치고 Negative «+ Add» -> Walk     -> 표 두 구역 «Walked from + 불량» wafer 31 · «Walked from − 양품» wafer 1   0.785 s
+>       (바구니 화면 5417f3003 · 오른쪽 패널 Positive · Negative. Walk 의 Ctrl · Shift 는 은퇴 — 눌러도 바구니 그대로 걷는다)
+>    ②  «Walked from +» 구역의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30 · «Walked from −» 구역의 코어 웨이퍼 0
+>       (016707766 에서 다시 걸음: 30 · 0.775 s)
 >        누르기로는 안 닿는다(박스 선언) — Route to wafer «wafer → die → wafer · in_container» + «↻ transfer» 는 wafer 1 개(base 뿐).
 >        transfer 의 끝은 운반 자리(DTLotSlot) 141 개뿐 · 코어 웨이퍼는 bonded_from 으로 닿는데 follow 목록에 bonded_from 이 없다 — 운영 판 못 봤다
 >    ③  세상 칩 default + «모델 세상 1» -> 같은 폼 · 같은 시작으로 다시 걷는다 · 6 걸음 · 노드 80                       0.996 s
