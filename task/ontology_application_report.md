@@ -38073,3 +38073,26 @@ RUN.md     대본 ① · ② 를 위 수로 다시 생성(61d6e5836) — Ctrl+Sh
           이 데이터(박스 조각 + 가짜)에서는 같은 다이가 소스에 따라 글자 · 숫자 두 철자로 들어 있어 두 노드가 된 것도 있음(위 38)
           보드의 «숫자 키 타입은 시연 뒤 소유자께» 물음의 자료 — 응용은 안 고침 · 운영 데이터는 못 봄
 ```
+
+---
+
+## [C 응용] 10-10 앞글자 찾기(서버 afc07c147 + 찾는 상자 a55bf5732) 를 18766 에서 — 맨 앞 50 밖 노드를 앞글자로 찾아 + Add -> Walk 됨 · 대본 ① 그대로
+
+```
+빌드      52ecc4eba walk-CRqAWR-e.js · instance 18766 server-only · box slice + fake data · server afc07c147 + client a55bf5732
+서버      empty prefix = none: wafer 32 = 32 same list · defect 50 = 50 same list · quantity 48 = 48 same list
+          defect: 199 distinct void_uid · no prefix shows 50 (values_truncated) · the last key sat|SYN-BW-103-11|9|6|6|2026-11-24T02:53:00+09:00|7184.5|14649.5 not among them
+          defect starts_with its first 60 letters as typed · lower · upper -> 200 · that node · scanned 1 · prefix_case insensitive (all three)
+          defect starts_with zzzz-none -> 200 · 0 nodes
+          die key=mat_id starts_with=SYN -> 422 prefix_on_another_key «starts_with searches 'x', the first key of 'die' - not 'mat_id'»
+          die (no prefix) -> prefix_axis x · prefix_refusal none · starts_with 0 -> 2 nodes, both x "0" text (die_inspection) · starts_with 0.0 -> 0 · the number-keyed dies (x 0.0) are not reached by a prefix
+화면      defect: PICK A NODE is one box «First letters · any case» named void_uid · no 50-node dropdown
+          typed 40 lowercase letters -> 1 key-values request (starts_with, limit 20) 0.068 s -> 7 rows, the target among them -> pressed it -> box holds the full key -> Positive + Add -> POSITIVE 1 -> Walk -> Nodes 91 · Edges 135 · 4 hops · 0.203 s
+          die: box named x «First letters · any case» · cells mat_id · y · mat_type · no refusal line
+대본 ①    wafer · typed SYN-BW-103-11 in the box, not picked (one row under it) · Collect wafer · node_limit 1000 · Positive + Add · Walk -> Nodes 31 · one table · core 30 · 0.748 s
+          typed SYN-BW-SPL-400-19, not picked · Negative + Add · Walk -> Nodes 32 · Walked from + 31 (core 30) · Walked from − 1 (core 0) · 0.796 s
+          RUN.md ① 문장(«키 불량 치고 Positive + Add») 그대로 맞음 — 다시 생성 안 함
+걸린 것   die — RELEASE_LOG 예시는 «첫 키 x 라 거절 한 줄» 인데 이 데이터에서는 거절 없이 상자가 열림
+          앞글자로 닿는 것은 x 를 글자로 든 다이뿐(die_inspection) · 숫자로 든 다이는 어떤 앞글자로도 안 닿음
+          앞 보고(e009b304c)의 숫자 키 물음과 같은 뿌리 — 응용은 안 고침 · 운영 데이터는 못 봄
+```
