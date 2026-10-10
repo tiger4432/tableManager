@@ -131,8 +131,11 @@ export class TrendView {
 
   _dot(cx, cy, p) {
     const group = p.group === null || p.group === undefined ? 'is-other' : `is-g${p.group}`;
-    return this._svg('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: p.walked ? 5 : group === 'is-other' ? 1.8 : 3,
+    const dot = this._svg('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: p.walked ? 5 : group === 'is-other' ? 1.8 : 3,
       class: `wk-tp ${group}${p.walked ? ' is-walked' : ''}`, 'data-key': p.key });
+    // Who gave the point, as its cell says (lead 99ed68cb7 C).
+    if (p.source) { const said = this._svg('title', {}); said.textContent = p.source; dot.append(said); }
+    return dot;
   }
 
   _key(cls, word) {

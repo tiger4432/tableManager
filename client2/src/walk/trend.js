@@ -22,7 +22,7 @@ const keyOf = (edge, fallback) => (edge && (edge.claim_id || edge.id)) || fallba
 /** The walk's own points of one row's column: each group's reads, at the time of each read's last edge. */
 export function walkPoints(index, groups, x, column) {
   return groups.flatMap((g, i) => readsOf(index, g.inside, x, column).reads
-    .map((r) => ({ t: timeOf(r.edge), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`) })));
+    .map((r) => ({ t: timeOf(r.edge), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node })));
 }
 
 /**
@@ -34,7 +34,8 @@ export function pagePoints(answer, groups, x, column, walked = new Set()) {
     const far = e.source === x ? e.target : e.source;
     const group = groups.findIndex((g) => g.inside.has(far));
     const key = keyOf(e, e.id);
-    return { t: timeOf(e), value: (e.qualifiers || {})[column.value.name], group: group >= 0 ? group : null, walked: walked.has(key), key };
+    return { t: timeOf(e), value: (e.qualifiers || {})[column.value.name], group: group >= 0 ? group : null, walked: walked.has(key), key,
+      node: far };
   }).filter((p) => !isBlank(p.value));
 }
 

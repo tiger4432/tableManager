@@ -142,6 +142,22 @@ const BOND_TWO = { ...BOND_EDGE, nodes: [...BOND_EDGE.nodes, bn('d:b2', 'die@1',
   propagation: bondRanked({ 'd:b2': [1, 0] }, { 'd:b2': [walked('w:b', '+', ['d:b2', 'in_container'])],
     'w:c': [walked('w:b', '+', ...FROM_B), walked('w:b', '+', ['d:b2', 'in_container'], ['d:c', 'stacked_on'], ['w:c', 'in_container'])] }) };
 const STACKING = 'in_container → stacked_on → in_container';
+// C (lead 99ed68cb7): the core wafer measures the quantity too - who gave each value, under it.
+const BOND_SRC = { ...BOND_EDGE, edges: [...BOND_EDGE.edges, be('w:c', 'measures', 'q:1', { value: 3 })] };
+const BOND_SRC_EVENT = { ...BOND_EVENT,
+  nodes: [...BOND_EVENT.nodes.map((n) => (/^m:/.test(n.id) ? { ...n, attributes: { value: n.id === 'm:1' ? 1 : 2 } } : n)),
+    { ...bn('m:3', 'measurement@1'), attributes: { value: 3 } }],
+  edges: [...BOND_EVENT.edges, be('w:c', 'measured', 'm:3'), be('m:3', 'of', 'q:1')],
+  propagation: { ranked: [...BOND_EVENT.propagation.ranked, { id: 'm:3', reach: [1, 0],
+    evidence: [walked('w:b', '+', ...FROM_B, ['m:3', 'measured'])] }] } };
+const OF_VALUE = new Map([['quantity@1', [{ steps: [{ predicate: 'of', direction: 'incoming' }], value: { on: 'node', name: 'value' },
+  words: ['of (in)', 'value'] }]]]);
+const SRC_18766 = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_18766.json'), 'utf8'));
+// The demo's usual form, collect quantity alone (lead 10-11): the wafers that gave bond_temp's values are not in nodes.
+const SRC_COLLECT = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_collect_18766.json'), 'utf8'));
+// A cell's values, as drawn: its value lines (C draws a source line under each).
+const valsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-val').map((k) => k._text).join(' · ');
+const srcsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-src').map((k) => k._text);
 const GATE_IN = 'inspected (in) · gate';
 const NOTE_IN = 'inspected (in) · note';
 const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
@@ -533,7 +549,7 @@ async function suite(mod) {
       .map((c) => [c.textContent, c.colSpan]);
     const rowOf = (id) => walkAll(table()).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id);
     const tds = (id) => ((rowOf(id) || { children: [] }).children).filter((c) => c.className !== 'wk-check')
-      .map((c) => (c.children.find((k) => k.className === 'wk-centrelabel') || c).textContent);
+      .map((c) => (c.children.find((k) => k.className === 'wk-centrelabel') ? c.children.find((k) => k.className === 'wk-centrelabel').textContent : valsOf(c)));
     ok('Z13 two groups: Route outermost, the + columns, the node in the centre, delta beside it, the − columns, Route outermost (34d91c09d, df11f9e81)',
       JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['Route', 'gate', 'mat_id', 'Δ', 'gate', 'Route'], ['inspected', '7', 'M-3', '−2', '9', 'inspected']]),
       JSON.stringify([headRow(), tds('d:3')]));
@@ -552,7 +568,7 @@ async function suite(mod) {
     // Several values (34d91c09d 1): the first and «+N»; a press on «+N» unfolds them all, another folds.
     const moreOf = () => walkAll(rowOf('d:4') || { children: [] }).find((e) => e.className === 'wk-more');
     const cellOf4 = () => ((rowOf('d:4') || { children: [] }).children.find((c) => c.children.includes(moreOf())));
-    const said = () => (cellOf4() ? [cellOf4()._text, moreOf().textContent, has(cellOf4(), 'is-open')] : null);
+    const said = () => (cellOf4() ? [valsOf(cellOf4()), moreOf().textContent, has(cellOf4(), 'is-open')] : null);
     const shut = said();
     fire(moreOf());
     const opened = said();
@@ -575,13 +591,20 @@ async function suite(mod) {
       .find((e) => e.className === 'wk-more');
     const coreCell = () => (walkAll(host2).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === 'w:c') || { children: [] })
       .children.find((c) => c.children.includes(coreMore()));
-    const coreSaid = () => (coreCell() ? [coreCell()._text, coreMore().textContent] : null);
+    const coreSaid = () => (coreCell() ? [valsOf(coreCell()), coreMore().textContent] : null);
     const routeShut = coreSaid();
     try { fire(coreMore()); } catch (e) { drew = false; }
     const routeOpen = coreSaid();
     ok('Z32 a Route cell\'s «+N» on the page: pressed, every path in the cell; the first and «+N» before',
       drew && JSON.stringify([routeShut, routeOpen]) === JSON.stringify([[BONDING, '+1'], [`${BONDING} · ${STACKING}`, 'Less']]),
       JSON.stringify([drew, routeShut, routeOpen]));
+    const srcShut = cellOf4() ? [valsOf(cellOf4()), srcsOf(cellOf4())] : null;
+    fire(moreOf());
+    const srcOpen = cellOf4() ? [valsOf(cellOf4()), srcsOf(cellOf4())] : null;
+    fire(moreOf());
+    ok('Z41 the page: under a value who gave it; «+N» opened, each value its own source (lead 99ed68cb7 C)',
+      JSON.stringify([srcShut, srcOpen]) === JSON.stringify([['1', ['A · start']], ['1 · 2', ['A · start', 'C · start']]]),
+      JSON.stringify([srcShut, srcOpen]));
     const bands = walkAll(host).filter((e) => has(e, 'wk-sidehead')).map((e) => [e.attrs['data-sign'], has(e, 'wk-plus'), has(e, 'wk-minus')]);
     ok('Z25 a band its sign\'s class - + one colour, − the other (34d91c09d 4)',
       JSON.stringify(bands.slice(0, 2)) === JSON.stringify([['+', true, false], ['\u2212', false, true]]), JSON.stringify(bands));
@@ -749,6 +772,38 @@ const sideSuite = (TV) => {
   ok('Z23 a column no row has a value in folds, counted; its type opened, it stands (34d91c09d 7)',
     JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]) === JSON.stringify([[GATE_IN, TV.ROUTE], { count: 1, open: false },
       [GATE_IN, NOTE_IN, TV.ROUTE], { count: 1, open: true }]), JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]));
+  // C (lead 99ed68cb7): who gave a value - the node its read ends at, its keys, its side's route - on both schemes and 18766.
+  const srcOf = (t, type, id, head, group) => (raw(t, type, id, head, group) || {}).sources || null;
+  const edgeSrc = view(BOND_STARTS, BOND_SRC);
+  ok('Z38 a value\'s source, the measurement an edge: the wafer that measured it, its keys and its side\'s route',
+    JSON.stringify([srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 0), srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 1)])
+      === JSON.stringify([['B · start', `C · ${BONDING}`], ['N-1 · in_container']]),
+    JSON.stringify([srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 0), srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 1)]));
+  const eventSrc = TV.walkTableView(BOND_SRC_EVENT, DECL.entities, DECL.predicates, undefined, BOND_STARTS, OF_VALUE);
+  ok('Z39 a value\'s source, the measurement an event node: that node, its label (no keys), and its side\'s route',
+    JSON.stringify([srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 0), srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 1)])
+      === JSON.stringify([['M:1 · measured', `M:3 · ${BONDING} → measured`], ['M:2 · in_container → measured']]),
+    JSON.stringify([srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 0), srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 1)]));
+  const bt = TV.walkTableView(SRC_18766, SRC_18766._entities, [], undefined, SRC_18766._starts);
+  const btId = SRC_18766.nodes.find((n) => n.label === 'bond_temp').id;
+  const btCell = (g) => raw(bt, 'quantity', btId, 'measures (in) · value', g) || {};
+  ok('Z40 18766 bond_temp: + 35.5 «SYN-BW-103-11 · start», 21.5 and 23.5 the core wafers by their bonding; − 13 «SYN-BW-SPL-400-19 · start»',
+    JSON.stringify([btCell(0).values, btCell(0).sources, btCell(1).text, btCell(1).sources]) === JSON.stringify([['35.5', '21.5', '23.5'],
+      ['SYN-BW-103-11 · start', 'SYN-CW-103-01 · in_container → bonded_from → in_container', 'SYN-CW-103-02 · in_container → bonded_from → in_container'],
+      '13', ['SYN-BW-SPL-400-19 · start']]),
+    JSON.stringify([btCell(0).values, btCell(0).sources, btCell(1).text, btCell(1).sources]));
+  const bc = TV.walkTableView(SRC_COLLECT, SRC_COLLECT._entities, [], undefined, SRC_COLLECT._starts);
+  const bcCell = (g) => raw(bc, 'quantity', btId, 'measures (in) · value', g) || {};
+  const everySource = bc.sections.flatMap((x) => x.rows.flatMap((r) => r.byGroup.flatMap((side) => side.flatMap((c) => c.sources || []))));
+  ok('Z42 collect quantity alone (the demo\'s form): the wafers are not in nodes, their keys read off their ids - the same sources as Z40, no id in any (lead 10-11)',
+    JSON.stringify([bcCell(0).sources, bcCell(1).sources]) === JSON.stringify([btCell(0).sources, btCell(1).sources])
+      && everySource.length >= 4 && !everySource.some((w) => w.includes('ledger-entity:')),
+    JSON.stringify([bcCell(0).sources, bcCell(1).sources, everySource.filter((w) => w.includes('ledger-entity:')).length]));
+  // A node the answer did not send and whose id is no entity's: «—», never the id.
+  const unsent = view(BOND_STARTS, { ...BOND_SRC, nodes: BOND_SRC.nodes.filter((n) => n.id !== 'w:c') });
+  ok('Z43 a value\'s node neither sent nor an entity id: its source says «—», not the id',
+    JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)) === JSON.stringify(['B · start', `${TV.EMPTY} · ${BONDING}`]),
+    JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)));
   // Two Δ columns: each Δ says its own column - by the column's index, Route standing first in heads (B).
   const scored = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e, k) => ({ ...e, qualifiers: { ...e.qualifiers, score: 10 + k } })) });
   const scoredDie = scored.sections.find((x) => x.type === 'die@1') || { deltaHeads: [] };
@@ -780,6 +835,8 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  { id: 'NZ16', what: 'the source line not drawn under a value', catches: 'Z41',
+    from: "        if (sources[k]) c.append(el(doc, 'div', 'wk-src', sources[k]));\n", to: '' },
   { id: 'NZ15', what: 'a Route cell\'s «+N» keyed by a value column it does not have', catches: 'Z32',
     from: '${cell.col === undefined ? ROUTE : columnKey(section.columns[cell.col])}', to: '${columnKey(section.columns[cell.col])}' },
   { id: 'NZ1', what: 'the page draws no band a group', catches: 'Z9',
@@ -932,6 +989,16 @@ const TV_MUTANTS = [
     from: '    const heads = [...columnHeads, ROUTE];', to: '    const heads = [...columnHeads];' },
   // RM6 («Δ <head>» read from heads) retired with Route moved to the outer end: heads[c] is columnHeads[c] again, the
   // mutant changes nothing (Z37 stays, guarding the order).
+  { id: 'VS1', what: 'a value\'s source the row\'s node, not the read\'s', catches: 'Z38',
+    from: '(byCol[i].nodes || []).map((id) => sources.source(g, id))', to: '(byCol[i].nodes || []).map(() => sources.source(g, node.id))' },
+  { id: 'VS2', what: 'a value\'s source without its route', catches: 'Z40',
+    from: 'source: (g, id) => `${keyWords(id)} · ${route(g, id).text}`', to: 'source: (g, id) => `${keyWords(id)}`' },
+  { id: 'VS3', what: 'a source from the other side\'s paths', catches: 'Z38',
+    from: 'sources: (byCol[i].nodes || []).map((id) => sources.source(g, id))', to: 'sources: (byCol[i].nodes || []).map((id) => sources.source(groups[1 - i], id))' },
+  { id: 'VS4', what: 'a node the answer did not send: its keys not read off its id', catches: 'Z42',
+    from: '    const node = nodes.get(id) || entityOfId(id) || {};', to: '    const node = nodes.get(id) || {};' },
+  { id: 'VS5', what: 'a source without keys or a label says its id', catches: 'Z43',
+    from: "    return said.length ? said.join(' / ') : (node.label || EMPTY);", to: "    return said.length ? said.join(' / ') : (node.label || id);" },
   { id: 'RM1', what: 'a side reads the other side\'s paths', catches: 'Z29',
     from: '.filter((path) => g.starts.includes(path.seed))', to: '.filter((path) => !g.starts.includes(path.seed))' },
   { id: 'RM2', what: 'a start says nothing', catches: 'Z29',
@@ -940,9 +1007,8 @@ const TV_MUTANTS = [
     from: 'path.hops.slice(1).map(', to: 'path.hops.slice(1).reverse().map(' },
   { id: 'RM4', what: 'two paths walked: the first alone', catches: 'Z31',
     from: 'return ways.length ? cellWords({ values: ways }', to: 'return ways.length ? cellWords({ values: ways.slice(0, 1) }' },
-  { id: 'RM5', what: 'the Route cell before the columns, not under its head', catches: 'Z29',
-    from: '        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c })), routeOf(g, node.id)];',
-    to: '        return [routeOf(g, node.id), ...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }))];' },
+  { id: 'RM5', what: 'no Route cell under its head', catches: 'Z29',
+    from: ' })), sources.route(g, node.id)];', to: ' }))];' },
   { id: 'ZM8', what: 'an added column dropped', catches: 'Z18',
     from: ', ...(added.get(type) || [])];', to: '];' },
   { id: 'ZM9', what: 'a difference keeps its float tail', catches: 'Z19',

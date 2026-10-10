@@ -626,12 +626,20 @@ export function boot(doc, host, deps) {
     table.append(thead);
     const tbody = el(doc, 'tbody');
     const td = (cell, cls, at) => {
-      const c = el(doc, 'td', cell.missing ? `wk-missing ${cls}` : `${cell.numeric ? 'wk-num ' : ''}${cls}`, cell.text);
+      const c = el(doc, 'td', cell.missing ? `wk-missing ${cls}` : `${cell.numeric ? 'wk-num ' : ''}${cls}`);
       if (cell.span) c.colSpan = cell.span;
+      // A value and, under it, who gave it (lead 99ed68cb7 C): its node's keys and how this side reached that node.
+      const sources = cell.sources || [];
+      const said = (value, k) => {
+        c.append(el(doc, 'div', 'wk-val', value));
+        if (sources[k]) c.append(el(doc, 'div', 'wk-src', sources[k]));
+      };
+      const open = Boolean(cell.rest) && state.openCells.has(at);
       // Several values: the first and «+N»; a press on «+N» unfolds them all in the cell, another folds (lead 34d91c09d 1).
+      if (open) cell.values.forEach(said);
+      else said(cell.text, 0);
       if (cell.rest) {
-        const open = state.openCells.has(at);
-        if (open) { c.textContent = cell.values.join(' · '); c.className += ' is-open'; }
+        if (open) c.className += ' is-open';
         const more = el(doc, 'button', 'wk-more', open ? 'Less' : cell.rest);
         more.type = 'button';
         more.setAttribute('aria-expanded', String(open));
@@ -740,7 +748,9 @@ export function boot(doc, host, deps) {
     if (!at) return;
     const own = walkPoints(view.index, view.groups, t.row, at.column);
     const walked = new Set(own.map((p) => p.key));
-    const points = t.pages.reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.row, at.column, walked)), own);
+    // A point says who gave it, as its cell does (lead 99ed68cb7 C): the same read, the same seat.
+    const points = t.pages.reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.row, at.column, walked)), own)
+      .map((p) => ({ ...p, source: p.group === null || p.group === undefined ? '' : view.sources.source(view.groups[p.group], p.node) }));
     if (t.t0 === null) t.t0 = walkedTime(own, r.generated_at, t.group);
     // The view the next page is read against: the trend's own, not a second computing of the table.
     t.view = view;

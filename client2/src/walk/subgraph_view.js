@@ -678,6 +678,8 @@ export class SubgraphView {
       await this.expandBundle(at ? at.step - 1 : 0, lump.key);
       if (this.state !== 'done') return;
       this.fold.big.set(lump.owner, branchKeys(this.layout, lump.owner));
+      // Nothing more from it (lead 4c53ba3b0): said, as a branch that brings nothing is, not a lump gone quiet.
+      if (!this._view().lumps.some((l) => l.id === id)) this.note = `No more · from ${this._labelOf(lump.owner)}`;
       this.render();
       await this.openLump(id, keep);
       return;
@@ -718,7 +720,8 @@ export class SubgraphView {
         const branch = this._branchLump(key);
         if (branch) await this._seeLump(branch);
       };
-      this._openPicker(id, items, `Behind ${this._labelOf(lump.owner)}`, nextWords(lump), open,
+      // «From», not «Behind»: behind is the folded count alone (lead f4e89622b).
+      this._openPicker(id, items, `From ${this._labelOf(lump.owner)}`, nextWords(lump), open,
         { word: FOLD_VIEWS[2], run: asPoints }, keep);
       return;
     }

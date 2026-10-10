@@ -139,6 +139,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
 /* A section stacks its parts - head, Next, + Column, the table - by one gap (lead 348310aee: they touched, 0 px). */
 .wk-sec { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }
+/* Who gave a value, under it (lead 99ed68cb7 C): its node's keys and its side's route. */
+.wk-src { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); white-space: nowrap; }
 .wk-sechead { font-weight: 700; font-size: var(--wk-fs-title); margin: 0; }
 /* A section's Next: the declared edges one step on, walked from its checked rows (lead 53050a4ec). */
 .wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
