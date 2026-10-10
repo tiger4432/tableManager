@@ -18,6 +18,7 @@ import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cell
 import { typeGraph } from '../rnd_board/api.js';
 // The table with a − start is the formula (lead 5cf5c3401): rows, groups and columns in, cells out.
 import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, valueKind, valueWords } from './reach_table.js';
+import { isBlank } from '../absent.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -115,6 +116,30 @@ export const ROUTE = 'Route';
 export const routeWords = (path) => path.hops.slice(1).map((hop) => (hop.predicates || []).join(' / ')).join(' → ');
 
 /**
+ * How a side reached a node and who gave a value, read off one walk's answer (leads df11f9e81 B, 99ed68cb7 C):
+ *   route(g, id)   the paths the server walked to `id` from side g's starts - its evidence - a start «start»
+ *   source(g, id)  the node a read ends at: its keys in their declared order (its label without), and route(g, id)
+ * The table's cells and the trend's points read both here.
+ */
+export function valueSources(result, entities, groups) {
+  const walked = new Map((((result && result.propagation) || {}).ranked || []).map((row) => [row.id, row.evidence || []]));
+  const nodes = new Map(((result && result.nodes) || []).map((n) => [n.id, n]));
+  const route = (g, id) => {
+    if (g.starts.includes(id)) return { text: STARTED };
+    const ways = [...new Set((walked.get(id) || []).filter((path) => g.starts.includes(path.seed)).map(routeWords))];
+    return ways.length ? cellWords({ values: ways }, 'string') : { text: EMPTY };
+  };
+  const keyWords = (id) => {
+    const node = nodes.get(id) || {};
+    const keys = node.keys || {};
+    const declared = ((entities || []).find((e) => e && e.type === node.type) || {}).keys || Object.keys(keys);
+    const said = declared.map((k) => keys[k]).filter((v) => !isBlank(v)).map(valueWords);
+    return said.length ? said.join(' / ') : (node.label || id);
+  };
+  return { route, source: (g, id) => `${keyWords(id)} · ${route(g, id).text}` };
+}
+
+/**
  * A formula cell in words (lead 5cf5c3401, a2eb4a516): missing, empty, its one value, or several - none overwritten; a
  * number column's cell stands right. Several say the first and how many more, every one kept (lead 34d91c09d 1: one
  * line of fifteen values pushed the node and the − side off the screen).
@@ -180,13 +205,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       unsplit: negative.length > 0 };
   }
   const index = indexGraph(result);
-  // Route (lead df11f9e81, 10-10): the paths the server walked to each node, a side its own starts' (a start: none).
-  const walked = new Map((((result && result.propagation) || {}).ranked || []).map((row) => [row.id, row.evidence || []]));
-  const routeOf = (g, id) => {
-    if (g.starts.includes(id)) return { text: STARTED };
-    const ways = [...new Set((walked.get(id) || []).filter((path) => g.starts.includes(path.seed)).map(routeWords))];
-    return ways.length ? cellWords({ values: ways }, 'string') : { text: EMPTY };
-  };
+  const sources = valueSources(result, entities, groups);
   // A node a row: one row whichever groups reached it.
   const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
   const shown = members.slice(0, cap);
@@ -225,7 +244,8 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       const byGroup = groups.map((g, i) => {
         // A side that did not reach the node says so once, across its columns (lead 34d91c09d 3).
         if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];
-        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c })), routeOf(g, node.id)];
+        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c,
+          sources: (byCol[i].nodes || []).map((id) => sources.source(g, id)) })), sources.route(g, node.id)];
       });
       return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup,
         centre: ownAt.map((c) => cellWords(ownCells[r][c], 'string')),
@@ -249,7 +269,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       empty: { count: empty, open: keep },
     });
   }
-  return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length), groups, unsplit: false, index };
+  return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length), groups, unsplit: false, index, sources };
 }
 
 // ⚰️ reachBySign retired 10-10 (lead 5cf5c3401): the reach is read in one seat, reach_table.groupsOf - a group a start

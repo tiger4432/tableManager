@@ -64,20 +64,24 @@ async function pageRun(M, answer) {
   handle.state.result = answer;
   handle.render();
   // The quantity section's + cell (the wafer section comes first and holds 30.5 too, read the other way).
-  const cell = walkAll(host).filter((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-col'] === '0' && /30\.5/.test(n._text || '')).pop();
+  // A value cell's value is its value line (C draws its source under it).
+  const valueOf = (n) => (n.children || []).filter((k) => k.className === 'wk-val').map((k) => k._text).join(' ');
+  const cell = walkAll(host).filter((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-col'] === '0' && /30\.5/.test(valueOf(n))).pop();
   if (cell) cell.dispatch('click', {});
   await settle();
   const q = (u) => Object.fromEntries(new URLSearchParams(String(u || '').split('?')[1] || ''));
   const asks = urls.filter((u) => u.includes('around=') || u.includes('later=') || u.includes('earlier='));
   const title = (walkAll(host).find((n) => n.className === 'wk-trend-title') || {})._text;
   const dots = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key']).map((n) => n.attrs['data-key']).sort();
+  const sources = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key'])
+    .map((n) => [n.attrs['data-key'], ((n.children || []).find((k) => k.tagName === 'TITLE') || {})._text || '']).sort();
   const edges = walkAll(host).filter((n) => n.tagName === 'TEXT' && has(n, 'wk-trend-edge')).map((n) => n._text.replace(TIME, 'TIME'));
   const note = (walkAll(host).find((n) => n.className === 'wk-note' && TIME.test(n._text || '')) || {})._text || '';
   const earlier = walkAll(host).find((n) => n.tagName === 'BUTTON' && n._text === 'Load earlier');
   if (earlier) earlier.dispatch('click', {});
   await settle();
   const asks2 = urls.filter((u) => u.includes('earlier='));
-  return { cell: Boolean(cell), title, ask: asks.length ? q(asks[0]) : null, dots, earlier: asks2.length ? q(asks2[0]).earlier : null,
+  return { cell: Boolean(cell), title, ask: asks.length ? q(asks[0]) : null, dots, sources, earlier: asks2.length ? q(asks2[0]).earlier : null,
     edges, local: note.endsWith('local time') };
 }
 
@@ -148,6 +152,13 @@ async function seen(M) {
   // ── the page ──
   const run = await pageRun(M, WALK);
   out.pageRun = [run.cell, run.title, run.ask, run.dots, run.earlier];
+  out.pointSources = run.sources;
+  // The part alone: a point that carries its source says it on its dot.
+  const said = part();
+  said.view.show({ title: 'S', model: M.trend.trendModel([{ t: Date.parse(T(3)), value: 1, group: 0, walked: true, key: 's1', source: 'WP · start' }]),
+    groups: ['Positive'], t0: null });
+  out.dotSource = walkAll(said.mount).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key'])
+    .map((n) => ((n.children || []).find((k) => k.tagName === 'TITLE') || {})._text || '');
   const farRun = await pageRun(M, WALK_FAR);
   out.farPage = [farRun.ask && farRun.ask.around, farRun.dots, farRun.edges, farRun.local];
   return out;
@@ -188,6 +199,9 @@ function suite(out) {
     [out.far, out.farPage], [[[new Date(Date.parse(T(1))).toISOString(), new Date(Date.parse(T(7))).toISOString()], [[1, true, 1]], 3, true,
       ['\u25c0 Negative walked TIME']],
     [new Date(Date.parse(T(3))).toISOString(), ['c1', 'c3', 'c4'], ['\u25c0 Negative walked TIME'], true]]);
+  eq('T14 a point says who gave it, as its cell does: the wafer and its side\'s route; a wafer neither side reached, nothing (lead 99ed68cb7 C)',
+    out.pointSources, [['c1', 'WP · start'], ['c2', 'WN · start'], ['c3', 'WP · start'], ['c4', '']]);
+  eq('T15 the part: a point that carries who gave it says it on its dot', out.dotSource, ['WP · start']);
   return { ran: names.length, names, failures };
 }
 
@@ -232,6 +246,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'trendModel(points, undefined, { windows: t.pages.map(windowOf).filter(Boolean), group: t.group })', 'trendModel(points)') },
   { id: 'TM12', what: 'no edge marker', catches: 'T13', ...VIEW,
     mutate: (t) => swap(t, 'outside.filter((o) => o.before === before).forEach(', '[].forEach(') },
+  { id: 'TM14', what: 'a point does not say who gave it', catches: 'T15', ...VIEW,
+    mutate: (t) => swap(t, "    if (p.source) { const said = this._svg('title', {}); said.textContent = p.source; dot.append(said); }\n", '') },
+  { id: 'TM15', what: 'a point\'s source the row\'s, not its read\'s', catches: 'T14', ...PAGE_,
+    mutate: (t) => swap(t, 'view.sources.source(view.groups[p.group], p.node)', 'view.sources.source(view.groups[p.group], t.row)') },
   { id: 'TM13', what: 'the page asks around any side\'s latest walked point', catches: 'T12', ...PAGE_,
     mutate: (t) => swap(t, 'walkedTime(own, r.generated_at, t.group)', 'walkedTime(own, r.generated_at)') },
 ];

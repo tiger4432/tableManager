@@ -1405,7 +1405,7 @@ const FLOORS = new Map([
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 33],   // 36 -> 33: R13 R14 and FM10 retired with viaDepth - the table's Route reads the answer's evidence, walk_table Z29-Z32 (lead 1333a5ec9)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 26],   // 21 -> 26: the axis the lead found on the box (10-10)
+  ['trend_harness.mjs', 30],   // -> 30: a point says who gave it - T14 T15, TM14 TM15 (lead 99ed68cb7)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1456,7 +1456,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 377],   // -> 377: a node a bundle's opening brought, not walked - AW1 AW2, AWm1-AWm4 (lead f6e8ef44b)
+  ['subgraph_view_harness.mjs', 383],   // -> 383: the lump window «From <node>», a walk that brings nothing «No more · from <node>» - AW3 AW4, AWm5 AWm6 (lead f4e89622b, 4c53ba3b0)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1485,7 +1485,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 119],   // -> 119: Route at each side's outer end; RM6 retired, equivalent once Route is last (lead 10-10 after B)
+  ['walk_table_harness.mjs', 127],   // -> 127: a value's source under it - Z38-Z41, VS1-VS3, NZ16 (lead 99ed68cb7)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
