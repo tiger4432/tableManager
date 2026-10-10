@@ -45,6 +45,10 @@ export const TYPE_COLOURS = 9;
 export const DEFAULT_FANOUT_LIMIT = 20;
 /** A list longer than this gets a filter field in the picker (lead 03bc94b6b). */
 const PICK_FILTER_AT = 8;
+/** A branch's node in the window's values: its branch's key, then the node. */
+const PICK_SEP = '\u0000';
+/** A big lump's branch seen on its own (its row's Trend) - not a lump in the picture. */
+const GROUP_LUMP = 'branch:';
 /** The first fit never zooms out past this: a 15px name stays at the 12px meta size (「작은 글씨는 없느니만 못하다」). */
 const READABLE_ZOOM = 0.8;
 /** How far (px) a press may wander and still be a press, not a node drag (owner 10-07 「노드 클릭이 불안정」, lead
@@ -304,12 +308,16 @@ export function lumpView(layout, fold, seeds) {
         count: members.length + rest, unsent: rest > 0 };
     }).filter((g) => g.count > 0);
     if (groups.length) {
-      const held = inside(groups.flatMap((g) => g.members));
+      // «N next · M behind» (leads df11f9e81, 2f25c883a): next - the distinct nodes All -> Open draws; behind - what
+      // stays folded then, once. A bundle not yet walked may share nodes with another branch: next is then a bound.
+      const firsts = new Set(groups.flatMap((g) => g.members));
+      const held = inside([...firsts]);
+      const rest = groups.reduce((n, g) => n + g.rest, 0);
       const mix = new Map();
-      for (const id of held) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + 1);
+      for (const id of firsts) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + 1);
       for (const g of groups) if (g.rest) mix.set(g.farType, (mix.get(g.farType) || 0) + g.rest);
       lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, groups,
-        count: held.size + groups.reduce((n, g) => n + g.rest, 0),
+        count: held.size + rest, next: firsts.size + rest, behind: held.size - firsts.size, bound: rest > 0,
         mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })) });
     }
     const keys = new Set([...(steps.get(node.id) || []).map((s) => s.key),
@@ -386,11 +394,14 @@ function windowStorage(doc) {
   }
 }
 
+/** A big lump's count words, on the lump and atop its window: «≤» while a bundle is not walked (lead 2f25c883a). */
+const nextWords = (lump) => `${lump.bound ? '≤ ' : ''}${lump.next} next · ${lump.behind} behind`;
+
 /** A lump's words: the predicate with its arrow, then what it holds. */
 function lumpLabel(lump) {
   if (lump.level === 'big') {
     const mix = lump.mix.slice(0, 3).map((m) => `${m.count} ${m.type}`).join(' · ');
-    return `${lump.count} folded${mix ? `\n${mix}` : ''}`;
+    return `${nextWords(lump)}${mix ? `\n${mix}` : ''}`;
   }
   return `${arrowed(lump)}\n${lump.unsent && lump.more ? '+' : ''}${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;
 }
@@ -606,28 +617,47 @@ export class SubgraphView {
    * lists its keys - those ticked become small lumps; a small lump lists its members - those ticked become nodes,
    * each folded if it leads anywhere; a lump the server has not sent is walked first, then listed the same way.
    */
-  async openLump(id) {
+  async openLump(id, keep) {
     const lump = this._view().lumps.find((l) => l.id === id);
     if (!lump || this.state !== 'done') return;
     if (lump.level === 'big') {
-      const items = lump.groups.map((g) => ({ value: g.key, text: `${arrowed(g)} ${g.farType}`, count: g.count }));
-      const open = (keys) => {
+      // One window, one layer (lead df11f9e81): a row a branch, its ▸ its nodes; what is ticked opens as nodes at
+      // once - each folded if it leads anywhere - and what is left of a branch stays its «n more». A branch the
+      // server did not send is walked first, unfolded or ticked, and the window comes back with it.
+      const view = this._view();
+      const lit = startBranch(this.steps);
+      const items = lump.groups.map((g) => ({ value: g.key, text: `${arrowed(g)} ${g.farType}`, count: g.count,
+        ...(g.unsent ? { load: () => this._loadBranch(id, g.key) }
+          : { members: g.members.map((m) => ({ value: m, text: this._labelOf(m), count: view.behind(m) || undefined, lit: lit.has(m) })) }) }));
+      const open = (picked) => {
         const inBig = this.fold.big.get(lump.owner);
-        for (const key of keys) {
+        const out = [];
+        const keys = new Set();
+        for (const value of picked) {
+          const [key, member] = value.split(PICK_SEP);
           inBig.delete(key);
-          if (lump.groups.find((g) => g.key === key && g.members.length)) this.fold.lumped.set(key, new Set());
+          keys.add(key);
+          if (!this.fold.lumped.has(key)) this.fold.lumped.set(key, new Set());
+          this.fold.lumped.get(key).add(member);
+          this.fold.big.set(member, branchKeys(this.layout, member));
+          if (!out.includes(member)) out.push(member);
         }
         if (!inBig.size) this.fold.big.delete(lump.owner);
-        this._openedFrom(id, keys.map((key) => `lump:${key}`));
+        // What came out stands where the lump stood; what is left of a branch goes under it.
+        this._openedFrom(id, [...out, ...[...keys].map((key) => `lump:${key}`)]);
       };
-      // A row's own Trend (owner 10-08): that key opened as its small lump, seen as points at once.
-      const asPoints = (key) => {
-        this.lumpSeen.kind.set(`lump:${key}`, FOLD_VIEWS[2]);
-        open([key]);
-        return this.openLump(`lump:${key}`);
+      // A row's own Trend (owner 10-08): that branch's points at once, the branch left as it was.
+      const asPoints = async (key) => {
+        if (lump.groups.some((g) => g.key === key && g.unsent)) await this._expandKey(key);
+        this.lumpSeen.kind.set(`${GROUP_LUMP}${key}`, FOLD_VIEWS[2]);
+        this.pickedLump = `${GROUP_LUMP}${key}`;
+        this.selected = null;
+        this._closePicker();
+        const branch = this._branchLump(key);
+        if (branch) await this._seeLump(branch);
       };
-      this._openPicker(id, items, `Behind ${this._labelOf(lump.owner)}`, `${lump.count} folded`, open,
-        { word: FOLD_VIEWS[2], run: asPoints });
+      this._openPicker(id, items, `Behind ${this._labelOf(lump.owner)}`, nextWords(lump), open,
+        { word: FOLD_VIEWS[2], run: asPoints }, keep);
       return;
     }
     if (lump.unsent) {
@@ -673,10 +703,43 @@ export class SubgraphView {
     this._restyle();
   }
 
-  /** See a lump another way (lead 10-08): its list (today's), its nodes as a table, or their points. The view stays put. */
+  /** See a lump another way (lead 10-08): its list (today's), its nodes as a table, or their points. The view stays put.
+   *  A big lump's branch seen so (its row's Trend) lists in its owner's window, the branch unfolded. */
   setLumpView(id, kind) {
     this.lumpSeen.kind.set(id, kind);
-    return this.openLump(id);
+    if (!id.startsWith(GROUP_LUMP)) return this.openLump(id);
+    const key = id.slice(GROUP_LUMP.length);
+    const branch = this._branchLump(key);
+    if (!branch) return undefined;
+    if (kind !== FOLD_VIEWS[0]) return this._seeLump(branch);
+    this.pickedLump = null;
+    return this.openLump(`big:${branch.owner}`, { unfolded: new Set([key]) });
+  }
+
+  /** A big lump's branch as a lump of its own, for its points or its table - not a lump in the picture. */
+  _branchLump(key) {
+    for (const big of this._view().lumps.filter((l) => l.level === 'big')) {
+      const g = big.groups.find((x) => x.key === key);
+      if (g) return { ...g, id: `${GROUP_LUMP}${key}`, level: 'small', owner: big.owner };
+    }
+    return null;
+  }
+
+  /** Walk a branch the server did not send - its bundle's own step, one fan-out (lead 11e5ea207). */
+  async _expandKey(key) {
+    const chip = this.layout && this.layout.chips.find((c) => c.key === key);
+    if (chip) await this.expandBundle(chip.step, key);
+  }
+
+  /** A branch the server did not send, unfolded or ticked in the window: walked, then the window again, that branch open
+   *  - ticked, all it brought ticked - and what was ticked before still ticked. */
+  async _loadBranch(lumpId, key) {
+    const was = this.picker ? this._pickerState() : { unfolded: new Set(), values: new Set(), whole: new Set() };
+    if (this.picker) this.picker.loading(key);
+    await this._expandKey(key);
+    if (this.state !== 'done') return;
+    was.unfolded.add(key);
+    await this.openLump(lumpId, was);
   }
 
   _kindOf(id) { return this.lumpSeen.kind.get(id) || FOLD_VIEWS[0]; }
@@ -1169,7 +1232,8 @@ export class SubgraphView {
 
   _facts() {
     const lump = this.pickedLump && this.layout
-      && this._view().lumps.find((l) => l.id === this.pickedLump && l.level === 'small');
+      && (this._view().lumps.find((l) => l.id === this.pickedLump && l.level === 'small')
+        || (this.pickedLump.startsWith(GROUP_LUMP) ? this._branchLump(this.pickedLump.slice(GROUP_LUMP.length)) : null));
     if (lump) return this._lumpFacts(lump);
     const box = this._el('div', 'sg-facts');
     this.markButton = null;
@@ -1333,8 +1397,16 @@ export class SubgraphView {
   // ── the picker: what to open out of a lump (lead 03bc94b6b) ─────────────────────────────────────────────────
 
   /** `rowView` (if any): a press of its own on each row, `{word, run(value)}` - a big lump's rows' Trend. */
-  _openPicker(lumpId, items, title, sub, onOpen, rowView) {
+  /**
+   * The picker: a row an item, ticked to open. An item with `members` is a branch - its ▸ lists them, each ticked on its
+   * own, the branch's box ticks them all; one with `load` lists nothing until it is walked (its ▸ or its box walks it).
+   * `keep` reopens it as it was: the branches unfolded, the values ticked, the branches ticked whole.
+   */
+  _openPicker(lumpId, items, title, sub, onOpen, rowView, keep = {}) {
     this._closePicker();
+    const unfolded = keep.unfolded || new Set();
+    const keptValues = keep.values || new Set();
+    const keptWhole = keep.whole || new Set();
     const box = this._el('div', 'sg-pick');
     box.setAttribute('role', 'dialog');
     box.setAttribute('data-lump', lumpId);
@@ -1349,16 +1421,30 @@ export class SubgraphView {
       box.appendChild(filter);
     }
     const list = this._el('div', 'sg-pick-list');
-    const rows = items.map((item) => {
-      const row = this._el('label', `sg-pick-row${item.lit ? ' is-lit' : ''}`);
-      row.setAttribute('data-value', item.value);
+    const box_ = () => {
       const cb = this._el('input');
       cb.setAttribute('type', 'checkbox');
       cb.type = 'checkbox';
       cb.checked = false;
+      return cb;
+    };
+    const rows = items.map((item) => {
+      const row = this._el('label', `sg-pick-row${item.lit ? ' is-lit' : ''}`);
+      row.setAttribute('data-value', item.value);
+      const cb = box_();
+      cb.checked = keptWhole.has(item.value);
       row.appendChild(cb);
       row.appendChild(this._el('span', 'sg-pick-text', item.text));
       if (item.count !== undefined) row.appendChild(this._el('span', 'sg-pick-n', String(item.count)));
+      const branch = Boolean(item.members || item.load);
+      let unfold = null;
+      if (branch) {
+        unfold = this._el('button', 'sg-tool sg-pick-unfold', '▸');
+        unfold.setAttribute('type', 'button');
+        unfold.setAttribute('data-value', item.value);
+        unfold.setAttribute('aria-expanded', String(unfolded.has(item.value) && Boolean(item.members)));
+        row.appendChild(unfold);
+      }
       if (rowView) {
         const view = this._el('button', 'sg-tool sg-pick-view', rowView.word);
         view.setAttribute('type', 'button');
@@ -1373,7 +1459,27 @@ export class SubgraphView {
         row.appendChild(view);
       }
       list.appendChild(row);
-      return { row, cb, value: item.value, text: String(item.text).toLowerCase() };
+      const entry = { row, cb, value: item.value, text: String(item.text).toLowerCase(), item, unfold, kids: [], sub: null };
+      if (item.members) {
+        const subList = this._el('div', 'sg-pick-members');
+        subList.hidden = !unfolded.has(item.value);
+        for (const m of item.members) {
+          const r = this._el('label', `sg-pick-row is-member${m.lit ? ' is-lit' : ''}`);
+          const value = `${item.value}${PICK_SEP}${m.value}`;
+          r.setAttribute('data-value', value);
+          const c = box_();
+          c.checked = keptWhole.has(item.value) || keptValues.has(value);
+          r.appendChild(c);
+          r.appendChild(this._el('span', 'sg-pick-text', m.text));
+          if (m.count !== undefined) r.appendChild(this._el('span', 'sg-pick-behind', `+${m.count} behind`));
+          subList.appendChild(r);
+          entry.kids.push({ row: r, cb: c, value, text: String(m.text).toLowerCase() });
+        }
+        list.appendChild(subList);
+        entry.sub = subList;
+        cb.checked = entry.kids.length > 0 && entry.kids.every((k) => k.cb.checked);
+      }
+      return entry;
     });
     box.appendChild(list);
     const foot = this._el('div', 'sg-pick-foot');
@@ -1387,25 +1493,59 @@ export class SubgraphView {
     cancel.setAttribute('type', 'button');
     const go = this._el('button', 'sg-continue sg-pick-open', 'Open');
     go.setAttribute('type', 'button');
-    const ticked = () => rows.filter((r) => r.cb.checked);
+    // What Open opens: a branch's ticked nodes, or a plain row's value.
+    const chosenOf = () => rows.flatMap((r) => (r.item.members ? r.kids.filter((k) => k.cb.checked).map((k) => k.value)
+      : (r.item.load ? [] : (r.cb.checked ? [r.value] : []))));
     const sync = () => {
-      const n = ticked().length;
+      // Distinct nodes: one ticked under two branches that share it opens once.
+      const n = new Set(chosenOf().map((value) => value.split(PICK_SEP).pop())).size;
       go.textContent = n ? `Open ${n}` : 'Open';
       setDisabledReason(go, n ? '' : 'Tick one');
     };
     const visible = (r) => !r.row.hidden;
     if (all.addEventListener) {
-      all.addEventListener('change', () => { for (const r of rows) if (visible(r)) r.cb.checked = all.checked; sync(); });
-      for (const r of rows) r.cb.addEventListener('change', sync);
+      all.addEventListener('change', () => {
+        const unsent = rows.filter((r) => visible(r) && r.item.load);
+        for (const r of rows) {
+          if (!visible(r)) continue;
+          r.cb.checked = all.checked;
+          for (const k of r.kids) k.cb.checked = all.checked;
+        }
+        sync();
+        // All of a window with unsent branches walks them, then comes back with everything ticked.
+        if (all.checked && unsent.length) void this._loadAll(lumpId, unsent.map((r) => r.item));
+      });
+      for (const r of rows) {
+        r.cb.addEventListener('change', () => {
+          for (const k of r.kids) k.cb.checked = r.cb.checked;
+          if (r.cb.checked && r.item.load) void r.item.load();
+          sync();
+        });
+        for (const k of r.kids) {
+          k.cb.addEventListener('change', () => { r.cb.checked = r.kids.every((x) => x.cb.checked); sync(); });
+        }
+        if (r.unfold) {
+          r.unfold.addEventListener('click', (ev) => {
+            // The row is a label: the press must not tick its box as well.
+            if (ev && ev.preventDefault) ev.preventDefault();
+            if (r.item.load) { void r.item.load(); return; }
+            r.sub.hidden = !r.sub.hidden;
+            r.unfold.setAttribute('aria-expanded', String(!r.sub.hidden));
+          });
+        }
+      }
       if (filter) {
         filter.addEventListener('input', () => {
           const q = String(filter.value || '').trim().toLowerCase();
-          for (const r of rows) r.row.hidden = Boolean(q) && !r.text.includes(q);
+          for (const r of rows) {
+            for (const k of r.kids) k.row.hidden = Boolean(q) && !k.text.includes(q);
+            r.row.hidden = Boolean(q) && !r.text.includes(q) && !r.kids.some((k) => k.text.includes(q));
+          }
         });
       }
       cancel.addEventListener('click', () => this._closePicker());
       go.addEventListener('click', () => {
-        const chosen = ticked().map((r) => r.value);
+        const chosen = chosenOf();
         if (!chosen.length) return;
         this._closePicker();
         onOpen(chosen);
@@ -1433,8 +1573,34 @@ export class SubgraphView {
     }
     this._onKey = (ev) => { if (ev && ev.key === 'Escape') this._closePicker(); };
     if (this.doc.addEventListener) this.doc.addEventListener('keydown', this._onKey);
-    this.picker = { box, lumpId, rows, all, filter, go, cancel };
+    this.picker = { box, lumpId, rows, all, filter, go, cancel,
+      // A branch being walked says so in its row until the window comes back.
+      loading: (value) => {
+        const r = rows.find((x) => x.value === value);
+        if (r) { r.row.className += ' is-loading'; if (r.unfold) { r.unfold.textContent = LOADING; setDisabledReason(r.unfold, LOADING); } }
+      } };
     if (filter && filter.focus) filter.focus(); else if (rows[0] && rows[0].cb.focus) rows[0].cb.focus();
+  }
+
+  /** What the open window holds: the branches unfolded, the nodes ticked, the branches ticked whole. */
+  _pickerState() {
+    const rows = (this.picker && this.picker.rows) || [];
+    return { unfolded: new Set(rows.filter((r) => r.sub && !r.sub.hidden).map((r) => r.value)),
+      values: new Set(rows.flatMap((r) => r.kids.filter((k) => k.cb.checked).map((k) => k.value))),
+      whole: new Set(rows.filter((r) => r.cb.checked).map((r) => r.value)) };
+  }
+
+  /** All ticked in a window with unsent branches: each walked, then the window again with everything ticked. */
+  async _loadAll(lumpId, items) {
+    const was = this._pickerState();
+    for (const item of items) if (this.picker) this.picker.loading(item.value);
+    for (const item of items) {
+      await this._expandKey(item.value);
+      if (this.state !== 'done') return;
+    }
+    const lump = this._view().lumps.find((l) => l.id === lumpId);
+    if (lump) for (const g of lump.groups || []) was.whole.add(g.key);
+    await this.openLump(lumpId, was);
   }
 
   _closePicker() {

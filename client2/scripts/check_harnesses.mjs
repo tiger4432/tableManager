@@ -1456,7 +1456,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 335],   // + QS1 and its mutant: Shift on Mark marks a control (lead 10-09)
+  ['subgraph_view_harness.mjs', 355],   // 335 -> 355: the lump opens in one layer - LM10-LM14, PL and their mutants (leads df11f9e81, 2f25c883a)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],

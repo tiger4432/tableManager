@@ -38,6 +38,10 @@ const STEP2 = fx('walk_start_die_step2.json');
 const BUNDLES = fx('walk_bundles_die.json');
 const OPENED = fx('walk_bundles_die_opened.json');
 const OPEN_KEY = `${OPENED._opened.node}|${OPENED._opened.predicate}|${OPENED._opened.direction}`;
+// The wafer's other bundle (inspected, out) holds the same 40 dies (lead 2f25c883a: branches overlap): one answer with
+// both bundles' edges, so whichever is walked first, each is answered.
+const OPENED_BOTH = { ...OPENED, edges: [...OPENED.edges, ...OPENED.edges.map((e) => ({ ...e, id: `${e.id}~inspected`,
+  source: e.target, target: e.source, predicate: 'inspected', predicate_label: 'inspected', original_predicate: 'inspected' }))] };
 // The implementer's captures of the folded lumps' walks (real server, PostgreSQL): the start wafer, the recipe's one
 // more step (lead 793017c62 · edcc0568c).
 const FOLD_WAFER = fx('walk_fold_wafer.json');
@@ -150,6 +154,24 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     if (all) { all.children[0].checked = true; all.children[0].dispatch('change', {}); }
   };
   const openTicked = (s) => { const go = pickerOf(s) && byClass(pickerOf(s), 'sg-pick-open')[0]; if (go) go.dispatch('click', {}); };
+  // A big lump's window (lead df11f9e81): a row a branch; its ▸ lists the branch's nodes, each a row of its own.
+  const branchRows = (s) => rowsOf(s).filter((r) => !r.className.includes('is-member'));
+  const nodeRows = (s, key) => rowsOf(s).filter((r) => r.className.includes('is-member') && String(r.attrs['data-value']).startsWith(`${key}\u0000`));
+  const unfoldRow = (s, key) => {
+    const b = byClass(pickerOf(s) || { children: [] }, 'sg-pick-unfold').find((x) => x.attrs['data-value'] === key);
+    if (b) b.dispatch('click', {});
+    return Boolean(b);
+  };
+  /** A big lump's branch seen from its row's Trend: no small lump between (lead df11f9e81). `before` runs first. */
+  const branchTrend = async (s, bigId, part, before) => {
+    press(s, bigId);
+    if (before) before(s);
+    const b = byClass(pickerOf(s) || { children: [] }, 'sg-pick-view')
+      .find((x) => x.textContent === 'Trend' && String(x.attrs['data-value']).includes(part));
+    if (b) b.dispatch('click', {});
+    await settle();
+    return b ? `branch:${b.attrs['data-value']}` : '';
+  };
   const viewport = (s) => (s.view.cy ? JSON.stringify([s.view.cy.zoom(), s.view.cy.pan()]) : 'none');
   const positions = (s) => new Map(nodesOf(s).map((n) => [n.id(), { ...n.position() }]));
   const stayed = (before, s) => [...before].every(([id, p]) => {
@@ -490,7 +512,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[11] bundles: a fan-out over the cap draws its first, the rest is an unsent lump; pressed, it is one step from its node, then listed');
-  if (want(["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "PB", "PC", "PD", "PN"])) {
+  if (want(["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "PB", "PC", "PD", "PL", "PN"])) {
     const doc = stubDoc();
     const markings = new MarkingStore();
     const a = await seat([BUNDLES, OPENED], { doc, markings, chain: ['a0', 'a1'] });
@@ -587,19 +609,33 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       && (first.direction === 'outgoing' ? e.source === first.node : e.target === first.node))
       .map((e) => (first.direction === 'outgoing' ? e.target : e.source));
     const hiddenDrew = [...new Set(drewOf)].filter((id) => !sightBefore.has(id)).length;
-    if (row) tickRow(row);
-    openTicked(d);
-    const small = d.view.cy.getElementById(`lump:${key}`);
-    const tickedCount = small.nonempty() && small.data('count');
+    const rowCount = row ? Number(textOf(row, 'sg-pick-n').join()) : NaN;
     d.urls.length = 0;
-    press(d, `lump:${key}`);
+    unfoldRow(d, key);
     await settle();
-    say('PB in a big lump a bundle counts what the walk drew and its rest; ticked out, it is a lump of both, nothing comes into sight; pressed, it opens and lists them',
-      Boolean(row) && hiddenDrew > 0 && tickedCount === hiddenDrew + rest(first)
+    const underIt = nodeRows(d, key);
+    say('PB in a big lump a bundle\'s row counts what the walk drew and its rest; its ▸ walks it, nothing comes into sight, and the window lists them under it (lead df11f9e81)',
+      Boolean(row) && hiddenDrew > 0 && rowCount === hiddenDrew + rest(first)
         && JSON.stringify([...sightBefore].sort()) === JSON.stringify(nodesOf(d).map((n) => n.id()).filter((id) => sightBefore.has(id)).sort())
         && d.urls.length === 1 && paramsOf(d.urls[0]).get('direction') === first.direction
-        && rowsOf(d).length === [...fanEnds].filter((id) => !sightBefore.has(id)).length,
-      JSON.stringify({ row: Boolean(row), hiddenDrew, tickedCount, rest: rest(first), urls: d.urls.length, rows: rowsOf(d).length }));
+        && underIt.length === [...fanEnds].filter((id) => !sightBefore.has(id)).length && underIt.every((r) => !r.hidden),
+      JSON.stringify({ row: Boolean(row), hiddenDrew, rowCount, rest: rest(first), urls: d.urls.length, listed: underIt.length }));
+    // The same branch ticked, not unfolded: walked, its row loading meanwhile, then back with all it brought ticked.
+    const t = await seat([BUNDLES, OPENED]);
+    const bigT = t.view.cy.getElementById(`big:${first.node}`);
+    if (bigT.nonempty()) press(t, bigT.id());
+    const rowT = rowsOf(t).find((r) => r.attrs['data-value'] === key);
+    t.urls.length = 0;
+    if (rowT) tickRow(rowT);
+    const unfoldT = rowT && rowT.children.find((c) => String(c.className).includes('sg-pick-unfold'));
+    const whileT = { row: Boolean(rowT) && rowT.className.includes('is-loading'), word: unfoldT && unfoldT.textContent };
+    await settle();
+    const kidsT = nodeRows(t, key);
+    const goT = (byClass(pickerOf(t) || { children: [] }, 'sg-pick-open')[0] || {}).textContent;
+    say('PL a branch not sent, ticked in the window: walked once, its row says Loading till the window is back, then its nodes come ticked (lead df11f9e81)',
+      whileT.row && whileT.word === LOADING && t.urls.length === 1 && kidsT.length > 0
+        && kidsT.every((r) => r.children[0].checked && !r.hidden) && goT === `Open ${kidsT.length}`,
+      JSON.stringify({ whileT, urls: t.urls.length, kids: kidsT.length, goT }));
     // An opening that brings nothing new: said in a sentence, nothing listed.
     const e = await seat([BUNDLES, { ...OPENED, nodes: [], edges: [] }]);
     openAll(e);
@@ -703,9 +739,11 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const fold = byClass(a.host, 'sg-fold')[0];
     if (fold) fold.dispatch('click', {});
     const big = lumpsOf(a, 'big');
-    say('N3 Fold branches hides exactly what the fold reaches, and one big lump says N folded where the branches were',
+    const said = m.lumpView(a.view.layout, a.view.fold, seeds).lumps.find((l) => l.level === 'big' && l.owner === target.id) || {};
+    say('N3 Fold branches hides exactly what the fold reaches, and one big lump says N next · M behind where the branches were, the two its whole',
       target.hides > 0 && Boolean(fold) && nodesOf(a).length === a.view.layout.nodes.length - target.hides
-        && big.length === 1 && big[0].data('owner') === target.id && big[0].data('label').startsWith(`${target.hides} folded`),
+        && big.length === 1 && big[0].data('owner') === target.id && said.next + said.behind === target.hides
+        && big[0].data('label').startsWith(`${said.next} next · ${said.behind} behind`),
       JSON.stringify({ hides: target.hides, drawn: nodesOf(a).length, all: a.view.layout.nodes.length, lump: big.length && big[0].data('label') }));
     say('N4 the counts above stay the walk\'s; the folded count is its own line',
       counts() === countsBefore && textOf(a.host, 'sg-note').includes(`Folded · ${target.hides} node${target.hides === 1 ? '' : 's'}`),
@@ -720,7 +758,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     say('N6 both lumps are one lump: the fold\'s and the unsent fan-out\'s share the kind and the shape, each saying its count',
       Boolean(unsentLump) && big.length === 1 && unsentLump.data('kind') === big[0].data('kind')
         && unsentLump.style('shape') === big[0].style('shape')
-        && /^\d+ folded/.test(big[0].data('label')) && /\n\+\d+ more \S+$/.test(unsentLump.data('label')),
+        && /^\d+ next · \d+ behind/.test(big[0].data('label')) && /\n\+\d+ more \S+$/.test(unsentLump.data('label')),
       JSON.stringify({ shapes: [unsentLump && unsentLump.style('shape'), big.length && big[0].style('shape')] }));
     const unfold = byClass(a.host, 'sg-fold')[0];
     const unfoldWord = unfold && unfold.textContent;
@@ -734,7 +772,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[LM] a lump opens only what is ticked, out of where it stood; the view does not move (lead 03bc94b6b)');
-  if (want(["LM1", "LM2", "LM3", "LM4", "LM5", "LM6", "LM7", "LM8", "LM9"])) {
+  if (want(["LM1", "LM2", "LM3", "LM4", "LM5", "LM6", "LM7", "LM8", "LM9", "LM10", "LM11", "LM12", "LM13", "LM14"])) {
     const s = await seat([DIE]);
     openAll(s);
     const seeds = s.view.steps.flatMap((x) => x.seeds);
@@ -757,40 +795,55 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       JSON.stringify({ pick: Boolean(pick), big: bigs.length }));
     const keyed = pick ? pick.groups.find((g) => g.members.length > 2) : null;
     const at1 = positions(s);
+    const lumpAt = bigs[0] ? { ...bigs[0].position() } : { x: NaN, y: NaN };
     if (bigs[0]) press(s, bigs[0].id());
-    const keyRows = rowsOf(s);
+    const keyRows = branchRows(s);
+    const said = (r) => [textOf(r, 'sg-pick-n').join(), textOf(r, 'sg-pick-behind').join()];
     const keyRow = keyRows.find((r) => keyed && r.attrs['data-value'] === keyed.key);
-    if (keyRow) tickRow(keyRow);
+    // The branch's ▸: its nodes, two of them ticked.
+    unfoldRow(s, keyed ? keyed.key : '');
+    const memberRows = nodeRows(s, keyed ? keyed.key : '');
+    const chosen = memberRows.slice(0, 2).map((r) => String(r.attrs['data-value']).split('\u0000')[1]);
+    for (const r of memberRows.slice(0, 2)) tickRow(r);
     const goWord = (byClass(pickerOf(s) || { children: [] }, 'sg-pick-open')[0] || {}).textContent;
+    const at2 = positions(s);
     openTicked(s);
-    const smalls = lumpsOf(s, 'small').filter((n) => n.data('owner') === (pick && pick.id));
+    const drawn = new Set(nodesOf(s).map((n) => n.id()));
+    const left = lumpsOf(s, 'small').filter((n) => n.data('key') === (keyed && keyed.key));
     const stillBig = lumpsOf(s, 'big').filter((n) => n.data('owner') === (pick && pick.id));
-    say('LM2 the big lump lists one row per key with its count; the key ticked becomes its small lump, the rest stay in the big one',
-      Boolean(keyed) && keyRows.length === pick.groups.length && goWord === 'Open 1' && smalls.length === 1
-        && smalls[0].data('key') === keyed.key && smalls[0].data('count') === keyed.members.length && stillBig.length === 1,
-      JSON.stringify({ rows: keyRows.length, keys: pick && pick.groups.length, goWord, smalls: smalls.length, big: stillBig.length }));
-    const [fuller, lighter] = stillBig.length && smalls.length && stillBig[0].data('count') > smalls[0].data('count')
-      ? [stillBig[0], smalls[0]] : [smalls[0], stillBig[0]];
+    const stood = { left: left.length ? left[0].position('y') : NaN, big: stillBig.length ? stillBig[0].position('y') : NaN };
+    const v0 = m.lumpView(s.view.layout, s.view.fold, seeds);
+    say('LM2 the big lump lists one row per branch, its one-step count only (34b4cebd0: no «+N behind», branches overlap behind); a branch\'s ▸ lists its nodes (lead df11f9e81)',
+      Boolean(keyed) && keyRows.length === pick.groups.length && Boolean(keyRow)
+        && JSON.stringify(said(keyRow)) === JSON.stringify([String(keyed.count), ''])
+        && memberRows.length === keyed.members.length && memberRows.every((r) => !r.hidden),
+      JSON.stringify({ rows: keyRows.length, keys: pick && pick.groups.length, said: keyRow && said(keyRow), members: memberRows.length }));
+    say('LM3 only the two nodes ticked come out, with one Open; the branch keeps the rest and says n more; the other branches stay in the big one',
+      Boolean(keyed) && goWord === 'Open 2' && chosen.every((id) => drawn.has(id))
+        && keyed.members.filter((id) => !chosen.includes(id)).every((id) => !drawn.has(id))
+        && left.length === 1 && left[0].data('count') === keyed.members.length - 2
+        && left[0].data('label').includes(`${keyed.members.length - 2} more`) && stillBig.length === 1,
+      JSON.stringify({ goWord, left: left.length && left[0].data('label'), big: stillBig.length }));
+    const [fuller, lighter] = stillBig.length && left.length && stillBig[0].data('count') > left[0].data('count')
+      ? [stillBig[0], left[0]] : [left[0], stillBig[0]];
+    const smalls = left;
     say('LM9 a lump that holds more is bigger: of the big one and the small one it let out, the fuller is the wider',
       smalls.length === 1 && stillBig.length === 1 && fuller.data('count') > lighter.data('count')
         && fuller.width() > lighter.width(),
       JSON.stringify({ big: stillBig.length && [stillBig[0].data('count'), stillBig[0].width()],
         small: smalls.length && [smalls[0].data('count'), smalls[0].width()] }));
-    const lumpAt = smalls[0] ? { ...smalls[0].position() } : { x: NaN, y: NaN };
-    const at2 = positions(s);
-    if (smalls[0]) press(s, smalls[0].id());
-    const memberRows = rowsOf(s);
-    const chosen = memberRows.slice(0, 2).map((r) => r.attrs['data-value']);
-    for (const r of memberRows.slice(0, 2)) tickRow(r);
+    // Another branch ticked whole: its nodes come out with one Open - no small lump of it between.
+    const other = pick ? pick.groups.find((g) => g !== keyed && g.members.length && !g.unsent) : null;
+    if (stillBig[0]) press(s, stillBig[0].id());
+    const otherRow = branchRows(s).find((r) => other && r.attrs['data-value'] === other.key);
+    if (otherRow) tickRow(otherRow);
+    const wholeWord = (byClass(pickerOf(s) || { children: [] }, 'sg-pick-open')[0] || {}).textContent;
     openTicked(s);
-    const drawn = new Set(nodesOf(s).map((n) => n.id()));
-    const left = lumpsOf(s, 'small').filter((n) => n.data('key') === (keyed && keyed.key));
-    say('LM3 the small lump lists its members; only the two ticked become nodes, the lump keeps the rest and says n more',
-      Boolean(keyed) && memberRows.length === keyed.members.length && chosen.every((id) => drawn.has(id))
-        && keyed.members.filter((id) => !chosen.includes(id)).every((id) => !drawn.has(id))
-        && left.length === 1 && left[0].data('count') === keyed.members.length - 2
-        && left[0].data('label').includes(`${keyed.members.length - 2} more`),
-      JSON.stringify({ rows: memberRows.length, members: keyed && keyed.members.length, left: left.length && left[0].data('label') }));
+    const drawnNow = new Set(nodesOf(s).map((n) => n.id()));
+    say('LM10 a branch ticked whole opens as nodes with one Open, no small lump of it (lead df11f9e81)',
+      Boolean(other) && wholeWord === `Open ${other.members.length}` && other.members.every((id) => drawnNow.has(id))
+        && lumpsOf(s, 'small').every((n) => n.data('key') !== other.key),
+      JSON.stringify({ other: Boolean(other), wholeWord, smallOfIt: lumpsOf(s, 'small').filter((n) => other && n.data('key') === other.key).length }));
     const v = m.lumpView(s.view.layout, s.view.fold, seeds);
     const leading = chosen.filter((id) => v.behind(id) > 0);
     say('LM4 a node let out that leads further comes out folded: its own big lump, nothing behind it drawn',
@@ -800,9 +853,92 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       viewport(s) === view0 && stayed(new Map([...at0].filter(([id]) => at1.has(id))), s) && stayed(at1, s) && stayed(at2, s),
       JSON.stringify({ view: viewport(s) === view0 }));
     const ys = chosen.map((id) => s.view.cy.getElementById(id).position('y'));
-    say('LM6 what came out stands where the lump stood, a row each, and the lump left goes under them',
-      ys.length === 2 && ys[0] === lumpAt.y && ys[1] > ys[0] && left.length === 1 && left[0].position('y') > ys[1],
-      JSON.stringify({ lumpAt, ys, left: left.length && left[0].position('y') }));
+    const leftNow = lumpsOf(s, 'small').filter((n) => n.data('key') === (keyed && keyed.key));
+    say('LM6 what came out stands where the lump stood, a row each; what is left of the branch goes under them, the big lump under that',
+      ys.length === 2 && ys[0] === lumpAt.y && ys[1] > ys[0] && leftNow.length === 1 && leftNow[0].position('y') > ys[1]
+        && stood.big > stood.left,
+      JSON.stringify({ lumpAt, ys, left: leftNow.length && leftNow[0].position('y'), stood }));
+    // «N next · M behind» (lead df11f9e81): N is what All -> Open draws, M what stays folded after it - done, not read.
+    const w = await seat([DIE]);
+    openAll(w);
+    press(w, pick ? pick.id : '');
+    const foldW = byClass(w.host, 'sg-fold')[0];
+    if (foldW) foldW.dispatch('click', {});
+    const seedsW = w.view.steps.flatMap((x) => x.seeds);
+    const wordsW = (m.lumpView(w.view.layout, w.view.fold, seedsW).lumps.find((l) => l.level === 'big' && l.owner === (pick && pick.id)) || {});
+    const before = new Set(nodesOf(w).map((n) => n.id()));
+    const wordsSaid = (lumpsOf(w, 'big').find((n) => n.data('owner') === (pick && pick.id)) || { data: () => '' }).data('label');
+    press(w, `big:${pick ? pick.id : ''}`);
+    tickAll(w);
+    await settle();
+    if (pickerOf(w)) openTicked(w);
+    await settle();
+    const came = nodesOf(w).filter((n) => !before.has(n.id())).length;
+    const after = m.lumpView(w.view.layout, w.view.fold, seedsW).hidden;
+    say('LM11 a big lump says N next · M behind: All -> Open draws N new nodes and leaves M folded',
+      Boolean(pick) && wordsW.next > 0 && came === wordsW.next && after === wordsW.behind
+        && String(wordsSaid).startsWith(`${wordsW.next} next · ${wordsW.behind} behind`),
+      JSON.stringify({ said: wordsSaid, next: wordsW.next, behind: wordsW.behind, came, after }));
+    // Overlapping branches (lead 2f25c883a): w by p to x1 and x2, by q to x2 and x3 - rows 2 and 2, three distinct.
+    const on = (id, depth) => ({ id, type: 'die', label: id, depth, keys: {} });
+    const oe = (source, predicate, target) => ({ id: `${source}>${predicate}>${target}`, source, target, predicate });
+    const OVER = { state: 'ready', seed: { id: 'o:s' }, truncated: { reason: null },
+      nodes: [on('o:s', 0), on('o:w', 1), on('o:x1', 2), on('o:x2', 2), on('o:x3', 2)],
+      edges: [oe('o:s', 'r', 'o:w'), oe('o:w', 'p', 'o:x1'), oe('o:w', 'p', 'o:x2'), oe('o:w', 'q', 'o:x2'), oe('o:w', 'q', 'o:x3')] };
+    const ov = await seat([OVER]);
+    const ovLump = ov.view.cy.getElementById('big:o:w');
+    const ovWords = ovLump.nonempty() ? ovLump.data('label') : '';
+    const ovBefore = new Set(nodesOf(ov).map((n) => n.id()));
+    press(ov, 'big:o:w');
+    const ovRows = branchRows(ov).map((r) => textOf(r, 'sg-pick-n').join());
+    const ovSub = textOf(pickerOf(ov) || { children: [] }, 'sg-pick-sub').join();
+    tickAll(ov);
+    const ovGo = (byClass(pickerOf(ov) || { children: [] }, 'sg-pick-open')[0] || {}).textContent;
+    openTicked(ov);
+    const ovCame = nodesOf(ov).map((n) => n.id()).filter((id) => !ovBefore.has(id)).sort();
+    say('LM13 branches sharing nodes: each row its own one-step count, the lump and its window say the distinct next, Open counts and draws those (lead 2f25c883a)',
+      String(ovWords).startsWith('3 next · 0 behind') && ovSub === '3 next · 0 behind' && JSON.stringify(ovRows) === JSON.stringify(['2', '2'])
+        && ovGo === 'Open 3' && JSON.stringify(ovCame) === JSON.stringify(['o:x1', 'o:x2', 'o:x3']),
+      JSON.stringify({ ovWords, ovSub, ovRows, ovGo, ovCame }));
+    // The real two bundles (40 dies each, the same 20 drawn): a bound until walked, then the exact count All -> Open draws.
+    const bb = await seat([BUNDLES, OPENED_BOTH]);
+    const bbId = `big:${BUNDLES.bundles[0].node}`;
+    const bbWords = () => (bb.view.cy.getElementById(bbId).nonempty() ? String(bb.view.cy.getElementById(bbId).data('label')) : '');
+    const bound = bbWords();
+    press(bb, bbId);
+    tickAll(bb);
+    await settle();
+    const exact = bbWords();
+    const exactN = Number((exact.match(/^(\d+) next/) || [])[1]);
+    const bbBefore = new Set(nodesOf(bb).map((n) => n.id()));
+    const bbGo = (byClass(pickerOf(bb) || { children: [] }, 'sg-pick-open')[0] || {}).textContent;
+    openTicked(bb);
+    const bbCame = nodesOf(bb).map((n) => n.id()).filter((id) => !bbBefore.has(id)).length;
+    say('LM14 a bundle not walked: «≤ N next»; walked (All), the exact count, which Open draws (lead 2f25c883a)',
+      /^≤ \d+ next · \d+ behind/.test(bound) && /^\d+ next · \d+ behind/.test(exact) && exactN > 0
+        && Number(bound.match(/^≤ (\d+)/)[1]) > exactN && bbGo === `Open ${exactN}` && bbCame === exactN && bb.urls.length === 3,
+      JSON.stringify({ bound: bound.split('\n')[0], exact: exact.split('\n')[0], bbGo, bbCame, urls: bb.urls.length }));
+    // One node under a branch's ▸, one Open: it alone comes out; the branch's rest stays its «n more».
+    const one = await seat([DIE]);
+    openAll(one);
+    press(one, pick ? pick.id : '');
+    const foldOne = byClass(one.host, 'sg-fold')[0];
+    if (foldOne) foldOne.dispatch('click', {});
+    const drawnOne = new Set(nodesOf(one).map((n) => n.id()));
+    press(one, `big:${pick ? pick.id : ''}`);
+    unfoldRow(one, keyed ? keyed.key : '');
+    const oneRow = nodeRows(one, keyed ? keyed.key : '')[0];
+    const oneId = oneRow ? String(oneRow.attrs['data-value']).split('\u0000')[1] : null;
+    if (oneRow) tickRow(oneRow);
+    const oneWord = (byClass(pickerOf(one) || { children: [] }, 'sg-pick-open')[0] || {}).textContent;
+    openTicked(one);
+    const cameOne = nodesOf(one).map((n) => n.id()).filter((id) => !drawnOne.has(id));
+    const restOne = lumpsOf(one, 'small').filter((n) => n.data('key') === (keyed && keyed.key));
+    say('LM12 one node ticked under a branch\'s ▸, one Open: that node alone comes out, the branch\'s rest its n more (lead df11f9e81)',
+      Boolean(keyed) && Boolean(oneId) && oneWord === 'Open 1' && JSON.stringify(cameOne) === JSON.stringify([oneId])
+        && restOne.length === 1 && restOne[0].data('count') === keyed.members.length - 1
+        && restOne[0].data('label').includes(`${keyed.members.length - 1} more`),
+      JSON.stringify({ oneWord, came: cameOne.length, rest: restOne.length && restOne[0].data('label') }));
     // A lump of more than eight: a filter field; Cancel and Esc close without opening anything.
     const many = await seat([BUNDLES, OPENED]);
     const key = OPEN_KEY;
@@ -1022,31 +1158,29 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   if (want(["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9"])) {
     const s = await seat([FOLD_WAFER, FOLD_STEP]);
     const startIds = new Set(FOLD_WAFER.nodes.map((n) => n.id));
-    // M1's branches are one big lump; its `used` key opened is a small lump holding the recipe.
+    // M1's branches are one big lump; its `used` branch holds the recipe, seen from its row (no small lump between).
     const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
-    press(s, `big:${owner.id}`);
-    const usedRow = rowsOf(s).find((r) => r.attrs['data-value'].includes('|used|'));
-    if (usedRow) tickRow(usedRow);
-    openTicked(s);
-    const small = lumpsOf(s, 'small').filter((n) => n.data('owner') === owner.id)[0];
-    const id = small ? small.id() : '';
     const box = () => s.view.factsBox;
     const kinds = () => byClass(box(), 'sg-lv-kind');
     const switchTo = (word) => { const b = kinds().find((k) => k.textContent === word); if (b) b.dispatch('click', {}); return Boolean(b); };
     const was = positions(s);
     const viewWas = viewport(s);
+    const lumpsWas = lumpsOf(s).map((n) => [n.id(), n.data('label')]);
+    press(s, `big:${owner.id}`);
+    const usedKey = (branchRows(s).find((r) => r.attrs['data-value'].includes('|used|')) || { attrs: {} }).attrs['data-value'];
+    unfoldRow(s, usedKey);
+    const pickerRows = nodeRows(s, usedKey);
     s.urls.length = 0;
-    press(s, id);
-    const pickerRows = rowsOf(s);
-    say('J1 pressed, the info box holds the lump - its words and Nodes · Table · Trend, Nodes on - and its list opens as today, the start branch lit',
-      Boolean(small) && JSON.stringify(kinds().map((k) => [k.textContent, k.getAttribute('aria-pressed')]))
-        === '[["Nodes","true"],["Table","false"],["Trend","false"]]'
-        && pickerRows.length > 0 && pickerRows.every((r) => r.className.includes('is-lit') === startIds.has(r.attrs['data-value']))
-        && pickerRows.some((r) => r.className.includes('is-lit')) && s.urls.length === 0,
-      JSON.stringify({ small: Boolean(small), kinds: kinds().map((k) => k.textContent), rows: pickerRows.length }));
-    switchTo('Trend');
-    const during = textOf(box(), 'sg-note').join();
-    await settle();
+    let during = '';
+    const id = await branchTrend(s, `big:${owner.id}`, '|used|', () => {});
+    during = s.view.lumpSeen.data.get(id) ? 'asked' : '';
+    say('J1 a branch\'s row: its ▸ lists its nodes, the start branch lit; its Trend puts the branch in the info box - its words and Nodes · Table · Trend, Trend on - and the picture keeps its lumps (lead df11f9e81)',
+      Boolean(usedKey) && JSON.stringify(kinds().map((k) => [k.textContent, k.getAttribute('aria-pressed')]))
+        === '[["Nodes","false"],["Table","false"],["Trend","true"]]'
+        && pickerRows.length > 0 && pickerRows.every((r) => r.className.includes('is-lit') === startIds.has(String(r.attrs['data-value']).split('\u0000')[1]))
+        && pickerRows.some((r) => r.className.includes('is-lit')) && s.view.pickedLump === id
+        && JSON.stringify(lumpsOf(s).map((n) => [n.id(), n.data('label')])) === JSON.stringify(lumpsWas),
+      JSON.stringify({ key: Boolean(usedKey), kinds: kinds().map((k) => k.textContent), rows: pickerRows.length, picked: s.view.pickedLump }));
     const params = paramsOf(s.urls[0] || '');
     const recipe = FOLD_WAFER.edges.find((e) => e.source === owner.id && e.predicate === 'used').target;
     const times = FOLD_WAFER.nodes.filter((n) => n.type === owner.type)
@@ -1055,7 +1189,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const since = new Date(Math.min(...times) - 7 * DAY).toISOString();
     const until = new Date(Math.max(...times) + 7 * DAY).toISOString();
     say('J2 a lump of definition nodes walks one step back along its predicate, the start branch\'s times a week each side, capped; once',
-      during === LOADING && s.urls.length === 1 && JSON.stringify(params.getAll('positive')) === JSON.stringify([recipe])
+      during === 'asked' && s.urls.length === 1 && JSON.stringify(params.getAll('positive')) === JSON.stringify([recipe])
         && params.get('hops') === '1' && JSON.stringify(params.getAll('follow')) === '["used"]'
         && JSON.stringify(params.getAll('collect')) === JSON.stringify([owner.type])
         && params.get('direction') === 'incoming' && params.get('node_limit') === String(STEP_NODE_LIMIT)
@@ -1072,9 +1206,27 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
         && dots.slice(-litCount).every((c) => !c.includes('opacity')) && dots.slice(0, -litCount).every((c) => c.includes('opacity'))
         && meta.startsWith(`Points ${valued.length} · Window `) && !meta.includes('Capped'),
       JSON.stringify({ dots: dots.length, valued: valued.length, litCount, meta }));
-    const picture = s.view.cy.getElementById(id);
+    // A lump in the picture carries its points: the measurements' branch with one node opened, the rest a small lump.
+    const vl = await seat([FOLD_WAFER], { declaration: foldDecl });
+    const waferId = startId(FOLD_WAFER);
+    press(vl, waferId);
+    const foldIt = byClass(vl.host, 'sg-fold')[0];
+    if (foldIt) foldIt.dispatch('click', {});
+    press(vl, `big:${waferId}`);
+    const measuredKey = (branchRows(vl).find((r) => r.attrs['data-value'].includes('|measured|')) || { attrs: {} }).attrs['data-value'];
+    unfoldRow(vl, measuredKey);
+    const firstNode = nodeRows(vl, measuredKey)[0];
+    if (firstNode) tickRow(firstNode);
+    openTicked(vl);
+    const rest = lumpsOf(vl, 'small').filter((n) => n.data('key') === measuredKey)[0];
+    if (rest) press(vl, rest.id());
+    const toTrend = byClass(vl.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
+    if (toTrend) toTrend.dispatch('click', {});
+    await settle();
+    const picture = rest ? vl.view.cy.getElementById(rest.id()) : null;
     say('J4 the lump carries the same points as its own picture',
-      picture.nonempty() && circles(picture.data('spark')).length === valued.length, String(picture.nonempty() && picture.data('spark')).slice(0, 40));
+      Boolean(picture) && picture.nonempty() && rest.data('count') > 0 && circles(picture.data('spark')).length === rest.data('count'),
+      String(picture && picture.nonempty() && picture.data('spark')).slice(0, 40));
     s.urls.length = 0;
     switchTo('Table');
     await settle();
@@ -1083,21 +1235,22 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     say('J5 as a table: a row per node it walked, the start branch\'s lit, nothing asked again; and its picture goes',
       s.urls.length === 0 && tableRows.length === FOLD_STEP.nodes.length
         && tableRows.filter((r) => r.className.includes('is-lit')).length === FOLD_STEP.nodes.filter((n) => startIds.has(n.id)).length
-        && head && [...head.children].map((c) => c.textContent).join() === 'Name,value,Time' && !s.view.cy.getElementById(id).data('spark'),
+        && head && [...head.children].map((c) => c.textContent).join() === 'Name,value,Time',
       JSON.stringify({ urls: s.urls.length, rows: tableRows.length, head: head && [...head.children].map((c) => c.textContent) }));
     say('J6 seeing a lump another way moves nothing: the nodes stand, the view stays',
       was.size > 0 && stayed(was, s) && viewport(s) === viewWas, JSON.stringify({ view: viewport(s) === viewWas }));
     switchTo('Nodes');
-    say('J7 back to Nodes, its list opens again and nothing is asked',
-      Boolean(pickerOf(s)) && s.urls.length === 0 && kinds().find((k) => k.textContent === 'Nodes').getAttribute('aria-pressed') === 'true',
+    say('J7 back to Nodes, its owner\'s window opens with the branch unfolded and nothing is asked',
+      Boolean(pickerOf(s)) && s.urls.length === 0 && nodeRows(s, usedKey).length > 0 && nodeRows(s, usedKey).every((r) => !r.hidden),
       JSON.stringify({ picker: Boolean(pickerOf(s)), urls: s.urls.length }));
     press(s, owner.id);
     say('J8 a node pressed, the info box holds that node again', byClass(box(), 'sg-lv-kind').length === 0
       && textOf(box(), 'sg-facts-head').join().includes(owner.type), textOf(box(), 'sg-facts-head').join());
     // A new start while a lump's walk is on its way: the answer lands nowhere, and nothing of the lumps stays.
-    press(s, id);
-    switchTo('Trend');
+    s.view.lumpSeen.data.delete(id);
+    const pending = branchTrend(s, `big:${owner.id}`, '|used|');
     await s.view.show();
+    await pending;
     await settle();
     say('J9 a new start keeps no lump\'s view, choice or walk - an answer that comes after lands nowhere',
       s.view.lumpSeen.kind.size === 0 && s.view.lumpSeen.data.size === 0 && s.view.pickedLump === null
@@ -1110,13 +1263,20 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
     const boxOf = (n) => n.boundingBox({ includeLabels: false });
     const apart = (a, b) => a.x2 <= b.x1 || b.x2 <= a.x1 || a.y2 <= b.y1 || b.y2 <= a.y1;
-    const s = await seat([FOLD_WAFER, FOLD_STEP]);
-    press(s, `big:${owner.id}`);
-    const usedRow = rowsOf(s).find((r) => r.attrs['data-value'].includes('|used|'));
-    if (usedRow) tickRow(usedRow);
+    // A branch's nodes, one opened: what is left of it a small lump beside the big one.
+    const s = await seat([FOLD_WAFER], { declaration: foldDecl });
+    const wafer0 = startId(FOLD_WAFER);
+    press(s, wafer0);
+    const fold0 = byClass(s.host, 'sg-fold')[0];
+    if (fold0) fold0.dispatch('click', {});
+    press(s, `big:${wafer0}`);
+    const measured = (branchRows(s).find((r) => r.attrs['data-value'].includes('|measured|')) || { attrs: {} }).attrs['data-value'];
+    unfoldRow(s, measured);
+    const one = nodeRows(s, measured)[0];
+    if (one) tickRow(one);
     openTicked(s);
-    const small = lumpsOf(s, 'small').filter((n) => n.data('owner') === owner.id)[0];
-    const big = lumpsOf(s, 'big').filter((n) => n.data('owner') === owner.id)[0];
+    const small = lumpsOf(s, 'small').filter((n) => n.data('key') === measured)[0];
+    const big = lumpsOf(s, 'big').filter((n) => n.data('owner') === wafer0)[0];
     say('S1 the small lump a big one let out and the big one left do not overlap, by their boxes',
       Boolean(small) && Boolean(big) && apart(boxOf(small), boxOf(big)),
       JSON.stringify({ small: small && boxOf(small), big: big && boxOf(big) }));
@@ -1131,8 +1291,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     await settle();
     const opened = lumpsOf(t, 'small').filter((n) => n.data('owner') === owner.id)[0];
     const kinds = byClass(t.view.factsBox, 'sg-lv-kind').map((k) => [k.textContent, k.getAttribute('aria-pressed')]);
-    say('S2 a big lump\'s row has its own Trend: one press opens that key and shows its points, asking what the long way asks',
-      Boolean(rowTrend) && rowTrend.textContent === 'Trend' && Boolean(opened) && t.view.pickedLump === opened.id()
+    say('S2 a big lump\'s row has its own Trend: one press shows that branch\'s points, no small lump of it between, asking what the long way asks',
+      Boolean(rowTrend) && rowTrend.textContent === 'Trend' && !opened && t.view.pickedLump === `branch:${rowTrend.attrs['data-value']}`
         && JSON.stringify(kinds) === '[["Nodes","false"],["Table","false"],["Trend","true"]]'
         && byClass(t.view.factsBox, 'sg-lv-plot').length === 1 && t.urls.length === 1 && !pickerOf(t),
       JSON.stringify({ button: Boolean(rowTrend), opened: Boolean(opened), kinds, urls: t.urls.length }));
@@ -1142,17 +1302,10 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     press(v, wafer);
     const fold = byClass(v.host, 'sg-fold')[0];
     if (fold) fold.dispatch('click', {});
-    press(v, `big:${wafer}`);
-    const measuredRow = rowsOf(v).find((r) => r.attrs['data-value'].includes('|measured|'));
-    if (measuredRow) tickRow(measuredRow);
-    openTicked(v);
-    const values = lumpsOf(v, 'small').filter((n) => String(n.data('key')).includes('|measured|'))[0];
-    if (values) press(v, values.id());
     v.urls.length = 0;
-    const trend = byClass(v.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
-    if (trend) trend.dispatch('click', {});
-    await settle();
-    const members = values ? values.data('count') : 0;
+    const values = await branchTrend(v, `big:${wafer}`, '|measured|');
+    const branch = v.view._branchLump(values.slice('branch:'.length));
+    const members = branch ? branch.members.length : 0;
     const dots = (() => { const p = byClass(v.view.factsBox, 'sg-lv-plot')[0];
       return p ? (decodeURIComponent(String(p.getAttribute('src')).split(',').slice(1).join(',')).match(/<circle /g) || []).length : -1; })();
     say('S3 a lump whose members hold the values: Trend asks nothing, a point per member, no Points from',
@@ -1168,17 +1321,11 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const seeRecipe = async (second, beforeTrend) => {
       const s = await seat([FOLD_WAFER, second]);
       const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
-      press(s, `big:${owner.id}`);
-      const row = rowsOf(s).find((r) => r.attrs['data-value'].includes('|used|'));
-      if (row) tickRow(row);
-      openTicked(s);
-      const lump = lumpsOf(s, 'small').filter((n) => n.data('owner') === owner.id)[0];
-      if (lump) press(s, lump.id());
-      if (beforeTrend) beforeTrend(s);
-      const trend = byClass(s.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
-      if (trend) trend.dispatch('click', {});
-      await settle();
-      return { s, meta: textOf(s.view.factsBox, 'sg-lv-meta').join(), spark: lump ? s.view.cy.getElementById(lump.id()).data('spark') : null };
+      const lumps = lumpsOf(s).map((n) => [n.id(), n.data('label')]);
+      await branchTrend(s, `big:${owner.id}`, '|used|', beforeTrend);
+      // A branch seen so changes no lump in the picture (lead df11f9e81): nothing carries what its walk brought.
+      return { s, meta: textOf(s.view.factsBox, 'sg-lv-meta').join(),
+        spark: JSON.stringify(lumpsOf(s).map((n) => [n.id(), n.data('label')])) !== JSON.stringify(lumps) || lumpsOf(s).some((n) => n.data('spark')) };
     };
     const capped = await seeRecipe({ ...FOLD_STEP, truncated: { ...FOLD_STEP.truncated, nodes: true, reason: 'nodes' } });
     say('O1 a walk the node cap cut says so in the picture\'s own words, with the cap the answer names',
@@ -1221,16 +1368,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       press(s, wafer);
       const fold = byClass(s.host, 'sg-fold')[0];
       if (fold) fold.dispatch('click', {});
-      press(s, `big:${wafer}`);
-      const row = rowsOf(s).find((r) => r.attrs['data-value'].includes('|underwent|'));
-      if (row) tickRow(row);
-      openTicked(s);
-      const lump = lumpsOf(s, 'small').filter((n) => String(n.data('key')).includes('|underwent|'))[0];
-      if (lump) press(s, lump.id());
       s.urls.length = 0;
-      const trend = byClass(s.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
-      if (trend) trend.dispatch('click', {});
-      await settle();
+      const lump = await branchTrend(s, `big:${wafer}`, '|underwent|');
       return { s, lump };
     };
     const choiceOf = (s, word) => {
@@ -1280,16 +1419,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       press(t, wafer);
       const fold = byClass(t.host, 'sg-fold')[0];
       if (fold) fold.dispatch('click', {});
-      press(t, `big:${wafer}`);
-      const row = rowsOf(t).find((r) => r.attrs['data-value'].includes('|underwent|'));
-      if (row) tickRow(row);
-      openTicked(t);
-      const small = lumpsOf(t, 'small').filter((n) => String(n.data('key')).includes('|underwent|'))[0];
-      if (small) press(t, small.id());
       t.urls.length = 0;
-      const trend = byClass(t.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
-      if (trend) trend.dispatch('click', {});
-      await settle();
+      const small = await branchTrend(t, `big:${wafer}`, '|underwent|');
       return { t, small };
     })();
     say('I5 no measurement in the picture: Points from still lists the declaration\'s types, measurement_event among them; nothing asked',
@@ -1536,8 +1667,9 @@ const failures = [];
     M('B10', 'a cut opening is not said', 'PC', '      if (result.cut) cut.push(', '      if (result.cut && !result.opened) cut.push('),
     M('B11', 'an opening that brings nothing says nothing', 'PN',
       '        this.note = `No more ${lump.farType} · ${arrowed(lump)}`;\n', ''),
-    M('B12', 'a bundle ticked out of a big lump lets what the walk drew of it into sight', 'PB',
-      'g.key === key && g.members.length)', 'g.key === key && !g.unsent)'),
+    M('B12', 'a bundle walked from a big lump\'s window lets what it brought into sight', 'PB',
+      '    await this._expandKey(key);\n    if (this.state !== \'done\') return;\n    was.unfolded.add(key);',
+      '    const owner = (this._view().lumps.find((l) => l.id === lumpId) || {}).owner;\n    if (owner && this.fold.big.get(owner)) this.fold.big.get(owner).delete(key);\n    await this._expandKey(key);\n    if (this.state !== \'done\') return;\n    was.unfolded.add(key);'),
     { ...M('W3', 'the wire drops the fan-out cap', 'D1',
       "  if (fanoutLimit !== undefined && fanoutLimit !== null) query.set('fanout_limit', String(fanoutLimit));\n", ''), file: WIRE },
     { ...M('W4', 'the wire does not carry the bundles', 'P1',
@@ -1566,12 +1698,12 @@ const failures = [];
       "    if (view.hidden) status.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(view.hidden, 'node')}`));\n", ''),
     M('F9', 'the picture draws the folded nodes anyway', 'N3',
       '    nodes: layout.nodes.filter((n) => shown(n.id)),\n', '    nodes: layout.nodes,\n'),
-    M('L1m', 'opening a big lump opens every key, not the ticked', 'LM2',
-      '        for (const key of keys) {\n          inBig.delete(key);', '        for (const key of lump.groups.map((g) => g.key)) {\n          inBig.delete(key);'),
-    M('L2m', 'opening a small lump draws every member, not the ticked', 'LM3',
+    M('L1m', 'opening a big lump opens every branch\'s nodes, not the ticked', 'LM3',
+      '        for (const value of picked) {', '        for (const value of lump.groups.flatMap((g) => g.members.map((x) => `${g.key}${PICK_SEP}${x}`))) {'),
+    M('L2m', 'opening a small lump draws every member, not the ticked', 'P6',
       '        for (const m of members) {\n          opened.add(m);', '        for (const m of lump.members) {\n          opened.add(m);'),
     M('L3m', 'a node let out comes out open', 'LM4',
-      '          this.fold.big.set(m, branchKeys(this.layout, m));\n', ''),
+      '          this.fold.big.set(member, branchKeys(this.layout, member));\n', ''),
     M('L4m', 'an opening fits the view', 'LM5',
       '    else this._place(view, added);\n', '    else { this._place(view, added); cy.zoom(cy.zoom() * 1.1); }\n'),
     M('L5m', 'the lump left is not moved under what came out', 'LM6',
@@ -1580,8 +1712,7 @@ const failures = [];
     M('L7m', 'Esc does not close the picker', 'LM7',
       "    this._onKey = (ev) => { if (ev && ev.key === 'Escape') this._closePicker(); };\n", '    this._onKey = () => {};\n'),
     M('L8m', 'All ticks nothing', 'LM8',
-      '      all.addEventListener(\'change\', () => { for (const r of rows) if (visible(r)) r.cb.checked = all.checked; sync(); });\n',
-      '      all.addEventListener(\'change\', () => { sync(); });\n'),
+      '          r.cb.checked = all.checked;\n          for (const k of r.kids) k.cb.checked = all.checked;\n', ''),
     M('T1m', 'a type colour written by hand', 'TK1', "      const c = t(`--cat-${k + 1}`);\n", "      const c = '#888888';\n"),
     M('T2m', 'the theme toggle is not followed', 'TK2',
       "      this._themeWatch.observe(this.doc.documentElement, { attributes: true, attributeFilter: ['data-theme'] });\n", ''),
@@ -1644,7 +1775,7 @@ const failures = [];
         '    if (!step || step.expand.includes(key)) return;\n') },
     M('J0m', 'every view reads an empty start branch - the one question answered nowhere (lead 10-08)', 'J3',
       'startBranch(this.steps)', 'new Set()'),
-    M('J1m', 'a lump\'s chosen view is not kept', 'J2', '    this.lumpSeen.kind.set(id, kind);\n', ''),
+    M('J1m', 'a lump\'s chosen view is not kept', 'J5', '    this.lumpSeen.kind.set(id, kind);\n', ''),
     M('J2m', 'a definition lump walks forward, not back along its predicate', 'J2',
       "direction: lump.direction === 'incoming' ? 'outgoing' : 'incoming' }),", 'direction: lump.direction }),'),
     M('J3m', 'the window is not sent', 'J2', '      ...(window ? { since:', '      ...(false ? { since:'),
@@ -1653,12 +1784,32 @@ const failures = [];
     M('J6m', 'a lump\'s walk is asked again at every switch', 'J5', '    if (!seen.data.has(lump.id)) {\n', '    if (true) {\n'),
     M('J7m', 'a new start keeps the lumps\' views', 'J9',
       '    this.lumpSeen = openLumpSeen();\n    this.pickedLump = null;\n    this.pos = new Map();\n', '    this.pos = new Map();\n'),
-    M('J8m', 'the lump\'s list does not light the start branch', 'J1', '      lit: lit.has(m) }));', '      lit: false }));'),
+    M('J8m', 'the lump\'s list does not light the start branch', 'J1',
+      'count: view.behind(m) || undefined, lit: lit.has(m) })) }) }));', 'count: view.behind(m) || undefined, lit: false })) }) }));'),
+    M('LA1m', 'a big lump\'s words count all it hides again, not what one Open draws', 'LM11',
+      'next: firsts.size + rest, behind: held.size - firsts.size,', 'next: held.size + rest, behind: 0,'),
+    M('LA3m', 'a branch not sent, ticked, is not walked', 'PL',
+      '          if (r.cb.checked && r.item.load) void r.item.load();\n', ''),
+    M('LA4m', 'a branch being walked does not say so in its row', 'PL',
+      "        if (r) { r.row.className += ' is-loading'; if (r.unfold) { r.unfold.textContent = LOADING; setDisabledReason(r.unfold, LOADING); } }\n", ''),
+    M('LA6m', 'next summed over the branches, shared nodes twice', 'LM13',
+      'next: firsts.size + rest, behind: held.size - firsts.size, bound: rest > 0,',
+      'next: groups.reduce((n, g) => n + g.members.length, 0) + rest, behind: held.size - firsts.size, bound: rest > 0,'),
+    M('LA7m', 'Open counts the ticks, a shared node twice', 'LM13',
+      '      const n = new Set(chosenOf().map((value) => value.split(PICK_SEP).pop())).size;', '      const n = chosenOf().length;'),
+    M('LA8m', 'a bundle not walked: next said as exact', 'LM14', 'bound: rest > 0,', 'bound: false,'),
+    M('LA9m', 'the window\'s sub line not the lump\'s words', 'LM13',
+      '`Behind ${this._labelOf(lump.owner)}`, nextWords(lump), open,', '`Behind ${this._labelOf(lump.owner)}`, `${lump.count} folded`, open,'),
+    M('LA5m', 'one node ticked lets its whole branch out', 'LM12',
+      '          this.fold.lumped.get(key).add(member);\n',
+      '          for (const x of lump.groups.find((g) => g.key === key).members) this.fold.lumped.get(key).add(x);\n'),
+    M('LA2m', 'a branch ticked in the window comes out a small lump again, not its nodes', 'LM10',
+      '          this.fold.lumped.get(key).add(member);\n', ''),
     M('OV1m', 'what a lump lets out is stacked a row apart whatever its height (owner 10-08)', 'S1',
       '      const stepOf = (id) => Math.max(GEOMETRY.row, cy.getElementById(id).height() + GEOMETRY.row / 4);',
       '      const stepOf = () => GEOMETRY.row;'),
     M('RT1m', 'a big lump\'s row Trend opens the key but shows its list', 'S2',
-      '        this.lumpSeen.kind.set(`lump:${key}`, FOLD_VIEWS[2]);\n', ''),
+      '        this.lumpSeen.kind.set(`${GROUP_LUMP}${key}`, FOLD_VIEWS[2]);\n', ''),
     M('VL1m', 'a lump of values is treated as one to pick a type for (lead mutant 8504654f0)', 'S3',
       '    if (!members.length || valueAttributes(members).length) return { nodes: members };',
       '    if (!members.length) return { nodes: members };'),
