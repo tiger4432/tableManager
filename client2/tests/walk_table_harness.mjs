@@ -631,6 +631,76 @@ async function suite(mod) {
           === JSON.stringify([SAME._start.id, ...outSide, ...inSide].sort()),
       `${sameAsked.length} ${sameRows.length} out ${outSide.size} in ${inSide.size}`);
   }
+  // ── G (lead 5ea461e04): the steps a tree - from one step an edge A, then an edge B; A again ──
+  {
+    const DECLG = { ok: true,
+      entities: [{ type: 'die@1', keys: ['mat_id'] }, { type: 'wafer@1', keys: ['wafer'] }],
+      predicates: [
+        { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
+        { name: 'bonded_to@1', subjects: ['die@1'], object: { types: ['die@1'] } }] };
+    const ROOTG = { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } },
+      { id: 'n:2', type: 'die@1', label: 'D-2', keys: { mat_id: 'M-2' } }], edges: [] };
+    const BY = {
+      'bonded_to@1': { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } }, { id: 'n:4', type: 'die@1', label: 'D-4', keys: { mat_id: 'M-4' } }],
+        edges: [{ id: 'e:4', source: 'n:1', target: 'n:4', predicate: 'bonded_to@1' }] },
+      'inspected@1': { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } }, { id: 'w:1', type: 'wafer@1', label: 'W-1', keys: { wafer: 'W1' } }],
+        edges: [{ id: 'e:w', source: 'w:1', target: 'n:1', predicate: 'inspected@1' }] } };
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+      const u = String(url);
+      const follow = new URLSearchParams(u.split('?')[1] || '').get('follow');
+      return { ok: true, status: 200, json: async () => (u.includes('/subgraph') ? BY[follow] : DECLG) };
+    } });
+    await settle();
+    handle.state.type = 'die@1';
+    handle.state.asked = { type: 'die@1', keys: { mat_id: 'M-1' } };
+    handle.state.run = 'done';
+    handle.state.result = ROOTG;
+    handle.render();
+    const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn(); };
+    const tick = (id) => { const cb = walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === id); for (const fn of (cb && cb.listeners.click) || []) fn({}); };
+    const next = (words) => walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === words);
+    const tab = (id) => walkAll(host).find((e) => e.attrs && e.attrs['data-step'] === String(id));
+    const tabs = () => walkAll(host).filter((e) => e.className === 'wk-steprow')
+      .map((row) => row.children.map((b) => `${b.textContent}${b.className.includes('is-on') ? ' *' : ''}`));
+    const rows = () => walkAll(host).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']).join();
+    const A = 'bonded_to@1 → die@1';
+    const B = 'inspected@1 → wafer@1';
+    tick('n:1');
+    press(next(A));
+    await settle();
+    const a = handle.state.at;
+    press(tab(0));
+    press(next(B));
+    await settle();
+    const b = handle.state.at;
+    ok('GB1 from one step an edge A, then an edge B: both stay, siblings at one level, B the branch (lead 5ea461e04)',
+      handle.state.steps.length === 2 && handle.state.steps.every((x) => x.parent === 0) && a !== b
+        && JSON.stringify(tabs()) === JSON.stringify([[`Step 1 · ${handle.state.steps.length ? '+ 1' : ''} *`], [`Step 2 · ${A}`, `Step 2 · ${B} *`]]),
+      JSON.stringify(tabs()));
+    const chainOf = () => handle.graph.chain(2);
+    const onB = [rows(), chainOf() === (handle.state.steps.find((x) => x.id === b) || {}).marks];
+    press(tab(a));
+    const onA = [rows(), chainOf() === (handle.state.steps.find((x) => x.id === a) || {}).marks, handle.state.leaf === a];
+    ok('GB2 a tab off the branch chooses it: its table, and the graph\'s chain is that branch\'s',
+      JSON.stringify([onB, onA]) === JSON.stringify([['n:1,w:1', true], ['n:1,n:4', true, true]]), JSON.stringify([onB, onA]));
+    tick('n:4');
+    press(next(A));
+    await settle();
+    const a1 = handle.state.steps.find((x) => x.parent === a);
+    press(tab(b));
+    tick('w:1');
+    const bMarks = (handle.state.steps.find((x) => x.id === b) || {}).marks;
+    press(tab(0));
+    press(next(A));
+    await settle();
+    ok('GB3 the same edge again walks that branch again: it and its steps go with their markings; B and its checks stay',
+      Boolean(a1) && !handle.state.steps.some((x) => x.id === a || x.id === a1.id) && handle.graph.markings.count(a1.marks) === 0
+        && handle.state.steps.some((x) => x.id === b) && handle.graph.markings.count(bMarks) === 1
+        && handle.state.steps.filter((x) => x.parent === 0).length === 2,
+      JSON.stringify([handle.state.steps.map((x) => [x.id, x.parent, x.title]), a1 && handle.graph.markings.count(a1.marks), handle.graph.markings.count(bMarks)]));
+  }
   // ── the page: side by side when the walk had a - start (lead 5cf5c3401, the mockup) ──
   {
     const doc = makeDoc();
@@ -1077,16 +1147,24 @@ const MUTANTS = [
   { id: 'EKm2', what: 'a Next walks the form\'s hops, not one step', catches: 'EA1',
     from: NEXT_ASK, to: NEXT_ASK.replace('{ ...knobs(), ...stepAlong(', '{ ...stepAlong(').replace('farType: route.to }) };', 'farType: route.to }), ...knobs() };') },
   { id: 'NM4', what: 'the checks are kept apart from the graph\'s marking', catches: 'N3',
-    from: "  const checksOf = (at) => (at === 0 ? state.marks : state.steps[at - 1].marks);", to: '  const checksOf = (at) => `table-${at}`;' },
+    from: "  const checksOf = (at) => (at === 0 ? state.marks : stepOf(at).marks);", to: '  const checksOf = (at) => `table-${at}`;' },
   { id: 'FM1', what: 'a step\'s marking named by its place again', catches: 'CH2',
     from: "reason: '', marks: nextMarks() };", to: "reason: '', marks: `walk-${at + 3}` };" },
   { id: 'FM2', what: 'a step walked again leaves the dropped steps\' markings', catches: 'CH2',
-    from: '    dropMarks(state.steps.slice(at));\n', to: '' },
+    from: '    dropMarks(dropped);\n', to: '' },
+  { id: 'GM1', what: 'another edge from a step walks over its sibling', catches: 'GB1',
+    from: '    const again = state.steps.find((s) => s.parent === at && s.title === title);', to: '    const again = state.steps.find((s) => s.parent === at);' },
+  { id: 'GM2', what: 'the graph\'s chain every step, not the branch\'s', catches: 'GB2',
+    from: '    const names = [START, state.marks, ...pathTo(state.leaf).map((s) => s.marks)];', to: '    const names = [START, state.marks, ...state.steps.map((s) => s.marks)];' },
+  { id: 'GM3', what: 'the same edge again walks every branch from that step again', catches: 'GB3',
+    from: '    const dropped = again ? subtree(again.id) : [];', to: '    const dropped = again ? state.steps.filter((s) => s.parent === at).flatMap((s) => subtree(s.id)) : [];' },
+  { id: 'GM4', what: 'a tab off the branch shows its step and leaves the branch', catches: 'GB2',
+    from: '          if (!branch.includes(id)) state.leaf = id;\n', to: '' },
   { id: 'NM5', what: 'a new start keeps the steps', catches: 'N7',
-    from: '    state.steps = []; state.at = 0; state.marks = nextMarks();\n', to: '    state.marks = nextMarks();\n' },
+    from: '    state.steps = []; state.at = 0; state.leaf = 0; state.marks = nextMarks();\n', to: '    state.marks = nextMarks();\n' },
   { id: 'NM6', what: 'a step pressed does not go back', catches: 'N6',
-    from: "      b.addEventListener('click', () => { state.at = i; render(); });",
-    to: "      b.addEventListener('click', () => { render(); });" },
+    from: "          state.at = id;\n",
+    to: "" },
   // 🔴 CONTROL: a comment cannot change an answer. If this reddens something, the harness is
   //    reading text rather than behaviour.
   { id: 'M5', what: 'CONTROL: a comment line is removed', control: true,

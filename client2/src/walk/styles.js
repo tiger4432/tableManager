@@ -148,10 +148,12 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
 .wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }
 /* The steps walked; a press shows that step's table, the shown one lit. */
-.wk-steps { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; }
+.wk-steps { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-2) 0; }
+.wk-steprow { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .wk-step { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; font-size: var(--wk-fs-line); color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-step.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.wk-step[aria-current="step"] { background: var(--accent-weak); }
 /* A row's check: the rail's follow label rules are label.wk-check - a cell took them (flex, 9.5em) and the table's
    first column stood 124 px wide (lead 34d91c09d review). */
 .wk-table th.wk-check, .wk-table td.wk-check { width: 1%; height: var(--wk-h); padding-top: 0; padding-bottom: 0; }

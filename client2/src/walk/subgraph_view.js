@@ -526,8 +526,9 @@ export class SubgraphView {
     const key = JSON.stringify(this.markings.entries(start));
     if (opts.reuse && key === this.asked && this.state === 'done') return;
     this.asked = key;
-    // A new start: what the last picture's Mark wrote is that picture's, not this one's (lead 10-07).
-    for (const name of this.watched) if (name !== start) this.markings.clear(name);
+    // A new start: what the last picture's Mark wrote is that picture's, not this one's (lead 10-07) - unless the page
+    // draws its chosen branch again from the start (`keep`, lead 5ea461e04): those marks are its steps' checks.
+    if (!opts.keep) for (const name of this.watched) if (name !== start) this.markings.clear(name);
     this.steps = [];
     this.layout = null;
     this.selected = null;
