@@ -38210,3 +38210,17 @@ RUN.md      대본 ③ 초 · ④ 문장(Δ 는 계측군 바로 오른쪽 · �
             EXTRA 5000 · bad base atoms subject 5096 + object 182 = 5278 · nodes 37 · edges 584 · measures edges 51 · hops 2 · claims 6000 · model quantities 17 of 18 || follow all but measures: nodes 20 · edges 868 · measures edges 0 · hops 6 · claims 1737 · model quantities 18 of 18 · follow 12 (refused ['bonded_from'])
 할 일 ②(화면)  R2 18767 at +4000 on the bad base · walk page: two bases · Follow measures only (checkbox) · hops 1 · Collect quantity · worlds default + appbox_vf · Walk -> «Nodes 35 (collect: quantity) · Edges 51 (all) · 0.8 s» · «Asked 1 hop · reached 1 hop» · no Cut line · quantity table 35 rows · pressure_MPa 0.22 | −0.1105 | 0.3305 · its + cell pressed (element click) -> «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · time page 0.097 s
 ```
+
+---
+
+## [C 응용] 10-10 잘리는 판(불량 base 4,278 원자)에서 fanout_limit — 100 · 50 이면 안 잘림 · API 만, 표에는 줄 자리 없음 (RUN.md 잘리면 ③, 9216db6ec)
+
+```
+FANOUT None · nodes 68 · edges 1164 · hops 3 · claims 6000 · cut {'depth': False, 'nodes': False, 'edges': False, 'claims': True, 'actions': False, 'reason': 'claims'} · model quantities 18 of 18 · measures edges 51 (from the bases 51) · bundles n/a
+FANOUT 200 · nodes 68 · edges 1164 · hops 3 · claims 6000 · cut {'depth': False, 'nodes': False, 'edges': False, 'claims': True, 'actions': False, 'reason': 'claims'} · model quantities 18 of 18 · measures edges 51 (from the bases 51) · bundles 0 []
+FANOUT 100 · nodes 78 · edges 1063 · hops 4 · claims 5974 · cut {'depth': False, 'nodes': False, 'edges': False, 'claims': False, 'actions': False, 'reason': None} · model quantities 18 of 18 · measures edges 459 (from the bases 51) · bundles 1 [["in_container", "incoming", "die", 179, 100, "wafer"]]
+FANOUT 50 · nodes 64 · edges 507 · hops 4 · claims 5180 · cut {'depth': False, 'nodes': False, 'edges': False, 'claims': False, 'actions': False, 'reason': None} · model quantities 18 of 18 · measures edges 231 (from the bases 51) · bundles 1 [["in_container", "incoming", "die", 179, 50, "wafer"]]
+FANOUT 20 · nodes 28 · edges 136 · hops 2 · claims 4634 · cut {'depth': False, 'nodes': False, 'edges': False, 'claims': False, 'actions': False, 'reason': None} · model quantities 18 of 18 · measures edges 38 (from the bases 38) · bundles 5 [["in_container", "incoming", "die", 179, 20, "wafer"], ["inspected", "outgoing", "die", 38, 20, "wafer"], ["measures", "outgoing", "quantity", 33, 20, "wafer"], ["in_container",
+뜻   서버는 읽은 뒤 덩어리로 묶는다 — base 자신의 원자는 다 읽혀 claims 에 들어가고, 아끼는 것은 덩어리로 안 그린 다이를 안 넓히는 몫.
+     같은 quantity 로 가는 원자 수백(같은 계측 반복)은 먼 노드가 하나라 덩어리가 아니다. 표의 Walk 요청에는 fanout_limit 이 없다
+```
