@@ -1,3 +1,14 @@
+> ## [23:09 디자인] B — 표 Route 열 · 그래프 두 노드 경로 착지 10d5b9e1b (총괄 df11f9e81 B · 1333a5ec9)
+
+- **Route** — 맞대기 표 각 쪽의 첫 칸(+ 는 노드 바로 왼쪽, − 는 Δ 바로 오른쪽). 서버가 걸은 길(걷기 답의 evidence) 중 그 쪽 시작에서 나온 것을 술어만 « → » 로 잇습니다. 시작 자신 «start», 못 닿은 쪽 «missing», 여러 길이면 첫 길과 «+N». 표는 길을 찾지 않습니다(viaDepth 은퇴, via · depth 는 Route 로 접힘).
+- **① 두 노드 경로** — 그래프에서 Mark 가 쓰는 마킹에 노드 둘이면 Paths 상자(엣지 체크 · 종류별 · 누르면 길 밝힘과 덩어리 펴기). 길 찾기는 walk/paths.js simplePaths 하나 — 선언 경로 목록(pathsBetween)도 부릅니다.
+- **함께 고친 결함** — Route 가 머리 맨 앞에 들어가면서, 머리를 번호로 읽던 두 자리(트렌드 제목 · Δ 가 둘일 때의 «Δ <열>»)가 한 칸씩 밀렸습니다. 트렌드 하니스 T12 가 이 트리에서 빨강이었습니다. section 이 값 열 머리를 columnHeads 로 따로 말하게 고쳤습니다(칸 Z37 · 변이 RM6).
+- **여쭐 것 하나** — 목업은 Route 열을 각 쪽 «바깥 끝»에 그렸고, 지시 문장은 «노드 옆에»입니다. 문장대로 노드 옆에 두었습니다. 바깥이 맞으면 칸 순서 한 줄입니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-BEXjq9dk.js, 2481x1226): SYN-BW-103-11 in Positive, SYN-BW-SPL-400-19 in Negative, wafer and quantity, Walk: wafer heads value_text | step | role | eqp_id | value | Route | wafer | Route | value | eqp_id | role | step | value_text; SYN-BW-103-11 + «start» − «missing»; SYN-BW-SPL-400-19 + «missing» − «start»; SYN-CW-001-02 + «in_container → bonded_from → in_container» − «missing»; SYN-CW-001-07 + «in_container → bonded_from → in_container» − «missing». Each core wafer's + Route is its + evidence path. Graph: SYN-BW-103-11 and a neighbour marked: «Paths · SYN-BW-103-11 — SYN-BW-103-11 / 10 / 4 / Wafer», edges in_container 40, inspected 40, leads_to 1, measures 19, kinds 2; the first pressed: 2 nodes and 1 edges lit, 61 dimmed. Table again, pressure_MPa's value cell under «value_text» pressed: the trend «pressure_MPa · measures (in) · value_text». Writes 0.
+- **게이트** — walk_table 120, subgraph_view 369, paths 22, reach_table 33, rnd_board_walk_box 104, all --mutate --control; screen gate 249 with --mutate; walk_layout 34, css_token_definition 7, disabled_reason 25, trend 26.
+
+다음: A-2(서버가 안 넓힌 노드의 점선 덩어리, f6e8ef44b) — 사본 초록, 바로 얹습니다. 그다음 C(값 출처 줄, 사본 초록 · 18766 bond_temp 픽스처) -> D.
+
 > ## [22:12 디자인] A — 그래프 덩어리 한 겹 착지 0c8ada2c2 (총괄 df11f9e81 A · 2f25c883a)
 
 - **창 하나** — 큰 덩어리를 누르면 갈래마다 한 줄(술어 · 방향 · 먼 타입 · 그 갈래의 한 걸음 수 — 겹쳐도 각자 참, «+N behind» 는 뺌), 줄의 ▸ 를 펴면 그 갈래의 노드(이름 · «+N behind»). 갈래 줄 틱 = 그 갈래 노드 전부, 노드 줄 틱 = 그것만. Open 한 번에 바로 노드로 나오고, 각 노드는 제 뒤를 접은 채 나옵니다. 안 고른 나머지는 그 갈래의 «n more», 큰 덩어리는 그 밑.
