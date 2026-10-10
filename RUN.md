@@ -8,6 +8,7 @@
 >              한 칩 두 이벤트 10 · 좌표 빈 행 5 · 수동 잡 5 · 인벤토리 칸이 옛 chain_ingestion 층(틀린 값)에 덮임 · 옛 판 소스 원자 215
 >              초 = 명령이 돌아올 때까지(리허설 · 박스). 운영 크기의 초가 아니다. replay 의 «rows handed over» 뒤 체인이 쓰는 시간은
 >                   이 초 밖이다 — chain_worker.log 의 [ChainRule] rule=<규칙> … rows_in= 줄이 그 끝
+>              지금 main 도 같은 명령: git diff --name-only 355ba2092 origin/main -- server/ ':!server/tests' -> ledger/config_explorer.py · ledger/gaps.py · ledger/trace_router.py · ledger_api/ledger_subgraph.py — 이 표의 명령이 부르는 파일은 그 안에 없음
 > 어디서       server 폴더(cd server) · PowerShell 창에 «직접» 친다
 >              ⚠️ 출력을 파이프(|)나 파일(>)로 받지 않는다 — 리허설에서 fold-rows 미리보기가 '«'(U+00AB) 를 cp949 로 못 써서 죽었다(exit 1).
 >                 받아야 하면 먼저  $env:PYTHONIOENCODING = "utf-8"   (창에 직접 친 경우는 이 박스에서 못 쟀다)
@@ -97,38 +98,66 @@
 >    python -m ledger.backfill --source <이름> --world <세상> --whole-source --apply   세상마다 · 이름마다 · 2.9~3.4 초
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
-> 대본 (걷기 화면 · 누른 것 -> 본 것 · 걸린 초)
->    ①  Type wafer · 키 «불량» 치고 Positive «+ Add» · follow 비움 · Collect wafer · node_limit 1000 -> Walk   -> 표 하나 · 노드 31     0.702 s
->       키 «양품» 치고 Negative «+ Add» -> Walk     -> 표 두 구역 «Walked from + 불량» wafer 31 · «Walked from − 양품» wafer 1   0.785 s
->       (바구니 화면 5417f3003 · 오른쪽 패널 Positive · Negative. Walk 의 Ctrl · Shift 는 은퇴 — 눌러도 바구니 그대로 걷는다)
->    ②  «Walked from +» 구역의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30 · «Walked from −» 구역의 코어 웨이퍼 0
->       (016707766 에서 다시 걸음: 30 · 0.775 s)
->        누르기로는 안 닿는다(박스 선언) — Route to wafer «wafer → die → wafer · in_container» + «↻ transfer» 는 wafer 1 개(base 뿐).
->        transfer 의 끝은 운반 자리(DTLotSlot) 141 개뿐 · 코어 웨이퍼는 bonded_from 으로 닿는데 follow 목록에 bonded_from 이 없다 — 운영 판 못 봤다
->    ③  Collect 에 quantity 를 더하고 세상 칩 default + «모델 세상 1» -> 같은 바구니로 다시 걷는다 · 6 걸음 · 노드 80                0.788 s
->    ④  표의 quantity 묶음 — 한 줄이 한 계측군(이름이 가운데), 왼쪽 «Positive · 1 start · 48 rows» · 오른쪽 «Negative · 1 start · 3 rows», 열 measures (in) · value 를 좌우로 · Δ 는 계측군 바로 오른쪽(+ 값 | 계측군 | Δ | − 값)
->       행 48 · 두 쪽 값 3 · 불량 쪽만 값(양품 쪽 빨간 missing) 22 · 불량 쪽 «—» · 양품 쪽 빨간 missing 23 (모델 계측군 18 + 그 밖 5)
->       빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음(그 쪽 칸 전부를 한 칸으로) · «—» = 닿았는데 measures 값이 없음 · 표 위 «Missing» 으로 한쪽만 닿은 줄만      (9f8c9b8bb · 표는 걷기 답을 그대로 그려 따로 안 부름)
->       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
+> 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
+>    빌드    클라 walk-CffOP4e8.js · main 의 dist 는 walk-CffOP4e8.js (같음) · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>    누름    단추 · 칸 · 목록은 진짜 클릭. 그래프의 노드 · 덩어리는 cytoscape tap — 이 박스의 브라우저 창이 그래프를 안 그려 좌표 클릭이 안 먹음
+>            «모델 세상 1» = 리허설의 appdemo_vf
+>    ①  바구니   Type wafer · PICK A NODE 에 «불량» 앞글자 -> 목록(리허설 «SYN-BW-103-11 · 278 atoms»)에서 고름 -> Positive «+ Add» · «양품» 도 같이 -> Negative «+ Add» · Collect wafer -> Walk
+>       본 것    제목 «+ 1 · − 1 → wafer» · «Nodes 32 (collect: wafer) · Edges 1650 (all) · 0.8 s» · 머리 «Positive · 1 start · 31 rows | Negative · 1 start · 1 row»
+>       뜻       + 쪽 = 불량 base 에서 걸어 닿은 것 · − 쪽 = 양품 base 에서. 한쪽만 닿은 줄은 다른 쪽 칸 전부가 빨간 missing 한 칸
+>    ②  Route    표 양 끝 열 — + 쪽은 맨 왼쪽 · − 쪽은 맨 오른쪽
+>       본 것    «start | missing» 1 (SYN-BW-103-11) · «missing | start» 1 (SYN-BW-SPL-400-19) · «in_container → bonded_from → in_container | missing» 30 (first SYN-CW-001-02)
+>       뜻       Route = 서버가 그 쪽 시작에서 걸은 길(술어만 · 걷기 답 그대로) · «start» = 그 줄이 시작 · missing = 그 쪽에서 못 닿음
+>                코어 웨이퍼 30 개가 «in_container → bonded_from → in_container» — 불량 base 의 다이가 본딩으로 받은 코어 다이의 웨이퍼
+>    ③  세상 · 값 표   Collect 에 quantity 를 더함 · 세상 칩 «모델 세상 1» (누르면 그 세상만 켜짐 — Type 목록도 그 세상 것만) · 이어 default 칩 -> 저절로 다시 걷는다
+>       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 1.3 s» · quantity 머리 «Positive · 1 start · 49 rows | Negative · 1 start · 22 rows»
+>                열 «Route · value_text · step · role · eqp_id · model · dir · model · dir · value · quantity · Δ · value · dir · model · dir · model · eqp_id · role · step · value_text · Route»
+>                줄 49 · 두 쪽 값 16 · + 쪽만 25 · − 쪽만 2 · − 빨간 missing 27 · + «—» 8 · − «—» 4 · Δ 보이는 줄 5
+>                pressure_MPa  + 0.22 | Δ −0.1105 | − 0.3305
+>                Route «measures | measures» 16 · «measures | missing» 13 · «measures | measures → leads_to» 3 · «measures → leads_to | measures» 2 · «measures → leads_to | measures → leads_to» 1 · «in_container → bonded_from → in_container → measures | missing» 14
+>       뜻       한 줄 = 한 계측군 · 빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · «—» = 닿았는데 값이 없음 · 값이 여럿이면 첫 값과 «+N»(누르면 펼침)
+>                Route «measures → leads_to» = 모델 세상의 leads_to 를 한 번 더 걸어 닿은 계측군
+>    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
+>       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 194 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
+>                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later»
+>       뜻       누른 쪽의 걸은 시각 근방 1,000 점이 먼저 · Load earlier / Load later 가 1,000 점씩 넓힌다 · 꺼짐 글씨 = 그 쪽에 더 없음
+>                주황 Positive · 청록 Negative · 회색 다른 줄 · 점선 = 걸은 시각
+>    ⑤  그래프   Graph
+>       본 것    «Nodes 69 · Edges 136» · «Folded · 2 nodes» · 작은 덩어리 SYN-BW-103-11 «← in_container +159 more die» · SYN-BW-103-11 «inspected → +18 more die» · SYN-BW-103-11 «measures → +12 more quantity» · SYN-BW-SPL-400-19 «← in_container +27 more die» · SYN-BW-SPL-400-19 «inspected → +27 more die»
+>       뜻       그래프는 표와 따로 걷는다 — 요청 표 «node_limit=1000&collect=wafer&collect=quantity&world=appdemo_vf&world=default» · 그래프 «fanout_limit=20&world=appdemo_vf&world=default» — 그래서 Nodes 수가 표와 다르다
+>                «+N more die» = 서버가 안 보낸 묶음, N 개가 더 있다는 말만 왔다
+>    ⑥  묶음 열기  불량 base 의 «← in_container +159 more die» 를 누름 -> 창 «in_container · die» «159 not drawn · from SYN-BW-103-11» -> 다이 하나 틱 -> «Open 1»
+>       본 것    그려짐 1 · 다른 노드 움직임 0 · 그 다이에 점선 큰 덩어리 «? next · not walked» · 묶음은 «← in_container 158 more die»
+>       뜻       묶음에서 연 노드는 서버가 그 노드에서 걸은 적이 없다 — 점선이 그 말이다
+>    ⑦  not walked   그 점선을 누름
+>       본 것    요청 1 개 (hops=1&direction=both&world=appdemo_vf&world=default) · 덩어리 «? next · not walked» · 창 «Behind SYN-BW-103-11 / 1 / 6 / Wafer» «8 next · 0 behind» · 가지 bonded_from → die 1 · observed → defect 6 · transfer → die 1
+>                All -> «Open 8» -> 그려짐 8 (die 2 · defect 6) · 움직임 0 · 새 작은 덩어리 0 · 새 노드마다 «? next · not walked»
+>       뜻       그 노드에서 한 걸음(모든 술어 · 양방향)을 그 자리에서 더 걷는다. 새로 온 노드도 서버가 거기서 안 걸었으니 다시 점선
+>    ⑧  덩어리 한 겹   양품 base 를 누름 -> «Fold branches» -> 그 base 의 큰 덩어리 하나 «≤ 79 next · 2 behind | 74 die · 5 quantity» -> 누름
+>       본 것    창 하나 «Behind SYN-BW-SPL-400-19» «≤ 79 next · 2 behind» · 가지 ← in_container die 47 · inspected → die 47 · measures → quantity 5
+>                All -> 요청 2 개 · «52 next · 2 behind» · «Open 52» -> 그려짐 52 (die 47 · quantity 5) · 움직임 0 · 새 작은 덩어리 0 · base 의 덩어리 없음
+>       뜻       next = 한 걸음 너머 서로 다른 노드 수(Open 이 그리는 수) · behind = 그 너머에 접힌 채 남는 수
+>                «≤» = 안 보낸 묶음이 있어 가지끼리 겹침을 아직 모름 — All 이 그 묶음을 걸은 뒤 정확한 수(리허설: 두 가지가 같은 다이)
+>    ⑨  값 칸 출처 · CONTROL 엣지 묶음 · 그래프 Trend 를 표 트렌드 한 부품으로 · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
+>    시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ③ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
->       시연 전 읽기 2 — 운영 DB 에서 읽기만. 두 base 웨이퍼 각각을 이름 부르는 원자 수(주어 · 목적어 · 술어별). 걷기는 한 번에 claims 6,000 까지만 읽고, base 의 원자 하나가 claim 하나다
+>    시연 전 읽기 2 — 운영 DB 에서 읽기만. 두 base 웨이퍼 각각을 이름 부르는 원자 수(주어 · 목적어 · 술어별). 걷기는 한 번에 claims 6,000 까지만 읽고, base 의 원자 하나가 claim 하나다
 >         SELECT 'subject' AS side, predicate, count(*) AS atoms FROM ledger_events WHERE subject_type = 'wafer' AND subject_keys = '{"wafer": "<base>"}'::jsonb GROUP BY predicate UNION ALL SELECT 'object', predicate, count(*) FROM ledger_events WHERE object_kind = 'entity_ref' AND object_payload->>'type' = 'wafer' AND object_payload->'keys' = '{"wafer": "<base>"}'::jsonb GROUP BY predicate ORDER BY 3 DESC;
->         리허설 조각  불량 base 278 · 양품 base 206 (0.11 초) — 걷기 claims 2862 · 4 걸음. 불량 base 를 3278 로 늘려도 claims 5862 로 안 잘림,
->                     4278 이면 «Cut · claims 6000» · 3 걸음 · measures 변 518 -> 51 (④ 값 대부분 빠짐) · 5278 이면 2 걸음 · 모델 계측군 17 of 18
+>         리허설 조각(18767 · 18766 과 같은 박스 조각 — 18766 PICK A NODE 목록의 «SYN-BW-103-11 · 278 atoms» · «SYN-BW-SPL-400-19 · 206 atoms» 와 같은 수)
+>                     불량 base 278 · 양품 base 206 (0.11 초) — 걷기 claims 2862 · 4 걸음. 불량 base 를 3278 로 늘려도 claims 5862 로 안 잘림,
+>                     4278 이면 «Cut · claims 6000» · 3 걸음 · measures 변 518 -> 51 (③ 값 대부분 빠짐) · 5278 이면 2 걸음 · 모델 계측군 17 of 18
 >                     경계 ≈ 6,000 − (claims 2862 − base 278) — base 말고 걷기가 읽는 나머지는 운영에서 다르다(못 봤다)
->         잘리면       ① 모델 길: Follow 에서 그 많은 술어를 뺀다 — 리허설(measures 를 뺌) claims 1737 · 6 걸음 · 모델 계측군 18 of 18 · 대신 measures 값 0
->                     ② 값: Follow 를 그 술어(measures) 하나 · hops 1 로 다시 걷고 ④ 표 · 트렌드 — 리허설 claims 4073 · measures 변 51
+>         잘리면 (18767 · 불량 base 를 4278 로 늘린 조각 · 6d9e9c76d walk-BVDcEwgF.js)
+>                     ① 모델 길: Follow 에서 그 많은 술어를 뺀다 — 리허설(measures 를 뺌) claims 1737 · 6 걸음 · 모델 계측군 18 of 18 · 대신 measures 값 0
+>                     ② 값: Follow 를 그 술어(measures) 하나 · hops 1 로 다시 걷고 ③ 표 · ④ 트렌드 — 리허설 claims 4073 · measures 변 51
 >                        화면: Cut 줄 없음 · quantity 35 줄 · 값 칸 누르면 트렌드 5 점 — 그 술어 원자만으로 6,000 을 넘으면 ② 도 잘린다
 >                     ③ STEP 의 fanout_limit 칸에 50~100 을 치고 Walk — 리허설: 비우면 «Cut · claims 6000» · 3 걸음 · Nodes 68 · quantity 36 줄
 >                        100 -> Cut 없음 · 4 걸음 · Nodes 78 · quantity 50 줄 · 모델 계측군 18 · pressure_MPa 0.22 | −0.1105 | 0.3305 · 50 -> Nodes 64 · 4 걸음 · 50 줄
 >                        (API 로 잰 것: claims 5974 / 5180 · 덩어리 = 불량 base 의 다이 179 중 100 / 50 만 그림 — 표에는 덩어리를 안 그림)
 >                        덩어리로 그리지 않은 다이를 안 넓혀서 아낀다(base 자신의 원자는 그대로 다 읽음). =200 은 안 됨 · =20 이면 2 걸음이고 base 의 measures 도
 >                        덩어리(33 중 20)라 값이 빠진다
->    ⑤  ④ 표의 값 칸(리허설: pressure_MPa 의 불량 쪽 값)을 누르면 표 아래 트렌드 — 리허설 조각 5 점 · 걸은 점 둘이 크게(주황 Positive · 청록 Negative)
->       · Load earlier / Load later 꺼짐 «Nothing earlier» · «Nothing later»(리허설 조각에 그 계측군 점이 5 개뿐) · 요청 한 번 0.077 s
->       운영에서는 누른 쪽의 걸은 시각 근방 1,000 점이 먼저 오고, Load earlier / Load later 가 1,000 점씩 앞 · 뒤로 넓힌다
-> 걸린 것     모델 계측군 18 개는 박스 데이터로는 불량 쪽 «—» · 양품 쪽 빨간 missing — 박스 measures 는 공정 변수만 잰다 · 양품 쪽은 모델 계측군에 안 닿는다(운영 판 못 봤다)
+> 걸린 것     리허설의 값은 가짜 행이다 — 모델 계측군에 값이 보이는 것은 가짜 measures 덕. 운영 DB 에 그 값이 있는지는 «시연 전 읽기»가 답한다
 > ```
 >
 > ---
