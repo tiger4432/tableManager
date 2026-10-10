@@ -37642,3 +37642,65 @@ B. 길 찾기 함수 하나 -> 세 자리 (① 두 노드 경로의 스크래치
 물음 답      screens_answers.json 14 MB — 상태는 다 재고(첫 걸음 + 하나만 걷기도 운영자가 실제로 보는 화면), 파일은 gzip 으로 커밋(node:zlib gunzipSync 로 읽음). 다시 만들 때마다 14 MB 가 이력에 쌓이는 것을 막는다
 순서         이 고침을 같은 브랜치에 커밋 하나 -> 총괄이 다시 열고 병합 -> A(덩어리 한 겹)
 ```
+
+> **[총괄 -> 응용] 10-10 — 18766 을 새 빌드로 다시 띄움 (소유자가 18766 으로 걷기를 점검 중 · 「여기 간격 좁아터진 거는 고치고 있는 거지?」 — 그 화면이 옛 빌드 3c27f67f7 walk-Dzuz73ZU.js)**
+
+```
+무엇   18766 을 main 6d9e9c76d(walk-BVDcEwgF.js — 간격 정리 · 쌓인 부품 사이 6.8 · 노드 축 가운데 · STEP fanout_limit 칸)로 다시 띄움
+       데이터는 지금 그대로(스크래치 assy_app_reread_dm + 세상 넷 appdemo_vf · vb · ed · ev · 가짜 표 fake_measure 3,870 · fake_mechanism_edge 1) — 다시 씨 뿌리지 않음
+       띄우는 동안 끊김은 짧게 · 뜬 뒤 walk.html 이 BVDcEwgF 를 부르는지 · 두 base 로 걸어 Nodes 수가 앞과 같은지
+보고   한 줄씩: 빌드 · 번들 이름 · 두 base 걷기 Nodes · Edges · 내린 것 0 · public 변화 0. 그다음 RUN.md «잘리면 ③» 을 화면 칸(fanout_limit)으로 고쳐 씀(앞 지시 5d946a639)
+```
+
+> **[총괄 -> 클라] 10-10 — A · B 정정 둘 (총괄이 18766 답에 표 · 그래프 함수를 그대로 돌려 잼)**
+
+```
+A 갈래 줄의 «+N behind» 는 뺀다 — 갈래끼리 뒤에 든 것이 겹치면 줄 합이 글씨보다 커짐(bond_temp: 줄 200 + 28 = 228, 글씨 behind 214).
+  소유자 결함이 «글씨와 목록 수가 다름»이라 다시 만들지 않는다. 갈래 줄 = 한 걸음 수만(줄 합 = 글씨 next), 글씨 = «N next · M behind»(M 은 겹침 없이 한 번씩)
+  ▸ 로 편 노드 줄의 «+N behind»(그 노드 하나 뒤)는 남김. 게이트에 «갈래 줄 합 = 글씨 next» 칸 + 변이
+B Route 의 BFS 는 걷기의 static 규칙을 지난다 — derive.js walkTakesStep(statics, from, to, step) 그대로 부름(둘째 규칙 금지)
+  안 지나면 코어 웨이퍼 Route 가 «measures -> measures (in)»(같은 quantity 를 잰 웨이퍼끼리 static 노드로 다리)로 나옴 — 총괄 잼
+  지나면 «in_container (in) -> bonded_from -> in_container» · base 는 «start». 게이트: 이 둘을 픽스처에서 단언 + 변이(walkTakesStep 빼면 빨강)
+그림  https://claude.ai/artifact/MkUAEBy5M1DkJFNW7owRRH — ③ 이 A, ① 의 Route 열이 B (① 값 칸 아래 줄 · ② 엣지 그룹은 소유자 확인 뒤 지시)
+```
+
+> **[총괄 -> 클라] 10-10 — A 의 next 정의: (나). 34b4cebd0 의 «줄 합 = 글씨 next» 는 총괄 잘못이라 거둔다 (클라 잼: 웨이퍼 덩어리 in_container 다이 179 · inspected 다이 38 · measures 16 -> 틱 233 · 그려진 노드 195, inspected 38 이 in_container 179 안)**
+
+```
+기준     소유자 문장 「숫자 안 맞는 거」 = 덩어리 글씨와 «펼치면 나오는 것»이 다름 -> 글씨 N = All -> Open 하면 «새로 그려지는 노드 수»(df11f9e81 게이트 그대로)
+         한 걸음 노드가 갈래끼리 겹칠 수 있다 — 총괄이 행동이 아니라 «줄 합»으로 정의해서 틀림
+글씨     N 은 겹침 없이 · 서버가 안 보낸 묶음이 섞여 아직 모르면 «≤ 233 next» 상한, 걸어 온 뒤 정확한 수로 · M(behind) 은 지금처럼 한 번씩
+갈래 줄  갈래마다 한 걸음 수 그대로(겹쳐도 각자 참) · Open 단추는 고른 «노드» 수
+게이트   N = All -> Open 뒤 새로 그려진 수(겹치는 묶음이 든 픽스처로 — 지금 픽스처엔 겹침이 없어 못 잡았음) · 상한 표기는 안 보낸 묶음이 있을 때만 · 걸어 온 뒤 정확한 수 · 변이
+```
+
+> **[총괄 -> 클라] 10-10 — B 를 바꾼다: Route 는 서버가 이미 주는 «걸은 길»을 읽는다 (소유자 「route 그냥 서버에서 walk 결과로 실제 걸은 경로 리턴하지 않아? 그러면 static -> dynamic 안 나올 텐데」 — 기존 문을 총괄이 놓침)**
+
+```
+있는 문   걷기 답 propagation.ranked[].evidence[] = {seed, sign, hops: [{id, label, predicates}]} — 서버 BFS 가 실제로 걸은 길, static 규칙을 지난 것
+          18766 잼: 코어 SYN-CW-001-02 + start -> in_container -> bonded_from -> in_container · bond_temp ± start -> measures · 노드 764 개 길 1 · 23 개 길 2(부호마다)
+Route 열  그 쪽 부호의 evidence hops 의 술어를 차례로(술어만) · 시작은 ranked 에 없음 -> «start»
+거둠      총괄의 (나) 클라 BFS 판정 · 34b4cebd0 의 walkTakesStep 줄 — 표는 길을 «찾지 않는다». viaDepth 도 이 읽기로 접음(via = 끝 홉 술어 · depth = 홉 수 - 1)
+          paths.js 는 ① 두 노드 경로의 simplePaths 만
+게이트    픽스처에서 Route = evidence 술어(코어 = 본딩 · base = start) · 변이(다른 부호의 evidence 를 읽게 -> 빨강)
+```
+
+> **[총괄 -> 클라] 10-10 — C · D 를 짓는다: 값 칸의 출처 · CONTROL 엣지 그룹으로 칸 색 (소유자 「값 칸에 route 띄우고 node key 보여 주면 자연스럽게 될 듯? 값으로 하드코딩하지 말고」 · 「기존 바구니별 결과에 행별로 엣지 그룹별로 색상 … B 그룹을 서브 제어 그룹 느낌으로」 -> 「1 이대로 지시」) — 그림 https://claude.ai/artifact/MkUAEBy5M1DkJFNW7owRRH ① · ⑤**
+
+```
+C 값 칸의 출처 (그림 ①)
+   정의    칸의 값 하나 = readsOf 의 read 하나. 그 값을 «준 노드» = read.node(변 속성이면 마지막 변의 반대쪽 끝, 노드 속성이면 그 노드) — 타입 · 술어 낱말 0
+   보임    값 아래 작은 줄 «키 · Route» — 키 = 그 노드의 keys 값(선언 순서), Route = 그 쪽 부호의 evidence 술어(B 와 같은 읽기, 시작이면 «start»)
+           여러 값이면 첫 값 + «+N», 누르면 전부(값 · 키 · Route 줄마다). 트렌드 점에도 같은 출처(같은 read)
+   게이트  18766 픽스처: bond_temp + 쪽 = 35.5 «SYN-BW-103-11 · start» · 21.5 «SYN-CW-103-01 · in_container → bonded_from → in_container» · − 쪽 13 «… · start»
+           두 스킴 픽스처에서 같은 출처 · 변이(read.node 대신 행 노드 -> 빨강)
+D CONTROL 엣지 그룹 (그림 ⑤ — ④ 의 2x2 탭은 버림)
+   화면    왼쪽 FOLLOW = A(본 걷기, 지금 그대로) · 그 아래 «CONTROL · B» 술어 체크 목록. 쪽은 바구니 그대로
+   걷기    B 에 하나라도 체크 -> Walk 가 같은 바구니 · 같은 STEP 으로 follow = B 를 한 번 더(요청 2 번). B 가 비면 지금과 똑같은 요청 1 번
+   행      A 또는 B 가 닿은 노드 전부(타입 구역 그대로) · 값은 두 답을 합친 그래프에서 읽음(출처 줄로 구별)
+   색      바구니(쪽)마다: 색 없음 = A 만 · 초록 = A + B · 빨강 = B 만. 칸 왼쪽 띠 + 옅은 바탕(+ · − 띠 색과 안 싸우게), 표 위에 세 수
+   Route   A 의 evidence 길 · B 도 닿았으면 B 길 한 줄 더(«B · …»)
+   게이트  18766 void 시작 · A = leads_to 뺀 나머지 · B = leads_to: quantity 35 행 = A 만 17 · A + B 15 · B 만 3 · 바구니 둘이면 쪽마다 따로 칠함 · B 비면 요청 1 번(URL 같음) · 변이 각 하나
+순서   A(덩어리) -> B(Route) -> C -> D -> 표 복사 -> 값 대응 · 화면마다 병합 전 총괄이 18766 에서 연다
+알림   이 박스 · 18766 선언 어휘에 bonded_from 이 빠져 있어 체크 목록에 안 나옴(샘플 선언엔 있음) — 총괄이 선언을 고친다(소유자 「너가 알아서 해」). 클라 일 아님
+```
