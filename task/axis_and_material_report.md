@@ -1,3 +1,15 @@
+> ## [02:35 디자인] E1 — 바구니 하나로 걸어도, Next 로 이어 걸어도 같은 표 (평표 은퇴) 착지 184af7793 (총괄 10-10 E1)
+
+- **무엇** — + 만 있는 걷기(첫 걷기든 Next 든)도 맞대기 표를 한 쪽(k = 1)으로 그립니다. 평표 좌석과 그 도우미 넷(valueText · isNumericText · qualifiersByNode · qualifierNamesOf)은 은퇴, 평표의 Conflicts · 확인 술어(C-98) 열은 그 함수 그대로 가운데 열로. 한 쪽의 행 = 걸은 답의 노드 전부(시작 포함) — 두 쪽일 때만 답의 순위로 가릅니다.
+- **찾은 차이** — + 시작 하나로 Walk 하면 요청은 타입·키로 가고(walk_layout L7 L8 그대로) 표는 시작을 못 읽어 «0 starts»·Route «—» 였습니다. 이제 표가 바구니의 시작을 읽어 Next 의 표와 같습니다.
+- **은퇴·재작성 칸** — 평표를 읽던 칸 V2–V5 · Q1 · Q2 · Z1 · Z7 은 이 표 기준으로 다시 쓰고 M1–M3 는 이 표 그리개로 다시 겨눔. V6(id 칸 클래스)·QM1(평표의 접기)은 버림 — id 는 가운데 복사 단추(Z16), 값마다 다 남기기는 Z6 · ZM6. ZM3 은 뜻이 뒤집혀(+ 만 = 한 쪽) «+ 만인데 두 쪽» 변이로 바뀜.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-BE5YXjms.js, 2481x1226): SYN-BW-103-11 in +, Walk: sections wafer · 1 Positive · 1 start · 1 row | die · 183 Positive · 1 start · 183 rows | quantity · 16 Positive · 1 start · 16 rows, each one band, no Δ; temp_C checked, Next measures → wafer: wafer · 200, 200 rows, wafer · value · eqp_id · role · step · Route; temp_C alone in +, follow measures, collect wafer, hops 1, both, node_limit blank, Walk: the same table (head, band, columns, rows, first three rows). With the form's node_limit 1000 the first walk's rows are others (same head, band, columns): Next sends no node_limit, the server's default cuts its answer elsewhere - the request, not the table. Writes 0.
+- **게이트** — walk_table 137 with --mutate --control (EA1 the 18766 fixture tests/fixtures/walk_next_18766.json - bond_temp alone in + and Walk = SYN-BW-103-11's bond_temp row and Next, 64 wafers; EAm1 the first walk's table without its starts; EC1 EC2 the carried columns, ECm1 ECm2; ZM3 now a + only walk read as two sides; the flat cells V2-V5 Q1 Q2 Z1 Z7 rewritten against this table, M1-M3 re-aimed at its renderer, V6 QM1 dropped - the id behind the copy press (Z16) and the fold every value kept (Z6 ZM6)); screen gate 249 with --mutate; walk_layout 34, trend 31, reach_table 33, walk_wire 95, walk_worlds 18, walk_route_fill 80, rnd_board_walk_box 104, fold_views 19, subgraph_view 277.
+
+- **물음** — 첫 걷기는 폼의 node_limit 를 싣고 Next 는 안 실어(서버 기본값) 답이 상한에 잘리면 두 표의 행이 다릅니다(머리 · 띠 · 열은 같음). Next 가 그 걸음의 node_limit 를 싣게 할까요 — E1 에 넣을지, 따로 둘지. 답 전까지 E1 은 이대로 두고 F 로 갑니다.
+
+다음: F(마킹 사슬 무제한) -> G(갈래) -> E2a -> E2b -> D.
+
 > ## [02:01 디자인] H — 서버 문장을 결과 머리에, 원장에 없는 키는 + Add 옆에 착지 ed1c2e8a6 (총괄 b5cdcbc75, 응용 18766 QA)
 
 - **①** — 결과 머리 «Nodes · Edges» 옆에 서버가 보낸 상태와 문장 그대로(«empty · No ledger evidence is connected to the selected node»). 닿은 노드가 없을 때의 «No node reached» 는 서버 문장이 없을 때만.
