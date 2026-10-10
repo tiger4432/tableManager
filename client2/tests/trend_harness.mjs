@@ -12,6 +12,7 @@ import { makeDoc, flush, walk as walkAll } from './lib/board_dom.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { indexGraph, groupsOf } from '../src/walk/reach_table.js';
+import { entitySeedId } from '../src/rnd_board/api.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
@@ -33,10 +34,12 @@ const WALK = {
 const STARTS = [{ name: '+', starts: ['wp'] }, { name: '−', starts: ['wn'] }];
 const COLUMN = { steps: [{ predicate: 'measures', direction: 'incoming' }], value: { on: 'edge', name: 'value' }, words: ['measures (in)', 'value'] };
 // The server's time page: the row's other measures edges - one from the + wafer, one from a wafer neither group reached.
+// A wafer the walk never reached, on the time page alone - its id the ledger's, so it can be read (lead 10-11).
+const WZ = entitySeedId('wafer', { wafer: 'WZ-9' });
 const PAGE = {
   seed: node('q1', 'quantity'),
-  nodes: [node('q1', 'quantity'), node('wp', 'wafer'), node('wz', 'wafer')],
-  edges: [edge('wp', 'measures', 'q1', 30.5, 3, 'c1'), edge('wp', 'measures', 'q1', 29, 1, 'c3'), edge('wz', 'measures', 'q1', 12, 7, 'c4')],
+  nodes: [node('q1', 'quantity'), node('wp', 'wafer'), { id: WZ, type: 'wafer', label: 'WZ-9', keys: { wafer: 'WZ-9' } }],
+  edges: [edge('wp', 'measures', 'q1', 30.5, 3, 'c1'), edge('wp', 'measures', 'q1', 29, 1, 'c3'), edge(WZ, 'measures', 'q1', 12, 7, 'c4')],
   page: { mode: 'around', around: T(5), size: 1000, rows: 3, window: { from: T(1), to: T(7) }, earlier: 'E1', has_earlier: true,
     later: 'L1', has_later: false, not_event_time: 0 },
 };
@@ -199,8 +202,8 @@ function suite(out) {
     [out.far, out.farPage], [[[new Date(Date.parse(T(1))).toISOString(), new Date(Date.parse(T(7))).toISOString()], [[1, true, 1]], 3, true,
       ['\u25c0 Negative walked TIME']],
     [new Date(Date.parse(T(3))).toISOString(), ['c1', 'c3', 'c4'], ['\u25c0 Negative walked TIME'], true]]);
-  eq('T14 a point says who gave it, as its cell does: the wafer and its side\'s route; a wafer neither side reached, nothing (lead 99ed68cb7 C)',
-    out.pointSources, [['c1', 'WP · start'], ['c2', 'WN · start'], ['c3', 'WP · start'], ['c4', '']]);
+  eq('T14 a point says who gave it, as its cell does: the wafer and its side\'s route; a wafer neither side reached, its keys and «not in this walk» (leads 99ed68cb7 C, 10-11)',
+    out.pointSources, [['c1', 'WP · start'], ['c2', 'WN · start'], ['c3', 'WP · start'], ['c4', 'WZ-9 · not in this walk']]);
   eq('T15 the part: a point that carries who gave it says it on its dot', out.dotSource, ['WP · start']);
   return { ran: names.length, names, failures };
 }
@@ -248,8 +251,11 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'outside.filter((o) => o.before === before).forEach(', '[].forEach(') },
   { id: 'TM14', what: 'a point does not say who gave it', catches: 'T15', ...VIEW,
     mutate: (t) => swap(t, "    if (p.source) { const said = this._svg('title', {}); said.textContent = p.source; dot.append(said); }\n", '') },
+  { id: 'TM16', what: 'a paged point no side reached says nothing', catches: 'T14', ...PAGE_,
+    mutate: (t) => swap(t, 'source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group], p.node)',
+      "source: p.group === null || p.group === undefined ? '' : view.sources.source(view.groups[p.group], p.node)") },
   { id: 'TM15', what: 'a point\'s source the row\'s, not its read\'s', catches: 'T14', ...PAGE_,
-    mutate: (t) => swap(t, 'view.sources.source(view.groups[p.group], p.node)', 'view.sources.source(view.groups[p.group], t.row)') },
+    mutate: (t) => swap(t, 'view.groups[p.group], p.node) }))', 'view.groups[p.group], t.row) }))') },
   { id: 'TM13', what: 'the page asks around any side\'s latest walked point', catches: 'T12', ...PAGE_,
     mutate: (t) => swap(t, 'walkedTime(own, r.generated_at, t.group)', 'walkedTime(own, r.generated_at)') },
 ];

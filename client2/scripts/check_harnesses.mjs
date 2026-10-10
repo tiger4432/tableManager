@@ -1399,13 +1399,13 @@ const FLOORS = new Map([
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
   // New with lead bc63378e5: the start baskets - + puts the picked node in, x takes it out, + on the other moves it,
   // Walk asks them as they are, an empty Positive keeps Walk off, Ctrl/Shift on Walk mark nothing. Floor = first run.
-  ['start_baskets_harness.mjs', 22],   // + B11 B12: a key typed goes in; Walk follows the baskets (lead 10-10)
+  ['start_baskets_harness.mjs', 24],   // -> 24: said beside + Add - B13, BM11 (lead b5cdcbc75)
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
-  ['node_search_harness.mjs', 39],   // + NS15: the row count says it counts atoms (lead 10-10)
+  ['node_search_harness.mjs', 45],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 33],   // 36 -> 33: R13 R14 and FM10 retired with viaDepth - the table's Route reads the answer's evidence, walk_table Z29-Z32 (lead 1333a5ec9)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 30],   // -> 30: a point says who gave it - T14 T15, TM14 TM15 (lead 99ed68cb7)
+  ['trend_harness.mjs', 31],   // -> 31: a paged point no side reached says its keys, not in this walk - T14, TM16 (lead 10-11)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1485,7 +1485,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 131],   // -> 131: a value's node the answer did not send read off its id - Z42 Z43, VS4 VS5 (lead 10-11)
+  ['walk_table_harness.mjs', 133],   // -> 133: the server's sentence in the head - H1, HM1 (lead b5cdcbc75)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

@@ -94,6 +94,16 @@ async function seen(M) {
     type(s, 'zz');
     await settle();
     out.none = [shown(s).rows.length, shown(s).note];
+    // The ledger holds no node of the letters typed (lead b5cdcbc75): only letter for letter, only from a whole answer.
+    type(s, 'nab115-w07');
+    await settle();
+    const lower = s.holdsNone('nab115-w07');
+    type(s, 'NAB115-W07');
+    await settle();
+    const exact = s.holdsNone('NAB115-W07');
+    type(s, 'nab');
+    await settle();
+    out.holdsNone = [lower, exact, s.holdsNone('nab'), s.holdsNone('zz')];
   }
   // ── an older answer landing after a newer one ──
   {
@@ -210,6 +220,18 @@ async function seen(M) {
     out.refusedPage = [keyCells(), byClass(box(), 'wk-cell')[0].hidden, byClass(box(), 'wk-note').map((n) => (n.hidden ? '' : n._text)).join()];
     await pickType('wafer');
     out.single = [keyCells(), boxName()];
+    // A key typed in another case than the one node listed (the box asks with the letters typed): said beside + Add.
+    const unheldNotes = () => byClass(host, 'wk-unheld').map((n) => n._text);
+    const typeAndWait = async (text) => {
+      boxInput().value = text;
+      boxInput().dispatch('input', {});
+      await new Promise((ok) => setTimeout(ok, SEARCH_DELAY_MS + 50));
+      await settle();
+    };
+    await typeAndWait('nab115-w07');
+    const lowerNotes = [unheldNotes(), !add().disabled];
+    await typeAndWait('NAB115-W07');
+    out.unheld = [...lowerNotes, unheldNotes()];
     out.noDropdown = walkAll(host).some((n) => n.tagName === 'OPTION' && /pick, or type/.test(n._text || ''));
   }
   return out;
@@ -265,6 +287,11 @@ function suite(out) {
     [['mat_id', 'x', 'y', 'mat_type'], true, REFUSED]);
   eq('T22 the page: a single-key type - the box is its only key cell', out.single, [[], 'wafer']);
   eq('T23 the page: the 50-node dropdown is gone', out.noDropdown, false);
+  eq('T25 the ledger holds none of the letters typed: only letter for letter (another case is another node), only from '
+    + 'a whole answer - a cut one, or letters it was not asked, cannot say', out.holdsNone, [true, false, false, false]);
+  eq('T26 the page: a key typed that no listed node is letter for letter - beside each + Add «0 atoms · not in the ledger», '
+    + '+ Add still on; typed as the node is, nothing said (lead b5cdcbc75)', out.unheld,
+    [['0 atoms · not in the ledger', '0 atoms · not in the ledger'], true, []]);
   return { ran: names.length, names, failures };
 }
 
@@ -317,8 +344,16 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'onType: (text) => { if (search.axis) state.keys[search.axis] = text; baskets.render(); },',
       'onType: () => { baskets.render(); },') },
   { id: 'NS12', what: 'a pick fills the box alone', catches: 'T20', ...PAGE,
-    mutate: (t) => swap(t, 'onPick: (node) => { state.keys = { ...node.keys }; render(); } });',
-      'onPick: (node) => { state.keys = { [search.axis]: node.keys[search.axis] }; render(); } });') },
+    mutate: (t) => swap(t, 'onPick: (node) => { state.keys = { ...node.keys }; render(); },',
+      'onPick: (node) => { state.keys = { [search.axis]: node.keys[search.axis] }; render(); },') },
+  { id: 'HM2', what: 'a key matched in any case - a guess at another node', catches: 'T25', ...PART,
+    mutate: (t) => swap(t, 'String((n.keys || {})[this.axis]) === key', 'String((n.keys || {})[this.axis]).toLowerCase() === key.toLowerCase()') },
+  { id: 'HM3', what: 'a cut answer read as whole', catches: 'T25', ...PART,
+    mutate: (t) => swap(t, ' || got.valuesTruncated || got.scanTruncated) return false;', ') return false;') },
+  { id: 'HM4', what: 'an answer landing does not redraw the baskets', catches: 'T26', ...PAGE,
+    mutate: (t) => swap(t, '    onAnswer: () => baskets.render() });', '    });') },
+  { id: 'HM5', what: 'the picked node does not say it is not held', catches: 'T26', ...PAGE,
+    mutate: (t) => swap(t, ',\n        unheld: search.holdsNone(keys[search.axis]) }', ' }') },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;

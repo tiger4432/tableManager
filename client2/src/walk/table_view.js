@@ -110,6 +110,8 @@ export const EMPTY = '—';
 export const STARTED = 'start';
 export const DELTA = 'Δ';
 export const ROUTE = 'Route';
+/** Where a route stands, for a node no side of the walk reached - a time page's other rows (lead 10-11). */
+export const NOT_WALKED = 'not in this walk';
 
 /** A path the server walked (an answer's evidence) in words: its hops' predicates in order, predicates only (owner 10-10
  *  «라우트는 술어만»). A hop reached by two predicates says both. */
@@ -119,7 +121,8 @@ export const routeWords = (path) => path.hops.slice(1).map((hop) => (hop.predica
  * How a side reached a node and who gave a value, read off one walk's answer (leads df11f9e81 B, 99ed68cb7 C):
  *   route(g, id)   the paths the server walked to `id` from side g's starts - its evidence - a start «start»
  *   source(g, id)  the node a read ends at: its keys in their declared order (its label without), and route(g, id) - a
- *                  node the answer did not send (collect) read off its id, never the id itself (lead 10-11)
+ *                  node the answer did not send (collect) read off its id, never the id itself (lead 10-11); no side
+ *                  (g null, a time page's other row): «not in this walk» where the route would be
  * The table's cells and the trend's points read both here.
  */
 export function valueSources(result, entities, groups) {
@@ -137,7 +140,7 @@ export function valueSources(result, entities, groups) {
     const said = declared.map((k) => keys[k]).filter((v) => !isBlank(v)).map(valueWords);
     return said.length ? said.join(' / ') : (node.label || EMPTY);
   };
-  return { route, source: (g, id) => `${keyWords(id)} · ${route(g, id).text}` };
+  return { route, source: (g, id) => `${keyWords(id)} · ${g ? route(g, id).text : NOT_WALKED}` };
 }
 
 /**
