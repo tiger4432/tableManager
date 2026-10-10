@@ -38130,3 +38130,19 @@ RUN.md     대본 ③ · ④ · 시연 전 읽기 문장 · 걸린 것 을 위 �
             -> ④-b 착지 뒤 같은 누름으로 두 세상에서 quantity 줄의 값이 같은지 «누른 것 · 본 것»
 내 실수      my edit of run_dm_hold.sh during the held run broke its cleanup lines (bash syntax error) - worktree /c/wt-app2 and schemas assy_app_reread_dm · w_appdemo_vf · w_appdemo_vb stayed until I ran the lines by hand (dropped 361 · 27 · 27, left 0) · public none
 ```
+
+---
+
+## [C 응용] 10-10 ④-b 식 표(24c3e9548) 를 18766 에서 — 변 스킴 · 이벤트 스킴이 같은 누름으로 같은 19 줄 · 같은 값 · 같은 missing
+
+```
+빌드        59a2ebcbb walk-B_31tyDI.js (the formula table 24c3e9548) · 18766 with the fake rows and the two scheme worlds in its seed (appdemo_ed measures 50 atoms · appdemo_ev has_measurement 50 · of_quantity 50 · register 50)
+누른 것      each world alone (?world=appdemo_ed, then ?world=appdemo_ev) · Type wafer · SYN-BW-103-11 typed · Positive + Add · SYN-BW-SPL-400-19 typed · Negative + Add · Walk
+변 스킴      appdemo_ed · Nodes 21 · Edges 32 · 0.036 s · quantity table «Positive · 1 start · 17 rows» «Negative · 1 start · 15 rows» · columns measures (in) · value/step/role/eqp_id each side · quantity in the middle · Δ · 19 rows
+이벤트 스킴   appdemo_ev · Nodes 53 · Edges 64 · quantity table 19 rows with «depth · via» each side · + Column on the quantity table -> Route «of_quantity (in) → measurement» (offered 5 routes) -> Value «value» (offered key · meas_id, eqp_id, role, step, unit, value, name) -> column «of_quantity (in) → measurement · value» each side and Δ
+같은가       19 rows of the event world (quantity | + value | − value | Δ) equal to the edge world's 19, all four cells, 0 differing · 13 with both values and Δ · outgassing · post_bond_queue_h · pre_bond_queue_h · stage_particle + only (− red missing) · surface_oxidation · tape_adhesion_anomaly − only (+ red missing)
+거르기       event world: Missing -> quantity 6 rows · Differs -> quantity 19 rows
+RUN.md      대본 ③ · ④ 를 이 표로 다시 생성(d530aac4a) — 박스 조각(가짜 행 없음, 18767 을 같은 빌드로 따로 띄워 잼 · 끝나고 내림)
+            measures (in) · value (+|−): value|value 2 · multi|value 1 · value|missing 12 · multi|missing 10 · none|missing 23
+            the void_formation model's 18 quantities all in the table, all none|missing 18 (+ reached with no value «—» · − not reached, red missing) · the other none|missing 5: vacuum_assist, chem, gas, pad, slurry
+```
