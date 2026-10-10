@@ -160,11 +160,20 @@ export function boot(doc, host, deps) {
   const graphMount = el(doc, 'div', 'wk-graph');
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
     worldChips: worlds.length > 1, declaration: () => state.decl });
-  /** The form's subject as the baskets' + takes it - picked from the list or typed; none until a type and a key. */
+  // The box is the key it searches by: what is typed is that key, a node picked fills every key.
+  const searchMount = el(doc, 'div', '');
+  const search = new NodeSearch(searchMount, { doc,
+    ask: (prefix) => fetchKeyValues({ apiBase, fetchImpl, type: state.type, startsWith: prefix, limit: SEARCH_LIMIT }),
+    onType: (text) => { if (search.axis) state.keys[search.axis] = text; baskets.render(); },
+    onPick: (node) => { state.keys = { ...node.keys }; render(); },
+    onAnswer: () => baskets.render() });
+  /** The form's subject as the baskets' + takes it - picked from the list or typed; none until a type and a key. A key
+   *  typed that the ledger names no node by says so (lead b5cdcbc75). */
   const pickedNode = () => {
     const keys = Object.fromEntries(Object.entries(state.keys || {}).filter(([, v]) => !isBlank(v)));
     return state.type && Object.keys(keys).length
-      ? { id: entitySeedId(state.type, keys), label: Object.values(keys).join(' · '), type: state.type, keys }
+      ? { id: entitySeedId(state.type, keys), label: Object.values(keys).join(' · '), type: state.type, keys,
+        unheld: search.holdsNone(keys[search.axis]) }
       : null;
   };
   const sideMount = el(doc, 'div', 'wk-side');
@@ -172,12 +181,6 @@ export function boot(doc, host, deps) {
   // The trend part, made once and seated under the tables when a column's trend is open.
   const trendMount = el(doc, 'div', '');
   const trendView = new TrendView(trendMount, { doc });
-  // The box is the key it searches by: what is typed is that key, a node picked fills every key.
-  const searchMount = el(doc, 'div', '');
-  const search = new NodeSearch(searchMount, { doc,
-    ask: (prefix) => fetchKeyValues({ apiBase, fetchImpl, type: state.type, startsWith: prefix, limit: SEARCH_LIMIT }),
-    onType: (text) => { if (search.axis) state.keys[search.axis] = text; baskets.render(); },
-    onPick: (node) => { state.keys = { ...node.keys }; render(); } });
   // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
   const goReason = () => (state.run === 'running'
     ? RUNNING
@@ -750,7 +753,7 @@ export function boot(doc, host, deps) {
     const walked = new Set(own.map((p) => p.key));
     // A point says who gave it, as its cell does (lead 99ed68cb7 C): the same read, the same seat.
     const points = t.pages.reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.row, at.column, walked)), own)
-      .map((p) => ({ ...p, source: p.group === null || p.group === undefined ? '' : view.sources.source(view.groups[p.group], p.node) }));
+      .map((p) => ({ ...p, source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group], p.node) }));
     if (t.t0 === null) t.t0 = walkedTime(own, r.generated_at, t.group);
     // The view the next page is read against: the trend's own, not a second computing of the table.
     t.view = view;
@@ -932,6 +935,8 @@ export function boot(doc, host, deps) {
       head.append(el(doc, 'span', 'wk-counts', (asked
         ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
         : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`) + took));
+      // The server's own sentence and its state (lead b5cdcbc75: «Nodes 1 · Edges 0» alone read as a wafer with no data).
+      if (r.message) head.append(el(doc, 'span', 'wk-note wk-said', [r.state, r.message].filter(Boolean).join(' · ')));
     }
     // ── Table | Graph ───────────────────────────────────────────────────────
     // ⚰️ Compare retired 10-10 (lead 3375edd9b, owner «Compare 접어»): the walk table side by side is the one screen that
@@ -999,10 +1004,8 @@ export function boot(doc, host, deps) {
         }
         box.append(dist);
       }
-      // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 그 문장을 들고 오므로 그것을 씁니다.
-      if (!r.nodes.length) {
-        box.append(el(doc, 'div', 'wk-note', r.message || 'No node reached'));
-      }
+      // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 문장을 들고 오면 머리가 그것을 씁니다.
+      if (!r.nodes.length && !r.message) box.append(el(doc, 'div', 'wk-note', 'No node reached'));
       const askedOf = state.at === 0 ? state.asked : shown.asked;
       renderTable(box, r, { positive: (askedOf && askedOf.positive) || [], negative: (askedOf && askedOf.negative) || [] });
     }

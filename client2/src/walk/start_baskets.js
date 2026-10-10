@@ -17,13 +17,16 @@ export const BASKET_WORDS = Object.freeze({
   empty: 'Empty',
   noPick: 'Pick a node first',
   noStart: 'Add a start to Positive first',
+  // A key typed that the ledger names no node by (lead b5cdcbc75): + still takes it.
+  unheld: '0 atoms · not in the ledger',
 });
 
 export class StartBaskets {
   /**
    * @param {HTMLElement} mount
    * @param {{doc?: Document, markings: object, name: string, picked?: Function}} deps
-   *   `picked()` - the node PICK A NODE holds now, `{ id, label, type, keys }`, or null
+   *   `picked()` - the node PICK A NODE holds now, `{ id, label, type, keys, unheld? }`, or null; `unheld` when no
+   *   node of the ledger is those keys
    */
   constructor(mount, deps = {}) {
     this.doc = deps.doc || mount.ownerDocument;
@@ -75,6 +78,7 @@ export class StartBaskets {
       setDisabledReason(add, node ? '' : BASKET_WORDS.noPick);
       add.addEventListener('click', () => this.add(sign));
       box.append(head, add);
+      if (node && node.unheld) box.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));
       if (!ids.length) box.append(this._el('div', 'wk-note', BASKET_WORDS.empty));
       for (const id of ids) {
         const said = this.describe(id) || {};

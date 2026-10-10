@@ -290,6 +290,25 @@ async function suite(mod) {
       n.toString().slice(0, 200));
   }
 
+  console.log(`${LF}-- the server's sentence in the head (lead b5cdcbc75) --`);
+  {
+    const said = async (result) => {
+      const { host, handle } = await render(mod, result);
+      handle.state.asked = { type: 'die@1', keys: {} };
+      handle.render();
+      return [byClass(host, 'wk-note wk-said').map((e) => e.textContent), byClass(host, 'wk-note').filter((e) => e.textContent === 'No node reached').length];
+    };
+    const empty = await said({ state: 'empty', message: 'No ledger evidence is connected to the selected node',
+      nodes: [RESULT.nodes[0]], edges: [] });
+    const none = await said({ state: 'empty', message: 'This walk reached no node beyond its seeds', nodes: [], edges: [] });
+    const plain = await said(RESULT);
+    ok('H1 the head says the server\'s state and sentence - one node and «empty» is not a node with no data; with none, '
+      + 'its sentence once; a plain answer, nothing',
+      JSON.stringify([empty, none, plain]) === JSON.stringify([[['empty · No ledger evidence is connected to the selected node'], 0],
+        [['empty · This walk reached no node beyond its seeds'], 0], [[], 0]]),
+      JSON.stringify([empty, none, plain]));
+  }
+
   console.log(`${LF}-- the type placeholder is no type (lead b417e2ad8) --`);
   {
     const asked = [];
@@ -889,6 +908,8 @@ const MUTANTS = [
     catches: 'V5 the numeric class',
     from: "          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);",
     to: "          const td = el(doc, 'td', '', cell.text);" },
+  { id: 'HM1', what: 'the server\'s sentence not in the head', catches: 'H1',
+    from: "      if (r.message) head.append(el(doc, 'span', 'wk-note wk-said', [r.state, r.message].filter(Boolean).join(' · ')));\n", to: '' },
   { id: 'M4', what: 'the cap note prints the total instead of what was hidden',
     catches: 'C3 the total is not what is printed',
     from: '      box.append(el(doc, \'div\', \'wk-note\', `${view.hidden} more not drawn`));',
@@ -992,7 +1013,7 @@ const TV_MUTANTS = [
   { id: 'VS1', what: 'a value\'s source the row\'s node, not the read\'s', catches: 'Z38',
     from: '(byCol[i].nodes || []).map((id) => sources.source(g, id))', to: '(byCol[i].nodes || []).map(() => sources.source(g, node.id))' },
   { id: 'VS2', what: 'a value\'s source without its route', catches: 'Z40',
-    from: 'source: (g, id) => `${keyWords(id)} · ${route(g, id).text}`', to: 'source: (g, id) => `${keyWords(id)}`' },
+    from: 'source: (g, id) => `${keyWords(id)} · ${g ? route(g, id).text : NOT_WALKED}`', to: 'source: (g, id) => `${keyWords(id)}`' },
   { id: 'VS3', what: 'a source from the other side\'s paths', catches: 'Z38',
     from: 'sources: (byCol[i].nodes || []).map((id) => sources.source(g, id))', to: 'sources: (byCol[i].nodes || []).map((id) => sources.source(groups[1 - i], id))' },
   { id: 'VS4', what: 'a node the answer did not send: its keys not read off its id', catches: 'Z42',

@@ -31,13 +31,15 @@ export class NodeSearch {
    * @param {HTMLElement} mount
    * @param {{doc?: Document, ask: Function, onType?: Function, onPick?: Function, delay?: number}} deps
    *   `ask(prefix)` answers as fetchKeyValues does - `{ ok, nodes, scanned, scanTruncated, valuesTruncated, prefixAxis,
-   *   prefixCase, prefixRefusal, message }`; `onType(text)` hears every keystroke; `onPick(node)` the node picked
+   *   prefixCase, prefixRefusal, message }`; `onType(text)` hears every keystroke; `onPick(node)` the node picked;
+   *   `onAnswer()` hears an answer land
    */
   constructor(mount, deps = {}) {
     this.doc = deps.doc || mount.ownerDocument;
     this.ask = deps.ask;
     this.onType = deps.onType || (() => {});
     this.onPick = deps.onPick || (() => {});
+    this.onAnswer = deps.onAnswer || (() => {});
     this.delay = deps.delay === undefined ? SEARCH_DELAY_MS : deps.delay;
     this.axis = null;
     this.state = 'idle';
@@ -115,7 +117,20 @@ export class NodeSearch {
     this.asked = prefix;
     this.active = -1;
     this._draw();
+    this.onAnswer();
     return got;
+  }
+
+  /**
+   * Whether the ledger holds no node of these letters (lead b5cdcbc75): the answer for exactly them came whole and no
+   * node's key is them letter for letter. Not asked yet, cut or failed, it cannot say. Node identity is exact - a node
+   * the list shows in another case is another node, not this one guessed.
+   */
+  holdsNone(text) {
+    const got = this.answer;
+    const key = isBlank(text) ? '' : String(text).trim();
+    if (!this.axis || !key || key !== this.asked || !got || !got.ok || got.valuesTruncated || got.scanTruncated) return false;
+    return !this._nodes().some((n) => String((n.keys || {})[this.axis]) === key);
   }
 
   _nodes() { return (this.answer && this.answer.ok && this.answer.nodes) || []; }
