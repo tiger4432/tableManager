@@ -99,8 +99,8 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-BE5YXjms.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
->            누른 빌드 — walk-BE5YXjms.js (= main) 에서 ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표  /  walk-CffOP4e8.js (main 아님 — 마지막에 다시 누름) 에서 ①② · ① · ③ · ③ 칩 순서 · ④ · ④ 쪽 넘김 · ⑤ · ⑥ · ⑧  /  walk-CaI0U1g6.js (main 아님 — 마지막에 다시 누름) 에서 ③ 출처 · ④ 점 출처 · ⑦ · ⑦ No more  /  walk-DCO0aMpb.js (main 아님 — 마지막에 다시 누름) 에서 ① 목록 밖 키 · ④ 쪽 점 출처
+>    빌드    main 의 dist walk-AykeFlHV.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>            누른 빌드 — walk-AykeFlHV.js (= main) 에서 ③c 걸음 탭 · ③b · ③c 요청  /  walk-CffOP4e8.js (main 아님 — 마지막에 다시 누름) 에서 ①② · ① · ③ · ③ 칩 순서 · ④ · ④ 쪽 넘김 · ⑤ · ⑥ · ⑧  /  walk-CaI0U1g6.js (main 아님 — 마지막에 다시 누름) 에서 ③ 출처 · ④ 점 출처 · ⑦ · ⑦ No more  /  walk-DCO0aMpb.js (main 아님 — 마지막에 다시 누름) 에서 ① 목록 밖 키 · ④ 쪽 점 출처  /  walk-BE5YXjms.js (main 아님 — 마지막에 다시 누름) 에서 ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표
 >    누름    단추 · 칸 · 목록은 진짜 클릭. 그래프의 노드 · 덩어리는 cytoscape tap — 이 박스의 브라우저 창이 그래프를 안 그려 좌표 클릭이 안 먹음
 >            «모델 세상 1» = 리허설의 appdemo_vf
 >    ①  바구니   Type wafer · PICK A NODE 에 «불량» 앞글자 -> 목록(리허설 «SYN-BW-103-11 · 278 atoms»)에서 고름 -> Positive «+ Add» · «양품» 도 같이 -> Negative «+ Add» · Collect wafer -> Walk
@@ -130,7 +130,12 @@
 >       본 것    요청 하나 hops=1&follow=measures&collect=wafer&direction=both · «Nodes 64 (collect: wafer) · Edges 64 (all) · 0.1 s» · 머리 «Positive · 1 start · 64 rows» · 열 «wafer · value · eqp_id · role · step · Route» · 줄 64
 >                첫 줄 «FAKE-W-001 ¦ 22.791 bond_temp · start ¦ FAKE-EQP bond_temp · start ¦ fake bond_temp · start ¦ FAKE-HIST bond_temp · start ¦ measures»
 >       같은 표  bond_temp 하나만 + · Collect wafer · Follow measures · both · hops 1 · Walk -> 머리 · 열 · 줄 수 · 첫 세 줄이 같음
->       뜻       이어 걷기 = 체크한 줄을 시작으로 한 바구니 걷기 — 한쪽 표 하나. 이어 걷기는 폼의 node_limit 을 아직 안 보낸다(F 에서) — 리허설은 64 줄뿐이라 차이 없음
+>       뜻       이어 걷기 = 체크한 줄을 시작으로 한 바구니 걷기 — 한쪽 표 하나. 폼의 node_limit 을 같이 싣는다(③c 의 요청 7 개 전부 node_limit=1000 · fanout_limit 은 폼 칸이 비어 안 실림 — 채운 경우는 안 쟀다)
+>    ③c 걸음 탭   이어 걸을 때마다 탭이 하나씩 — 제한 없음 (리허설: SYN-BW-103-11 만 + · Walk · in_container → die / → wafer 를 번갈아 다섯 번)
+>       본 것    탭 6 «Step 1 · + 1 | Step 2 · in_container → die | Step 3 · in_container → wafer | Step 4 · in_container → die | Step 5 · in_container → wafer | Step 6 · in_container → die»
+>                여섯째 표: 체크 전 NEXT 꺼짐 «Check rows first» -> 한 줄 체크 -> «bonded_from → die(on) · in_container → wafer(on) · inspected → wafer(on) · observed → defect(on) · transfer → die(on)»
+>       앞 걸음  탭 «Step 2 · …» 를 누르면 그 걸음의 체크가 그대로 -> 그 NEXT -> 탭 3 «Step 1 · + 1 | Step 2 · in_container → die | Step 3 · in_container → wafer» — 뒤 탭은 지워진다
+>       뜻       걸음마다 자기 마킹(이름은 순번)에 체크가 남는다. 앞 걸음에서 다시 이어 걸으면 그 뒤 걸음과 그 마킹이 같이 지워진다
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
 >       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 194 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
 >                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
@@ -159,7 +164,7 @@
 >                All -> 요청 2 개 · «52 next · 2 behind» · «Open 52» -> 그려짐 52 (die 47 · quantity 5) · 움직임 0 · 새 작은 덩어리 0 · base 의 덩어리 없음
 >       뜻       next = 한 걸음 너머 서로 다른 노드 수(Open 이 그리는 수) · behind = 그 너머에 접힌 채 남는 수
 >                «≤» = 안 보낸 묶음이 있어 가지끼리 겹침을 아직 모름 — All 이 그 묶음을 걸은 뒤 정확한 수(리허설: 두 가지가 같은 다이)
->    ⑨  마킹 체인 무제한(F) · 한 걸음의 엣지마다 갈래(G) · 표 ⇄ 트렌드 토글(E2) · CONTROL 엣지 묶음(D) · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
+>    ⑨  한 걸음의 엣지마다 갈래(G) · 표 ⇄ 트렌드 토글(E2) · CONTROL 엣지 묶음(D) · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
 >    시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ③ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
