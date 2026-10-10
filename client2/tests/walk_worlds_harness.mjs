@@ -205,7 +205,7 @@ const MUTANTS = [
   { id: 'W6', what: 'the page never tells the graph it reads several', catches: 'V7', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, 'worldChips: worlds.length > 1', 'worldChips: false') },
   { id: 'W7', what: 'a world picked does not walk again', catches: 'V9', file: 'walk/main.js', key: 'page',
-    mutate: (t) => swap(t, "    if (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0])) await walkStarts();\n", '') },
+    mutate: (t) => swap(t, "    if (state.run !== 'idle' || markings.count(START)) await walkStarts();\n", '') },
   { id: 'W8', what: 'a world picked leaves the seat on the old worlds', catches: 'V9', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '    worlds = worldList(names);\n', '') },
 ];

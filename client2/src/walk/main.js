@@ -62,7 +62,8 @@ import { withWorld, worldList, addressFor } from '../world.js';
 import { BranchPicker } from '../branch_picker.js';
 
 /** The graph's chain of markings: the start, then one per Continue. Its length is the chain's length. */
-const GRAPH_CHAIN = Object.freeze(['walk-start', 'walk-2', 'walk-3', 'walk-4']);
+/** The start marking the baskets edit; each step's checks write a marking of their own (stepMarks). */
+const START = 'walk-start';
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = WALKING;
@@ -158,7 +159,22 @@ export function boot(doc, host, deps) {
   // Made once and kept across renders (`render` empties the host); it walks through the same wire.
   const markings = new MarkingStore();
   const graphMount = el(doc, 'div', 'wk-graph');
-  const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
+  // ── the markings the steps write (lead 77f1afd3b): a name a step from a running counter, never reused ──
+  let named = 1;
+  const nextMarks = () => `walk-${(named += 1)}`;
+  state.marks = nextMarks();
+  /** The graph's names past the table's steps, made when it asks; a new table step drops them. */
+  const tail = [];
+  /** The marking the graph's step k walks from (0: the start) - its Mark writes the next: the form walk's checks, each
+   *  step's, then the graph's own. */
+  const chainAt = (k) => {
+    const names = [START, state.marks, ...state.steps.map((s) => s.marks)];
+    while (names.length + tail.length <= k) tail.push(nextMarks());
+    return [...names, ...tail][k];
+  };
+  /** Drop these steps' markings and the graph's own past them. */
+  const dropMarks = (steps) => { for (const name of [...steps.map((s) => s.marks), ...tail.splice(0)]) markings.clear(name); };
+  const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: chainAt,
     worldChips: worlds.length > 1, declaration: () => state.decl });
   // The box is the key it searches by: what is typed is that key, a node picked fills every key.
   const searchMount = el(doc, 'div', '');
@@ -177,17 +193,17 @@ export function boot(doc, host, deps) {
       : null;
   };
   const sideMount = el(doc, 'div', 'wk-side');
-  const baskets = new StartBaskets(sideMount, { doc, markings, name: GRAPH_CHAIN[0], picked: pickedNode });
+  const baskets = new StartBaskets(sideMount, { doc, markings, name: START, picked: pickedNode });
   // The trend part, made once and seated under the tables when a column's trend is open.
   const trendMount = el(doc, 'div', '');
   const trendView = new TrendView(trendMount, { doc });
   // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
   const goReason = () => (state.run === 'running'
     ? RUNNING
-    : (seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length ? '' : BASKET_WORDS.noStart));
+    : (seedsOf(markings.entries(START)).positive.length ? '' : BASKET_WORDS.noStart));
   // Walk follows the baskets as they change, not only when the page redraws.
   let goButton = null;
-  markings.subscribe(GRAPH_CHAIN[0], () => { if (goButton) setDisabledReason(goButton, goReason()); });
+  markings.subscribe(START, () => { if (goButton) setDisabledReason(goButton, goReason()); });
   /** The graph walks the start marking as it stands. */
   const showGraph = (opts) => { graph.show(opts); };
   // 🔴 체크칸은 선언된 술어 «전부» (소유자 10-06 「엣지 리스트 다 주고 체크하는걸 메인으로」).
@@ -217,6 +233,13 @@ export function boot(doc, host, deps) {
     // 🔴 `follow` 와 «같은 규율». 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
     if (state.collect.size) out.collect = [...state.collect];
     if (state.direction) out.direction = state.direction;
+    return Object.assign(out, knobs());
+  }
+
+  /** STEP's number knobs as the wire takes them, blank ones not sent - the form's walk and a Next's read them here, so a
+   *  Next asks what one basket walked asks (lead 10-11). */
+  function knobs() {
+    const out = {};
     for (const [wire, key] of NUMBER_KNOBS) {
       const n = parseInt(state[key], 10);
       if (Number.isFinite(n)) out[wire] = n;
@@ -231,12 +254,12 @@ export function boot(doc, host, deps) {
 
   /** The walk from the start marking as it stands - a Walk press, and a world picked (lead 10-09). */
   async function walkStarts() {
-    if (!markings.count(GRAPH_CHAIN[0])) return;
+    if (!markings.count(START)) return;
     // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
     if (state.view === 'graph') { showGraph(); return; }
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
     // One + start alone is asked by its type and keys, as the form asked it (walk_layout L7 · L8: the request does not change).
-    const starts = seedsOf(markings.entries(GRAPH_CHAIN[0]));
+    const starts = seedsOf(markings.entries(START));
     const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
     const one = signed ? null : baskets.describe(starts.positive[0]);
     const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };
@@ -245,8 +268,8 @@ export function boot(doc, host, deps) {
     // keys, and its table is a Next's from that node (owner 10-10 E1: the same as one basket walked).
     state.asked = { ...asked, keys: { ...asked.keys }, positive: starts.positive, negative: starts.negative };
     // A new start clears the steps and what their checks wrote, as the graph's new start does (lead 53050a4ec).
-    state.steps = []; state.at = 0;
-    for (const name of GRAPH_CHAIN.slice(1)) markings.clear(name);
+    dropMarks([{ marks: state.marks }, ...state.steps]);
+    state.steps = []; state.at = 0; state.marks = nextMarks();
     render();
     const began = Date.now();
     const res = await walk(asked);
@@ -261,20 +284,21 @@ export function boot(doc, host, deps) {
   }
 
   // ── the table's steps (lead 53050a4ec): a step's checked rows are the page's marking the graph reads too ──
-  /** The marking a step's checks write, the graph's chain after its start; none once the chain is used up. */
-  const checksOf = (at) => GRAPH_CHAIN[at + 1] || '';
+  /** The marking a step's checks write - its own, the graph's chain after its start. */
+  const checksOf = (at) => (at === 0 ? state.marks : state.steps[at - 1].marks);
   /** The step shown: the form's walk, or one walked on from it. */
   const shownStep = () => (state.at === 0
     ? { run: state.run, result: state.result, reason: state.reason, took: state.took }
     : state.steps[state.at - 1]);
 
-  /** From the rows checked on step `at` (+ and -), one step along `route`; it stands after `at`, the steps beyond it go. */
+  /** From the rows checked on step `at` (+ and -), one step along `route`; it stands after `at`, the steps beyond it go.
+   *  The form's knobs ride along; the step's own hops is its one. */
   async function walkOn(at, seeds, route) {
-    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to });
-    const step = { title: `${route.predicate} → ${route.to}`, asked, run: 'running', result: null, reason: '' };
+    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
+    const step = { title: `${route.predicate} → ${route.to}`, asked, run: 'running', result: null, reason: '', marks: nextMarks() };
+    dropMarks(state.steps.slice(at));
     state.steps = [...state.steps.slice(0, at), step];
     state.at = at + 1;
-    for (const name of GRAPH_CHAIN.slice(at + 2)) markings.clear(name);
     render();
     const began = Date.now();
     const res = await walk(asked);
@@ -1055,7 +1079,7 @@ export function boot(doc, host, deps) {
     graph.worldChips = worlds.length > 1;
     if (options.pickWorld) options.pickWorld(worlds);
     await load();
-    if (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0])) await walkStarts();
+    if (state.run !== 'idle' || markings.count(START)) await walkStarts();
   }
 
   const picker = options.branchMount

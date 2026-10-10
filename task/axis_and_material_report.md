@@ -1,3 +1,13 @@
+> ## [03:19 디자인] F — 마킹 사슬 무제한 (스텝마다 제 마킹, 세는 이름) 착지 72b86a2c7 (총괄 77f1afd3b)
+
+- **무엇** — 고정 이름 넷(walk-start · walk-2 · walk-3 · walk-4)이 은퇴. 스텝마다 제 마킹을 세는 이름으로 받고(다시 안 씀), 앞 스텝에서 다시 걸으면 그 뒤 스텝들의 마킹을 그 목록으로 지움. 그래프 부품은 «k 번째 이름»을 페이지에 물어 표의 스텝을 넘어서도 이어집니다.
+- **Next 의 손잡이 (총괄 10-11)** — Next 가 폼의 node_limit · fanout_limit 를 폼 걷기와 같은 읽기(knobs)로 싣고, hops 는 스텝의 1. 박스 temp_C(답이 상한에 잘림)에서 폼 그대로 바구니 하나 Walk = SYN-BW-103-11 의 temp_C 행 Next — 행까지 같음. 변이 EKm1(Next 가 손잡이 없이) · EKm2(폼의 hops 가 스텝의 것을 덮음) 둘 다 EA1 이 잡음.
+- **시험 쪽** — 표 하니스 S3 가 «walk-2» 를 박아 읽던 것을 페이지가 쓰는 이름으로. 그래프 하니스의 사슬 변이(M11 · M16 · M17 · Y1m–Y3m · PAm5)은 (k) => 이름 모양으로 다시 겨눔.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-AykeFlHV.js, 2481x1273): SYN-BW-103-11 in +, Walk, then five steps on, wafer and die by in_container in turn: 6 tabs; at the sixth table a row checked, its Next on; step two walked on again: 3 tabs (Step 1 · + 1 | Step 2 · in_container → die | Step 3 · in_container → wafer). The cut case, the form left as it is (node_limit 1000): SYN-BW-103-11 Walk, temp_C checked, Next measures → wafer = temp_C alone in +, follow measures, collect wafer, hops 1, both, Walk: wafer · 200, 200 rows, the first three rows the same (SYN-BW-002-14, SYN-BW-002-15, SYN-BW-002-16 ...). Writes 0.
+- **게이트** — walk_table 143 with --mutate --control (EA1 compares node_limit and fanout_limit too, the Next's hops its step's - EKm1 a Next without the knobs, EKm2 the form's hops over the step's; CH1 five steps on, each its own marking; CH2 step two again drops the rest and their markings, the new name never used; FM1 names by place, FM2 nothing dropped; S3 reads the page's marking name, not walk-2; NM4 NM5 re-aimed); subgraph_view 383 (M11 M16 M17 Y1m-Y3m PAm5 re-aimed at (k) => name); start_baskets 24 (BM6 BM8 BM10 on START); GRAPH_CHAIN callers 0 (git grep, the START line 1); screen gate 249 with --mutate; walk_worlds 18, walk_layout 34, node_search 45, trend 31, walk_wire 95, rnd_board_walk_box 104.
+
+다음: G(갈래) -> E2a -> E2b -> D.
+
 > ## [02:35 디자인] E1 — 바구니 하나로 걸어도, Next 로 이어 걸어도 같은 표 (평표 은퇴) 착지 184af7793 (총괄 10-10 E1)
 
 - **무엇** — + 만 있는 걷기(첫 걷기든 Next 든)도 맞대기 표를 한 쪽(k = 1)으로 그립니다. 평표 좌석과 그 도우미 넷(valueText · isNumericText · qualifiersByNode · qualifierNamesOf)은 은퇴, 평표의 Conflicts · 확인 술어(C-98) 열은 그 함수 그대로 가운데 열로. 한 쪽의 행 = 걸은 답의 노드 전부(시작 포함) — 두 쪽일 때만 답의 순위로 가릅니다.

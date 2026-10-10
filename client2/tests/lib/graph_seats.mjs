@@ -91,7 +91,7 @@ export async function seatSubgraph(SubgraphView) {
   const first = bodies[0];
   const start = first._start ? entitySeedId(first._start.type, first._start.keys) : first.seed.id;
   markings.replace(chain[0], [[start, SIGN.CASE]]);
-  const view = new SubgraphView(host, { doc, walk: wire(bodies), entities: () => DECL.entities, markings, chain });
+  const view = new SubgraphView(host, { doc, walk: wire(bodies), entities: () => DECL.entities, markings, chain: (k) => chain[k] || '' });
   await view.show();
   return { host, view };
 }

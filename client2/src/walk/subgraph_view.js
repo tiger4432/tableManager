@@ -446,8 +446,8 @@ export class SubgraphView {
    */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('SubgraphView needs a mount element');
-    if (!deps.markings || !Array.isArray(deps.chain) || !deps.chain.length) {
-      throw new Error('SubgraphView needs a marking store and a chain of marking names');
+    if (!deps.markings || typeof deps.chain !== 'function') {
+      throw new Error('SubgraphView needs a marking store and its chain of marking names, (k) => name');
     }
     this.mount = mount;
     this.doc = deps.doc || mount.ownerDocument;
@@ -456,7 +456,9 @@ export class SubgraphView {
     this.declaration = deps.declaration || (() => null);
     this.storage = deps.storage !== undefined ? deps.storage : windowStorage(this.doc);
     this.markings = deps.markings;
-    this.chain = deps.chain.slice();
+    this.chain = deps.chain;
+    // The names it has read or written, each heard once: the chain is as long as its declaration says (lead 77f1afd3b).
+    this.watched = new Set();
     this.fanoutLimit = Number.isFinite(deps.fanoutLimit) ? deps.fanoutLimit : DEFAULT_FANOUT_LIMIT;
     this.worldChips = Boolean(deps.worldChips);
     ensureWalkStyles(this.doc);
@@ -504,19 +506,28 @@ export class SubgraphView {
     this.pathKind = null;
     this.pathsFound = null;
     // Another part writing the same name is seen here: same name, same marking.
-    for (const name of this.chain) this.markings.subscribe(name, () => { this._paths(); this._restyle(); });
+    this._watch(this.chain(0));
+  }
+
+  /** Hear a name the part reads or writes, once. */
+  _watch(name) {
+    if (!name || this.watched.has(name)) return name || '';
+    this.watched.add(name);
+    this.markings.subscribe(name, () => { this._paths(); this._restyle(); });
+    return name;
   }
 
   /** The name the next Mark writes, or '' once the chain is used up. */
-  writes() { return this.chain[this.steps.length] || ''; }
+  writes() { return this._watch(this.chain(this.steps.length)); }
 
   /** Walk from the chain's first marking and draw it. `reuse`: the same marking already drawn is not asked again. */
   async show(opts = {}) {
-    const key = JSON.stringify(this.markings.entries(this.chain[0]));
+    const start = this._watch(this.chain(0));
+    const key = JSON.stringify(this.markings.entries(start));
     if (opts.reuse && key === this.asked && this.state === 'done') return;
     this.asked = key;
     // A new start: what the last picture's Mark wrote is that picture's, not this one's (lead 10-07).
-    for (const name of this.chain.slice(1)) this.markings.clear(name);
+    for (const name of this.watched) if (name !== start) this.markings.clear(name);
     this.steps = [];
     this.layout = null;
     this.selected = null;
@@ -528,7 +539,7 @@ export class SubgraphView {
     this.pos = new Map();
     this._relayout = true;
     this._closePicker();
-    await this._step(this.chain[0]);
+    await this._step(start);
   }
 
   /** Every seed the steps walked from - where the fold's walk starts. */
