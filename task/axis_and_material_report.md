@@ -1,3 +1,13 @@
+> ## [23:39 디자인] A-2 — 서버가 안 넓힌 노드의 점선 덩어리 + Route 바깥 끝 착지 18b606d40 (총괄 f6e8ef44b · 10-10 B 뒤)
+
+- **A-2** — 묶음을 걸어 온 답에서만 나온 노드(서버가 그 뒤를 안 걸음) 뒤에 점선 «? next · not walked». 누르면 묶음 열기와 같은 문(expandBundle -> stepAlong, 술어 없이 한 걸음)으로 걷고, 그 노드의 큰 덩어리 창. 걷기가 넓힌 노드는 점선 없음. stepAlong 은 술어가 없으면 follow 를 안 실습니다(묶음 열기 · Next 는 그대로).
+- **Route 바깥 끝** — 소유자가 승인한 목업대로 각 쪽 바깥 끝으로 옮겼습니다(숫자 열이 노드 쪽). RM6 은 이제 뜻이 같은 변이라 은퇴(Z37 은 남김). Table (the demo pair, Walk): every section's heads begin and end with Route - wafer · 32: Route · value_text · step · role · eqp_id · value · wafer · value · eqp_id · role · step · value_text · Route; SYN-BW-103-11 «start» leftmost, SYN-BW-SPL-400-19 «start» rightmost.
+- **덤** — 줄 끝: git apply 가 얹은 파일을 CRLF 로 써서 화면 게이트의 변이 닻(LF)이 깨졌습니다. 얹은 파일만 저장소와 같은 LF 로 맞춥니다(저장소 내용은 같음).
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-CffOP4e8.js, 2481x1226): SYN-BW-103-11 in Positive, Walk, Graph, the wafer's branches folded; «← in_container» walked from its row, SYN-BW-103-11 / 9 / 9 / Wafer ticked, Open: its lump «? next · not walked» (dashed); SYN-BW-103-11 / 10 / 4 / Wafer, which the walk widened: no lump. The dashed lump pressed: 1 walk asked (follow 0, hops 1, direction both); back: «2 next · 0 behind», rows «bonded_from → die» 1, «transfer → die» 1; All, Open 2: 2 nodes drawn; its lump after: none. Writes 0.
+- **게이트** — subgraph_view 377, walk_table 119, with --mutate --control (AW1 AW2, AWm1-AWm4; P7 reads the bundles' lumps, U3m re-aimed); screen gate 249 with --mutate; walk_layout 34, trend 26.
+
+다음: C(값 출처 줄 — 이 바탕 위에 다시 얹어 사본 초록: 표 127 · 트렌드 30, 18766 bond_temp 픽스처) -> D.
+
 > ## [23:09 디자인] B — 표 Route 열 · 그래프 두 노드 경로 착지 10d5b9e1b (총괄 df11f9e81 B · 1333a5ec9)
 
 - **Route** — 맞대기 표 각 쪽의 첫 칸(+ 는 노드 바로 왼쪽, − 는 Δ 바로 오른쪽). 서버가 걸은 길(걷기 답의 evidence) 중 그 쪽 시작에서 나온 것을 술어만 « → » 로 잇습니다. 시작 자신 «start», 못 닿은 쪽 «missing», 여러 길이면 첫 길과 «+N». 표는 길을 찾지 않습니다(viaDepth 은퇴, via · depth 는 Route 로 접힘).
