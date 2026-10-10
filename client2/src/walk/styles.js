@@ -141,6 +141,15 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-sec { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }
 /* Who gave a value, under it (lead 99ed68cb7 C): its node's keys and its side's route. */
 .wk-src { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); white-space: nowrap; }
+/* Which walk reached a row (lead 99ed68cb7 D): a stripe at the cell's left and a light ground - A + B green, B alone red;
+   A alone none. The three counts above the table say the same. */
+.wk-table td.is-ctl-ab { box-shadow: inset 3px 0 0 var(--success); background: var(--success-weak); }
+.wk-table td.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }
+.wk-reached { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--wk-fs-line); }
+.wk-reachedside { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-reachedn { padding: 0 var(--space-2); }
+.wk-reachedn.is-ctl-ab { box-shadow: inset 3px 0 0 var(--success); background: var(--success-weak); }
+.wk-reachedn.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }
 .wk-sechead { font-weight: 700; font-size: var(--wk-fs-title); margin: 0; }
 /* A section's Next: the declared edges one step on, walked from its checked rows (lead 53050a4ec). */
 .wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }

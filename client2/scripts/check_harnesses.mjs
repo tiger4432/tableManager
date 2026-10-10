@@ -1405,7 +1405,7 @@ const FLOORS = new Map([
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 33],   // 36 -> 33: R13 R14 and FM10 retired with viaDepth - the table's Route reads the answer's evidence, walk_table Z29-Z32 (lead 1333a5ec9)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 44],   // -> 44: a trend's pages its anchor's and column's - TS5, TSm7 TSm8 (lead 10-11)
+  ['trend_harness.mjs', 46],   // -> 46: the Table/Trend choice its step's - TV1, TVm1 (lead 10-11)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1485,11 +1485,11 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 150],   // -> 150: the steps a tree - GB1 GB2 GB3, GM1-GM4 (lead 5ea461e04)
+  ['walk_table_harness.mjs', 163],   // -> 163: Control · B - ZD1-ZD5, DM1-DM8; DM9 DM10 retired with the flat table (lead 99ed68cb7 D)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
-  ['walk_layout_harness.mjs', 34],   // 32 -> 34: fanout_limit on the step (lead 5d946a639)
+  ['walk_layout_harness.mjs', 38],   // -> 38: Control · B walked once more - LD1 LD2, LDm1 LDm2 (lead 99ed68cb7 D)
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to

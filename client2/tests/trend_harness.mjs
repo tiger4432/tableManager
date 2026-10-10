@@ -125,6 +125,43 @@ async function rewalkRun(M) {
   return { toggled: Boolean(toggle), dots, pages: urls.filter(paged).map((u) => q(u).id) };
 }
 
+/** Step 2 on (WALK_RE from q1's row), its wafer section's Trend; Step 1 again, then Step 2 again (lead 10-11). */
+async function stepViewsRun(M) {
+  const DECL = { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
+  const paged = (u) => u.includes('around=') || u.includes('later=') || u.includes('earlier=');
+  const doc = makeDoc('light');
+  doc.head = doc.createElement('head');
+  const host = doc.createElement('div');
+  const handle = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+    const body = paged(String(url)) ? PAGE_Q2 : DECL;
+    return { ok: true, status: 200, json: async () => body };
+  } });
+  await settle();
+  handle.state.type = 'wafer';
+  handle.state.asked = { type: 'wafer', keys: {}, positive: ['wp'], negative: ['wn'] };
+  handle.state.run = 'done';
+  handle.state.result = WALK;
+  // A step walked on from q1, as a Next lands it.
+  handle.state.steps = [{ id: 1, parent: 0, title: 'measures → wafer', run: 'done', result: WALK_RE, reason: '', marks: 'walk-x',
+    asked: { positive: ['wa'], negative: ['wb'], follow: ['measures'], collect: ['wafer'], direction: 'both', hops: 1 } }];
+  handle.state.at = 1;
+  handle.state.leaf = 1;
+  handle.render();
+  const wafer = () => walkAll(host).filter((n) => n.className === 'wk-sec').find((x) => /^wafer/.test(x.children[0]._text || ''));
+  const trended = () => Boolean(wafer() && walkAll(wafer()).some((n) => n.className === 'wk-trend' || (n.tagName === 'svg' && walkAll(n).some((c) => c.tagName === 'CIRCLE'))));
+  const tab = (id) => walkAll(host).find((n) => n.attrs && n.attrs['data-step'] === String(id));
+  const toggle = wafer() && walkAll(wafer()).find((n) => n.attrs && n.attrs['data-section-view'] === 'trend');
+  if (toggle) toggle.dispatch('click', {});
+  await settle();
+  const onTwo = trended();
+  if (tab(0)) tab(0).dispatch('click', {});
+  await settle();
+  const onOne = trended();
+  if (tab(1)) tab(1).dispatch('click', {});
+  await settle();
+  return [Boolean(toggle), onTwo, onOne, trended()];
+}
+
 /** The walk page with `answer` walked: a press on the quantity's + cell, then Load earlier. */
 async function pageRun(M, answer) {
   const urls = [];
@@ -258,6 +295,7 @@ async function seen(M) {
   out.sectionTwo = [two.toggled, two.ask, two.sources.map(([k]) => k), two.walkOnly];
   const re = await rewalkRun(M);
   out.rewalk = [re.toggled, re.dots, re.pages];
+  out.stepViews = await stepViewsRun(M);
   const farRun = await pageRun(M, WALK_FAR);
   out.farPage = [farRun.ask && farRun.ask.around, farRun.dots, farRun.edges, farRun.local];
   return out;
@@ -310,6 +348,8 @@ function suite(out) {
     [true, null, ['c1', 'c2'], true]);
   eq('TS5 a section' + "'" + 's Trend open, the step walked again from another row: its points only the new rows' + "'" + ' and the new anchor' + "'" + 's own page, none from the old (lead 10-11)',
     out.rewalk, [true, ['d1', 'd2', 'r1', 'r2'], ['q1', 'q2']]);
+  eq('TV1 the Table/Trend choice is its step' + "'" + 's: Step 2' + "'" + 's section in Trend, Step 1 gone back to stays Table, Step 2 again its Trend (lead 10-11)',
+    out.stepViews, [true, true, false, true]);
   return { ran: names.length, names, failures };
 }
 
@@ -342,6 +382,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 't.anchor && p.row && p.node === t.anchor.id ? p.row : p.node', 'p.node') },
   { id: 'TSm6', what: 'the page' + "'" + 's anchor ignored: a section paged from nowhere', catches: 'TS1', ...PAGE_,
     mutate: (t) => swap(t, '    t.anchor = pageAnchor(rows, own, at.column);', '    t.anchor = null;') },
+  { id: 'TVm1', what: 'one trend slot for every step', catches: 'TV1', ...PAGE_,
+    mutate: (t) => swap(t, '  const trendNow = () => trends.get(state.at) || null;', '  const trendNow = () => [...trends.values()].pop() || null;') },
   { id: 'TSm7', what: 'the old anchor' + "'" + 's page kept when the step is walked again', catches: 'TS5', ...PAGE_,
     mutate: (t) => swap(t, '    if (fresh) Object.assign(t, { pageKey, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null });',
       '    if (fresh) t.pageKey = pageKey;') },

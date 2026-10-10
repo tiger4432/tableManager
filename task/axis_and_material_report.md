@@ -1,3 +1,13 @@
+> ## [06:59 디자인] D — CONTROL · B, 행마다 누가 닿았나를 색으로 + 보기 선택은 스텝의 것 착지 de66aef11 (총괄 99ed68cb7 D · 10-11)
+
+- **무엇** — Follow 아래 «Control · B» 목록(Follow 와 같은 그리개). B 가 있으면 같은 바구니 · 같은 걸음으로 follow = B 를 한 번 더, 행 = 두 답의 합, 쪽마다 칸 색(A + B 초록 · B 만 빨강 · A 만 없음)과 세 수, Route 에 B 길 한 줄. B 가 비면 요청 하나 그대로.
+- **E1 위에** — 사본(c2d)은 평표 시절에 지어 3-way 병합으로 얹음(충돌 12 곳). 평표가 은퇴해 ZD5 는 «+ 만 = 한 쪽 맞대기 표»로 다시 쓰고, 평표 그리개를 겨누던 DM9 · DM10 은 은퇴, DM6 은 B 의 쪽 짓기로 다시 겨눔. 어느 쪽도 안 닿은 점(쪽 넘김의 점)에서 B 출처가 터지던 자리를 막음 — trend 하니스가 잡았음.
+- **보기 선택은 스텝의 것(총괄 10-11)** — trends(스텝 id → 트렌드) 한 자리를 trendNow · setTrend 가 지남. 돌아간 스텝은 제 보기, 같은 엣지로 다시 건 스텝은 보기를 이어받음. TV1 · TVm1.
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built walk page as a probe copy on the box as it is, /assets/walk-Czt_2m62.js, 1920x1080): SYN-BW-103-11 in +, Follow measures, Walk: one walk; Control · B in_container ticked, Walk: two walks, the second the same with follow = in_container - wafer · 1 A only 0 · A + B 1 · B only 0 | die · 179 A only 0 · A + B 0 · B only 179 | quantity · 16 A only 16 · A + B 0 · B only 0. Then temp_C checked, Next measures → wafer, Step 2's wafer section Trend; Step 1: its sections table · table · table, 0 pages asked; Step 2 again: Trend. Writes 0.
+- **게이트** — walk_table 163 with --mutate --control (ZD1 18766 from void, B leads_to: quantity A only 17 · A + B 15 · B only 3; ZD2 no B, nothing said; ZD3 two baskets, each side its own, Route and source B's; ZD4 the page's counts and tints; ZD5 + only, one side; DM1-DM8 caught); walk_layout 38 (LD1 B empty one walk, LD2 two walks; LDm1 LDm2); trend 46 (TV1, TVm1 one slot for every step); screen gate 249 with --mutate; node_search 45, subgraph_view 279, start_baskets 24, walk_worlds 18, walk_wire 95, rnd_board_walk_box 104, fold_views 19, reach_table 33, walk_route_fill 80.
+
+다음: 표 복사(a27dfbb0f) -> E2b(덩어리 «Open as table» = 페이지 스텝, 총괄 ③) -> G-2(그래프 = 경로 + 끝 답, 총괄 ②) -> 값 대응.
+
 > ## [06:12 디자인] E2a 고침 — 트렌드의 시간 쪽은 «닻 · 걸음 · 열»의 것 착지 da09b9247 (총괄 10-11, 응용 18766)
 
 - **무엇** — 트렌드를 쥔 자리(renderTrend) 하나에서 쪽 열쇠(닻 id · 술어 · 방향 · 열)를 잡고, 바뀌면 쪽 · 걸은 시각 · 앞뒤 커서를 비우고 그리고 나서 새로 묻습니다. openTrend 는 더 묻지 않습니다. 구획 트렌드의 행 = 그 구획의 지금 행.
