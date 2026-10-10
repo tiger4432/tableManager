@@ -1,3 +1,14 @@
+> ## [16:51 디자인] ④-b 트렌드 착지 ed98accb7 (총괄 f984ab01d · a2eb4a516, 서버 시간 쪽 cb6d6a1fa)
+
+- **무엇** — 맞대기 표의 + / − 값 칸을 누르면 그 열(길 P, 값 a)의 트렌드가 표 아래에 섭니다. 점 하나 = 길의 마지막 변 시각(occurred_at)에 읽은 a — 칸이 읽는 것과 같은 함수(reach_table readsOf)입니다. 색 = 반대 끝이 R+ 인지 R− 인지, 그 밖의 행은 회색, 이 걷기가 닿은 점은 크게 테두리, 점선 = 걸은 시각(걸은 점 가운데 가장 늦은 시각, 없으면 응답 시각). JSON 숫자는 값 축, 그 밖의 값은 값마다 한 줄(많은 순 8 + others).
+- **서버 시간 쪽** — 한 걸음 · 변 속성 열만 묻습니다: around = 걸은 시각, page = 1000, 걷기 인자는 안 보냅니다. Load earlier / Load later 가 서버 커서로 한 쪽씩, 끝이면 꺼지고 사유. 점 열쇠는 claim_id. 2~3 걸음 길 · 노드 끝 값의 열은 걷기의 점만(시연 뒤).
+- **부품** — walk/trend.js(모델, 순수) · walk/trend_view.js(제 div 하나, 두 인스턴스 간섭 없음 T11). api.js fetchTimePage — page 칸이 없는 응답은 «시간 쪽이 없는 서버»로 읽고 걷기의 점만 그립니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-W5JThalI.js, 1896x907): LEAD-P3-A in Positive, LEAD-S65C-WP-01 in Negative, Walk, the first value cell pressed: one request id=ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IkxFQUQtUDMtQSJ9XQ&follow=processed_with&direction=outgoing&hops=1&around=2026-09-08T23:45:00.000Z&page=1000 (200); the trend «LEAD-P3-A · processed_with · step», «1 point · 2026-09-09 08:45 → 2026-09-09 08:45», lanes CMP, dots wk-tp is-g0 is-walked, dashed True, buttons Load earlier off (Nothing earlier) | Load later off (Nothing later) | Close on; svg 1134 px wide. Writes 0.
+- **박스의 한계** — 이 박스 데이터는 그 칸에 변 하나라 점 1 개 · Load 두 버튼 꺼짐까지만 보였습니다. 여러 쪽 · Load earlier 가 커서로 묻는 것 · others 줄은 하니스(T8 · T9 · T12)에서만 잽니다.
+- **게이트** — trend 21 (T1-T12; TM1 TM2 TM3 TM4 TM5 TM6 TM7 TM8 TM9 caught), reach_table 36, walk_table 89, walk_layout 29, walk_worlds 18, start_baskets 22, node_search 39, disabled_reason 25, css_token_definition 7, walk_wire 95, explorer_open_path 130, walk_route_fill 80, rnd_board_walk_box 104; screen gate on the walk page 24 with the step «Trend of a value cell» (no wait ran out).
+
+다음(총괄 순서): 스타일 아홉(34d91c09d) → 표 복사(a27dfbb0f) → 값 대응(e8a5933d9). 오늘의 덩어리 Trend(fold_views)를 같은 읽기 함수로 접는 것은 값 대응 뒤에 따로 올립니다. ① 두 노드 경로는 스크래치에 그대로.
+
 > ## [15:58 디자인] ④-b 맞대기 표를 «식»으로 착지 d1ecf19ec (총괄 5cf5c3401 · 25ac10ad8 · a2eb4a516)
 
 - **식(walk/reach_table.js, 순수 함수)** — 그룹 = 시작 부호(k 가정 없음) · Ri = 그 쪽이 닿은 노드 · Gi = 양 끝이 Ri 안인 변 · 행 = 노드 하나(id) · 열 = (길 P, 끝 값 a) · 칸 = 행에서 P 를 Gi 안에서 따라 닿은 a 전부(못 닿음 missing · 없음 «—» · 여럿 «N values» · 50 길 넘으면 «+»). 코드에 술어 · 타입 낱말 0.
