@@ -115,7 +115,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. A control's height, its chain and its hops a
    line each, cut at the row's end with the whole in its title (lead 18da45b73: 53 and 88 px rows); a press puts the
    whole route in the form above. */
-.wk-path { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--space-3); width: 100%;
+.wk-path { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); width: 100%;
   text-align: left; height: var(--wk-h); padding: 0 var(--space-3); margin: 0; align-content: center;
   border: 0; border-radius: 6px; cursor: pointer;
   background: transparent; color: inherit; font: inherit; }
@@ -137,10 +137,11 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   border: 1px solid var(--border); font-size: var(--wk-fs-line); }
 .wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
 /* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
-.wk-sec { margin: var(--space-3) 0 var(--space-4); }
-.wk-sechead { font-weight: 700; font-size: var(--wk-fs-title); margin: 0 0 var(--space-1); }
+/* A section stacks its parts - head, Next, + Column, the table - by one gap (lead 348310aee: they touched, 0 px). */
+.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }
+.wk-sechead { font-weight: 700; font-size: var(--wk-fs-title); margin: 0; }
 /* A section's Next: the declared edges one step on, walked from its checked rows (lead 53050a4ec). */
-.wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; }
+.wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
 .wk-next-edge { min-height: var(--wk-h); padding: 0 var(--space-4); border: 1px solid var(--border); border-radius: 0;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
 .wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }

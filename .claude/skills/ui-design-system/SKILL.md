@@ -83,7 +83,7 @@ checker  client2/tests/screen_layout_harness.mjs - the runner calls it with --mu
          clip · overflow · panel under its button · [object ...] / undefined / NaN · a button boxed out of its line ·
          a long text cell past three lines while a short column beside it is half empty ·
          a word broken between two of its letters
-         answers come from client2/tests/fixtures/screens_answers.json - a GET it lacks is red: capture_screens.py
+         answers come from client2/tests/fixtures/screens_answers.json.gz - a GET it lacks is red: capture_screens.py
 a cut made on purpose  data-clip-ok on that element (it and what is under it). Never a list inside the checker
 a break made on purpose data-wrap-ok (a long id that must wrap); a word or a name is otherwise never broken - its
                        column is as wide as its longest word (lead 10-09)

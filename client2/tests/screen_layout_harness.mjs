@@ -18,7 +18,7 @@
 //   cells     what one screen asks of itself after one of its states (CELLS): the grid's header message - a press on
 //             the button beside it reaches the button, and its title is its whole sentence (lead 10-09)
 // One line per finding: entry · size · state · element path · what. Sizes: 1920x950, 1536x864, 1280x720.
-// Chrome hands every request here (DevTools Fetch). Files come from dist, GETs from fixtures/screens_answers.json
+// Chrome hands every request here (DevTools Fetch). Files come from dist, GETs from fixtures/screens_answers.json.gz
 // (capture_screens.py), the two queues from fixtures/chain_states.json; no request reaches a server of ours. A GET with
 // no answer is a red line - an unanswered screen draws empty and measures nothing. Other methods are refused and
 // counted; a page that leaves (a link, Log out) is answered 204 and stays. Another origin's file (the fonts, the
@@ -29,6 +29,7 @@
 //   node client2/tests/screen_layout_harness.mjs [--mutate] [--only <entry.html>] [--shots <dir>]
 import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +53,8 @@ const MUTATE = process.argv.includes('--mutate');
 // A made-up admin token so the admin page reads one and asks the answers below; it never leaves this Chrome.
 const TOKEN = 'screens-test';
 
-const ANSWERS = JSON.parse(readFileSync(path.join(FIX, 'screens_answers.json'), 'utf8')).answers;
+// Gzipped (lead 348310aee): a capture again adds its few changed answers to the history, not 14 MB.
+const ANSWERS = JSON.parse(gunzipSync(readFileSync(path.join(FIX, 'screens_answers.json.gz'))).toString('utf8')).answers;
 const STATES = JSON.parse(readFileSync(path.join(FIX, 'chain_states.json'), 'utf8')).states;
 // The two queues, one row per chain state - the server's shapes (66b330480, the slot's waiting_for_table); the first
 // row's table has a long name.
@@ -203,6 +205,26 @@ const WALK_LOOK = [
   }
   return bad.size ? 'a control neither 44 nor 28 px high: ' + said(bad) : null;
 })()`],
+  // Parts stacked one over another touch nowhere (lead 348310aee: a section's NEXT, + Column and table 0 px apart):
+  // two blocks side by side in a box, the lower one's top on the upper one's bottom, no line between - red.
+  ['stacked gaps', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const bad = new Map();
+  for (const box of [page, ...page.querySelectorAll('*')]) {
+    if (!mine(box) || /^(TABLE|THEAD|TBODY|TR|TD|TH|SELECT|svg)$/i.test(box.tagName)) continue;
+    const kids = [...box.children].filter((k) => mine(k) && !getComputedStyle(k).display.startsWith('inline')
+      && getComputedStyle(k).position !== 'absolute');
+    for (let i = 1; i < kids.length; i += 1) {
+      const up = kids[i - 1].getBoundingClientRect(), down = kids[i].getBoundingClientRect();
+      const across = Math.min(up.right, down.right) - Math.max(up.left, down.left) > 1;
+      if (!across || down.top < up.bottom - 1 || down.top - up.bottom >= 0.5) continue;
+      const lined = parseFloat(getComputedStyle(kids[i - 1]).borderBottomWidth) || parseFloat(getComputedStyle(kids[i]).borderTopWidth);
+      if (!lined) tally(bad, kids[i - 1].tagName.toLowerCase() + '.' + String(kids[i - 1].className).split(' ')[0] + ' / '
+        + kids[i].tagName.toLowerCase() + '.' + String(kids[i].className).split(' ')[0], kids[i]);
+    }
+  }
+  return bad.size ? 'stacked parts with no gap: ' + said(bad) : null;
+})()`],
   ['three type sizes', `(() => { ${WALK_PAGE}
   if (!page) return 'no walk page';
   const bad = new Map();
@@ -288,7 +310,7 @@ async function servePage(chrome, dist) {
     if (path.extname(u.pathname) && existsSync(file)) { reply(200, MIME[path.extname(file)] || 'application/octet-stream', readFileSync(file)); return; }
     if (resourceType === 'Other' && u.pathname === '/favicon.ico') { reply(404, 'text/plain', ''); return; }
     const a = answerOf(u);
-    if (!a) { log.missing.add(u.pathname + u.search); reply(404, 'application/json', JSON.stringify({ detail: 'no answer in screens_answers.json' })); return; }
+    if (!a) { log.missing.add(u.pathname + u.search); reply(404, 'application/json', JSON.stringify({ detail: 'no answer in screens_answers.json.gz' })); return; }
     reply(a.status, a.type || 'application/json', typeof a.body === 'string' ? a.body : JSON.stringify(a.body));
   });
   await chrome.send('Page.enable');
@@ -752,7 +774,7 @@ async function runScreens(dist, label, one = only) {
           found.push({ entry, size, state: 'driving', rule: 'answers', path: entry, what: `could not be driven: ${err.message}` });
         }
         console.log(`  ${label} ${entry} ${size}: ${panels.length} panels opened${panels.length ? ` - ${panels.map((p) => `«${p}»`).join(' ')}` : ''}`);
-        for (const u of log.missing) found.push({ entry, size, state: 'answers', rule: 'answers', path: u, what: 'no answer in screens_answers.json' });
+        for (const u of log.missing) found.push({ entry, size, state: 'answers', rule: 'answers', path: u, what: 'no answer in screens_answers.json.gz' });
         if (log.refused.length) console.log(`  ${label} ${entry} ${size}: ${log.refused.length} non-GET refused (${[...new Set(log.refused)].join(', ')})`);
         for (const t of new Set(log.thrown)) console.log(`  ${label} ${entry} ${size}: threw ${String(t).split('\n').slice(0, 2).join(' | ')}`);
         if (log.outside.size) console.log(`  ${label} ${entry} ${size}: fetched from ${[...log.outside].join(', ')}`);
@@ -847,6 +869,10 @@ const MUTANTS = [
   { name: 'a side that did not reach saying missing in every column', entry: 'walk.html', rule: 'missing once', at: 'wk-sides',
     file: 'src/walk/table_view.js', edits: [['        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];\n', '']] },
   // The walk page's spacing, heights and type (lead 18da45b73), built back.
+  { name: 'the parts of a section stacked with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2);', '.wk-sec { display: flex; flex-direction: column; gap: 0;']] },
+  { name: 'a route row\'s two lines with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3);', 'grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--space-3);']] },
   { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-2) var(--space-3); text-align: left; }', '  padding: 5px 8px; text-align: left; }']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',

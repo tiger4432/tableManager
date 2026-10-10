@@ -5,10 +5,11 @@ code of this tree, called in this process (TestClient, startup not run), on the 
 Regenerate (conda env assy_manager), from the repository root:
     ASSY_DATA_ROOT=<the running server's server/ dir> python client2/tests/fixtures/capture_screens.py <urls.txt>
 <urls.txt> holds one path?query per line - the harness's «no answer» lines say which. Answers already in
-screens_answers.json are kept; the listed ones are fetched again, each stamped with when and with which commit's
+screens_answers.json.gz are kept; the listed ones are fetched again, each stamped with when and with which commit's
 server code. GET only: the client stops on any other method. An answer carrying an email, a password, a secret, a
 key or a credential in a URL is not written - the run stops and names it.
 """
+import gzip
 import json
 import os
 import re
@@ -19,7 +20,8 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "server"))
-OUT = os.path.join(HERE, "screens_answers.json")
+# Gzipped (lead 348310aee), written with no time in it: a capture again changes only the answers it fetched.
+OUT = os.path.join(HERE, "screens_answers.json.gz")
 ROWS = 100
 SECRET = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'        # an email
                     r'|[a-z]+://[^/\s:"]+:[^@\s"]+@'                          # a credential in a URL
@@ -59,7 +61,7 @@ def server_commit():
 if __name__ == "__main__":
     urls = [u.strip() for u in open(sys.argv[1], encoding="utf-8") if u.strip()]
     assert all(u.startswith("/") for u in urls), [u for u in urls if not u.startswith("/")]
-    answers = json.load(open(OUT, encoding="utf-8")) if os.path.exists(OUT) else {"_what": "", "answers": {}}
+    answers = json.loads(gzip.decompress(open(OUT, "rb").read()).decode("utf-8")) if os.path.exists(OUT) else {"_what": "", "answers": {}}
     client = get_only_client()
     stamp = "%s · server code %s" % (datetime.now(timezone.utc).isoformat(timespec="seconds"), server_commit())
     for url in urls:
@@ -87,6 +89,8 @@ if __name__ == "__main__":
             first[key] = url
     answers["_what"] = ("REAL server output: GET answers of this tree's server code (TestClient, startup not run) on the "
                         "box database by capture_screens.py; each answer says when and with which commit («captured»).")
-    with open(OUT, "w", encoding="utf-8") as f:
-        json.dump(answers, f, ensure_ascii=False, indent=0, sort_keys=True, separators=(",", ":"))
+    text = json.dumps(answers, ensure_ascii=False, indent=0, sort_keys=True, separators=(",", ":"))
+    with open(OUT, "wb") as f:
+        with gzip.GzipFile(fileobj=f, mode="wb", mtime=0) as z:
+            z.write(text.encode("utf-8"))
     print("answers", len(answers["answers"]), "bytes", os.path.getsize(OUT))
