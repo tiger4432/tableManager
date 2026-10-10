@@ -177,6 +177,18 @@ export const WALK_CSS = `
   overflow-wrap: break-word; }
 .wk-table th.wk-sidehead.is-control { color: var(--text-muted); border-bottom-color: var(--text-muted); }
 .wk-table td.wk-missing { color: var(--danger); }
+/* The formula's table, two groups (lead 5cf5c3401, the mockup): the node in the centre between its two sides, each side
+   tinted its sign's colour, Δ at the right. */
+.wk-sides th.wk-centre, .wk-sides td.wk-centre { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+.wk-sides td.wk-plus { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.wk-sides td.wk-minus { background: color-mix(in srgb, var(--text-muted) 9%, transparent); }
+.wk-sides td.wk-delta { color: var(--text-dim); }
+.wk-centrelabel { font-family: var(--font-mono, ui-monospace, monospace); }
+.wk-copyid { margin-left: var(--space-2); padding: 0 var(--space-1); font: inherit; font-size: 0.74rem; color: var(--text-dim);
+  background: none; border: 0; border-radius: 0; cursor: pointer; }
+.wk-rowfilter { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.wk-addcol { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-addcol > .wk-select { width: auto; max-width: 100%; }
 /* id 는 길고 «마지막»입니다. 읽는 것이 아니라 «집는» 칸이라 폭을 안 뺏습니다. */
 .wk-table td.wk-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.74rem;
   color: var(--text-dim, #71717a); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }

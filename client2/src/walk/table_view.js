@@ -16,6 +16,8 @@
 import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes,
   edgeQualifiers } from './derive.js';
 import { typeGraph } from '../rnd_board/api.js';
+// The table with a − start is the formula (lead 5cf5c3401): rows, groups and columns in, cells out.
+import { indexGraph, groupsOf, defaultColumns, tableOf, viaDepth, cellOf, valueKind } from './reach_table.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -101,9 +103,33 @@ export function qualifierNamesOf(nodes, byNode) {
   return names;
 }
 
-/** A side's cell for a node its starts did not reach (lead 3375edd9b), and a side's one cell when a type has no other. */
+/** A group's cell for a node it did not reach; a reached cell with no value; the start's own «via»; the Δ head. */
 export const MISSING = 'missing';
-export const REACHED = 'reached';
+export const EMPTY = '—';
+export const STARTED = 'start';
+export const DELTA = 'Δ';
+
+/** One value in words: a boolean as ✓ ✗, a list joined, the rest as it came. */
+const oneWord = (v) => (typeof v === 'boolean' ? (v ? '✓' : '✗') : Array.isArray(v) ? v.join(' · ') : valueText(v));
+
+/**
+ * A formula cell in words (lead 5cf5c3401, a2eb4a516): missing, empty, its one value, or «N values · …» - none
+ * overwritten; a number column's cell stands right.
+ */
+export function cellWords(cell, kind = valueKind(cell.values || [])) {
+  if (cell.missing) return { text: MISSING, missing: true };
+  const values = cell.values.map(oneWord);
+  if (!values.length) return { text: EMPTY };
+  if (values.length === 1 && !cell.more) return { text: values[0], numeric: kind === 'number' };
+  return { text: `${values.length}${cell.more ? '+' : ''} values · ${values.join(' · ')}` };
+}
+
+/** Δ in words: signed, ten significant digits (a float's tail is not a difference anyone measured). */
+export function deltaWords(delta) {
+  if (delta === null || delta === undefined) return '';
+  const n = Number(delta.toPrecision(10));
+  return `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`;
+}
 
 /**
  * 걷기 결과 하나 -> 표 «전부». 구획마다 머리·컬럼·행, 그리고 못 그린 수.
@@ -117,10 +143,9 @@ export const REACHED = 'reached';
  *        always was
  * @returns {{sections: Array, shown: number, hidden: number, sides: Array|null, unsplit: boolean}}
  */
-export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null) {
+export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map()) {
   const nodes = (result && result.nodes) || [];
   const edges = (result && result.edges) || [];
-  const byNode = qualifiersByNode(edges, nodes);
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
   const plural = pluralAttributes(result);
@@ -128,72 +153,73 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
   const confirmers = confirmedPredicates(predicates);
   const negative = (starts && starts.negative) || [];
-  const reach = negative.length ? reachBySign(result) : null;
-  // A side is its sign's starts and every node they reached. Its cells read the edges walked on it - both ends on it -
-  // so the other sign's edge into a node both reached says its value on the other side.
-  const sides = reach ? [['+', (starts && starts.positive) || []], ['−', negative]].map(([sign, ids]) => {
-    const own = new Set(ids);
-    const inside = new Set(nodes.filter((n) => own.has(n.id) || (reach.get(n.id) || {})[sign] > 0).map((n) => n.id));
-    const read = qualifiersByNode(edges.filter((e) => inside.has(e.source) && inside.has(e.target)), nodes.filter((n) => inside.has(n.id)));
-    return { sign, starts: [...ids], inside, read };
-  }) : null;
-  // A node a row: one row whichever sides reached it.
-  const members = sides ? nodes.filter((n) => sides.some((side) => side.inside.has(n.id))) : nodes;
-  const shown = members.slice(0, cap);
-  const cellOf = (column, node, read) => {
-    const text = valueText(cellSource(column, node, read.get(node.id) || {}, plural.get(node.type)));
-    return { text, kind: column.kind, numeric: isNumericText(text) };
-  };
-  const sections = [];
-  for (const [type, rows] of sectionsByType(shown)) {
-    const names = [...new Set((sides ? sides.map((side) => side.read) : [byNode]).flatMap((read) => qualifierNamesOf(rows, read)))];
-    const columns = tableColumns(entities, type, names, undefined, confirmers);
-    if (!sides) {
-      sections.push({ type, heading: sectionHeading(type, rows.length), columns, groups: null,
+  // With a − start, a group a sign (lead 5cf5c3401): its starts and the nodes the answer says it reached.
+  const groups = negative.length
+    ? groupsOf(result, [{ name: '+', starts: (starts && starts.positive) || [] }, { name: '−', starts: negative }]) : null;
+  if (!groups) {
+    const byNode = qualifiersByNode(edges, nodes);
+    const shown = nodes.slice(0, cap);
+    const sections = [];
+    for (const [type, rows] of sectionsByType(shown)) {
+      const columns = tableColumns(entities, type, qualifierNamesOf(rows, byNode), undefined, confirmers);
+      sections.push({ type, heading: sectionHeading(type, rows.length), columns,
         // 🔴 머리와 셀이 «같은 배열»을 돕니다. 따로 돌면 그날부터 순서가 갈릴 수 있고,
         //    갈라져도 오류가 안 납니다 — 값이 옆 칸에 들어갈 뿐입니다.
-        rows: rows.map((node) => ({ id: node.id, cells: columns.map((column) => cellOf(column, node, byNode)) })) });
-      continue;
+        rows: rows.map((node) => ({ id: node.id, cells: columns.map((column) => {
+          const text = valueText(cellSource(column, node, byNode.get(node.id) || {}, plural.get(node.type)));
+          return { text, kind: column.kind, numeric: isNumericText(text) };
+        }) })) });
     }
-    // The node's own columns once, then each side's edge and attribute columns; a type with none still gets a cell a side.
-    const sideKinds = new Set(['qualifier', 'attribute']);
-    const each = columns.filter((column) => sideKinds.has(column.kind));
-    const per = each.length ? each : [{ name: 'Reached', kind: 'reached' }];
-    // The id is picked, not read: after both sides, as it is last in the one table - not between the node and its sides.
-    const own = columns.filter((column) => !sideKinds.has(column.kind));
-    const all = [...own.filter((column) => column.kind !== 'id'),
-      ...sides.flatMap((side) => per.map((column) => ({ ...column, side: side.sign }))),
-      ...own.filter((column) => column.kind === 'id')];
+    // 🔴 「안 그린 수」는 «답»입니다. 0 이면 그 줄이 없어야 하고, 0 을 그리면 운영자가
+    //    「상한에 걸렸다」로 읽습니다.
+    return { sections, shown: shown.length, hidden: Math.max(0, nodes.length - shown.length), groups: null,
+      unsplit: negative.length > 0 };
+  }
+  const index = indexGraph(result);
+  // A node a row: one row whichever groups reached it.
+  const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
+  const shown = members.slice(0, cap);
+  const sections = [];
+  for (const [type, rows] of sectionsByType(shown)) {
+    const ids = rows.map((n) => n.id);
+    const entity = (entities || []).find((e) => e && e.type === type) || {};
+    const all = [...defaultColumns(index, ids, entity.keys || []), ...(added.get(type) || [])];
+    // The node's own (no step) once in the centre; the groups' columns are the steps'.
+    const centre = all.filter((c) => !c.steps.length);
+    const columns = all.filter((c) => c.steps.length);
+    const table = tableOf(index, groups, ids, columns);
+    // A type with no column: how each group reached its rows - the last predicate and the steps (lead 5cf5c3401).
+    const how = columns.length ? null : groups.map((g) => viaDepth(index, g));
+    // Each column judged once by its values' JSON type (lead a2eb4a516); a mixed one says so in its head.
+    const kinds = columns.map((_, c) => valueKind(table.flatMap((row) => row.cells[c].flatMap((cell) => cell.values))));
+    const heads = columns.length ? columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`) : ['via', 'depth'];
+    const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
+    const said = rows.map((node, r) => {
+      const row = table[r];
+      const byGroup = groups.map((g, i) => (how
+        ? (!g.inside.has(node.id) ? [{ text: MISSING, missing: true }, { text: MISSING, missing: true }]
+          // Reached, by the answer, along edges it did not bring: how is not known here.
+          : (how[i].has(node.id)
+            ? [{ text: how[i].get(node.id).via || STARTED }, { text: String(how[i].get(node.id).depth), numeric: true }]
+            : [{ text: EMPTY }, { text: EMPTY }]))
+        : row.cells.map((byCol, c) => cellWords(byCol[i], kinds[c]))));
+      return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup,
+        centre: centre.map((c) => cellWords(cellOf(index, new Set([node.id]), node.id, c), 'string')),
+        deltas: deltas.map((c) => ({ text: deltaWords(row.deltas[c]), numeric: true })) };
+    });
     sections.push({
       type,
       heading: sectionHeading(type, rows.length),
-      columns: all,
-      groups: sides.map((side) => ({ sign: side.sign, starts: side.starts, span: per.length,
-        count: rows.filter((n) => side.inside.has(n.id)).length })),
-      rows: rows.map((node) => ({
-        id: node.id,
-        cells: all.map((column) => {
-          if (!column.side) return cellOf(column, node, byNode);
-          const side = sides.find((s) => s.sign === column.side);
-          if (!side.inside.has(node.id)) return { text: MISSING, kind: column.kind, numeric: false, missing: true };
-          return column.kind === 'reached' ? { text: REACHED, kind: column.kind, numeric: false } : cellOf(column, node, side.read);
-        }),
-      })),
+      groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
+      heads,
+      centreHeads: centre.map((c) => c.words.join(' · ')),
+      deltaHeads: deltas.map((c) => (deltas.length > 1 ? `${DELTA} ${heads[c]}` : DELTA)),
+      rows: said,
+      columns,
     });
   }
-  // 🔴 「안 그린 수」는 «답»입니다. 0 이면 그 줄이 없어야 하고, 0 을 그리면 운영자가
-  //    「상한에 걸렸다」로 읽습니다.
-  return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length),
-    sides: sides && sides.map((side) => ({ sign: side.sign, starts: side.starts })), unsplit: negative.length > 0 && !reach };
+  return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length), groups, unsplit: false, index };
 }
 
-/**
- * Per node, how many starts of each sign reached it - the answer's propagation.ranked[].reach, [from +, from −]
- * (lead 55f854fc5 ②: the one seat that reads it). The starts themselves are not ranked. null when the answer ranks
- * nothing.
- */
-export function reachBySign(result) {
-  const ranked = result && result.propagation && result.propagation.ranked;
-  if (!Array.isArray(ranked)) return null;
-  return new Map(ranked.map((row) => [row.id, { '+': Number((row.reach || [])[0]) || 0, '−': Number((row.reach || [])[1]) || 0 }]));
-}
+// ⚰️ reachBySign retired 10-10 (lead 5cf5c3401): the reach is read in one seat, reach_table.groupsOf - a group a start
+//    sign, k of them, not a pair named here.

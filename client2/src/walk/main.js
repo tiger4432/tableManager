@@ -35,6 +35,8 @@ import {
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
 import { walkTableView, nextRoutes } from './table_view.js';
+// «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
+import { routesFrom, valuesAt } from './reach_table.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
@@ -45,6 +47,8 @@ import { StartBaskets, BASKET_WORDS } from './start_baskets.js';
 import { NodeSearch, SEARCH_LIMIT } from './node_search.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
+// Copy id (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
+import { writeClipboardRich } from '../clipboard_write.js';
 import { entitySeedId } from '../rnd_board/api.js';
 import { markingIntent } from '../rnd_board/panel.js';
 // The words other screens already draw for the same facts, spelled once.
@@ -103,6 +107,10 @@ export function boot(doc, host, deps) {
     // What the shown result was asked with - the form can change after the walk.
     asked: null,
     view: 'table',
+    // Which rows the side by side table shows (lead 5cf5c3401): all, those the groups differ on, those one missed.
+    rowFilter: 'all',
+    // «+ Column»: the columns added a type, for this page; the type whose picker is open and the route it holds.
+    added: new Map(), picking: '', pickedRoute: -1,
     // Which loop chips are on, per route row (`routeKey`). Off unless pressed (lead 5d5b8d750).
     loopsOn: new Map(),
     // The table's steps after the form's walk, each from the rows checked along one edge (lead 53050a4ec), and
@@ -486,12 +494,172 @@ export function boot(doc, host, deps) {
    */
   function renderTable(box, r, starts) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
-    const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts);
+    const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts, state.added);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
+    if (view.groups) box.append(rowFilterBar());
     renderSections(box, view);
   }
 
-  /** The table's sections and what it did not draw; side by side, a group head per sign above its columns. */
+  /** All rows · Differs · Missing (lead 5cf5c3401): which rows of the side by side table are drawn. */
+  function rowFilterBar() {
+    const bar = el(doc, 'div', 'wk-rowfilter');
+    bar.setAttribute('role', 'group');
+    for (const [value, word] of [['all', 'All rows'], ['differs', 'Differs'], ['missing', 'Missing']]) {
+      const b = el(doc, 'button', 'wk-view' + (state.rowFilter === value ? ' is-on' : ''), word);
+      b.type = 'button';
+      b.setAttribute('data-rows', value);
+      b.setAttribute('aria-pressed', String(state.rowFilter === value));
+      b.addEventListener('click', () => { state.rowFilter = value; render(); });
+      bar.append(b);
+    }
+    return bar;
+  }
+
+  /** A row's check, as the board marks (Shift: a control). */
+  function checkCell(tr, checks, id) {
+    const td = el(doc, 'td', 'wk-check');
+    const cb = el(doc, 'input');
+    cb.type = 'checkbox';
+    cb.setAttribute('data-row', id);
+    const sign = markings.signOf(checks, id);
+    cb.checked = sign !== SIGN.ABSENT;
+    if (sign === SIGN.CONTROL) tr.className = 'is-control';
+    // A click, for its Shift: a checked row is a control with it, as the board marks (lead 10-09).
+    cb.addEventListener('click', (event) => { markings.toggle(checks, id, markingIntent(event).sign); render(); });
+    td.append(cb);
+    tr.append(td);
+  }
+
+  /**
+   * The formula's section (lead 5cf5c3401): with two groups the + columns reversed on the left, the node in the centre,
+   * the − columns on the right, then Δ; with any other count the node first, then each group's columns.
+   */
+  function formulaTable(section, checks) {
+    const pair = section.groups.length === 2;
+    const n = section.heads.length;
+    const table = el(doc, 'table', 'wk-table wk-sides');
+    const thead = el(doc, 'thead');
+    const band = el(doc, 'tr');
+    const head = el(doc, 'tr');
+    if (checks) { band.append(el(doc, 'th', 'wk-check')); head.append(el(doc, 'th', 'wk-check')); }
+    const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
+    const side = (g, i) => {
+      const th = el(doc, 'th', 'wk-sidehead' + (g.sign === '−' ? ' is-control' : ''),
+        `${word(g.sign)} · ${unitText(g.starts, 'start')} · ${unitText(g.count, 'row')}`);
+      th.colSpan = n;
+      th.setAttribute('data-sign', g.sign);
+      band.append(th);
+      const heads = pair && i === 0 ? [...section.heads].reverse() : section.heads;
+      for (const h of heads) head.append(el(doc, 'th', g.sign === '−' ? 'wk-minus' : 'wk-plus', h));
+    };
+    // The node's own columns in the centre (keys, attributes); a type with none says its name there.
+    const own = section.centreHeads.length ? section.centreHeads : [section.type];
+    const centre = () => {
+      const th = el(doc, 'th', 'wk-ownhead wk-centre');
+      th.colSpan = own.length;
+      band.append(th);
+      for (const h of own) head.append(el(doc, 'th', 'wk-centre', h));
+    };
+    if (pair) { side(section.groups[0], 0); centre(); side(section.groups[1], 1); } else { centre(); section.groups.forEach(side); }
+    if (section.deltaHeads.length) {
+      const th = el(doc, 'th', 'wk-ownhead');
+      th.colSpan = section.deltaHeads.length;
+      band.append(th);
+      for (const h of section.deltaHeads) head.append(el(doc, 'th', 'wk-num', h));
+    }
+    thead.append(band, head);
+    table.append(thead);
+    const tbody = el(doc, 'tbody');
+    const td = (cell, cls) => el(doc, 'td', cell.missing ? `wk-missing ${cls}` : `${cell.numeric ? 'wk-num ' : ''}${cls}`, cell.text);
+    const rows = section.rows.filter((row) => state.rowFilter === 'all' || (state.rowFilter === 'differs' ? row.differs : row.missing));
+    for (const row of rows) {
+      const tr = el(doc, 'tr');
+      tr.setAttribute('data-row-id', row.id);
+      if (checks) checkCell(tr, checks, row.id);
+      const cells = (i) => (pair && i === 0 ? [...row.byGroup[i]].reverse() : row.byGroup[i]);
+      const node = () => {
+        const cells = row.centre.length ? row.centre : [{ text: row.label }];
+        cells.forEach((cell, i) => {
+          const c = el(doc, 'td', 'wk-centre');
+          c.append(el(doc, 'span', 'wk-centrelabel', cell.text));
+          // The id is picked, not read (lead 5cf5c3401): behind a press on the first centre cell.
+          if (i === 0) {
+            const copy = el(doc, 'button', 'wk-copyid', 'Copy id');
+            copy.type = 'button';
+            copy.setAttribute('data-id', row.id);
+            copy.addEventListener('click', () => { if (writeClipboardRich('', row.id)) copy.textContent = 'Copied'; });
+            c.append(copy);
+          }
+          tr.append(c);
+        });
+      };
+      const group = (i) => { for (const cell of cells(i)) tr.append(td(cell, section.groups[i].sign === '−' ? 'wk-minus' : 'wk-plus')); };
+      if (pair) { group(0); node(); group(1); } else { node(); section.groups.forEach((_, i) => group(i)); }
+      for (const d of row.deltas) tr.append(td(d, 'wk-delta'));
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    return table;
+  }
+
+  /** «+ Column» (lead 5cf5c3401 answer 2): a route the rows take in this walk, then what its end holds; × takes one out. */
+  function columnPicker(section, index) {
+    const box = el(doc, 'div', 'wk-addcol');
+    const added = state.added.get(section.type) || [];
+    added.forEach((column, i) => {
+      const chip = el(doc, 'button', 'wk-chip', `${column.words.join(' · ')} ×`);
+      chip.type = 'button';
+      chip.setAttribute('aria-label', `Remove ${column.words.join(' · ')}`);
+      chip.addEventListener('click', () => { added.splice(i, 1); render(); });
+      box.append(chip);
+    });
+    if (state.picking !== section.type) {
+      const open = el(doc, 'button', 'wk-add', '+ Column');
+      open.type = 'button';
+      open.addEventListener('click', () => { state.picking = section.type; state.pickedRoute = -1; render(); });
+      box.append(open);
+      return box;
+    }
+    const ids = section.rows.map((row) => row.id);
+    const routes = routesFrom(index, ids);
+    const route = routes[state.pickedRoute] || null;
+    const ways = el(doc, 'select', 'wk-select');
+    ways.append(el(doc, 'option', '', routes.length ? 'Route' : 'No route from these rows'));
+    routes.forEach((r, i) => {
+      const o = el(doc, 'option', '', `${r.words.join(' · ')} → ${r.to.join(' · ')}`);
+      o.value = String(i);
+      if (i === state.pickedRoute) o.selected = true;
+      ways.append(o);
+    });
+    ways.addEventListener('change', () => { state.pickedRoute = ways.value === '' ? -1 : Number(ways.value); render(); });
+    box.append(ways);
+    if (route) {
+      const what = el(doc, 'select', 'wk-select');
+      what.append(el(doc, 'option', '', 'Value'));
+      valuesAt(index, ids, route.steps).forEach((v, i) => {
+        const o = el(doc, 'option', '', v.on === 'edge' ? `edge · ${v.name}` : v.on === 'key' ? `key · ${v.name}` : v.name);
+        o.value = String(i);
+        what.append(o);
+      });
+      what.addEventListener('change', () => {
+        const v = valuesAt(index, ids, route.steps)[Number(what.value)];
+        if (!v) return;
+        if (!state.added.has(section.type)) state.added.set(section.type, []);
+        state.added.get(section.type).push({ steps: route.steps, value: { on: v.on, name: v.name },
+          words: [`${route.words.join(' · ')} → ${route.to.join(' · ')}`, v.name] });
+        state.picking = '';
+        render();
+      });
+      box.append(what);
+    }
+    const cancel = el(doc, 'button', 'wk-add', 'Cancel');
+    cancel.type = 'button';
+    cancel.addEventListener('click', () => { state.picking = ''; render(); });
+    box.append(cancel);
+    return box;
+  }
+
+  /** The table's sections and what it did not draw. */
   function renderSections(box, view) {
     const at = state.at;
     const checks = checksOf(at);
@@ -500,30 +668,14 @@ export function boot(doc, host, deps) {
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));
       // Next above its table, once (lead 3375edd9b).
       if (checks) sec.append(nextRow(at, section, checks));
+      if (section.groups) {
+        sec.append(columnPicker(section, view.index), formulaTable(section, checks));
+        box.append(sec);
+        continue;
+      }
 
       const table = el(doc, 'table', 'wk-table');
       const thead = el(doc, 'thead');
-      if (section.groups) {
-        // The sign bands, run by run over the columns: a side's run under its basket's word and its row count, the
-        // node's own columns under a blank head.
-        const gr = el(doc, 'tr');
-        if (checks) gr.append(el(doc, 'th', 'wk-check'));
-        for (let i = 0; i < section.columns.length;) {
-          const sign = section.columns[i].side;
-          let end = i;
-          while (end < section.columns.length && section.columns[end].side === sign) end += 1;
-          const group = sign && section.groups.find((g) => g.sign === sign);
-          const th = group
-            ? el(doc, 'th', 'wk-sidehead' + (sign === '−' ? ' is-control' : ''),
-              `${sign === '−' ? BASKET_WORDS.negative : BASKET_WORDS.positive} · ${unitText(group.count, 'node')}`)
-            : el(doc, 'th', 'wk-ownhead');
-          if (group) th.setAttribute('data-sign', sign);
-          th.colSpan = end - i;
-          gr.append(th);
-          i = end;
-        }
-        thead.append(gr);
-      }
       const hr = el(doc, 'tr');
       if (checks) hr.append(el(doc, 'th', 'wk-check'));
       for (const column of section.columns) hr.append(el(doc, 'th', '', column.name));
@@ -533,21 +685,9 @@ export function boot(doc, host, deps) {
       const tbody = el(doc, 'tbody');
       for (const row of section.rows) {
         const tr = el(doc, 'tr');
-        if (checks) {
-          const td = el(doc, 'td', 'wk-check');
-          const cb = el(doc, 'input');
-          cb.type = 'checkbox';
-          cb.setAttribute('data-row', row.id);
-          const sign = markings.signOf(checks, row.id);
-          cb.checked = sign !== SIGN.ABSENT;
-          if (sign === SIGN.CONTROL) tr.className = 'is-control';
-          // A click, for its Shift: a checked row is a control with it, as the board marks (lead 10-09).
-          cb.addEventListener('click', (event) => { markings.toggle(checks, row.id, markingIntent(event).sign); render(); });
-          td.append(cb);
-          tr.append(td);
-        }
+        if (checks) checkCell(tr, checks, row.id);
         for (const cell of row.cells) {
-          const td = el(doc, 'td', cell.missing ? 'wk-missing' : (cell.numeric ? 'wk-num' : ''), cell.text);
+          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);
           // The id is picked, not read (styles.js .wk-id): cut on purpose.
           if (cell.kind === 'id') { td.className = 'wk-id'; td.setAttribute('data-clip-ok', ''); }
           tr.append(td);

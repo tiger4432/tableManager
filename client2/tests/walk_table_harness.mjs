@@ -107,6 +107,8 @@ const SIGNED = {
     { id: 'd:4', reach: [2, 0] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
+const GATE_IN = 'inspected (in) · gate';
+const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
 
 let ran = 0;
 const NAMES = [];
@@ -457,7 +459,7 @@ async function suite(mod) {
           === JSON.stringify([SAME._start.id, ...outSide, ...inSide].sort()),
       `${sameAsked.length} ${sameRows.length} out ${outSide.size} in ${inSide.size}`);
   }
-  // ── the page: side by side when the walk had a - start (lead 3375edd9b) ──
+  // ── the page: side by side when the walk had a - start (lead 5cf5c3401, the mockup) ──
   {
     const doc = makeDoc();
     const host = doc.createElement('div');
@@ -468,21 +470,66 @@ async function suite(mod) {
     handle.state.run = 'done';
     handle.state.result = SIGNED;
     handle.render();
-    const heads = walkAll(host).filter((e) => /^wk-sidehead( is-control)?$/.test(e.className || '')).map((e) => e.textContent);
-    const missing = walkAll(host).filter((e) => e.className === 'wk-missing').length;
+    const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
+    const heads = walkAll(host).filter((e) => has(e, 'wk-sidehead')).map((e) => e.textContent);
+    const missing = walkAll(host).filter((e) => e.tagName === 'td' && has(e, 'wk-missing')).length;
     const secs = walkAll(host).filter((e) => e.className === 'wk-sec');
     const nextFirst = secs.length > 0 && secs.every((sec) => {
       const next = sec.children.findIndex((c) => c.className === 'wk-next');
-      return next >= 0 && next < sec.children.findIndex((c) => c.className === 'wk-table');
+      return next >= 0 && next < sec.children.findIndex((c) => has(c, 'wk-table'));
     });
-    ok('Z9 the page: a table a type, a band per sign in the baskets\' words with its rows, missing in red, Next above',
-      JSON.stringify(heads) === JSON.stringify(['Positive · 2 nodes', 'Negative · 1 node', 'Positive · 3 nodes', 'Negative · 2 nodes'])
-        && missing === 6 && nextFirst,
+    ok('Z9 the page: a table a type, a band a group with its starts and rows, missing in red, Next above',
+      JSON.stringify(heads) === JSON.stringify(['Positive · 2 starts · 2 rows', 'Negative · 1 start · 1 row',
+        'Positive · 2 starts · 3 rows', 'Negative · 1 start · 2 rows']) && missing === 6 && nextFirst,
       `${JSON.stringify(heads)} ${missing} ${nextFirst}`);
     const views = walkAll(host).filter((e) => e.attrs && e.attrs['data-view']).map((e) => e.attrs['data-view']);
     const compared = walkAll(host).filter((e) => /(^| )cmp-/.test(e.className || '')).length;
     ok('Z10 no way to Compare: the views are Table and Graph, nothing of it drawn',
       views.join() === 'table,graph' && compared === 0, `${views} ${compared}`);
+    const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec')
+      .find((sec) => sec.children[0] && /^die/.test(sec.children[0].textContent)) || { children: [] };
+    const table = () => walkAll(dieSec()).find((e) => has(e, 'wk-sides')) || { children: [] };
+    const headRow = () => (walkAll(table()).filter((e) => e.tagName === 'tr')[1] || { children: [] }).children
+      .filter((c) => c.className !== 'wk-check').map((c) => c.textContent);
+    const rowOf = (id) => walkAll(table()).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id);
+    const tds = (id) => ((rowOf(id) || { children: [] }).children).filter((c) => c.className !== 'wk-check')
+      .map((c) => (c.children.find((k) => k.className === 'wk-centrelabel') || c).textContent);
+    ok('Z13 two groups: the + columns, the node in the centre, the − columns, then delta',
+      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([[GATE_IN, 'mat_id', GATE_IN, 'Δ'], ['7', 'M-3', '9', '−2']]),
+      JSON.stringify([headRow(), tds('d:3')]));
+    const copy = walkAll(rowOf('d:3') || { children: [] }).find((e) => e.className === 'wk-copyid');
+    ok('Z16 the id is behind a press in the centre, not a column', Boolean(copy) && copy.attrs['data-id'] === 'd:3'
+      && !headRow().includes('id'), JSON.stringify(headRow()));
+    const press = (value) => {
+      const b = walkAll(host).find((e) => e.attrs && e.attrs['data-rows'] === value);
+      for (const fn of (b && b.listeners.click) || []) fn({});
+    };
+    const shown = () => walkAll(host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']).sort().join();
+    press('differs');
+    const differs = shown();
+    press('missing');
+    const missed = shown();
+    press('all');
+    ok('Z14 All rows · Differs · Missing: the rows the groups differ on, the rows one missed, then every row',
+      JSON.stringify([differs, missed, shown()]) === JSON.stringify([ALL, 'd:1,d:2,d:4,s:a,s:b,s:c', ALL]), JSON.stringify([differs, missed]));
+    // + Column on the die section: the route in, then the far wafer's key - a column each group, + reversed.
+    const addOn = walkAll(dieSec()).find((e) => e.tagName === 'button' && e.textContent === '+ Column');
+    for (const fn of (addOn && addOn.listeners.click) || []) fn({});
+    const pick = (n, test) => {
+      const sel = walkAll(dieSec()).filter((e) => e.tagName === 'select')[n];
+      const opt = sel && sel.children.find((o) => test(o.textContent));
+      if (!opt) return false;
+      sel.value = opt.value;
+      for (const fn of sel.listeners.change || []) fn({});
+      return true;
+    };
+    const route = pick(0, (t) => t.startsWith('inspected (in) → '));
+    const value = route && pick(1, (t) => t === 'key · wafer');
+    const ADDED = 'inspected (in) → wafer@1 · wafer';
+    ok('Z15 + Column: a route the rows take, then what its end holds - a column each group, the + side reversed',
+      JSON.stringify([route, value, headRow(), tds('d:3')]) === JSON.stringify([true, true,
+        [ADDED, GATE_IN, 'mat_id', GATE_IN, ADDED, 'Δ'], ['A', '7', 'M-3', '9', 'B', '−2']]),
+      JSON.stringify([route, value, headRow(), tds('d:3')]));
   }
 }
 
@@ -517,54 +564,67 @@ const qualifierSuite = (TV) => {
 };
 // The suite's own count: a mutant of main.js runs the suite alone, so its shrink is measured against this.
 const suiteRan = ran;
-// ── the walk table side by side (lead 3375edd9b; the signs by the server's reach, lead 55f854fc5 ②) ──
+// ── the walk table side by side as the formula (lead 5cf5c3401; the signs by the server's reach) ──
 const rowIds = (table) => table.sections.flatMap((sec) => sec.rows.map((r) => r.id)).sort().join(',');
-const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
-const GATE = 'inspected · gate';
 const sideSuite = (TV) => {
-  const view = (starts, result = SIGNED) => TV.walkTableView(result, DECL.entities, DECL.predicates, undefined, starts);
-  const cell = (table, type, id, key, side) => {
+  const view = (starts, result = SIGNED, added) => TV.walkTableView(result, DECL.entities, DECL.predicates, undefined, starts, added);
+  // A row's cell in one group under one head, as drawn: missing in brackets.
+  const cell = (table, type, id, head, group) => {
     const sec = table.sections.find((x) => x.type === type);
-    const at = sec ? sec.columns.findIndex((c) => (c.key === key || c.kind === key) && c.side === side) : -1;
+    const at = sec ? sec.heads.indexOf(head) : -1;
     const row = sec && sec.rows.find((r) => r.id === id);
-    const got = row && at >= 0 ? row.cells[at] : null;
+    const got = row && at >= 0 ? row.byGroup[group][at] : null;
     return got ? (got.missing ? `[${got.text}]` : got.text) : null;
   };
   const plain = view({ positive: ['s:a', 's:c'], negative: [] });
-  ok('Z1 no - start: the one table it always was, every node in it, no side', plain.sides === null
-    && plain.sections.every((x) => x.groups === null) && rowIds(plain) === ALL, `${JSON.stringify(plain.sides)} ${rowIds(plain)}`);
-  ok('Z11 an edge attribute\'s column is its predicate\'s and its name\'s',
-    plain.sections.some((x) => x.columns.some((c) => c.kind === 'qualifier' && c.name === GATE)),
-    plain.sections.flatMap((x) => x.columns.map((c) => c.name)).join(','));
+  ok('Z1 no - start: the one table it always was, every node in it, no group', plain.groups === null
+    && plain.sections.every((x) => !x.groups) && rowIds(plain) === ALL, `${JSON.stringify(plain.groups)} ${rowIds(plain)}`);
   const two = view(SIGNED_STARTS);
-  ok('Z2 a node a row: one row whichever sides reached it', rowIds(two) === ALL
+  ok('Z2 a node a row: one row whichever groups reached it', rowIds(two) === ALL
     && two.sections.every((x) => new Set(x.rows.map((r) => r.id)).size === x.rows.length), rowIds(two));
-  ok('Z3 reached on one side only: the other side says missing',
-    cell(two, 'die@1', 'd:1', GATE, '−') === '[missing]' && cell(two, 'die@1', 'd:2', GATE, '+') === '[missing]',
-    `${cell(two, 'die@1', 'd:1', GATE, '−')} | ${cell(two, 'die@1', 'd:2', GATE, '+')}`);
-  ok('Z4 reached but no value is blank, not missing',
-    cell(two, 'die@1', 'd:1', GATE, '+') === '' && cell(two, 'die@1', 'd:2', GATE, '−') === '',
-    `${cell(two, 'die@1', 'd:1', GATE, '+')} | ${cell(two, 'die@1', 'd:2', GATE, '−')}`);
-  ok('Z5 a cell reads its side\'s edges only: the node both reached says each side\'s own value',
-    cell(two, 'die@1', 'd:3', GATE, '+') === '7' && cell(two, 'die@1', 'd:3', GATE, '−') === '9',
-    `${cell(two, 'die@1', 'd:3', GATE, '+')} | ${cell(two, 'die@1', 'd:3', GATE, '−')}`);
-  ok('Z6 several edges on one side: every value and whose', cell(two, 'die@1', 'd:4', GATE, '+') === '2 edges · 1 (A) · 2 (C)',
-    cell(two, 'die@1', 'd:4', GATE, '+'));
+  ok('Z3 reached by one group only: the other says missing',
+    cell(two, 'die@1', 'd:1', GATE_IN, 1) === '[missing]' && cell(two, 'die@1', 'd:2', GATE_IN, 0) === '[missing]',
+    `${cell(two, 'die@1', 'd:1', GATE_IN, 1)} | ${cell(two, 'die@1', 'd:2', GATE_IN, 0)}`);
+  ok('Z4 reached but no value says so, not missing',
+    cell(two, 'die@1', 'd:1', GATE_IN, 0) === TV.EMPTY && cell(two, 'die@1', 'd:2', GATE_IN, 1) === TV.EMPTY,
+    `${cell(two, 'die@1', 'd:1', GATE_IN, 0)} | ${cell(two, 'die@1', 'd:2', GATE_IN, 1)}`);
+  ok('Z5 a cell reads its group\'s edges only: the node both reached says each group\'s own value',
+    cell(two, 'die@1', 'd:3', GATE_IN, 0) === '7' && cell(two, 'die@1', 'd:3', GATE_IN, 1) === '9',
+    `${cell(two, 'die@1', 'd:3', GATE_IN, 0)} | ${cell(two, 'die@1', 'd:3', GATE_IN, 1)}`);
+  ok('Z6 several edges in one group: every value, none overwritten', cell(two, 'die@1', 'd:4', GATE_IN, 0) === '2 values · 1 · 2',
+    cell(two, 'die@1', 'd:4', GATE_IN, 0));
   const blind = view(SIGNED_STARTS, { ...SIGNED, propagation: null });
-  ok('Z7 an answer that ranks nothing: one table, said to be both signs', blind.sides === null && blind.unsplit === true
-    && rowIds(blind) === ALL, `${JSON.stringify(blind.sides)} ${blind.unsplit}`);
-  const wafer = two.sections.find((x) => x.type === 'wafer@1') || { groups: [] };
-  ok('Z8 a band per sign with its starts and its rows; a type with no edge column gets one Reached cell a side',
-    JSON.stringify((wafer.groups || []).map((g) => [g.sign, g.starts, g.span, g.count]))
-      === JSON.stringify([['+', ['s:a', 's:c'], 1, 2], ['−', ['s:b'], 1, 1]])
-      && cell(two, 'wafer@1', 's:c', 'reached', '+') === 'reached' && cell(two, 'wafer@1', 's:c', 'reached', '−') === '[missing]'
-      && cell(two, 'wafer@1', 's:b', 'reached', '+') === '[missing]',
-    `${JSON.stringify(wafer.groups)} ${cell(two, 'wafer@1', 's:c', 'reached', '+')}`);
-  const die = two.sections.find((x) => x.type === 'die@1') || { columns: [] };
-  const order = die.columns.map((c) => (c.side ? c.side : c.kind));
-  ok('Z12 the id after both sides: the node\'s own columns, the + run, the − run, then the id',
-    order.filter((k) => k === 'id').length === 1 && order[order.length - 1] === 'id' && order.indexOf('+') > order.indexOf('label') && order.lastIndexOf('+') < order.indexOf('−'),
-    order.join(','));
+  ok('Z7 an answer that ranks nothing: one table, said to be both signs', blind.groups === null && blind.unsplit === true
+    && rowIds(blind) === ALL, `${JSON.stringify(blind.groups)} ${blind.unsplit}`);
+  const bare = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map(({ qualifiers, ...e }) => e) });
+  const bareDie = bare.sections.find((x) => x.type === 'die@1') || { heads: [], rows: [] };
+  const d3 = bareDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
+  const d1 = bareDie.rows.find((r) => r.id === 'd:1') || { byGroup: [[], []] };
+  ok('Z8 a type with no column: how each group reached it - its last predicate and steps; missing where it did not',
+    JSON.stringify([bareDie.heads, d3.byGroup.map((g) => g.map((c) => c.text)), d1.byGroup[1].map((c) => c.missing)])
+      === JSON.stringify([['via', 'depth'], [['inspected', '1'], ['inspected', '1']], [true, true]]),
+    JSON.stringify([bareDie.heads, d3.byGroup, d1.byGroup[1]]));
+  const die = two.sections.find((x) => x.type === 'die@1') || { groups: [], heads: [], centreHeads: [], deltaHeads: [], rows: [] };
+  const wafer = two.sections.find((x) => x.type === 'wafer@1') || { heads: [] };
+  ok('Z11 an edge attribute\'s head: its predicate, «(in)» when taken in, and its name',
+    JSON.stringify([die.heads, wafer.heads]) === JSON.stringify([[GATE_IN], ['inspected · gate']]), JSON.stringify([die.heads, wafer.heads]));
+  ok('Z12 delta where both groups say one number: the first less the second; its head once',
+    JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas.map((d) => d.text).join())])
+      === JSON.stringify([[TV.DELTA], ['', '', '−2', '']]), JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas)]));
+  ok('Z17 the node\'s own columns - the keys its rows carry - once in the centre, read off the row',
+    JSON.stringify([die.centreHeads, (die.rows.find((r) => r.id === 'd:3') || { centre: [] }).centre.map((c) => c.text)])
+      === JSON.stringify([['mat_id'], ['M-3']]), JSON.stringify(die.centreHeads));
+  ok('Z20 a band a group: its starts and its rows', JSON.stringify(die.groups) === JSON.stringify([
+    { sign: '+', starts: 2, count: 3 }, { sign: '−', starts: 1, count: 2 }]), JSON.stringify(die.groups));
+  const added = new Map([['die@1', [{ steps: [{ predicate: 'inspected', direction: 'incoming' }], value: { on: 'key', name: 'wafer' },
+    words: ['inspected (in) → wafer@1', 'wafer'] }]]]);
+  const more = view(SIGNED_STARTS, SIGNED, added);
+  ok('Z18 an added column: its route\'s far node, a column of each group',
+    cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 0) === 'A' && cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 1) === 'B',
+    `${cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 0)} ${cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 1)}`);
+  ok('Z19 words: several values past the cap, and a difference without its float tail',
+    JSON.stringify([TV.cellWords({ missing: false, values: [1, 2], more: true }).text, TV.deltaWords(0.22 - 0.3305), TV.deltaWords(19.5)])
+      === JSON.stringify(['2+ values · 1 · 2', '−0.1105', '+19.5']), TV.deltaWords(0.22 - 0.3305));
 };
 qualifierSuite(await import('../src/walk/table_view.js'));
 sideSuite(await import('../src/walk/table_view.js'));
@@ -573,13 +633,20 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
-  { id: 'NZ1', what: 'the page draws no band per sign', catches: 'Z9',
-    from: '      if (section.groups) {', to: '      if (false) {' },
+  { id: 'NZ1', what: 'the page draws no band a group', catches: 'Z9',
+    from: '    thead.append(band, head);', to: '    thead.append(head);' },
   { id: 'NZ2', what: 'the Next row gone from above its table', catches: 'Z9',
     from: '      // Next above its table, once (lead 3375edd9b).\n      if (checks) sec.append(nextRow(at, section, checks));\n', to: '' },
   { id: 'NZ3', what: 'the Compare view back', catches: 'Z10',
     from: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {",
     to: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph'], ['compare', 'Compare']]) {" },
+  { id: 'NZ4', what: 'the + side not reversed', catches: 'Z15',
+    from: '      const heads = pair && i === 0 ? [...section.heads].reverse() : section.heads;', to: '      const heads = section.heads;' },
+  { id: 'NZ5', what: 'the node first, not in the centre', catches: 'Z13',
+    from: '    if (pair) { side(section.groups[0], 0); centre(); side(section.groups[1], 1); } else { centre(); section.groups.forEach(side); }',
+    to: '    { centre(); section.groups.forEach(side); }' },
+  { id: 'NZ6', what: 'the filter draws every row', catches: 'Z14',
+    from: "(state.rowFilter === 'differs' ? row.differs : row.missing)", to: 'true' },
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
   { id: 'M1', what: 'the renderer names its own columns again',
     catches: 'V2 the column labels',
@@ -598,8 +665,8 @@ const MUTANTS = [
     to: '        for (const cell of [...row.cells].reverse()) {' },
   { id: 'M3', what: 'the numeric class is dropped',
     catches: 'V5 the numeric class',
-    from: "          const td = el(doc, 'td', cell.missing ? 'wk-missing' : (cell.numeric ? 'wk-num' : ''), cell.text);",
-    to: "          const td = el(doc, 'td', cell.missing ? 'wk-missing' : '', cell.text);" },
+    from: "          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);",
+    to: "          const td = el(doc, 'td', '', cell.text);" },
   { id: 'M4', what: 'the cap note prints the total instead of what was hidden',
     catches: 'C3 the total is not what is printed',
     from: '      box.append(el(doc, \'div\', \'wk-note\', `${view.hidden} more not drawn`));',
@@ -627,7 +694,7 @@ const MUTANTS = [
   { id: 'SM2', what: 'the table walks the form\'s subject alone, not the starts', catches: 'S1',
     from: '    const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };', to: '    const asked = spec();' },
   { id: 'SM3', what: 'a check takes no sign from Shift', catches: 'S3',
-    from: "markings.toggle(checks, row.id, markingIntent(event).sign); render(); });", to: "markings.toggle(checks, row.id, SIGN.CASE); render(); });" },
+    from: "markings.toggle(checks, id, markingIntent(event).sign); render(); });", to: "markings.toggle(checks, id, SIGN.CASE); render(); });" },
   { id: 'SM4', what: 'Next drops the - rows', catches: 'S4',
     from: 'stepAlong({ positive: seeds.positive, negative: seeds.negative,', to: 'stepAlong({ positive: seeds.positive,' },
   { id: 'NM1', what: 'the Next walks from every row of the section, not the checked ones', catches: 'N2',
@@ -682,30 +749,26 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
-  { id: 'ZM1', what: 'reach read off the other index', catches: 'Z3',
-    from: "{ '+': Number((row.reach || [])[0]) || 0, '−': Number((row.reach || [])[1]) || 0 }",
-    to: "{ '+': Number((row.reach || [])[1]) || 0, '−': Number((row.reach || [])[0]) || 0 }" },
-  { id: 'ZM2', what: 'a node both reached stands on the + side only', catches: 'Z5',
-    from: "own.has(n.id) || (reach.get(n.id) || {})[sign] > 0).map((n) => n.id));",
-    to: "own.has(n.id) || ((reach.get(n.id) || {})[sign] > 0 && !(sign === '−' && (reach.get(n.id) || {})['+'] > 0))).map((n) => n.id));" },
-  { id: 'ZM3', what: 'sides even without a - start', catches: 'Z1 ',
-    from: "  const reach = negative.length ? reachBySign(result) : null;", to: "  const reach = reachBySign(result);" },
-  { id: 'ZM4', what: 'only the first start of a sign stands on its side', catches: 'Z8',
-    from: "    const own = new Set(ids);", to: "    const own = new Set(ids.slice(0, 1));" },
-  { id: 'ZM5', what: 'an answer that ranks nothing still split, its sides holding the starts alone', catches: 'Z7',
-    from: "  if (!Array.isArray(ranked)) return null;", to: "  if (!Array.isArray(ranked)) return new Map();" },
-  { id: 'ZM6', what: 'a side reads every edge of the walk', catches: 'Z5',
-    from: "    const read = qualifiersByNode(edges.filter((e) => inside.has(e.source) && inside.has(e.target)), nodes.filter((n) => inside.has(n.id)));",
-    to: "    const read = byNode;" },
-  { id: 'ZM7', what: 'reached but no value drawn missing', catches: 'Z4',
-    from: "          if (!side.inside.has(node.id)) return", to: "          if (!side.inside.has(node.id) || !side.read.has(node.id)) return" },
-  { id: 'ZM8', what: 'a node drawn once a side', catches: 'Z2',
-    from: "  const members = sides ? nodes.filter((n) => sides.some((side) => side.inside.has(n.id))) : nodes;",
-    to: "  const members = sides ? sides.flatMap((side) => nodes.filter((n) => side.inside.has(n.id))) : nodes;" },
-  { id: 'ZM9', what: 'an edge attribute\'s column by its name alone, predicates mixed', catches: 'Z11',
-    from: "      const key = `${edge.predicate} · ${name}`;", to: "      const key = name;" },
-  { id: 'ZM10', what: 'the id between the node and its sides again', catches: 'Z12',
-    from: "    const all = [...own.filter((column) => column.kind !== 'id'),", to: "    const all = [...own," },
+  { id: 'ZM1', what: 'the rows only those the first group reached', catches: 'Z2',
+    from: '  const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));',
+    to: '  const members = nodes.filter((n) => groups[0].inside.has(n.id));' },
+  { id: 'ZM2', what: 'the node\'s own columns a group\'s, not the centre\'s', catches: 'Z17',
+    from: '    const centre = all.filter((c) => !c.steps.length);\n    const columns = all.filter((c) => c.steps.length);',
+    to: '    const centre = [];\n    const columns = all;' },
+  { id: 'ZM3', what: 'groups even without a - start', catches: 'Z1 ',
+    from: '  const groups = negative.length\n    ? groupsOf(', to: '  const groups = true\n    ? groupsOf(' },
+  { id: 'ZM4', what: 'no delta column', catches: 'Z12',
+    from: '  const deltas = groups.length === 2 ? columns.map', to: '  const deltas = false ? columns.map' },
+  { id: 'ZM5', what: 'reached but no value drawn missing', catches: 'Z4',
+    from: '  if (!values.length) return { text: EMPTY };', to: '  if (!values.length) return { text: MISSING, missing: true };' },
+  { id: 'ZM6', what: 'several values: the first alone', catches: 'Z6',
+    from: '  if (values.length === 1 && !cell.more)', to: '  if (values.length >= 1 && !cell.more)' },
+  { id: 'ZM7', what: 'a type with no column draws no cell a group', catches: 'Z8',
+    from: ": ['via', 'depth'];", to: ": [];" },
+  { id: 'ZM8', what: 'an added column dropped', catches: 'Z18',
+    from: ', ...(added.get(type) || [])];', to: '];' },
+  { id: 'ZM9', what: 'a difference keeps its float tail', catches: 'Z19',
+    from: '  const n = Number(delta.toPrecision(10));', to: '  const n = delta;' },
   { id: 'QM1', what: 'several edges into one node: the last edge\'s value wins again', catches: 'Q1',
     from: "      said[name] = list.length === 1 ? list[0].value\n", to: "      said[name] = list.length >= 1 ? list[list.length - 1].value\n" },
 ];
