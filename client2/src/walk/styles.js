@@ -146,10 +146,6 @@ export const WALK_CSS = `
 /* A control row and a control start: the board's control look (board.css .is-marked-control). */
 .wk-table tr.is-control td { background: var(--bg-inset); }
 .wk-table tr.is-control td.wk-check { box-shadow: inset 2px 0 0 var(--text-muted); }
-/* A sign's zone of the walk table (lead 55f854fc5 ②): its starts named above it; the − zone in the control look. */
-.wk-zone { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); }
-.wk-zonehead { font-weight: 600; overflow-wrap: anywhere; }
-.wk-zone.is-control .wk-zonehead { color: var(--text-muted); }
 /* Start baskets (lead bc63378e5): the start marking as two lists in the page's right panel; a row a start. */
 .wk-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg-surface);
   border-left: 1px solid var(--border); }
@@ -175,6 +171,12 @@ export const WALK_CSS = `
   background: var(--bg-surface); }
 /* 숫자는 «자릿수»로 섭니다 — x·y 가 세로로 안 맞으면 좌표를 못 읽습니다. */
 .wk-table td.wk-num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Side by side (lead 3375edd9b): a band per sign above its columns, the − band in the control look; a side that did
+   not reach the node says missing in red. */
+.wk-table th.wk-sidehead { color: var(--text); border-bottom: 2px solid var(--accent); white-space: normal;
+  overflow-wrap: break-word; }
+.wk-table th.wk-sidehead.is-control { color: var(--text-muted); border-bottom-color: var(--text-muted); }
+.wk-table td.wk-missing { color: var(--danger); }
 /* id 는 길고 «마지막»입니다. 읽는 것이 아니라 «집는» 칸이라 폭을 안 뺏습니다. */
 .wk-table td.wk-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.74rem;
   color: var(--text-dim, #71717a); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
@@ -189,18 +191,11 @@ export const WALK_CSS = `
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-rowlabel { overflow-wrap: anywhere; }
 
-/* Table | Graph | Compare — which view of the walk the page shows (lead c9bf53033, 10-09). */
+/* Table | Graph — which view of the walk the page shows (lead c9bf53033). */
 .wk-views { display: flex; gap: 6.8px; }
 .wk-view { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-view.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-/* Compare: the walk table's own rules (a row one line, the table scrolls inside itself), so a whose is never cut. */
-.cmp-view { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-.cmp-picks { display: flex; flex-flow: row wrap; align-items: flex-end; gap: var(--space-3); }
-.cmp-pick { display: flex; flex-direction: column; gap: var(--space-1); flex: 1 1 12em; min-width: 0; }
-.cmp-go { flex: none; width: auto; padding: 0 var(--space-5); }
-.cmp-heading { font-weight: 600; overflow-wrap: anywhere; }
-.wk-table td.cmp-missing { color: var(--danger); }
 
 /* Subgraph viewer. Corners 0, hairlines, colours from the roles in tokens.css only. A type's colour is a
    palette token (--cat-1..9 in tokens.css, TYPE_COLOURS of them) by its declaration index. A declaration

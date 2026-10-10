@@ -53,6 +53,8 @@ export function isNumericText(text) {
  * 🔴 한 노드에 닿은 변이 여럿이면 «덮어쓰지 않습니다»(총괄 10-09: 마지막 변의 값만 남아 틀린 수를 보였다).
  *    그 이름이 변 하나에서 오면 그 값, 여럿에서 오면 «N edges · 값 (누구의 값) · …» 한 줄입니다.
  *    누구 = 변의 출발 노드의 `label`(응답의 이름).
+ * The key is the predicate's and the qualifier's, «measures · value» (lead 3375edd9b): two predicates' «value» never
+ * share a cell - the table's column head says which edge a value rode on.
  */
 export function qualifiersByNode(edges, nodes = []) {
   const labelOf = new Map((nodes || []).map((n) => [n.id, n.label || n.id]));
@@ -66,8 +68,9 @@ export function qualifiersByNode(edges, nodes = []) {
     const at = got.get(edge.target);
     if (!at) continue;
     for (const [name, value] of Object.entries(quals)) {
-      if (!at.has(name)) at.set(name, []);
-      at.get(name).push({ value, from: labelOf.get(edge.source) || edge.source });
+      const key = `${edge.predicate} · ${name}`;
+      if (!at.has(key)) at.set(key, []);
+      at.get(key).push({ value, from: labelOf.get(edge.source) || edge.source });
     }
   }
   const byNode = new Map();
@@ -98,6 +101,10 @@ export function qualifierNamesOf(nodes, byNode) {
   return names;
 }
 
+/** A side's cell for a node its starts did not reach (lead 3375edd9b), and a side's one cell when a type has no other. */
+export const MISSING = 'missing';
+export const REACHED = 'reached';
+
 /**
  * 걷기 결과 하나 -> 표 «전부». 구획마다 머리·컬럼·행, 그리고 못 그린 수.
  *
@@ -106,59 +113,78 @@ export function qualifierNamesOf(nodes, byNode) {
  * @param {Array} [predicates]                      선언의 술어 목록 (확인 술어를 읽는 자리, C-98)
  * @param {number} [cap]                            행 상한
  * @param {{positive?: string[], negative?: string[]}} [starts]  the walk's signed starts: with a − start the table is
- *        two zones, each the nodes that sign reached (lead 55f854fc5 ②); without, the one table it always was
- * @returns {{sections: Array, shown: number, hidden: number, zones: Array|null, unsplit: boolean}}
+ *        side by side (lead 3375edd9b) - a node a row, a + group and a − group of columns; without, the one table it
+ *        always was
+ * @returns {{sections: Array, shown: number, hidden: number, sides: Array|null, unsplit: boolean}}
  */
 export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null) {
   const nodes = (result && result.nodes) || [];
-  const byNode = qualifiersByNode((result && result.edges) || [], nodes);
+  const edges = (result && result.edges) || [];
+  const byNode = qualifiersByNode(edges, nodes);
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
   const plural = pluralAttributes(result);
   // C-98. 「무엇이 안 보이는 것이 무슨 뜻인가」의 모집단은 «선언»이라, 한 번 읽고 모든 구획이
   // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
   const confirmers = confirmedPredicates(predicates);
-  /** One table of `members`: its sections by type, at most `cap` rows, its cells read off `read`. */
-  const tableOf = (members, read = byNode) => {
-    const shown = members.slice(0, cap);
-    const sections = [];
-    for (const [type, rows] of sectionsByType(shown)) {
-      const columns = tableColumns(
-        entities, type, qualifierNamesOf(rows, read), undefined, confirmers);
-      sections.push({
-        type,
-        heading: sectionHeading(type, rows.length),
-        columns,
-        rows: rows.map((node) => ({
-          id: node.id,
-          // 🔴 머리와 셀이 «같은 배열»을 돕니다. 따로 돌면 그날부터 순서가 갈릴 수 있고,
-          //    갈라져도 오류가 안 납니다 — 값이 옆 칸에 들어갈 뿐입니다.
-          cells: columns.map((column) => {
-            const text = valueText(
-              cellSource(column, node, read.get(node.id) || {}, plural.get(node.type)));
-            return { text, kind: column.kind, numeric: isNumericText(text) };
-          }),
-        })),
-      });
-    }
-    // 🔴 「안 그린 수」는 «답»입니다. 0 이면 그 줄이 없어야 하고, 0 을 그리면 운영자가
-    //    「상한에 걸렸다」로 읽습니다.
-    return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length) };
-  };
   const negative = (starts && starts.negative) || [];
   const reach = negative.length ? reachBySign(result) : null;
-  if (!reach) return { ...tableOf(nodes), zones: null, unsplit: negative.length > 0 };
-  // A zone is its sign's starts and every node they reached; a node reached from both stands in both.
-  const zones = [['+', (starts && starts.positive) || []], ['−', negative]].map(([sign, ids]) => {
+  // A side is its sign's starts and every node they reached. Its cells read the edges walked on it - both ends on it -
+  // so the other sign's edge into a node both reached says its value on the other side.
+  const sides = reach ? [['+', (starts && starts.positive) || []], ['−', negative]].map(([sign, ids]) => {
     const own = new Set(ids);
-    const members = nodes.filter((n) => own.has(n.id) || (reach.get(n.id) || {})[sign] > 0);
-    // Its cells read the edges walked inside it - both ends in the zone - so the other sign's edge into a node both
-    // reached says its value in the other zone, not here.
-    const inside = new Set(members.map((n) => n.id));
-    const read = qualifiersByNode(((result && result.edges) || []).filter((e) => inside.has(e.source) && inside.has(e.target)), members);
-    return { sign, starts: [...ids], ...tableOf(members, read) };
-  });
-  return { sections: [], shown: 0, hidden: 0, zones, unsplit: false };
+    const inside = new Set(nodes.filter((n) => own.has(n.id) || (reach.get(n.id) || {})[sign] > 0).map((n) => n.id));
+    const read = qualifiersByNode(edges.filter((e) => inside.has(e.source) && inside.has(e.target)), nodes.filter((n) => inside.has(n.id)));
+    return { sign, starts: [...ids], inside, read };
+  }) : null;
+  // A node a row: one row whichever sides reached it.
+  const members = sides ? nodes.filter((n) => sides.some((side) => side.inside.has(n.id))) : nodes;
+  const shown = members.slice(0, cap);
+  const cellOf = (column, node, read) => {
+    const text = valueText(cellSource(column, node, read.get(node.id) || {}, plural.get(node.type)));
+    return { text, kind: column.kind, numeric: isNumericText(text) };
+  };
+  const sections = [];
+  for (const [type, rows] of sectionsByType(shown)) {
+    const names = [...new Set((sides ? sides.map((side) => side.read) : [byNode]).flatMap((read) => qualifierNamesOf(rows, read)))];
+    const columns = tableColumns(entities, type, names, undefined, confirmers);
+    if (!sides) {
+      sections.push({ type, heading: sectionHeading(type, rows.length), columns, groups: null,
+        // 🔴 머리와 셀이 «같은 배열»을 돕니다. 따로 돌면 그날부터 순서가 갈릴 수 있고,
+        //    갈라져도 오류가 안 납니다 — 값이 옆 칸에 들어갈 뿐입니다.
+        rows: rows.map((node) => ({ id: node.id, cells: columns.map((column) => cellOf(column, node, byNode)) })) });
+      continue;
+    }
+    // The node's own columns once, then each side's edge and attribute columns; a type with none still gets a cell a side.
+    const sideKinds = new Set(['qualifier', 'attribute']);
+    const each = columns.filter((column) => sideKinds.has(column.kind));
+    const per = each.length ? each : [{ name: 'Reached', kind: 'reached' }];
+    // The id is picked, not read: after both sides, as it is last in the one table - not between the node and its sides.
+    const own = columns.filter((column) => !sideKinds.has(column.kind));
+    const all = [...own.filter((column) => column.kind !== 'id'),
+      ...sides.flatMap((side) => per.map((column) => ({ ...column, side: side.sign }))),
+      ...own.filter((column) => column.kind === 'id')];
+    sections.push({
+      type,
+      heading: sectionHeading(type, rows.length),
+      columns: all,
+      groups: sides.map((side) => ({ sign: side.sign, starts: side.starts, span: per.length,
+        count: rows.filter((n) => side.inside.has(n.id)).length })),
+      rows: rows.map((node) => ({
+        id: node.id,
+        cells: all.map((column) => {
+          if (!column.side) return cellOf(column, node, byNode);
+          const side = sides.find((s) => s.sign === column.side);
+          if (!side.inside.has(node.id)) return { text: MISSING, kind: column.kind, numeric: false, missing: true };
+          return column.kind === 'reached' ? { text: REACHED, kind: column.kind, numeric: false } : cellOf(column, node, side.read);
+        }),
+      })),
+    });
+  }
+  // 🔴 「안 그린 수」는 «답»입니다. 0 이면 그 줄이 없어야 하고, 0 을 그리면 운영자가
+  //    「상한에 걸렸다」로 읽습니다.
+  return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length),
+    sides: sides && sides.map((side) => ({ sign: side.sign, starts: side.starts })), unsplit: negative.length > 0 && !reach };
 }
 
 /**
