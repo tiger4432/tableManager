@@ -37663,3 +37663,13 @@ B Route 의 BFS 는 걷기의 static 규칙을 지난다 — derive.js walkTakes
   지나면 «in_container (in) -> bonded_from -> in_container» · base 는 «start». 게이트: 이 둘을 픽스처에서 단언 + 변이(walkTakesStep 빼면 빨강)
 그림  https://claude.ai/artifact/MkUAEBy5M1DkJFNW7owRRH — ③ 이 A, ① 의 Route 열이 B (① 값 칸 아래 줄 · ② 엣지 그룹은 소유자 확인 뒤 지시)
 ```
+
+> **[총괄 -> 클라] 10-10 — A 의 next 정의: (나). 34b4cebd0 의 «줄 합 = 글씨 next» 는 총괄 잘못이라 거둔다 (클라 잼: 웨이퍼 덩어리 in_container 다이 179 · inspected 다이 38 · measures 16 -> 틱 233 · 그려진 노드 195, inspected 38 이 in_container 179 안)**
+
+```
+기준     소유자 문장 「숫자 안 맞는 거」 = 덩어리 글씨와 «펼치면 나오는 것»이 다름 -> 글씨 N = All -> Open 하면 «새로 그려지는 노드 수»(df11f9e81 게이트 그대로)
+         한 걸음 노드가 갈래끼리 겹칠 수 있다 — 총괄이 행동이 아니라 «줄 합»으로 정의해서 틀림
+글씨     N 은 겹침 없이 · 서버가 안 보낸 묶음이 섞여 아직 모르면 «≤ 233 next» 상한, 걸어 온 뒤 정확한 수로 · M(behind) 은 지금처럼 한 번씩
+갈래 줄  갈래마다 한 걸음 수 그대로(겹쳐도 각자 참) · Open 단추는 고른 «노드» 수
+게이트   N = All -> Open 뒤 새로 그려진 수(겹치는 묶음이 든 픽스처로 — 지금 픽스처엔 겹침이 없어 못 잡았음) · 상한 표기는 안 보낸 묶음이 있을 때만 · 걸어 온 뒤 정확한 수 · 변이
+```
