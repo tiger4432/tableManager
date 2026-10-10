@@ -1,3 +1,13 @@
+> ## [04:02 디자인] G — 한 스텝에서 갈래 둘 (스텝이 나무) 착지 ae931b34a (총괄 5ea461e04)
+
+- **무엇** — Next 엣지 A, 같은 스텝에서 엣지 B 를 누르면 갈래 둘이 나란히 남습니다. 같은 엣지를 다시 누르면 그 갈래와 아래만 다시 걷고 그 마킹들만 지움. 탭은 고른 갈래의 층마다 한 줄(형제 포함) + 갈래 끝 아래 줄. 다른 갈래 탭을 누르면 그 갈래를 고름.
+- **그래프** — 사슬이 고른 갈래의 마킹들. 그래프 화면을 열면 시작부터 그 갈래의 체크를 따라 다시 그림 — show({ keep: true }) 로만 마크를 지키고, 같은 시작을 새로 걸면 마크를 지우는 판정(Y6, 10-07)은 그대로.
+- **박스에서 본 것** — 그래프는 갈래의 걸은 스텝까지 그리고(시작 + 한 걸음, 답 둘), 갈래 끝의 체크는 마크(Mark 가 쓰는 마킹)로 보입니다. 같은 스텝에서 나온 두 갈래는 걸은 마킹이 같아 노드 그림은 같고(die 20 · quantity 16 · wafer 1), 마크만 갈립니다 — B 는 체크한 clamp_kN 에 마크, A 는 체크한 die 가 그림에 없어(179 중 20 만 그려짐) 마크가 안 보임. 그래프는 제 마킹을 술어 전부로 걷기 때문에 표의 갈래 길(in_container · measures)과 그림이 갈리지 않습니다. 이게 의도와 맞는지는 물음으로 올립니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-4Cc4XmaN.js, 2481x1273): SYN-BW-103-11 in +, Walk, a wafer row checked, Next in_container → die, Step 1 again, Next measures → quantity: tabs Step 1 · + 1 * / Step 2 · in_container → die | Step 2 · measures → quantity * @; A's tab: 179 die rows; a row checked on each branch, the graph on A: die 20, quantity 16, wafer 1, marked none drawn (its die folded); on B: die 20, quantity 16, wafer 1, marked quantity clamp_kN (the branch's end's checks, its Mark's marking; each branch the start and one step on, 2 and 2 answers); Step 1, A again: tabs Step 1 · + 1 * / Step 2 · in_container → die * @ | Step 2 · measures → quantity. Writes 0.
+- **게이트** — walk_table 150 with --mutate --control (GB1 two edges from one step both stay; GB2 a tab off the branch chooses it - its table, the graph's chain; GB3 the same edge again drops only its subtree, B's checks stay; GM1 siblings walked over, GM2 the chain every step, GM3 every branch again, GM4 a tab not choosing; CH1 CH2 N5 N6 on the tree, NM4 NM5 NM6 re-aimed); subgraph_view 386 (Y7 keep, Y7m; Y6 holds); screen gate 249 with --mutate; start_baskets 24, walk_worlds 18, walk_layout 34, node_search 45, trend 31, walk_wire 95.
+
+다음: E2a(구획 Table | Trend 토글 + 같은 한 노드로 끝나는 열의 쪽 넘김) -> E2b(표 그리개 부품화, 덩어리 Table · Trend, pointsOf · 덩어리 걷기 둘 · Points from 은퇴, 썸네일은 같은 점) -> D.
+
 > ## [03:19 디자인] F — 마킹 사슬 무제한 (스텝마다 제 마킹, 세는 이름) 착지 72b86a2c7 (총괄 77f1afd3b)
 
 - **무엇** — 고정 이름 넷(walk-start · walk-2 · walk-3 · walk-4)이 은퇴. 스텝마다 제 마킹을 세는 이름으로 받고(다시 안 씀), 앞 스텝에서 다시 걸으면 그 뒤 스텝들의 마킹을 그 목록으로 지움. 그래프 부품은 «k 번째 이름»을 페이지에 물어 표의 스텝을 넘어서도 이어집니다.
