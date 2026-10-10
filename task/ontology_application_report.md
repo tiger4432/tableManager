@@ -38224,3 +38224,18 @@ FANOUT 20 · nodes 28 · edges 136 · hops 2 · claims 4634 · cut {'depth': Fal
 뜻   서버는 읽은 뒤 덩어리로 묶는다 — base 자신의 원자는 다 읽혀 claims 에 들어가고, 아끼는 것은 덩어리로 안 그린 다이를 안 넓히는 몫.
      같은 quantity 로 가는 원자 수백(같은 계측 반복)은 먼 노드가 하나라 덩어리가 아니다. 표의 Walk 요청에는 fanout_limit 이 없다
 ```
+
+---
+
+## [C 응용] 10-11 밤 문서 정비 ① 걷기 화면 10-10 착지 — 문서가 이름도 안 부르던 모듈 여섯 · QA 둘 (main b5cdcbc75 위)
+
+```
+정비   CODE_MAP 보조 모듈 표 — start_baskets · node_search · reach_table · trend · trend_view · paths 행 신설(줄 수 · export 수는 git 에서 읽음)
+       table_view · subgraph_view · styles 행 크기와 10-10 내용 · derive.stepAlong 서명(negative)과 «술어 없으면 모든 술어»
+       frontend.md 걷기 행 — 앞글자 찾기 · 식 표 · Route · 트렌드 · 한 겹 덩어리 · not walked
+       PRIMITIVES — «같은 꼴의 셋째»: 길 찾기는 paths.simplePaths 하나 · 표 칸과 트렌드 점은 readsOf 하나
+QA ①  대소문자 틀린 키를 치고 목록에서 안 고르면 없는 노드를 걷고 화면이 서버의 «No ledger evidence…» 를 안 그림
+       18766 · walk-CffOP4e8.js 에서 누름 -> 총괄 판정 ①+③ = H (b5cdcbc75) · ② 대소문자 바꿔 넣기는 거절. H 병합 뒤 다시 누름
+QA ②  trend.pagePoints 가 엣지 값을 qualifiers[name] 로 스스로 읽음 — reach_table.valueAt 의 엣지 갈래와 같은 줄 사본 둘
+       오늘 답은 같음(loadTrend 가 «한 걸음 · 엣지 값» 열만 넘김을 물음). 갈라질 자리라 적어만 둠 — 고치라는 말 아님
+```
