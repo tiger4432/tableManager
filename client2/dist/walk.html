@@ -16,8 +16,8 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <!-- 색 토큰. 폼의 규칙은 여기 «없습니다» — `src/walk/styles.js` 가 부품과 같이 다닙니다. -->
-  <!-- The table part's rules: a folded lump seen as a table is that part (lead 10-08). -->
+  <!-- 색 토큰. 폼의 규칙은 여기 «없습니다» — `src/walk/styles.js` 가 부품과 같이 다닙니다. -->
+  <!-- The table part's rules: a folded lump seen as a table is that part (lead 10-08). -->
   <style>
     /* 🔴 이 페이지가 소유하는 것은 «페이지»뿐입니다: 여백 · 배경 · 노치 · 한 칸 배치.
        폼의 겉모양(`.wk-*`)은 «부품이 들고 옵니다» — 총괄 판정 2026-09-06.
@@ -58,7 +58,7 @@
        right, the page itself does not scroll - each part scrolls inside itself. */
     html, body { overflow: hidden; }
     .wk-page { height: 100%; min-height: 0; }
-    #wk-host { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr);
+    #wk-host { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr) 260px;
       border: 1px solid var(--border); background: var(--bg-surface); }
     #wk-host > * { max-width: 100%; }
     /* A phone: the rail sits above the result and the PAGE scrolls - two nested scroll boxes in a
@@ -68,15 +68,16 @@
       .wk-page { height: auto; min-height: 100%; }
       #wk-host { display: block; }
       #wk-host > .wk-rail { border-right: 0; border-bottom: 1px solid var(--border); }
+      #wk-host > .wk-side { border-left: 0; border-top: 1px solid var(--border); }
       #wk-host > .wk-rail > .wk-form, #wk-host > .wk-main { overflow: visible; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/walk-B6FMkEA6.js"></script>
+  <script type="module" crossorigin src="/assets/walk-Cygnf5DQ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-Mv2iG8s3.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">
-  <link rel="modulepreload" crossorigin href="/assets/branch_picker-COsieJLR.js">
+  <link rel="modulepreload" crossorigin href="/assets/branch_picker-DrST3u0U.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-0pWdZgFi.css">
   <link rel="stylesheet" crossorigin href="/assets/walk-D3bCIy4s.css">
 </head>
@@ -85,7 +86,7 @@
   <div class="wk-page">
     <header class="wk-head"><b>Walk</b><span>GET /api/ledger/subgraph</span><div id="wk-branch"></div><div id="account-badge" class="acct-host"></div></header>
     <div id="wk-host"></div>
-  </div>
+  </div>
 </body>
 
 </html>

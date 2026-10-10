@@ -20,7 +20,7 @@ export const COMPARE_WORDS = Object.freeze({
   value: 'Value',
   go: 'Compare',
   missing: 'missing',
-  noStarts: 'Walk with a start first',
+  noStarts: 'Add a start to a basket first',
   pickAll: 'Pick a type, an edge and a value',
   noValue: 'carries no value: pick another edge',
   idle: 'Nothing compared yet',

@@ -60,7 +60,7 @@
        right, the page itself does not scroll - each part scrolls inside itself. */
     html, body { overflow: hidden; }
     .wk-page { height: 100%; min-height: 0; }
-    #wk-host { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr);
+    #wk-host { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr) 260px;
       border: 1px solid var(--border); background: var(--bg-surface); }
     #wk-host > * { max-width: 100%; }
     /* A phone: the rail sits above the result and the PAGE scrolls - two nested scroll boxes in a
@@ -70,6 +70,7 @@
       .wk-page { height: auto; min-height: 100%; }
       #wk-host { display: block; }
       #wk-host > .wk-rail { border-right: 0; border-bottom: 1px solid var(--border); }
+      #wk-host > .wk-side { border-left: 0; border-top: 1px solid var(--border); }
       #wk-host > .wk-rail > .wk-form, #wk-host > .wk-main { overflow: visible; }
     }
   </style>

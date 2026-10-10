@@ -148,7 +148,8 @@ async function seen(M) {
       pickWorld: () => {} });
     await settle();
     out.views = walkAll(host).filter((n) => n.attrs && n.attrs['data-view']).map((n) => n._text);
-    const walkAs = async (k, event) => { wpage.state.type = 'wafer'; wpage.state.keys = { wafer: k }; await wpage.fire(event); await settle(); };
+    // Each start goes in its basket, then Walk (lead bc63378e5: Walk walks the baskets).
+    const walkAs = async (k, sign = 1) => { wpage.state.type = 'wafer'; wpage.state.keys = { wafer: k }; wpage.baskets.add(sign); await wpage.fire(); await settle(); };
     const view = async (name) => { walkAll(host).find((n) => n.attrs && n.attrs['data-view'] === name).dispatch('click', {}); await settle(); };
     const goOf = () => walkAll(host).find((n) => hasClass(n, 'cmp-go'));
     const pick = (key, value) => {
@@ -163,10 +164,9 @@ async function seen(M) {
     pick('type', 'recipe'); pick('edge', 'processed_with'); pick('value', 'step');
     out.reasons.push(goOf().attrs.title);
     await walkAs('A');
-    await walkAs('B', { ctrlKey: true, shiftKey: true });
-    await walkAs('C', { ctrlKey: true });
+    await walkAs('B', -1);
+    await walkAs('C', 1);
     out.reasons.push(goOf().disabled);
-    out.starts = walkAll(host).filter((n) => hasClass(n, 'wk-start')).map((n) => n._text);
     let before = urls.length;
     goOf().dispatch('click', {});
     await settle();
@@ -232,7 +232,7 @@ function suite(out) {
   eq('G1 the walk page\'s views: Table, Graph, Compare; the comparison\'s types are the declaration\'s, read after it came',
     [out.views, out.typeOptions], [['Table', 'Graph', 'Compare'], DECL.entities.length + 1]);
   eq('G2 the Compare button says what stops it: the picks, then a start; with both it is pressable',
-    out.reasons, ['Pick a type, an edge and a value', 'Walk with a start first', false]);
+    out.reasons, ['Pick a type, an edge and a value', 'Add a start to a basket first', false]);
   const A = W('A'), B = W('B'), Cw = W('C');
   const TABLE = [['recipe', '+ A · C', '− B'], ['R1', '2 edges · CMP (A) · ETCH (C)', 'CMP'], ['R2', '12', '[missing]'],
     ['R3', '—', '[missing]']];
@@ -241,7 +241,6 @@ function suite(out) {
     [sorted([{ positive: [A, Cw, B], collect: ['recipe'], world: ['default'] },
       { positive: [A, Cw], collect: ['recipe', 'wafer'], world: ['default'] },
       { positive: [B], collect: ['recipe', 'wafer'], world: ['default'] }]), TABLE]);
-  eq('G6 the Starts line under Walk follows the marking pressed in the compare view', out.starts, ['+ A', '− B', '+ C']);
   eq('G4 a world picked in the compare view asks the comparison again on the new worlds and draws it',
     [sorted(out.world.asked.filter((q) => (q.collect || [])[0] === 'recipe')), out.world.table],
     [sorted([{ positive: [A, Cw, B], collect: ['recipe'], world: ['default', 'w1'] },
@@ -288,8 +287,6 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    compare.forget();\n', '') },
   { id: 'K11', what: 'the page seats the comparison without drawing it on the declaration it read', catches: 'G1', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '{ compare.render(); main.append(compareMount); }', 'main.append(compareMount);') },
-  { id: 'K13', what: 'a Walk press in the compare view leaves the Starts line on the marking before it', catches: 'G6',
-    file: 'walk/main.js', key: 'page', mutate: (t) => swap(t, '    render();\n    await walkStarts();\n', '    await walkStarts();\n') },
   { id: 'K14', what: 'what missing says drawn under every sign', catches: 'P7', file: 'walk/compare_view.js', key: 'compare',
     mutate: (t) => swap(t, 'read.filter((c) => rows.some((n) => !c.reached.has(n.id)))', 'read') },
   { id: 'K12', what: 'an edge without the value drawn empty', catches: 'P5', file: 'walk/compare_view.js', key: 'compare',

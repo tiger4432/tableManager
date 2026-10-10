@@ -20,7 +20,7 @@ const settle = async () => { for (let i = 0; i < 20; i += 1) await flush(); };
 
 // The declaration answer as the server shapes it after 9e9a9015a: the worlds, the default first, and the
 // operating one - here not the default.
-const DECL = { entities: [{ type: 'wafer@1', keys: ['wafer'] }], predicates: [], collect: [],
+const DECL = { entities: [{ type: 'wafer@1', keys: ['wafer'] }], predicates: [],
   worlds: ['default', 'w1'], operating: 'w1' };
 const GRAPH_DECL = fx('walk_start_declaration.json');
 
@@ -54,6 +54,7 @@ async function seen(M) {
     await settle();
     wpage.state.type = 'wafer@1';
     wpage.state.keys = { wafer: 'W1' };
+    wpage.baskets.add(1);
     await wpage.fire();
     await settle();
     const chips = walkAll(mount).filter((n) => String(n.className || '').split(/\s+/).includes('branch-picker__chip'));
@@ -86,6 +87,7 @@ async function seen(M) {
     wpage.state.type = body._start.type;
     wpage.state.keys = { ...body._start.keys };
     wpage.render();
+    wpage.baskets.add(1);
     await wpage.fire();
     await settle();
     const target = body.edges[0].target;
@@ -119,6 +121,7 @@ async function seen(M) {
     await settle();
     wpage.state.type = 'wafer@1';
     wpage.state.keys = { wafer: 'W1' };
+    wpage.baskets.add(1);
     await wpage.fire();
     await settle();
     const starts = JSON.stringify(wpage.graph.markings.entries('walk-start'));
@@ -202,7 +205,7 @@ const MUTANTS = [
   { id: 'W6', what: 'the page never tells the graph it reads several', catches: 'V7', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, 'worldChips: worlds.length > 1', 'worldChips: false') },
   { id: 'W7', what: 'a world picked does not walk again', catches: 'V9', file: 'walk/main.js', key: 'page',
-    mutate: (t) => swap(t, "    if (state.type && (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0]))) await walkStarts();\n", '') },
+    mutate: (t) => swap(t, "    if (state.run !== 'idle' || markings.count(GRAPH_CHAIN[0])) await walkStarts();\n", '') },
   { id: 'W8', what: 'a world picked leaves the seat on the old worlds', catches: 'V9', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '    worlds = worldList(names);\n', '') },
 ];

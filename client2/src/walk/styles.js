@@ -137,9 +137,23 @@ export const WALK_CSS = `
 .wk-zone { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); }
 .wk-zonehead { font-weight: 600; overflow-wrap: anywhere; }
 .wk-zone.is-control .wk-zonehead { color: var(--text-muted); }
-.wk-starts { display: flex; flex-flow: row wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
-.wk-start { font-family: var(--font-mono); }
-.wk-start.is-control { color: var(--text-muted); }
+/* Start baskets (lead bc63378e5): the start marking as two lists in the page's right panel; a row a start. */
+.wk-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg-surface);
+  border-left: 1px solid var(--border); }
+.wk-baskets { display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-4); }
+.wk-basket { display: flex; flex-direction: column; gap: var(--space-2); }
+.wk-baskethead { display: flex; align-items: center; gap: var(--space-2); }
+.wk-basketcount { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.wk-basketadd, .wk-basketremove { margin-left: auto; padding: 0 var(--space-2); font: inherit; background: none;
+  border: 0; border-radius: 0; cursor: pointer; }
+.wk-basketadd { font-weight: 700; color: var(--accent); }
+.wk-basketadd[disabled] { opacity: 0.45; cursor: default; }
+.wk-basketremove { flex: none; color: var(--text-dim); }
+.wk-basketrow { display: flex; align-items: baseline; gap: var(--space-2); padding-top: var(--space-1);
+  border-top: 1px solid var(--border); }
+.wk-basketlabel { min-width: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.wk-baskettype { flex: none; font-size: 0.78rem; color: var(--text-dim); }
+.wk-basket.is-control .wk-basketlabel { color: var(--text-muted); }
 .wk-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; display: block;
   overflow-x: auto; white-space: nowrap; }
 .wk-table th, .wk-table td { border-bottom: 1px solid var(--border);

@@ -470,6 +470,9 @@ const press = (c, words) => evaluate(c, `(() => { const b = [...document.querySe
   if (b) b.click(); return Boolean(b); })()`);
 const choose = (c, sel, pick) => evaluate(c, `(() => { const s = document.querySelectorAll(${JSON.stringify(sel)})[${pick[0]}]; if (!s) return false;
   const o = [...s.options].find((x, i) => ${pick[1]}); if (!o) return false; s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+// A basket's +: the picked node into Positive (+) or Negative (−) (lead bc63378e5).
+const basket = (c, sign) => evaluate(c, `(() => { const b = document.querySelector('.wk-basket[data-sign="${sign}"] .wk-basketadd');
+  if (b && !b.disabled) b.click(); return Boolean(b); })()`);
 const DRIVE = {
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
@@ -478,12 +481,13 @@ const DRIVE = {
       await until(c, "/pick, or type/.test(((document.querySelectorAll('.wk-select')[1] || { options: [] }).options[0] || {}).textContent || '')");
       await choose(c, '.wk-select', [1, 'i === 1']);
       await sleep(300);
+      await basket(c, '+');
       await press(c, 'Walk');
       await until(c, "document.querySelector('.wk-main table, .wk-main svg, .wk-main canvas')");
     }],
     ['Graph', (c) => press(c, 'Graph').then(() => sleep(1500))],
-    // Compare (lead 10-09, demo ③): picked from the declaration, then a second subject marked a control (Ctrl+Shift
-    // on Walk) - a + column and a - column, its whose labels whole.
+    // Compare (lead 10-09, demo ③): picked from the declaration, then a second subject in the Negative basket and Walk -
+    // a + column and a - column, its whose labels whole.
     ['Compare, a + and a - start', async (c) => {
       await press(c, 'Compare');
       await until(c, "document.querySelector('.cmp-select')");
@@ -492,15 +496,14 @@ const DRIVE = {
       await choose(c, '.cmp-select', [2, "x.value === 'step'"]);
       await choose(c, '.wk-select', [1, 'i === 2']);
       await sleep(300);
-      await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Walk' && !x.disabled);
-        if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, shiftKey: true })); return Boolean(b); })()`);
+      await basket(c, '−');
+      await press(c, 'Walk');
       await until(c, "document.querySelector('.cmp-table')");
     }],
     // The table walked from a + and a - start (lead 55f854fc5 ②): a zone per sign.
     ['Table, a zone per sign', async (c) => {
       await press(c, 'Table');
-      await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Walk' && !x.disabled);
-        if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, shiftKey: true })); return Boolean(b); })()`);
+      await press(c, 'Walk');
       await until(c, "document.querySelectorAll('.wk-zone').length > 1");
     }],
   ],
