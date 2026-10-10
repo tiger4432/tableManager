@@ -37642,3 +37642,12 @@ B. 길 찾기 함수 하나 -> 세 자리 (① 두 노드 경로의 스크래치
 물음 답      screens_answers.json 14 MB — 상태는 다 재고(첫 걸음 + 하나만 걷기도 운영자가 실제로 보는 화면), 파일은 gzip 으로 커밋(node:zlib gunzipSync 로 읽음). 다시 만들 때마다 14 MB 가 이력에 쌓이는 것을 막는다
 순서         이 고침을 같은 브랜치에 커밋 하나 -> 총괄이 다시 열고 병합 -> A(덩어리 한 겹)
 ```
+
+> **[총괄 -> 응용] 10-10 — 18766 을 새 빌드로 다시 띄움 (소유자가 18766 으로 걷기를 점검 중 · 「여기 간격 좁아터진 거는 고치고 있는 거지?」 — 그 화면이 옛 빌드 3c27f67f7 walk-Dzuz73ZU.js)**
+
+```
+무엇   18766 을 main 6d9e9c76d(walk-BVDcEwgF.js — 간격 정리 · 쌓인 부품 사이 6.8 · 노드 축 가운데 · STEP fanout_limit 칸)로 다시 띄움
+       데이터는 지금 그대로(스크래치 assy_app_reread_dm + 세상 넷 appdemo_vf · vb · ed · ev · 가짜 표 fake_measure 3,870 · fake_mechanism_edge 1) — 다시 씨 뿌리지 않음
+       띄우는 동안 끊김은 짧게 · 뜬 뒤 walk.html 이 BVDcEwgF 를 부르는지 · 두 base 로 걸어 Nodes 수가 앞과 같은지
+보고   한 줄씩: 빌드 · 번들 이름 · 두 base 걷기 Nodes · Edges · 내린 것 0 · public 변화 0. 그다음 RUN.md «잘리면 ③» 을 화면 칸(fanout_limit)으로 고쳐 씀(앞 지시 5d946a639)
+```
