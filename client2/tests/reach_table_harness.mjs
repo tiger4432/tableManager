@@ -1,7 +1,7 @@
 // The walk table as a formula (walk/reach_table.js, lead 5cf5c3401): the same rows, values and missing cells on two
 // schemes - a measurement as an edge (its value an edge attribute) and as an event node (its value the node's) - plus
 // three groups, several values a cell, a two-step column, rows from a marking, the default columns of each scheme, Δ,
-// the differs and missing flags, the ways cap, and how each group reached its nodes. It imports its subject.
+// the differs and missing flags and the ways cap. It imports its subject.
 //
 // CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
 import { fileURLToPath } from 'node:url';
@@ -101,12 +101,8 @@ function suite(F) {
     edges: [edge('d1', 'bonded_from', 'd2', { at: 1 }), edge('d3', 'bonded_from', 'd1', { at: 2 })] };
   eq('R12 a step taken in says «(in)»: one predicate both ways, two columns told apart',
     F.defaultColumns(F.indexGraph(both), ['d1']).map((c) => c.words.join(' · ')), ['bonded_from · at', 'bonded_from (in) · at']);
-  const g = b.groups;
-  const reached = g.map((group) => F.viaDepth(b.index, group));
-  eq('R13 how each group reached its nodes: from its starts inside its own graph - the very nodes it reached',
-    reached.map((m, i) => [...m.keys()].sort().join() === [...g[i].inside].sort().join()), [true, true]);
-  eq('R14 ... each with the fewest steps and the last predicate, a start at 0',
-    ['wp', 'e1', 'q1'].map((id) => reached[0].get(id)), [{ depth: 0, via: null }, { depth: 1, via: 'measured' }, { depth: 2, via: 'of' }]);
+  // ⚰️ R13 · R14 (how each group reached its nodes) retired 10-10 with viaDepth: the table's Route reads the paths the
+  // server walked, an answer's evidence (lead df11f9e81) - walk_table_harness Z29 - Z32.
   const ev = F.indexGraph(EVENT_SCHEME);
   eq('R17 + Column\'s routes: what the rows take in this walk, either way, step by step',
     F.routesFrom(ev, ROWS, 2).map((r) => [r.words.join(' · '), r.to.join()]),
@@ -160,8 +156,6 @@ const MUTANTS = [
     mutate: (t) => swap(t, "  if (value.on === 'key') return (node.keys || {})[value.name];\n", '') },
   { id: 'FM9', what: 'a predicate taken both ways not told apart', catches: 'R12',
     mutate: (t) => swap(t, "(step.direction === 'incoming' ? `${step.predicate} (in)` : step.predicate)", '(step.predicate)') },
-  { id: 'FM10', what: 'how a group reached its nodes walked outside its graph', catches: 'R13',
-    mutate: (t) => swap(t, '        if (got.has(far) || !group.inside.has(far)) continue;', '        if (got.has(far)) continue;') },
   { id: 'FM11', what: 'differs read off the values only', catches: 'R15',
     mutate: (t) => swap(t, 'differs: reached.some((r) => r !== reached[0]) || ', 'differs: ') },
   { id: 'FM12', what: 'the ways cap never said', catches: 'R9', mutate: (t) => swap(t, '{ more = true; break; }', '{ break; }') },

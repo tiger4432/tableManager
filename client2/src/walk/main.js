@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes } from './table_view.js';
+import { walkTableView, nextRoutes, ROUTE } from './table_view.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
 import { routesFrom, valuesAt } from './reach_table.js';
 // The trend of a column (lead f984ab01d): the model and the part that draws it.
@@ -663,7 +663,7 @@ export function boot(doc, host, deps) {
       const group = (i) => {
         for (const cell of cells(i)) {
           const c = td(cell, section.groups[i].sign === '−' ? 'wk-minus' : 'wk-plus',
-            cell.rest ? `${section.type}\u0000${row.id}\u0000${i}\u0000${columnKey(section.columns[cell.col])}` : '');
+            cell.rest ? `${section.type}\u0000${row.id}\u0000${i}\u0000${cell.col === undefined ? ROUTE : columnKey(section.columns[cell.col])}` : '');
           // A value cell opens its column's trend for this row (lead f984ab01d).
           if (cell.col !== undefined && !cell.missing) {
             c.className += ' wk-pick';
@@ -748,7 +748,7 @@ export function boot(doc, host, deps) {
     const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
     // The axis: the pages' windows and the pressed side's walked points; another side's far off stands at the edge.
     const model = trendModel(points, undefined, { windows: t.pages.map(windowOf).filter(Boolean), group: t.group });
-    trendView.show({ title: `${row ? row.label : t.row} · ${at.section.heads[at.col]}`, model,
+    trendView.show({ title: `${row ? row.label : t.row} · ${at.section.columnHeads[at.col]}`, model,
       groups: at.section.groups.map((g) => word(g.sign)), t0: t.t0,
       ...(t.pages.length ? { onEarlier: () => { void loadTrend('earlier'); }, onLater: () => { void loadTrend('later'); },
         hasEarlier: Boolean(t.hasEarlier), hasLater: Boolean(t.hasLater) } : {}),

@@ -17,7 +17,7 @@ import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cell
   edgeQualifiers } from './derive.js';
 import { typeGraph } from '../rnd_board/api.js';
 // The table with a − start is the formula (lead 5cf5c3401): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, viaDepth, cellOf, valueKind, valueWords } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, valueKind, valueWords } from './reach_table.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -103,11 +103,16 @@ export function qualifierNamesOf(nodes, byNode) {
   return names;
 }
 
-/** A group's cell for a node it did not reach; a reached cell with no value; the start's own «via»; the Δ head. */
+/** A group's cell for a node it did not reach; a reached cell with no value; a start's route; the Δ head; the Route head. */
 export const MISSING = 'missing';
 export const EMPTY = '—';
 export const STARTED = 'start';
 export const DELTA = 'Δ';
+export const ROUTE = 'Route';
+
+/** A path the server walked (an answer's evidence) in words: its hops' predicates in order, predicates only (owner 10-10
+ *  «라우트는 술어만»). A hop reached by two predicates says both. */
+export const routeWords = (path) => path.hops.slice(1).map((hop) => (hop.predicates || []).join(' / ')).join(' → ');
 
 /**
  * A formula cell in words (lead 5cf5c3401, a2eb4a516): missing, empty, its one value, or several - none overwritten; a
@@ -175,6 +180,13 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       unsplit: negative.length > 0 };
   }
   const index = indexGraph(result);
+  // Route (lead df11f9e81, 10-10): the paths the server walked to each node, a side its own starts' (a start: none).
+  const walked = new Map((((result && result.propagation) || {}).ranked || []).map((row) => [row.id, row.evidence || []]));
+  const routeOf = (g, id) => {
+    if (g.starts.includes(id)) return { text: STARTED };
+    const ways = [...new Set((walked.get(id) || []).filter((path) => g.starts.includes(path.seed)).map(routeWords))];
+    return ways.length ? cellWords({ values: ways }, 'string') : { text: EMPTY };
+  };
   // A node a row: one row whichever groups reached it.
   const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
   const shown = members.slice(0, cap);
@@ -203,20 +215,16 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     const columns = sideAt.map((c) => sideAll[c]);
     const kinds = sideAt.map((c) => kindsAll[c]);
     const table = tableAll.map((row) => ({ ...row, cells: sideAt.map((c) => row.cells[c]), deltas: sideAt.map((c) => row.deltas[c]) }));
-    // A type with no column: how each group reached its rows - the last predicate and the steps (lead 5cf5c3401).
-    const how = columns.length ? null : groups.map((g) => viaDepth(index, g));
-    const heads = columns.length ? columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`) : ['via', 'depth'];
+    // Route first, next to the node, on every side (lead df11f9e81): how that side reached the row.
+    const columnHeads = columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`);
+    const heads = [ROUTE, ...columnHeads];
     const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
     const said = rows.map((node, r) => {
       const row = table[r];
       const byGroup = groups.map((g, i) => {
         // A side that did not reach the node says so once, across its columns (lead 34d91c09d 3).
         if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];
-        if (!how) return row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }));
-        // Reached, by the answer, along edges it did not bring: how is not known here.
-        return how[i].has(node.id)
-          ? [{ text: how[i].get(node.id).via || STARTED }, { text: String(how[i].get(node.id).depth), numeric: true }]
-          : [{ text: EMPTY }, { text: EMPTY }];
+        return [routeOf(g, node.id), ...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }))];
       });
       return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup,
         centre: ownAt.map((c) => cellWords(ownCells[r][c], 'string')),
@@ -227,13 +235,14 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       heading: sectionHeading(type, rows.length),
       groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
       heads,
+      // A value column's own head, by the index its cells carry (`col`): heads is Route and these.
+      columnHeads,
       // The heads in two rows (lead 34d91c09d, its answer (나)): a column's step, said once over the columns that share it,
       // and below it the value's name - the step repeated in every head pushed Δ 608 px off at 1568.
-      parts: columns.length
-        ? columns.map((c, i) => ({ step: c.words.slice(0, -1).join(' · '), leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}` }))
-        : heads.map((h) => ({ step: '', leaf: h })),
+      parts: [{ step: '', leaf: ROUTE },
+        ...columns.map((c, i) => ({ step: c.words.slice(0, -1).join(' · '), leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}` }))],
       centreHeads: centre.map((c) => c.words.join(' · ')),
-      deltaHeads: deltas.map((c) => (deltas.length > 1 ? `${DELTA} ${heads[c]}` : DELTA)),
+      deltaHeads: deltas.map((c) => (deltas.length > 1 ? `${DELTA} ${columnHeads[c]}` : DELTA)),
       rows: said,
       columns,
       empty: { count: empty, open: keep },

@@ -199,27 +199,8 @@ export function defaultColumns(index, rows, keyOrder = []) {
   return columns;
 }
 
-/**
- * How each group reached each of its nodes, from the graph it brought: the fewest steps from its starts inside Gi and
- * the predicate of the last one (a start: depth 0, `via` null).
- * @returns {Map<string, {depth: number, via: string|null}>}
- */
-export function viaDepth(index, group) {
-  const got = new Map(group.starts.filter((id) => group.inside.has(id)).map((id) => [id, { depth: 0, via: null }]));
-  const queue = [...got.keys()];
-  while (queue.length) {
-    const at = queue.shift();
-    for (const [direction, edges] of [['outgoing', index.out.get(at)], ['incoming', index.into.get(at)]]) {
-      for (const e of edges || []) {
-        const far = farOf(e, direction);
-        if (got.has(far) || !group.inside.has(far)) continue;
-        got.set(far, { depth: got.get(at).depth + 1, via: e.predicate });
-        queue.push(far);
-      }
-    }
-  }
-  return got;
-}
+// ⚰️ viaDepth retired 10-10 (lead df11f9e81): widened into walk/paths.js shortestRoutes - every shortest route, not the
+// last predicate - which the table's Route column reads.
 
 /**
  * The table: each row, each column's cell in each group, the column's Δ, and whether the groups differ or one missed.

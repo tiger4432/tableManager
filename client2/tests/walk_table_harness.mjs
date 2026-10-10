@@ -103,10 +103,45 @@ const SIGNED = {
     { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 9, note: null } },
     { id: 'e:a4', source: 's:a', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 1, note: null } },
     { id: 'e:c4', source: 's:c', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 2, note: null } }],
-  propagation: { ranked: [{ id: 'd:1', reach: [2, 0] }, { id: 'd:2', reach: [0, 1] }, { id: 'd:3', reach: [1, 1] },
-    { id: 'd:4', reach: [2, 0] }] },
+  propagation: { ranked: [{ id: 'd:1', reach: [2, 0] }, { id: 'd:2', reach: [0, 1] },
+    { id: 'd:3', reach: [1, 1], evidence: [{ seed: 's:a', sign: '+', hops: [{ id: 's:a' }, { id: 'd:3', predicates: ['inspected'] }] },
+      { seed: 's:b', sign: '-', hops: [{ id: 's:b' }, { id: 'd:3', predicates: ['inspected'] }] }] },
+    { id: 'd:4', reach: [2, 0], evidence: [{ seed: 's:a', sign: '+', hops: [{ id: 's:a' }, { id: 'd:4', predicates: ['inspected'] }] },
+      { seed: 's:c', sign: '+', hops: [{ id: 's:c' }, { id: 'd:4', predicates: ['inspected'] }] }] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
+// Route (lead df11f9e81, 10-10): a base wafer (+ start) whose die a core die is bonded from; the core wafer reached
+// through it; a − wafer whose die measures the same quantity. The measurement an edge (scheme A) or an event node
+// (scheme B). Each node's ranked row carries the paths the server walked to it (its evidence), as an answer does.
+const bn = (id, type, keys = {}) => ({ id, type, label: id.toUpperCase(), depth: 0, keys });
+const be = (source, predicate, target, qualifiers) => ({ id: `${source}>${predicate}>${target}`, source, target, predicate, ...(qualifiers ? { qualifiers } : {}) });
+const BOND_NODES = [bn('w:b', 'wafer@1', { wafer: 'B' }), bn('w:c', 'wafer@1', { wafer: 'C' }), bn('w:n', 'wafer@1', { wafer: 'N' }),
+  bn('d:b', 'die@1', { mat_id: 'B-1' }), bn('d:c', 'die@1', { mat_id: 'C-1' }), bn('d:n', 'die@1', { mat_id: 'N-1' }), bn('q:1', 'quantity@1')];
+const BOND_EDGES = [be('d:b', 'in_container', 'w:b'), be('d:c', 'in_container', 'w:c'), be('d:c', 'bonded_from', 'd:b'),
+  be('d:n', 'in_container', 'w:n')];
+const walked = (seed, sign, ...hops) => ({ seed, sign, hops: [{ id: seed }, ...hops.map(([id, ...predicates]) => ({ id, predicates }))] });
+const FROM_B = [['d:b', 'in_container'], ['d:c', 'bonded_from'], ['w:c', 'in_container']];
+const BOND_PATHS = { 'd:b': [walked('w:b', '+', FROM_B[0])], 'd:c': [walked('w:b', '+', ...FROM_B.slice(0, 2))],
+  'w:c': [walked('w:b', '+', ...FROM_B)], 'd:n': [walked('w:n', '-', ['d:n', 'in_container'])],
+  'q:1': [walked('w:b', '+', ['q:1', 'measures']), walked('w:n', '-', ['d:n', 'in_container'], ['q:1', 'measures'])] };
+const BOND_REACH = { 'd:b': [1, 0], 'd:c': [1, 0], 'w:c': [1, 0], 'd:n': [0, 1], 'q:1': [1, 1] };
+const bondRanked = (more = {}, paths = {}) => ({ ranked: Object.entries({ ...BOND_REACH, ...more })
+  .map(([id, reach]) => ({ id, reach, evidence: { ...BOND_PATHS, ...paths }[id] || [] })) });
+const BOND_EDGE = { nodes: BOND_NODES,
+  edges: [...BOND_EDGES, be('w:b', 'measures', 'q:1', { value: 1 }), be('d:n', 'measures', 'q:1', { value: 2 })], propagation: bondRanked() };
+const BOND_EVENT = { nodes: [...BOND_NODES, bn('m:1', 'measurement@1'), bn('m:2', 'measurement@1')],
+  edges: [...BOND_EDGES, be('w:b', 'measured', 'm:1'), be('m:1', 'of', 'q:1'), be('d:n', 'measured', 'm:2'), be('m:2', 'of', 'q:1')],
+  propagation: bondRanked({ 'm:1': [1, 0], 'm:2': [0, 1] }, { 'm:1': [walked('w:b', '+', ['m:1', 'measured'])],
+    'm:2': [walked('w:n', '-', ['d:n', 'in_container'], ['m:2', 'measured'])],
+    'q:1': [walked('w:b', '+', ['m:1', 'measured'], ['q:1', 'of']), walked('w:n', '-', ['d:n', 'in_container'], ['m:2', 'measured'], ['q:1', 'of'])] }) };
+const BOND_STARTS = { positive: ['w:b'], negative: ['w:n'] };
+const BONDING = 'in_container → bonded_from → in_container';
+// The core die also stacked on a second base die: the server walked two paths to the core wafer.
+const BOND_TWO = { ...BOND_EDGE, nodes: [...BOND_EDGE.nodes, bn('d:b2', 'die@1', { mat_id: 'B-2' })],
+  edges: [...BOND_EDGE.edges, be('d:b2', 'in_container', 'w:b'), be('d:c', 'stacked_on', 'd:b2')],
+  propagation: bondRanked({ 'd:b2': [1, 0] }, { 'd:b2': [walked('w:b', '+', ['d:b2', 'in_container'])],
+    'w:c': [walked('w:b', '+', ...FROM_B), walked('w:b', '+', ['d:b2', 'in_container'], ['d:c', 'stacked_on'], ['w:c', 'in_container'])] }) };
+const STACKING = 'in_container → stacked_on → in_container';
 const GATE_IN = 'inspected (in) · gate';
 const NOTE_IN = 'inspected (in) · note';
 const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
@@ -499,8 +534,8 @@ async function suite(mod) {
     const rowOf = (id) => walkAll(table()).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id);
     const tds = (id) => ((rowOf(id) || { children: [] }).children).filter((c) => c.className !== 'wk-check')
       .map((c) => (c.children.find((k) => k.className === 'wk-centrelabel') || c).textContent);
-    ok('Z13 two groups: the + columns, the node in the centre, delta beside it, the − columns (34d91c09d, as the lead answered)',
-      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['gate', 'mat_id', 'Δ', 'gate'], ['7', 'M-3', '−2', '9']]),
+    ok('Z13 two groups: the + columns and Route, the node in the centre, delta beside it, the − Route and columns (34d91c09d, df11f9e81)',
+      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate'], ['7', 'inspected', 'M-3', '−2', 'inspected', '9']]),
       JSON.stringify([headRow(), tds('d:3')]));
     // The node axis in the middle of its box (lead 10-10): a box at 400 px, 800 wide, 2000 to scroll.
     const scrollTo = (axisLeft, axisRight) => mod.axisScrollLeft({ boxLeft: 400, boxWidth: 800, axisLeft, axisRight, scrollLeft: 0, scrollWidth: 2000 });
@@ -508,7 +543,7 @@ async function suite(mod) {
       JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]) === JSON.stringify([600, 0, 1200]),
       JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]));
     ok('Z27 the step once over the columns that share it, the value\'s name under each (34d91c09d)',
-      JSON.stringify(stepRow()) === JSON.stringify([['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1]]), JSON.stringify(stepRow()));
+      JSON.stringify(stepRow()) === JSON.stringify([['inspected (in)', 1], ['', 1], ['', 1], ['', 1], ['', 1], ['inspected (in)', 1]]), JSON.stringify(stepRow()));
     const copy = walkAll(rowOf('d:3') || { children: [] }).find((e) => e.className === 'wk-copyid');
     ok('Z16 the id is behind a press in the centre, not a column - an icon, its name for a reader (34d91c09d 5)',
       Boolean(copy) && copy.attrs['data-id'] === 'd:3' && copy.textContent === '' && copy.attrs['aria-label'] === 'Copy id'
@@ -525,6 +560,28 @@ async function suite(mod) {
     ok('Z24 several values in a cell: the first and «+N»; pressed, every one in the cell; pressed again, folded (34d91c09d 1)',
       JSON.stringify([shut, opened, said()]) === JSON.stringify([['1', '+1', false], ['1 · 2', 'Less', true], ['1', '+1', false]]),
       JSON.stringify([shut, opened, said()]));
+    // Route's «+N» on the page (lead df11f9e81): the same press as a value cell's - every route, then the first again.
+    const page2 = makeDoc();
+    const host2 = page2.createElement('div');
+    const two = mod.boot(page2, host2, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    two.state.type = 'wafer@1';
+    two.state.asked = { type: 'wafer@1', keys: {}, ...BOND_STARTS };
+    two.state.run = 'done';
+    two.state.result = BOND_TWO;
+    let drew = true;
+    try { two.render(); } catch (e) { drew = false; }
+    const coreMore = () => walkAll(walkAll(host2).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === 'w:c') || { children: [] })
+      .find((e) => e.className === 'wk-more');
+    const coreCell = () => (walkAll(host2).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === 'w:c') || { children: [] })
+      .children.find((c) => c.children.includes(coreMore()));
+    const coreSaid = () => (coreCell() ? [coreCell()._text, coreMore().textContent] : null);
+    const routeShut = coreSaid();
+    try { fire(coreMore()); } catch (e) { drew = false; }
+    const routeOpen = coreSaid();
+    ok('Z32 a Route cell\'s «+N» on the page: pressed, every path in the cell; the first and «+N» before',
+      drew && JSON.stringify([routeShut, routeOpen]) === JSON.stringify([[BONDING, '+1'], [`${BONDING} · ${STACKING}`, 'Less']]),
+      JSON.stringify([drew, routeShut, routeOpen]));
     const bands = walkAll(host).filter((e) => has(e, 'wk-sidehead')).map((e) => [e.attrs['data-sign'], has(e, 'wk-plus'), has(e, 'wk-minus')]);
     ok('Z25 a band its sign\'s class - + one colour, − the other (34d91c09d 4)',
       JSON.stringify(bands.slice(0, 2)) === JSON.stringify([['+', true, false], ['\u2212', false, true]]), JSON.stringify(bands));
@@ -536,9 +593,9 @@ async function suite(mod) {
     const unfoldedSteps = stepRow();
     fire(foldOf());
     ok('Z26 «1 empty column»: pressed, the column stands in each group; pressed again, folded',
-      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]) === JSON.stringify([['1 empty column', ['gate', 'mat_id', 'Δ', 'gate']],
-        ['true', ['note', 'gate', 'mat_id', 'Δ', 'gate', 'note']], ['gate', 'mat_id', 'Δ', 'gate'],
-        [['inspected (in)', 2], ['', 1], ['', 1], ['inspected (in)', 2]]]),
+      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]) === JSON.stringify([['1 empty column', ['gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate']],
+        ['true', ['note', 'gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate', 'note']], ['gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate'],
+        [['inspected (in)', 2], ['', 1], ['', 1], ['', 1], ['', 1], ['inspected (in)', 2]]]),
       JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]));
     const press = (value) => {
       const b = walkAll(host).find((e) => e.attrs && e.attrs['data-rows'] === value);
@@ -568,9 +625,9 @@ async function suite(mod) {
     const ADDED_STEP = 'inspected (in) → wafer@1';
     ok('Z15 + Column: a route the rows take, then what its end holds - a column each group, the + side reversed',
       JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]) === JSON.stringify([true, true,
-        ['wafer', 'gate', 'mat_id', 'Δ', 'gate', 'wafer'],
-        [[ADDED_STEP, 1], ['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1], [ADDED_STEP, 1]],
-        ['A', '7', 'M-3', '−2', '9', 'B']]),
+        ['wafer', 'gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate', 'wafer'],
+        [[ADDED_STEP, 1], ['inspected (in)', 1], ['', 1], ['', 1], ['', 1], ['', 1], ['inspected (in)', 1], [ADDED_STEP, 1]],
+        ['A', '7', 'inspected', 'M-3', '−2', 'inspected', '9', 'B']]),
       JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]));
   }
 }
@@ -615,7 +672,8 @@ const sideSuite = (TV) => {
     const sec = table.sections.find((x) => x.type === type);
     const at = sec ? sec.heads.indexOf(head) : -1;
     const row = sec && sec.rows.find((r) => r.id === id);
-    const got = row && at >= 0 ? row.byGroup[group][at] : null;
+    const side = row && row.byGroup[group];
+    const got = side && at >= 0 ? (side[0] && side[0].missing ? side[0] : side[at]) : null;
     return got ? (got.missing ? `[${got.text}]` : got.text) : null;
   };
   const raw = (table, type, id, head, group) => {
@@ -649,14 +707,14 @@ const sideSuite = (TV) => {
   const bareDie = bare.sections.find((x) => x.type === 'die@1') || { heads: [], rows: [] };
   const d3 = bareDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
   const d1 = bareDie.rows.find((r) => r.id === 'd:1') || { byGroup: [[], []] };
-  ok('Z8 a type with no column: how each group reached it - its last predicate and steps; missing where it did not, once across both',
+  ok('Z8 a type with no column: Route alone - how each side reached it (via and depth folded into it, lead df11f9e81); missing where it did not, once',
     JSON.stringify([bareDie.heads, d3.byGroup.map((g) => g.map((c) => c.text)), d1.byGroup[1].map((c) => [c.missing, c.span])])
-      === JSON.stringify([['via', 'depth'], [['inspected', '1'], ['inspected', '1']], [[true, 2]]]),
+      === JSON.stringify([[TV.ROUTE], [['inspected'], ['inspected']], [[true, 1]]]),
     JSON.stringify([bareDie.heads, d3.byGroup, d1.byGroup[1]]));
   const die = two.sections.find((x) => x.type === 'die@1') || { groups: [], heads: [], centreHeads: [], deltaHeads: [], rows: [] };
   const wafer = two.sections.find((x) => x.type === 'wafer@1') || { heads: [] };
   ok('Z11 an edge attribute\'s head: its predicate, «(in)» when taken in, and its name',
-    JSON.stringify([die.heads, wafer.heads]) === JSON.stringify([[GATE_IN], ['inspected · gate']]), JSON.stringify([die.heads, wafer.heads]));
+    JSON.stringify([die.heads, wafer.heads]) === JSON.stringify([[TV.ROUTE, GATE_IN], [TV.ROUTE, 'inspected · gate']]), JSON.stringify([die.heads, wafer.heads]));
   ok('Z12 delta where both groups say one number: the first less the second; its head once',
     JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas.map((d) => d.text).join())])
       === JSON.stringify([[TV.DELTA], ['', '', '−2', '']]), JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas)]));
@@ -680,17 +738,40 @@ const sideSuite = (TV) => {
   const m1 = moreDie.rows.find((r) => r.id === 'd:1') || { byGroup: [[], []] };
   const m3 = moreDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
   ok('Z21 a side that did not reach the node: one missing cell across its columns; a side that did: a cell a column (34d91c09d 3)',
-    JSON.stringify([m1.byGroup[1].map((c) => [c.text, c.span]), m3.byGroup[0].length]) === JSON.stringify([[['missing', 2]], 2]),
+    JSON.stringify([m1.byGroup[1].map((c) => [c.text, c.span]), m3.byGroup[0].length]) === JSON.stringify([[['missing', 3]], 3]),
     JSON.stringify([m1.byGroup[1], m3.byGroup[0].length]));
   const eqp = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e) => ({ ...e, qualifiers: { ...e.qualifiers, eqp: 'E' } })) });
   const eqpDie = eqp.sections.find((x) => x.type === 'die@1') || { heads: [] };
   ok('Z22 the number columns nearest the node, the rest outward, each in its order (34d91c09d 2)',
-    JSON.stringify(eqpDie.heads) === JSON.stringify([GATE_IN, 'inspected (in) · eqp']), JSON.stringify(eqpDie.heads));
+    JSON.stringify(eqpDie.heads) === JSON.stringify([TV.ROUTE, GATE_IN, 'inspected (in) · eqp']), JSON.stringify(eqpDie.heads));
   const open = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), new Set(['die@1']));
   const openDie = open.sections.find((x) => x.type === 'die@1') || { heads: [] };
   ok('Z23 a column no row has a value in folds, counted; its type opened, it stands (34d91c09d 7)',
-    JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]) === JSON.stringify([[GATE_IN], { count: 1, open: false },
-      [GATE_IN, NOTE_IN], { count: 1, open: true }]), JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]));
+    JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]) === JSON.stringify([[TV.ROUTE, GATE_IN], { count: 1, open: false },
+      [TV.ROUTE, GATE_IN, NOTE_IN], { count: 1, open: true }]), JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]));
+  // Two Δ columns: each Δ says its own column - by the column's index, Route standing first in heads (B).
+  const scored = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e, k) => ({ ...e, qualifiers: { ...e.qualifiers, score: 10 + k } })) });
+  const scoredDie = scored.sections.find((x) => x.type === 'die@1') || { deltaHeads: [] };
+  ok('Z37 two Δ columns: each «Δ» names its own column',
+    JSON.stringify(scoredDie.deltaHeads) === JSON.stringify([`${TV.DELTA} ${GATE_IN}`, `${TV.DELTA} inspected (in) · score`]),
+    JSON.stringify(scoredDie.deltaHeads));
+  // Route on both schemes (lead df11f9e81): the base wafer a start, the core wafer its bonding route, each side its own.
+  const routeOf = (scheme) => {
+    const t = view(BOND_STARTS, scheme);
+    return [['wafer@1', 'w:b'], ['wafer@1', 'w:c'], ['wafer@1', 'w:n'], ['quantity@1', 'q:1']]
+      .map(([type, id]) => [id, cell(t, type, id, TV.ROUTE, 0), cell(t, type, id, TV.ROUTE, 1)]);
+  };
+  const bondWant = (plus, minus) => [['w:b', TV.STARTED, '[missing]'], ['w:c', BONDING, '[missing]'], ['w:n', '[missing]', TV.STARTED],
+    ['q:1', plus, minus]];
+  ok('Z29 Route = the paths the server walked, the measurement an edge: the base wafer «start», the core wafer its bonding, + and − each its own starts\' paths, a side not reached missing',
+    JSON.stringify(routeOf(BOND_EDGE)) === JSON.stringify(bondWant('measures', 'in_container → measures')), JSON.stringify(routeOf(BOND_EDGE)));
+  ok('Z30 Route, the measurement an event node: the same wafers, the quantity two steps on',
+    JSON.stringify(routeOf(BOND_EVENT)) === JSON.stringify(bondWant('measured → of', 'in_container → measured → of')),
+    JSON.stringify(routeOf(BOND_EVENT)));
+  const core = raw(view(BOND_STARTS, BOND_TWO), 'wafer@1', 'w:c', TV.ROUTE, 0) || {};
+  ok('Z31 two paths walked to one node: the first and «+N», every one kept (the nine\'s several values)',
+    JSON.stringify([core.text, core.rest, core.values]) === JSON.stringify([BONDING, '+1',
+      [BONDING, STACKING]]), JSON.stringify(core));
 };
 qualifierSuite(await import('../src/walk/table_view.js'));
 sideSuite(await import('../src/walk/table_view.js'));
@@ -699,6 +780,8 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  { id: 'NZ15', what: 'a Route cell\'s «+N» keyed by a value column it does not have', catches: 'Z32',
+    from: '${cell.col === undefined ? ROUTE : columnKey(section.columns[cell.col])}', to: '${columnKey(section.columns[cell.col])}' },
   { id: 'NZ1', what: 'the page draws no band a group', catches: 'Z9',
     from: '    thead.append(band, ...(section.parts', to: '    thead.append(...(section.parts' },
   { id: 'NZ2', what: 'the Next row gone from above its table', catches: 'Z9',
@@ -845,8 +928,21 @@ const TV_MUTANTS = [
     from: '  if (!values.length) return { text: EMPTY };', to: '  if (!values.length) return { text: MISSING, missing: true };' },
   { id: 'ZM6', what: 'several values: the first alone', catches: 'Z6',
     from: '  if (values.length === 1 && !cell.more)', to: '  if (values.length >= 1 && !cell.more)' },
-  { id: 'ZM7', what: 'a type with no column draws no cell a group', catches: 'Z8',
-    from: ": ['via', 'depth'];", to: ": [];" },
+  { id: 'ZM7', what: 'no Route head', catches: 'Z8',
+    from: '    const heads = [ROUTE, ...columnHeads];', to: '    const heads = [...columnHeads];' },
+  { id: 'RM6', what: '«Δ <head>» read from heads, Route first in it', catches: 'Z37',
+    from: '`${DELTA} ${columnHeads[c]}`', to: '`${DELTA} ${heads[c]}`' },
+  { id: 'RM1', what: 'a side reads the other side\'s paths', catches: 'Z29',
+    from: '.filter((path) => g.starts.includes(path.seed))', to: '.filter((path) => !g.starts.includes(path.seed))' },
+  { id: 'RM2', what: 'a start says nothing', catches: 'Z29',
+    from: '    if (g.starts.includes(id)) return { text: STARTED };\n', to: '' },
+  { id: 'RM3', what: 'a path\'s hops read backwards', catches: 'Z29',
+    from: 'path.hops.slice(1).map(', to: 'path.hops.slice(1).reverse().map(' },
+  { id: 'RM4', what: 'two paths walked: the first alone', catches: 'Z31',
+    from: 'return ways.length ? cellWords({ values: ways }', to: 'return ways.length ? cellWords({ values: ways.slice(0, 1) }' },
+  { id: 'RM5', what: 'the Route cell after the columns, not under its head', catches: 'Z29',
+    from: '        return [routeOf(g, node.id), ...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }))];',
+    to: '        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c })), routeOf(g, node.id)];' },
   { id: 'ZM8', what: 'an added column dropped', catches: 'Z18',
     from: ', ...(added.get(type) || [])];', to: '];' },
   { id: 'ZM9', what: 'a difference keeps its float tail', catches: 'Z19',

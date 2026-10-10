@@ -22,6 +22,7 @@ import { walkTableView } from '../src/walk/table_view.js';
 import { LOADING } from '../src/ui_words.js';
 import { STEP_NODE_LIMIT } from '../src/walk/fold_views.js';
 import { walkableRoutes } from '../src/walk/derive.js';
+import { pathKinds } from '../src/walk/paths.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUBJECT = path.join(HERE, '..', 'src', 'walk', 'subgraph_view.js');
@@ -1535,6 +1536,52 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       && one.edgeRows === 0, JSON.stringify(one));
   }
 
+  if (want(['PA1', 'PA2', 'PA3', 'PA4'])) {
+    // A hand walk: s by p to w and by r to c; w by q to a and by p to b; c by q to a. Two kinds of path s - a.
+    const pn = (id, depth) => ({ id, type: 'die', label: id, depth, keys: {} });
+    const pe = (source, predicate, target) => ({ id: `${source}>${predicate}>${target}`, source, target, predicate });
+    const HAND = { state: 'ready', seed: { id: 'h:s' }, truncated: { reason: null },
+      nodes: [pn('h:s', 0), pn('h:w', 1), pn('h:c', 1), pn('h:a', 2), pn('h:b', 2)],
+      edges: [pe('h:s', 'p', 'h:w'), pe('h:s', 'r', 'h:c'), pe('h:w', 'q', 'h:a'), pe('h:w', 'p', 'h:b'), pe('h:c', 'q', 'h:a')] };
+    const boxOf = (x) => byClass(x.host, 'sg-paths')[0];
+    const kindWords = (x) => (boxOf(x) ? byClass(boxOf(x), 'sg-paths-words').map((n) => n.textContent) : []);
+    const s = await seat([HAND]);
+    openAll(s);
+    const asked = s.urls.length;
+    s.markings.replace(s.chain[1], [['h:s', SIGN.CASE], ['h:a', SIGN.CASE]]);
+    const box = boxOf(s);
+    const want0 = pathKinds(HAND, 'h:s', 'h:a', new Set(['p', 'q', 'r'])).kinds.map((k) => k.words.join(' — '));
+    say('PA1 two nodes in the marking Mark writes: the Paths box names them, the walk\'s edges with their counts, the kinds - pathKinds\' own - nothing asked',
+      Boolean(box) && !box.hidden && textOf(box, 'sg-paths-head').join() === 'Paths · h:s — h:a'
+        && JSON.stringify(byClass(box, 'sg-paths-edge').map((n) => n.textContent)) === JSON.stringify(['p 2', 'q 2', 'r 1'])
+        && want0.length === 2 && JSON.stringify(kindWords(s)) === JSON.stringify(want0) && s.urls.length === asked,
+      JSON.stringify({ hidden: box && box.hidden, edges: box && byClass(box, 'sg-paths-edge').map((n) => n.textContent), kinds: kindWords(s), want0 }));
+    const r = box && byClass(box, 'sg-paths-edge').map((n) => n.children[0]).find((t) => t.attrs['data-path-edge'] === 'r');
+    if (r) { r.checked = false; r.dispatch('change', {}); }
+    say('PA2 an edge unticked: the kinds through it are gone, the others stay',
+      JSON.stringify(kindWords(s)) === JSON.stringify([want0.find((w) => !w.includes(' r '))]), JSON.stringify(kindWords(s)));
+    s.markings.replace(s.chain[1], [['h:s', SIGN.CASE]]);
+    const one = Boolean(boxOf(s)) && boxOf(s).hidden;
+    s.markings.replace(s.chain[1], [['h:s', SIGN.CASE], ['h:a', SIGN.CASE], ['h:b', SIGN.CASE]]);
+    say('PA3 one node marked, or three: no Paths box', one && boxOf(s).hidden, JSON.stringify({ one, three: boxOf(s) && boxOf(s).hidden }));
+    // s - w - b: b behind w alone; w folded, b out of sight; the kind pressed brings it back and lights the path.
+    const f = await seat([HAND]);
+    openAll(f);
+    f.markings.replace(f.chain[1], [['h:s', SIGN.CASE], ['h:b', SIGN.CASE]]);
+    press(f, 'h:w');
+    const foldW = byClass(f.host, 'sg-fold')[0];
+    if (foldW && foldW.textContent !== 'Unfold') foldW.dispatch('click', {});
+    const hidden = f.view.cy.getElementById('h:b').empty();
+    const kind = boxOf(f) && byClass(boxOf(f), 'sg-paths-kind')[0];
+    if (kind) kind.dispatch('click', {});
+    const cls = (id, c) => f.view.cy.getElementById(id).nonempty() && f.view.cy.getElementById(id).hasClass(c);
+    const litEdges = f.view.cy.edges('[kind = "edge"]').filter((e) => e.hasClass('is-path')).map((e) => e.id()).sort();
+    say('PA4 a kind pressed: its nodes and edges lit, the rest dimmed - and a node of it folded out of sight comes back first',
+      hidden && ['h:s', 'h:w', 'h:b'].every((id) => cls(id, 'is-path')) && ['h:c', 'h:a'].every((id) => cls(id, 'is-dim'))
+        && JSON.stringify(litEdges) === JSON.stringify(['h:s>p>h:w', 'h:w>p>h:b']),
+      JSON.stringify({ hidden, kind: Boolean(kind), lit: ['h:s', 'h:w', 'h:b'].map((id) => cls(id, 'is-path')), litEdges }));
+  }
+
   for (const view of seated) if (view.cy) view.cy.destroy();
   return { ran: names.length, names, failures: fails };
 }
@@ -1625,7 +1672,7 @@ const failures = [];
       "    setDisabledReason(this.continueButton, !name ? 'End of chain' : (this.markings.count(name) ? '' : 'Mark a node'));\n",
       "    setDisabledReason(this.continueButton, '');\n"),
     M('M16', 'another part writing the same name is not seen', 'L1',
-      '    for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());\n', ''),
+      '    for (const name of this.chain) this.markings.subscribe(name, () => { this._paths(); this._restyle(); });\n', ''),
     M('M17', 'the chain\'s end is not kept: a press past it writes a name of its own', 'L2',
       "  writes() { return this.chain[this.steps.length] || ''; }\n",
       "  writes() { return this.chain[this.steps.length] || 'extra'; }\n"),
@@ -1687,7 +1734,7 @@ const failures = [];
       '(big.get(from) || new Set()).has(s.key)', 'false'),
     M('F4', 'a folded node keeps its own unsent fan-outs', 'N2',
       '  for (const chip of layout.chips || []) if (chip.node === id) keys.add(chip.key);\n', ''),
-    M('F5', 'Unfold never opens', 'N7', '    if (this._isFolded(id)) {\n', '    if (false) {\n'),
+    M('F5', 'Unfold never opens', 'N7', '    if (this._isFolded(id)) this._unfold(id);\n', '    if (false) this._unfold(id);\n'),
     M('F6', 'the fold is shared by every part on the page', 'N5',
       '  return { big: new Map(), lumped: new Map() };\n',
       '  return (globalThis.__sgFold ||= { big: new Map(), lumped: new Map() });\n'),
@@ -1783,7 +1830,7 @@ const failures = [];
     M('J5m', 'the table does not light the start branch', 'J5', 'rowLit: (row) => lit.has(row.id),', 'rowLit: null,'),
     M('J6m', 'a lump\'s walk is asked again at every switch', 'J5', '    if (!seen.data.has(lump.id)) {\n', '    if (true) {\n'),
     M('J7m', 'a new start keeps the lumps\' views', 'J9',
-      '    this.lumpSeen = openLumpSeen();\n    this.pickedLump = null;\n    this.pos = new Map();\n', '    this.pos = new Map();\n'),
+      '    this.lumpSeen = openLumpSeen();\n    this.pickedLump = null;\n    this.pathOff = new Set();\n', '    this.pathOff = new Set();\n'),
     M('J8m', 'the lump\'s list does not light the start branch', 'J1',
       'count: view.behind(m) || undefined, lit: lit.has(m) })) }) }));', 'count: view.behind(m) || undefined, lit: false })) }) }));'),
     M('LA1m', 'a big lump\'s words count all it hides again, not what one Open draws', 'LM11',
@@ -1792,6 +1839,15 @@ const failures = [];
       '          if (r.cb.checked && r.item.load) void r.item.load();\n', ''),
     M('LA4m', 'a branch being walked does not say so in its row', 'PL',
       "        if (r) { r.row.className += ' is-loading'; if (r.unfold) { r.unfold.textContent = LOADING; setDisabledReason(r.unfold, LOADING); } }\n", ''),
+    M('PAm1', 'three marked open the Paths box too', 'PA3', '    if (marked.length !== 2) {\n', '    if (marked.length < 2) {\n'),
+    M('PAm2', 'an unticked edge still walked', 'PA2', '.filter((p) => !this.pathOff.has(p))', ''),
+    M('PAm3', 'a kind pressed unfolds nothing', 'PA4',
+      '    if (kind) this._unfoldFor(new Set(kind.paths.flatMap((p) => p.nodes)));\n', ''),
+    M('PAm4', 'a pressed kind\'s nodes not lit', 'PA4', "          n.toggleClass('is-path', Boolean(lit) && lit.nodes.has(id));\n", ''),
+    M('PAm5', 'a marking written from outside does not open the box', 'PA1',
+      '    for (const name of this.chain) this.markings.subscribe(name, () => { this._paths(); this._restyle(); });\n',
+      '    for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());\n'),
+    M('PAm6', 'the edge list without its counts', 'PA1', "this._el('span', '', `${predicate} ${count}`)", "this._el('span', '', predicate)"),
     M('LA6m', 'next summed over the branches, shared nodes twice', 'LM13',
       'next: firsts.size + rest, behind: held.size - firsts.size, bound: rest > 0,',
       'next: groups.reduce((n, g) => n + g.members.length, 0) + rest, behind: held.size - firsts.size, bound: rest > 0,'),

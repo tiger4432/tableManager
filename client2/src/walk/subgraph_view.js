@@ -32,6 +32,8 @@ import { FOLD_VIEWS, STEP_NODE_LIMIT, openLumpSeen, pointsOf, pointsSvg, remembe
   startBranch, svgAddress, valueAttributes, windowAround } from './fold_views.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
+// The paths between two marked nodes (lead 55f854fc5): the one simple-path search, called from here.
+import { pathKinds, edgeCounts, PATH_STEPS, PATHS_A_KIND, PATHS_AT_MOST } from './paths.js';
 
 // The layout is registered with the library once per load - the library's registry, not this part's state.
 if (!cytoscape('layout', 'dagre')) cytoscape.use(dagre);
@@ -165,6 +167,16 @@ export function subgraphLayout(steps, entities) {
   return { nodes: placed, edges: drawn, chips, legend, unplaced, loose: missing.size, cut };
 }
 
+/** An edge's predicate as the walk names it (the picture labels it with `predicate`). */
+const predicateOf = (e) => (e.predicateName !== undefined ? e.predicateName : e.predicate);
+
+/** What the Paths box says (lead 55f854fc5). */
+const PATH_WORDS = Object.freeze({
+  none: 'No path over the ticked edges in this walk · tick more edges, or walk further',
+  limits: `Up to ${PATH_STEPS} steps · only through what this walk brought`,
+  cut: `Not all · the first ${PATHS_AT_MOST} paths`,
+});
+
 /** The key a lump and a bundle share, taken apart (a node id holds no `|`). */
 const keyParts = (key) => {
   const [node, predicate, direction] = String(key).split('|');
@@ -179,7 +191,7 @@ function stepsOf(layout) {
   const layerOf = new Map(layout.nodes.map((n) => [n.id, n.layer]));
   const steps = new Map();
   for (const e of layout.edges) {
-    const name = e.predicateName !== undefined ? e.predicateName : e.predicate;
+    const name = predicateOf(e);
     for (const [a, b, direction] of [[e.source, e.target, 'outgoing'], [e.target, e.source, 'incoming']]) {
       if (!(layerOf.get(b) >= layerOf.get(a))) continue;
       if (!steps.has(a)) steps.set(a, []);
@@ -473,8 +485,15 @@ export class SubgraphView {
     // How each lump is seen and the lump the info box holds - this instance's, a new start's to clear.
     this.lumpSeen = openLumpSeen();
     this.pickedLump = null;
+    // The paths between two marked nodes: this instance's edges unticked and the kind pressed (lead 55f854fc5).
+    this.pathsBox = this._el('div', 'sg-paths');
+    this.pathsBox.hidden = true;
+    this.wrap.appendChild(this.pathsBox);
+    this.pathOff = new Set();
+    this.pathKind = null;
+    this.pathsFound = null;
     // Another part writing the same name is seen here: same name, same marking.
-    for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());
+    for (const name of this.chain) this.markings.subscribe(name, () => { this._paths(); this._restyle(); });
   }
 
   /** The name the next Mark writes, or '' once the chain is used up. */
@@ -493,6 +512,8 @@ export class SubgraphView {
     this.fold = openFold();
     this.lumpSeen = openLumpSeen();
     this.pickedLump = null;
+    this.pathOff = new Set();
+    this.pathKind = null;
     this.pos = new Map();
     this._relayout = true;
     this._closePicker();
@@ -515,20 +536,40 @@ export class SubgraphView {
    * it in the walk lose their folds, and each node comes back where it stood. Nothing is walked again.
    */
   toggleFold(id) {
-    if (this._isFolded(id)) {
-      const behind = new Set([id]);
-      const steps = stepsOf(this.layout);
-      const queue = [id];
-      while (queue.length) {
-        for (const s of steps.get(queue.shift()) || []) if (!behind.has(s.to)) { behind.add(s.to); queue.push(s.to); }
-      }
-      for (const n of behind) this.fold.big.delete(n);
-      for (const k of [...this.fold.lumped.keys()]) if (behind.has(keyParts(k).node)) this.fold.lumped.delete(k);
-    } else {
-      this.fold.big.set(id, branchKeys(this.layout, id));
-    }
+    if (this._isFolded(id)) this._unfold(id);
+    else this.fold.big.set(id, branchKeys(this.layout, id));
     this._closePicker();
     this.render();
+  }
+
+  /** A node and everything behind it in the walk. */
+  _behind(id) {
+    const behind = new Set([id]);
+    const steps = stepsOf(this.layout);
+    const queue = [id];
+    while (queue.length) {
+      for (const s of steps.get(queue.shift()) || []) if (!behind.has(s.to)) { behind.add(s.to); queue.push(s.to); }
+    }
+    return behind;
+  }
+
+  /** Unfold's half: the node and everything behind it lose their folds. */
+  _unfold(id) {
+    const behind = this._behind(id);
+    for (const n of behind) this.fold.big.delete(n);
+    for (const k of [...this.fold.lumped.keys()]) if (behind.has(keyParts(k).node)) this.fold.lumped.delete(k);
+  }
+
+  /** Unfold, as the Unfold press does, each folded node in sight that hides one of `ids`, until none is hidden. */
+  _unfoldFor(ids) {
+    for (let guard = 0; guard <= this.layout.nodes.length; guard += 1) {
+      const shown = new Set(this._view().nodes.map((n) => n.id));
+      const hidden = [...ids].filter((id) => !shown.has(id));
+      if (!hidden.length) return;
+      const owner = [...shown].find((id) => this._isFolded(id) && hidden.some((h) => this._behind(id).has(h)));
+      if (!owner) return;
+      this._unfold(owner);
+    }
   }
 
   /** The first picture's fold, step by step: each step's points with their one step, the rest folded. */
@@ -893,7 +934,86 @@ export class SubgraphView {
     this.head.appendChild(legend);
     this._draw(view);
     this._swapFacts();
+    this._paths();
     this._restyle();
+  }
+
+  /**
+   * Two nodes in the marking Mark writes (owner 10-10 «마킹 두 노드 ... 두 노드를 잇는 path 뜨게», lead 55f854fc5): the
+   * paths between them over the ticked edges of this walk, by kind - nothing asked of the server. Any other count: no box.
+   */
+  _paths() {
+    const box = this.pathsBox;
+    box.textContent = '';
+    const name = this.writes();
+    const marked = name && this.layout ? this.markings.entries(name).map(([id]) => id) : [];
+    if (marked.length !== 2) {
+      box.hidden = true;
+      this.pathKind = null;
+      this.pathsFound = null;
+      return;
+    }
+    box.hidden = false;
+    const walk = { nodes: this.layout.nodes,
+      edges: this.layout.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, predicate: predicateOf(e) })) };
+    const counts = edgeCounts(walk.edges);
+    const found = pathKinds(walk, marked[0], marked[1], new Set(counts.map((c) => c.predicate).filter((p) => !this.pathOff.has(p))));
+    this.pathsFound = found;
+    if (!found.kinds.some((k) => k.key === this.pathKind)) this.pathKind = null;
+    box.appendChild(this._el('div', 'sg-paths-head', `Paths · ${this._labelOf(marked[0])} — ${this._labelOf(marked[1])}`));
+    const edges = this._el('div', 'sg-paths-edges');
+    for (const { predicate, count } of counts) {
+      const row = this._el('label', 'sg-paths-edge');
+      const tick = this._el('input');
+      tick.type = 'checkbox';
+      tick.checked = !this.pathOff.has(predicate);
+      tick.setAttribute('data-path-edge', predicate);
+      if (tick.addEventListener) {
+        tick.addEventListener('change', () => {
+          if (tick.checked) this.pathOff.delete(predicate);
+          else this.pathOff.add(predicate);
+          this._paths();
+          this._restyle();
+        });
+      }
+      row.appendChild(tick);
+      row.appendChild(this._el('span', '', `${predicate} ${count}`));
+      edges.appendChild(row);
+    }
+    box.appendChild(edges);
+    if (!found.kinds.length) {
+      box.appendChild(this._el('div', 'sg-fail', PATH_WORDS.none));
+      box.appendChild(this._el('div', 'sg-note', PATH_WORDS.limits));
+      return;
+    }
+    const kinds = this._el('div', 'sg-paths-kinds');
+    for (const kind of found.kinds) {
+      const on = kind.key === this.pathKind;
+      const press = this._el('button', `sg-paths-kind${on ? ' is-on' : ''}`);
+      press.setAttribute('type', 'button');
+      press.setAttribute('aria-pressed', String(on));
+      press.appendChild(this._el('span', 'sg-paths-words', kind.words.join(' — ')));
+      press.appendChild(this._el('span', 'sg-paths-count', kind.more ? `${PATHS_A_KIND}+` : String(kind.count)));
+      if (press.addEventListener) press.addEventListener('click', () => this.showPathKind(on ? null : kind.key));
+      kinds.appendChild(press);
+    }
+    box.appendChild(kinds);
+    if (found.cut) box.appendChild(this._el('div', 'sg-note', PATH_WORDS.cut));
+  }
+
+  /** A kind pressed (or none): its paths lit, the rest faded; a path node in a folded lump is unfolded first. */
+  showPathKind(key) {
+    this.pathKind = key;
+    const kind = key && this.pathsFound && this.pathsFound.kinds.find((k) => k.key === key);
+    if (kind) this._unfoldFor(new Set(kind.paths.flatMap((p) => p.nodes)));
+    this.render();
+  }
+
+  /** The nodes and edges of the pressed kind's paths, or null. */
+  _litPaths() {
+    const kind = this.pathKind && this.pathsFound && this.pathsFound.kinds.find((k) => k.key === this.pathKind);
+    if (!kind) return null;
+    return { nodes: new Set(kind.paths.flatMap((p) => p.nodes)), edges: new Set(kind.paths.flatMap((p) => p.edges.map((e) => e.id))) };
   }
 
   // ── the picture ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -953,6 +1073,11 @@ export class SubgraphView {
       { selector: 'edge.is-hot', style: set({ label: 'data(tag)', width: 2.4, 'line-style': 'solid',
         'line-color': t('--accent'), 'target-arrow-color': t('--accent') }) },
       { selector: '.is-faded', style: { opacity: 0.18 } },
+      // A pressed kind of the Paths box: its paths lit, the rest faded (lead 55f854fc5).
+      { selector: 'node.is-path', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.16, 'overlay-padding': 6.8 }) },
+      { selector: 'edge.is-path', style: set({ label: 'data(tag)', width: 2.4, 'line-style': 'solid',
+        'line-color': t('--accent'), 'target-arrow-color': t('--accent') }) },
+      { selector: '.is-dim', style: { opacity: 0.18 } },
     ];
     for (let k = 0; k < TYPE_COLOURS; k += 1) {
       const c = t(`--cat-${k + 1}`);
@@ -1620,15 +1745,22 @@ export class SubgraphView {
     const name = this.writes();
     if (this.cy) {
       const seeds = new Set(this._seeds());
+      const lit = this._litPaths();
       this.cy.batch(() => {
+        this.cy.nodes('[kind = "lump"]').toggleClass('is-dim', Boolean(lit));
+        this.cy.edges('[kind = "lump"]').toggleClass('is-dim', Boolean(lit));
         this.cy.nodes('[kind = "node"]').forEach((n) => {
           const id = n.id();
+          n.toggleClass('is-path', Boolean(lit) && lit.nodes.has(id));
+          n.toggleClass('is-dim', Boolean(lit) && !lit.nodes.has(id));
           n.toggleClass('is-seed', seeds.has(id));
           n.toggleClass('is-marked', Boolean(name) && this.markings.signOf(name, id) !== SIGN.ABSENT);
           n.toggleClass('is-control', Boolean(name) && this.markings.signOf(name, id) === SIGN.CONTROL);
           n.toggleClass('is-selected', id === this.selected);
         });
         this.cy.edges('[kind = "edge"]').forEach((e) => {
+          e.toggleClass('is-path', Boolean(lit) && lit.edges.has(e.id()));
+          e.toggleClass('is-dim', Boolean(lit) && !lit.edges.has(e.id()));
           e.toggleClass('is-hot', Boolean(this.selected) && (e.data('source') === this.selected || e.data('target') === this.selected));
         });
       });
