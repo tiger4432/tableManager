@@ -98,9 +98,11 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 걸린 초)
->    ①  Type wafer · 키 «불량» · follow 비움 · Collect wafer · node_limit 1000 -> Walk       -> «Starts + 불량» · 노드 31        0.727 s
->       키 «양품» -> Ctrl+Shift+Walk                                                         -> «Starts + 불량 · − 양품» · wafer 32   0.807 s
->    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30   (016707766 에서 다시 걸음: 30 · 0.775 s)
+>    ①  Type wafer · 키 «불량» 치고 Positive «+ Add» · follow 비움 · Collect wafer · node_limit 1000 -> Walk   -> 표 하나 · 노드 31     0.702 s
+>       키 «양품» 치고 Negative «+ Add» -> Walk     -> 표 두 구역 «Walked from + 불량» wafer 31 · «Walked from − 양품» wafer 1   0.785 s
+>       (바구니 화면 5417f3003 · 오른쪽 패널 Positive · Negative. Walk 의 Ctrl · Shift 는 은퇴 — 눌러도 바구니 그대로 걷는다)
+>    ②  «Walked from +» 구역의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30 · «Walked from −» 구역의 코어 웨이퍼 0
+>       (016707766 에서 다시 걸음: 30 · 0.775 s)
 >        누르기로는 안 닿는다(박스 선언) — Route to wafer «wafer → die → wafer · in_container» + «↻ transfer» 는 wafer 1 개(base 뿐).
 >        transfer 의 끝은 운반 자리(DTLotSlot) 141 개뿐 · 코어 웨이퍼는 bonded_from 으로 닿는데 follow 목록에 bonded_from 이 없다 — 운영 판 못 봤다
 >    ③  세상 칩 default + «모델 세상 1» -> 같은 폼 · 같은 시작으로 다시 걷는다 · 6 걸음 · 노드 80                       0.996 s
@@ -109,6 +111,21 @@
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
 > 걸린 것     모델 계측군 17 개는 박스 데이터로는 두 base 모두 missing — 박스 measures 는 공정 변수만 잰다(운영 판 못 봤다)
+> ```
+>
+> ---
+>
+> ## [10-10] **노드 고르기 — 앞글자로 찾기: key-values 의 starts_with (총괄 bccbdd601) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 순서        pull -> 서버 재기동 (클라 «찾는 상자»는 클라 착지와 함께)
+> 확인        GET /api/ledger/key-values?type=wafer&starts_with=SYN-CW
+>             nodes = SYN-CW 로 시작하는 노드(대소문자 무시 · 주어 · 목적어) · scanned = 그 수
+>             prefix_axis wafer · prefix_case insensitive(이 콜레이션이 대소문자를 같이 세움) · exact 면 대소문자 그대로
+> 빈 접두     ?type=wafer  -> 오늘과 같은 목록 + prefix_axis (화면이 상자 이름으로 씀)
+> 못 찾는 타입  첫 키가 글자가 아님(die — 첫 키 x): prefix_refusal 한 줄, starts_with 를 주면 422 prefix_axis_not_text
+> 다른 키 접두  &key=<첫 키가 아닌 키>&starts_with=… -> 422 prefix_on_another_key
+> 급할 때      git revert <이 커밋> -> 서버 재기동 (목록은 앞 50 개로 돌아감)
 > ```
 >
 > ---

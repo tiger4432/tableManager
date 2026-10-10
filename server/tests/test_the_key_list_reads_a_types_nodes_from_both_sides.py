@@ -23,7 +23,7 @@ WHEN = datetime(2026, 5, 3, 2, 17, tzinfo=timezone.utc)
 ENTITIES = {"recipe@1": {"keys": ["recipe"]}, "tool@1": {"keys": ["tool"]},
             "wafer@1": {"keys": ["wafer"]}, "lot@1": {"keys": ["lot"]},
             "lot_slot@1": {"keys": ["lot", "slot"]}, "die@1": {"keys": ["x", "y"]},
-            "carrier@1": {"keys": ["carrier"]}}
+            "carrier@1": {"keys": ["carrier"]}, "base@1": {"keys": ["base"]}, "holder@1": {"keys": ["holder"]}}
 
 #: Past a Python float: read back through `float` it is 2.0 and names no atom.
 LONG = "2.00000000000000000001"
@@ -52,6 +52,14 @@ ATOMS = (
     + [_atom("die", '{"x": 1.0, "y": 2.0}'), _atom("die", '{"x": 1.0, "y": 2.0}'),
        _atom("die", '{"x": 1.0, "y": 3.0}'), _atom("die", '{"x": 0.0, "y": 5.0}'),
        _atom("die", '{"x": null, "y": 3.0}'), _atom("die", '{"x": %s, "y": 1.0}' % LONG)]
+    # base (총괄 bccbdd601 starts_with): 60 keys in front, so the first-letter ones are past the front 50;
+    # a case variant inside the SYN-CW run; SYN-CW-107 named only as an object; letters past ASCII;
+    # % and _ that LIKE would read as wildcards
+    + [_atom("base", json.dumps({"base": "A%03d" % i})) for i in range(60)]
+    + [_atom("base", json.dumps({"base": name})) for name in
+       ("SYN-CW-103", "SYN-CW-105", "syn-cw-106", "SYN-CX-1", "LEAD-S6", "LEAD-S7", "LEADS5",
+        "웨이퍼-1", "웨이퍼·2", "a%_b", "ab_c")]
+    + [_atom("holder", '{"holder": "H1"}', "holds", ("base", {"base": "SYN-CW-107"}))]
 )
 
 
@@ -107,10 +115,11 @@ def ask(engine, monkeypatch):
 
     monkeypatch.setattr(_config, "load", lambda *_a, **_k: {"entities": ENTITIES, "vocabulary": {}})
 
-    def call(type, key=None, limit=50):
+    def call(type, key=None, limit=50, starts_with=None):
         db = Session(bind=engine)
         try:
-            return trace_router.ledger_key_values(type=type, key=key, limit=limit, world=None, db=db)
+            return trace_router.ledger_key_values(type=type, key=key, limit=limit, world=None,
+                                                  starts_with=starts_with, db=db)
         finally:
             db.close()
     return call
@@ -188,3 +197,112 @@ def test_a_type_with_no_node_on_either_side_lists_none_and_cuts_nothing(ask):
 def test_the_wire_cell_is_nodes(ask):
     answer = ask("wafer")
     assert "subjects" not in answer and "scan_rows" not in answer["limits"]
+
+
+# ------------------------------------------------------------- starts_with (총괄 bccbdd601)
+
+def _bases(answer):
+    return [node["keys"]["base"] for node in answer["nodes"]]
+
+
+def _plan(engine, prefix, params, analyze=False, no_seqscan=False):
+    """The product statement's plan nodes, flattened - the statement the route sends, EXPLAINed."""
+    from ledger import gaps
+
+    statement = gaps._nodes_of_type_sql(prefix).format(table=schema.LEDGER_TABLE)
+    raw = engine.raw_connection()
+    try:
+        with raw.cursor() as cursor:
+            if no_seqscan:
+                cursor.execute("SET LOCAL enable_seqscan = off")
+            cursor.execute("EXPLAIN (%sFORMAT JSON) %s" % ("ANALYZE, " if analyze else "", statement), params)
+            plan = cursor.fetchone()[0][0]["Plan"]
+    finally:
+        raw.rollback()
+        raw.close()
+    out, todo = [], [plan]
+    while todo:
+        node = todo.pop()
+        out.append(node)
+        todo.extend(node.get("Plans") or ())
+    return out
+
+
+def _prefix_params(prefix_text):
+    return {"bare": "base", "scan": 52, "axis": "base", "p": prefix_text, "plen": len(prefix_text),
+            "nulls": json.dumps({"base": None})}
+
+
+def test_first_letters_find_keys_past_the_front_fifty_on_both_sides(ask):
+    """The front 50 of base are A000-A049; the first letters reach the SYN-CW run past them, the object-side
+    SYN-CW-107 too, and stop before SYN-CX-1. This box's collation sorts case together, so the case variant
+    inside the run is found and the key after it is not lost."""
+    front = ask("base")
+    assert "A000" in _bases(front) and not any(b.upper().startswith("SYN") for b in _bases(front))
+    answer = ask("base", starts_with="SYN-CW")
+    assert answer["prefix_case"] == "insensitive"
+    assert _bases(answer) == ["SYN-CW-103", "SYN-CW-105", "syn-cw-106", "SYN-CW-107"]
+    assert answer["nodes"][-1]["count"] == 1                   # named once, as an object
+    assert (answer["starts_with"], answer["prefix_axis"], answer["scanned"]) == ("SYN-CW", "base", 4)
+    assert _bases(ask("base", starts_with="syn-cw")) == _bases(answer)
+
+
+def test_the_scan_stops_at_the_end_of_the_prefix(engine):
+    """Each side reads the matching keys and the one after - not on to its budget. The subject side's
+    recursive scan as the planner ran it - kept plus filtered out: 103, 105, 106, then SYN-CX-1."""
+    nodes = _plan(engine, "insensitive", _prefix_params("SYN-CW"), analyze=True)
+    rows = {node.get("CTE Name"): node["Actual Rows"] + node.get("Rows Removed by Filter", 0) for node in nodes
+            if node["Node Type"] == "CTE Scan" and node.get("CTE Name") in ("subject_side", "object_side")}
+    assert rows.get("subject_side") == 4, rows
+
+
+def test_the_bound_is_an_index_condition(engine):
+    """The prefix's lower bound reaches the subject index as its condition (the plan the box measured is
+    an Index Only Scan; this small table is asked with sequential scans off)."""
+    conditions = [node.get("Index Cond", "") for node in
+                  _plan(engine, "insensitive", _prefix_params("SYN-CW"), no_seqscan=True)
+                  if node["Node Type"] in ("Index Scan", "Index Only Scan")]
+    assert any("subject_keys >=" in condition for condition in conditions), conditions
+
+
+def test_an_empty_prefix_is_today_and_still_names_the_axis(ask):
+    today, empty = ask("base"), ask("base", starts_with="")
+    assert _listed(empty) == _listed(today) and empty["starts_with"] is None
+    for answer in (today, empty):
+        assert (answer["prefix_axis"], answer["prefix_case"], answer["prefix_refusal"]) == (
+            "base", "insensitive", None)
+    assert ask("lot_slot")["prefix_axis"] == "lot"              # jsonb's first key of a composite type
+
+
+def test_letters_past_ascii_and_like_wildcards_are_letters(ask):
+    assert _bases(ask("base", starts_with="웨이퍼")) == ["웨이퍼-1", "웨이퍼·2"]
+    assert _bases(ask("base", starts_with="a%")) == ["a%_b"]
+
+
+def test_where_case_sorts_apart_the_prefix_is_exact(ask, monkeypatch):
+    """The other branch (a C collation): the prefix keeps its case and the answer says so."""
+    from ledger import gaps
+
+    monkeypatch.setattr(gaps, "prefix_case", lambda connection: gaps.PREFIX_EXACT)
+    answer = ask("base", starts_with="LEAD-S")
+    assert (_bases(answer), answer["prefix_case"]) == (["LEAD-S6", "LEAD-S7"], "exact")
+    assert _bases(ask("base", starts_with="lead-s")) == []
+
+
+def test_a_type_whose_first_key_is_not_text_says_so_and_refuses_first_letters(ask):
+    from fastapi import HTTPException
+
+    answer = ask("die")
+    said = trace_router.PREFIX_REFUSAL % ("die", "x")
+    assert (answer["prefix_axis"], answer["prefix_refusal"]) == (None, said)
+    with pytest.raises(HTTPException) as refused:
+        ask("die", starts_with="1")
+    assert (refused.value.status_code, refused.value.detail["message"]) == (422, said)
+
+
+def test_first_letters_of_another_key_are_refused(ask):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as refused:
+        ask("lot_slot", key="slot", starts_with="1")
+    assert (refused.value.status_code, refused.value.detail["reason"]) == (422, "prefix_on_another_key")

@@ -37423,3 +37423,24 @@ QA  운영 모양: 끝난 소급 줄 × · 넣는 중 × · CLI 소급(실행 �
 순서       ③ 바구니 -> ④ 좌우 맞대기 표 -> ① 두 노드 경로(① 은 시연 뒤로 밀릴 수 있음 — 소유자 「ㅇㅇ」)
 응용       착지 뒤 RUN.md 시연 대본 ④(Compare) 를 이 표로 다시 쓰기 · 18766 에서 «누른 것 · 본 것»(두 base · quantity 줄 measures 값 맞대기 · missing)
 ```
+
+> **[총괄 -> 구현자 · 클라] 10-10 — PICK A NODE 를 «앞글자로 찾기» (소유자 「pick a node 좀 더 검색 기능 및 속도 강화해 logN 으로」 -> 「ㄱ 으로 가고 · 다 할 수 있어」). 시연(10-12) 전에 전부**
+
+```
+지금(총괄이 코드로 읽음)  PICK A NODE = GET /api/ledger/key-values(trace_router) -> gaps._nodes_of_type_sql 의 skip scan
+   (idx_ledger_subject_entity (subject_type, subject_keys) · idx_ledger_object_entity) 로 «키 순서 맨 앞» 50 개 — 뒤쪽 키는 영영 안 나옴
+총괄 재기(박스 읽기만, wafer 주어 원자 688,030): 같은 인덱스를 접두 범위로 — SYN-CW-103 10 개 0.002 s · SYN-BW-SPL 3 개 0.003 s · LEAD-S6 2 개 0.05 s,
+   계획 Index Only Scan(파티션마다 Merge Append). ⚠️ 상한을 접두+U+FFFF 로 두면 이 DB 콜레이션에서 0 행 — 상한 대신 «접두를 벗어나면 멈춤»
+도착지 두 줄  「PICK A NODE 에 앞글자를 치면 그 앞글자로 시작하는 노드가 바로 뜹니다(원장 인덱스를 타서 크기와 무관)」
+             「목록에 없으면 친 키 그대로 바구니에 넣습니다」
+구현자(서버)  key-values 에 인자 하나 starts_with — 같은 skip scan 을 {축: 접두} 하한에서 시작하고, 키가 그 접두를 벗어나면 멈춘다. 주어 · 목적어 두 쪽 그대로
+             새 라우트 · 새 인덱스 없음. 접두는 바인드 값(LIKE 없음). 비면 오늘과 같은 답
+             복합 키 타입은 jsonb 키 순서의 «첫 축»이 log N — 응답에 그 축 이름(prefix_axis). 다른 축 접두는 거절 문장(영어)
+             게이트  맨 앞 50 밖 키를 찾음 · 두 쪽 · 접두 끝에서 멈춤 · 빈 접두 = 오늘 · 한글/특수문자 · EXPLAIN 이 인덱스(시험 PG) · 변이
+             RUN.md · RELEASE_LOG · 착지 뒤 박스 재기동은 총괄
+클라(화면)    PICK A NODE 를 «치면서 찾는 상자»로 — 칠 때마다 잠깐 쉬고(요청 한 번) starts_with 로 물어 위 20 개를 아래에, 누르거나 Enter 로 고름
+             고르지 않으면 친 키 그대로(pickedNode 하나 — «+ Add» · Walk 가 같이 부름). 50 개 드롭다운은 은퇴(같은 일 두 길 금지)
+             단일 키 타입은 이 상자가 곧 키 입력 — 같은 키를 치는 칸이 둘이 되지 않게. 복합 키는 첫 축이 이 상자, 나머지 축은 오늘 키 칸
+             서버 착지 전엔 계약(starts_with · 응답 모양 그대로)으로 하니스부터. 크롬 MCP 줄은 «맨 앞 50 밖 키»를 앞글자로 찾아 + Add -> Walk
+순서  클라: 찾는 상자 -> ④ 좌우 맞대기 표 -> ① 두 노드 경로 (소유자 순서) · 구현자: starts_with 지금
+```

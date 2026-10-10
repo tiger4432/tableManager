@@ -38030,3 +38030,30 @@ public   이 세 판 사이 assy_test public.audit_logs 가 67 -> 70 -> 67 — �
 스샷         못 찍음 — 창이 뒤라 두 번 시간 초과 · 화면 글자를 읽음
 다음         ③ 바구니 착지 뒤 대본 ① 을 바구니 순서로 다시 재서 RUN.md 생성기로
 ```
+
+---
+
+## [C 응용] 10-10 ③ 시작 바구니(5417f3003, 고침 063c24f1c 포함) 를 18766 에서 — 대본 ① 은 바구니 순서로 됩니다 · 타이핑한 «여러 키» 시작은 Walk 가 거절됨
+
+```
+빌드        5417f3003 walk-CgsfUVnS.js · instance 18766 server-only · fake data (fake_measures 50 written)
+대본 ① 1    Type wafer · key SYN-BW-103-11 typed (list left on «pick») · Collect wafer · node_limit 1000 · Positive + Add · Walk | POSITIVE 1 · NEGATIVE 0 | Nodes 31 (collect: wafer) · Edges 1538 (all) | one table wafer · 31 · at depth 3: 30 | no STARTS line | request id=ID&node_limit=1000&collect=wafer | subgraph 0.702 s
+대본 ① 2    key SYN-BW-SPL-400-19 typed · Negative + Add · Walk | POSITIVE 1 · NEGATIVE 1 | Nodes 32 (collect: wafer) · Edges 1650 (all) | Walked from + SYN-BW-103-11 wafer · 31 (core 30) · Walked from − SYN-BW-SPL-400-19 wafer · 1 (core 0) | request id=ID&positive=ID&negative=ID&node_limit=1000&collect=wafer | subgraph 0.785 s
+옮기기      key SYN-BW-SPL-400-19 still in the form · Positive + Add -> POSITIVE 2 · NEGATIVE 0 (moved) · Negative + Add -> POSITIVE 1 · NEGATIVE 1 (moved back)
+Ctrl+Shift  Ctrl+Shift+Walk -> baskets unchanged (POSITIVE 1 · NEGATIVE 1) · same request as Walk · Nodes 32 · two zones · subgraph 0.801 s
+세상 칩     chips default then appdemo_vf -> url ?world=default&world=appdemo_vf · baskets unchanged · Nodes 32 · Edges 1668 · two zones (+ 31 core 30 / − 1 core 0) · request ...&world=default&world=appdemo_vf · subgraph 0.923 s
+RUN.md     대본 ① · ② 를 위 수로 다시 생성(61d6e5836) — Ctrl+Shift 줄 없음 · ③ · ④ 는 ④ 착지 때
+```
+
+### 목록에 없는 키 — + Add 는 켜지고 바구니에 들어가지만, 키가 둘 이상인 타입은 Walk 가 거절
+
+```
+누른 것    Type die · list 50 (all base-wafer dies; 367 die subjects, 141 on core wafers) · typed SYN-CW-103-15 · 0 · 11 · Wafer -> + Add on, Walk off «Add a start to Positive first» -> Positive + Add -> POSITIVE 1 «SYN-CW-103-15 · 0 · 11 · Wafer» -> Walk -> «Failed · entity id is not in canonical spelling» | id sent ["die",{"mat_id":"SYN-CW-103-15","x":"0","y":"11","mat_type":"Wafer"}] (form key order) · server entity_id sorts keys
+대조       Type die · picked list option 0 -> Positive + Add -> Walk -> walks (die 179 · Cut nodes 400) | id sent ["die",{"mat_id":"SYN-BW-103-11","mat_type":"Wafer","x":"0","y":"6"}] (sorted)
+원인       클라 entitySeedId 가 키를 «폼 칸 순서»(mat_id · x · y · mat_type)로 JSON 에 싣고,
+           서버 decode_entity_id 는 entity_id(sort_keys=True)로 다시 적어 글자가 같아야 받는다 -> 키 하나(wafer)는 순서가 없어 통과
+           목록에서 고르면 키가 정렬된 순서로 폼에 들어와 통과
+범위       타이핑한 시작 · 키 둘 이상이고 폼 칸 순서가 알파벳 순이 아닌 타입. 잰 것은 die 하나(다른 타입은 안 셈). 시연 base(wafer · 키 하나)는 안 걸림
+           같은 id 짓기 줄은 e07f6382c(바구니 전)에도 있음 — 코드로 봄, 그 빌드 화면에서는 안 눌러 봄
+고치기      클라 레인 몫 — 응용은 안 고침
+```

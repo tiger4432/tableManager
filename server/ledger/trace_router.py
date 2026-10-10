@@ -14,6 +14,7 @@ The response shape is pinned by the lead PM and a client lane is being built
 against it. Changing it is an escalation, not an edit.
 """
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -662,6 +663,27 @@ KEY_VALUE_SCAN_NODES = 1000
 KEY_VALUE_DEFAULT_LIMIT = 50
 KEY_VALUE_MAX_LIMIT = 500
 
+#: Said in every key-values answer of a type whose first key is not text (`prefix_refusal`), and as the
+#: 422 when such a type is asked `starts_with` (총괄 bccbdd601) - one sentence, both places.
+PREFIX_REFUSAL = ("'%s' cannot be found by its first letters - its first key '%s' is not text. "
+                  "Type the whole key in the key boxes")
+
+
+def _prefix_axis(connection, relation, bare_type, declared_keys, case):
+    """(the axis `starts_with` reads, or None; the refusal, or None). The axis is the declared key
+    that comes FIRST in jsonb's own key order - asked of PostgreSQL, the order the subject index
+    sorts by, so only on it is a prefix one range (총괄 bccbdd601). It must hold text: read from the
+    first node with that axis at or past '' (two probes); a number or no text there is refused."""
+    nulls = json.dumps({name: None for name in declared_keys})
+    axis = connection.exec_driver_sql("SELECT k FROM jsonb_object_keys(%(o)s::jsonb) k LIMIT 1",
+                                      {"o": nulls}).scalar()
+    first = connection.exec_driver_sql(
+        "SELECT keys::text FROM (%s) n" % gaps._nodes_of_type_sql(case).format(table=relation),
+        {"bare": bare_type, "scan": 1, "nulls": nulls, "axis": axis, "p": "", "plen": 0}).scalar()
+    if first is None or isinstance(json.loads(first).get(axis), str):
+        return axis, None
+    return None, PREFIX_REFUSAL % (bare_type, axis)
+
 
 @router.get("/key-values")
 def ledger_key_values(
@@ -673,6 +695,9 @@ def ledger_key_values(
     limit: int = Query(KEY_VALUE_DEFAULT_LIMIT, ge=1, le=KEY_VALUE_MAX_LIMIT),
     world: list[str] | None = Query(
         None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
+    starts_with: str | None = Query(
+        None, description=("앞글자 — 그 타입의 `prefix_axis` 가 이것으로 시작하는 노드만, 원장 인덱스의 그 "
+                           "범위에서 (`prefix_case` 가 대소문자를 말한다). 비면 오늘과 같은 답")),
     db: Session = Depends(get_db),
 ):
     """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
@@ -724,12 +749,29 @@ def ledger_key_values(
             "message": "'%s' declares no keys, so its subjects cannot be counted - "
                        "declare its keys" % wanted_type})
 
+    # 🔴 [총괄 bccbdd601] EVERY ANSWER SAYS WHICH KEY THE FIRST LETTERS SEARCH, starts_with or not - the
+    #   screen asks once with none to learn which key box its search box stands for.
+    case = gaps.prefix_case(connection)
+    prefix_axis, prefix_refusal = _prefix_axis(connection, relation, wanted_type, declared_keys, case)
+    prefixed = not _crud.is_blank_value(starts_with)
+    if prefixed and prefix_refusal:
+        raise HTTPException(status_code=422, detail={
+            "reason": "prefix_axis_not_text", "type": wanted_type, "message": prefix_refusal})
+    if prefixed and key and key != prefix_axis:
+        raise HTTPException(status_code=422, detail={
+            "reason": "prefix_on_another_key", "type": wanted_type, "key": key, "prefix_axis": prefix_axis,
+            "message": "starts_with searches '%s', the first key of '%s' - not '%s'"
+                       % (prefix_axis, wanted_type, key)})
+
     budget = limit + 1 if set(grouping) == set(declared_keys) else KEY_VALUE_SCAN_NODES
     # `::text` keeps each node's keys exactly as stored - a float round trip through Python
     # could name a node nobody has, and its count would read 0.
     nodes = [row[0] for row in connection.exec_driver_sql(
-        "SELECT keys::text FROM (%s) n" % gaps._nodes_of_type_sql().format(table=relation),
-        {"bare": wanted_type, "scan": budget + 1}).fetchall()]
+        "SELECT keys::text FROM (%s) n" % gaps._nodes_of_type_sql(case if prefixed else None).format(
+            table=relation),
+        {"bare": wanted_type, "scan": budget + 1, "axis": prefix_axis, "p": starts_with,
+         "plen": len(starts_with or ""),
+         "nulls": json.dumps({name: None for name in declared_keys})}).fetchall()]
     params = {"bare": wanted_type, "nodes": "[" + ",".join(nodes[:budget]) + "]",
               "limit": limit + 1}
     # Key NAMES are bound, never interpolated - they came from the declaration, and
@@ -774,6 +816,8 @@ def ledger_key_values(
         "values_truncated": len(rows) > limit,
         "limits": {"scan_nodes": budget, "values": limit},
         "order": "value_asc",
+        "starts_with": starts_with if prefixed else None,
+        "prefix_axis": prefix_axis, "prefix_case": case, "prefix_refusal": prefix_refusal,
     }
 
 

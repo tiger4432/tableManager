@@ -2254,7 +2254,7 @@
 
 ### ⭐⭐ **「여기 무슨 값을 적나」는 자유 텍스트 칸이 물어야 할 질문이다 — 그리고 그 답의 절단은 «둘»이다** (2026-09-16 등록 · `GET /api/ledger/key-values`)
 - **무엇**: 사용자가 «값»을 쳐 넣어야 하는 칸(씨앗·필터·조인 키)에는 **「이 타입의 이 키에 오늘 «있는» 값」을 답하는 자리**가 짝으로 있어야 한다. 없으면 사용자는 값 하나를 **외워서** 쳐야 하고, 오타와 「없는 값」이 화면에서 «같은 빈 결과»가 된다.
-- **어디**: `GET /api/ledger/key-values?type=&key=&limit=` (`server/ledger/trace_router.py`) — 부르는 쪽은 걷기 상자 `client2/src/walk/main.js`, 헬퍼는 `client2/src/rnd_board/api.js:fetchKeyValues`.
+- **어디**: `GET /api/ledger/key-values?type=&key=&limit=&starts_with=` (`server/ledger/trace_router.py`; 🆕 10-10 `starts_with` = 앞글자로 원장 인덱스 범위만 — `prefix_axis` · `prefix_case` · `prefix_refusal` 이 매 답에) — 부르는 쪽은 걷기 상자 `client2/src/walk/main.js`, 헬퍼는 `client2/src/rnd_board/api.js:fetchKeyValues`.
 - **언제 재사용**: 자유 입력 칸을 새로 만들 때 «항상». 값 목록을 클라가 «자기가 받아 온 데이터에서» 모으고 있으면 그것이 이 프리미티브를 다시 만든 것이다 — 클라가 가진 것은 «이미 좁혀진 창»이라 그 목록은 언제나 부분집합이다.
 - 🔴 **구현의 핵 ① — «그룹»이 아니라 «읽는 노드 수»를 자른다**(🆕 10-02 `6c44b0b3d` — ~~읽는 행 수~~). 노드는 `gaps._nodes_of_type_sql` (주어 «와» 목적어 두 쪽)이 답하고, 모든 키로 묶으면 `limit + 1` 개 · 축 하나면 `KEY_VALUE_SCAN_NODES` 개까지 읽은 뒤 그 위에서 센다. `count` 는 그 노드를 두 쪽에서 이름 부르는 원자 수(`gaps._names_node_sql`), 정렬은 값 오름차순. ~~`KEY_VALUE_SCAN_ROWS` 로 행 창을 자르고 주어 쪽만 셌다~~ — 그때는 목적어로만 나오는 타입이 빈 목록이었다.
 - 🔴 **구현의 핵 ② — 절단이 «둘»이고 «따로» 보고한다.** `scan_truncated`「노드를 다 못 봤다」 ≠ `values_truncated`「값이 더 있는데 안 실었다」. **한 표지로 접으면 「이 키엔 값이 이만큼뿐」과 「이만큼까지만 봤다」가 «같은 답»이 된다** — 그리고 둘 중 어느 것도 다른 것을 함의하지 않는다(작은 키가 «안 잘린» 스캔에서 목록을 채울 수 있고, 거대한 스캔이 값 셋을 낼 수 있다). 🆕 10-02 모든 키로 묶으면 노드 하나가 값 하나라 둘은 대개 같이 켜지고, 축 하나로 묶을 때 갈린다. 창이 잘렸으면 그 빈도는 **표본이지 전수가 아니다**.

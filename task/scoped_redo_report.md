@@ -78115,3 +78115,68 @@ run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) —
         계기의 «잡는 힘»은 이 판들로는 못 보임(쓰기가 0 이라) — 행 수 대조를 같이 붙임
 다음     일요일까지 대기 — 새 일은 지시서로
 ```
+
+---
+
+## [10-10 오후] key-values 의 starts_with — 앞글자로 찾기 — 착지 afc07c147 (총괄 bccbdd601 · ① ㄱ · ② 거절)
+
+어느 DB · 어느 스키마 · 지운 것 — 진짜 프로세스: assy_test 스크래치 assy_impl_kv_1010(지움) · 박스 assy_manager 는 연결마다 읽기 전용 · 쓴 것 · 지운 것 0
+public: 진짜 프로세스 판 public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after [] · public relations 325 -> 325 · added [] · gone [] · rows changed {}
+
+```
+지은 것  gaps._nodes_of_type_sql(prefix) — 같은 skip scan 이 {첫 축: 접두, 나머지 null} 하한에서 시작, 접두를 벗어난 첫 키에서 멈춤(주어 · 목적어)
+        gaps.prefix_case — 기본 콜레이션에 'a' < 'B' 를 물음: 참(이 박스 Korean_Korea.949)이면 대소문자 무시(하한 LEAST(lower, upper)), 거짓이면 그대로
+        trace_router._prefix_axis — 선언 키의 jsonb 첫 키를 PG 에 물음 · 첫 노드의 그 값이 글자가 아니면 prefix_axis null + PREFIX_REFUSAL
+        매 답에 starts_with · prefix_axis · prefix_case · prefix_refusal(빈 접두에도) · 422 prefix_axis_not_text(같은 문장) · prefix_on_another_key
+        새 라우트 · 새 인덱스 0 · 접두는 바인드 값 · 비면 오늘 SQL 그대로
+```
+
+```
+진짜 따로 띄운 스크래치 API(18792) — curl GET /api/ledger/key-values
+  == wafer, no starts_with (limit 50: the front)
+  {"starts_with": null, "prefix_axis": "wafer", "prefix_case": "insensitive", "prefix_refusal": null, "scanned": 51, "values": ["A044", "A045", "A046", "A047", "A048", "A049"], "detail": null}
+  == wafer, starts_with=SYN-CW
+  {"starts_with": "SYN-CW", "prefix_axis": "wafer", "prefix_case": "insensitive", "prefix_refusal": null, "scanned": 4, "values": ["SYN-CW-103", "SYN-CW-105", "syn-cw-106", "SYN-CW-107"], "detail": null}
+  == wafer, starts_with=syn-cw
+  {"starts_with": "syn-cw", "prefix_axis": "wafer", "prefix_case": "insensitive", "prefix_refusal": null, "scanned": 4, "values": ["SYN-CW-103", "SYN-CW-105", "syn-cw-106", "SYN-CW-107"], "detail": null}
+  == die, no starts_with
+  {"starts_with": null, "prefix_axis": null, "prefix_case": "insensitive", "prefix_refusal": "'die' cannot be found by its first letters - its first key 'x' is not text. Type the whole key in the key boxes", "scanned": 1, "values": ["M1"], "d
+  == die, starts_with=1 (HTTP 422)
+  {"starts_with": null, "prefix_axis": null, "prefix_case": null, "prefix_refusal": null, "scanned": null, "values": [], "detail": {"reason": "prefix_axis_not_text", "type": "die", "message": "'die' cannot be found by its first letters - its 
+```
+
+```
+박스 원장(읽기 전용) — 이 착지의 라우트 함수를 그대로, wafer, limit 20 (답 전체 초 — 노드 세기 포함)
+  starts_with None         1.051 s · nodes 20 · first ['LEAD-P3-A', 'LEAD-S65C-WP-01']
+  starts_with SYN-CW-103   0.102 s · nodes 20 · first ['SYN-CW-103-01', 'SYN-CW-103-02']
+  starts_with syn-cw-103   0.083 s · nodes 20 · first ['SYN-CW-103-01', 'SYN-CW-103-02']
+  starts_with SYN-BW-SPL   0.095 s · nodes 20 · first ['SYN-BW-SPL-400-01', 'SYN-BW-SPL-400-02']
+  starts_with LEAD-S6      0.078 s · nodes 2 · first ['LEAD-S65C-WP-01', 'LEAD-S66-B']
+  starts_with SYN          0.113 s · nodes 20 · first ['SYN-A-000-W01', 'SYN-A-000-W02']
+  (접두 없는 첫 판은 연결을 데우는 시간이 섞였을 수 있음 — 안 가름)
+```
+
+```
+변이(PG, md5 전후 같음, 빨강 = 실패한 시험)
+  baseline | 19 passed, 6 warnings in 4.99s
+  M1 the scan does not stop at the prefix's end | md5 restored True | 1 failed, 18 passed, 6 warnings in 4.64s
+      FAILED test_the_scan_stops_at_the_end_of_the_prefix
+  M2 the scan does not start at the bound | md5 restored True | 6 failed, 13 passed, 6 warnings in 4.12s
+      FAILED test_a_type_whose_first_key_is_not_text_says_so_and_refuses_first_letters
+      FAILED test_first_letters_find_keys_past_the_front_fifty_on_both_sides
+      FAILED test_letters_past_ascii_and_like_wildcards_are_letters
+      FAILED test_the_bound_is_an_index_condition
+      FAILED test_the_scan_stops_at_the_end_of_the_prefix
+      FAILED test_where_case_sorts_apart_the_prefix_is_exact
+  M3 the collation never asked - always exact | md5 restored True | 2 failed, 17 passed, 6 warnings in 4.47s
+      FAILED test_an_empty_prefix_is_today_and_still_names_the_axis
+      FAILED test_first_letters_find_keys_past_the_front_fifty_on_both_sides
+  M4 the case-blind match keeps case | md5 restored True | 2 failed, 17 passed, 6 warnings in 4.85s
+      FAILED test_first_letters_find_keys_past_the_front_fifty_on_both_sides
+      FAILED test_the_scan_stops_at_the_end_of_the_prefix
+  M5 the axis said only with starts_with | md5 restored True | 1 failed, 18 passed, 6 warnings in 4.74s
+      FAILED test_an_empty_prefix_is_today_and_still_names_the_axis
+돌린 시험 원장 읽기 자리(gaps · trace_router · key-values)를 쓰는 파일 27 개(test_ledger_v2_pg 뺌)
+         비-PG 1 failed, 299 passed, 4 skipped, 67 deselected, 20 warnings in 25.33s — 실패 하나는 test_one_place_decides_where_the_server_is(워크트리라 .git 이 폴더가 아님, 이 변경과 무관)
+         PG 67 passed, 304 deselected, 63 warnings in 385.82s (0:06:25) · public 쓰기 · 관계 · 행 전후 같음
+```
