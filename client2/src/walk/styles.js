@@ -337,7 +337,12 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-pick-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .sg-pick-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-pick-n { margin-left: auto; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.sg-pick-view { min-height: var(--wk-h-small); padding: 0 var(--space-2); }
+/* A big lump's window (lead df11f9e81): a branch's nodes under its row, unfolded by its ▸. */
+.sg-pick-members { display: flex; flex-direction: column; padding-left: var(--space-5); }
+.sg-pick-members[hidden] { display: none; }
+.sg-pick-behind { margin-left: auto; color: var(--text-dim); font-size: var(--wk-fs-line); font-variant-numeric: tabular-nums; }
+.sg-pick-row.is-loading { opacity: 0.6; }
+.sg-pick-view, .sg-pick-unfold { min-height: var(--wk-h-small); padding: 0 var(--space-2); }
 .sg-pick-foot { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border); }
 .sg-pick-all { display: inline-flex; align-items: center; gap: var(--space-1); margin-right: auto; color: var(--text-dim); }
