@@ -502,6 +502,12 @@ async function suite(mods) {
     eq('S6 a plain key round-trips to the id the board already uses',
       entitySeedId('wafer', { wafer: 'SYN-CX-BW-001' }),
       'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0');
+    // The server's own ids (fixtures/capture_entity_ids.py), keys given in the order the form types them (lead 10-10).
+    const SERVER_IDS = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'server_entity_ids.json'), 'utf8'));
+    const spelled = (i) => entitySeedId(SERVER_IDS[i].type, SERVER_IDS[i].keys);
+    eq('S7 a composite key typed in the form\'s order is spelled as the server spells it', spelled(0), SERVER_IDS[0].id);
+    eq('S8 number keys as the ledger holds them, spelled as the server spells them', spelled(1), SERVER_IDS[1].id);
+    eq('S9 keys already in order: the same id', spelled(2), SERVER_IDS[2].id);
   }
 
   // 🔴 SECTION L RETIRED 2026-08-28 -- it measured the COLLECT dropdown, and the
@@ -828,6 +834,9 @@ async function suite(mods) {
 //    mutant whose anchor is absent reports as a harness failure rather than as a caught
 //    defect -- which is the honest behaviour, and why they leave rather than linger.
 const MUTANTS = [
+  { name: 'the-keys-keep-the-form-order', catches: ['S7', 'S8'], file: 'api.js',
+    from: "  const json = `[${JSON.stringify(String(type || ''))},{${Object.keys(held).sort()",
+    to: "  const json = `[${JSON.stringify(String(type || ''))},{${Object.keys(held)" },
   // 🔴 THE ONE THAT COST TWO ROUNDS. Rebuilding the node from a field list is how
   //    `keys`/`depth` died on 09-06 and `attributes` on 09-08 -- the server sends it, the
   //    screen draws an empty cell, and nothing raises. The mutant restores exactly the line
