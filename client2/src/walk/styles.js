@@ -22,29 +22,31 @@ const STAMP = 'data-wk-styles';
 // 🔴 44 는 «손가락»입니다. 이 폼에서 누를 수 있는 것은 전부 이 밑에 걸립니다 —
 //    셀렉트 · 입력 · 버튼 · follow 라벨. 재는 것은 «닿는 넓이»이지 글자 크기가 아닙니다.
 export const WALK_CSS = `
-/* The walk page's two type sizes (lead 34d91c09d 8): its tables 14, every line beside them 13 - nothing smaller. */
-:root { --wk-fs-table: 14px; --wk-fs-line: 13px; }
-.wk-form { display: flex; flex-direction: column; gap: 10px;
-  font-family: 'Outfit', system-ui, sans-serif; font-size: 15px; color: var(--text, #111); }
-.wk-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+/* The walk page's type, heights and spaces (lead 34d91c09d 8, 18da45b73; owner «간격 정리 넣어»): letters 13 (a line
+   beside), 14 (body, tables), 16 (titles); a control 44 high, a small one in a cell 28; every space a --space-* token.
+   The screen gate asks all three of every element on the page. */
+:root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: 44px; --wk-h-small: 28px; }
+.wk-form { display: flex; flex-direction: column; gap: var(--space-3);
+  font-family: 'Outfit', system-ui, sans-serif; font-size: var(--wk-fs-body); color: var(--text, #111); }
+.wk-field { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3);
   background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
   border-radius: 8px; }
 .wk-label { font-size: var(--wk-fs-line); letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--text-dim, #71717a); }
 .wk-note { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); }
 
-.wk-select, .wk-input, .wk-go, label.wk-check { min-height: 44px; box-sizing: border-box;
+.wk-select, .wk-input, .wk-go, label.wk-check { min-height: var(--wk-h); box-sizing: border-box;
   font: inherit; }
-.wk-select, .wk-input { width: 100%; padding: 0 8px; color: var(--text, #111);
+.wk-select, .wk-input { width: 100%; padding: 0 var(--space-2); color: var(--text, #111);
   background: var(--bg-surface); border: 1px solid var(--border, #d4d4d8); border-radius: 6px; }
-.wk-keyrow { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.wk-keyrow { display: flex; align-items: center; gap: var(--space-2); min-height: var(--wk-h); }
 .wk-keyname { flex: none; width: 8.5em; font-family: 'JetBrains Mono', monospace;
   font-size: var(--wk-fs-line); color: var(--text-dim, #71717a);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-label.wk-check { display: flex; align-items: center; gap: 8px; padding: 0 4px; border-radius: 6px;
+label.wk-check { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-1); border-radius: 6px;
   font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
 label.wk-check.is-on { background: var(--accent-weak); }
-.wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
+.wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; margin: 0; }
 /* 🔴 고르는 목록은 «폭»을 씁니다. 높이 44 는 손가락이라 그대로이고, 한 줄에 하나씩 세우는
    것만 그만둡니다 — 실측(480px 틀): 폼 1,623px 중 1,214px 가 체크박스 23줄이었습니다.
    🔴 칸은 «자기 이름만큼» 자랍니다(flex 0 1 auto) — 고정 폭으로 나누면 긴 이름이 잘리고,
@@ -67,7 +69,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; min-height: 0;
   overflow: auto; padding: var(--space-4) var(--space-5); }
 .wk-mainhead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
-.wk-title { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.wk-title { font-size: var(--wk-fs-title); font-weight: 600; overflow-wrap: anywhere; }
 .wk-mainhead > .wk-views { margin-left: auto; }
 /* A name above its control: key, step and pick cells. */
 .wk-cell { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
@@ -84,7 +86,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-search [hidden] { display: none; }
 .wk-searchlist { display: flex; flex-direction: column; max-height: 440px; overflow-y: auto;
   background: var(--bg-surface); border: 1px solid var(--border); }
-.wk-searchitem { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3);
+.wk-searchitem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--wk-h); padding: 0 var(--space-3);
   cursor: pointer; }
 .wk-searchitem + .wk-searchitem { border-top: 1px solid var(--border); }
 .wk-searchitem:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
@@ -93,8 +95,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-searchcount { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-dim); }
 /* Collect: the picked types are chips (× takes one out); the rest are behind one + Type dropdown. */
 .wk-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.wk-chip, .wk-add { min-height: 44px; padding: 0 var(--space-4); border-radius: 999px; font: inherit;
-  font-size: 14px; cursor: pointer; }
+.wk-chip, .wk-add { min-height: var(--wk-h); padding: 0 var(--space-4); border-radius: 999px; font: inherit;
+  font-size: var(--wk-fs-body); cursor: pointer; }
 .wk-chip { color: var(--accent); background: var(--accent-weak); border: 1px solid var(--accent); }
 .wk-add { color: var(--text-dim); background: var(--bg-surface); border: 1px dashed var(--border-strong); }
 .wk-routes-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
@@ -102,51 +104,54 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   padding: var(--space-2); border: 1px solid var(--border); border-radius: 8px; }
 .wk-route.is-on { border-color: var(--accent); background: var(--accent-weak); }
 
-.wk-go { width: 100%; border: 0; border-radius: 8px;
+.wk-go { width: 100%; padding: 0 var(--space-4); border: 0; border-radius: 8px;
   background: var(--accent, #2563eb); color: var(--accent-contrast); font-weight: 600; }
 .wk-go[disabled] { opacity: 0.45; }
 
-.wk-result { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+.wk-result { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3);
   background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
   border-radius: 8px; }
 .wk-counts { font-weight: 600; }
-/* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. */
-.wk-path { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; width: 100%;
-  text-align: left; min-height: 44px; padding: 8px 10px; margin: 0;
+/* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. A control's height, its chain and its hops a
+   line each, cut at the row's end with the whole in its title (lead 18da45b73: 53 and 88 px rows); a press puts the
+   whole route in the form above. */
+.wk-path { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--space-3); width: 100%;
+  text-align: left; height: var(--wk-h); padding: 0 var(--space-3); margin: 0; align-content: center;
   border: 0; border-radius: 6px; cursor: pointer;
   background: transparent; color: inherit; font: inherit; }
 .wk-path:hover { background: var(--accent-weak); }
 .wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
-.wk-pathchain { font-size: 0.86rem; }
+.wk-pathchain, .wk-pathmeta { min-width: 0; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wk-pathchain { font-size: var(--wk-fs-body); }
 .wk-pathmeta { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); }
 /* A route's self-loops, as chips under its row: off by default (lead 5d5b8d750). */
 .wk-loops { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.wk-loopchip { min-height: 44px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+.wk-loopchip { min-height: var(--wk-h); padding: 0 var(--space-4); border-radius: 999px; cursor: pointer;
   border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-dim, #71717a);
   font: inherit; font-size: var(--wk-fs-line); }
 .wk-loopchip.is-on { border-color: var(--accent, #2563eb); color: var(--text, #111); font-weight: 600; }
 /* 타입 분포 — 「무엇이 몇 개 왔나」. 물어본 타입은 표시가 다릅니다. */
-.wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; }
 .wk-distlabel { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); }
-.wk-distchip { display: inline-flex; gap: 4px; padding: 2px 8px; border-radius: 999px;
+.wk-distchip { display: inline-flex; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-radius: 999px;
   border: 1px solid var(--border); font-size: var(--wk-fs-line); }
 .wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
 /* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
-.wk-sec { margin: 10px 0 14px; }
-.wk-sechead { font-weight: 700; font-size: 0.86rem; margin: 0 0 4px; }
+.wk-sec { margin: var(--space-3) 0 var(--space-4); }
+.wk-sechead { font-weight: 700; font-size: var(--wk-fs-title); margin: 0 0 var(--space-1); }
 /* A section's Next: the declared edges one step on, walked from its checked rows (lead 53050a4ec). */
-.wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 6.8px 0 0; }
-.wk-next-edge { min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 0;
+.wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; }
+.wk-next-edge { min-height: var(--wk-h); padding: 0 var(--space-4); border: 1px solid var(--border); border-radius: 0;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
 .wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }
 /* The steps walked; a press shows that step's table, the shown one lit. */
-.wk-steps { display: flex; flex-wrap: wrap; gap: 6.8px; margin: 6.8px 0; }
-.wk-step { min-height: 44px; padding: 0 13.6px; font: inherit; font-size: var(--wk-fs-line); color: var(--text);
+.wk-steps { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; }
+.wk-step { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; font-size: var(--wk-fs-line); color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-step.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 /* A row's check: the rail's follow label rules are label.wk-check - a cell took them (flex, 9.5em) and the table's
    first column stood 124 px wide (lead 34d91c09d review). */
-.wk-table th.wk-check, .wk-table td.wk-check { width: 1%; height: 44px; }
+.wk-table th.wk-check, .wk-table td.wk-check { width: 1%; height: var(--wk-h); padding-top: 0; padding-bottom: 0; }
 /* A control row and a control start: the board's control look (board.css .is-marked-control). */
 .wk-table tr.is-control td { background: var(--bg-inset); }
 .wk-table tr.is-control td.wk-check { box-shadow: inset 2px 0 0 var(--text-muted); }
@@ -157,20 +162,20 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-basket { display: flex; flex-direction: column; gap: var(--space-2); }
 .wk-baskethead { display: flex; align-items: center; gap: var(--space-2); }
 .wk-basketcount { font-variant-numeric: tabular-nums; color: var(--text-dim); }
-.wk-basketadd { align-self: flex-start; min-height: 44px; padding: 0 var(--space-4); font: inherit; font-weight: 600;
+.wk-basketadd { align-self: flex-start; min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; font-weight: 600;
   color: var(--accent); background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-basketadd[disabled] { opacity: 0.45; cursor: not-allowed; }
-.wk-basketremove { flex: none; margin-left: auto; padding: 0 var(--space-2); font: inherit; color: var(--text-dim);
+.wk-basketremove { flex: none; height: var(--wk-h-small); margin-left: auto; padding: 0 var(--space-2); font: inherit; color: var(--text-dim);
   background: none; border: 0; border-radius: 0; cursor: pointer; }
 .wk-basketrow { display: flex; align-items: baseline; gap: var(--space-2); padding-top: var(--space-1);
   border-top: 1px solid var(--border); }
 .wk-basketlabel { min-width: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
 .wk-baskettype { flex: none; font-size: var(--wk-fs-line); color: var(--text-dim); }
 .wk-basket.is-control .wk-basketlabel { color: var(--text-muted); }
-.wk-table { width: 100%; border-collapse: collapse; font-size: var(--wk-fs-table); display: block;
+.wk-table { width: 100%; border-collapse: collapse; font-size: var(--wk-fs-body); display: block;
   overflow-x: auto; white-space: nowrap; }
 .wk-table th, .wk-table td { border-bottom: 1px solid var(--border);
-  padding: 5px 8px; text-align: left; }
+  padding: var(--space-2) var(--space-3); text-align: left; }
 .wk-table th { font-weight: 600; color: var(--text-dim, #71717a); position: sticky; top: 0;
   background: var(--bg-surface); }
 /* 숫자는 «자릿수»로 섭니다 — x·y 가 세로로 안 맞으면 좌표를 못 읽습니다. */
@@ -186,6 +191,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   box-shadow: inset 0 -3px 0 var(--wk-plus); }
 .wk-sides th.wk-sidehead.wk-minus { color: var(--wk-minus); background: color-mix(in srgb, var(--wk-minus) 16%, var(--bg-surface));
   box-shadow: inset 0 -3px 0 var(--wk-minus); }
+/* The + band left of the node says its words at the node's side: the box opens on the axis (lead 10-10). */
+.wk-sides th.wk-sidehead.is-left { text-align: right; }
 /* A step said once over its columns, the value names under it (34d91c09d (나)). */
 .wk-sides th.wk-stephead { text-align: center; font-weight: 600; }
 /* A side that did not reach the node: one cell across its columns (34d91c09d 3). */
@@ -202,7 +209,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-sides th.wk-delta, .wk-sides td.wk-delta { border-right: 1px solid var(--border-strong); }
 .wk-centrelabel { font-family: var(--font-mono, ui-monospace, monospace); }
 /* The id behind an icon, shown with its row (34d91c09d 5). */
-.wk-copyid { margin-left: var(--space-2); padding: var(--space-1); color: var(--text-dim); vertical-align: middle;
+.wk-copyid { height: var(--wk-h-small); width: var(--wk-h-small); display: inline-flex; align-items: center; justify-content: center;
+  margin-left: var(--space-2); padding: 0; color: var(--text-dim); vertical-align: middle;
   background: none; border: 0; border-radius: 0; cursor: pointer; opacity: 0; }
 .wk-sides tr:hover .wk-copyid, .wk-copyid:focus-visible, .wk-copyid.is-done { opacity: 1; }
 .wk-copyid.is-done { color: var(--accent); }
@@ -211,7 +219,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-copyicon::before { left: 0; top: 0; }
 .wk-copyicon::after { right: 0; bottom: 0; }
 /* Several values: the first and «+N»; unfolded, they wrap inside a capped cell (34d91c09d 1). */
-.wk-more { margin-left: var(--space-2); padding: 0 var(--space-2); font: inherit; font-size: var(--wk-fs-line); color: var(--accent);
+.wk-more { height: var(--wk-h-small); margin-left: var(--space-2); padding: 0 var(--space-2); vertical-align: middle; font: inherit; font-size: var(--wk-fs-line); color: var(--accent);
   background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
 .wk-sides td.is-open { white-space: normal; max-width: 40ch; }
 .wk-rowfilter { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -246,8 +254,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
 .wk-walk { color: var(--text-dim, #71717a); }
 .wk-trunc { color: var(--warning); }
-.wk-fail { color: var(--danger, #dc2626); font-size: 0.86rem; }
-.wk-row { display: flex; gap: 8px; align-items: baseline; padding: 3px 0;
+.wk-fail { color: var(--danger, #dc2626); font-size: var(--wk-fs-body); }
+.wk-row { display: flex; gap: var(--space-2); align-items: baseline; padding: var(--space-1) 0;
   border-top: 1px solid var(--border, #d4d4d8); font-size: var(--wk-fs-line); }
 .wk-rowtype { flex: none; width: 7.5em; font-family: 'JetBrains Mono', monospace;
   font-size: var(--wk-fs-line); color: var(--text-dim, #71717a);
@@ -255,15 +263,15 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-rowlabel { overflow-wrap: anywhere; }
 
 /* Table | Graph — which view of the walk the page shows (lead c9bf53033). */
-.wk-views { display: flex; gap: 6.8px; }
-.wk-view { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--text);
+.wk-views { display: flex; gap: var(--space-2); }
+.wk-view { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-view.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
 /* Subgraph viewer. Corners 0, hairlines, colours from the roles in tokens.css only. A type's colour is a
    palette token (--cat-1..9 in tokens.css, TYPE_COLOURS of them) by its declaration index. A declaration
    with more types than tokens repeats a colour; the legend names them. */
-.sg-view { display: flex; flex-direction: column; gap: 6.8px; padding: 10.2px 13.6px;
+.sg-view { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); }
 /* The graph takes the height the window leaves (owner 10-07, lead d78bf28bd): the result column, the part and its
    picture each grow into what is left. A phone scrolls the page (layout A), so there the result column is the
@@ -280,15 +288,15 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   grid-template-rows: 163.2px; gap: var(--space-3); }
 .sg-factslot { position: relative; min-width: 0; border: 1px solid var(--border); background: var(--bg-surface); }
 .sg-factslot > .sg-facts { position: absolute; inset: 0; }
-.sg-head { display: flex; flex-direction: column; gap: 6.8px; min-width: 0; min-height: 0; overflow: auto; }
+.sg-head { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; min-height: 0; overflow: auto; }
 .sg-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
 @media (max-width: 760px) {
   .sg-top { grid-template-columns: minmax(0, 1fr); grid-template-rows: 163.2px auto; }
 }
 .sg-counts { font-weight: 600; }
-.sg-note { font-size: var(--fs-meta); color: var(--text-dim); }
+.sg-note { font-size: var(--wk-fs-line); color: var(--text-dim); }
 .sg-fail { color: var(--danger); }
-.sg-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-meta); color: var(--warning); }
+.sg-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); color: var(--warning); }
 .sg-type-0 { --sg-c: var(--cat-1); }
 .sg-type-1 { --sg-c: var(--cat-2); }
 .sg-type-2 { --sg-c: var(--cat-3); }
@@ -298,9 +306,9 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-type-6 { --sg-c: var(--cat-7); }
 .sg-type-7 { --sg-c: var(--cat-8); }
 .sg-type-8 { --sg-c: var(--cat-9); }
-.sg-legend { display: flex; flex-wrap: wrap; gap: 6.8px; }
-.sg-chip { display: inline-flex; align-items: center; gap: 6.8px; padding: 3.4px 6.8px;
-  border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); }
+.sg-legend { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.sg-chip { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
 .sg-swatch { width: 10.2px; height: 10.2px; border-radius: 50%; background: var(--sg-c); }
 .sg-swatch.is-static { border-radius: 0; }
 /* The picture: Cytoscape draws into the height left (no fixed height); it pans and zooms inside it (lead 5e1d9e372).
@@ -310,60 +318,60 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-canvas-wrap.is-empty { display: none; }
 .sg-canvas { position: absolute; inset: 0; }
 .sg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.sg-tool { min-height: 44px; padding: 0 var(--space-4); font: inherit; color: var(--text);
+.sg-tool { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 /* What a lump holds, ticked open (lead 03bc94b6b): beside the lump, inside the picture's box. */
-.sg-pick { position: absolute; z-index: 2; width: 272px; max-width: calc(100% - 13.6px); display: flex;
+.sg-pick { position: absolute; z-index: 2; width: 272px; max-width: calc(100% - var(--space-4)); display: flex;
   flex-direction: column; background: var(--bg-surface); border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-pop); }
 .sg-pick-head { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); font-weight: 600; }
-.sg-pick-sub { font-weight: 400; font-size: var(--fs-meta); color: var(--text-dim); }
-.sg-pick-filter { margin: var(--space-2) var(--space-3) 0; min-height: 36px; padding: 0 var(--space-2); font: inherit;
+.sg-pick-sub { font-weight: 400; font-size: var(--wk-fs-line); color: var(--text-dim); }
+.sg-pick-filter { margin: var(--space-2) var(--space-3) 0; min-height: var(--wk-h); padding: 0 var(--space-2); font: inherit;
   color: var(--text); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 0; }
 .sg-pick-list { max-height: 240px; overflow: auto; padding: var(--space-1) 0; }
-.sg-pick-row { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3);
+.sg-pick-row { display: flex; align-items: center; gap: var(--space-2); min-height: var(--wk-h); padding: 0 var(--space-3);
   cursor: pointer; }
 .sg-pick-row[hidden] { display: none; }
 .sg-pick-row.is-lit { font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
 .sg-pick-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .sg-pick-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-pick-n { margin-left: auto; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.sg-pick-view { min-height: 28px; padding: 0 var(--space-2); }
+.sg-pick-view { min-height: var(--wk-h-small); padding: 0 var(--space-2); }
 .sg-pick-foot { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border); }
 .sg-pick-all { display: inline-flex; align-items: center; gap: var(--space-1); margin-right: auto; color: var(--text-dim); }
-.sg-continue { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--accent-contrast);
+.sg-continue { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; color: var(--accent-contrast);
   background: var(--accent); border: 1px solid var(--accent); border-radius: 0; cursor: pointer; }
 .sg-continue[disabled] { opacity: 0.5; cursor: not-allowed; }
 /* The picked node's facts stay in sight (lead 9dc2a5695 ①): in their cell above the picture, with a scroll of
    their own, Mark and Fold first. Nothing picked draws nothing; the cell keeps its place. */
-.sg-facts { display: flex; flex-direction: column; gap: 3.4px; overflow: auto; padding: var(--space-3);
+.sg-facts { display: flex; flex-direction: column; gap: var(--space-1); overflow: auto; padding: var(--space-3);
   background: var(--bg-surface); }
 .sg-facts:empty { display: none; }
 .sg-facts-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 /* Mark (into the marking Continue walks) and Fold branches / Unfold (lead 43a738d58 ③) - their own presses. */
-.sg-mark, .sg-fold { min-height: 44px; padding: 0 var(--space-4); font: inherit; color: var(--text);
+.sg-mark, .sg-fold { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .sg-mark.is-on { color: var(--accent); background: var(--accent-weak); border-color: var(--accent); font-weight: 600; }
 .sg-mark[disabled] { opacity: 0.5; cursor: not-allowed; }
 .sg-facts-head { font-weight: 600; }
 /* A lump in the info box (lead 10-08): what it is, its switch and its y on one line, its counts, then the table or the
    points. The box keeps its height and scrolls inside itself. */
-.sg-lv-kind { min-height: 36px; padding: 0 var(--space-3); }
+.sg-lv-kind { min-height: var(--wk-h); padding: 0 var(--space-3); }
 .sg-lv-kind[aria-pressed="true"] { color: var(--accent); background: var(--accent-weak); border-color: var(--accent);
   font-weight: 600; }
-.sg-lv-y { min-height: 36px; padding: 0 var(--space-2); font: inherit; color: var(--text); background: var(--bg-inset);
+.sg-lv-y { min-height: var(--wk-h); padding: 0 var(--space-2); font: inherit; color: var(--text); background: var(--bg-inset);
   border: 1px solid var(--border); border-radius: 0; }
 .sg-lv-choice { display: inline-flex; align-items: center; gap: var(--space-2); }
-.sg-lv-word { font-size: var(--fs-meta); color: var(--text-dim); }
-.sg-lv-meta { font-size: var(--fs-meta); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sg-lv-word { font-size: var(--wk-fs-line); color: var(--text-dim); }
+.sg-lv-meta { font-size: var(--wk-fs-line); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .sg-lv-plot { display: block; width: 100%; height: 80px; flex: none; }
-.sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); overflow-wrap: anywhere; }
+.sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); overflow-wrap: anywhere; }
 /* Which world says an edge or an attribute, when the walk reads several (leads 99032248f, ee0f66e7b, 4e1e49fe9):
    one row per world under it, its chip first, then what that world says. */
 .sg-fact--world { padding-left: var(--space-4); color: var(--text-muted); }
 .sg-world { display: inline-block; margin-right: var(--space-2); padding: 0 var(--space-1); border: 1px solid var(--border);
-  font-family: var(--font-sans); font-size: var(--fs-tag); color: var(--text); }
+  font-family: var(--font-sans); font-size: var(--wk-fs-line); color: var(--text); }
 `;
 
 /**

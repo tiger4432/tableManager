@@ -38,18 +38,18 @@
       flex-direction: column;
       min-height: 100%;
       /* 노치 있는 기기에서 첫 줄이 상태바 밑으로 들어가지 않게. */
-      padding: max(8px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom));
+      padding: max(var(--space-2), env(safe-area-inset-top)) var(--space-3) max(var(--space-4), env(safe-area-inset-bottom));
       box-sizing: border-box;
-      gap: 10px;
+      gap: var(--space-3);
     }
     .wk-head {
       display: flex;
       align-items: baseline;
-      gap: 8px;
-      font-size: 0.82rem;
+      gap: var(--space-2);
+      font-size: var(--wk-fs-line);
       color: var(--text-dim);
     }
-    .wk-head b { color: var(--text); font-size: 1rem; }
+    .wk-head b { color: var(--text); font-size: var(--wk-fs-title); }
     /* The worlds the walk reads (lead 99032248f), pushed to the head's end, as the board's; the head wraps
        rather than cut chips off - the page itself does not scroll sideways. */
     .wk-head { flex-wrap: wrap; }
@@ -72,7 +72,7 @@
       #wk-host > .wk-rail > .wk-form, #wk-host > .wk-main { overflow: visible; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/walk-Dzuz73ZU.js"></script>
+  <script type="module" crossorigin src="/assets/walk-BGPnH17n.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-Mv2iG8s3.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">

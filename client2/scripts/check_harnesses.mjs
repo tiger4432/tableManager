@@ -1482,11 +1482,11 @@ const FLOORS = new Map([
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
-  ['walk_table_harness.mjs', 106],   // 89 -> 106: the nine (lead 34d91c09d)
+  ['walk_table_harness.mjs', 108],   // 106 -> 108: the node axis in the middle of its box (lead 10-10)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
-  ['walk_layout_harness.mjs', 32],   // 29 -> 32: node_limit, the title, the seconds (lead 34d91c09d)
+  ['walk_layout_harness.mjs', 34],   // 32 -> 34: fanout_limit on the step (lead 5d946a639)
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
@@ -1768,7 +1768,7 @@ const FLOORS = new Map([
   // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
   //   and their two mutants (lead 10-09): 176 -> 184.
   // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
-  ['screen_layout_harness.mjs', 210],   // 189 -> 210: the walk page at 1568x775, its table dark and light, four cells, three mutants (lead 34d91c09d)
+  ['screen_layout_harness.mjs', 242],   // 210 -> 242: the demo pair, 1896x907, the - side's first column; spacing tokens, two heights, three type sizes; four mutants in, one out (leads 10-10, 18da45b73)
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

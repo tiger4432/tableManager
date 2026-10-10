@@ -39,8 +39,9 @@ const FIX = path.join(HERE, 'fixtures');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const ORIGIN = 'http://screens.test';
 const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
-// A size one entry is seen at too: the walk page where the lead read its table (Edge 1568x775, lead 34d91c09d).
-const ENTRY_SIZES = { 'walk.html': [[1568, 775]] };
+// Sizes one entry is seen at too: the walk page where the lead read its table (Edge 1568x775, lead 34d91c09d; Edge
+// 1896x907 with the demo pair, lead 10-10 after 517eb6c2c).
+const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907]] };
 const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
 const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns', 'words'];
 const TOL = 12;
@@ -143,6 +144,18 @@ const SIDE_CELLS = [
   if (pc.backgroundColor === mc.backgroundColor) return \`both sides' cells on \${pc.backgroundColor}\`;
   return null;
 })()`],
+  ['− side in view', `(() => {
+  const firsts = [...document.querySelectorAll('.wk-sides thead tr:last-child th.wk-minus')].filter((th) => {
+    const prev = th.previousElementSibling;
+    return !prev || !prev.classList.contains('wk-minus');
+  });
+  if (!firsts.length) return 'no − column drawn';
+  for (const th of firsts) {
+    const t = th.closest('table').getBoundingClientRect(), r = th.getBoundingClientRect(), edge = Math.min(t.right, innerWidth);
+    if (r.left < Math.max(t.left, 0) - 1 || r.right > edge + 1) return \`the − side's first column «\${th.textContent.trim()}» stands at \${Math.round(r.left)}..\${Math.round(r.right)} px, its table shows \${Math.round(t.left)}..\${Math.round(edge)}\`;
+  }
+  return null;
+})()`],
   ['missing once', `(() => {
   let seen = 0;
   for (const tr of document.querySelectorAll('.wk-sides tbody tr')) {
@@ -155,12 +168,65 @@ const SIDE_CELLS = [
   return seen ? null : 'no missing cell drawn';
 })()`],
 ];
-// Node and Δ in the first screen are asked at the size the lead named (34d91c09d (나)): at 1280 a + side of four
-// columns is wider than the table's box, and the − side scrolls in it at every size.
-const FIRST_SCREEN = '1568x775';
+// The walk page's spacing, heights and type (lead 18da45b73, owner «간격 정리 넣어»): read by CSS Typed OM, where an auto
+// margin stays «auto» (the resolved style says the free space in px). The graph's canvas, svg drawings and the account
+// badge and the branch picker (shared parts, their own styles) are not the walk page's.
+const WALK_PAGE = `const page = document.querySelector('.wk-page');
+  const mine = (el) => el.getClientRects().length && !el.closest('svg, .sg-canvas, .acct-host, .branch-picker');
+  const tally = (bad, key, el) => { const at = bad.get(key) || { n: 0, el }; at.n += 1; bad.set(key, at); };
+  const said = (bad) => [...bad].map(([k, x]) => k + ' x' + x.n + ' (' + x.el.tagName.toLowerCase()
+    + (typeof x.el.className === 'string' && x.el.className ? '.' + x.el.className.split(' ')[0] : '') + ')').join(' · ');`;
+const WALK_LOOK = [
+  ['spacing tokens', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const TOKENS = [0, 3.4, 6.8, 10.2, 13.6, 20.4, 27.2];
+  const bad = new Map();
+  for (const el of [page, ...page.querySelectorAll('*')]) {
+    if (!mine(el)) continue;
+    const map = el.computedStyleMap();
+    for (const prop of ['padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-right', 'margin-bottom',
+      'margin-left', 'row-gap', 'column-gap']) {
+      const v = map.get(prop);
+      if (!v || v.unit !== 'px' || TOKENS.some((t) => Math.abs(v.value - t) < 0.05)) continue;
+      tally(bad, prop.replace(/-(top|right|bottom|left)$/, '') + ' ' + Number(v.value.toFixed(2)) + 'px', el);
+    }
+  }
+  return bad.size ? 'off the --space-* grid: ' + said(bad) : null;
+})()`],
+  ['two heights', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const bad = new Map();
+  for (const el of page.querySelectorAll('button, select, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])')) {
+    if (!mine(el)) continue;
+    const h = Math.round(el.getBoundingClientRect().height);
+    if (h !== 44 && h !== 28) tally(bad, h + 'px', el);
+  }
+  return bad.size ? 'a control neither 44 nor 28 px high: ' + said(bad) : null;
+})()`],
+  ['three type sizes', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const bad = new Map();
+  for (const el of [page, ...page.querySelectorAll('*')]) {
+    if (!el.getClientRects().length || el.closest('.sg-canvas, .acct-host, .branch-picker')) continue;
+    // Letters: a text of its own, a select, a text input; a checkbox or an icon button has none.
+    const own = el.tagName === 'SELECT' || (el.tagName === 'INPUT' && !/^(checkbox|radio|hidden)$/.test(el.type))
+      || [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (!own) continue;
+    const f = parseFloat(getComputedStyle(el).fontSize);
+    if (![13, 14, 16].some((t) => Math.abs(f - t) < 0.05)) tally(bad, Number(f.toFixed(2)) + 'px', el);
+  }
+  return bad.size ? 'letters neither 13, 14 nor 16 px: ' + said(bad) : null;
+})()`],
+];
+for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell']) {
+  for (const [rule, expr] of WALK_LOOK) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
+}
+// Node, Δ and the − side's first column in the first screen are asked at the sizes the lead named (34d91c09d (나);
+// 10-10 after 517eb6c2c, the demo pair): at 1280 the table's box is narrower than node, Δ and a − column together.
+const FIRST_SCREEN = ['1568x775', '1896x907'];
 for (const after of ['Side by side, dark', 'Side by side, light']) {
   for (const [rule, expr] of SIDE_CELLS) {
-    CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-sides', expr, ...(/in view$/.test(rule) ? { size: FIRST_SCREEN } : {}) });
+    CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-sides', expr, ...(/in view$/.test(rule) ? { sizes: FIRST_SCREEN } : {}) });
   }
 }
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json',
@@ -553,18 +619,18 @@ const DRIVE = {
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
       await choose(c, '.wk-select', [0, "x.textContent.trim() === 'wafer'"]);
-      await pickKey(c, 'SYN-BW-SPL-400-19');
+      await pickKey(c, 'SYN-BW-103-11');
       await sleep(300);
       await basket(c, '+');
       await press(c, 'Walk');
       await until(c, "document.querySelector('.wk-main table, .wk-main svg, .wk-main canvas')");
     }],
     ['Graph', (c) => press(c, 'Graph').then(() => sleep(1500))],
-    // The table side by side (lead 3375edd9b) as the lead reviewed it (34d91c09d): a second wafer in Negative, wafer and
-    // quantity collected, then Walk - a band per sign, a missing side, several values, a Δ.
+    // The table side by side (lead 3375edd9b) with the demo pair (34d91c09d; 10-10 after 517eb6c2c): a second wafer in
+    // Negative, wafer and quantity collected, then Walk - a band per sign, a missing side, a wide + side, a Δ.
     ['Table, + and - side by side', async (c) => {
       await press(c, 'Table');
-      await pickKey(c, 'SYN-BW-SPL-400-01');
+      await pickKey(c, 'SYN-BW-SPL-400-19');
       await sleep(300);
       await basket(c, '−');
       await choose(c, 'select.wk-add', [0, "x.value === 'wafer'"]);
@@ -664,7 +730,7 @@ async function runScreens(dist, label, one = only) {
           add(state, waitsRunOut.splice(0).map((what) => ({ rule: 'answers', path: entry, what })));
           await settle(chrome, log);
           add(state, await evaluate(chrome, 'window.__screens.measure()'));
-          for (const cell of CELLS.filter((c) => c.entry === entry && c.after === state && (!c.size || c.size === size))) {
+          for (const cell of CELLS.filter((c) => c.entry === entry && c.after === state && (!c.sizes || c.sizes.includes(size)))) {
             const why = await evaluate(chrome, cell.expr);
             if (why) add(state, [{ rule: cell.rule, path: cell.at || '#performance-log', what: why }]);
           }
@@ -705,7 +771,7 @@ const t0 = Date.now();
 const { entries, found } = await runScreens(path.join(CLIENT, 'dist'), 'dist');
 for (const entry of entries) {
   for (const [w, h] of sizesOf(entry)) {
-    const cells = CELLS.filter((c) => c.entry === entry && (!c.size || c.size === `${w}x${h}`));
+    const cells = CELLS.filter((c) => c.entry === entry && (!c.sizes || c.sizes.includes(`${w}x${h}`)));
     for (const rule of new Set([...RULES, 'answers', ...cells.map((c) => c.rule)])) {
       ran += 1;
       const mine = found.filter((f) => f.entry === entry && f.size === `${w}x${h}` && f.rule === rule);
@@ -780,9 +846,15 @@ const MUTANTS = [
       ['.wk-sides th.wk-sidehead.wk-minus {', '.wk-sides th.wk-sidehead.wk-minus-gone {']] },
   { name: 'a side that did not reach saying missing in every column', entry: 'walk.html', rule: 'missing once', at: 'wk-sides',
     file: 'src/walk/table_view.js', edits: [['        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];\n', '']] },
-  { name: 'several values on one line, the node pushed off', entry: 'walk.html', rule: 'node in view', at: 'wk-sides',
-    file: 'src/walk/table_view.js', edits: [["  return { text: values[0], rest: `+${values.length - 1}${cell.more ? '+' : ''}`, values };",
-      "  return { text: `${values.length} values · ${values.join(' · ')}` };"]] },
+  // The walk page's spacing, heights and type (lead 18da45b73), built back.
+  { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['  padding: var(--space-2) var(--space-3); text-align: left; }', '  padding: 5px 8px; text-align: left; }']] },
+  { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-copyid { height: var(--wk-h-small);', '.wk-copyid { height: 20px;']] },
+  { name: 'a 12 px line again', entry: 'walk.html', rule: 'three type sizes', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-note { font-size: var(--wk-fs-line);', '.wk-note { font-size: 12px;']] },
+  { name: 'the table drawn without its axis in the middle', entry: 'walk.html', rule: '− side in view', at: 'wk-sides',
+    file: 'src/walk/main.js', edits: [["    if (host.querySelectorAll) for (const table of host.querySelectorAll('table.wk-sides')) centreAxis(table);\n", '']] },
 ];
 async function buildMutant(m) {
   const { build } = await import('vite');

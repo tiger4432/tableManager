@@ -502,6 +502,11 @@ async function suite(mod) {
     ok('Z13 two groups: the + columns, the node in the centre, delta beside it, the − columns (34d91c09d, as the lead answered)',
       JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['gate', 'mat_id', 'Δ', 'gate'], ['7', 'M-3', '−2', '9']]),
       JSON.stringify([headRow(), tds('d:3')]));
+    // The node axis in the middle of its box (lead 10-10): a box at 400 px, 800 wide, 2000 to scroll.
+    const scrollTo = (axisLeft, axisRight) => mod.axisScrollLeft({ boxLeft: 400, boxWidth: 800, axisLeft, axisRight, scrollLeft: 0, scrollWidth: 2000 });
+    ok('Z28 a table opens with its node axis in the middle of its box, within what the box can scroll',
+      JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]) === JSON.stringify([600, 0, 1200]),
+      JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]));
     ok('Z27 the step once over the columns that share it, the value\'s name under each (34d91c09d)',
       JSON.stringify(stepRow()) === JSON.stringify([['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1]]), JSON.stringify(stepRow()));
     const copy = walkAll(rowOf('d:3') || { children: [] }).find((e) => e.className === 'wk-copyid');
@@ -710,12 +715,14 @@ const MUTANTS = [
     from: '      if (pair) { group(0); node(); deltas(); group(1); }', to: '      if (pair) { group(0); node(); group(1); deltas(); }' },
   { id: 'NZ12', what: 'the step said in every head again', catches: 'Z26',
     from: '        if (k > 0 && parts[k - 1].step === p.step) {', to: '        if (false) {' },
+  { id: 'NZ14', what: 'the axis scrolled past either end of the box', catches: 'Z28',
+    from: '  return Math.max(0, Math.min(scrollWidth - boxWidth, Math.round(want)));', to: '  return Math.round(want);' },
   { id: 'NZ13', what: 'no step row', catches: 'Z27',
     from: '    thead.append(band, ...(section.parts.some((p) => p.step) ? [steps] : []), head);', to: '    thead.append(band, head);' },
   { id: 'NZ7', what: 'several values on one line again', catches: 'Z24',
     from: '      if (cell.rest) {', to: '      if (false) {' },
   { id: 'NZ8', what: 'one band colour for both signs', catches: 'Z25',
-    from: '`wk-sidehead ${cls}`', to: "'wk-sidehead'" },
+    from: "`wk-sidehead ${cls}${pair && i === 0 ? ' is-left' : ''}`", to: "'wk-sidehead'" },
   { id: 'NZ9', what: 'the empty-column press does nothing', catches: 'Z26',
     from: 'if (state.emptyOpen.has(section.type)) state.emptyOpen.delete(section.type); else state.emptyOpen.add(section.type);', to: '' },
   { id: 'NZ10', what: 'Copy id in words again', catches: 'Z16',

@@ -178,6 +178,13 @@ async function suite(mod, css = REAL_CSS) {
   await bare.act.walk();
   eq('L8 a type and a key, nothing else: the same request as before, and node_limit at the server\'s most (lead 34d91c09d 9)',
     bare.asked.filter((u) => u.includes('/subgraph'))[0], `${BEFORE.bare}&node_limit=${mod.NODE_LIMIT}`);
+  // fanout_limit (lead 5d946a639): typed, it goes with the walk; blank (the bare walk above), it does not.
+  page.act.key('fanout_limit', '50');
+  await page.act.walk();
+  const queryOf = (p, i) => new URLSearchParams((p.asked.filter((u) => u.includes('/subgraph')).slice(i)[0] || '').split('?')[1] || '');
+  ok('L18 fanout_limit typed goes with the walk; blank it does not (lead 5d946a639)',
+    queryOf(page, -1).get('fanout_limit') === '50' && !queryOf(bare, 0).has('fanout_limit'),
+    `${queryOf(page, -1).get('fanout_limit')} | ${queryOf(bare, 0).has('fanout_limit')}`);
   const limit = bare.find((e) => e.tagName === 'label' && e.children.some((c) => c.textContent === 'node_limit')
     && e.children.some((c) => c.tagName === 'input'));
   const limitInput = limit && limit.children.find((c) => c.tagName === 'input');
@@ -278,7 +285,9 @@ const MUTANTS = [
     mutate: (t) => swap(t, "      const route = el(doc, 'div', 'wk-route' + (picked ? ' is-on' : ''));",
       "      const route = el(doc, 'div', 'wk-route is-on');") },
   { id: 'W4', what: 'node_limit is no longer sent', catches: 'L7 the full',
-    mutate: (t) => swap(t, '    if (Number.isFinite(limit)) out.node_limit = limit;', '') },
+    mutate: (t) => swap(t, '      if (Number.isFinite(n)) out[wire] = n;', "      if (Number.isFinite(n) && wire !== 'node_limit') out[wire] = n;") },
+  { id: 'W16', what: 'fanout_limit drawn but not sent', catches: 'L18 ',
+    mutate: (t) => swap(t, '      if (Number.isFinite(n)) out[wire] = n;', "      if (Number.isFinite(n) && wire !== 'fanout_limit') out[wire] = n;") },
   { id: 'W5', what: 'the title reads the live form', catches: 'L9 the title',
     mutate: (t) => swap(t, "      head.append(el(doc, 'span', 'wk-title', state.at === 0 ? askedTitle(askedOf) : shown.title));",
       "      head.append(el(doc, 'span', 'wk-title', state.at === 0 ? askedTitle(spec()) : shown.title));") },

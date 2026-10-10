@@ -13,6 +13,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { makeDoc, flush, walk as walkAll } from './lib/board_dom.mjs';
+import { SEARCH_DELAY_MS } from '../src/walk/node_search.js';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 
@@ -194,6 +195,9 @@ async function seen(M) {
     boxInput().value = 'LOT-9';
     boxInput().dispatch('input', {});
     const addOn = !add().disabled;
+    // The page's pause is the real one: waited out by the clock, not by twenty empty ticks (a tick is 1 ms or 15.6 ms
+    // by what else runs on the box - red while Chrome held the timer at 1 ms, 10-10).
+    await new Promise((ok) => setTimeout(ok, SEARCH_DELAY_MS + 50));
     await settle();
     out.typedSubject = [{ ...page.state.keys }, addOn, asked.slice(-1)[0]];
     boxInput().dispatch('focus', {});

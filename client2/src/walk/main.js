@@ -79,6 +79,18 @@ const SERVER_DEFAULT = 'default';
 /** The one knob with a default here (lead 34d91c09d 9, owner 10-10 «다 넣어»): node_limit starts at the server's most
  *  (ledger_subgraph.MAX_NODE_LIMIT), not its 400 that cut the side by side walk. Cleared, the server's default again. */
 export const NODE_LIMIT = 1000;
+/** STEP's number knobs: the wire's name, the form's key, the server's bounds (null: none above) - drawn and sent from this
+ *  one list (fanout_limit, lead 5d946a639). Blank, a knob is not sent and the server decides. */
+const NUMBER_KNOBS = [['hops', 'hops', 1, 40], ['node_limit', 'nodeLimit', 10, NODE_LIMIT], ['fanout_limit', 'fanoutLimit', 1, null]];
+
+/**
+ * Where a side by side table's box scrolls so its node axis stands in its middle (lead 10-10 after 517eb6c2c: a wide +
+ * side pushed the node, Δ and the − side past the box): the axis' centre on the box's, within what the box can scroll.
+ */
+export function axisScrollLeft({ boxLeft, boxWidth, axisLeft, axisRight, scrollLeft, scrollWidth }) {
+  const want = scrollLeft + (axisLeft + axisRight) / 2 - (boxLeft + boxWidth / 2);
+  return Math.max(0, Math.min(scrollWidth - boxWidth, Math.round(want)));
+}
 
 /** A column by what it reads - its steps and its value - not its place in the table. */
 const columnKey = (column) => JSON.stringify([column.steps, column.value]);
@@ -111,7 +123,7 @@ export function boot(doc, host, deps) {
   const state = {
     decl: null, declState: 'loading', declReason: '',
     type: '', keys: {}, follow: new Set(), collect: new Set(),
-    direction: '', hops: '', nodeLimit: String(NODE_LIMIT),
+    direction: '', hops: '', nodeLimit: String(NODE_LIMIT), fanoutLimit: '',
     // How long the shown walk took, ms (lead 34d91c09d 9: a slower walk says so in the counts line).
     run: 'idle', result: null, reason: '', took: null,
     // What the shown result was asked with - the form can change after the walk.
@@ -202,10 +214,10 @@ export function boot(doc, host, deps) {
     // 🔴 `follow` 와 «같은 규율». 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
     if (state.collect.size) out.collect = [...state.collect];
     if (state.direction) out.direction = state.direction;
-    const hops = parseInt(state.hops, 10);
-    if (Number.isFinite(hops)) out.hops = hops;
-    const limit = parseInt(state.nodeLimit, 10);
-    if (Number.isFinite(limit)) out.node_limit = limit;
+    for (const [wire, key] of NUMBER_KNOBS) {
+      const n = parseInt(state[key], 10);
+      if (Number.isFinite(n)) out[wire] = n;
+    }
     return out;
   }
 
@@ -414,8 +426,13 @@ export function boot(doc, host, deps) {
       row.type = 'button';
       row.setAttribute('aria-pressed', picked ? 'true' : 'false');
       row.append(el(doc, 'span', 'wk-pathto', `→ ${r.to}`));
-      row.append(el(doc, 'span', 'wk-pathchain', r.chain.join(' → ')));
-      row.append(el(doc, 'span', 'wk-pathmeta', `${unitText(asked.hops, 'hop')} · ${asked.follow.join(', ')}`));
+      // A line each, cut at the row's end on purpose (lead 18da45b73): the whole in its title, and in the form once pressed.
+      for (const [cls, text] of [['wk-pathchain', r.chain.join(' → ')], ['wk-pathmeta', `${unitText(asked.hops, 'hop')} · ${asked.follow.join(', ')}`]]) {
+        const line = el(doc, 'span', cls, text);
+        line.title = text;
+        line.setAttribute('data-clip-ok', '');
+        row.append(line);
+      }
       row.addEventListener('click', () => useRoute(r, loopsOf(r)));
       route.append(row);
       // The route's self-loops: pressing one adds it to this route and uses the route.
@@ -458,11 +475,11 @@ export function boot(doc, host, deps) {
     }
     dir.addEventListener('change', () => { state.direction = dir.value; });
     grid.append(cell('direction', dir));
-    for (const [name, key, min, max] of [['hops', 'hops', 1, 40],
-                                         ['node_limit', 'nodeLimit', 10, NODE_LIMIT]]) {
+    for (const [name, key, min, max] of NUMBER_KNOBS) {
       const input = el(doc, 'input', 'wk-input');
       input.type = 'number';
-      input.min = String(min); input.max = String(max);
+      input.min = String(min);
+      if (max !== null) input.max = String(max);
       input.placeholder = SERVER_DEFAULT;
       input.value = state[key];
       input.addEventListener('input', () => { state[key] = input.value; });
@@ -572,7 +589,7 @@ export function boot(doc, host, deps) {
     const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
     const side = (g, i) => {
       const cls = g.sign === '−' ? 'wk-minus' : 'wk-plus';
-      const th = el(doc, 'th', `wk-sidehead ${cls}`, `${word(g.sign)} · ${unitText(g.starts, 'start')} · ${unitText(g.count, 'row')}`);
+      const th = el(doc, 'th', `wk-sidehead ${cls}${pair && i === 0 ? ' is-left' : ''}`, `${word(g.sign)} · ${unitText(g.starts, 'start')} · ${unitText(g.count, 'row')}`);
       th.colSpan = n;
       th.setAttribute('data-sign', g.sign);
       band.append(th);
@@ -1015,6 +1032,17 @@ export function boot(doc, host, deps) {
     // The baskets read the form's picked node for their «+»: drawn with the page.
     baskets.render();
     host.append(rail, main, sideMount);
+    // Each side by side table opens with its node axis in the middle of its box - on every draw, a walk again too.
+    if (host.querySelectorAll) for (const table of host.querySelectorAll('table.wk-sides')) centreAxis(table);
+  }
+
+  /** A drawn table's box scrolled to its axis: the node's columns in the leaf head row. */
+  function centreAxis(table) {
+    const axis = [...table.querySelectorAll('thead tr:last-child th.wk-centre')];
+    if (!axis.length) return;
+    const box = table.getBoundingClientRect();
+    table.scrollLeft = axisScrollLeft({ boxLeft: box.left, boxWidth: table.clientWidth, axisLeft: axis[0].getBoundingClientRect().left,
+      axisRight: axis[axis.length - 1].getBoundingClientRect().right, scrollLeft: table.scrollLeft, scrollWidth: table.scrollWidth });
   }
 
   /** A type picked: the box asks its first nodes, and its answer names the key the box stands for. */
