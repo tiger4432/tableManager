@@ -76,7 +76,40 @@ export function valueSources(result, entities, groups) {
     const said = declared.map((k) => keys[k]).filter((v) => !isBlank(v)).map(valueWords);
     return said.length ? said.join(' / ') : (node.label || EMPTY);
   };
-  return { route, source: (g, id) => `${keyWords(id)} · ${g ? route(g, id).text : NOT_WALKED}` };
+  return { route, source: (g, id) => `${keyWords(id)} · ${g ? route(g, id).text : NOT_WALKED}`, keys: keyWords };
+}
+
+/** The rows a filter shows (lead 5cf5c3401): all, those whose sides differ, those a side did not reach. */
+export function rowsShown(section, filter = 'all') {
+  return section.rows.filter((row) => filter === 'all' || (filter === 'differs' ? row.differs : row.missing));
+}
+
+/**
+ * A section as one flat sheet for Excel (owner 10-10, lead a27dfbb0f): one head row - each side's columns under its
+ * sign, the node's own, Δ, the id last; a row each the filter shows. Values as they are: several in one cell «; »,
+ * none an empty cell, a side that did not reach the row «missing» in each of its columns, Δ its number.
+ */
+export function sheetOf(section, filter = 'all') {
+  const pair = section.groups.length === 2;
+  const side = (i) => section.heads.map((h) => `${section.groups[i].sign} ${h}`);
+  const head = pair ? [...side(0), ...section.centreHeads, ...side(1), ...section.deltaHeads, 'id']
+    : [...section.centreHeads, ...section.groups.flatMap((_, i) => side(i)), ...section.deltaHeads, 'id'];
+  const words = (cell) => (cell.missing ? MISSING : cell.values ? cell.values.join('; ') : cell.text === EMPTY ? '' : cell.text);
+  const cells = (row, i) => row.byGroup[i].flatMap((cell) => Array(cell.span || 1).fill(words(cell)));
+  const rows = rowsShown(section, filter).map((row) => {
+    const own = row.centre.map(words);
+    const deltas = row.deltas.map((d) => (d.value === null || d.value === undefined ? '' : String(d.value)));
+    return pair ? [...cells(row, 0), ...own, ...cells(row, 1), ...deltas, row.id]
+      : [...own, ...section.groups.flatMap((_, i) => cells(row, i)), ...deltas, row.id];
+  });
+  return { head, rows };
+}
+
+const html = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** A sheet as the <table> Excel reads off the clipboard beside its TSV. */
+export function sheetHtml(sheet) {
+  const row = (cells, tag) => `<tr>${cells.map((c) => `<${tag}>${html(c)}</${tag}>`).join('')}</tr>`;
+  return `<table><thead>${row(sheet.head, 'th')}</thead><tbody>${sheet.rows.map((r) => row(r, 'td')).join('')}</tbody></table>`;
 }
 
 /**
@@ -157,7 +190,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   const sourcesB = control ? valueSources(control, entities, groups) : null;
   // B reached the node on this side: Route says B's path a line more; a value only B brought says B's source.
   const byB = (g, id) => Boolean(g && g.b && g.b.has(id));
-  const sources = { route: own.route, source: (g, id) => (byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
+  const sources = { route: own.route, keys: own.keys, source: (g, id) => (byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
   const routeCell = (g, id) => (byB(g, id) ? { ...own.route(g, id), sources: [`B · ${sourcesB.route(g, id).text}`] } : own.route(g, id));
   // A node a row: one row whichever groups reached it.
   const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
@@ -206,7 +239,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
         // A type with no own column says the node's name there.
         centre: [...(ownAt.length ? ownAt.map((c) => cellWords(ownCells[r][c], 'string')) : [{ text: node.label || node.id }]),
           ...carried.map((c) => cellWords({ values: [cellSource(c, node, {}, plural.get(node.type))].filter((v) => v !== undefined) }, 'string'))],
-        deltas: deltas.map((c) => ({ text: deltaWords(row.deltas[c]), numeric: true })) };
+        deltas: deltas.map((c) => ({ text: deltaWords(row.deltas[c]), numeric: true, value: row.deltas[c] })) };
     });
     sections.push({
       type,

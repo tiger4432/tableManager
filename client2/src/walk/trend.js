@@ -6,6 +6,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 import { readsOf, valueWords } from './reach_table.js';
 import { isBlank } from '../absent.js';
+import { localStamp } from '../server_time.js';
 
 /** The lanes a trend keeps for words; past them one lane «others». */
 export const LANES = 8;
@@ -37,6 +38,16 @@ export function pagePoints(answer, groups, x, column, walked = new Set()) {
     return { t: timeOf(e), value: (e.qualifiers || {})[column.value.name], group: group >= 0 ? group : null, walked: walked.has(key), key,
       node: far };
   }).filter((p) => !isBlank(p.value));
+}
+
+/**
+ * A trend's points as a sheet for Excel (lead a27dfbb0f «Copy points»): its time in this screen's, its value as it is,
+ * its side, the node that gave it (`keysOf` its keys) and its claim. A point at no time, no time.
+ */
+export function pointsSheet(points, sides, keysOf) {
+  return { head: ['time', 'value', 'side', 'node', 'claim_id'], rows: points.map((p) => [
+    p.t === null || p.t === undefined ? '' : localStamp(new Date(p.t).toISOString()), isBlank(p.value) ? '' : valueWords(p.value),
+    p.group === null || p.group === undefined ? '' : sides[p.group] || '', keysOf(p), p.key || '']) };
 }
 
 /**

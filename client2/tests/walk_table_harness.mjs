@@ -66,6 +66,10 @@ const byTag = (host, tag) => walkAll(host).filter((e) => e.tagName === tag);
 // The view's own cells: the table's check column (lead 53050a4ec) is the page's, not the view's.
 const viewCells = (host, tag) => byTag(host, tag).filter((e) => e.className !== 'wk-check');
 const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
+// What «Copy table» handed the clipboard writer, and what the writer answers (lead a27dfbb0f): the page's writer, handed in.
+const CLIP = [];
+const CLIP_OK = { ok: true };
+const writeClipboard = (html, text) => { CLIP.push({ html, text }); return CLIP_OK.ok; };
 
 // ── fixtures ─────────────────────────────────────────────────────────────────────────────
 // 🔴 MIXED TYPES AND A QUALIFIER, because a single-type answer with no qualifiers is one a
@@ -715,6 +719,41 @@ async function suite(mod) {
         && handle.state.steps.filter((x) => x.parent === 0).length === 2,
       JSON.stringify([handle.state.steps.map((x) => [x.id, x.parent, x.title]), a1 && handle.graph.markings.count(a1.marks), handle.graph.markings.count(bMarks)]));
   }
+  // ── «Copy table» on the page (lead a27dfbb0f): every column, the folded too; the rows the filter shows; said beside it ──
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', writeClipboard, fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    handle.state.type = 'wafer@1';
+    handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
+    handle.state.run = 'done';
+    handle.state.result = SIGNED;
+    handle.render();
+    const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
+    const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec').find((x) => x.children[0] && /^die/.test(x.children[0].textContent)) || { children: [] };
+    const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
+    const copy = () => { const at = CLIP.length; press(walkAll(dieSec()).find((e) => has(e, 'wk-copytable'))); return CLIP.length > at ? CLIP[CLIP.length - 1].text : ''; };
+    const said = () => (walkAll(dieSec()).find((e) => has(e, 'wk-copied')) || {}).textContent;
+    const shownHeads = walkAll(dieSec()).filter((e) => e.tagName === 'th').map((e) => e.textContent);
+    const lines = (text) => text.split(String.fromCharCode(10)).map((l) => l.split(String.fromCharCode(9)));
+    const all = lines(copy());
+    const allSaid = said();
+    press(walkAll(host).find((e) => e.attrs && e.attrs['data-rows'] === 'missing'));
+    const missed = lines(copy());
+    const missedRows = walkAll(dieSec()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length;
+    const notes = all[0].filter((h) => / note$/.test(h));
+    ok('CP3 the page' + "'" + 's «Copy table»: TSV a head row and a row each the filter shows, every row as wide as the head, the column the screen folds (note) copied on both sides, the id last; «Copied N rows» beside it',
+      all.length > 1 && all.every((r) => r.length === all[0].length) && notes.length === 2 && !shownHeads.some((h) => / note$/.test(h) || h === 'note')
+        && all[0][all[0].length - 1] === 'id' && allSaid === `Copied ${all.length - 1} rows`
+        && missed.length - 1 === missedRows && missed.length < all.length,
+      JSON.stringify([all[0], all.length, allSaid, missed.length, missedRows, shownHeads]));
+    CLIP_OK.ok = false;
+    copy();
+    const failed = said();
+    CLIP_OK.ok = true;
+    ok('CP4 a copy the browser refused says so and what to do instead', failed === 'Copy failed · Select the table and press Ctrl+C', failed);
+  }
   // ── the page with B (lead 99ed68cb7 D): each side's cells tinted by who reached the row, the three counts over it ──
   {
     const doc = makeDoc();
@@ -983,6 +1022,29 @@ const sideSuite = (TV) => {
   ok('Z5 a cell reads its group\'s edges only: the node both reached says each group\'s own value',
     cell(two, 'die@1', 'd:3', GATE_IN, 0) === '7' && cell(two, 'die@1', 'd:3', GATE_IN, 1) === '9',
     `${cell(two, 'die@1', 'd:3', GATE_IN, 0)} | ${cell(two, 'die@1', 'd:3', GATE_IN, 1)}`);
+  // Copy table (lead a27dfbb0f): one head row - each side's columns under its sign, the node's own, Δ, the id last;
+  // values raw, several «; », none empty, a side not reached «missing» in each of its columns.
+  const cpDie = two.sections.find((x) => x.type === 'die@1') || { groups: [], heads: [], centreHeads: [], deltaHeads: [], rows: [] };
+  const sheet = TV.sheetOf ? TV.sheetOf(cpDie, 'all') : { head: [], rows: [] };
+  const cpRow = (id) => sheet.rows.find((r) => r[r.length - 1] === id) || [];
+  const at = (h) => sheet.head.indexOf(h);
+  const d3Delta = ((cpDie.rows.find((r) => r.id === 'd:3') || { deltas: [] }).deltas[0] || {}).value;
+  ok('CP1 the section as a sheet: head + ' + "side' columns, the node's own, - side' columns, Δ, id; a row as wide as the head; d:1's - side «missing» in each column; d:4 «1; 2»; d:3 7 and 9 and its Δ its number; no «—»",
+    sheet.head.length === cpDie.heads.length * 2 + cpDie.centreHeads.length + cpDie.deltaHeads.length + 1
+      && sheet.head[0] === `+ ${cpDie.heads[0]}` && sheet.head[sheet.head.length - 1] === 'id'
+      && sheet.rows.length === cpDie.rows.length && sheet.rows.every((r) => r.length === sheet.head.length)
+      && cpDie.heads.every((h) => cpRow('d:1')[at(`− ${h}`)] === TV.MISSING)
+      && cpRow('d:4')[at(`+ ${GATE_IN}`)] === '1; 2' && cpRow('d:3')[at(`+ ${GATE_IN}`)] === '7' && cpRow('d:3')[at(`− ${GATE_IN}`)] === '9'
+      && typeof d3Delta === 'number' && cpRow('d:3')[at(cpDie.deltaHeads[0])] === String(d3Delta)
+      && !sheet.rows.some((r) => r.includes(TV.EMPTY)),
+    JSON.stringify([sheet.head, cpRow('d:1'), cpRow('d:3'), cpRow('d:4')]));
+  const differs = TV.sheetOf ? TV.sheetOf(cpDie, 'differs') : { rows: [] };
+  const missing = TV.sheetOf ? TV.sheetOf(cpDie, 'missing') : { rows: [] };
+  ok('CP2 the sheet follows the filter: Differs the rows the sides differ on, Missing the rows one missed - fewer than all',
+    JSON.stringify(differs.rows.map((r) => r[r.length - 1])) === JSON.stringify(cpDie.rows.filter((r) => r.differs).map((r) => r.id))
+      && JSON.stringify(missing.rows.map((r) => r[r.length - 1])) === JSON.stringify(cpDie.rows.filter((r) => r.missing).map((r) => r.id))
+      && missing.rows.length > 0 && missing.rows.length < sheet.rows.length,
+    JSON.stringify([differs.rows.length, missing.rows.length, sheet.rows.length]));
   const d4 = raw(two, 'die@1', 'd:4', GATE_IN, 0) || {};
   ok('Z6 several edges in one group: every value kept, none overwritten - the first said, «+N» the rest (34d91c09d 1)',
     JSON.stringify([d4.text, d4.rest, d4.values]) === JSON.stringify(['1', '+1', ['1', '2']]), JSON.stringify(d4));
@@ -1163,7 +1225,13 @@ const MUTANTS = [
   { id: 'NZ10', what: 'Copy id in words again', catches: 'Z16',
     from: "copy.append(el(doc, 'span', 'wk-copyicon'));", to: "copy.append(el(doc, 'span', 'wk-copyicon', 'Copy id'));" },
   { id: 'NZ6', what: 'the filter draws every row', catches: 'Z14',
-    from: "(state.rowFilter === 'differs' ? row.differs : row.missing)", to: 'true' },
+    from: '    const rows = rowsShown(section, state.rowFilter);', to: "    const rows = rowsShown(section, 'all');" },
+  { id: 'CPm4', what: 'the copy without the folded columns', catches: 'CP3',
+    from: 'build(new Set([...state.emptyOpen, section.type]))', to: 'build(state.emptyOpen)' },
+  { id: 'CPm5', what: 'the copy ignores the filter', catches: 'CP3',
+    from: 'sheetOf(full, state.rowFilter)', to: 'sheetOf(full)' },
+  { id: 'CPm6', what: 'a copy that failed said as done', catches: 'CP4',
+    from: ': COPY_WORDS.failed;', to: ': COPY_WORDS.done(sheet.rows.length, unit);' },
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
   { id: 'M1', what: 'the renderer names its own columns again',
     catches: 'V2 the column labels',
@@ -1286,6 +1354,12 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'CPm1', what: 'several values copied as the first alone', catches: 'CP1',
+    from: "cell.values ? cell.values.join('; ')", to: 'cell.values ? cell.values[0]' },
+  { id: 'CPm2', what: 'Δ copied in its words, not its number', catches: 'CP1',
+    from: ': String(d.value)));', to: ': d.text));' },
+  { id: 'CPm3', what: 'every row shown whatever the filter', catches: 'CP2',
+    from: "filter === 'all' || (filter === 'differs' ? row.differs : row.missing)", to: 'true' },
   { id: 'DM1', what: 'reached by both said A only', catches: 'ZD1',
     from: "const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');", to: "const reachedBy = (inA, inB) => (inA ? 'a' : inB ? 'b' : 'ab');" },
   { id: 'DM2', what: 'B\'s nodes not merged into the rows', catches: 'ZD1',
