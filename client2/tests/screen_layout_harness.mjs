@@ -474,7 +474,8 @@ const DRIVE = {
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
       await choose(c, '.wk-select', [0, "x.textContent.trim() === 'wafer'"]);
-      await until(c, "document.querySelectorAll('.wk-select').length > 1");
+      // The subject list, by its own first line: the direction select is a second select too.
+      await until(c, "/pick, or type/.test(((document.querySelectorAll('.wk-select')[1] || { options: [] }).options[0] || {}).textContent || '')");
       await choose(c, '.wk-select', [1, 'i === 1']);
       await sleep(300);
       await press(c, 'Walk');
