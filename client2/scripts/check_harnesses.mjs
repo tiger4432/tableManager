@@ -1456,7 +1456,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 369],   // -> 369: the Paths box between two marked nodes - PA1-PA4, PAm1-PAm6 (leads 55f854fc5, df11f9e81)
+  ['subgraph_view_harness.mjs', 377],   // -> 377: a node a bundle's opening brought, not walked - AW1 AW2, AWm1-AWm4 (lead f6e8ef44b)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1485,7 +1485,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 120],   // 108 -> 120: Route, the walk's own paths - Z29-Z32, RM1-RM5, NZ15 (leads df11f9e81, 1333a5ec9)
+  ['walk_table_harness.mjs', 119],   // -> 119: Route at each side's outer end; RM6 retired, equivalent once Route is last (lead 10-10 after B)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

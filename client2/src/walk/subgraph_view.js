@@ -115,12 +115,18 @@ export function subgraphLayout(steps, entities) {
           attributes: node.attributes || {},
           // Each world's value of each attribute (server 351b23ef8), drawn like an edge's worlds.
           attributesByWorld: node.attributes_by_world || {},
+          // An opening's answer walked to it, not from it (lead f6e8ef44b): what is behind it is not known.
+          unwalked: Boolean(result.opened) && node.id !== keyParts(result.opened).node,
         };
         at.set(node.id, one);
         placed.push(one);
       }
     }
   });
+  // A node walked from since - its own opening, every predicate one step (`<node>||both`) - is known behind.
+  for (const step of steps || []) {
+    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) at.get(keyParts(r.opened).node).unwalked = false;
+  }
   // The fan-outs a step's walk did not send in full and no opening has walked, under the node they leave; `drawn` is
   // how many of `count` the walk did send (server 11e5ea207).
   const chips = [];
@@ -331,6 +337,9 @@ export function lumpView(layout, fold, seeds) {
       lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, groups,
         count: held.size + rest, next: firsts.size + rest, behind: held.size - firsts.size, bound: rest > 0,
         mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })) });
+    } else if (node.unwalked) {
+      lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, key: `${node.id}||both`, groups: [], unsent: true,
+        unwalked: true, count: 0, next: 0, behind: 0, mix: [] });
     }
     const keys = new Set([...(steps.get(node.id) || []).map((s) => s.key),
       ...(layout.chips || []).filter((c) => c.node === node.id).map((c) => c.key)]);
@@ -406,8 +415,10 @@ function windowStorage(doc) {
   }
 }
 
-/** A big lump's count words, on the lump and atop its window: «≤» while a bundle is not walked (lead 2f25c883a). */
-const nextWords = (lump) => `${lump.bound ? '≤ ' : ''}${lump.next} next · ${lump.behind} behind`;
+/** A big lump's count words, on the lump and atop its window: «≤» while a bundle is not walked (lead 2f25c883a);
+ *  a node the server never walked from, «?» (lead f6e8ef44b). */
+const NOT_WALKED = 'not walked';
+const nextWords = (lump) => (lump.unwalked ? `? next · ${NOT_WALKED}` : `${lump.bound ? '≤ ' : ''}${lump.next} next · ${lump.behind} behind`);
 
 /** A lump's words: the predicate with its arrow, then what it holds. */
 function lumpLabel(lump) {
@@ -661,6 +672,16 @@ export class SubgraphView {
   async openLump(id, keep) {
     const lump = this._view().lumps.find((l) => l.id === id);
     if (!lump || this.state !== 'done') return;
+    // Not walked from (lead f6e8ef44b): one step from it by a bundle's own door, then its branches folded, its window.
+    if (lump.unwalked) {
+      const at = this.layout.nodes.find((n) => n.id === lump.owner);
+      await this.expandBundle(at ? at.step - 1 : 0, lump.key);
+      if (this.state !== 'done') return;
+      this.fold.big.set(lump.owner, branchKeys(this.layout, lump.owner));
+      this.render();
+      await this.openLump(id, keep);
+      return;
+    }
     if (lump.level === 'big') {
       // One window, one layer (lead df11f9e81): a row a branch, its ▸ its nodes; what is ticked opens as nodes at
       // once - each folded if it leads anywhere - and what is left of a branch stays its «n more». A branch the

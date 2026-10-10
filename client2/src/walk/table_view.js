@@ -215,16 +215,17 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     const columns = sideAt.map((c) => sideAll[c]);
     const kinds = sideAt.map((c) => kindsAll[c]);
     const table = tableAll.map((row) => ({ ...row, cells: sideAt.map((c) => row.cells[c]), deltas: sideAt.map((c) => row.deltas[c]) }));
-    // Route first, next to the node, on every side (lead df11f9e81): how that side reached the row.
+    // Route at each side's outer end (the mockup the owner approved; the numbers stay nearest the node): how that side
+    // reached the row (lead df11f9e81).
     const columnHeads = columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`);
-    const heads = [ROUTE, ...columnHeads];
+    const heads = [...columnHeads, ROUTE];
     const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
     const said = rows.map((node, r) => {
       const row = table[r];
       const byGroup = groups.map((g, i) => {
         // A side that did not reach the node says so once, across its columns (lead 34d91c09d 3).
         if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];
-        return [routeOf(g, node.id), ...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }))];
+        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c })), routeOf(g, node.id)];
       });
       return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup,
         centre: ownAt.map((c) => cellWords(ownCells[r][c], 'string')),
@@ -239,8 +240,8 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       columnHeads,
       // The heads in two rows (lead 34d91c09d, its answer (나)): a column's step, said once over the columns that share it,
       // and below it the value's name - the step repeated in every head pushed Δ 608 px off at 1568.
-      parts: [{ step: '', leaf: ROUTE },
-        ...columns.map((c, i) => ({ step: c.words.slice(0, -1).join(' · '), leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}` }))],
+      parts: [...columns.map((c, i) => ({ step: c.words.slice(0, -1).join(' · '), leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}` })),
+        { step: '', leaf: ROUTE }],
       centreHeads: centre.map((c) => c.words.join(' · ')),
       deltaHeads: deltas.map((c) => (deltas.length > 1 ? `${DELTA} ${columnHeads[c]}` : DELTA)),
       rows: said,
