@@ -1,3 +1,12 @@
+> ## [07:52 디자인] 표 복사 — «Copy table» · «Copy points» 착지 fcf89d3ba (총괄 a27dfbb0f)
+
+- **무엇** — 구획마다 «Copy table»: TSV + HTML 를 clipboard_write.js 하나로. 머리 한 줄(쪽 부호 열 · 노드 자기 · Δ · 끝 id), 접힌 열까지, 거르기가 보이는 행만, 날값(여럿 «; » · 빈 값 빈 칸 · missing · Δ 숫자). 트렌드 «Copy points»(time · value · side · node · claim_id). 옆에 «Copied N rows».
+- **한 자리로 접은 것** — 행 거르기 규칙(rowsShown)을 화면 표와 복사가 같이 부름. 표 짓기는 renderTable 의 build(opened) 하나(복사는 그 타입 열을 연 채). 점의 준 노드(giver)를 한 번만 셈 — 출처와 복사가 같이 읽음. 클립보드 쓰개는 페이지 deps(writeClipboard) 로 받고 기본은 writeClipboardRich — id 복사도 같은 쓰개.
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built walk page as a probe copy on the box as it is, /assets/walk-BR4Mc7Hx.js, 1920x1080; the presses real clicks, a copy listener reading what the writer put on the clipboard): SYN-BW-103-11 in +, Walk; the quantity section's «Copy table»: «Copied 16 rows», TSV a head and 16 rows (the screen's 16), every line 10 cells, «+ measures (in) · value» … «id», HTML a <table>; temp_C's value cell trend, «Copy points»: «Copied 1000 points», 1000 rows = the dots, 5 cells each, the node by its keys (raw ids 0). Writes 0.
+- **게이트** — walk_table 173 with --mutate --control (CP1 the sheet: head, widths, missing, «1; 2», raw numbers and Δ, no «—»; CP2 the filter; CP3 the page's button - the column the screen folds copied on both sides, the filter, «Copied N rows»; CP4 a refused copy says so; CPm1-CPm6, NZ6 at the page's one filter call); trend 50 (TC1 the points' sheet, TC2 the part; TCm1 TCm2, TM15 re-aimed at giver); screen gate 249 with --mutate; walk_layout 38, node_search 45, subgraph_view 279, start_baskets 24, walk_worlds 18, walk_wire 95, rnd_board_walk_box 104, fold_views 19, reach_table 33, walk_route_fill 80.
+
+다음: E2b(덩어리 «Open as table» = 페이지 스텝, 총괄 ③) -> G-2(그래프 = 경로 + 끝 답, 총괄 ②) -> 값 대응(그 표에도 Copy table).
+
 > ## [06:59 디자인] D — CONTROL · B, 행마다 누가 닿았나를 색으로 + 보기 선택은 스텝의 것 착지 de66aef11 (총괄 99ed68cb7 D · 10-11)
 
 - **무엇** — Follow 아래 «Control · B» 목록(Follow 와 같은 그리개). B 가 있으면 같은 바구니 · 같은 걸음으로 follow = B 를 한 번 더, 행 = 두 답의 합, 쪽마다 칸 색(A + B 초록 · B 만 빨강 · A 만 없음)과 세 수, Route 에 B 길 한 줄. B 가 비면 요청 하나 그대로.
