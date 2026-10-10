@@ -1,3 +1,13 @@
+> ## [02:01 디자인] H — 서버 문장을 결과 머리에, 원장에 없는 키는 + Add 옆에 착지 ed1c2e8a6 (총괄 b5cdcbc75, 응용 18766 QA)
+
+- **①** — 결과 머리 «Nodes · Edges» 옆에 서버가 보낸 상태와 문장 그대로(«empty · No ledger evidence is connected to the selected node»). 닿은 노드가 없을 때의 «No node reached» 는 서버 문장이 없을 때만.
+- **③** — 친 키와 글자 그대로 같은 노드가 목록에 없고, 그 글자로 물은 목록이 잘리지 않고 다 왔을 때만 + Add 옆에 «0 atoms · not in the ledger». + Add 는 켜진 채. 대소문자가 다른 노드로 바꿔 넣지 않습니다(②는 안 함).
+- **트렌드 회색 점** — 쪽 넘김으로 온 다른 자재의 점도 같은 출처 좌석: 그 변 반대쪽 끝의 키(id 를 풀어) · «not in this walk». 길은 안 지어냄.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-DCO0aMpb.js, 2481x1273): wafer, typed SYN-BW-103-11: nothing said; typed syn-bw-103-11, not picked (listed SYN-BW-103-11): «0 atoms · not in the ledger» beside each + Add, + Add on; + Add, Walk: «Nodes 1 · Edges 0 · 0.1 s» «empty · No ledger evidence is connected to the selected node». The demo pair, a quantity cell's trend with its time page: 1000 dots, 999 paged ones «SYN-BW-002-05 · not in this walk», 0 with an id, 0 with no title. Writes 0.
+- **게이트** — walk_table 133 with --mutate --control (H1 the head, HM1); node_search 45 (T25 letter for letter, a whole answer only; T26 the page beside + Add; HM2 any case, HM3 a cut answer, HM4 no redraw on an answer, HM5 not passed on; NS12 re-aimed at the onPick line); start_baskets 24 (B13, BM11); trend 31 (T14 a paged point WZ-9 by its ledger id, TM16; TM15 re-aimed), screen gate 249 with --mutate; walk_layout 34, walk_wire 95, walk_worlds 18, rnd_board_walk_box 104, walk_route_fill 80.
+
+다음: E1(바구니 하나 = Next, 평표 은퇴 — 사본에서 표 131 · 그래프 277 초록, H 위로 옮겨 다시 잼) -> F -> G -> E2 -> D.
+
 > ## [01:27 디자인] C 고침 — 답이 안 보낸 노드의 출처도 키로 (collect = quantity 만) 착지 53b532db5 (총괄 10-11 보류)
 
 - **무엇이 틀렸나** — 데모의 보통 폼(Collect = quantity 만)에서는 값을 준 웨이퍼가 답의 nodes 에 없어, 출처 줄이 그 노드의 키 대신 원시 id 를 적었습니다(총괄 실측 80 중 76). 제 크롬 확인은 collect wafer + quantity 라 그 경우를 안 탔습니다.
