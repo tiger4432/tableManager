@@ -38163,3 +38163,19 @@ RUN.md      대본 ③ · ④ 를 이 표로 다시 생성(d530aac4a) — 박스
           around=not-a-time -> 422 time_page_invalid «around is not an ISO 8601 time: not-a-time»
 화면      트렌드는 클라 착지 때 18766 에서
 ```
+
+---
+
+## [C 응용] 10-10 트렌드 · 걷기 표 스타일 아홉(517eb6c2c) — 박스 조각에서 같은 48 줄 · Δ 는 계측군 옆 · 값 칸 누르면 트렌드
+
+```
+빌드        9f8c9b8bb walk-Dzuz73ZU.js · instance 18767 server-only · box slice WITHOUT fake rows (worlds appbox_vf · appbox_vb) · the formula table with the nine style fixes and the trend (517eb6c2c)
+박스 조각     18767 (가짜 행 없음 · 끝나고 내림 · 스키마 지움 · public 0)
+  ③        wafer · SYN-BW-103-11 typed · Positive + Add · SYN-BW-SPL-400-19 typed · Negative + Add · Collect wafer + quantity · node_limit already 1000 · Walk · then chips default and appbox_vf (re-walk) | url ?world=default&world=appbox_vf | Nodes 80 (collect: wafer, quantity) · Edges 1619 (all) · 0.8 s | reached 6 hops | subgraph 0.788 s | request ...&node_limit=1000&collect=wafer&collect=quantity&world=default&world=appbox_vf
+  ④ 표      quantity · title «+ 1 · − 1 → wafer, quantity» · three head rows (band · predicate · attribute) · bands «Positive · 1 start · 48 rows» «Negative · 1 start · 3 rows» · order + value_text step role eqp_id · leads_to · value | quantity | Δ | value · leads_to · … − · a side not reached is one «missing» across its 9 columns | rows 48 | no extra request (the walk's answer)
+  ④ 칸      measures (in) · value (+|−): value|value 2 · multi|value 1 · value|missing 12 · multi|missing 10 · none|missing 23
+  두 쪽 값    sides: pressure_MPa 0.22 | Δ −0.1105 | 0.3305 · temp_C 150 | Δ +1.946 | 148.054 · time_s 12+30 | 11.611 (several values: the first and +N)
+  트렌드      press the + value cell of pressure_MPa (0.22) -> trend under the table «Trend · pressure_MPa · measures (in) · value» · «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 5 circles, the two walked ones larger (one Positive orange, one Negative teal) · legend Positive · Negative · Other rows · Dashed: the walked time · Load earlier off «Nothing earlier» · Load later off «Nothing later» · Close | one request follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000 + worlds · 0.077 s
+18766       9f8c9b8bb fake data · two bases · Collect quantity · Walk -> Nodes 48 (collect: quantity) · Edges 1650 (all) · 0.8 s · adhesive_residue + cell «28+1» pressed -> «Trend · adhesive_residue · measures (in) · value» · «3 points · 2026-11-24 03:49 → 2026-11-24 03:49 local time» · 2 Positive walked + 1 Negative walked · axis 10 · 19 · 28 · one request around=2026-11-23T18:49:00.000Z · 0.070 s · the fake rows share one time, so a trend here stands as one vertical stack
+RUN.md      대본 ③ 초 · ④ 문장(Δ 는 계측군 바로 오른쪽 · 못 닿은 쪽은 칸 하나) 다시 생성(f5967e851). 트렌드 줄은 대본에 안 넣음 — 넣을지 여쭘
+```
