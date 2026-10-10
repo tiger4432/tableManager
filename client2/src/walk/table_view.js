@@ -17,7 +17,7 @@ import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cell
   edgeQualifiers } from './derive.js';
 import { typeGraph } from '../rnd_board/api.js';
 // The table with a − start is the formula (lead 5cf5c3401): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, viaDepth, cellOf, valueKind } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, viaDepth, cellOf, valueKind, valueWords } from './reach_table.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -109,16 +109,13 @@ export const EMPTY = '—';
 export const STARTED = 'start';
 export const DELTA = 'Δ';
 
-/** One value in words: a boolean as ✓ ✗, a list joined, the rest as it came. */
-const oneWord = (v) => (typeof v === 'boolean' ? (v ? '✓' : '✗') : Array.isArray(v) ? v.join(' · ') : valueText(v));
-
 /**
  * A formula cell in words (lead 5cf5c3401, a2eb4a516): missing, empty, its one value, or «N values · …» - none
  * overwritten; a number column's cell stands right.
  */
 export function cellWords(cell, kind = valueKind(cell.values || [])) {
   if (cell.missing) return { text: MISSING, missing: true };
-  const values = cell.values.map(oneWord);
+  const values = cell.values.map(valueWords);
   if (!values.length) return { text: EMPTY };
   if (values.length === 1 && !cell.more) return { text: values[0], numeric: kind === 'number' };
   return { text: `${values.length}${cell.more ? '+' : ''} values · ${values.join(' · ')}` };
@@ -202,7 +199,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
           : (how[i].has(node.id)
             ? [{ text: how[i].get(node.id).via || STARTED }, { text: String(how[i].get(node.id).depth), numeric: true }]
             : [{ text: EMPTY }, { text: EMPTY }]))
-        : row.cells.map((byCol, c) => cellWords(byCol[i], kinds[c]))));
+        : row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }))));
       return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup,
         centre: centre.map((c) => cellWords(cellOf(index, new Set([node.id]), node.id, c), 'string')),
         deltas: deltas.map((c) => ({ text: deltaWords(row.deltas[c]), numeric: true })) };

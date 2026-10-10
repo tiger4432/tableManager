@@ -1857,6 +1857,31 @@ export async function fetchKeyValues(params) {
 }
 
 /**
+ * One page of a row node's edges along one step, by time (the implementer's contract, lead's B): around a time, or before
+ * / after a cursor, `page` of them. An answer without `page` is a server that does not page by time.
+ */
+export async function fetchTimePage(params) {
+  const { apiBase, fetchImpl, id, predicate, direction, around, earlier, later, page } = params || {};
+  const query = new URLSearchParams();
+  query.set('id', String(id));
+  query.set('follow', String(predicate));
+  query.set('direction', String(direction));
+  query.set('hops', '1');
+  if (around) query.set('around', String(around));
+  else if (earlier) query.set('earlier', String(earlier));
+  else if (later) query.set('later', String(later));
+  query.set('page', String(page));
+  try {
+    const res = await (fetchImpl || fetch)(`${apiBase || ''}/api/ledger/subgraph?${query}`);
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body) return { ok: false, message: refusalSentence(body, res.status) };
+    return body.page ? { ok: true, answer: body, page: body.page } : { ok: false, message: 'This server does not page by time' };
+  } catch (err) {
+    return { ok: false, message: `Trend unreachable — ${err && err.message}` };
+  }
+}
+
+/**
  * 거절의 «사유»를 서버가 보낸 모양 그대로 한 줄로 폅니다.
  *
  * 🔴 실측 2026-09-06: `hops=999` 로 422 를 받으면 서버는 사유를 «정확히» 말합니다 —

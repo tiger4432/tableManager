@@ -61,11 +61,21 @@ function valueAt(index, end, value) {
  * @returns {{missing: boolean, values: Array, more: boolean}}
  */
 export function cellOf(index, inside, x, column, cap = WAYS_A_CELL) {
-  if (!inside.has(x)) return { missing: true, values: [], more: false };
-  const { ends, more } = waysOf(index, inside, [x], column.steps, cap);
-  const values = ends.map((end) => valueAt(index, end, column.value)).filter((v) => !isBlank(v));
-  return { missing: false, values, more };
+  const got = readsOf(index, inside, x, column, cap);
+  return { missing: got.missing, values: got.reads.map((r) => r.value), more: got.more };
 }
+
+/** What a cell reads, way by way - its value, its last edge, its end node; the trend's points are these (lead f984ab01d). */
+export function readsOf(index, inside, x, column, cap = WAYS_A_CELL) {
+  if (!inside.has(x)) return { missing: true, reads: [], more: false };
+  const { ends, more } = waysOf(index, inside, [x], column.steps, cap);
+  const reads = ends.map((end) => ({ value: valueAt(index, end, column.value), edge: end.edge, node: end.node }))
+    .filter((r) => !isBlank(r.value));
+  return { missing: false, reads, more };
+}
+
+/** A value in words: a boolean ✓ ✗, a list joined, the rest as it came. */
+export const valueWords = (v) => (typeof v === 'boolean' ? (v ? '✓' : '✗') : Array.isArray(v) ? v.join(' · ') : String(v));
 
 /** Every way from `starts` along `steps` - inside `inside` when given - its end node and last edge; past `cap`, `more`. */
 function waysOf(index, inside, starts, steps, cap) {

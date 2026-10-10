@@ -25,7 +25,7 @@
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { fetchDeclaration, createWalkBoxWalk, routeWith, fetchKeyValues }
+import { fetchDeclaration, createWalkBoxWalk, routeWith, fetchKeyValues, fetchTimePage }
   from '../rnd_board/api.js';
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06).
 import { ensureWalkStyles } from './styles.js';
@@ -37,6 +37,9 @@ import {
 import { walkTableView, nextRoutes } from './table_view.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
 import { routesFrom, valuesAt } from './reach_table.js';
+// The trend of a column (lead f984ab01d): the model and the part that draws it.
+import { walkPoints, pagePoints, mergePoints, trendModel, walkedTime, PAGE_ROWS } from './trend.js';
+import { TrendView } from './trend_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
@@ -111,6 +114,8 @@ export function boot(doc, host, deps) {
     rowFilter: 'all',
     // «+ Column»: the columns added a type, for this page; the type whose picker is open and the route it holds.
     added: new Map(), picking: '', pickedRoute: -1,
+    // The trend open (lead f984ab01d): its section's type, row and column; the time pages asked and where they end.
+    trend: null,
     // Which loop chips are on, per route row (`routeKey`). Off unless pressed (lead 5d5b8d750).
     loopsOn: new Map(),
     // The table's steps after the form's walk, each from the rows checked along one edge (lead 53050a4ec), and
@@ -143,6 +148,9 @@ export function boot(doc, host, deps) {
   };
   const sideMount = el(doc, 'div', 'wk-side');
   const baskets = new StartBaskets(sideMount, { doc, markings, name: GRAPH_CHAIN[0], picked: pickedNode });
+  // The trend part, made once and seated under the tables when a column's trend is open.
+  const trendMount = el(doc, 'div', '');
+  const trendView = new TrendView(trendMount, { doc });
   // The box is the key it searches by: what is typed is that key, a node picked fills every key.
   const searchMount = el(doc, 'div', '');
   const search = new NodeSearch(searchMount, { doc,
@@ -498,6 +506,7 @@ export function boot(doc, host, deps) {
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
     if (view.groups) box.append(rowFilterBar());
     renderSections(box, view);
+    if (view.groups && state.trend) renderTrend(box, view, r);
   }
 
   /** All rows · Differs · Missing (lead 5cf5c3401): which rows of the side by side table are drawn. */
@@ -593,13 +602,78 @@ export function boot(doc, host, deps) {
           tr.append(c);
         });
       };
-      const group = (i) => { for (const cell of cells(i)) tr.append(td(cell, section.groups[i].sign === '−' ? 'wk-minus' : 'wk-plus')); };
+      const group = (i) => {
+        for (const cell of cells(i)) {
+          const c = td(cell, section.groups[i].sign === '−' ? 'wk-minus' : 'wk-plus');
+          // A value cell opens its column's trend for this row (lead f984ab01d).
+          if (cell.col !== undefined && !cell.missing) {
+            c.className += ' wk-pick';
+            c.setAttribute('data-col', String(cell.col));
+            c.addEventListener('click', () => openTrend(section.type, row.id, cell.col));
+          }
+          tr.append(c);
+        }
+      };
       if (pair) { group(0); node(); group(1); } else { node(); section.groups.forEach((_, i) => group(i)); }
       for (const d of row.deltas) tr.append(td(d, 'wk-delta'));
       tbody.append(tr);
     }
     table.append(tbody);
     return table;
+  }
+
+  /** A column's trend for one row (lead f984ab01d): the walk's points now, the server's time page after. */
+  function openTrend(type, row, col) {
+    state.trend = { type, row, col, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null };
+    render();
+    void loadTrend('around');
+  }
+
+  /** The column a trend reads, when its section is still drawn. */
+  function trendColumn(view) {
+    const t = state.trend;
+    const section = t && view.sections.find((s) => s.type === t.type && s.groups);
+    return section && section.columns[t.col] ? { section, column: section.columns[t.col] } : null;
+  }
+
+  /** One more time page - around the walked time, or past either end (the implementer's contract, edge values only). */
+  async function loadTrend(mode) {
+    const t = state.trend;
+    const view = t && t.view;
+    const at = view && trendColumn(view);
+    if (!at || at.column.steps.length !== 1 || at.column.value.on !== 'edge') return;
+    const step = at.column.steps[0];
+    const ask = mode === 'around' ? { around: t.t0 === null ? null : new Date(t.t0).toISOString() }
+      : mode === 'earlier' ? { earlier: t.earlier } : { later: t.later };
+    if (!Object.values(ask)[0]) return;
+    const got = await fetchTimePage({ apiBase, fetchImpl, id: t.row, predicate: step.predicate, direction: step.direction,
+      page: PAGE_ROWS, ...ask });
+    if (state.trend !== t || !got.ok) return;
+    t.pages.push(got.answer);
+    if (mode !== 'later') { t.earlier = got.page.earlier; t.hasEarlier = got.page.has_earlier; }
+    if (mode !== 'earlier') { t.later = got.page.later; t.hasLater = got.page.has_later; }
+    render();
+  }
+
+  /** The open trend under the tables. */
+  function renderTrend(box, view, r) {
+    const t = state.trend;
+    const at = trendColumn(view);
+    if (!at) return;
+    const own = walkPoints(view.index, view.groups, t.row, at.column);
+    const walked = new Set(own.map((p) => p.key));
+    const points = t.pages.reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.row, at.column, walked)), own);
+    if (t.t0 === null) t.t0 = walkedTime(own, r.generated_at);
+    // The view the next page is read against: the trend's own, not a second computing of the table.
+    t.view = view;
+    const row = at.section.rows.find((x) => x.id === t.row);
+    const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
+    trendView.show({ title: `${row ? row.label : t.row} · ${at.section.heads[t.col]}`, model: trendModel(points),
+      groups: at.section.groups.map((g) => word(g.sign)), t0: t.t0,
+      ...(t.pages.length ? { onEarlier: () => { void loadTrend('earlier'); }, onLater: () => { void loadTrend('later'); },
+        hasEarlier: Boolean(t.hasEarlier), hasLater: Boolean(t.hasLater) } : {}),
+      onClose: () => { state.trend = null; render(); } });
+    box.append(trendMount);
   }
 
   /** «+ Column» (lead 5cf5c3401 answer 2): a route the rows take in this walk, then what its end holds; × takes one out. */

@@ -509,6 +509,11 @@ const DRIVE = {
       await press(c, 'Walk');
       await until(c, "document.querySelectorAll('.wk-sidehead').length > 1");
     }],
+    // A value cell pressed opens its column's trend under the tables (lead f984ab01d).
+    ['Trend of a value cell', async (c) => {
+      await evaluate(c, `(() => { const td = document.querySelector('.wk-sides td.wk-pick'); if (td) td.click(); return Boolean(td); })()`);
+      await until(c, "document.querySelector('.wk-trend svg, .wk-trend .wk-note')");
+    }],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],

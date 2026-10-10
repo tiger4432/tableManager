@@ -188,6 +188,25 @@ export const WALK_CSS = `
   background: none; border: 0; border-radius: 0; cursor: pointer; }
 .wk-rowfilter { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .wk-addcol { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* A value cell opens its column's trend (lead f984ab01d). */
+.wk-sides td.wk-pick { cursor: pointer; }
+.wk-sides td.wk-pick:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The trend: numbers on a value axis, words in lanes; a colour a group, other rows faint, the walked points ringed. */
+.wk-trend { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); }
+.wk-trend-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.wk-trend-title { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 600; overflow-wrap: anywhere; }
+.wk-trend-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+.wk-trend-svg { display: block; width: 100%; height: auto; }
+.wk-trend-grid { stroke: var(--border); stroke-width: 1; }
+.wk-trend-word { fill: var(--text-dim); font-size: 11px; font-family: var(--font-mono, ui-monospace, monospace); }
+.wk-trend-word.is-others { font-style: italic; }
+.wk-trend-t0 { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 4; }
+.wk-tp.is-g0 { fill: var(--accent); }
+.wk-tp.is-g1 { fill: var(--warning); }
+.wk-tp.is-other { fill: var(--text-dim); fill-opacity: 0.35; }
+.wk-tp.is-walked { stroke: var(--text); stroke-width: 1.5; }
+.wk-trend-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: 0.78rem; color: var(--text-dim); }
+.wk-trend-key { display: inline-flex; align-items: center; gap: var(--space-1); }
 .wk-addcol > .wk-select { width: auto; max-width: 100%; }
 /* id 는 길고 «마지막»입니다. 읽는 것이 아니라 «집는» 칸이라 폭을 안 뺏습니다. */
 .wk-table td.wk-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.74rem;

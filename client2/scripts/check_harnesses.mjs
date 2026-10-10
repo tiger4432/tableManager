@@ -1404,6 +1404,8 @@ const FLOORS = new Map([
   ['node_search_harness.mjs', 39],   // + NS15: the row count says it counts atoms (lead 10-10)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 36],
+  // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
+  ['trend_harness.mjs', 21],
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
