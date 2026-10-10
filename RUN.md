@@ -99,8 +99,8 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-B1AneZ3H.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
->            누른 빌드 — walk-B1AneZ3H.js (= main) 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 알려진 것
+>    빌드    main 의 dist walk-Dms0ilPf.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>            누른 빌드 — walk-Dms0ilPf.js (= main) 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
 >            «모델 세상 1» = 리허설의 appdemo_vf
@@ -116,7 +116,7 @@
 >       뜻       Route = 서버가 그 쪽 시작에서 걸은 길(술어만 · 걷기 답 그대로) · «start» = 그 줄이 시작 · missing = 그 쪽에서 못 닿음
 >                코어 웨이퍼 30 개가 «in_container → bonded_from → in_container» — 불량 base 의 다이가 본딩으로 받은 코어 다이의 웨이퍼
 >    ③  세상 · 값 표   Collect 에 quantity 를 더함 · 세상 칩 «모델 세상 1» (누르면 그 세상만 켜짐 — Type 목록도 그 세상 것만) · 이어 default 칩 -> 저절로 다시 걷는다
->       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 0.9 s» · quantity 머리 «Positive · 1 start · 49 rows | Negative · 1 start · 22 rows»
+>       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 0.8 s» · quantity 머리 «Positive · 1 start · 49 rows | Negative · 1 start · 22 rows»
 >                열 «Route · value_text · step · role · eqp_id · model · dir · model · dir · value · quantity · Δ · value · dir · model · dir · model · eqp_id · role · step · value_text · Route»
 >                줄 49 · 두 쪽 값 16 · + 쪽만 25 · − 쪽만 2 · − 빨간 missing 27 · + «—» 8 · − «—» 4 · Δ 보이는 줄 5
 >                pressure_MPa  + 0.22 | Δ −0.1105 | − 0.3305
@@ -139,7 +139,7 @@
 >       뜻       걸음마다 자기 마킹(이름은 순번)에 체크가 남는다. 앞 걸음에서 다시 이어 걸으면 그 뒤 걸음과 그 마킹이 같이 지워진다
 >    ③d 갈래   한 걸음에서 다른 엣지로 이어 걸으면 탭이 나란히 선다 (리허설: SYN-BW-103-11 만 + · wafer 줄 체크)
 >       본 것    NEXT «in_container → die» -> «Nodes 179 (collect: die) · Edges 179 (all) · 0.2 s» · 탭 «Step 1 · + 1 | Step 2 · in_container → die»
->                탭 Step 1 (체크 그대로) -> NEXT «measures → quantity» -> «Nodes 32 (collect: quantity) · Edges 32 (all) · 0.1 s» · 탭 «Step 1 · + 1 | Step 2 · in_container → die | Step 2 · measures → quantity»
+>                탭 Step 1 (체크 그대로) -> NEXT «measures → quantity» -> «Nodes 32 (collect: quantity) · Edges 32 (all) · 0.2 s» · 탭 «Step 1 · + 1 | Step 2 · in_container → die | Step 2 · measures → quantity»
 >                Step 1 에서 «in_container → die» 를 다시 -> 탭 «Step 1 · + 1 | Step 2 · in_container → die | Step 2 · measures → quantity» 그대로
 >       뜻       걸음은 나무다 — 같은 걸음의 다른 엣지는 형제 갈래로 남는다(F 의 «뒤 탭 지움»은 같은 갈래 안에서만)
 >                graph per branch: pending — 그래프는 아직 두 갈래를 같게 그린다(모든 술어로 걷는다). 고치는 일은 주문됨
@@ -148,14 +148,14 @@
 >                Load earlier «Nothing earlier» · Load later «Nothing later» — 점이 64 개뿐
 >       쪽 넘김  같은 길을 점이 많은 local_gap 으로 -> «1000 points · 2026-11-11 09:35 → 2026-12-24 03:49 local time» -> Load earlier -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 그 단추 꺼짐 «Nothing earlier»
 >       뜻       시간 쪽은 그 구역 줄들의 값이 모이는 노드(여기서는 bond_temp · local_gap)에서 묻는다 — 줄마다 묻지 않는다
->       알려진 것  Trend 를 연 채 앞 걸음에서 다른 줄로 다시 이어 걸으면 시간 쪽을 새로 안 묻고 앞 쪽 점이 섞인다(리허설 «126 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» = 새 걸은 점 + 옛 쪽 점)
->                  — Table 을 눌렀다 Trend 를 다시 누르면 바로잡힘 · 총괄에 보고함
+>       다시 걸면  Trend 를 연 채 앞 걸음에서 다른 줄(local_gap)로 같은 NEXT -> 그 줄의 시간 쪽을 새로 묻는다 -> «1000 points · 2026-11-11 09:35 → 2026-12-24 03:49 local time» · 걸은 점 102 · 쪽 점 898 · 옛 쪽 점 0
+>                (밤사이 응용 QA 로 고침 6d6e235e0 — 시간 쪽은 그 노드 · 열의 것)
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
->       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 70 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
+>       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 75 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
 >                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
 >       쪽 넘김  점이 많은 계측군(리허설 가짜 행 local_gap)의 + 값 «53» 을 누름 -> «1000 points · 2026-11-02 18:42 → 2026-12-15 12:55 local time» · Load earlier · Load later 켜짐
 >                Load earlier -> «1201 points · 2026-10-25 03:49 → 2026-12-15 12:55 local time» · 그 단추 꺼짐 «Nothing earlier» · Load later -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 그 단추 꺼짐 «Nothing later»
->                요청마다 page=1000 · 253 ms · 198 ms · 87 ms
+>                요청마다 page=1000 · 302 ms · 98 ms · 95 ms
 >       점 출처  bond_temp + 값을 누름 -> «bond_temp · measures (in) · value» «64 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 걸은 점 4 개마다 title 에 ③ 의 출처 그대로
 >                쪽으로 온 점: local_gap 를 누르면 걸은 점 2 · 쪽 점 998 개 전부 «<키> · not in this walk»(리허설 «FAKE-W-002 · not in this walk») · raw id 0
 >       뜻       누른 쪽의 걸은 시각 근방 1,000 점이 먼저 · Load earlier / Load later 가 1,000 점씩 넓힌다 · 꺼짐 글씨 = 그 쪽에 더 없음
