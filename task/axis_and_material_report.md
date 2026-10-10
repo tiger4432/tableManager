@@ -1,3 +1,11 @@
+> ## [12:55 디자인] ③ 바구니 고침 착지 063c24f1c — 친 키도 «+ Add» 로 들어가고, Walk 가 바구니를 따라 켜지고 꺼짐 (총괄 10-10)
+
+- **고친 것 하나 (지시)** — «+» 가 넣는 노드는 폼의 지금 주제입니다. 목록에서 고른 것이든 키를 친 것이든 같은 함수(pickedNode)가 짓고, 빈 키는 정본 빈 값 판정(absent.js isBlank)이 거릅니다. 키를 치면 바구니만 다시 그려 «+ Add» 가 바로 켜집니다(입력 칸 커서는 그대로).
+- **고친 것 둘 (크롬에서 새로 찾음)** — «+ Add» 로 넣어도 Walk 가 «Add a start to Positive first» 로 꺼진 채 남았습니다. Walk 는 페이지가 다시 그려질 때만 상태를 정했기 때문입니다. ③ 착지 때 크롬 프로브는 + 사이에 목록에서 다시 골라 페이지가 다시 그려져서 가려졌고, 하니스는 꺼진 버튼도 눌러 버려서 못 잡았습니다. 이제 Walk 의 꺼짐 사유는 함수 하나(goReason)이고, 페이지가 시작 마킹을 들어 Walk 버튼에 다시 적습니다(바구니가 마킹을 듣는 것과 같은 기제). 하니스는 브라우저처럼 꺼진 버튼은 안 누릅니다.
+- **덤** — «+ Add», 높이 44 px. 바구니 이름 «아래» 제 줄에 둡니다. 이름 줄(글자 20 px) 옆에 44 px 를 두면 화면 게이트의 크기 규칙이 결함으로 잡습니다(Mark 는 Fold 와 같은 44 px 끼리 한 줄이라 통과).
+- **크롬 MCP** — Edge 154.0.0.0, 빌드된 walk 페이지 probe 사본 · 박스 그대로(쓰기만 막음), /assets/walk-CgsfUVnS.js, 2481x1226. wafer 목록 50 개에 NAB115-W07 없음. 치기 전 «+ Add» 꺼짐 «Pick a node first», 44 px. NAB115-W07 를 치니 켜짐(커서 그대로). Walk 꺼짐 «Add a start to Positive first» → «+ Add» 로 Positive 에 NAB115-W07 → Walk 켜짐 → 걷기 한 번, 그 키(["wafer",{"wafer":"NAB115-W07"}])로, 박스 200 · 3 행. 쓰기 0.
+- **게이트** — start_baskets 22 (+ B11: a key typed - + comes on, puts it in, Walk comes on and asks that key; B12: x on the only + start turns Walk off with no page redraw; BM9 a typed key that does not redraw the baskets, BM10 Walk drawn once, both caught), walk_table 69, walk_layout 29, compare_view 28, walk_worlds 18, disabled_reason 25, css_token_definition 7, explorer_open_path 130; screen gate on the walk page 24.
+
 > ## [01:23 디자인] 멈춤(소유자 10-10 «클라는 이제 멈춰») — 착지 끝: 시연 ①②③④ · 어드민 네 탭 검사기 · 돌아오는 경로 (design 82580f40a, 전체 러너 게이트 170/170 초록 · 알려진 빨강 2 그대로 · 1925 초). 짓지 않음: 총괄 10-10 다섯(접은 칸 줄바꿈과 검사기 «칸 너비» 규칙 — 패치만 스크래치에 · 닿은 시작 칸 · 거절 문장(서버) · 칩 중복 · 작은 셋 · 돌아오는 길 상한) — 지시서 d0b284ae6 끝 그대로.
 
 > ## [00:50 디자인] ① 시작 타입으로 돌아오는 경로 착지 02ffdb968 · ② 시연 대본 5 분 — 짜증 표 (총괄 10-09)
