@@ -37992,3 +37992,22 @@ public   이 세 판 사이 assy_test public.audit_logs 가 67 -> 70 -> 67 — �
 끝 상태           두 판 다 transfer 205 · 두 transfer 다이 0 · 둘째 바퀴 미리보기 0
 표               ⑦b(e926b0c0e) — «착지 뒤 채움»은 이제 없음(6 은 시연 뒤)
 ```
+
+---
+
+## [C 응용] 10-10 55f854fc5 응용 몫 — 18766 에 소유자 예(void + 코어 웨이퍼)의 두 길이 데이터로 섰습니다
+
+```
+걷기 한 번   18766 walk.html · 시작 불량 base SYN-BW-103-11 · COLLECT wafer · quantity · defect_kind · follow 비움
+            · 칩 default -> appdemo_vf
+더하기 전    Nodes 81 (collect: wafer, quantity, defect_kind) · Edges 1538 (all) · quantity 49 wafer 31 defect_kind 1
+            void 있음 · 코어 웨이퍼 있음 · 모델 quantity 18 개 있음
+            그런데 코어 웨이퍼 -measures-> 모델 quantity 0 (base 만 15) -> 모델 길 없음
+더함        같은 길 — fake_measure 표 32 -> 50 행(코어 웨이퍼 3 장 x 모델 quantity 6, role fake)
+            -> 소스 fake_measures -> backfill --whole-source --apply · 18766 은 내리지 않음
+더한 뒤      Nodes 81 (collect: wafer, quantity, defect_kind) · Edges 1556 (all) · 코어 웨이퍼 -measures-> 모델 quantity 18
+            leads_to 18 · bonded_from 141 · in_container 320 · observed 199
+소유자 예    void 와 SYN-CW-001-02 · SYN-CW-103-01 · SYN-CW-103-02 중 하나를 마킹 -> 모델 길(void -leads_to- quantity -measures- 코어 웨이퍼)과 본딩 길 둘 다 데이터에 있음
+재기동       다음 18766 씨앗(dm_e2e)에 같은 18 행이 들어감
+다음        클라 ② 표 부호별 · ① 두 마킹 사이 길 착지마다 그 빌드로 18766 재기동 -> 누른 것 · 본 것
+```
