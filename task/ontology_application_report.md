@@ -38096,3 +38096,37 @@ RUN.md     대본 ① · ② 를 위 수로 다시 생성(61d6e5836) — Ctrl+Sh
           앞글자로 닿는 것은 x 를 글자로 든 다이뿐(die_inspection) · 숫자로 든 다이는 어떤 앞글자로도 안 닿음
           앞 보고(e009b304c)의 숫자 키 물음과 같은 뿌리 — 응용은 안 고침 · 운영 데이터는 못 봄
 ```
+
+---
+
+## [C 응용] 10-10 ④ 좌우 맞대기 표(fb5275c96) — 앞의 «둘 다 missing 18» 은 이 표에서 «불량 쪽 빈칸 · 양품 쪽 빨간 missing»
+
+```
+박스 조각(가짜 행 없음 · 18767 을 따로 띄워 잼 · 끝나고 내리고 스키마 지움 · public 변화 0)
+  빌드      f11d57fd5 walk-DMv4SzUP.js · instance 18767 server-only · box slice WITHOUT fake rows (worlds appbox_vf · appbox_vb; backfill written 11 · 7 · 1 · 0)
+  누른 것    wafer · SYN-BW-103-11 typed · Positive + Add · SYN-BW-SPL-400-19 typed · Negative + Add · Collect wafer + quantity · node_limit 1000 · Walk | Nodes 62 (collect: wafer, quantity) · Edges 1601 (all) | subgraph 0.750 s
+  ③         chips default then appbox_vf (re-walk, same baskets and Collect) | url ?world=default&world=appbox_vf | Nodes 80 (collect: wafer, quantity) · Edges 1619 (all) | reached 6 hops | subgraph 0.888 s | request ...&collect=wafer&collect=quantity&world=default&world=appbox_vf
+  ④ 표       quantity · bands «Positive · 48 nodes» «Negative · 3 nodes» · each band measures · role/step/value/eqp_id · leads_to · dir/model · measures · value_text | rows 48 | no extra request (the walk's answer)
+  ④ 칸       measures · value (+|−): value|value 2 · multi|value 1 · value|missing 12 · multi|missing 10 · blank|missing 23
+  두 쪽 값    sides: pressure_MPa 0.22 vs 0.3305 · temp_C 150 vs 148.054 · time_s «31 edges · 12 (SYN-BW-103-11) · 300 (SYN-CW-001-02) …» vs 11.611
+  모델        the void_formation model's 18 quantities all in the table, all blank|missing 18 (+ reached with no value · − not reached, red) · the other blank|missing 5: vacuum_assist, chem, gas, pad, slurry
+  뜻         옛 Compare 의 missing|missing 18 + dash|missing 5 = 이 표의 blank|missing 23 — 불량 쪽은 닿았는데 값 없음(빈칸), 양품 쪽은 못 닿음(빨강)
+가짜 데이터 18766(소유자 인스턴스 · 이 빌드로 떠 있음)
+  f11d57fd5 walk-DMv4SzUP.js · 18766 box slice + fake rows · same presses · Nodes 81 · Edges 1668 · 0.785 s · bands «Positive · 49 nodes» «Negative · 22 nodes» · cells blank|blank 1 · blank|missing 5 · blank|value 2 · multi|missing 10 · multi|value 11 · value|blank 3 · value|missing 12 · value|value 5 · wetting_deficit (fake plan none) blank|blank
+RUN.md     대본 ③ · ④ · 시연 전 읽기 문장 · 걸린 것 을 위 박스 수로 다시 생성(4596ba884). ④-b(5cf5c3401) 착지 뒤 다시
+```
+
+---
+
+## [C 응용] 10-10 ④-b(5cf5c3401) 응용 몫 — 18766 에 같은 행을 두 스킴으로: 변 스킴 세상 · 이벤트 스킴 세상, 두 base 의 값 32 쌍이 같음
+
+```
+빌드        c5603509b · 18766 relaunched with the two scheme worlds in its seed (fake data as before)
+변 스킴      appdemo_ed (edge scheme) entities wafer · quantity · vocabulary measures · source fake_measures (copy of default's) -> backfill written 50 of 50 · atoms measures 50
+이벤트 스킴   appdemo_ev (event scheme) entities wafer · quantity · measurement (keys meas_id = fake_id · attributes value unit role step eqp_id) · vocabulary has_measurement (wafer -> measurement) · of_quantity (measurement -> quantity) · source fake_measure_events on the same fake_measure table -> backfill written 150 of 150 · atoms has_measurement 50 · of_quantity 50 · register 50
+걷기(API)    walk from the two bases (positive bad · negative good), each world alone: appdemo_ed nodes wafer 2 · quantity 19 · edges measures 32 | appdemo_ev nodes wafer 2 · measurement 32 · quantity 19 · edges has_measurement 32 · of_quantity 32
+값 대조      (wafer, quantity) -> value: edge scheme 32 pairs (edge qualifier value) · event scheme 32 pairs (measurement node attribute value) · same key and value 32 · only one side 0 · other value 0 · wafers SYN-BW-103-11 · SYN-BW-SPL-400-19 (the 18 core-wafer rows are in both ledgers but this walk does not reach them)
+지금 표      before 4-b, event world alone (?world=appdemo_ev), Positive bad · Negative good · Walk: Nodes 53 · Edges 64 · quantity table 19 rows with only «Reached | Reached» per side (no value) · measurement table 32 rows (meas_id) with value · unit · role · step · eqp_id per side, each row one side's, the other side red missing · values do not line up by quantity
+            -> ④-b 착지 뒤 같은 누름으로 두 세상에서 quantity 줄의 값이 같은지 «누른 것 · 본 것»
+내 실수      my edit of run_dm_hold.sh during the held run broke its cleanup lines (bash syntax error) - worktree /c/wt-app2 and schemas assy_app_reread_dm · w_appdemo_vf · w_appdemo_vb stayed until I ran the lines by hand (dropped 361 · 27 · 27, left 0) · public none
+```
