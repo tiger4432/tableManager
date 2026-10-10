@@ -23,6 +23,8 @@ export const TREND_WORDS = Object.freeze({
   noLater: 'Nothing later',
   close: 'Close',
   none: 'No value with a time in this column',
+  // A trend whose reads share no one node: no time page can widen it (lead 10-10 E2).
+  noPage: 'Walk only · no time page',
   other: 'Other rows',
   walked: 'Dashed: the walked time',
   untimed: (n) => `${unitText(n, 'point')} without a time`,
@@ -63,7 +65,7 @@ export class TrendView {
 
   /**
    * @param {{title: string, model: object, groups: string[], t0: number|null, onEarlier?: Function, onLater?: Function,
-   *          hasEarlier?: boolean, hasLater?: boolean, onClose?: Function}} spec
+   *          hasEarlier?: boolean, hasLater?: boolean, onClose?: Function, walkOnly?: boolean}} spec
    */
   show(spec) {
     const { model } = spec;
@@ -72,7 +74,8 @@ export class TrendView {
     head.append(this._el('span', 'wk-label', TREND_WORDS.title), this._el('span', 'wk-trend-title', spec.title));
     const points = model.numbers.length + model.words.length;
     const said = model.t ? `${unitText(points, 'point')} · ${localMinute(new Date(model.t[0]).toISOString())} → ${localMinute(new Date(model.t[1]).toISOString())} ${TREND_WORDS.local}` : '';
-    head.append(this._el('span', 'wk-note', [said, model.untimed ? TREND_WORDS.untimed(model.untimed) : ''].filter(Boolean).join(' · ')));
+    head.append(this._el('span', 'wk-note', [said, model.untimed ? TREND_WORDS.untimed(model.untimed) : '',
+      spec.walkOnly ? TREND_WORDS.noPage : ''].filter(Boolean).join(' · ')));
     const acts = this._el('span', 'wk-trend-acts');
     if (spec.onEarlier) acts.append(this._button(TREND_WORDS.earlier, spec.onEarlier, spec.hasEarlier === false ? TREND_WORDS.noEarlier : ''));
     if (spec.onLater) acts.append(this._button(TREND_WORDS.later, spec.onLater, spec.hasLater === false ? TREND_WORDS.noLater : ''));

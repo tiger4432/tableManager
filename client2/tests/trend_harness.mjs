@@ -45,7 +45,43 @@ const PAGE = {
 };
 // The same walk with the − wafer's edge two days before the page's window.
 const WALK_FAR = { ...WALK, edges: [WALK.edges[0], { ...WALK.edges[1], occurred_at: '2026-09-29T05:00:00+00:00' }] };
+// Two wafers measuring two quantities: a wafer section's reads end at two nodes (lead 10-10 E2).
+const WALK_TWO = { generated_at: T(12), nodes: [node('wp', 'wafer'), node('wn', 'wafer'), node('q1', 'quantity'), node('q2', 'quantity')],
+  edges: [edge('wp', 'measures', 'q1', 30.5, 3, 'c1'), edge('wn', 'measures', 'q2', 11, 5, 'c2')],
+  propagation: { ranked: [{ id: 'q1', reach: [1, 0] }, { id: 'q2', reach: [0, 1] }] } };
 const TIME = /\d\d-\d\d \d\d:\d\d/;
+
+/** The walk page with `answer` walked, a section's Trend pressed (lead 10-10 E2): its dots, their titles, its page's ask. */
+async function sectionRun(M, answer, type) {
+  const urls = [];
+  const DECL = { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
+  const doc = makeDoc('light');
+  doc.head = doc.createElement('head');
+  const host = doc.createElement('div');
+  const handle = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+    const u = String(url);
+    urls.push(u);
+    const body = u.includes('around=') || u.includes('later=') || u.includes('earlier=') ? PAGE : DECL;
+    return { ok: true, status: 200, json: async () => body };
+  } });
+  await settle();
+  handle.state.type = 'wafer';
+  handle.state.asked = { type: 'wafer', keys: {}, positive: ['wp'], negative: ['wn'] };
+  handle.state.run = 'done';
+  handle.state.result = answer;
+  handle.render();
+  const sec = walkAll(host).filter((n) => n.className === 'wk-sec').find((x) => new RegExp(`^${type}`).test(x.children[0]._text || ''));
+  const toggle = sec && walkAll(sec).find((n) => n.attrs && n.attrs['data-section-view'] === 'trend');
+  if (toggle) toggle.dispatch('click', {});
+  await settle();
+  const q = (u) => Object.fromEntries(new URLSearchParams(String(u || '').split('?')[1] || ''));
+  const asks = urls.filter((u) => u.includes('around=') || u.includes('later=') || u.includes('earlier='));
+  const sources = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key'])
+    .map((n) => [n.attrs['data-key'], ((n.children || []).find((k) => k.tagName === 'TITLE') || {})._text || '']).sort();
+  const note = walkAll(host).filter((n) => n.className === 'wk-note').map((n) => n._text || '').find((x) => TIME.test(x)) || '';
+  const title = (walkAll(host).find((n) => n.className === 'wk-trend-title') || {})._text;
+  return { toggled: Boolean(toggle), ask: asks.length ? q(asks[0]) : null, sources, walkOnly: note.includes('Walk only · no time page'), title };
+}
 
 /** The walk page with `answer` walked: a press on the quantity's + cell, then Load earlier. */
 async function pageRun(M, answer) {
@@ -162,6 +198,22 @@ async function seen(M) {
     groups: ['Positive'], t0: null });
   out.dotSource = walkAll(said.mount).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key'])
     .map((n) => ((n.children || []).find((k) => k.tagName === 'TITLE') || {})._text || '');
+  // A section's Trend: the wafers' reads of measures (out) end at q1 - its page read from q1, the cell's same points.
+  const sectionTrend = await sectionRun(M, WALK, 'wafer');
+  out.sectionTrend = [sectionTrend.toggled, sectionTrend.title, sectionTrend.ask && [sectionTrend.ask.id, sectionTrend.ask.follow,
+    sectionTrend.ask.direction], JSON.stringify(sectionTrend.sources) === JSON.stringify(run.sources), sectionTrend.walkOnly];
+  const OUT = { steps: [{ predicate: 'measures', direction: 'outgoing' }], value: { on: 'edge', name: 'value' }, words: ['measures', 'value'] };
+  out.anchors = [M.trend.pageAnchor(['q1'], [], COLUMN), M.trend.pageAnchor(['wp', 'wn'], [{ node: 'q1' }, { node: 'q1' }], OUT),
+    M.trend.pageAnchor(['wp', 'wn'], [{ node: 'q1' }, { node: 'q2' }], OUT),
+    M.trend.pageAnchor(['wp'], [], { ...OUT, value: { on: 'node', name: 'value' } })];
+  const heads = [true, false].map((walkOnly) => {
+    const p = part();
+    p.view.show({ title: 'W', model: M.trend.trendModel(walk), groups: ['Positive', 'Negative'], t0: null, walkOnly });
+    return walkAll(p.mount).some((n) => n.className === 'wk-note' && (n._text || '').includes('Walk only · no time page'));
+  });
+  out.walkOnlyHead = heads;
+  const two = await sectionRun(M, WALK_TWO, 'wafer');
+  out.sectionTwo = [two.toggled, two.ask, two.sources.map(([k]) => k), two.walkOnly];
   const farRun = await pageRun(M, WALK_FAR);
   out.farPage = [farRun.ask && farRun.ask.around, farRun.dots, farRun.edges, farRun.local];
   return out;
@@ -205,6 +257,13 @@ function suite(out) {
   eq('T14 a point says who gave it, as its cell does: the wafer and its side\'s route; a wafer neither side reached, its keys and «not in this walk» (leads 99ed68cb7 C, 10-11)',
     out.pointSources, [['c1', 'WP · start'], ['c2', 'WN · start'], ['c3', 'WP · start'], ['c4', 'WZ-9 · not in this walk']]);
   eq('T15 the part: a point that carries who gave it says it on its dot', out.dotSource, ['WP · start']);
+  eq('TS1 a section' + "'" + 's Trend: every row' + "'" + 's reads, its time page read from the one node they reach - the edge taken the other way - the same points and sources as the value cell reading those edges from there (lead 10-10 E2)',
+    out.sectionTrend, [true, 'wafer · 2 · measures · value', ['q1', 'measures', 'incoming'], true, false]);
+  eq('TS3 the page' + "'" + 's anchor: one row its own; rows reaching one end that end, the step the other way; two ends, or a node' + "'" + 's value, none',
+    out.anchors, [{ id: 'q1', predicate: 'measures', direction: 'incoming' }, { id: 'q1', predicate: 'measures', direction: 'incoming' }, null, null]);
+  eq('TS4 the part: a trend no time page can widen says walk only on its head', out.walkOnlyHead, [true, false]);
+  eq('TS2 a section whose reads end at two nodes: no time page asked, the head says walk only', out.sectionTwo,
+    [true, null, ['c1', 'c2'], true]);
   return { ran: names.length, names, failures };
 }
 
@@ -225,6 +284,18 @@ const TREND = { file: 'walk/trend.js', key: 'trend' };
 const VIEW = { file: 'walk/trend_view.js', key: 'view' };
 const PAGE_ = { file: 'walk/main.js', key: 'page' };
 const MUTANTS = [
+  { id: 'TSm1', what: 'a section' + "'" + 's reads sharing their end: no page', catches: 'TS3', ...TREND,
+    mutate: (t) => swap(t, '  return ends.length === 1' + String.fromCharCode(10) + '    ? { id: ends[0],', '  return false' + String.fromCharCode(10) + '    ? { id: ends[0],') },
+  { id: 'TSm2', what: 'reads ending at two nodes paged from the first', catches: 'TS3', ...TREND,
+    mutate: (t) => swap(t, '  return ends.length === 1' + String.fromCharCode(10), '  return ends.length >= 1' + String.fromCharCode(10)) },
+  { id: 'TSm3', what: 'a section' + "'" + 's trend its first row alone', catches: 'TS1', ...PAGE_,
+    mutate: (t) => swap(t, 'const own = t.rows.flatMap(', 'const own = t.rows.slice(0, 1).flatMap(') },
+  { id: 'TSm4', what: 'a walk-only trend not said', catches: 'TS4', ...VIEW,
+    mutate: (t) => swap(t, "spec.walkOnly ? TREND_WORDS.noPage : ''", "''") },
+  { id: 'TSm5', what: 'a walked point read toward the anchor named by its far end', catches: 'TS1', ...PAGE_,
+    mutate: (t) => swap(t, 't.anchor && p.row && p.node === t.anchor.id ? p.row : p.node', 'p.node') },
+  { id: 'TSm6', what: 'the page' + "'" + 's anchor ignored: a section paged from nowhere', catches: 'TS1', ...PAGE_,
+    mutate: (t) => swap(t, '    t.anchor = pageAnchor(t.rows, own, at.column);', '    t.anchor = null;') },
   { id: 'TM1', what: 'a point with no time', catches: 'T1', ...TREND,
     mutate: (t) => swap(t, '.map((r) => ({ t: timeOf(r.edge),', '.map((r) => ({ t: null,') },
   { id: 'TM2', what: 'a page point with no group', catches: 'T2', ...TREND,
@@ -252,10 +323,10 @@ const MUTANTS = [
   { id: 'TM14', what: 'a point does not say who gave it', catches: 'T15', ...VIEW,
     mutate: (t) => swap(t, "    if (p.source) { const said = this._svg('title', {}); said.textContent = p.source; dot.append(said); }\n", '') },
   { id: 'TM16', what: 'a paged point no side reached says nothing', catches: 'T14', ...PAGE_,
-    mutate: (t) => swap(t, 'source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group], p.node)',
-      "source: p.group === null || p.group === undefined ? '' : view.sources.source(view.groups[p.group], p.node)") },
+    mutate: (t) => swap(t, 'source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group],',
+      "source: p.group === null || p.group === undefined ? '' : view.sources.source(view.groups[p.group],") },
   { id: 'TM15', what: 'a point\'s source the row\'s, not its read\'s', catches: 'T14', ...PAGE_,
-    mutate: (t) => swap(t, 'view.groups[p.group], p.node) }))', 'view.groups[p.group], t.row) }))') },
+    mutate: (t) => swap(t, 't.anchor && p.row && p.node === t.anchor.id ? p.row : p.node) }))', 'p.row || p.node) }))') },
   { id: 'TM13', what: 'the page asks around any side\'s latest walked point', catches: 'T12', ...PAGE_,
     mutate: (t) => swap(t, 'walkedTime(own, r.generated_at, t.group)', 'walkedTime(own, r.generated_at)') },
 ];

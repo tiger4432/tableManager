@@ -1405,7 +1405,7 @@ const FLOORS = new Map([
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 33],   // 36 -> 33: R13 R14 and FM10 retired with viaDepth - the table's Route reads the answer's evidence, walk_table Z29-Z32 (lead 1333a5ec9)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 31],   // -> 31: a paged point no side reached says its keys, not in this walk - T14, TM16 (lead 10-11)
+  ['trend_harness.mjs', 41],   // -> 41: a section's Trend, its page from the node its reads share - TS1-TS4, TSm1-TSm6 (lead 10-10 E2a)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by

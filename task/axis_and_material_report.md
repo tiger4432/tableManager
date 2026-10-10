@@ -1,3 +1,12 @@
+> ## [05:19 디자인] E2a — 구획마다 Table | Trend, 시간 쪽은 행들이 만나는 한 노드에서 착지 eb1efa71f (총괄 10-10 E2a)
+
+- **무엇** — 구획 머리에 Table | Trend. Trend 는 그 구획 행 전부의 값(고른 열)이 점. 값 칸 트렌드와 같은 읽기 · 같은 출처. 시간 쪽의 닻은 pageAnchor 한 자리: 행 하나면 그 행, 행들이 한 끝에서 만나면 그 끝(걸음 반대), 아니면 없음(머리에 Walk only). 점의 출처 = 엣지의 닻 아닌 끝.
+- **브라우저** — 크롬 MCP 탭이 숨겨진 채 타이머가 얼어(300 ms 타이머가 45 초 안에 안 돎) 검색 상자가 묻지 못했습니다. 이 착지의 탐침은 데스크톱 앱 안 창(크롬 152, 1920x1080)에서 돌렸습니다.
+- **탐침** — Probe (the built-in pane of the desktop app, Chrome 152.0.7977.130, the built walk page as a probe copy on the box as it is, /assets/walk-B1AneZ3H.js, 1920x1080 - the Chrome MCP tab's timers froze while hidden, a 300 ms timer unfired in 45 s): SYN-BW-103-11 in +, Walk; temp_C's «measures (in) · value» cell: «temp_C · measures (in) · value», its page asked from temp_C, 1000 dots; temp_C checked, Next measures → wafer, the wafer section's Trend: «wafer · 200 · measures · value», its page asked from the same node (measures, incoming), 1004 dots titled «SYN-BW-002-14 · measures» ..., no raw id. Writes 0.
+- **게이트** — trend 41 with --mutate --control (TS1 a section's trend - every row's reads, the page from the node they reach, the same points and sources as the cell; TS2 two ends - no page, walk only; TS3 the anchor rule; TS4 the part's words; TSm1-TSm6 caught, TM15 TM16 re-aimed); walk_table 150 with --mutate --control; screen gate 249 with --mutate; walk_layout 34, node_search 45, subgraph_view 279, start_baskets 24, walk_worlds 18, walk_wire 95, rnd_board_walk_box 104, fold_views 19, reach_table 33, walk_route_fill 80.
+
+다음: E2b(표 그리개 부품화 · 덩어리 Table · Trend · pointsOf 와 덩어리 걷기 둘 · Points from 은퇴 · 썸네일은 같은 점) -> D -> 사본 표 -> G-2(그래프 = 경로 + 끝 답, 총괄 ②) -> 값 대응.
+
 > ## [04:02 디자인] G — 한 스텝에서 갈래 둘 (스텝이 나무) 착지 ae931b34a (총괄 5ea461e04)
 
 - **무엇** — Next 엣지 A, 같은 스텝에서 엣지 B 를 누르면 갈래 둘이 나란히 남습니다. 같은 엣지를 다시 누르면 그 갈래와 아래만 다시 걷고 그 마킹들만 지움. 탭은 고른 갈래의 층마다 한 줄(형제 포함) + 갈래 끝 아래 줄. 다른 갈래 탭을 누르면 그 갈래를 고름.

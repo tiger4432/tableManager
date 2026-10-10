@@ -39,6 +39,20 @@ export function pagePoints(answer, groups, x, column, walked = new Set()) {
   }).filter((p) => !isBlank(p.value));
 }
 
+/**
+ * Where a time page reads a trend's edges from (lead 10-10 E2): the node every read of `rows` shares - the row when
+ * there is one, else the far end they all reach, the step taken the other way - for one step whose edge carries the
+ * value (the server's time-page shape). Several ends, or another column: none.
+ */
+export function pageAnchor(rows, points, column) {
+  const step = column.steps.length === 1 && column.value.on === 'edge' ? column.steps[0] : null;
+  if (!step) return null;
+  if (rows.length === 1) return { id: rows[0], predicate: step.predicate, direction: step.direction };
+  const ends = [...new Set(points.map((p) => p.node))];
+  return ends.length === 1
+    ? { id: ends[0], predicate: step.predicate, direction: step.direction === 'incoming' ? 'outgoing' : 'incoming' } : null;
+}
+
 /** The walk's points with a page's: one point a key, the walk's kept (it knows the group it came by). */
 export function mergePoints(walk, page) {
   const seen = new Set(walk.map((p) => p.key));
