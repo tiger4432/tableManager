@@ -92,6 +92,18 @@ export function cellWords(cell, kind = valueKind(cell.values || [])) {
   return { text: values[0], rest: `+${values.length - 1}${cell.more ? '+' : ''}`, values };
 }
 
+/** Which walk reached a row, a control walk B gone too (lead 99ed68cb7 D): A alone, both, or B alone. */
+export const REACHED = Object.freeze({ a: 'A only', ab: 'A + B', b: 'B only' });
+const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');
+const countReached = (kinds) => ({ a: kinds.filter((k) => k === 'a').length, ab: kinds.filter((k) => k === 'ab').length,
+  b: kinds.filter((k) => k === 'b').length });
+
+/** A walk and its control walk as one graph: each node and edge once, the walk's own first (lead 99ed68cb7 D). */
+export function mergeWalks(a, b) {
+  const once = (key) => [...new Map([...(b[key] || []), ...(a[key] || [])].map((x) => [x.id, x])).values()];
+  return { ...a, nodes: once('nodes'), edges: once('edges') };
+}
+
 /** Δ in words: signed, ten significant digits (a float's tail is not a difference anyone measured). */
 export function deltaWords(delta) {
   if (delta === null || delta === undefined) return '';
@@ -111,11 +123,13 @@ export function deltaWords(delta) {
  * @returns {{sections: Array, shown: number, hidden: number, groups: Array, unsplit: boolean}}
  */
 export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
-  opened = new Set()) {
-  const nodes = (result && result.nodes) || [];
+  opened = new Set(), control = null) {
+  // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
+  const walked = control ? mergeWalks(result, control) : result;
+  const nodes = (walked && walked.nodes) || [];
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
-  const plural = pluralAttributes(result);
+  const plural = pluralAttributes(walked);
   // C-98. 「무엇이 안 보이는 것이 무슨 뜻인가」의 모집단은 «선언»이라, 한 번 읽고 모든 구획이
   // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
   const confirmers = confirmedPredicates(predicates);
@@ -129,10 +143,22 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   // walk brought; two are told apart by the answer's reach - one that ranks nothing is one side holding every node,
   // said to be both signs.
   const signs = [{ name: '+', starts: positive }, ...(negative.length ? [{ name: '−', starts: negative }] : [])];
+  const one = (answer) => [{ name: '+', starts: [...positive, ...negative],
+    inside: new Set([...positive, ...negative, ...((answer && answer.nodes) || []).map((n) => n.id)]) }];
   const ranked = signs.length > 1 ? groupsOf(result, signs) : null;
-  const groups = ranked || [{ name: '+', starts: [...positive, ...negative], inside: new Set([...positive, ...negative, ...nodes.map((n) => n.id)]) }];
-  const index = indexGraph(result);
-  const sources = valueSources(result, entities, groups);
+  const groupsA = ranked || one(result);
+  // A control walk B (lead 99ed68cb7 D), its sides read as A's are: a side reached a row by A, by B or both - its inside
+  // is either, a and b say which.
+  const groupsB = control ? (ranked ? groupsOf(control, signs) || ranked.map((g) => ({ ...g, inside: new Set(g.starts) })) : one(control)) : null;
+  const groups = groupsB ? groupsA.map((g, i) => ({ ...g, inside: new Set([...g.inside, ...groupsB[i].inside]),
+    a: g.inside, b: groupsB[i].inside })) : groupsA;
+  const index = indexGraph(walked);
+  const own = valueSources(result, entities, groups);
+  const sourcesB = control ? valueSources(control, entities, groups) : null;
+  // B reached the node on this side: Route says B's path a line more; a value only B brought says B's source.
+  const byB = (g, id) => Boolean(g && g.b && g.b.has(id));
+  const sources = { route: own.route, source: (g, id) => (byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
+  const routeCell = (g, id) => (byB(g, id) ? { ...own.route(g, id), sources: [`B · ${sourcesB.route(g, id).text}`] } : own.route(g, id));
   // A node a row: one row whichever groups reached it.
   const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
   const shown = members.slice(0, cap);
@@ -173,9 +199,10 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
         // A side that did not reach the node says so once, across its columns (lead 34d91c09d 3).
         if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];
         return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c,
-          sources: (byCol[i].nodes || []).map((id) => sources.source(g, id)) })), sources.route(g, node.id)];
+          sources: (byCol[i].nodes || []).map((id) => sources.source(g, id)) })), routeCell(g, node.id)];
       });
-      return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup,
+      const reached = groups[0].b ? groups.map((g) => (g.inside.has(node.id) ? reachedBy(g.a.has(node.id), g.b.has(node.id)) : null)) : null;
+      return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup, reached,
         // A type with no own column says the node's name there.
         centre: [...(ownAt.length ? ownAt.map((c) => cellWords(ownCells[r][c], 'string')) : [{ text: node.label || node.id }]),
           ...carried.map((c) => cellWords({ values: [cellSource(c, node, {}, plural.get(node.type))].filter((v) => v !== undefined) }, 'string'))],
@@ -185,6 +212,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       type,
       heading: sectionHeading(type, rows.length),
       groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
+      reached: groups[0].b ? groups.map((g, i) => countReached(said.map((row) => row.reached[i]).filter(Boolean))) : null,
       heads,
       // A value column's own head, by the index its cells carry (`col`): heads is Route and these.
       columnHeads,

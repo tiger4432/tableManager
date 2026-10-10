@@ -96,6 +96,12 @@ async function stand(mod, decl = DECL) {
     unchip: async (t) => { fire(find((e) => e.attrs && e.attrs['data-collect'] === t), 'click'); await settle(); },
     route: async () => { fire(find((e) => e.className === 'wk-path'), 'click'); await settle(); },
     loop: async () => { fire(find((e) => classes(e).includes('wk-loopchip')), 'click'); await settle(); },
+    // A Control · B box (lead 99ed68cb7 D), as tick does for Follow.
+    control: async (name) => {
+      const row = find((e) => e.attrs && e.attrs['data-control'] === name);
+      if (row) fire(row.children.find((c) => c.tagName === 'input'), 'change');
+      await settle();
+    },
     tick: async (name) => {
       // A mutant can leave a row undrawn; the cell that follows then fails, the run must not throw.
       const row = find((e) => e.attrs && e.attrs['data-follow'] === name);
@@ -203,6 +209,23 @@ async function suite(mod, css = REAL_CSS) {
   await one.act.plus();
   await one.act.walk();
   eq('L13 one box of three ticked: only that one goes as follow', sentFollow(one), 'transfer');
+  // D (lead 99ed68cb7): B empty, the one walk it always was; B ticked, the same walk once more with follow = B.
+  const params = (u) => [...new URLSearchParams((u || '').split('?')[1] || '').entries()].filter(([k]) => k !== 'follow').map((kv) => kv.join('=')).sort().join('&');
+  const followOf = (u) => new URLSearchParams((u || '').split('?')[1] || '').getAll('follow').join(',');
+  const subOf = (p) => p.asked.filter((u) => u.includes('/subgraph'));
+  ok('LD1 Control · B empty: one walk, the request it always was',
+    subOf(one).length === 1 && one.all().some((e) => e.attrs && e.attrs['data-control'] === 'observed'), JSON.stringify(subOf(one)));
+  const twice = await stand(mod);
+  await twice.act.type('die');
+  twice.act.key('mat_id', 'M-1');
+  await twice.act.tick('transfer');
+  await twice.act.control('observed');
+  await twice.act.plus();
+  await twice.act.walk();
+  const [first, second] = subOf(twice);
+  ok('LD2 Control · B ticked: two walks - the first as before, the second the same with follow = B',
+    subOf(twice).length === 2 && first === subOf(one)[0] && followOf(second) === 'observed' && params(second) === params(first),
+    JSON.stringify(subOf(twice)));
   const kept = await stand(mod);
   await kept.act.type('die');
   await kept.act.add('wafer');
@@ -276,6 +299,10 @@ const swap = (text, from, to) => {
   return text.split(from).join(to);
 };
 const MUTANTS = [
+  { id: 'LDm1', what: 'B walked though empty', catches: 'LD1',
+    mutate: (t) => swap(t, 'state.control.size ? await walk(', 'true ? await walk(') },
+  { id: 'LDm2', what: 'B walks with A\'s follow', catches: 'LD2',
+    mutate: (t) => swap(t, 'follow: [...state.control]', 'follow: [...state.follow]') },
   { id: 'W1', what: 'the step knobs are drawn in the result instead of the rail', catches: 'L1 every',
     mutate: (t) => swap(t, '      renderStep(body);', '      renderStep(main);') },
   { id: 'W2', what: 'Follow is drawn after the routes again', catches: 'L4 the follow',

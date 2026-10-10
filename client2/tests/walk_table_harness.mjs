@@ -164,6 +164,20 @@ const CARRY_DECL = { ok: true, entities: [{ type: 'die@1', keys: ['mat_id'], att
 const CARRY = { nodes: [
   { id: 'k:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' }, attribute_conflicts: 2, absence: { observed: { verdict: 'unknown', why: 'not_examined' } } },
   { id: 'k:2', type: 'die@1', label: 'D-2', keys: { mat_id: 'M-2' }, attribute_conflicts: 0 }], edges: [] };
+// D (lead 99ed68cb7): CONTROL · B walked once more from the same baskets. 18766 from «void»: A the 12, B leads_to.
+const CTL_18766 = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_control_18766.json'), 'utf8'));
+const CTL_STARTS = { positive: [CTL_18766.a.seed.id], negative: [] };
+// B on the signed answer: d:3 from + (A reached it from both), and d:5 from − through w:5, a wafer only B reached.
+const CTL_SIGNED = {
+  nodes: [...SIGNED.nodes.filter((n) => ['s:a', 's:c', 's:b', 'd:3'].includes(n.id)),
+    { id: 'w:5', type: 'wafer@1', label: 'W-5', depth: 1, keys: { wafer: 'W5' } },
+    { id: 'd:5', type: 'die@1', label: 'D-5', depth: 2, keys: { mat_id: 'M-5' } }],
+  edges: [{ id: 'b:c3', source: 's:c', target: 'd:3', predicate: 'leads_to' }, { id: 'b:b5', source: 's:b', target: 'w:5', predicate: 'leads_to' },
+    { id: 'b:55', source: 'w:5', target: 'd:5', predicate: 'inspected', qualifiers: { gate: 4, note: null } }],
+  propagation: { ranked: [{ id: 'd:3', reach: [1, 0], evidence: [walked('s:c', '+', ['d:3', 'leads_to'])] },
+    { id: 'w:5', reach: [0, 1], evidence: [walked('s:b', '-', ['w:5', 'leads_to'])] },
+    { id: 'd:5', reach: [0, 1], evidence: [walked('s:b', '-', ['w:5', 'leads_to'], ['d:5', 'inspected'])] }] },
+};
 // A cell's values, as drawn: its value lines (C draws a source line under each).
 const valsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-val').map((k) => k._text).join(' · ');
 const srcsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-src').map((k) => k._text);
@@ -701,6 +715,50 @@ async function suite(mod) {
         && handle.state.steps.filter((x) => x.parent === 0).length === 2,
       JSON.stringify([handle.state.steps.map((x) => [x.id, x.parent, x.title]), a1 && handle.graph.markings.count(a1.marks), handle.graph.markings.count(bMarks)]));
   }
+  // ── the page with B (lead 99ed68cb7 D): each side's cells tinted by who reached the row, the three counts over it ──
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    handle.state.type = 'wafer@1';
+    handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
+    handle.state.run = 'done';
+    handle.state.result = SIGNED;
+    handle.state.resultB = CTL_SIGNED;
+    let drew = true;
+    try { handle.render(); } catch (e) { drew = false; }
+    const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
+    const sec = walkAll(host).filter((e) => e.className === 'wk-sec').find((x) => x.children[0] && /^die/.test(x.children[0].textContent)) || { children: [] };
+    const line = walkAll(sec).filter((e) => e.className === 'wk-reachedside').map((part) => [part._text, ...part.children.map((c) => c.textContent)]);
+    const tint = (id) => ((walkAll(sec).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id) || { children: [] }).children)
+      .filter((c) => c.tagName === 'td' && c.className !== 'wk-check').map((c) => (has(c, 'is-ctl-ab') ? 'ab' : has(c, 'is-ctl-b') ? 'b' : ''));
+    ok('ZD4 the page: over a section each side\'s three counts; a side\'s cells tinted A + B or B only, A only bare, the other side its own',
+      drew && JSON.stringify([line, tint('d:3'), tint('d:5')]) === JSON.stringify([
+        [['Positive · ', 'A only 2', 'A + B 1', 'B only 0'], ['Negative · ', 'A only 2', 'A + B 0', 'B only 1']],
+        ['ab', 'ab', '', '', '', ''], ['', '', '', 'b', 'b']]),
+      JSON.stringify([drew, line, tint('d:3'), tint('d:5')]));
+    // + only (no − start), one side since E1 (lead 10-11): its counts once, a row's side cells its kind - the node's own
+    // cells in the centre bare.
+    const plainDoc = makeDoc();
+    const plainHost = plainDoc.createElement('div');
+    const plain = mod.boot(plainDoc, plainHost, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    plain.state.type = 'wafer@1';
+    plain.state.asked = { type: 'wafer@1', keys: {}, positive: ['s:a', 's:c'], negative: [] };
+    plain.state.run = 'done';
+    plain.state.result = SIGNED;
+    plain.state.resultB = CTL_SIGNED;
+    try { plain.render(); } catch (e) { drew = false; }
+    const pSec = walkAll(plainHost).filter((e) => e.className === 'wk-sec').find((x) => x.children[0] && /^die/.test(x.children[0].textContent)) || { children: [] };
+    const pLine = walkAll(pSec).filter((e) => e.className === 'wk-reachedside').map((part) => [part._text, ...part.children.map((c) => c.textContent)]);
+    // A row's side cells by its id, the centre's apart.
+    const pTint = (id) => [...new Set(((walkAll(pSec).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id) || { children: [] }).children)
+      .filter((c) => c.tagName === 'td' && c.className !== 'wk-check' && !has(c, 'wk-centre')).map((c) => (has(c, 'is-ctl-ab') ? 'ab' : has(c, 'is-ctl-b') ? 'b' : '')))];
+    ok('ZD5 + only with B, one side: its counts once, a row\'s side cells its kind - d:3 A + B, d:5 B only, d:1 bare (E1, lead 10-11)',
+      drew && JSON.stringify([pLine, pTint('d:3'), pTint('d:5'), pTint('d:1')]) === JSON.stringify([[['Positive · ', 'A only 3', 'A + B 1', 'B only 1']], ['ab'], ['b'], ['']]),
+      JSON.stringify([drew, pLine, pTint('d:3'), pTint('d:5'), pTint('d:1')]));
+  }
   // ── the page: side by side when the walk had a - start (lead 5cf5c3401, the mockup) ──
   {
     const doc = makeDoc();
@@ -1009,6 +1067,33 @@ const sideSuite = (TV) => {
   ok('Z43 a value\'s node neither sent nor an entity id: its source says «—», not the id',
     JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)) === JSON.stringify(['B · start', `${TV.EMPTY} · ${BONDING}`]),
     JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)));
+  // D (lead 99ed68cb7): who reached a row - A only, A + B, B only - each side its own; B's path under Route.
+  const ctlKinds = (t, type) => {
+    const sec = t.sections.find((x) => x.type === type) || { rows: [] };
+    return [sec.reached, sec.rows.length, sec.rows.filter((r) => r.reached && r.reached[0] === 'b').map((r) => r.id).sort()];
+  };
+  const qa = new Set(CTL_18766.a.nodes.map((n) => n.id));
+  const onlyB = CTL_18766.b.nodes.filter((n) => n.type === 'quantity' && !qa.has(n.id)).map((n) => n.id).sort();
+  const ctl = TV.walkTableView(CTL_18766.a, [], [], undefined, CTL_STARTS, new Map(), new Set(), CTL_18766.b);
+  ok('ZD1 18766 from void, B leads_to: quantity 35 rows - A only 17 · A + B 15 · B only 3, the three B only the ones A did not reach',
+    JSON.stringify(ctlKinds(ctl, 'quantity')) === JSON.stringify([[{ a: 17, ab: 15, b: 3 }], 35, onlyB]) && onlyB.length === 3,
+    JSON.stringify(ctlKinds(ctl, 'quantity')));
+  const noCtl = TV.walkTableView(CTL_18766.a, [], [], undefined, CTL_STARTS);
+  ok('ZD2 no B: no row says who reached it, A\'s rows alone',
+    JSON.stringify(ctlKinds(noCtl, 'quantity')) === JSON.stringify([null, 32, []])
+      && noCtl.sections.every((x) => x.reached === null && x.rows.every((r) => r.reached === null)),
+    JSON.stringify(ctlKinds(noCtl, 'quantity')));
+  const sides = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), new Set(), CTL_SIGNED);
+  const sDie = sides.sections.find((x) => x.type === 'die@1') || { rows: [] };
+  const sRow = (id) => sDie.rows.find((r) => r.id === id) || { byGroup: [[], []] };
+  const sRoute = (id, g) => { const c = raw(sides, 'die@1', id, TV.ROUTE, g) || {}; return [c.text, c.sources || null]; };
+  ok('ZD3 two baskets, each side its own: d:3 A + B on + and A only on −, d:5 B only on −; Route says B\'s path a line more; a value only B brought, B\'s source',
+    JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', 0), sRoute('d:3', 1), sRoute('d:5', 1),
+      srcOf(sides, 'die@1', 'd:5', GATE_IN, 1), srcOf(sides, 'die@1', 'd:3', GATE_IN, 0)])
+      === JSON.stringify([[{ a: 2, ab: 1, b: 0 }, { a: 2, ab: 0, b: 1 }], ['ab', 'a'], [null, 'b'], ['inspected', ['B · leads_to']],
+        ['inspected', null], [TV.EMPTY, ['B · leads_to → inspected']], ['B · W5 · leads_to'], ['A · start']]),
+    JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', 0), sRoute('d:3', 1), sRoute('d:5', 1),
+      srcOf(sides, 'die@1', 'd:5', GATE_IN, 1), srcOf(sides, 'die@1', 'd:3', GATE_IN, 0)]));
   // Two Δ columns: each Δ says its own column - by the column's index, Route standing first in heads (B).
   const scored = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e, k) => ({ ...e, qualifiers: { ...e.qualifiers, score: 10 + k } })) });
   const scoredDie = scored.sections.find((x) => x.type === 'die@1') || { deltaHeads: [] };
@@ -1041,6 +1126,10 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
+  { id: 'DM7', what: 'a side\'s cells not tinted by who reached the row', catches: 'ZD4',
+    from: "row.reached && row.reached[i] && row.reached[i] !== 'a' ?", to: 'false ?' },
+  { id: 'DM8', what: 'the three counts not drawn over a section', catches: 'ZD4',
+    from: '      if (section.reached) sec.append(reachedLine(section));\n', to: '' },
   { id: 'NZ16', what: 'the source line not drawn under a value', catches: 'Z41',
     from: "        if (sources[k]) c.append(el(doc, 'div', 'wk-src', sources[k]));\n", to: '' },
   { id: 'NZ15', what: 'a Route cell\'s «+N» keyed by a value column it does not have', catches: 'Z32',
@@ -1197,6 +1286,18 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'DM1', what: 'reached by both said A only', catches: 'ZD1',
+    from: "const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');", to: "const reachedBy = (inA, inB) => (inA ? 'a' : inB ? 'b' : 'ab');" },
+  { id: 'DM2', what: 'B\'s nodes not merged into the rows', catches: 'ZD1',
+    from: '  const walked = control ? mergeWalks(result, control) : result;', to: '  const walked = result;' },
+  { id: 'DM3', what: 'a side coloured by the + side\'s B', catches: 'ZD3',
+    from: 'reachedBy(g.a.has(node.id), g.b.has(node.id))', to: 'reachedBy(g.a.has(node.id), groups[0].b.has(node.id))' },
+  { id: 'DM4', what: 'no B line under Route', catches: 'ZD3',
+    from: 'sources: [`B · ${sourcesB.route(g, id).text}`] }', to: 'sources: [] }' },
+  { id: 'DM5', what: 'a value only B brought says A\'s source', catches: 'ZD3',
+    from: 'byB(g, id) && !g.a.has(id) ?', to: 'false ?' },
+  { id: 'DM6', what: 'no B, rows said reached anyway', catches: 'ZD2',
+    from: 'a: g.inside, b: groupsB[i].inside })) : groupsA;', to: 'a: g.inside, b: groupsB[i].inside })) : groupsA.map((g) => ({ ...g, a: g.inside, b: new Set() }));' },
   { id: 'ZM1', what: 'the rows only those the first group reached', catches: 'Z2',
     from: '  const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));',
     to: '  const members = nodes.filter((n) => groups[0].inside.has(n.id));' },
@@ -1239,7 +1340,7 @@ const TV_MUTANTS = [
   { id: 'RM4', what: 'two paths walked: the first alone', catches: 'Z31',
     from: 'return ways.length ? cellWords({ values: ways }', to: 'return ways.length ? cellWords({ values: ways.slice(0, 1) }' },
   { id: 'RM5', what: 'no Route cell under its head', catches: 'Z29',
-    from: ' })), sources.route(g, node.id)];', to: ' }))];' },
+    from: ' })), routeCell(g, node.id)];', to: ' }))];' },
   { id: 'ZM8', what: 'an added column dropped', catches: 'Z18',
     from: ', ...(added.get(type) || [])];', to: '];' },
   { id: 'ZM9', what: 'a difference keeps its float tail', catches: 'Z19',

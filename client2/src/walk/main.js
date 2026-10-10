@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, ROUTE } from './table_view.js';
+import { walkTableView, nextRoutes, ROUTE, REACHED } from './table_view.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
 import { routesFrom, valuesAt } from './reach_table.js';
 // The trend of a column (lead f984ab01d): the model and the part that draws it.
@@ -67,6 +67,8 @@ const START = 'walk-start';
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = WALKING;
+/** The control walk's list and its failure (lead 99ed68cb7 D). */
+const CONTROL_WORD = 'Control · B';
 
 /** Why a table's Next is off: it walks on from the rows checked (lead 53050a4ec, owner 「행 선택은 해야지」). */
 const CHECK_ROWS_FIRST = 'Check rows first';
@@ -123,7 +125,7 @@ export function boot(doc, host, deps) {
 
   const state = {
     decl: null, declState: 'loading', declReason: '',
-    type: '', keys: {}, follow: new Set(), collect: new Set(), leaf: 0,
+    type: '', keys: {}, follow: new Set(), collect: new Set(), leaf: 0, control: new Set(), resultB: null,
     direction: '', hops: '', nodeLimit: String(NODE_LIMIT), fanoutLimit: '',
     // How long the shown walk took, ms (lead 34d91c09d 9: a slower walk says so in the counts line).
     run: 'idle', result: null, reason: '', took: null,
@@ -276,7 +278,7 @@ export function boot(doc, host, deps) {
     const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
     const one = signed ? null : baskets.describe(starts.positive[0]);
     const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };
-    state.run = 'running'; state.result = null; state.reason = '';
+    state.run = 'running'; state.result = null; state.resultB = null; state.reason = '';
     // The table reads the walk's starts here whichever way the wire carried them: one + start alone goes by its type and
     // keys, and its table is a Next's from that node (owner 10-10 E1: the same as one basket walked).
     state.asked = { ...asked, keys: { ...asked.keys }, positive: starts.positive, negative: starts.negative };
@@ -286,12 +288,14 @@ export function boot(doc, host, deps) {
     render();
     const began = Date.now();
     const res = await walk(asked);
+    // The control walk (lead 99ed68cb7 D): the same baskets and step, follow B - asked only when B names a predicate.
+    const resB = res && res.ok && state.control.size ? await walk({ ...asked, follow: [...state.control] }) : null;
     state.took = Date.now() - began;
-    if (res && res.ok) { state.run = 'done'; state.result = res; }
+    if (res && res.ok && (!resB || resB.ok)) { state.run = 'done'; state.result = res; state.resultB = resB; }
     else {
       // ⚠️ 실패도 «보여야» 합니다. 빈 화면은 「안 눌렸나」와 구별이 안 됩니다.
       state.run = 'failed';
-      state.reason = (res && res.message) || UNKNOWN;
+      state.reason = resB && !resB.ok ? `${CONTROL_WORD} · ${resB.message || UNKNOWN}` : (res && res.message) || UNKNOWN;
     }
     render();
   }
@@ -306,9 +310,13 @@ export function boot(doc, host, deps) {
   const subtree = (id) => [stepOf(id), ...state.steps.filter((s) => s.parent === id).flatMap((s) => subtree(s.id))];
   /** The marking a step's checks write - its own, the graph's chain after its start. */
   const checksOf = (at) => (at === 0 ? state.marks : stepOf(at).marks);
+  // The Table/Trend choice is its step's (lead 10-11): a step gone back to keeps its own view.
+  const trends = new Map();
+  const trendNow = () => trends.get(state.at) || null;
+  const setTrend = (t) => { if (t) trends.set(state.at, t); else trends.delete(state.at); };
   /** The step shown: the form's walk, or one walked on from it. */
   const shownStep = () => (state.at === 0
-    ? { run: state.run, result: state.result, reason: state.reason, took: state.took }
+    ? { run: state.run, result: state.result, resultB: state.resultB, reason: state.reason, took: state.took }
     : stepOf(state.at));
 
   /** From the rows checked on step `at` (+ and -), one step along `route`: a child of `at`, its siblings kept; the same
@@ -320,6 +328,8 @@ export function boot(doc, host, deps) {
     const step = { id: (stepSeq += 1), parent: at, title, asked, run: 'running', result: null, reason: '', marks: nextMarks() };
     const again = state.steps.find((s) => s.parent === at && s.title === title);
     const dropped = again ? subtree(again.id) : [];
+    const view = again && trends.get(again.id);
+    if (view) { trends.delete(again.id); view.step = step.id; trends.set(step.id, view); }
     dropMarks(dropped);
     const place = again ? state.steps.indexOf(again) : state.steps.length;
     state.steps = [...state.steps.slice(0, place), step, ...state.steps.slice(place)].filter((s) => !dropped.includes(s));
@@ -546,30 +556,36 @@ export function boot(doc, host, deps) {
 
   // ── follow: 선언된 술어 전부를 체크로. 이것이 «주»이고 경로 목록이 «보조»입니다 ─────────
   function renderFollow(root) {
+    root.append(predicateChecks('Follow', state.follow, 'data-follow', `${UNPICKED} · ${SERVER_DEFAULT}`));
+    // Control · B (lead 99ed68cb7 D): its predicates walked once more from the same baskets; empty, no second walk.
+    root.append(predicateChecks(CONTROL_WORD, state.control, 'data-control', ''));
+  }
+
+  /** A list of the declared predicates to tick, into `chosen`; `empty` said when none is. */
+  function predicateChecks(label, chosen, attr, empty) {
     const opts = followOptions();
-    const box = field('Follow');
+    const box = field(label);
     if (!opts.length) {
       box.append(el(doc, 'div', 'wk-note', 'No predicate declared'));
-      root.append(box);
-      return;
+      return box;
     }
     const list = el(doc, 'div', 'wk-checks');
     for (const name of opts) {
-      const row = el(doc, 'label', 'wk-check' + (state.follow.has(name) ? ' is-on' : ''));
-      row.setAttribute('data-follow', name);
+      const row = el(doc, 'label', 'wk-check' + (chosen.has(name) ? ' is-on' : ''));
+      row.setAttribute(attr, name);
       const cb = el(doc, 'input');
       cb.type = 'checkbox';
-      cb.checked = state.follow.has(name);
+      cb.checked = chosen.has(name);
       cb.addEventListener('change', () => {
-        if (state.follow.has(name)) state.follow.delete(name); else state.follow.add(name);
+        if (chosen.has(name)) chosen.delete(name); else chosen.add(name);
         render();
       });
       row.append(cb, el(doc, 'span', '', name));
       list.append(row);
     }
     box.append(list);
-    if (!state.follow.size) box.append(el(doc, 'div', 'wk-note', `${UNPICKED} · ${SERVER_DEFAULT}`));
-    root.append(box);
+    if (!chosen.size && empty) box.append(el(doc, 'div', 'wk-note', empty));
+    return box;
   }
 
   function renderGo(root) {
@@ -586,14 +602,26 @@ export function boot(doc, host, deps) {
    * 🔴 C-72. 이 함수는 «아무것도 정하지 않습니다» — 구획도 컬럼도 셀 글자도 못 그린 수도
    *    `walkTableView` 가 답하고, 여기서는 그 답을 DOM 으로 옮기기만 합니다.
    */
-  function renderTable(box, r, starts) {
+  function renderTable(box, r, starts, control) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
     const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts, state.added,
-      state.emptyOpen);
+      state.emptyOpen, control);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
     box.append(rowFilterBar());
     renderSections(box, view, r);
-    if (state.trend && state.trend.at === 'below') renderTrend(box, view, r);
+    if (trendNow() && trendNow().at === 'below') renderTrend(box, view, r);
+  }
+
+  /** Which walk reached the rows (lead 99ed68cb7 D): each side's three counts, the colours of its cells. */
+  function reachedLine(section) {
+    const line = el(doc, 'div', 'wk-reached');
+    section.reached.forEach((n, i) => {
+      const side = section.groups ? `${section.groups[i].sign === '−' ? BASKET_WORDS.negative : BASKET_WORDS.positive} · ` : '';
+      const part = el(doc, 'span', 'wk-reachedside', side);
+      for (const kind of ['a', 'ab', 'b']) part.append(el(doc, 'span', `wk-reachedn is-ctl-${kind}`, `${REACHED[kind]} ${n[kind]}`));
+      line.append(part);
+    });
+    return line;
   }
 
   /** All rows · Differs · Missing (lead 5cf5c3401): which rows of the side by side table are drawn. */
@@ -724,7 +752,7 @@ export function boot(doc, host, deps) {
       };
       const group = (i) => {
         for (const cell of cells(i)) {
-          const c = td(cell, section.groups[i].sign === '−' ? 'wk-minus' : 'wk-plus',
+          const c = td(cell, `${section.groups[i].sign === '−' ? 'wk-minus' : 'wk-plus'}${row.reached && row.reached[i] && row.reached[i] !== 'a' ? ` is-ctl-${row.reached[i]}` : ''}`,
             cell.rest ? `${section.type}\u0000${row.id}\u0000${i}\u0000${cell.col === undefined ? ROUTE : columnKey(section.columns[cell.col])}` : '');
           // A value cell opens its column's trend for this row (lead f984ab01d).
           if (cell.col !== undefined && !cell.missing) {
@@ -764,13 +792,13 @@ export function boot(doc, host, deps) {
    *  page after. The column is held by what it reads, not its place - a fold or a number column added moves places (lead
    *  34d91c09d 2, 7). `at`: under the tables (a value cell's) or in its section's place (the section's). */
   function openTrend(type, rows, col, group, at) {
-    state.trend = { type, rows, col, group, at, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null };
+    setTrend({ step: state.at, type, rows, col, group, at, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null });
     render();
   }
 
   /** The column a trend reads, when its section is still drawn. */
   function trendColumn(view) {
-    const t = state.trend;
+    const t = trendNow();
     const section = t && view.sections.find((s) => s.type === t.type && s.groups);
     const col = section ? section.columns.findIndex((c) => columnKey(c) === t.col) : -1;
     return col >= 0 ? { section, column: section.columns[col], col } : null;
@@ -778,7 +806,7 @@ export function boot(doc, host, deps) {
 
   /** One more time page - around the walked time, or past either end (the implementer's contract, edge values only). */
   async function loadTrend(mode) {
-    const t = state.trend;
+    const t = trendNow();
     const view = t && t.view;
     const anchor = view && t.anchor;
     if (!anchor) return;
@@ -787,7 +815,7 @@ export function boot(doc, host, deps) {
     if (!Object.values(ask)[0]) return;
     const got = await fetchTimePage({ apiBase, fetchImpl, id: anchor.id, predicate: anchor.predicate, direction: anchor.direction,
       page: PAGE_ROWS, ...ask });
-    if (state.trend !== t || !got.ok) return;
+    if (trends.get(t.step) !== t || !got.ok) return;
     t.pages.push(got.answer);
     if (mode !== 'later') { t.earlier = got.page.earlier; t.hasEarlier = got.page.has_earlier; }
     if (mode !== 'earlier') { t.later = got.page.later; t.hasLater = got.page.has_later; }
@@ -796,7 +824,7 @@ export function boot(doc, host, deps) {
 
   /** The open trend, where it stands. */
   function renderTrend(box, view, r) {
-    const t = state.trend;
+    const t = trendNow();
     const at = trendColumn(view);
     if (!at) return;
     // A section's trend reads its section's rows as they stand: a step walked again is a new answer (lead 10-11).
@@ -824,7 +852,7 @@ export function boot(doc, host, deps) {
       groups: at.section.groups.map((g) => word(g.sign)), t0: t.t0,
       ...(t.pages.length ? { onEarlier: () => { void loadTrend('earlier'); }, onLater: () => { void loadTrend('later'); },
         hasEarlier: Boolean(t.hasEarlier), hasLater: Boolean(t.hasLater) } : {}),
-      onClose: () => { state.trend = null; render(); } });
+      onClose: () => { setTrend(null); render(); } });
     box.append(trendMount);
     if (fresh) void loadTrend('around');
   }
@@ -905,11 +933,12 @@ export function boot(doc, host, deps) {
     for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));
-      const t = state.trend;
+      const t = trendNow();
       const trended = Boolean(t && t.at === 'section' && t.type === section.type);
       sec.append(sectionViews(section, trended));
       // Next above its table, once (lead 3375edd9b).
       if (checks) sec.append(nextRow(at, section, checks));
+      if (section.reached) sec.append(reachedLine(section));
       if (trended) renderTrend(sec, view, r);
       else sec.append(columnPicker(section, view.index), formulaTable(section, checks));
       box.append(sec);
@@ -930,7 +959,7 @@ export function boot(doc, host, deps) {
       b.setAttribute('aria-pressed', String((name === 'trend') === trended));
       setDisabledReason(b, name === 'trend' && !section.columns.length ? 'No value column' : '');
       b.addEventListener('click', () => {
-        if (name === 'table') { state.trend = null; render(); return; }
+        if (name === 'table') { setTrend(null); render(); return; }
         if (!trended && section.columns.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.columns[0]), undefined, 'section');
       });
       bar.append(b);
@@ -940,10 +969,10 @@ export function boot(doc, host, deps) {
       section.columns.forEach((c, i) => {
         const o = el(doc, 'option', '', section.columnHeads[i]);
         o.value = columnKey(c);
-        if (columnKey(c) === state.trend.col) o.selected = true;
+        if (columnKey(c) === trendNow().col) o.selected = true;
         pick.append(o);
       });
-      pick.addEventListener('change', () => openTrend(section.type, state.trend.rows, pick.value, undefined, 'section'));
+      pick.addEventListener('change', () => openTrend(section.type, trendNow().rows, pick.value, undefined, 'section'));
       bar.append(pick);
     }
     return bar;
@@ -1087,7 +1116,7 @@ export function boot(doc, host, deps) {
       // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 문장을 들고 오면 머리가 그것을 씁니다.
       if (!r.nodes.length && !r.message) box.append(el(doc, 'div', 'wk-note', 'No node reached'));
       const askedOf = state.at === 0 ? state.asked : shown.asked;
-      renderTable(box, r, { positive: (askedOf && askedOf.positive) || [], negative: (askedOf && askedOf.negative) || [] });
+      renderTable(box, r, { positive: (askedOf && askedOf.positive) || [], negative: (askedOf && askedOf.negative) || [] }, shown.resultB);
     }
     root.append(box);
   }
