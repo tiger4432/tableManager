@@ -1,3 +1,13 @@
+> ## [00:39 디자인] C — 값 아래 «누가 준 값인가» + 덩어리 창 «From» · 더 없음 노트 착지 2f47dc01c (총괄 99ed68cb7 C · f4e89622b · 4c53ba3b0)
+
+- **C** — 맞대기 표 값 칸마다 값 아래 «키 · 길». 값을 준 노드 = 그 칸이 읽은 마지막 걸음의 끝(reach_table.cellOf 가 값마다 노드를 줌). 키는 그 타입 선언 keys 순서, 없으면 라벨. 길은 Route 와 같은 읽기(그 쪽 시작에서 걸은 evidence, 시작이면 «start»). «+N» 을 누르면 값마다 제 출처 줄. 트렌드 점 제목도 같은 좌석(table_view.valueSources)에서.
+- **창 머리** — 그래프 큰 덩어리 창 머리 «Behind <노드>» -> «From <노드>». 그 아래 줄 «N next · M behind» 는 그대로라 «behind» 는 접힌 수 한 뜻만 남습니다.
+- **더 없음** — 점선(안 걸은) 덩어리를 눌렀는데 걷기가 덩어리를 안 남기면 상태 줄에 «No more · from <노드>». 이 박스 데모 걷기에서 그런 노드를 찾아보지는 않았습니다 — 하니스 AW4 만입니다. 18766 의 0/6 다이에서 여실 때 보일 줄입니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-Cg10vKQj.js, 2481x1226): the demo pair, wafer and quantity, Walk: quantity cells clamp_kN + «MOLDING» / «SYN-BW-103-11 · start» | clamp_kN + «setpoint» / «SYN-BW-103-11 · start» | clamp_kN + «SYN-MLD-03» / «SYN-BW-103-11 · start» (89 cells with a value, every value its source line); «+N» on SYN-BW-103-11 opened: 16 values, 16 source lines; a value cell pressed, the trend «clamp_kN · measures (in) · step»: its dots say SYN-BW-103-11 · start. Graph, the wafer's window «From SYN-BW-103-11»; a die from its bundle, its dashed lump pressed: «From SYN-BW-103-11 / 9 / 9 / Wafer», «2 next · 0 behind». Writes 0. «No more · from» rests on AW4 (a node with nothing more not looked for on this box).
+- **게이트** — walk_table 127, trend 30, with --mutate --control (Z38-Z41 on the edge scheme, the event scheme and the 18766 bond_temp answer cut to its four measures - tests/fixtures/walk_value_source_18766.json; VS1 the row's node, VS2 no route, VS3 the other side's paths, NZ16 no source line, TM14 TM15); subgraph_view 383 with --mutate --control (AW3 the head, AW4 a walk that brings nothing; AWm5 «Behind» again, AWm6 no note); screen gate 249 with --mutate; reach_table 33, walk_layout 34.
+
+다음: E(그래프 Trend 를 표 트렌드 한 부품으로, pointsOf 은퇴) -> D(사본에서 표 하니스 142/0 까지: 18766 «A only 17 · A + B 15 · B only 3», 쪽마다 따로 칠함, Route 아래 «B · …», B 만 닿은 값의 출처 «B · 키 · 길»; 남은 것 요청 칸 · 화면 게이트 · 크롬).
+
 > ## [23:39 디자인] A-2 — 서버가 안 넓힌 노드의 점선 덩어리 + Route 바깥 끝 착지 18b606d40 (총괄 f6e8ef44b · 10-10 B 뒤)
 
 - **A-2** — 묶음을 걸어 온 답에서만 나온 노드(서버가 그 뒤를 안 걸음) 뒤에 점선 «? next · not walked». 누르면 묶음 열기와 같은 문(expandBundle -> stepAlong, 술어 없이 한 걸음)으로 걷고, 그 노드의 큰 덩어리 창. 걷기가 넓힌 노드는 점선 없음. stepAlong 은 술어가 없으면 follow 를 안 실습니다(묶음 열기 · Next 는 그대로).
