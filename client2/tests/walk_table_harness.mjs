@@ -153,6 +153,8 @@ const BOND_SRC_EVENT = { ...BOND_EVENT,
 const OF_VALUE = new Map([['quantity@1', [{ steps: [{ predicate: 'of', direction: 'incoming' }], value: { on: 'node', name: 'value' },
   words: ['of (in)', 'value'] }]]]);
 const SRC_18766 = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_18766.json'), 'utf8'));
+// The demo's usual form, collect quantity alone (lead 10-11): the wafers that gave bond_temp's values are not in nodes.
+const SRC_COLLECT = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_collect_18766.json'), 'utf8'));
 // A cell's values, as drawn: its value lines (C draws a source line under each).
 const valsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-val').map((k) => k._text).join(' · ');
 const srcsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-src').map((k) => k._text);
@@ -790,6 +792,18 @@ const sideSuite = (TV) => {
       ['SYN-BW-103-11 · start', 'SYN-CW-103-01 · in_container → bonded_from → in_container', 'SYN-CW-103-02 · in_container → bonded_from → in_container'],
       '13', ['SYN-BW-SPL-400-19 · start']]),
     JSON.stringify([btCell(0).values, btCell(0).sources, btCell(1).text, btCell(1).sources]));
+  const bc = TV.walkTableView(SRC_COLLECT, SRC_COLLECT._entities, [], undefined, SRC_COLLECT._starts);
+  const bcCell = (g) => raw(bc, 'quantity', btId, 'measures (in) · value', g) || {};
+  const everySource = bc.sections.flatMap((x) => x.rows.flatMap((r) => r.byGroup.flatMap((side) => side.flatMap((c) => c.sources || []))));
+  ok('Z42 collect quantity alone (the demo\'s form): the wafers are not in nodes, their keys read off their ids - the same sources as Z40, no id in any (lead 10-11)',
+    JSON.stringify([bcCell(0).sources, bcCell(1).sources]) === JSON.stringify([btCell(0).sources, btCell(1).sources])
+      && everySource.length >= 4 && !everySource.some((w) => w.includes('ledger-entity:')),
+    JSON.stringify([bcCell(0).sources, bcCell(1).sources, everySource.filter((w) => w.includes('ledger-entity:')).length]));
+  // A node the answer did not send and whose id is no entity's: «—», never the id.
+  const unsent = view(BOND_STARTS, { ...BOND_SRC, nodes: BOND_SRC.nodes.filter((n) => n.id !== 'w:c') });
+  ok('Z43 a value\'s node neither sent nor an entity id: its source says «—», not the id',
+    JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)) === JSON.stringify(['B · start', `${TV.EMPTY} · ${BONDING}`]),
+    JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)));
   // Two Δ columns: each Δ says its own column - by the column's index, Route standing first in heads (B).
   const scored = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e, k) => ({ ...e, qualifiers: { ...e.qualifiers, score: 10 + k } })) });
   const scoredDie = scored.sections.find((x) => x.type === 'die@1') || { deltaHeads: [] };
@@ -981,6 +995,10 @@ const TV_MUTANTS = [
     from: 'source: (g, id) => `${keyWords(id)} · ${route(g, id).text}`', to: 'source: (g, id) => `${keyWords(id)}`' },
   { id: 'VS3', what: 'a source from the other side\'s paths', catches: 'Z38',
     from: 'sources: (byCol[i].nodes || []).map((id) => sources.source(g, id))', to: 'sources: (byCol[i].nodes || []).map((id) => sources.source(groups[1 - i], id))' },
+  { id: 'VS4', what: 'a node the answer did not send: its keys not read off its id', catches: 'Z42',
+    from: '    const node = nodes.get(id) || entityOfId(id) || {};', to: '    const node = nodes.get(id) || {};' },
+  { id: 'VS5', what: 'a source without keys or a label says its id', catches: 'Z43',
+    from: "    return said.length ? said.join(' / ') : (node.label || EMPTY);", to: "    return said.length ? said.join(' / ') : (node.label || id);" },
   { id: 'RM1', what: 'a side reads the other side\'s paths', catches: 'Z29',
     from: '.filter((path) => g.starts.includes(path.seed))', to: '.filter((path) => !g.starts.includes(path.seed))' },
   { id: 'RM2', what: 'a start says nothing', catches: 'Z29',

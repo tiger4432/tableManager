@@ -15,7 +15,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes,
   edgeQualifiers } from './derive.js';
-import { typeGraph } from '../rnd_board/api.js';
+import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table with a − start is the formula (lead 5cf5c3401): rows, groups and columns in, cells out.
 import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, valueKind, valueWords } from './reach_table.js';
 import { isBlank } from '../absent.js';
@@ -118,7 +118,8 @@ export const routeWords = (path) => path.hops.slice(1).map((hop) => (hop.predica
 /**
  * How a side reached a node and who gave a value, read off one walk's answer (leads df11f9e81 B, 99ed68cb7 C):
  *   route(g, id)   the paths the server walked to `id` from side g's starts - its evidence - a start «start»
- *   source(g, id)  the node a read ends at: its keys in their declared order (its label without), and route(g, id)
+ *   source(g, id)  the node a read ends at: its keys in their declared order (its label without), and route(g, id) - a
+ *                  node the answer did not send (collect) read off its id, never the id itself (lead 10-11)
  * The table's cells and the trend's points read both here.
  */
 export function valueSources(result, entities, groups) {
@@ -130,11 +131,11 @@ export function valueSources(result, entities, groups) {
     return ways.length ? cellWords({ values: ways }, 'string') : { text: EMPTY };
   };
   const keyWords = (id) => {
-    const node = nodes.get(id) || {};
+    const node = nodes.get(id) || entityOfId(id) || {};
     const keys = node.keys || {};
     const declared = ((entities || []).find((e) => e && e.type === node.type) || {}).keys || Object.keys(keys);
     const said = declared.map((k) => keys[k]).filter((v) => !isBlank(v)).map(valueWords);
-    return said.length ? said.join(' / ') : (node.label || id);
+    return said.length ? said.join(' / ') : (node.label || EMPTY);
   };
   return { route, source: (g, id) => `${keyWords(id)} · ${route(g, id).text}` };
 }

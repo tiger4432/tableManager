@@ -1485,7 +1485,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 127],   // -> 127: a value's source under it - Z38-Z41, VS1-VS3, NZ16 (lead 99ed68cb7)
+  ['walk_table_harness.mjs', 131],   // -> 131: a value's node the answer did not send read off its id - Z42 Z43, VS4 VS5 (lead 10-11)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

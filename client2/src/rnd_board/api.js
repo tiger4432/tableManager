@@ -1768,6 +1768,20 @@ export function entitySeedId(type, keys) {
   return 'ledger-entity:v1:' + b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/** `ledger-entity:v1:<base64url>` -> `{ type, keys }`, entitySeedId's pair (the server's `decode_entity_id`): what a node
+ *  is when the answer did not send it (collect). Not an entity id: null. */
+export function entityOfId(id) {
+  const m = /^ledger-entity:v1:([A-Za-z0-9_-]+)$/.exec(String(id || ''));
+  if (!m) return null;
+  try {
+    const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    const [type, keys] = JSON.parse(decodeURIComponent(escape(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)))));
+    return typeof type === 'string' && keys && typeof keys === 'object' ? { type, keys } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 /** `GET /api/ledger/declaration`. 한 모양 -- 성공도 실패도 `{ok}` 를 답니다. */
 export async function fetchDeclaration(params) {
   const { apiBase, fetchImpl } = params || {};

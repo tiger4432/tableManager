@@ -1,0 +1,285 @@
+{
+ "_what": "GET /api/ledger/subgraph on the application box (18766, lead 10-11): the demo pair with collect quantity alone - the demo's usual form - cut to the quantity bond_temp: the node, its 4 measures edges (the wafers at their other ends are not in nodes - collect sent quantity alone), the ranked rows of those 5 ids; _entities and _starts as the collect wafer + quantity answer's.",
+ "_entities": [
+  {
+   "type": "quantity",
+   "keys": [
+    "quantity"
+   ]
+  },
+  {
+   "type": "wafer",
+   "keys": [
+    "wafer"
+   ]
+  }
+ ],
+ "_starts": {
+  "positive": [
+   "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0"
+  ],
+  "negative": [
+   "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy1TUEwtNDAwLTE5In1d"
+  ]
+ },
+ "state": "ready",
+ "seed": {
+  "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+  "type": "wafer",
+  "keys": {
+   "wafer": "SYN-BW-103-11"
+  },
+  "label": "SYN-BW-103-11",
+  "depth": 0,
+  "claim_count": 249,
+  "predicates": [
+   {
+    "predicate": "in_container",
+    "count": 179
+   },
+   {
+    "predicate": "inspected",
+    "count": 38
+   },
+   {
+    "predicate": "measures",
+    "count": 32
+   }
+  ],
+  "node_kind": "entity",
+  "schema_kind": "entity_instance"
+ },
+ "nodes": [
+  {
+   "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+   "type": "quantity",
+   "label": "bond_temp",
+   "keys": {
+    "quantity": "bond_temp"
+   },
+   "depth": 1
+  }
+ ],
+ "edges": [
+  {
+   "id": "ledger-evidence-edge:v1:WyJtZWFzdXJlcyIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTB4TURNdE1URWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SnhkV0Z1ZEdsMGVTSXNleUp4ZFdGdWRHbDBlU0k2SW1KdmJtUmZkR1Z0Y0NKOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+   "target": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+   "predicate": "measures",
+   "qualifiers": {
+    "role": "fake",
+    "step": "FAKE",
+    "value": 35.5,
+    "eqp_id": "FAKE-EQP"
+   },
+   "claim_id": "01a12521-780d-7013-9b07-b7e3cad612ac",
+   "occurred_at": "2026-11-23T18:49:00+00:00"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJtZWFzdXJlcyIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMUNWeTFUVUV3dE5EQXdMVEU1SW4xZCIsImxlZGdlci1lbnRpdHk6djE6V3lKeGRXRnVkR2wwZVNJc2V5SnhkV0Z1ZEdsMGVTSTZJbUp2Ym1SZmRHVnRjQ0o5WFEiXQ",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy1TUEwtNDAwLTE5In1d",
+   "target": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+   "predicate": "measures",
+   "qualifiers": {
+    "role": "fake",
+    "step": "FAKE",
+    "value": 13.0,
+    "eqp_id": "FAKE-EQP"
+   },
+   "claim_id": "01a12521-780d-7024-a96c-0ce7533084cb",
+   "occurred_at": "2026-11-23T18:49:00+00:00"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJtZWFzdXJlcyIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMURWeTB4TURNdE1ERWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SnhkV0Z1ZEdsMGVTSXNleUp4ZFdGdWRHbDBlU0k2SW1KdmJtUmZkR1Z0Y0NKOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDMtMDEifV0",
+   "target": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+   "predicate": "measures",
+   "qualifiers": {
+    "role": "fake",
+    "step": "FAKE",
+    "value": 21.5,
+    "eqp_id": "FAKE-EQP"
+   },
+   "claim_id": "01a12521-780d-7039-bd8f-cc078888b642",
+   "occurred_at": "2026-11-23T18:49:00+00:00"
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJtZWFzdXJlcyIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxOWlRpMURWeTB4TURNdE1ESWlmVjAiLCJsZWRnZXItZW50aXR5OnYxOld5SnhkV0Z1ZEdsMGVTSXNleUp4ZFdGdWRHbDBlU0k2SW1KdmJtUmZkR1Z0Y0NKOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDMtMDIifV0",
+   "target": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+   "predicate": "measures",
+   "qualifiers": {
+    "role": "fake",
+    "step": "FAKE",
+    "value": 23.5,
+    "eqp_id": "FAKE-EQP"
+   },
+   "claim_id": "01a12521-780d-703d-a2e1-6eb17a093c5d",
+   "occurred_at": "2026-11-23T18:49:00+00:00"
+  }
+ ],
+ "propagation": {
+  "state": "ranked",
+  "ranked": [
+   {
+    "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDMtMDEifV0",
+    "reach": [
+     1,
+     0
+    ],
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+        "node_kind": "entity",
+        "label": "SYN-BW-103-11",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMy0xMSIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjowLjAsInkiOjYuMH1d",
+        "node_kind": "entity",
+        "label": "SYN-BW-103-11 / 0 / 6 / Wafer",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "in_container"
+        ]
+       },
+       {
+        "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUNXLTEwMy0wMSIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxNS4wLCJ5IjoxNy4wfV0",
+        "node_kind": "entity",
+        "label": "SYN-CW-103-01 / 15 / 17 / Wafer",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "bonded_from"
+        ]
+       },
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDMtMDEifV0",
+        "node_kind": "entity",
+        "label": "SYN-CW-103-01",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "in_container"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDMtMDIifV0",
+    "reach": [
+     1,
+     0
+    ],
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+        "node_kind": "entity",
+        "label": "SYN-BW-103-11",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUJXLTEwMy0xMSIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjowLjAsInkiOjcuMH1d",
+        "node_kind": "entity",
+        "label": "SYN-BW-103-11 / 0 / 7 / Wafer",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "in_container"
+        ]
+       },
+       {
+        "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUNXLTEwMy0wMiIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoxNi4wLCJ5IjoxNi4wfV0",
+        "node_kind": "entity",
+        "label": "SYN-CW-103-02 / 16 / 16 / Wafer",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "bonded_from"
+        ]
+       },
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DVy0xMDMtMDIifV0",
+        "node_kind": "entity",
+        "label": "SYN-CW-103-02",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "in_container"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+    "reach": [
+     1,
+     1
+    ],
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy0xMDMtMTEifV0",
+        "node_kind": "entity",
+        "label": "SYN-BW-103-11",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+        "node_kind": "entity",
+        "label": "bond_temp",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measures"
+        ]
+       }
+      ]
+     },
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy1TUEwtNDAwLTE5In1d",
+      "sign": "-",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy1TUEwtNDAwLTE5In1d",
+        "node_kind": "entity",
+        "label": "SYN-BW-SPL-400-19",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6ImJvbmRfdGVtcCJ9XQ",
+        "node_kind": "entity",
+        "label": "bond_temp",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measures"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
