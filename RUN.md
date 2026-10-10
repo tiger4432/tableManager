@@ -105,12 +105,14 @@
 >       (016707766 에서 다시 걸음: 30 · 0.775 s)
 >        누르기로는 안 닿는다(박스 선언) — Route to wafer «wafer → die → wafer · in_container» + «↻ transfer» 는 wafer 1 개(base 뿐).
 >        transfer 의 끝은 운반 자리(DTLotSlot) 141 개뿐 · 코어 웨이퍼는 bonded_from 으로 닿는데 follow 목록에 bonded_from 이 없다 — 운영 판 못 봤다
->    ③  세상 칩 default + «모델 세상 1» -> 같은 폼 · 같은 시작으로 다시 걷는다 · 6 걸음 · 노드 80                       0.996 s
->    ④  Compare · ROWS quantity · EDGE measures · VALUE value -> 행 48 · 두 쪽 값 3 · 불량 쪽만 22 · 둘 다 missing 18      1.061 · 1.888 · 1.394 s
->       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 «둘 다 missing» 이 된다
+>    ③  Collect 에 quantity 를 더하고 세상 칩 default + «모델 세상 1» -> 같은 바구니로 다시 걷는다 · 6 걸음 · 노드 80                0.888 s
+>    ④  표의 quantity 묶음 — 한 줄이 한 계측군, 왼쪽 «Positive · 48 nodes» · 오른쪽 «Negative · 3 nodes», 열 measures · value 를 좌우로 본다
+>       행 48 · 두 쪽 값 3 · 불량 쪽만 값(양품 쪽 빨간 missing) 22 · 불량 쪽 빈칸 · 양품 쪽 빨간 missing 23 (모델 계측군 18 + 그 밖 5)
+>       빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · 빈칸 = 닿았는데 measures 값이 없음      (f11d57fd5 · 표는 걷기 답을 그대로 그려 따로 안 부름)
+>       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 닿은 쪽이 «빈칸»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
-> 걸린 것     모델 계측군 17 개는 박스 데이터로는 두 base 모두 missing — 박스 measures 는 공정 변수만 잰다(운영 판 못 봤다)
+> 걸린 것     모델 계측군 18 개는 박스 데이터로는 불량 쪽 빈칸 · 양품 쪽 빨간 missing — 박스 measures 는 공정 변수만 잰다 · 양품 쪽은 모델 계측군에 안 닿는다(운영 판 못 봤다)
 > ```
 >
 > ---
