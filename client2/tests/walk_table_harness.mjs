@@ -290,9 +290,9 @@ async function suite(mod) {
     click(box('n:2'));
     const row1 = walkAll(host).find((e) => e.tagName === 'tr' && e.children.includes(walkAll(host).find((c) => c.className === 'wk-check' && c.children.includes(box('n:1')))));
     ok('S3 a Shift click checks a row as a control, drawn as one; a click checks it as +',
-      handle.graph.markings.signOf('walk-2', 'n:1') === SIGN.CONTROL && handle.graph.markings.signOf('walk-2', 'n:2') === SIGN.CASE
+      handle.graph.markings.signOf(handle.state.marks, 'n:1') === SIGN.CONTROL && handle.graph.markings.signOf(handle.state.marks, 'n:2') === SIGN.CASE
         && Boolean(row1) && row1.className === 'is-control' && box('n:1').checked === true,
-      JSON.stringify(handle.graph.markings.entries('walk-2')));
+      JSON.stringify(handle.graph.markings.entries(handle.state.marks)));
     const before = asked.length;
     click(walkAll(host).find((e) => e.className === 'wk-next-edge'));
     await settle();
@@ -342,7 +342,7 @@ async function suite(mod) {
     const query = (u) => new URLSearchParams((u || '').split('?')[1] || '');
     // One + start alone goes by its seed id (walk_layout L7 L8), a Next's by positive: the same start either way.
     const shape = (u) => [`start=${query(u).getAll('positive').join(',') || query(u).get('id')}`,
-      ...['follow', 'collect', 'direction', 'hops'].map((k) => `${k}=${query(u).getAll(k).join(',')}`)].join('&');
+      ...['follow', 'collect', 'direction', 'hops', 'node_limit', 'fanout_limit'].map((k) => `${k}=${query(u).getAll(k).join(',')}`)].join('&');
     const bodyRows = (sec) => walkAll(sec).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length;
     const headOf = (sec) => (walkAll(sec).filter((e) => e.tagName === 'thead').map((t) => t.children[t.children.length - 1])[0] || { children: [] })
       .children.filter((c) => c.className !== 'wk-check').map((c) => c.textContent);
@@ -355,6 +355,7 @@ async function suite(mod) {
     handle.state.collect = new Set(['wafer']);
     handle.state.direction = 'both';
     handle.state.hops = '1';
+    handle.state.fanoutLimit = '7';
     click(walkAll(host).find((e) => e.className === 'wk-go'));
     await settle();
     const a = tableOf();
@@ -369,6 +370,8 @@ async function suite(mod) {
     click(basketAdd());
     handle.state.follow = new Set();
     handle.state.collect = new Set();
+    // The form's hops is the first walk's; a Next is one step (lead 10-11).
+    handle.state.hops = '3';
     click(walkAll(host).find((e) => e.className === 'wk-go'));
     await settle();
     click(walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === q.id));
@@ -376,9 +379,9 @@ async function suite(mod) {
     await settle();
     const b = tableOf();
     const askB = asked[asked.length - 1];
-    ok('EA1 18766: bond_temp alone in + and Walk draws the table a Next from its row draws - same head, rows, columns, cells; 64 wafers, measures value · eqp_id · role · step, Route (owner 10-10)',
+    ok('EA1 18766: bond_temp alone in + and Walk draws the table a Next from its row draws - same head, rows, columns, cells; 64 wafers, measures value · eqp_id · role · step, Route; the same ask, the form\'s node_limit and fanout_limit on both, the Next\'s hops its step\'s (owner 10-10, lead 10-11)',
       a.length > 0 && JSON.stringify(a) === JSON.stringify(b) && wafers === 64 && shape(askA) === shape(askB)
-        && shape(askA) === `start=${q.id}&follow=measures&collect=wafer&direction=both&hops=1`
+        && shape(askA) === `start=${q.id}&follow=measures&collect=wafer&direction=both&hops=1&node_limit=${mod.NODE_LIMIT}&fanout_limit=7`
         && ['value', 'eqp_id', 'role', 'step', 'Route'].every((h) => head.includes(h)) && head[0] === 'wafer',
       JSON.stringify({ a: a.map((sec) => sec.slice(0, 5)), b: b.map((sec) => sec.slice(0, 5)), wafers, head, askA: shape(askA), askB: shape(askB) }));
   }
@@ -564,6 +567,30 @@ async function suite(mod) {
     ok('N6 a second step stacks a third; Step 1 shows the first table again and the chain stays',
       third === 3 && steps(host).length === 3 && steps(host)[0].className === 'wk-step is-on'
         && rowsShown(host).join() === 'n:1,n:2', `${third} ${rowsShown(host)}`);
+    // F (lead 77f1afd3b): five steps on - each its own marking, checks and Next at the fifth; step two walked again drops
+    // the steps after it and their markings.
+    const NAMES = () => handle.state.steps.map((x) => x.marks);
+    press(steps(host)[steps(host).length - 1]);
+    for (let k = 0; k < 3; k += 1) {
+      tick(host, 'n:4');
+      press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+      await settle();
+    }
+    tick(host, 'n:4');
+    const fifth = [handle.state.steps.length, handle.state.at, steps(host).length, NAMES().length === new Set(NAMES()).size,
+      handle.graph.markings.signOf(NAMES()[4], 'n:4'), edges(host).every((e) => e.disabled === false),
+      handle.graph.chain(7) !== '' && !NAMES().includes(handle.graph.chain(7))];
+    ok('CH1 five steps on: each its own marking - checked at the fifth, Next on, the graph\'s chain goes on past them (lead 77f1afd3b)',
+      JSON.stringify(fifth) === JSON.stringify([5, 5, 6, true, SIGN.CASE, true, true]), JSON.stringify([fifth, NAMES()]));
+    const later = NAMES().slice(1);
+    press(steps(host)[1]);
+    tick(host, 'n:1');
+    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    await settle();
+    ok('CH2 step two walked on again: the steps after it go and so do their markings; the new step a name never used',
+      handle.state.steps.length === 2 && later.every((name) => handle.graph.markings.count(name) === 0)
+        && !later.includes(NAMES()[1]) && NAMES()[1] !== '',
+      JSON.stringify([handle.state.steps.length, later.map((name) => handle.graph.markings.count(name)), NAMES()]));
     handle.state.view = 'table';
     handle.state.keys = { mat_id: 'M-1' };
     handle.baskets.add(SIGN.CASE);
@@ -942,6 +969,7 @@ console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${
 const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
+const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
   { id: 'NZ16', what: 'the source line not drawn under a value', catches: 'Z41',
     from: "        if (sources[k]) c.append(el(doc, 'div', 'wk-src', sources[k]));\n", to: '' },
@@ -1038,16 +1066,24 @@ const MUTANTS = [
     from: "      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });",
     to: "      go.addEventListener('click', () => { void walkOn(at, seeds, route); });" },
   { id: 'NM3', what: 'the next step builds its own walk instead of the one step', catches: 'N4',
-    from: '    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to });',
+    from: '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
     to: '    const asked = { positive: seeds.positive, follow: [route.predicate] };' },
   // stepAlong's own default ('both') is imported by main.js and not swapped by this loader; the call site stands in.
   { id: 'NM7', what: 'the Next walks one way only', catches: 'N8',
-    from: '    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to });',
-    to: "    const asked = stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to, direction: 'outgoing' });" },
+    from: '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
+    to: "    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to, direction: 'outgoing' }) };" },
+  { id: 'EKm1', what: 'a Next without the form\'s knobs - a cut answer cut elsewhere', catches: 'EA1',
+    from: '    const asked = { ...knobs(), ...stepAlong(', to: '    const asked = { ...stepAlong(' },
+  { id: 'EKm2', what: 'a Next walks the form\'s hops, not one step', catches: 'EA1',
+    from: NEXT_ASK, to: NEXT_ASK.replace('{ ...knobs(), ...stepAlong(', '{ ...stepAlong(').replace('farType: route.to }) };', 'farType: route.to }), ...knobs() };') },
   { id: 'NM4', what: 'the checks are kept apart from the graph\'s marking', catches: 'N3',
-    from: "  const checksOf = (at) => GRAPH_CHAIN[at + 1] || '';", to: '  const checksOf = (at) => `table-${at}`;' },
+    from: "  const checksOf = (at) => (at === 0 ? state.marks : state.steps[at - 1].marks);", to: '  const checksOf = (at) => `table-${at}`;' },
+  { id: 'FM1', what: 'a step\'s marking named by its place again', catches: 'CH2',
+    from: "reason: '', marks: nextMarks() };", to: "reason: '', marks: `walk-${at + 3}` };" },
+  { id: 'FM2', what: 'a step walked again leaves the dropped steps\' markings', catches: 'CH2',
+    from: '    dropMarks(state.steps.slice(at));\n', to: '' },
   { id: 'NM5', what: 'a new start keeps the steps', catches: 'N7',
-    from: '    state.steps = []; state.at = 0;\n', to: '' },
+    from: '    state.steps = []; state.at = 0; state.marks = nextMarks();\n', to: '    state.marks = nextMarks();\n' },
   { id: 'NM6', what: 'a step pressed does not go back', catches: 'N6',
     from: "      b.addEventListener('click', () => { state.at = i; render(); });",
     to: "      b.addEventListener('click', () => { render(); });" },

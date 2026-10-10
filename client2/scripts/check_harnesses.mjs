@@ -1456,7 +1456,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 383],   // -> 383: the lump window «From <node>», a walk that brings nothing «No more · from <node>» - AW3 AW4, AWm5 AWm6 (lead f4e89622b, 4c53ba3b0)
+  ['subgraph_view_harness.mjs', 383],   // -> 383: the chain as (k) => name - M11 M16 M17 Y1m-Y3m PAm5 re-aimed (lead 77f1afd3b)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1485,7 +1485,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 137],   // -> 137: one basket walked = a Next from that row, the flat table retired - EA1 EC1 EC2, V2-V5 Q1 Q2 Z1 Z7 rewritten, V6 QM1 dropped (lead 10-10 E1)
+  ['walk_table_harness.mjs', 143],   // -> 143: the chain unbounded: a marking a step, counted names - CH1 CH2, FM1 FM2 (lead 77f1afd3b)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

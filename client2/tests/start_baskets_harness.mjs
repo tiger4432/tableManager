@@ -238,17 +238,17 @@ const MUTANTS = [
   { id: 'BM11', what: 'a node not held said nothing', catches: 'B13', file: 'walk/start_baskets.js', key: 'baskets',
     mutate: (t) => swap(t, "      if (node && node.unheld) box.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));\n", '') },
   { id: 'BM6', what: 'Walk on with an empty Positive', catches: 'B7', file: 'walk/main.js', key: 'page',
-    mutate: (t) => swap(t, "(seedsOf(markings.entries(GRAPH_CHAIN[0])).positive.length ? '' : BASKET_WORDS.noStart)", "''") },
+    mutate: (t) => swap(t, "(seedsOf(markings.entries(START)).positive.length ? '' : BASKET_WORDS.noStart)", "''") },
   { id: 'BM7', what: 'Walk asks the form\'s node, not the baskets', catches: 'B9', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '    const one = signed ? null : baskets.describe(starts.positive[0]);', '    const one = null;') },
   { id: 'BM8', what: 'Shift on Walk marks the form\'s node a control again', catches: 'B10', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "    go.addEventListener('click', () => { void fire(); });",
-      "    go.addEventListener('click', (event) => { if (event && event.shiftKey) markings.set(GRAPH_CHAIN[0], entitySeedId(state.type, state.keys), SIGN.CONTROL); void fire(); });") },
+      "    go.addEventListener('click', (event) => { if (event && event.shiftKey) markings.set(START, entitySeedId(state.type, state.keys), SIGN.CONTROL); void fire(); });") },
   { id: 'BM9', what: 'a typed key leaves the baskets as they were drawn', catches: 'B11', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "input.addEventListener('input', () => { state.keys[k] = input.value; baskets.render(); });",
       "input.addEventListener('input', () => { state.keys[k] = input.value; });") },
   { id: 'BM10', what: 'Walk is drawn once and does not follow the baskets', catches: 'B12', file: 'walk/main.js', key: 'page',
-    mutate: (t) => swap(t, "markings.subscribe(GRAPH_CHAIN[0], () => { if (goButton) setDisabledReason(goButton, goReason()); });", '') },
+    mutate: (t) => swap(t, "markings.subscribe(START, () => { if (goButton) setDisabledReason(goButton, goReason()); });", '') },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;
