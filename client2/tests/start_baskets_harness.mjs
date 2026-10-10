@@ -39,7 +39,8 @@ const removeOf = (root, label) => {
   return row && walkAll(row).find((n) => hasClass(n, 'wk-basketremove'));
 };
 // A control a mutant left undrawn is not pressed; the cell that reads after it says what is missing.
-const press = (n, event = {}) => { if (n) n.dispatch('click', event); };
+// As a browser does: a disabled button takes no click.
+const press = (n, event = {}) => { if (n && !n.disabled) n.dispatch('click', event); };
 
 async function seen(M) {
   const out = {};
@@ -50,14 +51,16 @@ async function seen(M) {
     let picked = null;
     const mount = doc.createElement('div');
     doc.body.appendChild(mount);
-    new M.baskets.StartBaskets(mount, { doc, markings, name: 'start', picked: () => picked });
+    const part = new M.baskets.StartBaskets(mount, { doc, markings, name: 'start', picked: () => picked });
+    // The page redraws the part when the pick changes; so does this.
+    const pick = (key) => { picked = node(key); part.render(); };
     out.empty = { shown: shownOf(mount), add: addOf(mount, '+') && [addOf(mount, '+').disabled, addOf(mount, '+').attrs.title] };
-    picked = node('A');
+    pick('A');
     press(addOf(mount, '+'));
-    picked = node('B');
+    pick('B');
     press(addOf(mount, '+'));
     out.added = { shown: shownOf(mount), marks: markings.entries('start') };
-    picked = node('A');
+    pick('A');
     press(addOf(mount, '−'));
     out.moved = { shown: shownOf(mount), marks: markings.entries('start') };
     press(removeOf(mount, 'B'));
@@ -125,6 +128,41 @@ async function seen(M) {
     await settle();
     out.keys = JSON.stringify(page.graph.markings.entries('walk-start')) === marks;
   }
+  // ── a key typed, not picked from the list (lead 10-10: + stayed off) ──
+  {
+    const urls = [];
+    const doc = makeDoc('light');
+    doc.head = doc.createElement('head');
+    const host = doc.createElement('div');
+    const page = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+      urls.push(String(url));
+      return { ok: true, status: 200, json: async () => (String(url).includes('/declaration') ? DECL
+        : { state: 'ok', seed: { id: 's' }, nodes: [], edges: [] }) };
+    } });
+    await settle();
+    page.state.type = 'wafer';
+    page.render();
+    const keyInput = walkAll(host).find((n) => n.tagName === 'INPUT' && hasClass(n, 'wk-input')
+      && n.parentNode && walkAll(n.parentNode).some((c) => hasClass(c, 'wk-keyname') && c._text === 'wafer'));
+    const offBefore = addOf(host, '+') ? addOf(host, '+').disabled : null;
+    if (keyInput) { keyInput.value = 'TYPED-1'; keyInput.dispatch('input', {}); }
+    const onAfter = addOf(host, '+') ? addOf(host, '+').disabled : null;
+    const go = () => walkAll(host).find((n) => hasClass(n, 'wk-go'));
+    const goOffBefore = go().disabled;
+    press(addOf(host, '+'));
+    const goOffAfter = go().disabled;
+    const at = urls.filter((u) => u.includes('/subgraph')).length;
+    press(go());
+    await settle();
+    const asked = urls.filter((u) => u.includes('/subgraph')).slice(at);
+    out.typed = [Boolean(keyInput), offBefore, onAfter, shownOf(host)[0], goOffBefore, goOffAfter,
+      asked.length, new URLSearchParams(String(asked[0] || '').split('?')[1] || '').get('id')];
+    // x on the only + start, no page redraw after the one that drew Walk on: Walk goes off with its reason.
+    page.render();
+    const goOnDrawn = !go().disabled;
+    press(removeOf(host, 'TYPED-1'));
+    out.goOffAgain = [goOnDrawn, shownOf(host)[0], go().disabled, go().attrs.title];
+  }
   return out;
 }
 
@@ -156,6 +194,10 @@ function suite(out) {
   eq('B9 one + start alone is asked by its type and keys, as before: the basket\'s node, not the form\'s',
     out.one, [1, W('A'), 0]);
   eq('B10 Ctrl and Shift on Walk write no mark', out.keys, true);
+  eq('B11 a key typed, not picked from the list: + comes on, puts it in, and Walk asks that key',
+    out.typed, [true, true, false, ['1', ['TYPED-1']], true, false, 1, W('TYPED-1')]);
+  eq('B12 x on the only + start, no page redraw: Walk goes off with its reason',
+    out.goOffAgain, [true, ['0', []], true, 'Add a start to Positive first']);
   return { ran: names.length, names, failures };
 }
 
@@ -189,6 +231,11 @@ const MUTANTS = [
   { id: 'BM8', what: 'Shift on Walk marks the form\'s node a control again', catches: 'B10', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "    go.addEventListener('click', () => { void fire(); });",
       "    go.addEventListener('click', (event) => { if (event && event.shiftKey) markings.set(GRAPH_CHAIN[0], entitySeedId(state.type, state.keys), SIGN.CONTROL); void fire(); });") },
+  { id: 'BM9', what: 'a typed key leaves the baskets as they were drawn', catches: 'B11', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, "input.addEventListener('input', () => { state.keys[k] = input.value; baskets.render(); });",
+      "input.addEventListener('input', () => { state.keys[k] = input.value; });") },
+  { id: 'BM10', what: 'Walk is drawn once and does not follow the baskets', catches: 'B12', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, "markings.subscribe(GRAPH_CHAIN[0], () => { if (goButton) setDisabledReason(goButton, goReason()); });", '') },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;

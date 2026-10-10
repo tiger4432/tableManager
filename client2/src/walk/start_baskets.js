@@ -12,7 +12,7 @@ import { setDisabledReason } from '../disabled_reason.js';
 export const BASKET_WORDS = Object.freeze({
   positive: 'Positive',
   negative: 'Negative',
-  add: '+',
+  add: '+ Add',
   remove: '×',
   empty: 'Empty',
   noPick: 'Pick a node first',
@@ -74,8 +74,7 @@ export class StartBaskets {
       add.setAttribute('aria-label', `Add the picked node to ${word}`);
       setDisabledReason(add, node ? '' : BASKET_WORDS.noPick);
       add.addEventListener('click', () => this.add(sign));
-      head.append(add);
-      box.append(head);
+      box.append(head, add);
       if (!ids.length) box.append(this._el('div', 'wk-note', BASKET_WORDS.empty));
       for (const id of ids) {
         const said = this.describe(id) || {};
