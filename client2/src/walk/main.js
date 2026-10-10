@@ -241,7 +241,9 @@ export function boot(doc, host, deps) {
     const one = signed ? null : baskets.describe(starts.positive[0]);
     const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };
     state.run = 'running'; state.result = null; state.reason = '';
-    state.asked = { ...asked, keys: { ...asked.keys } };
+    // The table reads the walk's starts here whichever way the wire carried them: one + start alone goes by its type and
+    // keys, and its table is a Next's from that node (owner 10-10 E1: the same as one basket walked).
+    state.asked = { ...asked, keys: { ...asked.keys }, positive: starts.positive, negative: starts.negative };
     // A new start clears the steps and what their checks wrote, as the graph's new start does (lead 53050a4ec).
     state.steps = []; state.at = 0;
     for (const name of GRAPH_CHAIN.slice(1)) markings.clear(name);
@@ -539,9 +541,9 @@ export function boot(doc, host, deps) {
     const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts, state.added,
       state.emptyOpen);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
-    if (view.groups) box.append(rowFilterBar());
+    box.append(rowFilterBar());
     renderSections(box, view);
-    if (view.groups && state.trend) renderTrend(box, view, r);
+    if (state.trend) renderTrend(box, view, r);
   }
 
   /** All rows · Differs · Missing (lead 5cf5c3401): which rows of the side by side table are drawn. */
@@ -607,7 +609,7 @@ export function boot(doc, host, deps) {
       for (const p of parts) head.append(el(doc, 'th', cls, p.leaf));
     };
     // The node's own columns in the centre (keys, attributes); a type with none says its name there.
-    const own = section.centreHeads.length ? section.centreHeads : [section.type];
+    const own = section.centreHeads;
     const over = (cls, span) => {
       for (const row of [band, steps]) {
         const th = el(doc, 'th', cls);
@@ -662,8 +664,7 @@ export function boot(doc, host, deps) {
       if (checks) checkCell(tr, checks, row.id);
       const cells = (i) => (pair && i === 0 ? [...row.byGroup[i]].reverse() : row.byGroup[i]);
       const node = () => {
-        const cells = row.centre.length ? row.centre : [{ text: row.label }];
-        cells.forEach((cell, i) => {
+        row.centre.forEach((cell, i) => {
           const c = el(doc, 'td', 'wk-centre');
           c.append(el(doc, 'span', 'wk-centrelabel', cell.text));
           // The id is picked, not read (lead 5cf5c3401): an icon on the first centre cell, shown with its row (34d91c09d 5).
@@ -847,34 +848,7 @@ export function boot(doc, host, deps) {
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));
       // Next above its table, once (lead 3375edd9b).
       if (checks) sec.append(nextRow(at, section, checks));
-      if (section.groups) {
-        sec.append(columnPicker(section, view.index), formulaTable(section, checks));
-        box.append(sec);
-        continue;
-      }
-
-      const table = el(doc, 'table', 'wk-table');
-      const thead = el(doc, 'thead');
-      const hr = el(doc, 'tr');
-      if (checks) hr.append(el(doc, 'th', 'wk-check'));
-      for (const column of section.columns) hr.append(el(doc, 'th', '', column.name));
-      thead.append(hr);
-      table.append(thead);
-
-      const tbody = el(doc, 'tbody');
-      for (const row of section.rows) {
-        const tr = el(doc, 'tr');
-        if (checks) checkCell(tr, checks, row.id);
-        for (const cell of row.cells) {
-          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);
-          // The id is picked, not read (styles.js .wk-id): cut on purpose.
-          if (cell.kind === 'id') { td.className = 'wk-id'; td.setAttribute('data-clip-ok', ''); }
-          tr.append(td);
-        }
-        tbody.append(tr);
-      }
-      table.append(tbody);
-      sec.append(table);
+      sec.append(columnPicker(section, view.index), formulaTable(section, checks));
       box.append(sec);
     }
 

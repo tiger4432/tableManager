@@ -1485,7 +1485,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 133],   // -> 133: the server's sentence in the head - H1, HM1 (lead b5cdcbc75)
+  ['walk_table_harness.mjs', 137],   // -> 137: one basket walked = a Next from that row, the flat table retired - EA1 EC1 EC2, V2-V5 Q1 Q2 Z1 Z7 rewritten, V6 QM1 dropped (lead 10-10 E1)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

@@ -155,6 +155,15 @@ const OF_VALUE = new Map([['quantity@1', [{ steps: [{ predicate: 'of', direction
 const SRC_18766 = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_18766.json'), 'utf8'));
 // The demo's usual form, collect quantity alone (lead 10-11): the wafers that gave bond_temp's values are not in nodes.
 const SRC_COLLECT = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_collect_18766.json'), 'utf8'));
+// E1 (lead 10-10): one step from bond_temp on 18766 - what a Next from its row sends, and its declaration's two types.
+const NEXT_18766 = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_next_18766.json'), 'utf8'));
+// The flat table's two node-own columns, carried into the walk table's centre (lead 10-11), on walk_route_fill's own
+// declarations: a type that declares attributes stands «Conflicts»; a predicate confirmed by another stands its column.
+const CARRY_DECL = { ok: true, entities: [{ type: 'die@1', keys: ['mat_id'], attributes: ['grade'] }, { type: 'wafer@1', keys: ['wafer'] }],
+  predicates: [{ name: 'observed', absence_confirmed_by: 'inspected' }, { name: 'inspected' }] };
+const CARRY = { nodes: [
+  { id: 'k:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' }, attribute_conflicts: 2, absence: { observed: { verdict: 'unknown', why: 'not_examined' } } },
+  { id: 'k:2', type: 'die@1', label: 'D-2', keys: { mat_id: 'M-2' }, attribute_conflicts: 0 }], edges: [] };
 // A cell's values, as drawn: its value lines (C draws a source line under each).
 const valsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-val').map((k) => k._text).join(' · ');
 const srcsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-src').map((k) => k._text);
@@ -191,6 +200,9 @@ async function render(mod, result = RESULT) {
   return { host, handle };
 }
 
+const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
+const TABLE = await import('../src/walk/table_view.js');
+
 async function suite(mod) {
   const { host } = await render(mod);
   const view = walkTableView(RESULT, DECL.entities);
@@ -199,25 +211,25 @@ async function suite(mod) {
   eq('V1 one section head per section, worded by the view',
     byClass(host, 'wk-sechead').map((e) => e.textContent).join(' | '),
     view.sections.map((s) => s.heading).join(' | '));
+  // The walk table (E1: the flat table retired): a section's last head row is its centre then its side's columns; a
+  // row's cells the same, a side cell drawn as its value line.
+  const headRows = byTag(host, 'thead').map((t) => t.children[t.children.length - 1]);
+  const drawn = byTag(host, 'tbody').flatMap((b) => b.children.map((tr) => tr.children.filter((c) => c.className !== 'wk-check')));
+  const said = (c) => (has(c, 'wk-centre') ? c.textContent : valsOf(c));
   eq('V2 the column labels are the view\'s, in the view\'s order',
-    viewCells(host, 'th').map((e) => e.textContent).join(','),
-    view.sections.flatMap((s) => s.columns.map((c) => c.name)).join(','));
+    headRows.map((tr) => tr.children.filter((c) => c.className !== 'wk-check').map((c) => c.textContent).join(',')).join(' | '),
+    view.sections.map((s) => [...s.centreHeads, ...s.parts.map((x) => x.leaf)].join(',')).join(' | '));
   eq('V3 every cell is the view\'s text, in the view\'s order',
-    viewCells(host, 'td').map((e) => e.textContent).join('|'),
-    view.sections.flatMap((s) => s.rows.flatMap((r) => r.cells.map((c) => c.text))).join('|'));
+    drawn.map((cells) => cells.map(said).join('|')).join(' / '),
+    view.sections.flatMap((s) => s.rows.map((r) => [...r.centre, ...r.byGroup[0]].map((c) => c.text).join('|'))).join(' / '));
   // 🔴 0 IS A VALUE. `x: 0` in the fixture is the discriminant: a renderer using `v || ''`
-  //    draws it as the same blank an absent key gets, and the row then lies about the die.
-  ok('V4 a zero is drawn as 0 and an absent key as a blank, not as the same glyph',
-    viewCells(host, 'td').map((e) => e.textContent).includes('0')
-      && viewCells(host, 'td').map((e) => e.textContent).includes(''),
-    viewCells(host, 'td').map((e) => e.textContent).join('|'));
+  //    draws it as the same mark an absent key gets, and the row then lies about the die.
+  ok('V4 a zero is drawn as 0 and an absent key as «—», not as the same glyph',
+    drawn.flat().map(said).includes('0') && drawn.flat().map(said).includes(TABLE.EMPTY), drawn.flat().map(said).join('|'));
   eq('V5 the numeric class follows the view\'s reading of each cell',
-    viewCells(host, 'td').map((e) => (e.className === 'wk-num' ? 1 : 0)).join(''),
-    view.sections.flatMap((s) => s.rows.flatMap((r) => r.cells.map(
-      (c) => (c.numeric && c.kind !== 'id' ? 1 : 0)))).join(''));
-  eq('V6 the id cell keeps its own class rather than the numeric one',
-    viewCells(host, 'td').filter((e) => e.className === 'wk-id').length,
-    view.sections.reduce((n, s) => n + s.rows.length, 0));
+    drawn.map((cells) => cells.filter((c) => !has(c, 'wk-centre')).map((c) => (has(c, 'wk-num') ? 1 : 0)).join('')).join(' / '),
+    view.sections.flatMap((s) => s.rows.map((r) => r.byGroup[0].map((c) => (c.numeric ? 1 : 0)).join(''))).join(' / '));
+  // ⚰️ V6 (the id cell's own class) retired with the flat table (E1): the id is behind the copy press (Z16).
 
   console.log(`${LF}-- the cap is a number the screen SAYS --`);
   const many = { nodes: Array.from({ length: 203 }, (_, i) => (
@@ -307,6 +319,68 @@ async function suite(mod) {
       JSON.stringify([empty, none, plain]) === JSON.stringify([[['empty · No ledger evidence is connected to the selected node'], 0],
         [['empty · This walk reached no node beyond its seeds'], 0], [[], 0]]),
       JSON.stringify([empty, none, plain]));
+  }
+
+  console.log(`${LF}-- E1: one basket walked = a Next from that row (owner 10-10) --`);
+  {
+    const asked = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+      const u = String(url);
+      if (u.includes('/subgraph')) asked.push(u);
+      const first = u.includes('/subgraph') && !u.includes('follow=measures');
+      return { ok: true, status: 200, json: async () => (!u.includes('/subgraph') ? NEXT_18766._decl : first ? SRC_18766 : NEXT_18766) };
+    } });
+    await settle();
+    const click = (e, event = {}) => { for (const fn of (e && e.listeners.click) || []) fn(event); };
+    const basketAdd = () => walkAll(walkAll(host).find((e) => e.attrs && e.attrs['data-sign'] === '+' && e.className.startsWith('wk-basket')) || { children: [] })
+      .find((e) => e.className === 'wk-basketadd');
+    const tableOf = () => walkAll(host).filter((e) => e.className === 'wk-sec').map((sec) => [sec.children[0].textContent,
+      ...walkAll(sec).filter((e) => e.tagName === 'tr').map((tr) => tr.children.filter((c) => c.className !== 'wk-check')
+        .map((c) => (has(c, 'wk-centre') ? c.textContent : valsOf(c) || c.textContent)).join('|'))]);
+    const query = (u) => new URLSearchParams((u || '').split('?')[1] || '');
+    // One + start alone goes by its seed id (walk_layout L7 L8), a Next's by positive: the same start either way.
+    const shape = (u) => [`start=${query(u).getAll('positive').join(',') || query(u).get('id')}`,
+      ...['follow', 'collect', 'direction', 'hops'].map((k) => `${k}=${query(u).getAll(k).join(',')}`)].join('&');
+    const bodyRows = (sec) => walkAll(sec).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length;
+    const headOf = (sec) => (walkAll(sec).filter((e) => e.tagName === 'thead').map((t) => t.children[t.children.length - 1])[0] || { children: [] })
+      .children.filter((c) => c.className !== 'wk-check').map((c) => c.textContent);
+    const q = NEXT_18766.seed;
+    // (a) bond_temp alone in +, the form set to the step a Next takes.
+    handle.state.type = 'quantity';
+    handle.state.keys = { ...q.keys };
+    click(basketAdd());
+    handle.state.follow = new Set(['measures']);
+    handle.state.collect = new Set(['wafer']);
+    handle.state.direction = 'both';
+    handle.state.hops = '1';
+    click(walkAll(host).find((e) => e.className === 'wk-go'));
+    await settle();
+    const a = tableOf();
+    const askA = asked[asked.length - 1];
+    const waferSec = walkAll(host).filter((e) => e.className === 'wk-sec').find((sec) => /^wafer/.test(sec.children[0].textContent));
+    const [wafers, head] = waferSec ? [bodyRows(waferSec), headOf(waferSec)] : [0, []];
+    // (b) the C answer's base wafer alone in +, Walk; bond_temp's row checked; Next measures → wafer.
+    const base = SRC_18766._starts.positive[0];
+    handle.state.type = 'wafer';
+    handle.state.keys = { wafer: SRC_18766.nodes.find((n) => n.id === base).keys.wafer };
+    handle.graph.markings.clear('walk-start');
+    click(basketAdd());
+    handle.state.follow = new Set();
+    handle.state.collect = new Set();
+    click(walkAll(host).find((e) => e.className === 'wk-go'));
+    await settle();
+    click(walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === q.id));
+    click(walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === 'measures → wafer'));
+    await settle();
+    const b = tableOf();
+    const askB = asked[asked.length - 1];
+    ok('EA1 18766: bond_temp alone in + and Walk draws the table a Next from its row draws - same head, rows, columns, cells; 64 wafers, measures value · eqp_id · role · step, Route (owner 10-10)',
+      a.length > 0 && JSON.stringify(a) === JSON.stringify(b) && wafers === 64 && shape(askA) === shape(askB)
+        && shape(askA) === `start=${q.id}&follow=measures&collect=wafer&direction=both&hops=1`
+        && ['value', 'eqp_id', 'role', 'step', 'Route'].every((h) => head.includes(h)) && head[0] === 'wafer',
+      JSON.stringify({ a: a.map((sec) => sec.slice(0, 5)), b: b.map((sec) => sec.slice(0, 5)), wafers, head, askA: shape(askA), askB: shape(askB) }));
   }
 
   console.log(`${LF}-- the type placeholder is no type (lead b417e2ad8) --`);
@@ -694,14 +768,28 @@ const TWO = {
 };
 const gateCell = (TV, answer) => {
   const die = TV.walkTableView(answer, DECL.entities, DECL.predicates).sections.find((s) => s.type === 'die@1');
-  const at = die.columns.findIndex((c) => c.kind === 'qualifier' && c.key === 'inspected · gate');
-  return at >= 0 ? die.rows[0].cells[at] : { text: null, numeric: null };
+  const at = die ? die.heads.indexOf('inspected (in) · gate') : -1;
+  return at >= 0 ? die.rows[0].byGroup[0][at] : { text: null, numeric: null };
 };
 const qualifierSuite = (TV) => {
+  // The walk table's cell (E1, the flat table's fold retired): every edge's value kept, each with the node that gave it.
   const two = gateCell(TV, TWO);
-  ok('Q1 two edges into one node: the cell says both values and whose', two.text === '2 edges · 7 (W-1) · 9 (W-2)', two.text);
+  ok('Q1 two edges into one node: the cell keeps both values and whose',
+    JSON.stringify([two.text, two.rest, two.values, two.sources]) === JSON.stringify(['7', '+1', ['7', '9'], [`A · ${TV.EMPTY}`, `B · ${TV.EMPTY}`]]),
+    JSON.stringify(two));
   const one = gateCell(TV, RESULT);
   ok('Q2 one edge: the value as it came, a number', one.text === '7' && one.numeric === true, JSON.stringify(one));
+  // The flat table's two node-own columns in the centre (lead 10-11), read by its functions.
+  const carry = TV.walkTableView(CARRY, CARRY_DECL.entities, CARRY_DECL.predicates).sections.find((x) => x.type === 'die@1') || { centreHeads: [], rows: [] };
+  const centreOf = (id) => ((carry.rows.find((r) => r.id === id) || { centre: [] }).centre).map((c) => c.text);
+  ok('EC1 «Conflicts» stands in the centre where the type declares attributes: the count the server said, none «—»',
+    carry.centreHeads.includes('Conflicts') && centreOf('k:1')[carry.centreHeads.indexOf('Conflicts')] === '2'
+      && centreOf('k:2')[carry.centreHeads.indexOf('Conflicts')] === TV.EMPTY,
+    JSON.stringify([carry.centreHeads, centreOf('k:1'), centreOf('k:2')]));
+  ok('EC2 a confirmation predicate\'s column stands in the centre (C-98): the server\'s verdict and why, none «—»',
+    carry.centreHeads.includes('observed') && centreOf('k:1')[carry.centreHeads.indexOf('observed')] === 'unknown · not_examined'
+      && centreOf('k:2')[carry.centreHeads.indexOf('observed')] === TV.EMPTY,
+    JSON.stringify([carry.centreHeads, centreOf('k:1'), centreOf('k:2')]));
 };
 // The suite's own count: a mutant of main.js runs the suite alone, so its shrink is measured against this.
 const suiteRan = ran;
@@ -725,8 +813,9 @@ const sideSuite = (TV) => {
     return row && at >= 0 ? row.byGroup[group][at] : null;
   };
   const plain = view({ positive: ['s:a', 's:c'], negative: [] });
-  ok('Z1 no - start: the one table it always was, every node in it, no group', plain.groups === null
-    && plain.sections.every((x) => !x.groups) && rowIds(plain) === ALL, `${JSON.stringify(plain.groups)} ${rowIds(plain)}`);
+  ok('Z1 no - start: one side, every node the walk brought (E1: the flat table retired)', plain.groups.length === 1
+    && plain.sections.every((x) => x.groups.length === 1) && rowIds(plain) === ALL,
+    `${JSON.stringify(plain.groups)} ${rowIds(plain)}`);
   const two = view(SIGNED_STARTS);
   ok('Z2 a node a row: one row whichever groups reached it', rowIds(two) === ALL
     && two.sections.every((x) => new Set(x.rows.map((r) => r.id)).size === x.rows.length), rowIds(two));
@@ -743,8 +832,8 @@ const sideSuite = (TV) => {
   ok('Z6 several edges in one group: every value kept, none overwritten - the first said, «+N» the rest (34d91c09d 1)',
     JSON.stringify([d4.text, d4.rest, d4.values]) === JSON.stringify(['1', '+1', ['1', '2']]), JSON.stringify(d4));
   const blind = view(SIGNED_STARTS, { ...SIGNED, propagation: null });
-  ok('Z7 an answer that ranks nothing: one table, said to be both signs', blind.groups === null && blind.unsplit === true
-    && rowIds(blind) === ALL, `${JSON.stringify(blind.groups)} ${blind.unsplit}`);
+  ok('Z7 an answer that ranks nothing: one side holding every node, said to be both signs', blind.groups.length === 1
+    && blind.unsplit === true && rowIds(blind) === ALL, `${JSON.stringify(blind.groups)} ${blind.unsplit}`);
   const bare = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map(({ qualifiers, ...e }) => e) });
   const bareDie = bare.sections.find((x) => x.type === 'die@1') || { heads: [], rows: [] };
   const d3 = bareDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
@@ -891,9 +980,8 @@ const MUTANTS = [
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
   { id: 'M1', what: 'the renderer names its own columns again',
     catches: 'V2 the column labels',
-    from: "      for (const column of section.columns) hr.append(el(doc, 'th', '', column.name));",
-    to: "      for (const name of ['\\uae4a\\uc774', '\\ub77c\\ubca8', 'id'])"
-      + " hr.append(el(doc, 'th', '', name));" },
+    from: "      for (const p of parts) head.append(el(doc, 'th', cls, p.leaf));",
+    to: "      for (const p of parts) head.append(el(doc, 'th', cls, p.step || p.leaf));" },
   // 🔴 THIS SLOT HELD AN EQUIVALENT MUTANT, AND THE HARNESS SAID SO. It was `cell.text || ''`,
   //    meant to collapse 0 into a blank -- but `cell.text` is already a STRING and '0' is
   //    truthy, so it changed nothing and ESCAPED. The rule it aimed at (0 is a value, absent is
@@ -902,14 +990,17 @@ const MUTANTS = [
   //    assertion: the cells drawn in the wrong order. Same count, nothing thrown.
   { id: 'M2', what: 'the cells are drawn in the wrong order',
     catches: 'V3 every cell is the view',
-    from: '        for (const cell of row.cells) {',
-    to: '        for (const cell of [...row.cells].reverse()) {' },
+    from: '        for (const cell of cells(i)) {',
+    to: '        for (const cell of [...cells(i)].reverse()) {' },
   { id: 'M3', what: 'the numeric class is dropped',
     catches: 'V5 the numeric class',
-    from: "          const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);",
-    to: "          const td = el(doc, 'td', '', cell.text);" },
+    from: "`${cell.numeric ? 'wk-num ' : ''}${cls}`",
+    to: "`${cls}`" },
   { id: 'HM1', what: 'the server\'s sentence not in the head', catches: 'H1',
     from: "      if (r.message) head.append(el(doc, 'span', 'wk-note wk-said', [r.state, r.message].filter(Boolean).join(' · ')));\n", to: '' },
+  { id: 'EAm1', what: 'the first walk\'s table without its starts', catches: 'EA1',
+    from: '    state.asked = { ...asked, keys: { ...asked.keys }, positive: starts.positive, negative: starts.negative };',
+    to: '    state.asked = { ...asked, keys: { ...asked.keys } };' },
   { id: 'M4', what: 'the cap note prints the total instead of what was hidden',
     catches: 'C3 the total is not what is printed',
     from: '      box.append(el(doc, \'div\', \'wk-note\', `${view.hidden} more not drawn`));',
@@ -998,8 +1089,13 @@ const TV_MUTANTS = [
   { id: 'ZM2', what: 'the node\'s own columns a group\'s, not the centre\'s', catches: 'Z17',
     from: '    const ownAll = all.filter((c) => !c.steps.length);\n    const ownCells = rows.map((node) => ownAll.map((c) => cellOf(index, new Set([node.id]), node.id, c)));\n    const sideAll = all.filter((c) => c.steps.length);',
     to: '    const ownAll = [];\n    const ownCells = rows.map(() => []);\n    const sideAll = all;' },
-  { id: 'ZM3', what: 'groups even without a - start', catches: 'Z1 ',
-    from: '  const groups = negative.length\n    ? groupsOf(', to: '  const groups = true\n    ? groupsOf(' },
+  // ⚰️ ZM3 (groups even without a − start) retired 10-11: E1 made that the rule - a + only walk is one side (Z1).
+  { id: 'ZM3', what: 'a + only walk read as two sides', catches: 'Z1 ',
+    from: "...(negative.length ? [{ name: '−', starts: negative }] : [])", to: "{ name: '−', starts: negative }" },
+  { id: 'ECm1', what: '«Conflicts» not carried', catches: 'EC1',
+    from: ".filter((c) => c.kind === 'conflicts' || c.kind === 'absence')", to: ".filter((c) => c.kind === 'absence')" },
+  { id: 'ECm2', what: 'the confirmation predicate\'s column not carried', catches: 'EC2',
+    from: ".filter((c) => c.kind === 'conflicts' || c.kind === 'absence')", to: ".filter((c) => c.kind === 'conflicts')" },
   { id: 'ZM4', what: 'no delta column', catches: 'Z12',
     from: '  const deltas = groups.length === 2 ? columns.map', to: '  const deltas = false ? columns.map' },
   { id: 'ZM5', what: 'reached but no value drawn missing', catches: 'Z4',
@@ -1015,7 +1111,7 @@ const TV_MUTANTS = [
   { id: 'VS2', what: 'a value\'s source without its route', catches: 'Z40',
     from: 'source: (g, id) => `${keyWords(id)} · ${g ? route(g, id).text : NOT_WALKED}`', to: 'source: (g, id) => `${keyWords(id)}`' },
   { id: 'VS3', what: 'a source from the other side\'s paths', catches: 'Z38',
-    from: 'sources: (byCol[i].nodes || []).map((id) => sources.source(g, id))', to: 'sources: (byCol[i].nodes || []).map((id) => sources.source(groups[1 - i], id))' },
+    from: 'sources: (byCol[i].nodes || []).map((id) => sources.source(g, id))', to: 'sources: (byCol[i].nodes || []).map((id) => sources.source(groups[(i + 1) % groups.length], id))' },
   { id: 'VS4', what: 'a node the answer did not send: its keys not read off its id', catches: 'Z42',
     from: '    const node = nodes.get(id) || entityOfId(id) || {};', to: '    const node = nodes.get(id) || {};' },
   { id: 'VS5', what: 'a source without keys or a label says its id', catches: 'Z43',
@@ -1040,8 +1136,8 @@ const TV_MUTANTS = [
     from: "\n      .sort((p, q) => (kindsAll[q] === 'number') - (kindsAll[p] === 'number'));", to: ';' },
   { id: 'ZM12', what: 'an empty column drawn', catches: 'Z23',
     from: '.filter((c) => keep || !sideEmpty[c])', to: '.filter(() => true)' },
-  { id: 'QM1', what: 'several edges into one node: the last edge\'s value wins again', catches: 'Q1',
-    from: "      said[name] = list.length === 1 ? list[0].value\n", to: "      said[name] = list.length >= 1 ? list[list.length - 1].value\n" },
+  // ⚰️ QM1 (the flat table's fold: the last edge's value) retired 10-11 with qualifiersByNode (E1); every value kept is
+  //    the walk table's cell now - Q1, Z6 and ZM6.
 ];
 const tv = await scoreMutants(TV_MUTANTS, async (m) => {
   ran = 0; NAMES.length = 0; failures = [];
