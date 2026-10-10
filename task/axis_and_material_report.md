@@ -1,3 +1,12 @@
+> ## [01:27 디자인] C 고침 — 답이 안 보낸 노드의 출처도 키로 (collect = quantity 만) 착지 53b532db5 (총괄 10-11 보류)
+
+- **무엇이 틀렸나** — 데모의 보통 폼(Collect = quantity 만)에서는 값을 준 웨이퍼가 답의 nodes 에 없어, 출처 줄이 그 노드의 키 대신 원시 id 를 적었습니다(총괄 실측 80 중 76). 제 크롬 확인은 collect wafer + quantity 라 그 경우를 안 탔습니다.
+- **고친 것** — id 가 곧 [타입, 키] 라, id 짓기(entitySeedId) 옆에 짝 함수 entityOfId 를 두고 출처 좌석이 답에 없는 노드를 id 에서 읽습니다. 키는 선언 순서 그대로, 키도 라벨도 없으면 «—» — id 는 어디에도 안 적습니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-CaI0U1g6.js, 2481x1273): the demo pair, collect quantity alone, Walk: 80 source lines, 0 with an id - SYN-BW-103-11 · start | SYN-BW-103-11 · start; a value cell's trend dots say SYN-BW-103-11 · start. Writes 0.
+- **게이트** — walk_table 131 with --mutate --control (Z42 the demo pair with collect quantity alone, cut to bond_temp - tests/fixtures/walk_value_source_collect_18766.json, the wafers not in nodes: the same sources as Z40 and no id in any; Z43 a node neither sent nor an entity id says «—»; VS4 no id read, VS5 the id fallback); screen gate 249 with --mutate; trend 30, rnd_board_walk_box 104, walk_layout 34.
+
+다음: H(서버 empty 문장 · 글자 그대로 없는 키 — 사본에서 검색 45 · 바구니 24 · 표 133 초록) -> E1 -> F -> G -> E2 -> D.
+
 > ## [00:39 디자인] C — 값 아래 «누가 준 값인가» + 덩어리 창 «From» · 더 없음 노트 착지 2f47dc01c (총괄 99ed68cb7 C · f4e89622b · 4c53ba3b0)
 
 - **C** — 맞대기 표 값 칸마다 값 아래 «키 · 길». 값을 준 노드 = 그 칸이 읽은 마지막 걸음의 끝(reach_table.cellOf 가 값마다 노드를 줌). 키는 그 타입 선언 keys 순서, 없으면 라벨. 길은 Route 와 같은 읽기(그 쪽 시작에서 걸은 evidence, 시작이면 «start»). «+N» 을 누르면 값마다 제 출처 줄. 트렌드 점 제목도 같은 좌석(table_view.valueSources)에서.
