@@ -1404,7 +1404,7 @@ const FLOORS = new Map([
   // Walk asks them as they are, an empty Positive keeps Walk off, Ctrl/Shift on Walk mark nothing. Floor = first run.
   ['start_baskets_harness.mjs', 22],   // + B11 B12: a key typed goes in; Walk follows the baskets (lead 10-10)
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
-  ['node_search_harness.mjs', 38],
+  ['node_search_harness.mjs', 39],   // + NS15: the row count says it counts atoms (lead 10-10)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by

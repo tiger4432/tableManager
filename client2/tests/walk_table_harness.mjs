@@ -297,7 +297,7 @@ async function suite(mod) {
     const offered = byClass(listed.host, 'wk-searchitem').map((e) => e.children.map((c) => c.textContent).join(' '));
     ok('F2 the seed field is Pick a node and its box, focused, offers the node the server listed',
       walkAll(listed.host).some((e) => e.className === 'wk-label' && e.textContent === 'Pick a node')
-        && offered.includes('R-1 3'), offered.join(' | '));
+        && offered.includes('R-1 3 atoms'), offered.join(' | '));
     // 🔴 EVERY DECLARED PREDICATE, WHATEVER THE TYPE (owner 10-06, lead bf3653401) — the walk filters, not the list.
     const ALL = DECL2.predicates.map((p) => p.name).join(',');
     eq('F6 static recipe@1 draws every declared predicate', follow(listed.host), ALL);

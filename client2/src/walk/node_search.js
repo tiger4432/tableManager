@@ -174,7 +174,8 @@ export class NodeSearch {
         item.setAttribute('aria-selected', String(i === this.active));
         item.setAttribute('data-index', String(i));
         item.append(this._el('span', 'wk-searchkey', Object.values(node.keys || {}).map((v) => String(v)).join(' · ')));
-        if (node.count) item.append(this._el('span', 'wk-searchcount', String(node.count)));
+        // The server's count: the atoms that name the node (its two sides).
+        if (node.count) item.append(this._el('span', 'wk-searchcount', unitText(node.count, 'atom')));
         // mousedown, not click: the box keeps its focus, so the list is still there when the press lands.
         item.addEventListener('mousedown', (e) => { e.preventDefault(); this._pick(i); });
         this.list.append(item);
