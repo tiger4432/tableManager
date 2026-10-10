@@ -123,7 +123,10 @@
 >             nodes = SYN-CW 로 시작하는 노드(대소문자 무시 · 주어 · 목적어) · scanned = 그 수
 >             prefix_axis wafer · prefix_case insensitive(이 콜레이션이 대소문자를 같이 세움) · exact 면 대소문자 그대로
 > 빈 접두     ?type=wafer  -> 오늘과 같은 목록 + prefix_axis (화면이 상자 이름으로 씀)
-> 못 찾는 타입  첫 키가 글자가 아님(die — 첫 키 x): prefix_refusal 한 줄, starts_with 를 주면 422 prefix_axis_not_text
+> 못 찾는 타입  그 키에 글자로 든 노드가 하나도 없음 — 서버 판정: 그 키가 "" 이상인 첫 노드(jsonb 순서 null < 글자 < 숫자)의 값이 글자인가
+>             아니면 prefix_refusal 한 줄, starts_with 를 주면 422 prefix_axis_not_text
+> 섞인 형      한 타입에 글자 · 숫자 키가 섞이면(응용 18766 die 의 x) 거절 없이 상자가 열리고 글자로 든 노드만 찾힘
+>             — 보드의 «키 값 형 갈림»(시연 뒤)과 같은 뿌리
 > 다른 키 접두  &key=<첫 키가 아닌 키>&starts_with=… -> 422 prefix_on_another_key
 > 급할 때      git revert <이 커밋> -> 서버 재기동 (목록은 앞 50 개로 돌아감)
 > ```
