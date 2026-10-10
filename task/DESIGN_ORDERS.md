@@ -37629,3 +37629,16 @@ B. 길 찾기 함수 하나 -> 세 자리 (① 두 노드 경로의 스크래치
 순서   지금 커밋(노드 축 가운데 + 간격 정리 + fanout_limit 칸) -> A -> B(① + Route) -> 표 복사 -> 값 대응
        병합 전 총괄이 18766 에서 연다: 소유자가 찍은 덩어리(SYN-BW-103-11 / 1 / 6 다이)에서 한 번 Open 으로 노드 · 글씨 수 = 나온 수 · 웨이퍼 표 Route 로 base · 코어가 갈림
 ```
+
+> **[총괄 -> 클라] 10-10 — 73d020e9d 병합 보류: 타입 구역 안에 세로로 쌓인 부품 사이가 0 px (소유자 화면 「여기 간격 좁아터진 거는 고치고 있는 거지?」 — defect 구역의 NEXT 칩 · + Column · Positive 띠가 붙음)**
+
+```
+총괄 잰 것   내장 브라우저 1896 x 907 · 18999(이 커밋의 dist) -> 8080 · 시연 짝 · Collect wafer + quantity · fanout_limit 50 -> «Nodes 64 · Edges 551 · 1.1 s», 요청에 fanout_limit=50 실림
+             wafer 구역: wk-sechead 269..289 · wk-next 295..339 · wk-addcol 339..383 · table.wk-sides 383.. — NEXT -> + Column 0 px · + Column -> 표 0 px
+             (칩 사이 가로 6.8 은 토큰대로). 게이트는 «토큰 밖 간격 0» 을 잼 — 간격이 «없는» 것(0)은 토큰 밖이 아니라서 초록
+고칠 것      한 구역 안에 쌓이는 부품(머리 · NEXT · + Column · 표 · 그 밖) 사이를 토큰 하나로 — 구역 안 세로 쌓기는 gap 한 줄(손 margin 금지)
+게이트       «쌓인 두 부품 사이 세로 간격 0 인 곳 0» 단언을 같은 화면 게이트에(Graph · 표 · 트렌드 상태 · 모든 크기) + 변이(그 gap 을 0 으로 -> 빨강)
+나머지 둘    내 변이 둘은 잡힘(가운데 대신 왼쪽 맞춤 -> walk_table 빨강 2 · fanout_limit 안 보냄 -> walk_layout 빨강 1) · 하니스 8 개 초록(walk_table 108 · walk_layout 34 · reach_table 36 · trend 26 · start_baskets 22 · node_search 39 · walk_wire 95 · subgraph_view 242)
+물음 답      screens_answers.json 14 MB — 상태는 다 재고(첫 걸음 + 하나만 걷기도 운영자가 실제로 보는 화면), 파일은 gzip 으로 커밋(node:zlib gunzipSync 로 읽음). 다시 만들 때마다 14 MB 가 이력에 쌓이는 것을 막는다
+순서         이 고침을 같은 브랜치에 커밋 하나 -> 총괄이 다시 열고 병합 -> A(덩어리 한 겹)
+```
