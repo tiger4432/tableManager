@@ -66,7 +66,7 @@ async function seen(M) {
     out.focused = [shown(s).rows.length, shown(s).note];
     type(s, 'n'); type(s, 'na'); type(s, 'nab115-w0');
     await settle();
-    out.typed = [asked.slice(1), typed.slice(), shown(s).rows, shown(s).counts.every((c) => c === '1')];
+    out.typed = [asked.slice(1), typed.slice(), shown(s).rows, shown(s).counts.every((c) => c === '1 atom')];
     key(s, 'ArrowDown'); key(s, 'ArrowDown');
     out.active = shown(s).active;
     key(s, 'Enter');
@@ -226,7 +226,8 @@ function suite(out) {
     + 'where the letters go; closed, no list', out.opened, [[''], 'wafer', 'wafer', 'First letters · any case', 0]);
   eq('T2 focused, the first nodes hang under the box, said to be not all', out.focused,
     [20, '20 nodes shown · not all · type more']);
-  eq('T3 a burst of typing asks once, with what the box holds; every keystroke heard; the list is that answer',
+  eq('T3 a burst of typing asks once, with what the box holds; every keystroke heard; the list is that answer, '
+    + 'each row its count of atoms',
     out.typed, [['nab115-w0'], ['n', 'na', 'nab115-w0'], w(0, 9), true]);
   eq('T4 the arrows move the active row', out.active, 1);
   eq('T5 Enter picks the active row and closes the list', out.enter, [['NAB115-W02'], 0]);
@@ -300,6 +301,8 @@ const MUTANTS = [
       '    this.isOpen = false;\n    this._draw();\n    this.onPick(node);') },
   { id: 'NS14', what: 'a press on the box does not open it', catches: 'T24', ...PART,
     mutate: (t) => swap(t, "    this.input.addEventListener('click', open);\n", '') },
+  { id: 'NS15', what: 'the row count drawn bare, not saying what it counts', catches: 'T3', ...PART,
+    mutate: (t) => swap(t, "unitText(node.count, 'atom')", 'String(node.count)') },
   { id: 'NS8', what: 'starts_with is not asked', catches: 'T17', ...API,
     mutate: (t) => swap(t, "  if (startsWith) query.set('starts_with', String(startsWith));\n", '') },
   { id: 'NS9', what: 'prefix_axis is not read', catches: 'T17', ...API,

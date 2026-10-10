@@ -463,8 +463,15 @@ function screensLib(TOL) {
 }
 
 // ---- the states each entry is driven through, in order; every entry ends with its header's panels opened.
-const until = (chrome, test, most = 10000) => evaluate(chrome, `new Promise((ok) => { const t0 = Date.now();
+// A wait that runs out leaves its state unreached: the drive loop says it under «answers», with the step, so a green
+// line is never a state the gate did not get to (lead 10-10 - the walk page passed once with every wait run out).
+const waitsRunOut = [];
+const until = async (chrome, test, most = 10000) => {
+  const held = await evaluate(chrome, `new Promise((ok) => { const t0 = Date.now();
   const tick = () => { let v = false; try { v = (${test}); } catch (e) {} if (v || Date.now() - t0 > ${most}) ok(Boolean(v)); else setTimeout(tick, 150); }; tick(); })`);
+  if (!held) waitsRunOut.push(`waited ${most} ms and it never held: ${test}`);
+  return held;
+};
 const GRID_LOADED = `/^Loaded/.test((document.querySelector('#performance-log') || {}).textContent || '')`;
 const press = (c, words) => evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(words)} && !x.disabled);
   if (b) b.click(); return Boolean(b); })()`);
@@ -590,9 +597,11 @@ async function runScreens(dist, label, one = only) {
         try {
         const states = DRIVE[entry] || [['loaded', async () => true]];
         let state = 'loaded';
+        waitsRunOut.length = 0;
         for (const [name, step] of states) {
           state = name;
           await step(chrome, log);
+          add(state, waitsRunOut.splice(0).map((what) => ({ rule: 'answers', path: entry, what })));
           await settle(chrome, log);
           add(state, await evaluate(chrome, 'window.__screens.measure()'));
           for (const cell of CELLS.filter((c) => c.entry === entry && c.after === state)) {
