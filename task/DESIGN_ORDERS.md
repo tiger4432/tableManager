@@ -37673,3 +37673,14 @@ B Route 의 BFS 는 걷기의 static 규칙을 지난다 — derive.js walkTakes
 갈래 줄  갈래마다 한 걸음 수 그대로(겹쳐도 각자 참) · Open 단추는 고른 «노드» 수
 게이트   N = All -> Open 뒤 새로 그려진 수(겹치는 묶음이 든 픽스처로 — 지금 픽스처엔 겹침이 없어 못 잡았음) · 상한 표기는 안 보낸 묶음이 있을 때만 · 걸어 온 뒤 정확한 수 · 변이
 ```
+
+> **[총괄 -> 클라] 10-10 — B 를 바꾼다: Route 는 서버가 이미 주는 «걸은 길»을 읽는다 (소유자 「route 그냥 서버에서 walk 결과로 실제 걸은 경로 리턴하지 않아? 그러면 static -> dynamic 안 나올 텐데」 — 기존 문을 총괄이 놓침)**
+
+```
+있는 문   걷기 답 propagation.ranked[].evidence[] = {seed, sign, hops: [{id, label, predicates}]} — 서버 BFS 가 실제로 걸은 길, static 규칙을 지난 것
+          18766 잼: 코어 SYN-CW-001-02 + start -> in_container -> bonded_from -> in_container · bond_temp ± start -> measures · 노드 764 개 길 1 · 23 개 길 2(부호마다)
+Route 열  그 쪽 부호의 evidence hops 의 술어를 차례로(술어만) · 시작은 ranked 에 없음 -> «start»
+거둠      총괄의 (나) 클라 BFS 판정 · 34b4cebd0 의 walkTakesStep 줄 — 표는 길을 «찾지 않는다». viaDepth 도 이 읽기로 접음(via = 끝 홉 술어 · depth = 홉 수 - 1)
+          paths.js 는 ① 두 노드 경로의 simplePaths 만
+게이트    픽스처에서 Route = evidence 술어(코어 = 본딩 · base = start) · 변이(다른 부호의 evidence 를 읽게 -> 빨강)
+```
