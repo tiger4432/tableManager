@@ -766,7 +766,6 @@ export function boot(doc, host, deps) {
   function openTrend(type, rows, col, group, at) {
     state.trend = { type, rows, col, group, at, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null };
     render();
-    void loadTrend('around');
   }
 
   /** The column a trend reads, when its section is still drawn. */
@@ -800,9 +799,15 @@ export function boot(doc, host, deps) {
     const t = state.trend;
     const at = trendColumn(view);
     if (!at) return;
-    const own = t.rows.flatMap((x) => walkPoints(view.index, view.groups, x, at.column).map((p) => ({ ...p, row: x })));
+    // A section's trend reads its section's rows as they stand: a step walked again is a new answer (lead 10-11).
+    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;
+    const own = rows.flatMap((x) => walkPoints(view.index, view.groups, x, at.column).map((p) => ({ ...p, row: x })));
     const walked = new Set(own.map((p) => p.key));
-    t.anchor = pageAnchor(t.rows, own, at.column);
+    t.anchor = pageAnchor(rows, own, at.column);
+    // Its pages are its anchor's and its column's (lead 10-11): another key starts over and asks its own page.
+    const pageKey = JSON.stringify(t.anchor && [t.anchor.id, t.anchor.predicate, t.anchor.direction, t.col]);
+    const fresh = pageKey !== t.pageKey;
+    if (fresh) Object.assign(t, { pageKey, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null });
     // A point says who gave it, as its cell does (lead 99ed68cb7 C): the same read, the same seat.
     const points = (t.anchor ? t.pages : []).reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.anchor.id, at.column, walked)), own)
       // Who gave a point: the end of its edge that is not the anchor - a row read toward the end they share names the row.
@@ -811,7 +816,7 @@ export function boot(doc, host, deps) {
     if (t.t0 === null) t.t0 = walkedTime(own, r.generated_at, t.group);
     // The view the next page is read against: the trend's own, not a second computing of the table.
     t.view = view;
-    const row = t.rows.length === 1 ? at.section.rows.find((x) => x.id === t.rows[0]) : null;
+    const row = rows.length === 1 ? at.section.rows.find((x) => x.id === rows[0]) : null;
     const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
     // The axis: the pages' windows and the pressed side's walked points; another side's far off stands at the edge.
     const model = trendModel(points, undefined, { windows: t.pages.map(windowOf).filter(Boolean), group: t.group });
@@ -821,6 +826,7 @@ export function boot(doc, host, deps) {
         hasEarlier: Boolean(t.hasEarlier), hasLater: Boolean(t.hasLater) } : {}),
       onClose: () => { state.trend = null; render(); } });
     box.append(trendMount);
+    if (fresh) void loadTrend('around');
   }
 
   /** «+ Column» (lead 5cf5c3401 answer 2): a route the rows take in this walk, then what its end holds; × takes one out. */

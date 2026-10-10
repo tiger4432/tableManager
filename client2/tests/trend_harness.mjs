@@ -50,6 +50,15 @@ const WALK_TWO = { generated_at: T(12), nodes: [node('wp', 'wafer'), node('wn', 
   edges: [edge('wp', 'measures', 'q1', 30.5, 3, 'c1'), edge('wn', 'measures', 'q2', 11, 5, 'c2')],
   propagation: { ranked: [{ id: 'q1', reach: [1, 0] }, { id: 'q2', reach: [0, 1] }] } };
 const TIME = /\d\d-\d\d \d\d:\d\d/;
+// The same step walked again from another row (lead 10-11, 18766): other wafers measuring another quantity, and that
+// quantity's own time page - a wafer of the walk and one it never reached.
+const WALK_RE = { generated_at: T(12), nodes: [node('wa', 'wafer'), node('wb', 'wafer'), node('q2', 'quantity')],
+  edges: [edge('wa', 'measures', 'q2', 41, 4, 'r1'), edge('wb', 'measures', 'q2', 43, 6, 'r2')],
+  propagation: { ranked: [{ id: 'q2', reach: [1, 1] }] } };
+const WY = entitySeedId('wafer', { wafer: 'WY-8' });
+const PAGE_Q2 = { ...PAGE, seed: node('q2', 'quantity'),
+  nodes: [node('q2', 'quantity'), node('wa', 'wafer'), { id: WY, type: 'wafer', label: 'WY-8', keys: { wafer: 'WY-8' } }],
+  edges: [edge('wa', 'measures', 'q2', 42, 2, 'd1'), edge(WY, 'measures', 'q2', 47, 7, 'd2')] };
 
 /** The walk page with `answer` walked, a section's Trend pressed (lead 10-10 E2): its dots, their titles, its page's ask. */
 async function sectionRun(M, answer, type) {
@@ -81,6 +90,39 @@ async function sectionRun(M, answer, type) {
   const note = walkAll(host).filter((n) => n.className === 'wk-note').map((n) => n._text || '').find((x) => TIME.test(x)) || '';
   const title = (walkAll(host).find((n) => n.className === 'wk-trend-title') || {})._text;
   return { toggled: Boolean(toggle), ask: asks.length ? q(asks[0]) : null, sources, walkOnly: note.includes('Walk only · no time page'), title };
+}
+
+/** A section's Trend open on WALK, then the step walked again (WALK_RE): its dots and the pages it asked, by node. */
+async function rewalkRun(M) {
+  const urls = [];
+  const DECL = { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
+  const paged = (u) => u.includes('around=') || u.includes('later=') || u.includes('earlier=');
+  const q = (u) => Object.fromEntries(new URLSearchParams(String(u || '').split('?')[1] || ''));
+  const doc = makeDoc('light');
+  doc.head = doc.createElement('head');
+  const host = doc.createElement('div');
+  const handle = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+    const u = String(url);
+    urls.push(u);
+    const body = paged(u) ? (q(u).id === 'q2' ? PAGE_Q2 : PAGE) : DECL;
+    return { ok: true, status: 200, json: async () => body };
+  } });
+  await settle();
+  handle.state.type = 'wafer';
+  handle.state.asked = { type: 'wafer', keys: {}, positive: ['wp'], negative: ['wn'] };
+  handle.state.run = 'done';
+  handle.state.result = WALK;
+  handle.render();
+  const sec = walkAll(host).filter((n) => n.className === 'wk-sec').find((x) => /^wafer/.test(x.children[0]._text || ''));
+  const toggle = sec && walkAll(sec).find((n) => n.attrs && n.attrs['data-section-view'] === 'trend');
+  if (toggle) toggle.dispatch('click', {});
+  await settle();
+  handle.state.asked = { type: 'wafer', keys: {}, positive: ['wa'], negative: ['wb'] };
+  handle.state.result = WALK_RE;
+  handle.render();
+  await settle();
+  const dots = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key']).map((n) => n.attrs['data-key']).sort();
+  return { toggled: Boolean(toggle), dots, pages: urls.filter(paged).map((u) => q(u).id) };
 }
 
 /** The walk page with `answer` walked: a press on the quantity's + cell, then Load earlier. */
@@ -214,6 +256,8 @@ async function seen(M) {
   out.walkOnlyHead = heads;
   const two = await sectionRun(M, WALK_TWO, 'wafer');
   out.sectionTwo = [two.toggled, two.ask, two.sources.map(([k]) => k), two.walkOnly];
+  const re = await rewalkRun(M);
+  out.rewalk = [re.toggled, re.dots, re.pages];
   const farRun = await pageRun(M, WALK_FAR);
   out.farPage = [farRun.ask && farRun.ask.around, farRun.dots, farRun.edges, farRun.local];
   return out;
@@ -264,6 +308,8 @@ function suite(out) {
   eq('TS4 the part: a trend no time page can widen says walk only on its head', out.walkOnlyHead, [true, false]);
   eq('TS2 a section whose reads end at two nodes: no time page asked, the head says walk only', out.sectionTwo,
     [true, null, ['c1', 'c2'], true]);
+  eq('TS5 a section' + "'" + 's Trend open, the step walked again from another row: its points only the new rows' + "'" + ' and the new anchor' + "'" + 's own page, none from the old (lead 10-11)',
+    out.rewalk, [true, ['d1', 'd2', 'r1', 'r2'], ['q1', 'q2']]);
   return { ran: names.length, names, failures };
 }
 
@@ -289,13 +335,18 @@ const MUTANTS = [
   { id: 'TSm2', what: 'reads ending at two nodes paged from the first', catches: 'TS3', ...TREND,
     mutate: (t) => swap(t, '  return ends.length === 1' + String.fromCharCode(10), '  return ends.length >= 1' + String.fromCharCode(10)) },
   { id: 'TSm3', what: 'a section' + "'" + 's trend its first row alone', catches: 'TS1', ...PAGE_,
-    mutate: (t) => swap(t, 'const own = t.rows.flatMap(', 'const own = t.rows.slice(0, 1).flatMap(') },
+    mutate: (t) => swap(t, 'const own = rows.flatMap(', 'const own = rows.slice(0, 1).flatMap(') },
   { id: 'TSm4', what: 'a walk-only trend not said', catches: 'TS4', ...VIEW,
     mutate: (t) => swap(t, "spec.walkOnly ? TREND_WORDS.noPage : ''", "''") },
   { id: 'TSm5', what: 'a walked point read toward the anchor named by its far end', catches: 'TS1', ...PAGE_,
     mutate: (t) => swap(t, 't.anchor && p.row && p.node === t.anchor.id ? p.row : p.node', 'p.node') },
   { id: 'TSm6', what: 'the page' + "'" + 's anchor ignored: a section paged from nowhere', catches: 'TS1', ...PAGE_,
-    mutate: (t) => swap(t, '    t.anchor = pageAnchor(t.rows, own, at.column);', '    t.anchor = null;') },
+    mutate: (t) => swap(t, '    t.anchor = pageAnchor(rows, own, at.column);', '    t.anchor = null;') },
+  { id: 'TSm7', what: 'the old anchor' + "'" + 's page kept when the step is walked again', catches: 'TS5', ...PAGE_,
+    mutate: (t) => swap(t, '    if (fresh) Object.assign(t, { pageKey, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null });',
+      '    if (fresh) t.pageKey = pageKey;') },
+  { id: 'TSm8', what: 'a section' + "'" + 's trend reads the rows it was opened on', catches: 'TS5', ...PAGE_,
+    mutate: (t) => swap(t, "    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;", '    const rows = t.rows;') },
   { id: 'TM1', what: 'a point with no time', catches: 'T1', ...TREND,
     mutate: (t) => swap(t, '.map((r) => ({ t: timeOf(r.edge),', '.map((r) => ({ t: null,') },
   { id: 'TM2', what: 'a page point with no group', catches: 'T2', ...TREND,
