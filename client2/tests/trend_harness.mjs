@@ -296,6 +296,16 @@ async function seen(M) {
   const re = await rewalkRun(M);
   out.rewalk = [re.toggled, re.dots, re.pages];
   out.stepViews = await stepViewsRun(M);
+  // Copy points (lead a27dfbb0f): the sheet - time in this screen's, the value as it is, its side, who gave it, its claim.
+  const cp = M.trend.pointsSheet([{ t: Date.parse(T(3)), value: 30.5, group: 0, key: 'c1', node: 'wp' },
+    { t: null, value: 'A', group: null, key: 'c9', node: 'wz' }], ['Positive', 'Negative'], (p) => p.node.toUpperCase());
+  out.copySheet = [cp.head, cp.rows.map((r) => [TIME.test(r[0]) || r[0] === '', ...r.slice(1)])];
+  const cpPart = part();
+  let copied = 0;
+  cpPart.view.show({ title: 'C', model: M.trend.trendModel(walk), groups: ['Positive'], t0: null, onCopy: () => { copied += 1; return 'Copied 2 points'; } });
+  const cpButton = walkAll(cpPart.mount).find((n) => n.tagName === 'BUTTON' && n._text === 'Copy points');
+  if (cpButton) cpButton.dispatch('click', {});
+  out.copyPart = [Boolean(cpButton), copied, (walkAll(cpPart.mount).find((n) => has(n, 'wk-copied')) || {})._text || ''];
   const farRun = await pageRun(M, WALK_FAR);
   out.farPage = [farRun.ask && farRun.ask.around, farRun.dots, farRun.edges, farRun.local];
   return out;
@@ -348,6 +358,9 @@ function suite(out) {
     [true, null, ['c1', 'c2'], true]);
   eq('TS5 a section' + "'" + 's Trend open, the step walked again from another row: its points only the new rows' + "'" + ' and the new anchor' + "'" + 's own page, none from the old (lead 10-11)',
     out.rewalk, [true, ['d1', 'd2', 'r1', 'r2'], ['q1', 'q2']]);
+  eq('TC1 Copy points: time · value · side · node · claim_id - its time in this screen' + "'" + 's, none none, its value as it is, its side or none, who gave it, its claim',
+    out.copySheet, [['time', 'value', 'side', 'node', 'claim_id'], [[true, '30.5', 'Positive', 'WP', 'c1'], [true, 'A', '', 'WZ', 'c9']]]);
+  eq('TC2 the part' + "'" + 's «Copy points»: the page copies, the part says what happened beside it', out.copyPart, [true, 1, 'Copied 2 points']);
   eq('TV1 the Table/Trend choice is its step' + "'" + 's: Step 2' + "'" + 's section in Trend, Step 1 gone back to stays Table, Step 2 again its Trend (lead 10-11)',
     out.stepViews, [true, true, false, true]);
   return { ran: names.length, names, failures };
@@ -419,7 +432,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group],',
       "source: p.group === null || p.group === undefined ? '' : view.sources.source(view.groups[p.group],") },
   { id: 'TM15', what: 'a point\'s source the row\'s, not its read\'s', catches: 'T14', ...PAGE_,
-    mutate: (t) => swap(t, 't.anchor && p.row && p.node === t.anchor.id ? p.row : p.node) }))', 'p.row || p.node) }))') },
+    mutate: (t) => swap(t, 'giver: t.anchor && p.row && p.node === t.anchor.id ? p.row : p.node }))', 'giver: p.row || p.node }))') },
+  { id: 'TCm1', what: 'a copied point without its claim', catches: 'TC1', ...TREND, mutate: (t) => swap(t, "keysOf(p), p.key || '']", "keysOf(p), '']") },
+  { id: 'TCm2', what: 'Copy points says nothing', catches: 'TC2', ...VIEW,
+    mutate: (t) => swap(t, '() => { said.textContent = spec.onCopy(); }', '() => { spec.onCopy(); }') },
   { id: 'TM13', what: 'the page asks around any side\'s latest walked point', catches: 'T12', ...PAGE_,
     mutate: (t) => swap(t, 'walkedTime(own, r.generated_at, t.group)', 'walkedTime(own, r.generated_at)') },
 ];

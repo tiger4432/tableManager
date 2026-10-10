@@ -34,11 +34,12 @@ import {
   cutBudgets, stepAlong,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, ROUTE, REACHED } from './table_view.js';
+import { walkTableView, nextRoutes, ROUTE, REACHED, rowsShown, sheetOf, sheetHtml } from './table_view.js';
+import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
 import { routesFrom, valuesAt } from './reach_table.js';
 // The trend of a column (lead f984ab01d): the model and the part that draws it.
-import { walkPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, pageAnchor, PAGE_ROWS } from './trend.js';
+import { walkPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, pageAnchor, pointsSheet, PAGE_ROWS } from './trend.js';
 import { TrendView } from './trend_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
@@ -67,6 +68,9 @@ const START = 'walk-start';
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = WALKING;
+/** «Copy table» and what a copy says after (lead a27dfbb0f). */
+export const COPY_WORDS = Object.freeze({ table: 'Copy table', done: (n, unit) => `Copied ${unitText(n, unit)}`,
+  failed: 'Copy failed · Select the table and press Ctrl+C' });
 /** The control walk's list and its failure (lead 99ed68cb7 D). */
 const CONTROL_WORD = 'Control · B';
 
@@ -122,6 +126,8 @@ export function boot(doc, host, deps) {
   let worlds = worldList(options.world);
   const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);
   const walk = createWalkBoxWalk({ apiBase, fetchImpl });
+  // The one clipboard writer (plain HTTP in operation: clipboard_write.js), the page's to hand in as it hands its fetch.
+  const writeClip = options.writeClipboard || writeClipboardRich;
 
   const state = {
     decl: null, declState: 'loading', declReason: '',
@@ -604,11 +610,13 @@ export function boot(doc, host, deps) {
    */
   function renderTable(box, r, starts, control) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
-    const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts, state.added,
-      state.emptyOpen, control);
+    // The one seat that builds this walk's view - drawn with the folded columns as they are, copied with them open.
+    const build = (opened) => walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts,
+      state.added, opened, control);
+    const view = build(state.emptyOpen);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
     box.append(rowFilterBar());
-    renderSections(box, view, r);
+    renderSections(box, view, r, build);
     if (trendNow() && trendNow().at === 'below') renderTrend(box, view, r);
   }
 
@@ -735,7 +743,7 @@ export function boot(doc, host, deps) {
       }
       return c;
     };
-    const rows = section.rows.filter((row) => state.rowFilter === 'all' || (state.rowFilter === 'differs' ? row.differs : row.missing));
+    const rows = rowsShown(section, state.rowFilter);
     for (const row of rows) {
       const tr = el(doc, 'tr');
       tr.setAttribute('data-row-id', row.id);
@@ -780,7 +788,7 @@ export function boot(doc, host, deps) {
     copy.title = 'Copy id';
     copy.append(el(doc, 'span', 'wk-copyicon'));
     copy.addEventListener('click', () => {
-      if (!writeClipboardRich('', id)) return;
+      if (!writeClip('', id)) return;
       copy.className = 'wk-copyid is-done';
       copy.title = 'Copied';
       copy.setAttribute('aria-label', 'Copied');
@@ -839,8 +847,8 @@ export function boot(doc, host, deps) {
     // A point says who gave it, as its cell does (lead 99ed68cb7 C): the same read, the same seat.
     const points = (t.anchor ? t.pages : []).reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.anchor.id, at.column, walked)), own)
       // Who gave a point: the end of its edge that is not the anchor - a row read toward the end they share names the row.
-      .map((p) => ({ ...p, source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group],
-        t.anchor && p.row && p.node === t.anchor.id ? p.row : p.node) }));
+      .map((p) => ({ ...p, giver: t.anchor && p.row && p.node === t.anchor.id ? p.row : p.node }))
+      .map((p) => ({ ...p, source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group], p.giver) }));
     if (t.t0 === null) t.t0 = walkedTime(own, r.generated_at, t.group);
     // The view the next page is read against: the trend's own, not a second computing of the table.
     t.view = view;
@@ -850,6 +858,7 @@ export function boot(doc, host, deps) {
     const model = trendModel(points, undefined, { windows: t.pages.map(windowOf).filter(Boolean), group: t.group });
     trendView.show({ title: `${row ? row.label : at.section.heading} · ${at.section.columnHeads[at.col]}`, model, walkOnly: !t.anchor,
       groups: at.section.groups.map((g) => word(g.sign)), t0: t.t0,
+      onCopy: () => copySheet(pointsSheet(points, at.section.groups.map((g) => word(g.sign)), (p) => view.sources.keys(p.giver)), 'point'),
       ...(t.pages.length ? { onEarlier: () => { void loadTrend('earlier'); }, onLater: () => { void loadTrend('later'); },
         hasEarlier: Boolean(t.hasEarlier), hasLater: Boolean(t.hasLater) } : {}),
       onClose: () => { setTrend(null); render(); } });
@@ -927,7 +936,27 @@ export function boot(doc, host, deps) {
   }
 
   /** The table's sections and what it did not draw. */
-  function renderSections(box, view, r) {
+  /** A sheet onto the clipboard by the one writer (lead a27dfbb0f): TSV for the cells, HTML beside it; what happened. */
+  function copySheet(sheet, unit) {
+    return writeClip(sheetHtml(sheet), serializeTsv([sheet.head, ...sheet.rows]))
+      ? COPY_WORDS.done(sheet.rows.length, unit) : COPY_WORDS.failed;
+  }
+
+  /** «Copy table» on a section's head: every column, the folded too, the rows the filter shows; said beside it. */
+  function copyBar(section, build) {
+    const bar = el(doc, 'span', 'wk-copybar');
+    const said = el(doc, 'span', 'wk-note wk-copied', '');
+    const b = el(doc, 'button', 'wk-add wk-copytable', COPY_WORDS.table);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      const full = build(new Set([...state.emptyOpen, section.type])).sections.find((s) => s.type === section.type) || section;
+      said.textContent = copySheet(sheetOf(full, state.rowFilter), 'row');
+    });
+    bar.append(b, said);
+    return bar;
+  }
+
+  function renderSections(box, view, r, build) {
     const at = state.at;
     const checks = checksOf(at);
     for (const section of view.sections) {
@@ -935,7 +964,7 @@ export function boot(doc, host, deps) {
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));
       const t = trendNow();
       const trended = Boolean(t && t.at === 'section' && t.type === section.type);
-      sec.append(sectionViews(section, trended));
+      sec.append(sectionViews(section, trended), copyBar(section, build));
       // Next above its table, once (lead 3375edd9b).
       if (checks) sec.append(nextRow(at, section, checks));
       if (section.reached) sec.append(reachedLine(section));

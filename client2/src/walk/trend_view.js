@@ -22,6 +22,7 @@ export const TREND_WORDS = Object.freeze({
   noEarlier: 'Nothing earlier',
   noLater: 'Nothing later',
   close: 'Close',
+  copy: 'Copy points',
   none: 'No value with a time in this column',
   // A trend whose reads share no one node: no time page can widen it (lead 10-10 E2).
   noPage: 'Walk only · no time page',
@@ -79,6 +80,11 @@ export class TrendView {
     const acts = this._el('span', 'wk-trend-acts');
     if (spec.onEarlier) acts.append(this._button(TREND_WORDS.earlier, spec.onEarlier, spec.hasEarlier === false ? TREND_WORDS.noEarlier : ''));
     if (spec.onLater) acts.append(this._button(TREND_WORDS.later, spec.onLater, spec.hasLater === false ? TREND_WORDS.noLater : ''));
+    // «Copy points» (lead a27dfbb0f): the page copies, the part says what happened beside the button.
+    if (spec.onCopy) {
+      const said = this._el('span', 'wk-note wk-copied', '');
+      acts.append(this._button(TREND_WORDS.copy, () => { said.textContent = spec.onCopy(); }), said);
+    }
     if (spec.onClose) acts.append(this._button(TREND_WORDS.close, spec.onClose));
     head.append(acts);
     this.root.append(head);
