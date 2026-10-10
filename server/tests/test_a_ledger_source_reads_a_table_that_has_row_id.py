@@ -79,6 +79,46 @@ def test_the_reading_loader_drops_it_alone_too(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 총괄 fe72e5c32 — a refused source does not take the predicate of its name with it
+# ---------------------------------------------------------------------------
+
+#: The box had a source `bonded_from` reading a view and a predicate `bonded_from`; the fixpoint
+#: dropped the PREDICATE. Here the view source takes the name of a predicate `dt_job` emits.
+SHARED = "has_netdie"
+
+
+def _sharing_a_name():
+    document, catalog = _world()
+    document["sources"][SHARED] = document["sources"].pop(ON_A_VIEW)
+    assert SHARED + "@1" in document["vocabulary"], "CANARY: the name is a declared predicate's"
+    return document, catalog
+
+
+def test_a_refused_source_leaves_the_predicate_of_its_name_and_says_its_own_reason():
+    from ledger.setup import _refused_sources
+
+    document, catalog = _sharing_a_name()
+    report = resolve_declarations(document, catalog=catalog)
+
+    assert sorted(report["invalid"]) == ["source_plan|%s" % SHARED]
+    assert SHARED in report["document"]["vocabulary"]
+    assert "dt_job" in report["document"]["sources"], "the source that emits it still stands"
+    shown = _refused_sources(report["invalid"])[SHARED]
+    assert shown["refusal"]["code"] == "relation_not_a_row_table", shown["refusal"]
+    assert shown["raw"].get("relation") == VIEW, "the source's own text is kept"
+
+
+def test_the_reading_loader_keeps_the_predicate_too(tmp_path):
+    document, catalog = _sharing_a_name()
+    path = tmp_path / "ledger_config.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    read = ledger_config.load(str(path), catalog=catalog)
+
+    assert SHARED not in read["sources"] and SHARED in read["vocabulary"]
+
+
+# ---------------------------------------------------------------------------
 # da3fa7493 — what the reading loader drops never reaches the file
 # ---------------------------------------------------------------------------
 

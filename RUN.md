@@ -133,6 +133,21 @@
 >
 > ---
 >
+> ## [10-10] **bonded_from 이 Follow 에 돌아옴 — 거절된 소스가 같은 이름의 술어를 안 넘어뜨림 (총괄 fe72e5c32) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 순서        pull -> 서버 재기동 (체인 워커는 읽는 소스가 같아 그대로 — 박스 선언 사본에서 남는 소스 5 개가 고치기 전과 같음)
+> 확인        GET /api/ledger/declaration -> predicates 에 bonded_from (박스 선언 사본에서 13 -> 14)
+>             걷기 화면 STEP 의 Follow 목록에 bonded_from
+>             GET /api/ledger/subgraph?id=<베이스 다이 id>&follow=bonded_from&hops=1&direction=outgoing -> 200, 코어 다이로 bonded_from 엣지
+> 로그        서버 기동의 «[Ledger] source_plan|bonded_from is NOT read» 줄 사유가 «reads 'bonding_die_from_core', which is not a table»
+>             (뷰를 읽음 — 고치기 전엔 «unknown predicate 'bonded_from'»)
+> 원장        0 행 — 그 소스는 여전히 읽히지 않음(뷰). 지금 원장의 bonded_from 원자 18,609 개를 Follow 로 걷는 것
+> 급할 때      git revert <이 커밋> -> 서버 재기동 (Follow 에서 bonded_from 이 다시 빠짐)
+> ```
+>
+> ---
+>
 > ## [10-10] **트렌드 쪽 나누기 — /subgraph 의 around · earlier · later (총괄 10-10 B) — 이주 «없음» · 재기동 «서버»**
 >
 > ```

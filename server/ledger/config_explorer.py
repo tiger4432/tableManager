@@ -1268,8 +1268,9 @@ def resolve_declarations(document: Mapping[str, Any], *,
     🔴 THE DROPS HAPPEN IN A COPY. Nothing here writes, and no caller may persist the
     reduced document: this computes WHAT TO LOAD, it does not edit the operator's file.
     """
-    from .config_authoring import isolation_key
+    from .config_authoring import _ISOLATION_KIND_BY_SECTION, isolation_key
 
+    section_of = {kind: section for section, kind in _ISOLATION_KIND_BY_SECTION.items()}
     # names spelled bare BEFORE the first round, so a blamed path finds its key (4eb1fe98f)
     working = fold_versions(json.loads(json.dumps(document, ensure_ascii=False)))
     invalid: dict[str, dict[str, Any]] = {}
@@ -1286,14 +1287,16 @@ def resolve_declarations(document: Mapping[str, Any], *,
         config_level = whole
         fell = []
         for key in sorted(per):
-            _, _, canonical_id = key.partition("|")
-            for holder in working.values():
-                if isinstance(holder, dict) and canonical_id in holder:
-                    # Keep what was written. The declaration leaves the bundle but the
-                    # operator has to be able to open it again and finish it, and this is
-                    # the only place its text is still in hand.
-                    fell.append((key, per[key], holder.pop(canonical_id)))
-                    break
+            # 🔴 FROM THE SECTION OF THE KIND IT BLAMED (총괄 fe72e5c32): a source and a predicate
+            # may share a name, and the first section holding it took the box's predicate
+            # `bonded_from` down with the view-reading source of that name.
+            kind, _, canonical_id = key.partition("|")
+            holder = working.get(section_of.get(kind))
+            if isinstance(holder, dict) and canonical_id in holder:
+                # Keep what was written. The declaration leaves the bundle but the
+                # operator has to be able to open it again and finish it, and this is
+                # the only place its text is still in hand.
+                fell.append((key, per[key], holder.pop(canonical_id)))
         if not fell:
             break
         for key, issues, raw in fell:
