@@ -1,3 +1,14 @@
+> ## [22:12 디자인] A — 그래프 덩어리 한 겹 착지 0c8ada2c2 (총괄 df11f9e81 A · 2f25c883a)
+
+- **창 하나** — 큰 덩어리를 누르면 갈래마다 한 줄(술어 · 방향 · 먼 타입 · 그 갈래의 한 걸음 수 — 겹쳐도 각자 참, «+N behind» 는 뺌), 줄의 ▸ 를 펴면 그 갈래의 노드(이름 · «+N behind»). 갈래 줄 틱 = 그 갈래 노드 전부, 노드 줄 틱 = 그것만. Open 한 번에 바로 노드로 나오고, 각 노드는 제 뒤를 접은 채 나옵니다. 안 고른 나머지는 그 갈래의 «n more», 큰 덩어리는 그 밑.
+- **숫자 (2f25c883a (나))** — 덩어리 글씨와 창 머리 «N next · M behind». N = All -> Open 으로 새로 그려지는 노드 수(겹침 없이), M = 그 뒤 접힌 채 남는 수(한 번씩). 안 보낸 묶음이 남아 있으면 «≤ N next», 걸어 오면 정확한 수. Open 버튼은 고른 노드를 겹침 없이 셉니다. 하니스에서 행동으로 잽니다 — 겹치는 손 픽스처(LM13)와 실제 두 묶음 픽스처(LM14: 같은 다이 40 을 두 묶음이 가짐).
+- **안 보낸 갈래** — ▸ 를 펴거나 틱하면 먼저 걸어 오고, 그동안 줄에 «Loading…», 돌아오면 그 갈래가 펴져 있고 틱한 것은 틱돼 있습니다(PL).
+- **문장 그대로의 칸** — 「▸ 로 노드 하나만 -> 그 하나만 · 나머지 n more」를 «하나» 고르기로 잽니다(LM12). 둘 고르기(LM3)도 남겼습니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-Dc3zQfJ7.js, 2481x1226): SYN-BW-103-11 in Positive, Walk, Graph, its branches folded (Fold branches): «≤ 213 next · 1 behind»; pressed: «← in_container die» 179 (not sent); «inspected → die» 38 (not sent); «measures → quantity» 16; «← in_container die» ticked: its row Loading…, 1 walk asked, back with 179 of 179 nodes ticked, the lump still «≤ 213 next · 1 behind»; All: «195 next · 1 behind», Open 195 (233 ticks, distinct nodes counted); one Open: 195 nodes newly drawn, 1 folded after, the view kept, no small lump of the wafer's, the window closed. Writes 0.
+- **게이트** — subgraph_view 355 with --mutate --control (LM2-LM14, PB, PL; LA1m-LA9m, and the two-layer mutants re-aimed at the one window: B12 L1m L2m L3m L5m L8m J1m J8m); screen gate 249 with --mutate; walk_table 108, walk_layout 34, disabled_reason 25, css_token_definition 7.
+
+다음: B — 표 Route 열은 서버가 걸은 길(걷기 답의 evidence)을 읽습니다(총괄 10-10 판정: 표는 길을 찾지 않음, viaDepth 도 이 읽기로 접힘). 그래프 ① 두 노드 경로는 walk/paths.js simplePaths 하나(선언 경로 pathsBetween 도 부름). 사본에서 하니스 초록, 이 착지 위에 얹어 화면 게이트 · 크롬 확인 뒤 올립니다. 그다음 C · D · 표 복사 · 값 대응(99ed68cb7 순서).
+
 > ## [20:41 디자인] 쌓인 부품 간격 수리 착지 a9f4fe9aa (총괄 348310aee — 73d020e9d 보류 해제 청함)
 
 - **고친 것** — 타입 구역은 부품(제목 · NEXT · + Column · 표)을 간격 토큰 하나(--space-2, 6.8 px)로 쌓습니다. 제목 · NEXT 의 손 여백은 뺐습니다.
