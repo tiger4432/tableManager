@@ -120,6 +120,10 @@
 >         잘리면       ① 모델 길: Follow 에서 그 많은 술어를 뺀다 — 리허설(measures 를 뺌) claims 1737 · 6 걸음 · 모델 계측군 18 of 18 · 대신 measures 값 0
 >                     ② 값: Follow 를 그 술어(measures) 하나 · hops 1 로 다시 걷고 ④ 표 · 트렌드 — 리허설 claims 4073 · measures 변 51
 >                        화면: Cut 줄 없음 · quantity 35 줄 · 값 칸 누르면 트렌드 5 점 — 그 술어 원자만으로 6,000 을 넘으면 ② 도 잘린다
+>                     ③ (API 만 — 화면 자리 없음: 표의 Walk 는 fanout_limit 을 안 보낸다) fanout_limit=100 -> claims 5974 · 4 걸음 · 모델 계측군 18 of 18
+>                        · 두 base 의 measures 변 51 그대로 · 덩어리 = 불량 base 의 다이(in_container) 179 중 100 만 그림. =50 이면 claims 5180 · 다이 50
+>                        덩어리로 그리지 않은 다이를 안 넓혀서 아낀다(base 자신의 원자는 그대로 다 읽음). =200 은 안 됨 · =20 이면 2 걸음이고 base 의 measures 도
+>                        덩어리(33 중 20)라 값이 빠진다
 >    ⑤  ④ 표의 값 칸(리허설: pressure_MPa 의 불량 쪽 값)을 누르면 표 아래 트렌드 — 리허설 조각 5 점 · 걸은 점 둘이 크게(주황 Positive · 청록 Negative)
 >       · Load earlier / Load later 꺼짐 «Nothing earlier» · «Nothing later»(리허설 조각에 그 계측군 점이 5 개뿐) · 요청 한 번 0.077 s
 >       운영에서는 누른 쪽의 걸은 시각 근방 1,000 점이 먼저 오고, Load earlier / Load later 가 1,000 점씩 앞 · 뒤로 넓힌다
