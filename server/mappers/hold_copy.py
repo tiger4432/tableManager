@@ -8,7 +8,9 @@ the same way as one frame. Each row's columns land under that row's own layer
 `chain_ingestion (<row_id>)` with `origin_row_id`; one query per 1,000 keys counts, per key, the
 distinct value sets of `columns` among the source rows of that key. Exactly one is AGREED; none
 (every source row deleted) or two and more holds the row blank. The hold is one item per key in
-the same updates (one commit), under the plain chain layer - its blank is a chain write.
+the same updates (one commit), under the plain chain layer - its blank is a chain write. A row
+that blank leaves with only the chain's keys goes after the write (총괄 5eee501eb - the chain's
+write seat asks `cell_layer.shells`).
 
 Two rules call it. On the source table it copies and holds; on the target table (trigger =
 target, `source_table` named) it only recounts the hold - a source row deleted or moved to another key
@@ -67,31 +69,52 @@ def copy_rows_with_hold(db, payloads, rule=None):
 
 
 def _claims(db, source, keys, columns, batch_keys, exclude=()) -> dict:
-    """{key: distinct value sets of `columns` among `source`'s rows of that key} - one query. A row
-    with an `exclude` column filled is not a claim (총괄 016a766af) - the seat's own blank judgement
-    (`crud.blank_sql_condition`), compiled into this query."""
+    """{asked key: distinct value sets of `columns` among `source`'s rows of that key}. A row with an
+    `exclude` column filled is not a claim (총괄 016a766af) - the seat's own blank judgement
+    (`crud.blank_sql_condition`), compiled into this query.
+
+    The asked keys join a VALUES list (총괄 043915ab0 ②: the row `IN` was an OR chain the planner
+    answered with a scan of the whole table) - `=` for the keys with a value in every part, a second
+    query NULL-safe for the keys holding a NULL. Each VALUES row carries its key's place in
+    `batch_keys`, so the answer is keyed by the key ASKED, not by the database's spelling of it (a
+    text '3' asked of an integer column). VALUES columns are column1, column2 ... in PostgreSQL and
+    SQLite alike; in PostgreSQL each value is CAST to its column's type in the database (`_key_types`)
+    - a VALUES column takes its type from its values, and integer = text raised (19b975908)."""
     from mapper_sdk import sql
 
-    params, valued, nulled = {}, [], []
-    for n, key in enumerate(batch_keys):
-        for i, value in enumerate(key):
-            params["k%d_%d" % (n, i)] = value
-        if any(value is None for value in key):
-            nulled.append(" AND ".join('"%s" IS NOT DISTINCT FROM :k%d_%d' % (name, n, i)
-                                       for i, name in enumerate(keys)))
-        else:
-            valued.append("(%s)" % ", ".join(":k%d_%d" % (n, i) for i in range(len(keys))))
-    where = (["(%s) IN (%s)" % (", ".join('"%s"' % name for name in keys), ", ".join(valued))]
-             if valued else []) + ["(%s)" % clause for clause in nulled]
-    names = ", ".join('"%s"' % name for name in dict.fromkeys(keys + columns))
-    found = sql(db, 'SELECT %s, COUNT(*) AS n FROM (SELECT DISTINCT %s FROM "%s" WHERE (%s)%s) claims '
-                    'GROUP BY %s' % (", ".join('"%s"' % name for name in keys), names, source,
-                                     " OR ".join(where), _unexcluded(db, source, exclude),
-                                     ", ".join('"%s"' % name for name in keys)),
-                params)
-    found = found.astype(object).where(found.notna(), None)
-    return {tuple(record[name] for name in keys): int(record["n"])
-            for record in found.to_dict("records")}
+    table, types = '"%s"' % source, _key_types(db, source, keys)
+
+    def value(n, i, name):
+        return "CAST(:k%d_%d AS %s)" % (n, i, types[name]) if name in types else ":k%d_%d" % (n, i)
+
+    picked = ", ".join(['k.column1 AS "__asked"'] + ['%s."%s"' % (table, name) for name in columns])
+    claims = {}
+    for compare, group in (("=", [(n, key) for n, key in enumerate(batch_keys) if None not in key]),
+                           ("IS NOT DISTINCT FROM", [(n, key) for n, key in enumerate(batch_keys) if None in key])):
+        if not group:
+            continue
+        values = ", ".join("(%d, %s)" % (n, ", ".join(value(n, i, name) for i, name in enumerate(keys)))
+                           for n, _key in group)
+        on = " AND ".join('%s."%s" %s k.column%d' % (table, name, compare, i + 2) for i, name in enumerate(keys))
+        found = sql(db, 'SELECT "__asked", COUNT(*) AS "__claims" FROM (SELECT DISTINCT %s FROM %s JOIN (VALUES %s) AS k'
+                        ' ON %s WHERE 1 = 1%s) claims GROUP BY "__asked"'
+                        % (picked, table, values, on, _unexcluded(db, source, exclude)),
+                    {"k%d_%d" % (n, i): part for n, key in group for i, part in enumerate(key)})
+        claims.update({batch_keys[int(record["__asked"])]: int(record["__claims"]) for record in found.to_dict("records")})
+    return claims
+
+
+def _key_types(db, source, keys) -> dict:
+    """{key column: its type in the database} - PostgreSQL only. Elsewhere {}: SQLite compares by the
+    column's affinity, and a CAST to DATETIME there would read '2026-10-10 …' as 2026."""
+    if db.get_bind().dialect.name != "postgresql":
+        return {}
+    from mapper_sdk import sql
+
+    found = sql(db, "SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type FROM pg_attribute a"
+                    " WHERE a.attrelid = to_regclass(:t) AND a.attnum > 0 AND NOT a.attisdropped",
+                {"t": '"%s"' % source})
+    return {record["name"]: record["type"] for record in found.to_dict("records") if record["name"] in keys}
 
 
 def _unexcluded(db, source, exclude) -> str:

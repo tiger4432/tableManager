@@ -140,6 +140,16 @@
    null
   ],
   [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "idx_ledger_events_source_raw_ref_hash"
+   ]
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_events_source_raw_ref_hash ON ONLY ledger_events USING hash (source_raw_ref)",
+   null
+  ],
+  [
    "CREATE INDEX IF NOT EXISTS idx_ledger_source_event ON ledger_events (source_event_id, occurred_at, id) WHERE source_event_id IS NOT NULL",
    null
   ],
@@ -292,6 +302,12 @@
   [
    "CREATE INDEX IF NOT EXISTS idx_ledger_subject_entity ON ledger_events (subject_type, subject_keys)",
    null
+  ],
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "idx_ledger_events_source_raw_ref_hash"
+   ]
   ],
   [
    "SELECT to_regclass(%s) IS NOT NULL",

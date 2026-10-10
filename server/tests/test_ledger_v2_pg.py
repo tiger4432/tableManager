@@ -204,8 +204,18 @@ def pg_v2(tmp_path_factory):
         models.DYNAMIC_TABLES[RIGHT_TABLE] = RightModel
         store = LedgerStore(runtime, who="ledger-v2-stage6")
         store.ensure_schema()
-
         try:
+            # 🔴 THE BATCH RECEIPT IS WRITTEN ON THE ATOMS' CONNECTION, UNQUALIFIED (`runtime_v2._batch_receipt`):
+            #   with no audit_logs of its own the scratch path fell through to public - 3 rows in assy_test
+            #   public.audit_logs (총괄 10-10). Its own table, and asked that the name lands on it before anything
+            #   is written (`checkfirst=False`: public's is visible and would read as there).
+            with runtime.begin() as connection:
+                models.AuditLog.__table__.create(connection, checkfirst=False)
+                held_by = connection.execute(text(
+                    "SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                    " WHERE c.oid = to_regclass('audit_logs')")).scalar()
+            assert held_by == SCRATCH_SCHEMA, (
+                "audit_logs resolves to %r, not the scratch schema - the receipt would land there" % held_by)
             yield {
                 "admin": admin, "runtime": runtime, "compiled": compiled,
                 "store": store, "sessionmaker": sessionmaker(

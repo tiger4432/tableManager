@@ -1,9 +1,10 @@
 # 지금 돌리면 되는 것
 
-> ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 237d313db)**
+> ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 af8ef5701 -> 355ba2092)**
 >
 > ```
-> 리허설       운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러) 위에서 이 표의 명령을 순서대로 두 바퀴. 꼬인 dt_log 모양 220 행 —
+> 리허설       운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러). 소유자 코드(af8ef5701)로 꼬임을 만들고, ① 에서 355ba2092 로 pull 한 뒤
+>              이 표의 명령을 순서대로 두 바퀴. 꼬인 dt_log 모양 220 행 —
 >              한 칩 두 이벤트 10 · 좌표 빈 행 5 · 수동 잡 5 · 인벤토리 칸이 옛 chain_ingestion 층(틀린 값)에 덮임 · 옛 판 소스 원자 215
 >              초 = 명령이 돌아올 때까지(리허설 · 박스). 운영 크기의 초가 아니다. replay 의 «rows handed over» 뒤 체인이 쓰는 시간은
 >                   이 초 밖이다 — chain_worker.log 의 [ChainRule] rule=<규칙> … rows_in= 줄이 그 끝
@@ -26,38 +27,61 @@
 > ① git pull -> 서버 · 수집기 · 체인 워커 · 스케줄러 재기동                                   재기동 뒤 기다리는 사건 0
 >    볼 줄   chain_worker.log  [ChainRules] dt_inventory_core_xy: source_name 'dt_inventory' is written as chain_ingestion
 >            «인벤토리 식 규칙»이 맵퍼를 mapper_module · mapper_function 으로 적었으면 이 줄은 0 개(값은 ③ 에서 그래도 바로잡힘 · 237d313db)
-> ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.7 · 2.9 초
+>    기동 중 메인 화면 뱃지 «CHAIN: STARTING» · 그 title «starting: <단계>, N s» — 1 분 넘어도 그 단계 중이면 정상 (e032d526e)
+>            리허설: 단계 하나(ensure_human_claims_index)를 92 s 붙잡아도 내내 starting · foreign_beat 0
+>    기동 끝 chain_worker.log «[Chain] startup <합> s - <단계> <초> s · …» — 가장 긴 단계가 «왜 오래 걸렸나»의 답
+>    ⓪ 의 새 칸 재기동 때 체인 워커가 «starting: sync_dynamic_tables_schema» 단계에서 ALTER 한다. 그 표를 다른 연결이 쥐고 있으면 넘어간다:
+>            chain_worker.log «column '<칸>' was not added to '<표>' - another session held the table past 20s. Retried at the next start or config save»
+>            이 줄이 있으면 ⑤ 전에 체인 워커를 한 번 더 재기동 — 리허설(5b-2 40d94309b): 붙잡은 ALTER 가 칸 없이 넘어갔다(그 단계 36.1 s)
+> ①b 비어 버린 보류 다시 세기  python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply          2.2 · 2.9 초
+>    까닭    pull 전 코드는 원천 키 칸과 공식 표 키 칸의 형이 다르면 보류를 오류 없이 빈칸으로 덮었다(7a 5777da3c4 가 고침)
+>    답      source rows scanned : N · rows handed over : N (리허설 205) — 다시 세기 규칙마다, 그 규칙의 공식 표 전부
+>    뜻      리허설(공식 표 키 글자 · 로그 표 숫자): pull 전 agreed 0 -> 이 명령 뒤 39 = 같은 꼬임의 같은 형 세계 39 (03c31a6e6)
+>            이 표의 공식 표는 ⑥ 이 다시 채운다 — 이 줄은 ⑥ 을 안 돌리는 다른 공식 표에. 멈춤은 ③ 과 같다(안 쟀다)
+> ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.8 · 2.7 초
 >    답      «No waiting withdrawal event goes row by row - 0 row(s)» 면 접을 것 없음
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
-> ③ 좌표 바로잡기             python scripts/chain_replay_cli.py replay «인벤토리 식 규칙»   -> --apply          2.4 · 3.6 초
+> ③ 좌표 바로잡기             python scripts/chain_replay_cli.py replay «인벤토리 식 규칙»   -> --apply          2.3 · 3.0 초
 >    답      미리보기 source rows scanned : 220 · 실행 rows handed over : 220
 >    뜻      core x,y 가 chain_ingestion 자리에 새 값 — 맞는 행 43 -> 215 / 215
 >            공식 표는 이 단계에서 안 움직인다(보류 agreed 39 -> 39) — 스크립트 replay 는 연쇄하지 않는다(소유자 09-26). ⑥ 이 그 일
 >    멈춤    소급 탭 실행 목록의 Cancel(10-08 «일 하나를 끈다») — 이 리허설에서는 안 쟀다
-> ④ (골라서) 옛 층 이름 거두기  python scripts/chain_replay_cli.py withdraw «로그 표» «옛 층 이름» --columns core_x,core_y   -> --apply    1.7 · 2.4 초
+> ④ (골라서) 옛 층 이름 거두기  python scripts/chain_replay_cli.py withdraw «로그 표» «옛 층 이름» --columns core_x,core_y   -> --apply    1.6 · 2.3 초
 >    답      칸마다 «(now from 'chain_ingestion'; remaining ['chain_ingestion'])» — 보이는 값은 그대로
 >    멈춤    안 쟀다
-> ⑤ 접기 표시                 python scripts/chain_replay_cli.py fold-rows «로그 표» --keys «공식 표 키 칸» --order «고를 칸» --mark-column fold_mark --only-column «범위 칸» --only-text «범위 글자»   -> --apply    2.8 · 3.9 초
+> ⑤ 접기 표시                 python scripts/chain_replay_cli.py fold-rows «로그 표» --keys «공식 표 키 칸» --order «고를 칸» --mark-column fold_mark --only-column «범위 칸» --only-text «범위 글자»   -> --apply    2.2 · 3.0 초
 >    답      미리보기 «10 row(s) are marked, 210 stay» · 키 칸 빈 행 5 그대로 / 실행 «10 of 10 row(s) marked» · 범위 밖 5 그대로
 >    뜻      지운 행 0 — 표시된 행은 «복사 규칙»이 안 받고, 그 행이 먹인 층을 거둔다(보류 agreed 39 -> 45)
 >    되돌리기 fold_mark 칸을 비운다 · 멈춤 안 쟀다
-> ⑥ 복사 replay               python scripts/chain_replay_cli.py replay «복사 규칙»          -> --apply          2.4 · 3.2 초
+> ⑥ 복사 replay               python scripts/chain_replay_cli.py replay «복사 규칙»          -> --apply          2.1 · 2.8 초
 >    답      source rows scanned : 220 (표시된 행 포함 — 규칙이 거른다)
 >    뜻      공식 표 보류 agreed 45 -> 205 · 껍데기 행 82 -> 0 · 공식 표 소스 원자 6 -> 205
 >            일부 행만이면 --business-keys <«로그 표» 키,…> (표 키가 여러 칸이면 --row-ids)
 >    멈춤    ③ 과 같음 — 안 쟀다
-> ⑦ 옛 판 소스 거두기          python -m ledger.backfill --source «옛 판 소스» --whole-source   -> --apply          2.2 · 3.0 초
+> ⑦ 남은 껍데기 쓸기           python scripts/chain_replay_cli.py remove-shells «공식 표»      -> --apply          1.5 · 2.4 초
+>    답      «N row(s) of '«공식 표»' show nothing outside their keys; M of them have only the chain's key layers left» — M 이 지울 수
+>    뜻      리허설: ① 직후 미리보기 M 82 · ⑥ 뒤 M 0(⑥ 이 다시 채움) · 실행 «0 of 0 row(s) deleted»
+>            ⑥ 앞에서 쓸면 82 행을 지우고 ⑥ 이 다시 만든다(공식 표 123 -> 205 · 껍데기 판) — 그래서 ⑥ 뒤
+>            그 뒤로는 체인이 지운다 — 그리드에서 원천 행을 지우면 그 공식 행이 «[ChainShell] table=official_dt rows_deleted=1 - only the chain's keys were left» 와 함께 사라지고
+>            사람이 적은 칸이 있는 행은 남는다 · 소급 탭 «Remove rows with no source left» 의 count 가 이 미리보기와 같은 수(82)
+>    멈춤    소급 탭 × — 쪽 사이(95cffa5af)
+> ⑦b 원장 ref 인덱스           python scripts/build_ledger_ref_index.py                       -> --apply          1.0 · 1.1 초
+>    답      미리보기 «ledger_events: 0 partition(s) built, 0 attached as they were, 0 already had it, 1 would be built, 0 attached as they are (add --apply) - the parent index is not valid yet» -> 실행 «ledger_events: 1 partition(s) built, 0 attached as they were, 0 already had it - the parent index is valid» · 다시 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid»
+>            pull 전에 같은 이름을 SQL 로 지어 둔 원장도 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid» — 다시 안 짓는다 (7b e8baa5243)
+>    뜻      ⑧ · ⑨ 의 로그 «idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page». 없으면 50,000 장에 이 명령을 대는 줄(RUN.md 7b 절)
+>    멈춤    안 쟀다 — 파티션마다 CONCURRENTLY 라 쓰기를 안 막는다(RUN.md 7b 절)
+> ⑧ 옛 판 소스 거두기          python -m ledger.backfill --source «옛 판 소스» --whole-source   -> --apply          1.9 · 2.8 초
 >    답      미리보기 relation_rows None(= 선언에 없는 이름) · stale_atoms 215 / 실행 stale_withdrawn 215
 >    뜻      같은 코어 다이에 transfer 둘 123 -> 0
 >            relation_rows 가 None 이 아니라 수면 ⓪ 에서 «옛 판 소스»를 sources 에서 안 뺀 것 — 그때 --apply 는 거두지 않고 다시 번역한다
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
-> ⑧ 공식 표 소스 다시 번역      python -m ledger.backfill --source «공식 표 소스» --whole-source   -> --apply        2.1 · 3.5 초
+> ⑨ 공식 표 소스 다시 번역      python -m ledger.backfill --source «공식 표 소스» --whole-source   -> --apply        2.0 · 3.1 초
 >    답      미리보기 relation_rows 205 · stale_atoms 0 / 실행 «rows 205, withdrawn 205, written 205 of 205»
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
 > 끝 상태      transfer 원자 205 = 기대 205 · 같은 코어 다이에 transfer 둘 0(처음 84) · 옛 판 원자 0 · 보류 agreed 205 · 껍데기 0
-> 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ «0 row(s) are marked» · ⑦ stale_atoms 0 · ⑧ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
->              replay 미리보기의 scanned 와 ⑧ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
-> 착지 뒤 채움  구현자 3 껍데기 행 지우기 · 5 SLOT_POOL · 6 표 선언 인덱스(idx_dt_log_dt_wafer_id 는 «이미 있음») · 7 VALUES CAST · 원장 해시 인덱스
+> 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ «0 row(s) are marked» · ⑦ M 0 · ⑧ stale_atoms 0 · ⑨ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
+>              replay 미리보기의 scanned 와 ⑨ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
+> 착지 뒤 채움  없음 — 6 표 선언 인덱스는 시연 뒤(총괄 f9ebc82ea)
 > ```
 >
 > ### 시연 선언 (월 10-12) — 위 셋업이 끝난 뒤
@@ -76,7 +100,9 @@
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 걸린 초)
 >    ①  Type wafer · 키 «불량» · follow 비움 · Collect wafer · node_limit 1000 -> Walk       -> «Starts + 불량» · 노드 31        0.727 s
 >       키 «양품» -> Ctrl+Shift+Walk                                                         -> «Starts + 불량 · − 양품» · wafer 32   0.807 s
->    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30
+>    ②  같은 표의 깊이 3 = 불량 base 가 본딩으로 받은 코어 웨이퍼 30   (016707766 에서 다시 걸음: 30 · 0.775 s)
+>        누르기로는 안 닿는다(박스 선언) — Route to wafer «wafer → die → wafer · in_container» + «↻ transfer» 는 wafer 1 개(base 뿐).
+>        transfer 의 끝은 운반 자리(DTLotSlot) 141 개뿐 · 코어 웨이퍼는 bonded_from 으로 닿는데 follow 목록에 bonded_from 이 없다 — 운영 판 못 봤다
 >    ③  세상 칩 default + «모델 세상 1» -> 같은 폼 · 같은 시작으로 다시 걷는다 · 6 걸음 · 노드 80                       0.996 s
 >    ④  Compare · ROWS quantity · EDGE measures · VALUE value -> 행 48 · 두 쪽 값 3 · 불량 쪽만 22 · 둘 다 missing 18      1.061 · 1.888 · 1.394 s
 >       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 «둘 다 missing» 이 된다
@@ -87,6 +113,74 @@
 >
 > ---
 >
+> ## [10-10] **원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 안 읽게 (총괄 7b) — 이주 «없음» · 재기동 «체인 워커» · 스크립트 한 번**
+>
+> ```
+> 순서        pull -> 체인 워커 재기동(부모 인덱스를 메타데이터로만 만듦)
+>             python server/scripts/build_ledger_ref_index.py              미리보기 — 파티션마다 «already» 또는 «would build»
+>             python server/scripts/build_ledger_ref_index.py --apply      파티션마다 CONCURRENTLY 로 만들고 붙임 · 쓰기를 안 막음
+>             ⚠️ 거두기(--whole-source) «앞»에 — 그래야 한 장이 1,000 ref 로 인덱스를 탄다
+> 끝 줄 뜻     <원장>: N partition(s) built, A attached as they were, M already had it - the parent index is valid       <- 이것이면 끝
+>             ... is not valid yet   <- 안 붙은 파티션이 남음. --apply 를 다시 (이미 된 것은 건너뜀)
+> 소유자 SQL   10-09 에 드린 SQL 을 일부 돌렸어도 됨 — 붙은 파티션은 already, 만들어 두고 안 붙인 <파티션>_ref_hash 는 붙이기만
+> 거두기 로그  [Ledger] <원장>.idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page
+>             ... missing or not valid - 50000 refs a page, each reads the whole ledger; build it: python server/scripts/build_ledger_ref_index.py --apply --world <세계>
+> 급할 때      DROP INDEX idx_ledger_events_source_raw_ref_hash (부모를 지우면 파티션 것도 같이) — 거두기는 50,000 장으로 돌아감
+>             되돌리기 git revert <이 커밋> -> 체인 워커 재기동
+> ```
+>
+> ---
+>
+> ## [10-10] **복사 규칙의 보류 세기 — 키 칸 형이 표마다 달라도 맞게 (총괄 7a) — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 순서        pull -> 체인 워커 재기동
+> 볼 것       원천 키 칸 형과 공식 표 키 칸 형이 다른 곳(예: 원천 integer · 공식 text)의 보류 칸
+>             전: 다시 세기가 오류 없이 보류를 빈칸으로 덮음  ·  후: agreed
+>             이미 빈칸으로 덮인 보류는 복사 규칙 replay 로 다시 셈(일요일 표의 복사 replay 단계가 그것)
+> 로그        chain_worker.log [ChainRule] rule=<다시 세기 규칙> ... error=None
+>             error 에 「integer = text」 가 보이면 이 착지 전 코드(또는 되돌린 VALUES)가 도는 것
+> 급할 때      git revert <이 커밋> -> 체인 워커 재기동 (형이 다른 키의 보류가 다시 빈칸이 됨)
+> ```
+>
+> ---
+>
+> ## [10-10] **체인 워커 기동 중엔 /health 가 «starting: <단계>, N s» — 1 분 넘는 기동이 foreign_beat 로 안 읽힌다 (총괄 bdb356d3f 5b) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 순서        pull -> 체인 워커 · 서버 재기동 (서버는 /health 판정이 바뀌어서)
+> 기동 중      /health  checks.workers.chain  status starting · detail "starting: <단계>, <N>s"  (CHAIN 뱃지 title 도 같은 문장)
+>             단계 이름은 함수 이름(앞 _ · 끝 _sync 뗌). 전부는 기동 끝 줄이 댄다
+> 기동 끝      chain_worker.log  [Chain] startup <합> s - <단계> <초> s · ...   <- 「왜 1분이나 걸려」의 답 = 초가 가장 큰 단계
+> 뜻          60 s 를 넘어도 그 단계 중이면 starting. 같은 단계의 N 이 계속 늘면 그 단계가 막힌 것(DDL 이면 앞선 질의 뒤)
+>             스키마 동기화(설정에 새 칸이 있을 때 ALTER TABLE)도 단계 — starting: sync_dynamic_tables_schema (5b-2)
+>             foreign_beat 는 이제 감독자가 띄우지 않은 pid 의 박동 — 둘째 체인 워커를 찾는다(첫 박동 앞엔 import 만)
+> 둘째 워커    살아 있는 다른 루프의 박동이 있으면 보정 «전»에 물러난다: [Chain Worker] NOT starting: another chain loop is already running (pid ...)
+> 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동
+> ```
+>
+> ---
+>
+> ## [10-09] **출처가 하나도 안 남은 행은 행째 지운다 — 체인 키만 남은 «껍데기» (총괄 5eee501eb · 판정 ㄱ) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 순서        ① pull -> 체인 워커 · 서버 재기동
+>            ② 이미 쌓인 껍데기 — 둘 중 하나
+>               미리보기  python server/scripts/chain_replay_cli.py remove-shells <공식 표>
+>               실행      같은 명령 + --apply   (소급 탭 «Remove rows with no source left» 와 같은 일)
+>               또는 공식 표를 비우고 다시 채우기(일요일 순서) — 그러면 쓸기가 필요 없다
+> 미리보기 뜻   N row(s) of '<표>' show nothing outside their keys; M of them have only the chain's key layers left
+>              M 이 지울 수. N - M 은 사람 · 파일이 키를 썼거나 사람 층(빈 값 포함)이 있어 남는다
+> 껍데기란      키 칸 밖에 값 있는 층 0(체인이 쓴 빈 칸은 없는 것으로) · 키 칸 층은 체인 것뿐 · 사람 층 0(빈 값이어도)
+>              그리고 화면에 키 밖 값이 없음
+> 그 뒤로       회수와 다시 세기 뒤 그런 행이 되면 체인이 그 쓰기 바로 뒤 지운다
+>              chain_worker.log  [ChainShell] table=<표> rows_deleted=N - only the chain's keys were left
+>              지운 행마다 이력 한 줄(updated_by chain_shell_rows) · 원장은 그 행의 원자를 거둔다 · 그 삭제는 어떤 규칙도 안 깨운다
+> 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 지운 행은 원본을 다시 넣으면 다시 생긴다)
+> ```
+
+---
+
 > ## [10-09] **맵퍼가 쓰는 층 이름은 chain_ingestion 하나 — 체인 출력이 옛 체인 층에 덮이던 것 (총괄 09f3cd289 ①) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```
@@ -3153,6 +3247,7 @@
 > 리로드         설정 저장(리로드)마다 인덱스 작업이 다시 돎 — 전에는 기동 때만 돌았음(주석은 「리로드마다」라 적혀 있었음)
 > foreign_beat   이 착지 뒤엔 인덱스 작업 때문에는 안 생김(첫 박동이 먼저). 그래도 보이면 첫 박동 앞에 남은 것:
 >                import 때 스키마 동기화(run_chain_worker.py · 설정에 새 컬럼이 있을 때 ALTER TABLE · 시한 없음) — 소유자 물음으로 올라가 있음
+>                -> 10-10 5b-2: 기동 단계가 됨(첫 박동 뒤, starting: sync_dynamic_tables_schema). 시한은 09-27 부터 있음 — ALTER 마다 DDL_LOCK_TIMEOUT(3c26854c3 · a696ee4e8)
 > 시한 값        server/db_safety.py 의 DDL_LOCK_TIMEOUT = "20s" — 원장 파티션 DDL 과 같은 상수 하나
 > 스위치         없음. 되돌리기는 git revert 뒤 체인 워커 재기동
 > ```
@@ -3296,7 +3391,7 @@
 > 남은 쿼리    체인 워커가 기동할 때 «이미 없는» 이전 체인 워커의 연결(이름 assy_chain · 이 프로세스보다 먼저 열림)을 끊고 하나마다 한 줄
 >             assy_retroactive · 스크립트 · 다른 프로세스 이름은 안 건드림. 다른 체인 루프가 살아 있으면 아무것도 안 끊음
 >             ⚠️ 이 착지 «뒤 첫 재기동»에는 못 끊음 — 이전 코드의 연결은 이름이 없음(diagnose 의 app=-). 두 번째 재기동부터 스스로 풂
-> foreign_beat 박동 파일의 pid 가 감독자가 띄운 pid 가 아님 — 새 워커가 첫 박동 전에 막혀 있고(기동 인덱스 작업이 남은 쿼리 뒤에서 기다림) 파일엔 옛 pid 가 남은 것
+> foreign_beat 박동 파일의 pid 가 감독자가 띄운 pid 가 아님 — 새 워커가 첫 박동 전에 막혀 있고(기동 인덱스 작업이 남은 쿼리 뒤에서 기다림) 파일엔 옛 pid 가 남은 것 — 10-10 뒤로 기동 보정 · 스키마 동기화는 starting 으로 읽힌다(10-10 절)
 > 워처 청크 줄  " | blocked by pid N: …" 가 " | waiting Lock:… on pid N (<이름>, <state> <시간>): …" 로 바뀜 — 같은 함수의 문장
 > 스위치      없음(로그 · health 문장만). 멈춤 문턱은 워처와 같은 300 s
 > 되돌리기    git revert 뒤 네 프로세스 재기동

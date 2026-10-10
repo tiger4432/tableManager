@@ -112,8 +112,9 @@ def test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row(world, monke
     assert (deleted, [len(p.get("row_ids") or ()) for p in staged]) == (1000, [1000, 1000])
     calls.clear()
     hw.settle(world)
-    # the two above and the recount's write; with the DELETE, 4 - ca0d23b08 measured 1,003, 1,000 one row each
-    assert calls == [(hw.OFFICIAL, "EDIT", 1000)] * 3, calls
+    # the two above and the recount's write; with the DELETE, 4 - ca0d23b08 measured 1,003, 1,000 one row each.
+    # And the rows the recount left with only the chain's keys go, one collapsed DELETE (총괄 5eee501eb)
+    assert calls == [(hw.OFFICIAL, "EDIT", 1000)] * 3 + [(hw.OFFICIAL, "DELETE", 1000)], calls
 
 
 # ------------------------------------------------------------------ ② the queued ones fold

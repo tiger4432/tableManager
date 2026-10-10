@@ -77644,3 +77644,474 @@ source_name 을 안 적은 맵퍼 칸은 기본값 user(사람 층, 순위 0)로
       그래서 updated_by 를 안 적은 맵퍼 칸이 남긴 층은 이 길로 못 풉니다
    짓기 전에 운영에서 먼저 셀 것: ② 와 같은 읽기 질의(쓴이별 user 층 수)를 소유자 서버에서 — 0 이면 지을 까닭이 없습니다
 ```
+
+---
+
+## [10-10 새벽] 껍데기 행 착지 — 회수와 다시 세기 뒤 키만 남은 행은 지운다 · 쓸기 · S-158 넓힘 — `95cffa5af` (총괄 5eee501eb · 판정 ㄱ ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: SQLite 메모리 · PG 는 pg_engine 스크래치. 진짜 프로세스: assy_test 의 스크래치 assy_impl_shell_1010(dropped schema assy_impl_shell_1010 (64 tables) - left 0). EXPLAIN 재기: 스크래치 assy_impl_auditplan_1009(끝에 지움) · 이 박스 assy_manager 는 읽기 전용. public — public relations 325 -> 325 · added [] · gone [] · rows changed {}
+체인 워커 차례 — 응용 레인에 «N 분» 알리고 띄웠고 끝에 «내림». 이번 판 끊김 0 · «못 읽음» 미룸 0
+
+### 진짜 따로 띄운 프로세스 — 재기동한 체인 워커 + 슬롯, 소유자 CLI · 그리드 삭제 문
+
+```
+선언    hc_copy(on.exclude fold_mark) · hc_recount · 원장 소스 hc_official(보류 빈 행은 안 읽음) — hold 세상 그대로
+전      원본 A (J1,1,2) 7 · B (J1,3,4) 9 · C (J1,5,6) 11 이 기다림 + 이미 쌓인 껍데기 둘 (J0,8,1) (J0,8,2)
+워커    {'J0,8,1': (None, ''), 'J0,8,2': (None, ''), 'J1,1,2': (7.0, 'agreed'), 'J1,3,4': (9.0, 'agreed'), 'J1,5,6': (11.0, 'agreed')} · 원장 원자 3
+쓸기    remove-shells hc_official
+           2 row(s) of 'hc_official' show nothing outside their keys; 2 of them have only the chain's key layers left - no value, no person's layer - and go as a …
+        + --apply   remove-shells 'hc_official': 2 of 2 row(s) deleted in 1 page(s)
+        다시        0 row(s) of 'hc_official' show nothing outside their keys; 0 …
+그리드 삭제 A  grid delete of A: 1 row(s) (crud.delete_rows_batch — batch_delete 라우트가 부르는 문)
+        뒤 {'J1,3,4': (9.0, 'agreed'), 'J1,5,6': (11.0, 'agreed')} · 이력 3 · 원자 2 · 기다림 0
+접기 표시  fold-rows hc_log --keys dt_job --order log_id --mark-column fold_mark --apply  (C 는 (J1,5,6) 의 유일한 행)
+           fold-rows 'hc_log': 1 of 1 row(s) marked in 1 page(s), 1 key(s), 0 row(s) with a blank key part left as they are
+        뒤 {'J1,3,4': (9.0, 'agreed')} · 이력 4 · 원자 1 · 기다림 0
+워커 줄
+   [Chain] slot 1 started, pid 816
+   [Chain] slot 2 started, pid 22752
+   [ChainRetract] table=hc_log deleted_rows=1 groups=1 cells_withdrawn=4 protected_skipped=0 rows_told=1
+   [slot 1 pid 816] [ChainShell] table=hc_official rows_deleted=1 - only the chain's keys were left
+   [slot 1 pid 816] [Chain] hc_copy: 1 row(s) not handed over - excluding column(s) filled: fold_mark=1
+   [slot 1 pid 816] [ChainRetract] table=hc_log edited_rows=1 groups=1 cells_withdrawn=4 protected_skipped=0 rows_told=1
+   [slot 1 pid 816] [ChainShell] table=hc_official rows_deleted=1 - only the chain's keys were left
+```
+
+### 게이트 · 변이 · 실행
+
+```
+PG     test_a_row_left_with_only_the_chains_keys_is_deleted  5 passed
+       ① 원본 다 지움 -> 행 지워짐 · 이력 한 줄 · 원장 0 · 그 DELETE 는 규칙 안 깨움 · 삭제 뒤 규칙 실행 0
+       ② 사람 층(비운 칸 하나뿐 — 카나리아로 확인)이면 남음 ③ 다른 원본이 주장하면 남음
+       ④ 접기 표시가 키의 유일한 행 -> 그 행 지워짐 ⑤ 쓸기 미리보기 = 지운 수 · 다시 0 ⑥ 사람 · 파일이 키를 썼거나 값이 있으면 남음
+SQLite test_an_event_naming_only_deleted_rows_has_nothing_to_do  5 passed — 지우는 문 셋(그리드 삭제 · map purge · 작업 단위 회수)마다
+       지운 행만 가리킨 사건 -> SUCCESS · 규칙 호출 0 / 이력 없이 못 읽는 행 -> rows_not_visible(전처럼) / 규칙이 키만 쓴 행은 안 물음
+SQLite 바뀐 자리(워커 · cell_layer · replay · retroactive · CLI)를 import 하는 파일  1 failed, 2451 passed, 2 skipped, 165 deselected  빨강 ['test_the_repo_root_is_one_above_it'] (워크트리 환경)
+PG     같은 기준의 PG 파일(원장을 짓는 파일 먼저) 3 failed, 162 passed, 180 deselected
+       빨강 ['test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid[batch]', 'test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid[one_row]', 'test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row']
+       -> 둘 다 옛 동작(«원본이 다 지워진 키는 보류로 남는다» · 1,000 행 회수의 사건 목록)을 단언 — 새 동작으로 고친 뒤 두 파일 28 passed
+```
+변이 (md5 전후 비교)
+```
+BASELINE lite 5 passed · pg 5 passed
+MUTANT the history judgement gone         lite 3 failed, 2 passed · pg 1 failed, 4 passed
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the grid's delete]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the map purge]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the job retraction]
+    FAILED test_1_every_source_gone_the_official_row_goes
+MUTANT gone-only events still handed      lite 3 failed, 2 passed · pg 1 failed, 4 passed
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the grid's delete]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the map purge]
+    FAILED test_an_event_naming_only_rows_a_door_deleted_succeeds_with_nothing_to_do[the job retraction]
+    FAILED test_1_every_source_gone_the_official_row_goes
+MUTANT a person's layer not asked         lite 5 passed · pg 2 failed, 3 passed
+    FAILED test_2_a_persons_layer_even_one_that_emptied_a_cell_keeps_the_row
+    FAILED test_5_and_6_the_sweep_takes_the_shells_already_there_and_nothing_a_person_or_a_file_keyed
+MUTANT key layers' writer not asked       lite 5 passed · pg 1 failed, 4 passed
+    FAILED test_5_and_6_the_sweep_takes_the_shells_already_there_and_nothing_a_person_or_a_file_keyed
+MUTANT the seat deletes nothing           lite 5 passed · pg 2 failed, 3 passed
+    FAILED test_1_every_source_gone_the_official_row_goes
+    FAILED test_4_the_fold_marked_the_only_row_of_a_key_and_that_official_row_goes
+MUTANT the seat asks every changed row    lite 1 failed, 4 passed · pg 5 passed
+    FAILED test_a_row_a_rule_only_keyed_is_not_asked
+MD5 AFTER  same
+```
+
+### S-158 넓힘 — 판정과 EXPLAIN
+
+```
+판정   이름 댄 행 중 삭제 이력 줄(audit_logs column_name='DELETE')이 있으면 «없어짐». 행이 다 없어진 사건은 묶음에서 빠짐
+       이력 없이 못 읽는 행은 전처럼 거절 · 미룸. 좁힌 것은 이력 있는 행뿐(커밋에 S-158 인용)
+질의   crud.deleted_rows — (table_name, row_id IN …, column_name) 1,000 개씩
+이 박스(assy_manager, 읽기 전용) table dt_log · deletion lines on it 72231 · asked 1000 ids · found 1000
+   Unique  (actual time=2.848..5.104 rows=1000.00 loops=1)
+   ->  Index Scan using ix_audit_logs_row_id on audit_logs  (actual time=2.845..4.921 rows=1000.00 loops=1)
+   Execution Time: 5.153 ms
+   이 박스에는 idx_audit_row_history 가 없음(models 는 선언 · 운영은 add_audit_history_keyset_indexes.sql)
+선언 인덱스가 다 있는 스크래치(20만 줄) asked 1000 ids of t3 · found 334
+   Unique  (actual time=10.301..10.384 rows=334.00 loops=1)
+   ->  Sort  (actual time=10.299..10.312 rows=334.00 loops=1)
+   ->  Bitmap Heap Scan on audit_logs  (actual time=8.766..9.665 rows=334.00 loops=1)
+   ->  BitmapAnd  (actual time=8.645..8.646 rows=0.00 loops=1)
+   ->  Bitmap Index Scan on ix_audit_logs_table_name  (actual time=0.143..0.143 rows=1000.00 loops=1)
+   ->  Bitmap Index Scan on ix_audit_logs_row_id  (actual time=8.479..8.479 rows=1000.00 loops=1)
+   Execution Time: 10.432 ms
+   둘 다 idx_audit_row_history 를 고르지 않았습니다 — 플래너가 row_id 인덱스(와 table_name 인덱스)를 골랐고 1,000 개에 수 ms
+```
+
+### 🔴 체인 워커 충돌 (총괄께 알린 것)
+
+```
+체인 워커는 뜰 때 같은 DB 의 assy_chain · assy_chainslot* 이전 연결을 다 끊고, 죽은 슬롯 이름의 연결도 DB 전체에서 끊습니다
+10-10 00:12~00:18 제 스크래치 워커와 응용 레인 스택이 서로의 슬롯을 끊었습니다(제 슬롯 두 번 «server closed the connection»)
+판정 ① — 레인 사이 차례(알림 · 내림). 이번 증명은 그 규칙대로 돌렸습니다
+21:08(접기 표시) · 22:57(층 이름) 증명은 그때 다른 스택이 같은 DB 에 있었는지 안 쟀습니다 — 결과(층 4 -> 0 · agreed · x=a2!)는 그대로 둡니다
+```
+
+### 관찰 둘 (짓지 않음)
+
+```
+① 껍데기가 지워질 때마다 «[ChainRetract] hc_recount: 「mapper」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다» 경고 한 줄
+   다시 세기는 자기 표(지워진 그 행)에 쓰므로 그 칸은 행과 같이 갑니다 — 이 경우엔 맞지 않는 경고로 보입니다. 이번 증명에서 3 번
+② 쓸기 미리보기가 0 행일 때도 «Cannot be undone» 문장이 붙습니다
+```
+
+### 다음
+
+/admin/outbox/failed 500(dc220ed10) -> SLOT_POOL · foreign_beat -> 표 선언 인덱스 -> VALUES CAST -> 원장 해시 인덱스
+
+---
+
+## [10-10 새벽] /admin/outbox/failed 500 — 원인은 이 박스 DB 의 이주 누락 (총괄 dc220ed10) — 짓지 않고 잼
+
+어느 DB · 어느 스키마 · 지운 것 — 이 박스 assy_manager, 모든 연결 읽기 전용(default_transaction_read_only) · 쓴 것 0 · 지운 것 0
+
+```
+재기    지금 코드(wt-impl = origin/main)로 그 라우트를 시험 클라이언트로 부름(관리자 의존성만 시험처럼 덮음 — 토큰 안 씀)
+        -> psycopg2.errors.UndefinedColumn: 오류:  database_outbox.ledger_state 칼럼 없음
+박스의 500  server.log 의 500 줄 4 개 — 모두 testserver(다른 레인의 시험 클라이언트)
+        2026-10-09 14:22:36  http://testserver/admin/outbox/failed?page=1&limit=3&tz=Asia%2FSeoul
+        2026-10-09 15:15:01  http://testserver/admin/outbox/failed?page=1&limit=3&tz=Asia%2FSeoul
+        2026-10-09 22:58:50  http://testserver/admin/outbox/failed?page=1&limit=1&tz=Asia%2FSeoul
+        2026-10-09 23:24:56  http://testserver/admin/outbox/failed?page=1&limit=1&tz=Asia%2FSeoul
+까닭    ledger_state 는 3bce75e88 2026-10-02 21:59:57 +0900 에 모델에 들어옴 — 기존 DB 는 migrations/add_outbox_ledger_state.py --apply(앱을 멈추고)
+        그 스크립트의 보고 모드(읽기 전용): server_version=18.3 · column=ledger_state exists=False · index=idx_outbox_ledger_pending valid=None
+        이 박스의 운영 프로세스 기동 시각 — pid 8652 2026-09-30 10:37:16 / pid 12020 2026-09-30 10:37:14 / pid 35736 2026-09-30 10:37:11 / pid 37840 2026-09-30 10:37:16  (그 칸을 모르는 코드라 멀쩡)
+전수    모델 표 13 개를 이 박스 DB 와 대조 — 빠진 칸 {'database_outbox': ['ledger_state']} · 없는 표 ['auth_api_keys', 'auth_login_states', 'auth_sessions'](서버가 뜰 때 create_all 이 만듦)
+        의심했던 오늘의 칸(cancelled_columns · broadcast_at · chain_state_of)은 원인 아님
+위험    지금 코드로 다시 뜨는 프로세스는 이 이주 없이 DatabaseOutbox 를 읽는 모든 자리에서 같은 오류(서버 라우트 · 체인 워커)
+여쭌 것 ① 이 박스 DB 에 이주 적용(운영 프로세스를 멈춰야 함 — 제 몫 아님) ② 일요일 명령표에 소유자 DB 보고 모드 한 줄
+        ③ 기동 때 «모델 칸이 DB 에 없음»을 이름 대어 말하기(짓지 않음)
+총괄 답  ① 적용 안 함(소유자 몫) — 이 항목은 «코드 결함 아님 · 이 박스 DB 에 이주 안 돎»으로 닫힘
+        ② 안 넣음 — 소유자 쪽은 10-02 뒤 코드의 체인 워커가 아웃박스를 읽으며 돌고 있음(소유자 10-09) ③ 시연 뒤 후보
+        덧: idx_audit_row_history 를 억지로 태우지 않음(껍데기 행 EXPLAIN)
+```
+
+---
+
+## [10-10 새벽] SLOT_POOL — 묶음 하나에서 풀 한도까지 기다린 체크아웃 0 — 짓지 않고 수만 (총괄 bdb356d3f 5a)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 스크래치 assy_impl_pool_1010(판마다 새로 만들고 지움: 2+2 「dropped schema assy_impl_pool_1010 (21 tables) - left 0」 · 5+5 「dropped schema assy_impl_pool_1010 (21 tables) - left 0」) · public 쓴 것 0(아래 «떠돈 워커» 포함)
+코드 84a35f0bd(wt-impl). 판마다 진짜 따로 띄운 `run_chain_worker.py` + 그 슬롯 두 프로세스. 응용 레인께 차례를 알리고 돌림 · 끝나고 «내림»
+
+```
+모양    원천 표 하나(hc_log) 2,000 행을 사람 한 번의 쓰기로 -> 묶음 하나
+        규칙 넷: 복사(copy_rows_with_hold) · 그 다시 세기 · 선언 조인 · DB 를 읽는 맵퍼(스크래치 맵퍼, 끝나고 지움)
+계기    모든 QueuePool 체크아웃을 잼(스크래치 sitecustomize — 제품 파일 안 고침). 0.05 s 이상 걸린 것 + 동시에 쥔 수의 최고
+        슬롯의 풀만 바꿈(5+5 판은 그 프로세스의 ASSY_DB_POOL_SIZE/MAX_OVERFLOW 만)
+끝 상태  2+2 {'waiting': 0, 'official': 2000, 'lot_seen': 2000, 'seen': 2000, 'failed': 0}
+        5+5 {'waiting': 0, 'official': 2000, 'lot_seen': 2000, 'seen': 2000, 'failed': 0}
+```
+
+| | 2+2 (지금 값) | 5+5 |
+|---|---|---|
+| 슬롯 풀 | ['2+2'] · 슬롯 2 | ['5+5'] · 슬롯 2 |
+| 슬롯이 동시에 쥔 연결 최고 | 2 | 2 |
+| 0.05 s 이상 걸린 체크아웃(워커+슬롯) | 8 (0.08~0.46 s) | 8 (0.09~0.22 s) |
+| 그중 풀 한도에서 기다린 것 | 0 | 0 |
+| 워커 본체 풀 · 최고 | ['20+10'] · 4 | ['20+10'] · 4 |
+
+```
+묶음 초  [Latency] 줄의 mapper 칸(규칙 + 쓰기)
+        2+2  slot 1 mapper 6656 ms notify 8406 ms · slot 2 mapper 1234 ms notify 2313 ms
+        5+5  slot 1 mapper 6969 ms notify 8422 ms · slot 2 mapper 1422 ms notify 2360 ms
+        첫 판(제품 값 그대로 2+2, 계기 앞 버전) slot 1 mapper 6782 ms notify 8406 ms · slot 2 mapper 1156 ms notify 2359 ms
+규칙 초  2+2  pp_copy 0.41s · pp_join 0.01s · pp_join:target 0.11s · pp_reader 0.11s · pp_recount 0.42s
+        5+5  pp_copy 0.44s · pp_join 0.00s · pp_join:target 0.12s · pp_reader 0.12s · pp_recount 0.44s
+판정    풀 한도에서 기다린 체크아웃 0 — 지시대로 SLOT_POOL 은 짓지 않음
+        슬롯은 이 묶음 동안 연결을 «2 개»까지만 동시에 쥠 — 풀을 넓혀도 같은 수, 묶음 초도 같은 범위
+        0.05 s 넘은 체크아웃은 모두 한도 «아래» = 새 연결을 여는 시간. 같은 계기를 단 CLI(풀 20+10, 한 개만 씀)도 0.12~0.13 s 로 같은 크기
+        DB 를 읽는 맵퍼는 2,000 행에 0.1 s 대 — 이 모양에선 «남은 느림의 원인»을 못 찾음
+안 잰 것 자동확정 규칙은 이 묶음에 없었음 · 소유자 실제 맵퍼의 질의 모양 · 동시에 여러 묶음(슬롯 둘이 동시에 큰 묶음)
+덧      끝까지 걸린 초(seconds.txt — 5+5 「end-to-end seconds: 21.9」)는 대부분 notify — 이 박스는 API_BASE_URL 을 127.0.0.1:9 로 막아 통지가 재시도 끝에 실패. 풀과 무관
+```
+
+### 🔴 떠돈 워커 — 2+2 판에서 제 워커가 스키마를 지운 뒤에도 돌았습니다
+
+```
+무엇    정리 단계가 워커 pid 를 못 읽음(윈도 파이썬에 /c/... 경로를 넘겨 파일 없음 -> pid 빈칸 -> 아무것도 안 죽임) -> 그대로 스키마 지움
+        워커는 search_path 의 스크래치가 사라지자 assy_test public 을 봄
+        01:46:19 ~ 01:56:34 「ledger_state 칼럼 없음」(이 DB public 에 그 칸이 없음) — 루프 205 · 통지 스윕 102 · 원장 행 세기 태스크 1
+        제가 찾아 죽임(부모가 제 bash 인 것 확인)
+쓴 것   실패한 SQL 308 개의 첫 낱말 ['SELECT'] — 모두 읽기. 루프 첫 질의(SYSTEM_RELOAD 찾기)와 통지 스윕이 SELECT 에서 멈춤
+        아웃박스 정리(삭제)는 1 시간 주기라 기동 때 한 번(스키마 지우기 전) 뿐
+        public 대조(죽인 뒤): public relations 325 -> 325 · added [] · gone [] · rows changed {}
+        ⚠️ 이 대조는 «표 수·행 수»만 셉니다 — 기존 행의 칸이 바뀐 것은 못 셉니다. «쓴 것 0»의 근거는 위 SQL 목록입니다
+고침    pid 를 bash 에서 읽고, 비었거나 죽인 뒤에도 살아 있으면 스키마를 «안 지우고» 멈춤. 5+5 판에서 「stopped」 줄 확인 · 프로세스 목록에 운영 워커만
+```
+
+```
+순서    지시는 5b(foreign_beat) -> 5a 였는데 5a 를 먼저 끝냈습니다 — 응용 레인께 30 분 차례를 이미 알린 뒤라서
+다음    5b foreign_beat(ㄱ) -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
+```
+
+---
+
+## [10-10 새벽] 5b 체인 워커 기동 중 «starting: <단계>, N s» — 착지 e032d526e · 문장 고침 d0976fe20 (총괄 bdb356d3f · ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 진짜 프로세스 줄: assy_test, 스크래치 assy_impl_beat_1010(「dropped schema assy_impl_beat_1010 (19 tables) - left 0」) · public 「public relations 325 -> 325 · added [] · gone [] · rows changed {}」(행 수만 셈). 시험의 PG 칸은 isolated_pg 스크래치
+
+```
+지은 것   기동 단계(보정 일곱 + 규칙 읽기 + 워밍업)마다 «시작할 때» 박동 state=starting · note=단계 이름(함수 이름에서 — `_starting`)
+         /health: 감독 pid 의 starting 박동이면 나이와 무관하게 starting(degraded) · detail 「starting: <단계>, <N>s」 — stale/wedged 앞에서 가름
+         다른 pid 의 박동은 지금대로 foreign_beat. 기동 끝 한 줄 「[Chain] startup <합> s - <단계> <초> s · …」
+         「둘째 루프면 물러남」 확인을 첫 박동 앞으로 — 32c1c23e5(09-05) 원래 자리. 9148caabf(09-09)가 원장 보정을 그 위에 끼우며 밀렸고 그 사유(원장 루프 시작 전)는 확인 뒤여도 참
+         루프의 첫 박동은 throttle 안 함(force) — 마지막 starting 을 바로 지움
+화면     CHAIN 뱃지 STARTING, title 이 그 detail(클라 변경 없음 — chainBadge 가 이미 detail 을 그림)
+```
+
+| 게이트 | 칸 |
+|---|---|
+| ① 진짜 start_chain_ingestion_worker + 진짜 박동 파일, 죽은 앞 pid 의 신선한 박동이 있는 재기동, 단계 하나 붙잡음 -> compute_health(감독 pid = 이 프로세스, 기동 120 s, 90 s 뒤 읽기) | starting · 「starting: ensure_ledger_schema, 89~92s」 · 기동 끝 줄에 단계 10 · 루프 뒤 ok |
+| ② 다른 pid 의 starting 박동 + 기동 61 s | foreign_beat |
+| ③ 살아 있는 다른 루프의 신선한 박동 | 보정 0 · 박동 0 으로 물러남 + 「NOT starting」 |
+| ③-b(총괄 더함) 죽은 pid 의 신선한 박동 | 물러나지 않고 첫 박동이 starting + 첫 단계 이름 |
+
+```
+변이(파일 md5 전후 같음 확인, 빨강 = 실패한 시험)
+  M1 first beat after the steps | md5 restored True | 2 failed, 61 passed, 3 deselected, 18 warnings in 2.76s
+      FAILED test_a_dead_pids_fresh_beat_is_a_restart_and_the_first_beat_is_starting
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step
+  M2 stand-down check back after the steps | md5 restored True | 1 failed, 62 passed, 3 deselected, 18 warnings in 2.81s
+      FAILED test_standing_down_is_not_silent
+  M3 health reads no starting state | md5 restored True | 1 failed, 62 passed, 3 deselected, 18 warnings in 2.89s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step
+  M4 the loop's first beat throttled | md5 restored True | 1 failed, 62 passed, 3 deselected, 18 warnings in 2.86s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step
+돌린 시험 바뀐 두 모듈(ingestion_worker · runtime/health)을 부르거나 박동을 바꿔 끼우는 파일 26 개
+         비-PG  446 passed, 15 deselected, 351 warnings in 41.94s
+         PG     15 passed, 52 deselected, 14 warnings in 84.63s (0:01:24)
+```
+
+```
+진짜 프로세스 줄 — 따로 띄운 스크래치 API(DECOUPLED, 18791)의 /health 를 0.2 초마다 + 따로 띄운 run_chain_worker.py
+첫 기동
+  02:19:31 +  0.1s  chain None         detail None                                               beat pid None
+  02:19:33 +  2.8s  chain starting     detail starting: ensure_business_key_unique_indexes, 0s   beat pid 32244
+  02:19:34 +  3.0s  chain starting     detail starting: analyze_stale_tables, 0s                 beat pid 32244
+  02:19:34 +  3.6s  chain ok           detail None                                               beat pid 32244
+재기동(워커를 죽이고 다시 띄움)
+  02:20:16 +  0.1s  chain ok           detail None                                               beat pid 32244
+  02:20:20 +  3.7s  chain starting     detail starting: ensure_dynamic_table_indexes, 0s         beat pid 56184
+  02:20:20 +  3.9s  chain starting     detail starting: analyze_stale_tables, 0s                 beat pid 56184
+  02:20:20 +  4.3s  chain ok           detail None                                               beat pid 56184
+기동 끝 줄
+  [Chain] startup 0.3 s - end_queries_a_gone_chain_worker_left 0.1 s · ensure_ledger_schema 0.0 s · restamp_moved_fingerprints 0.0 s · ensure_business_k …
+  [Chain] startup 0.3 s - end_queries_a_gone_chain_worker_left 0.0 s · ensure_ledger_schema 0.0 s · restamp_moved_fingerprints 0.0 s · ensure_business_k …
+```
+
+```
+이 줄이 «안» 잰 것   감독자 없는 스택이라 pid 대조(watched) 갈래는 안 돎 — 감독자 아래 foreign_beat 대 starting 은 총괄의 박스 재기동 줄
+                    재기동 표의 「ok · 죽은 pid」 몇 초는 감독자가 없을 때의 이미 적힌 동작(backend §1.3) — 이번 변경과 무관
+                    이 박스 보정은 0.3 s 라 60 s 넘는 단계는 시험 ①에서만 잼
+```
+
+### 🔴 남은 길 하나 — 첫 박동 «앞»에 아직 있는 보정
+
+```
+run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) — 설정에 새 칸이 있으면 ALTER TABLE, 시한 없음
+그것이 길면 지금처럼 foreign_beat(죽은 앞 pid). RUN.md 옛 줄도 이것을 이미 「소유자 물음으로 올라가 있음」이라 적어 둠
+문장은 고침(d0976fe20) — 「foreign_beat = 둘째 워커 «또는» 이 동기화」
+안     ㄱ 그 동기화를 start_chain_ingestion_worker 의 한 단계로(확인 뒤 · starting 박동) — main.py 경로는 서버 기동이 이미 동기화하므로 두 번 돎(멱등)
+       ㄴ 그대로 두고 문장만(지금)
+총괄 답 ㄱ — 동기화를 기동 단계로(확인 뒤 · _ensure_dynamic_table_indexes 앞). 게이트 「막힌 동안 starting: sync_dynamic_tables_schema, N s」 + 변이(import 때로 되돌림). 시한은 안 건드림
+       -> 5b-2 로 짓는 중
+```
+
+```
+응용 레인 진짜 프로세스(그쪽 보고 · 제가 잰 것 아님)  붙잡은 단계 ensure_human_claims_index 92 s 내내 starting · foreign_beat 0 · 둘째 워커 NOT starting
+```
+
+```
+다음    5b-2 동기화 단계 -> 6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
+```
+
+---
+
+## [10-10 새벽] 5b-2 스키마 동기화가 기동 단계로 — 착지 40d94309b (총괄 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 스크래치 assy_impl_beat_1010(「dropped schema assy_impl_beat_1010 (19 tables) - left 0」) · public 「public relations 325 -> 325 · added [] · gone [] · rows changed {}」(행 수만 셈)
+
+```
+지은 것  run_chain_worker.py 의 import 때 동기화를 체인 워커 기동 단계 `sync_dynamic_tables_schema` 로 (import 엔 init_dynamic_models 만)
+        자리: 떠난 워커의 쿼리 끊기 «바로 뒤» · 모든 보정(동적 표 인덱스 포함) «앞» — 칸이 서야 그 칸의 인덱스
+        ⚠️ 끊기 뒤로 둔 것은 제가 고른 것: 그 자리 주석이 「First, before any startup work can queue behind them」 — 동기화의 ALTER 도 그 쿼리 뒤에 줄 설 수 있음
+        서버 경로(main.py)는 자기 기동에서 또 동기화 — 멱등
+게이트   ① 를 두 단계로(동기화 · 원장 보정): 붙잡힌 동안 「starting: <그 단계>, 89~92s」 · 단계 줄 11 · 첫 단계 끊기 · 동기화가 동적 표 인덱스 앞
+        네 자리 시험(test_a_schema_sync_gives_up…)이 체인 워커 자리를 chain/ingestion_worker.py 로
+```
+
+```
+변이(md5 전후 같음, 빨강 = 실패한 시험) — M5 가 이번 것(동기화를 단계에서 뺌 = import 때로 되돌림)
+  M1 first beat after the steps | md5 restored True | 3 failed, 61 passed, 3 deselected, 18 warnings in 2.89s
+      FAILED test_a_dead_pids_fresh_beat_is_a_restart_and_the_first_beat_is_starting
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+  M2 stand-down check back after the steps | md5 restored True | 1 failed, 63 passed, 3 deselected, 18 warnings in 2.98s
+      FAILED test_standing_down_is_not_silent
+  M3 health reads no starting state | md5 restored True | 2 failed, 62 passed, 3 deselected, 18 warnings in 3.02s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+  M4 the loop's first beat throttled | md5 restored True | 2 failed, 62 passed, 3 deselected, 18 warnings in 3.01s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+  M5 the schema sync back out of the steps | md5 restored True | 2 failed, 62 passed, 3 deselected, 18 warnings in 2.98s
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[ensure_ledger_schema]
+      FAILED test_a_startup_step_past_the_grace_reads_as_starting_and_that_step[sync_dynamic_tables_schema]
+돌린 시험 바꾼 모듈을 부르거나 읽는 파일 30 개
+         비-PG  531 passed, 17 deselected, 420 warnings in 91.89s (0:01:31)
+         PG     17 passed, 59 deselected, 16 warnings in 77.00s (0:01:17)
+```
+
+```
+진짜 프로세스 줄 — 스크래치 API(18791) /health + 따로 띄운 run_chain_worker.py
+   설정에 sb_log.w 를 적고, 다른 연결이 sb_log 를 붙잡은 채(LOCK ACCESS SHARE) 워커를 다시 띄움
+   붙잡음 02:39:57 ~ 02:40:42
+  02:39:58 +  0.1s  chain ok           detail None                                               beat pid 8060
+  02:40:01 +  2.7s  chain starting     detail starting: end_queries_a_gone_chain_worker_left, 0s beat pid 55812
+  02:40:01 +  2.9s  chain starting     detail starting: sync_dynamic_tables_schema, 0s           beat pid 55812
+  02:40:02 +  3.4s  chain starting     detail starting: sync_dynamic_tables_schema, 1s           beat pid 55812
+    … (36 lines, one a second) …
+  02:40:39 + 40.4s  chain starting     detail starting: sync_dynamic_tables_schema, 38s          beat pid 55812
+  02:40:39 + 41.0s  chain starting     detail starting: ensure_dynamic_table_indexes, 0s         beat pid 55812
+  02:40:40 + 41.3s  chain starting     detail starting: analyze_stale_tables, 0s                 beat pid 55812
+  02:40:40 + 41.7s  chain ok           detail None                                               beat pid 55812
+   워커가 포기한 줄  [Schema Sync] column 'w' was not added to 'sb_log' - another session held the table past 20s. Retried at the next start or config save; until then eve …
+   기동 끝 줄       [Chain] startup 38.6 s - end_queries_a_gone_chain_worker_left 0.1 s · sync_dynamic_tables_schema 38.1 s · ensure_ledger_schema 0.0 s · restamp_moved_fingerprints 0.0 s ·  …
+```
+
+```
+관찰(짓지 않음)  동기화 단계가 38.1 s — 시한은 20 s 인데
+   서버(API)의 설정 감시가 같은 ALTER 를 먼저 줄 세웠고(02:40:19 에 20 s 로 포기), 워커의 ALTER 는 그 뒤에서 기다리다
+   앞 요청이 빠진 뒤 다시 기다려 02:40:39 에 포기. 재기동 때 서버 · 워처 · 체인이 같은 표에 ALTER 를 하면 한 표에서 20 s 가 몇 겹 될 수 있음
+   (PostgreSQL 의 lock_timeout 이 앞 요청이 빠질 때 다시 세는 것으로 보임 — 잰 것은 이 한 번)
+```
+
+```
+🔴 고침  제가 앞서 「동기화 ALTER 는 시한 없음」이라 말씀드렸고 보고(ca9554f08)에도 적었습니다 — 틀렸습니다
+        지시 3c26854c3 2026-09-27(구현 a696ee4e8 지시 뒤) 부터 ALTER 마다 DDL_LOCK_TIMEOUT(20 s). RUN.md 옛 줄(「시한 없음 — 소유자 물음」)을 읽고 코드를 안 봤습니다. 그 줄도 고침
+다음    6 표 선언 인덱스 -> 7 VALUES CAST · 원장 해시 인덱스
+```
+
+---
+
+## [10-10 새벽] 7a 복사 규칙의 보류 세기 — VALUES 조인 + DB 칸 형 CAST — 착지 5777da3c4 (총괄 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 스크래치 assy_impl_cast_1010(판마다 만들고 지움: dropped schema assy_impl_cast_1010 (21 tables) - left 0) · public public relations 325 -> 325 · added [] · gone [] · rows changed {}(행 수만 셈)
+
+```
+지은 것  hold_copy._claims — 물은 키를 VALUES 로 조인(`=`, NULL 칸 키는 NULL-safe 둘째 질의)
+        PG 는 값마다 원천 칸의 «DB 실제 형»으로 CAST(_key_types, pg_attribute) · SQLite 는 칸 친화라 CAST 없음
+        답은 VALUES 행에 실은 순번으로 «물은 키»에 — 🔴 지시 밖 하나: 아래 «HEAD 코드» 줄이 그 까닭(조용히 틀리던 길)
+게이트   되돌렸던 키 모양 시험을 되살리고 형이 다른 표 하나(text 칸에 7 · integer 칸에 '1' · double 칸에 2 · NULL 칸) — SQLite · PG
+```
+
+진짜 따로 띄운 체인 워커 + 슬롯, 같은 판 셋 — 원천 hc_log.dt_x integer(DB) · 공식 hc_official.dt_x text · 키가 글자로 들어온 2,000 행(파일 인입 모양), 규칙 복사 + 다시 세기
+
+| 코드 | 보류 agreed | 보류 빈칸 | 실패 사건 | 오류 |
+|---|---|---|---|---|
+| CAST 없는 VALUES(되돌렸던 모양) | 2000 | 0 | 2 | 연산자 없음: integer = text |
+| HEAD 코드(옛 row IN) | 0 | 2000 | 0 | - |
+| 이 착지 | 2000 | 0 | 0 | - |
+
+```
+뜻      CAST 없는 VALUES 는 박스의 그 오류를 그대로 재현. HEAD 의 옛 row IN 은 오류가 없어 «보이지 않게» 보류를 전부 빈칸으로 덮었음
+        (DB 가 돌려준 키 3 과 물은 '3' 이 달라 찾기가 빗나감) — 운영에서 키 칸 형이 다른 공식 표가 있으면 지금도 그럴 수 있음
+변이(PG 칸, md5 전후 같음, 빨강 = 실패한 시험)
+  baseline | 1 passed, 1 deselected, 6 warnings in 2.27s
+  M1 no CAST in PostgreSQL | md5 restored True | 1 failed, 1 deselected, 6 warnings in 3.13s
+      FAILED test_the_claims_on_postgresql_are_what_the_rows_say
+  M2 the NULL keys compared with = | md5 restored True | 1 failed, 1 deselected, 6 warnings in 2.98s
+      FAILED test_the_claims_on_postgresql_are_what_the_rows_say
+  M3 the VALUES columns one off | md5 restored True | 1 failed, 1 deselected, 6 warnings in 2.93s
+      FAILED test_the_claims_on_postgresql_are_what_the_rows_say
+돌린 시험 복사 매퍼를 쓰는 파일 5 개 — 비-PG 24 passed, 34 deselected, 10 warnings in 2.62s · PG 34 passed, 11 deselected, 68 warnings in 242.96s (0:04:02)
+다음     7b 원장 해시 인덱스
+```
+
+---
+
+## [10-10 새벽] 7b 원장 ref 해시 인덱스 · 거두기 한 장 크기 — 착지 e8baa5243 (총괄 7b · ⓑ ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 진짜 프로세스: assy_test 스크래치 assy_impl_ref_1010(지움) · 시험: isolated_pg 스크래치 + 가지 세계 w_ref7b(시험이 지움)
+🔴 public: 제 앞선 PG 묶음(03:06~03:13)이 기존 시험 tests/test_ledger_v2_pg.py 로 public.audit_logs 에 3 행을 흘림(응용 레인이 찾음) -> 총괄 지시로 그 셋만 지움
+   database assy_test · public.audit_logs 70 -> 67 · ids [580081, 580082, 580083] / COMMIT · 같은 판 public 대조 public relations 325 -> 325 · added [] · gone [] · rows changed {'audit_logs': (70, 67)}
+
+```
+지은 것  세워 둔 87ef0e725(온라인 파티션 짓기 · 스크립트 · ensure_schema 의 부모 ON ONLY)를 가져와
+        이름 idx_ledger_events_source_raw_ref_hash · 파티션 이름 <파티션>_ref_hash(소유자께 드린 SQL 과 같음)
+        붙음은 pg_inherits 로 — 반쯤 돌린 상태(부모만 · 만들고 안 붙인 파티션)를 이어 받음: 같은 이름의 valid 인덱스는 «붙이기만», 그렇게 말하고 따로 셈
+        거두기 한 장 크기를 고르는 자리 하나 backfill.stale_page_refs — 부모 valid 면 1,000 · 아니면 50,000 + 스크립트 명령, 로그 한 줄
+        원장 기동 DDL 오라클에 부모 문장 둘(새 설치) · 확인 하나(기존 설치)
+```
+
+```
+진짜 따로 띄운 CLI — 스크래치 원장을 소유자 SQL 반쯤 돌린 상태로 두고
+  the owner's SQL halfway: parent idx_ledger_events_source_raw_ref_hash ON ONLY, ledger_events_2026_09_ref_hash made and not attached, ledger_events_2026_10 without
+  == before
+    ledger_events_2026_09: ledger_events_2026_09_ref_hash (not attached)
+    ledger_events_2026_10: none
+    parent idx_ledger_events_source_raw_ref_hash valid: False
+  == whole-source of a name the declaration does not have, --apply (before the script)
+  [Ledger] idx_ledger_events_source_raw_ref_hash missing or not valid - 50000 refs a page, each reads the whole ledger; build it: python server/scripts/build_ledger_ref_index.py --apply --world default
+  == the script, preview
+  ledger_events_2026_09: would attach the ledger_events_2026_09_ref_hash already there
+  ledger_events_2026_10: would build ledger_events_2026_10_ref_hash CONCURRENTLY and attach it
+  ledger_events: 0 partition(s) built, 0 attached as they were, 0 already had it, 1 would be built, 1 attached as they are (add --apply) - the parent index is not valid yet
+  == the script, --apply
+  ledger_events_2026_09: attached the ledger_events_2026_09_ref_hash already there · 32768 bytes
+  ledger_events_2026_10: built ledger_events_2026_10_ref_hash in 0.0 s · 32768 bytes · attached
+  ledger_events: 1 partition(s) built, 1 attached as they were, 0 already had it - the parent index is valid
+  == after
+    ledger_events_2026_09: ledger_events_2026_09_ref_hash (attached)
+    ledger_events_2026_10: ledger_events_2026_10_ref_hash (attached)
+    parent idx_ledger_events_source_raw_ref_hash valid: True
+  == whole-source again, --apply
+  [Ledger] idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page
+  == the script, --apply again
+  ledger_events: 0 partition(s) built, 0 attached as they were, 2 already had it - the parent index is valid
+  dropped schema assy_impl_ref_1010 (63 tables) - left 0
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+```
+
+```
+변이(PG, md5 전후 같음, 빨강 = 실패한 시험)
+  baseline | 1 passed, 6 warnings in 2.40s
+  M1 the script names partitions <index>_<month> | md5 restored True | 1 failed, 6 warnings in 3.06s
+      FAILED test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it
+  M2 the page is 1,000 whatever the index | md5 restored True | 1 failed, 6 warnings in 2.60s
+      FAILED test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it
+  M3 an index there reads as valid | md5 restored True | 1 failed, 6 warnings in 2.68s
+      FAILED test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it
+돌린 시험 원장 조각을 부르거나 읽는 파일 32 개(test_ledger_v2_pg.py 뺌) — 비-PG 182 passed, 122 deselected, 11 warnings in 26.23s
+         PG 3 failed, 116 passed, 182 deselected, 109 warnings in 423.01s (0:07:03) · public 대조 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+         실패 test_an_install_that_predates_attributes_is_widened_once, test_two_independent_refusals_are_counted_and_named_in_one_run, test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+         같은 파일 · 같은 순서를 HEAD 의 파일로(제 새 시험 뺌) — 3 failed, 115 passed, 182 deselected, 109 warnings in 416.93s (0:06:56) · 같은 셋: 예 — 이 착지 전부터 있던 것
+         (원장 L1 둘은 「source … is not declared in shipped_ledger_…」, 등록 칸 하나는 혼자 돌리면 초록 — 앞 시험이 남긴 원자가 옛 제약을 어김)
+```
+
+```
+일요일   응용 레인이 리허설에 ⑧ 앞 «스크립트 미리보기 -> --apply» 를 넣어 두 판(인덱스 없음 · 소유자처럼 먼저 지어 둔 판)을 돌림
+다음     지시서 순서의 끝 — 6(표 선언 인덱스)은 시연 뒤
+```
+
+---
+
+## [10-10 새벽] test_ledger_v2_pg 가 public 에 안 쓰게 — 착지 3098965bf (총괄 ㄷ)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test, 시험 스크래치(픽스처가 지움) · 첫 변이 판이 남긴 빈 public 표 둘 + 스크래치 스키마를 비었는지 단언하고 지움:
+   dropped public tables ['v2s6_input_rows_35888_gw0', 'v2s6_reference_rows_35888_gw0'] · schema assy_ledger_v2_s6_35888_gw0 (4 tables) - left 0 · public 대조 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+
+```
+원인     원장 묶음 영수증(runtime_v2._batch_receipt)이 원자 연결에서 이름만으로 audit_logs 에 씀 — 스크래치에 그 표가 없어 public 으로 떨어짐
+고침     픽스처가 스크래치에 AuditLog 표를 세움(checkfirst=False) + 그 이름이 어느 스키마로 풀리는지 단언 — 픽스처 try 안(거절돼도 정리가 돎). 제품 코드 0
+게이트   고친 판 4 passed, 6 warnings in 5.59s
+            public 쓰기 수(pg_stat_user_tables ins+upd+del, 표마다, flush 뒤) public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+            public 관계 · 행 수 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+        변이(세우는 줄 지움) 6 warnings, 4 errors in 1.44s — E                   AssertionError: audit_logs resolves to 'public', not the scratch schema - the receipt would land there
+            public 쓰기 수 public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+            public 관계 · 행 수 public relations 325 -> 325 · added [] · gone [] · rows changed {}
+배운 것  처음 변이 판은 단언이 try «밖»이라 거절된 판이 픽스처의 public 원천 표 둘과 스크래치를 남겼음 — 그래서 try 안으로 옮김
+        계기의 «잡는 힘»은 이 판들로는 못 보임(쓰기가 0 이라) — 행 수 대조를 같이 붙임
+다음     일요일까지 대기 — 새 일은 지시서로
+```

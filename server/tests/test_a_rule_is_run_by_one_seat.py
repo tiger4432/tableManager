@@ -212,6 +212,7 @@ CHAIN_LOG_TAGS = {
     "Chain Worker": "the process",
     "ChainKeyGate": "the business-key gate",
     "ChainRetract": "withdrawal when a trigger row is deleted",
+    "ChainShell": "a row the write left with only the chain's keys, deleted (5eee501eb)",
     "ChainRules": "the loader and the synthesis halves",
     # ⚠️ [판정 507] WAS `HOL Guard` UNTIL 09-17, and the description below was always the
     #: plain sentence - the tag was the only part an operator could not read. Re-adding the

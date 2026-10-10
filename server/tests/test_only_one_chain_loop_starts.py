@@ -93,8 +93,36 @@ def test_standing_down_is_not_silent(monkeypatch, caplog):
     import logging
 
     arrange(monkeypatch, entry(), alive=True)
+    beats, steps = [], []
+    monkeypatch.setattr(worker.heartbeat, "beat", lambda name, **k: beats.append(k))
+    monkeypatch.setattr(worker, "_end_queries_a_gone_chain_worker_left_sync", steps.append)
+    monkeypatch.setattr(worker, "_ensure_ledger_schema_sync", steps.append)
     with caplog.at_level(logging.WARNING):
         asyncio.run(worker.start_chain_ingestion_worker(None))
 
     said = "\n".join(r.getMessage() for r in caplog.records)
     assert "NOT starting" in said and "999001" in said
+    # 총괄 bdb356d3f 5b: it stands down BEFORE the startup steps and their `starting` beat - from
+    # that beat on the chain's beat is its own, and it would read itself and stay
+    assert steps == [] and beats == [], (steps, beats)
+
+
+def test_a_dead_pids_fresh_beat_is_a_restart_and_the_first_beat_is_starting(monkeypatch):
+    """The restart (총괄 bdb356d3f 5b): the predecessor's beat is fresh but its pid is gone - this
+    process does not stand down, and its first beat says `starting` and the first step."""
+    import asyncio
+
+    class _Stop(BaseException):
+        pass
+
+    def first_step(_factory):
+        raise _Stop()
+
+    arrange(monkeypatch, entry(), alive=False)
+    beats = []
+    monkeypatch.setattr(worker.heartbeat, "beat", lambda name, **k: beats.append((name, k)))
+    monkeypatch.setattr(worker, "_end_queries_a_gone_chain_worker_left_sync", first_step)
+    with pytest.raises(_Stop):
+        asyncio.run(worker.start_chain_ingestion_worker(None))
+
+    assert beats == [("chain", {"note": "first_step", "force": True, "state": "starting"})], beats

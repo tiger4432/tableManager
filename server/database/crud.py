@@ -5726,6 +5726,23 @@ def delete_row(db: Session, table_name: str, row_id: str, user_name: str):
     """
     return delete_rows_batch(db, table_name, [row_id], user_name) > 0
 
+#: The column a row's deletion history line names - what 「this row was deleted」 is read by.
+ROW_DELETION_COLUMN = "DELETE"
+
+
+def deleted_rows(db: Session, table_name: str, row_ids) -> set:
+    """The rows among `row_ids` that have a deletion history line (`record_row_deletions` - the grid's
+    delete, the map purge and the job retraction all write one): gone, not unreadable (총괄 10-09,
+    S-158 widened). Asked by (table_name, row_id), the history indexes' lead."""
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    found = set()
+    for i in range(0, len(ids), 1000):
+        found.update(r for (r,) in db.query(models.AuditLog.row_id).filter(
+            models.AuditLog.table_name == table_name, models.AuditLog.row_id.in_(ids[i:i + 1000]),
+            models.AuditLog.column_name == ROW_DELETION_COLUMN).distinct())
+    return found
+
+
 def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
                          transaction_id: str):
     """The audit history for rows that are going away — ONE place, two callers.
@@ -5746,7 +5763,7 @@ def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
     logs = []
     for row in rows or []:
         logs.append(create_audit_log(
-            db, table_name, row.row_id, "DELETE",
+            db, table_name, row.row_id, ROW_DELETION_COLUMN,
             None, "행 삭제됨", "system", user_name,
             transaction_id=transaction_id,
             business_key=getattr(row, "business_key_val", None),

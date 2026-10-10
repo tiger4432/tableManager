@@ -37895,3 +37895,119 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
 남은 것  운영 이름(빈칸) · 구현자 3 · 5 · 6 · 7 이 착지하면 그 줄 · base 두 웨이퍼 id(빈칸)
 덤      설계 레인 요청으로 시연 인스턴스를 18766 에 «서버만» 띄워 두었습니다(체인 워커 없음) — «끝»을 받으면 내립니다
 ```
+
+---
+
+## [C 응용] 10-10 02ffdb968(경로가 시작 타입으로 돌아옴) 진짜 서버에서 — 박스 선언으로는 누르기가 코어 웨이퍼에 안 닿습니다 · 표 ② 는 follow 비움 그대로
+
+```
+모양   016707766 클라 빌드 · 서버만(체인 워커 없음) · 박스 원장 조각 · 내장 브라우저로 걷기 화면 · public 변화 0 · 스키마 셋 지움
+누른 것 -> 본 것   Type wafer · 불량 base · Collect wafer -> ROUTE TO WAFER 경로 넷
+                  «wafer → die → wafer · in_container» + «↻ transfer» -> wafer 1 개(base 뿐)
+                  follow 비움 -> 깊이 3 코어 웨이퍼 30 · 0.775 s
+까닭(박스 읽기만)  transfer 의 끝은 운반 자리(DTLotSlot) 141 개, 그 다이는 다른 원자가 없음 · 코어 웨이퍼는 bonded_from 으로 닿는데
+                  bonded_from 소스가 뷰를 읽어 거절돼 follow · 경로 목록에 없음. 운영 선언은 못 봤습니다
+표                일요일 표 ② 에 «누르기로는 안 닿는다» 두 줄(db37f3b6d) — 착지의 결함은 아닙니다, 판정은 총괄
+```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 껍데기 행(95cffa5af) 세 칸 다 됩니다 · 소급 탭 카드가 끝난 실행을 queued 로 둡니다 · 소유자 걷기 인스턴스(18766) 떠 있음
+
+```
+모양   운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러) · 소유자 코드 af8ef5701 로 꼬임 -> 84a35f0bd 로 pull · 스크래치 assy_app_reread_shell
+       공식 표 둘(official_dt · 같은 규칙의 둘째 판 official_dt_b)에 껍데기 82 씩 · public 변화 0 · 스키마 지움 · 끊김 0
+① 명령줄   remove-shells official_dt  미리보기 82 -> --apply «82 of 82 row(s) deleted» (삭제 이력 줄 82) -> 다시 미리보기 0
+② 화면     소급 탭 «Remove rows with no source left» · table official_dt_b
+            누른 것 count -> 본 것 «rows to delete 82 · exact» + 명령줄과 같은 문장 (명령줄 미리보기도 82)
+            누른 것 run -> 화면 안 확인판(run · cancel) -> run -> 서버 실행 done · 82 지움 · 이력 줄 82 -> count 다시 0
+            ⚠️ 그 카드는 실행이 끝난 뒤에도 «queued» — 🔄 Refresh 는 /admin/retroactive/operations 만 다시 읽고 runs 는 안 읽습니다(클라 몫 · 여쭙기만)
+③ 그리드   공식 표 X(CW2,1,0)에 사람 값 dt_lot=HAND-EDIT (그리드가 보내는 것과 같은 PUT — 이 창에서 스크립트 두 번 누르기로는 편집기가 안 열려서)
+            dt_log 그리드에서 X · Y 의 원천 행 둘 선택 -> 🗑️ Row -> 확인(스크립트로 예) -> «Deleted 2 rows · 0 s»
+            chain_worker.log «[ChainRetract] table=dt_log deleted_rows=2 groups=4 cells_withdrawn=36» -> «[ChainShell] table=official_dt rows_deleted=1 - only the chain's keys were left»
+            공식 표 그리드(CW2 · core_y 0): 10 행 -> 9 행 · Y(0,0) 사라짐 · X(1,0) 남음(lot HAND-EDIT · job 빈칸) · 그 뒤 미리보기 0
+덤      ⑥ 앞에서 쓸면 82 행을 지우고 복사 replay 가 다시 만든다(공식 표 123 -> 205) — 일요일 표 ⑦ 에 «⑥ 뒤»를 그 까닭과 같이 적었습니다(dae42eb8f)
+```
+```
+소유자 걷기 인스턴스(84a35f0bd) — http://127.0.0.1:18766/walk.html · 서버만 · 스크래치 assy_app_reread_dm + 세상 둘
+가짜     표 fake_measure 32 행 -> 소스 fake_measures -> 원자 32 · 표 fake_mechanism_edge 1 행 -> 소스 fake_mechanism_edge_to_finding_causes(appdemo_vb) -> 원자 1
+         원장에는 backfill 로만 · role 칸 fake. 누르는 순서와 보이는 수는 총괄께 메시지로 드렸습니다. 소유자 «끝»까지 둡니다
+```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 5b(기동 단계 이름 · 첫 박동을 보정 앞으로, e032d526e) 됩니다
+
+```
+모양   운영 런처 · e032d526e · 사설 인스턴스 · 스크래치 assy_app_reread_beat · public 변화 0 · 스키마 지움 · 구현자와 차례(알림 · 내림)
+붙잡기  스크래치에서 사람 칸 인덱스를 지우고, 한 연결이 cell_sources 에 SHARE UPDATE EXCLUSIVE(인덱스 짓기만 막고 읽기 · 쓰기는 안 막음)를 쥔 채 띄움
+/health  매초 checks.workers.chain — «starting: ensure_human_claims_index, N s» 가 N = 92 까지 내내 starting · foreign_beat 0
+         풀어 준 뒤(98.6 s) «starting: warmup_worker, …» -> 102.8 s 에 ok
+화면     메인 화면 뱃지 «CHAIN: STARTING» · title «starting: ensure_human_claims_index, 76s» (붙잡은 동안)
+기동 끝   chain_worker.log «[Chain] startup 92.8 s - …» — 단계마다 초
+둘째 워커  같은 인스턴스에 run_chain_worker.py 하나 더 -> «NOT starting: another chain loop is already running (pid 39668, last beat 0.6s ago)» · exit 0 · /health 는 그대로 ok
+안 잰 것  구현자가 짚은 길 — run_chain_worker.py import 때 스키마 동기화(첫 박동 앞)는 이번에 안 붙잡았습니다
+표       일요일 표 ① 에 기동 중 · 기동 끝 볼 줄(319241d8b)
+```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 5b-2(스키마 동기화가 기동 단계, 40d94309b) 됩니다 · 일요일 ⓪ 의 새 칸에 볼 줄 하나
+
+```
+모양   운영 런처 · a12771b7c · 스크래치 assy_app_reread_beat2 · public 변화 0 · 스키마 지움 · 구현자와 차례 · 두 판 같은 답
+붙잡기  띄워서 ok 뒤, 설정에 hb_tab.added_col 을 더하고 한 연결이 hb_tab 을 연 트랜잭션으로 쥠 -> 체인 워커만 죽임(감독자가 다시 띄움)
+/health  죽인 뒤 3.2 s 에 starting · «heartbeat was written by pid <옛 pid>, not by the supervised pid <새 pid>»(import 동안)
+         5.3 s 부터 «starting: sync_dynamic_tables_schema, N s» N = 36 · 35 까지 -> ok · foreign_beat 0
+기동 끝   «[Chain] startup … sync_dynamic_tables_schema 36.1 · 35.6 s …»
+칸       붙잡힌 ALTER 는 넘어갔고 칸은 안 생김 — «column 'added_col' was not added to 'hb_tab' - another session held the table past 20s. Retried at the next start or config save»
+뜻(일요일) ⓪ 에서 로그 표에 fold_mark 를 더하고 재기동할 때 그 표를 누가 쥐고 있으면 같은 줄이 난다 — 표 ① 에 그 줄과 «한 번 더 재기동»(e64bdc91d)
+```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 7a(VALUES CAST, 5777da3c4) 됩니다 · 형이 다른 키에서 비어 버린 보류는 다시 세기 replay 하나로 돌아옵니다
+
+```
+모양   운영 런처 · 앞 단계 소유자 코드 af8ef5701 -> pull 03c31a6e6 · fceb6b354 · 스크래치 셋(mix · mix2 · rhf) 지움 · 구현자와 차례
+세계   일요일 리허설 세계 그대로 + 변종 하나: 공식 표 core_x · core_y 를 글자로(로그 표는 숫자) — 구현자가 찾은 모양
+pull 전  같은 형 세계 보류 agreed 39 · 섞인 형 세계 0 ← 소유자 코드가 오류 없이 빈칸으로 덮음(리허설에서 재현)
+pull 뒤  섞인 형 세계에 replay official_dt_hold_recount (미리보기 2.2 s -> --apply 2.9 s) -> agreed 39 = 같은 형 세계의 39
+일요일 순서 섞인 형 세계도 ⑤ 뒤 agreed 6 -> ⑥ 뒤 205 -> 끝 상태 transfer 원자 205 · 두 transfer 다이 0 (같은 형 세계도 205 · 0)
+표       ①b 비어 버린 보류 다시 세기 — 명령 · 까닭 · 답 · 뜻 · 초(c3dc611d0). 이 표의 공식 표는 ⑥ 이 다시 채우므로 ①b 는 ⑥ 을 안 돌리는 다른 공식 표에
+public   이 세 판 사이 assy_test public.audit_logs 가 67 -> 70 -> 67 — 구현자의 PG 시험(test_ledger_v2_pg.py, 03:13)이 쓴 3 행과 누군가의 지움. 제 판 것 아님(구현자 확인)
+```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 7b(원장 ref 해시 인덱스, e8baa5243) 됩니다 · 소유자가 SQL 로 먼저 지어 둔 것도 «already»
+
+```
+모양   운영 런처 · 일요일 리허설 · 소유자 코드 af8ef5701 -> pull 355ba2092 · 00b9a071b · 두 판 · public 변화 0 · 스키마 지움 · 구현자 · 총괄과 차례
+(가) 인덱스 없음   ⑦ 뒤 build_ledger_ref_index.py 미리보기 «ledger_events: 0 partition(s) built, 0 attached as they were, 0 already had it, 1 would be built, 0 attached as they are (add --apply) - the parent index is not valid yet»
+                  -> --apply «ledger_events: 1 partition(s) built, 0 attached as they were, 0 already had it - the parent index is valid» · 둘째 바퀴 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid»
+(나) 소유자 판     pull 전에(소유자 코드에서) CREATE INDEX idx_ledger_events_source_raw_ref_hash ON ledger_events USING hash (source_raw_ref)
+                  -> 파티션 것은 자동 이름 ledger_events_2026_10_source_raw_ref_idx -> pull 뒤 스크립트 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid» — 다시 안 짓고 이름 다른 자식도 붙은 것으로 읽음
+거두기             두 판 다 ⑧ · ⑨ 의 로그 «[Ledger] idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page»
+끝 상태           두 판 다 transfer 205 · 두 transfer 다이 0 · 둘째 바퀴 미리보기 0
+표               ⑦b(e926b0c0e) — «착지 뒤 채움»은 이제 없음(6 은 시연 뒤)
+```
+
+---
+
+## [C 응용] 10-10 55f854fc5 응용 몫 — 18766 에 소유자 예(void + 코어 웨이퍼)의 두 길이 데이터로 섰습니다
+
+```
+걷기 한 번   18766 walk.html · 시작 불량 base SYN-BW-103-11 · COLLECT wafer · quantity · defect_kind · follow 비움
+            · 칩 default -> appdemo_vf
+더하기 전    Nodes 81 (collect: wafer, quantity, defect_kind) · Edges 1538 (all) · quantity 49 wafer 31 defect_kind 1
+            void 있음 · 코어 웨이퍼 있음 · 모델 quantity 18 개 있음
+            그런데 코어 웨이퍼 -measures-> 모델 quantity 0 (base 만 15) -> 모델 길 없음
+더함        같은 길 — fake_measure 표 32 -> 50 행(코어 웨이퍼 3 장 x 모델 quantity 6, role fake)
+            -> 소스 fake_measures -> backfill --whole-source --apply · 18766 은 내리지 않음
+더한 뒤      Nodes 81 (collect: wafer, quantity, defect_kind) · Edges 1556 (all) · 코어 웨이퍼 -measures-> 모델 quantity 18
+            leads_to 18 · bonded_from 141 · in_container 320 · observed 199
+소유자 예    void 와 SYN-CW-001-02 · SYN-CW-103-01 · SYN-CW-103-02 중 하나를 마킹 -> 모델 길(void -leads_to- quantity -measures- 코어 웨이퍼)과 본딩 길 둘 다 데이터에 있음
+재기동       다음 18766 씨앗(dm_e2e)에 같은 18 행이 들어감
+다음        클라 ② 표 부호별 · ① 두 마킹 사이 길 착지마다 그 빌드로 18766 재기동 -> 누른 것 · 본 것
+```

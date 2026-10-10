@@ -944,6 +944,57 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     return stats
 
 
+#: Rows one page of the shell sweep judges and deletes at once, and the keys its preview shows (5eee501eb).
+SHELL_PAGE = 1000
+SHELL_SAMPLE = 5
+
+
+def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None, log=logger.info,
+                      checkpoint=None) -> dict:
+    """The shells already on `table_name` (총괄 5eee501eb, 소유자 10-09 「공식표에 껍데기 행 잔뜩 쌓여 있음」):
+    the rows `cell_layer.shells` judges - the judgement the chain's write seat asks - deleted through the
+    grid's door, `crud.delete_rows_batch`, a page at a time. The rows read are those that show nothing
+    outside their keys, by row_id pages; a stop lands between pages and a re-run finds only what is left."""
+    from sqlalchemy import and_, select, true
+
+    from chain import cell_layer
+    from database import crud
+
+    model, col_types = cell_layer.resolve_target(table_name)
+    keys = cell_layer.key_columns(table_name)
+    shown_blank = and_(true(), *[crud.blank_sql_condition(crud.column_text_sql(getattr(model, column)))
+                                 for column in col_types if column not in keys])
+    pages_per_cycle, rest_seconds = resolve_pace(pace)
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows_read": 0,
+             "rows_to_delete": 0, "rows_deleted": 0, "pages": 0, "stopped": False, "sample": []}
+    after = None
+    while True:
+        if apply and checkpoint is not None and checkpoint(stats["rows_deleted"], None):
+            stats["stopped"] = True
+            log(f"[remove-shells] stopped by request after {stats['rows_deleted']} rows")
+            break
+        page = [row_id for (row_id,) in db.execute(
+            select(model.row_id).where(shown_blank, *([model.row_id > after] if after is not None else []))
+            .order_by(model.row_id).limit(SHELL_PAGE))]
+        if not page:
+            break
+        after = page[-1]
+        stats["rows_read"] += len(page)
+        gone = cell_layer.shells(db, table_name, page)
+        stats["rows_to_delete"] += len(gone)
+        if len(stats["sample"]) < SHELL_SAMPLE and gone:
+            stats["sample"] += [{key: getattr(row, key, None) for key in sorted(keys)} for row in db.query(model)
+                                .filter(model.row_id.in_(gone[:SHELL_SAMPLE - len(stats["sample"])])).all()]
+        if apply and gone:
+            stats["rows_deleted"] += crud.delete_rows_batch(db, table_name, gone, cell_layer.SHELL_DELETER)
+            stats["pages"] += 1
+            if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
+                time.sleep(rest_seconds)
+    log(f"[remove-shells] '{table_name}' {stats['mode']}: {stats['rows_read']} row(s) show nothing outside "
+        f"their keys, {stats['rows_to_delete']} of them only the chain's keys left, {stats['rows_deleted']} deleted")
+    return stats
+
+
 #: What a folded row's mark says (총괄 016a766af) - the row it folded into.
 FOLD_MARK = "folded into %s"
 

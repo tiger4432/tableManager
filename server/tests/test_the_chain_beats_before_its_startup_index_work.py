@@ -138,6 +138,85 @@ def test_the_first_beat_goes_out_before_the_index_work_and_the_loop_does_not_wai
     assert _Listener.waits >= 5
 
 
+@pytest.mark.parametrize("step", ["sync_dynamic_tables_schema", "ensure_ledger_schema"])
+def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypatch, tmp_path,
+                                                                      caplog, step):
+    """총괄 bdb356d3f 5b (· 5b-2 the schema sync): a restart, the dead predecessor's beat still fresh on disk, and a startup
+    step held where a DDL would wait. Read 90 s into that step by /health with the supervisor at
+    120 s up: `starting` and the step's name - not `foreign_beat` (the predecessor's pid) and not
+    `wedged` (a beat 90 s old). Then each step's seconds are one line, and the loop's first beat
+    ends `starting` at once."""
+    import json
+    import re
+
+    from runtime import health
+    from utils import heartbeat
+
+    _Listener.waits = 0
+    monkeypatch.setattr(heartbeat, "heartbeat_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(heartbeat, "heartbeat_path", lambda name: str(tmp_path / f"{name}.json"))
+    with open(tmp_path / "chain.json", "w", encoding="utf-8") as f:        # the predecessor's beat
+        json.dump({"name": "chain", "pid": 2 ** 22 + 7, "ts": time.time(), "beats": 900}, f)
+    held, release, read = threading.Event(), threading.Event(), {}
+
+    def hold(factory):
+        held.set()
+        release.wait(10)
+
+    hold.__name__ = "_%s_sync" % step                               # the step's name is the function's
+
+    def judge(after):
+        # the supervisor started THIS process 120 s ago; read `after` s past now
+        later = time.time() + after
+        beats = heartbeat.read_all(now=later)
+        sup = {"supervisor_pid": 1, "updated_at": later, "failed_children": [], "events": [],
+               "children": {"Chain": {"state": "running", "heartbeat": "chain", "pid": os.getpid(),
+                                      "restarts": 1, "uptime_seconds": 120.0}}}
+        payload, _code = health.compute_health({"status": "ok"}, beats, sup, {"pending": 0},
+                                               60.0, now=later, backup_result=None)
+        return payload["checks"]["workers"]["chain"]
+
+    def watch():
+        held.wait(10)
+        read["held"] = judge(90)
+        release.set()
+
+    monkeypatch.setattr(worker, hold.__name__, hold)
+    monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda *a: None)
+    monkeypatch.setattr(worker, "OutboxListener", _Listener)
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
+    monkeypatch.setattr(worker, "warmup_worker", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "sweep_undelivered_broadcasts", _nothing)
+    monkeypatch.setattr(worker, "run_ledger_followup", _nothing)
+    monkeypatch.setattr(worker, "run_ledger_row_census", _nothing)
+    monkeypatch.setattr(worker.internal_event_client, "startup_lines", lambda *a, **k: [])
+    threading.Thread(target=watch, daemon=True).start()
+    session = _Session(threading.Event())
+
+    async def go():
+        try:
+            await asyncio.wait_for(worker.start_chain_ingestion_worker(lambda: session), 30.0)
+        except (_Stop, asyncio.TimeoutError):
+            pass
+
+    with caplog.at_level("INFO"):
+        asyncio.run(go())
+
+    held_entry = read.get("held") or {}
+    assert held_entry.get("status") == "starting", held_entry
+    seconds = re.fullmatch(r"starting: %s, (\d+)s" % step, held_entry.get("detail") or "")
+    assert seconds and 89 <= int(seconds.group(1)) <= 92, held_entry
+    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Chain] startup ")]
+    assert len(said) == 1, said
+    steps = said[0].split(" - ", 1)[1].split(" · ")
+    names = [s.rsplit(" ", 2)[0] for s in steps]
+    assert len(names) == 11 and names[0] == "end_queries_a_gone_chain_worker_left", said
+    # a column stands before its index
+    assert names.index("sync_dynamic_tables_schema") < names.index("ensure_dynamic_table_indexes"), said
+    assert _Listener.waits >= 5
+    assert judge(0)["status"] == "ok", "the loop beat and the file still says starting"
+
+
 def test_a_reload_asks_again_after_the_run_before_it(monkeypatch):
     """Each run forgets what the last one answered - a changed declaration and a deferred index
     are both asked again - and a reload's run starts only when the previous one has ended."""

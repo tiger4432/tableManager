@@ -159,7 +159,11 @@ def test_two_rows_of_one_key_in_one_batch_keep_a_layer_each(world):
     assert _netdie_layers(world) == [("chain_ingestion (%s)" % a, a)]
 
 
-def test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid(world):
+def test_a_key_whose_source_rows_are_all_deleted_goes_and_is_unsaid(world):
+    """The recount empties the hold and the row is left with only the chain's keys - it goes (총괄
+    5eee501eb · 판정 ㄱ: it was held blank and stayed, a shell)."""
+    from database import models
+
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     hw.push(world, [{"log_id": "C", **hw.KEY, "netdie": 7}])
@@ -169,7 +173,7 @@ def test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid(world):
     hw.settle(world)
     hw.delete(world, "C")
     hw.settle(world)
-    assert hw.hold(world) in (None, "")
+    assert world["db"].query(models.DYNAMIC_TABLES[hw.OFFICIAL]).count() == 0
     assert hw.said(world) == []
 
 

@@ -114,7 +114,7 @@ return {
   }]
 }
 ```
-🆕 10-09 **`source_name` 은 무엇을 적어도 `chain_ingestion` 으로 써집니다** (총괄 09f3cd289 ① · 소유자 「모든 맵퍼의 소스네임은 chain_ingestion 에서 못 바꾸게」) — 워커의 쓰기 자리 한 곳(`rule_run.layer_of_a_rules_write`)에서. 괄호 행 층 `X (<id>)` 은 `chain_ingestion (<id>)`, 안 적은 칸(기본값 `user`)도 체인 층. 예외는 제품이 뜻을 정한 셋 — 자동확정 둘 · enrichment backfill. `@mapper(source_name=)` 는 은퇴: 적혀 있으면 선언을 읽을 때 규칙마다 한 줄 `[ChainRules] <규칙>: source_name 'X' is written as chain_ingestion`.
+🆕 10-09 **`source_name` 은 무엇을 적어도 `chain_ingestion` 으로 써집니다** (총괄 09f3cd289 ① · 소유자 「모든 맵퍼의 소스네임은 chain_ingestion 에서 못 바꾸게」) — 워커의 쓰기 자리 한 곳(`rule_run.layer_of_a_rules_write`)에서. 괄호 행 층 `X (<id>)` 은 `chain_ingestion (<id>)`, 안 적은 칸(기본값 `user`)도 체인 층. 예외는 제품이 뜻을 정한 셋 — 자동확정 둘 · enrichment backfill. `@mapper(source_name=)` 는 은퇴: 적혀 있으면 선언을 읽을 때 규칙마다 한 줄 `[ChainRules] <규칙>: source_name 'X' is written as chain_ingestion` — ⚠️ 규칙이 맵퍼를 `mapper` 칸으로 적었을 때만. `mapper_module` · `mapper_function` 철자면 그 줄은 0 개다(값은 같이 `chain_ingestion` 으로 써진다 — 10-10 진짜 프로세스 `237d313db`).
 🆕 🔴 **`origin_row_id` 를 «안 적으면» 당신이 쓴 칸은 «영원히 남습니다»** (S-280 `e1318d28`, 판정 434). 이 칸은 `cell_sources.origin_row_id` 에 착지하고, **그 행이 지워질 때 제품이 겨냥하는 유일한 표적**입니다 — 안 적힌 칸은 겨냥할 것이 없어 입력이 사라진 뒤에도 화면에 그대로 있습니다.
 > 🆕 10-07 `91da9c781` **고칠 때도 같은 표적입니다.** 출처를 적는 규칙이 고친 입력 행에 다시 돌면, 쓰기 «뒤»에 그 행이 찍은 층 중 «그 규칙의 칸»이고 «이번 쓰기가 그 행으로 쓴 행 밖»인 것을 거둡니다 — 키(좌표)를 고치면 옛 키 행에서 그 층만 빠지고, 키가 안 바뀐 수정은 거두는 것 0. 같은 행의 다른 규칙 칸 · 사람 층 · 핀은 그대로. 조인도 출처를 찍습니다(값 쪽 행의 키를 고치면 옛 키로 채운 칸이 빈다).
 > 🆕 `@mapper` 맵퍼는 **기본으로 찍힙니다** — 출력 행이 입력 행을 이어 왔으면(거르기 · 정렬 · `reset_index` 포함) 그 입력 행이 출처가 됩니다. 집계(`groupby` · `agg`)나 칸을 골라 새로 만든 표는 안 찍힙니다 — 그때는 직접 적거나 비워 둡니다.

@@ -345,6 +345,8 @@ def test_r1_never_writes_a_blank(rep_env):
     # clears a chain value; the default `user` it was written under before beat a file's too
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "OLD"}], source_name="chain_ingestion",
           tx_id="pre")
+    # and a file's value beside it, so the row is not left with only the chain's key (5eee501eb)
+    _seed(rep_env, "crep_test_target", [{"part_no": "P1", "reserved": 3}], tx_id="pre-file")
     _clear_outbox(rep_env)
     assert _target(rep_env, "P1").note == "OLD", "the fixture is inert"
 
