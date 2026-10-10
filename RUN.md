@@ -112,6 +112,9 @@
 >       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
+>    ⑤  ④ 표의 값 칸(리허설: pressure_MPa 의 불량 쪽 값)을 누르면 표 아래 트렌드 — 리허설 조각 5 점 · 걸은 점 둘이 크게(주황 Positive · 청록 Negative)
+>       · Load earlier / Load later 꺼짐 «Nothing earlier» · «Nothing later»(리허설 조각에 그 계측군 점이 5 개뿐) · 요청 한 번 0.077 s
+>       운영에서는 누른 쪽의 걸은 시각 근방 1,000 점이 먼저 오고, Load earlier / Load later 가 1,000 점씩 앞 · 뒤로 넓힌다
 > 걸린 것     모델 계측군 18 개는 박스 데이터로는 불량 쪽 «—» · 양품 쪽 빨간 missing — 박스 measures 는 공정 변수만 잰다 · 양품 쪽은 모델 계측군에 안 닿는다(운영 판 못 봤다)
 > ```
 >
