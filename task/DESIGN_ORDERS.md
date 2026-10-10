@@ -37651,3 +37651,15 @@ B. 길 찾기 함수 하나 -> 세 자리 (① 두 노드 경로의 스크래치
        띄우는 동안 끊김은 짧게 · 뜬 뒤 walk.html 이 BVDcEwgF 를 부르는지 · 두 base 로 걸어 Nodes 수가 앞과 같은지
 보고   한 줄씩: 빌드 · 번들 이름 · 두 base 걷기 Nodes · Edges · 내린 것 0 · public 변화 0. 그다음 RUN.md «잘리면 ③» 을 화면 칸(fanout_limit)으로 고쳐 씀(앞 지시 5d946a639)
 ```
+
+> **[총괄 -> 클라] 10-10 — A · B 정정 둘 (총괄이 18766 답에 표 · 그래프 함수를 그대로 돌려 잼)**
+
+```
+A 갈래 줄의 «+N behind» 는 뺀다 — 갈래끼리 뒤에 든 것이 겹치면 줄 합이 글씨보다 커짐(bond_temp: 줄 200 + 28 = 228, 글씨 behind 214).
+  소유자 결함이 «글씨와 목록 수가 다름»이라 다시 만들지 않는다. 갈래 줄 = 한 걸음 수만(줄 합 = 글씨 next), 글씨 = «N next · M behind»(M 은 겹침 없이 한 번씩)
+  ▸ 로 편 노드 줄의 «+N behind»(그 노드 하나 뒤)는 남김. 게이트에 «갈래 줄 합 = 글씨 next» 칸 + 변이
+B Route 의 BFS 는 걷기의 static 규칙을 지난다 — derive.js walkTakesStep(statics, from, to, step) 그대로 부름(둘째 규칙 금지)
+  안 지나면 코어 웨이퍼 Route 가 «measures -> measures (in)»(같은 quantity 를 잰 웨이퍼끼리 static 노드로 다리)로 나옴 — 총괄 잼
+  지나면 «in_container (in) -> bonded_from -> in_container» · base 는 «start». 게이트: 이 둘을 픽스처에서 단언 + 변이(walkTakesStep 빼면 빨강)
+그림  https://claude.ai/artifact/MkUAEBy5M1DkJFNW7owRRH — ③ 이 A, ① 의 Route 열이 B (① 값 칸 아래 줄 · ② 엣지 그룹은 소유자 확인 뒤 지시)
+```
