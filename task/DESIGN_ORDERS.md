@@ -37798,3 +37798,13 @@ E2   표 구역에 Table ⇄ Trend 토글 — Trend = trend.js · x = 행마다 
 게이트   한 걸음에서 A · B 둘 -> 둘 다 남음 · 탭 바꾸면 표 · 그래프가 그 가지 · A 다시 걷기 -> A 아래만 비움 · B 그대로 · 변이
 순서     F 바로 뒤(F 의 이름 짓기 위에) -> E2 -> D -> 표 복사 -> 값 대응
 ```
+
+> **[총괄 -> 클라] 10-11 — H: 없는 노드를 걸으면 화면이 말한다 (응용 QA: 18766 · PICK A NODE 에 syn-bw-103-11(소문자)을 치고 목록에서 안 고르고 + Add -> Walk -> «Nodes 1 · Edges 0», 서버 답 state «empty» · message «No ledger evidence is connected to the selected node» 가 화면에 없음 — 운영자는 «그 웨이퍼에 데이터 없음»으로 읽음) — 시연 중 키를 칠 수 있어 C 바로 뒤로**
+
+```
+① 서버 답의 state · message 를 결과 머리에 그대로(빈 답이면 그 문장 한 줄) — 서버가 이미 말하는 것을 화면이 버리지 않는다
+③ 친 키가 목록의 어느 노드와도 «글자 그대로» 같지 않으면 + Add 옆에 «0 atoms · not in the ledger» — + Add 는 그대로 허용(063c24f1c)
+   대소문자만 다른 노드로 «바꿔 넣기»(②)는 안 함 — 노드 신원은 글자 그대로라 추측이 된다
+게이트   소문자 키 + Add -> «0 atoms · not in the ledger» · Walk -> 머리에 서버 message · 목록에서 고른 키는 표시 없음 · 변이
+순서     C -> H -> E1 -> F -> G -> E2 -> D -> 표 복사 -> 값 대응
+```
