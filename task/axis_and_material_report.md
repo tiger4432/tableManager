@@ -1,3 +1,14 @@
+> ## [20:41 디자인] 쌓인 부품 간격 수리 착지 a9f4fe9aa (총괄 348310aee — 73d020e9d 보류 해제 청함)
+
+- **고친 것** — 타입 구역은 부품(제목 · NEXT · + Column · 표)을 간격 토큰 하나(--space-2, 6.8 px)로 쌓습니다. 제목 · NEXT 의 손 여백은 뺐습니다.
+- **게이트** — 화면 게이트에 «쌓인 두 블록이 선 없이 0.5 px 안으로 맞닿으면 빨강» 칸을 더했습니다. Graph · 맞대기 표 · 트렌드 상태 뒤에, 걷기 화면 크기 다섯 모두에서 봅니다. 변이 둘(구역 간격 0 · 경로 줄 간격 0) 다 빨강입니다.
+- **그 칸이 처음 센 것** — 구역 말고 하나 더 있었습니다. 경로 목록 줄 안의 두 줄(경로 · 홉 수)이 0 px 였습니다. 같은 토큰 한 칸(3.4 px)으로 띄웠고, 줄 높이는 44 그대로입니다.
+- **응답 파일** — screens_answers.json 을 screens_answers.json.gz(601985 바이트)로 바꿨습니다. 하니스는 node:zlib gunzipSync 로 읽습니다. 캡처 스크립트도 gz 로 읽고 쓰며, gzip 머리에 시각을 안 넣습니다. URL 없이 두 번 써서 바이트가 같았고, 풀면 커밋돼 있던 json 과 글자까지 같습니다. 상태는 첫 걸음(+ 만)까지 전부 남겼습니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-BVDcEwgF.js, 2481x1226): SYN-BW-103-11 in Positive, Walk (the first step); SYN-BW-SPL-400-19 in Negative, wafer and quantity, Walk; a value cell's trend; Graph. Sections first 3 / sides 2 / trend 2 / graph 0; every gap between a section's parts 6.8 px; stacked block pairs read first 38 / sides 63 / trend 65 / graph 51, touching 0 in each; route rows 7, each chain to hops 3.4 px, 44 px high. Writes 0.
+- **게이트 수** — screen gate 249 with --mutate, stacked gaps green at 1920x950, 1536x864, 1280x720, 1568x775, 1896x907; mutants «the parts of a section stacked with no gap» wk-page · stacked parts with no gap: div.wk-sechead / div.wk-next x2 (div.wk-next) · div.wk-next / div.wk-addcol x2 (div.wk-addcol) · div.wk-addcol / table.wk-table x2 (table.wk-table) | «a route row's two lines with no gap» wk-page · stacked parts with no gap: span.wk-pathchain / span.wk-pathmeta x7 (span.wk-pathmeta); walk_table 108, walk_layout 34, trend 26, css_token_definition 7, subgraph_view 242.
+
+다음(총괄 순서): A — 그래프 덩어리 한 겹 열기. 사본에서 그래프 하니스 초록이고 변이까지 잡힙니다. 이 착지 위에 얹어 화면 게이트 · 크롬 확인 뒤 올립니다.
+
 > ## [19:39 디자인] 간격 정리 + 노드 축 가운데 + STEP fanout_limit 착지 73d020e9d (총괄 18da45b73 · 5d946a639 · 10-10 시연 짝)
 
 - **간격 정리** — 걷기 스타일 한 곳(walk/styles.js · walk.html 머리): 간격 전부 --space-*(표 칸 6.8 × 10.2), 높이 둘(44 · 칸 안 28: Copy id · × · «+N»), 글자 셋(13 · 14 · 16). 레일 체크박스의 브라우저 기본 여백 버림. 경로 줄은 44 에 줄당 한 줄(끝 «…», 전체는 title · 누르면 폼). 그래프(sg-) 글자도 13 · 14 · 16.
