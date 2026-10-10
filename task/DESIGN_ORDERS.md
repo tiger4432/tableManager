@@ -37818,3 +37818,14 @@ E2   표 구역에 Table ⇄ Trend 토글 — Trend = trend.js · x = 행마다 
 게이트   박스: A · B 그림이 다름 · 앞 걸음의 그린 노드 = 체크 행까지 evidence 홉 · 끝 걸음 = 답 전부 · 그래프 걷기 0 · 변이
 순서     E2a -> E2b -> D -> 표 복사 -> G-2 -> 값 대응
 ```
+
+> **[총괄 -> 클라] 10-11 — E2b 를 ③ 으로: 덩어리의 Table · Trend = 페이지 걸음 탭 하나 (클라 잼: 그리개를 부품으로 빼면 main.js 함수 10 · 305 줄 · 그 자리 변이 28 이 옮겨 감) · 순서 D -> 표 복사 -> E2b -> G-2 -> 값 대응**
+
+```
+모양     덩어리 창에 «Open as table» 단추 하나 -> 페이지 걸음 탭 하나 — 그 걸음의 답 = 덩어리 답을 {주인 · 구성원 · 그 사이 변}으로 좁힌 것(걷기 0)
+         그 탭에서 페이지 표 · E2a Trend · 체크 · Next 그대로 — 소유자 10-11 「이어 걸으면 다음 스텝으로 탭 하나 … 표 … 트렌드로 변환하는 토글」 모양
+썸네일   덩어리 자리에 남김 — 같은 좁힌 답의 walkPoints 숫자 점만 그림(제 읽기 없음)
+은퇴     pointsOf · 덩어리 걷기 둘 · Points from(_pickChoices · _pickedFrom · setLumpFrom · PICK_TYPE · rememberPick · rememberedPick) · 덩어리 창 Table · Trend 보기
+         windowAround · AROUND_DAYS · STEP_NODE_LIMIT 는 그것들만 쓰던 자리면 — 부르는 자리 전수 세고 같은 커밋
+게이트   18766: 덩어리 «Open as table» 탭 = 같은 (행, 열)의 페이지 표와 같은 행 · 열 · 점 · 걷기 0 · 썸네일 = Trend 숫자 점 · 은퇴 자리 0(카나리아) · 변이
+```
