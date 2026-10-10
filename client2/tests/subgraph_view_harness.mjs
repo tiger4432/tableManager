@@ -566,9 +566,10 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       JSON.stringify({ drawn: drawnIds.length, fan: fanEnds.size, count: first.count,
         left: a.view.cy.getElementById(`lump:${key}`).length }));
     const others = BUNDLES.bundles.filter((x) => keyOf(x) !== key);
+    const bundleLumps = unsent(a).filter((n) => n.data('level') !== 'big');
     say('P7 the node\'s other bundle stays as it was: its lump, +its rest more',
-      others.length > 0 && JSON.stringify(unsent(a).map((n) => n.data('label')).sort()) === JSON.stringify(others.map(words).sort()),
-      JSON.stringify(unsent(a).map((n) => n.data('label'))));
+      others.length > 0 && JSON.stringify(bundleLumps.map((n) => n.data('label')).sort()) === JSON.stringify(others.map(words).sort()),
+      JSON.stringify(bundleLumps.map((n) => n.data('label'))));
     const layerOf = new Map(a.view.layout.nodes.map((n) => [n.id, n.layer]));
     const firstIds = new Set(BUNDLES.nodes.map((n) => n.id));
     const brought = [...fanEnds].filter((id) => !firstIds.has(id));
@@ -1536,6 +1537,48 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       && one.edgeRows === 0, JSON.stringify(one));
   }
 
+  if (want(['AW1', 'AW2'])) {
+    // A die out of the wafer's unsent bundle (lead f6e8ef44b): drawn, its back not walked by the server.
+    const die = OPENED.nodes.find((n) => !BUNDLES.nodes.some((b) => b.id === n.id));
+    const dn = (id, type) => ({ id, type, label: id, depth: 1, keys: {} });
+    const STEP = { state: 'ready', seed: { id: die.id }, truncated: { reason: null },
+      nodes: [{ ...die, depth: 0 }, dn('aw:x', 'die'), dn('aw:y', 'container'), ...[1, 2, 3, 4, 5, 6].map((k) => dn(`aw:o${k}`, 'defect'))],
+      edges: [{ id: 'aw:e1', source: die.id, target: 'aw:x', predicate: 'bonded_from' }, { id: 'aw:e2', source: die.id, target: 'aw:y', predicate: 'transfer' },
+        ...[1, 2, 3, 4, 5, 6].map((k) => ({ id: `aw:e${k + 2}`, source: die.id, target: `aw:o${k}`, predicate: 'observed' }))] };
+    const w = await seat([BUNDLES, OPENED, STEP]);
+    const wafer = `big:${BUNDLES.bundles[0].node}`;
+    press(w, wafer);
+    unfoldRow(w, OPEN_KEY);
+    await settle();
+    const dieRow = nodeRows(w, OPEN_KEY).find((r) => String(r.attrs['data-value']).endsWith(`\u0000${die.id}`));
+    if (dieRow) tickRow(dieRow);
+    openTicked(w);
+    await settle();
+    const dashed = w.view.cy.getElementById(`big:${die.id}`);
+    const walkedBefore = nodesOf(w).filter((n) => BUNDLES.nodes.some((b) => b.id === n.id())).map((n) => n.id());
+    const widenedDashed = walkedBefore.filter((id) => w.view.cy.getElementById(`big:${id}`).nonempty() && w.view.cy.getElementById(`big:${id}`).data('unsent'));
+    say('AW1 a node a bundle\'s opening brought: a dashed «? next · not walked» lump behind it; a node the walk widened, none (lead f6e8ef44b)',
+      Boolean(dieRow) && dashed.nonempty() && Boolean(dashed.data('unsent')) && String(dashed.data('label')).startsWith('? next · not walked')
+        && walkedBefore.length > 0 && widenedDashed.length === 0,
+      JSON.stringify({ row: Boolean(dieRow), dashed: dashed.nonempty() && dashed.data('label'), widenedDashed }));
+    const asked = w.urls.length;
+    const before = new Set(nodesOf(w).map((n) => n.id()));
+    press(w, `big:${die.id}`);
+    await settle();
+    const ask = w.urls.slice(asked);
+    const params = ask.length ? paramsOf(ask[0]) : new URLSearchParams();
+    const words = (w.view.cy.getElementById(`big:${die.id}`).nonempty() ? String(w.view.cy.getElementById(`big:${die.id}`).data('label')) : '').split('\n')[0];
+    const sub = textOf(pickerOf(w) || { children: [] }, 'sg-pick-sub').join();
+    tickAll(w);
+    openTicked(w);
+    const came = nodesOf(w).map((n) => n.id()).filter((id) => !before.has(id)).length;
+    const after = w.view.cy.getElementById(`big:${die.id}`).nonempty();
+    say('AW2 pressed: one walk from that node, every predicate one step; then its big lump\'s window, its words what Open draws; all open, no lump again (lead f6e8ef44b)',
+      ask.length === 1 && params.getAll('positive').length === 1 && !params.has('follow') && params.get('hops') === '1'
+        && words === '8 next · 0 behind' && sub === words && came === 8 && !after,
+      JSON.stringify({ asks: ask.length, follow: params.getAll('follow'), hops: params.get('hops'), words, sub, came, after }));
+  }
+
   if (want(['PA1', 'PA2', 'PA3', 'PA4'])) {
     // A hand walk: s by p to w and by r to c; w by q to a and by p to b; c by q to a. Two kinds of path s - a.
     const pn = (id, depth) => ({ id, type: 'die', label: id, depth, keys: {} });
@@ -1816,8 +1859,8 @@ const failures = [];
       '    if (this.steps !== steps) return;   // a new start was asked meanwhile\n    this.expanding = [];\n',
       '    if (this.steps !== steps) return;   // a new start was asked meanwhile\n'),
     { ...M('U3m', 'a lump pressed again on its way is asked again', 'U1'),
-      mutate: (t) => swap(swap(t, "    if (!lump || this.state !== 'done') return;\n    if (lump.level === 'big') {",
-        "    if (!lump) return;\n    if (lump.level === 'big') {"),
+      mutate: (t) => swap(swap(t, "    if (!lump || this.state !== 'done') return;\n    // Not walked from",
+        "    if (!lump) return;\n    // Not walked from"),
         "    if (!step || this.state !== 'done' || step.expand.includes(key)) return;\n",
         '    if (!step || step.expand.includes(key)) return;\n') },
     M('J0m', 'every view reads an empty start branch - the one question answered nowhere (lead 10-08)', 'J3',
@@ -1856,6 +1899,14 @@ const failures = [];
     M('LA8m', 'a bundle not walked: next said as exact', 'LM14', 'bound: rest > 0,', 'bound: false,'),
     M('LA9m', 'the window\'s sub line not the lump\'s words', 'LM13',
       '`Behind ${this._labelOf(lump.owner)}`, nextWords(lump), open,', '`Behind ${this._labelOf(lump.owner)}`, `${lump.count} folded`, open,'),
+    M('AWm1', 'a node an opening brought said walked', 'AW1',
+      '          unwalked: Boolean(result.opened) && node.id !== keyParts(result.opened).node,', '          unwalked: false,'),
+    M('AWm2', 'every node said not walked', 'AW1',
+      '          unwalked: Boolean(result.opened) && node.id !== keyParts(result.opened).node,', '          unwalked: true,'),
+    M('AWm3', 'a node walked from still said not walked: dashed again once its branches are all open', 'AW2',
+      "  for (const step of steps || []) {\n    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) at.get(keyParts(r.opened).node).unwalked = false;\n  }\n", ''),
+    M('AWm4', 'walked, its branches not folded into its big lump', 'AW2',
+      '      this.fold.big.set(lump.owner, branchKeys(this.layout, lump.owner));\n      this.render();\n', '      this.render();\n'),
     M('LA5m', 'one node ticked lets its whole branch out', 'LM12',
       '          this.fold.lumped.get(key).add(member);\n',
       '          for (const x of lump.groups.find((g) => g.key === key).members) this.fold.lumped.get(key).add(x);\n'),

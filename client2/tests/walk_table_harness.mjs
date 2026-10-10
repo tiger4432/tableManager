@@ -534,8 +534,8 @@ async function suite(mod) {
     const rowOf = (id) => walkAll(table()).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id);
     const tds = (id) => ((rowOf(id) || { children: [] }).children).filter((c) => c.className !== 'wk-check')
       .map((c) => (c.children.find((k) => k.className === 'wk-centrelabel') || c).textContent);
-    ok('Z13 two groups: the + columns and Route, the node in the centre, delta beside it, the − Route and columns (34d91c09d, df11f9e81)',
-      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate'], ['7', 'inspected', 'M-3', '−2', 'inspected', '9']]),
+    ok('Z13 two groups: Route outermost, the + columns, the node in the centre, delta beside it, the − columns, Route outermost (34d91c09d, df11f9e81)',
+      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['Route', 'gate', 'mat_id', 'Δ', 'gate', 'Route'], ['inspected', '7', 'M-3', '−2', '9', 'inspected']]),
       JSON.stringify([headRow(), tds('d:3')]));
     // The node axis in the middle of its box (lead 10-10): a box at 400 px, 800 wide, 2000 to scroll.
     const scrollTo = (axisLeft, axisRight) => mod.axisScrollLeft({ boxLeft: 400, boxWidth: 800, axisLeft, axisRight, scrollLeft: 0, scrollWidth: 2000 });
@@ -543,7 +543,7 @@ async function suite(mod) {
       JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]) === JSON.stringify([600, 0, 1200]),
       JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]));
     ok('Z27 the step once over the columns that share it, the value\'s name under each (34d91c09d)',
-      JSON.stringify(stepRow()) === JSON.stringify([['inspected (in)', 1], ['', 1], ['', 1], ['', 1], ['', 1], ['inspected (in)', 1]]), JSON.stringify(stepRow()));
+      JSON.stringify(stepRow()) === JSON.stringify([['', 1], ['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1], ['', 1]]), JSON.stringify(stepRow()));
     const copy = walkAll(rowOf('d:3') || { children: [] }).find((e) => e.className === 'wk-copyid');
     ok('Z16 the id is behind a press in the centre, not a column - an icon, its name for a reader (34d91c09d 5)',
       Boolean(copy) && copy.attrs['data-id'] === 'd:3' && copy.textContent === '' && copy.attrs['aria-label'] === 'Copy id'
@@ -593,9 +593,9 @@ async function suite(mod) {
     const unfoldedSteps = stepRow();
     fire(foldOf());
     ok('Z26 «1 empty column»: pressed, the column stands in each group; pressed again, folded',
-      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]) === JSON.stringify([['1 empty column', ['gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate']],
-        ['true', ['note', 'gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate', 'note']], ['gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate'],
-        [['inspected (in)', 2], ['', 1], ['', 1], ['', 1], ['', 1], ['inspected (in)', 2]]]),
+      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]) === JSON.stringify([['1 empty column', ['Route', 'gate', 'mat_id', 'Δ', 'gate', 'Route']],
+        ['true', ['Route', 'note', 'gate', 'mat_id', 'Δ', 'gate', 'note', 'Route']], ['Route', 'gate', 'mat_id', 'Δ', 'gate', 'Route'],
+        [['', 1], ['inspected (in)', 2], ['', 1], ['', 1], ['inspected (in)', 2], ['', 1]]]),
       JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]));
     const press = (value) => {
       const b = walkAll(host).find((e) => e.attrs && e.attrs['data-rows'] === value);
@@ -625,9 +625,9 @@ async function suite(mod) {
     const ADDED_STEP = 'inspected (in) → wafer@1';
     ok('Z15 + Column: a route the rows take, then what its end holds - a column each group, the + side reversed',
       JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]) === JSON.stringify([true, true,
-        ['wafer', 'gate', 'Route', 'mat_id', 'Δ', 'Route', 'gate', 'wafer'],
-        [[ADDED_STEP, 1], ['inspected (in)', 1], ['', 1], ['', 1], ['', 1], ['', 1], ['inspected (in)', 1], [ADDED_STEP, 1]],
-        ['A', '7', 'inspected', 'M-3', '−2', 'inspected', '9', 'B']]),
+        ['Route', 'wafer', 'gate', 'mat_id', 'Δ', 'gate', 'wafer', 'Route'],
+        [['', 1], [ADDED_STEP, 1], ['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1], [ADDED_STEP, 1], ['', 1]],
+        ['inspected', 'A', '7', 'M-3', '−2', '9', 'B', 'inspected']]),
       JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]));
   }
 }
@@ -714,7 +714,7 @@ const sideSuite = (TV) => {
   const die = two.sections.find((x) => x.type === 'die@1') || { groups: [], heads: [], centreHeads: [], deltaHeads: [], rows: [] };
   const wafer = two.sections.find((x) => x.type === 'wafer@1') || { heads: [] };
   ok('Z11 an edge attribute\'s head: its predicate, «(in)» when taken in, and its name',
-    JSON.stringify([die.heads, wafer.heads]) === JSON.stringify([[TV.ROUTE, GATE_IN], [TV.ROUTE, 'inspected · gate']]), JSON.stringify([die.heads, wafer.heads]));
+    JSON.stringify([die.heads, wafer.heads]) === JSON.stringify([[GATE_IN, TV.ROUTE], ['inspected · gate', TV.ROUTE]]), JSON.stringify([die.heads, wafer.heads]));
   ok('Z12 delta where both groups say one number: the first less the second; its head once',
     JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas.map((d) => d.text).join())])
       === JSON.stringify([[TV.DELTA], ['', '', '−2', '']]), JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas)]));
@@ -743,12 +743,12 @@ const sideSuite = (TV) => {
   const eqp = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e) => ({ ...e, qualifiers: { ...e.qualifiers, eqp: 'E' } })) });
   const eqpDie = eqp.sections.find((x) => x.type === 'die@1') || { heads: [] };
   ok('Z22 the number columns nearest the node, the rest outward, each in its order (34d91c09d 2)',
-    JSON.stringify(eqpDie.heads) === JSON.stringify([TV.ROUTE, GATE_IN, 'inspected (in) · eqp']), JSON.stringify(eqpDie.heads));
+    JSON.stringify(eqpDie.heads) === JSON.stringify([GATE_IN, 'inspected (in) · eqp', TV.ROUTE]), JSON.stringify(eqpDie.heads));
   const open = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), new Set(['die@1']));
   const openDie = open.sections.find((x) => x.type === 'die@1') || { heads: [] };
   ok('Z23 a column no row has a value in folds, counted; its type opened, it stands (34d91c09d 7)',
-    JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]) === JSON.stringify([[TV.ROUTE, GATE_IN], { count: 1, open: false },
-      [TV.ROUTE, GATE_IN, NOTE_IN], { count: 1, open: true }]), JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]));
+    JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]) === JSON.stringify([[GATE_IN, TV.ROUTE], { count: 1, open: false },
+      [GATE_IN, NOTE_IN, TV.ROUTE], { count: 1, open: true }]), JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]));
   // Two Δ columns: each Δ says its own column - by the column's index, Route standing first in heads (B).
   const scored = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e, k) => ({ ...e, qualifiers: { ...e.qualifiers, score: 10 + k } })) });
   const scoredDie = scored.sections.find((x) => x.type === 'die@1') || { deltaHeads: [] };
@@ -929,9 +929,9 @@ const TV_MUTANTS = [
   { id: 'ZM6', what: 'several values: the first alone', catches: 'Z6',
     from: '  if (values.length === 1 && !cell.more)', to: '  if (values.length >= 1 && !cell.more)' },
   { id: 'ZM7', what: 'no Route head', catches: 'Z8',
-    from: '    const heads = [ROUTE, ...columnHeads];', to: '    const heads = [...columnHeads];' },
-  { id: 'RM6', what: '«Δ <head>» read from heads, Route first in it', catches: 'Z37',
-    from: '`${DELTA} ${columnHeads[c]}`', to: '`${DELTA} ${heads[c]}`' },
+    from: '    const heads = [...columnHeads, ROUTE];', to: '    const heads = [...columnHeads];' },
+  // RM6 («Δ <head>» read from heads) retired with Route moved to the outer end: heads[c] is columnHeads[c] again, the
+  // mutant changes nothing (Z37 stays, guarding the order).
   { id: 'RM1', what: 'a side reads the other side\'s paths', catches: 'Z29',
     from: '.filter((path) => g.starts.includes(path.seed))', to: '.filter((path) => !g.starts.includes(path.seed))' },
   { id: 'RM2', what: 'a start says nothing', catches: 'Z29',
@@ -940,9 +940,9 @@ const TV_MUTANTS = [
     from: 'path.hops.slice(1).map(', to: 'path.hops.slice(1).reverse().map(' },
   { id: 'RM4', what: 'two paths walked: the first alone', catches: 'Z31',
     from: 'return ways.length ? cellWords({ values: ways }', to: 'return ways.length ? cellWords({ values: ways.slice(0, 1) }' },
-  { id: 'RM5', what: 'the Route cell after the columns, not under its head', catches: 'Z29',
-    from: '        return [routeOf(g, node.id), ...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }))];',
-    to: '        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c })), routeOf(g, node.id)];' },
+  { id: 'RM5', what: 'the Route cell before the columns, not under its head', catches: 'Z29',
+    from: '        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c })), routeOf(g, node.id)];',
+    to: '        return [routeOf(g, node.id), ...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }))];' },
   { id: 'ZM8', what: 'an added column dropped', catches: 'Z18',
     from: ', ...(added.get(type) || [])];', to: '];' },
   { id: 'ZM9', what: 'a difference keeps its float tail', catches: 'Z19',
