@@ -112,6 +112,14 @@
 >       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
+>       시연 전 읽기 2 — 운영 DB 에서 읽기만. 두 base 웨이퍼 각각을 이름 부르는 원자 수(주어 · 목적어 · 술어별). 걷기는 한 번에 claims 6,000 까지만 읽고, base 의 원자 하나가 claim 하나다
+>         SELECT 'subject' AS side, predicate, count(*) AS atoms FROM ledger_events WHERE subject_type = 'wafer' AND subject_keys = '{"wafer": "<base>"}'::jsonb GROUP BY predicate UNION ALL SELECT 'object', predicate, count(*) FROM ledger_events WHERE object_kind = 'entity_ref' AND object_payload->>'type' = 'wafer' AND object_payload->'keys' = '{"wafer": "<base>"}'::jsonb GROUP BY predicate ORDER BY 3 DESC;
+>         리허설 조각  불량 base 278 · 양품 base 206 (0.11 초) — 걷기 claims 2862 · 4 걸음. 불량 base 를 3278 로 늘려도 claims 5862 로 안 잘림,
+>                     4278 이면 «Cut · claims 6000» · 3 걸음 · measures 변 518 -> 51 (④ 값 대부분 빠짐) · 5278 이면 2 걸음 · 모델 계측군 17 of 18
+>                     경계 ≈ 6,000 − (claims 2862 − base 278) — base 말고 걷기가 읽는 나머지는 운영에서 다르다(못 봤다)
+>         잘리면       ① 모델 길: Follow 에서 그 많은 술어를 뺀다 — 리허설(measures 를 뺌) claims 1737 · 6 걸음 · 모델 계측군 18 of 18 · 대신 measures 값 0
+>                     ② 값: Follow 를 그 술어(measures) 하나 · hops 1 로 다시 걷고 ④ 표 · 트렌드 — 리허설 claims 4073 · measures 변 51
+>                        화면: Cut 줄 없음 · quantity 35 줄 · 값 칸 누르면 트렌드 5 점 — 그 술어 원자만으로 6,000 을 넘으면 ② 도 잘린다
 >    ⑤  ④ 표의 값 칸(리허설: pressure_MPa 의 불량 쪽 값)을 누르면 표 아래 트렌드 — 리허설 조각 5 점 · 걸은 점 둘이 크게(주황 Positive · 청록 Negative)
 >       · Load earlier / Load later 꺼짐 «Nothing earlier» · «Nothing later»(리허설 조각에 그 계측군 점이 5 개뿐) · 요청 한 번 0.077 s
 >       운영에서는 누른 쪽의 걸은 시각 근방 1,000 점이 먼저 오고, Load earlier / Load later 가 1,000 점씩 앞 · 뒤로 넓힌다
