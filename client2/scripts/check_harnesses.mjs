@@ -1403,6 +1403,8 @@ const FLOORS = new Map([
   // New with lead bc63378e5: the start baskets - + puts the picked node in, x takes it out, + on the other moves it,
   // Walk asks them as they are, an empty Positive keeps Walk off, Ctrl/Shift on Walk mark nothing. Floor = first run.
   ['start_baskets_harness.mjs', 22],   // + B11 B12: a key typed goes in; Walk follows the baskets (lead 10-10)
+  // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
+  ['node_search_harness.mjs', 38],
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1479,7 +1481,7 @@ const FLOORS = new Map([
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
-  ['walk_table_harness.mjs', 69],   // S1 S2 the baskets; SM1 retired with Walk's Shift (lead bc63378e5)
+  ['walk_table_harness.mjs', 68],   // M9 moved to node_search NS5 with the dropdown (lead bccbdd601)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

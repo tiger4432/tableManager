@@ -470,6 +470,15 @@ const press = (c, words) => evaluate(c, `(() => { const b = [...document.querySe
   if (b) b.click(); return Boolean(b); })()`);
 const choose = (c, sel, pick) => evaluate(c, `(() => { const s = document.querySelectorAll(${JSON.stringify(sel)})[${pick[0]}]; if (!s) return false;
   const o = [...s.options].find((x, i) => ${pick[1]}); if (!o) return false; s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+// PICK A NODE's box (lead bccbdd601): focused, it lists the first nodes; a press on row i picks it.
+const pickRow = async (c, i) => {
+  // The box shows once the type's first answer names its key (hidden while it loads, and a hidden box takes no focus).
+  await until(c, "document.querySelector('.wk-search .wk-cell') && !document.querySelector('.wk-search .wk-cell').hidden");
+  await evaluate(c, `(() => { const b = document.querySelector('.wk-search input'); if (b) { b.focus(); b.click(); } return Boolean(b); })()`);
+  await until(c, `document.querySelectorAll('.wk-searchitem').length > ${i}`);
+  return evaluate(c, `(() => { const r = document.querySelectorAll('.wk-searchitem')[${i}]; if (!r) return false;
+    r.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window })); return true; })()`);
+};
 // A basket's +: the picked node into Positive (+) or Negative (−) (lead bc63378e5).
 const basket = (c, sign) => evaluate(c, `(() => { const b = document.querySelector('.wk-basket[data-sign="${sign}"] .wk-basketadd');
   if (b && !b.disabled) b.click(); return Boolean(b); })()`);
@@ -477,9 +486,7 @@ const DRIVE = {
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
       await choose(c, '.wk-select', [0, "x.textContent.trim() === 'wafer'"]);
-      // The subject list, by its own first line: the direction select is a second select too.
-      await until(c, "/pick, or type/.test(((document.querySelectorAll('.wk-select')[1] || { options: [] }).options[0] || {}).textContent || '')");
-      await choose(c, '.wk-select', [1, 'i === 1']);
+      await pickRow(c, 0);
       await sleep(300);
       await basket(c, '+');
       await press(c, 'Walk');
@@ -494,7 +501,7 @@ const DRIVE = {
       await choose(c, '.cmp-select', [0, "x.value === 'recipe'"]);
       await choose(c, '.cmp-select', [1, "x.value === 'processed_with'"]);
       await choose(c, '.cmp-select', [2, "x.value === 'step'"]);
-      await choose(c, '.wk-select', [1, 'i === 2']);
+      await pickRow(c, 1);
       await sleep(300);
       await basket(c, '−');
       await press(c, 'Walk');
