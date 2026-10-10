@@ -38130,3 +38130,36 @@ RUN.md     대본 ③ · ④ · 시연 전 읽기 문장 · 걸린 것 을 위 �
             -> ④-b 착지 뒤 같은 누름으로 두 세상에서 quantity 줄의 값이 같은지 «누른 것 · 본 것»
 내 실수      my edit of run_dm_hold.sh during the held run broke its cleanup lines (bash syntax error) - worktree /c/wt-app2 and schemas assy_app_reread_dm · w_appdemo_vf · w_appdemo_vb stayed until I ran the lines by hand (dropped 361 · 27 · 27, left 0) · public none
 ```
+
+---
+
+## [C 응용] 10-10 ④-b 식 표(24c3e9548) 를 18766 에서 — 변 스킴 · 이벤트 스킴이 같은 누름으로 같은 19 줄 · 같은 값 · 같은 missing
+
+```
+빌드        59a2ebcbb walk-B_31tyDI.js (the formula table 24c3e9548) · 18766 with the fake rows and the two scheme worlds in its seed (appdemo_ed measures 50 atoms · appdemo_ev has_measurement 50 · of_quantity 50 · register 50)
+누른 것      each world alone (?world=appdemo_ed, then ?world=appdemo_ev) · Type wafer · SYN-BW-103-11 typed · Positive + Add · SYN-BW-SPL-400-19 typed · Negative + Add · Walk
+변 스킴      appdemo_ed · Nodes 21 · Edges 32 · 0.036 s · quantity table «Positive · 1 start · 17 rows» «Negative · 1 start · 15 rows» · columns measures (in) · value/step/role/eqp_id each side · quantity in the middle · Δ · 19 rows
+이벤트 스킴   appdemo_ev · Nodes 53 · Edges 64 · quantity table 19 rows with «depth · via» each side · + Column on the quantity table -> Route «of_quantity (in) → measurement» (offered 5 routes) -> Value «value» (offered key · meas_id, eqp_id, role, step, unit, value, name) -> column «of_quantity (in) → measurement · value» each side and Δ
+같은가       19 rows of the event world (quantity | + value | − value | Δ) equal to the edge world's 19, all four cells, 0 differing · 13 with both values and Δ · outgassing · post_bond_queue_h · pre_bond_queue_h · stage_particle + only (− red missing) · surface_oxidation · tape_adhesion_anomaly − only (+ red missing)
+거르기       event world: Missing -> quantity 6 rows · Differs -> quantity 19 rows
+RUN.md      대본 ③ · ④ 를 이 표로 다시 생성(d530aac4a) — 박스 조각(가짜 행 없음, 18767 을 같은 빌드로 따로 띄워 잼 · 끝나고 내림)
+            measures (in) · value (+|−): value|value 2 · multi|value 1 · value|missing 12 · multi|missing 10 · none|missing 23
+            the void_formation model's 18 quantities all in the table, all none|missing 18 (+ reached with no value «—» · − not reached, red missing) · the other none|missing 5: vacuum_assist, chem, gas, pad, slurry
+```
+
+---
+
+## [C 응용] 10-10 트렌드 쪽 나누기(cb6d6a1fa) 를 진짜 서버로 — 걷기는 전과 같은 수 · 쪽은 시각 순 · 커서로 끝까지 겹침 없이
+
+```
+모양      18767 · 박스 조각(가짜 행 없음) · e3f1c3d62 · 서버만 · 끝나고 내림 · 스키마 지움 · public 0 · 18766(소유자)은 안 건드림
+걷기      두 base(+ 불량 · − 양품) · collect wafer, quantity · node_limit 1000
+          default            nodes 62 · edges 1601  (바뀌기 전 같은 누름 62 · 1601) · page 칸 없음 · walk.mode evidence_graph
+          default + appbox_vf nodes 80 · edges 1619  (전 80 · 1619)
+쪽         quantity pressure_MPa · follow measures · incoming · hops 1 · page 1000 · around -> 200 · 0.046 s · time_page · 점 5
+          시각 순 · claim_id 다 있음 · has_earlier / has_later 거짓 · not_event_time 0
+          page 2 로 around 2 -> later 커서 2 -> earlier 커서 1 · 다섯 점 다 · 겹침 0 · 양 끝 «더 없음»
+거절      around + positive -> 422 time_page_conflicts «A time page cannot be asked with positive - drop them»
+          around=not-a-time -> 422 time_page_invalid «around is not an ISO 8601 time: not-a-time»
+화면      트렌드는 클라 착지 때 18766 에서
+```

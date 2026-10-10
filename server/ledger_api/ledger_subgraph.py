@@ -310,6 +310,9 @@ MAX_NODE_LIMIT = 1000
 #: binding would have been a number chosen to feel safe.
 MAX_EDGE_LIMIT = 6000
 MAX_CLAIM_SCAN = 6000
+#: The time page (총괄 10-10 B): points per page - the owner's 「근방 1000 행」 - and its ceiling.
+TIME_PAGE_DEFAULT = 1000
+TIME_PAGE_MAX = 5000
 DEFAULT_PROPERTY_LIMIT = 10000
 MAX_PROPERTY_LIMIT = 20000
 EVENT_STATES = {"source_molecule", "source_record", "legacy_atom"}
@@ -426,6 +429,27 @@ class EvidenceAtom:
 ATOM_COLUMNS = ", ".join((*LEDGER_COLUMNS, "world"))
 EVIDENCE_COLUMNS = ", ".join(f"e.{name.strip()}" for name in ATOM_COLUMNS.split(","))
 
+#: The nodes a read starts from, one row each.
+FRONTIER_CTE = """
+            WITH frontier AS (
+                SELECT type, keys FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
+                     AS item(type text, keys jsonb)
+            )
+        """
+#: How an atom `e` names a frontier node `f`, by the arm that reads it - one spelling for the
+#: walk's read and the time page's.
+ARM_JOIN = {
+    "outgoing": "e.subject_type = f.type AND e.subject_keys = f.keys",
+    "incoming": ("e.object_kind = 'entity_ref'\n"
+                 "                     AND e.object_payload->>'type' = f.type\n"
+                 "                     AND e.object_payload->'keys' = f.keys"),
+}
+
+
+def _where(*conditions):
+    kept = [item for item in conditions if item]
+    return ("WHERE " + " AND ".join(kept)) if kept else ""
+
 
 def _atom_from_row(row):
     keys = json.loads(row[2]) if isinstance(row[2], str) else row[2]
@@ -536,6 +560,13 @@ class SqlEvidenceLookup:
         cut = len(rows) > limit
         return [_atom_from_row(row) for row in rows[:limit]], cut
 
+    def _selected(self, params):
+        """(the columns a read of atoms selects, the filter keeping current facts only - empty when
+        every fact is drawn): one spelling for every read, so `not_current` means one thing."""
+        not_current = self._not_current_clause(params)
+        selected = f"{EVIDENCE_COLUMNS}, {not_current or 'false'} AS not_current"
+        return selected, (f"NOT {not_current}" if not_current and self.current_only else "")
+
     def claims_for_entities(self, entities, direction, limit, *,
                             follow=None, exclude=None):
         """`follow` narrows which predicates the walk fetches at all; `exclude` leaves some out -
@@ -561,13 +592,7 @@ class SqlEvidenceLookup:
             params["exclude"] = list(exclude)
             follow_clause = " AND ".join(filter(None, (follow_clause, "e.predicate <> ALL(%(exclude)s)")))
 
-        def _where(*conditions):
-            kept = [item for item in conditions if item]
-            return ("WHERE " + " AND ".join(kept)) if kept else ""
-
-        not_current = self._not_current_clause(params)
-        selected = f"{EVIDENCE_COLUMNS}, {not_current or 'false'} AS not_current"
-        current = f"NOT {not_current}" if not_current and self.current_only else ""
+        selected, current = self._selected(params)
 
         # 🔴 ONE ARM BUILDER, TWO QUESTIONS (ruling 208). The fetch asks for the claims
         # INSIDE the interval and the census asks how many fall OUTSIDE it; they must differ
@@ -575,37 +600,23 @@ class SqlEvidenceLookup:
         # than the walk actually skipped.
         def _arms(extra_clause):
             built = []
-            if direction in ("outgoing", "both"):
-                built.append(f"""
+            for arm in ("outgoing", "incoming"):
+                if direction in (arm, "both"):
+                    built.append(f"""
                     SELECT {selected} FROM frontier f
                     JOIN {self.relation} e
-                      ON e.subject_type = f.type AND e.subject_keys = f.keys
-                    {_where(follow_clause, extra_clause, current)}
-                """)
-            if direction in ("incoming", "both"):
-                built.append(f"""
-                    SELECT {selected} FROM frontier f
-                    JOIN {self.relation} e
-                      ON e.object_kind = 'entity_ref'
-                     AND e.object_payload->>'type' = f.type
-                     AND e.object_payload->'keys' = f.keys
+                      ON {ARM_JOIN[arm]}
                     {_where(follow_clause, extra_clause, current)}
                 """)
             return " UNION ".join(built)
 
-        frontier_cte = """
-            WITH frontier AS (
-                SELECT type, keys FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
-                     AS item(type text, keys jsonb)
-            )
-        """
         rows = self._execute(f"""
-            {frontier_cte}
+            {FRONTIER_CTE}
             SELECT * FROM ({_arms(self._interval_clause(params))}) claims
             ORDER BY occurred_at DESC, id DESC
             LIMIT %(fetch)s
         """, params)
-        self._count_excluded(frontier_cte, _arms, params)
+        self._count_excluded(FRONTIER_CTE, _arms, params)
         return self._bounded(rows, limit)
 
     def _count_excluded(self, frontier_cte, arms, params):
@@ -626,6 +637,46 @@ class SqlEvidenceLookup:
             SELECT count(*) FROM ({arms(outside)}) claims
         """, params)
         self.interval_excluded += int(rows[0][0]) if rows else 0
+
+    def _time_arm(self, params, entity, direction, predicate, timed):
+        """`FROM ... WHERE ...` for one node's `entity_ref` atoms of one predicate on one arm -
+        `timed`: those whose time is an event time, else the others. One builder for the time
+        page and its count (총괄 10-10 B), so the two cannot be about different rows."""
+        params.update({"frontier": _canonical([{"type": entity[0], "keys": entity[1]}]),
+                       "predicate": predicate})
+        selected, current = self._selected(params)
+        event = event_time_sql("e")
+        return selected, f"""
+            FROM frontier f
+            JOIN {self.relation} e
+              ON {ARM_JOIN[direction]}
+            {_where("e.predicate = %(predicate)s", "e.object_kind = 'entity_ref'",
+                    event if timed else "NOT " + event, current)}
+        """
+
+    def claims_in_time_order(self, entity, direction, predicate, at, op, limit):
+        """The time page's read: from `at` = (instant, atom id), the next `limit` atoms by
+        (occurred_at, id) - `>` / `>=` forwards, `<` backwards - and whether more follow.
+        Ordered and cut in the SQL, never read whole and cut here (총괄 10-10)."""
+        params = {"at": at[0], "at_id": at[1], "fetch": int(limit) + 1}
+        selected, arm = self._time_arm(params, entity, direction, predicate, timed=True)
+        order = {">": "ASC", ">=": "ASC", "<": "DESC"}[op]
+        rows = self._execute(f"""
+            {FRONTIER_CTE}
+            SELECT {selected} {arm}
+              AND (e.occurred_at, e.id) {op} (%(at)s, CAST(%(at_id)s AS uuid))
+            ORDER BY e.occurred_at {order}, e.id {order}
+            LIMIT %(fetch)s
+        """, params)
+        return self._bounded(rows, limit)
+
+    def count_not_event_time(self, entity, direction, predicate):
+        """How many of those atoms the time page leaves out because their time is not an event
+        time (`schema.reads_as_event_time`) - said, so a short page is not read as all there is."""
+        params = {}
+        _, arm = self._time_arm(params, entity, direction, predicate, timed=False)
+        rows = self._execute(f"{FRONTIER_CTE} SELECT count(*) {arm}", params)
+        return int(rows[0][0]) if rows else 0
 
     # ⚰️ `claims_by_ids` (and the in-memory one) - no caller, and it fetched past
     # `_not_current_clause` (총괄 10-01).
@@ -1182,6 +1233,31 @@ def _edge(edge_type, source, target, *, original_predicate=None,
         "basis": None, "qualifiers": {},
         "cardinality": cardinality,
     }
+
+
+def _claim_edge(atom, source_id, target_id, edge_type, cardinalities=None):
+    """One atom as one edge - the walk's and the time page's one builder (총괄 10-10 B)."""
+    edge = _edge(edge_type, source_id, target_id,
+                 original_predicate=atom.predicate,
+                 cardinality=(cardinalities or {}).get(
+                     _bare_name(atom.predicate)))
+    edge["claim_id"] = atom.id
+    # an atom whose time is not an event time shows none (총괄 29047aedc)
+    edge["occurred_at"] = (_instant(atom.occurred_at)
+                           if reads_as_event_time(atom.occurred_at_basis) else None)
+    edge["source_who"] = atom.source_who
+    edge["basis"] = atom.source_raw_ref
+    edge["qualifiers"] = dict((atom.object_payload or {}).get("qualifiers") or {})
+    # ⚠️ include_superseded · 시각 쪽으로 «일부러» 그린 엣지에만 붙는 표지 (총괄 22ebdd153 · 10-10 B).
+    # 기본 걷기는 지금 것 아닌 사실을 애초에 안 가져오므로 이 키가 없고, 있으면 「지금 값이 아님」이다.
+    if atom.not_current:
+        edge["not_current"] = True
+    said = {"world": atom.world, "claim_id": atom.id, "occurred_at": edge["occurred_at"],
+            "source_who": atom.source_who, "basis": atom.source_raw_ref}
+    if atom.not_current:
+        said["not_current"] = True
+    edge["worlds"], edge["by_world"] = [atom.world], [said]
+    return edge
 
 
 def _canonical_seed(item):
@@ -1877,15 +1953,118 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     return "\n".join(lines) + "\n"
 
 
-def subgraph(seed_id, lookup, *, declaration_paths=None, **arguments):
+def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, **arguments):
     """`_walk` over the declarations of the worlds it walks (`declaration_paths`, in the order
     picked; None: the operating world's) - bound for this walk alone, so a concurrent walk of
-    other worlds reads their own files."""
+    other worlds reads their own files. `page`: the walk widened to time, `_time_page`."""
     token = _WALK_DECLARATION.set(declaration_paths)
     try:
+        if page is not None:
+            return _time_page(seed_id, lookup, page, **arguments)
         return _walk(seed_id, lookup, **arguments)
     finally:
         _WALK_DECLARATION.reset(token)
+
+
+#: Below every atom id, so (t0, this) splits a node's atoms at t0 exactly: `>=` is 「at or after t0」.
+_BEFORE_EVERY_ID = "00000000-0000-0000-0000-000000000000"
+
+
+def time_cursor(value):
+    """A page's `earlier` / `later` cursor -> (instant, atom id). `ValueError` for anything else."""
+    try:
+        at, atom_id = _untoken(str(value))
+        return _parse_instant(at), str(uuid.UUID(str(atom_id)))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("not a page cursor - send back a page's earlier or later as it came") from exc
+
+
+def _cursor(atom):
+    return _token([_instant(atom.occurred_at), atom.id])
+
+
+def _time_page(seed_id, lookup, page, *, direction, follow, cardinalities=None):
+    """One node's atoms of one predicate on one arm, in time order, a page at a time (총괄 10-10 B).
+
+    `page`: {"mode": "around", "around": t0} | {"mode": "earlier" | "later", "at": a cursor's
+    (instant, id)}, and "size". Around: the `size` atoms nearest t0, either side. Event times only
+    - the rest are counted in `not_event_time`; old facts come too, marked as the walk marks them,
+    when the lookup draws them. Each atom is the walk's edge (`_claim_edge`); the envelope is the
+    walk's names plus `page`.
+    """
+    seed = next(iter(_signed_seeds(seed_id)))
+    ref = decode_node_id(seed)
+    (predicate,) = follow
+    entity, size, mode = (ref["type"], ref["keys"]), int(page["size"]), page["mode"]
+
+    def read(at, op):
+        return lookup.claims_in_time_order(entity, direction, predicate, at, op, size)
+
+    has_earlier = has_later = None
+    if mode == "around":
+        t0 = page["around"]
+        after, after_cut = read((t0, _BEFORE_EVERY_ID), ">=")
+        before, before_cut = read((t0, _BEFORE_EVERY_ID), "<")
+        took_after = took_before = 0
+        while took_after + took_before < size and (took_after < len(after) or took_before < len(before)):
+            if took_before >= len(before) or (
+                    took_after < len(after)
+                    and after[took_after].occurred_at - t0 <= t0 - before[took_before].occurred_at):
+                took_after += 1
+            else:
+                took_before += 1
+        atoms = before[:took_before][::-1] + after[:took_after]
+        has_earlier = took_before < len(before) or before_cut
+        has_later = took_after < len(after) or after_cut
+    elif mode == "earlier":
+        atoms, has_earlier = read(page["at"], "<")
+        atoms = atoms[::-1]
+    else:
+        atoms, has_later = read(page["at"], ">")
+
+    def node(node_type, keys, depth):
+        built = _entity_node(node_type, keys)
+        # not counted on a page - a 0 would read as 「nothing attached」
+        built.pop("claim_count", None)
+        built.pop("predicates", None)
+        built["depth"] = depth
+        return built
+
+    seed_node = node(ref["type"], ref["keys"], 0)
+    nodes, edges = {seed: seed_node}, []
+    for atom in atoms:
+        payload = atom.object_payload or {}
+        if not (payload.get("type") and payload.get("keys")):
+            continue
+        subject_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
+        target_id = explorer.entity_id(payload["type"], payload["keys"])
+        far_id, far = ((target_id, (payload["type"], payload["keys"])) if direction == "outgoing"
+                       else (subject_id, (atom.subject_type, atom.subject_keys)))
+        if far_id not in nodes:
+            nodes[far_id] = node(*far, 1)
+        edges.append(_claim_edge(atom, subject_id, target_id, atom.predicate, cardinalities))
+    return {
+        "state": "ready" if edges else "empty",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "seed": seed_node,
+        "nodes": sorted(nodes.values(), key=lambda item: (
+            item["depth"], item["node_kind"], item["label"], item["id"])),
+        "edges": edges,
+        "seeds": [{"id": seed, "sign": "+", "node_kind": ref["kind"]}],
+        "walk": {"mode": "time_page", "direction": direction,
+                 "hops_requested": 1, "hops_reached": 1 if edges else 0},
+        "message": None if edges else "No %s points %s" % (
+            predicate, {"around": "on this node", "earlier": "earlier", "later": "later"}[mode]),
+        "page": {
+            "mode": mode, "around": _instant(page["around"]) if mode == "around" else None,
+            "size": size, "rows": len(edges),
+            "window": ({"from": _instant(atoms[0].occurred_at), "to": _instant(atoms[-1].occurred_at)}
+                       if atoms else None),
+            "earlier": _cursor(atoms[0]) if has_earlier else None, "has_earlier": has_earlier,
+            "later": _cursor(atoms[-1]) if has_later else None, "has_later": has_later,
+            "not_event_time": lookup.count_not_event_time(entity, direction, predicate),
+        },
+    }
 
 
 def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
@@ -2118,30 +2297,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: happens here, where the atom arrives.
     #:
     #: The claim itself is not lost, it stops being a place you walk THROUGH: its id, time,
-    #: source and qualifiers ride on the edge, which is where "who said this and when" belongs
-    #: in a graph whose nodes are things in the world.
-    def _claim_edge(atom, source_id, target_id, edge_type):
-        edge = _edge(edge_type, source_id, target_id,
-                     original_predicate=atom.predicate,
-                     cardinality=(cardinalities or {}).get(
-                         _bare_name(atom.predicate)))
-        edge["claim_id"] = atom.id
-        # an atom whose time is not an event time shows none (총괄 29047aedc)
-        edge["occurred_at"] = (_instant(atom.occurred_at)
-                               if reads_as_event_time(atom.occurred_at_basis) else None)
-        edge["source_who"] = atom.source_who
-        edge["basis"] = atom.source_raw_ref
-        edge["qualifiers"] = dict((atom.object_payload or {}).get("qualifiers") or {})
-        # ⚠️ include_superseded 로 «일부러» 그린 엣지에만 붙는 표지 (총괄 22ebdd153). 기본 걷기는
-        # 지금 것 아닌 사실을 애초에 안 가져오므로 이 키가 없고, 있으면 「지금 값이 아님」이다.
-        if atom.not_current:
-            edge["not_current"] = True
-        said = {"world": atom.world, "claim_id": atom.id, "occurred_at": edge["occurred_at"],
-                "source_who": atom.source_who, "basis": atom.source_raw_ref}
-        if atom.not_current:
-            said["not_current"] = True
-        edge["worlds"], edge["by_world"] = [atom.world], [said]
-        return edge
+    #: source and qualifiers ride on the edge (`_claim_edge`), which is where "who said this and
+    #: when" belongs in a graph whose nodes are things in the world.
 
     def _record_registration(atom):
         """File one registration's qualifiers under its SUBJECT. The only recorder.
@@ -2319,7 +2476,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 return
         if target is not None:
             if add_node(target, decode_node_id(target["id"]), target_depth):
-                add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate))
+                add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate,
+                                     cardinalities))
             return
         # 🔴 EVERYTHING ELSE IS NOT A NODE. An atom whose object is a VALUE says
         # something about its subject; it is not a second place to stand. The finding-point

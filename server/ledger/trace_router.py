@@ -185,6 +185,13 @@ def evidence_subgraph(
         None,
         description=("`<node id>|<predicate>|<direction>` of a bundle to draw past "
                      "`fanout_limit`. May repeat")),
+    around: str | None = Query(
+        None, description=("Time page: the instant (ISO 8601) the first page is nearest to - "
+                           "`id`'s atoms along one `follow` on one `direction`, hops=1")),
+    earlier: str | None = Query(None, description="Time page: a page's `page.earlier`, as it came"),
+    later: str | None = Query(None, description="Time page: a page's `page.later`, as it came"),
+    page: int = Query(ledger_subgraph.TIME_PAGE_DEFAULT, ge=1, le=ledger_subgraph.TIME_PAGE_MAX,
+                      description="Time page: points per page"),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -265,6 +272,15 @@ def evidence_subgraph(
         raise HTTPException(status_code=422, detail={
             "reason": "interval_empty",
             "message": "since must be before until - swap them or widen the window"})
+    time_page = _time_page_asked(
+        {"around": around, "earlier": earlier, "later": later}, page,
+        follow=follow, follow_keys=follow_keys, direction=direction, hops=hops,
+        given=[name for name, value in (
+            ("positive", positive), ("negative", negative), ("seed_type", seed_type),
+            ("collect", collect), ("group_by", group_by), ("measure", measure),
+            ("expand", expand), ("since", since), ("until", until),
+            ("fanout_limit", fanout_limit), ("format", None if wants == "json" else wants))
+            if _given(value)])
     # \u26d4 A FORMAT WE DO NOT ANSWER IS REFUSED BY NAME. Falling back to JSON would hand a
     # caller who asked for rows a body they cannot parse, and they would read the failure as
     # 「the walk found nothing」 - the shape this route already refuses for an unparsable
@@ -304,7 +320,7 @@ def evidence_subgraph(
             # A direct call leaves FastAPI's `Query` sentinels here, as for `collect` above.
             fanout_limit=fanout_limit if isinstance(fanout_limit, int) else None,
             expand=list(expand) if isinstance(expand, (list, tuple)) else None,
-            **interval)
+            page=time_page, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
             # of the source - `rows` was folded from this payload's own structures.
@@ -327,6 +343,49 @@ def evidence_subgraph(
         if _is_undefined_table(exc):
             raise _relation_absent(", ".join(each.ledger for each in _worlds(world)))
         raise
+
+
+def _given(value):
+    """Did the request bring this argument - blanks and FastAPI's `Query` sentinel (a direct call)
+    are not brought."""
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple)):
+        return bool(value)
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _time_page_asked(cursors, size, *, follow, follow_keys, direction, hops, given):
+    """The time page this request asks for (총괄 10-10 B) - None for a walk. Exactly one of
+    around / earlier / later, one `follow` without keys, one direction, hops=1, and none of
+    `given` (the arguments that widen or reshape a walk)."""
+    asked = {name: value for name, value in cursors.items() if isinstance(value, str) and _given(value)}
+    if not asked:
+        return None
+
+    def refuse(argument, message):
+        raise HTTPException(status_code=422, detail={
+            "reason": "time_page_invalid", "argument": argument, "message": message})
+
+    if len(asked) > 1:
+        refuse(", ".join(asked), "Give one of around, earlier, later")
+    if given:
+        raise HTTPException(status_code=422, detail={
+            "reason": "time_page_conflicts", "arguments": given,
+            "message": "A time page cannot be asked with " + ", ".join(given) + " - drop them"})
+    if len(follow or ()) != 1 or follow_keys:
+        refuse("follow", "A time page follows exactly one predicate, without keys")
+    if direction not in ("outgoing", "incoming"):
+        refuse("direction", "A time page reads one side - direction=outgoing or incoming")
+    if hops != 1:
+        refuse("hops", "A time page is one step - hops=1")
+    ((mode, raw),) = asked.items()
+    try:
+        at = _instant_arg(raw) if mode == "around" else ledger_subgraph.time_cursor(raw)
+    except ValueError as exc:
+        refuse(mode, (f"around is not an ISO 8601 time: {raw}" if mode == "around" else str(exc)))
+    return {"mode": mode, ("around" if mode == "around" else "at"): at,
+            "size": size if isinstance(size, int) else ledger_subgraph.TIME_PAGE_DEFAULT}
 
 
 def _signed_start(node_id, positive, negative):
@@ -614,7 +673,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
-                    fanout_limit=None, expand=None):
+                    fanout_limit=None, expand=None, page=None):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -627,11 +686,18 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                         "server/migrations/add_ledger_source_events.py --apply"),
         })
     cardinalities = _predicate_cardinalities(world)
-    return ledger_subgraph.subgraph(
-        node_id, ledger_subgraph.SqlEvidenceLookup(
+    lookup = ledger_subgraph.SqlEvidenceLookup(
         connection, worlds=names, since=since, until=until,
         one=ledger_subgraph.one_predicates(cardinalities),
-        current_only=not include_superseded),
+        # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
+        current_only=not (include_superseded or page is not None))
+    if page is not None:
+        return ledger_subgraph.subgraph(
+            node_id, lookup, page=page, direction=direction, follow=follow,
+            cardinalities=cardinalities,
+            declaration_paths=tuple(each.declaration_path for each in names))
+    return ledger_subgraph.subgraph(
+        node_id, lookup,
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,

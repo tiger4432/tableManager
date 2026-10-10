@@ -105,14 +105,32 @@
 >       (016707766 에서 다시 걸음: 30 · 0.775 s)
 >        누르기로는 안 닿는다(박스 선언) — Route to wafer «wafer → die → wafer · in_container» + «↻ transfer» 는 wafer 1 개(base 뿐).
 >        transfer 의 끝은 운반 자리(DTLotSlot) 141 개뿐 · 코어 웨이퍼는 bonded_from 으로 닿는데 follow 목록에 bonded_from 이 없다 — 운영 판 못 봤다
->    ③  Collect 에 quantity 를 더하고 세상 칩 default + «모델 세상 1» -> 같은 바구니로 다시 걷는다 · 6 걸음 · 노드 80                0.888 s
->    ④  표의 quantity 묶음 — 한 줄이 한 계측군, 왼쪽 «Positive · 48 nodes» · 오른쪽 «Negative · 3 nodes», 열 measures · value 를 좌우로 본다
->       행 48 · 두 쪽 값 3 · 불량 쪽만 값(양품 쪽 빨간 missing) 22 · 불량 쪽 빈칸 · 양품 쪽 빨간 missing 23 (모델 계측군 18 + 그 밖 5)
->       빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · 빈칸 = 닿았는데 measures 값이 없음      (f11d57fd5 · 표는 걷기 답을 그대로 그려 따로 안 부름)
->       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 닿은 쪽이 «빈칸»(못 닿은 쪽은 빨간 missing)
+>    ③  Collect 에 quantity 를 더하고 세상 칩 default + «모델 세상 1» -> 같은 바구니로 다시 걷는다 · 6 걸음 · 노드 80                0.843 s
+>    ④  표의 quantity 묶음 — 한 줄이 한 계측군(이름이 가운데), 왼쪽 «Positive · 1 start · 48 rows» · 오른쪽 «Negative · 1 start · 3 rows», 열 measures (in) · value 를 좌우로 · 맨 오른쪽 Δ
+>       행 48 · 두 쪽 값 3 · 불량 쪽만 값(양품 쪽 빨간 missing) 22 · 불량 쪽 «—» · 양품 쪽 빨간 missing 23 (모델 계측군 18 + 그 밖 5)
+>       빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · «—» = 닿았는데 measures 값이 없음 · 표 위 «Missing» 으로 한쪽만 닿은 줄만      (59a2ebcbb · 표는 걷기 답을 그대로 그려 따로 안 부름)
+>       시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ④ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
-> 걸린 것     모델 계측군 18 개는 박스 데이터로는 불량 쪽 빈칸 · 양품 쪽 빨간 missing — 박스 measures 는 공정 변수만 잰다 · 양품 쪽은 모델 계측군에 안 닿는다(운영 판 못 봤다)
+> 걸린 것     모델 계측군 18 개는 박스 데이터로는 불량 쪽 «—» · 양품 쪽 빨간 missing — 박스 measures 는 공정 변수만 잰다 · 양품 쪽은 모델 계측군에 안 닿는다(운영 판 못 봤다)
+> ```
+>
+> ---
+>
+> ## [10-10] **트렌드 쪽 나누기 — /subgraph 의 around · earlier · later (총괄 10-10 B) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 순서        pull -> 서버 재기동 (트렌드 화면은 클라 착지와 함께)
+> 확인        GET /api/ledger/subgraph?id=<행 노드 id>&follow=<술어 하나>&direction=incoming&hops=1&around=<ISO 시각>&page=1000
+>             walk.mode time_page · edges = 그 노드의 그 술어 원자, 시각 순 — around 앞 · 뒤에서 가까운 1,000 개
+>             page.earlier · page.later 를 받은 그대로 earlier= · later= 로 -> 그다음 1,000 개
+>             page.has_earlier · has_later = 그 쪽에 더 있나 · page.not_event_time = 시각이 사건 시각이 아니라 뺀 원자 수
+> 422         time_page_invalid — argument 가 틀린 자리(follow 하나 키 없이 · direction 한쪽 · hops=1 · 커서 · ISO)
+>             time_page_conflicts — arguments 가 같이 못 주는 걷기 인자(positive · negative · seed_type · collect · group_by ·
+>             measure · expand · since · until · fanout_limit · format=rows)
+> 걷기        around · earlier · later 가 없으면 오늘 걷기 그대로 — 박스 걷기 6 + 메모리 걷기 2, 응답 10,568,244 바이트가 같음
+> 박스        읽기 전용 · quantity pressure_MPa <-measures- 4,679 · defect_kind void <-of_kind- 103,863 · recipe RCP-01 <-processed_with- 52,001: 1,000 점 쪽 0.12~0.99 초
+> 급할 때      git revert <이 커밋> -> 서버 재기동 (쪽 인자는 무시되고 걷기로 답함 — page 칸 없음)
 > ```
 >
 > ---

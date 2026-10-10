@@ -78180,3 +78180,84 @@ public: 진짜 프로세스 판 public writes 12929428 -> 12929428 · tables mov
          비-PG 1 failed, 299 passed, 4 skipped, 67 deselected, 20 warnings in 25.33s — 실패 하나는 test_one_place_decides_where_the_server_is(워크트리라 .git 이 폴더가 아님, 이 변경과 무관)
          PG 67 passed, 304 deselected, 63 warnings in 385.82s (0:06:25) · public 쓰기 · 관계 · 행 전후 같음
 ```
+
+## [10-10 오후] 트렌드 쪽 나누기 — /subgraph 의 around · earlier · later — 착지 cb6d6a1fa (총괄 10-10 B)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: assy_test 스크래치 assy_pytest_time_page(픽스처가 지움) · 진짜 프로세스: assy_test 스크래치 assy_impl_tp_1010(지움) · 박스 assy_manager 는 연결마다 읽기 전용 · 쓴 것 · 지운 것 0
+public: 게이트 전체(새 시험 · 기존 하니스 PG · 변이) 전후 public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+
+```
+지은 것  _claim_edge 를 _walk 밖 모듈 수준으로(걷기와 쪽이 같이 부름, 본문 그대로 + cardinalities 인자)
+        SqlEvidenceLookup.claims_in_time_order — (occurred_at, id) 행 비교로 커서에서 이어 SQL 안에서 정렬 · LIMIT size+1
+        count_not_event_time — 같은 _time_arm 으로 사건 시각 아닌 원자 수 · _selected · FRONTIER_CTE · ARM_JOIN 은 claims_for_entities 와 한 철자
+        _time_page — around(t0 에서 >= 오름 · < 내림 두 읽기를 시각 거리로 합침) · earlier · later, 봉투는 걷기 이름 + page
+        라우트 — around · earlier · later · page, _time_page_asked 가 한 자리에서 판정 · _evidence_graph(page=) 가 current_only=False
+        새 라우트 · 새 인덱스 · 이주 0 · InMemoryEvidenceLookup 에는 쪽이 없음(PG 만)
+```
+
+```
+게이트 ① 걷기가 안 바뀜 — origin/main 그대로의 server 사본과 이 트리에서 같은 걷기를 돌려 응답(generated_at 뺌)을 바이트 비교
+  박스 읽기 전용 6 개(웨이퍼 hops 6 · 옛 값 · 기간 · quantity incoming measures · group_by+rows · seed_type+fanout) + 메모리 2 개(one 술어 지금 · 옛 값, 사건 시각 아님, 두 세계)
+  10,568,244 바이트 · 다른 줄 0
+기존 하니스 — ledger_subgraph · trace_router 를 부르는 시험 파일 43 개
+  비 PG  1 failed, 437 passed, 2 skipped, 69 deselected in 31.99s — 실패 하나는 test_one_place_decides_where_the_server_is(워크트리라 .git 이 폴더가 아님, 이 변경과 무관)
+  PG     69 passed, 440 deselected in 361.67s (0:06:01)
+새 시험 test_the_trend_reads_one_nodes_points_a_page_at_a_time.py (PG, 라우트를 FastAPI 로)
+  29 passed in 5.90s
+```
+
+```
+변이(PG, md5 전후 같음, 빨강 = 실패한 시험)
+  no event-time filter                     RED | 5 failed, 24 passed in 9.34s | test_a_point_is_the_walks_own_edge, test_an_atom_whose_time_is_not_an_event_is_counted_not_drawn, test_around_is_the_nearest_points_on_both_sides_in_time_order, test_earlier_pages_walk_back_to_the_first_point, test_later_pages_of_one_visit_every_point_once_across_a_same_instant_tie
+  earlier reads <= (repeats the cursor)    RED | 1 failed, 28 passed in 5.02s | test_earlier_pages_walk_back_to_the_first_point
+  no id in the cursor compare              RED | 1 failed, 28 passed in 4.79s | test_later_pages_of_one_visit_every_point_once_across_a_same_instant_tie
+  page draws current facts only            RED | 1 failed, 28 passed in 4.20s | test_an_old_fact_is_a_point_marked_not_current_and_a_value_is_no_point
+  value atoms on the page                  RED | 1 failed, 28 passed in 4.56s | test_an_old_fact_is_a_point_marked_not_current_and_a_value_is_no_point
+  a Query sentinel reads as asked          RED | 1 failed, 28 passed in 4.94s | test_a_walk_that_asks_no_page_is_the_walk
+  around takes the far side first          RED | 1 failed, 28 passed in 5.57s | test_around_is_the_nearest_points_on_both_sides_in_time_order
+```
+
+```
+박스 원장(읽기 전용) — 이 착지의 _evidence_graph(page=) 그대로, 1,000 점 쪽
+  picked the nodes in 1.8 s
+  == quantity {"quantity": "pressure_MPa"} <-measures- : 4679 atoms, median 2026-08-12 01:08:00+09:00
+     around  0.986 s · points 1000 · nodes 973 · window ('2026-08-11T16:00:00', '2026-08-11T16:21:00') · has_earlier True · has_later True · not_event_time 0
+     later   0.121 s · points 1000 · nodes 982 · window ('2026-08-11T16:21:00', '2026-08-11T16:44:00') · has_earlier None · has_later True · not_event_time 0
+     earlier 0.180 s · points 1000 · nodes 973 · window ('2026-08-09T16:29:00', '2026-08-09T16:59:00') · has_earlier True · has_later None · not_event_time 0
+  == defect_kind {"defect_kind": "void"} <-of_kind- : 103863 atoms, median 2026-10-06 02:36:00+09:00
+     around  0.662 s · points 1000 · nodes 1001 · window ('2026-10-05T06:01:00', '2026-10-06T06:24:00') · has_earlier True · has_later True · not_event_time 0
+     later   0.390 s · points 1000 · nodes 1001 · window ('2026-10-06T06:24:00', '2026-10-07T15:46:00') · has_earlier None · has_later True · not_event_time 0
+     earlier 0.558 s · points 1000 · nodes 1001 · window ('2026-10-03T18:58:00', '2026-10-04T19:31:00') · has_earlier True · has_later None · not_event_time 0
+  == recipe {"recipe": "RCP-01"} <-processed_with- : 52001 atoms, median 2026-01-01 13:31:00+09:00
+     around  0.285 s · points 1000 · nodes 1001 · window ('2026-01-01T04:25:00', '2026-01-01T04:38:00') · has_earlier True · has_later True · not_event_time 0
+     later   0.184 s · points 1000 · nodes 1001 · window ('2026-01-01T04:38:00', '2026-01-01T04:51:00') · has_earlier None · has_later True · not_event_time 0
+     earlier 0.199 s · points 1000 · nodes 1001 · window ('2026-01-01T04:11:00', '2026-01-01T04:24:00') · has_earlier True · has_later None · not_event_time 0
+쪽 경계 — around -> later · earlier 세 쪽, 원자 사이를 SQL 로 셈
+  {'quantity': 'pressure_MPa'}: points 3000 · distinct 3000 · atoms strictly inside the three pages' span 2998 (must be 2998) · between earlier and around 0 · between around and later 0
+  {'defect_kind': 'void'}: points 3000 · distinct 3000 · atoms strictly inside the three pages' span 2998 (must be 2998) · between earlier and around 0 · between around and later 0
+```
+
+```
+진짜 따로 띄운 스크래치 API(18793) — curl GET /api/ledger/subgraph (wafer 30 이 1 분 간격 · 03:15 에 둘 · 사건 시각 아닌 하나)
+  PRECREATE 57 tables in assy_impl_tp_1010 · public tables still shadowing a product table: []
+  == around 03:15 (page 10)
+  {"mode": "time_page", "points": [["03:11", 11.0], ["03:12", 12.0], ["03:13", 13.0], ["03:14", 14.0], ["03:15", 30.0], ["03:15", 15.0], ["03:16", 16.0], ["03:17", 17.0], ["03:18", 18.0], ["03:19", 19.0]], "window": {"from": "2026-10-01T03:11:00+00:00", "to": "2026-10-01T03:19:00+00:00"}, "has_earlier": true, "has_later": true, "not_event_time": 1, "detail": null}
+  == later
+  {"mode": "time_page", "points": [["03:20", 20.0], ["03:21", 21.0], ["03:22", 22.0], ["03:23", 23.0], ["03:24", 24.0], ["03:25", 25.0], ["03:26", 26.0], ["03:27", 27.0], ["03:28", 28.0], ["03:29", 29.0]], "window": {"from": "2026-10-01T03:20:00+00:00", "to": "2026-10-01T03:29:00+00:00"}, "has_earlier": null, "has_later": false, "not_event_time": 1, "detail": null}
+  == earlier
+  {"mode": "time_page", "points": [["03:01", 1.0], ["03:02", 2.0], ["03:03", 3.0], ["03:04", 4.0], ["03:05", 5.0], ["03:06", 6.0], ["03:07", 7.0], ["03:08", 8.0], ["03:09", 9.0], ["03:10", 10.0]], "window": {"from": "2026-10-01T03:01:00+00:00", "to": "2026-10-01T03:10:00+00:00"}, "has_earlier": true, "has_later": null, "not_event_time": 1, "detail": null}
+  == no page asked (the walk)
+  {"mode": "evidence_graph", "points": [["03:03", 3.0], ["03:00", 0.0], ["03:01", 1.0], ["03:02", 2.0], ["03:07", 7.0], ["03:04", 4.0], ["03:05", 5.0], ["03:06", 6.0], ["03:08", 8.0], ["03:09", 9.0], ["03:13", 13.0], ["03:10", 10.0], ["03:11", 11.0], ["03:12", 12.0], ["03:17", 17.0], ["03:14", 14.0], ["03:15", 15.0], ["03:16", 16.0], ["03:18", 18.0], ["03:19", 19.0], ["03:23", 23.0], ["03:20", 20.0], ["03:21", 21.0], ["03:22", 22.0], ["03:27", 27.0], ["03:24", 24.0], ["03:25", 25.0], ["03:26", 26.0], ["03:28", 28.0], ["03:29", 29.0], ["03:15", 30.0], ["no time", 31.0]], "window": null, "has_earlier": null, "has_later": null, "not_event_time": null, "detail": null}
+  == direction=both (HTTP 422)
+  {"mode": null, "points": [], "window": null, "has_earlier": null, "has_later": null, "not_event_time": null, "detail": {"reason": "time_page_invalid", "argument": "direction", "message": "A time page reads one side - direction=outgoing or incoming"}}
+  dropped schema assy_impl_tp_1010 (62 tables) - left 0
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+```
+
+```
+남은 것   InMemoryEvidenceLookup 에 쪽이 없음 — 쪽 시험은 PG 만
+         두 세계 쪽은 시험 칸이 없음(점마다 그 원자의 세계 하나 — 걷기 엣지 함수 그대로)
+         빈 later= · earlier= 는 «안 물음»으로 읽혀 걷기로 답함 — since · until 의 빈칸과 같은 규칙
+         노드 끝(길이 2~3) · 화면은 시연 뒤 / 클라 착지
+```
