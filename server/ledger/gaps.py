@@ -231,8 +231,28 @@ SAMPLE_NOT_AGE_ORDERED = (
     "돌아온 것들끼리는 오래된 순으로 보여 드립니다.")
 
 
-def _nodes_of_type_sql():
+#: How a prefix is matched (총괄 bccbdd601): the database's default collation decides, asked once a request
+#: (`prefix_case`). Where case sorts together, the run of keys that start with a prefix ignoring case is
+#: unbroken and the scan can stop at its end; where it sorts apart (C), only the exact prefix is.
+PREFIX_INSENSITIVE = "insensitive"
+PREFIX_EXACT = "exact"
+
+
+def prefix_case(connection) -> str:
+    """`PREFIX_INSENSITIVE` when the default collation sorts case together ('a' before 'B' -
+    Korean_Korea.949 on this box), else `PREFIX_EXACT` (C sorts every capital first, so a
+    case-ignoring run would be split in two and the scan would stop at the split)."""
+    return PREFIX_INSENSITIVE if connection.exec_driver_sql("SELECT 'a' < 'B'").scalar() else PREFIX_EXACT
+
+
+def _nodes_of_type_sql(prefix=None):
     """Nodes of one type, from BOTH sides, with the moment each was first named.
+
+    `prefix` (`PREFIX_INSENSITIVE` · `PREFIX_EXACT`, 총괄 bccbdd601): only the keys whose `%(axis)s`
+    starts with `%(p)s` (`%(plen)s` characters) - each side's step starts at the least such node
+    (`%(nulls)s`, every declared key JSON null, with the prefix set in that axis) and stops at the
+    first key past the prefix, so it reads the matching keys and one more, wherever they stand in
+    the type. No prefix: the statement as it always was.
 
     🔴 SUBJECT *AND* OBJECT, because a node is not stored - it is derived from an atom's
     keys - so it begins to exist the moment any atom names it, on either side. Measured on
@@ -248,29 +268,42 @@ def _nodes_of_type_sql():
     ⚠️ Reading a whole type this way is slower than grouping it - no caller asks past the
     route's seed cap (`ledger_subgraph.MAX_SEED_LIMIT`) or `NODE_SCAN_LIMIT`.
     """
+    start_s = start_o = keep_s = keep_o = pick = ""
+    if prefix is not None:
+        # the one place the case is decided - the bound and the match together
+        least = "LEAST(lower(%(p)s), upper(%(p)s))" if prefix == PREFIX_INSENSITIVE else "%(p)s"
+
+        def match(keys):
+            if prefix == PREFIX_INSENSITIVE:
+                return " AND lower(left(" + keys + " ->> %(axis)s, %(plen)s)) = lower(%(p)s)"
+            return " AND left(" + keys + " ->> %(axis)s, %(plen)s) = %(p)s"
+
+        bound = "jsonb_set(%(nulls)s::jsonb, ARRAY[%(axis)s], to_jsonb(CAST(" + least + " AS text)))"
+        start_s, start_o = " AND subject_keys >= " + bound, " AND object_payload->'keys' >= " + bound
+        keep_s, keep_o, pick = match("subject_side.keys"), match("object_side.keys"), match("keys")
     return """
         WITH RECURSIVE subject_side(keys, n) AS (
-            (SELECT subject_keys, 1 FROM {table} f WHERE subject_type = %(bare)s
+            (SELECT subject_keys, 1 FROM {table} f WHERE subject_type = %(bare)s""" + start_s + """
               ORDER BY subject_keys LIMIT 1)
             UNION ALL
             SELECT (SELECT s.subject_keys FROM {table} s
                      WHERE s.subject_type = %(bare)s AND s.subject_keys > subject_side.keys
                      ORDER BY s.subject_keys LIMIT 1), n + 1
-              FROM subject_side WHERE subject_side.keys IS NOT NULL AND n < %(scan)s
+              FROM subject_side WHERE subject_side.keys IS NOT NULL AND n < %(scan)s""" + keep_s + """
         ), object_side(keys, n) AS (
             (SELECT object_payload->'keys', 1 FROM {table} f
-              WHERE object_kind = 'entity_ref' AND object_payload->>'type' = %(bare)s
+              WHERE object_kind = 'entity_ref' AND object_payload->>'type' = %(bare)s""" + start_o + """
               ORDER BY object_payload->'keys' LIMIT 1)
             UNION ALL
             SELECT (SELECT o.object_payload->'keys' FROM {table} o
                      WHERE o.object_kind = 'entity_ref' AND o.object_payload->>'type' = %(bare)s
                        AND o.object_payload->'keys' > object_side.keys
                      ORDER BY o.object_payload->'keys' LIMIT 1), n + 1
-              FROM object_side WHERE object_side.keys IS NOT NULL AND n < %(scan)s
+              FROM object_side WHERE object_side.keys IS NOT NULL AND n < %(scan)s""" + keep_o + """
         ), named AS (
-            SELECT keys FROM subject_side WHERE keys IS NOT NULL
+            SELECT keys FROM subject_side WHERE keys IS NOT NULL""" + pick + """
             UNION
-            SELECT keys FROM object_side WHERE keys IS NOT NULL
+            SELECT keys FROM object_side WHERE keys IS NOT NULL""" + pick + """
             ORDER BY keys LIMIT %(scan)s
         )
         SELECT named.keys AS keys, LEAST(

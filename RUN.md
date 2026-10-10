@@ -115,6 +115,21 @@
 >
 > ---
 >
+> ## [10-10] **노드 고르기 — 앞글자로 찾기: key-values 의 starts_with (총괄 bccbdd601) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 순서        pull -> 서버 재기동 (클라 «찾는 상자»는 클라 착지와 함께)
+> 확인        GET /api/ledger/key-values?type=wafer&starts_with=SYN-CW
+>             nodes = SYN-CW 로 시작하는 노드(대소문자 무시 · 주어 · 목적어) · scanned = 그 수
+>             prefix_axis wafer · prefix_case insensitive(이 콜레이션이 대소문자를 같이 세움) · exact 면 대소문자 그대로
+> 빈 접두     ?type=wafer  -> 오늘과 같은 목록 + prefix_axis (화면이 상자 이름으로 씀)
+> 못 찾는 타입  첫 키가 글자가 아님(die — 첫 키 x): prefix_refusal 한 줄, starts_with 를 주면 422 prefix_axis_not_text
+> 다른 키 접두  &key=<첫 키가 아닌 키>&starts_with=… -> 422 prefix_on_another_key
+> 급할 때      git revert <이 커밋> -> 서버 재기동 (목록은 앞 50 개로 돌아감)
+> ```
+>
+> ---
+>
 > ## [10-10] **원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 안 읽게 (총괄 7b) — 이주 «없음» · 재기동 «체인 워커» · 스크립트 한 번**
 >
 > ```
