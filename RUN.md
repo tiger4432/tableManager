@@ -117,6 +117,24 @@
 >
 > ---
 >
+> ## [10-10] **트렌드 쪽 나누기 — /subgraph 의 around · earlier · later (총괄 10-10 B) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 순서        pull -> 서버 재기동 (트렌드 화면은 클라 착지와 함께)
+> 확인        GET /api/ledger/subgraph?id=<행 노드 id>&follow=<술어 하나>&direction=incoming&hops=1&around=<ISO 시각>&page=1000
+>             walk.mode time_page · edges = 그 노드의 그 술어 원자, 시각 순 — around 앞 · 뒤에서 가까운 1,000 개
+>             page.earlier · page.later 를 받은 그대로 earlier= · later= 로 -> 그다음 1,000 개
+>             page.has_earlier · has_later = 그 쪽에 더 있나 · page.not_event_time = 시각이 사건 시각이 아니라 뺀 원자 수
+> 422         time_page_invalid — argument 가 틀린 자리(follow 하나 키 없이 · direction 한쪽 · hops=1 · 커서 · ISO)
+>             time_page_conflicts — arguments 가 같이 못 주는 걷기 인자(positive · negative · seed_type · collect · group_by ·
+>             measure · expand · since · until · fanout_limit · format=rows)
+> 걷기        around · earlier · later 가 없으면 오늘 걷기 그대로 — 박스 걷기 6 + 메모리 걷기 2, 응답 10,568,244 바이트가 같음
+> 박스        읽기 전용 · quantity pressure_MPa <-measures- 4,679 · defect_kind void <-of_kind- 103,863 · recipe RCP-01 <-processed_with- 52,001: 1,000 점 쪽 0.12~0.99 초
+> 급할 때      git revert <이 커밋> -> 서버 재기동 (쪽 인자는 무시되고 걷기로 답함 — page 칸 없음)
+> ```
+>
+> ---
+>
 > ## [10-10] **노드 고르기 — 앞글자로 찾기: key-values 의 starts_with (총괄 bccbdd601) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
