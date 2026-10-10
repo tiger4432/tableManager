@@ -38146,3 +38146,20 @@ RUN.md      대본 ③ · ④ 를 이 표로 다시 생성(d530aac4a) — 박스
             measures (in) · value (+|−): value|value 2 · multi|value 1 · value|missing 12 · multi|missing 10 · none|missing 23
             the void_formation model's 18 quantities all in the table, all none|missing 18 (+ reached with no value «—» · − not reached, red missing) · the other none|missing 5: vacuum_assist, chem, gas, pad, slurry
 ```
+
+---
+
+## [C 응용] 10-10 트렌드 쪽 나누기(cb6d6a1fa) 를 진짜 서버로 — 걷기는 전과 같은 수 · 쪽은 시각 순 · 커서로 끝까지 겹침 없이
+
+```
+모양      18767 · 박스 조각(가짜 행 없음) · e3f1c3d62 · 서버만 · 끝나고 내림 · 스키마 지움 · public 0 · 18766(소유자)은 안 건드림
+걷기      두 base(+ 불량 · − 양품) · collect wafer, quantity · node_limit 1000
+          default            nodes 62 · edges 1601  (바뀌기 전 같은 누름 62 · 1601) · page 칸 없음 · walk.mode evidence_graph
+          default + appbox_vf nodes 80 · edges 1619  (전 80 · 1619)
+쪽         quantity pressure_MPa · follow measures · incoming · hops 1 · page 1000 · around -> 200 · 0.046 s · time_page · 점 5
+          시각 순 · claim_id 다 있음 · has_earlier / has_later 거짓 · not_event_time 0
+          page 2 로 around 2 -> later 커서 2 -> earlier 커서 1 · 다섯 점 다 · 겹침 0 · 양 끝 «더 없음»
+거절      around + positive -> 422 time_page_conflicts «A time page cannot be asked with positive - drop them»
+          around=not-a-time -> 422 time_page_invalid «around is not an ISO 8601 time: not-a-time»
+화면      트렌드는 클라 착지 때 18766 에서
+```
