@@ -1404,6 +1404,8 @@ const FLOORS = new Map([
   ['node_search_harness.mjs', 39],   // + NS15: the row count says it counts atoms (lead 10-10)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 36],
+  // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
+  ['trend_harness.mjs', 26],   // 21 -> 26: the axis the lead found on the box (10-10)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1480,11 +1482,11 @@ const FLOORS = new Map([
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
-  ['walk_table_harness.mjs', 89],   // the side by side table as the formula (lead 5cf5c3401)
+  ['walk_table_harness.mjs', 106],   // 89 -> 106: the nine (lead 34d91c09d)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
-  ['walk_layout_harness.mjs', 29],   // + L16: the baskets a part of their own (lead bc63378e5)
+  ['walk_layout_harness.mjs', 32],   // 29 -> 32: node_limit, the title, the seconds (lead 34d91c09d)
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
@@ -1766,7 +1768,7 @@ const FLOORS = new Map([
   // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
   //   and their two mutants (lead 10-09): 176 -> 184.
   // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
-  ['screen_layout_harness.mjs', 189],   // 185 -> 189: the admin tabs round's four mutants (lead 10-09)
+  ['screen_layout_harness.mjs', 210],   // 189 -> 210: the walk page at 1568x775, its table dark and light, four cells, three mutants (lead 34d91c09d)
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

@@ -39,6 +39,9 @@ const FIX = path.join(HERE, 'fixtures');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const ORIGIN = 'http://screens.test';
 const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
+// A size one entry is seen at too: the walk page where the lead read its table (Edge 1568x775, lead 34d91c09d).
+const ENTRY_SIZES = { 'walk.html': [[1568, 775]] };
+const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
 const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns', 'words'];
 const TOL = 12;
 const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
@@ -107,6 +110,59 @@ const CELLS = [
   return log.title === t ? null : \`its title «\${log.title.slice(0, 30)}» is not its sentence «\${t.slice(0, 30)}»\`;
 })()` },
 ];
+// The walk table as the lead reviewed it (34d91c09d gate), asked in each theme after its two steps.
+const SIDE_CELLS = [
+  ['Δ in view', `(() => {
+  const heads = [...document.querySelectorAll('.wk-sides thead th')].filter((th) => th.textContent.trim().startsWith('Δ'));
+  if (!heads.length) return 'no Δ column drawn';
+  for (const th of heads) {
+    const t = th.closest('table').getBoundingClientRect(), r = th.getBoundingClientRect(), edge = Math.min(t.right, innerWidth);
+    if (r.right > edge + 1) return \`«\${th.textContent.trim()}» ends \${Math.round(r.right - edge)} px past what its table shows\`;
+  }
+  return null;
+})()`],
+  ['node in view', `(() => {
+  const cells = [...document.querySelectorAll('.wk-sides tbody tr:first-child td.wk-centre')];
+  if (!cells.length) return 'no node cell drawn';
+  for (const td of cells) {
+    const t = td.closest('table').getBoundingClientRect(), r = td.getBoundingClientRect();
+    if (r.left < Math.max(t.left, 0) - 1 || r.right > Math.min(t.right, innerWidth) + 1) {
+      return \`the node cell «\${td.textContent.trim().slice(0, 24)}» stands at \${Math.round(r.left)}..\${Math.round(r.right)} px, its table shows \${Math.round(t.left)}..\${Math.round(Math.min(t.right, innerWidth))}\`;
+    }
+  }
+  return null;
+})()`],
+  ['sign colours', `(() => {
+  const cs = (sel) => { const e = document.querySelector(sel); return e ? getComputedStyle(e) : null; };
+  const p = cs('.wk-sides th.wk-sidehead.wk-plus'), m = cs('.wk-sides th.wk-sidehead.wk-minus');
+  const pc = cs('.wk-sides td.wk-plus'), mc = cs('.wk-sides td.wk-minus');
+  if (!p || !m || !pc || !mc) return 'a sign band or a sign cell not drawn';
+  if (p.color === m.color) return \`both bands say their sign in \${p.color}\`;
+  if (p.backgroundColor === m.backgroundColor) return \`both bands on \${p.backgroundColor}\`;
+  if (p.boxShadow === 'none' || m.boxShadow === 'none') return 'a band with no strip under it';
+  if (pc.backgroundColor === mc.backgroundColor) return \`both sides' cells on \${pc.backgroundColor}\`;
+  return null;
+})()`],
+  ['missing once', `(() => {
+  let seen = 0;
+  for (const tr of document.querySelectorAll('.wk-sides tbody tr')) {
+    const cells = [...tr.children];
+    for (let i = 1; i < cells.length; i += 1) {
+      if (cells[i].classList.contains('wk-missing') && cells[i - 1].classList.contains('wk-missing')) return \`row «\${tr.getAttribute('data-row-id')}» says missing twice side by side\`;
+    }
+    seen += cells.filter((c) => c.classList.contains('wk-missing')).length;
+  }
+  return seen ? null : 'no missing cell drawn';
+})()`],
+];
+// Node and Δ in the first screen are asked at the size the lead named (34d91c09d (나)): at 1280 a + side of four
+// columns is wider than the table's box, and the − side scrolls in it at every size.
+const FIRST_SCREEN = '1568x775';
+for (const after of ['Side by side, dark', 'Side by side, light']) {
+  for (const [rule, expr] of SIDE_CELLS) {
+    CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-sides', expr, ...(/in view$/.test(rule) ? { size: FIRST_SCREEN } : {}) });
+  }
+}
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json',
   '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.txt': 'text/plain', '.ico': 'image/x-icon' };
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
@@ -477,13 +533,17 @@ const press = (c, words) => evaluate(c, `(() => { const b = [...document.querySe
   if (b) b.click(); return Boolean(b); })()`);
 const choose = (c, sel, pick) => evaluate(c, `(() => { const s = document.querySelectorAll(${JSON.stringify(sel)})[${pick[0]}]; if (!s) return false;
   const o = [...s.options].find((x, i) => ${pick[1]}); if (!o) return false; s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-// PICK A NODE's box (lead bccbdd601): focused, it lists the first nodes; a press on row i picks it.
-const pickRow = async (c, i) => {
+// PICK A NODE's box (lead bccbdd601): the key typed, then its row pressed - the review's two wafers (34d91c09d), not
+// the list's first two.
+const pickKey = async (c, key) => {
   // The box shows once the type's first answer names its key (hidden while it loads, and a hidden box takes no focus).
   await until(c, "document.querySelector('.wk-search .wk-cell') && !document.querySelector('.wk-search .wk-cell').hidden");
-  await evaluate(c, `(() => { const b = document.querySelector('.wk-search input'); if (b) { b.focus(); b.click(); } return Boolean(b); })()`);
-  await until(c, `document.querySelectorAll('.wk-searchitem').length > ${i}`);
-  return evaluate(c, `(() => { const r = document.querySelectorAll('.wk-searchitem')[${i}]; if (!r) return false;
+  await evaluate(c, `(() => { const b = document.querySelector('.wk-search input'); if (!b) return false; b.focus(); b.click();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(b, ${JSON.stringify(key)});
+    b.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+  const row = `[...document.querySelectorAll('.wk-searchitem')].find((r) => (r.querySelector('.wk-searchkey') || {}).textContent === ${JSON.stringify(key)})`;
+  await until(c, row);
+  return evaluate(c, `(() => { const r = ${row}; if (!r) return false;
     r.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window })); return true; })()`);
 };
 // A basket's +: the picked node into Positive (+) or Negative (−) (lead bc63378e5).
@@ -493,21 +553,32 @@ const DRIVE = {
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
       await choose(c, '.wk-select', [0, "x.textContent.trim() === 'wafer'"]);
-      await pickRow(c, 0);
+      await pickKey(c, 'SYN-BW-SPL-400-19');
       await sleep(300);
       await basket(c, '+');
       await press(c, 'Walk');
       await until(c, "document.querySelector('.wk-main table, .wk-main svg, .wk-main canvas')");
     }],
     ['Graph', (c) => press(c, 'Graph').then(() => sleep(1500))],
-    // The table side by side (lead 3375edd9b): a second subject in the Negative basket, then Walk - a band per sign.
+    // The table side by side (lead 3375edd9b) as the lead reviewed it (34d91c09d): a second wafer in Negative, wafer and
+    // quantity collected, then Walk - a band per sign, a missing side, several values, a Δ.
     ['Table, + and - side by side', async (c) => {
       await press(c, 'Table');
-      await pickRow(c, 1);
+      await pickKey(c, 'SYN-BW-SPL-400-01');
       await sleep(300);
       await basket(c, '−');
+      await choose(c, 'select.wk-add', [0, "x.value === 'wafer'"]);
+      await choose(c, 'select.wk-add', [0, "x.value === 'quantity'"]);
       await press(c, 'Walk');
       await until(c, "document.querySelectorAll('.wk-sidehead').length > 1");
+    }],
+    // The same table in each theme; SIDE_CELLS ask the four after each.
+    ['Side by side, dark', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'dark'); true").then(() => sleep(300))],
+    ['Side by side, light', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'light'); true").then(() => sleep(300))],
+    // A value cell pressed opens its column's trend under the tables (lead f984ab01d).
+    ['Trend of a value cell', async (c) => {
+      await evaluate(c, `(() => { const td = document.querySelector('.wk-sides td.wk-pick'); if (td) td.click(); return Boolean(td); })()`);
+      await until(c, "document.querySelector('.wk-trend svg, .wk-trend .wk-note')");
     }],
   ],
   'index.html': [
@@ -571,9 +642,9 @@ async function runScreens(dist, label, one = only) {
   const chrome = await openChrome();
   try {
     const log = await servePage(chrome, dist);
-    for (const [w, h] of SIZES) {
+    for (const [w, h] of [...SIZES, ...Object.values(ENTRY_SIZES).flat()]) {
       await chrome.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
-      for (const entry of entries) {
+      for (const entry of entries.filter((e) => sizesOf(e).some(([a, b]) => a === w && b === h))) {
         const size = `${w}x${h}`;
         log.missing.clear(); log.refused.length = 0; log.left.length = 0; log.thrown.length = 0; log.outside.clear();
         log.opening = true;
@@ -593,9 +664,9 @@ async function runScreens(dist, label, one = only) {
           add(state, waitsRunOut.splice(0).map((what) => ({ rule: 'answers', path: entry, what })));
           await settle(chrome, log);
           add(state, await evaluate(chrome, 'window.__screens.measure()'));
-          for (const cell of CELLS.filter((c) => c.entry === entry && c.after === state)) {
+          for (const cell of CELLS.filter((c) => c.entry === entry && c.after === state && (!c.size || c.size === size))) {
             const why = await evaluate(chrome, cell.expr);
-            if (why) add(state, [{ rule: cell.rule, path: '#performance-log', what: why }]);
+            if (why) add(state, [{ rule: cell.rule, path: cell.at || '#performance-log', what: why }]);
           }
           if (shots) writeFileSync(path.join(shots, `${entry}_${size}_${state.replace(/[^a-z0-9]+/gi, '-')}.png`),
             Buffer.from((await chrome.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
@@ -633,8 +704,9 @@ let failed = 0;
 const t0 = Date.now();
 const { entries, found } = await runScreens(path.join(CLIENT, 'dist'), 'dist');
 for (const entry of entries) {
-  for (const [w, h] of SIZES) {
-    for (const rule of [...RULES, 'answers', ...CELLS.filter((c) => c.entry === entry).map((c) => c.rule)]) {
+  for (const [w, h] of sizesOf(entry)) {
+    const cells = CELLS.filter((c) => c.entry === entry && (!c.size || c.size === `${w}x${h}`));
+    for (const rule of new Set([...RULES, 'answers', ...cells.map((c) => c.rule)])) {
       ran += 1;
       const mine = found.filter((f) => f.entry === entry && f.size === `${w}x${h}` && f.rule === rule);
       if (mine.length) failed += 1;
@@ -702,6 +774,15 @@ const MUTANTS = [
     rule: 'columns', at: 'ledger-sources', file: 'src/ledger_sources_panel.js', edits: [
       ["      if (fit) th.className = 'cell-fit';", "      th.style.width = { Source: '150px', State: '130px', Refused: '70px' }[label] || '';"],
       ["    if (fit) td.className = 'cell-fit';", '']] },
+  // The walk table's nine (lead 34d91c09d): what the lead saw on Edge, built back.
+  { name: 'the sign bands without their colours', entry: 'walk.html', rule: 'sign colours', at: 'wk-sides',
+    file: 'src/walk/styles.js', edits: [['.wk-sides th.wk-sidehead.wk-plus {', '.wk-sides th.wk-sidehead.wk-plus-gone {'],
+      ['.wk-sides th.wk-sidehead.wk-minus {', '.wk-sides th.wk-sidehead.wk-minus-gone {']] },
+  { name: 'a side that did not reach saying missing in every column', entry: 'walk.html', rule: 'missing once', at: 'wk-sides',
+    file: 'src/walk/table_view.js', edits: [['        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];\n', '']] },
+  { name: 'several values on one line, the node pushed off', entry: 'walk.html', rule: 'node in view', at: 'wk-sides',
+    file: 'src/walk/table_view.js', edits: [["  return { text: values[0], rest: `+${values.length - 1}${cell.more ? '+' : ''}`, values };",
+      "  return { text: `${values.length} values · ${values.join(' · ')}` };"]] },
 ];
 async function buildMutant(m) {
   const { build } = await import('vite');

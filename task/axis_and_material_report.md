@@ -1,3 +1,35 @@
+> ## [18:02 디자인] 스타일 아홉 + (나) + 트렌드 축 착지 950d2c26d (총괄 34d91c09d · 트렌드 검토)
+
+- **아홉** — ① 여러 값 칸 첫 값 + «+N»(누르면 펼침 · «Less») ② 숫자 열이 노드 가까이 ③ 못 닿은 쪽 «missing» 한 칸 ④ + 주황 · − 청록 띠 · 칸 바탕(라이트 · 다크) ⑤ 노드 칸 바탕 · 굵기, id 복사는 행에 올리면 보이는 아이콘 ⑥ 제목 «+ 1 · − 1 → wafer, quantity» ⑦ 빈 열 접기 · «N empty columns» ⑧ 표 14 px · 옆 줄 13 px ⑨ node_limit 1,000 · 머리 수 줄 끝 초.
+- **(나)** — 머리 세 줄(띠 · 술어 한 칸 · 속성), Δ 는 노드 바로 오른쪽. − 쪽은 표 상자 안 가로 스크롤.
+- **덤으로 고친 결함 둘** — 표 행 체크 칸이 레일 follow 체크박스 규칙을 물려받아 124 px(레일 규칙을 label.wk-check 로 좁힘). 경로 목록 «self-loops» 낱말을 칩 줄 위로 — 글자를 13 px 로 맞추자 44 px 칩이 화면 게이트 크기 규칙에 걸렸음(전에는 칩 글자가 0.6 px 커서 피해 감). 둘 다 이번 드라이브가 collect 를 처음 고르면서 게이트가 처음 연 자리입니다.
+- **트렌드 축** — 축 = 받아 온 쪽들의 창 ∪ 누른 칸 쪽 걸은 점, 다른 쪽 걸은 점은 가장자리 표지, around 도 누른 쪽, 머리 «local time».
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-Dzuz73ZU.js, 1896x907): SYN-BW-SPL-400-19 in Positive, SYN-BW-SPL-400-01 in Negative, wafer and quantity collected, Walk (id=ID&positive=ID&negative=ID&node_limit=1000&collect=wafer&collect=quantity): title «+ 1 · − 1 → wafer, quantity», counts «Nodes 5 (collect: wafer, quantity) · Edges 194 (all) · 0.3 s»; node_limit  max 40 1000 max 1000; wafer · 2: steps  / measures[x4] /  / measures[x4], heads  / step / role / eqp_id / value / wafer / value / eqp_id / role / step;  / missing[x4] / SYN-BW-SPL-400-01 / 0.1203+2 / SYN-BD-11+2 / actual+2 / BONDING+2 ;  / BONDING+2 / actual+2 / SYN-BD-11+2 / 0.3305+2 / SYN-BW-SPL-400-19 / missing[x4] | quantity · 3: steps  / measures (in)[x4] /  /  / measures (in)[x4], heads  / step / role / eqp_id / value / quantity / Δ / value / eqp_id / role / step;  / BONDING / actual / SYN-BD-11 / 0.3305 / pressure_MPa / +0.2102 / 0.1203 / SYN-BD-11 / actual / BONDING ;  / BONDING / actual / SYN-BD-11 / 148.054 / temp_C / −1.978 / 150.032 / SYN-BD-11 / actual / BONDING; fonts td 14px · note 13px · label 13px · walk 13px; a several-values cell «0.1203» «+2», pressed «0.1203 · 150.032 · 12.006» «Less»; copy ['', 'Copy id', '0']; light bands rgb(192, 86, 33) / rgb(14, 116, 144), cells color(srgb 0.982706 0.953608 0.939059) / color(srgb 0.933843 0.961843 0.969529), centre ['color(srgb 0.929726 0.932235 0.936)', '600']; dark bands rgb(246, 142, 72) / rgb(78, 211, 236), cells color(srgb 0.166 0.173922 0.220353) / color(srgb 0.119882 0.192863 0.265373); pressure_MPa's + value «0.3305» pressed: id=ID&follow=measures&direction=incoming&hops=1&around=2026-08-09T16:18:00.000Z&page=1000; the trend «1000 points · 2026-08-10 01:03 → 2026-08-10 01:33 local time», 1000 dots spanning 83% of the width, markers ['◀ Negative walked 08-10 01:00']; Load earlier (id=ID&follow=measures&direction=incoming&hops=1&earlier=…): «1120 points · 2026-08-10 01:00 → 2026-08-10 01:33 local time», 1120 dots spanning 83%, markers []. Writes 0.
+- **게이트** — walk_table 106 (Z6 Z8 Z13 Z15 Z16 Z19 re-aimed; Z21-Z27; NZ1 NZ4 NZ5 NZ8 re-anchored; NZ11 NZ12 NZ13 NZ7 NZ8 NZ9 NZ10 ZM10 ZM11 ZM12 caught), trend 26 (T5 T12 the pressed side; T13; TM10 TM11 TM12 TM13 caught), walk_layout 32 (L8 L9; L17; W14 W15 caught), reach_table 36, start_baskets 22, node_search 39, disabled_reason 25, css_token_definition 7, walk_wire 95, walk_worlds 18, explorer_open_path 130, walk_route_fill 80, rnd_board_walk_box 104, subgraph_view 242; screen gate 210 with --mutate: the walk page also at 1568x775, the review's two wafers with wafer and quantity, the table dark and light: sign colours · missing once at every size, Δ in view · node in view at 1568x775 (no wait ran out); mutants «the sign bands without their colours» wk-sides · both bands say their sign in rgb(139, 153, 174) | «a side that did not reach saying missing in every column» wk-sides · row «ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1CVy1TUEwtNDAwLTAxIn1d» says missing twice side by side | «several values on one line, the node pushed off» wk-sides · the node cell «SYN-BW-SPL-400-01» stands at 1456..1639 px, its table shows 422..1266.
+- **1280 에서는** — 노드 · Δ 첫 화면 단언은 총괄 말대로 1568 에만 걸었습니다. 1280 에서 잰 것: wafer 표의 + 쪽(값 + «+2» 넷)이 표 상자보다 넓어 the node cell «SYN-BW-SPL-400-01» stands at 893..1076 px, its table shows 422..978.
+
+**5 분 써 보면 걸릴 것(제안, 안 지음)**
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 열 머리 누르면 그 열 «+N» 전부 펼침 | 15 값 비교를 칸마다 눌러야 함 | 작음 · 안 쟀다 |
+| 복사 아이콘을 터치에서도 | 마우스 올림이 없는 화면에선 안 보임 | 작음 · 안 쟀다 |
+| 트렌드 가장자리 표지를 누르면 그 점까지 축 넓힘 | 지금은 Load earlier 를 여러 번 | 작음 · 안 쟀다 |
+| 1280 에서 + 쪽 열을 숫자 열만 남기고 접기 | 1280 에서 노드가 첫 화면 밖 | 안 쟀다 |
+
+다음(총괄 순서): 표 복사(a27dfbb0f) → 값 대응(e8a5933d9). 덩어리 Trend 를 같은 읽기 함수로 접는 것은 그 뒤.
+
+> ## [16:51 디자인] ④-b 트렌드 착지 ed98accb7 (총괄 f984ab01d · a2eb4a516, 서버 시간 쪽 cb6d6a1fa)
+
+- **무엇** — 맞대기 표의 + / − 값 칸을 누르면 그 열(길 P, 값 a)의 트렌드가 표 아래에 섭니다. 점 하나 = 길의 마지막 변 시각(occurred_at)에 읽은 a — 칸이 읽는 것과 같은 함수(reach_table readsOf)입니다. 색 = 반대 끝이 R+ 인지 R− 인지, 그 밖의 행은 회색, 이 걷기가 닿은 점은 크게 테두리, 점선 = 걸은 시각(걸은 점 가운데 가장 늦은 시각, 없으면 응답 시각). JSON 숫자는 값 축, 그 밖의 값은 값마다 한 줄(많은 순 8 + others).
+- **서버 시간 쪽** — 한 걸음 · 변 속성 열만 묻습니다: around = 걸은 시각, page = 1000, 걷기 인자는 안 보냅니다. Load earlier / Load later 가 서버 커서로 한 쪽씩, 끝이면 꺼지고 사유. 점 열쇠는 claim_id. 2~3 걸음 길 · 노드 끝 값의 열은 걷기의 점만(시연 뒤).
+- **부품** — walk/trend.js(모델, 순수) · walk/trend_view.js(제 div 하나, 두 인스턴스 간섭 없음 T11). api.js fetchTimePage — page 칸이 없는 응답은 «시간 쪽이 없는 서버»로 읽고 걷기의 점만 그립니다.
+- **크롬 MCP** — Chrome MCP (Edge 154.0.0.0, the built walk page as a probe copy on the box as it is, /assets/walk-W5JThalI.js, 1896x907): LEAD-P3-A in Positive, LEAD-S65C-WP-01 in Negative, Walk, the first value cell pressed: one request id=ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IkxFQUQtUDMtQSJ9XQ&follow=processed_with&direction=outgoing&hops=1&around=2026-09-08T23:45:00.000Z&page=1000 (200); the trend «LEAD-P3-A · processed_with · step», «1 point · 2026-09-09 08:45 → 2026-09-09 08:45», lanes CMP, dots wk-tp is-g0 is-walked, dashed True, buttons Load earlier off (Nothing earlier) | Load later off (Nothing later) | Close on; svg 1134 px wide. Writes 0.
+- **박스의 한계** — 이 박스 데이터는 그 칸에 변 하나라 점 1 개 · Load 두 버튼 꺼짐까지만 보였습니다. 여러 쪽 · Load earlier 가 커서로 묻는 것 · others 줄은 하니스(T8 · T9 · T12)에서만 잽니다.
+- **게이트** — trend 21 (T1-T12; TM1 TM2 TM3 TM4 TM5 TM6 TM7 TM8 TM9 caught), reach_table 36, walk_table 89, walk_layout 29, walk_worlds 18, start_baskets 22, node_search 39, disabled_reason 25, css_token_definition 7, walk_wire 95, explorer_open_path 130, walk_route_fill 80, rnd_board_walk_box 104; screen gate on the walk page 24 with the step «Trend of a value cell» (no wait ran out).
+
+다음(총괄 순서): 스타일 아홉(34d91c09d) → 표 복사(a27dfbb0f) → 값 대응(e8a5933d9). 오늘의 덩어리 Trend(fold_views)를 같은 읽기 함수로 접는 것은 값 대응 뒤에 따로 올립니다. ① 두 노드 경로는 스크래치에 그대로.
+
 > ## [15:58 디자인] ④-b 맞대기 표를 «식»으로 착지 d1ecf19ec (총괄 5cf5c3401 · 25ac10ad8 · a2eb4a516)
 
 - **식(walk/reach_table.js, 순수 함수)** — 그룹 = 시작 부호(k 가정 없음) · Ri = 그 쪽이 닿은 노드 · Gi = 양 끝이 Ri 안인 변 · 행 = 노드 하나(id) · 열 = (길 P, 끝 값 a) · 칸 = 행에서 P 를 Gi 안에서 따라 닿은 a 전부(못 닿음 missing · 없음 «—» · 여럿 «N values» · 50 길 넘으면 «+»). 코드에 술어 · 타입 낱말 0.

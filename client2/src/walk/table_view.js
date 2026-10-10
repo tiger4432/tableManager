@@ -17,7 +17,7 @@ import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cell
   edgeQualifiers } from './derive.js';
 import { typeGraph } from '../rnd_board/api.js';
 // The table with a − start is the formula (lead 5cf5c3401): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, viaDepth, cellOf, valueKind } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, viaDepth, cellOf, valueKind, valueWords } from './reach_table.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -109,19 +109,17 @@ export const EMPTY = '—';
 export const STARTED = 'start';
 export const DELTA = 'Δ';
 
-/** One value in words: a boolean as ✓ ✗, a list joined, the rest as it came. */
-const oneWord = (v) => (typeof v === 'boolean' ? (v ? '✓' : '✗') : Array.isArray(v) ? v.join(' · ') : valueText(v));
-
 /**
- * A formula cell in words (lead 5cf5c3401, a2eb4a516): missing, empty, its one value, or «N values · …» - none
- * overwritten; a number column's cell stands right.
+ * A formula cell in words (lead 5cf5c3401, a2eb4a516): missing, empty, its one value, or several - none overwritten; a
+ * number column's cell stands right. Several say the first and how many more, every one kept (lead 34d91c09d 1: one
+ * line of fifteen values pushed the node and the − side off the screen).
  */
 export function cellWords(cell, kind = valueKind(cell.values || [])) {
   if (cell.missing) return { text: MISSING, missing: true };
-  const values = cell.values.map(oneWord);
+  const values = cell.values.map(valueWords);
   if (!values.length) return { text: EMPTY };
   if (values.length === 1 && !cell.more) return { text: values[0], numeric: kind === 'number' };
-  return { text: `${values.length}${cell.more ? '+' : ''} values · ${values.join(' · ')}` };
+  return { text: values[0], rest: `+${values.length - 1}${cell.more ? '+' : ''}`, values };
 }
 
 /** Δ in words: signed, ten significant digits (a float's tail is not a difference anyone measured). */
@@ -143,7 +141,8 @@ export function deltaWords(delta) {
  *        always was
  * @returns {{sections: Array, shown: number, hidden: number, sides: Array|null, unsplit: boolean}}
  */
-export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map()) {
+export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
+  opened = new Set()) {
   const nodes = (result && result.nodes) || [];
   const edges = (result && result.edges) || [];
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
@@ -185,26 +184,42 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     const entity = (entities || []).find((e) => e && e.type === type) || {};
     const all = [...defaultColumns(index, ids, entity.keys || []), ...(added.get(type) || [])];
     // The node's own (no step) once in the centre; the groups' columns are the steps'.
-    const centre = all.filter((c) => !c.steps.length);
-    const columns = all.filter((c) => c.steps.length);
-    const table = tableOf(index, groups, ids, columns);
+    const ownAll = all.filter((c) => !c.steps.length);
+    const ownCells = rows.map((node) => ownAll.map((c) => cellOf(index, new Set([node.id]), node.id, c)));
+    const sideAll = all.filter((c) => c.steps.length);
+    const tableAll = tableOf(index, groups, ids, sideAll);
+    // Each column judged once by its values' JSON type (lead a2eb4a516); a mixed one says so in its head.
+    const kindsAll = sideAll.map((_, c) => valueKind(tableAll.flatMap((row) => row.cells[c].flatMap((cell) => cell.values))));
+    // A column no row has a value in folds unless its type is opened (lead 34d91c09d 7); the numbers stand nearest the
+    // node, the rest outward, each in its order (34d91c09d 2: the value to set side by side was the fourth from the node).
+    const keep = opened.has(type);
+    const ownEmpty = ownAll.map((_, c) => !ownCells.some((cells) => cells[c].values.length));
+    const sideEmpty = kindsAll.map((kind) => kind === 'empty');
+    const ownAt = ownAll.map((_, c) => c).filter((c) => keep || !ownEmpty[c]);
+    const sideAt = sideAll.map((_, c) => c).filter((c) => keep || !sideEmpty[c])
+      .sort((p, q) => (kindsAll[q] === 'number') - (kindsAll[p] === 'number'));
+    const empty = [...ownEmpty, ...sideEmpty].filter(Boolean).length;
+    const centre = ownAt.map((c) => ownAll[c]);
+    const columns = sideAt.map((c) => sideAll[c]);
+    const kinds = sideAt.map((c) => kindsAll[c]);
+    const table = tableAll.map((row) => ({ ...row, cells: sideAt.map((c) => row.cells[c]), deltas: sideAt.map((c) => row.deltas[c]) }));
     // A type with no column: how each group reached its rows - the last predicate and the steps (lead 5cf5c3401).
     const how = columns.length ? null : groups.map((g) => viaDepth(index, g));
-    // Each column judged once by its values' JSON type (lead a2eb4a516); a mixed one says so in its head.
-    const kinds = columns.map((_, c) => valueKind(table.flatMap((row) => row.cells[c].flatMap((cell) => cell.values))));
     const heads = columns.length ? columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`) : ['via', 'depth'];
     const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
     const said = rows.map((node, r) => {
       const row = table[r];
-      const byGroup = groups.map((g, i) => (how
-        ? (!g.inside.has(node.id) ? [{ text: MISSING, missing: true }, { text: MISSING, missing: true }]
-          // Reached, by the answer, along edges it did not bring: how is not known here.
-          : (how[i].has(node.id)
-            ? [{ text: how[i].get(node.id).via || STARTED }, { text: String(how[i].get(node.id).depth), numeric: true }]
-            : [{ text: EMPTY }, { text: EMPTY }]))
-        : row.cells.map((byCol, c) => cellWords(byCol[i], kinds[c]))));
+      const byGroup = groups.map((g, i) => {
+        // A side that did not reach the node says so once, across its columns (lead 34d91c09d 3).
+        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];
+        if (!how) return row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c }));
+        // Reached, by the answer, along edges it did not bring: how is not known here.
+        return how[i].has(node.id)
+          ? [{ text: how[i].get(node.id).via || STARTED }, { text: String(how[i].get(node.id).depth), numeric: true }]
+          : [{ text: EMPTY }, { text: EMPTY }];
+      });
       return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup,
-        centre: centre.map((c) => cellWords(cellOf(index, new Set([node.id]), node.id, c), 'string')),
+        centre: ownAt.map((c) => cellWords(ownCells[r][c], 'string')),
         deltas: deltas.map((c) => ({ text: deltaWords(row.deltas[c]), numeric: true })) };
     });
     sections.push({
@@ -212,10 +227,16 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       heading: sectionHeading(type, rows.length),
       groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
       heads,
+      // The heads in two rows (lead 34d91c09d, its answer (나)): a column's step, said once over the columns that share it,
+      // and below it the value's name - the step repeated in every head pushed Δ 608 px off at 1568.
+      parts: columns.length
+        ? columns.map((c, i) => ({ step: c.words.slice(0, -1).join(' · '), leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}` }))
+        : heads.map((h) => ({ step: '', leaf: h })),
       centreHeads: centre.map((c) => c.words.join(' · ')),
       deltaHeads: deltas.map((c) => (deltas.length > 1 ? `${DELTA} ${heads[c]}` : DELTA)),
       rows: said,
       columns,
+      empty: { count: empty, open: keep },
     });
   }
   return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length), groups, unsplit: false, index };

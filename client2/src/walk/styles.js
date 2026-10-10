@@ -22,26 +22,28 @@ const STAMP = 'data-wk-styles';
 // 🔴 44 는 «손가락»입니다. 이 폼에서 누를 수 있는 것은 전부 이 밑에 걸립니다 —
 //    셀렉트 · 입력 · 버튼 · follow 라벨. 재는 것은 «닿는 넓이»이지 글자 크기가 아닙니다.
 export const WALK_CSS = `
+/* The walk page's two type sizes (lead 34d91c09d 8): its tables 14, every line beside them 13 - nothing smaller. */
+:root { --wk-fs-table: 14px; --wk-fs-line: 13px; }
 .wk-form { display: flex; flex-direction: column; gap: 10px;
   font-family: 'Outfit', system-ui, sans-serif; font-size: 15px; color: var(--text, #111); }
 .wk-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
   background: var(--bg-panel, transparent); border: 1px solid var(--border, #d4d4d8);
   border-radius: 8px; }
-.wk-label { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase;
+.wk-label { font-size: var(--wk-fs-line); letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--text-dim, #71717a); }
-.wk-note { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+.wk-note { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); }
 
-.wk-select, .wk-input, .wk-go, .wk-check { min-height: 44px; box-sizing: border-box;
+.wk-select, .wk-input, .wk-go, label.wk-check { min-height: 44px; box-sizing: border-box;
   font: inherit; }
 .wk-select, .wk-input { width: 100%; padding: 0 8px; color: var(--text, #111);
   background: var(--bg-surface); border: 1px solid var(--border, #d4d4d8); border-radius: 6px; }
 .wk-keyrow { display: flex; align-items: center; gap: 8px; min-height: 44px; }
 .wk-keyname { flex: none; width: 8.5em; font-family: 'JetBrains Mono', monospace;
-  font-size: 0.78rem; color: var(--text-dim, #71717a);
+  font-size: var(--wk-fs-line); color: var(--text-dim, #71717a);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wk-check { display: flex; align-items: center; gap: 8px; padding: 0 4px; border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
-.wk-check.is-on { background: var(--accent-weak); }
+label.wk-check { display: flex; align-items: center; gap: 8px; padding: 0 4px; border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
+label.wk-check.is-on { background: var(--accent-weak); }
 .wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
 /* 🔴 고르는 목록은 «폭»을 씁니다. 높이 44 는 손가락이라 그대로이고, 한 줄에 하나씩 세우는
    것만 그만둡니다 — 실측(480px 틀): 폼 1,623px 중 1,214px 가 체크박스 23줄이었습니다.
@@ -49,8 +51,8 @@ export const WALK_CSS = `
    잘린 이름은 읽을 방법이 없습니다(이 폼에 hover 가 없습니다 — 휴대폰입니다). 최소 9.5em 은
    손가락이 옆 칸을 안 누르게 하는 바닥이고, 화면보다 긴 이름만 마지막 수단으로 잘립니다. */
 .wk-checks { display: flex; flex-flow: row wrap; gap: var(--space-1) var(--space-2); }
-.wk-check { flex: 0 1 auto; min-width: 9.5em; max-width: 100%; }
-.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+label.wk-check { flex: 0 1 auto; min-width: 9.5em; max-width: 100%; }
+label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Layout A (lead 2b5819e1d): the form is a rail, the result its own part. The page seats the two;
    each scrolls inside itself, and Walk stays in the rail's foot. */
@@ -116,18 +118,18 @@ export const WALK_CSS = `
 .wk-path:hover { background: var(--accent-weak); }
 .wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
 .wk-pathchain { font-size: 0.86rem; }
-.wk-pathmeta { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+.wk-pathmeta { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); }
 /* A route's self-loops, as chips under its row: off by default (lead 5d5b8d750). */
 .wk-loops { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-loopchip { min-height: 44px; padding: 0 12px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-dim, #71717a);
-  font: inherit; font-size: 0.82rem; }
+  font: inherit; font-size: var(--wk-fs-line); }
 .wk-loopchip.is-on { border-color: var(--accent, #2563eb); color: var(--text, #111); font-weight: 600; }
 /* 타입 분포 — 「무엇이 몇 개 왔나」. 물어본 타입은 표시가 다릅니다. */
 .wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
-.wk-distlabel { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+.wk-distlabel { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); }
 .wk-distchip { display: inline-flex; gap: 4px; padding: 2px 8px; border-radius: 999px;
-  border: 1px solid var(--border); font-size: 0.82rem; }
+  border: 1px solid var(--border); font-size: var(--wk-fs-line); }
 .wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
 /* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
 .wk-sec { margin: 10px 0 14px; }
@@ -135,14 +137,16 @@ export const WALK_CSS = `
 /* A section's Next: the declared edges one step on, walked from its checked rows (lead 53050a4ec). */
 .wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 6.8px 0 0; }
 .wk-next-edge { min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 0;
-  background: var(--bg-surface); color: var(--text); font: inherit; font-size: 0.82rem; cursor: pointer; }
+  background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
 .wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }
 /* The steps walked; a press shows that step's table, the shown one lit. */
 .wk-steps { display: flex; flex-wrap: wrap; gap: 6.8px; margin: 6.8px 0; }
-.wk-step { min-height: 44px; padding: 0 13.6px; font: inherit; font-size: 0.82rem; color: var(--text);
+.wk-step { min-height: 44px; padding: 0 13.6px; font: inherit; font-size: var(--wk-fs-line); color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-step.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.wk-table th.wk-check, .wk-table td.wk-check { width: 1%; }
+/* A row's check: the rail's follow label rules are label.wk-check - a cell took them (flex, 9.5em) and the table's
+   first column stood 124 px wide (lead 34d91c09d review). */
+.wk-table th.wk-check, .wk-table td.wk-check { width: 1%; height: 44px; }
 /* A control row and a control start: the board's control look (board.css .is-marked-control). */
 .wk-table tr.is-control td { background: var(--bg-inset); }
 .wk-table tr.is-control td.wk-check { box-shadow: inset 2px 0 0 var(--text-muted); }
@@ -161,9 +165,9 @@ export const WALK_CSS = `
 .wk-basketrow { display: flex; align-items: baseline; gap: var(--space-2); padding-top: var(--space-1);
   border-top: 1px solid var(--border); }
 .wk-basketlabel { min-width: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
-.wk-baskettype { flex: none; font-size: 0.78rem; color: var(--text-dim); }
+.wk-baskettype { flex: none; font-size: var(--wk-fs-line); color: var(--text-dim); }
 .wk-basket.is-control .wk-basketlabel { color: var(--text-muted); }
-.wk-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; display: block;
+.wk-table { width: 100%; border-collapse: collapse; font-size: var(--wk-fs-table); display: block;
   overflow-x: auto; white-space: nowrap; }
 .wk-table th, .wk-table td { border-bottom: 1px solid var(--border);
   padding: 5px 8px; text-align: left; }
@@ -173,33 +177,80 @@ export const WALK_CSS = `
 .wk-table td.wk-num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Side by side (lead 3375edd9b): a band per sign above its columns, the − band in the control look; a side that did
    not reach the node says missing in red. */
-.wk-table th.wk-sidehead { color: var(--text); border-bottom: 2px solid var(--accent); white-space: normal;
-  overflow-wrap: break-word; }
-.wk-table th.wk-sidehead.is-control { color: var(--text-muted); border-bottom-color: var(--text-muted); }
+.wk-table th.wk-sidehead { white-space: normal; overflow-wrap: break-word; }
 .wk-table td.wk-missing { color: var(--danger); }
+/* A sign a colour (lead 34d91c09d 4): + orange, − teal - a band over its columns, a light tint in its cells, the trend's
+   dots - from tokens set in both themes. Solid mixes: the heads stick over the rows. */
+.wk-sides, .wk-trend { --wk-plus: var(--orange); --wk-minus: var(--info); }
+.wk-sides th.wk-sidehead.wk-plus { color: var(--wk-plus); background: color-mix(in srgb, var(--wk-plus) 16%, var(--bg-surface));
+  box-shadow: inset 0 -3px 0 var(--wk-plus); }
+.wk-sides th.wk-sidehead.wk-minus { color: var(--wk-minus); background: color-mix(in srgb, var(--wk-minus) 16%, var(--bg-surface));
+  box-shadow: inset 0 -3px 0 var(--wk-minus); }
+/* A step said once over its columns, the value names under it (34d91c09d (나)). */
+.wk-sides th.wk-stephead { text-align: center; font-weight: 600; }
+/* A side that did not reach the node: one cell across its columns (34d91c09d 3). */
+.wk-sides td.wk-missing { text-align: center; }
 /* The formula's table, two groups (lead 5cf5c3401, the mockup): the node in the centre between its two sides, each side
    tinted its sign's colour, Δ at the right. */
-.wk-sides th.wk-centre, .wk-sides td.wk-centre { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
-.wk-sides td.wk-plus { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.wk-sides td.wk-minus { background: color-mix(in srgb, var(--text-muted) 9%, transparent); }
+/* The node is the axis (34d91c09d 5): its own ground and weight between the two sides. */
+.wk-sides th.wk-centre, .wk-sides td.wk-centre { border-left: 1px solid var(--border-strong); border-right: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--text) 8%, var(--bg-surface)); color: var(--text); font-weight: 600; }
+.wk-sides td.wk-plus { background: color-mix(in srgb, var(--wk-plus) 7%, var(--bg-surface)); }
+.wk-sides td.wk-minus { background: color-mix(in srgb, var(--wk-minus) 7%, var(--bg-surface)); }
 .wk-sides td.wk-delta { color: var(--text-dim); }
+/* Δ beside the node (34d91c09d (나)): a line closes the axis before the − side. */
+.wk-sides th.wk-delta, .wk-sides td.wk-delta { border-right: 1px solid var(--border-strong); }
 .wk-centrelabel { font-family: var(--font-mono, ui-monospace, monospace); }
-.wk-copyid { margin-left: var(--space-2); padding: 0 var(--space-1); font: inherit; font-size: 0.74rem; color: var(--text-dim);
-  background: none; border: 0; border-radius: 0; cursor: pointer; }
+/* The id behind an icon, shown with its row (34d91c09d 5). */
+.wk-copyid { margin-left: var(--space-2); padding: var(--space-1); color: var(--text-dim); vertical-align: middle;
+  background: none; border: 0; border-radius: 0; cursor: pointer; opacity: 0; }
+.wk-sides tr:hover .wk-copyid, .wk-copyid:focus-visible, .wk-copyid.is-done { opacity: 1; }
+.wk-copyid.is-done { color: var(--accent); }
+.wk-copyicon { position: relative; display: block; width: 13px; height: 13px; }
+.wk-copyicon::before, .wk-copyicon::after { content: ''; position: absolute; width: 8px; height: 8px; border: 1.5px solid currentColor; }
+.wk-copyicon::before { left: 0; top: 0; }
+.wk-copyicon::after { right: 0; bottom: 0; }
+/* Several values: the first and «+N»; unfolded, they wrap inside a capped cell (34d91c09d 1). */
+.wk-more { margin-left: var(--space-2); padding: 0 var(--space-2); font: inherit; font-size: var(--wk-fs-line); color: var(--accent);
+  background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.wk-sides td.is-open { white-space: normal; max-width: 40ch; }
 .wk-rowfilter { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .wk-addcol { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* A value cell opens its column's trend (lead f984ab01d). */
+.wk-sides td.wk-pick { cursor: pointer; }
+.wk-sides td.wk-pick:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The trend: numbers on a value axis, words in lanes; a colour a group, other rows faint, the walked points ringed. */
+.wk-trend { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); }
+.wk-trend-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.wk-trend-title { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 600; overflow-wrap: anywhere; }
+.wk-trend-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+.wk-trend-svg { display: block; width: 100%; height: auto; }
+.wk-trend-grid { stroke: var(--border); stroke-width: 1; }
+.wk-trend-word { fill: var(--text-dim); font-size: var(--wk-fs-line); font-family: var(--font-mono, ui-monospace, monospace); }
+.wk-trend-word.is-others { font-style: italic; }
+.wk-trend-t0 { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 4; }
+.wk-tp.is-g0 { fill: var(--wk-plus); }
+.wk-tp.is-g1 { fill: var(--wk-minus); }
+/* A walked point off the axis, at its edge in its group's colour (lead 10-10). */
+.wk-trend-edge { font-size: var(--wk-fs-line); font-family: var(--font-mono, ui-monospace, monospace); fill: var(--text-dim); }
+.wk-trend-edge.is-g0 { fill: var(--wk-plus); }
+.wk-trend-edge.is-g1 { fill: var(--wk-minus); }
+.wk-tp.is-other { fill: var(--text-dim); fill-opacity: 0.35; }
+.wk-tp.is-walked { stroke: var(--text); stroke-width: 1.5; }
+.wk-trend-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--wk-fs-line); color: var(--text-dim); }
+.wk-trend-key { display: inline-flex; align-items: center; gap: var(--space-1); }
 .wk-addcol > .wk-select { width: auto; max-width: 100%; }
 /* id 는 길고 «마지막»입니다. 읽는 것이 아니라 «집는» 칸이라 폭을 안 뺏습니다. */
-.wk-table td.wk-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.74rem;
+.wk-table td.wk-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--wk-fs-line);
   color: var(--text-dim, #71717a); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
-.wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+.wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
 .wk-walk { color: var(--text-dim, #71717a); }
 .wk-trunc { color: var(--warning); }
 .wk-fail { color: var(--danger, #dc2626); font-size: 0.86rem; }
 .wk-row { display: flex; gap: 8px; align-items: baseline; padding: 3px 0;
-  border-top: 1px solid var(--border, #d4d4d8); font-size: 0.82rem; }
+  border-top: 1px solid var(--border, #d4d4d8); font-size: var(--wk-fs-line); }
 .wk-rowtype { flex: none; width: 7.5em; font-family: 'JetBrains Mono', monospace;
-  font-size: 0.74rem; color: var(--text-dim, #71717a);
+  font-size: var(--wk-fs-line); color: var(--text-dim, #71717a);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-rowlabel { overflow-wrap: anywhere; }
 
