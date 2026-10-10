@@ -1,0 +1,30 @@
+[
+  {
+    "type": "die",
+    "keys": {
+      "mat_id": "M-1",
+      "x": "3",
+      "y": "12",
+      "mat_type": "core"
+    },
+    "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiTS0xIiwibWF0X3R5cGUiOiJjb3JlIiwieCI6IjMiLCJ5IjoiMTIifV0"
+  },
+  {
+    "type": "die",
+    "keys": {
+      "mat_id": "M-1",
+      "x": 3,
+      "y": 12,
+      "mat_type": "core"
+    },
+    "id": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiTS0xIiwibWF0X3R5cGUiOiJjb3JlIiwieCI6MywieSI6MTJ9XQ"
+  },
+  {
+    "type": "lot_slot",
+    "keys": {
+      "lot": "LOT-7",
+      "slot": "02"
+    },
+    "id": "ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMT1QtNyIsInNsb3QiOiIwMiJ9XQ"
+  }
+]

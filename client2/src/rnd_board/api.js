@@ -1770,7 +1770,12 @@ export function routeWith(route, on) {
 
 /** `["wafer", {wafer: "SYN-…"}]` -> `ledger-entity:v1:<base64url>`. 서버 `decode_entity_id` 의 짝. */
 export function entitySeedId(type, keys) {
-  const json = JSON.stringify([String(type || ''), keys || {}]);
+  // 🔴 The server's spelling (explorer._canonical: sort_keys, no spaces): the keys in code point order, whatever order
+  //    the form typed them - a die typed mat_id, x, y, mat_type was refused «not in canonical spelling» (lead 10-10).
+  //    Spelled here, not through an object: an object puts integer-like names first, sort_keys does not.
+  const held = keys || {};
+  const json = `[${JSON.stringify(String(type || ''))},{${Object.keys(held).sort()
+    .map((name) => `${JSON.stringify(name)}:${JSON.stringify(held[name])}`).join(',')}}]`;
   const b64 = btoa(unescape(encodeURIComponent(json)));
   // 🔴 base64URL 은 «서버가 요구하는 것»이지 취향이 아닙니다. 클라 레인 실측 2026-08-27,
   //    키 `SYN-BW-101-16>` (base64 에 `+` 가 들어가는 첫 키):
