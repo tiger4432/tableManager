@@ -78399,3 +78399,42 @@ public: 게이트 전체(새 시험 · 기존 하니스 PG · 변이) 전후 pub
 시연 전   ㄱ — 원장 0 행 · 되돌림 한 줄 · 재기동 필요 / ㄹ — 원장 0 행 · 코드 0 · 소유자 설정 한 줄 / ㄴ · ㄷ — 아님
 물음      ㄷ 의 원장 다시 쓰기를 스크래치에서 재려면 표 이름(뷰와 같게 · 다르게)을 먼저 정해 주셔야 함
 ```
+
+## [10-10 밤] 거절된 소스가 같은 이름의 술어를 안 넘어뜨림 — 착지 fdd267ce0 (총괄 fe72e5c32 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: assy_test 스크래치(픽스처가 지움) · 진짜 프로세스: assy_test 스크래치 assy_impl_bf_1010(지움) · 박스 assy_manager 는 연결마다 읽기 전용 · 원장 0 행 · 운영 설정 두 파일 md5 전후 같음
+public: 시험 PG 전후 public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+
+```
+지은 것  config_explorer.resolve_declarations — 탓한 선언을 그 종류의 칸에서만 뺌(section_of <- config_authoring._ISOLATION_KIND_BY_SECTION)
+        보이는 사유도 같은 수로 바로잡힘 — 소스가 2 회차 한 번에 빠지니 3 회차 「unknown predicate」 가 덮을 것이 없음
+시험    test_a_ledger_source_reads_a_table_that_has_row_id — 뷰 소스에 선언된 술어 이름(has_netdie)을 붙인 두 칸:
+        술어가 남고 · 그 술어를 내는 dt_job 이 서고 · 보이는 사유가 relation_not_a_row_table · 원문이 소스 것 / 읽는 로더도 술어를 남김
+```
+
+```
+게이트 — config_explorer · resolve_declarations 를 부르는 시험 파일 21 개
+  비 PG  262 passed, 19 deselected in 36.89s
+  PG     19 passed, 262 deselected in 200.21s (0:03:20)
+변이(빨강 = 실패한 시험, md5 복원)
+  baseline                                 exit 0 | 8 passed in 7.03s | 
+  mutant: first section holding the name   exit 1 | 2 failed, 6 passed in 7.72s | test_a_refused_source_leaves_the_predicate_of_its_name_and_says_its_own_reason, test_the_reading_loader_keeps_the_predicate_too
+  restored True
+```
+
+```
+진짜 따로 띄운 스크래치 API(18794) — 데이터 루트는 박스 선언 두 파일의 사본, 원자는 박스(읽기 전용)에서 베이스 다이 하나 것만
+  PRECREATE 47 tables in assy_impl_bf_1010 · public tables still shadowing a product table: ['bonding_core_die', 'bonding_core_lot', 'bonding_die_from_core', 'dt_log_transferable', 'lot_slot_move', 'mechanism_edge_to_finding', 'mechanism_edge_to_quantity', 'process_param_num', 'process_param_txt', 'void_obs_observed']
+  seeded atoms 2 ['bonded_from', 'in_container']
+  == GET /api/ledger/declaration
+  {"state": "ready", "predicates": 14, "bonded_from": true, "names": ["bonded_from", "derived_from", "has_netdie", "has_wafer", "in_container", "inspected", "leads_to", "measures", "observed", "of_kind", "processed_with", "register", "slot_map", "transfer"]}
+  == GET /api/ledger/subgraph follow=bonded_from from ZZ-DOE-BW-01 (0,0) (HTTP 200)
+  {"state": "ready", "detail": null, "edges": [["ZZ-DOE-BW-01 / 0 / 0 / Wafer", "bonded_from", "ZZ-DOE-CW-01 / 0 / 0 / Wafer"]]}
+  == the API's log - the loader's NOT read lines
+  dropped schema assy_impl_bf_1010 (53 tables) - left 0
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  /c/Users/kk980/Developments/assyManager/server/config/ontology/ledger_config.json: OK
+  /c/Users/kk980/Developments/assyManager/server/config/table_config.json: OK
+  그 API 로그의 거절 사유: source_plan|bonded_from is NOT read: bundle.sources.bonded_from.relation source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (view); a ledger source must read a table that has row_id
+```
