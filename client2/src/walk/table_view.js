@@ -105,39 +105,69 @@ export function qualifierNamesOf(nodes, byNode) {
  * @param {Array} entities                          선언의 엔티티 목록
  * @param {Array} [predicates]                      선언의 술어 목록 (확인 술어를 읽는 자리, C-98)
  * @param {number} [cap]                            행 상한
- * @returns {{sections: Array, shown: number, hidden: number}}
+ * @param {{positive?: string[], negative?: string[]}} [starts]  the walk's signed starts: with a − start the table is
+ *        two zones, each the nodes that sign reached (lead 55f854fc5 ②); without, the one table it always was
+ * @returns {{sections: Array, shown: number, hidden: number, zones: Array|null, unsplit: boolean}}
  */
-export function walkTableView(result, entities, predicates = [], cap = ROW_CAP) {
+export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null) {
   const nodes = (result && result.nodes) || [];
-  const shown = nodes.slice(0, cap);
   const byNode = qualifiersByNode((result && result.edges) || [], nodes);
-  const sections = [];
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
   const plural = pluralAttributes(result);
   // C-98. 「무엇이 안 보이는 것이 무슨 뜻인가」의 모집단은 «선언»이라, 한 번 읽고 모든 구획이
   // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
   const confirmers = confirmedPredicates(predicates);
-  for (const [type, rows] of sectionsByType(shown)) {
-    const columns = tableColumns(
-      entities, type, qualifierNamesOf(rows, byNode), undefined, confirmers);
-    sections.push({
-      type,
-      heading: sectionHeading(type, rows.length),
-      columns,
-      rows: rows.map((node) => ({
-        id: node.id,
-        // 🔴 머리와 셀이 «같은 배열»을 돕니다. 따로 돌면 그날부터 순서가 갈릴 수 있고,
-        //    갈라져도 오류가 안 납니다 — 값이 옆 칸에 들어갈 뿐입니다.
-        cells: columns.map((column) => {
-          const text = valueText(
-            cellSource(column, node, byNode.get(node.id) || {}, plural.get(node.type)));
-          return { text, kind: column.kind, numeric: isNumericText(text) };
-        }),
-      })),
-    });
-  }
-  // 🔴 「안 그린 수」는 «답»입니다. 0 이면 그 줄이 없어야 하고, 0 을 그리면 운영자가
-  //    「상한에 걸렸다」로 읽습니다.
-  return { sections, shown: shown.length, hidden: Math.max(0, nodes.length - shown.length) };
+  /** One table of `members`: its sections by type, at most `cap` rows, its cells read off `read`. */
+  const tableOf = (members, read = byNode) => {
+    const shown = members.slice(0, cap);
+    const sections = [];
+    for (const [type, rows] of sectionsByType(shown)) {
+      const columns = tableColumns(
+        entities, type, qualifierNamesOf(rows, read), undefined, confirmers);
+      sections.push({
+        type,
+        heading: sectionHeading(type, rows.length),
+        columns,
+        rows: rows.map((node) => ({
+          id: node.id,
+          // 🔴 머리와 셀이 «같은 배열»을 돕니다. 따로 돌면 그날부터 순서가 갈릴 수 있고,
+          //    갈라져도 오류가 안 납니다 — 값이 옆 칸에 들어갈 뿐입니다.
+          cells: columns.map((column) => {
+            const text = valueText(
+              cellSource(column, node, read.get(node.id) || {}, plural.get(node.type)));
+            return { text, kind: column.kind, numeric: isNumericText(text) };
+          }),
+        })),
+      });
+    }
+    // 🔴 「안 그린 수」는 «답»입니다. 0 이면 그 줄이 없어야 하고, 0 을 그리면 운영자가
+    //    「상한에 걸렸다」로 읽습니다.
+    return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length) };
+  };
+  const negative = (starts && starts.negative) || [];
+  const reach = negative.length ? reachBySign(result) : null;
+  if (!reach) return { ...tableOf(nodes), zones: null, unsplit: negative.length > 0 };
+  // A zone is its sign's starts and every node they reached; a node reached from both stands in both.
+  const zones = [['+', (starts && starts.positive) || []], ['−', negative]].map(([sign, ids]) => {
+    const own = new Set(ids);
+    const members = nodes.filter((n) => own.has(n.id) || (reach.get(n.id) || {})[sign] > 0);
+    // Its cells read the edges walked inside it - both ends in the zone - so the other sign's edge into a node both
+    // reached says its value in the other zone, not here.
+    const inside = new Set(members.map((n) => n.id));
+    const read = qualifiersByNode(((result && result.edges) || []).filter((e) => inside.has(e.source) && inside.has(e.target)), members);
+    return { sign, starts: [...ids], ...tableOf(members, read) };
+  });
+  return { sections: [], shown: 0, hidden: 0, zones, unsplit: false };
+}
+
+/**
+ * Per node, how many starts of each sign reached it - the answer's propagation.ranked[].reach, [from +, from −]
+ * (lead 55f854fc5 ②: the one seat that reads it). The starts themselves are not ranked. null when the answer ranks
+ * nothing.
+ */
+export function reachBySign(result) {
+  const ranked = result && result.propagation && result.propagation.ranked;
+  if (!Array.isArray(ranked)) return null;
+  return new Map(ranked.map((row) => [row.id, { '+': Number((row.reach || [])[0]) || 0, '−': Number((row.reach || [])[1]) || 0 }]));
 }

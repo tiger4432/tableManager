@@ -2006,6 +2006,8 @@ export function createWalkBoxWalk(deps) {
         //    같이 버려지고 있었습니다 -- 즉 hops 가 안 가는 것을 «들킬 수 있는 값»이 함께
         //    사라졌습니다. 그래서 여기를 고칠 때 이것도 같이 살립니다.
         walk: body.walk || null,
+        // Which sign's starts reached each node, as the server ranked them (lead 55f854fc5 ②).
+        propagation: body.propagation || null,
         // Walk control ㄴ: the fan-outs not drawn, as the server counts them. No key unless a cap was asked: null.
         bundles: Array.isArray(body.bundles) ? body.bundles : null,
       };
