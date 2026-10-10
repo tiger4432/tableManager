@@ -117,9 +117,13 @@
 >                Route «measures | measures» 16 · «measures | missing» 13 · «measures | measures → leads_to» 3 · «measures → leads_to | measures» 2 · «measures → leads_to | measures → leads_to» 1 · «in_container → bonded_from → in_container → measures | missing» 14
 >       뜻       한 줄 = 한 계측군 · 빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · «—» = 닿았는데 값이 없음 · 값이 여럿이면 첫 값과 «+N»(누르면 펼침)
 >                Route «measures → leads_to» = 모델 세상의 leads_to 를 한 번 더 걸어 닿은 계측군
+>                칩 순서는 답을 안 바꾼다 — 리허설 «모델 세상 1» 먼저든 default 먼저든 노드 81 · 엣지 1668, 노드와 엣지 전부 같음
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
 >       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 194 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
->                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later»
+>                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
+>       쪽 넘김  점이 많은 계측군(리허설 가짜 행 local_gap)의 + 값 «53» 을 누름 -> «1000 points · 2026-11-02 18:42 → 2026-12-15 12:55 local time» · Load earlier · Load later 켜짐
+>                Load earlier -> «1201 points · 2026-10-25 03:49 → 2026-12-15 12:55 local time» · 그 단추 꺼짐 «Nothing earlier» · Load later -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 그 단추 꺼짐 «Nothing later»
+>                요청마다 page=1000 · 215 ms · 85 ms · 88 ms
 >       뜻       누른 쪽의 걸은 시각 근방 1,000 점이 먼저 · Load earlier / Load later 가 1,000 점씩 넓힌다 · 꺼짐 글씨 = 그 쪽에 더 없음
 >                주황 Positive · 청록 Negative · 회색 다른 줄 · 점선 = 걸은 시각
 >    ⑤  그래프   Graph
@@ -138,7 +142,7 @@
 >                All -> 요청 2 개 · «52 next · 2 behind» · «Open 52» -> 그려짐 52 (die 47 · quantity 5) · 움직임 0 · 새 작은 덩어리 0 · base 의 덩어리 없음
 >       뜻       next = 한 걸음 너머 서로 다른 노드 수(Open 이 그리는 수) · behind = 그 너머에 접힌 채 남는 수
 >                «≤» = 안 보낸 묶음이 있어 가지끼리 겹침을 아직 모름 — All 이 그 묶음을 걸은 뒤 정확한 수(리허설: 두 가지가 같은 다이)
->    ⑨  값 칸 출처 · CONTROL 엣지 묶음 · 그래프 Trend 를 표 트렌드 한 부품으로 · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
+>    ⑨  값 칸 출처(C) · 빈 걷기의 서버 문장과 «0 atoms»(H) · 이어 걷기 = 바구니 하나 걷기(E1) · 마킹 체인 무제한(F) · 표 ⇄ 트렌드 토글과 창 제목 «From»(E2) · CONTROL 엣지 묶음(D) · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
 >    시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ③ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
