@@ -38115,3 +38115,18 @@ RUN.md     대본 ① · ② 를 위 수로 다시 생성(61d6e5836) — Ctrl+Sh
   f11d57fd5 walk-DMv4SzUP.js · 18766 box slice + fake rows · same presses · Nodes 81 · Edges 1668 · 0.785 s · bands «Positive · 49 nodes» «Negative · 22 nodes» · cells blank|blank 1 · blank|missing 5 · blank|value 2 · multi|missing 10 · multi|value 11 · value|blank 3 · value|missing 12 · value|value 5 · wetting_deficit (fake plan none) blank|blank
 RUN.md     대본 ③ · ④ · 시연 전 읽기 문장 · 걸린 것 을 위 박스 수로 다시 생성(4596ba884). ④-b(5cf5c3401) 착지 뒤 다시
 ```
+
+---
+
+## [C 응용] 10-10 ④-b(5cf5c3401) 응용 몫 — 18766 에 같은 행을 두 스킴으로: 변 스킴 세상 · 이벤트 스킴 세상, 두 base 의 값 32 쌍이 같음
+
+```
+빌드        c5603509b · 18766 relaunched with the two scheme worlds in its seed (fake data as before)
+변 스킴      appdemo_ed (edge scheme) entities wafer · quantity · vocabulary measures · source fake_measures (copy of default's) -> backfill written 50 of 50 · atoms measures 50
+이벤트 스킴   appdemo_ev (event scheme) entities wafer · quantity · measurement (keys meas_id = fake_id · attributes value unit role step eqp_id) · vocabulary has_measurement (wafer -> measurement) · of_quantity (measurement -> quantity) · source fake_measure_events on the same fake_measure table -> backfill written 150 of 150 · atoms has_measurement 50 · of_quantity 50 · register 50
+걷기(API)    walk from the two bases (positive bad · negative good), each world alone: appdemo_ed nodes wafer 2 · quantity 19 · edges measures 32 | appdemo_ev nodes wafer 2 · measurement 32 · quantity 19 · edges has_measurement 32 · of_quantity 32
+값 대조      (wafer, quantity) -> value: edge scheme 32 pairs (edge qualifier value) · event scheme 32 pairs (measurement node attribute value) · same key and value 32 · only one side 0 · other value 0 · wafers SYN-BW-103-11 · SYN-BW-SPL-400-19 (the 18 core-wafer rows are in both ledgers but this walk does not reach them)
+지금 표      before 4-b, event world alone (?world=appdemo_ev), Positive bad · Negative good · Walk: Nodes 53 · Edges 64 · quantity table 19 rows with only «Reached | Reached» per side (no value) · measurement table 32 rows (meas_id) with value · unit · role · step · eqp_id per side, each row one side's, the other side red missing · values do not line up by quantity
+            -> ④-b 착지 뒤 같은 누름으로 두 세상에서 quantity 줄의 값이 같은지 «누른 것 · 본 것»
+내 실수      my edit of run_dm_hold.sh during the held run broke its cleanup lines (bash syntax error) - worktree /c/wt-app2 and schemas assy_app_reread_dm · w_appdemo_vf · w_appdemo_vb stayed until I ran the lines by hand (dropped 361 · 27 · 27, left 0) · public none
+```
