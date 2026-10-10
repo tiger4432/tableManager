@@ -38011,3 +38011,22 @@ public   이 세 판 사이 assy_test public.audit_logs 가 67 -> 70 -> 67 — �
 재기동       다음 18766 씨앗(dm_e2e)에 같은 18 행이 들어감
 다음        클라 ② 표 부호별 · ① 두 마킹 사이 길 착지마다 그 빌드로 18766 재기동 -> 누른 것 · 본 것
 ```
+
+---
+
+## [C 응용] 10-10 ② 걷기 표 부호별 구역(e07f6382c) 을 18766 에서 — 두 구역으로 갈리고 코어 웨이퍼는 + 구역에만
+
+```
+빌드         e07f6382c walk-B6FMkEA6.js · 18766 재기동(가짜 데이터)
+누른 것 1    Type wafer · 키 SYN-BW-103-11 · follow 비움 · Collect wafer · node_limit 1000 -> Walk
+본 것 1      Starts «+ SYN-BW-103-11» · Nodes 31 · Edges 1538 · 표 하나 «wafer · 31» — − 시작이 없으면 전과 같음
+누른 것 2    키 SYN-BW-SPL-400-19 -> Ctrl+Shift+Walk
+본 것 2      Starts «+ SYN-BW-103-11 · − SYN-BW-SPL-400-19» · Nodes 32 · Edges 1650 · 표가 두 구역
+             «Walked from + SYN-BW-103-11» wafer · 31 — 깊이 0 base 1 · 깊이 3 코어 웨이퍼 30
+             «Walked from − SYN-BW-SPL-400-19» wafer · 1 — 코어 웨이퍼 0
+             «One table for both signs» 줄 없음
+누른 것 3    세상 칩 default -> appdemo_vf (대본 ③ 다시 걷기)
+본 것 3      Edges 1668 · 두 구역 그대로 (+ 31 · 코어 30 / − 1 · 코어 0)
+스샷         못 찍음 — 창이 뒤라 두 번 시간 초과 · 화면 글자를 읽음
+다음         ③ 바구니 착지 뒤 대본 ① 을 바구니 순서로 다시 재서 RUN.md 생성기로
+```
