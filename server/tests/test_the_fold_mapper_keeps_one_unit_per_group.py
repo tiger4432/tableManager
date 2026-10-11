@@ -128,7 +128,31 @@ def test_running_it_again_writes_nothing(db):
         **item, source_name=rule_run.layer_of_a_rules_write(None, item["origin_row_id"]),   # the worker's seat
         updated_by=fold_unit.NAME) for item in out["updates"]]))
     db.commit()
-    assert len(out["updates"]) == 9 and count() == before, "the losing jobs' 3 + 3 + 3 rows, written again as they are"
+    # 총괄 3ec26c632 ③: the losing jobs' 3 + 3 + 3 rows hold their mark already - none is handed again
+    assert out["updates"] == [] and count() == before, out["updates"]
+
+
+def test_the_winners_log_rows_are_not_read(db):
+    """총괄 3ec26c632 ① (소유자 「인벤토리 1,000 · 매칭 로그 수십만 행」): the log read names the losing units' keys only -
+    a winner's rows are never written, and reading them was most of the work."""
+    from sqlalchemy import event
+
+    _seed(db)
+    asked = []
+
+    def seen(conn, cursor, statement, parameters, context, executemany):
+        if ("FROM %s" % LOG) in statement:
+            asked.extend(parameters)
+
+    event.listen(db.get_bind(), "before_cursor_execute", seen)
+    try:
+        rows = db.query(models.DYNAMIC_TABLES[INV]).all()
+        fold_unit.fold_by_unit(db, [{"row_id": r.row_id, "data": {}} for r in rows], dict(RULES[0]))
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", seen)
+    losing, winning = {"AUTO_J5", "MAN_J3", "MAN_J7"}, {"AUTO_J1", "AUTO_J2", "AUTO_J4", "MAN_J6"}
+    assert losing <= set(asked), "CANARY: the read names the losing jobs"
+    assert not winning & set(asked), sorted(winning & set(asked))
 
 
 def test_a_new_log_row_of_a_losing_job_is_marked(db):

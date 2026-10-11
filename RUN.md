@@ -244,6 +244,29 @@
 >
 > ---
 >
+> ## [10-11] **접기 맵퍼 빠르게 — 진 잡의 로그 행만 읽고 이미 같은 표시인 행은 안 넘긴다 · 로그 표 (잡 · 웨이퍼) 인덱스는 선언 한 줄 (총괄 3ec26c632, 착지 {LANDING}) — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 지금 운영에서   table_config.json «로그 표» 에  "indexes": [{"columns": ["dt_job_id", "dt_wafer_id"]}]   (접기 params match 의 왼쪽 칸 둘)
+>   (이 pull 전에도) -> 체인 워커 재기동 -> chain_worker.log «[Indexes] building <이름> on <로그 표>» -> «[Indexes] <이름> built in N s»
+>              -> python scripts/chain_replay_cli.py replay «인벤토리 접기 규칙»   -> --apply      (인덱스는 Reload 가 아니라 체인 워커 기동이 짓는다 — 「표 선언 인덱스」 절)
+> 이 pull 뒤    pull -> 체인 워커 재기동 (접기 맵퍼는 체인 워커가 부른다)
+> 무엇        맵퍼가 읽는 로그 행 = 진 잡의 것만(이긴 잡 행은 안 쓰니 안 읽음) · 이미 «folded into <같은 승자>» 인 행은 updates 에 안 넣음 — 다시 돌리면 쓰기 0
+> 박스 수       이 박스 dt_log 사본에 키를 고쳐 1,000 단위로 펼침 — dt_log rows 535559 · units 1000 · wafers 400 · inventory rows 1000 · copied in 63.3 s · 인벤토리 1,000 행 한 묶음, 맵퍼 호출만(쓰기 빼고):
+>            첫 판 · 인덱스 없음 · 고치기 전                              4.91 초 · 읽은 로그 행 535,559 · 넘긴 updates 321,315
+>            첫 판 · 인덱스 있음 · 고치기 전                              2.39 초 · 읽은 로그 행 535,559 · 넘긴 updates 321,315
+>            첫 판 · 인덱스 없음 · 고친 뒤                               3.81 초 · 읽은 로그 행 321,315 · 넘긴 updates 321,315
+>            첫 판 · 인덱스 있음 · 고친 뒤                               1.98 초 · 읽은 로그 행 321,315 · 넘긴 updates 321,315
+>            다시 돌림(표시 있음) · 인덱스 있음 · 고치기 전                     3.10 초 · 읽은 로그 행 535,559 · 넘긴 updates 321,315
+>            다시 돌림(표시 있음) · 인덱스 있음 · 고친 뒤                      1.57 초 · 읽은 로그 행 321,315 · 넘긴 updates 0
+>            다시 돌림(표시 있음) · 인덱스 없음 · 고치기 전                     4.99 초 · 읽은 로그 행 535,559 · 넘긴 updates 321,315
+>            다시 돌림(표시 있음) · 인덱스 없음 · 고친 뒤                      3.00 초 · 읽은 로그 행 321,315 · 넘긴 updates 0
+>            첫 판은 진 잡 행 전부에 표시를 쓴다 — 그 쓰기(위 updates 수만큼의 칸)는 이 초 밖이고 안 쟀다. 운영 규격(묶음 1,000 행 ≤ 5 s)을 넘는 곳은 그 쓰기다
+> 되돌리기      git revert <이 커밋> -> 체인 워커 재기동 (선언한 인덱스는 남음)
+> ```
+>
+> ---
+>
 > ## [10-11] **작은 판 — 층 접기가 원천 없는 체인 층을 안 지운다 · 저장 답이 꺼진 · 거절 · 평면 규칙의 모르는 칸을 말한다 · 소급 진행 알림은 한 번 못 들으면 그 실행 동안 조용 (총괄 10-11, 착지 db928d441) — 이주 «없음» · 재기동 «서버 · 체인 워커 · 스케줄러»**
 >
 > ```
@@ -362,6 +385,7 @@
 >        "prefer_column": "dt_job_id", "prefer_text": "AUTO", "mark_column": "fold_mark",
 >        "match": [{"left": "dt_job_id", "right": "dt_job_id"}, {"left": "dt_wafer_id", "right": "dt_wafer_id"}]}
 >   로그 표에 문자 칸 fold_mark 가 있어야 함 · 인벤토리는 잡 · 웨이퍼마다 한 행
+>   로그 표 table_config 에 "indexes": [{"columns": ["dt_job_id", "dt_wafer_id"]}] — match 왼쪽 칸 둘(「접기 맵퍼 빠르게」 절)
 > 순서        pull -> 체인 워커 · 서버 재기동 -> 두 줄 저장
 >            -> python server/scripts/chain_replay_cli.py replay dt_log_fold_by_inventory   (미리보기 -> 같은 명령 + --apply)
 >            -> ⑤b fold-rows 그대로(남은 잡 안의 한 칩 두 이벤트) -> ⑥ 복사 replay -> ⑥' 다시 세기 replay -> ⑦ remove-shells
