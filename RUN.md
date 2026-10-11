@@ -228,6 +228,37 @@
 >
 > ---
 >
+> ## [10-11] **접기 맵퍼 — 웨이퍼마다 이긴 잡 하나, 진 잡의 로그 행은 «folded into <이긴 잡>» (총괄 402f1ab2e, 착지 {LANDING}) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 선언(chain_rules 두 줄 — 같은 맵퍼 · 같은 params P, 칸 이름은 운영 표의 것으로)
+>   {"name": "dt_log_fold_by_inventory", "trigger_table": "dt_inventory", "target_table": "dt_log", "mapper": "fold_by_unit",
+>    "is_batch": true, "allow_chain_trigger": true, "params": P}
+>   {"name": "dt_log_fold_by_log", "trigger_table": "dt_log", "target_table": "dt_log", "mapper": "fold_by_unit",
+>    "is_batch": true, "trigger_columns": ["dt_job_id", "dt_wafer_id"], "params": P}
+>   P = {"unit_table": "dt_inventory", "group": "dt_wafer_id", "unit": "dt_job_id", "order": "wafer_out_time",
+>        "prefer_column": "dt_job_id", "prefer_text": "AUTO", "mark_column": "fold_mark",
+>        "match": [{"left": "dt_job_id", "right": "dt_job_id"}, {"left": "dt_wafer_id", "right": "dt_wafer_id"}]}
+>   로그 표에 문자 칸 fold_mark 가 있어야 함 · 인벤토리는 잡 · 웨이퍼마다 한 행
+> 순서        pull -> 체인 워커 · 서버 재기동 -> 두 줄 저장
+>            -> python server/scripts/chain_replay_cli.py replay dt_log_fold_by_inventory   (미리보기 -> 같은 명령 + --apply)
+>            -> ⑤b fold-rows 그대로(남은 잡 안의 한 칩 두 이벤트) -> ⑥ 복사 replay -> ⑥' 다시 세기 replay -> ⑦ remove-shells
+> 뜻          웨이퍼마다: AUTO 가 든 잡 먼저 -> wafer_out_time 이른 잡 -> 작은 row_id (fold-rows 와 같은 순위). 매뉴얼끼리도 같음
+>            진 잡의 로그 행 fold_mark = «folded into <이긴 잡>» · 이긴 잡의 행은 안 씀(⑤b 표시 그대로)
+>            그 뒤 인벤토리 행이나 로그 행이 들어오면 그 웨이퍼를 다시 정함 — 진 잡에 새 로그 행이 오면 바로 표시
+> 안 되는 것   진 잡이 나중에 이기게 되면(아웃 시각을 고침 · 이긴 잡 행을 지움) 옛 표시가 남음 · 인벤토리 행을 지우면 그 웨이퍼를 다시 안 정함
+> 초기화       python server/scripts/chain_replay_cli.py withdraw dt_log chain_ingestion --columns fold_mark   (보고 --apply)
+>            -> python server/scripts/chain_replay_cli.py replay dt_log_fold_by_inventory --apply
+>            withdraw 는 로그 표 fold_mark 의 체인 층 전부 — ⑤b 표시(fold_duplicate_rows 층)는 그대로
+> 옛 ⑤ 표시    잡을 가로질러 접었던 fold_duplicate_rows 층이 남아 있으면 이긴 잡의 행에도 남음 — 걷으려면
+>            python server/scripts/chain_replay_cli.py withdraw dt_log fold_duplicate_rows --columns fold_mark  (보고 --apply) -> ⑤b 다시
+> 시험 수       pytest sqlite: CW1 AUTO 둘 -> 이른 것 · CW3 매뉴얼 + AUTO -> AUTO · CW2 하나 -> 0 · CW4 매뉴얼 둘 -> 이른 것
+>            + 진 잡에 새 로그 행 · 늦은 AUTO 잡이 들어옴 · 다시 돌리면 쓰기 0. 진짜 프로세스 판은 응용 rh_world_inv
+> 급할 때      체인 선언에서 두 줄을 지우고 저장(표시는 남음 — 초기화 첫 줄로 걷음) · 코드는 git revert <이 커밋>
+> ```
+>
+> ---
+>
 > ## [10-11] **표 선언 인덱스 — table_config 의 그 표 "indexes" 를 체인 워커가 짓는다 (총괄 98be7faf3) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
