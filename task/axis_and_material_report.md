@@ -1,3 +1,14 @@
+> ## [10:22 디자인] 노드 자기 값도 트렌드로 · 덩어리 스텝 Route 착지 043e99fcb (총괄 E2c 16994da07 · (나))
+
+- **무엇** — 점 읽기 하나가 노드 속성 값을 그 노드의 attributes_by_world 중 같은 값 기록의 시각으로 찍음(소유자 10-10 e54560dc2 「끝이 노드면 그 노드의 시각」이 이제 지켜짐). 구획의 «트렌드가 읽는 열» 목록 하나(table_view trendable) = 걸음 열 그대로, 뒤에 노드 자기 열(숫자 먼저) — Trend 토글 · 열 고르기 · 제목 · 썸네일이 모두 그 목록. 이벤트 스킴(측정 = 노드)의 트렌드 · 썸네일이 변 스킴과 같은 점.
+- **바뀐 동작** — «+ Column» 으로 더한 걸음 끝 노드의 속성 열은 마지막 변의 시각이 아니라 그 노드의 시각(기록 없으면 «N points without a time»). 걸음 열이 있는 구획의 기본 열은 그대로이고, 열 고르기 끝에 자기 열이 더해짐.
+- **(나)** — lumpAnswer 가 남긴 변이 증명하는 증거를 실음(주인 = 시작, 구성원마다 술어 한 걸음). 덩어리 스텝 Route · 출처 = 주인에서 같은 술어로 Next 한 것.
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built walk page as a probe copy, /assets/walk-wnN1ILnz.js, 1920x1080, Copy points with the browser's copy stubbed - nothing written): 18766, bond_temp in +, Walk. appdemo_ed: «bond_temp · measures (in) · value» 4 dots, 4 walked, page asked 1; appdemo_ev: «measurement · 4 · value» 4 dots, 4 walked, «Walk only · no time page», page asked 0, columns value · meas_id · eqp_id · role · step · unit. Copy points in both: the same (time, value) - 2026-11-24 03:49:00 13, 2026-11-24 03:49:00 21.5, 2026-11-24 03:49:00 23.5, 2026-11-24 03:49:00 35.5. 8080, temp_C: the lump «Open as table» 0 walks, then Step 1's row checked and Next «measures → wafer» 1 walk: 79 rows in both, each the same Route (measures) and sources. Writes 0.
+- **게이트** — reach_table 36 (R20 what says when; FM18 the first record, FM19 the last edge; FM4 FM13 re-aimed); fold_views 17 (L3 a lump step's Route = its owner's Next's, L4 a lump's points in two schemes; Lm3 Lm4); trend 58 with --mutate --control (SC1 the two schemes' first trend column, every point timed, the same values and times; SC2 the page, the event scheme's Trend on its own value; SCm1 the last edge's time, SCm2 step columns only, SCm3 the toggle on step columns; TM1 re-aimed); subgraph_view 338 and walk_table 173 with --mutate --control; screen gate 249 with --mutate; walk_layout 38, node_search 45, start_baskets 24, walk_worlds 18, walk_wire 95, rnd_board_walk_box 104, walk_route_fill 80, rnd_board_composition 47, rnd_board_reach 63, disabled_reason 25.
+- **알림 (판정 요청 아님)** — ① 노드 자기 값의 점은 «Copy points» 의 claim_id 칸에 «0:<노드 id>» 가 들어감 — attributes_by_world 기록에 claim 이 없어 점 열쇠(중복 거르기용)가 그대로 찍힘. 비우려면 점에 claim 을 따로 실어야 해서 이 커밋엔 안 넣음. ② 18766 appdemo 의 bond_temp 는 구성원 4라 그래프에 덩어리가 안 생겨 썸네일은 박스에서 못 봄 — 하니스 L4(같은 두 스킴 캡처)로만 잼.
+
+다음: G-2(그래프 = 줄기 스텝은 다음 스텝 시작까지의 증거 경로만 + 끝 스텝은 답 전체, 걷기 0, (가) 덩어리 스텝 부모 = 그 변을 가져온 스텝) -> 값 대응(그 표에도 Copy table).
+
 > ## [09:04 디자인] 덩어리 «Open as table» = 페이지 스텝 착지 350e736b3 (총괄 E2b ③)
 
 - **무엇** — 덩어리 정보 상자(작은 덩어리)와 큰 덩어리의 줄에 «Open as table» 하나. 누르면 고른 스텝 아래 «From <주인> · <술어> <타입>» 탭, 답은 이미 받은 답에서 주인 · 구성원 · 그 사이 엣지만 남긴 것, 걷기 0. 페이지 표 · Trend · 체크 · Next · Copy table 이 그대로 받습니다.
