@@ -696,7 +696,7 @@ class _IndexBuilder:
             keys_by_canonical.setdefault(node.canonical_id, []).append(node.key)
 
         edges: list[ReferenceEdge] = []
-        seen: set[tuple[str, str, str]] = set()
+        seen: set[tuple[str, str, str, str]] = set()
         for from_key, target_id, expected_kind, ref_kind, ref_pointer, forced_status in sorted(
             self.edge_specs,
             key=lambda item: (item[0], item[4], item[3], item[1], item[5] or ""),
@@ -710,7 +710,9 @@ class _IndexBuilder:
                 status = "wrong_kind"
             else:
                 status = "unresolved"
-            identity = (from_key, ref_kind, ref_pointer)
+            # The target is part of it: a type read from a column draws one line per type the role
+            # can carry, all from the one `entity_type` pointer (소유자 10-12, four modeling types).
+            identity = (from_key, ref_kind, ref_pointer, target_id)
             if identity in seen:
                 raise ConfigExplorerError(
                     "duplicate_reference_edge", ref_pointer,

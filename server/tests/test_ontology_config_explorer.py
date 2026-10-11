@@ -2368,3 +2368,21 @@ def test_the_predicate_description_is_byte_identical_without_the_retired_layer_f
         "dropping `layer` moved the predicate node's on-screen description; the "
         "reader's default no longer equals the only value the declaration could write")
     assert described_without == "ontology predicate · active"
+
+
+def test_a_column_typed_role_carrying_several_types_draws_one_line_each_and_a_repeat_is_still_refused():
+    """소유자 10-12: `leads_to` reading its type from a column over four modeling types refused the
+    whole declaration window - «the same reference edge was extracted more than once» - because
+    every type's line shares the one `entity_type` pointer."""
+    from ledger.config_explorer import ConfigExplorerError, _IndexBuilder
+
+    pointer = "/sources/s/bind/mappings/m/bind/subject/entity_type"
+    builder = _IndexBuilder("snap", "bundle")
+    source = builder.add_node("binding", "b", {}, {}, (), config_file="ledger_config.json", json_pointer=pointer)
+    for entity in ("physical_object", "physical_process", "physical_quantity", "defect_kind"):
+        builder.add_edge(source, entity, "entity", "binding_entity", pointer)
+    assert len(builder.finish().edges) == 4
+
+    builder.add_edge(source, "defect_kind", "entity", "binding_entity", pointer)
+    with pytest.raises(ConfigExplorerError, match="more than once"):
+        builder.finish()
