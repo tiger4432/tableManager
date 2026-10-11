@@ -147,7 +147,7 @@ def test_a_replay_of_a_declared_join_fills_the_rows_that_were_already_there(db):
 
 
 
-def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):
+def test_a_backfill_page_makes_ONE_event_not_one_per_row(db, fixed_pages):
     """🔴 [S-279, 판정 421] THE LAST DOOR THAT DID NOT COLLAPSE. Measured before wiring:
     `replay.py` called `outbox_mode` ZERO times, while the group path and the follow-up lap
     both collapse. So the SAME rule writing the SAME rows produced one event live and N events

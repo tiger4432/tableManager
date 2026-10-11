@@ -304,7 +304,7 @@ def test_the_record_says_which_os_account_ran_it(retro_env, monkeypatch):
     assert _row(retro_env).requested_by is None
 
 
-def test_the_withdrawal_fold_previews_then_folds_as_a_run(retro_env, capsys):
+def test_the_withdrawal_fold_previews_then_folds_as_a_run(retro_env, capsys, fixed_pages):
     """총괄 eddf9e38e ②: `chain_replay_cli.py fold-withdraw-events` - the preview's sentence, then
     `--apply` through the run record; three per-row withdrawal events become one."""
     import os

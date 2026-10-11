@@ -319,6 +319,8 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     nothing advances a position any more, and `translator_ver` is the fingerprint that
     remains.
     """
+    from chain import keyset_scan
+
     from . import followup, schema
     from .setup_registry import cursor_translator_version
 
@@ -334,9 +336,9 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     # ITS index alone: another source reading the table has them already, and a CREATE is
     # translated without withdrawing (판정 166) - so it wrote that source's facts twice, once
     # more each time the declaration had moved.
-    only = frozenset({source})
+    only, size = frozenset({source}), keyset_scan.PageSize(page_rows)
     while max_pages is None or report["batches"] < max_pages:
-        page = rows_missing_from_the_index(engine, setup, source, page_rows, after,
+        page = rows_missing_from_the_index(engine, setup, source, size.next(), after,
                                            world=world)
         if not page:
             break
@@ -350,7 +352,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
             _drain_into(engine, setup, report, world=world, sources=only)
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
-            time.sleep(rest_seconds)
+            size.rest(rest_seconds)
         if checkpoint is not None and checkpoint(report["rows_read"]):
             report["stopped"] = True
             logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
@@ -817,15 +819,18 @@ def _scope_pages(engine, plan, scoped, page_rows):
     (`_page_key`), so a page that took the rest of its last key's rows cannot split a
     molecule - half a group remade on its own is a wrong atom, not a smaller one.
     `page_rows=None` is the whole scope, one read."""
+    from chain import keyset_scan
+
     key = None if page_rows is None else _page_key(plan)
-    after = None
+    after, size = None, None if page_rows is None else keyset_scan.PageSize(page_rows)
     readable = _readable_columns(engine, plan)
     while True:
         read = engine.raw_connection()
         try:
-            rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=page_rows,
+            limit = None if size is None else size.next()
+            rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=limit,
                                           scope=scoped)
-            if page_rows is not None and len(rows) >= page_rows:
+            if limit is not None and len(rows) >= limit:
                 last = rows[-1][key]
                 rows = [row for row in rows if row[key] != last] + _fetch_v2_lineage_rows(
                     read, plan, readable, group_value=last, scope=scoped)

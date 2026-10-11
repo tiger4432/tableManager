@@ -272,13 +272,30 @@
 >
 > ---
 >
+> ## [10-12] **소급 진행이 5 초에 한 번 — 쪽 크기를 스스로 맞추고 첫 쪽은 1 행 (총괄 a02ad0f2b, 소유자 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」 · 「인벤토리 리플레이는 1 행씩 시작해야지」, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»(소급 · 명령줄은 다음 실행부터)**
+>
+> ```
+> 무엇        쪽을 도는 소급 · 원장 백필 · 조인 · 접기 맵퍼의 쪽이 1 행에서 시작해, 쪽 하나가 page_seconds 의 절반 아래면 다음 쪽 두 배,
+>             넘으면 넘은 비율만큼 바로 줄임. 손으로 준 chunk_size · 쪽 상수는 «최대». pace 의 쉼은 쪽 시간에 안 셈
+> 선언 칸     server/pacing.json "page_seconds": 3 (5 를 넘게 적어도 5). 다음 실행부터, 재기동 없이
+> 볼 줄       retroactive.log (명령줄이면 그 창) — 쪽마다
+>             [ledger_rescope] page 11: 512 rows · 1.5 s · 330 rows/s · 1024 done
+>             전체를 세는 연산(표기 소급 · fold-units · fold-rows)은 «· <처리> / <전체> · ~<남은 시간> left»
+> 답의 뜻     줄 간격이 5 s 를 넘음 -> 1 행 쪽도 5 s 넘게 걸림 — 행 하나가 느리거나 잠금. 위 stalled 절의 잠금 질의
+>             rows 가 1~2 에서 안 자람 -> 쪽 크기와 무관한 고정 비용이 page_seconds 를 넘음 — 총괄께
+> 체인 큐 줄   조인 · 접기 쪽 줄이 «page k · 쓴 수 / 전체 rows» — 쪽 총수 K 는 없어짐(쪽 크기가 바뀌므로)
+> 끄는 스위치  없음 — git revert {LANDING} -> 재기동
+> ```
+>
+> ---
+>
 > ## [10-12] **소급 줄에 stalled 가 뜨면 — 쪽 안의 단계마다 진행 시각 · 로그 한 줄 (총괄 e71f7d6f1, 소유자 「죄다 stalled 뜨냐」 · 「깜깜이」, 착지 79afc64e5) — 이주 «없음» · 재기동 «없음»(pull 뒤 다음 소급 실행부터)**
 >
 > ```
 > 뜻          stalled = 그 실행이 300 s 동안 «한 단계도» 못 마침 — 잠금 대기 · 끊긴 프로세스 · 5 분 넘는 단계 하나
 >             쪽 하나가 5 분을 넘어도 단계가 끝나는 동안은 progressing (표기 소급 · fold-units 만. 다른 소급은 전처럼 쪽 경계에서만)
 > 볼 줄       retroactive.log (명령줄이면 그 창) — 단계가 끝날 때마다
->             [fold_written_notation] page 3/12: fold · 20000 rows · 41.2 s
+>             [fold_written_notation] page <k>: fold · <rows> rows · <s> s
 >             줄이 이어지면 느린 것. 끊기면 마지막 줄의 «다음» 단계에서 서 있음 (read -> fold -> write -> 다음 쪽 read)
 > 잠금인가    읽기만, 운영 DB:
 >             SELECT pid, wait_event_type, wait_event, pg_blocking_pids(pid) AS blocked_by, round(extract(epoch FROM now() - query_start)) AS seconds, left(query, 60) AS query FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle' ORDER BY query_start;

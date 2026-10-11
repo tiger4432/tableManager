@@ -290,7 +290,7 @@ def stamps_its_origin(rule):
     return dynamic_mappers.stamps_origin((rule or {}).get("mapper"), rule)
 
 
-def columns_a_rule_writes(rule, items=()):
+def columns_a_rule_writes(rule, items=(), more=False):
     """The columns this rule writes, or None - not known.
 
     This run's rows when it proposed any. 🔴 [총괄 10-08] A run that proposed none still owns what it
@@ -300,6 +300,10 @@ def columns_a_rule_writes(rule, items=()):
     총괄 016a766af), and a mapper that declares nothing with what it last wrote in this process.
     """
     columns = {column for item in items or () for column in (item_cell(item, "updates") or ())}
+    if more:
+        # an answer with more pages (`next_page`) is its first page here - with the declaration, or a join whose first
+        # row skipped a blank take leaves that column's old cells (총괄 a02ad0f2b ㄱ: the first page is one row)
+        columns |= set(dynamic_mappers.columns_declared_for(rule) or ())
     if columns:
         return columns
     declared = dynamic_mappers.columns_declared_for(rule)
@@ -339,7 +343,7 @@ def _uniform():
     facts, and `chain.synthesis` already keeps them apart for the same reason.
 
     `next_page` holds, per proposal that pages, the call for its remaining pages and what its first page said
-    (`rows_total` · `pages` · `first` - 총괄 e10c58e5e · 634c06fc3) - this seat only carries them; the write door asks
+    (`rows_total` · `first` - 총괄 e10c58e5e · 634c06fc3) - this seat only carries them; the write door asks
     the calls, at the rule's place in the order, and says each page against them.
     """
     return {"updates": [], "map_metadata_updates": [], "batches": [],
@@ -612,7 +616,7 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
                 if result.get("next_page") is not None:
                     answer["next_page"].append({
                         "call": result["next_page"], "rows_total": result.get("rows_total"),
-                        "pages": result.get("pages"), "first": len(result.get("updates") or ())})
+                        "first": len(result.get("updates") or ())})
             # 🔴 WHAT ITS OUTPUT SAYS ABOUT WHERE IT CAME FROM (총괄 4c3417ccb ③) - the edit's
             #    withdrawal reads it here, a deletion's warning from `_ORIGIN_SEEN`.
             proposed = list(answer["updates"]) + [item for batch in answer["batches"]

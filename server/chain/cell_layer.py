@@ -419,12 +419,14 @@ def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = Fal
     from database.context import outbox_mode
     with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME), \
             outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
-        for i in range(0, len(all_row_ids), chunk_size):
+        size, i = keyset_scan.PageSize(chunk_size), 0
+        while i < len(all_row_ids):
             if checkpoint is not None and checkpoint(i):
                 stats["stopped"] = True
                 log(f"[withdraw] stopped by request after {i} rows")
                 break
-            chunk = all_row_ids[i:i + chunk_size]
+            chunk = all_row_ids[i:i + size.next()]
+            i += len(chunk)
             rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
 
             # Remaining sources + pins for the whole chunk: two batched queries, not
@@ -557,13 +559,13 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
                     p["updated_by"].as_string() == R2_AUDIT_SOURCE,
                     p["source_name"].as_string() == R1_SOURCE_NAME))
     out = {"by_table": {}, "rows": 0, "retrying": 0, "running": 0, "pages": 0, "stopped": False}
-    after, folded = 0, 0
+    after, folded, size = 0, 0, keyset_scan.PageSize(page)
     while True:
         if checkpoint is not None and checkpoint(folded):
             out["stopped"] = True
             log(f"[withdraw fold] stopped by request after {folded} event(s)")
             break
-        found = read.filter(outbox.id > after).order_by(outbox.id).limit(page).all()
+        found = read.filter(outbox.id > after).order_by(outbox.id).limit(size.next()).all()
         if not found:
             break
         after, out["pages"] = found[-1][0], out["pages"] + 1

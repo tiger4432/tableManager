@@ -201,7 +201,7 @@ def test_a_run_without_apply_hands_nothing_over(rep_env):
     assert _target(rep_env, "P1") is None
 
 
-def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env):
+def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env, fixed_pages):
     """🔴 [소유자 2026-09-23] 「작은 소급은 바로 아웃박스에 트리거와 «같은 형태»로 꽂히게」.
 
     ⚰️ THIS CALLED `replay_rule(apply=True)` AND ASSERTED THE TARGET ROW. It passed while
@@ -237,7 +237,7 @@ def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env):
         {"chain_ingestion"}, "the worker wrote it in the chain's layer, like any live edit"
 
 
-def test_one_replay_is_one_transaction(rep_env):
+def test_one_replay_is_one_transaction(rep_env, fixed_pages):
     """게이트 ㉡ - one replay = one transaction = one line on the screen.
 
     🔴 THE TRAP THIS KILLS. `stage_collapsed_event` takes its id from

@@ -42,6 +42,19 @@ def load_paces(path=None):
     return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8"))["paces"]
 
 
+#: The seconds a page aims at unless pacing.json says `page_seconds` (소유자 10-12 「모든 소급은 5 초에 한 번은 진행
+#: 상황이 보이게」 · 「한 배치에 5 초 이내 무조건」) - never above the cap.
+PAGE_SECONDS_KEY, PAGE_SECONDS_DEFAULT, PAGE_SECONDS_CAP = "page_seconds", 3.0, 5.0
+
+
+def page_seconds(path=None):
+    """The declared page time, the default when absent or not a positive number, and never above the cap."""
+    value = json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8")).get(PAGE_SECONDS_KEY)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return PAGE_SECONDS_DEFAULT
+    return min(float(value), PAGE_SECONDS_CAP)
+
+
 def load_jobs(path=None):
     """Which pace each self-starting job runs at. `{}` when the file declares none."""
     return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8")).get("jobs", {})

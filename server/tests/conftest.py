@@ -75,6 +75,15 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 # The chain rules as last loaded are forgotten  [총괄 57ae5c2da]
 # ===========================================================================
 
+@pytest.fixture
+def fixed_pages(monkeypatch):
+    """Every page its loop's largest from the first (총괄 a02ad0f2b): for a cell that counts what a PAGE makes - one
+    event, one transaction - not how big the page is (`keyset_scan.PageSize` starts at one row)."""
+    from chain import keyset_scan
+
+    monkeypatch.setattr(keyset_scan, "FIRST_PAGE", 10 ** 9)
+
+
 @pytest.fixture(autouse=True)
 def _the_loaded_chain_rules_are_forgotten():
     """A rule set one test loaded must not answer for the next, whose fake `load_chain_rules`
@@ -206,14 +215,18 @@ def run_join_and_write(db, rule, row_ids):
     from database import crud, schemas
 
     outcome = join_into.propose(db, rule, row_ids)
-    updates = outcome.get("updates") or []
+    updates, more = list(outcome.get("updates") or []), outcome.get("next_page")
+    while more is not None:                     # every page, as the worker's write seat asks them
+        page = more()
+        updates += page.get("updates") or []
+        more = page.get("next_page")
     for item in updates:
         item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
     if updates:
         crud.apply_batch_updates(
             db, str((rule or {}).get("target_table") or ""),
             schemas.GeneralUpdateBatch(updates=updates, silent=True))
-    answer = {key: value for key, value in outcome.items() if key != "updates"}
+    answer = {key: value for key, value in outcome.items() if key not in ("updates", "next_page")}
     answer["written"] = len(updates)
     return answer
 

@@ -1482,21 +1482,21 @@ def _group_target_tables(events_in_tx, rules):
 
 class _NextPage:
     """A proposal's remaining pages, at its rule's place in a table's list (총괄 e10c58e5e) - with what its first
-    page said (`rule_run`'s `next_page` record: rows_total · pages · first)."""
+    page said (`rule_run`'s `next_page` record: rows_total · first)."""
 
-    __slots__ = ("more", "rule", "total", "pages", "first")
+    __slots__ = ("more", "rule", "total", "first")
 
-    def __init__(self, more, rule, total=None, pages=None, first=0):
-        self.more, self.rule, self.total, self.pages, self.first = more, rule, total, pages, first
+    def __init__(self, more, rule, total=None, first=0):
+        self.more, self.rule, self.total, self.first = more, rule, total, first
 
 
-def _page_said(rule, target, page, pages, rows, total, written):
+def _page_said(rule, target, page, rows, total, written):
     """THE PAGE LINE (총괄 634c06fc3, 소유자 「쓰는 진척률이라도 보이면」): what the log and the queue's `running` say
-    of a proposal's page k - of K and the rows written so far of all its rows, when the proposal counted them; else
-    the page and its rows, with no cell for a count nobody gave."""
-    if total is None or pages is None:
+    of a proposal's page k - and the rows written so far of all its rows, when the proposal counted them; else the
+    page and its rows, with no cell for a count nobody gave. No page count: each page's size is `keyset_scan.PageSize`'s."""
+    if total is None:
         return "%s -> %s · page %d · %d rows" % (rule, target, page, rows)
-    return "%s -> %s · page %d/%d · %d / %d rows" % (rule, target, page, pages, written, total)
+    return "%s -> %s · page %d · %d / %d rows" % (rule, target, page, written, total)
 
 
 def _carry_next_pages(table_updates, table_contributors, target_table, rule, answer):
@@ -1504,7 +1504,7 @@ def _carry_next_pages(table_updates, table_contributors, target_table, rule, ans
     rules after it still write after its last page, as the rule order says."""
     for more in answer.get("next_page") or ():
         table_updates[target_table].append(_NextPage(more["call"], rule.get("name"), more["rows_total"],
-                                                     more["pages"], more["first"]))
+                                                     more["first"]))
         if rule.get("name") not in table_contributors[target_table]:
             table_contributors[target_table].append(rule.get("name"))
 
@@ -1522,7 +1522,7 @@ def _in_rule_order(table_updates):
                 batch.append(item)
                 continue
             # the first page went out with the cells before the marker - its line, before that write
-            said = _page_said(item.rule, target, 1, item.pages, item.first, item.total, item.first)
+            said = _page_said(item.rule, target, 1, item.first, item.total, item.first)
             logger.info("[Chain] %s", said)
             heartbeat.progress("mapper · %s" % said)
             if batch:
@@ -1539,7 +1539,7 @@ def _in_rule_order(table_updates):
                         item.rule, target, page, type(exc).__name__, exc)) from exc
                 updates = list(result.get("updates") or ())
                 written += len(updates)
-                said = _page_said(item.rule, target, page, item.pages, len(updates), item.total, written)
+                said = _page_said(item.rule, target, page, len(updates), item.total, written)
                 logger.info("[Chain] %s", said)
                 # the queue's `running` reads this - and its moved seconds start again (총괄 248ae20cd)
                 heartbeat.progress("mapper · %s" % said)
@@ -2256,7 +2256,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 #   still owns what it wrote before - a join whose value row moved to a key no left
                 #   row carries proposes nothing, and the cells it filled under the old key stay.
                 known = rule_run.stamps_its_origin(rule) if edited else False
-                columns = rule_run.columns_a_rule_writes(rule, target_payload["updates"]) if known else None
+                columns = (rule_run.columns_a_rule_writes(rule, target_payload["updates"],
+                                                     more=bool(target_payload.get("next_page")))
+                           if known else None)
                 if columns:
                     edit_retractions[target_table].append({
                         "trigger_table": table_name, "declaration": rule_shape.declaration_of(rule),

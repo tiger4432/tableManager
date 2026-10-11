@@ -254,8 +254,8 @@ def test_the_dry_run_counts_what_the_run_does_and_writes_nothing(copies):
 def test_a_rerun_writes_nothing(copies):
     again = copies["B_again"]
     assert copies["B_stats"]["rows_marked"] == 11, "CANARY: the first run wrote"
-    assert copies["answers"][:2] == [(5, [12]), (5, [12])], "CANARY: the mapper answers in pages (A, then B's dry run)"
-    assert (copies["B_stats"]["rows_proposed"], copies["B_stats"]["pages"]) == (12, 3), "every mapper page followed"
+    assert copies["answers"][:2] == [(1, [12]), (1, [12])], "CANARY: the mapper answers in pages from one row (A, then B's dry run)"
+    assert (copies["B_stats"]["rows_proposed"], copies["B_stats"]["pages"] >= 3) == (12, True), "every mapper page followed"  # pages of at most 5, from one row
     assert (again["rows_marked"], again["marks_withdrawn"], again["rows_already_marked"]) == (0, 0, 12)
     assert copies["B_after_again"] == copies["B"]
 

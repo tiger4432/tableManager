@@ -77,7 +77,7 @@ def _events(world):
 
 # ------------------------------------------------------------------ ① the withdrawal writes collapsed
 
-def test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row(world, monkeypatch):
+def test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row(world, monkeypatch, fixed_pages):
     calls = []
     real = followup.drain_outbox_once
 
@@ -119,7 +119,7 @@ def test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row(world, monke
 
 # ------------------------------------------------------------------ ② the queued ones fold
 
-def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, monkeypatch):
+def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, monkeypatch, fixed_pages):
     db = world["db"]
     rows = _official_rows(world, 2600)
     tx1 = _per_row(world, rows[:1500])
@@ -165,7 +165,7 @@ def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, m
     assert cell_layer.fold_withdrawal_events(db, apply=True)["by_table"] == {}
 
 
-def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world):
+def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world, fixed_pages):
     db = world["db"]
     rows = _official_rows(world, 9)
     _per_row(world, rows[:4], depth=2, doors=(channel(event_constants.CHANNEL_CHAIN), cascade(True),

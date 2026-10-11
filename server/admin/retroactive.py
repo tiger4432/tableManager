@@ -2402,6 +2402,8 @@ class RunControl:
         self._moved = time.monotonic()
         #: The run's own log (`log` of `execute` / `run_here`) - a step line goes where the run's lines go.
         self._log = log or logger.info
+        #: The last page boundary's count, clock and number - what the page line (`_page_line`) measures from.
+        self._said, self._boundary, self._pages = 0, time.monotonic(), 0
 
     def _session(self):
         if self._session_factory is not None:
@@ -2440,6 +2442,7 @@ class RunControl:
 
     def progress(self, processed=None, total=None) -> None:
         """Record how far this run has got. `total=None` stays NULL - unknown, not zero."""
+        self._page_line(processed, total)
         if not self.run_id:
             return
         values = {}
@@ -2453,6 +2456,21 @@ class RunControl:
         import event_constants
         self.announce(event_constants.PROGRESS_STATUS_RUNNING, processed=processed, total=total)
         self._moved = time.monotonic()      # the next step's seconds leave out this boundary's notice
+
+    def _page_line(self, processed, total) -> None:
+        """THE PAGE LINE (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」): at each page boundary that moved
+        the count, `[<op>] page k: <rows> rows · <seconds> s · <rows/s> rows/s · <done> / <total> · ~<left> left` - the
+        total and the time left only when the op counted its rows."""
+        if processed is None or processed <= self._said:
+            return
+        now = time.monotonic()
+        rows, seconds = processed - self._said, now - self._boundary
+        rate = rows / seconds if seconds > 0 else 0
+        self._pages += 1
+        done = ("%d done" % processed if not total else "%d / %d · ~%s left" % (
+            processed, total, _clock((total - processed) / rate) if rate else "?"))
+        self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s" % (self.op, self._pages, rows, seconds, rate, done))
+        self._said, self._boundary = processed, now
 
     def step(self, name, page, pages, rows) -> None:
         """A step of page `page` (of `pages`, None = unknown) returned (총괄 e71f7d6f1, 소유자 「죄다 stalled」 ·
@@ -2495,6 +2513,11 @@ class RunControl:
             self.announcing = False
             logger.warning("[Retroactive] run_id=%s op=%s: a progress notice was not heard - none more for this "
                            "run; the Retroactive tab reads the run record", self.run_id, self.op)
+
+
+def _clock(seconds):
+    """`42 s` · `7 min` · `3.1 h` - a page line's time left."""
+    return "%d s" % seconds if seconds < 120 else "%d min" % (seconds / 60) if seconds < 7200 else "%.1f h" % (seconds / 3600)
 
 
 def announce_progress(run_id, op, status, processed=None, total=None):

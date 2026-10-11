@@ -465,11 +465,11 @@ def propose(db, rule: dict, row_ids=None):
                  "reference" if reference_side else "target")
 
 
-def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
+def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, size=None):
     """One page of left rows answered from what was read once - and the call for the next."""
     from chain import keyset_scan
 
-    page, after, pages = keyset_scan.pages(left_rows, start)
+    page, after, size = keyset_scan.pages(left_rows, start, size)
     blank = (None,) * len(_takes(spec))
     rows = [_Answer(row_id, origin, values)
             for row_id, key in page
@@ -509,10 +509,10 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
                    "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
     answer = {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
               "next_page": (lambda: _page(db, rule, spec, left_table, left_rows, answers,
-                                          after, handed, side))
+                                          after, handed, side, size))
               if more else None}
     if not start:
-        answer["rows_total"], answer["pages"] = total, pages
+        answer["rows_total"] = total
     return answer
 
 
