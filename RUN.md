@@ -122,7 +122,7 @@
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
 >    빌드    main 의 dist walk-CWo9azvd.js(Control · B 고침 a0ea30c06) · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
->            누른 빌드 — walk-CWo9azvd.js (= main, a0ea30c06) 에서 ③f / walk-C1Nny51E.js (W1 d76cafd54) 에서 ① · ② · ③ · ③ 출처 · ③ Long · ③b · ③b 같은 표 · ③f bonded_from 넣음 · ④ / walk-1kJngLIB.js (61a006f73) 에서 ③d 그래프 · ③e · ④ ev · ④ (다) · ⑤ ~ ⑨ / 앞 판 walk-wnN1ILnz.js 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음 · ③ 복사 · ⑨ 덩어리를 표로 · ⑨ 복사 · ⑨ 썸네일 · ④ 스킴 둘 · ⑨ die Trend
+>            누른 빌드 — walk-CWo9azvd.js (= main, a0ea30c06) 에서 ③f · ④ 점 출처 · ④ 스킴 둘 ed / walk-C1Nny51E.js (W1 d76cafd54) 에서 ① · ② · ③ · ③ 출처 · ③ Long · ③b · ③b 같은 표 · ③f bonded_from 넣음 · ④ / walk-1kJngLIB.js (61a006f73) 에서 ③d 그래프 · ③e · ④ ev · ④ (다) · ⑤ ~ ⑨ / 앞 판 walk-wnN1ILnz.js 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음 · ③ 복사 · ⑨ 덩어리를 표로 · ⑨ 복사 · ⑨ 썸네일 · ④ 스킴 둘 · ⑨ die Trend
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
 >            «모델 세상 1» = 리허설의 appdemo_vf
@@ -191,12 +191,12 @@
 >       쪽 넘김  점이 많은 계측군(리허설 가짜 행 local_gap)의 + 값 «53» 을 누름 -> «1000 points · 2026-11-02 18:42 → 2026-12-15 12:55 local time» · Load earlier · Load later 켜짐
 >                Load earlier -> «1201 points · 2026-10-25 03:49 → 2026-12-15 12:55 local time» · 그 단추 꺼짐 «Nothing earlier» · Load later -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 그 단추 꺼짐 «Nothing later»
 >                요청마다 page=1000 · 306 ms · 89 ms · 108 ms
->       점 출처  bond_temp + 값을 누름 -> «bond_temp · measures (in) · value» «64 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 걸은 점 4 개마다 title 에 ③ 의 출처 그대로
+>       점 출처  bond_temp + 값을 누름 -> «bond_temp · measures ← wafer · value» «64 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 걸은 점 4 개마다 title 에 ③ 의 출처 그대로
 >                쪽으로 온 점: local_gap 를 누르면 걸은 점 2 · 쪽 점 998 개 전부 «<키> · not in this walk»(리허설 «FAKE-W-002 · not in this walk») · raw id 0
 >       뜻       누른 쪽의 걸은 시각 근방 1,000 점이 먼저 · Load earlier / Load later 가 1,000 점씩 넓힌다 · 꺼짐 글씨 = 그 쪽에 더 없음
 >                주황 Positive · 청록 Negative · 회색 다른 줄 · 점선 = 걸은 시각
 >       스킴 둘  세상 칩을 appdemo_ed 하나 · appdemo_ev 하나로 바꿔 가며 Type quantity · bond_temp 를 + 에 넣고 Walk
->                ed(값이 measures 변에): bond_temp 의 + 값을 누름 -> «bond_temp · measures (in) · value» «4 points · 2026-11-24 03:49 → 2026-11-24 03:49 local time» · 점 4
+>                ed(값이 measures 변에): bond_temp 의 + 값을 누름 -> «bond_temp · measures ← wafer · value» «4 points · 2026-11-24 03:49 → 2026-11-24 03:49 local time» · 점 4
 >                ev 의 «quantity · 1» · «wafer · 4» 구역은 Trend 꺼짐 «No value with a time» · measurement 구역 열 고르기 «value* / eqp_id / role / step / unit»
 >                ev(값이 측정 노드에): «measurement · 4» 구역 Trend -> «measurement · 4 · value» «4 points · 2026-11-24 03:49 → 2026-11-24 03:49 local time · Walk only · no time page» · 점 4
 >                «Copy points»(진짜 클릭) 둘 다 «Copied 4 points» · 시각과 값이 같다: 2026-11-24 03:49:00 13 · 2026-11-24 03:49:00 21.5 · 2026-11-24 03:49:00 23.5 · 2026-11-24 03:49:00 35.5
@@ -215,9 +215,9 @@
 >       뜻       next = 한 걸음 너머 서로 다른 노드 수(Open 이 그리는 수) · behind = 그 너머에 접힌 채 남는 수
 >                두 base 를 누르면 «Mark» 만 — 접어서 숨을 것이 없는 노드에는 «Fold branches» 가 안 선다
 >    ⑨  덩어리를 표로   ⑥ 뒤의 «measures → 7 more quantity» 를 누름 -> «Open as table»
->       본 것    요청 0 · 탭 «Step 1 · + 1 · − 1 → wafer, quantity» «Step 2 · From SYN-BW-103-11 · measures → quantity» · «Nodes 8 (collect: quantity) · Edges 7 (all)» · quantity 구역 Trend -> 요청 1 · «quantity · 7 · measures (in) · value» «51 points · 2026-08-10 01:00 → 2026-11-24 03:49 local time» · 걸은 점 6 · 열 고르기 첫째 «measures (in) · value*»
+>       본 것    요청 0 · 탭 «Step 1 · + 1 · − 1 → wafer, quantity» «Step 2 · From SYN-BW-103-11 · measures → quantity» · «Nodes 8 (collect: quantity) · Edges 7 (all)» · quantity 구역 Trend -> 요청 1(W 1 전 판 — W 1 에서 «(in)» 은 «← <건너편>», 이 줄은 다시 안 눌렀다) · «quantity · 7 · measures (in) · value» «51 points · 2026-08-10 01:00 → 2026-11-24 03:49 local time» · 걸은 점 6 · 열 고르기 첫째 «measures (in) · value*»
 >       시각 없는 구역  Step 1 에서 불량 base 줄 체크 -> NEXT «in_container → die» -> «Nodes 179 (collect: die) · Edges 179 (all) · 0.3 s» · «die · 179» 구역 Trend 꺼짐 «No value with a time»
->       뜻       덩어리를 다시 걷지 않고, 이미 받은 답(주인 · 구성원 · 그 사이 엣지)을 페이지 표의 스텝으로 연다 — 그 위에서 표 · Trend · Copy table
+>       뜻       덩어리를 다시 걷지 않고, 이미 받은 답(주인 · 구성원 · 그 사이 엣지)을 페이지 표의 스텝으로 연다 — 그 위에서 표 · Trend · Copy(W 1 전 «Copy table»)
 >                Trend 는 그 구역에서 시각 있는 값이 있는 열만, 숫자 열 먼저(③e «wafer · 64 · measures · value» · «64 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» 첫째 «measures · value*» 그대로)
 >       고쳐짐   (가) 덩어리 스텝은 그 덩어리 엣지를 가져온 스텝 밑에 앉는다(G-2) — 이 박스 그림에서는 앞 걸음에 덩어리가 안 생겨 화면으로는 못 봄(디자인 보고 fc6e7a180, 하니스로 잼)
 >                (라) 시각 있는 값이 없는 구역은 Trend 꺼짐 «No value with a time»(G-2b) — 위 die · ev 의 quantity · wafer
