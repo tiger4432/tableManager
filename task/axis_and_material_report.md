@@ -1,3 +1,13 @@
+> ## [13:39 디자인] 대기열 읽기 시한 · «Read N s ago» 착지 fd35266fe (총괄 Q 3f8129237)
+
+- **무엇** — queue_poll 한 자리: QUEUE_READ_TIMEOUT_MS(15 s) · timedRead(AbortController 신호 + 시한과 race — 신호를 무시하는 요청도 끝남) · readAgeWords. 두 화면(그리드 Queue 탭 /outbox/queue/rows · 어드민 체인 대기열 /admin/chain/queue)의 모든 큐 읽기(박자 · Refresh · 탭 열기 · 알림 · 어드민 30초)가 그걸 지남. 끊기면 «Read timed out · retrying», 다음 박자가 다시 읽음.
+- **나이 줄** — 두 패널 첫 줄 «Read N s ago». 박자가 앞 읽기가 아직인 걸 보면 읽지 않고 나이만 다시 그림(waiting).
+- **바뀐 동작 하나** — pollQueue 가 박자의 읽기가 끝나기를 기다렸다가 다음 박자를 걸던 것을, 곧바로 다음 박자를 걸게 바꿈. 전에는 박자의 읽기 하나가 안 끝나면 박자 «예약 자체»가 멈춰 나이 줄도 못 움직였음(탐침 첫 판에서 봄). 겹치는 읽기는 busy 가 그대로 막음.
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, probe copies of the built pages told they are on screen, their timers on a clock the hidden pane does not slow, one queue read past the first left never settling; nothing written): grid /assets/main-Dd7pfYCB.js, Queue tab on the box (8080): the hung read at 10.1 s, the age Read 0 s ago -> Read 7 s ago -> Read 12 s ago -> Read 0 s ago, the next read 15.0 s later; 0 rows. admin /assets/admin-BoorfoB1.js, Overview chain queue (the gate's fixtures): the hung read at 10.2 s, the age Read 0 s ago -> Read 10 s ago -> Read 15 s ago -> Read 0 s ago, the next read 15.0 s later, its 9 rows kept meanwhile. Writes 0.
+- **게이트** — outbox_queue_panel 76 (QA1 the age the panel's first line; PL5 a read that never settles cut at 15 s, its request aborted; PL6 a waiting beat says its age and reads nothing, the cut lets the next read; PL7 the words; PL8 both pages read through timedRead and hand the age, no time of their own; PL9 a beat whose read never ends does not hold the next; PM4 no time, PM5 a waiting beat silent, PM6 the next beat waits on the read - each red; PM1-PM3 re-aimed); chain_queue_panel 239 (QA2); screen gate 252 with --mutate; absent 35, failure_copy 6, retroactive_view 356, escaping 56, retry_verdict 67, chain_rule_panel 67.
+
+다음: G-2(안 ② — foldBeyond 첫 그림 규칙에 그 부품 fanout_limit, 넘는 갈래는 지금 그리는 작은 덩어리로 · (가) · claim 빈칸 · 시각 없는 열은 트렌드 밖) -> 값 대응.
+
 > ## [12:38 디자인] 어드민 R — 소급 탭 목차 칩 · 들어간 파일 행 Retry 착지 704882c06 (총괄 R)
 
 - **① 소급 탭 목차** — 머리의 이름 줄(retroactive-sub)이 연산마다 칩 하나(서버 이름 · 순서), 줄바꿈. 누르면 그 카드가 탭 맨 위(마지막 카드들은 굴러가는 데까지), 머리 접기는 안 일어남. 둘째 목록 · sticky · 카드 접기 없음. retroactive_view 의 titles 는 읽는 자리가 0 이 돼 은퇴.
