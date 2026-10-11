@@ -1453,9 +1453,12 @@ def _update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
     if "updated_at" in names:
         sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
         params["updated_at"] = batch_now
-    db.execute(text('UPDATE "%s" SET %s FROM unnest(%s) AS v(%s) WHERE "%s"."%s" = v.a0' % (
-        table.name, ", ".join(sets), ", ".join(casts), ", ".join("a%d" % i for i in range(len(columns))),
-        table.name, key)), params)
+    # the key's own `= ANY(keys)` bounds the table side to the page by its key index: without it a
+    # 1M-row table was hash-joined by a scan of the whole table, every page (box dt_map, 총괄 10-11)
+    db.execute(text('UPDATE "%s" SET %s FROM unnest(%s) AS v(%s) WHERE "%s"."%s" = v.a0 AND "%s"."%s" = ANY(%s)'
+                    % (table.name, ", ".join(sets), ", ".join(casts),
+                       ", ".join("a%d" % i for i in range(len(columns))),
+                       table.name, key, table.name, key, casts[0])), params)
 
 
 #: The writer of the history line a notation backfill leaves on each cell it folds.
@@ -1501,8 +1504,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
 
     🔴 ON POSTGRESQL A PAGE IS FOLDED BY VALUE (총괄 10-11, 소유자 「노테이션 소급 엄청 빨리」): each
     distinct spelling of the page is folded once and what moves is written set-based
-    (`_fold_by_values` · `_write_by_values`); a row whose key part could move takes the row path
-    (`plan_rows`), the one every row takes on another dialect. Same end state, measured A = B.
+    (`_fold_by_values` · `_write_by_values`); a row whose key part could move is judged by the row
+    path (`plan_rows`, the one every row takes on another dialect) and written with the page - only
+    a row that merges, and the row it merges into, keep the ORM write. Same end state, measured A = B.
     """
     from sqlalchemy import func
 
@@ -1665,8 +1669,24 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 for verdict, n in values["time_left"].items():
                     stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + n
                 again = values["again"]
-                plans = plan_rows(db.query(model).filter(model.row_id.in_(sorted(values["hard"])))
-                                  .order_by(model.row_id).all() if values["hard"] else [], [], quiet)
+                plans = plan_rows([values["rows"][row_id] for row_id in sorted(values["hard"])], [], quiet)
+                # A row that merges, and the row it merges into, keep the ORM write: the shell is
+                # deleted at the flush and the holder changed again by the merge, one event each.
+                # Every other planned row - its key moved onto nothing or did not move - is
+                # written by value with the page (총괄 10-11 · RUN.md 「키 칸도 한꺼번에」).
+                meet = {plan["into"] for plan in plans.values() if plan.get("into")}
+                orm = {row.row_id: row for row in db.query(model).filter(model.row_id.in_(sorted(
+                    row_id for row_id, plan in plans.items() if plan.get("into") or row_id in meet)))} \
+                    if meet else {}
+                for row_id, plan in list(plans.items()):
+                    if row_id in orm:
+                        plan["row"] = orm[row_id]
+                        continue
+                    del plans[row_id]
+                    values["cells"].update(((row_id, column), cell) for column, cell in plan["cells"].items())
+                    values["layers"].update((layer["id"], layer["value"]) for layer in plan["layers"])
+                    if plan["key"]:
+                        values["keys"][row_id] = plan["key"]
             else:
                 values, again = None, []
                 plans = plan_rows(page, again, fold)
@@ -1688,6 +1708,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             if values:
                 stats["cells_folded"] += len(values["cells"])
                 stats["layers_folded"] += len(values["layers"])
+                stats["keys_changed"] += len(values["keys"])
             if apply and (changed or values and (values["cells"] or values["layers"])):
                 if values:
                     _write_by_values(db, table_name, model, values, tx_id)
@@ -1729,11 +1750,12 @@ def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_val
     each distinct stored layer text of a folded column is folded once (`fold_value`) and counted as
     often as it stands - so `time_left` and the moves-again count are the row path's, page-wide.
     A row whose key part could move (its shown value or a layer of it moves) is `hard`: the row path
-    takes it whole. For every other row: a cell with a layer that moves shows what its layers decide -
+    judges it whole and its answer joins this page's (`keys`: row id -> moved key, the caller's). For
+    every other row: a cell with a layer that moves shows what its layers decide -
     one stored text among them is that text folded and cast as `_resolve_cell` casts it, more than
     one is `_resolve_cell` over `_load_cell_state`; a cell with none has its shown value folded.
     -> {hard: row ids, cells: {(row_id, column): (old, new)}, layers: {layer id: new value},
-        rows: {row_id: page row}, again: [(entry, n)], time_left: {verdict: n}}"""
+        keys: {}, rows: {row_id: page row}, again: [(entry, n)], time_left: {verdict: n}}"""
     import json
     from collections import Counter
 
@@ -1746,7 +1768,7 @@ def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_val
     cs = models.CellSource
     said = cast(cs.value, Text)                     # a layer's stored JSON text - one key per spelling
     rows = {row.row_id: row for row in page}
-    out = {"hard": set(), "cells": {}, "layers": {}, "rows": rows, "again": [], "time_left": Counter()}
+    out = {"hard": set(), "cells": {}, "layers": {}, "keys": {}, "rows": rows, "again": [], "time_left": Counter()}
     memo = {}
 
     def judge(column, key, value, n):
@@ -1861,13 +1883,19 @@ def _write_by_values(db, table_name, model, values, tx_id):
     by_row = {}
     for (row_id, column), cell in values["cells"].items():
         by_row.setdefault(row_id, {})[column] = cell
-    shown, history = {}, []
+    shown, history, written = {}, [], {}
     for row_id, cells in by_row.items():
-        shown.setdefault(frozenset(cells), []).append([row_id] + [cells[column][1] for column in sorted(cells)])
+        # a moved key is written with the row's cells, and its history lines carry it - as the row
+        # path sets `business_key_val` before `create_audit_log`
+        now = written[row_id] = {column: new for column, (_old, new) in cells.items()}
+        if row_id in values["keys"]:
+            now["business_key_val"] = values["keys"][row_id]
+        shown.setdefault(frozenset(now), []).append([row_id] + [now[column] for column in sorted(now)])
+        key = now.get("business_key_val", values["rows"][row_id].business_key_val)
         for column, (old, new) in cells.items():
             history.append(crud.create_audit_log(
                 db, table_name, row_id, column, old, new, NOTATION_BACKFILL_SOURCE, NOTATION_BACKFILL_SOURCE,
-                transaction_id=tx_id, business_key=values["rows"][row_id].business_key_val, add_to_cache=False))
+                transaction_id=tx_id, business_key=key, add_to_cache=False))
     for names, rows in shown.items():
         _update_by_arrays(db, model.__table__, sorted(names), rows, None)
     _insert_by_arrays(db, models.AuditLog.__table__, history)
@@ -1875,12 +1903,11 @@ def _write_by_values(db, table_name, model, values, tx_id):
         return
     if request_outbox_mode.get() == event_constants.OUTBOX_MODE_COLLAPSED:
         database.stage_collapsed_event(db, "EDIT", table_name, list(by_row),
-                                       {column for cells in by_row.values() for column in cells})
+                                       {column for now in written.values() for column in now})
         return
     db.execute(models.DatabaseOutbox.__table__.insert(), [
-        database.row_event("EDIT", table_name, _RowAsWritten(
-            model.__table__, values["rows"][row_id], {column: new for column, (_old, new) in cells.items()}))
-        for row_id, cells in by_row.items()])
+        database.row_event("EDIT", table_name, _RowAsWritten(model.__table__, values["rows"][row_id], now))
+        for row_id, now in written.items()])
     database._notify_outbox_once(db)
 
 

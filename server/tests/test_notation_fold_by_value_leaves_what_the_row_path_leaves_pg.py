@@ -4,13 +4,15 @@ leaves what the row path leaves.
 
 Two copies of one seed in the scratch schema. A: every page through the row path (`FOLD_BY_VALUE_DIALECTS`
 emptied - what every other dialect takes). B: PostgreSQL's page by value (`_fold_by_values`), the rows whose
-key part could move through the row path. Compared with ids and times left out: rows and keys, every layer,
+key part could move judged by the row path and written with the page, but a merging row and the row it merges
+into through the ORM. Compared with ids and times left out: rows and keys, every layer,
 overwrites, history lines, outbox events, the run's counts. The seed holds what a page by value has to get
 right: one layer, two agreeing, two disagreeing, a person's layer, a pin, a shown value drifted from its
 layers, a layer folded already under a stale shown value, a JSON number and a JSON null in a text column, a
 blank, an alias, the time rule's three verdicts, the same spelling in two columns with different rules, an
-orphan layer, key moves, merges into a holder in the same and in a later page, a row whose cells no longer
-spell its key, and a value that moves again."""
+orphan layer, key moves in two pages, merges into a holder in the same and in a later page and onto a key
+moved by value a page before, a key part's layer stored as a JSON number under a clean key, a row whose cells
+no longer spell its key, and a value that moves again."""
 import json
 import os
 import sys
@@ -91,7 +93,11 @@ def _seed(db, rules_path):
                       {"lot": "L4", "wafer": "wafer-04", "x": "holder in the page"},
                       {"lot": "L4", "wafer": "wafer.4", "x": "shell in the page"},
                       {"lot": "L9", "wafer": "wafer-09", "x": "padded"},
-                      {"lot": "L10", "wafer": "wafer-10", "x": "clean"}])
+                      {"lot": "L10", "wafer": "wafer-10", "x": "clean"},
+                      {"lot": "7", "wafer": "wafer-07", "x": "number layer"},
+                      {"lot": "8", "wafer": "wafer-08", "x": "number layer, x moves"},
+                      {"lot": "L12", "wafer": "wafer.12", "x": "key moves in a later page"},
+                      {"lot": "L2", "wafer": "wafer 2", "x": "onto a key moved by value a page before"}])
     _write(db, AGAIN, [{"k": "A%02d" % i, "v": "a.%d" % i} for i in range(1, 6)]
            + [{"k": "A06", "v": "bx"}, {"k": "A07", "v": "a.7"}])
     plain = {r.k: r.row_id for r in db.query(models.DYNAMIC_TABLES[PLAIN])}
@@ -115,6 +121,15 @@ def _seed(db, rules_path):
     _sql(db, "UPDATE {s}.pgqa_nf_comp SET x = '  padded  ' WHERE row_id = :r", r=comp["padded"])
     _sql(db, "UPDATE {s}.cell_sources SET value = '\"  padded  \"' WHERE table_name = :t AND row_id = :r "
              "AND column_name = 'x'", t=COMP, r=comp["padded"])
+    # a key part's layer stored as a JSON number under a clean shown value and key (the ops trap: every
+    # such row is `hard`, no key moves)
+    for name in ("number layer", "number layer, x moves"):
+        _sql(db, "UPDATE {s}.cell_sources SET value = to_json(CAST(lot AS int))::json FROM {s}.pgqa_nf_comp c "
+                 "WHERE cell_sources.table_name = :t AND cell_sources.row_id = :r AND c.row_id = :r "
+                 "AND column_name = 'lot'", t=COMP, r=comp[name])
+    _sql(db, "UPDATE {s}.pgqa_nf_comp SET x = '  x moves  ' WHERE row_id = :r", r=comp["number layer, x moves"])
+    _sql(db, "UPDATE {s}.cell_sources SET value = '\"  x moves  \"' WHERE table_name = :t AND row_id = :r "
+             "AND column_name = 'x'", t=COMP, r=comp["number layer, x moves"])
     db.commit()
     _declare(rules_path, DECLARED)
     names = {row_id: name for name, row_id in plain.items()}
@@ -145,8 +160,10 @@ def _state(db, names, after):
         "rows": sorted((t, names.get(r.row_id, r.row_id), r.business_key_val,
                         said({c: getattr(r, c) for c in TABLES[t]["column_types"]}))
                        for t in tables for r in db.query(models.DYNAMIC_TABLES[t])),
+        # a layer's JSON as stored - a number 7 and a text "7" are two layers
         "layers": sorted((c.table_name, names.get(c.row_id, c.row_id), c.column_name, said(c.source_name),
-                          said(c.value), names.get(c.origin_row_id), c.updated_by)
+                          said(json.dumps(c.value, ensure_ascii=False, sort_keys=True)),
+                          names.get(c.origin_row_id), c.updated_by)
                          for c in db.query(cs).filter(cs.table_name.in_(tables))),
         "overwrites": sorted((o.table_name, names.get(o.row_id, o.row_id), o.column_name, o.is_overwrite,
                               o.updated_by, o.manual_priority_source)
@@ -199,12 +216,18 @@ def copies(pg_engine, tmp_path_factory):
     Session = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)
     rules_path = tmp_path_factory.mktemp("nf") / "notation_rules.json"
     out = {"public_before": _public(pg_engine), "by_value": []}
-    real_by_values = replay._fold_by_values
+    real_by_values, real_write = replay._fold_by_values, replay._write_by_values
+    out["keys_by_value"] = []
 
     def by_values(*args, **kwargs):
         answer = real_by_values(*args, **kwargs)
         out["by_value"].append((args[1], len(answer["hard"]), len(answer["cells"]), len(answer["layers"])))
         return answer
+
+    def write(db, table, model, values, tx_id):
+        out["keys_by_value"].append((table, len(values["keys"]),
+                                     len({row_id for row_id, _column in values["cells"]} & values["hard"])))
+        return real_write(db, table, model, values, tx_id)
 
     def run(db, table, **kwargs):
         with channel(event_constants.CHANNEL_RETROACTIVE), retroactive_run("nf-run"):
@@ -216,6 +239,7 @@ def copies(pg_engine, tmp_path_factory):
     with _declared_as_test_database(url), pytest.MonkeyPatch.context() as mp:
         mp.setattr(nn, "NOTATION_RULES_PATH", str(rules_path))
         mp.setattr(replay, "_fold_by_values", by_values)
+        mp.setattr(replay, "_write_by_values", write)
         scratch.create_all(pg_engine)
         try:
             for copy, dialects in (("A", ()), ("B", replay.FOLD_BY_VALUE_DIALECTS)):
@@ -265,7 +289,10 @@ def test_b_folds_by_value_and_a_does_not(copies):
         one = by_table.setdefault(table, [0, 0, 0])
         one[0], one[1], one[2] = one[0] + hard, one[1] + cells, one[2] + layers
     assert by_table[PLAIN][0] == 0 and by_table[PLAIN][1] > 10, "every PLAIN row by value"
-    assert by_table[COMP][0] >= 6 and by_table[COMP][1] >= 1, "the key rows on the row path, the rest by value"
+    assert by_table[COMP][0] >= 6 and by_table[COMP][1] >= 1, "the key rows judged by the row path"
+    written = [(keys, hard) for table, keys, hard in copies["keys_by_value"] if table == COMP]
+    assert sum(keys for keys, _hard in written) == 2, "the keys that move onto nothing are written by value"
+    assert sum(hard for _keys, hard in written) >= 3, "and so are the hard rows whose cells move"
 
 
 def test_the_row_path_copy_folds_the_seed(copies):
@@ -279,9 +306,15 @@ def test_the_row_path_copy_folds_the_seed(copies):
     assert rows["K09"]["w"] == "wafer-01", "a drifted shown value takes what its layers decide"
     assert rows["K10"]["w"] == "wafer-05", "a stale shown value is folded"
     assert rows["K13"]["note"] is None, "a blank"
-    assert ("pgqa_nf_plain", "orphan-row", "w", "f01.csv", "wafer.1", None, "seed") in copies["A"]["layers"]
+    assert ("pgqa_nf_plain", "orphan-row", "w", "f01.csv", "\"wafer.1\"", None, "seed") in copies["A"]["layers"]
     comp = copies["A", COMP, "apply"]
-    assert (comp["keys_changed"], comp["rows_merged"], comp["keys_not_rebuilt"]) == (2, 3, 1)
+    assert (comp["keys_changed"], comp["rows_merged"], comp["keys_not_rebuilt"]) == (3, 4, 1)
+    keys = {name: key for t, name, key, _cells in copies["A"]["rows"] if t == COMP}
+    assert (keys["key moves"], keys["key moves in a later page"]) == ("L2_wafer-02", "L12_wafer-12")
+    assert "onto a key moved by value a page before" not in keys, "merged into the L2 row"
+    lot = {name: value for t, name, column, _s, value, _o, _u in copies["A"]["layers"] if t == COMP and column == "lot"}
+    assert (lot["number layer"], lot["number layer, x moves"]) == ('"7"', '"8"'), "a number layer of a key part"
+    assert keys["number layer, x moves"] == "8_wafer-08"
     assert copies["A", PLAIN, "dry"]["time_left"] == {"unmatched": 2, "zoned": 2}
     assert copies["A"]["history"] and copies["A"]["outbox"]
 
