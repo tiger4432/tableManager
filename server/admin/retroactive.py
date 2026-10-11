@@ -957,7 +957,7 @@ def _count_fold_file_layers(db, params, scan_limit):
         f"Files: {s['cells_folded']} cell(s) in {s['rows_scanned']} row(s) of '{params['table']}' "
         f"hold file layers that repeat a newer one: layers {s['layers_before']} -> "
         f"{s['layers_after']}, the deepest cell {s['deepest_before']} -> {s['deepest_after']}. "
-        f"Chain: {s['chain_renamed']} plain layer(s) become their source row's layer, "
+        f"Chain, outside the key columns: {s['chain_renamed']} plain layer(s) become their source row's layer, "
         f"{s['chain_deleted']} that a row layer repeats go, {s['chain_unstamped']} have no source row.")
     if s["chain_differs"]:
         detail += (f" {s['chain_differs']} plain layer(s) without a source row stay - no row layer of the "
@@ -1776,10 +1776,10 @@ OPERATIONS = {
                 "'fold_file_layers', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
                 "'chunk_size': N})\" - pace, limit and chunk_size optional"),
         # Per cell `crud.stacked_layers` (총괄 225b2c658 · 8ec008914): file layers that repeat one go, the
-        # chain's plain layer becomes its source row's or goes when a row layer repeats it; a shown value
-        # the layers now answer otherwise is written with one history line (R3's write).
+        # chain's plain layer outside the key columns becomes its source row's or goes when a row layer
+        # repeats it; a shown value the layers now answer otherwise is written with one history line (R3's write).
         "deletes": ("cell_sources rows (file layers that repeat a newer layer's value; plain chain "
-                    "layers a row layer repeats)"),
+                    "layers a row layer repeats, outside the key columns)"),
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,

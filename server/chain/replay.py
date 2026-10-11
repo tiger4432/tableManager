@@ -88,7 +88,7 @@ import event_constants
 #    그 한 줄이 네 모듈짜리 고리의 마지막 이음매였다. 연산이 둘보다 «아래»로 내려갔다.
 #    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다 —
 #       `ReplayRefused` 는 스무 자리에서 raise 되고, 헬퍼 셋은 다른 함수들이 부른다.
-from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, _resolve_cell, resolve_target, withdraw_source
+from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, _resolve_cell, key_columns, resolve_target, withdraw_source
 
 # ⚰️ `WRITE_CHUNK = 1000` stood here - how many proposals this module wrote at once.
 #    It writes none. How many rows travel in one event is `OUTBOX_COLLAPSE_CHUNK_ROWS`,
@@ -734,9 +734,10 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
 
     Per cell, `crud.stacked_layers`: file layers that repeat one go; the chain's plain layer stamped
     with a source row becomes that row's (`chain_ingestion (<row>)`), and one that a row layer repeats
-    goes. A cell of two layers and more holding a chain row layer, whose layers now answer another
-    value (a row layer ranks as the chain's), gets R3's write - the value and one history line. One
-    commit per page; a stop lands between pages and a re-run finds only what is left.
+    goes - a key column's plain layer stays. A cell of two layers and more holding a chain row layer,
+    whose layers now answer another value (a row layer ranks as the chain's), gets R3's write - the
+    value and one history line. One commit per page; a stop lands between pages and a re-run finds
+    only what is left.
     """
     from sqlalchemy import literal, update
 
@@ -745,6 +746,7 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
     from chain import keyset_scan
 
     model, col_types = resolve_target(table_name)
+    keys = key_columns(table_name)
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "rows_scanned": 0, "pages": 0, "cells_folded": 0, "layers_deleted": 0,
@@ -784,7 +786,7 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
                 if col not in col_types:
                     continue
                 pin = pins.get((row_id, col))
-                fold = crud.stacked_layers(layers, col_types[col], table_name, pin)
+                fold = crud.stacked_layers(layers, col_types[col], table_name, pin, key=col in keys)
                 drop = fold["file"] + fold["chain"]
                 after = {name: entry for name, entry in layers.items() if name not in drop}
                 for was, now in fold["renamed"].items():
@@ -798,7 +800,8 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
                 stats["chain_deleted"] += len(fold["chain"])
                 stats["chain_renamed"] += len(fold["renamed"])
                 plain = layers.get(crud.CHAIN_SOURCE)
-                stats["chain_unstamped"] += bool(plain is not None and not plain.get("origin_row_id"))
+                stats["chain_unstamped"] += bool(col not in keys and plain is not None
+                                                 and not plain.get("origin_row_id"))
                 if fold["differs"]:
                     stats["chain_differs"] += 1
                     first("chain_differs", {"row_id": row_id, "column": col})
@@ -842,7 +845,7 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
     log(f"[fold] '{table_name}' {stats['mode']}: {stats['layers_deleted']} file layer(s) in "
         f"{stats['cells_folded']} cell(s) repeat a newer one - layers {stats['layers_before']} "
         f"-> {stats['layers_after']}, deepest cell {stats['deepest_before']} -> "
-        f"{stats['deepest_after']}; chain plain layers {stats['chain_renamed']} renamed to their row's, "
+        f"{stats['deepest_after']}; chain plain layers off the keys {stats['chain_renamed']} renamed to their row's, "
         f"{stats['chain_deleted']} repeating a row layer deleted, {stats['chain_differs']} kept differing "
         f"({stats['chain_unstamped']} without a source row); {stats['chain_copies']} chain merge copies; "
         f"{stats['shown_changed']} shown value(s) move")

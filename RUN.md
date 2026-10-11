@@ -247,6 +247,23 @@
 >
 > ---
 >
+> ## [10-11] **층 접기는 키 칸의 체인 층을 안 건드린다 — 표시된 원천 행 하나만 먹이던 공식 행이 키 없이 남지 않는다 (응용 7e2fc0575 · 총괄 10-11, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 스케줄러»**
+>
+> ```
+> 무엇        «Fold layers that repeat another» 가 키 칸(composite_key_source, 없으면 business_key)의 plain 체인 층을 지우지도 이름 바꾸지도 않는다
+>            그 층은 보류 다시 세기가 키를 쓰는 층 — 지우면, 그 키를 먹이던 원천 행 하나가 표시돼 거둬질 때 키 칸까지 비어
+>            다시 세기가 그 행을 못 찾고 hold 만 agreed 로 남았다(일요일 표 ⑦ 의 «알려진 것» 한 행)
+> 순서        pull -> 서버 · 스케줄러 재기동 (화면 Count 는 서버, 화면 Run 은 스케줄러가 돈다 · python -c 는 새 프로세스라 재기동 무관)
+>            이 pull «전»에 그 접기를 공식 표에 돌렸으면: 원천 행을 표시하거나 거두기(일요일 표 ⑤ · ⑥) «전»에 그 공식 표의
+>              python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply          (일요일 표 ①b 와 같은 명령)
+>            답      source rows scanned : N · rows handed over : N — 공식 표 전부. 키 칸의 plain 체인 층이 다시 생긴다
+> 끝 줄       Count «Chain, outside the key columns: …» · Run 끝 줄 «chain plain layers off the keys … renamed» — 키 칸 층은 이 수에 안 든다
+> 모르는 것     ⑥ 까지 이미 돌린 공식 표에 남은 키 빈 행(hold 만 agreed)을 지우는 길 — 안 쟀다. ⑦ 은 그 행을 안 지운다
+> 되돌리기      git revert <이 커밋> -> 서버 · 스케줄러 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **체인 층은 원천 행마다 하나 · 순위는 쓴이의 순위 — 행 하나를 거두면 그 행 층만 걷힌다 (총괄 8ec008914 · 4dd303f01, 착지 b566b48ae) — 이주 «없음» · 재기동 «체인 워커 · 서버» · 체인이 쓴 표마다 소급 한 번**
 >
 > ```
@@ -257,17 +274,18 @@
 >               또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
 >            ③ 같은 Run 한 번 더 -> 끝 줄의 renamed · deleted · shown value(s) move 가 0
 > Count 뜻    화면 Count 는 앞 200 행 «견본» — 표 전체 수는 Run 의 끝 줄
->            Chain: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
+>            Chain, outside the key columns: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
 >                   M that a row layer repeats go                      그 행 층이 이미 있거나, 원천 없는 plain 을 같은 칸 행 층이 같은 값으로 말함
 >                   K have no source row                               원천 없는 plain 층(남는 것 포함)
 >            D plain layer(s) without a source row stay (first: <행> · <칸> …)   값이 달라 남김 — 사람이 볼 칸
 >            C chain layer(s) a collision merge kept now rank as the chain's    합치기 사본의 체인 층 — 체인 순위로 오름
 >            Shown values that move: S                                     그 칸은 값 + 이력 한 줄(resolution_recompute)
-> 끝 줄       [fold] '<표>' apply: … chain plain layers N renamed to their row's, M repeating a row layer deleted, D kept differing
+> 끝 줄       [fold] '<표>' apply: … chain plain layers off the keys N renamed to their row's, M repeating a row layer deleted, D kept differing
 >            (K without a source row); C chain merge copies; S shown value(s) move
 > 그 뒤로      원천 행 하나를 지우거나 고쳐 거두면 그 행 층만 걷히고 남은 행 층(없으면 그 밑 파일 층)이 보인다
 >            값이 달라 남긴 plain(D)은 행 층이 다 걷히면 다시 보인다 — 그 칸은 사람이 보고 정함
->            복사 규칙의 보류 다시 세기는 키 칸을 plain 으로 다시 써서, ②가 지운 겹침(M)이 다음 다시 세기 뒤 다시 생김 — 값이 같아 화면 · 거두기엔 영향 없음
+>            키 칸의 plain 체인 층은 ② 가 안 건드림 — 보류 다시 세기가 키를 쓰는 층이라, 지우면 표시된 원천 행 하나만 먹이던 공식 행이 키 없이 남았다
+>              (응용 7e2fc0575 · 고침은 이 파일 「층 접기는 키 칸의 체인 층을 안 건드린다」 절)
 >            조인 왼쪽 행이 다른 오른쪽 행과 다시 맞으면 옛 오른쪽 행 층이 남음 — 늦게 쓴 것이 보임(시연 뒤 항목)
 >            소급 탭 «Withdraw a stale source» 에 chain_ingestion 을 주면 행 층까지 거둠
 > 화면         셀 이력의 출처가 chain_ingestion (<행 id>) 로 보인다

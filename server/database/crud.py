@@ -803,11 +803,13 @@ def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name
                    and not values_differ(s.value, value, col_type)]
 
 
-def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None) -> dict:
+def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: bool = False) -> dict:
     """What the fold over layers already stacked does to one cell (총괄 225b2c658 · 8ec008914): a layer
     that says what another layer of the cell says goes, and the chain's plain layer becomes its source
     row's. `layers` is `{source_name: {"value", "ingested_at", "origin_row_id"}}`
-    (`cell_layer._load_cell_state`). The pinned layer is never touched.
+    (`cell_layer._load_cell_state`). The pinned layer is never touched, nor a `key` column's plain chain
+    layer: a hold item writes the keys under it with no source row, and with it gone a marked row's
+    withdrawal blanked the keys the recount finds its row by (응용 7e2fc0575, 총괄 10-11).
 
       file     file layers that repeat one - per priority class and value the layer it ranks first
                stays; the cell's winner is first in its own group, so it stays
@@ -833,7 +835,7 @@ def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None) -> di
             if name == merged_layer_name(CHAIN_SOURCE, (layers[name] or {}).get("origin_row_id"))]
     out["copies"] = len(bracketed) - len(rows)
     plain = layers.get(CHAIN_SOURCE)
-    if plain is None or pin == CHAIN_SOURCE:
+    if plain is None or pin == CHAIN_SOURCE or key:
         return out
     origin = plain.get("origin_row_id")
     if origin:
