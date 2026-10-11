@@ -1,3 +1,11 @@
+> ## [21:57 디자인] 오늘 밤 조각 1 착지 dc27a4bfd — 체크해도 보던 자리 그대로 · As of 현지 시각 (소유자 10-11)
+
+- **무엇** — render() 한 자리가 그리기 전 자리(결과 상자 scrollTop · scrollLeft, 구역마다 표 scrollLeft)를 적어 두었다가 그린 뒤 되돌림. As of 는 server_time.localStamp.
+- **탐침** — Probe (the built-in pane, the built walk page /assets/walk-aCAkDuW-.js on 5176 to the application box, script ③f's basket, GET only): «As of 2026-10-11 21:36:31»; a table scrolled 60 sideways, a row ticked: 60 after. The pane is narrow, so the page is in its one-column layout and its result box does not scroll there; the vertical place is the screen gate's cell at real sizes.
+- **게이트** — screen gate walk.html 153 with --mutate - a step «A row ticked mid-table» (half way down, 40 sideways) and its cell «place kept» at 1280x720 · 1536x864 · 1568x775 · 1896x907 · 1920x950, its mutant (a tick throws the reader back to the top) caught; walk_table 184.
+
+다음: 조각 2 — 스티키 장바구니 + 체크한 행 제자리.
+
 > ## [20:35 디자인] W 1 회귀 Control · B 착지 9a6a59fd8 — 칸이 범례 색 · 노드 칸의 길이 두 걷기를 이름 붙여 한 줄로 (총괄 10-11, 응용 대본 ③f)
 
 - **원인 ①** — 대조 색과 W 1 의 쪽 띠가 같은 무게, 띠가 styles.js 뒤에 있어 이김. 대조 색을 띠 뒤로.
