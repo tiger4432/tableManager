@@ -121,7 +121,7 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-Rs53KSLq.js(45f45268e — 그래프 «여기까지 걸음» 고리 · 표의 그림 칸 / 그 앞 940bd3923 정렬 · 거르기 · «N of M» · 머리 체크 · Trend Split by · Add here · More)
+>    빌드    main 의 dist walk-Thk0WUWF.js · main-qYSs9EG7.js(More 가 상한을 올려 같은 걷기 · 메인 그리드 Re-translate 세상별 줄) / 그 앞 45f45268e 고리 · 그림 칸 / 940bd3923 정렬 · 거르기 · Add here · More
 >            18766 서버는 main d97e9ace2 의 server/ 전부 + 초안 보기 고침 둘(7bdbe1e65 · 5857f40b8) — 하니스의 스크래치 스키마 줄만 더함
 >            누른 빌드 — walk-Rs53KSLq.js 에서 ⑤ 고리 · ③j 그림 칸 / walk-Dh9XIETc.js + 위 서버에서 ① ~ ⑨ · ③g · ③h · ③i 를 다시 눌렀다(10-12 새벽) — 수는 전부 같음, 바뀐 것은 이어 걷기 단추 · 점 title 글자(아래 줄에 고침) · 소유자 손 클릭 줄만 빼고 /
 >                       walk-CWo9azvd.js (= main e32731bd5) 에서 ① ~ ⑨ 를 처음부터 끝까지 다시 눌렀다(10-11 밤) — 소유자 손 클릭 줄(③ 복사 · ④ 스킴 둘 «Copy points» · ④ 고쳐짐 (다))만 빼고
@@ -194,8 +194,9 @@
 >    ③g Add here   이어 걸은 답을 «지금 걸음»의 같은 타입 구역에 합친다 — 새 탭 없음 (리허설: ③ 판 · quantity 줄 local_gap 체크 · «measures ← wafer» · Add here)
 >       본 것    요청 하나(hops=1 · follow=measures · collect=wafer) · 탭 그대로 · 구역 «wafer · 32» -> «wafer · 132» · 칩 «+100 from walk on · measures ← wafer ×» · 더한 줄의 길 «measures · via shared local_gap» · × 를 누르면 «wafer · 32»
 >                합친 동안 두 base 줄의 길 글자가 «start» -> «+ start · − —» · «+ — · − start» 로 보인다(× 뒤 «start» 로 돌아옴)
->    ③h More       잘린 답에서 «More» = 가장 깊이 닿은 노드들에서 한 번 더 걸어 이 걸음에 합친다 (리허설: SYN-BW-103-11 만 + · Collect 없음 · node_limit 400 · Walk)
->       본 것    «Nodes 400 · Edges 437» · 잘림 줄 «Cut · nodes 400» 끝에 More -> 요청 하나(positive 여럿) · 구역 wafer · die · quantity 마다 칩 «+0 from More ×» · More 단추 사라짐 · 그 응답 19.7 MB · 3.3 s — 이 판에서는 보이는 줄이 안 늘었다
+>    ③h More       잘린 답에서 «More» = 그 답을 자른 상한을 올려 «같은 걷기»를 다시 묻고 이 걸음에 합친다 (리허설: SYN-BW-103-11 만 + · Collect 없음 · node_limit 400 · Walk)
+>       본 것    «Nodes 400 · Edges 437» · 잘림 줄 «Cut · nodes 400» 끝에 More -> 요청 하나 node_limit=800(같은 id · 같은 +) · 4.01 MB · 1.13 s · 그 답은 노드 738(die 461 · wafer 31 · quantity 46)인데 화면은 구역마다 «+0 from More ×» — ⚠️ 합치기 결함, 총괄께 보고(10-12)
+>                800 답은 안 잘려 More 단추 사라짐 · 이 박스는 두 base 전부가 788 노드라 1000(최대)에서의 줄 글자는 못 봄
 >    ③i 정렬 · 거르기   구역 머리 칸을 누르면 오름 -> 내림 -> 원래 · Find 칸 · 칸마다 Filter (리허설: ③ 판 quantity 구역)
 >       본 것    «measures ← wafer · value» + 머리: 오름 첫 셋 purge_delay_s 0 · focus 0.02 · pressure_MPa 0.22 / 내림 furnace_C 1050 · thickness_um 742.27 · temp_c 420 / 세 번째 원래 순서
 >                Find «bond» -> 머리 «quantity · 4 of 49» · 줄 bond_pressure · bond_temp · post_bond_queue_h · pre_bond_queue_h · 머리 체크 -> 체크 4(보이는 줄 전부) · Find 비우면 «quantity · 49»
@@ -243,6 +244,11 @@
 >                (라) 시각 있는 값이 없는 구역은 Trend 꺼짐 «No value with a time»(G-2b) — 위 die · ev 의 quantity · wafer
 >                (나) 고쳐짐(E2c 4ad33e15f) — 덩어리 스텝이 엣지의 증거를 실어 노드 칸 밑 길이 선다(W 1 에서 Route 열 은퇴): ③d 의 «← in_container 159 more die» 를 표로 -> die 159 줄 전부 «in_container» · ⑥ 전 «measures → 8 more quantity» 를 표로 -> «Nodes 9 (collect: quantity) · Edges 8 (all)» quantity 8 줄 전부 «measures» · 그 Trend 점 title «SYN-BW-103-11 · start» 12 · «SYN-BW-103-11 · not in this walk» 39
 >    ⑩  값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d) · 갈래별 그림은 G-2 로 착지(③d)
+>    ⑪  다시 번역(Re-translate) — 메인 그리드에서 원장 소스인 표의 행을 고르고 Re-translate (리허설: link_candidates · 행 2 · 소스가 브랜치 넷에만)
+>       본 것    줄 40 = 브랜치 × 칸 «rp500g · link_candidates · cause_key — 2 groups from 2 rows» · 빈 칸은 «… — 1 group from 1 row · 1 without a value»
+>                줄 하나를 누르면 소급 실행 하나 — 기록 params 에 world=rp500g · scope_column · scope_values(고른 행의 값) · 그 세상에서 돈다(«rows 2, withdrawn 1, written 1 of 1»)
+>                «Open in admin» -> 어드민 소급 탭 «Re-translate a ledger scope» 밑 «40 GROUPS FROM THE GRID» · 줄을 누르면 폼 source · scope_column · scope_values · world 가 참 · count 요청에 world · run -> «Queue this retroactive run?» -> run
+>       뜻       고친 입력이 원장에 안 닿았을 때 그 범위만 다시 번역 — 운영 세상 밖(브랜치)의 줄은 언제나 세상 이름을 단다
 >    시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ③ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초
