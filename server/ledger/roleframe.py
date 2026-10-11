@@ -1031,7 +1031,9 @@ def _frame_row_refs(frame: pd.DataFrame) -> tuple[str, ...]:
 #: The only text read with no declared format - ISO 8601 extended, the same on every Python (총괄 10-11 ㄱ: 3.11+
 #: `fromisoformat` also reads «20261011_213631», 3.10 refuses it, so a test run and a backfill run by another
 #: interpreter disagreed).
-ISO_EXTENDED = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}(?::\d{2}(?::\d{2}(?:\.\d{1,6})?)?)?)?(?:Z|[+-]\d{2}:\d{2})?")
+ISO_EXTENDED = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}(?::\d{2}(?::\d{2}(?:\.(?:\d{3}|\d{6}))?)?)?(?:Z|[+-]\d{2}:\d{2})?)?")
+#: ⤷ 총괄 db2df6981: an offset only after a time (3.x read «2026-10-11+09:00» as a naive 09:00), and fractions of
+#:   3 or 6 digits - what every Python reads.
 
 
 def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str | None = None) -> datetime:

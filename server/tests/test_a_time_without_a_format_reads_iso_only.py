@@ -34,7 +34,8 @@ def test_iso_extended_text_reads(text, read):
 
 
 @pytest.mark.parametrize("text", ["20261011_213631", "20261011T213631", "2026-10-11_21:36:31",
-                                  "2026/10/11 21:36:31"])
+                                  "2026/10/11 21:36:31", "2026-10-11+09:00", "2026-10-11Z",
+                                  "2026-10-11 21:36:31.5", "2026-10-11 21:36:31.12345"])
 def test_other_text_is_refused_naming_the_format_to_declare(text):
     with pytest.raises(roleframe.RoleFrameError) as refused:
         roleframe.aware_time(text, "Asia/Seoul", "p")

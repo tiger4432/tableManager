@@ -285,8 +285,8 @@ DEFAULT_NODE_LIMIT = 400
 #: How many SUBJECTS a described seed set may name (S-148-a, 판정 337). 🔴 THE NUMBER IS
 #: MINE AND UNVERIFIED AT OPERATING SHAPE. It sits in `node_limit`'s class -- an argument,
 #: a ceiling and a default -- and is deliberately generous rather than tuned: a seed is one
-#: id, but every seed EXPANDS, so the real cost is seeds x hops and `node_limit` cuts that
-#: second. Whether 200 is right belongs in a production-shaped box (S-146-b's seat), and
+#: id, but every seed EXPANDS, so the real cost is seeds x hops - cut second by `node_limit`, and with a COLLECT by
+#: the claim ceiling, since c17db3213 counts only collected types against node_limit. Whether 200 is right belongs in a production-shaped box (S-146-b's seat), and
 #: guessing it here would let the guess decide the answer.
 DEFAULT_SEED_LIMIT = 200
 MAX_SEED_LIMIT = 2000
