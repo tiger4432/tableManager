@@ -79113,3 +79113,38 @@ RELEASE_LOG  새 항목 + 앞 항목의 «다시 안 넘김» 문장 고침
 어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_foldpg_1011(만들고 지움, 16 표) · 격리 시험 DB · public 전후 같음
 진짜 프로세스(큐 화면 글자까지)는 응용께
 ```
+
+## [10-11] 걷기 값 기록 착지 280d3e567 (총괄 e5e0a87e2 · 10-11 ㄱ)
+
+```
+착지 280d3e567 — 8 files changed, 174 insertions(+), 7 deletions(-)
+엣지  records = 원자마다 {occurred_at, qualifiers, world, source_who, claim_id} — _claim_edge 가 자기 원자, add_edge 가 같은 id 로 접히는 원자를
+      claim id 한 번씩(두 끝에서 읽힌 원자는 한 기록 — 정적 타입 둘 사이에서 되짚기가 허용돼 실제로 남) · records_more = 상한 넘은 수
+노드  records = {이름: [{value, occurred_at, world, source_who, claim_id}]} 새것 먼저 · records_more = {이름: 수} · 등록 튜플 여섯째 칸 = claim id
+상한  RECORDS_PER_FACT = 100 — 박스 데모 바구니에서 엣지당 기록 최대 4 라 닿지 않음
+손댄 시험 셋 — _apply_registrations 를 손으로 부르던 튜플에 여섯째 칸(None) — 계약 벡터 칸 넷(라벨 · attributes · conflicts · by_world)은 그대로
+게이트 (걷기 낱말을 부르는 시험 파일, 같은 base 깨끗한 사본과 — 리베이스 전 base 에서 잼, 리베이스 뒤 이 파일 넷 다시 통과)
+  files 38
+  wt-fold:  17 failed, 376 passed, 1 skipped, 79 deselected in 24.46s
+  wt-check: 17 failed, 371 passed, 1 skipped, 79 deselected in 23.25s
+  new (only in wt-fold): 0
+  gone (only in wt-check): 0
+  PG pg files 9
+  PG 79 passed, 89 deselected in 286.82s (0:04:46)
+변이
+  an atom reached from both ends is two records    RED | test_an_atom_reached_from_both_ends_is_one_record
+  the collapsed atoms are not kept                 RED | test_an_edge_carries_every_atom_of_its_relation_as_a_record[1], test_an_edge_carries_every_atom_of_its_relation_as_a_record[2], test_past_the_cap_the_rest_are_counted
+  past the cap nothing is counted                  RED | test_past_the_cap_the_rest_are_counted
+  a name keeps only its newest record              RED | test_a_nodes_name_carries_every_registration_as_a_record[False], test_a_nodes_name_carries_every_registration_as_a_record[True], test_past_the_cap_the_rest_are_counted
+  a node name's records oldest first               RED | test_a_nodes_name_carries_every_registration_as_a_record[False], test_a_nodes_name_carries_every_registration_as_a_record[True], test_past_the_cap_the_rest_are_counted
+  a node name's overflow not counted               RED | test_past_the_cap_the_rest_are_counted
+  restored True
+박스 데모 바구니(+ SYN-BW-103-11 · − SYN-BW-SPL-400-19, 박스 원장 읽기 전용) 고치기 전 -> 뒤:
+  == C:/wt-check/server
+  collect=wafer · claims_scanned 1657 · edges 486 · nodes 2 · bytes 1286906
+  collect=wafer+quantity · claims_scanned 1657 · edges 486 · nodes 18 · bytes 1291372
+  == C:/wt-fold/server
+  collect=wafer · claims_scanned 1657 · edges 486 · nodes 2 · bytes 1421782 · edge records max 4 total 608 (edges with more than one 110) · node-name records max 0 total 0
+  collect=wafer+quantity · claims_scanned 1657 · edges 486 · nodes 18 · bytes 1426248 · edge records max 4 total 608 (edges with more than one 110) · node-name records max 0 total 0
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 assy_manager 읽기 전용 · public 전후 같음 · 지운 것 0
+```
