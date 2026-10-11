@@ -582,6 +582,38 @@ async function suite(mod) {
     const marked = handle.graph.markings.signOf('walk-2', 'n:1');
     ok('N3 a checked row is the page\'s marking the graph reads (walk-2), and the edges come on',
       marked === SIGN.CASE && edges(host).every((e) => e.disabled === false), String(marked));
+    // The basket (W addendum 3): the checked rows under the result, a chip each; × and Clear take them out of the marking.
+    const basketOf = (h) => walkAll(h).find((e) => e.className === 'wk-marked');
+    const chipsOf = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-marked']).map((e) => e.attrs['data-marked']);
+    const word = (h) => ((basketOf(h) || { children: [] }).children[0] || {}).textContent;
+    const resultOf = (h) => walkAll(h).find((e) => e.className === 'wk-result') || { children: [] };
+    ok('MB1 the checked row is in the basket, the result\'s last line: «Marked · 1», its chip',
+      word(host) === 'Marked · 1' && chipsOf(host).join() === 'n:1' && resultOf(host).children[resultOf(host).children.length - 1] === basketOf(host),
+      `${word(host)} ${chipsOf(host)}`);
+    press(walkAll(host).find((e) => e.attrs && e.attrs['data-marked'] === 'n:1'));
+    const boxOf = (id) => walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === id);
+    ok('MB2 a chip\'s × takes the row out of the marking and unchecks it',
+      handle.graph.markings.signOf('walk-2', 'n:1') === SIGN.ABSENT && (boxOf('n:1') || {}).checked === false && chipsOf(host).length === 0
+        && word(host) === 'Marked · 0', `${handle.graph.markings.signOf('walk-2', 'n:1')} ${chipsOf(host)}`);
+    tick(host, 'n:1');
+    tick(host, 'n:2');
+    const two = chipsOf(host).join();
+    press(walkAll(host).find((e) => e.className === 'wk-act wk-markedclear'));
+    ok('MB3 Clear empties the marking: no chip, no row checked, the edges off again',
+      two === 'n:1,n:2' && handle.graph.markings.entries('walk-2').length === 0 && chipsOf(host).length === 0
+        && !(boxOf('n:2') || {}).checked && edges(host).every((e) => e.disabled === true), `${two} ${chipsOf(host)}`);
+    // Two pages, two baskets (the parts' rule): a tick on one is not on the other.
+    const doc2 = makeDoc();
+    const host2 = doc2.createElement('div');
+    const handle2 = mod.boot(doc2, host2, { apiBase: '', fetchImpl: async (url) => ({ ok: true, status: 200,
+      json: async () => (String(url).includes('/subgraph') ? STEP : DECL3) }) });
+    await settle();
+    Object.assign(handle2.state, { type: 'die@1', asked: { type: 'die@1', keys: { mat_id: 'M-1' } }, run: 'done', result: START });
+    handle2.render();
+    tick(host2, 'n:2');
+    tick(host, 'n:1');
+    ok('MB4 two pages: each basket its own checks',
+      chipsOf(host).join() === 'n:1' && chipsOf(host2).join() === 'n:2', `${chipsOf(host)} | ${chipsOf(host2)}`);
     press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
     await settle();
     const q = new URLSearchParams((asked[0] || '').split('?')[1] || '');
@@ -884,8 +916,9 @@ async function suite(mod) {
     const secs = walkAll(host).filter((e) => e.className === 'wk-sec');
     const sv = walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS);
     const wantMissing = sv.sections.reduce((n, s) => n + s.rows.reduce((m, r) => m + r.cells.reduce((k, c) => k + c.sides.filter((x) => x.missing).length, 0), 0), 0);
-    // Walk on is the section's last line (lead 10-11 W: «이어 걷기는 구역 맨 아래 한 줄»).
-    const walkOnLast = secs.length > 0 && secs.every((sec) => sec.children[sec.children.length - 1].className === 'wk-next');
+    // Walk on is the result's last line, the basket (W addendum 3: the sections' own lines folded into it).
+    const resultBox = walkAll(host).find((e) => e.className === 'wk-result');
+    const walkOnLast = secs.length > 0 && Boolean(resultBox) && resultBox.children[resultBox.children.length - 1].className === 'wk-marked';
     ok('Z9 the page: a table a type, a sign under each column with its starts and rows, missing in red in each cell a side did not reach, Walk on last (lead 10-11 W)',
       JSON.stringify(heads) === JSON.stringify(['Positive · 2 starts · 2 rows', 'Negative · 1 start · 1 row',
         'Positive · 2 starts · 3 rows', 'Negative · 1 start · 2 rows']) && missing === wantMissing && wantMissing > 0 && walkOnLast,
@@ -1292,8 +1325,14 @@ const MUTANTS = [
     from: "          src.title = same ? all(row.routes[0]) : row.routes.map((w) => `${w.sign} ${all(w)}`).join(' · ');\n", to: '' },
   { id: 'NZ1', what: 'no sign under a column', catches: 'Z9',
     from: '    thead.append(steps, ...(leafed ? [leaves] : []), ...(many && stepped ? [signs] : []));', to: '    thead.append(steps, ...(leafed ? [leaves] : []));' },
-  { id: 'NZ2', what: 'Walk on gone from the section\'s foot', catches: 'Z9',
-    from: '      if (checks) sec.append(nextRow(at, section, checks));\n', to: '' },
+  { id: 'NZ2', what: 'Walk on gone from the result\'s foot', catches: 'Z9',
+    from: '    if (checks) box.append(markedBasket(state.at, view, checks));\n', to: '' },
+  { id: 'MBm1', what: 'the basket draws no chip', catches: 'MB1',
+    from: '      line.append(chip);\n    }\n    const checked', to: '    }\n    const checked' },
+  { id: 'MBm2', what: 'a chip\'s × leaves its row checked', catches: 'MB2',
+    from: "chip.addEventListener('click', () => { markings.set(checks, id, SIGN.ABSENT); render(); });", to: "chip.addEventListener('click', () => { render(); });" },
+  { id: 'MBm3', what: 'Clear clears nothing', catches: 'MB3',
+    from: "clear.addEventListener('click', () => { markings.clear(checks); render(); });", to: "clear.addEventListener('click', () => { render(); });" },
   { id: 'NZ3', what: 'the Compare view back', catches: 'Z10',
     from: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {",
     to: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph'], ['compare', 'Compare']]) {" },
@@ -1373,8 +1412,8 @@ const MUTANTS = [
   { id: 'SM4', what: 'Next drops the - rows', catches: 'S4',
     from: 'stepAlong({ positive: seeds.positive, negative: seeds.negative,', to: 'stepAlong({ positive: seeds.positive,' },
   { id: 'NM1', what: 'the Next walks from every row of the section, not the checked ones', catches: 'N2',
-    from: '    const seeds = seedsOf(section.rows.map((row) => [row.id, markings.signOf(checks, row.id)]));',
-    to: '    const seeds = { positive: section.rows.map((row) => row.id), negative: [] };' },
+    from: '      const seeds = seedsOf(marked.filter(([id]) => rows.get(id).type === type));',
+    to: '      const seeds = { positive: [...rows].filter(([, r]) => r.type === type).map(([id]) => id), negative: [] };' },
   { id: 'NM2', what: 'a press with nothing checked still asks', catches: 'N2',
     from: "      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });",
     to: "      go.addEventListener('click', () => { void walkOn(at, seeds, route); });" },

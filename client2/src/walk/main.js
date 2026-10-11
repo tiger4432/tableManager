@@ -668,6 +668,9 @@ export function boot(doc, host, deps) {
     renderSections(secs, view, r);
     box.append(secs);
     if (trendNow() && trendNow().at === 'below') renderTrend(box, view, r);
+    // Walk on from the rows checked, one line stuck under the result (W addendum 3) - the sections' own lines folded in.
+    const checks = checksOf(state.at);
+    if (checks) box.append(markedBasket(state.at, view, checks));
   }
 
   /** Which walk reached the rows (lead 99ed68cb7 D): each side's three counts, the colours of its cells. */
@@ -1151,8 +1154,6 @@ export function boot(doc, host, deps) {
         tableBoxes.set(section.type, table);
         sec.append(table);
       }
-      // Walk on from the rows checked, the section's last line (lead 10-11 W).
-      if (checks) sec.append(nextRow(at, section, checks));
       box.append(sec);
     }
 
@@ -1190,16 +1191,41 @@ export function boot(doc, host, deps) {
   }
 
   /** Under a section: the declared edges one step from its type; each walks on from the rows checked of it. */
-  function nextRow(at, section, checks) {
-    const line = el(doc, 'div', 'wk-next');
-    line.append(el(doc, 'span', 'wk-label', 'Walk on from checked ▸'));
-    const seeds = seedsOf(section.rows.map((row) => [row.id, markings.signOf(checks, row.id)]));
-    for (const route of nextRoutes(state.decl, section.type)) {
-      const go = el(doc, 'button', 'wk-next-edge', route.words);
-      go.type = 'button';
-      setDisabledReason(go, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
-      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });
-      line.append(go);
+  /** The step's checked rows as one basket (owner 10-11 «마킹 장바구니를 그 스티키로 띄워», W addendum 3): «Marked · N», a chip a
+   *  row (× takes it out and unchecks it), Walk on ▸ the declared edges one step on from the checked rows of a type - the
+   *  types checked, or every section's while none is - and Clear. The marking is the step's, as the checks are. */
+  function markedBasket(at, view, checks) {
+    const line = el(doc, 'div', 'wk-marked');
+    const rows = new Map(view.sections.flatMap((s) => s.rows.map((r) => [r.id, { type: s.type, label: r.centre.map((c) => c.text).filter(Boolean).join(' · ') || r.id }])));
+    const marked = markings.entries(checks).filter(([id]) => rows.has(id));
+    line.append(el(doc, 'span', 'wk-markedword', `Marked · ${marked.length}`));
+    for (const [id, sign] of marked) {
+      const { label } = rows.get(id);
+      const chip = el(doc, 'button', 'wk-chip wk-markedchip', `${sign === SIGN.CONTROL ? '− ' : ''}${label} ×`);
+      chip.type = 'button';
+      chip.setAttribute('data-marked', id);
+      chip.setAttribute('aria-label', `Remove ${label}`);
+      chip.addEventListener('click', () => { markings.set(checks, id, SIGN.ABSENT); render(); });
+      line.append(chip);
+    }
+    const checked = [...new Set(marked.map(([id]) => rows.get(id).type))];
+    const types = checked.length ? checked : view.sections.map((s) => s.type);
+    line.append(el(doc, 'span', 'wk-markedword', 'Walk on ▸'));
+    for (const type of types) {
+      const seeds = seedsOf(marked.filter(([id]) => rows.get(id).type === type));
+      for (const route of nextRoutes(state.decl, type)) {
+        const go = el(doc, 'button', 'wk-next-edge', types.length > 1 ? `${type} · ${route.words}` : route.words);
+        go.type = 'button';
+        setDisabledReason(go, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
+        go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });
+        line.append(go);
+      }
+    }
+    if (marked.length) {
+      const clear = el(doc, 'button', 'wk-act wk-markedclear', 'Clear');
+      clear.type = 'button';
+      clear.addEventListener('click', () => { markings.clear(checks); render(); });
+      line.append(clear);
     }
     return line;
   }
