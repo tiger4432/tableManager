@@ -71,7 +71,7 @@ from .implementations import (
     implementation_choices,
     mapper_declarations,
 )
-from .setup_registry import relation_columns, with_source_attributes
+from .setup_registry import OCCURRED_AT_BASIS_COLUMNS, relation_columns, with_source_attributes
 from .setup_bundle import (
     _profile_binding_columns as _setup_bundle_profile_binding_columns,
     _MAPPER_UNITS,
@@ -984,17 +984,25 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         occurred = read.get("occurred_at")
         time_basis = (occurred.get("basis")
                       if isinstance(occurred, Mapping) else None)
+        # what a sentence that binds no event time reads as its time: the source's (총괄 10-11 B ㄱ)
+        if isinstance(occurred, Mapping) and occurred:
+            source_time, source_said = occurred, "read.occurred_at"
+        else:
+            source_time = ((source_defaults(source, catalog) or {}).get("read") or {}).get("occurred_at")
+            source_said = _time_default_said(source_time).replace("Default: ", "") if source_time else None
         for sentence, mapping in sentences:
             yield from _mapping_fields(
                 base, sentence, mapping, vocabulary, entities, available,
-                time_basis=time_basis, source_id=source_id)
+                time_basis=time_basis, source_id=source_id, source_time=source_time,
+                source_said=source_said)
             yield from _inherited_attribute_fields(base, sentence, mapping, bound_entities)
 
 
 def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                     vocabulary: Mapping[str, Any], entities: Mapping[str, Any],
                     available: Sequence[str], *, time_basis: Any = None,
-                    source_id: str = "") -> Iterable[Field]:
+                    source_id: str = "", source_time: Any = None,
+                    source_said: str | None = None) -> Iterable[Field]:
     """One sentence: which predicate it utters, and one row per slot that predicate forces.
 
     🔴 THE SLOTS ARE LAID OUT THE MOMENT A PREDICATE IS CHOSEN (owner, 2026-08-21:
@@ -1086,6 +1094,18 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
             continue
         binding = bind.get(role_id)
         required = role_must_be_bound(role_id, role)
+        if not isinstance(binding, Mapping) and is_event_time_role(role_id) and source_time:
+            # 🔴 NOT ASKED (총괄 10-11 B ㄱ · 3a2d79ff9 「매핑에서는 빼도 된다 — 적으면 사건 엣지」): a sentence that
+            #    binds no event time is not an event and reads the source's time - shown as that, still writable.
+            yield Field(
+                path=f"{mpath}.bind.{role_id}", step="sources", label=f"Role {role_id}",
+                state="derived", tier=TIER_CONSTRAINED, value=source_time,
+                candidates=tuple(role_binding_kinds(role)), reshapes=True,
+                disposition="default_overridable",
+                ground=Ground("not_an_event", "Not an event - source time: %s" % source_said,
+                              (f"bundle.sources.{source_id}.read.occurred_at",), source_time),
+                note="Write a column to make this sentence an event edge")
+            continue
         if not isinstance(binding, Mapping):
             yield Field(
                 path=f"{mpath}.bind.{role_id}", step="sources",
@@ -1299,6 +1319,54 @@ def _attribute_binding_fields(path: str, entity_type: str, declared: Sequence[An
 #: authoring a vocabulary it does not own.
 _TIMEZONE_FALLBACK = "Asia/Seoul"
 
+#: Rows read per relation to judge its string columns as times (총괄 10-11 A ㄱ) - one short read per relation.
+TIME_SAMPLE_ROWS = 20
+
+
+def _time_columns(relation: Any, types: Mapping[str, str], sample) -> tuple[tuple[str, ...], list[str]]:
+    """(the relation's columns a time can be read from, its string columns no sample answered).
+
+    A datetime column is one. A string column is one when every non-blank value of a short sample reads as a
+    time by the read path's own judge (`roleframe.aware_time`) - text the translator could not read is not a
+    time to offer. `sample(relation, columns, limit)` -> {column: [values]} is the caller's (the route reads the
+    table); with none, a read that fails, or no value in the column, the column stays a candidate and is named."""
+    from database.crud import is_blank_value
+
+    strings = sorted(name for name, kind in types.items() if kind == "string")
+    columns = {name for name, kind in types.items() if kind == "datetime"}
+    values = None
+    if sample is not None and strings:
+        try:
+            values = sample(relation, strings, TIME_SAMPLE_ROWS)
+        except Exception:                                           # noqa: BLE001 - said below, never dropped
+            values = None
+    unsampled = []
+    for name in strings:
+        seen = [value for value in ((values or {}).get(name) or ()) if not is_blank_value(value)]
+        if not seen:
+            unsampled.append(name)
+            columns.add(name)
+        elif all(_reads_as_time(value) for value in seen):
+            columns.add(name)
+    return tuple(sorted(columns)), unsampled
+
+
+def _reads_as_time(value: Any) -> bool:
+    from .roleframe import aware_time
+
+    try:
+        aware_time(value, "UTC", "", error=lambda code, at, message: ValueError(message))
+    except ValueError:
+        return False
+    return True
+
+
+def _time_default_said(origin: Mapping[str, Any]) -> str:
+    """What a left-out time is filled with - `source_defaults`' answer, said (총괄 10-11)."""
+    if origin.get("basis"):
+        return "Default: row time (%s · %s)" % (origin["basis"], OCCURRED_AT_BASIS_COLUMNS.get(origin["basis"], "?"))
+    return "Default: the event edges' time (%s · %s)" % (origin.get("column"), origin.get("timezone"))
+
 
 def _declared_timezones(bundle: Mapping[str, Any]) -> list[str]:
     """Every timezone this file's sources already answer with, sorted.
@@ -1330,7 +1398,7 @@ def _answer_or_default(answer: Any, default: Any, from_path: str) -> dict:
     return {"state": "missing", "value": answer}
 
 
-def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
+def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any], time_sample=None
                    ) -> Iterable[Field]:
     # The most-used answer in the file, ties broken alphabetically so two runs of the same
     # file never disagree about which chip a new source is offered.
@@ -1444,25 +1512,18 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         types = _column_types(catalog, relation)
         # `string` stands beside `datetime` here.  The operational tables keep time in
         # varchar ON PURPOSE (owner 2026-08-21: the text formats are not uniform in
-        # production), and the read path now parses those spellings -- so a catalog type
-        # of `string` no longer means "not a time".  Leaving it out would let a person
-        # declare a column the screen will not offer, which is the same wall from the
-        # other side.
-        time_columns = tuple(sorted(
-            name for name, kind in types.items() if kind in ("datetime", "string")))
+        # production), and the read path parses those spellings -- so a string column whose
+        # values read as a time is a candidate; one whose sampled values do not is not (총괄
+        # 10-11 A ㄱ), and one no sample answered stays and the ground says so.
+        time_columns, unsampled = _time_columns(relation, types, time_sample)
         # The CANDIDATE SET is derived; the answer is not.  A table with no time-typed
         # column leaves `basis` as the only door, and the screen says so instead of
-        # letting a person discover it through three refusals -- but it still ASKS,
-        # because which basis a grouped event should read is not settled (see the note).
+        # letting a person discover it through three refusals.
         answered = bool(occurred.get("column") or occurred.get("basis"))
         narrowed = bool(physical) and not time_columns
-        # 🔴 AN OFFERED CANDIDATE IS A COMPLETE ANSWER OR IT IS A TRAP.  The candidates
-        # named `column` or `basis` and stopped; `timezone` sits in the same record and is
-        # REQUIRED, so pressing a chip produced a half-written record and two refusals
-        # (`missing_field`, `blank_value`) at a path no plan row spoke for -- i.e. the
-        # screen could show zero red squares and still refuse to compile, which is the
-        # owner's own report (2026-08-21: 「timezone 수동으로 쳐야하고」).  Measured the
-        # same evening: 16 of 16 candidates left that refusal standing.
+        # 🔴 AN OFFERED CANDIDATE IS A COMPLETE ANSWER OR IT IS A TRAP (owner 2026-08-21:
+        # 「timezone 수동으로 쳐야하고」): a column candidate carries the zone its naive text is in.
+        # A basis is the row's stored instant and carries none (총괄 10-11).
         zone = occurred.get("timezone")
         zone = (zone.strip() if isinstance(zone, str) and zone.strip()
                 else timezone_default)
@@ -1476,51 +1537,50 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             disposition="default_overridable" if time_default else "",
             candidates=tuple(
                 [{"column": name, "timezone": zone} for name in time_columns]
-                + [{"basis": name, "timezone": zone}
-                   for name in sorted(_OCCURRED_AT_BASES)]),
+                + [{"basis": name} for name in sorted(_OCCURRED_AT_BASES)]),
             universe=UNIVERSE_RELATION,
             ground=Ground(
                 "occurred_at_candidates_from_column_types",
                 (f"Limit: {relation} has no column to read as a time -> basis only"
                  if narrowed
-                 else f"Candidates: {len(time_columns)} columns of {relation} readable as a time + basis"),
+                 else f"Candidates: {len(time_columns)} columns of {relation} readable as a time + basis")
+                + (f" · not sampled: {', '.join(unsampled)}" if unsampled else ""),
                 (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(time_columns)),
-            # 🔴 A PENDING RULING IS NOT A FORM FIELD'S BUSINESS.  This said which question
-            # was still open and named the task file holding it -- true, and useless to
-            # somebody filling the box, who cannot act on either.  What is left is the one
-            # rule that changes what they press.
-            note="Pick one of column · basis", reshapes=True,
+            # 🔴 A PENDING RULING IS NOT A FORM FIELD'S BUSINESS: what is left is what it is filled with.
+            note=_time_default_said(time_default) if time_default else "Pick one of column · basis",
+            reshapes=True,
         )
-        # 🔴 THE SQUARE THE TIMEZONE REFUSAL LANDS ON.  Filling it from the picker above is
-        # only half: the validator refuses at `…occurred_at.timezone`, and with no row at
-        # that exact path both refusals fell into `unattached_refusals` -- reachable on the
-        # map and on no box.  This row is also what keeps the value CHANGEABLE: the picker
-        # swallows the keys it writes (`covering`), and the client's rule is that a key the
-        # plan speaks for in its own right keeps its box.  Measured on the live config
-        # before this existed: adding `timezone` to the candidates deleted the only input
-        # for it anywhere in the form.
+        # 🔴 THE SQUARE THE TIMEZONE REFUSAL LANDS ON - asked only where a time COLUMN is the origin (총괄 10-11:
+        # 「timezone 은 시각 열을 적었을 때만」). This row also keeps the value CHANGEABLE: the picker swallows the
+        # keys it writes (`covering`), and the client's rule is that a key the plan speaks for keeps its box.
         declared_zone = occurred.get("timezone")
         answered_zone = isinstance(declared_zone, str) and bool(declared_zone.strip())
         zone_default = (time_default or {}).get("timezone") if not answered_zone else None
-        yield Field(
-            path=f"{base}.read.occurred_at.timezone", step="sources",
-            label="Time zone",
-            state="answered" if answered_zone else "derived" if zone_default else "missing",
-            tier=TIER_CONSTRAINED,
-            value=declared_zone if answered_zone else zone_default,
-            declared=declared_zone if answered_zone else _ABSENT,
-            # 🔴 A SUGGESTION, NEVER A LIST TO PICK FROM.  What the file already answers
-            # plus the default -- no IANA table is shipped and none is enforced, so a site
-            # outside Seoul types it once and every later source is offered that answer.
-            candidates=timezone_candidates,
-            note="Filled with the time · type another if it differs",
-            # A zone the file leaves out is the product's default (its event edges' zone), stated
-            # as `_answer_or_default` states one - a derived row with no ground fails the whole
-            # plan, so a slim source's form did not open (lead 5c3e49954).
-            **({"disposition": "default_overridable",
-                "ground": Ground("read_default", f"Default: {zone_default}", (f"{base}.read",),
-                                 zone_default)} if zone_default else {}),
-        )
+        column_origin = occurred.get("column") if answered else (time_default or {}).get("column")
+        if not column_origin and not answered_zone:
+            yield Field(
+                path=f"{base}.read.occurred_at.timezone", step="sources", label="Time zone",
+                state="unanswered", tier=TIER_CONSTRAINED, value=None, declared=_ABSENT,
+                candidates=timezone_candidates, note="Only for a time column")
+        else:
+            yield Field(
+                path=f"{base}.read.occurred_at.timezone", step="sources",
+                label="Time zone",
+                state="answered" if answered_zone else "derived" if zone_default else "missing",
+                tier=TIER_CONSTRAINED,
+                value=declared_zone if answered_zone else zone_default,
+                declared=declared_zone if answered_zone else _ABSENT,
+                # 🔴 A SUGGESTION, NEVER A LIST TO PICK FROM.  What the file already answers
+                # plus the default -- no IANA table is shipped and none is enforced.
+                candidates=timezone_candidates,
+                note="Filled with the time · type another if it differs",
+                # A zone the file leaves out is the product's default (its event edges' zone), stated
+                # as `_answer_or_default` states one - a derived row with no ground fails the whole
+                # plan, so a slim source's form did not open (lead 5c3e49954).
+                **({"disposition": "default_overridable",
+                    "ground": Ground("read_default", f"Default: {zone_default}", (f"{base}.read",),
+                                     zone_default)} if zone_default else {}),
+            )
         # 총괄 04cecc30f ③: one row over the relation's columns; a candidate is the whole clause
         # `_validate_exclude_when` accepts, so the screen writes no shape of its own.
         excluded = list(_listed(driver.get("exclude_when")))
@@ -1608,12 +1668,14 @@ def _dispositions(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
 
 
 def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
-                   selection_prefix: str | None = None) -> dict[str, Any]:
+                   selection_prefix: str | None = None, time_sample=None) -> dict[str, Any]:
     """The whole authoring surface: what is filled, what is missing, what is still asked.
 
     `bundle` may be INVALID or half-written -- that is the normal authoring state, and a
     plan that only worked on a compiled bundle would be useless exactly when it is needed.
     Every accessor here tolerates the wrong shape and simply produces fewer fields.
+    `time_sample(relation, columns, limit)` -> {column: [values]} reads the rows the time candidates are judged
+    on (`_time_columns`); without it a string column stays a candidate, named «not sampled».
     """
     if not isinstance(bundle, Mapping):
         raise TypeError("bundle must be a mapping")
@@ -1624,7 +1686,7 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
         *_vocabulary_fields(bundle),
         *_implementation_fields(bundle, catalog),
         *_profile_fields(bundle, catalog),
-        *_source_fields(bundle, catalog),
+        *_source_fields(bundle, catalog, time_sample),
     ]
     refusals = [issue.to_mapping()
                 for issue in validate_bundle_errors(bundle, catalog=catalog)]

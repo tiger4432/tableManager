@@ -686,10 +686,14 @@ def test_unknown_relation_and_column_have_exact_paths():
 
 
 def test_timezone_must_be_explicit_and_valid():
+    """A time COLUMN needs its zone; a basis asks none (총괄 10-11)."""
     bundle = logical_bundle()
     del bundle["sources"]["input_rows"]["read"]["occurred_at"]["timezone"]
-    assert any(item.path.endswith("occurred_at.timezone") and item.code == "missing_field"
+    assert any(item.path.endswith("occurred_at.timezone") and item.code == "missing_timezone"
                for item in validate_bundle_errors(bundle))
+    bundle = logical_bundle()
+    bundle["sources"]["input_rows"]["read"]["occurred_at"] = {"basis": "ingested"}
+    assert not any(item.path.endswith("occurred_at.timezone") for item in validate_bundle_errors(bundle))
     bundle = logical_bundle()
     bundle["sources"]["input_rows"]["read"]["occurred_at"]["timezone"] = "Moon/Base"
     assert issue(bundle, "invalid_timezone").path.endswith("occurred_at.timezone")

@@ -645,14 +645,14 @@
                     },
                     {
                       "key": "occurred_at",
-                      "required": true,
+                      "required": false,
                       "label": "Time",
                       "node": {
                         "kind": "record",
                         "fields": [
                           {
                             "key": "timezone",
-                            "required": true,
+                            "required": false,
                             "node": {
                               "kind": "leaf",
                               "hint": "free"

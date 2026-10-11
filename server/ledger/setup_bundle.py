@@ -822,9 +822,9 @@ def read_group_by(read: Mapping[str, Any]) -> Any:
 
 
 #: 🔴 [총괄 0c9b6e3c0 · 3bf28f893] What a source with no event edge reads as its time: the row's
-#: stored `created_at` (the basis every not-an-event atom carries). The product writes that column
-#: timezone-aware, so this zone answers no value - it is here because the read record requires one.
-DEFAULT_TIME_ORIGIN = {"basis": NOT_AN_EVENT_BASIS, "timezone": "UTC"}
+#: stored `created_at` (the basis every not-an-event atom carries). No zone: a basis asks none
+#: (총괄 10-11) - the registry reads the stored instant (`setup_registry.BASIS_TIMEZONE`).
+DEFAULT_TIME_ORIGIN = {"basis": NOT_AN_EVENT_BASIS}
 
 #: The name the translator registers an entity's bound attributes under - plumbing, not a word
 #: an author writes (총괄 a6db2f469 안 1). A declared sentence of this name still reads as before.
@@ -2534,15 +2534,21 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         occurred = read.get("occurred_at")
         if occurred is not None and problems.exact(
                 occurred, f"{path}.read.occurred_at",
-                required=("timezone",), optional=("column", "basis", "format")):
+                required=(), optional=("timezone", "column", "basis", "format")):
             _occurred_at_origin(occurred, f"{path}.read.occurred_at", problems)
+            # the zone a time COLUMN's naive text is in - a basis is the row's stored instant and asks none
+            # (총괄 10-11, 소유자 「원장 선언 쓸데없이 timezone 이나 시간 쓰라고 하는 거 많은데」)
+            if "column" in occurred and "timezone" not in occurred:
+                problems.add("missing_timezone", f"{path}.read.occurred_at.timezone",
+                             "a time column needs the timezone its naive text is in, e.g. \"Asia/Seoul\"")
             if "format" in occurred:
                 _time_format(occurred.get("format"), f"{path}.read.occurred_at.format", problems)
                 if "basis" in occurred:
                     problems.add("invalid_driver", f"{path}.read.occurred_at.format",
                                  "format reads a column's text - a basis has no column to read")
             timezone = occurred.get("timezone")
-            _nonblank_text(timezone, f"{path}.read.occurred_at.timezone", problems)
+            if "timezone" in occurred:
+                _nonblank_text(timezone, f"{path}.read.occurred_at.timezone", problems)
             if isinstance(timezone, str) and timezone.strip():
                 try:
                     ZoneInfo(timezone)

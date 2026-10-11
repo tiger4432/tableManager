@@ -144,6 +144,21 @@ def _refused_column(path: Any) -> str:
     return column
 
 
+def table_time_sample(relation: str, columns: Sequence[str], limit: int) -> dict[str, list]:
+    """{column: [values]} - the first `limit` rows of `relation`, the authoring plan's time candidates are judged on
+    (총괄 10-11 A ㄱ). Read through the product's model of the table; a table it does not hold raises, and the plan
+    keeps the columns as candidates, «not sampled»."""
+    from sqlalchemy import select
+
+    from database import models
+    from database.database import SessionLocal
+
+    model = models.DYNAMIC_TABLES[relation]
+    with SessionLocal() as db:
+        rows = db.execute(select(*[getattr(model, column) for column in columns]).limit(limit)).all()
+    return {column: [row[index] for row in rows] for index, column in enumerate(columns)}
+
+
 def required_draft_id(draft_id: str | None) -> str:
     """The draft a draft-scoped read names, or the one refusal when it names none - `view`'s
     draft preview and the unsaved plan (총괄 d4a949a8c ⑨)."""
@@ -1044,7 +1059,7 @@ class OntologyExplorerService:
             setup, index, _ = self.active()
             bundle, dropped = with_unsaved_body(
                 bundle, setup, self.draft_store.get(draft_id), index, raw)
-        payload = authoring_plan(bundle, catalog, selection_prefix=selection_prefix)
+        payload = authoring_plan(bundle, catalog, selection_prefix=selection_prefix, time_sample=table_time_sample)
         payload["config_source"] = source
         payload["dropped_fields"] = dropped
         return payload
