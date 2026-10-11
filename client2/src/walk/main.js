@@ -1120,7 +1120,13 @@ export function boot(doc, host, deps) {
         if (one && leafed) s.rowSpan = 2;
         s.setAttribute('data-group', p.group);
         s.title = one ? `${p.step} · ${p.leaf}` : p.step;
-        s.append(el(doc, 'span', '', s.title));
+        // Two lines over a fixed-width column (owner 10-12: a cut «m..» said nothing): the far end first, the way under it.
+        const said = /^(.*) ([→←]) (.+)$/.exec(p.step);
+        const via = said ? `${said[1]} ${said[2]}` : '';
+        const head = el(doc, 'span', 'wk-headtext');
+        head.append(el(doc, 'span', 'wk-headfar', said ? said[3] : p.step),
+          el(doc, 'span', 'wk-headvia', one ? [via, p.leaf].filter(Boolean).join(' · ') : via));
+        s.append(head);
         if (p.folded) {
           const fold = el(doc, 'button', 'wk-tag' + (p.open ? ' is-on' : ''), p.open ? '▾' : `▸ ${p.folded}`);
           fold.type = 'button';

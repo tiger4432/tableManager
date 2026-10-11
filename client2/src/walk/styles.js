@@ -198,8 +198,11 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-record .wk-src { white-space: normal; overflow-wrap: anywhere; }
 /* Wide's heads (lead 10-11 W): a group - its step and far end - over its columns, the value's name, each sign and Δ. */
 .wk-wide th.wk-stephead { text-align: left; }
-.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small);
-  max-width: calc(100% - var(--wk-h)); overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: 1.25;
+  max-width: calc(100% - var(--wk-h)); vertical-align: bottom; }
+/* Over a fixed-width column the far end reads first and the way under it, each one line cut (owner 10-12 «m..»). */
+.wk-headfar, .wk-headvia { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-headvia { color: var(--text-dim); font-size: var(--wk-fs-line); }
 /* Its «▸ N» a size up from the head's letters: a press among them, not one more word. */
 .wk-wide th.wk-stephead > .wk-tag { font-size: var(--wk-fs-body); }
 .wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }
@@ -216,7 +219,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* The checked rows, one line stuck to the result's foot (W addendum 3): it takes its own room, so it never covers the last row. */
 .wk-marked { position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-2) var(--space-3); background: var(--bg-surface); border-top: 1px solid var(--border);
-  max-height: 30vh; overflow-y: auto; }
+  max-height: 88px; overflow-y: auto; }
 .wk-markedrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-markedword { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
 .wk-marked .wk-chip { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
