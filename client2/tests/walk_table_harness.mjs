@@ -1291,18 +1291,25 @@ async function suite(mod) {
     const moreOf = (host) => walkAll(host).find((e) => String(e.className).includes('wk-more'));
     const cutLine = (host) => (walkAll(host).find((e) => e.className === 'wk-trunc') || { textContent: '' }).textContent;
     const rowIdsOf = (host) => walkAll(host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']).sort().join();
+    const heads = (host) => walkAll(host).filter((e) => e.className === 'wk-sechead').map((e) => e.textContent).join(' | ');
+    const chips = (host) => walkAll(host).filter((e) => e.className === 'wk-addchip');
     const cut = await stand(400);
-    const before = [Boolean(moreOf(cut.host)), cutLine(cut.host)];
+    const before = [Boolean(moreOf(cut.host)), cutLine(cut.host), heads(cut.host)];
     for (const fn of (moreOf(cut.host) || { listeners: {} }).listeners.click || []) fn({});
     await settle();
     const q = new URLSearchParams((cut.asked[0] || '').split('?')[1] || '');
-    const after = [cut.asked.length, q.get('node_limit'), q.getAll('positive').join(), q.getAll('negative').join(), rowIdsOf(cut.host), Boolean(moreOf(cut.host))];
+    const after = [cut.asked.length, q.get('node_limit'), q.getAll('positive').join(), q.getAll('negative').join(), rowIdsOf(cut.host),
+      heads(cut.host), chips(cut.host).map((c) => c._text), Boolean(moreOf(cut.host))];
+    const dieChip = chips(cut.host).find((c) => c._text === '+1 from More');
+    for (const fn of ((dieChip && dieChip.children[0]) || { listeners: {} }).listeners.click || []) fn({});
+    const undone = [rowIdsOf(cut.host), heads(cut.host), chips(cut.host).length, cutLine(cut.host)];
     const top = await stand(1000);
     const atMax = [Boolean(moreOf(top.host)), cutLine(top.host), top.asked.length];
-    ok('MO2 a node cut: More asks the same walk at node_limit 800 - its starts, one request - and merges it (d:10 joins, the walk no longer cut); at the server\'s 1000 no More, the line says so',
-      JSON.stringify([before, after, atMax]) === JSON.stringify([[true, 'Cut · nodes 400More'],
-        [1, '800', 's:a,s:c', 's:b', `${ALL},d:10`.split(',').sort().join(), false], [false, 'Cut · nodes 1000 · at the server limit', 0]]),
-      JSON.stringify([before, after, atMax]));
+    ok('MO2 a node cut: More asks the same walk at node_limit 800 - its starts, one request - and its answer replaces the step\'s (die 4 -> 5, «+1 from More» on die, «+0» on wafer, no More); × puts the cut answer back with its More; at the server\'s 1000 no More, the line says so',
+      JSON.stringify([before, after, undone, atMax]) === JSON.stringify([[true, 'Cut · nodes 400More', 'wafer@1 · 3 | die@1 · 4'],
+        [1, '800', 's:a,s:c', 's:b', `${ALL},d:10`.split(',').sort().join(), 'wafer@1 · 3 | die@1 · 5', ['+0 from More', '+1 from More'], false],
+        [ALL, 'wafer@1 · 3 | die@1 · 4', 0, 'Cut · nodes 400More'], [false, 'Cut · nodes 1000 · at the server limit', 0]]),
+      JSON.stringify([before, after, undone, atMax]));
   }
 }
 
@@ -1743,7 +1750,9 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
-    from: '    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], more.asked);', to: '    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], asked);' },
+    from: '    void walkInto(at, more.asked, (res) => {', to: '    void walkInto(at, answerAt(at).asked, (res) => {' },
+  { id: 'MOm3', what: 'More\'s answer lands nowhere - the step keeps the cut one', catches: 'MO2',
+    from: '      setAnswer(at, res, more.asked);', to: '      setAnswer(at, result, asked);' },
   { id: 'IMm1', what: 'a value the answer says is an image drawn as its text', catches: 'IM1',
     from: '    const val = valueSpan(cell.image, cell.image !== undefined, cell.text);', to: '    const val = valueSpan(cell.image, false, cell.text);' },
   { id: 'DM7', what: 'a side\'s cells not tinted by who reached the row', catches: 'ZD4',

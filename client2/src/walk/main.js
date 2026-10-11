@@ -381,7 +381,7 @@ export function boot(doc, host, deps) {
     // A new start clears the steps and what their checks wrote, as the graph's new start does (lead 53050a4ec).
     dropMarks([{ marks: state.marks }, ...state.steps]);
     state.steps = []; state.at = 0; state.leaf = 0; state.marks = nextMarks();
-    addsAt.clear(); adding = null;
+    addsAt.clear(); lessAt.clear(); adding = null;
     render();
     const began = Date.now();
     const res = await walk(asked);
@@ -440,40 +440,51 @@ export function boot(doc, host, deps) {
     return asked;
   }
 
-  // The walks merged into a step - Add here, More (lead 10-11 W addenda 5, 6) - by step; an addition walking or why it
-  // failed.
+  // The walks merged into a step - Add here (lead 10-11 W addenda 5, 6) - by step; the answers More replaced, by step,
+  // the last on top; a walk into a step running or why it failed.
   const addsAt = new Map();
   const addsNow = () => addsAt.get(state.at) || [];
+  const lessAt = new Map();
   let adding = null;
-  /** Walk and merge the answer into step `at`; the same walk from the same starts again stands in its place. */
-  async function addWalk(at, words, seeds, asked) {
-    const base = at === 0 ? state.result : (stepOf(at) || {}).result;
+  /** Step `at`'s answer and what it was asked, or set them. */
+  const answerAt = (at) => (at === 0 ? { result: state.result, asked: state.asked } : stepOf(at) || {});
+  const setAnswer = (at, result, asked) => Object.assign(at === 0 ? state : stepOf(at), { result, asked });
+  /** Walk `asked` for step `at` and land its answer there; a step walked over meanwhile takes nothing. */
+  async function walkInto(at, asked, land) {
+    const base = answerAt(at).result;
     adding = { at, text: RUNNING };
     render();
     const res = await walk(asked);
-    if (base !== (at === 0 ? state.result : (stepOf(at) || {}).result)) return;   // walked over meanwhile
+    if (base !== answerAt(at).result) return;   // walked over meanwhile
     adding = res && res.ok ? null : { at, text: `${FAILED} · ${(res && res.message) || UNKNOWN}` };
-    if (res && res.ok) {
-      const key = `${words}|${[...seeds].sort().join(',')}`;
-      const list = [...(addsAt.get(at) || [])];
-      const k = list.findIndex((a) => a.key === key);
-      const add = { key, words, seeds, asked, answer: res, more: words === MORE };
-      if (k >= 0) list[k] = add; else list.push(add);
-      addsAt.set(at, list);
-    }
+    if (res && res.ok) land(res);
     render();
   }
-  /** Add here: one step from the rows checked, merged into this step. */
-  const addHere = (at, seeds, route) => addWalk(at, `walk on · ${route.words}`, [...seeds.positive, ...seeds.negative], askAlong(seeds, route));
-  /** More (lead 10-12): the step's walk again, each limit that cut it raised - read off the last More's answer, or the
-   *  step's own; its starts the step's, so the same More again stands in its place. */
-  function moreOf(r, asked) {
-    const last = addsNow().filter((a) => a.more).pop();
-    return last ? moreAsk(last.answer, last.asked) : moreAsk(r, asked || {});
+  /** Add here: one step from the rows checked, merged into this step; the same walk from the same starts again stands in
+   *  its place. */
+  function addHere(at, seeds, route) {
+    const words = `walk on · ${route.words}`;
+    const starts = [...seeds.positive, ...seeds.negative];
+    void walkInto(at, askAlong(seeds, route), (res) => {
+      const key = `${words}|${[...starts].sort().join(',')}`;
+      const list = [...(addsAt.get(at) || [])];
+      const k = list.findIndex((a) => a.key === key);
+      const add = { key, words, seeds: starts, answer: res };
+      if (k >= 0) list[k] = add; else list.push(add);
+      addsAt.set(at, list);
+    });
   }
-  function walkMore(more, asked) {
-    const starts = askedStarts(asked);
-    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], more.asked);
+  /** More (lead 10-12): the step's walk again, each limit that cut it raised; its answer holds the step's and replaces it
+   *  (18766: merged, the step's rows came first and nothing new drew) - its starts, checks, filters and sort the step's;
+   *  × puts the one before back. */
+  const moreOf = (r, asked) => moreAsk(r, asked || {});
+  function walkMore(more) {
+    const at = state.at;
+    void walkInto(at, more.asked, (res) => {
+      const { result, asked } = answerAt(at);
+      lessAt.set(at, [...(lessAt.get(at) || []), { result, asked }]);
+      setAnswer(at, res, more.asked);
+    });
   }
 
   /** A step in the tree (lead 5ea461e04): a child of `at`, its siblings kept; the same title from `at` again stands in
@@ -485,7 +496,7 @@ export function boot(doc, host, deps) {
     const view = again && trends.get(again.id);
     if (view) { trends.delete(again.id); view.step = step.id; trends.set(step.id, view); }
     dropMarks(dropped);
-    for (const s of dropped) addsAt.delete(s.id);
+    for (const s of dropped) { addsAt.delete(s.id); lessAt.delete(s.id); }
     const place = again ? state.steps.indexOf(again) : state.steps.length;
     state.steps = [...state.steps.slice(0, place), step, ...state.steps.slice(place)].filter((s) => !dropped.includes(s));
     state.at = step.id;
@@ -1514,7 +1525,7 @@ export function boot(doc, host, deps) {
       const filters = filterRow(section, shown);
       if (filters) sec.append(filters);
       if (section.reached) sec.append(reachedLine(section));
-      if (section.adds.length) sec.append(addsLine(section));
+      if (section.adds.length || (lessAt.get(at) || []).length) sec.append(addsLine(section));
       if ((state.added.get(section.type) || []).length || state.picking === section.type) sec.append(columnPicker(section, view.index));
       if (trended) renderTrend(sec, view, r, shown.ids);
       else {
@@ -1562,19 +1573,27 @@ export function boot(doc, host, deps) {
     return wrap;
   }
 
-  /** The walks merged into this step that reached this section's type (lead 10-11 W addendum 5): each the rows it
-   *  brought, × takes that one out. */
+  /** The walks merged into this step that reached this section's type (lead 10-11 W addendum 5), each the rows it brought,
+   *  and More's last answer (lead 10-12), the rows drawn it holds and the one before did not; × takes that one out. */
   function addsLine(section) {
     const line = el(doc, 'div', 'wk-adds');
-    for (const add of section.adds) {
-      const chip = el(doc, 'span', 'wk-addchip', `+${add.n} from ${add.words}`);
-      const drop = el(doc, 'button', 'wk-tag', '×');
-      drop.type = 'button';
-      drop.setAttribute('aria-label', 'Remove');
-      drop.setAttribute('data-add', String(add.at));
-      drop.addEventListener('click', () => { addsAt.set(state.at, addsNow().filter((_, k) => k !== add.at)); render(); });
-      chip.append(drop);
-      line.append(chip);
+    const chip = (text, drop) => {
+      const c = el(doc, 'span', 'wk-addchip', text);
+      const x = el(doc, 'button', 'wk-tag', '×');
+      x.type = 'button';
+      x.setAttribute('aria-label', 'Remove');
+      x.addEventListener('click', () => { drop(); render(); });
+      c.append(x);
+      line.append(c);
+    };
+    for (const add of section.adds) chip(`+${add.n} from ${add.words}`, () => addsAt.set(state.at, addsNow().filter((_, k) => k !== add.at)));
+    const less = lessAt.get(state.at) || [];
+    if (less.length) {
+      const was = new Set(((less[less.length - 1].result || {}).nodes || []).map((n) => n.id));
+      chip(`+${section.rows.filter((row) => !was.has(row.id)).length} from ${MORE}`, () => {
+        const back = less.pop();
+        setAnswer(state.at, back.result, back.asked);
+      });
     }
     return line;
   }
@@ -1711,7 +1730,7 @@ export function boot(doc, host, deps) {
         if (more.asked) {
           const press = el(doc, 'button', 'wk-next-edge wk-more', MORE);
           press.type = 'button';
-          press.addEventListener('click', () => walkMore(more, askedNow));
+          press.addEventListener('click', () => walkMore(more));
           cut.append(press);
         }
         box.append(cut);
