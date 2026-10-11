@@ -1,10 +1,14 @@
 # 📜 AssyManager Project History Index
 
 > **자동 생성 문서 — 직접 편집 금지.** `python docs/history/gen_index.py`로 갱신하십시오.
-> 총 **935개** 이력. (거버넌스 규칙 #4)
+> 총 **936개** 이력. (거버넌스 규칙 #4)
 
 각 파일은 `YYYYMMDD_HHMMSS_summary.md` 규격의 불변(append-only) 기술 이력입니다. 아키텍처 전체 그림은 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)를 참조하십시오.
 
+
+## 2026-10 (October 2026)
+
+- **2026-10-11 18:42** — [A Link Whose Evidence The Text Does Not Hold Is Dropped Not The Whole Answer](./20261011_184240_a_link_whose_evidence_the_text_does_not_hold_is_dropped_not_the_whole_answer.md)
 
 ## 2026-09 (September 2026)
 
@@ -959,4 +963,4 @@
 - **2026-04-12 22:22** — [Ws Debug Staggered Init](./20260412_222200_ws_debug_staggered_init.md)
 - **2026-04-12 22:10** — [Phase19 Integrity And Stability Fixes](./20260412_221000_phase19_integrity_and_stability_fixes.md)
 
-*Last generated: 2026-09-23 by gen_index.py*
+*Last generated: 2026-10-11 by gen_index.py*
