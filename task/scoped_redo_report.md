@@ -79540,3 +79540,26 @@ PG:
   public relations 325 -> 325 · added [] · gone [] · rows changed {}
   public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
 ```
+
+## [10-12] «세상을 안 말하고 부르는 자리» 전수 (총괄 — 짓지 않음, 표만)
+
+```
+잰 법   AST(server/, tests 뺌): world/world_name 인자를 받는 함수 92 이름 → 그 이름을 부르는데 world 를 키워드로도 위치로도 안 넘기는 호출
+        걸러냄: 받는 쪽이 인자로 고른 수신자(_service_for(world).X — 라우터 13 줄) · 같은 파일의 동명 함수가 world 를 안 받음 · subprocess.run 동명(10 줄)
+남은 것  world 인자 호출 11 (아래 ①) + 세상이 params 딕셔너리에 실리는 소급 호출 3 (아래 ②) — 이 수는 «이름» 기준이라 동명 오탐을 손으로 뺀 뒤
+① world 인자를 안 넘기는 호출 (떨어지면 운영 세상)
+  chain/ingestion_worker _restamp_moved_fingerprints_sync -> schema.world_names()   기동 · 운영 커서만 다시 찍음 — 브랜치 커서는 안 찍힘(쓰기, 브랜치엔 안 닿음)
+  ledger/admin ingestion_view -> world_names()                                      화면이 브랜치를 골라도 운영 수(읽기 숫자)
+  ledger/config config_path -> world_names()                                        기본값 자리 — 부르는 쪽이 root 를 안 주면 운영 선언(읽기)
+  ledger/gaps measure -> world_names()                                              relation 안 주면 운영 원장으로 셈(읽기 숫자)
+  ledger/setup load_setup · setup_from_document · _resolve_cli_root -> world_names() root 안 주면 운영 선언 — _ledger_world(None) 과 같은 모양(읽기 · 그 setup 으로 쓰면 쓰기)
+  ledger_api/declared_entities _config_path -> world_names()                       엔티티 목록이 운영 선언(읽기)
+  ledger_api/ledger_subgraph _read_entity_declaration -> world_names()             _WALK_DECLARATION 문맥이 없을 때만 운영 선언(브랜치 걷기가 문맥을 세우면 안전 — 안 봄)
+  config_resolve_report _resolve_walk -> _collectable_types()                       운영 선언의 걷기 타입(읽기)
+  ledger/config_explorer_service view -> explorer_view(...)                         서비스는 세상마다인데 이 부름이 world 를 안 넘김 — explorer_view 기본이 운영이면 브랜치 창이 운영 그림(읽기, 안 봄)
+② 세상이 params["world"] 로 실리는 소급 호출 (없으면 _ledger_world(None) -> 운영)
+  ledger/config_drafts _redo_for -> retroactive.count(REDO_SOURCE_OP, params)      소유자 500 의 자리 — 에이전트가 고치는 중
+  main get_retroactive_count -> retroactive.count(db, op, params)                   요청이 보낸 params 그대로 — 클라가 world 를 실으면 안전
+  ledger/backfill (CLI) -> retroactive.run_here(op, params)                        --world 가 params 에 실리는지 안 봄
+모르는 것  «브랜치에서 불릴 수 있나»를 부른 쪽 전부 따라가 보지 않음 — 위 «안 봄» 셋 · 동명 함수 오탐은 손으로 뺐으니 빠진 자리가 있을 수 있음
+```
