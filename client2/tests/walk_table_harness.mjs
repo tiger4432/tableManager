@@ -656,25 +656,32 @@ async function suite(mod) {
       predicates: [
         { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
         { name: 'bonded_to@1', subjects: ['die@1'], object: { types: ['die@1'] } }] };
-    const ROOTG = { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } },
-      { id: 'n:2', type: 'die@1', label: 'D-2', keys: { mat_id: 'M-2' } }], edges: [] };
+    // Each node its depth, as a walk answer carries it - the graph places a node by it; the form walk reached n:2 and n:3
+    // from n:1, the paths its evidence (G-2).
+    const path1 = (id) => ({ id, evidence: [{ seed: 'n:1', hops: [{ id: 'n:1' }, { id, predicates: ['bonded_to@1'] }] }] });
+    const ROOTG = { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' }, depth: 0 },
+      { id: 'n:2', type: 'die@1', label: 'D-2', keys: { mat_id: 'M-2' }, depth: 1 }, { id: 'n:3', type: 'die@1', label: 'D-3', keys: { mat_id: 'M-3' }, depth: 1 }],
+    edges: [{ id: 'e:2', source: 'n:1', target: 'n:2', predicate: 'bonded_to@1' }, { id: 'e:3', source: 'n:1', target: 'n:3', predicate: 'bonded_to@1' }],
+    propagation: { ranked: [path1('n:2'), path1('n:3')] } };
     const BY = {
-      'bonded_to@1': { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } }, { id: 'n:4', type: 'die@1', label: 'D-4', keys: { mat_id: 'M-4' } }],
+      'bonded_to@1': { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' }, depth: 0 }, { id: 'n:4', type: 'die@1', label: 'D-4', keys: { mat_id: 'M-4' }, depth: 1 }],
         edges: [{ id: 'e:4', source: 'n:1', target: 'n:4', predicate: 'bonded_to@1' }] },
-      'inspected@1': { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } }, { id: 'w:1', type: 'wafer@1', label: 'W-1', keys: { wafer: 'W1' } }],
+      'inspected@1': { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' }, depth: 0 }, { id: 'w:1', type: 'wafer@1', label: 'W-1', keys: { wafer: 'W1' }, depth: 1 }],
         edges: [{ id: 'e:w', source: 'w:1', target: 'n:1', predicate: 'inspected@1' }] } };
     const doc = makeDoc();
     const host = doc.createElement('div');
+    const walks = [];
     const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
       const u = String(url);
+      if (u.includes('/subgraph')) walks.push(u);
       const follow = new URLSearchParams(u.split('?')[1] || '').get('follow');
       return { ok: true, status: 200, json: async () => (u.includes('/subgraph') ? BY[follow] : DECLG) };
     } });
     await settle();
     handle.state.type = 'die@1';
-    handle.state.asked = { type: 'die@1', keys: { mat_id: 'M-1' } };
+    handle.state.asked = { type: 'die@1', keys: { mat_id: 'M-1' }, positive: ['n:1'], negative: [] };
     handle.state.run = 'done';
-    handle.state.result = ROOTG;
+    handle.state.result = { ...ROOTG, ok: true };
     handle.render();
     const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn(); };
     const tick = (id) => { const cb = walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === id); for (const fn of (cb && cb.listeners.click) || []) fn({}); };
@@ -718,6 +725,51 @@ async function suite(mod) {
         && handle.state.steps.some((x) => x.id === b) && handle.graph.markings.count(bMarks) === 1
         && handle.state.steps.filter((x) => x.parent === 0).length === 2,
       JSON.stringify([handle.state.steps.map((x) => [x.id, x.parent, x.title]), a1 && handle.graph.markings.count(a1.marks), handle.graph.markings.count(bMarks)]));
+    // G-2 (lead 10-11): A walked again from n:1 and n:2, then A1 from A's n:4 - the branch Step 1 > A > A1; B the other.
+    press(tab(0));
+    tick('n:2');
+    press(next(A));
+    await settle();
+    const a2 = handle.state.at;
+    tick('n:4');
+    press(next(A));
+    await settle();
+    const a3 = handle.state.at;
+    // This stub document draws no picture; the part's steps and layout are what it drew.
+    handle.graph.render = () => {};
+    const viewOf = (name) => walkAll(host).find((e) => e.attrs && e.attrs['data-view'] === name);
+    const ids = (xs) => (xs || []).map((x) => x.id).sort().join();
+    const drawn = async (...chosen) => {
+      press(viewOf('table'));
+      for (const id of chosen) press(tab(id));
+      const at = walks.length;
+      press(viewOf('graph'));
+      await settle();
+      const leaf = handle.state.steps.find((x) => x.id === handle.state.leaf);
+      const steps = handle.graph.steps;
+      return { asked: walks.length - at, steps: steps.length, last: Boolean(leaf) && steps.length > 0 && steps[steps.length - 1].results[0] === leaf.result,
+        first: [ids(steps[0] && steps[0].results[0].nodes), ids(steps[0] && steps[0].results[0].edges)],
+        picture: ((handle.graph.layout || {}).nodes || []).map((n) => n.id).sort().join() };
+    };
+    const drawnB = await drawn(b);
+    const drawnA = await drawn(a2, a3);
+    ok('GB4 the graph on a branch draws the table\'s own answers - nothing walked; the last step its whole answer; B and A1 two pictures (lead 10-11 G-2)',
+      drawnB.asked === 0 && drawnA.asked === 0 && drawnB.steps === 2 && drawnA.steps === 3 && drawnB.last && drawnA.last && drawnB.picture !== drawnA.picture,
+      JSON.stringify([drawnB, drawnA]));
+    ok('GB5 a step before the last draws only its paths to the next step\'s starts: on B the form walk its start n:1; on A1 n:1 and n:2 by e:2; n:3, reached but walked on from by none, on neither (lead 10-11 G-2)',
+      JSON.stringify([drawnB.first, drawnA.first]) === JSON.stringify([['n:1', ''], ['n:1,n:2', 'e:2']])
+        && !drawnB.picture.includes('n:3') && !drawnA.picture.includes('n:3'),
+      JSON.stringify([drawnB.first, drawnA.first, drawnB.picture, drawnA.picture]));
+    // A lump of the picture opened while A1 ends the branch (lead 10-11): its step a child of the step whose answer brought
+    // its edges - the picture's second step, A.
+    handle.graph.openTable({ ok: true, nodes: [], edges: [] }, { owner: 'n:1', ownerLabel: 'D-1', predicate: 'bonded_to@1', farType: 'die@1',
+      words: 'bonded_to@1 \u2192 die@1', step: 1 });
+    await settle();
+    const lumpStep = handle.state.steps.find((x) => x.title === 'From D-1 · bonded_to@1 \u2192 die@1') || {};
+    ok('GB6 a lump from the picture\'s second step, A1 ending the branch: its step A\'s child, shown (lead 10-11)',
+      lumpStep.parent === a2 && handle.state.at === lumpStep.id && a3 !== a2,
+      JSON.stringify([lumpStep.parent, a2, a3, handle.state.at]));
+    press(viewOf('table'));
   }
   // ── «Copy table» on the page (lead a27dfbb0f): every column, the folded too; the rows the filter shows; said beside it ──
   {
@@ -1309,6 +1361,17 @@ const MUTANTS = [
     from: "reason: '', marks: nextMarks() };", to: "reason: '', marks: `walk-${at + 3}` };" },
   { id: 'FM2', what: 'a step walked again leaves the dropped steps\' markings', catches: 'CH2',
     from: '    dropMarks(dropped);\n', to: '' },
+  { id: 'GM5', what: 'the graph walks a branch\'s step again, not the table\'s answer', catches: 'GB4',
+    from: ' i += 1) await graph.continueWalk(given(i));', to: ' i += 1) await graph.continueWalk();' },
+  { id: 'GM6', what: 'the graph walks the start again, not the form walk\'s answer', catches: 'GB4',
+    from: '    await graph.show({ keep: true, given: given(0) });', to: '    await graph.show({ keep: true });' },
+  { id: 'GM7', what: 'a step before the last drawn whole', catches: 'GB5',
+    from: 'answer: i < path.length ? pathsAnswer(answers[i], [...starts[i + 1].positive, ...starts[i + 1].negative]) : answers[i] };',
+    to: 'answer: answers[i] };' },
+  { id: 'GM8', what: 'a lump\'s step the branch\'s end\'s child', catches: 'GB6',
+    from: '    const parent = lump.step === 0 ? 0 : (pathTo(state.leaf)[lump.step - 1] || { id: state.leaf }).id;', to: '    const parent = state.leaf;' },
+  { id: 'GM9', what: 'a lump\'s step one step off on the branch', catches: 'GB6',
+    from: '(pathTo(state.leaf)[lump.step - 1] || { id: state.leaf })', to: '(pathTo(state.leaf)[lump.step] || { id: state.leaf })' },
   { id: 'GM1', what: 'another edge from a step walks over its sibling', catches: 'GB1',
     from: '    const again = state.steps.find((s) => s.parent === at && s.title === title);', to: '    const again = state.steps.find((s) => s.parent === at);' },
   { id: 'GM2', what: 'the graph\'s chain every step, not the branch\'s', catches: 'GB2',

@@ -23,7 +23,8 @@ const keyOf = (edge, fallback) => (edge && (edge.claim_id || edge.id)) || fallba
 /** The walk's own points of one row's column: each group's reads, each at its end's time. */
 export function walkPoints(index, groups, x, column) {
   return groups.flatMap((g, i) => readsOf(index, g.inside, x, column).reads
-    .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node })));
+    .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node,
+      claim: (r.when && r.when.claim_id) || '' })));
 }
 
 /** The walked points of `rows` along `column`, each with the row it was read from - a section's trend, a cell's, a lump's
@@ -42,18 +43,19 @@ export function pagePoints(answer, groups, x, column, walked = new Set()) {
     const group = groups.findIndex((g) => g.inside.has(far));
     const key = keyOf(e, e.id);
     return { t: timeOf(e), value: (e.qualifiers || {})[column.value.name], group: group >= 0 ? group : null, walked: walked.has(key), key,
-      node: far };
+      node: far, claim: e.claim_id || '' };
   }).filter((p) => !isBlank(p.value));
 }
 
 /**
  * A trend's points as a sheet for Excel (lead a27dfbb0f «Copy points»): its time in this screen's, its value as it is,
- * its side, the node that gave it (`keysOf` its keys) and its claim. A point at no time, no time.
+ * its side, the node that gave it (`keysOf` its keys) and its claim - none, an empty cell (lead 10-11: the key a point is
+ * told apart by is the page's own). A point at no time, no time.
  */
 export function pointsSheet(points, sides, keysOf) {
   return { head: ['time', 'value', 'side', 'node', 'claim_id'], rows: points.map((p) => [
     p.t === null || p.t === undefined ? '' : localStamp(new Date(p.t).toISOString()), isBlank(p.value) ? '' : valueWords(p.value),
-    p.group === null || p.group === undefined ? '' : sides[p.group] || '', keysOf(p), p.key || '']) };
+    p.group === null || p.group === undefined ? '' : sides[p.group] || '', keysOf(p), p.claim || '']) };
 }
 
 /**

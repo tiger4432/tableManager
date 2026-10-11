@@ -18,6 +18,7 @@ import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
 import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, valueKind, valueWords } from './reach_table.js';
 import { isBlank } from '../absent.js';
+import { walkPoints } from './trend.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -53,6 +54,10 @@ export const NOT_WALKED = 'not in this walk';
  *  «라우트는 술어만»). A hop reached by two predicates says both. */
 export const routeWords = (path) => path.hops.slice(1).map((hop) => (hop.predicates || []).join(' / ')).join(' → ');
 
+/** The paths the server walked to each node it ranked - an answer's evidence - by node id. The route cells and the
+ *  graph's branch (lead 10-11 G-2) read them here. */
+export const walkedPaths = (result) => new Map((((result && result.propagation) || {}).ranked || []).map((row) => [row.id, row.evidence || []]));
+
 /**
  * How a side reached a node and who gave a value, read off one walk's answer (leads df11f9e81 B, 99ed68cb7 C):
  *   route(g, id)   the paths the server walked to `id` from side g's starts - its evidence - a start «start»
@@ -62,7 +67,7 @@ export const routeWords = (path) => path.hops.slice(1).map((hop) => (hop.predica
  * The table's cells and the trend's points read both here.
  */
 export function valueSources(result, entities, groups) {
-  const walked = new Map((((result && result.propagation) || {}).ranked || []).map((row) => [row.id, row.evidence || []]));
+  const walked = walkedPaths(result);
   const nodes = new Map(((result && result.nodes) || []).map((n) => [n.id, n]));
   const route = (g, id) => {
     if (g.starts.includes(id)) return { text: STARTED };
@@ -226,11 +231,15 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     const columnHeads = columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`);
     const heads = [...columnHeads, ROUTE];
     // The columns a trend reads (lead 10-11 E2c): the steps' as they stand, then the node's own, numbers first - a scheme
-    // whose value is its node's own (a measurement a node) trends it as one whose value rides an edge.
+    // whose value is its node's own (a measurement a node) trends it as one whose value rides an edge - each only when a
+    // read of it in this section has a time, read as the trend reads it (lead 10-11: a button that draws nothing is
+    // wrong); a row's own keys and name say no time, so they never enter.
+    const timed = (column) => ids.some((x) => walkPoints(index, groups, x, column).some((p) => p.t !== null));
     const own = centre.map((column, i) => ({ column, head: column.words.join(' · '),
       number: valueKind(ownCells.flatMap((cells) => cells[ownAt[i]].values)) === 'number' }));
     const trendable = [...columns.map((column, i) => ({ column, head: columnHeads[i] })),
-      ...[...own.filter((x) => x.number), ...own.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }))];
+      ...[...own.filter((x) => x.number), ...own.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }))]
+      .filter(({ column }) => timed(column));
     const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
     const said = rows.map((node, r) => {
       const row = table[r];
