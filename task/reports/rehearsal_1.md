@@ -1,10 +1,11 @@
 # 리허설 1 회차 · 10-12 새벽 (판 6d8fb50ea → 닫은 판 0da6617b1)
 
 ```
-남은 실패 수     3 — 모두 C2, 닫은 판 0da6617b1 (walk-DWbl2RU1.js · server/ 는 6d8fb50ea 와 같음)
-                (b) + · − 쌍의 넓은 쪽 0.5 아래 5 쌍 (① 판, 0.42 ~ 0.49 — 머리 이름 몫이 칸 글자보다 넓음)
-                (d) Add here · More 뒤 기존 열 폭이 바뀜 (Add here 3 열 · Δ 21 열 새로 · More 1 열 · 14 열 새로)
-                (e) 노드 키 잘림 — quantity 의 core_cmp_nonuniform · tape_adhesion_anomaly, defect 구역 키(59 ~ 69 자) 전부
+남은 실패 수     1 — C2 (e) 노드 키 잘림 (총괄 고치는 중, 2 회차에서 다시) · 닫은 판 0da6617b1 (walk-DWbl2RU1.js)
+                총괄 판정 뒤: (b) 기준 «열 폭 ≤ max(칸 글자, 머리 몫) × 2» — ① 의 5 쌍은 통과(예 core_cmp_nonuniform 99.4 ≤ 135)
+                    다만 400 판 die 구역 2 열(폭 52.6 · 칸 15.6 · 머리 글자 몫 7.1)이 공식에 걸림 — 그 폭은 머리 ▾ 단추 19 px + 여백이 정하는 최소 폭 (물음으로 올림)
+                (d) Add here · More 는 새 답이라 다시 정하는 것이 설계 — × 뒤 원래 폭: Add here 147 열 · More 54 열 모두 같음 → 통과
+                (e) quantity 21 자 키 둘(core_cmp_nonuniform · tape_adhesion_anomaly) 잘림 → 실패, defect 합성 키(59 ~ 69 자) 말줄임은 정상
                 통과: C2 (a) Δ 0 · (c) 노드 열 0 · 정렬 · 거르기 · 체크 전후 0 · Graph 를 Walk 전에 눌러도 요청 = 바
                       fanout 재현(76874c4e9): 고리 → Walk on from here → Walk 의 요청 = 바 · C3 · 공백 값
 통과한 마지막 판  없음 (실패 3) · 앞 회차 0 은 dist 8bb437718 에서 누른 단계만 통과
