@@ -1,7 +1,10 @@
 # 리허설 2 회차 · 10-12 새벽 (판 6d7256519 = 코드 516319b65)
 
 ```
-남은 실패 수     (진행 중)
+남은 실패 수     1 · 판 6d7256519 (코드 516319b65) — 브랜치 백필 셈이 거른 행을 «안 번역됨»으로 셈
+                (rp500g link_candidates: 백필 ok 뒤에도 «rows not yet translated 1», 초안 보기도 1 — 총괄: exclude_when 으로 빠진 행, 구현자 고침 중)
+통과한 마지막 판  516319b65 (1 회차) — 2 회차는 위 1 건 말고 전부 통과
+소유자 7 가지    노드 고르면 창 닫힘 · 컬럼 꿀렁임 · 컬럼 너무 넓음 · Types 와 구역 수 불일치 · More +0 · 체크하면 스크롤 튐 · 스티키 바구니 — 전부 통과(아래 C1 · C2 · C4 · C5 줄)
 판              18766 = origin/main 6d7256519 의 server/ 전부 + client2/dist (스크래치 줄 1 만 다름) · 04:43:55 다시 띄움
                 «[Schema] no drift» · 기동 뒤 Traceback 0 · 번들 walk-PGYP5dJ-.js
 도구            앱 내장 브라우저 · 실제 마우스 클릭 · 글자 입력 (셀렉트 · Limits 칸 · through 체크만 폼 입력)
@@ -36,3 +39,9 @@ C2 기준          a Δ ≥ 0.5 · b 열 폭 ≤ max(칸 글자, 머리 몫(▾ 
 | C4 · ③h More | + SYN-BW-103-11 만 · node_limit 400 · default → More → × | 400 · 437 · Cut · 구역 = Types · More 800 · 구역 = 새 답(최대 200) · × 로 돌아감 · × 뒤 원래 폭 | «Nodes 400 · Edges 437» · «Cut · nodes 400 More» · Types defect 188 · die 179 · quantity 32 · wafer 1 = 구역 · C2 a 0 · b 0(46 열) · c 0 · e: defect 키 188 말줄임 + title 188, 다른 구역 0 · More → 요청 하나 `positive · node_limit=800` · «Nodes 738 · Edges 1538» · 잘림 없음 · 구역 wafer 31 · die 200(461) · quantity 46 · defect 199 · defect_kind 1 · 칩 +30 · +21 · +14 · +11 · +1 · × → 400 판 · 54 열 폭 그대로 · 새 요청 0 | 통과 |
 | C8 | + SYN-BW-103-11 · collect wafer · through in_container + bonded_from 만(2 of 18) | 코어 웨이퍼 · 엣지 · claims · 잘림 | 요청 `follow=bonded_from · follow=in_container · collect=wafer` · «Nodes 31 (collect: wafer) · Edges 461 (all) · 0.5 s» · 코어 웨이퍼 30 · 3 홉 · claims_scanned 464 · 잘림 없음 | 통과 |
 | C7 고리 · fanout | collect 없음 · through All · hops 1 → Walk → Graph → 고리 노드 마우스로 → Walk on from here → Walk | 48 중 47 · + 바구니로 · 요청 0 · 그 뒤 Walk = 바의 요청 | 요청 `id · hops=1` · «Nodes 212 · Edges 249» · 그려진 48 · 고리 47 · «dashed = walked up to here» · + 칩 «SYN-BW-103-11 / 2 / 3 / Wafer» · 요청 0 · Walk → `id · positive · positive · hops=1` (fanout 없음) · «Nodes 212 · Edges 249» | 통과 |
+| 모델링 브랜치 백필 | 어드민 소급 «Translate the rows not yet in the ledger» · source=link_candidates · world=rp500g → count → run → 확인창 run → 18766 은 스케줄러가 없어 run_queued_once | count 가 0 이 됨 | 실행 전 «rows not yet translated 1 · exact» (표 4 · 색인 3) · POST run 200 (270cee0bd445) · 결과 ok · rows_read 1 · inserted 0 · refused 0 · 실행 뒤 count 다시 1 (표 4 · 색인 3) | **실패** — 거른 행(exclude_when)을 셈이 «안 번역됨»으로 셈 |
+| 모델링 걷기 · 그림 칸 | default + rp500g · physical_process plasma_clean + (목록에서 마우스로) · Walk → ▣ 머무름 | plasma_clean → bond_temp → void · ▣ · /api/image 0 → 1 | «Nodes 3 · Edges 2 · 0.2 s» · plasma_clean −leads_to→ bond_temp (dir down) · bond_temp −leads_to→ void (dir up) · 둘 다 rp500g · ▣ 4 «http://127.0.0.1:18766/favicon.svg» · 그릴 때 /api/image 0 · 머무름 1 · 미리보기 48 px | 통과 |
+| 복사 | plasma_clean 줄의 Copy key | 보이는 키 | text/plain «plasma_clean» · title «Copied» | 통과 |
+| ⑪ 세상별 Re-translate | 메인 그리드 link_candidates 2 행(마우스 · shift) → Re-translate → Open in admin → 줄 8 | 줄 40 · 폼 넷 | 줄 40 (rp500 · rp500e · rp500f · rp500g × 칸) · «40 groups from the grid» · 폼 source=link_candidates · scope_column=phenomenon_key · scope_values=bond_temp,void · world=rp500 | 통과 (실행 안 함) |
+| 초안 보기 | Ontology Explorer → fake_measures Edit draft / 브랜치 rp500g → link_candidates Edit draft | 200 | view 200 · plan 200 «Sources 1 · rows not yet translated 0» / view world=rp500g 200 · plan 200 «Sources 1 · rows not yet translated 1» | 통과 (1 은 위 백필 셈 결함과 같은 것) |
+| 공백 값 | 메인 그리드 trd_txt T3 value 더블클릭 → «a  b» → Apply → Re-translate «default · trd_txt_src · event_id» → run_queued_once → 걷기 wafer TRD-W-001 → 끝나고 «4.5» 로 되돌림 | 공백 둘이 그대로 | 실행 ok · withdrawn 2 · inserted 2 · «Nodes 19 · Edges 18» · 노드 칸 «a  b» white-space: pre · 21.2 px (공백 하나 18.1 px) · 되돌림 ok | 통과 |
