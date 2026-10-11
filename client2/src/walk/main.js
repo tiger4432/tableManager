@@ -298,8 +298,6 @@ export function boot(doc, host, deps) {
   // Walk follows the baskets as they change, not only when the page redraws.
   let goButton = null;
   markings.subscribe(START, () => { if (goButton) setDisabledReason(goButton, goReason()); });
-  /** The graph walks the start marking as it stands. */
-  const showGraph = (opts) => { graph.show(opts); };
   /** The graph on the chosen branch (lead 5ea461e04), the table's own answers drawn, nothing walked (lead 10-11 G-2): the
    *  form walk's, then each step's down the branch, each from the starts it walked; a step before the last only its
    *  paths to the next one's starts, the last its whole answer. The same branch drawn already is not drawn again; with
@@ -366,8 +364,9 @@ export function boot(doc, host, deps) {
   /** The walk from the start marking as it stands - a Walk press, and a world picked (lead 10-09). */
   async function walkStarts() {
     if (!markings.count(START)) return;
-    // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
-    if (state.view === 'graph') { showGraph(); return; }
+    // ⚰️ «The graph walks its marking and nothing else» retired 10-12 (lead, rehearsal: after the graph's «Walk on from
+    //    here» Walk sent the graph's own ask - fan-out 20, no hops, no node_limit): Walk is the bar's ask on either view,
+    //    the graph draws its answer.
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
     // One + start alone is asked by its type and keys, as the form asked it (walk_layout L7 · L8: the request does not change).
     const starts = seedsOf(markings.entries(START));
@@ -395,6 +394,7 @@ export function boot(doc, host, deps) {
       state.reason = resB && !resB.ok ? `${CONTROL_WORD} · ${resB.message || UNKNOWN}` : (res && res.message) || UNKNOWN;
     }
     render();
+    if (state.view === 'graph' && state.run === 'done') await showBranch();
   }
 
   // ── the table's steps (lead 53050a4ec), a tree (lead 5ea461e04): the form's walk is step 0, each Next a child of

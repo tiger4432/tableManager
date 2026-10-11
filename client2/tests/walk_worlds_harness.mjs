@@ -103,6 +103,39 @@ async function seen(M) {
   };
   out.many = await facts(['w1', 'default']);
   out.one = await facts(['w1']);
+  // ── the graph's «Walk on from here», then Walk (lead 10-12 rehearsal: Walk sent the graph's own ask - fan-out 20, no
+  //    hops, no node_limit): a node into the + basket and nothing else; Walk is the bar's ask, hops 1 as the bar has it ──
+  {
+    const urls = [];
+    const body = JSON.parse(JSON.stringify(fx('walk_start_die.json')));
+    const doc = makeDoc('light');
+    doc.head = doc.createElement('head');
+    const host = doc.createElement('div');
+    doc.body.appendChild(host);
+    const fetchImpl = async (url) => { urls.push(String(url)); return { ok: true, status: 200,
+      json: async () => (String(url).includes('/declaration') ? { ...DECL, entities: GRAPH_DECL.entities } : body) }; };
+    const wpage = M.page.boot(doc, host, { apiBase: '', fetchImpl });
+    await settle();
+    wpage.state.type = body._start.type;
+    wpage.state.keys = { ...body._start.keys };
+    wpage.state.hops = '1';
+    wpage.render();
+    wpage.baskets.add(1);
+    await wpage.fire();
+    await settle();
+    const graphView = walkAll(host).find((n) => n.attrs && n.attrs['data-view'] === 'graph');
+    if (graphView) graphView.dispatch('click', {});
+    await settle();
+    const far = body.nodes.find((n) => n.id === body.edges[0].target) || {};
+    wpage.graph.walkOn({ id: far.id, label: far.label, type: far.type, keys: far.keys });
+    const before = urls.length;
+    await wpage.fire();
+    await settle();
+    const sent = urls.slice(before).filter((u) => u.includes('/subgraph')).map((u) => new URLSearchParams(u.split('?')[1] || ''));
+    out.walkOn = { view: wpage.state.view, starts: wpage.graph.markings.entries('walk-start').length,
+      sent: sent.map((q) => ({ hops: q.get('hops'), node_limit: q.get('node_limit'), fanout: q.has('fanout_limit'), positive: q.getAll('positive').length })),
+      limit: String(M.page.NODE_LIMIT) };
+  }
   // ── a world picked on a walked page: walked again there, the same starts, no leaving (lead 10-09) ──
   {
     const urls = [];
@@ -174,6 +207,8 @@ function suite(out) {
       out.switch.walk.length > 0 && out.switch.walk.every((t) => t === 'world=default&world=w1')],
     [[['default', 'w1']], true, true]);
   eq('X1 ...with the same form and the same signed starts', out.switch.same, true);
+  eq('G1 the graph\'s «Walk on from here» then Walk: two + starts, one walk, the bar\'s ask - hops 1, node_limit, no fan-out the bar has not (lead 10-12)',
+    out.walkOn, { view: 'graph', starts: 2, sent: [{ hops: '1', node_limit: out.walkOn.limit, fanout: false, positive: 2 }], limit: out.walkOn.limit });
   return { ran: names.length, names, failures };
 }
 
@@ -208,6 +243,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    if (state.run !== 'idle' || markings.count(START)) await walkStarts();\n", '') },
   { id: 'W8', what: 'a world picked leaves the seat on the old worlds', catches: 'V9', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '    worlds = worldList(names);\n', '') },
+  { id: 'W9', what: 'Walk on the Graph view sends the graph\'s own ask again, not the bar\'s', catches: 'G1', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, '    if (!markings.count(START)) return;\n', "    if (!markings.count(START)) return;\n    if (state.view === 'graph') { graph.show(); return; }\n") },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;
