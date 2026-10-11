@@ -254,6 +254,18 @@
 >
 > ---
 >
+> ## [10-11] **소급 강제 종료 — `stop_retroactive.bat` 더블클릭 (소유자 「강종 단축 스크립트」, 착지 {LANDING}) — 이주 «없음» · 재기동 «없음»**
+>
+> ```
+> 돌릴 것     저장소 맨 위 stop_retroactive.bat 더블클릭 -> 목록 -> y
+> 답의 뜻     <run_id> -> failed     주인 프로세스를 끄고 풀었음 · 뒤에 기다리던 줄은 스케줄러 다음 틱에 돎
+>            <run_id> -> cancelled  아직 시작 전이던 줄
+>            No retroactive run is queued or running.  풀 것이 없음 — 큐가 안 빠지면 다른 원인
+> 한 줄만     stop_retroactive.bat <run_id>
+> ```
+>
+> ---
+>
 > ## [10-11] **파일 다시 읽기 안전판 — 상한 · 넘기기 전 상태 · 취소 (총괄, 소유자 「다시 읽기 잘못 걸었다가 … 서버 뻗었어」, 착지 d7cde17c2) — 이주 «없음»(새 표 file_reread_marks 는 기동이 만듦) · 재기동 «서버»**
 >
 > ```

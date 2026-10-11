@@ -197,6 +197,7 @@
 
 ### 명령
 
+- 2026-10-11 [소급 강제 종료 — 더블클릭 한 번](#2026-10-11--소급-강제-종료--더블클릭-한-번) — 명령 `stop_retroactive.bat`
 - 2026-10-10 [원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 읽지 않게](#2026-10-10--원장-ref-해시-인덱스--거두기-한-장이-원장-전체를-읽지-않게) — 명령 `python server/scripts/build_ledger_ref_index.py`
 - 2026-10-03 [table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다](#2026-10-03--table_config-를-다시-쓰는-스크립트-둘이-운영자가-적은-칸을-지우지-않는다) — 명령 `python server/scripts/install_product_tables.py --overwrite-drift` · `python server/scripts/table_config_from_schema.py --merge`
 - 2026-10-02 [표 통째로 비우기 — 행 · 칸 층 · 원장 원자를 한 번에](#2026-10-02--표-통째로-비우기--행--칸-층--원장-원자를-한-번에) — 명령 `python server/scripts/empty_table.py`
@@ -297,6 +298,14 @@
 - 2026-09-29 ~ 10-01 [이번 주 고친 것 — 소유자가 신고한 화면](#2026-09-29--10-01--이번-주-고친-것--소유자가-신고한-화면)
 
 ---
+
+## 2026-10-11 · 소급 강제 종료 — 더블클릭 한 번
+
+- **무엇** — 소유자 「강종 단축 스크립트 하나 배치 파일로」 · 「curl 하고 난리났네, 쉬운 거」. 저장소 맨 위 `stop_retroactive.bat` 를 더블클릭하면 큐에 남은 소급 실행을 보여 주고, «y» 한 번에 이 PC 의 그 실행 프로세스를 끄고 큐 줄을 풉니다. 토큰 · curl 없음.
+- **화면에서** — 검은 창에 `run_id  op  state  runner=…  last progress=…` 줄들 → `Stop these N run(s)? [y/N]` → 줄마다 `<run_id> -> failed`(또는 대기 중이던 줄은 `cancelled`).
+- **하는 일** — 이 PC 의 실행 프로세스(`retroactive/<host>/<pid>`)는 끄고 하트비트를 지운 뒤 화면 × 와 같은 취소를 부름(주인 없는 줄 → failed). 그래도 남는 줄은 RUN.md 의 «최후 수단» UPDATE 와 같은 것을 함 — 사유 `released by hand (stop_retroactive)`. 한 줄만: `stop_retroactive.bat <run_id>`.
+- **필요한 조건** — 없음(pull 만). 커밋된 쪽은 그대로 남고, 다시 돌리면 남은 것만 합니다.
+- **자세히** — `server/scripts/stop_retroactive.py` · RUN.md 같은 절.
 
 ## 2026-10-11 · 파일 다시 읽기 안전판 — 상한 · 넘기기 전 상태 · 취소
 
