@@ -1,3 +1,15 @@
+> ## [16:12 디자인] G-2b 착지 — 트렌드 기본 열 · 글자 숫자 · 고를 열 없음 · «+ Column» · 목록 값 시각(⑬) 61a006f73 (총괄 G-2 덧붙임, W 덧붙임 2 의 13)
+
+- **무엇** — 구획 Trend 는 «값을 말하는 열»(변 · 노드 속성, 키 · 이름 아님) 중 그 구획에서 시각 있는 읽기가 있는 것만 고르고, 숫자 열을 앞에 둬 첫째로 엽니다. 숫자로 읽히는 글자 값은 숫자(trend.numberOf 하나 — fold_views 에서 옮김, table_view 도 그걸 부름). 고를 열이 없으면 Trend 가 «No value with a time» 로 꺼짐. «+ Column» 은 Trend 중에도 그 구획에.
+- **⑬** — valueAt 이 노드 속성의 시각 기록을 «같은 객체인가»로 찾던 것을 reach_table.sameValue(항목으로 견줌) 하나로. tableOf 의 «두 쪽 값이 다른가»도 같은 함수를 지남.
+- **픽스처** — 응용 재현을 18766 기본 세상에서 GET 으로 떠서 그대로: walk_mev_18766.json(TRD-W-001 · mev_num · mev_txt · mev_noat · mev_key), walk_pev_many_18766.json(TRD-W-101 · pev_many E1 · E2).
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built walk page as a probe copy, /assets/walk-1kJngLIB.js, 1920x1080, 18766 default world, GET only): wafer TRD-W-001 - the toggles mev_num on, mev_txt on, mev_noat off «No value with a time», mev_key off «No value with a time»; mev_num's Trend «mev_num · 4 · value», its columns value · param, 4 dots, axis 1.5 · 3 · 4.5; mev_txt's «mev_txt · 4 · value», 4 dots, axis 1.5 · 3 · 4.5; «+ Column» in the section during both. wafer TRD-W-101 - pev_many's Trend «pev_many · 2 · point», 2 dots (E1 · has_pevent · E2 · has_pevent), its columns point · value, the list one word lane «p5 · p4 · p3 · p2 · p1». Writes 0.
+- **게이트** — trend 72 with --mutate --control (TN1 a value as a number; SC5 the 18766 repros as fixtures walk_mev_18766.json - mev_num value then param, mev_txt value, mev_noat none, mev_key none, mev_num with a text value still value first, a key added at a step's end not offered; SC6 the page: mev_txt's Trend on value with «+ Column», noat and key off and said, a wafer with that key opening on measures · value; SC7 P2-many walk_pev_many_18766.json - point and value each a timed point an event; SCm6-SCm9 TNm1 TNm2 red; SCm2 SCm5 TM4 re-aimed); reach_table 38 (R21 a list found by its items, two groups saying it not differing; FM20 red; FM18 FM19 re-aimed); fold_views 19 (R1 Rm2 moved to trend as TN1 TNm1); subgraph_view 348, walk_table 181 with --mutate --control; screen gate 252 with --mutate.
+- **남은 것** — pev_many 는 이제 점 2(이벤트마다 하나)지만 값이 목록이라 한 점에 목록 전체가 글자 한 줄로 앉고, 목록은 숫자가 아니어서 point 열로 엶. 항목마다 점 · point 로 계열 나누기는 W ⑭ 의 «Split by».
+- **이 착지에 G-2 b3564af83 도 실림** — 그 보고는 아래 G-2 항목.
+
+다음: W.
+
 > ## [14:47 디자인] G-2 착지 — 그래프 = 표의 답, 걷기 0 · 갈래 상한 · (가) · claim 빈칸 · 시각 있는 열만 b3564af83 (총괄 G-2 ②)
 
 - **무엇** — Graph 보기가 고른 갈래를 표가 받은 답으로 그림(걷기 0). 앞 스텝은 다음 스텝 시작까지의 증거 경로만(fold_views.pathsAnswer — lumpAnswer 와 narrowed() 하나를 나눔, 증거 읽기는 table_view.walkedPaths 하나), 마지막 스텝은 답 전체. 스텝 시작 읽기는 askedStarts 하나(renderTable 의 같은 사본도 그걸 부름).
