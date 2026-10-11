@@ -1,3 +1,11 @@
+> ## [20:35 디자인] W 1 회귀 Control · B 착지 9a6a59fd8 — 칸이 범례 색 · 노드 칸의 길이 두 걷기를 이름 붙여 한 줄로 (총괄 10-11, 응용 대본 ③f)
+
+- **원인 ①** — 대조 색과 W 1 의 쪽 띠가 같은 무게, 띠가 styles.js 뒤에 있어 이김. 대조 색을 띠 뒤로.
+- **원인 ②** — routeCell 이 B 의 길을 «sources» 둘째 줄에 실었는데 W 1 노드 칸은 그 칸을 안 그림. routeCell 한 자리가 닿은 걷기마다 이름 붙여 한 줄(«A … · B …», «B …», «A + B …»). 한 줄이라 두 줄 높이(S4) 그대로, 전부는 title.
+- **탐침** — Probe (the built-in pane, the built walk page /assets/walk-CWo9azvd.js on 5176 to the application box, worlds default and appdemo_vf, + defect_kind void, follow the 12 predicates of the script, Control · B leads_to, node_limit 1000, collect quantity, GET only): quantity · 35 - A only 17 | A + B 15 | B only 3; the cells ab rgb(230, 244, 236) =legend, b rgb(253, 236, 236) =legend; B-only rows' way B leads_to · B leads_to → leads_to; A + B rows' way A of_kind → observed → in_container → measures · B leads_to. Shot in the lane's scratch (ctl_18766_1568.png). An A + B row's line is one line (17 px, cut with an ellipsis); its title the two ways whole: «A of_kind → observed → in_container → measures · B leads_to». Writes 0 (the one non-GET refused was the probe's own result POST).
+- **게이트** — walk_table 184 with --mutate --control (ZD3 the way's new words; DM4 re-aimed: the way says only A's, caught); screen gate walk.html 146 with --mutate - a «Control · B» step (leads_to on the demo pair) and its cell «control colours» at 1280x720 · 1536x864 · 1568x775 · 1896x907 · 1920x950, its mutant (the side bands over the control colours again) caught; the two answers it asks captured with capture_screens.py (GET, in process). The registry's screen floor stays its every-screen count.
+- **그대로 둔 것** — collect 없이 걸으면 표 행 상한 200(1 + 18 + 181)에서 quantity 가 18 줄로 끊김(총괄: 그대로, 대본은 collect quantity).
+
 > ## [20:04 디자인] 선언 폼 작은 둘 착지 3d198d208 · chain_rule_user_path 앵커 d01cadde0 (총괄 10-11 작은 둘 · ② (나) · 총괄 «클라 몫»)
 
 - **① note** — 계획의 note 를 그리는 자리 하나(noteOf)를 펼친 카드 · 접힌 줄 · 접힌 가지 줄이 지납니다. 펼친 가지는 자기 계획 줄이 note 를 말하므로 어느 상태에서나 한 번씩. 빈 새 소스 폼(서버 empty_declaration + authoring_plan 캡처 authoring_new_source_plan.json): 펼친 그대로 Time 의 note 1 · zone 0(접힘 뒤), Time 을 펴면 1 · 1.

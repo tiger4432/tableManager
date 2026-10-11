@@ -196,8 +196,6 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-long td.wk-minus { color: var(--wk-minus); }
 /* Which walk reached a row (lead 99ed68cb7 D): a stripe at the cell's left and a light ground - A + B green, B alone red;
    A alone none. The three counts above the table say the same. */
-.wk-table td.is-ctl-ab { box-shadow: inset 3px 0 0 var(--success); background: var(--success-weak); }
-.wk-table td.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }
 .wk-reached { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--wk-fs-line); }
 .wk-reachedside { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-reachedn { padding: 0 var(--space-2); }
@@ -267,6 +265,9 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   background: color-mix(in srgb, var(--text) 8%, var(--bg-surface)); color: var(--text); font-weight: 600; }
 .wk-sides td.wk-plus { background: color-mix(in srgb, var(--wk-plus) 7%, var(--bg-surface)); }
 .wk-sides td.wk-minus { background: color-mix(in srgb, var(--wk-minus) 7%, var(--bg-surface)); }
+/* After the sides' bands, so a cell B reached wears the legend's colour, not its side's. */
+.wk-table td.is-ctl-ab { box-shadow: inset 3px 0 0 var(--success); background: var(--success-weak); }
+.wk-table td.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }
 .wk-sides td.wk-delta { color: var(--text-dim); }
 /* Δ beside the node (34d91c09d (나)): a line closes the axis before the − side. */
 .wk-sides th.wk-delta, .wk-sides td.wk-delta { border-right: 1px solid var(--border-strong); }

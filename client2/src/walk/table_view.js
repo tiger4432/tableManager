@@ -254,7 +254,16 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   // B reached the node on this side: Route says B's path a line more; a value only B brought says B's source.
   const byB = (g, id) => Boolean(g && g.b && g.b.has(id));
   const sources = { route: own.route, keys: own.keys, source: (g, id) => (byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
-  const routeCell = (g, id) => (byB(g, id) ? { ...own.route(g, id), sources: [`B · ${sourcesB.route(g, id).text}`] } : own.route(g, id));
+  // The node's way, one line: with a control walk each walk that reached it says its own, named - A's, then B's; the same
+  // way by both once (lead 10-11 W 1 regression: a B-only row said «—»).
+  const routeCell = (g, id) => {
+    if (!g.b) return own.route(g, id);
+    const one = (w) => `${w.text}${w.rest ? ` ${w.rest}` : ''}`;
+    const ways = [[g.a, 'A', own], [g.b, 'B', sourcesB]].filter(([by]) => by.has(id)).map(([, word, from]) => ({ word, ...from.route(g, id) }));
+    const same = ways.length === 2 && one(ways[0]) === one(ways[1]);
+    return { text: same ? `A + B ${one(ways[0])}` : ways.map((w) => `${w.word} ${one(w)}`).join(' · '),
+      values: ways.flatMap((w) => (w.values || [w.text]).map((v) => `${w.word} ${v}`)) };
+  };
   // A node a row: one row whichever groups reached it.
   const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
   const shown = members.slice(0, cap);

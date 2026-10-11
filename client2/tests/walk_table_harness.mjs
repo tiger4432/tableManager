@@ -1224,11 +1224,11 @@ const sideSuite = (TV) => {
   const sDie = sides.sections.find((x) => x.type === 'die@1') || { rows: [] };
   const sRow = (id) => sDie.rows.find((r) => r.id === id) || { routes: [] };
   const sRoute = (id, sign) => { const w = sRow(id).routes.find((x) => x.sign === sign) || {}; return [w.text, w.sources || null]; };
-  ok('ZD3 two baskets, each side its own: d:3 A + B on + and A only on −, d:5 B only on −; the node\'s route says B\'s path a line more; a value only B brought, B\'s source',
+  ok('ZD3 two baskets, each side its own: d:3 A + B on + and A only on −, d:5 B only on −; the node\'s way names each walk that reached it, on one line; a value only B brought, B\'s source',
     JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', '+'), sRoute('d:3', '−'), sRoute('d:5', '−'),
       srcOf(sides, 'die@1', 'd:5', GATE_IN, 1), srcOf(sides, 'die@1', 'd:3', GATE_IN, 0)])
-      === JSON.stringify([[{ a: 2, ab: 1, b: 0 }, { a: 2, ab: 0, b: 1 }], ['ab', 'a'], [null, 'b'], ['inspected', ['B · leads_to']],
-        ['inspected', null], [TV.EMPTY, ['B · leads_to → inspected']], ['B · W5 · leads_to'], ['A · start']]),
+      === JSON.stringify([[{ a: 2, ab: 1, b: 0 }, { a: 2, ab: 0, b: 1 }], ['ab', 'a'], [null, 'b'], ['A inspected · B leads_to', null],
+        ['A inspected', null], ['B leads_to → inspected', null], ['B · W5 · leads_to'], ['A · start']]),
     JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', '+'), sRoute('d:3', '−'), sRoute('d:5', '−'),
       srcOf(sides, 'die@1', 'd:5', GATE_IN, 1), srcOf(sides, 'die@1', 'd:3', GATE_IN, 0)]));
   // Two number cells in one group: each its own Δ.
@@ -1463,8 +1463,8 @@ const TV_MUTANTS = [
     from: '  const walked = control ? mergeWalks(result, control) : result;', to: '  const walked = result;' },
   { id: 'DM3', what: 'a side coloured by the + side\'s B', catches: 'ZD3',
     from: 'reachedBy(g.a.has(node.id), g.b.has(node.id))', to: 'reachedBy(g.a.has(node.id), groups[0].b.has(node.id))' },
-  { id: 'DM4', what: 'no B line under Route', catches: 'ZD3',
-    from: 'sources: [`B · ${sourcesB.route(g, id).text}`] }', to: 'sources: [] }' },
+  { id: 'DM4', what: 'the node\'s way says only A\'s - a B-only row «—» (the W 1 regression)', catches: 'ZD3',
+    from: "[[g.a, 'A', own], [g.b, 'B', sourcesB]]", to: "[[g.a, 'A', own]]" },
   { id: 'DM5', what: 'a value only B brought says A\'s source', catches: 'ZD3',
     from: 'byB(g, id) && !g.a.has(id) ?', to: 'false ?' },
   { id: 'DM6', what: 'no B, rows said reached anyway', catches: 'ZD2',
