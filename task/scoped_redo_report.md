@@ -79305,3 +79305,38 @@ fold-units  origin/main 에 그 낱말 0 (카나리아 fold-rows 3). 이 CLI 의
 진짜 프로세스 · 샷(줄 글자의 쪽 줄이 맵퍼 rows_in 자리를 대신하는지)은 응용께
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
 ```
+
+## [10-11] LLM 프록시 칸 착지 218cd66f6 — 실패는 받은 줄 하나 + 거절 한 문장, 비밀번호 글자 0 (총괄 93570a1ea · ㄴ)
+
+```
+착지 218cd66f6 — 5 files changed, 92 insertions(+), 10 deletions(-)
+①  클라이언트 짓기를 try 안 맨 앞(ㄴ) — 못 지으면 _why 줄이 받은 줄 · 거절에. 보낸 줄이 없으면 받은 줄에 가려던 url(설정 base_url + chat/completions) · 가린 proxy
+②  _client: httpx 가 proxy 를 못 읽으면 그 문장을 안 냄 — «proxy in config/llm_config.json is not a URL httpx reads (<종류>): <가린 주소>», 사슬 끊음
+    (날것 «/» 는 호스트를 일찍 끝내 «Invalid port: '<비밀번호 앞머리>'» 였다)
+③  _redact_proxy 는 마지막 «@» — 부르는 곳 4 (git grep, 시험 밖):
+      server/internal_event_client.py:228:    parts = [f"{scheme}={_redact_proxy(url)}" for scheme, url in sorted(proxies.items())
+      server/utils/llm.py:116:                         % (CONFIG_FILE, type(exc).__name__, _redact_proxy(cells["proxy"]))) from None
+      server/utils/llm.py:173:    return " <- ".join(said) + " · proxy: " + (_redact_proxy(proxy) if proxy else "none (direct)")
+      server/utils/llm.py:187:    proxy = _redact_proxy(cells["proxy"]) if cells["proxy"] else None
+④  _why 의 __context__ 갈래 칸(메모해 둔 것) — except 안에서 from 없이 난 예외
+변이
+  RED the client is built before the try again — 3 failed, 84 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-slash], test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None], test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+  RED the redaction cuts at the first @ — 1 failed, 86 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-at]
+  RED httpx's own words about the proxy go out — 1 failed, 86 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-slash]
+  RED _why follows the cause only — 1 failed, 86 passed · test_a_failure_raised_while_handling_another_says_both
+  RED a received line with no sent line says no address — 1 failed, 86 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-slash]
+게이트 — LLM · 프록시 가림 · 사전 낱말을 부르는 시험 파일, 같은 base(9bf61eefd) 깨끗한 사본과, 비PG
+  files 16
+  wt-llm:   405 passed, 3 deselected in 28.84s
+  wt-check: 398 passed, 3 deselected in 28.85s
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+  PG pg files 1
+  PG 3 passed, 6 deselected in 5.73s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+리베이스 뒤(server/ 의 사전 제안 두 파일이 바뀜) 같은 목록 다시:
+  head 218cd66f6 · files 16
+  407 passed, 3 deselected in 28.88s
+어느 DB · 어느 스키마 · 지운 것: 임시 폴더의 설정 · 로그 · 격리 시험 DB(PG 한 파일) · public 전후 같음 · 지운 것 0
+```
