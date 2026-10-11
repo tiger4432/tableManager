@@ -37911,3 +37911,22 @@ dist      G-2 손이 안 섞인 트리에서 빌드 — G-2 가 커밋 안 된 �
 같은 커밋  RUN.md · RELEASE_LOG · CODE_MAP
 순서     층 원천 행마다 -> 이것
 ```
+
+> **[총괄 -> 클라] 10-11 오후 — W 덧붙임: 시안 대비 산출물 «부품 단위» 차이 11 (소유자 「너가 좀 보고 아티팩트랑 맞춰 보면 아티팩트 대비 산출물 너무 구려」) — 총괄이 screen_layout_harness --only walk.html --shots 로 찍은 main 화면(1568x775 · 1896x907) 대 시안 2판**
+
+```
+ 1 구역 머리     Table|Trend · Copy table · NEXT 줄 · + Column 이 «네 줄로 쌓임» -> 데이터 전에 세로 ~250 px      시안: 도구줄 한 줄 + 이어 걷기는 구역 맨 아래 한 줄
+ 2 단추 체계     네 모양이 섞임(테두리 네모 탭 · 점선 알약 · 테두리 사각 칩 · +N 거품)                       시안: 보기 고르기 = 분절 단추 · 동작 = 작은 단추 · 고른 것 = 알약 칩 — 높이 하나(28 px), 토큰 하나
+ 3 글꼴         UI 와 키 · 체크 글자에 서로 다른 글꼴 + 고정폭이 체크박스 이름까지                              시안: IBM Plex Sans 하나, 고정폭은 id · 길(출처 줄)에만 12.5 px
+ 4 줄 높이       값 + 출처 줄 + «+15» 거품으로 한 줄 ~80 px                                                    시안: ~44 px — +N 은 값 옆 작은 꼬리표
+ 5 결과 머리     Asked · As of · Cut 이 고정폭 세 줄 상자                                                      시안: 머리 한 줄(Nodes · Edges · 초 · Cut 이면 그 낱말) 흐린 글
+ 6 거르기        All rows · Differs · Missing 이 큰 단추 셋                                                    시안: 도구줄 안 작은 분절
+ 7 왼쪽 패널     FOLLOW 체크 13 + CONTROL · B 체크 13 이 늘 펼쳐짐                                              A-ㄱ 문장 바(through All N ▾ 안에)
+ 8 오른쪽 패널   POSITIVE · NEGATIVE 큰 «+ Add» 상자 둘이 폭 270 px 를 늘 먹음                                  A-ㄱ 의 From 칩 — 오른쪽 패널 은퇴, 표가 그 폭을 가짐
+ 9 잘림 🔴      1896x907 + 쪽 첫 칸의 «missing» 이 «ssing» 으로 잘림(바구니 머리 오른쪽 정렬과 칸 폭)            잘린 글자 0 — 하니스에 «잘린 글자» 칸
+10 값 열 🔴     wafer 구역의 measures 열 하나에 «계측군 16 개»의 값이 섞여 첫 값 + 15(step DIFFUSION · value 2 …) 시안 Wide: 값을 가진 엣지는 «건너편 노드마다» 열 묶음 — measures → bond_temp · value / measures → pressure_MPa · value … (건너편 노드 키가 열 이름의 일부)
+11 출처 줄       «o2_slm · measures» (건너편 키 · 술어)와 «SYN-CW-… · in_container → …»(준 노드 · 길)가 구역마다 다른 뜻    시안: 출처 = 값을 준 노드 · 그 쪽 시작에서의 길, 한 뜻
+게이트(덧붙임)  착지 보고에 «시안 | 산출물» 나란히 스샷(같은 크기 · 같은 데이터, 하니스 --shots) + 위 11 칸 표(맞음 / 다름 + 왜) — 총괄이 같은 표로 병합 전 대조
+                10 은 W 의 Wide 정의 자체 — «값 이름마다 열»은 «값을 실은 엣지면 (술어 · 건너편 노드 · 칸)마다 열»
+덤(서버 87a4fd5fc 뒤)  체인 규칙 저장 답의 notes(«top-level|derive cell this product does not read — <칸>») 를 저장 줄에 그림 — 지금 «Saved · chain worker not seen» 만
+```
