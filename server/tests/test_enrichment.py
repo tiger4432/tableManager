@@ -210,7 +210,8 @@ def test_loader_missing_required_fields_skipped():
     raw = {
         "no_derived": {k: v for k, v in _base_rule().items() if k != "derived_table"},
         "no_key": _base_rule(decision_key=[]),
-        "no_target": _base_rule(target_fields=[]),
+        # no field and no aggregation (총괄 10-11 ㄴ: no field WITH aggregations stands)
+        "no_target": _base_rule(target_fields=[], aggregations={}),
     }
     assert validate_rules(raw, known_tables=KNOWN) == []
 

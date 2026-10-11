@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-11 [decide 가 사람 칸 없이 선다 — 키마다 행 하나에 키와 집계만](#2026-10-11--decide-가-사람-칸-없이-선다--키마다-행-하나에-키와-집계만) — 적는 곳 `chain_rules.json`
 - 2026-10-11 [사전 키우기 — 낱말 주머니 · 다시 맞추기 · 제안 표](#2026-10-11--사전-키우기--낱말-주머니--다시-맞추기--제안-표) — 적는 곳 `chain_rules.json` · `table_config.json`
   - 2026-10-11 [사전 키우기 — 새 노드 제안이 타입도 고른다](#2026-10-11--사전-키우기--새-노드-제안이-타입도-고른다) — 적는 곳 제안 맵퍼의 사전 SQL
 - 2026-10-11 [LLM 후보 뽑기 — 원인 · 현상의 증감 방향](#2026-10-11--llm-후보-뽑기--원인--현상의-증감-방향) — 적는 곳 `table_config.json` · `ledger_config.json`
@@ -291,6 +292,15 @@
 - 2026-09-29 ~ 10-01 [이번 주 고친 것 — 소유자가 신고한 화면](#2026-09-29--10-01--이번-주-고친-것--소유자가-신고한-화면)
 
 ---
+
+## 2026-10-11 · decide 가 사람 칸 없이 선다 — 키마다 행 하나에 키와 집계만
+
+- **무엇** — 총괄 ㄴ (소유자의 계측 이벤트 맵핑 표 — key [step_seq, item_id] · n count · 사람 칸 없음). decide 선언은 사람이 채울 칸(`fields`)이 비면 서지 않았습니다. 이제 `aggregations` 가 있으면 `fields` 를 비우거나 안 적어도 섭니다 — 키마다 파생 행 하나에 키와 집계만 씁니다.
+- **선언 예시** — `chain_rules.json`: `{"name": "<이름>", "on": {"table": "<원천 표>", "require": ["<키 칸>", …]}, "into": {"table": "<파생 표>"}, "derive": {"kind": "decide", "decide": {"key": ["<키 칸>", …], "fields": [], "aggregations": {"<집계 칸>": "count"}}}}` — 파생 표 `table_config` 의 키는 decide 의 키(전처럼).
+- **화면에서** — 워크리스트에 그 규칙의 행이 안 뜹니다(사람이 할 일 0). 표는 그리드에서 보입니다.
+- **필요한 조건** — 서버 · 체인 워커 재기동.
+- **바뀐 동작** — `fields` 도 `aggregations` 도 없는 decide 의 거절 문장이 「'target_fields' is empty, so 'aggregations' must be declared - a derived row with neither carries nothing but its key」 로 바뀝니다(전엔 「'target_fields' must be a non-empty list of column names」). 칸이 있는 decide 는 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · [enrichment_rules](../guide/config/enrichment_rules.md) 키 표.
 
 ## 2026-10-11 · 외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다
 

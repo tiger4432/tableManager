@@ -250,6 +250,19 @@
 >
 > ---
 >
+> ## [10-11] **decide 가 사람 칸 없이 선다 — fields 가 비면 aggregations 로 (총괄 ㄴ, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 적는 곳      chain_rules.json 의 derive.decide — "fields": [] (또는 안 적음) + "aggregations": {"<칸>": "count"}
+> 답          키마다 파생 행 하나에 키와 집계만. 사람이 채울 칸이 없어 워크리스트에 안 뜬다(queue 0 · resolved 전부)
+> 거절        fields 도 aggregations 도 없으면 로드 · 저장에서
+>            「'target_fields' is empty, so 'aggregations' must be declared - a derived row with neither carries nothing but its key」
+> 쓰임새      계측 이벤트 맵핑 표 — key [step_seq, item_id] · aggregations {"n": "count"} · fields []
+> 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동 (fields 없는 decide 는 다시 거절됨)
+> ```
+>
+> ---
+>
 > ## [10-11] **외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다 (소유자 「*/raw/**/*.jpg 되게 해」, 착지 053d7858f) — 이주 «없음» · 재기동 «수집기»(따로 띄우면 run_watcher, 아니면 서버)**
 >
 > ```
