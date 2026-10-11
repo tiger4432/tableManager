@@ -357,6 +357,12 @@ for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell', 'L
   // The S cells read the table: none is drawn on the graph.
   for (const [rule, expr] of WALK_LOOK) if (!(after === 'Graph' && /^S\d/.test(rule))) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
 }
+CELLS.push({ entry: 'walk.html', after: 'A row ticked mid-table', rule: 'place kept', at: 'wk-page', expr: `(() => {
+  const was = window.__place, main = document.querySelector('.wk-main'), table = document.querySelector('.wk-sec table.wk-wide');
+  if (!was || !was.ticked || !was.top) return 'no row ticked mid-table (' + JSON.stringify(was) + ')';
+  if (main.scrollTop !== was.top || table.scrollLeft !== was.left) return 'scrolled ' + was.top + ' · ' + was.left + ', after the tick ' + main.scrollTop + ' · ' + table.scrollLeft;
+  return null;
+})()` });
 // A cell B reached wears its legend chip's colour, not its side's band (lead 10-11, the W 1 regression).
 CELLS.push({ entry: 'walk.html', after: 'Control · B', rule: 'control colours', at: 'wk-page', expr: `(() => {
   const cells = [...document.querySelectorAll('table.wk-wide td.is-ctl-ab, table.wk-wide td.is-ctl-b')];
@@ -808,6 +814,14 @@ const DRIVE = {
       await press(c, 'Walk');
       await until(c, "document.querySelector('.wk-reachedn')");
     }],
+    // A row ticked deep in a long table keeps the reader's place (owner 10-11 «체크할 때마다 상단으로 스크롤 초기화하지 마»).
+    ['A row ticked mid-table', (c) => evaluate(c, `(() => {
+      const main = document.querySelector('.wk-main'), table = document.querySelector('.wk-sec table.wk-wide');
+      main.scrollTop = Math.floor((main.scrollHeight - main.clientHeight) / 2); table.scrollLeft = 40;
+      const rows = [...main.querySelectorAll('input[data-row]')].filter((b) => b.getBoundingClientRect().top > 0);
+      window.__place = { top: main.scrollTop, left: table.scrollLeft, ticked: Boolean(rows[0]) };
+      if (rows[0]) rows[0].click();
+      return true; })()`).then(() => sleep(300))],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
@@ -1014,6 +1028,8 @@ const MUTANTS = [
     file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); }', '.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }']] },
   { name: 'table cells padded --space-2 --space-3 again', entry: 'walk.html', rule: 'S3 table cells', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; }']] },
+  { name: 'a tick throws the reader back to the top', entry: 'walk.html', rule: 'place kept', at: 'wk-page',
+    file: 'src/walk/main.js', edits: [['    main.scrollTop = place.top;\n', '']] },
   { name: 'the side bands over the control colours again', entry: 'walk.html', rule: 'control colours', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-table td.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }',
       '.wk-table td.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }\n'

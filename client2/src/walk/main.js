@@ -43,6 +43,7 @@ import { rowsPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, 
 import { TrendView } from './trend_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
+import { localStamp } from '../server_time.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
 import { SubgraphView, seedsOf } from './subgraph_view.js';
 import { pathsAnswer } from './fold_views.js';
@@ -185,6 +186,8 @@ export function boot(doc, host, deps) {
   // The two parts this page seats: the form rail and the result. Made once and kept across renders.
   const rail = el(doc, 'div', 'wk-rail');
   const main = el(doc, 'div', 'wk-main');
+  // Each section's table as last drawn, by its type: a redraw puts its sideways scroll back.
+  const tableBoxes = new Map();
   // Made once and kept across renders (`render` empties the host); it walks through the same wire.
   const markings = new MarkingStore();
   const graphMount = el(doc, 'div', 'wk-graph');
@@ -1143,7 +1146,11 @@ export function boot(doc, host, deps) {
       if (section.reached) sec.append(reachedLine(section));
       if ((state.added.get(section.type) || []).length || state.picking === section.type) sec.append(columnPicker(section, view.index));
       if (trended) renderTrend(sec, view, r);
-      else sec.append(shapeOf(section.type) === 'long' ? longTable(view, section, checks) : wideTable(view, section, checks));
+      else {
+        const table = shapeOf(section.type) === 'long' ? longTable(view, section, checks) : wideTable(view, section, checks);
+        tableBoxes.set(section.type, table);
+        sec.append(table);
+      }
       // Walk on from the rows checked, the section's last line (lead 10-11 W).
       if (checks) sec.append(nextRow(at, section, checks));
       box.append(sec);
@@ -1292,7 +1299,7 @@ export function boot(doc, host, deps) {
       }
       // 🔴 S-13: «기준 시각». 위의 수들이 「지금」이 아니라 «그때»의 것입니다.
       if (r.generatedAt) {
-        box.append(el(doc, 'div', 'wk-note', `As of ${String(r.generatedAt)}`));
+        box.append(el(doc, 'div', 'wk-note', `As of ${localStamp(r.generatedAt)}`));
       }
       // ⚠️ 절단은 «말합니다». 🔴 «자른 축»을 씁니다 — `reason` 을 그대로 쓰면 다 걸은 답에도 depth 가 실립니다.
       if (r.cut) {
@@ -1326,6 +1333,10 @@ export function boot(doc, host, deps) {
   }
 
   function render() {
+    // A redraw keeps the reader's place (owner 10-11 «체크할 때마다 상단으로 스크롤 초기화하지 마»): the result's scroll, and
+    // each section's table its sideways scroll, by the section's type.
+    const place = { top: main.scrollTop, left: main.scrollLeft, tables: new Map([...tableBoxes].map(([type, t]) => [type, t.scrollLeft])) };
+    tableBoxes.clear();
     host.textContent = '';
     rail.textContent = '';
     main.textContent = '';
@@ -1358,6 +1369,9 @@ export function boot(doc, host, deps) {
     // The baskets read the form's picked node for their «+»: drawn with the page.
     baskets.render();
     host.append(rail, main, sideMount);
+    main.scrollTop = place.top;
+    main.scrollLeft = place.left;
+    for (const [type, table] of tableBoxes) if (place.tables.has(type)) table.scrollLeft = place.tables.get(type);
   }
 
   /** A type picked: the box asks its first nodes, and its answer names the key the box stands for. */
