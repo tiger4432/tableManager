@@ -119,6 +119,29 @@ def test_each_record_says_its_own_sources_column(declared):
         (SOURCE, "image"), (OTHER, None)], records
 
 
+def test_one_name_bound_to_two_columns_of_two_types_in_one_source_says_none(declared):
+    """The source reads `event_type` from the image column in one sentence (inherited) and from `lot` (text) in
+    another (the role says its own) - one name, two types: no type, so no mark. Asked of the seat too, since a seat
+    that picked one of the two would mark half the time."""
+    from ledger.setup import declared_value_type
+
+    document = _declared()
+    document_registered = _document(registered_wafer=True)
+    document_registered["entities"] = document["entities"]
+    document_registered["sources"][SOURCE]["bind"]["entities"] = document["sources"][SOURCE]["bind"]["entities"]
+    document_registered["sources"][SOURCE]["bind"]["mappings"]["wafer-registered"]["bind"]["subject"]["attributes"] = {
+        "event_type": {"kind": "column", "column": "lot"}}
+    atoms = declared(document_registered, event_type="image", lot="TEXT")
+    setup = worker._compiled_setup(None)
+    bound = {sentence: mapping.bindings for sentence, mapping in setup.snapshot.source_plans[SOURCE].profile.mappings.items()}
+    assert (bound["seat-holds-wafer"]["target"]["attributes"]["event_type"]["column"],
+            bound["wafer-registered"]["subject"]["attributes"]["event_type"]["column"]) == ("event_type", "lot"), \
+        "CANARY: the one source binds the name to two columns"
+    assert declared_value_type(setup, SOURCE, "event_type") is None
+    records = _wafer(_walk(atoms))["records"]["event_type"]
+    assert records and {r.get("column_type") for r in records} == {None}, records
+
+
 def test_an_edge_qualifier_read_from_an_image_column_says_so_on_the_edge_and_its_records(declared):
     atoms = declared(_declared(as_qualifier=True), event_type="image", lot="TEXT")
     body = _walk(atoms)
