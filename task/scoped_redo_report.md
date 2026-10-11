@@ -79438,3 +79438,15 @@ fold-units 소급 탭 문장 a88909467 — downstream_note 에 «끝 철회는 �
   (프로브: 바구니 값의 (세상, 소스, 이름) 15 가지 중 위 열둘이 void_observation · process_param_*_measure — 셋 다 계획 없음)
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · 격리 시험 DB(PG) · 박스 assy_manager 읽기 전용 · public 전후 같음 · 지운 것 0
 ```
+
+## [10-11] 이미지 참조 — «한 이름이 두 타입 칸» 칸 착지 e7ba6640f (총괄, c5463a475 뒤)
+
+```
+칸   한 소스가 event_type 을 한 문장에선 image 칸(상속), 다른 문장에선 lot(text, 역할이 스스로)으로 읽음 -> 좌석 None · 표시 0
+     카나리아: 컴파일된 bind 가 그 이름을 칸 둘(event_type · lot)에 묶었는지
+     좌석을 직접 묻는다 — 둘 중 하나를 고르는 좌석은 집합 pop 순서에 따라 절반만 표시해 걷기 칸으로는 초록일 수 있다
+변이(총괄의 것 — 칸 타입 둘일 때 하나를 고름), 해시 씨앗 셋
+  RED the seat picks one of two types (hash seed 0) — 1 failed, 4 deselected
+  RED the seat picks one of two types (hash seed 1) — 1 failed, 4 deselected
+  RED the seat picks one of two types (hash seed 2) — 1 failed, 4 deselected
+```
