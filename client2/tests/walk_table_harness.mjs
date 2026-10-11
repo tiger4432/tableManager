@@ -416,7 +416,7 @@ async function suite(mod) {
     click(walkAll(host).find((e) => e.className === 'wk-go'));
     await settle();
     click(walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === q.id));
-    click(walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === 'measures ← wafer'));
+    click(walkAll(host).find((e) => e.className === 'wk-next-edge' && e.attrs['data-route'] === 'measures ← wafer'));
     await settle();
     const b = tableOf();
     const askB = asked[asked.length - 1];
@@ -591,7 +591,7 @@ async function suite(mod) {
     const steps = (h) => walkAll(h).filter((e) => /^wk-step( is-on)?$/.test(e.className || ''));
     const rowsShown = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']);
     eq('N1 the Next of the die section is the declaration\'s edges one step from die@1, both kinds, each its arrow (lead 10-11 W)',
-      edges(host).map((e) => e.textContent).join(' | '), 'inspected@1 ← wafer@1 | bonded_to@1 → die@1');
+      edges(host).map((e) => e.attrs['data-route']).join(' | '), 'inspected@1 ← wafer@1 | bonded_to@1 → die@1');
     press(edges(host)[1]);
     await settle();
     ok('N2 nothing checked: every edge is off with its reason, and a press asks nothing',
@@ -601,7 +601,7 @@ async function suite(mod) {
     const marked = handle.graph.markings.signOf('walk-2', 'n:1');
     ok('N3 a checked row is the page\'s marking the graph reads (walk-2), and the edges come on',
       marked === SIGN.CASE && edges(host).every((e) => e.disabled === false), String(marked));
-    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
     await settle();
     const q = new URLSearchParams((asked[0] || '').split('?')[1] || '');
     ok('N4 a press walks one step from the checked row alone, along that edge to its type',
@@ -613,7 +613,7 @@ async function suite(mod) {
         && steps(host)[1].textContent === 'Step 2 · bonded_to@1 → die@1' && rowsShown(host).join() === 'n:1,n:4',
       `${steps(host).map((s) => s.textContent)} ${rowsShown(host)}`);
     tick(host, 'n:4');
-    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
     await settle();
     const third = steps(host).length;
     press(steps(host)[0]);
@@ -626,7 +626,7 @@ async function suite(mod) {
     press(steps(host)[steps(host).length - 1]);
     for (let k = 0; k < 3; k += 1) {
       tick(host, 'n:4');
-      press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+      press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
       await settle();
     }
     tick(host, 'n:4');
@@ -638,7 +638,7 @@ async function suite(mod) {
     const later = NAMES().slice(1);
     press(steps(host)[1]);
     tick(host, 'n:1');
-    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
     await settle();
     ok('CH2 step two walked on again: the steps after it go and so do their markings; the new step a name never used',
       handle.state.steps.length === 2 && later.every((name) => handle.graph.markings.count(name) === 0)
@@ -673,7 +673,7 @@ async function suite(mod) {
     same.state.result = { nodes: [startNode], edges: [] };
     same.render();
     tick(sameHost, SAME._start.id);
-    press(edges(sameHost).find((e) => e.textContent === `${SAME._predicate} → ${SAME._start.type}`));
+    press(edges(sameHost).find((e) => e.attrs['data-route'] === `${SAME._predicate} → ${SAME._start.type}`));
     await settle();
     const sideOf = (d) => new Set(SAME._answers[d].nodes.map((n) => n.id).filter((id) => id !== SAME._start.id));
     const [outSide, inSide] = [sideOf('outgoing'), sideOf('incoming')];
@@ -720,7 +720,7 @@ async function suite(mod) {
     handle.render();
     const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn(); };
     const tick = (id) => { const cb = walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === id); for (const fn of (cb && cb.listeners.click) || []) fn({}); };
-    const next = (words) => walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === words);
+    const next = (words) => walkAll(host).find((e) => e.className === 'wk-next-edge' && e.attrs['data-route'] === words);
     const tab = (id) => walkAll(host).find((e) => e.attrs && e.attrs['data-step'] === String(id));
     const tabs = () => walkAll(host).filter((e) => e.className === 'wk-steprow')
       .map((row) => row.children.map((b) => `${b.textContent}${b.className.includes('is-on') ? ' *' : ''}`));
@@ -1432,6 +1432,42 @@ const sideSuite = (TV) => {
   ok('Z31 two paths walked to one node: the first and «+N», every one kept (the nine\'s several values)',
     JSON.stringify([core.text, core.rest, core.values]) === JSON.stringify([BONDING, '+1',
       [BONDING, STACKING]]), JSON.stringify(core));
+  // Add here and More (lead 10-11 W addenda 5, 6): a walk merged into the step by mergeWalks - from s:a (+ only), s:b (−
+  // only) and d:3 (both): d:7 on +, d:8 on −, d:9 on both, the existing d:1 a − value; More from the deepest node.
+  const path1 = (seed, id, predicate) => ({ seed, hops: [{ id: seed }, { id, predicates: [predicate] }] });
+  const dn = (id, depth) => ({ id, type: 'die@1', label: id.toUpperCase(), depth, keys: { mat_id: id.toUpperCase() } });
+  const ADD = { nodes: [SIGNED.nodes[0], SIGNED.nodes[2], SIGNED.nodes[5], dn('d:7', 1), dn('d:8', 1), dn('d:9', 1), SIGNED.nodes[3]],
+    edges: [be('s:a', 'inspected', 'd:7', { gate: 5 }), be('s:b', 'inspected', 'd:8', { gate: 6 }), be('s:b', 'inspected', 'd:1', { gate: 4 }),
+      be('d:3', 'bonded_to', 'd:9', { gate: 3 })],
+    propagation: { ranked: [['d:7', 's:a', 'inspected'], ['d:8', 's:b', 'inspected'], ['d:1', 's:b', 'inspected'], ['d:9', 'd:3', 'bonded_to']]
+      .map(([id, seed, p]) => ({ id, evidence: [path1(seed, id, p)] })) } };
+  const MORE_ANSWER = { nodes: [SIGNED.nodes[5], dn('d:9', 1), dn('d:10', 1)],
+    edges: [be('d:3', 'bonded_to', 'd:9', { gate: 3 }), be('d:3', 'bonded_to', 'd:10', { gate: 8 })],
+    propagation: { ranked: ['d:9', 'd:10'].map((id) => ({ id, evidence: [path1('d:3', id, 'bonded_to')] })) } };
+  const addOf = (answer, seeds, words) => ({ words, seeds, answer });
+  const add = addOf(ADD, ['s:a', 's:b', 'd:3'], 'walk on · inspected → die@1');
+  const withAdds = (adds) => TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), {}, null, adds);
+  const one = withAdds([add]);
+  const BONDED = 'bonded_to ← die@1 · gate';
+  const addDie = one.sections.find((x) => x.type === 'die@1') || { rows: [], adds: [] };
+  const routes = (id) => ((addDie.rows.find((r) => r.id === id) || { routes: [] }).routes).map((w) => `${w.sign} ${w.text}`);
+  ok('AH1 Add here: d:7 + only, d:8 − only, d:9 both with its shared start, d:1 its − value; «+3 from walk on»; the same walk twice no row more; × leaves the rest',
+    JSON.stringify([rowIds(one), cell(one, 'die@1', 'd:7', GATE_IN, 0), cell(one, 'die@1', 'd:7', GATE_IN, 1), cell(one, 'die@1', 'd:8', GATE_IN, 0),
+      cell(one, 'die@1', 'd:8', GATE_IN, 1), cell(one, 'die@1', 'd:1', GATE_IN, 1), cell(one, 'die@1', 'd:9', BONDED, 0), cell(one, 'die@1', 'd:9', BONDED, 1),
+      routes('d:7'), routes('d:9'), addDie.adds, rowIds(withAdds([add, add])), rowIds(withAdds([])), rowIds(view(SIGNED_STARTS))])
+      === JSON.stringify([`${ALL},d:7,d:8,d:9`.split(',').sort().join(','), '5', '[missing]', '[missing]', '6', '4', '3', '3',
+        ['+ inspected'], ['+ bonded_to · via shared M-3', '− bonded_to · via shared M-3'], [{ at: 0, words: add.words, n: 3 }],
+        `${ALL},d:7,d:8,d:9`.split(',').sort().join(','), ALL, ALL]),
+    JSON.stringify([rowIds(one), cell(one, 'die@1', 'd:7', GATE_IN, 0), cell(one, 'die@1', 'd:7', GATE_IN, 1), cell(one, 'die@1', 'd:8', GATE_IN, 0),
+      cell(one, 'die@1', 'd:8', GATE_IN, 1), cell(one, 'die@1', 'd:1', GATE_IN, 1), cell(one, 'die@1', 'd:9', BONDED, 0), cell(one, 'die@1', 'd:9', BONDED, 1),
+      routes('d:7'), routes('d:9'), addDie.adds, rowIds(withAdds([add, add]))]));
+  const moreAdd = addOf(MORE_ANSWER, TV.deepestNodes ? TV.deepestNodes(SIGNED) : [], 'More');
+  const union = new Set([...SIGNED.nodes, ...ADD.nodes, ...MORE_ANSWER.nodes].map((n) => n.id));
+  const both = withAdds([add, moreAdd]);
+  ok('MO1 More from the deepest node (d:3): merged rows = the union; × on Add here leaves More\'s',
+    JSON.stringify([moreAdd.seeds, both.shown, rowIds(withAdds([moreAdd]))])
+      === JSON.stringify([['d:3'], union.size, `${ALL},d:10,d:9`.split(',').sort().join(',')]),
+    JSON.stringify([moreAdd.seeds, both.shown, union.size, rowIds(withAdds([moreAdd]))]));
 };
 // ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
 const filterSuite = (TV) => {
@@ -1749,6 +1785,8 @@ const TV_MUTANTS = [
     from: "const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');", to: "const reachedBy = (inA, inB) => (inA ? 'a' : inB ? 'b' : 'ab');" },
   { id: 'DM2', what: 'B\'s nodes not merged into the rows', catches: 'ZD1',
     from: '  const walked = control ? mergeWalks(result, control) : result;', to: '  const walked = result;' },
+  { id: 'AHM1', what: 'an Add here or More answer overwrites the step instead of merging', catches: 'AH1',
+    from: '  const merged = adds.reduce((graph, add) => mergeWalks(graph, add.answer), walked);', to: '  const merged = adds.reduce((graph, add) => add.answer, walked);' },
   { id: 'DM3', what: 'a side coloured by the + side\'s B', catches: 'ZD3',
     from: 'reachedBy(g.a.has(node.id), g.b.has(node.id))', to: 'reachedBy(g.a.has(node.id), groups[0].b.has(node.id))' },
   { id: 'DM4', what: 'the node\'s way says only A\'s - a B-only row «—» (the W 1 regression)', catches: 'ZD3',

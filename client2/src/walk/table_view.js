@@ -274,6 +274,14 @@ export function mergeWalks(a, b) {
   return { ...a, nodes: once('nodes'), edges: once('edges') };
 }
 
+/** Where «More» walks on from a cut answer (lead 10-11 W addendum 5): the answer names no node it left unexpanded, only
+ *  each node's depth - the nodes at the deepest depth it reached; none past its starts, none. */
+export function deepestNodes(answer) {
+  const nodes = (answer && answer.nodes) || [];
+  const depth = Math.max(0, ...nodes.map((n) => Number(n.depth) || 0));
+  return depth > 0 ? nodes.filter((n) => Number(n.depth) === depth).map((n) => n.id) : [];
+}
+
 /** Δ in words: signed, ten significant digits (a float's tail is not a difference anyone measured). */
 export function deltaWords(delta) {
   if (delta === null || delta === undefined) return '';
@@ -294,16 +302,27 @@ export function deltaWords(delta) {
  * @param {{off?: Map<string, Set<string>>, open?: Map<string, Set<string>>}} [fold]  by type, the columns and groups
  *        Columns turned off (a node's own column by columnKey, a group by groupKey) and the groups opened past their
  *        number cells (lead 10-11 W addendum 8)
+ * @param {Array<{words: string, seeds: string[], answer: object}>} [adds]  walks merged into this step (lead 10-11 W
+ *        addenda 5, 6: «Add here», «More»), in order: each start's side read off the groups, a node it brought on its
+ *        starts' sides
  * @returns {{sections: Array, shown: number, hidden: number, groups: Array, unsplit: boolean}}
  */
 export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
-  fold = {}, control = null) {
+  fold = {}, control = null, adds = []) {
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
   const walked = control ? mergeWalks(result, control) : result;
-  const nodes = (walked && walked.nodes) || [];
+  // Each addition merged by the same merge; the step's rows keep their order, what an addition brought after them.
+  const merged = adds.reduce((graph, add) => mergeWalks(graph, add.answer), walked);
+  const before = new Map(((walked && walked.nodes) || []).map((n, i) => [n.id, i]));
+  const brought = new Map();
+  adds.forEach((add, k) => ((add.answer && add.answer.nodes) || []).forEach((n) => {
+    if (!before.has(n.id) && !brought.has(n.id)) brought.set(n.id, k);
+  }));
+  const nodes = [...((merged && merged.nodes) || [])].sort((a, b) => (before.has(a.id) ? before.get(a.id) : Infinity)
+    - (before.has(b.id) ? before.get(b.id) : Infinity) || 0);
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
-  const plural = pluralAttributes(walked);
+  const plural = pluralAttributes(merged);
   // C-98. 「무엇이 안 보이는 것이 무슨 뜻인가」의 모집단은 «선언»이라, 한 번 읽고 모든 구획이
   // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
   const confirmers = confirmedPredicates(predicates);
@@ -329,21 +348,42 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   const groupsB = control ? (ranked ? groupsOf(control, signs) || ranked.map((g) => ({ ...g, inside: new Set(g.starts) })) : one(control)) : null;
   const groups = groupsB ? groupsA.map((g, i) => ({ ...g, inside: new Set([...g.inside, ...groupsB[i].inside]),
     a: g.inside, b: groupsB[i].inside })) : groupsA;
+  // An addition's node joins the sides its starts stand on (lead 10-11 W addendum 6): a start + only its + cell, − only
+  // its − cell, both both - the starts read off the paths the addition walked to it, none said: all its starts.
+  const addSources = adds.map((add) => valueSources(add.answer, entities, groups));
+  const addPaths = adds.map((add) => walkedPaths(add.answer));
+  const seedsTo = (k, id) => {
+    const from = adds[k].seeds.includes(id) ? [id] : [...new Set((addPaths[k].get(id) || []).map((p) => p.seed))];
+    return from.length ? from : adds[k].seeds;
+  };
+  adds.forEach((add, k) => ((add.answer && add.answer.nodes) || []).forEach((n) => {
+    for (const g of groups) if (seedsTo(k, n.id).some((s) => g.inside.has(s))) g.inside.add(n.id);
+  }));
   // A far end the answer did not send (collect) is still a node of its type and keys - read off its id, as its source
   // words are (lead 10-11): a column group needs its type and name. It is no row: rows are the answer's nodes.
   const sent = new Set(nodes.map((n) => n.id));
-  const unsent = [...new Set(((walked && walked.edges) || []).flatMap((e) => [e.source, e.target]))].filter((id) => !sent.has(id))
+  const unsent = [...new Set(((merged && merged.edges) || []).flatMap((e) => [e.source, e.target]))].filter((id) => !sent.has(id))
     .map((id) => ({ id, ...(entityOfId(id) || {}) })).filter((n) => n.type)
     .map((n) => ({ ...n, label: Object.values(n.keys || {}).map(valueWords).join(' / ') || n.id }));
-  const index = indexGraph({ ...walked, nodes: [...nodes, ...unsent] });
+  const index = indexGraph({ ...merged, nodes: [...nodes, ...unsent] });
   const own = valueSources(result, entities, groups);
   const sourcesB = control ? valueSources(control, entities, groups) : null;
+  // A node an addition brought: its way from that addition's starts on the side, a start both sides hold said by name.
+  const addRoute = (g, id) => {
+    const k = brought.get(id);
+    const starts = adds[k].seeds.filter((s) => g.inside.has(s));
+    const way = addSources[k].route({ starts }, id);
+    const shared = groups.length > 1 ? starts.filter((s) => seedsTo(k, id).includes(s) && groups.every((h) => h.inside.has(s))) : [];
+    return shared.length ? { ...way, text: `${way.text} · via shared ${shared.map(addSources[k].keys).join(', ')}` } : way;
+  };
   // B reached the node on this side: Route says B's path a line more; a value only B brought says B's source.
   const byB = (g, id) => Boolean(g && g.b && g.b.has(id));
-  const sources = { route: own.route, keys: own.keys, source: (g, id) => (byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
+  const sources = { route: own.route, keys: own.keys, source: (g, id) => (g && brought.has(id) ? `${addSources[brought.get(id)].keys(id)} · ${addRoute(g, id).text}`
+    : byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
   // The node's way, one line: with a control walk each walk that reached it says its own, named - A's, then B's; the same
   // way by both once (lead 10-11 W 1 regression: a B-only row said «—»).
   const routeCell = (g, id) => {
+    if (brought.has(id)) return addRoute(g, id);
     if (!g.b) return own.route(g, id);
     const one = (w) => `${w.text}${w.rest ? ` ${w.rest}` : ''}`;
     const ways = [[g.a, 'A', own], [g.b, 'B', sourcesB]].filter(([by]) => by.has(id)).map(([, word, from]) => ({ word, ...from.route(g, id) }));
@@ -437,6 +477,9 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       heading: sectionHeading(type, rows.length),
       groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
       reached: groups[0].b ? groups.map((g, i) => countReached(said.map((row) => row.reached[i]).filter(Boolean))) : null,
+      // The additions that reached this type, each the rows it brought (lead 10-11 W addendum 5: «+N from walk on»).
+      adds: adds.map((add, at) => ({ at, words: add.words, n: rows.filter((node) => brought.get(node.id) === at).length }))
+        .filter(({ at }) => ((adds[at].answer && adds[at].answer.nodes) || []).some((n) => n.type === type && !adds[at].seeds.includes(n.id))),
       // A value column's own head, by the index its cells carry (`col`).
       columnHeads,
       // The heads in rows (lead 34d91c09d (나), W): a column's group - its step and far end - once over its columns with

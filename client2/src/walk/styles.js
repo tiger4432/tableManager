@@ -207,6 +207,14 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-next-edge { height: var(--wk-h-small); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
 .wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }
+/* A Walk on's route and its two presses, New step and Add here; the walks merged into a step, each its × (lead 10-11 W
+   addendum 5). */
+.wk-next-route { display: inline-flex; align-items: center; gap: var(--space-1); margin-right: var(--space-2); }
+.wk-next-words { font-size: var(--wk-fs-line); }
+.wk-adds { display: flex; flex-wrap: wrap; gap: var(--space-2); font-size: var(--wk-fs-line); }
+.wk-addchip { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-radius: 999px;
+  color: var(--accent); background: var(--accent-weak); border: 1px solid var(--accent); }
+.wk-trunc > .wk-more { margin-left: var(--space-2); font-family: var(--wk-font); }
 /* The steps walked; a press shows that step's table, the shown one lit. */
 .wk-steps { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-2) 0; }
 .wk-steprow { display: flex; flex-wrap: wrap; gap: var(--space-2); }
