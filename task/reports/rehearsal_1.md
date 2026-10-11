@@ -1,7 +1,13 @@
-# 리허설 1 회차 · 10-12 새벽 (판 6d8fb50ea → 닫은 판 0da6617b1)
+# 리허설 1 회차 · 10-12 새벽 (판 6d8fb50ea → 닫은 판 516319b65)
 
 ```
-남은 실패 수     1 — C2 (e) 노드 키 잘림 (총괄 고치는 중, 2 회차에서 다시) · 닫은 판 0da6617b1 (walk-DWbl2RU1.js)
+통과한 마지막 판  516319b65 (walk-PGYP5dJ-.js · server/ 는 6d8fb50ea 와 같음) — 시연 직전 되돌릴 판
+남은 실패 수     0
+                (e) 516319b65: ③ 판 quantity 노드 열 217 px · core_cmp_nonuniform 135/135 · tape_adhesion_anomaly 147/147 · 잘림 0
+                    400 판 quantity 201 px · core_cmp_nonuniform 다 보임 · defect 326 px(36ch) · 키 59 ~ 69 자 188 개 말줄임 + title 188
+                    (b) 새 기준 400 판 46 열 중 걸림 0 · (a) 0 · (c) 0
+                한 가지 본 것: «+ Add start» 창이 열린 채면 그 창이 세상 칩 자리를 덮어 칩을 눌러도 창이 받음 — 창을 닫으면 정상
+이전 줄 (0da6617b1 에서 남았던 것) — C2 (e) 노드 키 잘림 · 닫은 판 0da6617b1 (walk-DWbl2RU1.js)
                 총괄 판정 뒤: (b) 기준 «열 폭 ≤ max(칸 글자, 머리 몫) × 2» — ① 의 5 쌍은 통과(예 core_cmp_nonuniform 99.4 ≤ 135)
                     400 판 die 구역 2 열(폭 52.6)은 머리 ▾ 단추 + 여백을 머리 몫에 넣어 셈(총괄 판정) → 400 판 46 열 중 걸림 0
                 (d) Add here · More 는 새 답이라 다시 정하는 것이 설계 — × 뒤 원래 폭: Add here 147 열 · More 54 열 모두 같음 → 통과
