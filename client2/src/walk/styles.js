@@ -279,6 +279,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }
 .wk-table .wk-val, .wk-table .wk-centrelabel, .wk-table .wk-src { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .wk-table .wk-valline > .wk-tag, .wk-table .wk-valline > .wk-copyid { flex: none; }
+/* A value as Copy gives it (owner 10-12: the cell hid spaces Copy had) - its spaces drawn, one line, cut, whole in its title. */
+.wk-valline > .wk-val, .wk-valline > .wk-centrelabel, .wk-long td { white-space: pre; }
 /* A head's «▾» at its right edge, out of the words' way: a long head is cut, its filter stays. */
 .wk-table th.wk-sortable { padding-right: var(--wk-h-small); }
 .wk-table th > .wk-colfilter { position: absolute; top: var(--space-1); right: 0; }

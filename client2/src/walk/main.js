@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT } from './table_view.js';
+import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -53,7 +53,7 @@ import { StartBaskets, BASKET_WORDS } from './start_baskets.js';
 import { NodeSearch, SEARCH_LIMIT } from './node_search.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
-// Copy id (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
+// Copy key (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
 import { writeClipboardRich } from '../clipboard_write.js';
 import { entitySeedId } from '../rnd_board/api.js';
 // An image reference's value (server c5463a475): the main grid's image cell and its one preview (lead 191912ce2).
@@ -1171,8 +1171,12 @@ export function boot(doc, host, deps) {
         const label = cell.image !== undefined ? valueSpan(cell.image, true, cell.text) : el(doc, 'span', 'wk-centrelabel', cell.text);
         label.title = cell.text;
         line.append(label);
-        // The id is picked, not read (lead 5cf5c3401): an icon on the first centre cell, shown with its row (34d91c09d 5).
-        if (i === 0) line.append(copyIdButton(row.id));
+        // The keys picked, not read (lead 5cf5c3401): an icon on the first centre cell, shown with its row (34d91c09d 5) -
+        // its key cells as Copy has them, a tab between (owner 10-12: the internal id it copied said nothing).
+        if (i === 0) {
+          const keys = row.centre.filter((_, k) => section.centre[k] && section.centre[k].value.on === 'key');
+          line.append(copyKeyButton(row.id, (keys.length ? keys : [cell]).map(copyWords).join('\t')));
+        }
         c.append(line);
         // How each side reached the node (lead 10-11 W: the Route column retired), once when they say the same: its first
         // route and «+N», every route in its title.
@@ -1282,16 +1286,16 @@ export function boot(doc, host, deps) {
     return table;
   }
 
-  /** The id behind an icon on its row (lead 5cf5c3401, 34d91c09d 5); clipboard_write puts it on the clipboard. */
-  function copyIdButton(id) {
+  /** A row's keys behind an icon (lead 5cf5c3401, 34d91c09d 5); clipboard_write puts them on the clipboard. */
+  function copyKeyButton(id, keys) {
     const copy = el(doc, 'button', 'wk-copyid');
     copy.type = 'button';
     copy.setAttribute('data-id', id);
-    copy.setAttribute('aria-label', 'Copy id');
-    copy.title = 'Copy id';
+    copy.setAttribute('aria-label', 'Copy key');
+    copy.title = 'Copy key';
     copy.append(el(doc, 'span', 'wk-copyicon'));
     copy.addEventListener('click', () => {
-      if (!writeClip('', id)) return;
+      if (!writeClip('', keys)) return;
       copy.className = 'wk-copyid is-done';
       copy.title = 'Copied';
       copy.setAttribute('aria-label', 'Copied');

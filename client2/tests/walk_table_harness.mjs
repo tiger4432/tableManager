@@ -998,8 +998,8 @@ async function suite(mod) {
     ok('Z27 a group said once over its columns - its + cell, Δ and − cell (lead 10-11 W)',
       JSON.stringify(groupHeads()) === JSON.stringify([['inspected ← wafer@1 · gate', 3]]), JSON.stringify(groupHeads()));
     const copy = walkAll(rowOf('d:3') || { children: [] }).find((e) => e.className === 'wk-copyid');
-    ok('Z16 the id is behind a press in the node cell, not a column - an icon, its name for a reader (34d91c09d 5)',
-      Boolean(copy) && copy.attrs['data-id'] === 'd:3' && copy.textContent === '' && copy.attrs['aria-label'] === 'Copy id'
+    ok('Z16 the keys are behind a press in the node cell, the id not a column - an icon, its name for a reader (34d91c09d 5, owner 10-12)',
+      Boolean(copy) && copy.attrs['data-id'] === 'd:3' && copy.textContent === '' && copy.attrs['aria-label'] === 'Copy key'
       && !headTexts().flat().includes('id'), JSON.stringify([headTexts(), copy && copy.textContent]));
     const fire = (b) => { for (const fn of (b && b.listeners.click) || []) fn({ stopPropagation() {} }); };
     // Several values (34d91c09d 1, W): the first and a «+N» tag; pressed, a drawer under the row with each record and who
@@ -1132,6 +1132,34 @@ async function suite(mod) {
         && rule('.wk-table col') === 'width: var(--wk-col-value);' && rule('.wk-table col.wk-col-node') === 'width: var(--wk-col-node);'
         && /--wk-col-node: \S+; --wk-col-value: \S+;/.test(rule(':root')),
       JSON.stringify([before, after, rule('.wk-table'), rule('.wk-table col')]));
+  }
+  // ── what the cell shows is what Copy gives (owner 10-12): a value's spaces drawn; the node cell's icon its keys ──
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', writeClipboard, fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    const SPACED = '  M  1 ';
+    handle.state.type = 'die@1';
+    handle.state.run = 'done';
+    handle.state.result = { ...RESULT, nodes: RESULT.nodes.map((n) => (n.id === 'n:1' ? { ...n, keys: { ...n.keys, mat_id: SPACED } } : n)) };
+    handle.render();
+    const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
+    const clipped = (e) => { const at = CLIP.length; press(e); return CLIP.length > at ? CLIP[CLIP.length - 1].text : null; };
+    const dieSec = walkAll(host).filter((e) => e.className === 'wk-sec').find((sec) => /^die/.test(sec.children[0].textContent)) || { children: [] };
+    const rowOf = (id) => walkAll(dieSec).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id) || { children: [] };
+    const label = walkAll(rowOf('n:1')).find((e) => e.className === 'wk-centrelabel') || {};
+    const sheet = clipped(walkAll(dieSec).find((e) => has(e, 'wk-copytable'))) || '';
+    const rules = CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'));
+    const ruleFor = (sel) => rules.filter(([s, body]) => body && s.split(',').map((x) => x.trim()).includes(sel)).map(([, body]) => body).join(' ');
+    const kept = ['.wk-valline > .wk-val', '.wk-valline > .wk-centrelabel', '.wk-long td'].map((sel) => /white-space: pre;/.test(ruleFor(sel)));
+    ok('WS1 a value\'s spaces drawn: the node cell\'s text and title the value whole, the row Copy gives it so; the stylesheet keeps the spaces on one line in Wide\'s values and names and Long\'s cells (owner 10-12)',
+      label._text === SPACED && label.title === SPACED && sheet.split(LF).some((line) => line.split('\t')[0] === SPACED) && kept.every(Boolean),
+      JSON.stringify([label._text, label.title, sheet.split(LF).slice(0, 3), kept]));
+    const icon = (id) => walkAll(rowOf(id)).find((e) => e.className === 'wk-copyid');
+    const keys = [clipped(icon('n:1')), clipped(icon('n:2'))];
+    ok('CK1 the node cell\'s icon copies its keys as the cells show them, a tab between - a key not there empty - not the internal id (owner 10-12)',
+      JSON.stringify(keys) === JSON.stringify([`${SPACED}\t0\t12`, 'M-2\t3\t']), JSON.stringify(keys));
   }
   // ── sort · filter · bulk select on the page (lead 10-11 W addendum 7): what is drawn is what Copy, Trend, Walk on and the
   //    head check take ──
@@ -1846,6 +1874,8 @@ const MUTANTS = [
     from: "fold.addEventListener('click', () => { toggleGroup(section.type, p.group); render(); });", to: "fold.addEventListener('click', () => { render(); });" },
   { id: 'NZ10', what: 'Copy id in words again', catches: 'Z16',
     from: "copy.append(el(doc, 'span', 'wk-copyicon'));", to: "copy.append(el(doc, 'span', 'wk-copyicon', 'Copy id'));" },
+  { id: 'CKm1', what: 'the node cell\'s icon copies the internal id again', catches: 'CK1 ',
+    from: "line.append(copyKeyButton(row.id, (keys.length ? keys : [cell]).map(copyWords).join('\\t')));", to: 'line.append(copyKeyButton(row.id, row.id));' },
   { id: 'NZ6', what: 'the filter draws every row', catches: 'Z14',
     from: '    for (const { row } of shown.lines) {', to: '    for (const row of section.rows) {' },
   { id: 'CPm4', what: 'Wide copied as Long\'s lines', catches: 'CP3',
@@ -2164,6 +2194,8 @@ const sp = await scoreMutants(SPLIT_MUTANTS, async (m) => {
 const STYLE_MUTANTS = [
   { id: 'FWm2', what: 'the tables back to auto layout', catches: 'FW1 ',
     from: '.wk-table { table-layout: fixed; width: 0;', to: '.wk-table { width: 100%; display: block; overflow-x: auto;' },
+  { id: 'WSm1', what: 'a value\'s spaces collapsed again', catches: 'WS1 ',
+    from: '.wk-valline > .wk-val, .wk-valline > .wk-centrelabel, .wk-long td { white-space: pre; }', to: '' },
 ];
 const st = await scoreMutants(STYLE_MUTANTS, async (m) => {
   ran = 0; NAMES.length = 0; failures = [];

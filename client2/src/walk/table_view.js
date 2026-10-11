@@ -177,6 +177,10 @@ export function shownOf(section, f = {}, lines = null) {
   return { columns: grid.columns, lines: shown, all: grid.lines, filtering: filter !== 'all' || Boolean(find) || tests.length > 0 };
 }
 
+/** A cell on the clipboard - Copy's, and a node's keys' (owner 10-12): several «; », none empty, a side that did not
+ *  reach the row «missing». */
+export const copyWords = (cell) => (cell.missing ? MISSING : cell.values ? cell.values.join('; ') : cell.text === EMPTY ? '' : cell.text);
+
 /** The rows a Wide table shows, in its order (the one seat above). */
 export const rowsShown = (section, f = {}) => shownOf(section, f).lines.map((line) => line.row);
 
@@ -194,9 +198,8 @@ export function sheetOf(section, filter = {}) {
     const signs = section.groups.map((g) => `${h} · ${g.sign}`);
     return order(signs, section.parts[i].delta ? `${h} · ${DELTA}` : undefined);
   }), 'id'];
-  const words = (cell) => (cell.missing ? MISSING : cell.values ? cell.values.join('; ') : cell.text === EMPTY ? '' : cell.text);
-  const rows = rowsShown(section, filter).map((row) => [...row.centre.map(words), ...row.cells.flatMap((cell) => {
-    const sides = cell.sides.map(words);
+  const rows = rowsShown(section, filter).map((row) => [...row.centre.map(copyWords), ...row.cells.flatMap((cell) => {
+    const sides = cell.sides.map(copyWords);
     return order(sides, cell.delta ? (cell.delta.value === null || cell.delta.value === undefined ? '' : String(cell.delta.value)) : undefined);
   }), row.id]);
   return { head, rows };
