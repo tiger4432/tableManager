@@ -12,7 +12,7 @@ import { NONE, WAITING, REFUSED, unitText } from './ui_words.js';
 import { errorText } from './body_error.js';
 // 🔴 「원천이 «없다»」와 「있는데 «비었다」의 갈림. 오류와는 «다른 질문»이라 함수를 안 합칩니다.
 import { absentPath } from './absent_listing.js';
-import { retryMessage, outboxRetryMessage, ingestionMessageView, collectorMessageView, DRAWER_BODY_CLASS, isFailedStatus } from './retry_verdict.js';
+import { outboxRetryMessage, ingestionMessageView, collectorMessageView, DRAWER_BODY_CLASS, isFailedStatus, fileRetryAsk, fileRetryToast } from './retry_verdict.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -1741,8 +1741,8 @@ function buildFileLogRow(log, { withStatus }) {
   const retryBtn = row.querySelector('.btn-retry-file');
   if (retryBtn) {
     retryBtn.addEventListener('click', async () => {
-      if (confirm(`Retry file ingestion for log #${log.id}?`)) {
-        await retryFileIngestion(log.id);
+      if (confirm(fileRetryAsk(log, INCLUDE_STATUSES).confirm)) {
+        await retryFileIngestion(log);
       }
     });
   }
@@ -3096,11 +3096,21 @@ function renderRetroactive() {
   valueEl.textContent = '';
   valueEl.appendChild(cfgChip(`${cfgText(view.operationsLabel)} ${view.total.text}`,
     view.total.value > 0 ? '' : 'muted'));
-  // 헤드라인은 연산 이름을 그대로 나열한다. 이 줄에는 요약할 「상태」가 없다 — 도구함에
-  // 없는 판정을 지어내는 것이 목록보다 나쁘다.
-  subEl.textContent = view.titles.map(cfgText).join(' · ');
-  // One line, cut on purpose: the whole list is its title.
-  subEl.title = subEl.textContent;
+  // The tab's contents (owner 10-11 R): its operations' names - the server's, in its order - as chips; a press brings
+  // that card to the top. The header's own press folds the section, so a chip's stops there.
+  subEl.textContent = '';
+  subEl.removeAttribute('title');
+  for (const op of view.operations) {
+    const chip = cfgEl('button', 'cfg-chip retro-kind retro-toc', cfgText(op.label));
+    chip.type = 'button';
+    chip.dataset.op = op.op;
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const card = byId('retroactive-body').querySelector(`article.retro-op[data-op="${CSS.escape(op.op)}"]`);
+      if (card) card.scrollIntoView({ block: 'start' });
+    });
+    subEl.appendChild(chip);
+  }
 
   body.textContent = '';
   if (view.empty) {
@@ -4204,11 +4214,12 @@ async function retryTransaction(txId) {
   }
 }
 
-// API Call: Retry single File Ingestion
+// API Call: Retry single File Ingestion - a row that went in asks with the statuses that include it (owner 10-11 R).
 // 감사 F1 준용: 재시도는 동기 처리이므로 즉시 재조회해 실제 상태로 피드백한다.
-async function retryFileIngestion(logId) {
+async function retryFileIngestion(log) {
+  const logId = log.id;
   try {
-    const res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed?log_id=${logId}`, {
+    const res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed?${fileRetryAsk(log, INCLUDE_STATUSES).query}`, {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Retry API returned error status');
@@ -4228,8 +4239,8 @@ async function retryFileIngestion(logId) {
     const stillLinked = currentTab === 'autoupdate'
       && linkedFailLogs.some(f => f.id === logId);
     const status = stillLinked ? 'FAILED' : (refreshed ? refreshed.status : null);
-    const said = retryMessage(status, result.message);
-    showToast(`${said.text.replace(/^(.)\s*/, '$1 ')} (ID #${logId})`, said.tone);
+    const said = fileRetryToast(result, status, log);
+    showToast(said.text, said.tone);
   } catch (err) {
     console.error('Failed to retry file ingestion', logId, err);
     showToast('❌ File ingestion retry request failed', 'error');

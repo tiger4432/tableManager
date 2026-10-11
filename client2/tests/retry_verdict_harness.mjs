@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import * as BASELINE from '../src/retry_verdict.js';
 import { autoUpdateRowHtml, fileLogRowHtml } from '../src/admin_rows.js';
+import { INCLUDE_STATUSES } from '../src/folder_retry.js';
 import { autoRow } from '../src/overview_status.js';
 
 const SRC_PATH = fileURLToPath(new URL('../src/retry_verdict.js', import.meta.url));
@@ -110,7 +111,7 @@ console.log('\n── D. THE SCREEN GOES THROUGH THIS PLACE, AND OWNS NO LIST �
   //    site call the one place」 is invisible in output — a site that does not just keeps
   //    answering correctly until a state it never heard of arrives.
   const js = readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
-  ok('D1 the retry outcome goes through the verdict', js.includes('retryMessage('));
+  ok('D1 the retry outcome goes through the verdict - fileRetryToast, which says retryMessage (R2)', js.includes('fileRetryToast('));
   // The badge's class is the drawer's, whose tone is `retryVerdict`'s (F6 · G2 score that) — in
   // BOTH drawers, and no drawer keeps a status ternary of its own (lead e1af65168: one mapping).
   const collectorDrawer = (js.split(/\n(?=(?:async )?function )/).find((fn) => fn.startsWith('function selectAutoUpdateRow')) || '');
@@ -279,8 +280,9 @@ console.log('\n── I. A FILE\'S STATUS READS THE SAME IN LIST, DRAWER, CARD A
     FILE.every((s) => badge(s) === X.ingestionMessageView(s, '').badgeClass) && badge('PENDING_RETRY') !== badge('FAILED')
       && badge('SKIPPED') !== badge('FAILED'),
     FILE.map((s) => [s, badge(s)]));
-  ok('I2 Retry is off exactly where the drawer says the file is done',
-    FILE.every((s) => row(s).includes('btn-retry-file') === (drawerTone(s) !== 'ok')), FILE.map((s) => [s, row(s).includes('btn-retry-file')]));
+  ok('I2 Retry on every row, one button - a row that went in too (owner 10-11 R)',
+    FILE.every((s) => (row(s).match(/btn-retry-file/g) || []).length === 1 && !row(s).includes('disabled')),
+    FILE.map((s) => [s, row(s).includes('btn-retry-file')]));
   ok('I3 the end card\'s ok face is the drawer\'s ok tone', FILE.every((s) => X.isDoneStatus(s) === (drawerTone(s) === 'ok')));
   const TOAST = { ok: 'success', danger: 'error', warn: 'warning' };
   ok('I4 the end toast\'s word is the drawer\'s tone', FILE.every((s) => X.statusToastTone(s) === TOAST[drawerTone(s)]),
@@ -332,6 +334,19 @@ const swap = (from, to) => (src) => {
 // 🔴 ONE MUTANT PER PROPERTY, NOT ONE MUTANT FOR ALL OF THEM. The three states rest on three
 //    different lines and a single mutation cannot redden them together — asking it to would
 //    reject a correct design (lead's correction, 2026-09-07).
+console.log('\n── R. A FILE ROW THAT WENT IN IS READ AGAIN WITH TODAY\'S PARSER (owner 10-11 R) ──');
+{
+  const done = X.fileRetryAsk({ id: 7, status: 'SUCCESS', filename: 'a.csv' }, INCLUDE_STATUSES);
+  const failed = X.fileRetryAsk({ id: 8, status: 'FAILED', filename: 'b.csv' }, INCLUDE_STATUSES);
+  ok('R1 a row that went in asks its log and the statuses that include it, and says it reads the file again; a failed row asks as before',
+    done.query === `log_id=7&statuses=${encodeURIComponent(INCLUDE_STATUSES)}` && done.confirm === "Read a.csv again with today's parser?"
+      && failed.query === 'log_id=8' && failed.confirm === 'Retry file ingestion for log #8?', [done, failed]);
+  const gone = X.fileRetryToast({ missing: 1, missing_files: ['a.csv'], count: 0 }, 'SUCCESS', { id: 7, filename: 'a.csv' });
+  const read = X.fileRetryToast({ missing: 0, message: '1 file(s) handed to the watcher' }, 'SUCCESS', { id: 7, filename: 'a.csv' });
+  ok('R2 a file no longer where it was says so by name, not as the row\'s state; a file read again says the row\'s, with its id',
+    gone.text === 'Missing · a.csv' && gone.tone === 'warning' && read.text.startsWith('\u2705 Retry done') && read.text.endsWith('(ID #7)'), [gone, read]);
+}
+
 const DEFECTS = [
   ['M1 the third state collapses back into "done" (the original defect)',
     swap("  if (spelled === 'PENDING_RETRY') return { state: 'queued', tone: 'warn', "
@@ -385,6 +400,10 @@ const DEFECTS = [
     swap('return { tone: v.tone, title,', "return { tone: 'danger', title,")],
   ['M22 the server\'s reason is dropped from the toast',
     swap('toast: said ? `${head} (${said.slice(0, 100)})` : head', 'toast: head')],
+  ['M23 a row that went in asks as a failed one, no statuses (owner 10-11 R)',
+    swap("reread ? `&statuses=${encodeURIComponent(includeStatuses)}` : ''", "''")],
+  ['M24 a file no longer where it was reads as the row\'s state',
+    swap('const gone = Number((result || {}).missing) >= 1;', 'const gone = false;')],
 ];
 
 const CONTROLS = [
@@ -421,7 +440,10 @@ function verdict(M) {
     || M.retryVerdict('SKIPPED').state !== 'skipped'
     || /fail/i.test(M.fileEndView('SKIPPED', 'f').title)
     || M.fileEndView('SKIPPED', 'f').tone !== 'warn' || M.fileEndView('FAILED', 'f').tone !== 'danger'
-    || !M.fileEndView('SKIPPED', 'f', 'dup').toast.includes('dup');
+    || !M.fileEndView('SKIPPED', 'f', 'dup').toast.includes('dup')
+    || !M.fileRetryAsk({ id: 7, status: 'SUCCESS', filename: 'a.csv' }, 'S,F').query.endsWith('&statuses=S%2CF')
+    || M.fileRetryAsk({ id: 8, status: 'FAILED', filename: 'b.csv' }, 'S,F').query !== 'log_id=8'
+    || M.fileRetryToast({ missing: 1, missing_files: ['a.csv'] }, 'SUCCESS', { id: 7, filename: 'a.csv' }).text !== 'Missing \u00b7 a.csv';
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '
