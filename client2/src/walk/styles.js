@@ -335,7 +335,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* A head sorts when pressed - its arrow its order; its «▾» opens the column's filter, lit while one is set. */
 .wk-table th.wk-sortable { cursor: pointer; }
 .wk-table th.wk-sortable:hover { color: var(--text); }
-.wk-colfilter { margin-left: var(--space-1); padding: 0 var(--space-1); font: inherit; line-height: inherit;
+.wk-colfilter { margin-left: var(--space-1); padding: 0 var(--space-1); font: inherit; font-size: var(--wk-fs-body); height: var(--wk-h-small); line-height: inherit;
   color: var(--text-dim); background: none; border: 0; border-radius: 0; cursor: pointer; }
 .wk-colfilter::after { content: '\\25BE'; }
 .wk-table th.is-asc > .wk-colfilter::before { content: '\\2191'; margin-right: var(--space-1); color: var(--accent); }
