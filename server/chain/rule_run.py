@@ -338,8 +338,9 @@ def _uniform():
     ⚠️ `written` IS None, NOT 0, WHEN NOBODY COUNTED. 「안 셌다」 and 「0 이었다」 are different
     facts, and `chain.synthesis` already keeps them apart for the same reason.
 
-    `next_page` holds the calls a proposal left for its remaining pages (총괄 e10c58e5e) - this
-    seat only carries them; the write door asks them, at the rule's place in the order.
+    `next_page` holds, per proposal that pages, the call for its remaining pages and what its first page said
+    (`rows_total` · `pages` · `first` - 총괄 e10c58e5e · 634c06fc3) - this seat only carries them; the write door asks
+    the calls, at the rule's place in the order, and says each page against them.
     """
     return {"updates": [], "map_metadata_updates": [], "batches": [],
             "written": None, "refusal": None, "next_page": [], "stamps_origin": None}
@@ -609,7 +610,9 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
                 # A proposal may say there is more: a call returning the next page in the same
                 # shape. Any proposal can carry it; nothing here asks which rule it came from.
                 if result.get("next_page") is not None:
-                    answer["next_page"].append(result["next_page"])
+                    answer["next_page"].append({
+                        "call": result["next_page"], "rows_total": result.get("rows_total"),
+                        "pages": result.get("pages"), "first": len(result.get("updates") or ())})
             # 🔴 WHAT ITS OUTPUT SAYS ABOUT WHERE IT CAME FROM (총괄 4c3417ccb ③) - the edit's
             #    withdrawal reads it here, a deletion's warning from `_ORIGIN_SEEN`.
             proposed = list(answer["updates"]) + [item for batch in answer["batches"]
