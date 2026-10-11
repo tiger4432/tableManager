@@ -78672,3 +78672,25 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
 진짜 프로세스 판 — 응용 rh_world_inv(착지 즉시, 응용이 몇 분짜리인지 먼저 알림)
 세운 것   체인 층 원천 행마다 — wt-impl 로컬 커밋 그대로(안 푸시). 진짜 프로세스 판 · 박스 사본 PG 재기 끝, 착지는 다음
 ```
+
+## [10-11] aggregations 폼 착지 57fe4229d (총괄 8b487d2e6 · 6c6d76924 · 소유자 「ㄱ 으로 폼 그려」)
+
+```
+착지 57fe4229d — 골격의 decide.aggregations 항목 = 레코드 {fn, column, separator}(전부 선택) · chain_skeleton.json 코드에서 재생성
+     "count" 줄임은 읽는 쪽의 한 자리(enrichment.config.aggregation_record)를 지나 폼이 받는 선언에서 레코드로
+     (ledger.admin.chain_rule_raw_view 의 declaration · raw 는 파일 그대로) · fn 은 자유 글자(폼의 choice 는 목록 이름이 필요해 이번엔 안 씀)
+     맨 위 · derive 밑 모르는 칸 -> 저장 답 · 로드 줄에 「<이름>: top-level|derive cell this product does not read — <칸>.」(꺼진 규칙도, __ 칸은 주석)
+     join · mapper · decide 셋 다 expand_declaration 한 자리를 지남 · 폼 ADVANCED 의 롤프레임 맵퍼 문장 영어
+게이트 비-PG — 바뀐 자리를 부르는 시험 파일 65 개: 14 failed, 948 passed, 8 skipped, 24 deselected in 132.46s (0:02:12)
+  실패는 전부 바꾸기 전 HEAD 깨끗한 사본에서도 같음(C:/wt-check): tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py · tests\test_composite_business_key.py · tests\test_syn_complex_composite.py
+  PG 안 돌림 — 바뀐 것이 DB 를 안 지남(골격 · 선언 보기 · 메모 줄 · 문장)
+변이(빨강 = 실패한 시험, md5 복원)
+  baseline ['24 passed in 0.80s']
+  the form gets the file as written    RED | test_a_value_in_every_named_cell_draws_no_blank_box, test_the_committed_sample_draws_no_blank_box, test_the_route_hands_each_aggregation_as_its_record_and_th
+  unread cells skip derive             RED | test_a_cell_the_product_does_not_read_is_named_at_the_top_and_under_derive[False], test_a_cell_the_product_does_not_read_is_named_at_the_top_and_under_derive
+  an off rule names nothing            RED | test_a_cell_the_product_does_not_read_is_named_at_the_top_and_under_derive[False]
+  the Korean line back                 RED | test_the_role_frame_mappers_line_is_english
+  restored True
+화면   제가 안 열었음 — 어드민 토큰을 브라우저에 안 넣는 규칙. 응용께 18766 재현 자리에서 열어 달라고 부탁(레코드 칸 편집 왕복)
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리뿐 · 지운 것 0
+```
