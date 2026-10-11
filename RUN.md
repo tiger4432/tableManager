@@ -259,7 +259,7 @@
 >   실행        같은 명령 + --apply
 >   답의 뜻      체인 워커 로그 «… not handed over - required column(s) empty: dt_wafer_id=N» — N = 빈 행 수 · 그 행들이 먹인 층은 거둬짐
 >              공식 행 값은 남은 원천 행의 값으로 돌아감(리허설 5 -> 7)
-> 보류 고침     착지 {LANDING}(총괄 0117a0048) — 보류 다시 세기도 require 를 앎(빈 행은 주장이 아님). 단 복사 replay 가 층을 거둘 때는
+> 보류 고침     착지 db5279795(총괄 0117a0048) — 보류 다시 세기도 require 를 앎(빈 행은 주장이 아님). 단 복사 replay 가 층을 거둘 때는
 >              다시 세기 규칙을 깨우지 않아 «두 번» 돌린다(소유자 「그냥 두 번 돌릴게」)
 > 지금 할 것     pull -> 체인 워커 · 서버 재기동 -> 아래 셋을 차례로
 >   ①          python server/scripts/chain_replay_cli.py replay <복사 규칙> --apply
