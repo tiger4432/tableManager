@@ -23,7 +23,7 @@
 샘플: `server/config/sample/table_config.json.sample` 의 `text_doc`(글) · `text_name`(부르는 말) · `text_link_word`(연결 말) · `text_cause_candidate`(후보) — 표 설정에 옮겨 이름만 바꿔 쓴다.
 
 같은 말을 두 행에 적으면 두 뜻이다 — 「무관」 = `cause`(`before`) 한 행 + `negation` 한 행.
-`*_phrase` · `link` 는 글에 «적힌 그대로»다. 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다(LLM 으로 뽑으면 §6 의 키).
+규칙으로 뽑은 행의 `*_phrase` · `link` 는 글에 «적힌 그대로»다(LLM 행은 §6). 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다(LLM 으로 뽑으면 §6 의 키).
 `extractor` 는 뽑은 쪽 — `rules` 또는 `llm:<모델>`. `evidence` 는 근거 — 규칙이 뽑은 행은 그 문장, LLM 행은 모델이 쓴 인용 그대로(두 문장에 걸칠 수 있고 따옴표 · 말줄임이 글과 다를 수 있음 — 그때 문장 칸은 인용이 시작한 문장). 후보 표에 이 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 센다.
 
 ## 2. 짝짓는 규칙 — 두 줄
@@ -120,7 +120,7 @@ def text_cause_links_llm(df, db):
 
 - `rows_per_run: 1` — 체인 묶음 하나 = 글 하나. 틀린 답은 그 글의 묶음만 실패시키고, 다른 글은 다음 묶음이라 계속 돈다. 다른 표의 줄은 다른 슬롯에서 돌아 LLM 이 막지 않는다([chain_rules](./config/chain_rules.md)). ⚰️ `run_in: operation`(작업 `rule_rows` 로 줄 세우기)은 은퇴했다 — 적혀 있어도 체인에서 돈다.
 - 모델은 사전을 노드마다 한 줄로 본다 — `<키> (<타입>): <구절> / <구절> / …`. 같은 키가 두 타입에 있으면 그 노드들의 식별자는 `<타입>:<키>`. 모델은 원인 · 현상마다 그 식별자(맞는 노드가 없으면 null)와 글의 가장 짧은 명사구를 답한다.
-- 노드 키는 사전에서만 온다 — 목록의 식별자면 그 노드의 `*_type` · `*_key`(말이 구절과 달라도). null 이면 말이 사전 구절과 같을 때만(공백 · 대소문자 무시) 그 구절의 키, 아니면 `*_type` · `*_key` 가 빈다. 목록에 없는 식별자는 키를 비우고 로그에 한 줄 `[LLM] link N of M answers cause_key '<식별자>', which the dictionary does not list - kept with its words only (llm:<모델>): '<말>'`. `*_phrase` 는 늘 글의 말이다.
+- 노드 키는 사전에서만 온다 — 목록의 식별자면 그 노드의 `*_type` · `*_key`(말이 구절과 달라도). 빈 값(키 없음 · null · 빈 글자)이면 말이 사전 구절과 같을 때만(공백 · 대소문자 무시) 그 구절의 키, 아니면 `*_type` · `*_key` 가 빈다. 목록에 없는 식별자는 키를 비우고 로그에 한 줄 `[LLM] link N of M answers cause_key '<식별자>', which the dictionary does not list - kept with its words only (llm:<모델>): '<말>'`. `*_phrase` 는 모델이 답한 말 그대로다 — 글과 견주는 것은 `evidence` 뿐(「글에서 베껴라」는 프롬프트의 부탁).
 - 프롬프트는 사전 전체를 담는다(나눠 보내지 않는다) — 고정 약 1,200 자 + 노드마다 한 줄. 노드마다 구절 셋이면 100 노드 약 7 천 자 · 1,000 노드 약 6.6 만 자 · 5,000 노드 약 34 만 자(지어낸 사전으로 잰 수). 보낸 그대로는 `llm_requests.log` 보낸 줄의 payload.
 - 한 문장이 원인 · 현상을 여럿 말하면 모델은 짝마다 링크 하나를 답한다(같은 근거). 한 문장에서 후보가 여럿 나오므로 후보 표의 키에 `cause_phrase` · `phenomenon_phrase` 가 들어 있어야 한다 — 아니면 같은 키의 행이 서로 덮어쓴다.
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
