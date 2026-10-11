@@ -79588,3 +79588,34 @@ PG:
   ㄴ 키 범위로 나눠 여러 프로세스 — 파이썬이 묶여 있고 SQL 이 작아 코어 수에 거의 비례. 크기 작음(백필 CLI 에 범위 인자) · 위험: 같은 원장 표 동시 쓰기 · 커서
   (덧) 진행 줄 — 쪽마다 «page k: 행 · 초» 한 줄과 total — 총괄의 단계 줄 일과 같은 자리
 ```
+
+## [10-12] 소급 진행 5 초마다 — 쪽 크기 맞춤 · 첫 쪽 1 행 (총괄 a02ad0f2b + 소유자 덧붙임 + ㄱ) — QA 대기, main 착지 안 함
+
+```
+커밋     697fd968e (로컬 가지 impl-pagesize · main 아님) — QA + 응용 진짜 프로세스 뒤 착지
+자리     keyset_scan.PageSize 하나 — 1 행에서 시작 · 쪽 시간이 page_seconds 의 절반 아래면 두 배 · 넘으면 넘은 비율만큼 줄임
+         손 chunk_size · 쪽 상수 = 최대 · pace 의 쉼은 안 셈 · 선언 칸 pacing.json "page_seconds" 3 (5 넘게 적어도 5)
+지나는 곳 iter_pages(R1 replay · 층 접기 · 노테이션 · recompute · enrichment backfill · analysis) · fold-rows · remove-shells
+         fold-units · withdraw · 철회 접기 · 원장 백필 쪽 읽기(live 길 · rescope) · 제안 쪽(조인 · 접기 맵퍼)
+줄       RunControl.progress — «[<op>] page k: N rows · s · rows/s · 처리 / 전체 · ~남은» (전체를 세는 연산만 뒤 둘)
+ㄱ       철회 칸 = 선언 ∪ 첫 쪽 (답에 next_page 가 있을 때) · 벤치는 쪽을 따라 1,000 행까지
+```
+
+```
+게이트
+  새 칸 둘 (늦춘 픽스처, 목표 0.3 s · 상한 0.5 s 축척)   초록 · 변이 «맞춤 끔» -> 2 failed · md5 되돌림 같음
+  ㄱ 칸 (첫 행이 빈 take 를 건너뛴 조인 · 모든 쪽 행 남음)  초록 · 변이 «첫 쪽 칸만» -> 1 failed · md5 되돌림 같음
+  sqlite 닿는 파일 전부     30 failed, 1338 passed, 11 skipped, 201 deselected, 3149 warnings in 185.71s (0:03:05)
+                            빨강 전부가 기준(a02ad0f2b)에서도 빨강 — 이 워크트리에 config/table_config.json 없음
+  PG                        3 failed, 198 passed, 1379 deselected, 270 warnings in 1574.25s (0:26:14) — 빨강 3 (test_a_registration_may_carry_its_attributes_into_the_table.py, test_ledger_l1_pg.py) 기준에서도 같은 셋
+  인벤토리(접기 맵퍼) 첫 줄  «page 1 · 1 / 9 rows» — 1 행 쪽에서 찍힘
+진짜 명령 (assy_test 스크래치 스키마 assy_impl_bf_1012 · 만들고 DROP · 남은 0 · public 415 -> 415 · 쓰기 수 그대로)
+  원장 백필 --whole-source --apply 20,000 행   쪽 줄 31 · 첫 줄의 쪽 1 행 · 줄 간격 최대 2.83 s · 가장 큰 쪽 1000 행 · 원자 20000 / 행 20000 · 벽시계 59 s
+```
+
+```
+남은 것 · 여쭐 것
+  ① 원장 백필(rescope)은 전체를 안 세서 «· 1024 done» 뿐 — 남은 시간 없음. 세려면 소스 count 한 번(뷰면 무거움)
+  ② 쪽 크기와 무관한 고정 비용이 page_seconds 를 넘는 쪽은 1 행에서 안 자람 — 원장 stale 철회(인덱스 없는 판 50,000 refs/쪽)는 그래서 고정 그대로
+  ③ 표기 소급 · fold-units 의 옛 쪽 줄 «[notation] x / total rows (page k, s)» 가 새 줄과 같은 사건 — 드라이런엔 그것만 찍혀 남김
+```
