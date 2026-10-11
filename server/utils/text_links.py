@@ -18,8 +18,11 @@ Matching ignores spaces and ASCII case (notation_norm's case rule); overlapping 
 both dictionaries go to the longest, leftmost first; a phrase that starts or ends with an ASCII
 letter or digit only matches where the text does not continue that word (void is not in avoid).
 """
+import logging
 import re
 from collections import Counter
+
+logger = logging.getLogger(__name__)
 
 CAUSE, AND, NEGATION, SUSPECTED, CONFIRMED = "cause", "and", "negation", "suspected", "confirmed"
 MEANINGS = (CAUSE, AND, NEGATION, SUSPECTED, CONFIRMED)
@@ -91,8 +94,19 @@ def _matches(sentence, index):
     return out
 
 
+def _sentence_spans(text):
+    """[(start, end)] of each non-blank sentence of `text` - the pieces between SENTENCE_END runs."""
+    spans, start = [], 0
+    for end in SENTENCE_END.finditer(text):
+        spans.append((start, end.start()))
+        start = end.end()
+    spans.append((start, len(text)))
+    return [(s, e) for s, e in spans if text[s:e].strip()]
+
+
 def _sentences(text):
-    return [s for s in SENTENCE_END.split(str(text or "")) if s.strip()]
+    text = str(text or "")
+    return [text[s:e] for s, e in _sentence_spans(text)]
 
 
 def _joined(sentence, found, a, b, joins):
@@ -181,6 +195,24 @@ Text:
 <<text>>"""
 INSTRUCTION_HEADING = "Instruction from the operator:"
 LLM_EXTRACTOR = "llm:%s"
+#: Not compared in evidence, on either side - the model adds, drops or changes them (소유자 10-11).
+EVIDENCE_MARKS = "\"'“”‘’«»「」『』…"
+ELLIPSIS = "..."
+
+
+def _evidence(text):
+    """`_fold` without EVIDENCE_MARKS and "..." -> (folded, the original index of each kept
+    character). The one place an answer's evidence is compared with the text."""
+    folded, where = _fold(text)
+    kept, i = [], 0
+    while i < len(folded):
+        if folded.startswith(ELLIPSIS, i):
+            i += len(ELLIPSIS)
+            continue
+        if folded[i] not in EVIDENCE_MARKS:
+            kept.append(i)
+        i += 1
+    return "".join(folded[i] for i in kept), [where[i] for i in kept]
 
 
 def _named(answered, by_phrase):
@@ -195,8 +227,12 @@ def ask_links(text, names, instruction=None):
     *_phrase and leave type and key empty. `certainty` is what the text says, `suspected` when
     it says nothing - nothing becomes a fact before a person confirms it.
 
-    Refused by name (`LlmRefused`) when the answer has not this shape, or quotes as evidence a
-    sentence the text does not hold."""
+    A link's evidence is looked for in the whole text (`_evidence`); its sentence is the one the
+    quote starts in. A link whose evidence the text does not hold is dropped and said in one
+    warning line; the others are kept.
+
+    Refused by name (`LlmRefused`) when the answer has not this shape, or every link it gave
+    quotes evidence the text does not hold."""
     from chain.mapper_call import without_missing
     from database import crud
     from utils import llm
@@ -216,9 +252,11 @@ def ask_links(text, names, instruction=None):
     links = answer.get("links")
     if not isinstance(links, list):
         raise llm.LlmRefused("the answer has no 'links' list: %s" % sorted(answer)[:10])
-    sentences = [(_fold(s)[0], s) for s in _sentences(text)]
+    text = str(text or "")
+    whole, where = _evidence(text)
+    spans = _sentence_spans(text)
     extractor = LLM_EXTRACTOR % llm.model()
-    out = []
+    out, dropped = [], []
     for number, item in enumerate(links, 1):
         said = {name: (item.get(name) if isinstance(item, dict) else None)
                 for name in ("cause", "effect", "evidence")}
@@ -226,12 +264,16 @@ def ask_links(text, names, instruction=None):
                  if not isinstance(value, str) or not value.strip()]
         if empty:
             raise llm.LlmRefused("link %d of the answer has no %s" % (number, " or ".join(empty)))
-        quoted = _fold(said["evidence"])[0]
-        found = [(no, s) for no, (folded, s) in enumerate(sentences, 1) if quoted in folded]
-        if not found:
-            raise llm.LlmRefused("link %d quotes evidence the text does not hold: %r"
-                                 % (number, said["evidence"][:120]))
-        (sentence_no, sentence) = found[0]
+        quoted = _evidence(said["evidence"])[0]
+        at = whole.find(quoted) if quoted else -1          # all marks is no evidence
+        if at < 0:
+            dropped.append(number)
+            logger.warning("[LLM] link %d of %d quotes evidence the text does not hold - dropped (%s): %r",
+                           number, len(links), extractor, said["evidence"][:120])
+            continue
+        sentence_no, (start, end) = next((no, span) for no, span in enumerate(spans, 1)
+                                         if where[at] < span[1])
+        sentence = text[start:end]
         cause_type, cause_key = _named(said["cause"], by_phrase)
         effect_type, effect_key = _named(said["effect"], by_phrase)
         certainty = item.get("certainty")
@@ -244,6 +286,10 @@ def ask_links(text, names, instruction=None):
                     "polarity": NEGATED if item.get("negated") is True else ASSERTED,
                     "certainty": CONFIRMED if certainty == CONFIRMED else SUSPECTED,
                     "extractor": extractor, "evidence": said["evidence"]})
+    if dropped and not out:
+        raise llm.LlmRefused("every link of the answer (%d) quotes evidence the text does not hold"
+                             " - link %d: %r" % (len(dropped), dropped[0],
+                                                 links[dropped[0] - 1]["evidence"][:120]))
     return out
 
 

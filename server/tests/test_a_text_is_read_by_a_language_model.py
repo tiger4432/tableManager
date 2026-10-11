@@ -7,7 +7,9 @@ file's cells reach the client, not what the real client sends.
 
   answer names a dictionary phrase     key from the dictionary
   answer names other words             type and key empty, *_phrase kept
-  evidence the text does not hold      refused by name
+  evidence the text does not hold      that link dropped, one warning line · every link: refused by name
+  evidence over two sentences          found, the sentence it starts in
+  quote marks · ellipsis               ignored on both sides; a changed word or only marks is dropped
   answer not JSON / no links list      refused by name
   certainty said / unsaid              confirmed · suspected / suspected
   the file's cells                     reach the client · its httpx reads no system proxy
@@ -38,6 +40,7 @@ CELLS = {"base_url": "http://llm.test/v1", "model": "m-1", "api_key": KEY}
 NAMES = [{"node_type": "quantity", "node_key": "q-temp", "phrase": "bond temperature"},
          {"node_type": "defect_kind", "node_key": "d-void", "phrase": "void"}]
 TEXT = "The bond temperature was high. It caused a void, we suspect.\nNothing else."
+KO_TEXT = "본딩 온도가 높았다. 그래서 보이드가 생긴 것으로 보인다.\n작업자는 \"온도가 원인\"이라고 했다."
 
 
 @pytest.fixture(name="root")
@@ -143,6 +146,78 @@ def test_a_malformed_answer_is_refused_by_name(answer, content, said):
     with pytest.raises(llm.LlmRefused) as refused:
         text_links.ask_links(TEXT, NAMES)
     assert said in str(refused.value)
+
+
+def _dropped_lines(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "utils.text_links"]
+
+
+def test_a_link_whose_evidence_the_text_does_not_hold_is_dropped_and_said(answer, caplog):
+    answer(_links({"cause": "본딩 온도", "effect": "보이드", "evidence": "그래서 보이드가 생긴 것으로 보인다."},
+                  {"cause": "습도", "effect": "보이드", "evidence": "습도가 높아서 보이드가 생겼다."},
+                  {"cause": "온도", "effect": "보이드", "evidence": "본딩 온도가 높았다."}))
+    caplog.set_level(logging.WARNING)
+    rows = text_links.ask_links(KO_TEXT, NAMES)
+    assert [(row["cause_phrase"], row["sentence_no"]) for row in rows] == [("본딩 온도", 2), ("온도", 1)]
+    (line,) = _dropped_lines(caplog)
+    assert line == ("[LLM] link 2 of 3 quotes evidence the text does not hold - dropped (llm:m-1): "
+                    "'습도가 높아서 보이드가 생겼다.'")
+
+
+def test_every_link_dropped_is_refused_with_the_count(answer, caplog):
+    answer(_links({"cause": "습도", "effect": "보이드", "evidence": "습도가 높아서 보이드가 생겼다."},
+                  {"cause": "압력", "effect": "보이드", "evidence": "압력이 낮았다."}))
+    caplog.set_level(logging.WARNING)
+    with pytest.raises(llm.LlmRefused) as refused:
+        text_links.ask_links(KO_TEXT, NAMES)
+    assert str(refused.value) == ("every link of the answer (2) quotes evidence the text does not hold"
+                                  " - link 1: '습도가 높아서 보이드가 생겼다.'")
+    assert [line.split(" quotes ")[0] for line in _dropped_lines(caplog)] == [
+        "[LLM] link 1 of 2", "[LLM] link 2 of 2"]
+
+
+@pytest.mark.parametrize("text,evidence,sentence_no", [
+    (KO_TEXT, "본딩 온도가 높았다. 그래서 보이드가", 1),
+    (KO_TEXT, "생긴 것으로 보인다.\n작업자는", 2),
+    (TEXT, "we suspect. Nothing else.", 2),
+], ids=["ko-1-2", "ko-2-3-over-a-line-break", "en-2-3"])
+def test_evidence_over_two_sentences_is_found_in_the_sentence_it_starts_in(answer, text, evidence, sentence_no):
+    answer(_links({"cause": "a", "effect": "b", "evidence": evidence}))
+    (row,) = text_links.ask_links(text, NAMES)
+    assert row["sentence_no"] == sentence_no
+    assert row["sentence"] == text_links._sentences(text)[sentence_no - 1]
+    assert row["evidence"] == evidence
+
+
+@pytest.mark.parametrize("text,evidence,sentence_no", [
+    (KO_TEXT, "“그래서 보이드가 생긴 것으로 보인다.”", 2),
+    (KO_TEXT, "«그래서 보이드가 생긴 것으로 보인다»", 2),
+    (KO_TEXT, "「본딩 온도가 높았다」", 1),
+    (KO_TEXT, "『본딩 온도가 높았다』", 1),
+    (KO_TEXT, "‘그래서 보이드가 생긴 것으로…’", 2),
+    (KO_TEXT, "그래서 보이드가 생긴 것으로 보인다...", 2),
+    (KO_TEXT, "작업자는 온도가 원인이라고 했다.", 3),
+    (KO_TEXT, "작업자는 '온도가 원인'이라고 했다.", 3),
+    (TEXT, "It caused a void, we suspect…", 2),
+], ids=["curly-double", "guillemets", "corner", "white-corner", "curly-single-and-…",
+        "trailing-...", "marks-only-in-the-text", "other-marks-than-the-text", "en-…"])
+def test_quote_marks_and_ellipsis_are_ignored_on_both_sides(answer, text, evidence, sentence_no):
+    answer(_links({"cause": "a", "effect": "b", "evidence": evidence}))
+    (row,) = text_links.ask_links(text, NAMES)
+    assert row["sentence_no"] == sentence_no
+
+
+@pytest.mark.parametrize("evidence", [
+    "그래서 보이드가 생긴 것으로 보임.", "본딩 온도가 낮았다.", "“…”", "...",
+], ids=["ko-ending-changed", "ko-word-changed", "only-marks", "only-ellipsis"])
+def test_a_changed_word_or_only_marks_is_still_dropped(answer, caplog, evidence):
+    answer(_links({"cause": "a", "effect": "b", "evidence": evidence},
+                  {"cause": "c", "effect": "d", "evidence": "본딩 온도가 높았다."}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, NAMES)
+    assert row["cause_phrase"] == "c"
+    (line,) = _dropped_lines(caplog)
+    assert line.startswith("[LLM] link 1 of 2 quotes evidence the text does not hold - dropped")
 
 
 def test_a_fenced_answer_is_read(answer):

@@ -123,7 +123,8 @@ def text_cause_links_llm(df, db):
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
 - `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다.
 - 운영자 지시는 셋째 인자 — `ask_links(text, names, instruction="<지시>")`. 프롬프트에 들어가는 낱말은 사전 행 · 지시 · 글뿐이다.
-- 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 근거 문장이 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 묶음이 실패하고(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED), 사건의 `error_log` 에 체인 격리 기록이 남는다. 관리 화면에서 실패한 사건을 다시 돌린다.
+- 근거(evidence)는 글 전체에서 찾는다 — 두 문장에 걸쳐도 찾고(문장 번호는 시작한 문장), 따옴표 · 말줄임(… ...)은 양쪽 다 견주지 않는다. 근거를 못 찾은 링크는 버리고 로그에 한 줄 `[LLM] link N of M quotes evidence the text does not hold - dropped (llm:<모델>): '<근거>'` — 나머지 링크는 그대로 후보가 된다.
+- 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 모든 링크의 근거가 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 묶음이 실패하고(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED), 사건의 `error_log` 에 체인 격리 기록이 남는다. 관리 화면에서 실패한 사건을 다시 돌린다.
 - LLM 을 한 번 더 부르는 다른 쓰임새는 `ask_json(프롬프트)` — 답한 JSON 객체를 준다.
 
 ## 7. 원장으로 — 확정한 후보만 `leads_to`

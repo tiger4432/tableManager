@@ -244,6 +244,19 @@
 >
 > ---
 >
+> ## [10-11] **LLM 링크 근거 — 글에 없는 근거는 그 링크만 버린다 · 두 문장 · 따옴표 · 말줄임 (소유자 「링크 1 쿼트 에비던스 에러」, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»(LLM 을 부르는 프로세스)**
+>
+> ```
+> 순서        pull -> 서버 · 체인 워커 재기동 -> 실패했던 글은 관리 화면에서 다시 돌린다
+> 새 줄        chain_worker.log  [LLM] link 2 of 3 quotes evidence the text does not hold - dropped (llm:<모델>): '<근거 앞 120 자>'
+>            = 그 링크 하나만 빠졌다. 나머지 링크는 후보 표에 들어갔다. 모델이 쓴 답 전체는 server/llm_requests.log 받은 줄
+> 거절         every link of the answer (N) quotes evidence the text does not hold - link 1: '…'
+>            = 링크를 모두 버렸다 — 그 글의 묶음은 전처럼 실패(error_log). 낱말이 바뀐 인용은 여전히 못 찾는다
+> 되돌리기      git revert <이 커밋> -> 같은 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **LLM 연결 실패가 이유를 말한다 — 가장 안쪽 이유 · 프록시 (총괄 024e3d31f, 착지 0b3a10107) — 이주 «없음» · 재기동 «서버 · 체인 워커»(LLM 을 부르는 프로세스)**
 >
 > ```
