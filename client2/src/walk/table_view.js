@@ -512,7 +512,8 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     });
     // The groups that set the sides against each other - a Δ under a cell they show - nearest the node, the rest after,
     // each in its order (34d91c09d 2's numbers nearest the node, carried to W's groups: the first Δ in the first screen).
-    const compared = (b) => groups.length === 2 && b.shown.some((c) => tableAll.some((row) => row.deltas[c] !== null));
+    const hasDelta = (c) => groups.length === 2 && tableAll.some((row) => row.deltas[c] !== null);
+    const compared = (b) => b.shown.some(hasDelta);
     const sideAt = [...folds.filter((b) => b.on && compared(b)), ...folds.filter((b) => b.on && !compared(b))].flatMap((b) => b.shown);
     const centre = ownAt.map((c) => ownAll[c]);
     const carried = carriedOf(type);
@@ -531,9 +532,10 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
         return { ...x, timed: timed.length > 0, number: timed.length > 0 && timed.every((p) => numberOf(p.value) !== null) };
       }).filter((x) => x.timed);
     const trendable = [...valued.filter((x) => x.number), ...valued.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }));
-    // Δ under every column of two groups (lead 10-11 W: «+ · Δ · −», the mockup B-ㄱ) - a number where both cells are one
-    // number each, «—» where not; the copy leaves it empty.
-    const deltaAt = new Set(groups.length === 2 ? columns.map((_, c) => c) : []);
+    // Δ under a column of two groups (lead 10-11 W: «+ · Δ · −», the mockup B-ㄱ) - a number where both cells are one
+    // number each, «—» where not; the copy leaves it empty. A column no row has a Δ for draws none (lead 10-12: 48 Δ
+    // columns of «—» alone); one row's Δ and it is drawn.
+    const deltaAt = new Set(sideAt.flatMap((c, k) => (hasDelta(c) ? [k] : [])));
     const said = rows.map((node, r) => {
       const row = table[r];
       // A value the row gave itself says no source line - its node's cell says how the row was reached; one from another

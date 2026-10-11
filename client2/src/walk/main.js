@@ -301,9 +301,10 @@ export function boot(doc, host, deps) {
   /** The graph on the chosen branch (lead 5ea461e04), the table's own answers drawn, nothing walked (lead 10-11 G-2): the
    *  form walk's, then each step's down the branch, each from the starts it walked; a step before the last only its
    *  paths to the next one's starts, the last its whole answer. The same branch drawn already is not drawn again; with
-   *  no answer yet the graph walks its marking. */
+   *  no answer, nothing (lead 10-12: the graph never walks its own ask - Walk is the bar's). */
   let drawnBranch = null;
   async function showBranch() {
+    if (!state.result) return;
     const path = pathTo(state.leaf);
     const branch = JSON.stringify([state.marks, state.run, ...path.map((s) => [s.marks, s.run])]);
     if (branch === drawnBranch && graph.state === 'done') return;
@@ -1097,23 +1098,24 @@ export function boot(doc, host, deps) {
     const leafed = section.parts.some((p) => cellsOf(p.group) > 1);
     const stepped = section.parts.length > 0;
     // Each column as wide as what the answer puts in it (owner 10-12): every row's cells - a value's + and − one series, one
-    // width; its Δ its own (lead 10-12: 48 Δ columns of «—» at the pair's width) - and the heads over it, a head over
-    // several columns a share each; a sorting head over it alone, with its «▾».
+    // width, a head over them a share of each; its Δ its own cells alone, no head's share (lead 10-12: 48 Δ columns of
+    // «—» at the pair's width) - and a sorting head over a column alone, with its «▾».
     const most = (texts) => texts.reduce((m, t) => Math.max(m, lettersOf(t)), 0);
     const said = (cell) => (cell ? `${cell.text}${cell.rest ? ` ${cell.rest}` : ''}` : '');
-    const span = (group) => section.parts.reduce((n, q, j) => n + (q.group === group ? width(j) : 0), 0);
+    const sides = section.groups.length;
+    const span = (group) => section.parts.reduce((n, q) => n + (q.group === group ? sides : 0), 0);
     fixedColumns(table, checks, [
       ...section.centreHeads.map((h, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
         lettersOf(h), i === 0 ? ' + var(--space-1) + var(--wk-h-small)' : '')]),
       ...section.parts.flatMap((p, i) => {
         const one = cellsOf(p.group) === 1;
         const far = lettersOf(farEnd(p.step).far);
-        const shares = Math.max(one && !many ? 0 : far / span(p.group), !one && many ? lettersOf(p.leaf) / width(i) : 0);
+        const shares = Math.max(one && !many ? 0 : far / span(p.group), !one && many ? lettersOf(p.leaf) / sides : 0);
         // A sign's head (+ · Δ · −) is one letter; one basket, the group's or the value's head sorts.
-        const fit = (cells) => ['value', columnWidth(Math.max(most(cells), shares), many ? 1 : one ? far : lettersOf(p.leaf))];
-        const side = fit(section.rows.flatMap((row) => row.cells[i].sides.map(said)));
+        const fit = (cells, share) => ['value', columnWidth(Math.max(most(cells), share), many ? 1 : one ? far : lettersOf(p.leaf))];
+        const side = fit(section.rows.flatMap((row) => row.cells[i].sides.map(said)), shares);
         // In the heads' order: each group's cell, Δ before the second of two.
-        return section.groups.flatMap((_, gi) => (pair && gi === 1 && p.delta ? [fit(section.rows.map((row) => said(row.cells[i].delta))), side] : [side]));
+        return section.groups.flatMap((_, gi) => (pair && gi === 1 && p.delta ? [fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side] : [side]));
       })]);
     const depth = Math.max(1, (stepped ? 1 : 0) + (leafed ? 1 : 0) + (many && stepped ? 1 : 0));
     const thead = el(doc, 'thead');
@@ -1737,8 +1739,9 @@ export function boot(doc, host, deps) {
       button.setAttribute('data-view', name);
       button.addEventListener('click', () => {
         state.view = name;
-        if (name === 'graph' && state.type) void showBranch();
         render();
+        // No walk yet: the bar's Walk (lead 10-12), its answer then drawn; else the answer there is.
+        if (name === 'graph') void (state.run === 'idle' ? walkStarts() : showBranch());
       });
       views.append(button);
     }
@@ -1758,18 +1761,23 @@ export function boot(doc, host, deps) {
     root.append(head);
   }
 
+  /** A step with no answer to draw - none yet, walking, failed - in one line, the table's and the graph's (lead 10-12). */
+  function walkStatus(shown) {
+    if (shown.run === 'idle') return el(doc, 'div', 'wk-note', 'No walk yet');
+    if (shown.run === 'running') return el(doc, 'div', 'wk-note', RUNNING);
+    if (shown.run !== 'failed') return null;
+    // 🔴 사유를 «서버의 말»로. 여기서 다시 쓰면 같은 거절이 두 화면에서 달라집니다.
+    const line = el(doc, 'div', 'wk-fail');
+    line.append(el(doc, 'b', '', FAILED), el(doc, 'span', '', ' · ' + shown.reason));
+    return line;
+  }
+
   function renderResult(root) {
     const box = el(doc, 'div', 'wk-result');
     const shown = shownStep();
-    if (shown.run === 'idle') {
-      box.append(el(doc, 'div', 'wk-note', 'No walk yet'));
-    } else if (shown.run === 'running') {
-      box.append(el(doc, 'div', 'wk-note', RUNNING));
-    } else if (shown.run === 'failed') {
-      // 🔴 사유를 «서버의 말»로. 여기서 다시 쓰면 같은 거절이 두 화면에서 달라집니다.
-      const line = el(doc, 'div', 'wk-fail');
-      line.append(el(doc, 'b', '', FAILED), el(doc, 'span', '', ' · ' + shown.reason));
-      box.append(line);
+    const status = walkStatus(shown);
+    if (status) {
+      box.append(status);
     } else if (shown.result) {
       const r = shown.result;
       // 🔴 몇 홉을 «실제로» 걸었나. 요청한 수와 다르면 그 자체가 답입니다.
@@ -1848,7 +1856,10 @@ export function boot(doc, host, deps) {
     } else {
       renderBar(bar);
       renderHead(main);
-      if (state.view === 'graph') main.append(graphMount);
+      // The graph draws the Walk's answer: before it, the table's line in its place (lead 10-12).
+      const status = state.view === 'graph' && walkStatus(state);
+      if (status) { const box = el(doc, 'div', 'wk-result'); box.append(status); main.append(box); }
+      else if (state.view === 'graph') main.append(graphMount);
       else { renderSteps(main); renderResult(main); }
     }
     // The baskets read the form's picked node for their «+»: drawn with the page.

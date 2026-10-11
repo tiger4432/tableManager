@@ -1089,65 +1089,74 @@ async function suite(mod) {
     const route = pick(0, (t) => t.startsWith('inspected ← '));
     const value = route && pick(1, (t) => t === 'key · wafer');
     const ADDED = 'inspected ← wafer@1 · wafer';
-    ok('Z15 + Column at Columns\' foot: a route the rows take, then what its end holds - a group of its own, each side its cell',
+    ok('Z15 + Column at Columns\' foot: a route the rows take, then what its end holds - a group of its own, each side its cell - words, no row a Δ, so none drawn (lead 10-12)',
       JSON.stringify([route, value, groupHeads(), tds('d:3')]) === JSON.stringify([true, true,
-        [['inspected ← wafer@1 · gate', 3], [ADDED, 3]], ['M-3', '7', '−2', '9', 'A', '—', 'B']]),
+        [['inspected ← wafer@1 · gate', 3], [ADDED, 2]], ['M-3', '7', '−2', '9', 'A', 'B']]),
       JSON.stringify([route, value, groupHeads(), tds('d:3')]));
   }
   // ── fixed widths (owner 10-12 「폭이 꿀렁꿀렁」 · 「컬럼 여백 남아도는데 존나 넓게」): a column a <col>, its width from
-  //    the answer - a value's + and − one series, the longest words of both (28 · 1050.25 · missing · 10: 7 letters, 8ch),
-  //    its Δ its own (only «—»: 5ch, lead 10-12), the node's keys beside its copy icon - the same after a sort, a filter
-  //    and a check; the head's spans over exactly those columns;
-  //    the stylesheet fixes the layout on them ──
+  //    the answer - a value's + and − one series, the longest words of both (28 · 1050.25 · missing · 10: 7 letters, 8ch);
+  //    its Δ drawn only when a row has one (lead 10-12), then its own words alone (+1040.25: 8 letters, 9ch); the node's
+  //    keys beside its copy icon - the same after a sort, a filter and a check; the head's spans over exactly those
+  //    columns; the stylesheet fixes the layout on them ──
   {
-    const doc = makeDoc();
-    const host = doc.createElement('div');
-    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
-    await settle();
-    handle.state.type = 'wafer@1';
-    handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
-    handle.state.run = 'done';
-    handle.state.result = { ...SIGNED, edges: [{ id: 'e:a1', source: 's:a', target: 'd:1', predicate: 'inspected', qualifiers: { gate: 28 } },
-      { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 10 } },
-      { id: 'e:c4', source: 's:c', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 1050.25 } }] };
-    handle.render();
-    const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
-    const change = (e) => { for (const fn of (e && e.listeners.change) || []) fn({}); };
-    const secHead = (sec) => (walkAll(sec).find((c) => c.className === 'wk-sechead') || {}).textContent || '';
-    const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec').find((x) => /^die/.test(secHead(x))) || { children: [] };
-    const table = () => walkAll(dieSec()).find((e) => e.tagName === 'table') || { children: [] };
-    const attr = (name) => walkAll(dieSec()).find((e) => e.attrs && e.attrs[name] !== undefined);
-    const widths = () => {
-      const trs = walkAll(table()).filter((e) => e.tagName === 'tr');
-      const body = trs.find((e) => e.attrs && e.attrs['data-row-id']);
-      return { cols: walkAll(table()).filter((e) => e.tagName === 'col').map((e) => [e.className, (e.attrs.style || '').replace(/^width: /, '')]),
-        cells: walkAll(table()).filter((e) => e.className === 'wk-val').map((e) => e.textContent),
-        deltas: walkAll(table()).filter((e) => e.tagName === 'td' && /\bwk-delta\b/.test(e.className)).map((e) => e.textContent),
-        spans: trs.length ? trs[0].children.reduce((n, c) => n + (c.colSpan || 1), 0) : -1, across: body ? body.children.length : -1,
-        rows: walkAll(table()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length };
+    const fwEdge = (id, source, target, gate) => ({ id, source, target, predicate: 'inspected', qualifiers: { gate } });
+    const FW_DASHED = [fwEdge('e:a1', 's:a', 'd:1', 28), fwEdge('e:b3', 's:b', 'd:3', 10), fwEdge('e:c4', 's:c', 'd:4', 1050.25)];
+    const fixedWidths = async (edges) => {
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+      await settle();
+      handle.state.type = 'wafer@1';
+      handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
+      handle.state.run = 'done';
+      handle.state.result = { ...SIGNED, edges };
+      handle.render();
+      const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
+      const change = (e) => { for (const fn of (e && e.listeners.change) || []) fn({}); };
+      const secHead = (sec) => (walkAll(sec).find((c) => c.className === 'wk-sechead') || {}).textContent || '';
+      const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec').find((x) => /^die/.test(secHead(x))) || { children: [] };
+      const table = () => walkAll(dieSec()).find((e) => e.tagName === 'table') || { children: [] };
+      const attr = (name) => walkAll(dieSec()).find((e) => e.attrs && e.attrs[name] !== undefined);
+      const widths = () => {
+        const trs = walkAll(table()).filter((e) => e.tagName === 'tr');
+        const body = trs.find((e) => e.attrs && e.attrs['data-row-id']);
+        return { cols: walkAll(table()).filter((e) => e.tagName === 'col').map((e) => [e.className, (e.attrs.style || '').replace(/^width: /, '')]),
+          cells: walkAll(table()).filter((e) => e.className === 'wk-val').map((e) => e.textContent),
+          deltas: walkAll(table()).filter((e) => e.tagName === 'td' && /\bwk-delta\b/.test(e.className)).map((e) => e.textContent),
+          signs: walkAll(table()).filter((e) => e.tagName === 'th' && /wk-sidehead|wk-delta/.test(e.className)).map((e) => e._text),
+          spans: trs.length ? trs[0].children.reduce((n, c) => n + (c.colSpan || 1), 0) : -1, across: body ? body.children.length : -1,
+          rows: walkAll(table()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length };
+      };
+      const before = widths();
+      press(attr('data-sort-key'));
+      press(attr('data-filter'));
+      change(attr('data-pick'));
+      press(attr('data-check-all'));
+      return { before, after: widths() };
     };
-    const before = widths();
-    press(attr('data-sort-key'));
-    press(attr('data-filter'));
-    change(attr('data-pick'));
-    press(attr('data-check-all'));
-    const after = widths();
     const rule = (sel) => ((CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'))
       .find(([s]) => s && s.trim() === sel) || [])[1] || '').replace(/\s+/g, ' ').trim();
-    const valueCols = before.cols.filter(([c]) => c === 'wk-col-value');
-    const VALUE_W = 'max(calc(8ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--wk-h-small)))';
-    const DELTA_W = 'max(calc(5ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--wk-h-small)))';
+    const stable = ({ before, after }) => JSON.stringify(before.cols) === JSON.stringify(after.cols) && after.rows < before.rows
+      && before.spans === before.cols.length && before.across === before.cols.length && after.spans === after.cols.length;
+    const values = ({ before }) => before.cols.filter(([c]) => c === 'wk-col-value').map(([, w]) => w);
+    const sized = (n) => `max(calc(${n}ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--wk-h-small)))`;
     const NODE_W = 'max(calc(5ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(7ch + var(--space-2) + var(--wk-h-small)))';
-    ok('FW1 fixed widths from the answer: a <col> a column - check a finger, node its keys and icon, + and − of one value the width of the longest words of both (28 · 1050.25 · missing · 10 → 8ch, not 96px), its Δ of only «—» its own 5ch - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed (owner 10-12)',
-      JSON.stringify(before.cols) === JSON.stringify(after.cols)
-        && JSON.stringify(before.cols.slice(0, 2)) === JSON.stringify([['wk-col-check', 'var(--wk-h)'], ['wk-col-node', NODE_W]])
-        && JSON.stringify(valueCols.map(([, w]) => w)) === JSON.stringify([VALUE_W, DELTA_W, VALUE_W]) && before.cols.length === 5
-        && ['1050.25', 'missing', '28', '10'].every((v) => before.cells.includes(v))
-        && before.deltas.length === 4 && before.deltas.every((d) => d === '—')
-        && before.spans === before.cols.length && before.across === before.cols.length && after.spans === after.cols.length
-        && after.rows < before.rows
+    const dashed = await fixedWidths(FW_DASHED);
+    ok('FW1 fixed widths from the answer: a <col> a column - check a finger, node its keys and icon, + and − of one value the width of the longest words of both (28 · 1050.25 · missing · 10 → 8ch, not 96px); a Δ no row has not drawn - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed (owner 10-12)',
+      stable(dashed) && dashed.before.cols.length === 4
+        && JSON.stringify(dashed.before.cols.slice(0, 2)) === JSON.stringify([['wk-col-check', 'var(--wk-h)'], ['wk-col-node', NODE_W]])
+        && JSON.stringify(values(dashed)) === JSON.stringify([sized(8), sized(8)])
+        && ['1050.25', 'missing', '28', '10'].every((v) => dashed.before.cells.includes(v))
+        && dashed.before.deltas.length === 0 && JSON.stringify(dashed.before.signs) === JSON.stringify(['+', '−'])
         && /table-layout: fixed;/.test(rule('.wk-table')) && /width: 0;/.test(rule('.wk-table')) && rule('.wk-table col') === '',
-      JSON.stringify([before, after, rule('.wk-table'), rule('.wk-table col')]));
+      JSON.stringify([dashed, rule('.wk-table'), rule('.wk-table col')]));
+    // One row with both sides' numbers - d:3 + 1050.25, − 10 - and the column has its Δ, as wide as its own words.
+    const counted = await fixedWidths([...FW_DASHED, fwEdge('e:a3', 's:a', 'd:3', 1050.25)]);
+    ok('FW2 one row\'s Δ draws the column\'s Δ between + and −, the width of its own words (+1040.25 → 9ch) - not the pair\'s; unchanged by a sort, a filter and a check (lead 10-12)',
+      stable(counted) && counted.before.cols.length === 5 && JSON.stringify(values(counted)) === JSON.stringify([sized(8), sized(9), sized(8)])
+        && counted.before.deltas.includes('+1040.25') && JSON.stringify(counted.before.signs) === JSON.stringify(['+', 'Δ', '−']),
+      JSON.stringify(counted));
   }
   // ── what the cell shows is what Copy gives (owner 10-12): a value's spaces drawn; the node cell's icon its keys ──
   {
@@ -1520,6 +1529,12 @@ const sideSuite = (TV) => {
   ok('Z12 Δ under every column of two groups (W: «+ · Δ · −»): the first less the second where both say one number, «—» where not',
     JSON.stringify([die.parts.map((p) => p.delta), die.rows.map((r) => r.cells.map((c) => (c.delta ? c.delta.text : '')).join())])
       === JSON.stringify([[true], ['—', '—', '−2', '—']]), JSON.stringify([die.parts, die.rows.map((r) => r.cells.map((c) => c.delta))]));
+  const dashed = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.filter((e) => e.id !== 'e:b3') });
+  const dashDie = dashed.sections.find((x) => x.type === 'die@1') || { parts: [], rows: [] };
+  ok('DX1 a column no row has a Δ for - every row «—» - draws none: no Δ part, no Δ cell, none copied; one row\'s Δ draws it (Z12) (lead 10-12)',
+    JSON.stringify([dashDie.parts.map((p) => p.delta), dashDie.rows.map((r) => r.cells.map((c) => c.delta)), TV.sheetOf(dashDie).head])
+      === JSON.stringify([[false], [[null], [null], [null], [null]], ['mat_id', `${GATE_IN} · +`, `${GATE_IN} · −`, 'id']]),
+    JSON.stringify([dashDie.parts, dashDie.rows.map((r) => r.cells.map((c) => c.delta)), TV.sheetOf(dashDie).head]));
   ok('Z17 the node\'s own columns - the keys its rows carry - once, first, read off the row',
     JSON.stringify([die.centreHeads, (die.rows.find((r) => r.id === 'd:3') || { centre: [] }).centre.map((c) => c.text)])
       === JSON.stringify([['mat_id'], ['M-3']]), JSON.stringify(die.centreHeads));
@@ -1923,8 +1938,8 @@ const MUTANTS = [
     from: '      cols.append(col);\n', to: '' },
   { id: 'FWm3', what: 'every column a fixed 96 px again, whatever it holds', catches: 'FW1 ',
     from: "      col.setAttribute('style', `width: ${width}`);", to: "      col.setAttribute('style', 'width: 96px');" },
-  { id: 'FWm4', what: 'Δ the width of its value\'s + and − again, whatever it holds', catches: 'FW1 ',
-    from: '[fit(section.rows.map((row) => said(row.cells[i].delta))), side]', to: '[side, side]' },
+  { id: 'FWm4', what: 'Δ the width of its value\'s + and − again, whatever it holds', catches: 'FW2 ',
+    from: '[fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side]', to: '[side, side]' },
   { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',
     from: "    const rows = t.at === 'section' ? ids : t.rows;", to: "    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;" },
   { id: 'SFm9', what: 'Walk on from the checked rows the filter hides', catches: 'PF8 ',
@@ -2100,7 +2115,10 @@ const TV_MUTANTS = [
   { id: 'ECm2', what: 'the confirmation predicate\'s column not carried', catches: 'EC2',
     from: ".filter((c) => c.kind === 'conflicts' || c.kind === 'absence')", to: ".filter((c) => c.kind === 'conflicts')" },
   { id: 'ZM4', what: 'no delta column', catches: 'Z12',
-    from: '    const deltaAt = new Set(groups.length === 2 ?', to: '    const deltaAt = new Set(false ?' },
+    from: '    const deltaAt = new Set(sideAt.flatMap((c, k) => (hasDelta(c) ? [k] : [])));', to: '    const deltaAt = new Set();' },
+  { id: 'ZM4b', what: 'a column no row has a Δ for draws its «—» Δ again', catches: 'DX1 ',
+    from: '    const deltaAt = new Set(sideAt.flatMap((c, k) => (hasDelta(c) ? [k] : [])));',
+    to: '    const deltaAt = new Set(groups.length === 2 ? sideAt.map((_, k) => k) : []);' },
   { id: 'ZM5', what: 'reached but no value drawn missing', catches: 'Z4',
     from: '  if (!values.length) return { text: EMPTY };', to: '  if (!values.length) return { text: MISSING, missing: true };' },
   { id: 'ZM6', what: 'several values: the first alone', catches: 'Z6',

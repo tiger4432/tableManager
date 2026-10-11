@@ -136,6 +136,53 @@ async function seen(M) {
       sent: sent.map((q) => ({ hops: q.get('hops'), node_limit: q.get('node_limit'), fanout: q.has('fanout_limit'), positive: q.getAll('positive').length })),
       limit: String(M.page.NODE_LIMIT) };
   }
+  // ── Graph pressed before any Walk, and a Walk that fails on the Graph view (lead 10-12): the graph never walks its own
+  //    ask - the press runs the bar's Walk and draws its answer; no start, or a failed walk, the table's line in its place ──
+  const graphPage = async (answer) => {
+    const urls = [];
+    const body = JSON.parse(JSON.stringify(fx('walk_start_die.json')));
+    const doc = makeDoc('light');
+    doc.head = doc.createElement('head');
+    const host = doc.createElement('div');
+    doc.body.appendChild(host);
+    const fetchImpl = async (url) => { urls.push(String(url)); return String(url).includes('/declaration')
+      ? { ok: true, status: 200, json: async () => ({ ...DECL, entities: GRAPH_DECL.entities }) } : answer(body); };
+    const wpage = M.page.boot(doc, host, { apiBase: '', fetchImpl });
+    await settle();
+    wpage.state.type = body._start.type;
+    wpage.state.keys = { ...body._start.keys };
+    wpage.state.hops = '1';
+    wpage.render();
+    const press = async (view) => {
+      const b = walkAll(host).find((n) => n.attrs && n.attrs['data-view'] === view);
+      if (b) b.dispatch('click', {});
+      await settle();
+    };
+    const walks = () => urls.filter((u) => u.includes('/subgraph')).map((u) => new URLSearchParams(u.split('?')[1] || ''))
+      .map((q) => ({ hops: q.get('hops'), node_limit: q.get('node_limit'), fanout: q.has('fanout_limit') }));
+    // What the result pane says, the table's or the graph's - not the bar's.
+    const said = (cls) => walkAll(host).filter((n) => String(n.className || '') === 'wk-result')
+      .flatMap((box) => walkAll(box)).filter((n) => String(n.className || '') === cls).map((n) => n.textContent);
+    return { wpage, press, walks, said };
+  };
+  {
+    const ok = await graphPage((body) => ({ ok: true, status: 200, json: async () => body }));
+    await ok.press('graph');
+    const none = { walks: ok.walks(), notes: ok.said('wk-note') };
+    ok.wpage.baskets.add(1);
+    await ok.press('table');
+    await ok.press('graph');
+    out.graphFirst = { none, walks: ok.walks(), drawn: ok.wpage.graph.state, limit: String(M.page.NODE_LIMIT) };
+    const bad = await graphPage(() => ({ ok: false, status: 500, json: async () => ({ detail: 'the ledger said no' }) }));
+    bad.wpage.baskets.add(1);
+    await bad.press('graph');
+    const onGraph = bad.said('wk-fail');
+    const asked = bad.walks().length;
+    await bad.press('table');
+    const onTable = bad.said('wk-fail');
+    await bad.press('graph');
+    out.graphFailed = { onGraph, onTable, again: bad.said('wk-fail'), asked, after: bad.walks().length };
+  }
   // ── a world picked on a walked page: walked again there, the same starts, no leaving (lead 10-09) ──
   {
     const urls = [];
@@ -207,6 +254,12 @@ function suite(out) {
       out.switch.walk.length > 0 && out.switch.walk.every((t) => t === 'world=default&world=w1')],
     [[['default', 'w1']], true, true]);
   eq('X1 ...with the same form and the same signed starts', out.switch.same, true);
+  eq('G2 Graph pressed before any Walk: no start, nothing asked and the table\'s «No walk yet»; a start, one walk - the bar\'s ask (hops 1, node_limit, no fan-out) - and its answer drawn (lead 10-12)',
+    out.graphFirst, { none: { walks: [], notes: ['No walk yet'] },
+      walks: [{ hops: '1', node_limit: out.graphFirst.limit, fanout: false }], drawn: 'done', limit: out.graphFirst.limit });
+  eq('G3 a Walk that fails on the Graph view: the graph pane says the table\'s fail line; Graph pressed again walks nothing (lead 10-12)',
+    [out.graphFailed.onGraph.length === 1, out.graphFailed.onGraph, out.graphFailed.again, out.graphFailed.asked, out.graphFailed.after],
+    [true, out.graphFailed.onTable, out.graphFailed.onTable, 1, 1]);
   eq('G1 the graph\'s «Walk on from here» then Walk: two + starts, one walk, the bar\'s ask - hops 1, node_limit, no fan-out the bar has not (lead 10-12)',
     out.walkOn, { view: 'graph', starts: 2, sent: [{ hops: '1', node_limit: out.walkOn.limit, fanout: false, positive: 2 }], limit: out.walkOn.limit });
   return { ran: names.length, names, failures };
@@ -243,6 +296,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    if (state.run !== 'idle' || markings.count(START)) await walkStarts();\n", '') },
   { id: 'W8', what: 'a world picked leaves the seat on the old worlds', catches: 'V9', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '    worlds = worldList(names);\n', '') },
+  { id: 'W10', what: 'Graph pressed before any Walk walks nothing', catches: 'G2', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, "void (state.run === 'idle' ? walkStarts() : showBranch());", 'void showBranch();') },
+  { id: 'W11', what: 'with no answer the graph walks its own ask again', catches: 'G3', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, '    if (!state.result) return;\n', '') },
+  { id: 'W12', what: 'a failed Walk on the Graph view says nothing there', catches: 'G3', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, "const status = state.view === 'graph' && walkStatus(state);", 'const status = false;') },
   { id: 'W9', what: 'Walk on the Graph view sends the graph\'s own ask again, not the bar\'s', catches: 'G1', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '    if (!markings.count(START)) return;\n', "    if (!markings.count(START)) return;\n    if (state.view === 'graph') { graph.show(); return; }\n") },
 ];
