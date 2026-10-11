@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords } from './table_view.js';
+import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -1096,8 +1096,22 @@ export function boot(doc, host, deps) {
     const cellsOf = (group) => section.parts.filter((p) => p.group === group).length;
     const leafed = section.parts.some((p) => cellsOf(p.group) > 1);
     const stepped = section.parts.length > 0;
-    fixedColumns(table, checks, [...section.centreHeads.map((_, i) => (i === 0 ? 'node' : 'value')),
-      ...section.parts.flatMap((_, i) => Array(width(i)).fill('value'))]);
+    // Each column as wide as what the answer puts in it (owner 10-12): every row's cells - a value's + · Δ · − one width -
+    // and the heads over it, a head over several columns a share each; a sorting head over it alone, with its «▾».
+    const most = (texts) => Math.max(0, ...texts.map(lettersOf));
+    const said = (cell) => (cell ? `${cell.text}${cell.rest ? ` ${cell.rest}` : ''}` : '');
+    const span = (group) => section.parts.reduce((n, q, j) => n + (q.group === group ? width(j) : 0), 0);
+    fixedColumns(table, checks, [
+      ...section.centreHeads.map((h, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
+        lettersOf(h), i === 0 ? ' + var(--space-1) + var(--wk-h-small)' : '')]),
+      ...section.parts.flatMap((p, i) => {
+        const one = cellsOf(p.group) === 1;
+        const far = lettersOf(farEnd(p.step).far);
+        const cells = most(section.rows.flatMap((row) => [...row.cells[i].sides, row.cells[i].delta].map(said)));
+        const shares = Math.max(one && !many ? 0 : far / span(p.group), !one && many ? lettersOf(p.leaf) / width(i) : 0);
+        // A sign's head (+ · Δ · −) is one letter; one basket, the group's or the value's head sorts.
+        return Array(width(i)).fill(['value', columnWidth(Math.max(cells, shares), many ? 1 : one ? far : lettersOf(p.leaf))]);
+      })]);
     const depth = Math.max(1, (stepped ? 1 : 0) + (leafed ? 1 : 0) + (many && stepped ? 1 : 0));
     const thead = el(doc, 'thead');
     const steps = el(doc, 'tr');
@@ -1121,10 +1135,9 @@ export function boot(doc, host, deps) {
         s.setAttribute('data-group', p.group);
         s.title = one ? `${p.step} · ${p.leaf}` : p.step;
         // Two lines over a fixed-width column (owner 10-12: a cut «m..» said nothing): the far end first, the way under it.
-        const said = /^(.*) ([→←]) (.+)$/.exec(p.step);
-        const via = said ? `${said[1]} ${said[2]}` : '';
+        const { far, via } = farEnd(p.step);
         const head = el(doc, 'span', 'wk-headtext');
-        head.append(el(doc, 'span', 'wk-headfar', said ? said[3] : p.step),
+        head.append(el(doc, 'span', 'wk-headfar', far),
           el(doc, 'span', 'wk-headvia', one ? [via, p.leaf].filter(Boolean).join(' · ') : via));
         s.append(head);
         if (p.folded) {
@@ -1234,11 +1247,15 @@ export function boot(doc, host, deps) {
     return table;
   }
 
-  /** A table's columns at fixed widths (owner 10-12 「폭이 꿀렁꿀렁」): the check, the node, and every value column - each
-   *  sign and Δ alike - a token each; what a cell says moves none. A cut cell says its whole in its title. */
-  function fixedColumns(table, checks, kinds) {
+  /** A table's columns at fixed widths (owner 10-12 「폭이 꿀렁꿀렁」): the check a finger's, each other its [kind, width]
+   *  from the answer (columnWidth) - a sort, a filter or a check moves none. A cut cell says its whole in its title. */
+  function fixedColumns(table, checks, columns) {
     const cols = el(doc, 'colgroup');
-    for (const kind of [...(checks ? ['check'] : []), ...kinds]) cols.append(el(doc, 'col', `wk-col-${kind}`));
+    for (const [kind, width] of [...(checks ? [['check', 'var(--wk-h)']] : []), ...columns]) {
+      const col = el(doc, 'col', `wk-col-${kind}`);
+      col.setAttribute('style', `width: ${width}`);
+      cols.append(col);
+    }
     table.setAttribute('data-clip-ok', '');
     table.append(cols);
   }
@@ -1251,7 +1268,11 @@ export function boot(doc, host, deps) {
     const signs = new Set(section.groups.map((g) => g.sign));
     const valued = (h, l) => [numberOf(l.value) !== null ? 'wk-num' : '', signs.has(h) ? signClass(h) : ''].filter(Boolean).join(' ');
     const table = el(doc, 'table', 'wk-table wk-long');
-    fixedColumns(table, checks, heads.map((h) => (h === 'node' ? 'node' : 'value')));
+    // Each column from every line of the answer (Wide's rule) - the + and − columns one width; every head sorts.
+    const every = shown.all.map((line) => longRow(line.line));
+    const letters = heads.map((_, k) => Math.max(0, ...every.map((r) => lettersOf(r[k]))));
+    const sided = Math.max(0, ...heads.map((h, k) => (signs.has(h) ? letters[k] : 0)));
+    fixedColumns(table, checks, heads.map((h, k) => [h === 'node' ? 'node' : 'value', columnWidth(signs.has(h) ? sided : letters[k], lettersOf(h))]));
     const thead = el(doc, 'thead');
     const head = el(doc, 'tr');
     if (checks) checkAllCell(head, checks, shown);

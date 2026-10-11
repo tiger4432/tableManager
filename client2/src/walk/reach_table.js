@@ -94,6 +94,19 @@ export function readsOf(index, inside, x, column, cap = WAYS_A_CELL) {
   return { missing: false, reads, more };
 }
 
+/** A read's records (lead 10-12 C3: Long a line a record) - its edge's every atom (`records`, server e5e0a87e2), its end
+ *  node's every registration of the name; each its value, when, point and `record` - its claim id, the one identity two
+ *  ways to the same record share. A read the answer lists no records for is its one record. */
+export function recordsOf(index, column, r) {
+  const { on, name } = column.value;
+  const listed = on === 'edge' ? r.edge && r.edge.records : on === 'node' ? ((index.nodes.get(r.node) || {}).records || {})[name] : null;
+  if (!Array.isArray(listed) || !listed.length) return [{ ...r, point: pointOf(column, r.edge), record: r.edge || r.node }];
+  return listed.map((rec) => ({ ...r, when: rec, record: rec.claim_id ?? rec, point: pointOf(column, rec),
+    ...(on === 'edge' ? { value: (rec.qualifiers || {})[name], image: (rec.column_types || {})[name] === IMAGE_TYPE }
+      : { value: rec.value, image: rec.column_type === IMAGE_TYPE }) }))
+    .filter((x) => !isBlank(x.value));
+}
+
 /** A column by what it reads - its steps, the node it ends at when it names one, its value - not its place. */
 export const columnKey = (column) => JSON.stringify([column.steps, column.end || null, column.endTypes || null, column.value]);
 /** The group a column stands in - its steps and the node it ends at (lead 10-11 W addendum 8). */

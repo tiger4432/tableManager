@@ -26,8 +26,6 @@ export const WALK_CSS = `
    beside, the result tables - lead 10-11 W 12), 14 (body), 16 (titles); a control 44 high, a small one in a cell 28; every space a --space-* token.
    The screen gate asks all three of every element on the page. */
 :root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: 44px; --wk-h-small: 28px;
-  /* A result table's columns (owner 10-12 「폭이 꿀렁꿀렁」): the node one width, every value column - each sign and Δ - one. */
-  --wk-col-node: 176px; --wk-col-value: 96px;
   /* One face for the page; the mono only for ids and ways (lead 10-11 W 3). */
   --wk-font: 'IBM Plex Sans', 'Outfit', system-ui, sans-serif; --wk-mono: 'IBM Plex Mono', var(--font-mono, ui-monospace), monospace; }
 .wk-bar, .wk-main { font-family: var(--wk-font); }
@@ -267,13 +265,11 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-basketadd[disabled] { opacity: 0.45; cursor: not-allowed; }
 .wk-throughacts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-throughacts > .wk-input { flex: 1 1 8em; width: auto; min-height: var(--wk-h-small); height: var(--wk-h-small); }
-/* Fixed columns (owner 10-12): each a token from its <col> - sorting, filtering, checking or adding rows moves none; a cell
-   that does not fit is cut, its whole in its title. width 0: the table is its columns' sum, its box scrolls sideways. */
+/* Fixed columns (owner 10-12): each <col> its width from the answer (main.js fixedColumns) - sorting, filtering, checking
+   or scrolling moves none; a cell that does not fit is cut, its whole in its title. width 0: the table is its columns'
+   sum, its box scrolls sideways. */
 .wk-tablebox { overflow-x: auto; }
 .wk-table { table-layout: fixed; width: 0; border-collapse: collapse; font-size: var(--wk-fs-line); white-space: nowrap; }
-.wk-table col { width: var(--wk-col-value); }
-.wk-table col.wk-col-node { width: var(--wk-col-node); }
-.wk-table col.wk-col-check { width: var(--wk-h); }
 .wk-table th, .wk-table td { border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis;
   padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }
 .wk-table .wk-val, .wk-table .wk-centrelabel, .wk-table .wk-src { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

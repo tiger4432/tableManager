@@ -16,7 +16,7 @@
 import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointOf, pointWords } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, recordsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointWords } from './reach_table.js';
 import { isBlank } from '../absent.js';
 import { walkPoints } from './trend.js';
 import { localStamp } from '../server_time.js';
@@ -111,6 +111,29 @@ export function gridOf(section, lines = null) {
     lines: section.rows.map((row) => ({ id: row.id, row,
       cells: [...row.centre, ...row.cells.flatMap((cell) => order(cell.sides, cell.delta || undefined))].map(said) })),
   };
+}
+
+/** A group head's step said as its far end and the way to it - «a → b → far»: { far, via: «a → b →» } (owner 10-12 «m..»). */
+export function farEnd(step) {
+  const said = /^(.*) ([→←]) (.+)$/.exec(step);
+  return said ? { far: said[3], via: `${said[1]} ${said[2]}` } : { far: step, via: '' };
+}
+
+/** A column's letters (owner 10-12 「컬럼 여백 남아도는데 존나 넓게」 · 「꿀렁꿀렁」): read off the answer, not what is
+ *  shown - a sort, a filter or a check moves none. One letter more than its longest words (`ch` is a «0»; the face is
+ *  proportional), between these ends; past the far one a cell is cut, whole in its title. */
+export const COLUMN_CH = Object.freeze({ min: 5, max: 18 });
+// Hangul, CJK and full-width forms are drawn two letters wide.
+const WIDE_LETTER = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/;
+export const lettersOf = (words) => [...String(words)].reduce((n, c) => n + (WIDE_LETTER.test(c) ? 2 : 1), 0);
+const columnCh = (letters, min = COLUMN_CH.min) => Math.min(COLUMN_CH.max, Math.max(min, Math.ceil(letters) + 1));
+/**
+ * A <col>'s width: its cells' letters and padding (`extra` what else sits in their line - the node's copy icon); with
+ * `head` the letters of a sorting head over it alone, its «▾» seat beside them when they ask more.
+ */
+export function columnWidth(cells, head = 0, extra = '') {
+  const cell = `calc(${columnCh(cells)}ch + 2 * var(--space-2)${extra})`;
+  return head ? `max(${cell}, calc(${columnCh(head, 0)}ch + var(--space-2) + var(--wk-h-small)))` : cell;
 }
 
 /** A column filter that says something: words it contains, a number at least or at most, values picked out. */
@@ -235,13 +258,13 @@ export function longLines(view, section, only = {}) {
       const groups = mine ? [null] : view.groups.map((g, i) => ({ g, i }));
       for (const at of groups) {
         const inside = at ? at.g.inside : new Set([row.id]);
-        for (const r of readsOf(view.index, inside, row.id, column).reads) {
-          const point = pointWords(pointOf(column, r.edge));
+        for (const r of readsOf(view.index, inside, row.id, column).reads.flatMap((read) => recordsOf(view.index, column, read))) {
+          const point = pointWords(r.point);
           const t = r.when && Date.parse(r.when.occurred_at);
           lines.push({ id: row.id, node: row.label, name: head, value: r.value, words: valueWords(r.value), image: Boolean(r.image), point,
             time: Number.isFinite(t) ? localStamp(new Date(t).toISOString()) : '', side: at ? at.g.name : '',
             from: at && r.giver !== row.id ? view.sources.source(at.g, r.giver) : '', group: at ? at.i : null, column: columnKey(column),
-            read: r.edge || r.node });
+            record: r.record });
         }
       }
     }
@@ -252,7 +275,8 @@ export function longLines(view, section, only = {}) {
 /**
  * Long's lines (owner 10-12): two baskets, a record a line - its value under each side ITS way was walked inside (a side's
  * reads are longLines' per group), both when both; a node's own value under the sides that reached the node. A record is
- * its read (last edge, or node), not its value; one basket: longLines as they are.
+ * its record (lead 10-12 C3: recordsOf's claim id) - not its edge, nor its value - however many ways reached it; one
+ * basket: longLines as they are.
  */
 export function longRecords(view, section, lines) {
   if (!bySide(section.groups)) return lines;
@@ -263,9 +287,8 @@ export function longRecords(view, section, lines) {
     const key = `${l.id}\u0000${l.column}`;
     const same = seen.get(key) || new Map();
     seen.set(key, same);
-    const kin = (same.get(l.read) || []).find((m) => at.every((i) => m.sides[i] === ''));
-    const line = kin || { ...l, sides: view.groups.map(() => ''), froms: [] };
-    if (!kin) { out.push(line); same.set(l.read, [...(same.get(l.read) || []), line]); }
+    const line = same.get(l.record) || { ...l, sides: view.groups.map(() => ''), froms: [] };
+    if (!same.has(l.record)) { out.push(line); same.set(l.record, line); }
     for (const i of at) line.sides[i] = l.words;
     if (l.from && !line.froms.includes(l.from)) line.froms.push(l.from);
     line.from = line.froms.join('; ');

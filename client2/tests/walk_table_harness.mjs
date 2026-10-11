@@ -139,6 +139,12 @@ const LS = {
   propagation: { ranked: [{ id: 'q', reach: [3, 5] }, { id: 'w:s', reach: [1, 1] }] },
 };
 const LS_STARTS = { positive: LS_PLUS, negative: LS_MINUS };
+// Long a line a record (lead 10-12 C3, rehearsal SYN-CW-001-02): one + wafer's edge two atoms (the answer's `records`) - CLEAN
+// 300 and ETCH 90, each its own time and point; the shared wafer's one record reached from both sides.
+const lsRecord = (claim, value, at, step) => ({ claim_id: claim, occurred_at: at, world: 'default', qualifiers: { value, ...(step ? { step } : {}) } });
+const LS_RECORDS = { ...LS, edges: LS.edges.map((e) => (e.id === 'ms:p:1'
+  ? { ...e, qualifiers: { value: 300, step: 'CLEAN' }, records: [lsRecord('c:1', 300, '2026-08-06T21:02:00+00:00', 'CLEAN'), lsRecord('c:2', 90, '2026-08-06T19:32:00+00:00', 'ETCH')] }
+  : e.id === 'ms:w:s' ? { ...e, records: [lsRecord('c:s', 28, '2026-08-06T10:00:00+00:00')] } : e)) };
 // Sort · filter · bulk select (lead 10-11 W addendum 7): one + wafer and more dies than a pick lists (PICK_MOST + 2, read off
 // the module) - mat_id M-1 …, a grade A · B · none, a gate each - numbers that sort otherwise as words (2 · 9 · 10 · 100),
 // two dies with none - and a point beside it (Split by, addendum 2 ⑭), every edge at its own hour.
@@ -1088,9 +1094,10 @@ async function suite(mod) {
         [['inspected ← wafer@1 · gate', 3], [ADDED, 3]], ['M-3', '7', '−2', '9', 'A', '—', 'B']]),
       JSON.stringify([route, value, groupHeads(), tds('d:3')]));
   }
-  // ── fixed widths (owner 10-12 「폭이 꿀렁꿀렁」): a column a <col> - the node one token, every value column (+ · Δ · −)
-  //    one - the same after a sort, a filter and a check; the head's spans over exactly those columns; the stylesheet fixes
-  //    the layout on them ──
+  // ── fixed widths (owner 10-12 「폭이 꿀렁꿀렁」 · 「컬럼 여백 남아도는데 존나 넓게」): a column a <col>, its width from
+  //    the answer - a value's longest words (28 · 1050.25 · missing: 7 letters, 8ch) shared by its + · Δ · −, the node's
+  //    keys beside its copy icon - the same after a sort, a filter and a check; the head's spans over exactly those columns;
+  //    the stylesheet fixes the layout on them ──
   {
     const doc = makeDoc();
     const host = doc.createElement('div');
@@ -1099,7 +1106,9 @@ async function suite(mod) {
     handle.state.type = 'wafer@1';
     handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
     handle.state.run = 'done';
-    handle.state.result = SIGNED;
+    handle.state.result = { ...SIGNED, edges: [{ id: 'e:a3', source: 's:a', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 28 } },
+      { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 28 } },
+      { id: 'e:c4', source: 's:c', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 1050.25 } }] };
     handle.render();
     const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
     const change = (e) => { for (const fn of (e && e.listeners.change) || []) fn({}); };
@@ -1110,7 +1119,8 @@ async function suite(mod) {
     const widths = () => {
       const trs = walkAll(table()).filter((e) => e.tagName === 'tr');
       const body = trs.find((e) => e.attrs && e.attrs['data-row-id']);
-      return { cols: walkAll(table()).filter((e) => e.tagName === 'col').map((e) => e.className),
+      return { cols: walkAll(table()).filter((e) => e.tagName === 'col').map((e) => [e.className, (e.attrs.style || '').replace(/^width: /, '')]),
+        cells: walkAll(table()).filter((e) => e.className === 'wk-val').map((e) => e.textContent),
         spans: trs.length ? trs[0].children.reduce((n, c) => n + (c.colSpan || 1), 0) : -1, across: body ? body.children.length : -1,
         rows: walkAll(table()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length };
     };
@@ -1122,15 +1132,17 @@ async function suite(mod) {
     const after = widths();
     const rule = (sel) => ((CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'))
       .find(([s]) => s && s.trim() === sel) || [])[1] || '').replace(/\s+/g, ' ').trim();
-    const valueCols = before.cols.filter((c) => c !== 'wk-col-check' && c !== 'wk-col-node');
-    ok('FW1 fixed widths: a <col> a column - check · node · every + · Δ · − one value width - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed on the tokens (owner 10-12)',
-      JSON.stringify(before.cols) === JSON.stringify(after.cols) && before.cols[0] === 'wk-col-check' && before.cols[1] === 'wk-col-node'
-        && valueCols.length === 3 && valueCols.every((c) => c === 'wk-col-value')
+    const valueCols = before.cols.filter(([c]) => c === 'wk-col-value');
+    const VALUE_W = 'max(calc(8ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--wk-h-small)))';
+    const NODE_W = 'max(calc(5ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(7ch + var(--space-2) + var(--wk-h-small)))';
+    ok('FW1 fixed widths from the answer: a <col> a column - check a finger, node its keys and icon, + · Δ · − of one value the width of its longest words (28 · 1050.25 · missing → 8ch, not 96px) - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed (owner 10-12)',
+      JSON.stringify(before.cols) === JSON.stringify(after.cols)
+        && JSON.stringify(before.cols.slice(0, 2)) === JSON.stringify([['wk-col-check', 'var(--wk-h)'], ['wk-col-node', NODE_W]])
+        && valueCols.length === 3 && valueCols.every(([, w]) => w === VALUE_W) && before.cols.length === 5
+        && ['1050.25', 'missing', '28'].every((v) => before.cells.includes(v))
         && before.spans === before.cols.length && before.across === before.cols.length && after.spans === after.cols.length
         && after.rows < before.rows
-        && /table-layout: fixed;/.test(rule('.wk-table')) && /width: 0;/.test(rule('.wk-table'))
-        && rule('.wk-table col') === 'width: var(--wk-col-value);' && rule('.wk-table col.wk-col-node') === 'width: var(--wk-col-node);'
-        && /--wk-col-node: \S+; --wk-col-value: \S+;/.test(rule(':root')),
+        && /table-layout: fixed;/.test(rule('.wk-table')) && /width: 0;/.test(rule('.wk-table')) && rule('.wk-table col') === '',
       JSON.stringify([before, after, rule('.wk-table'), rule('.wk-table col')]));
   }
   // ── what the cell shows is what Copy gives (owner 10-12): a value's spaces drawn; the node cell's icon its keys ──
@@ -1752,6 +1764,16 @@ const filterSuite = (TV) => {
     JSON.stringify([lsGrid.columns.map((c) => c.head), lsWhere(true, false), lsWhere(false, true), lsWhere(true, true), lsSides.length])
       === JSON.stringify([['node', 'value name', '+', '−', 'point', 'time', 'from'], '20,21,22', '23,24,25,26,27', '28', 9]),
     JSON.stringify([lsGrid.columns.map((c) => c.head), lsSides]));
+  const lrView = TV.walkTableView(LS_RECORDS, LS_DECL.entities, LS_DECL.predicates, undefined, LS_STARTS);
+  const lrSec = lrView.sections.find((x) => x.type === 'quantity@1');
+  const lrRows = lrSec ? TV.longRecords(lrView, lrSec, TV.longLines(lrView, lrSec)).map(TV.longRow) : [];
+  const lrOf = (from) => lrRows.filter((r) => r[6].startsWith(from)).map((r) => r.slice(2, 6));
+  const p1 = lrOf('p:1');
+  ok('LS2 Long a line a record (lead 10-12 C3): an edge\'s two records two lines, each its value, point and time; one record both sides reached one line in both columns',
+    JSON.stringify([p1.map((r) => r.slice(0, 3)), lrOf('w:s').map((r) => r.slice(0, 2)), lrRows.length])
+      === JSON.stringify([[['300', '', 'step CLEAN'], ['90', '', 'step ETCH']], [['28', '28']], 10])
+      && p1.length === 2 && Boolean(p1[0][3]) && Boolean(p1[1][3]) && p1[0][3] !== p1[1][3],
+    JSON.stringify(lrRows));
   // Filters, each by its kind - judged over every line.
   const kind = (k) => (k < 0 ? 'none' : TV.filterKind(grid.lines, k).kind);
   ok('SF6 a column of more values than a pick lists filters by the words it contains, any case: mat_id «m-1» - M-1, M-10 … M-14',
@@ -1894,7 +1916,9 @@ const MUTANTS = [
   { id: 'SFm7', what: 'Long copied whatever the filter', catches: 'PF5 ',
     from: "copySheet(longSheet(section, shown.lines.map((line) => line.line)), 'line')", to: "copySheet(longSheet(section, longLines(view, section, {})), 'line')" },
   { id: 'FWm1', what: 'a table drawn with no fixed columns - auto widths again', catches: 'FW1 ',
-    from: "    for (const kind of [...(checks ? ['check'] : []), ...kinds]) cols.append(el(doc, 'col', `wk-col-${kind}`));", to: '' },
+    from: '      cols.append(col);\n', to: '' },
+  { id: 'FWm3', what: 'every column a fixed 96 px again, whatever it holds', catches: 'FW1 ',
+    from: "      col.setAttribute('style', `width: ${width}`);", to: "      col.setAttribute('style', 'width: 96px');" },
   { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',
     from: "    const rows = t.at === 'section' ? ids : t.rows;", to: "    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;" },
   { id: 'SFm9', what: 'Walk on from the checked rows the filter hides', catches: 'PF8 ',
@@ -2143,6 +2167,8 @@ const TV_MUTANTS = [
     from: "section.parts[i].delta ? { key: `${columnKey(column)}\\u0000${DELTA}`", to: "false ? { key: `${columnKey(column)}\\u0000${DELTA}`" },
   { id: 'LSm1', what: 'a Long record\'s side by its node, not by its way', catches: 'LS1 ',
     from: 'const at = l.group !== null ? [l.group] : view.groups', to: 'const at = view.groups' },
+  { id: 'LSm2', what: 'Long merges records by their edge again - an edge\'s second record dropped', catches: 'LS2 ',
+    from: '            record: r.record });', to: '            record: r.edge || r.node });' },
   { id: 'ZM12', what: 'an empty column drawn', catches: 'Z23',
     from: "      if (kindsAll[i] === 'empty') return;", to: '' },
   // ⚰️ QM1 (the flat table's fold: the last edge's value) retired 10-11 with qualifiersByNode (E1); every value kept is
