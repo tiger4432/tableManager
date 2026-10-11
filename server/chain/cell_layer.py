@@ -59,11 +59,20 @@ def _claimed_filter(table_name: str, source_name: str, columns: list = None):
     Extracted so `count_withdrawable` and `withdraw_source` cannot answer
     different questions: a count that used a slightly different filter from the
     operation it previews is a count that lies, and it would lie silently.
-    """
-    from database import models
 
-    conds = [models.CellSource.table_name == table_name,
-             models.CellSource.source_name == source_name]
+    A name whose bracketed layers rank as it (`crud.layer_ranks_as` - the chain's layer per source
+    row, 총괄 8ec008914) claims those layers too.
+    """
+    from sqlalchemy import or_
+
+    from database import crud, models
+
+    named = models.CellSource.source_name == source_name
+    tag = "\x00"
+    copy = crud.merged_layer_name(source_name, tag)
+    if crud.layer_ranks_as(copy) == source_name:
+        named = or_(named, models.CellSource.source_name.startswith(copy.split(tag)[0], autoescape=True))
+    conds = [models.CellSource.table_name == table_name, named]
     if columns:
         conds.append(models.CellSource.column_name.in_(list(columns)))
     return conds
@@ -83,14 +92,14 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list):
     from database import models
 
     sources = {}
-    for row_id, col, src, val, ing in (
+    for row_id, col, src, val, ing, origin in (
             db.query(models.CellSource.row_id, models.CellSource.column_name,
                      models.CellSource.source_name, models.CellSource.value,
-                     models.CellSource.ingested_at)
+                     models.CellSource.ingested_at, models.CellSource.origin_row_id)
             .filter(models.CellSource.table_name == table_name,
                     models.CellSource.row_id.in_(chunk_row_ids))
             .order_by(models.CellSource.source_name.asc()).all()):
-        sources.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing}
+        sources.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing, "origin_row_id": origin}
 
     pins = {}
     for row_id, col, pin in (
@@ -141,7 +150,7 @@ def shells(db, table_name: str, row_ids) -> list:
             if any(not crud.is_blank_value(getattr(row, column, None)) for column in shown):
                 continue
             if all(crud.layer_writer(name) != crud.USER_SOURCE and (
-                    crud.layer_writer(name) == crud.CHAIN_SOURCE if column in keys else crud.is_blank_value(value))
+                    crud.layer_ranks_as(name) == crud.CHAIN_SOURCE if column in keys else crud.is_blank_value(value))
                    for column, name, value in by_row.get(row.row_id, ())):
                 found.append(row.row_id)
     return found
@@ -327,13 +336,14 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     # EXPLAINs this exact statement to prove the planner uses it. With it the same
     # query is an Index Only Scan: 10.9ms, 1,106 buffers, 0 rows discarded.
     # `count_withdrawable` below rides the same index for the same reason.
-    q = (db.query(models.CellSource.row_id, models.CellSource.column_name)
+    q = (db.query(models.CellSource.row_id, models.CellSource.column_name, models.CellSource.source_name)
          .filter(*_claimed_filter(table_name, source_name, columns)))
     if row_ids:
         q = q.filter(models.CellSource.row_id.in_(list(row_ids)))
     claims = {}
-    for row_id, col in q.all():
-        claims.setdefault((row_id, col), []).append(source_name)
+    for row_id, col, name in q.all():
+        claims.setdefault((row_id, col), []).append(name)
+    claims = {cell: sorted(names) for cell, names in claims.items()}
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "source": source_name}
     stats.update(_withdraw_cells(db, table_name, target, claims, apply=apply, chunk_size=chunk_size,
                                  log=log, checkpoint=checkpoint, label=f"'{source_name}' claims"))

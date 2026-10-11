@@ -240,15 +240,16 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 
 > 🔴 **이 명령은 「같은 값이 여러 번 쌓이는 문제」를 고치지 않습니다.** 고치는 것은 **쌓인 것 중 무엇이 이기는가**뿐입니다. 쌓인 것을 줄이는 것은 🆕 **§2.6 `fold_file_layers`** 이고, 09-26 부터 쓰기 쪽은 같은 값을 안 쌓습니다(§1.1).
 
-### 2.6 🆕 `fold_file_layers` — 같은 값의 파일 층 접기 (**지웁니다 · 되돌릴 수 없습니다**)
+### 2.6 🆕 `fold_file_layers` — 같은 값을 말하는 층 접기 · 체인 층을 원천 행마다 (**지웁니다 · 되돌릴 수 없습니다**)
 
 ```bash
 python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
 ```
-어드민 **Retroactive** 탭에서는 `Fold file layers that repeat a newer one` — 파라미터 `table` · `pace`(`limit` · `chunk_size` 는 CLI).
+어드민 **Retroactive** 탭에서는 🆕 10-11 `Fold layers that repeat another`(옛 이름 `Fold file layers that repeat a newer one` — id 는 옛 실행 기록 · CLI 때문에 그대로) — 파라미터 `table` · `pace`(`limit` · `chunk_size` 는 CLI).
 
-- **하는 일**: 칸마다, 같은 우선순위 부류의 파일 층 중 **값이 같은 것**은 `compute_priority_value` 가 먼저 세우는 것(가장 새 것)과 **사람이 고정한 것**만 남기고 지웁니다. 칸의 승자는 자기 무리에서 첫째라 늘 남습니다 — **보이는 값 · 행 · 이력은 안 움직입니다.** 사람 · 체인 · 자동 확정 · 백필 층은 안 건드립니다.
-- **드라이런(Count)**: 「cells in rows hold file layers that repeat a newer one: layers N -> M, the deepest cell A -> B」. 그 수가 곧 지울 수입니다.
+- **하는 일**: 칸마다, 같은 우선순위 부류의 파일 층 중 **값이 같은 것**은 `compute_priority_value` 가 먼저 세우는 것(가장 새 것)과 **사람이 고정한 것**만 남기고 지웁니다. 칸의 승자는 자기 무리에서 첫째라 늘 남습니다 — **보이는 값 · 행 · 이력은 안 움직입니다.** 사람 · 자동 확정 · 백필 층은 안 건드립니다(체인 층은 아래).
+- 🆕 10-11 **체인 층**(총괄 8ec008914 · 4dd303f01): 원천 행이 찍힌 plain `chain_ingestion` 층은 그 행의 층 `chain_ingestion (<행>)` 으로 이름만 바뀝니다(그 이름 층이 이미 있으면 plain 을 지움). 원천 없는 plain 은 같은 칸의 행 층 하나라도 같은 값을 말하면 지우고, 다르면 남기고 세어 앞 다섯 칸을 댑니다 — 사람이 볼 칸. 행 층이 없는 칸의 plain 은 그대로. 행 층이 체인 순위로 서면서 보이는 값이 바뀌는 칸(층 둘 이상)은 R3 와 같은 쓰기로 값 + 이력 한 줄(`resolution_recompute`) — 체인 층에서는 «보이는 값이 움직일 수 있습니다».
+- **드라이런(Count)**: 「Files: cells in rows hold file layers that repeat a newer one: layers N -> M, the deepest cell A -> B. Chain: N plain layer(s) become their source row's layer, M that a row layer repeats go, K have no source row」 + 값이 달라 남긴 plain · 합치기 사본 체인 층 · 「Shown values that move: S」. 그 수가 곧 실행 수입니다.
 - 🔴 **되돌릴 수 없습니다** — 사라지는 것은 「같은 값을 말한 옛 파일 이름」 기록뿐이지만 되돌릴 방법은 없습니다.
 - **끝나면**: `python server/scripts/tune_layer_tables.py --table cell_sources --vacuum` — 지운 자리를 돌려받습니다(VACUUM 은 트랜잭션 밖이라 이 연산이 하지 않습니다).
 - ⚠️ **R2(ⓑ)의 가장자리가 달라집니다**: 파일3 A · 파일10 A 에서 파일10 을 철회하면 접기 «전»엔 파일3 의 A 가 드러나고, 접은 «뒤»엔 그 아래 층이 드러납니다. 쓰기 쪽에서 «안 쓴» 경우(파일10 이 파일3 과 같아 층이 안 생김)도 같습니다 — 그 칸을 마지막으로 같은 값이라 말한 파일은 옛 파일로 남습니다.

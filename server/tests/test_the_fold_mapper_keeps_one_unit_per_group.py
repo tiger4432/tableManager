@@ -18,6 +18,7 @@ if SERVER_DIR not in sys.path:
 
 import event_constants                                              # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
+from chain import rule_run                                          # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.database import Base                                  # noqa: E402
 from mappers import fold_unit                                       # noqa: E402
@@ -124,7 +125,8 @@ def test_running_it_again_writes_nothing(db):
     rows = db.query(models.DYNAMIC_TABLES[INV]).all()
     out = fold_unit.fold_by_unit(db, [{"row_id": r.row_id, "data": {}} for r in rows], dict(RULES[0]))
     crud.apply_batch_updates(db, LOG, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
-        **item, source_name=crud.CHAIN_SOURCE, updated_by=fold_unit.NAME) for item in out["updates"]]))
+        **item, source_name=rule_run.layer_of_a_rules_write(None, item["origin_row_id"]),   # the worker's seat
+        updated_by=fold_unit.NAME) for item in out["updates"]]))
     db.commit()
     assert len(out["updates"]) == 9 and count() == before, "the losing jobs' 3 + 3 + 3 rows, written again as they are"
 

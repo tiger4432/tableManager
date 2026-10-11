@@ -65927,3 +65927,87 @@ require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 repla
          join · mapper 선언도 같은 자리를 지나는지 세고 같이
 더 ②     같은 폼 ADVANCED 줄에 한국어가 그려짐 — 「mappers.ledger_v2_dt_job_mapper · 원장 롤프레임 매퍼입니다 — 체인 규칙이 이 모듈을 들지 않습니다」(서버 맵퍼 안내 문장) -> 영어로(UI 문자열은 영어, 소유자 상설)
 게이트   맨 위 · derive 밑 모르는 칸 -> 저장 답 · 로드 줄에 이름 · 레코드 칸 편집 왕복 · 그 문장 영어 · 변이
+
+> **[총괄 -> 클라] 10-11 오후 — W: 걷기 화면 정리 — 상단 «문장 바» + 결과 표 «Wide | Long» (소유자 「걷기 표 너무 난잡해 버튼들이 체계가 없음 그리고 컬럼도 너무 많음」 · 「value 하나라고 가정하고 한 거잖아 이러지 말고」 · 「measures, measures(in) 다 뭔 말이야」 -> 시안 https://claude.ai/artifact/4B96446h1sBA8e5Qu7cZ51 2판 -> 「ㄱ,ㄱ 로 지금 해」) — G-2(트렌드 기본 열 고침 포함) 착지 바로 다음**
+
+```
+상단(A-ㄱ)  한 줄, 하는 순서대로 — 걷기 요청은 오늘과 «같은 입력 -> 같은 요청»(배치만 바뀜)
+   From [+ 칩 ×] vs [− 칩 ×] [+ Add start] · collect [타입 칩 ×] [+] · through [All N ▾] · in [세상 ▾] · [Limits ▾] · [Walk]
+   + Add start   누르면 그 자리 창: Type · Pick a node(지금 앞글자 찾기 그대로) · Positive / Negative
+   through ▾     술어 체크 목록(All · None · 찾기) + 그 안에 «Compare with (B)» 칸 — 체크 22 개가 화면에 늘 펼쳐지지 않음
+   Limits ▾      hops · node limit · fan-out — 기본과 다른 값은 칩에 보임(«Limits · hops 2»)
+   그 밑 한 줄   Table | Graph · 결과 머리 줄(Nodes · Edges · 초 · 서버 문장)
+표(B-ㄱ)
+   공통  Route 열 은퇴 — 길은 값 밑 출처 줄 하나(시작 노드는 «start») · 구역 머리 도구줄 한 줄 순서 고정: Wide | Long · Table | Trend · Columns · k of n ▾ · Copy · 이어 걷기는 구역 맨 아래 한 줄
+   열 이름  화살표 + 건너편 타입: «measures → quantity · value»(나감) · «measures ← wafer · value»(들어옴) · 노드 자기 값 · 키는 이름만 — «(in)» 낱말 은퇴(stepWords 한 자리)
+   빈 열   이 답에서 값이 하나도 없는 열은 «어느 목록에도» 없음(Columns · Trend 고르기 · + Column) — 오늘 «empty columns» 접기와 한 판단
+   Wide   한 줄 = 한 노드 · 값 이름마다 열 하나, 바구니 둘이면 그 열 아래 + · Δ · − (바구니 하나면 한 칸) · 여러 값은 첫 값 + N, 누르면 그 줄 밑에 값 목록(값 · 시각 · 포인트 · 출처)
+   Long   같은 답을 «값 기록 한 줄씩»: node · value name · value · point(값 말고 다른 한정자들) · time · side · from — Value ▾ 로 이름 거르기 · Copy 는 보이는 모양 그대로 · Trend 는 고른 이름의 줄들
+          걷기 0 — Wide 와 Long 은 같은 답의 두 그림(그리개 둘, 읽기 하나)
+   Columns ▾  처음 = 노드 속성 · 엣지 속성 «다»(소유자 「처음 보는 거는 노드 속성, 엣지 속성 다」 — 값이 있는 열 전부) · 끄고 켬 · 타입마다 보는 사람 브라우저에 기억(localStorage, try/catch — 없어도 그려짐)
+   기록 수   Long 의 포인트 · 이력 줄은 서버가 걷기 답에 «값 기록 전부»를 싣는 일(구현자 같은 날 지시)과 같이 다 나옴 — 그 전엔 답에 있는 만큼(쌍 · 이름마다 하나)
+게이트   상단: 같은 입력 -> 같은 요청 쿼리(오늘 하니스 픽스처 그대로 대조) · 표: 열 이름 화살표 · 빈 열 목록 0 · Wide 줄 수 = 노드 수 · Long 줄 수 = 값 기록 수 · Route 열 0 · 두 인스턴스 간섭 0 · 변이
+         병합 전 진짜 화면 — 박스 8080 데모 바구니로 연다(총괄) · 시연 대본 «누른 것 · 본 것»은 응용이 착지 뒤 다시 씀
+순서     G-2(트렌드 기본 열 · 숫자 글자 · Trend 꺼짐 사유 · Trend 중 + Column) 착지 -> W -> 값 대응
+```
+
+> **[총괄 -> 구현자] 10-11 오후 — 걷기 답이 «값 기록 전부»를 싣는다 (소유자 「노드 속성을 잘 쓰는 게 중요」 · 「프로세스 이벤트 하나에 계측 포인트별로 측정 원자가 주렁주렁」 · 「2홉이 안 되네」 · 걷기 표 W 의 Long 이 읽음) — 층 원천 행마다 착지 다음**
+
+```
+지금(응용 18766 재현 · 코드)  엣지: 같은 (주어 · 술어 · 목적어) 쌍의 원자 넷이 엣지 «하나»(가장 늦은 것)로 접혀 옴 — 두 걸음 열 트렌드 1 점
+         노드 속성: attributes_by_world 가 이름 · 세상마다 «가장 늦은 하나»의 값과 시각만, 한정자 없음(ledger_subgraph 의 등록 읽기) — many 도 시각 하나
+도착지  「걷기 답의 엣지와 노드 속성이 지금 값 옆에 그 값의 기록 전부(값 · 시각 · 한정자 · 출처)를 싣는다 — 표 · 트렌드 · Long 이 그것을 읽는다」
+넓힐 것  오늘 칸(지금 값 · attributes · attributes_by_world)은 그대로 — 기록은 옆 칸 하나(엣지 · 노드에 같은 모양, 이름 하나로)
+         기록 상한은 이름 붙인 상수 하나 + 넘으면 «+N more» 수(claims 한도 · fan-out 과 같은 쪽 — 걷기가 읽는 원자 수를 늘리지 않는 범위부터 재고, 늘면 그 수를 보고)
+         한정자 = 원자의 qualifiers 그대로(포인트 등) · 시각 = 원자 occurred_at(없으면 null, 지어내지 않음)
+게이트   응용 재현 세계 그대로: TRD-W-001 -measures-> TRD-P 원자 넷 -> 기록 넷(시각 넷) · 포인트 한정자 원자 -> 기록마다 point · 노드 속성 many/one 각각 기록 수 · 상한 넘음 -> +N
+         같은 걷기의 claims_scanned 전후 · 응답 크기 전후(박스 데모 바구니) · 변이
+같은 커밋  RUN.md · RELEASE_LOG · CODE_MAP
+순서     층 원천 행마다 -> 이것
+```
+
+> **[총괄 -> 구현자] 10-11 오후 — 삭제도 «행 변경»: group_by 가 적힌 규칙은 지운 행의 묶음을 남은 행으로 다시 계산 (소유자 「dt log 지우면 dt inventory 회수되는지 job 내 모든 행 지워지면」 -> 응용 잼 -> 안 ㄱ 「ㅇㅇ」) — 걷기 답 기록 전부 다음**
+
+```
+잰 것(응용 · 진짜 프로세스 · 대역 인벤토리 맵퍼, 묶음 · 행 두 모양 같은 답)
+   맵퍼 출력에 origin 이 없어 dt_log 를 지워도 인벤토리 칸을 못 거둠(「[ChainRetract] table=dt_log deleted_rows=5 groups=0 cells_withdrawn=0」)
+   삭제가 그 규칙을 다시 부르지 않아 가장 이른 행을 지워도 wafer_out_time 이 옛 값 그대로 — origin 이 실려도 «거둠»일 뿐 «다음 이른 값»으로 안 섬
+도착지  「운영에서는 그 규칙에 group_by(묶음 칸)를 적으면 됩니다 — 원천 행을 지우면 그 묶음이 남은 행으로 다시 계산되고, 남은 행이 없으면 그 묶음이 쓴 것이 거둬집니다」
+넓힐 것  삭제 길(ChainRetract)이 이미 «지운 행»을 압니다 — group_by 가 있는 규칙이면 지운 행의 묶음 키를 모아 «그 키의 남은 행»을 오늘의 그룹 길로 그 규칙에 넘김(새 길 금지)
+         남은 행 0 인 묶음: 그 규칙이 그 묶음에 쓴 것을 거둠 — 무엇으로 찾을지(origin · 묶음 키 = 대상 키 · 맵퍼가 빈 묶음에 답함)는 짓기 전 안 셋으로
+게이트   응용 대역 그대로: 잡 행 전부 지움 -> 인벤토리 행 거둠(키만 남으면 [ChainShell]) · 가장 이른 행 지움 -> 다음 이른 값 · 이르지 않은 행 지움 -> 그대로 · group_by 없는 규칙 오늘 그대로 · 변이 · 진짜 프로세스 한 판
+짓기 전  안 셋 + 추천을 총괄에게(남은 행 0 처리 · 쪽 크기 · 지운 행 수천일 때 묶음 수)
+```
+
+> **[총괄 -> 구현자 · 응용] 10-11 오후 — 원장 선언이 시각 · timezone 을 쓸데없이 묻는 자리 전수 + 고침 (소유자 「원장 선언 쓸데없이 timezone 이나 시간 쓰라고 하는 거 많은데(특히 속성) 조사해서 고쳐 스켈레톤 잘 감」) — 층 원천 행마다 다음, 기록 전부 앞**
+
+```
+총괄이 본 것(코드)
+   ledger_skeleton.json  sources.read.occurred_at «required: true» · 그 안 timezone «required: true» — 그런데 검증기는 read.occurred_at 이 없어도 source_defaults 가
+                         사건 엣지 바인딩의 시각(열 · timezone)이나 사건 엣지가 없으면 행의 저장 시각(DEFAULT_TIME_ORIGIN)으로 채움 -> 폼이 «필수»라고 말하는 것이 거짓
+   validate_bundle_errors  사건 엣지들이 서로 다른 시각을 말하거나 하나가 timezone 을 안 말할 때만 missing_time — 이게 «정말 필수»의 경우
+   config.py:550          옛 평평한 모양의 occurred_at_timezone 거절 — 아직 읽는 자리가 있는지
+   config_authoring       timezone 기본값 Asia/Seoul 채움 · 속성 바인딩 폼에 시각 역할이 «필수»로 깔리는지(predicate_claim: 술어에는 필수, 매핑에서는 빼도 됨 10-02)
+원칙(도착지 두 줄)
+   「시각은 사건 엣지에만 묻는다 — 속성 등록 · 값만 싣는 소스는 시각 칸을 묻지 않고, 안 적으면 행의 저장 시각이다」
+   「timezone 은 시각 «열»을 적었을 때만 그 레코드 안에서 필수다 — 그 밖에서는 묻지도 기본값을 박지도 않는다」
+할 일
+   ① 전수: 골격 · 폼(config_authoring · 클라 폼) · 검증기 · 로더에서 occurred_at · timezone · basis 를 «필수»로 말하거나 기본값을 채우는 자리 — 자리마다 «정말 필요한가»(검증기가 없으면 거절하나 · 기본값이 채우나) 표, 센 명령 같이
+   ② 고침: 골격의 required 를 검증기의 답과 같게(read.occurred_at 선택 · 속성 바인딩의 occurred_at 선택) — 골격은 코드에서 다시 생성(드리프트 게이트) · 폼은 «필수» 표시를 그 골격에서만 읽음
+   ③ 기본값이 채우는 칸은 폼에 «default: row time» 처럼 무엇으로 채워지는지 한 줄(지어내지 않고 source_defaults 의 답)
+게이트   속성만 등록하는 소스(시각 열 없음) -> 폼 «필수» 0 · 저장 통과 · 원자 occurred_at = 행 저장 시각 / 사건 엣지 둘이 다른 시각 -> 그때만 missing_time / timezone 없는 시각 열 -> 그때만 거절 · 골격 드리프트 · 변이
+응용(지금)  18766 선언 화면에서 «속성만 등록하는 소스» · «사건 엣지 소스» 둘을 새로 쓸 때 화면이 시각 · timezone 을 묻는 자리를 글자로(칸 · 필수 표시 · 기본값) — 구현자 ① 의 대조군
+```
+
+> **[총괄 -> 구현자] 10-11 오후 — 덧붙임: 시각 · timezone 전수의 응용 대조군(18766 선언 화면, 실제 클릭) — 고칠 자리 다섯**
+
+```
+(0) 새 소스 빈 폼: Time 줄 «declare exactly one of 'column' … or 'basis' …; neither was declared» · timezone 칸 «Refused · field is required» -> 시각 안 쓰는 소스도 막고 시작
+(1) 속성만 등록하는 소스(시각 열 없음): 저장은 통과 · 파일에 occurred_at 안 적힘 · 화면 Time = {"basis":"ingested","timezone":"UTC"} 기본
+    · 시각 «후보»에 글자 열 · row_id(dt_eqp · dt_job · row_id)를 내놓음 -> 후보는 시각으로 읽히는 열만
+    · 채우는 timezone(UTC)과 권하는 후보(Asia/Seoul)가 다름 -> 한 답
+    · register 문장의 occurred_at 이 «unanswered»(묻는 칸)로 남음 -> 사건 시각이 아닌 문장에선 묻지 않음
+(2) 사건 엣지 소스(시각 열 · timezone 없음): missing_time 거절 — 맞음(정말 필수인 경우)
+    · 🔴 거절(invalid)된 소스도 선언 파일에 써짐 — 초안 설계인지(로더가 invalid 를 건너뛰나 · 화면이 그렇다고 말하나) 판정을 찾고, 아니면 고침 · 이 판정을 전수 표에 같이
+(2') 같은 엣지에 binding timezone 을 쓰면 통과 — 맞음
+도착지 그대로: 시각은 사건 엣지에만 · timezone 은 시각 열을 적었을 때만 · 기본값은 무엇으로 채우는지 한 줄(row time)

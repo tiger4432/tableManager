@@ -3,6 +3,7 @@
 「모든 맵퍼의 소스네임은 chain_ingestion 에서 못 바꾸게 해야 할 듯」 · 「체인 출력이 예전 체인에 덮여 있네」).
 
   ① the name a mapper wrote -> chain_ingestion (a row layer keeps its bracket); @mapper(source_name=) told once
+    an item read from a row -> that row's layer chain_ingestion (<row>) (총괄 8ec008914)
   ② an old chain_ingestion layer, and a mapper that writes 'dt_inventory': the new value shows
   ④ a person's layer still wins
   ⑤ auto-confirm's two names and the enrichment backfill's stay as written
@@ -32,14 +33,16 @@ from utils.payload_helper import get_payload_dict                   # noqa: E402
 T = "ln_inv"
 TABLES = {T: {"business_key": "k", "composite_key_source": ["k"],
               "column_types": {c: "string" for c in ("k", "a", "x")}, "display_columns": ["k", "a", "x"]}}
-NAMED = {"name": None}          # the source_name the mapper writes this time; None = the item says none
+NAMED = {"name": None, "origin": True}   # the source_name the mapper writes (None = says none) · stamps its row
 
 
 def _body(db, payload, rule=None):
     out = []
     for one in (payload if isinstance(payload, list) else [payload]):
         data = {k: (v or {}).get("value") for k, v in (one.get("data") or {}).items()}
-        item = {"updates": {"k": data["k"], "x": "%s!" % data.get("a")}, "origin_row_id": one["row_id"]}
+        item = {"updates": {"k": data["k"], "x": "%s!" % data.get("a")}}
+        if NAMED["origin"]:
+            item["origin_row_id"] = one["row_id"]
         if NAMED["name"] is not None:
             item["source_name"] = NAMED["name"]
         out.append(item)
@@ -104,6 +107,18 @@ def _x(db, k="K1"):
     return row.x, layers
 
 
+def _row_layer(db, k="K1"):
+    """The layer an item read from row `k` goes under - the rule here reads and writes the same row."""
+    return crud.merged_layer_name(crud.CHAIN_SOURCE, db.query(models.DYNAMIC_TABLES[T]).filter_by(
+        business_key_val=k).one().row_id)
+
+
+@pytest.fixture(autouse=True)
+def _named():
+    yield
+    NAMED.update(name=None, origin=True)
+
+
 @pytest.mark.parametrize("written, layer", [
     ("dt_inventory", "chain_ingestion"),
     ("dt_inventory (r9)", "chain_ingestion (r9)"),
@@ -112,11 +127,12 @@ def _x(db, k="K1"):
     ("pipeline_parser", "chain_ingestion"),
     (None, "chain_ingestion"),                    # an item that names none was the person's layer
 ])
-def test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion(db, written, layer):
-    NAMED["name"] = written
+@pytest.mark.parametrize("origin", [False, True])
+def test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion(db, written, layer, origin):
+    NAMED.update(name=written, origin=origin)
     _write(db, "user", k="K1", a="v")
     _drain(db)
-    assert _x(db) == ("v!", {layer: "v!"})
+    assert _x(db) == ("v!", {_row_layer(db) if origin else layer: "v!"})
 
 
 @pytest.mark.parametrize("meant", [candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY,
@@ -129,12 +145,13 @@ def test_5_the_names_the_product_gave_a_meaning_stay(db, meant):
 
 
 def test_2_an_old_chain_layer_is_written_over_not_left_on_top(db):
-    """The owner's symptom: the old layer (4) beat the mapper's own name (99) whatever the time."""
+    """The owner's symptom: the old layer (4) beat the mapper's own name (99) whatever the time. A row
+    layer ranks as the chain's (`crud.layer_ranks_as`), so the newer one shows beside the old plain."""
     _write(db, crud.CHAIN_SOURCE, k="K1", x="old")
     NAMED["name"] = "dt_inventory"
     _write(db, "user", k="K1", a="new")
     _drain(db)
-    assert _x(db) == ("new!", {"chain_ingestion": "new!"})
+    assert _x(db) == ("new!", {"chain_ingestion": "old", _row_layer(db): "new!"})
 
 
 def test_4_a_persons_layer_still_wins(db):
@@ -142,7 +159,7 @@ def test_4_a_persons_layer_still_wins(db):
     NAMED["name"] = "dt_inventory"
     _write(db, "user", k="K1", a="v")
     _drain(db)
-    assert _x(db) == ("typed", {"user": "typed", "chain_ingestion": "v!"})
+    assert _x(db) == ("typed", {"user": "typed", _row_layer(db): "v!"})
 
 
 def test_1_a_decorated_mappers_source_name_is_told_once_when_the_declaration_is_read(

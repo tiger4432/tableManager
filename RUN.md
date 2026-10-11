@@ -1,14 +1,14 @@
 # 지금 돌리면 되는 것
 
-> ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 af8ef5701 -> 355ba2092)**
+> ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 af8ef5701 -> 7385e35d0, 접기 맵퍼 들어간 판 · 층 원천 행마다 착지 뒤 · ①b 만 앞 판 355ba2092)**
 >
 > ```
-> 리허설       운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러). 소유자 코드(af8ef5701)로 꼬임을 만들고, ① 에서 355ba2092 로 pull 한 뒤
+> 리허설       운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러). 소유자 코드(af8ef5701)로 꼬임을 만들고, ① 에서 7385e35d0 로 pull 한 뒤
 >              이 표의 명령을 순서대로 두 바퀴. 꼬인 dt_log 모양 220 행 —
 >              한 칩 두 이벤트 10 · 좌표 빈 행 5 · 수동 잡 5 · 인벤토리 칸이 옛 chain_ingestion 층(틀린 값)에 덮임 · 옛 판 소스 원자 215
 >              초 = 명령이 돌아올 때까지(리허설 · 박스). 운영 크기의 초가 아니다. replay 의 «rows handed over» 뒤 체인이 쓰는 시간은
 >                   이 초 밖이다 — chain_worker.log 의 [ChainRule] rule=<규칙> … rows_in= 줄이 그 끝
->              지금 main 도 같은 명령: git diff --name-only 355ba2092 origin/main -- server/ ':!server/tests' -> ledger/config_explorer.py · ledger/gaps.py · ledger/trace_router.py · ledger_api/ledger_subgraph.py — 이 표의 명령이 부르는 파일은 그 안에 없음
+>              지금 main 도 같은 명령: git diff --name-only 7385e35d0 origin/main -- server/ ':!server/tests' -> 없음(그 사이 main 커밋 1 개는 server/ 밖) (main a80ec025c)
 > 어디서       server 폴더(cd server) · PowerShell 창에 «직접» 친다
 >              ⚠️ 출력을 파이프(|)나 파일(>)로 받지 않는다 — 리허설에서 fold-rows 미리보기가 '«'(U+00AB) 를 cp949 로 못 써서 죽었다(exit 1).
 >                 받아야 하면 먼저  $env:PYTHONIOENCODING = "utf-8"   (창에 직접 친 경우는 이 박스에서 못 쟀다)
@@ -17,6 +17,8 @@
 >              official_dt                     «공식 표»
 >              dt_inventory_core_xy            «인벤토리 식 규칙»          (맵퍼가 적던 층 이름 dt_inventory -> «옛 층 이름»)
 >              official_dt_copy                «복사 규칙»
+>              dt_log_fold_by_inventory · dt_log_fold_by_log   «인벤토리 접기 규칙» · «로그 접기 규칙»   (맵퍼 fold_by_unit)
+>              official_dt_hold_recount        «다시 세기 규칙»
 >              dt_log (원장 소스)               «옛 판 소스»               official_dt (원장 소스) -> «공식 표 소스»
 >              core_wafer,core_x,core_y        «공식 표 키 칸»             event_time · dt_job_id · AUTO -> «고를 칸» · «범위 칸» · «범위 글자»
 > ```
@@ -24,6 +26,7 @@
 > ```
 > ⓪ 재기동 전 선언   table_config.json   «로그 표» 에 "fold_mark": "string"
 >                   chain_rules.json    «복사 규칙» 에 "exclude": ["fold_mark"]
+>                   chain_rules.json    접기 두 줄 «인벤토리 접기 규칙» · «로그 접기 규칙» — RUN.md 「접기 맵퍼」 절 선언 그대로, params 칸 이름만 운영 표의 것
 >                   ontology/ledger_config.json   transfer 소스는 «공식 표»를 읽고, «옛 판 소스» 이름은 sources 에 없다
 > ① git pull -> 서버 · 수집기 · 체인 워커 · 스케줄러 재기동                                   재기동 뒤 기다리는 사건 0
 >    볼 줄   chain_worker.log  [ChainRules] dt_inventory_core_xy: source_name 'dt_inventory' is written as chain_ingestion
@@ -34,54 +37,70 @@
 >    ⓪ 의 새 칸 재기동 때 체인 워커가 «starting: sync_dynamic_tables_schema» 단계에서 ALTER 한다. 그 표를 다른 연결이 쥐고 있으면 넘어간다:
 >            chain_worker.log «column '<칸>' was not added to '<표>' - another session held the table past 20s. Retried at the next start or config save»
 >            이 줄이 있으면 ⑤ 전에 체인 워커를 한 번 더 재기동 — 리허설(5b-2 40d94309b): 붙잡은 ALTER 가 칸 없이 넘어갔다(그 단계 36.1 s)
+> ①c 겹친 층 접기            python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"   «로그 표» · «공식 표» · 인벤토리 차례로 · 표마다 같은 명령 한 번 더
+>    초      dt_log 2.3 · 2.3 · official_dt 2.3 · 2.4 · dt_inventory 2.3 · 2.2
+>    답      끝 줄 «[fold] '<표>' apply: … chain plain layers N renamed …; S shown value(s) move» — 리허설(소급 실행 기록) «로그 표» renamed 0 · deleted 0 · differing 0 · without a source row 645 · copies 0 · shown 0 · layers 3265 -> 3265 · «공식 표» renamed 0 · deleted 369 · differing 0 · without a source row 820 · copies 0 · shown 0 · layers 2755 -> 2386 · 인벤토리 renamed 0 · deleted 0 · differing 0 · without a source row 0 · copies 0 · shown 0 · layers 20 -> 20
+>            한 번 더: «로그 표» renamed 0 · deleted 0 · differing 0 · without a source row 645 · copies 0 · shown 0 · layers 3265 -> 3265 · «공식 표» renamed 0 · deleted 0 · differing 0 · without a source row 451 · copies 0 · shown 0 · layers 2386 -> 2386 · 인벤토리 renamed 0 · deleted 0 · differing 0 · without a source row 0 · copies 0 · shown 0 · layers 20 -> 20 — renamed · deleted · shown 이 0 이면 끝
+>    뜻      원천 행을 찍은 옛 plain 체인 층이 그 행의 층 chain_ingestion (<행>) 이 된다(값 · 시각 그대로) — 그 뒤로 원천 행 하나를 거두면 그 행 층만 걷힘
+>            체인 층 plain/행 층(표마다): 재기동 직후 dt_log=645/0 · official_dt=820/1935 -> ①c 뒤 dt_log=645/0 · official_dt=451/1935
+>    화면     어드민 Retroactive -> «Fold layers that repeat another» -> table -> Count -> Run (Count 는 앞 200 행 견본, 표 전체 수는 Run 의 끝 줄)
+>    박스     이 박스 dt_log 사본의 초 · 수는 이 파일 「체인 층은 원천 행마다 하나」 절의 「박스 수」 줄 · 서버를 켠 채로 돌린다(그 절 ⚠️ 줄)
 > ①b 비어 버린 보류 다시 세기  python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply          2.2 · 2.9 초
 >    까닭    pull 전 코드는 원천 키 칸과 공식 표 키 칸의 형이 다르면 보류를 오류 없이 빈칸으로 덮었다(7a 5777da3c4 가 고침)
 >    답      source rows scanned : N · rows handed over : N (리허설 205) — 다시 세기 규칙마다, 그 규칙의 공식 표 전부
 >    뜻      리허설(공식 표 키 글자 · 로그 표 숫자): pull 전 agreed 0 -> 이 명령 뒤 39 = 같은 꼬임의 같은 형 세계 39 (03c31a6e6)
 >            이 표의 공식 표는 ⑥ 이 다시 채운다 — 이 줄은 ⑥ 을 안 돌리는 다른 공식 표에. 멈춤은 ③ 과 같다(안 쟀다)
-> ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.8 · 2.7 초
+> ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.8 · 2.3 초
 >    답      «No waiting withdrawal event goes row by row - 0 row(s)» 면 접을 것 없음
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
-> ③ 좌표 바로잡기             python scripts/chain_replay_cli.py replay «인벤토리 식 규칙»   -> --apply          2.3 · 3.0 초
+> ③ 좌표 바로잡기             python scripts/chain_replay_cli.py replay «인벤토리 식 규칙»   -> --apply          2.3 · 3.5 초
 >    답      미리보기 source rows scanned : 220 · 실행 rows handed over : 220
 >    뜻      core x,y 가 chain_ingestion 자리에 새 값 — 맞는 행 43 -> 215 / 215
 >            공식 표는 이 단계에서 안 움직인다(보류 agreed 39 -> 39) — 스크립트 replay 는 연쇄하지 않는다(소유자 09-26). ⑥ 이 그 일
 >    멈춤    소급 탭 실행 목록의 Cancel(10-08 «일 하나를 끈다») — 이 리허설에서는 안 쟀다
-> ④ (골라서) 옛 층 이름 거두기  python scripts/chain_replay_cli.py withdraw «로그 표» «옛 층 이름» --columns core_x,core_y   -> --apply    1.6 · 2.3 초
+> ④ (골라서) 옛 층 이름 거두기  python scripts/chain_replay_cli.py withdraw «로그 표» «옛 층 이름» --columns core_x,core_y   -> --apply    2.0 · 2.6 초
 >    답      칸마다 «(now from 'chain_ingestion'; remaining ['chain_ingestion'])» — 보이는 값은 그대로
 >    멈춤    안 쟀다
-> ⑤ 접기 표시                 python scripts/chain_replay_cli.py fold-rows «로그 표» --keys «공식 표 키 칸» --order «고를 칸» --mark-column fold_mark --only-column «범위 칸» --only-text «범위 글자»   -> --apply    2.2 · 3.0 초
->    답      미리보기 «10 row(s) are marked, 210 stay» · 키 칸 빈 행 5 그대로 / 실행 «10 of 10 row(s) marked» · 범위 밖 5 그대로
->    뜻      지운 행 0 — 표시된 행은 «복사 규칙»이 안 받고, 그 행이 먹인 층을 거둔다(보류 agreed 39 -> 45)
->    되돌리기 fold_mark 칸을 비운다 · 멈춤 안 쟀다
-> ⑥ 복사 replay               python scripts/chain_replay_cli.py replay «복사 규칙»          -> --apply          2.1 · 2.8 초
+> ⑤ 웨이퍼마다 이긴 잡     python scripts/chain_replay_cli.py replay «인벤토리 접기 규칙»    -> --apply          2.4 · 3.0 초
+>    답      미리보기 source rows scanned : 5 (= 인벤토리 행 수) · 실행 rows handed over : 5 in 1 outbox event(s)
+>    뜻      진 잡의 로그 행 fold_mark = «folded into <이긴 잡>» — 표시 0 -> 15 · AUTO_J5:10:folded into AUTO_J1 · MAN_J3:5:folded into AUTO_J4
+>            웨이퍼마다 AUTO 든 잡 먼저 -> wafer_out_time 이른 잡 -> 작은 row_id. 이긴 잡의 행은 안 씀
+>            그 뒤로는 인벤토리 · 로그 행이 들어올 때마다 그 웨이퍼를 다시 정함 — 리허설: 늦은 AUTO 잡이 들어오자 MAN_J7:3:folded into AUTO_J8 · 진 잡의 새 로그 행은 들어오자마자 표시(표시 18 -> 19)
+>    알려진 것 이긴 잡의 행이 «공식 표 키 칸»이 비어 있으면 그 웨이퍼의 공식 행이 0 이 됨 — 리허설 공식 표 웨이퍼 CW1=AUTO_J1+AUTO_J5 · CW2=AUTO_J2 · CW3=MAN_J3 -> ⑥ 뒤 CW1=AUTO_J1 · CW2=AUTO_J2(이긴 AUTO 잡의 키 칸 빈 행 5 · 매뉴얼 잡 접힘). 소유자께 여쭘
+>    되돌리기 RUN.md 「접기 맵퍼」 절의 초기화 줄 · 멈춤 안 쟀다
+> ⑤b 한 칩 두 이벤트       python scripts/chain_replay_cli.py fold-rows «로그 표» --keys «공식 표 키 칸» --order «고를 칸» --mark-column fold_mark --only-column «범위 칸» --only-text «범위 글자»   -> --apply    2.7 · 3.1 초
+>    답      리허설 «0 row(s) are marked, 220 stay» — ⑤ 가 이미 접어서 남은 잡 안의 한 칩 두 이벤트 0. 운영은 남을 수 있음(그때 이 명령이 그 행만 표시)
+> ⑥ 복사 replay               python scripts/chain_replay_cli.py replay «복사 규칙»          -> --apply          2.3 · 3.0 초
 >    답      source rows scanned : 220 (표시된 행 포함 — 규칙이 거른다)
->    뜻      공식 표 보류 agreed 45 -> 205 · 껍데기 행 82 -> 0 · 공식 표 소스 원자 6 -> 205
+>    뜻      공식 표 보류 agreed 39 -> 201 · 껍데기 행 82 -> 5 · 공식 표 소스 원자 0 -> 200
 >            일부 행만이면 --business-keys <«로그 표» 키,…> (표 키가 여러 칸이면 --row-ids)
 >    멈춤    ③ 과 같음 — 안 쟀다
-> ⑦ 남은 껍데기 쓸기           python scripts/chain_replay_cli.py remove-shells «공식 표»      -> --apply          1.5 · 2.4 초
+> ⑥' 보류 다시 세기         python scripts/chain_replay_cli.py replay «다시 세기 규칙»       -> --apply          2.4 · 3.0 초
+>    답      source rows scanned : 205 (공식 표 전부) — 보류 agreed 201 -> 201 · 껍데기 행 5 -> 5
+> ⑦ 남은 껍데기 쓸기           python scripts/chain_replay_cli.py remove-shells «공식 표»      -> --apply          1.9 · 2.8 초
 >    답      «N row(s) of '«공식 표»' show nothing outside their keys; M of them have only the chain's key layers left» — M 이 지울 수
->    뜻      리허설: ① 직후 미리보기 M 82 · ⑥ 뒤 M 0(⑥ 이 다시 채움) · 실행 «0 of 0 row(s) deleted»
->            ⑥ 앞에서 쓸면 82 행을 지우고 ⑥ 이 다시 만든다(공식 표 123 -> 205 · 껍데기 판) — 그래서 ⑥ 뒤
+>    뜻      리허설: ① 직후 미리보기 M 82 · ⑥' 뒤 M 4 · 실행 «4 of 4 row(s) deleted»
+>    알려진 것 (b566b48ae 뒤) ⑥' 다시 세기가 공식 표를 안 바꿈 — 행 · agreed · 키 밖 값 없는 행 205 · 201 · 5 -> 205 · 201 · 5, ⑦ 뒤 그런 행 1 이 남음(hold 만 agreed 라 ⑦ 이 «키만 남은 행»으로 안 봄). 앞 판(6ba14bde0)은 ⑥' 가 그 행을 비워 ⑦ 이 지웠다. 구현자께 보냄
+>            ⑥ 앞에서 쓸면 지운 행을 ⑥ 이 다시 만든다(앞 판 355ba2092 에서 잼: 82 행 · 공식 표 123 -> 205) — 그래서 ⑥ 뒤
 >            그 뒤로는 체인이 지운다 — 그리드에서 원천 행을 지우면 그 공식 행이 «[ChainShell] table=official_dt rows_deleted=1 - only the chain's keys were left» 와 함께 사라지고
->            사람이 적은 칸이 있는 행은 남는다 · 소급 탭 «Remove rows with no source left» 의 count 가 이 미리보기와 같은 수(82)
+>            사람이 적은 칸이 있는 행은 남는다 · 소급 탭 «Remove rows with no source left» 의 count 가 이 미리보기와 같은 수
 >    멈춤    소급 탭 × — 쪽 사이(95cffa5af)
-> ⑦b 원장 ref 인덱스           python scripts/build_ledger_ref_index.py                       -> --apply          1.0 · 1.1 초
+> ⑦b 원장 ref 인덱스           python scripts/build_ledger_ref_index.py                       -> --apply          1.1 · 1.2 초
 >    답      미리보기 «ledger_events: 0 partition(s) built, 0 attached as they were, 0 already had it, 1 would be built, 0 attached as they are (add --apply) - the parent index is not valid yet» -> 실행 «ledger_events: 1 partition(s) built, 0 attached as they were, 0 already had it - the parent index is valid» · 다시 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid»
 >            pull 전에 같은 이름을 SQL 로 지어 둔 원장도 «ledger_events: 0 partition(s) built, 0 attached as they were, 1 already had it - the parent index is valid» — 다시 안 짓는다 (7b e8baa5243)
 >    뜻      ⑧ · ⑨ 의 로그 «idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page». 없으면 50,000 장에 이 명령을 대는 줄(RUN.md 7b 절)
 >    멈춤    안 쟀다 — 파티션마다 CONCURRENTLY 라 쓰기를 안 막는다(RUN.md 7b 절)
-> ⑧ 옛 판 소스 거두기          python -m ledger.backfill --source «옛 판 소스» --whole-source   -> --apply          1.9 · 2.8 초
+> ⑧ 옛 판 소스 거두기          python -m ledger.backfill --source «옛 판 소스» --whole-source   -> --apply          2.2 · 2.9 초
 >    답      미리보기 relation_rows None(= 선언에 없는 이름) · stale_atoms 215 / 실행 stale_withdrawn 215
->    뜻      같은 코어 다이에 transfer 둘 123 -> 0
+>    뜻      같은 코어 다이에 transfer 둘 122 -> 0
 >            relation_rows 가 None 이 아니라 수면 ⓪ 에서 «옛 판 소스»를 sources 에서 안 뺀 것 — 그때 --apply 는 거두지 않고 다시 번역한다
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
-> ⑨ 공식 표 소스 다시 번역      python -m ledger.backfill --source «공식 표 소스» --whole-source   -> --apply        2.0 · 3.1 초
->    답      미리보기 relation_rows 205 · stale_atoms 0 / 실행 «rows 205, withdrawn 205, written 205 of 205»
+> ⑨ 공식 표 소스 다시 번역      python -m ledger.backfill --source «공식 표 소스» --whole-source   -> --apply        2.1 · 3.7 초
+>    답      미리보기 relation_rows 201 · stale_atoms 0 / 실행 «rows 201, withdrawn 200, written 200 of 200»
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
-> 끝 상태      transfer 원자 205 = 기대 205 · 같은 코어 다이에 transfer 둘 0(처음 84) · 옛 판 원자 0 · 보류 agreed 205 · 껍데기 0
-> 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ «0 row(s) are marked» · ⑦ M 0 · ⑧ stale_atoms 0 · ⑨ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
->              replay 미리보기의 scanned 와 ⑨ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
+> 끝 상태      transfer 원자 200 · 공식 행 201(값 칸 없이 hold 만 agreed 인 행 1 — ⑦ 의 알려진 것) · 같은 코어 다이에 transfer 둘 0(처음 84) · 옛 판 원자 0 · 보류 agreed 201 · 껍데기 1
+> 다시 돌리면   미리보기만 다시 — ② 0 row(s) · ④ cells withdrawn 0 · ⑤ 표시 수 그대로(19 -> 19) · ⑤b «0 row(s) are marked» · ⑦ M 0 · ⑧ stale_atoms 0 · ⑨ stale_atoms 0 이면 끝 (리허설 둘째 바퀴 그대로)
+>              replay 미리보기의 scanned(⑤ 포함)와 ⑨ 실행의 written 은 매번 같은 수다 — 0 신호가 아니다
 > 착지 뒤 채움  없음 — 6 표 선언 인덱스는 시연 뒤(총괄 f9ebc82ea)
 > ```
 >
@@ -224,6 +243,60 @@
 >                        덩어리로 그리지 않은 다이를 안 넓혀서 아낀다(base 자신의 원자는 그대로 다 읽음). =200 은 안 됨 · =20 이면 2 걸음이고 base 의 measures 도
 >                        덩어리(33 중 20)라 값이 빠진다
 > 걸린 것     리허설의 값은 가짜 행이다 — 모델 계측군에 값이 보이는 것은 가짜 measures 덕. 운영 DB 에 그 값이 있는지는 «시연 전 읽기»가 답한다
+> ```
+>
+> ---
+>
+> ## [10-11] **층 접기는 키 칸의 체인 층을 안 건드린다 — 표시된 원천 행 하나만 먹이던 공식 행이 키 없이 남지 않는다 (응용 7e2fc0575 · 총괄 10-11, 착지 40b3a0f07) — 이주 «없음» · 재기동 «서버 · 스케줄러»**
+>
+> ```
+> 무엇        «Fold layers that repeat another» 가 키 칸(composite_key_source, 없으면 business_key)의 plain 체인 층을 지우지도 이름 바꾸지도 않는다
+>            그 층은 보류 다시 세기가 키를 쓰는 층 — 지우면, 그 키를 먹이던 원천 행 하나가 표시돼 거둬질 때 키 칸까지 비어
+>            다시 세기가 그 행을 못 찾고 hold 만 agreed 로 남았다(일요일 표 ⑦ 의 «알려진 것» 한 행)
+> 순서        pull -> 서버 · 스케줄러 재기동 (화면 Count 는 서버, 화면 Run 은 스케줄러가 돈다 · python -c 는 새 프로세스라 재기동 무관)
+>            이 pull «전»에 그 접기를 공식 표에 돌렸으면: 원천 행을 표시하거나 거두기(일요일 표 ⑤ · ⑥) «전»에 그 공식 표의
+>              python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply          (일요일 표 ①b 와 같은 명령)
+>            답      source rows scanned : N · rows handed over : N — 공식 표 전부. 키 칸의 plain 체인 층이 다시 생긴다
+> 끝 줄       Count «Chain, outside the key columns: …» · Run 끝 줄 «chain plain layers off the keys … renamed» — 키 칸 층은 이 수에 안 든다
+> 모르는 것     ⑥ 까지 이미 돌린 공식 표에 남은 키 빈 행(hold 만 agreed)을 지우는 길 — 안 쟀다. ⑦ 은 그 행을 안 지운다
+> 되돌리기      git revert <이 커밋> -> 서버 · 스케줄러 재기동
+> ```
+>
+> ---
+>
+> ## [10-11] **체인 층은 원천 행마다 하나 · 순위는 쓴이의 순위 — 행 하나를 거두면 그 행 층만 걷힌다 (총괄 8ec008914 · 4dd303f01, 착지 b566b48ae) — 이주 «없음» · 재기동 «체인 워커 · 서버» · 체인이 쓴 표마다 소급 한 번**
+>
+> ```
+> 무엇        원천 행을 찍은 체인 쓰기(조인 · @mapper · 복사 규칙 · 접기 맵퍼)는 그 행의 층 chain_ingestion (<원천 행>) 에 써진다
+>            행 층은 체인 순위(4) — 같은 순위 안에서는 늦게 쓴 것. 합치기 사본(user (…) 등)은 오늘 순위 그대로
+> 순서        ① pull -> 체인 워커 · 서버 재기동
+>            ② 체인이 쓴 표마다: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count -> Run
+>               또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
+>            ③ 같은 Run 한 번 더 -> 끝 줄의 renamed · deleted · shown value(s) move 가 0
+> Count 뜻    화면 Count 는 앞 200 행 «견본» — 표 전체 수는 Run 의 끝 줄
+>            Chain, outside the key columns: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
+>                   M that a row layer repeats go                      그 행 층이 이미 있거나, 원천 없는 plain 을 같은 칸 행 층이 같은 값으로 말함
+>                   K have no source row                               원천 없는 plain 층(남는 것 포함)
+>            D plain layer(s) without a source row stay (first: <행> · <칸> …)   값이 달라 남김 — 사람이 볼 칸
+>            C chain layer(s) a collision merge kept now rank as the chain's    합치기 사본의 체인 층 — 체인 순위로 오름
+>            Shown values that move: S                                     그 칸은 값 + 이력 한 줄(resolution_recompute)
+> 끝 줄       [fold] '<표>' apply: … chain plain layers off the keys N renamed to their row's, M repeating a row layer deleted, D kept differing
+>            (K without a source row); C chain merge copies; S shown value(s) move
+> 그 뒤로      원천 행 하나를 지우거나 고쳐 거두면 그 행 층만 걷히고 남은 행 층(없으면 그 밑 파일 층)이 보인다
+>            값이 달라 남긴 plain(D)은 행 층이 다 걷히면 다시 보인다 — 그 칸은 사람이 보고 정함
+>            키 칸의 plain 체인 층은 ② 가 안 건드림 — 보류 다시 세기가 키를 쓰는 층이라, 지우면 표시된 원천 행 하나만 먹이던 공식 행이 키 없이 남았다
+>              (응용 7e2fc0575 · 고침은 이 파일 「층 접기는 키 칸의 체인 층을 안 건드린다」 절)
+>            조인 왼쪽 행이 다른 오른쪽 행과 다시 맞으면 옛 오른쪽 행 층이 남음 — 늦게 쓴 것이 보임(시연 뒤 항목)
+>            소급 탭 «Withdraw a stale source» 에 chain_ingestion 을 주면 행 층까지 거둠
+> 화면         셀 이력의 출처가 chain_ingestion (<행 id>) 로 보인다
+> 리허설 수     응용 rh_world_layers 사본(진짜 프로세스 · 런처 그대로, 스크래치 스키마): official_dt 에서 겹침 615 지움 · 이름 바꿈 0 · 화면 값 0 · 다시 0
+>            두 원천 행이 먹이던 공식 키의 늦은 행을 API 로 지움 -> 「MAN_J9 | 」 -> 「AUTO_J2 | agreed」
+> 박스 수       이 박스 dt_log 사본(PG 스크래치 · 535,559 행 · 층 3,427,084): 이름 바꿈 53,520 · 원천 없는 plain 3,882 · 화면 값 0
+>            미리보기 = 실행 · 다시 0 · 실행 76.0 초(전체 미리보기 73.6 초) — 운영 규모는 안 쟀음
+>            ⚠️ 소급 실행은 쪽(1,000 행)마다 진행을 서버에 알림 — 서버가 꺼져 있으면 이 박스에서 쪽마다 ~2 초 더(연결 거절 대기)
+>              서버를 켠 채로 돌린다
+> 되돌리기      git revert <이 커밋> -> 체인 워커 · 서버 재기동. 옮기기(②)는 되돌리지 않음 — 지운 겹침 층의 값은 같은 칸 행 층이 말하고 있음.
+>            코드만 되돌리면 행 층이 다시 순위 99(옛 plain 층 · 파일 층에 질 수 있음)
 > ```
 >
 > ---
@@ -460,8 +533,7 @@
 >            source_name 을 안 적은 칸(기본값 user — 사람 층으로 써지던 것)도 체인 층
 > 볼 것       replay 뒤 그 칸의 층(cell_sources)에 chain_ingestion 이 새 값 — 화면 값이 그것
 >            그대로인 것: 자동확정 두 이름 · enrichment_backfill
-> 안 바뀐 것   순위 — chain_ingestion (<id>) 행 층이 옛 plain chain_ingestion 층에 지는 것은 이번에 안 고침(총괄: 시연 뒤).
->            일요일에 공식 표를 비우고 다시 채우면 옛 plain 층이 없어져 안 드러난다
+> 고친 것     순위 — 10-11 착지 b566b48ae 부터 행 층도 체인 순위(위 「체인 층은 원천 행마다 하나」 절)
 > 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 chain_ingestion 으로 써진 칸은 그대로)
 > ```
 
@@ -3522,7 +3594,7 @@
 > ```
 > 언제          notation_rules.json 에 "write": true 칸을 선언한 «그날». 선언이 없으면 할 일 없음
 > 순서          ① 소급 탭 "Fold stored values into the declared spelling" — table · 드라이런(Count) 먼저
->              ② 같은 표에 "Fold file layers that repeat a newer one" — 철자만 달랐던 파일 층이 이제 같은 값
+>              ② 같은 표에 "Fold layers that repeat another" — 철자만 달랐던 파일 층이 이제 같은 값
 >              ③ python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
 > 드라이런 뜻    "... row(s) would take another row's key and are skipped" — 두 옛 철자가 한 키가 됨. 병합 안 함 — 별칭 행이나 규칙을 고치고 다시
 >              "... value(s) change again on a second fold - the run stops there" — 선언부터 고침. 실행은 그 페이지 앞에서 멈춤
@@ -3609,7 +3681,7 @@
 > 보이는 것   헤비 레인 청크 줄 · 파일 줄의 INSIDE THE WRITE — cell sources <초> / N rows · folded layers <초> / N rows
 >            값이 그대로인 행을 다시 가져온 파일이면 cell sources 0 rows · folded layers 0 rows = 층이 안 쌓임
 >            값이 바뀐 파일이면 cell sources 는 바뀐 칸 수 · folded layers 는 그 값을 말했던 옛 파일 층 수
-> 쌓인 것     드라이런: 어드민 Retroactive -> "Fold file layers that repeat a newer one" -> table -> Count
+> 쌓인 것     드라이런: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count
 >            문장 "layers N -> M, the deepest cell A -> B" — N-M 이 지울 수
 >            (이 박스 1,000 행 x 5 칸 x 9 겹 픽스처: 46,000 -> 6,000 · 9 -> 1 · 1.2 s — 운영 규모는 안 쟀음)
 >            실행: 같은 화면 Run  또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"

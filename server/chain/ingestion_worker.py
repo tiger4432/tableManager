@@ -1138,7 +1138,8 @@ def _rule_accepts_event(rule, event) -> bool:
         if not event_constants.cascade_of(payload):
             return False
         channel = event_constants.CHANNEL_CHAIN
-    if channel is None and payload.get("source_name") == rule_run.CHAIN_SOURCE:
+    from database import crud
+    if channel is None and crud.layer_ranks_as(payload.get("source_name")) == rule_run.CHAIN_SOURCE:
         # 🔴 A DATA GUARD, AND IT RETIRES (총괄 f42b48591 3). An event queued before the
         #   channel existed says the chain only by its source name; reading it as 「not the
         #   chain」 would wake every rule on the backlog at the landing. RETIRE THIS BRANCH when
@@ -1632,7 +1633,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # 🔴 [총괄 09f3cd289 ①] THE LAYER IS THE CHAIN'S, WHATEVER THE MAPPER WROTE - here, where
                 #    every proposed row passes. A mapper's own name ranked 99 under the old chain layer's 4.
                 for item in batch_data.updates:
-                    item.source_name = rule_run.layer_of_a_rules_write(item.source_name)
+                    item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
 
                 # [ChainKeyGate] 🔴 THE GATE. Every chain-emitted row reaches
                 # `apply_batch_updates` through this loop and only through this loop, so

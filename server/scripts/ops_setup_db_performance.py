@@ -125,9 +125,14 @@ def _verify_withdraw_plan(conn, idx_name):
               f"Re-run once the table is large.")
         return
 
-    pair = conn.execute(text(
+    from database import crud
+
+    # The largest pair the predicate asks by equality alone: `chain_ingestion` also takes its row layers
+    # (`chain_ingestion (<row>)`, 총괄 8ec008914) - a scan of the table's slice, as large as what it returns.
+    pair = next((p for p in conn.execute(text(
         "SELECT table_name, source_name, count(*) AS n FROM cell_sources "
-        "GROUP BY 1, 2 ORDER BY n DESC LIMIT 1")).first()
+        "GROUP BY 1, 2 ORDER BY n DESC LIMIT 20"))
+        if crud.layer_ranks_as(crud.merged_layer_name(p[1], "x")) != p[1]), None)
     if pair is None:
         print(" - !! NOT VERIFIED: no (table_name, source_name) pair found.")
         return

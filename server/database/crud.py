@@ -708,18 +708,26 @@ def can_mean_emptied(source_name: str) -> bool:
     already stored (S-243-b). Two spellings of 「who may empty a cell」 is how the counting
     and the writing come to disagree about what they are counting.
     """
-    return source_name in (USER_SOURCE, CHAIN_SOURCE)
+    return layer_ranks_as(source_name) in (USER_SOURCE, CHAIN_SOURCE)
 
 
 def merged_layer_name(name: str, tag: str) -> str:
     """The name collision merge gives a layer it keeps from a merged row: the writer's name, the
-    merged row in brackets. ONE spelling - `layer_writer` reads it back."""
+    merged row in brackets. ONE spelling - `layer_writer` reads it back. The chain's layer per source
+    row is spelled the same way (`chain_ingestion (<row>)`, 총괄 8ec008914)."""
     return "%s (%s)" % (name, tag)
 
 
 def layer_writer(source_name) -> str:
     """Whose layer this is. A collision-merge copy (`merged_layer_name`) is its writer's."""
     return str(source_name or "").split(" (", 1)[0]
+
+
+def layer_ranks_as(source_name):
+    """The name a layer is ranked and judged as (rank · 「can it mean emptied」 · 「is it the chain」): a
+    chain layer per source row as the chain's, any other name as itself (총괄 8ec008914 · 판정 10-11 - a
+    collision-merge copy of another writer keeps today's rank). The one seat that asks it."""
+    return CHAIN_SOURCE if layer_writer(source_name) == CHAIN_SOURCE else source_name
 
 
 _MACHINE_LAYER_NAMES = []
@@ -795,22 +803,53 @@ def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name
                    and not values_differ(s.value, value, col_type)]
 
 
-def stacked_file_layers(layers: dict, col_type: str, table_name: str, pin=None) -> list:
-    """The file layers of one cell that repeat a newer one - what the fold over layers already
-    stacked removes (총괄 225b2c658). `layers` is `{source_name: {"value", "ingested_at"}}`, the
-    shape `compute_priority_value` reads. Per priority class and value the layer it ranks first
-    stays, and the pinned one; the cell's winner is first in its own group, so it stays."""
+def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: bool = False) -> dict:
+    """What the fold over layers already stacked does to one cell (총괄 225b2c658 · 8ec008914): a layer
+    that says what another layer of the cell says goes, and the chain's plain layer becomes its source
+    row's. `layers` is `{source_name: {"value", "ingested_at", "origin_row_id"}}`
+    (`cell_layer._load_cell_state`). The pinned layer is never touched, nor a `key` column's plain chain
+    layer: a hold item writes the keys under it with no source row, and with it gone a marked row's
+    withdrawal blanked the keys the recount finds its row by (응용 7e2fc0575, 총괄 10-11).
+
+      file     file layers that repeat one - per priority class and value the layer it ranks first
+               stays; the cell's winner is first in its own group, so it stays
+      renamed  {chain_ingestion: chain_ingestion (<row>)} - the plain chain layer stamped with a source row
+      chain    [chain_ingestion] - its row's layer is there already, or it has no source row and a row
+               layer of the cell holds its value
+      differs  the plain chain layer stays: no source row, and no row layer of the cell holds its value
+      copies   chain layers whose bracket is not their source row (a collision merge's)"""
+    layers = layers or {}
     groups = {}
-    for name, entry in (layers or {}).items():
+    for name, entry in layers.items():
         if is_file_layer(name):
             groups.setdefault((get_source_priority(name, table_name),
                                value_key((entry or {}).get("value"), col_type)), {})[name] = entry
-    out = []
+    out = {"file": [], "renamed": {}, "chain": [], "differs": False, "copies": 0}
     for group in groups.values():
         if len(group) > 1:
             _value, keep = compute_priority_value(group, None, table_name)
-            out.extend(name for name in group if name not in (keep, pin))
-    return sorted(out)
+            out["file"].extend(name for name in group if name not in (keep, pin))
+    out["file"].sort()
+    bracketed = [name for name in layers if name != CHAIN_SOURCE and layer_ranks_as(name) == CHAIN_SOURCE]
+    rows = [name for name in bracketed
+            if name == merged_layer_name(CHAIN_SOURCE, (layers[name] or {}).get("origin_row_id"))]
+    out["copies"] = len(bracketed) - len(rows)
+    plain = layers.get(CHAIN_SOURCE)
+    if plain is None or pin == CHAIN_SOURCE or key:
+        return out
+    origin = plain.get("origin_row_id")
+    if origin:
+        mine = merged_layer_name(CHAIN_SOURCE, origin)
+        if mine in layers:
+            out["chain"].append(CHAIN_SOURCE)
+        else:
+            out["renamed"][CHAIN_SOURCE] = mine
+    elif rows:
+        if any(not values_differ(layers[name].get("value"), plain.get("value"), col_type) for name in rows):
+            out["chain"].append(CHAIN_SOURCE)
+        else:
+            out["differs"] = True
+    return out
 
 # Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).
 # Same import guard as event_constants above: crud can be imported without server/ on sys.path.
@@ -1623,8 +1662,8 @@ def resolve_priority_map(table_name: str = None) -> dict:
 
 
 def get_source_priority(source_name: str, table_name: str = None) -> int:
-    """소스명 → 우선순위 값(작을수록 우선, 미등재 99). 레이어링과 동일 서열."""
-    return resolve_priority_map(table_name).get(source_name, 99)
+    """소스명 → 우선순위 값(작을수록 우선, 미등재 99). 레이어링과 동일 서열 — 이름은 `layer_ranks_as` 로 읽는다."""
+    return resolve_priority_map(table_name).get(layer_ranks_as(source_name), 99)
 
 
 _last_layer_instant = None
@@ -1738,12 +1777,10 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
         return val, manual_priority_source
 
-    priority_map = resolve_priority_map(table_name)
-
     def _rank(name):
         ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
         return (
-            priority_map.get(name, 99),        # 1. declared ranking
+            get_source_priority(name, table_name),   # 1. declared ranking
             0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
             -ts if ts is not None else 0.0,    # 2b. newest first
             name,                              # 3. total order, always decides
