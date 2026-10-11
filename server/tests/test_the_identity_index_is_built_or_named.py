@@ -43,6 +43,9 @@ class _Conn:
     def invalidate(self):
         pass
 
+    def rollback(self):                               # the census's read ends before a build
+        pass
+
 
 class _Scalar:
     def scalar(self):
