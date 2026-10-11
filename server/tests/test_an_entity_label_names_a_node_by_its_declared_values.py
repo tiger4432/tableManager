@@ -58,7 +58,7 @@ def _walked(entity_type, keys, attributes):
     """The node as the walk builds it, then as it stands once its attributes are read."""
     node = ledger_subgraph._entity_node(entity_type, keys)
     before = node["label"]
-    seen = {name: [(AT, value, "w1", "src", ledger_subgraph._instant(AT))]
+    seen = {name: [(AT, value, "w1", "src", ledger_subgraph._instant(AT), None)]
             for name, value in attributes.items()}
     ledger_subgraph._apply_registrations({node["id"]: node}, {node["id"]: seen} if seen else {})
     return before, node["label"]

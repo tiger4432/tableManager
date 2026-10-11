@@ -374,6 +374,11 @@ def _json_key(value):
 #: CHANGES, so this is a history depth rather than a row count.
 REGISTRATIONS_FETCHED_PER_NODE = 8
 
+#: How many value records one edge - or one name of a node - carries beside its current value (`records`, 총괄
+#: e5e0a87e2 · 10-11 ㄱ, 소유자 「프로세스 이벤트 하나에 계측 포인트별로 측정 원자가 주렁주렁」); the rest are counted in
+#: `records_more`. Kept from what the walk already fetched - it reads no atom more for them.
+RECORDS_PER_FACT = 100
+
 
 def decode_node_id(value):
     """Decode and canonical-reencode any public evidence-graph node id."""
@@ -1071,7 +1076,10 @@ def _apply_registrations(nodes, registrations, order=None):
     world that said it (in `order`, `_in_picked_order`), that world's atoms read by the rule,
     with when and who - so a walk over several worlds can draw both. Whether a name is `many` is the walk's merged
     declaration's answer (the first world picked wins), as for `attributes`, which stays the
-    one value across them. `seen`: (instant, value, world, source, the instant shown).
+    one value across them. `seen`: (instant, value, world, source, the instant shown, claim id).
+
+    🔴 AND EVERY RECORD BESIDE THEM (총괄 e5e0a87e2 · 10-11 ㄱ): `records` - per name, each registration that
+    said it, newest first, `RECORDS_PER_FACT` of them; `records_more` - per name, how many more.
     """
     order = order or _in_picked_order(())
     for node_id, by_name in registrations.items():
@@ -1079,8 +1087,12 @@ def _apply_registrations(nodes, registrations, order=None):
         if node is None:
             continue
         plural = _declared_plural_attributes(str(node.get("type") or ""))
-        values, conflicts, by_world = {}, 0, {}
+        values, conflicts, by_world, records, more = {}, 0, {}, {}, {}
         for name, seen in by_name.items():
+            newest = sorted(seen, key=lambda item: item[0], reverse=True)
+            records[name] = [{"value": item[1], "occurred_at": item[4], "world": item[2],
+                              "source_who": item[3], "claim_id": item[5]} for item in newest[:RECORDS_PER_FACT]]
+            more[name] = max(0, len(newest) - RECORDS_PER_FACT)
             by_world[name] = [
                 {"world": world, "value": _read_attribute(said, name in plural),
                  "occurred_at": latest[4], "source_who": latest[3]}
@@ -1092,6 +1104,7 @@ def _apply_registrations(nodes, registrations, order=None):
         node["attributes"] = values
         node["attribute_conflicts"] = conflicts
         node["attributes_by_world"] = by_world
+        node["records"], node["records_more"] = records, more
         node["label"] = _node_label(node.get("type"), node.get("keys"), values) or node.get("label")
 
 
@@ -1257,6 +1270,12 @@ def _claim_edge(atom, source_id, target_id, edge_type, cardinalities=None):
     if atom.not_current:
         said["not_current"] = True
     edge["worlds"], edge["by_world"] = [atom.world], [said]
+    # every atom of the relation is a record of it (총괄 e5e0a87e2 · 10-11 ㄱ) - `add_edge` adds the others
+    record = {"occurred_at": edge["occurred_at"], "qualifiers": dict(edge["qualifiers"]),
+              "world": atom.world, "source_who": atom.source_who, "claim_id": atom.id}
+    if atom.not_current:
+        record["not_current"] = True
+    edge["records"], edge["records_more"] = [record], 0
     return edge
 
 
@@ -2216,6 +2235,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: Seeds keep an empty set, which is why they need no exemption below.
     arrivals = defaultdict(set)
     edges = {}
+    #: edge id -> the claim ids its `records` hold or counted - an atom reached from both ends is one record
+    edge_claims = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
     #: nodes that have spent the node budget -- see `_spends_budget` below
@@ -2269,12 +2290,21 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 held["by_world"].append(said)
                 held["worlds"].sort(key=order)
                 held["by_world"].sort(key=lambda each: order(each["world"]))
+            # 🔴 EVERY ATOM OF IT IS A RECORD OF IT (총괄 e5e0a87e2 · 10-11 ㄱ) - in the order fetched, once each
+            claims = edge_claims[row["id"]]
+            if row["claim_id"] not in claims:
+                claims.add(row["claim_id"])
+                if len(held["records"]) < RECORDS_PER_FACT:
+                    held["records"].append(row["records"][0])
+                else:
+                    held["records_more"] += 1
             return True
         if budgeted_edges >= edge_limit:
             edge_cut = True
             return False
         budgeted_edges += 1
         edges[row["id"]] = row
+        edge_claims[row["id"]] = {row["claim_id"]}
         return True
 
     def _spend(near_id, far_id, charge):
@@ -2317,7 +2347,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         shown = _instant(atom.occurred_at) if reads_as_event_time(atom.occurred_at_basis) else None
         for name, value in ((atom.object_payload or {}).get("qualifiers") or {}).items():
             registrations.setdefault(subject_id, {}).setdefault(name, []).append(
-                (atom.occurred_at, value, atom.world, atom.source_who, shown))
+                (atom.occurred_at, value, atom.world, atom.source_who, shown, atom.id))
 
     def _step(atom, depth, frontier_entities):
         """One atom's step: its two ends, which one is far, and `None` when a guard refuses it.

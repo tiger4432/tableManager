@@ -244,6 +244,25 @@
 >
 > ---
 >
+> ## [10-11] **걷기 답이 값 기록 전부를 싣는다 — 엣지 records · 노드 records (총괄 e5e0a87e2 · 10-11 ㄱ, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 무엇        엣지  같은 (주어 · 술어 · 목적어)의 원자 여럿이 엣지 하나(가장 늦은 것)로 접히던 것 — 이제 records 에 원자마다
+>                 {occurred_at, qualifiers, world, source_who, claim_id} (포인트는 qualifiers 안) · 두 끝에서 읽힌 원자는 한 번
+>            노드  이름마다 최신 하나로 줄이던 등록 — 이제 records = {이름: [{value, occurred_at, world, source_who, claim_id}]} 새것 먼저
+>            상한  RECORDS_PER_FACT = 100 — 넘으면 records_more 수. 지금 값(엣지 칸 · attributes · attributes_by_world)은 그대로
+>            걷기가 읽는 원자 수는 그대로(이미 읽은 것을 안 버림) · 값 · 포인트를 가르는 것은 화면(클라 W)
+> 순서        pull -> 서버 재기동
+> 박스 수       데모 바구니(+ SYN-BW-103-11 · − SYN-BW-SPL-400-19, 이 박스 원장 · 읽기 전용) 고치기 전 -> 뒤
+>            전  collect=wafer · claims_scanned 1657 · edges 486 · nodes 2 · bytes 1286906
+>            전  collect=wafer+quantity · claims_scanned 1657 · edges 486 · nodes 18 · bytes 1291372
+>            뒤  collect=wafer · claims_scanned 1657 · edges 486 · nodes 2 · bytes 1421782 · edge records max 4 total 608 (edges with more than one 110) · node-name records max 0 total 0
+>            뒤  collect=wafer+quantity · claims_scanned 1657 · edges 486 · nodes 18 · bytes 1426248 · edge records max 4 total 608 (edges with more than one 110) · node-name records max 0 total 0
+> 되돌리기      git revert <이 커밋> -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **접기 · 조인 쓰기는 1,000 행씩 쪽으로 — 큐 화면 running 줄이 «page k/K · 쓴 행 / 전체» (총괄 634c06fc3, 착지 3f48308a2) — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```
