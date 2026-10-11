@@ -45,9 +45,9 @@ export class StartBaskets {
   /** How a start was named when it was put in: `{ label, type, keys }`, or null for a node no basket was handed. */
   describe(id) { return this.known.get(id) || null; }
 
-  /** The picked node into the basket of `sign`; from the other basket it moves. */
-  add(sign) {
-    const node = this.picked();
+  /** The picked node - or the one handed (the graph's «Walk on from here») - into the basket of `sign`; from the other
+   *  basket it moves. */
+  add(sign, node = this.picked()) {
     if (!node) return;
     this.known.set(node.id, { label: node.label, type: node.type, keys: { ...(node.keys || {}) } });
     this.markings.set(this.name, node.id, sign);

@@ -399,8 +399,10 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-type-7 { --sg-c: var(--cat-8); }
 .sg-type-8 { --sg-c: var(--cat-9); }
 .sg-legend { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.sg-chip { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2);
+.sg-chip, .sg-endkey { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
+/* The ring's legend (lead 10-11 G-2 ⑦), dashed as the ring is. */
+.sg-endkey { border-style: dashed; border-color: var(--text); }
 .sg-swatch { width: 10.2px; height: 10.2px; border-radius: 50%; background: var(--sg-c); }
 .sg-swatch.is-static { border-radius: 0; }
 /* The picture: Cytoscape draws into the height left (no fixed height); it pans and zooms inside it (lead 5e1d9e372).
@@ -464,7 +466,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-facts:empty { display: none; }
 .sg-facts-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 /* Mark (into the marking Continue walks) and Fold branches / Unfold (lead 43a738d58 ③) - their own presses. */
-.sg-mark, .sg-fold { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; color: var(--text);
+.sg-mark, .sg-fold, .sg-walkon { min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .sg-mark.is-on { color: var(--accent); background: var(--accent-weak); border-color: var(--accent); font-weight: 600; }
 .sg-mark[disabled] { opacity: 0.5; cursor: not-allowed; }

@@ -95,6 +95,7 @@ export function subgraphLayout(steps, entities) {
     for (const result of step.results || []) {
       const owner = result.opened && at.get(keyParts(result.opened).node);
       const base = owner ? owner.layer : stepBase;
+      const reached = result.walk ? result.walk.hops_reached : undefined;
       for (const node of (Array.isArray(result.nodes) ? result.nodes : [])) {
         const type = String(node.type || '');
         if (!colourOf.has(type)) colourOf.set(type, colourOf.size);
@@ -115,6 +116,8 @@ export function subgraphLayout(steps, entities) {
           attributesByWorld: node.attributes_by_world || {},
           // An opening's answer walked to it, not from it (lead f6e8ef44b): what is behind it is not known.
           unwalked: Boolean(result.opened) && node.id !== keyParts(result.opened).node,
+          // At its answer's last hop (walk.hops_reached, lead 10-11 G-2 ⑦): the walk stopped here.
+          end: Number.isFinite(reached) && node.depth === reached,
         };
         at.set(node.id, one);
         placed.push(one);
@@ -123,8 +126,10 @@ export function subgraphLayout(steps, entities) {
   });
   // A node walked from since - its own opening, every predicate one step (`<node>||both`) - is known behind.
   for (const step of steps || []) {
-    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) at.get(keyParts(r.opened).node).unwalked = false;
+    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) Object.assign(at.get(keyParts(r.opened).node), { unwalked: false, end: false });
   }
+  // A node a later step started from is walked on.
+  for (const step of (steps || []).slice(1)) for (const id of startsOf(step)) if (at.has(id)) at.get(id).end = false;
   // The fan-outs a step's walk did not send in full and no opening has walked, under the node they leave; `drawn` is
   // how many of `count` the walk did send (server 11e5ea207).
   const chips = [];
@@ -135,6 +140,8 @@ export function subgraphLayout(steps, entities) {
       if (!at.has(b.node) || opened.has(key)) continue;
       chips.push({ step: index, node: b.node, predicate: b.predicate, direction: b.direction,
         farType: b.far_type, count: b.count, drawn: Number.isFinite(b.drawn) ? b.drawn : 0, key });
+      // Its next not all read: cut there.
+      at.get(b.node).cut = true;
     }
   });
   // Edges once every node of every answer stands, so an edge an expansion completes is drawn, not lost.
@@ -429,6 +436,10 @@ const arrowed = (g) => (g.direction === 'incoming' ? `← ${g.predicate}` : `${g
 
 /** The lump window's one press (lead 10-11 E2b): the lump as a step of the page's table. */
 const OPEN_TABLE = 'Open as table';
+/** Where the walk stopped (lead 10-11 G-2 ⑦): the ring's legend, a cut node's word, and the press that walks on from it. */
+export const WALKED_HERE = 'dashed = walked up to here';
+export const CUT_WORD = 'cut';
+export const WALK_ON = 'Walk on from here';
 
 export class SubgraphView {
   /**
@@ -443,6 +454,7 @@ export class SubgraphView {
    *   `worldChips`: the page reads several worlds, so each fact says which (lead 99032248f).
    *   `predicates()`: the declaration's predicates, which a lump's points read as the page's table does (C-98).
    *   `openTable(answer, lump)`: the page opens a lump's answer as a step of its table (lead 10-11 E2b); none, no button.
+   *   `walkOn({id, label, type, keys})`: the page puts a node in its start basket (lead 10-11 G-2 ⑦); none, no button.
    */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('SubgraphView needs a mount element');
@@ -455,6 +467,7 @@ export class SubgraphView {
     this.entities = deps.entities || (() => []);
     this.predicates = deps.predicates || (() => []);
     this.openTable = deps.openTable || null;
+    this.walkOn = deps.walkOn || null;
     this.markings = deps.markings;
     this.chain = deps.chain;
     // The names it has read or written, each heard once: the chain is as long as its declaration says (lead 77f1afd3b).
@@ -851,6 +864,7 @@ export class SubgraphView {
       chip.appendChild(this._el('span', '', `${item.type} ${item.count}`));
       legend.appendChild(chip);
     }
+    if (view.nodes.some((n) => n.end || n.cut)) legend.appendChild(this._el('span', 'sg-endkey', WALKED_HERE));
     const acts = this._el('div', 'sg-acts');
     for (const [cls, word, act] of [['sg-fit', 'Fit', () => this.fit()], ['sg-reset', 'Reset', () => this.reset()]]) {
       const button = this._el('button', `sg-tool ${cls}`, word);
@@ -977,6 +991,10 @@ export class SubgraphView {
       { selector: 'node.is-marked', style: set({ 'border-width': 3.4, 'border-style': 'solid', 'border-color': t('--accent') }) },
       // A control: the board's control colour, dashed so it reads without colour too.
       { selector: 'node.is-control', style: set({ 'border-style': 'dashed', 'border-color': t('--text-muted') }) },
+      // Walked up to here (lead 10-11 G-2 ⑦): a dashed ring outside the node's own border - the last hop, or a fan-out cut.
+      { selector: 'node[kind = "node"][?end], node[kind = "node"][?cut]', style: set({ 'outline-width': 1.7,
+        'outline-style': 'dashed', 'outline-color': t('--text'), 'outline-offset': 3.4 }) },
+      { selector: 'node[kind = "node"][?cut]', style: { label: (n) => `${n.data('label')} · ${CUT_WORD}` } },
       { selector: 'node.is-selected', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.16,
         'overlay-padding': 6.8, 'font-weight': 600 }) },
       { selector: 'node[kind = "lump"]', style: set({
@@ -1068,7 +1086,7 @@ export class SubgraphView {
     const out = [];
     for (const n of view.nodes) {
       out.push({ group: 'nodes', data: { id: n.id, kind: 'node', label: n.label, type: n.type, layer: n.layer,
-        depth: n.depth, step: n.step, colour: n.colour, static: n.static } });
+        depth: n.depth, step: n.step, colour: n.colour, static: n.static, end: Boolean(n.end), cut: Boolean(n.cut) } });
     }
     for (const l of view.lumps) {
       out.push({ group: 'nodes', data: { id: l.id, kind: 'lump', level: l.level, owner: l.owner, key: l.key || '',
@@ -1317,6 +1335,14 @@ export class SubgraphView {
       fold.setAttribute('data-fold-node', id);
       if (fold.addEventListener) fold.addEventListener('click', () => { this.toggleFold(id); });
       acts.appendChild(fold);
+    }
+    if (this.walkOn && (facts.node.end || facts.node.cut)) {
+      const on = this._el('button', 'sg-walkon', WALK_ON);
+      on.setAttribute('type', 'button');
+      on.setAttribute('data-walkon-node', id);
+      const { label, type, keys } = facts.node;
+      if (on.addEventListener) on.addEventListener('click', () => { this.walkOn({ id, label, type, keys }); });
+      acts.appendChild(on);
     }
     box.appendChild(acts);
     for (const [name, value] of Object.entries(facts.node.keys)) {

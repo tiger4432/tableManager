@@ -124,7 +124,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const chain = opts.chain || ['s0', 's1', 's2'];
     if (!opts.keepStart) markings.replace(chain[0], [[startId(bodies[0]), SIGN.CASE]]);
     const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => ENTITIES, markings, chain: (k) => chain[k] || '',
-      worldChips: opts.worldChips, openTable: opts.openTable, predicates: opts.predicates, fanoutLimit: opts.fanoutLimit });
+      worldChips: opts.worldChips, openTable: opts.openTable, predicates: opts.predicates, fanoutLimit: opts.fanoutLimit,
+      walkOn: opts.walkOn });
     seated.push(view);
     await view.show();
     return { doc, host, view, urls, markings, chain };
@@ -1536,6 +1537,41 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       JSON.stringify({ hidden, kind: Boolean(kind), lit: ['h:s', 'h:w', 'h:b'].map((id) => cls(id, 'is-path')), litEdges }));
   }
 
+  if (want(['WH1'])) {
+    // Walked up to here (lead 10-11 G-2 ⑦): a hand walk of two hops - the last hop's nodes ringed, a node whose fan-out
+    // the server cut (a bundle) ringed and said «cut»; its press offers «Walk on from here», which hands the node to the
+    // page's basket and walks nothing.
+    const wn = (id, depth) => ({ id, type: 'die', label: id, depth, keys: { mat_id: id } });
+    const we = (source, predicate, target) => ({ id: `${source}>${predicate}>${target}`, source, target, predicate });
+    const ENDS = { state: 'ready', seed: { id: 'e:s' }, truncated: { reason: null }, walk: { hops_requested: 2, hops_reached: 2 },
+      nodes: [wn('e:s', 0), wn('e:w', 1), wn('e:c', 1), wn('e:a', 2), wn('e:b', 2)],
+      edges: [we('e:s', 'p', 'e:w'), we('e:s', 'r', 'e:c'), we('e:w', 'q', 'e:a'), we('e:c', 'q', 'e:b')],
+      bundles: [{ node: 'e:c', predicate: 'q', direction: 'outgoing', far_type: 'die', count: 40, drawn: 1 }] };
+    const handed = [];
+    const s = await seat([ENDS], { walkOn: (node) => handed.push(node) });
+    openAll(s);
+    const asked = s.urls.length;
+    const ids = (sel) => (s.view.cy ? s.view.cy.nodes(sel).map((n) => n.id()).sort() : []);
+    const ringed = ids('[kind = "node"]').filter((id) => s.view.cy.getElementById(id).style('outline-style') === 'dashed');
+    const last = ENDS.nodes.filter((n) => n.depth === ENDS.walk.hops_reached).map((n) => n.id).sort();
+    const walkOnOf = () => byClass(s.host, 'sg-walkon')[0] || null;
+    press(s, 'e:s');
+    const offStart = walkOnOf();
+    press(s, 'e:a');
+    const on = walkOnOf();
+    if (on) on.dispatch('click', {});
+    const cutLabel = s.view.cy ? s.view.cy.getElementById('e:c').style('label') : '';
+    say('WH1 the last hop\'s nodes and a cut fan-out\'s node ringed dashed, «cut» said, the legend line; a ringed node\'s press hands it to the basket, nothing walked',
+      JSON.stringify(ids('[?end]')) === JSON.stringify(last) && JSON.stringify(ids('[?cut]')) === JSON.stringify(['e:c'])
+        && JSON.stringify(ringed) === JSON.stringify([...last, 'e:c'].sort()) && cutLabel === 'e:c · cut'
+        && textOf(s.host, 'sg-endkey').join() === 'dashed = walked up to here'
+        && offStart === null && Boolean(on) && on.textContent === 'Walk on from here'
+        && JSON.stringify(handed) === JSON.stringify([{ id: 'e:a', label: 'e:a', type: 'die', keys: { mat_id: 'e:a' } }])
+        && s.urls.length === asked,
+      JSON.stringify({ end: ids('[?end]'), last, cut: ids('[?cut]'), ringed, cutLabel, legend: textOf(s.host, 'sg-endkey'),
+        offStart: Boolean(offStart), on: on && on.textContent, handed, asks: s.urls.length - asked }));
+  }
+
   for (const view of seated) if (view.cy) view.cy.destroy();
   return { ran: names.length, names, failures: fails };
 }
@@ -1820,7 +1856,9 @@ const failures = [];
     M('AWm2', 'every node said not walked', 'AW1',
       '          unwalked: Boolean(result.opened) && node.id !== keyParts(result.opened).node,', '          unwalked: true,'),
     M('AWm3', 'a node walked from still said not walked: dashed again once its branches are all open', 'AW2',
-      "  for (const step of steps || []) {\n    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) at.get(keyParts(r.opened).node).unwalked = false;\n  }\n", ''),
+      "  for (const step of steps || []) {\n    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) Object.assign(at.get(keyParts(r.opened).node), { unwalked: false, end: false });\n  }\n", ''),
+    M('WHm1', 'no node said to stand at its answer\'s last hop', 'WH1',
+      '          end: Number.isFinite(reached) && node.depth === reached,', '          end: false,'),
     M('AWm4', 'walked, its branches not folded into its big lump', 'AW2',
       '      this.fold.big.set(lump.owner, branchKeys(this.layout, lump.owner));\n', ''),
     M('LA5m', 'one node ticked lets its whole branch out', 'LM12',

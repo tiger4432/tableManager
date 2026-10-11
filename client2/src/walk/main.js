@@ -218,7 +218,7 @@ export function boot(doc, host, deps) {
   const dropMarks = (steps) => { for (const name of [...steps.map((s) => s.marks), ...tail.splice(0)]) markings.clear(name); };
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: chainAt,
     worldChips: worlds.length > 1, predicates: () => (state.decl && state.decl.predicates) || [],
-    openTable: (answer, lump) => openLumpTable(answer, lump) });
+    openTable: (answer, lump) => openLumpTable(answer, lump), walkOn: (node) => baskets.add(SIGN.CASE, node) });
   // The box is the key it searches by: what is typed is that key, a node picked fills every key.
   const searchMount = el(doc, 'div', '');
   const search = new NodeSearch(searchMount, { doc,
