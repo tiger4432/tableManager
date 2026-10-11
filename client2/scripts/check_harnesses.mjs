@@ -1403,9 +1403,9 @@ const FLOORS = new Map([
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
   ['node_search_harness.mjs', 45],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
-  ['reach_table_harness.mjs', 38],   // 36 -> 38: a list said the same by its items - R21, FM20; FM18 FM19 re-aimed (lead 10-11 W 13)
+  ['reach_table_harness.mjs', 48],   // 38 -> 48: W 1 - the arrows, a group per far node or type: R10 R12 R17 R19 re-pointed, R22-R26; FM1 FM5 FM8 FM9 FM16 FM17 re-aimed, FM21-FM25 (lead 10-11 W)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 72],   // 62 -> 72: G-2b - TN1 SC5 SC6 SC7, SCm6-SCm9 TNm1 TNm2; SCm2 SCm5 TM4 re-aimed (lead 10-11 G-2)
+  ['trend_harness.mjs', 73],   // 72 -> 73: W 1 - T12 T13 T14 TS1 TS2 SC1 re-pointed, T16-T18; TN1 TNm1 TNm2 moved to reach_table R24 FM23 with numberOf; TSm5 TM15 SCm3 SCm9 re-aimed, TM16 (lead 10-11 W)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1484,7 +1484,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 181],   // 173 -> 181: the graph on a branch - GB4 GB5 GB6, GM5-GM9 (lead 10-11 G-2)
+  ['walk_table_harness.mjs', 184],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
@@ -1770,7 +1770,7 @@ const FLOORS = new Map([
   // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
   //   and their two mutants (lead 10-09): 176 -> 184.
   // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
-  ['screen_layout_harness.mjs', 252],   // 249 -> 252: the Retroactive tab's contents at its three sizes, its mutant for the cut line's (owner 10-11 R)
+  ['screen_layout_harness.mjs', 307],   // 252 -> 307: walk.html at 1280x720 too, S2-S6, missing each; the axis mutant retired (lead 10-11 W addendum 9)
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

@@ -73,7 +73,7 @@ async function suite(m) {
   // A lump opened as a step reads as a Next from its owner along its predicate (lead 10-11): the same Route, the same sources.
   const fromLump = walkTableView(answer, NEXT._decl.entities, [], undefined, { positive: [q], negative: [] });
   const routes = (view) => view.sections.find((x) => x.type === 'wafer').rows
-    .map((r) => [r.id, r.byGroup[0][r.byGroup[0].length - 1].text, view.sources.source(view.groups[0], r.id)]).sort();
+    .map((r) => [r.id, r.routes[0].text, view.sources.source(view.groups[0], r.id)]).sort();
   say('L3 a lump\'s step: each member\'s Route and source as the Next from its owner along its predicate says them',
     JSON.stringify(routes(fromLump)) === JSON.stringify(routes(full)) && routes(full).length === wafers.length
       && routes(full).every(([, route]) => route === 'measures'),

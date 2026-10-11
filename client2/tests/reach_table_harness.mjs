@@ -86,8 +86,29 @@ function suite(F) {
   eq('R15 a row with no column: differs and missing from where the groups reached it', bare.table.map((r) => [r.missing, r.differs]),
     [[false, false], [true, true]]);
   const words = (scheme) => F.defaultColumns(F.indexGraph(scheme), ROWS).map((c) => c.words.join(' · '));
-  eq('R10 the edge scheme\'s own columns: the attributes its edges carry, nothing of the far node', words(EDGE_SCHEME),
-    ['measures (in) · step', 'measures (in) · value']);
+  eq('R10 the edge scheme\'s own columns: a group its far type, the attributes its edges carry (lead 10-11 W addendum 8 (다))',
+    words(EDGE_SCHEME), ['measures ← wafer · step', 'measures ← wafer · value']);
+  const perWafer = (t) => t === 'wafer';
+  eq('R25 a far type that names (the declaration\'s static ones): a group a far node, the node named (lead 10-11 W addendum 8 (다))',
+    F.defaultColumns(F.indexGraph(EDGE_SCHEME), ROWS, [], perWafer).map((c) => [c.words.join(' · '), c.end || null]),
+    [['measures ← WN · step', 'wn'], ['measures ← WN · value', 'wn'], ['measures ← WP · step', 'wp'], ['measures ← WP · value', 'wp']]);
+  // A far type's group reads its type's far ends only: x measures a (type A, 1) and b (type B, 2).
+  const TWO_TYPES = { nodes: [node('x', 'X'), node('a', 'A'), node('b', 'B')], edges: [edge('x', 'p', 'a', { v: 1 }), edge('x', 'p', 'b', { v: 2 })] };
+  eq('R26 a far type\'s group: the row\'s edges to that type, no other',
+    F.defaultColumns(F.indexGraph(TWO_TYPES), ['x']).map((c) => [c.words.join(' · '), F.cellOf(F.indexGraph(TWO_TYPES), new Set(['x', 'a', 'b']), 'x', c).values]),
+    [['p → A · v', [1]], ['p → B · v', [2]]]);
+  // A column that ends at one node reads its edges to that node only; who gave a value - an edge's its subject, a node's
+  // its own (lead 10-11 W 10, 11).
+  const ix = F.indexGraph(EDGE_SCHEME);
+  const toQ1 = { ...col([['measures', 'outgoing']], 'edge', 'value'), end: 'q1' };
+  eq('R22 a column ending at a node: the row\'s edges to that node, no other (lead 10-11 W 10)',
+    [F.cellOf(ix, new Set(['wp', 'q1', 'q2']), 'wp', toQ1).values, F.cellOf(ix, new Set(['wp', 'q1', 'q2']), 'wp', col([['measures', 'outgoing']], 'edge', 'value')).values],
+    [[30.5], [30.5, 4.2]]);
+  const ev0 = F.indexGraph(EVENT_SCHEME);
+  eq('R23 who gave a value: an edge\'s its subject - the wafer, read from the wafer or from the quantity - a node\'s the node (lead 10-11 W 11)',
+    [F.readsOf(ix, new Set(['wp', 'q1']), 'wp', toQ1).reads.map((r) => r.giver), F.readsOf(ix, new Set(['wp', 'q1']), 'q1', col([['measures', 'incoming']], 'edge', 'value')).reads.map((r) => r.giver),
+      F.readsOf(ev0, new Set(['q1', 'e1']), 'q1', col([['of', 'incoming']], 'node', 'value')).reads.map((r) => r.giver)],
+    [['wp'], ['wp'], ['e1']]);
   eq('R11 the event scheme\'s own columns: none - its edges carry nothing; its value is a column of the far node (R2)',
     words(EVENT_SCHEME), []);
   const keyed = F.defaultColumns(F.indexGraph({ nodes: [{ ...node('w1', 'wafer', { grade: 'A' }), keys: { wafer: 'W-1' } }], edges: [] }),
@@ -99,20 +120,22 @@ function suite(F) {
     [[['wafer', 0, 'key'], ['grade', 0, 'node']], ['W-1']]);
   const both = { nodes: [node('d1', 'die'), node('d2', 'die'), node('d3', 'die')],
     edges: [edge('d1', 'bonded_from', 'd2', { at: 1 }), edge('d3', 'bonded_from', 'd1', { at: 2 })] };
-  eq('R12 a step taken in says «(in)»: one predicate both ways, two columns told apart',
-    F.defaultColumns(F.indexGraph(both), ['d1']).map((c) => c.words.join(' · ')), ['bonded_from · at', 'bonded_from (in) · at']);
+  eq('R12 a step\'s arrow: out «→», in «←» - one predicate both ways, two columns told apart (lead 10-11 W: «(in)» retired)',
+    F.defaultColumns(F.indexGraph(both), ['d1']).map((c) => c.words.join(' · ')), ['bonded_from → die · at', 'bonded_from ← die · at']);
   // ⚰️ R13 · R14 (how each group reached its nodes) retired 10-10 with viaDepth: the table's Route reads the paths the
   // server walked, an answer's evidence (lead df11f9e81) - walk_table_harness Z29 - Z32.
   const ev = F.indexGraph(EVENT_SCHEME);
   eq('R17 + Column\'s routes: what the rows take in this walk, either way, step by step',
     F.routesFrom(ev, ROWS, 2).map((r) => [r.words.join(' · '), r.to.join()]),
-    [['of (in)', 'measurement'], ['of (in) · measured (in)', 'wafer'], ['of (in) · of', 'quantity']]);
+    [['of ← measurement', 'measurement'], ['of ← measurement · measured ← wafer', 'wafer'], ['of ← measurement · of → quantity', 'quantity']]);
   eq('R18 + Column\'s values at a route\'s end: the far node\'s attribute and its name - the event scheme\'s value',
     F.valuesAt(ev, ROWS, [{ predicate: 'of', direction: 'incoming' }]).map((v) => `${v.on} ${v.name}`), ['node value', 'label name']);
-  eq('R19 a column judged once by its values\' JSON type: a numeral in a string and a time are strings; a delta needs numbers',
+  eq('R19 a column judged once: a numeral in a string is a number, a time a string; a delta of numerals in strings their difference (lead 10-11: one answer to «is this a number»)',
     [[1, 2.5], ['a', ['x', 'y']], [true, false], [1, 'a'], ['', null, '  '], ['2026-10-10T00:00:00'], ['30.5']].map(F.valueKind)
       .concat([F.deltaOf([{ missing: false, values: ['30.5'] }, { missing: false, values: ['11'] }])]),
-    ['number', 'string', 'boolean', 'mixed', 'empty', 'string', 'string', null]);
+    ['number', 'string', 'boolean', 'mixed', 'empty', 'string', 'number', 19.5]);
+  eq('R24 a value as a number: a numeral in text reads as it; text that is not, blank or nothing reads as none; 0 is a value',
+    ['10.1', ' 3 ', '0', 0, 'S1', '', '  ', null, undefined, NaN, '1e3'].map(F.numberOf), [10.1, 3, 0, 0, null, null, null, null, null, null, 1000]);
   // The end's time (owner 10-10 e54560dc2, lead 10-11 E2c): a node that said 9 in one world and 7 in another, 7 its value;
   // a node that keeps no record; the edges into q timed apart from both.
   const SAID = { nodes: [node('q', 'quantity'), { ...node('e', 'measurement', { value: 7 }),
@@ -149,7 +172,15 @@ const swap = (text, from, to) => {
 };
 const MUTANTS = [
   { id: 'FM1', what: 'a cell follows edges outside its group', catches: 'R1 ',
-    mutate: (t) => swap(t, '(inside && !inside.has(farOf(e, step.direction)))', 'false') },
+    mutate: (t) => swap(t, '(inside && !inside.has(far))', 'false') },
+  { id: 'FM21', what: 'a column ending at a node reads every far node', catches: 'R22',
+    mutate: (t) => swap(t, '(lastId && far !== lastId) || ', '') },
+  { id: 'FM24', what: 'a far type\'s group reads every far type', catches: 'R26',
+    mutate: (t) => swap(t, " || (lastTypes && !lastTypes.includes((index.nodes.get(far) || {}).type || ''))", '') },
+  { id: 'FM25', what: 'every far node its own group', catches: 'R10',
+    mutate: (t) => swap(t, 'const end = perNode(type) ? id : null;', 'const end = id;') },
+  { id: 'FM22', what: 'an edge\'s value given by its far end', catches: 'R23',
+    mutate: (t) => swap(t, "giver: column.value.on === 'edge' && end.edge ? end.edge.source : end.node", 'giver: end.node') },
   { id: 'FM2', what: 'a row its group did not reach drawn empty, not missing', catches: 'R1 ',
     mutate: (t) => swap(t, "  if (!inside.has(x)) return { missing: true, reads: [], more: false };\n", '') },
   { id: 'FM3', what: 'every step taken outgoing', catches: 'R1 ',
@@ -158,23 +189,25 @@ const MUTANTS = [
   { id: 'FM4', what: 'a node attribute read off the last edge, as if every value rode on an edge', catches: 'R2 ',
     mutate: (t) => swap(t, '  const said = (node.attributes || {})[value.name];', '  const said = end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined;') },
   { id: 'FM5', what: 'delta from the first value of several', catches: 'R6',
-    mutate: (t) => swap(t, 'cell.values.length === 1 &&', 'cell.values.length >= 1 &&') },
+    mutate: (t) => swap(t, 'cell.values.length === 1 ? numberOf', 'cell.values.length >= 1 ? numberOf') },
   { id: 'FM6', what: 'the last way\'s value overwrites the others', catches: 'R6',
     mutate: (t) => swap(t, "  const reads = ends.map((end) => ({", "  const reads = ends.slice(-1).map((end) => ({") },
   { id: 'FM7', what: 'every group reads the first group\'s reach', catches: 'R7',
     mutate: (t) => swap(t, 'Number((row.reach || [])[i]) > 0', 'Number((row.reach || [])[0]) > 0') },
   { id: 'FM8', what: 'an edge read without its attributes: a column for every step', catches: 'R11',
-    mutate: (t) => swap(t, '    for (const name of [...s.names].sort()) columns.push(', '    for (const name of [...s.names, \'\'].sort()) columns.push(') },
+    mutate: (t) => swap(swap(t, '        if (!names.length) continue;\n', ''), '    for (const name of [...s.names].sort()) columns.push(',
+      '    for (const name of [...s.names, \'\'].sort()) columns.push(') },
   { id: 'FM14', what: '+ Column\'s routes taken one way only', catches: 'R17',
     mutate: (t) => swap(t, "        for (const [direction, edges] of [['outgoing', index.out.get(at)], ['incoming', index.into.get(at)]]) {\n          for (const e of edges || []) {\n            const key",
       "        for (const [direction, edges] of [['outgoing', index.out.get(at)]]) {\n          for (const e of edges || []) {\n            const key") },
   { id: 'FM15', what: '+ Column offers no far node attribute', catches: 'R18',
     mutate: (t) => swap(t, '    for (const name of Object.keys(node.attributes || {})) names.node.add(name);\n', '') },
-  { id: 'FM16', what: 'a numeral in a string judged a number', catches: 'R19',
-    mutate: (t) => swap(t, ".map((v) => (typeof v === 'number' ? 'number'", ".map((v) => (Number.isFinite(Number(v)) && typeof v !== 'boolean' ? 'number'") },
-  { id: 'FM17', what: 'a delta of numerals in strings', catches: 'R19',
-    mutate: (t) => swap(t, "cell.values.length === 1 && typeof cell.values[0] === 'number'\n  && Number.isFinite(cell.values[0]) ? cell.values[0] : null);",
-      "cell.values.length === 1\n  && Number.isFinite(Number(cell.values[0])) ? Number(cell.values[0]) : null);") },
+  { id: 'FM16', what: 'a numeral in a string judged a string', catches: 'R19',
+    mutate: (t) => swap(t, ".map((v) => (numberOf(v) !== null ? 'number'", ".map((v) => (typeof v === 'number' ? 'number'") },
+  { id: 'FM17', what: 'no delta of numerals in strings', catches: 'R19',
+    mutate: (t) => swap(t, 'cell.values.length === 1 ? numberOf(cell.values[0]) : null)', "cell.values.length === 1 && typeof cell.values[0] === 'number' ? cell.values[0] : null)") },
+  { id: 'FM23', what: 'a blank text reads as 0', catches: 'R24',
+    mutate: (t) => swap(t, "if (typeof value !== 'string' || !value.trim()) return null;", "if (typeof value !== 'string') return null;") },
   { id: 'FM13', what: 'a row key read as an attribute', catches: 'R16',
     mutate: (t) => swap(t, "  if (value.on === 'key') return { value: (node.keys || {})[value.name], when: end.edge };\n", '') },
   { id: 'FM18', what: 'a node attribute timed by its first record, not the one saying its value', catches: 'R20',
@@ -185,7 +218,7 @@ const MUTANTS = [
   { id: 'FM20', what: 'a value the same as said only when it is the same object', catches: 'R21',
     mutate: (t) => swap(t, 'export const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);', 'export const sameValue = (a, b) => a === b;') },
   { id: 'FM9', what: 'a predicate taken both ways not told apart', catches: 'R12',
-    mutate: (t) => swap(t, "(step.direction === 'incoming' ? `${step.predicate} (in)` : step.predicate)", '(step.predicate)') },
+    mutate: (t) => swap(t, "${step.direction === 'incoming' ? '←' : '→'}", '→') },
   { id: 'FM11', what: 'differs read off the values only', catches: 'R15',
     mutate: (t) => swap(t, 'differs: reached.some((r) => r !== reached[0]) || ', 'differs: ') },
   { id: 'FM12', what: 'the ways cap never said', catches: 'R9', mutate: (t) => swap(t, '{ more = true; break; }', '{ break; }') },

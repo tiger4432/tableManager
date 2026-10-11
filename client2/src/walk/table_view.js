@@ -13,12 +13,13 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes } from './derive.js';
+import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, valueKind, valueWords, saysValue } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf } from './reach_table.js';
 import { isBlank } from '../absent.js';
-import { walkPoints, numberOf } from './trend.js';
+import { walkPoints } from './trend.js';
+import { localStamp } from '../server_time.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -28,7 +29,8 @@ export function nextRoutes(declaration, type) {
   for (const edge of typeGraph(declaration).edges) {
     const to = edge.from === type ? edge.to : edge.to === type ? edge.from : null;
     if (to !== null && !out.some((r) => r.predicate === edge.predicate && r.to === to)) {
-      out.push({ predicate: edge.predicate, to });
+      // Its words the table's arrows (lead 10-11 W): out «→», in «←», the far type.
+      out.push({ predicate: edge.predicate, to, words: stepWords({ predicate: edge.predicate, direction: edge.from === type ? 'outgoing' : 'incoming' }, to) });
     }
   }
   return out;
@@ -41,12 +43,12 @@ export const ROW_CAP = 200;
 //    cells were text from `cellSource` on the edge qualifiers folded into the node they reached; the walk table reads a
 //    column's way (reach_table.cellOf), every edge's value kept, the edge's own predicate in the head.
 
-/** A group's cell for a node it did not reach; a reached cell with no value; a start's route; the Δ head; the Route head. */
+/** A group's cell for a node it did not reach; a reached cell with no value; a start's route; the Δ head. */
 export const MISSING = 'missing';
 export const EMPTY = '—';
 export const STARTED = 'start';
 export const DELTA = 'Δ';
-export const ROUTE = 'Route';
+// ⚰️ ROUTE retired 10-11 with the Route column (lead W): how a side reached a row is the node cell's source line.
 /** Where a route stands, for a node no side of the walk reached - a time page's other rows (lead 10-11). */
 export const NOT_WALKED = 'not in this walk';
 
@@ -90,25 +92,68 @@ export function rowsShown(section, filter = 'all') {
 }
 
 /**
- * A section as one flat sheet for Excel (owner 10-10, lead a27dfbb0f): one head row - each side's columns under its
- * sign, the node's own, Δ, the id last; a row each the filter shows. Values as they are: several in one cell «; »,
- * none an empty cell, a side that did not reach the row «missing» in each of its columns, Δ its number.
+ * A section as one flat sheet for Excel (owner 10-10, lead a27dfbb0f), as Wide draws it (lead 10-11 W: Copy the shape
+ * shown): the node's own, then each column its groups' cells and Δ under it, the id last; a row each the filter shows.
+ * Values as they are: several in one cell «; », none an empty cell, a side that did not reach the row «missing», Δ its
+ * number.
  */
 export function sheetOf(section, filter = 'all') {
   const pair = section.groups.length === 2;
-  const side = (i) => section.heads.map((h) => `${section.groups[i].sign} ${h}`);
-  const head = pair ? [...side(0), ...section.centreHeads, ...side(1), ...section.deltaHeads, 'id']
-    : [...section.centreHeads, ...section.groups.flatMap((_, i) => side(i)), ...section.deltaHeads, 'id'];
+  // Two groups: + · Δ · − under a column that has Δ; otherwise each group's cell.
+  const order = (list, delta) => (pair && delta !== undefined ? [list[0], delta, list[1]] : list);
+  const head = [...section.centreHeads, ...section.columnHeads.flatMap((h, i) => {
+    const signs = section.groups.map((g) => `${h} · ${g.sign}`);
+    return order(signs, section.parts[i].delta ? `${h} · ${DELTA}` : undefined);
+  }), 'id'];
   const words = (cell) => (cell.missing ? MISSING : cell.values ? cell.values.join('; ') : cell.text === EMPTY ? '' : cell.text);
-  const cells = (row, i) => row.byGroup[i].flatMap((cell) => Array(cell.span || 1).fill(words(cell)));
-  const rows = rowsShown(section, filter).map((row) => {
-    const own = row.centre.map(words);
-    const deltas = row.deltas.map((d) => (d.value === null || d.value === undefined ? '' : String(d.value)));
-    return pair ? [...cells(row, 0), ...own, ...cells(row, 1), ...deltas, row.id]
-      : [...own, ...section.groups.flatMap((_, i) => cells(row, i)), ...deltas, row.id];
-  });
+  const rows = rowsShown(section, filter).map((row) => [...row.centre.map(words), ...row.cells.flatMap((cell) => {
+    const sides = cell.sides.map(words);
+    return order(sides, cell.delta ? (cell.delta.value === null || cell.delta.value === undefined ? '' : String(cell.delta.value)) : undefined);
+  }), row.id]);
   return { head, rows };
 }
+
+/** Long's columns (lead 10-11 W): a value record a line. */
+export const LONG_HEAD = Object.freeze(['node', 'value name', 'value', 'point', 'time', 'side', 'from']);
+
+/**
+ * A section as Long draws it (lead 10-11 W): a line a value record - the node, the value's name, its value, the edge's
+ * other attributes (point …), its time, the group it came by (none: the node's own), and who gave it with their way
+ * (one meaning with Wide's source line). Wide's «+N» lists a cell's lines here: one read, two drawers.
+ * @param {{index, groups, sources}} view   the walk's view
+ * @param {object} section                  a section of it
+ * @param {{filter?: string, row?: string, column?: string}} [only]  the rows the filter shows, one row, one column (key)
+ */
+export function longLines(view, section, only = {}) {
+  const rows = rowsShown(section, only.filter || 'all').filter((row) => !only.row || row.id === only.row);
+  // One column asked: Long's, or a drawn one (a group's folded cell opened) - a drawer is any cell's.
+  const drawn = section.columns.map((column, i) => ({ column, head: section.columnHeads[i], own: false }));
+  const columns = !only.column ? section.long
+    : [section.long.find((c) => columnKey(c.column) === only.column) || drawn.find((c) => columnKey(c.column) === only.column)].filter(Boolean);
+  const lines = [];
+  for (const row of rows) {
+    for (const { column, head, own: mine } of columns) {
+      const groups = mine ? [null] : view.groups.map((g, i) => ({ g, i }));
+      for (const at of groups) {
+        const inside = at ? at.g.inside : new Set([row.id]);
+        for (const r of readsOf(view.index, inside, row.id, column).reads) {
+          const point = column.value.on === 'edge' && r.edge
+            ? Object.entries(r.edge.qualifiers || {}).filter(([name, v]) => name !== column.value.name && !isBlank(v))
+              .map(([name, v]) => `${name} ${valueWords(v)}`).join(' · ')
+            : '';
+          const t = r.when && Date.parse(r.when.occurred_at);
+          lines.push({ id: row.id, node: row.label, name: head, value: r.value, words: valueWords(r.value), point,
+            time: Number.isFinite(t) ? localStamp(new Date(t).toISOString()) : '', side: at ? at.g.name : '',
+            from: at && r.giver !== row.id ? view.sources.source(at.g, r.giver) : '', group: at ? at.i : null, column: columnKey(column) });
+        }
+      }
+    }
+  }
+  return lines;
+}
+
+/** Long as a sheet: its head and a line a row, as drawn. */
+export const longSheet = (lines) => ({ head: [...LONG_HEAD], rows: lines.map((l) => [l.node, l.name, l.words, l.point, l.time, l.side, l.from]) });
 
 const html = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /** A sheet as the <table> Excel reads off the clipboard beside its TSV. */
@@ -158,10 +203,14 @@ export function deltaWords(delta) {
  * @param {number} [cap]                            행 상한
  * @param {{positive?: string[], negative?: string[]}} [starts]  the walk's signed starts: a side a sign it started from
  *        (lead 3375edd9b) - a node a row, a + group and, with a − start, a − group of columns; + only, one side (E1)
+ * @param {Map} [added]                             the columns «+ Column» added, by type
+ * @param {{off?: Map<string, Set<string>>, open?: Map<string, Set<string>>}} [fold]  by type, the columns and groups
+ *        Columns turned off (a node's own column by columnKey, a group by groupKey) and the groups opened past their
+ *        number cells (lead 10-11 W addendum 8)
  * @returns {{sections: Array, shown: number, hidden: number, groups: Array, unsplit: boolean}}
  */
 export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
-  opened = new Set(), control = null) {
+  fold = {}, control = null) {
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
   const walked = control ? mergeWalks(result, control) : result;
   const nodes = (walked && walked.nodes) || [];
@@ -171,6 +220,9 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   // C-98. 「무엇이 안 보이는 것이 무슨 뜻인가」의 모집단은 «선언»이라, 한 번 읽고 모든 구획이
   // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
   const confirmers = confirmedPredicates(predicates);
+  // A value-bearing edge's far node of a type the declaration calls static - a name - stands its own group (lead 10-11 W
+  // addendum 8 (다)): the one seat that asks.
+  const statics = staticTypes(entities);
   // The flat table's two node-own columns, carried into the centre (lead 10-11): «Conflicts» and a confirmation
   // predicate's - the declaration says they stand, its own functions read them.
   const carriedOf = (type) => tableColumns(entities, type, [], undefined, confirmers)
@@ -190,7 +242,13 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   const groupsB = control ? (ranked ? groupsOf(control, signs) || ranked.map((g) => ({ ...g, inside: new Set(g.starts) })) : one(control)) : null;
   const groups = groupsB ? groupsA.map((g, i) => ({ ...g, inside: new Set([...g.inside, ...groupsB[i].inside]),
     a: g.inside, b: groupsB[i].inside })) : groupsA;
-  const index = indexGraph(walked);
+  // A far end the answer did not send (collect) is still a node of its type and keys - read off its id, as its source
+  // words are (lead 10-11): a column group needs its type and name. It is no row: rows are the answer's nodes.
+  const sent = new Set(nodes.map((n) => n.id));
+  const unsent = [...new Set(((walked && walked.edges) || []).flatMap((e) => [e.source, e.target]))].filter((id) => !sent.has(id))
+    .map((id) => ({ id, ...(entityOfId(id) || {}) })).filter((n) => n.type)
+    .map((n) => ({ ...n, label: Object.values(n.keys || {}).map(valueWords).join(' / ') || n.id }));
+  const index = indexGraph({ ...walked, nodes: [...nodes, ...unsent] });
   const own = valueSources(result, entities, groups);
   const sourcesB = control ? valueSources(control, entities, groups) : null;
   // B reached the node on this side: Route says B's path a line more; a value only B brought says B's source.
@@ -204,76 +262,107 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   for (const [type, rows] of sectionsByType(shown)) {
     const ids = rows.map((n) => n.id);
     const entity = (entities || []).find((e) => e && e.type === type) || {};
-    const all = [...defaultColumns(index, ids, entity.keys || []), ...(added.get(type) || [])];
-    // The node's own (no step) once in the centre; the groups' columns are the steps'.
+    const off = (fold.off && fold.off.get(type)) || new Set();
+    const open = (fold.open && fold.open.get(type)) || new Set();
+    const all = [...defaultColumns(index, ids, entity.keys || [], (t) => statics.has(t)), ...(added.get(type) || [])];
+    // The node's own (no step) in the node's columns; the groups' columns are the steps'.
     const ownAll = all.filter((c) => !c.steps.length);
     const ownCells = rows.map((node) => ownAll.map((c) => cellOf(index, new Set([node.id]), node.id, c)));
     const sideAll = all.filter((c) => c.steps.length);
     const tableAll = tableOf(index, groups, ids, sideAll);
     // Each column judged once by its values' JSON type (lead a2eb4a516); a mixed one says so in its head.
     const kindsAll = sideAll.map((_, c) => valueKind(tableAll.flatMap((row) => row.cells[c].flatMap((cell) => cell.values))));
-    // A column no row has a value in folds unless its type is opened (lead 34d91c09d 7); the numbers stand nearest the
-    // node, the rest outward, each in its order (34d91c09d 2: the value to set side by side was the fourth from the node).
-    const keep = opened.has(type);
-    const ownEmpty = ownAll.map((_, c) => !ownCells.some((cells) => cells[c].values.length));
-    const sideEmpty = kindsAll.map((kind) => kind === 'empty');
-    const ownAt = ownAll.map((_, c) => c).filter((c) => keep || !ownEmpty[c]);
-    const sideAt = sideAll.map((_, c) => c).filter((c) => keep || !sideEmpty[c])
-      .sort((p, q) => (kindsAll[q] === 'number') - (kindsAll[p] === 'number'));
-    const empty = [...ownEmpty, ...sideEmpty].filter(Boolean).length;
+    const headOf = (c) => `${sideAll[c].words.join(' · ')}${kindsAll[c] === 'mixed' ? ' (mixed)' : ''}`;
+    // A column no row has a value in is in no list (lead 10-11 W). A key says who the row is and is never off.
+    const ownValued = ownAll.map((_, c) => ownCells.some((cells) => cells[c].values.length));
+    const ownAt = ownAll.map((_, c) => c).filter((c) => ownValued[c] && (ownAll[c].value.on === 'key' || !off.has(columnKey(ownAll[c]))));
+    // A value-bearing edge's columns a group per far node (lead 10-11 W addendum 8, owner ㄷ): its number cells open - none,
+    // its first - the rest folded under its head until opened; Columns turns a group on and off.
+    const bundles = new Map();
+    sideAll.forEach((c, i) => {
+      if (kindsAll[i] === 'empty') return;
+      const key = groupKey(c);
+      if (!bundles.has(key)) bundles.set(key, { key, step: c.words.slice(0, -1).join(' · '), at: [] });
+      bundles.get(key).at.push(i);
+    });
+    const folds = [...bundles.values()].map((b) => {
+      const numbers = b.at.filter((i) => kindsAll[i] === 'number');
+      const first = numbers.length ? numbers : b.at.slice(0, 1);
+      const opened = open.has(b.key);
+      return { ...b, first, shown: opened ? [...first, ...b.at.filter((i) => !first.includes(i))] : first,
+        folded: b.at.length - first.length, open: opened, on: !off.has(b.key) };
+    });
+    // The groups that set the sides against each other - a Δ under a cell they show - nearest the node, the rest after,
+    // each in its order (34d91c09d 2's numbers nearest the node, carried to W's groups: the first Δ in the first screen).
+    const compared = (b) => groups.length === 2 && b.shown.some((c) => tableAll.some((row) => row.deltas[c] !== null));
+    const sideAt = [...folds.filter((b) => b.on && compared(b)), ...folds.filter((b) => b.on && !compared(b))].flatMap((b) => b.shown);
     const centre = ownAt.map((c) => ownAll[c]);
     const carried = carriedOf(type);
     const columns = sideAt.map((c) => sideAll[c]);
     const kinds = sideAt.map((c) => kindsAll[c]);
     const table = tableAll.map((row) => ({ ...row, cells: sideAt.map((c) => row.cells[c]), deltas: sideAt.map((c) => row.deltas[c]) }));
-    // Route at each side's outer end (the mockup the owner approved; the numbers stay nearest the node): how that side
-    // reached the row (lead df11f9e81).
-    const columnHeads = columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`);
-    const heads = [...columnHeads, ROUTE];
+    const columnHeads = sideAt.map(headOf);
     // The columns a trend reads (lead 10-11 E2c, G-2): a value something says - an edge's or a node's own, never a key or
     // a name - read with a time in this section, as the trend reads it (a button that draws nothing is wrong); the
-    // steps' then the node's own, numbers first - a numeral in text one too - so the first is the one it opens on.
-    const valued = [...columns.map((column, i) => ({ column, head: columnHeads[i] })),
+    // steps' (folded ones too: they stand in place) then the node's own, numbers first - a numeral in text one too - so
+    // the first is the one it opens on.
+    const valued = [...folds.filter((b) => b.on).flatMap((b) => b.at).map((c) => ({ column: sideAll[c], head: headOf(c) })),
       ...centre.map((column) => ({ column, head: column.words.join(' · ') }))].filter(({ column }) => saysValue(column))
       .map((x) => {
         const timed = ids.flatMap((id) => walkPoints(index, groups, id, x.column)).filter((p) => p.t !== null);
         return { ...x, timed: timed.length > 0, number: timed.length > 0 && timed.every((p) => numberOf(p.value) !== null) };
       }).filter((x) => x.timed);
     const trendable = [...valued.filter((x) => x.number), ...valued.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }));
-    const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
+    // Δ under every column of two groups (lead 10-11 W: «+ · Δ · −», the mockup B-ㄱ) - a number where both cells are one
+    // number each, «—» where not; the copy leaves it empty.
+    const deltaAt = new Set(groups.length === 2 ? columns.map((_, c) => c) : []);
     const said = rows.map((node, r) => {
       const row = table[r];
-      const byGroup = groups.map((g, i) => {
-        // A side that did not reach the node says so once, across its columns (lead 34d91c09d 3).
-        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];
-        return [...row.cells.map((byCol, c) => ({ ...cellWords(byCol[i], kinds[c]), col: c,
-          sources: (byCol[i].nodes || []).map((id) => sources.source(g, id)) })), routeCell(g, node.id)];
-      });
+      // A value the row gave itself says no source line - its node's cell says how the row was reached; one from another
+      // node says that node and its way from the side's starts (lead 10-11 W 11: one meaning).
+      const cells = columns.map((_, c) => ({
+        sides: groups.map((g, i) => (g.inside.has(node.id)
+          ? { ...cellWords(row.cells[c][i], kinds[c]), col: c,
+            sources: (row.cells[c][i].nodes || []).map((id) => (id === node.id ? '' : sources.source(g, id))) }
+          : { text: MISSING, missing: true, col: c })),
+        delta: deltaAt.has(c) ? { text: deltaWords(row.deltas[c]) || EMPTY, numeric: true, value: row.deltas[c] } : null,
+      }));
       const reached = groups[0].b ? groups.map((g) => (g.inside.has(node.id) ? reachedBy(g.a.has(node.id), g.b.has(node.id)) : null)) : null;
-      return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, byGroup, reached,
+      return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, reached, cells,
+        // How each side reached the row (lead 10-11 W: the Route column retired - the way is the node's source line).
+        routes: groups.filter((g) => g.inside.has(node.id)).map((g) => ({ sign: g.name, ...routeCell(g, node.id) })),
         // A type with no own column says the node's name there.
         centre: [...(ownAt.length ? ownAt.map((c) => cellWords(ownCells[r][c], 'string')) : [{ text: node.label || node.id }]),
-          ...carried.map((c) => cellWords({ values: [cellSource(c, node, {}, plural.get(node.type))].filter((v) => v !== undefined) }, 'string'))],
-        deltas: deltas.map((c) => ({ text: deltaWords(row.deltas[c]), numeric: true, value: row.deltas[c] })) };
+          ...carried.map((c) => cellWords({ values: [cellSource(c, node, {}, plural.get(node.type))].filter((v) => v !== undefined) }, 'string'))] };
     });
+    const groupOf = new Map(folds.map((b) => [b.key, b]));
     sections.push({
       type,
       heading: sectionHeading(type, rows.length),
       groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
       reached: groups[0].b ? groups.map((g, i) => countReached(said.map((row) => row.reached[i]).filter(Boolean))) : null,
-      heads,
-      // A value column's own head, by the index its cells carry (`col`): heads is Route and these.
+      // A value column's own head, by the index its cells carry (`col`).
       columnHeads,
-      // The heads in two rows (lead 34d91c09d, its answer (나)): a column's step, said once over the columns that share it,
-      // and below it the value's name - the step repeated in every head pushed Δ 608 px off at 1568.
-      parts: [...columns.map((c, i) => ({ step: c.words.slice(0, -1).join(' · '), leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}` })),
-        { step: '', leaf: ROUTE }],
+      // The heads in rows (lead 34d91c09d (나), W): a column's group - its step and far end - once over its columns with
+      // what it folds, the value's name under, each group's sign and Δ under that.
+      parts: columns.map((c, i) => {
+        const b = groupOf.get(groupKey(c));
+        return { step: b.step, leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`, delta: deltaAt.has(i),
+          group: b.key, folded: b.folded, open: b.open };
+      }),
       centreHeads: [...(centre.length ? centre.map((c) => c.words.join(' · ')) : [type]), ...carried.map((c) => c.name)],
-      deltaHeads: deltas.map((c) => (deltas.length > 1 ? `${DELTA} ${columnHeads[c]}` : DELTA)),
+      centre,
       rows: said,
       columns,
+      // What Columns lists (lead 10-11 W, addendum 8): the node's own a column each, the steps' a group each - and which
+      // are drawn.
+      listed: [...ownAll.filter((c, i) => ownValued[i] && c.value.on !== 'key').map((column) => ({ key: columnKey(column), head: column.words.join(' · '),
+        on: !off.has(columnKey(column)) })), ...folds.map((b) => ({ key: b.key, head: b.step, on: b.on }))],
+      // What Long reads (lead 10-11 W, addendum 8: «Long 은 그대로 다»): a line a record - the node's own a value each; a
+      // group's its open cell, the edge's other attributes its point (the mockup B-ㄱ's Long).
+      long: [...ownAll.filter((c, i) => ownValued[i] && saysValue(c)).map((column) => ({ column, head: column.words.join(' · '), own: true })),
+        ...folds.flatMap((b) => b.first.map((c) => ({ column: sideAll[c], head: b.first.length === 1 ? b.step : headOf(c), own: false })))],
       trendable,
-      empty: { count: empty, open: keep },
     });
   }
   return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length), groups,

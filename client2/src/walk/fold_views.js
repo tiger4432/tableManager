@@ -3,7 +3,8 @@
 // start branch drawn over the rest; and a branch's step before its last, its paths on (lead 10-11 G-2). The pure half:
 // what an answer narrowed to is, what the lump's read is and how its points are drawn.
 import { walkTableView, walkedPaths } from './table_view.js';
-import { rowsPoints, numberOf } from './trend.js';
+import { rowsPoints } from './trend.js';
+import { numberOf } from './reach_table.js';
 
 /**
  * THE ONE «start branch» QUESTION (lead 83ff2c3e6 · 5ef260acf): the nodes the walk reached from its first start -

@@ -72,32 +72,44 @@ export const saysValue = (column) => column.value.on === 'edge' || column.value.
  */
 export function cellOf(index, inside, x, column, cap = WAYS_A_CELL) {
   const got = readsOf(index, inside, x, column, cap);
-  return { missing: got.missing, values: got.reads.map((r) => r.value), nodes: got.reads.map((r) => r.node), more: got.more };
+  return { missing: got.missing, values: got.reads.map((r) => r.value), nodes: got.reads.map((r) => r.giver), more: got.more };
 }
 
-/** What a cell reads, way by way - its value, what says when, its last edge, its end node; the trend's points are these
+/** What a cell reads, way by way - its value, what says when, its last edge, its end node, and who gave it: an edge's value
+ *  its subject's (the atom's), a node's its own (lead 10-11 W 11: a source line one meaning); the trend's points are these
  *  (lead f984ab01d). */
 export function readsOf(index, inside, x, column, cap = WAYS_A_CELL) {
   if (!inside.has(x)) return { missing: true, reads: [], more: false };
-  const { ends, more } = waysOf(index, inside, [x], column.steps, cap);
-  const reads = ends.map((end) => ({ ...valueAt(index, end, column.value), edge: end.edge, node: end.node }))
+  const { ends, more } = waysOf(index, inside, [x], column.steps, cap, column);
+  const reads = ends.map((end) => ({ ...valueAt(index, end, column.value), edge: end.edge, node: end.node,
+    giver: column.value.on === 'edge' && end.edge ? end.edge.source : end.node }))
     .filter((r) => !isBlank(r.value));
   return { missing: false, reads, more };
 }
 
+/** A column by what it reads - its steps, the node it ends at when it names one, its value - not its place. */
+export const columnKey = (column) => JSON.stringify([column.steps, column.end || null, column.endTypes || null, column.value]);
+/** The group a column stands in - its steps and the node it ends at (lead 10-11 W addendum 8). */
+export const groupKey = (column) => JSON.stringify([column.steps, column.end || null, column.endTypes || null]);
+
 /** A value in words: a boolean ✓ ✗, a list joined, the rest as it came. */
 export const valueWords = (v) => (typeof v === 'boolean' ? (v ? '✓' : '✗') : Array.isArray(v) ? v.join(' · ') : String(v));
 
-/** Every way from `starts` along `steps` - inside `inside` when given - its end node and last edge; past `cap`, `more`. */
-function waysOf(index, inside, starts, steps, cap) {
+/** Every way from `starts` along `steps` - inside `inside` when given; a column's (`last`) ending at its node or at its far
+ *  types when it names them - its end node and last edge; past `cap`, `more`. */
+function waysOf(index, inside, starts, steps, cap, last = null) {
+  const lastId = last && last.end;
+  const lastTypes = last && last.endTypes;
   let ends = starts.map((node) => ({ node, edge: null }));
   let more = false;
-  for (const step of steps) {
+  for (const [k, step] of steps.entries()) {
     const next = [];
     for (const end of ends) {
       const edges = (step.direction === 'incoming' ? index.into : index.out).get(end.node) || [];
       for (const e of edges) {
-        if (e.predicate !== step.predicate || (inside && !inside.has(farOf(e, step.direction)))) continue;
+        const far = farOf(e, step.direction);
+        if (e.predicate !== step.predicate || (inside && !inside.has(far))) continue;
+        if (k === steps.length - 1 && ((lastId && far !== lastId) || (lastTypes && !lastTypes.includes((index.nodes.get(far) || {}).type || '')))) continue;
         if (next.length >= cap) { more = true; break; }
         next.push({ node: farOf(e, step.direction), edge: e });
       }
@@ -127,16 +139,18 @@ export function routesFrom(index, rows, limit = 3, most = 60) {
       for (const { step, ends } of [...by.values()].sort((a, b) => (a.step.predicate < b.step.predicate ? -1 : 1))) {
         if (out.length >= most) break;
         const steps = [...route.steps, step];
-        const r = { steps, ends, words: steps.map(stepWords) };
+        const r = { steps, ends, words: [...(route.words || []), stepWords(step, typesAt(index, ends).join(' / '))] };
         out.push(r);
         next.push(r);
       }
     }
     level = next;
   }
-  return out.map(({ steps, words, ends }) => ({ steps, words,
-    to: [...new Set([...ends].map((id) => (index.nodes.get(id) || {}).type).filter(Boolean))].sort() }));
+  return out.map(({ steps, words, ends }) => ({ steps, words, to: typesAt(index, ends) }));
 }
+
+/** The types of some nodes of the walk, sorted, each once. */
+const typesAt = (index, ids) => [...new Set([...ids].map((id) => (index.nodes.get(id) || {}).type).filter(Boolean))].sort();
 
 /** What a route's end holds in this walk: its last edges' attributes, its end nodes' keys and attributes, their name. */
 export function valuesAt(index, rows, steps) {
@@ -154,17 +168,25 @@ export function valuesAt(index, rows, steps) {
     ...(ends.length ? [{ on: 'label', name: 'name' }] : [])];
 }
 
-/** A cell's one number - a JSON number, not a numeral in a string - or null. */
-const numberOf = (cell) => (cell && !cell.missing && cell.values.length === 1 && typeof cell.values[0] === 'number'
-  && Number.isFinite(cell.values[0]) ? cell.values[0] : null);
+/** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing - the one
+ *  answer to «is this a number» (lead 10-11: a numeral in text is a number - the trend's axis, a column's kind, Δ). */
+export function numberOf(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** A cell's one number, or null. */
+const cellNumber = (cell) => (cell && !cell.missing && cell.values.length === 1 ? numberOf(cell.values[0]) : null);
 
 /**
- * What a column's values are, judged once by their JSON type (lead a2eb4a516): 'number', 'string', 'boolean', 'mixed'
- * when more than one, 'empty' when none. A list is a string; a time-like string is a string.
+ * What a column's values are, judged once (lead a2eb4a516, 10-11): 'number' - a numeral in text one -, 'string',
+ * 'boolean', 'mixed' when more than one, 'empty' when none. A list is a string; a time-like string is a string.
  */
 export function valueKind(values) {
   const kinds = new Set(values.filter((v) => !isBlank(v))
-    .map((v) => (typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'string')));
+    .map((v) => (numberOf(v) !== null ? 'number' : typeof v === 'boolean' ? 'boolean' : 'string')));
   if (!kinds.size) return 'empty';
   return kinds.size === 1 ? [...kinds][0] : 'mixed';
 }
@@ -172,40 +194,54 @@ export function valueKind(values) {
 /** Δ: two groups, each cell one number - the first less the second; otherwise null. */
 export function deltaOf(cells) {
   if (cells.length !== 2) return null;
-  const [a, b] = cells.map(numberOf);
+  const [a, b] = cells.map(cellNumber);
   return a === null || b === null ? null : a - b;
 }
 
-/** A step's words: its predicate, «(in)» when it is taken in (the mockup v2). */
-export const stepWords = (step) => (step.direction === 'incoming' ? `${step.predicate} (in)` : step.predicate);
+/** A step's words: its predicate, an arrow the way it is taken - out «→», in «←» - and what stands at its far end (lead
+ *  10-11 W: «(in)» retired). */
+export const stepWords = (step, far = '') => `${step.predicate} ${step.direction === 'incoming' ? '←' : '→'}${far ? ` ${far}` : ''}`;
 
 /**
  * The columns a set of rows gets by itself (lead a2eb4a516, after 25ac10ad8): the rows' keys and every attribute they
  * carry (no step - the node's own), then for each (predicate, direction) step the rows take in this walk, every attribute
  * its edges carry - what the answer carries, nothing declared in between. The far node: «+ Column».
  * @param {string[]} keyOrder  the declaration's key order, for the keys it names
+ * @param {(type: string) => boolean} [perNode]  a far type whose nodes each stand a group of their own - the declared
+ *        static ones, names (lead 10-11 W addendum 8, (다)); any other far type one group, each side its own values
  */
-export function defaultColumns(index, rows, keyOrder = []) {
+export function defaultColumns(index, rows, keyOrder = [], perNode = () => false) {
   const carried = (field) => [...new Set(rows.flatMap((x) => Object.keys((index.nodes.get(x) || {})[field] || {})))];
   const keys = carried('keys');
   const columns = [...[...keyOrder.filter((k) => keys.includes(k)), ...keys.filter((k) => !keyOrder.includes(k)).sort()]
     .map((name) => ({ steps: [], value: { on: 'key', name }, words: [name] })),
   ...carried('attributes').sort().map((name) => ({ steps: [], value: { on: 'node', name }, words: [name] }))];
+  // A step's edges that carry values, a group of columns per far end (lead 10-11 W 10, addendum 8 (다)): a node of a type
+  // that names - measures → bond_temp · value, its name in the column's -, else the far type - measures ← wafer · value,
+  // each side its own values, Δ between.
   const seen = new Map();
   for (const x of rows) {
     for (const [direction, edges] of [['outgoing', index.out.get(x)], ['incoming', index.into.get(x)]]) {
       for (const e of edges || []) {
-        const key = `${e.predicate}\u0000${direction}`;
-        if (!seen.has(key)) seen.set(key, { predicate: e.predicate, direction, names: new Set() });
-        for (const name of Object.keys(e.qualifiers || {})) seen.get(key).names.add(name);
+        const names = Object.keys(e.qualifiers || {}).filter((name) => !isBlank(e.qualifiers[name]));
+        if (!names.length) continue;
+        const id = farOf(e, direction);
+        const type = (index.nodes.get(id) || {}).type || '';
+        const end = perNode(type) ? id : null;
+        const key = `${e.predicate}\u0000${direction}\u0000${end === null ? `type\u0000${type}` : end}`;
+        if (!seen.has(key)) {
+          seen.set(key, { predicate: e.predicate, direction, end, type, far: end === null ? type : (index.nodes.get(id) || {}).label || id, names: new Set() });
+        }
+        for (const name of names) seen.get(key).names.add(name);
       }
     }
   }
-  const steps = [...seen.values()].sort((a, b) => (a.predicate < b.predicate ? -1 : a.predicate > b.predicate ? 1
-    : (a.direction < b.direction ? 1 : -1)));
+  const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const steps = [...seen.values()].sort((a, b) => order(a.predicate, b.predicate) || order(b.direction, a.direction) || order(a.far, b.far));
   for (const s of steps) {
     const way = [{ predicate: s.predicate, direction: s.direction }];
-    for (const name of [...s.names].sort()) columns.push({ steps: way, value: { on: 'edge', name }, words: [stepWords(s), name] });
+    const at = s.end === null ? { endTypes: [s.type] } : { end: s.end };
+    for (const name of [...s.names].sort()) columns.push({ steps: way, ...at, value: { on: 'edge', name }, words: [stepWords(s, s.far), name] });
   }
   return columns;
 }
