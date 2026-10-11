@@ -79020,3 +79020,40 @@ note  원장 계획 Time 은 비었을 때만 «Pick one of column · basis», T
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
 응용께  일요일 판 다시(①c 의 deleted · without a source row 수가 바뀜) — 총괄 「이 고침 뒤 한 번」
 ```
+
+## [10-11] 접기 맵퍼 빠르게 착지 a03dc8b81 (총괄 3ec26c632 · 소유자 「접기 소급 너무 오래 걸림, 인벤토리 1,000 · 매칭 로그 수십만 행」)
+
+```
+착지 a03dc8b81 — 4 files changed, 70 insertions(+), 9 deletions(-)
+①  로그 읽기는 진 단위의 키만(이긴 단위 키는 질의에 안 넣음) · ③ 읽을 때 표시 칸도 읽어 이미 «folded into <같은 승자>» 면 안 넘김
+②  인덱스는 선언: RUN.md 접기 절 선언 줄 + 새 절 «지금 운영에서» — 체인 워커 기동이 짓는다(「표 선언 인덱스」 절; Reload 아님)
+재기 — assy_test 스크래치 assy_impl_foldperf_1011: 이 박스 dt_log 를 읽기 전용으로 복사, 키를 1,000 단위로 펼침(박스는 31 단위뿐) + 인벤토리 1,000
+  created ['dt_log', 'fold_inv']
+  dt_log rows 535559 · units 1000 · wafers 400 · inventory rows 1000 · copied in 63.3 s
+  index off ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val']
+  before · index off · code C:/wt-check/server · 4.91 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  index on ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val', 'ix_fold_perf_unit']
+  before · index on · code C:/wt-check/server · 2.39 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  index off ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val']
+  after · index off · no marks · code C:/wt-impl/server · 3.81 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 321315
+  index on ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val', 'ix_fold_perf_unit']
+  after · index on · no marks · code C:/wt-impl/server · 1.98 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 321315
+  다시 돌림 — 진 잡 행에 맵퍼 자신의 답대로 표시를 써 둔 뒤:
+  marks on 321315 rows, from the mapper's own answer (code C:/wt-impl/server)
+  index on ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val', 'ix_fold_perf_unit']
+  rerun (marks there) · index on · code C:/wt-check/server · 3.10 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  rerun (marks there) · index on · code C:/wt-impl/server · 1.57 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 0
+  index off ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val']
+  rerun (marks there) · index off · code C:/wt-check/server · 4.99 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  rerun (marks there) · index off · code C:/wt-impl/server · 3.00 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 0
+  초는 맵퍼 호출만(쓰기 제외). 첫 판의 쓰기(진 잡 행 전부의 표시)는 안 쟀다 — 운영 규격(묶음 1,000 행 ≤ 5 s)을 넘는다면 그 쓰기다
+게이트  6 passed in 1.52s — 「이긴 단위 로그 행을 안 읽음」(로그 읽기 질의의 키에 이긴 잡 없음) · 「다시 돌리면 넘기는 것 0」 칸
+변이
+  ① every unit's log rows read again           RED | test_a_later_auto_job_takes_the_wafer_from_the_manual_ones, test_a_new_log_row_of_a_losing_job_is_marked, test_a_unit_that_now_wins_keeps_its_old_mark_until_withdrawn, test_per_wafer_the_auto_job_first_then_the_earliest_keeps_its_rows, test_the_winners_log_rows_are_not_read
+  ③ a row marked so already is handed again    RED | test_running_it_again_writes_nothing
+  restored True
+어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_foldperf_1011(만들고 지움 — dropped schema assy_impl_foldperf_1011 (2 tables) - left 0) · 박스 assy_manager 는 읽기 전용
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+진짜 프로세스는 응용(총괄 지시대로)
+```
