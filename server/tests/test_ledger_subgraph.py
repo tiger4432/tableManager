@@ -1146,6 +1146,51 @@ def test_the_seed_and_the_ranking_still_see_every_node():
     assert narrowed["propagation"] == full["propagation"]
 
 
+def _bonded_wafer(dies, core_wafers):
+    """wafer W <-in_container- die -bonded_from-> core die -in_container-> core wafer, the
+    owner's path (10-11). `dies` > node_limit is what makes the pass-through dies bind."""
+    atoms = []
+    for index in range(dies):
+        atoms += [_kind_atom(3000 + index, "die", f"D{index:02d}", "in_container", "wafer", "W"),
+                  _kind_atom(3100 + index, "die", f"D{index:02d}", "bonded_from", "die", f"C{index:02d}"),
+                  _kind_atom(3200 + index, "die", f"C{index:02d}", "in_container", "wafer",
+                             f"CW{index % core_wafers:02d}")]
+    return (ledger_subgraph.InMemoryEvidenceLookup(atoms),
+            explorer.entity_id("wafer", {"wafer": "W"}))
+
+
+def _wafers(body):
+    return {node["keys"]["wafer"] for node in body["nodes"] if node["type"] == "wafer"}
+
+
+def test_dies_passed_through_do_not_spend_the_node_limit_when_collect_names_wafer():
+    """🔴 owner 10-11 「코어 10매 들어갔는데 계속 1개만 세져」. MUTANT: count every node again -> 0 core wafers."""
+    lookup, seed = _bonded_wafer(dies=15, core_wafers=3)
+    body = ledger_subgraph.subgraph(seed, lookup, node_limit=10, collect=["wafer"])
+    assert _wafers(body) == {"W", "CW00", "CW01", "CW02"}
+    assert body["truncated"]["nodes"] is False
+    # the road stays in the answer: every die it passed is an edge end
+    ends = [ledger_subgraph.decode_node_id(end) for edge in body["edges"]
+            for end in (edge["source"], edge["target"])]
+    dies = {ref["keys"]["die"] for ref in ends if ref["type"] == "die"}
+    assert len(dies) == 30 > body["limits"]["nodes"], "the dies must outnumber the limit or this proves nothing"
+
+
+def test_without_collect_the_node_limit_still_counts_every_node():
+    lookup, seed = _bonded_wafer(dies=15, core_wafers=3)
+    body = ledger_subgraph.subgraph(seed, lookup, node_limit=10)
+    assert len(body["nodes"]) == 10
+    assert body["truncated"]["nodes"] is True
+    assert _wafers(body) == {"W"}
+
+
+def test_the_collected_nodes_are_still_capped_by_the_node_limit():
+    lookup, seed = _bonded_wafer(dies=15, core_wafers=15)
+    body = ledger_subgraph.subgraph(seed, lookup, node_limit=10, collect=["wafer"])
+    assert len(_wafers(body)) == 10
+    assert body["truncated"]["nodes"] is True
+
+
 def test_an_undeclared_node_type_is_refused_by_name():
     """🔴 GATE ③, THE REFUSAL EXECUTED. Same rule as `follow`: a type nobody declared can
     never match, so an empty graph would be indistinguishable from 'there is nothing

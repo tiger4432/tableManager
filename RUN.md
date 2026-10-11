@@ -250,6 +250,39 @@
 >
 > ---
 >
+> ## [10-11] **COLLECT 로 고른 타입만 노드 수에 셈 — 지나가는 다이가 node_limit 을 안 먹는다 (소유자 «코어 10매 들어갔는데 계속 1개만 세져», 착지 {LANDING}) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 무엇        걷기에 Collect 타입을 고르면 node_limit 은 «그 타입 노드»만 센다. 지나가기만 하는 노드(다이 · 결함 …)는 세지 않고
+>            걸어 나간다 — 본딩 웨이퍼 -> 다이 -> bonded_from -> 코어 다이 -> 코어 웨이퍼가 node_limit 400 에서도 끝까지 닿는다
+>            지나가는 노드를 막는 것은 원자 상한(limits.claims) — 원자 하나에 새 노드는 많아야 하나
+>            Collect 를 비우면 오늘과 같다(모든 노드를 센다) · 고른 타입 노드는 여전히 node_limit 까지
+> 순서        pull -> 서버 재기동
+> 확인        걷기 화면 · 본딩 웨이퍼 하나를 Positive · Collect wafer · Walk -> wafer 구역 줄 수 = 1 + 그 웨이퍼의 코어 웨이퍼 수
+> 답의 뜻     줄 수가 맞다                 고침이 돈다 (Cut · claims 가 같이 떠도 — 이 박스는 코어 웨이퍼가 다 들어온 «뒤»에 원자 상한이 찬다)
+>            줄 수가 모자라고 Cut · claims  원자 상한이 길 중간에서 찼다 -> Follow 를 길의 술어(예: in_container · bonded_from)만 골라 다시 Walk
+>            줄 수가 모자라고 Cut · nodes   고른 타입 노드가 node_limit 을 넘었다 -> node_limit 칸을 올린다(최대 1000)
+> 박스 수     읽기 전용 · 이 박스 원장 · 라우트 처리기를 한 프로세스 안에서 · 기본 상한(edges 6,000 · claims 6,000) · hops 12 · both
+>            SQL 로 센 코어 웨이퍼  SYN-BW-103-11 30 · SYN-BW-103-24 30 (본딩 웨이퍼의 다이 179 · 180, 그중 bonded_from 141 · 141)
+>            node_limit 400 · Collect wafer       전 -> 뒤
+>              SYN-BW-103-11   core 0/30 · Cut nodes · claims 1,379 · edges 437 · 1,367,095 B · 0.53 s
+>                           -> core 30/30 · Cut claims · claims 6,000 · edges 1,196 · 3,420,063 B · 1.13 s
+>              SYN-BW-103-24   core 0/30 · Cut nodes · claims 1,358 · edges 438 · 1,364,882 B · 0.50 s
+>                           -> core 30/30 · Cut claims · claims 6,000 · edges 1,187 · 3,396,231 B · 1.20 s
+>            node_limit 1000(걷기 화면 기본) · Collect wafer   전 · 뒤 응답이 같다(generated_at 빼고 해시 381dc8609205fdca · 93e58b3b75162b58)
+>            Collect 없음 · node_limit 400        전 · 뒤 응답이 같다(해시 49be2ac6970f9cc9 · 9191ce95af9449a5) — 오늘처럼 Cut nodes
+>            시연 바구니(+ SYN-BW-103-11 · − SYN-BW-SPL-400-19)
+>              node_limit 1000  Collect wafer            전 · 뒤 같다(해시 f4c6f258475366d8) — wafer 32
+>                               Collect wafer, quantity  전 · 뒤 같다(해시 8462f9854465d34d) — quantity 17 · wafer 32
+>              node_limit 400   Collect wafer            wafer 2 -> wafer 32
+>                               Collect wafer, quantity  quantity 16 · wafer 2 -> quantity 17 · wafer 32
+>                               뒤의 400 답 = 1000 답 (limits.nodes 칸만 다름 · 바구니 · 두 웨이퍼 다 비교 참)
+>            Follow in_container · bonded_from · node_limit 400 · Collect wafer · SYN-BW-103-11
+>                           core 30/30 · Cut 없음 · claims 5,155 · edges 461 · 1,348,273 B · 0.90 s
+> 남는 것     이 박스 웨이퍼는 다이 179 개인데도 원자 상한이 다 쓰인다(코어 웨이퍼가 들어온 뒤). 운영 웨이퍼의 다이가 몇 배면
+>            원자 상한이 코어 웨이퍼 «전»에 찬다 — 운영 크기에서 안 쟀다
+> 급할 때      git revert <이 커밋> -> 서버 재기동
+
 > ## [10-11] **decide 가 사람 칸 없이 선다 — fields 가 비면 aggregations 로 (총괄 ㄴ, 착지 da6c523e1) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
