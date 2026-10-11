@@ -124,6 +124,18 @@ function suite(F) {
   eq('R20 what says when: an edge\'s value its edge; a node attribute the node\'s own record of that value, none when it keeps none (owner 10-10 e54560dc2, lead 10-11 E2c)',
     [whenOf(col([['of', 'incoming']], 'edge', 'value')), whenOf(col([['of', 'incoming']], 'node', 'value'))],
     [[[3, 'T3']], [[7, 'T5'], [8, null]]]);
+  // A many attribute (lead 10-11 W 13): its value a list, its record the same list as another object; two groups saying
+  // the same list.
+  const MANY = { nodes: [node('q', 'quantity'), { ...node('e', 'measurement', { value: [10.4, 10.2, 10] }),
+    attributes_by_world: { value: [{ world: 'a', value: [10.4, 10.2, 10], occurred_at: 'T5' }] } }],
+  edges: [{ ...edge('e', 'of', 'q'), occurred_at: 'T3' }] };
+  const manyCol = col([['of', 'incoming']], 'node', 'value');
+  const manyIndex = F.indexGraph(MANY);
+  const twoSaying = [{ name: '+', inside: new Set(['q', 'e']) }, { name: '-', inside: new Set(['q', 'e']) }];
+  eq('R21 a many attribute: timed by the record saying the same list - its items, not one object; two groups saying it do not differ (lead 10-11 W 13)',
+    [F.readsOf(manyIndex, new Set(['q', 'e']), 'q', manyCol).reads.map((r) => [r.value, r.when ? r.when.occurred_at : null]),
+      F.tableOf(manyIndex, twoSaying, ['q'], [manyCol]).map((r) => r.differs)],
+    [[[[10.4, 10.2, 10], 'T5']], [false]]);
   return { ran: names.length, names, failures };
 }
 
@@ -166,10 +178,12 @@ const MUTANTS = [
   { id: 'FM13', what: 'a row key read as an attribute', catches: 'R16',
     mutate: (t) => swap(t, "  if (value.on === 'key') return { value: (node.keys || {})[value.name], when: end.edge };\n", '') },
   { id: 'FM18', what: 'a node attribute timed by its first record, not the one saying its value', catches: 'R20',
-    mutate: (t) => swap(t, '.find((s) => s && s.value === said)', '.find((s) => s)') },
+    mutate: (t) => swap(t, '.find((s) => s && sameValue(s.value, said))', '.find((s) => s)') },
   { id: 'FM19', what: 'a node attribute timed by its way\'s last edge', catches: 'R20',
-    mutate: (t) => swap(t, "  return { value: said, when: ((node.attributes_by_world || {})[value.name] || []).find((s) => s && s.value === said) || null };",
+    mutate: (t) => swap(t, "  return { value: said, when: ((node.attributes_by_world || {})[value.name] || []).find((s) => s && sameValue(s.value, said)) || null };",
       '  return { value: said, when: end.edge };') },
+  { id: 'FM20', what: 'a value the same as said only when it is the same object', catches: 'R21',
+    mutate: (t) => swap(t, 'export const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);', 'export const sameValue = (a, b) => a === b;') },
   { id: 'FM9', what: 'a predicate taken both ways not told apart', catches: 'R12',
     mutate: (t) => swap(t, "(step.direction === 'incoming' ? `${step.predicate} (in)` : step.predicate)", '(step.predicate)') },
   { id: 'FM11', what: 'differs read off the values only', catches: 'R15',

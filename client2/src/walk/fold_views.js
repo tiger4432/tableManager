@@ -3,15 +3,7 @@
 // start branch drawn over the rest; and a branch's step before its last, its paths on (lead 10-11 G-2). The pure half:
 // what an answer narrowed to is, what the lump's read is and how its points are drawn.
 import { walkTableView, walkedPaths } from './table_view.js';
-import { rowsPoints } from './trend.js';
-
-/** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing. */
-export function numberOf(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
+import { rowsPoints, numberOf } from './trend.js';
 
 /**
  * THE ONE «start branch» QUESTION (lead 83ff2c3e6 · 5ef260acf): the nodes the walk reached from its first start -

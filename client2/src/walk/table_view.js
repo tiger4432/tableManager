@@ -16,9 +16,9 @@
 import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, valueKind, valueWords } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, valueKind, valueWords, saysValue } from './reach_table.js';
 import { isBlank } from '../absent.js';
-import { walkPoints } from './trend.js';
+import { walkPoints, numberOf } from './trend.js';
 
 /** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
  *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
@@ -230,16 +230,16 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     // reached the row (lead df11f9e81).
     const columnHeads = columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`);
     const heads = [...columnHeads, ROUTE];
-    // The columns a trend reads (lead 10-11 E2c): the steps' as they stand, then the node's own, numbers first - a scheme
-    // whose value is its node's own (a measurement a node) trends it as one whose value rides an edge - each only when a
-    // read of it in this section has a time, read as the trend reads it (lead 10-11: a button that draws nothing is
-    // wrong); a row's own keys and name say no time, so they never enter.
-    const timed = (column) => ids.some((x) => walkPoints(index, groups, x, column).some((p) => p.t !== null));
-    const own = centre.map((column, i) => ({ column, head: column.words.join(' · '),
-      number: valueKind(ownCells.flatMap((cells) => cells[ownAt[i]].values)) === 'number' }));
-    const trendable = [...columns.map((column, i) => ({ column, head: columnHeads[i] })),
-      ...[...own.filter((x) => x.number), ...own.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }))]
-      .filter(({ column }) => timed(column));
+    // The columns a trend reads (lead 10-11 E2c, G-2): a value something says - an edge's or a node's own, never a key or
+    // a name - read with a time in this section, as the trend reads it (a button that draws nothing is wrong); the
+    // steps' then the node's own, numbers first - a numeral in text one too - so the first is the one it opens on.
+    const valued = [...columns.map((column, i) => ({ column, head: columnHeads[i] })),
+      ...centre.map((column) => ({ column, head: column.words.join(' · ') }))].filter(({ column }) => saysValue(column))
+      .map((x) => {
+        const timed = ids.flatMap((id) => walkPoints(index, groups, id, x.column)).filter((p) => p.t !== null);
+        return { ...x, timed: timed.length > 0, number: timed.length > 0 && timed.every((p) => numberOf(p.value) !== null) };
+      }).filter((x) => x.timed);
+    const trendable = [...valued.filter((x) => x.number), ...valued.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }));
     const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
     const said = rows.map((node, r) => {
       const row = table[r];

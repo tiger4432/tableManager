@@ -996,8 +996,10 @@ export function boot(doc, host, deps) {
       // Next above its table, once (lead 3375edd9b).
       if (checks) sec.append(nextRow(at, section, checks));
       if (section.reached) sec.append(reachedLine(section));
+      // «+ Column» in either view (lead 10-11): a Trend opened on a section with no value column yet can be given one.
+      sec.append(columnPicker(section, view.index));
       if (trended) renderTrend(sec, view, r);
-      else sec.append(columnPicker(section, view.index), formulaTable(section, checks));
+      else sec.append(formulaTable(section, checks));
       box.append(sec);
     }
 

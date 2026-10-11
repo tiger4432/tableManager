@@ -1,0 +1,2416 @@
+{
+ "_what": "GET /api/ledger/subgraph on the application box (18766): the wafer TRD-W-001 one step both ways in the operating world - the application lane's four trend repros (lead 10-11 G-2): has_mev to mev_num (value a number), mev_txt (a numeral in text), mev_noat (records with no time), mev_key (its key only); _decl that world's declaration.",
+ "_ask": "/api/ledger/subgraph?id=<start>&positive=<start>&direction=both&hops=1&node_limit=1000",
+ "_seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+ "_decl": {
+  "entities": [
+   {
+    "type": "defect",
+    "keys": [
+     "void_uid"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "defect_kind",
+    "keys": [
+     "defect_kind"
+    ],
+    "class": [
+     "static"
+    ],
+    "world": "default"
+   },
+   {
+    "type": "die",
+    "keys": [
+     "mat_id",
+     "x",
+     "y",
+     "mat_type"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "dtjob",
+    "keys": [
+     "dt_job"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "dt_eqp"
+    ]
+   },
+   {
+    "type": "lot",
+    "keys": [
+     "lot"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "lot_slot",
+    "keys": [
+     "lot",
+     "slot"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "mev_key",
+    "keys": [
+     "measurement_event"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "mev_noat",
+    "keys": [
+     "event"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value"
+    ]
+   },
+   {
+    "type": "mev_num",
+    "keys": [
+     "event"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value",
+     "param"
+    ]
+   },
+   {
+    "type": "mev_txt",
+    "keys": [
+     "event"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value"
+    ]
+   },
+   {
+    "type": "pev_many",
+    "keys": [
+     "event_id"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value",
+     "point"
+    ]
+   },
+   {
+    "type": "pev_one",
+    "keys": [
+     "event_id"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value",
+     "point"
+    ]
+   },
+   {
+    "type": "pevent",
+    "keys": [
+     "event_id"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "quantity",
+    "keys": [
+     "quantity"
+    ],
+    "class": [
+     "static"
+    ],
+    "world": "default"
+   },
+   {
+    "type": "recipe",
+    "keys": [
+     "recipe"
+    ],
+    "class": [
+     "static"
+    ],
+    "world": "default"
+   },
+   {
+    "type": "wafer",
+    "keys": [
+     "wafer"
+    ],
+    "class": null,
+    "world": "default"
+   }
+  ],
+  "predicates": [
+   {
+    "name": "bonded_from",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "die"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "derived_from",
+    "subjects": [
+     "lot"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_mev",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "mev_num",
+      "mev_txt",
+      "mev_noat",
+      "mev_key"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_netdie",
+    "subjects": [
+     "dtjob"
+    ],
+    "object": {
+     "kind": "value",
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_pevent",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "pevent",
+      "pev_many",
+      "pev_one"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_wafer",
+    "subjects": [
+     "lot_slot"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "wafer"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "in_container",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "wafer"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "in_lot",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "inspected",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "die"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "leads_to",
+    "subjects": [
+     "quantity"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity",
+      "defect_kind"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "dir",
+       "model"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "measures",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "value",
+       "value_text",
+       "role",
+       "step",
+       "eqp_id"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "observed",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "defect"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "radius_x",
+       "inchip_x",
+       "inchip_y",
+       "radius_y",
+       "unit",
+       "gate",
+       "run_uid"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "of_kind",
+    "subjects": [
+     "defect"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "defect_kind"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "pe_measures",
+    "subjects": [
+     "pevent"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "point",
+       "value"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "processed_with",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "recipe"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "step"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "register",
+    "subjects": [
+     "dtjob"
+    ],
+    "object": {
+     "kind": "none",
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "slot_map",
+    "subjects": [
+     "lot_slot"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot_slot"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "event_type"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "transfer",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "qualifiers": {
+      "optional": [],
+      "required": []
+     },
+     "types": [
+      "die"
+     ]
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   }
+  ]
+ },
+ "state": "ready",
+ "generated_at": "2026-10-11T06:26:04.078782+00:00",
+ "seed": {
+  "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+  "type": "wafer",
+  "keys": {
+   "wafer": "TRD-W-001"
+  },
+  "label": "TRD-W-001",
+  "depth": 0,
+  "claim_count": 18,
+  "predicates": [
+   {
+    "predicate": "has_mev",
+    "count": 16
+   },
+   {
+    "predicate": "has_wafer",
+    "count": 1
+   },
+   {
+    "predicate": "measures",
+    "count": 1
+   }
+  ],
+  "node_kind": "entity",
+  "schema_kind": "entity_instance"
+ },
+ "nodes": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "type": "wafer",
+   "keys": {
+    "wafer": "TRD-W-001"
+   },
+   "label": "TRD-W-001",
+   "depth": 0,
+   "claim_count": 18,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 16
+    },
+    {
+     "predicate": "has_wafer",
+     "count": 1
+    },
+    {
+     "predicate": "measures",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEwIn1d",
+   "type": "mev_noat",
+   "keys": {
+    "event": "A0"
+   },
+   "label": "A0",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": 1.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": 1.5,
+      "occurred_at": null,
+      "source_who": "trd_noat_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkExIn1d",
+   "type": "mev_noat",
+   "keys": {
+    "event": "A1"
+   },
+   "label": "A1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": 2.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": 2.5,
+      "occurred_at": null,
+      "source_who": "trd_noat_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEyIn1d",
+   "type": "mev_noat",
+   "keys": {
+    "event": "A2"
+   },
+   "label": "A2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": 3.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": 3.5,
+      "occurred_at": null,
+      "source_who": "trd_noat_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEzIn1d",
+   "type": "mev_noat",
+   "keys": {
+    "event": "A3"
+   },
+   "label": "A3",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": 4.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": 4.5,
+      "occurred_at": null,
+      "source_who": "trd_noat_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMCJ9XQ",
+   "type": "mev_key",
+   "keys": {
+    "measurement_event": "ME-0"
+   },
+   "label": "ME-0",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMSJ9XQ",
+   "type": "mev_key",
+   "keys": {
+    "measurement_event": "ME-1"
+   },
+   "label": "ME-1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMiJ9XQ",
+   "type": "mev_key",
+   "keys": {
+    "measurement_event": "ME-2"
+   },
+   "label": "ME-2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMyJ9XQ",
+   "type": "mev_key",
+   "keys": {
+    "measurement_event": "ME-3"
+   },
+   "label": "ME-3",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjAifV0",
+   "type": "mev_num",
+   "keys": {
+    "event": "N0"
+   },
+   "label": "N0",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "param": "TRD-P",
+    "value": 1.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "param": [
+     {
+      "world": "default",
+      "value": "TRD-P",
+      "occurred_at": "2026-10-01T00:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": 1.5,
+      "occurred_at": "2026-10-01T00:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjEifV0",
+   "type": "mev_num",
+   "keys": {
+    "event": "N1"
+   },
+   "label": "N1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "param": "TRD-P",
+    "value": 2.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "param": [
+     {
+      "world": "default",
+      "value": "TRD-P",
+      "occurred_at": "2026-10-01T01:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": 2.5,
+      "occurred_at": "2026-10-01T01:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjIifV0",
+   "type": "mev_num",
+   "keys": {
+    "event": "N2"
+   },
+   "label": "N2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "param": "TRD-P",
+    "value": 3.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "param": [
+     {
+      "world": "default",
+      "value": "TRD-P",
+      "occurred_at": "2026-10-01T02:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": 3.5,
+      "occurred_at": "2026-10-01T02:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjMifV0",
+   "type": "mev_num",
+   "keys": {
+    "event": "N3"
+   },
+   "label": "N3",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "param": "TRD-P",
+    "value": 4.5
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "param": [
+     {
+      "world": "default",
+      "value": "TRD-P",
+      "occurred_at": "2026-10-01T03:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": 4.5,
+      "occurred_at": "2026-10-01T03:00:00+00:00",
+      "source_who": "trd_num_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDAifV0",
+   "type": "mev_txt",
+   "keys": {
+    "event": "T0"
+   },
+   "label": "T0",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "1.5"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "1.5",
+      "occurred_at": "2026-10-01T00:00:00+00:00",
+      "source_who": "trd_txt_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDEifV0",
+   "type": "mev_txt",
+   "keys": {
+    "event": "T1"
+   },
+   "label": "T1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "2.5"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "2.5",
+      "occurred_at": "2026-10-01T01:00:00+00:00",
+      "source_who": "trd_txt_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDIifV0",
+   "type": "mev_txt",
+   "keys": {
+    "event": "T2"
+   },
+   "label": "T2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "3.5"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "3.5",
+      "occurred_at": "2026-10-01T02:00:00+00:00",
+      "source_who": "trd_txt_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDMifV0",
+   "type": "mev_txt",
+   "keys": {
+    "event": "T3"
+   },
+   "label": "T3",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_mev",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "4.5"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "4.5",
+      "occurred_at": "2026-10-01T03:00:00+00:00",
+      "source_who": "trd_txt_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJUUkQtTDEiLCJzbG90IjoiMSJ9XQ",
+   "type": "lot_slot",
+   "keys": {
+    "lot": "TRD-L1",
+    "slot": "1"
+   },
+   "label": "TRD-L1 / 1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_wafer",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRSRC1QIn1d",
+   "type": "quantity",
+   "keys": {
+    "quantity": "TRD-P"
+   },
+   "label": "TRD-P",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "measures",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  }
+ ],
+ "edges": [
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYTJWNUlpeDdJbTFsWVhOMWNtVnRaVzUwWDJWMlpXNTBJam9pVFVVdE15SjlYUSJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMyJ9XQ",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K3\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-8194-7003-819b-4eafb186a36f",
+   "occurred_at": "2026-10-01T03:00:00+00:00",
+   "source_who": "trd_key_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-8194-7003-819b-4eafb186a36f",
+     "occurred_at": "2026-10-01T03:00:00+00:00",
+     "source_who": "trd_key_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K3\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYTJWNUlpeDdJbTFsWVhOMWNtVnRaVzUwWDJWMlpXNTBJam9pVFVVdE1DSjlYUSJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMCJ9XQ",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-8194-7000-96c6-c6671f9045f3",
+   "occurred_at": "2026-10-01T00:00:00+00:00",
+   "source_who": "trd_key_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-8194-7000-96c6-c6671f9045f3",
+     "occurred_at": "2026-10-01T00:00:00+00:00",
+     "source_who": "trd_key_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYTJWNUlpeDdJbTFsWVhOMWNtVnRaVzUwWDJWMlpXNTBJam9pVFVVdE1TSjlYUSJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMSJ9XQ",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K1\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-8194-7001-9359-20867ec8a852",
+   "occurred_at": "2026-10-01T01:00:00+00:00",
+   "source_who": "trd_key_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-8194-7001-9359-20867ec8a852",
+     "occurred_at": "2026-10-01T01:00:00+00:00",
+     "source_who": "trd_key_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K1\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYTJWNUlpeDdJbTFsWVhOMWNtVnRaVzUwWDJWMlpXNTBJam9pVFVVdE1pSjlYUSJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMiJ9XQ",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K2\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-8194-7002-b242-529693b3162d",
+   "occurred_at": "2026-10-01T02:00:00+00:00",
+   "source_who": "trd_key_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-8194-7002-b242-529693b3162d",
+     "occurred_at": "2026-10-01T02:00:00+00:00",
+     "source_who": "trd_key_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_key\\\",\\\"rows\\\":[\\\"trd_key:{\\\\\\\"event_id\\\\\\\":\\\\\\\"K2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_key:{\\\"event_id\\\":\\\"K2\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm05aGRDSXNleUpsZG1WdWRDSTZJa0V3SW4xZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEwIn1d",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-69a9-7000-9e50-3368f91787db",
+   "occurred_at": null,
+   "source_who": "trd_noat_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-69a9-7000-9e50-3368f91787db",
+     "occurred_at": null,
+     "source_who": "trd_noat_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm05aGRDSXNleUpsZG1WdWRDSTZJa0V4SW4xZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkExIn1d",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A1\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-69a9-7002-8c28-cb78bfd3d5f5",
+   "occurred_at": null,
+   "source_who": "trd_noat_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-69a9-7002-8c28-cb78bfd3d5f5",
+     "occurred_at": null,
+     "source_who": "trd_noat_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A1\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm05aGRDSXNleUpsZG1WdWRDSTZJa0V5SW4xZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEyIn1d",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A2\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-69a9-7004-9fbd-a44990aaa7a8",
+   "occurred_at": null,
+   "source_who": "trd_noat_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-69a9-7004-9fbd-a44990aaa7a8",
+     "occurred_at": null,
+     "source_who": "trd_noat_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A2\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm05aGRDSXNleUpsZG1WdWRDSTZJa0V6SW4xZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEzIn1d",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A3\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-69a9-7006-b365-d69480441ef2",
+   "occurred_at": null,
+   "source_who": "trd_noat_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-69a9-7006-b365-d69480441ef2",
+     "occurred_at": null,
+     "source_who": "trd_noat_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_noat\\\",\\\"rows\\\":[\\\"trd_noat:{\\\\\\\"event_id\\\\\\\":\\\\\\\"A3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_noat:{\\\"event_id\\\":\\\"A3\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm5WdElpeDdJbVYyWlc1MElqb2lUak1pZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjMifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N3\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-101d-700c-a47f-2badf1edabf8",
+   "occurred_at": "2026-10-01T03:00:00+00:00",
+   "source_who": "trd_num_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-101d-700c-a47f-2badf1edabf8",
+     "occurred_at": "2026-10-01T03:00:00+00:00",
+     "source_who": "trd_num_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N3\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm5WdElpeDdJbVYyWlc1MElqb2lUakFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjAifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-101d-7000-b6c7-b7e229310056",
+   "occurred_at": "2026-10-01T00:00:00+00:00",
+   "source_who": "trd_num_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-101d-7000-b6c7-b7e229310056",
+     "occurred_at": "2026-10-01T00:00:00+00:00",
+     "source_who": "trd_num_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm5WdElpeDdJbVYyWlc1MElqb2lUakVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjEifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N1\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-101d-7004-9ab8-c6b6b2e42bbf",
+   "occurred_at": "2026-10-01T01:00:00+00:00",
+   "source_who": "trd_num_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-101d-7004-9ab8-c6b6b2e42bbf",
+     "occurred_at": "2026-10-01T01:00:00+00:00",
+     "source_who": "trd_num_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N1\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmYm5WdElpeDdJbVYyWlc1MElqb2lUaklpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjIifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N2\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-101d-7008-90da-aff0f71adcb9",
+   "occurred_at": "2026-10-01T02:00:00+00:00",
+   "source_who": "trd_num_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-101d-7008-90da-aff0f71adcb9",
+     "occurred_at": "2026-10-01T02:00:00+00:00",
+     "source_who": "trd_num_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N2\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmZEhoMElpeDdJbVYyWlc1MElqb2lWRE1pZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDMifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T3\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-52b8-7006-8457-b708b64f6faf",
+   "occurred_at": "2026-10-01T03:00:00+00:00",
+   "source_who": "trd_txt_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-52b8-7006-8457-b708b64f6faf",
+     "occurred_at": "2026-10-01T03:00:00+00:00",
+     "source_who": "trd_txt_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T3\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmZEhoMElpeDdJbVYyWlc1MElqb2lWREFpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDAifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-52b8-7000-8afa-14e332c72aeb",
+   "occurred_at": "2026-10-01T00:00:00+00:00",
+   "source_who": "trd_txt_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-52b8-7000-8afa-14e332c72aeb",
+     "occurred_at": "2026-10-01T00:00:00+00:00",
+     "source_who": "trd_txt_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmZEhoMElpeDdJbVYyWlc1MElqb2lWREVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDEifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T1\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-52b8-7002-9d0f-f2e627f1df01",
+   "occurred_at": "2026-10-01T01:00:00+00:00",
+   "source_who": "trd_txt_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-52b8-7002-9d0f-f2e627f1df01",
+     "occurred_at": "2026-10-01T01:00:00+00:00",
+     "source_who": "trd_txt_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T1\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T1\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfbWV2IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExUQXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaWFpmZEhoMElpeDdJbVYyWlc1MElqb2lWRElpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDIifV0",
+   "predicate": "has_mev",
+   "predicate_label": "has_mev",
+   "original_predicate": "has_mev",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T2\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-52b8-7004-a0c3-dc49ca3a6d7b",
+   "occurred_at": "2026-10-01T02:00:00+00:00",
+   "source_who": "trd_txt_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-52b8-7004-a0c3-dc49ca3a6d7b",
+     "occurred_at": "2026-10-01T02:00:00+00:00",
+     "source_who": "trd_txt_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_txt\\\",\\\"rows\\\":[\\\"trd_txt:{\\\\\\\"event_id\\\\\\\":\\\\\\\"T2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_txt:{\\\"event_id\\\":\\\"T2\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfd2FmZXIiLCJsZWRnZXItZW50aXR5OnYxOld5SnNiM1JmYzJ4dmRDSXNleUpzYjNRaU9pSlVVa1F0VERFaUxDSnpiRzkwSWpvaU1TSjlYUSIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxSU1JDMVhMVEF3TVNKOVhRIl0",
+   "source": "ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJUUkQtTDEiLCJzbG90IjoiMSJ9XQ",
+   "target": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "predicate": "has_wafer",
+   "predicate_label": "has_wafer",
+   "original_predicate": "has_wafer",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N3\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12970-101d-700d-a6db-ef331bc2da46",
+   "occurred_at": "2026-10-01T03:00:00+00:00",
+   "source_who": "trd_num_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-101d-700d-a6db-ef331bc2da46",
+     "occurred_at": "2026-10-01T03:00:00+00:00",
+     "source_who": "trd_num_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N3\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJtZWFzdXJlcyIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxSU1JDMVhMVEF3TVNKOVhRIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp4ZFdGdWRHbDBlU0lzZXlKeGRXRnVkR2wwZVNJNklsUlNSQzFRSW4xZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRSRC1QIn1d",
+   "predicate": "measures",
+   "predicate_label": "measures",
+   "original_predicate": "measures",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N3\\\"}\"]}",
+   "qualifiers": {
+    "value": 4.5
+   },
+   "cardinality": null,
+   "claim_id": "01a12970-101d-700e-829a-87aaf9ddc8e6",
+   "occurred_at": "2026-10-01T03:00:00+00:00",
+   "source_who": "trd_num_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12970-101d-700e-829a-87aaf9ddc8e6",
+     "occurred_at": "2026-10-01T03:00:00+00:00",
+     "source_who": "trd_num_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_num\\\",\\\"rows\\\":[\\\"trd_num:{\\\\\\\"event_id\\\\\\\":\\\\\\\"N3\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_num:{\\\"event_id\\\":\\\"N3\\\"}\"]}"
+    }
+   ]
+  }
+ ],
+ "attribute_cardinality": {},
+ "seeds": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+   "sign": "+",
+   "node_kind": "entity"
+  }
+ ],
+ "propagation": {
+  "contrast": "unexamined",
+  "complete": false,
+  "state": "ranked",
+  "ranked": [
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEzIn1d",
+    "type": "mev_noat",
+    "label": "A3",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEzIn1d",
+        "node_kind": "entity",
+        "label": "A3",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEyIn1d",
+    "type": "mev_noat",
+    "label": "A2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEyIn1d",
+        "node_kind": "entity",
+        "label": "A2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkExIn1d",
+    "type": "mev_noat",
+    "label": "A1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkExIn1d",
+        "node_kind": "entity",
+        "label": "A1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEwIn1d",
+    "type": "mev_noat",
+    "label": "A0",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEwIn1d",
+        "node_kind": "entity",
+        "label": "A0",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMyJ9XQ",
+    "type": "mev_key",
+    "label": "ME-3",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMyJ9XQ",
+        "node_kind": "entity",
+        "label": "ME-3",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDMifV0",
+    "type": "mev_txt",
+    "label": "T3",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDMifV0",
+        "node_kind": "entity",
+        "label": "T3",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRSRC1QIn1d",
+    "type": "quantity",
+    "label": "TRD-P",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRSRC1QIn1d",
+        "node_kind": "entity",
+        "label": "TRD-P",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measures"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJUUkQtTDEiLCJzbG90IjoiMSJ9XQ",
+    "type": "lot_slot",
+    "label": "TRD-L1 / 1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJUUkQtTDEiLCJzbG90IjoiMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-L1 / 1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_wafer"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjMifV0",
+    "type": "mev_num",
+    "label": "N3",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjMifV0",
+        "node_kind": "entity",
+        "label": "N3",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMiJ9XQ",
+    "type": "mev_key",
+    "label": "ME-2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMiJ9XQ",
+        "node_kind": "entity",
+        "label": "ME-2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDIifV0",
+    "type": "mev_txt",
+    "label": "T2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDIifV0",
+        "node_kind": "entity",
+        "label": "T2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjIifV0",
+    "type": "mev_num",
+    "label": "N2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjIifV0",
+        "node_kind": "entity",
+        "label": "N2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMSJ9XQ",
+    "type": "mev_key",
+    "label": "ME-1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMSJ9XQ",
+        "node_kind": "entity",
+        "label": "ME-1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDEifV0",
+    "type": "mev_txt",
+    "label": "T1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDEifV0",
+        "node_kind": "entity",
+        "label": "T1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjEifV0",
+    "type": "mev_num",
+    "label": "N1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjEifV0",
+        "node_kind": "entity",
+        "label": "N1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMCJ9XQ",
+    "type": "mev_key",
+    "label": "ME-0",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMCJ9XQ",
+        "node_kind": "entity",
+        "label": "ME-0",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDAifV0",
+    "type": "mev_txt",
+    "label": "T0",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDAifV0",
+        "node_kind": "entity",
+        "label": "T0",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjAifV0",
+    "type": "mev_num",
+    "label": "N0",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTAwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-001",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjAifV0",
+        "node_kind": "entity",
+        "label": "N0",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_mev"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "top_set": [
+   "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEzIn1d",
+   "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEyIn1d",
+   "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkExIn1d",
+   "ledger-entity:v1:WyJtZXZfbm9hdCIseyJldmVudCI6IkEwIn1d",
+   "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMyJ9XQ",
+   "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDMifV0",
+   "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRSRC1QIn1d",
+   "ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJUUkQtTDEiLCJzbG90IjoiMSJ9XQ",
+   "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjMifV0",
+   "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMiJ9XQ",
+   "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDIifV0",
+   "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjIifV0",
+   "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMSJ9XQ",
+   "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDEifV0",
+   "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjEifV0",
+   "ledger-entity:v1:WyJtZXZfa2V5Iix7Im1lYXN1cmVtZW50X2V2ZW50IjoiTUUtMCJ9XQ",
+   "ledger-entity:v1:WyJtZXZfdHh0Iix7ImV2ZW50IjoiVDAifV0",
+   "ledger-entity:v1:WyJtZXZfbnVtIix7ImV2ZW50IjoiTjAifV0"
+  ],
+  "message": null
+ },
+ "walk": {
+  "mode": "evidence_graph",
+  "direction": "both",
+  "start": {
+   "positive": 1,
+   "negative": 0
+  },
+  "hops_requested": 1,
+  "hops_reached": 1,
+  "claims_scanned": 24,
+  "actions_scanned": 0,
+  "enrich_actions": false,
+  "raw_claims": true,
+  "resolver_applied": false
+ },
+ "limits": {
+  "nodes": 1000,
+  "edges": 6000,
+  "claims": 6000,
+  "actions": 6000,
+  "max_hops": 40
+ },
+ "truncated": {
+  "depth": true,
+  "nodes": false,
+  "edges": false,
+  "claims": false,
+  "actions": false,
+  "reason": "depth"
+ },
+ "message": null
+}

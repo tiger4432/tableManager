@@ -66,9 +66,20 @@ const PAGE_Q2 = { ...PAGE, seed: node('q2', 'quantity'),
 const fixture = (name) => JSON.parse(readFileSync(join(HERE, 'fixtures', name), 'utf8'));
 const ED = fixture('walk_scheme_ed_18766.json');
 const EV = fixture('walk_scheme_ev_18766.json');
+// The application lane's repros on 18766 as its walk answered them (lead 10-11 G-2): mev_num (value a number, param
+// text), mev_txt (a numeral in text), mev_noat (records with no time), mev_key (its key only); mev_num again with its
+// value in text beside its param; the wafer given a key at its step's end by + Column - the edge says a time for that key.
+const MEV = fixture('walk_mev_18766.json');
+const textValue = (s) => ({ ...s, value: String(s.value) });
+const MEV_NUM_TEXT = { ...MEV, nodes: MEV.nodes.map((n) => (n.type !== 'mev_num' ? n : { ...n, attributes: textValue(n.attributes),
+  attributes_by_world: { ...n.attributes_by_world, value: n.attributes_by_world.value.map(textValue) } })) };
+const KEY_AT_STEP = new Map([['wafer', [{ steps: [{ predicate: 'has_mev', direction: 'outgoing' }], value: { on: 'key', name: 'measurement_event' },
+  words: ['has_mev', 'measurement_event'] }]]]);
+// P2-many (lead 10-11 W 13): pev_many's point and value each a list.
+const PEV_MANY = fixture('walk_pev_many_18766.json');
 
 /** The walk page with `answer` walked, a section's Trend pressed (lead 10-10 E2): its dots, their titles, its page's ask. */
-async function sectionRun(M, answer, type, decl = null, starts = { positive: ['wp'], negative: ['wn'] }) {
+async function sectionRun(M, answer, type, decl = null, starts = { positive: ['wp'], negative: ['wn'] }, added = new Map()) {
   const urls = [];
   const DECL = decl || { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
   const doc = makeDoc('light');
@@ -85,11 +96,16 @@ async function sectionRun(M, answer, type, decl = null, starts = { positive: ['w
   handle.state.asked = { type: 'wafer', keys: {}, ...starts };
   handle.state.run = 'done';
   handle.state.result = answer;
+  handle.state.added = added;
   handle.render();
-  const sec = walkAll(host).filter((n) => n.className === 'wk-sec').find((x) => new RegExp(`^${type}`).test(x.children[0]._text || ''));
+  const secOf = () => walkAll(host).filter((n) => n.className === 'wk-sec').find((x) => new RegExp(`^${type}`).test(x.children[0]._text || ''));
+  const sec = secOf();
   const toggle = sec && walkAll(sec).find((n) => n.attrs && n.attrs['data-section-view'] === 'trend');
   if (toggle) toggle.dispatch('click', {});
   await settle();
+  // The section after the press: its trend drawn, and «+ Column» still there (lead 10-11 G-2).
+  const now = secOf();
+  const shown = now ? [walkAll(now).some((n) => has(n, 'wk-trend')), walkAll(now).some((n) => has(n, 'wk-addcol'))] : null;
   const q = (u) => Object.fromEntries(new URLSearchParams(String(u || '').split('?')[1] || ''));
   const asks = urls.filter((u) => u.includes('around=') || u.includes('later=') || u.includes('earlier='));
   const sources = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key'])
@@ -97,7 +113,7 @@ async function sectionRun(M, answer, type, decl = null, starts = { positive: ['w
   const note = walkAll(host).filter((n) => n.className === 'wk-note').map((n) => n._text || '').find((x) => TIME.test(x)) || '';
   const title = (walkAll(host).find((n) => n.className === 'wk-trend-title') || {})._text;
   return { toggled: Boolean(toggle), ask: asks.length ? q(asks[0]) : null, sources, walkOnly: note.includes('Walk only · no time page'), title,
-    off: toggle ? [Boolean(toggle.disabled), (toggle.attrs || {}).title || ''] : null };
+    off: toggle ? [Boolean(toggle.disabled), (toggle.attrs || {}).title || ''] : null, shown };
 }
 
 /** A section's Trend open on WALK, then the step walked again (WALK_RE): its dots and the pages it asked, by node. */
@@ -384,6 +400,26 @@ async function seen(M) {
   const evView = M.table.walkTableView(EV, EV._decl.entities, EV._decl.predicates, undefined, { positive: [EV._seed], negative: [] });
   out.schemeOff = [evQuantity.off, evQuantity.sources.length, evPage.off,
     evView.sections.map((sec) => [sec.type, sec.trendable.map((x) => x.head).join()])];
+  // G-2 (lead 10-11): a value as a number; each repro's columns a trend reads, the one it opens on drawn.
+  out.numbers = ['10.1', ' 3 ', '0', 0, 'S1', '', '  ', null, undefined, NaN, '1e3'].map((v) => M.trend.numberOf(v));
+  const mevOf = (F, type, added = new Map()) => {
+    const view = M.table.walkTableView(F, F._decl.entities, F._decl.predicates, undefined, { positive: [F._seed], negative: [] }, added);
+    const sec = view.sections.find((x) => x.type === type);
+    const at = sec.trendable[0];
+    const model = at ? M.trend.trendModel(M.trend.rowsPoints(view, sec.rows.map((r) => r.id), at.column)) : null;
+    return [sec.trendable.map((x) => x.head).join(), model && model.numbers.map((p) => p.value).sort((a, b) => a - b), model && model.lanes];
+  };
+  out.mev = [...['mev_num', 'mev_txt', 'mev_noat', 'mev_key'].map((type) => mevOf(MEV, type)), mevOf(MEV_NUM_TEXT, 'mev_num'),
+    mevOf(MEV, 'wafer', KEY_AT_STEP)];
+  const mevPage = async (F, type, added) => {
+    const p = await sectionRun(M, F, type, { ...F._decl, worlds: [], operating: null }, { positive: [F._seed], negative: [] }, added);
+    return [p.off, p.title || null, p.shown];
+  };
+  out.mevPage = [await mevPage(MEV, 'mev_txt'), await mevPage(MEV, 'mev_noat'), await mevPage(MEV, 'mev_key'), await mevPage(MEV, 'wafer', KEY_AT_STEP)];
+  // P2-many: its section's columns a trend reads and the points with a time.
+  const many = M.table.walkTableView(PEV_MANY, PEV_MANY._decl.entities, PEV_MANY._decl.predicates, undefined, { positive: [PEV_MANY._seed], negative: [] });
+  const manySec = many.sections.find((x) => x.type === 'pev_many');
+  out.many = manySec.trendable.map((x) => [x.head, M.trend.rowsPoints(many, manySec.rows.map((r) => r.id), x.column).filter((p) => p.t !== null).length]);
   return out;
 }
 
@@ -449,6 +485,16 @@ function suite(out) {
     out.schemePage, [true, 'measurement · 4 · value', null, 4, true]);
   eq('TV1 the Table/Trend choice is its step' + "'" + 's: Step 2' + "'" + 's section in Trend, Step 1 gone back to stays Table, Step 2 again its Trend (lead 10-11)',
     out.stepViews, [true, true, false, true]);
+  eq('TN1 a value as a number: a numeral in text reads as it; text that is not, blank or nothing reads as none; 0 is a value',
+    out.numbers, [10.1, 3, 0, 0, null, null, null, null, null, null, 1000]);
+  eq('SC5 the repros on 18766 (lead 10-11 G-2): a number value first and opened on, before a text; a numeral in text a number too, on the value axis, and first; records with no time, a key only, a key at a step' + "'" + 's end - nothing a trend reads',
+    out.mev, [['value,param', [1.5, 2.5, 3.5, 4.5], []], ['value', [1.5, 2.5, 3.5, 4.5], []], ['', null, null], ['', null, null],
+      ['value,param', [1.5, 2.5, 3.5, 4.5], []], ['measures · value', [4.5], []]]);
+  eq('SC6 the page: the numeral-in-text section' + "'" + 's Trend on its value, «+ Column» still there; no time, the key only - Trend off, said; a key at a step' + "'" + 's end not what a Trend opens on',
+    out.mevPage, [[[false, ''], 'mev_txt · 4 · value', [true, true]], [[true, 'No value with a time'], null, [false, true]],
+      [[true, 'No value with a time'], null, [false, true]], [[false, ''], 'TRD-W-001 · measures · value', [true, true]]]);
+  eq('SC7 P2-many (lead 10-11 W 13): a list' + "'" + 's own record found - each column a trend reads has a point with a time an event (E1, E2)',
+    out.many, [['point', 2], ['value', 2]]);
   return { ran: names.length, names, failures };
 }
 
@@ -499,10 +545,23 @@ const MUTANTS = [
     mutate: (t) => swap(t, '.map((r) => ({ t: timeOf(r.when),', '.map((r) => ({ t: null,') },
   { id: 'SCm1', what: 'a point at its way' + "'" + 's last edge' + "'" + 's time, a node' + "'" + 's own value at none', catches: 'SC1', ...TREND,
     mutate: (t) => swap(t, '.map((r) => ({ t: timeOf(r.when),', '.map((r) => ({ t: timeOf(r.edge),') },
-  { id: 'SCm5', what: 'a column with no read that has a time offered to the trend', catches: 'SC4', ...TABLE,
-    mutate: (t) => swap(t, '      .filter(({ column }) => timed(column));', '      .filter(Boolean);') },
+  { id: 'SCm5', what: 'a column with no read that has a time offered to the trend', catches: 'SC5', ...TABLE,
+    mutate: (t) => swap(t, '      }).filter((x) => x.timed);', '      });') },
   { id: 'SCm2', what: 'a trend reads the steps' + "'" + ' columns only', catches: 'SC1', ...TABLE,
-    mutate: (t) => swap(t, '      ...[...own.filter((x) => x.number), ...own.filter((x) => !x.number)].map(', '      ...[].map(') },
+    mutate: (t) => swap(t, '      ...centre.map((column) => ({ column, head: column.words.join(', '      ...[].map((column) => ({ column, head: column.words.join(') },
+  { id: 'SCm6', what: 'a key at a step' + "'" + 's end offered to the trend', catches: 'SC5', ...TABLE,
+    mutate: (t) => swap(t, '.filter(({ column }) => saysValue(column))', '.filter(Boolean)') },
+  { id: 'SCm7', what: 'the columns in their order, numbers not first', catches: 'SC5', ...TABLE,
+    mutate: (t) => swap(t, 'const trendable = [...valued.filter((x) => x.number), ...valued.filter((x) => !x.number)]', 'const trendable = [...valued]') },
+  { id: 'SCm8', what: 'a numeral in text not a number when the columns are ordered', catches: 'SC5', ...TABLE,
+    mutate: (t) => swap(t, 'timed.every((p) => numberOf(p.value) !== null)', "timed.every((p) => typeof p.value === 'number')") },
+  { id: 'SCm9', what: '«+ Column» hidden while the section shows its Trend', catches: 'SC6', ...PAGE_,
+    mutate: (t) => swap(t, '      sec.append(columnPicker(section, view.index));\n      if (trended) renderTrend(sec, view, r);\n      else sec.append(formulaTable(section, checks));',
+      '      if (trended) renderTrend(sec, view, r);\n      else sec.append(columnPicker(section, view.index), formulaTable(section, checks));') },
+  { id: 'TNm1', what: 'a blank text reads as 0', catches: 'TN1', ...TREND,
+    mutate: (t) => swap(t, "if (typeof value !== 'string' || !value.trim()) return null;", "if (typeof value !== 'string') return null;") },
+  { id: 'TNm2', what: 'a numeral in text off the value axis', catches: 'SC5', ...TREND,
+    mutate: (t) => swap(t, '  const n = Number(value);\n  return Number.isFinite(n) ? n : null;', '  return null;') },
   { id: 'SCm3', what: 'the section' + "'" + 's Trend opens on a step' + "'" + 's column only', catches: 'SC2', ...PAGE_,
     mutate: (t) => swap(t, 'if (!trended && section.trendable.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.trendable[0].column)',
       'if (!trended && section.columns.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.columns[0])') },
@@ -510,7 +569,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'group: group >= 0 ? group : null,', 'group: null,') },
   { id: 'TM3', what: 'a point twice', catches: 'T3', ...TREND, mutate: (t) => swap(t, '!seen.has(p.key)', 'true') },
   { id: 'TM4', what: 'numbers put in lanes', catches: 'T4', ...TREND,
-    mutate: (t) => swap(t, "const isNumber = (v) => typeof v === 'number' && Number.isFinite(v);", 'const isNumber = () => false;') },
+    mutate: (t) => swap(t, 'const isNumber = (v) => numberOf(v) !== null;', 'const isNumber = () => false;') },
   { id: 'TM5', what: 'no «others» lane', catches: 'T4', ...TREND,
     mutate: (t) => swap(t, '...(order.length > lanes ? [OTHERS] : [])', '') },
   { id: 'TM6', what: 'the walked points not ringed', catches: 'T6', ...VIEW, mutate: (t) => swap(t, "${p.walked ? ' is-walked' : ''}", '') },

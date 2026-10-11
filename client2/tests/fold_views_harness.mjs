@@ -32,10 +32,6 @@ async function suite(m) {
     console.log(`  FAIL ${name}${detail ? ' -- ' + detail : ''}`);
   };
 
-  console.log('\n[R] what a value reads as');
-  const read = ['10.1', ' 3 ', '0', 0, 'S1', '', '  ', null, undefined, NaN, '1e3'].map((v) => m.numberOf(v));
-  say('R1 text that is a number reads as it; text that is not, blank or nothing reads as none; 0 is a value',
-    JSON.stringify(read) === JSON.stringify([10.1, 3, 0, 0, null, null, null, null, null, null, 1000]), JSON.stringify(read));
   console.log('\n[S] the one start-branch question');
   const later = { results: [STEP] };
   const lit = m.startBranch([{ results: [WAFER] }, later]);
@@ -147,7 +143,6 @@ const failures = [];
   };
   const M = (id, what, catches, from, to) => ({ id, what, catches, from, to });
   const MUTANTS = [
-    M('Rm2', 'a blank text reads as 0', 'R1', "if (typeof value !== 'string' || !value.trim()) return null;", "if (typeof value !== 'string') return null;"),
     M('Sm1', 'the start branch is everything any step reached', 'S1',
       'const first = (steps || [])[0];\n  return new Set(((first && first.results) || [])',
       'return new Set((steps || []).flatMap((s) => s.results || [])'),

@@ -14,6 +14,15 @@ export const OTHERS = 'others';
 /** The points one server page asks (the implementer's contract: page=1000, at most 5000). */
 export const PAGE_ROWS = 1000;
 
+/** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing - the axis a
+ *  trend's points stand on and a lump's thumbnail read it so (lead 10-11: a value in text numerals is a number). */
+export function numberOf(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 const timeOf = (edge) => {
   const t = edge && Date.parse(edge.occurred_at);
   return Number.isFinite(t) ? t : null;
@@ -78,7 +87,7 @@ export function mergePoints(walk, page) {
   return [...walk, ...page.filter((p) => !seen.has(p.key))];
 }
 
-const isNumber = (v) => typeof v === 'number' && Number.isFinite(v);
+const isNumber = (v) => numberOf(v) !== null;
 
 /** A time page's window, ms: the first and last time it holds; none for an empty page. */
 export function windowOf(answer) {
@@ -113,7 +122,7 @@ export function trendModel(points, lanes = LANES, frame = {}) {
     if (!at) outside.push({ group: p.group, before, t: p.t, n: 1 });
     else { at.n += 1; if (before ? p.t > at.t : p.t < at.t) at.t = p.t; }
   }
-  const numbers = timed.filter((p) => isNumber(p.value));
+  const numbers = timed.filter((p) => isNumber(p.value)).map((p) => ({ ...p, value: numberOf(p.value) }));
   const words = timed.filter((p) => !isNumber(p.value)).map((p) => ({ ...p, word: valueWords(p.value) }));
   const counts = new Map();
   for (const p of words) counts.set(p.word, (counts.get(p.word) || 0) + 1);
