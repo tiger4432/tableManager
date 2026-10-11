@@ -78970,3 +78970,53 @@ RUN.md  «모르는 것» 줄 -> 운영 DB 읽기 전용 셈(키 칸이 다 비�
 RUN.md  이미 거절된 소스: 목록 사유 «….bind.occurred_at.kind unsupported binding kind None» -> 그 칸을 지우고 Save
 응용께  18766 대조군 다섯 다시
 ```
+
+## [10-11] 작은 판 착지 db928d441 (총괄 A~E ㄱ · «다» ㄱ · 계획 note 두 줄 · 응용 문서 감사 주석 하나)
+
+```
+착지 db928d441 — 19 files changed, 262 insertions(+), 108 deletions(-)
+«다»   층 접기가 원천 없는 plain 체인 층을 안 지움 — 원천 찍힌 plain 은 이름 바꾸기, 그 행 층이 이미 있으면 지움
+      Count «… have no source row and stay» · 대가(행 층이 다 걷히면 그 plain 값이 다시 섬)는 RUN.md 층 절에 한 줄
+A     RunControl.announce — 진행 알림이 한 번 안 들리면 그 실행 동안 안 보냄 + WARNING 한 줄 · 끝 알림 넷도 같은 자리
+B     conftest.run_join_and_write 가 워커 쓰기 고리와 같은 rule_run.layer_of_a_rules_write 로 층 이름을 지음
+      plain 이름으로 읽던 시험 넷(그 도우미의 소비자) -> cell_layer._claimed_filter 로 읽음
+C     저장 문: 꺼진 채 저장한 규칙의 notes 는 저장된 그대로의 답(«enabled=false — no rule stands for it.» + 안 읽는 칸)
+D     expand_declaration 의 모든 반환이 안 읽는 칸 줄(통합 선언) · «still written flat» 줄(평면 규칙 · 선 규칙마다)을 실음
+      저장 문의 거절 글 뒤에 « | » 로 같은 줄 · 로더가 따로 찍던 평면 칸 줄은 notes 로 한 번(rule_shape.flat_cell_notes)
+E     RUN.md 접기 맵퍼 절 «진 잡이 나중에 이길 때» 세 갈래(자기 행 고침 걷힘 · 다른 행 바뀜 남음 · 로그 행 잡 칸 남음) — 코드 따라감:
+      표시의 원천 = 진 잡 인벤토리 행 · 편집 철회는 그 배치의 고친 트리거 행만(ingestion_worker 의 edit_retractions origins)
+note  원장 계획 Time 은 비었을 때만 «Pick one of column · basis», Time zone 은 시각에서 채웠을 때만 «Filled with the time …»
+주석  setup_bundle 값 역할 timezone 주석 — occurred_at 의 zone 은 사건 엣지 · read.occurred_at 쪽에서 판정(동작 그대로)
+게이트 — 바뀐 자리 낱말을 부르는 시험 파일(git grep), 같은 base 의 깨끗한 사본(wt-check)과 비교
+  files 130
+  wt-impl:  2 failed, 1740 passed, 2 skipped, 180 deselected in 136.51s (0:02:16)
+  wt-check: 76 failed, 1645 passed, 8 skipped, 180 deselected, 10 errors in 167.62s (0:02:47)
+  new (only in wt-impl): 0
+  gone (only in wt-check): 74
+  (wt-check 실패가 더 많은 것은 그 사본에 라이브 ledger_config 가 없어서 — 박스 상태)
+  PG  5 failed, 175 passed, 157 deselected in 761.36s (0:12:41)
+      FAILED tests\test_a_join_moves_a_time_as_the_same_instant.py::test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_skip]
+      FAILED tests\test_a_join_moves_a_time_as_the_same_instant.py::test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_written]
+      FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+      FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+      FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+      ↑ 그중 test_a_join_moves_a_time… 둘은 plain 이름 SQL — 고친 뒤 2 passed in 6.39s
+      나머지 셋은 앞서 깨끗한 main 에서도 같은 셋:
+        FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+        FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+        FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+변이 (sqlite, 자리마다 그 시험 파일, md5 되돌림 확인)
+  «다» the fold deletes a plain layer with no source row again RED | test_a_row_taken_back_after_the_fold_shows_what_is_left_beneath, test_the_fold_previews_what_it_does_and_a_rerun_does_nothing
+  A a run keeps announcing after one nobody heard            RED | test_a_run_stops_sending_after_a_notice_nobody_heard
+  B the join helper writes under the plain name              RED | test_the_written_layer_is_the_rules_own_name
+  C a rule saved off answers the switched-on copy's notes    RED | test_a_rule_saved_off_is_not_said_to_run
+  D a refusal carries no notes                               RED | test_a_refused_declaration_names_the_cells_it_does_not_read_too
+  D a flat rule carries no notes                             RED | test_a_flat_rule_names_its_flat_cells_and_the_loader_says_them_once
+  notes: an answered Time still says pick one                RED | test_a_time_rows_note_speaks_for_its_state
+  notes: a missing zone still says filled                    RED | test_a_time_rows_note_speaks_for_its_state
+  restored all
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
+응용께  일요일 판 다시(①c 의 deleted · without a source row 수가 바뀜) — 총괄 「이 고침 뒤 한 번」
+```
