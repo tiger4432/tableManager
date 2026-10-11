@@ -1168,6 +1168,12 @@ def fold_units_target(rule_name):
     return rule, resolve_target(units)[0], resolve_target(logs, [mark])[0], mark
 
 
+def _step_of(checkpoint):
+    """`step(name, page, pages, rows)` - the step seat on a run's checkpoint (`retroactive._checkpoint`,
+    총괄 e71f7d6f1), or a no-op when there is none (a dry run, a direct call)."""
+    return getattr(checkpoint, "step", None) or (lambda *_: None)
+
+
 def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=logger.info,
                checkpoint=None) -> dict:
     """A fold rule's answer over every unit row, written without the chain's queue (총괄 10-11, 소유자
@@ -1223,13 +1229,16 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             yield page[:FOLD_UNITS_PAGE]
             page = page[FOLD_UNITS_PAGE:]
 
+    step, pages_total = _step_of(checkpoint), (-(-total // FOLD_UNITS_PAGE) if total else None)
     for proposed in pages():
+        step("read", stats["pages"] + 1, pages_total, len(proposed))
         if apply and checkpoint is not None and checkpoint(stats["rows_proposed"], total):
             stats["stopped"] = True
             log(f"[fold-units] stopped by request after {stats['rows_proposed']} of {total} rows")
             break
         page_started = time.monotonic()
-        counts, items = _fold_units_page(db, log_table, logs, mark, proposed, tx_id, apply)
+        counts, items = _fold_units_page(db, log_table, logs, mark, proposed, tx_id, apply, on_fold=lambda: step(
+            "fold", stats["pages"] + 1, pages_total, len(proposed)))
         keep |= ingestion_worker._rows_written_from(db, log_table, items)
         for reason, n in counts.pop("version_gate", {}).items():
             stats["version_gate"][reason] = stats["version_gate"].get(reason, 0) + n
@@ -1237,6 +1246,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             stats[key] += value
         stats["rows_proposed"] += len(proposed)
         stats["pages"] += 1
+        step("write", stats["pages"], pages_total, len(proposed))
         stats["page_seconds"].append(round(time.monotonic() - page_started, 2))
         log(f"[fold-units] {stats['rows_proposed']} / {total} rows (page {stats['pages']}, "
             f"{stats['page_seconds'][-1]} s)")
@@ -1288,13 +1298,13 @@ def _fold_units_forced(item, plain, layers, overwrite, clean, col_type, key_colu
     return None
 
 
-def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply):
+def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fold=lambda: None):
     """One page of a fold rule's answer, judged as the write door judges it and written as it writes it.
     The steps `_apply_batch_updates_once` takes before its loop and the worker's layer naming run as they
     are; a cell `_fold_units_forced` decides takes that answer, every other one goes through
     `crud.apply_row_update_internal` with the batch path's accumulators. Written: the history lines and
     the shown values from one array per column (one statement each), layers and overwrites by the door's
-    bulk writers. -> (counts, the page's items)"""
+    bulk writers. `on_fold` is called once the page is judged, before it is written. -> (counts, the page's items)"""
     from collections import Counter
 
     from sqlalchemy import String, any_, bindparam, inspect
@@ -1403,6 +1413,7 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply):
                 db.expunge(row)
             if version_stats is not None:
                 counts["version_gate"] = dict(version_stats.get("counts") or {})
+        on_fold()
         if not apply:
             db.rollback()
             return counts, batch.updates
@@ -1655,8 +1666,10 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     total = db.query(func.count(model.row_id)).scalar() or 0
     total = min(total, limit) if limit is not None else total
     columns = [getattr(model, column.key) for column in physical if column.key != "row_id"] if by_value else None
+    step, pages_total = _step_of(checkpoint), (-(-total // chunk_size) if total else None)
     with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
         for page in keyset_scan.iter_pages(db, model, columns=columns, chunk_size=chunk_size, limit=limit):
+            step("read", stats["pages"] + 1, pages_total, len(page))
             if checkpoint is not None and checkpoint(stats["rows_scanned"], total):
                 stats["stopped"] = True
                 log(f"[notation] stopped by request after {stats['rows_scanned']} rows")
@@ -1691,6 +1704,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 values, again = None, []
                 plans = plan_rows(page, again, fold)
                 again = [(entry, 1) for entry in again]
+            step("fold", stats["pages"], pages_total, len(page))
             for entry, n in again:
                 stats["moves_again"] += n
                 stats["again"].extend([entry] * min(n, max(0, max_report - len(stats["again"]))))
@@ -1732,6 +1746,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     source_name=NOTATION_BACKFILL_SOURCE,
                     updated_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
                 db.commit()
+            step("write", stats["pages"], pages_total, len(page))
             log(f"[notation] {stats['rows_scanned']} / {total} rows (page {stats['pages']}, "
                 f"{round(time.monotonic() - started, 2)} s)")
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:

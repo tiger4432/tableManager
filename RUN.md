@@ -254,6 +254,22 @@
 >
 > ---
 >
+> ## [10-12] **소급 줄에 stalled 가 뜨면 — 쪽 안의 단계마다 진행 시각 · 로그 한 줄 (총괄 e71f7d6f1, 소유자 「죄다 stalled 뜨냐」 · 「깜깜이」, 착지 482bf463f) — 이주 «없음» · 재기동 «없음»(pull 뒤 다음 소급 실행부터)**
+>
+> ```
+> 뜻          stalled = 그 실행이 300 s 동안 «한 단계도» 못 마침 — 잠금 대기 · 끊긴 프로세스 · 5 분 넘는 단계 하나
+>             쪽 하나가 5 분을 넘어도 단계가 끝나는 동안은 progressing (표기 소급 · fold-units 만. 다른 소급은 전처럼 쪽 경계에서만)
+> 볼 줄       retroactive.log (명령줄이면 그 창) — 단계가 끝날 때마다
+>             [fold_written_notation] page 3/12: fold · 20000 rows · 41.2 s
+>             줄이 이어지면 느린 것. 끊기면 마지막 줄의 «다음» 단계에서 서 있음 (read -> fold -> write -> 다음 쪽 read)
+> 잠금인가    읽기만, 운영 DB:
+>             SELECT pid, wait_event_type, wait_event, pg_blocking_pids(pid) AS blocked_by, round(extract(epoch FROM now() - query_start)) AS seconds, left(query, 60) AS query FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle' ORDER BY query_start;
+> 답의 뜻     소급 표 이름이 든 query 줄에 blocked_by 가 있음 · wait_event_type Lock -> 잠금 대기. blocked_by 의 pid 줄이 잡은 쪽
+>             blocked_by 비어 있음 · 같은 query 의 seconds 가 계속 늚 -> 단계 하나가 느린 것(잠금 아님)
+>             소급 query 줄이 없음 -> 그 프로세스가 DB 를 안 쓰는 중 — stop_retroactive.bat 목록의 runner 부터
+> 안 찍는 곳   fold-units 의 첫 쪽 전(규칙 답 전체 계산) · 마지막 쪽 뒤(옛 표시 거두기) — 5 분 넘으면 그 동안 stalled
+> 화면        큐 줄은 moving progressing / stalled 와 no_progress 초뿐 — 단계 낱말은 로그 줄에만
+
 > ## [10-12] **와쳐가 아직 기다리는 행만 집는다 — 다시 읽기 취소와 안 엇갈림 (총괄 49792d3f6 B, 착지 e49ad12e3) — 이주 «없음» · 재기동 «수집기(run_watcher)»**
 >
 > ```
