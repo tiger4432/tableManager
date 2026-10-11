@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { makeDoc, flush, walk as walkAll } from './lib/board_dom.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
+import { SIGN } from '../src/rnd_board/marking_store.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
@@ -119,6 +120,7 @@ async function seen(M) {
     wpage.state.type = body._start.type;
     wpage.state.keys = { ...body._start.keys };
     wpage.state.hops = '1';
+    wpage.state.direction = 'outgoing';
     wpage.render();
     wpage.baskets.add(1);
     await wpage.fire();
@@ -133,7 +135,8 @@ async function seen(M) {
     await settle();
     const sent = urls.slice(before).filter((u) => u.includes('/subgraph')).map((u) => new URLSearchParams(u.split('?')[1] || ''));
     out.walkOn = { view: wpage.state.view, starts: wpage.graph.markings.entries('walk-start').length,
-      sent: sent.map((q) => ({ hops: q.get('hops'), node_limit: q.get('node_limit'), fanout: q.has('fanout_limit'), positive: q.getAll('positive').length })),
+      sent: sent.map((q) => ({ hops: q.get('hops'), node_limit: q.get('node_limit'), fanout: q.has('fanout_limit'), positive: q.getAll('positive').length,
+        direction: q.get('direction') })),
       limit: String(M.page.NODE_LIMIT) };
   }
   // ── Graph pressed before any Walk, and a Walk that fails on the Graph view (lead 10-12): the graph never walks its own
@@ -163,7 +166,7 @@ async function seen(M) {
     // What the result pane says, the table's or the graph's - not the bar's.
     const said = (cls) => walkAll(host).filter((n) => String(n.className || '') === 'wk-result')
       .flatMap((box) => walkAll(box)).filter((n) => String(n.className || '') === cls).map((n) => n.textContent);
-    return { wpage, press, walks, said };
+    return { wpage, press, walks, said, urls };
   };
   {
     const ok = await graphPage((body) => ({ ok: true, status: 200, json: async () => body }));
@@ -173,6 +176,16 @@ async function seen(M) {
     await ok.press('table');
     await ok.press('graph');
     out.graphFirst = { none, walks: ok.walks(), drawn: ok.wpage.graph.state, limit: String(M.page.NODE_LIMIT) };
+    // The picture's Continue from a node marked on it: its seeds as Continue seeds them, the bar's knobs beside (lead 10-12).
+    const g = ok.wpage.graph;
+    const marked = JSON.parse(JSON.stringify(fx('walk_start_die.json'))).edges[0].target;
+    g.markings.set(g.writes(), marked, SIGN.CASE);
+    const sentBefore = ok.urls.length;
+    if (g.continueButton) g.continueButton.dispatch('click', {});
+    await settle();
+    const went = ok.urls.slice(sentBefore).filter((u) => u.includes('/subgraph')).map((u) => new URLSearchParams(u.split('?')[1] || ''));
+    out.graphContinue = { walks: went.map((q) => ({ hops: q.get('hops'), node_limit: q.get('node_limit'), fanout: q.has('fanout_limit'),
+      positive: q.getAll('positive') })), marked, limit: String(M.page.NODE_LIMIT) };
     const bad = await graphPage(() => ({ ok: false, status: 500, json: async () => ({ detail: 'the ledger said no' }) }));
     bad.wpage.baskets.add(1);
     await bad.press('graph');
@@ -257,11 +270,14 @@ function suite(out) {
   eq('G2 Graph pressed before any Walk: no start, nothing asked and the table\'s «No walk yet»; a start, one walk - the bar\'s ask (hops 1, node_limit, no fan-out) - and its answer drawn (lead 10-12)',
     out.graphFirst, { none: { walks: [], notes: ['No walk yet'] },
       walks: [{ hops: '1', node_limit: out.graphFirst.limit, fanout: false }], drawn: 'done', limit: out.graphFirst.limit });
+  eq('G4 the picture\'s Continue from a node marked on it: one walk from that node, the bar\'s knobs beside - hops 1, node_limit, no fan-out the bar has not (lead 10-12)',
+    out.graphContinue, { walks: [{ hops: '1', node_limit: out.graphContinue.limit, fanout: false, positive: [out.graphContinue.marked] }],
+      marked: out.graphContinue.marked, limit: out.graphContinue.limit });
   eq('G3 a Walk that fails on the Graph view: the graph pane says the table\'s fail line; Graph pressed again walks nothing (lead 10-12)',
     [out.graphFailed.onGraph.length === 1, out.graphFailed.onGraph, out.graphFailed.again, out.graphFailed.asked, out.graphFailed.after],
     [true, out.graphFailed.onTable, out.graphFailed.onTable, 1, 1]);
-  eq('G1 the graph\'s «Walk on from here» then Walk: two + starts, one walk, the bar\'s ask - hops 1, node_limit, no fan-out the bar has not (lead 10-12)',
-    out.walkOn, { view: 'graph', starts: 2, sent: [{ hops: '1', node_limit: out.walkOn.limit, fanout: false, positive: 2 }], limit: out.walkOn.limit });
+  eq('G1 the graph\'s «Walk on from here» then Walk: two + starts, one walk, the bar\'s ask - its direction, hops 1, node_limit, no fan-out the bar has not (lead 10-12)',
+    out.walkOn, { view: 'graph', starts: 2, sent: [{ hops: '1', node_limit: out.walkOn.limit, fanout: false, positive: 2, direction: 'outgoing' }], limit: out.walkOn.limit });
   return { ran: names.length, names, failures };
 }
 
@@ -302,6 +318,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    if (!state.result) return;\n', '') },
   { id: 'W12', what: 'a failed Walk on the Graph view says nothing there', catches: 'G3', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "const status = state.view === 'graph' && walkStatus(state);", 'const status = false;') },
+  { id: 'W13', what: 'the picture\'s Continue walks with its own fan-out, not the bar\'s knobs', catches: 'G4', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, 'new SubgraphView(graphMount, { doc, walk, knobs, entities,', 'new SubgraphView(graphMount, { doc, walk, entities,') },
   { id: 'W9', what: 'Walk on the Graph view sends the graph\'s own ask again, not the bar\'s', catches: 'G1', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, '    if (!markings.count(START)) return;\n', "    if (!markings.count(START)) return;\n    if (state.view === 'graph') { graph.show(); return; }\n") },
 ];

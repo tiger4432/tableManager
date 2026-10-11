@@ -121,19 +121,20 @@ export function farEnd(step) {
 
 /** A column's letters (owner 10-12 「컬럼 여백 남아도는데 존나 넓게」 · 「꿀렁꿀렁」): read off the answer, not what is
  *  shown - a sort, a filter or a check moves none. One letter more than its longest words (`ch` is a «0»; the face is
- *  proportional), between these ends; past the far one a cell is cut, whole in its title. */
-export const COLUMN_CH = Object.freeze({ min: 5, max: 18 });
+ *  proportional), between these ends; past the far one a cell is cut, whole in its title. The node column - keys read
+ *  whole - to `node` (lead 10-12: 19 to 21-letter quantity keys cut at 18). */
+export const COLUMN_CH = Object.freeze({ min: 5, max: 18, node: 36 });
 // Hangul, CJK and full-width forms are drawn two letters wide.
 const WIDE_LETTER = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/;
 export const lettersOf = (words) => [...String(words)].reduce((n, c) => n + (WIDE_LETTER.test(c) ? 2 : 1), 0);
-const columnCh = (letters, min = COLUMN_CH.min) => Math.min(COLUMN_CH.max, Math.max(min, Math.ceil(letters) + 1));
+const columnCh = (letters, min, max) => Math.min(max, Math.max(min, Math.ceil(letters) + 1));
 /**
  * A <col>'s width: its cells' letters and padding (`extra` what else sits in their line - the node's copy icon); with
- * `head` the letters of a sorting head over it alone, its «▾» seat beside them when they ask more.
+ * `head` the letters of a sorting head over it alone, its «▾» seat beside them when they ask more; `max` its far end.
  */
-export function columnWidth(cells, head = 0, extra = '') {
-  const cell = `calc(${columnCh(cells)}ch + 2 * var(--space-2)${extra})`;
-  return head ? `max(${cell}, calc(${columnCh(head, 0)}ch + var(--space-2) + var(--wk-h-small)))` : cell;
+export function columnWidth(cells, head = 0, extra = '', max = COLUMN_CH.max) {
+  const cell = `calc(${columnCh(cells, COLUMN_CH.min, max)}ch + 2 * var(--space-2)${extra})`;
+  return head ? `max(${cell}, calc(${columnCh(head, 0, max)}ch + var(--space-2) + var(--wk-h-small)))` : cell;
 }
 
 /** A column filter that says something: words it contains, a number at least or at most, values picked out. */

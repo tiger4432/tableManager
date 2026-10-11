@@ -1102,15 +1102,19 @@ async function suite(mod) {
   {
     const fwEdge = (id, source, target, gate) => ({ id, source, target, predicate: 'inspected', qualifiers: { gate } });
     const FW_DASHED = [fwEdge('e:a1', 's:a', 'd:1', 28), fwEdge('e:b3', 's:b', 'd:3', 10), fwEdge('e:c4', 's:c', 'd:4', 1050.25)];
-    const fixedWidths = async (edges) => {
+    // `wafer` another name for the wafer type - the far end the die section's group head says.
+    const fixedWidths = async (edges, wafer = 'wafer@1') => {
+      const named = (t) => (t === 'wafer@1' ? wafer : t);
+      const decl = { ...DECL, entities: DECL.entities.map((e) => ({ ...e, type: named(e.type) })),
+        predicates: DECL.predicates.map((x) => ({ ...x, subjects: x.subjects.map(named) })) };
       const doc = makeDoc();
       const host = doc.createElement('div');
-      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => decl }) });
       await settle();
-      handle.state.type = 'wafer@1';
-      handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
+      handle.state.type = wafer;
+      handle.state.asked = { type: wafer, keys: {}, ...SIGNED_STARTS };
       handle.state.run = 'done';
-      handle.state.result = { ...SIGNED, edges };
+      handle.state.result = { ...SIGNED, nodes: SIGNED.nodes.map((n) => ({ ...n, type: named(n.type) })), edges };
       handle.render();
       const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
       const change = (e) => { for (const fn of (e && e.listeners.change) || []) fn({}); };
@@ -1157,6 +1161,37 @@ async function suite(mod) {
       stable(counted) && counted.before.cols.length === 5 && JSON.stringify(values(counted)) === JSON.stringify([sized(8), sized(9), sized(8)])
         && counted.before.deltas.includes('+1040.25') && JSON.stringify(counted.before.signs) === JSON.stringify(['+', 'Δ', '−']),
       JSON.stringify(counted));
+    // A far end longer than the values (22 letters over + and −: 11 each, 12ch) - its share sizes + and −, never Δ (+18: 5ch).
+    const farLong = await fixedWidths([fwEdge('e:a3', 's:a', 'd:3', 28), fwEdge('e:b3', 's:b', 'd:3', 10)], 'long_wafer_type_name@1');
+    ok('FW3 a group head\'s far-end name asks + and − for its share, never Δ: 22 letters - + and − 12ch, Δ «+18» its own 5ch (lead 10-12)',
+      stable(farLong) && JSON.stringify(values(farLong)) === JSON.stringify([sized(12), sized(5), sized(12)]) && farLong.before.deltas.includes('+18'),
+      JSON.stringify(farLong));
+  }
+  // ── the node column a section's own (lead 10-12, rehearsal: every section's at ~185 px cut 19 to 21-letter keys): its
+  //    longest key, the copy icon beside it, up to COLUMN_CH.node - a longer key cut, whole in its title ──
+  {
+    const LONG_KEY = 'DEF-'.padEnd(65, 'x');
+    const keyDecl = { ok: true, entities: [{ type: 'quantity@1', keys: ['quantity'] }, { type: 'defect@1', keys: ['defect'] }], predicates: [] };
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => keyDecl }) });
+    await settle();
+    handle.state.type = 'quantity@1';
+    handle.state.run = 'done';
+    handle.state.result = { nodes: [{ id: 'q:1', type: 'quantity@1', label: 'tape_adhesion_anomaly', keys: { quantity: 'tape_adhesion_anomaly' } },
+      { id: 'q:2', type: 'quantity@1', label: 'core_cmp_nonuniform', keys: { quantity: 'core_cmp_nonuniform' } },
+      { id: 'f:1', type: 'defect@1', label: LONG_KEY, keys: { defect: LONG_KEY } }], edges: [] };
+    handle.render();
+    const secHead = (sec) => (walkAll(sec).find((c) => c.className === 'wk-sechead') || {}).textContent || '';
+    const sec = (re) => walkAll(host).filter((e) => e.className === 'wk-sec').find((x) => re.test(secHead(x))) || { children: [] };
+    const nodeCol = (re) => (walkAll(sec(re)).filter((e) => e.tagName === 'col' && e.className === 'wk-col-node')
+      .map((e) => (e.attrs.style || '').replace(/^width: /, ''))[0]) || '';
+    const labels = (re) => walkAll(sec(re)).filter((e) => e.className === 'wk-centrelabel').map((e) => [e._text, e.title]);
+    const nodeW = (n, head) => 'max(calc(' + n + 'ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(' + head + 'ch + var(--space-2) + var(--wk-h-small)))';
+    ok('NW1 the node column a section\'s own: quantity keys of 21 letters whole (22ch), a 65-letter defect key at the far end (36ch) - cut, whole in its title (lead 10-12)',
+      nodeCol(/^quantity/) === nodeW(22, 9) && nodeCol(/^defect/) === nodeW(36, 7)
+        && JSON.stringify(labels(/^defect/)) === JSON.stringify([[LONG_KEY, LONG_KEY]]),
+      JSON.stringify([nodeCol(/^quantity/), nodeCol(/^defect/), labels(/^defect/)]));
   }
   // ── what the cell shows is what Copy gives (owner 10-12): a value's spaces drawn; the node cell's icon its keys ──
   {
@@ -1938,6 +1973,10 @@ const MUTANTS = [
     from: '      cols.append(col);\n', to: '' },
   { id: 'FWm3', what: 'every column a fixed 96 px again, whatever it holds', catches: 'FW1 ',
     from: "      col.setAttribute('style', `width: ${width}`);", to: "      col.setAttribute('style', 'width: 96px');" },
+  { id: 'FWm6', what: 'a far-end name\'s share asked of Δ again', catches: 'FW3 ',
+    from: '[fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side]', to: '[fit(section.rows.map((row) => said(row.cells[i].delta)), shares), side]' },
+  { id: 'NWm1', what: 'the node column at the value columns\' far end again - ~185 px whatever its keys', catches: 'NW1 ',
+    from: "[' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node]", to: "[' + var(--space-1) + var(--wk-h-small)']" },
   { id: 'FWm4', what: 'Δ the width of its value\'s + and − again, whatever it holds', catches: 'FW2 ',
     from: '[fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side]', to: '[side, side]' },
   { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',

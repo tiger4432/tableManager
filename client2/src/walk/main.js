@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth } from './table_view.js';
+import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -232,7 +232,7 @@ export function boot(doc, host, deps) {
   };
   /** Drop these steps' markings and the graph's own past them. */
   const dropMarks = (steps) => { for (const name of [...steps.map((s) => s.marks), ...tail.splice(0)]) markings.clear(name); };
-  const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: chainAt,
+  const graph = new SubgraphView(graphMount, { doc, walk, knobs, entities, markings, chain: chainAt,
     worldChips: worlds.length > 1, predicates: () => (state.decl && state.decl.predicates) || [],
     openTable: (answer, lump) => openLumpTable(answer, lump), walkOn: (node) => baskets.add(SIGN.CASE, node) });
   // The box is the key it searches by: what is typed is that key, a node picked fills every key.
@@ -1106,7 +1106,7 @@ export function boot(doc, host, deps) {
     const span = (group) => section.parts.reduce((n, q) => n + (q.group === group ? sides : 0), 0);
     fixedColumns(table, checks, [
       ...section.centreHeads.map((h, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
-        lettersOf(h), i === 0 ? ' + var(--space-1) + var(--wk-h-small)' : '')]),
+        lettersOf(h), ...(i === 0 ? [' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node] : []))]),
       ...section.parts.flatMap((p, i) => {
         const one = cellsOf(p.group) === 1;
         const far = lettersOf(farEnd(p.step).far);
@@ -1277,7 +1277,8 @@ export function boot(doc, host, deps) {
     const every = shown.all.map((line) => longRow(line.line));
     const letters = heads.map((_, k) => every.reduce((m, r) => Math.max(m, lettersOf(r[k])), 0));
     const sided = Math.max(0, ...heads.map((h, k) => (signs.has(h) ? letters[k] : 0)));
-    fixedColumns(table, checks, heads.map((h, k) => [h === 'node' ? 'node' : 'value', columnWidth(signs.has(h) ? sided : letters[k], lettersOf(h))]));
+    fixedColumns(table, checks, heads.map((h, k) => [h === 'node' ? 'node' : 'value', columnWidth(signs.has(h) ? sided : letters[k], lettersOf(h),
+      '', h === 'node' ? COLUMN_CH.node : undefined)]));
     const thead = el(doc, 'thead');
     const head = el(doc, 'tr');
     if (checks) checkAllCell(head, checks, shown);
