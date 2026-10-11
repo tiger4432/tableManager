@@ -269,8 +269,8 @@ export function boot(doc, host, deps) {
   // The trend part, made once and seated under the tables when a column's trend is open.
   const trendMount = el(doc, 'div', '');
   const trendView = new TrendView(trendMount, { doc });
-  // The page's one image preview, in its own div on the body (its box stands fixed; the host's grid takes three
-  // children): nothing asked while a table draws, one picture on a dwell.
+  // The page's one image preview, in its own div on the body (its box stands fixed; the host's grid takes two
+  // children, the bar and the result): nothing asked while a table draws, one picture on a dwell.
   const previewMount = el(doc, 'div', 'image-preview-mount');
   if (doc.body) doc.body.appendChild(previewMount);
   const imagePreview = new ImagePreview(previewMount, { doc, base: apiBase });
