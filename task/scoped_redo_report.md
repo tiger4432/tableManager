@@ -79057,3 +79057,23 @@ note  원장 계획 Time 은 비었을 때만 «Pick one of column · basis», T
   public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
 진짜 프로세스는 응용(총괄 지시대로)
 ```
+
+## [10-11] a03dc8b81 ③ 거둠 착지 4c27f4b8c (총괄 406d7c102 · 응용 진짜 프로세스: 두 번째 replay 에 표시 321,315 -> 0)
+
+```
+원인  체인의 edit retraction 은 규칙이 «고친 원천 행»(origin)으로 전에 쓴 층 중 이번에 안 쓴 행을 거둔다(keep = 이번에 쓴 행)
+      ③ 이 이미 같은 표시인 행을 안 내니 그 행들이 «안 쓴 행»이 되어 전부 거둬짐 — 제가 a03dc8b81 에서 이 계약을 안 봤습니다
+고침  진 잡 행은 매번 전부 다시 냄(③ 거둠) · ①(진 잡 행만 읽기)은 그대로
+칸 (sqlite, 체인 자리 그대로 · 고치기 전 = ③ 이 살아 있는 코드 = 변이)
+  고치기 전:
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_running_it_again_writes_nothing
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_replaying_the_inventory_rule_keeps_every_mark[2]
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_replaying_the_inventory_rule_keeps_every_mark[3]
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_a_losing_jobs_inventory_row_edited_keeps_its_marks
+    4 failed, 5 passed in 2.35s
+  고친 뒤:  9 passed in 1.97s · 리베이스 뒤 9 passed in 2.11s
+RUN.md  「접기 맵퍼 빠르게」 절 — «다시 돌리면 쓰기 0» · 다시 돌림 네 줄 뺌, 🔴 줄(이미 두 번 돌렸으면 이 고침 pull -> 체인 워커 재기동 -> replay 한 번)
+RELEASE_LOG  새 항목 + 앞 항목의 «다시 안 넘김» 문장 고침
+진짜 프로세스 게이트(replay 두 번 · 세 번 · 진 잡 인벤토리 행 고침)는 응용께 청함
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리뿐 · 지운 것 0
+```
