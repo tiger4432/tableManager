@@ -122,8 +122,8 @@
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
 >    빌드    main 의 dist walk-aCAkDuW-.js(오늘 밤 조각 1 346b678d4 — 줄을 체크해도 보던 자리 그대로 · As of 현지 시각)
->            18766 서버의 걷기 파일 ledger_subgraph.py 는 cb6d6a1fa 판 — main 의 값 기록 전부(280d3e567) · 기록 순서(af401be1c) · 그림 값 표시(c5463a475)가 없음. 이 번들(client2/src/walk)에 그 칸(records · column_type)을 읽는 줄 0 — 화면에 안 닿는다
->            누른 빌드 — walk-aCAkDuW-.js (346b678d4) 에서 ① «Nodes 32 (collect: wafer) · Edges 1650 (all)» · «As of 2026-10-11 22:06:53»(현지 시각) · 열여섯째 줄 체크 뒤 결과 칸 스크롤 600 그대로 /
+>            18766 서버의 걷기 파일(ledger_subgraph · trace_router · image_sources · ledger/setup)은 main 513e9d6a8 판 — 걷기 노드 예산(c17db3213) · 값 기록 전부(280d3e567) · 기록 순서(af401be1c) · 그림 값 표시(c5463a475) 포함
+>            누른 빌드 — walk-aCAkDuW-.js (346b678d4) + 위 서버에서 ① ~ ⑨ 의 걷기 · 표 · 그래프 · 트렌드 수를 다시 눌렀다 — 전부 같음(10-11 밤, 소유자 손 클릭 줄만 빼고) · 같은 번들에서 «As of 2026-10-11 22:06:53»(현지 시각) · 열여섯째 줄 체크 뒤 결과 칸 스크롤 600 그대로 /
 >                       walk-CWo9azvd.js (= main e32731bd5) 에서 ① ~ ⑨ 를 처음부터 끝까지 다시 눌렀다(10-11 밤) — 소유자 손 클릭 줄(③ 복사 · ④ 스킴 둘 «Copy points» · ④ 고쳐짐 (다))만 빼고
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
@@ -139,6 +139,8 @@
 >       본 것    «start» 2 (SYN-BW-103-11 · SYN-BW-SPL-400-19) · «in_container → bonded_from → in_container» 30 (첫 SYN-CW-001-02 — 그 줄의 − 칸은 묶음마다 missing)
 >       뜻       길 = 서버가 그 쪽 시작에서 걸은 길(술어만 · 걷기 답 그대로) · «start» = 그 줄이 시작 · 두 쪽 길이 다르면 «+ <길> · − <길>»
 >                코어 웨이퍼 30 개가 «in_container → bonded_from → in_container» — 불량 base 의 다이가 본딩으로 받은 코어 다이의 웨이퍼
+>       메모     (총괄 10-11 c17db3213) 본딩 웨이퍼 → 코어 웨이퍼는 COLLECT wafer 로 걸면 다 나옴 — COLLECT 가 있으면 node_limit 은 고른 타입만 센다(지나가는 다이는 안 셈)
+>                리허설 SYN-BW-103-11 만 + · node_limit 400: COLLECT 없음 «Nodes 400 · Edges 437» 2 홉에서 잘려 코어 웨이퍼 0 / COLLECT wafer «Nodes 31 (collect: wafer) · Edges 1538» 4 홉 · 코어 웨이퍼 30 줄 전부
 >    ③  세상 · 값 표   Collect 에 quantity 를 더함 · 세상 칩 «모델 세상 1» (누르면 그 세상만 켜짐 — Type 목록도 그 세상 것만) · 이어 default 칩 -> 저절로 다시 걷는다
 >       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 1.0 s» · 구역 «quantity · 49»
 >                열 묶음 «measures ← wafer · value ▸ 4» 다음 «leads_to → <계측군> · dir ▸ 1» · «leads_to ← <계측군> · dir ▸ 1» — 묶음마다 + · Δ · −, «▸ N» 을 누르면 나머지 속성
