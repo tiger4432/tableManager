@@ -401,9 +401,10 @@ def chain_rule_raw_view(name: str = None) -> dict:
         from chain import rule_shape
 
         out["name"] = name
-        # the form draws an aggregation as its record - the shorthand "count" too (총괄 8b487d2e6)
+        # the form draws an aggregation as its record - the shorthand "count" too (총괄 8b487d2e6). The form is drawn
+        # from `raw` (raw_registry_panel), so the text carries the record as well; a save writes it (the same meaning).
         out["declaration"] = rule_shape.with_aggregation_records(named.get(name))
-        out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)
+        out["raw"] = json.dumps(out["declaration"], ensure_ascii=False, indent=2)
 
         # The switch's one judge (총괄 872f6cb6b 6-3), not a second truth test beside it.
         out["enabled"] = not rule_shape.is_switched_off(named.get(name) or {})
@@ -654,7 +655,7 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
                                     "%s: %s" % (name, "; ".join(flags)))
     judged = dict(entry)
     judged["enabled"] = True
-    stood, expand_refusal, _notes = rule_shape.expand_declaration(
+    stood, expand_refusal, notes = rule_shape.expand_declaration(
         judged, _catalogue.TABLE_CONFIG)
     if expand_refusal:
         raise _table_config_refusal("declaration_refused", f"rules.{name}", expand_refusal)
@@ -717,6 +718,8 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
                      "rules at the next Reload or restart: %s: %s",
                      name, type(exc).__name__, exc)
     return {"ok": True, "name": name, "base": file_fingerprint(path),
+            # what the loader will say of this declaration - a cell it does not read, by name (총괄 6c6d76924)
+            "notes": notes,
             # ⚠️ STILL THE NUMBER OF RULES, not of entries: carrying an unreadable entry
             #    must not change a number the screen already draws (판정 556).
             "backup": backup,

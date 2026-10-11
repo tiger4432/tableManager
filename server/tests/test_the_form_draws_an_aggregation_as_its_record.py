@@ -18,6 +18,9 @@ from chain.enrichment import config as enrichment_config
 
 AGGREGATIONS = {"n": "count", "hi": {"fn": "max", "column": "t"},
                 "names": {"fn": "unique_concat", "column": "w", "separator": "/"}}
+TABLES = {"src_t": {"column_types": {c: "string" for c in ("lot", "wafer", "t", "w")}},
+          "derived_t": {"business_key": "lot", "composite_key_source": ["lot"],
+                        "column_types": {c: "string" for c in ("lot", "wafer", *AGGREGATIONS)}}}
 DECIDE = {"name": "agg_form", "enabled": True, "on": {"table": "src_t"}, "into": {"table": "derived_t"},
           "derive": {"kind": "decide", "decide": {"key": ["lot"], "fields": ["wafer"],
                                                    "aggregations": AGGREGATIONS}}}
@@ -34,7 +37,7 @@ def test_the_route_hands_each_aggregation_as_its_record_and_the_reader_reads_it_
     drawn = out["declaration"]["derive"]["decide"]["aggregations"]
 
     assert drawn == {"n": {"fn": "count"}, "hi": AGGREGATIONS["hi"], "names": AGGREGATIONS["names"]}
-    assert json.loads(out["raw"]) == DECIDE, "the raw editor shows the file as written"
+    assert json.loads(out["raw"]) == out["declaration"], "the form is drawn from raw (raw_registry_panel)"
     for name, spec in AGGREGATIONS.items():
         assert enrichment_config._parse_aggregation(name, drawn[name]) == \
             enrichment_config._parse_aggregation(name, spec), name
@@ -44,14 +47,27 @@ def test_the_route_hands_each_aggregation_as_its_record_and_the_reader_reads_it_
 def test_a_cell_the_product_does_not_read_is_named_at_the_top_and_under_derive(enabled):
     declaration = dict(DECIDE, enabled=enabled, aggregations={"x": "count"}, zzz_cell=1, __comment="prose",
                        derive=dict(DECIDE["derive"], aggregations={"y": "count"}))
-    _rules, refusal, notes = rule_shape.expand_declaration(
-        declaration, {"src_t": {"column_types": {c: "string" for c in ("lot", "wafer", "t", "w")}},
-                      "derived_t": {"business_key": "lot", "composite_key_source": ["lot"],
-                                    "column_types": {c: "string" for c in ("lot", "wafer", *AGGREGATIONS)}}})
+    _rules, refusal, notes = rule_shape.expand_declaration(declaration, TABLES)
     tail = " The rule runs." if enabled else ""
     assert refusal is None
     assert "agg_form: top-level cell this product does not read — aggregations, zzz_cell.%s" % tail in notes, notes
     assert "agg_form: derive cell this product does not read — aggregations.%s" % tail in notes, notes
+
+
+def test_the_save_answer_names_a_cell_the_product_does_not_read(tmp_path, monkeypatch):
+    """The application lane measured it on 18766: the load line said it, the save answer did not."""
+    from database import crud
+    from ledger import admin
+
+    path = tmp_path / "chain_rules.json"
+    path.write_text(json.dumps({"rules": []}), encoding="utf-8")
+    monkeypatch.setattr(admin, "chain_rules_path", lambda: str(path))
+    for table, entry in TABLES.items():
+        monkeypatch.setitem(crud.TABLE_CONFIG, table, entry)
+
+    out = admin.save_chain_rule_raw("agg_form", dict(DECIDE, zzz_cell=1), admin.file_fingerprint(str(path)))
+
+    assert "agg_form: top-level cell this product does not read — zzz_cell. The rule runs." in out["notes"], out
 
 
 def test_the_role_frame_mappers_line_is_english():
