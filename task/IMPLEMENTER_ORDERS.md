@@ -65768,3 +65768,70 @@ tests/test_ledger_v2_pg.py 가 감사 줄을 assy_test public 으로 흘린다(1
 보고     원인이 어느 쪽이면 소유자가 «화면에서 무엇을 누르면» 풀리는지 한 줄 + 운영에서 돌릴 «읽기만» 확인 SQL 한 줄과 그 답의 뜻을 RUN.md 에
          코드가 고칠 결함이면(은퇴 op 의 queued/running 이 대기열을 막음) 안 셋을 총괄에게 — 짓기 전
 ```
+
+> **[총괄 -> 구현자] 10-11 낮 — 표 선언 인덱스를 지금 맨 앞으로 (소유자 「좀 빨랑 지어라 테이블 인덱스」) — 설계는 10-09 지시 그대로(06e8c22c3 · 「표마다 «이 칸에 인덱스»를 선언으로」 절, 안 ㄱ)**
+
+```
+도착지  두 줄
+   「운영에서는 table_config.json 의 그 표 "indexes" 에 {"columns": [...], "purpose": "..."} 를 적으면 됩니다」
+   「체인 워커가 빠진 것을 하나씩 만들고, 어드민 Indexes 표에 다른 인덱스와 같이 보입니다」
+그대로  있는 "indexes" 칸을 넓힘(원장 카탈로그가 읽는 모양 columns · unique + purpose) · 이름 idx_<표>_<칸들> 63 자(넘치면 해시 꼬리)
+        견주기 = index_states 하나 · 만들기 = _ensure_one_index 하나 · 같은 build_missing_indexes 스위치 · 같은 «기다리는 pid» 문장
+        저장 거절(없는 칸 · 빈 columns · 같은 묶음 두 번 · view) · unique 겹침은 failed + 이유 한 줄 · 선언에서 지운 것은 안 지움(«선언 밖»)
+        소유자가 손으로 만든 idx_dt_log_dt_wafer_id 를 «이미 있음»으로 잡는다(게이트 한 칸)
+미뤘던 까닭 = 이번 RUN.md 의 첫 줄   운영 table_config 에 «이미» 적힌 "indexes" 가 있으면 다음 체인 워커 재기동에 «처음» 지어진다
+        RUN.md: 재기동 «전»에 그 목록을 보는 읽기 한 줄(어느 표 · 어느 칸 · 그 표 행 수) · 알리기만 하려면 "build_missing_indexes": false · 짓는 중 멈춤(pid · pg_cancel_backend)
+        박스 사본에서 큰 표 하나에 지어 초를 재고 RUN.md 에(박스 수라고 밝힘)
+게이트  10-09 지시의 게이트 그대로 + 진짜 프로세스(런처 그대로 체인 워커 기동 -> chain_worker.log [Indexes] 줄 -> GET /admin/indexes 에 표 선언 줄)
+같은 커밋  table_config 안내 문서 · RELEASE_LOG · RUN.md
+클라    Indexes 표의 출처 칸(model · table)은 클라 R 다음 — 서버 답만으로 줄은 이미 보인다
+순서    이것 -> (그 뒤 기존 순서)
+```
+
+> **[총괄 -> 구현자] 10-11 낮 — 체인 층은 «원천 행마다 하나» · 순위는 쓴이의 순위 (소유자 「체인인제션으로 소스 이름 잡으면서 행 거두기 안 되는 거 같은데」 -> 안 ㄱ) — 표 선언 인덱스 다음**
+
+```
+구멍(총괄, 코드로)
+   ① 층은 (표 · 행 · 칸 · 이름)에 하나(idx_sources_lookup_source). 체인 쓰기는 이름이 chain_ingestion 하나라, 한 칸을 두 원천 행 · 두 규칙이 쓰면
+      층 하나에 마지막 쓴 행의 origin_row_id 만 남음(crud apply_row_update_internal 의 src_obj.origin_row_id = …)
+      -> withdraw_by_origin 이 먼저 행을 거두면 0 · 나중 행을 거두면 먼저 행의 값까지 사라짐
+   ② «chain_ingestion (<행>)»(복사 규칙 copy_rows_with_hold 의 행 층)은 priority_map.get(이름, 99) 라 99 — 같은 칸에 plain chain_ingestion 층(등록 순위)이 있으면
+      그게 보여, 행 층을 거둬도 화면이 그대로 (RUN.md 10-09 «안 바뀐 것», 시연 뒤로 미뤘던 것)
+도착지  두 줄
+   「체인이 쓴 칸의 층은 원천 행마다 하나 — chain_ingestion (<원천 행>). 거두면 그 행 층만 걷히고 남은 행 층이 보인다」
+   「층의 순위는 쓴이의 순위 — 같은 순위 안에서는 늦게 쓴 것(오늘 규칙 그대로)」
+넓힐 것(새 기제 · 새 이름 짓기 금지)
+   이름  origin_row_id 가 있는 체인 쓰기는 crud.merged_layer_name(CHAIN_SOURCE, <origin>) — 복사 규칙이 이미 쓰는 그 철자 하나. 쓰는 문(조인 · 맵퍼 · 파생 · 복사) «한 자리»에서
+         origin 이 없는 체인 쓰기는 plain 그대로(그 수를 센다)
+   순위  compute_priority_value · resolve_priority_map 의 «이름 -> 순위»를 crud.layer_writer(이름) 로 — 순위 묻는 자리 하나
+         ⚠️ 합치기 사본(«user (<행>)» 등)도 같은 함수를 지나 순위가 바뀐다 — 그 자리 · 수를 세고, 사람 층 순위가 바뀌는 자리가 있으면 거기서 멈추고 총괄에게
+   읽는 자리  source_name 을 CHAIN_SOURCE 와 견주는 자리 전수(AST) -> 전부 layer_writer 로: 깨우기 필터 · can_mean_emptied · 키 층 · 껍데기 · 보류 세기 · withdraw_source(«chain_ingestion» 을 부르면 그 행 층 전부)
+         자리 수를 짓기 전 보고에(센 명령 같이)
+옮기기(소급 최소) — 다시 돌리기 없이 이름만
+   plain chain_ingestion 층 중 origin_row_id 가 있는 것 -> «chain_ingestion (<origin>)» 로 이름 바꿈(같은 칸에 같은 이름 층이 이미 있으면 plain 쪽을 지움)
+   origin 없는 plain 층은 그대로 · 수를 말함
+   미리보기 -> --apply · 쪽마다 커밋 · 소급 문(run_here) 하나 · 멈춤은 소급 탭 ×
+   미리보기가 말할 것: 바꿀 층 수 · 지울 겹침 수 · origin 없는 plain 수 · 화면 값이 바뀌는 칸 수(오늘 plain 이 이기고 있던 칸)
+게이트   한 칸을 두 원천 행이 씀 -> 층 둘 · 먼저 행 거둠 -> 나중 값 그대로 · 나중 행 거둠 -> 먼저 값이 보임 · 행 층 vs 파일 층 -> 행 층이 이김(쓴이 순위)
+         옮기기 미리보기 수 = 실행 수 · 다시 돌리면 0 · 변이(이름 철자 · 순위 함수 · 견주는 자리 하나 되돌리기 -> 빨강)
+         진짜 프로세스(런처 그대로 체인 워커 · 서버) + 응용 리허설 셋업 끝 상태에 옮기기 -> 접기 표시 행 · require 빈 행 하나 거두기 -> 화면 값 바뀜
+같은 커밋  RUN.md(옮기기 명령 · 답의 뜻 · 재기동 체인 워커 · 서버 · 되돌리기) · RELEASE_LOG · 층 안내 문서
+순서     표 선언 인덱스 -> 이것
+```
+
+> **[총괄 -> 구현자] 10-11 낮 — 다시 세기가 복사 규칙의 require 를 모름: 짝에 «행 관문 둘 다» (응용 잼, 소유자 「체인 require 에 dt_wafer_id 넣었는데 왜 카피가 빈 행까지」) — 표 선언 인덱스 다음 · 층 원천 행마다보다 앞**
+
+```
+잰 것(응용 · pytest PG 스크래치 · hold_world)  require [kind] 뒤 replay «복사 규칙» -> 빈 행이 먹인 층 12 -> 0 ✓ · 값 5 -> 7 ✓
+   ❌ 보류  hold_copy._claims 가 require 를 모름 — exclude 는 source_exclude 로 두 짝에 실리는데 require 는 안 실림
+           J1(남은 원천 하나) 보류 빈 그대로 · J2 · J3(원천이 전부 빈 행) 보류 agreed, 값 빈칸
+   ❌ 껍데기  J2 · J3 가 보류 agreed 라 «키 밖이 다 빈 행»이 아님 -> remove-shells 0
+판정(총괄)  결함. require 와 exclude 는 행 관문 «하나»(chain_bindings.ROW_GATE_KEYS · rule_run.held_back 한 자리) — 짝이 그중 하나만 싣는 것이 문 가르기
+고칠 것    짝에 싣는 것을 ROW_GATE_KEYS 둘 다로 넓힌다(exclude 만 싣던 그 자리 · 그 모양) — 둘째 기제 금지
+          _claims 의 거르기 = 두 관문을 한 함수가 SQL 로(crud blank_sql_condition / not_blank_sql_condition) — held_back 과 같은 판정
+          pair_mismatch 도 두 관문을 견준다(복사 둘이 관문이 다르면 다시 세기 거절, 오늘 exclude 처럼)
+게이트     응용 하니스 그 표 그대로: J1 agreed · J2 · J3 보류 빈칸 -> remove-shells 미리보기 2 · --apply 2 · 다시 돌리면 0
+          require 없는 규칙은 오늘 그대로 · exclude 만 있는 규칙 오늘 그대로 · 변이(require 빼고 싣기 -> 빨강)
+같은 커밋  RUN.md(소유자 줄: pull · 재기동 체인 워커 · 서버 -> replay «복사 규칙» -> remove-shells «공식 표», 답의 뜻) · RELEASE_LOG
+순서      표 선언 인덱스 -> 이것 -> 체인 층 원천 행마다
+```

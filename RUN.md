@@ -228,6 +228,49 @@
 >
 > ---
 >
+> ## [10-11] **표 선언 인덱스 — table_config 의 그 표 "indexes" 를 체인 워커가 짓는다 (총괄 98be7faf3) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 먼저         운영 table_config 에 «이미» 적힌 "indexes" 가 있으면 다음 체인 워커 재기동에 «처음» 지어진다 — 재기동 전에 아래 둘
+> 무엇이 지어지나  (저장소 루트에서, 읽기만) python -c "import json; d = json.load(open('server/config/table_config.json', encoding='utf-8')); [print(t, i.get('columns'), i.get('unique', False)) for t, e in d.items() if isinstance(e, dict) for i in (e.get('indexes') or [])]"
+>              그 표들의 행 수(읽기만): SELECT relname, reltuples::bigint FROM pg_class WHERE relname IN ('<표>', ...) AND relkind = 'r';
+> 알리기만      ingestion_settings.json 에 "build_missing_indexes": false -> chain_worker.log 에 「not built: build_missing_indexes is off」 한 줄, 짓지 않음
+> 짓기         pull -> 서버 · 체인 워커 재기동 -> chain_worker.log 「[Indexes] N declared index(es) the database lacks or holds invalid: ...」
+>              -> 「[Indexes] building <이름> on <표>」 -> 「[Indexes] <이름> built in N s」
+>              오래 걸리면 10 분마다 「still building ... waiting for transactions older than it: pid <pid>」(그 pid 가 끝나야 끝남)
+> 짓는 중 멈춤   SELECT pid FROM pg_stat_activity WHERE query LIKE 'CREATE%INDEX CONCURRENTLY%'; -> SELECT pg_cancel_backend(<pid>);
+>              남은 INVALID 인덱스는 다음 기동에 지우고 다시 지음 — 다시 안 지으려면 위 스위치
+> 확인         어드민 Overview «Indexes» 표에 표 선언 줄(source table)이 present · unique 가 데이터 겹침으로 실패하면 invalid 와 그 사유
+> 박스 수       이 박스 dt_log 사본(535,559 행 · 524 MB)에 idx_dt_log_core_wafer_id: 0.4 초 — 동시 쓰기 없는 사본, 운영은 «오래된 트랜잭션 기다림»이 더해질 수 있음
+> 지운 선언     table_config 에서 지운 인덱스는 DB 에 남고 Indexes 표의 «선언 밖»에도 안 뜬다 — 지우려면 DROP INDEX CONCURRENTLY <이름>
+> 급할 때       git revert <이 커밋> -> 재기동 (지어진 인덱스는 남음 — 지우려면 DROP INDEX CONCURRENTLY <이름>)
+> ```
+>
+> ---
+>
+> ## [10-11] **체인 require 를 적었는데 빈 행이 복사될 때 — 워커가 다시 읽었나 · 이미 복사된 행 거두기 (총괄 · 응용 재기) — 이주 «없음» · 재기동 «없음»**
+>
+> ```
+> 먼저 볼 것     규칙을 화면에서 저장했거나 Reload 를 눌렀나 — 파일만 고치면 체인 워커는 옛 규칙으로 계속 돈다(리허설: 옛 목록이면 새 빈 행 복사됨)
+>              체인 워커 로그 «[Reload] Loaded N active chain ingestion rules.» 가 고친 «뒤» 시각에 있으면 다시 읽은 것
+>              다시 읽은 뒤 새 빈 행이 오면 «[Chain] <복사 규칙>: N row(s) not handed over - required column(s) empty: dt_wafer_id=N»
+> 이미 복사된 행  require 를 적기 «전»에 복사된 행은 그대로 남는다 — 복사 규칙 replay 가 거둔다
+>   미리보기    python server/scripts/chain_replay_cli.py replay <복사 규칙>
+>   실행        같은 명령 + --apply
+>   답의 뜻      체인 워커 로그 «… not handed over - required column(s) empty: dt_wafer_id=N» — N = 빈 행 수 · 그 행들이 먹인 층은 거둬짐
+>              공식 행 값은 남은 원천 행의 값으로 돌아감(리허설 5 -> 7)
+> ⚠️ 보류는 안 따라옴 — 결함 · 고침 주문(총괄 0117a0048)   보류 다시 세기가 require 를 몰라서 빈 행을 아직 «주장»으로 센다
+>              좋은 행 + 빈 행이 같은 키 -> 보류가 빈 채로 남음(그 공식 행은 원장에 안 들어감)
+>              빈 행만 먹이던 공식 행 -> 값은 빈칸인데 보류는 agreed 그대로
+>   껍데기      python server/scripts/chain_replay_cli.py remove-shells <공식 표>      (미리보기 · 실행은 + --apply)
+>   답의 뜻      보류가 차 있으면 껍데기가 아니다 — 0 이어도 «빈 원천 공식 행이 없다»가 아님(리허설 0)
+> 지금 할 것     위 replay 로 층은 거둬진다 · 보류와 빈 공식 행은 고침 착지 뒤 같은 replay · remove-shells 를 다시(착지 해시는 이 절에 적음)
+> 리허설 수     pytest PG 스크래치 스키마 · 제품 자리(복사 규칙 copy_rows_with_hold + 보류 다시 세기) · require 칸은 공식 키가 아닌 칸
+>              빈 행이 먹인 층 12 -> replay 뒤 0 · 줄 «[Chain] hc_copy: 3 row(s) not handed over - required column(s) empty: kind=3» · 다시 세기의 주장 수(빈 행 포함) J1 2 · J2 1 · J3 1
+> ```
+>
+> ---
+>
 > ## [10-11] **소급 대기열이 안 빠질 때 — 은퇴한 «Re-read files» 실행이 관문을 잡고 있나 (총괄 a276bcb8b) — 이주 «없음» · 재기동 «없음»**
 >
 > ```

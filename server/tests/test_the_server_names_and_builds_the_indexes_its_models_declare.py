@@ -193,3 +193,126 @@ def test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it(scr
         blocker.close()
         build.join(60)
     assert done == {DROPPED: models.INDEX_BUILT}
+
+
+# ------------------------------------------------------------- a table's own declared indexes
+# 총괄 06e8c22c3 · 98be7faf3 (소유자 「테이블 별로 특정 컬럼 인덱스」): table_config.json's "indexes" -
+# the same comparison, the same builder, the same switch.
+
+PROBE = "zz_declared_probe"
+PROBE_TABLES = {PROBE: {"column_types": {"lot": "string", "code": "string", "dt_wafer_id": "string"},
+                        "indexes": [{"columns": ["lot"], "purpose": "a lot's rows"},
+                                    {"columns": ["dt_wafer_id"], "purpose": "a wafer's rows"},
+                                    {"columns": ["code"], "unique": True, "purpose": "one row a code"}]},
+                "zz_a_view": {"kind": "view", "column_types": {"lot": "string"},
+                              "indexes": [{"columns": ["lot"]}]}}
+
+
+def test_a_table_index_is_named_by_its_table_and_columns_and_a_long_one_keeps_a_hash_tail():
+    assert models.table_index_name("dt_log", ["dt_wafer_id"]) == "idx_dt_log_dt_wafer_id"
+    long_a = models.table_index_name("a_rather_long_table_name", ["first_long_column", "second_long_column_a"])
+    long_b = models.table_index_name("a_rather_long_table_name", ["first_long_column", "second_long_column_b"])
+    assert len(long_a) == len(long_b) == 63 and long_a != long_b
+    assert long_a == models.table_index_name("a_rather_long_table_name",
+                                             ["first_long_column", "second_long_column_a"])
+
+
+def test_a_save_refuses_an_unknown_column_an_empty_or_twice_declared_index_and_a_view(tmp_path, monkeypatch):
+    import json as _json
+
+    from fastapi import HTTPException
+    from ledger import admin
+
+    path = tmp_path / "table_config.json"
+    path.write_text(_json.dumps({PROBE: PROBE_TABLES[PROBE]}), encoding="utf-8")
+    monkeypatch.setattr(admin, "table_config_path", lambda: str(path))
+    monkeypatch.setattr(admin, "_atomic_write", lambda p, merged: path.write_text(
+        _json.dumps(merged), encoding="utf-8"))
+
+    def refused(declaration):
+        with pytest.raises(HTTPException) as caught:
+            admin.save_table_config_raw(PROBE, declaration, admin.file_fingerprint(str(path)))
+        return caught.value.detail["code"], caught.value.detail["path"], caught.value.detail["message"]
+
+    types = PROBE_TABLES[PROBE]["column_types"]
+    assert refused({"column_types": types, "indexes": [{"columns": ["lot", "nope"]}]}) == (
+        "indexes_refused", "tables.%s.indexes[0].columns" % PROBE, "%s has no column nope" % PROBE)
+    assert refused({"column_types": types, "indexes": [{"columns": []}]})[1] == "tables.%s.indexes[0].columns" % PROBE
+    assert refused({"column_types": types, "indexes": [{"columns": ["lot"]}, {"columns": ["lot"]}]})[2] == (
+        "(lot) is declared twice")
+    assert refused({"kind": "view", "column_types": types, "indexes": [{"columns": ["lot"]}]})[2] == (
+        "%s is a view - a view cannot carry an index" % PROBE)
+    saved = admin.save_table_config_raw(PROBE, PROBE_TABLES[PROBE], admin.file_fingerprint(str(path)))
+    assert saved["ok"] is True, "CANARY: a good declaration saves"
+
+
+def test_the_ledger_catalogue_reads_a_table_index_written_without_unique(tmp_path):
+    import json as _json
+
+    from ledger import setup_bundle
+
+    path = tmp_path / "table_config.json"
+    path.write_text(_json.dumps({PROBE: PROBE_TABLES[PROBE]}), encoding="utf-8")
+    catalog = setup_bundle.load_physical_catalog(str(path))
+
+    assert setup_bundle._table_has_unique_key(catalog[PROBE], ["lot"]) is False
+    assert setup_bundle._table_has_unique_key(catalog[PROBE], ["code"]) is True
+
+
+@pytest.fixture(name="probe")
+def fixture_probe(pg_engine):
+    """A table with duplicated codes and the owner's hand-made index on dt_wafer_id, in pg_engine's schema."""
+    _ddl(pg_engine, "CREATE TABLE %s (row_id text PRIMARY KEY, lot text, code text, dt_wafer_id text)" % PROBE,
+         "INSERT INTO %s VALUES ('1', 'L1', 'A', 'W1'), ('2', 'L1', 'A', 'W2')" % PROBE,
+         'CREATE INDEX "idx_%s_dt_wafer_id" ON %s (dt_wafer_id)' % (PROBE, PROBE))
+    yield pg_engine
+    _ddl(pg_engine, "DROP TABLE IF EXISTS %s" % PROBE)
+
+
+@pytest.mark.pg
+def test_the_index_work_builds_a_table_index_keeps_a_hand_made_one_and_says_why_a_unique_one_failed(probe):
+    said = []
+    done = models.ensure_model_indexes(probe, say=said.append, tables=PROBE_TABLES)
+
+    lot, wafer, code = ("idx_%s_%s" % (PROBE, column) for column in ("lot", "dt_wafer_id", "code"))
+    assert done == {lot: models.INDEX_BUILT, code: models.INDEX_FAILED}, said
+    owed = [line for line in said if "lacks or holds invalid" in line]
+    assert len(owed) == 1 and "%s on %s (missing)" % (lot, PROBE) in owed[0] and wafer not in owed[0]
+    states = {row["name"]: row for row in models.index_states(probe, PROBE_TABLES)["declared"]}
+    assert {name: (states[name]["state"], states[name]["source"]) for name in (lot, wafer, code)} == {
+        lot: ("present", "table"), wafer: ("present", "table"), code: ("invalid", "table")}
+    assert states[lot]["purpose"] == "a lot's rows" and states[code]["unique"] is True
+    # the server's words in the server's language - the index and the duplicated key, whatever the locale
+    assert code in states[code]["failure"] and "(code)=(A)" in states[code]["failure"], states[code]
+    assert not states[code]["failure"].startswith(("ERROR", "오류")), "the severity head is not the reason"
+    assert "zz_a_view" not in {row["table"] for row in states.values()}
+    _ddl(probe, "DELETE FROM %s WHERE row_id = '2'" % PROBE)
+    assert models.ensure_model_indexes(probe, say=lambda *_a: None, tables=PROBE_TABLES) == {
+        code: models.INDEX_BUILT}, "the leftover is dropped and the build made again once the data allows"
+
+
+@pytest.mark.pg
+def test_the_route_shows_a_table_index_beside_the_models(probe, monkeypatch):
+    import main
+    from fastapi.testclient import TestClient
+    from database import crud
+    from database.database import get_db
+
+    monkeypatch.setitem(crud.TABLE_CONFIG, PROBE, PROBE_TABLES[PROBE])
+    _ddl(probe, "CREATE INDEX zz_probe_undeclared ON %s (lot, code)" % PROBE)
+    session = sessionmaker(bind=probe)()
+    main.app.dependency_overrides[get_db] = lambda: session
+    try:
+        answer = TestClient(main.app).get("/admin/indexes")
+    finally:
+        main.app.dependency_overrides.pop(get_db, None)
+        session.close()
+
+    assert answer.status_code == 200, answer.text
+    rows = {row["name"]: row for row in answer.json()["declared"]}
+    assert (rows["idx_%s_lot" % PROBE]["source"], rows["idx_%s_lot" % PROBE]["state"]) == ("table", "missing")
+    assert rows["idx_%s_dt_wafer_id" % PROBE]["state"] == "present"
+    assert {row["source"] for row in rows.values()} == {"model", "table"}
+    # «outside» stays the models' tables - the catalogue's carry product indexes no declaration names
+    assert {row["table"] for row in answer.json()["outside"]} <= {t.name for t in models.model_tables()}
+    assert "zz_probe_undeclared" not in {row["name"] for row in answer.json()["outside"]}

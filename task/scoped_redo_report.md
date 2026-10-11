@@ -78471,3 +78471,61 @@ dropped schema assy_impl_rq_1011 (62 tables) - left 0
 public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
 public relations 325 -> 325 · added [] · gone [] · rows changed {}
 ```
+
+## [10-11 낮] 표 선언 인덱스 — table_config 의 "indexes" 를 인덱스 마스터가 짓는다 — 착지 64eecbe0e (총괄 06e8c22c3 · 98be7faf3)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: assy_test pg_engine 스크래치(픽스처가 지움) · 진짜 프로세스: assy_test 스크래치 assy_impl_ix_1011(지움) · 박스 사본: assy_test 스크래치 assy_impl_ixbox_1011(지움) · 박스 assy_manager 는 연결마다 읽기 전용
+public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+
+```
+지은 것  models.table_index_name(idx_<표>_<칸들>, 63 넘으면 해시 꼬리) · table_declared_indexes · table_index_refusal · table_index_ddl
+        index_states(engine, tables=None) 줄에 source(model · table) · failure — 견주기 하나 · ensure_model_indexes 가 출처별 DDL 로 같은 _build_one
+        실패 사유 = 남은 INVALID 인덱스의 주석(_note_failure) — 다른 프로세스의 라우트가 읽음 · 서버 말 그대로(이 박스 PG 는 한국어)
+        저장 거절(save_table_config_raw): 없는 칸 · 빈 columns · 같은 묶음 두 번 · 뷰 · 원장 카탈로그는 unique 없는 항목을 false 로
+        «선언 밖»은 정적 모델 표만 — 박스 사용자 표 45 개의 인덱스 313 중 151 이 다른 자리가 만든 것(총괄 승인)
+```
+
+```
+게이트 — 바뀐 함수를 부르는 시험 파일 51 개
+  비 PG  1 failed, 582 passed, 44 deselected in 57.08s — 실패 1 은 변경 없는 HEAD 사본에서도 같음(샘플 CRLF)
+  PG     2 failed, 42 passed, 583 deselected in 194.38s (0:03:14) — 실패 2 는 test_ledger_l1_pg, 변경 없는 HEAD 사본에서도 같음
+변이(빨강 = 실패한 시험, md5 복원)
+  baseline ['7 passed, 7 deselected in 0.50s', '7 passed, 7 deselected in 10.33s']
+  a long name is cut, no hash tail           RED | test_a_table_index_is_named_by_its_table_and_columns_and_a_long_one_keeps_a_hash_tail
+  the comparison leaves the tables' own out  RED | test_the_index_work_builds_a_table_index_keeps_a_hand_made_one_and_says_why_a_unique_one_failed, test_the_route_shows_a_table_index_beside_the_models
+  an unknown column saves                    RED | test_a_save_refuses_an_unknown_column_an_empty_or_twice_declared_index_and_a_view
+  the catalogue reads unique as written      RED | test_the_ledger_catalogue_reads_a_table_index_written_without_unique
+  a failure leaves no reason                 RED | test_the_index_work_builds_a_table_index_keeps_a_hand_made_one_and_says_why_a_unique_one_failed
+  unique is not built unique                 RED | test_the_index_work_builds_a_table_index_keeps_a_hand_made_one_and_says_why_a_unique_one_failed
+  outside takes every table                  RED | test_the_route_shows_a_table_index_beside_the_models
+  restored True
+```
+
+```
+박스 사본 — 이 박스 dt_log 를 통째로 스크래치에 복사, 제품 빌더로 한 칸 인덱스
+  box dt_log: 535559 rows, 524 MB on the box · copied 535559 rows in 6.7 s
+  idx_dt_log_core_wafer_id built in 0.4 s · index 3656 kB · no lines
+  dropped schema assy_impl_ixbox_1011 - left 0
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+```
+
+```
+진짜 따로 띄운 API(18795) + 체인 워커(run_chain_worker.py 그대로) — 샘플 선언, dt_log 의 "indexes" 둘(하나는 손으로 미리 만듦)
+  seeded 20 dt_log rows and the hand-made idx_dt_log_core_lot
+  == GET /admin/indexes before the chain worker starts
+  [{"name": "idx_dt_log_core_wafer_id", "source": "table", "state": "missing", "columns": ["core_wafer_id"], "purpose": "a core wafer's transfer rows", "failure": null}, {"name": "idx_dt_log_core_lot", "source": "table", "state": "present", "columns": ["core_lot"], "purpose": "a core lot's transfer rows", "failure": null}]
+  model rows 49 · outside 0
+  == the chain worker, as run_chain_worker.py starts it
+  [Indexes] 1 declared index(es) the database lacks or holds invalid: idx_dt_log_core_wafer_id on dt_log (missing) - building them one at a time
+  [Indexes] building idx_dt_log_core_wafer_id on dt_log
+  [Indexes] idx_dt_log_core_wafer_id built in 0.0 s
+  == GET /admin/indexes after
+  [{"name": "idx_dt_log_core_wafer_id", "source": "table", "state": "present", "columns": ["core_wafer_id"], "purpose": "a core wafer's transfer rows", "failure": null}, {"name": "idx_dt_log_core_lot", "source": "table", "state": "present", "columns": ["core_lot"], "purpose": "a core lot's transfer rows", "failure": null}]
+  model rows 49 · outside 0
+  stopped run_chain_worker.py 45000
+  stopped uvicorn 44672
+  dropped schema assy_impl_ix_1011 (62 tables) - left 0
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+```
