@@ -155,7 +155,7 @@ const BOND_SRC_EVENT = { ...BOND_EVENT,
   propagation: { ranked: [...BOND_EVENT.propagation.ranked, { id: 'm:3', reach: [1, 0],
     evidence: [walked('w:b', '+', ...FROM_B, ['m:3', 'measured'])] }] } };
 const OF_VALUE = new Map([['quantity@1', [{ steps: [{ predicate: 'of', direction: 'incoming' }], value: { on: 'node', name: 'value' },
-  words: ['of (in)', 'value'] }]]]);
+  words: ['of ← measurement@1', 'value'] }]]]);
 const SRC_18766 = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_18766.json'), 'utf8'));
 // The demo's usual form, collect quantity alone (lead 10-11): the wafers that gave bond_temp's values are not in nodes.
 const SRC_COLLECT = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_value_source_collect_18766.json'), 'utf8'));
@@ -183,10 +183,14 @@ const CTL_SIGNED = {
     { id: 'd:5', reach: [0, 1], evidence: [walked('s:b', '-', ['w:5', 'leads_to'], ['d:5', 'inspected'])] }] },
 };
 // A cell's values, as drawn: its value lines (C draws a source line under each).
-const valsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-val').map((k) => k._text).join(' · ');
+const valsOf = (c) => walkAll(c || { children: [] }).filter((k) => k.className === 'wk-val').map((k) => k._text).join(' · ');
 const srcsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'wk-src').map((k) => k._text);
-const GATE_IN = 'inspected (in) · gate';
-const NOTE_IN = 'inspected (in) · note';
+/** A row's value cells as Wide draws them (lead 10-11 W): each column its groups' cells, Δ between two. */
+const sideCells = (r) => r.cells.flatMap((c) => (c.sides.length === 2 && c.delta ? [c.sides[0], c.delta, c.sides[1]] : c.sides));
+/** A node cell's name, without the source line under it. */
+const labelOf = (c) => walkAll(c).filter((k) => k.className === 'wk-centrelabel').map((k) => k._text).join('');
+// A die's gate, read in from the wafers that inspected it: one group, its far type (lead 10-11 W addendum 8 (다)).
+const GATE_IN = 'inspected ← wafer@1 · gate';
 const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
 
 let ran = 0;
@@ -229,24 +233,24 @@ async function suite(mod) {
   eq('V1 one section head per section, worded by the view',
     byClass(host, 'wk-sechead').map((e) => e.textContent).join(' | '),
     view.sections.map((s) => s.heading).join(' | '));
-  // The walk table (E1: the flat table retired): a section's last head row is its centre then its side's columns; a
-  // row's cells the same, a side cell drawn as its value line.
-  const headRows = byTag(host, 'thead').map((t) => t.children[t.children.length - 1]);
+  // Wide (lead 10-11 W): a section's heads say its node columns, each group's step and far end, its values' names; a
+  // row's cells its node's, then each column's groups' cells, a cell drawn as its value line.
+  const heads = byTag(host, 'thead').map((t) => walkAll(t).filter((c) => c.tagName === 'th' && c.className !== 'wk-check').map((c) => c.textContent).join(' '));
   const drawn = byTag(host, 'tbody').flatMap((b) => b.children.map((tr) => tr.children.filter((c) => c.className !== 'wk-check')));
-  const said = (c) => (has(c, 'wk-centre') ? c.textContent : valsOf(c));
-  eq('V2 the column labels are the view\'s, in the view\'s order',
-    headRows.map((tr) => tr.children.filter((c) => c.className !== 'wk-check').map((c) => c.textContent).join(',')).join(' | '),
-    view.sections.map((s) => [...s.centreHeads, ...s.parts.map((x) => x.leaf)].join(',')).join(' | '));
+  const said = (c) => (has(c, 'wk-centre') ? labelOf(c) : valsOf(c));
+  ok('V2 the heads say the view\'s words: its node columns, each group\'s step and far end, each value\'s name',
+    view.sections.every((s, i) => [...s.centreHeads, ...s.parts.flatMap((x) => [x.step, x.leaf])].every((w) => heads[i].includes(w))),
+    heads.join(' | '));
   eq('V3 every cell is the view\'s text, in the view\'s order',
     drawn.map((cells) => cells.map(said).join('|')).join(' / '),
-    view.sections.flatMap((s) => s.rows.map((r) => [...r.centre, ...r.byGroup[0]].map((c) => c.text).join('|'))).join(' / '));
+    view.sections.flatMap((s) => s.rows.map((r) => [...r.centre, ...sideCells(r)].map((c) => c.text).join('|'))).join(' / '));
   // 🔴 0 IS A VALUE. `x: 0` in the fixture is the discriminant: a renderer using `v || ''`
   //    draws it as the same mark an absent key gets, and the row then lies about the die.
   ok('V4 a zero is drawn as 0 and an absent key as «—», not as the same glyph',
     drawn.flat().map(said).includes('0') && drawn.flat().map(said).includes(TABLE.EMPTY), drawn.flat().map(said).join('|'));
   eq('V5 the numeric class follows the view\'s reading of each cell',
     drawn.map((cells) => cells.filter((c) => !has(c, 'wk-centre')).map((c) => (has(c, 'wk-num') ? 1 : 0)).join('')).join(' / '),
-    view.sections.flatMap((s) => s.rows.map((r) => r.byGroup[0].map((c) => (c.numeric ? 1 : 0)).join(''))).join(' / '));
+    view.sections.flatMap((s) => s.rows.map((r) => sideCells(r).map((c) => (c.numeric ? 1 : 0)).join(''))).join(' / '));
   // ⚰️ V6 (the id cell's own class) retired with the flat table (E1): the id is behind the copy press (Z16).
 
   console.log(`${LF}-- the cap is a number the screen SAYS --`);
@@ -393,15 +397,27 @@ async function suite(mod) {
     click(walkAll(host).find((e) => e.className === 'wk-go'));
     await settle();
     click(walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === q.id));
-    click(walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === 'measures → wafer'));
+    click(walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === 'measures ← wafer'));
     await settle();
     const b = tableOf();
     const askB = asked[asked.length - 1];
-    ok('EA1 18766: bond_temp alone in + and Walk draws the table a Next from its row draws - same head, rows, columns, cells; 64 wafers, measures value · eqp_id · role · step, Route; the same ask, the form\'s node_limit and fanout_limit on both, the Next\'s hops its step\'s (owner 10-10, lead 10-11)',
+    ok('EA1 18766: bond_temp alone in + and Walk draws the table a Next from its row draws - same head, rows, columns, cells; 64 wafers, a group per quantity - bond_temp, the answer\'s far end it did not send - its value open, eqp_id · role · step behind ▸ 3; the same ask, the form\'s node_limit and fanout_limit on both, the Next\'s hops its step\'s (owner 10-10, lead 10-11 W)',
       a.length > 0 && JSON.stringify(a) === JSON.stringify(b) && wafers === 64 && shape(askA) === shape(askB)
         && shape(askA) === `start=${q.id}&follow=measures&collect=wafer&direction=both&hops=1&node_limit=${mod.NODE_LIMIT}&fanout_limit=7`
-        && ['value', 'eqp_id', 'role', 'step', 'Route'].every((h) => head.includes(h)) && head[0] === 'wafer',
+        && JSON.stringify(head) === JSON.stringify(['wafer', 'measures → bond_temp · value▸ 3']),
       JSON.stringify({ a: a.map((sec) => sec.slice(0, 5)), b: b.map((sec) => sec.slice(0, 5)), wafers, head, askA: shape(askA), askB: shape(askB) }));
+    // ▸ N (lead 10-11 W addendum 8): pressed, the group's folded cells stand in place after its number; pressed again, folded.
+    const wSec = () => walkAll(host).filter((e) => e.className === 'wk-sec').find((sec) => /^wafer/.test(sec.children[0].textContent)) || { children: [] };
+    const heads = () => walkAll(wSec()).filter((e) => e.tagName === 'th' && e.className !== 'wk-check').map((e) => e.textContent);
+    const foldTag = () => walkAll(wSec()).find((e) => e.tagName === 'button' && has(e, 'wk-tag') && /^[▸▾]/.test(e.textContent));
+    const shut = heads();
+    click(foldTag());
+    const opened = heads();
+    click(foldTag());
+    ok('ZW1 a group\'s «▸ 3»: pressed, its folded cells stand in place after its number, its head «▾»; pressed again, folded (lead 10-11 W addendum 8)',
+      JSON.stringify([shut, opened, heads()]) === JSON.stringify([['wafer', 'measures → bond_temp · value▸ 3'],
+        ['wafer', 'measures → bond_temp▾', 'value', 'eqp_id', 'role', 'step'], ['wafer', 'measures → bond_temp · value▸ 3']]),
+      JSON.stringify([shut, opened, heads()]));
   }
 
   console.log(`${LF}-- the type placeholder is no type (lead b417e2ad8) --`);
@@ -555,8 +571,8 @@ async function suite(mod) {
     };
     const steps = (h) => walkAll(h).filter((e) => /^wk-step( is-on)?$/.test(e.className || ''));
     const rowsShown = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']);
-    eq('N1 the Next of the die section is the declaration\'s edges one step from die@1, both kinds',
-      edges(host).map((e) => e.textContent).join(' | '), 'inspected@1 → wafer@1 | bonded_to@1 → die@1');
+    eq('N1 the Next of the die section is the declaration\'s edges one step from die@1, both kinds, each its arrow (lead 10-11 W)',
+      edges(host).map((e) => e.textContent).join(' | '), 'inspected@1 ← wafer@1 | bonded_to@1 → die@1');
     press(edges(host)[1]);
     await settle();
     ok('N2 nothing checked: every edge is off with its reason, and a press asks nothing',
@@ -691,7 +707,7 @@ async function suite(mod) {
       .map((row) => row.children.map((b) => `${b.textContent}${b.className.includes('is-on') ? ' *' : ''}`));
     const rows = () => walkAll(host).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']).join();
     const A = 'bonded_to@1 → die@1';
-    const B = 'inspected@1 → wafer@1';
+    const B = 'inspected@1 ← wafer@1';
     tick('n:1');
     press(next(A));
     await settle();
@@ -791,13 +807,14 @@ async function suite(mod) {
     const lines = (text) => text.split(String.fromCharCode(10)).map((l) => l.split(String.fromCharCode(9)));
     const all = lines(copy());
     const allSaid = said();
-    press(walkAll(host).find((e) => e.attrs && e.attrs['data-rows'] === 'missing'));
+    press(walkAll(dieSec()).find((e) => e.attrs && e.attrs['data-rows'] === 'missing'));
     const missed = lines(copy());
     const missedRows = walkAll(dieSec()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length;
     const notes = all[0].filter((h) => / note$/.test(h));
-    ok('CP3 the page' + "'" + 's «Copy table»: TSV a head row and a row each the filter shows, every row as wide as the head, the column the screen folds (note) copied on both sides, the id last; «Copied N rows» beside it',
-      all.length > 1 && all.every((r) => r.length === all[0].length) && notes.length === 2 && !shownHeads.some((h) => / note$/.test(h) || h === 'note')
-        && all[0][all[0].length - 1] === 'id' && allSaid === `Copied ${all.length - 1} rows`
+    ok('CP3 the page' + "'" + 's «Copy table»: TSV the shape shown (lead 10-11 W) - a head row, each column its + · Δ · −, the id last - and a row each the filter shows, every row as wide as the head; a column no row has a value in (note) in neither; «Copied N rows» beside it',
+      all.length > 1 && all.every((r) => r.length === all[0].length) && notes.length === 0 && !shownHeads.some((h) => / note$/.test(h) || h === 'note')
+        && JSON.stringify(all[0]) === JSON.stringify(['mat_id', 'inspected ← wafer@1 · gate · +', 'inspected ← wafer@1 · gate · Δ', 'inspected ← wafer@1 · gate · −', 'id'])
+        && allSaid === `Copied ${all.length - 1} rows`
         && missed.length - 1 === missedRows && missed.length < all.length,
       JSON.stringify([all[0], all.length, allSaid, missed.length, missedRows, shownHeads]));
     CLIP_OK.ok = false;
@@ -827,7 +844,7 @@ async function suite(mod) {
     ok('ZD4 the page: over a section each side\'s three counts; a side\'s cells tinted A + B or B only, A only bare, the other side its own',
       drew && JSON.stringify([line, tint('d:3'), tint('d:5')]) === JSON.stringify([
         [['Positive · ', 'A only 2', 'A + B 1', 'B only 0'], ['Negative · ', 'A only 2', 'A + B 0', 'B only 1']],
-        ['ab', 'ab', '', '', '', ''], ['', '', '', 'b', 'b']]),
+        ['', 'ab', '', ''], ['', '', '', 'b']]),
       JSON.stringify([drew, line, tint('d:3'), tint('d:5')]));
     // + only (no − start), one side since E1 (lead 10-11): its counts once, a row's side cells its kind - the node's own
     // cells in the centre bare.
@@ -862,60 +879,63 @@ async function suite(mod) {
     handle.state.result = SIGNED;
     handle.render();
     const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
-    const heads = walkAll(host).filter((e) => has(e, 'wk-sidehead')).map((e) => e.textContent);
+    const heads = [...new Set(walkAll(host).filter((e) => has(e, 'wk-sidehead')).map((e) => e.title))];
     const missing = walkAll(host).filter((e) => e.tagName === 'td' && has(e, 'wk-missing')).length;
     const secs = walkAll(host).filter((e) => e.className === 'wk-sec');
-    const nextFirst = secs.length > 0 && secs.every((sec) => {
-      const next = sec.children.findIndex((c) => c.className === 'wk-next');
-      return next >= 0 && next < sec.children.findIndex((c) => has(c, 'wk-table'));
-    });
-    ok('Z9 the page: a table a type, a band a group with its starts and rows, missing in red, Next above',
+    const sv = walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS);
+    const wantMissing = sv.sections.reduce((n, s) => n + s.rows.reduce((m, r) => m + r.cells.reduce((k, c) => k + c.sides.filter((x) => x.missing).length, 0), 0), 0);
+    // Walk on is the section's last line (lead 10-11 W: «이어 걷기는 구역 맨 아래 한 줄»).
+    const walkOnLast = secs.length > 0 && secs.every((sec) => sec.children[sec.children.length - 1].className === 'wk-next');
+    ok('Z9 the page: a table a type, a sign under each column with its starts and rows, missing in red in each cell a side did not reach, Walk on last (lead 10-11 W)',
       JSON.stringify(heads) === JSON.stringify(['Positive · 2 starts · 2 rows', 'Negative · 1 start · 1 row',
-        'Positive · 2 starts · 3 rows', 'Negative · 1 start · 2 rows']) && missing === 6 && nextFirst,
-      `${JSON.stringify(heads)} ${missing} ${nextFirst}`);
+        'Positive · 2 starts · 3 rows', 'Negative · 1 start · 2 rows']) && missing === wantMissing && wantMissing > 0 && walkOnLast,
+      `${JSON.stringify(heads)} ${missing} of ${wantMissing} ${walkOnLast}`);
     const views = walkAll(host).filter((e) => e.attrs && e.attrs['data-view']).map((e) => e.attrs['data-view']);
     const compared = walkAll(host).filter((e) => /(^| )cmp-/.test(e.className || '')).length;
     ok('Z10 no way to Compare: the views are Table and Graph, nothing of it drawn',
       views.join() === 'table,graph' && compared === 0, `${views} ${compared}`);
-    const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec')
-      .find((sec) => sec.children[0] && /^die/.test(sec.children[0].textContent)) || { children: [] };
-    const table = () => walkAll(dieSec()).find((e) => has(e, 'wk-sides')) || { children: [] };
-    // The head rows: the group, the step, the value's name (lead 34d91c09d (나)); the rows below carry their id.
-    const headRows = () => walkAll(table()).filter((e) => e.tagName === 'tr' && !(e.attrs && e.attrs['data-row-id']));
-    const headRow = () => (headRows()[headRows().length - 1] || { children: [] }).children
-      .filter((c) => c.className !== 'wk-check').map((c) => c.textContent);
-    const stepRow = () => (headRows().length === 3 ? headRows()[1].children : []).filter((c) => c.className !== 'wk-check')
-      .map((c) => [c.textContent, c.colSpan]);
+    const headOf = (sec) => (walkAll(sec).find((e) => e.className === 'wk-sechead') || {}).textContent || '';
+    const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec').find((sec) => /^die/.test(headOf(sec))) || { children: [] };
+    const table = () => walkAll(dieSec()).find((e) => has(e, 'wk-wide')) || { children: [] };
+    // Wide's heads (lead 10-11 W): the node's columns, each group - its step and far end, its value's name when it shows
+    // one - over its columns, the signs and Δ under; the rows below carry their id.
+    const headRows = () => walkAll(table()).filter((e) => e.tagName === 'tr' && !(e.attrs && e.attrs['data-row-id']) && !has(e, 'wk-drawer'));
+    const headTexts = () => headRows().map((r) => r.children.filter((c) => c.className !== 'wk-check').map((c) => c.textContent));
+    const groupHeads = () => walkAll(table()).filter((e) => has(e, 'wk-stephead')).map((c) => [c.textContent, c.colSpan]);
     const rowOf = (id) => walkAll(table()).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id);
     const tds = (id) => ((rowOf(id) || { children: [] }).children).filter((c) => c.className !== 'wk-check')
-      .map((c) => (c.children.find((k) => k.className === 'wk-centrelabel') ? c.children.find((k) => k.className === 'wk-centrelabel').textContent : valsOf(c)));
-    ok('Z13 two groups: Route outermost, the + columns, the node in the centre, delta beside it, the − columns, Route outermost (34d91c09d, df11f9e81)',
-      JSON.stringify([headRow(), tds('d:3')]) === JSON.stringify([['Route', 'gate', 'mat_id', 'Δ', 'gate', 'Route'], ['inspected', '7', 'M-3', '−2', '9', 'inspected']]),
-      JSON.stringify([headRow(), tds('d:3')]));
-    // The node axis in the middle of its box (lead 10-10): a box at 400 px, 800 wide, 2000 to scroll.
-    const scrollTo = (axisLeft, axisRight) => mod.axisScrollLeft({ boxLeft: 400, boxWidth: 800, axisLeft, axisRight, scrollLeft: 0, scrollWidth: 2000 });
-    ok('Z28 a table opens with its node axis in the middle of its box, within what the box can scroll',
-      JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]) === JSON.stringify([600, 0, 1200]),
-      JSON.stringify([scrollTo(1300, 1500), scrollTo(500, 600), scrollTo(2300, 2400)]));
-    ok('Z27 the step once over the columns that share it, the value\'s name under each (34d91c09d)',
-      JSON.stringify(stepRow()) === JSON.stringify([['', 1], ['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1], ['', 1]]), JSON.stringify(stepRow()));
+      .map((c) => (has(c, 'wk-centre') ? labelOf(c) : valsOf(c)));
+    ok('Z13 two groups: the node first, then each column its + cell, Δ, its − cell (lead 10-11 W, the mockup B-ㄱ)',
+      JSON.stringify([headTexts(), tds('d:3')]) === JSON.stringify([[['mat_id', 'inspected ← wafer@1 · gate'], ['+', 'Δ', '−']], ['M-3', '7', '−2', '9']]),
+      JSON.stringify([headTexts(), tds('d:3')]));
+    // ⚰️ Z28 (the node axis in the middle of its box) retired 10-11 with the mirrored sides (lead W): the node is first.
+    ok('Z27 a group said once over its columns - its + cell, Δ and − cell (lead 10-11 W)',
+      JSON.stringify(groupHeads()) === JSON.stringify([['inspected ← wafer@1 · gate', 3]]), JSON.stringify(groupHeads()));
     const copy = walkAll(rowOf('d:3') || { children: [] }).find((e) => e.className === 'wk-copyid');
-    ok('Z16 the id is behind a press in the centre, not a column - an icon, its name for a reader (34d91c09d 5)',
+    ok('Z16 the id is behind a press in the node cell, not a column - an icon, its name for a reader (34d91c09d 5)',
       Boolean(copy) && copy.attrs['data-id'] === 'd:3' && copy.textContent === '' && copy.attrs['aria-label'] === 'Copy id'
-      && !headRow().includes('id'), JSON.stringify([headRow(), copy && copy.textContent]));
+      && !headTexts().flat().includes('id'), JSON.stringify([headTexts(), copy && copy.textContent]));
     const fire = (b) => { for (const fn of (b && b.listeners.click) || []) fn({ stopPropagation() {} }); };
-    // Several values (34d91c09d 1): the first and «+N»; a press on «+N» unfolds them all, another folds.
-    const moreOf = () => walkAll(rowOf('d:4') || { children: [] }).find((e) => e.className === 'wk-more');
-    const cellOf4 = () => ((rowOf('d:4') || { children: [] }).children.find((c) => c.children.includes(moreOf())));
-    const said = () => (cellOf4() ? [valsOf(cellOf4()), moreOf().textContent, has(cellOf4(), 'is-open')] : null);
+    // Several values (34d91c09d 1, W): the first and a «+N» tag; pressed, a drawer under the row with each record and who
+    // gave it - the lines Long draws; pressed again, gone.
+    const tagOf = () => walkAll(rowOf('d:4') || { children: [] }).find((e) => has(e, 'wk-tag'));
+    const cellOf4 = () => ((rowOf('d:4') || { children: [] }).children.find((c) => walkAll(c).includes(tagOf())));
+    const drawerOf = () => {
+      const rows = walkAll(table()).filter((e) => e.tagName === 'tr');
+      const at = rows.indexOf(rowOf('d:4'));
+      return at >= 0 && rows[at + 1] && has(rows[at + 1], 'wk-drawer') ? rows[at + 1] : null;
+    };
+    const records = () => (drawerOf() ? walkAll(drawerOf()).filter((e) => has(e, 'wk-record')).map((e) => e.textContent) : null);
+    const said = () => (cellOf4() ? [valsOf(cellOf4()), tagOf().textContent, records()] : null);
     const shut = said();
-    fire(moreOf());
+    fire(tagOf());
     const opened = said();
-    fire(moreOf());
-    ok('Z24 several values in a cell: the first and «+N»; pressed, every one in the cell; pressed again, folded (34d91c09d 1)',
-      JSON.stringify([shut, opened, said()]) === JSON.stringify([['1', '+1', false], ['1 · 2', 'Less', true], ['1', '+1', false]]),
+    fire(tagOf());
+    ok('Z24 several values in a cell: the first and «+N»; pressed, a drawer under its row with every record and who gave it; pressed again, gone (lead 10-11 W)',
+      JSON.stringify([shut, opened, said()]) === JSON.stringify([['1', '+1', null], ['1', '+1', ['1+ · A · start', '2+ · C · start']], ['1', '+1', null]]),
       JSON.stringify([shut, opened, said()]));
-    // Route's «+N» on the page (lead df11f9e81): the same press as a value cell's - every route, then the first again.
+    // A node reached by several routes (lead df11f9e81, W: the Route column retired): its source line the first and «+N»,
+    // every route in its title.
     const page2 = makeDoc();
     const host2 = page2.createElement('div');
     const two = mod.boot(page2, host2, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
@@ -926,42 +946,32 @@ async function suite(mod) {
     two.state.result = BOND_TWO;
     let drew = true;
     try { two.render(); } catch (e) { drew = false; }
-    const coreMore = () => walkAll(walkAll(host2).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === 'w:c') || { children: [] })
-      .find((e) => e.className === 'wk-more');
-    const coreCell = () => (walkAll(host2).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === 'w:c') || { children: [] })
-      .children.find((c) => c.children.includes(coreMore()));
-    const coreSaid = () => (coreCell() ? [valsOf(coreCell()), coreMore().textContent] : null);
-    const routeShut = coreSaid();
-    try { fire(coreMore()); } catch (e) { drew = false; }
-    const routeOpen = coreSaid();
-    ok('Z32 a Route cell\'s «+N» on the page: pressed, every path in the cell; the first and «+N» before',
-      drew && JSON.stringify([routeShut, routeOpen]) === JSON.stringify([[BONDING, '+1'], [`${BONDING} · ${STACKING}`, 'Less']]),
-      JSON.stringify([drew, routeShut, routeOpen]));
+    const coreSrc = () => {
+      const tr = walkAll(host2).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === 'w:c');
+      const centre = tr && tr.children.find((c) => has(c, 'wk-centre'));
+      const src = centre && centre.children.find((c) => c.className === 'wk-src');
+      return src ? [src.textContent, src.title] : null;
+    };
+    ok('Z32 a node reached by several routes: its source line the first and «+N», every route in its title (lead 10-11 W)',
+      drew && JSON.stringify(coreSrc()) === JSON.stringify([`${BONDING} +1`, `${BONDING} · ${STACKING}`]), JSON.stringify([drew, coreSrc()]));
     const srcShut = cellOf4() ? [valsOf(cellOf4()), srcsOf(cellOf4())] : null;
-    fire(moreOf());
-    const srcOpen = cellOf4() ? [valsOf(cellOf4()), srcsOf(cellOf4())] : null;
-    fire(moreOf());
-    ok('Z41 the page: under a value who gave it; «+N» opened, each value its own source (lead 99ed68cb7 C)',
-      JSON.stringify([srcShut, srcOpen]) === JSON.stringify([['1', ['A · start']], ['1 · 2', ['A · start', 'C · start']]]),
-      JSON.stringify([srcShut, srcOpen]));
+    ok('Z41 the page: under a value who gave it, when another node did - the wafer and its way (lead 99ed68cb7 C, W 11)',
+      JSON.stringify(srcShut) === JSON.stringify(['1', ['A · start']]), JSON.stringify(srcShut));
     const bands = walkAll(host).filter((e) => has(e, 'wk-sidehead')).map((e) => [e.attrs['data-sign'], has(e, 'wk-plus'), has(e, 'wk-minus')]);
-    ok('Z25 a band its sign\'s class - + one colour, − the other (34d91c09d 4)',
-      JSON.stringify(bands.slice(0, 2)) === JSON.stringify([['+', true, false], ['\u2212', false, true]]), JSON.stringify(bands));
-    // A column no row has a value in (34d91c09d 7): folded, said by its count; pressed, it stands in each group.
-    const foldOf = () => walkAll(dieSec()).find((e) => has(e, 'wk-emptycols'));
-    const folded = [foldOf() && foldOf().textContent, headRow()];
-    fire(foldOf());
-    const unfolded = [foldOf() && foldOf().attrs['aria-pressed'], headRow()];
-    const unfoldedSteps = stepRow();
-    fire(foldOf());
-    ok('Z26 «1 empty column»: pressed, the column stands in each group; pressed again, folded',
-      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]) === JSON.stringify([['1 empty column', ['Route', 'gate', 'mat_id', 'Δ', 'gate', 'Route']],
-        ['true', ['Route', 'note', 'gate', 'mat_id', 'Δ', 'gate', 'note', 'Route']], ['Route', 'gate', 'mat_id', 'Δ', 'gate', 'Route'],
-        [['', 1], ['inspected (in)', 2], ['', 1], ['', 1], ['inspected (in)', 2], ['', 1]]]),
-      JSON.stringify([folded, unfolded, headRow(), unfoldedSteps]));
+    ok('Z25 a sign its class - + one colour, − the other (34d91c09d 4)',
+      JSON.stringify(bands.slice(0, 2)) === JSON.stringify([['+', true, false], ['−', false, true]]), JSON.stringify(bands));
+    // A column no row has a value in (lead 10-11 W): in no list - not in the head, not in Columns.
+    const colsButton = () => walkAll(dieSec()).find((e) => e.attrs && e.attrs['data-columns'] !== undefined);
+    fire(colsButton());
+    const listed = walkAll(dieSec()).filter((e) => e.className === 'wk-popcheck').map((e) => e.textContent);
+    const countWords = colsButton() && colsButton().textContent;
+    fire(colsButton());
+    ok('Z26 a column no row has a value in (note) is in no list: not in the head, not in Columns; Columns says k of n groups',
+      JSON.stringify([headTexts().flat().some((t) => t.includes('note')), listed, countWords])
+        === JSON.stringify([false, ['inspected ← wafer@1'], 'Columns · 1 of 1 ▾']),
+      JSON.stringify([headTexts(), listed, countWords]));
     const press = (value) => {
-      const b = walkAll(host).find((e) => e.attrs && e.attrs['data-rows'] === value);
-      for (const fn of (b && b.listeners.click) || []) fn({});
+      for (const b of walkAll(host).filter((e) => e.attrs && e.attrs['data-rows'] === value)) for (const fn of b.listeners.click || []) fn({});
     };
     const shown = () => walkAll(host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']).sort().join();
     press('differs');
@@ -969,28 +979,28 @@ async function suite(mod) {
     press('missing');
     const missed = shown();
     press('all');
-    ok('Z14 All rows · Differs · Missing: the rows the groups differ on, the rows one missed, then every row',
+    ok('Z14 All rows · Differs · Missing, each section\'s own: the rows the groups differ on, the rows one missed, then every row',
       JSON.stringify([differs, missed, shown()]) === JSON.stringify([ALL, 'd:1,d:2,d:4,s:a,s:b,s:c', ALL]), JSON.stringify([differs, missed]));
-    // + Column on the die section: the route in, then the far wafer's key - a column each group, + reversed.
+    // + Column on the die section, from Columns' foot: the route in, then the far wafer's key - a group of its own, each
+    // side its cell.
+    fire(colsButton());
     const addOn = walkAll(dieSec()).find((e) => e.tagName === 'button' && e.textContent === '+ Column');
-    for (const fn of (addOn && addOn.listeners.click) || []) fn({});
+    fire(addOn);
     const pick = (n, test) => {
-      const sel = walkAll(dieSec()).filter((e) => e.tagName === 'select')[n];
+      const sel = walkAll(dieSec()).filter((e) => e.tagName === 'select' && !has(e, 'wk-longname') && !has(e, 'wk-trendcol'))[n];
       const opt = sel && sel.children.find((o) => test(o.textContent));
       if (!opt) return false;
       sel.value = opt.value;
       for (const fn of sel.listeners.change || []) fn({});
       return true;
     };
-    const route = pick(0, (t) => t.startsWith('inspected (in) → '));
+    const route = pick(0, (t) => t.startsWith('inspected ← '));
     const value = route && pick(1, (t) => t === 'key · wafer');
-    const ADDED_STEP = 'inspected (in) → wafer@1';
-    ok('Z15 + Column: a route the rows take, then what its end holds - a column each group, the + side reversed',
-      JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]) === JSON.stringify([true, true,
-        ['Route', 'wafer', 'gate', 'mat_id', 'Δ', 'gate', 'wafer', 'Route'],
-        [['', 1], [ADDED_STEP, 1], ['inspected (in)', 1], ['', 1], ['', 1], ['inspected (in)', 1], [ADDED_STEP, 1], ['', 1]],
-        ['inspected', 'A', '7', 'M-3', '−2', '9', 'B', 'inspected']]),
-      JSON.stringify([route, value, headRow(), stepRow(), tds('d:3')]));
+    const ADDED = 'inspected ← wafer@1 · wafer';
+    ok('Z15 + Column at Columns\' foot: a route the rows take, then what its end holds - a group of its own, each side its cell',
+      JSON.stringify([route, value, groupHeads(), tds('d:3')]) === JSON.stringify([true, true,
+        [['inspected ← wafer@1 · gate', 3], [ADDED, 3]], ['M-3', '7', '−2', '9', 'A', '—', 'B']]),
+      JSON.stringify([route, value, groupHeads(), tds('d:3')]));
   }
 }
 
@@ -1014,8 +1024,8 @@ const TWO = {
 };
 const gateCell = (TV, answer) => {
   const die = TV.walkTableView(answer, DECL.entities, DECL.predicates).sections.find((s) => s.type === 'die@1');
-  const at = die ? die.heads.indexOf('inspected (in) · gate') : -1;
-  return at >= 0 ? die.rows[0].byGroup[0][at] : { text: null, numeric: null };
+  const at = die ? die.columnHeads.indexOf(GATE_IN) : -1;
+  return at >= 0 ? die.rows[0].cells[at].sides[0] : { text: null, numeric: null };
 };
 const qualifierSuite = (TV) => {
   // The walk table's cell (E1, the flat table's fold retired): every edge's value kept, each with the node that gave it.
@@ -1042,21 +1052,17 @@ const suiteRan = ran;
 // ── the walk table side by side as the formula (lead 5cf5c3401; the signs by the server's reach) ──
 const rowIds = (table) => table.sections.flatMap((sec) => sec.rows.map((r) => r.id)).sort().join(',');
 const sideSuite = (TV) => {
-  const view = (starts, result = SIGNED, added) => TV.walkTableView(result, DECL.entities, DECL.predicates, undefined, starts, added);
-  // A row's cell in one group under one head, as drawn: missing in brackets.
-  const cell = (table, type, id, head, group) => {
-    const sec = table.sections.find((x) => x.type === type);
-    const at = sec ? sec.heads.indexOf(head) : -1;
-    const row = sec && sec.rows.find((r) => r.id === id);
-    const side = row && row.byGroup[group];
-    const got = side && at >= 0 ? (side[0] && side[0].missing ? side[0] : side[at]) : null;
-    return got ? (got.missing ? `[${got.text}]` : got.text) : null;
-  };
+  const view = (starts, result = SIGNED, added, fold) => TV.walkTableView(result, DECL.entities, DECL.predicates, undefined, starts, added, fold);
+  // A row's cell in one group under one head (lead 10-11 W: a column its groups' cells), missing in brackets.
   const raw = (table, type, id, head, group) => {
     const sec = table.sections.find((x) => x.type === type);
-    const at = sec ? sec.heads.indexOf(head) : -1;
+    const at = sec ? sec.columnHeads.indexOf(head) : -1;
     const row = sec && sec.rows.find((r) => r.id === id);
-    return row && at >= 0 ? row.byGroup[group][at] : null;
+    return row && at >= 0 ? row.cells[at].sides[group] : null;
+  };
+  const cell = (table, type, id, head, group) => {
+    const got = raw(table, type, id, head, group);
+    return got ? (got.missing ? `[${got.text}]` : got.text) : null;
   };
   const plain = view({ positive: ['s:a', 's:c'], negative: [] });
   ok('Z1 no - start: one side, every node the walk brought (E1: the flat table retired)', plain.groups.length === 1
@@ -1071,23 +1077,22 @@ const sideSuite = (TV) => {
   ok('Z4 reached but no value says so, not missing',
     cell(two, 'die@1', 'd:1', GATE_IN, 0) === TV.EMPTY && cell(two, 'die@1', 'd:2', GATE_IN, 1) === TV.EMPTY,
     `${cell(two, 'die@1', 'd:1', GATE_IN, 0)} | ${cell(two, 'die@1', 'd:2', GATE_IN, 1)}`);
-  ok('Z5 a cell reads its group\'s edges only: the node both reached says each group\'s own value',
+  ok('Z5 a cell reads its group\'s edges only: the node both reached says each group\'s own value - one group, its far type (lead 10-11 W addendum 8 (다))',
     cell(two, 'die@1', 'd:3', GATE_IN, 0) === '7' && cell(two, 'die@1', 'd:3', GATE_IN, 1) === '9',
     `${cell(two, 'die@1', 'd:3', GATE_IN, 0)} | ${cell(two, 'die@1', 'd:3', GATE_IN, 1)}`);
-  // Copy table (lead a27dfbb0f): one head row - each side's columns under its sign, the node's own, Δ, the id last;
-  // values raw, several «; », none empty, a side not reached «missing» in each of its columns.
-  const cpDie = two.sections.find((x) => x.type === 'die@1') || { groups: [], heads: [], centreHeads: [], deltaHeads: [], rows: [] };
+  // Copy table (lead a27dfbb0f, W: the shape shown): the node's own, then each column its + · Δ · −, the id last; values
+  // raw, several «; », none empty, a side not reached «missing» in each of its cells.
+  const cpDie = two.sections.find((x) => x.type === 'die@1') || { groups: [], columnHeads: [], centreHeads: [], parts: [], rows: [] };
   const sheet = TV.sheetOf ? TV.sheetOf(cpDie, 'all') : { head: [], rows: [] };
   const cpRow = (id) => sheet.rows.find((r) => r[r.length - 1] === id) || [];
   const at = (h) => sheet.head.indexOf(h);
-  const d3Delta = ((cpDie.rows.find((r) => r.id === 'd:3') || { deltas: [] }).deltas[0] || {}).value;
-  ok('CP1 the section as a sheet: head + ' + "side' columns, the node's own, - side' columns, Δ, id; a row as wide as the head; d:1's - side «missing» in each column; d:4 «1; 2»; d:3 7 and 9 and its Δ its number; no «—»",
-    sheet.head.length === cpDie.heads.length * 2 + cpDie.centreHeads.length + cpDie.deltaHeads.length + 1
-      && sheet.head[0] === `+ ${cpDie.heads[0]}` && sheet.head[sheet.head.length - 1] === 'id'
+  const d3Delta = (((cpDie.rows.find((r) => r.id === 'd:3') || { cells: [] }).cells[0] || {}).delta || {}).value;
+  ok('CP1 the section as a sheet, as Wide draws it: the node\'s own, each column its + · Δ · −, the id; a row as wide as the head; d:1\'s − «missing»; d:4 «1; 2»; d:3 7 and 9 and its Δ its number; no «—» (lead 10-11 W)',
+    JSON.stringify(sheet.head) === JSON.stringify(['mat_id', `${GATE_IN} · +`, `${GATE_IN} · Δ`, `${GATE_IN} · −`, 'id'])
       && sheet.rows.length === cpDie.rows.length && sheet.rows.every((r) => r.length === sheet.head.length)
-      && cpDie.heads.every((h) => cpRow('d:1')[at(`− ${h}`)] === TV.MISSING)
-      && cpRow('d:4')[at(`+ ${GATE_IN}`)] === '1; 2' && cpRow('d:3')[at(`+ ${GATE_IN}`)] === '7' && cpRow('d:3')[at(`− ${GATE_IN}`)] === '9'
-      && typeof d3Delta === 'number' && cpRow('d:3')[at(cpDie.deltaHeads[0])] === String(d3Delta)
+      && cpRow('d:1')[at(`${GATE_IN} · −`)] === TV.MISSING
+      && cpRow('d:4')[at(`${GATE_IN} · +`)] === '1; 2' && cpRow('d:3')[at(`${GATE_IN} · +`)] === '7' && cpRow('d:3')[at(`${GATE_IN} · −`)] === '9'
+      && typeof d3Delta === 'number' && cpRow('d:3')[at(`${GATE_IN} · Δ`)] === String(d3Delta)
       && !sheet.rows.some((r) => r.includes(TV.EMPTY)),
     JSON.stringify([sheet.head, cpRow('d:1'), cpRow('d:3'), cpRow('d:4')]));
   const differs = TV.sheetOf ? TV.sheetOf(cpDie, 'differs') : { rows: [] };
@@ -1104,91 +1109,109 @@ const sideSuite = (TV) => {
   ok('Z7 an answer that ranks nothing: one side holding every node, said to be both signs', blind.groups.length === 1
     && blind.unsplit === true && rowIds(blind) === ALL, `${JSON.stringify(blind.groups)} ${blind.unsplit}`);
   const bare = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map(({ qualifiers, ...e }) => e) });
-  const bareDie = bare.sections.find((x) => x.type === 'die@1') || { heads: [], rows: [] };
-  const d3 = bareDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
-  const d1 = bareDie.rows.find((r) => r.id === 'd:1') || { byGroup: [[], []] };
-  ok('Z8 a type with no column: Route alone - how each side reached it (via and depth folded into it, lead df11f9e81); missing where it did not, once',
-    JSON.stringify([bareDie.heads, d3.byGroup.map((g) => g.map((c) => c.text)), d1.byGroup[1].map((c) => [c.missing, c.span])])
-      === JSON.stringify([[TV.ROUTE], [['inspected'], ['inspected']], [[true, 1]]]),
-    JSON.stringify([bareDie.heads, d3.byGroup, d1.byGroup[1]]));
-  const die = two.sections.find((x) => x.type === 'die@1') || { groups: [], heads: [], centreHeads: [], deltaHeads: [], rows: [] };
-  const wafer = two.sections.find((x) => x.type === 'wafer@1') || { heads: [] };
-  ok('Z11 an edge attribute\'s head: its predicate, «(in)» when taken in, and its name',
-    JSON.stringify([die.heads, wafer.heads]) === JSON.stringify([[GATE_IN, TV.ROUTE], ['inspected · gate', TV.ROUTE]]), JSON.stringify([die.heads, wafer.heads]));
-  ok('Z12 delta where both groups say one number: the first less the second; its head once',
-    JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas.map((d) => d.text).join())])
-      === JSON.stringify([[TV.DELTA], ['', '', '−2', '']]), JSON.stringify([die.deltaHeads, die.rows.map((r) => r.deltas)]));
-  ok('Z17 the node\'s own columns - the keys its rows carry - once in the centre, read off the row',
+  const bareDie = bare.sections.find((x) => x.type === 'die@1') || { columnHeads: [], rows: [] };
+  const routesOf = (sec, id) => ((sec.rows.find((r) => r.id === id) || { routes: [] }).routes).map((w) => [w.sign, w.text]);
+  ok('Z8 a type with no column: no column - how each side reached a row is its node cell\'s source line, a side that did not none (lead 10-11 W: the Route column retired)',
+    JSON.stringify([bareDie.columnHeads, routesOf(bareDie, 'd:3'), routesOf(bareDie, 'd:1')])
+      === JSON.stringify([[], [['+', 'inspected'], ['−', 'inspected']], [['+', TV.EMPTY]]]),
+    JSON.stringify([bareDie.columnHeads, routesOf(bareDie, 'd:3'), routesOf(bareDie, 'd:1')]));
+  const die = two.sections.find((x) => x.type === 'die@1') || { groups: [], columnHeads: [], centreHeads: [], parts: [], rows: [], listed: [] };
+  const wafer = two.sections.find((x) => x.type === 'wafer@1') || { columnHeads: [] };
+  ok('Z11 an edge attribute\'s head: its predicate, its arrow - in «←», out «→» -, its far type, its name (lead 10-11 W)',
+    JSON.stringify([die.columnHeads, wafer.columnHeads]) === JSON.stringify([[GATE_IN], ['inspected → die@1 · gate']]), JSON.stringify([die.columnHeads, wafer.columnHeads]));
+  ok('Z12 Δ under every column of two groups (W: «+ · Δ · −»): the first less the second where both say one number, «—» where not',
+    JSON.stringify([die.parts.map((p) => p.delta), die.rows.map((r) => r.cells.map((c) => (c.delta ? c.delta.text : '')).join())])
+      === JSON.stringify([[true], ['—', '—', '−2', '—']]), JSON.stringify([die.parts, die.rows.map((r) => r.cells.map((c) => c.delta))]));
+  ok('Z17 the node\'s own columns - the keys its rows carry - once, first, read off the row',
     JSON.stringify([die.centreHeads, (die.rows.find((r) => r.id === 'd:3') || { centre: [] }).centre.map((c) => c.text)])
       === JSON.stringify([['mat_id'], ['M-3']]), JSON.stringify(die.centreHeads));
-  ok('Z20 a band a group: its starts and its rows', JSON.stringify(die.groups) === JSON.stringify([
+  ok('Z20 a group a sign: its starts and its rows', JSON.stringify(die.groups) === JSON.stringify([
     { sign: '+', starts: 2, count: 3 }, { sign: '−', starts: 1, count: 2 }]), JSON.stringify(die.groups));
+  const ADDED_HEAD = 'inspected ← wafer@1 · wafer';
   const added = new Map([['die@1', [{ steps: [{ predicate: 'inspected', direction: 'incoming' }], value: { on: 'key', name: 'wafer' },
-    words: ['inspected (in) → wafer@1', 'wafer'] }]]]);
+    words: ['inspected ← wafer@1', 'wafer'] }]]]);
   const more = view(SIGNED_STARTS, SIGNED, added);
-  ok('Z18 an added column: its route\'s far node, a column of each group',
-    cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 0) === 'A' && cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 1) === 'B',
-    `${cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 0)} ${cell(more, 'die@1', 'd:3', 'inspected (in) → wafer@1 · wafer', 1)}`);
+  ok('Z18 an added column: its route\'s far node, a cell of each group',
+    cell(more, 'die@1', 'd:3', ADDED_HEAD, 0) === 'A' && cell(more, 'die@1', 'd:3', ADDED_HEAD, 1) === 'B',
+    `${cell(more, 'die@1', 'd:3', ADDED_HEAD, 0)} ${cell(more, 'die@1', 'd:3', ADDED_HEAD, 1)}`);
   const capped = TV.cellWords({ missing: false, values: [1, 2], more: true });
   ok('Z19 words: several values past the cap, and a difference without its float tail',
     JSON.stringify([capped.text, capped.rest, TV.deltaWords(0.22 - 0.3305), TV.deltaWords(19.5)])
       === JSON.stringify(['1', '+1+', '−0.1105', '+19.5']), JSON.stringify(capped));
-  // The nine (lead 34d91c09d).
   const moreDie = more.sections.find((x) => x.type === 'die@1') || { rows: [] };
-  const m1 = moreDie.rows.find((r) => r.id === 'd:1') || { byGroup: [[], []] };
-  const m3 = moreDie.rows.find((r) => r.id === 'd:3') || { byGroup: [[], []] };
-  ok('Z21 a side that did not reach the node: one missing cell across its columns; a side that did: a cell a column (34d91c09d 3)',
-    JSON.stringify([m1.byGroup[1].map((c) => [c.text, c.span]), m3.byGroup[0].length]) === JSON.stringify([[['missing', 3]], 3]),
-    JSON.stringify([m1.byGroup[1], m3.byGroup[0].length]));
-  const eqp = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e) => ({ ...e, qualifiers: { ...e.qualifiers, eqp: 'E' } })) });
-  const eqpDie = eqp.sections.find((x) => x.type === 'die@1') || { heads: [] };
-  ok('Z22 the number columns nearest the node, the rest outward, each in its order (34d91c09d 2)',
-    JSON.stringify(eqpDie.heads) === JSON.stringify([GATE_IN, 'inspected (in) · eqp', TV.ROUTE]), JSON.stringify(eqpDie.heads));
-  const open = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), new Set(['die@1']));
-  const openDie = open.sections.find((x) => x.type === 'die@1') || { heads: [] };
-  ok('Z23 a column no row has a value in folds, counted; its type opened, it stands (34d91c09d 7)',
-    JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]) === JSON.stringify([[GATE_IN, TV.ROUTE], { count: 1, open: false },
-      [GATE_IN, NOTE_IN, TV.ROUTE], { count: 1, open: true }]), JSON.stringify([die.heads, die.empty, openDie.heads, openDie.empty]));
-  // C (lead 99ed68cb7): who gave a value - the node its read ends at, its keys, its side's route - on both schemes and 18766.
-  const srcOf = (t, type, id, head, group) => (raw(t, type, id, head, group) || {}).sources || null;
+  const m1 = moreDie.rows.find((r) => r.id === 'd:1') || { cells: [] };
+  const m3 = moreDie.rows.find((r) => r.id === 'd:3') || { cells: [] };
+  ok('Z21 a side that did not reach the node says missing in each of its cells; a side that did, a value or «—» (lead 10-11 W, the mockup B-ㄱ - in place of 34d91c09d 3\'s one cell across)',
+    JSON.stringify([m1.cells.map((c) => [c.sides[1].text, c.sides[1].missing]), m3.cells.length]) === JSON.stringify([[['missing', true], ['missing', true]], 2]),
+    JSON.stringify([m1.cells.map((c) => c.sides[1]), m3.cells.length]));
+  const eqpAnswer = { ...SIGNED, edges: SIGNED.edges.map((e) => ({ ...e, qualifiers: { ...e.qualifiers, eqp: 'E' } })) };
+  const eqp = view(SIGNED_STARTS, eqpAnswer);
+  const eqpDie = eqp.sections.find((x) => x.type === 'die@1') || { columnHeads: [], parts: [] };
+  const groupOfGate = (eqpDie.parts[0] || {}).group;
+  const eqpOpen = view(SIGNED_STARTS, eqpAnswer, new Map(), { open: new Map([['die@1', new Set([groupOfGate])]]) });
+  const eqpOpenDie = eqpOpen.sections.find((x) => x.type === 'die@1') || { columnHeads: [], parts: [] };
+  ok('Z22 a group opens on its number cells, the rest behind its «▸ N»; opened, the numbers first, the rest after (lead 10-11 W addendum 8)',
+    JSON.stringify([eqpDie.columnHeads, eqpDie.parts.map((p) => p.folded), eqpOpenDie.columnHeads, eqpOpenDie.parts.map((p) => p.open)])
+      === JSON.stringify([[GATE_IN], [1], [GATE_IN, 'inspected ← wafer@1 · eqp'], [true, true]]),
+    JSON.stringify([eqpDie.columnHeads, eqpDie.parts, eqpOpenDie.columnHeads]));
+  const offDie = (view(SIGNED_STARTS, SIGNED, new Map(), { off: new Map([['die@1', new Set([groupOfGate])]]) }).sections.find((x) => x.type === 'die@1') || { columnHeads: [], listed: [] });
+  // An added column no row has a value in (a key the wafers do not carry).
+  const nothing = new Map([['die@1', [{ steps: [{ predicate: 'inspected', direction: 'incoming' }], value: { on: 'key', name: 'nothing' },
+    words: ['inspected ← wafer@1', 'nothing'] }]]]);
+  const nothingDie = view(SIGNED_STARTS, SIGNED, nothing).sections.find((x) => x.type === 'die@1') || { columnHeads: [], listed: [] };
+  ok('Z23 a column no row has a value in (note; an added key no wafer carries) is in no list - not drawn, not behind a group\'s ▸, not in Columns, not in Long; a group Columns turns off is not drawn, listed off (lead 10-11 W)',
+    JSON.stringify([nothingDie.columnHeads, nothingDie.listed.length]) === JSON.stringify([[GATE_IN], 1]) &&
+    JSON.stringify([die.columnHeads, die.parts.map((x) => x.folded), die.listed.map((x) => [x.head, x.on]), die.long.map((x) => x.head), offDie.columnHeads, offDie.listed.map((x) => [x.head, x.on])])
+      === JSON.stringify([[GATE_IN], [0], [['inspected ← wafer@1', true]], ['inspected ← wafer@1'], [], [['inspected ← wafer@1', false]]]),
+    JSON.stringify([die.columnHeads, die.listed, die.long.map((x) => x.head), offDie.columnHeads, offDie.listed]));
+  // C (lead 99ed68cb7, W 11): who gave a value - an edge's subject, a node's own - its keys and its side's route; none
+  // when the row gave it itself.
+  const srcOf = (t, type, id, head, group) => ((raw(t, type, id, head, group) || {}).sources || null);
+  const MEASURES_IN = 'measures ← wafer@1 · value';
   const edgeSrc = view(BOND_STARTS, BOND_SRC);
-  ok('Z38 a value\'s source, the measurement an edge: the wafer that measured it, its keys and its side\'s route',
-    JSON.stringify([srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 0), srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 1)])
+  // The − side's value given by a die: its own group, its far type (lead 10-11 W addendum 8 (다)).
+  const MEASURES_DIE = 'measures ← die@1 · value';
+  ok('Z38 a value\'s source, the measurement an edge: the node that measured it, its keys and its side\'s route - a wafer\'s in the wafers\' group, a die\'s in the dies\'',
+    JSON.stringify([srcOf(edgeSrc, 'quantity@1', 'q:1', MEASURES_IN, 0), srcOf(edgeSrc, 'quantity@1', 'q:1', MEASURES_DIE, 1)])
       === JSON.stringify([['B · start', `C · ${BONDING}`], ['N-1 · in_container']]),
-    JSON.stringify([srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 0), srcOf(edgeSrc, 'quantity@1', 'q:1', 'measures (in) · value', 1)]));
+    JSON.stringify([srcOf(edgeSrc, 'quantity@1', 'q:1', MEASURES_IN, 0), srcOf(edgeSrc, 'quantity@1', 'q:1', MEASURES_DIE, 1)]));
   const eventSrc = TV.walkTableView(BOND_SRC_EVENT, DECL.entities, DECL.predicates, undefined, BOND_STARTS, OF_VALUE);
+  const OF_IN = 'of ← measurement@1 · value';
   ok('Z39 a value\'s source, the measurement an event node: that node, its label (no keys), and its side\'s route',
-    JSON.stringify([srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 0), srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 1)])
+    JSON.stringify([srcOf(eventSrc, 'quantity@1', 'q:1', OF_IN, 0), srcOf(eventSrc, 'quantity@1', 'q:1', OF_IN, 1)])
       === JSON.stringify([['M:1 · measured', `M:3 · ${BONDING} → measured`], ['M:2 · in_container → measured']]),
-    JSON.stringify([srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 0), srcOf(eventSrc, 'quantity@1', 'q:1', 'of (in) · value', 1)]));
+    JSON.stringify([srcOf(eventSrc, 'quantity@1', 'q:1', OF_IN, 0), srcOf(eventSrc, 'quantity@1', 'q:1', OF_IN, 1)]));
   const bt = TV.walkTableView(SRC_18766, SRC_18766._entities, [], undefined, SRC_18766._starts);
   const btId = SRC_18766.nodes.find((n) => n.label === 'bond_temp').id;
-  const btCell = (g) => raw(bt, 'quantity', btId, 'measures (in) · value', g) || {};
-  ok('Z40 18766 bond_temp: + 35.5 «SYN-BW-103-11 · start», 21.5 and 23.5 the core wafers by their bonding; − 13 «SYN-BW-SPL-400-19 · start»',
+  const BT_HEAD = 'measures ← wafer · value';
+  const btCell = (g) => raw(bt, 'quantity', btId, BT_HEAD, g) || {};
+  ok('Z40 18766 bond_temp: + 35.5 «SYN-BW-103-11 · start», 21.5 and 23.5 the core wafers by their bonding; − 13 «SYN-BW-SPL-400-19 · start» - one group, its far type, Δ between',
     JSON.stringify([btCell(0).values, btCell(0).sources, btCell(1).text, btCell(1).sources]) === JSON.stringify([['35.5', '21.5', '23.5'],
       ['SYN-BW-103-11 · start', 'SYN-CW-103-01 · in_container → bonded_from → in_container', 'SYN-CW-103-02 · in_container → bonded_from → in_container'],
       '13', ['SYN-BW-SPL-400-19 · start']]),
     JSON.stringify([btCell(0).values, btCell(0).sources, btCell(1).text, btCell(1).sources]));
   const bc = TV.walkTableView(SRC_COLLECT, SRC_COLLECT._entities, [], undefined, SRC_COLLECT._starts);
-  const bcCell = (g) => raw(bc, 'quantity', btId, 'measures (in) · value', g) || {};
-  const everySource = bc.sections.flatMap((x) => x.rows.flatMap((r) => r.byGroup.flatMap((side) => side.flatMap((c) => c.sources || []))));
+  const bcCell = (g) => raw(bc, 'quantity', btId, BT_HEAD, g) || {};
+  const everySource = bc.sections.flatMap((x) => x.rows.flatMap((r) => r.cells.flatMap((c) => c.sides.flatMap((side) => (side.sources || []).filter(Boolean)))));
   ok('Z42 collect quantity alone (the demo\'s form): the wafers are not in nodes, their keys read off their ids - the same sources as Z40, no id in any (lead 10-11)',
     JSON.stringify([bcCell(0).sources, bcCell(1).sources]) === JSON.stringify([btCell(0).sources, btCell(1).sources])
       && everySource.length >= 4 && !everySource.some((w) => w.includes('ledger-entity:')),
     JSON.stringify([bcCell(0).sources, bcCell(1).sources, everySource.filter((w) => w.includes('ledger-entity:')).length]));
   // A node the answer did not send and whose id is no entity's: «—», never the id.
   const unsent = view(BOND_STARTS, { ...BOND_SRC, nodes: BOND_SRC.nodes.filter((n) => n.id !== 'w:c') });
+  // Its type unknown, its value stands in a group of no far type.
   ok('Z43 a value\'s node neither sent nor an entity id: its source says «—», not the id',
-    JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)) === JSON.stringify(['B · start', `${TV.EMPTY} · ${BONDING}`]),
-    JSON.stringify(srcOf(unsent, 'quantity@1', 'q:1', 'measures (in) · value', 0)));
-  // D (lead 99ed68cb7): who reached a row - A only, A + B, B only - each side its own; B's path under Route.
+    JSON.stringify([srcOf(unsent, 'quantity@1', 'q:1', MEASURES_IN, 0), srcOf(unsent, 'quantity@1', 'q:1', 'measures ← · value', 0)])
+      === JSON.stringify([['B · start'], [`${TV.EMPTY} · ${BONDING}`]]),
+    JSON.stringify([srcOf(unsent, 'quantity@1', 'q:1', MEASURES_IN, 0), srcOf(unsent, 'quantity@1', 'q:1', 'measures ← · value', 0)]));
+  // D (lead 99ed68cb7): who reached a row - A only, A + B, B only - each side its own; B's path under the node.
   const ctlKinds = (t, type) => {
     const sec = t.sections.find((x) => x.type === type) || { rows: [] };
     return [sec.reached, sec.rows.length, sec.rows.filter((r) => r.reached && r.reached[0] === 'b').map((r) => r.id).sort()];
   };
   const qa = new Set(CTL_18766.a.nodes.map((n) => n.id));
   const onlyB = CTL_18766.b.nodes.filter((n) => n.type === 'quantity' && !qa.has(n.id)).map((n) => n.id).sort();
-  const ctl = TV.walkTableView(CTL_18766.a, [], [], undefined, CTL_STARTS, new Map(), new Set(), CTL_18766.b);
+  const ctl = TV.walkTableView(CTL_18766.a, [], [], undefined, CTL_STARTS, new Map(), {}, CTL_18766.b);
   ok('ZD1 18766 from void, B leads_to: quantity 35 rows - A only 17 · A + B 15 · B only 3, the three B only the ones A did not reach',
     JSON.stringify(ctlKinds(ctl, 'quantity')) === JSON.stringify([[{ a: 17, ab: 15, b: 3 }], 35, onlyB]) && onlyB.length === 3,
     JSON.stringify(ctlKinds(ctl, 'quantity')));
@@ -1197,37 +1220,56 @@ const sideSuite = (TV) => {
     JSON.stringify(ctlKinds(noCtl, 'quantity')) === JSON.stringify([null, 32, []])
       && noCtl.sections.every((x) => x.reached === null && x.rows.every((r) => r.reached === null)),
     JSON.stringify(ctlKinds(noCtl, 'quantity')));
-  const sides = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), new Set(), CTL_SIGNED);
+  const sides = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), {}, CTL_SIGNED);
   const sDie = sides.sections.find((x) => x.type === 'die@1') || { rows: [] };
-  const sRow = (id) => sDie.rows.find((r) => r.id === id) || { byGroup: [[], []] };
-  const sRoute = (id, g) => { const c = raw(sides, 'die@1', id, TV.ROUTE, g) || {}; return [c.text, c.sources || null]; };
-  ok('ZD3 two baskets, each side its own: d:3 A + B on + and A only on −, d:5 B only on −; Route says B\'s path a line more; a value only B brought, B\'s source',
-    JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', 0), sRoute('d:3', 1), sRoute('d:5', 1),
+  const sRow = (id) => sDie.rows.find((r) => r.id === id) || { routes: [] };
+  const sRoute = (id, sign) => { const w = sRow(id).routes.find((x) => x.sign === sign) || {}; return [w.text, w.sources || null]; };
+  ok('ZD3 two baskets, each side its own: d:3 A + B on + and A only on −, d:5 B only on −; the node\'s route says B\'s path a line more; a value only B brought, B\'s source',
+    JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', '+'), sRoute('d:3', '−'), sRoute('d:5', '−'),
       srcOf(sides, 'die@1', 'd:5', GATE_IN, 1), srcOf(sides, 'die@1', 'd:3', GATE_IN, 0)])
       === JSON.stringify([[{ a: 2, ab: 1, b: 0 }, { a: 2, ab: 0, b: 1 }], ['ab', 'a'], [null, 'b'], ['inspected', ['B · leads_to']],
         ['inspected', null], [TV.EMPTY, ['B · leads_to → inspected']], ['B · W5 · leads_to'], ['A · start']]),
-    JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', 0), sRoute('d:3', 1), sRoute('d:5', 1),
+    JSON.stringify([sDie.reached, sRow('d:3').reached, sRow('d:5').reached, sRoute('d:3', '+'), sRoute('d:3', '−'), sRoute('d:5', '−'),
       srcOf(sides, 'die@1', 'd:5', GATE_IN, 1), srcOf(sides, 'die@1', 'd:3', GATE_IN, 0)]));
-  // Two Δ columns: each Δ says its own column - by the column's index, Route standing first in heads (B).
+  // Two number cells in one group: each its own Δ.
   const scored = view(SIGNED_STARTS, { ...SIGNED, edges: SIGNED.edges.map((e, k) => ({ ...e, qualifiers: { ...e.qualifiers, score: 10 + k } })) });
-  const scoredDie = scored.sections.find((x) => x.type === 'die@1') || { deltaHeads: [] };
-  ok('Z37 two Δ columns: each «Δ» names its own column',
-    JSON.stringify(scoredDie.deltaHeads) === JSON.stringify([`${TV.DELTA} ${GATE_IN}`, `${TV.DELTA} inspected (in) · score`]),
-    JSON.stringify(scoredDie.deltaHeads));
-  // Route on both schemes (lead df11f9e81): the base wafer a start, the core wafer its bonding route, each side its own.
+  const scoredDie = scored.sections.find((x) => x.type === 'die@1') || { parts: [] };
+  ok('Z37 two number cells in one group: both open, each its own Δ under it',
+    JSON.stringify(scoredDie.parts.map((p) => [p.leaf, p.delta])) === JSON.stringify([['gate', true], ['score', true]]),
+    JSON.stringify(scoredDie.parts));
+  // How each side reached a row on both schemes (lead df11f9e81, W: the node's source line): the base wafer a start, the
+  // core wafer its bonding route, each side its own.
   const routeOf = (scheme) => {
     const t = view(BOND_STARTS, scheme);
-    return [['wafer@1', 'w:b'], ['wafer@1', 'w:c'], ['wafer@1', 'w:n'], ['quantity@1', 'q:1']]
-      .map(([type, id]) => [id, cell(t, type, id, TV.ROUTE, 0), cell(t, type, id, TV.ROUTE, 1)]);
+    const of = (type, id, sign) => {
+      const sec = t.sections.find((x) => x.type === type) || { rows: [] };
+      const w = ((sec.rows.find((r) => r.id === id) || { routes: [] }).routes).find((x) => x.sign === sign);
+      return w ? w.text : '[missing]';
+    };
+    return [['wafer@1', 'w:b'], ['wafer@1', 'w:c'], ['wafer@1', 'w:n'], ['quantity@1', 'q:1']].map(([type, id]) => [id, of(type, id, '+'), of(type, id, '−')]);
   };
   const bondWant = (plus, minus) => [['w:b', TV.STARTED, '[missing]'], ['w:c', BONDING, '[missing]'], ['w:n', '[missing]', TV.STARTED],
     ['q:1', plus, minus]];
-  ok('Z29 Route = the paths the server walked, the measurement an edge: the base wafer «start», the core wafer its bonding, + and − each its own starts\' paths, a side not reached missing',
+  ok('Z29 a node\'s route = the paths the server walked, the measurement an edge: the base wafer «start», the core wafer its bonding, + and − each its own starts\' paths, a side not reached none',
     JSON.stringify(routeOf(BOND_EDGE)) === JSON.stringify(bondWant('measures', 'in_container → measures')), JSON.stringify(routeOf(BOND_EDGE)));
-  ok('Z30 Route, the measurement an event node: the same wafers, the quantity two steps on',
+  ok('Z30 a node\'s route, the measurement an event node: the same wafers, the quantity two steps on',
     JSON.stringify(routeOf(BOND_EVENT)) === JSON.stringify(bondWant('measured → of', 'in_container → measured → of')),
     JSON.stringify(routeOf(BOND_EVENT)));
-  const core = raw(view(BOND_STARTS, BOND_TWO), 'wafer@1', 'w:c', TV.ROUTE, 0) || {};
+  const STATIC_ENTITIES = [...DECL.entities, { type: 'quantity@1', keys: [], class: ['static'] }];
+  const waferHeads = (entities) => (TV.walkTableView(BOND_SRC, entities, DECL.predicates, undefined, BOND_STARTS).sections
+    .find((x) => x.type === 'wafer@1') || { columnHeads: [] }).columnHeads;
+  ok('Z44 a far node of a type the declaration calls static stands its own group, named; of any other type one group, its type (lead 10-11 W addendum 8 (다))',
+    JSON.stringify([waferHeads(STATIC_ENTITIES), waferHeads(DECL.entities)]) === JSON.stringify([['measures → Q:1 · value'], ['measures → quantity@1 · value']]),
+    JSON.stringify([waferHeads(STATIC_ENTITIES), waferHeads(DECL.entities)]));
+  // The groups that set the sides against each other nearest the node: «alpha» (the + side alone) sorts first by name,
+  // «measures» (both sides, a Δ) stands first.
+  const ORDERED = { ...BOND_EDGE, edges: [...BOND_EDGE.edges, be('w:n', 'measures', 'q:1', { value: 4 }), be('w:b', 'alpha', 'q:1', { v: 5 })] };
+  const orderedHeads = (view(BOND_STARTS, ORDERED).sections.find((x) => x.type === 'quantity@1') || { columnHeads: [] }).columnHeads;
+  ok('Z45 a group with a Δ under it nearest the node, the rest after, each in its order (34d91c09d 2 carried to W\'s groups: the first Δ in the first screen)',
+    JSON.stringify(orderedHeads) === JSON.stringify(['measures ← wafer@1 · value', 'alpha ← wafer@1 · v', 'measures ← die@1 · value']),
+    JSON.stringify(orderedHeads));
+  const coreSec = view(BOND_STARTS, BOND_TWO).sections.find((x) => x.type === 'wafer@1') || { rows: [] };
+  const core = ((coreSec.rows.find((r) => r.id === 'w:c') || { routes: [] }).routes)[0] || {};
   ok('Z31 two paths walked to one node: the first and «+N», every one kept (the nine\'s several values)',
     JSON.stringify([core.text, core.rest, core.values]) === JSON.stringify([BONDING, '+1',
       [BONDING, STACKING]]), JSON.stringify(core));
@@ -1245,60 +1287,52 @@ const MUTANTS = [
   { id: 'DM8', what: 'the three counts not drawn over a section', catches: 'ZD4',
     from: '      if (section.reached) sec.append(reachedLine(section));\n', to: '' },
   { id: 'NZ16', what: 'the source line not drawn under a value', catches: 'Z41',
-    from: "        if (sources[k]) c.append(el(doc, 'div', 'wk-src', sources[k]));\n", to: '' },
-  { id: 'NZ15', what: 'a Route cell\'s «+N» keyed by a value column it does not have', catches: 'Z32',
-    from: '${cell.col === undefined ? ROUTE : columnKey(section.columns[cell.col])}', to: '${columnKey(section.columns[cell.col])}' },
-  { id: 'NZ1', what: 'the page draws no band a group', catches: 'Z9',
-    from: '    thead.append(band, ...(section.parts', to: '    thead.append(...(section.parts' },
-  { id: 'NZ2', what: 'the Next row gone from above its table', catches: 'Z9',
-    from: '      // Next above its table, once (lead 3375edd9b).\n      if (checks) sec.append(nextRow(at, section, checks));\n', to: '' },
+    from: "    if (from) c.append(el(doc, 'div', 'wk-src', from));\n", to: '' },
+  { id: 'NZ15', what: 'a node\'s route line without every route in its title', catches: 'Z32',
+    from: "          src.title = same ? all(row.routes[0]) : row.routes.map((w) => `${w.sign} ${all(w)}`).join(' · ');\n", to: '' },
+  { id: 'NZ1', what: 'no sign under a column', catches: 'Z9',
+    from: '    thead.append(steps, ...(leafed ? [leaves] : []), ...(many && stepped ? [signs] : []));', to: '    thead.append(steps, ...(leafed ? [leaves] : []));' },
+  { id: 'NZ2', what: 'Walk on gone from the section\'s foot', catches: 'Z9',
+    from: '      if (checks) sec.append(nextRow(at, section, checks));\n', to: '' },
   { id: 'NZ3', what: 'the Compare view back', catches: 'Z10',
     from: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {",
     to: "    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph'], ['compare', 'Compare']]) {" },
-  { id: 'NZ4', what: 'the + side not reversed', catches: 'Z15',
-    from: '      const parts = pair && i === 0 ? [...section.parts].reverse() : section.parts;', to: '      const parts = section.parts;' },
-  { id: 'NZ5', what: 'the node first, not in the centre', catches: 'Z13',
-    from: '    if (pair) { side(section.groups[0], 0); centre(); delta(); side(section.groups[1], 1); } else { centre(); section.groups.forEach(side); }',
-    to: '    { centre(); section.groups.forEach(side); delta(); }' },
-  { id: 'NZ11', what: 'delta last again, past the − side', catches: 'Z13',
-    from: '      if (pair) { group(0); node(); deltas(); group(1); }', to: '      if (pair) { group(0); node(); group(1); deltas(); }' },
-  { id: 'NZ12', what: 'the step said in every head again', catches: 'Z26',
-    from: '        if (k > 0 && parts[k - 1].step === p.step) {', to: '        if (false) {' },
-  { id: 'NZ14', what: 'the axis scrolled past either end of the box', catches: 'Z28',
-    from: '  return Math.max(0, Math.min(scrollWidth - boxWidth, Math.round(want)));', to: '  return Math.round(want);' },
-  { id: 'NZ13', what: 'no step row', catches: 'Z27',
-    from: '    thead.append(band, ...(section.parts.some((p) => p.step) ? [steps] : []), head);', to: '    thead.append(band, head);' },
-  { id: 'NZ7', what: 'several values on one line again', catches: 'Z24',
-    from: '      if (cell.rest) {', to: '      if (false) {' },
-  { id: 'NZ8', what: 'one band colour for both signs', catches: 'Z25',
-    from: "`wk-sidehead ${cls}${pair && i === 0 ? ' is-left' : ''}`", to: "'wk-sidehead'" },
-  { id: 'NZ9', what: 'the empty-column press does nothing', catches: 'Z26',
-    from: 'if (state.emptyOpen.has(section.type)) state.emptyOpen.delete(section.type); else state.emptyOpen.add(section.type);', to: '' },
+  // ⚰️ NZ4 (the + side reversed) retired 10-11 with the mirrored sides (lead W).
+  { id: 'NZ5', what: 'the node\'s cells not drawn', catches: 'Z13',
+    from: '      row.centre.forEach((cell, i) => {', to: '      [].forEach((cell, i) => {' },
+  { id: 'NZ11', what: 'no Δ cell between the two sides', catches: 'Z13',
+    from: "          if (pair && i === 1 && cell.delta) tr.append(valueCell(cell.delta, 'wk-delta', false, () => {}));", to: '' },
+  // ⚰️ NZ12 (the step said in every head) retired 10-11: a group is said once by its own run, its head NZ13's.
+  // ⚰️ NZ14 (the axis scrolled past the box) retired 10-11 with Z28 and the mirrored sides (lead W).
+  { id: 'NZ13', what: 'a group head without its step and far end', catches: 'Z27',
+    from: "        s.append(el(doc, 'span', '', one ? `${p.step} · ${p.leaf}` : p.step));", to: "        s.append(el(doc, 'span', '', p.leaf));" },
+  { id: 'NZ7', what: 'several values with no «+N» to open them', catches: 'Z24',
+    from: "    if (cell.rest) {\n      const more = el(doc, 'button', 'wk-tag'", to: "    if (false) {\n      const more = el(doc, 'button', 'wk-tag'" },
+  { id: 'NZ8', what: 'one colour for both signs', catches: 'Z25',
+    from: "el(doc, 'th', `wk-sidehead ${signClass(g.sign)}`, g.sign)", to: "el(doc, 'th', 'wk-sidehead', g.sign)" },
+  { id: 'NZ9', what: 'a group\'s «▸ N» opens nothing', catches: 'ZW1',
+    from: "fold.addEventListener('click', () => { toggleGroup(section.type, p.group); render(); });", to: "fold.addEventListener('click', () => { render(); });" },
   { id: 'NZ10', what: 'Copy id in words again', catches: 'Z16',
     from: "copy.append(el(doc, 'span', 'wk-copyicon'));", to: "copy.append(el(doc, 'span', 'wk-copyicon', 'Copy id'));" },
   { id: 'NZ6', what: 'the filter draws every row', catches: 'Z14',
-    from: '    const rows = rowsShown(section, state.rowFilter);', to: "    const rows = rowsShown(section, 'all');" },
-  { id: 'CPm4', what: 'the copy without the folded columns', catches: 'CP3',
-    from: 'build(new Set([...state.emptyOpen, section.type]))', to: 'build(state.emptyOpen)' },
+    from: '    for (const row of rowsShown(section, rowFilterOf(section.type))) {', to: "    for (const row of rowsShown(section, 'all')) {" },
+  { id: 'CPm4', what: 'Wide copied as Long\'s lines', catches: 'CP3',
+    from: ": copySheet(sheetOf(section, rowFilterOf(section.type)), 'row');", to: ": copySheet(longSheet(longLines(view, section, {})), 'row');" },
   { id: 'CPm5', what: 'the copy ignores the filter', catches: 'CP3',
-    from: 'sheetOf(full, state.rowFilter)', to: 'sheetOf(full)' },
+    from: "copySheet(sheetOf(section, rowFilterOf(section.type)), 'row')", to: "copySheet(sheetOf(section), 'row')" },
   { id: 'CPm6', what: 'a copy that failed said as done', catches: 'CP4',
     from: ': COPY_WORDS.failed;', to: ': COPY_WORDS.done(sheet.rows.length, unit);' },
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
-  { id: 'M1', what: 'the renderer names its own columns again',
-    catches: 'V2 the column labels',
-    from: "      for (const p of parts) head.append(el(doc, 'th', cls, p.leaf));",
-    to: "      for (const p of parts) head.append(el(doc, 'th', cls, p.step || p.leaf));" },
+  { id: 'M1', what: 'a group head without its value\'s name', catches: 'V2 the heads',
+    from: "one ? `${p.step} · ${p.leaf}` : p.step", to: 'p.step' },
   // 🔴 THIS SLOT HELD AN EQUIVALENT MUTANT, AND THE HARNESS SAID SO. It was `cell.text || ''`,
   //    meant to collapse 0 into a blank -- but `cell.text` is already a STRING and '0' is
   //    truthy, so it changed nothing and ESCAPED. The rule it aimed at (0 is a value, absent is
   //    a blank) moved into `table_view.valueText` with the half being scored, and the renderer
   //    no longer HAS a raw value to collapse. Re-anchored rather than chased with a weaker
   //    assertion: the cells drawn in the wrong order. Same count, nothing thrown.
-  { id: 'M2', what: 'the cells are drawn in the wrong order',
-    catches: 'V3 every cell is the view',
-    from: '        for (const cell of cells(i)) {',
-    to: '        for (const cell of [...cells(i)].reverse()) {' },
+  { id: 'M2', what: 'the node\'s cells drawn in the wrong order', catches: 'V3 every cell is the view',
+    from: '      row.centre.forEach((cell, i) => {', to: '      [...row.centre].reverse().forEach((cell, i) => {' },
   { id: 'M3', what: 'the numeric class is dropped',
     catches: 'V5 the numeric class',
     from: "`${cell.numeric ? 'wk-num ' : ''}${cls}`",
@@ -1420,7 +1454,7 @@ const TV_MUTANTS = [
   { id: 'CPm1', what: 'several values copied as the first alone', catches: 'CP1',
     from: "cell.values ? cell.values.join('; ')", to: 'cell.values ? cell.values[0]' },
   { id: 'CPm2', what: 'Δ copied in its words, not its number', catches: 'CP1',
-    from: ': String(d.value)));', to: ': d.text));' },
+    from: 'String(cell.delta.value)', to: 'cell.delta.text' },
   { id: 'CPm3', what: 'every row shown whatever the filter', catches: 'CP2',
     from: "filter === 'all' || (filter === 'differs' ? row.differs : row.missing)", to: 'true' },
   { id: 'DM1', what: 'reached by both said A only', catches: 'ZD1',
@@ -1449,21 +1483,22 @@ const TV_MUTANTS = [
   { id: 'ECm2', what: 'the confirmation predicate\'s column not carried', catches: 'EC2',
     from: ".filter((c) => c.kind === 'conflicts' || c.kind === 'absence')", to: ".filter((c) => c.kind === 'conflicts')" },
   { id: 'ZM4', what: 'no delta column', catches: 'Z12',
-    from: '  const deltas = groups.length === 2 ? columns.map', to: '  const deltas = false ? columns.map' },
+    from: '    const deltaAt = new Set(groups.length === 2 ?', to: '    const deltaAt = new Set(false ?' },
   { id: 'ZM5', what: 'reached but no value drawn missing', catches: 'Z4',
     from: '  if (!values.length) return { text: EMPTY };', to: '  if (!values.length) return { text: MISSING, missing: true };' },
   { id: 'ZM6', what: 'several values: the first alone', catches: 'Z6',
     from: '  if (values.length === 1 && !cell.more)', to: '  if (values.length >= 1 && !cell.more)' },
-  { id: 'ZM7', what: 'no Route head', catches: 'Z8',
-    from: '    const heads = [...columnHeads, ROUTE];', to: '    const heads = [...columnHeads];' },
+  { id: 'ZM7', what: 'a node\'s route not read', catches: 'Z8',
+    from: '        routes: groups.filter((g) => g.inside.has(node.id)).map((g) => ({ sign: g.name, ...routeCell(g, node.id) })),', to: '        routes: [],' },
   // RM6 («Δ <head>» read from heads) retired with Route moved to the outer end: heads[c] is columnHeads[c] again, the
   // mutant changes nothing (Z37 stays, guarding the order).
   { id: 'VS1', what: 'a value\'s source the row\'s node, not the read\'s', catches: 'Z38',
-    from: '(byCol[i].nodes || []).map((id) => sources.source(g, id))', to: '(byCol[i].nodes || []).map(() => sources.source(g, node.id))' },
+    from: "sources: (row.cells[c][i].nodes || []).map((id) => (id === node.id ? '' : sources.source(g, id)))", to: 'sources: (row.cells[c][i].nodes || []).map(() => sources.source(g, node.id))' },
   { id: 'VS2', what: 'a value\'s source without its route', catches: 'Z40',
     from: 'source: (g, id) => `${keyWords(id)} · ${g ? route(g, id).text : NOT_WALKED}`', to: 'source: (g, id) => `${keyWords(id)}`' },
   { id: 'VS3', what: 'a source from the other side\'s paths', catches: 'Z38',
-    from: 'sources: (byCol[i].nodes || []).map((id) => sources.source(g, id))', to: 'sources: (byCol[i].nodes || []).map((id) => sources.source(groups[(i + 1) % groups.length], id))' },
+    from: "sources: (row.cells[c][i].nodes || []).map((id) => (id === node.id ? '' : sources.source(g, id)))",
+    to: "sources: (row.cells[c][i].nodes || []).map((id) => (id === node.id ? '' : sources.source(groups[(i + 1) % groups.length], id)))" },
   { id: 'VS4', what: 'a node the answer did not send: its keys not read off its id', catches: 'Z42',
     from: '    const node = nodes.get(id) || entityOfId(id) || {};', to: '    const node = nodes.get(id) || {};' },
   { id: 'VS5', what: 'a source without keys or a label says its id', catches: 'Z43',
@@ -1476,18 +1511,27 @@ const TV_MUTANTS = [
     from: 'path.hops.slice(1).map(', to: 'path.hops.slice(1).reverse().map(' },
   { id: 'RM4', what: 'two paths walked: the first alone', catches: 'Z31',
     from: 'return ways.length ? cellWords({ values: ways }', to: 'return ways.length ? cellWords({ values: ways.slice(0, 1) }' },
-  { id: 'RM5', what: 'no Route cell under its head', catches: 'Z29',
-    from: ' })), routeCell(g, node.id)];', to: ' }))];' },
+  { id: 'RM5', what: 'a node\'s route from the other side\'s paths', catches: 'Z29',
+    from: '.map((g) => ({ sign: g.name, ...routeCell(g, node.id) }))', to: '.map((g, k, all) => ({ sign: g.name, ...routeCell(all[(k + 1) % all.length], node.id) }))' },
   { id: 'ZM8', what: 'an added column dropped', catches: 'Z18',
     from: ', ...(added.get(type) || [])];', to: '];' },
   { id: 'ZM9', what: 'a difference keeps its float tail', catches: 'Z19',
     from: '  const n = Number(delta.toPrecision(10));', to: '  const n = delta;' },
-  { id: 'ZM10', what: 'a side that did not reach: a missing cell a column again', catches: 'Z21',
-    from: '        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];\n', to: '' },
-  { id: 'ZM11', what: 'the columns in their found order, numbers anywhere', catches: 'Z22',
-    from: "\n      .sort((p, q) => (kindsAll[q] === 'number') - (kindsAll[p] === 'number'));", to: ';' },
+  { id: 'ZM10', what: 'a side that did not reach: missing once, its other cells «—»', catches: 'Z21',
+    from: '          : { text: MISSING, missing: true, col: c })),', to: '          : (c === 0 ? { text: MISSING, missing: true, col: c } : { text: EMPTY, col: c }))),' },
+  { id: 'ZM11', what: 'an opened group in its found order, numbers anywhere', catches: 'Z22',
+    from: 'shown: opened ? [...first, ...b.at.filter((i) => !first.includes(i))] : first,', to: 'shown: opened ? b.at : first,' },
+  { id: 'ZM13', what: 'a group opens on its first cell, not its numbers', catches: 'Z22',
+    from: 'const first = numbers.length ? numbers : b.at.slice(0, 1);', to: 'const first = b.at.slice(0, 1);' },
+  { id: 'ZM14', what: 'every far node its own group', catches: 'Z40',
+    from: '(t) => statics.has(t)', to: '() => true' },
+  { id: 'ZM15', what: 'no far node its own group, a static type\'s too', catches: 'Z44',
+    from: '(t) => statics.has(t)', to: '() => false' },
+  { id: 'ZM16', what: 'the groups in their found order, a compared one anywhere', catches: 'Z45',
+    from: '    const sideAt = [...folds.filter((b) => b.on && compared(b)), ...folds.filter((b) => b.on && !compared(b))].flatMap((b) => b.shown);',
+    to: '    const sideAt = folds.filter((b) => b.on).flatMap((b) => b.shown);' },
   { id: 'ZM12', what: 'an empty column drawn', catches: 'Z23',
-    from: '.filter((c) => keep || !sideEmpty[c])', to: '.filter(() => true)' },
+    from: "      if (kindsAll[i] === 'empty') return;", to: '' },
   // ⚰️ QM1 (the flat table's fold: the last edge's value) retired 10-11 with qualifiersByNode (E1); every value kept is
   //    the walk table's cell now - Q1, Z6 and ZM6.
 ];

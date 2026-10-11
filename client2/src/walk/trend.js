@@ -4,7 +4,7 @@
 // record of that value - owner 10-10 e54560dc2), coloured by the group it came by. Numbers stand on a value axis; every other value has a lane (the most frequent first, the rest
 // «others»). A time page from the server adds the row's other edges of that step around the walked time.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { readsOf, valueWords } from './reach_table.js';
+import { readsOf, valueWords, numberOf } from './reach_table.js';
 import { isBlank } from '../absent.js';
 import { localStamp } from '../server_time.js';
 
@@ -13,15 +13,6 @@ export const LANES = 8;
 export const OTHERS = 'others';
 /** The points one server page asks (the implementer's contract: page=1000, at most 5000). */
 export const PAGE_ROWS = 1000;
-
-/** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing - the axis a
- *  trend's points stand on and a lump's thumbnail read it so (lead 10-11: a value in text numerals is a number). */
-export function numberOf(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
 
 const timeOf = (edge) => {
   const t = edge && Date.parse(edge.occurred_at);
@@ -33,7 +24,7 @@ const keyOf = (edge, fallback) => (edge && (edge.claim_id || edge.id)) || fallba
 export function walkPoints(index, groups, x, column) {
   return groups.flatMap((g, i) => readsOf(index, g.inside, x, column).reads
     .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node,
-      claim: (r.when && r.when.claim_id) || '' })));
+      giver: r.giver, claim: (r.when && r.when.claim_id) || '' })));
 }
 
 /** The walked points of `rows` along `column`, each with the row it was read from - a section's trend, a cell's, a lump's
@@ -51,9 +42,11 @@ export function pagePoints(answer, groups, x, column, walked = new Set()) {
     const far = e.source === x ? e.target : e.source;
     const group = groups.findIndex((g) => g.inside.has(far));
     const key = keyOf(e, e.id);
+    // Who gave a point: its edge's subject, as a read says (reach_table.readsOf).
     return { t: timeOf(e), value: (e.qualifiers || {})[column.value.name], group: group >= 0 ? group : null, walked: walked.has(key), key,
-      node: far, claim: e.claim_id || '' };
-  }).filter((p) => !isBlank(p.value));
+      node: far, giver: e.source, claim: e.claim_id || '' };
+  // A column that ends at one node (lead 10-11 W) reads its edges to that node only, when the page is the row's.
+  }).filter((p) => !isBlank(p.value) && (!column.end || x === column.end || p.node === column.end));
 }
 
 /**

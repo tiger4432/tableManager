@@ -42,7 +42,7 @@ const ORIGIN = 'http://screens.test';
 const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
 // Sizes one entry is seen at too: the walk page where the lead read its table (Edge 1568x775, lead 34d91c09d; Edge
 // 1896x907 with the demo pair, lead 10-10 after 517eb6c2c).
-const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907]] };
+const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]] };
 const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
 const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns', 'words'];
 const TOL = 12;
@@ -135,7 +135,8 @@ CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'r
 // The walk table as the lead reviewed it (34d91c09d gate), asked in each theme after its two steps.
 const SIDE_CELLS = [
   ['Δ in view', `(() => {
-  const heads = [...document.querySelectorAll('.wk-sides thead th')].filter((th) => th.textContent.trim().startsWith('Δ'));
+  // The first: Wide's later groups scroll (lead 10-11 W).
+  const heads = [...document.querySelectorAll('.wk-sides thead th')].filter((th) => th.textContent.trim().startsWith('Δ')).slice(0, 1);
   if (!heads.length) return 'no Δ column drawn';
   for (const th of heads) {
     const t = th.closest('table').getBoundingClientRect(), r = th.getBoundingClientRect(), edge = Math.min(t.right, innerWidth);
@@ -169,7 +170,7 @@ const SIDE_CELLS = [
   const firsts = [...document.querySelectorAll('.wk-sides thead tr:last-child th.wk-minus')].filter((th) => {
     const prev = th.previousElementSibling;
     return !prev || !prev.classList.contains('wk-minus');
-  });
+  }).slice(0, 1);
   if (!firsts.length) return 'no − column drawn';
   for (const th of firsts) {
     const t = th.closest('table').getBoundingClientRect(), r = th.getBoundingClientRect(), edge = Math.min(t.right, innerWidth);
@@ -177,14 +178,16 @@ const SIDE_CELLS = [
   }
   return null;
 })()`],
-  ['missing once', `(() => {
+  // A side that did not reach a row says missing in each of its cells, none «—» (lead 10-11 W, the mockup B-ㄱ).
+  ['missing each', `(() => {
   let seen = 0;
-  for (const tr of document.querySelectorAll('.wk-sides tbody tr')) {
-    const cells = [...tr.children];
-    for (let i = 1; i < cells.length; i += 1) {
-      if (cells[i].classList.contains('wk-missing') && cells[i - 1].classList.contains('wk-missing')) return \`row «\${tr.getAttribute('data-row-id')}» says missing twice side by side\`;
+  for (const tr of document.querySelectorAll('.wk-sides tbody tr[data-row-id]')) {
+    for (const side of ['wk-plus', 'wk-minus']) {
+      const cells = [...tr.children].filter((c) => c.classList.contains(side));
+      const missing = cells.filter((c) => c.classList.contains('wk-missing')).length;
+      if (missing && missing < cells.length) return 'row «' + tr.getAttribute('data-row-id') + '» says missing in ' + missing + ' of its ' + cells.length + ' ' + side + ' cells';
+      seen += missing;
     }
-    seen += cells.filter((c) => c.classList.contains('wk-missing')).length;
   }
   return seen ? null : 'no missing cell drawn';
 })()`],
@@ -244,6 +247,97 @@ const WALK_LOOK = [
   }
   return bad.size ? 'stacked parts with no gap: ' + said(bad) : null;
 })()`],
+  // W (lead 10-11 addendum 9, the canon ui-design-system §0 · §3): the walk screen's spaces and lines, measured.
+  ['S2 section spaces', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const T = { s2: 6.8, s5: 20.4 };
+  const secs = [...page.querySelectorAll('.wk-secs > .wk-sec')].filter(mine);
+  for (let i = 1; i < secs.length; i += 1) {
+    const gap = secs[i].getBoundingClientRect().top - secs[i - 1].getBoundingClientRect().bottom;
+    if (Math.abs(gap - T.s5) > 0.6) return 'sections ' + Math.round(gap * 10) / 10 + ' px apart, not --space-5';
+  }
+  for (const sec of secs) {
+    const bar = sec.querySelector(':scope > .wk-secbar');
+    const next = bar && bar.nextElementSibling;
+    if (!bar || !next) continue;
+    const gap = next.getBoundingClientRect().top - bar.getBoundingClientRect().bottom;
+    if (Math.abs(gap - T.s2) > 0.6) return 'a toolbar ' + Math.round(gap * 10) / 10 + ' px over what follows, not --space-2';
+    const cg = parseFloat(getComputedStyle(bar).columnGap);
+    if (Math.abs(cg - T.s2) > 0.05) return 'the parts of a toolbar ' + cg + ' px apart, not --space-2';
+  }
+  for (const el of page.querySelectorAll('.wk-sec, .wk-secs, .wk-secbar, .wk-result')) {
+    const cs = getComputedStyle(el);
+    if (parseFloat(cs.marginTop) || parseFloat(cs.marginBottom)) return el.className.split(' ')[0] + ' keeps a margin of its own';
+  }
+  return secs.length ? null : 'no section drawn';
+})()`],
+  ['S3 table cells', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const cells = [...page.querySelectorAll('.wk-table td, .wk-table th')].filter(mine).filter((c) => !c.classList.contains('wk-check'));
+  if (!cells.length) return 'no table cell drawn';
+  for (const c of cells) {
+    const cs = getComputedStyle(c);
+    if (Math.abs(parseFloat(cs.paddingTop) - 3.4) > 0.05 || Math.abs(parseFloat(cs.paddingLeft) - 6.8) > 0.05) {
+      return 'a cell padded ' + cs.paddingTop + ' ' + cs.paddingLeft + ', not --space-1 --space-2';
+    }
+  }
+  for (const td of page.querySelectorAll('.wk-table td.wk-num')) {
+    const cs = getComputedStyle(td);
+    if (cs.textAlign !== 'right' || !cs.fontVariantNumeric.includes('tabular-nums')) return 'a number cell not right and tabular';
+  }
+  for (const table of page.querySelectorAll('table.wk-wide')) {
+    const first = table.querySelector('tbody tr[data-row-id]');
+    if (!first) continue;
+    const lefts = [...first.children].map((c) => Math.round(c.getBoundingClientRect().left));
+    for (const th of table.querySelectorAll('th.wk-stephead')) {
+      const left = Math.round(th.getBoundingClientRect().left);
+      if (!lefts.some((x) => Math.abs(x - left) <= 1)) return 'the group «' + th.textContent.trim().slice(0, 30) + '» starts off the left edge of its cells';
+    }
+  }
+  return null;
+})()`],
+  ['S4 one row height', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  for (const table of page.querySelectorAll('table.wk-wide')) {
+    const rows = [...table.querySelectorAll('tbody tr[data-row-id]')].filter(mine);
+    const hs = [...new Set(rows.map((r) => Math.round(r.getBoundingClientRect().height)))];
+    if (hs.length > 1) return 'rows ' + hs.join(' · ') + ' px high in one table';
+    // Two lines high: a value line and its source line, each at most --space-5 (a «+N» tag or a copy button rides
+    // inside its line), and the cell's padding.
+    const s5 = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-5'));
+    for (const r of rows) {
+      const cs = getComputedStyle(r.querySelector('td:not(.wk-check)') || r.firstElementChild);
+      const cap = 2 * s5 + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 1.5;
+      const h = r.getBoundingClientRect().height;
+      if (h > cap) return 'a row ' + h.toFixed(1) + ' px high, two lines are ' + cap.toFixed(1);
+    }
+  }
+  return null;
+})()`],
+  ['S5 one left edge', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const head = page.querySelector('.wk-mainhead');
+  const bar = page.querySelector('.wk-secbar');
+  const table = page.querySelector('.wk-sec > .wk-table');
+  if (!head || !bar || !table) return 'no head, toolbar or table drawn';
+  const xs = [head, bar, table].map((e) => Math.round(e.getBoundingClientRect().left));
+  return Math.max(...xs) - Math.min(...xs) > 1 ? 'the head, a toolbar and its table start at ' + xs.join(' · ') + ' px' : null;
+})()`],
+  ['S6 no clipped letters', `(() => { ${WALK_PAGE}
+  if (!page) return 'no walk page';
+  const bad = new Map();
+  for (const el of page.querySelectorAll('.wk-main *')) {
+    if (!mine(el) || el.closest('[data-clip-ok]')) continue;
+    const texts = [...el.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim());
+    if (!texts.length) continue;
+    const box = el.getBoundingClientRect();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    const t = r.getBoundingClientRect();
+    if (t.width && (t.right > box.right + 0.5 || t.left < box.left - 0.5)) tally(bad, '«' + el.textContent.trim().slice(0, 16) + '»', el);
+  }
+  return bad.size ? 'letters past their box: ' + said(bad) : null;
+})()`],
   ['three type sizes', `(() => { ${WALK_PAGE}
   if (!page) return 'no walk page';
   const bad = new Map();
@@ -259,12 +353,13 @@ const WALK_LOOK = [
   return bad.size ? 'letters neither 13, 14 nor 16 px: ' + said(bad) : null;
 })()`],
 ];
-for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell']) {
-  for (const [rule, expr] of WALK_LOOK) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
+for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell', 'Long']) {
+  // The S cells read the table: none is drawn on the graph.
+  for (const [rule, expr] of WALK_LOOK) if (!(after === 'Graph' && /^S\d/.test(rule))) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
 }
 // Node, Δ and the − side's first column in the first screen are asked at the sizes the lead named (34d91c09d (나);
 // 10-10 after 517eb6c2c, the demo pair): at 1280 the table's box is narrower than node, Δ and a − column together.
-const FIRST_SCREEN = ['1568x775', '1896x907'];
+const FIRST_SCREEN = ['1568x775', '1896x907', '1280x720'];
 for (const after of ['Side by side, dark', 'Side by side, light']) {
   for (const [rule, expr] of SIDE_CELLS) {
     CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-sides', expr, ...(/in view$/.test(rule) ? { sizes: FIRST_SCREEN } : {}) });
@@ -687,6 +782,11 @@ const DRIVE = {
       await evaluate(c, `(() => { const td = document.querySelector('.wk-sides td.wk-pick'); if (td) td.click(); return Boolean(td); })()`);
       await until(c, "document.querySelector('.wk-trend svg, .wk-trend .wk-note')");
     }],
+    // Long (lead 10-11 W): the first section a value record a line.
+    ['Long', async (c) => {
+      await evaluate(c, `(() => { const b = document.querySelector('.wk-sec [data-shape="long"]'); if (b) b.click(); return Boolean(b); })()`);
+      await until(c, "document.querySelector('table.wk-long')");
+    }],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
@@ -887,21 +987,33 @@ const MUTANTS = [
   { name: 'the sign bands without their colours', entry: 'walk.html', rule: 'sign colours', at: 'wk-sides',
     file: 'src/walk/styles.js', edits: [['.wk-sides th.wk-sidehead.wk-plus {', '.wk-sides th.wk-sidehead.wk-plus-gone {'],
       ['.wk-sides th.wk-sidehead.wk-minus {', '.wk-sides th.wk-sidehead.wk-minus-gone {']] },
-  { name: 'a side that did not reach saying missing in every column', entry: 'walk.html', rule: 'missing once', at: 'wk-sides',
-    file: 'src/walk/table_view.js', edits: [['        if (!g.inside.has(node.id)) return [{ text: MISSING, missing: true, span: heads.length }];\n', '']] },
+  { name: 'a side that did not reach saying missing in its first cell only', entry: 'walk.html', rule: 'missing each', at: 'wk-sides',
+    file: 'src/walk/table_view.js', edits: [['          : { text: MISSING, missing: true, col: c })),', '          : (c === 0 ? { text: MISSING, missing: true, col: c } : { text: EMPTY, col: c }))),']] },
+  { name: 'sections spaced by their own margins again', entry: 'walk.html', rule: 'S2 section spaces', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); }', '.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }']] },
+  { name: 'table cells padded --space-2 --space-3 again', entry: 'walk.html', rule: 'S3 table cells', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; }']] },
+  { name: 'a «+N» tag growing its row', entry: 'walk.html', rule: 'S4 one row height', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['gap: var(--space-1); max-height: var(--space-5); }', 'gap: var(--space-1); }']] },
+  { name: 'the result boxed again, off the head\'s left edge', entry: 'walk.html', rule: 'S5 one left edge', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-result { display: flex; flex-direction: column; gap: var(--space-2); }', '.wk-result { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); }']] },
+  { name: 'a group head cut short', entry: 'walk.html', rule: 'S6 no clipped letters', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small); }', '.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small); max-width: 3ch; overflow: hidden; }']] },
   // The walk page's spacing, heights and type (lead 18da45b73), built back.
   { name: 'the parts of a section stacked with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2);', '.wk-sec { display: flex; flex-direction: column; gap: 0;']] },
   { name: 'a route row\'s two lines with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3);', 'grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--space-3);']] },
   { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
-    file: 'src/walk/styles.js', edits: [['  padding: var(--space-2) var(--space-3); text-align: left; }', '  padding: 5px 8px; text-align: left; }']] },
+    file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: 5px 8px; text-align: left; vertical-align: top; }']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-copyid { height: var(--wk-h-small);', '.wk-copyid { height: 20px;']] },
   { name: 'a 12 px line again', entry: 'walk.html', rule: 'three type sizes', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-note { font-size: var(--wk-fs-line);', '.wk-note { font-size: 12px;']] },
-  { name: 'the table drawn without its axis in the middle', entry: 'walk.html', rule: '− side in view', at: 'wk-sides',
-    file: 'src/walk/main.js', edits: [["    if (host.querySelectorAll) for (const table of host.querySelectorAll('table.wk-sides')) centreAxis(table);\n", '']] },
+  // ⚰️ «the table drawn without its axis in the middle» retired 10-11 with the mirrored sides (lead W): the node is first,
+  //    the first column's + · Δ · − beside it - its − cell in view is still asked (− side in view).
+  { name: 'the first column\'s − cell pushed past the table\'s view', entry: 'walk.html', rule: '− side in view', at: 'wk-sides',
+    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }', '.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }\n.wk-wide th.wk-sidehead.wk-plus { min-width: 1600px; }']] },
 ];
 async function buildMutant(m) {
   const { build } = await import('vite');
@@ -921,6 +1033,7 @@ async function buildMutant(m) {
 }
 if (MUTATE) {
   for (const m of MUTANTS) {
+    if (only && m.entry !== only) continue;   // --only names the mutants' entry too
     ran += 1;
     const out = await buildMutant(m);
     try {

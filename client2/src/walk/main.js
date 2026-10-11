@@ -34,10 +34,10 @@ import {
   cutBudgets, stepAlong,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, ROUTE, REACHED, rowsShown, sheetOf, sheetHtml } from './table_view.js';
+import { walkTableView, nextRoutes, REACHED, DELTA, rowsShown, sheetOf, sheetHtml, longLines, longSheet, LONG_HEAD } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
-// «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
-import { routesFrom, valuesAt } from './reach_table.js';
+// «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
+import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
 // The trend of a column (lead f984ab01d): the model and the part that draws it.
 import { rowsPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, pageAnchor, pointsSheet, PAGE_ROWS } from './trend.js';
 import { TrendView } from './trend_view.js';
@@ -69,8 +69,8 @@ const START = 'walk-start';
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = WALKING;
-/** «Copy table» and what a copy says after (lead a27dfbb0f). */
-export const COPY_WORDS = Object.freeze({ table: 'Copy table', done: (n, unit) => `Copied ${unitText(n, unit)}`,
+/** «Copy» (lead a27dfbb0f; the mockup B-ㄱ's word, lead 10-11 W) and what a copy says after. */
+export const COPY_WORDS = Object.freeze({ table: 'Copy', done: (n, unit) => `Copied ${unitText(n, unit)}`,
   failed: 'Copy failed · Select the table and press Ctrl+C' });
 /** The control walk's list and its failure (lead 99ed68cb7 D). */
 const CONTROL_WORD = 'Control · B';
@@ -91,17 +91,18 @@ export const NODE_LIMIT = 1000;
  *  one list (fanout_limit, lead 5d946a639). Blank, a knob is not sent and the server decides. */
 const NUMBER_KNOBS = [['hops', 'hops', 1, 40], ['node_limit', 'nodeLimit', 10, NODE_LIMIT], ['fanout_limit', 'fanoutLimit', 1, null]];
 
-/**
- * Where a side by side table's box scrolls so its node axis stands in its middle (lead 10-10 after 517eb6c2c: a wide +
- * side pushed the node, Δ and the − side past the box): the axis' centre on the box's, within what the box can scroll.
- */
-export function axisScrollLeft({ boxLeft, boxWidth, axisLeft, axisRight, scrollLeft, scrollWidth }) {
-  const want = scrollLeft + (axisLeft + axisRight) / 2 - (boxLeft + boxWidth / 2);
-  return Math.max(0, Math.min(scrollWidth - boxWidth, Math.round(want)));
-}
+// ⚰️ axisScrollLeft · centreAxis retired 10-11 with the mirrored sides (lead W): Wide stands the node first, a column's
+//    groups under it - nothing to scroll to.
 
-/** A column by what it reads - its steps and its value - not its place in the table. */
-const columnKey = (column) => JSON.stringify([column.steps, column.value]);
+/** What a viewer keeps per type in this browser (lead 10-11 W): the columns and groups turned off, the groups opened. A
+ *  store that is not there or refuses keeps nothing - the table draws all the same. */
+const KEPT = { off: 'walk.wide.off.', open: 'walk.wide.open.' };
+const keptRead = (which, type) => {
+  try { const got = JSON.parse(globalThis.localStorage.getItem(KEPT[which] + type) || '[]'); return Array.isArray(got) ? got : []; } catch (e) { return []; }
+};
+const keptWrite = (which, type, keys) => {
+  try { globalThis.localStorage.setItem(KEPT[which] + type, JSON.stringify(keys)); } catch (e) { /* nothing kept */ }
+};
 
 const el = (doc, tag, cls, text) => {
   const n = doc.createElement(tag);
@@ -139,12 +140,15 @@ export function boot(doc, host, deps) {
     // What the shown result was asked with - the form can change after the walk.
     asked: null,
     view: 'table',
-    // Which rows the side by side table shows (lead 5cf5c3401): all, those the groups differ on, those one missed.
-    rowFilter: 'all',
+    // Which rows a section shows, by type (lead 5cf5c3401, W): all, those the groups differ on, those one missed.
+    rowFilters: new Map(),
     // «+ Column»: the columns added a type, for this page; the type whose picker is open and the route it holds.
     added: new Map(), picking: '', pickedRoute: -1,
-    // The types whose empty columns are shown, the cells whose several values are unfolded (lead 34d91c09d 7, 1).
-    emptyOpen: new Set(), openCells: new Set(),
+    // A section's shape, Wide or Long, and Long's one value name, by type; the type whose Columns is open; the cells whose
+    // drawer of records is open (lead 10-11 W).
+    shapes: new Map(), longNames: new Map(), columnsOpen: '', openCells: new Set(),
+    // Columns off and groups opened, by type - read from this browser when a type is first drawn (lead 10-11 W addendum 8).
+    off: new Map(), open: new Map(),
     // The trend open (lead f984ab01d): its section's type, row and column; the time pages asked and where they end.
     trend: null,
     // Which loop chips are on, per route row (`routeKey`). Off unless pressed (lead 5d5b8d750).
@@ -153,6 +157,22 @@ export function boot(doc, host, deps) {
     // which one is shown: 0 is the form's walk.
     steps: [],
     at: 0,
+  };
+  /** The columns off and groups opened, every declared type's - this browser's, read once a type (lead 10-11 W). */
+  const hiddenColumns = () => {
+    for (const { type } of entities()) {
+      for (const which of ['off', 'open']) if (!state[which].has(type)) state[which].set(type, new Set(keptRead(which, type)));
+    }
+    return { off: state.off, open: state.open };
+  };
+  const hiddenOf = (type) => [...(state.off.get(type) || [])];
+  const setHidden = (type, keys) => { state.off.set(type, new Set(keys)); keptWrite('off', type, keys); };
+  /** A group's «▸ N»: its folded cells opened in place, or folded again - kept per type. */
+  const toggleGroup = (type, key) => {
+    const opened = new Set(state.open.get(type) || []);
+    if (opened.has(key)) opened.delete(key); else opened.add(key);
+    state.open.set(type, opened);
+    keptWrite('open', type, [...opened]);
   };
   const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
   const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
@@ -339,7 +359,7 @@ export function boot(doc, host, deps) {
    *  knobs ride along; the step's own hops is its one. */
   async function walkOn(at, seeds, route) {
     const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
-    const step = placeStep(at, `${route.predicate} → ${route.to}`, asked);
+    const step = placeStep(at, route.words, asked);
     render();
     const began = Date.now();
     const res = await walk(asked);
@@ -638,13 +658,12 @@ export function boot(doc, host, deps) {
    */
   function renderTable(box, r, starts, control) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
-    // The one seat that builds this walk's view - drawn with the folded columns as they are, copied with them open.
-    const build = (opened) => walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts,
-      state.added, opened, control);
-    const view = build(state.emptyOpen);
+    const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts,
+      state.added, hiddenColumns(), control);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
-    box.append(rowFilterBar());
-    renderSections(box, view, r, build);
+    const secs = el(doc, 'div', 'wk-secs');
+    renderSections(secs, view, r);
+    box.append(secs);
     if (trendNow() && trendNow().at === 'below') renderTrend(box, view, r);
   }
 
@@ -660,19 +679,26 @@ export function boot(doc, host, deps) {
     return line;
   }
 
-  /** All rows · Differs · Missing (lead 5cf5c3401): which rows of the side by side table are drawn. */
-  function rowFilterBar() {
-    const bar = el(doc, 'div', 'wk-rowfilter');
+  /** One choice of a few, as one segmented control (lead 10-11 W: a view chooser is segmented, one height). */
+  function segmented(cls, attr, choices, current, pick) {
+    const bar = el(doc, 'span', `wk-seg ${cls}`);
     bar.setAttribute('role', 'group');
-    for (const [value, word] of [['all', 'All rows'], ['differs', 'Differs'], ['missing', 'Missing']]) {
-      const b = el(doc, 'button', 'wk-view' + (state.rowFilter === value ? ' is-on' : ''), word);
+    for (const [value, word] of choices) {
+      const b = el(doc, 'button', 'wk-segb' + (current === value ? ' is-on' : ''), word);
       b.type = 'button';
-      b.setAttribute('data-rows', value);
-      b.setAttribute('aria-pressed', String(state.rowFilter === value));
-      b.addEventListener('click', () => { state.rowFilter = value; render(); });
+      b.setAttribute(attr, value);
+      b.setAttribute('aria-pressed', String(current === value));
+      b.addEventListener('click', () => pick(value, b));
       bar.append(b);
     }
     return bar;
+  }
+
+  /** All rows · Differs · Missing (lead 5cf5c3401), a section's own (lead 10-11 W: in its toolbar). */
+  const rowFilterOf = (type) => state.rowFilters.get(type) || 'all';
+  function rowFilterBar(section) {
+    return segmented('wk-rowfilter', 'data-rows', [['all', 'All rows'], ['differs', 'Differs'], ['missing', 'Missing']],
+      rowFilterOf(section.type), (value) => { state.rowFilters.set(section.type, value); render(); });
   }
 
   /** A row's check, as the board marks (Shift: a control). */
@@ -690,120 +716,183 @@ export function boot(doc, host, deps) {
     tr.append(td);
   }
 
+  const signClass = (sign) => (sign === '−' ? 'wk-minus' : 'wk-plus');
+  const signWord = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
+
+  /** A value and, under it, who gave it when another node did (lead 99ed68cb7 C, W 11); several: the first and a «+N» tag
+   *  that opens the row's drawer of that column's records (lead 10-11 W). */
+  function valueCell(cell, cls, open, toggle) {
+    const c = el(doc, 'td', cell.missing ? `wk-missing ${cls}` : `${cell.numeric ? 'wk-num ' : ''}${cls}`);
+    const line = el(doc, 'div', 'wk-valline');
+    line.append(el(doc, 'span', 'wk-val', cell.text));
+    if (cell.rest) {
+      const more = el(doc, 'button', 'wk-tag' + (open ? ' is-on' : ''), cell.rest);
+      more.type = 'button';
+      more.setAttribute('aria-expanded', String(open));
+      more.addEventListener('click', (event) => { event.stopPropagation(); toggle(); });
+      line.append(more);
+    }
+    c.append(line);
+    const from = (cell.sources || [])[0];
+    if (from) c.append(el(doc, 'div', 'wk-src', from));
+    return c;
+  }
+
   /**
-   * The formula's section (lead 5cf5c3401): with two groups the + columns reversed on the left, the node in the centre,
-   * Δ beside it, the − columns on the right (lead 34d91c09d (나): Δ in the first screen with the node; the − side scrolls
-   * in the table's box); with any other count the node first, then each group's columns. Three head rows: the group,
-   * the step (once over the columns that share it), the value's name.
+   * Wide (lead 10-11 W, the mockup B-ㄱ): a row a node - its own columns first, the first its name, a copy icon and how
+   * each side reached it - then a column group a value: each group's cell under it, Δ between two groups. A step and its
+   * far end said once over the columns that share them, the value's name under, the signs under that. A cell's «+N»
+   * opens a drawer under its row with that column's records, the lines Long draws.
    */
-  function formulaTable(section, checks) {
+  function wideTable(view, section, checks) {
+    const table = el(doc, 'table', 'wk-table wk-sides wk-wide');
     const pair = section.groups.length === 2;
-    const n = section.heads.length;
-    const table = el(doc, 'table', 'wk-table wk-sides');
+    const many = section.groups.length > 1;
+    const width = (i) => section.groups.length + (section.parts[i].delta ? 1 : 0);
+    // A group showing one cell says its value's name in its head; the names have a row of their own only when a group
+    // shows more (the mockup B-ㄱ: two head rows).
+    const cellsOf = (group) => section.parts.filter((p) => p.group === group).length;
+    const leafed = section.parts.some((p) => cellsOf(p.group) > 1);
+    const stepped = section.parts.length > 0;
+    const depth = Math.max(1, (stepped ? 1 : 0) + (leafed ? 1 : 0) + (many && stepped ? 1 : 0));
     const thead = el(doc, 'thead');
-    const band = el(doc, 'tr');
     const steps = el(doc, 'tr');
-    const head = el(doc, 'tr');
-    if (checks) for (const row of [band, steps, head]) row.append(el(doc, 'th', 'wk-check'));
-    const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
-    const side = (g, i) => {
-      const cls = g.sign === '−' ? 'wk-minus' : 'wk-plus';
-      const th = el(doc, 'th', `wk-sidehead ${cls}${pair && i === 0 ? ' is-left' : ''}`, `${word(g.sign)} · ${unitText(g.starts, 'start')} · ${unitText(g.count, 'row')}`);
-      th.colSpan = n;
-      th.setAttribute('data-sign', g.sign);
-      band.append(th);
-      const parts = pair && i === 0 ? [...section.parts].reverse() : section.parts;
-      // A step said once over the run of columns that share it.
-      parts.forEach((p, k) => {
-        if (k > 0 && parts[k - 1].step === p.step) { steps.children[steps.children.length - 1].colSpan += 1; return; }
-        const s = el(doc, 'th', `wk-stephead ${cls}`, p.step);
-        s.colSpan = 1;
+    const leaves = el(doc, 'tr');
+    const signs = el(doc, 'tr');
+    const first = steps;
+    if (checks) { const th = el(doc, 'th', 'wk-check'); th.rowSpan = depth; first.append(th); }
+    section.centreHeads.forEach((h) => { const th = el(doc, 'th', 'wk-centre', h); th.rowSpan = depth; first.append(th); });
+    section.parts.forEach((p, i) => {
+      // A group - its step and far end - said once over its columns, with «▸ N» for the cells it folds (lead 10-11 W
+      // addendum 8): pressed, they open in place; «▾» folds them again.
+      const one = cellsOf(p.group) === 1;
+      if (i > 0 && section.parts[i - 1].group === p.group) steps.children[steps.children.length - 1].colSpan += width(i);
+      else {
+        const s = el(doc, 'th', 'wk-stephead');
+        s.colSpan = width(i);
+        if (one && leafed) s.rowSpan = 2;
+        s.setAttribute('data-group', p.group);
+        s.append(el(doc, 'span', '', one ? `${p.step} · ${p.leaf}` : p.step));
+        if (p.folded) {
+          const fold = el(doc, 'button', 'wk-tag' + (p.open ? ' is-on' : ''), p.open ? '▾' : `▸ ${p.folded}`);
+          fold.type = 'button';
+          fold.setAttribute('aria-expanded', String(p.open));
+          fold.setAttribute('aria-label', p.open ? 'Fold' : `Open ${p.folded} more`);
+          fold.addEventListener('click', () => { toggleGroup(section.type, p.group); render(); });
+          s.append(fold);
+        }
         steps.append(s);
-      });
-      for (const p of parts) head.append(el(doc, 'th', cls, p.leaf));
-    };
-    // The node's own columns in the centre (keys, attributes); a type with none says its name there.
-    const own = section.centreHeads;
-    const over = (cls, span) => {
-      for (const row of [band, steps]) {
-        const th = el(doc, 'th', cls);
-        th.colSpan = span;
-        row.append(th);
       }
-    };
-    const centre = () => {
-      over('wk-ownhead wk-centre', own.length);
-      for (const h of own) head.append(el(doc, 'th', 'wk-centre', h));
-    };
-    const delta = () => {
-      if (!section.deltaHeads.length) return;
-      over('wk-ownhead wk-delta', section.deltaHeads.length);
-      for (const h of section.deltaHeads) head.append(el(doc, 'th', 'wk-num wk-delta', h));
-    };
-    if (pair) { side(section.groups[0], 0); centre(); delta(); side(section.groups[1], 1); } else { centre(); section.groups.forEach(side); }
-    thead.append(band, ...(section.parts.some((p) => p.step) ? [steps] : []), head);
+      if (!one) {
+        const leaf = el(doc, 'th', 'wk-leafhead', p.leaf);
+        leaf.colSpan = width(i);
+        leaves.append(leaf);
+      }
+      if (many) {
+        section.groups.forEach((g, k) => {
+          if (pair && k === 1 && p.delta) signs.append(el(doc, 'th', 'wk-num wk-delta', DELTA));
+          const th = el(doc, 'th', `wk-sidehead ${signClass(g.sign)}`, g.sign);
+          th.setAttribute('data-sign', g.sign);
+          th.title = `${signWord(g.sign)} · ${unitText(g.starts, 'start')} · ${unitText(g.count, 'row')}`;
+          signs.append(th);
+        });
+      }
+    });
+    thead.append(steps, ...(leafed ? [leaves] : []), ...(many && stepped ? [signs] : []));
     table.append(thead);
     const tbody = el(doc, 'tbody');
-    const td = (cell, cls, at) => {
-      const c = el(doc, 'td', cell.missing ? `wk-missing ${cls}` : `${cell.numeric ? 'wk-num ' : ''}${cls}`);
-      if (cell.span) c.colSpan = cell.span;
-      // A value and, under it, who gave it (lead 99ed68cb7 C): its node's keys and how this side reached that node.
-      const sources = cell.sources || [];
-      const said = (value, k) => {
-        c.append(el(doc, 'div', 'wk-val', value));
-        if (sources[k]) c.append(el(doc, 'div', 'wk-src', sources[k]));
-      };
-      const open = Boolean(cell.rest) && state.openCells.has(at);
-      // Several values: the first and «+N»; a press on «+N» unfolds them all in the cell, another folds (lead 34d91c09d 1).
-      if (open) cell.values.forEach(said);
-      else said(cell.text, 0);
-      if (cell.rest) {
-        if (open) c.className += ' is-open';
-        const more = el(doc, 'button', 'wk-more', open ? 'Less' : cell.rest);
-        more.type = 'button';
-        more.setAttribute('aria-expanded', String(open));
-        more.addEventListener('click', (event) => {
-          event.stopPropagation();
-          if (open) state.openCells.delete(at); else state.openCells.add(at);
-          render();
-        });
-        c.append(more);
-      }
-      return c;
-    };
-    const rows = rowsShown(section, state.rowFilter);
-    for (const row of rows) {
+    const across = (checks ? 1 : 0) + section.centreHeads.length + section.parts.reduce((n, _, i) => n + width(i), 0);
+    for (const row of rowsShown(section, rowFilterOf(section.type))) {
       const tr = el(doc, 'tr');
       tr.setAttribute('data-row-id', row.id);
       if (checks) checkCell(tr, checks, row.id);
-      const cells = (i) => (pair && i === 0 ? [...row.byGroup[i]].reverse() : row.byGroup[i]);
-      const node = () => {
-        row.centre.forEach((cell, i) => {
-          const c = el(doc, 'td', 'wk-centre');
-          c.append(el(doc, 'span', 'wk-centrelabel', cell.text));
-          // The id is picked, not read (lead 5cf5c3401): an icon on the first centre cell, shown with its row (34d91c09d 5).
-          if (i === 0) c.append(copyIdButton(row.id));
-          tr.append(c);
-        });
-      };
-      const group = (i) => {
-        for (const cell of cells(i)) {
-          const c = td(cell, `${section.groups[i].sign === '−' ? 'wk-minus' : 'wk-plus'}${row.reached && row.reached[i] && row.reached[i] !== 'a' ? ` is-ctl-${row.reached[i]}` : ''}`,
-            cell.rest ? `${section.type}\u0000${row.id}\u0000${i}\u0000${cell.col === undefined ? ROUTE : columnKey(section.columns[cell.col])}` : '');
-          // A value cell opens its column's trend for this row (lead f984ab01d).
-          if (cell.col !== undefined && !cell.missing) {
-            c.className += ' wk-pick';
-            c.setAttribute('data-col', String(cell.col));
-            c.addEventListener('click', () => openTrend(section.type, [row.id], columnKey(section.columns[cell.col]), i, 'below'));
-          }
-          tr.append(c);
+      row.centre.forEach((cell, i) => {
+        const c = el(doc, 'td', 'wk-centre');
+        const line = el(doc, 'div', 'wk-valline');
+        line.append(el(doc, 'span', 'wk-centrelabel', cell.text));
+        // The id is picked, not read (lead 5cf5c3401): an icon on the first centre cell, shown with its row (34d91c09d 5).
+        if (i === 0) line.append(copyIdButton(row.id));
+        c.append(line);
+        // How each side reached the node (lead 10-11 W: the Route column retired), once when they say the same: its first
+        // route and «+N», every route in its title.
+        if (i === 0 && row.routes.length) {
+          const short = (w) => `${w.text}${w.rest ? ` ${w.rest}` : ''}`;
+          const all = (w) => (w.values || [w.text]).join(' · ');
+          const same = new Set(row.routes.map(all)).size === 1;
+          const src = el(doc, 'div', 'wk-src', same ? short(row.routes[0]) : row.routes.map((w) => `${w.sign} ${short(w)}`).join(' · '));
+          src.title = same ? all(row.routes[0]) : row.routes.map((w) => `${w.sign} ${all(w)}`).join(' · ');
+          src.setAttribute('data-clip-ok', '');
+          c.append(src);
         }
-      };
-      const deltas = () => { for (const d of row.deltas) tr.append(td(d, 'wk-delta')); };
-      if (pair) { group(0); node(); deltas(); group(1); } else { node(); section.groups.forEach((_, i) => group(i)); }
+        tr.append(c);
+      });
+      const opened = [];
+      row.cells.forEach((cell, c) => {
+        const key = columnKey(section.columns[c]);
+        cell.sides.forEach((side, i) => {
+          if (pair && i === 1 && cell.delta) tr.append(valueCell(cell.delta, 'wk-delta', false, () => {}));
+          const at = `${section.type}\u0000${row.id}\u0000${key}`;
+          const open = state.openCells.has(at);
+          if (open && !opened.includes(key)) opened.push(key);
+          const td = valueCell(side, `${signClass(section.groups[i].sign)}${row.reached && row.reached[i] && row.reached[i] !== 'a' ? ` is-ctl-${row.reached[i]}` : ''}`,
+            open, () => { if (state.openCells.has(at)) state.openCells.delete(at); else state.openCells.add(at); render(); });
+          // A value cell opens its column's trend for this row (lead f984ab01d).
+          if (!side.missing) {
+            td.className += ' wk-pick';
+            td.setAttribute('data-col', String(c));
+            td.addEventListener('click', () => openTrend(section.type, [row.id], key, i, 'below'));
+          }
+          tr.append(td);
+        });
+      });
+      tbody.append(tr);
+      // A cell's drawer: its column's records under the row, as Long has them (lead 10-11 W) - value · time · point · from.
+      for (const key of opened) {
+        const lines = longLines(view, section, { row: row.id, column: key });
+        const drawer = el(doc, 'tr', 'wk-drawer');
+        const td = el(doc, 'td', '');
+        td.colSpan = across;
+        const list = el(doc, 'div', 'wk-records');
+        list.append(el(doc, 'div', 'wk-recordshead', lines.length ? lines[0].name : ''));
+        for (const l of lines) {
+          const item = el(doc, 'div', `wk-record ${l.side ? signClass(l.side) : ''}`);
+          item.append(el(doc, 'span', 'wk-val', l.words), el(doc, 'span', 'wk-src',
+            [l.side, l.time, l.point, l.from].filter(Boolean).join(' · ')));
+          list.append(item);
+        }
+        td.append(list);
+        drawer.append(td);
+        tbody.append(drawer);
+      }
+    }
+    table.append(tbody);
+    return table;
+  }
+
+  /** Long (lead 10-11 W): the same answer a value record a line - node · value name · value · point · time · side · from;
+   *  Value narrows it to one name. Nothing walked: the lines Wide's drawer reads. */
+  function longTable(view, section, checks) {
+    const name = state.longNames.get(section.type) || '';
+    const lines = longLines(view, section, { filter: rowFilterOf(section.type), column: name || undefined });
+    const table = el(doc, 'table', 'wk-table wk-long');
+    const thead = el(doc, 'thead');
+    const head = el(doc, 'tr');
+    if (checks) head.append(el(doc, 'th', 'wk-check'));
+    for (const h of LONG_HEAD) head.append(el(doc, 'th', h === 'value' ? 'wk-num' : h === 'node' ? 'wk-centre' : '', h));
+    thead.append(head);
+    table.append(thead);
+    const tbody = el(doc, 'tbody');
+    for (const l of lines) {
+      const tr = el(doc, 'tr');
+      tr.setAttribute('data-row-id', l.id);
+      if (checks) checkCell(tr, checks, l.id);
+      const cells = [[l.node, 'wk-centre'], [l.name, ''], [l.words, numberOf(l.value) !== null ? 'wk-num' : ''], [l.point, ''], [l.time, ''],
+        [l.side, l.side ? signClass(l.side) : ''], [l.from, 'wk-src']];
+      for (const [text, cls] of cells) tr.append(el(doc, 'td', cls, text));
       tbody.append(tr);
     }
     table.append(tbody);
+    if (!lines.length) return el(doc, 'div', 'wk-note', 'No value in these rows');
     return table;
   }
 
@@ -836,7 +925,10 @@ export function boot(doc, host, deps) {
   function trendColumn(view) {
     const t = trendNow();
     const section = t && view.sections.find((s) => s.type === t.type && s.groups);
-    const at = section && section.trendable.find((x) => columnKey(x.column) === t.col);
+    // A section's trend whose column the new answer does not have - a step walked again to other far nodes (lead 10-11
+    // W: a column ends at a node) - stays open on the section's first.
+    const at = section && (section.trendable.find((x) => columnKey(x.column) === t.col) || (t.at === 'section' ? section.trendable[0] : null));
+    if (at) t.col = columnKey(at.column);
     return at ? { section, column: at.column, head: at.head } : null;
   }
 
@@ -874,8 +966,6 @@ export function boot(doc, host, deps) {
     if (fresh) Object.assign(t, { pageKey, t0: null, pages: [], earlier: null, later: null, hasEarlier: null, hasLater: null });
     // A point says who gave it, as its cell does (lead 99ed68cb7 C): the same read, the same seat.
     const points = (t.anchor ? t.pages : []).reduce((all, answer) => mergePoints(all, pagePoints(answer, view.groups, t.anchor.id, at.column, walked)), own)
-      // Who gave a point: the end of its edge that is not the anchor - a row read toward the end they share names the row.
-      .map((p) => ({ ...p, giver: t.anchor && p.row && p.node === t.anchor.id ? p.row : p.node }))
       .map((p) => ({ ...p, source: view.sources.source(p.group === null || p.group === undefined ? null : view.groups[p.group], p.giver) }));
     if (t.t0 === null) t.t0 = walkedTime(own, r.generated_at, t.group);
     // The view the next page is read against: the trend's own, not a second computing of the table.
@@ -894,21 +984,10 @@ export function boot(doc, host, deps) {
     if (fresh) void loadTrend('around');
   }
 
-  /** «+ Column» (lead 5cf5c3401 answer 2): a route the rows take in this walk, then what its end holds; × takes one out. */
+  /** «+ Column» (lead 5cf5c3401 answer 2), opened from Columns: a route the rows take in this walk, then what its end
+   *  holds; × takes one out. */
   function columnPicker(section, index) {
     const box = el(doc, 'div', 'wk-addcol');
-    // Columns no row has a value in, folded until pressed (lead 34d91c09d 7).
-    if (section.empty.count) {
-      const fold = el(doc, 'button', 'wk-add wk-emptycols' + (section.empty.open ? ' is-on' : ''),
-        unitText(section.empty.count, 'empty column'));
-      fold.type = 'button';
-      fold.setAttribute('aria-pressed', String(section.empty.open));
-      fold.addEventListener('click', () => {
-        if (state.emptyOpen.has(section.type)) state.emptyOpen.delete(section.type); else state.emptyOpen.add(section.type);
-        render();
-      });
-      box.append(fold);
-    }
     const added = state.added.get(section.type) || [];
     added.forEach((column, i) => {
       const chip = el(doc, 'button', 'wk-chip', `${column.words.join(' · ')} ×`);
@@ -917,20 +996,14 @@ export function boot(doc, host, deps) {
       chip.addEventListener('click', () => { added.splice(i, 1); render(); });
       box.append(chip);
     });
-    if (state.picking !== section.type) {
-      const open = el(doc, 'button', 'wk-add', '+ Column');
-      open.type = 'button';
-      open.addEventListener('click', () => { state.picking = section.type; state.pickedRoute = -1; render(); });
-      box.append(open);
-      return box;
-    }
+    if (state.picking !== section.type) return box;
     const ids = section.rows.map((row) => row.id);
     const routes = routesFrom(index, ids);
     const route = routes[state.pickedRoute] || null;
     const ways = el(doc, 'select', 'wk-select');
     ways.append(el(doc, 'option', '', routes.length ? 'Route' : 'No route from these rows'));
     routes.forEach((r, i) => {
-      const o = el(doc, 'option', '', `${r.words.join(' · ')} → ${r.to.join(' · ')}`);
+      const o = el(doc, 'option', '', r.words.join(' · '));
       o.value = String(i);
       if (i === state.pickedRoute) o.selected = true;
       ways.append(o);
@@ -949,57 +1022,130 @@ export function boot(doc, host, deps) {
         const v = valuesAt(index, ids, route.steps)[Number(what.value)];
         if (!v) return;
         if (!state.added.has(section.type)) state.added.set(section.type, []);
-        state.added.get(section.type).push({ steps: route.steps, value: { on: v.on, name: v.name },
-          words: [`${route.words.join(' · ')} → ${route.to.join(' · ')}`, v.name] });
+        state.added.get(section.type).push({ steps: route.steps, value: { on: v.on, name: v.name }, words: [route.words.join(' · '), v.name] });
         state.picking = '';
         render();
       });
       box.append(what);
     }
-    const cancel = el(doc, 'button', 'wk-add', 'Cancel');
+    const cancel = el(doc, 'button', 'wk-act', 'Cancel');
     cancel.type = 'button';
     cancel.addEventListener('click', () => { state.picking = ''; render(); });
     box.append(cancel);
     return box;
   }
 
-  /** The table's sections and what it did not draw. */
+  /** Columns · k of n (lead 10-11 W): every column a row has a value in, each on or off - the viewer's, kept per type in
+   *  this browser; «+ Column» at its foot. */
+  function columnsMenu(section) {
+    const wrap = el(doc, 'span', 'wk-colmenu');
+    const on = section.listed.filter((x) => x.on).length;
+    const b = el(doc, 'button', 'wk-act' + (state.columnsOpen === section.type ? ' is-on' : ''), `Columns · ${on} of ${section.listed.length} ▾`);
+    b.type = 'button';
+    b.setAttribute('data-columns', section.type);
+    b.setAttribute('aria-expanded', String(state.columnsOpen === section.type));
+    b.addEventListener('click', () => { state.columnsOpen = state.columnsOpen === section.type ? '' : section.type; render(); });
+    wrap.append(b);
+    if (state.columnsOpen !== section.type) return wrap;
+    const pop = el(doc, 'div', 'wk-pop');
+    const acts = el(doc, 'div', 'wk-popacts');
+    for (const [word, all] of [['All', true], ['None', false]]) {
+      const a = el(doc, 'button', 'wk-act', word);
+      a.type = 'button';
+      a.addEventListener('click', () => { setHidden(section.type, all ? [] : section.listed.map((x) => x.key)); render(); });
+      acts.append(a);
+    }
+    pop.append(acts);
+    for (const x of section.listed) {
+      const row = el(doc, 'label', 'wk-popcheck');
+      const cb = el(doc, 'input');
+      cb.type = 'checkbox';
+      cb.checked = x.on;
+      cb.addEventListener('change', () => {
+        const off = new Set(hiddenOf(section.type));
+        if (cb.checked) off.delete(x.key); else off.add(x.key);
+        setHidden(section.type, [...off]);
+        render();
+      });
+      row.append(cb, el(doc, 'span', '', x.head));
+      pop.append(row);
+    }
+    const add = el(doc, 'button', 'wk-act', '+ Column');
+    add.type = 'button';
+    add.addEventListener('click', () => { state.picking = section.type; state.pickedRoute = -1; state.columnsOpen = ''; render(); });
+    pop.append(add);
+    wrap.append(pop);
+    return wrap;
+  }
+
   /** A sheet onto the clipboard by the one writer (lead a27dfbb0f): TSV for the cells, HTML beside it; what happened. */
   function copySheet(sheet, unit) {
     return writeClip(sheetHtml(sheet), serializeTsv([sheet.head, ...sheet.rows]))
       ? COPY_WORDS.done(sheet.rows.length, unit) : COPY_WORDS.failed;
   }
 
-  /** «Copy table» on a section's head: every column, the folded too, the rows the filter shows; said beside it. */
-  function copyBar(section, build) {
+  /** Copy in a section's toolbar: the shape drawn - Wide's columns as shown, or Long's lines - the rows the filter shows;
+   *  said beside it. */
+  function copyBar(section, view) {
     const bar = el(doc, 'span', 'wk-copybar');
     const said = el(doc, 'span', 'wk-note wk-copied', '');
-    const b = el(doc, 'button', 'wk-add wk-copytable', COPY_WORDS.table);
+    const b = el(doc, 'button', 'wk-act wk-copytable', COPY_WORDS.table);
     b.type = 'button';
     b.addEventListener('click', () => {
-      const full = build(new Set([...state.emptyOpen, section.type])).sections.find((s) => s.type === section.type) || section;
-      said.textContent = copySheet(sheetOf(full, state.rowFilter), 'row');
+      const long = shapeOf(section.type) === 'long';
+      const name = state.longNames.get(section.type) || '';
+      said.textContent = long
+        ? copySheet(longSheet(longLines(view, section, { filter: rowFilterOf(section.type), column: name || undefined })), 'line')
+        : copySheet(sheetOf(section, rowFilterOf(section.type)), 'row');
     });
     bar.append(b, said);
     return bar;
   }
 
-  function renderSections(box, view, r, build) {
+  /** Long's Value: every value name the section lists, or all. */
+  function longPick(section) {
+    const pick = el(doc, 'select', 'wk-select wk-longname');
+    const all = el(doc, 'option', '', 'Value · all');
+    all.value = '';
+    pick.append(all);
+    for (const x of section.long) {
+      const o = el(doc, 'option', '', x.head);
+      o.value = columnKey(x.column);
+      if (o.value === state.longNames.get(section.type)) o.selected = true;
+      pick.append(o);
+    }
+    pick.addEventListener('change', () => { state.longNames.set(section.type, pick.value); render(); });
+    return pick;
+  }
+
+  const shapeOf = (type) => state.shapes.get(type) || 'wide';
+
+  /** A section's toolbar, one line in one order (lead 10-11 W): its name · Wide | Long · Table | Trend · Columns · Copy ·
+   *  the rows shown. */
+  function sectionBar(section, trended, view) {
+    const bar = el(doc, 'div', 'wk-secbar');
+    bar.append(el(doc, 'span', 'wk-sechead', section.heading));
+    bar.append(segmented('wk-shape', 'data-shape', [['wide', 'Wide'], ['long', 'Long']], shapeOf(section.type),
+      (value) => { state.shapes.set(section.type, value); render(); }));
+    if (shapeOf(section.type) === 'long' && !trended) bar.append(longPick(section));
+    bar.append(sectionViews(section, trended), columnsMenu(section), copyBar(section, view), rowFilterBar(section));
+    return bar;
+  }
+
+  function renderSections(box, view, r) {
     const at = state.at;
     const checks = checksOf(at);
     for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
-      sec.append(el(doc, 'div', 'wk-sechead', section.heading));
       const t = trendNow();
       const trended = Boolean(t && t.at === 'section' && t.type === section.type);
-      sec.append(sectionViews(section, trended), copyBar(section, build));
-      // Next above its table, once (lead 3375edd9b).
-      if (checks) sec.append(nextRow(at, section, checks));
+      sec.append(sectionBar(section, trended, view));
       if (section.reached) sec.append(reachedLine(section));
-      // «+ Column» in either view (lead 10-11): a Trend opened on a section with no value column yet can be given one.
-      sec.append(columnPicker(section, view.index));
+      if ((state.added.get(section.type) || []).length || state.picking === section.type) sec.append(columnPicker(section, view.index));
       if (trended) renderTrend(sec, view, r);
-      else sec.append(formulaTable(section, checks));
+      else sec.append(shapeOf(section.type) === 'long' ? longTable(view, section, checks) : wideTable(view, section, checks));
+      // Walk on from the rows checked, the section's last line (lead 10-11 W).
+      if (checks) sec.append(nextRow(at, section, checks));
       box.append(sec);
     }
 
@@ -1008,22 +1154,20 @@ export function boot(doc, host, deps) {
     }
   }
 
-  /** Table | Trend on a section's head (lead 10-10 E2); its trend picks the value column - a step's or the node's own
-   *  (lead 10-11 E2c) - every row a point or more. */
+  /** Table | Trend on a section's toolbar (lead 10-10 E2); its trend picks the value column - a step's or the node's own
+   *  (lead 10-11 E2c) - every row a point or more; Long's Value picked, that one (lead 10-11 W). */
   function sectionViews(section, trended) {
-    const bar = el(doc, 'span', 'wk-secviews');
-    for (const [name, word] of [['table', 'Table'], ['trend', 'Trend']]) {
-      const b = el(doc, 'button', 'wk-view' + ((name === 'trend') === trended ? ' is-on' : ''), word);
-      b.type = 'button';
-      b.setAttribute('data-section-view', name);
-      b.setAttribute('aria-pressed', String((name === 'trend') === trended));
-      setDisabledReason(b, name === 'trend' && !section.trendable.length ? 'No value with a time' : '');
-      b.addEventListener('click', () => {
+    const wrap = el(doc, 'span', 'wk-secviews');
+    const long = state.longNames.get(section.type) || '';
+    const first = section.trendable.find((x) => columnKey(x.column) === long) || section.trendable[0];
+    const bar = segmented('wk-tableortrend', 'data-section-view', [['table', 'Table'], ['trend', 'Trend']], trended ? 'trend' : 'table',
+      (name) => {
         if (name === 'table') { setTrend(null); render(); return; }
-        if (!trended && section.trendable.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.trendable[0].column), undefined, 'section');
+        if (!trended && first) openTrend(section.type, section.rows.map((x) => x.id), columnKey(first.column), undefined, 'section');
       });
-      bar.append(b);
-    }
+    const trendButton = bar.children[1];
+    setDisabledReason(trendButton, !section.trendable.length ? 'No value with a time' : '');
+    wrap.append(bar);
     if (trended) {
       const pick = el(doc, 'select', 'wk-select wk-trendcol');
       for (const { column, head } of section.trendable) {
@@ -1033,18 +1177,18 @@ export function boot(doc, host, deps) {
         pick.append(o);
       }
       pick.addEventListener('change', () => openTrend(section.type, trendNow().rows, pick.value, undefined, 'section'));
-      bar.append(pick);
+      wrap.append(pick);
     }
-    return bar;
+    return wrap;
   }
 
   /** Under a section: the declared edges one step from its type; each walks on from the rows checked of it. */
   function nextRow(at, section, checks) {
     const line = el(doc, 'div', 'wk-next');
-    line.append(el(doc, 'span', 'wk-label', 'Next'));
+    line.append(el(doc, 'span', 'wk-label', 'Walk on from checked ▸'));
     const seeds = seedsOf(section.rows.map((row) => [row.id, markings.signOf(checks, row.id)]));
     for (const route of nextRoutes(state.decl, section.type)) {
-      const go = el(doc, 'button', 'wk-next-edge', `${route.predicate} → ${route.to}`);
+      const go = el(doc, 'button', 'wk-next-edge', route.words);
       go.type = 'button';
       setDisabledReason(go, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
       go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });
@@ -1214,17 +1358,6 @@ export function boot(doc, host, deps) {
     // The baskets read the form's picked node for their «+»: drawn with the page.
     baskets.render();
     host.append(rail, main, sideMount);
-    // Each side by side table opens with its node axis in the middle of its box - on every draw, a walk again too.
-    if (host.querySelectorAll) for (const table of host.querySelectorAll('table.wk-sides')) centreAxis(table);
-  }
-
-  /** A drawn table's box scrolled to its axis: the node's columns in the leaf head row. */
-  function centreAxis(table) {
-    const axis = [...table.querySelectorAll('thead tr:last-child th.wk-centre')];
-    if (!axis.length) return;
-    const box = table.getBoundingClientRect();
-    table.scrollLeft = axisScrollLeft({ boxLeft: box.left, boxWidth: table.clientWidth, axisLeft: axis[0].getBoundingClientRect().left,
-      axisRight: axis[axis.length - 1].getBoundingClientRect().right, scrollLeft: table.scrollLeft, scrollWidth: table.scrollWidth });
   }
 
   /** A type picked: the box asks its first nodes, and its answer names the key the box stands for. */
