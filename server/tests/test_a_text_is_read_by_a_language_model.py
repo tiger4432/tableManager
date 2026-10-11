@@ -16,6 +16,7 @@ file's cells reach the client, not what the real client sends.
   identifier in another case           unlisted - compared as written (총괄 6e251ed32)
   direction up / down / null           kept as written, spaces trimmed · a blank is null
   direction anything else              None, one warning line · find_links rows: None
+  dir                                  both said: same "+" · different "-" · a side None: None
   evidence the text does not hold      that link dropped, one warning line · every link: refused by name
   evidence over two sentences          found, the sentence it starts in
   quote marks · ellipsis               ignored on both sides; a changed word or only marks is dropped
@@ -345,22 +346,27 @@ def test_an_identifier_is_compared_as_written(answer, caplog):
         "[LLM] link 1 of 1 answers cause_key 'f1'", "[LLM] link 1 of 1 answers effect_key 'q123'"]
 
 
-DIRECTION_TEXT = "본딩 온도가 올라가서 보이드가 늘었다. 본딩 압력이 낮아져 보이드가 늘었다. 습도 때문에 보이드가 생겼다."
+DIRECTION_TEXT = ("본딩 온도가 올라가서 보이드가 늘었다. 본딩 압력이 낮아져 보이드가 늘었다. 습도 때문에 보이드가 생겼다."
+                  " 본딩 압력이 낮아져 보이드가 줄었다. 본딩 온도가 올라가서 보이드가 줄었다. 습도 때문에 보이드가 늘었다.")
 
 
 @pytest.mark.parametrize("said,evidence,expected", [
-    ({"cause_direction": "up", "effect_direction": "up"}, "본딩 온도가 올라가서 보이드가 늘었다.", ("up", "up")),
-    ({"cause_direction": "down", "effect_direction": "up"}, "본딩 압력이 낮아져 보이드가 늘었다.", ("down", "up")),
-    ({"cause_direction": None, "effect_direction": None}, "습도 때문에 보이드가 생겼다.", (None, None)),
-    ({}, "습도 때문에 보이드가 생겼다.", (None, None)),
-    ({"cause_direction": " down ", "effect_direction": "  "}, "본딩 압력이 낮아져 보이드가 늘었다.", ("down", None)),
-], ids=["ko-up-up", "ko-down-up", "ko-null-null", "missing", "trimmed-and-blank"])
+    ({"cause_direction": "up", "effect_direction": "up"}, "본딩 온도가 올라가서 보이드가 늘었다.", ("up", "up", "+")),
+    ({"cause_direction": "down", "effect_direction": "down"}, "본딩 압력이 낮아져 보이드가 줄었다.", ("down", "down", "+")),
+    ({"cause_direction": "up", "effect_direction": "down"}, "본딩 온도가 올라가서 보이드가 줄었다.", ("up", "down", "-")),
+    ({"cause_direction": "down", "effect_direction": "up"}, "본딩 압력이 낮아져 보이드가 늘었다.", ("down", "up", "-")),
+    ({"cause_direction": None, "effect_direction": "up"}, "습도 때문에 보이드가 늘었다.", (None, "up", None)),
+    ({"cause_direction": None, "effect_direction": None}, "습도 때문에 보이드가 생겼다.", (None, None, None)),
+    ({}, "습도 때문에 보이드가 생겼다.", (None, None, None)),
+    ({"cause_direction": " down ", "effect_direction": "  "}, "본딩 압력이 낮아져 보이드가 늘었다.", ("down", None, None)),
+], ids=["ko-up-up", "ko-down-down", "ko-up-down", "ko-down-up", "ko-null-up", "ko-null-null", "missing",
+        "trimmed-and-blank"])
 def test_a_link_carries_the_direction_each_side_moves(answer, caplog, said, evidence, expected):
-    """소유자 10-11 「여기 모델링에 증감 방향은 없네」."""
+    """소유자 10-11 「여기 모델링에 증감 방향은 없네」 · dir «같이 움직이나 / 반대로»."""
     answer(_links({"cause": "본딩 온도", "effect": "보이드", "evidence": evidence, **said}))
     caplog.set_level(logging.WARNING)
     (row,) = text_links.ask_links(DIRECTION_TEXT, KO_NAMES)
-    assert (row["cause_direction"], row["phenomenon_direction"]) == expected
+    assert (row["cause_direction"], row["phenomenon_direction"], row["dir"]) == expected
     assert _dropped_lines(caplog) == []
 
 
@@ -373,8 +379,8 @@ def test_a_direction_not_up_or_down_is_none_and_said(answer, caplog, side, value
                    "evidence": "본딩 압력이 낮아져 보이드가 늘었다."}))
     caplog.set_level(logging.WARNING)
     (row,) = text_links.ask_links(DIRECTION_TEXT, KO_NAMES)
-    assert (row["cause_direction"], row["phenomenon_direction"]) == (
-        (None, "up") if side == "cause" else ("down", None))
+    assert (row["cause_direction"], row["phenomenon_direction"], row["dir"]) == (
+        (None, "up", None) if side == "cause" else ("down", None, None))
     assert _dropped_lines(caplog) == [
         "[LLM] link 1 of 1 answers %s_direction %r, which is not up or down - kept without it"
         " (llm:m-1): %r" % (side, value, "본딩 온도" if side == "cause" else "보이드")]
@@ -567,7 +573,7 @@ def test_find_links_rows_say_rules_and_their_sentence():
     (row,) = text_links.find_links("The bond temperature caused a void.", NAMES, [
         {"phrase": "caused", "meaning": "cause", "side": "before"}])
     assert (row["extractor"], row["evidence"]) == ("rules", row["sentence"])
-    assert (row["cause_direction"], row["phenomenon_direction"]) == (None, None)
+    assert (row["cause_direction"], row["phenomenon_direction"], row["dir"]) == (None, None, None)
 
 
 def test_the_mapper_door_reaches_the_same_functions():

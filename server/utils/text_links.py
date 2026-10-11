@@ -154,12 +154,20 @@ def _pairs(sentence, found):
 RULES_EXTRACTOR = "rules"
 
 
+def _signed(row):
+    """The row with `dir` (소유자 10-11 «같이 움직이나 / 반대로»): "+" when cause_direction and
+    phenomenon_direction are both said and equal, "-" when both said and different, else None."""
+    cause, effect = row["cause_direction"], row["phenomenon_direction"]
+    row["dir"] = None if cause is None or effect is None else "+" if cause == effect else "-"
+    return row
+
+
 def find_links(text, names, links):
     """One row per candidate: sentence_no (from 1) · sentence · cause_type · cause_key ·
     cause_phrase · cause_direction · phenomenon_type · phenomenon_key · phenomenon_phrase ·
-    phenomenon_direction · link · polarity · certainty · extractor · evidence. The *_phrase
-    cells and `link` are the words as the text wrote them; `extractor` is 'rules' and
-    `evidence` the sentence. The *_direction cells are `ask_links`' - None here."""
+    phenomenon_direction · link · polarity · certainty · extractor · evidence · dir (`_signed`).
+    The *_phrase cells and `link` are the words as the text wrote them; `extractor` is 'rules'
+    and `evidence` the sentence. The *_direction cells and so `dir` are `ask_links`' - None here."""
     index = _dictionary(names, links)
     out = []
     for number, sentence in enumerate(_sentences(text), 1):
@@ -169,14 +177,14 @@ def find_links(text, names, links):
         certainty = (SUSPECTED if SUSPECTED in said else CONFIRMED if CONFIRMED in said
                      else STATED)
         for (ck, cause), (ek, effect), lk in _pairs(sentence, found):
-            out.append({"sentence_no": number, "sentence": sentence,
+            out.append(_signed({"sentence_no": number, "sentence": sentence,
                         "cause_type": cause["node_type"], "cause_key": cause["node_key"],
                         "cause_phrase": found[ck][2], "cause_direction": None,
                         "phenomenon_type": effect["node_type"],
                         "phenomenon_key": effect["node_key"], "phenomenon_phrase": found[ek][2],
                         "phenomenon_direction": None,
                         "link": found[lk][2], "polarity": polarity, "certainty": certainty,
-                        "extractor": RULES_EXTRACTOR, "evidence": sentence})
+                        "extractor": RULES_EXTRACTOR, "evidence": sentence}))
     return out
 
 
@@ -251,7 +259,7 @@ def ask_links(text, names, instruction=None, match_at=None):
     text says, `suspected` when it says nothing - nothing becomes a fact before a person confirms it.
     `cause_direction` / `phenomenon_direction` is the answer when it is one of DIRECTIONS as
     written (spaces trimmed, case kept), else None - an answer that is neither null nor one of
-    them is said in one warning line.
+    them is said in one warning line. `dir` is their sign (`_signed`).
 
     A link's evidence is looked for in the whole text (`_evidence`); its sentence is the one the
     quote starts in. A link whose evidence the text does not hold is dropped and said in one
@@ -317,7 +325,7 @@ def ask_links(text, names, instruction=None, match_at=None):
                                number, len(links), side, answered, extractor, said[side][:120])
         (cause_type, cause_key), (effect_type, effect_key) = node["cause"], node["effect"]
         certainty = item.get("certainty")
-        out.append({"sentence_no": sentence_no, "sentence": sentence,
+        out.append(_signed({"sentence_no": sentence_no, "sentence": sentence,
                     "cause_type": cause_type, "cause_key": cause_key,
                     "cause_phrase": said["cause"].strip(), "cause_direction": direction["cause"],
                     "phenomenon_type": effect_type, "phenomenon_key": effect_key,
@@ -326,7 +334,7 @@ def ask_links(text, names, instruction=None, match_at=None):
                     "link": item.get("link") if isinstance(item.get("link"), str) else None,
                     "polarity": NEGATED if item.get("negated") is True else ASSERTED,
                     "certainty": CONFIRMED if certainty == CONFIRMED else SUSPECTED,
-                    "extractor": extractor, "evidence": said["evidence"]})
+                    "extractor": extractor, "evidence": said["evidence"]}))
     if dropped and not out:
         raise llm.LlmRefused("every link of the answer (%d) quotes evidence the text does not hold"
                              " - link %d: %r" % (len(dropped), dropped[0],

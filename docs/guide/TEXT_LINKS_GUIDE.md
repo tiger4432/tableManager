@@ -11,7 +11,7 @@
 | 글 | `<글 id>` · `<글>` — 회의록 한 건이든 8D 한 섹션이든. 나누는 것은 맵퍼 | 사람 · 수집기 |
 | 부르는 말 | `node_type` · `node_key` · `phrase` — 한 노드에 말 여럿 | 사람 |
 | 연결 말 | `phrase` · `meaning` · `side` | 사람 |
-| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `cause_direction` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `phenomenon_direction` · `link` · `polarity` · `certainty` · `extractor` · `evidence` | 맵퍼 |
+| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `cause_direction` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `phenomenon_direction` · `dir` · `link` · `polarity` · `certainty` · `extractor` · `evidence` | 맵퍼 |
 
 | `meaning` | 뜻 | `side` |
 |---|---|---|
@@ -24,7 +24,7 @@
 
 같은 말을 두 행에 적으면 두 뜻이다 — 「무관」 = `cause`(`before`) 한 행 + `negation` 한 행.
 규칙으로 뽑은 행의 `*_phrase` · `link` 는 글에 «적힌 그대로»다(LLM 행은 §6). 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다(LLM 으로 뽑으면 §6 의 키).
-`*_direction` 은 LLM 이 채운다(§6) — 규칙이 뽑은 행은 비어 있다. 후보 표에 그 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 센다.
+`*_direction` 은 LLM 이 채운다(§6) — 규칙이 뽑은 행은 비어 있다. `dir` 은 그 둘의 부호 — 둘 다 차고 같으면(up/up · down/down) `+`, 다르면(up/down · down/up) `-`, 한쪽이라도 비면 빈다. 후보 표에 이 세 칸이 없으면 쓰기가 없는 칸만 버리고 경고를 센다.
 `extractor` 는 뽑은 쪽 — `rules` 또는 `llm:<모델>`. `evidence` 는 근거 — 규칙이 뽑은 행은 그 문장, LLM 행은 모델이 쓴 인용 그대로(두 문장에 걸칠 수 있고 따옴표 · 말줄임이 글과 다를 수 있음 — 그때 문장 칸은 인용이 시작한 문장). 후보 표에 이 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 센다.
 
 ## 2. 짝짓는 규칙 — 두 줄
@@ -141,7 +141,7 @@ def text_cause_links_llm(df, db):
 "leads_to": {
   "subjects": ["<원인 타입>"],
   "object": { "kind": "entity_ref", "types": ["<현상 타입>", "<다른 현상 타입>"],
-              "qualifiers": { "required": [], "optional": ["certainty", "cause_direction", "phenomenon_direction"] } }
+              "qualifiers": { "required": [], "optional": ["certainty", "dir"] } }
 }
 ```
 
@@ -159,11 +159,11 @@ def text_cause_links_llm(df, db):
                 "keys": { "<현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" },
                           "<다른 현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" } } },
     "certainty": { "kind": "column", "column": "certainty" },
-    "cause_direction": { "kind": "column", "column": "cause_direction" },
-    "phenomenon_direction": { "kind": "column", "column": "phenomenon_direction" } } } } }
+    "dir": { "kind": "column", "column": "dir" } } } } }
 }
 ```
 
+- 원장은 부호 `dir` 하나만 잇는다(샘플 `server/config/sample/ledger_config.json.sample` 의 `leads_to@1` 도 `dir`) — 두 방향 칸은 후보 표에 근거로 남는다. `dir` 이 빈 행은 그 엣지에 `dir` 없이 들어간다(d338d3fdc · 아래 줄).
 - `optional` 한정자의 칸이 빈 행은 그 엣지에 그 한정자만 없이 들어간다(빈 속성과 같은 읽기). `required` 한정자의 칸이 빈 행은 전처럼 그 행이 든 원장 묶음 전체를 실패시킨다(`missing_binding_value`).
 - 타입 칸의 값은 선언된 타입 이름 그대로다(옛 철자 `x@1` 도 접힌다). 행마다 그 타입의 키만 쓴다.
 - 그 자리가 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어간다 — 받는 타입은 술어 목록(`subjects` · `object.types`)이 정한다.
