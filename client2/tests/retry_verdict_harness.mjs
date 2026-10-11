@@ -338,9 +338,13 @@ console.log('\n── R. A FILE ROW THAT WENT IN IS READ AGAIN WITH TODAY\'S PAR
 {
   const done = X.fileRetryAsk({ id: 7, status: 'SUCCESS', filename: 'a.csv' }, INCLUDE_STATUSES);
   const failed = X.fileRetryAsk({ id: 8, status: 'FAILED', filename: 'b.csv' }, INCLUDE_STATUSES);
-  ok('R1 a row that went in asks its log and the statuses that include it, and says it reads the file again; a failed row asks as before',
+  const skipped = X.fileRetryAsk({ id: 9, status: 'SKIPPED', filename: 'c.csv' }, INCLUDE_STATUSES);
+  const waiting = X.fileRetryAsk({ id: 10, status: 'PENDING_RETRY', filename: 'd.csv' }, INCLUDE_STATUSES);
+  ok('R1 a row that went in - loaded or skipped - asks its log and the statuses that include it, and says it reads the file again; a failed or waiting row asks as before',
     done.query === `log_id=7&statuses=${encodeURIComponent(INCLUDE_STATUSES)}` && done.confirm === "Read a.csv again with today's parser?"
-      && failed.query === 'log_id=8' && failed.confirm === 'Retry file ingestion for log #8?', [done, failed]);
+      && skipped.query === `log_id=9&statuses=${encodeURIComponent(INCLUDE_STATUSES)}` && skipped.confirm === "Read c.csv again with today's parser?"
+      && failed.query === 'log_id=8' && failed.confirm === 'Retry file ingestion for log #8?' && waiting.query === 'log_id=10',
+    [done, skipped, failed, waiting]);
   const gone = X.fileRetryToast({ missing: 1, missing_files: ['a.csv'], count: 0 }, 'SUCCESS', { id: 7, filename: 'a.csv' });
   const read = X.fileRetryToast({ missing: 0, message: '1 file(s) handed to the watcher' }, 'SUCCESS', { id: 7, filename: 'a.csv' });
   ok('R2 a file no longer where it was says so by name, not as the row\'s state; a file read again says the row\'s, with its id',
@@ -404,6 +408,9 @@ const DEFECTS = [
     swap("reread ? `&statuses=${encodeURIComponent(includeStatuses)}` : ''", "''")],
   ['M24 a file no longer where it was reads as the row\'s state',
     swap('const gone = Number((result || {}).missing) >= 1;', 'const gone = false;')],
+  ['M25 a skipped row asks as a failed one, no statuses (lead 10-11 R)',
+    swap("export const wentIn = (status) => ['done', 'skipped'].includes(retryVerdict(status).state);",
+      "export const wentIn = (status) => ['done'].includes(retryVerdict(status).state);")],
 ];
 
 const CONTROLS = [
@@ -443,6 +450,7 @@ function verdict(M) {
     || !M.fileEndView('SKIPPED', 'f', 'dup').toast.includes('dup')
     || !M.fileRetryAsk({ id: 7, status: 'SUCCESS', filename: 'a.csv' }, 'S,F').query.endsWith('&statuses=S%2CF')
     || M.fileRetryAsk({ id: 8, status: 'FAILED', filename: 'b.csv' }, 'S,F').query !== 'log_id=8'
+    || !M.fileRetryAsk({ id: 9, status: 'SKIPPED', filename: 'c.csv' }, 'S,F').query.endsWith('&statuses=S%2CF')
     || M.fileRetryToast({ missing: 1, missing_files: ['a.csv'] }, 'SUCCESS', { id: 7, filename: 'a.csv' }).text !== 'Missing \u00b7 a.csv';
 }
 

@@ -104,12 +104,15 @@ export const isFailedStatus = (status) => retryVerdict(status).tone === 'danger'
  *  and the Retry button's off state: today's rule kept, anything not done can be retried. */
 export const isDoneStatus = (status) => retryVerdict(status).state === 'done';
 
+/** A file that went in: loaded or skipped - ended, and not failed (lead 10-11 R: the rows read again with today's parser). */
+export const wentIn = (status) => ['done', 'skipped'].includes(retryVerdict(status).state);
+
 /**
  * A file row's Retry (owner 10-11 R): a row that went in is read again with today's parser - its request carries the
  * statuses that include it (`includeStatuses`, folder_retry's) and says so before it runs; any other row asks as before.
  */
 export function fileRetryAsk(log, includeStatuses) {
-  const reread = isDoneStatus(log.status);
+  const reread = wentIn(log.status);
   return {
     confirm: reread ? `Read ${log.filename} again with today's parser?` : `Retry file ingestion for log #${log.id}?`,
     query: `log_id=${encodeURIComponent(log.id)}${reread ? `&statuses=${encodeURIComponent(includeStatuses)}` : ''}`,
