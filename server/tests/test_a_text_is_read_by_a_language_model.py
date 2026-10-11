@@ -5,8 +5,14 @@ config/llm_config.json on every call and writes two lines a call to llm_requests
 A fake `openai` module: no network, no package (this box has none) - what is measured is that the
 file's cells reach the client, not what the real client sends.
 
-  answer names a dictionary phrase     key from the dictionary
-  answer names other words             type and key empty, *_phrase kept
+  the prompt                           every node once: identifier (type): all its phrases ·
+                                       shortest noun phrase · one link per cause x effect pair
+  two links quoting one sentence       two rows, the same sentence_no
+  answer names a listed identifier     type and key of that node, whatever its words
+  answer names an unlisted identifier  type and key empty, *_phrase kept, one warning line
+  one key under two types              <type>:<key> in the list; the bare key is unlisted
+  identifier null, words a phrase      key from the dictionary (`_named`)
+  identifier null, other words         type and key empty, *_phrase kept
   evidence the text does not hold      that link dropped, one warning line · every link: refused by name
   evidence over two sentences          found, the sentence it starts in
   quote marks · ellipsis               ignored on both sides; a changed word or only marks is dropped
@@ -239,6 +245,110 @@ def test_the_prompt_holds_no_domain_word(answer):
     text_links.ask_links(TEXT, NAMES, instruction="only the cause of voids")
     prompt = asked[0][1][-1]["content"]
     assert "bond temperature" in prompt and "only the cause of voids" in prompt and TEXT in prompt
+
+
+KO_NAMES = [{"node_type": "quantity", "node_key": "Q123", "phrase": "계면 미충진"},
+            {"node_type": "factor", "node_key": "F1", "phrase": "본딩 온도"},
+            {"node_type": "quantity", "node_key": "Q123", "phrase": "underfill void"},
+            {"node_type": "defect_kind", "node_key": "D7", "phrase": "보이드"},
+            {"node_type": "factor", "node_key": "F2", "phrase": None},
+            {"node_type": "quantity", "node_key": "Q123", "phrase": "UF void"}]
+KO_EVIDENCE = "그래서 보이드가 생긴 것으로 보인다."
+
+
+def _prompt(asked):
+    return asked[-1][1][-1]["content"]
+
+
+def test_the_prompt_lists_every_node_once_with_all_its_phrases(answer):
+    asked = answer(_links())
+    text_links.ask_links(KO_TEXT, KO_NAMES)
+    block = ("Q123 (quantity): 계면 미충진 / underfill void / UF void\n"
+             "F1 (factor): 본딩 온도\n"
+             "D7 (defect_kind): 보이드")
+    assert _prompt(asked) == text_links.ASK_LINKS_PROMPT.replace("<<dictionary>>", block).replace(
+        "<<instruction>>", "").replace("<<text>>", KO_TEXT)
+
+
+def test_the_prompt_asks_for_the_shortest_noun_phrase_not_a_sentence(answer):
+    """소유자 10-11 「사전에 없는 프레이즈는 너무 주저리 문장으로 뽑네」."""
+    asked = answer(_links())
+    text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert ("- cause, effect: the shortest noun phrase of the text that names the thing, copied from the text"
+            " - a few words, never a clause or a whole sentence (the whole sentence goes in evidence)"
+            ) in _prompt(asked).splitlines()
+
+
+def test_one_sentence_with_several_causes_or_effects_gives_one_row_per_pair(answer):
+    """소유자 10-11: one link per cause x effect pair, the same evidence allowed."""
+    text = "첫 문장이다. 본딩 온도가 높아 보이드와 계면 미충진이 생겼다."
+    said = "본딩 온도가 높아 보이드와 계면 미충진이 생겼다."
+    asked = answer(_links(
+        {"cause": "본딩 온도", "cause_key": "F1", "effect": "보이드", "effect_key": "D7", "evidence": said},
+        {"cause": "본딩 온도", "cause_key": "F1", "effect": "계면 미충진", "effect_key": "Q123", "evidence": said}))
+    rows = text_links.ask_links(text, KO_NAMES)
+    assert [(r["sentence_no"], r["cause_key"], r["phenomenon_key"], r["phenomenon_phrase"]) for r in rows] == [
+        (2, "F1", "D7", "보이드"), (2, "F1", "Q123", "계면 미충진")]
+    assert ("When one sentence names several causes or effects, list one link for each cause and effect pair"
+            " - separate items, which may quote the same evidence.") in _prompt(asked).splitlines()
+
+
+def test_a_listed_identifier_gives_its_node_whatever_the_words(answer, caplog):
+    answer(_links({"cause": "온도", "cause_key": "F1", "effect": "생긴 보이드", "effect_key": "Q123",
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_type"], row["cause_key"], row["cause_phrase"]) == ("factor", "F1", "온도")
+    assert (row["phenomenon_type"], row["phenomenon_key"], row["phenomenon_phrase"]) == (
+        "quantity", "Q123", "생긴 보이드")
+    assert _dropped_lines(caplog) == []
+
+
+@pytest.mark.parametrize("words", ["습도", "본딩 온도"], ids=["other-words", "words-are-a-phrase"])
+def test_an_unlisted_identifier_gives_no_node_and_is_said(answer, caplog, words):
+    """Not listed is not used - not even when the words are a phrase (총괄 10-11 ③)."""
+    answer(_links({"cause": words, "cause_key": "Q999", "effect": "보이드", "effect_key": "D7",
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_type"], row["cause_key"], row["cause_phrase"]) == (None, None, words)
+    assert (row["phenomenon_type"], row["phenomenon_key"]) == ("defect_kind", "D7")
+    assert _dropped_lines(caplog) == [
+        "[LLM] link 1 of 1 answers cause_key 'Q999', which the dictionary does not list"
+        " - kept with its words only (llm:m-1): %r" % words]
+
+
+@pytest.mark.parametrize("null", [{}, {"cause_key": None}, {"cause_key": ""}, {"cause_key": "  "}],
+                         ids=["missing", "null", "empty", "spaces"])
+def test_a_null_identifier_gives_the_node_of_the_phrase_its_words_are(answer, caplog, null):
+    answer(_links({"cause": "본딩온도", **null, "effect": "보이드", "effect_key": None,
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_type"], row["cause_key"], row["cause_phrase"]) == ("factor", "F1", "본딩온도")
+    assert (row["phenomenon_type"], row["phenomenon_key"]) == ("defect_kind", "D7")
+    assert _dropped_lines(caplog) == []
+
+
+def test_a_key_two_types_share_is_listed_and_answered_with_its_type(answer, caplog):
+    names = [{"node_type": "quantity", "node_key": "K1", "phrase": "본딩 온도"},
+             {"node_type": "defect_kind", "node_key": "K1", "phrase": "보이드"},
+             {"node_type": "factor", "node_key": "K2", "phrase": "압력"}]
+    asked = answer(_links(
+        {"cause": "온도", "cause_key": "quantity:K1", "effect": "생긴 보이드",
+         "effect_key": "defect_kind:K1", "evidence": KO_EVIDENCE},
+        {"cause": "온도", "cause_key": "K1", "effect": "생긴 보이드", "effect_key": "K2",
+         "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    first, second = text_links.ask_links(KO_TEXT, names)
+    assert {"quantity:K1 (quantity): 본딩 온도", "defect_kind:K1 (defect_kind): 보이드",
+            "K2 (factor): 압력"} <= set(_prompt(asked).splitlines())
+    assert (first["cause_type"], first["cause_key"], first["phenomenon_type"], first["phenomenon_key"]) == (
+        "quantity", "K1", "defect_kind", "K1")
+    assert (second["cause_type"], second["cause_key"], second["phenomenon_type"], second["phenomenon_key"]) == (
+        None, None, "factor", "K2")
+    assert [line.split(", which ")[0] for line in _dropped_lines(caplog)] == [
+        "[LLM] link 2 of 2 answers cause_key 'K1'"]
 
 
 @pytest.mark.parametrize("proxy", [None, "http://user:pw@proxy.test:8080"])

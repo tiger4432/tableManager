@@ -181,14 +181,16 @@ def find_links(text, names, links):
 #: What the model is asked (총괄 b5b335f2e ②). It holds no word of any domain: the words come
 #: from the dictionary rows and the operator's instruction, put where the <<...>> marks stand.
 ASK_LINKS_PROMPT = """Read the text and list every statement that one thing causes another.
-For a cause or an effect, answer one of the dictionary phrases when the text names it; otherwise copy the words from the text.
+When one sentence names several causes or effects, list one link for each cause and effect pair - separate items, which may quote the same evidence.
 Answer with one JSON object and nothing else:
-{"links": [{"cause": "...", "effect": "...", "link": "...", "evidence": "...", "negated": false, "certainty": null}]}
+{"links": [{"cause": "...", "cause_key": null, "effect": "...", "effect_key": null, "link": "...", "evidence": "...", "negated": false, "certainty": null}]}
+- cause, effect: the shortest noun phrase of the text that names the thing, copied from the text - a few words, never a clause or a whole sentence (the whole sentence goes in evidence)
+- cause_key, effect_key: the identifier of the dictionary node the cause or the effect is, written exactly as listed; null when no listed node fits
 - link: the words of the text that join the cause to the effect
 - evidence: the sentence of the text that says it, copied exactly
 - negated: true when the text says the cause does not lead to the effect
 - certainty: "confirmed" when the text says it is confirmed, "suspected" when it says it is suspected, null when it says neither
-Dictionary phrases, one per line:
+Dictionary, one node per line - identifier (node type): the phrases that name it
 <<dictionary>>
 <<instruction>>
 Text:
@@ -222,10 +224,13 @@ def _named(answered, by_phrase):
 
 
 def ask_links(text, names, instruction=None):
-    """`find_links`' rows, read by the language model `mapper_sdk.ask_json` reaches. A cause or
-    an effect gets a key only when the answer names a phrase of `names`; other words keep their
-    *_phrase and leave type and key empty. `certainty` is what the text says, `suspected` when
-    it says nothing - nothing becomes a fact before a person confirms it.
+    """`find_links`' rows, read by the language model `mapper_sdk.ask_json` reaches. The model
+    sees `names` one node per line - its identifier (the key; `<type>:<key>` for a key two
+    types share) and all its phrases - and answers a node's identifier or null for a cause and
+    an effect, with the text's own words. A listed identifier gives that node's type and key;
+    null gives the key of the phrase its words are (`_named`); an identifier not listed gives
+    none and is said in one warning line. *_phrase is always the words. `certainty` is what the
+    text says, `suspected` when it says nothing - nothing becomes a fact before a person confirms it.
 
     A link's evidence is looked for in the whole text (`_evidence`); its sentence is the one the
     quote starts in. A link whose evidence the text does not hold is dropped and said in one
@@ -238,13 +243,17 @@ def ask_links(text, names, instruction=None):
     from utils import llm
 
     rows = [without_missing(dict(row)) for row in names or ()]
-    by_phrase = {}
+    by_phrase, phrases = {}, {}
     for row in rows:
         if not crud.is_blank_value(row.get("phrase")):
             by_phrase.setdefault(_fold(str(row["phrase"]))[0], row)
+            phrases.setdefault((row.get("node_type"), row.get("node_key")), []).append(str(row["phrase"]))
+    shared = Counter(str(key) for _type, key in phrases)
+    by_id = {(str(key) if shared[str(key)] == 1 else "%s:%s" % (node_type, key)): (node_type, key)
+             for node_type, key in phrases}
     prompt = (ASK_LINKS_PROMPT
-              .replace("<<dictionary>>", "\n".join(str(r["phrase"]) for r in rows
-                                                   if not crud.is_blank_value(r.get("phrase"))))
+              .replace("<<dictionary>>", "\n".join("%s (%s): %s" % (ident, node[0], " / ".join(phrases[node]))
+                                                   for ident, node in by_id.items()))
               .replace("<<instruction>>", "%s\n%s" % (INSTRUCTION_HEADING, instruction)
                        if not crud.is_blank_value(instruction) else "")
               .replace("<<text>>", str(text or "")))
@@ -274,8 +283,19 @@ def ask_links(text, names, instruction=None):
         sentence_no, (start, end) = next((no, span) for no, span in enumerate(spans, 1)
                                          if where[at] < span[1])
         sentence = text[start:end]
-        cause_type, cause_key = _named(said["cause"], by_phrase)
-        effect_type, effect_key = _named(said["effect"], by_phrase)
+        node = {}
+        for side in ("cause", "effect"):
+            answered = item.get(side + "_key")
+            if crud.is_blank_value(answered):
+                node[side] = _named(said[side], by_phrase)
+            elif str(answered) in by_id:
+                node[side] = by_id[str(answered)]
+            else:
+                node[side] = (None, None)
+                logger.warning("[LLM] link %d of %d answers %s_key %r, which the dictionary does not list"
+                               " - kept with its words only (%s): %r",
+                               number, len(links), side, answered, extractor, said[side][:120])
+        (cause_type, cause_key), (effect_type, effect_key) = node["cause"], node["effect"]
         certainty = item.get("certainty")
         out.append({"sentence_no": sentence_no, "sentence": sentence,
                     "cause_type": cause_type, "cause_key": cause_key,
