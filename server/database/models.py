@@ -1553,6 +1553,9 @@ def map_key_index_ddl(table_name, entry):
 INDEX_BUILT = "built"
 INDEX_PRESENT = "present"
 INDEX_FAILED = "failed"
+#: The head of the comment a failed build leaves on its INVALID leftover, so GET /admin/indexes - in
+#: another process - can say why (총괄 06e8c22c3: a unique index over duplicated values).
+INDEX_FAILED_SAID = "build failed: "
 
 
 #: An index name is looked up in THIS connection's schema (총괄 10-09) - by name alone, one found in
@@ -1606,7 +1609,26 @@ def _ensure_one_index(engine, name, statement, what, say=print):
         return INDEX_BUILT
     except Exception as err:
         say(f"[Schema Sync] Failed to ensure {what} index '{name}': {err}")
+        _note_failure(engine, name, err)
         return INDEX_FAILED
+
+
+def _note_failure(engine, name, err):
+    """The failure's first lines as a comment on the build's INVALID leftover, when one is left.
+    Saying only: a comment that cannot be written changes nothing else."""
+    from sqlalchemy import text as _text
+
+    with contextlib.suppress(Exception):
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            if connection.execute(_text("SELECT 1 FROM pg_class c WHERE c.relname = :name AND c.relkind = 'i'"
+                                        + _IN_THIS_SCHEMA), {"name": name}).first():
+                # the server's own words, without its severity head - the message and its DETAIL
+                diag = getattr(getattr(err, "orig", None), "diag", None)
+                why = " ".join(filter(None, (getattr(diag, "message_primary", None),
+                                             getattr(diag, "message_detail", None))))
+                why = why or " ".join(str(err).strip().splitlines()[:2])
+                connection.execute(_text('COMMENT ON INDEX "%s" IS :why' % name.replace('"', '""')),
+                                   {"why": INDEX_FAILED_SAID + why[:300]})
 
 
 # --------------------------------------------------------------- the static models' indexes
@@ -1628,7 +1650,8 @@ INDEX_UNKNOWN = "unknown"
 
 _HELD = (
     "SELECT c.relname AS name, t.relname AS table_name, i.indisvalid AS valid,"
-    "       i.indisprimary AS is_primary, pg_relation_size(c.oid) AS size_bytes, s.idx_scan AS scans"
+    "       i.indisprimary AS is_primary, pg_relation_size(c.oid) AS size_bytes, s.idx_scan AS scans,"
+    "       obj_description(c.oid, 'pg_class') AS said"
     "  FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_class t ON t.oid = i.indrelid"
     "  LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.indexrelid"
     " WHERE t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
@@ -1643,6 +1666,80 @@ _BUILDING = (
 def model_tables():
     """The static models' tables - the framework's own, not the catalogue's dynamic ones."""
     return [table for name, table in sorted(Base.metadata.tables.items()) if name not in DYNAMIC_TABLES]
+
+
+# --------------------------------------------------------------- a table's own declared indexes
+# 🔴 table_config.json's "indexes" (총괄 06e8c22c3 · 98be7faf3, 소유자 「테이블 별로 특정 컬럼 인덱스」):
+#    {"columns": [...], "unique": bool, "purpose": "..."} - the shape the ledger catalogue already
+#    reads, plus a purpose. The same comparison and the same builder as the static models' indexes.
+
+#: PostgreSQL's identifier length - a longer name keeps its first part and a hash tail.
+INDEX_NAME_LIMIT = 63
+
+
+def table_index_name(table, columns):
+    """idx_<table>_<columns> - the same declaration always gets the same name."""
+    name = "idx_%s_%s" % (table, "_".join(columns))
+    if len(name) <= INDEX_NAME_LIMIT:
+        return name
+    import hashlib
+    return name[:INDEX_NAME_LIMIT - 9] + "_" + hashlib.md5(name.encode("utf-8")).hexdigest()[:8]
+
+
+def table_index_refusal(table, entry):
+    """Why one table's "indexes" cannot be saved - (path, sentence) - or None. The columns it may
+    name are its `column_types` and the framework's own (`FRAMEWORK_COLUMNS`)."""
+    indexes = (entry or {}).get("indexes")
+    if indexes is None:
+        return None
+    path = "tables.%s.indexes" % table
+    if not isinstance(indexes, list):
+        return path, 'indexes must be a list of {"columns": [...], "unique": false, "purpose": "..."}'
+    if indexes and (entry or {}).get("kind") == "view":
+        return path, "%s is a view - a view cannot carry an index" % table
+    known = set((entry or {}).get("column_types") or {}) | set(FRAMEWORK_COLUMNS)
+    seen = set()
+    for number, item in enumerate(indexes):
+        columns = item.get("columns") if isinstance(item, dict) else None
+        if not isinstance(columns, list) or not columns or not all(isinstance(c, str) and c.strip() for c in columns):
+            return "%s[%d].columns" % (path, number), "columns must name at least one column"
+        missing = [column for column in columns if column not in known]
+        if missing:
+            return ("%s[%d].columns" % (path, number),
+                    "%s has no column %s" % (table, ", ".join(missing)))
+        if tuple(columns) in seen:
+            return ("%s[%d].columns" % (path, number),
+                    "(%s) is declared twice" % ", ".join(columns))
+        seen.add(tuple(columns))
+    return None
+
+
+def table_declared_indexes(tables=None):
+    """-> [(table, name, {"columns", "unique", "purpose"})] - every table's "indexes" in table_config.json
+    (`tables`; None: this process's `crud.TABLE_CONFIG`). A view's are left out - the save refuses them."""
+    if tables is None:
+        from database import crud
+        tables = crud.TABLE_CONFIG
+    out = []
+    for table, entry in sorted((tables or {}).items()):
+        if not isinstance(entry, dict) or entry.get("kind") == "view":
+            continue
+        for item in entry.get("indexes") or ():
+            columns = [str(c) for c in (item.get("columns") or ())] if isinstance(item, dict) else []
+            if columns:
+                out.append((table, table_index_name(table, columns),
+                            {"columns": columns, "unique": item.get("unique") is True,
+                             "purpose": item.get("purpose")}))
+    return out
+
+
+def table_index_ddl(row):
+    """A table-declared index's CREATE statement, CONCURRENTLY and IF NOT EXISTS."""
+    def quoted(identifier):
+        return '"%s"' % str(identifier).replace('"', '""')
+    return "CREATE %sINDEX CONCURRENTLY IF NOT EXISTS %s ON %s (%s)" % (
+        "UNIQUE " if row["unique"] else "", quoted(row["name"]), quoted(row["table"]),
+        ", ".join(quoted(column) for column in row["columns"]))
 
 
 def declared_indexes():
@@ -1676,21 +1773,28 @@ def _building(connection):
             for row in connection.execute(text(_BUILDING))}
 
 
-def index_states(engine):
+def index_states(engine, tables=None):
     """-> {"declared": [...], "outside": [...]} - each declared index beside the database: its
-    state (present · missing · invalid · building), size, scans and what a build waits on; and
-    the database's indexes on these tables that nothing declares (a primary key counts as
-    declared). 🔴 THE ONE COMPARISON - the boot's notice, its build and GET /admin/indexes all
-    read this. PostgreSQL only; elsewhere every state is `unknown`."""
+    state (present · missing · invalid · building), size, scans, what a build waits on and why the
+    last build failed; and the database's indexes on the static models' tables that nothing declares
+    (a primary key counts as declared). Declared: the static models' (`source` model) and each
+    table's own in table_config.json (`source` table; `tables` as `table_declared_indexes` reads it).
+    🔴 THE ONE COMPARISON - the boot's notice, its build and GET /admin/indexes all read this.
+    PostgreSQL only; elsewhere every state is `unknown`."""
+    unread = dict(state=INDEX_UNKNOWN, building=None, failure=None, size_bytes=None, scans=None)
     declared = [dict(name=name, table=table.name, **_shape(item), purpose=item.info.get("purpose"),
-                     serves=item.info.get("serves"), state=INDEX_UNKNOWN, building=None,
-                     size_bytes=None, scans=None)
+                     serves=item.info.get("serves"), source="model", **unread)
                 for table, name, item in declared_indexes()]
+    declared += [dict(name=name, table=table, columns=shape["columns"], where=None, include=[], using=None,
+                      unique=shape["unique"], constraint=False, purpose=shape["purpose"], serves=None,
+                      source="table", **unread)
+                 for table, name, shape in table_declared_indexes(tables)]
     if engine.dialect.name != "postgresql":
         return {"declared": declared, "outside": []}
+    models_tables = [table.name for table in model_tables()]
     with engine.connect() as connection:
         held = {row.name: row for row in connection.execute(
-            text(_HELD), {"tables": [table.name for table in model_tables()]})}
+            text(_HELD), {"tables": models_tables + sorted({row["table"] for row in declared})})}
         building = _building(connection)
     for row in declared:
         found = held.pop(row["name"], None)
@@ -1699,9 +1803,12 @@ def index_states(engine):
                         else INDEX_PRESENT if found.valid else INDEX_INVALID)
         if found is not None:
             row.update(size_bytes=found.size_bytes, scans=found.scans)
+            if not found.valid and (found.said or "").startswith(INDEX_FAILED_SAID):
+                row["failure"] = found.said[len(INDEX_FAILED_SAID):]
     outside = [{"name": name, "table": row.table_name, "valid": row.valid, "building": building.get(name),
                 "size_bytes": row.size_bytes, "scans": row.scans}
-               for name, row in sorted(held.items()) if not row.is_primary]
+               for name, row in sorted(held.items())
+               if not row.is_primary and row.table_name in models_tables]
     return {"declared": declared, "outside": outside}
 
 
@@ -1718,12 +1825,14 @@ def model_index_ddl(index):
     raise ValueError("%s compiles to an unexpected statement: %s" % (index.name, statement[:80]))
 
 
-def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY_SECONDS):
-    """The declared indexes the database lacks or holds invalid: named in ONE line, then - when
-    `build` - made one at a time through `_ensure_one_index` (총괄 e0e8020fb). A UNIQUE constraint
-    is named and not built (it is ALTER TABLE, not an index).
+def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY_SECONDS, tables=None):
+    """The declared indexes the database lacks or holds invalid - the static models' and each
+    table's own (`index_states`): named in ONE line, then - when `build` - made one at a time through
+    `_ensure_one_index` (총괄 e0e8020fb). A UNIQUE constraint is named and not built (it is ALTER
+    TABLE, not an index).
     -> {name: INDEX_BUILT | INDEX_PRESENT | INDEX_FAILED} of what was built."""
-    owed = [row for row in index_states(engine)["declared"] if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
+    owed = [row for row in index_states(engine, tables)["declared"]
+            if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
     if not owed:
         return {}
     say("[Indexes] %d declared index(es) the database lacks or holds invalid: %s - %s" % (
@@ -1735,15 +1844,16 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
         if row["constraint"]:
             say("[Indexes] %s is a UNIQUE constraint - not built here" % row["name"])
             continue
-        done[row["name"]] = _build_one(engine, items[row["name"]], row, say, say_every)
+        statement = (model_index_ddl(items[row["name"]]) if row["source"] == "model"
+                     else table_index_ddl(row))
+        done[row["name"]] = _build_one(engine, statement, row, say, say_every)
     return done
 
 
-def _build_one(engine, index, row, say, say_every):
+def _build_one(engine, statement, row, say, say_every):
     """One declared index built, with its start, its end and - while it waits - whom it waits for."""
     import time
 
-    statement = model_index_ddl(index)
     say("[Indexes] building %s on %s" % (row["name"], row["table"]))
     started, stop = time.monotonic(), threading.Event()
     watcher = threading.Thread(target=_say_while_building, daemon=True,

@@ -249,6 +249,11 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
         raise _table_config_refusal(
             "column_types_not_object", f"tables.{table}.column_types",
             "column_types must be a JSON object (boot reads it as a mapping)")
+    # The table's own indexes - built by the chain worker's index work (총괄 06e8c22c3 · 98be7faf3).
+    from database import models as _models
+    refused = _models.table_index_refusal(table, declaration)
+    if refused:
+        raise _table_config_refusal("indexes_refused", *refused)
 
     path = table_config_path()
     current_base = file_fingerprint(path)

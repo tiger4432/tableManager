@@ -197,6 +197,7 @@ watcher가 모든 파일을 감시한다고 가정하지 않는다. 원자적 �
 
 [table_config 키 사전](./config/table_config.md). 컬럼 설명 주석은 선언이 아니다;
 `column_types`에 없는 컬럼은 쓰기 경로에서 빠질 수 있다.
+🆕 10-11 표마다 세울 인덱스는 그 표의 `indexes` 칸 — 체인 워커가 기동 때 빠진 것을 만든다([키 사전 §5](./config/table_config.md)).
 
 ### 5.2 ~~`enrichment_rules.json`~~ — ⚰️ 2026-09-24 은퇴
 

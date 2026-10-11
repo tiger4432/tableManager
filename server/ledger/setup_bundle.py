@@ -391,8 +391,11 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
         # `table_config.json` may declare extra ones per table, and they pass through here.
         indexes = declared.get("indexes")
         if isinstance(indexes, list) and indexes:
-            relation["indexes"] = [dict(item) for item in indexes
-                                   if isinstance(item, Mapping)]
+            # `unique` defaults to false - a table's own index is written {"columns", "purpose"} too
+            # (총괄 98be7faf3), and the consumers read `index["unique"]`
+            relation["indexes"] = [dict(item, unique=item.get("unique") is True,
+                                        columns=list(item.get("columns") or ()))
+                                   for item in indexes if isinstance(item, Mapping)]
         # 🔴 `row_id` IS THE PRIMARY KEY OF EVERY INGESTED TABLE, AND THE CATALOG DID NOT
         # SAY SO.  Measured 2026-08-21: 26 of 26 tables carry `PRIMARY KEY (row_id)` in
         # PostgreSQL, and 0 of 26 declared it here -- so the two consumers above were

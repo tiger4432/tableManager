@@ -228,6 +228,26 @@
 >
 > ---
 >
+> ## [10-11] **표 선언 인덱스 — table_config 의 그 표 "indexes" 를 체인 워커가 짓는다 (총괄 98be7faf3) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 먼저         운영 table_config 에 «이미» 적힌 "indexes" 가 있으면 다음 체인 워커 재기동에 «처음» 지어진다 — 재기동 전에 아래 둘
+> 무엇이 지어지나  (저장소 루트에서, 읽기만) python -c "import json; d = json.load(open('server/config/table_config.json', encoding='utf-8')); [print(t, i.get('columns'), i.get('unique', False)) for t, e in d.items() if isinstance(e, dict) for i in (e.get('indexes') or [])]"
+>              그 표들의 행 수(읽기만): SELECT relname, reltuples::bigint FROM pg_class WHERE relname IN ('<표>', ...) AND relkind = 'r';
+> 알리기만      ingestion_settings.json 에 "build_missing_indexes": false -> chain_worker.log 에 「not built: build_missing_indexes is off」 한 줄, 짓지 않음
+> 짓기         pull -> 서버 · 체인 워커 재기동 -> chain_worker.log 「[Indexes] N declared index(es) the database lacks or holds invalid: ...」
+>              -> 「[Indexes] building <이름> on <표>」 -> 「[Indexes] <이름> built in N s」
+>              오래 걸리면 10 분마다 「still building ... waiting for transactions older than it: pid <pid>」(그 pid 가 끝나야 끝남)
+> 짓는 중 멈춤   SELECT pid FROM pg_stat_activity WHERE query LIKE 'CREATE%INDEX CONCURRENTLY%'; -> SELECT pg_cancel_backend(<pid>);
+>              남은 INVALID 인덱스는 다음 기동에 지우고 다시 지음 — 다시 안 지으려면 위 스위치
+> 확인         어드민 Overview «Indexes» 표에 표 선언 줄(source table)이 present · unique 가 데이터 겹침으로 실패하면 invalid 와 그 사유
+> 박스 수       이 박스 dt_log 사본(535,559 행 · 524 MB)에 idx_dt_log_core_wafer_id: 0.4 초 — 동시 쓰기 없는 사본, 운영은 «오래된 트랜잭션 기다림»이 더해질 수 있음
+> 지운 선언     table_config 에서 지운 인덱스는 DB 에 남고 Indexes 표의 «선언 밖»에도 안 뜬다 — 지우려면 DROP INDEX CONCURRENTLY <이름>
+> 급할 때       git revert <이 커밋> -> 재기동 (지어진 인덱스는 남음 — 지우려면 DROP INDEX CONCURRENTLY <이름>)
+> ```
+>
+> ---
+>
 > ## [10-11] **체인 require 를 적었는데 빈 행이 복사될 때 — 워커가 다시 읽었나 · 이미 복사된 행 거두기 (총괄 · 응용 재기) — 이주 «없음» · 재기동 «없음»**
 >
 > ```
