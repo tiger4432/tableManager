@@ -2274,6 +2274,17 @@
 - **함정**: 사용자 동작(진짜 클릭 · 키) 안에서만 된다 — 스크립트 `click()` 은 거짓을 받아 실패 문구로 간다(응용 10-11 18766). 화면 시험은 `options.writeClipboard` 처럼 갈아 끼울 자리를 두고 잰다.
 - **따로인 것**: 사용자의 Ctrl+C 가 일으킨 copy 이벤트에 쓰는 자리 — `clipboard.js` · `enrichment_reference_view.js` · `transfer_plan.js` 가 그 이벤트의 `clipboardData` 에 직접 쓴다(`git grep -n clipboardData.setData -- client2/src`, 10-11). 단추가 아니라 키라 합성할 이벤트가 없다.
 
+### ⭐ **「이 값이 그림인가」는 «선언»이 답한다 — 값의 모양으로 추측하지 않는다** (2026-10-11 등록 · 걷기 `c5463a475`)
+- **무엇**: 값을 읽은 출처의 바인딩 → 그 열 → 그 열의 table_config 타입. 걷기 답은 타입이 `image` 일 때만 노드 이름의 기록 · 세상별 값에 `column_type`, 엣지 기록과 엣지에 `column_types` 를 싣는다(맨 위 `attributes` 에는 안 붙는다).
+- **어디**: `server/ledger/setup.py` `declared_value_type(setup, source_id, name)` — 부르는 곳 하나 `ledger_subgraph._say_image_values`(`_walk` · `_time_page` 가 답을 짓는 자리). 타입 낱말은 `image_sources.COLUMN_TYPE`.
+- **언제 재사용**: 값의 «종류»에 따라 화면이 달리 그려야 할 때 — 값 글자가 주소처럼 생겼는지 보지 말고 이 좌석에 묻는다.
+- **함정**: 같은 이름을 두 출처가 다른 타입의 열에 묶을 수 있다 — 값마다 «자기» 출처로 묻고, 한 출처가 두 타입의 열에 묶으면 None(`e205908b8` 칸). 코드 맵퍼의 수식어는 묶인 열이 없어 None. 로더가 거절했거나 은퇴한 출처도 None — 은퇴한 출처의 원자는 계속 걸어지니 그 값의 표시는 말없이 빠진다.
+
+### **언어 모델의 답이 «닫힌 낱말 목록» 중 하나인가(증감 방향 · 새 노드 타입)는 `text_links.one_of`** (2026-10-11 등록 · `e32731bd5`)
+- **어디**: `server/utils/text_links.py` `one_of(answer, listed)` → (kept, unlisted) — 앞뒤 공백만 벗기고 목록 철자 그대로면 kept, 빈 값(`crud.is_blank_value`)도 목록도 아니면 unlisted. 부르는 곳 둘 — `ask_links` 의 증감 방향 · `dictionary_suggest.ask_dictionary` 의 새 노드 타입. 경고 문장은 부르는 쪽마다.
+- **함정**: 대소문자를 접지 않는다 — 다르게 받고 싶으면 이 함수를 고친다. 셋째 사본을 적지 않는다.
+  같은 물음 «답이 목록에 있나»를 다른 규칙으로 답하는 자리가 셋 남아 있다 — 사전 식별자 찾기 `text_links.ask_links` 의 `str(answered) in by_id` · `dictionary_suggest.ask_dictionary` 의 `str(item["node"]) in by_id`(공백을 안 벗기고 목록 밖이면 경고), `ask_links` 의 확실성 `CONFIRMED if certainty == CONFIRMED else SUSPECTED`(공백을 안 벗기고 경고 없이 suspected). 그래서 한 답 안에서 `cause_direction: " up "` 은 받고 `cause_key: " W1 "` 은 목록 밖 경고, `" confirmed "` 는 말없이 suspected 가 된다(10-11 문서 감사).
+
 ### 교체 쓰기 전 수 대조 게이트 — 직렬화가 **원본 집합**보다 적으면 거부 (2026-07-28 등록 · 2026-07-30 대조축 정정)
 - **무엇**: 전량 교체(replace) 쓰기 직전에 **원본 집합(필터 이전)의 non-empty 개수 vs 직렬화 페이로드의 개수**를 대조해, 페이로드가 적으면 confirm 이전에 거부하고 **삭제될 개수를 메시지에 명시**한다. 교체 의미론에서 "빠짐 = 삭제"이므로, 이 한 줄 산술이 §1 replace_map의 "불완전한 집합을 보내면 전량 파괴" 함정의 **쓰기 쪽 집행 장치**다(읽기 쪽 짝은 위 "절단 응답은 실패로 강등").
 - **어디**: `client2/src/map_editor.js`의 `pushMapData`(`6db517d` H2) — 메타 미등록 맵을 기본 프레임으로 열어 유효 다이 마스크·격자 범위가 셀을 잘라내던 경로(실측 1293→379 삭제)를 막았다. 대조는 **원시 `gridData`의 non-empty 키 수 vs `eachSavableCell`이 낸 `updates.length`**다.
