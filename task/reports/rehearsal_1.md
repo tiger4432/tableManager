@@ -1,9 +1,13 @@
-# 리허설 1 회차 · 10-12 새벽 (판 6d8fb50ea)
+# 리허설 1 회차 · 10-12 새벽 (판 6d8fb50ea → 닫은 판 0da6617b1)
 
 ```
-남은 실패 수     2 — C2 여백(Δ 열, 새 기준 a ~ e 로 다시 잴 판 대기) · Walk on from here 뒤 Walk 의 요청이 바의 상한과 다름(fanout_limit=20)
-                C3 는 6f64c525f(walk-Ccn7DKhp.js)에서 통과 · 공백 값 통과
-통과한 마지막 판  없음 (실패 2) · 앞 회차 0 은 dist 8bb437718 에서 누른 단계만 통과
+남은 실패 수     3 — 모두 C2, 닫은 판 0da6617b1 (walk-DWbl2RU1.js · server/ 는 6d8fb50ea 와 같음)
+                (b) + · − 쌍의 넓은 쪽 0.5 아래 5 쌍 (① 판, 0.42 ~ 0.49 — 머리 이름 몫이 칸 글자보다 넓음)
+                (d) Add here · More 뒤 기존 열 폭이 바뀜 (Add here 3 열 · Δ 21 열 새로 · More 1 열 · 14 열 새로)
+                (e) 노드 키 잘림 — quantity 의 core_cmp_nonuniform · tape_adhesion_anomaly, defect 구역 키(59 ~ 69 자) 전부
+                통과: C2 (a) Δ 0 · (c) 노드 열 0 · 정렬 · 거르기 · 체크 전후 0 · Graph 를 Walk 전에 눌러도 요청 = 바
+                      fanout 재현(76874c4e9): 고리 → Walk on from here → Walk 의 요청 = 바 · C3 · 공백 값
+통과한 마지막 판  없음 (실패 3) · 앞 회차 0 은 dist 8bb437718 에서 누른 단계만 통과
 판              18766 = origin/main 6d8fb50ea 의 server/ 전부 + client2/dist (스크래치 줄 1 만 다름)
                 기동 03:11 «[Schema] no drift» · 기동 뒤 오류 0 · 번들 walk-B-XJXTJ5.js
 도구            앱 내장 브라우저 · 실제 마우스 클릭 · 글자 입력. 셀렉트(Type · collect)와 Limits 칸 · through 체크만 폼 입력
@@ -35,4 +39,11 @@
 | 공백 값 | 메인 그리드 trd_txt 행 T3 value 를 더블클릭 → «a  b»(공백 둘) → Apply → 그 행 Re-translate «default · trd_txt_src · event_id» → 실행(run_queued_once) → 걷기 wafer TRD-W-001 + | 공백 둘이 그대로 보임 | 실행 ok · withdrawn 2 · inserted 2 · 걷기 «Nodes 19 · Edges 18» · 노드 칸 «a  b» (white-space: pre · 21.2 px, 공백 하나면 18.1 px) · 끝나고 «4.5» 로 되돌리고 다시 번역 ok | 통과 |
 | C2 다시 (6f64c525f) | ① 판 다시 | 열마다 가장 긴 글자 ÷ 열 폭 ≥ 0.5 | 노드 185.4 · 값 76 이 129 · 91.6 이 15 · 잘림 0 · 0.5 아래 53 (Δ 48 «—» 만 · − 5) — + · Δ · − 같은 폭 규칙 탓 | **실패** → 총괄 기준 a ~ e 로 다시 |
 | C3 다시 (6f64c525f) | ③ 판(세상 칩 vf → default) → Long | 기록마다 한 줄 | «Nodes 81 · Edges 1668 · 1.2 s» · Long 571 줄 · SYN-CW-001-02 22 줄 · + 22 · − 0 · time_s 두 줄(CLEAN 300 · ETCH 90) | 통과 |
-| Walk on from here 뒤 Walk | default · + SYN-BW-103-11 · hops 1 → Graph → 고리 노드 마우스로 → Walk on from here → Walk | 바의 상한대로 요청 | 바 «Limits · hops 1» (hops=1 · node_limit=1000 · fanout 빈칸) · 요청 `id · positive · positive · fanout_limit=20 · world=default` (hops · node_limit 빠지고 fanout 20 붙음) · «Nodes 42 · Edges 62» | **실패** |
+| Walk on from here 뒤 Walk | default · + SYN-BW-103-11 · hops 1 → Graph → 고리 노드 마우스로 → Walk on from here → Walk | 바의 상한대로 요청 | 바 «Limits · hops 1» (hops=1 · node_limit=1000 · fanout 빈칸) · 요청 `id · positive · positive · fanout_limit=20 · world=default` (hops · node_limit 빠지고 fanout 20 붙음) · «Nodes 42 · Edges 62» | **실패** → 76874c4e9 에서 통과 |
+| fanout 다시 (76874c4e9) | 같은 순서 | 요청 = 바 | 첫 Walk `id · node_limit=1000 · hops=1` «Nodes 212 · Edges 249» · 고리 뒤 Walk `id · positive · positive · node_limit=1000 · hops=1` · fanout 없음 · «No walk yet» 없음 | 통과 |
+| Graph 먼저 (0da6617b1) | ① 바를 채우고 Walk 전에 Graph | 요청 = 바 | `id · positive · negative · node_limit=1000 · collect=wafer` · 그래프 «Nodes 32 · Edges 0» | 통과 |
+| C2 (a ~ e) (0da6617b1) | ① 판 Wide | a Δ · b + · − 넓은 쪽 · c 노드 · e 잘림 | 열 98 (Δ 가 전부 «—» 라 안 그림) · 노드 185.4 · a 0 · b 5 쌍(core_cmp_nonuniform 0.45 · place_accuracy_um · post_bond_queue_h · surface_oxidation · tape_adhesion_anomaly 0.49 — 이름 몫 99 ~ 107 px, 칸 글자 «missing» 44.7 px) · c 0 · e 0 | **b 실패** |
+| C2 (d) (0da6617b1) | ① 정렬 · 거르기(«wafer · 2 of 32») · 행 체크(좌표, 스크롤 300 그대로 · Marked 1) | 전후 같음 | 바뀐 열 0 · 0 · 0 | 통과 |
+| C2 (d) Add here | ③ 판 local_gap 체크 → measures ← wafer Add here → × | 전후 같음 | 32 → 132 · 열 이름으로 대조: 기존 147 중 3 열 폭이 바뀜(quantity 구역 «wafer measures ← · value» + · − 83.8 → 99.4, Δ 76 → 52.6) · Δ 21 열 새로 · × 뒤는 원래와 같음 | **실패** |
+| C2 (d) More | + SYN-BW-103-11 · node_limit 400 · default → More | 전후 같음 | 요청 하나 node_limit=800 · «Nodes 738 · Edges 1538» · 구역 = Types · 기존 54 열 중 1 열 폭이 바뀜(81.6 → 83.8) · 14 열 새로 | **실패** |
+| C2 (e) 노드 키 | ③ · 400 판 | 키가 다 보임 | quantity: core_cmp_nonuniform 135/133 px · tape_adhesion_anomaly 147/133 px · defect 구역: 키 59 ~ 69 자(예 «sat\|SYN-BW-103-11\|10\|4\|3\|2026-11-24T03:07:00+09:00» 472/133 px) 전부 말줄임 — 400 판 잘린 칸 189 · More 뒤 200 | **실패** |
