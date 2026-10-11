@@ -13,7 +13,7 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes } from './derive.js';
+import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
 import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointOf, pointWords } from './reach_table.js';
@@ -276,12 +276,31 @@ export function mergeWalks(a, b) {
   return { ...a, nodes: once('nodes'), edges: once('edges') };
 }
 
-/** Where «More» walks on from a cut answer (lead 10-11 W addendum 5): the answer names no node it left unexpanded, only
- *  each node's depth - the nodes at the deepest depth it reached; none past its starts, none. */
-export function deepestNodes(answer) {
-  const nodes = (answer && answer.nodes) || [];
-  const depth = Math.max(0, ...nodes.map((n) => Number(n.depth) || 0));
-  return depth > 0 ? nodes.filter((n) => Number(n.depth) === depth).map((n) => n.id) : [];
+/** The server's most for node_limit (ledger_subgraph.MAX_NODE_LIMIT, the route's `le`). */
+export const SERVER_NODE_LIMIT = 1000;
+/** The limits a walk's ask can raise, each its wire knob, where it stands in the answer and the server's most: nodes,
+ *  depth (hops, up to the answer's max_hops) and fan-out (no most). Edges and claims are none: the screen sends no
+ *  edge_limit and the route's default is its most, the claim scan read off it. */
+const RAISES = [
+  { axis: 'nodes', knob: 'node_limit', now: (r) => (r.limits || {}).nodes, most: () => SERVER_NODE_LIMIT },
+  { axis: 'depth', knob: 'hops', now: (r) => (r.walk || {}).hops_requested, most: (r) => (r.limits || {}).max_hops },
+  { axis: 'fan-out', knob: 'fanout_limit', now: (r, asked) => asked.fanout_limit, most: () => Infinity },
+];
+/** A cut answer's More (lead 10-12, the 18766 run: seeding from the deepest nodes hit the same cap): the same walk with
+ *  each limit that cut it doubled up to the server's most - fan-out when a bundle drew fewer than it holds. Null when
+ *  nothing cut it; no `asked` when every limit that cut it is at the server's most. `budgets` the Cut line's words. */
+export function moreAsk(answer, asked = {}) {
+  const cutBy = [...((answer && answer.truncatedAxes) || []),
+    ...(((answer && answer.bundles) || []).some((b) => b.drawn < b.count) ? ['fan-out'] : [])];
+  if (!cutBy.length) return null;
+  const raised = {};
+  for (const r of RAISES) {
+    const now = Number(r.now(answer, asked));
+    const most = Number(r.most(answer));
+    if (cutBy.includes(r.axis) && Number.isFinite(now) && now < most) raised[r.knob] = Math.min(now * 2, most);
+  }
+  const budgets = cutBudgets(cutBy, { ...(answer.limits || {}), 'fan-out': asked.fanout_limit });
+  return Object.keys(raised).length ? { asked: { ...asked, ...raised }, budgets } : { asked: null, budgets };
 }
 
 /** Δ in words: signed, ten significant digits (a float's tail is not a difference anyone measured). */

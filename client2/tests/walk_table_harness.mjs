@@ -1200,6 +1200,48 @@ async function suite(mod) {
         && dwelt === 1 && src === `${IMAGE_ROUTE}?ref=${encodeURIComponent(REF)}` && asked() === 0,
       JSON.stringify({ marks: marked.length, plain, n2marks: marksOf('n:2').length, drawn, before, timers: timers.map((t) => t.ms), dwelt, src, after: asked() }));
   }
+
+  console.log(`${LF}-- More: the same walk, the limit that cut it raised (lead 10-12) --`);
+  {
+    // The same walk at 800 brings d:10 from s:a and is not cut.
+    const RAISED = { ...SIGNED, nodes: [...SIGNED.nodes, { id: 'd:10', type: 'die@1', label: 'D-10', depth: 1, keys: { mat_id: 'M-10' } }],
+      edges: [...SIGNED.edges, { id: 'e:a10', source: 's:a', target: 'd:10', predicate: 'inspected', qualifiers: { gate: 3 } }],
+      propagation: { ranked: [...SIGNED.propagation.ranked, { id: 'd:10', reach: [1, 0], evidence: [{ seed: 's:a', sign: '+', hops: [{ id: 's:a' }, { id: 'd:10', predicates: ['inspected'] }] }] }] },
+      truncated: { nodes: false, reason: null }, limits: { nodes: 800, max_hops: 40 } };
+    const stand = async (nodes) => {
+      const asked = [];
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+        const u = String(url);
+        if (!u.includes('/subgraph')) return { ok: true, status: 200, json: async () => DECL };
+        asked.push(u);
+        return { ok: true, status: 200, json: async () => RAISED };
+      } });
+      await settle();
+      handle.state.type = 'die@1';
+      handle.state.asked = { type: 'die@1', keys: { mat_id: 'A' }, ...SIGNED_STARTS, node_limit: nodes };
+      handle.state.run = 'done';
+      handle.state.result = { ...SIGNED, ok: true, cut: true, truncatedAxes: ['nodes'], limits: { nodes, max_hops: 40 } };
+      handle.render();
+      return { host, asked };
+    };
+    const moreOf = (host) => walkAll(host).find((e) => String(e.className).includes('wk-more'));
+    const cutLine = (host) => (walkAll(host).find((e) => e.className === 'wk-trunc') || { textContent: '' }).textContent;
+    const rowIdsOf = (host) => walkAll(host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']).sort().join();
+    const cut = await stand(400);
+    const before = [Boolean(moreOf(cut.host)), cutLine(cut.host)];
+    for (const fn of (moreOf(cut.host) || { listeners: {} }).listeners.click || []) fn({});
+    await settle();
+    const q = new URLSearchParams((cut.asked[0] || '').split('?')[1] || '');
+    const after = [cut.asked.length, q.get('node_limit'), q.getAll('positive').join(), q.getAll('negative').join(), rowIdsOf(cut.host), Boolean(moreOf(cut.host))];
+    const top = await stand(1000);
+    const atMax = [Boolean(moreOf(top.host)), cutLine(top.host), top.asked.length];
+    ok('MO2 a node cut: More asks the same walk at node_limit 800 - its starts, one request - and merges it (d:10 joins, the walk no longer cut); at the server\'s 1000 no More, the line says so',
+      JSON.stringify([before, after, atMax]) === JSON.stringify([[true, 'Cut · nodes 400More'],
+        [1, '800', 's:a,s:c', 's:b', `${ALL},d:10`.split(',').sort().join(), false], [false, 'Cut · nodes 1000 · at the server limit', 0]]),
+      JSON.stringify([before, after, atMax]));
+  }
 }
 
 // ═══ baseline ═══════════════════════════════════════════════════════════════════════════
@@ -1500,13 +1542,13 @@ const sideSuite = (TV) => {
     JSON.stringify([rowIds(one), cell(one, 'die@1', 'd:7', GATE_IN, 0), cell(one, 'die@1', 'd:7', GATE_IN, 1), cell(one, 'die@1', 'd:8', GATE_IN, 0),
       cell(one, 'die@1', 'd:8', GATE_IN, 1), cell(one, 'die@1', 'd:1', GATE_IN, 1), cell(one, 'die@1', 'd:9', BONDED, 0), cell(one, 'die@1', 'd:9', BONDED, 1),
       routes('d:7'), routes('d:9'), addDie.adds, rowIds(withAdds([add, add]))]));
-  const moreAdd = addOf(MORE_ANSWER, TV.deepestNodes ? TV.deepestNodes(SIGNED) : [], 'More');
+  const moreAdd = addOf(MORE_ANSWER, ['d:3'], 'More');
   const union = new Set([...SIGNED.nodes, ...ADD.nodes, ...MORE_ANSWER.nodes].map((n) => n.id));
   const both = withAdds([add, moreAdd]);
-  ok('MO1 More from the deepest node (d:3): merged rows = the union; × on Add here leaves More\'s',
-    JSON.stringify([moreAdd.seeds, both.shown, rowIds(withAdds([moreAdd]))])
-      === JSON.stringify([['d:3'], union.size, `${ALL},d:10,d:9`.split(',').sort().join(',')]),
-    JSON.stringify([moreAdd.seeds, both.shown, union.size, rowIds(withAdds([moreAdd]))]));
+  ok('MO1 two additions (Add here, d:3\'s walk): merged rows = the union; × on Add here leaves the other\'s',
+    JSON.stringify([both.shown, rowIds(withAdds([moreAdd]))])
+      === JSON.stringify([union.size, `${ALL},d:10,d:9`.split(',').sort().join(',')]),
+    JSON.stringify([both.shown, union.size, rowIds(withAdds([moreAdd]))]));
 };
 // ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
 const filterSuite = (TV) => {
@@ -1626,6 +1668,8 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
+  { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
+    from: '    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], more.asked);', to: '    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], asked);' },
   { id: 'IMm1', what: 'a value the answer says is an image drawn as its text', catches: 'IM1',
     from: '    line.append(valueSpan(cell.image, cell.image !== undefined, cell.text));', to: '    line.append(valueSpan(cell.image, false, cell.text));' },
   { id: 'DM7', what: 'a side\'s cells not tinted by who reached the row', catches: 'ZD4',

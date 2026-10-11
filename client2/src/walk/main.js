@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longSheet, LONG_HEAD, deepestNodes } from './table_view.js';
+import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longSheet, LONG_HEAD, moreAsk, SERVER_NODE_LIMIT } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -85,6 +85,7 @@ const CHECK_ROWS_FIRST = 'Check rows first';
  *  walked once more. */
 const NEXT_WORDS = Object.freeze({ step: 'New step', here: 'Add here' });
 const MORE = 'More';
+const AT_SERVER_LIMIT = 'at the server limit';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -94,7 +95,7 @@ const DIRECTIONS = ['both', 'outgoing', 'incoming'];
 const SERVER_DEFAULT = 'default';
 /** The one knob with a default here (lead 34d91c09d 9, owner 10-10 «다 넣어»): node_limit starts at the server's most
  *  (ledger_subgraph.MAX_NODE_LIMIT), not its 400 that cut the side by side walk. Cleared, the server's default again. */
-export const NODE_LIMIT = 1000;
+export const NODE_LIMIT = SERVER_NODE_LIMIT;
 /** STEP's number knobs: the wire's name, the form's key, the server's bounds (null: none above) - drawn and sent from this
  *  one list (fanout_limit, lead 5d946a639). Blank, a knob is not sent and the server decides. */
 const NUMBER_KNOBS = [['hops', 'hops', 1, 40], ['node_limit', 'nodeLimit', 10, NODE_LIMIT], ['fanout_limit', 'fanoutLimit', 1, null]];
@@ -425,7 +426,7 @@ export function boot(doc, host, deps) {
       const key = `${words}|${[...seeds].sort().join(',')}`;
       const list = [...(addsAt.get(at) || [])];
       const k = list.findIndex((a) => a.key === key);
-      const add = { key, words, seeds, answer: res, more: words === MORE };
+      const add = { key, words, seeds, asked, answer: res, more: words === MORE };
       if (k >= 0) list[k] = add; else list.push(add);
       addsAt.set(at, list);
     }
@@ -433,15 +434,15 @@ export function boot(doc, host, deps) {
   }
   /** Add here: one step from the rows checked, merged into this step. */
   const addHere = (at, seeds, route) => addWalk(at, `walk on · ${route.words}`, [...seeds.positive, ...seeds.negative], askAlong(seeds, route));
-  /** More: the cut walk once more as asked, from the nodes at its deepest depth - the last More's, or the step's own. */
-  function moreSeeds(r) {
+  /** More (lead 10-12): the step's walk again, each limit that cut it raised - read off the last More's answer, or the
+   *  step's own; its starts the step's, so the same More again stands in its place. */
+  function moreOf(r, asked) {
     const last = addsNow().filter((a) => a.more).pop();
-    const answer = last ? last.answer : r;
-    return answer && answer.cut ? deepestNodes(answer) : [];
+    return last ? moreAsk(last.answer, last.asked) : moreAsk(r, asked || {});
   }
-  function walkMore(r, asked) {
-    const seeds = moreSeeds(r);
-    if (seeds.length) void addWalk(state.at, MORE, seeds, { ...asked, positive: seeds, negative: [] });
+  function walkMore(more, asked) {
+    const starts = askedStarts(asked);
+    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], more.asked);
   }
 
   /** A step in the tree (lead 5ea461e04): a child of `at`, its siblings kept; the same title from `at` again stands in
@@ -1595,14 +1596,17 @@ export function boot(doc, host, deps) {
         box.append(el(doc, 'div', 'wk-note', `As of ${localStamp(r.generatedAt)}`));
       }
       // ⚠️ 절단은 «말합니다». 🔴 «자른 축»을 씁니다 — `reason` 을 그대로 쓰면 다 걸은 답에도 depth 가 실립니다.
-      if (r.cut) {
-        const cut = el(doc, 'div', 'wk-trunc', `Cut · ${cutBudgets(r.truncatedAxes, r.limits).join(' · ')}`);
-        // More (lead 10-11 W addendum 5): the walk once more from where it stopped, merged into this step; cut again, again.
-        if (moreSeeds(r).length) {
-          const more = el(doc, 'button', 'wk-next-edge wk-more', MORE);
-          more.type = 'button';
-          more.addEventListener('click', () => walkMore(r, state.at === 0 ? state.asked : shown.asked));
-          cut.append(more);
+      // The walk as merged so far: More's latest answer, or the step's own (lead 10-12).
+      const askedNow = state.at === 0 ? state.asked : shown.asked;
+      const more = moreOf(r, askedNow);
+      if (more) {
+        const cut = el(doc, 'div', 'wk-trunc', `Cut · ${more.budgets.join(' · ')}${more.asked ? '' : ` · ${AT_SERVER_LIMIT}`}`);
+        // More: the same walk, the limit that cut it raised, merged into this step; cut again, again.
+        if (more.asked) {
+          const press = el(doc, 'button', 'wk-next-edge wk-more', MORE);
+          press.type = 'button';
+          press.addEventListener('click', () => walkMore(more, askedNow));
+          cut.append(press);
         }
         box.append(cut);
       }
