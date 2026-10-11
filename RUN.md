@@ -259,12 +259,18 @@
 >   실행        같은 명령 + --apply
 >   답의 뜻      체인 워커 로그 «… not handed over - required column(s) empty: dt_wafer_id=N» — N = 빈 행 수 · 그 행들이 먹인 층은 거둬짐
 >              공식 행 값은 남은 원천 행의 값으로 돌아감(리허설 5 -> 7)
-> ⚠️ 보류는 안 따라옴 — 결함 · 고침 주문(총괄 0117a0048)   보류 다시 세기가 require 를 몰라서 빈 행을 아직 «주장»으로 센다
->              좋은 행 + 빈 행이 같은 키 -> 보류가 빈 채로 남음(그 공식 행은 원장에 안 들어감)
->              빈 행만 먹이던 공식 행 -> 값은 빈칸인데 보류는 agreed 그대로
->   껍데기      python server/scripts/chain_replay_cli.py remove-shells <공식 표>      (미리보기 · 실행은 + --apply)
->   답의 뜻      보류가 차 있으면 껍데기가 아니다 — 0 이어도 «빈 원천 공식 행이 없다»가 아님(리허설 0)
-> 지금 할 것     위 replay 로 층은 거둬진다 · 보류와 빈 공식 행은 고침 착지 뒤 같은 replay · remove-shells 를 다시(착지 해시는 이 절에 적음)
+> 보류 고침     착지 {LANDING}(총괄 0117a0048) — 보류 다시 세기도 require 를 앎(빈 행은 주장이 아님). 단 복사 replay 가 층을 거둘 때는
+>              다시 세기 규칙을 깨우지 않아 «두 번» 돌린다(소유자 「그냥 두 번 돌릴게」)
+> 지금 할 것     pull -> 체인 워커 · 서버 재기동 -> 아래 셋을 차례로
+>   ①          python server/scripts/chain_replay_cli.py replay <복사 규칙> --apply
+>   ②          python server/scripts/chain_replay_cli.py replay <다시 세기 규칙> --apply
+>   ③          python server/scripts/chain_replay_cli.py remove-shells <공식 표>        (남으면 + --apply)
+>   답의 뜻      ① 뒤: 좋은 행이 있는 공식 행은 그 값 · 보류 agreed / 빈 행만 먹이던 공식 행은 값 빈칸인데 보류 agreed 가 남음
+>              그 사이 원장 후속 로그에 «… column '<값 칸>' contains a missing value» 줄이 날 수 있음 — 그 행들이 ② 를 기다리는 것
+>              ② 뒤: 그 행들의 보류가 비고 체인 키만 남아 체인이 스스로 지움 -> 그 줄도 그침
+>              ③ 은 대개 0 — 0 이 아니면 ① · ② 전에 이미 있던 껍데기
+>   리허설 수     pytest PG 스크래치(hold_world) · J1 좋은 행 7 + 빈 행 5 · J2 · J3 빈 행만 · require 를 복사 «뒤» kind 로
+>              ① 뒤 J1 (7, agreed) · J2 · J3 (빈칸, agreed) · ② 뒤 공식 표엔 J1 만 · remove-shells 0
 > 리허설 수     pytest PG 스크래치 스키마 · 제품 자리(복사 규칙 copy_rows_with_hold + 보류 다시 세기) · require 칸은 공식 키가 아닌 칸
 >              빈 행이 먹인 층 12 -> replay 뒤 0 · 줄 «[Chain] hc_copy: 3 row(s) not handed over - required column(s) empty: kind=3» · 다시 세기의 주장 수(빈 행 포함) J1 2 · J2 1 · J3 1
 > ```

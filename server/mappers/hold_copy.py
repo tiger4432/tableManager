@@ -58,9 +58,9 @@ def copy_rows_with_hold(db, payloads, rule=None):
 
     batch_keys = list(dict.fromkeys(tuple(row[key] for key in keys) for row in rows))
     claims = {}
+    gates = {gate: rule.get(stamp) or () for gate, stamp in chain_bindings.SOURCE_GATE_KEYS.items()}
     for start in range(0, len(batch_keys), DEFAULT_CHUNK_SIZE):   # 10,000 keys overran the parser
-        claims.update(_claims(db, source, keys, columns, batch_keys[start:start + DEFAULT_CHUNK_SIZE],
-                              rule.get(chain_bindings.SOURCE_EXCLUDE_KEY) or ()))
+        claims.update(_claims(db, source, keys, columns, batch_keys[start:start + DEFAULT_CHUNK_SIZE], gates))
     held = pd.DataFrame([{**dict(zip(keys, key)), hold: AGREED if claims.get(key) == 1 else ""}
                          for key in batch_keys])
     result["updates"] += df_to_updates(held, target, source_name=crud.CHAIN_SOURCE,
@@ -68,10 +68,10 @@ def copy_rows_with_hold(db, payloads, rule=None):
     return result
 
 
-def _claims(db, source, keys, columns, batch_keys, exclude=()) -> dict:
-    """{asked key: distinct value sets of `columns` among `source`'s rows of that key}. A row with an
-    `exclude` column filled is not a claim (총괄 016a766af) - the seat's own blank judgement
-    (`crud.blank_sql_condition`), compiled into this query.
+def _claims(db, source, keys, columns, batch_keys, gates=None) -> dict:
+    """{asked key: distinct value sets of `columns` among `source`'s rows of that key}. A row the copy's
+    row gates hold back is not a claim (`gates` {gate: columns} - 총괄 016a766af · 0117a0048), judged
+    by `_gated` in this query.
 
     The asked keys join a VALUES list (총괄 043915ab0 ②: the row `IN` was an OR chain the planner
     answered with a scan of the whole table) - `=` for the keys with a value in every part, a second
@@ -98,7 +98,7 @@ def _claims(db, source, keys, columns, batch_keys, exclude=()) -> dict:
         on = " AND ".join('%s."%s" %s k.column%d' % (table, name, compare, i + 2) for i, name in enumerate(keys))
         found = sql(db, 'SELECT "__asked", COUNT(*) AS "__claims" FROM (SELECT DISTINCT %s FROM %s JOIN (VALUES %s) AS k'
                         ' ON %s WHERE 1 = 1%s) claims GROUP BY "__asked"'
-                        % (picked, table, values, on, _unexcluded(db, source, exclude)),
+                        % (picked, table, values, on, _gated(db, source, gates)),
                     {"k%d_%d" % (n, i): part for n, key in group for i, part in enumerate(key)})
         claims.update({batch_keys[int(record["__asked"])]: int(record["__claims"]) for record in found.to_dict("records")})
     return claims
@@ -117,15 +117,20 @@ def _key_types(db, source, keys) -> dict:
     return {record["name"]: record["type"] for record in found.to_dict("records") if record["name"] in keys}
 
 
-def _unexcluded(db, source, exclude) -> str:
-    """` AND <each exclude column blank>` for `source`, or '' - `crud`'s SQL judgement, compiled."""
-    if not exclude:
-        return ""
+def _gated(db, source, gates) -> str:
+    """` AND <each require column filled> AND <each exclude column blank>` for `source`, or '' - the row
+    gates `rule_run.held_back` judges, in `crud`'s SQL judgement, compiled."""
+    import chain_bindings
     from database import crud, models
 
+    judge = {chain_bindings.REQUIRE_KEY: crud.not_blank_sql_condition,
+             chain_bindings.EXCLUDE_KEY: crud.blank_sql_condition}
+    asked = [(judge[gate], column) for gate in chain_bindings.ROW_GATE_KEYS for column in (gates or {}).get(gate) or ()]
+    if not asked:
+        return ""
     model, dialect = models.DYNAMIC_TABLES[source], db.get_bind().dialect
-    return "".join(" AND (%s)" % crud.blank_sql_condition(crud.column_text_sql(getattr(model, column))).compile(
-        dialect=dialect, compile_kwargs={"literal_binds": True}) for column in exclude)
+    return "".join(" AND (%s)" % condition(crud.column_text_sql(getattr(model, column))).compile(
+        dialect=dialect, compile_kwargs={"literal_binds": True}) for condition, column in asked)
 
 
 def _holds_only(rule) -> bool:
@@ -143,31 +148,39 @@ def _writes(rule) -> list:
 
 
 def _paired(rules) -> list:
-    """At load (총괄 016a766af): a copy rule's `exclude` is what its recount counts by too - stamped as
-    `source_exclude` on both halves, the copy's own on the copy and the pair's on the recount (the
-    copies from its `source_table` into its target). -> [(recount, sentence)] for a recount whose
-    copies exclude by different columns - it cannot know which, so it is refused by name."""
+    """At load (총괄 016a766af · 0117a0048): a copy rule's row gates (`require` · `exclude`) are what its
+    recount counts by too - stamped as `source_<gate>` on both halves, the copy's own on the copy and the
+    pair's on the recount (the copies from its `source_table` into its target). -> [(recount, sentence)]
+    for a recount whose copies gate by different columns - it cannot know which, so it is refused by name."""
     import chain_bindings
 
-    exclude, stamped = chain_bindings.EXCLUDE_KEY, chain_bindings.SOURCE_EXCLUDE_KEY
+    stamps = chain_bindings.SOURCE_GATE_KEYS
+
+    def gated(rule):
+        return tuple((gate, tuple(rule.get(gate) or ())) for gate in chain_bindings.ROW_GATE_KEYS)
+
     copies = {}
     for rule in rules:
         if not _holds_only(rule):
             copies.setdefault((rule.get("trigger_table"), rule.get("target_table")), []).append(rule)
-            if rule.get(exclude):
-                rule[stamped] = list(rule[exclude])
+            for gate, columns in gated(rule):
+                if columns:
+                    rule[stamps[gate]] = list(columns)
     refused = []
     for rule in rules:
         if not _holds_only(rule):
             continue
-        said = sorted({tuple(copy.get(exclude) or ()) for copy in copies.get(
+        said = sorted({gated(copy) for copy in copies.get(
             ((rule.get("params") or {}).get("source_table"), rule.get("target_table")), ())})
         if len(said) > 1:
-            refused.append((rule, "its copy rules into %s exclude by different columns %s - the hold "
-                                  "count cannot know which; write one exclude on every copy rule"
-                                  % (rule.get("target_table"), [list(s) for s in said])))
-        elif said and said[0]:
-            rule[stamped] = list(said[0])
+            refused.append((rule, "its copy rules into %s require or exclude by different columns %s - the "
+                                  "hold count cannot know which; write the same require and exclude on every "
+                                  "copy rule" % (rule.get("target_table"),
+                                                 [{gate: list(columns) for gate, columns in s} for s in said])))
+        elif said:
+            for gate, columns in said[0]:
+                if columns:
+                    rule[stamps[gate]] = list(columns)
     return refused
 
 

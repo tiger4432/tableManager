@@ -116,6 +116,19 @@
         }
       },
       {
+        "key": "source_require",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
         "key": "source_exclude",
         "required": false,
         "node": {
@@ -844,6 +857,19 @@
         "node": {
           "kind": "leaf",
           "hint": "free"
+        }
+      },
+      {
+        "key": "source_require",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
         }
       },
       {
