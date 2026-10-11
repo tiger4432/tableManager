@@ -200,9 +200,15 @@ def _redo_for(active_setup: Any, node: ExplorerNode, db,
 
     if getattr(node, "kind", None) == SOURCE_NODE_KIND:
         params = {"source": node.canonical_id}
+        # 🔴 THE COUNTER'S REFUSAL IS ITS ANSWER, NOT A 500 (owner 10-12). A source the active
+        #    declaration it reads does not hold - a new one, or one only a branch declares - is
+        #    refused by its judge; raised, it blanked the whole declaration window.
+        try:
+            count = retroactive.count(db, REDO_SOURCE_OP, params)
+        except retroactive.RetroactiveRefused as exc:
+            count = {"absence": retroactive.ABSENCE_NOT_APPLICABLE, "detail": str(exc)}
         return {"op": REDO_SOURCE_OP, "params": params,
-                "sources": [node.canonical_id],
-                "count": retroactive.count(db, REDO_SOURCE_OP, params)}
+                "sources": [node.canonical_id], "count": count}
 
     def stamps(compiled):
         return {source: cursor_translator_version(compiled, source)

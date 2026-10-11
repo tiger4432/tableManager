@@ -299,3 +299,84 @@ def test_a_view_with_no_draft_carries_no_cost_key_at_all(tmp_path):
     service = OntologyExplorerService(
         config_root=_copied_ontology(tmp_path), draft_root=tmp_path / "drafts")
     assert service.view(db="SESSION")["draft"] is None
+
+
+# ---------------------------------------------------------------------------
+# 🔴 a source the counter's declaration does not hold (owner 10-12)
+# ---------------------------------------------------------------------------
+
+def test_a_draft_of_a_source_the_active_file_lacks_opens_with_the_counters_refusal(
+        tmp_path, monkeypatch):
+    """The owner's modeling declaration, authored as a new source: the counter's judge refused
+    it and `/view` answered 500 for the whole window. A non-unique order_by never got there -
+    the draft failed validation first - which is why only a unique identity broke."""
+    import paths
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from admin.auth import require_admin_token, require_admin_token_strict
+    from database.database import get_db
+    from ledger.config_explorer_service import OntologyExplorerService
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    four = ["physical_object", "physical_process", "physical_quantity", "defect_kind"]
+    with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        ledger = json.load(fh)
+    with open(os.path.join(SAMPLE, "table_config.json.sample"), encoding="utf-8") as fh:
+        tables = json.load(fh)
+    ledger["entities"].pop("defect_kind@1")
+    ledger["entities"].update({name: {"keys": [name], "class": "static"} for name in four})
+    ledger["vocabulary"].pop("leads_to@1")
+    ledger["vocabulary"]["leads_to"] = {"status": "active", "subjects": four, "object": {
+        "kind": "entity_ref", "types": four,
+        "qualifiers": {"required": [], "optional": ["certainty", "dir"]}}}
+    columns = ["candidate_id", "cause_type", "cause_key", "phenomenon_type", "phenomenon_key",
+               "certainty", "dir", "confirmed"]
+    tables["link_candidates"] = {"business_key": "candidate_id",
+                                 "column_types": {name: "string" for name in columns}}
+    config = tmp_path / "config"
+    (config / "ontology").mkdir(parents=True)
+    (config / "ontology" / "ledger_config.json").write_text(json.dumps(ledger), encoding="utf-8")
+    (config / "table_config.json").write_text(json.dumps(tables), encoding="utf-8")
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(config))     # the counter reads this world
+
+    def role(type_column, key_column):
+        return {"kind": "entity", "entity_type": {"kind": "column", "column": type_column},
+                "keys": {name: {"kind": "column", "column": key_column} for name in four}}
+
+    source = {"relation": "link_candidates",
+              "read": {"unit": "row", "identity": ["row_id"], "order_by": ["row_id"],
+                       "occurred_at": {"basis": "ingested", "timezone": "Asia/Seoul"},
+                       "exclude_when": [{"column": "confirmed", "blank": True}]},
+              "map": {"implementation_id": "declarative-role", "implementation_version": 1,
+                      "unit": {"kind": "row"}},
+              "bind": {"mappings": {"leads": {"predicate": "leads_to", "bind": {
+                  "subject": role("cause_type", "cause_key"),
+                  "target": role("phenomenon_type", "phenomenon_key"),
+                  "certainty": {"kind": "column", "column": "certainty"},
+                  "dir": {"kind": "column", "column": "dir"}}}}}}
+
+    explorer_router.configure_service(OntologyExplorerService(
+        config_root=config / "ontology", draft_root=tmp_path / "drafts"))
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[require_admin_token_strict] = lambda: None
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(
+        get_bind=lambda: pytest.fail("the judge refuses before any read"), rollback=lambda: None)
+    app.include_router(explorer_router.router)
+    client = TestClient(app)
+
+    base = client.get("/admin/ontology-explorer/view").json()["snapshot_hash"]
+    draft = client.post("/admin/ontology-explorer/drafts/new", json={
+        "kind": "source_plan", "canonical_id": "link_candidates",
+        "base_snapshot_hash": base}).json()
+    saved = client.put(f"/admin/ontology-explorer/drafts/{draft['draft_id']}", json={
+        "expected_revision": 0, "raw": json.dumps(source)})
+    assert saved.json()["validation_errors"] == []                # canary: the draft compiles
+    opened = client.get("/admin/ontology-explorer/view", params={
+        "draft_id": draft["draft_id"], "revision": 1, "view_mode": "draft_preview"})
+
+    assert opened.status_code == 200, opened.text
+    count = opened.json()["draft"]["redo"]["count"]
+    assert count["absence"] == retroactive.ABSENCE_NOT_APPLICABLE
+    assert "link_candidates" in count["detail"]
