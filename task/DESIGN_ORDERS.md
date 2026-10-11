@@ -37930,3 +37930,13 @@ dist      G-2 손이 안 섞인 트리에서 빌드 — G-2 가 커밋 안 된 �
                 10 은 W 의 Wide 정의 자체 — «값 이름마다 열»은 «값을 실은 엣지면 (술어 · 건너편 노드 · 칸)마다 열»
 덤(서버 87a4fd5fc 뒤)  체인 규칙 저장 답의 notes(«top-level|derive cell this product does not read — <칸>») 를 저장 줄에 그림 — 지금 «Saved · chain worker not seen» 만
 ```
+
+> **[총괄 -> 클라] 10-11 오후 — W 덧붙임 2 (소유자 「표들 칸 너무 커 글씨도」 · 응용 18766 P1 · P2 재현)**
+
+```
+12 밀도      소유자: 표 칸과 글씨가 큼 -> 표 본문 13 px · 머리 12 px · 칸 여백 4 px 8 px · 출처 줄 11.5 px — 토큰으로(손 px 금지), 걷기 표 · 트렌드 표 · 어드민 표가 같은 토큰을 지나는지 세고 같이
+13 🔴 결함   reach_table.valueAt 이 시각 기록을 «s.value === said» 로 찾음 -> 값이 목록(many 속성)이면 같은 내용이어도 다른 객체라 늘 거짓 -> «N points without a time»
+            (응용 P2-many: value [10.4 … 10.0] · Trend 점 0) — 값 견주기는 그 모양 그대로 같은지 한 함수로(지금 cellOf 의 said 와 같은 판단), G-2 에 넣어 바로
+14 포인트    Trend 점이 같은 이벤트 시각에 포인트 다섯씩 포개짐 · 포인트 이름이 값과 짝으로 안 남음(응용 P1) — Trend 에 «Split by ▾»(값 말고 다른 한정자: point …)로 계열을 나눔 · 점 title 에 그 한정자
+            Long 의 point 칸과 같은 읽기 — 둘째 읽기 금지
+```
