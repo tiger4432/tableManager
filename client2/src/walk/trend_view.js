@@ -5,6 +5,7 @@
 import { localMinute } from '../server_time.js';
 import { unitText } from '../ui_words.js';
 import { OTHERS } from './trend.js';
+import { pointWords } from './reach_table.js';
 import { setDisabledReason } from '../disabled_reason.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -29,6 +30,8 @@ export const TREND_WORDS = Object.freeze({
   other: 'Other rows',
   walked: 'Dashed: the walked time',
   untimed: (n) => `${unitText(n, 'point')} without a time`,
+  split: 'Split by',
+  others: 'Others',
   // The axis is in this screen's time; the server's windows are UTC (lead 10-10).
   local: 'local time',
   edge: (word, time, n) => `${word} walked ${time}${n > 1 ? ` (+${n - 1})` : ''}`,
@@ -66,7 +69,8 @@ export class TrendView {
 
   /**
    * @param {{title: string, model: object, groups: string[], t0: number|null, onEarlier?: Function, onLater?: Function,
-   *          hasEarlier?: boolean, hasLater?: boolean, onClose?: Function, walkOnly?: boolean}} spec
+   *          hasEarlier?: boolean, hasLater?: boolean, onClose?: Function, walkOnly?: boolean, splits?: string[],
+   *          split?: string, onSplit?: Function}} spec  `splits` what Split by offers (none: no chooser), `split` the one on
    */
   show(spec) {
     const { model } = spec;
@@ -77,6 +81,19 @@ export class TrendView {
     const said = model.t ? `${unitText(points, 'point')} · ${localMinute(new Date(model.t[0]).toISOString())} → ${localMinute(new Date(model.t[1]).toISOString())} ${TREND_WORDS.local}` : '';
     head.append(this._el('span', 'wk-note', [said, model.untimed ? TREND_WORDS.untimed(model.untimed) : '',
       spec.walkOnly ? TREND_WORDS.noPage : ''].filter(Boolean).join(' · ')));
+    // Split by (lead 10-11 W addendum 2 ⑭): a point attribute's values a series each.
+    if (spec.splits && spec.splits.length && spec.onSplit) {
+      const pick = this._el('select', 'wk-select wk-trendsplit');
+      pick.setAttribute('aria-label', TREND_WORDS.split);
+      for (const name of ['', ...spec.splits]) {
+        const o = this._el('option', '', name ? `${TREND_WORDS.split} · ${name}` : TREND_WORDS.split);
+        o.value = name;
+        if (name === (spec.split || '')) o.selected = true;
+        pick.append(o);
+      }
+      if (pick.addEventListener) pick.addEventListener('change', () => spec.onSplit(pick.value));
+      head.append(pick);
+    }
     const acts = this._el('span', 'wk-trend-acts');
     if (spec.onEarlier) acts.append(this._button(TREND_WORDS.earlier, spec.onEarlier, spec.hasEarlier === false ? TREND_WORDS.noEarlier : ''));
     if (spec.onLater) acts.append(this._button(TREND_WORDS.later, spec.onLater, spec.hasLater === false ? TREND_WORDS.noLater : ''));
@@ -107,13 +124,13 @@ export class TrendView {
         svg.append(this._svg('line', { x1: PAD.l, x2: W - PAD.r, y1: y(v), y2: y(v), class: 'wk-trend-grid' }));
         svg.append(this._svg('text', { x: PAD.l - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'wk-trend-word' }, String(Number(v.toPrecision(6)))));
       }
-      for (const p of model.numbers) svg.append(this._dot(x(p.t), y(p.value), p));
+      for (const p of model.numbers) svg.append(this._dot(x(p.t), y(p.value), p, Boolean(model.series)));
     }
     model.lanes.forEach((lane, i) => {
       const ly = top + numberH + i * LANE_H + LANE_H / 2;
       svg.append(this._svg('line', { x1: PAD.l, x2: W - PAD.r, y1: ly, y2: ly, class: 'wk-trend-grid' }));
       svg.append(this._svg('text', { x: PAD.l - 8, y: ly + 4, 'text-anchor': 'end', class: `wk-trend-word${lane === OTHERS ? ' is-others' : ''}` }, lane));
-      for (const p of model.words.filter((w) => w.lane === lane)) svg.append(this._dot(x(p.t), ly + jitter(p.key), p));
+      for (const p of model.words.filter((w) => w.lane === lane)) svg.append(this._dot(x(p.t), ly + jitter(p.key), p, Boolean(model.series)));
     });
     for (let k = 0; k <= 4; k += 1) {
       const t = t0 + ((t1 - t0) * k) / 4;
@@ -133,17 +150,27 @@ export class TrendView {
     }
     this.root.append(svg);
     const legend = this._el('div', 'wk-trend-legend');
-    spec.groups.forEach((name, i) => legend.append(this._key(`is-g${i}`, name)));
-    legend.append(this._key('is-other', TREND_WORDS.other), this._el('span', 'wk-note', TREND_WORDS.walked));
+    // Split, a key a series and «Others» past them; else a key a group.
+    if (model.series) {
+      model.series.forEach((name, i) => legend.append(this._key(`is-s${i + 1}`, name)));
+      if ([...model.numbers, ...model.words].some((p) => p.series === null)) legend.append(this._key('is-other', TREND_WORDS.others));
+    } else {
+      spec.groups.forEach((name, i) => legend.append(this._key(`is-g${i}`, name)));
+      legend.append(this._key('is-other', TREND_WORDS.other));
+    }
+    legend.append(this._el('span', 'wk-note', TREND_WORDS.walked));
     this.root.append(legend);
   }
 
-  _dot(cx, cy, p) {
-    const group = p.group === null || p.group === undefined ? 'is-other' : `is-g${p.group}`;
-    const dot = this._svg('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: p.walked ? 5 : group === 'is-other' ? 1.8 : 3,
-      class: `wk-tp ${group}${p.walked ? ' is-walked' : ''}`, 'data-key': p.key });
-    // Who gave the point, as its cell says (lead 99ed68cb7 C).
-    if (p.source) { const said = this._svg('title', {}); said.textContent = p.source; dot.append(said); }
+  _dot(cx, cy, p, split) {
+    // Split, its series' colour (none past them: «others»); else its group's.
+    const kind = split ? (p.series === null ? 'is-other' : `is-s${p.series + 1}`)
+      : p.group === null || p.group === undefined ? 'is-other' : `is-g${p.group}`;
+    const dot = this._svg('circle', { cx: cx.toFixed(1), cy: cy.toFixed(1), r: p.walked ? 5 : kind === 'is-other' && !split ? 1.8 : 3,
+      class: `wk-tp ${kind}${p.walked ? ' is-walked' : ''}`, 'data-key': p.key });
+    // Who gave the point, as its cell says (lead 99ed68cb7 C), and its point - Long's (lead 10-11 W addendum 2 ⑭).
+    const words = [p.source, pointWords(p.point || [])].filter(Boolean).join(' · ');
+    if (words) { const said = this._svg('title', {}); said.textContent = words; dot.append(said); }
     return dot;
   }
 

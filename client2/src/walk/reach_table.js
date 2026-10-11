@@ -95,6 +95,12 @@ export const groupKey = (column) => JSON.stringify([column.steps, column.end || 
 /** A value in words: a boolean ✓ ✗, a list joined, the rest as it came. */
 export const valueWords = (v) => (typeof v === 'boolean' ? (v ? '✓' : '✗') : Array.isArray(v) ? v.join(' · ') : String(v));
 
+/** A read's point (lead 10-11 W, addendum 2 ⑭): its edge's other attributes beside the column's value, blanks out, as
+ *  [name, value] - Long's «point», the trend's Split by and a dot's title read this one. A node's own value has none. */
+export const pointOf = (column, edge) => (column.value.on === 'edge' && edge
+  ? Object.entries(edge.qualifiers || {}).filter(([name, v]) => name !== column.value.name && !isBlank(v)) : []);
+export const pointWords = (point) => point.map(([name, v]) => `${name} ${valueWords(v)}`).join(' · ');
+
 /** Every way from `starts` along `steps` - inside `inside` when given; a column's (`last`) ending at its node or at its far
  *  types when it names them - its end node and last edge; past `cap`, `more`. */
 function waysOf(index, inside, starts, steps, cap, last = null) {
