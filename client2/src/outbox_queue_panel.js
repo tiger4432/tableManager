@@ -191,6 +191,8 @@ export class OutboxQueuePanel {
   render(payload, opts = {}) {
     const view = outboxQueueView(payload, opts);
     this.root.textContent = '';
+    // How long since the screen last read this queue (queue_poll, owner 10-11 Q) - a read that stalls shows its age.
+    if (opts.age) this.root.appendChild(this._line('queue-read-age', opts.age));
 
     const meta = this.doc.createElement('div');
     meta.className = 'queue-meta';

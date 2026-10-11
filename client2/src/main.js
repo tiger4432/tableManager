@@ -97,7 +97,7 @@ const copyHeaderToggles = () =>
   [elements.copyHeaderToggle, elements.copyHeaderMenuToggle].filter(Boolean);
 import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
 import { OutboxQueuePanel } from './outbox_queue_panel.js';
-import { pollBeat, pollQueue } from './queue_poll.js';
+import { pollBeat, pollQueue, timedRead, readAgeWords, QueueReadTimeout, READ_TIMED_OUT } from './queue_poll.js';
 import { onBroadcast } from './websocket.js';
 import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
@@ -629,24 +629,35 @@ function setupEventListeners() {
   //    총괄 427451855) — 체인이 막히면 브로드캐스트가 안 와서 목록이 굳었다.
   let queuePanel = null;
   let queueReading = false;
+  // The last read drawn and when one last landed (owner 10-11 Q): a beat that finds a read on its way draws its age.
+  let queueDrawn = [null, {}];
+  let queueReadAt = null;
+  const drawQueue = (payload, opts) => {
+    queueDrawn = [payload, opts];
+    queuePanel.render(payload, { ...opts, age: readAgeWords(queueReadAt, Date.now()) });
+  };
   const refreshQueue = async () => {
     const mount = elements.queueView;
     if (!mount) return;
     if (!queuePanel) queuePanel = new OutboxQueuePanel(mount);
     queueReading = true;
     try {
-      const res = await fetch(`${API_BASE}/outbox/queue/rows?limit=50`);
+      // One read, cut at queue_poll's time - its body too.
+      const { res, body } = await timedRead(async (signal) => {
+        const got = await fetch(`${API_BASE}/outbox/queue/rows?limit=50`, { signal });
+        return { res: got, body: got.ok ? await got.json() : null };
+      });
+      if (res.ok) queueReadAt = Date.now();
       // 사유 없는 「모름」은 고칠 자리가 없다 — 실패 문장은 그 좌석이 짓는다.
-      queuePanel.render(res.ok ? await res.json() : null,
-        res.ok ? {} : { failed: fetchFailureLine(failureFactOf(res), CHROME.FETCH_FAILED) });
+      drawQueue(body, res.ok ? {} : { failed: fetchFailureLine(failureFactOf(res), CHROME.FETCH_FAILED) });
     } catch (e) {
-      queuePanel.render(null, { failed: String((e && e.message) || e) });
+      drawQueue(null, { failed: e instanceof QueueReadTimeout ? READ_TIMED_OUT : String((e && e.message) || e) });
     } finally {
       queueReading = false;
     }
   };
   pollQueue(() => pollBeat({ onScreen: () => !document.hidden && state.activeHistoryTab === 'queue',
-    busy: () => queueReading, read: refreshQueue }));
+    busy: () => queueReading, read: refreshQueue, waiting: () => { if (queuePanel) drawQueue(...queueDrawn); } }));
   if (elements.tabQueueBtn) {
     elements.tabQueueBtn.addEventListener('click', () => {
       activateHistoryTab(elements.tabQueueBtn);

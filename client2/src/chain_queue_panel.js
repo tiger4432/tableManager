@@ -613,6 +613,8 @@ export class ChainQueuePanel {
     const view = queueView(payload, opts);
     const doc = this.doc;
     this.root.textContent = '';
+    // How long since the screen last read this queue (queue_poll, owner 10-11 Q) - a read that stalls shows its age.
+    if (opts.age) this.root.appendChild(this._line('chain-queue-read-age', opts.age));
 
     if (!view.available) {
       this.root.appendChild(this._empty('⚪', view.reason));

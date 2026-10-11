@@ -35,7 +35,7 @@ import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel, skipLine } from './chain_queue_panel.js';
-import { pollBeat, pollQueue } from './queue_poll.js';
+import { pollBeat, pollQueue, timedRead, readAgeWords, QueueReadTimeout, READ_TIMED_OUT } from './queue_poll.js';
 import { ChainPauseControl, chainPauseView } from './chain_pause.js';
 // 시안 A ② Status — 줄 판정은 `overview_status` 한 자리, 판은 그리기만 한다.
 import { OverviewBoard } from './overview_board.js';
@@ -1468,9 +1468,15 @@ async function chainQueueFrom(res) {
 let queueRead = null;
 // The failed-outbox answer the page read last: the Failed cell beside the queue, kept for the queue-only reads.
 let queueFailed = null;
+// When a read last landed, and the last drawn (owner 10-11 Q): a beat that finds a read on its way draws its age.
+let queueReadAt = null;
+let queueDrawn = null;
 function readQueue() {
   if (!queueRead) {
-    queueRead = adminFetch(`${API_BASE}/admin/chain/queue`).catch(() => null).then(chainQueueFrom)
+    // One read, cut at queue_poll's time - its body too; a cut read says so and the next beat reads again.
+    queueRead = timedRead((signal) => adminFetch(`${API_BASE}/admin/chain/queue`, { signal }).then(chainQueueFrom))
+      .then((got) => { if (got.body) queueReadAt = Date.now(); return got; },
+        (e) => (e instanceof QueueReadTimeout ? { body: null, opts: { unavailable: READ_TIMED_OUT } } : chainQueueFrom(null)))
       .finally(() => { queueRead = null; });
   }
   return queueRead;
@@ -1486,7 +1492,7 @@ async function refreshQueue() {
  *  tab that shows the queue is visible and no read is on its way. */
 function queuePollTick() {
   return pollBeat({ onScreen: () => !document.hidden && (currentTab === 'overview' || currentTab === 'chain'),
-    busy: () => Boolean(queueRead), read: refreshQueue });
+    busy: () => Boolean(queueRead), read: refreshQueue, waiting: () => { if (queueDrawn) renderChainQueue(...queueDrawn); } });
 }
 
 function scheduleQueuePoll() {
@@ -1499,6 +1505,8 @@ function scheduleQueuePoll() {
 //    답을 둘 다에 그린다 — 각자 받으면 두 화면이 «다른 순간»을 그린다.
 let chainQueuePanels = null;
 function renderChainQueue(payload, opts) {
+  queueDrawn = [payload, opts];
+  opts = { ...opts, age: readAgeWords(queueReadAt, Date.now()) };
   if (!chainQueuePanels) {
     chainQueuePanels = ['chain-queue-mount', 'overview-queue-mount']
       .map((id) => byId(id)).filter(Boolean)

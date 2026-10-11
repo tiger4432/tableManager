@@ -286,6 +286,19 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
 }
 
+// ═══ QA: the panel says how long since its screen last read the queue (owner 10-11 Q) ═══════════
+{
+  const doc = makeDoc();
+  const host = doc.createElement('div');
+  const panel = new OutboxQueuePanel(host, { doc });
+  panel.render(null, { failed: 'x', age: 'Read 7 s ago' });
+  const first = (host.children[0] && host.children[0].children[0]) || {};
+  const aged = String(first.className || '').includes('queue-read-age') ? first.textContent : '';
+  panel.render(null, { failed: 'x' });
+  const none = byClass(host, 'queue-read-age').length > 0;
+  ok('QA1 the age the screen hands it is the panel\'s first line; none handed, none drawn', aged === 'Read 7 s ago' && !none, JSON.stringify([aged, none]));
+}
+
 // ═══ P: the Queue tab reads itself on the admin queue's beat (lead 427451855) ═══════════════════
 // The beat is queue_poll.js, imported; the two pages that call it cannot be imported (they wire the page), so their
 // calls are read as text - the same as smart_paste_choice's N2.
@@ -309,6 +322,50 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
     say('PL2 the beat comes every QUEUE_POLL_MS (5 s), and a failed read still sets the next',
       m.QUEUE_POLL_MS === 5000 && waits.length === 2 && waits.every((w) => w.ms === 5000) && fails === 1,
       JSON.stringify([m.QUEUE_POLL_MS, waits.length, fails]));
+    // A read that never settles (owner 10-11 Q): cut at QUEUE_READ_TIMEOUT_MS, its request told to stop.
+    const flush = async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); };
+    const cuts = [];
+    let signal = null;
+    let state = 'pending';
+    m.timedRead((s) => { signal = s; return new Promise(() => {}); }, (fn, ms) => { cuts.push({ fn, ms }); return cuts.length; }, () => {})
+      .then(() => { state = 'landed'; }, (e) => { state = e.name; });
+    await flush();
+    const before = state;
+    if (cuts[0]) cuts[0].fn();
+    await flush();
+    let stopped = null;
+    const landed = await m.timedRead(() => Promise.resolve(42), () => 'timer', (t) => { stopped = t; });
+    say('PL5 a read that never settles is cut at QUEUE_READ_TIMEOUT_MS (15 s) - it ends, timed out, its request aborted; a read that lands is its answer, its timer stopped',
+      m.QUEUE_READ_TIMEOUT_MS === 15000 && cuts.length === 1 && cuts[0].ms === 15000 && before === 'pending' && state === 'QueueReadTimeout'
+        && Boolean(signal) && signal.aborted === true && landed === 42 && stopped === 'timer',
+      JSON.stringify([cuts.map((c) => c.ms), before, state, signal && signal.aborted, landed, stopped]));
+    // The beat with that read on screen: beat 1 reads, beat 2 finds it on its way and says its age, the cut lands, beat 3 reads again.
+    const fired = [];
+    let reading = false;
+    let reads = 0;
+    let said = 0;
+    const stalled = () => { reads += 1; reading = true;
+      return m.timedRead(() => new Promise(() => {}), (fn) => { fired.push(fn); return fired.length; }, () => {}).catch(() => {}).finally(() => { reading = false; }); };
+    const beat = () => m.pollBeat({ onScreen: () => true, busy: () => reading, read: stalled, waiting: () => { said += 1; } });
+    void beat();
+    await flush();
+    const second = await Promise.race([beat(), flush().then(() => 'still on its way')]);
+    fired[0]();
+    await flush();
+    const third = beat();
+    await flush();
+    say('PL6 a beat that finds a read on its way says how long since the last and reads nothing; once the cut lands the next beat reads again',
+      reads === 2 && said === 1 && second === false && reading === true, JSON.stringify([reads, said, second, reading]));
+    void third;
+    const held = [];
+    m.pollQueue(() => new Promise(() => {}), (fn, ms) => held.push({ fn, ms }));
+    held[0].fn();
+    await flush();
+    say('PL9 a beat whose read never ends does not hold the next beat - it comes on its time and finds the read on its way',
+      held.length === 2 && held[1].ms === 5000, JSON.stringify(held.map((h) => h.ms)));
+    say('PL7 the age in words: seconds since the last read; none read yet, nothing',
+      m.readAgeWords(1000, 13400) === 'Read 12 s ago' && m.readAgeWords(null, 5000) === '' && m.readAgeWords(5000, 4000) === 'Read 0 s ago',
+      JSON.stringify([m.readAgeWords(1000, 13400), m.readAgeWords(null, 5000)]));
   };
   const P_NAMES = [];
   await pollSuite(await import('../src/queue_poll.js'), (name, cond, shown) => { P_NAMES.push(name); ok(name, cond, shown); });
@@ -316,10 +373,17 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   const text = (f) => readFileSync(new URL(f, SRC), 'utf8').split(String.fromCharCode(13)).join('');
   const grid = text('main.js');
   const admin = text('admin.js');
-  ok('PL3 the grid\'s Queue tab beats while it is open and shown, skipping while its read is on its way',
+  ok('PL3 the grid\'s Queue tab beats while it is open and shown, skipping while its read is on its way - and then saying its age',
     grid.includes("pollQueue(() => pollBeat({ onScreen: () => !document.hidden && state.activeHistoryTab === 'queue',")
-      && grid.includes('busy: () => queueReading, read: refreshQueue }));')
+      && grid.includes('busy: () => queueReading, read: refreshQueue, waiting: () => { if (queuePanel) drawQueue(...queueDrawn); } }));')
       && grid.includes('    queueReading = true;\n') && grid.includes('      queueReading = false;\n'), 'main.js wiring');
+  ok('PL8 both screens\' queue reads go through the one timed read and its age - no time of their own (owner 10-11 Q)',
+    grid.includes('const { res, body } = await timedRead(async (signal) => {') && grid.includes('fetch(`${API_BASE}/outbox/queue/rows?limit=50`, { signal });')
+      && admin.includes('timedRead((signal) => adminFetch(`${API_BASE}/admin/chain/queue`, { signal }).then(chainQueueFrom))')
+      && admin.includes('busy: () => Boolean(queueRead), read: refreshQueue, waiting: () => { if (queueDrawn) renderChainQueue(...queueDrawn); } });')
+      && admin.includes('age: readAgeWords(queueReadAt, Date.now())') && grid.includes('age: readAgeWords(queueReadAt, Date.now())')
+      && grid.split('/outbox/queue/rows').length === 2 && admin.split('`${API_BASE}/admin/chain/queue`').length === 2
+      && ![grid, admin].some((t) => /QUEUE_READ_TIMEOUT_MS\s*=/.test(t)), 'a read outside timedRead, or a time of its own');
   ok('PL4 one interval: the grid and the admin call the one beat and declare none of their own',
     admin.includes('pollQueue(queuePollTick);') && !/QUEUE_POLL_MS\s*=/.test(grid) && !/QUEUE_POLL_MS\s*=/.test(admin)
       && !grid.includes('폴링은 «없다»'), 'a second interval or the retired promise');
@@ -328,10 +392,17 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 50)}`); return t.split(from).join(to); };
   const MUTANTS = [
     { id: 'PM1', what: 'a beat reads while a read is on its way', catches: 'PL1',
-      mutate: swap('  if (!onScreen() || busy()) return Promise.resolve(false);', '  if (!onScreen()) return Promise.resolve(false);') },
+      mutate: swap('  if (busy()) { waiting(); return Promise.resolve(false); }\n', '') },
     { id: 'PM2', what: 'a beat reads off screen', catches: 'PL1',
-      mutate: swap('  if (!onScreen() || busy()) return Promise.resolve(false);', '  if (busy()) return Promise.resolve(false);') },
-    { id: 'PM3', what: 'a failed read stops the beat', catches: 'PL2', mutate: swap('beat().then(next, next);', 'beat().then(next, () => {});') },
+      mutate: swap('  if (!onScreen()) return Promise.resolve(false);\n', '') },
+    { id: 'PM4', what: 'no time on a read - one that never settles holds its screen (owner 10-11 Q)', catches: 'PL5',
+      mutate: swap('return Promise.race([Promise.resolve().then(() => request(control.signal)), cut])', 'cut.catch(() => {}); return Promise.resolve().then(() => request(control.signal))') },
+    { id: 'PM5', what: 'a beat that finds a read on its way says nothing', catches: 'PL6',
+      mutate: swap('  if (busy()) { waiting(); return Promise.resolve(false); }', '  if (busy()) return Promise.resolve(false);') },
+    { id: 'PM3', what: 'a failed read stops the beat', catches: 'PL2',
+      mutate: swap('Promise.resolve().then(beat).catch(() => {}); next();', 'Promise.resolve().then(beat).then(next, () => {});') },
+    { id: 'PM6', what: 'the next beat waits on this one\'s read', catches: 'PL9',
+      mutate: swap('Promise.resolve().then(beat).catch(() => {}); next();', 'Promise.resolve().then(beat).then(next, next);') },
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const m = (await loadWithProbe(POLL.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
