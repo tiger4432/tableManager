@@ -491,21 +491,37 @@ class EvidenceAtom:
 ATOM_COLUMNS = ", ".join((*LEDGER_COLUMNS, "world"))
 EVIDENCE_COLUMNS = ", ".join(f"e.{name.strip()}" for name in ATOM_COLUMNS.split(","))
 
-#: The nodes a read starts from, one row each.
+#: The nodes a read starts from, one row each - `skip`: what that node does not read (`_skip`).
 FRONTIER_CTE = """
             WITH frontier AS (
-                SELECT type, keys FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
-                     AS item(type text, keys jsonb)
+                SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
+                     AS item(type text, keys jsonb, skip jsonb)
             )
         """
-#: How an atom `e` names a frontier node `f`, by the arm that reads it - one spelling for the
-#: walk's read and the time page's.
-ARM_JOIN = {
-    "outgoing": "e.subject_type = f.type AND e.subject_keys = f.keys",
+#: How an atom `e` names a node `{f}`, by the arm that reads it - one spelling for the walk's
+#: read, its skip and the time page's.
+_NAMES = {
+    "outgoing": "e.subject_type = {f}.type AND e.subject_keys = {f}.keys",
     "incoming": ("e.object_kind = 'entity_ref'\n"
-                 "                     AND e.object_payload->>'type' = f.type\n"
-                 "                     AND e.object_payload->'keys' = f.keys"),
+                 "                     AND e.object_payload->>'type' = {f}.type\n"
+                 "                     AND e.object_payload->'keys' = {f}.keys"),
 }
+ARM_JOIN = {arm: text.format(f="f") for arm, text in _NAMES.items()}
+#: The far end's type, by the arm that reads the atom.
+_FAR_TYPE = {"outgoing": "e.object_payload->>'type'", "incoming": "e.subject_type"}
+
+
+def _skip(arm):
+    """What a frontier node `f` does not read on one arm (lead 10-12, owner 「본딩 코어 1 개만」):
+    `f.skip.steps`, the steps `_back_down_steps` refuses - back to what brought `f`, and down to a
+    container's other children - unless the far end is on the frontier too (`_step` passes a
+    step between two near nodes). Not read, so not spent: MEASURED on one bonded wafer with ten
+    core wafers, `collect=wafer` at 12,000 claims reached 0 cores, then 10."""
+    other = "incoming" if arm == "outgoing" else "outgoing"
+    return (f"NOT COALESCE(f.skip->'steps' @> jsonb_build_array("
+            f"jsonb_build_object('p', e.predicate, 'd', '{arm}', 't', {_FAR_TYPE[arm]}))\n"
+            f"                          AND NOT EXISTS (SELECT 1 FROM frontier g WHERE "
+            f"{_NAMES[other].format(f='g')}), false)")
 
 
 def _where(*conditions):
@@ -641,10 +657,12 @@ class SqlEvidenceLookup:
         general form of it, and the two combine with AND.
 
         `None` means follow everything, which is what every caller did before this existed.
+        An entity is `(type, keys)` or `(type, keys, {"steps": [...]})` - what `_skip` leaves out.
         """
         if not entities or limit <= 0:
             return [], False
-        frontier = [{"type": item[0], "keys": item[1]} for item in entities]
+        frontier = [{"type": item[0], "keys": item[1],
+                     **({"skip": item[2]} if len(item) > 2 else {})} for item in entities]
         params = {"frontier": _canonical(frontier), "fetch": int(limit) + 1}
         follow_clause = ""
         if follow:
@@ -668,7 +686,7 @@ class SqlEvidenceLookup:
                     SELECT {selected} FROM frontier f
                     JOIN {self.relation} e
                       ON {ARM_JOIN[arm]}
-                    {_where(follow_clause, extra_clause, current)}
+                    {_where(follow_clause, extra_clause, current, _skip(arm))}
                 """)
             return " UNION ".join(built)
 
@@ -848,7 +866,14 @@ class InMemoryEvidenceLookup:
 
     def claims_for_entities(self, entities, direction, limit, *,
                             follow=None, exclude=None):
-        wanted = {(item[0], _canonical(item[1])) for item in entities}
+        wanted = {(item[0], _canonical(item[1])): (item[2] if len(item) > 2 else {})
+                  for item in entities}
+
+        def read(arm, near, far, far_type, atom):
+            """`SqlEvidenceLookup`'s arm with `_skip` - the same steps, the same exemption."""
+            step = {"p": atom.predicate, "d": arm, "t": far_type}
+            return not (step in (wanted[near].get("steps") or ()) and far not in wanted)
+
         rows = []
         for atom in self.atoms:
             if (follow and atom.predicate not in follow) or (exclude and atom.predicate in exclude):
@@ -856,9 +881,11 @@ class InMemoryEvidenceLookup:
             subject = (atom.subject_type, _canonical(atom.subject_keys))
             payload = atom.object_payload or {}
             target = (str(payload.get("type")), _canonical(payload.get("keys") or {}))
-            if ((direction in ("outgoing", "both") and subject in wanted)
-                    or (direction in ("incoming", "both")
-                        and atom.object_kind == "entity_ref" and target in wanted)):
+            named = atom.object_kind == "entity_ref"
+            if ((direction in ("outgoing", "both") and subject in wanted
+                 and read("outgoing", subject, target if named else None, payload.get("type"), atom))
+                    or (direction in ("incoming", "both") and named and target in wanted
+                        and read("incoming", target, subject, atom.subject_type, atom))):
                 # Counted where it is skipped, so the census and the filter cannot come to
                 # disagree about which claims the interval left out.
                 if self._outside(atom):
@@ -994,6 +1021,12 @@ def _held_to_names(kind, starts_here, static_types):
     return kind in static_types and not starts_here
 
 
+def _between_names(near_kind, far_kind, static_types):
+    """A step between two static types: no container, so no siblings - the back-down rule is not
+    asked. ONE SEAT: `_step`, `_reach` and the read's skip ask it."""
+    return near_kind in static_types and far_kind in static_types
+
+
 def _goes_back_down(arrived, predicate, direction, far_type):
     """Does this step walk back down what reached the node, to a sibling? ONE function - the
     walk's expansion and the ranking's reach both ask it (총괄 739edd59c · f3fb29a44).
@@ -1007,13 +1040,21 @@ def _goes_back_down(arrived, predicate, direction, far_type):
     ⚠️ EVERY step that reached the node must be one this walks back, as `==` was before:
     a node reached some other way as well was not used purely as a container.
     """
-    if not arrived:
-        return False
-    bare, far = _bare(predicate), _bare(far_type)
-    inverse = _read_entity_declaration()[3].get(bare)
-    return all(_bare(source) == far
-               and ((came == bare and how != direction) or (came == inverse and how == direction))
-               for came, how, source in ((_bare(p), d, t) for p, d, t in arrived))
+    return (_bare(predicate), direction, _bare(far_type)) in _back_down_steps(arrived)
+
+
+def _back_down_steps(arrived):
+    """THE RULE of `_goes_back_down`, as the steps it refuses: {(bare predicate, direction, bare
+    far type)}. The walk's read leaves these out of the SQL (`_skip`), so a refused step never
+    spends the claim budget - one rule, asked per step and handed to the read (lead 10-12)."""
+    inverses = _read_entity_declaration()[3]
+    refused = None
+    for p, how, source in arrived or ():
+        came, back = _bare(p), ("incoming" if how == "outgoing" else "outgoing")
+        steps = {(came, back, _bare(source))} | {
+            (mine, how, _bare(source)) for mine, theirs in inverses.items() if theirs == came}
+        refused = steps if refused is None else refused & steps
+    return frozenset(refused or ())
 
 
 def reset_declaration_cache():
@@ -1485,7 +1526,6 @@ def _reach(nodes, edges, seed_signs, static_types=()):
         while level:
             reached = defaultdict(set)
             for node in level:
-                here_is_name = _kind(node) in static
                 for nxt, predicate, direction in adjacency.get(node) or ():
                     if nxt in seen:
                         continue
@@ -1496,7 +1536,7 @@ def _reach(nodes, edges, seed_signs, static_types=()):
                         continue
                     # and no step goes back down what reached this node -- between two
                     # names there is no container and so no siblings, so that pair is exempt
-                    if (not (here_is_name and there_is_name)
+                    if (not _between_names(_kind(node), _kind(nxt), static)
                             and _goes_back_down(arrived[node], predicate, direction,
                                                 _kind(nxt))):
                         continue
@@ -2523,7 +2563,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # follow=leads_to, refusing the step costs 2 of 21 nodes -- one of them another
         # defect kind the same cause produces.
         if (step_dir is not None
-                and not (near_kind in static_types and far_kind in static_types)
+                and not _between_names(near_kind, far_kind, static_types)
                 and _goes_back_down(arrivals.get(near_id), atom.predicate, step_dir,
                                     far_kind)):
             return None
@@ -2614,6 +2654,24 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 + [(items, group_follow, list(predicates)) for predicates, items in firsts]
                 + ([(rest, group_follow, None)] if rest else []))
 
+    def _frontier(items, group):
+        """A read's entities, each with the steps its node does not read (`_skip`): those
+        `_back_down_steps` refuses - but not a step between two names, nor one whose far end may
+        be a group node outside this read (`_step` passes both)."""
+        read = {item["id"] for item in items}
+        outside = {_bare(item["type"]) for item in group if item["id"] not in read}
+        entities = []
+        for item in items:
+            near = _bare(item["type"])
+            steps = [{"p": p, "d": d, "t": t}
+                     for p, d, t in sorted(_back_down_steps(arrivals.get(item["id"])))
+                     if not _between_names(near, t, static_types) and t not in outside]
+            entities.append((item["type"], item["keys"], {"steps": steps})
+                            if steps else (item["type"], item["keys"]))
+        return entities
+
+    #: every atom read, at every level - `current_conflicts` counts over all of them
+    fetched = []
     for depth in range(budget_hops):
         # 🔴 A NODE THAT HAS SPENT ITS DEPARTURES IS NOT EXPANDED, however shallow it is.
         # That is the whole of the second budget: the walk keeps going while it stays on
@@ -2640,7 +2698,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                            and refs[item].get("expandable", False)]
         finding_refs = [refs[item] for item in frontier_ids
                         if refs[item]["kind"] == "collection"]
-        fetched = []
 
         full_entity_refs = [item for item in entity_refs
                             if not item.get("observation_only", False)]
@@ -2677,7 +2734,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     claim_cut = True                    # a read the budget left unread
                     break
                 batch, cut = lookup.claims_for_entities(
-                    [(item["type"], item["keys"]) for item in items],
+                    _frontier(items, group),
                     direction, remaining, follow=read_follow,
                     **({"exclude": read_exclude} if read_exclude else {}))
                 claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut

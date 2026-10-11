@@ -187,3 +187,43 @@ def test_a_step_back_to_another_type_is_walked_and_to_the_same_type_is_not(tmp_p
     finally:
         ledger_subgraph.reset_declaration_cache()
     assert sorted(n["type"] for n in body["nodes"]) == ["die", "seat", "wafer"]
+
+
+def test_a_step_the_rule_refuses_is_not_read_so_it_spends_no_claim(tmp_path, monkeypatch):
+    """Owner 10-12 「걷기 여전히 본딩 코어 1 개만」, lead 10-12: wafer <-in_container- die
+    -bonded_from-> core die -in_container-> core wafer. Each node read again the atom that brought
+    it, and each core wafer its other dies - steps the rule refuses, read and charged anyway:
+    at 3 x 40 claims the walk reached 0 of 4 core wafers (`_skip`)."""
+    path = tmp_path / "ledger_config.json"
+    path.write_text(json.dumps({"vocabulary": {}}), encoding="utf-8")
+    dies, cores = 40, 4
+    atoms = []
+    for i in range(dies):
+        die, core_die = {"d": f"B{i}"}, {"d": f"C{i}"}
+        atoms += [_atom(1 + i, "die", die, "in_container", "wafer", {"w": "BW"}),
+                  _atom(100 + i, "die", die, "bonded_from", "die", core_die),
+                  _atom(200 + i, "die", core_die, "in_container", "wafer", {"w": f"CW{i % cores}"})]
+    read = []
+
+    class Recording(ledger_subgraph.InMemoryEvidenceLookup):
+        def claims_for_entities(self, *args, **kwargs):
+            rows, cut = super().claims_for_entities(*args, **kwargs)
+            read.extend(atom.id for atom in rows)
+            return rows, cut
+
+    def walk():
+        read.clear()
+        ledger_subgraph.reset_declaration_cache()
+        try:
+            return ledger_subgraph.subgraph(
+                explorer.entity_id("wafer", {"w": "BW"}), Recording(atoms),
+                collect=["wafer"], declaration_paths=(str(path),))
+        finally:
+            ledger_subgraph.reset_declaration_cache()
+
+    body = walk()
+    assert len(read) == len(set(read)) == len(atoms) == body["walk"]["claims_scanned"], \
+        "an atom was read twice"
+    monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", len(atoms))
+    assert {n["id"] for n in walk()["nodes"]} == {
+        explorer.entity_id("wafer", {"w": w}) for w in ["BW", *(f"CW{k}" for k in range(cores))]}

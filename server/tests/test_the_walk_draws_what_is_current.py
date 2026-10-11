@@ -68,6 +68,12 @@ def test_a_tie_draws_both_and_the_subject_counts_it():
 
     assert edges == [("W3", False), ("W4", False)]
     assert lot["current_conflicts"] == 1
+    # walked past the lot: counted over every level's atoms - the next level no longer reads the
+    # lot's atoms again (`ledger_subgraph._skip`, lead 10-12), and it was counted from those
+    past = ledger_subgraph.subgraph(
+        LOT, ledger_subgraph.InMemoryEvidenceLookup(_atoms(HOLDS + [(5, T3, "W4")]), one=["has_wafer"]),
+        hops=2, direction="both", cardinalities={"has_wafer": "one"})
+    assert [node.get("current_conflicts") for node in past["nodes"] if node["id"] == LOT] == [1]
 
 
 def test_the_same_object_with_another_qualifier_at_that_instant_is_no_conflict():

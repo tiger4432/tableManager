@@ -277,8 +277,9 @@ def test_thousands_of_defects_on_a_wafer_draw_their_first_twenty_and_open_past_t
     left = _pg_bundle(opened, "on_wafer")
     assert 20 < left["drawn"] < left["count"] == PG_DEFECTS, left       # the node budget cut it
     assert opened["truncated"]["nodes"] is True
-    # read once: the wafer's defects, then each drawn defect's own atoms - its step back and its registrations
-    assert opened["walk"]["claims_scanned"] == PG_DEFECTS + (1 + PG_REGISTRATIONS) * left["drawn"]
+    # read once: the wafer's defects, then each drawn defect's registrations - not its step back to
+    # the wafer, which the walk refuses and so does not read (`ledger_subgraph._skip`, lead 10-12)
+    assert opened["walk"]["claims_scanned"] == PG_DEFECTS + PG_REGISTRATIONS * left["drawn"]
 
     plain = walk()                                                    # no fan-out: as before
     assert "bundles" not in plain and len(_pg_defects(plain)) == len(_pg_defects(opened))
