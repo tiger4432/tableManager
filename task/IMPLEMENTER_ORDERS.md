@@ -65787,3 +65787,34 @@ tests/test_ledger_v2_pg.py 가 감사 줄을 assy_test public 으로 흘린다(1
 클라    Indexes 표의 출처 칸(model · table)은 클라 R 다음 — 서버 답만으로 줄은 이미 보인다
 순서    이것 -> (그 뒤 기존 순서)
 ```
+
+> **[총괄 -> 구현자] 10-11 낮 — 체인 층은 «원천 행마다 하나» · 순위는 쓴이의 순위 (소유자 「체인인제션으로 소스 이름 잡으면서 행 거두기 안 되는 거 같은데」 -> 안 ㄱ) — 표 선언 인덱스 다음**
+
+```
+구멍(총괄, 코드로)
+   ① 층은 (표 · 행 · 칸 · 이름)에 하나(idx_sources_lookup_source). 체인 쓰기는 이름이 chain_ingestion 하나라, 한 칸을 두 원천 행 · 두 규칙이 쓰면
+      층 하나에 마지막 쓴 행의 origin_row_id 만 남음(crud apply_row_update_internal 의 src_obj.origin_row_id = …)
+      -> withdraw_by_origin 이 먼저 행을 거두면 0 · 나중 행을 거두면 먼저 행의 값까지 사라짐
+   ② «chain_ingestion (<행>)»(복사 규칙 copy_rows_with_hold 의 행 층)은 priority_map.get(이름, 99) 라 99 — 같은 칸에 plain chain_ingestion 층(등록 순위)이 있으면
+      그게 보여, 행 층을 거둬도 화면이 그대로 (RUN.md 10-09 «안 바뀐 것», 시연 뒤로 미뤘던 것)
+도착지  두 줄
+   「체인이 쓴 칸의 층은 원천 행마다 하나 — chain_ingestion (<원천 행>). 거두면 그 행 층만 걷히고 남은 행 층이 보인다」
+   「층의 순위는 쓴이의 순위 — 같은 순위 안에서는 늦게 쓴 것(오늘 규칙 그대로)」
+넓힐 것(새 기제 · 새 이름 짓기 금지)
+   이름  origin_row_id 가 있는 체인 쓰기는 crud.merged_layer_name(CHAIN_SOURCE, <origin>) — 복사 규칙이 이미 쓰는 그 철자 하나. 쓰는 문(조인 · 맵퍼 · 파생 · 복사) «한 자리»에서
+         origin 이 없는 체인 쓰기는 plain 그대로(그 수를 센다)
+   순위  compute_priority_value · resolve_priority_map 의 «이름 -> 순위»를 crud.layer_writer(이름) 로 — 순위 묻는 자리 하나
+         ⚠️ 합치기 사본(«user (<행>)» 등)도 같은 함수를 지나 순위가 바뀐다 — 그 자리 · 수를 세고, 사람 층 순위가 바뀌는 자리가 있으면 거기서 멈추고 총괄에게
+   읽는 자리  source_name 을 CHAIN_SOURCE 와 견주는 자리 전수(AST) -> 전부 layer_writer 로: 깨우기 필터 · can_mean_emptied · 키 층 · 껍데기 · 보류 세기 · withdraw_source(«chain_ingestion» 을 부르면 그 행 층 전부)
+         자리 수를 짓기 전 보고에(센 명령 같이)
+옮기기(소급 최소) — 다시 돌리기 없이 이름만
+   plain chain_ingestion 층 중 origin_row_id 가 있는 것 -> «chain_ingestion (<origin>)» 로 이름 바꿈(같은 칸에 같은 이름 층이 이미 있으면 plain 쪽을 지움)
+   origin 없는 plain 층은 그대로 · 수를 말함
+   미리보기 -> --apply · 쪽마다 커밋 · 소급 문(run_here) 하나 · 멈춤은 소급 탭 ×
+   미리보기가 말할 것: 바꿀 층 수 · 지울 겹침 수 · origin 없는 plain 수 · 화면 값이 바뀌는 칸 수(오늘 plain 이 이기고 있던 칸)
+게이트   한 칸을 두 원천 행이 씀 -> 층 둘 · 먼저 행 거둠 -> 나중 값 그대로 · 나중 행 거둠 -> 먼저 값이 보임 · 행 층 vs 파일 층 -> 행 층이 이김(쓴이 순위)
+         옮기기 미리보기 수 = 실행 수 · 다시 돌리면 0 · 변이(이름 철자 · 순위 함수 · 견주는 자리 하나 되돌리기 -> 빨강)
+         진짜 프로세스(런처 그대로 체인 워커 · 서버) + 응용 리허설 셋업 끝 상태에 옮기기 -> 접기 표시 행 · require 빈 행 하나 거두기 -> 화면 값 바뀜
+같은 커밋  RUN.md(옮기기 명령 · 답의 뜻 · 재기동 체인 워커 · 서버 · 되돌리기) · RELEASE_LOG · 층 안내 문서
+순서     표 선언 인덱스 -> 이것
+```
