@@ -156,9 +156,10 @@ RULES_EXTRACTOR = "rules"
 
 def find_links(text, names, links):
     """One row per candidate: sentence_no (from 1) · sentence · cause_type · cause_key ·
-    cause_phrase · phenomenon_type · phenomenon_key · phenomenon_phrase · link · polarity ·
-    certainty · extractor · evidence. The *_phrase cells and `link` are the words as the text
-    wrote them; `extractor` is 'rules' and `evidence` the sentence."""
+    cause_phrase · cause_direction · phenomenon_type · phenomenon_key · phenomenon_phrase ·
+    phenomenon_direction · link · polarity · certainty · extractor · evidence. The *_phrase
+    cells and `link` are the words as the text wrote them; `extractor` is 'rules' and
+    `evidence` the sentence. The *_direction cells are `ask_links`' - None here."""
     index = _dictionary(names, links)
     out = []
     for number, sentence in enumerate(_sentences(text), 1):
@@ -170,9 +171,10 @@ def find_links(text, names, links):
         for (ck, cause), (ek, effect), lk in _pairs(sentence, found):
             out.append({"sentence_no": number, "sentence": sentence,
                         "cause_type": cause["node_type"], "cause_key": cause["node_key"],
-                        "cause_phrase": found[ck][2],
+                        "cause_phrase": found[ck][2], "cause_direction": None,
                         "phenomenon_type": effect["node_type"],
                         "phenomenon_key": effect["node_key"], "phenomenon_phrase": found[ek][2],
+                        "phenomenon_direction": None,
                         "link": found[lk][2], "polarity": polarity, "certainty": certainty,
                         "extractor": RULES_EXTRACTOR, "evidence": sentence})
     return out
@@ -183,9 +185,10 @@ def find_links(text, names, links):
 ASK_LINKS_PROMPT = """Read the text and list every statement that one thing causes another.
 When one sentence names several causes or effects, list one link for each cause and effect pair - separate items, which may quote the same evidence.
 Answer with one JSON object and nothing else:
-{"links": [{"cause": "...", "cause_key": null, "effect": "...", "effect_key": null, "link": "...", "evidence": "...", "negated": false, "certainty": null}]}
+{"links": [{"cause": "...", "cause_key": null, "cause_direction": null, "effect": "...", "effect_key": null, "effect_direction": null, "link": "...", "evidence": "...", "negated": false, "certainty": null}]}
 - cause, effect: the shortest noun phrase of the text that names the thing, copied from the text - a few words, never a clause or a whole sentence (the whole sentence goes in evidence)
 - cause_key, effect_key: the identifier of the dictionary node the cause or the effect is, written exactly as listed; null when no listed node fits
+- cause_direction, effect_direction: "up" when the text says that thing increases, rises or grows, "down" when it says it decreases, falls or shrinks, null when it says neither
 - link: the words of the text that join the cause to the effect
 - evidence: the sentence of the text that says it, copied exactly
 - negated: true when the text says the cause does not lead to the effect
@@ -197,6 +200,8 @@ Text:
 <<text>>"""
 INSTRUCTION_HEADING = "Instruction from the operator:"
 LLM_EXTRACTOR = "llm:%s"
+#: The only *_direction answers kept, spelled exactly (소유자 10-11 「증감 방향」).
+DIRECTIONS = ("up", "down")
 #: Not compared in evidence, on either side - the model adds, drops or changes them (소유자 10-11).
 EVIDENCE_MARKS = "\"'“”‘’«»「」『』…"
 ELLIPSIS = "..."
@@ -231,6 +236,9 @@ def ask_links(text, names, instruction=None):
     null gives the key of the phrase its words are (`_named`); an identifier not listed gives
     none and is said in one warning line. *_phrase is always the words. `certainty` is what the
     text says, `suspected` when it says nothing - nothing becomes a fact before a person confirms it.
+    `cause_direction` / `phenomenon_direction` is the answer when it is one of DIRECTIONS as
+    written (spaces trimmed, case kept), else None - an answer that is neither null nor one of
+    them is said in one warning line.
 
     A link's evidence is looked for in the whole text (`_evidence`); its sentence is the one the
     quote starts in. A link whose evidence the text does not hold is dropped and said in one
@@ -283,8 +291,15 @@ def ask_links(text, names, instruction=None):
         sentence_no, (start, end) = next((no, span) for no, span in enumerate(spans, 1)
                                          if where[at] < span[1])
         sentence = text[start:end]
-        node = {}
+        node, direction = {}, {}
         for side in ("cause", "effect"):
+            turned = item.get(side + "_direction")
+            turned = turned.strip() if isinstance(turned, str) else turned
+            direction[side] = turned if turned in DIRECTIONS else None
+            if direction[side] is None and not crud.is_blank_value(turned):
+                logger.warning("[LLM] link %d of %d answers %s_direction %r, which is not %s"
+                               " - kept without it (%s): %r", number, len(links), side, turned,
+                               " or ".join(DIRECTIONS), extractor, said[side][:120])
             answered = item.get(side + "_key")
             if crud.is_blank_value(answered):
                 node[side] = _named(said[side], by_phrase)
@@ -299,9 +314,10 @@ def ask_links(text, names, instruction=None):
         certainty = item.get("certainty")
         out.append({"sentence_no": sentence_no, "sentence": sentence,
                     "cause_type": cause_type, "cause_key": cause_key,
-                    "cause_phrase": said["cause"].strip(),
+                    "cause_phrase": said["cause"].strip(), "cause_direction": direction["cause"],
                     "phenomenon_type": effect_type, "phenomenon_key": effect_key,
                     "phenomenon_phrase": said["effect"].strip(),
+                    "phenomenon_direction": direction["effect"],
                     "link": item.get("link") if isinstance(item.get("link"), str) else None,
                     "polarity": NEGATED if item.get("negated") is True else ASSERTED,
                     "certainty": CONFIRMED if certainty == CONFIRMED else SUSPECTED,

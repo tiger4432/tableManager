@@ -358,6 +358,7 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
             # match says nothing here and goes on to the next sentence.
             if mapping.when and not _unit_says(unit_columns, mapping.when):
                 continue
+            claim = context.snapshot.claims.get(mapping.predicate_id)
             # 🔴 EVERY SENTENCE STATES THE MOLECULE'S TIME (총괄 0c9b6e3c0). A mapping that binds
             # no event time is a not-an-event edge: its atom keeps this stored time and
             # `runtime_v2._stamp_occurred_at_basis` says it is not an event's.
@@ -393,6 +394,17 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
                     # source that writes no `read.occurred_at` reads its event edges' column
                     # (`setup_bundle.source_defaults`), and that instant arrives here. Still
                     # never re-read at this seat.
+                    continue
+                role = None if claim is None else claim.roles.get(role_id)
+                if role is not None and not role.required:
+                    # 🔴 AN OPTIONAL QUALIFIER IS READ AS AN ATTRIBUTE IS (총괄 10-11): a blank
+                    # cell is "nothing to say" and the qualifier stays out of this atom. Read as
+                    # a required role, one blank row refused its whole batch (`missing_binding_value`).
+                    value = _attribute_value(
+                        binding, unit, columns=unit_columns,
+                        path=f"{mapping.config_path}.bind.{role_id}")
+                    if value is not _NO_ATTRIBUTE_VALUE:
+                        roles[role_id] = value
                     continue
                 roles[role_id] = _evaluate_binding(
                     binding, unit, columns=unit_columns,

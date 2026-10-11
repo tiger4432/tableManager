@@ -11,7 +11,7 @@
 | 글 | `<글 id>` · `<글>` — 회의록 한 건이든 8D 한 섹션이든. 나누는 것은 맵퍼 | 사람 · 수집기 |
 | 부르는 말 | `node_type` · `node_key` · `phrase` — 한 노드에 말 여럿 | 사람 |
 | 연결 말 | `phrase` · `meaning` · `side` | 사람 |
-| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `link` · `polarity` · `certainty` · `extractor` · `evidence` | 맵퍼 |
+| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `cause_direction` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `phenomenon_direction` · `link` · `polarity` · `certainty` · `extractor` · `evidence` | 맵퍼 |
 
 | `meaning` | 뜻 | `side` |
 |---|---|---|
@@ -24,6 +24,7 @@
 
 같은 말을 두 행에 적으면 두 뜻이다 — 「무관」 = `cause`(`before`) 한 행 + `negation` 한 행.
 규칙으로 뽑은 행의 `*_phrase` · `link` 는 글에 «적힌 그대로»다(LLM 행은 §6). 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다(LLM 으로 뽑으면 §6 의 키).
+`*_direction` 은 LLM 이 채운다(§6) — 규칙이 뽑은 행은 비어 있다. 후보 표에 그 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 센다.
 `extractor` 는 뽑은 쪽 — `rules` 또는 `llm:<모델>`. `evidence` 는 근거 — 규칙이 뽑은 행은 그 문장, LLM 행은 모델이 쓴 인용 그대로(두 문장에 걸칠 수 있고 따옴표 · 말줄임이 글과 다를 수 있음 — 그때 문장 칸은 인용이 시작한 문장). 후보 표에 이 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 센다.
 
 ## 2. 짝짓는 규칙 — 두 줄
@@ -125,6 +126,7 @@ def text_cause_links_llm(df, db):
 - 한 문장이 원인 · 현상을 여럿 말하면 모델은 짝마다 링크 하나를 답한다(같은 근거). 한 문장에서 후보가 여럿 나오므로 후보 표의 키에 `cause_phrase` · `phenomenon_phrase` 가 들어 있어야 한다 — 아니면 같은 키의 행이 서로 덮어쓴다.
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
 - `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다.
+- `cause_direction` · `phenomenon_direction` 은 글이 그것이 «늘었다 · 올랐다»고 하면 `up`, «줄었다 · 떨어졌다»고 하면 `down`, 둘 다 아니면 빈다. 모델 답이 `up` · `down` 그대로(앞뒤 공백만 무시, 대소문자는 그대로)일 때만 쓰고, 그 밖의 답은 비우고 로그에 한 줄 `[LLM] link N of M answers cause_direction '<답>', which is not up or down - kept without it (llm:<모델>): '<말>'`.
 - 운영자 지시는 셋째 인자 — `ask_links(text, names, instruction="<지시>")`. 프롬프트에 들어가는 낱말은 사전 행 · 지시 · 글뿐이다.
 - 근거(evidence)는 글 전체에서 찾는다 — 두 문장에 걸쳐도 찾고(문장 번호는 시작한 문장), 따옴표 12 자(`"'“”‘’«»「」『』`)와 말줄임(… ...)은 양쪽 다 견주지 않는다(`text_links.EVIDENCE_MARKS` — 목록 밖 따옴표는 견줌). 근거를 못 찾은 링크는 버리고 로그에 한 줄 `[LLM] link N of M quotes evidence the text does not hold - dropped (llm:<모델>): '<근거>'` — 나머지 링크는 그대로 후보가 된다.
 - 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 모든 링크의 근거가 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 묶음이 실패하고(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED), 사건의 `error_log` 에 체인 격리 기록이 남는다. 관리 화면에서 실패한 사건을 다시 돌린다.
@@ -139,7 +141,7 @@ def text_cause_links_llm(df, db):
 "leads_to": {
   "subjects": ["<원인 타입>"],
   "object": { "kind": "entity_ref", "types": ["<현상 타입>", "<다른 현상 타입>"],
-              "qualifiers": { "required": [], "optional": ["certainty"] } }
+              "qualifiers": { "required": [], "optional": ["certainty", "cause_direction", "phenomenon_direction"] } }
 }
 ```
 
@@ -156,10 +158,13 @@ def text_cause_links_llm(df, db):
     "target": { "kind": "entity", "entity_type": { "kind": "column", "column": "phenomenon_type" },
                 "keys": { "<현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" },
                           "<다른 현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" } } },
-    "certainty": { "kind": "column", "column": "certainty" } } } } }
+    "certainty": { "kind": "column", "column": "certainty" },
+    "cause_direction": { "kind": "column", "column": "cause_direction" },
+    "phenomenon_direction": { "kind": "column", "column": "phenomenon_direction" } } } } }
 }
 ```
 
+- `optional` 한정자의 칸이 빈 행은 그 엣지에 그 한정자만 없이 들어간다(빈 속성과 같은 읽기). `required` 한정자의 칸이 빈 행은 전처럼 그 행이 든 원장 묶음 전체를 실패시킨다(`missing_binding_value`).
 - 타입 칸의 값은 선언된 타입 이름 그대로다(옛 철자 `x@1` 도 접힌다). 행마다 그 타입의 키만 쓴다.
 - 그 자리가 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어간다 — 받는 타입은 술어 목록(`subjects` · `object.types`)이 정한다.
 - 타입 칸이 비거나 그 타입의 키 칸이 빈 행은 `no_identity`.

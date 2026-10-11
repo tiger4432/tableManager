@@ -247,6 +247,29 @@
 >
 > ---
 >
+> ## [10-11] **LLM 증감 방향 · 원장 optional 한정자의 빈 칸 (소유자 「여기 모델링에 증감 방향은 없네」 · 총괄 10-11, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커 · 스케줄러»(원장 번역 · LLM 을 도는 프로세스)**
+>
+> ```
+> 순서        pull
+>            -> table_config.json  후보 표 column_types 에 "cause_direction": "string" · "phenomenon_direction": "string"
+>            -> ontology/ledger_config.json  leads_to 의 qualifiers.optional 에 "cause_direction" · "phenomenon_direction"
+>               후보 소스 bind 에 "cause_direction": {"kind": "column", "column": "cause_direction"} · phenomenon_direction 도 같은 모양
+>            -> 서버 · 체인 워커 · 스케줄러 재기동 (새 칸은 체인 워커가 기동 때 ALTER — 셋업 명령표 ⓪ 의 줄)
+>            이 뒤에 도는 글부터 두 칸이 찬다. 이미 있는 후보 행은 그 글이 다시 돌 때까지 빈다
+> 전에 실패한 원장 묶음  python -m ledger followup                      (server 폴더 · 읽기만)
+>            답  실패 줄 «<id> <표> <사건> — <소스>: RoleFrameError: …bind.<한정자>.column: column '<칸>' contains a missing value»
+>               = optional 한정자 칸이 빈 행 하나가 그 묶음 전체를 막았다. 이 pull 뒤로는 안 난다
+>            python -m ledger followup --requeue-failed     -> «다시 넣음 K — 체인 워커가 따라간다»
+>               = 실패한 사건 «전부»(다른 까닭의 실패도)를 체인 워커가 다시 따라간다. chain_worker.log 에 같은 실패가 다시 없으면 끝
+>            목록에 없으면(아웃박스가 이미 지운 사건)  python -m ledger.backfill --source <후보 소스> --whole-source   -> --apply
+> 새 줄        chain_worker.log  [LLM] link 1 of 2 answers cause_direction 'Up', which is not up or down - kept without it (llm:<모델>): '<말>'
+>            = 모델이 up · down 아닌 것을 답했다 — 그 쪽 방향만 빈다(대소문자 그대로 본다)
+> 그대로        required 한정자 칸이 빈 행은 전처럼 그 묶음째 실패
+> 되돌리기      git revert <이 커밋> -> 같은 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **CLI 소급이 체인 워커 재기동에 안 끊긴다 — CLI 가 자기 이름을 Retroactive 로 먼저 묶는다 (총괄 10-11 ㄱ, 착지 5e5a9d049) — 이주 «없음» · 재기동 «없음»(다음 CLI 부터)**
 >
 > ```

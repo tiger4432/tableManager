@@ -9,6 +9,24 @@
 
 ---
 
+## 2026-10-11 · 원장 — optional 한정자의 칸이 빈 행은 그 한정자 없이 들어간다
+
+- **무엇** — 총괄 10-11(아래 «증감 방향»을 원장으로 올리는 길). 원장 소스가 술어의 `optional` 한정자를 칸에서 읽을 때, 그 칸이 빈 행 하나가 그 행이 든 원장 묶음 전체를 실패시켰습니다(`missing_binding_value`) — 같은 묶음의 확정 행까지 원장에 못 들어갔습니다. 이제 그 행의 원자에서 그 한정자만 빠지고 나머지는 들어갑니다. 엔티티 속성의 빈 칸과 같은 읽기입니다.
+- **선언 예시** — 새 선언은 없습니다. 적던 그대로 — `ontology/ledger_config.json` 의 어휘 `"qualifiers": {"required": [], "optional": ["certainty"]}` + 소스 `bind` 의 `"certainty": {"kind": "column", "column": "certainty"}`.
+- **화면에서** — 바뀌는 화면은 없습니다.
+- **필요한 조건** — 서버 · 체인 워커 · 스케줄러 재기동(원장 번역을 도는 프로세스).
+- **바뀐 동작** — optional 한정자 칸이 빈 행 때문에 실패하던 묶음이 번역됩니다. 전에 실패한 묶음은 저절로 다시 돌지 않습니다 — `python -m ledger followup` 이 실패 목록을 보여 주고 `--requeue-failed` 가 다시 넣습니다(RUN.md 같은 절). `required` 한정자의 칸이 빈 행은 전처럼 묶음째 실패합니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 「LLM 증감 방향」 절 · [TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §7.
+
+## 2026-10-11 · LLM 후보 뽑기 — 원인 · 현상의 증감 방향
+
+- **무엇** — 소유자 「여기 모델링에 증감 방향은 없네」. `ask_links` 가 모델에게 원인 · 현상마다 방향을 묻습니다 — 글이 그것이 늘었다 · 올랐다고 하면 `up`, 줄었다 · 떨어졌다고 하면 `down`, 둘 다 아니면 null. 후보 행에 `cause_direction` · `phenomenon_direction` 이 생깁니다.
+- **선언 예시** — 후보 표(`table_config.json` 의 그 표 `column_types`)에 `"cause_direction": "string"` · `"phenomenon_direction": "string"`. 원장으로 올리려면 `ontology/ledger_config.json` 의 `leads_to` 어휘 `optional` 에 두 이름, 후보 소스 `bind` 에 `"cause_direction": {"kind": "column", "column": "cause_direction"}` 과 같은 모양의 `phenomenon_direction`.
+- **화면에서** — 후보 표의 두 칸.
+- **필요한 조건** — 서버 · 체인 워커 재기동(LLM 을 부르는 프로세스). 후보 표에 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 셉니다.
+- **바뀐 동작** — 모델 답이 `up` · `down` 그대로(앞뒤 공백만 무시, 대소문자는 그대로)일 때만 씁니다. 그 밖의 답은 비우고, 맵퍼를 돌린 프로세스의 로그(체인이면 `chain_worker.log`)에 한 줄 `[LLM] link 1 of 2 answers cause_direction 'Up', which is not up or down - kept without it (llm:<모델>): '<말>'`. 규칙으로 뽑은 행(`find_links`)은 두 칸이 빕니다. 이미 있는 후보 행은 그 글이 다시 돌 때까지 빕니다. 방향이 빈 후보도 원장에 들어갑니다(위 항목).
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 「LLM 증감 방향」 절 · [TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §1 · §6 · §7.
+
 ## 2026-10-11 · 선언 폼: 접힌 줄도 계획 note 를 보입니다 · 새로 만들기가 «스냅숏이 바뀜»으로 거절되면 «Reload and try again»
 
 - **무엇** — 총괄 10-11 «선언 폼 작은 둘». ① 계획이 단 note(«Default: row time (ingested · created_at)» · «Only for a time column» 같은 한 줄)를 접힌 줄에서도 보입니다. 접힌 값 밑에 한 줄로, 접힌 RECORD 는 그 줄 오른쪽에. 펴면 그 줄 자신의 카드가 보이고, 같은 note 가 두 번 나오지 않습니다. ② + New 의 Create 가 «active snapshot changed before draft creation»(409 stale_base_snapshot)으로 거절되면 그 문장 옆에 «Reload and try again» 단추가 섭니다. 누르면 화면을 다시 읽고 같은 Create 를 한 번 다시 보냅니다. 그것도 거절되면 서버 문장이 그대로 남고, 저절로 다시 보내지는 않습니다.
@@ -37,6 +55,7 @@
 - **밀도** — 표 글자 13 px, 칸 여백 --space-1 · --space-2, 한 줄 두 줄 높이(값 + 출처 줄), 글꼴 IBM Plex Sans(고정폭은 길 · id 만). Copy table 단추는 «Copy».
 - **필요한 조건** — 클라 빌드만. 화면 게이트의 기록 답(screens_answers.json.gz)에 값 칸 트렌드의 새 쪽 요청 하나 추가.
 - **자세히** — 이 항목과 같은 커밋.
+
 ## 2026-10-11 · 접기를 스크립트로 빠르게 — fold-units
 
 - **무엇** — 소유자 「접는 거 일단 스크립트로 빨리 하는 거 줘, 맵퍼 말고」. 인벤토리 접기 규칙의 답(진 잡의 로그 행마다 «folded into <이긴 잡>»)을 체인 대기열을 거치지 않고 2만 행 쪽마다 한 번에 씁니다. 남는 상태는 그 규칙을 replay 해서 체인이 쓴 것과 같습니다 — 표시 · 행마다 체인 층 · 이력 줄, 그리고 이제 이긴 잡과 다른 잡으로 옮긴 로그 행의 옛 표시 걷기.
