@@ -249,7 +249,7 @@
 >
 > ---
 >
-> ## [10-11] **외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다 (소유자 「*/raw/**/*.jpg 되게 해」, 착지 {LANDING}) — 이주 «없음» · 재기동 «수집기»(따로 띄우면 run_watcher, 아니면 서버)**
+> ## [10-11] **외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다 (소유자 「*/raw/**/*.jpg 되게 해」, 착지 053d7858f) — 이주 «없음» · 재기동 «수집기»(따로 띄우면 run_watcher, 아니면 서버)**
 >
 > ```
 > 적는 곳      ingestion_settings.json  external_sources 항목의 options
