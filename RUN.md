@@ -121,9 +121,10 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-CWo9azvd.js(Control · B 고침 a0ea30c06 — main e32731bd5 까지 클라 그대로)
+>    빌드    main 의 dist walk-aCAkDuW-.js(오늘 밤 조각 1 346b678d4 — 줄을 체크해도 보던 자리 그대로 · As of 현지 시각)
 >            18766 서버의 걷기 파일 ledger_subgraph.py 는 cb6d6a1fa 판 — main 의 값 기록 전부(280d3e567) · 기록 순서(af401be1c) · 그림 값 표시(c5463a475)가 없음. 이 번들(client2/src/walk)에 그 칸(records · column_type)을 읽는 줄 0 — 화면에 안 닿는다
->            누른 빌드 — walk-CWo9azvd.js (= main e32731bd5) 에서 ① ~ ⑨ 를 처음부터 끝까지 다시 눌렀다(10-11 밤) — 소유자 손 클릭 줄(③ 복사 · ④ 스킴 둘 «Copy points» · ④ 고쳐짐 (다))만 빼고
+>            누른 빌드 — walk-aCAkDuW-.js (346b678d4) 에서 ① «Nodes 32 (collect: wafer) · Edges 1650 (all)» · «As of 2026-10-11 22:06:53»(현지 시각) · 열여섯째 줄 체크 뒤 결과 칸 스크롤 600 그대로 /
+>                       walk-CWo9azvd.js (= main e32731bd5) 에서 ① ~ ⑨ 를 처음부터 끝까지 다시 눌렀다(10-11 밤) — 소유자 손 클릭 줄(③ 복사 · ④ 스킴 둘 «Copy points» · ④ 고쳐짐 (다))만 빼고
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
 >            «모델 세상 1» = 리허설의 appdemo_vf
