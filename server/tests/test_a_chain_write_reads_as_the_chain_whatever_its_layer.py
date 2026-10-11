@@ -338,6 +338,9 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     assert notes.pop("remove_shell_rows").startswith("Each deleted row reaches the chain as a deletion")
     # Its collapsed events run as the row-by-row ones would have, every rule (총괄 eddf9e38e ②).
     assert notes.pop("fold_withdrawal_events").startswith("The chain runs the collapsed events")
+    # The marks carry no event; the end withdrawal queues retroactive-channel ones, which wake no rule (총괄 10-11).
+    fold_units = notes.pop("fold_units")
+    assert fold_units.startswith("No chain rule wakes") and "retroactive-channel edit events" in fold_units
     assert notes and set(notes.values()) == {retroactive.DOWNSTREAM_NOTE}
 
 
