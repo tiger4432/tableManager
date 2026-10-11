@@ -4386,6 +4386,9 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory):
                     refused.append((table, census["surplus"]))
                     continue
                 name = uq.unique_index_name(table)
+                # the census's read ends here - a CONCURRENTLY drop or build waits for every session holding the
+                # table, this one's own read included (총괄 4593442f9 re-review ①)
+                conn.rollback()
                 verdict, detail = _build_unique_index_waiting(engine, uq, table, name)
                 built.append((table, verdict, detail))
         for table, verdict, detail in built:
@@ -4398,7 +4401,7 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory):
                            "surplus row(s) share a key. The index was NOT created and the "
                            "column is not an enforced identity there.", table, surplus)
         for table, name in invalid:
-            logger.warning("[Ledger] %s carries an INVALID index %r under the unique name, "
+            logger.warning("[Ledger] %s carries an INVALID index %r under another name, "
                            "so nothing is enforced. Left alone: dropping it belongs to "
                            "scripts/migrations/add_business_key_unique_index.py with an "
                            "operator watching.", table, name)
@@ -4779,7 +4782,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # \U0001f534 판정 189. Separate from the ensure above because it STRENGTHENS: it can
     # refuse, and a refusal is a number an operator has to see rather than an error.
     # 총괄 49792d3f6 A: NOT AWAITED - a build waits for every open transaction on its table, so the worker starts
-    # without it and the build runs beside it, its wait capped (BUSINESS_KEY_INDEX_WAIT_SECONDS).
+    # without it and the build runs beside it, its wait capped by the DDL door (db_safety.DDL_LOCK_TIMEOUT).
     _start_business_key_indexes(db_session_factory)
     # 🔴 판정 239. The same seat, because "at boot" is where an index a query
     # depends on has to appear - the reload path alone leaves a restarted deployment

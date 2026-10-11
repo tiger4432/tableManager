@@ -63,3 +63,45 @@ def test_a_build_held_by_an_open_transaction_gives_up_names_the_holder_and_leave
     said = [r.getMessage() for r in caplog.records if "not built - waited 2s" in r.getMessage()]
     assert (first, second, built) == (uq.BLOCKED, uq.OK_CREATED, 1) and took < 30, (first, second, built, took)
     assert said and "pid %d" % holder_pid in said[0], said
+
+
+def test_a_leftover_is_rebuilt_though_the_census_read_the_table_first(pg_engine, monkeypatch):
+    """총괄 4593442f9 re-review ①: the census reads the table (AccessShareLock) on the connection the loop keeps - the
+    read ends before the drop and the build, or the CONCURRENTLY drop waits on its own process and the leftover stays."""
+    import db_safety as safety
+    from sqlalchemy.orm import sessionmaker
+
+    monkeypatch.setattr(safety, "DDL_LOCK_TIMEOUT", "2s")
+    seat = SimpleNamespace(build_index=_build_here, BLOCKED=uq.BLOCKED, quote_ident=uq.quote_ident)
+    state = ("SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid JOIN pg_namespace n ON "
+             "n.oid = c.relnamespace WHERE n.nspname = :s AND c.relname = :n")
+    with pg_engine.begin() as conn:
+        conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
+        conn.execute(text('CREATE TABLE "%s"."%s" (business_key_val text)' % (PG_TEST_SCHEMA, TABLE)))
+    holder = pg_engine.connect()
+    holder.execute(text("INSERT INTO \"%s\".\"%s\" VALUES ('k1')" % (PG_TEST_SCHEMA, TABLE)))
+    try:
+        assert worker._build_unique_index_waiting(pg_engine, seat, TABLE, NAME)[0] == uq.BLOCKED
+    finally:
+        holder.rollback()
+        holder.close()
+    with pg_engine.connect() as conn:
+        assert conn.execute(text(state), {"s": PG_TEST_SCHEMA, "n": NAME}).scalar() is False, "CANARY: a leftover"
+
+    def census(conn, table, **kw):
+        conn.execute(text('SELECT business_key_val, count(*) FROM "%s"."%s" GROUP BY 1' % (PG_TEST_SCHEMA, table)))
+        return {"surplus": 0, "table": table}
+
+    monkeypatch.setattr(uq, "tables_with_business_key", lambda conn: [TABLE])
+    monkeypatch.setattr(uq, "existing_unique_index", lambda conn, t: (NAME, False))
+    monkeypatch.setattr(uq, "duplicate_census", census)
+    monkeypatch.setattr(uq, "unique_index_name", lambda t: NAME)
+    monkeypatch.setattr(uq, "build_index", _build_here)
+    try:
+        out = worker._ensure_business_key_unique_indexes_sync(sessionmaker(bind=pg_engine))
+        with pg_engine.connect() as conn:
+            valid = conn.execute(text(state), {"s": PG_TEST_SCHEMA, "n": NAME}).scalar()
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
+    assert (out["built"], valid) == ([(TABLE, uq.OK_CREATED, "built")], True), (out, valid)

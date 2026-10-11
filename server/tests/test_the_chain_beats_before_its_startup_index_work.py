@@ -210,7 +210,9 @@ def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypat
     assert len(said) == 1, said
     steps = said[0].split(" - ", 1)[1].split(" · ")
     names = [s.rsplit(" ", 2)[0] for s in steps]
-    assert len(names) == 11 and names[0] == "end_queries_a_gone_chain_worker_left", said
+    # the steps the start waits on: the queries a gone worker left come first, and the business-key index build is
+    # not one of them - it runs beside the start (총괄 49792d3f6 A)
+    assert names[0] == "end_queries_a_gone_chain_worker_left" and not [n for n in names if "business_key" in n], said
     # a column stands before its index
     assert names.index("sync_dynamic_tables_schema") < names.index("ensure_dynamic_table_indexes"), said
     assert _Listener.waits >= 5
@@ -363,3 +365,39 @@ def test_the_pool_gets_the_connection_back_without_the_limit(pg_engine, monkeypa
             assert again.execute(text("SHOW lock_timeout")).scalar() != "1s"
     finally:
         one.dispose()
+
+
+def test_the_business_key_index_build_is_not_waited_on_by_the_start(monkeypatch):
+    """총괄 49792d3f6 A: the build held (an open transaction on its table) - the loop still ticks beside it; a start that
+    awaited or joined it would never tick, and the build would never be released."""
+    _Listener.waits = 0
+    runs, release = [], threading.Event()
+
+    def held_build(factory):
+        runs.append(release.wait(10))
+
+    monkeypatch.setattr(worker, "another_chain_loop_is_running", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "OutboxListener", _Listener)
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
+    monkeypatch.setattr(worker, "warmup_worker", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "sweep_undelivered_broadcasts", _nothing)
+    monkeypatch.setattr(worker, "run_ledger_followup", _nothing)
+    monkeypatch.setattr(worker, "run_ledger_row_census", _nothing)
+    monkeypatch.setattr(worker.internal_event_client, "startup_lines", lambda *a, **k: [])
+    monkeypatch.setattr(worker.heartbeat, "beat", lambda *a, **k: None)
+    monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda *a: None)
+    monkeypatch.setattr(worker, "_ensure_business_key_unique_indexes_sync", held_build)
+    session = _Session(release)
+
+    async def go():
+        try:
+            await asyncio.wait_for(worker.start_chain_ingestion_worker(lambda: session), 30.0)
+        except (_Stop, asyncio.TimeoutError):
+            pass
+
+    asyncio.run(go())
+    for _ in range(100):
+        if runs:
+            break
+        time.sleep(0.05)
+    assert runs == [True], "the start waited for the business-key index build instead of ticking beside it"

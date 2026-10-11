@@ -630,7 +630,7 @@ def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = Fals
 def _report_section1(results: list, apply: bool) -> dict:
     refused = [r for r in results if r["verdict"] == REFUSED_DUPLICATES]
     invalid = [r for r in results if r["verdict"] == REFUSED_INVALID_INDEX]
-    failed = [r for r in results if r["verdict"] == FAILED]
+    failed = [r for r in results if r["verdict"] in (FAILED, BLOCKED)]   # a wait past the timeout built nothing
     created = [r for r in results if r["verdict"] == OK_CREATED]
     already = [r for r in results if r["verdict"] == OK_ALREADY]
 
