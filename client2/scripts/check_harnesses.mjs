@@ -1403,9 +1403,9 @@ const FLOORS = new Map([
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
   ['node_search_harness.mjs', 45],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
-  ['reach_table_harness.mjs', 33],   // 36 -> 33: R13 R14 and FM10 retired with viaDepth - the table's Route reads the answer's evidence, walk_table Z29-Z32 (lead 1333a5ec9)
+  ['reach_table_harness.mjs', 36],   // -> 36: what says when - R20, FM18 FM19; FM4 FM13 re-aimed (lead 10-11 E2c, owner 10-10 e54560dc2)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 53],   // -> 53: the lump's step - OT3, OTm3 OTm4 (lead 10-11 E2b)
+  ['trend_harness.mjs', 58],   // -> 58: two schemes on 18766, the module and the page - SC1 SC2, SCm1 SCm2 SCm3; TM1 re-aimed (lead 10-11 E2c)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1456,8 +1456,9 @@ const FLOORS = new Map([
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
   ['subgraph_view_harness.mjs', 338],   // -> 338: Open as table - OT1 OT2 SP1, OTm1 OTm2 SPm1; J O I cells retired with the lump views (lead 10-11 E2b)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's pure half - what a value reads as, the one start-branch
-  // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b), the one drawing.
-  ['fold_views_harness.mjs', 13],   // -> 13: a lump's answer and points - L1 L2, Lm1 Lm2; R2 R3 P1 P2 W1 retired (lead 10-11 E2b)
+  // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b) - its Route a Next from its
+  // owner's, its points the same in the edge and the event scheme (lead 10-11 E2c) - the one drawing.
+  ['fold_views_harness.mjs', 17],   // -> 17: a lump step's Route, a lump's points in two schemes - L3 L4, Lm3 Lm4 (lead 10-11 E2c)
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants. 33 -> 30 (lead 5e1d9e372): the subgraph

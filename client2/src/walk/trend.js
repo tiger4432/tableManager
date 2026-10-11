@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // TREND — one column's values on a time axis (owner 10-10 «범주 트렌드로 한 부품으로 끝내», lead f984ab01d, a2eb4a516):
-// a point a read - the value the table's cell reads (reach_table.readsOf), at the time of its way's last edge, coloured by
-// the group it came by. Numbers stand on a value axis; every other value has a lane (the most frequent first, the rest
+// a point a read - the value the table's cell reads (reach_table.readsOf), at its end's time (an edge's, or a node's own
+// record of that value - owner 10-10 e54560dc2), coloured by the group it came by. Numbers stand on a value axis; every other value has a lane (the most frequent first, the rest
 // «others»). A time page from the server adds the row's other edges of that step around the walked time.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { readsOf, valueWords } from './reach_table.js';
@@ -20,10 +20,10 @@ const timeOf = (edge) => {
 };
 const keyOf = (edge, fallback) => (edge && (edge.claim_id || edge.id)) || fallback;
 
-/** The walk's own points of one row's column: each group's reads, at the time of each read's last edge. */
+/** The walk's own points of one row's column: each group's reads, each at its end's time. */
 export function walkPoints(index, groups, x, column) {
   return groups.flatMap((g, i) => readsOf(index, g.inside, x, column).reads
-    .map((r) => ({ t: timeOf(r.edge), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node })));
+    .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node })));
 }
 
 /** The walked points of `rows` along `column`, each with the row it was read from - a section's trend, a cell's, a lump's
