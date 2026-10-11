@@ -199,6 +199,7 @@
 
 ### 설정 파일
 
+- 2026-10-11 [외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다](#2026-10-11--외부-소스-optionsglob--루트에서의-경로가-패턴에-맞는-파일만-받는다) — 적는 곳 `ingestion_settings.json`
 - 2026-10-11 [표마다 인덱스를 선언으로 — table_config 의 "indexes" 를 체인 워커가 짓는다](#2026-10-11--표마다-인덱스를-선언으로--table_config-의-indexes-를-체인-워커가-짓는다) — 적는 곳 `table_config.json` · 누르는 곳 어드민 Overview
 - 2026-10-09 [raws 하위 폴더에 나중에 온 파일이 30 초 안에 들어가고, 남은 파일은 까닭을 한 줄로 말한다](#2026-10-09--raws-하위-폴더에-나중에-온-파일이-30-초-안에-들어가고-남은-파일은-까닭을-한-줄로-말한다) — 적는 곳 `ingestion_settings.json`
 - 2026-10-09 [LLM 은 선언 파일 하나로 — llm_config.json, 요청마다 llm_requests.log 두 줄](#2026-10-09--llm-은-선언-파일-하나로--llm_configjson-요청마다-llm_requestslog-두-줄) — 적는 곳 `llm_config.json`
@@ -290,6 +291,16 @@
 - 2026-09-29 ~ 10-01 [이번 주 고친 것 — 소유자가 신고한 화면](#2026-09-29--10-01--이번-주-고친-것--소유자가-신고한-화면)
 
 ---
+
+## 2026-10-11 · 외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다
+
+- **무엇** — 소유자 「`*/raw/**/*.jpg` 되게 해」. `external_sources` 항목의 `options.glob`(글 하나 또는 목록)에 맞는 파일만 그 소스의 파일입니다. `**` 는 폴더 몇 겹이든(0 겹도), `*` 는 한 폴더 이름 안의 아무 글자, `?` 는 한 글자. `/` 가 있으면 루트에서의 경로 전체, 없으면 어느 깊이든 파일 이름에 견줍니다. 윈도우는 대소문자를 가리지 않습니다. 감시 이벤트 · 외부 스윕 · 실패 재시도가 같은 한 자리(`external_source_context`)에 묻습니다.
+- **선언 예시** — `server/config/ingestion_settings.json` 의 `external_sources` 항목에 `"options": {"glob": "**/raw/**/*.jpg"}` — `raw/x.jpg` · `A/raw/x.jpg` · `A/B/raw/y/z.jpg` 를 받고 `A/rawdata/x.jpg` · `A/raw/x.png` 는 안 받습니다. 여럿이면 `["**/raw/**/*.jpg", "*.png"]`(하나라도 맞으면).
+- **화면에서** — 없음. 안 맞는 파일은 수집 기록(File Ingestion) 행이 생기지 않습니다.
+- **필요한 조건** — 수집기 재기동(따로 띄우면 run_watcher, 아니면 서버). `external_sources` 는 재기동에만 반영됩니다. 이주 없음.
+- **바뀐 동작** — `glob` 을 안 적으면 그대로 `options.filename`(안 적으면 `voids.json`) 이름 하나입니다. 적으면 `glob` 이 `filename` 대신 어느 파일인지 정합니다 — 다만 `parser: voids_json` 은 파일 이름을 `filename` 으로 따로 보므로 이름이 다르면 그 파일은 FAILED 행으로 남습니다. 모양이 틀린 `glob`(글 · 목록이 아님, 빈 패턴, 빈 목록)은 그 항목만 `external_sources[i].options.glob must be …` 로 거절합니다. `/` 로 시작하거나 끝나는 패턴은 아무 파일도 받지 않습니다(거절하지 않음).
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 
 ## 2026-10-11 · 걷기 표: 행을 체크해도 보던 자리 그대로 · «As of» 가 이 브라우저의 현지 시각
 

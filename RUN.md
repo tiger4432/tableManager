@@ -249,6 +249,26 @@
 >
 > ---
 >
+> ## [10-11] **외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다 (소유자 「*/raw/**/*.jpg 되게 해」, 착지 {LANDING}) — 이주 «없음» · 재기동 «수집기»(따로 띄우면 run_watcher, 아니면 서버)**
+>
+> ```
+> 적는 곳      ingestion_settings.json  external_sources 항목의 options
+>            "glob": "**/raw/**/*.jpg"          여럿이면 ["**/raw/**/*.jpg", "*.png"] — 하나라도 맞으면
+> 패턴 뜻      ** = 폴더 몇 겹이든(0 겹도) · * = 한 폴더 이름 안의 아무 글자 · ? = 한 글자 · 윈도우는 대소문자 무시
+>            / 가 있으면 루트에서의 경로 «전체» · 없으면 어느 깊이든 파일 이름
+>            **/raw/**/*.jpg   받음 raw/x.jpg · A/raw/x.jpg · A/B/raw/y/z.jpg     안 받음 A/rawdata/x.jpg · A/raw/x.png
+> 안 적으면     그대로 — options.filename(안 적으면 voids.json) 이름 하나
+> 적으면       glob 이 filename 대신 정한다. 단 parser voids_json 은 이름을 filename 으로 따로 본다 -> 다르면 FAILED 행
+> 순서        pull -> 선언 -> 수집기 재기동(따로 띄우면 run_watcher, 아니면 서버) — external_sources 는 재기동에만 반영
+> 볼 것        맞는 새 파일은 수집 기록(File Ingestion) 행이 생긴다 · 안 맞는 파일은 행도 «New file detected» 줄도 없다
+> 거절 줄      수집기 로그 ERROR, 그 항목만 빠짐:
+>            external_sources[i].options.glob must be one glob string or a list of them, none empty, got <값>.
+>            / 로 시작 · 끝나는 패턴은 거절 없이 아무 파일도 안 받는다
+> 되돌리기      glob 을 지우고 수집기 재기동 · 코드는 git revert <이 커밋> -> 수집기 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **걷기 답이 이미지 값을 말한다 — 칸 타입 image 에서 읽은 값에 column_type (총괄 2d6a0fd58 ㄱ, 착지 c5463a475) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
