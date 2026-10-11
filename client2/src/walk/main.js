@@ -1098,7 +1098,7 @@ export function boot(doc, host, deps) {
     const stepped = section.parts.length > 0;
     // Each column as wide as what the answer puts in it (owner 10-12): every row's cells - a value's + · Δ · − one width -
     // and the heads over it, a head over several columns a share each; a sorting head over it alone, with its «▾».
-    const most = (texts) => Math.max(0, ...texts.map(lettersOf));
+    const most = (texts) => texts.reduce((m, t) => Math.max(m, lettersOf(t)), 0);
     const said = (cell) => (cell ? `${cell.text}${cell.rest ? ` ${cell.rest}` : ''}` : '');
     const span = (group) => section.parts.reduce((n, q, j) => n + (q.group === group ? width(j) : 0), 0);
     fixedColumns(table, checks, [
@@ -1270,7 +1270,7 @@ export function boot(doc, host, deps) {
     const table = el(doc, 'table', 'wk-table wk-long');
     // Each column from every line of the answer (Wide's rule) - the + and − columns one width; every head sorts.
     const every = shown.all.map((line) => longRow(line.line));
-    const letters = heads.map((_, k) => Math.max(0, ...every.map((r) => lettersOf(r[k]))));
+    const letters = heads.map((_, k) => every.reduce((m, r) => Math.max(m, lettersOf(r[k])), 0));
     const sided = Math.max(0, ...heads.map((h, k) => (signs.has(h) ? letters[k] : 0)));
     fixedColumns(table, checks, heads.map((h, k) => [h === 'node' ? 'node' : 'value', columnWidth(signs.has(h) ? sided : letters[k], lettersOf(h))]));
     const thead = el(doc, 'thead');
