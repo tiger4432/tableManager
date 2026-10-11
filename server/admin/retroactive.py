@@ -2402,8 +2402,10 @@ class RunControl:
         self._moved = time.monotonic()
         #: The run's own log (`log` of `execute` / `run_here`) - a step line goes where the run's lines go.
         self._log = log or logger.info
-        #: The last page boundary's count, clock and number - what the page line (`_page_line`) measures from.
+        #: The last page boundary's count, clock and number - what the page line (`_page_line`) measures from - and the
+        #: run's start, whose rate the time left is told by (a page's own rate swings on a one-row page).
         self._said, self._boundary, self._pages = 0, time.monotonic(), 0
+        self._began = self._boundary
 
     def _session(self):
         if self._session_factory is not None:
@@ -2468,7 +2470,7 @@ class RunControl:
         rate = rows / seconds if seconds > 0 else 0
         self._pages += 1
         done = ("%d done" % processed if not total else "%d / %d · ~%s left" % (
-            processed, total, _clock((total - processed) / rate) if rate else "?"))
+            processed, total, _clock((total - processed) * (now - self._began) / processed)))
         self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s" % (self.op, self._pages, rows, seconds, rate, done))
         self._said, self._boundary = processed, now
 

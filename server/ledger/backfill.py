@@ -742,6 +742,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     #    only then is the checkpoint asked - so a stop leaves whole pages behind it and
     #    untouched ones ahead. `page_rows=None` is one page, the whole scope: the live
     #    follow-up path, whose receipt rides that one commit.
+    total = _table_rows(engine, plan) if whole_source and checkpoint is not None else None
     for frame in _scope_pages(engine, plan, scoped, page_rows):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
@@ -783,7 +784,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                 if stale:
                     result["forgotten"] += store.forget_row_refs(
                         plan.relation, stale, source=source)
-        if checkpoint is not None and checkpoint(result["rows_in_scope"]):
+        if checkpoint is not None and checkpoint(result["rows_in_scope"], total):
             result["stopped"] = True
             break
     if whole_source and not result.get("stopped"):
@@ -810,6 +811,26 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
 #: A collapsed event's worth, the unit the live path already translates in one commit.
 RESCOPE_PAGE_ROWS = 1000
+
+
+def _table_rows(engine, plan):
+    """The source's rows, counted once at a whole-source run's start for its page line's total and time left (총괄
+    a02ad0f2b ①) - a table's only (relkind r · p): a view's count runs its whole query, and views leave production."""
+    from psycopg2 import sql
+
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)", (str(plan.relation),))
+            kind = cursor.fetchone()
+            if kind is None or kind[0] not in ("r", "p"):
+                return None
+            cursor.execute(sql.SQL("SELECT count(*) FROM {}").format(
+                sql.SQL(".").join(sql.Identifier(part) for part in str(plan.relation).split("."))))
+            return cursor.fetchone()[0]
+    finally:
+        connection.rollback()
+        connection.close()
 
 
 def _scope_pages(engine, plan, scoped, page_rows):

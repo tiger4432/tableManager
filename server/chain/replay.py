@@ -1238,7 +1238,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     step = _step_of(checkpoint)
     for proposed in pages():
         step("read", stats["pages"] + 1, None, len(proposed))
-        if apply and checkpoint is not None and checkpoint(stats["rows_proposed"], total):
+        if checkpoint is not None and checkpoint(stats["rows_proposed"], total):
             stats["stopped"] = True
             log(f"[fold-units] stopped by request after {stats['rows_proposed']} of {total} rows")
             break
@@ -1254,8 +1254,6 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
         stats["pages"] += 1
         step("write", stats["pages"], None, len(proposed))
         stats["page_seconds"].append(round(time.monotonic() - page_started, 2))
-        log(f"[fold-units] {stats['rows_proposed']} / {total} rows (page {stats['pages']}, "
-            f"{stats['page_seconds'][-1]} s)")
         if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
             size.rest(rest_seconds)
     # the worker's edit withdrawal (`apply_chain_writes`): the unit rows handed, the columns the rule writes
@@ -1681,7 +1679,6 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 stats["stopped"] = True
                 log(f"[notation] stopped by request after {stats['rows_scanned']} rows")
                 break
-            started = time.monotonic()
             stats["pages"] += 1
             stats["rows_scanned"] += len(page)
             if by_value:
@@ -1754,8 +1751,6 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     updated_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
                 db.commit()
             step("write", stats["pages"], None, len(page))
-            log(f"[notation] {stats['rows_scanned']} / {total} rows (page {stats['pages']}, "
-                f"{round(time.monotonic() - started, 2)} s)")
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 size.rest(rest_seconds)
     log(f"[notation] '{table_name}' {stats['mode']}: {stats['cells_folded']} cell(s) and "
