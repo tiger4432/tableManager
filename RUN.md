@@ -121,9 +121,9 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-Dh9XIETc.js(940bd3923 — 정렬 · 거르기 · «N of M» · 머리 체크 · Trend Split by · Add here · More)
+>    빌드    main 의 dist walk-Rs53KSLq.js(45f45268e — 그래프 «여기까지 걸음» 고리 · 표의 그림 칸 / 그 앞 940bd3923 정렬 · 거르기 · «N of M» · 머리 체크 · Trend Split by · Add here · More)
 >            18766 서버는 main d97e9ace2 의 server/ 전부 + 초안 보기 고침 둘(7bdbe1e65 · 5857f40b8) — 하니스의 스크래치 스키마 줄만 더함
->            누른 빌드 — walk-Dh9XIETc.js + 위 서버에서 ① ~ ⑨ · ③g · ③h · ③i 를 다시 눌렀다(10-12 새벽) — 수는 전부 같음, 바뀐 것은 이어 걷기 단추 · 점 title 글자(아래 줄에 고침) · 소유자 손 클릭 줄만 빼고 /
+>            누른 빌드 — walk-Rs53KSLq.js 에서 ⑤ 고리 · ③j 그림 칸 / walk-Dh9XIETc.js + 위 서버에서 ① ~ ⑨ · ③g · ③h · ③i 를 다시 눌렀다(10-12 새벽) — 수는 전부 같음, 바뀐 것은 이어 걷기 단추 · 점 title 글자(아래 줄에 고침) · 소유자 손 클릭 줄만 빼고 /
 >                       walk-CWo9azvd.js (= main e32731bd5) 에서 ① ~ ⑨ 를 처음부터 끝까지 다시 눌렀다(10-11 밤) — 소유자 손 클릭 줄(③ 복사 · ④ 스킴 둘 «Copy points» · ④ 고쳐짐 (다))만 빼고
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
@@ -199,6 +199,9 @@
 >    ③i 정렬 · 거르기   구역 머리 칸을 누르면 오름 -> 내림 -> 원래 · Find 칸 · 칸마다 Filter (리허설: ③ 판 quantity 구역)
 >       본 것    «measures ← wafer · value» + 머리: 오름 첫 셋 purge_delay_s 0 · focus 0.02 · pressure_MPa 0.22 / 내림 furnace_C 1050 · thickness_um 742.27 · temp_c 420 / 세 번째 원래 순서
 >                Find «bond» -> 머리 «quantity · 4 of 49» · 줄 bond_pressure · bond_temp · post_bond_queue_h · pre_bond_queue_h · 머리 체크 -> 체크 4(보이는 줄 전부) · Find 비우면 «quantity · 49»
+>    ③j 그림 칸   선언에서 image 타입 칸에서 읽은 값은 ▣ + 참조 글자 (리허설: 브랜치에서 후보 표 certainty 를 image 로 선언 · 값 http://127.0.0.1:18766/favicon.svg · 백필 · physical_quantity bond_temp 걷기)
+>       본 것    머리 «leads_to → void · certainty ▸ 1» 등 칸 넷이 ▣ · 그리는 순간 /api/image 요청 0 · 머무르면 /api/image 한 번 -> 미리보기 그림 · ▣ 누르면 새 창에 그 그림
+>       뜻       그림인지는 값 모양이 아니라 선언(열 타입)이 정한다 — 운영 표에 그림 칸이 없으면 이 줄은 건너뜀
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
 >       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 98 ms · «pressure_MPa · measures ← wafer · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
 >                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
@@ -220,6 +223,9 @@
 >       본 것    요청 0 개 · «Nodes 81 · Edges 529» «Not drawn · 1139 edges» «Folded · 53 nodes» · 그려짐 28 (wafer 2 · quantity 26) · 작은 덩어리 SYN-BW-103-11 «measures → 8 more quantity» · 큰 덩어리 13 (time_s «30 next · 14 behind 30 wafer» 등)
 >       뜻       그래프 = 표의 답(G-2) — 다시 걷지 않는다. Nodes 가 표와 같고, 그린 엣지 529 + Not drawn 1139 = 표의 Edges 1668
 >                작은 덩어리 = 갈래 상한 너머(처음 것만 그리고 나머지) · 큰 덩어리 = 첫 그림이 접은 노드들
+>       고리     홉 상한에 걸려 멈춘 걷기의 마지막 홉 노드에 점선 고리 (리허설: SYN-BW-103-11 만 + · Collect 없음 · Limits hops 1 -> «Asked 1 hop · reached 1 hop» · «Nodes 212 · Edges 249»)
+>                그려진 노드 48 중 마지막 홉 47 에 고리 · 시작 노드엔 없음 · 고리 노드를 누르면 «Mark · Walk on from here» -> Walk on from here -> 그 노드가 + 바구니에 · 요청 0
+>                hops 2 판은 둘째 홉 노드가 첫 그림에서 전부 접혀(Folded · 645) 고리가 보이는 노드 0 — 고리를 보이려면 그 덩어리를 연다
 >    ⑥  묶음 열기  불량 base 의 «measures → 8 more quantity» 를 누름 -> 창 «measures · quantity» «8 not drawn · from SYN-BW-103-11» -> post_bond_queue_h 틱 -> «Open 1»
 >       본 것    요청 0 · 그려짐 1 · 그 노드에 덩어리 없음 · 묶음은 «measures → 7 more quantity» · «Folded · 52 nodes»
 >       뜻       표가 이미 받은 답에서 꺼내 그린다 — 연 노드도 걸은 답 안이라 «? next · not walked» 점선이 없다
