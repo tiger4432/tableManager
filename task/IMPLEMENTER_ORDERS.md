@@ -65850,3 +65850,30 @@ require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 repla
          미리보기에 셋 다: 이름 바꿀 층 · 지울 겹친 plain · 값이 달라 남긴 plain
 게이트    응용 rh_world_layers 에 옮기기 -> 미리보기 수 = 실행 수 · 다시 0 · 거두기 뒤 그 칸이 남은 행 층 값(또는 파일 값)
 ```
+
+> **[총괄 -> 구현자 · 응용] 10-11 오후 — 접기에 «단위»: 키마다 잡 하나가 통째로 남는다 (소유자 「dt log 접는 거 job 에 auto 있는 거 1순위 그 안에서 시간 빠른 거」 · 「auto 랑 매뉴얼 충돌하면 오토 먼저」 · 「충돌은 replace map 느낌으로 dt_wafer_id 단위로」 -> 안 ㄱ 「빨리」) — 지금 맨 앞, 층 원천 행마다는 세워 둠**
+
+```
+지금(코드)  fold_duplicate_rows(replay._ranked_duplicates) = 키마다 «행» 하나 — --keys dt_wafer_id 면 웨이퍼에 행 하나만 남음
+           ⑤ 의 --only-* 는 «범위»(AUTO 행만 접고 매뉴얼은 안 건드림) — 소유자 규칙은 --prefer-*
+도착지  두 줄
+   「운영에서는 fold-rows 에 --unit <칸> 을 적으면 됩니다 — 키마다 그 칸 값이 같은 행 묶음(단위) «하나»가 통째로 남고, 다른 단위의 행은 전부 표시됩니다」
+   「단위의 순위는 --prefer 글자를 가진 단위 먼저, 그다음 그 단위의 가장 이른 --order(--keep max 면 가장 늦은)」
+넓힐 것(새 작업 · 새 명령 금지)  fold_duplicate_rows · _ranked_duplicates · fold_target · 소급 작업 fold_duplicate_rows 의 칸 · CLI fold-rows 에 unit 하나
+   unit 없음 = 오늘 그대로(단위 = 행)
+   unit 있음  키마다 단위 순위: ① 단위의 어느 행이든 prefer 글자(any case) ② 단위의 min(order)(keep max 면 max) · 빈 order 는 끝 ③ 동률은 단위의 가장 작은 row_id
+             빈 unit 값은 한 단위로 치고 맨 끝 · 범위(only) · 이미 표시된 행 제외는 오늘 그대로
+             unit 은 mark_column 과만 — 표시 없이 단위째 지우기는 이름 대어 거절(데이터 가드)
+   표시 뒤 따라오는 일(복사 규칙 exclude 가 거둠 · 다시 세기)은 오늘 그 길 그대로
+미리보기 말할 것  키 수 · 단위 둘 이상인 키 수 · 남는 단위 중 prefer 인 키 수 · 표시할 행 수 · 앞 몇 키의 단위들(값 · 행 수 · 이른 order · 남음/접힘)
+운영 ⑤ 의 새 모양(응용이 RUN.md 일요일 표에)
+   ⑤a  fold-rows «로그 표» --keys dt_wafer_id --unit dt_job_id --order «고를 칸» --prefer-column dt_job_id --prefer-text AUTO --mark-column fold_mark
+   ⑤b  fold-rows «로그 표» --keys «공식 표 키 칸» --order «고를 칸» --prefer-column dt_job_id --prefer-text AUTO --mark-column fold_mark   (남은 잡 안의 한 칩 두 이벤트)
+   그 뒤 ⑥ ⑦ 그대로
+게이트  웨이퍼 하나에 AUTO 잡(늦음, 3 행) + 매뉴얼 잡(이름, 3 행) -> AUTO 3 남음 · 매뉴얼 3 표시 / AUTO 잡 둘 -> 이른 잡 / 매뉴얼끼리 -> 이른 잡 / 잡 하나뿐 -> 0
+        빈 dt_job_id 단위는 끝 · unit + mark 없음 -> 거절 · ⑤a 뒤 ⑤b 가 남은 잡 안의 두 이벤트만 접음 · 다시 돌리면 0 · 미리보기 수 = 실행 수
+        unit 없는 오늘 시험 전부 그대로 · 변이(단위 대신 행 · prefer 무시 · 단위 min 대신 행 order) 빨강 · public 전후 같음
+같은 커밋  RUN.md(⑤a · ⑤b 명령 · 답의 뜻 · 되돌리기 = fold_mark 비우기) · RELEASE_LOG · 소급 작업 칸 안내
+응용   착지 뒤 리허설(rh_world_full)에 ⑤ 를 ⑤a · ⑤b 로 바꿔 다시 돌려 일요일 표 ⑤ ⑥ ⑦ 의 수 · 뜻을 다시 씀(체인 워커 슬롯은 구현자 «내림» 뒤)
+순서   이것 -> 체인 층 원천 행마다(세워 둔 손 그대로 — 이것을 다른 worktree 에서 짓거나 세워 둔 손을 커밋 안 한 채 비켜 둠, 섞지 않음)
+```
