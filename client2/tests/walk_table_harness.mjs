@@ -1095,8 +1095,9 @@ async function suite(mod) {
       JSON.stringify([route, value, groupHeads(), tds('d:3')]));
   }
   // ── fixed widths (owner 10-12 「폭이 꿀렁꿀렁」 · 「컬럼 여백 남아도는데 존나 넓게」): a column a <col>, its width from
-  //    the answer - a value's longest words (28 · 1050.25 · missing: 7 letters, 8ch) shared by its + · Δ · −, the node's
-  //    keys beside its copy icon - the same after a sort, a filter and a check; the head's spans over exactly those columns;
+  //    the answer - a value's + and − one series, the longest words of both (28 · 1050.25 · missing · 10: 7 letters, 8ch),
+  //    its Δ its own (only «—»: 5ch, lead 10-12), the node's keys beside its copy icon - the same after a sort, a filter
+  //    and a check; the head's spans over exactly those columns;
   //    the stylesheet fixes the layout on them ──
   {
     const doc = makeDoc();
@@ -1106,8 +1107,8 @@ async function suite(mod) {
     handle.state.type = 'wafer@1';
     handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
     handle.state.run = 'done';
-    handle.state.result = { ...SIGNED, edges: [{ id: 'e:a3', source: 's:a', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 28 } },
-      { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 28 } },
+    handle.state.result = { ...SIGNED, edges: [{ id: 'e:a1', source: 's:a', target: 'd:1', predicate: 'inspected', qualifiers: { gate: 28 } },
+      { id: 'e:b3', source: 's:b', target: 'd:3', predicate: 'inspected', qualifiers: { gate: 10 } },
       { id: 'e:c4', source: 's:c', target: 'd:4', predicate: 'inspected', qualifiers: { gate: 1050.25 } }] };
     handle.render();
     const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
@@ -1121,6 +1122,7 @@ async function suite(mod) {
       const body = trs.find((e) => e.attrs && e.attrs['data-row-id']);
       return { cols: walkAll(table()).filter((e) => e.tagName === 'col').map((e) => [e.className, (e.attrs.style || '').replace(/^width: /, '')]),
         cells: walkAll(table()).filter((e) => e.className === 'wk-val').map((e) => e.textContent),
+        deltas: walkAll(table()).filter((e) => e.tagName === 'td' && /\bwk-delta\b/.test(e.className)).map((e) => e.textContent),
         spans: trs.length ? trs[0].children.reduce((n, c) => n + (c.colSpan || 1), 0) : -1, across: body ? body.children.length : -1,
         rows: walkAll(table()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length };
     };
@@ -1134,12 +1136,14 @@ async function suite(mod) {
       .find(([s]) => s && s.trim() === sel) || [])[1] || '').replace(/\s+/g, ' ').trim();
     const valueCols = before.cols.filter(([c]) => c === 'wk-col-value');
     const VALUE_W = 'max(calc(8ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--wk-h-small)))';
+    const DELTA_W = 'max(calc(5ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--wk-h-small)))';
     const NODE_W = 'max(calc(5ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(7ch + var(--space-2) + var(--wk-h-small)))';
-    ok('FW1 fixed widths from the answer: a <col> a column - check a finger, node its keys and icon, + · Δ · − of one value the width of its longest words (28 · 1050.25 · missing → 8ch, not 96px) - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed (owner 10-12)',
+    ok('FW1 fixed widths from the answer: a <col> a column - check a finger, node its keys and icon, + and − of one value the width of the longest words of both (28 · 1050.25 · missing · 10 → 8ch, not 96px), its Δ of only «—» its own 5ch - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed (owner 10-12)',
       JSON.stringify(before.cols) === JSON.stringify(after.cols)
         && JSON.stringify(before.cols.slice(0, 2)) === JSON.stringify([['wk-col-check', 'var(--wk-h)'], ['wk-col-node', NODE_W]])
-        && valueCols.length === 3 && valueCols.every(([, w]) => w === VALUE_W) && before.cols.length === 5
-        && ['1050.25', 'missing', '28'].every((v) => before.cells.includes(v))
+        && JSON.stringify(valueCols.map(([, w]) => w)) === JSON.stringify([VALUE_W, DELTA_W, VALUE_W]) && before.cols.length === 5
+        && ['1050.25', 'missing', '28', '10'].every((v) => before.cells.includes(v))
+        && before.deltas.length === 4 && before.deltas.every((d) => d === '—')
         && before.spans === before.cols.length && before.across === before.cols.length && after.spans === after.cols.length
         && after.rows < before.rows
         && /table-layout: fixed;/.test(rule('.wk-table')) && /width: 0;/.test(rule('.wk-table')) && rule('.wk-table col') === '',
@@ -1919,6 +1923,8 @@ const MUTANTS = [
     from: '      cols.append(col);\n', to: '' },
   { id: 'FWm3', what: 'every column a fixed 96 px again, whatever it holds', catches: 'FW1 ',
     from: "      col.setAttribute('style', `width: ${width}`);", to: "      col.setAttribute('style', 'width: 96px');" },
+  { id: 'FWm4', what: 'Δ the width of its value\'s + and − again, whatever it holds', catches: 'FW1 ',
+    from: '[fit(section.rows.map((row) => said(row.cells[i].delta))), side]', to: '[side, side]' },
   { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',
     from: "    const rows = t.at === 'section' ? ids : t.rows;", to: "    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;" },
   { id: 'SFm9', what: 'Walk on from the checked rows the filter hides', catches: 'PF8 ',

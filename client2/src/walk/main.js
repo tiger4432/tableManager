@@ -1096,8 +1096,9 @@ export function boot(doc, host, deps) {
     const cellsOf = (group) => section.parts.filter((p) => p.group === group).length;
     const leafed = section.parts.some((p) => cellsOf(p.group) > 1);
     const stepped = section.parts.length > 0;
-    // Each column as wide as what the answer puts in it (owner 10-12): every row's cells - a value's + · Δ · − one width -
-    // and the heads over it, a head over several columns a share each; a sorting head over it alone, with its «▾».
+    // Each column as wide as what the answer puts in it (owner 10-12): every row's cells - a value's + and − one series, one
+    // width; its Δ its own (lead 10-12: 48 Δ columns of «—» at the pair's width) - and the heads over it, a head over
+    // several columns a share each; a sorting head over it alone, with its «▾».
     const most = (texts) => texts.reduce((m, t) => Math.max(m, lettersOf(t)), 0);
     const said = (cell) => (cell ? `${cell.text}${cell.rest ? ` ${cell.rest}` : ''}` : '');
     const span = (group) => section.parts.reduce((n, q, j) => n + (q.group === group ? width(j) : 0), 0);
@@ -1107,10 +1108,12 @@ export function boot(doc, host, deps) {
       ...section.parts.flatMap((p, i) => {
         const one = cellsOf(p.group) === 1;
         const far = lettersOf(farEnd(p.step).far);
-        const cells = most(section.rows.flatMap((row) => [...row.cells[i].sides, row.cells[i].delta].map(said)));
         const shares = Math.max(one && !many ? 0 : far / span(p.group), !one && many ? lettersOf(p.leaf) / width(i) : 0);
         // A sign's head (+ · Δ · −) is one letter; one basket, the group's or the value's head sorts.
-        return Array(width(i)).fill(['value', columnWidth(Math.max(cells, shares), many ? 1 : one ? far : lettersOf(p.leaf))]);
+        const fit = (cells) => ['value', columnWidth(Math.max(most(cells), shares), many ? 1 : one ? far : lettersOf(p.leaf))];
+        const side = fit(section.rows.flatMap((row) => row.cells[i].sides.map(said)));
+        // In the heads' order: each group's cell, Δ before the second of two.
+        return section.groups.flatMap((_, gi) => (pair && gi === 1 && p.delta ? [fit(section.rows.map((row) => said(row.cells[i].delta))), side] : [side]));
       })]);
     const depth = Math.max(1, (stepped ? 1 : 0) + (leafed ? 1 : 0) + (many && stepped ? 1 : 0));
     const thead = el(doc, 'thead');
