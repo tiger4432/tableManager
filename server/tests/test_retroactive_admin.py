@@ -269,6 +269,10 @@ class TestInventory:
         # parameter here that the operation does not have would be a lie the
         # client would render as a control.
         assert "limit" not in {p["name"] for p in ops["withdraw"]["params"]}
+        # Admin's count and run send only the params this lists, so a grid line handed over
+        # in a branch world would run in the operating one without `world` here (owner 10-12).
+        assert all("world" in {p["name"] for p in ops[op]["params"]}
+                   for op in ("ledger_rescope", "ledger_backfill")), ops["ledger_rescope"]["params"]
 
     def test_every_remaining_operation_commits_per_chunk_and_resumes(self, client):
         """The registry's odd-one-out is gone, and that changes what this pins.

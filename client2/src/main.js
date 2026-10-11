@@ -345,7 +345,7 @@ function initRedoBanner() {
     if (!got || !got.ok) { part.setSources(null); return; }
     const others = await Promise.all(got.worlds.filter((world) => world !== got.operating)
       .map((world) => loadLedgerDeclaration(world)));
-    part.setSources([got, ...others].flatMap((each) => (each.ok && each.sources) || []));
+    part.setSources([got, ...others].flatMap((each) => (each.ok && each.sources) || []), got.operating);
   });
   // 체인은 `rule` 이 «필수» 파라미터라, 이름을 모르면 돌릴 줄이 없습니다. 그 목록은
   // 이제 «표가 정해질 때» 옴니다(`redoBannerFollows`) — 부팅도 그 자리를 지납니다.

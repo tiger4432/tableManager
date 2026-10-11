@@ -57,7 +57,8 @@ def test_the_form_does_not_offer_them_and_the_record_accepts_them():
     shown = {row["op"]: {p["name"] for p in row["params"]}
              for row in retroactive.inventory()}
     for op, options in WIDENED.items():
-        assert not set(options) & shown[op], op
+        # `world` is on the form since 10-12 (lead): a grid line handed to admin keeps its world.
+        assert not (set(options) - {"world"}) & shown[op], op
         params = retroactive.validate(op, {**REQUIRED[op], **options})
         assert {k: params[k] for k in options} == options, op
     assert {"rule", "business_keys", "row_ids", "pace"} <= shown["chain_replay"]

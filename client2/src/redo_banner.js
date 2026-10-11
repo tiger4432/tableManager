@@ -93,6 +93,8 @@ export class RedoBanner {
     this.doc = options.doc || (host && host.ownerDocument) || null;
     // 선언이 준 소스 행들. `null` 은 「아직/못 읽음」이고 `[]` 와 다릅니다.
     this.sources = options.sources || null;
+    // The world a run naming none runs in; a line in any other world names its world.
+    this.operating = options.operating;
     // 화면이 「지금 고른 행」을 주는 함수. 부품이 그리드를 «모릅니다».
     this.getSelection = options.getSelection || (() => []);
     // 「이 행의 이 컬럼 값」을 어떻게 꺼내는가. 그리드의 행 모양은 «화면»이 압니다.
@@ -159,7 +161,7 @@ export class RedoBanner {
     );
   }
 
-  setSources(sources) { this.sources = sources; this.render(); }
+  setSources(sources, operating) { this.sources = sources; this.operating = operating; this.render(); }
 
   setRelation(relation) {
     const next = relation || null;
@@ -344,10 +346,11 @@ export class RedoBanner {
     if (!sources.length) return { note: 'Not a ledger source' };
     const scoped = (s) => (Array.isArray(s.scope_columns) ? s.scope_columns : []);
     if (!sources.some((s) => scoped(s).length)) return { note: 'No scope column declared' };
-    // A line per (world, source) and column; the world and source are named only when there is more than one.
-    const named = sources.length > 1;
+    // A line per (world, source) and column. World and source are named when there is more than one, or when the
+    // world is not the operating one - a branch-only table never runs in a world the screen does not name (lead 10-12).
     const lineRows = [];
     sources.forEach((sourceRow) => {
+      const named = sources.length > 1 || sourceRow.world !== this.operating;
       const head = named ? `${sourceRow.world} · ${sourceRow.source} · ` : '';
       if (!scoped(sourceRow).length) {
         lineRows.push({ text: `${head}no scope column declared`, params: null });

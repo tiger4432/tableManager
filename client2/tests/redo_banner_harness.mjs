@@ -188,6 +188,18 @@ function twoWorlds(M) {
   return { lines, calls };
 }
 
+/** The line a table draws when one world declares it a source, the operating world being `default`. */
+function oneWorld(M, world) {
+  const doc = mkDoc();
+  const host = doc.createElement('div');
+  const part = new M.RedoBanner(host, { doc, getSelection: () => [envelope({ lot_id: 'L1' })],
+    readValue: readEnvelope, handOff: () => {} });
+  part.setRelation('dt_log');
+  part.setSources([{ relation: 'dt_log', source: 'dt_log_src', world, scope_columns: ['lot_id'] }], 'default');
+  buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+  return groupsShown(host);
+}
+
 const buttons = (host) => byClass(host, 'redo-banner__btn');
 const groupsShown = (host) => byClass(host, 'redo-panel__group').map((n) => n.textContent);
 const note = (host) => (byClass(host, 'redo-panel__note')[0] || {}).textContent;
@@ -298,6 +310,12 @@ console.log('\n── C. THE LEDGER GROUPS, ASSEMBLED HERE ───────
     two.lines.length === 2 && two.lines[0].startsWith('default \u00b7 dt_log_src \u00b7 lot_id')
       && two.lines[1].startsWith('modeling \u00b7 dt_log_src \u00b7 lot_id')
       && two.calls.map((c) => c.params.world).join(',') === 'default,modeling', two);
+  // Lead 10-12: a line outside the operating world names its world even alone; the operating world's alone does not.
+  const branch = oneWorld(X, 'modeling');
+  const operating = oneWorld(X, 'default');
+  ok('C11 a branch-only table names its world on its one line, and an operating-only one looks as before',
+    branch.length === 1 && branch[0] === 'modeling \u00b7 dt_log_src \u00b7 lot_id \u2014 1 group from 1 row'
+      && operating.length === 1 && operating[0] === 'lot_id \u2014 1 group from 1 row', [branch, operating]);
 }
 
 console.log('\n── D. THE CHAIN KEYS, GROUPED ELSEWHERE ────────────────────────────');
@@ -712,6 +730,8 @@ const DEFECTS = [
     swap('    if (this.box && this.box.placedFrom) this.box.remove();\n', '')],
   ['M21 a pressed line drops its world, so a branch line runs in the operating world',
     swap('            world: sourceRow.world,\n', '')],
+  ['M22 a branch-only line runs unnamed, as if it were the operating world',
+    swap('const named = sources.length > 1 || sourceRow.world !== this.operating;', 'const named = sources.length > 1;')],
 ];
 
 const CONTROLS = [
@@ -746,7 +766,7 @@ const CATCHES = {
   M16: 'R23', M17: 'R24',
   // C-120. M1 은 R1(꺼짐)이 잡고, M1b 는 R25(왜)가 잡습니다 — 실제 run 에서 읽었습니다.
   M1b: 'R25',
-  M18: 'R26', M19: 'R27', M20: 'R28', M21: 'R29',
+  M18: 'R26', M19: 'R27', M20: 'R28', M21: 'R29', M22: 'R30',
 };
 /** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
 const named = (list) => list.map(([name, mutate, where]) => ({
@@ -971,6 +991,8 @@ async function runMutant({ name, mutate, where }) {
           () => { const got = panelsOnBody(M); return got.open === 1 && got.shut === 0; }],
         ['R29 a source in two worlds runs each line in its own world (owner 10-12)',
           () => twoWorlds(M).calls.map((c) => c.params.world).join(',') === 'default,modeling'],
+        ['R30 a line outside the operating world names its world even alone (lead 10-12)',
+          () => (oneWorld(M, 'modeling')[0] || '').startsWith('modeling \u00b7 dt_log_src \u00b7 lot_id')],
       ];
       // Recorded once, so the 「unexercised」 line below is COMPUTED from the checks that
       // actually ran rather than typed out beside them -- a hand-written list of names drifts
