@@ -768,7 +768,7 @@ const pickKey = async (c, key) => {
     r.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window })); return true; })()`);
 };
 // A basket's +: the picked node into Positive (+) or Negative (−) (lead bc63378e5).
-const basket = (c, sign) => evaluate(c, `(() => { const b = document.querySelector('.wk-basket[data-sign="${sign}"] .wk-basketadd');
+const basket = (c, sign) => evaluate(c, `(() => { const b = document.querySelector('.wk-basketadd[data-sign="${sign}"]');
   if (b && !b.disabled) b.click(); return Boolean(b); })()`);
 const DRIVE = {
   'walk.html': [

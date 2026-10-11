@@ -28,7 +28,7 @@ export const WALK_CSS = `
 :root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: 44px; --wk-h-small: 28px;
   /* One face for the page; the mono only for ids and ways (lead 10-11 W 3). */
   --wk-font: 'IBM Plex Sans', 'Outfit', system-ui, sans-serif; --wk-mono: 'IBM Plex Mono', var(--font-mono, ui-monospace), monospace; }
-.wk-rail, .wk-main, .wk-side { font-family: var(--wk-font); }
+.wk-bar, .wk-main { font-family: var(--wk-font); }
 .wk-form { display: flex; flex-direction: column; gap: var(--space-3);
   font-family: var(--wk-font); font-size: var(--wk-fs-body); color: var(--text, #111); }
 .wk-field { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3);
@@ -59,21 +59,32 @@ label.wk-check.is-on { background: var(--accent-weak); }
 label.wk-check { flex: 0 1 auto; min-width: 9.5em; max-width: 100%; }
 label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Layout A (lead 2b5819e1d): the form is a rail, the result its own part. The page seats the two;
-   each scrolls inside itself, and Walk stays in the rail's foot. */
-.wk-rail { display: flex; flex-direction: column; min-height: 0; background: var(--bg-surface);
-  border-right: 1px solid var(--border); }
-.wk-rail > .wk-form { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--space-4);
-  gap: var(--space-5); }
-/* In the rail a section is a heading and its controls, not a boxed card (the layout A mockup). */
-.wk-rail .wk-field { gap: var(--space-2); padding: 0; background: transparent; border: 0; }
-.wk-rail-foot { flex: none; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border);
-  background: var(--bg-surface); }
+/* The sentence bar (lead 10-11 W A): one line in doing order - From · collect · through · in · Limits · Walk - over the
+   result. Its chips one height (28), the dropdowns hang under their chip. */
+.wk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border); background: var(--bg-surface); font-size: var(--wk-fs-body); color: var(--text, #111); }
+.wk-barword { color: var(--text-dim); font-size: var(--wk-fs-line); }
+.wk-barpart, .wk-baskets, .wk-basketlist, .wk-basket { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-barpop { position: relative; }
+.wk-barchip { list-style: none; display: inline-flex; align-items: center; height: var(--wk-h-small); padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong); border-radius: 999px; font-size: var(--wk-fs-line); white-space: nowrap; cursor: pointer; }
+.wk-barchip::-webkit-details-marker { display: none; }
+.wk-barpop[open] > .wk-barchip { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+.wk-barpopbody { position: absolute; z-index: 5; top: calc(100% + var(--space-1)); left: 0; width: 380px; max-width: calc(100vw - var(--space-6));
+  max-height: 70vh; overflow-y: auto; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3);
+  background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-pop); }
+.wk-barpop:not([open]) > .wk-barpopbody { display: none; }
+/* One that would run off the page's right edge hangs from its chip's right instead (the page script sets is-end). */
+.wk-barpop.is-end > .wk-barpopbody { left: auto; right: 0; }
+.wk-barpopbody .wk-field { gap: var(--space-2); padding: 0; background: transparent; border: 0; }
+.wk-bar .wk-chip, .wk-bar .wk-add { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
+/* Closed, collect's + shows only «+»; its list still names every type. */
+.wk-bar .wk-add { width: 4.5em; }
+.wk-bar > .wk-go { width: auto; min-height: var(--wk-h-small); height: var(--wk-h-small); margin-left: auto; padding: 0 var(--space-5); }
 .wk-main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; min-height: 0;
   overflow: auto; padding: var(--space-4) var(--space-5); }
 .wk-mainhead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
 .wk-title { font-size: var(--wk-fs-title); font-weight: 600; overflow-wrap: anywhere; }
-.wk-mainhead > .wk-views { margin-left: auto; }
 /* A name above its control: key, step and pick cells. */
 .wk-cell { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .wk-cell > .wk-keyname { width: auto; }
@@ -228,23 +239,27 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* A control row and a control start: the board's control look (board.css .is-marked-control). */
 .wk-table tr.is-control td { background: var(--bg-inset); }
 .wk-table tr.is-control td.wk-check { box-shadow: inset 2px 0 0 var(--text-muted); }
-/* Start baskets (lead bc63378e5): the start marking as two lists in the page's right panel; a row a start. */
-.wk-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg-surface);
-  border-left: 1px solid var(--border); }
-.wk-baskets { display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-4); }
-.wk-basket { display: flex; flex-direction: column; gap: var(--space-2); }
-.wk-baskethead { display: flex; align-items: center; gap: var(--space-2); }
-.wk-basketcount { font-variant-numeric: tabular-nums; color: var(--text-dim); }
-.wk-basketadd { align-self: flex-start; min-height: var(--wk-h); padding: 0 var(--space-4); font: inherit; font-weight: 600;
-  color: var(--accent); background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+/* Start baskets (lead bc63378e5) in the bar (lead 10-11 W A): + chips vs − chips, each sign and its count first; the adds
+   in «+ Add start». */
+.wk-basketsign { font-weight: 700; color: var(--wk-plus); }
+.wk-basket.is-control .wk-basketsign { color: var(--wk-minus); }
+.wk-basketcount { font-variant-numeric: tabular-nums; font-size: var(--wk-fs-line); color: var(--text-dim); }
+.wk-vs { color: var(--text-dim); font-size: var(--wk-fs-line); }
+.wk-basketrow { display: inline-flex; align-items: center; gap: var(--space-1); height: var(--wk-h-small); box-sizing: border-box;
+  padding: 0 var(--space-1) 0 var(--space-3); border-radius: 999px; font-size: var(--wk-fs-line);
+  border: 1px solid var(--wk-plus); background: color-mix(in srgb, var(--wk-plus) 10%, var(--bg-surface)); }
+.wk-basket.is-control .wk-basketrow { border-color: var(--wk-minus); background: color-mix(in srgb, var(--wk-minus) 10%, var(--bg-surface)); }
+.wk-basketlabel { min-width: 0; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-basketremove { flex: none; height: var(--wk-h-small); padding: 0 var(--space-1); font: inherit; color: var(--text-dim);
+  background: none; border: 0; cursor: pointer; }
+.wk-adders { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-basketadd { min-height: var(--wk-h-small); padding: 0 var(--space-4); font: inherit; font-size: var(--wk-fs-line); font-weight: 600;
+  color: var(--accent); background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; }
+.wk-basketadd[data-sign="+"] { color: var(--wk-plus); border-color: var(--wk-plus); }
+.wk-basketadd[data-sign="−"] { color: var(--wk-minus); border-color: var(--wk-minus); }
 .wk-basketadd[disabled] { opacity: 0.45; cursor: not-allowed; }
-.wk-basketremove { flex: none; height: var(--wk-h-small); margin-left: auto; padding: 0 var(--space-2); font: inherit; color: var(--text-dim);
-  background: none; border: 0; border-radius: 0; cursor: pointer; }
-.wk-basketrow { display: flex; align-items: baseline; gap: var(--space-2); padding-top: var(--space-1);
-  border-top: 1px solid var(--border); }
-.wk-basketlabel { min-width: 0; font-family: var(--wk-font); overflow-wrap: anywhere; }
-.wk-baskettype { flex: none; font-size: var(--wk-fs-line); color: var(--text-dim); }
-.wk-basket.is-control .wk-basketlabel { color: var(--text-muted); }
+.wk-throughacts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-throughacts > .wk-input { flex: 1 1 8em; width: auto; min-height: var(--wk-h-small); height: var(--wk-h-small); }
 .wk-table { width: 100%; border-collapse: collapse; font-size: var(--wk-fs-line); display: block;
   overflow-x: auto; white-space: nowrap; }
 .wk-table th, .wk-table td { border-bottom: 1px solid var(--border);
@@ -259,7 +274,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-table td.wk-missing { color: var(--danger); }
 /* A sign a colour (lead 34d91c09d 4): + orange, − teal - a band over its columns, a light tint in its cells, the trend's
    dots - from tokens set in both themes. Solid mixes: the heads stick over the rows. */
-.wk-sides, .wk-long, .wk-trend { --wk-plus: var(--orange); --wk-minus: var(--info); }
+.wk-sides, .wk-long, .wk-trend, .wk-bar { --wk-plus: var(--orange); --wk-minus: var(--info); }
 .wk-sides th.wk-sidehead.wk-plus { color: var(--wk-plus); background: color-mix(in srgb, var(--wk-plus) 16%, var(--bg-surface));
   box-shadow: inset 0 -3px 0 var(--wk-plus); }
 .wk-sides th.wk-sidehead.wk-minus { color: var(--wk-minus); background: color-mix(in srgb, var(--wk-minus) 16%, var(--bg-surface));

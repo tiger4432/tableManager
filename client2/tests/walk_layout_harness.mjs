@@ -122,7 +122,7 @@ async function stand(mod, decl = DECL) {
 }
 
 async function suite(mod, css = REAL_CSS) {
-  console.log(`${LF}-- the parts: the form is the rail, the result its own --`);
+  console.log(`${LF}-- the parts: the form is the bar, the result its own --`);
   const page = await stand(mod);
   await page.act.type('die');
   page.act.key('mat_id', 'M-1');
@@ -130,25 +130,26 @@ async function suite(mod, css = REAL_CSS) {
   await page.act.add('wafer');
   await page.act.route();
   await page.act.loop();
-  const rail = page.find((e) => e.className === 'wk-rail');
+  // The sentence bar over the result (lead 10-11 W A): the rail and the right basket panel folded into it.
+  const rail = page.find((e) => e.className === 'wk-bar');
   const main = page.find((e) => e.className === 'wk-main');
   const inside = (box) => new Set(box ? walkAll(box) : []);
-  const side = page.find((e) => e.className === 'wk-side');
+  const side = page.find((e) => e.className === 'wk-baskets');
   const inRail = inside(rail);
   const inMain = inside(main);
   const inSide = inside(side);
   const controls = page.all().filter((e) => ['select', 'input', 'button'].includes(e.tagName));
-  const stray = controls.filter((e) => !(e.attrs && e.attrs['data-view'] !== undefined) && !inRail.has(e) && !inSide.has(e));
-  ok('L1 every form control is in the rail', controls.length > 5 && stray.length === 0,
+  const stray = controls.filter((e) => !(e.attrs && e.attrs['data-view'] !== undefined) && !inRail.has(e));
+  ok('L1 every form control is in the bar', controls.length > 5 && stray.length === 0,
     `${controls.length} controls, ${stray.map((e) => e.className).join(',')} outside`);
   const views = controls.filter((e) => e.attrs && e.attrs['data-view'] !== undefined);
   ok('L2 Table | Graph and the result are in the main part', views.length === 2
     && views.every((e) => inMain.has(e)) && walkAll(main || { children: [] }).some((e) => e.className === 'wk-result'),
     `${views.length} views`);
   const adds = controls.filter((e) => e.className === 'wk-basketadd');
-  ok('L16 the start baskets are a part of their own, after the result: both + in it, nothing of the form',
-    Boolean(side) && adds.length === 2 && adds.every((e) => inSide.has(e)) && !controls.some((e) => inSide.has(e) && inRail.has(e))
-      && page.host.children[page.host.children.length - 1] === side, `${Boolean(side)} ${adds.length}`);
+  ok('L16 the start baskets are a part of their own in the bar: both + in its «+ Add start»; the page is the bar over the result',
+    Boolean(side) && inRail.has(side) && adds.length === 2 && adds.every((e) => inSide.has(e))
+      && page.host.children.length === 2 && page.host.children[0] === rail && page.host.children[1] === main, `${Boolean(side)} ${adds.length}`);
 
   // 🔴 THE CHECK LIST IS THE MAIN PICK, THE ROUTES THE AID (owner 10-06, lead bf3653401).
   console.log(`${LF}-- Follow: every declared predicate, open, before the routes --`);
@@ -156,7 +157,9 @@ async function suite(mod, css = REAL_CSS) {
   ok('L3 open at first: one box per declared predicate, and the route press ticked its predicates',
     follows() === DECL.predicates.length && page.ticked() === 'in_container,transfer',
     `${follows()} of ${DECL.predicates.length} | ${page.ticked()}`);
-  const form = rail ? rail.children[0] : { children: [] };
+  // Inside through ▾: its body (the dropdown's second child).
+  const throughBox = page.find((e) => classes(e).includes('wk-through'));
+  const form = (throughBox && throughBox.children[1]) || { children: [] };
   const holds = (test) => form.children.findIndex((c) => walkAll(c).some(test));
   const followAt = holds((e) => e.attrs && e.attrs['data-follow'] !== undefined);
   const routesAt = holds((e) => e.className === 'wk-path');
@@ -249,22 +252,17 @@ async function suite(mod, css = REAL_CSS) {
     .map((e) => e.textContent);
   ok('L11 nothing drawn in the walk page is Korean', korean.length === 0, korean.join(' | '));
 
-  // 🔴 「Walk stays at the rail's foot」 is the tree AND the stylesheet: this DOM has no layout, so the cell
-  //    reads where Walk stands and that WALK_CSS (the rules the page carries) pins that box and scrolls the
-  //    form. The lead's mutant renamed the foot's class and nothing went red (L1 only says 「in the rail」).
-  console.log(`${LF}-- Walk stays at the rail's foot --`);
+  // 🔴 「Walk ends the sentence」 is the tree AND the stylesheet: this DOM has no layout, so the cell reads where Walk
+  //    stands and that WALK_CSS (the rules the page carries) pushes it to the bar's end.
+  console.log(`${LF}-- Walk ends the bar --`);
   const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, ' ').matchAll(/([^{}]+)\{([^}]*)\}/g)]
     .map((m) => [m[1].split(',').map((s) => s.trim()), m[2]]);
   const ruled = (selector, prop) => rules.some(([sels, body]) => sels.includes(selector) && body.includes(prop));
   const kids = rail ? rail.children : [];
   const go = page.find((e) => e.className === 'wk-go');
-  const holder = kids.find((k) => walkAll(k).includes(go));
-  const footCls = holder ? classes(holder)[0] : '';
-  const formCls = kids[0] ? classes(kids[0])[0] : '';
-  ok('L12 Walk stands in the rail\'s last box, after the form, and the stylesheet pins that box while the form scrolls',
-    Boolean(go) && holder === kids[kids.length - 1] && kids.length > 1
-      && ruled(`.${footCls}`, 'flex: none') && ruled(`.wk-rail > .${formCls}`, 'overflow-y: auto'),
-    JSON.stringify({ footCls, formCls, kids: kids.length, last: holder === kids[kids.length - 1] }));
+  ok('L12 Walk is the bar\'s last child, after the form, and the stylesheet pushes it to the bar\'s end',
+    Boolean(go) && kids[kids.length - 1] === go && kids.length > 1 && ruled('.wk-bar > .wk-go', 'margin-left: auto'),
+    JSON.stringify({ kids: kids.length, last: kids[kids.length - 1] === go }));
   // The sort · filter seat's rules (lead 10-11 W addendum 7, .claude/skills/ui-design-system §0 · §3): a space a --space-*
   // token, never a hand px; the seat at the toolbar's end.
   const mine = rules.filter(([sels]) => sels.some((s) => /wk-(filterseat|filters|filterchip|filteredit|filterfield|find|colfilter|trendsplit)\b/.test(s)));
@@ -310,11 +308,14 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'state.control.size ? await walk(', 'true ? await walk(') },
   { id: 'LDm2', what: 'B walks with A\'s follow', catches: 'LD2',
     mutate: (t) => swap(t, 'follow: [...state.control]', 'follow: [...state.follow]') },
-  { id: 'W1', what: 'the step knobs are drawn in the result instead of the rail', catches: 'L1 every',
-    mutate: (t) => swap(t, '      renderStep(body);', '      renderStep(main);') },
+  { id: 'W1', what: 'the step knobs are drawn in the result instead of the bar', catches: 'L1 every',
+    mutate: (t) => swap(t, '    renderStep(limits.body);', '    renderStep(main);') },
   { id: 'W2', what: 'Follow is drawn after the routes again', catches: 'L4 the follow',
-    mutate: (t) => swap(swap(t, '      renderFollow(body);', ''),
-      '      renderStep(body);', '      renderStep(body); renderFollow(body);') },
+    mutate: (t) => swap(t, "    root.append(acts, predicateChecks('Follow', state.follow, 'data-follow', `${UNPICKED} · ${SERVER_DEFAULT}`));\n    renderRoutes(root);",
+      "    renderRoutes(root);\n    root.append(acts, predicateChecks('Follow', state.follow, 'data-follow', `${UNPICKED} · ${SERVER_DEFAULT}`));") },
+  // The order's mutant (lead 10-11 W A): a control in the bar no longer reaches the request - direction picked in Limits.
+  { id: 'W17', what: 'direction picked in Limits is not sent', catches: 'L7 the full',
+    mutate: (t) => swap(t, 'state.direction = dir.value; limits.chip', 'limits.chip') },
   { id: 'W3', what: 'the picked mark is always on', catches: 'L6 a follow',
     mutate: (t) => swap(t, "      const route = el(doc, 'div', 'wk-route' + (picked ? ' is-on' : ''));",
       "      const route = el(doc, 'div', 'wk-route is-on');") },
@@ -329,15 +330,14 @@ const MUTANTS = [
     mutate: (t) => swap(t, "      chip.addEventListener('click', () => { state.collect.delete(t); render(); });", '') },
   { id: 'W7', what: 'a Korean word is drawn again', catches: 'L11 nothing',
     mutate: (t) => swap(t, "const SERVER_DEFAULT = 'default';", "const SERVER_DEFAULT = '서버 기본';") },
-  // The lead's escaped mutant, now named.
-  { id: 'W8', what: 'the foot box is renamed, so no rule pins it', catches: 'L12 Walk',
-    mutate: (t) => swap(t, "    const foot = el(doc, 'div', 'wk-rail-foot');", "    const foot = el(doc, 'div', 'wk-foot');") },
-  { id: 'W9', what: 'Walk is drawn inside the scrolling form', catches: 'L12 Walk',
-    mutate: (t) => swap(t, '      renderGo(foot);', '      renderGo(body);') },
+  { id: 'W8', what: 'Walk is drawn before Limits', catches: 'L12 Walk',
+    mutate: (t) => swap(t, '    root.append(limits.d);\n    renderGo(root);', '    renderGo(root);\n    root.append(limits.d);') },
+  { id: 'W9', what: 'Walk is drawn inside the through dropdown', catches: 'L12 Walk',
+    mutate: (t) => swap(t, '    root.append(limits.d);\n    renderGo(root);', '    root.append(limits.d);\n    renderGo(through.body);') },
   { id: 'W19', what: 'the filter seat spaced by a hand px', catches: 'L19 ', file: STYLES,
     mutate: (t) => swap(t, '.wk-filterseat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);', '.wk-filterseat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 7px;') },
-  { id: 'W10', what: 'the stylesheet stops pinning the foot', catches: 'L12 Walk', file: STYLES,
-    mutate: (t) => swap(t, '.wk-rail-foot { flex: none;', '.wk-rail-foot { flex: 1 1 auto;') },
+  { id: 'W10', what: 'the stylesheet stops pushing Walk to the bar\'s end', catches: 'L12 Walk', file: STYLES,
+    mutate: (t) => swap(t, 'height: var(--wk-h-small); margin-left: auto; padding: 0 var(--space-5); }', 'height: var(--wk-h-small); padding: 0 var(--space-5); }') },
   { id: 'W11', what: 'every drawn box is sent, ticked or not', catches: 'L13 ',
     mutate: (t) => swap(t, '    if (state.follow.size) out.follow = [...state.follow];',
       '    out.follow = followOptions();') },

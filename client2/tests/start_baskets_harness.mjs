@@ -32,8 +32,8 @@ const shownOf = (root) => ['+', '−'].map((sign) => {
   return [walkAll(box).filter((n) => hasClass(n, 'wk-basketcount')).map((n) => n._text).join(),
     walkAll(box).filter((n) => hasClass(n, 'wk-basketlabel')).map((n) => n._text)];
 });
-const addOf = (root, sign) => walkAll(walkAll(root).find((n) => n.attrs && n.attrs['data-sign'] === sign && hasClass(n, 'wk-basket')) || { children: [] })
-  .find((n) => hasClass(n, 'wk-basketadd'));
+// The adds sit in «+ Add start» (lead 10-11 W A), one per sign.
+const addOf = (root, sign) => walkAll(root).find((n) => hasClass(n, 'wk-basketadd') && n.attrs && n.attrs['data-sign'] === sign);
 const removeOf = (root, label) => {
   const row = walkAll(root).find((n) => hasClass(n, 'wk-basketrow') && walkAll(n).some((c) => hasClass(c, 'wk-basketlabel') && c._text === label));
   return row && walkAll(row).find((n) => hasClass(n, 'wk-basketremove'));
@@ -67,9 +67,8 @@ async function seen(M) {
     out.removed = { shown: shownOf(mount), marks: markings.entries('start') };
     markings.set('start', W('C'), SIGN.CASE);
     out.other = shownOf(mount);
-    // A key the ledger names no node by (lead b5cdcbc75): said beside each + Add, + still on.
-    const notes = () => walkAll(mount).filter((n) => hasClass(n, 'wk-basket'))
-      .map((box) => walkAll(box).filter((n) => hasClass(n, 'wk-unheld')).map((n) => n._text).join());
+    // A key the ledger names no node by (lead b5cdcbc75): said once under the two adds, + still on.
+    const notes = () => walkAll(mount).filter((n) => hasClass(n, 'wk-unheld')).map((n) => n._text);
     picked = { ...node('D'), unheld: true };
     part.render();
     const said = [notes(), addOf(mount, '+').disabled];
@@ -194,8 +193,8 @@ function suite(out) {
   eq('B4 x takes a node out of its basket and the marking', [out.removed.shown, out.removed.marks],
     [[['0', []], ['1', ['A']]], [[W('A'), SIGN.CONTROL]]]);
   eq('B5 the baskets say the marking whoever writes it', out.other, [['1', [W('C')]], ['1', ['A']]]);
-  eq('B13 a node the ledger does not hold: beside each + Add «0 atoms · not in the ledger», + still on; held, nothing said',
-    out.unheld, [['0 atoms · not in the ledger', '0 atoms · not in the ledger'], false, ['', '']]);
+  eq('B13 a node the ledger does not hold: under the adds «0 atoms · not in the ledger», + still on; held, nothing said',
+    out.unheld, [['0 atoms · not in the ledger'], false, []]);
   eq('B6 two parts on one screen: one takes a node, the other and its marking do not move',
     [out.two.first, out.two.second === out.two.before, out.two.marks, out.two.own], [[['1', ['A']], ['0', []]], true, [], [1, 1]]);
   eq('B7 the page: an empty Positive keeps Walk off with its reason, and a press asks nothing',
@@ -236,7 +235,7 @@ const MUTANTS = [
   { id: 'BM5', what: 'every part writes one marking', catches: 'B6', file: 'walk/start_baskets.js', key: 'baskets',
     mutate: (t) => swap(t, '    this.name = deps.name;', "    this.name = 'start';") },
   { id: 'BM11', what: 'a node not held said nothing', catches: 'B13', file: 'walk/start_baskets.js', key: 'baskets',
-    mutate: (t) => swap(t, "      if (node && node.unheld) box.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));\n", '') },
+    mutate: (t) => swap(t, "    if (node && node.unheld) this.adders.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));\n", '') },
   { id: 'BM6', what: 'Walk on with an empty Positive', catches: 'B7', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "(seedsOf(markings.entries(START)).positive.length ? '' : BASKET_WORDS.noStart)", "''") },
   { id: 'BM7', what: 'Walk asks the form\'s node, not the baskets', catches: 'B9', file: 'walk/main.js', key: 'page',

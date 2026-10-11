@@ -19,8 +19,8 @@
 //      `fetchDeclaration`    무엇을 고를 수 있나는 «선언»이 답합니다. 화면이 목록을 안 듭니다
 //      `createWalkBoxWalk`   전선. 다섯 인자와 응답 키가 «한 자리»에 삽니다
 //
-// 🔴 배치 A (총괄 2b5819e1d · 소유자 10-02 「걷기는 A로」): 폼은 왼쪽 레일(.wk-rail), 결과는
-//    오른쪽(.wk-main). 두 부품이 자기 div 를 갖고, 격자에 앉히는 것은 페이지(walk.html)입니다.
+// 🔴 폼은 결과 위 «문장 바» 한 줄(.wk-bar · 총괄 10-11 W A-ㄱ, 왼쪽 레일 · 오른쪽 바구니 패널을 접음), 결과는
+//    그 밑(.wk-main). 두 부품이 자기 div 를 갖고, 격자에 앉히는 것은 페이지(walk.html)입니다.
 //    화면 글자는 영어(「영어로도 바꿔」), 서버가 보낸 문장은 그대로.
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
@@ -77,7 +77,7 @@ const RUNNING = WALKING;
 export const COPY_WORDS = Object.freeze({ table: 'Copy', done: (n, unit) => `Copied ${unitText(n, unit)}`,
   failed: 'Copy failed · Select the table and press Ctrl+C' });
 /** The control walk's list and its failure (lead 99ed68cb7 D). */
-const CONTROL_WORD = 'Control · B';
+const CONTROL_WORD = 'Compare with (B)';
 
 /** Why a table's Next is off: it walks on from the rows checked (lead 53050a4ec, owner 「행 선택은 해야지」). */
 const CHECK_ROWS_FIRST = 'Check rows first';
@@ -142,7 +142,7 @@ export function boot(doc, host, deps) {
 
   const state = {
     decl: null, declState: 'loading', declReason: '',
-    type: '', keys: {}, follow: new Set(), collect: new Set(), leaf: 0, control: new Set(), resultB: null,
+    type: '', keys: {}, follow: new Set(), collect: new Set(), leaf: 0, control: new Set(), resultB: null, throughFind: '',
     direction: '', hops: '', nodeLimit: String(NODE_LIMIT), fanoutLimit: '',
     // How long the shown walk took, ms (lead 34d91c09d 9: a slower walk says so in the counts line).
     run: 'idle', result: null, reason: '', took: null,
@@ -192,9 +192,21 @@ export function boot(doc, host, deps) {
     const found = entities().find((e) => e.type === type);
     return (found && found.keys) || [];
   };
-  // The two parts this page seats: the form rail and the result. Made once and kept across renders.
-  const rail = el(doc, 'div', 'wk-rail');
+  // The two parts this page seats: the sentence bar over the result (lead 10-11 W A). Made once and kept across renders,
+  // as are the bar's dropdowns - open stays open through a redraw.
+  const bar = el(doc, 'div', 'wk-bar');
   const main = el(doc, 'div', 'wk-main');
+  const dropdown = (cls) => {
+    const d = el(doc, 'details', `wk-barpop ${cls}`);
+    const chip = el(doc, 'summary', 'wk-barchip');
+    const body = el(doc, 'div', 'wk-barpopbody');
+    d.append(chip, body);
+    return { d, chip, body };
+  };
+  const through = dropdown('wk-through');
+  const limits = dropdown('wk-limits');
+  // Type · Pick a node, seated once in «+ Add start» (the baskets' dropdown), refilled each render.
+  const startMount = el(doc, 'div', 'wk-startpick');
   // Each section's table as last drawn, by its type: a redraw puts its sideways scroll back.
   const tableBoxes = new Map();
   // The search box and a column filter's fields by name, as last drawn, and the one being typed in: a redraw while typing
@@ -239,8 +251,21 @@ export function boot(doc, host, deps) {
         unheld: search.holdsNone(keys[search.axis]) }
       : null;
   };
-  const sideMount = el(doc, 'div', 'wk-side');
-  const baskets = new StartBaskets(sideMount, { doc, markings, name: START, picked: pickedNode });
+  const basketMount = el(doc, 'span', 'wk-barpart');
+  const baskets = new StartBaskets(basketMount, { doc, markings, name: START, picked: pickedNode, pick: startMount });
+  // One dropdown open at a time; a press outside closes it (a page with a document to listen on).
+  const dropdowns = [baskets.pop, through.d, limits.d];
+  for (const d of dropdowns) {
+    d.addEventListener('toggle', () => {
+      if (!d.open) return;
+      for (const o of dropdowns) if (o !== d) o.open = false;
+      d.classList.remove('is-end');
+      if (d.lastElementChild.getBoundingClientRect().right > doc.documentElement.clientWidth) d.classList.add('is-end');
+    });
+  }
+  if (typeof doc.addEventListener === 'function') {
+    doc.addEventListener('mousedown', (event) => { for (const d of dropdowns) if (d.open && !d.contains(event.target)) d.open = false; });
+  }
   // The trend part, made once and seated under the tables when a column's trend is open.
   const trendMount = el(doc, 'div', '');
   const trendView = new TrendView(trendMount, { doc });
@@ -546,14 +571,14 @@ export function boot(doc, host, deps) {
   // ── collect: «무엇을 가져오나». 고른 타입은 칩(× 로 뺌), 더하기는 남은 타입의 드롭다운 하나 ──
   // 🔵 드롭다운인 이유: 이 화면이 «타입 하나를 고르는» 데 이미 쓰는 컨트롤이 그것입니다.
   function renderCollect(root) {
-    const box = field('Collect');
+    const box = el(doc, 'span', 'wk-barpart');
     const types = entities().map((e) => e.type);
     if (!types.length) {
-      box.append(el(doc, 'div', 'wk-note', 'No entity declared'));
+      box.append(el(doc, 'span', 'wk-note', 'No entity declared'));
       root.append(box);
       return;
     }
-    const chips = el(doc, 'div', 'wk-chips');
+    const chips = el(doc, 'span', 'wk-barpart');
     for (const t of types.filter((t) => state.collect.has(t))) {
       const chip = el(doc, 'button', 'wk-chip', `${t} ×`);
       chip.type = 'button';
@@ -566,7 +591,7 @@ export function boot(doc, host, deps) {
     if (rest.length) {
       const add = el(doc, 'select', 'wk-add');
       add.setAttribute('aria-label', 'Add a type to collect');
-      const first = el(doc, 'option', '', '+ Type');
+      const first = el(doc, 'option', '', '+');
       first.value = '';
       add.append(first);
       for (const t of rest) {
@@ -581,8 +606,9 @@ export function boot(doc, host, deps) {
       });
       chips.append(add);
     }
+    // None picked, none sent: the server collects every type.
+    if (!state.collect.size) box.append(el(doc, 'span', 'wk-note', 'all'));
     box.append(chips);
-    if (!state.collect.size) box.append(el(doc, 'div', 'wk-note', `${UNPICKED} · ${SERVER_DEFAULT} · all`));
     root.append(box);
   }
 
@@ -668,7 +694,7 @@ export function boot(doc, host, deps) {
       if (d === state.direction) o.selected = true;
       dir.append(o);
     }
-    dir.addEventListener('change', () => { state.direction = dir.value; });
+    dir.addEventListener('change', () => { state.direction = dir.value; limits.chip.textContent = limitsWord(); });
     grid.append(cell('direction', dir));
     for (const [name, key, min, max] of NUMBER_KNOBS) {
       const input = el(doc, 'input', 'wk-input');
@@ -677,23 +703,71 @@ export function boot(doc, host, deps) {
       if (max !== null) input.max = String(max);
       input.placeholder = SERVER_DEFAULT;
       input.value = state[key];
-      input.addEventListener('input', () => { state[key] = input.value; });
+      // The Limits chip says it as typed - no redraw, so the caret and a press on Walk stay.
+      input.addEventListener('input', () => { state[key] = input.value; limits.chip.textContent = limitsWord(); });
       grid.append(cell(name, input));
     }
     box.append(grid);
     root.append(box);
   }
 
-  // ── follow: 선언된 술어 전부를 체크로. 이것이 «주»이고 경로 목록이 «보조»입니다 ─────────
-  function renderFollow(root) {
-    root.append(predicateChecks('Follow', state.follow, 'data-follow', `${UNPICKED} · ${SERVER_DEFAULT}`));
-    // Control · B (lead 99ed68cb7 D): its predicates walked once more from the same baskets; empty, no second walk.
+  // ── through ▾ (lead 10-11 W A): every declared predicate to tick - the main pick - with All · None · Find, then the
+  //    routes that fill it (the aid), then Compare with (B) ─────────
+  function renderThrough(root) {
+    const acts = el(doc, 'div', 'wk-throughacts');
+    for (const [word, picked] of [['All', allPredicates], ['None', () => []]]) {
+      const b = el(doc, 'button', 'wk-act', word);
+      b.type = 'button';
+      b.addEventListener('click', () => { state.follow = new Set(picked()); render(); });
+      acts.append(b);
+    }
+    const find = el(doc, 'input', 'wk-input');
+    find.type = 'search';
+    find.value = state.throughFind;
+    find.placeholder = 'Find';
+    find.setAttribute('aria-label', 'Find predicates');
+    typed(find, 'through', (value) => { state.throughFind = value; });
+    acts.append(find);
+    root.append(acts, predicateChecks('Follow', state.follow, 'data-follow', `${UNPICKED} · ${SERVER_DEFAULT}`));
+    renderRoutes(root);
+    // Compare with (B) (lead 99ed68cb7 D): its predicates walked once more from the same baskets; empty, no second walk.
     root.append(predicateChecks(CONTROL_WORD, state.control, 'data-control', ''));
   }
+  /** through's chip: no follow sent walks every predicate (the router: «없으면 전부»). */
+  const throughWord = () => {
+    const n = allPredicates().length;
+    const k = state.follow.size;
+    return `${k && k < n ? `${k} of ${n}` : `All ${n}`}${state.control.size ? ` · B ${state.control.size}` : ''} ▾`;
+  };
+  /** Limits' chip: the knobs set off their default (lead 10-11 W A: «Limits · hops 2»). */
+  const limitsWord = () => {
+    const said = [state.direction, ...NUMBER_KNOBS.filter(([, key]) => state[key] !== (key === 'nodeLimit' ? String(NODE_LIMIT) : ''))
+      .map(([wire, key]) => `${wire} ${isBlank(state[key]) ? SERVER_DEFAULT : state[key]}`)].filter(Boolean);
+    return `Limits${said.length ? ` · ${said.join(' · ')}` : ''} ▾`;
+  };
 
-  /** A list of the declared predicates to tick, into `chosen`; `empty` said when none is. */
+  /** The sentence bar (lead 10-11 W A), in doing order: From · collect · through · in · Limits · Walk. */
+  function renderBar(root) {
+    startMount.textContent = '';
+    renderStart(startMount);
+    root.append(el(doc, 'span', 'wk-barword', 'From'), basketMount, el(doc, 'span', 'wk-barword', 'collect'));
+    renderCollect(root);
+    through.chip.textContent = throughWord();
+    through.body.textContent = '';
+    renderThrough(through.body);
+    root.append(el(doc, 'span', 'wk-barword', 'through'), through.d);
+    if (options.branchMount) root.append(el(doc, 'span', 'wk-barword', 'in'), options.branchMount);
+    limits.chip.textContent = limitsWord();
+    limits.body.textContent = '';
+    renderStep(limits.body);
+    root.append(limits.d);
+    renderGo(root);
+  }
+
+  /** A list of the declared predicates to tick, into `chosen`; `empty` said when none is. Find narrows the list drawn. */
   function predicateChecks(label, chosen, attr, empty) {
-    const opts = followOptions();
+    const find = state.throughFind.trim().toLowerCase();
+    const opts = followOptions().filter((name) => !find || name.toLowerCase().includes(find));
     const box = field(label);
     if (!opts.length) {
       box.append(el(doc, 'div', 'wk-note', 'No predicate declared'));
@@ -1540,19 +1614,7 @@ export function boot(doc, host, deps) {
     const shown = shownStep();
     const r = shown.result;
     const askedOf = state.at === 0 ? state.asked : shown.asked;
-    if (state.view === 'table' && shown.run === 'done' && r && askedOf) {
-      head.append(el(doc, 'span', 'wk-title', state.at === 0 ? askedTitle(askedOf) : shown.title));
-      // 🔴 두 수가 «다른 모집단»입니다. collect 는 노드를 거르고 엣지는 «안 거릅니다», 그래서
-      //    collect 가 걸렸을 때만 «주어»를 답니다.
-      const asked = (askedOf.collect || []).join(', ');
-      const took = shown.took === null || shown.took === undefined ? '' : ` · ${(shown.took / 1000).toFixed(1)} s`;
-      head.append(el(doc, 'span', 'wk-counts', (asked
-        ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
-        : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`) + took));
-      // The server's own sentence and its state (lead b5cdcbc75: «Nodes 1 · Edges 0» alone read as a wafer with no data).
-      if (r.message) head.append(el(doc, 'span', 'wk-note wk-said', [r.state, r.message].filter(Boolean).join(' · ')));
-    }
-    // ── Table | Graph ───────────────────────────────────────────────────────
+    // ── Table | Graph first, the result's head beside it (lead 10-11 W A) ───────────────
     // ⚰️ Compare retired 10-10 (lead 3375edd9b, owner «Compare 접어»): the walk table side by side is the one screen that
     //    sets the signs against each other - its group per sign, its missing cells, its «predicate · name» heads.
     const views = el(doc, 'div', 'wk-views');
@@ -1568,6 +1630,18 @@ export function boot(doc, host, deps) {
       views.append(button);
     }
     head.append(views);
+    if (state.view === 'table' && shown.run === 'done' && r && askedOf) {
+      head.append(el(doc, 'span', 'wk-title', state.at === 0 ? askedTitle(askedOf) : shown.title));
+      // 🔴 두 수가 «다른 모집단»입니다. collect 는 노드를 거르고 엣지는 «안 거릅니다», 그래서
+      //    collect 가 걸렸을 때만 «주어»를 답니다.
+      const asked = (askedOf.collect || []).join(', ');
+      const took = shown.took === null || shown.took === undefined ? '' : ` · ${(shown.took / 1000).toFixed(1)} s`;
+      head.append(el(doc, 'span', 'wk-counts', (asked
+        ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
+        : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`) + took));
+      // The server's own sentence and its state (lead b5cdcbc75: «Nodes 1 · Edges 0» alone read as a wafer with no data).
+      if (r.message) head.append(el(doc, 'span', 'wk-note wk-said', [r.state, r.message].filter(Boolean).join(' · ')));
+    }
     root.append(head);
   }
 
@@ -1646,13 +1720,10 @@ export function boot(doc, host, deps) {
     // The cells a picture was asked for go now: their dwell, request and box with them.
     imagePreview.drop();
     host.textContent = '';
-    rail.textContent = '';
+    bar.textContent = '';
     main.textContent = '';
-    // The rail scrolls inside itself; Walk sits in its foot, always in reach (lead 2b5819e1d).
-    const body = el(doc, 'div', 'wk-form');
-    const foot = el(doc, 'div', 'wk-rail-foot');
     if (state.declState === 'loading') {
-      body.append(el(doc, 'div', 'wk-note', `Declaration · ${LOADING}`));
+      bar.append(el(doc, 'div', 'wk-note', `Declaration · ${LOADING}`));
     } else if (state.declState === 'failed') {
       // 「못 읽음」과 「없음」은 다릅니다 — 앞은 다시 눌러 볼 수 있습니다.
       const line = el(doc, 'div', 'wk-fail');
@@ -1660,23 +1731,16 @@ export function boot(doc, host, deps) {
       const again = el(doc, 'button', 'wk-go', 'Retry');
       again.type = 'button';
       again.addEventListener('click', load);
-      body.append(line);
-      foot.append(again);
+      bar.append(line, again);
     } else {
-      renderStart(body);
-      renderCollect(body);
-      renderFollow(body);
-      renderRoutes(body);
-      renderStep(body);
-      renderGo(foot);
+      renderBar(bar);
       renderHead(main);
       if (state.view === 'graph') main.append(graphMount);
       else { renderSteps(main); renderResult(main); }
     }
-    rail.append(body, foot);
     // The baskets read the form's picked node for their «+»: drawn with the page.
     baskets.render();
-    host.append(rail, main, sideMount);
+    host.append(bar, main);
     main.scrollTop = place.top;
     main.scrollLeft = place.left;
     for (const [type, table] of tableBoxes) if (place.tables.has(type)) table.scrollLeft = place.tables.get(type);

@@ -315,7 +315,8 @@ async function suite(mod) {
     const query = (u) => new URLSearchParams((u || '').split('?')[1] || '');
     // The starts go in the baskets (lead bc63378e5): A by Positive's +, B by Negative's +, then Walk.
     const basket = (sign) => walkAll(host).find((e) => e.attrs && e.attrs['data-sign'] === sign && e.className.startsWith('wk-basket'));
-    const plus = (sign) => click(walkAll(basket(sign) || { children: [] }).find((e) => e.className === 'wk-basketadd'));
+    // The adds sit in «+ Add start» (lead 10-11 W A), one per sign.
+    const plus = (sign) => click(walkAll(host).find((e) => e.className === 'wk-basketadd' && e.attrs['data-sign'] === sign));
     handle.state.type = 'wafer@1';
     handle.state.keys = { wafer: 'A' };
     plus('+');
@@ -381,8 +382,7 @@ async function suite(mod) {
     } });
     await settle();
     const click = (e, event = {}) => { for (const fn of (e && e.listeners.click) || []) fn(event); };
-    const basketAdd = () => walkAll(walkAll(host).find((e) => e.attrs && e.attrs['data-sign'] === '+' && e.className.startsWith('wk-basket')) || { children: [] })
-      .find((e) => e.className === 'wk-basketadd');
+    const basketAdd = () => walkAll(host).find((e) => e.className === 'wk-basketadd' && e.attrs['data-sign'] === '+');
     const tableOf = () => walkAll(host).filter((e) => e.className === 'wk-sec').map((sec) => [sec.children[0].textContent,
       ...walkAll(sec).filter((e) => e.tagName === 'tr').map((tr) => tr.children.filter((c) => c.className !== 'wk-check')
         .map((c) => (has(c, 'wk-centre') ? c.textContent : valsOf(c) || c.textContent)).join('|'))]);

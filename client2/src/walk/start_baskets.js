@@ -12,9 +12,9 @@ import { setDisabledReason } from '../disabled_reason.js';
 export const BASKET_WORDS = Object.freeze({
   positive: 'Positive',
   negative: 'Negative',
-  add: '+ Add',
+  addStart: '+ Add start',
+  vs: 'vs',
   remove: '×',
-  empty: 'Empty',
   noPick: 'Pick a node first',
   noStart: 'Add a start to Positive first',
   // A key typed that the ledger names no node by (lead b5cdcbc75): + still takes it.
@@ -34,8 +34,17 @@ export class StartBaskets {
     this.name = deps.name;
     this.picked = deps.picked || (() => null);
     this.known = new Map();
-    this.root = this.doc.createElement('div');
-    this.root.className = 'wk-baskets';
+    // The walk's sentence bar (lead 10-11 W A): the baskets as chips, then «+ Add start» - its dropdown seats the page's
+    // `pick` (Type · Pick a node) once, so a redraw here never takes the caret from it, and the two adds.
+    this.root = this._el('span', 'wk-baskets');
+    this.list = this._el('span', 'wk-basketlist');
+    this.pop = this._el('details', 'wk-barpop');
+    const body = this._el('div', 'wk-barpopbody');
+    this.adders = this._el('div', 'wk-adders');
+    if (deps.pick) body.append(deps.pick);
+    body.append(this.adders);
+    this.pop.append(this._el('summary', 'wk-barchip', BASKET_WORDS.addStart), body);
+    this.root.append(this.list, this.pop);
     mount.appendChild(this.root);
     // Whoever writes the marking, the baskets say it as it stands.
     this.unsubscribe = this.markings.subscribe(this.name, () => this.render());
@@ -63,28 +72,23 @@ export class StartBaskets {
   }
 
   render() {
-    this.root.textContent = '';
+    this.list.textContent = '';
+    this.adders.textContent = '';
     const entries = this.markings.entries(this.name);
     const node = this.picked();
     for (const [sign, word, mark] of [[SIGN.CASE, BASKET_WORDS.positive, '+'], [SIGN.CONTROL, BASKET_WORDS.negative, '−']]) {
       const ids = entries.filter(([, s]) => s === sign).map(([id]) => id);
-      const box = this._el('section', 'wk-basket' + (sign === SIGN.CONTROL ? ' is-control' : ''));
+      if (sign === SIGN.CONTROL) this.list.append(this._el('span', 'wk-vs', BASKET_WORDS.vs));
+      const box = this._el('span', 'wk-basket' + (sign === SIGN.CONTROL ? ' is-control' : ''));
       box.setAttribute('data-sign', mark);
-      const head = this._el('div', 'wk-baskethead');
-      head.append(this._el('span', 'wk-label', word), this._el('span', 'wk-basketcount', String(ids.length)));
-      const add = this._el('button', 'wk-basketadd', BASKET_WORDS.add);
-      add.type = 'button';
-      add.setAttribute('aria-label', `Add the picked node to ${word}`);
-      setDisabledReason(add, node ? '' : BASKET_WORDS.noPick);
-      add.addEventListener('click', () => this.add(sign));
-      box.append(head, add);
-      if (node && node.unheld) box.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));
-      if (!ids.length) box.append(this._el('div', 'wk-note', BASKET_WORDS.empty));
+      box.title = word;
+      box.append(this._el('span', 'wk-basketsign', mark), this._el('span', 'wk-basketcount', String(ids.length)));
       for (const id of ids) {
         const said = this.describe(id) || {};
-        const row = this._el('div', 'wk-basketrow');
+        const row = this._el('span', 'wk-basketrow');
         row.setAttribute('data-start', id);
-        row.append(this._el('span', 'wk-basketlabel', said.label || id), this._el('span', 'wk-baskettype', said.type || ''));
+        row.title = said.type || '';
+        row.append(this._el('span', 'wk-basketlabel', said.label || id));
         const x = this._el('button', 'wk-basketremove', BASKET_WORDS.remove);
         x.type = 'button';
         x.setAttribute('aria-label', `Remove ${said.label || id}`);
@@ -92,7 +96,15 @@ export class StartBaskets {
         row.append(x);
         box.append(row);
       }
-      this.root.append(box);
+      this.list.append(box);
+      const add = this._el('button', 'wk-basketadd', `${mark} ${word}`);
+      add.type = 'button';
+      add.setAttribute('data-sign', mark);
+      add.setAttribute('aria-label', `Add the picked node to ${word}`);
+      setDisabledReason(add, node ? '' : BASKET_WORDS.noPick);
+      add.addEventListener('click', () => this.add(sign));
+      this.adders.append(add);
     }
+    if (node && node.unheld) this.adders.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));
   }
 }
