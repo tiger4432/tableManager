@@ -152,6 +152,20 @@ def _object(content, key):
     return parsed
 
 
+def _why(exc, proxy):
+    """A failed call as one line: the exception and every cause under it, down to the innermost (총괄 024e3d31f -
+    the client says «Connection error.», the reason is in its cause: a name not found, a refusal, the proxy, the
+    clock), and the proxy the call went through."""
+    from internal_event_client import _redact_proxy
+
+    said, seen = [], set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        said.append("%s: %s" % (type(exc).__name__, exc))
+        exc = exc.__cause__ if exc.__cause__ is not None else (None if exc.__suppress_context__ else exc.__context__)
+    return " <- ".join(said) + " · proxy: " + (_redact_proxy(proxy) if proxy else "none (direct)")
+
+
 def ask_json(prompt, *, system=None):
     """One call -> the JSON object the model answered. Refused by name when the file refuses, the
     call fails or the answer is not a JSON object. `from None` keeps the client's own exception -
@@ -174,8 +188,7 @@ def ask_json(prompt, *, system=None):
         back.update(status=raw.status_code, answer=_body(raw.text))
         content = raw.parse().choices[0].message.content
     except Exception as exc:                                       # noqa: BLE001
-        back.update(status=back["status"] or getattr(exc, "status_code", None),
-                    error="%s: %s" % (type(exc).__name__, exc))
+        back.update(status=back["status"] or getattr(exc, "status_code", None), error=_why(exc, cells["proxy"]))
         raise LlmRefused("the language model call failed: %s" % _masked(back["error"], key)) from None
     finally:
         _log({"received": _now(), **back, "ms": round((time.monotonic() - started) * 1000)}, key)

@@ -235,7 +235,7 @@ def test_a_call_writes_what_it_sent_and_what_came_back(answer, root):
         sent["id"], 200, {"choices": [{"message": {"content": '{"ok": 1}'}}]})
     assert set(back) == {"received", "id", "status", "answer", "ms"}
     assert (failed["id"], failed["status"], failed["error"]) == (
-        sent_again["id"], 503, "RuntimeError: upstream said no")
+        sent_again["id"], 503, "RuntimeError: upstream said no · proxy: none (direct)")
     assert sent_again["id"] != sent["id"]
 
 
@@ -257,6 +257,49 @@ def test_the_key_reaches_no_refusal_and_no_log(answer, root, caplog):
     assert KEY not in caplog.text
     written = (root / llm.REQUEST_LOG).read_text(encoding="utf-8")
     assert KEY not in written and "Bearer ***" in written
+
+
+class APIConnectionError(Exception):
+    """openai's own words for a call that never reached the model."""
+
+
+class APITimeoutError(Exception):
+    pass
+
+
+def _chained(*layers):
+    """`layers` outer first, each raised from the next - the shape the client, httpx and the socket hand over."""
+    exc = None
+    for layer in reversed(layers):
+        try:
+            raise layer from exc
+        except BaseException as raised:                            # noqa: BLE001
+            exc = raised
+    return exc
+
+
+@pytest.mark.parametrize("proxy", [None, "http://user:pw@proxy.test:8080"])
+@pytest.mark.parametrize("failure,inner", [
+    ((APIConnectionError("Connection error."), httpx.ConnectError("[Errno 11001] getaddrinfo failed"),
+      OSError(11001, "getaddrinfo failed")), "OSError: [Errno 11001] getaddrinfo failed"),
+    ((APIConnectionError("Connection error."), httpx.ConnectError("[WinError 10061] actively refused"),
+      ConnectionRefusedError(10061, "actively refused")), "ConnectionRefusedError: [Errno 10061] actively refused"),
+    ((APIConnectionError("Connection error."), httpx.ProxyError("407 Proxy Authentication Required")),
+     "ProxyError: 407 Proxy Authentication Required"),
+    ((APITimeoutError("Request timed out."), httpx.ConnectTimeout("timed out"), TimeoutError("timed out")),
+     "TimeoutError: timed out"),
+], ids=["name", "refused", "proxy", "timeout"])
+def test_a_connection_failure_says_its_innermost_reason_and_the_proxy(answer, root, failure, inner, proxy):
+    """총괄 024e3d31f (소유자 「llm api 커넥션 에러 뜨는데」): the client's «Connection error.» named none of the four."""
+    _declare(root, **CELLS, **({"proxy": proxy} if proxy else {}))
+    answer(_chained(*failure))
+    with pytest.raises(llm.LlmRefused) as refused:
+        llm.ask_json("anything")
+    via = "proxy: none (direct)" if not proxy else "proxy: "
+    error = [line for line in _log_lines(root) if "error" in line][-1]["error"]
+    for said in (str(refused.value), error):
+        assert said.split(" · proxy: ")[0].endswith(inner), said
+        assert via in said and "pw" not in said, said
 
 
 def test_without_the_package_the_refusal_says_how_to_install(root, monkeypatch):
