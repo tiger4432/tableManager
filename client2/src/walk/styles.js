@@ -27,7 +27,7 @@ export const WALK_CSS = `
    The screen gate asks all three of every element on the page. */
 :root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: 44px; --wk-h-small: 28px;
   /* A result table's columns (owner 10-12 「폭이 꿀렁꿀렁」): the node one width, every value column - each sign and Δ - one. */
-  --wk-col-node: 152px; --wk-col-value: 96px;
+  --wk-col-node: 176px; --wk-col-value: 96px;
   /* One face for the page; the mono only for ids and ways (lead 10-11 W 3). */
   --wk-font: 'IBM Plex Sans', 'Outfit', system-ui, sans-serif; --wk-mono: 'IBM Plex Mono', var(--font-mono, ui-monospace), monospace; }
 .wk-bar, .wk-main { font-family: var(--wk-font); }
@@ -198,8 +198,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-record .wk-src { white-space: normal; overflow-wrap: anywhere; }
 /* Wide's heads (lead 10-11 W): a group - its step and far end - over its columns, the value's name, each sign and Δ. */
 .wk-wide th.wk-stephead { text-align: left; }
-.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: 1.25;
-  max-width: calc(100% - var(--wk-h)); vertical-align: bottom; }
+.wk-wide th.wk-stephead > span { display: block; max-width: 100%; line-height: 1.25; }
 /* Over a fixed-width column the far end reads first and the way under it, each one line cut (owner 10-12 «m..»). */
 .wk-headfar, .wk-headvia { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-headvia { color: var(--text-dim); font-size: var(--wk-fs-line); }
