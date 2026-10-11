@@ -79263,3 +79263,45 @@ fold-units  origin/main 에 그 낱말 0 (카나리아 fold-rows 3). 이 CLI 의
 리베이스 — 잰 base 3934f24bc -> 착지 base d76cafd54, 그 사이 server/ 바뀐 파일 0 (git diff --stat)
 어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_clicutg_fixed · assy_impl_clicutg_mutant — 만들고 지움 · 격리 시험 DB(PG)
 ```
+
+## [10-11] 쪽 줄 · 머리 RUNNING · 잠금 착지 31adca83c (총괄 59f2ab3f4 · ② ㄴ)
+
+```
+착지 31adca83c — 15 files changed, 205 insertions(+), 54 deletions(-)
+①  쓰기 단계가 쪽 줄을 덮던 것 — _in_rule_order 가 쪽 배치에 그 쪽 줄(_page_said)을 실어 넘기고, 쓰기 단계 박동이
+    «write:<표> · <쪽 줄>» (alignment_batch_counts.stage 에 said — 초는 단계 이름에 그대로 쌓임)
+②  머리 = running 줄 — runtime.running._chain 이 activity(맵퍼 부르는 중) 대신 chain_lines_running(줄 상태가 읽는 그 사실)을 읽음:
+    줄마다 항목 하나 · 글자는 잡의 «op · run» 또는 tx(event_constants.queue_line_tx — 큐 목록도 이것을 부름) · state 는 chain_state_of
+    running_now 의 안 읽히던 shape 인자 뺌
+③  잠금 — 잡은 뒤 «holding <표>, …»(hold 의 on_held · 잠금 pid 지움으로 박동 바로 씀) · 기다릴 때마다 박동을 스스로 씀
+    시험이 찾은 것: 둘째 표를 기다리는 동안 박동이 첫째 표를 말했다(같은 pid 라 다시 안 씀) — 같은 성질이라 같이 고침
+④  fold-units «old marks withdrawn» 칸 맞춤
+시험 — «화면이 받는 문장»으로:
+   접기: 쪽마다 쓰는 동안 체인 박동을 running 자리로 읽음(_claimed_group_sync, 루프처럼 줄 키를 둠) — 다섯 쪽 다섯 줄
+   큐: 이어 붙인 그룹이 tx 줄 · 잡 줄 둘을 쥠 — 한 큐 답에서 줄 상태와 머리 항목(«tx-a», «withdraw · run-x»)
+   슬롯 파일(PG): 그룹 자기 길에서 박동 파일 — 기다림마다, 그리고 둘 다 잡은 뒤 맵퍼 안에서
+   손댄 것: 지금 도는 것 · 로그 파일 큐 시험의 체인 대역을 맵퍼 순간에서 그룹 일감으로 · 넓은 조인의 쓰기 박동이 쪽 줄을 품음
+변이
+  RED the write stage covers the page line again — 1 failed, 12 deselected in 1.28s (test_the_fold_mapper_keeps_one_unit_per_group.py)
+  RED the head reads the mappers mid-call again — 1 failed, 31 deselected in 1.64s (test_the_queue_says_what_will_run_and_who_owns_each_row.py)
+  RED the group does not say it holds the tables — 1 failed, 15 deselected in 13.23s (test_a_queue_line_runs_in_a_slot_of_its_own.py)
+  RED a wait leaves the beat to a changed pid — 1 failed, 15 deselected in 5.50s (test_a_queue_line_runs_in_a_slot_of_its_own.py)
+게이트 — 바뀐 자리를 부르는 시험 파일, 같은 base(30209b33a) 깨끗한 사본과, 비PG
+  files 28
+  wt-llm:   2 failed, 425 passed, 1 skipped, 47 deselected in 77.11s (0:01:17)
+  wt-check: 1 failed, 424 passed, 1 skipped, 46 deselected in 77.94s (0:01:17)
+  new (only in wt-llm): 1
+  FAILED tests\test_queue_says_which_log_to_open.py::test_a_worker_of_its_own_is_read_from_its_heartbeat_lap
+  gone (only in wt-check): 0
+  (새 빨강 하나는 로그 파일 큐 시험 — 옛 머리 자리(맵퍼 순간)를 단언하던 칸, 그룹 일감으로 고친 뒤 7 passed
+   둘의 같은 빨강 test_the_repo_root_is_one_above_it 은 깨끗한 사본에서도 — 이번 것 아님)
+  PG pg files 7
+  PG 47 passed, 66 deselected in 412.16s (0:06:52)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+리베이스 — 잰 base 30209b33a -> 착지 base, server/ 9 파일이 바뀌어(LLM · roleframe · mapper_sdk) 손댄 시험 파일 여섯 다시:
+  head 31adca83c
+  85 passed, 3 deselected in 43.25s
+진짜 프로세스 · 샷(줄 글자의 쪽 줄이 맵퍼 rows_in 자리를 대신하는지)은 응용께
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
+```

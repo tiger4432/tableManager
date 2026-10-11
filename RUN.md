@@ -247,7 +247,7 @@
 >
 > ---
 >
-> ## [10-11] **쪽 줄이 큐 running 줄에 닿는다 · 머리 RUNNING = running 줄 수 · 잠금을 잡으면 «holding» (총괄 59f2ab3f4, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+> ## [10-11] **쪽 줄이 큐 running 줄에 닿는다 · 머리 RUNNING = running 줄 수 · 잠금을 잡으면 «holding» (총괄 59f2ab3f4, 착지 31adca83c) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
 > 무엇        쓰기 단계의 박동 문장이 그 쪽 줄을 품는다 — 큐 running 줄 «RUNNING · write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows · moved …»
@@ -378,9 +378,9 @@
 >
 > ```
 > 무엇        접기 맵퍼가 진 잡 행을 1,000 행 쪽으로 넘기고, 체인 쓰기 문이 쪽마다 쓰고 커밋한 뒤 다음 쪽을 묻는다 — 조인과 같은 길(keyset_scan.pages 한 자리)
->            chain_worker.log 「[Chain] <규칙> -> <표> · page k/K · <낸 행> / <전체> rows」 — 첫 쪽부터, 그 쪽을 쓰기 전에, 조인도 같은 줄 · 큐 running 줄도 «write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows»({LANDING} 뒤)
->            큐 머리 «RUNNING n» = running 줄 수 — 줄마다 하나(이어 붙인 그룹은 줄 수만큼), 글자는 그 줄의 «op · run» 또는 tx ({LANDING} 뒤)
->            잠금 — 기다리는 동안 «waiting for <표>», 다 잡으면 «holding <표>, <표>» ({LANDING} 뒤)
+>            chain_worker.log 「[Chain] <규칙> -> <표> · page k/K · <낸 행> / <전체> rows」 — 첫 쪽부터, 그 쪽을 쓰기 전에, 조인도 같은 줄 · 큐 running 줄도 «write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows»(31adca83c 뒤)
+>            큐 머리 «RUNNING n» = running 줄 수 — 줄마다 하나(이어 붙인 그룹은 줄 수만큼), 글자는 그 줄의 «op · run» 또는 tx (31adca83c 뒤)
+>            잠금 — 기다리는 동안 «waiting for <표>», 다 잡으면 «holding <표>, <표>» (31adca83c 뒤)
 > 멈추면      쓴 쪽까지 커밋돼 남는다. 다시 돌리면 진 잡 행을 «전부» 다시 넘기고(4c27f4b8c — 빼면 표시가 거둬진다) 쓴 쪽은 같은 값이라 안 바뀐다
 > 순서        pull -> 체인 워커 재기동 -> python scripts/chain_replay_cli.py replay «인벤토리 접기 규칙» --apply -> chain_worker.log 의 page 줄이 1/K 부터 늘어나는지
 > 박스 수       이 박스 dt_log 사본(키를 1,000 단위로 펼침, 스크래치 스키마) · 체인 쓰기 문 그대로(층 · 이력 · 아웃박스):
@@ -577,7 +577,7 @@
 >            «다른» 인벤토리 행이 바뀌어 이기면           옛 표시 남음 — 이긴 잡 아웃 시각을 고침 · 이긴 잡 행을 지움
 >            로그 행의 잡 칸을 고쳐 다른 잡으로 옮기면     옛 표시 남음
 >            남은 옛 표시는 아래 초기화 줄로 걷는다
-> 소급 동안    chain_worker.log «… <규칙> -> <로그 표> · page k/K · <낸 행> / <전체> rows» — 1,000 행 쪽마다 쓰고 커밋 · 큐 running 줄도 «write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows»({LANDING} 뒤)
+> 소급 동안    chain_worker.log «… <규칙> -> <로그 표> · page k/K · <낸 행> / <전체> rows» — 1,000 행 쪽마다 쓰고 커밋 · 큐 running 줄도 «write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows»(31adca83c 뒤)
 >            멈추면 쓴 쪽까지 남고, 다시 돌리면 1 쪽부터 다시 — 쓴 쪽은 같은 값으로 다시 쓰고 나머지가 써진다(「접기 · 조인 쓰기는 1,000 행씩」 절)
 > 안 되는 것   인벤토리 행을 지우면 그 웨이퍼를 다시 안 정함
 > 초기화       python server/scripts/chain_replay_cli.py withdraw dt_log chain_ingestion --columns fold_mark   (보고 --apply)
