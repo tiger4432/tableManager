@@ -10,6 +10,15 @@
 ---
 
 
+## 2026-10-11 · 체인 선언 폼에 aggregations 가 보인다 — 이름마다 fn · column · separator
+
+- **무엇** — 소유자 「체인 선언창에 aggregation 이 안 뜨는데」 -> 「ㄱ 으로 폼 그려」 (총괄 8b487d2e6 · 6c6d76924). `derive.decide.aggregations` 의 각 항목이 폼에서 고칠 수 없는 글자로만 보였습니다. 이제 이름마다 `fn` · `column` · `separator` 칸이 보이고 거기 적으면 됩니다. 줄임말 `"count"` 도 `{"fn": "count"}` 칸으로 보입니다. 같이: 선언 맨 위와 `derive` 바로 밑에 적은 모르는 칸이 이름 없이 사라지던 것을 저장 답과 로드 줄에서 이름으로 말합니다(꺼진 규칙도). 폼의 ADVANCED 줄에 그려지던 한국어 문장을 영어로 바꿨습니다.
+- **선언 예시** — 새 선언은 없습니다. `"aggregations": {"n": "count", "hi": {"fn": "max", "column": "t"}, "names": {"fn": "unique_concat", "column": "w", "separator": "/"}}` 셋 다 폼에 보입니다.
+- **화면에서** — 어드민 Chain 탭 Rules 의 decide 선언 폼: aggregations 밑에 이름마다 세 칸.
+- **필요한 조건** — 서버 재기동(폼의 골격과 선언을 서버가 줍니다).
+- **바뀐 동작** — `"count"` 를 적은 선언을 폼에서 저장하면 파일에 `{"fn": "count"}` 로 남습니다(같은 뜻). 모르는 칸 한 줄이 로드 로그와 저장 답에 새로 보일 수 있습니다 — 규칙은 그대로 돕니다.
+- **자세히** — 이 항목과 같은 커밋 · chain_rules §5-B-bis · enrichment_rules 의 aggregations 행.
+
 ## 2026-10-11 · 접기 맵퍼 — 웨이퍼마다 이긴 잡 하나만 남는다
 
 - **무엇** — 소유자 「dt log 접는 거 job 에 auto 있는 거 1순위 그 안에서 시간 빠른 거」 · 「충돌은 replace map 느낌으로 dt_wafer_id 단위로」 · 「매뉴얼끼리도 같은 규칙」 (총괄 402f1ab2e). 인벤토리(잡 · 웨이퍼마다 한 행)가 웨이퍼마다 이긴 잡을 정하고, 진 잡의 로그 행에 «folded into <이긴 잡>» 을 적습니다. 순위는 행 접기(fold-rows)와 같은 규칙입니다.

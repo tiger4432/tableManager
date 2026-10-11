@@ -583,8 +583,33 @@
                     "keyed_by": "name",
                     "member": "column",
                     "of": {
-                      "kind": "leaf",
-                      "hint": "free"
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "key": "fn",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        },
+                        {
+                          "key": "column",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        },
+                        {
+                          "key": "separator",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      ]
                     }
                   }
                 },

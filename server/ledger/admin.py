@@ -398,10 +398,12 @@ def chain_rule_raw_view(name: str = None) -> dict:
     from database import crud
 
     if not crud.is_blank_value(name):
-        out["name"] = name
-        out["declaration"] = named.get(name)
-        out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)
         from chain import rule_shape
+
+        out["name"] = name
+        # the form draws an aggregation as its record - the shorthand "count" too (총괄 8b487d2e6)
+        out["declaration"] = rule_shape.with_aggregation_records(named.get(name))
+        out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)
 
         # The switch's one judge (총괄 872f6cb6b 6-3), not a second truth test beside it.
         out["enabled"] = not rule_shape.is_switched_off(named.get(name) or {})

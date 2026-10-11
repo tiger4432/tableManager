@@ -814,7 +814,7 @@ def mapper_candidates(package="mappers"):
                                "kind": "function", "params": None})
         if not functions and roleframe_only:
             other.append({"module": module_name, "kind": "ledger_roleframe",
-                          "why": "원장 롤프레임 매퍼입니다 — 체인 규칙이 이 모듈을 들지 않습니다"})
+                          "why": "a ledger role-frame mapper - no chain rule names this module"})
 
     return {
         "candidates": candidates,

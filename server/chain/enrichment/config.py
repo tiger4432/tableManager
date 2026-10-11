@@ -272,6 +272,12 @@ AGGREGATIONS_WITHOUT_COLUMN = ("count",)
 AGGREGATION_SEPARATOR_DEFAULTS = {"unique_concat": ", "}
 
 
+def aggregation_record(spec):
+    """An aggregation as its record: the shorthand `"count"` is `{"fn": "count"}`. The one fold - the reader below and
+    the declaration the chain form draws (`rule_shape.with_aggregation_records`) pass here (총괄 8b487d2e6)."""
+    return {"fn": spec} if isinstance(spec, str) else spec
+
+
 def _parse_aggregation(name: str, spec):
     """`(normalized, None)` 또는 `(None, 사유)`. 정규형은 `{"fn":…, "column":…|None}`.
 
@@ -283,8 +289,7 @@ def _parse_aggregation(name: str, spec):
     ⛔ 집계는 «키가 아니다». 늦게 도착한 더 이른 행이 min 을 내리면 키였을 경우 그 행의
     정체성이 바뀌고, 이미 확정된 값이 고아가 된다. 키는 lot 이고 집계는 그 그룹의 «값»이다.
     """
-    if isinstance(spec, str):
-        spec = {"fn": spec}
+    spec = aggregation_record(spec)
     if not isinstance(spec, dict):
         return None, (f"aggregation '{name}' must be \"count\" or "
                       f"{{\"fn\": ..., \"column\": ...}}, not {type(spec).__name__}")

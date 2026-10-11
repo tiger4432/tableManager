@@ -583,13 +583,15 @@ def _named(member, item):
 #: The skeleton node of each `decide` cell that is NOT one value. The reader is
 #: `chain.enrichment.config` (`chain_rules_from_cells`, `_normalize_reference_views`,
 #: `_view_reads`); the shapes sit here beside DECIDE_CELLS. A cell missing here is a value.
-#: ⚠️ `aggregations` IS AN OBJECT - the reader refuses a list. Its item is "count" or
-#:    {fn, column}; the vocabulary has no union, so the record form stays in the raw editor.
+#: ⚠️ `aggregations` IS AN OBJECT - the reader refuses a list. Its item is the record {fn, column,
+#:    separator}, all optional - the reader names what is wrong; the shorthand "count" reaches the
+#:    form as its record (`with_aggregation_records`, 총괄 8b487d2e6).
 DECIDE_CELL_SHAPES = {
     "key": _listed("column", _value()),
     "fields": _listed("field", _value()),
     "list_columns": _listed("column", _value()),
-    "aggregations": _named("column", _value()),
+    "aggregations": _named("column", {"kind": "record", "fields": [
+        {"key": key, "required": False, "node": _value()} for key in ("fn", "column", "separator")]}),
     "reference_views": _listed("view", {"kind": "record", "fields": [
         {"key": key, "required": False, "node": node} for key, node in (
             ("label", _value()), ("query", _value()), ("query_ref", _value()),
@@ -635,6 +637,35 @@ def unknown_decide_cells(internal: dict) -> list:
         return []
     return sorted(str(key) for key in (derive.get("decide") or {})
                   if key not in DECIDE_CELLS)
+
+
+#: The cells `from_declaration` reads at a unified declaration's top, beside `axis_keys()`.
+DECLARATION_CELLS = ("name", "enabled", "on", "derive", "into", KEY_CELL, "limits", "extra")
+
+
+def unread_cells(declaration: dict) -> list:
+    """[(where, cells)] - cells at a unified declaration's top and under `derive` this product does not read
+    (총괄 6c6d76924 ①: they vanished with no name). NAMED, never refused - as `unknown_decide_cells`."""
+    raw = declaration if isinstance(declaration, dict) else {}
+    derive = raw.get("derive") if isinstance(raw.get("derive"), dict) else {}
+    read = set(DECLARATION_CELLS) | set(axis_keys()) | set(chain_bindings.comment_cells(raw))
+    top = sorted(str(key) for key in raw if key not in read)
+    under = sorted(str(key) for key in derive
+                   if key not in ("kind",) + DECLARED_KINDS + chain_bindings.comment_cells(derive))
+    return [(where, cells) for where, cells in (("top-level", top), ("derive", under)) if cells]
+
+
+def with_aggregation_records(declaration):
+    """The declaration as the chain form draws it: each `derive.decide.aggregations` item as its record
+    (`enrichment.config.aggregation_record` - the reader's one fold of "count"). A copy; the file is as written."""
+    from chain.enrichment.config import aggregation_record
+
+    decide = ((declaration or {}).get("derive") or {}).get("decide") if isinstance(declaration, dict) else None
+    named = (decide or {}).get("aggregations") if isinstance(decide, dict) else None
+    if not isinstance(named, dict):
+        return declaration
+    records = {name: aggregation_record(spec) for name, spec in named.items()}
+    return dict(declaration, derive=dict(declaration["derive"], decide=dict(decide, aggregations=records)))
 
 
 def is_switched_off(rule: dict) -> bool:
@@ -687,8 +718,14 @@ def expand_declaration(declaration, table_config=None,
 
     internal = from_declaration(declaration)
     name = declaration.get("name")
+    unread = ["%s: %s cell this product does not read \u2014 %s." % (name, where, ", ".join(cells))
+              for where, cells in unread_cells(declaration)]
     if is_switched_off(internal):
-        return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name])
+        # a rule that is off is still read for its cells (\ucd1d\uad04 6c6d76924 \u2460)
+        return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name] + unread
+                + ["%s: derive.%s cell this product does not read \u2014 %s." % (name, kind, ", ".join(cells))
+                   for kind, cells in (("decide", unknown_decide_cells(internal)),
+                                       ("join", unknown_join_cells(internal))) if cells])
     # \ud83d\udd34 One judge for save and load (S-244): refused here, the save gate refuses it at the moment
     #    of saving, and a line already in the file stands on the list as declared-only with this
     #    sentence. A declaration that writes no kind but names its `derive` cell is read by
@@ -763,4 +800,5 @@ def expand_declaration(declaration, table_config=None,
     # ⚠️ `as_chain_rule` ALREADY APPLIED IT on the join/mapper arm. Re-applying is the point:
     #   the merge is idempotent, so this seat needs no 「did that arm already do it」
     #   question - and that question is the door this round removes.
-    return ([with_declared_cells(rule, internal) for rule in stood], None, notes)
+    return ([with_declared_cells(rule, internal) for rule in stood], None,
+            [line + " The rule runs." for line in unread] + notes)

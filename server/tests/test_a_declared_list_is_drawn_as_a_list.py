@@ -56,6 +56,8 @@ def blank_boxes(node, value, path=()):
 
 
 def census(skeleton, declaration):
+    """The declaration as the route hands it to the form - an aggregation as its record (총괄 8b487d2e6)."""
+    declaration = rule_shape.with_aggregation_records(declaration)
     unified = isinstance(declaration.get("derive"), dict)
     return blank_boxes(skeleton["unified_root" if unified else "root"], declaration)
 
@@ -74,7 +76,8 @@ FIXTURE = [
      "on": {"table": "src_t"},
      "derive": {"kind": "decide", "decide": {
          "key": ["eq", "at"], "fields": ["wafer"], "list_columns": ["n"],
-         "aggregations": {"n": "count"},
+         "aggregations": {"n": "count", "hi": {"fn": "max", "column": "t"},
+                          "names": {"fn": "unique_concat", "column": "w", "separator": "/"}},
          "reference_views": [{"label": "v", "query": "SELECT 1", "limit": 5,
                               "reads": ["src_t"], "candidate_for": {"wafer": "w"}}],
          "auto_confirm": True, "alignment": True}},
