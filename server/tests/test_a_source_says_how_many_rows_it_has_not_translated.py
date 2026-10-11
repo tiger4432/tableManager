@@ -42,7 +42,7 @@ class _Plan:
         self.frame_row_id = frame_row_id
         self.planned = planned
         self.refusal = refusal
-        self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by)})()
+        self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by), "exclude_when": ()})()
 
 
 def _setup(plans):

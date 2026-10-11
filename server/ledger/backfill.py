@@ -891,6 +891,46 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None, world=
         connection.close()
 
 
+#: The most rows the index does not name that a count reads to take out `read.exclude_when`'s - past it the load has
+#: not run, and its remainder is not the excluded rows' question.
+EXCLUDED_COUNT_ROWS = 100000
+
+
+def _missing_rows_excluded(engine, setup, source, exact_rows, world=None):
+    """-> (of the rows the index does not name, how many `read.exclude_when` takes out - the read's own judgement
+    (`event_frame.row_excluded`) over their clause columns; why they were not taken out, or None). Nothing to say
+    for a source with no clause; the paced tick (`exact_rows=False`) does not scan (S-122); past
+    EXCLUDED_COUNT_ROWS rows the index does not name (a load not run) none are counted."""
+    from psycopg2 import sql
+
+    from .event_frame import row_excluded
+    from .setup_bundle import exclusion_columns
+
+    clauses = [clause for clause in setup.snapshot.source_plans[source].driver.exclude_when
+               if isinstance(clause, Mapping)]
+    if not clauses:
+        return 0, None
+    if not exact_rows:
+        return 0, "an estimate"
+    ids = rows_missing_from_the_index(engine, setup, source, EXCLUDED_COUNT_ROWS + 1, world=world)
+    if len(ids) > EXCLUDED_COUNT_ROWS:
+        return 0, "over %dk rows the index does not name" % (EXCLUDED_COUNT_ROWS // 1000)
+    if not ids:
+        return 0, None
+    columns = sorted({column for clause in clauses for column in exclusion_columns(clause)})
+    relation = sql.SQL(".").join(
+        sql.Identifier(part) for part in str(setup.snapshot.source_plans[source].relation).split("."))
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql.SQL("SELECT {} FROM {} WHERE row_id = ANY(%s)").format(
+                sql.SQL(", ").join(sql.Identifier(column) for column in columns), relation), (ids,))
+            return sum(row_excluded(clauses, dict(zip(columns, row)).get) for row in cursor.fetchall()), None
+    finally:
+        connection.rollback()
+        connection.close()
+
+
 def rows_gone_from_the_source(engine, setup, source, world=None):
     """The other direction (총괄 3a109bfd9 ③): the row ids the index names for this source
     that the relation no longer has - a delete the follow-up did not see, or any delete in a
@@ -1155,6 +1195,14 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
             f"the remainder is not published rather than published wrong.")
         return report
     remainder = total - indexed
+    # 🔴 a row `read.exclude_when` takes out is never translated nor indexed - it is not 「not yet」 (총괄 10-12, rp500g
+    #    link_candidates kept 1 after every backfill). Taken out of a person's count; the paced tick does not scan (S-122)
+    excluded, kept_in = _missing_rows_excluded(engine, setup, source, exact_rows, world=world)
+    if excluded:
+        report["excluded_rows"] = excluded
+        remainder -= excluded
+    if kept_in:
+        report["excluded_not_subtracted"] = kept_in
     report["not_yet"] = max(remainder, 0)
     if remainder < 0:
         # ⛔ A SILENT ZERO. The index names rows the relation no longer holds -- a
@@ -1228,7 +1276,7 @@ def rows_to_catch_up(engine, setup, source, world=None, census=None):
     census = census or rows_not_yet_translated(engine, setup, source, world=world)
     gone = len(rows_gone_from_the_source(engine, setup, source, world=world))
     drift = rows_drifted(engine, setup, source, world=world)
-    new = (census["relation_rows"] - census["indexed_rows"] + gone
+    new = (census["relation_rows"] - census["indexed_rows"] - census.get("excluded_rows", 0) + gone
            if census.get("counts") == "rows" else None)
     return {"rows_new": new, "rows_drifted": drift["rows_drifted"], "rows_gone": gone,
             "rows_unprinted": drift["rows_unprinted"]}
@@ -1377,7 +1425,11 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
     # source can be behind by, apart, as the catch-up counts them (총괄 6091a7ae3 ②).
     if exact_rows:
         behind = rows_to_catch_up(engine, setup, census["source"], world=world, census=census)
-        for box, method in (("rows_new", "relation rows the index does not name"),
+        new = "relation rows the index does not name" + (
+            ", less %d exclude_when takes out" % census["excluded_rows"] if census.get("excluded_rows") else
+            "; exclude_when not subtracted (%s)" % census["excluded_not_subtracted"]
+            if census.get("excluded_not_subtracted") else "")
+        for box, method in (("rows_new", new),
                             ("rows_drifted", "index print <> print of the row's read columns now"),
                             ("rows_gone", "index rows the relation no longer holds"),
                             ("rows_unprinted", "index lines with no print")):

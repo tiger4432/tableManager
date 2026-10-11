@@ -980,3 +980,25 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
     assert len(lines()) == 3                                              # said once
     _follow(world)
     assert _saying(world, schema.LEDGER_TABLE, "RCP-9") == {CHANGED}
+
+
+@pytest.mark.pg
+def test_a_row_the_read_takes_out_is_not_left_not_yet_translated(world):
+    """총괄 10-12 rehearsal (rp500g link_candidates): a row `read.exclude_when` takes out is never translated nor
+    indexed, and the count of rows not yet translated kept it after every backfill. Three rows - one blank where a
+    `column` clause excludes, one a `when` clause matches: after the load a person's count leaves nothing and says
+    the two taken out; the paced tick's (`exact_rows=False`, S-122) takes none out and says why."""
+    _write(world, "wafer_process", [
+        {"proc_id": "P1", "wafer_id": "W1", "step": "S1", "recipe_id": "RCP-1", "eventtime": EVENT_TIME},
+        {"proc_id": "P2", "wafer_id": "W2", "step": "S1", "eventtime": EVENT_TIME},
+        {"proc_id": "P3", "wafer_id": "W3", "step": "S9", "recipe_id": "RCP-3", "eventtime": EVENT_TIME}])
+    document = _only(CHANGED)
+    document["sources"][CHANGED].setdefault("read", {})["exclude_when"] = [
+        {"column": "recipe_id", "blank": True}, {"when": {"step": "S9"}}]
+    _make(world, A, document, CHANGED)
+    setup = load_setup(schema.require_world(A).declaration_root)
+    census = backfill.rows_not_yet_translated(world["engine"], setup, CHANGED, world=A)
+    assert (census["relation_rows"], census["indexed_rows"], census.get("excluded_rows"),
+            census["not_yet"]) == (3, 1, 2, 0), census
+    tick = backfill.rows_not_yet_translated(world["engine"], setup, CHANGED, exact_rows=False, world=A)
+    assert ("excluded_rows" in tick, tick.get("excluded_not_subtracted")) == (False, "an estimate"), tick
