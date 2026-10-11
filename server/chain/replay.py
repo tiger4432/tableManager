@@ -698,7 +698,7 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
              models.CellOverwrite.column_name == models.CellSource.column_name),
     ).filter(
         *_claimed_filter(table_name, source_name, columns),
-        models.CellOverwrite.manual_priority_source == source_name,
+        models.CellOverwrite.manual_priority_source == models.CellSource.source_name,
     ).scalar() or 0
 
     return {"cells_claimed": int(claimed), "pinned": int(pinned)}
@@ -710,18 +710,37 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 # R3 - re-materialise the resolution over cells that already have their layers
 # ---------------------------------------------------------------------------
 
+def _write_resolved(db, table_name, row, col, decision, tx_id):
+    """R3's write of a cell whose stored layers answer another value: the column and one history line
+    (`R3_AUDIT_SOURCE`, `resolved:<winner>`). The layer fold writes the cells it moves the same way."""
+    from database import crud
+
+    setattr(row, col, decision["new_value"])
+    crud.create_audit_log(db, table_name, row.row_id, col, decision["old_value"], decision["new_value"],
+                          R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}", transaction_id=tx_id,
+                          business_key=getattr(row, "business_key_val", None))
+
+
+#: Cells each of the fold's lists names, for the dry run (총괄 4dd303f01 「앞 다섯」).
+FOLD_SAMPLE = 5
+
+
 def fold_file_layers(db, table_name: str, apply: bool = False,
                      chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None, pace: str = None,
                      log=logger.info, checkpoint=None) -> dict:
-    """The file-layer fold over what one table has already stacked (총괄 225b2c658) - the write
-    path stops the stacking, this removes what stacked before it.
+    """The layer fold over what one table has already stacked (총괄 225b2c658 · 8ec008914 · 4dd303f01) -
+    the write path stops the stacking, this removes what stacked before it. The name is the first
+    fold's: old run records and the CLI name it.
 
-    Per cell, `crud.stacked_file_layers`: file layers of one priority class holding one value
-    keep the newest (and a pinned one). No row, shown value or history entry moves - only
-    `cell_sources` rows go, which is why the dry run says it cannot be undone. One commit per
-    page; a stop lands between pages and a re-run finds only what is left.
+    Per cell, `crud.stacked_layers`: file layers that repeat one go; the chain's plain layer stamped
+    with a source row becomes that row's (`chain_ingestion (<row>)`), and one that a row layer repeats
+    goes. A cell of two layers and more holding a chain row layer, whose layers now answer another
+    value (a row layer ranks as the chain's), gets R3's write - the value and one history line. One
+    commit per page; a stop lands between pages and a re-run finds only what is left.
     """
-    from database import crud
+    from sqlalchemy import literal, update
+
+    from database import crud, models
 
     from chain import keyset_scan
 
@@ -730,39 +749,103 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "rows_scanned": 0, "pages": 0, "cells_folded": 0, "layers_deleted": 0,
              "layers_before": 0, "layers_after": 0, "deepest_before": 0, "deepest_after": 0,
-             "stopped": False}
-    for page in keyset_scan.iter_pages(db, model, columns=[], chunk_size=chunk_size,
-                                       limit=limit):
-        if checkpoint is not None and checkpoint(stats["rows_scanned"]):
-            stats["stopped"] = True
-            log(f"[fold] stopped by request after {stats['rows_scanned']} rows")
-            break
-        stats["pages"] += 1
-        stats["rows_scanned"] += len(page)
-        cell_sources, pins = _load_cell_state(db, table_name, [r[0] for r in page])
-        gone = []
-        for (row_id, col), layers in cell_sources.items():
-            if col not in col_types:
-                continue
-            drop = crud.stacked_file_layers(layers, col_types[col], table_name,
-                                            pins.get((row_id, col)))
-            stats["layers_before"] += len(layers)
-            stats["layers_after"] += len(layers) - len(drop)
-            stats["deepest_before"] = max(stats["deepest_before"], len(layers))
-            stats["deepest_after"] = max(stats["deepest_after"], len(layers) - len(drop))
-            if drop:
-                stats["cells_folded"] += 1
+             "chain_renamed": 0, "chain_deleted": 0, "chain_unstamped": 0, "chain_differs": 0,
+             "chain_copies": 0, "shown_changed": 0,
+             "first": {"chain_differs": [], "chain_copies": [], "shown_changed": []}, "stopped": False}
+    cells = models.CellSource.__table__.c
+    # 🔴 ONE STATEMENT PER PAGE AND COLUMN, the row's layer spelled from its own origin_row_id - one UPDATE per
+    #    layer took 1,196 s for 53,520 on the box's dt_log copy (the dry run, 83 s). The two halves around the
+    #    origin are `merged_layer_name`'s, so the name has one spelling.
+    before, after_tag = crud.merged_layer_name(crud.CHAIN_SOURCE, "\x00").split("\x00")
+
+    def rename(column, row_ids):
+        db.execute(update(models.CellSource.__table__)
+                   .where(cells.table_name == table_name, cells.column_name == column,
+                          cells.source_name == crud.CHAIN_SOURCE, cells.row_id.in_(row_ids))
+                   .values(source_name=literal(before) + cells.origin_row_id + literal(after_tag)))
+
+    def first(key, entry):
+        if len(stats["first"][key]) < FOLD_SAMPLE:
+            stats["first"][key].append(entry)
+
+    tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
+    with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):   # the label R3's writes carry
+        for page in keyset_scan.iter_pages(db, model, columns=[], chunk_size=chunk_size,
+                                           limit=limit):
+            if checkpoint is not None and checkpoint(stats["rows_scanned"]):
+                stats["stopped"] = True
+                log(f"[fold] stopped by request after {stats['rows_scanned']} rows")
+                break
+            stats["pages"] += 1
+            stats["rows_scanned"] += len(page)
+            cell_sources, pins = _load_cell_state(db, table_name, [r[0] for r in page])
+            gone, renames, asked = [], [], []
+            for (row_id, col), layers in cell_sources.items():
+                if col not in col_types:
+                    continue
+                pin = pins.get((row_id, col))
+                fold = crud.stacked_layers(layers, col_types[col], table_name, pin)
+                drop = fold["file"] + fold["chain"]
+                after = {name: entry for name, entry in layers.items() if name not in drop}
+                for was, now in fold["renamed"].items():
+                    after[now] = after.pop(was)
+                stats["layers_before"] += len(layers)
+                stats["layers_after"] += len(after)
+                stats["deepest_before"] = max(stats["deepest_before"], len(layers))
+                stats["deepest_after"] = max(stats["deepest_after"], len(after))
+                stats["cells_folded"] += bool(fold["file"])
+                stats["layers_deleted"] += len(fold["file"])
+                stats["chain_deleted"] += len(fold["chain"])
+                stats["chain_renamed"] += len(fold["renamed"])
+                plain = layers.get(crud.CHAIN_SOURCE)
+                stats["chain_unstamped"] += bool(plain is not None and not plain.get("origin_row_id"))
+                if fold["differs"]:
+                    stats["chain_differs"] += 1
+                    first("chain_differs", {"row_id": row_id, "column": col})
+                if fold["copies"]:
+                    stats["chain_copies"] += fold["copies"]
+                    first("chain_copies", {"row_id": row_id, "column": col})
                 gone.extend((table_name, row_id, col, name) for name in drop)
-        stats["layers_deleted"] += len(gone)
-        if apply and gone:
-            crud.bulk_delete_cell_sources(db, gone)
-            db.commit()
-        if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-            time.sleep(rest_seconds)
+                renames.extend((col, row_id) for _was in fold["renamed"])
+                if len(layers) > 1 and any(name != crud.CHAIN_SOURCE and crud.layer_ranks_as(name)
+                                           == crud.CHAIN_SOURCE for name in after):
+                    asked.append((row_id, col, after, pin))
+            rows = {}
+            if asked:
+                rows = {row.row_id: row for row in db.query(model).filter(
+                    model.row_id.in_(sorted({row_id for row_id, *_rest in asked}))).all()}
+            moved = []
+            for row_id, col, after, pin in asked:
+                row = rows.get(row_id)
+                if row is None:
+                    continue
+                decision = _resolve_cell(table_name, col_types, row, col, after, pin)
+                if decision["changed"]:
+                    stats["shown_changed"] += 1
+                    first("shown_changed", {"row_id": row_id, "column": col, "old_value": decision["old_value"],
+                                            "new_value": decision["new_value"], "top_source": decision["top_source"]})
+                    moved.append((row, col, decision))
+            if apply and (gone or renames or moved):
+                crud.bulk_delete_cell_sources(db, gone)
+                by_column = {}
+                for col, row_id in renames:
+                    by_column.setdefault(col, []).append(row_id)
+                for col, row_ids in sorted(by_column.items()):
+                    rename(col, row_ids)
+                for row, col, decision in moved:
+                    _write_resolved(db, table_name, row, col, decision, tx_id)
+                db.commit()
+            if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
+                time.sleep(rest_seconds)
+    if not apply:
+        db.rollback()
     log(f"[fold] '{table_name}' {stats['mode']}: {stats['layers_deleted']} file layer(s) in "
         f"{stats['cells_folded']} cell(s) repeat a newer one - layers {stats['layers_before']} "
         f"-> {stats['layers_after']}, deepest cell {stats['deepest_before']} -> "
-        f"{stats['deepest_after']}")
+        f"{stats['deepest_after']}; chain plain layers {stats['chain_renamed']} renamed to their row's, "
+        f"{stats['chain_deleted']} repeating a row layer deleted, {stats['chain_differs']} kept differing "
+        f"({stats['chain_unstamped']} without a source row); {stats['chain_copies']} chain merge copies; "
+        f"{stats['shown_changed']} shown value(s) move")
     return stats
 
 
@@ -1317,8 +1400,6 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     model, col_types = resolve_target(table_name, columns)
     wanted_cols = set(columns) if columns else None
 
-    priority_map = crud.resolve_priority_map(table_name)
-
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "rows_scanned": 0, "pages": 0, "cells_examined": 0,
              "pinned_examined": 0, "cells_changed": 0, "changed_by_tiebreak": 0,
@@ -1419,8 +1500,8 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 # from "this cell was already out of step with its own layers". A tie is
                 # the defect's signature: two or more layers sharing the winning rank,
                 # which is where the old code fell through to dict order.
-                top_rank = priority_map.get(decision["top_source"], 99)
-                tied = sum(1 for s in srcs if priority_map.get(s, 99) == top_rank)
+                top_rank = crud.get_source_priority(decision["top_source"], table_name)
+                tied = sum(1 for s in srcs if crud.get_source_priority(s, table_name) == top_rank)
                 reason = "tiebreak" if tied > 1 else "stale_materialisation"
 
                 stats["cells_changed"] += 1
@@ -1454,13 +1535,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                         True, None, "report budget (max_report) reached")
 
                 if apply:
-                    setattr(row, col, decision["new_value"])
-                    crud.create_audit_log(
-                        db, table_name, row_id, col,
-                        decision["old_value"], decision["new_value"],
-                        R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}",
-                        transaction_id=tx_id,
-                        business_key=getattr(row, "business_key_val", None))
+                    _write_resolved(db, table_name, row, col, decision, tx_id)
                     page_changed = True
 
             if apply and page_changed:

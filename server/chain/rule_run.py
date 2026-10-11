@@ -62,18 +62,23 @@ RULE_LOG_TAG = "ChainRule"
 CHAIN_SOURCE = "chain_ingestion"
 
 
-def layer_of_a_rules_write(name) -> str:
+def layer_of_a_rules_write(name, origin_row_id=None) -> str:
     """The layer a rule's proposed cell goes under (총괄 09f3cd289 ①, 소유자 10-09 「모든 맵퍼의 소스네임은
     chain_ingestion 에서 못 바꾸게」): chain_ingestion whatever its mapper wrote - an item naming none
-    was the person's layer - and a row layer keeps its bracket. The names the product gave a meaning
-    stay: auto-confirm's two and the enrichment backfill's. Asked at the one seat the chain writes
-    through (`ingestion_worker`'s write loop)."""
+    was the person's layer - and a row layer keeps its bracket. An item read from a row is that row's
+    layer, `chain_ingestion (<origin_row_id>)` (총괄 8ec008914 - one layer per source row, so taking a
+    row back takes only its own). The names the product gave a meaning stay: auto-confirm's two and
+    the enrichment backfill's. Asked at the one seat the chain writes through (`ingestion_worker`'s
+    write loop)."""
     from chain.enrichment import backfill, candidates
     from database import crud
 
     writer = crud.layer_writer(name)
-    if writer in (CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY,
-                  backfill.SOURCE_NAME):
+    if writer in (candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY, backfill.SOURCE_NAME):
+        return name
+    if origin_row_id:
+        return crud.merged_layer_name(CHAIN_SOURCE, origin_row_id)
+    if writer == CHAIN_SOURCE:
         return name
     return CHAIN_SOURCE + str(name or "")[len(writer):]
 

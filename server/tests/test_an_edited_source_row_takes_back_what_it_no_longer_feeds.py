@@ -157,7 +157,8 @@ def test_one_of_two_rules_filling_their_own_row_reruns_and_the_other_column_stay
     _drain(db, rules)
 
     assert (_row(db, "R").x, _row(db, "R").y) == ("2!", "1!")
-    assert ("y", "chain_ingestion", row) in _layers(db, "R"), "the rule that did not run lost its cell"
+    assert ("y", crud.merged_layer_name(crud.CHAIN_SOURCE, row), row) in _layers(db, "R"), (
+        "the rule that did not run lost its cell")
     assert RAN == ["er_x"], RAN
     # the edit, then er_x's own write - nothing withdrawn, so no EDIT of the withdrawal's
     assert _events(db, since) == [("EDIT", ["a"], event_constants.CHANNEL_API),
@@ -238,7 +239,8 @@ def test_a_second_rule_filling_the_same_other_row_keeps_its_cell_when_only_the_f
     _drain(db, rules)
 
     assert (_row(db, "P1").z, _row(db, "P1").y) == (None, "1!"), "er_v's cell went with er_z's"
-    assert ("y", "chain_ingestion", _row(db, "C").row_id) in _layers(db, "P1")
+    origin = _row(db, "C").row_id
+    assert ("y", crud.merged_layer_name(crud.CHAIN_SOURCE, origin), origin) in _layers(db, "P1")
 
 
 # ---------------------------------------------------------------------------------------------

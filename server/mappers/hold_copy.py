@@ -50,8 +50,7 @@ def copy_rows_with_hold(db, payloads, rule=None):
     if not holds_only:
         result = df_to_updates(df[list(dict.fromkeys(keys + columns))], target,
                                source_name=crud.CHAIN_SOURCE, updated_by=NAME)
-        for item, row in zip(result["updates"], rows):
-            item["source_name"] = crud.merged_layer_name(crud.CHAIN_SOURCE, row["row_id"])
+        for item, row in zip(result["updates"], rows):     # the write seat names its row layer
             item["origin_row_id"] = row["row_id"]
 
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE

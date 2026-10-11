@@ -230,7 +230,7 @@ def test_the_group_path_actually_calls_the_join(db, caplog):
     layers = {s.source_name for s in db.query(models.CellSource).filter(
         models.CellSource.table_name == LEFT,
         models.CellSource.column_name == "lot_confirmed").all()}
-    assert cell_layer.R1_SOURCE_NAME in layers, layers
+    assert {crud.layer_ranks_as(name) for name in layers} == {cell_layer.R1_SOURCE_NAME}, layers
     # 🔴 [S-279] THE LINE'S AUTHOR IS THE SEAT NOW, and the count still has to be on it. The
     #    prefix moved from `[ChainBuiltin]` to one spelling shared with a file mapper -
     #    「로그도 «문»이다」 - so what is asserted is the COUNT, which is the thing an operator

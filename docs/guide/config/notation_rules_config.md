@@ -169,7 +169,7 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 - **소급(선언 전에 저장된 값)**: 소급 탭 `Fold stored values into the declared spelling`(파라미터 `table` · `pace`) — 층 값 · 보이는 값 · 키를 **제자리에서** 접습니다. 🆕(10-01) 글자 칸에 숫자로 저장된 층도 같은 소급이 `clean_str_value` 의 철자로 접습니다(BACKFILL_GUIDE §2.7). 층의 순서(`ingested_at`)는 안 움직여 **이기는 층이 그대로**이고, 바뀌는 것은 철자뿐입니다. 접은 칸마다 이력 한 줄.
   - 접은 키가 **다른 행의 키**와 같아지는 행은 그 행에 **합칩니다** — 쓰기 문 · 키 고치기 `--apply` 와 같은 합치기(`_merge_into_key_holder`). 그 행의 칸 · 층을 먼저 접은 뒤 합치고, 사람이 고친 값은 덮어쓰기 표시가 지킵니다. 셋 이상이 한 키로 모이면 row_id 순으로 하나가 됩니다. 사라진 행은 표와 층에서 빠지고 감사 줄이 남습니다. **되돌릴 수 없으니** 드라이런의 부딪힘 수와 견본(그 행 → 합쳐질 행 · 접힌 키)을 먼저 봅니다.
   - 한 번 더 접으면 또 바뀌는 값이 있으면 **그 자리에서 멈춥니다** — 드라이런이 그 수를 먼저 보여 줍니다.
-  - 순서: **표기 소급 → `Fold file layers`(철자만 달랐던 파일 층이 같은 값이 됨) → VACUUM**.
+  - 순서: **표기 소급 → `Fold layers that repeat another`(철자만 달랐던 파일 층이 같은 값이 됨) → VACUUM**.
   - 🔴 **맵 키 칸(`map_key_columns`)을 `write` 로 선언하면 소급을 같은 날에** — 첫 `replace_map` 푸시의 범위(접힌 값)가 옛 철자 행을 못 찾아, 그 푸시가 뺀 칸이 남습니다(새 행은 안 생김).
   - 별칭 표 순서: `install_product_tables.py --apply` → reload(설정 감시가 물리 표를 만듦) → 선언. 모델만 있고 표가 없으면 `write` 칸이 있는 표의 쓰기가 실패합니다.
 - **`time` 이 그대로 둔 값**: 파일마다 FILE 줄에 한 칸 — `time rule left as written: no matching format N, time zone written M`(0 이면 안 씀).

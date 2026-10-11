@@ -948,27 +948,42 @@ def _count_fold_file_layers(db, params, scan_limit):
     s = replay.fold_file_layers(db, params["table"], apply=False, limit=scan_limit,
                                 log=lambda m: logger.debug(m))
     truncated = s["rows_scanned"] >= scan_limit
-    affected = s["layers_deleted"]
+    affected = s["layers_deleted"] + s["chain_renamed"] + s["chain_deleted"] + s["shown_changed"]
+
+    def cells(key):
+        return "; ".join("%s · %s" % (cell["row_id"], cell["column"]) for cell in s["first"][key])
+
+    detail = (
+        f"Files: {s['cells_folded']} cell(s) in {s['rows_scanned']} row(s) of '{params['table']}' "
+        f"hold file layers that repeat a newer one: layers {s['layers_before']} -> "
+        f"{s['layers_after']}, the deepest cell {s['deepest_before']} -> {s['deepest_after']}. "
+        f"Chain: {s['chain_renamed']} plain layer(s) become their source row's layer, "
+        f"{s['chain_deleted']} that a row layer repeats go, {s['chain_unstamped']} have no source row.")
+    if s["chain_differs"]:
+        detail += (f" {s['chain_differs']} plain layer(s) without a source row stay - no row layer of the "
+                   f"cell holds their value (first: {cells('chain_differs')}).")
+    if s["chain_copies"]:
+        detail += (f" {s['chain_copies']} chain layer(s) a collision merge kept now rank as the chain's "
+                   f"(first cells: {cells('chain_copies')}).")
+    detail += (f" Shown values that move: {s['shown_changed']}"
+               + (f" (first: {cells('shown_changed')})" if s["shown_changed"] else "")
+               + " - each gets one history line. Cannot be undone - what goes is the record of which "
+               "older layer said the same value. Afterwards give the space back with: "
+               "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
     return {
         "affected": affected,
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
                     else ABSENCE_TRULY_NONE if not affected else None),
-        "affected_label": "file layers that repeat a newer one",
+        "affected_label": "layers to fold or rename, and shown values that move",
         "count_kind": COUNT_SAMPLE if truncated else COUNT_EXACT,
         "scanned": s["rows_scanned"],
         "scan_limit": scan_limit,
         "truncated": truncated,
-        "detail": (
-            f"{s['cells_folded']} cell(s) in {s['rows_scanned']} row(s) of '{params['table']}' "
-            f"hold file layers that repeat a newer one: layers {s['layers_before']} -> "
-            f"{s['layers_after']}, the deepest cell {s['deepest_before']} -> "
-            f"{s['deepest_after']}. Cannot be undone - what goes is the record of which older "
-            f"file said the same value; every cell keeps its value and its history. "
-            f"Afterwards give the space back with: python server/scripts/tune_layer_tables.py "
-            f"--table cell_sources --vacuum"
-        ),
-        "extra": {key: s[key] for key in ("cells_folded", "layers_before", "layers_after",
-                                          "deepest_before", "deepest_after")},
+        "detail": detail,
+        "extra": {key: s[key] for key in ("cells_folded", "layers_deleted", "layers_before", "layers_after",
+                                          "deepest_before", "deepest_after", "chain_renamed", "chain_deleted",
+                                          "chain_unstamped", "chain_differs", "chain_copies", "shown_changed",
+                                          "first")},
     }
 
 
@@ -980,7 +995,8 @@ def _run_fold_file_layers(db, params, log, control=None):
                                 **_given(params, "limit", "chunk_size", "pace"))
     _final_progress(control, s.get("rows_scanned"), s)
     return {key: s[key] for key in ("layers_deleted", "cells_folded", "layers_before",
-                                    "layers_after", "rows_scanned")}
+                                    "layers_after", "rows_scanned", "chain_renamed", "chain_deleted",
+                                    "chain_unstamped", "chain_differs", "chain_copies", "shown_changed")}
 
 
 def _fold_args(params):
@@ -1742,9 +1758,11 @@ OPERATIONS = {
                                "a re-run folds only what is left"),
         "cli_only": [],
     },
+    # The id is the first fold's: old run records and the CLI name it (총괄 10-11) - it folds chain layers too.
     "fold_file_layers": {
-        "label": "Fold file layers that repeat a newer one",
-        "what_is_missing": "a cell re-delivered file after file keeps one layer per file",
+        "label": "Fold layers that repeat another",
+        "what_is_missing": ("a cell re-delivered file after file keeps one layer per file; the chain's "
+                            "layer is one per source row"),
         "params": [_p("table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
@@ -1757,10 +1775,11 @@ OPERATIONS = {
         "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
                 "'fold_file_layers', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
                 "'chunk_size': N})\" - pace, limit and chunk_size optional"),
-        # Only cell_sources rows go - no row, shown value or history entry moves (총괄
-        # 225b2c658). Per cell, file layers of one priority class holding one value keep the
-        # newest and a pinned one (`crud.stacked_file_layers`).
-        "deletes": "cell_sources rows (file layers that repeat a newer layer's value)",
+        # Per cell `crud.stacked_layers` (총괄 225b2c658 · 8ec008914): file layers that repeat one go, the
+        # chain's plain layer becomes its source row's or goes when a row layer repeats it; a shown value
+        # the layers now answer otherwise is written with one history line (R3's write).
+        "deletes": ("cell_sources rows (file layers that repeat a newer layer's value; plain chain "
+                    "layers a row layer repeats)"),
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,

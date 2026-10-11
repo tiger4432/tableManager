@@ -239,6 +239,42 @@
 >
 > ---
 >
+> ## [10-11] **체인 층은 원천 행마다 하나 · 순위는 쓴이의 순위 — 행 하나를 거두면 그 행 층만 걷힌다 (총괄 8ec008914 · 4dd303f01, 착지 {LANDING}) — 이주 «없음» · 재기동 «체인 워커 · 서버» · 체인이 쓴 표마다 소급 한 번**
+>
+> ```
+> 무엇        원천 행을 찍은 체인 쓰기(조인 · @mapper · 복사 규칙 · 접기 맵퍼)는 그 행의 층 chain_ingestion (<원천 행>) 에 써진다
+>            행 층은 체인 순위(4) — 같은 순위 안에서는 늦게 쓴 것. 합치기 사본(user (…) 등)은 오늘 순위 그대로
+> 순서        ① pull -> 체인 워커 · 서버 재기동
+>            ② 체인이 쓴 표마다: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count -> Run
+>               또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
+>            ③ 같은 Run 한 번 더 -> 끝 줄의 renamed · deleted · shown value(s) move 가 0
+> Count 뜻    화면 Count 는 앞 200 행 «견본» — 표 전체 수는 Run 의 끝 줄
+>            Chain: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
+>                   M that a row layer repeats go                      그 행 층이 이미 있거나, 원천 없는 plain 을 같은 칸 행 층이 같은 값으로 말함
+>                   K have no source row                               원천 없는 plain 층(남는 것 포함)
+>            D plain layer(s) without a source row stay (first: <행> · <칸> …)   값이 달라 남김 — 사람이 볼 칸
+>            C chain layer(s) a collision merge kept now rank as the chain's    합치기 사본의 체인 층 — 체인 순위로 오름
+>            Shown values that move: S                                     그 칸은 값 + 이력 한 줄(resolution_recompute)
+> 끝 줄       [fold] '<표>' apply: … chain plain layers N renamed to their row's, M repeating a row layer deleted, D kept differing
+>            (K without a source row); C chain merge copies; S shown value(s) move
+> 그 뒤로      원천 행 하나를 지우거나 고쳐 거두면 그 행 층만 걷히고 남은 행 층(없으면 그 밑 파일 층)이 보인다
+>            값이 달라 남긴 plain(D)은 행 층이 다 걷히면 다시 보인다 — 그 칸은 사람이 보고 정함
+>            복사 규칙의 보류 다시 세기는 키 칸을 plain 으로 다시 써서, ②가 지운 겹침(M)이 다음 다시 세기 뒤 다시 생김 — 값이 같아 화면 · 거두기엔 영향 없음
+>            조인 왼쪽 행이 다른 오른쪽 행과 다시 맞으면 옛 오른쪽 행 층이 남음 — 늦게 쓴 것이 보임(시연 뒤 항목)
+>            소급 탭 «Withdraw a stale source» 에 chain_ingestion 을 주면 행 층까지 거둠
+> 화면         셀 이력의 출처가 chain_ingestion (<행 id>) 로 보인다
+> 리허설 수     응용 rh_world_layers 사본(진짜 프로세스 · 런처 그대로, 스크래치 스키마): official_dt 에서 겹침 615 지움 · 이름 바꿈 0 · 화면 값 0 · 다시 0
+>            두 원천 행이 먹이던 공식 키의 늦은 행을 API 로 지움 -> 「MAN_J9 | 」 -> 「AUTO_J2 | agreed」
+> 박스 수       이 박스 dt_log 사본(PG 스크래치 · 535,559 행 · 층 3,427,084): 이름 바꿈 53,520 · 원천 없는 plain 3,882 · 화면 값 0
+>            미리보기 = 실행 · 다시 0 · 실행 76.0 초(전체 미리보기 73.6 초) — 운영 규모는 안 쟀음
+>            ⚠️ 소급 실행은 쪽(1,000 행)마다 진행을 서버에 알림 — 서버가 꺼져 있으면 이 박스에서 쪽마다 ~2 초 더(연결 거절 대기)
+>              서버를 켠 채로 돌린다
+> 되돌리기      git revert <이 커밋> -> 체인 워커 · 서버 재기동. 옮기기(②)는 되돌리지 않음 — 지운 겹침 층의 값은 같은 칸 행 층이 말하고 있음.
+>            코드만 되돌리면 행 층이 다시 순위 99(옛 plain 층 · 파일 층에 질 수 있음)
+> ```
+>
+> ---
+>
 > ## [10-11] **접기 맵퍼 — 웨이퍼마다 이긴 잡 하나, 진 잡의 로그 행은 «folded into <이긴 잡>» (총괄 402f1ab2e, 착지 7037aa148) — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```
@@ -471,8 +507,7 @@
 >            source_name 을 안 적은 칸(기본값 user — 사람 층으로 써지던 것)도 체인 층
 > 볼 것       replay 뒤 그 칸의 층(cell_sources)에 chain_ingestion 이 새 값 — 화면 값이 그것
 >            그대로인 것: 자동확정 두 이름 · enrichment_backfill
-> 안 바뀐 것   순위 — chain_ingestion (<id>) 행 층이 옛 plain chain_ingestion 층에 지는 것은 이번에 안 고침(총괄: 시연 뒤).
->            일요일에 공식 표를 비우고 다시 채우면 옛 plain 층이 없어져 안 드러난다
+> 고친 것     순위 — 10-11 착지 {LANDING} 부터 행 층도 체인 순위(위 「체인 층은 원천 행마다 하나」 절)
 > 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 chain_ingestion 으로 써진 칸은 그대로)
 > ```
 
@@ -3533,7 +3568,7 @@
 > ```
 > 언제          notation_rules.json 에 "write": true 칸을 선언한 «그날». 선언이 없으면 할 일 없음
 > 순서          ① 소급 탭 "Fold stored values into the declared spelling" — table · 드라이런(Count) 먼저
->              ② 같은 표에 "Fold file layers that repeat a newer one" — 철자만 달랐던 파일 층이 이제 같은 값
+>              ② 같은 표에 "Fold layers that repeat another" — 철자만 달랐던 파일 층이 이제 같은 값
 >              ③ python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
 > 드라이런 뜻    "... row(s) would take another row's key and are skipped" — 두 옛 철자가 한 키가 됨. 병합 안 함 — 별칭 행이나 규칙을 고치고 다시
 >              "... value(s) change again on a second fold - the run stops there" — 선언부터 고침. 실행은 그 페이지 앞에서 멈춤
@@ -3620,7 +3655,7 @@
 > 보이는 것   헤비 레인 청크 줄 · 파일 줄의 INSIDE THE WRITE — cell sources <초> / N rows · folded layers <초> / N rows
 >            값이 그대로인 행을 다시 가져온 파일이면 cell sources 0 rows · folded layers 0 rows = 층이 안 쌓임
 >            값이 바뀐 파일이면 cell sources 는 바뀐 칸 수 · folded layers 는 그 값을 말했던 옛 파일 층 수
-> 쌓인 것     드라이런: 어드민 Retroactive -> "Fold file layers that repeat a newer one" -> table -> Count
+> 쌓인 것     드라이런: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count
 >            문장 "layers N -> M, the deepest cell A -> B" — N-M 이 지울 수
 >            (이 박스 1,000 행 x 5 칸 x 9 겹 픽스처: 46,000 -> 6,000 · 9 -> 1 · 1.2 s — 운영 규모는 안 쟀음)
 >            실행: 같은 화면 Run  또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
