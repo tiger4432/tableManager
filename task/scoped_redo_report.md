@@ -79340,3 +79340,36 @@ fold-units  origin/main 에 그 낱말 0 (카나리아 fold-rows 3). 이 CLI 의
   407 passed, 3 deselected in 28.88s
 어느 DB · 어느 스키마 · 지운 것: 임시 폴더의 설정 · 로그 · 격리 시험 DB(PG 한 파일) · public 전후 같음 · 지운 것 0
 ```
+
+## [10-11] 걷기 records 한 순서 착지 af401be1c · fold-units 소급 탭 문장 a88909467 (총괄 10-11)
+
+```
+착지 af401be1c — 4 files changed, 47 insertions(+), 17 deletions(-)
+무엇  _newest_records 하나가 엣지 · 노드 이름 records 를 같은 규칙으로 정렬 · 자름 — 원자 시각, 같으면 claim id, 새것 먼저
+      엣지는 원자마다 시각과 함께 한 번 담고(edge_records) 답을 지을 때 정렬 · 자름 — 전엔 가져온 순서로 담고 상한에서 잘랐다
+      노드도 같은 함수 — 같은 시각이면 claim id 로(전엔 들어온 순서)
+시험  조회가 원자를 «오래된 것 먼저» 넘기는 대역 · 상한 2 · 엣지와 노드 이름에 같은 시각 둘 -> 가장 최근 둘이 한 순서로
+변이
+  RED an edge's records stay in the order fetched — 1 failed, 5 passed · test_the_newest_records_stay_whatever_order_they_were_fetched_in
+  RED a tie in time keeps the order fetched — 1 failed, 5 passed · test_the_newest_records_stay_whatever_order_they_were_fetched_in
+  RED a node name's records stay in the order fetched — 1 failed, 5 passed · test_the_newest_records_stay_whatever_order_they_were_fetched_in
+게이트 — 걷기 낱말을 부르는 시험 파일, 같은 base(a88909467) 깨끗한 사본과, 비PG
+  files 37
+  wt-llm:   17 failed, 348 passed, 1 skipped, 79 deselected in 22.78s
+  wt-check: 17 failed, 347 passed, 1 skipped, 79 deselected in 22.07s
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+  둘의 같은 빨강 17 은 원장 선언 파일(gitignore 된 config/ontology/ledger_config.json)이 없는 worktree 데이터 루트 탓 —
+  이 박스 config 를 스크래치로 «복사»한 데이터 루트로 그 다섯 파일 + 이 파일 다시:
+  wt-llm box-config copy: 107 passed, 1 skipped, 3 deselected in 4.03s
+  wt-check box-config copy: 106 passed, 1 skipped, 3 deselected in 4.04s
+  PG pg files 9
+  PG 79 passed, 89 deselected in 295.91s (0:04:55)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+fold-units 소급 탭 문장 a88909467 — downstream_note 에 «끝 철회는 소급 채널 edit 사건을 낸다, 규칙은 안 깨운다»(응용이 잼)
+  덤 — test_the_form_says_what_a_run_does_to_the_chain 이 770b1f24b(fold-units) 뒤로 main 에서 빨강이었음:
+       이름 안 든 op 는 기본 문장이어야 하는데 fold_units 가 제 문장 — 그 칸이 fold_units 를 이름으로 든다
+  RED the old fold-units note back — 1 failed, 13 deselected
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 config 는 스크래치로 복사만 · public 전후 같음 · 지운 것 0
+```
