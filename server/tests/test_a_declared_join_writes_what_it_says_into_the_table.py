@@ -250,7 +250,7 @@ def test_the_group_path_actually_calls_the_join(db, caplog):
         "the count the paced lap used to publish must not vanish with the lap")
 
 
-def test_the_group_paths_join_write_makes_ONE_event_not_one_per_row(db, fixed_pages):
+def test_the_group_paths_join_write_makes_ONE_event_not_one_per_row(db):
     """🔴 [S-278 A] THE DISCRIMINANT NEEDS MORE THAN ONE ROW, which is why it is its own
     test. With a single row 「collapsed」 and 「one per row」 produce the same count, and a
     fixture both rules agree on decides nothing.

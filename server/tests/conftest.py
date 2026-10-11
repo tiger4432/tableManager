@@ -215,18 +215,14 @@ def run_join_and_write(db, rule, row_ids):
     from database import crud, schemas
 
     outcome = join_into.propose(db, rule, row_ids)
-    updates, more = list(outcome.get("updates") or []), outcome.get("next_page")
-    while more is not None:                     # every page, as the worker's write seat asks them
-        page = more()
-        updates += page.get("updates") or []
-        more = page.get("next_page")
+    updates = outcome.get("updates") or []
     for item in updates:
         item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
     if updates:
         crud.apply_batch_updates(
             db, str((rule or {}).get("target_table") or ""),
             schemas.GeneralUpdateBatch(updates=updates, silent=True))
-    answer = {key: value for key, value in outcome.items() if key not in ("updates", "next_page")}
+    answer = {key: value for key, value in outcome.items() if key != "updates"}
     answer["written"] = len(updates)
     return answer
 

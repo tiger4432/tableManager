@@ -180,21 +180,6 @@ def _declare_bench_target(table_name):
 # the mapper
 # ---------------------------------------------------------------------------
 
-def _first_rows(out):
-    """A paged answer (`next_page` - the join, the fold mapper) with its pages followed up to one old page
-    (`keyset_scan.DEFAULT_CHUNK_SIZE` rows), while the session is open: its first page is one row (총괄 a02ad0f2b ㄱ)."""
-    from chain import keyset_scan
-
-    if not isinstance(out, dict) or out.get("next_page") is None:
-        return out
-    rows, more = list(out.get("updates") or ()), out["next_page"]
-    while more is not None and len(rows) < keyset_scan.DEFAULT_CHUNK_SIZE:
-        page = more() or {}
-        rows += page.get("updates") or ()
-        more = page.get("next_page")
-    return dict(out, updates=rows[:keyset_scan.DEFAULT_CHUNK_SIZE], next_page=more)
-
-
 def _unknown_name(name, detail=None):
     """「이 이름으로는 아무것도 못 돌립니다」 — 양쪽 점호를 달아서. 판정 541.
 
@@ -316,14 +301,13 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
             #   three. Do not "fix" it here - a copy of the seat's behaviour is the thing
             #   being removed, not added.
             out = fn(session, payloads, rule=effective_rule)
-            out = _first_rows(out)
         except TypeError as exc:
             # ⚠️ A mapper that never declared `rule` is called the old way by the worker too,
             # so the bench must not be stricter than production. The message is checked so a
             # genuine TypeError INSIDE the mapper is not swallowed as a signature mismatch.
             if "rule" not in str(exc):
                 raise
-            out = _first_rows(fn(session, payloads))
+            out = fn(session, payloads)
     except Exception as exc:
         return {"who": who, "rows": [], "refusal": "%s: %s" % (type(exc).__name__, exc)}
     finally:

@@ -201,7 +201,7 @@ def test_a_run_without_apply_hands_nothing_over(rep_env):
     assert _target(rep_env, "P1") is None
 
 
-def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env, fixed_pages):
+def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env):
     """🔴 [소유자 2026-09-23] 「작은 소급은 바로 아웃박스에 트리거와 «같은 형태»로 꽂히게」.
 
     ⚰️ THIS CALLED `replay_rule(apply=True)` AND ASSERTED THE TARGET ROW. It passed while
@@ -217,15 +217,16 @@ def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env, fixed_pages)
     _clear_outbox(rep_env)
 
     stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
-    assert stats["rows_staged"] == 2 and stats["events_staged"] == 1
+    # one event a PAGE, not a row - the pages start at one row (총괄 a02ad0f2b ㄱ)
+    assert stats["rows_staged"] == 2 and stats["events_staged"] == stats["pages"] >= 2, stats
     assert _target(rep_env, "P1") is None, "it wrote by itself; it must only hand over"
 
     events = _staged(rep_env, "crep_test_trigger")
-    assert len(events) == 1
+    assert len(events) == stats["pages"]
     payload = events[0].payload
     assert events[0].event_type == "EDIT", "a new event type would not be a trigger at all"
     assert payload["only_rule"] == RULE_RESERVE["name"]
-    assert len(payload["row_ids"]) == 2
+    assert sum(len(e.payload["row_ids"]) for e in events) == 2
     assert "columns" not in payload, (
         "an empty column set reads as 「nothing changed」 and skips every column-scoped rule")
 
@@ -237,7 +238,7 @@ def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env, fixed_pages)
         {"chain_ingestion"}, "the worker wrote it in the chain's layer, like any live edit"
 
 
-def test_one_replay_is_one_transaction(rep_env, fixed_pages):
+def test_one_replay_is_one_transaction(rep_env):
     """게이트 ㉡ - one replay = one transaction = one line on the screen.
 
     🔴 THE TRAP THIS KILLS. `stage_collapsed_event` takes its id from
@@ -253,10 +254,10 @@ def test_one_replay_is_one_transaction(rep_env, fixed_pages):
 
     stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=2,
                                log=lambda *_: None)
-    assert stats["events_staged"] == 3, "the pages must actually be several, or this is vacuous"
+    assert stats["events_staged"] == stats["pages"] >= 2, "the pages must actually be several, or this is vacuous"
 
     ids = {e.payload["transaction_id"] for e in _staged(rep_env, "crep_test_trigger")}
-    assert len(ids) == 1, "three pages, three transactions: %r" % (ids,)
+    assert len(ids) == 1, "a transaction a page: %r" % (ids,)
 
 
 def test_only_the_named_rule_wakes(rep_env):

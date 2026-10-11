@@ -86,16 +86,16 @@ def fold_by_unit(db, payloads, rule=None):
     return _page(updates)
 
 
-def _page(updates, start=0, size=None):
+def _page(updates, start=0):
     """The marks a page at a time, as the join writes (총괄 634c06fc3, 소유자 「배치로」): the write seat writes and
     commits a page before it asks the next, so a stop keeps the pages written; a re-run hands every losing row again
     (총괄 406d7c102) and the pages already written hold the same value."""
     from chain import keyset_scan
 
-    page, after, size = keyset_scan.pages(updates, start, size)
-    answer = {"updates": page, "next_page": (lambda: _page(updates, after, size)) if after is not None else None}
+    page, after, pages = keyset_scan.pages(updates, start)
+    answer = {"updates": page, "next_page": (lambda: _page(updates, after)) if after is not None else None}
     if not start:
-        answer["rows_total"] = len(updates)
+        answer["rows_total"], answer["pages"] = len(updates), pages
     return answer
 
 

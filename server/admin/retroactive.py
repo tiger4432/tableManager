@@ -2405,7 +2405,7 @@ class RunControl:
         #: The last page boundary's count, clock and number - what the page line (`_page_line`) measures from - and the
         #: run's start, whose rate the time left is told by (a page's own rate swings on a one-row page).
         self._said, self._boundary, self._pages = 0, time.monotonic(), 0
-        self._began = self._boundary
+        self._began, self._total = self._boundary, None
 
     def _session(self):
         if self._session_factory is not None:
@@ -2463,14 +2463,20 @@ class RunControl:
         """THE PAGE LINE (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」): at each page boundary that moved
         the count, `[<op>] page k: <rows> rows · <seconds> s · <rows/s> rows/s · <done> / <total> · ~<left> left` - the
         total and the time left only when the op counted its rows."""
-        if processed is None or processed <= self._said:
+        # the total once told holds for the run's later lines (the op's headline at its end comes without it)
+        total = self._total = total if total is not None else self._total
+        if processed is None or processed == self._said:
             return
         now = time.monotonic()
+        if processed < self._said:
+            # another count began - a later step's (from 0 again) or the op's headline at its end: lines go on from it
+            self._said, self._boundary = processed, now
+            return
         rows, seconds = processed - self._said, now - self._boundary
         rate = rows / seconds if seconds > 0 else 0
         self._pages += 1
         done = ("%d done" % processed if not total else "%d / %d · ~%s left" % (
-            processed, total, _clock((total - processed) * (now - self._began) / processed)))
+            processed, total, _clock(max(total - processed, 0) * (now - self._began) / processed)))
         self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s" % (self.op, self._pages, rows, seconds, rate, done))
         self._said, self._boundary = processed, now
 

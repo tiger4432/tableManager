@@ -337,6 +337,9 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     # translated without withdrawing (판정 166) - so it wrote that source's facts twice, once
     # more each time the declaration had moved.
     only, size = frozenset({source}), keyset_scan.PageSize(page_rows)
+    # the rows this run has to read, for its page line - a table's (`_table_rows`)
+    total = (rows_not_yet_translated(engine, setup, source, world=world)["not_yet"]
+             if checkpoint is not None and _table_rows(engine, plan, count=False) else None)
     while max_pages is None or report["batches"] < max_pages:
         page = rows_missing_from_the_index(engine, setup, source, size.next(), after,
                                            world=world)
@@ -353,7 +356,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
             size.rest(rest_seconds)
-        if checkpoint is not None and checkpoint(report["rows_read"]):
+        if checkpoint is not None and checkpoint(report["rows_read"], total):
             report["stopped"] = True
             logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
             break
@@ -813,9 +816,10 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
 RESCOPE_PAGE_ROWS = 1000
 
 
-def _table_rows(engine, plan):
-    """The source's rows, counted once at a whole-source run's start for its page line's total and time left (총괄
-    a02ad0f2b ①) - a table's only (relkind r · p): a view's count runs its whole query, and views leave production."""
+def _table_rows(engine, plan, count=True):
+    """The source's rows, counted once at a run's start for its page line's total and time left (총괄 a02ad0f2b ①) -
+    a table's only (relkind r · p): a view's count runs its whole query, and views leave production. `count=False`:
+    True for a table, without counting."""
     from psycopg2 import sql
 
     connection = engine.raw_connection()
@@ -825,6 +829,8 @@ def _table_rows(engine, plan):
             kind = cursor.fetchone()
             if kind is None or kind[0] not in ("r", "p"):
                 return None
+            if not count:
+                return True
             cursor.execute(sql.SQL("SELECT count(*) FROM {}").format(
                 sql.SQL(".").join(sql.Identifier(part) for part in str(plan.relation).split("."))))
             return cursor.fetchone()[0]
@@ -876,7 +882,9 @@ def _scope_pages(engine, plan, scoped, page_rows):
 #: cannot simply enqueue them all -- the ruling that asked for this said so before the code
 #: did. The loader therefore reads, enqueues, and BLOCKS on its own drain, so the number of
 #: row ids held at once is bounded by this times the page size.
-EVENT_LOAD_QUEUE_LIMIT = 4
+#: 🔴 ONE: each page is followed before the next is read (총괄 a02ad0f2b ④). With four queued, a page's size was set
+#: by the follow of the page three before it, and a page line waited on up to four follows (9 of 40 gaps over 5 s).
+EVENT_LOAD_QUEUE_LIMIT = 1
 
 
 def rows_missing_from_the_index(engine, setup, source, limit, after=None, world=None):

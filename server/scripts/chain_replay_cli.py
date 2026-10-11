@@ -304,7 +304,7 @@ def main(argv=None):
         elif args.cmd == "fold-units":
             print(_report_fold_units(written("fold_units", {"rule": args.rule_name, "pace": args.pace})
                                      if args.apply else replay.fold_units(db, args.rule_name, apply=False, log=say, checkpoint=(
-                                         retroactive._checkpoint(retroactive.RunControl(None, "fold_units", log=say))))))
+                                         retroactive._checkpoint(retroactive.RunControl(None, op="fold_units", log=say))))))
         elif args.cmd == "remove-shells":
             params = {"table": args.table, "pace": args.pace}
             if args.apply:

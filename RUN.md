@@ -275,8 +275,10 @@
 > ## [10-12] **소급 진행이 5 초에 한 번 — 쪽 크기를 스스로 맞추고 첫 쪽은 1 행 (총괄 a02ad0f2b, 소유자 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」 · 「인벤토리 리플레이는 1 행씩 시작해야지」, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»(소급 · 명령줄은 다음 실행부터)**
 >
 > ```
-> 무엇        쪽을 도는 소급 · 원장 백필 · 조인 · 접기 맵퍼의 쪽이 1 행에서 시작해, 쪽 하나가 page_seconds 의 절반 아래면 다음 쪽 두 배,
->             넘으면 넘은 비율만큼 바로 줄임. 손으로 준 chunk_size · 쪽 상수는 «최대». pace 의 쉼은 쪽 시간에 안 셈
+> 무엇        쪽을 도는 소급 · 원장 백필의 쪽이 1 행에서 시작해, 쪽 하나가 page_seconds 아래면 그 쪽의 행당 속도로
+>             page_seconds 를 채울 크기까지 키움(한 번에 두 배까지), 넘으면 넘은 비율만큼 바로 줄임.
+>             손으로 준 chunk_size · 쪽 상수는 «최대». pace 의 쉼은 쪽 시간에 안 셈. 원장 백필은 쪽마다 읽고 바로 번역
+>             체인의 조인 · 접기 맵퍼 쪽(라이브)은 고정 1,000 그대로 — 쓰기 하나 = 이벤트 하나
 > 선언 칸     server/pacing.json "page_seconds": 3 (5 를 넘게 적어도 5). 다음 실행부터, 재기동 없이
 > 볼 줄       retroactive.log (명령줄이면 그 창) — 쪽마다
 >             [ledger_rescope] page 11: 512 rows · 1.5 s · 330 rows/s · 1024 done
@@ -285,7 +287,10 @@
 >             rows 가 1~2 에서 안 자람 -> 쪽 크기와 무관한 고정 비용이 page_seconds 를 넘음 — 총괄께
 >             원장 stale 철회 쪽은 5 초를 넘을 수 있음 — 쪽 크기 고정(쪽당 고정 비용), 시연 뒤 인덱스로
 >             표기 소급 · fold-units 의 옛 줄 «[notation] x / total rows (page k, s)» 는 없어짐 — 이 줄 하나로
-> 체인 큐 줄   조인 · 접기 쪽 줄이 «page k · 쓴 수 / 전체 rows» — 쪽 총수 K 는 없어짐(쪽 크기가 바뀌므로)
+> 맞춤 밖     이 루프들은 쪽 크기 고정 그대로 — 쪽 하나가 5 s 를 넘을 수 있음
+>             enrichment analysis 의 큐 걷기(chain/enrichment/analysis.py) · set_aside(chain/set_aside.py)
+>             원장 stale 철회(쪽당 고정 비용 — 시연 뒤 인덱스로) · retranslate_drifted · catch_up 의 삭제 철회
+>             소급 «규칙 행 실행»(_run_rule_rows)은 실행 하나가 쪽 하나
 > 끄는 스위치  없음 — git revert {LANDING} -> 재기동
 > ```
 >

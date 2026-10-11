@@ -190,7 +190,7 @@ def _score(db, before, cell, wrote, expect_depth=1):
 # the group step - both doors
 # ---------------------------------------------------------------------------
 
-def test_the_group_step_through_the_builtin_door(db, fixed_pages):
+def test_the_group_step_through_the_builtin_door(db):
     _seed(db)
     before = set(e.id for e in _events(db))
     worker._process_chain_transaction_group_sync(
@@ -256,7 +256,7 @@ def _retroactively(db, rule):
     return before
 
 
-def test_retroactive_through_the_builtin_door(db, fixed_pages):
+def test_retroactive_through_the_builtin_door(db):
     _seed(db)
     # [1] is the `:target` half - it walks the LEFT rows this matrix scores (e91b96a28).
     before = _retroactively(db, _join_rules()[1])

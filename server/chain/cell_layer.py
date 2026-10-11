@@ -419,13 +419,15 @@ def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = Fal
     from database.context import outbox_mode
     with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME), \
             outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
-        size, i = keyset_scan.PageSize(chunk_size), 0
+        # a run that reports its pages sizes them (`PageSize`); the chain's own withdrawal (`withdraw_by_origin`, no
+        # checkpoint) keeps the fixed size - one write, one event (총괄 a02ad0f2b NO-GO ①)
+        size, i = (keyset_scan.PageSize(chunk_size) if checkpoint is not None else None), 0
         while i < len(all_row_ids):
             if checkpoint is not None and checkpoint(i):
                 stats["stopped"] = True
                 log(f"[withdraw] stopped by request after {i} rows")
                 break
-            chunk = all_row_ids[i:i + size.next()]
+            chunk = all_row_ids[i:i + (size.next() if size else chunk_size)]
             i += len(chunk)
             rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
 

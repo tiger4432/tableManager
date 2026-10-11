@@ -2,8 +2,8 @@
 """Every page loop shows progress within the page cap (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게
 배치 크기 조절해」 · 「한 배치에 5 초 이내 무조건」 · 「인벤토리 리플레이는 1 행씩 시작해야지」): on a fixture slowed per
 row, the first page is one row, no page and no gap between page lines passes the cap, and the rows read are every row
-once in order - what a fixed page size reads. Both seats: the keyset scan (`iter_pages`) and a proposal's pages
-(`pages`). Time is scaled: target 0.3 s, cap 0.5 s (3 s · 5 s)."""
+once in order - what a fixed page size reads. The keyset scan (`iter_pages`); a live proposal's pages stay fixed
+(총괄 a02ad0f2b NO-GO ①). Time is scaled: target 0.3 s, cap 0.5 s (3 s · 5 s)."""
 import os
 import sys
 import time
@@ -61,14 +61,3 @@ def test_the_keyset_scan_starts_at_one_row_and_keeps_every_page_under_the_cap():
         [r[0] for r in page] for page in keyset_scan.iter_pages(db, Row, columns=[], size=size)))
     _assert_within_the_cap(read, sizes, seconds, times, lines, every)
 
-
-def test_a_proposal_s_pages_start_at_one_row_and_keep_every_page_under_the_cap():
-    every = list(range(ROWS))
-    size = keyset_scan.PageSize(keyset_scan.DEFAULT_CHUNK_SIZE, seconds=TARGET)
-
-    def pages():
-        start = 0
-        while start is not None:
-            page, start, _size = keyset_scan.pages(every, start, size)
-            yield page
-    _assert_within_the_cap(*_walk(pages), every)

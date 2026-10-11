@@ -124,11 +124,6 @@ def test_running_it_again_writes_nothing(db):
     before = count()
     rows = db.query(models.DYNAMIC_TABLES[INV]).all()
     out = fold_unit.fold_by_unit(db, [{"row_id": r.row_id, "data": {}} for r in rows], dict(RULES[0]))
-    more = out["next_page"]
-    while more is not None:                     # every page, as the write seat asks them
-        page = more()
-        out["updates"] += page["updates"]
-        more = page["next_page"]
     crud.apply_batch_updates(db, LOG, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
         **item, source_name=rule_run.layer_of_a_rules_write(None, item["origin_row_id"]),   # the worker's seat
         updated_by=fold_unit.NAME) for item in out["updates"]]))
@@ -203,10 +198,10 @@ def test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would(db, m
     monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", 2)
     _logs_then_inventory(db)
     ok, writes, lines = _inventory_group(db, monkeypatch)
-    assert ok and writes == [1, 2, 2, 2, 2], writes        # the first page one row (소유자 「1 행씩 시작해야지」)
+    assert ok and writes == [2, 2, 2, 2, 1], writes
     assert _marks(db) == SEEDED
-    assert lines == ["mapper · fu_by_unit -> fu_log · page %d · %d / 9 rows" % (k, n)
-                     for k, n in ((1, 1), (2, 3), (3, 5), (4, 7), (5, 9))], lines
+    assert lines == ["mapper · fu_by_unit -> fu_log · page %d/5 · %d / 9 rows" % (k, n)
+                     for k, n in ((1, 2), (2, 4), (3, 6), (4, 8), (5, 9))], lines
 
 
 def test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_ends_as_one_write_would(db, monkeypatch):
@@ -217,17 +212,17 @@ def test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_ends_as_one_wr
     monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", 2)
     _logs_then_inventory(db)
     ok, writes, _lines = _inventory_group(db, monkeypatch, fail_on_write=3)
-    assert not ok and writes == [1, 2, 2]
+    assert not ok and writes == [2, 2, 2]
     rows = db.query(models.DYNAMIC_TABLES[LOG]).filter(models.DYNAMIC_TABLES[LOG].fold_mark.isnot(None)).count()
-    assert rows == 3, "pages one and two stayed"
+    assert rows == 4, "pages one and two stayed"
     ok, writes, lines = _inventory_group(db, monkeypatch)
-    assert ok and writes == [1, 2, 2, 2, 2], "every losing row handed again"
-    assert lines[0] == "mapper · fu_by_unit -> fu_log · page 1 · 1 / 9 rows", lines   # the first line from a one-row page
+    assert ok and writes == [2, 2, 2, 2, 1], "every losing row handed again"
+    assert lines[0] == "mapper · fu_by_unit -> fu_log · page 1/5 · 2 / 9 rows", lines
     assert _marks(db) == SEEDED
 
 
 def test_a_page_with_no_total_is_said_without_one():
-    assert worker._page_said("r", "t", 2, 5, None, 7) == "r -> t · page 2 · 5 rows"
+    assert worker._page_said("r", "t", 2, None, 5, None, 7) == "r -> t · page 2 · 5 rows"
 
 
 def test_the_queue_reads_each_pages_line_while_that_page_is_written(db, monkeypatch):
@@ -264,8 +259,8 @@ def test_the_queue_reads_each_pages_line_while_that_page_is_written(db, monkeypa
     finally:
         worker._GROUP_LINE_KEYS.reset(token)
     assert ok
-    assert seen == [["write:fu_log · fu_by_unit -> fu_log · page %d · %d / 9 rows" % (k, n)]
-                    for k, n in ((1, 1), (2, 3), (3, 5), (4, 7), (5, 9))], seen
+    assert seen == [["write:fu_log · fu_by_unit -> fu_log · page %d/5 · %d / 9 rows" % (k, n)]
+                    for k, n in ((1, 2), (2, 4), (3, 6), (4, 8), (5, 9))], seen
 
 
 def test_the_winners_log_rows_are_not_read(db):

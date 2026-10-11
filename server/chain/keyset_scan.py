@@ -23,6 +23,7 @@ WHY PAGES AND NOT ROWS
     would quietly invite N+1.
 """
 import logging
+import math
 import time
 
 logger = logging.getLogger(__name__)
@@ -33,11 +34,14 @@ FIRST_PAGE = 1
 
 
 class PageSize:
-    """THE ONE PAGE-SIZE RULE every page loop asks (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게 배치
+    """THE ONE PAGE-SIZE RULE every retroactive page loop asks (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게 배치
     크기 조절해」): the first page is FIRST_PAGE; a page that took under half the declared page time
-    (`pacing.page_seconds`) doubles the next, one that took longer cuts the next by its overshoot; never above `most`
+    (`pacing.page_seconds`) doubles the next, one under the page time grows the next to what its own rate fills in
+    that time (at most double - a fixed cost between half and the whole page time held a one-row page there), one
+    that took longer cuts the next by its overshoot; never above `most`
     (a hand-given chunk_size is the ceiling). A page's time runs from one `next()` to the next - the read and whatever
-    its caller did with it - less the pace's rests (`rest`)."""
+    its caller did with it - less the pace's rests (`rest`). A live proposal's pages (`pages`) stay fixed: there one
+    write is one event (총괄 a02ad0f2b NO-GO ①)."""
 
     def __init__(self, most=None, seconds=None):
         import pacing
@@ -53,8 +57,9 @@ class PageSize:
             took = now - self._since
             if took > self.seconds:
                 self.size = max(1, int(self.size * self.seconds / took))
-            elif took < self.seconds / 2:
-                self.size = min(self.most, self.size * 2)
+            else:
+                self.size = min(self.most, self.size * 2,
+                                math.ceil(self.size * self.seconds / took) if took > 0 else self.size * 2)
         self._since = now
         return self.size
 
@@ -65,13 +70,13 @@ class PageSize:
             self._since += seconds
 
 
-def pages(items, start: int = 0, size=None):
-    """`(the page of `items` from `start`, the start of the next page or None, the PageSize to hand the next call)`.
-    A proposal that writes in pages (the join, the fold mapper - 총괄 e10c58e5e · 634c06fc3) cuts here, and asks the
-    next page only when the write seat has written this one - so the time between the calls is the page's."""
-    size = size or PageSize()
-    after = start + size.next()
-    return items[start:after], (after if after < len(items) else None), size
+def pages(items, start: int = 0):
+    """`(the page of `items` from `start`, the start of the next page or None)` - DEFAULT_CHUNK_SIZE at a time, and
+    the page count when `start` is 0. A proposal that writes in pages (the join, the fold mapper - 총괄 e10c58e5e ·
+    634c06fc3) cuts here, so its pages and the line that counts them have one size."""
+    size = DEFAULT_CHUNK_SIZE
+    after = start + size
+    return items[start:after], (after if after < len(items) else None), -(-len(items) // size)
 
 
 def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAULT_CHUNK_SIZE,

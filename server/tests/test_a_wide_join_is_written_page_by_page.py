@@ -28,9 +28,6 @@ from database import crud, models, schemas                                   # n
 from database.database import Base                                          # noqa: E402
 from maps import alignment_batch_counts                                      # noqa: E402
 
-# each page its loop's largest - these cells read a page's mechanics at PAGE rows, not its size (a02ad0f2b)
-pytestmark = pytest.mark.usefixtures("fixed_pages")
-
 LEFT, RIGHT = "wide_left_log", "wide_right_attribution"
 TABLES = {
     LEFT: {"business_key": "log_key", "composite_key_source": ["log_key"],
@@ -130,7 +127,7 @@ def test_a_wide_fan_out_is_written_page_by_page_and_ends_as_one_write_would(monk
     # each page's SELECT and each page's write enter a stage - the claim beats per page, the write with its page
     # line (총괄 59f2ab3f4)
     writes_said = [s for s in paged_stages if s.startswith("write:%s" % LEFT)]
-    assert writes_said == ["write:%s · %s -> %s · page %d · %d / 35 rows" % (LEFT, DECLARATION["name"], LEFT, k, n)
+    assert writes_said == ["write:%s · %s -> %s · page %d/4 · %d / 35 rows" % (LEFT, DECLARATION["name"], LEFT, k, n)
                            for k, n in ((1, 10), (2, 20), (3, 30), (4, 35))], writes_said
     after_first = paged_stages[paged_stages.index(writes_said[0]) + 1:]
     assert after_first.count("mapper") == 3, "pages two to four were read without a beat"
@@ -145,7 +142,7 @@ def test_every_page_says_which_of_how_many_and_the_rows_so_far(monkeypatch):
     ok, writes, stages = _run(db, _rules(), RIGHT, monkeypatch)
     assert ok and writes == [10, 10, 10, 5]
     said = [s for s in stages if s.startswith("mapper · " + DECLARATION["name"])]
-    assert said == ["mapper · %s -> %s · page %d · %d / 35 rows" % (DECLARATION["name"], LEFT, k, n)
+    assert said == ["mapper · %s -> %s · page %d/4 · %d / 35 rows" % (DECLARATION["name"], LEFT, k, n)
                     for k, n in ((1, 10), (2, 20), (3, 30), (4, 35))], said
 
 
