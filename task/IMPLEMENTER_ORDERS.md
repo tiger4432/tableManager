@@ -65818,3 +65818,20 @@ tests/test_ledger_v2_pg.py 가 감사 줄을 assy_test public 으로 흘린다(1
 같은 커밋  RUN.md(옮기기 명령 · 답의 뜻 · 재기동 체인 워커 · 서버 · 되돌리기) · RELEASE_LOG · 층 안내 문서
 순서     표 선언 인덱스 -> 이것
 ```
+
+> **[총괄 -> 구현자] 10-11 낮 — 다시 세기가 복사 규칙의 require 를 모름: 짝에 «행 관문 둘 다» (응용 잼, 소유자 「체인 require 에 dt_wafer_id 넣었는데 왜 카피가 빈 행까지」) — 표 선언 인덱스 다음 · 층 원천 행마다보다 앞**
+
+```
+잰 것(응용 · pytest PG 스크래치 · hold_world)  require [kind] 뒤 replay «복사 규칙» -> 빈 행이 먹인 층 12 -> 0 ✓ · 값 5 -> 7 ✓
+   ❌ 보류  hold_copy._claims 가 require 를 모름 — exclude 는 source_exclude 로 두 짝에 실리는데 require 는 안 실림
+           J1(남은 원천 하나) 보류 빈 그대로 · J2 · J3(원천이 전부 빈 행) 보류 agreed, 값 빈칸
+   ❌ 껍데기  J2 · J3 가 보류 agreed 라 «키 밖이 다 빈 행»이 아님 -> remove-shells 0
+판정(총괄)  결함. require 와 exclude 는 행 관문 «하나»(chain_bindings.ROW_GATE_KEYS · rule_run.held_back 한 자리) — 짝이 그중 하나만 싣는 것이 문 가르기
+고칠 것    짝에 싣는 것을 ROW_GATE_KEYS 둘 다로 넓힌다(exclude 만 싣던 그 자리 · 그 모양) — 둘째 기제 금지
+          _claims 의 거르기 = 두 관문을 한 함수가 SQL 로(crud blank_sql_condition / not_blank_sql_condition) — held_back 과 같은 판정
+          pair_mismatch 도 두 관문을 견준다(복사 둘이 관문이 다르면 다시 세기 거절, 오늘 exclude 처럼)
+게이트     응용 하니스 그 표 그대로: J1 agreed · J2 · J3 보류 빈칸 -> remove-shells 미리보기 2 · --apply 2 · 다시 돌리면 0
+          require 없는 규칙은 오늘 그대로 · exclude 만 있는 규칙 오늘 그대로 · 변이(require 빼고 싣기 -> 빨강)
+같은 커밋  RUN.md(소유자 줄: pull · 재기동 체인 워커 · 서버 -> replay «복사 규칙» -> remove-shells «공식 표», 답의 뜻) · RELEASE_LOG
+순서      표 선언 인덱스 -> 이것 -> 체인 층 원천 행마다
+```
