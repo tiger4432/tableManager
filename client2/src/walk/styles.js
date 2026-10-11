@@ -27,7 +27,7 @@ export const WALK_CSS = `
    The screen gate asks all three of every element on the page. */
 :root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: 44px; --wk-h-small: 28px;
   /* A result table's columns (owner 10-12 「폭이 꿀렁꿀렁」): the node one width, every value column - each sign and Δ - one. */
-  --wk-col-node: 232px; --wk-col-value: 152px;
+  --wk-col-node: 152px; --wk-col-value: 96px;
   /* One face for the page; the mono only for ids and ways (lead 10-11 W 3). */
   --wk-font: 'IBM Plex Sans', 'Outfit', system-ui, sans-serif; --wk-mono: 'IBM Plex Mono', var(--font-mono, ui-monospace), monospace; }
 .wk-bar, .wk-main { font-family: var(--wk-font); }
