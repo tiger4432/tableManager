@@ -79202,3 +79202,64 @@ fold-units  origin/main 에 그 낱말 0 (카나리아 fold-rows 3). 이 CLI 의
    dropped schema assy_impl_clicut2_1011 (15 tables) - left 0
    public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428
 ```
+
+## [10-11] CLI 이름 착지 5e5a9d049 — CLI 소급이 체인 워커 재기동에 안 끊긴다 (총괄 10-11 ㄱ)
+
+```
+착지 5e5a9d049 — 6 files changed, 68 insertions(+), 4 deletions(-)
+무엇  chain_replay_cli.py 의 __main__ 에서 Retroactive / retroactive.log 를 먼저 묶음 — retroactive_run.py 와 같은 두 줄
+      import 때가 아니라 __main__ 인 까닭: 시험이 이 모듈을 import 해 main 을 부른다 — 묶으면 pytest 프로세스 이름이 바뀜
+      ingestion_worker 기동 정리 docstring 의 «스크립트는 안 건드린다»를 참인 말로(이름 안 묶는 스크립트는 여전히 Chain — ㄴ)
+덤    test_one_retroactive_job_is_one_line_in_the_queue::test_every_run_ends_inside_its_run 이 db928d441(RunControl.announce)
+      뒤로 main 에서 빨강이었음 — 시험의 control 대역에 announce 가 없었다. 그때 제 게이트 목록이 낱말(announce)로 모아
+      이 파일(대역을 짓는 쪽)을 못 셌다. 대역에 announce 를 줌
+진짜 프로세스 게이트 — 판마다 assy_test 스크래치 스키마 하나 · 연결 이름 앞 assy_probe1011_ · 진짜 CLI 를 __main__ 으로
+   (fold-units 만 쪽을 100 행으로 줄여 정리 때 돌고 있게 함 — chain.replay import 는 이름을 안 묶음, 확인)
+고친 판
+   replay: worker starts at 1791714720.460 · CLI still running yes
+   replay: CLI exit 0
+   after chain_replay: run done · rows 1000 · error ''
+   replay: CLI 연결 assy_retroactive 2 · 정리가 끝낸 연결 0 · CLI 데이터 루트의 로그 retroactive.log 5 줄
+   fold: worker starts at 1791714759.341 · CLI still running yes
+   fold: CLI exit 0
+   after fold_units: run done · rows 1200 · error ''
+   after fold_units: cg_log marked 1200
+   fold: CLI 연결 assy_retroactive 2 · 정리가 끝낸 연결 0 · CLI 데이터 루트의 로그 retroactive.log 7 줄
+   내 것 아닌 연결 전 4 · 뒤 6 — 뒤에만 50784 assy_watcher, 58052 assy_launcher · 전에만 없음
+   head 3934f24bc · cli md5 4f2bfe1fc3f0
+   dropped schema assy_impl_clicutg_fixed (17 tables) - left 0
+   public relations 325 -> 325 · added [] · gone [] · rows changed {}
+변이 판 — 두 줄 뗌(md5 전후 같음으로 되돌림)
+   replay: worker starts at 1791714859.685 · CLI still running yes
+   replay: CLI exit 1
+   after chain_replay: run failed · rows 200 · error '(psycopg2.OperationalError) server closed the connection unexpectedly\n\tThis probably means the server terminated abnorma'
+   replay: CLI 연결 assy_chain 3 · 정리가 끝낸 연결 2 · CLI 데이터 루트의 로그 chain_worker.log 4 줄
+   fold: worker starts at 1791714877.081 · CLI still running yes
+   fold: CLI exit 0
+   after fold_units: run done · rows 1200 · error ''
+   after fold_units: cg_log marked 1200
+   fold: CLI 연결 assy_chain 4 · 정리가 끝낸 연결 2 · CLI 데이터 루트의 로그 chain_worker.log 6 줄
+   내 것 아닌 연결 전 16 · 뒤 20 — 뒤에만 39888 assy_chain, 40192 (unnamed), 59232 assy_chain, 8304 assy_lock_sample · 전에만 없음
+   head 3934f24bc · cli md5 0b0bf77d853b
+   dropped schema assy_impl_clicutg_mutant (17 tables) - left 0
+   public relations 325 -> 325 · added [] · gone [] · rows changed {}
+   fold-units 가 변이 판에서 산 까닭 — 안 잼, 코드로 맞는 설명: 쪽마다 먼저 부르는 취소 확인(RunControl.stop_requested)이
+   끊긴 연결을 먼저 잡고 그 실패를 debug 로 삼킨다 -> SQLAlchemy 가 풀을 버리고 다음 쪽이 새 연결. replay 는 쪽 읽기가 먼저
+   잡아 죽는다. 접속 로그: 끊긴 둘 뒤 새 연결 둘, CLI 출력에 오류 줄 0. 그러니 «살았다»는 순서 덕이고 이름이 막은 게 아니다
+시험 칸 test_the_cli_names_its_process_as_the_queues_child_does — 변이에서:
+   E       assert 'NAME assy_chain' == 'NAME assy_retroactive'
+   1 failed, 16 deselected in 3.08s
+게이트 — CLI · 소급 자식 · 로거 · 연결 이름 · 정리 함수를 부르는 시험 파일, 같은 base 깨끗한 사본(wt-check)과, 비PG
+   files 30
+   wt-llm:   1 failed, 569 passed, 2 skipped, 75 deselected in 132.73s (0:02:12)
+   wt-check: 1 failed, 568 passed, 2 skipped, 75 deselected in 115.21s (0:01:55)
+   new (only in wt-llm): 0
+   gone (only in wt-check): 0
+   (둘의 같은 빨강 하나가 위 «덤» — 고친 뒤 그 파일 10 passed)
+   PG pg files 9
+   PG 75 passed, 77 deselected in 689.08s (0:11:29)
+   public relations 325 -> 325 · added [] · gone [] · rows changed {}
+   public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+리베이스 — 잰 base 3934f24bc -> 착지 base d76cafd54, 그 사이 server/ 바뀐 파일 0 (git diff --stat)
+어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_clicutg_fixed · assy_impl_clicutg_mutant — 만들고 지움 · 격리 시험 DB(PG)
+```

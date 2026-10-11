@@ -244,7 +244,7 @@
 >
 > ---
 >
-> ## [10-11] **CLI 소급이 체인 워커 재기동에 안 끊긴다 — CLI 가 자기 이름을 Retroactive 로 먼저 묶는다 (총괄 10-11 ㄱ, 착지 {LANDING}) — 이주 «없음» · 재기동 «없음»(다음 CLI 부터)**
+> ## [10-11] **CLI 소급이 체인 워커 재기동에 안 끊긴다 — CLI 가 자기 이름을 Retroactive 로 먼저 묶는다 (총괄 10-11 ㄱ, 착지 5e5a9d049) — 이주 «없음» · 재기동 «없음»(다음 CLI 부터)**
 >
 > ```
 > 무엇        chain_replay_cli.py 가 시작할 때 프로세스 이름을 Retroactive 로 묶는다 — 큐의 소급 자식(admin/retroactive_run.py)과 같은 두 줄
@@ -512,7 +512,7 @@
 >            old marks withdrawn — 이제 이긴 잡 · 다른 잡으로 옮긴 로그 행의 옛 표시를 거둔 수
 >   그 뒤      ⑥ 복사 replay 를 꼭 — 이 명령은 아무 규칙도 안 깨운다. 열린 그리드는 새로 고침해야 보인다
 >   멈춤      소급 탭 × — 쪽 사이에서 선다 · 다시 돌리면 남은 것만 · 멈춘 판은 옛 표시를 안 걷는다(끝까지 한 번 더)
-> 돌리는 동안    체인 워커를 재기동해도 안 끊긴다 — {LANDING} pull 뒤(CLI 연결 assy_retroactive). 그 전 판에선 재기동의 기동 정리가
+> 돌리는 동안    체인 워커를 재기동해도 안 끊긴다 — 5e5a9d049 pull 뒤(CLI 연결 assy_retroactive). 그 전 판에선 재기동의 기동 정리가
 >            이 명령의 연결을 끊어 «server closed the connection unexpectedly» 로 멈춤(bb4d53e9e) — 멈췄으면 같은 명령을 다시
 >   초기화      위 「초기화」 첫 줄 -> fold-units dt_log_fold_by_inventory --apply
 >   박스 수     박스 DESKTOP-OVKV3HK(AMD Family 23) · assy_test 스크래치 스키마 · 만든 데이터(인벤토리 1,000 · 웨이퍼 400 · 로그 535,000 · 표시 321,000)
