@@ -65903,3 +65903,17 @@ require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 repla
 짓기 전  한 줄 보고(파일 · 함수 · 두 줄 선언 예) — 답 기다리지 말고 진행
 순서     지금 «층 원천 행마다» 진짜 프로세스 판이 끝나 착지할 수 있으면 착지, 아니면 세우고 이것 -> 그다음 층 원천 행마다
 ```
+
+> **[총괄 -> 구현자] 10-11 오후 — 선언 폼이 decide.aggregations 의 레코드를 그린다 (소유자 「체인 선언창에 aggregation 이 안 뜨는데」 -> 안 ㄱ 「ㄱ 으로 폼 그려」) — 접기 맵퍼 다음**
+
+```
+지금(코드)  rule_shape.DECIDE_CELL_SHAPES["aggregations"] = 이름 맵 -> 낱값(leaf) · 읽는 쪽 enrichment.config._parse_aggregation 은 "count" 또는 {fn, column, separator}
+           폼(ontology_explorer_view 이름 맵)은 낱값 자리에 레코드가 오면 그 줄을 안 그림(if (!drawn) continue) -> raw 엔 있고 폼엔 없음
+도착지  「선언 폼의 decide 밑 aggregations 에서 이름마다 fn · column · separator 칸이 보이고 거기 적으면 됩니다」
+고칠 것  골격의 aggregations 항목 = 레코드 {fn, column, separator}(전부 선택 — 맞는지는 읽는 쪽이 오늘처럼 이름 대어 거절) · chain_skeleton.json 은 코드에서 다시 생성(드리프트 게이트)
+         낱말 줄임 "count" 는 읽는 쪽이 이미 {fn: "count"} 로 접음 — 폼이 받는 선언에서도 그 «한 자리»를 지나 레코드로 보이게(폼 저장이면 raw 가 {"fn": "count"} 로 바뀌는 것은 괜찮음, 같은 뜻)
+         fn 칸에 고를 낱말이 골격 어휘로 되면 AGGREGATION_FUNCTIONS 를 그대로(둘째 목록 금지), 안 되면 자유 글자
+게이트   "count" · {fn: max, column} · {fn: unique_concat, column, separator} 셋이 폼에 다 보임 · 폼 저장 왕복 뒤 읽는 쪽 정규형이 같음 · 드리프트 게이트 · 변이
+같은 커밋  chain_rules 안내(decide 칸 표) · RELEASE_LOG
+순서   접기 맵퍼 -> 이것 -> 층 원천 행마다
+```
