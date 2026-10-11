@@ -318,9 +318,9 @@ const FLOORS = new Map([
   // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
   // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
   // already stopped says what became of it (XA, XM10).
-  ['chain_queue_panel_harness.mjs', 238],
+  ['chain_queue_panel_harness.mjs', 239],   // 238 -> 239: the age the screen hands it, its first line - QA2 (owner 10-11 Q)
   // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
-  ['outbox_queue_panel_harness.mjs', 67],
+  ['outbox_queue_panel_harness.mjs', 76],   // 67 -> 76: a queue read cut at its time, its age said each beat - QA1, PL5-PL9, PM4-PM6; PM1-PM3 re-aimed (owner 10-11 Q)
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
   ['copy_header_count_harness.mjs', 151],

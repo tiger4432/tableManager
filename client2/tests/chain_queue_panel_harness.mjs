@@ -1032,6 +1032,19 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
 }
 
+// The panel says how long since its screen last read the queue (owner 10-11 Q): the age handed in, its first line.
+{
+  const doc = makeDoc();
+  const host = doc.createElement('div');
+  const panel = new ChainQueuePanel(host, { doc });
+  panel.render(EMPTY, { age: 'Read 7 s ago' });
+  const first = host.children[0] && host.children[0].children[0];
+  const aged = first && String(first.className || '').includes('chain-queue-read-age') ? first.textContent : '';
+  panel.render(EMPTY);
+  ok('QA2 the age the screen hands it is the panel\'s first line; none handed, none drawn',
+    aged === 'Read 7 s ago' && !byClass(host, 'chain-queue-read-age').length, JSON.stringify([aged]));
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
