@@ -47,7 +47,9 @@ function makeDoc() {
     get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
     set textContent(v) { this._text = String(v); this.children = []; },
   });
-  return { createElement: make, head: make('head') };
+  // A section's Trend draws an SVG (lead 10-11 W addendum 7: its rows the table's shown) - the same node, its class an
+  // attribute as the browser keeps it.
+  return { createElement: make, createElementNS: (ns, tag) => make(tag), head: make('head') };
 }
 // The browser's rule for an <option>: with no value of its own it is worth its TEXT. A stub where every
 // value starts as '' cannot see the type placeholder becoming a type (lead b417e2ad8), so it keeps the rule.
@@ -114,6 +116,23 @@ const SIGNED = {
       { seed: 's:c', sign: '+', hops: [{ id: 's:c' }, { id: 'd:4', predicates: ['inspected'] }] }] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
+// Sort · filter · bulk select (lead 10-11 W addendum 7): one + wafer and more dies than a pick lists (PICK_MOST + 2, read off
+// the module) - mat_id M-1 …, a grade A · B · none, a gate each - numbers that sort otherwise as words (2 · 9 · 10 · 100),
+// two dies with none - and a point beside it (Split by, addendum 2 ⑭), every edge at its own hour.
+const SF_GATES = [10, 9, 100, 2, null, 7, 3, null, 11, 1, 50, 8, 4, 6, 5, 12];
+const sfAnswer = (n) => ({
+  generated_at: '2026-10-02T00:00:00+00:00',
+  nodes: [{ id: 'sw', type: 'wafer@1', label: 'SW', keys: { wafer: 'SW' } },
+    ...Array.from({ length: n }, (_, i) => ({ id: `sd:${i + 1}`, type: 'die@1', label: `SD${i + 1}`, keys: { mat_id: `M-${i + 1}` },
+      attributes: i % 3 === 2 ? {} : { grade: i % 3 === 0 ? 'A' : 'B' } }))],
+  edges: Array.from({ length: n }, (_, i) => ({ id: `sf:${i + 1}`, source: 'sw', target: `sd:${i + 1}`, predicate: 'inspected',
+    occurred_at: `2026-10-01T${String(i % 24).padStart(2, '0')}:00:00+00:00`,
+    qualifiers: { ...(SF_GATES[i] === null ? {} : { gate: SF_GATES[i] }), point: ['C', 'T', 'L'][i % 3] } })),
+});
+const SF_STARTS = { positive: ['sw'], negative: [] };
+const SF_DECL = { ok: true, entities: DECL.entities, predicates: [{ name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } }] };
+const SF_ASC = '1,2,3,4,6,7,8,9,10,11,50,100,,';
+const SF_DESC = '100,50,11,10,9,8,7,6,4,3,2,1,,';
 // Route (lead df11f9e81, 10-10): a base wafer (+ start) whose die a core die is bonded from; the core wafer reached
 // through it; a − wafer whose die measures the same quantity. The measurement an edge (scheme A) or an event node
 // (scheme B). Each node's ranked row carries the paths the server walked to it (its evidence), as an answer does.
@@ -397,7 +416,7 @@ async function suite(mod) {
     click(walkAll(host).find((e) => e.className === 'wk-go'));
     await settle();
     click(walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === q.id));
-    click(walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === 'measures ← wafer'));
+    click(walkAll(host).find((e) => e.className === 'wk-next-edge' && e.attrs['data-route'] === 'measures ← wafer'));
     await settle();
     const b = tableOf();
     const askB = asked[asked.length - 1];
@@ -572,7 +591,7 @@ async function suite(mod) {
     const steps = (h) => walkAll(h).filter((e) => /^wk-step( is-on)?$/.test(e.className || ''));
     const rowsShown = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']);
     eq('N1 the Next of the die section is the declaration\'s edges one step from die@1, both kinds, each its arrow (lead 10-11 W)',
-      edges(host).map((e) => e.textContent).join(' | '), 'inspected@1 ← wafer@1 | bonded_to@1 → die@1');
+      edges(host).map((e) => e.attrs['data-route']).join(' | '), 'inspected@1 ← wafer@1 | bonded_to@1 → die@1');
     press(edges(host)[1]);
     await settle();
     ok('N2 nothing checked: every edge is off with its reason, and a press asks nothing',
@@ -585,7 +604,7 @@ async function suite(mod) {
     // The basket (W addendum 3): the checked rows under the result, a chip each; × and Clear take them out of the marking.
     const basketOf = (h) => walkAll(h).find((e) => e.className === 'wk-marked');
     const chipsOf = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-marked']).map((e) => e.attrs['data-marked']);
-    const word = (h) => ((basketOf(h) || { children: [] }).children[0] || {}).textContent;
+    const word = (h) => (walkAll(basketOf(h) || { children: [] }).find((e) => e.className === 'wk-markedword') || {}).textContent;
     const resultOf = (h) => walkAll(h).find((e) => e.className === 'wk-result') || { children: [] };
     ok('MB1 the checked row is in the basket, the result\'s last line: «Marked · 1», its chip',
       word(host) === 'Marked · 1' && chipsOf(host).join() === 'n:1' && resultOf(host).children[resultOf(host).children.length - 1] === basketOf(host),
@@ -614,7 +633,7 @@ async function suite(mod) {
     tick(host, 'n:1');
     ok('MB4 two pages: each basket its own checks',
       chipsOf(host).join() === 'n:1' && chipsOf(host2).join() === 'n:2', `${chipsOf(host)} | ${chipsOf(host2)}`);
-    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
     await settle();
     const q = new URLSearchParams((asked[0] || '').split('?')[1] || '');
     ok('N4 a press walks one step from the checked row alone, along that edge to its type',
@@ -626,7 +645,7 @@ async function suite(mod) {
         && steps(host)[1].textContent === 'Step 2 · bonded_to@1 → die@1' && rowsShown(host).join() === 'n:1,n:4',
       `${steps(host).map((s) => s.textContent)} ${rowsShown(host)}`);
     tick(host, 'n:4');
-    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
     await settle();
     const third = steps(host).length;
     press(steps(host)[0]);
@@ -639,7 +658,7 @@ async function suite(mod) {
     press(steps(host)[steps(host).length - 1]);
     for (let k = 0; k < 3; k += 1) {
       tick(host, 'n:4');
-      press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+      press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
       await settle();
     }
     tick(host, 'n:4');
@@ -651,7 +670,7 @@ async function suite(mod) {
     const later = NAMES().slice(1);
     press(steps(host)[1]);
     tick(host, 'n:1');
-    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    press(edges(host).find((e) => e.attrs['data-route'] === 'bonded_to@1 → die@1'));
     await settle();
     ok('CH2 step two walked on again: the steps after it go and so do their markings; the new step a name never used',
       handle.state.steps.length === 2 && later.every((name) => handle.graph.markings.count(name) === 0)
@@ -686,7 +705,7 @@ async function suite(mod) {
     same.state.result = { nodes: [startNode], edges: [] };
     same.render();
     tick(sameHost, SAME._start.id);
-    press(edges(sameHost).find((e) => e.textContent === `${SAME._predicate} → ${SAME._start.type}`));
+    press(edges(sameHost).find((e) => e.attrs['data-route'] === `${SAME._predicate} → ${SAME._start.type}`));
     await settle();
     const sideOf = (d) => new Set(SAME._answers[d].nodes.map((n) => n.id).filter((id) => id !== SAME._start.id));
     const [outSide, inSide] = [sideOf('outgoing'), sideOf('incoming')];
@@ -733,7 +752,7 @@ async function suite(mod) {
     handle.render();
     const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn(); };
     const tick = (id) => { const cb = walkAll(host).find((e) => e.attrs && e.attrs['data-row'] === id); for (const fn of (cb && cb.listeners.click) || []) fn({}); };
-    const next = (words) => walkAll(host).find((e) => e.className === 'wk-next-edge' && e.textContent === words);
+    const next = (words) => walkAll(host).find((e) => e.className === 'wk-next-edge' && e.attrs['data-route'] === words);
     const tab = (id) => walkAll(host).find((e) => e.attrs && e.attrs['data-step'] === String(id));
     const tabs = () => walkAll(host).filter((e) => e.className === 'wk-steprow')
       .map((row) => row.children.map((b) => `${b.textContent}${b.className.includes('is-on') ? ' *' : ''}`));
@@ -1035,6 +1054,147 @@ async function suite(mod) {
         [['inspected ← wafer@1 · gate', 3], [ADDED, 3]], ['M-3', '7', '−2', '9', 'A', '—', 'B']]),
       JSON.stringify([route, value, groupHeads(), tds('d:3')]));
   }
+  // ── sort · filter · bulk select on the page (lead 10-11 W addendum 7): what is drawn is what Copy, Trend, Walk on and the
+  //    head check take ──
+  {
+    const SF = sfAnswer(TABLE.PICK_MOST + 2);
+    const standUp = async () => {
+      const asked = [];
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      const handle = mod.boot(doc, host, { apiBase: '', writeClipboard, fetchImpl: async (url) => {
+        const u = String(url);
+        if (u.includes('/subgraph') && !u.includes('page=')) asked.push(u);
+        return { ok: true, status: 200, json: async () => (u.includes('/subgraph') ? RESULT : SF_DECL) };
+      } });
+      await settle();
+      handle.state.type = 'wafer@1';
+      handle.state.asked = { type: 'wafer@1', keys: {}, ...SF_STARTS };
+      handle.state.run = 'done';
+      handle.state.result = SF;
+      handle.render();
+      return { host, handle, asked };
+    };
+    const { host, handle, asked } = await standUp();
+    const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
+    const press = (e, event = {}) => { for (const fn of (e && e.listeners.click) || []) fn(event); };
+    const change = (e) => { for (const fn of (e && e.listeners.change) || []) fn({}); };
+    const type = (input, value) => { if (!input) return; input.value = value; for (const fn of input.listeners.input || []) fn({}); };
+    const secHead = (sec) => (walkAll(sec).find((c) => c.className === 'wk-sechead') || {}).textContent || '';
+    const dieSec = (h = host) => walkAll(h).filter((e) => e.className === 'wk-sec').find((x) => /^die/.test(secHead(x))) || { children: [] };
+    const head = (h = host) => secHead(dieSec(h));
+    const drawn = (h = host) => walkAll(dieSec(h)).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']);
+    const find = (attr, value) => walkAll(dieSec()).find((e) => e.attrs && e.attrs[attr] === value);
+    const editor = () => walkAll(dieSec()).find((e) => e.className === 'wk-filteredit') || { children: [], attrs: {} };
+    const field = (name) => walkAll(editor()).find((e) => e.attrs && e.attrs['data-field'] === name);
+    const findBox = () => walkAll(dieSec()).find((e) => e.attrs && e.attrs['data-find'] === 'die@1');
+    const sec = walkTableView(SF, SF_DECL.entities, SF_DECL.predicates, undefined, SF_STARTS).sections.find((x) => x.type === 'die@1');
+    const grid = TABLE.gridOf(sec);
+    const keyOf = (h) => (grid.columns.find((c) => c.head === h) || {}).key;
+    const GATE = keyOf(`${GATE_IN} · +`);
+    const gates = () => drawn().map((id) => SF_GATES[Number(id.split(':')[1]) - 1]).map((g) => (g === null ? '' : g)).join();
+    const order = drawn().join();
+    const words = (find('data-sort-key', GATE) || {}).textContent;
+    const sorted = [];
+    for (let i = 0; i < 3; i += 1) {
+      press(find('data-sort-key', GATE));
+      sorted.push([i === 2 ? drawn().join() : gates(), (find('data-sort-key', GATE) || { attrs: {} }).attrs['aria-sort'] || null]);
+    }
+    ok('PF1 a head pressed sorts its section: ascending, descending, its first order - said by its aria-sort, its words its own, the head no «of»',
+      JSON.stringify(sorted) === JSON.stringify([[SF_ASC, 'ascending'], [SF_DESC, 'descending'], [order, null]])
+        && (find('data-sort-key', GATE) || {}).textContent === words && head() === sec.heading,
+      JSON.stringify([sorted, head()]));
+    press(find('data-filter', GATE));
+    const kindShown = editor().attrs['data-filter-kind'];
+    type(field('min'), '5');
+    type(field('max'), '10');
+    const ranged = [gates(), head(), (walkAll(dieSec()).find((e) => e.className === 'wk-filterchip') || {}).textContent];
+    ok('PF2 a number column\'s «▾»: a range under the toolbar - Min 5 · Max 10 draws the rows in it, the head «5 of 14», the filter a chip',
+      kindShown === 'range' && JSON.stringify(ranged) === JSON.stringify(['10,9,7,8,6', `die@1 · 5 of ${sec.rows.length}`, `${GATE_IN} · + · ≥ 5 · ≤ 10 ×`]),
+      JSON.stringify([kindShown, ranged]));
+    const at0 = CLIP.length;
+    press(walkAll(dieSec()).find((e) => has(e, 'wk-copytable')));
+    const copied = CLIP.length > at0 ? CLIP[CLIP.length - 1].text.split(LF) : [];
+    const said = (walkAll(dieSec()).find((e) => has(e, 'wk-copied')) || {}).textContent;
+    ok('PF3 Copy after a filter: a line a row drawn, in its order - «Copied 5 rows»',
+      copied.length === 6 && copied.slice(1).map((l) => l.split(String.fromCharCode(9)).pop()).join() === drawn().join() && said === 'Copied 5 rows',
+      JSON.stringify([copied.length, said]));
+    press(walkAll(dieSec()).find((e) => e.className === 'wk-filterchip'));
+    press(find('data-filter', keyOf('mat_id')));
+    const contains = editor().attrs['data-filter-kind'];
+    type(field('contains'), 'm-1');
+    const byWords = drawn().join();
+    press(walkAll(editor()).find((e) => e.tagName === 'button' && e.textContent === 'Clear'));
+    press(find('data-filter', keyOf('grade')));
+    const picks = walkAll(editor()).filter((e) => e.attrs && e.attrs['data-pick'] !== undefined).map((e) => e.attrs['data-pick']);
+    change(walkAll(editor()).find((e) => e.attrs && e.attrs['data-pick'] === 'A'));
+    const byPick = drawn().length;
+    press(walkAll(editor()).find((e) => e.tagName === 'button' && e.textContent === 'Clear'));
+    press(walkAll(editor()).find((e) => e.tagName === 'button' && e.textContent === 'Close'));
+    ok('PF4 the three kinds on the page: mat_id the words it contains («m-1» 6 rows), grade values picked (A out: 9 rows), Clear and Close each',
+      JSON.stringify([contains, byWords, picks, byPick, drawn().length, editor().attrs['data-filter-kind'] || null])
+        === JSON.stringify(['contains', 'sd:1,sd:10,sd:11,sd:12,sd:13,sd:14', ['A', 'B', ''], 9, sec.rows.length, null]),
+      JSON.stringify([contains, byWords, picks, byPick, drawn().length]));
+    // The search box and All rows · Differs · Missing: one seat, one filter.
+    const seat = walkAll(dieSec()).find((e) => e.className === 'wk-filterseat') || { children: [] };
+    type(findBox(), 'M-1');
+    const found = [drawn().length, head()];
+    press(find('data-shape', 'long'));
+    const longDrawn = walkAll(dieSec()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length;
+    const longWant = TABLE.shownOf(sec, { find: 'M-1' }, TABLE.longLines(walkTableView(SF, SF_DECL.entities, SF_DECL.predicates, undefined, SF_STARTS), sec)).lines.length;
+    const at1 = CLIP.length;
+    press(walkAll(dieSec()).find((e) => has(e, 'wk-copytable')));
+    const longCopied = CLIP.length > at1 ? CLIP[CLIP.length - 1].text.split(LF).length - 1 : -1;
+    const longHead = head();
+    press(find('data-shape', 'wide'));
+    ok('PF5 the search box and All rows · Differs · Missing one seat: «M-1» 6 rows, «6 of 14»; Long its lines found - drawn, copied and «N of 22 lines»',
+      walkAll(seat).some((e) => e.attrs && e.attrs['data-find'] === 'die@1') && walkAll(seat).some((e) => e.attrs && e.attrs['data-rows'] === 'missing')
+        && JSON.stringify(found) === JSON.stringify([6, `die@1 · 6 of ${sec.rows.length}`])
+        && longDrawn === longWant && longCopied === longWant && longWant > 6 && longHead === `die@1 · ${longWant} of 22 lines`,
+      JSON.stringify([found, longDrawn, longWant, longCopied, longHead]));
+    // The head check: every row shown, then none of them - a hidden row's check its own.
+    const marks = handle.graph.markings;
+    marks.set(handle.state.marks, 'sd:2', SIGN.CASE);
+    handle.render();
+    const shownIds = drawn();
+    press(find('data-check-all', ''));
+    const allOn = marks.entries(handle.state.marks).map(([id]) => id).sort().join();
+    const boxOn = (find('data-check-all', '') || {}).checked;
+    press(find('data-check-all', ''));
+    const allOff = marks.entries(handle.state.marks).map(([id]) => id).join();
+    ok('PF6 the head check: every row shown checked (6), a hidden row\'s check kept; pressed again, the shown ones off',
+      allOn === [...shownIds, 'sd:2'].sort().join() && boxOn === true && allOff === 'sd:2',
+      JSON.stringify([allOn, boxOn, allOff]));
+    // Walk on and Trend take the rows shown.
+    type(findBox(), '');
+    marks.replace(handle.state.marks, [['sd:4', SIGN.CASE], ['sd:1', SIGN.CASE]]);
+    type(findBox(), 'M-1');
+    const before = asked.length;
+    // Walk on is the basket's, under the result (W addendum 3): the die rows checked, so its routes are die's.
+    press(walkAll(host).find((e) => e.className === 'wk-next-edge'));
+    await settle();
+    const q = new URLSearchParams((asked[before] || '').split('?')[1] || '');
+    const seeds = [...q.getAll('positive'), ...q.getAll('id')];
+    handle.state.at = 0;
+    handle.render();
+    press(find('data-section-view', 'trend'));
+    const dots = () => walkAll(dieSec()).filter((e) => e.attrs && e.attrs['data-key'] !== undefined && String(e.attrs.class).includes('wk-tp')).length;
+    const trendFound = dots();
+    type(findBox(), '');
+    const trendAll = dots();
+    press(find('data-section-view', 'table'));
+    ok('PF8 Walk on from the checked rows shown (sd:1 - sd:4 hidden); the section\'s Trend a dot a row shown with a time (6), all again 12',
+      asked.length === before + 1 && seeds.includes('sd:1') && !seeds.includes('sd:4') && trendFound === 6 && trendAll === 12,
+      JSON.stringify([asked.length - before, seeds, trendFound, trendAll]));
+    // Two pages on one screen: a filter in one is not the other's.
+    const two = await standUp();
+    type(findBox(), 'M-12');
+    press(walkAll(dieSec(two.host)).find((e) => e.attrs && e.attrs['data-sort-key'] === GATE));
+    ok('PF9 two pages: one\'s search box and the other\'s sort each its own',
+      drawn().join() === 'sd:12' && drawn(two.host).length === sec.rows.length && head(two.host) === sec.heading
+        && (walkAll(dieSec()).find((e) => e.attrs && e.attrs['data-sort-key'] === GATE) || { attrs: {} }).attrs['aria-sort'] === undefined,
+      JSON.stringify([drawn(), drawn(two.host).length, head(two.host)]));
+  }
 }
 
 // ═══ baseline ═══════════════════════════════════════════════════════════════════════════
@@ -1116,7 +1276,7 @@ const sideSuite = (TV) => {
   // Copy table (lead a27dfbb0f, W: the shape shown): the node's own, then each column its + · Δ · −, the id last; values
   // raw, several «; », none empty, a side not reached «missing» in each of its cells.
   const cpDie = two.sections.find((x) => x.type === 'die@1') || { groups: [], columnHeads: [], centreHeads: [], parts: [], rows: [] };
-  const sheet = TV.sheetOf ? TV.sheetOf(cpDie, 'all') : { head: [], rows: [] };
+  const sheet = TV.sheetOf ? TV.sheetOf(cpDie) : { head: [], rows: [] };
   const cpRow = (id) => sheet.rows.find((r) => r[r.length - 1] === id) || [];
   const at = (h) => sheet.head.indexOf(h);
   const d3Delta = (((cpDie.rows.find((r) => r.id === 'd:3') || { cells: [] }).cells[0] || {}).delta || {}).value;
@@ -1128,8 +1288,8 @@ const sideSuite = (TV) => {
       && typeof d3Delta === 'number' && cpRow('d:3')[at(`${GATE_IN} · Δ`)] === String(d3Delta)
       && !sheet.rows.some((r) => r.includes(TV.EMPTY)),
     JSON.stringify([sheet.head, cpRow('d:1'), cpRow('d:3'), cpRow('d:4')]));
-  const differs = TV.sheetOf ? TV.sheetOf(cpDie, 'differs') : { rows: [] };
-  const missing = TV.sheetOf ? TV.sheetOf(cpDie, 'missing') : { rows: [] };
+  const differs = TV.sheetOf ? TV.sheetOf(cpDie, { rows: 'differs' }) : { rows: [] };
+  const missing = TV.sheetOf ? TV.sheetOf(cpDie, { rows: 'missing' }) : { rows: [] };
   ok('CP2 the sheet follows the filter: Differs the rows the sides differ on, Missing the rows one missed - fewer than all',
     JSON.stringify(differs.rows.map((r) => r[r.length - 1])) === JSON.stringify(cpDie.rows.filter((r) => r.differs).map((r) => r.id))
       && JSON.stringify(missing.rows.map((r) => r[r.length - 1])) === JSON.stringify(cpDie.rows.filter((r) => r.missing).map((r) => r.id))
@@ -1306,9 +1466,155 @@ const sideSuite = (TV) => {
   ok('Z31 two paths walked to one node: the first and «+N», every one kept (the nine\'s several values)',
     JSON.stringify([core.text, core.rest, core.values]) === JSON.stringify([BONDING, '+1',
       [BONDING, STACKING]]), JSON.stringify(core));
+  // Add here and More (lead 10-11 W addenda 5, 6): a walk merged into the step by mergeWalks - from s:a (+ only), s:b (−
+  // only) and d:3 (both): d:7 on +, d:8 on −, d:9 on both, the existing d:1 a − value; More from the deepest node.
+  const path1 = (seed, id, predicate) => ({ seed, hops: [{ id: seed }, { id, predicates: [predicate] }] });
+  const dn = (id, depth) => ({ id, type: 'die@1', label: id.toUpperCase(), depth, keys: { mat_id: id.toUpperCase() } });
+  const ADD = { nodes: [SIGNED.nodes[0], SIGNED.nodes[2], SIGNED.nodes[5], dn('d:7', 1), dn('d:8', 1), dn('d:9', 1), SIGNED.nodes[3]],
+    edges: [be('s:a', 'inspected', 'd:7', { gate: 5 }), be('s:b', 'inspected', 'd:8', { gate: 6 }), be('s:b', 'inspected', 'd:1', { gate: 4 }),
+      be('d:3', 'bonded_to', 'd:9', { gate: 3 })],
+    propagation: { ranked: [['d:7', 's:a', 'inspected'], ['d:8', 's:b', 'inspected'], ['d:1', 's:b', 'inspected'], ['d:9', 'd:3', 'bonded_to']]
+      .map(([id, seed, p]) => ({ id, evidence: [path1(seed, id, p)] })) } };
+  const MORE_ANSWER = { nodes: [SIGNED.nodes[5], dn('d:9', 1), dn('d:10', 1)],
+    edges: [be('d:3', 'bonded_to', 'd:9', { gate: 3 }), be('d:3', 'bonded_to', 'd:10', { gate: 8 })],
+    propagation: { ranked: ['d:9', 'd:10'].map((id) => ({ id, evidence: [path1('d:3', id, 'bonded_to')] })) } };
+  const addOf = (answer, seeds, words) => ({ words, seeds, answer });
+  const add = addOf(ADD, ['s:a', 's:b', 'd:3'], 'walk on · inspected → die@1');
+  const withAdds = (adds) => TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS, new Map(), {}, null, adds);
+  const one = withAdds([add]);
+  const BONDED = 'bonded_to ← die@1 · gate';
+  const addDie = one.sections.find((x) => x.type === 'die@1') || { rows: [], adds: [] };
+  const routes = (id) => ((addDie.rows.find((r) => r.id === id) || { routes: [] }).routes).map((w) => `${w.sign} ${w.text}`);
+  ok('AH1 Add here: d:7 + only, d:8 − only, d:9 both with its shared start, d:1 its − value; «+3 from walk on»; the same walk twice no row more; × leaves the rest',
+    JSON.stringify([rowIds(one), cell(one, 'die@1', 'd:7', GATE_IN, 0), cell(one, 'die@1', 'd:7', GATE_IN, 1), cell(one, 'die@1', 'd:8', GATE_IN, 0),
+      cell(one, 'die@1', 'd:8', GATE_IN, 1), cell(one, 'die@1', 'd:1', GATE_IN, 1), cell(one, 'die@1', 'd:9', BONDED, 0), cell(one, 'die@1', 'd:9', BONDED, 1),
+      routes('d:7'), routes('d:9'), addDie.adds, rowIds(withAdds([add, add])), rowIds(withAdds([])), rowIds(view(SIGNED_STARTS))])
+      === JSON.stringify([`${ALL},d:7,d:8,d:9`.split(',').sort().join(','), '5', '[missing]', '[missing]', '6', '4', '3', '3',
+        ['+ inspected'], ['+ bonded_to · via shared M-3', '− bonded_to · via shared M-3'], [{ at: 0, words: add.words, n: 3 }],
+        `${ALL},d:7,d:8,d:9`.split(',').sort().join(','), ALL, ALL]),
+    JSON.stringify([rowIds(one), cell(one, 'die@1', 'd:7', GATE_IN, 0), cell(one, 'die@1', 'd:7', GATE_IN, 1), cell(one, 'die@1', 'd:8', GATE_IN, 0),
+      cell(one, 'die@1', 'd:8', GATE_IN, 1), cell(one, 'die@1', 'd:1', GATE_IN, 1), cell(one, 'die@1', 'd:9', BONDED, 0), cell(one, 'die@1', 'd:9', BONDED, 1),
+      routes('d:7'), routes('d:9'), addDie.adds, rowIds(withAdds([add, add]))]));
+  const moreAdd = addOf(MORE_ANSWER, TV.deepestNodes ? TV.deepestNodes(SIGNED) : [], 'More');
+  const union = new Set([...SIGNED.nodes, ...ADD.nodes, ...MORE_ANSWER.nodes].map((n) => n.id));
+  const both = withAdds([add, moreAdd]);
+  ok('MO1 More from the deepest node (d:3): merged rows = the union; × on Add here leaves More\'s',
+    JSON.stringify([moreAdd.seeds, both.shown, rowIds(withAdds([moreAdd]))])
+      === JSON.stringify([['d:3'], union.size, `${ALL},d:10,d:9`.split(',').sort().join(',')]),
+    JSON.stringify([moreAdd.seeds, both.shown, union.size, rowIds(withAdds([moreAdd]))]));
 };
+// ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
+const filterSuite = (TV) => {
+  const view = TV.walkTableView(sfAnswer(TV.PICK_MOST + 2), SF_DECL.entities, SF_DECL.predicates, undefined, SF_STARTS);
+  const sec = view.sections.find((x) => x.type === 'die@1') || { rows: [], centreHeads: [], columns: [], groups: [], parts: [] };
+  const grid = TV.gridOf(sec);
+  const at = (head, cols = grid.columns) => cols.findIndex((c) => c.head === head);
+  const K = { gate: at(`${GATE_IN} · +`), mat: at('mat_id'), grade: at('grade') };
+  const key = (k) => (grid.columns[k] || {}).key;
+  // A column a mutant took away reads as nothing, not a throw: the cell it names fails, the rest still run.
+  const words = (f, k, lines) => TV.shownOf(sec, f, lines).lines.map((l) => (l.cells[k] || {}).words).join();
+  const ids = (f, lines) => TV.shownOf(sec, f, lines).lines.map((l) => l.id).join();
+  const asc = words({ sort: { key: key(K.gate), dir: 'asc' } }, K.gate);
+  const desc = words({ sort: { key: key(K.gate), dir: 'desc' } }, K.gate);
+  ok('SF1 a sort three ways: ascending, descending, then its first order (lead 10-11 W addendum 7)',
+    JSON.stringify([asc, desc, ids({ sort: null }), ids({})]) === JSON.stringify([SF_ASC, SF_DESC, sec.rows.map((r) => r.id).join(), sec.rows.map((r) => r.id).join()]),
+    JSON.stringify([asc, desc]));
+  ok('SF2 numbers sort as numbers: 9 before 10, 100 after 50 - and words as a reader orders them: M-2 before M-10',
+    asc.startsWith('1,2,3,4,6,7,8,9,10,11,50,100') && words({ sort: { key: key(K.mat), dir: 'asc' } }, K.mat).startsWith('M-1,M-2,M-3'),
+    `${asc} | ${words({ sort: { key: key(K.mat), dir: 'asc' } }, K.mat)}`);
+  ok('SF3 blanks last, ascending and descending', asc.endsWith(',,') && desc.endsWith(',,') && !asc.startsWith(','), `${asc} | ${desc}`);
+  // Wide's + · Δ · − each a column of its own: on SIGNED's die section + puts d:4 (1) before d:3 (7), − puts d:3 (9) first.
+  const signed = TV.walkTableView(SIGNED, DECL.entities, DECL.predicates, undefined, SIGNED_STARTS).sections.find((x) => x.type === 'die@1');
+  const sg = signed ? TV.gridOf(signed) : { columns: [] };
+  const sKey = (h) => (sg.columns.find((c) => c.head === h) || {}).key;
+  const first = (h) => (signed ? TV.shownOf(signed, { sort: { key: sKey(h), dir: 'asc' } }).lines.map((l) => l.id).slice(0, 2).join() : '');
+  ok('SF4 Wide\'s + · Δ · − each a column to sort by: + d:4 (1) then d:3 (7); − d:3 (9) first; Δ d:3 (−2) first',
+    JSON.stringify([sg.columns.map((c) => c.head), first(`${GATE_IN} · +`), first(`${GATE_IN} · −`).split(',')[0], first(`${GATE_IN} · Δ`).split(',')[0]])
+      === JSON.stringify([['mat_id', `${GATE_IN} · +`, `${GATE_IN} · Δ`, `${GATE_IN} · −`], 'd:4,d:3', 'd:3', 'd:3']),
+    JSON.stringify([sg.columns.map((c) => c.head), first(`${GATE_IN} · +`), first(`${GATE_IN} · −`), first(`${GATE_IN} · Δ`)]));
+  // Long: every column - its value numbers first then words, its node as a reader orders it.
+  const lines = TV.longLines(view, sec);
+  const lg = TV.gridOf(sec, lines);
+  const lv = at('value', lg.columns);
+  const lkey = (h) => (lg.columns[at(h, lg.columns)] || {}).key;
+  const longValues = TV.shownOf(sec, { sort: { key: lkey('value'), dir: 'asc' } }, lines).lines.map((l) => (l.cells[lv] || {}).words);
+  ok('SF5 Long sorts by any of its columns: value - its numbers as numbers, then its words; node',
+    lg.columns.map((c) => c.head).join() === TV.LONG_HEAD.join() && longValues.slice(0, 12).join() === SF_ASC.replace(/,+$/, '')
+      && longValues.slice(12).join() === 'A,A,A,A,A,B,B,B,B,B'
+      && (TV.shownOf(sec, { sort: { key: lkey('node'), dir: 'desc' } }, lines).lines[0] || { line: {} }).line.node === 'SD14',
+    longValues.join());
+  // Filters, each by its kind - judged over every line.
+  const kind = (k) => (k < 0 ? 'none' : TV.filterKind(grid.lines, k).kind);
+  ok('SF6 a column of more values than a pick lists filters by the words it contains, any case: mat_id «m-1» - M-1, M-10 … M-14',
+    kind(K.mat) === 'contains' && ids({ columns: { [key(K.mat)]: { contains: 'm-1' } } }) === 'sd:1,sd:10,sd:11,sd:12,sd:13,sd:14',
+    `${kind(K.mat)} ${ids({ columns: { [key(K.mat)]: { contains: 'm-1' } } })}`);
+  ok('SF7 a column of numbers filters by a range: gate 5 … 10, a blank out',
+    kind(K.gate) === 'range' && words({ columns: { [key(K.gate)]: { min: 5, max: 10 } } }, K.gate) === '10,9,7,8,6'
+      && words({ columns: { [key(K.gate)]: { min: 50 } } }, K.gate) === '100,50',
+    `${kind(K.gate)} ${words({ columns: { [key(K.gate)]: { min: 5, max: 10 } } }, K.gate)}`);
+  const pick = K.grade < 0 ? { kind: 'none', choices: [] } : TV.filterKind(grid.lines, K.grade);
+  ok('SF8 a column of a few values picks them: grade A · B · blank; A picked out leaves B and blank',
+    pick.kind === 'pick' && pick.choices.join() === 'A,B,' && words({ columns: { [key(K.grade)]: { out: ['A'] } } }, K.grade) === 'B,,B,,B,,B,,B',
+    `${pick.kind} ${pick.choices} ${words({ columns: { [key(K.grade)]: { out: ['A'] } } }, K.grade)}`);
+  ok('SF9 the search box: a line\'s words or its node\'s keys, any case - «m-12» one row; with a column filter, both hold',
+    ids({ find: 'm-12' }) === 'sd:12' && ids({ find: 'M-1', columns: { [key(K.gate)]: { max: 8 } } }) === 'sd:10,sd:12,sd:13,sd:14'
+      && ids({ find: '  ' }) === sec.rows.map((r) => r.id).join(),
+    `${ids({ find: 'm-12' })} | ${ids({ find: 'M-1', columns: { [key(K.gate)]: { max: 8 } } })}`);
+  ok('SF10 «filtering» - what makes the head say «N of M» - a filter set, not a sort or an empty field',
+    JSON.stringify([{}, { sort: { key: key(K.gate), dir: 'asc' } }, { find: '' }, { columns: { [key(K.gate)]: { min: null } } }, { find: 'x' }, { rows: 'missing' },
+      { columns: { [key(K.grade)]: { out: ['A'] } } }].map((f) => TV.shownOf(sec, f).filtering)) === JSON.stringify([false, false, false, false, true, true, true]),
+    'filtering');
+};
+// ── Split by (lead 10-11 W addendum 2 ⑭): a point - Long's read - splits the trend; a dot's title says it ──
+const splitSuite = (R, TR, TVW) => {
+  const column = { steps: [{ predicate: 'inspected', direction: 'incoming' }], endTypes: ['wafer@1'], value: { on: 'edge', name: 'gate' } };
+  const e = { qualifiers: { gate: 10, point: 'C', note: '', side: 'top' } };
+  ok('SP1 a read\'s point: its edge\'s other attributes, the value and blanks out; a node\'s own value none',
+    JSON.stringify([R.pointOf(column, e), R.pointWords(R.pointOf(column, e)), R.pointOf({ ...column, value: { on: 'node', name: 'gate' } }, e)])
+      === JSON.stringify([[['point', 'C'], ['side', 'top']], 'point C · side top', []]),
+    JSON.stringify(R.pointOf(column, e)));
+  const view = TABLE_MOD.walkTableView(sfAnswer(8), SF_DECL.entities, SF_DECL.predicates, undefined, SF_STARTS);
+  const sec = view.sections.find((x) => x.type === 'die@1');
+  const gate = sec.trendable[0].column;
+  const points = TR.rowsPoints(view, sec.rows.map((r) => r.id), gate);
+  const long = TABLE_MOD.longLines(view, sec, { column: R.columnKey(gate) });
+  const longPoint = (id) => (long.find((l) => l.id === id) || {}).point;
+  // A point a mutant took away reads as none, not a throw.
+  const pointAt = (id) => R.pointWords((points.find((p) => p.row === id) || {}).point || []);
+  ok('SP2 a trend point carries the point Long says for the same read - one read (sd:1 «point C», sd:2 «point T»)',
+    pointAt('sd:1') === longPoint('sd:1') && longPoint('sd:1') === 'point C' && pointAt('sd:2') === 'point T' && TR.splitNames(points).join() === 'point',
+    JSON.stringify([points.map((p) => p.point), longPoint('sd:1')]));
+  const model = TR.trendModel(points, undefined, { split: 'point' });
+  const plain = TR.trendModel(points, undefined, {});
+  ok('SP3 Split by point: a series a value - C · L · T - each point its series; no split, no series',
+    JSON.stringify([model.series, model.numbers.map((p) => (model.series || [])[p.series]).join(''), plain.series])
+      === JSON.stringify([['C', 'L', 'T'], points.filter((p) => p.t !== null).map((p) => ((p.point || [])[0] || [])[1]).join(''), null]),
+    JSON.stringify([model.series, model.numbers.map((p) => p.series)]));
+  // The part: Split by offered, a dot its series' colour and its point in its title.
+  const doc = makeDoc();
+  const mount = doc.createElement('div');
+  const part = new TVW.TrendView(mount, { doc });
+  let picked = null;
+  part.show({ title: 't', model, groups: ['Positive'], t0: null, splits: ['point'], split: 'point', onSplit: (name) => { picked = name; } });
+  const nodes = walkAll(mount);
+  const select = nodes.find((n) => String(n.className).includes('wk-trendsplit'));
+  const dots = nodes.filter((n) => n.attrs && n.attrs['data-key']);
+  const titleOf = (d) => (d.children.find((c) => c.tagName === 'title') || {}).textContent;
+  if (select) { select.value = 'point'; for (const fn of select.listeners.change || []) fn({}); }
+  ok('SP4 the part: «Split by» offers the points\' names; a dot its series\' colour, its title its point; picking one tells the page',
+    Boolean(select) && select.children.map((o) => o.textContent).join('|') === 'Split by|Split by · point'
+      && dots.length === model.numbers.length && dots.every((d, i) => String(d.attrs.class).includes(`is-s${model.numbers[i].series + 1}`))
+      && titleOf(dots[0]) === `point ${model.numbers[0].point[0][1]}` && picked === 'point',
+    JSON.stringify([select && select.children.map((o) => o.textContent), dots.map((d) => [d.attrs.class, titleOf(d)]).slice(0, 2), picked]));
+};
+const TABLE_MOD = await import('../src/walk/table_view.js');
+const REACH_MOD = await import('../src/walk/reach_table.js');
+const TREND_MOD = await import('../src/walk/trend.js');
+const TVIEW_MOD = await import('../src/walk/trend_view.js');
 qualifierSuite(await import('../src/walk/table_view.js'));
 sideSuite(await import('../src/walk/table_view.js'));
+filterSuite(TABLE_MOD);
+splitSuite(REACH_MOD, TREND_MOD, TVIEW_MOD);
 console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${ran} assertions`);
 const base = { ran, names: NAMES.slice(), failed: failures.length };
 
@@ -1328,7 +1634,7 @@ const MUTANTS = [
   { id: 'NZ2', what: 'Walk on gone from the result\'s foot', catches: 'Z9',
     from: '    if (checks) box.append(markedBasket(state.at, view, checks));\n', to: '' },
   { id: 'MBm1', what: 'the basket draws no chip', catches: 'MB1',
-    from: '      line.append(chip);\n    }\n    const checked', to: '    }\n    const checked' },
+    from: '      picked.append(chip);\n    }\n    const checked', to: '    }\n    const checked' },
   { id: 'MBm2', what: 'a chip\'s × leaves its row checked', catches: 'MB2',
     from: "chip.addEventListener('click', () => { markings.set(checks, id, SIGN.ABSENT); render(); });", to: "chip.addEventListener('click', () => { render(); });" },
   { id: 'MBm3', what: 'Clear clears nothing', catches: 'MB3',
@@ -1354,11 +1660,30 @@ const MUTANTS = [
   { id: 'NZ10', what: 'Copy id in words again', catches: 'Z16',
     from: "copy.append(el(doc, 'span', 'wk-copyicon'));", to: "copy.append(el(doc, 'span', 'wk-copyicon', 'Copy id'));" },
   { id: 'NZ6', what: 'the filter draws every row', catches: 'Z14',
-    from: '    for (const row of rowsShown(section, rowFilterOf(section.type))) {', to: "    for (const row of rowsShown(section, 'all')) {" },
+    from: '    for (const { row } of shown.lines) {', to: '    for (const row of section.rows) {' },
   { id: 'CPm4', what: 'Wide copied as Long\'s lines', catches: 'CP3',
-    from: ": copySheet(sheetOf(section, rowFilterOf(section.type)), 'row');", to: ": copySheet(longSheet(longLines(view, section, {})), 'row');" },
+    from: ": copySheet(sheetOf(section, filterOf(section.type)), 'row');", to: ": copySheet(longSheet(longLines(view, section, {})), 'row');" },
   { id: 'CPm5', what: 'the copy ignores the filter', catches: 'CP3',
-    from: "copySheet(sheetOf(section, rowFilterOf(section.type)), 'row')", to: "copySheet(sheetOf(section), 'row')" },
+    from: "copySheet(sheetOf(section, filterOf(section.type)), 'row')", to: "copySheet(sheetOf(section), 'row')" },
+  // Sort · filter · bulk select on the page (lead 10-11 W addendum 7).
+  { id: 'SFm1', what: 'a head press sorts nothing', catches: 'PF1 ',
+    from: "      setFilter(section.type, { sort: dir === 'asc'", to: "      setFilter(section.type, { kept: dir === 'asc'" },
+  { id: 'SFm2', what: 'a column\'s «▾» opens no filter under the toolbar', catches: 'PF2 ',
+    from: '      if (filters) sec.append(filters);\n', to: '' },
+  { id: 'SFm3', what: 'the head says the total while a filter is set', catches: 'PF2 ',
+    from: "shown.filtering ? sectionHeading(section.type, `${shown.lines.length} of ${of}`) : section.heading", to: 'section.heading' },
+  { id: 'SFm6', what: 'the head check checks the hidden rows too', catches: 'PF6 ',
+    from: '...rest, ...shown.ids.filter((id) => markings.signOf(checks, id) === SIGN.ABSENT)', to: '...rest, ...shown.all.map((l) => l.id).filter((id) => markings.signOf(checks, id) === SIGN.ABSENT)' },
+  { id: 'SFm7', what: 'Long copied whatever the filter', catches: 'PF5 ',
+    from: "copySheet(longSheet(shown.lines.map((line) => line.line)), 'line')", to: "copySheet(longSheet(longLines(view, section, {})), 'line')" },
+  { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',
+    from: "    const rows = t.at === 'section' ? ids : t.rows;", to: "    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;" },
+  { id: 'SFm9', what: 'Walk on from the checked rows the filter hides', catches: 'PF8 ',
+    from: '    const seeds = seedsOf(shown.ids.map((id) => [id, markings.signOf(checks, id)]));', to: '    const seeds = seedsOf(section.rows.map((row) => [row.id, markings.signOf(checks, row.id)]));' },
+  { id: 'SFm10', what: 'the search box not one of the filter', catches: 'PF5 ',
+    from: "typed(find, `find\\u0000${section.type}`, (value) => setFilter(section.type, { find: value }));", to: '' },
+  { id: 'SFm12', what: 'a value picked out stays in', catches: 'PF4 ',
+    from: '          if (out.has(value)) out.delete(value); else out.add(value);\n', to: '' },
   { id: 'CPm6', what: 'a copy that failed said as done', catches: 'CP4',
     from: ': COPY_WORDS.failed;', to: ': COPY_WORDS.done(sheet.rows.length, unit);' },
   // 🔴 THE ONE THE RULING ASKED FOR: a copy put back. Same sections, same rows, same counts.
@@ -1412,8 +1737,8 @@ const MUTANTS = [
   { id: 'SM4', what: 'Next drops the - rows', catches: 'S4',
     from: 'stepAlong({ positive: seeds.positive, negative: seeds.negative,', to: 'stepAlong({ positive: seeds.positive,' },
   { id: 'NM1', what: 'the Next walks from every row of the section, not the checked ones', catches: 'N2',
-    from: '      const seeds = seedsOf(marked.filter(([id]) => rows.get(id).type === type));',
-    to: '      const seeds = { positive: [...rows].filter(([, r]) => r.type === type).map(([id]) => id), negative: [] };' },
+    from: '      const seeds = seedsOf(shown.ids.map((id) => [id, markings.signOf(checks, id)]));',
+    to: '      const seeds = { positive: shown.ids, negative: [] };' },
   { id: 'NM2', what: 'a press with nothing checked still asks', catches: 'N2',
     from: "      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });",
     to: "      go.addEventListener('click', () => { void walkOn(at, seeds, route); });" },
@@ -1495,11 +1820,13 @@ const TV_MUTANTS = [
   { id: 'CPm2', what: 'Δ copied in its words, not its number', catches: 'CP1',
     from: 'String(cell.delta.value)', to: 'cell.delta.text' },
   { id: 'CPm3', what: 'every row shown whatever the filter', catches: 'CP2',
-    from: "filter === 'all' || (filter === 'differs' ? row.differs : row.missing)", to: 'true' },
+    from: "filter === 'all' || (filter === 'differs' ? line.row.differs : line.row.missing)", to: 'true' },
   { id: 'DM1', what: 'reached by both said A only', catches: 'ZD1',
     from: "const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');", to: "const reachedBy = (inA, inB) => (inA ? 'a' : inB ? 'b' : 'ab');" },
   { id: 'DM2', what: 'B\'s nodes not merged into the rows', catches: 'ZD1',
     from: '  const walked = control ? mergeWalks(result, control) : result;', to: '  const walked = result;' },
+  { id: 'AHM1', what: 'an Add here or More answer overwrites the step instead of merging', catches: 'AH1',
+    from: '  const merged = adds.reduce((graph, add) => mergeWalks(graph, add.answer), walked);', to: '  const merged = adds.reduce((graph, add) => add.answer, walked);' },
   { id: 'DM3', what: 'a side coloured by the + side\'s B', catches: 'ZD3',
     from: 'reachedBy(g.a.has(node.id), g.b.has(node.id))', to: 'reachedBy(g.a.has(node.id), groups[0].b.has(node.id))' },
   { id: 'DM4', what: 'the node\'s way says only A\'s - a B-only row «—» (the W 1 regression)', catches: 'ZD3',
@@ -1569,6 +1896,30 @@ const TV_MUTANTS = [
   { id: 'ZM16', what: 'the groups in their found order, a compared one anywhere', catches: 'Z45',
     from: '    const sideAt = [...folds.filter((b) => b.on && compared(b)), ...folds.filter((b) => b.on && !compared(b))].flatMap((b) => b.shown);',
     to: '    const sideAt = folds.filter((b) => b.on).flatMap((b) => b.shown);' },
+  // The one «what does this table show» seat (lead 10-11 W addendum 7).
+  { id: 'SFt1', what: 'numbers sorted as words', catches: 'SF2 ',
+    from: '  if (a.number !== null && b.number !== null) return a.number - b.number;', to: '  if (a.number !== null && b.number !== null) return String(a.number).localeCompare(String(b.number));' },
+  { id: 'SFt2', what: 'blanks first when descending', catches: 'SF3 ',
+    from: '? Number(a.blank) - Number(b.blank) :', to: '? sign * (Number(a.blank) - Number(b.blank)) :' },
+  { id: 'SFt3', what: 'descending the same as ascending', catches: 'SF1 ',
+    from: "    const sign = f.sort.dir === 'desc' ? -1 : 1;", to: '    const sign = 1;' },
+  { id: 'SFt4', what: 'contains as the whole words, its case kept', catches: 'SF6 ',
+    from: '(!cell.blank && lower(cell.words).includes(lower(f.contains)))', to: '(cell.words === f.contains)' },
+  { id: 'SFt5', what: 'a range without its top', catches: 'SF7 ',
+    from: '  && (!isSet(f.max) || (cell.number !== null && cell.number <= f.max))\n', to: '\n' },
+  { id: 'SFt6', what: 'values picked out kept', catches: 'SF8 ',
+    from: '  && (!f.out || !f.out.includes(cell.words));', to: ';' },
+  { id: 'SFt7', what: 'the search box case-sensitive, the node\'s keys not read', catches: 'SF9 ',
+    from: "  const found = (line) => !find || [...line.cells.map((c) => c.words), ...line.row.centre.map((c) => c.text)]\n    .some((w) => lower(w).includes(find));",
+    to: "  const found = (line) => !find || line.cells.map((c) => c.words).some((w) => w.includes((f.find || '').trim()));" },
+  { id: 'SFt8', what: 'a column of numbers offered as a pick', catches: 'SF7 ',
+    from: "  if (said.length && said.every((c) => c.number !== null)) return { kind: 'range', choices: [] };\n", to: '' },
+  { id: 'SFt9', what: 'every column a pick, however many values', catches: 'SF6 ',
+    from: 'choices.filter(Boolean).length <= PICK_MOST ?', to: 'true ?' },
+  { id: 'SFt10', what: 'a sort said as a filter', catches: 'SF10 ',
+    from: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 }", to: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.sort) }" },
+  { id: 'SFt11', what: 'Wide\'s Δ not a column of its own', catches: 'SF4 ',
+    from: "section.parts[i].delta ? { key: `${columnKey(column)}\\u0000${DELTA}`", to: "false ? { key: `${columnKey(column)}\\u0000${DELTA}`" },
   { id: 'ZM12', what: 'an empty column drawn', catches: 'Z23',
     from: "      if (kindsAll[i] === 'empty') return;", to: '' },
   // ⚰️ QM1 (the flat table's fold: the last edge's value) retired 10-11 with qualifiersByNode (E1); every value kept is
@@ -1584,11 +1935,40 @@ const tv = await scoreMutants(TV_MUTANTS, async (m) => {
   });
   qualifierSuite(loaded.module);
   sideSuite(loaded.module);
+  filterSuite(loaded.module);
   return { ran, names: NAMES.slice(), failures: failures.slice() };
 }, { baselineNames: base.names, title: `${LF}== table_view mutants (each must be CAUGHT by the check it names) ==` });
 
-const all = MUTANTS.length + TV_MUTANTS.length;
-const scored = all - defects.wrong - controls.wrong - tv.wrong;
+// Split by and the point it reads (lead 10-11 W addendum 2 ⑭): reach_table · trend · trend_view, each mutated alone.
+const SPLIT_MUTANTS = [
+  { id: 'SPm1', what: 'a point keeps the value itself', catches: 'SP1 ', file: 'reach_table.js',
+    from: '.filter(([name, v]) => name !== column.value.name && !isBlank(v))', to: '.filter(([, v]) => !isBlank(v))' },
+  { id: 'SPm2', what: 'a walked point carries no point', catches: 'SP2 ', file: 'trend.js',
+    from: "claim: (r.when && r.when.claim_id) || '', point: pointOf(column, r.edge) })));", to: "claim: (r.when && r.when.claim_id) || '' })));" },
+  { id: 'SPm3', what: 'Split by makes no series', catches: 'SP3 ', file: 'trend.js',
+    from: '  const series = frame.split ?', to: '  const series = false ?' },
+  { id: 'SPm4', what: 'a split dot in its group\'s colour', catches: 'SP4 ', file: 'trend_view.js',
+    from: "    const kind = split ? (p.series === null ? 'is-other' : `is-s${p.series + 1}`)", to: "    const kind = false ? (p.series === null ? 'is-other' : `is-s${p.series + 1}`)" },
+  { id: 'SPm5', what: 'a dot\'s title without its point', catches: 'SP4 ', file: 'trend_view.js',
+    from: "    const words = [p.source, pointWords(p.point || [])].filter(Boolean).join(' · ');", to: "    const words = p.source;" },
+  { id: 'SPm6', what: 'no «Split by» offered', catches: 'SP4 ', file: 'trend_view.js',
+    from: '    if (spec.splits && spec.splits.length && spec.onSplit) {', to: '    if (false) {' },
+];
+const sp = await scoreMutants(SPLIT_MUTANTS, async (m) => {
+  ran = 0; NAMES.length = 0; failures = [];
+  const loaded = await loadWithProbe(path.join(HERE, '..', 'src', 'walk', m.file), {
+    mutate: (text) => {
+      if (!text.includes(m.from)) throw new Error(`mutation anchor is GONE: ${m.id}`);
+      return text.split(m.from).join(m.to);
+    },
+  });
+  const mine = (file, own) => (m.file === file ? loaded.module : own);
+  splitSuite(mine('reach_table.js', REACH_MOD), mine('trend.js', TREND_MOD), mine('trend_view.js', TVIEW_MOD));
+  return { ran, names: NAMES.slice(), failures: failures.slice() };
+}, { baselineNames: base.names, title: `${LF}== split mutants (each must be CAUGHT by the check it names) ==` });
+
+const all = MUTANTS.length + TV_MUTANTS.length + SPLIT_MUTANTS.length;
+const scored = all - defects.wrong - controls.wrong - tv.wrong - sp.wrong;
 console.log(`${LF}  ${scored}/${all} scored as intended.`);
 const failed = base.failed + (all - scored);
 console.log(`ASSERTIONS ${base.ran + all} ${failed}`);

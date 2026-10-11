@@ -299,3 +299,138 @@ def test_a_view_with_no_draft_carries_no_cost_key_at_all(tmp_path):
     service = OntologyExplorerService(
         config_root=_copied_ontology(tmp_path), draft_root=tmp_path / "drafts")
     assert service.view(db="SESSION")["draft"] is None
+
+
+# ---------------------------------------------------------------------------
+# 🔴 a source the counter's declaration does not hold (owner 10-12)
+# ---------------------------------------------------------------------------
+
+FOUR = ["physical_object", "physical_process", "physical_quantity", "defect_kind"]
+
+
+def _modeling_world(tmp_path, monkeypatch):
+    """The owner's modeling declaration over a private config dir (the counter reads worlds
+    through `paths`): the operating world's file without the source, and the source."""
+    import paths
+
+    with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        ledger = json.load(fh)
+    with open(os.path.join(SAMPLE, "table_config.json.sample"), encoding="utf-8") as fh:
+        tables = json.load(fh)
+    ledger["entities"].pop("defect_kind@1")
+    ledger["entities"].update({name: {"keys": [name], "class": "static"} for name in FOUR})
+    ledger["vocabulary"].pop("leads_to@1")
+    ledger["vocabulary"]["leads_to"] = {"status": "active", "subjects": FOUR, "object": {
+        "kind": "entity_ref", "types": FOUR,
+        "qualifiers": {"required": [], "optional": ["certainty", "dir"]}}}
+    columns = ["candidate_id", "cause_type", "cause_key", "phenomenon_type", "phenomenon_key",
+               "certainty", "dir", "confirmed"]
+    tables["link_candidates"] = {"business_key": "candidate_id",
+                                 "column_types": {name: "string" for name in columns}}
+    config = tmp_path / "config"
+    (config / "ontology").mkdir(parents=True)
+    (config / "ontology" / "ledger_config.json").write_text(json.dumps(ledger), encoding="utf-8")
+    (config / "table_config.json").write_text(json.dumps(tables), encoding="utf-8")
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(config))
+
+    def role(type_column, key_column):
+        return {"kind": "entity", "entity_type": {"kind": "column", "column": type_column},
+                "keys": {name: {"kind": "column", "column": key_column} for name in FOUR}}
+
+    source = {"relation": "link_candidates",
+              "read": {"unit": "row", "identity": ["row_id"], "order_by": ["row_id"],
+                       "occurred_at": {"basis": "ingested", "timezone": "Asia/Seoul"},
+                       "exclude_when": [{"column": "confirmed", "blank": True}]},
+              "map": {"implementation_id": "declarative-role", "implementation_version": 1,
+                      "unit": {"kind": "row"}},
+              "bind": {"mappings": {"leads": {"predicate": "leads_to", "bind": {
+                  "subject": role("cause_type", "cause_key"),
+                  "target": role("phenomenon_type", "phenomenon_key"),
+                  "certainty": {"kind": "column", "column": "certainty"},
+                  "dir": {"kind": "column", "column": "dir"}}}}}}
+    return config, ledger, source
+
+
+def _explorer_client(session):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from admin.auth import require_admin_token, require_admin_token_strict
+    from database.database import get_db
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[require_admin_token_strict] = lambda: None
+    app.dependency_overrides[get_db] = lambda: session
+    app.include_router(explorer_router.router)
+    return TestClient(app)
+
+
+def test_a_draft_of_a_source_the_active_file_lacks_opens_with_the_counters_refusal(
+        tmp_path, monkeypatch):
+    """The owner's modeling declaration, authored as a new source: the counter's judge refused
+    it and `/view` answered 500 for the whole window. A non-unique order_by never got there -
+    the draft failed validation first - which is why only a unique identity broke."""
+    from ledger.config_explorer_service import OntologyExplorerService
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    config, _ledger, source = _modeling_world(tmp_path, monkeypatch)
+    explorer_router.configure_service(OntologyExplorerService(
+        config_root=config / "ontology", draft_root=tmp_path / "drafts"))
+    client = _explorer_client(SimpleNamespace(
+        get_bind=lambda: pytest.fail("the judge refuses before any read"), rollback=lambda: None))
+
+    base = client.get("/admin/ontology-explorer/view").json()["snapshot_hash"]
+    draft = client.post("/admin/ontology-explorer/drafts/new", json={
+        "kind": "source_plan", "canonical_id": "link_candidates",
+        "base_snapshot_hash": base}).json()
+    saved = client.put(f"/admin/ontology-explorer/drafts/{draft['draft_id']}", json={
+        "expected_revision": 0, "raw": json.dumps(source)})
+    assert saved.json()["validation_errors"] == []                # canary: the draft compiles
+    opened = client.get("/admin/ontology-explorer/view", params={
+        "draft_id": draft["draft_id"], "revision": 1, "view_mode": "draft_preview"})
+
+    assert opened.status_code == 200, opened.text
+    count = opened.json()["draft"]["redo"]["count"]
+    assert count["absence"] == retroactive.ABSENCE_NOT_APPLICABLE
+    assert "link_candidates" in count["detail"]
+
+
+def test_a_branch_draft_is_counted_in_the_branch(tmp_path, monkeypatch):
+    """A source only a branch declares: its draft's redo count reads the BRANCH's declaration
+    and row index. Asked with no world, the counter read the operating world's - refused there,
+    or, with a same-named source, the operating world's rows shown as the branch's cost."""
+    from ledger import backfill
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    config, ledger, source = _modeling_world(tmp_path, monkeypatch)
+    branch = config / "ontology_worlds" / "modeling"
+    branch.mkdir(parents=True)
+    ledger["sources"]["link_candidates"] = source
+    (branch / "ledger_config.json").write_text(json.dumps(ledger), encoding="utf-8")
+    monkeypatch.setattr(explorer_router, "_services", {})    # each world's explorer, made fresh
+    asked = []
+
+    def census(engine, setup, source_id, *, exact_rows=True, world=None):
+        asked.append((world, source_id in setup.snapshot.source_plans))
+        return {"relation_rows": 7, "indexed_rows": 0, "counts": "rows"}
+
+    monkeypatch.setattr(backfill, "rows_not_yet_translated", census)
+    monkeypatch.setattr(backfill, "rows_to_catch_up", lambda *a, **k: {
+        "rows_new": 7, "rows_drifted": 0, "rows_gone": 0, "rows_unprinted": 0})
+    client = _explorer_client(SimpleNamespace(get_bind=lambda: "ENGINE", rollback=lambda: None))
+
+    base = client.get("/admin/ontology-explorer/view", params={"world": "modeling"}).json()
+    draft = client.post("/admin/ontology-explorer/drafts", params={"world": "modeling"}, json={
+        "target_key": "source_plan|link_candidates",
+        "base_snapshot_hash": base["snapshot_hash"]}).json()
+    opened = client.get("/admin/ontology-explorer/view", params={
+        "world": "modeling", "draft_id": draft["draft_id"], "revision": 0,
+        "view_mode": "draft_preview"})
+
+    assert opened.status_code == 200, opened.text
+    redo = opened.json()["draft"]["redo"]
+    assert redo["params"] == {"source": "link_candidates", "world": "modeling"}
+    assert asked == [("modeling", True)]
+    assert redo["count"]["affected"] == 7

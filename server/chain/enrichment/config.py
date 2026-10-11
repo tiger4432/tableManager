@@ -11,7 +11,7 @@
 `fields` -> target_fields. 원본·파생 표는 `on.table` · `into.table`):
     source_table · derived_table               원본 표 · 파생 영속 표(table_config 등록 필요)
     decision_key                               판단키 (1..N 컬럼)
-    target_fields                              사람이 채울 필드 (파생 표 컬럼)
+    target_fields                              사람이 채울 필드 (파생 표 컬럼) — 비거나 없으면 aggregations 가 있어야 한다
     list_columns                               선택: 워크리스트 표시 단서
     aggregations                               선택(서버 전용): 파생행에 두는 그룹 집계
         {"chip_count": "count", "t_min": {"fn": "min", "column": "t"}}   count | min | max
@@ -624,8 +624,15 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     if not _is_str_list(decision_key):
         return None, "'decision_key' must be a non-empty list of column names"
     target_fields = raw.get("target_fields")
-    if not _is_str_list(target_fields):
-        return None, "'target_fields' must be a non-empty list of column names"
+    if target_fields is None or target_fields == []:
+        # 소유자 10-11 (총괄 ㄴ): a row per key that carries only its key and its aggregations
+        # is a decide too - nothing for a person to fill, so it is never in the queue.
+        if not raw.get("aggregations"):
+            return None, ("'target_fields' is empty, so 'aggregations' must be declared - "
+                          "a derived row with neither carries nothing but its key")
+        target_fields = []
+    elif not _is_str_list(target_fields):
+        return None, "'target_fields' must be a list of column names"
     overlap = sorted(set(decision_key) & set(target_fields))
     if overlap:
         return None, f"decision_key and target_fields must not overlap: {overlap}"
@@ -1830,7 +1837,7 @@ def queue_predicate_condition(table_model, rule: dict,
     the exact negation of `queue`'s: under the old EVERY-blank spelling a partly
     filled row was in NEITHER, which is precisely where the defect lived.
     """
-    from sqlalchemy import and_, or_
+    from sqlalchemy import and_, false, or_
 
     if scope not in QUEUE_SCOPES:
         raise QueuePredicateError(
@@ -1848,7 +1855,8 @@ def queue_predicate_condition(table_model, rule: dict,
 
     # The one shape the public DSL cannot express, and the whole reason this
     # predicate has a name.
-    any_target_blank = or_(*[cond(t, "blank") for t in targets])
+    # false() so a rule with no target fields queues nothing - an empty or_() matches every row.
+    any_target_blank = or_(false(), *[cond(t, "blank") for t in targets])
     if scope == QUEUE_SCOPE_QUEUE:
         return any_target_blank
     if scope == QUEUE_SCOPE_KEYED:

@@ -16,7 +16,7 @@
 import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointOf, pointWords } from './reach_table.js';
 import { isBlank } from '../absent.js';
 import { walkPoints } from './trend.js';
 import { localStamp } from '../server_time.js';
@@ -86,18 +86,108 @@ export function valueSources(result, entities, groups) {
   return { route, source: (g, id) => `${keyWords(id)} · ${g ? route(g, id).text : NOT_WALKED}`, keys: keyWords };
 }
 
-/** The rows a filter shows (lead 5cf5c3401): all, those whose sides differ, those a side did not reach. */
-export function rowsShown(section, filter = 'all') {
-  return section.rows.filter((row) => filter === 'all' || (filter === 'differs' ? row.differs : row.missing));
+/**
+ * A drawn table as sort, filter and the search box read it (lead 10-11 W addendum 7): its columns, a key and a head each,
+ * and its lines - Wide a row a line, the node's own cells then each column's group cells with Δ (sheetOf's order); Long a
+ * record a line, LONG_HEAD's. A cell is its words as drawn (the first of several), blank when it says nothing or a side
+ * did not reach, its number when it is one.
+ */
+export function gridOf(section, lines = null) {
+  const said = (cell) => {
+    const blank = Boolean(cell.missing) || cell.text === EMPTY || cell.text === '';
+    const number = 'value' in cell ? (typeof cell.value === 'number' ? cell.value : null) : (blank ? null : numberOf(cell.text));
+    return { words: cell.missing ? MISSING : blank ? '' : cell.text, blank, number };
+  };
+  if (lines) {
+    const rows = new Map(section.rows.map((row) => [row.id, row]));
+    return { columns: LONG_HEAD.map((head) => ({ key: `long\u0000${head}`, head })),
+      lines: lines.map((l) => ({ id: l.id, row: rows.get(l.id), line: l,
+        cells: [l.node, l.name, l.words, l.point, l.time, l.side, l.from].map((text) => said({ text })) })) };
+  }
+  const order = (list, delta) => (section.groups.length === 2 && delta !== undefined ? [list[0], delta, list[1]] : list);
+  return {
+    columns: [...section.centreHeads.map((head) => ({ key: `own\u0000${head}`, head })),
+      ...section.columns.flatMap((column, i) => order(section.groups.map((g) => ({ key: `${columnKey(column)}\u0000${g.sign}`, head: `${section.columnHeads[i]} · ${g.sign}` })),
+        section.parts[i].delta ? { key: `${columnKey(column)}\u0000${DELTA}`, head: `${section.columnHeads[i]} · ${DELTA}` } : undefined))],
+    lines: section.rows.map((row) => ({ id: row.id, row,
+      cells: [...row.centre, ...row.cells.flatMap((cell) => order(cell.sides, cell.delta || undefined))].map(said) })),
+  };
 }
+
+/** A column filter that says something: words it contains, a number at least or at most, values picked out. */
+const isSet = (n) => typeof n === 'number' && Number.isFinite(n);
+export const filterActive = (f) => Boolean(f && (f.contains || isSet(f.min) || isSet(f.max) || (f.out && f.out.length)));
+
+/** Past this many values a column filters by the words it contains, not by values picked (lead 10-11 W addendum 7: a
+ *  category picks values) - a list longer than this is no longer read at a glance. */
+export const PICK_MOST = 12;
+
+/**
+ * How a column filters (lead 10-11 W addendum 7), judged over every line - not the shown ones, or the kind would change
+ * while filtering: a number each - a range; a few values - pick them; else the words it contains. `choices` the values a
+ * pick lists, blank as ''.
+ */
+export function filterKind(lines, k) {
+  const cells = lines.map((l) => l.cells[k]);
+  const said = cells.filter((c) => !c.blank);
+  if (said.length && said.every((c) => c.number !== null)) return { kind: 'range', choices: [] };
+  const choices = [...new Set(cells.map((c) => c.words))].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : compareCells({ words: a, number: numberOf(a) }, { words: b, number: numberOf(b) })));
+  return choices.filter(Boolean).length <= PICK_MOST ? { kind: 'pick', choices } : { kind: 'contains', choices: [] };
+}
+
+/** Two cells in ascending order: numbers as numbers, before words; words as a reader orders them (2 before 10). */
+export function compareCells(a, b) {
+  if (a.number !== null && b.number !== null) return a.number - b.number;
+  if (a.number !== null || b.number !== null) return a.number !== null ? -1 : 1;
+  return a.words.localeCompare(b.words, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+const lower = (s) => String(s).toLowerCase();
+const passes = (cell, f) => (!f.contains || (!cell.blank && lower(cell.words).includes(lower(f.contains))))
+  && (!isSet(f.min) || (cell.number !== null && cell.number >= f.min))
+  && (!isSet(f.max) || (cell.number !== null && cell.number <= f.max))
+  && (!f.out || !f.out.includes(cell.words));
+
+/**
+ * THE ONE «what does this table show» SEAT (lead 10-11 W addendum 7, «보이는 것 = 하는 것»): a section's lines - Wide's
+ * rows, or Long's records when `lines` are given - through its filter, in its order. The table, Copy, Trend, Walk on and
+ * the head check all read it.
+ * @param {{rows?: string, find?: string, columns?: object, sort?: {key: string, dir: string}|null}} [f]  All rows ·
+ *        Differs · Missing; the search box (a line's words and its node's keys); a filter by column key; a sort - blanks
+ *        last either way, a tie in its first order
+ * @returns {{columns: Array, lines: Array, all: Array, filtering: boolean}}
+ */
+export function shownOf(section, f = {}, lines = null) {
+  const grid = gridOf(section, lines);
+  const filter = f.rows || 'all';
+  const find = lower((f.find || '').trim());
+  const at = new Map(grid.columns.map((c, k) => [c.key, k]));
+  const tests = Object.entries(f.columns || {}).filter(([key, x]) => at.has(key) && filterActive(x)).map(([key, x]) => [at.get(key), x]);
+  const found = (line) => !find || [...line.cells.map((c) => c.words), ...line.row.centre.map((c) => c.text)]
+    .some((w) => lower(w).includes(find));
+  let shown = grid.lines.filter((line) => (filter === 'all' || (filter === 'differs' ? line.row.differs : line.row.missing))
+    && found(line) && tests.every(([k, x]) => passes(line.cells[k], x)));
+  const by = f.sort && at.has(f.sort.key) ? at.get(f.sort.key) : -1;
+  if (by >= 0) {
+    const sign = f.sort.dir === 'desc' ? -1 : 1;
+    shown = [...shown].sort((x, y) => {
+      const [a, b] = [x.cells[by], y.cells[by]];
+      return a.blank || b.blank ? Number(a.blank) - Number(b.blank) : sign * compareCells(a, b);
+    });
+  }
+  return { columns: grid.columns, lines: shown, all: grid.lines, filtering: filter !== 'all' || Boolean(find) || tests.length > 0 };
+}
+
+/** The rows a Wide table shows, in its order (the one seat above). */
+export const rowsShown = (section, f = {}) => shownOf(section, f).lines.map((line) => line.row);
 
 /**
  * A section as one flat sheet for Excel (owner 10-10, lead a27dfbb0f), as Wide draws it (lead 10-11 W: Copy the shape
- * shown): the node's own, then each column its groups' cells and Δ under it, the id last; a row each the filter shows.
- * Values as they are: several in one cell «; », none an empty cell, a side that did not reach the row «missing», Δ its
+ * shown): the node's own, then each column its groups' cells and Δ under it, the id last; a row each the table shows, in its
+ * order (shownOf). Values as they are: several in one cell «; », none an empty cell, a side that did not reach the row «missing», Δ its
  * number.
  */
-export function sheetOf(section, filter = 'all') {
+export function sheetOf(section, filter = {}) {
   const pair = section.groups.length === 2;
   // Two groups: + · Δ · − under a column that has Δ; otherwise each group's cell.
   const order = (list, delta) => (pair && delta !== undefined ? [list[0], delta, list[1]] : list);
@@ -122,10 +212,10 @@ export const LONG_HEAD = Object.freeze(['node', 'value name', 'value', 'point', 
  * (one meaning with Wide's source line). Wide's «+N» lists a cell's lines here: one read, two drawers.
  * @param {{index, groups, sources}} view   the walk's view
  * @param {object} section                  a section of it
- * @param {{filter?: string, row?: string, column?: string}} [only]  the rows the filter shows, one row, one column (key)
+ * @param {{row?: string, column?: string}} [only]  one row, one column (key) - what a table shows of the lines is shownOf's
  */
 export function longLines(view, section, only = {}) {
-  const rows = rowsShown(section, only.filter || 'all').filter((row) => !only.row || row.id === only.row);
+  const rows = section.rows.filter((row) => !only.row || row.id === only.row);
   // One column asked: Long's, or a drawn one (a group's folded cell opened) - a drawer is any cell's.
   const drawn = section.columns.map((column, i) => ({ column, head: section.columnHeads[i], own: false }));
   const columns = !only.column ? section.long
@@ -137,10 +227,7 @@ export function longLines(view, section, only = {}) {
       for (const at of groups) {
         const inside = at ? at.g.inside : new Set([row.id]);
         for (const r of readsOf(view.index, inside, row.id, column).reads) {
-          const point = column.value.on === 'edge' && r.edge
-            ? Object.entries(r.edge.qualifiers || {}).filter(([name, v]) => name !== column.value.name && !isBlank(v))
-              .map(([name, v]) => `${name} ${valueWords(v)}`).join(' · ')
-            : '';
+          const point = pointWords(pointOf(column, r.edge));
           const t = r.when && Date.parse(r.when.occurred_at);
           lines.push({ id: row.id, node: row.label, name: head, value: r.value, words: valueWords(r.value), point,
             time: Number.isFinite(t) ? localStamp(new Date(t).toISOString()) : '', side: at ? at.g.name : '',
@@ -187,6 +274,14 @@ export function mergeWalks(a, b) {
   return { ...a, nodes: once('nodes'), edges: once('edges') };
 }
 
+/** Where «More» walks on from a cut answer (lead 10-11 W addendum 5): the answer names no node it left unexpanded, only
+ *  each node's depth - the nodes at the deepest depth it reached; none past its starts, none. */
+export function deepestNodes(answer) {
+  const nodes = (answer && answer.nodes) || [];
+  const depth = Math.max(0, ...nodes.map((n) => Number(n.depth) || 0));
+  return depth > 0 ? nodes.filter((n) => Number(n.depth) === depth).map((n) => n.id) : [];
+}
+
 /** Δ in words: signed, ten significant digits (a float's tail is not a difference anyone measured). */
 export function deltaWords(delta) {
   if (delta === null || delta === undefined) return '';
@@ -207,16 +302,27 @@ export function deltaWords(delta) {
  * @param {{off?: Map<string, Set<string>>, open?: Map<string, Set<string>>}} [fold]  by type, the columns and groups
  *        Columns turned off (a node's own column by columnKey, a group by groupKey) and the groups opened past their
  *        number cells (lead 10-11 W addendum 8)
+ * @param {Array<{words: string, seeds: string[], answer: object}>} [adds]  walks merged into this step (lead 10-11 W
+ *        addenda 5, 6: «Add here», «More»), in order: each start's side read off the groups, a node it brought on its
+ *        starts' sides
  * @returns {{sections: Array, shown: number, hidden: number, groups: Array, unsplit: boolean}}
  */
 export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
-  fold = {}, control = null) {
+  fold = {}, control = null, adds = []) {
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
   const walked = control ? mergeWalks(result, control) : result;
-  const nodes = (walked && walked.nodes) || [];
+  // Each addition merged by the same merge; the step's rows keep their order, what an addition brought after them.
+  const merged = adds.reduce((graph, add) => mergeWalks(graph, add.answer), walked);
+  const before = new Map(((walked && walked.nodes) || []).map((n, i) => [n.id, i]));
+  const brought = new Map();
+  adds.forEach((add, k) => ((add.answer && add.answer.nodes) || []).forEach((n) => {
+    if (!before.has(n.id) && !brought.has(n.id)) brought.set(n.id, k);
+  }));
+  const nodes = [...((merged && merged.nodes) || [])].sort((a, b) => (before.has(a.id) ? before.get(a.id) : Infinity)
+    - (before.has(b.id) ? before.get(b.id) : Infinity) || 0);
   // C-89. 「어느 이름이 여럿인가」는 봉투가 말합니다. 노드마다 다시 묻지 않습니다 — 한 답이고,
   // 표 중간에서 답이 바뀔 수 있으면 그 자체가 결함입니다.
-  const plural = pluralAttributes(walked);
+  const plural = pluralAttributes(merged);
   // C-98. 「무엇이 안 보이는 것이 무슨 뜻인가」의 모집단은 «선언»이라, 한 번 읽고 모든 구획이
   // 같은 열을 씁니다 — 구획마다 다시 물으면 표 중간에서 열이 바뀔 수 있습니다.
   const confirmers = confirmedPredicates(predicates);
@@ -242,21 +348,42 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   const groupsB = control ? (ranked ? groupsOf(control, signs) || ranked.map((g) => ({ ...g, inside: new Set(g.starts) })) : one(control)) : null;
   const groups = groupsB ? groupsA.map((g, i) => ({ ...g, inside: new Set([...g.inside, ...groupsB[i].inside]),
     a: g.inside, b: groupsB[i].inside })) : groupsA;
+  // An addition's node joins the sides its starts stand on (lead 10-11 W addendum 6): a start + only its + cell, − only
+  // its − cell, both both - the starts read off the paths the addition walked to it, none said: all its starts.
+  const addSources = adds.map((add) => valueSources(add.answer, entities, groups));
+  const addPaths = adds.map((add) => walkedPaths(add.answer));
+  const seedsTo = (k, id) => {
+    const from = adds[k].seeds.includes(id) ? [id] : [...new Set((addPaths[k].get(id) || []).map((p) => p.seed))];
+    return from.length ? from : adds[k].seeds;
+  };
+  adds.forEach((add, k) => ((add.answer && add.answer.nodes) || []).forEach((n) => {
+    for (const g of groups) if (seedsTo(k, n.id).some((s) => g.inside.has(s))) g.inside.add(n.id);
+  }));
   // A far end the answer did not send (collect) is still a node of its type and keys - read off its id, as its source
   // words are (lead 10-11): a column group needs its type and name. It is no row: rows are the answer's nodes.
   const sent = new Set(nodes.map((n) => n.id));
-  const unsent = [...new Set(((walked && walked.edges) || []).flatMap((e) => [e.source, e.target]))].filter((id) => !sent.has(id))
+  const unsent = [...new Set(((merged && merged.edges) || []).flatMap((e) => [e.source, e.target]))].filter((id) => !sent.has(id))
     .map((id) => ({ id, ...(entityOfId(id) || {}) })).filter((n) => n.type)
     .map((n) => ({ ...n, label: Object.values(n.keys || {}).map(valueWords).join(' / ') || n.id }));
-  const index = indexGraph({ ...walked, nodes: [...nodes, ...unsent] });
+  const index = indexGraph({ ...merged, nodes: [...nodes, ...unsent] });
   const own = valueSources(result, entities, groups);
   const sourcesB = control ? valueSources(control, entities, groups) : null;
+  // A node an addition brought: its way from that addition's starts on the side, a start both sides hold said by name.
+  const addRoute = (g, id) => {
+    const k = brought.get(id);
+    const starts = adds[k].seeds.filter((s) => g.inside.has(s));
+    const way = addSources[k].route({ starts }, id);
+    const shared = groups.length > 1 ? starts.filter((s) => seedsTo(k, id).includes(s) && groups.every((h) => h.inside.has(s))) : [];
+    return shared.length ? { ...way, text: `${way.text} · via shared ${shared.map(addSources[k].keys).join(', ')}` } : way;
+  };
   // B reached the node on this side: Route says B's path a line more; a value only B brought says B's source.
   const byB = (g, id) => Boolean(g && g.b && g.b.has(id));
-  const sources = { route: own.route, keys: own.keys, source: (g, id) => (byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
+  const sources = { route: own.route, keys: own.keys, source: (g, id) => (g && brought.has(id) ? `${addSources[brought.get(id)].keys(id)} · ${addRoute(g, id).text}`
+    : byB(g, id) && !g.a.has(id) ? `B · ${sourcesB.source(g, id)}` : own.source(g, id)) };
   // The node's way, one line: with a control walk each walk that reached it says its own, named - A's, then B's; the same
   // way by both once (lead 10-11 W 1 regression: a B-only row said «—»).
   const routeCell = (g, id) => {
+    if (brought.has(id)) return addRoute(g, id);
     if (!g.b) return own.route(g, id);
     const one = (w) => `${w.text}${w.rest ? ` ${w.rest}` : ''}`;
     const ways = [[g.a, 'A', own], [g.b, 'B', sourcesB]].filter(([by]) => by.has(id)).map(([, word, from]) => ({ word, ...from.route(g, id) }));
@@ -350,6 +477,9 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       heading: sectionHeading(type, rows.length),
       groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
       reached: groups[0].b ? groups.map((g, i) => countReached(said.map((row) => row.reached[i]).filter(Boolean))) : null,
+      // The additions that reached this type, each the rows it brought (lead 10-11 W addendum 5: «+N from walk on»).
+      adds: adds.map((add, at) => ({ at, words: add.words, n: rows.filter((node) => brought.get(node.id) === at).length }))
+        .filter(({ at }) => ((adds[at].answer && adds[at].answer.nodes) || []).some((n) => n.type === type && !adds[at].seeds.includes(n.id))),
       // A value column's own head, by the index its cells carry (`col`).
       columnHeads,
       // The heads in rows (lead 34d91c09d (나), W): a column's group - its step and far end - once over its columns with

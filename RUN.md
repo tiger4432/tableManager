@@ -121,9 +121,10 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-CWo9azvd.js(Control · B 고침 a0ea30c06 — main e32731bd5 까지 클라 그대로)
->            18766 서버의 걷기 파일 ledger_subgraph.py 는 cb6d6a1fa 판 — main 의 값 기록 전부(280d3e567) · 기록 순서(af401be1c) · 그림 값 표시(c5463a475)가 없음. 이 번들(client2/src/walk)에 그 칸(records · column_type)을 읽는 줄 0 — 화면에 안 닿는다
->            누른 빌드 — walk-CWo9azvd.js (= main e32731bd5) 에서 ① ~ ⑨ 를 처음부터 끝까지 다시 눌렀다(10-11 밤) — 소유자 손 클릭 줄(③ 복사 · ④ 스킴 둘 «Copy points» · ④ 고쳐짐 (다))만 빼고
+>    빌드    main 의 dist walk-aCAkDuW-.js(오늘 밤 조각 1 346b678d4 — 줄을 체크해도 보던 자리 그대로 · As of 현지 시각)
+>            18766 서버의 걷기 파일(ledger_subgraph · trace_router · image_sources · ledger/setup)은 main 513e9d6a8 판 — 걷기 노드 예산(c17db3213) · 값 기록 전부(280d3e567) · 기록 순서(af401be1c) · 그림 값 표시(c5463a475) 포함
+>            누른 빌드 — walk-aCAkDuW-.js (346b678d4) + 위 서버에서 ① ~ ⑨ 의 걷기 · 표 · 그래프 · 트렌드 수를 다시 눌렀다 — 전부 같음(10-11 밤, 소유자 손 클릭 줄만 빼고) · 같은 번들에서 «As of 2026-10-11 22:06:53»(현지 시각) · 열여섯째 줄 체크 뒤 결과 칸 스크롤 600 그대로 /
+>                       walk-CWo9azvd.js (= main e32731bd5) 에서 ① ~ ⑨ 를 처음부터 끝까지 다시 눌렀다(10-11 밤) — 소유자 손 클릭 줄(③ 복사 · ④ 스킴 둘 «Copy points» · ④ 고쳐짐 (다))만 빼고
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
 >            «모델 세상 1» = 리허설의 appdemo_vf
@@ -138,6 +139,8 @@
 >       본 것    «start» 2 (SYN-BW-103-11 · SYN-BW-SPL-400-19) · «in_container → bonded_from → in_container» 30 (첫 SYN-CW-001-02 — 그 줄의 − 칸은 묶음마다 missing)
 >       뜻       길 = 서버가 그 쪽 시작에서 걸은 길(술어만 · 걷기 답 그대로) · «start» = 그 줄이 시작 · 두 쪽 길이 다르면 «+ <길> · − <길>»
 >                코어 웨이퍼 30 개가 «in_container → bonded_from → in_container» — 불량 base 의 다이가 본딩으로 받은 코어 다이의 웨이퍼
+>       메모     (총괄 10-11 c17db3213) 본딩 웨이퍼 → 코어 웨이퍼는 COLLECT wafer 로 걸면 다 나옴 — COLLECT 가 있으면 node_limit 은 고른 타입만 센다(지나가는 다이는 안 셈)
+>                리허설 SYN-BW-103-11 만 + · node_limit 400: COLLECT 없음 «Nodes 400 · Edges 437» 2 홉에서 잘려 코어 웨이퍼 0 / COLLECT wafer «Nodes 31 (collect: wafer) · Edges 1538» 4 홉 · 코어 웨이퍼 30 줄 전부
 >    ③  세상 · 값 표   Collect 에 quantity 를 더함 · 세상 칩 «모델 세상 1» (누르면 그 세상만 켜짐 — Type 목록도 그 세상 것만) · 이어 default 칩 -> 저절로 다시 걷는다
 >       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 1.0 s» · 구역 «quantity · 49»
 >                열 묶음 «measures ← wafer · value ▸ 4» 다음 «leads_to → <계측군> · dir ▸ 1» · «leads_to ← <계측군> · dir ▸ 1» — 묶음마다 + · Δ · −, «▸ N» 을 누르면 나머지 속성
@@ -188,6 +191,8 @@
 >                bonded_from 넣음: «quantity · 49» · «Positive · A only 31 A + B 15 B only 3»
 >       뜻       초록 = A 와 B 둘 다 닿음 · 빨강 = B 만 · 색 없음 = A 만 — 칸 색 = 범례 칩 색, 길은 «A <길> · B <길>»
 >                bonded_from 을 Follow 에 넣으면 A 만 줄이 는다(리허설 17 -> 31) · A + B · B only 는 같다 — 넣을지는 물음에 따라 고른다
+>    ③g Add here   이어 걸어 같은 타입 더 가져오기 — 자리만 · 클라 조각 착지 뒤 18766 에서 눌러 채움
+>    ③h More       자리만 · 클라 조각 착지 뒤 18766 에서 눌러 채움
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
 >       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 98 ms · «pressure_MPa · measures ← wafer · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
 >                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
@@ -245,6 +250,191 @@
 >                        덩어리로 그리지 않은 다이를 안 넓혀서 아낀다(base 자신의 원자는 그대로 다 읽음). =200 은 안 됨 · =20 이면 2 걸음이고 base 의 measures 도
 >                        덩어리(33 중 20)라 값이 빠진다
 > 걸린 것     리허설의 값은 가짜 행이다 — 모델 계측군에 값이 보이는 것은 가짜 measures 덕. 운영 DB 에 그 값이 있는지는 «시연 전 읽기»가 답한다
+> ```
+>
+> ---
+>
+> ## [10-12] **소급 줄에 stalled 가 뜨면 — 쪽 안의 단계마다 진행 시각 · 로그 한 줄 (총괄 e71f7d6f1, 소유자 「죄다 stalled 뜨냐」 · 「깜깜이」, 착지 79afc64e5) — 이주 «없음» · 재기동 «없음»(pull 뒤 다음 소급 실행부터)**
+>
+> ```
+> 뜻          stalled = 그 실행이 300 s 동안 «한 단계도» 못 마침 — 잠금 대기 · 끊긴 프로세스 · 5 분 넘는 단계 하나
+>             쪽 하나가 5 분을 넘어도 단계가 끝나는 동안은 progressing (표기 소급 · fold-units 만. 다른 소급은 전처럼 쪽 경계에서만)
+> 볼 줄       retroactive.log (명령줄이면 그 창) — 단계가 끝날 때마다
+>             [fold_written_notation] page 3/12: fold · 20000 rows · 41.2 s
+>             줄이 이어지면 느린 것. 끊기면 마지막 줄의 «다음» 단계에서 서 있음 (read -> fold -> write -> 다음 쪽 read)
+> 잠금인가    읽기만, 운영 DB:
+>             SELECT pid, wait_event_type, wait_event, pg_blocking_pids(pid) AS blocked_by, round(extract(epoch FROM now() - query_start)) AS seconds, left(query, 60) AS query FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle' ORDER BY query_start;
+> 답의 뜻     소급 표 이름이 든 query 줄에 blocked_by 가 있음 · wait_event_type Lock -> 잠금 대기. blocked_by 의 pid 줄이 잡은 쪽
+>             blocked_by 비어 있음 · 같은 query 의 seconds 가 계속 늚 -> 단계 하나가 느린 것(잠금 아님)
+>             소급 query 줄이 없음 -> 그 프로세스가 DB 를 안 쓰는 중 — stop_retroactive.bat 목록의 runner 부터
+> 안 찍는 곳   fold-units 의 첫 쪽 전(규칙 답 전체 계산) · 마지막 쪽 뒤(옛 표시 거두기) — 5 분 넘으면 그 동안 stalled
+> 화면        큐 줄은 moving progressing / stalled 와 no_progress 초뿐 — 단계 낱말은 로그 줄에만
+
+> ## [10-12] **와쳐가 아직 기다리는 행만 집는다 — 다시 읽기 취소와 안 엇갈림 (총괄 49792d3f6 B, 착지 e49ad12e3) — 이주 «없음» · 재기동 «수집기(run_watcher)»**
+>
+> ```
+> 무엇        와쳐가 PENDING_RETRY 행을 집을 때 «아직 PENDING_RETRY 인가»를 한 문장으로 확인(조건부 UPDATE) — 목록을 든 뒤 취소된 행은 안 읽힘
+> 볼 줄       watcher 로그 «Log ID #<id> (<파일>) is no longer PENDING_RETRY - not read» = 취소가 먼저 닿은 행
+> 취소 답      count = 실제로 되돌린 수 (cancel-reread 명령은 위 «파일 다시 읽기 안전판» 절)
+> 되돌리기      git revert e49ad12e3 -> 수집기 재기동
+> ```
+>
+> ---
+>
+> ## [10-12] **체인 워커가 키 인덱스를 기다리지 않고 켜진다 (총괄 49792d3f6 A, 소유자 「체인은 뭐 10 분째 스타팅이냐」, 착지 2d4d00715) — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 무엇        기동이 business_key 유일 인덱스 짓기를 기다리지 않음 — 옆 스레드에서 짓고, 표마다 기다림 20 초(db_safety.DDL_LOCK_TIMEOUT, 다른 DDL 과 같은 문)
+> 볼 줄       chain_worker.log «[Ledger] business-key unique index on <표> not built - waited 20s, blocked by pid <N>; the next start builds it»
+>            그 pid 가 막은 것(열린 쓰기 트랜잭션) — 끝나면 다음 기동이 남은 INVALID 인덱스를 지우고 다시 지음
+> 되돌리기      git revert <이 커밋> -> 체인 워커 재기동
+> ```
+>
+> ---
+>
+> ## [10-11] **소급 강제 종료 — `stop_retroactive.bat` 더블클릭 (소유자 「강종 단축 스크립트」, 착지 053805fce) — 이주 «없음» · 재기동 «없음»**
+>
+> ```
+> 돌릴 것     저장소 맨 위 stop_retroactive.bat 더블클릭 -> 목록 -> y
+> 답의 뜻     <run_id> -> failed     주인 프로세스를 끄고 풀었음 · 뒤에 기다리던 줄은 스케줄러 다음 틱에 돎
+>            <run_id> -> cancelled  아직 시작 전이던 줄
+>            No retroactive run is queued or running.  풀 것이 없음 — 큐가 안 빠지면 다른 원인
+> 한 줄만     stop_retroactive.bat <run_id>
+> ```
+>
+> ---
+>
+> ## [10-11] **파일 다시 읽기 안전판 — 상한 · 넘기기 전 상태 · 취소 (총괄, 소유자 「다시 읽기 잘못 걸었다가 … 서버 뻗었어」, 착지 d7cde17c2) — 이주 «없음»(새 표 file_reread_marks 는 기동이 만듦) · 재기동 «서버»**
+>
+> ```
+> 상한        ingestion_settings.json "reread_max_files" (없으면 25 = 박스 와쳐가 가장 바빴던 1 분에 읽은 수)
+>            넘으면 Retry 가 409 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» · 아무것도 안 넘김
+>            미리보기(preview) 는 그대로 수를 보이고 "limit" 칸에 상한
+> 잘못 걸었을 때 (오늘 드린 UPDATE 대신)
+>   미리보기   curl.exe --noproxy "*" -X POST -G "http://127.0.0.1:8080/admin/file-ingestion/cancel-reread" -H "X-Admin-Token: <토큰>" --data-urlencode "folder=<폴더>" --data-urlencode "preview=true"
+>   되돌림     같은 명령에서 preview 줄만 뺀다
+>   답의 뜻    count = 아직 기다리던(PENDING_RETRY) 행 중 넘기기 전 상태로 돌아갈 수 · by_state = 돌아갈 상태별 수
+>            unmarked = 기다리는데 넘기기 전 상태가 안 남은 행(이 착지 전에 넘긴 것) — 그대로 둠
+>            와쳐가 이미 집어 간 행(PENDING 이후)은 안 건드림 — 그 파일은 읽힘
+>            10-12 e49ad12e3 부터 와쳐는 아직 PENDING_RETRY 인 행만 집음 — 되돌린 행은 안 읽히고 count = 되돌린 수
+>            folder 를 빼면 기다리는 행 전부
+> 폴더 거름     SQL 로(경로 접두 · 대소문자 · 구분자, 폴더와 그 실제 경로) — 전 표를 메모리로 읽지 않음. 같은 답을 파이썬 판정이 마지막에 한 번 더
+>            정션을 «거쳐서만» 그 폴더 아래가 되는 저장 경로는 이제 안 잡힘
+> 되돌리기      git revert <이 커밋> -> 서버 재기동 (file_reread_marks 표는 남아도 무해)
+> ```
+>
+> ---
+>
+> ## [10-11] **표기 소급 빠르게 — 쪽마다 철자 하나에 접기 한 번, 바뀐 것은 한꺼번에 (소유자 「노테이션 소급 엄청 빨리」, 착지 770707f34) — 이주 «없음» · 재기동 «없음»(명령줄) · 소급 탭은 «서버 · 스케줄러»**
+>
+> ```
+> 명령        cd server
+>            python -c "from admin import retroactive; retroactive.run_here('fold_written_notation', {'table': '<표>'})"
+>            미리보기(쓰지 않음) — 소급 탭 «Fold stored values into the declared spelling» -> table -> Count
+> 줄          retroactive.log  [notation] <x> / <N> rows (page <k>, <초> s)      2만 행 쪽마다 한 줄
+>            끝 줄  [notation] '<표>' apply: <c> cell(s) and <l> layer(s) folded in <N> row(s), <k> key(s) changed, … <m> value(s) change again
+> 답의 뜻      c · l = 접힌 칸 · 층 수. 같은 명령을 한 번 더 -> 0 cell(s) and 0 layer(s) 가 맞다
+>            «stopped before page k: n value(s) change again» — 그 쪽 앞에서 섰다(앞 쪽들은 써짐). 선언 · 별칭 행을 먼저 고친다
+>            merged 가 0 이 아니면 그 행과 받는 행은 예전 길(행마다)로 갔다 — 많을수록 그만큼 느리다
+>            바뀐 행마다 사건 하나(예전과 같은 모양) — 원장 따라가기가 그 수만큼 돈다
+> 멈춤        소급 탭 × — 쪽(2만 행) 사이에서 선다. 다시 돌리면 남은 것만 접는다
+> 박스 수      이 박스(Ryzen 7 3700X · PostgreSQL 18 · shared_buffers 128MB) 만든 표: 글자 칸 넷 + 숫자 칸, 칸마다 파일 층, 5% 둘째 파일 층,
+>            0.5% 사람 층, write 칸 철자 8 중 6 이 바뀜
+>            예전 길 apply  20,000 행 19.45 s · 500,000 행 498 s — 행 수에 비례 -> 4,000,000 행 약 4,000 s («추정», 안 쟀다)
+>            새 길 apply    20,000 행 6.44 s (같은 DB 에 다른 재기가 돌던 중) · 큰 표는 안 쟀다(소유자 「재지 말고 빨리」)
+> 키 칸도 한꺼번에 (착지 5ccb190c1)  키가 바뀌는 행 · 키 칸 층만 바뀌는 행(층에 숫자 7 로 저장된 글자 칸 등)도 쪽과 함께 한꺼번에 쓴다
+>            2만 행 쪽, 이 박스 4,000,000 행 표(글자 칸 다섯 · 인덱스 여덟): 키 칸 층이 안 바뀜 19.6 / 16.2 s -> 15.7 / 16.7 s (그대로)
+>            키 칸 층이 바뀜(전부 행마다 가던 것) 37.7 / 38.2 s -> 14.4 / 15.0 s · 20,000 행 표에서 키가 전부 바뀜 35.6 s -> 18.5 s
+>            남은 큰 몫은 표 UPDATE 2~9 s — 행마다 인덱스를 다시 쓰는 비용이고 운영 디스크에선 더 크다(안 쟀다)
+> 되돌리기     git revert <이 커밋> -> 서버 · 스케줄러 재기동(소급 탭을 쓸 때)
+> ## [10-11] **format 없는 시각 글자는 확장 ISO 만 — 테스트 런과 백필이 같은 답 (총괄 ㄱ, 착지 22c2740e5) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇        원장 소스가 글자 칸에서 시각을 읽을 때(read.occurred_at · timezone 단 시각 바인딩 — 속성 · 한정자 · 값)
+>            format 이 없으면 2026-10-11 21:36:31 · 2026-10-11T21:36:31 · …+09:00 · …Z · 2026-10-11 만 읽는다 — 파이썬 판과 무관
+>            그 밖(20261011_213631 등)은 테스트 런 · 백필 같은 거절:
+>            「'20261011_213631' is not ISO 8601 (2026-10-11 21:36:31) - declare the format its text is written in, e.g. "format": "%Y%m%d_%H%M%S"」
+> 운영에서    거절 줄의 경로가 가리키는 그 바인딩(또는 read.occurred_at)에 "format": "%Y%m%d_%H%M%S" 한 줄 -> Reload -> 테스트 런 -> 백필
+>            경로 …read.occurred_at… / …rows[N].<칸> = 사건 시각 · …bind…attributes.<이름>.column 이나 …bind.<역할>.column = 그 바인딩
+> 바뀐 것      파이썬 3.11+ 에서 format 없이 읽히던 20261011_213631 이 거절로 · 그런 칸은 Time 후보에서 빠짐(선언 JSON 에 format)
+> 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+>
+> ---
+>
+> ## [10-11] **LLM 후보 뽑기 — 목록 답 다섯 자리가 한 판정(one_of) (총괄, 착지 d177b7003) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇        모델 답의 사전 식별자(ask_links 원인 · 현상, ask_dictionary 노드) · 증감 방향 · 새 노드 타입 · 확실성이 모두 앞뒤 공백을 벗기고 목록 철자 그대로 견줌
+> 바뀐 것      « W1 » 이 목록 밖 경고 대신 W1 · « confirmed » 가 말없이 suspected 대신 confirmed
+>            확실성이 confirmed · suspected 밖이면 suspected 로 두고 한 줄 «[LLM] link N of M answers certainty '<답>', which is not confirmed or suspected - kept as suspected (llm:<모델>): '<근거>'»
+> 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+>
+> ---
+>
+> ## [10-11] **COLLECT 로 고른 타입만 노드 수에 셈 — 지나가는 다이가 node_limit 을 안 먹는다 (소유자 «코어 10매 들어갔는데 계속 1개만 세져», 착지 c17db3213) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 무엇        걷기에 Collect 타입을 고르면 node_limit 은 «그 타입 노드»만 센다. 지나가기만 하는 노드(다이 · 결함 …)는 세지 않고
+>            걸어 나간다 — 본딩 웨이퍼 -> 다이 -> bonded_from -> 코어 다이 -> 코어 웨이퍼가 node_limit 400 에서도 끝까지 닿는다
+>            지나가는 노드를 막는 것은 원자 상한(limits.claims) — 원자 하나에 새 노드는 많아야 하나
+>            Collect 를 비우면 오늘과 같다(모든 노드를 센다) · 고른 타입 노드는 여전히 node_limit 까지
+> 순서        pull -> 서버 재기동
+> 확인        걷기 화면 · 본딩 웨이퍼 하나를 Positive · Collect wafer · Walk -> wafer 구역 줄 수 = 1 + 그 웨이퍼의 코어 웨이퍼 수
+> 답의 뜻     줄 수가 맞다                 고침이 돈다 (Cut · claims 가 같이 떠도 — 이 박스는 코어 웨이퍼가 다 들어온 «뒤»에 원자 상한이 찬다)
+>            줄 수가 모자라고 Cut · claims  원자 상한이 길 중간에서 찼다 -> Follow 를 길의 술어(예: in_container · bonded_from)만 골라 다시 Walk
+>            줄 수가 모자라고 Cut · nodes   고른 타입 노드가 node_limit 을 넘었다 -> node_limit 칸을 올린다(최대 1000)
+> 박스 수     읽기 전용 · 이 박스 원장 · 라우트 처리기를 한 프로세스 안에서 · 기본 상한(edges 6,000 · claims 6,000) · hops 12 · both
+>            SQL 로 센 코어 웨이퍼  SYN-BW-103-11 30 · SYN-BW-103-24 30 (본딩 웨이퍼의 다이 179 · 180, 그중 bonded_from 141 · 141)
+>            node_limit 400 · Collect wafer       전 -> 뒤
+>              SYN-BW-103-11   core 0/30 · Cut nodes · claims 1,379 · edges 437 · 1,367,095 B · 0.53 s
+>                           -> core 30/30 · Cut claims · claims 6,000 · edges 1,196 · 3,420,063 B · 1.13 s
+>              SYN-BW-103-24   core 0/30 · Cut nodes · claims 1,358 · edges 438 · 1,364,882 B · 0.50 s
+>                           -> core 30/30 · Cut claims · claims 6,000 · edges 1,187 · 3,396,231 B · 1.20 s
+>            node_limit 1000(걷기 화면 기본) · Collect wafer   전 · 뒤 응답이 같다(generated_at 빼고 해시 381dc8609205fdca · 93e58b3b75162b58)
+>            Collect 없음 · node_limit 400        전 · 뒤 응답이 같다(해시 49be2ac6970f9cc9 · 9191ce95af9449a5) — 오늘처럼 Cut nodes
+>            시연 바구니(+ SYN-BW-103-11 · − SYN-BW-SPL-400-19)
+>              node_limit 1000  Collect wafer            전 · 뒤 같다(해시 f4c6f258475366d8) — wafer 32
+>                               Collect wafer, quantity  전 · 뒤 같다(해시 8462f9854465d34d) — quantity 17 · wafer 32
+>              node_limit 400   Collect wafer            wafer 2 -> wafer 32
+>                               Collect wafer, quantity  quantity 16 · wafer 2 -> quantity 17 · wafer 32
+>                               뒤의 400 답 = 1000 답 (limits.nodes 칸만 다름 · 바구니 · 두 웨이퍼 다 비교 참)
+>            Follow in_container · bonded_from · node_limit 400 · Collect wafer · SYN-BW-103-11
+>                           core 30/30 · Cut 없음 · claims 5,155 · edges 461 · 1,348,273 B · 0.90 s
+> 남는 것     이 박스 웨이퍼는 다이 179 개인데도 원자 상한이 다 쓰인다(코어 웨이퍼가 들어온 뒤). 운영 웨이퍼의 다이가 몇 배면
+>            원자 상한이 코어 웨이퍼 «전»에 찬다 — 운영 크기에서 안 쟀다
+> 급할 때      git revert <이 커밋> -> 서버 재기동
+
+> ## [10-11] **decide 가 사람 칸 없이 선다 — fields 가 비면 aggregations 로 (총괄 ㄴ, 착지 da6c523e1) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 적는 곳      chain_rules.json 의 derive.decide — "fields": [] (또는 안 적음) + "aggregations": {"<칸>": "count"}
+> 답          키마다 파생 행 하나에 키와 집계만. 사람이 채울 칸이 없어 워크리스트에 안 뜬다(queue 0 · resolved 전부)
+> 거절        fields 도 aggregations 도 없으면 로드 · 저장에서
+>            「'target_fields' is empty, so 'aggregations' must be declared - a derived row with neither carries nothing but its key」
+> 쓰임새      계측 이벤트 맵핑 표 — key [step_seq, item_id] · aggregations {"n": "count"} · fields []
+> 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동 (fields 없는 decide 는 다시 거절됨)
+> ```
+>
+> ---
+>
+> ## [10-11] **외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다 (소유자 「*/raw/**/*.jpg 되게 해」, 착지 053d7858f) — 이주 «없음» · 재기동 «수집기»(따로 띄우면 run_watcher, 아니면 서버)**
+>
+> ```
+> 적는 곳      ingestion_settings.json  external_sources 항목의 options
+>            "glob": "**/raw/**/*.jpg"          여럿이면 ["**/raw/**/*.jpg", "*.png"] — 하나라도 맞으면
+> 패턴 뜻      ** = 폴더 몇 겹이든(0 겹도) · * = 한 폴더 이름 안의 아무 글자 · ? = 한 글자 · 윈도우는 대소문자 무시
+>            / 가 있으면 루트에서의 경로 «전체» · 없으면 어느 깊이든 파일 이름
+>            **/raw/**/*.jpg   받음 raw/x.jpg · A/raw/x.jpg · A/B/raw/y/z.jpg     안 받음 A/rawdata/x.jpg · A/raw/x.png
+> 안 적으면     그대로 — options.filename(안 적으면 voids.json) 이름 하나
+> 적으면       glob 이 filename 대신 정한다. 단 parser voids_json 은 이름을 filename 으로 따로 본다 -> 다르면 FAILED 행
+> 순서        pull -> 선언 -> 수집기 재기동(따로 띄우면 run_watcher, 아니면 서버) — external_sources 는 재기동에만 반영
+> 볼 것        맞는 새 파일은 수집 기록(File Ingestion) 행이 생긴다 · 안 맞는 파일은 행도 «New file detected» 줄도 없다
+> 거절 줄      수집기 로그 ERROR, 그 항목만 빠짐:
+>            external_sources[i].options.glob must be one glob string or a list of them, none empty, got <값>.
+>            / 로 시작 · 끝나는 패턴은 거절 없이 아무 파일도 안 받는다
+> 되돌리기      glob 을 지우고 수집기 재기동 · 코드는 git revert <이 커밋> -> 수집기 재기동
 > ```
 >
 > ---

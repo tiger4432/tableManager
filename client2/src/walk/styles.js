@@ -203,14 +203,23 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-reachedn.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }
 .wk-sechead { font-weight: 700; font-size: var(--wk-fs-title); margin: 0; }
 /* The checked rows, one line stuck to the result's foot (W addendum 3): it takes its own room, so it never covers the last row. */
-.wk-marked { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+.wk-marked { position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-2) var(--space-3); background: var(--bg-surface); border-top: 1px solid var(--border);
   max-height: 30vh; overflow-y: auto; }
-.wk-markedword { color: var(--text-dim); font-size: var(--wk-fs-line); }
+.wk-markedrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-markedword { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
 .wk-marked .wk-chip { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
 .wk-next-edge { height: var(--wk-h-small); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
 .wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }
+/* A Walk on's route and its two presses, New step and Add here; the walks merged into a step, each its × (lead 10-11 W
+   addendum 5). */
+.wk-next-route { display: inline-flex; align-items: center; gap: var(--space-1); margin-right: var(--space-2); }
+.wk-next-words { font-size: var(--wk-fs-line); }
+.wk-adds { display: flex; flex-wrap: wrap; gap: var(--space-2); font-size: var(--wk-fs-line); }
+.wk-addchip { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-radius: 999px;
+  color: var(--accent); background: var(--accent-weak); border: 1px solid var(--accent); }
+.wk-trunc > .wk-more { margin-left: var(--space-2); font-family: var(--wk-font); }
 /* The steps walked; a press shows that step's table, the shown one lit. */
 .wk-steps { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-2) 0; }
 .wk-steprow { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -287,6 +296,31 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-copyicon::before { left: 0; top: 0; }
 .wk-copyicon::after { right: 0; bottom: 0; }
 .wk-addcol { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* A section's filter seat (lead 10-11 W addendum 7): the search box and All rows · Differs · Missing - one filter - at the
+   toolbar's end; a column filter set a chip under it (× takes it off), the one open in the same line. */
+.wk-filterseat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-left: auto; }
+.wk-secbar .wk-find, .wk-filteredit .wk-filterfield { width: 20ch; min-height: var(--wk-h-small); height: var(--wk-h-small);
+  font-size: var(--wk-fs-line); }
+.wk-filteredit .wk-filterfield[type="number"] { width: 12ch; }
+.wk-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-filterchip { height: var(--wk-h-small); padding: 0 var(--space-3); font: inherit; font-size: var(--wk-fs-line); color: var(--accent);
+  background: var(--accent-weak); border: 1px solid var(--accent); border-radius: 999px; cursor: pointer; }
+.wk-filteredit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--border); background: var(--bg-surface); }
+/* A head sorts when pressed - its arrow its order; its «▾» opens the column's filter, lit while one is set. */
+.wk-table th.wk-sortable { cursor: pointer; }
+.wk-table th.wk-sortable:hover { color: var(--text); }
+.wk-colfilter { margin-left: var(--space-1); padding: 0 var(--space-1); font: inherit; line-height: inherit;
+  color: var(--text-dim); background: none; border: 0; border-radius: 0; cursor: pointer; }
+.wk-colfilter::after { content: '\\25BE'; }
+.wk-table th.is-asc > .wk-colfilter::before { content: '\\2191'; margin-right: var(--space-1); color: var(--accent); }
+.wk-table th.is-desc > .wk-colfilter::before { content: '\\2193'; margin-right: var(--space-1); color: var(--accent); }
+.wk-colfilter:hover, .wk-colfilter.is-on { color: var(--accent); }
+/* Split by (lead 10-11 W addendum 2 ⑭): a series a colour of the category palette. */
+.wk-trend-head .wk-trendsplit { width: auto; min-height: var(--wk-h-small); height: var(--wk-h-small); font-size: var(--wk-fs-line); }
+.wk-tp.is-s1 { fill: var(--cat-1); } .wk-tp.is-s2 { fill: var(--cat-2); } .wk-tp.is-s3 { fill: var(--cat-3); }
+.wk-tp.is-s4 { fill: var(--cat-4); } .wk-tp.is-s5 { fill: var(--cat-5); } .wk-tp.is-s6 { fill: var(--cat-6); }
+.wk-tp.is-s7 { fill: var(--cat-7); } .wk-tp.is-s8 { fill: var(--cat-8); } .wk-tp.is-s9 { fill: var(--cat-9); }
 /* A value cell opens its column's trend (lead f984ab01d). */
 .wk-sides td.wk-pick { cursor: pointer; }
 .wk-sides td.wk-pick:hover { outline: 2px solid var(--accent); outline-offset: -2px; }

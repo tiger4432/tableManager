@@ -6995,6 +6995,20 @@ def cancel_retroactive_run(run_id: str, request: Request, db: Session = Depends(
         raise HTTPException(status_code=500, detail=f"Could not stop the run: {e}")
 
 
+@app.post("/admin/file-ingestion/cancel-reread", dependencies=[Depends(require_admin_token)])
+async def cancel_file_reread(folder: str = None, preview: bool = False, db: Session = Depends(get_db)):
+    """The re-read taken back (총괄 10-11 ㄱ): rows still waiting (PENDING_RETRY) under `folder` - every waiting row
+    without one - go back to the state they had before it; a row the watcher already claimed is not touched.
+    `preview` counts and writes nothing."""
+    from ingestion import reread
+
+    said = reread.cancel_reread(db, folder=None if crud.is_blank_value(folder) else folder, apply=not preview)
+    where = f" under {folder}" if not crud.is_blank_value(folder) else ""
+    return {"status": "preview" if preview else "success", "folder": folder, **said,
+            "message": "%d waiting file(s)%s %s" % (said["count"], where, "to put back" if preview else "put back")
+                       + (" · %d waiting without a mark, left" % said["unmarked"] if said["unmarked"] else "")}
+
+
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                                       preview: bool = False, statuses: str = None,
@@ -7031,7 +7045,8 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         by_state[log.status] = by_state.get(log.status, 0) + 1
     said = {"folder": folder, "count": len(failed_logs), "by_state": dict(sorted(by_state.items())),
             "by_folder": reread.by_top_folder(picked) if by_folder_asked else {},
-            "missing": len(missing), "missing_files": [log.filename for log, _rel in missing[:5]]}
+            "missing": len(missing), "missing_files": [log.filename for log, _rel in missing[:5]],
+            "limit": reread.max_files()}
     what = "failed file" if states == reread.RETRY_STATUSES else "file"
     if preview or (by_folder_asked and not picked):      # a preview never writes
         where = f" under {folder}" if by_folder_asked else ""
@@ -7040,10 +7055,14 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                             else f"No {what}{where}")}
     if not failed_logs:
         return {"status": "success", **said, "message": f"No {what} ingestion logs found."}
+    # 총괄 10-11 ㄱ (소유자 「다시 읽기 잘못 걸었다가 파일 너무 많아서 서버 뻗었어」): over the declared cap, nothing is handed
+    refused = reread.over_the_limit(len(failed_logs), said["limit"])
+    if refused:
+        raise HTTPException(status_code=409, detail=refused)
 
     # 만약 프로세스 분리(DECOUPLED) 모드라면 상태만 PENDING_RETRY로 변경하고 즉시 반환합니다.
     if os.getenv("DECOUPLED") == "True":
-        reread.mark_for_reread(db, failed_logs)
+        reread.mark_for_reread(db, failed_logs, folder=folder if by_folder_asked else None)
         return {"status": "success", **said,
                 "message": f"{len(failed_logs)} file(s) handed to the watcher"}
         

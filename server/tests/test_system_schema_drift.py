@@ -217,6 +217,8 @@ SYSTEM_TABLE_COLUMNS = {
     #   migration can never satisfy the fast path and falls through to the full hash.
     #   Verified on this box's un-migrated database that the hazard this gate exists for is
     #   real here too - a full-entity SELECT raised UndefinedColumn on file_mtime.
+    # file_reread_marks: 총괄 10-11 ㄱ - the re-read's state before, a table of its own (create_all, no ALTER)
+    "file_reread_marks": ('folder', 'log_id', 'marked_at', 'status_before'),
     "file_ingestion_checkpoints": ('chunk_index', 'file_mtime', 'file_signature', 'file_size', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'updated_at'),
     "file_ingestion_logs": ('created_at', 'error_message', 'filename', 'filepath', 'id', 'retry_count', 'status', 'table_name', 'updated_at'),
     # new table this round - created whole by create_all, no ordering hazard

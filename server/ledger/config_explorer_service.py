@@ -201,7 +201,11 @@ class OntologyExplorerService:
         setup_loader: Callable[[str | Path], Any] = load_setup,
         catalog_loader: Callable[[], Mapping[str, Any]] = live_physical_catalog,
         convergence_probe: Callable[[str], dict[str, str]] | None = None,
+        world: str | None = None,
     ):
+        #: The ledger world this explorer serves, by name - what a draft's redo count reads.
+        #: None (a CLI, a test) leaves the count to the operating world.
+        self.world = world
         self._catalog_loader = catalog_loader
         self.config_root = Path(config_root)
         self.draft_store = OntologyDraftStore(
@@ -353,7 +357,7 @@ class OntologyExplorerService:
             # draft that was activatable the whole time looked blocked.
             draft["activation_blockers"] = self.draft_store.activation_blockers(
                 record, active_index)
-            preview = self.draft_store.preview(record, setup, active_index, db)
+            preview = self.draft_store.preview(record, setup, active_index, db, self.world)
             # 🔴 THE COST REACHES THE WIRE HERE, AND NOWHERE ELSE (S-143 correction).
             # `public()` is a whitelist over the RECORD, and `redo` is not a field of the
             # record - it is a fact about what activating THIS text would re-run, computed

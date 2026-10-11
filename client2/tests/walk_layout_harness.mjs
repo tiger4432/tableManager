@@ -265,6 +265,13 @@ async function suite(mod, css = REAL_CSS) {
     Boolean(go) && holder === kids[kids.length - 1] && kids.length > 1
       && ruled(`.${footCls}`, 'flex: none') && ruled(`.wk-rail > .${formCls}`, 'overflow-y: auto'),
     JSON.stringify({ footCls, formCls, kids: kids.length, last: holder === kids[kids.length - 1] }));
+  // The sort · filter seat's rules (lead 10-11 W addendum 7, .claude/skills/ui-design-system §0 · §3): a space a --space-*
+  // token, never a hand px; the seat at the toolbar's end.
+  const mine = rules.filter(([sels]) => sels.some((s) => /wk-(filterseat|filters|filterchip|filteredit|filterfield|find|colfilter|trendsplit)\b/.test(s)));
+  const spaced = mine.flatMap(([, body]) => body.split(';').map((d) => d.trim()).filter((d) => /^(margin|padding|gap)/.test(d)));
+  ok('L19 the filter seat, its chips, its editor and a head\'s «▾»: every margin, padding and gap a --space-* token; the seat at the toolbar\'s end',
+    mine.length >= 6 && spaced.length >= 6 && spaced.every((d) => /^[\w-]+:\s*((0|auto|var\(--space-\d\))\s*)+$/.test(d)) && ruled('.wk-filterseat', 'margin-left: auto'),
+    JSON.stringify(spaced));
 
   // A route back to the start type (lead 10-09: demo step 2 by a click, no follow or hops typed by hand). A third type:
   // the route list's cap is the types less one, so with two types a route back (two steps) does not fit.
@@ -327,6 +334,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    const foot = el(doc, 'div', 'wk-rail-foot');", "    const foot = el(doc, 'div', 'wk-foot');") },
   { id: 'W9', what: 'Walk is drawn inside the scrolling form', catches: 'L12 Walk',
     mutate: (t) => swap(t, '      renderGo(foot);', '      renderGo(body);') },
+  { id: 'W19', what: 'the filter seat spaced by a hand px', catches: 'L19 ', file: STYLES,
+    mutate: (t) => swap(t, '.wk-filterseat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);', '.wk-filterseat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 7px;') },
   { id: 'W10', what: 'the stylesheet stops pinning the foot', catches: 'L12 Walk', file: STYLES,
     mutate: (t) => swap(t, '.wk-rail-foot { flex: none;', '.wk-rail-foot { flex: 1 1 auto;') },
   { id: 'W11', what: 'every drawn box is sent, ticked or not', catches: 'L13 ',

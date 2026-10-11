@@ -18,7 +18,9 @@ file's cells reach the client, not what the real client sends.
   direction anything else              None, one warning line · find_links rows: None
   dir                                  both said: same "+" · different "-" · a side None: None
   evidence the text does not hold      that link dropped, one warning line · every link: refused by name
-  evidence over two sentences          found, the sentence it starts in
+  evidence over two sentences          found; sentence = both, sentence_no = the first (소유자 10-11 ㄴ)
+  a sentence's end                     . ! ? 。 + whitespace · a blank line - not one line break, not 1.5;
+                                       find_links and ask_links say the same
   quote marks · ellipsis               ignored on both sides; a changed word or only marks is dropped
   answer not JSON / no links list      refused by name
   certainty said / unsaid              confirmed · suspected / suspected
@@ -186,17 +188,42 @@ def test_every_link_dropped_is_refused_with_the_count(answer, caplog):
         "[LLM] link 1 of 2", "[LLM] link 2 of 2"]
 
 
-@pytest.mark.parametrize("text,evidence,sentence_no", [
-    (KO_TEXT, "본딩 온도가 높았다. 그래서 보이드가", 1),
-    (KO_TEXT, "생긴 것으로 보인다.\n작업자는", 2),
-    (TEXT, "we suspect. Nothing else.", 2),
+@pytest.mark.parametrize("text,evidence,sentence_no,sentence", [
+    (KO_TEXT, "본딩 온도가 높았다. 그래서 보이드가", 1, "본딩 온도가 높았다. 그래서 보이드가 생긴 것으로 보인다."),
+    (KO_TEXT, "생긴 것으로 보인다.\n작업자는", 2,
+     "그래서 보이드가 생긴 것으로 보인다.\n작업자는 \"온도가 원인\"이라고 했다."),
+    (TEXT, "we suspect. Nothing else.", 2, "It caused a void, we suspect.\nNothing else."),
 ], ids=["ko-1-2", "ko-2-3-over-a-line-break", "en-2-3"])
-def test_evidence_over_two_sentences_is_found_in_the_sentence_it_starts_in(answer, text, evidence, sentence_no):
+def test_evidence_over_two_sentences_gives_both_sentences_and_the_first_number(
+        answer, text, evidence, sentence_no, sentence):
+    """소유자 10-11 「LLM 문장 왜 잘라서 읽어?」 ㄴ: the sentence cell is not cut at the quote's first sentence."""
     answer(_links({"cause": "a", "effect": "b", "evidence": evidence}))
     (row,) = text_links.ask_links(text, NAMES)
-    assert row["sentence_no"] == sentence_no
-    assert row["sentence"] == text_links._sentences(text)[sentence_no - 1]
-    assert row["evidence"] == evidence
+    assert (row["sentence_no"], row["sentence"], row["evidence"]) == (sentence_no, sentence, evidence)
+
+
+CAUSED = [{"phrase": "caused", "meaning": "cause", "side": "before"}]
+LINKED = "The bond temperature caused a void."
+
+
+@pytest.mark.parametrize("text,sentence", [
+    ("The line was\nslow. The bond temperature\ncaused a void.", "The bond temperature\ncaused a void."),
+    ("The line was\r\nslow. The bond temperature\r\ncaused a void.", "The bond temperature\r\ncaused a void."),
+    ("The line was slow.\n" + LINKED, LINKED),
+    ("The line was slow\n\n" + LINKED, LINKED),
+    ("The line was slow\n \t\n" + LINKED, LINKED),
+    ("The line was slow\r\n\r\n" + LINKED, LINKED),
+    ("The line was 1.5 h slow. " + LINKED, LINKED),
+], ids=["one-line-break", "one-crlf", "a-mark-then-a-line-break", "a-blank-line", "a-blank-line-holding-spaces",
+        "a-blank-crlf-line", "1.5-stays-whole"])
+def test_a_sentence_ends_at_a_mark_or_a_blank_line_and_both_readers_say_so(answer, text, sentence):
+    """소유자 10-11 ㄴ: one line break inside a sentence does not end it; `find_links` and `ask_links` number
+    and cut it the same way. Every text holds the linking sentence second - a wrapped first sentence
+    cut at its line break would make it third."""
+    by_rules = text_links.find_links(text, NAMES, CAUSED)
+    answer(_links({"cause": "bond temperature", "effect": "void", "evidence": " ".join(sentence.split())}))
+    by_model = text_links.ask_links(text, NAMES)
+    assert [(row["sentence_no"], row["sentence"]) for row in by_rules + by_model] == [(2, sentence)] * 2
 
 
 @pytest.mark.parametrize("text,evidence,sentence_no", [
@@ -635,3 +662,27 @@ def test_the_mapper_door_reaches_the_same_functions():
     assert mapper_sdk.ask_json is llm.ask_json
     assert mapper_sdk.ask_links is text_links.ask_links
     assert mapper_sdk.LlmRefused is llm.LlmRefused
+
+
+def test_a_listed_identifier_written_with_spaces_is_that_identifier(answer, caplog):
+    """총괄 10-11: every «one of the listed» answer goes through `one_of` - spaces trimmed, case kept."""
+    answer(_links({"cause": "온도", "cause_key": " F1 ", "effect": "생긴 보이드", "effect_key": "Q123 ",
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_key"], row["phenomenon_key"]) == ("F1", "Q123")
+    assert _dropped_lines(caplog) == []
+
+
+@pytest.mark.parametrize("said, kept, lines", [(" confirmed ", "confirmed", 0), ("suspected", "suspected", 0),
+                                               (None, "suspected", 0), ("probable", "suspected", 1)],
+                         ids=["spaces", "listed", "null", "unlisted"])
+def test_a_certainty_is_one_of_the_two_or_said(answer, caplog, said, kept, lines):
+    answer(_links({"cause": "온도", "cause_key": "F1", "effect": "생긴 보이드", "effect_key": "Q123",
+                   "evidence": KO_EVIDENCE, "certainty": said}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert row["certainty"] == kept
+    assert _dropped_lines(caplog) == [
+        "[LLM] link 1 of 1 answers certainty 'probable', which is not confirmed or suspected - kept as suspected"
+        " (llm:m-1): %r" % KO_EVIDENCE][:lines]

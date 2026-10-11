@@ -310,6 +310,7 @@ OK_CREATED = "created"            # this run built it
 REFUSED_DUPLICATES = "refused_duplicates"      # the data cannot take the index
 REFUSED_INVALID_INDEX = "refused_invalid_index"  # dead leftover holds the name
 FAILED = "failed"                 # the DDL itself errored
+BLOCKED = "blocked"               # it waited past the lock timeout on another session (55P03)
 
 
 def plan_table(conn, table: str) -> dict:
@@ -355,7 +356,7 @@ def build_index(conn, table: str, name: str) -> tuple:
     try:
         conn.execute(text(ddl))
     except Exception as e:  # duplicates that appeared between census and build land here
-        return FAILED, str(e).strip().splitlines()[0]
+        return (BLOCKED if db_safety.waited_past_the_lock_timeout(e) else FAILED), str(e).strip().splitlines()[0]
     exists, valid = index_exists(conn, name)
     if not exists:
         return FAILED, "index absent after CREATE reported success"

@@ -171,7 +171,7 @@ SOURCE_NODE_KIND = "source_plan"
 
 
 def _redo_for(active_setup: Any, node: ExplorerNode, db,
-              snapshot: Any) -> Mapping[str, Any] | None:
+              snapshot: Any, world: str | None = None) -> Mapping[str, Any] | None:
     """What activating this draft would make re-run. `None` when nobody asked (S-143).
     `snapshot` is the draft's, compiled by the preview.
 
@@ -200,9 +200,19 @@ def _redo_for(active_setup: Any, node: ExplorerNode, db,
 
     if getattr(node, "kind", None) == SOURCE_NODE_KIND:
         params = {"source": node.canonical_id}
+        # The draft's world, or the counter reads the operating world's declaration and row
+        # index for a branch's source (owner 10-12).
+        if world:
+            params["world"] = world
+        # 🔴 THE COUNTER'S REFUSAL IS ITS ANSWER, NOT A 500 (owner 10-12). A source the active
+        #    declaration it reads does not hold - a new one, not activated yet - is refused by
+        #    its judge; raised, it blanked the whole declaration window.
+        try:
+            count = retroactive.count(db, REDO_SOURCE_OP, params)
+        except retroactive.RetroactiveRefused as exc:
+            count = {"absence": retroactive.ABSENCE_NOT_APPLICABLE, "detail": str(exc)}
         return {"op": REDO_SOURCE_OP, "params": params,
-                "sources": [node.canonical_id],
-                "count": retroactive.count(db, REDO_SOURCE_OP, params)}
+                "sources": [node.canonical_id], "count": count}
 
     def stamps(compiled):
         return {source: cursor_translator_version(compiled, source)
@@ -220,7 +230,7 @@ def _redo_for(active_setup: Any, node: ExplorerNode, db,
 
 
 def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[str, Any],
-                          db=None) -> DraftPreview:
+                          db=None, world: str | None = None) -> DraftPreview:
     if node.config_file != _EDITABLE_FILE:
         return DraftPreview(False, None, None, ({
             "code": "unsupported_draft_target",
@@ -291,7 +301,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
         # put a number beside a refusal.
         return DraftPreview(
             True, preview_setup, build_explorer_index(preview_setup), tuple(),
-            _redo_for(active_setup, node, db, snapshot))
+            _redo_for(active_setup, node, db, snapshot, world))
     except (LedgerSetupValidationError, ConfigExplorerError, TypeError, ValueError) as exc:
         return DraftPreview(False, None, None, (_decorate_issue(_issue(exc)),))
 
@@ -819,6 +829,7 @@ class OntologyDraftStore:
         active_setup: Any,
         active_index: ExplorerIndex,
         db=None,
+        world: str | None = None,
     ) -> DraftPreview:
         """⚠️ `db` IS OPTIONAL AND DEFAULTS TO 「nobody asked」 (S-143). Only a REQUEST carries a
         Session, so the CLI and the tests keep calling this with three arguments and get a
@@ -832,7 +843,7 @@ class OntologyDraftStore:
                 "message": "active snapshot changed; draft preview is stale",
             },))
         node = draft_target(record, active_index)
-        return compile_draft_preview(active_setup, node, record["raw"], db)
+        return compile_draft_preview(active_setup, node, record["raw"], db, world)
 
     @staticmethod
     def public(record: Mapping[str, Any]) -> dict[str, Any]:

@@ -285,8 +285,8 @@ DEFAULT_NODE_LIMIT = 400
 #: How many SUBJECTS a described seed set may name (S-148-a, 판정 337). 🔴 THE NUMBER IS
 #: MINE AND UNVERIFIED AT OPERATING SHAPE. It sits in `node_limit`'s class -- an argument,
 #: a ceiling and a default -- and is deliberately generous rather than tuned: a seed is one
-#: id, but every seed EXPANDS, so the real cost is seeds x hops and `node_limit` cuts that
-#: second. Whether 200 is right belongs in a production-shaped box (S-146-b's seat), and
+#: id, but every seed EXPANDS, so the real cost is seeds x hops - cut second by `node_limit`, and with a COLLECT by
+#: the claim ceiling, since c17db3213 counts only collected types against node_limit. Whether 200 is right belongs in a production-shaped box (S-146-b's seat), and
 #: guessing it here would let the guess decide the answer.
 DEFAULT_SEED_LIMIT = 200
 MAX_SEED_LIMIT = 2000
@@ -2162,10 +2162,16 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     DECLARED ENTITY TYPES to keep in the response's `nodes`; absent, everything comes
     back exactly as before.
 
-    ⚠️ IT CHANGES NOTHING BUT THAT LIST. The walk still follows every step `follow`
-    allows - it has to, or the wanted nodes are unreachable - and `propagation` still
-    ranks over EVERY node reached, on the owner's 2026-08-28 ruling that the population
-    is all of them. Filtering the population here would put two axes into one argument.
+    ⚠️ IT CHANGES THAT LIST AND WHAT `node_limit` COUNTS, NOTHING ELSE. The walk still follows
+    every step `follow` allows - it has to, or the wanted nodes are unreachable - and
+    `propagation` still ranks over EVERY node reached, on the owner's 2026-08-28 ruling that
+    the population is all of them. Filtering the population here would put two axes into one
+    argument.
+
+    🔴 `node_limit` CAPS WHAT THE ANSWER SHOWS, NOT THE ROAD (owner 10-11 「코어 10매
+    들어갔는데 계속 1개만 세져」). MEASURED on the box, one bonded wafer, node_limit 400,
+    collect wafer: 199 defects · 184 dies · 16 quantities on the way spent the cap and 0 of
+    30 core wafers arrived. So with `collect`, only collected types spend it (`carried`).
 
     ⚠️ EDGES ARE NOT FILTERED THIS ROUND. Dropping edges whose endpoints were collected
     away would hide the path that explains why a node is in the answer, and deciding that
@@ -2297,18 +2303,23 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     edge_records = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
-    #: nodes that have spent the node budget -- see `_spends_budget` below
+    #: nodes that have spent the node budget -- see `carried` below
     budgeted = 0
     budgeted_edges = 0
     claims_scanned = 0
     actions_scanned = 0
 
-    #: 🔴 THE EXEMPTION IS GONE, BECAUSE THE PLUMBING IS NO LONGER MADE OF NODES.
-    #: Claims, events and values-as-connectors used to crowd out the answer, so they
-    #: were excluded from the budget. Now a claim IS an edge and an event IS an edge
-    #: attribute, so everything still in `nodes` is a thing in the world and the
-    #: budget can go back to counting all of it. Keeping the carve-out would have let
-    #: measurement nodes grow without limit while the cap claimed to hold.
+    #: 🔴 THE BUDGET COUNTS WHAT THE ANSWER SHOWS: every node without `collect`, the collected
+    #: types with it. A node passed through is admitted free, so it still expands. Free is not
+    #: unbounded - a non-seed node arrives on a fetched atom, at most one per atom, and the
+    #: fetch stops at `claim_limit`.
+    collected_types = ({_bare_name(name) for name in collect if str(name).strip()}
+                       if collect else None)
+
+    def carried(node):
+        """Whether `node` is in the answer's `nodes` - the one test the budget and the list share."""
+        return collected_types is None or _bare_name(node.get("type")) in collected_types
+
     def add_node(node, ref, depth):
         nonlocal node_cut, budgeted
         node_id = node["id"]
@@ -2322,7 +2333,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # against 149 entities, so counting them saturates the cap and the answer falls out:
         # MEASURED, quantity ranked drops 9 -> 4 and the recipe's trail disappears entirely.
         # Whether a measurement should share the entity budget is a ruling, not a default.
-        if node.get("node_kind") != "value":
+        if node.get("node_kind") != "value" and carried(node):
             if budgeted >= node_limit:
                 node_cut = True
                 return False
@@ -2814,11 +2825,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # ruling. Versions are stripped on both sides: a caller writes `defect`, the
     # declaration may spell it `defect@1`, and neither should have to know the other's
     # form to ask a question.
-    visible_nodes = ordered_nodes
-    if collect:
-        wanted = {_bare_name(name) for name in collect if str(name).strip()}
-        visible_nodes = [item for item in ordered_nodes
-                         if _bare_name(item.get("type")) in wanted]
+    visible_nodes = [item for item in ordered_nodes if carried(item)]
     for edge_id, edge in edges.items():
         edge["records"], edge["records_more"] = _newest_records(edge_records[edge_id].values())
     _say_image_values(nodes.values(), edges.values())

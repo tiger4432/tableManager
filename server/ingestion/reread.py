@@ -19,6 +19,37 @@ REREAD_STATUS = "PENDING_RETRY"
 RETRY_STATUSES = ("FAILED",)
 #: Rows one mark commits.
 MARK_PAGE = 1000
+#: Files one retry may hand over unless ingestion_settings.json says `reread_max_files` (총괄 10-11 ㄱ): the busiest
+#: minute of this box's watcher - 25 SUCCESS rows (file_ingestion_logs by updated_at minute, median 2).
+REREAD_MAX_FILES_KEY = "reread_max_files"
+REREAD_MAX_FILES_DEFAULT = 25
+
+
+def max_files():
+    """The declared cap, or the default when it is absent or not a positive whole number."""
+    from ingestion.settings import read_ingestion_settings
+
+    value = read_ingestion_settings().get(REREAD_MAX_FILES_KEY)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else REREAD_MAX_FILES_DEFAULT
+
+
+def over_the_limit(count, limit):
+    """The refusal sentence when `count` files exceed `limit`, else None."""
+    return ("%d files - over the limit %d; narrow the folder or raise %s in ingestion_settings.json"
+            % (count, limit, REREAD_MAX_FILES_KEY)) if count > limit else None
+
+
+def _under_folder(column, folder):
+    """SQL: the stored path starts with the folder or its real path, as the filesystem compares them - lower case,
+    one separator, a boundary. A superset of `_safe_relative_path`'s answer, which still decides each row read."""
+    from sqlalchemy import func, or_
+
+    other = "/" if os.sep == "\\" else "\\"
+    stored = func.lower(func.replace(column, other, os.sep))
+    roots = {os.path.normcase(root).lower().replace(other, os.sep).rstrip(os.sep) + os.sep
+             for root in (os.path.abspath(folder), os.path.realpath(os.path.abspath(folder)))}
+    return or_(*[stored.like(root.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%", escape="!")
+                 for root in sorted(roots)])
 
 
 def states_of(text):
@@ -72,6 +103,8 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
         query = query.filter(model.created_at >= since)
     if until is not None:
         query = query.filter(model.created_at < until)
+    if not crud.is_blank_value(folder):
+        query = query.filter(_under_folder(model.filepath, folder))   # not the whole table into memory (총괄 10-11)
     logs = query.order_by(model.id.asc()).all()
     if crud.is_blank_value(folder):
         return [(log, None) for log in logs]
@@ -108,12 +141,39 @@ def split_missing(picked):
     return present, missing
 
 
-def mark_for_reread(db, logs, page=MARK_PAGE):
-    """Hand `logs` to the watcher: PENDING_RETRY, a page a commit. -> [(id, the state it had)]."""
+def mark_for_reread(db, logs, page=MARK_PAGE, folder=None):
+    """Hand `logs` to the watcher: PENDING_RETRY, a page a commit, each row's state before it kept in
+    `file_reread_marks` (a row already waiting keeps the state it had first). -> [(id, the state it had)]."""
+    from database import models
+
     marked = []
     for start in range(0, len(logs), page):
         for log in logs[start:start + page]:
             marked.append((log.id, log.status))
+            if log.status != REREAD_STATUS or db.get(models.FileRereadMark, log.id) is None:
+                db.merge(models.FileRereadMark(log_id=log.id, status_before=log.status, folder=folder))
             log.status = REREAD_STATUS
         db.commit()
     return marked
+
+
+def cancel_reread(db, folder=None, apply=False):
+    """Put the rows still waiting under `folder` (every waiting row without one) back to the state they had before
+    the re-read handed them over; a row the watcher has claimed is no longer waiting and is not touched, and a waiting
+    row with no mark is left and counted. -> {"count", "by_state", "unmarked"}."""
+    from database import models
+
+    waiting = [log for log, _rel in select_logs(db, (REREAD_STATUS,), folder=folder)]
+    marks = {mark.log_id: mark for mark in db.query(models.FileRereadMark).filter(
+        models.FileRereadMark.log_id.in_([log.id for log in waiting]))} if waiting else {}
+    back = [(log, marks[log.id].status_before) for log in waiting if log.id in marks]
+    by_state = {}
+    for _log, state in back:
+        by_state[state] = by_state.get(state, 0) + 1
+    if apply:
+        for start in range(0, len(back), MARK_PAGE):
+            for log, state in back[start:start + MARK_PAGE]:
+                log.status = state
+                db.delete(marks[log.id])
+            db.commit()
+    return {"count": len(back), "by_state": dict(sorted(by_state.items())), "unmarked": len(waiting) - len(back)}

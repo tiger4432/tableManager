@@ -12,6 +12,7 @@ from database.database import get_db
 from ledger.column_stats import ColumnStatsError
 from ledger.config_explorer import ConfigExplorerError
 from ledger.config_explorer_service import OntologyExplorerService, required_draft_id
+from ledger.schema import DEFAULT_WORLD
 from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 
 
@@ -19,7 +20,8 @@ router = APIRouter(prefix="/admin/ontology-explorer", tags=["ontology-explorer"]
 #: One explorer per ledger world, built from the world seat's names (총괄 60d7e8e42): its
 #: declaration root, its drafts, and the declaration a new branch starts from. Key None is
 #: the default world.
-_services = {None: OntologyExplorerService(config_root=DEFAULT_ONTOLOGY_ROOT)}
+_services = {None: OntologyExplorerService(config_root=DEFAULT_ONTOLOGY_ROOT,
+                                           world=DEFAULT_WORLD)}
 
 
 def configure_service(service: OntologyExplorerService, world: str | None = None) -> None:
@@ -41,7 +43,8 @@ def _service_for(world) -> OntologyExplorerService:
             "reason": "world_unknown", "world": world, "message": str(exc)})
     if names.world not in _services:
         _services[names.world] = OntologyExplorerService(
-            config_root=names.declaration_root, draft_root=names.draft_root)
+            config_root=names.declaration_root, draft_root=names.draft_root,
+            world=names.name)
     return _services[names.world]
 
 

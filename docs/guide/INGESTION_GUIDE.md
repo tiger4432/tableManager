@@ -307,7 +307,7 @@ SAT 보이드 출력 하나가 **두 테이블**을 채웁니다 — `inspection
 보여 줍니다. 파일 계약은 다음 하나입니다.
 
 ```text
-C:/Users/kk980/void/
+<외부 폴더>/
 └── WAFERID/
     └── WORK_YYYYMMDD_HHMMSS/
         └── voids.json
@@ -343,7 +343,7 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 
 ⚠️ **표준 파서 폴백은 이 경로에 없습니다.** 등록이 「이 워크스페이스에 플러그인이 있다」를 이미 확인했으므로, 파일이 왔는데 모든 플러그인이 사양하면 조용히 std 파서로 넘기지 않고 **거절**합니다(선언되지 않은 모양으로 외부 산출물을 적재하지 않기 위해).
 
-⚠️ **감시 대상 파일명은 여전히 `options.filename` 하나이고 기본값이 `voids.json`입니다.** 파일 이름이 다르면 `options.filename`을 반드시 적어야 하며, 안 적으면 아무 일도 일어나지 않습니다(다중 파일명은 미구현).
+⚠️ **받는 파일은 `options.glob` 이 있으면 그 패턴, 없으면 `options.filename` 하나(기본 `voids.json`)입니다.** `glob` 이 있으면 `filename` 은 보지 않고, 받는 쪽에 안 맞는 파일에는 아무 일도 일어나지 않습니다(수집 기록 행도 없음). 🆕 10-11(`053d7858f`) `glob` 은 패턴 하나 또는 목록이고 루트에서의 경로를 견줍니다 — `**` 몇 겹이든(0 포함) 폴더 · `*` 한 겹 안 · `?` `/` 아닌 한 글자 · `/` 없는 패턴은 어느 깊이든 파일 이름. 예 `"options": {"glob": ["**/raw/**/*.jpg"]}`. `/` 로 시작하거나 끝나는 패턴은 거절되지 않지만 아무 파일도 받지 않습니다. 대소문자는 운영체제 규칙대로(윈도우는 무시). ⚠️ `parser: voids_json` 은 경로를 `<웨이퍼>/<작업 시각>/<options.filename>` 으로 다시 보므로, glob 으로 받은 다른 이름 · 다른 깊이의 파일은 FAILED 행으로 남습니다. 빈 패턴 · 빈 목록 · 글자 아닌 값은 «… .options.glob must be one glob string or a list of them, none empty, got <값>.» 으로 그 `external_sources` 항목 전체를 거절합니다(그 폴더는 감시하지 않음). 감시 사건 · 외부 쓸기 · 처리 중 메타 읽기 · 수정 표시가 모두 같은 판정(`IngestionHandler.external_source_context`)을 묻습니다.
 
 **끈 상태 확인:** 등록 때 워처 로그에 `External sources declared: N (M disabled).` 한 줄이 남습니다. `enabled: false` 항목은 통과도 거절도 아니어서 종전에는 「선언 안 함」과 「꺼 둠」이 로그에서 구분되지 않았습니다. 항목별 판정은 `conda run -n assy_manager python server/scripts/check_external_sources.py`가 그대로 보여 줍니다.
 
@@ -353,8 +353,10 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 
 - `statuses`(쉼표 — 들어간 파일까지면 `SUCCESS,FAILED,SKIPPED`, 적지 않으면 FAILED 만 = 실패 재시도) · `folder`(그 폴더 «아래» — `A` 는 `AB` 를 안 잡음) · `since` / `until`(인입 시각, `YYYY-MM-DD` 또는 `YYYY-MM-DD HH:MM`) · `preview`.
 - 미리보기(`preview=true`)가 다시 읽힐 파일 수 `count` · 상태별 `by_state` · 바로 아래 폴더별 `by_folder`, 기록이 말하는 자리에 없는 파일 수 `missing` 과 앞 다섯 이름 `missing_files` 를 말합니다. 한 파일을 여러 번 읽었으면 가장 새 기록 하나만 다시 읽힙니다.
+- 🆕 10-11 넘길 파일이 `ingestion_settings.json` 의 `reread_max_files`(기본 25)를 넘으면 409 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» 이고 아무것도 표시하지 않습니다(미리보기는 상한을 안 따지고 답에 `limit` 을 싣습니다).
 - 실행하면 요청 안에서 그 기록들을 `PENDING_RETRY` 로 표시하고(«N file(s) handed to the watcher»), 워처가 **하나씩** 읽습니다 — 워처의 그 표 핸들러로, dedup 을 건너뛰고(내용이 같아도 다시 읽음), 끝나면 보통 인제션과 같은 토스트가 옵니다.
 - 소급 관문을 안 잡습니다 — replay 가 돌아도 다시 읽기가 기다리지 않고, 다시 읽기가 replay 를 막지 않습니다.
+- 🆕 10-11 되돌리기 — POST `/admin/file-ingestion/cancel-reread?folder=<폴더>[&preview=true]` 가 아직 기다리는 행을 넘기기 전 상태로 돌립니다. 워처가 이미 집은 행(PENDING 이후)은 안 건드립니다. 🆕 10-12 워처는 아직 `PENDING_RETRY` 인 행만 조건부로 집으므로 되돌린 행은 읽히지 않고, 취소 답의 수가 곧 되돌린 수입니다.
 - ⚠️ 파서가 업무키를 바꾸면 옛 키의 행은 남습니다(업서트라 새 키 행이 따로 섭니다).
 - ⚰️ 소급 «Re-read files»(976defaac)는 은퇴했습니다 — 옛 실행 기록은 목록에 `reread_files (retired)` 로 남습니다.
 - 파일 하나의 «읽었음» 기록만 지워 다음 훑기에 맡기는 길은 그대로 `scripts/replay_ingestion.py --path` 입니다.

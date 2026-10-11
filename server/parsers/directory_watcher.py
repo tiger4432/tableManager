@@ -1,5 +1,6 @@
 import os
 import re
+import functools
 import time
 import shutil
 import logging
@@ -761,6 +762,35 @@ def _safe_relative_path(path: str, root: str) -> str | None:
     return rel.replace(os.sep, "/")
 
 
+@functools.lru_cache(maxsize=None)
+def _glob_regex(pattern: str):
+    """``**`` = any number of whole segments (zero too) · ``*`` = within one segment · ``?`` = one
+    non-``/``. With ``/`` the pattern is the whole path from the root; without, the name at any
+    depth. Case as the filesystem compares it (``normcase``)."""
+    segments = pattern.split("/") if "/" in pattern else ["**", pattern]
+    parts = []
+    for i, seg in enumerate(segments):
+        last = i == len(segments) - 1
+        if seg == "**":
+            parts.append(".*" if last else "(?:[^/]+/)*")
+            continue
+        parts.append("".join("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c)
+                             for c in seg))
+        if not last:
+            parts.append("/")
+    return re.compile("".join(parts), re.IGNORECASE if os.path.normcase("A") == "a" else 0)
+
+
+def _source_takes(options: dict, file_path: str, rel_path: str) -> bool:
+    """Does this external source take the file? ``options.glob`` (any pattern on the path from
+    the root) when declared, else the one ``options.filename`` by name."""
+    patterns = options.get("glob")
+    if patterns is None:
+        expected = str(options.get("filename", "voids.json"))
+        return os.path.basename(file_path).lower() == expected.lower()
+    return any(_glob_regex(p).fullmatch(rel_path) for p in patterns)
+
+
 def validate_external_source_specs(settings: dict, table_config: dict,
                                    workspace_base: str):
     """Validate ``external_sources`` and return ``(valid_specs, errors)``.
@@ -871,6 +901,16 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         if not isinstance(filename, str) or not filename.strip() or os.path.basename(filename) != filename:
             errors.append(f"{where}.options.filename must be one plain filename.")
             continue
+        glob = options.get("glob")
+        if glob is not None:
+            patterns = [glob] if isinstance(glob, str) else glob
+            if (not isinstance(patterns, list) or not patterns
+                    or any(not isinstance(p, str) or not p.strip() for p in patterns)):
+                errors.append(
+                    f"{where}.options.glob must be one glob string or a list of them, "
+                    f"none empty, got {glob!r}.")
+                continue
+            options = {**options, "glob": list(patterns)}
         spec = {
             "source_id": f"{table_name}@{os.path.normcase(root)}",
             "root": root,
@@ -1656,7 +1696,8 @@ class IngestionHandler(FileSystemEventHandler):
         self._external_sources[source_id] = dict(spec)
 
     def external_source_context(self, file_path: str, source_id: str | None = None):
-        """Parser context for an external file, or ``None`` when it escapes/root-misses."""
+        """Parser context for an external file, or ``None`` when it escapes/root-misses or the
+        source does not take its name (`_source_takes`) - the one seat every hand-off asks."""
         specs = self._external_sources.values()
         if source_id is not None:
             spec = self._external_sources.get(source_id)
@@ -1664,7 +1705,8 @@ class IngestionHandler(FileSystemEventHandler):
         matches = []
         for spec in specs:
             rel_path = _safe_relative_path(file_path, spec["root"])
-            if rel_path is not None:
+            if rel_path is not None and _source_takes(
+                    spec.get("options") or {}, file_path, rel_path):
                 matches.append((len(spec["root"]), spec, rel_path))
         if not matches:
             return None
@@ -1690,7 +1732,8 @@ class IngestionHandler(FileSystemEventHandler):
     def _external_cell_source_name(file_path: str, parse_meta: dict | None) -> str | None:
         """Stable, traceable CellSource name for an external file.
 
-        Every producer artifact is named ``voids.json``.  Using only that basename
+        External artifacts share basenames (every ``voids.json``; a glob source takes
+        same-named files from many folders).  Using only the basename
         collapses all wafers and work times into one opaque source label.  Preserve
         the full watcher-supplied path so a displayed cell can be traced back to the
         exact external artifact that asserted it.
@@ -3832,12 +3875,8 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
         self.spec = dict(spec)
 
     def accepted_path(self, file_path: str) -> bool:
-        context = self.ingestion_handler.external_source_context(
-            file_path, self.spec["source_id"])
-        if context is None:
-            return False
-        expected = str((self.spec.get("options") or {}).get("filename", "voids.json"))
-        return os.path.basename(file_path).lower() == expected.lower()
+        return self.ingestion_handler.external_source_context(
+            file_path, self.spec["source_id"]) is not None
 
     def dispatch_path(self, file_path: str):
         """Dispatch one already-resolved filesystem path through ingestion.

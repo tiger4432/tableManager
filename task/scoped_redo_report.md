@@ -79450,3 +79450,116 @@ fold-units 소급 탭 문장 a88909467 — downstream_note 에 «끝 철회는 �
   RED the seat picks one of two types (hash seed 1) — 1 failed, 4 deselected
   RED the seat picks one of two types (hash seed 2) — 1 failed, 4 deselected
 ```
+
+## [10-11] «목록 중 하나인가» 접기 착지 e32731bd5 · 사람 칸 없는 decide 착지 da6c523e1 (총괄 ㄴ)
+
+```
+e32731bd5  text_links.one_of(answer, listed) -> (kept, unlisted) 하나를 ask_links 방향 · dictionary_suggest 새 노드 타입이 부름
+           경고 줄 두 문장은 그대로. 두 LLM 시험 파일 그대로 초록
+           BASE 115 passed
+           RED one_of keeps the answer's spaces - 2 failed, 113 passed
+             test_a_link_carries_the_direction_each_side_moves[trimmed-and-blank]
+             test_a_new_node_takes_a_listed_type_as_written_and_a_node_answer_keeps_the_dictionarys
+           AFTER 115 passed
+
+da6c523e1  decide 의 fields 가 비거나 없으면 aggregations 가 있어야 선다 — 키마다 행 하나에 키와 집계만
+           queue 술어 or_(false(), …) — 빈 or_() 는 모든 행이라 사람 칸 없는 규칙의 행이 전부 워크리스트에 뜰 뻔함
+           새 칸 파일(SQLite, 진짜 확장기 · 체인 그룹 몸통) 변이 셋:
+             BASE 5 passed
+             RED no fields is refused as before - 5 failed · test_a_fields_less_rule_queues_nothing, test_a_row_per_key_with_its_count, test_no_fields_and_no_aggregations_is_refused_by_name, test_no_fields_with_aggregations_stands[empty], test_no_fields_with_aggregations_stands[unwritten]
+             RED no fields stands without aggregations too - 1 failed, 4 passed · test_no_fields_and_no_aggregations_is_refused_by_name
+             RED the queue of a fields-less rule is an empty or_ - 1 failed, 4 passed · test_a_fields_less_rule_queues_nothing
+             AFTER 5 passed
+           옛 규칙을 박은 칸 test_enrichment «no_target»(aggregations 든 기본 규칙에 fields []) -> fields [] · aggregations {}
+           그 칸의 변이:
+             RED no fields stands without aggregations too - 1 failed, 30 passed, 1 skipped · test_loader_missing_required_fields_skipped
+           관련 파일 게이트(깨끗한 e32731bd5 대조):
+             files 195
+             wt-llm:   14 failed, 3472 passed, 14 skipped, 86 deselected, 1 error in 589.55s (0:09:49)
+             wt-check: 13 failed, 3468 passed, 14 skipped, 86 deselected, 1 error in 551.78s (0:09:11)
+             new (only in wt-llm): 1
+             FAILED tests\test_enrichment.py::test_loader_missing_required_fields_skipped
+             gone (only in wt-check): 0
+           PG:
+             pg files 13
+             FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+             FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+             FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+             3 failed, 83 passed, 112 deselected in 132.13s (0:02:12)
+             위 PG 빨강 셋은 깨끗한 바탕에서도 빨강(파일 단위로 다시 돌림)
+             public relations 325 -> 325 · added [] · gone [] · rows changed {}
+             public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+
+멈춘 것    ㄱ(웨이퍼 단위 본딩 엣지 선언) — 소유자 판정으로 멈춤. 트리 파일 0 · 박스 읽기 전용 수만 재서 총괄께 메시지로 드림
+```
+
+## [10-11] 목록 답 다섯 자리 one_of 착지 d177b7003 (총괄 · 응용 감사)
+
+```
+사전 식별자 둘(ask_links · ask_dictionary) · 확실성이 one_of 로 — 증감 방향 · 새 노드 타입과 같은 판정
+확실성 목록 밖 = suspected 그대로 + 경고 한 줄 · PRIMITIVES 의 «함정» 줄(셋 남음) 지움
+LLM 시험 세 파일 137 초록(이 착지 rebase 뒤) · 변이 셋:
+  BASE 121 passed
+  RED ask_links' identifier is looked up as written - 1 failed, 120 passed
+    test_a_listed_identifier_written_with_spaces_is_that_identifier
+  RED ask_links' certainty is compared as written, nothing said - 2 failed, 119 passed
+    test_a_certainty_is_one_of_the_two_or_said[spaces]
+    test_a_certainty_is_one_of_the_two_or_said[unlisted]
+  RED ask_dictionary's node is looked up as written - 1 failed, 120 passed
+    test_a_listed_node_written_with_spaces_is_that_node
+  AFTER 121 passed
+```
+
+## [10-11] format 없는 시각 글자는 확장 ISO 만 — 착지 22c2740e5 (총괄 ㄱ, 소유자 운영 «20261011_213631»)
+
+```
+원인      미리보기와 백필은 같은 함수(roleframe.aware_time · preview_cursor_batch)를 지남. format 이 없으면 fromisoformat 에 맡겼고
+          3.11+ 은 «20261011_213631» 을 읽고 3.10 이하는 거절 — 이 박스 3.12.13 은 읽음(재현: 테스트 런 passed · 원자 4)
+고침      format 없으면 ISO_EXTENDED 만 · 그 밖 글자는 «… is not ISO 8601 (2026-10-11 21:36:31) - declare the format …, e.g. "format": "%Y%m%d_%H%M%S"»
+          occurred_at 은 분자 거절 · 값 바인딩(속성 · 한정자 · 값)은 배치 거절 — 테스트 런 status refused + 실행 문 같은 문장
+          format 칸은 이미 모든 column 바인딩에서 검증 · 읽기를 지남(넓힌 것 없음)
+바뀐 것    3.11+ 에서 format 없이 읽히던 ISO 밖 글자 거절 · 그런 칸은 선언 폼 Time 후보에서 빠짐(선언 JSON 에 format)
+변이(시각 칸 파일 14 칸):
+  BASE 14 passed
+  RED no format reads whatever fromisoformat reads - 6 failed, 8 passed · test_an_attribute_binding_reads_the_text_by_its_format[None], test_other_text_is_refused_naming_the_format_to_declare[2026-10-11_21:36:31], test_other_text_is_refused_naming_the_format_to_declare[2026/10/11 21:36:31], test_other_text_is_refused_naming_the_format_to_declare[20261011T213631], test_other_text_is_refused_naming_the_format_to_declare[20261011_213631], test_the_test_run_and_the_execute_door_refuse_the_compact_text_alike
+  RED ISO with a space between date and time is refused - 1 failed, 13 passed · test_iso_extended_text_reads[2026-10-11 21:36:31-read0]
+  RED a value binding's format is not handed to the reader - 1 failed, 13 passed · test_an_attribute_binding_reads_the_text_by_its_format[%Y%m%d_%H%M%S]
+  AFTER 14 passed
+관련 파일 게이트(깨끗한 d3fc3a98a 대조):
+  files 152
+  wt-llm:   4 failed, 2137 passed, 3 skipped, 189 deselected, 1 error in 316.54s (0:05:16)
+  wt-check: 4 failed, 2123 passed, 3 skipped, 189 deselected, 1 error in 331.57s (0:05:31)
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+PG:
+  pg files 24
+  FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+  FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+  3 failed, 186 passed, 209 deselected in 613.10s (0:10:13)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+```
+
+## [10-12] «세상을 안 말하고 부르는 자리» 전수 (총괄 — 짓지 않음, 표만)
+
+```
+잰 법   AST(server/, tests 뺌): world/world_name 인자를 받는 함수 92 이름 → 그 이름을 부르는데 world 를 키워드로도 위치로도 안 넘기는 호출
+        걸러냄: 받는 쪽이 인자로 고른 수신자(_service_for(world).X — 라우터 13 줄) · 같은 파일의 동명 함수가 world 를 안 받음 · subprocess.run 동명(10 줄)
+남은 것  world 인자 호출 11 (아래 ①) + 세상이 params 딕셔너리에 실리는 소급 호출 3 (아래 ②) — 이 수는 «이름» 기준이라 동명 오탐을 손으로 뺀 뒤
+① world 인자를 안 넘기는 호출 (떨어지면 운영 세상)
+  chain/ingestion_worker _restamp_moved_fingerprints_sync -> schema.world_names()   기동 · 운영 커서만 다시 찍음 — 브랜치 커서는 안 찍힘(쓰기, 브랜치엔 안 닿음)
+  ledger/admin ingestion_view -> world_names()                                      화면이 브랜치를 골라도 운영 수(읽기 숫자)
+  ledger/config config_path -> world_names()                                        기본값 자리 — 부르는 쪽이 root 를 안 주면 운영 선언(읽기)
+  ledger/gaps measure -> world_names()                                              relation 안 주면 운영 원장으로 셈(읽기 숫자)
+  ledger/setup load_setup · setup_from_document · _resolve_cli_root -> world_names() root 안 주면 운영 선언 — _ledger_world(None) 과 같은 모양(읽기 · 그 setup 으로 쓰면 쓰기)
+  ledger_api/declared_entities _config_path -> world_names()                       엔티티 목록이 운영 선언(읽기)
+  ledger_api/ledger_subgraph _read_entity_declaration -> world_names()             _WALK_DECLARATION 문맥이 없을 때만 운영 선언(브랜치 걷기가 문맥을 세우면 안전 — 안 봄)
+  config_resolve_report _resolve_walk -> _collectable_types()                       운영 선언의 걷기 타입(읽기)
+  ledger/config_explorer_service view -> explorer_view(...)                         서비스는 세상마다인데 이 부름이 world 를 안 넘김 — explorer_view 기본이 운영이면 브랜치 창이 운영 그림(읽기, 안 봄)
+② 세상이 params["world"] 로 실리는 소급 호출 (없으면 _ledger_world(None) -> 운영)
+  ledger/config_drafts _redo_for -> retroactive.count(REDO_SOURCE_OP, params)      소유자 500 의 자리 — 에이전트가 고치는 중
+  main get_retroactive_count -> retroactive.count(db, op, params)                   요청이 보낸 params 그대로 — 클라가 world 를 실으면 안전
+  ledger/backfill (CLI) -> retroactive.run_here(op, params)                        --world 가 params 에 실리는지 안 봄
+모르는 것  «브랜치에서 불릴 수 있나»를 부른 쪽 전부 따라가 보지 않음 — 위 «안 봄» 셋 · 동명 함수 오탐은 손으로 뺐으니 빠진 자리가 있을 수 있음
+```

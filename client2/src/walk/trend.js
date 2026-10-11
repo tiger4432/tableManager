@@ -4,7 +4,7 @@
 // record of that value - owner 10-10 e54560dc2), coloured by the group it came by. Numbers stand on a value axis; every other value has a lane (the most frequent first, the rest
 // «others»). A time page from the server adds the row's other edges of that step around the walked time.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { readsOf, valueWords, numberOf } from './reach_table.js';
+import { readsOf, valueWords, numberOf, pointOf } from './reach_table.js';
 import { isBlank } from '../absent.js';
 import { localStamp } from '../server_time.js';
 
@@ -24,7 +24,7 @@ const keyOf = (edge, fallback) => (edge && (edge.claim_id || edge.id)) || fallba
 export function walkPoints(index, groups, x, column) {
   return groups.flatMap((g, i) => readsOf(index, g.inside, x, column).reads
     .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node,
-      giver: r.giver, claim: (r.when && r.when.claim_id) || '' })));
+      giver: r.giver, claim: (r.when && r.when.claim_id) || '', point: pointOf(column, r.edge) })));
 }
 
 /** The walked points of `rows` along `column`, each with the row it was read from - a section's trend, a cell's, a lump's
@@ -44,7 +44,7 @@ export function pagePoints(answer, groups, x, column, walked = new Set()) {
     const key = keyOf(e, e.id);
     // Who gave a point: its edge's subject, as a read says (reach_table.readsOf).
     return { t: timeOf(e), value: (e.qualifiers || {})[column.value.name], group: group >= 0 ? group : null, walked: walked.has(key), key,
-      node: far, giver: e.source, claim: e.claim_id || '' };
+      node: far, giver: e.source, claim: e.claim_id || '', point: pointOf(column, e) };
   // A column that ends at one node (lead 10-11 W) reads its edges to that node only, when the page is the row's.
   }).filter((p) => !isBlank(p.value) && (!column.end || x === column.end || p.node === column.end));
 }
@@ -100,10 +100,17 @@ function axisOf(timed, frame) {
   return all.length ? [Math.min(...all), Math.max(...all)] : null;
 }
 
+/** The series a split keeps, one colour each - the category palette's nine (tokens.css --cat-1..9); past them «others». */
+export const SERIES = 9;
+
+/** What the points can be split by (lead 10-11 W addendum 2 ⑭): the names in their points (pointOf - Long's «point»). */
+export const splitNames = (points) => [...new Set(points.flatMap((p) => (p.point || []).map(([name]) => name)))].sort();
+
 /**
  * The chart's model: the numbers on a value axis, the rest in lanes - one a value, the most frequent first, past
  * `lanes` the rest in «others» - the time span, the value span, and how many points had no time. A point outside the
  * axis is not drawn; each group's before and after it say themselves at the edge (`outside`: the nearest time, how many).
+ * `frame.split` names a point attribute: each value of it a series (`series`, in order; a point's index, null past them).
  */
 export function trendModel(points, lanes = LANES, frame = {}) {
   const span = axisOf(points.filter((p) => p.t !== null), frame);
@@ -115,8 +122,12 @@ export function trendModel(points, lanes = LANES, frame = {}) {
     if (!at) outside.push({ group: p.group, before, t: p.t, n: 1 });
     else { at.n += 1; if (before ? p.t > at.t : p.t < at.t) at.t = p.t; }
   }
-  const numbers = timed.filter((p) => isNumber(p.value)).map((p) => ({ ...p, value: numberOf(p.value) }));
-  const words = timed.filter((p) => !isNumber(p.value)).map((p) => ({ ...p, word: valueWords(p.value) }));
+  const splitOf = (p) => { const at = (p.point || []).find(([name]) => name === frame.split); return at ? valueWords(at[1]) : ''; };
+  const series = frame.split ? [...new Set(timed.map(splitOf).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).slice(0, SERIES) : null;
+  const seriesOf = (p) => (series && series.includes(splitOf(p)) ? series.indexOf(splitOf(p)) : null);
+  const numbers = timed.filter((p) => isNumber(p.value)).map((p) => ({ ...p, value: numberOf(p.value), series: seriesOf(p) }));
+  const words = timed.filter((p) => !isNumber(p.value)).map((p) => ({ ...p, word: valueWords(p.value), series: seriesOf(p) }));
   const counts = new Map();
   for (const p of words) counts.set(p.word, (counts.get(p.word) || 0) + 1);
   const order = [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([w]) => w);
@@ -130,6 +141,7 @@ export function trendModel(points, lanes = LANES, frame = {}) {
     v: vs.length ? [Math.min(...vs), Math.max(...vs)] : null,
     untimed: points.filter((p) => p.t === null).length,
     outside,
+    series,
   };
 }
 

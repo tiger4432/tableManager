@@ -691,6 +691,9 @@ def _checkpoint(control):
     begun - and it is also the only place "how far" is a true number rather than a
     half-written one. Splitting them into two callbacks would let an operation report
     progress somewhere a stop would not be safe.
+
+    `hook.step` is the other seat a page passes, inside it: `RunControl.step` - the time and a
+    line, never a count or a stop (총괄 e71f7d6f1).
     """
     if control is None:
         return None
@@ -699,6 +702,7 @@ def _checkpoint(control):
         control.progress(processed, total)
         return control.stop_requested()
 
+    hook.step = control.step
     return hook
 
 
@@ -2383,7 +2387,7 @@ class RunControl:
     could only be stopped by restarting the server, which takes every other job with it.
     """
 
-    def __init__(self, run_id, session_factory=None, op=None):
+    def __init__(self, run_id, session_factory=None, op=None, log=None):
         self.run_id = run_id
         #: [S-37] 진행을 «말하려면» 무엇의 진행인지가 있어야 한다. run_id 만으로는
         #: 화면이 「무슨 일이 도는가」를 못 말한다 — S-36 이 대기열에서 고친 그 부족이다.
@@ -2394,6 +2398,10 @@ class RunControl:
         #: The operation's own answer, unreduced - what a CLI prints (`_final_progress`).
         self.stats = None
         self._session_factory = session_factory
+        #: When the progress time last moved, on this process's clock - a step's seconds start here.
+        self._moved = time.monotonic()
+        #: The run's own log (`log` of `execute` / `run_here`) - a step line goes where the run's lines go.
+        self._log = log or logger.info
 
     def _session(self):
         if self._session_factory is not None:
@@ -2434,17 +2442,39 @@ class RunControl:
         """Record how far this run has got. `total=None` stays NULL - unknown, not zero."""
         if not self.run_id:
             return
+        values = {}
+        if processed is not None:
+            values["processed_rows"] = int(processed)
+        if total is not None:
+            values["total_rows"] = int(total)
+        self._stamp(values)
+        # [S-37] 쓰는 «자리 옆»에서 한 번 더 말한다. 여기가 아니면 「DB 는 갱신됐는데
+        # 아무도 못 들었다」가 다시 생긴다 — 그 둘이 갈라지는 것이 이 라운드의 결함이다.
+        import event_constants
+        self.announce(event_constants.PROGRESS_STATUS_RUNNING, processed=processed, total=total)
+        self._moved = time.monotonic()      # the next step's seconds leave out this boundary's notice
+
+    def step(self, name, page, pages, rows) -> None:
+        """A step of page `page` (of `pages`, None = unknown) returned (총괄 e71f7d6f1, 소유자 「죄다 stalled」 ·
+        「깜깜이」): one line `[<op>] page k/K: <step> · <rows> rows · <seconds> s`, then the progress time - no
+        count, no notice, no stop (a stop is safe only at the page boundary). Called by the op's own thread
+        when the step returns, never from a timer: a step that does not return - a lock wait - leaves the
+        time where it was, and `in_flight` reads it stalled."""
+        self._log("[%s] page %s: %s · %s rows · %.1f s" % (self.op, page if not pages else "%d/%d" % (page, pages),
+                                                          name, rows, time.monotonic() - self._moved))
+        if self.run_id:
+            self._stamp({})
+        self._moved = time.monotonic()
+
+    def _stamp(self, values) -> None:
+        """`last_progress_at` = now, with `values`, on this control's own session."""
         from datetime import datetime, timezone
 
         from database import models
 
         session = self._session()
         try:
-            values = {"last_progress_at": datetime.now(timezone.utc)}
-            if processed is not None:
-                values["processed_rows"] = int(processed)
-            if total is not None:
-                values["total_rows"] = int(total)
+            values = dict(values, last_progress_at=datetime.now(timezone.utc))
             (session.query(models.RetroactiveRun)
              .filter(models.RetroactiveRun.run_id == self.run_id).update(values))
             session.commit()
@@ -2455,10 +2485,6 @@ class RunControl:
             logger.debug("progress write failed for run_id=%s: %s", self.run_id, exc)
         finally:
             session.close()
-        # [S-37] 쓰는 «자리 옆»에서 한 번 더 말한다. 여기가 아니면 「DB 는 갱신됐는데
-        # 아무도 못 들었다」가 다시 생긴다 — 그 둘이 갈라지는 것이 이 라운드의 결함이다.
-        import event_constants
-        self.announce(event_constants.PROGRESS_STATUS_RUNNING, processed=processed, total=total)
 
     def announce(self, status, processed=None, total=None) -> None:
         """`announce_progress` for this run, until one is not heard (총괄 10-11 ④: with the server down each notice
@@ -3002,7 +3028,7 @@ def execute(payload: dict, log=logger.info, claimed=False) -> dict:
             _mark_run(run_id, state=RUN_FAILED, finished=True, error=str(e))
         return out
 
-    control = RunControl(run_id if run_id != "?" else None, op=op)
+    control = RunControl(run_id if run_id != "?" else None, op=op, log=log)
     # 🔴 «집기»다 — `claim` 하나가 잠금 아래에서 관문을 묻고 queued -> running 을 쓴다.
     #    `run_id == "?"` 는 작업 행이 없는 손 호출이라 집을 것이 없다 — 그때는 그냥 돈다.
     if not claimed and run_id and run_id != "?":
@@ -3167,7 +3193,7 @@ def _run_in_this_process(run_id, op, spec, params, log):
     beating = threading.Thread(target=beat_until_stopped, name="run-here-heartbeat",
                                daemon=True)
     beating.start()
-    control = RunControl(run_id, op=op)
+    control = RunControl(run_id, op=op, log=log)
     try:
         out = _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=True)
     except Exception:

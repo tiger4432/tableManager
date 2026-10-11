@@ -182,7 +182,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `source_table` | ✔ | 대량 원본 테이블 (`table_config` 등록 필수) |
 | `derived_table` | ✔ | 파생 영속 테이블 (등록 + 키 계약 필수) |
 | `decision_key` | ✔ | 판단키 컬럼 1..N — 소스·파생 **양쪽에 같은 이름으로** 존재 (§2) |
-| `target_fields` | ✔ | 사람이 채울 필드 |
+| `target_fields` | ✔ | 사람이 채울 필드. 🆕 10-11 비거나 안 적으면 `aggregations` 가 있어야 선다 — 키마다 행 하나에 키와 집계만(사람 칸 없음, 워크리스트에 안 뜸). 둘 다 없으면 「'target_fields' is empty, so 'aggregations' must be declared …」 로 거절 |
 | `list_columns` | | 워크리스트 표시 단서 |
 | `aggregations` | | 서버 전용 집계 — `{이름: "count"}` 또는 `{이름: {"fn": "count\|min\|max\|unique_concat", "column": "<소스 컬럼>"}}` (S-129, 2026-09-10 · `unique_concat` 09-26 `5dee85a5b`). `count` 는 행을 세므로 컬럼이 없고, `min`/`max`/`unique_concat` 는 소스 컬럼을 읽는다. `unique_concat` 는 빈 값을 빼고 중복 없이 값 순서로 이어붙이며, `separator` 를 받는 유일한 함수다(선택 · 기본 `", "` · 다른 함수에 주면 로더가 거절). 그 키 그룹의 «커밋된 소스 행 전체» 위에서 재계산된다. 🆕 10-11 선언 폼은 이름마다 `fn` · `column` · `separator` 칸으로 그린다 — `"count"` 는 `{"fn": "count"}` 로 보이고(읽는 쪽의 그 한 자리 `aggregation_record`), 폼에서 저장하면 파일도 그 모양이 된다(같은 뜻). 맞는지는 읽는 쪽이 오늘처럼 이름 대어 거절(총괄 8b487d2e6) |
 | `enabled` | | 기본 `true` |

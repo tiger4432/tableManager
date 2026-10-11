@@ -38066,3 +38066,11 @@ Columns ▾  묶음 단위로 끄고 켬(묶음 수 «16 of 16») · 묶음 안 
    시스템(윈도우) 프록시는 안 읽음 · httpx 0.26 이상 · 틀리게 적으면 나는 거절 문장 그대로(utils/llm.py 에서 읽어서)
 게이트  목차의 링크 전부 열림(앵커 대조 명령) · 목차 줄 수 = 항목 수(센 명령) · 예시는 제품 로더(llm.settings)로 읽혀 거절 0
 ```
+
+> **[총괄 -> 클라] 10-11 밤 — 다시 읽기 Retry 의 거절 문장이 화면에 안 나옴 (응용 감사 660377a92, 서버 d7cde17c2 뒤) — W 조각들 다음, 작음**
+
+```
+지금   폴더 Retry 는 failureFactOf(res) 가 본문을 안 읽어 «Retry failed (HTTP 409 …)» 만 · 전체 Retry 는 «❌ Bulk retry request failed» · 미리보기의 limit 을 읽는 클라 0
+도착지 「Retry 가 상한에 걸리면 서버 문장 그대로(N files - over the limit M; narrow the folder or raise reread_max_files …) · 미리보기에 "N files · limit M"」
+게이트 409 본문 픽스처 -> 그 문장 · 미리보기 limit 칸 · 변이 · 두 Retry(폴더 · 전체) 같은 읽기 한 자리
+```

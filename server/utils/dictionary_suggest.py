@@ -78,12 +78,14 @@ def ask_dictionary(phrases, names, instruction=None):
             continue
         node = (None, None)
         if not crud.is_blank_value(item.get("node")):
-            if str(item["node"]) in by_id:
-                node = by_id[str(item["node"])]
-            else:
+            listed, unlisted = text_links.one_of(
+                item["node"] if isinstance(item["node"], str) else str(item["node"]), by_id)
+            if listed is not None:
+                node = by_id[listed]
+            if unlisted is not None:
                 logger.warning("[LLM] phrase %d of %d answers node %r, which the dictionary does not list"
                                " - suggested without a node (%s): %r",
-                               number, len(asked), item["node"], extractor, str(row["phrase"])[:120])
+                               number, len(asked), unlisted, extractor, str(row["phrase"])[:120])
         else:
             typed, unlisted = text_links.one_of(item.get("new_node_type"), types)
             node = (typed, None)

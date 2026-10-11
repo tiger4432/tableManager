@@ -139,8 +139,10 @@ def evidence_subgraph(
                      "정적/동적은 선언의 `class` 가 정한다. 0 이면 오늘과 같다")),
     collect: list[str] | None = Query(
         None, description=("응답의 `nodes` 에 실어 올 «노드 타입». 없으면 «전부» — "
-                           "오늘 동작 그대로. 걷기는 안 바뀐다: 웨이퍼에서 결함으로 가려면 "
+                           "오늘 동작 그대로. 길은 안 바뀐다: 웨이퍼에서 결함으로 가려면 "
                            "다이를 «지나야» 하고, 지나는 것과 «실어 오는 것»은 다르다. "
+                           "`node_limit` 은 실어 오는 타입만 센다 — 지나는 노드는 "
+                           "원자 상한(`limits.claims`)이 막는다. "
                            "이름은 선언된 엔터티 타입이다 (`@` 버전은 있어도 없어도 된다)")),
     seed_type: str | None = Query(
         None,

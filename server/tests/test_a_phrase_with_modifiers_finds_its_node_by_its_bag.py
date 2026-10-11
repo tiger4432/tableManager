@@ -252,3 +252,14 @@ def test_the_operators_instruction_reaches_the_prompt(answer):
     asked = answer('{"phrases": []}')
     dictionary_suggest.ask_dictionary(PHRASES[:1], NAMES, instruction="prefer existing nodes")
     assert "%s\nprefer existing nodes" % text_links.INSTRUCTION_HEADING in asked[-1][1][-1]["content"]
+
+
+def test_a_listed_node_written_with_spaces_is_that_node(answer, caplog):
+    """총괄 10-11: the node answer goes through `text_links.one_of` too - spaces trimmed, case kept."""
+    _asked, rows, lines = _suggested(
+        answer, caplog, {"number": 1, "node": " Q-BOND-T ", "new_node": None, "reason": "r1"},
+        {"number": 2, "node": None, "new_node": None, "reason": "r2"},
+        {"number": 3, "node": None, "new_node": None, "reason": "r3"},
+        {"number": 4, "node": None, "new_node": None, "reason": "r4"})
+    assert (rows[0]["suggested_node_type"], rows[0]["suggested_node_key"]) == ("quantity", "Q-BOND-T")
+    assert not [line for line in lines if "does not list" in line], lines
