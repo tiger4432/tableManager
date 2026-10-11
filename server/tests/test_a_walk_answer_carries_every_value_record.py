@@ -107,3 +107,27 @@ def test_past_the_cap_the_rest_are_counted(monkeypatch):
     edge, node = _edge(body), _node(body)
     assert (len(edge["records"]), edge["records_more"]) == (2, 2)
     assert ([r["value"] for r in node["records"]["product"]], node["records_more"]["product"]) == (["C", "B"], 1)
+
+
+class _OldestFirst(ledger_subgraph.InMemoryEvidenceLookup):
+    """The same atoms handed oldest first - the order a fetch hands them in is not the answer's."""
+    handed = ()
+
+    def claims_for_entities(self, *args, **kwargs):
+        rows, more = super().claims_for_entities(*args, **kwargs)
+        self.handed = tuple(self.handed) + tuple(atom.id for atom in reversed(rows))
+        return rows[::-1], more
+
+
+def test_the_newest_records_stay_whatever_order_they_were_fetched_in(monkeypatch):
+    """총괄 10-11: an edge's records were kept in the order fetched and cut there, a node name's were sorted - one list
+    read two ways. One rule now: the atom's time, then its claim id, newest first; past the cap the newest stay."""
+    monkeypatch.setattr(ledger_subgraph, "RECORDS_PER_FACT", 2)
+    tied = ATOMS + [_measures(5, 4, "P5"), _registration(14, 3, product="D", tag="d")]
+    lookup = _OldestFirst(tied)
+    body = ledger_subgraph.subgraph(SEED, lookup, hops=1, registration_follow={"register"})
+    measured = [a.id for a in tied if a.predicate == "measures"]
+    assert [i for i in lookup.handed if i in measured][:2] == measured[:2], "CANARY: handed oldest first"
+    edge, node = _edge(body), _node(body)
+    assert ([r["claim_id"] for r in edge["records"]], edge["records_more"]) == ([tied[-2].id, ATOMS[3].id], 3)
+    assert ([r["value"] for r in node["records"]["product"]], node["records_more"]["product"]) == (["D", "C"], 2)

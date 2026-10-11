@@ -380,6 +380,7 @@
 >                 {occurred_at, qualifiers, world, source_who, claim_id} (포인트는 qualifiers 안) · 두 끝에서 읽힌 원자는 한 번
 >            노드  이름마다 최신 하나로 줄이던 등록 — 이제 records = {이름: [{value, occurred_at, world, source_who, claim_id}]} 새것 먼저
 >            상한  RECORDS_PER_FACT = 100 — 넘으면 records_more 수. 지금 값(엣지 칸 · attributes · attributes_by_world)은 그대로
+>            순서  엣지 · 노드 한 규칙 — 원자 시각, 같으면 claim id, 새것 먼저 · 상한에 걸리면 가장 최근 것이 남는다 ({LANDING} 뒤 — 그 전엔 엣지가 가져온 순서로 담고 거기서 잘랐다)
 >            걷기가 읽는 원자 수는 그대로(이미 읽은 것을 안 버림) · 값 · 포인트를 가르는 것은 화면(클라 W)
 > 순서        pull -> 서버 재기동
 > 박스 수       데모 바구니(+ SYN-BW-103-11 · − SYN-BW-SPL-400-19, 이 박스 원장 · 읽기 전용) 고치기 전 -> 뒤

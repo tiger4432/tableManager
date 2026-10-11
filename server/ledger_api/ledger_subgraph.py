@@ -380,6 +380,14 @@ REGISTRATIONS_FETCHED_PER_NODE = 8
 RECORDS_PER_FACT = 100
 
 
+def _newest_records(said):
+    """(instant, claim id, record) of each atom -> its records newest first, `RECORDS_PER_FACT` of them, and how many
+    more. ONE order for an edge's and a node name's (총괄 10-11): the atom's time, then its claim id, both descending -
+    whatever order they were fetched in."""
+    ordered = sorted(said, key=lambda each: (each[0] is not None, each[0], each[1] is not None, each[1]), reverse=True)
+    return [each[2] for each in ordered[:RECORDS_PER_FACT]], max(0, len(ordered) - RECORDS_PER_FACT)
+
+
 def decode_node_id(value):
     """Decode and canonical-reencode any public evidence-graph node id."""
     text = str(value or "").strip()
@@ -1089,10 +1097,9 @@ def _apply_registrations(nodes, registrations, order=None):
         plural = _declared_plural_attributes(str(node.get("type") or ""))
         values, conflicts, by_world, records, more = {}, 0, {}, {}, {}
         for name, seen in by_name.items():
-            newest = sorted(seen, key=lambda item: item[0], reverse=True)
-            records[name] = [{"value": item[1], "occurred_at": item[4], "world": item[2],
-                              "source_who": item[3], "claim_id": item[5]} for item in newest[:RECORDS_PER_FACT]]
-            more[name] = max(0, len(newest) - RECORDS_PER_FACT)
+            records[name], more[name] = _newest_records(
+                (item[0], item[5], {"value": item[1], "occurred_at": item[4], "world": item[2],
+                                    "source_who": item[3], "claim_id": item[5]}) for item in seen)
             by_world[name] = [
                 {"world": world, "value": _read_attribute(said, name in plural),
                  "occurred_at": latest[4], "source_who": latest[3]}
@@ -2235,8 +2242,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: Seeds keep an empty set, which is why they need no exemption below.
     arrivals = defaultdict(set)
     edges = {}
-    #: edge id -> the claim ids its `records` hold or counted - an atom reached from both ends is one record
-    edge_claims = {}
+    #: edge id -> {claim id: (its instant, claim id, record)} - an atom reached from both ends is one record; ordered
+    #: and cut where the answer is assembled (`_newest_records`), not in the order fetched
+    edge_records = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
     #: nodes that have spent the node budget -- see `_spends_budget` below
@@ -2276,7 +2284,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
     order = _in_picked_order(getattr(lookup, "worlds", ()))
 
-    def add_edge(row):
+    def add_edge(row, instant):
         nonlocal edge_cut, budgeted_edges
         if row["source"] not in nodes or row["target"] not in nodes:
             return False
@@ -2290,21 +2298,15 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 held["by_world"].append(said)
                 held["worlds"].sort(key=order)
                 held["by_world"].sort(key=lambda each: order(each["world"]))
-            # 🔴 EVERY ATOM OF IT IS A RECORD OF IT (총괄 e5e0a87e2 · 10-11 ㄱ) - in the order fetched, once each
-            claims = edge_claims[row["id"]]
-            if row["claim_id"] not in claims:
-                claims.add(row["claim_id"])
-                if len(held["records"]) < RECORDS_PER_FACT:
-                    held["records"].append(row["records"][0])
-                else:
-                    held["records_more"] += 1
+            # 🔴 EVERY ATOM OF IT IS A RECORD OF IT (총괄 e5e0a87e2 · 10-11 ㄱ) - once each
+            edge_records[row["id"]].setdefault(row["claim_id"], (instant, row["claim_id"], row["records"][0]))
             return True
         if budgeted_edges >= edge_limit:
             edge_cut = True
             return False
         budgeted_edges += 1
         edges[row["id"]] = row
-        edge_claims[row["id"]] = {row["claim_id"]}
+        edge_records[row["id"]] = {row["claim_id"]: (instant, row["claim_id"], row["records"][0])}
         return True
 
     def _spend(near_id, far_id, charge):
@@ -2507,7 +2509,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         if target is not None:
             if add_node(target, decode_node_id(target["id"]), target_depth):
                 add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate,
-                                     cardinalities))
+                                     cardinalities), atom.occurred_at)
             return
         # 🔴 EVERYTHING ELSE IS NOT A NODE. An atom whose object is a VALUE says
         # something about its subject; it is not a second place to stand. The finding-point
@@ -2767,6 +2769,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         wanted = {_bare_name(name) for name in collect if str(name).strip()}
         visible_nodes = [item for item in ordered_nodes
                          if _bare_name(item.get("type")) in wanted]
+    for edge_id, edge in edges.items():
+        edge["records"], edge["records_more"] = _newest_records(edge_records[edge_id].values())
     ordered_edges = sorted(edges.values(), key=lambda item: (
         min(depths[item["source"]], depths[item["target"]]),
         item["predicate"], item["id"]))
