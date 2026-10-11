@@ -26,4 +26,10 @@
 | C8 | + SYN-BW-103-11 · collect wafer · through in_container + bonded_from · default | 코어 웨이퍼 · 엣지 · claims · 잘림 | 요청 `follow=bonded_from · follow=in_container · collect=wafer` · «Nodes 31 (collect: wafer) · Edges 461 (all) · 0.5 s» · 코어 웨이퍼(SYN-CW) 30 · 3 홉 · claims_scanned 464 · 잘림 없음 | 통과 |
 | 복사 | SYN-CW-001-02 칸의 Copy key | 보이는 키 | text/plain «SYN-CW-001-02» · 단추 title «Copied» | 통과 |
 | 소유자 7 | 창 닫힘 · 꿀렁임 · 너무 넓음 · Types 불일치 · More +0 · 체크 스크롤 · 스티키 바구니 | — | 통과 · 통과 · **실패(C2 여백)** · 통과 · 통과 · 통과 · 통과 | 실패 1 |
-| C7 · 공백 | 고리 · 그림 칸 · 세상별 Re-translate · 초안 보기 200 · 모델링 백필 → 걷기 · 공백 값 | — | 아직 | — |
+| C7 고리 | + SYN-BW-103-11 · hops 1 · default → Graph → 고리 노드 마우스로 → Walk on from here | 48 중 47 · + 바구니로 · 요청 0 | 요청 `id · hops=1` · «Nodes 212 · Edges 249 · 0.2 s» · 그려진 48 · 고리 47 · + 칩 «SYN-BW-103-11 / 2 / 3 / Wafer» · 새 요청 0 | 통과 |
+| C7 그림 칸 | 세상 칩 rp500g(default + rp500g) · physical_quantity bond_temp + · Walk | ▣ + 참조 · 그릴 때 /api/image 0 · 머무르면 1 · 미리보기 | «Nodes 3 · Edges 2 · 0.2 s» · ▣ 4 «http://127.0.0.1:18766/favicon.svg» · 0 · 머무름 1 · 미리보기 48 px | 통과 (▣ 눌러 새 창은 안 함) |
+| C7 모델링 걷기 | 같은 걷기의 답 | plasma_clean → bond_temp → void | leads_to 둘 (plasma_clean → bond_temp dir down · bond_temp → void dir up) · 둘 다 rp500g 에서만 | 통과 (백필은 앞 라운드에 한 것) |
+| C7 ⑪ | 메인 그리드 link_candidates 2 행(마우스 · shift) → Re-translate → Open in admin → 줄 8 | 줄 40 · «40 GROUPS FROM THE GRID» · 폼 넷 | 줄 40 (rp500 · rp500e · rp500f · rp500g × 칸) · 어드민 «Re-translate a ledger scope» 밑 «40 GROUPS FROM THE GRID» · 폼 source=link_candidates · scope_column=phenomenon_key · scope_values=bond_temp,void · world=rp500 | 통과 (실행 안 함) |
+| C7 초안 보기 | Ontology Explorer → fake_measures → Edit draft / 브랜치 rp500g → link_candidates → Edit draft | 200 | POST drafts 200 · view 200 «Sources 1 · rows not yet translated 0» / view world=rp500g 200 · authoring/plan world=rp500g 200 «Sources 1 · rows not yet translated 1» | 통과 |
+| 공백 값 | — | 쳐 넣은 공백이 그대로 | 아직 — link_candidates 는 키 열만 보이고 cand_id 가 키 넷의 합성이라 공백을 넣으면 행이 바뀜. CSS «.wk-val · .wk-centrelabel · .wk-long td { white-space: pre }» 는 있음 | 아직 |
+| 한 번 본 것 | 고리에서 + 를 옮긴 뒤 첫 Walk | — | 그 요청에만 fanout_limit=20 · 화면 «No walk yet» (그때 보기 단추를 JS 로 누름). 실제 클릭으로 Graph → Walk → Table 은 정상 | 재현 안 됨 |
