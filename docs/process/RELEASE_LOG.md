@@ -302,7 +302,7 @@
 
 - **무엇** — 소유자 「다시 읽기 잘못 걸었다가 파일 너무 많아서 서버 뻗었어」. 파일 다시 읽기(Retry)가 한 번에 넘기는 수에 상한이 생기고, 넘길 때 각 행의 원래 상태를 남기며, 아직 와쳐가 안 집은 행은 «취소»로 원래 상태로 돌립니다. 폴더 거름은 SQL 로 해서 표 전체를 메모리로 읽지 않습니다.
 - **선언 예시** — `ingestion_settings.json`: `"reread_max_files": 25` (없으면 25).
-- **화면에서** — 어드민 Files 의 Retry 가 상한을 넘으면 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» 으로 거절합니다(미리보기는 수와 상한을 그대로). 취소는 지금은 라우트 `POST /admin/file-ingestion/cancel-reread?folder=<폴더>[&preview=true]` — 화면 버튼은 따로.
+- **화면에서** — 어드민 Files 의 Retry 가 상한을 넘으면 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» 으로 거절합니다(미리보기는 수와 상한을 그대로) — ⚠️ 10-11 문서 감사: 화면은 이 문장을 아직 안 읽습니다(폴더 Retry 는 «Retry failed (HTTP 409 …)» — 본문을 안 읽음, 전체 Retry 는 «❌ Bulk retry request failed», 미리보기의 `limit` 을 읽는 클라 0). 취소는 지금은 라우트 `POST /admin/file-ingestion/cancel-reread?folder=<폴더>[&preview=true]` — 화면 버튼은 따로.
 - **필요한 조건** — 서버 재기동(새 표 `file_reread_marks` 는 기동이 만듦, 이주 없음).
 - **바뀐 동작** — 상한을 넘는 Retry 는 거절됩니다. 정션을 거쳐서만 그 폴더 아래가 되는 저장 경로는 폴더 거름에 안 잡힙니다.
 - **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.

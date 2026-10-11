@@ -353,8 +353,10 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 
 - `statuses`(쉼표 — 들어간 파일까지면 `SUCCESS,FAILED,SKIPPED`, 적지 않으면 FAILED 만 = 실패 재시도) · `folder`(그 폴더 «아래» — `A` 는 `AB` 를 안 잡음) · `since` / `until`(인입 시각, `YYYY-MM-DD` 또는 `YYYY-MM-DD HH:MM`) · `preview`.
 - 미리보기(`preview=true`)가 다시 읽힐 파일 수 `count` · 상태별 `by_state` · 바로 아래 폴더별 `by_folder`, 기록이 말하는 자리에 없는 파일 수 `missing` 과 앞 다섯 이름 `missing_files` 를 말합니다. 한 파일을 여러 번 읽었으면 가장 새 기록 하나만 다시 읽힙니다.
+- 🆕 10-11 넘길 파일이 `ingestion_settings.json` 의 `reread_max_files`(기본 25)를 넘으면 409 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» 이고 아무것도 표시하지 않습니다(미리보기는 상한을 안 따지고 답에 `limit` 을 싣습니다).
 - 실행하면 요청 안에서 그 기록들을 `PENDING_RETRY` 로 표시하고(«N file(s) handed to the watcher»), 워처가 **하나씩** 읽습니다 — 워처의 그 표 핸들러로, dedup 을 건너뛰고(내용이 같아도 다시 읽음), 끝나면 보통 인제션과 같은 토스트가 옵니다.
 - 소급 관문을 안 잡습니다 — replay 가 돌아도 다시 읽기가 기다리지 않고, 다시 읽기가 replay 를 막지 않습니다.
+- 🆕 10-11 되돌리기 — POST `/admin/file-ingestion/cancel-reread?folder=<폴더>[&preview=true]` 가 아직 기다리는 행을 넘기기 전 상태로 돌립니다. 워처가 이미 집은 행(PENDING 이후)은 안 건드리고, 워처가 그 바퀴에 이미 목록으로 읽은 행은 되돌려도 읽힙니다.
 - ⚠️ 파서가 업무키를 바꾸면 옛 키의 행은 남습니다(업서트라 새 키 행이 따로 섭니다).
 - ⚰️ 소급 «Re-read files»(976defaac)는 은퇴했습니다 — 옛 실행 기록은 목록에 `reread_files (retired)` 로 남습니다.
 - 파일 하나의 «읽었음» 기록만 지워 다음 훑기에 맡기는 길은 그대로 `scripts/replay_ingestion.py --path` 입니다.

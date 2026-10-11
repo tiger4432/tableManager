@@ -265,7 +265,7 @@ python -c "from admin import retroactive; retroactive.run_here('fold_written_not
 
 - **하는 일**: `notation_rules.json` 의 `"write": true` 칸, 그리고 🆕(10-01 ㉡) **글자 칸 전부**(number · datetime 아닌 칸)에서 모든 층 값 · 보이는 값 · 행의 키를 쓰기 문과 **같은 접기**(표기 접기 -> 글자 캐스트: 숫자는 `clean_str_value` 의 철자, 공백 trim, 빈 글자는 null)로 접습니다. 층이 접힌 칸은 보이는 값을 **접힌 층에서 다시 정합니다**(R3 과 같은 함수). 층을 다시 쓰지 않고 **값만** 바꾸므로 층의 순서가 그대로이고 **이기는 층이 안 바뀝니다**(쓰기 문으로 다시 보내면 옛 층이 가장 새 층이 되어 보이는 «값»이 바뀝니다 — 실측).
 - **드라이런(Count)**: 「N cell(s) and M stored layer(s) … take the declared spelling; K row key(s) change」 + 건너뛸 행 · 또 바뀌는 값 · time 이 그대로 둔 값. `write` 칸도 글자 칸도 없는 표는 「has no "write" column ... and no text column」.
-- **건너뜀**: 접은 키를 다른 행이 이미 쥐고 있으면 그 행은 **한 칸도 안 접고** 이름을 댑니다(병합은 되돌릴 수 없음). 🆕 키는 접기가 **키 부품 칸**을 바꾼 행만 바뀌고, 그 행의 **안 접은 칸이 저장 키를 그대로 짓는 때만** 바뀝니다 — 아니면(옛 구분자 · 시각 철자 등으로 이미 어긋난 키) 그 행도 한 칸도 안 접고 `keys_not_rebuilt` 로 셉니다(신원 그대로).
+- **합침 · 건너뜀**: 🆕 10-06(`74df5ce00`) 접은 키를 다른 행이 이미 쥐고 있으면 그 행을 키를 쥔 행으로 **합칩니다**(`crud.merge_into_key_holders` — 쓰기 문 · 키 고침과 같은 함수, 드라이런은 «to merge» 로 셈). 🆕 키는 접기가 **키 부품 칸**을 바꾼 행만 바뀌고, 그 행의 **안 접은 칸이 저장 키를 그대로 짓는 때만** 바뀝니다 — 아니면(옛 구분자 · 시각 철자 등으로 이미 어긋난 키) 그 행도 한 칸도 안 접고 `keys_not_rebuilt` 로 셉니다(신원 그대로).
 - **멈춤**: 한 번 더 접으면 또 바뀌는 값이 든 페이지 «앞»에서 멈춥니다 — 선언이나 별칭 행을 먼저 고칩니다.
 - 🔴 **되돌릴 수 없습니다** — 저장돼 있던 철자는 칸마다 이력 줄(`notation_backfill`)의 옛 값으로 남습니다.
 - **끝나면**: `fold_file_layers`(같은 표) → `python server/scripts/tune_layer_tables.py --table cell_sources --vacuum`.
