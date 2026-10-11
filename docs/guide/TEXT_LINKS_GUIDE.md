@@ -125,7 +125,7 @@ def text_cause_links_llm(df, db):
 - 프롬프트는 사전 전체를 담는다(나눠 보내지 않는다) — 고정 약 1,200 자 + 노드마다 한 줄. 노드마다 구절 셋이면 100 노드 약 7 천 자 · 1,000 노드 약 6.6 만 자 · 5,000 노드 약 34 만 자(지어낸 사전으로 잰 수). 보낸 그대로는 `llm_requests.log` 보낸 줄의 payload.
 - 한 문장이 원인 · 현상을 여럿 말하면 모델은 짝마다 링크 하나를 답한다(같은 근거). 한 문장에서 후보가 여럿 나오므로 후보 표의 키에 `cause_phrase` · `phenomenon_phrase` 가 들어 있어야 한다 — 아니면 같은 키의 행이 서로 덮어쓴다.
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
-- `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다.
+- `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다. 모델 답은 앞뒤 공백만 무시하고 견주며, 빈 답은 말없이 `suspected`, 그 밖의 답은 `suspected` 로 두고 로그에 한 줄 `[LLM] link N of M answers certainty '<답>', which is not confirmed or suspected - kept as suspected (llm:<모델>): '<근거>'`.
 - `cause_direction` · `phenomenon_direction` 은 글이 그것이 «늘었다 · 올랐다»고 하면 `up`, «줄었다 · 떨어졌다»고 하면 `down`, 둘 다 아니면 빈다. 모델 답이 `up` · `down` 그대로(앞뒤 공백만 무시, 대소문자는 그대로)일 때만 쓰고, 그 밖의 답은 비우고 로그에 한 줄 `[LLM] link N of M answers cause_direction '<답>', which is not up or down - kept without it (llm:<모델>): '<말>'`.
 - 운영자 지시는 셋째 인자 — `ask_links(text, names, instruction="<지시>")`. 프롬프트에 들어가는 낱말은 사전 행 · 지시 · 글뿐이다.
 - 근거(evidence)는 글 전체에서 찾는다 — 두 문장에 걸쳐도 찾고(문장 번호는 시작한 문장), 따옴표 12 자(`"'“”‘’«»「」『』`)와 말줄임(… ...)은 양쪽 다 견주지 않는다(`text_links.EVIDENCE_MARKS` — 목록 밖 따옴표는 견줌). 근거를 못 찾은 링크는 버리고 로그에 한 줄 `[LLM] link N of M quotes evidence the text does not hold - dropped (llm:<모델>): '<근거>'` — 나머지 링크는 그대로 후보가 된다.
