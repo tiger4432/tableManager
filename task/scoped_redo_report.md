@@ -78921,3 +78921,19 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
   추천 ㄷ — 이 상태는 «이 pull 전에 접기와 ⑥ 을 이미 돌린 표»에만 생기고, 고친 뒤로는 새로 안 생김(재현 칸). 운영이 이미 돌렸는지는 모름
   여쭐 것: 운영에서 b566b48ae 의 접기를 이미 돌리셨는지 · ㄷ 로 가도 될지
 ```
+
+## [10-11] 총괄 «나» -> ㄷ — 이미 상한 공식 표의 셈 한 줄 + 그리드 삭제 (RUN.md 「층 접기는 키 칸의 체인 층을 안 건드린다」 절)
+
+```
+RUN.md  «모르는 것» 줄 -> 운영 DB 읽기 전용 셈(키 칸이 다 비고 보류 칸만 찬 행 수 · 앞 다섯 row_id) · 0 이면 할 일 없음 · 아니면 그리드 삭제
+잰 것 (PG 격리 DB, 탐침 · 커밋 안 함 — RUN.md 의 SQL 글자 그대로를 이 세상 이름으로 채워 돌림)
+  PROBE healthy count (0, [])
+  PROBE damaged rows {'c3ce6c': ('J1', 1.0, 2.0, 7.0, 'agreed'), 'ed7df5': (None, None, None, None, 'agreed')}
+  PROBE count 1 first five ['ed7df5']
+  PROBE grid delete (crud.delete_rows_batch, the batch_delete route's call) deleted 1 -> rows {'c3ce6c': ('J1', 1.0, 2.0, 7.0, 'agreed')}
+  PROBE count again (0, [])
+  1 passed in 10.68s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+어느 DB · 어느 스키마 · 지운 것: 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0 (탐침이 지운 행은 그 시험 세상의 행)
+```

@@ -274,7 +274,11 @@
 >              python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply          (일요일 표 ①b 와 같은 명령)
 >            답      source rows scanned : N · rows handed over : N — 공식 표 전부. 키 칸의 plain 체인 층이 다시 생긴다
 > 끝 줄       Count «Chain, outside the key columns: …» · Run 끝 줄 «chain plain layers off the keys … renamed» — 키 칸 층은 이 수에 안 든다
-> 모르는 것     ⑥ 까지 이미 돌린 공식 표에 남은 키 빈 행(hold 만 agreed)을 지우는 길 — 안 쟀다. ⑦ 은 그 행을 안 지운다
+> 이미 상한 표  이 pull 전에 접기와 ⑥ 까지 돌린 공식 표에는 키 칸이 비고 보류 칸만 찬 행이 남을 수 있다 — ⑦ 은 안 지운다(키 밖 보류 칸에 값)
+>            운영 DB 에서 읽기만, 공식 표마다:   <키 1~3> = «공식 표 키 칸» 셋 · <보류 칸> = 복사 규칙의 hold_column
+>              SELECT count(*) AS rows, (array_agg(row_id ORDER BY row_id))[1:5] AS first_five FROM "<공식 표>" WHERE coalesce(trim("<키 1>"::text), '') = '' AND coalesce(trim("<키 2>"::text), '') = '' AND coalesce(trim("<키 3>"::text), '') = '' AND coalesce(trim("<보류 칸>"::text), '') <> '';
+>    답        rows 0 -> 할 일 없음 · 0 이 아니면 first_five 의 행을 그리드에서 삭제(다섯 넘으면 다시 셈)
+>    잰 것      PG 시험 재현: 성한 표 0 · 상한 뒤 1 -> 그리드 삭제 문(batch_delete 가 부르는 crud.delete_rows_batch) 1 행 지움 · 남은 공식 행 1(성한 행 그대로) · 체인이 돈 뒤 다시 셈 0
 > 되돌리기      git revert <이 커밋> -> 서버 · 스케줄러 재기동
 > ```
 >
