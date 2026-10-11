@@ -486,6 +486,13 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
 
 def stage_event(session, event_type, table_name, data_row):
     from .models import DatabaseOutbox
+    session.add(DatabaseOutbox(**row_event(event_type, table_name, data_row)))
+
+
+def row_event(event_type, table_name, data_row) -> dict:
+    """The `database_outbox` columns of one per-row event for `data_row`, read by attribute
+    (`__table__`, `row_id`, `business_key_val`, each column) - `stage_event` stages it, and a bulk
+    writer holding a row's values off the ORM inserts the same (`replay.fold_written_notation`)."""
     try:
         from event_constants import (OUTBOX_PAYLOAD_EXCLUDED_COLUMNS as _EXCLUDED,
                                      CHAIN_DEPTH_KEY, CHANNEL_KEY, CASCADE_KEY,
@@ -519,33 +526,28 @@ def stage_event(session, event_type, table_name, data_row):
                 "updated_by": "system"
             }
 
-    event_obj = DatabaseOutbox(
-        event_uuid=str(uuid.uuid4()),
-        event_type=event_type,
-        table_name=table_name or "unknown",
-        payload={
-            "row_id": data_row.row_id,
-            "business_key": data_row.business_key_val,
-            "data": data_dict,
-            "transaction_id": tx_id,
-            "updated_by": user,
-            "source_name": source,
-            "timestamp": ts
-        },
-        status="PENDING"
-    )
+    payload = {
+        "row_id": data_row.row_id,
+        "business_key": data_row.business_key_val,
+        "data": data_dict,
+        "transaction_id": tx_id,
+        "updated_by": user,
+        "source_name": source,
+        "timestamp": ts
+    }
     # [DEPTH] Same rule as the collapsed stager: present only when the chain wrote it.
     if chain_depth is not None:
-        event_obj.payload[CHAIN_DEPTH_KEY] = chain_depth
+        payload[CHAIN_DEPTH_KEY] = chain_depth
     if channel is not None:
-        event_obj.payload[CHANNEL_KEY] = channel
+        payload[CHANNEL_KEY] = channel
     if cascade:
-        event_obj.payload[CASCADE_KEY] = True
+        payload[CASCADE_KEY] = True
     if written_by:
-        event_obj.payload[WRITTEN_BY_KEY] = sorted(written_by)
+        payload[WRITTEN_BY_KEY] = sorted(written_by)
     if run_id:
-        event_obj.payload[RUN_KEY] = run_id
-    session.add(event_obj)
+        payload[RUN_KEY] = run_id
+    return {"event_uuid": str(uuid.uuid4()), "event_type": event_type,
+            "table_name": table_name or "unknown", "payload": payload, "status": "PENDING"}
 
 
 

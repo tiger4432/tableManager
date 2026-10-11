@@ -1441,29 +1441,35 @@ def _insert_by_arrays(db, table, mappings):
         table.name, ", ".join('"%s"' % column.name for column in columns), ", ".join(casts))), params)
 
 
-def _update_by_arrays(db, table, names, rows, batch_now):
-    """`rows` [[row_id, a value per name but updated_at]] into `table` in one statement - updated_at, when
+def _update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
+    """`rows` [[key, a value per name but updated_at]] into `table` in one statement - updated_at, when
     named, is the batch's instant as the door stamps it (`crud.batch_write_instant`, else now())."""
     from sqlalchemy import text
 
     valued = [name for name in names if name != "updated_at"]
-    columns = [table.c.row_id] + [table.c[name] for name in valued]
+    columns = [table.c[key]] + [table.c[name] for name in valued]
     params, casts = _arrays(db, columns, rows)
     sets = ['"%s" = v.a%d' % (name, i) for i, name in enumerate(valued, start=1)]
     if "updated_at" in names:
         sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
         params["updated_at"] = batch_now
-    db.execute(text('UPDATE "%s" SET %s FROM unnest(%s) AS v(%s) WHERE "%s".row_id = v.a0' % (
+    db.execute(text('UPDATE "%s" SET %s FROM unnest(%s) AS v(%s) WHERE "%s"."%s" = v.a0' % (
         table.name, ", ".join(sets), ", ".join(casts), ", ".join("a%d" % i for i in range(len(columns))),
-        table.name)), params)
+        table.name, key)), params)
 
 
 #: The writer of the history line a notation backfill leaves on each cell it folds.
 NOTATION_BACKFILL_SOURCE = "notation_backfill"
 
+#: Rows a page of `fold_written_notation` reads, judges and writes in one commit (총괄 10-11, speed: 4M rows).
+NOTATION_FOLD_PAGE = 20000
+#: The dialects a page of it is folded by value on (`_fold_by_values` writes with PostgreSQL arrays);
+#: on any other every row takes the row path.
+FOLD_BY_VALUE_DIALECTS = ("postgresql",)
+
 
 def fold_written_notation(db, table_name: str, apply: bool = False,
-                          chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
+                          chunk_size: int = NOTATION_FOLD_PAGE, limit: int = None,
                           pace: str = None, max_report: int = DEFAULT_MAX_REPORT,
                           log=logger.info, checkpoint=None) -> dict:
     """Notation stage three (총괄 2dc2c1baf), widened to the whole write fold (총괄 c6a8c069c ㉡):
@@ -1492,7 +1498,14 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     run and stops the run before the page holding it is written (47aba5d44 ③). One history line
     per shown cell that changes; the rows' outbox events carry the change to the ledger. One
     commit per page.
+
+    🔴 ON POSTGRESQL A PAGE IS FOLDED BY VALUE (총괄 10-11, 소유자 「노테이션 소급 엄청 빨리」): each
+    distinct spelling of the page is folded once and what moves is written set-based
+    (`_fold_by_values` · `_write_by_values`); a row whose key part could move takes the row path
+    (`plan_rows`), the one every row takes on another dialect. Same end state, measured A = B.
     """
+    from sqlalchemy import func
+
     import notation_norm
     from database import crud, models
     from chain import keyset_scan
@@ -1523,121 +1536,161 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     aliases = notation_norm.aliases_by_column(db)
     claimed = {}                        # folded key -> the row that took it in this run
     tx_id = f"{NOTATION_BACKFILL_SOURCE}_{uuid.uuid4().hex[:8]}"
+    parts_of_key = composite_src or ([key_col] if key_col else [])
+    by_value = db.get_bind().dialect.name in FOLD_BY_VALUE_DIALECTS
 
-    def fold(column, value, again):
+    def fold_value(column, value):
+        """(stored, verdict, [column, value, stored, again] or None) - THE fold of one stored value."""
         stored, verdict = notation_norm.fold_for_write(table_name, column, value, aliases)
-        if verdict in notation_norm.TIME_LEFT_AS_WRITTEN:
-            stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + 1
+        again = None
         if stored != value:
             moved = notation_norm.moves_again(
                 stored, notation_norm.write_spec(table_name, column)["rules"],
                 aliases.get((table_name, column)) or {})
             if moved is not None:
-                again.append([column, value, stored, moved])
+                again = [column, value, stored, moved]
         if column in text_columns:
             stored = crud.cast_value_by_type(stored, col_types.get(column, "string"), column,
                                              table_name)
+        return stored, verdict, again
+
+    def fold(column, value, again):
+        stored, verdict, moved = fold_value(column, value)
+        if verdict in notation_norm.TIME_LEFT_AS_WRITTEN:
+            stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + 1
+        if moved:
+            again.append(moved)
         return stored
 
+    def plan_rows(page, again, fold):
+        """The row path over `page` (rows of the model): each row's cells, layers, key and merge."""
+        plans = {}
+        for row in page:
+            cells = {}
+            for column in folded:
+                old = getattr(row, column, None)
+                new = fold(column, old, again)
+                if new != old:
+                    cells[column] = (old, new)
+            plans[row.row_id] = {"row": row, "cells": cells, "layers": [], "key": None}
+        if not plans:
+            return plans
+        moved = {}
+        for layer_id, row_id, column, source, value in (
+                db.query(models.CellSource.id, models.CellSource.row_id,
+                         models.CellSource.column_name, models.CellSource.source_name,
+                         models.CellSource.value)
+                .filter(models.CellSource.table_name == table_name,
+                        models.CellSource.row_id.in_(list(plans)),
+                        models.CellSource.column_name.in_(folded)).all()):
+            new = fold(column, value, again)
+            if new != value:
+                plans[row_id]["layers"].append({"id": layer_id, "value": new})
+                moved.setdefault((row_id, column), {})[source] = new
+        if moved:
+            sources, pins = _load_cell_state(db, table_name, sorted({r for r, _ in moved}))
+            for (row_id, column), now in moved.items():
+                layers = {source: dict(layer, value=now.get(source, layer["value"]))
+                          for source, layer in sources.get((row_id, column), {}).items()}
+                row, cells = plans[row_id]["row"], plans[row_id]["cells"]
+                old = getattr(row, column, None)
+                new = _resolve_cell(table_name, col_types, row, column, layers,
+                                    pins.get((row_id, column)))["new_value"]
+                if new != old:
+                    cells[column] = (old, new)
+                else:
+                    cells.pop(column, None)
+        for plan in plans.values():
+            row, cells = plan["row"], plan["cells"]
+            if not any(column in cells for column in parts_of_key):
+                continue
+            before, after = (
+                None if any(crud.is_blank_key_part(p) for p in parts)
+                else crud.compose_business_key(table_name, parts, parts_of_key)
+                if composite_src
+                else crud.clean_str_value(parts[0])
+                for parts in ([getattr(row, c, None) for c in parts_of_key],
+                              [cells[c][1] if c in cells else getattr(row, c, None)
+                               for c in parts_of_key]))
+            if not after or after == row.business_key_val:
+                continue
+            if before != row.business_key_val:
+                plan["not_rebuilt"] = after
+            else:
+                plan["key"] = after
+        wanted = {plan["key"] for plan in plans.values() if plan["key"]}
+        holders = dict(db.query(model.business_key_val, model.row_id)
+                       .filter(model.business_key_val.in_(list(wanted))).all()) \
+            if wanted else {}
+        for row_id, plan in list(plans.items()):
+            key = plan["key"]
+            if "not_rebuilt" in plan:
+                stats["keys_not_rebuilt"] += 1
+                if len(stats["not_rebuilt"]) < max_report:
+                    stats["not_rebuilt"].append({
+                        "row_id": row_id, "business_key_val": plan["row"].business_key_val,
+                        "folded_key": plan["not_rebuilt"]})
+                del plans[row_id]
+            elif key and (key in claimed or holders.get(key, row_id) != row_id):
+                into = (holders[key] if holders.get(key, row_id) != row_id
+                        else claimed[key])
+                plan["key"], plan["into"] = None, into
+                stats["rows_merged"] += 1
+                if len(stats["merged"]) < max_report:
+                    stats["merged"].append({"row_id": row_id,
+                                            "business_key_val": plan["row"].business_key_val,
+                                            "folded_key": key, "into": into})
+            elif key:
+                claimed[key] = row_id
+        return plans
+
+    def quiet(column, value, _again):
+        """The row path's fold on a page folded by value - that page already counted every value."""
+        return fold_value(column, value)[0]
+
+    total = db.query(func.count(model.row_id)).scalar() or 0
+    total = min(total, limit) if limit is not None else total
+    columns = [getattr(model, column.key) for column in physical if column.key != "row_id"] if by_value else None
     with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
-        for page in keyset_scan.iter_pages(db, model, chunk_size=chunk_size, limit=limit):
-            if checkpoint is not None and checkpoint(stats["rows_scanned"]):
+        for page in keyset_scan.iter_pages(db, model, columns=columns, chunk_size=chunk_size, limit=limit):
+            if checkpoint is not None and checkpoint(stats["rows_scanned"], total):
                 stats["stopped"] = True
                 log(f"[notation] stopped by request after {stats['rows_scanned']} rows")
                 break
+            started = time.monotonic()
             stats["pages"] += 1
             stats["rows_scanned"] += len(page)
-            again, plans = [], {}
-            for row in page:
-                cells = {}
-                for column in folded:
-                    old = getattr(row, column, None)
-                    new = fold(column, old, again)
-                    if new != old:
-                        cells[column] = (old, new)
-                plans[row.row_id] = {"row": row, "cells": cells, "layers": [], "key": None}
-            moved = {}
-            for layer_id, row_id, column, source, value in (
-                    db.query(models.CellSource.id, models.CellSource.row_id,
-                             models.CellSource.column_name, models.CellSource.source_name,
-                             models.CellSource.value)
-                    .filter(models.CellSource.table_name == table_name,
-                            models.CellSource.row_id.in_(list(plans)),
-                            models.CellSource.column_name.in_(folded)).all()):
-                new = fold(column, value, again)
-                if new != value:
-                    plans[row_id]["layers"].append({"id": layer_id, "value": new})
-                    moved.setdefault((row_id, column), {})[source] = new
-            if moved:
-                sources, pins = _load_cell_state(db, table_name, sorted({r for r, _ in moved}))
-                for (row_id, column), now in moved.items():
-                    layers = {source: dict(layer, value=now.get(source, layer["value"]))
-                              for source, layer in sources.get((row_id, column), {}).items()}
-                    row, cells = plans[row_id]["row"], plans[row_id]["cells"]
-                    old = getattr(row, column, None)
-                    new = _resolve_cell(table_name, col_types, row, column, layers,
-                                        pins.get((row_id, column)))["new_value"]
-                    if new != old:
-                        cells[column] = (old, new)
-                    else:
-                        cells.pop(column, None)
-            parts_of_key = composite_src or ([key_col] if key_col else [])
-            for plan in plans.values():
-                row, cells = plan["row"], plan["cells"]
-                if not any(column in cells for column in parts_of_key):
-                    continue
-                before, after = (
-                    None if any(crud.is_blank_key_part(p) for p in parts)
-                    else crud.compose_business_key(table_name, parts, parts_of_key)
-                    if composite_src
-                    else crud.clean_str_value(parts[0])
-                    for parts in ([getattr(row, c, None) for c in parts_of_key],
-                                  [cells[c][1] if c in cells else getattr(row, c, None)
-                                   for c in parts_of_key]))
-                if not after or after == row.business_key_val:
-                    continue
-                if before != row.business_key_val:
-                    plan["not_rebuilt"] = after
-                else:
-                    plan["key"] = after
-            wanted = {plan["key"] for plan in plans.values() if plan["key"]}
-            holders = dict(db.query(model.business_key_val, model.row_id)
-                           .filter(model.business_key_val.in_(list(wanted))).all()) \
-                if wanted else {}
-            for row_id, plan in list(plans.items()):
-                key = plan["key"]
-                if "not_rebuilt" in plan:
-                    stats["keys_not_rebuilt"] += 1
-                    if len(stats["not_rebuilt"]) < max_report:
-                        stats["not_rebuilt"].append({
-                            "row_id": row_id, "business_key_val": plan["row"].business_key_val,
-                            "folded_key": plan["not_rebuilt"]})
-                    del plans[row_id]
-                elif key and (key in claimed or holders.get(key, row_id) != row_id):
-                    into = (holders[key] if holders.get(key, row_id) != row_id
-                            else claimed[key])
-                    plan["key"], plan["into"] = None, into
-                    stats["rows_merged"] += 1
-                    if len(stats["merged"]) < max_report:
-                        stats["merged"].append({"row_id": row_id,
-                                                "business_key_val": plan["row"].business_key_val,
-                                                "folded_key": key, "into": into})
-                elif key:
-                    claimed[key] = row_id
-            stats["moves_again"] += len(again)
-            stats["again"].extend(again[:max(0, max_report - len(stats["again"]))])
+            if by_value:
+                values = _fold_by_values(db, table_name, page, folded, parts_of_key, col_types, fold_value)
+                for verdict, n in values["time_left"].items():
+                    stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + n
+                again = values["again"]
+                plans = plan_rows(db.query(model).filter(model.row_id.in_(sorted(values["hard"])))
+                                  .order_by(model.row_id).all() if values["hard"] else [], [], quiet)
+            else:
+                values, again = None, []
+                plans = plan_rows(page, again, fold)
+                again = [(entry, 1) for entry in again]
+            for entry, n in again:
+                stats["moves_again"] += n
+                stats["again"].extend([entry] * min(n, max(0, max_report - len(stats["again"]))))
             if again and apply:
                 stats["stopped"] = stats["stopped_on_moves_again"] = True
                 log(f"[notation] '{table_name}' stopped before page {stats['pages']}: "
-                    f"{len(again)} value(s) change again on a second fold - fix the "
-                    f"declaration or the alias rows first")
+                    f"{sum(n for _entry, n in again)} value(s) change again on a second fold - fix "
+                    f"the declaration or the alias rows first")
                 break
             changed = [plan for plan in plans.values()
                        if plan["cells"] or plan["layers"] or plan["key"]]
             stats["cells_folded"] += sum(len(plan["cells"]) for plan in changed)
             stats["layers_folded"] += sum(len(plan["layers"]) for plan in changed)
             stats["keys_changed"] += sum(1 for plan in changed if plan["key"])
-            if apply and changed:
+            if values:
+                stats["cells_folded"] += len(values["cells"])
+                stats["layers_folded"] += len(values["layers"])
+            if apply and (changed or values and (values["cells"] or values["layers"])):
+                if values:
+                    _write_by_values(db, table_name, model, values, tx_id)
                 for plan in changed:
                     row = plan["row"]
                     if plan["key"]:
@@ -1658,6 +1711,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     source_name=NOTATION_BACKFILL_SOURCE,
                     updated_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
                 db.commit()
+            log(f"[notation] {stats['rows_scanned']} / {total} rows (page {stats['pages']}, "
+                f"{round(time.monotonic() - started, 2)} s)")
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 time.sleep(rest_seconds)
     log(f"[notation] '{table_name}' {stats['mode']}: {stats['cells_folded']} cell(s) and "
@@ -1667,6 +1722,166 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         f"{'merged' if apply else 'to merge'} into the row holding their folded key, "
         f"{stats['moves_again']} value(s) change again")
     return stats
+
+
+def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_value) -> dict:
+    """One page of `fold_written_notation` folded by value (총괄 10-11). Each distinct shown value and
+    each distinct stored layer text of a folded column is folded once (`fold_value`) and counted as
+    often as it stands - so `time_left` and the moves-again count are the row path's, page-wide.
+    A row whose key part could move (its shown value or a layer of it moves) is `hard`: the row path
+    takes it whole. For every other row: a cell with a layer that moves shows what its layers decide -
+    one stored text among them is that text folded and cast as `_resolve_cell` casts it, more than
+    one is `_resolve_cell` over `_load_cell_state`; a cell with none has its shown value folded.
+    -> {hard: row ids, cells: {(row_id, column): (old, new)}, layers: {layer id: new value},
+        rows: {row_id: page row}, again: [(entry, n)], time_left: {verdict: n}}"""
+    import json
+    from collections import Counter
+
+    from sqlalchemy import String, Text, any_, bindparam, cast, func, select
+    from sqlalchemy.dialects.postgresql import ARRAY
+
+    import notation_norm
+    from database import crud, models
+
+    cs = models.CellSource
+    said = cast(cs.value, Text)                     # a layer's stored JSON text - one key per spelling
+    rows = {row.row_id: row for row in page}
+    out = {"hard": set(), "cells": {}, "layers": {}, "rows": rows, "again": [], "time_left": Counter()}
+    memo = {}
+
+    def judge(column, key, value, n):
+        hit = memo.get((column, key))
+        if hit is None:
+            hit = memo[(column, key)] = fold_value(column, value)
+        stored, verdict, again = hit
+        if verdict in notation_norm.TIME_LEFT_AS_WRITTEN:
+            out["time_left"][verdict] += n
+        if again:
+            out["again"].append((again, n))
+        return stored
+
+    shown = {}                                      # column -> {(type, shown value): folded}
+    for column in folded:
+        for (kind, value), n in Counter((type(v), v) for v in (getattr(row, column) for row in page)).items():
+            stored = judge(column, (kind, value), value, n)
+            if stored != value:
+                shown.setdefault(column, {})[(kind, value)] = stored
+    layered = {}                                    # column -> {stored text: folded value}
+    ids = bindparam("ids", list(rows), type_=ARRAY(String))
+    for column, text, n in db.execute(select(cs.column_name, said, func.count())
+                                      .where(cs.table_name == table_name, cs.column_name.in_(folded),
+                                             cs.row_id == any_(ids))
+                                      .group_by(cs.column_name, said)):
+        value = None if text is None else json.loads(text)
+        # a layer saying what a shown value says shares its fold; a JSON object goes by its text
+        stored = judge(column, text if isinstance(value, (dict, list)) else (type(value), value), value, n)
+        if stored != value:
+            layered.setdefault(column, {})[text] = stored
+
+    def moving(column, among):
+        """The rows of `among` with a layer of `column` whose text moves."""
+        return select(cs.row_id).where(
+            cs.table_name == table_name, cs.column_name == column, cs.row_id == any_(among),
+            said == any_(bindparam("moves", list(layered[column]), type_=ARRAY(Text))))
+
+    for column in key_parts:
+        moves = shown.get(column, {})
+        out["hard"].update(row_id for row_id, row in rows.items()
+                           if (type(getattr(row, column)), getattr(row, column)) in moves)
+        if column in layered:
+            out["hard"].update(row_id for (row_id,) in db.execute(moving(column, ids)))
+    easy = [row_id for row_id in rows if row_id not in out["hard"]]
+    among = bindparam("easy", easy, type_=ARRAY(String))
+
+    def show(row_id, column, new):
+        old = getattr(rows[row_id], column)
+        if new != old:
+            out["cells"][(row_id, column)] = (old, new)
+
+    for column in folded:
+        decided = set()
+        if column in layered and easy:
+            moves, cells = layered[column], {}
+            for layer_id, row_id, source, text in db.execute(
+                    select(cs.id, cs.row_id, cs.source_name, said)
+                    .where(cs.table_name == table_name, cs.column_name == column,
+                           cs.row_id.in_(moving(column, among)))):
+                cells.setdefault(row_id, []).append((source, text))
+                if text in moves:
+                    out["layers"][layer_id] = moves[text]
+            disagree = []
+            for row_id, layers in cells.items():
+                texts = {text for _source, text in layers}
+                if len(texts) > 1:
+                    disagree.append(row_id)
+                    continue
+                new = moves[texts.pop()]            # one text, and it moves: whichever layer wins
+                show(row_id, column, None if new is None else
+                     crud.cast_value_by_type(new, col_types.get(column, "string"), column))
+            if disagree:
+                sources, pins = _load_cell_state(db, table_name, disagree, columns=[column])
+                for row_id in disagree:
+                    now = {source: moves[text] for source, text in cells[row_id] if text in moves}
+                    layers = {source: dict(layer, value=now.get(source, layer["value"]))
+                              for source, layer in sources.get((row_id, column), {}).items()}
+                    show(row_id, column, _resolve_cell(table_name, col_types, rows[row_id], column, layers,
+                                                       pins.get((row_id, column)))["new_value"])
+            decided = set(cells)
+        moves = shown.get(column)
+        if moves:
+            for row_id in easy:
+                value = getattr(rows[row_id], column)
+                if row_id not in decided and (type(value), value) in moves:
+                    out["cells"][(row_id, column)] = (value, moves[(type(value), value)])
+    return out
+
+
+class _RowAsWritten:
+    """A page row read with its folded cells - what the flush hook reads off the ORM row it stages."""
+
+    def __init__(self, table, row, cells):
+        self.__table__, self._row, self._cells = table, row, cells
+
+    def __getattr__(self, name):
+        return self._cells[name] if name in self._cells else getattr(self._row, name)
+
+
+def _write_by_values(db, table_name, model, values, tx_id):
+    """A page folded by value (`_fold_by_values`), written as the row path writes it: the layers'
+    values and the shown values by arrays, one history line per shown cell (`crud.create_audit_log`),
+    and each changed row's event as the flush hook stages it (`database.row_event` · collapsed when
+    the context says so). The caller commits."""
+    import event_constants
+    from database import crud, database, models
+    from database.context import request_outbox_mode
+
+    if values["layers"]:
+        _update_by_arrays(db, models.CellSource.__table__, ["value"],
+                          [[layer_id, new] for layer_id, new in values["layers"].items()], None, key="id")
+    by_row = {}
+    for (row_id, column), cell in values["cells"].items():
+        by_row.setdefault(row_id, {})[column] = cell
+    shown, history = {}, []
+    for row_id, cells in by_row.items():
+        shown.setdefault(frozenset(cells), []).append([row_id] + [cells[column][1] for column in sorted(cells)])
+        for column, (old, new) in cells.items():
+            history.append(crud.create_audit_log(
+                db, table_name, row_id, column, old, new, NOTATION_BACKFILL_SOURCE, NOTATION_BACKFILL_SOURCE,
+                transaction_id=tx_id, business_key=values["rows"][row_id].business_key_val, add_to_cache=False))
+    for names, rows in shown.items():
+        _update_by_arrays(db, model.__table__, sorted(names), rows, None)
+    _insert_by_arrays(db, models.AuditLog.__table__, history)
+    if not by_row:
+        return
+    if request_outbox_mode.get() == event_constants.OUTBOX_MODE_COLLAPSED:
+        database.stage_collapsed_event(db, "EDIT", table_name, list(by_row),
+                                       {column for cells in by_row.values() for column in cells})
+        return
+    db.execute(models.DatabaseOutbox.__table__.insert(), [
+        database.row_event("EDIT", table_name, _RowAsWritten(
+            model.__table__, values["rows"][row_id], {column: new for column, (_old, new) in cells.items()}))
+        for row_id, cells in by_row.items()])
+    database._notify_outbox_once(db)
 
 
 def recompute_display_values(db, table_name: str, columns: list = None,

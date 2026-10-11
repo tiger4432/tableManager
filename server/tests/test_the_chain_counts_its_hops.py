@@ -94,7 +94,7 @@ def test_only_the_envelope_stamps_the_depth():
     stampers = [name for name, obj in vars(db_module).items()
                 if inspect.isfunction(obj)
                 and event_constants.CHAIN_DEPTH_KEY in inspect.getsource(obj)]
-    assert sorted(stampers) == ["_outbox_envelope", "stage_collapsed_event", "stage_event"], \
+    assert sorted(stampers) == ["_outbox_envelope", "row_event", "stage_collapsed_event"], \
         stampers
 
 

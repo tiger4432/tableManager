@@ -252,6 +252,24 @@
 >
 > ---
 >
+> ## [10-11] **표기 소급 빠르게 — 쪽마다 철자 하나에 접기 한 번, 바뀐 것은 한꺼번에 (소유자 「노테이션 소급 엄청 빨리」, 착지 {LANDING}) — 이주 «없음» · 재기동 «없음»(명령줄) · 소급 탭은 «서버 · 스케줄러»**
+>
+> ```
+> 명령        cd server
+>            python -c "from admin import retroactive; retroactive.run_here('fold_written_notation', {'table': '<표>'})"
+>            미리보기(쓰지 않음) — 소급 탭 «Fold stored values into the declared spelling» -> table -> Count
+> 줄          retroactive.log  [notation] <x> / <N> rows (page <k>, <초> s)      2만 행 쪽마다 한 줄
+>            끝 줄  [notation] '<표>' apply: <c> cell(s) and <l> layer(s) folded in <N> row(s), <k> key(s) changed, … <m> value(s) change again
+> 답의 뜻      c · l = 접힌 칸 · 층 수. 같은 명령을 한 번 더 -> 0 cell(s) and 0 layer(s) 가 맞다
+>            «stopped before page k: n value(s) change again» — 그 쪽 앞에서 섰다(앞 쪽들은 써짐). 선언 · 별칭 행을 먼저 고친다
+>            key(s) changed · merged · skipped 가 0 이 아니면 그 행들은 예전 길(행마다)로 갔다 — 많을수록 그만큼 느리다
+>            바뀐 행마다 사건 하나(예전과 같은 모양) — 원장 따라가기가 그 수만큼 돈다
+> 멈춤        소급 탭 × — 쪽(2만 행) 사이에서 선다. 다시 돌리면 남은 것만 접는다
+> 박스 수      이 박스(Ryzen 7 3700X · PostgreSQL 18 · shared_buffers 128MB) 만든 표: 글자 칸 넷 + 숫자 칸, 칸마다 파일 층, 5% 둘째 파일 층,
+>            0.5% 사람 층, write 칸 철자 8 중 6 이 바뀜
+>            예전 길 apply  20,000 행 19.45 s · 500,000 행 498 s — 행 수에 비례 -> 4,000,000 행 약 4,000 s («추정», 안 쟀다)
+>            새 길 apply    20,000 행 6.44 s (같은 DB 에 다른 재기가 돌던 중) · 큰 표는 안 쟀다(소유자 「재지 말고 빨리」)
+> 되돌리기     git revert <이 커밋> -> 서버 · 스케줄러 재기동(소급 탭을 쓸 때)
 > ## [10-11] **format 없는 시각 글자는 확장 ISO 만 — 테스트 런과 백필이 같은 답 (총괄 ㄱ, 착지 22c2740e5) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```

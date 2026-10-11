@@ -77,7 +77,7 @@ def _claimed_filter(table_name: str, source_name: str, columns: list = None):
         conds.append(models.CellSource.column_name.in_(list(columns)))
     return conds
 
-def _load_cell_state(db, table_name: str, chunk_row_ids: list):
+def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
     """Stored sources + human pins for a chunk of rows: TWO batched queries, not two per cell.
 
     Extracted so R2 (`withdraw_source`) and R3 (`recompute_display_values`) cannot
@@ -87,17 +87,21 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list):
 
     `ingested_at` travels with every layer because `crud.compute_priority_value` reads
     it to break a tie between equally-ranked sources - see its docstring. Dropping it
-    here would silently put the resolution back on dict order.
+    here would silently put the resolution back on dict order. `columns` keeps both reads to those
+    columns (None = every column).
     """
     from database import models
 
+    cs, co = models.CellSource, models.CellOverwrite
+    in_columns = [cs.column_name.in_(list(columns))] if columns else []
+    pinned_columns = [co.column_name.in_(list(columns))] if columns else []
     sources = {}
     for row_id, col, src, val, ing, origin in (
             db.query(models.CellSource.row_id, models.CellSource.column_name,
                      models.CellSource.source_name, models.CellSource.value,
                      models.CellSource.ingested_at, models.CellSource.origin_row_id)
             .filter(models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(chunk_row_ids))
+                    models.CellSource.row_id.in_(chunk_row_ids), *in_columns)
             .order_by(models.CellSource.source_name.asc()).all()):
         sources.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing, "origin_row_id": origin}
 
@@ -106,7 +110,7 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list):
             db.query(models.CellOverwrite.row_id, models.CellOverwrite.column_name,
                      models.CellOverwrite.manual_priority_source)
             .filter(models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id.in_(chunk_row_ids)).all()):
+                    models.CellOverwrite.row_id.in_(chunk_row_ids), *pinned_columns).all()):
         pins[(row_id, col)] = pin
 
     return sources, pins
