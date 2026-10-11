@@ -65998,3 +65998,16 @@ require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 repla
 게이트   속성만 등록하는 소스(시각 열 없음) -> 폼 «필수» 0 · 저장 통과 · 원자 occurred_at = 행 저장 시각 / 사건 엣지 둘이 다른 시각 -> 그때만 missing_time / timezone 없는 시각 열 -> 그때만 거절 · 골격 드리프트 · 변이
 응용(지금)  18766 선언 화면에서 «속성만 등록하는 소스» · «사건 엣지 소스» 둘을 새로 쓸 때 화면이 시각 · timezone 을 묻는 자리를 글자로(칸 · 필수 표시 · 기본값) — 구현자 ① 의 대조군
 ```
+
+> **[총괄 -> 구현자] 10-11 오후 — 덧붙임: 시각 · timezone 전수의 응용 대조군(18766 선언 화면, 실제 클릭) — 고칠 자리 다섯**
+
+```
+(0) 새 소스 빈 폼: Time 줄 «declare exactly one of 'column' … or 'basis' …; neither was declared» · timezone 칸 «Refused · field is required» -> 시각 안 쓰는 소스도 막고 시작
+(1) 속성만 등록하는 소스(시각 열 없음): 저장은 통과 · 파일에 occurred_at 안 적힘 · 화면 Time = {"basis":"ingested","timezone":"UTC"} 기본
+    · 시각 «후보»에 글자 열 · row_id(dt_eqp · dt_job · row_id)를 내놓음 -> 후보는 시각으로 읽히는 열만
+    · 채우는 timezone(UTC)과 권하는 후보(Asia/Seoul)가 다름 -> 한 답
+    · register 문장의 occurred_at 이 «unanswered»(묻는 칸)로 남음 -> 사건 시각이 아닌 문장에선 묻지 않음
+(2) 사건 엣지 소스(시각 열 · timezone 없음): missing_time 거절 — 맞음(정말 필수인 경우)
+    · 🔴 거절(invalid)된 소스도 선언 파일에 써짐 — 초안 설계인지(로더가 invalid 를 건너뛰나 · 화면이 그렇다고 말하나) 판정을 찾고, 아니면 고침 · 이 판정을 전수 표에 같이
+(2') 같은 엣지에 binding timezone 을 쓰면 통과 — 맞음
+도착지 그대로: 시각은 사건 엣지에만 · timezone 은 시각 열을 적었을 때만 · 기본값은 무엇으로 채우는지 한 줄(row time)
