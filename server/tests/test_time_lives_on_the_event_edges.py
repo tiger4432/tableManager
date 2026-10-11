@@ -261,7 +261,8 @@ def test_a_source_with_no_read_opens_its_form_with_no_read_cell_owed():
 
 def test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does():
     """Lead 04cecc30f 2: the mapping's time role left blank is a not-an-event edge, and the form
-    says so through `is_event_time_role`; another unbound role in the same branch stays ungrounded."""
+    says so through `is_event_time_role`; another unbound role in the same branch stays ungrounded.
+    총괄 10-11 B ㄱ: it is not asked - shown derived with the source's time, still writable."""
     from ledger.config_authoring import authoring_plan
 
     document = _document()
@@ -271,9 +272,43 @@ def test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does(
     rows = {f["path"]: f for f in plan["fields"]}
     at = "bundle.sources.die_inspection.bind.mappings.die-in-wafer.bind."
     time, target = rows[at + "occurred_at"], rows[at + "target"]
-    assert (time["state"], time["ground"]["rule"], time["ground"]["text"]) == (
-        "unanswered", "not_an_event", "Not an event")
+    assert (time["state"], time["ground"]["rule"], time["disposition"], time["value"]) == (
+        "derived", "not_an_event", "default_overridable", None)
+    assert time["ground"]["text"].startswith("Not an event - source time: "), time["ground"]["text"]
     assert (target["state"], target["ground"]) == ("missing", None)
+
+
+def _no_edge_time(document):
+    """The application's attribute-only source (18766, 10-11): no read time and no sentence binds one."""
+    source = _die_inspection(document)
+    del source["read"]["occurred_at"]
+    del source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]
+
+
+def _edge_time_from_the_read(document):
+    """The application's (2''): the source writes its time on the read and the event edge binds none."""
+    del _die_inspection(document)["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]
+
+
+@pytest.mark.parametrize("shape", [_no_edge_time, _edge_time_from_the_read, _with_a_not_an_event_mapping])
+def test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none(shape):
+    """응용 18766 (총괄 10-11): the save filled the source's time record into a sentence's unbound time role, and a
+    read record is not a binding - an attribute-only source was refused («unsupported binding kind None»)."""
+    from ledger.config_authoring import filled_declaration
+
+    document = _document()
+    shape(document)
+    before = validate_bundle_errors(document, catalog=CATALOG)
+    body, _dropped = filled_declaration(document, CATALOG, ["sources", "die_inspection"],
+                                        copy.deepcopy(_die_inspection(document)))
+    unbound = [name for name, mapping in _die_inspection(document)["bind"]["mappings"].items()
+               if "occurred_at" not in mapping["bind"]]
+    assert unbound, "CANARY: a sentence binds no time"
+    assert [name for name in unbound if "occurred_at" in body["bind"]["mappings"][name]["bind"]] == []
+    document["sources"]["die_inspection"] = body
+    assert validate_bundle_errors(document, catalog=CATALOG) == before
+    if shape is _no_edge_time:
+        assert before == (), before
 
 
 def test_exclude_when_is_one_row_whose_candidates_are_clauses_the_validator_takes():
@@ -314,3 +349,79 @@ def test_a_mapper_unit_left_out_is_the_loaders_default_not_a_red_square():
     row = {f["path"]: f for f in authoring_plan(
         document, CATALOG, selection_prefix="bundle.sources.die_inspection")["fields"]}[path]
     assert row["state"] == "missing"            # a unit written without its kind is still owed
+
+
+# ------------------------------------------------------------------ asked only where it is read (총괄 10-11)
+
+def _plan_rows(document, **kwargs):
+    from ledger.config_authoring import authoring_plan
+
+    plan = authoring_plan(document, CATALOG, selection_prefix="bundle.sources.die_inspection", **kwargs)
+    return {f["path"]: f for f in plan["fields"]}
+
+
+def test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone():
+    """소유자 「원장 선언 쓸데없이 timezone 이나 시간 쓰라고 하는 거 많은데」: the time is the row's stored time, said."""
+    document = _document()
+    source = _die_inspection(document)
+    del source["read"]["occurred_at"]
+    del source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]
+    rows = _plan_rows(document)
+    base = "bundle.sources.die_inspection.read.occurred_at"
+    time, zone = rows[base], rows[base + ".timezone"]
+    assert (time["state"], time["note"]) == ("derived", "Default: row time (ingested · created_at)")
+    assert (zone["state"], zone["value"], zone["note"]) == ("unanswered", None, "Only for a time column")
+    assert not validate_bundle_errors(document, catalog=CATALOG)
+    plan = _snapshot(document).source_plans.get("die_inspection").driver.occurred_at
+    assert (plan.basis, plan.column, plan.timezone) == ("ingested", "created_at", "UTC")
+
+
+def test_a_time_rows_note_speaks_for_its_state():
+    """응용 18766 (2''): a Time the file answers said «Pick one of column · basis», and a zone the file owes said
+    «Filled with the time …» - nothing filled it. Each note is said only in the state it is about."""
+    document = _document()
+    source = _die_inspection(document)
+    source["read"]["occurred_at"] = {"column": source["read"]["occurred_at"]["column"]}
+    del source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]
+    base = "bundle.sources.die_inspection.read.occurred_at"
+    rows = _plan_rows(document)
+    assert [(rows[p]["state"], rows[p]["note"]) for p in (base, base + ".timezone")] == [
+        ("answered", ""), ("missing", "")]
+    del source["read"]["occurred_at"]
+    source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"] = {
+        "kind": "column", "column": "observed_at", "timezone": ZONE}
+    rows = _plan_rows(document)
+    assert [(rows[p]["state"], rows[p]["note"]) for p in (base, base + ".timezone")] == [
+        ("derived", "Default: the event edges' time (observed_at · %s)" % ZONE),
+        ("derived", "Filled with the time · type another if it differs")]
+
+
+def test_the_skeleton_asks_neither_the_time_nor_its_zone():
+    from ledger.config_authoring import skeleton
+
+    root = skeleton()["root"]
+
+    def field(record, key):
+        return next(f for f in record["fields"] if f["key"] == key)
+
+    read = field(field(root, "sources")["node"]["of"], "read")["node"]
+    occurred = field(read, "occurred_at")
+    assert (occurred["required"], field(occurred["node"], "timezone")["required"]) == (False, False)
+
+
+@pytest.mark.parametrize("reads", ["values", "fails"])
+def test_a_string_column_is_a_time_candidate_only_when_its_values_read_as_a_time(reads):
+    """총괄 10-11 A ㄱ: the read path's judge over a short sample; a read that fails keeps every string column, named."""
+    def sample(relation, columns, limit):
+        if reads == "fails":
+            raise RuntimeError("no table")
+        return {column: ["2026-10-01 11:00:00" if column == "recipe_id" else "EQP-01"] for column in columns}
+
+    row = _plan_rows(_document(), time_sample=sample)["bundle.sources.die_inspection.read.occurred_at"]
+    columns = {c["column"] for c in row["candidates"] if "column" in c}
+    if reads == "values":
+        assert columns == {"observed_at", "recipe_id"} and "not sampled" not in row["ground"]["text"]
+    else:
+        assert {"eqp_id", "row_id", "recipe_id", "observed_at"} <= columns
+        assert "not sampled: " in row["ground"]["text"]
+    assert [c for c in row["candidates"] if "basis" in c] == [{"basis": "ingested"}], "a basis carries no zone"

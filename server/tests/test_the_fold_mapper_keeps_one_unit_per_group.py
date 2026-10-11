@@ -128,7 +128,124 @@ def test_running_it_again_writes_nothing(db):
         **item, source_name=rule_run.layer_of_a_rules_write(None, item["origin_row_id"]),   # the worker's seat
         updated_by=fold_unit.NAME) for item in out["updates"]]))
     db.commit()
+    # 총괄 406d7c102: every losing row is handed again - one left out is a mark the edit's withdrawal takes back
     assert len(out["updates"]) == 9 and count() == before, "the losing jobs' 3 + 3 + 3 rows, written again as they are"
+
+
+@pytest.mark.parametrize("times", [2, 3])
+def test_replaying_the_inventory_rule_keeps_every_mark(db, times):
+    """응용 진짜 프로세스 (총괄 406d7c102): the second replay withdrew all 321,315 marks - the chain takes back what a
+    rule's edited source rows fed and this run did not hand, and the mapper had left the marked rows out."""
+    from chain import replay
+
+    _seed(db)
+    for _ in range(times):
+        replay.replay_rule(db, dict(RULES[0]), apply=True, log=lambda *a, **k: None)
+        _drain(db)
+        assert _marks(db) == SEEDED
+
+
+def test_a_losing_jobs_inventory_row_edited_keeps_its_marks(db):
+    _seed(db)
+    inv = models.DYNAMIC_TABLES[INV]
+    row = db.query(inv).filter(inv.dt_job_id == "AUTO_J5").one()
+    crud.apply_batch_updates(db, INV, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=row.row_id, updates={"wafer_out_time": "2026-10-02 10:00:00"}, source_name="user",
+        updated_by="fu")]))
+    db.commit()
+    _drain(db)
+    assert _marks(db) == SEEDED, "AUTO_J5 still loses to the earlier AUTO_J1 - its rows keep their mark"
+
+
+def _inventory_group(db, monkeypatch, fail_on_write=None):
+    """The inventory's own group through the chain's seat - its log writes counted, its page lines kept."""
+    from chain import keyset_scan  # noqa: F401 - the page size the caller set
+    from maps import alignment_batch_counts
+
+    writes, lines, real = [], [], crud.apply_batch_updates
+
+    def counting(session, table, batch, *a, **k):
+        if table == LOG:
+            writes.append(len(batch.updates))
+            if fail_on_write and len(writes) == fail_on_write:
+                raise RuntimeError("the write of page %d failed" % fail_on_write)
+        return real(session, table, batch, *a, **k)
+
+    monkeypatch.setattr(crud, "apply_batch_updates", counting)
+    monkeypatch.setattr(alignment_batch_counts.heartbeat, "progress", lines.append)
+    events = (db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.table_name == INV,
+                                                     models.DatabaseOutbox.processed_chain.is_(False)).all())
+    assert events, "CANARY: the inventory's event waits"
+    with alignment_batch_counts.counting_group():
+        ok, _error, _ = worker._process_chain_transaction_group_sync("tx-fold", events, db, [dict(r) for r in RULES])
+    monkeypatch.setattr(crud, "apply_batch_updates", real)
+    if not ok:
+        db.rollback()
+    return ok, writes, [line for line in lines if line.startswith("mapper · fu_by_unit")]
+
+
+def _logs_then_inventory(db):
+    _write(db, LOG, [r for job, wafer, _t in JOBS for r in _logs(job, wafer)])
+    _drain(db)
+    _write(db, INV, [{"dt_job": j, "dt_job_id": j, "core_wafer": w, "wafer_out_time": t} for j, w, t in JOBS])
+
+
+def test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would(db, monkeypatch):
+    """총괄 634c06fc3 (소유자 「배치로」 · 「쓰는 진척률이라도 보이면」): nine marks in pages of two - five writes, each
+    committed before the next page is asked, and the same marks; every page says its line, the first too."""
+    from chain import keyset_scan
+
+    monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", 2)
+    _logs_then_inventory(db)
+    ok, writes, lines = _inventory_group(db, monkeypatch)
+    assert ok and writes == [2, 2, 2, 2, 1], writes
+    assert _marks(db) == SEEDED
+    assert lines == ["mapper · fu_by_unit -> fu_log · page %d/5 · %d / 9 rows" % (k, n)
+                     for k, n in ((1, 2), (2, 4), (3, 6), (4, 8), (5, 9))], lines
+
+
+def test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_ends_as_one_write_would(db, monkeypatch):
+    """A page that fails stops the group after the pages before it were committed; the re-run hands every losing
+    row again (총괄 406d7c102 - one left out is a mark withdrawn) and ends where one write ends."""
+    from chain import keyset_scan
+
+    monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", 2)
+    _logs_then_inventory(db)
+    ok, writes, _lines = _inventory_group(db, monkeypatch, fail_on_write=3)
+    assert not ok and writes == [2, 2, 2]
+    rows = db.query(models.DYNAMIC_TABLES[LOG]).filter(models.DYNAMIC_TABLES[LOG].fold_mark.isnot(None)).count()
+    assert rows == 4, "pages one and two stayed"
+    ok, writes, lines = _inventory_group(db, monkeypatch)
+    assert ok and writes == [2, 2, 2, 2, 1], "every losing row handed again"
+    assert lines[0] == "mapper · fu_by_unit -> fu_log · page 1/5 · 2 / 9 rows", lines
+    assert _marks(db) == SEEDED
+
+
+def test_a_page_with_no_total_is_said_without_one():
+    assert worker._page_said("r", "t", 2, None, 5, None, 7) == "r -> t · page 2 · 5 rows"
+
+
+def test_the_winners_log_rows_are_not_read(db):
+    """총괄 3ec26c632 ① (소유자 「인벤토리 1,000 · 매칭 로그 수십만 행」): the log read names the losing units' keys only -
+    a winner's rows are never written, and reading them was most of the work."""
+    from sqlalchemy import event
+
+    _seed(db)
+    asked = []
+
+    def seen(conn, cursor, statement, parameters, context, executemany):
+        if ("FROM %s" % LOG) in statement:
+            asked.extend(parameters)
+
+    event.listen(db.get_bind(), "before_cursor_execute", seen)
+    try:
+        rows = db.query(models.DYNAMIC_TABLES[INV]).all()
+        fold_unit.fold_by_unit(db, [{"row_id": r.row_id, "data": {}} for r in rows], dict(RULES[0]))
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", seen)
+    losing, winning = {"AUTO_J5", "MAN_J3", "MAN_J7"}, {"AUTO_J1", "AUTO_J2", "AUTO_J4", "MAN_J6"}
+    assert losing <= set(asked), "CANARY: the read names the losing jobs"
+    assert not winning & set(asked), sorted(winning & set(asked))
 
 
 def test_a_new_log_row_of_a_losing_job_is_marked(db):

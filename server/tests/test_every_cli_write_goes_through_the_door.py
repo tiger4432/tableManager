@@ -23,7 +23,12 @@ RESOLVE_STATS = {"mode": "apply", "table": "t", "rows_scanned": 0, "pages": 0,
                  "cells_examined": 0, "pinned_examined": 0, "cells_changed": 0,
                  "changed_by_tiebreak": 0, "changed_by_stale_materialisation": 0,
                  "pinned_changed": 0, "changes": []}
-STATS = {"withdraw": WITHDRAW_STATS, "resolve": RESOLVE_STATS}
+FOLD_UNITS_STATS = {"mode": "apply", "rule": "r", "table": "t", "units": 0, "groups": 0, "units_losing": 0,
+                    "rows_proposed": 0, "rows_to_mark": 0, "rows_marked": 0, "rows_higher_layer": 0,
+                    "rows_already_marked": 0, "rows_gone": 0, "rows_refused": 0, "version_gate": {},
+                    "marks_withdrawn": 0, "pages": 0, "page_seconds": [], "retraction_seconds": 0,
+                    "stopped": False, "seconds": 0}
+STATS = {"withdraw": WITHDRAW_STATS, "resolve": RESOLVE_STATS, "fold_units": FOLD_UNITS_STATS}
 REAL_SWEEP = analysis.run_auto_confirm_sweep
 
 
@@ -49,6 +54,7 @@ def seen(retro_env, monkeypatch):
     monkeypatch.setattr(replay, "withdraw_source", direct("withdraw_source", WITHDRAW_STATS))
     monkeypatch.setattr(replay, "recompute_display_values",
                         direct("recompute_display_values", RESOLVE_STATS))
+    monkeypatch.setattr(replay, "fold_units", direct("fold_units", dict(FOLD_UNITS_STATS, mode="dry-run")))
     monkeypatch.setattr(replay, "find_rule", lambda name, row_scoped=False: {"name": name})
     monkeypatch.setattr(replay, "load_rules", lambda: [
         {"name": "r1", "trigger_table": "triage_tbl"},
@@ -106,6 +112,8 @@ CASES = [
     ("resolve --apply", "chain", ["resolve", "t", "--limit", "5", "--apply"],
      [("resolve", {"table": "t", "limit": 5, "chunk_size": 1000})], []),
     ("resolve dry", "chain", ["resolve", "t"], [], ["recompute_display_values"]),
+    ("fold-units --apply", "chain", ["fold-units", "r", "--apply"], [("fold_units", {"rule": "r"})], []),
+    ("fold-units dry", "chain", ["fold-units", "r"], [], ["fold_units"]),
     ("enrichment --apply", "enrich", ["e", "--force-disabled", "--apply"],
      [("enrichment_backfill", {"rule": "e", "chunk_size": 1000, "force_disabled": True})], []),
     ("enrichment dry", "enrich", ["e"], [], ["run_backfill"]),

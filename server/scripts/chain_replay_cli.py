@@ -114,6 +114,32 @@ def _report_resolve(s, list_all=False):
     return "\n".join(lines)
 
 
+def _report_fold_units(s):
+    apply = s["mode"] == "apply"
+    lines = [
+        "",
+        f"=== fold-units {s['mode'].upper()} - '{s['rule']}' on '{s['table']}' ===",
+        f"  units                     : {s['units']} in {s['groups']} group(s), {s['units_losing']} losing",
+        f"  rows the rule names       : {s['rows_proposed']}",
+        f"  rows to mark              : {s['rows_to_mark']}",
+        f"    shown value stays       : {s['rows_higher_layer']}  (a higher layer holds the column)",
+        f"  rows marked so already    : {s['rows_already_marked']}",
+        f"  old marks {'withdrawn' if apply else 'to withdraw'}     : "
+        f"{'not run' if s['marks_withdrawn'] is None else s['marks_withdrawn']}  (a unit that now wins, a row that moved)",
+    ]
+    if s["rows_gone"] or s["rows_refused"] or s["version_gate"]:
+        lines.append(f"  not written               : {s['rows_gone']} row(s) no longer there, {s['rows_refused']} "
+                     f"refused by a join's key, version gate {s['version_gate'] or 'none'}")
+    if apply:
+        lines.append(f"  rows written              : {s['rows_marked']} in {s['pages']} page(s), {s['seconds']} s"
+                     f" (pages {s['page_seconds']} s, withdrawal {s['retraction_seconds']} s)")
+    lines.append("  " + ("STOPPED by request - run it again for the rest" if s["stopped"] else
+                         "no chain rule wakes - replay the copy rule next (setup step 6)" if apply else
+                         "(no --apply: nothing was written)"))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -182,6 +208,12 @@ def main(argv=None):
     p.add_argument("--mark-column", default=None, help="a text column: mark the rows that fold there, delete none")
     p.add_argument("--only-column", default=None, help="with --only-text: only rows whose column holds it fold")
     p.add_argument("--only-text", default=None, help="the text (any case) --only-column holds")
+    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--apply", action="store_true")
+
+    # 총괄 10-11 (소유자 「접는 거 일단 스크립트로 빨리 하는 거 줘, 맵퍼 말고」): a fold rule's answer, written by pages.
+    p = sub.add_parser("fold-units")
+    p.add_argument("rule_name", help="the fold_by_unit rule on the unit table")
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
     p.add_argument("--apply", action="store_true")
 
@@ -269,6 +301,9 @@ def main(argv=None):
             else:
                 print("\n" + retroactive.count(db, "fold_duplicate_rows", params)["detail"]
                       + "\n-> add --apply to " + verb)
+        elif args.cmd == "fold-units":
+            print(_report_fold_units(written("fold_units", {"rule": args.rule_name, "pace": args.pace})
+                                     if args.apply else replay.fold_units(db, args.rule_name, apply=False, log=say)))
         elif args.cmd == "remove-shells":
             params = {"table": args.table, "pace": args.pace}
             if args.apply:

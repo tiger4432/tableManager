@@ -958,10 +958,11 @@ def _count_fold_file_layers(db, params, scan_limit):
         f"hold file layers that repeat a newer one: layers {s['layers_before']} -> "
         f"{s['layers_after']}, the deepest cell {s['deepest_before']} -> {s['deepest_after']}. "
         f"Chain, outside the key columns: {s['chain_renamed']} plain layer(s) become their source row's layer, "
-        f"{s['chain_deleted']} that a row layer repeats go, {s['chain_unstamped']} have no source row.")
+        f"{s['chain_deleted']} whose row's layer is already there go, "
+        f"{s['chain_unstamped']} have no source row and stay.")
     if s["chain_differs"]:
-        detail += (f" {s['chain_differs']} plain layer(s) without a source row stay - no row layer of the "
-                   f"cell holds their value (first: {cells('chain_differs')}).")
+        detail += (f" {s['chain_differs']} of those hold a value no row layer of the cell holds "
+                   f"(first: {cells('chain_differs')}).")
     if s["chain_copies"]:
         detail += (f" {s['chain_copies']} chain layer(s) a collision merge kept now rank as the chain's "
                    f"(first cells: {cells('chain_copies')}).")
@@ -1081,6 +1082,47 @@ def _judge_fold_duplicate_rows(params):
     try:
         replay.fold_target(params["table"], params["keys"], params["order"], params.get("keep", "min"),
                            **_fold_args(params))
+    except cell_layer.ReplayRefused as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
+def _count_fold_units(db, params, scan_limit):
+    from chain import replay
+
+    s = replay.fold_units(db, params["rule"], log=lambda m: logger.debug(m))
+    return {
+        "affected": s["rows_to_mark"],
+        "absence": ABSENCE_TRULY_NONE if not (s["rows_to_mark"] or s["marks_withdrawn"]) else None,
+        "affected_label": "rows to mark",
+        "count_kind": COUNT_EXACT,
+        "scanned": s["rows_proposed"],
+        "scan_limit": scan_limit,
+        "truncated": False,
+        "detail": (f"{s['units']} unit row(s) in {s['groups']} group(s), {s['units_losing']} losing: "
+                   f"{s['rows_to_mark']} of the {s['rows_proposed']} row(s) of '{s['table']}' the rule names get "
+                   f"its mark ({s['rows_higher_layer']} keep showing a higher layer's value), "
+                   f"{s['rows_already_marked']} are marked so already, {s['marks_withdrawn']} old mark(s) are "
+                   f"withdrawn. No chain rule wakes - replay the copy rule next."),
+        "extra": {key: s[key] for key in ("units", "groups", "units_losing", "rows_proposed", "rows_higher_layer",
+                                          "rows_already_marked", "marks_withdrawn")},
+    }
+
+
+def _run_fold_units(db, params, log, control=None):
+    from chain import replay
+
+    s = replay.fold_units(db, params["rule"], apply=True, pace=params.get("pace"), log=log,
+                          checkpoint=_checkpoint(control))
+    _final_progress(control, s["rows_marked"], s)
+    return {key: s[key] for key in ("rows_marked", "rows_to_mark", "rows_already_marked", "marks_withdrawn",
+                                    "pages", "seconds", "stopped")}
+
+
+def _judge_fold_units(params):
+    from chain import cell_layer, replay
+
+    try:
+        replay.fold_units_target(params["rule"])
     except cell_layer.ReplayRefused as e:
         raise RetroactiveRefused(str(e)) from None
 
@@ -1776,10 +1818,10 @@ OPERATIONS = {
                 "'fold_file_layers', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
                 "'chunk_size': N})\" - pace, limit and chunk_size optional"),
         # Per cell `crud.stacked_layers` (총괄 225b2c658 · 8ec008914): file layers that repeat one go, the
-        # chain's plain layer outside the key columns becomes its source row's or goes when a row layer
-        # repeats it; a shown value the layers now answer otherwise is written with one history line (R3's write).
+        # chain's plain layer outside the key columns becomes its source row's or goes when that row's layer is
+        # there; a shown value the layers now answer otherwise is written with one history line (R3's write).
         "deletes": ("cell_sources rows (file layers that repeat a newer layer's value; plain chain "
-                    "layers a row layer repeats, outside the key columns)"),
+                    "layer stamped with a row whose layer is already there, outside the key columns)"),
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
@@ -1829,6 +1871,27 @@ OPERATIONS = {
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
                             "taken back and the rules that recount run; with a mark column the rules "
                             "that exclude by it run on the marked rows and take back what they fed"),
+    },
+    "fold_units": {
+        "label": "Mark the losing units' rows (fold rule)",
+        "what_is_missing": "per group one unit wins; the other units' rows are not marked yet",
+        "params": [_p("rule", help="the fold_by_unit chain rule on the unit table (GET /admin/chain/rules)"),
+                   _pace_param()],
+        "count": _count_fold_units,
+        "run": _run_fold_units,
+        "judge": _judge_fold_units,
+        "cli": "server/scripts/chain_replay_cli.py fold-units <rule> [--pace slow] --apply",
+        # 총괄 10-11: the write door's per-cell judgement, written set-based; then the edited unit rows'
+        # withdrawal the worker runs (replay.fold_units).
+        "deletes": "the rule's old marks a unit row no longer makes - its chain layer on the mark column",
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one commit per page of rows (replay.FOLD_UNITS_PAGE); a stop lands between pages "
+                               "and a re-run writes only what is left"),
+        "cli_only": [],
+        "downstream_note": ("No chain rule wakes on the marks and no screen is told - replay the copy rule "
+                            "next (setup step 6)"),
     },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",
@@ -2324,6 +2387,8 @@ class RunControl:
         #: 화면이 「무슨 일이 도는가」를 못 말한다 — S-36 이 대기열에서 고친 그 부족이다.
         self.op = op
         self.stopped = False
+        #: False after a notice nobody heard (`announce`) - the rest of this run says nothing more.
+        self.announcing = True
         #: The operation's own answer, unreduced - what a CLI prints (`_final_progress`).
         self.stats = None
         self._session_factory = session_factory
@@ -2391,8 +2456,17 @@ class RunControl:
         # [S-37] 쓰는 «자리 옆»에서 한 번 더 말한다. 여기가 아니면 「DB 는 갱신됐는데
         # 아무도 못 들었다」가 다시 생긴다 — 그 둘이 갈라지는 것이 이 라운드의 결함이다.
         import event_constants
-        announce_progress(self.run_id, self.op, event_constants.PROGRESS_STATUS_RUNNING,
-                          processed=processed, total=total)
+        self.announce(event_constants.PROGRESS_STATUS_RUNNING, processed=processed, total=total)
+
+    def announce(self, status, processed=None, total=None) -> None:
+        """`announce_progress` for this run, until one is not heard (총괄 10-11 ④: with the server down each notice
+        waited ~2 s on this box - a page's worth of work, every page). One line then; the run record still says it."""
+        if not self.run_id or not self.announcing:
+            return
+        if not announce_progress(self.run_id, self.op, status, processed=processed, total=total):
+            self.announcing = False
+            logger.warning("[Retroactive] run_id=%s op=%s: a progress notice was not heard - none more for this "
+                           "run; the Retroactive tab reads the run record", self.run_id, self.op)
 
 
 def announce_progress(run_id, op, status, processed=None, total=None):
@@ -3101,7 +3175,7 @@ def _run_in_this_process(run_id, op, spec, params, log):
         # Without this the row stays `running` and holds the gate for every later run.
         _mark_run(run_id, state=RUN_CANCELLED, finished=True,
                   error="interrupted in the terminal that ran it")
-        announce_progress(run_id, op, ec.PROGRESS_STATUS_CANCELLED)
+        control.announce(ec.PROGRESS_STATUS_CANCELLED)
         raise
     finally:
         # Every ending that reaches here - done, cancelled, failed, Ctrl-C - takes its file
@@ -3153,11 +3227,11 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
                                      reason="run %s cancelled" % run_id)
             _mark_run(run_id, state=RUN_CANCELLED, finished=True, result=out["result"])
             log(f"[Retroactive] run_id={run_id} op={op} CANCELLED: {out['result']}")
-            announce_progress(control.run_id, op, ec.PROGRESS_STATUS_CANCELLED)
+            control.announce(ec.PROGRESS_STATUS_CANCELLED)
         else:
             _mark_run(run_id, state=RUN_DONE, finished=True, result=out["result"])
             log(f"[Retroactive] run_id={run_id} op={op} DONE: {out['result']}")
-            announce_progress(control.run_id, op, ec.PROGRESS_STATUS_DONE)
+            control.announce(ec.PROGRESS_STATUS_DONE)
     except Exception as e:
         try:
             db.rollback()
@@ -3168,7 +3242,7 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
         log(f"[Retroactive] run_id={run_id} op={op} FAILED: {e}")
         # ⚠️ 실패도 «끝»이다. 안 내면 화면의 진행 표시가 «영원히» 돌고,
         #    그것은 「도는 중」과 구별이 안 된다.
-        announce_progress(control.run_id, op, ec.PROGRESS_STATUS_CANCELLED)
+        control.announce(ec.PROGRESS_STATUS_CANCELLED)
         if raise_failure:
             raise
     finally:

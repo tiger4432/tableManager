@@ -814,9 +814,9 @@ def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: 
       file     file layers that repeat one - per priority class and value the layer it ranks first
                stays; the cell's winner is first in its own group, so it stays
       renamed  {chain_ingestion: chain_ingestion (<row>)} - the plain chain layer stamped with a source row
-      chain    [chain_ingestion] - its row's layer is there already, or it has no source row and a row
-               layer of the cell holds its value
-      differs  the plain chain layer stays: no source row, and no row layer of the cell holds its value
+      chain    [chain_ingestion] - its row's layer is there already
+      differs  the plain chain layer with no source row - never folded: decide, a hold item, a map derivation
+               stamp none and a write may lean on it (총괄 10-11 «다») - and no row layer of the cell holds its value
       copies   chain layers whose bracket is not their source row (a collision merge's)"""
     layers = layers or {}
     groups = {}
@@ -844,11 +844,8 @@ def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: 
             out["chain"].append(CHAIN_SOURCE)
         else:
             out["renamed"][CHAIN_SOURCE] = mine
-    elif rows:
-        if any(not values_differ(layers[name].get("value"), plain.get("value"), col_type) for name in rows):
-            out["chain"].append(CHAIN_SOURCE)
-        else:
-            out["differs"] = True
+    elif rows and all(values_differ(layers[name].get("value"), plain.get("value"), col_type) for name in rows):
+        out["differs"] = True
     return out
 
 # Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).
@@ -4127,32 +4124,10 @@ def apply_row_update_internal(
                 logs_to_cache.append(log_dict)
 
     if changed_cols and update_item.source_name != "user":
-        new_summary_parts = []
-        for col in changed_cols:
-            new_val = getattr(row, col, None)
-            new_val_str = "비어있음" if new_val is None else str(new_val)
-            new_summary_parts.append(f"{col}: {new_val_str}")
-            
-        if is_new:
-            old_summary = None
-            summary_msg = "신규 데이터 생성: " + ", ".join(new_summary_parts)
-        else:
-            old_summary_parts = []
-            for col in changed_cols:
-                old_val = old_values_snapshot.get(col)
-                old_val_str = "비어있음" if old_val is None else str(old_val)
-                old_summary_parts.append(f"{col}: {old_val_str}")
-            old_summary = ", ".join(old_summary_parts)
-            summary_msg = ", ".join(new_summary_parts)
-            
-        log_dict = create_audit_log(
-            db, table_name, row.row_id, "ROW_UPDATE",
-            old_summary, summary_msg, update_item.source_name,
-            (update_item.updated_by or "system"),
-            transaction_id=transaction_id,
-            business_key=row.business_key_val,
-            add_to_cache=(logs_to_cache is None)
-        )
+        log_dict = row_update_line(
+            db, table_name, row.row_id, changed_cols, {col: getattr(row, col, None) for col in changed_cols},
+            old_values_snapshot, is_new, update_item.source_name, update_item.updated_by,
+            transaction_id, row.business_key_val, add_to_cache=(logs_to_cache is None))
         if logs_to_cache is not None:
             logs_to_cache.append(log_dict)
 
@@ -4267,6 +4242,23 @@ def apply_row_update_internal(
             # `idx_<table>_updated` wrong.
             row.updated_at = func.now() if batch_now is None else batch_now
     return row, is_new, changed_cols
+
+
+def row_update_line(db, table_name, row_id, changed_cols, new_values, old_values, is_new, source_name, updated_by,
+                    transaction_id, business_key, add_to_cache=True):
+    """The `ROW_UPDATE` history line a machine write leaves on a row it changed - the write door's, and
+    `replay.fold_units`' for the cells whose answer is already decided (총괄 10-11)."""
+    new_parts = ["%s: %s" % (col, "비어있음" if new_values.get(col) is None else new_values.get(col))
+                 for col in changed_cols]
+    if is_new:
+        old_summary, summary_msg = None, "신규 데이터 생성: " + ", ".join(new_parts)
+    else:
+        old_summary = ", ".join("%s: %s" % (col, "비어있음" if old_values.get(col) is None else old_values.get(col))
+                                for col in changed_cols)
+        summary_msg = ", ".join(new_parts)
+    return create_audit_log(db, table_name, row_id, "ROW_UPDATE", old_summary, summary_msg, source_name,
+                            updated_by or "system", transaction_id=transaction_id, business_key=business_key,
+                            add_to_cache=add_to_cache)
 
 
 def prime_merge_overwrites(db, table_name: str, overwrites_cache: dict, row_ids, columns):

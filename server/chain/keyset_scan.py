@@ -29,6 +29,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_CHUNK_SIZE = 1000
 
 
+def pages(items, start: int = 0):
+    """`(the page of `items` from `start`, the start of the next page or None)` - DEFAULT_CHUNK_SIZE at a time, and
+    the page count when `start` is 0. A proposal that writes in pages (the join, the fold mapper - 총괄 e10c58e5e ·
+    634c06fc3) cuts here, so its pages and the line that counts them have one size."""
+    size = DEFAULT_CHUNK_SIZE
+    after = start + size
+    return items[start:after], (after if after < len(items) else None), -(-len(items) // size)
+
+
 def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAULT_CHUNK_SIZE,
                limit: int = None, max_row_id: str = None):
     """Yield pages of rows ordered by `row_id`, keyset-seeked.

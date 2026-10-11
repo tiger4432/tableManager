@@ -383,6 +383,9 @@ class ProfileDescriptor:
 #: and it is STORED - re-running a backfill reads back the same instant instead of inventing
 #: a fresh one, which is what makes an atom reproducible.
 OCCURRED_AT_BASIS_COLUMNS = {NOT_AN_EVENT_BASIS: "created_at"}
+#: The zone a basis column's naive reading is in when the declaration writes none (총괄 10-11 - a basis asks
+#: none): the product stores that column timezone-aware, so it answers only a naive read (sqlite).
+BASIS_TIMEZONE = "UTC"
 
 
 @dataclass(frozen=True)
@@ -1091,7 +1094,7 @@ def _occurred_at_plan(declared: Mapping) -> OccurredAtPlan:
     if isinstance(basis, str):
         return OccurredAtPlan(
             column=OCCURRED_AT_BASIS_COLUMNS[basis],
-            timezone=declared["timezone"],
+            timezone=declared.get("timezone") or BASIS_TIMEZONE,
             basis=basis,
         )
     return OccurredAtPlan(

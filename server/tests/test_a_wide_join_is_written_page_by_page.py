@@ -131,6 +131,19 @@ def test_a_wide_fan_out_is_written_page_by_page_and_ends_as_one_write_would(monk
     assert after_first.count("mapper") == 3, "pages two to four were read without a beat"
 
 
+def test_every_page_says_which_of_how_many_and_the_rows_so_far(monkeypatch):
+    """총괄 634c06fc3: the queue's `running` line - the join's and the fold mapper's one line (`_page_said`), from
+    the first page."""
+    monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", PAGE)
+    db = _db()
+    _seed_wide(db)
+    ok, writes, stages = _run(db, _rules(), RIGHT, monkeypatch)
+    assert ok and writes == [10, 10, 10, 5]
+    said = [s for s in stages if s.startswith("mapper · " + DECLARATION["name"])]
+    assert said == ["mapper · %s -> %s · page %d/4 · %d / 35 rows" % (DECLARATION["name"], LEFT, k, n)
+                    for k, n in ((1, 10), (2, 20), (3, 30), (4, 35))], said
+
+
 def test_the_rule_line_counts_every_page(monkeypatch, caplog):
     """총괄 529fc7ce8 ①: the [ChainRule] line - and the queue view, which is handed the same
     count - says the rows of all the pages, not the first page's."""
@@ -238,6 +251,12 @@ def test_every_page_reads_what_one_write_would_have_read(monkeypatch, writer, ta
         if ends[PAGE][key] != ends[1000][key]}
 
 
+def _chain_lines(db):
+    """The history lines the join wrote on the left table - under its rows' layers, which rank as the chain's."""
+    return sum(1 for (name,) in db.query(models.AuditLog.source_name).filter(models.AuditLog.table_name == LEFT)
+               if crud.layer_ranks_as(name) == join_into.CHAIN_LAYER)
+
+
 def test_a_group_that_fails_between_pages_runs_again_to_the_same_cells(monkeypatch):
     """Pages already written stay (each committed); running the group again - what a replay
     does - ends where one write ends, and the pages already written are no-ops."""
@@ -249,16 +268,12 @@ def test_a_group_that_fails_between_pages_runs_again_to_the_same_cells(monkeypat
     assert not ok
     half = _cells(db)
     assert sum(1 for v in half.values() if v == "LOT-W") == 20, "pages one and two stayed"
-    logs_after_first = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == LEFT,
-        models.AuditLog.source_name == join_into.CHAIN_LAYER).count()
+    logs_after_first = _chain_lines(db)
 
     ok, _writes, _stages = _run(db, _rules(), RIGHT, monkeypatch)
     assert ok
     assert set(_cells(db).values()) == {"LOT-W"}
-    logs = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == LEFT,
-        models.AuditLog.source_name == join_into.CHAIN_LAYER).count()
+    logs = _chain_lines(db)
     assert logs - logs_after_first == 15, "the pages written before the failure changed again"
 
 

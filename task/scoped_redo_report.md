@@ -78823,3 +78823,382 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
       b566b48ae 절의 재기동 줄 «체인 워커 · 서버»에 스케줄러가 빠져 있었음 — 일요일 표 ① 은 넷 다 재기동이라 그 표에선 영향 없음. 새 절엔 «서버 · 스케줄러»로 적음
 응용께 — 일요일 판 다시: ①c «공식 표 deleted 369» 와 ⑦ «알려진 것 (b566b48ae 뒤)» 줄이 이 착지로 낡습니다
 ```
+
+## [10-11] 원장 시각 · timezone 착지 96f54ab36 (소유자 「원장 선언 쓸데없이 timezone 이나 시간 쓰라고 하는 거 많은데(특히 속성) 조사해서 고쳐」 · 총괄 10-11 A ㄱ · 응용 대조군 4ded085cf)
+
+```
+착지 96f54ab36 — 10 files changed, 244 insertions(+), 71 deletions(-)
+도착지  시각은 사건 엣지에만 · timezone 은 시각 열을 적었을 때만 · 안 적은 시각은 무엇으로 채우는지 폼에 한 줄
+응용 대조군 다섯 자리 -> 지금
+  (0) 새 소스 빈 폼이 Time · timezone 으로 거절 -> read.occurred_at 선택(스켈레톤 required false), 폼 줄 «Default: row time (ingested · created_at)»
+      timezone 줄은 시각 열이 없으면 «Only for a time column» (묻지 않음)
+  (1) 속성 소스 · 시각 후보에 글자 열 · row_id -> 후보 = datetime 칸 + 앞 20 행 값이 시각으로 읽히는 글자 칸, 못 읽은 칸은 남기고 «not sampled: …»
+      채우는 UTC 와 권하는 Asia/Seoul 이 다름 -> basis 후보는 zone 을 안 들고, basis 시각은 행의 저장 시각이라 zone 을 안 묻는다
+      register 문장의 occurred_at 이 묻는 칸 -> 사건 시각 역할이 안 묶였으면 «Not an event - source time: …» (적으면 사건 엣지)
+  (2) 사건 엣지 소스의 missing_time 거절 -> 그대로
+      🔴 거절된 소스도 파일에 써짐 -> 소유자 판정대로라 안 고침(소유자 2026-08-19 「json 형식만 맞으면 다 저장하고 … resolve되는거만 읽으면」 ·
+         「안읽히는 엔티티, 팩 등등은 invalid 태그 붙이고」 — ledger/config_explorer.py 「resolving a half-written setup」 절).
+         로더는 그 소스만 빼고 나머지를 읽음(setup._resolve_refused_declarations, S-177 ②) · 화면은 목록에 invalid 태그와 첫 사유로 남김
+         == tests/test_a_broken_source_falls_alone.py
+         14 passed in 0.79s
+         == tests/test_a_left_out_declaration_is_listed_with_what_fell_with_it.py
+         4 passed in 1.95s
+  (2') 엣지에 binding timezone 을 쓰면 통과 -> 그대로 · 시각 열을 적고 timezone 을 빼면 missing_timezone 거절(그대로)
+게이트 — 바뀐 자리 낱말을 부르는 시험 파일(git grep) files 87
+  비-PG  같은 파일을 이 워크트리와 깨끗한 origin/main(wt-check)에서 — 실패 목록 비교
+         wt-fold:  79 failed, 1030 passed, 1 skipped, 139 deselected, 10 errors in 80.45s (0:01:20)
+         wt-check: 79 failed, 1026 passed, 1 skipped, 139 deselected, 10 errors in 73.37s (0:01:13)
+         new: 0 · gone: 0
+         (실패는 두 쪽 같은 목록 — 워크트리에 라이브 ledger_config 가 없어 생기는 박스 상태)
+  PG     3 failed, 136 passed, 1120 deselected in 470.84s (0:07:50)
+         FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+         FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+         FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+         깨끗한 main 에서 같은 시험: head 1a022befe
+         깨끗한 main 에서 같은 시험: 3 failed, 136 passed, 1116 deselected in 460.62s (0:07:40)
+         깨끗한 main 에서 같은 시험: FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+         깨끗한 main 에서 같은 시험: FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+         깨끗한 main 에서 같은 시험: FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+변이 (sqlite, 시험 파일 둘, md5 되돌림 확인)
+  baseline ['127 passed, 1 skipped in 2.96s']
+  a zone asked of every origin         RED | test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone, test_a_source_with_no_event_edge_reads_the_rows_stored_time, test_timezone_must_be_explicit_and_valid
+  the skeleton says the time is required RED | test_the_skeleton_asks_neither_the_time_nor_its_zone
+  the sample is not judged             RED | test_a_string_column_is_a_time_candidate_only_when_its_values_read_as_a_time[values]
+  the zone row asked of every source   RED | test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone
+  an unbound event time asked again    RED | test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does
+  a basis read with no zone            RED | test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone
+  restored True
+이 박스 원장 선언으로 계획 한 번 (읽기 전용 엔진 · 박스의 라이브 파일 = 박스 상태, 운영 수가 아님)
+  sources in the box's ledger_config: 15
+  plan without the sample: 0.03, 0.02, 0.02 s
+  plan with the sample:    0.57, 0.22, 0.22 s
+    bonded_from                  candidates 5 -> 1 · removed ['base_id', 'core_lot', 'core_seat', 'core_wafer'] · Candidates: 1 columns of bonding_die_from_core readable as a time + basis
+    bw_dt_seat                   candidates 7 -> 1 · removed ['base_id', 'core_lot', 'core_seat', 'core_wafer', 'dt_lot', 'dt_seat'] · Candidates: 1 columns of bonding_core_die readable as a time + basis
+    die_inspection               candidates 8 -> 2 · removed ['base_wafer_id', 'eqp_id', 'method', 'recipe_id', 'row_id', 'run_uid'] · Candidates: 2 columns of inspection_run readable as a time + basis · not sampled: work_id
+    dt_job                       candidates 14 -> 3 · removed ['c_bn', 'core_lot', 'core_slot', 'core_wafer', 'dt_cell_key', 'dt_eqp', 'dt_job', 'dt_lot', 'dt_slot', 'product', 'row_id'] · : 3 columns of dt_log readable as a time + basis · not sampled: core_wafer_id, dt_event_id
+    dt_transfer                  candidates 15 -> 4 · removed ['c_bn', 'core_lot', 'core_slot', 'core_wafer', 'dt_cell_key', 'dt_eqp', 'dt_job', 'dt_lot', 'dt_slot', 'product', 'row_id'] · ansferable readable as a time + basis · not sampled: core_wafer_id, dt_event_id, dt_job_id
+    lot_event                    candidates 9 -> 5 · removed ['child_lot', 'event_type', 'parent_lot', 'row_id'] · lot_event readable as a time + basis · not sampled: lot_id, slotnumbers, txn_seq, waferids
+    lot_slot_move                candidates 7 -> 1 · removed ['event_type', 'from_lot', 'from_slot', 'to_lot', 'to_slot', 'wafer'] · Candidates: 1 columns of lot_slot_move readable as a time + basis
+    lot_slot_wafer               candidates 1 -> 0 · removed ['row_id'] · Limit: lot_slot_wafer has no column to read as a time -> basis only
+    mechanism_edge_to_finding_causes candidates 8 -> 1 · removed ['dir', 'edge_id', 'from_quantity', 'model', 'row_id', 'to_quantity', 'to_role'] · Candidates: 1 columns of mechanism_edge_to_finding readable as a time + basis
+    mechanism_edge_to_quantity_causes candidates 8 -> 1 · removed ['dir', 'edge_id', 'from_quantity', 'model', 'row_id', 'to_quantity', 'to_role'] · Candidates: 1 columns of mechanism_edge_to_quantity readable as a time + basis
+    process_param_num_measure    candidates 11 -> 2 · removed ['eqp_id', 'param', 'param_id', 'recipe_id', 'role', 'row_id', 'step', 'unit', 'wafer_id'] · dates: 2 columns of process_param_num readable as a time + basis · not sampled: value_text
+    process_param_txt_measure    candidates 11 -> 2 · removed ['eqp_id', 'param', 'param_id', 'recipe_id', 'role', 'row_id', 'step', 'value_text', 'wafer_id'] · Candidates: 2 columns of process_param_txt readable as a time + basis · not sampled: unit
+    transfer_event               candidates 7 -> 1 · removed ['core_wafer_id', 'dt_cell_key', 'dt_job', 'dt_job_id', 'product', 'row_id'] · Candidates: 1 columns of dt_transfer_log readable as a time + basis
+    void_observation             candidates 7 -> 1 · removed ['base_wafer_id', 'eqp_id', 'recipe_id', 'run_uid', 'unit', 'void_uid'] · Candidates: 1 columns of void_obs_observed readable as a time + basis
+    wafer_process_recipe         candidates 15 -> 3 · removed ['eqp_id', 'knobs', 'lot', 'lot_id', 'proc_id', 'recipe_id', 'result', 'row_id', 'slot', 'slot_no', 'step', 'wafer_id'] · Candidates: 3 columns of wafer_process readable as a time + basis
+어느 DB · 어느 스키마 · 지운 것: 시험은 sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 assy_manager 는 읽기 전용(시각 견본) · public 전후 같음 · 지운 것 0
+
+응용께 — 18766 대조군 다섯 자리를 이 착지로 다시 눌러 주시길(서버 재기동 뒤)
+```
+
+## [10-11] 총괄 «나» 재기 — 이미 상한 공식 표에 다시 세기 replay 뒤 ⑦ (main 212227c50, 탐침 · 커밋 안 함)
+
+```
+상한 상태  고치기 전 접기(key_columns 가 빈 집합인 접기) -> 원천 행 하나만 먹이던 키의 그 행 표시 -> 체인이 거둠
+  PROBE blighted rows {'0eaa5e': ('J1', 1.0, 2.0, 7.0, 'agreed'), '5dc2d2': (None, None, None, None, 'agreed')}
+  PROBE blank-key row layers [('5dc2d2', 'hold', 'chain_ingestion', 'agreed')]
+  PROBE recount replay scanned 2 -> rows {'0eaa5e': ('J1', 1.0, 2.0, 7.0, 'agreed'), '5dc2d2': (None, None, None, None, 'agreed')}
+  PROBE blank-key row layers after recount [('5dc2d2', 'hold', 'chain_ingestion', 'agreed')]
+  PROBE remove-shells to_delete 0 deleted 0 -> rows {'0eaa5e': ('J1', 1.0, 2.0, 7.0, 'agreed'), '5dc2d2': (None, None, None, None, 'agreed')}
+  PROBE blank-key rows before 1 -> after replay + remove-shells 1
+  1 passed in 13.20s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+답        0 이 아님 — 그 행은 키 셋이 비고 hold 층(체인, agreed) 하나만 남는다
+          다시 세기는 키로 행을 찾는데 키가 비어 그 행에 못 닿고, ⑦ 은 키 밖에 hold 값이 있어 껍데기로 안 본다
+어느 DB · 어느 스키마 · 지운 것: 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
+
+짓기 전 세 안 (총괄께 여쭘)
+  ㄱ ⑦ 을 넓힘 — 키 칸이 «전부» 비고 사람 층이 없는 행도 껍데기. cell_layer.shells 와 remove_shell_rows 의 미리 거르는 SQL 두 자리
+     운영자: ⑦ 한 번 · 좋은 점: 체인 쓰기 자리도 같은 판단이라 앞으로도 같은 행을 지움 · 위험: 키가 다 빈 행을 «주소 없음»으로 읽는 새 갈래 · 크기 안 쟀다(두 자리 + 시험 한 칸)
+  ㄴ 다시 세기가 키 빈 행을 row_id 로 집음 — 주장 0 이라 hold 가 비고, 그 뒤 쓰기 자리의 껍데기 판단이 지움
+     운영자: ⑥' 한 번 · 위험: 복사 규칙 맵퍼에 키 말고 다른 주소 갈래가 생김 · 크기 안 쟀다
+  ㄷ 코드 없음 — RUN.md 에 읽기 전용 셈 한 줄(공식 표에서 키 칸이 전부 빈 행) + 그리드에서 그 행 지우기
+     운영자: 셈 -> 있으면 그리드 삭제 · 좋은 점: 시연 전 코드 0 · 위험: 사람 손 · 크기 코드 0 (셈 줄 · 그리드 삭제가 그 행에 닿는지는 안 쟀다)
+  추천 ㄷ — 이 상태는 «이 pull 전에 접기와 ⑥ 을 이미 돌린 표»에만 생기고, 고친 뒤로는 새로 안 생김(재현 칸). 운영이 이미 돌렸는지는 모름
+  여쭐 것: 운영에서 b566b48ae 의 접기를 이미 돌리셨는지 · ㄷ 로 가도 될지
+```
+
+## [10-11] 총괄 «나» -> ㄷ — 이미 상한 공식 표의 셈 한 줄 + 그리드 삭제 (RUN.md 「층 접기는 키 칸의 체인 층을 안 건드린다」 절)
+
+```
+RUN.md  «모르는 것» 줄 -> 운영 DB 읽기 전용 셈(키 칸이 다 비고 보류 칸만 찬 행 수 · 앞 다섯 row_id) · 0 이면 할 일 없음 · 아니면 그리드 삭제
+잰 것 (PG 격리 DB, 탐침 · 커밋 안 함 — RUN.md 의 SQL 글자 그대로를 이 세상 이름으로 채워 돌림)
+  PROBE healthy count (0, [])
+  PROBE damaged rows {'c3ce6c': ('J1', 1.0, 2.0, 7.0, 'agreed'), 'ed7df5': (None, None, None, None, 'agreed')}
+  PROBE count 1 first five ['ed7df5']
+  PROBE grid delete (crud.delete_rows_batch, the batch_delete route's call) deleted 1 -> rows {'c3ce6c': ('J1', 1.0, 2.0, 7.0, 'agreed')}
+  PROBE count again (0, [])
+  1 passed in 10.68s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+어느 DB · 어느 스키마 · 지운 것: 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0 (탐침이 지운 행은 그 시험 세상의 행)
+```
+
+## [10-11] 96f54ab36 회귀 고침 착지 739db5c2c — 속성만 등록하는 소스가 저장에서 거절 (응용 18766 · 총괄 「원인 한 줄 · 고침 · 대조군 다시 · 게이트 칸」)
+
+```
+원인 한 줄  96f54ab36 이 «시각을 안 묶은 문장»의 시각 역할을 derived 행으로 만들면서 값에 원천 시각 기록({basis…}/{column…})을 실었고,
+           저장의 채우기(filled_declaration)는 derived 행의 값을 파일에 쓴다 — 바인딩이 아닌 기록이 bind 에 써져 거절
+고침      그 행은 «Not an event - source time: …» 근거만 들고 값은 없음(저장이 안 씀). 코드 한 칸
+게이트 칸  test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none — 저장의 채우기 함수 그대로, 세 모양
+          (응용 (1) 속성 소스: 오류 () · 응용 (2''): 채우기 전후 오류 같음 · 사건 아닌 둘째 문장) — 이번에 빠졌던 «저장 통과» 칸
+변이 (값을 원천 시각으로 되돌림)
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none[_no_edge_time]
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none[_edge_time_from_the_read]
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none[_with_a_not_an_event_mapping]
+  4 failed, 19 passed in 1.80s
+  md5 restored
+비-PG 87 파일, 깨끗한 main(wt-check) 과 비교
+  wt-fold:  79 failed, 1033 passed, 1 skipped, 139 deselected, 10 errors in 70.10s (0:01:10)
+  wt-check: 79 failed, 1030 passed, 1 skipped, 139 deselected, 10 errors in 68.19s (0:01:08)
+  test ids: fold 79 · check 79 · new: 0 · gone: 0
+채우기를 부르는 시험 · 이 변경에 닿는 PG 파일(PG 67 파일 중 초안 · 작성 코드를 부르는 것 하나)
+  == tests/test_a_draft_starts_from_the_declaration_file.py 8 passed in 2.60s
+  == tests/test_a_switched_off_field_is_dropped_by_the_save.py 11 passed in 3.09s
+  == tests/test_a_role_shows_the_attributes_it_inherits.py 3 passed in 0.59s
+  == tests/test_a_row_source_has_no_group_by_to_write.py 5 passed in 1.23s
+  == tests/test_ledger_setup_bundle.py 107 passed, 1 skipped in 1.31s
+  PG test_a_ledger_branch_is_merged_refreshed_and_deleted  3 passed in 26.90s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
+RUN.md  이미 거절된 소스: 목록 사유 «….bind.occurred_at.kind unsupported binding kind None» -> 그 칸을 지우고 Save
+응용께  18766 대조군 다섯 다시
+```
+
+## [10-11] 작은 판 착지 db928d441 (총괄 A~E ㄱ · «다» ㄱ · 계획 note 두 줄 · 응용 문서 감사 주석 하나)
+
+```
+착지 db928d441 — 19 files changed, 262 insertions(+), 108 deletions(-)
+«다»   층 접기가 원천 없는 plain 체인 층을 안 지움 — 원천 찍힌 plain 은 이름 바꾸기, 그 행 층이 이미 있으면 지움
+      Count «… have no source row and stay» · 대가(행 층이 다 걷히면 그 plain 값이 다시 섬)는 RUN.md 층 절에 한 줄
+A     RunControl.announce — 진행 알림이 한 번 안 들리면 그 실행 동안 안 보냄 + WARNING 한 줄 · 끝 알림 넷도 같은 자리
+B     conftest.run_join_and_write 가 워커 쓰기 고리와 같은 rule_run.layer_of_a_rules_write 로 층 이름을 지음
+      plain 이름으로 읽던 시험 넷(그 도우미의 소비자) -> cell_layer._claimed_filter 로 읽음
+C     저장 문: 꺼진 채 저장한 규칙의 notes 는 저장된 그대로의 답(«enabled=false — no rule stands for it.» + 안 읽는 칸)
+D     expand_declaration 의 모든 반환이 안 읽는 칸 줄(통합 선언) · «still written flat» 줄(평면 규칙 · 선 규칙마다)을 실음
+      저장 문의 거절 글 뒤에 « | » 로 같은 줄 · 로더가 따로 찍던 평면 칸 줄은 notes 로 한 번(rule_shape.flat_cell_notes)
+E     RUN.md 접기 맵퍼 절 «진 잡이 나중에 이길 때» 세 갈래(자기 행 고침 걷힘 · 다른 행 바뀜 남음 · 로그 행 잡 칸 남음) — 코드 따라감:
+      표시의 원천 = 진 잡 인벤토리 행 · 편집 철회는 그 배치의 고친 트리거 행만(ingestion_worker 의 edit_retractions origins)
+note  원장 계획 Time 은 비었을 때만 «Pick one of column · basis», Time zone 은 시각에서 채웠을 때만 «Filled with the time …»
+주석  setup_bundle 값 역할 timezone 주석 — occurred_at 의 zone 은 사건 엣지 · read.occurred_at 쪽에서 판정(동작 그대로)
+게이트 — 바뀐 자리 낱말을 부르는 시험 파일(git grep), 같은 base 의 깨끗한 사본(wt-check)과 비교
+  files 130
+  wt-impl:  2 failed, 1740 passed, 2 skipped, 180 deselected in 136.51s (0:02:16)
+  wt-check: 76 failed, 1645 passed, 8 skipped, 180 deselected, 10 errors in 167.62s (0:02:47)
+  new (only in wt-impl): 0
+  gone (only in wt-check): 74
+  (wt-check 실패가 더 많은 것은 그 사본에 라이브 ledger_config 가 없어서 — 박스 상태)
+  PG  5 failed, 175 passed, 157 deselected in 761.36s (0:12:41)
+      FAILED tests\test_a_join_moves_a_time_as_the_same_instant.py::test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_skip]
+      FAILED tests\test_a_join_moves_a_time_as_the_same_instant.py::test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_written]
+      FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+      FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+      FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+      ↑ 그중 test_a_join_moves_a_time… 둘은 plain 이름 SQL — 고친 뒤 2 passed in 6.39s
+      나머지 셋은 앞서 깨끗한 main 에서도 같은 셋:
+        FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+        FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+        FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+변이 (sqlite, 자리마다 그 시험 파일, md5 되돌림 확인)
+  «다» the fold deletes a plain layer with no source row again RED | test_a_row_taken_back_after_the_fold_shows_what_is_left_beneath, test_the_fold_previews_what_it_does_and_a_rerun_does_nothing
+  A a run keeps announcing after one nobody heard            RED | test_a_run_stops_sending_after_a_notice_nobody_heard
+  B the join helper writes under the plain name              RED | test_the_written_layer_is_the_rules_own_name
+  C a rule saved off answers the switched-on copy's notes    RED | test_a_rule_saved_off_is_not_said_to_run
+  D a refusal carries no notes                               RED | test_a_refused_declaration_names_the_cells_it_does_not_read_too
+  D a flat rule carries no notes                             RED | test_a_flat_rule_names_its_flat_cells_and_the_loader_says_them_once
+  notes: an answered Time still says pick one                RED | test_a_time_rows_note_speaks_for_its_state
+  notes: a missing zone still says filled                    RED | test_a_time_rows_note_speaks_for_its_state
+  restored all
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
+응용께  일요일 판 다시(①c 의 deleted · without a source row 수가 바뀜) — 총괄 「이 고침 뒤 한 번」
+```
+
+## [10-11] 접기 맵퍼 빠르게 착지 a03dc8b81 (총괄 3ec26c632 · 소유자 「접기 소급 너무 오래 걸림, 인벤토리 1,000 · 매칭 로그 수십만 행」)
+
+```
+착지 a03dc8b81 — 4 files changed, 70 insertions(+), 9 deletions(-)
+①  로그 읽기는 진 단위의 키만(이긴 단위 키는 질의에 안 넣음) · ③ 읽을 때 표시 칸도 읽어 이미 «folded into <같은 승자>» 면 안 넘김
+②  인덱스는 선언: RUN.md 접기 절 선언 줄 + 새 절 «지금 운영에서» — 체인 워커 기동이 짓는다(「표 선언 인덱스」 절; Reload 아님)
+재기 — assy_test 스크래치 assy_impl_foldperf_1011: 이 박스 dt_log 를 읽기 전용으로 복사, 키를 1,000 단위로 펼침(박스는 31 단위뿐) + 인벤토리 1,000
+  created ['dt_log', 'fold_inv']
+  dt_log rows 535559 · units 1000 · wafers 400 · inventory rows 1000 · copied in 63.3 s
+  index off ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val']
+  before · index off · code C:/wt-check/server · 4.91 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  index on ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val', 'ix_fold_perf_unit']
+  before · index on · code C:/wt-check/server · 2.39 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  index off ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val']
+  after · index off · no marks · code C:/wt-impl/server · 3.81 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 321315
+  index on ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val', 'ix_fold_perf_unit']
+  after · index on · no marks · code C:/wt-impl/server · 1.98 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 321315
+  다시 돌림 — 진 잡 행에 맵퍼 자신의 답대로 표시를 써 둔 뒤:
+  marks on 321315 rows, from the mapper's own answer (code C:/wt-impl/server)
+  index on ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val', 'ix_fold_perf_unit']
+  rerun (marks there) · index on · code C:/wt-check/server · 3.10 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  rerun (marks there) · index on · code C:/wt-impl/server · 1.57 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 0
+  index off ['dt_log_pkey', 'idx_dt_log_updated', 'ix_dt_log_updated_at', 'idx_dt_log_declared_key', 'ix_dt_log_business_key_val']
+  rerun (marks there) · index off · code C:/wt-check/server · 4.99 s · dt_log statements 1 · rows read 535559 (per statement max 535559) · updates 321315
+  rerun (marks there) · index off · code C:/wt-impl/server · 3.00 s · dt_log statements 1 · rows read 321315 (per statement max 321315) · updates 0
+  초는 맵퍼 호출만(쓰기 제외). 첫 판의 쓰기(진 잡 행 전부의 표시)는 안 쟀다 — 운영 규격(묶음 1,000 행 ≤ 5 s)을 넘는다면 그 쓰기다
+게이트  6 passed in 1.52s — 「이긴 단위 로그 행을 안 읽음」(로그 읽기 질의의 키에 이긴 잡 없음) · 「다시 돌리면 넘기는 것 0」 칸
+변이
+  ① every unit's log rows read again           RED | test_a_later_auto_job_takes_the_wafer_from_the_manual_ones, test_a_new_log_row_of_a_losing_job_is_marked, test_a_unit_that_now_wins_keeps_its_old_mark_until_withdrawn, test_per_wafer_the_auto_job_first_then_the_earliest_keeps_its_rows, test_the_winners_log_rows_are_not_read
+  ③ a row marked so already is handed again    RED | test_running_it_again_writes_nothing
+  restored True
+어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_foldperf_1011(만들고 지움 — dropped schema assy_impl_foldperf_1011 (2 tables) - left 0) · 박스 assy_manager 는 읽기 전용
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+진짜 프로세스는 응용(총괄 지시대로)
+```
+
+## [10-11] a03dc8b81 ③ 거둠 착지 4c27f4b8c (총괄 406d7c102 · 응용 진짜 프로세스: 두 번째 replay 에 표시 321,315 -> 0)
+
+```
+원인  체인의 edit retraction 은 규칙이 «고친 원천 행»(origin)으로 전에 쓴 층 중 이번에 안 쓴 행을 거둔다(keep = 이번에 쓴 행)
+      ③ 이 이미 같은 표시인 행을 안 내니 그 행들이 «안 쓴 행»이 되어 전부 거둬짐 — 제가 a03dc8b81 에서 이 계약을 안 봤습니다
+고침  진 잡 행은 매번 전부 다시 냄(③ 거둠) · ①(진 잡 행만 읽기)은 그대로
+칸 (sqlite, 체인 자리 그대로 · 고치기 전 = ③ 이 살아 있는 코드 = 변이)
+  고치기 전:
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_running_it_again_writes_nothing
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_replaying_the_inventory_rule_keeps_every_mark[2]
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_replaying_the_inventory_rule_keeps_every_mark[3]
+    FAILED tests\test_the_fold_mapper_keeps_one_unit_per_group.py::test_a_losing_jobs_inventory_row_edited_keeps_its_marks
+    4 failed, 5 passed in 2.35s
+  고친 뒤:  9 passed in 1.97s · 리베이스 뒤 9 passed in 2.11s
+RUN.md  「접기 맵퍼 빠르게」 절 — «다시 돌리면 쓰기 0» · 다시 돌림 네 줄 뺌, 🔴 줄(이미 두 번 돌렸으면 이 고침 pull -> 체인 워커 재기동 -> replay 한 번)
+RELEASE_LOG  새 항목 + 앞 항목의 «다시 안 넘김» 문장 고침
+진짜 프로세스 게이트(replay 두 번 · 세 번 · 진 잡 인벤토리 행 고침)는 응용께 청함
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리뿐 · 지운 것 0
+```
+
+## [10-11] 접기 · 조인 쓰기 쪽으로 착지 3f48308a2 (총괄 634c06fc3 · 소유자 「배치로」 · 「쓰는 진척률이라도 보이면」)
+
+```
+착지 3f48308a2 — 9 files changed, 176 insertions(+), 24 deletions(-)
+①  fold_by_unit 이 진 행을 한 번 읽고 keyset_scan.pages(조인과 한 자리)로 잘라 답함: 첫 답 updates · next_page · rows_total · pages
+②  _in_rule_order 의 줄 하나(_page_said) — 로그 · 큐 running 「<규칙> -> <표> · page k/K · <쓴 행> / <전체> rows」, 첫 쪽부터 · 조인도 같은 줄 ·
+    전체를 안 준 답이면 그 칸 없이 「page k · n rows」 · rule_run 이 쪽 부르기 옆에 첫 쪽의 사실(rows_total · pages · first)을 실음
+덤  test_a_wide_join… 의 «멈춘 뒤 다시» 칸이 plain 이름으로 이력을 세어 main 에서 빨강이었음(b566b48ae 뒤) — 층 순위로 셈
+4c27f4b8c 위로 다시 얹음 — 멈춘 뒤 다시 돌리면 진 행 «전부» 다시 넘김(그 칸도 그 뜻으로)
+게이트 — 쪽 · 조인 · 접기 낱말을 부르는 시험 파일, 같은 base 깨끗한 사본(wt-check)과
+  files 47
+  wt-impl:  669 passed, 1 skipped, 43 deselected in 124.66s (0:02:04)
+  wt-check: 7 failed, 652 passed, 7 skipped, 43 deselected in 95.83s (0:01:35)
+  new (only in wt-impl): 0
+  gone (only in wt-check): 7
+  PG  43 passed, 94 deselected in 224.45s (0:03:44) (깨끗한 main 같은 목록 43 passed)
+      처음 판은 11 errors 였음 — wt-impl 의 무시된 config 파일(ledger_config · chain_rules 등) 탓: main 코드 + wt-impl 데이터 루트 = 에러 둘,
+      이 코드 + 깨끗한 데이터 루트 = 통과 — 그래서 PG 줄은 깨끗한 데이터 루트로
+변이
+  next_page taken off the fold mapper      RED | test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_writes_the_rest, test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would
+  the page line says no total              RED | test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_writes_the_rest, test_every_page_says_which_of_how_many_and_the_rows_so_far, test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would
+  the first page says no line              RED | test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_writes_the_rest, test_every_page_says_which_of_how_many_and_the_rows_so_far, test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would
+  restored all
+초 — 이 박스 dt_log 사본(키 1,000 단위로 펼침) · 체인 쓰기 문 그대로 · 인벤토리 1,000 의 묶음 한 번, wt-check = 고치기 전 · wt-impl = 고친 뒤
+  setup: dt_log 535559 rows · units 1000 · 82.7 s
+  run wt-check: ok True · 1 inventory events · 252.8 s in all · marks 321349 · dt_log writes 1 (rows each: first [321349], last [321349])
+     write door seconds per write: min 242.86 · median 242.86 · max 242.86 · sum 242.9
+     page lines 0 · first [] · last []
+  run wt-impl: ok True · 1 inventory events · 291.3 s in all · marks 321349 · dt_log writes 322 (rows each: first [1000], last [349])
+     write door seconds per write: min 0.59 · median 0.80 · max 2.25 · sum 281.8
+     page lines 322 · first ['mapper · fold_pg -> dt_log · page 1/322 · 1000 / 321349 rows'] · last ['mapper · fold_pg -> dt_log · page 322/322 · 321349 / 321349 rows']
+  쪽으로 쓰면 +38.5 초 — 쪽마다 커밋 · 아웃박스 · 쓰기 문 준비
+어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_foldpg_1011(만들고 지움, 16 표) · 격리 시험 DB · public 전후 같음
+진짜 프로세스(큐 화면 글자까지)는 응용께
+```
+
+## [10-11] 걷기 값 기록 착지 280d3e567 (총괄 e5e0a87e2 · 10-11 ㄱ)
+
+```
+착지 280d3e567 — 8 files changed, 174 insertions(+), 7 deletions(-)
+엣지  records = 원자마다 {occurred_at, qualifiers, world, source_who, claim_id} — _claim_edge 가 자기 원자, add_edge 가 같은 id 로 접히는 원자를
+      claim id 한 번씩(두 끝에서 읽힌 원자는 한 기록 — 정적 타입 둘 사이에서 되짚기가 허용돼 실제로 남) · records_more = 상한 넘은 수
+노드  records = {이름: [{value, occurred_at, world, source_who, claim_id}]} 새것 먼저 · records_more = {이름: 수} · 등록 튜플 여섯째 칸 = claim id
+상한  RECORDS_PER_FACT = 100 — 박스 데모 바구니에서 엣지당 기록 최대 4 라 닿지 않음
+손댄 시험 셋 — _apply_registrations 를 손으로 부르던 튜플에 여섯째 칸(None) — 계약 벡터 칸 넷(라벨 · attributes · conflicts · by_world)은 그대로
+게이트 (걷기 낱말을 부르는 시험 파일, 같은 base 깨끗한 사본과 — 리베이스 전 base 에서 잼, 리베이스 뒤 이 파일 넷 다시 통과)
+  files 38
+  wt-fold:  17 failed, 376 passed, 1 skipped, 79 deselected in 24.46s
+  wt-check: 17 failed, 371 passed, 1 skipped, 79 deselected in 23.25s
+  new (only in wt-fold): 0
+  gone (only in wt-check): 0
+  PG pg files 9
+  PG 79 passed, 89 deselected in 286.82s (0:04:46)
+변이
+  an atom reached from both ends is two records    RED | test_an_atom_reached_from_both_ends_is_one_record
+  the collapsed atoms are not kept                 RED | test_an_edge_carries_every_atom_of_its_relation_as_a_record[1], test_an_edge_carries_every_atom_of_its_relation_as_a_record[2], test_past_the_cap_the_rest_are_counted
+  past the cap nothing is counted                  RED | test_past_the_cap_the_rest_are_counted
+  a name keeps only its newest record              RED | test_a_nodes_name_carries_every_registration_as_a_record[False], test_a_nodes_name_carries_every_registration_as_a_record[True], test_past_the_cap_the_rest_are_counted
+  a node name's records oldest first               RED | test_a_nodes_name_carries_every_registration_as_a_record[False], test_a_nodes_name_carries_every_registration_as_a_record[True], test_past_the_cap_the_rest_are_counted
+  a node name's overflow not counted               RED | test_past_the_cap_the_rest_are_counted
+  restored True
+박스 데모 바구니(+ SYN-BW-103-11 · − SYN-BW-SPL-400-19, 박스 원장 읽기 전용) 고치기 전 -> 뒤:
+  == C:/wt-check/server
+  collect=wafer · claims_scanned 1657 · edges 486 · nodes 2 · bytes 1286906
+  collect=wafer+quantity · claims_scanned 1657 · edges 486 · nodes 18 · bytes 1291372
+  == C:/wt-fold/server
+  collect=wafer · claims_scanned 1657 · edges 486 · nodes 2 · bytes 1421782 · edge records max 4 total 608 (edges with more than one 110) · node-name records max 0 total 0
+  collect=wafer+quantity · claims_scanned 1657 · edges 486 · nodes 18 · bytes 1426248 · edge records max 4 total 608 (edges with more than one 110) · node-name records max 0 total 0
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 assy_manager 읽기 전용 · public 전후 같음 · 지운 것 0
+```
+
+## [10-11] 체인 워커 기동 정리가 CLI 소급 연결을 끊나 — 끊는다 (총괄 10-11 큐 첫째, 재기만)
+
+```
+CLI 연결 이름   assy_chain — 연결 3 개 전부 (접두 뗀 값)
+   왜  CLI 는 자기 이름을 안 묶는다. find_rule -> load_rules 가 chain.ingestion_worker 를 import 하고,
+       그 모듈이 import 때 get_process_logger("Chain") — 먼저 묶은 자가 이긴다. 연결은 그 뒤에 열린다
+   CLI active_process_name at exit: Chain · its connection name, unprefixed: assy_chain
+   큐 버튼 소급(스케줄러 자식 admin/retroactive_run.py)은 "Retroactive" 를 먼저 묶는다 -> assy_retroactive (코드 읽기, 안 잼)
+«떠났다»의 판단  이름(assy_chain · assy_chainslot%) + 같은 DB + 정리 프로세스 import 시각보다 먼저 열림 — 살아 있는 pid 대조 «없음»
+   pid 를 보는 것은 another_chain_loop_is_running(하트비트 pid) 하나 — 워커 «자신»을 세울지이지 연결마다가 아니다
+재기 — assy_test 스키마 assy_impl_clicut_1011 · 연결 이름 전부 앞에 assy_probe1011_(제품 이름 함수를 같은 접두로 감쌈)
+   진짜 CLI  replay clicut_join --apply --pace trickle --chunk-size 100 (오른쪽 1,000 행 · 왼쪽 2,000 행, 제품 쓰기 문으로 씨앗)
+   워커     run_chain_worker 처럼("Chain" 먼저 -> 체인 모듈) 기동한 프로세스에서 _end_queries_a_gone_chain_worker_left_sync 그대로
+   WORKER pid 58828 · active_process_name Chain · name assy_probe1011_chain · slots assy_probe1011_chainslot% · another loop None
+   sees pid 12244 · assy_probe1011_chain · opened before import True · idle · COMMIT
+   sees pid 21660 · assy_probe1011_chain · opened before import True · idle · ROLLBACK
+   sees pid 40856 · assy_probe1011_chain · opened before import False · active · SELECT pid, application_name, backend_start < to_timestamp(1
+   sees pid 53800 · assy_probe1011_chain_replay_cli · opened before import True · active · SELECT pg_sleep(90)
+   WARNING - [Chain] ended pid 12244, left by a chain worker that is gone - idle 2 s (last query: COMMIT)
+   WARNING - [Chain] ended pid 21660, left by a chain worker that is gone - idle 2 s (last query: ROLLBACK)
+   CLI      [Retroactive] run_id=b7f08783ca97 op=chain_replay FAILED: (psycopg2.OperationalError) server closed the connection unexpectedly · CLI exit 1
+   실행 기록 run chain_replay · failed · runner retroactive/DESKTOP-OVKV3HK/47552 · rows 200 / None · error '(psycopg2.OperationalError) server closed the connection unexpectedly'
+   대조     HOLD survived 90 s — CLI 가 체인 모듈을 안 불렀을 때의 이름, 같은 때 열림
+그래서 누가 무엇을 하나
+   CLI 는 다음 쪽 읽기에서 죽는다(위 줄). 끊긴 뒤 CLI 가 새로 연 연결 1 개 — 그 뒤 실행 기록이 failed 라
+   큐 게이트를 안 잡는다
+   replay --apply 는 쓰지 않고 쪽마다 아웃박스로 넘긴다 — 안 끊긴 판: source rows scanned  : 1000 in 10 page(s) · rows handed over   : 1000 in 10 outbox event(s)
+   그 쪽은 체인 워커가 쓴다 — CLI 의 말: the worker writes them under one transaction; watch the chain log
+   끊긴 판: 끊기기 전에 넘긴 쪽은 남고(실행 기록의 행 수) 나머지는 안 넘어간다 — 아웃박스 행 수는 안 셌다
+   다시 돌리면 규칙 전체를 처음부터 넘긴다
+덤 — CLI 의 줄이 chain_worker.log 로 간다: 안 끊긴 판 데이터 루트의 chain_worker.log 7 줄 중 CLI 의 것 4 ([Chain] 3 · [admin.retroactive] 1)
+   나머지 3 줄은 제 씨앗 스크립트(제품 crud 쓰기 문만 부름)의 [ChainRules] 줄 — 그 스크립트도 Chain 으로 묶였다
+   운영 데이터 루트는 server/ 라 CLI 의 줄이 워커가 쓰는 그 파일에 섞인다
+fold-units  origin/main 에 그 낱말 0 (카나리아 fold-rows 3). 이 CLI 의 하위 명령이 되거나, 따로 된 스크립트라도
+   이름을 안 묶고 체인 모듈에 닿으면 같은 답
+남의 연결  정리가 끝낸 pid = 정리 전에 열린 CLI 연결 2 개뿐(접속 로그와 대조) · assy_test 의 내 것 아닌 연결: 정리 전 5 · 뒤 5
+   전에만 15940 assy_fold_units_scale_sql 2026-10-11T19:13:41.363804+09:00
+   뒤에만 41740 assy_chain 2026-10-11T19:15:59.180872+09:00
+   (내 정리가 찾은 이름은 assy_probe1011_chain · assy_probe1011_chainslot% 뿐이고, 둘 다 끝낸 pid 목록에 없다)
+고칠 자리 안 셋 (짓지 않음 — 총괄 판정 대기)
+   ㄱ CLI 가 맨 위에서 "Retroactive" 를 묶는다(retroactive_run.py 와 같은 두 줄) — 이름 assy_retroactive · 줄은 retroactive.log
+      버튼 소급과 같은 이름·같은 파일 · 다른 스크립트는 그대로 · 크기 한 파일 + 칸 하나 + RUN.md 말
+   ㄴ 체인 모듈이 import 때 프로세스 이름을 안 묶는다(ingestion_worker 의 get_process_logger -> 이름만 가진 logger) —
+      원인 자리. 체인 워커는 run_chain_worker.py 가 이미 먼저 묶는다 · 그 import 에 기대 줄을 갖던 진입점은 줄을 잃는다
+      — 진입점 전수 안 셈 · 크기 안 쟀다
+   ㄷ 연결 이름에 OS pid 를 싣고 정리는 pid 가 죽은 연결만 끝낸다 — 판단 자체를 고침 · application_name 을 = 로
+      견주는 자리 전부가 바뀐다(자리 수 안 셈) · 크기 안 쟀다, 셋 중 가장 큼
+어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_clicut_1011 · assy_impl_clicut2_1011(안 끊긴 판) — 둘 다 만들고 지움
+   dropped schema assy_impl_clicut_1011 (15 tables) - left 0
+   public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428
+   dropped schema assy_impl_clicut2_1011 (15 tables) - left 0
+   public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428
+```

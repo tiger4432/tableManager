@@ -795,11 +795,7 @@ def load_chain_rules():
                         if rule.get("allow_retraction") else
                         "map by map - the target's map_key_columns")
 
-        flat = [w.path.rsplit(".", 1)[-1] for w in chain_bindings.rule_warnings(rule)]
-        if flat:
-            logger.warning(
-                "[ChainRules] %s: %d cell(s) still written flat — move them under 'params': %s",
-                rule.get("name"), len(flat), ", ".join(flat))
+        # the 「still written flat」 line is `rule_shape.flat_cell_notes`, logged with the declaration's notes above
         # 🪦 [S-152, 판정 372] AN UNDECLARED PARAM USED TO WARN HERE, and a warning is what
         #    let `trigger_colums` roll on against the whole table. It is a REFUSAL now, and
         #    it is raised by `rule_refusals` above - so the save and the config screen, which
@@ -1485,19 +1481,30 @@ def _group_target_tables(events_in_tx, rules):
     return targets
 
 class _NextPage:
-    """A proposal's remaining pages, at its rule's place in a table's list (총괄 e10c58e5e)."""
+    """A proposal's remaining pages, at its rule's place in a table's list (총괄 e10c58e5e) - with what its first
+    page said (`rule_run`'s `next_page` record: rows_total · pages · first)."""
 
-    __slots__ = ("more", "rule")
+    __slots__ = ("more", "rule", "total", "pages", "first")
 
-    def __init__(self, more, rule):
-        self.more, self.rule = more, rule
+    def __init__(self, more, rule, total=None, pages=None, first=0):
+        self.more, self.rule, self.total, self.pages, self.first = more, rule, total, pages, first
+
+
+def _page_said(rule, target, page, pages, rows, total, written):
+    """THE PAGE LINE (총괄 634c06fc3, 소유자 「쓰는 진척률이라도 보이면」): what the log and the queue's `running` say
+    of a proposal's page k - of K and the rows written so far of all its rows, when the proposal counted them; else
+    the page and its rows, with no cell for a count nobody gave."""
+    if total is None or pages is None:
+        return "%s -> %s · page %d · %d rows" % (rule, target, page, rows)
+    return "%s -> %s · page %d/%d · %d / %d rows" % (rule, target, page, pages, written, total)
 
 
 def _carry_next_pages(table_updates, table_contributors, target_table, rule, answer):
     """A proposal that has more pages leaves a marker right after its first page - so the
     rules after it still write after its last page, as the rule order says."""
     for more in answer.get("next_page") or ():
-        table_updates[target_table].append(_NextPage(more, rule.get("name")))
+        table_updates[target_table].append(_NextPage(more["call"], rule.get("name"), more["rows_total"],
+                                                     more["pages"], more["first"]))
         if rule.get("name") not in table_contributors[target_table]:
             table_contributors[target_table].append(rule.get("name"))
 
@@ -1513,10 +1520,14 @@ def _in_rule_order(table_updates):
             if not isinstance(item, _NextPage):
                 batch.append(item)
                 continue
+            # the first page went out with the cells before the marker - its line, before that write
+            said = _page_said(item.rule, target, 1, item.pages, item.first, item.total, item.first)
+            logger.info("[Chain] %s", said)
+            heartbeat.progress("mapper · %s" % said)
             if batch:
                 yield (target, batch, False, None, None)
             batch = []
-            more, page = item.more, 1
+            more, page, written = item.more, 1, item.first
             while more is not None:
                 page += 1
                 try:
@@ -1526,10 +1537,11 @@ def _in_rule_order(table_updates):
                     raise RuntimeError("[rule=%s target=%s] page %d: %s: %s" % (
                         item.rule, target, page, type(exc).__name__, exc)) from exc
                 updates = list(result.get("updates") or ())
-                logger.info("[Chain] %s -> %s: page %d, %d row(s)", item.rule, target, page,
-                            len(updates))
+                written += len(updates)
+                said = _page_said(item.rule, target, page, item.pages, len(updates), item.total, written)
+                logger.info("[Chain] %s", said)
                 # the queue's `running` reads this - and its moved seconds start again (총괄 248ae20cd)
-                heartbeat.progress("mapper · %s -> %s · page %d · %d rows" % (item.rule, target, page, len(updates)))
+                heartbeat.progress("mapper · %s" % said)
                 more = result.get("next_page")
                 if updates:
                     yield (target, updates, False, None, None)

@@ -48,7 +48,7 @@ def test_the_server_reads_the_shared_vector(case, tmp_path, monkeypatch, request
     for atom in case["atoms"]:
         at = datetime.fromisoformat(atom["occurred_at"].replace("Z", "+00:00"))
         seen.setdefault(atom["attribute"], []).append(
-            (at, atom["value"], atom["world"], atom["source_who"], ledger_subgraph._instant(at)))
+            (at, atom["value"], atom["world"], atom["source_who"], ledger_subgraph._instant(at), None))
     node = ledger_subgraph._entity_node(TYPE, {KEY: VALUE})
     ledger_subgraph._apply_registrations(
         {node["id"]: node}, {node["id"]: seen} if seen else {},

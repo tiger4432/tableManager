@@ -96,11 +96,11 @@ def _write(db, table, values):
 
 
 def _chain_cells(db, column="grade"):
-    """The chain's claims on the target, as `{row_id: origin_row_id}`."""
+    """The chain's claims on the target, as `{row_id: origin_row_id}` - its row layers too (the product's predicate)."""
+    from chain import cell_layer
+
     return {row.row_id: row.origin_row_id for row in db.query(models.CellSource).filter(
-        models.CellSource.table_name == TARGET,
-        models.CellSource.column_name == column,
-        models.CellSource.source_name == join_into.CHAIN_LAYER).all()}
+        *cell_layer._claimed_filter(TARGET, join_into.CHAIN_LAYER, [column])).all()}
 
 
 # ---------------------------------------------------------------------------

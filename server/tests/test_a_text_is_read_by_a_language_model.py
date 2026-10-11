@@ -5,9 +5,17 @@ config/llm_config.json on every call and writes two lines a call to llm_requests
 A fake `openai` module: no network, no package (this box has none) - what is measured is that the
 file's cells reach the client, not what the real client sends.
 
-  answer names a dictionary phrase     key from the dictionary
-  answer names other words             type and key empty, *_phrase kept
-  evidence the text does not hold      refused by name
+  the prompt                           every node once: identifier (type): all its phrases ·
+                                       shortest noun phrase · one link per cause x effect pair
+  two links quoting one sentence       two rows, the same sentence_no
+  answer names a listed identifier     type and key of that node, whatever its words
+  answer names an unlisted identifier  type and key empty, *_phrase kept, one warning line
+  one key under two types              <type>:<key> in the list; the bare key is unlisted
+  identifier null, words a phrase      key from the dictionary (`_named`)
+  identifier null, other words         type and key empty, *_phrase kept
+  evidence the text does not hold      that link dropped, one warning line · every link: refused by name
+  evidence over two sentences          found, the sentence it starts in
+  quote marks · ellipsis               ignored on both sides; a changed word or only marks is dropped
   answer not JSON / no links list      refused by name
   certainty said / unsaid              confirmed · suspected / suspected
   the file's cells                     reach the client · its httpx reads no system proxy
@@ -38,6 +46,7 @@ CELLS = {"base_url": "http://llm.test/v1", "model": "m-1", "api_key": KEY}
 NAMES = [{"node_type": "quantity", "node_key": "q-temp", "phrase": "bond temperature"},
          {"node_type": "defect_kind", "node_key": "d-void", "phrase": "void"}]
 TEXT = "The bond temperature was high. It caused a void, we suspect.\nNothing else."
+KO_TEXT = "본딩 온도가 높았다. 그래서 보이드가 생긴 것으로 보인다.\n작업자는 \"온도가 원인\"이라고 했다."
 
 
 @pytest.fixture(name="root")
@@ -145,6 +154,78 @@ def test_a_malformed_answer_is_refused_by_name(answer, content, said):
     assert said in str(refused.value)
 
 
+def _dropped_lines(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "utils.text_links"]
+
+
+def test_a_link_whose_evidence_the_text_does_not_hold_is_dropped_and_said(answer, caplog):
+    answer(_links({"cause": "본딩 온도", "effect": "보이드", "evidence": "그래서 보이드가 생긴 것으로 보인다."},
+                  {"cause": "습도", "effect": "보이드", "evidence": "습도가 높아서 보이드가 생겼다."},
+                  {"cause": "온도", "effect": "보이드", "evidence": "본딩 온도가 높았다."}))
+    caplog.set_level(logging.WARNING)
+    rows = text_links.ask_links(KO_TEXT, NAMES)
+    assert [(row["cause_phrase"], row["sentence_no"]) for row in rows] == [("본딩 온도", 2), ("온도", 1)]
+    (line,) = _dropped_lines(caplog)
+    assert line == ("[LLM] link 2 of 3 quotes evidence the text does not hold - dropped (llm:m-1): "
+                    "'습도가 높아서 보이드가 생겼다.'")
+
+
+def test_every_link_dropped_is_refused_with_the_count(answer, caplog):
+    answer(_links({"cause": "습도", "effect": "보이드", "evidence": "습도가 높아서 보이드가 생겼다."},
+                  {"cause": "압력", "effect": "보이드", "evidence": "압력이 낮았다."}))
+    caplog.set_level(logging.WARNING)
+    with pytest.raises(llm.LlmRefused) as refused:
+        text_links.ask_links(KO_TEXT, NAMES)
+    assert str(refused.value) == ("every link of the answer (2) quotes evidence the text does not hold"
+                                  " - link 1: '습도가 높아서 보이드가 생겼다.'")
+    assert [line.split(" quotes ")[0] for line in _dropped_lines(caplog)] == [
+        "[LLM] link 1 of 2", "[LLM] link 2 of 2"]
+
+
+@pytest.mark.parametrize("text,evidence,sentence_no", [
+    (KO_TEXT, "본딩 온도가 높았다. 그래서 보이드가", 1),
+    (KO_TEXT, "생긴 것으로 보인다.\n작업자는", 2),
+    (TEXT, "we suspect. Nothing else.", 2),
+], ids=["ko-1-2", "ko-2-3-over-a-line-break", "en-2-3"])
+def test_evidence_over_two_sentences_is_found_in_the_sentence_it_starts_in(answer, text, evidence, sentence_no):
+    answer(_links({"cause": "a", "effect": "b", "evidence": evidence}))
+    (row,) = text_links.ask_links(text, NAMES)
+    assert row["sentence_no"] == sentence_no
+    assert row["sentence"] == text_links._sentences(text)[sentence_no - 1]
+    assert row["evidence"] == evidence
+
+
+@pytest.mark.parametrize("text,evidence,sentence_no", [
+    (KO_TEXT, "“그래서 보이드가 생긴 것으로 보인다.”", 2),
+    (KO_TEXT, "«그래서 보이드가 생긴 것으로 보인다»", 2),
+    (KO_TEXT, "「본딩 온도가 높았다」", 1),
+    (KO_TEXT, "『본딩 온도가 높았다』", 1),
+    (KO_TEXT, "‘그래서 보이드가 생긴 것으로…’", 2),
+    (KO_TEXT, "그래서 보이드가 생긴 것으로 보인다...", 2),
+    (KO_TEXT, "작업자는 온도가 원인이라고 했다.", 3),
+    (KO_TEXT, "작업자는 '온도가 원인'이라고 했다.", 3),
+    (TEXT, "It caused a void, we suspect…", 2),
+], ids=["curly-double", "guillemets", "corner", "white-corner", "curly-single-and-…",
+        "trailing-...", "marks-only-in-the-text", "other-marks-than-the-text", "en-…"])
+def test_quote_marks_and_ellipsis_are_ignored_on_both_sides(answer, text, evidence, sentence_no):
+    answer(_links({"cause": "a", "effect": "b", "evidence": evidence}))
+    (row,) = text_links.ask_links(text, NAMES)
+    assert row["sentence_no"] == sentence_no
+
+
+@pytest.mark.parametrize("evidence", [
+    "그래서 보이드가 생긴 것으로 보임.", "본딩 온도가 낮았다.", "“…”", "...",
+], ids=["ko-ending-changed", "ko-word-changed", "only-marks", "only-ellipsis"])
+def test_a_changed_word_or_only_marks_is_still_dropped(answer, caplog, evidence):
+    answer(_links({"cause": "a", "effect": "b", "evidence": evidence},
+                  {"cause": "c", "effect": "d", "evidence": "본딩 온도가 높았다."}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, NAMES)
+    assert row["cause_phrase"] == "c"
+    (line,) = _dropped_lines(caplog)
+    assert line.startswith("[LLM] link 1 of 2 quotes evidence the text does not hold - dropped")
+
+
 def test_a_fenced_answer_is_read(answer):
     answer("```json\n" + _links({"cause": "void", "effect": "void",
                                   "evidence": "Nothing else."}) + "\n```")
@@ -164,6 +245,110 @@ def test_the_prompt_holds_no_domain_word(answer):
     text_links.ask_links(TEXT, NAMES, instruction="only the cause of voids")
     prompt = asked[0][1][-1]["content"]
     assert "bond temperature" in prompt and "only the cause of voids" in prompt and TEXT in prompt
+
+
+KO_NAMES = [{"node_type": "quantity", "node_key": "Q123", "phrase": "계면 미충진"},
+            {"node_type": "factor", "node_key": "F1", "phrase": "본딩 온도"},
+            {"node_type": "quantity", "node_key": "Q123", "phrase": "underfill void"},
+            {"node_type": "defect_kind", "node_key": "D7", "phrase": "보이드"},
+            {"node_type": "factor", "node_key": "F2", "phrase": None},
+            {"node_type": "quantity", "node_key": "Q123", "phrase": "UF void"}]
+KO_EVIDENCE = "그래서 보이드가 생긴 것으로 보인다."
+
+
+def _prompt(asked):
+    return asked[-1][1][-1]["content"]
+
+
+def test_the_prompt_lists_every_node_once_with_all_its_phrases(answer):
+    asked = answer(_links())
+    text_links.ask_links(KO_TEXT, KO_NAMES)
+    block = ("Q123 (quantity): 계면 미충진 / underfill void / UF void\n"
+             "F1 (factor): 본딩 온도\n"
+             "D7 (defect_kind): 보이드")
+    assert _prompt(asked) == text_links.ASK_LINKS_PROMPT.replace("<<dictionary>>", block).replace(
+        "<<instruction>>", "").replace("<<text>>", KO_TEXT)
+
+
+def test_the_prompt_asks_for_the_shortest_noun_phrase_not_a_sentence(answer):
+    """소유자 10-11 「사전에 없는 프레이즈는 너무 주저리 문장으로 뽑네」."""
+    asked = answer(_links())
+    text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert ("- cause, effect: the shortest noun phrase of the text that names the thing, copied from the text"
+            " - a few words, never a clause or a whole sentence (the whole sentence goes in evidence)"
+            ) in _prompt(asked).splitlines()
+
+
+def test_one_sentence_with_several_causes_or_effects_gives_one_row_per_pair(answer):
+    """소유자 10-11: one link per cause x effect pair, the same evidence allowed."""
+    text = "첫 문장이다. 본딩 온도가 높아 보이드와 계면 미충진이 생겼다."
+    said = "본딩 온도가 높아 보이드와 계면 미충진이 생겼다."
+    asked = answer(_links(
+        {"cause": "본딩 온도", "cause_key": "F1", "effect": "보이드", "effect_key": "D7", "evidence": said},
+        {"cause": "본딩 온도", "cause_key": "F1", "effect": "계면 미충진", "effect_key": "Q123", "evidence": said}))
+    rows = text_links.ask_links(text, KO_NAMES)
+    assert [(r["sentence_no"], r["cause_key"], r["phenomenon_key"], r["phenomenon_phrase"]) for r in rows] == [
+        (2, "F1", "D7", "보이드"), (2, "F1", "Q123", "계면 미충진")]
+    assert ("When one sentence names several causes or effects, list one link for each cause and effect pair"
+            " - separate items, which may quote the same evidence.") in _prompt(asked).splitlines()
+
+
+def test_a_listed_identifier_gives_its_node_whatever_the_words(answer, caplog):
+    answer(_links({"cause": "온도", "cause_key": "F1", "effect": "생긴 보이드", "effect_key": "Q123",
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_type"], row["cause_key"], row["cause_phrase"]) == ("factor", "F1", "온도")
+    assert (row["phenomenon_type"], row["phenomenon_key"], row["phenomenon_phrase"]) == (
+        "quantity", "Q123", "생긴 보이드")
+    assert _dropped_lines(caplog) == []
+
+
+@pytest.mark.parametrize("words", ["습도", "본딩 온도"], ids=["other-words", "words-are-a-phrase"])
+def test_an_unlisted_identifier_gives_no_node_and_is_said(answer, caplog, words):
+    """Not listed is not used - not even when the words are a phrase (총괄 10-11 ③)."""
+    answer(_links({"cause": words, "cause_key": "Q999", "effect": "보이드", "effect_key": "D7",
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_type"], row["cause_key"], row["cause_phrase"]) == (None, None, words)
+    assert (row["phenomenon_type"], row["phenomenon_key"]) == ("defect_kind", "D7")
+    assert _dropped_lines(caplog) == [
+        "[LLM] link 1 of 1 answers cause_key 'Q999', which the dictionary does not list"
+        " - kept with its words only (llm:m-1): %r" % words]
+
+
+@pytest.mark.parametrize("null", [{}, {"cause_key": None}, {"cause_key": ""}, {"cause_key": "  "}],
+                         ids=["missing", "null", "empty", "spaces"])
+def test_a_null_identifier_gives_the_node_of_the_phrase_its_words_are(answer, caplog, null):
+    answer(_links({"cause": "본딩온도", **null, "effect": "보이드", "effect_key": None,
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_type"], row["cause_key"], row["cause_phrase"]) == ("factor", "F1", "본딩온도")
+    assert (row["phenomenon_type"], row["phenomenon_key"]) == ("defect_kind", "D7")
+    assert _dropped_lines(caplog) == []
+
+
+def test_a_key_two_types_share_is_listed_and_answered_with_its_type(answer, caplog):
+    names = [{"node_type": "quantity", "node_key": "K1", "phrase": "본딩 온도"},
+             {"node_type": "defect_kind", "node_key": "K1", "phrase": "보이드"},
+             {"node_type": "factor", "node_key": "K2", "phrase": "압력"}]
+    asked = answer(_links(
+        {"cause": "온도", "cause_key": "quantity:K1", "effect": "생긴 보이드",
+         "effect_key": "defect_kind:K1", "evidence": KO_EVIDENCE},
+        {"cause": "온도", "cause_key": "K1", "effect": "생긴 보이드", "effect_key": "K2",
+         "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    first, second = text_links.ask_links(KO_TEXT, names)
+    assert {"quantity:K1 (quantity): 본딩 온도", "defect_kind:K1 (defect_kind): 보이드",
+            "K2 (factor): 압력"} <= set(_prompt(asked).splitlines())
+    assert (first["cause_type"], first["cause_key"], first["phenomenon_type"], first["phenomenon_key"]) == (
+        "quantity", "K1", "defect_kind", "K1")
+    assert (second["cause_type"], second["cause_key"], second["phenomenon_type"], second["phenomenon_key"]) == (
+        None, None, "factor", "K2")
+    assert [line.split(", which ")[0] for line in _dropped_lines(caplog)] == [
+        "[LLM] link 2 of 2 answers cause_key 'K1'"]
 
 
 @pytest.mark.parametrize("proxy", [None, "http://user:pw@proxy.test:8080"])
@@ -235,7 +420,7 @@ def test_a_call_writes_what_it_sent_and_what_came_back(answer, root):
         sent["id"], 200, {"choices": [{"message": {"content": '{"ok": 1}'}}]})
     assert set(back) == {"received", "id", "status", "answer", "ms"}
     assert (failed["id"], failed["status"], failed["error"]) == (
-        sent_again["id"], 503, "RuntimeError: upstream said no")
+        sent_again["id"], 503, "RuntimeError: upstream said no · proxy: none (direct)")
     assert sent_again["id"] != sent["id"]
 
 
@@ -257,6 +442,49 @@ def test_the_key_reaches_no_refusal_and_no_log(answer, root, caplog):
     assert KEY not in caplog.text
     written = (root / llm.REQUEST_LOG).read_text(encoding="utf-8")
     assert KEY not in written and "Bearer ***" in written
+
+
+class APIConnectionError(Exception):
+    """openai's own words for a call that never reached the model."""
+
+
+class APITimeoutError(Exception):
+    pass
+
+
+def _chained(*layers):
+    """`layers` outer first, each raised from the next - the shape the client, httpx and the socket hand over."""
+    exc = None
+    for layer in reversed(layers):
+        try:
+            raise layer from exc
+        except BaseException as raised:                            # noqa: BLE001
+            exc = raised
+    return exc
+
+
+@pytest.mark.parametrize("proxy", [None, "http://user:pw@proxy.test:8080"])
+@pytest.mark.parametrize("failure,inner", [
+    ((APIConnectionError("Connection error."), httpx.ConnectError("[Errno 11001] getaddrinfo failed"),
+      OSError(11001, "getaddrinfo failed")), "OSError: [Errno 11001] getaddrinfo failed"),
+    ((APIConnectionError("Connection error."), httpx.ConnectError("[WinError 10061] actively refused"),
+      ConnectionRefusedError(10061, "actively refused")), "ConnectionRefusedError: [Errno 10061] actively refused"),
+    ((APIConnectionError("Connection error."), httpx.ProxyError("407 Proxy Authentication Required")),
+     "ProxyError: 407 Proxy Authentication Required"),
+    ((APITimeoutError("Request timed out."), httpx.ConnectTimeout("timed out"), TimeoutError("timed out")),
+     "TimeoutError: timed out"),
+], ids=["name", "refused", "proxy", "timeout"])
+def test_a_connection_failure_says_its_innermost_reason_and_the_proxy(answer, root, failure, inner, proxy):
+    """총괄 024e3d31f (소유자 「llm api 커넥션 에러 뜨는데」): the client's «Connection error.» named none of the four."""
+    _declare(root, **CELLS, **({"proxy": proxy} if proxy else {}))
+    answer(_chained(*failure))
+    with pytest.raises(llm.LlmRefused) as refused:
+        llm.ask_json("anything")
+    via = "proxy: none (direct)" if not proxy else "proxy: "
+    error = [line for line in _log_lines(root) if "error" in line][-1]["error"]
+    for said in (str(refused.value), error):
+        assert said.split(" · proxy: ")[0].endswith(inner), said
+        assert via in said and "pw" not in said, said
 
 
 def test_without_the_package_the_refusal_says_how_to_install(root, monkeypatch):

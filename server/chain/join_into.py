@@ -469,13 +469,13 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
     """One page of left rows answered from what was read once - and the call for the next."""
     from chain import keyset_scan
 
-    size = keyset_scan.DEFAULT_CHUNK_SIZE
+    page, after, pages = keyset_scan.pages(left_rows, start)
     blank = (None,) * len(_takes(spec))
     rows = [_Answer(row_id, origin, values)
-            for row_id, key in left_rows[start:start + size]
+            for row_id, key in page
             for origin, values in (answers.get(key) or [(None, blank)])]
     updates = _update_items(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
-    more = start + size < len(left_rows)
+    more = after is not None
     unsaid, total = {}, 0
     if not start:
         # 🔴 [총괄 529fc7ce8 ①] THE COUNT IS ALL THE PAGES', read off what was read once: a row
@@ -509,10 +509,10 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
                    "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
     answer = {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
               "next_page": (lambda: _page(db, rule, spec, left_table, left_rows, answers,
-                                          start + size, handed, side))
+                                          after, handed, side))
               if more else None}
     if not start:
-        answer["rows_total"] = total
+        answer["rows_total"], answer["pages"] = total, pages
     return answer
 
 
