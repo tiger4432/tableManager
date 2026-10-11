@@ -65978,3 +65978,23 @@ require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 repla
 게이트   응용 대역 그대로: 잡 행 전부 지움 -> 인벤토리 행 거둠(키만 남으면 [ChainShell]) · 가장 이른 행 지움 -> 다음 이른 값 · 이르지 않은 행 지움 -> 그대로 · group_by 없는 규칙 오늘 그대로 · 변이 · 진짜 프로세스 한 판
 짓기 전  안 셋 + 추천을 총괄에게(남은 행 0 처리 · 쪽 크기 · 지운 행 수천일 때 묶음 수)
 ```
+
+> **[총괄 -> 구현자 · 응용] 10-11 오후 — 원장 선언이 시각 · timezone 을 쓸데없이 묻는 자리 전수 + 고침 (소유자 「원장 선언 쓸데없이 timezone 이나 시간 쓰라고 하는 거 많은데(특히 속성) 조사해서 고쳐 스켈레톤 잘 감」) — 층 원천 행마다 다음, 기록 전부 앞**
+
+```
+총괄이 본 것(코드)
+   ledger_skeleton.json  sources.read.occurred_at «required: true» · 그 안 timezone «required: true» — 그런데 검증기는 read.occurred_at 이 없어도 source_defaults 가
+                         사건 엣지 바인딩의 시각(열 · timezone)이나 사건 엣지가 없으면 행의 저장 시각(DEFAULT_TIME_ORIGIN)으로 채움 -> 폼이 «필수»라고 말하는 것이 거짓
+   validate_bundle_errors  사건 엣지들이 서로 다른 시각을 말하거나 하나가 timezone 을 안 말할 때만 missing_time — 이게 «정말 필수»의 경우
+   config.py:550          옛 평평한 모양의 occurred_at_timezone 거절 — 아직 읽는 자리가 있는지
+   config_authoring       timezone 기본값 Asia/Seoul 채움 · 속성 바인딩 폼에 시각 역할이 «필수»로 깔리는지(predicate_claim: 술어에는 필수, 매핑에서는 빼도 됨 10-02)
+원칙(도착지 두 줄)
+   「시각은 사건 엣지에만 묻는다 — 속성 등록 · 값만 싣는 소스는 시각 칸을 묻지 않고, 안 적으면 행의 저장 시각이다」
+   「timezone 은 시각 «열»을 적었을 때만 그 레코드 안에서 필수다 — 그 밖에서는 묻지도 기본값을 박지도 않는다」
+할 일
+   ① 전수: 골격 · 폼(config_authoring · 클라 폼) · 검증기 · 로더에서 occurred_at · timezone · basis 를 «필수»로 말하거나 기본값을 채우는 자리 — 자리마다 «정말 필요한가»(검증기가 없으면 거절하나 · 기본값이 채우나) 표, 센 명령 같이
+   ② 고침: 골격의 required 를 검증기의 답과 같게(read.occurred_at 선택 · 속성 바인딩의 occurred_at 선택) — 골격은 코드에서 다시 생성(드리프트 게이트) · 폼은 «필수» 표시를 그 골격에서만 읽음
+   ③ 기본값이 채우는 칸은 폼에 «default: row time» 처럼 무엇으로 채워지는지 한 줄(지어내지 않고 source_defaults 의 답)
+게이트   속성만 등록하는 소스(시각 열 없음) -> 폼 «필수» 0 · 저장 통과 · 원자 occurred_at = 행 저장 시각 / 사건 엣지 둘이 다른 시각 -> 그때만 missing_time / timezone 없는 시각 열 -> 그때만 거절 · 골격 드리프트 · 변이
+응용(지금)  18766 선언 화면에서 «속성만 등록하는 소스» · «사건 엣지 소스» 둘을 새로 쓸 때 화면이 시각 · timezone 을 묻는 자리를 글자로(칸 · 필수 표시 · 기본값) — 구현자 ① 의 대조군
+```
