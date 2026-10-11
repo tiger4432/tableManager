@@ -38002,3 +38002,12 @@ dist      G-2 손이 안 섞인 트리에서 빌드 — G-2 가 커밋 안 된 �
 Columns ▾  묶음 단위로 끄고 켬(묶음 수 «16 of 16») · 묶음 안 칸은 ▸ 로
 게이트   데모 바구니 wafer 구역 묶음 16 · 처음 칸 = 숫자 · ▸ 4 펼침 · 다시 접힘 · 펼침 기억 · Copy 는 보이는 칸 그대로 · Long 은 그대로 다 · 변이
 ```
+
+> **[총괄 -> 클라] 10-11 저녁 — 선언 폼 작은 둘(구현자 · 응용 18766 대조군, 서버 96f54ab36 · 739db5c2c 뒤) — W 조각 사이에 끼움(작음, 소유자가 지금 선언을 씀)**
+
+```
+1 접힌 RECORD 의 note   새 소스 빈 폼에서 Time 이 접힌 RECORD 라 계획의 note «Default: row time (ingested · created_at)» 가 안 보임 · Time zone 줄도 «— Single candidate» 만 보여 «Only for a time column» 이 안 보임
+                        -> 접힌 줄에도 계획 note 한 줄(펼치지 않아도) — note 를 그리는 자리 하나를 접힌 줄도 지남
+2 409 stale_base_snapshot   + New 의 Create 가 «active snapshot changed before draft creation» 일 때 문장만 있고 다음 행동 없음 -> 같은 줄에 «Reload and try again» 단추(그 화면의 기존 다시 읽기)
+게이트   빈 새 소스 폼에 그 두 note 글자 · 409 스텁 -> 단추 -> 다시 읽기 요청 · 변이
+```
