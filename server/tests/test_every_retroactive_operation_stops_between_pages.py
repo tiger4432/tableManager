@@ -124,6 +124,9 @@ class _Control:
     def progress(self, processed=None, total=None):
         self.reported.append((processed, total))
 
+    def step(self, name, page, pages, rows):
+        """RunControl's step seat (79afc64e5) - the time inside a page; nothing to record here."""
+
     def stop_requested(self):
         return True
 

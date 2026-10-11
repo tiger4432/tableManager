@@ -44,6 +44,9 @@ class Control:
     def progress(self, processed=None, total=None):
         self.progressed.append((processed, total))
 
+    def step(self, name, page, pages, rows):
+        """RunControl's step seat (79afc64e5) - the time inside a page; nothing to record here."""
+
     def stop_requested(self):
         if self.stop_after_days is not None and any(
                 p and p >= self.stop_after_days for p, _t in self.progressed):
