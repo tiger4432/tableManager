@@ -298,6 +298,11 @@
   color: var(--oe-ink-label); font-size: var(--fs-label); margin-bottom: 5px;
 }
 #ontology-explorer-root .oe-new-actions { display: flex; gap: 6.8px; }
+/* A refusal and its next move on one line; the button takes the refusal's ink. */
+#ontology-explorer-root .oe-new-declaration .oe-error {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+}
+#ontology-explorer-root .oe-error > .oe-new-retry { color: inherit; border-color: currentColor; }
 #ontology-explorer-root .oe-tree-item {
   width: 100%; display: flex; align-items: center; border: 0;
   background: transparent; color: var(--oe-text); padding: 6.8px 6.8px 6.8px 20.4px;
@@ -897,6 +902,8 @@
 /* A folded one-value field in a tree row is ONE line: its head and its value side by side on the
    row's baseline (lead 8fd2f185d). Open, or outside the tree, the card still stacks. */
 #ontology-explorer-root .oe-field.is-bare.is-folded { flex-direction: row; flex-wrap: wrap; align-items: baseline; }
+/* The plan's note under the folded value, a line of its own. */
+#ontology-explorer-root .oe-field.is-bare.is-folded > .oe-field-note { flex-basis: 100%; }
 
 /* The folded line is the value, and outside the tree its reason. Measured at 0px apart the two
    ran together into one run of text, so the line carries the spacing unit and wraps rather than
@@ -986,6 +993,7 @@
 #ontology-explorer-root .oe-tree-add,
 #ontology-explorer-root .oe-new-make,
 #ontology-explorer-root .oe-new-cancel,
+#ontology-explorer-root .oe-new-retry,
 #ontology-explorer-root .oe-mode-action,
 #ontology-explorer-root .oe-edit-action,
 #ontology-explorer-root .oe-editor-action,

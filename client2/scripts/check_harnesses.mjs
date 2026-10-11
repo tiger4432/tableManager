@@ -938,7 +938,8 @@ const FLOORS = new Map([
   // a refused make stays on the world it was on and says why; the setup offer keeps its own refusal.
   // 114 -> 123 (lead 99032248f): beneath gives way to Empty / Copy of (copy_from), the walk's world set row, Live
   // paused and resumed (asked once, one PUT, the worlds read again), Paused said, each history line says what.
-  ['explorer_open_path_harness.mjs', 130],
+  // 130 -> 139 ([11] K1-K5 and four mutants, lead 10-11 small two: the stale Create re-reads and sends once; a save's 409 untouched).
+  ['explorer_open_path_harness.mjs', 139],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -954,7 +955,8 @@ const FLOORS = new Map([
   // 14 -> 16 (P5 P6, the review): a chip nobody can press has no box; an empty head takes no room.
   // 16 -> 19 (W6-W8, lead 115134f12): a switched-off field holding an empty list is not drawn.
   // 19 -> 21 (P7 W9, lead 810d0044b ① ④): an owed row's state word; the map's here row is a word.
-  ['explorer_form_grammar_harness.mjs', 21],
+  // 21 -> 27 (N0-N3 K6 K7, lead 10-11 small two: a folded row and a shut branch say the plan's note once; the stale refusal's retry).
+  ['explorer_form_grammar_harness.mjs', 27],
   // New with lead a5720d9d8: the screen's one blank rule (absent.js isBlank) - the contract's scalar
   // rows, the rule beyond scalars, and the seats that fold into it asking the same function.
   ['blank_rule_harness.mjs', 4],

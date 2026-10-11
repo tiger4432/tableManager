@@ -1476,6 +1476,132 @@ console.log('\n[10] a oneOf picked by shape writes the branch value itself');
   ok('S-M1 mutant (the picker is not handled) is caught by S2', !judge(mutated)[1][1], JSON.stringify(mutated));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [11] lead 10-11 ② — + New's Create refused because the snapshot moved under it: «Reload and try
+//      again» on the refusal's line is the screen's own re-read, then the same Create once. A second
+//      refusal stays as the server says it; a save's 409 is not this door (it would write over a change).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[11] a create refused for a moved snapshot');
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const SUBJECT = join(HERE, '..', 'src', 'ontology_explorer.js');
+  const STALE = { code: 'stale_base_snapshot', path: 'base_snapshot_hash',
+    message: 'active snapshot changed before draft creation' };
+  const refused = (status, detail) => ({ ok: false, status, json: async () => ({ detail }) });
+  const answered = (body) => ({ ok: true, status: 200, json: async () => body });
+  const walk = async (create, { again = false, save = false } = {}) => {
+    const on = { click: [], input: [] };
+    const root = element('div');
+    root.addEventListener = (type, fn) => { if (on[type]) on[type].push(fn); };
+    const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+    const fire = async (type, target) => { for (const fn of on[type]) await fn({ target }); await settle(); };
+    const click = (action, value) => { const t = { dataset: { action, value }, disabled: false }; t.closest = () => t; return fire('click', t); };
+    let snapshot = '1';
+    const asked = [];
+    const toasts = [];
+    const fetchOf = async (url, init = {}) => {
+      const u = String(url);
+      const path = u.split('?')[0];
+      const method = init.method || 'GET';
+      const sent = init.body ? JSON.parse(init.body) : null;
+      asked.push({ method, path, sent });
+      if (path.endsWith('/authoring/schema')) {
+        return answered({ ...AUTHORING, authorable_kinds: [{ id: 'source_plan', section: 'sources' }], skeleton: null });
+      }
+      if (path.includes('/authoring')) return answered(AUTHORING);
+      if (/\/drafts\/new$/.test(path)) {
+        if (sent.base_snapshot_hash !== snapshot || again) return refused(409, STALE);
+        return answered({ ...DRAFT, draft_id: 'd3', target_key: 'source_plan|fresh', creates_declaration: true, raw: {} });
+      }
+      if (/\/drafts\/d1$/.test(path) && method === 'PUT') {
+        return refused(409, { code: 'stale_revision', path: 'expected_revision', message: 'draft revision changed' });
+      }
+      if (/\/drafts\/d3$/.test(path) && method === 'PUT') return answered({ draft: { ...DRAFT, draft_id: 'd3', revision: 1 } });
+      if (/\/drafts$/.test(path) && method === 'POST') return answered(DRAFT);
+      if (path.endsWith('/activate')) return answered({ ok: true });
+      const opened = (u.match(/draft_id=(d\d)/) || [])[1];
+      return answered({ ...(save ? SELECTED : COMPILE), active_snapshot: { snapshot_hash: snapshot, valid: true },
+        ...(opened ? { draft: { ...DRAFT, draft_id: opened, context_token: 'ctx:1' } } : {}) });
+    };
+    const controller = create({ root, apiBase: '', adminFetch: fetchOf, showToast: (t) => toasts.push(String(t)) });
+    await controller.refresh();
+    await settle();
+    snapshot = '2';                 // somebody else's activate moved the snapshot
+    const out = {};
+    if (save) {
+      await click('create-draft');
+      const before = asked.length;
+      await click('save-draft');
+      out.after = asked.slice(before);
+      out.toasts = toasts;
+      return out;
+    }
+    await click('new-declaration', 'source_plan');
+    const typed = { dataset: { action: 'new-declaration-id' }, value: 'fresh', selectionStart: null, selectionEnd: null,
+      setSelectionRange() {} };
+    await fire('input', typed);
+    await click('create-declaration', 'source_plan');
+    const line = () => walkAll(root).find((n) => n._classes?.includes('oe-error')
+      && n.children.some((c) => c.dataset?.action === 'reload-and-create'));
+    const shown = line();
+    const retry = shown && shown.children.find((c) => c.dataset?.action === 'reload-and-create');
+    out.line = shown ? shown.textContent : '';
+    out.value = retry ? retry.dataset.value : null;
+    const before = asked.length;
+    if (retry) await click(retry.dataset.action, retry.dataset.value);
+    out.after = asked.slice(before);
+    out.naming = controller.getState().newDeclaration;
+    out.lineAfter = (line() || {}).textContent || '';
+    return out;
+  };
+  const creates = (o) => o.after.filter((a) => /\/drafts\/new$/.test(a.path));
+  const judge = (o, again, saved) => [
+    ['K1 the refused Create says the server\'s sentence with «Reload and try again» on its line, for the kind being made',
+      o.line === `${STALE.message}Reload and try again` && o.value === 'source_plan'],
+    ['K2 pressing it re-reads the mirror, then sends the same Create once, on the snapshot it just read',
+      o.after.findIndex((a) => a.method === 'GET' && a.path.endsWith('/view')) >= 0
+        && o.after.findIndex((a) => a.method === 'GET' && a.path.endsWith('/view'))
+          < o.after.findIndex((a) => /\/drafts\/new$/.test(a.path))
+        && creates(o).length === 1 && creates(o)[0].sent.canonical_id === 'fresh'
+        && creates(o)[0].sent.base_snapshot_hash === '2'],
+    ['K3 ...and that Create went through: the naming row is closed', o.naming === null],
+    ['K4 refused again, the sentence stays on the row with the name, and nothing is sent twice',
+      creates(again).length === 1 && again.naming && again.naming.id === 'fresh'
+        && again.naming.error === STALE.message],
+    ['K5 a save\'s 409 is not this door: one PUT, no re-read, the server\'s sentence as a toast',
+      saved.after.filter((a) => a.method === 'PUT').length === 1
+        && !saved.after.some((a) => a.method === 'GET' && a.path.endsWith('/view'))
+        && saved.toasts.some((t) => t.includes('draft revision changed'))],
+  ];
+  const run = async (create) => judge(await walk(create), await walk(create, { again: true }), await walk(create, { save: true }));
+  const base = await run(createOntologyExplorerController);
+  for (const [name, cond] of base) ok(name, cond);
+  const swap = (from, to) => async () => (await loadWithProbe(SUBJECT, { mutate: (t) => {
+    const text = t.replace(/\r\n/g, '\n');
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  } })).module.createOntologyExplorerController;
+  const MUTANTS = [
+    ['K-M1 the refusal\'s code is not kept, so no button', 'K1',
+      swap("type: 'NEW_DECLARATION_FAILED', code: detail?.code,", "type: 'NEW_DECLARATION_FAILED',")],
+    ['K-M2 the button re-reads and stops', 'K2',
+      swap('      await readMirror();\n      await createDeclaration(target.dataset.value);\n    }',
+           '      await readMirror();\n    }')],
+    ['K-M3 the button sends the Create on the old snapshot', 'K2',
+      swap('      await readMirror();\n      await createDeclaration(target.dataset.value);\n    }',
+           '      await createDeclaration(target.dataset.value);\n    }')],
+    ['K-M4 a second automatic retry', 'K4',
+      swap('      await readMirror();\n      await createDeclaration(target.dataset.value);\n    }',
+           '      await readMirror();\n      await createDeclaration(target.dataset.value);\n'
+             + '      if (state.newDeclaration?.error) await createDeclaration(target.dataset.value);\n    }')],
+  ];
+  for (const [name, cell, load] of MUTANTS) {
+    const got = await run(await load());
+    const red = got.filter(([, cond]) => !cond).map(([n]) => n.split(' ')[0]);
+    ok(`${name} is caught by ${cell}`, red.includes(cell), red.join(','));
+  }
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

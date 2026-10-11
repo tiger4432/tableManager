@@ -135,7 +135,12 @@ function renderNewDeclaration(state, kind) {
   actions.append(make, button('Cancel', 'cancel-declaration', kind, 'oe-new-cancel'));
   box.append(actions);
   if (state.newDeclaration?.error) {
-    box.append(h('div', 'oe-error', state.newDeclaration.error));
+    const refusal = h('div', 'oe-error', state.newDeclaration.error);
+    // The snapshot moved under the Create (lead 10-11 ②): re-read, then the same Create once.
+    if (state.newDeclaration.code === 'stale_base_snapshot') {
+      refusal.append(button('Reload and try again', 'reload-and-create', kind, 'oe-new-retry'));
+    }
+    box.append(refusal);
   }
   return box;
 }
@@ -1330,6 +1335,12 @@ function renderValue(row) {
 // genuine choice appears and stays hidden behind a fold nobody re-opened. That is why the
 // count is read HERE, at render time, from the candidate list as it currently is -- never
 // cached, never stamped on the field. When the list grows to two, the row opens by itself.
+/** The plan's note - the one seat that draws it: the open card, the folded line and a shut branch's line all
+ *  come here (lead 10-11 ①: folded, a Time said nothing of its default and a zone nothing of when it is asked). */
+function noteOf(row) {
+  return h('small', 'oe-field-note', row.note);
+}
+
 function foldDecision(row, expanded = {}) {
   // The operator's own choice wins over every rule below it, IN BOTH DIRECTIONS. A fold
   // nobody can open is not a fold, it is a deletion -- and a card nobody can shut is the
@@ -1467,6 +1478,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     // is the open card's (`renderGround`), one press away. This overturns 「the ground goes NEXT TO
     // the value」 for the folded line only - the owner read those sentences as noise (482288b12).
     card.append(line);
+    if (row.note) card.append(noteOf(row));
     return card;
   }
   if (fold.byHand) {
@@ -1648,7 +1660,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     line.append(h('span', '', refusal.message));
     card.append(line);
   }
-  if (row.note) card.append(h('small', 'oe-field-note', row.note));
+  if (row.note) card.append(noteOf(row));
   return card;
 }
 
@@ -1931,8 +1943,10 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     // control belongs on the line that carries the name -- and a fold then hides only the
     // keys nobody picked for, never the picker itself.
     const own = covers ? context.planRow(path) : null;
+    // Shut, the branch's own plan row is not drawn below it, so its note rides the branch's line.
+    const shut = !open && !own ? context.planRow(path) : null;
     box.append(treeRow(depth, label || path, [kind],
-                       own ? context.renderRow(own, shape, true) : null, toggle,
+                       own ? context.renderRow(own, shape, true) : shut && shut.note ? noteOf(shut) : null, toggle,
                        (path ? 'is-branch' : 'is-branch is-root')
                        + (open ? '' : ' is-folded')));
   }

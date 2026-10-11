@@ -905,6 +905,8 @@ async function suite(probe) {
     };
     calls.length = 0;
     const early = typeof refreshQueue === 'function' ? refreshQueue() : null;
+    // queue_poll's timedRead sends a microtask later (fd35266fe): let the early read leave before the ×.
+    await flush();
     const crossed = typeof cancelQueueLine === 'function' ? cancelQueueLine({ key: 'tx:bbbbbbbb' }) : null;
     await flush();
     release();
@@ -1004,7 +1006,7 @@ const DEFECTS = [
     s => s.replace("onScreen: () => !document.hidden && (currentTab === 'overview' || currentTab === 'chain'),",
                    'onScreen: () => !document.hidden,')],
   ['a read on its way is sent again',
-    s => s.replace('  if (!queueRead) {\n    queueRead = adminFetch(', '  if (true) {\n    queueRead = adminFetch(')],
+    s => s.replace('  if (!queueRead) {\n    // One read, cut at queue_poll', '  if (true) {\n    // One read, cut at queue_poll')],
   ['Refresh reads the whole tab',
     s => s.replace('onRefresh: () => { void refreshQueue(); }', 'onRefresh: () => { void fetchData({ silent: true }); }')],
   ['a × takes a read that left before it as the queue after (QA 54a53f894)',

@@ -9,6 +9,13 @@
 
 ---
 
+## 2026-10-11 · 선언 폼: 접힌 줄도 계획 note 를 보입니다 · 새로 만들기가 «스냅숏이 바뀜»으로 거절되면 «Reload and try again»
+
+- **무엇** — 총괄 10-11 «선언 폼 작은 둘». ① 계획이 단 note(«Default: row time (ingested · created_at)» · «Only for a time column» 같은 한 줄)를 접힌 줄에서도 보입니다. 접힌 값 밑에 한 줄로, 접힌 RECORD 는 그 줄 오른쪽에. 펴면 그 줄 자신의 카드가 보이고, 같은 note 가 두 번 나오지 않습니다. ② + New 의 Create 가 «active snapshot changed before draft creation»(409 stale_base_snapshot)으로 거절되면 그 문장 옆에 «Reload and try again» 단추가 섭니다. 누르면 화면을 다시 읽고 같은 Create 를 한 번 다시 보냅니다. 그것도 거절되면 서버 문장이 그대로 남고, 저절로 다시 보내지는 않습니다.
+- **어디서** — 원장 선언 창(어드민 › 온톨로지 탐색기)의 새 소스 폼: 방금 + New 로 만든 소스를 열면 Time 줄에 기본값 note 가 보이고, Time 을 펴면 Time zone 줄에 «Only for a time column» 이 보입니다.
+- **안 바뀐 것** — 이미 있는 선언을 고치는 저장이 409 를 받으면 지금처럼 문장만 토스트로 뜹니다. 남이 바꾼 것을 덮을 수 있어서 이 단추를 달지 않았습니다.
+- **필요한 조건** — 클라 빌드만.
+- **자세히** — 이 항목과 같은 커밋.
 ## 2026-10-11 · CLI 소급이 체인 워커 재기동에 끊기지 않는다
 
 - **무엇** — 총괄 10-11 ㄱ. CLI 소급(replay --apply · fold-units --apply 들)이 도는 중에 체인 워커를 재기동하면, 워커의 기동 정리가 CLI 의 연결을 «떠난 워커가 남긴 연결»로 보고 끊었습니다. CLI 연결의 이름이 체인 워커와 같은 assy_chain 이었기 때문입니다. 이제 CLI 는 시작할 때 이름을 Retroactive 로 묶어(큐의 소급 자식과 같음) 연결이 assy_retroactive 이고, 기동 정리가 건드리지 않습니다.

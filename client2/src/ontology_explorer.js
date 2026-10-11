@@ -505,7 +505,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       if (!res.ok) {
         const detail = body?.detail || body;
         dispatchNaming({
-          type: 'NEW_DECLARATION_FAILED',
+          type: 'NEW_DECLARATION_FAILED', code: detail?.code,
           message: detail?.message || errorMessage(new Error(`HTTP ${res.status}`)),
         });
         return;
@@ -1303,6 +1303,11 @@ No effect`;
     } else if (action === 'cancel-declaration') {
       dispatchNaming({ type: 'NEW_DECLARATION_CLOSED' });
     } else if (action === 'create-declaration') {
+      await createDeclaration(target.dataset.value);
+    } else if (action === 'reload-and-create') {
+      // Only a create (lead 10-11 ②): the screen's own re-read, then the same Create once - a second refusal
+      // stays on the row as the server says it. A save's 409 is not this door; it would write over someone's change.
+      await readMirror();
       await createDeclaration(target.dataset.value);
     }
     else if (action === 'back' || action === 'forward') {

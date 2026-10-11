@@ -425,7 +425,7 @@ export function reduceNewDeclaration(state, action) {
   }
   if (action.type === 'NEW_DECLARATION_FAILED') {
     if (!state.newDeclaration) return state;
-    return { ...state, newDeclaration: { ...state.newDeclaration, error: action.message } };
+    return { ...state, newDeclaration: { ...state.newDeclaration, error: action.message, code: action.code || null } };
   }
   if (action.type === 'NEW_DECLARATION_CLOSED') {
     return { ...state, newDeclaration: null };
