@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { isBlank } from '../absent.js';
+import { IMAGE_TYPE } from '../grid_image_column.js';
 
 /** The ways one cell follows at most; past them the cell says it has more. */
 export const WAYS_A_CELL = 50;
@@ -53,9 +54,13 @@ function valueAt(index, end, value) {
   const node = index.nodes.get(end.node) || {};
   if (value.on === 'label') return { value: node.label || end.node, when: end.edge };
   if (value.on === 'key') return { value: (node.keys || {})[value.name], when: end.edge };
-  if (value.on === 'edge') return { value: end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined, when: end.edge };
+  // An image reference is what the answer says it is (server c5463a475: the column's declared type), never the value's
+  // shape - an edge's `column_types` by qualifier, a node's own record's `column_type`.
+  if (value.on === 'edge') return { value: end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined, when: end.edge,
+    image: Boolean(end.edge) && (end.edge.column_types || {})[value.name] === IMAGE_TYPE };
   const said = (node.attributes || {})[value.name];
-  return { value: said, when: ((node.attributes_by_world || {})[value.name] || []).find((s) => s && sameValue(s.value, said)) || null };
+  const when = ((node.attributes_by_world || {})[value.name] || []).find((s) => s && sameValue(s.value, said)) || null;
+  return { value: said, when, image: Boolean(when) && when.column_type === IMAGE_TYPE };
 }
 
 /** Two values the same as said - a list (a many attribute) by its items, not by being one object (lead 10-11 W ⑬). */
@@ -68,11 +73,13 @@ export const saysValue = (column) => column.value.on === 'edge' || column.value.
 /**
  * One cell: what column `column` reads from row `x` inside group `inside` (Ri) - every way from x along the column's
  * steps over edges with both ends inside. Not inside: missing. A value is kept per way (none overwrites another).
- * @returns {{missing: boolean, values: Array, nodes: string[], more: boolean}} - `nodes[k]` gave `values[k]`
+ * @returns {{missing: boolean, values: Array, nodes: string[], more: boolean, images: boolean[]}} - `nodes[k]` gave
+ *   `values[k]`, an image reference when `images[k]`
  */
 export function cellOf(index, inside, x, column, cap = WAYS_A_CELL) {
   const got = readsOf(index, inside, x, column, cap);
-  return { missing: got.missing, values: got.reads.map((r) => r.value), nodes: got.reads.map((r) => r.giver), more: got.more };
+  return { missing: got.missing, values: got.reads.map((r) => r.value), nodes: got.reads.map((r) => r.giver), more: got.more,
+    images: got.reads.map((r) => Boolean(r.image)) };
 }
 
 /** What a cell reads, way by way - its value, what says when, its last edge, its end node, and who gave it: an edge's value

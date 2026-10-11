@@ -16,6 +16,37 @@ export const LOADING = 'Loading';
 export const SIZE_TOKEN = '--image-preview-max';
 export const EDGE_TOKEN = '--space-2';
 
+/** The image cell's and its preview's look, carried by the part (the walk page's rule, 2026-09-06: a host keeps nothing
+ *  for a part) - the main grid and the walk table stamp it once a document. */
+const STAMP = 'data-image-preview-styles';
+export const IMAGE_PREVIEW_CSS = `
+/* Image cell (lead 191912ce2): the value as written, and a mark that opens the picture. */
+.cell-image { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.cell-image-open { flex: none; padding: 0 var(--space-1); border: 1px solid var(--accent); border-radius: 0;
+  background: transparent; color: var(--accent); font: inherit; line-height: 1.2; cursor: pointer; }
+.cell-image-open:hover { background: var(--accent-weak); }
+.cell-image-ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Its preview: one box, fixed beside the cell, capped by the token, never in the pointer's way. */
+.image-preview { position: fixed; z-index: 1000; box-sizing: border-box; max-width: var(--image-preview-max);
+  max-height: var(--image-preview-max); padding: var(--space-2); background: var(--bg-surface);
+  border: 1px solid var(--border); box-shadow: var(--shadow-pop); pointer-events: none; overflow: hidden; }
+.image-preview-img { display: block; max-width: 100%; max-height: calc(var(--image-preview-max) - 2 * var(--space-2)); }
+.image-preview.is-refused .image-preview-img { display: none; }
+.image-preview-why { font-size: var(--fs-label); color: var(--text); overflow-wrap: anywhere; }
+.image-preview-why:empty { display: none; }
+`;
+
+/** The look into `doc` once; a document with nowhere to put it (a headless stub) is left alone. */
+export function ensureImagePreviewStyles(doc) {
+  const at = doc && typeof doc.createElement === 'function' && (doc.head || doc.documentElement);
+  if (!at || (doc.querySelector && doc.querySelector(`style[${STAMP}]`))) return false;
+  const style = doc.createElement('style');
+  style.setAttribute(STAMP, '');
+  style.textContent = IMAGE_PREVIEW_CSS;
+  at.appendChild(style);
+  return true;
+}
+
 /**
  * Where a floating box (position: fixed) stands beside `rect`: under it, above it when the window has no room below,
  * kept `edge` inside the window (`view`: width, height). One placement - the image preview and the declaration
@@ -70,6 +101,7 @@ export class ImagePreview {
   constructor(mount, deps = {}) {
     this.mount = mount;
     this.doc = deps.doc || mount.ownerDocument;
+    ensureImagePreviewStyles(this.doc);
     this.base = deps.base || '';
     this.later = deps.setTimeout || ((fn, ms) => setTimeout(fn, ms));
     this.cancel = deps.clearTimeout || ((t) => clearTimeout(t));

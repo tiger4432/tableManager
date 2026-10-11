@@ -229,7 +229,7 @@ export function longLines(view, section, only = {}) {
         for (const r of readsOf(view.index, inside, row.id, column).reads) {
           const point = pointWords(pointOf(column, r.edge));
           const t = r.when && Date.parse(r.when.occurred_at);
-          lines.push({ id: row.id, node: row.label, name: head, value: r.value, words: valueWords(r.value), point,
+          lines.push({ id: row.id, node: row.label, name: head, value: r.value, words: valueWords(r.value), image: Boolean(r.image), point,
             time: Number.isFinite(t) ? localStamp(new Date(t).toISOString()) : '', side: at ? at.g.name : '',
             from: at && r.giver !== row.id ? view.sources.source(at.g, r.giver) : '', group: at ? at.i : null, column: columnKey(column) });
         }
@@ -258,8 +258,10 @@ export function cellWords(cell, kind = valueKind(cell.values || [])) {
   if (cell.missing) return { text: MISSING, missing: true };
   const values = cell.values.map(valueWords);
   if (!values.length) return { text: EMPTY };
-  if (values.length === 1 && !cell.more) return { text: values[0], numeric: kind === 'number' };
-  return { text: values[0], rest: `+${values.length - 1}${cell.more ? '+' : ''}`, values };
+  // The first value an image reference (reach_table's `images`): the value as it came, for the image cell to draw.
+  const image = cell.images && cell.images[0] ? { image: cell.values[0] } : {};
+  if (values.length === 1 && !cell.more) return { text: values[0], numeric: kind === 'number', ...image };
+  return { text: values[0], rest: `+${values.length - 1}${cell.more ? '+' : ''}`, values, ...image };
 }
 
 /** Which walk reached a row, a control walk B gone too (lead 99ed68cb7 D): A alone, both, or B alone. */

@@ -56,6 +56,9 @@ import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 // Copy id (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
 import { writeClipboardRich } from '../clipboard_write.js';
 import { entitySeedId } from '../rnd_board/api.js';
+// An image reference's value (server c5463a475): the main grid's image cell and its one preview (lead 191912ce2).
+import { ImagePreview } from '../image_preview.js';
+import { ImageCellRenderer } from '../grid_image_column.js';
 import { markingIntent } from '../rnd_board/panel.js';
 // The words other screens already draw for the same facts, spelled once.
 import { CHOOSE, FAILED, LOADING, WALKING, unitText } from '../ui_words.js';
@@ -240,6 +243,22 @@ export function boot(doc, host, deps) {
   // The trend part, made once and seated under the tables when a column's trend is open.
   const trendMount = el(doc, 'div', '');
   const trendView = new TrendView(trendMount, { doc });
+  // The page's one image preview, in its own div on the body (its box stands fixed; the host's grid takes three
+  // children): nothing asked while a table draws, one picture on a dwell.
+  const previewMount = el(doc, 'div', 'image-preview-mount');
+  if (doc.body) doc.body.appendChild(previewMount);
+  const imagePreview = new ImagePreview(previewMount, { doc, base: apiBase });
+  /** A value as a value line draws it: its words, or - an image reference - the main grid's image cell, a list one each. */
+  const valueSpan = (value, image, words) => {
+    if (!image) return el(doc, 'span', 'wk-val', words);
+    const span = el(doc, 'span', 'wk-val');
+    for (const ref of [].concat(value)) {
+      const cell = new ImageCellRenderer();
+      cell.init({ eGridCell: span, context: { imagePreview }, value: ref });
+      span.append(cell.getGui());
+    }
+    return span;
+  };
   // 🔴 C-120. 꺼진 이유가 «둘»입니다: 「걷는 중」(라벨과 같은 상수), 그리고 Positive 바구니가 빔.
   const goReason = () => (state.run === 'running'
     ? RUNNING
@@ -950,7 +969,7 @@ export function boot(doc, host, deps) {
   function valueCell(cell, cls, open, toggle) {
     const c = el(doc, 'td', cell.missing ? `wk-missing ${cls}` : `${cell.numeric ? 'wk-num ' : ''}${cls}`);
     const line = el(doc, 'div', 'wk-valline');
-    line.append(el(doc, 'span', 'wk-val', cell.text));
+    line.append(valueSpan(cell.image, cell.image !== undefined, cell.text));
     if (cell.rest) {
       const more = el(doc, 'button', 'wk-tag' + (open ? ' is-on' : ''), cell.rest);
       more.type = 'button';
@@ -1041,7 +1060,8 @@ export function boot(doc, host, deps) {
       row.centre.forEach((cell, i) => {
         const c = el(doc, 'td', 'wk-centre');
         const line = el(doc, 'div', 'wk-valline');
-        line.append(el(doc, 'span', 'wk-centrelabel', cell.text));
+        // A node's own image reference (its record's column_type) is the image cell too.
+        line.append(cell.image !== undefined ? valueSpan(cell.image, true, cell.text) : el(doc, 'span', 'wk-centrelabel', cell.text));
         // The id is picked, not read (lead 5cf5c3401): an icon on the first centre cell, shown with its row (34d91c09d 5).
         if (i === 0) line.append(copyIdButton(row.id));
         c.append(line);
@@ -1088,7 +1108,7 @@ export function boot(doc, host, deps) {
         list.append(el(doc, 'div', 'wk-recordshead', lines.length ? lines[0].name : ''));
         for (const l of lines) {
           const item = el(doc, 'div', `wk-record ${l.side ? signClass(l.side) : ''}`);
-          item.append(el(doc, 'span', 'wk-val', l.words), el(doc, 'span', 'wk-src',
+          item.append(valueSpan(l.value, l.image, l.words), el(doc, 'span', 'wk-src',
             [l.side, l.time, l.point, l.from].filter(Boolean).join(' · ')));
           list.append(item);
         }
@@ -1123,7 +1143,13 @@ export function boot(doc, host, deps) {
       if (checks) checkCell(tr, checks, l.id);
       const cells = [[l.node, 'wk-centre'], [l.name, ''], [l.words, numberOf(l.value) !== null ? 'wk-num' : ''], [l.point, ''], [l.time, ''],
         [l.side, l.side ? signClass(l.side) : ''], [l.from, 'wk-src']];
-      for (const [text, cls] of cells) tr.append(el(doc, 'td', cls, text));
+      cells.forEach(([text, cls], i) => {
+        // The value (the third) an image reference: the image cell, as Wide draws it.
+        const image = i === 2 && l.image;
+        const td = el(doc, 'td', cls, image ? undefined : text);
+        if (image) td.append(valueSpan(l.value, true, l.words));
+        tr.append(td);
+      });
       tbody.append(tr);
     }
     table.append(tbody);
@@ -1613,6 +1639,8 @@ export function boot(doc, host, deps) {
     const place = { top: main.scrollTop, left: main.scrollLeft, tables: new Map([...tableBoxes].map(([type, t]) => [type, t.scrollLeft])) };
     tableBoxes.clear();
     fields.clear();
+    // The cells a picture was asked for go now: their dwell, request and box with them.
+    imagePreview.drop();
     host.textContent = '';
     rail.textContent = '';
     main.textContent = '';

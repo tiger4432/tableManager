@@ -26,6 +26,7 @@ import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { walkTableView } from '../src/walk/table_view.js';
 import { SIGN } from '../src/rnd_board/marking_store.js';
+import { DWELL_MS, IMAGE_ROUTE } from '../src/image_preview.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src', 'walk', 'main.js');
@@ -37,19 +38,24 @@ const LF = String.fromCharCode(10);
 // `ensureWalkStyles`. Nothing else is touched, which is what makes this cheap.
 function makeDoc() {
   const make = (tag) => option(tag, {
-    tagName: tag, children: [], attrs: {}, listeners: {},
+    tagName: tag, children: [], attrs: {}, listeners: {}, style: {}, ownerDocument: doc,
     className: '', value: '', checked: false, type: '', _text: '',
     append(...cs) { cs.forEach((c) => this.children.push(c)); },
     appendChild(c) { this.children.push(c); return c; },
     setAttribute(k, v) { this.attrs[k] = String(v); },
     getAttribute(k) { return this.attrs[k] === undefined ? null : this.attrs[k]; },
+    // The image cell and its preview (IM1): a mark hidden by style, a picture's address taken back on leave.
+    removeAttribute(k) { delete this.attrs[k]; },
     addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); },
     get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
     set textContent(v) { this._text = String(v); this.children = []; },
   });
   // A section's Trend draws an SVG (lead 10-11 W addendum 7: its rows the table's shown) - the same node, its class an
   // attribute as the browser keeps it.
-  return { createElement: make, createElementNS: (ns, tag) => make(tag), head: make('head') };
+  const doc = { createElement: make, createElementNS: (ns, tag) => make(tag) };
+  doc.head = make('head');
+  doc.body = make('body');
+  return doc;
 }
 // The browser's rule for an <option>: with no value of its own it is worth its TEXT. A stub where every
 // value starts as '' cannot see the type placeholder becoming a type (lead b417e2ad8), so it keeps the rule.
@@ -238,7 +244,7 @@ async function render(mod, result = RESULT) {
   handle.state.run = 'done';
   handle.state.result = result;
   handle.render();
-  return { host, handle };
+  return { host, handle, doc };
 }
 
 const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
@@ -1161,6 +1167,39 @@ async function suite(mod) {
         && (walkAll(dieSec()).find((e) => e.attrs && e.attrs['data-sort-key'] === GATE) || { attrs: {} }).attrs['aria-sort'] === undefined,
       JSON.stringify([drawn(), drawn(two.host).length, head(two.host)]));
   }
+
+  console.log(`${LF}-- an image reference: the main grid's image cell, nothing asked until a dwell --`);
+  {
+    // The same text twice: one edge's column the answer says is an image (server c5463a475), the other's not.
+    const REF = 'imgs:lot 7/a.png';
+    const IMAGES = { nodes: RESULT.nodes, edges: [
+      { id: 'e:1', source: 'n:3', target: 'n:1', predicate: 'inspected', qualifiers: { photo: REF }, column_types: { photo: 'image' } },
+      { id: 'e:2', source: 'n:3', target: 'n:2', predicate: 'inspected', qualifiers: { photo: REF } }] };
+    const { host: im, doc } = await render(mod, IMAGES);
+    const rowOf = (id) => byTag(im, 'tr').find((tr) => tr.attrs['data-row-id'] === id) || { children: [] };
+    const marksOf = (id) => walkAll(rowOf(id)).filter((e) => e.className === 'cell-image');
+    const asked = () => walkAll(doc.body).filter((e) => e.tagName === 'img' && String(e.attrs.src || '').includes(IMAGE_ROUTE)).length;
+    const marked = marksOf('n:1');
+    const plain = walkAll(rowOf('n:2')).filter((e) => e.className === 'wk-val').map((e) => e._text);
+    const drawn = asked();
+    // The dwell: the preview's one timer, caught as it is set and run by hand.
+    const timers = [];
+    const realTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+    try { for (const fn of (marked[0] && marked[0].listeners.mouseenter) || []) fn({}); } finally { globalThis.setTimeout = realTimeout; }
+    const before = asked();
+    globalThis.window = { innerWidth: 1280, innerHeight: 720 };
+    try { for (const t of timers) t.fn(); } finally { delete globalThis.window; }
+    const dwelt = asked();
+    const src = (walkAll(doc.body).find((e) => e.tagName === 'img' && e.attrs.src) || { attrs: {} }).attrs.src;
+    for (const fn of (marked[0] && marked[0].listeners.mouseleave) || []) fn({});
+    ok('IM1 a value the answer says is an image draws the image cell (the other, same text, as text); drawing asks 0, a dwell 1, leaving takes it back',
+      marked.length === 1 && walkAll(marked[0]).some((e) => e.className === 'cell-image-ref' && e._text === REF)
+        && plain.includes(REF) && marksOf('n:2').length === 0
+        && drawn === 0 && before === 0 && timers.length === 1 && timers[0].ms === DWELL_MS
+        && dwelt === 1 && src === `${IMAGE_ROUTE}?ref=${encodeURIComponent(REF)}` && asked() === 0,
+      JSON.stringify({ marks: marked.length, plain, n2marks: marksOf('n:2').length, drawn, before, timers: timers.map((t) => t.ms), dwelt, src, after: asked() }));
+  }
 }
 
 // ═══ baseline ═══════════════════════════════════════════════════════════════════════════
@@ -1587,6 +1626,8 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
+  { id: 'IMm1', what: 'a value the answer says is an image drawn as its text', catches: 'IM1',
+    from: '    line.append(valueSpan(cell.image, cell.image !== undefined, cell.text));', to: '    line.append(valueSpan(cell.image, false, cell.text));' },
   { id: 'DM7', what: 'a side\'s cells not tinted by who reached the row', catches: 'ZD4',
     from: "row.reached && row.reached[i] && row.reached[i] !== 'a' ?", to: 'false ?' },
   { id: 'DM8', what: 'the three counts not drawn over a section', catches: 'ZD4',
