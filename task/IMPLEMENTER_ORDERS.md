@@ -65768,3 +65768,22 @@ tests/test_ledger_v2_pg.py 가 감사 줄을 assy_test public 으로 흘린다(1
 보고     원인이 어느 쪽이면 소유자가 «화면에서 무엇을 누르면» 풀리는지 한 줄 + 운영에서 돌릴 «읽기만» 확인 SQL 한 줄과 그 답의 뜻을 RUN.md 에
          코드가 고칠 결함이면(은퇴 op 의 queued/running 이 대기열을 막음) 안 셋을 총괄에게 — 짓기 전
 ```
+
+> **[총괄 -> 구현자] 10-11 낮 — 표 선언 인덱스를 지금 맨 앞으로 (소유자 「좀 빨랑 지어라 테이블 인덱스」) — 설계는 10-09 지시 그대로(06e8c22c3 · 「표마다 «이 칸에 인덱스»를 선언으로」 절, 안 ㄱ)**
+
+```
+도착지  두 줄
+   「운영에서는 table_config.json 의 그 표 "indexes" 에 {"columns": [...], "purpose": "..."} 를 적으면 됩니다」
+   「체인 워커가 빠진 것을 하나씩 만들고, 어드민 Indexes 표에 다른 인덱스와 같이 보입니다」
+그대로  있는 "indexes" 칸을 넓힘(원장 카탈로그가 읽는 모양 columns · unique + purpose) · 이름 idx_<표>_<칸들> 63 자(넘치면 해시 꼬리)
+        견주기 = index_states 하나 · 만들기 = _ensure_one_index 하나 · 같은 build_missing_indexes 스위치 · 같은 «기다리는 pid» 문장
+        저장 거절(없는 칸 · 빈 columns · 같은 묶음 두 번 · view) · unique 겹침은 failed + 이유 한 줄 · 선언에서 지운 것은 안 지움(«선언 밖»)
+        소유자가 손으로 만든 idx_dt_log_dt_wafer_id 를 «이미 있음»으로 잡는다(게이트 한 칸)
+미뤘던 까닭 = 이번 RUN.md 의 첫 줄   운영 table_config 에 «이미» 적힌 "indexes" 가 있으면 다음 체인 워커 재기동에 «처음» 지어진다
+        RUN.md: 재기동 «전»에 그 목록을 보는 읽기 한 줄(어느 표 · 어느 칸 · 그 표 행 수) · 알리기만 하려면 "build_missing_indexes": false · 짓는 중 멈춤(pid · pg_cancel_backend)
+        박스 사본에서 큰 표 하나에 지어 초를 재고 RUN.md 에(박스 수라고 밝힘)
+게이트  10-09 지시의 게이트 그대로 + 진짜 프로세스(런처 그대로 체인 워커 기동 -> chain_worker.log [Indexes] 줄 -> GET /admin/indexes 에 표 선언 줄)
+같은 커밋  table_config 안내 문서 · RELEASE_LOG · RUN.md
+클라    Indexes 표의 출처 칸(model · table)은 클라 R 다음 — 서버 답만으로 줄은 이미 보인다
+순서    이것 -> (그 뒤 기존 순서)
+```
