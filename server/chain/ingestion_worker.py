@@ -4291,6 +4291,32 @@ def _ensure_human_claims_index_sync(db_session_factory):
             models.RETIRED_CLAIMS_INDEX, leftover)
 
 
+#: How long one business-key index build waits for the transactions on its table (총괄 49792d3f6 A, 소유자
+#: 「체인은 뭐 10 분째 스타팅이냐」) - a CONCURRENTLY build waits for every open one, and one left open never ends.
+BUSINESS_KEY_INDEX_WAIT_SECONDS = 60
+
+
+def _build_unique_index_waiting(conn, uq, table, name, wait=None):
+    """`uq.build_index` with its wait capped: past it, the leftover is dropped (an INVALID one would stop the next
+    start from building) and the sessions holding the table are named in one line. -> (verdict, detail)."""
+    wait = BUSINESS_KEY_INDEX_WAIT_SECONDS if wait is None else wait
+    conn.execute(text("SET lock_timeout = '%ds'" % int(wait)))
+    # a leftover of a build that gave up is INVALID and enforces nothing - dropped first, so this build is the real one
+    if conn.execute(text("SELECT count(*) FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+                         "WHERE c.relname = :n AND NOT i.indisvalid"), {"n": name}).scalar():
+        conn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS %s" % uq.quote_ident(name)))
+    verdict, detail = uq.build_index(conn, table, name)
+    if verdict == uq.FAILED and "locknotavailable" in str(detail).lower():   # SQLSTATE 55P03 - the message is localised
+        holders = [row[0] for row in conn.execute(text(
+            "SELECT DISTINCT pid FROM pg_locks WHERE relation = to_regclass(:t) AND pid <> pg_backend_pid() "
+            "ORDER BY pid"), {"t": table})] or [row[0] for row in conn.execute(text(
+                "SELECT pid FROM pg_stat_activity WHERE xact_start IS NOT NULL AND pid <> pg_backend_pid() "
+                "ORDER BY xact_start LIMIT 3"))]
+        logger.warning("[Ledger] business-key unique index on %s not built - waited %d s, blocked by pid %s; the "
+                       "next start builds it", table, int(wait), ", ".join(str(p) for p in holders) or "?")
+    return verdict, detail
+
+
 def _ensure_business_key_unique_indexes_sync(db_session_factory):
     """Build the UNIQUE index that makes `business_key_val` an enforced identity.
 
@@ -4325,7 +4351,7 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory):
             tables = uq.tables_with_business_key(conn)
             for table in tables:
                 found = uq.existing_unique_index(conn, table)
-                if found is not None:
+                if found is not None and not (not found[1] and found[0] == uq.unique_index_name(table)):
                     if not found[1]:
                         invalid.append((table, found[0]))
                     continue
@@ -4336,7 +4362,7 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory):
                 name = uq.unique_index_name(table)
                 with engine.connect().execution_options(
                         isolation_level="AUTOCOMMIT") as write_conn:
-                    verdict, detail = uq.build_index(write_conn, table, name)
+                    verdict, detail = _build_unique_index_waiting(write_conn, uq, table, name)
                 built.append((table, verdict, detail))
         for table, verdict, detail in built:
             logger.info("[Ledger] business-key unique index on %s: %s (%s)",
@@ -4728,12 +4754,15 @@ async def start_chain_ingestion_worker(db_session_factory):
                      "whose declaration did not change may still refuse to run: %s", exc)
     # \U0001f534 판정 189. Separate from the ensure above because it STRENGTHENS: it can
     # refuse, and a refusal is a number an operator has to see rather than an error.
-    try:
-        await asyncio.to_thread(_starting(steps, _ensure_business_key_unique_indexes_sync),
-                                db_session_factory)
-    except Exception as exc:
-        logger.error("[Ledger] the business-key unique indexes could not be ensured, "
-                     "so that column may not be an enforced identity here: %s", exc)
+    # 총괄 49792d3f6 A: NOT AWAITED - a build waits for every open transaction on its table, so the worker starts
+    # without it and the build runs beside it, its wait capped (BUSINESS_KEY_INDEX_WAIT_SECONDS).
+    def _business_key_indexes_beside():
+        try:
+            _ensure_business_key_unique_indexes_sync(db_session_factory)
+        except Exception as exc:
+            logger.error("[Ledger] the business-key unique indexes could not be ensured, "
+                         "so that column may not be an enforced identity here: %s", exc)
+    threading.Thread(target=_business_key_indexes_beside, name="business-key-indexes", daemon=True).start()
     # 🔴 판정 239. The same seat, because "at boot" is where an index a query
     # depends on has to appear - the reload path alone leaves a restarted deployment
     # scanning.

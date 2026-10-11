@@ -254,6 +254,17 @@
 >
 > ---
 >
+> ## [10-12] **체인 워커가 키 인덱스를 기다리지 않고 켜진다 (총괄 49792d3f6 A, 소유자 「체인은 뭐 10 분째 스타팅이냐」) — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 무엇        기동이 business_key 유일 인덱스 짓기를 기다리지 않음 — 옆 스레드에서 짓고, 표마다 기다림 60 초(BUSINESS_KEY_INDEX_WAIT_SECONDS)
+> 볼 줄       chain_worker.log «[Ledger] business-key unique index on <표> not built - waited 60 s, blocked by pid <N>; the next start builds it»
+>            그 pid 가 막은 것(열린 쓰기 트랜잭션) — 끝나면 다음 기동이 남은 INVALID 인덱스를 지우고 다시 지음
+> 되돌리기      git revert <이 커밋> -> 체인 워커 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **소급 강제 종료 — `stop_retroactive.bat` 더블클릭 (소유자 「강종 단축 스크립트」, 착지 053805fce) — 이주 «없음» · 재기동 «없음»**
 >
 > ```
