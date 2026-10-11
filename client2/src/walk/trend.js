@@ -26,6 +26,12 @@ export function walkPoints(index, groups, x, column) {
     .map((r) => ({ t: timeOf(r.edge), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node })));
 }
 
+/** The walked points of `rows` along `column`, each with the row it was read from - a section's trend, a cell's, a lump's
+ *  thumbnail (lead 10-11 E2b): one read. */
+export function rowsPoints(view, rows, column) {
+  return rows.flatMap((x) => walkPoints(view.index, view.groups, x, column).map((p) => ({ ...p, row: x })));
+}
+
 /**
  * A time page's points (lead's B, the implementer's contract): an edge a point, its value the column's edge attribute,
  * its group the first whose reach holds the edge's far end (none: another row's), walked when the walk brought it.

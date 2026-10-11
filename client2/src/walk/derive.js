@@ -359,7 +359,7 @@ export function keepWalkableRoutes(entities, routes) {
 
 /**
  * The routes the walk can take from one declared type to another: the declaration's paths (`pathsBetween`) less the
- * ones the walk refuses. The walk page's route list and a folded lump's walk to its values (lead 10-08) ask this one.
+ * ones the walk refuses. The walk page's route list asks this one.
  * ⚠️ The R&D board's walk box (frozen) still composes the same two calls itself.
  */
 export function walkableRoutes(declaration, from, to) {

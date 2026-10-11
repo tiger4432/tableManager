@@ -39,7 +39,7 @@ import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2).
 import { routesFrom, valuesAt } from './reach_table.js';
 // The trend of a column (lead f984ab01d): the model and the part that draws it.
-import { walkPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, pageAnchor, pointsSheet, PAGE_ROWS } from './trend.js';
+import { rowsPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, pageAnchor, pointsSheet, PAGE_ROWS } from './trend.js';
 import { TrendView } from './trend_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
@@ -184,7 +184,8 @@ export function boot(doc, host, deps) {
   /** Drop these steps' markings and the graph's own past them. */
   const dropMarks = (steps) => { for (const name of [...steps.map((s) => s.marks), ...tail.splice(0)]) markings.clear(name); };
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: chainAt,
-    worldChips: worlds.length > 1, declaration: () => state.decl });
+    worldChips: worlds.length > 1, predicates: () => (state.decl && state.decl.predicates) || [],
+    openTable: (answer, lump) => openLumpTable(answer, lump) });
   // The box is the key it searches by: what is typed is that key, a node picked fills every key.
   const searchMount = el(doc, 'div', '');
   const search = new NodeSearch(searchMount, { doc,
@@ -330,7 +331,20 @@ export function boot(doc, host, deps) {
    *  knobs ride along; the step's own hops is its one. */
   async function walkOn(at, seeds, route) {
     const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
-    const title = `${route.predicate} → ${route.to}`;
+    const step = placeStep(at, `${route.predicate} → ${route.to}`, asked);
+    render();
+    const began = Date.now();
+    const res = await walk(asked);
+    step.took = Date.now() - began;
+    if (!state.steps.includes(step)) return;   // walked over meanwhile
+    if (res && res.ok) { step.run = 'done'; step.result = res; }
+    else { step.run = 'failed'; step.reason = (res && res.message) || UNKNOWN; }
+    render();
+  }
+
+  /** A step in the tree (lead 5ea461e04): a child of `at`, its siblings kept; the same title from `at` again stands in
+   *  that child's place - it and the steps under it go, their markings with them, its view to the new one. */
+  function placeStep(at, title, asked) {
     const step = { id: (stepSeq += 1), parent: at, title, asked, run: 'running', result: null, reason: '', marks: nextMarks() };
     const again = state.steps.find((s) => s.parent === at && s.title === title);
     const dropped = again ? subtree(again.id) : [];
@@ -341,13 +355,17 @@ export function boot(doc, host, deps) {
     state.steps = [...state.steps.slice(0, place), step, ...state.steps.slice(place)].filter((s) => !dropped.includes(s));
     state.at = step.id;
     state.leaf = step.id;
-    render();
-    const began = Date.now();
-    const res = await walk(asked);
-    step.took = Date.now() - began;
-    if (!state.steps.includes(step)) return;   // walked over meanwhile
-    if (res && res.ok) { step.run = 'done'; step.result = res; }
-    else { step.run = 'failed'; step.reason = (res && res.message) || UNKNOWN; }
+    return step;
+  }
+
+  /** A lump of the graph opened as a step of the table (lead 10-11 E2b): its answer - its owner, its members and the
+   *  edges between - nothing walked; a child of the chosen branch's end; the table shown. */
+  function openLumpTable(answer, lump) {
+    const asked = { positive: [lump.owner], negative: [], follow: [lump.predicate], collect: [lump.farType], direction: 'both', hops: 1 };
+    const step = placeStep(state.leaf, `From ${lump.ownerLabel} · ${lump.words}`, asked);
+    step.run = 'done';
+    step.result = answer;
+    state.view = 'table';
     render();
   }
 
@@ -837,7 +855,7 @@ export function boot(doc, host, deps) {
     if (!at) return;
     // A section's trend reads its section's rows as they stand: a step walked again is a new answer (lead 10-11).
     const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;
-    const own = rows.flatMap((x) => walkPoints(view.index, view.groups, x, at.column).map((p) => ({ ...p, row: x })));
+    const own = rowsPoints(view, rows, at.column);
     const walked = new Set(own.map((p) => p.key));
     t.anchor = pageAnchor(rows, own, at.column);
     // Its pages are its anchor's and its column's (lead 10-11): another key starts over and asks its own page.
