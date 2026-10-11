@@ -264,7 +264,13 @@ export function boot(doc, host, deps) {
     });
   }
   if (typeof doc.addEventListener === 'function') {
-    doc.addEventListener('mousedown', (event) => { for (const d of dropdowns) if (d.open && !d.contains(event.target)) d.open = false; });
+    // The path is taken when the press starts: a pick redraws the suggestion list, so the pressed item is
+    // already detached when this runs, and `contains` would call a press inside the popover a press outside.
+    const pressed = (event) => (typeof event.composedPath === 'function' ? event.composedPath() : [event.target]);
+    doc.addEventListener('mousedown', (event) => {
+      const path = pressed(event);
+      for (const d of dropdowns) if (d.open && !path.includes(d) && !d.contains(event.target)) d.open = false;
+    });
   }
   // The trend part, made once and seated under the tables when a column's trend is open.
   const trendMount = el(doc, 'div', '');
