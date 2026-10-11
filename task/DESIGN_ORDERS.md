@@ -37851,3 +37851,25 @@ E2   표 구역에 Table ⇄ Trend 토글 — Trend = trend.js · x = 행마다 
 게이트      안 끝나는 fetch 스텁 -> 시한 뒤 다음 박자가 다시 읽음 · 두 화면 다 · «Read N s ago» 가 박자마다 줆 · 변이(시한 빼기 -> 굳음 -> 빨강)
 순서        G-2 다음
 ```
+
+> **[총괄 -> 클라] 10-11 — R: 어드민 두 손질 — 소급 탭 목차 · 들어간 파일 행의 Retry (소유자 「어드민 소급 탭에 목차 좀」 -> ㄱ · 「그냥 success 인 거에도 리트라이 좀 달면 안 됨?」 -> ㄱ) — 맨 앞, 소유자가 오늘 운영 셋업에 씀**
+
+```
+① 소급 탭 목차
+지금      탭 머리 retroactive-sub 가 연산 이름을 « · » 한 줄로 늘어놓고 잘림 (admin.js renderRetroactive · view.titles)
+고칠 것   그 이름 줄 «하나»를 탭 맨 위 줄바꿈 칩으로 — 누르면 그 카드(article.retro-op[data-op])로 스크롤
+          둘째 목록 금지 — 이름 · 순서는 view.operations 그대로(서버 순서) · 위 고정(sticky) 안 함 · 카드 접기 안 함
+② 들어간 파일 행의 Retry
+지금      File Ingestion 로그 행 Retry 가 isDoneStatus 면 꺼짐 (admin_rows.js fileLogRowHtml) · 누르면 retry-failed?log_id=<id> (statuses 없음 = FAILED 만)
+서버      이미 받음 — log_id + statuses 면 그 행을 지금 파서로 다시 읽음 · 같은 파일 한 번 · 자리에 없으면 count 0 · missing 1 · missing_files
+          (main.py retry_failed_file_ingestion · ingestion/reread.py) — 서버 손 0
+고칠 것   done 행도 Retry 켬 — 그 행의 요청에만 statuses=INCLUDE_STATUSES (folder_retry.js 의 그 상수 하나를 부름) · 실패 행 요청은 오늘 그대로
+          확인창(done 행) «Read <파일> again with today's parser?»
+          답이 missing ≥ 1 이면 토스트가 «Missing · <파일>» — 지금 retryMessage 는 행 상태(그대로 SUCCESS)를 읽어 «된 것»처럼 말하게 됨
+          단추 둘 금지 — 같은 단추 · 같은 retryFileIngestion
+dist      G-2 손이 안 섞인 트리에서 빌드 — G-2 가 커밋 안 된 채면 origin/design 의 다른 worktree 에서 이 둘만 짓고 빌드 (walk 번들에 G-2 반쪽이 구워지지 않게)
+게이트    소급 탭 칩 수 = 카드 수 · 칩 누름 -> 그 카드가 화면 위 · SUCCESS 행 Retry 켜짐 -> 요청에 log_id 와 statuses · 실패 행 요청엔 statuses 없음
+          파일 없는 done 행 -> Missing 토스트 · 변이(done 행 statuses 빼기 -> 빨강 · 칩의 대상 카드 바꾸기 -> 빨강)
+          병합 전 진짜 화면으로 연다 (어드민 두 탭)
+순서      R -> G-2 -> Q -> 값 대응
+```
