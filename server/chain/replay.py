@@ -1141,6 +1141,323 @@ def _mark_folded(db, table_name, mark, page, woken, recounts=()) -> int:
     return len(page)
 
 
+#: Rows of a fold rule's answer one page of `fold_units` judges and writes in one commit.
+FOLD_UNITS_PAGE = 20000
+
+
+def fold_units_target(rule_name):
+    """What fold-units names, judged once - by the run and by the operation's judge before anything is
+    recorded. -> (rule, unit table model, log table model, mark column) or `ReplayRefused`."""
+    from mappers import fold_unit
+
+    rule = find_rule(rule_name)
+    params = rule.get("params") or {}
+    if rule.get("mapper") != fold_unit.NAME:
+        raise ReplayRefused(f"chain rule '{rule_name}' runs '{rule.get('mapper')}' - fold-units runs a "
+                            f"'{fold_unit.NAME}' rule")
+    units, logs = params.get("unit_table"), rule.get("target_table")
+    if rule.get("trigger_table") != units:
+        on_units = [r.get("name") for r in load_rules() if r.get("mapper") == fold_unit.NAME
+                    and r.get("trigger_table") == units and r.get("target_table") == logs]
+        raise ReplayRefused(f"chain rule '{rule_name}' is triggered by '{rule.get('trigger_table')}' - name the "
+                            f"rule on the unit table '{units}': {', '.join(on_units) or 'none is declared'}")
+    mark = params.get("mark_column")
+    if mark in key_columns(logs):
+        raise ReplayRefused(f"mark_column '{mark}' is a key column of '{logs}' - a write there re-keys rows, "
+                            f"which fold-units does not do")
+    return rule, resolve_target(units)[0], resolve_target(logs, [mark])[0], mark
+
+
+def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=logger.info,
+               checkpoint=None) -> dict:
+    """A fold rule's answer over every unit row, written without the chain's queue (총괄 10-11, 소유자
+    「접는 거 일단 스크립트로 빨리 하는 거 줘, 맵퍼 말고」). The answer is the rule seat's (`rule_run.run_rule`,
+    `next_page` followed); a page of it goes through the write door's own per-cell judgement and is written
+    set-based (`_fold_units_page`), one commit a page. After the last page, the withdrawal the worker runs
+    for edited unit rows (`_withdraw_and_tell`, keep = every row the answer named): a unit that now wins
+    takes its old marks back. No event for the marks and no broadcast - setup ⑥ (copy replay) follows them."""
+    from sqlalchemy import func, select
+
+    from chain import cell_layer, ingestion_worker, rule_run, rule_shape
+    from chain.mapper_call import without_missing
+
+    started = time.monotonic()
+    rule, units, logs, mark = fold_units_target(rule_name)
+    params, log_table = rule["params"], rule["target_table"]
+    pages_per_cycle, rest_seconds = resolve_pace(pace)
+    prefer = ((params["prefer_column"], params["prefer_text"])
+              if params.get("prefer_column") and params.get("prefer_text") else None)
+    ranked = _ranked_duplicates(units, [params["group"]], params["order"], "min", prefer)
+    groups, losing = db.execute(select(func.count().filter(ranked.c.n == 1),
+                                       func.count().filter(ranked.c.n > 1)).select_from(ranked)).one()
+    unit_ids = [row_id for (row_id,) in db.execute(select(units.row_id).order_by(units.row_id))]
+    _model, found = outbox_expand.load_rows_by_ids(db, params["unit_table"], unit_ids)
+    columns = outbox_expand._data_columns(units)
+    answer = rule_run.run_rule(db, rule, payloads=[outbox_expand._synthesize_payload(found[row_id], columns, {})
+                                                   for row_id in unit_ids if row_id in found])
+    stats = {"mode": "apply" if apply else "dry-run", "rule": rule_name, "table": log_table, "units": len(unit_ids),
+             "groups": groups, "units_losing": losing, "rows_proposed": 0, "rows_to_mark": 0,
+             "rows_marked": 0, "rows_higher_layer": 0, "rows_already_marked": 0, "rows_gone": 0, "rows_refused": 0,
+             "version_gate": {}, "marks_withdrawn": None, "pages": 0, "page_seconds": [],
+             "retraction_seconds": None, "stopped": False, "seconds": None}
+    tx_id = "chain_fold_units_%s" % uuid.uuid4().hex[:8]
+    keep = set()
+
+    # the rule seat's paging records (`next_page`: call · rows_total · first) - every page followed
+    more = answer["next_page"]
+    total = (len(answer["updates"]) + sum(m["rows_total"] - m["first"] for m in more)
+             if all(m["rows_total"] is not None for m in more) else None)
+
+    def pages():
+        page = list(answer["updates"])
+        for record in more:
+            call = record["call"]
+            while call is not None:
+                while len(page) >= FOLD_UNITS_PAGE:
+                    yield page[:FOLD_UNITS_PAGE]
+                    page = page[FOLD_UNITS_PAGE:]
+                result = without_missing(call()) or {}
+                page.extend(result.get("updates") or ())
+                call = result.get("next_page")
+        while page:
+            yield page[:FOLD_UNITS_PAGE]
+            page = page[FOLD_UNITS_PAGE:]
+
+    for proposed in pages():
+        if apply and checkpoint is not None and checkpoint(stats["rows_proposed"], total):
+            stats["stopped"] = True
+            log(f"[fold-units] stopped by request after {stats['rows_proposed']} of {total} rows")
+            break
+        page_started = time.monotonic()
+        counts, items = _fold_units_page(db, log_table, logs, mark, proposed, tx_id, apply)
+        keep |= ingestion_worker._rows_written_from(db, log_table, items)
+        for reason, n in counts.pop("version_gate", {}).items():
+            stats["version_gate"][reason] = stats["version_gate"].get(reason, 0) + n
+        for key, value in counts.items():
+            stats[key] += value
+        stats["rows_proposed"] += len(proposed)
+        stats["pages"] += 1
+        stats["page_seconds"].append(round(time.monotonic() - page_started, 2))
+        log(f"[fold-units] {stats['rows_proposed']} / {total} rows (page {stats['pages']}, "
+            f"{stats['page_seconds'][-1]} s)")
+        if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
+            time.sleep(rest_seconds)
+    # the worker's edit withdrawal (`apply_chain_writes`): the unit rows handed, the columns the rule writes
+    if not stats["stopped"] and unit_ids and rule_run.stamps_its_origin(rule):
+        written = rule_run.columns_a_rule_writes(rule, answer["updates"])
+        if written:
+            retraction_started = time.monotonic()
+            if apply:
+                taken = ingestion_worker._withdraw_and_tell(
+                    db, params["unit_table"], unit_ids, "edited", declarations=(rule_shape.declaration_of(rule),),
+                    table=log_table, columns=written, keep=keep)
+            else:
+                taken = cell_layer.withdraw_by_origin(db, unit_ids, apply=False, log=lambda m: None,
+                                                      table=log_table, columns=written, keep=keep)
+                db.rollback()
+            stats["marks_withdrawn"] = taken.get("cells_withdrawn", 0)
+            stats["retraction_seconds"] = round(time.monotonic() - retraction_started, 2)
+    stats["seconds"] = round(time.monotonic() - started, 2)
+    log(f"[fold-units] '{rule_name}' {stats['mode']}: {stats['rows_to_mark']} of {stats['rows_proposed']} row(s) "
+        f"to mark, {stats['rows_already_marked']} marked so already, {stats['marks_withdrawn']} old mark(s) "
+        f"withdrawn, {stats['pages']} page(s), {stats['seconds']} s")
+    return stats
+
+
+def _fold_units_forced(item, plain, layers, overwrite, clean, col_type, key_column, gated):
+    """'empty' · 'same' · None - the two cells whose write-door answer is already decided (총괄 10-11, speed):
+    no layer and no overwrite on the cell, or its one layer is this item's own, saying the same, and shown.
+    None - the door judges it (`crud.apply_row_update_internal`): any other layer, an overwrite row, a
+    version-gated table, a row whose business key the door would re-read, a spelling the notation folded."""
+    from database import crud
+
+    business_key, shown, key_value = plain
+    if (gated or overwrite is not None or len(item.updates) != 1 or item.business_key_val
+            or item._written_spelling or crud.is_blank_value(clean)):
+        return None
+    if key_column and key_value is not None and (
+            isinstance(key_value, dict) or crud.clean_str_value(key_value) not in ("", business_key)):
+        return None
+    if not layers:
+        return "empty"
+    own = layers[0]
+    if (len(layers) == 1 and own.source_name == item.source_name and own.updated_by == item.updated_by
+            and own.origin_row_id == item.origin_row_id and not crud.values_differ(own.value, clean, col_type)
+            and not crud.values_differ(shown, own.value, col_type)):
+        return "same"
+    return None
+
+
+def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply):
+    """One page of a fold rule's answer, judged as the write door judges it and written as it writes it.
+    The steps `_apply_batch_updates_once` takes before its loop and the worker's layer naming run as they
+    are; a cell `_fold_units_forced` decides takes that answer, every other one goes through
+    `crud.apply_row_update_internal` with the batch path's accumulators. Written: the history lines and
+    the shown values from one array per column (one statement each), layers and overwrites by the door's
+    bulk writers. -> (counts, the page's items)"""
+    from collections import Counter
+
+    from sqlalchemy import String, any_, bindparam, inspect
+    from sqlalchemy.dialects.postgresql import ARRAY
+    from sqlalchemy.orm import load_only
+
+    from chain import rule_run
+    from database import crud, models, schemas
+
+    if db.get_bind().dialect.name != "postgresql":
+        raise ReplayRefused("fold-units writes with PostgreSQL arrays - this database is %s"
+                            % db.get_bind().dialect.name)
+    batch = schemas.GeneralUpdateBatch(updates=proposed, transaction_id=tx_id)
+    for item in batch.updates:
+        item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
+    items = list(batch.updates)
+    config = crud.TABLE_CONFIG.get(table_name) or {}
+    col_type = (config.get("column_types") or {}).get(mark, "string")
+    key_column, gated = config.get("business_key"), bool(config.get("version_column"))
+    counts = Counter()
+    crud.refuse_write_to_view(table_name)
+    crud._fold_written_notation(db, table_name, batch)
+    with crud.transaction_context(items[0].updated_by if items else "system", tx_id,
+                                  items[0].source_name if items else "batch"):
+        crud.fill_nokey_keys(table_name, batch)
+        for item in batch.updates:
+            crud.assemble_composite_business_key(table_name, item)
+        counts["rows_refused"] += len(crud.refuse_virtual_join_duplicates(db, table_name, batch))
+        ids = list(dict.fromkeys(item.row_id for item in batch.updates if item.row_id))
+        read = [model.row_id, model.business_key_val, getattr(model, mark)] + (
+            [getattr(model, key_column)] if key_column else [])
+        plain, sources, overwrites = {}, {}, {}
+        cs, co = models.CellSource, models.CellOverwrite
+        page = bindparam("page", ids, type_=ARRAY(String))      # one read of each kind a page, not one per 1,000
+        for row in db.query(*read).filter(model.row_id == any_(page)):
+            plain[row[0]] = (row[1], row[2], row[3] if key_column else None)
+        for layer in (db.query(cs.table_name, cs.row_id, cs.column_name, cs.source_name, cs.value, cs.updated_by,
+                               cs.ingested_at, cs.origin_row_id)
+                      .filter(cs.table_name == table_name, cs.row_id == any_(page), cs.column_name == mark)
+                      .order_by(cs.source_name.asc())):
+            sources.setdefault((layer[1], layer[2]), []).append(crud.LightCellSource(*layer))
+        for ow in (db.query(co.table_name, co.row_id, co.column_name, co.is_overwrite, co.updated_by,
+                            co.updated_at, co.manual_priority_source)
+                   .filter(co.table_name == table_name, co.row_id == any_(page), co.column_name == mark)):
+            overwrites[(ow[1], ow[2])] = crud.LightCellOverwrite(*ow)
+        # a row the answer named that is no longer there is not created (the door would make a row of a mark)
+        judged = [item for item in batch.updates if item.row_id in plain]
+        counts["rows_gone"] += len(batch.updates) - len(judged)
+        batch_now = crud.batch_write_instant(db)
+        history, layers, ow_put, ow_gone, folded, moved, door = [], {}, {}, set(), set(), {}, []
+        for item in judged:
+            business_key, old, _key = plain[item.row_id]
+            cell = (item.row_id, mark)
+            clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
+            forced = _fold_units_forced(item, plain[item.row_id], sources.get(cell), overwrites.get(cell), clean,
+                                        col_type, key_column, gated)
+            if forced is None:
+                door.append(item)
+            elif forced == "same":
+                counts["rows_already_marked"] += 1
+            else:
+                layers[(table_name, item.row_id, mark, item.source_name)] = {
+                    "table_name": table_name, "row_id": item.row_id, "column_name": mark,
+                    "source_name": item.source_name, "value": clean, "updated_by": item.updated_by,
+                    "origin_row_id": item.origin_row_id, "ingested_at": crud.layer_instant()}
+                counts["rows_to_mark"] += 1
+                if crud.values_differ(old, clean, col_type):
+                    moved.setdefault(frozenset((mark, "updated_at")), []).append([item.row_id, clean])
+                    history.append(crud.row_update_line(
+                        db, table_name, item.row_id, [mark], {mark: clean}, {mark: old}, False, item.source_name,
+                        item.updated_by, tx_id, business_key, add_to_cache=False))
+        if door:
+            loaded = [getattr(model, name) for name in dict.fromkeys(
+                name for name in ("row_id", "business_key_val", mark, config.get("version_column"), key_column)
+                if name)]
+            rows = {row.row_id: row for row in db.query(model).options(load_only(*loaded)).filter(
+                model.row_id == any_(bindparam("door", [item.row_id for item in door], type_=ARRAY(String))))}
+            row_cache, prefetched = {}, set(rows)
+            for row in rows.values():
+                row_cache[row.row_id] = row
+                if row.business_key_val:
+                    row_cache[row.business_key_val] = row
+            probed = crud.ProbedIdentity(row_ids=frozenset(), business_keys=frozenset())
+            version_stats = {"rows": len(door)} if gated else None
+            with db.no_autoflush:
+                for item in door:
+                    row, _is_new, changed = crud.apply_row_update_internal(
+                        db, table_name, item, row_cache=row_cache, sources_cache=sources,
+                        overwrites_cache=overwrites, transaction_id=tx_id, logs_to_cache=history,
+                        cell_sources_to_upsert=layers, cell_overwrites_to_upsert=ow_put,
+                        cell_overwrites_to_delete=ow_gone, deleted_row_ids=[], version_stats=version_stats,
+                        prefetched_row_ids=prefetched, probed_identity=probed, drop_stats=crud._new_drop_stats(),
+                        batch_now=batch_now, cell_sources_to_delete=folded)
+                    layer = layers.get((table_name, item.row_id, mark, item.source_name))
+                    if layer is None:
+                        counts["rows_already_marked"] += 1
+                        continue
+                    counts["rows_to_mark"] += 1
+                    if mark not in changed and crud.values_differ(getattr(row, mark), layer["value"], col_type):
+                        counts["rows_higher_layer"] += 1
+            for row in rows.values():
+                names = frozenset(inspect(row).committed_state)
+                if names:
+                    moved.setdefault(names, []).append([row.row_id] + [getattr(row, name) for name in sorted(names)
+                                                                       if name != "updated_at"])
+                db.expunge(row)
+            if version_stats is not None:
+                counts["version_gate"] = dict(version_stats.get("counts") or {})
+        if not apply:
+            db.rollback()
+            return counts, batch.updates
+        _insert_by_arrays(db, models.AuditLog.__table__, history)
+        crud.bulk_upsert_cell_sources(db, list(layers.values()))
+        crud.bulk_upsert_cell_overwrites(db, list(ow_put.values()))
+        crud.bulk_delete_cell_overwrites(db, list(ow_gone))
+        crud.bulk_delete_cell_sources(db, [key for key in folded if key not in layers])
+        for names, shown in moved.items():
+            _update_by_arrays(db, model.__table__, sorted(names), shown, batch_now)
+        db.commit()
+    counts["rows_marked"] += counts["rows_to_mark"]
+    return counts, batch.updates
+
+
+def _arrays(db, columns, rows):
+    """`(params, casts)` - one PostgreSQL array per column, each value through its column's bind processor."""
+    dialect = db.get_bind().dialect
+    params, casts = {}, []
+    for i, (column, values) in enumerate(zip(columns, zip(*rows))):
+        bind = column.type.bind_processor(dialect)
+        params["a%d" % i] = [bind(value) if bind else value for value in values]
+        casts.append("CAST(:a%d AS %s[])" % (i, column.type.compile(dialect=dialect)))
+    return params, casts
+
+
+def _insert_by_arrays(db, table, mappings):
+    """The rows of `mappings` (every column but the key) into `table` in one statement."""
+    from sqlalchemy import text
+
+    if not mappings:
+        return
+    columns = [column for column in table.columns if not column.primary_key]
+    params, casts = _arrays(db, columns, [[one.get(column.name) for column in columns] for one in mappings])
+    db.execute(text('INSERT INTO "%s" (%s) SELECT * FROM unnest(%s)' % (
+        table.name, ", ".join('"%s"' % column.name for column in columns), ", ".join(casts))), params)
+
+
+def _update_by_arrays(db, table, names, rows, batch_now):
+    """`rows` [[row_id, a value per name but updated_at]] into `table` in one statement - updated_at, when
+    named, is the batch's instant as the door stamps it (`crud.batch_write_instant`, else now())."""
+    from sqlalchemy import text
+
+    valued = [name for name in names if name != "updated_at"]
+    columns = [table.c.row_id] + [table.c[name] for name in valued]
+    params, casts = _arrays(db, columns, rows)
+    sets = ['"%s" = v.a%d' % (name, i) for i, name in enumerate(valued, start=1)]
+    if "updated_at" in names:
+        sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
+        params["updated_at"] = batch_now
+    db.execute(text('UPDATE "%s" SET %s FROM unnest(%s) AS v(%s) WHERE "%s".row_id = v.a0' % (
+        table.name, ", ".join(sets), ", ".join(casts), ", ".join("a%d" % i for i in range(len(columns))),
+        table.name)), params)
+
+
 #: The writer of the history line a notation backfill leaves on each cell it folds.
 NOTATION_BACKFILL_SOURCE = "notation_backfill"
 

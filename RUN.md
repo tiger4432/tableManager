@@ -486,6 +486,21 @@
 >            withdraw 는 로그 표 fold_mark 의 체인 층 전부 — ⑤b 표시(fold_duplicate_rows 층)는 그대로
 > 옛 ⑤ 표시    잡을 가로질러 접었던 fold_duplicate_rows 층이 남아 있으면 이긴 잡의 행에도 남음 — 걷으려면
 >            python server/scripts/chain_replay_cli.py withdraw dt_log fold_duplicate_rows --columns fold_mark  (보고 --apply) -> ⑤b 다시
+> 스크립트로     python server/scripts/chain_replay_cli.py fold-units dt_log_fold_by_inventory   (미리보기, 쓰지 않음) -> 같은 명령 + --apply
+> (소유자 「맵퍼 말고」) 대기열 없이 위 replay 가 남기는 상태 그대로를 2만 행 쪽마다 씀 — 표시 · 행마다 체인 층 · 이력 줄 · 옛 표시 걷기까지
+>            PostgreSQL 만 · 아웃박스 사건 · 화면 알림 · 규칙 깨우기는 없음
+>   진행      쪽마다 «[fold-units] x / N rows (page k, s s)»
+>   답        units — 인벤토리 행 · 웨이퍼 · 진 잡 수 / rows the rule names — 진 잡의 로그 행
+>            rows to mark — 이번에 체인 층을 쓰는 행, 그 아래 shown value stays — 사람 값 같은 더 높은 층이 쥐어 보이는 값이 그대로인 행
+>            rows marked so already — 이미 같은 층 · 같은 표시(다시 돌리면 전부 여기, 쓰기 0)
+>            old marks withdrawn — 이제 이긴 잡 · 다른 잡으로 옮긴 로그 행의 옛 표시를 거둔 수
+>   그 뒤      ⑥ 복사 replay 를 꼭 — 이 명령은 아무 규칙도 안 깨운다. 열린 그리드는 새로 고침해야 보인다
+>   멈춤      소급 탭 × — 쪽 사이에서 선다 · 다시 돌리면 남은 것만 · 멈춘 판은 옛 표시를 안 걷는다(끝까지 한 번 더)
+>   초기화      위 「초기화」 첫 줄 -> fold-units dt_log_fold_by_inventory --apply
+>   박스 수     박스 DESKTOP-OVKV3HK(AMD Family 23) · assy_test 스크래치 스키마 · 만든 데이터(인벤토리 1,000 · 웨이퍼 400 · 로그 535,000 · 표시 321,000)
+>            쪽으로 답하는 맵퍼(1,000 행 쪽) 그대로: 미리보기 26.7 초 · --apply 91.6 초(17 쪽, 쪽마다 4.7~6.5 초)
+>            다시 돌림 29.8 초(쓰기 0) · 옛 표시 걷기 1.75 초(걷을 것 0)
+>            --apply 중 59.5 초가 DB 쓰기(로그 행 21.0 · 이력 20.3 · 체인 층 18.2) — 체인 문이 쓰는 행 그대로라 한 연결로는 이 밑으로 못 줄임
 > 시험 수       pytest sqlite: CW1 AUTO 둘 -> 이른 것 · CW3 매뉴얼 + AUTO -> AUTO · CW2 하나 -> 0 · CW4 매뉴얼 둘 -> 이른 것
 >            + 진 잡에 새 로그 행 · 늦은 AUTO 잡이 들어옴 · 다시 돌리면 쓰기 0. 진짜 프로세스 판은 응용 rh_world_inv
 > 급할 때      체인 선언에서 두 줄을 지우고 저장(표시는 남음 — 초기화 첫 줄로 걷음) · 코드는 git revert <이 커밋>
