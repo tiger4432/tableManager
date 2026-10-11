@@ -30,6 +30,7 @@ def fold(conn, table, ask=input, say=print) -> int:
     if not re.fullmatch(r"[A-Za-z0-9_]+", table or ""):
         say("Not a table name: %r" % table)
         return 2
+    say("Connected. Checking the retroactive queue ...")
     busy = conn.execute(text("SELECT run_id, op FROM retroactive_runs WHERE state IN ('running', 'cancel_requested')")).all()
     if busy:
         say("A retroactive run holds the queue: %s - stop it first with stop_retroactive.bat" % ", ".join(
@@ -77,7 +78,9 @@ def main(argv) -> int:
     print("Connecting to the server's database ...", flush=True)
     from database.database import engine
 
+    print("Ready.", flush=True)
     table = next((a for a in argv if not a.startswith("--")), None) or input("Table name: ").strip()
+    print("Opening a connection for %s ..." % table, flush=True)
     with engine.connect() as conn:
         return fold(conn, table, ask=(lambda _q: "y") if "--yes" in argv else input,
                     say=lambda line: print(line, flush=True))
