@@ -635,3 +635,27 @@ def test_the_mapper_door_reaches_the_same_functions():
     assert mapper_sdk.ask_json is llm.ask_json
     assert mapper_sdk.ask_links is text_links.ask_links
     assert mapper_sdk.LlmRefused is llm.LlmRefused
+
+
+def test_a_listed_identifier_written_with_spaces_is_that_identifier(answer, caplog):
+    """총괄 10-11: every «one of the listed» answer goes through `one_of` - spaces trimmed, case kept."""
+    answer(_links({"cause": "온도", "cause_key": " F1 ", "effect": "생긴 보이드", "effect_key": "Q123 ",
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_key"], row["phenomenon_key"]) == ("F1", "Q123")
+    assert _dropped_lines(caplog) == []
+
+
+@pytest.mark.parametrize("said, kept, lines", [(" confirmed ", "confirmed", 0), ("suspected", "suspected", 0),
+                                               (None, "suspected", 0), ("probable", "suspected", 1)],
+                         ids=["spaces", "listed", "null", "unlisted"])
+def test_a_certainty_is_one_of_the_two_or_said(answer, caplog, said, kept, lines):
+    answer(_links({"cause": "온도", "cause_key": "F1", "effect": "생긴 보이드", "effect_key": "Q123",
+                   "evidence": KO_EVIDENCE, "certainty": said}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert row["certainty"] == kept
+    assert _dropped_lines(caplog) == [
+        "[LLM] link 1 of 1 answers certainty 'probable', which is not confirmed or suspected - kept as suspected"
+        " (llm:m-1): %r" % KO_EVIDENCE][:lines]

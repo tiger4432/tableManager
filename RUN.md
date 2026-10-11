@@ -250,6 +250,17 @@
 >
 > ---
 >
+> ## [10-11] **LLM 후보 뽑기 — 목록 답 다섯 자리가 한 판정(one_of) (총괄, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇        모델 답의 사전 식별자(ask_links 원인 · 현상, ask_dictionary 노드) · 증감 방향 · 새 노드 타입 · 확실성이 모두 앞뒤 공백을 벗기고 목록 철자 그대로 견줌
+> 바뀐 것      « W1 » 이 목록 밖 경고 대신 W1 · « confirmed » 가 말없이 suspected 대신 confirmed
+>            확실성이 confirmed · suspected 밖이면 suspected 로 두고 한 줄 «[LLM] link N of M answers certainty '<답>', which is not confirmed or suspected - kept as suspected (llm:<모델>): '<근거>'»
+> 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **COLLECT 로 고른 타입만 노드 수에 셈 — 지나가는 다이가 node_limit 을 안 먹는다 (소유자 «코어 10매 들어갔는데 계속 1개만 세져», 착지 c17db3213) — 이주 «없음» · 재기동 «서버»**
 >
 > ```

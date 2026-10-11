@@ -268,6 +268,8 @@ def ask_links(text, names, instruction=None, match_at=None):
     null gives the node whose phrase its words hold (`phrase_bag`); an identifier not listed gives
     none and is said in one warning line. *_phrase is always the words. `certainty` is what the
     text says, `suspected` when it says nothing - nothing becomes a fact before a person confirms it.
+    Every «one of the listed» answer - an identifier, a direction, the certainty - is read by `one_of`
+    (spaces trimmed, case kept); an answer outside the list is said in one warning line.
     `cause_direction` / `phenomenon_direction` is the answer when it is one of DIRECTIONS as
     written (spaces trimmed, case kept), else None - an answer that is neither null nor one of
     them is said in one warning line. `dir` is their sign (`_signed`).
@@ -325,15 +327,19 @@ def ask_links(text, names, instruction=None, match_at=None):
             if crud.is_blank_value(answered):
                 found = phrase_bag.match_phrase(said[side], names, match_at) or {}
                 node[side] = (found.get("node_type"), found.get("node_key"))
-            elif str(answered) in by_id:
-                node[side] = by_id[str(answered)]
             else:
-                node[side] = (None, None)
-                logger.warning("[LLM] link %d of %d answers %s_key %r, which the dictionary does not list"
-                               " - kept with its words only (%s): %r",
-                               number, len(links), side, answered, extractor, said[side][:120])
+                listed, unlisted = one_of(answered if isinstance(answered, str) else str(answered), by_id)
+                node[side] = by_id[listed] if listed is not None else (None, None)
+                if unlisted is not None:
+                    logger.warning("[LLM] link %d of %d answers %s_key %r, which the dictionary does not list"
+                                   " - kept with its words only (%s): %r",
+                                   number, len(links), side, unlisted, extractor, said[side][:120])
         (cause_type, cause_key), (effect_type, effect_key) = node["cause"], node["effect"]
-        certainty = item.get("certainty")
+        certainty, unsure = one_of(item.get("certainty"), (CONFIRMED, SUSPECTED))
+        if unsure is not None:
+            logger.warning("[LLM] link %d of %d answers certainty %r, which is not %s or %s - kept as %s (%s): %r",
+                           number, len(links), unsure, CONFIRMED, SUSPECTED, SUSPECTED, extractor,
+                           said["evidence"][:120])
         out.append(_signed({"sentence_no": sentence_no, "sentence": sentence,
                     "cause_type": cause_type, "cause_key": cause_key,
                     "cause_phrase": said["cause"].strip(), "cause_direction": direction["cause"],

@@ -2280,10 +2280,9 @@
 - **언제 재사용**: 값의 «종류»에 따라 화면이 달리 그려야 할 때 — 값 글자가 주소처럼 생겼는지 보지 말고 이 좌석에 묻는다.
 - **함정**: 같은 이름을 두 출처가 다른 타입의 열에 묶을 수 있다 — 값마다 «자기» 출처로 묻고, 한 출처가 두 타입의 열에 묶으면 None(`e205908b8` 칸). 코드 맵퍼의 수식어는 묶인 열이 없어 None. 로더가 거절했거나 은퇴한 출처도 None — 은퇴한 출처의 원자는 계속 걸어지니 그 값의 표시는 말없이 빠진다.
 
-### **언어 모델의 답이 «닫힌 낱말 목록» 중 하나인가(증감 방향 · 새 노드 타입)는 `text_links.one_of`** (2026-10-11 등록 · `e32731bd5`)
-- **어디**: `server/utils/text_links.py` `one_of(answer, listed)` → (kept, unlisted) — 앞뒤 공백만 벗기고 목록 철자 그대로면 kept, 빈 값(`crud.is_blank_value`)도 목록도 아니면 unlisted. 부르는 곳 둘 — `ask_links` 의 증감 방향 · `dictionary_suggest.ask_dictionary` 의 새 노드 타입. 경고 문장은 부르는 쪽마다.
+### **언어 모델의 답이 «닫힌 낱말 목록» 중 하나인가(사전 식별자 · 증감 방향 · 확실성 · 새 노드 타입)는 `text_links.one_of`** (2026-10-11 등록 · `e32731bd5`)
+- **어디**: `server/utils/text_links.py` `one_of(answer, listed)` → (kept, unlisted) — 앞뒤 공백만 벗기고 목록 철자 그대로면 kept, 빈 값(`crud.is_blank_value`)도 목록도 아니면 unlisted. 부르는 곳 다섯 — `ask_links` 의 사전 식별자 · 증감 방향 · 확실성(목록 [confirmed, suspected], 밖이면 suspected + 한 줄) · `dictionary_suggest.ask_dictionary` 의 사전 식별자 · 새 노드 타입(10-11 셋을 모음). 경고 문장은 부르는 쪽마다.
 - **함정**: 대소문자를 접지 않는다 — 다르게 받고 싶으면 이 함수를 고친다. 셋째 사본을 적지 않는다.
-  같은 물음 «답이 목록에 있나»를 다른 규칙으로 답하는 자리가 셋 남아 있다 — 사전 식별자 찾기 `text_links.ask_links` 의 `str(answered) in by_id` · `dictionary_suggest.ask_dictionary` 의 `str(item["node"]) in by_id`(공백을 안 벗기고 목록 밖이면 경고), `ask_links` 의 확실성 `CONFIRMED if certainty == CONFIRMED else SUSPECTED`(공백을 안 벗기고 경고 없이 suspected). 그래서 한 답 안에서 `cause_direction: " up "` 은 받고 `cause_key: " W1 "` 은 목록 밖 경고, `" confirmed "` 는 말없이 suspected 가 된다(10-11 문서 감사).
 
 ### 교체 쓰기 전 수 대조 게이트 — 직렬화가 **원본 집합**보다 적으면 거부 (2026-07-28 등록 · 2026-07-30 대조축 정정)
 - **무엇**: 전량 교체(replace) 쓰기 직전에 **원본 집합(필터 이전)의 non-empty 개수 vs 직렬화 페이로드의 개수**를 대조해, 페이로드가 적으면 confirm 이전에 거부하고 **삭제될 개수를 메시지에 명시**한다. 교체 의미론에서 "빠짐 = 삭제"이므로, 이 한 줄 산술이 §1 replace_map의 "불완전한 집합을 보내면 전량 파괴" 함정의 **쓰기 쪽 집행 장치**다(읽기 쪽 짝은 위 "절단 응답은 실패로 강등").
