@@ -79373,3 +79373,68 @@ fold-units 소급 탭 문장 a88909467 — downstream_note 에 «끝 철회는 �
   RED the old fold-units note back — 1 failed, 13 deselected
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 config 는 스크래치로 복사만 · public 전후 같음 · 지운 것 0
 ```
+
+## [10-11] 걷기 답의 이미지 참조 착지 c5463a475 (총괄 2d6a0fd58 ㄱ)
+
+```
+착지 c5463a475 — 6 files changed, 234 insertions(+), 1 deletion(-)
+좌석  ledger.setup.declared_value_type(setup, 소스, 이름) — 컴파일된 bind(한정자 역할 · 엔티티 역할의 속성, 모든 문장) -> 칸
+      -> map_overlay.declared_column_type. 묶인 칸 없음(파이썬 맵퍼 한정자) · 두 타입 · 계획 없는 소스 -> None
+답    _say_image_values — 걷기 · 시각 쪽 두 답 자리에서: 노드 이름 기록 · 세상별 값 column_type, 엣지 기록 · 엣지 column_types
+      값마다 제 소스로 · 체인 워커의 세상별 컴파일 캐시(_compiled_setup, 파일 스탬프) · image 만 — 없으면 바이트 그대로
+      선언이 컴파일 안 되면 세상마다 한 줄 말하고 걷기는 계속
+시험(배포 표본을 tmp 에 컴파일) — image 칸 속성 / text 칸이면 바이트 그대로 · 살아 있는 타입 바꿈이 다음 걷기에 /
+      두 소스가 한 이름을 두 타입 칸으로 -> 기록마다 제 것 / 한정자 역할(속성 이름 아님) -> 엣지 · 기록
+변이
+  RED every declared type is said, not image only — 2 failed, 2 passed · test_a_name_read_from_any_other_column_adds_nothing_and_a_reload_reaches_the_next_walk, test_each_record_says_its_own_sources_column
+  RED the type is asked of the name's first source, not each record's — 1 failed, 3 passed · test_each_record_says_its_own_sources_column
+  RED an attribute's column is not looked for — 3 failed, 1 passed · test_a_name_read_from_an_image_column_says_so_on_its_records, test_a_name_read_from_any_other_column_adds_nothing_and_a_reload_reaches_the_next_walk, test_each_record_says_its_own_sources_column
+  RED a qualifier role's column is not looked for — 1 failed, 3 passed · test_an_edge_qualifier_read_from_an_image_column_says_so_on_the_edge_and_its_records
+  RED the type is read from the value's shape — 2 failed, 2 passed · test_a_name_read_from_any_other_column_adds_nothing_and_a_reload_reaches_the_next_walk, test_each_record_says_its_own_sources_column
+  RED the edges are not marked — 1 failed, 3 passed · test_an_edge_qualifier_read_from_an_image_column_says_so_on_the_edge_and_its_records
+게이트 — 걷기 · 원장 설정 · 이미지 낱말을 부르는 시험 파일, 같은 base(f86b57102) 깨끗한 사본과, 비PG,
+  데이터 루트는 이 박스 config 를 스크래치로 «복사»한 것(원장 선언을 읽는 파일이 돌도록)
+  files 85
+  wt-llm:   1 failed, 1024 passed, 2 skipped, 133 deselected in 95.59s (0:01:35)
+  wt-check: 1 failed, 1020 passed, 2 skipped, 133 deselected in 91.18s (0:01:31)
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+  둘의 같은 빨강 하나 — tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+  PG pg files 19
+  PG FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  PG FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+  PG 2 failed, 131 passed, 113 deselected in 580.96s (0:09:40)
+  PG 의 빨강 둘은 깨끗한 사본에서도 같음:
+    FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+    FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+    2 failed, 13 deselected in 2.57s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+박스 수(읽기 전용, 이 박스 상태) — 데모 바구니 걷기 /subgraph, 줄마다 «고치기 전 판 · 뒤 판» × 첫 부름 · 둘째 부름
+  == wt-check
+  box image columns 0: []
+  collect=wafer call 1 · bytes 1421782 · 1.41 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.57 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.54 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.58 s · image marks 0
+  == wt-llm
+  box image columns 0: []
+  collect=wafer call 1 · bytes 1421782 · 1.36 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.61 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.53 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.57 s · image marks 0
+  == wt-check all-image
+  collect=wafer call 1 · bytes 1421782 · 1.28 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.58 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.52 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.55 s · image marks 0
+  == wt-llm all-image
+  collect=wafer call 1 · bytes 1421782 · 1.36 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.64 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.56 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.61 s · image marks 0
+  compile first 0.12 s · again (stamp unchanged) 0.0002 s · sources 15 · with a profile 5
+  모든 칸을 image 로 둬도 표시 0 인 까닭 — 바구니 값의 소스가 로더가 거절한 소스(뷰를 읽음 · 계획 없음)라 컴파일된 bind 가 없다
+  (프로브: 바구니 값의 (세상, 소스, 이름) 15 가지 중 위 열둘이 void_observation · process_param_*_measure — 셋 다 계획 없음)
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · 격리 시험 DB(PG) · 박스 assy_manager 읽기 전용 · public 전후 같음 · 지운 것 0
+```

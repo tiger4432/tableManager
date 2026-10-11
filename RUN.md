@@ -246,7 +246,7 @@
 >
 > ---
 >
-> ## [10-11] **걷기 답이 이미지 값을 말한다 — 칸 타입 image 에서 읽은 값에 column_type (총괄 2d6a0fd58 ㄱ, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버»**
+> ## [10-11] **걷기 답이 이미지 값을 말한다 — 칸 타입 image 에서 읽은 값에 column_type (총괄 2d6a0fd58 ㄱ, 착지 c5463a475) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
 > 적는 곳      table_config.json 그 칸을 "image" — 원장 소스가 그 칸을 속성(bind.entities.<타입>.attributes.<이름>) 또는
