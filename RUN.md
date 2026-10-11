@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 af8ef5701 -> 6ba14bde0, 접기 맵퍼 들어간 판 · ①b 만 앞 판 355ba2092)**
+> ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 af8ef5701 -> 6ba14bde0, 접기 맵퍼 들어간 판 · ①b 만 앞 판 355ba2092)** ⚠️ b566b48ae(층 원천 행마다) «이전» 판 — 그 착지 뒤 판으로 다시 재는 중, ①c 층 접기가 재기동 뒤에 들어감
 >
 > ```
 > 리허설       운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러). 소유자 코드(af8ef5701)로 꼬임을 만들고, ① 에서 6ba14bde0 로 pull 한 뒤
@@ -9,7 +9,7 @@
 >              초 = 명령이 돌아올 때까지(리허설 · 박스). 운영 크기의 초가 아니다. 이 판은 같은 DB 에서 다른 레인의 큰 사본 작업이 돌던 중이었다
 >                   replay 의 «rows handed over» 뒤 체인이 쓰는 시간은
 >                   이 초 밖이다 — chain_worker.log 의 [ChainRule] rule=<규칙> … rows_in= 줄이 그 끝
->              지금 main 도 같은 명령: git diff --name-only 6ba14bde0 origin/main -- server/ ':!server/tests' -> 없음(그 사이 main 커밋 5 개는 server/ 밖) (main 07baf92a6)
+>              ⚠️ 지금 main 은 «다른» 명령 판: git diff --name-only 6ba14bde0 origin/main -- server/ ':!server/tests' -> admin/retroactive.py · chain/cell_layer.py · chain/ingestion_worker.py · chain/replay.py · chain/rule_run.py · database/crud.py · mappers/hold_copy.py · scripts/ops_setup_db_performance.py (main d4cb9f7ec)
 > 어디서       server 폴더(cd server) · PowerShell 창에 «직접» 친다
 >              ⚠️ 출력을 파이프(|)나 파일(>)로 받지 않는다 — 리허설에서 fold-rows 미리보기가 '«'(U+00AB) 를 cp949 로 못 써서 죽었다(exit 1).
 >                 받아야 하면 먼저  $env:PYTHONIOENCODING = "utf-8"   (창에 직접 친 경우는 이 박스에서 못 쟀다)
