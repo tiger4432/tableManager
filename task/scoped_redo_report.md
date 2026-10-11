@@ -79619,3 +79619,13 @@ PG:
   ② 쪽 크기와 무관한 고정 비용이 page_seconds 를 넘는 쪽은 1 행에서 안 자람 — 원장 stale 철회(인덱스 없는 판 50,000 refs/쪽)는 그래서 고정 그대로
   ③ 표기 소급 · fold-units 의 옛 쪽 줄 «[notation] x / total rows (page k, s)» 가 새 줄과 같은 사건 — 드라이런엔 그것만 찍혀 남김
 ```
+
+## [10-12] exclude_when 으로 거른 행이 «아직 번역 안 된 행»에 남던 것 — 착지 9c1da298f (+ RUN.md b6ad832c1) · 총괄 GO-WITH-FIXES 셋 반영
+
+```
+고침    사람이 묻는 셈(exact_rows)만 색인에 없는 행에서 거른 행을 같은 판정(row_excluded)으로 뺌 — 틱은 예전대로(S-122)
+못 뺀 판 답에 excluded_not_subtracted («an estimate» · «over 100k rows the index does not name») · 소급 남은 행 문장에도
+낱말    «Table less indexed» 는 표 − 색인 그대로 · 거른 행은 not_yet · «New, not translated» 에서만 빠짐
+게이트  세 행(blank 절 · when 절) -> 원천 3 · 색인 1 · 거름 2 · 아직 0, 틱은 «an estimate» — 변이 둘 빨강
+재기동  서버 · 체인 워커
+```
