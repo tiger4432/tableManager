@@ -79509,3 +79509,34 @@ LLM 시험 세 파일 137 초록(이 착지 rebase 뒤) · 변이 셋:
     test_a_listed_node_written_with_spaces_is_that_node
   AFTER 121 passed
 ```
+
+## [10-11] format 없는 시각 글자는 확장 ISO 만 — 착지 22c2740e5 (총괄 ㄱ, 소유자 운영 «20261011_213631»)
+
+```
+원인      미리보기와 백필은 같은 함수(roleframe.aware_time · preview_cursor_batch)를 지남. format 이 없으면 fromisoformat 에 맡겼고
+          3.11+ 은 «20261011_213631» 을 읽고 3.10 이하는 거절 — 이 박스 3.12.13 은 읽음(재현: 테스트 런 passed · 원자 4)
+고침      format 없으면 ISO_EXTENDED 만 · 그 밖 글자는 «… is not ISO 8601 (2026-10-11 21:36:31) - declare the format …, e.g. "format": "%Y%m%d_%H%M%S"»
+          occurred_at 은 분자 거절 · 값 바인딩(속성 · 한정자 · 값)은 배치 거절 — 테스트 런 status refused + 실행 문 같은 문장
+          format 칸은 이미 모든 column 바인딩에서 검증 · 읽기를 지남(넓힌 것 없음)
+바뀐 것    3.11+ 에서 format 없이 읽히던 ISO 밖 글자 거절 · 그런 칸은 선언 폼 Time 후보에서 빠짐(선언 JSON 에 format)
+변이(시각 칸 파일 14 칸):
+  BASE 14 passed
+  RED no format reads whatever fromisoformat reads - 6 failed, 8 passed · test_an_attribute_binding_reads_the_text_by_its_format[None], test_other_text_is_refused_naming_the_format_to_declare[2026-10-11_21:36:31], test_other_text_is_refused_naming_the_format_to_declare[2026/10/11 21:36:31], test_other_text_is_refused_naming_the_format_to_declare[20261011T213631], test_other_text_is_refused_naming_the_format_to_declare[20261011_213631], test_the_test_run_and_the_execute_door_refuse_the_compact_text_alike
+  RED ISO with a space between date and time is refused - 1 failed, 13 passed · test_iso_extended_text_reads[2026-10-11 21:36:31-read0]
+  RED a value binding's format is not handed to the reader - 1 failed, 13 passed · test_an_attribute_binding_reads_the_text_by_its_format[%Y%m%d_%H%M%S]
+  AFTER 14 passed
+관련 파일 게이트(깨끗한 d3fc3a98a 대조):
+  files 152
+  wt-llm:   4 failed, 2137 passed, 3 skipped, 189 deselected, 1 error in 316.54s (0:05:16)
+  wt-check: 4 failed, 2123 passed, 3 skipped, 189 deselected, 1 error in 331.57s (0:05:31)
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+PG:
+  pg files 24
+  FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+  FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+  3 failed, 186 passed, 209 deselected in 613.10s (0:10:13)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+```
