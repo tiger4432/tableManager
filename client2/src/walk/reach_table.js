@@ -55,8 +55,15 @@ function valueAt(index, end, value) {
   if (value.on === 'key') return { value: (node.keys || {})[value.name], when: end.edge };
   if (value.on === 'edge') return { value: end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined, when: end.edge };
   const said = (node.attributes || {})[value.name];
-  return { value: said, when: ((node.attributes_by_world || {})[value.name] || []).find((s) => s && s.value === said) || null };
+  return { value: said, when: ((node.attributes_by_world || {})[value.name] || []).find((s) => s && sameValue(s.value, said)) || null };
 }
+
+/** Two values the same as said - a list (a many attribute) by its items, not by being one object (lead 10-11 W ⑬). */
+export const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** A column whose value something says - an edge's attribute or a node's - not who a node is, its key or its name
+ *  (lead 10-11: identity is never a trend's). */
+export const saysValue = (column) => column.value.on === 'edge' || column.value.on === 'node';
 
 /**
  * One cell: what column `column` reads from row `x` inside group `inside` (Ri) - every way from x along the column's
@@ -213,14 +220,14 @@ export function defaultColumns(index, rows, keyOrder = []) {
 export function tableOf(index, groups, rows, columns, cap = WAYS_A_CELL) {
   return rows.map((id) => {
     const cells = columns.map((column) => groups.map((g) => cellOf(index, g.inside, id, column, cap)));
-    const said = (cell) => (cell.missing ? '\u0000missing' : JSON.stringify(cell.values));
+    const same = (a, b) => a.missing === b.missing && (a.missing || sameValue(a.values, b.values));
     const reached = groups.map((g) => g.inside.has(id));
     return {
       id,
       cells,
       deltas: cells.map(deltaOf),
       missing: reached.some((r) => !r),
-      differs: reached.some((r) => r !== reached[0]) || cells.some((byGroup) => byGroup.some((c) => said(c) !== said(byGroup[0]))),
+      differs: reached.some((r) => r !== reached[0]) || cells.some((byGroup) => byGroup.some((c) => !same(c, byGroup[0]))),
     };
   });
 }

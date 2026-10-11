@@ -227,20 +227,31 @@ export function openFold() {
 
 /**
  * The first picture's rule (owner 10-06, lead): from these points every node one step on is drawn and the points'
- * own branches open. Whatever else the answer brings is held: behind a node new to the picture as its one big lump,
- * behind a node already in sight as a small lump that keeps what that node already showed (nothing drawn leaves).
- * A fan-out the server did not send stays its own dashed lump, as it is today. `fold` is added to and returned.
+ * own branches open - a fan-out over `limit` its first `limit`, the rest kept in its small lump, the one a fan-out the
+ * server cut draws (lead 10-11 G-2: a branch the page hands over in full draws as one walked with the part's cap; the
+ * lump holds what the answer brought, so opening it walks nothing). Whatever else the answer brings is held: behind a
+ * node new to the picture as its one big lump, behind a node already in sight as a small lump that keeps what that node
+ * already showed (nothing drawn leaves). A fan-out the server did not send stays its own dashed lump, as it is today.
+ * `fold` is added to and returned.
  */
-export function foldBeyond(layout, fold, points, shownBefore) {
+export function foldBeyond(layout, fold, points, shownBefore, limit = Infinity) {
   const steps = stepsOf(layout);
   const from = new Set(points);
   const before = shownBefore || new Set();
   const near = new Set();
   for (const s of from) {
     fold.big.delete(s);
+    const fan = new Map();
     for (const step of steps.get(s) || []) {
       fold.lumped.delete(step.key);
-      if (!from.has(step.to)) near.add(step.to);
+      if (from.has(step.to)) continue;
+      if (!fan.has(step.key)) fan.set(step.key, []);
+      fan.get(step.key).push(step.to);
+    }
+    for (const [key, far] of fan) {
+      const first = far.slice(0, limit);
+      for (const id of first) near.add(id);
+      if (first.length < far.length) fold.lumped.set(key, new Set(first));
     }
   }
   const drawn = new Set([...before, ...from, ...near]);
@@ -508,7 +519,8 @@ export class SubgraphView {
   /** The name the next Mark writes, or '' once the chain is used up. */
   writes() { return this._watch(this.chain(this.steps.length)); }
 
-  /** Walk from the chain's first marking and draw it. `reuse`: the same marking already drawn is not asked again. */
+  /** Walk from the chain's first marking and draw it. `reuse`: the same marking already drawn is not asked again;
+   *  `given`: the page's own answer and the starts it walked (lead 10-11 G-2) - drawn, not walked. */
   async show(opts = {}) {
     const start = this._watch(this.chain(0));
     const key = JSON.stringify(this.markings.entries(start));
@@ -527,7 +539,7 @@ export class SubgraphView {
     this.pos = new Map();
     this._relayout = true;
     this._closePicker();
-    await this._step(start);
+    await this._step(start, opts.given);
   }
 
   /** Every seed the steps walked from - where the fold's walk starts. */
@@ -587,7 +599,7 @@ export class SubgraphView {
     const fold = openFold();
     let shown = new Set();
     for (const step of this.steps) {
-      foldBeyond(this.layout, fold, startsOf(step), shown);
+      foldBeyond(this.layout, fold, startsOf(step), shown, this.fanoutLimit);
       shown = new Set(lumpView(this.layout, fold, this._seeds()).nodes.map((n) => n.id));
     }
     return fold;
@@ -607,15 +619,15 @@ export class SubgraphView {
     if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);
   }
 
-  /** Walk from the marking the last step's marks wrote, and draw it on the same picture. */
-  async continueWalk() {
+  /** Walk from the marking the last step's marks wrote, and draw it on the same picture; `given` as `show`'s. */
+  async continueWalk(given) {
     const name = this.writes();
     if (!name || this.state !== 'done') return;
-    await this._step(name);
+    await this._step(name, given);
   }
 
-  async _step(name) {
-    const seeds = seedsOf(this.markings.entries(name));
+  async _step(name, given) {
+    const seeds = given || seedsOf(this.markings.entries(name));
     if (!seeds.positive.length) {
       if (!this.steps.length) { this.state = 'empty'; this.render(); }
       return;
@@ -623,7 +635,7 @@ export class SubgraphView {
     const step = { marking: name, seeds: [...seeds.positive, ...seeds.negative],
       positive: seeds.positive, negative: seeds.negative, expand: [], results: [] };
     await this._ask({ positive: step.positive, negative: step.negative, fanout_limit: this.fanoutLimit }, [],
-      (res) => [...this.steps, { ...step, results: [res] }], true);
+      (res) => [...this.steps, { ...step, results: [res] }], true, given && given.answer);
   }
 
   /** Open one bundle a step left unsent: one step from its node along its predicate, the way it leaves, to its far
@@ -639,8 +651,10 @@ export class SubgraphView {
   }
 
   /** One walk - a step's marking with the cap this part declares, or one bundle's step; `next` builds the steps from
-   *  the answer. A new step (`fresh`) draws its points' one step and folds the rest; an opening changes no fold. */
-  async _ask(asked, expanding, next, fresh) {
+   *  the answer. A new step (`fresh`) draws its points' one step and folds the rest; an opening changes no fold.
+   *  `answer`: one the page holds already, landed the same way, not asked - a tick later, as a walk's: the page seats the
+   *  picture's box first (drawn into a box not yet on the page, the library breaks - G-2 on the box, 10-11). */
+  async _ask(asked, expanding, next, fresh, answer) {
     const steps = this.steps;
     const before = fresh && this.layout ? new Set(this._view().nodes.map((n) => n.id)) : new Set();
     this.state = 'running';
@@ -648,13 +662,13 @@ export class SubgraphView {
     // What this ask walks, so the lump pressed reads as on its way (lead 10-07); a newer ask owns it after.
     this.expanding = expanding;
     this.render();
-    const res = await this.walk(asked);
+    const res = await (answer || this.walk(asked));
     if (this.steps !== steps) return;   // a new start was asked meanwhile
     this.expanding = [];
     if (res && res.ok) {
       this.steps = next(res);
       this.layout = subgraphLayout(this.steps, this.entities());
-      if (fresh) foldBeyond(this.layout, this.fold, startsOf(this.steps[this.steps.length - 1]), before);
+      if (fresh) foldBeyond(this.layout, this.fold, startsOf(this.steps[this.steps.length - 1]), before, this.fanoutLimit);
       this.state = 'done';
     } else {
       this.state = 'failed';
@@ -1339,10 +1353,14 @@ export class SubgraphView {
   /** What the steps brought, every answer. */
   _results() { return this.steps.flatMap((step) => step.results); }
 
-  /** A lump handed to the page as a step of its table: its answer, narrowed - nothing walked (lead 10-11 E2b). */
+  /** A lump handed to the page as a step of its table: its answer, narrowed - nothing walked (lead 10-11 E2b); `step`, the
+   *  picture's step whose answer brought its edges (lead 10-11). */
   _openTable(lump) {
-    this.openTable(lumpAnswer(this._results(), lump), { owner: lump.owner, ownerLabel: this._labelOf(lump.owner),
-      predicate: lump.predicate, farType: lump.farType, words: `${arrowed(lump)} ${lump.farType}` });
+    const answer = lumpAnswer(this._results(), lump);
+    const kept = new Set(answer.edges.map((e) => e.id));
+    const step = this.steps.findIndex((s) => s.results.some((r) => ((r && r.edges) || []).some((e) => kept.has(e.id))));
+    this.openTable(answer, { owner: lump.owner, ownerLabel: this._labelOf(lump.owner),
+      predicate: lump.predicate, farType: lump.farType, words: `${arrowed(lump)} ${lump.farType}`, step });
   }
 
   /** The dots' colours, as the tokens are now - an image reads no page variable. */

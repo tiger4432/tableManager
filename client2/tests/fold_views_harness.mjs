@@ -32,10 +32,6 @@ async function suite(m) {
     console.log(`  FAIL ${name}${detail ? ' -- ' + detail : ''}`);
   };
 
-  console.log('\n[R] what a value reads as');
-  const read = ['10.1', ' 3 ', '0', 0, 'S1', '', '  ', null, undefined, NaN, '1e3'].map((v) => m.numberOf(v));
-  say('R1 text that is a number reads as it; text that is not, blank or nothing reads as none; 0 is a value',
-    JSON.stringify(read) === JSON.stringify([10.1, 3, 0, 0, null, null, null, null, null, null, 1000]), JSON.stringify(read));
   console.log('\n[S] the one start-branch question');
   const later = { results: [STEP] };
   const lit = m.startBranch([{ results: [WAFER] }, later]);
@@ -94,6 +90,25 @@ async function suite(m) {
   say('L4 a lump\'s points in two schemes - its members\' measures value, its measurements\' own value: the same values and times (lead 10-11 E2c)',
     ed.length === 4 && ed.join() === ev.join(), JSON.stringify({ ed: ed.length, ev: ev.length }));
 
+  console.log('\n[PA] a branch\'s step before its last: its paths to the next step\'s starts (lead 10-11 G-2)');
+  // s walked to a and b along p, on to c and d along q; s-c along z and a-b along r join nodes on the paths but are none of them.
+  const n2 = (id, depth) => ({ id, type: 't', label: id, keys: { t: id }, depth });
+  const e2 = (source, predicate, target) => ({ id: `${source}${predicate}${target}`, source, target, predicate });
+  const hop = (id, predicate) => (predicate ? { id, predicates: [predicate] } : { id });
+  const PATHS = { nodes: [n2('s', 0), n2('a', 1), n2('b', 1), n2('c', 2), n2('d', 2)],
+    edges: [e2('s', 'p', 'a'), e2('s', 'p', 'b'), e2('a', 'q', 'c'), e2('b', 'q', 'd'), e2('s', 'z', 'c'), e2('a', 'r', 'b')],
+    propagation: { ranked: [{ id: 'a', evidence: [{ seed: 's', hops: [hop('s'), hop('a', 'p')] }] },
+      { id: 'c', evidence: [{ seed: 's', hops: [hop('s'), hop('a', 'p'), hop('c', 'q')] }] },
+      { id: 'd', evidence: [{ seed: 's', hops: [hop('s'), hop('b', 'p'), hop('d', 'q')] }] }] } };
+  const idsOf = (xs) => xs.map((x) => x.id).sort().join();
+  const toC = m.pathsAnswer(PATHS, ['c']);
+  say('PA1 the paths to a row: their hops and the edge each hop took - an edge between two of them it did not take, a branch off them, left out',
+    idsOf(toC.nodes) === 'a,c,s' && idsOf(toC.edges) === 'aqc,spa',
+    JSON.stringify({ nodes: idsOf(toC.nodes), edges: idsOf(toC.edges) }));
+  const atStart = m.pathsAnswer(PATHS, ['s']);
+  say('PA2 a row the walk started at: itself alone', idsOf(atStart.nodes) === 's' && atStart.edges.length === 0,
+    JSON.stringify({ nodes: idsOf(atStart.nodes), edges: idsOf(atStart.edges) }));
+
   console.log('\n[D] the one drawing');
   const p = { points: pts };
   const svg = m.pointsSvg(p.points, { width: 200, height: 80, pad: 6.8, r: 3.4, colours: COLOURS, axes: true });
@@ -128,12 +143,15 @@ const failures = [];
   };
   const M = (id, what, catches, from, to) => ({ id, what, catches, from, to });
   const MUTANTS = [
-    M('Rm2', 'a blank text reads as 0', 'R1', "if (typeof value !== 'string' || !value.trim()) return null;", "if (typeof value !== 'string') return null;"),
     M('Sm1', 'the start branch is everything any step reached', 'S1',
       'const first = (steps || [])[0];\n  return new Set(((first && first.results) || [])',
       'return new Set((steps || []).flatMap((s) => s.results || [])'),
     M('Lm1', 'a lump\'s answer keeps every predicate between owner and member', 'L1',
-      'if (e.predicate === lump.predicate && far !== null', 'if (far !== null'),
+      'return e.predicate === lump.predicate && far !== null', 'return far !== null'),
+    M('PAm1', 'every edge between two nodes on the paths', 'PA1',
+      '(e) => took.has(`${e.source}|${e.target}|${e.predicate}`) || took.has(`${e.source}|${e.target}|`)', '(e) => keep.has(e.source) && keep.has(e.target)'),
+    M('PAm2', 'the rows alone, their paths not read', 'PA1', 'const keep = new Set([...rows, ...paths.flatMap((p) => p.hops.map((h) => h.id))]);',
+      'const keep = new Set(rows);'),
     M('Lm2', 'a lump\'s points not lit from the start branch', 'L2', 'lit: Boolean(lit && lit.has(p.row))', 'lit: false'),
     M('Lm3', 'a lump\'s answer carries no evidence', 'L3', 'propagation: { ranked: [...ranked.values()] } };', 'propagation: { ranked: [] } };'),
     M('Lm4', 'a lump\'s points read the steps\' columns only', 'L4', '  const at = section && section.trendable[0];',

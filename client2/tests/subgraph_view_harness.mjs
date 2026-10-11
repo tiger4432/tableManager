@@ -124,7 +124,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const chain = opts.chain || ['s0', 's1', 's2'];
     if (!opts.keepStart) markings.replace(chain[0], [[startId(bodies[0]), SIGN.CASE]]);
     const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => ENTITIES, markings, chain: (k) => chain[k] || '',
-      worldChips: opts.worldChips, openTable: opts.openTable, predicates: opts.predicates });
+      worldChips: opts.worldChips, openTable: opts.openTable, predicates: opts.predicates, fanoutLimit: opts.fanoutLimit });
     seated.push(view);
     await view.show();
     return { doc, host, view, urls, markings, chain };
@@ -1064,7 +1064,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[Y] a new start keeps nothing of the last picture: no mark, no fold, no opened lump (lead 10-07)');
-  if (want(["Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7"])) {
+  if (want(["Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7", "Y8"])) {
     const markings = new MarkingStore();
     const s = await seat([BUNDLES, OPENED, WAFER], { markings, chain: ['y0', 'y1', 'y2'] });
     // The last picture: an unsent lump walked and opened, then a node marked that the next start does not reach.
@@ -1132,6 +1132,18 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     say('Y7 the page\'s branch drawn again from the same start: walked once, its marks kept, on the node drawn again too',
       r.urls.length === 1 && r.markings.count('r1') === 1 && Boolean(kept) && kept.nonempty() && kept.hasClass('is-marked'),
       JSON.stringify({ urls: r.urls.length, r1: r.markings.count('r1'), marked: kept && kept.nonempty() && kept.hasClass('is-marked') }));
+    // The page's own answers handed in (lead 10-11 G-2): nothing asked, each step the answer it was given, from the starts
+    // it walked - not the marking's.
+    const answers = [await wire([WAFER], [])({ positive: [startId(WAFER)] }), await wire([DIE], [])({ positive: [startId(WAFER)] })];
+    const from = WAFER.nodes.map((n) => n.id).filter((id) => id !== startId(WAFER) && id !== (node && node.id()))[0];
+    r.urls.length = 0;
+    await r.view.show({ keep: true, given: { positive: [startId(WAFER)], negative: [], answer: answers[0] } });
+    await r.view.continueWalk({ positive: [from], negative: [], answer: answers[1] });
+    await settle();
+    const handedSteps = r.view.steps.map((s) => [s.results[0] === answers[r.view.steps.indexOf(s)], s.positive.join()]);
+    say('Y8 the page\'s answers handed in are drawn, not walked: nothing asked, each step the answer it was given, from the starts it walked',
+      r.urls.length === 0 && JSON.stringify(handedSteps) === JSON.stringify([[true, startId(WAFER)], [true, from]]),
+      JSON.stringify({ urls: r.urls.length, steps: handedSteps }));
   }
 
   console.log('\n[U] a lump on its way says so; pressed again meanwhile it asks nothing more (lead 10-07)');
@@ -1189,7 +1201,47 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       JSON.stringify({ small: small && boxOf(small), big: big && boxOf(big) }));
   }
 
+  console.log('\n[FC] a branch handed over in full draws as one walked with the part\'s cap (lead 10-11 G-2)');
+  if (want(['FC1'])) {
+    // The wafer's ten processed_with recipes, the cap four: four drawn, six in its small lump; opening it walks nothing.
+    const f = await seat([WAFER], { fanoutLimit: 4 });
+    const answer = await wire([WAFER], [])({ positive: [startId(WAFER)] });
+    f.urls.length = 0;
+    await f.view.show({ given: { positive: [startId(WAFER)], negative: [], answer } });
+    await settle();
+    const fanned = WAFER.edges.filter((e) => e.source === startId(WAFER) && e.predicate === 'processed_with').map((e) => e.target);
+    const drawn = nodesOf(f).map((n) => n.id()).filter((id) => fanned.includes(id));
+    const lump = lumpsOf(f, 'small').filter((n) => String(n.data('key')).includes('|processed_with|'))[0];
+    if (lump) press(f, lump.id());
+    await settle();
+    const listed = rowsOf(f).length;
+    say('FC1 a fan-out over the part\'s cap in a handed answer: its first four drawn, the other six one small lump; opened, it lists them and asks nothing',
+      fanned.length === 10 && drawn.length === 4 && Boolean(lump) && lump.data('count') === 6 && listed === 6 && f.urls.length === 0,
+      JSON.stringify({ fanned: fanned.length, drawn: drawn.length, count: lump && lump.data('count'), listed, urls: f.urls.length }));
+  }
+
   console.log('\n[OT] a lump opens as a step of the page\'s table: its answer narrowed, nothing walked; its numbers its picture (lead 10-11 E2b)');
+  if (want(['OT4'])) {
+    // Two steps handed in, the wafer's and the recipe's: a lump says the step whose answer brought its edges (lead 10-11).
+    const measured = FOLD_WAFER.edges.filter((e) => e.predicate === 'measured');
+    const used = FOLD_STEP.edges.filter((e) => e.predicate === 'used');
+    const recipe = used[0].target;
+    const stepOnly = used.filter((e) => !FOLD_WAFER.edges.some((w) => w.id === e.id)).map((e) => e.source);
+    const typeOf = (id) => (FOLD_STEP.nodes.find((n) => n.id === id) || FOLD_WAFER.nodes.find((n) => n.id === id) || {}).type;
+    const handed4 = [];
+    const o = await seat([FOLD_WAFER], { openTable: (answer, lump) => handed4.push(lump) });
+    const answerOf = async (body) => wire([body], [])({ positive: [startId(body)] });
+    const [first, second] = [await answerOf(FOLD_WAFER), await answerOf(FOLD_STEP)];
+    o.urls.length = 0;
+    await o.view.show({ given: { positive: [measured[0].source], negative: [], answer: first } });
+    await o.view.continueWalk({ positive: [recipe], negative: [], answer: second });
+    o.view._openTable({ owner: measured[0].source, predicate: 'measured', direction: 'outgoing', farType: typeOf(measured[0].target),
+      members: measured.map((e) => e.target) });
+    o.view._openTable({ owner: recipe, predicate: 'used', direction: 'incoming', farType: typeOf(stepOnly[0]), members: stepOnly });
+    say('OT4 a lump says the step whose answer brought its edges: the wafer\'s measurements the first, the recipe\'s other uses the second (lead 10-11)',
+      o.urls.length === 0 && stepOnly.length > 0 && JSON.stringify(handed4.map((l) => l.step)) === JSON.stringify([0, 1]),
+      JSON.stringify({ urls: o.urls.length, steps: handed4.map((l) => l.step), stepOnly: stepOnly.length }));
+  }
   if (want(['OT1', 'OT2', 'SP1'])) {
     const ids = (xs) => xs.map((x) => x.id).sort().join();
     const narrowed = (answer, lump, bodies) => {
@@ -1562,8 +1614,8 @@ const failures = [];
     { ...M('Q9m', 'the part does not grow into the result column', 'Q6',
       '.wk-graph > .sg-view { flex: 1 1 auto; min-height: 0; }\n', ''), file: STYLES },
     M('M11', 'Continue walks the start again, not the marking', 'K2',
-      '    if (!name || this.state !== \'done\') return;\n    await this._step(name);\n',
-      '    if (!name || this.state !== \'done\') return;\n    await this._step(this.chain(0));\n'),
+      '    if (!name || this.state !== \'done\') return;\n    await this._step(name, given);\n',
+      '    if (!name || this.state !== \'done\') return;\n    await this._step(this.chain(0), given);\n'),
     M('M12', 'a node reached again is moved to the later step', 'K4',
       '        if (at.has(node.id)) continue;\n',
       '        if (at.has(node.id)) placed.splice(placed.indexOf(at.get(node.id)), 1);\n'),
@@ -1677,7 +1729,7 @@ const failures = [];
     M('R1m', 'Reset opens everything instead of giving the first picture back', 'R1',
       '    this.fold = this._firstFold();\n', '    this.fold = openFold();\n'),
     M('S1m', 'the first picture draws the whole walk', 'A5',
-      '      if (fresh) foldBeyond(this.layout, this.fold, startsOf(this.steps[this.steps.length - 1]), before);\n', ''),
+      '      if (fresh) foldBeyond(this.layout, this.fold, startsOf(this.steps[this.steps.length - 1]), before, this.fanoutLimit);\n', ''),
     M('S2m', 'a seed\'s twins are not where the step stood', 'A5',
       '  return [...new Set([...((step && step.seeds) || []), ...twins])];\n', '  return [...((step && step.seeds) || [])];\n'),
     M('F10', 'a folded point stays folded', 'N9', '    fold.big.delete(s);\n', ''),
@@ -1710,6 +1762,9 @@ const failures = [];
         '    if (opts.reuse && key === this.asked',
         '    for (const name of this.watched) if (name !== start) this.markings.clear(name);\n    if (opts.reuse && key === this.asked') },
     M('Y7m', 'the page\'s branch drawn again loses its steps\' checks', 'Y7', '    if (!opts.keep) for (const name', '    if (true) for (const name'),
+    M('FCm1', 'a handed fan-out drawn whole, past the cap', 'FC1', '      const first = far.slice(0, limit);', '      const first = far;'),
+    M('Y8m', 'the page\'s answers walked again', 'Y8', '    const res = await (answer || this.walk(asked));', '    const res = await this.walk(asked);'),
+    M('Y9m', 'a handed step drawn from the marking, not the starts it walked', 'Y8', '    const seeds = given || seedsOf(', '    const seeds = seedsOf('),
     M('Y3m', 'a new start clears every name on the page, not only its chain', 'Y4',
       'for (const name of this.watched) if (name !== start) this.markings.clear(name);',
       'for (const name of this.markings.names().filter((n) => n !== start)) this.markings.clear(name);'),
@@ -1729,7 +1784,10 @@ const failures = [];
       'count: view.behind(m) || undefined, lit: lit.has(m) })) }) }));', 'count: view.behind(m) || undefined, lit: false })) }) }));'),
     M('SPm1', 'the lump does not carry its points', 'SP1', '        spark: this._spark(l, lit), label:', "        spark: '', label:"),
     M('OTm1', 'Open as table hands every answer, not the lump\'s', 'OT1',
-      'this.openTable(lumpAnswer(this._results(), lump), {', 'this.openTable({ ok: true, nodes: this._results().flatMap((r) => r.nodes), edges: this._results().flatMap((r) => r.edges) }, {'),
+      '    const answer = lumpAnswer(this._results(), lump);', '    const answer = { ok: true, nodes: this._results().flatMap((r) => r.nodes), edges: this._results().flatMap((r) => r.edges) };'),
+    M('OTm5', 'a lump says the last step, not the one that brought its edges', 'OT4',
+      '    const step = this.steps.findIndex((s) => s.results.some((r) => ((r && r.edges) || []).some((e) => kept.has(e.id))));',
+      '    const step = this.steps.length - 1;'),
     M('OTm2', 'a big lump\'s row Open as table opens nothing', 'OT2', '        if (branch) this._openTable(branch);\n', ''),
     M('LA1m', 'a big lump\'s words count all it hides again, not what one Open draws', 'LM11',
       'next: firsts.size + rest, behind: held.size - firsts.size,', 'next: held.size + rest, behind: 0,'),

@@ -45,6 +45,7 @@ import { TrendView } from './trend_view.js';
 import { setDisabledReason } from '../disabled_reason.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
 import { SubgraphView, seedsOf } from './subgraph_view.js';
+import { pathsAnswer } from './fold_views.js';
 // The start baskets (lead bc63378e5) - the start marking's editor, a part with its own div in the right panel.
 import { StartBaskets, BASKET_WORDS } from './start_baskets.js';
 // PICK A NODE by first letters (lead bccbdd601) - a part with its own div.
@@ -216,17 +217,22 @@ export function boot(doc, host, deps) {
   markings.subscribe(START, () => { if (goButton) setDisabledReason(goButton, goReason()); });
   /** The graph walks the start marking as it stands. */
   const showGraph = (opts) => { graph.show(opts); };
-  /** The graph on the chosen branch (lead 5ea461e04): from the start, then on from each step's checks as far as they go;
-   *  the same branch drawn already is not walked again. */
+  /** The graph on the chosen branch (lead 5ea461e04), the table's own answers drawn, nothing walked (lead 10-11 G-2): the
+   *  form walk's, then each step's down the branch, each from the starts it walked; a step before the last only its
+   *  paths to the next one's starts, the last its whole answer. The same branch drawn already is not drawn again; with
+   *  no answer yet the graph walks its marking. */
   let drawnBranch = null;
   async function showBranch() {
-    const branch = JSON.stringify([state.marks, ...pathTo(state.leaf).map((s) => s.marks)]);
+    const path = pathTo(state.leaf);
+    const branch = JSON.stringify([state.marks, state.run, ...path.map((s) => [s.marks, s.run])]);
     if (branch === drawnBranch && graph.state === 'done') return;
     drawnBranch = branch;
-    await graph.show({ keep: true });
-    while (graph.state === 'done' && graph.steps.length <= pathTo(state.leaf).length && markings.count(graph.writes())) {
-      await graph.continueWalk();
-    }
+    const starts = [state.asked, ...path.map((s) => s.asked)].map(askedStarts);
+    const answers = [state.result, ...path.map((s) => s.result)];
+    const given = (i) => answers[i] && { ...starts[i],
+      answer: i < path.length ? pathsAnswer(answers[i], [...starts[i + 1].positive, ...starts[i + 1].negative]) : answers[i] };
+    await graph.show({ keep: true, given: given(0) });
+    for (let i = 1; i <= path.length && graph.state === 'done' && answers[i]; i += 1) await graph.continueWalk(given(i));
   }
   // 🔴 체크칸은 선언된 술어 «전부» (소유자 10-06 「엣지 리스트 다 주고 체크하는걸 메인으로」).
   //    거르는 것은 걷기의 일입니다. R&D 걷기 상자는 동결이라 닿는 것만 그립니다.
@@ -311,6 +317,8 @@ export function boot(doc, host, deps) {
   //    the step it was pressed on; `leaf` ends the chosen branch, `at` is the step shown on it ──
   let stepSeq = 0;
   const stepOf = (id) => state.steps.find((s) => s.id === id) || null;
+  /** The starts a step walked from, + and - (a sign it did not ask: none) - its table's and its picture's. */
+  const askedStarts = (asked) => ({ positive: (asked && asked.positive) || [], negative: (asked && asked.negative) || [] });
   /** The steps from the form's walk down to `id`, the form's walk not among them. */
   const pathTo = (id) => { const out = []; for (let s = stepOf(id); s; s = stepOf(s.parent)) out.unshift(s); return out; };
   /** A step and every step walked on from it. */
@@ -359,10 +367,12 @@ export function boot(doc, host, deps) {
   }
 
   /** A lump of the graph opened as a step of the table (lead 10-11 E2b): its answer - its owner, its members and the
-   *  edges between - nothing walked; a child of the chosen branch's end; the table shown. */
+   *  edges between - nothing walked; a child of the step whose answer brought its edges (lead 10-11) - the picture's
+   *  step k is the drawn branch's k-th, the form walk's at 0 - else of the branch's end; the table shown. */
   function openLumpTable(answer, lump) {
     const asked = { positive: [lump.owner], negative: [], follow: [lump.predicate], collect: [lump.farType], direction: 'both', hops: 1 };
-    const step = placeStep(state.leaf, `From ${lump.ownerLabel} · ${lump.words}`, asked);
+    const parent = lump.step === 0 ? 0 : (pathTo(state.leaf)[lump.step - 1] || { id: state.leaf }).id;
+    const step = placeStep(parent, `From ${lump.ownerLabel} · ${lump.words}`, asked);
     step.run = 'done';
     step.result = answer;
     state.view = 'table';
@@ -986,8 +996,10 @@ export function boot(doc, host, deps) {
       // Next above its table, once (lead 3375edd9b).
       if (checks) sec.append(nextRow(at, section, checks));
       if (section.reached) sec.append(reachedLine(section));
+      // «+ Column» in either view (lead 10-11): a Trend opened on a section with no value column yet can be given one.
+      sec.append(columnPicker(section, view.index));
       if (trended) renderTrend(sec, view, r);
-      else sec.append(columnPicker(section, view.index), formulaTable(section, checks));
+      else sec.append(formulaTable(section, checks));
       box.append(sec);
     }
 
@@ -1005,7 +1017,7 @@ export function boot(doc, host, deps) {
       b.type = 'button';
       b.setAttribute('data-section-view', name);
       b.setAttribute('aria-pressed', String((name === 'trend') === trended));
-      setDisabledReason(b, name === 'trend' && !section.trendable.length ? 'No value column' : '');
+      setDisabledReason(b, name === 'trend' && !section.trendable.length ? 'No value with a time' : '');
       b.addEventListener('click', () => {
         if (name === 'table') { setTrend(null); render(); return; }
         if (!trended && section.trendable.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.trendable[0].column), undefined, 'section');
@@ -1164,7 +1176,7 @@ export function boot(doc, host, deps) {
       // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 문장을 들고 오면 머리가 그것을 씁니다.
       if (!r.nodes.length && !r.message) box.append(el(doc, 'div', 'wk-note', 'No node reached'));
       const askedOf = state.at === 0 ? state.asked : shown.asked;
-      renderTable(box, r, { positive: (askedOf && askedOf.positive) || [], negative: (askedOf && askedOf.negative) || [] }, shown.resultB);
+      renderTable(box, r, askedStarts(askedOf), shown.resultB);
     }
     root.append(box);
   }

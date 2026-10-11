@@ -1,0 +1,1389 @@
+{
+ "_what": "GET /api/ledger/subgraph on the application box (18766): the wafer TRD-W-101 one step both ways in the operating world - the application lane's P2-many (lead 10-11 W 13): has_pevent to pev_many E1, point and value many attributes, each a list; _decl that world's declaration.",
+ "_ask": "/api/ledger/subgraph?id=<start>&positive=<start>&direction=both&hops=1&node_limit=1000",
+ "_seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+ "_decl": {
+  "entities": [
+   {
+    "type": "defect",
+    "keys": [
+     "void_uid"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "defect_kind",
+    "keys": [
+     "defect_kind"
+    ],
+    "class": [
+     "static"
+    ],
+    "world": "default"
+   },
+   {
+    "type": "die",
+    "keys": [
+     "mat_id",
+     "x",
+     "y",
+     "mat_type"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "dtjob",
+    "keys": [
+     "dt_job"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "dt_eqp"
+    ]
+   },
+   {
+    "type": "lot",
+    "keys": [
+     "lot"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "lot_slot",
+    "keys": [
+     "lot",
+     "slot"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "mev_key",
+    "keys": [
+     "measurement_event"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "mev_noat",
+    "keys": [
+     "event"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value"
+    ]
+   },
+   {
+    "type": "mev_num",
+    "keys": [
+     "event"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value",
+     "param"
+    ]
+   },
+   {
+    "type": "mev_txt",
+    "keys": [
+     "event"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value"
+    ]
+   },
+   {
+    "type": "pev_many",
+    "keys": [
+     "event_id"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value",
+     "point"
+    ]
+   },
+   {
+    "type": "pev_one",
+    "keys": [
+     "event_id"
+    ],
+    "class": null,
+    "world": "default",
+    "attributes": [
+     "value",
+     "point"
+    ]
+   },
+   {
+    "type": "pevent",
+    "keys": [
+     "event_id"
+    ],
+    "class": null,
+    "world": "default"
+   },
+   {
+    "type": "quantity",
+    "keys": [
+     "quantity"
+    ],
+    "class": [
+     "static"
+    ],
+    "world": "default"
+   },
+   {
+    "type": "recipe",
+    "keys": [
+     "recipe"
+    ],
+    "class": [
+     "static"
+    ],
+    "world": "default"
+   },
+   {
+    "type": "wafer",
+    "keys": [
+     "wafer"
+    ],
+    "class": null,
+    "world": "default"
+   }
+  ],
+  "predicates": [
+   {
+    "name": "bonded_from",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "die"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "derived_from",
+    "subjects": [
+     "lot"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_mev",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "mev_num",
+      "mev_txt",
+      "mev_noat",
+      "mev_key"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_netdie",
+    "subjects": [
+     "dtjob"
+    ],
+    "object": {
+     "kind": "value",
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_pevent",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "pevent",
+      "pev_many",
+      "pev_one"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "has_wafer",
+    "subjects": [
+     "lot_slot"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "wafer"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "in_container",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "wafer"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "in_lot",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "inspected",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "die"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "leads_to",
+    "subjects": [
+     "quantity"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity",
+      "defect_kind"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "dir",
+       "model"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "measures",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "value",
+       "value_text",
+       "role",
+       "step",
+       "eqp_id"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "observed",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "defect"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "radius_x",
+       "inchip_x",
+       "inchip_y",
+       "radius_y",
+       "unit",
+       "gate",
+       "run_uid"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "of_kind",
+    "subjects": [
+     "defect"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "defect_kind"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "pe_measures",
+    "subjects": [
+     "pevent"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "point",
+       "value"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "processed_with",
+    "subjects": [
+     "wafer"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "recipe"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "step"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "register",
+    "subjects": [
+     "dtjob"
+    ],
+    "object": {
+     "kind": "none",
+     "qualifiers": {
+      "required": [],
+      "optional": []
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "slot_map",
+    "subjects": [
+     "lot_slot"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot_slot"
+     ],
+     "qualifiers": {
+      "required": [],
+      "optional": [
+       "event_type"
+      ]
+     }
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   },
+   {
+    "name": "transfer",
+    "subjects": [
+     "die"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "qualifiers": {
+      "optional": [],
+      "required": []
+     },
+     "types": [
+      "die"
+     ]
+    },
+    "origin": "vocabulary",
+    "class": null,
+    "world": "default"
+   }
+  ]
+ },
+ "state": "ready",
+ "generated_at": "2026-10-11T06:26:04.262846+00:00",
+ "seed": {
+  "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+  "type": "wafer",
+  "keys": {
+   "wafer": "TRD-W-101"
+  },
+  "label": "TRD-W-101",
+  "depth": 0,
+  "claim_count": 7,
+  "predicates": [
+   {
+    "predicate": "has_pevent",
+    "count": 6
+   },
+   {
+    "predicate": "in_lot",
+    "count": 1
+   }
+  ],
+  "node_kind": "entity",
+  "schema_kind": "entity_instance"
+ },
+ "nodes": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "type": "wafer",
+   "keys": {
+    "wafer": "TRD-W-101"
+   },
+   "label": "TRD-W-101",
+   "depth": 0,
+   "claim_count": 7,
+   "predicates": [
+    {
+     "predicate": "has_pevent",
+     "count": 6
+    },
+    {
+     "predicate": "in_lot",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTEifV0",
+   "type": "pev_one",
+   "keys": {
+    "event_id": "E1"
+   },
+   "label": "E1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_pevent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "point": "p5",
+    "value": 10.4
+   },
+   "attribute_conflicts": 2,
+   "attributes_by_world": {
+    "point": [
+     {
+      "world": "default",
+      "value": "p5",
+      "occurred_at": "2026-10-02T00:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": 10.4,
+      "occurred_at": "2026-10-02T00:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUxIn1d",
+   "type": "pev_many",
+   "keys": {
+    "event_id": "E1"
+   },
+   "label": "E1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_pevent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "point": [
+     "p5",
+     "p4",
+     "p3",
+     "p2",
+     "p1"
+    ],
+    "value": [
+     10.4,
+     10.3,
+     10.2,
+     10.1,
+     10.0
+    ]
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "point": [
+     {
+      "world": "default",
+      "value": [
+       "p5",
+       "p4",
+       "p3",
+       "p2",
+       "p1"
+      ],
+      "occurred_at": "2026-10-02T00:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": [
+       10.4,
+       10.3,
+       10.2,
+       10.1,
+       10.0
+      ],
+      "occurred_at": "2026-10-02T00:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMSJ9XQ",
+   "type": "pevent",
+   "keys": {
+    "event_id": "E1"
+   },
+   "label": "E1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_pevent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTIifV0",
+   "type": "pev_one",
+   "keys": {
+    "event_id": "E2"
+   },
+   "label": "E2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_pevent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "point": "p5",
+    "value": 11.4
+   },
+   "attribute_conflicts": 2,
+   "attributes_by_world": {
+    "point": [
+     {
+      "world": "default",
+      "value": "p5",
+      "occurred_at": "2026-10-02T01:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": 11.4,
+      "occurred_at": "2026-10-02T01:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUyIn1d",
+   "type": "pev_many",
+   "keys": {
+    "event_id": "E2"
+   },
+   "label": "E2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_pevent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "point": [
+     "p5",
+     "p4",
+     "p3",
+     "p2",
+     "p1"
+    ],
+    "value": [
+     11.4,
+     11.3,
+     11.2,
+     11.1,
+     11.0
+    ]
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "point": [
+     {
+      "world": "default",
+      "value": [
+       "p5",
+       "p4",
+       "p3",
+       "p2",
+       "p1"
+      ],
+      "occurred_at": "2026-10-02T01:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ],
+    "value": [
+     {
+      "world": "default",
+      "value": [
+       11.4,
+       11.3,
+       11.2,
+       11.1,
+       11.0
+      ],
+      "occurred_at": "2026-10-02T01:00:00+00:00",
+      "source_who": "trd_pe_src"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMiJ9XQ",
+   "type": "pevent",
+   "keys": {
+    "event_id": "E2"
+   },
+   "label": "E2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "has_pevent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJsb3QiLHsibG90IjoiVFJELUwyIn1d",
+   "type": "lot",
+   "keys": {
+    "lot": "TRD-L2"
+   },
+   "label": "TRD-L2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "in_lot",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  }
+ ],
+ "edges": [
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfcGV2ZW50IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExURXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SndaWFpmYjI1bElpeDdJbVYyWlc1MFgybGtJam9pUlRFaWZWMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTEifV0",
+   "predicate": "has_pevent",
+   "predicate_label": "has_pevent",
+   "original_predicate": "has_pevent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E1-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E1-p5\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12983-9bfa-7019-9d1a-705289af349d",
+   "occurred_at": "2026-10-02T00:00:00+00:00",
+   "source_who": "trd_pe_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12983-9bfa-7019-9d1a-705289af349d",
+     "occurred_at": "2026-10-02T00:00:00+00:00",
+     "source_who": "trd_pe_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E1-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E1-p5\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfcGV2ZW50IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExURXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SndaWFpmYjI1bElpeDdJbVYyWlc1MFgybGtJam9pUlRJaWZWMCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTIifV0",
+   "predicate": "has_pevent",
+   "predicate_label": "has_pevent",
+   "original_predicate": "has_pevent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E2-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E2-p5\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12983-9bfa-7037-a3c7-ac52daf47dfe",
+   "occurred_at": "2026-10-02T01:00:00+00:00",
+   "source_who": "trd_pe_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12983-9bfa-7037-a3c7-ac52daf47dfe",
+     "occurred_at": "2026-10-02T01:00:00+00:00",
+     "source_who": "trd_pe_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E2-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E2-p5\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfcGV2ZW50IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExURXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SndaWFpmYldGdWVTSXNleUpsZG1WdWRGOXBaQ0k2SWtVeEluMWQiXQ",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUxIn1d",
+   "predicate": "has_pevent",
+   "predicate_label": "has_pevent",
+   "original_predicate": "has_pevent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E1-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E1-p5\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12983-9bfa-7018-b17d-a71d77700363",
+   "occurred_at": "2026-10-02T00:00:00+00:00",
+   "source_who": "trd_pe_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12983-9bfa-7018-b17d-a71d77700363",
+     "occurred_at": "2026-10-02T00:00:00+00:00",
+     "source_who": "trd_pe_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E1-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E1-p5\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfcGV2ZW50IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExURXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SndaWFpmYldGdWVTSXNleUpsZG1WdWRGOXBaQ0k2SWtVeUluMWQiXQ",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUyIn1d",
+   "predicate": "has_pevent",
+   "predicate_label": "has_pevent",
+   "original_predicate": "has_pevent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E2-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E2-p5\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12983-9bfa-7036-80ce-c2cec36db559",
+   "occurred_at": "2026-10-02T01:00:00+00:00",
+   "source_who": "trd_pe_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12983-9bfa-7036-80ce-c2cec36db559",
+     "occurred_at": "2026-10-02T01:00:00+00:00",
+     "source_who": "trd_pe_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E2-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E2-p5\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfcGV2ZW50IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExURXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SndaWFpsYm5RaUxIc2laWFpsYm5SZmFXUWlPaUpGTVNKOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMSJ9XQ",
+   "predicate": "has_pevent",
+   "predicate_label": "has_pevent",
+   "original_predicate": "has_pevent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E1-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E1-p5\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12983-9bfa-701a-91d8-22724d0c6ee5",
+   "occurred_at": "2026-10-02T00:00:00+00:00",
+   "source_who": "trd_pe_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12983-9bfa-701a-91d8-22724d0c6ee5",
+     "occurred_at": "2026-10-02T00:00:00+00:00",
+     "source_who": "trd_pe_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E1-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E1-p5\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJoYXNfcGV2ZW50IiwibGVkZ2VyLWVudGl0eTp2MTpXeUozWVdabGNpSXNleUozWVdabGNpSTZJbFJTUkMxWExURXdNU0o5WFEiLCJsZWRnZXItZW50aXR5OnYxOld5SndaWFpsYm5RaUxIc2laWFpsYm5SZmFXUWlPaUpGTWlKOVhRIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMiJ9XQ",
+   "predicate": "has_pevent",
+   "predicate_label": "has_pevent",
+   "original_predicate": "has_pevent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E2-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E2-p5\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12983-9bfa-7038-a0c0-840fa3181723",
+   "occurred_at": "2026-10-02T01:00:00+00:00",
+   "source_who": "trd_pe_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12983-9bfa-7038-a0c0-840fa3181723",
+     "occurred_at": "2026-10-02T01:00:00+00:00",
+     "source_who": "trd_pe_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_pex\\\",\\\"rows\\\":[\\\"trd_pex:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"E2-p5\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_pex:{\\\"rec_id\\\":\\\"E2-p5\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJpbl9sb3QiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsUlNSQzFYTFRFd01TSjlYUSIsImxlZGdlci1lbnRpdHk6djE6V3lKc2IzUWlMSHNpYkc5MElqb2lWRkpFTFV3eUluMWQiXQ",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "target": "ledger-entity:v1:WyJsb3QiLHsibG90IjoiVFJELUwyIn1d",
+   "predicate": "in_lot",
+   "predicate_label": "in_lot",
+   "original_predicate": "in_lot",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_lotx\\\",\\\"rows\\\":[\\\"trd_lotx:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"TRD-W-101\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_lotx:{\\\"rec_id\\\":\\\"TRD-W-101\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a12983-a7fe-7000-9005-791be0594946",
+   "occurred_at": "2026-10-01T23:00:00+00:00",
+   "source_who": "trd_lot_src",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a12983-a7fe-7000-9005-791be0594946",
+     "occurred_at": "2026-10-01T23:00:00+00:00",
+     "source_who": "trd_lot_src",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"trd_lotx\\\",\\\"rows\\\":[\\\"trd_lotx:{\\\\\\\"rec_id\\\\\\\":\\\\\\\"TRD-W-101\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"trd_lotx:{\\\"rec_id\\\":\\\"TRD-W-101\\\"}\"]}"
+    }
+   ]
+  }
+ ],
+ "attribute_cardinality": {
+  "pev_many": {
+   "point": "many",
+   "value": "many"
+  }
+ },
+ "seeds": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+   "sign": "+",
+   "node_kind": "entity"
+  }
+ ],
+ "propagation": {
+  "contrast": "unexamined",
+  "complete": false,
+  "state": "ranked",
+  "ranked": [
+   {
+    "id": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMiJ9XQ",
+    "type": "pevent",
+    "label": "E2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-101",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMiJ9XQ",
+        "node_kind": "entity",
+        "label": "E2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_pevent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTIifV0",
+    "type": "pev_one",
+    "label": "E2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-101",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTIifV0",
+        "node_kind": "entity",
+        "label": "E2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_pevent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUyIn1d",
+    "type": "pev_many",
+    "label": "E2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-101",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUyIn1d",
+        "node_kind": "entity",
+        "label": "E2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_pevent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMSJ9XQ",
+    "type": "pevent",
+    "label": "E1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-101",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMSJ9XQ",
+        "node_kind": "entity",
+        "label": "E1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_pevent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTEifV0",
+    "type": "pev_one",
+    "label": "E1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-101",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTEifV0",
+        "node_kind": "entity",
+        "label": "E1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_pevent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUxIn1d",
+    "type": "pev_many",
+    "label": "E1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-101",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUxIn1d",
+        "node_kind": "entity",
+        "label": "E1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "has_pevent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJsb3QiLHsibG90IjoiVFJELUwyIn1d",
+    "type": "lot",
+    "label": "TRD-L2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlRSRC1XLTEwMSJ9XQ",
+        "node_kind": "entity",
+        "label": "TRD-W-101",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJsb3QiLHsibG90IjoiVFJELUwyIn1d",
+        "node_kind": "entity",
+        "label": "TRD-L2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "in_lot"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "top_set": [
+   "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMiJ9XQ",
+   "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTIifV0",
+   "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUyIn1d",
+   "ledger-entity:v1:WyJwZXZlbnQiLHsiZXZlbnRfaWQiOiJFMSJ9XQ",
+   "ledger-entity:v1:WyJwZXZfb25lIix7ImV2ZW50X2lkIjoiRTEifV0",
+   "ledger-entity:v1:WyJwZXZfbWFueSIseyJldmVudF9pZCI6IkUxIn1d",
+   "ledger-entity:v1:WyJsb3QiLHsibG90IjoiVFJELUwyIn1d"
+  ],
+  "message": null
+ },
+ "walk": {
+  "mode": "evidence_graph",
+  "direction": "both",
+  "start": {
+   "positive": 1,
+   "negative": 0
+  },
+  "hops_requested": 1,
+  "hops_reached": 1,
+  "claims_scanned": 31,
+  "actions_scanned": 0,
+  "enrich_actions": false,
+  "raw_claims": true,
+  "resolver_applied": false
+ },
+ "limits": {
+  "nodes": 1000,
+  "edges": 6000,
+  "claims": 6000,
+  "actions": 6000,
+  "max_hops": 40
+ },
+ "truncated": {
+  "depth": true,
+  "nodes": false,
+  "edges": false,
+  "claims": false,
+  "actions": false,
+  "reason": "depth"
+ },
+ "message": null
+}

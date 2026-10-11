@@ -14,6 +14,15 @@ export const OTHERS = 'others';
 /** The points one server page asks (the implementer's contract: page=1000, at most 5000). */
 export const PAGE_ROWS = 1000;
 
+/** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing - the axis a
+ *  trend's points stand on and a lump's thumbnail read it so (lead 10-11: a value in text numerals is a number). */
+export function numberOf(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 const timeOf = (edge) => {
   const t = edge && Date.parse(edge.occurred_at);
   return Number.isFinite(t) ? t : null;
@@ -23,7 +32,8 @@ const keyOf = (edge, fallback) => (edge && (edge.claim_id || edge.id)) || fallba
 /** The walk's own points of one row's column: each group's reads, each at its end's time. */
 export function walkPoints(index, groups, x, column) {
   return groups.flatMap((g, i) => readsOf(index, g.inside, x, column).reads
-    .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node })));
+    .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node,
+      claim: (r.when && r.when.claim_id) || '' })));
 }
 
 /** The walked points of `rows` along `column`, each with the row it was read from - a section's trend, a cell's, a lump's
@@ -42,18 +52,19 @@ export function pagePoints(answer, groups, x, column, walked = new Set()) {
     const group = groups.findIndex((g) => g.inside.has(far));
     const key = keyOf(e, e.id);
     return { t: timeOf(e), value: (e.qualifiers || {})[column.value.name], group: group >= 0 ? group : null, walked: walked.has(key), key,
-      node: far };
+      node: far, claim: e.claim_id || '' };
   }).filter((p) => !isBlank(p.value));
 }
 
 /**
  * A trend's points as a sheet for Excel (lead a27dfbb0f «Copy points»): its time in this screen's, its value as it is,
- * its side, the node that gave it (`keysOf` its keys) and its claim. A point at no time, no time.
+ * its side, the node that gave it (`keysOf` its keys) and its claim - none, an empty cell (lead 10-11: the key a point is
+ * told apart by is the page's own). A point at no time, no time.
  */
 export function pointsSheet(points, sides, keysOf) {
   return { head: ['time', 'value', 'side', 'node', 'claim_id'], rows: points.map((p) => [
     p.t === null || p.t === undefined ? '' : localStamp(new Date(p.t).toISOString()), isBlank(p.value) ? '' : valueWords(p.value),
-    p.group === null || p.group === undefined ? '' : sides[p.group] || '', keysOf(p), p.key || '']) };
+    p.group === null || p.group === undefined ? '' : sides[p.group] || '', keysOf(p), p.claim || '']) };
 }
 
 /**
@@ -76,7 +87,7 @@ export function mergePoints(walk, page) {
   return [...walk, ...page.filter((p) => !seen.has(p.key))];
 }
 
-const isNumber = (v) => typeof v === 'number' && Number.isFinite(v);
+const isNumber = (v) => numberOf(v) !== null;
 
 /** A time page's window, ms: the first and last time it holds; none for an empty page. */
 export function windowOf(answer) {
@@ -111,7 +122,7 @@ export function trendModel(points, lanes = LANES, frame = {}) {
     if (!at) outside.push({ group: p.group, before, t: p.t, n: 1 });
     else { at.n += 1; if (before ? p.t > at.t : p.t < at.t) at.t = p.t; }
   }
-  const numbers = timed.filter((p) => isNumber(p.value));
+  const numbers = timed.filter((p) => isNumber(p.value)).map((p) => ({ ...p, value: numberOf(p.value) }));
   const words = timed.filter((p) => !isNumber(p.value)).map((p) => ({ ...p, word: valueWords(p.value) }));
   const counts = new Map();
   for (const p of words) counts.set(p.word, (counts.get(p.word) || 0) + 1);

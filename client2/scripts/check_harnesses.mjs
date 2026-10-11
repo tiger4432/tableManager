@@ -1403,9 +1403,9 @@ const FLOORS = new Map([
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
   ['node_search_harness.mjs', 45],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
-  ['reach_table_harness.mjs', 36],   // -> 36: what says when - R20, FM18 FM19; FM4 FM13 re-aimed (lead 10-11 E2c, owner 10-10 e54560dc2)
+  ['reach_table_harness.mjs', 38],   // 36 -> 38: a list said the same by its items - R21, FM20; FM18 FM19 re-aimed (lead 10-11 W 13)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 58],   // -> 58: two schemes on 18766, the module and the page - SC1 SC2, SCm1 SCm2 SCm3; TM1 re-aimed (lead 10-11 E2c)
+  ['trend_harness.mjs', 72],   // 62 -> 72: G-2b - TN1 SC5 SC6 SC7, SCm6-SCm9 TNm1 TNm2; SCm2 SCm5 TM4 re-aimed (lead 10-11 G-2)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1454,11 +1454,11 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 338],   // -> 338: Open as table - OT1 OT2 SP1, OTm1 OTm2 SPm1; J O I cells retired with the lump views (lead 10-11 E2b)
+  ['subgraph_view_harness.mjs', 348],   // 338 -> 348: handed answers drawn, a lump's step, the cap - Y8 OT4 FC1, Y8m Y9m OTm5 FCm1; M11 OTm1 re-aimed (lead 10-11 G-2)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's pure half - what a value reads as, the one start-branch
   // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b) - its Route a Next from its
   // owner's, its points the same in the edge and the event scheme (lead 10-11 E2c) - the one drawing.
-  ['fold_views_harness.mjs', 17],   // -> 17: a lump step's Route, a lump's points in two schemes - L3 L4, Lm3 Lm4 (lead 10-11 E2c)
+  ['fold_views_harness.mjs', 19],   // 21 -> 19: R1 Rm2 moved to the trend harness as TN1 TNm1 with numberOf (lead 10-11 G-2)
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants. 33 -> 30 (lead 5e1d9e372): the subgraph
@@ -1484,7 +1484,7 @@ const FLOORS = new Map([
   // The walk's path search, one seat (lead df11f9e81): the declaration's type routes and the paths between two marked
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
-  ['walk_table_harness.mjs', 173],   // -> 173: Copy table - CP1-CP4, CPm1-CPm6, NZ6 at the one filter (lead a27dfbb0f)
+  ['walk_table_harness.mjs', 181],   // 173 -> 181: the graph on a branch - GB4 GB5 GB6, GM5-GM9 (lead 10-11 G-2)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

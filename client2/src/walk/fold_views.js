@@ -1,16 +1,9 @@
 // A folded lump seen another way (lead 793017c62 · edcc0568c · 5ef260acf, owner 10-07): opened as a step of the page's
 // table (lead 10-11 E2b) and, in its own place, its numbers as plain points (x the time, y the value) with the walk's
-// start branch drawn over the rest. The pure half: what the lump's read is and how its points are drawn.
-import { walkTableView } from './table_view.js';
-import { rowsPoints } from './trend.js';
-
-/** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing. */
-export function numberOf(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
+// start branch drawn over the rest; and a branch's step before its last, its paths on (lead 10-11 G-2). The pure half:
+// what an answer narrowed to is, what the lump's read is and how its points are drawn.
+import { walkTableView, walkedPaths } from './table_view.js';
+import { rowsPoints, numberOf } from './trend.js';
 
 /**
  * THE ONE «start branch» QUESTION (lead 83ff2c3e6 · 5ef260acf): the nodes the walk reached from its first start -
@@ -28,23 +21,48 @@ export function startBranch(steps) {
  */
 export function lumpAnswer(results, lump) {
   const keep = new Set([lump.owner, ...lump.members]);
+  const answer = narrowed(results, keep, (e) => {
+    const far = e.source === lump.owner ? e.target : e.target === lump.owner ? e.source : null;
+    return e.predicate === lump.predicate && far !== null && lump.members.includes(far);
+  });
+  // What the kept edges prove, as a Next from the owner along the predicate says it (lead 10-11): the owner its start,
+  // each member reached from it - its Route and sources read as that Next's. Nothing past the kept edges.
+  const ranked = new Map();
+  for (const e of answer.edges) {
+    const member = e.source === lump.owner ? e.target : e.source;
+    ranked.set(member, { id: member, evidence: [{ seed: lump.owner, sign: '+', hops: [{ id: lump.owner }, { id: member, predicates: [lump.predicate] }] }] });
+  }
+  return { ...answer, propagation: { ranked: [...ranked.values()] } };
+}
+
+/**
+ * A branch's step before its last, as the graph draws it (lead 10-11 G-2): its answer narrowed to the paths the server
+ * walked to `rows` - the starts the next step walked from - their hops and the edge each hop took; a row the walk
+ * started at, itself. Nothing walked: the paths are the answer's evidence.
+ */
+export function pathsAnswer(answer, rows) {
+  const walked = walkedPaths(answer);
+  const paths = rows.flatMap((id) => walked.get(id) || []);
+  const keep = new Set([...rows, ...paths.flatMap((p) => p.hops.map((h) => h.id))]);
+  const took = new Set();
+  for (const p of paths) {
+    p.hops.slice(1).forEach((hop, i) => {
+      const from = p.hops[i].id;
+      for (const predicate of hop.predicates || ['']) took.add(`${from}|${hop.id}|${predicate}`).add(`${hop.id}|${from}|${predicate}`);
+    });
+  }
+  return narrowed([answer], keep, (e) => took.has(`${e.source}|${e.target}|${e.predicate}`) || took.has(`${e.source}|${e.target}|`));
+}
+
+/** What `results` brought, narrowed to the nodes in `keep` and the edges `keepEdge` takes, each once. */
+function narrowed(results, keep, keepEdge) {
   const nodes = new Map();
   const edges = new Map();
   for (const r of results || []) {
     for (const n of (r && r.nodes) || []) if (keep.has(n.id) && !nodes.has(n.id)) nodes.set(n.id, n);
-    for (const e of (r && r.edges) || []) {
-      const far = e.source === lump.owner ? e.target : e.target === lump.owner ? e.source : null;
-      if (e.predicate === lump.predicate && far !== null && lump.members.includes(far) && !edges.has(e.id)) edges.set(e.id, e);
-    }
+    for (const e of (r && r.edges) || []) if (keepEdge(e) && !edges.has(e.id)) edges.set(e.id, e);
   }
-  // What the kept edges prove, as a Next from the owner along the predicate says it (lead 10-11): the owner its start,
-  // each member reached from it - its Route and sources read as that Next's. Nothing past the kept edges.
-  const ranked = new Map();
-  for (const e of edges.values()) {
-    const member = e.source === lump.owner ? e.target : e.source;
-    ranked.set(member, { id: member, evidence: [{ seed: lump.owner, sign: '+', hops: [{ id: lump.owner }, { id: member, predicates: [lump.predicate] }] }] });
-  }
-  return { ok: true, state: 'ready', nodes: [...nodes.values()], edges: [...edges.values()], propagation: { ranked: [...ranked.values()] } };
+  return { ok: true, state: 'ready', nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
 /**
