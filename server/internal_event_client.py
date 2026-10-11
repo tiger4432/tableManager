@@ -198,7 +198,8 @@ def _redact_proxy(url):
 
     Proxy environment variables routinely carry credentials, and this string goes
     into a log file. The host is the diagnostic value; the credentials are
-    somebody's password.
+    somebody's password. Cut at the LAST ``@``: a password may hold a raw one, which the
+    proxy still reads, and the first cut left its tail in the log (총괄 93570a1ea).
     """
     text = str(url)
     if "@" not in text:
@@ -206,7 +207,7 @@ def _redact_proxy(url):
     scheme, sep, rest = text.partition("://")
     if not sep:
         scheme, rest = "", text
-    host = rest.split("@", 1)[1]
+    host = rest.rsplit("@", 1)[1]
     return f"{scheme}{sep}<redacted>@{host}" if sep else f"<redacted>@{host}"
 
 

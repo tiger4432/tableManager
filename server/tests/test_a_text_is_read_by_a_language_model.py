@@ -569,6 +569,61 @@ def test_an_httpx_without_proxy_is_refused_with_both_versions(answer, monkeypatc
     assert "httpx 0.25.2 cannot take a proxy - 0.26 or later is needed" in str(refused.value)
 
 
+def _chain_of(exc):
+    said = []
+    while exc is not None:
+        said.append("%s: %s" % (type(exc).__name__, exc))
+        exc = exc.__cause__ if exc.__cause__ is not None else (None if exc.__suppress_context__ else exc.__context__)
+    return " <- ".join(said)
+
+
+@pytest.mark.parametrize("password", ["Zq9/Wx7", "Zq9@Wx7", "Zq9:Wx7"], ids=["slash", "at", "colon"])
+@pytest.mark.parametrize("written", ["raw", "escaped"])
+def test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain(answer, root, password, written):
+    """총괄 93570a1ea (응용 감사): whatever the proxy cell holds, a failure is one received line and one refusal, and none
+    of them holds a letter of the password. A raw «/» does not build (httpx read «Invalid port: '<its head>'»); the
+    others reach the model and fail there. With no sent line, the received line says where it was going."""
+    import re
+    from urllib.parse import quote
+
+    escaped = quote(password, safe="")
+    _declare(root, **CELLS, proxy="http://op:%s@proxy.test:8080" % (password if written == "raw" else escaped))
+    answer(_chained(APIConnectionError("Connection error."), httpx.ProxyError("407 Proxy Authentication Required")))
+    with pytest.raises(llm.LlmRefused) as refused:
+        llm.ask_json("anything")
+    lines = _log_lines(root)
+    built = not (written == "raw" and "/" in password)
+    assert [("sent" in line, "received" in line) for line in lines] == (
+        [(True, False), (False, True)] if built else [(False, True)]), "CANARY: both ways are taken"
+    received = lines[-1]
+    assert received["error"] and str(refused.value) == "the language model call failed: " + received["error"]
+    if not built:
+        assert (received["url"], received["proxy"]) == ("http://llm.test/v1/chat/completions",
+                                                        "http://<redacted>@proxy.test:8080")
+    said = json.dumps(lines, ensure_ascii=False) + str(refused.value) + _chain_of(refused.value)
+    assert "proxy.test:8080" in str(refused.value), "CANARY: the proxy is said - by its host"
+    assert [piece for piece in re.split(r"[/@:]", password) + [escaped] if piece in said] == [], said
+
+
+def test_a_failure_raised_while_handling_another_says_both(answer, root):
+    """`_why` follows an implicit chain too - raised inside an `except` without `from` (every cell above takes
+    `__cause__`, so a cause-only `_why` stayed green)."""
+    def raised_while_handling():
+        try:
+            raise OSError(11001, "getaddrinfo failed")
+        except OSError:
+            try:
+                raise APIConnectionError("Connection error.")
+            except APIConnectionError as exc:
+                return exc
+
+    answer(raised_while_handling())
+    with pytest.raises(llm.LlmRefused) as refused:
+        llm.ask_json("anything")
+    assert str(refused.value).split(" · proxy: ")[0].endswith(
+        "APIConnectionError: Connection error. <- OSError: [Errno 11001] getaddrinfo failed"), str(refused.value)
+
+
 def test_find_links_rows_say_rules_and_their_sentence():
     (row,) = text_links.find_links("The bond temperature caused a void.", NAMES, [
         {"phrase": "caused", "meaning": "cause", "side": "before"}])
