@@ -1890,8 +1890,10 @@ OPERATIONS = {
         "commit_granularity": ("one commit per page of rows (replay.FOLD_UNITS_PAGE); a stop lands between pages "
                                "and a re-run writes only what is left"),
         "cli_only": [],
-        "downstream_note": ("No chain rule wakes on the marks and no screen is told - replay the copy rule "
-                            "next (setup step 6)"),
+        # 총괄 10-11: the end withdrawal does queue events - on the retroactive channel, waking no rule (application)
+        "downstream_note": ("No chain rule wakes - the marks carry no event and no screen is told of them; "
+                            "withdrawing old marks queues retroactive-channel edit events, which wake no rule. "
+                            "Replay the copy rule next (setup step 6)"),
     },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",

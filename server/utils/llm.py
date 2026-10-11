@@ -106,9 +106,16 @@ def _client(cells):
     if found < HTTPX_WITH_PROXY:
         raise LlmRefused("httpx %s cannot take a proxy - %s or later is needed: pip install -U httpx"
                          % (httpx.__version__, ".".join(map(str, HTTPX_WITH_PROXY))))
+    from internal_event_client import _redact_proxy
+    try:
+        http_client = httpx.Client(proxy=cells["proxy"], trust_env=False)
+    except Exception as exc:                                       # noqa: BLE001
+        # not its words: they quote what it could not read - a raw «/» in the password ends the host early and
+        # comes back as «Invalid port: '<the password's head>'» (총괄 93570a1ea)
+        raise LlmRefused("proxy in config/%s is not a URL httpx reads (%s): %s"
+                         % (CONFIG_FILE, type(exc).__name__, _redact_proxy(cells["proxy"]))) from None
     return OpenAI(base_url=cells["base_url"], api_key=cells["api_key"], timeout=cells["timeout_s"],
-                  default_headers=cells["headers"] or None,
-                  http_client=httpx.Client(proxy=cells["proxy"], trust_env=False))
+                  default_headers=cells["headers"] or None, http_client=http_client)
 
 
 def _now():
@@ -175,19 +182,25 @@ def ask_json(prompt, *, system=None):
     messages = ([{"role": "system", "content": system}] if system else []) + [
         {"role": "user", "content": prompt}]
     payload = {"model": cells["model"], "messages": messages}
-    client = _client(cells)
     back = {"id": uuid.uuid4().hex[:12], "status": None}
     from internal_event_client import _redact_proxy
-    # the URL the client posts to: its base_url always ends in "/" (the SDK adds it)
-    _log({"sent": _now(), "id": back["id"], "url": str(client.base_url) + "chat/completions",
-          "model": cells["model"], "headers": dict(client.default_headers), "payload": payload,
-          "proxy": _redact_proxy(cells["proxy"]) if cells["proxy"] else None}, key)
+    proxy = _redact_proxy(cells["proxy"]) if cells["proxy"] else None
+    client = None
     started = time.monotonic()
     try:
+        # built in here: a client that cannot be built fails like a call - a received line, one refusal (총괄 93570a1ea)
+        client = _client(cells)
+        # the URL the client posts to: its base_url always ends in "/" (the SDK adds it)
+        _log({"sent": _now(), "id": back["id"], "url": str(client.base_url) + "chat/completions",
+              "model": cells["model"], "headers": dict(client.default_headers), "payload": payload,
+              "proxy": proxy}, key)
         raw = client.chat.completions.with_raw_response.create(**payload)
         back.update(status=raw.status_code, answer=_body(raw.text))
         content = raw.parse().choices[0].message.content
     except Exception as exc:                                       # noqa: BLE001
+        if client is None:
+            # no sent line - where it was going, from the file (총괄 93570a1ea)
+            back.update(url=cells["base_url"].rstrip("/") + "/chat/completions", proxy=proxy)
         back.update(status=back["status"] or getattr(exc, "status_code", None), error=_why(exc, cells["proxy"]))
         raise LlmRefused("the language model call failed: %s" % _masked(back["error"], key)) from None
     finally:

@@ -79305,3 +79305,148 @@ fold-units  origin/main 에 그 낱말 0 (카나리아 fold-rows 3). 이 CLI 의
 진짜 프로세스 · 샷(줄 글자의 쪽 줄이 맵퍼 rows_in 자리를 대신하는지)은 응용께
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
 ```
+
+## [10-11] LLM 프록시 칸 착지 218cd66f6 — 실패는 받은 줄 하나 + 거절 한 문장, 비밀번호 글자 0 (총괄 93570a1ea · ㄴ)
+
+```
+착지 218cd66f6 — 5 files changed, 92 insertions(+), 10 deletions(-)
+①  클라이언트 짓기를 try 안 맨 앞(ㄴ) — 못 지으면 _why 줄이 받은 줄 · 거절에. 보낸 줄이 없으면 받은 줄에 가려던 url(설정 base_url + chat/completions) · 가린 proxy
+②  _client: httpx 가 proxy 를 못 읽으면 그 문장을 안 냄 — «proxy in config/llm_config.json is not a URL httpx reads (<종류>): <가린 주소>», 사슬 끊음
+    (날것 «/» 는 호스트를 일찍 끝내 «Invalid port: '<비밀번호 앞머리>'» 였다)
+③  _redact_proxy 는 마지막 «@» — 부르는 곳 4 (git grep, 시험 밖):
+      server/internal_event_client.py:228:    parts = [f"{scheme}={_redact_proxy(url)}" for scheme, url in sorted(proxies.items())
+      server/utils/llm.py:116:                         % (CONFIG_FILE, type(exc).__name__, _redact_proxy(cells["proxy"]))) from None
+      server/utils/llm.py:173:    return " <- ".join(said) + " · proxy: " + (_redact_proxy(proxy) if proxy else "none (direct)")
+      server/utils/llm.py:187:    proxy = _redact_proxy(cells["proxy"]) if cells["proxy"] else None
+④  _why 의 __context__ 갈래 칸(메모해 둔 것) — except 안에서 from 없이 난 예외
+변이
+  RED the client is built before the try again — 3 failed, 84 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-slash], test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[None], test_the_files_cells_reach_the_client_and_its_httpx_reads_no_system_proxy[http://user:pw@proxy.test:8080]
+  RED the redaction cuts at the first @ — 1 failed, 86 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-at]
+  RED httpx's own words about the proxy go out — 1 failed, 86 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-slash]
+  RED _why follows the cause only — 1 failed, 86 passed · test_a_failure_raised_while_handling_another_says_both
+  RED a received line with no sent line says no address — 1 failed, 86 passed · test_a_proxy_password_reaches_no_line_no_refusal_and_no_chain[raw-slash]
+게이트 — LLM · 프록시 가림 · 사전 낱말을 부르는 시험 파일, 같은 base(9bf61eefd) 깨끗한 사본과, 비PG
+  files 16
+  wt-llm:   405 passed, 3 deselected in 28.84s
+  wt-check: 398 passed, 3 deselected in 28.85s
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+  PG pg files 1
+  PG 3 passed, 6 deselected in 5.73s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+리베이스 뒤(server/ 의 사전 제안 두 파일이 바뀜) 같은 목록 다시:
+  head 218cd66f6 · files 16
+  407 passed, 3 deselected in 28.88s
+어느 DB · 어느 스키마 · 지운 것: 임시 폴더의 설정 · 로그 · 격리 시험 DB(PG 한 파일) · public 전후 같음 · 지운 것 0
+```
+
+## [10-11] 걷기 records 한 순서 착지 af401be1c · fold-units 소급 탭 문장 a88909467 (총괄 10-11)
+
+```
+착지 af401be1c — 4 files changed, 47 insertions(+), 17 deletions(-)
+무엇  _newest_records 하나가 엣지 · 노드 이름 records 를 같은 규칙으로 정렬 · 자름 — 원자 시각, 같으면 claim id, 새것 먼저
+      엣지는 원자마다 시각과 함께 한 번 담고(edge_records) 답을 지을 때 정렬 · 자름 — 전엔 가져온 순서로 담고 상한에서 잘랐다
+      노드도 같은 함수 — 같은 시각이면 claim id 로(전엔 들어온 순서)
+시험  조회가 원자를 «오래된 것 먼저» 넘기는 대역 · 상한 2 · 엣지와 노드 이름에 같은 시각 둘 -> 가장 최근 둘이 한 순서로
+변이
+  RED an edge's records stay in the order fetched — 1 failed, 5 passed · test_the_newest_records_stay_whatever_order_they_were_fetched_in
+  RED a tie in time keeps the order fetched — 1 failed, 5 passed · test_the_newest_records_stay_whatever_order_they_were_fetched_in
+  RED a node name's records stay in the order fetched — 1 failed, 5 passed · test_the_newest_records_stay_whatever_order_they_were_fetched_in
+게이트 — 걷기 낱말을 부르는 시험 파일, 같은 base(a88909467) 깨끗한 사본과, 비PG
+  files 37
+  wt-llm:   17 failed, 348 passed, 1 skipped, 79 deselected in 22.78s
+  wt-check: 17 failed, 347 passed, 1 skipped, 79 deselected in 22.07s
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+  둘의 같은 빨강 17 은 원장 선언 파일(gitignore 된 config/ontology/ledger_config.json)이 없는 worktree 데이터 루트 탓 —
+  이 박스 config 를 스크래치로 «복사»한 데이터 루트로 그 다섯 파일 + 이 파일 다시:
+  wt-llm box-config copy: 107 passed, 1 skipped, 3 deselected in 4.03s
+  wt-check box-config copy: 106 passed, 1 skipped, 3 deselected in 4.04s
+  PG pg files 9
+  PG 79 passed, 89 deselected in 295.91s (0:04:55)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+fold-units 소급 탭 문장 a88909467 — downstream_note 에 «끝 철회는 소급 채널 edit 사건을 낸다, 규칙은 안 깨운다»(응용이 잼)
+  덤 — test_the_form_says_what_a_run_does_to_the_chain 이 770b1f24b(fold-units) 뒤로 main 에서 빨강이었음:
+       이름 안 든 op 는 기본 문장이어야 하는데 fold_units 가 제 문장 — 그 칸이 fold_units 를 이름으로 든다
+  RED the old fold-units note back — 1 failed, 13 deselected
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 config 는 스크래치로 복사만 · public 전후 같음 · 지운 것 0
+```
+
+## [10-11] 걷기 답의 이미지 참조 착지 c5463a475 (총괄 2d6a0fd58 ㄱ)
+
+```
+착지 c5463a475 — 6 files changed, 234 insertions(+), 1 deletion(-)
+좌석  ledger.setup.declared_value_type(setup, 소스, 이름) — 컴파일된 bind(한정자 역할 · 엔티티 역할의 속성, 모든 문장) -> 칸
+      -> map_overlay.declared_column_type. 묶인 칸 없음(파이썬 맵퍼 한정자) · 두 타입 · 계획 없는 소스 -> None
+답    _say_image_values — 걷기 · 시각 쪽 두 답 자리에서: 노드 이름 기록 · 세상별 값 column_type, 엣지 기록 · 엣지 column_types
+      값마다 제 소스로 · 체인 워커의 세상별 컴파일 캐시(_compiled_setup, 파일 스탬프) · image 만 — 없으면 바이트 그대로
+      선언이 컴파일 안 되면 세상마다 한 줄 말하고 걷기는 계속
+시험(배포 표본을 tmp 에 컴파일) — image 칸 속성 / text 칸이면 바이트 그대로 · 살아 있는 타입 바꿈이 다음 걷기에 /
+      두 소스가 한 이름을 두 타입 칸으로 -> 기록마다 제 것 / 한정자 역할(속성 이름 아님) -> 엣지 · 기록
+변이
+  RED every declared type is said, not image only — 2 failed, 2 passed · test_a_name_read_from_any_other_column_adds_nothing_and_a_reload_reaches_the_next_walk, test_each_record_says_its_own_sources_column
+  RED the type is asked of the name's first source, not each record's — 1 failed, 3 passed · test_each_record_says_its_own_sources_column
+  RED an attribute's column is not looked for — 3 failed, 1 passed · test_a_name_read_from_an_image_column_says_so_on_its_records, test_a_name_read_from_any_other_column_adds_nothing_and_a_reload_reaches_the_next_walk, test_each_record_says_its_own_sources_column
+  RED a qualifier role's column is not looked for — 1 failed, 3 passed · test_an_edge_qualifier_read_from_an_image_column_says_so_on_the_edge_and_its_records
+  RED the type is read from the value's shape — 2 failed, 2 passed · test_a_name_read_from_any_other_column_adds_nothing_and_a_reload_reaches_the_next_walk, test_each_record_says_its_own_sources_column
+  RED the edges are not marked — 1 failed, 3 passed · test_an_edge_qualifier_read_from_an_image_column_says_so_on_the_edge_and_its_records
+게이트 — 걷기 · 원장 설정 · 이미지 낱말을 부르는 시험 파일, 같은 base(f86b57102) 깨끗한 사본과, 비PG,
+  데이터 루트는 이 박스 config 를 스크래치로 «복사»한 것(원장 선언을 읽는 파일이 돌도록)
+  files 85
+  wt-llm:   1 failed, 1024 passed, 2 skipped, 133 deselected in 95.59s (0:01:35)
+  wt-check: 1 failed, 1020 passed, 2 skipped, 133 deselected in 91.18s (0:01:31)
+  new (only in wt-llm): 0
+  gone (only in wt-check): 0
+  둘의 같은 빨강 하나 — tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+  PG pg files 19
+  PG FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  PG FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+  PG 2 failed, 131 passed, 113 deselected in 580.96s (0:09:40)
+  PG 의 빨강 둘은 깨끗한 사본에서도 같음:
+    FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+    FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+    2 failed, 13 deselected in 2.57s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+박스 수(읽기 전용, 이 박스 상태) — 데모 바구니 걷기 /subgraph, 줄마다 «고치기 전 판 · 뒤 판» × 첫 부름 · 둘째 부름
+  == wt-check
+  box image columns 0: []
+  collect=wafer call 1 · bytes 1421782 · 1.41 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.57 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.54 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.58 s · image marks 0
+  == wt-llm
+  box image columns 0: []
+  collect=wafer call 1 · bytes 1421782 · 1.36 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.61 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.53 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.57 s · image marks 0
+  == wt-check all-image
+  collect=wafer call 1 · bytes 1421782 · 1.28 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.58 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.52 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.55 s · image marks 0
+  == wt-llm all-image
+  collect=wafer call 1 · bytes 1421782 · 1.36 s · image marks 0
+  collect=wafer call 2 · bytes 1421782 · 0.64 s · image marks 0
+  collect=wafer+quantity call 1 · bytes 1426248 · 0.56 s · image marks 0
+  collect=wafer+quantity call 2 · bytes 1426248 · 0.61 s · image marks 0
+  compile first 0.12 s · again (stamp unchanged) 0.0002 s · sources 15 · with a profile 5
+  모든 칸을 image 로 둬도 표시 0 인 까닭 — 바구니 값의 소스가 로더가 거절한 소스(뷰를 읽음 · 계획 없음)라 컴파일된 bind 가 없다
+  (프로브: 바구니 값의 (세상, 소스, 이름) 15 가지 중 위 열둘이 void_observation · process_param_*_measure — 셋 다 계획 없음)
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · 격리 시험 DB(PG) · 박스 assy_manager 읽기 전용 · public 전후 같음 · 지운 것 0
+```
+
+## [10-11] 이미지 참조 — «한 이름이 두 타입 칸» 칸 착지 e205908b8 (총괄, c5463a475 뒤)
+
+```
+칸   한 소스가 event_type 을 한 문장에선 image 칸(상속), 다른 문장에선 lot(text, 역할이 스스로)으로 읽음 -> 좌석 None · 표시 0
+     카나리아: 컴파일된 bind 가 그 이름을 칸 둘(event_type · lot)에 묶었는지
+     좌석을 직접 묻는다 — 둘 중 하나를 고르는 좌석은 집합 pop 순서에 따라 절반만 표시해 걷기 칸으로는 초록일 수 있다
+변이(총괄의 것 — 칸 타입 둘일 때 하나를 고름), 해시 씨앗 셋
+  RED the seat picks one of two types (hash seed 0) — 1 failed, 4 deselected
+  RED the seat picks one of two types (hash seed 1) — 1 failed, 4 deselected
+  RED the seat picks one of two types (hash seed 2) — 1 failed, 4 deselected
+```

@@ -24,6 +24,9 @@ import re
 import paths
 
 CONFIG_PATH = paths.config_path("image_sources.json")
+#: The column type word a cell holds an image reference under - the server's one spelling of it (the walk says a
+#: value read from such a column is one, 총괄 2d6a0fd58).
+COLUMN_TYPE = "image"
 KINDS = ("folder", "db", "url")
 #: The one parameter a db source's query binds.
 KEY = "key"
