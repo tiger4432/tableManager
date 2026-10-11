@@ -28,8 +28,10 @@ CAUSE, AND, NEGATION, SUSPECTED, CONFIRMED = "cause", "and", "negation", "suspec
 MEANINGS = (CAUSE, AND, NEGATION, SUSPECTED, CONFIRMED)
 SIDES = ("before", "after")
 ASSERTED, NEGATED, STATED = "asserted", "negated", "stated"
-#: A sentence ends at a line break, or at . ! ? 。 followed by space - so 1.5 stays whole.
-SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|\n+")
+#: A sentence ends at . ! ? 。 followed by whitespace (a line break too) - so 1.5 stays whole - or
+#: at a blank line. One line break alone does not end it: text pasted from slides and sheets wraps
+#: a sentence over lines (소유자 10-11 「LLM 문장 왜 잘라서 읽어?」 ㄴ).
+SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|\n\s*\n\s*")
 _ASCII_WORD = re.compile(r"[A-Za-z0-9]")
 _WORD = re.compile(r"\w+")
 
@@ -274,8 +276,9 @@ def ask_links(text, names, instruction=None, match_at=None):
     written (spaces trimmed, case kept), else None - an answer that is neither null nor one of
     them is said in one warning line. `dir` is their sign (`_signed`).
 
-    A link's evidence is looked for in the whole text (`_evidence`); its sentence is the one the
-    quote starts in. A link whose evidence the text does not hold is dropped and said in one
+    A link's evidence is looked for in the whole text (`_evidence`); its sentence runs from the
+    start of the sentence the quote starts in to the end of the one it ends in, and sentence_no is
+    the first's. A link whose evidence the text does not hold is dropped and said in one
     warning line; the others are kept.
 
     Refused by name (`LlmRefused`) when the answer has not this shape, or every link it gave
@@ -313,8 +316,9 @@ def ask_links(text, names, instruction=None, match_at=None):
             logger.warning("[LLM] link %d of %d quotes evidence the text does not hold - dropped (%s): %r",
                            number, len(links), extractor, said["evidence"][:120])
             continue
-        sentence_no, (start, end) = next((no, span) for no, span in enumerate(spans, 1)
-                                         if where[at] < span[1])
+        (sentence_no, (start, _end)), (_last_no, (_start, end)) = [   # the sentences it starts and ends in
+            next((no, span) for no, span in enumerate(spans, 1) if i < span[1])
+            for i in (where[at], where[at + len(quoted) - 1])]
         sentence = text[start:end]
         node, direction = {}, {}
         for side in ("cause", "effect"):
