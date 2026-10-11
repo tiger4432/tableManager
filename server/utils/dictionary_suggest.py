@@ -9,13 +9,16 @@ logger = logging.getLogger(__name__)
 
 #: No word of any domain: the words come from the dictionary rows, the phrases and the operator.
 ASK_DICTIONARY_PROMPT = """Each numbered phrase below was read from a text, and no dictionary node was found for it.
-For each phrase, say which dictionary node it names, or name a new node when no listed node fits.
+For each phrase, say which dictionary node it names, or name a new node and its type when no listed node fits.
 Answer with one JSON object and nothing else:
-{"phrases": [{"number": 1, "node": null, "new_node": "...", "reason": "..."}]}
+{"phrases": [{"number": 1, "node": null, "new_node": "...", "new_node_type": "...", "reason": "..."}]}
 - number: the number of the phrase as listed
 - node: the identifier of the dictionary node the phrase names, written exactly as listed; null when no listed node fits
 - new_node: when node is null, a short noun phrase that names the new node; null otherwise
+- new_node_type: when node is null, the type of the new node, one of the node types listed, written exactly as listed; null otherwise
 - reason: one line that says why
+Node types, one per line
+<<types>>
 Dictionary, one node per line - identifier (node type): the phrases that name it
 <<dictionary>>
 <<instruction>>
@@ -33,7 +36,11 @@ def ask_dictionary(phrases, names, instruction=None):
     {phrase, count}; a blank phrase is skipped, and none left asks nothing. A node identifier the
     dictionary does not list gives no node and one warning line, as `ask_links`; a phrase the
     answer skips gives no row and one warning line. Refused by name (`LlmRefused`) when the
-    answer has no 'phrases' list."""
+    answer has no 'phrases' list.
+    The types offered are the distinct node_type values of `names`, sorted. A new node's
+    (node null) suggested_node_type is its answered type when that is one of them as written
+    (spaces trimmed, case kept), else None and one warning line; a node answer's type is the
+    dictionary's - the answered type is not read."""
     from chain.mapper_call import without_missing
     from database import crud
     from utils import llm
@@ -44,7 +51,10 @@ def ask_dictionary(phrases, names, instruction=None):
     if not asked:
         return []
     by_id, dictionary = text_links._listing(names)
+    types = sorted({str(row["node_type"]) for row in (without_missing(dict(row)) for row in names)
+                    if not crud.is_blank_value(row.get("node_type"))})
     prompt = (ASK_DICTIONARY_PROMPT
+              .replace("<<types>>", "\n".join(types))
               .replace("<<dictionary>>", dictionary)
               .replace("<<instruction>>", "%s\n%s" % (text_links.INSTRUCTION_HEADING, instruction)
                        if not crud.is_blank_value(instruction) else "")
@@ -74,6 +84,14 @@ def ask_dictionary(phrases, names, instruction=None):
                 logger.warning("[LLM] phrase %d of %d answers node %r, which the dictionary does not list"
                                " - suggested without a node (%s): %r",
                                number, len(asked), item["node"], extractor, str(row["phrase"])[:120])
+        else:
+            typed = item.get("new_node_type")
+            typed = typed.strip() if isinstance(typed, str) else typed
+            node = (typed if typed in types else None, None)
+            if node[0] is None and not crud.is_blank_value(typed):
+                logger.warning("[LLM] phrase %d of %d answers new_node_type %r, which the dictionary does not list"
+                               " - suggested without a type (%s): %r",
+                               number, len(asked), typed, extractor, str(row["phrase"])[:120])
         out.append({"phrase": row["phrase"], "count": row.get("count"),
                     "suggested_node_type": node[0], "suggested_node_key": node[1],
                     "new_node_name": _said(item.get("new_node")), "reason": _said(item.get("reason")),

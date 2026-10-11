@@ -18,6 +18,9 @@ the rows no node took are re-matched without the model, and the model suggests d
                  names handed as a generator            matched all the same
   ask_dictionary listed id · unlisted id · new node     kept · null + one warning line · passed through
                  a phrase the answer skips              no row + one warning line
+                 new node's type listed · not as written that type · None + one warning line (소유자 10-11)
+                 a node answer's type · no type answered    the dictionary's · None, no line
+                 the types offered                      the distinct types of the rows handed, sorted
                  no phrase                              no call · no 'phrases' list: refused by name
 """
 import json
@@ -198,10 +201,42 @@ def test_a_listed_node_is_kept_an_unlisted_one_is_said_and_a_new_name_passes(ans
         "[LLM] phrase 4 of 4 has no answer - no suggestion (llm:m-1): '압력'"]
     prompt = asked[-1][1][-1]["content"]
     by_id, block = text_links._listing(NAMES)
-    assert prompt == dictionary_suggest.ASK_DICTIONARY_PROMPT.replace("<<dictionary>>", block).replace(
+    assert prompt == dictionary_suggest.ASK_DICTIONARY_PROMPT.replace(
+        "<<types>>", "defect\nfactor\nquantity").replace("<<dictionary>>", block).replace(
         "<<instruction>>", "").replace("<<phrases>>", "1: 접합 온도 파라미터\n2: 웨이퍼 휨\n3: 습도\n4: 압력")
     assert "Q-BOND-T (quantity): 접합 온도 / 본딩 온도" in block.splitlines()
     assert not any("가" <= ch <= "힣" for ch in dictionary_suggest.ASK_DICTIONARY_PROMPT)
+
+
+def test_a_new_node_takes_a_listed_type_as_written_and_a_node_answer_keeps_the_dictionarys(answer, caplog):
+    """소유자 10-11 「physical object, process, quantity 랑 defect kind 네 가지 … 중에 하나를 고르게 해」 -
+    the four are the operator's dictionary SQL, not words here."""
+    asked, rows, lines = _suggested(
+        answer, caplog,
+        {"number": 1, "node": "Q-BOND-T", "new_node_type": "defect", "reason": "r1"},
+        {"number": 2, "node": None, "new_node": "웨이퍼 휨", "new_node_type": " defect ", "reason": "r2"},
+        {"number": 3, "node": None, "new_node": "습도", "new_node_type": "Quantity", "reason": "r3"},
+        {"number": 4, "node": "Q-PRESS", "new_node_type": "quantity", "reason": "r4"})
+    assert [(r["phrase"], r["suggested_node_type"], r["suggested_node_key"], r["new_node_name"]) for r in rows] == [
+        ("접합 온도 파라미터", "quantity", "Q-BOND-T", None),
+        ("웨이퍼 휨", "defect", None, "웨이퍼 휨"),
+        ("습도", None, None, "습도"),
+        ("압력", None, None, None)]
+    assert lines == [
+        "[LLM] phrase 3 of 4 answers new_node_type 'Quantity', which the dictionary does not list"
+        " - suggested without a type (llm:m-1): '습도'",
+        "[LLM] phrase 4 of 4 answers node 'Q-PRESS', which the dictionary does not list"
+        " - suggested without a node (llm:m-1): '압력'"]
+
+
+def test_the_types_offered_are_the_distinct_types_of_the_rows_handed(answer):
+    """A type only on a row with no phrase is offered too; a blank type is not."""
+    asked = answer('{"phrases": []}')
+    dictionary_suggest.ask_dictionary(PHRASES[:1], NAMES + [
+        {"node_type": "equipment", "node_key": "E-BOND", "phrase": None},
+        {"node_type": None, "node_key": "K-0", "phrase": None},
+        {"node_type": float("nan"), "node_key": "K-1", "phrase": None}])
+    assert "Node types, one per line\ndefect\nequipment\nfactor\nquantity\nDictionary" in asked[-1][1][-1]["content"]
 
 
 def test_no_phrase_asks_nothing_and_an_answer_without_phrases_is_refused(answer, caplog):

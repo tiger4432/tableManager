@@ -233,13 +233,15 @@ def rematch_candidates(df, db):
 
 ### 8-3. 제안 표 — 아무 노드도 안 받은 말을 모델이 사전 행으로 제안한다
 
-`ask_dictionary(말 행, 부르는 말 행, instruction=None)` — 말 행 `{phrase, count}` 전부를 모델에게 한 번에 묻는다: 그 말이 가리키는 목록의 노드 식별자, 없으면 null 과 새 노드의 짧은 이름, 그리고 한 줄 이유. 사전에는 아무것도 안 쓴다. 모델은 사전을 §6 과 같은 한 줄씩으로 본다.
+`ask_dictionary(말 행, 부르는 말 행, instruction=None)` — 말 행 `{phrase, count}` 전부를 모델에게 한 번에 묻는다: 그 말이 가리키는 목록의 노드 식별자, 없으면 null 과 새 노드의 짧은 이름 · 타입, 그리고 한 줄 이유. 사전에는 아무것도 안 쓴다. 모델은 사전을 §6 과 같은 한 줄씩으로 본다.
 
 | 제안 표 칸 | 적는 쪽 |
 |---|---|
 | `phrase`(키) · `count` · `suggested_node_type` · `suggested_node_key` · `new_node_name` · `reason` · `extractor` | 맵퍼 |
 | `<확정 칸>` — 찬 값 = 확정 | 사람 |
 
+- 새 노드 행은 `suggested_node_key` 가 비고 `suggested_node_type` 에 모델이 고른 타입이 든다. 고르는 타입은 «맵퍼가 읽은 부르는 말 행»의 타입들(겹친 것은 하나, 이름순)이다 — 모델링 노드 타입 넷 중에서만 고르게 하려면 그 SQL 에 `WHERE <타입 칸> IN (<그 넷>)` (다른 타입의 노드도 목록에서 빠진다).
+- 그 타입이 목록에 그대로(앞뒤 공백만 무시, 대소문자 그대로) 없으면 타입을 비우고 한 줄 `[LLM] phrase N of M answers new_node_type '<타입>', which the dictionary does not list - suggested without a type (llm:<모델>): '<말>'`. 목록의 노드를 답한 행의 타입은 사전의 것이다 — 모델이 다른 타입을 말해도.
 - 목록에 없는 식별자는 노드를 비우고 로그에 한 줄 `[LLM] phrase N of M answers node '<식별자>', which the dictionary does not list - suggested without a node (llm:<모델>): '<말>'`.
 - 모델이 건너뛴 말은 행이 없고 한 줄 `[LLM] phrase N of M has no answer - no suggestion (llm:<모델>): '<말>'` — 다음에 깨어날 때 다시 묻는다.
 - 답에 `phrases` 목록이 없으면 `LlmRefused` 로 그 묶음이 실패한다(§6 과 같다). 빈 말뿐이면 부르지 않는다.
@@ -291,5 +293,5 @@ def confirmed_suggestion_to_dictionary(df, db):
 
 - 제안 규칙: 후보 표는 §6 의 맵퍼(체인)가 쓰므로 `allow_chain_trigger: true`. 제안 표에 이미 있는 말은 다시 묻지 않는다 — 새 말만, 많은 것부터 100 개(`LIMIT` 이 한 번 부를 때의 크기). `count` 는 물을 때의 수.
 - 확정 규칙: `require` 의 세 칸이 다 찬 행만 넘어간다 — 맵퍼는 칸을 옮겨 적기만 한다. `allow_chain_trigger` 를 안 적어 사람이 쓴 것에만 깨어난다.
-- 새 노드 제안(`suggested_node_key` 빔)은 확정해도 넘어가지 않는다 — 로그 `[Chain] <확정 규칙 이름>: N row(s) not handed over - required column(s) empty: suggested_node_key=N`. 사람이 `suggested_node_type` · `suggested_node_key` 에 새 노드의 타입 · 키를 적으면 그 쓰기로 깨어나 사전 행이 된다(`new_node_name` 은 참고).
+- 새 노드 제안(`suggested_node_key` 빔)은 확정해도 넘어가지 않는다 — 로그 `[Chain] <확정 규칙 이름>: N row(s) not handed over - required column(s) empty: suggested_node_key=N`. 사람이 `suggested_node_key` 에 새 노드의 키를 적으면(타입이 비었거나 틀렸으면 `suggested_node_type` 도) 그 쓰기로 깨어나 사전 행이 된다(`new_node_name` 은 참고).
 - 확정을 지워도 이미 쓴 사전 행은 남는다. 사전 행이 들어오면 8-2 가 깨어나 그 말을 가진 빈 키 후보를 채운다.
