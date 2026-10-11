@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longSheet, LONG_HEAD, moreAsk, SERVER_NODE_LIMIT } from './table_view.js';
+import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -865,7 +865,7 @@ export function boot(doc, host, deps) {
   function shownFor(view, section) {
     const long = shapeOf(section.type) === 'long';
     const name = state.longNames.get(section.type) || '';
-    const got = shownOf(section, filterOf(section.type), long ? longLines(view, section, { column: name || undefined }) : null);
+    const got = shownOf(section, filterOf(section.type), long ? longRecords(view, section, longLines(view, section, { column: name || undefined })) : null);
     return { ...got, long, ids: [...new Set(got.lines.map((line) => line.id))] };
   }
 
@@ -1050,7 +1050,9 @@ export function boot(doc, host, deps) {
   function valueCell(cell, cls, open, toggle) {
     const c = el(doc, 'td', cell.missing ? `wk-missing ${cls}` : `${cell.numeric ? 'wk-num ' : ''}${cls}`);
     const line = el(doc, 'div', 'wk-valline');
-    line.append(valueSpan(cell.image, cell.image !== undefined, cell.text));
+    const val = valueSpan(cell.image, cell.image !== undefined, cell.text);
+    val.title = cell.text;
+    line.append(val);
     if (cell.rest) {
       const more = el(doc, 'button', 'wk-tag' + (open ? ' is-on' : ''), cell.rest);
       more.type = 'button';
@@ -1060,7 +1062,7 @@ export function boot(doc, host, deps) {
     }
     c.append(line);
     const from = (cell.sources || [])[0];
-    if (from) c.append(el(doc, 'div', 'wk-src', from));
+    if (from) { const src = el(doc, 'div', 'wk-src', from); src.title = from; c.append(src); }
     return c;
   }
 
@@ -1080,6 +1082,8 @@ export function boot(doc, host, deps) {
     const cellsOf = (group) => section.parts.filter((p) => p.group === group).length;
     const leafed = section.parts.some((p) => cellsOf(p.group) > 1);
     const stepped = section.parts.length > 0;
+    fixedColumns(table, checks, [...section.centreHeads.map((_, i) => (i === 0 ? 'node' : 'value')),
+      ...section.parts.flatMap((_, i) => Array(width(i)).fill('value'))]);
     const depth = Math.max(1, (stepped ? 1 : 0) + (leafed ? 1 : 0) + (many && stepped ? 1 : 0));
     const thead = el(doc, 'thead');
     const steps = el(doc, 'tr');
@@ -1090,7 +1094,7 @@ export function boot(doc, host, deps) {
     // The heads a column of the grid stands under - the node's own, then each sign and Δ, or the group's one head - each
     // its sort and filter, k in shownOf's column order.
     let k = 0;
-    section.centreHeads.forEach((h) => { const th = el(doc, 'th', 'wk-centre', h); th.rowSpan = depth; headTools(th, section, shown, k++); first.append(th); });
+    section.centreHeads.forEach((h) => { const th = el(doc, 'th', 'wk-centre', h); th.title = h; th.rowSpan = depth; headTools(th, section, shown, k++); first.append(th); });
     section.parts.forEach((p, i) => {
       // A group - its step and far end - said once over its columns, with «▸ N» for the cells it folds (lead 10-11 W
       // addendum 8): pressed, they open in place; «▾» folds them again.
@@ -1101,7 +1105,8 @@ export function boot(doc, host, deps) {
         s.colSpan = width(i);
         if (one && leafed) s.rowSpan = 2;
         s.setAttribute('data-group', p.group);
-        s.append(el(doc, 'span', '', one ? `${p.step} · ${p.leaf}` : p.step));
+        s.title = one ? `${p.step} · ${p.leaf}` : p.step;
+        s.append(el(doc, 'span', '', s.title));
         if (p.folded) {
           const fold = el(doc, 'button', 'wk-tag' + (p.open ? ' is-on' : ''), p.open ? '▾' : `▸ ${p.folded}`);
           fold.type = 'button';
@@ -1115,6 +1120,7 @@ export function boot(doc, host, deps) {
       }
       if (!one) {
         const leaf = el(doc, 'th', 'wk-leafhead', p.leaf);
+        leaf.title = p.leaf;
         leaf.colSpan = width(i);
         if (!many) headTools(leaf, section, shown, k++);
         leaves.append(leaf);
@@ -1142,7 +1148,9 @@ export function boot(doc, host, deps) {
         const c = el(doc, 'td', 'wk-centre');
         const line = el(doc, 'div', 'wk-valline');
         // A node's own image reference (its record's column_type) is the image cell too.
-        line.append(cell.image !== undefined ? valueSpan(cell.image, true, cell.text) : el(doc, 'span', 'wk-centrelabel', cell.text));
+        const label = cell.image !== undefined ? valueSpan(cell.image, true, cell.text) : el(doc, 'span', 'wk-centrelabel', cell.text);
+        label.title = cell.text;
+        line.append(label);
         // The id is picked, not read (lead 5cf5c3401): an icon on the first centre cell, shown with its row (34d91c09d 5).
         if (i === 0) line.append(copyIdButton(row.id));
         c.append(line);
@@ -1202,16 +1210,30 @@ export function boot(doc, host, deps) {
     return table;
   }
 
+  /** A table's columns at fixed widths (owner 10-12 「폭이 꿀렁꿀렁」): the check, the node, and every value column - each
+   *  sign and Δ alike - a token each; what a cell says moves none. A cut cell says its whole in its title. */
+  function fixedColumns(table, checks, kinds) {
+    const cols = el(doc, 'colgroup');
+    for (const kind of [...(checks ? ['check'] : []), ...kinds]) cols.append(el(doc, 'col', `wk-col-${kind}`));
+    table.setAttribute('data-clip-ok', '');
+    table.append(cols);
+  }
+
   /** Long (lead 10-11 W): the same answer a value record a line - node · value name · value · point · time · side · from;
-   *  Value narrows it to one name. Nothing walked: the lines Wide's drawer reads. */
+   *  two baskets, a value column a side for side (owner 10-12, longRecords). Value narrows it to one name. */
   function longTable(view, section, checks, shown) {
     const lines = shown.lines.map((line) => line.line);
+    const heads = shown.columns.map((c) => c.head);
+    const signs = new Set(section.groups.map((g) => g.sign));
+    const valued = (h, l) => [numberOf(l.value) !== null ? 'wk-num' : '', signs.has(h) ? signClass(h) : ''].filter(Boolean).join(' ');
     const table = el(doc, 'table', 'wk-table wk-long');
+    fixedColumns(table, checks, heads.map((h) => (h === 'node' ? 'node' : 'value')));
     const thead = el(doc, 'thead');
     const head = el(doc, 'tr');
     if (checks) checkAllCell(head, checks, shown);
-    LONG_HEAD.forEach((h, k) => {
-      const th = el(doc, 'th', h === 'value' ? 'wk-num' : h === 'node' ? 'wk-centre' : '', h);
+    heads.forEach((h, k) => {
+      const th = el(doc, 'th', h === 'value' ? 'wk-num' : h === 'node' ? 'wk-centre' : signs.has(h) ? `wk-num ${signClass(h)}` : '', h);
+      th.title = h;
       headTools(th, section, shown, k);
       head.append(th);
     });
@@ -1222,13 +1244,15 @@ export function boot(doc, host, deps) {
       const tr = el(doc, 'tr');
       tr.setAttribute('data-row-id', l.id);
       if (checks) checkCell(tr, checks, l.id);
-      const cells = [[l.node, 'wk-centre'], [l.name, ''], [l.words, numberOf(l.value) !== null ? 'wk-num' : ''], [l.point, ''], [l.time, ''],
-        [l.side, l.side ? signClass(l.side) : ''], [l.from, 'wk-src']];
-      cells.forEach(([text, cls], i) => {
-        // The value (the third) an image reference: the image cell, as Wide draws it.
-        const image = i === 2 && l.image;
-        const td = el(doc, 'td', cls, image ? undefined : text);
+      longRow(l).forEach((text, k) => {
+        const h = heads[k];
+        const said = h === 'value' || signs.has(h);
+        // A value an image reference: the image cell, as Wide draws it.
+        const image = said && l.image && text;
+        const td = el(doc, 'td', h === 'node' ? 'wk-centre' : h === 'from' ? 'wk-src' : h === 'side' ? (text ? signClass(text) : '')
+          : said ? valued(h, l) : '', image ? undefined : text);
         if (image) td.append(valueSpan(l.value, true, l.words));
+        td.title = text;
         tr.append(td);
       });
       tbody.append(tr);
@@ -1440,7 +1464,7 @@ export function boot(doc, host, deps) {
     b.type = 'button';
     b.addEventListener('click', () => {
       said.textContent = shown.long
-        ? copySheet(longSheet(shown.lines.map((line) => line.line)), 'line')
+        ? copySheet(longSheet(section, shown.lines.map((line) => line.line)), 'line')
         : copySheet(sheetOf(section, filterOf(section.type)), 'row');
     });
     bar.append(b, said);
@@ -1494,9 +1518,11 @@ export function boot(doc, host, deps) {
       if ((state.added.get(section.type) || []).length || state.picking === section.type) sec.append(columnPicker(section, view.index));
       if (trended) renderTrend(sec, view, r, shown.ids);
       else {
-        const table = shown.long ? longTable(view, section, checks, shown) : wideTable(view, section, checks, shown);
-        tableBoxes.set(section.type, table);
-        sec.append(table);
+        // A fixed table is as wide as its columns; its box scrolls sideways.
+        const scroller = el(doc, 'div', 'wk-tablebox');
+        scroller.append(shown.long ? longTable(view, section, checks, shown) : wideTable(view, section, checks, shown));
+        tableBoxes.set(section.type, scroller);
+        sec.append(scroller);
       }
       // Walk on from the rows checked, the section's last line (lead 10-11 W).
       if (checks) sec.append(nextRow(at, section, checks, shown));

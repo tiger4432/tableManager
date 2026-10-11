@@ -100,9 +100,8 @@ export function gridOf(section, lines = null) {
   };
   if (lines) {
     const rows = new Map(section.rows.map((row) => [row.id, row]));
-    return { columns: LONG_HEAD.map((head) => ({ key: `long\u0000${head}`, head })),
-      lines: lines.map((l) => ({ id: l.id, row: rows.get(l.id), line: l,
-        cells: [l.node, l.name, l.words, l.point, l.time, l.side, l.from].map((text) => said({ text })) })) };
+    return { columns: longHead(section.groups).map((head) => ({ key: `long\u0000${head}`, head })),
+      lines: lines.map((l) => ({ id: l.id, row: rows.get(l.id), line: l, cells: longRow(l).map((text) => said({ text })) })) };
   }
   const order = (list, delta) => (section.groups.length === 2 && delta !== undefined ? [list[0], delta, list[1]] : list);
   return {
@@ -203,8 +202,15 @@ export function sheetOf(section, filter = {}) {
   return { head, rows };
 }
 
-/** Long's columns (lead 10-11 W): a value record a line. */
+/** Long's columns (lead 10-11 W): a value record a line. One basket: a value and its side. */
 export const LONG_HEAD = Object.freeze(['node', 'value name', 'value', 'point', 'time', 'side', 'from']);
+/** Two baskets: a value column a side, no Δ (owner 10-12 「좌우 값부터 제대로 띄워」) - the one seat that asks. */
+const bySide = (groups) => groups.length > 1;
+export const longHead = (groups) => (bySide(groups)
+  ? ['node', 'value name', ...groups.map((g) => g.sign), 'point', 'time', 'from'] : [...LONG_HEAD]);
+/** A Long line's words in its head's order. */
+export const longRow = (l) => (l.sides ? [l.node, l.name, ...l.sides, l.point, l.time, l.from]
+  : [l.node, l.name, l.words, l.point, l.time, l.side, l.from]);
 
 /**
  * A section as Long draws it (lead 10-11 W): a line a value record - the node, the value's name, its value, the edge's
@@ -231,7 +237,8 @@ export function longLines(view, section, only = {}) {
           const t = r.when && Date.parse(r.when.occurred_at);
           lines.push({ id: row.id, node: row.label, name: head, value: r.value, words: valueWords(r.value), image: Boolean(r.image), point,
             time: Number.isFinite(t) ? localStamp(new Date(t).toISOString()) : '', side: at ? at.g.name : '',
-            from: at && r.giver !== row.id ? view.sources.source(at.g, r.giver) : '', group: at ? at.i : null, column: columnKey(column) });
+            from: at && r.giver !== row.id ? view.sources.source(at.g, r.giver) : '', group: at ? at.i : null, column: columnKey(column),
+            read: r.edge || r.node });
         }
       }
     }
@@ -239,8 +246,32 @@ export function longLines(view, section, only = {}) {
   return lines;
 }
 
+/**
+ * Long's lines (owner 10-12): two baskets, a record a line - its value under each side ITS way was walked inside (a side's
+ * reads are longLines' per group), both when both; a node's own value under the sides that reached the node. A record is
+ * its read (last edge, or node), not its value; one basket: longLines as they are.
+ */
+export function longRecords(view, section, lines) {
+  if (!bySide(section.groups)) return lines;
+  const out = [];
+  const seen = new Map();
+  for (const l of lines) {
+    const at = l.group !== null ? [l.group] : view.groups.flatMap((g, i) => (g.inside.has(l.id) ? [i] : []));
+    const key = `${l.id}\u0000${l.column}`;
+    const same = seen.get(key) || new Map();
+    seen.set(key, same);
+    const kin = (same.get(l.read) || []).find((m) => at.every((i) => m.sides[i] === ''));
+    const line = kin || { ...l, sides: view.groups.map(() => ''), froms: [] };
+    if (!kin) { out.push(line); same.set(l.read, [...(same.get(l.read) || []), line]); }
+    for (const i of at) line.sides[i] = l.words;
+    if (l.from && !line.froms.includes(l.from)) line.froms.push(l.from);
+    line.from = line.froms.join('; ');
+  }
+  return out;
+}
+
 /** Long as a sheet: its head and a line a row, as drawn. */
-export const longSheet = (lines) => ({ head: [...LONG_HEAD], rows: lines.map((l) => [l.node, l.name, l.words, l.point, l.time, l.side, l.from]) });
+export const longSheet = (section, lines) => ({ head: longHead(section.groups), rows: lines.map(longRow) });
 
 const html = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /** A sheet as the <table> Excel reads off the clipboard beside its TSV. */

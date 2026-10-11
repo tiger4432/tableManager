@@ -26,6 +26,8 @@ export const WALK_CSS = `
    beside, the result tables - lead 10-11 W 12), 14 (body), 16 (titles); a control 44 high, a small one in a cell 28; every space a --space-* token.
    The screen gate asks all three of every element on the page. */
 :root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: 44px; --wk-h-small: 28px;
+  /* A result table's columns (owner 10-12 「폭이 꿀렁꿀렁」): the node one width, every value column - each sign and Δ - one. */
+  --wk-col-node: 232px; --wk-col-value: 152px;
   /* One face for the page; the mono only for ids and ways (lead 10-11 W 3). */
   --wk-font: 'IBM Plex Sans', 'Outfit', system-ui, sans-serif; --wk-mono: 'IBM Plex Mono', var(--font-mono, ui-monospace), monospace; }
 .wk-bar, .wk-main { font-family: var(--wk-font); }
@@ -196,15 +198,13 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-record .wk-src { white-space: normal; overflow-wrap: anywhere; }
 /* Wide's heads (lead 10-11 W): a group - its step and far end - over its columns, the value's name, each sign and Δ. */
 .wk-wide th.wk-stephead { text-align: left; }
-.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small); }
+.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small);
+  max-width: calc(100% - var(--wk-h)); overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 /* Its «▸ N» a size up from the head's letters: a press among them, not one more word. */
 .wk-wide th.wk-stephead > .wk-tag { font-size: var(--wk-fs-body); }
-/* A node's route line cut at its column's width, every route in its title (lead 10-11 W: the first column's + · Δ · − in the
-   first screen). */
-.wk-wide td.wk-centre > .wk-src { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
 .wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }
-.wk-long td.wk-plus { color: var(--wk-plus); }
-.wk-long td.wk-minus { color: var(--wk-minus); }
+.wk-long th.wk-plus, .wk-long td.wk-plus { color: var(--wk-plus); }
+.wk-long th.wk-minus, .wk-long td.wk-minus { color: var(--wk-minus); }
 /* Which walk reached a row (lead 99ed68cb7 D): a stripe at the cell's left and a light ground - A + B green, B alone red;
    A alone none. The three counts above the table say the same. */
 .wk-reached { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--wk-fs-line); }
@@ -235,7 +235,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-step[aria-current="step"] { background: var(--accent-weak); }
 /* A row's check: the rail's follow label rules are label.wk-check - a cell took them (flex, 9.5em) and the table's
    first column stood 124 px wide (lead 34d91c09d review). */
-.wk-table th.wk-check, .wk-table td.wk-check { width: 1%; height: var(--wk-h); padding-top: 0; padding-bottom: 0; }
+.wk-table th.wk-check, .wk-table td.wk-check { height: var(--wk-h); padding-top: 0; padding-bottom: 0; }
 /* A control row and a control start: the board's control look (board.css .is-marked-control). */
 .wk-table tr.is-control td { background: var(--bg-inset); }
 .wk-table tr.is-control td.wk-check { box-shadow: inset 2px 0 0 var(--text-muted); }
@@ -260,10 +260,20 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-basketadd[disabled] { opacity: 0.45; cursor: not-allowed; }
 .wk-throughacts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-throughacts > .wk-input { flex: 1 1 8em; width: auto; min-height: var(--wk-h-small); height: var(--wk-h-small); }
-.wk-table { width: 100%; border-collapse: collapse; font-size: var(--wk-fs-line); display: block;
-  overflow-x: auto; white-space: nowrap; }
-.wk-table th, .wk-table td { border-bottom: 1px solid var(--border);
+/* Fixed columns (owner 10-12): each a token from its <col> - sorting, filtering, checking or adding rows moves none; a cell
+   that does not fit is cut, its whole in its title. width 0: the table is its columns' sum, its box scrolls sideways. */
+.wk-tablebox { overflow-x: auto; }
+.wk-table { table-layout: fixed; width: 0; border-collapse: collapse; font-size: var(--wk-fs-line); white-space: nowrap; }
+.wk-table col { width: var(--wk-col-value); }
+.wk-table col.wk-col-node { width: var(--wk-col-node); }
+.wk-table col.wk-col-check { width: var(--wk-h); }
+.wk-table th, .wk-table td { border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis;
   padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }
+.wk-table .wk-val, .wk-table .wk-centrelabel, .wk-table .wk-src { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wk-table .wk-valline > .wk-tag, .wk-table .wk-valline > .wk-copyid { flex: none; }
+/* A head's «▾» at its right edge, out of the words' way: a long head is cut, its filter stays. */
+.wk-table th.wk-sortable { padding-right: var(--wk-h-small); }
+.wk-table th > .wk-colfilter { position: absolute; top: var(--space-1); right: 0; }
 .wk-table th { font-weight: 600; font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); position: sticky; top: 0;
   background: var(--bg-surface); }
 /* 숫자는 «자릿수»로 섭니다 — x·y 가 세로로 안 맞으면 좌표를 못 읽습니다. */

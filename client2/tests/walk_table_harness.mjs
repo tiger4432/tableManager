@@ -27,6 +27,10 @@ import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { walkTableView } from '../src/walk/table_view.js';
 import { SIGN } from '../src/rnd_board/marking_store.js';
 import { DWELL_MS, IMAGE_ROUTE } from '../src/image_preview.js';
+import { WALK_CSS } from '../src/walk/styles.js';
+
+// The stylesheet FW1 reads - a styles.js mutant swaps it for its own (owner 10-12: fixed widths).
+let CSS_NOW = WALK_CSS;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src', 'walk', 'main.js');
@@ -122,6 +126,19 @@ const SIGNED = {
       { seed: 's:c', sign: '+', hops: [{ id: 's:c' }, { id: 'd:4', predicates: ['inspected'] }] }] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
+// Long by side (owner 10-12): one quantity both baskets reached, measured from 3 + wafers, 5 − wafers and one wafer each
+// basket reached (a shared lot's) - a record's side is its way's, not the quantity's.
+const LS_PLUS = ['p:1', 'p:2', 'p:3'];
+const LS_MINUS = ['m:1', 'm:2', 'm:3', 'm:4', 'm:5'];
+const LS_DECL = { ok: true, entities: [{ type: 'wafer@1', keys: ['wafer'] }, { type: 'quantity@1', keys: ['quantity'] }],
+  predicates: [{ name: 'measures@1', subjects: ['wafer@1'], object: { types: ['quantity@1'] } }] };
+const LS = {
+  nodes: [{ id: 'q', type: 'quantity@1', label: 'bond_temp', keys: { quantity: 'bond_temp' } },
+    ...[...LS_PLUS, ...LS_MINUS, 'w:s'].map((id) => ({ id, type: 'wafer@1', label: id, keys: { wafer: id } }))],
+  edges: [...LS_PLUS, ...LS_MINUS, 'w:s'].map((id, i) => ({ id: `ms:${id}`, source: id, target: 'q', predicate: 'measures', qualifiers: { value: 20 + i } })),
+  propagation: { ranked: [{ id: 'q', reach: [3, 5] }, { id: 'w:s', reach: [1, 1] }] },
+};
+const LS_STARTS = { positive: LS_PLUS, negative: LS_MINUS };
 // Sort · filter · bulk select (lead 10-11 W addendum 7): one + wafer and more dies than a pick lists (PICK_MOST + 2, read off
 // the module) - mat_id M-1 …, a grade A · B · none, a gate each - numbers that sort otherwise as words (2 · 9 · 10 · 100),
 // two dies with none - and a point beside it (Split by, addendum 2 ⑭), every edge at its own hour.
@@ -1027,6 +1044,51 @@ async function suite(mod) {
         [['inspected ← wafer@1 · gate', 3], [ADDED, 3]], ['M-3', '7', '−2', '9', 'A', '—', 'B']]),
       JSON.stringify([route, value, groupHeads(), tds('d:3')]));
   }
+  // ── fixed widths (owner 10-12 「폭이 꿀렁꿀렁」): a column a <col> - the node one token, every value column (+ · Δ · −)
+  //    one - the same after a sort, a filter and a check; the head's spans over exactly those columns; the stylesheet fixes
+  //    the layout on them ──
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    handle.state.type = 'wafer@1';
+    handle.state.asked = { type: 'wafer@1', keys: {}, ...SIGNED_STARTS };
+    handle.state.run = 'done';
+    handle.state.result = SIGNED;
+    handle.render();
+    const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
+    const change = (e) => { for (const fn of (e && e.listeners.change) || []) fn({}); };
+    const secHead = (sec) => (walkAll(sec).find((c) => c.className === 'wk-sechead') || {}).textContent || '';
+    const dieSec = () => walkAll(host).filter((e) => e.className === 'wk-sec').find((x) => /^die/.test(secHead(x))) || { children: [] };
+    const table = () => walkAll(dieSec()).find((e) => e.tagName === 'table') || { children: [] };
+    const attr = (name) => walkAll(dieSec()).find((e) => e.attrs && e.attrs[name] !== undefined);
+    const widths = () => {
+      const trs = walkAll(table()).filter((e) => e.tagName === 'tr');
+      const body = trs.find((e) => e.attrs && e.attrs['data-row-id']);
+      return { cols: walkAll(table()).filter((e) => e.tagName === 'col').map((e) => e.className),
+        spans: trs.length ? trs[0].children.reduce((n, c) => n + (c.colSpan || 1), 0) : -1, across: body ? body.children.length : -1,
+        rows: walkAll(table()).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length };
+    };
+    const before = widths();
+    press(attr('data-sort-key'));
+    press(attr('data-filter'));
+    change(attr('data-pick'));
+    press(attr('data-check-all'));
+    const after = widths();
+    const rule = (sel) => ((CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'))
+      .find(([s]) => s && s.trim() === sel) || [])[1] || '').replace(/\s+/g, ' ').trim();
+    const valueCols = before.cols.filter((c) => c !== 'wk-col-check' && c !== 'wk-col-node');
+    ok('FW1 fixed widths: a <col> a column - check · node · every + · Δ · − one value width - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed on the tokens (owner 10-12)',
+      JSON.stringify(before.cols) === JSON.stringify(after.cols) && before.cols[0] === 'wk-col-check' && before.cols[1] === 'wk-col-node'
+        && valueCols.length === 3 && valueCols.every((c) => c === 'wk-col-value')
+        && before.spans === before.cols.length && before.across === before.cols.length && after.spans === after.cols.length
+        && after.rows < before.rows
+        && /table-layout: fixed;/.test(rule('.wk-table')) && /width: 0;/.test(rule('.wk-table'))
+        && rule('.wk-table col') === 'width: var(--wk-col-value);' && rule('.wk-table col.wk-col-node') === 'width: var(--wk-col-node);'
+        && /--wk-col-node: \S+; --wk-col-value: \S+;/.test(rule(':root')),
+      JSON.stringify([before, after, rule('.wk-table'), rule('.wk-table col')]));
+  }
   // ── sort · filter · bulk select on the page (lead 10-11 W addendum 7): what is drawn is what Copy, Trend, Walk on and the
   //    head check take ──
   {
@@ -1590,6 +1652,18 @@ const filterSuite = (TV) => {
       && longValues.slice(12).join() === 'A,A,A,A,A,B,B,B,B,B'
       && (TV.shownOf(sec, { sort: { key: lkey('node'), dir: 'desc' } }, lines).lines[0] || { line: {} }).line.node === 'SD14',
     longValues.join());
+  // Long, two baskets (owner 10-12 「좌우 값부터 제대로 띄워」): a value column a side, a record under the side its way came by.
+  const lsView = TV.walkTableView(LS, LS_DECL.entities, LS_DECL.predicates, undefined, LS_STARTS);
+  const lsSec = lsView.sections.find((x) => x.type === 'quantity@1');
+  const lsGrid = lsSec ? TV.gridOf(lsSec, TV.longRecords(lsView, lsSec, TV.longLines(lsView, lsSec))) : { columns: [], lines: [] };
+  const lsAt = (h) => lsGrid.columns.findIndex((c) => c.head === h);
+  const lsSides = lsGrid.lines.filter((l) => l.line.name === 'measures ← wafer@1')
+    .map((l) => [l.cells[lsAt('+')].words, l.cells[lsAt('−')].words]);
+  const lsWhere = (plus, minus) => lsSides.filter(([p, m]) => Boolean(p) === plus && Boolean(m) === minus).map(([p, m]) => p || m).sort().join();
+  ok('LS1 Long, two baskets: + and − a value column each, no Δ - 3 + records left, 5 − right, the one both reached in both, a line a record (owner 10-12)',
+    JSON.stringify([lsGrid.columns.map((c) => c.head), lsWhere(true, false), lsWhere(false, true), lsWhere(true, true), lsSides.length])
+      === JSON.stringify([['node', 'value name', '+', '−', 'point', 'time', 'from'], '20,21,22', '23,24,25,26,27', '28', 9]),
+    JSON.stringify([lsGrid.columns.map((c) => c.head), lsSides]));
   // Filters, each by its kind - judged over every line.
   const kind = (k) => (k < 0 ? 'none' : TV.filterKind(grid.lines, k).kind);
   ok('SF6 a column of more values than a pick lists filters by the words it contains, any case: mat_id «m-1» - M-1, M-10 … M-14',
@@ -1671,13 +1745,13 @@ const MUTANTS = [
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
     from: '    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], more.asked);', to: '    void addWalk(state.at, MORE, [...starts.positive, ...starts.negative], asked);' },
   { id: 'IMm1', what: 'a value the answer says is an image drawn as its text', catches: 'IM1',
-    from: '    line.append(valueSpan(cell.image, cell.image !== undefined, cell.text));', to: '    line.append(valueSpan(cell.image, false, cell.text));' },
+    from: '    const val = valueSpan(cell.image, cell.image !== undefined, cell.text);', to: '    const val = valueSpan(cell.image, false, cell.text);' },
   { id: 'DM7', what: 'a side\'s cells not tinted by who reached the row', catches: 'ZD4',
     from: "row.reached && row.reached[i] && row.reached[i] !== 'a' ?", to: 'false ?' },
   { id: 'DM8', what: 'the three counts not drawn over a section', catches: 'ZD4',
     from: '      if (section.reached) sec.append(reachedLine(section));\n', to: '' },
   { id: 'NZ16', what: 'the source line not drawn under a value', catches: 'Z41',
-    from: "    if (from) c.append(el(doc, 'div', 'wk-src', from));\n", to: '' },
+    from: "    if (from) { const src = el(doc, 'div', 'wk-src', from); src.title = from; c.append(src); }\n", to: '' },
   { id: 'NZ15', what: 'a node\'s route line without every route in its title', catches: 'Z32',
     from: "          src.title = same ? all(row.routes[0]) : row.routes.map((w) => `${w.sign} ${all(w)}`).join(' · ');\n", to: '' },
   { id: 'NZ1', what: 'no sign under a column', catches: 'Z9',
@@ -1695,7 +1769,7 @@ const MUTANTS = [
   // ⚰️ NZ12 (the step said in every head) retired 10-11: a group is said once by its own run, its head NZ13's.
   // ⚰️ NZ14 (the axis scrolled past the box) retired 10-11 with Z28 and the mirrored sides (lead W).
   { id: 'NZ13', what: 'a group head without its step and far end', catches: 'Z27',
-    from: "        s.append(el(doc, 'span', '', one ? `${p.step} · ${p.leaf}` : p.step));", to: "        s.append(el(doc, 'span', '', p.leaf));" },
+    from: "        s.title = one ? `${p.step} · ${p.leaf}` : p.step;", to: '        s.title = p.leaf;' },
   { id: 'NZ7', what: 'several values with no «+N» to open them', catches: 'Z24',
     from: "    if (cell.rest) {\n      const more = el(doc, 'button', 'wk-tag'", to: "    if (false) {\n      const more = el(doc, 'button', 'wk-tag'" },
   { id: 'NZ8', what: 'one colour for both signs', catches: 'Z25',
@@ -1707,7 +1781,7 @@ const MUTANTS = [
   { id: 'NZ6', what: 'the filter draws every row', catches: 'Z14',
     from: '    for (const { row } of shown.lines) {', to: '    for (const row of section.rows) {' },
   { id: 'CPm4', what: 'Wide copied as Long\'s lines', catches: 'CP3',
-    from: ": copySheet(sheetOf(section, filterOf(section.type)), 'row');", to: ": copySheet(longSheet(longLines(view, section, {})), 'row');" },
+    from: ": copySheet(sheetOf(section, filterOf(section.type)), 'row');", to: ": copySheet(longSheet(section, longLines(view, section, {})), 'row');" },
   { id: 'CPm5', what: 'the copy ignores the filter', catches: 'CP3',
     from: "copySheet(sheetOf(section, filterOf(section.type)), 'row')", to: "copySheet(sheetOf(section), 'row')" },
   // Sort · filter · bulk select on the page (lead 10-11 W addendum 7).
@@ -1720,7 +1794,9 @@ const MUTANTS = [
   { id: 'SFm6', what: 'the head check checks the hidden rows too', catches: 'PF6 ',
     from: '...rest, ...shown.ids.filter((id) => markings.signOf(checks, id) === SIGN.ABSENT)', to: '...rest, ...shown.all.map((l) => l.id).filter((id) => markings.signOf(checks, id) === SIGN.ABSENT)' },
   { id: 'SFm7', what: 'Long copied whatever the filter', catches: 'PF5 ',
-    from: "copySheet(longSheet(shown.lines.map((line) => line.line)), 'line')", to: "copySheet(longSheet(longLines(view, section, {})), 'line')" },
+    from: "copySheet(longSheet(section, shown.lines.map((line) => line.line)), 'line')", to: "copySheet(longSheet(section, longLines(view, section, {})), 'line')" },
+  { id: 'FWm1', what: 'a table drawn with no fixed columns - auto widths again', catches: 'FW1 ',
+    from: "    for (const kind of [...(checks ? ['check'] : []), ...kinds]) cols.append(el(doc, 'col', `wk-col-${kind}`));", to: '' },
   { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',
     from: "    const rows = t.at === 'section' ? ids : t.rows;", to: "    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;" },
   { id: 'SFm9', what: 'Walk on from the checked rows the filter hides', catches: 'PF8 ',
@@ -1965,6 +2041,8 @@ const TV_MUTANTS = [
     from: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 }", to: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.sort) }" },
   { id: 'SFt11', what: 'Wide\'s Δ not a column of its own', catches: 'SF4 ',
     from: "section.parts[i].delta ? { key: `${columnKey(column)}\\u0000${DELTA}`", to: "false ? { key: `${columnKey(column)}\\u0000${DELTA}`" },
+  { id: 'LSm1', what: 'a Long record\'s side by its node, not by its way', catches: 'LS1 ',
+    from: 'const at = l.group !== null ? [l.group] : view.groups', to: 'const at = view.groups' },
   { id: 'ZM12', what: 'an empty column drawn', catches: 'Z23',
     from: "      if (kindsAll[i] === 'empty') return;", to: '' },
   // ⚰️ QM1 (the flat table's fold: the last edge's value) retired 10-11 with qualifiersByNode (E1); every value kept is
@@ -2012,8 +2090,27 @@ const sp = await scoreMutants(SPLIT_MUTANTS, async (m) => {
   return { ran, names: NAMES.slice(), failures: failures.slice() };
 }, { baselineNames: base.names, title: `${LF}== split mutants (each must be CAUGHT by the check it names) ==` });
 
-const all = MUTANTS.length + TV_MUTANTS.length + SPLIT_MUTANTS.length;
-const scored = all - defects.wrong - controls.wrong - tv.wrong - sp.wrong;
+// The stylesheet FW1 reads (owner 10-12: fixed widths), mutated alone; the page as it is.
+const STYLE_MUTANTS = [
+  { id: 'FWm2', what: 'the tables back to auto layout', catches: 'FW1 ',
+    from: '.wk-table { table-layout: fixed; width: 0;', to: '.wk-table { width: 100%; display: block; overflow-x: auto;' },
+];
+const st = await scoreMutants(STYLE_MUTANTS, async (m) => {
+  ran = 0; NAMES.length = 0; failures = [];
+  const loaded = await loadWithProbe(path.join(HERE, '..', 'src', 'walk', 'styles.js'), {
+    mutate: (text) => {
+      if (!text.includes(m.from)) throw new Error(`mutation anchor is GONE: ${m.id}`);
+      return text.split(m.from).join(m.to);
+    },
+  });
+  CSS_NOW = loaded.module.WALK_CSS;
+  await suite(first.module);
+  CSS_NOW = WALK_CSS;
+  return { ran, names: NAMES.slice(), failures: failures.slice() };
+}, { baselineRan: suiteRan, baselineNames: base.names, title: `${LF}== style mutants (each must be CAUGHT by the check it names) ==` });
+
+const all = MUTANTS.length + TV_MUTANTS.length + SPLIT_MUTANTS.length + STYLE_MUTANTS.length;
+const scored = all - defects.wrong - controls.wrong - tv.wrong - sp.wrong - st.wrong;
 console.log(`${LF}  ${scored}/${all} scored as intended.`);
 const failed = base.failed + (all - scored);
 console.log(`ASSERTIONS ${base.ran + all} ${failed}`);
