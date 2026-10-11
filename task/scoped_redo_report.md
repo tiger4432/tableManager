@@ -78937,3 +78937,36 @@ RUN.md  «모르는 것» 줄 -> 운영 DB 읽기 전용 셈(키 칸이 다 비�
   public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
 어느 DB · 어느 스키마 · 지운 것: 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0 (탐침이 지운 행은 그 시험 세상의 행)
 ```
+
+## [10-11] 96f54ab36 회귀 고침 착지 739db5c2c — 속성만 등록하는 소스가 저장에서 거절 (응용 18766 · 총괄 「원인 한 줄 · 고침 · 대조군 다시 · 게이트 칸」)
+
+```
+원인 한 줄  96f54ab36 이 «시각을 안 묶은 문장»의 시각 역할을 derived 행으로 만들면서 값에 원천 시각 기록({basis…}/{column…})을 실었고,
+           저장의 채우기(filled_declaration)는 derived 행의 값을 파일에 쓴다 — 바인딩이 아닌 기록이 bind 에 써져 거절
+고침      그 행은 «Not an event - source time: …» 근거만 들고 값은 없음(저장이 안 씀). 코드 한 칸
+게이트 칸  test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none — 저장의 채우기 함수 그대로, 세 모양
+          (응용 (1) 속성 소스: 오류 () · 응용 (2''): 채우기 전후 오류 같음 · 사건 아닌 둘째 문장) — 이번에 빠졌던 «저장 통과» 칸
+변이 (값을 원천 시각으로 되돌림)
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none[_no_edge_time]
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none[_edge_time_from_the_read]
+  FAILED tests\test_time_lives_on_the_event_edges.py::test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none[_with_a_not_an_event_mapping]
+  4 failed, 19 passed in 1.80s
+  md5 restored
+비-PG 87 파일, 깨끗한 main(wt-check) 과 비교
+  wt-fold:  79 failed, 1033 passed, 1 skipped, 139 deselected, 10 errors in 70.10s (0:01:10)
+  wt-check: 79 failed, 1030 passed, 1 skipped, 139 deselected, 10 errors in 68.19s (0:01:08)
+  test ids: fold 79 · check 79 · new: 0 · gone: 0
+채우기를 부르는 시험 · 이 변경에 닿는 PG 파일(PG 67 파일 중 초안 · 작성 코드를 부르는 것 하나)
+  == tests/test_a_draft_starts_from_the_declaration_file.py 8 passed in 2.60s
+  == tests/test_a_switched_off_field_is_dropped_by_the_save.py 11 passed in 3.09s
+  == tests/test_a_role_shows_the_attributes_it_inherits.py 3 passed in 0.59s
+  == tests/test_a_row_source_has_no_group_by_to_write.py 5 passed in 1.23s
+  == tests/test_ledger_setup_bundle.py 107 passed, 1 skipped in 1.31s
+  PG test_a_ledger_branch_is_merged_refreshed_and_deleted  3 passed in 26.90s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
+RUN.md  이미 거절된 소스: 목록 사유 «….bind.occurred_at.kind unsupported binding kind None» -> 그 칸을 지우고 Save
+응용께  18766 대조군 다섯 다시
+```
