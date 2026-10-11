@@ -78694,3 +78694,81 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
 화면   제가 안 열었음 — 어드민 토큰을 브라우저에 안 넣는 규칙. 응용께 18766 재현 자리에서 열어 달라고 부탁(레코드 칸 편집 왕복)
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리뿐 · 지운 것 0
 ```
+
+## [10-11] 체인 층 원천 행마다 착지 b566b48ae (총괄 8ec008914 · 4dd303f01 · 판정 10-11: 쓴이 순위는 체인 층에만 · ① 다시 맞음 그대로 · ② fold_file_layers 를 넓힘)
+
+```
+착지 b566b48ae — 쓰는 자리 하나(rule_run.layer_of_a_rules_write, 워커 쓰기 고리): origin_row_id 가 있으면 chain_ingestion (<origin>)
+     순위 · 비움 · 「체인인가」를 묻는 자리 하나 crud.layer_ranks_as — get_source_priority(compute_priority_value · R3 동률) · can_mean_emptied ·
+     깨우기 필터 · 껍데기 키 층이 부름. 합치기 사본(user (…) 등)은 오늘 순위 그대로
+     withdraw_source · count_withdrawable 의 술어 _claimed_filter: chain_ingestion 이면 행 층까지 · 고정(pin)은 층 이름 그대로 견줌
+     옮기기 = 소급 fold_file_layers 를 넓힘(라벨 Fold layers that repeat another, id 그대로) — 칸 판단 crud.stacked_layers 하나:
+     파일 반복 · plain 원천 있음 -> 행 층 이름(이미 있으면 지움) · 원천 없음 + 행 층 같은 값 -> 지움 · 값 다름 -> 남기고 셈 + 앞 다섯 ·
+     합치기 사본 체인 층 셈 · 화면 값이 바뀌는 칸은 R3 와 같은 쓰기(_write_resolved, 값 + 이력 한 줄) · 이름 바꾸기는 쪽 · 칸마다 UPDATE 한 문장
+게이트 — 바뀐 자리를 부르는 시험 파일 99 개(cl_gates.sh 의 git grep + 새 파일)
+  비-PG  2 failed, 1430 passed, 5 skipped, 108 deselected in 397.69s (0:06:37)
+         실패 둘은 박스 상태 — 무시된 라이브 맵퍼 파일 · 워크트리 .git 파일: tests\test_dt_inventory_metadata_mapper.py · tests\test_one_place_decides_where_the_server_is.py
+  PG     1 failed, 107 passed, 1437 deselected in 1433.01s (0:23:53)
+         실패 test_an_index_that_waits_past_the_limit_is_deferred_by_name_and_built_on_the_next_run — 바꾸기 전 HEAD 깨끗한 사본에서도 같은 LockNotAvailable(그때 제 박스 사본 접기가 긴 트랜잭션을 쥐고 있었음)
+         -> 혼자 다시: 3 passed, 6 deselected in 5.45s
+  착지 직전(이름 바꾸기 쪽마다 · rebase 뒤) PG 다시: 접기 · 소급 탭 · 거두기 · 고친 원천 행 · 보류 복사 다섯 파일 37 passed, 101 deselected in 283.34s (0:04:43)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+새 시험 test_a_chain_layer_is_one_per_source_row.py 열 칸 — 두 원천 행 -> 층 둘 · 먼저/나중 행 거둠 -> 남은 행 값 · 행 층이 늦은 파일 층을 이김 ·
+  행 층의 빈 값 = 체인이 비움 · withdraw_source(chain_ingestion) 이 행 층까지 · 옛 봉투(채널 없음)의 행 층 이름도 체인 ·
+  조인 다시 맞음(L 이 R1 -> R2) -> 층 둘, R2 값 보임(판정 ① «시험으로 보임») · 접기 미리보기 = 실행 · 다시 0 · 접은 뒤 거두면 밑 파일 값
+변이(빨강 = 실패한 시험, md5 복원) — rebase 뒤 다시
+  baseline ['28 passed in 4.82s']
+  the write seat keeps the plain name      RED | test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[True-None-chain_ingestion], test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion[Tru
+  the rank reads the raw name              RED | test_2_an_old_chain_layer_is_written_over_not_left_on_top, test_a_row_layer_ranks_as_the_chain_and_beats_a_newer_file_layer, test_the_fold_previews_what_
+  emptied asks the raw name                RED | test_a_row_layers_blank_means_the_chain_emptied_the_cell
+  the withdraw filter misses row layers    RED | test_withdrawing_chain_ingestion_takes_its_row_layers
+  the wake filter reads the raw name       RED | test_an_old_envelope_naming_a_row_layer_is_the_chains
+  the fold renames nothing                 RED | test_the_fold_previews_what_it_does_and_a_rerun_does_nothing
+  the fold keeps a repeated plain          RED | test_a_row_taken_back_after_the_fold_shows_what_is_left_beneath, test_the_fold_previews_what_it_does_and_a_rerun_does_nothing
+  the fold writes no shown value           RED | test_the_fold_previews_what_it_does_and_a_rerun_does_nothing
+  restored True
+진짜 프로세스 — 응용 rh_world_layers 사본, 런처(run_decoupled_app --no-client) 그대로, 앞판 origin/main -> pull 로컬 커밋 -> 재기동
+  (응용께 체인 워커 슬롯 받고 «내림» 드림 · C:/wt-rh · 스키마 assy_impl_rhl_1011 지움)
+          | RAN {'layers_deleted': 0, 'chain_renamed': 0, 'chain_deleted': 615, 'chain_differs': 0, 'chain_unstamped': 820, 'chain_copies': 0, 'shown_changed': 0}
+          | RAN {'layers_deleted': 0, 'chain_renamed': 0, 'chain_deleted': 0, 'chain_differs': 0, 'chain_unstamped': 205, 'chain_copies': 0, 'shown_changed': 0}
+          | RAN {'layers_deleted': 0, 'chain_renamed': 0, 'chain_deleted': 0, 'chain_differs': 0, 'chain_unstamped': 648, 'chain_copies': 0, 'shown_changed': 0}
+          | RAN {'layers_deleted': 0, 'chain_renamed': 0, 'chain_deleted': 0, 'chain_differs': 0, 'chain_unstamped': 648, 'chain_copies': 0, 'shown_changed': 0}
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+  두 원천 행이 먹이던 공식 키(CW2 -2 -2)의 늦은 행 MAN_J9 를 API 로 지움 -> 「MAN_J9 | 」(보류 빈칸) -> 「AUTO_J2 | agreed」
+  주의: 이 세상의 take-back 은 «require 빈 행»이 아님 — config_before 에 이미 require 가 있어 그런 행은 복사된 적이 없음. MAN_J9 는 제가 넣은
+        «두 원천 행 -> 한 공식 키» 행이다(지시의 그 게이트를 이 세상에서는 못 잼)
+  dt_log 는 이름 바꿀 것 0 — 인벤토리 맵퍼가 새 프레임을 지어 원천을 안 찍음(plain 그대로 덮음, 오늘과 같음)
+박스 사본(PG) — 이 박스 dt_log 를 assy_test 스크래치 assy_impl_clbox_1011 에 통째로 복사, 이 워크트리 코드로
+  dropped schema assy_impl_clbox_1011 (0 tables) - left 0
+  copied dt_log: 535559 rows in 24.3 s (26 columns)
+  copied cell_sources: 3427084 rows in 95.6 s (10 columns)
+  copied cell_overwrites: 152 rows in 0.0 s (8 columns)
+  before: withdraw count of chain_ingestion 57402 · plain 57402 · row layers 0 · plain stamped 53520 · history lines 0
+  full dry run in 73.6 s
+    dry {'layers_deleted': 0, 'chain_renamed': 53520, 'chain_deleted': 0, 'shown_changed': 0, 'chain_differs': 0, 'chain_unstamped': 3882, 'chain_copies': 0, 'rows_scanned': 535559} first differs []
+  apply (the fold run_here wraps) in 76.0 s
+    ran {'layers_deleted': 0, 'chain_renamed': 53520, 'chain_deleted': 0, 'shown_changed': 0, 'chain_differs': 0, 'chain_unstamped': 3882, 'chain_copies': 0, 'rows_scanned': 535559}
+    preview = run: True
+  full dry run again in 73.2 s
+    again {'layers_deleted': 0, 'chain_renamed': 0, 'chain_deleted': 0, 'shown_changed': 0}
+  after: withdraw count of chain_ingestion 57402 · plain 3882 · row layers 53520 · plain stamped 0 · history lines 0
+  dropped schema assy_impl_clbox_1011 (51 tables) - left 0
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+  첫 판은 run_here 로 1196.2 초 — 프로파일(앞 20,000 행): 아래. 시간은 접기가 아니라 run_here 가 쪽마다 진행을 API_BASE_URL 에 알리는 자리
+  (이 재기에서 127.0.0.1:9 = 닫힌 포트, 윈도우 연결 거절 ~2 초 × 536 쪽). 서버가 켜져 있으면 안 생김 — RUN.md 에 한 줄
+    first page: stamped plain layers by column {'dt_lot': 58, 'dt_slot': 58}
+       Execution Time: 4.697 ms
+    dry run of 20000 rows in 7.2 s
+    apply of 20000 rows in 16.4 s · renamed 23306
+어느 DB · 어느 스키마 · 지운 것: 시험은 sqlite 메모리 + 격리 시험 DB(run_pg_files) · 리허설 assy_test 의 assy_impl_rhl_1011 ·
+  박스 사본 assy_test 의 assy_impl_clbox_1011(네 번 — clbox_v1 · clbox_v2 · clbox_p · clbox 폴더, 매번 지움: 각 출력의 dropped 줄) · 박스 assy_manager 는 읽기 전용 · public 전후 같음 · 그 밖 지운 것 0
+찾은 것(고치지 않음, 물음)
+  ① 복사 규칙의 보류 다시 세기가 키 칸을 plain 으로 다시 써서 접기가 지운 겹침이 다시 세기마다 다시 생김(리허설 pass 2 에 615 다시) — 값이 같아 화면 · 거두기엔 영향 없음
+  ② run_here 의 쪽마다 진행 알림이 서버가 꺼져 있으면 이 박스에서 쪽마다 ~2 초 — 소급 전부에 해당
+  ③ conftest.run_join_and_write 는 쓰는 자리를 안 지나 plain 이름으로 씀 — 그 도우미를 쓰는 시험은 오늘 이름을 안 잼
+곁 고침  ops_setup_db_performance 의 거두기 계획 탐침이 «등식만으로 묻는» 가장 큰 쌍을 고름(chain_ingestion 은 표 조각을 읽어 «!!» 로 보이지 않게) ·
+         cell_layer._load_cell_state 가 층마다 origin_row_id 도 실음 · hold_copy 는 층 이름을 직접 안 지음(쓰는 자리가 지음)
+```
