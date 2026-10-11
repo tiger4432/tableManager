@@ -1,7 +1,7 @@
 // The walk table as a formula (walk/reach_table.js, lead 5cf5c3401): the same rows, values and missing cells on two
 // schemes - a measurement as an edge (its value an edge attribute) and as an event node (its value the node's) - plus
 // three groups, several values a cell, a two-step column, rows from a marking, the default columns of each scheme, Δ,
-// the differs and missing flags and the ways cap. It imports its subject.
+// the differs and missing flags, the ways cap and what says when (owner 10-10 e54560dc2). It imports its subject.
 //
 // CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
 import { fileURLToPath } from 'node:url';
@@ -113,6 +113,17 @@ function suite(F) {
     [[1, 2.5], ['a', ['x', 'y']], [true, false], [1, 'a'], ['', null, '  '], ['2026-10-10T00:00:00'], ['30.5']].map(F.valueKind)
       .concat([F.deltaOf([{ missing: false, values: ['30.5'] }, { missing: false, values: ['11'] }])]),
     ['number', 'string', 'boolean', 'mixed', 'empty', 'string', 'string', null]);
+  // The end's time (owner 10-10 e54560dc2, lead 10-11 E2c): a node that said 9 in one world and 7 in another, 7 its value;
+  // a node that keeps no record; the edges into q timed apart from both.
+  const SAID = { nodes: [node('q', 'quantity'), { ...node('e', 'measurement', { value: 7 }),
+    attributes_by_world: { value: [{ world: 'b', value: 9, occurred_at: 'T1' }, { world: 'a', value: 7, occurred_at: 'T5' }] } },
+  node('f', 'measurement', { value: 8 })],
+  edges: [{ ...edge('e', 'of', 'q', { value: 3 }), occurred_at: 'T3' }, { ...edge('f', 'of', 'q'), occurred_at: 'T4' }] };
+  const whenOf = (column) => F.readsOf(F.indexGraph(SAID), new Set(['q', 'e', 'f']), 'q', column).reads
+    .map((r) => [r.value, r.when ? r.when.occurred_at : null]);
+  eq('R20 what says when: an edge\'s value its edge; a node attribute the node\'s own record of that value, none when it keeps none (owner 10-10 e54560dc2, lead 10-11 E2c)',
+    [whenOf(col([['of', 'incoming']], 'edge', 'value')), whenOf(col([['of', 'incoming']], 'node', 'value'))],
+    [[[3, 'T3']], [[7, 'T5'], [8, null]]]);
   return { ran: names.length, names, failures };
 }
 
@@ -132,8 +143,8 @@ const MUTANTS = [
   { id: 'FM3', what: 'every step taken outgoing', catches: 'R1 ',
     mutate: (t) => swap(t, "const edges = (step.direction === 'incoming' ? index.into : index.out).get(end.node) || [];",
       'const edges = index.out.get(end.node) || [];') },
-  { id: 'FM4', what: 'a node attribute read off the last edge, as if every value rode on an edge', catches: 'R2',
-    mutate: (t) => swap(t, '  return (node.attributes || {})[value.name];', '  return end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined;') },
+  { id: 'FM4', what: 'a node attribute read off the last edge, as if every value rode on an edge', catches: 'R2 ',
+    mutate: (t) => swap(t, '  const said = (node.attributes || {})[value.name];', '  const said = end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined;') },
   { id: 'FM5', what: 'delta from the first value of several', catches: 'R6',
     mutate: (t) => swap(t, 'cell.values.length === 1 &&', 'cell.values.length >= 1 &&') },
   { id: 'FM6', what: 'the last way\'s value overwrites the others', catches: 'R6',
@@ -153,7 +164,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, "cell.values.length === 1 && typeof cell.values[0] === 'number'\n  && Number.isFinite(cell.values[0]) ? cell.values[0] : null);",
       "cell.values.length === 1\n  && Number.isFinite(Number(cell.values[0])) ? Number(cell.values[0]) : null);") },
   { id: 'FM13', what: 'a row key read as an attribute', catches: 'R16',
-    mutate: (t) => swap(t, "  if (value.on === 'key') return (node.keys || {})[value.name];\n", '') },
+    mutate: (t) => swap(t, "  if (value.on === 'key') return { value: (node.keys || {})[value.name], when: end.edge };\n", '') },
+  { id: 'FM18', what: 'a node attribute timed by its first record, not the one saying its value', catches: 'R20',
+    mutate: (t) => swap(t, '.find((s) => s && s.value === said)', '.find((s) => s)') },
+  { id: 'FM19', what: 'a node attribute timed by its way\'s last edge', catches: 'R20',
+    mutate: (t) => swap(t, "  return { value: said, when: ((node.attributes_by_world || {})[value.name] || []).find((s) => s && s.value === said) || null };",
+      '  return { value: said, when: end.edge };') },
   { id: 'FM9', what: 'a predicate taken both ways not told apart', catches: 'R12',
     mutate: (t) => swap(t, "(step.direction === 'incoming' ? `${step.predicate} (in)` : step.predicate)", '(step.predicate)') },
   { id: 'FM11', what: 'differs read off the values only', catches: 'R15',

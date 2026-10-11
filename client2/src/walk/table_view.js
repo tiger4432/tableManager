@@ -225,6 +225,12 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     // reached the row (lead df11f9e81).
     const columnHeads = columns.map((c, i) => `${c.words.join(' · ')}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`);
     const heads = [...columnHeads, ROUTE];
+    // The columns a trend reads (lead 10-11 E2c): the steps' as they stand, then the node's own, numbers first - a scheme
+    // whose value is its node's own (a measurement a node) trends it as one whose value rides an edge.
+    const own = centre.map((column, i) => ({ column, head: column.words.join(' · '),
+      number: valueKind(ownCells.flatMap((cells) => cells[ownAt[i]].values)) === 'number' }));
+    const trendable = [...columns.map((column, i) => ({ column, head: columnHeads[i] })),
+      ...[...own.filter((x) => x.number), ...own.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }))];
     const deltas = groups.length === 2 ? columns.map((_, c) => c).filter((c) => table.some((row) => row.deltas[c] !== null)) : [];
     const said = rows.map((node, r) => {
       const row = table[r];
@@ -257,6 +263,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       deltaHeads: deltas.map((c) => (deltas.length > 1 ? `${DELTA} ${columnHeads[c]}` : DELTA)),
       rows: said,
       columns,
+      trendable,
       empty: { count: empty, open: keep },
     });
   }

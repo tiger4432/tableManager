@@ -1,5 +1,5 @@
-// The trend (walk/trend.js, walk/trend_view.js, lead f984ab01d, a2eb4a516): a point a read of the table's cell, at the
-// time of its way's last edge, coloured by its group; numbers on a value axis, words in lanes (the most frequent first,
+// The trend (walk/trend.js, walk/trend_view.js, lead f984ab01d, a2eb4a516): a point a read of the table's cell, at its
+// end's time (an edge's, a node attribute's own record - lead 10-11 E2c, both schemes on 18766), coloured by its group; numbers on a value axis, words in lanes (the most frequent first,
 // the rest «others»); the server's time page (the implementer's contract, faked here) adds the row's other edges, colour
 // by where their far end was reached; Load earlier / later widen it. Module, part and page; two parts on one screen.
 // The axis (lead 10-10, on the box): the pages' windows and the pressed side's walked points - another side's walked
@@ -8,6 +8,7 @@
 // CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { makeDoc, flush, walk as walkAll } from './lib/board_dom.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
@@ -60,10 +61,16 @@ const PAGE_Q2 = { ...PAGE, seed: node('q2', 'quantity'),
   nodes: [node('q2', 'quantity'), node('wa', 'wafer'), { id: WY, type: 'wafer', label: 'WY-8', keys: { wafer: 'WY-8' } }],
   edges: [edge('wa', 'measures', 'q2', 42, 2, 'd1'), edge(WY, 'measures', 'q2', 47, 7, 'd2')] };
 
+// bond_temp one step both ways on 18766 (lead 10-11 E2c): the edge scheme, its value on the measures edge; the event scheme,
+// its value the measurement node's own.
+const fixture = (name) => JSON.parse(readFileSync(join(HERE, 'fixtures', name), 'utf8'));
+const ED = fixture('walk_scheme_ed_18766.json');
+const EV = fixture('walk_scheme_ev_18766.json');
+
 /** The walk page with `answer` walked, a section's Trend pressed (lead 10-10 E2): its dots, their titles, its page's ask. */
-async function sectionRun(M, answer, type) {
+async function sectionRun(M, answer, type, decl = null, starts = { positive: ['wp'], negative: ['wn'] }) {
   const urls = [];
-  const DECL = { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
+  const DECL = decl || { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
   const doc = makeDoc('light');
   doc.head = doc.createElement('head');
   const host = doc.createElement('div');
@@ -75,7 +82,7 @@ async function sectionRun(M, answer, type) {
   } });
   await settle();
   handle.state.type = 'wafer';
-  handle.state.asked = { type: 'wafer', keys: {}, positive: ['wp'], negative: ['wn'] };
+  handle.state.asked = { type: 'wafer', keys: {}, ...starts };
   handle.state.run = 'done';
   handle.state.result = answer;
   handle.render();
@@ -355,6 +362,20 @@ async function seen(M) {
   out.copyPart = [Boolean(cpButton), copied, (walkAll(cpPart.mount).find((n) => has(n, 'wk-copied')) || {})._text || ''];
   const farRun = await pageRun(M, WALK_FAR);
   out.farPage = [farRun.ask && farRun.ask.around, farRun.dots, farRun.edges, farRun.local];
+  // E2c: each scheme's value column as a trend reads it - its head, how many points have a time, the points (value, time).
+  const scheme = (F, type) => {
+    const view = M.table.walkTableView(F, F._decl.entities, F._decl.predicates, undefined, { positive: [F._seed], negative: [] });
+    const sec = view.sections.find((x) => x.type === type);
+    const at = sec && sec.trendable[0];
+    const pts = at ? M.trend.rowsPoints(view, sec.rows.map((r) => r.id), at.column) : [];
+    return { head: at ? at.head : null, timed: pts.filter((p) => Number.isFinite(p.t)).length,
+      points: pts.map((p) => JSON.stringify([p.t, p.value])).sort() };
+  };
+  const ed = scheme(ED, 'quantity');
+  const ev = scheme(EV, 'measurement');
+  out.schemes = [ed.head, ev.head, ed.timed, ev.timed, ed.points.join() === ev.points.join()];
+  const evPage = await sectionRun(M, EV, 'measurement', { ...EV._decl, worlds: [], operating: null }, { positive: [EV._seed], negative: [] });
+  out.schemePage = [evPage.toggled, evPage.title, evPage.ask, evPage.sources.length, evPage.walkOnly];
   return out;
 }
 
@@ -410,6 +431,10 @@ function suite(out) {
   eq('TC2 the part' + "'" + 's «Copy points»: the page copies, the part says what happened beside it', out.copyPart, [true, 1, 'Copied 2 points']);
   eq('OT3 a lump opened as a step: the chosen branch' + "'" + 's child, shown; its rows the members, its section' + "'" + 's Trend the points the page reads for the same rows and column, its page from the owner; nothing walked (lead 10-11 E2b)',
     out.lumpStep, [99, true, ['wn', 'wp'], ['c1', 'c2'], ['c1', 'c2'], 0, ['q1']]);
+  eq('SC1 bond_temp on 18766, two schemes: the edge scheme' + "'" + 's measures value and the event scheme' + "'" + 's measurement value - the first column a trend reads, every point timed, the same values and times (lead 10-11 E2c)',
+    out.schemes, ['measures (in) · value', 'value', 4, 4, true]);
+  eq('SC2 the page, the event scheme: the measurement section' + "'" + 's Trend on its own value - a dot each, walk only, no page asked (lead 10-11 E2c)',
+    out.schemePage, [true, 'measurement · 4 · value', null, 4, true]);
   eq('TV1 the Table/Trend choice is its step' + "'" + 's: Step 2' + "'" + 's section in Trend, Step 1 gone back to stays Table, Step 2 again its Trend (lead 10-11)',
     out.stepViews, [true, true, false, true]);
   return { ran: names.length, names, failures };
@@ -431,6 +456,7 @@ const swap = (text, from, to) => {
   return text.split(from).join(to);
 };
 const TREND = { file: 'walk/trend.js', key: 'trend' };
+const TABLE = { file: 'walk/table_view.js', key: 'table' };
 const VIEW = { file: 'walk/trend_view.js', key: 'view' };
 const PAGE_ = { file: 'walk/main.js', key: 'page' };
 const MUTANTS = [
@@ -458,7 +484,14 @@ const MUTANTS = [
   { id: 'TSm8', what: 'a section' + "'" + 's trend reads the rows it was opened on', catches: 'TS5', ...PAGE_,
     mutate: (t) => swap(t, "    const rows = t.at === 'section' ? at.section.rows.map((x) => x.id) : t.rows;", '    const rows = t.rows;') },
   { id: 'TM1', what: 'a point with no time', catches: 'T1', ...TREND,
-    mutate: (t) => swap(t, '.map((r) => ({ t: timeOf(r.edge),', '.map((r) => ({ t: null,') },
+    mutate: (t) => swap(t, '.map((r) => ({ t: timeOf(r.when),', '.map((r) => ({ t: null,') },
+  { id: 'SCm1', what: 'a point at its way' + "'" + 's last edge' + "'" + 's time, a node' + "'" + 's own value at none', catches: 'SC1', ...TREND,
+    mutate: (t) => swap(t, '.map((r) => ({ t: timeOf(r.when),', '.map((r) => ({ t: timeOf(r.edge),') },
+  { id: 'SCm2', what: 'a trend reads the steps' + "'" + ' columns only', catches: 'SC1', ...TABLE,
+    mutate: (t) => swap(t, '      ...[...own.filter((x) => x.number), ...own.filter((x) => !x.number)].map(', '      ...[].map(') },
+  { id: 'SCm3', what: 'the section' + "'" + 's Trend opens on a step' + "'" + 's column only', catches: 'SC2', ...PAGE_,
+    mutate: (t) => swap(t, 'if (!trended && section.trendable.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.trendable[0].column)',
+      'if (!trended && section.columns.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.columns[0])') },
   { id: 'TM2', what: 'a page point with no group', catches: 'T2', ...TREND,
     mutate: (t) => swap(t, 'group: group >= 0 ? group : null,', 'group: null,') },
   { id: 'TM3', what: 'a point twice', catches: 'T3', ...TREND, mutate: (t) => swap(t, '!seen.has(p.key)', 'true') },

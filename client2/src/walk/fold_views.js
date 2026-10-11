@@ -37,7 +37,14 @@ export function lumpAnswer(results, lump) {
       if (e.predicate === lump.predicate && far !== null && lump.members.includes(far) && !edges.has(e.id)) edges.set(e.id, e);
     }
   }
-  return { ok: true, state: 'ready', nodes: [...nodes.values()], edges: [...edges.values()] };
+  // What the kept edges prove, as a Next from the owner along the predicate says it (lead 10-11): the owner its start,
+  // each member reached from it - its Route and sources read as that Next's. Nothing past the kept edges.
+  const ranked = new Map();
+  for (const e of edges.values()) {
+    const member = e.source === lump.owner ? e.target : e.source;
+    ranked.set(member, { id: member, evidence: [{ seed: lump.owner, sign: '+', hops: [{ id: lump.owner }, { id: member, predicates: [lump.predicate] }] }] });
+  }
+  return { ok: true, state: 'ready', nodes: [...nodes.values()], edges: [...edges.values()], propagation: { ranked: [...ranked.values()] } };
 }
 
 /**
@@ -48,9 +55,9 @@ export function lumpAnswer(results, lump) {
 export function lumpPoints(answer, lump, entities, predicates, lit) {
   const view = walkTableView(answer, entities, predicates, undefined, { positive: [lump.owner], negative: [] });
   const section = view.sections.find((x) => x.type === lump.farType);
-  const column = section && section.columns[0];
-  if (!column) return [];
-  return rowsPoints(view, section.rows.map((r) => r.id), column)
+  const at = section && section.trendable[0];
+  if (!at) return [];
+  return rowsPoints(view, section.rows.map((r) => r.id), at.column)
     .map((p) => ({ t: p.t, v: numberOf(p.value), lit: Boolean(lit && lit.has(p.row)) }))
     .filter((p) => Number.isFinite(p.t) && p.v !== null);
 }

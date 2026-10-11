@@ -46,13 +46,16 @@ export function groupsOf(result, starts) {
 /** The far end of an edge taken in `direction` from where it stands. */
 const farOf = (e, direction) => (direction === 'incoming' ? e.source : e.target);
 
-/** What a column reads at one end of a way: its last edge's attribute, its end node's attribute, or its end's name. */
+/** What a column reads at one end of a way, and what says when - the end's time (owner 10-10 e54560dc2): its last edge's
+ *  attribute, that edge; its end node's attribute, the node's own record of that value (attributes_by_world, lead 10-11
+ *  E2c); its end's name or a key, the way's last edge (a node says no time for those). */
 function valueAt(index, end, value) {
   const node = index.nodes.get(end.node) || {};
-  if (value.on === 'label') return node.label || end.node;
-  if (value.on === 'key') return (node.keys || {})[value.name];
-  if (value.on === 'edge') return end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined;
-  return (node.attributes || {})[value.name];
+  if (value.on === 'label') return { value: node.label || end.node, when: end.edge };
+  if (value.on === 'key') return { value: (node.keys || {})[value.name], when: end.edge };
+  if (value.on === 'edge') return { value: end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined, when: end.edge };
+  const said = (node.attributes || {})[value.name];
+  return { value: said, when: ((node.attributes_by_world || {})[value.name] || []).find((s) => s && s.value === said) || null };
 }
 
 /**
@@ -65,11 +68,12 @@ export function cellOf(index, inside, x, column, cap = WAYS_A_CELL) {
   return { missing: got.missing, values: got.reads.map((r) => r.value), nodes: got.reads.map((r) => r.node), more: got.more };
 }
 
-/** What a cell reads, way by way - its value, its last edge, its end node; the trend's points are these (lead f984ab01d). */
+/** What a cell reads, way by way - its value, what says when, its last edge, its end node; the trend's points are these
+ *  (lead f984ab01d). */
 export function readsOf(index, inside, x, column, cap = WAYS_A_CELL) {
   if (!inside.has(x)) return { missing: true, reads: [], more: false };
   const { ends, more } = waysOf(index, inside, [x], column.steps, cap);
-  const reads = ends.map((end) => ({ value: valueAt(index, end, column.value), edge: end.edge, node: end.node }))
+  const reads = ends.map((end) => ({ ...valueAt(index, end, column.value), edge: end.edge, node: end.node }))
     .filter((r) => !isBlank(r.value));
   return { missing: false, reads, more };
 }

@@ -826,8 +826,8 @@ export function boot(doc, host, deps) {
   function trendColumn(view) {
     const t = trendNow();
     const section = t && view.sections.find((s) => s.type === t.type && s.groups);
-    const col = section ? section.columns.findIndex((c) => columnKey(c) === t.col) : -1;
-    return col >= 0 ? { section, column: section.columns[col], col } : null;
+    const at = section && section.trendable.find((x) => columnKey(x.column) === t.col);
+    return at ? { section, column: at.column, head: at.head } : null;
   }
 
   /** One more time page - around the walked time, or past either end (the implementer's contract, edge values only). */
@@ -874,7 +874,7 @@ export function boot(doc, host, deps) {
     const word = (sign) => (sign === '−' ? BASKET_WORDS.negative : sign === '+' ? BASKET_WORDS.positive : sign);
     // The axis: the pages' windows and the pressed side's walked points; another side's far off stands at the edge.
     const model = trendModel(points, undefined, { windows: t.pages.map(windowOf).filter(Boolean), group: t.group });
-    trendView.show({ title: `${row ? row.label : at.section.heading} · ${at.section.columnHeads[at.col]}`, model, walkOnly: !t.anchor,
+    trendView.show({ title: `${row ? row.label : at.section.heading} · ${at.head}`, model, walkOnly: !t.anchor,
       groups: at.section.groups.map((g) => word(g.sign)), t0: t.t0,
       onCopy: () => copySheet(pointsSheet(points, at.section.groups.map((g) => word(g.sign)), (p) => view.sources.keys(p.giver)), 'point'),
       ...(t.pages.length ? { onEarlier: () => { void loadTrend('earlier'); }, onLater: () => { void loadTrend('later'); },
@@ -996,7 +996,8 @@ export function boot(doc, host, deps) {
     }
   }
 
-  /** Table | Trend on a section's head (lead 10-10 E2); its trend picks the value column, every row a point or more. */
+  /** Table | Trend on a section's head (lead 10-10 E2); its trend picks the value column - a step's or the node's own
+   *  (lead 10-11 E2c) - every row a point or more. */
   function sectionViews(section, trended) {
     const bar = el(doc, 'span', 'wk-secviews');
     for (const [name, word] of [['table', 'Table'], ['trend', 'Trend']]) {
@@ -1004,21 +1005,21 @@ export function boot(doc, host, deps) {
       b.type = 'button';
       b.setAttribute('data-section-view', name);
       b.setAttribute('aria-pressed', String((name === 'trend') === trended));
-      setDisabledReason(b, name === 'trend' && !section.columns.length ? 'No value column' : '');
+      setDisabledReason(b, name === 'trend' && !section.trendable.length ? 'No value column' : '');
       b.addEventListener('click', () => {
         if (name === 'table') { setTrend(null); render(); return; }
-        if (!trended && section.columns.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.columns[0]), undefined, 'section');
+        if (!trended && section.trendable.length) openTrend(section.type, section.rows.map((x) => x.id), columnKey(section.trendable[0].column), undefined, 'section');
       });
       bar.append(b);
     }
     if (trended) {
       const pick = el(doc, 'select', 'wk-select wk-trendcol');
-      section.columns.forEach((c, i) => {
-        const o = el(doc, 'option', '', section.columnHeads[i]);
-        o.value = columnKey(c);
-        if (columnKey(c) === trendNow().col) o.selected = true;
+      for (const { column, head } of section.trendable) {
+        const o = el(doc, 'option', '', head);
+        o.value = columnKey(column);
+        if (columnKey(column) === trendNow().col) o.selected = true;
         pick.append(o);
-      });
+      }
       pick.addEventListener('change', () => openTrend(section.type, trendNow().rows, pick.value, undefined, 'section'));
       bar.append(pick);
     }

@@ -1,6 +1,7 @@
 // FOLD VIEWS - the pure half (leads 793017c62 · 5ef260acf · 10-08 · 10-11 E2b): what a value reads as, the one start-branch
 // question, a lump's answer and the points its page step's Trend reads, and the one drawing. Fed the implementer's
-// captures of the real walk (walk_fold_*.json, PostgreSQL; walk_next_18766.json, one step from bond_temp).
+// captures of the real walk (walk_fold_*.json, PostgreSQL; walk_next_18766.json, one step from bond_temp;
+// walk_scheme_ed/ev_18766.json, bond_temp in the edge and the event scheme).
 //
 // Run: node client2/tests/fold_views_harness.mjs
 import { readFileSync } from 'node:fs';
@@ -16,6 +17,8 @@ const STEP = fx('walk_fold_recipe_step.json');
 const PROCESS = fx('walk_fold_process_lump.json');
 const nodesOf = (...bodies) => subgraphLayout([{ results: bodies }], []).nodes;
 const NEXT = fx('walk_next_18766.json');
+const ED = fx('walk_scheme_ed_18766.json');
+const EV = fx('walk_scheme_ev_18766.json');
 const COLOURS = { lit: '#a00', ring: '#000', rest: '#999', text: '#111', font: 'sans-serif' };
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -66,11 +69,30 @@ async function suite(m) {
   const { rowsPoints } = await import('../src/walk/trend.js');
   const full = walkTableView(NEXT, NEXT._decl.entities, [], undefined, { positive: [q], negative: [] });
   const sec = full.sections.find((x) => x.type === 'wafer');
-  const page = rowsPoints(full, wafers, sec.columns[0]).map((x) => [x.t, Number(x.value), litL.has(x.row)]);
+  const page = rowsPoints(full, wafers, sec.trendable[0].column).map((x) => [x.t, Number(x.value), litL.has(x.row)]);
   say('L2 a lump\'s points: those the page reads for the same rows and column - numbers, its start branch lit',
     pts.length === wafers.length && JSON.stringify(pts.map((x) => [x.t, x.v, x.lit])) === JSON.stringify(page)
       && pts.some((x) => x.lit) && pts.some((x) => !x.lit),
     JSON.stringify({ points: pts.length, page: page.length, lit: pts.filter((x) => x.lit).length }));
+  // A lump opened as a step reads as a Next from its owner along its predicate (lead 10-11): the same Route, the same sources.
+  const fromLump = walkTableView(answer, NEXT._decl.entities, [], undefined, { positive: [q], negative: [] });
+  const routes = (view) => view.sections.find((x) => x.type === 'wafer').rows
+    .map((r) => [r.id, r.byGroup[0][r.byGroup[0].length - 1].text, view.sources.source(view.groups[0], r.id)]).sort();
+  say('L3 a lump\'s step: each member\'s Route and source as the Next from its owner along its predicate says them',
+    JSON.stringify(routes(fromLump)) === JSON.stringify(routes(full)) && routes(full).length === wafers.length
+      && routes(full).every(([, route]) => route === 'measures'),
+    JSON.stringify(routes(fromLump).slice(0, 2)));
+  // The same quantity in the two schemes on 18766 (lead 10-11 E2c): its lump's points, the edge's value and the node's own.
+  const scheme = (F, predicate, farType) => {
+    const owner = F._seed;
+    const members = F.nodes.filter((n) => n.type === farType).map((n) => n.id);
+    const one = { owner, members, predicate, farType };
+    return m.lumpPoints(m.lumpAnswer([F], one), one, F._decl.entities, F._decl.predicates, new Set()).map((x) => JSON.stringify([x.t, x.v])).sort();
+  };
+  const ed = scheme(ED, 'measures', 'wafer');
+  const ev = scheme(EV, 'of_quantity', 'measurement');
+  say('L4 a lump\'s points in two schemes - its members\' measures value, its measurements\' own value: the same values and times (lead 10-11 E2c)',
+    ed.length === 4 && ed.join() === ev.join(), JSON.stringify({ ed: ed.length, ev: ev.length }));
 
   console.log('\n[D] the one drawing');
   const p = { points: pts };
@@ -113,6 +135,9 @@ const failures = [];
     M('Lm1', 'a lump\'s answer keeps every predicate between owner and member', 'L1',
       'if (e.predicate === lump.predicate && far !== null', 'if (far !== null'),
     M('Lm2', 'a lump\'s points not lit from the start branch', 'L2', 'lit: Boolean(lit && lit.has(p.row))', 'lit: false'),
+    M('Lm3', 'a lump\'s answer carries no evidence', 'L3', 'propagation: { ranked: [...ranked.values()] } };', 'propagation: { ranked: [] } };'),
+    M('Lm4', 'a lump\'s points read the steps\' columns only', 'L4', '  const at = section && section.trendable[0];',
+      '  const at = section && section.columns.length ? { column: section.columns[0] } : null;'),
     M('Dm1', 'the start branch is drawn under the rest', 'D1', '[...labels, ...rest, ...lit]', '[...labels, ...lit, ...rest]'),
     M('Dm2', 'the rest is not faded', 'D1', ' opacity="0.4"/>', '/>'),
   ];
