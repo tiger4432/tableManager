@@ -65835,3 +65835,18 @@ tests/test_ledger_v2_pg.py 가 감사 줄을 assy_test public 으로 흘린다(1
 같은 커밋  RUN.md(소유자 줄: pull · 재기동 체인 워커 · 서버 -> replay «복사 규칙» -> remove-shells «공식 표», 답의 뜻) · RELEASE_LOG
 순서      표 선언 인덱스 -> 이것 -> 체인 층 원천 행마다
 ```
+
+> **[총괄 -> 구현자] 10-11 낮 — 덧붙임: «체인 층 원천 행마다»(8ec008914)의 옮기기 · 그리고 require 보류는 ㄱ 로 끝 (소유자 「그냥 두 번 돌릴게」)**
+
+```
+require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 replay -> remove-shells. ㄴ(replay 가 짝을 같이 돌림)은 안 짓는다
+옮기기에 한 칸(응용 2판, 리허설 rh_world_layers · main 2303890f5 · 박스 수)
+   official_dt 의 plain chain_ingestion 층 중 origin_row_id 있는 것 0 — 이름 바꾸기 대상이 리허설엔 0
+   origin 없는 plain 이 행 층과 같은 칸에 있는 것 369 -> 복사 replay 뒤 615 · 그중 plain 값을 어느 행 층도 말하지 않는 칸 0
+   -> 순위가 쓴이 순위로 바뀌면 그 615 칸은 늦게 쓴 행 층이 보이지만, 행 층을 거두면 plain 의 옛 값이 다시 선다
+고칠 것   옮기기가 origin 없는 plain chain_ingestion 층도 본다 — 같은 칸의 행 층 «하나라도» 같은 값을 말하면 그 plain 층을 지움(겹친 사본)
+         같은 칸에 행 층이 있는데 값이 다르면 지우지 않고 칸 수와 앞 다섯(표 · 행 · 칸)을 말함 — 사람이 볼 것
+         행 층이 없는 칸의 plain 층은 그대로(그 칸의 유일한 체인 층)
+         미리보기에 셋 다: 이름 바꿀 층 · 지울 겹친 plain · 값이 달라 남긴 plain
+게이트    응용 rh_world_layers 에 옮기기 -> 미리보기 수 = 실행 수 · 다시 0 · 거두기 뒤 그 칸이 남은 행 층 값(또는 파일 값)
+```
