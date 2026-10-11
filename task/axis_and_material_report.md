@@ -1,3 +1,39 @@
+> ## [19:48 디자인] W 1 조각 착지 — 표: Wide | Long · 열 묶음 · 화살표 이름 · Route 열 은퇴 7ffa4619c (총괄 W, 덧붙임 2 · 3 · 8 · 9)
+
+- **무엇** — 구역 도구줄 한 줄(Wide | Long · Table | Trend · Columns · Copy · All rows | Differs | Missing), Walk on 은 구역 맨 아래. Wide: 노드 칸 맨 앞(그 밑에 닿은 길), 값을 실은 엣지 = 묶음 하나 — 건너편 타입이 static 이면 건너편 노드마다, 아니면 건너편 타입 하나(총괄 (다)); 숫자 칸만 먼저, 나머지 «▸ N»; 바구니 둘이면 칸마다 + · Δ · −, Δ 가 서는 묶음이 노드 가까이. Long: 값 기록 한 줄씩, «+N» 서랍과 한 읽기(longLines). Columns ▾ 묶음 단위 + 맨 아래 «+ Column». 빈 열은 어디에도 없음. «숫자인가» = reach_table.numberOf 하나(Δ · 열 판정 · 트렌드).
+- **탐침** — Probe (the built-in pane, the built walk page /assets/walk-C1Nny51E.js, 1568x775, 8080 the demo basket SYN-BW-103-11 + · SYN-BW-SPL-400-19 −, collect wafer and quantity, GET only): wafer 16 groups (measures → <quantity>), quantity 3 (measures ← wafer, leads_to each way); the quantity rows Δ where both wafers measured (pressure_MPa −0.1105, temp_C +1.946, time_s +0.389); S2 sections [20.4] px apart, toolbar to table [6.8], toolbar gap ['6.8px'], outer margins 0; S3 cells ['3.4px 6.8px'], 599 right 599 number cells right-aligned tabular, a group head 0 px off its cells, letters ['13px']; S4 rows [[45.2], [45.2]] px; S5 head · toolbar · table at [411.6, 411.6, 411.6]; S6 clipped letters 0. Writes 0.
+- **게이트** — walk_table 184 with --mutate --control; reach_table 48; trend 73; fold_views 19; subgraph_view 348; screen gate 307 with --mutate over every screen, its one escape (a «+N» tag growing its row: every row grew alike, so «one height» held) closed by S4 «two lines high», then walk.html again 139 with --mutate, src unchanged between (walk.html at 1280x720 too; S2 S3 S4 S5 S6 and missing each in both themes at each size); walk_layout 38, walk_wire 95, node_search 45, start_baskets 24, walk_worlds 18, rnd_board_walk_box 104, walk_route_fill 80, disabled_reason 25, rnd_board_composition 47, rnd_board_reach 63.
+
+시안 | 산출물 (나란히 스샷: scratch compare_w1.png — 보고 메시지에 같이)
+
+| # | 시안 | 산출물 | 판 |
+|---|---|---|---|
+| 1 구역 머리 | 도구줄 한 줄 · 이어 걷기 맨 아래 | 도구줄 한 줄 · Walk on 맨 아래 한 줄. Long 은 1568 에서 두 줄로 꺾임(오른쪽 바구니 패널이 아직 270 px — 조각 2) | 맞음(Long 1568 은 조각 2) |
+| 2 단추 체계 | 분절 · 작은 단추 · 알약, 높이 하나 | 표 쪽 분절(Wide/Long · Table/Trend · 행 거르기) · 작은 단추(Columns · Copy) · 알약(Walk on), 높이 28 하나 | 맞음(왼쪽 폼은 조각 2) |
+| 3 글꼴 | IBM Plex Sans 하나 · 고정폭은 id · 길 | IBM Plex Sans · 고정폭은 출처 줄(길) · id 만 · 표 글자 13px(총괄 답 3) | 맞음 |
+| 4 줄 높이 | ~44 px · +N 값 옆 꼬리표 | [[45.2], [45.2]] px(값 + 출처 줄) · «+N» 꼬리표가 값 줄 안 | 맞음 |
+| 5 결과 머리 | 한 줄 흐린 글 | Asked · As of · Cut 세 줄 그대로 | 조각 2 |
+| 6 거르기 | 도구줄 안 작은 분절 | 도구줄 안 작은 분절, 구역마다 따로 | 맞음 |
+| 7 왼쪽 패널 | 문장 바(through ▾) | 폼 레일 그대로 | 조각 2 |
+| 8 오른쪽 패널 | 은퇴(From 칩) | 바구니 패널 그대로 | 조각 2 |
+| 9 잘림 | 0 | 잘린 글자 0(S6) — 노드 출처 줄은 24ch 에서 말줄임, 길 전부는 title(data-clip-ok) | 맞음 |
+| 10 값 열 | 건너편 노드마다 묶음 | 묶음 = (술어 · 건너편 노드), static 아닌 건너편은 타입 하나 — 데모 wafer 16 묶음 · quantity 3 묶음(Δ 섬) | 맞음 + (다) |
+| 11 출처 줄 | 준 노드 · 그 쪽 시작에서의 길, 한 뜻 | 준 노드 = 원자의 주어(엣지 값) · 노드 자신(노드 값), 그 쪽 길; 줄이 스스로 준 값은 출처 줄 없음 — 노드 칸이 길을 말함 | 맞음 |
+
+시안과 다른 낱말: 묶음 머리 = «measures → bond_temp · value»(W 본문 · 덧붙임 8 의 이름, 시안은 «bond_temp» 만).
+
+| 칸 | 기대 | 잰 값(1568x775, 8080 데모 바구니) |
+|---|---|---|
+| S1 문장 바 | 칩 사이 --space-2 … | 조각 2 |
+| S2 구역 | 사이 --space-5 · 머리→표 --space-2 · 도구줄 --space-2 · 바깥 margin 0 | [20.4] · [6.8] · ['6.8px'] · 0 |
+| S3 표 | 칸 --space-1/--space-2 · 숫자 오른쪽 + tabular · 묶음 머리 = 칸 왼쪽 | ['3.4px 6.8px'] · 599 right 599 · 어긋남 0 px |
+| S4 줄 높이 | 표마다 하나 | [[45.2], [45.2]] |
+| S5 왼쪽 끝 | 머리 · 도구줄 · 표 같은 선 | [411.6, 411.6, 411.6] (바구니 가림은 조각 3) |
+| S6 잘림 | 0 | 0 |
+| S7 두 테마 · 세 크기 | 같은 칸 | 화면 게이트 walk.html 1280x720 · 1536x864 · 1568x775 · 1896x907 · 1920x950, 라이트 · 다크 — S2~S6 · missing each 초록 |
+
+다음: W 2 (상단 문장 바 + 결과 머리 한 줄 · 왼쪽 레일 · 오른쪽 패널 은퇴, 요청 그대로).
+
 > ## [16:12 디자인] G-2b 착지 — 트렌드 기본 열 · 글자 숫자 · 고를 열 없음 · «+ Column» · 목록 값 시각(⑬) 61a006f73 (총괄 G-2 덧붙임, W 덧붙임 2 의 13)
 
 - **무엇** — 구획 Trend 는 «값을 말하는 열»(변 · 노드 속성, 키 · 이름 아님) 중 그 구획에서 시각 있는 읽기가 있는 것만 고르고, 숫자 열을 앞에 둬 첫째로 엽니다. 숫자로 읽히는 글자 값은 숫자(trend.numberOf 하나 — fold_views 에서 옮김, table_view 도 그걸 부름). 고를 열이 없으면 Trend 가 «No value with a time» 로 꺼짐. «+ Column» 은 Trend 중에도 그 구획에.
