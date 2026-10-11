@@ -1,8 +1,9 @@
 # 리허설 1 회차 · 10-12 새벽 (판 6d8fb50ea)
 
 ```
-남은 실패 수     2 — C2 여백 · C3 Long 기록 합침 (둘 다 총괄이 «맞는 실패»로 받음, 고침 대기)
-통과한 마지막 판  없음 (이 판은 실패 2) · 앞 회차 0 은 dist 8bb437718 에서 누른 단계만 통과
+남은 실패 수     2 — C2 여백(Δ 열, 새 기준 a ~ e 로 다시 잴 판 대기) · Walk on from here 뒤 Walk 의 요청이 바의 상한과 다름(fanout_limit=20)
+                C3 는 6f64c525f(walk-Ccn7DKhp.js)에서 통과 · 공백 값 통과
+통과한 마지막 판  없음 (실패 2) · 앞 회차 0 은 dist 8bb437718 에서 누른 단계만 통과
 판              18766 = origin/main 6d8fb50ea 의 server/ 전부 + client2/dist (스크래치 줄 1 만 다름)
                 기동 03:11 «[Schema] no drift» · 기동 뒤 오류 0 · 번들 walk-B-XJXTJ5.js
 도구            앱 내장 브라우저 · 실제 마우스 클릭 · 글자 입력. 셀렉트(Type · collect)와 Limits 칸 · through 체크만 폼 입력
@@ -31,5 +32,7 @@
 | C7 모델링 걷기 | 같은 걷기의 답 | plasma_clean → bond_temp → void | leads_to 둘 (plasma_clean → bond_temp dir down · bond_temp → void dir up) · 둘 다 rp500g 에서만 | 통과 (백필은 앞 라운드에 한 것) |
 | C7 ⑪ | 메인 그리드 link_candidates 2 행(마우스 · shift) → Re-translate → Open in admin → 줄 8 | 줄 40 · «40 GROUPS FROM THE GRID» · 폼 넷 | 줄 40 (rp500 · rp500e · rp500f · rp500g × 칸) · 어드민 «Re-translate a ledger scope» 밑 «40 GROUPS FROM THE GRID» · 폼 source=link_candidates · scope_column=phenomenon_key · scope_values=bond_temp,void · world=rp500 | 통과 (실행 안 함) |
 | C7 초안 보기 | Ontology Explorer → fake_measures → Edit draft / 브랜치 rp500g → link_candidates → Edit draft | 200 | POST drafts 200 · view 200 «Sources 1 · rows not yet translated 0» / view world=rp500g 200 · authoring/plan world=rp500g 200 «Sources 1 · rows not yet translated 1» | 통과 |
-| 공백 값 | — | 쳐 넣은 공백이 그대로 | 아직 — link_candidates 는 키 열만 보이고 cand_id 가 키 넷의 합성이라 공백을 넣으면 행이 바뀜. CSS «.wk-val · .wk-centrelabel · .wk-long td { white-space: pre }» 는 있음 | 아직 |
-| 한 번 본 것 | 고리에서 + 를 옮긴 뒤 첫 Walk | — | 그 요청에만 fanout_limit=20 · 화면 «No walk yet» (그때 보기 단추를 JS 로 누름). 실제 클릭으로 Graph → Walk → Table 은 정상 | 재현 안 됨 |
+| 공백 값 | 메인 그리드 trd_txt 행 T3 value 를 더블클릭 → «a  b»(공백 둘) → Apply → 그 행 Re-translate «default · trd_txt_src · event_id» → 실행(run_queued_once) → 걷기 wafer TRD-W-001 + | 공백 둘이 그대로 보임 | 실행 ok · withdrawn 2 · inserted 2 · 걷기 «Nodes 19 · Edges 18» · 노드 칸 «a  b» (white-space: pre · 21.2 px, 공백 하나면 18.1 px) · 끝나고 «4.5» 로 되돌리고 다시 번역 ok | 통과 |
+| C2 다시 (6f64c525f) | ① 판 다시 | 열마다 가장 긴 글자 ÷ 열 폭 ≥ 0.5 | 노드 185.4 · 값 76 이 129 · 91.6 이 15 · 잘림 0 · 0.5 아래 53 (Δ 48 «—» 만 · − 5) — + · Δ · − 같은 폭 규칙 탓 | **실패** → 총괄 기준 a ~ e 로 다시 |
+| C3 다시 (6f64c525f) | ③ 판(세상 칩 vf → default) → Long | 기록마다 한 줄 | «Nodes 81 · Edges 1668 · 1.2 s» · Long 571 줄 · SYN-CW-001-02 22 줄 · + 22 · − 0 · time_s 두 줄(CLEAN 300 · ETCH 90) | 통과 |
+| Walk on from here 뒤 Walk | default · + SYN-BW-103-11 · hops 1 → Graph → 고리 노드 마우스로 → Walk on from here → Walk | 바의 상한대로 요청 | 바 «Limits · hops 1» (hops=1 · node_limit=1000 · fanout 빈칸) · 요청 `id · positive · positive · fanout_limit=20 · world=default` (hops · node_limit 빠지고 fanout 20 붙음) · «Nodes 42 · Edges 62» | **실패** |
