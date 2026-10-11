@@ -191,6 +191,8 @@
 >                bonded_from 넣음: «quantity · 49» · «Positive · A only 31 A + B 15 B only 3»
 >       뜻       초록 = A 와 B 둘 다 닿음 · 빨강 = B 만 · 색 없음 = A 만 — 칸 색 = 범례 칩 색, 길은 «A <길> · B <길>»
 >                bonded_from 을 Follow 에 넣으면 A 만 줄이 는다(리허설 17 -> 31) · A + B · B only 는 같다 — 넣을지는 물음에 따라 고른다
+>    ③g Add here   이어 걸어 같은 타입 더 가져오기 — 자리만 · 클라 조각 착지 뒤 18766 에서 눌러 채움
+>    ③h More       자리만 · 클라 조각 착지 뒤 18766 에서 눌러 채움
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
 >       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 98 ms · «pressure_MPa · measures ← wafer · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
 >                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
