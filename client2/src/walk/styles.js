@@ -213,8 +213,13 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-reachedn.is-ctl-ab { box-shadow: inset 3px 0 0 var(--success); background: var(--success-weak); }
 .wk-reachedn.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }
 .wk-sechead { font-weight: 700; font-size: var(--wk-fs-title); margin: 0; }
-/* A section's Next: the declared edges one step on, walked from its checked rows (lead 53050a4ec). */
-.wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+/* The checked rows, one line stuck to the result's foot (W addendum 3): it takes its own room, so it never covers the last row. */
+.wk-marked { position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3); background: var(--bg-surface); border-top: 1px solid var(--border);
+  max-height: 30vh; overflow-y: auto; }
+.wk-markedrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.wk-markedword { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
+.wk-marked .wk-chip { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
 .wk-next-edge { height: var(--wk-h-small); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
 .wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }

@@ -357,6 +357,25 @@ for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell', 'L
   // The S cells read the table: none is drawn on the graph.
   for (const [rule, expr] of WALK_LOOK) if (!(after === 'Graph' && /^S\d/.test(rule))) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
 }
+// The basket stays at the result's foot while the table scrolls, and never covers the last row (W addendum 3, S5).
+CELLS.push({ entry: 'walk.html', after: 'A row ticked mid-table', rule: 'basket at the foot', at: 'wk-page', expr: `(() => {
+  const main = document.querySelector('.wk-main'), basket = document.querySelector('.wk-main .wk-marked');
+  if (!basket) return 'no basket';
+  const chips = basket.querySelectorAll('[data-marked]').length, ticked = document.querySelectorAll('input[data-row]:checked').length;
+  if (chips !== ticked) return chips + ' chips for ' + ticked + ' rows checked';
+  const was = main.scrollTop;
+  main.scrollTop = 0;
+  const stuck = basket.getBoundingClientRect().bottom <= main.getBoundingClientRect().bottom + 1
+    && basket.getBoundingClientRect().bottom >= main.getBoundingClientRect().bottom - main.clientHeight * 0.5;
+  main.scrollTop = main.scrollHeight;
+  const rows = [...document.querySelectorAll('.wk-main table.wk-table tbody tr')].filter((r) => r.getClientRects().length);
+  const last = rows[rows.length - 1];
+  const covered = last && last.getBoundingClientRect().bottom > basket.getBoundingClientRect().top + 0.5;
+  main.scrollTop = was;
+  if (!stuck) return 'the basket is not at the foot of the result box while it is scrolled to the top';
+  if (covered) return 'the basket covers the last row';
+  return null;
+})()` });
 CELLS.push({ entry: 'walk.html', after: 'A row ticked mid-table', rule: 'place kept', at: 'wk-page', expr: `(() => {
   const was = window.__place, main = document.querySelector('.wk-main'), table = document.querySelector('.wk-sec table.wk-wide');
   if (!was || !was.ticked || !was.top) return 'no row ticked mid-table (' + JSON.stringify(was) + ')';
@@ -1028,6 +1047,8 @@ const MUTANTS = [
     file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); }', '.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }']] },
   { name: 'table cells padded --space-2 --space-3 again', entry: 'walk.html', rule: 'S3 table cells', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; }']] },
+  { name: 'the basket left at the end of the flow, not stuck', entry: 'walk.html', rule: 'basket at the foot', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-marked { position: sticky; bottom: 0;', '.wk-marked { position: static; bottom: 0;']] },
   { name: 'a tick throws the reader back to the top', entry: 'walk.html', rule: 'place kept', at: 'wk-page',
     file: 'src/walk/main.js', edits: [['    main.scrollTop = place.top;\n', '']] },
   { name: 'the side bands over the control colours again', entry: 'walk.html', rule: 'control colours', at: 'wk-page',

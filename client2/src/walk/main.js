@@ -832,6 +832,9 @@ export function boot(doc, host, deps) {
     renderSections(secs, view, r);
     box.append(secs);
     if (trendNow() && trendNow().at === 'below') renderTrend(box, view, r);
+    // Walk on from the rows checked, one line stuck under the result (W addendum 3) - the sections' own lines folded in.
+    const checks = checksOf(state.at);
+    if (checks) box.append(markedBasket(state.at, view, checks));
   }
 
   /** Which walk reached the rows (lead 99ed68cb7 D): each side's three counts, the colours of its cells. */
@@ -1537,8 +1540,6 @@ export function boot(doc, host, deps) {
       }
       // The rows of this type past the cap, under its own table (lead 10-12: the cap is a section's).
       if (section.hidden) sec.append(el(doc, 'div', 'wk-note', `${section.hidden} more not drawn`));
-      // Walk on from the rows checked, the section's last line (lead 10-11 W).
-      if (checks) sec.append(nextRow(at, section, checks, shown));
       box.append(sec);
     }
   }
@@ -1596,27 +1597,56 @@ export function boot(doc, host, deps) {
     return line;
   }
 
-  /** Under a section: the declared edges one step from its type; each walks on from the rows checked of those it
-   *  shows - a step of its own, or merged into this one (lead 10-11 W addendum 5). */
-  function nextRow(at, section, checks, shown) {
-    const line = el(doc, 'div', 'wk-next');
-    line.append(el(doc, 'span', 'wk-label', 'Walk on from checked ▸'));
-    const seeds = seedsOf(shown.ids.map((id) => [id, markings.signOf(checks, id)]));
-    for (const route of nextRoutes(state.decl, section.type)) {
-      const pair = el(doc, 'span', 'wk-next-route');
-      pair.append(el(doc, 'span', 'wk-next-words', route.words));
-      const go = el(doc, 'button', 'wk-next-edge', NEXT_WORDS.step);
-      go.type = 'button';
-      go.setAttribute('data-route', route.words);
-      setDisabledReason(go, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
-      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });
-      const here = el(doc, 'button', 'wk-next-edge wk-next-here', NEXT_WORDS.here);
-      here.type = 'button';
-      here.setAttribute('data-route', route.words);
-      setDisabledReason(here, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
-      here.addEventListener('click', () => { if (seeds.positive.length) void addHere(at, seeds, route); });
-      pair.append(go, here);
-      line.append(pair);
+  /** The step's checked rows as one basket (owner 10-11 «마킹 장바구니를 그 스티키로 띄워», W addendum 3): «Marked · N», a chip a
+   *  row (× takes it out and unchecks it), Walk on ▸ the declared edges one step on from a section's checked rows it shows -
+   *  a step of its own, or merged into this one (lead 10-11 W addendum 5) - the sections checked, or every one while none
+   *  is, and Clear. The marking is the step's, as the checks are. */
+  function markedBasket(at, view, checks) {
+    const line = el(doc, 'div', 'wk-marked');
+    // Two rows: what is checked, and where it walks on - a chip never stands alone among words.
+    const picked = el(doc, 'div', 'wk-markedrow');
+    const onward = el(doc, 'div', 'wk-markedrow');
+    line.append(picked, onward);
+    const rows = new Map(view.sections.flatMap((s) => s.rows.map((r) => [r.id, { type: s.type, label: r.centre.map((c) => c.text).filter(Boolean).join(' · ') || r.id }])));
+    const marked = markings.entries(checks).filter(([id]) => rows.has(id));
+    picked.append(el(doc, 'span', 'wk-markedword', `Marked · ${marked.length}`));
+    for (const [id, sign] of marked) {
+      const { label } = rows.get(id);
+      const chip = el(doc, 'button', 'wk-chip wk-markedchip', `${sign === SIGN.CONTROL ? '− ' : ''}${label} ×`);
+      chip.type = 'button';
+      chip.setAttribute('data-marked', id);
+      chip.setAttribute('aria-label', `Remove ${label}`);
+      chip.addEventListener('click', () => { markings.set(checks, id, SIGN.ABSENT); render(); });
+      picked.append(chip);
+    }
+    const checked = new Set(marked.map(([id]) => rows.get(id).type));
+    const sections = view.sections.filter((s) => !checked.size || checked.has(s.type));
+    onward.append(el(doc, 'span', 'wk-markedword', 'Walk on ▸'));
+    for (const section of sections) {
+      const shown = shownFor(view, section);
+      const seeds = seedsOf(shown.ids.map((id) => [id, markings.signOf(checks, id)]));
+      for (const route of nextRoutes(state.decl, section.type)) {
+        const pair = el(doc, 'span', 'wk-next-route');
+        pair.append(el(doc, 'span', 'wk-next-words', sections.length > 1 ? `${section.type} · ${route.words}` : route.words));
+        const go = el(doc, 'button', 'wk-next-edge', NEXT_WORDS.step);
+        go.type = 'button';
+        go.setAttribute('data-route', route.words);
+        setDisabledReason(go, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
+        go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });
+        const here = el(doc, 'button', 'wk-next-edge wk-next-here', NEXT_WORDS.here);
+        here.type = 'button';
+        here.setAttribute('data-route', route.words);
+        setDisabledReason(here, seeds.positive.length ? '' : CHECK_ROWS_FIRST);
+        here.addEventListener('click', () => { if (seeds.positive.length) void addHere(at, seeds, route); });
+        pair.append(go, here);
+        onward.append(pair);
+      }
+    }
+    if (marked.length) {
+      const clear = el(doc, 'button', 'wk-act wk-markedclear', 'Clear');
+      clear.type = 'button';
+      clear.addEventListener('click', () => { markings.clear(checks); render(); });
+      picked.append(clear);
     }
     return line;
   }
