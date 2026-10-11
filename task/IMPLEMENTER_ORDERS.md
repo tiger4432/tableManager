@@ -65877,3 +65877,29 @@ require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 repla
 응용   착지 뒤 리허설(rh_world_full)에 ⑤ 를 ⑤a · ⑤b 로 바꿔 다시 돌려 일요일 표 ⑤ ⑥ ⑦ 의 수 · 뜻을 다시 씀(체인 워커 슬롯은 구현자 «내림» 뒤)
 순서   이것 -> 체인 층 원천 행마다(세워 둔 손 그대로 — 이것을 다른 worktree 에서 짓거나 세워 둔 손을 커밋 안 한 채 비켜 둠, 섞지 않음)
 ```
+
+> **[총괄 -> 구현자 · 응용] 10-11 오후 — 접기 맵퍼: 단위 표(인벤토리)가 웨이퍼마다 이긴 잡을 정하고, 로그 행의 표시를 «웨이퍼째» 다시 씀 (소유자 「충돌은 replace map 느낌으로 dt_wafer_id 단위로」 · 「인벤토리는 wafer out time 을 최소시간으로 가져오니까 이거는 맵퍼 만들어서 하면 될 듯 단순 조인 말고」 · 「매뉴얼끼리도 같은 규칙」 · 맵퍼는 «구현자») — 다음 맨 앞**
+
+```
+도착지  두 줄
+   「운영에서는 chain_rules 에 이 맵퍼를 단위 표(dt_inventory)와 로그 표(dt_log)에 한 줄씩 적고 params 에 칸 이름을 적으면 됩니다」
+   「단위 표나 로그 표의 행이 바뀌면 그 웨이퍼의 로그 행 표시가 통째로 다시 정해집니다 — AUTO 잡 먼저 · 그다음 가장 이른 아웃 시각 · 매뉴얼끼리도 같음」
+모양(새 기제 금지 — 제품 맵퍼 하나, hold_copy.py · contrast_walk.py 처럼 추적 파일)
+   params(도메인 낱말은 전부 여기 — 코드에 dt_ · AUTO 금지)
+     group          단위 표의 묶음 칸(웨이퍼)            unit   단위 표의 단위 칸(잡)
+     order          단위 표의 고르는 칸(아웃 시각)        prefer_column · prefer_text   먼저 오는 글자(any case)
+     match          [{left: 로그 칸, right: 단위 표 칸}, …]  — 로그 행이 어느 단위 · 묶음인지
+     mark_column    로그 표의 표시 칸                     within_keys · within_order(선택)  이긴 단위 안에서 키마다 이른 행 하나(한 칩 두 이벤트, 오늘의 ⑤b)
+   판정  묶음마다 단위 순위 = prefer 글자 먼저 -> order 이른 것(빈 order 끝) -> 작은 row_id · replay._ranked_duplicates 와 «같은 순위 규칙» — 그 함수를 부르거나 한 함수로 접음, 둘째 철자 금지
+   쓰기  묶음의 로그 행 «전부»를 다시 씀: 진 단위 행 «folded into <이긴 단위 값>» · within 으로 진 행 «folded into <남은 row_id>» · 남은 행은 빈칸(체인이 비움) — 표시 칸의 저자는 이 맵퍼 하나(replace map)
+         origin_row_id = 그 로그 행이 속한 단위 표 행 · MAPPER_FACTS 로 columns=[mark_column] · stamps_origin
+   깨움  같은 맵퍼 · 같은 params 를 두 줄로: on.table 단위 표 / on.table 로그 표(새 로그 행도 그 묶음을 다시 정함). 로그 표 줄의 쓰기는 읽은 표에 도로 쓰기(upsert)
+   그 뒤  복사 규칙 exclude [mark_column] 이 표시 행을 안 받고 먹인 것을 거둠 — 오늘 길. 보류 다시 세기가 실시간으로 따라오는지는 응용이 잼(안 따라오면 그 자리를 이름으로)
+운영 셋업 ⑤ 자리(응용이 RUN.md 에)  ⓪' 두 줄 선언 + table_config dt_inventory 칸 확인 -> replay <단위 표 줄> -> ⑥ replay «복사 규칙» -> ⑥' replay «다시 세기 규칙» -> ⑦ remove-shells
+         옛 ⑤ · ⑤b 표시(fold_duplicate_rows 층)가 있으면 이 맵퍼 층(체인)이 이김 — 걷을지는 RUN.md 한 줄(withdraw «로그 표» fold_duplicate_rows --columns fold_mark)
+게이트   응용 씨앗 그대로(rh_world_inv: AUTO_J1 · AUTO_J5 -> CW1 이른 J1 · MAN_J3 · AUTO_J4 -> CW3 AUTO_J4 · AUTO_J2 -> CW2 0) + 매뉴얼끼리 묶음(이른 잡) + within(한 칩 두 이벤트 -> 이른 것)
+         실시간: 늦은 AUTO 단위가 들어오면 그 묶음 표시가 바뀜 · 진 잡에 새 로그 행 -> 표시됨 · 다시 돌리면 쓰기 0 · 단위 행 지우면 그 묶음 다시(안 되면 RUN.md 에 replay 한 줄)
+         변이(prefer 무시 · 묶음 대신 행 · 남은 행 빈칸 안 씀 -> 옛 표시 남음) 빨강 · public 전후 같음 · 진짜 프로세스(체인 워커)로 한 판
+짓기 전  한 줄 보고(파일 · 함수 · 두 줄 선언 예) — 답 기다리지 말고 진행
+순서     지금 «층 원천 행마다» 진짜 프로세스 판이 끝나 착지할 수 있으면 착지, 아니면 세우고 이것 -> 그다음 층 원천 행마다
+```
