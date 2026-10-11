@@ -250,18 +250,19 @@ REQUIRE_KEY = "require"
 #: 총괄 016a766af (소유자 「접는 거 아예 삭제하지 말고 공식 홀드에만 반영」): trigger-table columns a row must
 #: have EMPTY to be handed to the rule - `require`'s other half, beside it under `on` (`on.exclude`).
 EXCLUDE_KEY = "exclude"
-#: The `exclude` a rule recounting another rule's output reads - stamped at load by the mapper that
-#: pairs the two, not written by hand (총괄 016a766af ㄴ).
-SOURCE_EXCLUDE_KEY = "source_exclude"
 #: The cells that decide whether a trigger row is handed to the rule at all (`rule_run.held_back`).
 ROW_GATE_KEYS = (REQUIRE_KEY, EXCLUDE_KEY)
+#: Each row gate as a rule recounting another rule's output reads it - `source_<gate>`, stamped at load
+#: by the mapper that pairs the two, not written by hand (총괄 016a766af ㄴ · 0117a0048: both gates).
+SOURCE_GATE_KEYS = {gate: "source_" + gate for gate in ROW_GATE_KEYS}
+SOURCE_EXCLUDE_KEY = SOURCE_GATE_KEYS[EXCLUDE_KEY]
 #: What a refusal of an unknown gate column says, per cell.
 _GATE_WORDS = {REQUIRE_KEY: ("requires", "no row could ever be handed to it"),
                EXCLUDE_KEY: ("excludes by", "no row could ever be held back")}
 
 RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
-    "target_field", "trigger_columns", REQUIRE_KEY, EXCLUDE_KEY, SOURCE_EXCLUDE_KEY, "enabled", "is_batch",
+    "target_field", "trigger_columns", REQUIRE_KEY, EXCLUDE_KEY, *SOURCE_GATE_KEYS.values(), "enabled", "is_batch",
     "allow_chain_trigger", "allow_map_metadata_upsert",
     # 총괄 fe020274d: write permissions `dt_map_derivation` reads off the rule, not arguments.
     "allow_replace_map", "allow_retraction",
@@ -636,7 +637,7 @@ _SKELETON_HINTS = {
 #: Routing cells whose value is a LIST of names -> (member, item hint). `trigger_columns` is
 #: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below.
 _LIST_CELLS = {"trigger_columns": ("column", "free"), REQUIRE_KEY: ("column", "free"),
-               EXCLUDE_KEY: ("column", "free"), SOURCE_EXCLUDE_KEY: ("column", "free"),
+               EXCLUDE_KEY: ("column", "free"), **{key: ("column", "free") for key in SOURCE_GATE_KEYS.values()},
                READS_KEY: ("table", "ref")}
 
 

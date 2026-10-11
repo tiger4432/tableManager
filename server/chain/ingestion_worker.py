@@ -840,7 +840,8 @@ def load_chain_rules():
 
     # 🔴 [총괄 016a766af] A MAPPER THAT READS ANOTHER RULE OF ITS KIND PAIRS THEM HERE, with the set in
     #    hand (`mapper_sdk.MAPPER_FACTS[...]["at_load"]`) - the hold recount counts by its copy rule's
-    #    `exclude`, stamped as `source_exclude`. What it refuses is named and dropped like any refusal.
+    #    row gates (`require` · `exclude`), stamped as `source_<gate>` (총괄 0117a0048). What it refuses
+    #    is named and dropped like any refusal.
     for mapper_name, facts in sorted(mapper_sdk.MAPPER_FACTS.items()):
         mine = [rule for rule in rules if chain_bindings.mapper_cells(rule)[0] == mapper_name]
         for rule, sentence in (facts["at_load"](mine) if facts.get("at_load") and mine else ()):

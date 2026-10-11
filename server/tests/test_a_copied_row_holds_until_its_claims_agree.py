@@ -204,3 +204,85 @@ def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_r
     assert worker.fire_refusal(hw.RECOUNT, new[0]) is None
     asleep = {**hw.RECOUNT, "allow_chain_trigger": False}
     assert worker.fire_refusal(asleep, new[0]) == worker.FIRE_REFUSED_CHAIN
+
+
+# ----------------------------------------------------------------------------------- 총괄 0117a0048
+# The copy rule's require is a row gate like its exclude: a row it holds back is no claim on the hold.
+# 응용 measured: written after the rows were copied, replay took back what the empty rows fed but the
+# recount still counted them - J1 stayed blank, J2 · J3 agreed with no value, and remove-shells found 0.
+
+#: J1 has a row the require keeps and one it holds back; J2 · J3 only rows it holds back.
+REQUIRED = [{"log_id": "A", "dt_job": "J1", "dt_x": 1, "dt_y": 2, "netdie": 7, "kind": "good"},
+            {"log_id": "B", "dt_job": "J1", "dt_x": 1, "dt_y": 2, "netdie": 5},
+            {"log_id": "C", "dt_job": "J2", "dt_x": 1, "dt_y": 2, "netdie": 3},
+            {"log_id": "D", "dt_job": "J3", "dt_x": 1, "dt_y": 2, "netdie": 4}]
+
+
+def _require_kind(world):
+    """The copy rule now also requires `kind`, read the way the worker reads a saved rule - the pairing
+    at load stamps the recount."""
+    import json
+
+    from chain import ingestion_worker as worker
+
+    with open(worker.RULES_PATH, encoding="utf-8") as fh:
+        document = json.load(fh)
+    for rule in document["rules"]:
+        if rule["name"] == hw.RULE["name"]:
+            rule["require"] = hw.KEYS + ["kind"]
+    with open(worker.RULES_PATH, "w", encoding="utf-8") as fh:
+        json.dump(document, fh)
+    world["rules"][:] = [r for r in worker.load_chain_rules() if r.get("name") in (hw.RULE["name"], hw.RECOUNT["name"])]
+    return {rule["name"]: rule for rule in world["rules"]}
+
+
+def _by_job(world):
+    from database import models
+
+    world["db"].expire_all()
+    return {row.dt_job: (None if row.netdie is None else float(row.netdie), row.hold or "")
+            for row in world["db"].query(models.DYNAMIC_TABLES[hw.OFFICIAL]).all()}
+
+
+def test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows(world):
+    """The owner's lines (총괄 ㄱ): replay the copy rule, then the recount rule. The copy replay's
+    withdrawal wakes no rule, so J2 · J3 keep their hold until the recount runs - then they hold only
+    the chain's keys and the chain takes them; remove-shells finds nothing left."""
+    from chain import replay
+
+    hw.push(world, REQUIRED)
+    hw.settle(world)
+    assert {job: hold for job, (_value, hold) in _by_job(world).items()} == {
+        "J1": "", "J2": "agreed", "J3": "agreed"}, "CANARY: before require, every row is a claim"
+    rules = _require_kind(world)
+    assert rules[hw.RECOUNT["name"]]["source_require"] == hw.KEYS + ["kind"], "the pair carries require"
+
+    replay.replay_rule(world["db"], rules[hw.RULE["name"]], apply=True)
+    hw.run_chain(world)      # the ledger follow-up waits - it would read J2 · J3 agreed with no value
+    assert _by_job(world) == {"J1": (7.0, "agreed"), "J2": (None, "agreed"), "J3": (None, "agreed")}
+    replay.replay_rule(world["db"], rules[hw.RECOUNT["name"]], apply=True)
+    hw.settle(world)
+
+    assert _by_job(world) == {"J1": (7.0, "agreed")}, "J2 · J3 held only the chain's keys, and the chain took them"
+    assert replay.remove_shell_rows(world["db"], hw.OFFICIAL)["rows_to_delete"] == 0
+
+
+def test_copies_that_gate_by_different_columns_leave_their_recount_refused_by_name(world, caplog):
+    import json
+
+    from chain import ingestion_worker as worker
+
+    with open(worker.RULES_PATH, encoding="utf-8") as fh:
+        document = json.load(fh)
+    second = {**dict(next(r for r in document["rules"] if r["name"] == hw.RULE["name"])), "name": "hc_copy_two"}
+    second["require"] = hw.KEYS + ["kind"]
+    document["rules"].append(second)
+    with open(worker.RULES_PATH, "w", encoding="utf-8") as fh:
+        json.dump(document, fh)
+    caplog.set_level("ERROR", logger=worker.logger.name)
+
+    names = [r.get("name") for r in worker.load_chain_rules()]
+
+    assert hw.RECOUNT["name"] not in names and hw.RULE["name"] in names
+    said = [r.getMessage() for r in caplog.records if "require or exclude by different columns" in r.getMessage()]
+    assert len(said) == 1 and "%s refused: pair_mismatch" % hw.RECOUNT["name"] in said[0], said

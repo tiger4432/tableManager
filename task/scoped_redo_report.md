@@ -78529,3 +78529,124 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
   public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
   public relations 325 -> 325 · added [] · gone [] · rows changed {}
 ```
+
+## [10-11] require 보류 고침 착지 db5279795 (총괄 0117a0048 ㄱ · 소유자 「그냥 두 번 돌릴게」) · 8ec008914 짓기 전 셈
+
+```
+착지 db5279795 — 짝 맺기가 복사 규칙의 require 도 source_require 로 찍음(exclude 옆) · _claims 가 두 관문을 한 SQL 로 거름 ·
+     같은 공식 표로 복사하는 규칙들이 require 나 exclude 를 다르게 적으면 다시 세기 규칙은 이름으로 거절(pair_mismatch)
+     이미 복사된 행: 복사 replay -> 다시 세기 replay -> remove-shells (RUN.md 「체인 require 를 적었는데 빈 행이 복사될 때」, 해시 채움)
+게이트 — hold_copy · 짝 · 골격 · 행 관문을 부르는 시험 파일 30 개 (rq_gates.sh 의 git grep)
+  비-PG  1 failed, 273 passed, 1 skipped, 86 deselected in 21.71s
+         FAILED tests\test_a_flat_rule_survives_the_trip_to_the_unified_grammar.py::test_the_axis_set_is_the_difference_between_the_two_lists
+         -> 문법 축 수 시험: source_require 가 source_exclude 와 같은 찍힘 칸이라 23 -> 24 로 올리고 이력 한 줄. 그 파일 다시: 6 passed in 0.40s
+  PG     86 passed, 275 deselected in 1330.59s (0:22:10)
+         J1 (7, agreed) · J2 · J3 체인이 지움 · remove-shells 0 — copy replay 뒤 recount replay (같은 파일의 새 시험 두 칸)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+변이(빨강 = 실패한 시험, md5 복원) — hold_copy.py 한 줄씩
+  baseline ['4 passed, 24 deselected in 33.04s']
+  the pair carries exclude only      RED | test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows[batch], test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows[one_row], test_copies_that_gate_by_different_columns_leave_their_recount_refused_by_name[batch], test_copies_that_gate_by_different_columns_leave_their_recount_refused_by_name[one_row]
+  require judged as exclude          RED | test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows[batch], test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows[one_row]
+  the claims ignore the gates        RED | test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows[batch], test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows[one_row]
+  restored True
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+어느 DB · 어느 스키마 · 지운 것: 비-PG 는 sqlite 메모리 · PG 는 격리 시험 DB(run_pg_files) 실행마다 스크래치 스키마 · public 은 위 대조 · 그 밖 지운 것 0
+진짜 따로 띄운 프로세스 줄 — 안 돌림(이번 게이트에 없음). 체인 워커 슬롯이 필요하면 응용 «내림» 받고 돌림
+```
+
+```
+8ec008914 짓기 전 셈 — 총괄 판정(메시지): 쓴이 순위는 «체인 층»에만, 합치기 사본은 오늘 그대로
+센 명령  scratchpad/census_chain_layer_seats.py (AST, git ls-files server/*.py, tests 제외)
+  python files (tracked, not tests): 302
+  module-level collections holding the chain name: []
+  
+  == A  6 seats
+    chain/cell_layer.py:144  crud.layer_writer(name) == crud.CHAIN_SOURCE if column in keys else crud.is_blank_value(value))
+    chain/cell_layer.py:544  p["source_name"].as_string() == R1_SOURCE_NAME))
+    chain/ingestion_worker.py:1141  if channel is None and payload.get("source_name") == rule_run.CHAIN_SOURCE:
+    chain/rule_run.py:75  if writer in (CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY,
+    database/crud.py:711  return source_name in (USER_SOURCE, CHAIN_SOURCE)
+    mapper_sdk.py:628  facts={"source_name": source_name} if source_name != "chain_ingestion" else None)
+  
+  == S  0 seats
+  
+  == B  25 seats
+    chain/cell_layer.py:43  R1_SOURCE_NAME = "chain_ingestion"
+    chain/cell_layer.py:406  with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME), \
+    chain/cell_layer.py:587  R2_AUDIT_SOURCE, f"{R2_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}", R1_SOURCE_NAME))
+    chain/enrichment/mapper.py:383  "source_name": "chain_ingestion",
+    chain/ingestion_worker.py:990  + ["[ChainRules] %s: source_name '%s' is written as %s" % (name, named, rule_run.CHAIN_SOURCE)
+    chain/ingestion_worker.py:1588  token_src = request_source.set(rule_run.CHAIN_SOURCE)
+    chain/ingestion_worker.py:3462  with crud.transaction_context(cell_layer.R2_AUDIT_SOURCE, tx_id, cell_layer.R1_SOURCE_NAME):
+    chain/join_into.py:44  CHAIN_LAYER = "chain_ingestion"
+    chain/join_into.py:403  source_name=CHAIN_LAYER,
+    chain/replay.py:1378  with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):
+    chain/rule_run.py:62  CHAIN_SOURCE = "chain_ingestion"
+    chain/rule_run.py:78  return CHAIN_SOURCE + str(name or "")[len(writer):]
+    chain/rule_run.py:149  token_source = request_source.set(CHAIN_SOURCE)
+    database/crud.py:673  CHAIN_SOURCE = "chain_ingestion"
+    database/crud.py:682  CHAIN_SOURCE: 4,
+    database/crud.py:735  USER_SOURCE, CHAIN_SOURCE, candidates.SOURCE_NAME,
+    dt_map_derivation.py:807  "source_name": "chain_ingestion",
+    mapper_sdk.py:537  def mapper(target_table=None, *, source_name: str = "chain_ingestion",
+    mappers/contrast_walk.py:162  origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
+    mappers/contrast_walk.py:183  origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
+    mappers/hold_copy.py:52  source_name=crud.CHAIN_SOURCE, updated_by=NAME)
+    mappers/hold_copy.py:54  item["source_name"] = crud.merged_layer_name(crud.CHAIN_SOURCE, row["row_id"])
+    mappers/hold_copy.py:66  result["updates"] += df_to_updates(held, target, source_name=crud.CHAIN_SOURCE,
+    mappers/lot_lineage_mapper.py:28  SOURCE_NAME = "chain_ingestion"
+    mappers/lot_slot_wafer_mapper.py:30  SOURCE_NAME = "chain_ingestion"
+  
+  == C  16 seats
+    chain/replay.py:1320  priority_map = crud.resolve_priority_map(table_name)
+    chain/replay.py:1422  top_rank = priority_map.get(decision["top_source"], 99)
+    chain/replay.py:1423  tied = sum(1 for s in srcs if priority_map.get(s, 99) == top_rank)
+    database/crud.py:675  SOURCE_PRIORITY = {
+    database/crud.py:734  _MACHINE_LAYER_NAMES.append(frozenset(SOURCE_PRIORITY) | {
+    database/crud.py:783  rank = get_source_priority(source_name, table_name)
+    database/crud.py:785  if get_source_priority(s.source_name, table_name) == rank]
+    database/crud.py:806  groups.setdefault((get_source_priority(name, table_name),
+    database/crud.py:1616  priority_map = SOURCE_PRIORITY
+    database/crud.py:1627  return resolve_priority_map(table_name).get(source_name, 99)
+    database/crud.py:1741  priority_map = resolve_priority_map(table_name)
+    database/crud.py:1746  priority_map.get(name, 99),        # 1. declared ranking
+    ledger/trace.py:510  return _crud().get_source_priority(source_who or "")
+    maps/frame_confirmation.py:107  weakest = max(names, key=lambda s: (crud.get_source_priority(s, table_name), s))
+    maps/frame_confirmation.py:108  return weakest, crud.get_source_priority(weakest, table_name)
+    maps/frame_confirmation.py:726  return crud.get_source_priority(source_name, table_name)
+  
+  == D  8 seats
+    chain/cell_layer.py:143  if all(crud.layer_writer(name) != crud.USER_SOURCE and (
+    chain/rule_run.py:74  writer = crud.layer_writer(name)
+    database/crud.py:747  return layer_writer(source_name) not in machine_layer_names()
+    database/crud.py:3555  backup_src_name = merged_layer_name(USER_SOURCE, f"old_exist_{row.row_id[:6]}")
+    database/crud.py:3595  effective_src_name = merged_layer_name(effective_src_name, tag)
+    mappers/hold_copy.py:54  item["source_name"] = crud.merged_layer_name(crud.CHAIN_SOURCE, row["row_id"])
+    scripts/count_absent_null_layers.py:81  writer = crud.layer_writer(source_name)
+    scripts/empty_table.py:63  if crud.layer_writer(name) == crud.USER_SOURCE),
+박스(이 박스 assy_manager, 읽기 전용) — 괄호 층 · scratchpad/probe_bracket_layers_box.py
+  cell_sources rows (estimate): 37793592
+  plain 'user' layers: 122190
+  bracketed layers by writer: writer | layers | cells | with origin_row_id | rank today -> by writer
+    user                                          238      189        0   99 -> 0
+    web_smart_paste_1781956438393.html             80       34        0   99 -> 99
+    web_smart_paste_1781956427013.html             80       34        0   99 -> 99
+    web_smart_paste_1782025147049.html             68       68        0   99 -> 99
+    web_smart_paste_1781956392029.html             39       27        0   99 -> 99
+    web_bonding_data_20260715_233703.csv           35       35        0   99 -> 99
+    custom_script                                   9        6        0   99 -> 3
+    web_bonding_data_20260717_220502.csv            8        8        0   99 -> 99
+    collision_merge                                 6        6        0   99 -> 1
+    web_bonding_data_20260719_195903.csv            4        4        0   99 -> 99
+    web_bonding_data_20260717_164305.csv            4        4        0   99 -> 99
+  plain chain_ingestion layers with origin_row_id: 53520 · without: 2715861
+박스 — 쓴이 순위로 바꾸면 화면 값이 바뀌는 칸(진짜 compute_priority_value 두 번) · scratchpad/probe_writer_rank_shown_box.py
+  cells with a bracketed layer examined: 245 · today's answer equals the stored column: 8
+  cells whose SHOWN value changes when a layer ranks as its writer: 3 {'user': 3}
+    bonding_map · 019ee4e0-b927-79ab-866f-fa98081fbe2c · leg : 'user'='12312' -> 'user (e78de9a0-2999-468f-a7fc-60863adf5c6b_100_88_019f6f)'='dsfsd'
+    bonding_map · 019ee4e1-42d7-7790-8cff-956573379eb1 · leg : 'user'='F' -> 'user (HFZ123.12_17_3_019ee4)'='sdfsd'
+    bonding_map · 019ee4e1-4390-736d-be86-b0569e7579f6 · leg : 'user'='d' -> 'user (HFZ123.12_15_7_019ee4)'='12321'
+  -> 판정대로 사본은 오늘 순위 — 이 셋은 안 바뀜
+```

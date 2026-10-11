@@ -190,8 +190,9 @@ def test_the_axis_set_is_the_difference_between_the_two_lists():
     # 15 -> 22 (총괄 ed70c3970): the seven `chain_bindings.COLUMN_BINDING_KEYS`.
     # 22 -> 23 (총괄 016a766af): `source_exclude`, the loader-stamped twin of `on.exclude` - an axis
     #   cell like `companion_of`; `exclude` itself folds under `on` beside `require`.
+    # 23 -> 24 (총괄 0117a0048): `source_require`, the same stamp for `on.require`.
     axis = known - folded - {rule_shape.KEY_CELL}
     assert set(rule_shape.axis_keys()) == axis
-    assert len(axis) == 23, (
+    assert len(axis) == 24, (
         "the axis set moved to %d - a cell was added to one list and not the other: %s"
         % (len(axis), sorted(axis)))
