@@ -272,10 +272,43 @@ def test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does(
     rows = {f["path"]: f for f in plan["fields"]}
     at = "bundle.sources.die_inspection.bind.mappings.die-in-wafer.bind."
     time, target = rows[at + "occurred_at"], rows[at + "target"]
-    assert (time["state"], time["ground"]["rule"], time["disposition"]) == (
-        "derived", "not_an_event", "default_overridable")
+    assert (time["state"], time["ground"]["rule"], time["disposition"], time["value"]) == (
+        "derived", "not_an_event", "default_overridable", None)
     assert time["ground"]["text"].startswith("Not an event - source time: "), time["ground"]["text"]
     assert (target["state"], target["ground"]) == ("missing", None)
+
+
+def _no_edge_time(document):
+    """The application's attribute-only source (18766, 10-11): no read time and no sentence binds one."""
+    source = _die_inspection(document)
+    del source["read"]["occurred_at"]
+    del source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]
+
+
+def _edge_time_from_the_read(document):
+    """The application's (2''): the source writes its time on the read and the event edge binds none."""
+    del _die_inspection(document)["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]
+
+
+@pytest.mark.parametrize("shape", [_no_edge_time, _edge_time_from_the_read, _with_a_not_an_event_mapping])
+def test_the_saves_fill_writes_no_time_into_a_sentence_that_binds_none(shape):
+    """응용 18766 (총괄 10-11): the save filled the source's time record into a sentence's unbound time role, and a
+    read record is not a binding - an attribute-only source was refused («unsupported binding kind None»)."""
+    from ledger.config_authoring import filled_declaration
+
+    document = _document()
+    shape(document)
+    before = validate_bundle_errors(document, catalog=CATALOG)
+    body, _dropped = filled_declaration(document, CATALOG, ["sources", "die_inspection"],
+                                        copy.deepcopy(_die_inspection(document)))
+    unbound = [name for name, mapping in _die_inspection(document)["bind"]["mappings"].items()
+               if "occurred_at" not in mapping["bind"]]
+    assert unbound, "CANARY: a sentence binds no time"
+    assert [name for name in unbound if "occurred_at" in body["bind"]["mappings"][name]["bind"]] == []
+    document["sources"]["die_inspection"] = body
+    assert validate_bundle_errors(document, catalog=CATALOG) == before
+    if shape is _no_edge_time:
+        assert before == (), before
 
 
 def test_exclude_when_is_one_row_whose_candidates_are_clauses_the_validator_takes():

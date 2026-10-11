@@ -249,6 +249,20 @@
 >
 > ---
 >
+> ## [10-11] **원장 선언 저장이 시각을 안 묶은 문장에 원천 시각을 써 넣지 않는다 — 96f54ab36 회귀 고침 (응용 18766 · 총괄 10-11, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 무엇        96f54ab36 의 초안 저장(화면 Save · PUT drafts)이 시각을 안 묶은 문장 — register 문장, 시각을 안 묶은 사건 엣지 — 의 bind 에
+>            원천 시각 기록({"basis": …} 또는 {"column": …})을 써 넣어, 그 소스가 거절됐다(unsupported binding kind None · missing_time)
+>            이제 폼은 «Not an event - source time: …» 을 보이기만 하고 파일에 안 쓴다
+> 순서        pull -> 서버 재기동
+> 이미 거절된 소스  선언 화면 목록에 invalid, 사유 «….bind.mappings.<문장>.bind.occurred_at.kind unsupported binding kind None»
+>            -> 원문 창에서 그 문장의 bind 의 occurred_at 칸을 지우고 Save. 안 지우면 다시 저장해도 남는다(파일에 적힌 칸이라 저장이 안 건드림)
+> 되돌리기      git revert <이 커밋> -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **원장 선언이 시각 · timezone 을 쓸데없이 묻지 않는다 — 시각은 사건 엣지에서만 · zone 은 시각 열을 적었을 때만 (총괄 10-11, 착지 96f54ab36) — 이주 «없음» · 재기동 «서버»**
 >
 > ```

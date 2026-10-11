@@ -1097,9 +1097,11 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         if not isinstance(binding, Mapping) and is_event_time_role(role_id) and source_time:
             # 🔴 NOT ASKED (총괄 10-11 B ㄱ · 3a2d79ff9 「매핑에서는 빼도 된다 — 적으면 사건 엣지」): a sentence that
             #    binds no event time is not an event and reads the source's time - shown as that, still writable.
+            # 🔴 NO VALUE: the save writes a derived row's value into the file (`filled_declaration`), and the source's
+            #    time is a read record, not a binding - written into the sentence it refused the save (응용 18766, 10-11).
             yield Field(
                 path=f"{mpath}.bind.{role_id}", step="sources", label=f"Role {role_id}",
-                state="derived", tier=TIER_CONSTRAINED, value=source_time,
+                state="derived", tier=TIER_CONSTRAINED, value=None,
                 candidates=tuple(role_binding_kinds(role)), reshapes=True,
                 disposition="default_overridable",
                 ground=Ground("not_an_event", "Not an event - source time: %s" % source_said,
