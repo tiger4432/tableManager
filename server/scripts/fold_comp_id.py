@@ -39,7 +39,10 @@ def fold(conn, table, ask=input, say=print) -> int:
     for stmt in statements(table):
         if stmt.upper().startswith("SELECT"):
             name = re.search(r"\bAS\s+(\w+)", stmt).group(1)
+            say("Counting %s ..." % name)
+            begun = time.monotonic()
             value = conn.execute(text(stmt)).scalar()
+            say("  = %s  (%.0f s)" % (value, time.monotonic() - begun))
             if name == "rows_to_fold":
                 moves = value
             else:
@@ -59,19 +62,25 @@ def fold(conn, table, ask=input, say=print) -> int:
         say("Nothing folded.")
         return 1
     started = time.monotonic()
+    steps = ("history lines", "cell layers", "shown values")
     with conn.begin():
-        for stmt in writes:
+        for number, stmt in enumerate(writes):
+            say("Writing %d/%d %s ..." % (number + 1, len(writes), steps[number] if number < len(steps) else ""))
             conn.execute(text(stmt))
+            say("  done - %.0f s so far" % (time.monotonic() - started))
+        say("Committing ...")
     say("Done: %s rows folded in %.0f s." % (moves, time.monotonic() - started))
     return 0
 
 
 def main(argv) -> int:
+    print("Connecting to the server's database ...", flush=True)
     from database.database import engine
 
     table = next((a for a in argv if not a.startswith("--")), None) or input("Table name: ").strip()
     with engine.connect() as conn:
-        return fold(conn, table, ask=(lambda _q: "y") if "--yes" in argv else input)
+        return fold(conn, table, ask=(lambda _q: "y") if "--yes" in argv else input,
+                    say=lambda line: print(line, flush=True))
 
 
 if __name__ == "__main__":
