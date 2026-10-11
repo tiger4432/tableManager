@@ -78772,3 +78772,54 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
 곁 고침  ops_setup_db_performance 의 거두기 계획 탐침이 «등식만으로 묻는» 가장 큰 쌍을 고름(chain_ingestion 은 표 조각을 읽어 «!!» 로 보이지 않게) ·
          cell_layer._load_cell_state 가 층마다 origin_row_id 도 실음 · hold_copy 는 층 이름을 직접 안 지음(쓰는 자리가 지음)
 ```
+
+## [10-11] 층 접기 회귀 고침 착지 40b3a0f07 (응용 7e2fc0575 · 총괄 「원인 한 줄 · 고침 · 응용 판 다시」)
+
+```
+원인 한 줄  b566b48ae 의 층 접기가 키 칸의 «원천 없는 plain 체인 층»을, 같은 칸 행 층이 같은 키를 말한다고 지웠다.
+           그 층은 보류 다시 세기(hold item)가 키를 쓰는 층 — 그 키를 먹이던 원천 행 하나가 표시돼 거둬지면 키 칸까지 비고,
+           다시 세기가 그 행을 못 찾아 hold 만 agreed 로 남았다(일요일 표 ⑦ 의 «알려진 것» 한 행)
+고침 40b3a0f07 — 6 files changed, 67 insertions(+), 17 deletions(-)
+     crud.stacked_layers(…, key=) — 키 칸의 plain 체인 층은 이름 바꾸기 · 지우기 둘 다 안 함. fold_file_layers 가 cell_layer.key_columns 를 한 번 묻는다
+     Count · deletes · 끝 줄 문장 «outside the key columns» · 원천 없는 plain 수(chain_unstamped)도 키 칸 밖만
+재현 (PG, 시험 파일 test_a_folded_row_is_marked_and_what_it_fed_taken_back 의 새 칸, 접기 있음/없음 두 갈래)
+  고치기 전: 접기 없음 통과 · 접기 있음 실패 — 남은 공식 행 모양은 아래 탐침 recount=False 줄과 같음
+게이트
+  tests/test_a_chain_layer_is_one_per_source_row.py  10 passed in 2.35s
+  tests/test_a_file_layer_that_repeats_a_newer_one_is_folded.py  9 passed in 1.89s
+  tests/test_retroactive_admin.py  68 passed in 56.23s
+  tests/test_a_rule_name_is_judged_before_anything_is_recorded.py  41 passed in 5.67s
+  PG test_a_folded_row_is_marked_and_what_it_fed_taken_back  8 passed in 61.82s (0:01:01)
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+변이 (PG 재현 칸, md5 되돌림 확인)
+  the key guard dropped in stacked_layers: RED · 1 failed, 1 passed, 6 deselected in 18.99s
+      FAILED tests\test_a_folded_row_is_marked_and_what_it_fed_taken_back.py::test_a_key_whose_only_row_is_marked_leaves_no_official_row_whether_or_not_the_layers_were_folded[True]
+     md5 restored True
+  the fold never says a column is a key: RED · 1 failed, 1 passed, 6 deselected in 21.34s
+      FAILED tests\test_a_folded_row_is_marked_and_what_it_fed_taken_back.py::test_a_key_whose_only_row_is_marked_leaves_no_official_row_whether_or_not_the_layers_were_folded[True]
+     md5 restored True
+이미 접은 표 — 고치기 전 접기를 흉내(key_columns 가 빈 집합)한 뒤 다시 세기 replay 를 돌린 탐침(커밋 안 함)
+  PROBE recount=False plain key layers settled 6 -> old fold 0 -> after recount 0 · left {'J1': (7.0, 'agreed'), None: (None, 'agreed')}
+  PROBE recount=True plain key layers settled 6 -> old fold 0 -> after recount 6 · left {'J1': (7.0, 'agreed')}
+  2 passed in 27.28s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+  -> 이 pull 전에 접기를 돌린 공식 표는 원천 행을 표시 · 거두기 «전»에 «다시 세기 규칙» replay 한 번(RUN.md 새 절, 일요일 표 ①b 와 같은 명령)
+어느 DB · 어느 스키마 · 지운 것: 시험은 sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 assy_manager 안 건드림 · public 전후 같음 · 지운 것 0
+
+🔴 제 앞 보고(b566b48ae 절)의 «찾은 것 ①»이 틀렸습니다
+  「다시 세기가 키 칸을 plain 으로 다시 써서 겹침이 다시 생김 — 값이 같아 화면 · 거두기엔 영향 없음」 -> 거두기에 영향이 있었습니다.
+  그 다시 생기는 층이 바로 키를 지키는 층이고, 위 탐침에서 다시 세기가 그 층을 되살려야 표시된 행이 공식 행을 남기지 않습니다.
+
+여쭐 것
+  가. 작은 판 ① 의 제안 「다시 세기는 보류 칸만 쓰거나」 — 그러면 이번과 같은 키 빈 행이 납니다(다시 쓰기가 키 층을 되살리는 길).
+      ① 은 접지 않고 «지금처럼 키도 다시 쓴다»로 닫아도 될지, 다른 뜻이셨는지
+  나. 운영에서 이 pull 전에 접기(①c 또는 b566b48ae 절 ②)와 그 뒤 ⑥ 까지 이미 돌린 공식 표 — 키 빈 행(hold 만 agreed)이 남아 있을 수 있고,
+      ⑦ 은 그 행을 안 지웁니다(키 밖에 hold 값이 있어 껍데기가 아님). 지우는 길은 안 쟀습니다 — 지을지
+  다. 이번 고침은 «키 칸»만 뺐습니다. 키 밖 칸에 원천 없이 쓰는 체인 쓰기를 같은 칸 행 층이 같은 값으로 말하면 여전히 접힙니다.
+      복사 규칙의 hold 칸은 행 층이 안 써서 해당 없음. 다른 그런 쓰기가 있는지는 다 세지 않았습니다
+알림  접기의 화면 Run 은 스케줄러(run_auto_update)가 돌립니다(CHAIN_OWNED_RETROACTIVE_OPS = chain_replay 뿐).
+      b566b48ae 절의 재기동 줄 «체인 워커 · 서버»에 스케줄러가 빠져 있었음 — 일요일 표 ① 은 넷 다 재기동이라 그 표에선 영향 없음. 새 절엔 «서버 · 스케줄러»로 적음
+응용께 — 일요일 판 다시: ①c «공식 표 deleted 369» 와 ⑦ «알려진 것 (b566b48ae 뒤)» 줄이 이 착지로 낡습니다
+```
