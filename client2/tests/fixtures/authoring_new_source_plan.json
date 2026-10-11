@@ -1,0 +1,388 @@
+{
+ "captured_by": "client2/tests/fixtures/capture_authoring_new_source_plan.py",
+ "server_at": "7eaa1bdd6395e0743e44d30baf61f10df389c36f",
+ "base": "bundle.sources.new_source",
+ "raw": {
+  "read": {
+   "identity": [],
+   "order_by": []
+  },
+  "map": {
+   "unit": {}
+  },
+  "bind": {
+   "mappings": {}
+  }
+ },
+ "fields": [
+  {
+   "path": "bundle.sources.new_source.map.implementation_id",
+   "step": "sources",
+   "label": "Mapper implementation",
+   "state": "missing",
+   "tier": "constrained_input",
+   "value": null,
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "declarative-role",
+    "dt-job-role"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "The first one runs on the declaration alone, with no code · New implementation: write mappers/ledger_v2_*.py in /admin/scripts/code · listed after a server restart",
+   "refusals": [
+    {
+     "code": "blank_value",
+     "path": "bundle.sources.new_source.map.implementation_id",
+     "message": "must be a non-blank string"
+    },
+    {
+     "code": "missing_field",
+     "path": "bundle.sources.new_source.map.implementation_id",
+     "message": "field is required"
+    }
+   ],
+   "remaining": true
+  },
+  {
+   "path": "bundle.sources.new_source.map.implementation_version",
+   "step": "sources",
+   "label": "Mapper implementation version",
+   "state": "derived",
+   "tier": "structural",
+   "value": null,
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "implementation_version_from_registered_id",
+    "text": "Filled: picking implementation_id picks the version",
+    "from_paths": [
+     "bundle.sources.new_source.map.implementation_id"
+    ],
+    "from_keys": [
+     "source_plan|new_source"
+    ],
+    "from_value": null
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "unmeasured",
+   "forbidden": [],
+   "note": "",
+   "refusals": [
+    {
+     "code": "invalid_version",
+     "path": "bundle.sources.new_source.map.implementation_version",
+     "message": "must be a positive integer"
+    },
+    {
+     "code": "missing_field",
+     "path": "bundle.sources.new_source.map.implementation_version",
+     "message": "field is required"
+    }
+   ],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.new_source.map.unit.kind",
+   "step": "sources",
+   "label": "Mapper unit",
+   "state": "missing",
+   "tier": "constrained_input",
+   "value": null,
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "event",
+    "group_by",
+    "row"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [
+    {
+     "code": "invalid_mapper",
+     "path": "bundle.sources.new_source.map.unit.kind",
+     "message": "must be one of ['event', 'group_by', 'row']"
+    },
+    {
+     "code": "missing_field",
+     "path": "bundle.sources.new_source.map.unit.kind",
+     "message": "field is required"
+    }
+   ],
+   "remaining": true
+  },
+  {
+   "path": "bundle.sources.new_source.bind.mappings",
+   "step": "sources",
+   "label": "Sentences",
+   "state": "missing",
+   "tier": "constrained_input",
+   "value": [],
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Add one or more sentences with + Mapping below",
+   "refusals": [
+    {
+     "code": "invalid_profile",
+     "path": "bundle.sources.new_source.bind.mappings",
+     "message": "must be a non-empty object keyed by sentence"
+    }
+   ],
+   "remaining": true
+  },
+  {
+   "path": "bundle.sources.new_source.relation",
+   "step": "sources",
+   "label": "relation",
+   "state": "missing",
+   "tier": "constrained_input",
+   "value": null,
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "bonding_inventory",
+    "bonding_log",
+    "bonding_map",
+    "contrast_factor",
+    "contrast_run",
+    "core_usage_map",
+    "core_wafer_map",
+    "defect",
+    "delam_obs",
+    "dt_core_view",
+    "dt_inventory",
+    "dt_job_attribution",
+    "dt_job_rollup",
+    "dt_log",
+    "dt_map",
+    "dt_transfer_log",
+    "entity_comment",
+    "eqp_event",
+    "inspection_run",
+    "inventory_master",
+    "ledger_atom_rows",
+    "ledger_events",
+    "lot_event",
+    "lot_lineage",
+    "lot_slot_wafer",
+    "map_split_registry",
+    "mechanism_edge",
+    "metro",
+    "notation_alias",
+    "process_event",
+    "process_param",
+    "production_plan",
+    "slot_trace_for_bonding",
+    "slot_trace_for_dt",
+    "step_defect_obs",
+    "step_inspection_run",
+    "step_phase",
+    "text_cause_candidate",
+    "text_doc",
+    "text_link_word",
+    "text_name",
+    "valid_die_ref",
+    "void_obs",
+    "wafer_id_status",
+    "wafer_map_metadata",
+    "wafer_process"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Candidates come from table_config.json. Declare a missing one there first.",
+   "refusals": [
+    {
+     "code": "blank_value",
+     "path": "bundle.sources.new_source.relation",
+     "message": "must be a non-blank string"
+    },
+    {
+     "code": "missing_field",
+     "path": "bundle.sources.new_source.relation",
+     "message": "field is required"
+    }
+   ],
+   "remaining": true
+  },
+  {
+   "path": "bundle.sources.new_source.read.unit",
+   "step": "sources",
+   "label": "Unit",
+   "state": "derived",
+   "tier": "constrained_input",
+   "value": "row",
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "read_default",
+    "text": "Default: \"row\"",
+    "from_paths": [
+     "bundle.sources.new_source.read"
+    ],
+    "from_keys": [
+     "source_plan|new_source"
+    ],
+    "from_value": "row"
+   },
+   "candidates": [
+    "group",
+    "row"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "default_overridable",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.new_source.read.identity",
+   "step": "sources",
+   "label": "identity",
+   "state": "missing",
+   "tier": "constrained_input",
+   "value": [],
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [],
+   "universe": "RELATION",
+   "universe_note": "Table columns",
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [
+    {
+     "code": "invalid_type",
+     "path": "bundle.sources.new_source.read.identity",
+     "message": "must be a list with at least one item"
+    }
+   ],
+   "remaining": true
+  },
+  {
+   "path": "bundle.sources.new_source.read.occurred_at",
+   "step": "sources",
+   "label": "Time",
+   "state": "derived",
+   "tier": "constrained_input",
+   "value": {
+    "basis": "ingested"
+   },
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "occurred_at_candidates_from_column_types",
+    "text": "Candidates: 0 columns of None readable as a time + basis",
+    "from_paths": [
+     "table_config.json:None"
+    ],
+    "from_keys": [],
+    "from_value": []
+   },
+   "candidates": [
+    {
+     "basis": "ingested"
+    }
+   ],
+   "universe": "RELATION",
+   "universe_note": "Table columns",
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "default_overridable",
+   "forbidden": [],
+   "note": "Default: row time (ingested · created_at)",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.new_source.read.occurred_at.timezone",
+   "step": "sources",
+   "label": "Time zone",
+   "state": "unanswered",
+   "tier": "constrained_input",
+   "value": null,
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "Asia/Seoul"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Only for a time column",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.new_source.read.exclude_when",
+   "step": "sources",
+   "label": "Exclude when",
+   "state": "unanswered",
+   "tier": "constrained_input",
+   "value": null,
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [],
+   "universe": "RELATION",
+   "universe_note": "Table columns",
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  }
+ ]
+}

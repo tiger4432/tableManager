@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-10-11 · 선언 폼: 접힌 줄도 계획 note 를 보입니다 · 새로 만들기가 «스냅숏이 바뀜»으로 거절되면 «Reload and try again»
+
+- **무엇** — 총괄 10-11 «선언 폼 작은 둘». ① 계획이 단 note(«Default: row time (ingested · created_at)» · «Only for a time column» 같은 한 줄)를 접힌 줄에서도 보입니다. 접힌 값 밑에 한 줄로, 접힌 RECORD 는 그 줄 오른쪽에. 펴면 그 줄 자신의 카드가 보이고, 같은 note 가 두 번 나오지 않습니다. ② + New 의 Create 가 «active snapshot changed before draft creation»(409 stale_base_snapshot)으로 거절되면 그 문장 옆에 «Reload and try again» 단추가 섭니다. 누르면 화면을 다시 읽고 같은 Create 를 한 번 다시 보냅니다. 그것도 거절되면 서버 문장이 그대로 남고, 저절로 다시 보내지는 않습니다.
+- **어디서** — 원장 선언 창(어드민 › 온톨로지 탐색기)의 새 소스 폼: 방금 + New 로 만든 소스를 열면 Time 줄에 기본값 note 가 보이고, Time 을 펴면 Time zone 줄에 «Only for a time column» 이 보입니다.
+- **안 바뀐 것** — 이미 있는 선언을 고치는 저장이 409 를 받으면 지금처럼 문장만 토스트로 뜹니다. 남이 바꾼 것을 덮을 수 있어서 이 단추를 달지 않았습니다.
+- **필요한 조건** — 클라 빌드만.
+- **자세히** — 이 항목과 같은 커밋.
+
 ## 2026-10-11 · 걷기 표 W 1: Wide | Long, 열 묶음, 화살표 열 이름, Route 열 은퇴
 
 - **무엇** — 총괄 W 1 조각(시안 2판 B-ㄱ). 구역마다 도구줄 한 줄: Wide | Long · Table | Trend · Columns · Copy · All rows | Differs | Missing. 이어 걷기(Walk on from checked ▸)는 구역 맨 아래 한 줄.

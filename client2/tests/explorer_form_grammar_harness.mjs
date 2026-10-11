@@ -29,6 +29,10 @@ const PLAN = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'authoring_inhe
 // A derived row the server grounds, with a value that is not a mapping: the ordinary folded one-liner.
 const GROUNDED = PLAN.fields.find((row) => row.state === 'derived' && row.ground && row.ground.text
   && (typeof row.value !== 'object' || Array.isArray(row.value)));
+// The form a source just made with + New draws (lead 10-11 ①): the server's plan for the empty source drafts/new seeds.
+const NEW = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'authoring_new_source_plan.json'), 'utf8'));
+const TIME = NEW.fields.find((row) => row.path === `${NEW.base}.read.occurred_at`);
+const ZONE = NEW.fields.find((row) => row.path === `${NEW.base}.read.occurred_at.timezone`);
 
 const SKELETON = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'authoring_skeleton.json'), 'utf8'));
 const SAMPLE = JSON.parse(readFileSync(
@@ -48,14 +52,14 @@ let gatedFields = 0;
 const LEAF = PLAN.fields.find((row) => row.path === `${PLAN.base}.relation`);
 // Every branch open; every field folded by the rule (field folds are keyed by the plan's path).
 const ALL_OPEN_BRANCHES = new Proxy({}, { get: (_t, k) => (String(k).startsWith('bundle.') ? undefined : true) });
-const liveContext = (view, expanded) => ({
+const liveContext = (view, expanded, plan = PLAN) => ({
   schema: { skeleton: SKELETON.skeleton, authorable_kinds: SKELETON.authorable_kinds }, readOnly: false,
-  planRow: (p) => PLAN.fields.find((row) => row.path === `${PLAN.base}${p ? '.' + p : ''}`) || null,
+  planRow: (p) => plan.fields.find((row) => row.path === `${plan.base}${p ? '.' + p : ''}`) || null,
   plannedMembers: () => [], covering: () => null,
   deref: (item) => (item && item.use ? (SKELETON.skeleton.defs || {})[item.use] : item), declared: () => [],
   rolesNear: () => [], usedElsewhere: () => [],
   renderRow: (row, node, bare = false) => view.renderAuthoringRow(row, expanded, null, bare, null),
-  suggest: (row) => row, hot: [], expanded, absolute: (p) => `${PLAN.base}.${p}`, planLoaded: true,
+  suggest: (row) => row, hot: [], expanded, absolute: (p) => `${plan.base}.${p}`, planLoaded: true,
 });
 
 globalThis.document = makeDoc('light');
@@ -172,6 +176,31 @@ function suite(view, css, skel) {
   eq('W8 the predicate the form asks (the one blank rule of the screen): an empty list, a blank string or a list of blanks holds nothing, a list or 0 holds a value',
     ['[]', '"  "', '[""]', '["lot"]', '0'].map((v) => skel.fieldApplies(field, { unit: 'row' }, JSON.parse(v))).join('|'),
     'false|false|false|true|true');
+
+  console.log('\n-- N. a folded row says its plan\'s note (lead 10-11 ①) --');
+  ok('N0 the new source\'s plan has a Time and a zone with notes, folded by the rule: Derived, one candidate (else the rest proves nothing)',
+    Boolean(TIME && TIME.note && ZONE && ZONE.note) && TIME.state === 'derived' && (ZONE.candidates || []).length === 1,
+    JSON.stringify([TIME && TIME.state, ZONE && ZONE.candidates]));
+  const newForm = (expanded) => view.renderSkeletonForm(liveContext(view, expanded, NEW),
+    declarationShape(SKELETON.skeleton, SECTION), '', NEW.raw, 0, 'new_source');
+  const noted = (tree) => [TIME, ZONE].map((row) => walk(tree).filter((n) => cls(n, 'oe-field-note') && n.textContent === row.note).length).join('|');
+  eq('N1 opened as made, the shut Time says its default on its own line, once (the zone is behind it)', noted(newForm({})), '1|0');
+  eq('N2 Time opened, its folded row says the default and the folded zone when it is asked, each once',
+    noted(newForm({ 'read.occurred_at': true })), '1|1');
+  eq('N3 under a folded value the note takes a line of its own',
+    decl(rule(css, '#ontology-explorer-root .oe-field.is-bare.is-folded > .oe-field-note'), 'flex-basis'), '100%');
+
+  console.log('\n-- K. a create refused for a moved snapshot says its next move (lead 10-11 ②) --');
+  const naming = (code) => view.renderNewDeclaration({ newDeclaration: { kind: 'source_plan', id: 'zz', error: 'refused', code } }, 'source_plan');
+  const retries = (tree) => walk(tree).filter((n) => n.dataset && n.dataset.action === 'reload-and-create');
+  const stale = naming('stale_base_snapshot');
+  const staleLine = walk(stale).find((n) => cls(n, 'oe-error'));
+  eq('K6 «Reload and try again» is on the stale refusal\'s own line for the kind being made, and on no other refusal',
+    `${retries(stale).map((b) => `${b.textContent}|${b.dataset.value}|${Boolean(staleLine && staleLine.children.includes(b))}`).join(',')}`
+      + `|${retries(naming('declaration_exists')).length}`, 'Reload and try again|source_plan|true|0');
+  eq('K7 the button takes the refusal\'s ink and stands apart from its sentence',
+    `${decl(rule(css, '#ontology-explorer-root .oe-error > .oe-new-retry'), 'color')}|`
+      + `${decl(rule(css, '#ontology-explorer-root .oe-new-declaration .oe-error'), 'gap')}`, 'inherit|var(--space-2)');
   return { ran, failed: failedList.slice() };
 }
 
@@ -183,7 +212,7 @@ const loadFrom = async (file, mutate, expose) => {
   const got = await loadWithProbe(file, { ...(mutate ? { mutate } : {}), ...(expose ? { expose } : {}) });
   return { ...got.module, ...got.probe };
 };
-const load = (mutate) => loadFrom(VIEW, mutate, ['renderDeclarationMap']);
+const load = (mutate) => loadFrom(VIEW, mutate, ['renderDeclarationMap', 'renderNewDeclaration']);
 
 const MUTANTS = [
   { name: 'the-bare-card-stacks-again', catches: ['L1'], file: CSS,
@@ -236,6 +265,21 @@ const MUTANTS = [
     from: '  if (!isBlank(held)) return true;', to: '  if (held !== undefined) return true;' },
   { name: 'the-form-skips-the-gate', catches: ['W6'], file: VIEW,
     from: '    if (!fieldApplies(field, held, current)) continue;\n', to: '\n' },
+  { name: 'the-folded-line-drops-its-note', catches: ['N2'], file: VIEW,
+    from: "    card.append(line);\n    if (row.note) card.append(noteOf(row));\n", to: "    card.append(line);\n" },
+  { name: 'the-shut-branch-drops-its-note', catches: ['N1'], file: VIEW,
+    from: ": shut && shut.note ? noteOf(shut) : null, toggle,", to: ": null, toggle," },
+  { name: 'the-open-branch-says-its-note-twice', catches: ['N2'], file: VIEW,
+    from: '    const shut = !open && !own ? context.planRow(path) : null;', to: '    const shut = !own ? context.planRow(path) : null;' },
+  { name: 'the-note-beside-the-value', catches: ['N3'], file: CSS,
+    from: '.oe-field.is-bare.is-folded > .oe-field-note { flex-basis: 100%; }', to: '.oe-field.is-bare.is-folded > .oe-field-note { }' },
+  { name: 'the-retry-on-every-refusal', catches: ['K6'], file: VIEW,
+    from: "    if (state.newDeclaration.code === 'stale_base_snapshot') {", to: '    if (true) {' },
+  { name: 'the-retry-off-the-line', catches: ['K6'], file: VIEW,
+    from: "      refusal.append(button('Reload and try again', 'reload-and-create', kind, 'oe-new-retry'));",
+    to: "      box.append(button('Reload and try again', 'reload-and-create', kind, 'oe-new-retry'));" },
+  { name: 'the-retry-in-the-line-ink', catches: ['K7'], file: CSS,
+    from: '.oe-error > .oe-new-retry { color: inherit;', to: '.oe-error > .oe-new-retry { color: var(--oe-text);' },
   { name: 'the-ground-rides-the-folded-line', catches: ['L3'], file: VIEW,
     from: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n",
     to: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n    if (row.ground?.text) line.append(h('small', 'oe-folded-ground', row.ground.text));\n" },
