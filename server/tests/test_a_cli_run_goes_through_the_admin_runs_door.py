@@ -346,3 +346,35 @@ def test_the_withdrawal_fold_previews_then_folds_as_a_run(retro_env, capsys):
     assert [len(p.get("row_ids") or ()) for p in withdrawal_events()] == [3]
     assert retro_env.query(models.RetroactiveRun).filter(
         models.RetroactiveRun.op == "fold_withdrawal_events").one().state == retroactive.RUN_DONE
+
+
+def test_the_cli_names_its_process_as_the_queues_child_does(tmp_path):
+    """bb4d53e9e: the CLI's connections were `assy_chain` - `chain.ingestion_worker` binds "Chain" when imported, the
+    first binding wins - and a restarting chain worker's startup cleanup ended them as its own; the run died at its
+    next page. The script's entry names the process "Retroactive" first, as `admin/retroactive_run.py` does: its
+    connections are `assy_retroactive` and its lines go to retroactive.log. Run as the operator runs it, `__main__`."""
+    import os
+    import subprocess
+    import sys
+
+    server = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "table_config.json").write_text(json.dumps({
+        "cn_left": {"business_key": "log_key", "column_types": {"log_key": "string", "job": "string", "lot": "string"}},
+        "cn_right": {"business_key": "job", "column_types": {"job": "string", "lot": "string"}}}), encoding="utf-8")
+    (tmp_path / "config" / "chain_rules.json").write_text(json.dumps({"rules": [{
+        "name": "cn_join", "enabled": True, "on": {"table": "cn_right"}, "into": {"table": "cn_left"},
+        "derive": {"kind": "join", "join": {"on": [{"left": "job", "right": "job"}],
+                                            "take": [{"from": "lot", "into": "lot"}]}}}]}), encoding="utf-8")
+    code = ("import runpy, sys\n"
+            "sys.argv = ['scripts/chain_replay_cli.py', 'list']\n"
+            "try:\n    runpy.run_path(sys.argv[0], run_name='__main__')\nexcept SystemExit:\n    pass\n"
+            "from database.database import connection_name\nprint('NAME ' + connection_name())\n")
+    env = dict(os.environ, ASSY_DATA_ROOT=str(tmp_path), DATABASE_URL="sqlite:///" + str(tmp_path / "unused.db"),
+               PYTHONIOENCODING="utf-8")
+    done = subprocess.run([sys.executable, "-c", code], cwd=server, env=env, capture_output=True, text=True,
+                          encoding="utf-8", timeout=180)
+    assert "cn_join" in done.stdout, "CANARY: the rules were read, so the chain module was imported\n" + done.stderr
+    assert done.stdout.splitlines()[-1] == "NAME assy_retroactive", done.stdout
+    assert "[ChainRules]" in (tmp_path / "retroactive.log").read_text(encoding="utf-8")
+    assert not (tmp_path / "chain_worker.log").exists()
