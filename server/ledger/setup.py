@@ -550,6 +550,28 @@ def dry_run_report(setup: LedgerSetup) -> Mapping[str, Any]:
     })
 
 
+def declared_value_type(setup: "LedgerSetup", source_id: str, name: str):
+    """The table_config type of the column `source_id` reads `name` from - a qualifier role of that name, or an
+    attribute of that name on an entity role, in any of its sentences (총괄 2d6a0fd58: the walk says a value is an
+    image from the declaration, never from the value's shape). None when the source binds no column to the name (a
+    code mapper's qualifier), binds columns of more than one type to it, or is not declared."""
+    import map_overlay
+
+    plan = setup.snapshot.source_plans.get(source_id)
+    if plan is None or plan.profile is None:
+        return None
+    columns = set()
+    for mapping in plan.profile.mappings.values():
+        for role, binding in mapping.bindings.items():
+            if not isinstance(binding, Mapping):
+                continue
+            bound = binding if role == name else (binding.get("attributes") or {}).get(name)
+            if isinstance(bound, Mapping) and bound.get("kind") == "column" and bound.get("column"):
+                columns.add(bound["column"])
+    types = {map_overlay.declared_column_type(plan.relation, column) for column in columns}
+    return types.pop() if len(types) == 1 else None
+
+
 def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:
     """The ONE spelling of "may this source run": declared, and not retired.
 

@@ -30,6 +30,7 @@ import base64
 import contextvars
 import bisect
 import json
+import logging
 import re
 import uuid
 from collections import defaultdict, deque
@@ -386,6 +387,54 @@ def _newest_records(said):
     whatever order they were fetched in."""
     ordered = sorted(said, key=lambda each: (each[0] is not None, each[0], each[1] is not None, each[1]), reverse=True)
     return [each[2] for each in ordered[:RECORDS_PER_FACT]], max(0, len(ordered) - RECORDS_PER_FACT)
+
+
+def _say_image_values(nodes, edges):
+    """Each value the ledger read from a column typed `image` says so (총괄 2d6a0fd58 ㄱ): `column_type` on a node
+    name's record and per-world value, `column_types` {qualifier: "image"} on an edge record and on the edge itself.
+    The answer is the declaration's - the value's source, the column it binds that name to, that column's
+    table_config type (`ledger.setup.declared_value_type`) - never the value's shape; any other type adds no cell,
+    so an answer with no image is the bytes it was."""
+    import image_sources
+
+    setups, said = {}, {}
+
+    def image(world, source, name):
+        key = (world, source, name)
+        if key not in said:
+            if world not in setups:
+                try:
+                    from chain.ingestion_worker import _compiled_setup
+                    setups[world] = _compiled_setup(world)
+                except Exception as exc:                          # noqa: BLE001 - what goes quiet is said
+                    logging.getLogger(__name__).warning(
+                        "[walk] image values not said for world %s - its declaration could not be compiled: %s",
+                        world or "(operating)", exc)
+                    setups[world] = None
+            from ledger.setup import declared_value_type
+            said[key] = setups[world] is not None and declared_value_type(
+                setups[world], source, name) == image_sources.COLUMN_TYPE
+        return said[key]
+
+    def mark(record, world):
+        names = [name for name in (record.get("qualifiers") or {}) if image(world, record.get("source_who"), name)]
+        if names:
+            record["column_types"] = {name: image_sources.COLUMN_TYPE for name in names}
+
+    for node in nodes:
+        for name, records in (node.get("records") or {}).items():
+            for record in records:
+                if image(record.get("world"), record.get("source_who"), name):
+                    record["column_type"] = image_sources.COLUMN_TYPE
+        for name, values in (node.get("attributes_by_world") or {}).items():
+            for value in values:
+                if image(value.get("world"), value.get("source_who"), name):
+                    value["column_type"] = image_sources.COLUMN_TYPE
+    for edge in edges:
+        for record in edge.get("records") or ():
+            mark(record, record.get("world"))
+        mark(edge, next((each.get("world") for each in edge.get("by_world") or ()
+                         if each.get("claim_id") == edge.get("claim_id")), None))
 
 
 def decode_node_id(value):
@@ -2069,6 +2118,7 @@ def _time_page(seed_id, lookup, page, *, direction, follow, cardinalities=None):
         if far_id not in nodes:
             nodes[far_id] = node(*far, 1)
         edges.append(_claim_edge(atom, subject_id, target_id, atom.predicate, cardinalities))
+    _say_image_values((), edges)
     return {
         "state": "ready" if edges else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -2771,6 +2821,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                          if _bare_name(item.get("type")) in wanted]
     for edge_id, edge in edges.items():
         edge["records"], edge["records_more"] = _newest_records(edge_records[edge_id].values())
+    _say_image_values(nodes.values(), edges.values())
     ordered_edges = sorted(edges.values(), key=lambda item: (
         min(depths[item["source"]], depths[item["target"]]),
         item["predicate"], item["id"]))
