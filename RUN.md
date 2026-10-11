@@ -250,7 +250,7 @@
 >
 > ---
 >
-> ## [10-11] **decide 가 사람 칸 없이 선다 — fields 가 비면 aggregations 로 (총괄 ㄴ, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+> ## [10-11] **decide 가 사람 칸 없이 선다 — fields 가 비면 aggregations 로 (총괄 ㄴ, 착지 da6c523e1) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
 > 적는 곳      chain_rules.json 의 derive.decide — "fields": [] (또는 안 적음) + "aggregations": {"<칸>": "count"}

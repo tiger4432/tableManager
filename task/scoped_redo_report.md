@@ -79450,3 +79450,45 @@ fold-units 소급 탭 문장 a88909467 — downstream_note 에 «끝 철회는 �
   RED the seat picks one of two types (hash seed 1) — 1 failed, 4 deselected
   RED the seat picks one of two types (hash seed 2) — 1 failed, 4 deselected
 ```
+
+## [10-11] «목록 중 하나인가» 접기 착지 e32731bd5 · 사람 칸 없는 decide 착지 da6c523e1 (총괄 ㄴ)
+
+```
+e32731bd5  text_links.one_of(answer, listed) -> (kept, unlisted) 하나를 ask_links 방향 · dictionary_suggest 새 노드 타입이 부름
+           경고 줄 두 문장은 그대로. 두 LLM 시험 파일 그대로 초록
+           BASE 115 passed
+           RED one_of keeps the answer's spaces - 2 failed, 113 passed
+             test_a_link_carries_the_direction_each_side_moves[trimmed-and-blank]
+             test_a_new_node_takes_a_listed_type_as_written_and_a_node_answer_keeps_the_dictionarys
+           AFTER 115 passed
+
+da6c523e1  decide 의 fields 가 비거나 없으면 aggregations 가 있어야 선다 — 키마다 행 하나에 키와 집계만
+           queue 술어 or_(false(), …) — 빈 or_() 는 모든 행이라 사람 칸 없는 규칙의 행이 전부 워크리스트에 뜰 뻔함
+           새 칸 파일(SQLite, 진짜 확장기 · 체인 그룹 몸통) 변이 셋:
+             BASE 5 passed
+             RED no fields is refused as before - 5 failed · test_a_fields_less_rule_queues_nothing, test_a_row_per_key_with_its_count, test_no_fields_and_no_aggregations_is_refused_by_name, test_no_fields_with_aggregations_stands[empty], test_no_fields_with_aggregations_stands[unwritten]
+             RED no fields stands without aggregations too - 1 failed, 4 passed · test_no_fields_and_no_aggregations_is_refused_by_name
+             RED the queue of a fields-less rule is an empty or_ - 1 failed, 4 passed · test_a_fields_less_rule_queues_nothing
+             AFTER 5 passed
+           옛 규칙을 박은 칸 test_enrichment «no_target»(aggregations 든 기본 규칙에 fields []) -> fields [] · aggregations {}
+           그 칸의 변이:
+             RED no fields stands without aggregations too - 1 failed, 30 passed, 1 skipped · test_loader_missing_required_fields_skipped
+           관련 파일 게이트(깨끗한 e32731bd5 대조):
+             files 195
+             wt-llm:   14 failed, 3472 passed, 14 skipped, 86 deselected, 1 error in 589.55s (0:09:49)
+             wt-check: 13 failed, 3468 passed, 14 skipped, 86 deselected, 1 error in 551.78s (0:09:11)
+             new (only in wt-llm): 1
+             FAILED tests\test_enrichment.py::test_loader_missing_required_fields_skipped
+             gone (only in wt-check): 0
+           PG:
+             pg files 13
+             FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+             FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+             FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+             3 failed, 83 passed, 112 deselected in 132.13s (0:02:12)
+             위 PG 빨강 셋은 깨끗한 바탕에서도 빨강(파일 단위로 다시 돌림)
+             public relations 325 -> 325 · added [] · gone [] · rows changed {}
+             public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+
+멈춘 것    ㄱ(웨이퍼 단위 본딩 엣지 선언) — 소유자 판정으로 멈춤. 트리 파일 0 · 박스 읽기 전용 수만 재서 총괄께 메시지로 드림
+```
