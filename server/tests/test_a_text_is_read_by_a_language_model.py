@@ -11,8 +11,12 @@ file's cells reach the client, not what the real client sends.
   answer names a listed identifier     type and key of that node, whatever its words
   answer names an unlisted identifier  type and key empty, *_phrase kept, one warning line
   one key under two types              <type>:<key> in the list; the bare key is unlisted
-  identifier null, words a phrase      key from the dictionary (`_named`)
+  identifier null, words a phrase      key from the dictionary (`phrase_bag`)
   identifier null, other words         type and key empty, *_phrase kept
+  identifier in another case           unlisted - compared as written (총괄 6e251ed32)
+  direction up / down / null           kept as written, spaces trimmed · a blank is null
+  direction anything else              None, one warning line · find_links rows: None
+  dir                                  both said: same "+" · different "-" · a side None: None
   evidence the text does not hold      that link dropped, one warning line · every link: refused by name
   evidence over two sentences          found, the sentence it starts in
   quote marks · ellipsis               ignored on both sides; a changed word or only marks is dropped
@@ -330,6 +334,68 @@ def test_a_null_identifier_gives_the_node_of_the_phrase_its_words_are(answer, ca
     assert _dropped_lines(caplog) == []
 
 
+def test_an_identifier_is_compared_as_written(answer, caplog):
+    """«q123» is not «Q123» - left open at 6e251ed32. Not even when the words are a phrase."""
+    answer(_links({"cause": "본딩 온도", "cause_key": "f1", "effect": "계면 미충진", "effect_key": "q123",
+                   "evidence": KO_EVIDENCE}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(KO_TEXT, KO_NAMES)
+    assert (row["cause_type"], row["cause_key"], row["phenomenon_type"], row["phenomenon_key"]) == (
+        None, None, None, None)
+    assert [line.split(", which")[0] for line in _dropped_lines(caplog)] == [
+        "[LLM] link 1 of 1 answers cause_key 'f1'", "[LLM] link 1 of 1 answers effect_key 'q123'"]
+
+
+DIRECTION_TEXT = ("본딩 온도가 올라가서 보이드가 늘었다. 본딩 압력이 낮아져 보이드가 늘었다. 습도 때문에 보이드가 생겼다."
+                  " 본딩 압력이 낮아져 보이드가 줄었다. 본딩 온도가 올라가서 보이드가 줄었다. 습도 때문에 보이드가 늘었다.")
+
+
+@pytest.mark.parametrize("said,evidence,expected", [
+    ({"cause_direction": "up", "effect_direction": "up"}, "본딩 온도가 올라가서 보이드가 늘었다.", ("up", "up", "+")),
+    ({"cause_direction": "down", "effect_direction": "down"}, "본딩 압력이 낮아져 보이드가 줄었다.", ("down", "down", "+")),
+    ({"cause_direction": "up", "effect_direction": "down"}, "본딩 온도가 올라가서 보이드가 줄었다.", ("up", "down", "-")),
+    ({"cause_direction": "down", "effect_direction": "up"}, "본딩 압력이 낮아져 보이드가 늘었다.", ("down", "up", "-")),
+    ({"cause_direction": None, "effect_direction": "up"}, "습도 때문에 보이드가 늘었다.", (None, "up", None)),
+    ({"cause_direction": None, "effect_direction": None}, "습도 때문에 보이드가 생겼다.", (None, None, None)),
+    ({}, "습도 때문에 보이드가 생겼다.", (None, None, None)),
+    ({"cause_direction": " down ", "effect_direction": "  "}, "본딩 압력이 낮아져 보이드가 늘었다.", ("down", None, None)),
+], ids=["ko-up-up", "ko-down-down", "ko-up-down", "ko-down-up", "ko-null-up", "ko-null-null", "missing",
+        "trimmed-and-blank"])
+def test_a_link_carries_the_direction_each_side_moves(answer, caplog, said, evidence, expected):
+    """소유자 10-11 「여기 모델링에 증감 방향은 없네」 · dir «같이 움직이나 / 반대로»."""
+    answer(_links({"cause": "본딩 온도", "effect": "보이드", "evidence": evidence, **said}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(DIRECTION_TEXT, KO_NAMES)
+    assert (row["cause_direction"], row["phenomenon_direction"], row["dir"]) == expected
+    assert _dropped_lines(caplog) == []
+
+
+@pytest.mark.parametrize("side,value", [
+    ("cause", "Up"), ("cause", "상승"), ("cause", 1), ("effect", "decreases"), ("effect", True),
+], ids=["case", "ko-word", "number", "other-word", "bool"])
+def test_a_direction_not_up_or_down_is_none_and_said(answer, caplog, side, value):
+    answer(_links({"cause": "본딩 온도", "cause_direction": "down", "effect": "보이드",
+                   "effect_direction": "up", side + "_direction": value,
+                   "evidence": "본딩 압력이 낮아져 보이드가 늘었다."}))
+    caplog.set_level(logging.WARNING)
+    (row,) = text_links.ask_links(DIRECTION_TEXT, KO_NAMES)
+    assert (row["cause_direction"], row["phenomenon_direction"], row["dir"]) == (
+        (None, "up", None) if side == "cause" else ("down", None, None))
+    assert _dropped_lines(caplog) == [
+        "[LLM] link 1 of 1 answers %s_direction %r, which is not up or down - kept without it"
+        " (llm:m-1): %r" % (side, value, "본딩 온도" if side == "cause" else "보이드")]
+
+
+def test_the_prompt_asks_each_side_for_its_direction(answer):
+    asked = answer(_links())
+    text_links.ask_links(KO_TEXT, KO_NAMES)
+    lines = _prompt(asked).splitlines()
+    shape = json.loads(next(line for line in lines if line.startswith('{"links"')))
+    assert {"cause_direction", "effect_direction"} <= set(shape["links"][0])
+    assert ('- cause_direction, effect_direction: "up" when the text says that thing increases, rises or'
+            ' grows, "down" when it says it decreases, falls or shrinks, null when it says neither') in lines
+
+
 def test_a_key_two_types_share_is_listed_and_answered_with_its_type(answer, caplog):
     names = [{"node_type": "quantity", "node_key": "K1", "phrase": "본딩 온도"},
              {"node_type": "defect_kind", "node_key": "K1", "phrase": "보이드"},
@@ -507,6 +573,7 @@ def test_find_links_rows_say_rules_and_their_sentence():
     (row,) = text_links.find_links("The bond temperature caused a void.", NAMES, [
         {"phrase": "caused", "meaning": "cause", "side": "before"}])
     assert (row["extractor"], row["evidence"]) == ("rules", row["sentence"])
+    assert (row["cause_direction"], row["phenomenon_direction"], row["dir"]) == (None, None, None)
 
 
 def test_the_mapper_door_reaches_the_same_functions():

@@ -1513,7 +1513,8 @@ def _in_rule_order(table_updates):
     """Each table's write batches in rule order. 🔴 「같은 표 같은 칸이면 규칙 순서로 마지막이
     이김」 holds on every row: the cells before a marker (earlier rules and the first page) are
     one batch, each further page is its own batch - asked only when the one before it has been
-    written - and the cells after the marker come after the last page."""
+    written - and the cells after the marker come after the last page. A page's batch carries its
+    page line, for the write stage's beat (총괄 59f2ab3f4)."""
     for target, items in table_updates.items():
         batch = []
         for item in items:
@@ -1525,7 +1526,7 @@ def _in_rule_order(table_updates):
             logger.info("[Chain] %s", said)
             heartbeat.progress("mapper · %s" % said)
             if batch:
-                yield (target, batch, False, None, None)
+                yield (target, batch, False, None, None, said)
             batch = []
             more, page, written = item.more, 1, item.first
             while more is not None:
@@ -1544,9 +1545,9 @@ def _in_rule_order(table_updates):
                 heartbeat.progress("mapper · %s" % said)
                 more = result.get("next_page")
                 if updates:
-                    yield (target, updates, False, None, None)
+                    yield (target, updates, False, None, None, said)
         if batch:
-            yield (target, batch, False, None, None)
+            yield (target, batch, False, None, None, None)
 
 
 def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
@@ -1623,16 +1624,16 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             write_batches = []
             if map_metadata_updates:
                 write_batches.append((map_meta_registrar.META_TABLE,
-                                      map_metadata_updates, False, None, None))
+                                      map_metadata_updates, False, None, None, None))
             # `retract` batches carry replace_map=False: the removal happens AFTER the
             # write, against what the write actually keyed. A purge cannot be scoped to
             # one source, so there is nothing for the write path to do up front.
-            scoped = [(target, updates, scope is not None, scope, retract)
+            scoped = [(target, updates, scope is not None, scope, retract, None)
                       for target, updates, scope, retract in scoped_batches]
             written = defaultdict(list)    # target -> the items its batches wrote, keys composed
             # The tables are read LAZILY: a paging proposal's next page is asked only after
             # the page before it was written and committed (총괄 e10c58e5e).
-            for target_table, updates_list, replace_map, scope, retract in itertools.chain(
+            for target_table, updates_list, replace_map, scope, retract, page_said in itertools.chain(
                     write_batches, _in_rule_order(table_updates), scoped):
                 writing = target_table          # the target a failure below is about
                 batch_data = schemas.GeneralUpdateBatch(
@@ -1714,7 +1715,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # Per TABLE, because a group writing several targets has to be able to
                 # say WHICH one it waited on - one number for "the writes" would leave the
                 # next question unanswerable without another round of measuring.
-                with (alignment_batch_counts.stage("write:%s" % target_table),
+                with (alignment_batch_counts.stage("write:%s" % target_table, said=page_said),
                       outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED),
                       written_by((declarations_by_target or {}).get(target_table, ()))):
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
@@ -2515,7 +2516,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
             # (총괄 19f6a9277 ㉮ ㄱ). The wait is this claim's stage, so the queue list says it,
             # and its backend a fact, so a pause cancels the wait too.
             with table_locks.hold(db, _group_target_tables(events, rules) | _group_read_tables(events, rules),
-                                  on_wait=_waiting_for_a_table):
+                                  on_wait=_waiting_for_a_table, on_held=_holding_the_tables):
                 answer = _process_chain_transaction_group_sync(tx_id, events, db, rules)
         except Exception as exc:                            # noqa: BLE001
             # A stop the pause made - its stage boundary, or the query it cancelled - comes
@@ -2531,9 +2532,18 @@ def _claimed_group_sync(tx_id, events, db, rules):
 
 
 def _waiting_for_a_table(table, pid):
-    # the stage first: the changed pid writes the beat at once, and the queue reads the stage there
+    # the stage, its pid, and the beat written now - the queue reads the stage there. Not left to a changed pid: the
+    # next table's wait keeps it, and the beat said the first table through it (총괄 59f2ab3f4)
     heartbeat.progress(table_locks.WAITING_FOR + table)
     heartbeat.note_work(lock_db_pid=pid)
+    heartbeat.beat(GROUP_BEAT, note=_worker_note(), force=True)
+
+
+def _holding_the_tables(tables):
+    # the way out of the wait - «waiting for» stayed on the beat after the lock was got (총괄 59f2ab3f4); the pid
+    # leaving writes the beat at once
+    heartbeat.progress(table_locks.HOLDING + ", ".join(tables))
+    heartbeat.note_work(lock_db_pid=None)
 
 
 #: A cancelled statement, by the driver's class name - the server's own words are its locale's.

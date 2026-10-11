@@ -124,7 +124,7 @@ def _report_fold_units(s):
         f"  rows to mark              : {s['rows_to_mark']}",
         f"    shown value stays       : {s['rows_higher_layer']}  (a higher layer holds the column)",
         f"  rows marked so already    : {s['rows_already_marked']}",
-        f"  old marks {'withdrawn' if apply else 'to withdraw'}     : "
+        f"  {'old marks withdrawn' if apply else 'old marks to withdraw':<26}: "
         f"{'not run' if s['marks_withdrawn'] is None else s['marks_withdrawn']}  (a unit that now wins, a row that moved)",
     ]
     if s["rows_gone"] or s["rows_refused"] or s["version_gate"]:

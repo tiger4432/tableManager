@@ -272,6 +272,12 @@ CANCEL_REASON = "cancel_reason"
 QUEUE_ROW_KEY_PREFIX = "outbox#"
 
 
+def queue_line_tx(key):
+    """A queue line's transaction as the queue says it, for a line that is not a retroactive job: its
+    transaction, or «(no tx · outbox#<id>)» for a one-row line - the queue list and the running seat."""
+    return "(no tx · %s)" % key if str(key).startswith(QUEUE_ROW_KEY_PREFIX) else key
+
+
 def queue_line_key(outbox):
     """The SQL of a chain queue line's key: the retroactive run its rows carry, else their
     transaction, else the row itself (총괄 b3a4334db). ONE expression - the queue list, its ×

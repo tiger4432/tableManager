@@ -9,11 +9,14 @@ own type's.
   type the role does not admit            that molecule refused (type_not_admitted), others land
   type cell empty                         no_identity
   confirm cell empty (exclude_when)       no atom - not this source's row
+  optional qualifier cell empty           that atom without it, the other rows keep theirs (총괄 10-11)
+  required qualifier cell empty           missing_binding_value, as before
   load: a type's key unbound · a key no type has · attributes · a code mapper · register
         without a probe                   refused by name
 
 The SHIPPED sample (entities, `leads_to`) and catalog, plus one candidates relation - the
-physical half written here, the way a deployment's own table_config would carry it.
+physical half written here, the way a deployment's own table_config would carry it. The rows
+reach the ledger through `backfill._v2_frame`, the frame the database fetch builds.
 """
 import copy
 import json
@@ -25,9 +28,9 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger.backfill import prepare_v2_cursor_batch                          # noqa: E402
+from ledger.backfill import _v2_frame, prepare_v2_cursor_batch               # noqa: E402
 from ledger.implementations import role_mapper_registry, trusted_implementations  # noqa: E402
-from ledger.roleframe import dry_run_event_frame, mapper_context              # noqa: E402
+from ledger.roleframe import RoleFrameError, dry_run_event_frame, mapper_context  # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,                      # noqa: E402
                                  require_ready_bundle, validate_bundle,
                                  validate_bundle_errors)
@@ -78,20 +81,21 @@ def fixture_shipped():
         return json.load(fh)
 
 
-def document(shipped, source=None):
+def document(shipped, source=None, certainty="optional"):
     out = copy.deepcopy(shipped)
-    out["vocabulary"]["leads_to@1"]["object"]["qualifiers"]["optional"].append("certainty")
+    out["vocabulary"]["leads_to@1"]["object"]["qualifiers"][certainty].append("certainty")
     out["sources"][CANDIDATES] = copy.deepcopy(source or SOURCE)
     return out
 
 
-def translate(shipped, catalog, rows):
+def translate(shipped, catalog, rows, certainty="optional"):
     snapshot = compile_setup_snapshot(
-        require_ready_bundle(validate_bundle(document(shipped), catalog=catalog)),
+        require_ready_bundle(validate_bundle(document(shipped, certainty=certainty),
+                                             catalog=catalog)),
         trusted_implementations(), catalog=catalog)
-    frame = pd.DataFrame([{**{name: row.get(name) for name in COLUMNS},
-                           "created_at": pd.Timestamp("2026-10-06T01:00:00+00:00")}
-                          for row in rows])
+    frame = _v2_frame([{**{name: row.get(name) for name in COLUMNS},
+                        "created_at": pd.Timestamp("2026-10-06T01:00:00+00:00")}
+                       for row in rows])
     refusals = []
     frames = prepare_v2_cursor_batch(snapshot, CANDIDATES, frame, refusals=refusals)
     atoms = [atom for event in frames
@@ -130,6 +134,35 @@ def test_each_row_names_its_own_type_and_only_admitted_ones_land(shipped, catalo
         "no_identity", "no_identity", "type_not_admitted"]
     (not_admitted,) = [r for r in refusals if r.reason == "type_not_admitted"]
     assert "'defect_kind'" in not_admitted.detail and "subject" in not_admitted.detail
+
+
+def test_a_blank_optional_qualifier_leaves_only_that_atom_without_it(shipped, catalog):
+    """총괄 10-11: read as a blank attribute is - one blank row no longer fails the batch."""
+    atoms, refusals = translate(shipped, catalog, [
+        row(1, "quantity", "q-a", "defect_kind", "d-a"),
+        row(2, "quantity", "q-b", "defect_kind", "d-b", certainty=None),
+        row(3, "quantity", "q-c", "defect_kind", "d-c", certainty="confirmed"),
+    ])
+    leads = sorted(((atom["subject_keys"], atom["object_payload"])
+                    for atom in atoms if atom["predicate"] == "leads_to"), key=str)
+    assert leads == sorted([
+        ({"quantity": "q-a"}, {"type": "defect_kind", "keys": {"defect_kind": "d-a"},
+                               "qualifiers": {"certainty": "suspected"}}),
+        ({"quantity": "q-b"}, {"type": "defect_kind", "keys": {"defect_kind": "d-b"}}),
+        ({"quantity": "q-c"}, {"type": "defect_kind", "keys": {"defect_kind": "d-c"},
+                               "qualifiers": {"certainty": "confirmed"}}),
+    ], key=str)
+    assert refusals == []
+
+
+def test_a_blank_required_qualifier_is_refused_as_before(shipped, catalog):
+    with pytest.raises(RoleFrameError) as refused:
+        translate(shipped, catalog, [
+            row(1, "quantity", "q-a", "defect_kind", "d-a"),
+            row(2, "quantity", "q-b", "defect_kind", "d-b", certainty=None),
+        ], certainty="required")
+    assert (refused.value.code, refused.value.path) == (
+        "missing_binding_value", f"bundle.sources.{CANDIDATES}.bind.mappings.leads.bind.certainty.column")
 
 
 def test_a_named_type_reads_as_it_did(shipped, catalog):

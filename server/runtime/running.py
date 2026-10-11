@@ -6,7 +6,7 @@ left the queue the moment the scheduler claimed it, so a run could be moving whi
 queue said RUNNING 0. Each source keeps its own judgement and this is where they are asked,
 in one shape:
 
-    chain rules      the chain loop's registry, or its heartbeat lap   `chain_sight`
+    chain lines      the queue lines a chain group holds - its beat    `chain_lines_running`
     retroactive      the run table's in-flight row                     `admin.retroactive.in_flight`
     collectors       the scheduler's status file                       `collector_is_running`
     file ingestion   the watcher's pushed registry (this process)      `ingestion_is_running`
@@ -148,12 +148,22 @@ def _item(what, where, pid, started_at, elapsed, processed=None, total=None, can
             "cancel": cancel, "state": state}
 
 
-def _chain(sight, shape, now):
-    return [_item(e.get("rule"), WHERE_CHAIN_WORKER, e.get("pid") or sight["pid"],
-                  None if e.get("running_seconds") is None else
-                  (now - timedelta(seconds=e["running_seconds"])).isoformat(),
-                  e.get("running_seconds"), total=e.get("rows_in"))
-            for e in shape["running"]]
+def _chain(db, sight, beats, now):
+    """One item per queue line a chain group runs, with that line's state - the facts the line reads
+    (`chain_lines_running`), so the head's RUNNING is the lines' (총괄 59f2ab3f4 ㄴ; it read the mappers mid-call
+    and said 0 through every write). Named as the queue names the line: a job's op and run, else its transaction."""
+    from database import models
+
+    lines = chain_lines_running(beats)
+    runs = dict(db.query(models.RetroactiveRun.run_id, models.RetroactiveRun.op)
+                .filter(models.RetroactiveRun.run_id.in_(sorted(lines))).all()) if lines else {}
+    return [_item("%s · %s" % (runs[key], key) if key in runs else event_constants.queue_line_tx(key),
+                  WHERE_CHAIN_WORKER, facts.get("pid") or sight["pid"],
+                  None if facts.get("elapsed_seconds") is None else
+                  (now - timedelta(seconds=facts["elapsed_seconds"])).isoformat(),
+                  facts.get("elapsed_seconds"),
+                  state=event_constants.chain_state_of(False, None, running=facts)["state"])
+            for key, facts in sorted(lines.items())]
 
 
 def _retroactive(db, now):
@@ -218,20 +228,18 @@ def _ingestions(watcher_pid):
             for job in registry.snapshot() if ingestion_is_running(job)]
 
 
-def running_now(db, now=None, sight=None, shape=None):
+def running_now(db, now=None, sight=None):
     """Everything running now, one shape per item, four sources. A source that cannot be
     read contributes nothing and says so in the log - it is not the others' problem."""
     import logging
 
-    from chain import activity
     from utils import heartbeat
 
     now = now or datetime.now(timezone.utc)
     sight = sight or chain_sight()
-    shape = shape or activity.view(sight["instants"], now=now.timestamp())
     beats = heartbeat.read_all()
     items = []
-    for name, read in (("chain", lambda: _chain(sight, shape, now)),
+    for name, read in (("chain", lambda: _chain(db, sight, beats, now)),
                        ("retroactive", lambda: _retroactive(db, now)),
                        ("collectors", lambda: _collectors(
                            (beats.get("scheduler") or {}).get("pid"))),

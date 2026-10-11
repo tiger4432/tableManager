@@ -3,7 +3,7 @@
 sources. The top queue counted the chain rules alone: a retroactive run left the queue when
 it was claimed, so the queue said RUNNING 0 while it ran.
 
-Each source is fed through the door it really uses - the chain worker's heartbeat lap, the
+Each source is fed through the door it really uses - the chain group's claim on its beat, the
 run table, the scheduler's status file, the watcher's registry - and none is stubbed in
 `runtime.running` itself."""
 import json
@@ -38,17 +38,20 @@ def sources(tmp_path, monkeypatch, db_session):
     monkeypatch.setattr(auc, "SERVER_DIR", str(tmp_path))
     (tmp_path / "config").mkdir()
 
-    def beat(name, pid, lap=None):
+    def beat(name, pid, lap=None, work=None):
         ts = time.time()
         with open(os.path.join(str(tmp_path), "%s.json" % name), "w", encoding="utf-8") as fh:
             json.dump({"name": name, "pid": pid, "ts": ts, "beats": 1, "started_at": ts,
-                       "note": None, "work": {},
+                       "note": None, "work": work or {},
                        "laps": {name: dict(lap, at=ts)} if lap else {}}, fh)
 
-    def chain(rules):
-        beat("chain", 111, {"outcomes": {}, "running": [
-            {"rule": r, "mapper": "m", "target_table": "u", "rows_in": 7,
-             "started": time.time() - 30} for r in rules]})
+    def chain(lines):
+        """A group holding queue `lines` - its claim as a group writes it (총괄 59f2ab3f4 ㄴ: the chain's items are lines)."""
+        ts = time.time()
+        beat("chain", 111, {"outcomes": {}, "running": []}, work={
+            "open": 1, "oldest_what": "tx probe · 1 row(s) of u", "oldest_stage": "write:u",
+            "oldest_facts": {"line_keys": list(lines)}, "oldest_progress_ts": ts - 2,
+            "oldest_started_ts": ts - 30} if lines else None)
 
     def run(state):
         db_session.add(models.RetroactiveRun(
@@ -76,7 +79,7 @@ def sources(tmp_path, monkeypatch, db_session):
 
 
 def test_the_four_sources_run_through_one_door_in_one_shape(db_session, sources):
-    sources["chain"](["rule_probe"])
+    sources["chain"](["tx-probe"])
     sources["run"](retroactive.RUN_RUNNING)
     sources["collector"]("RUNNING")
     sources["ingestion"]("PROCESSING")
@@ -89,7 +92,7 @@ def test_the_four_sources_run_through_one_door_in_one_shape(db_session, sources)
     assert all(set(item) == {"what", "where", "pid", "started_at", "elapsed_seconds",
                              "progress", "cancel", "state"} for item in items)
     assert (by_where["chain_worker"]["what"], by_where["chain_worker"]["pid"]) == (
-        "rule_probe", 111)
+        "tx-probe", 111)
     run = by_where["own_process"]
     assert (run["pid"], run["progress"], run["cancel"]) == (
         4321, {"processed": 5, "total": 50}, {"run_id": "run-probe"})
@@ -111,7 +114,7 @@ def test_nothing_running_is_an_empty_list(db_session, sources):
 
 
 def test_the_queue_carries_the_seat(db_session, sources):
-    sources["chain"](["rule_probe"])
+    sources["chain"](["tx-probe"])
     sources["run"](retroactive.RUN_RUNNING)
 
     out = main.get_chain_queue_depth(db=db_session)

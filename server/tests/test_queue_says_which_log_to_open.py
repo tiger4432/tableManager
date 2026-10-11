@@ -44,11 +44,11 @@ def beats(tmp_path, monkeypatch):
     monkeypatch.setattr(heartbeat, "heartbeat_path",
                         lambda name: os.path.join(str(tmp_path), "%s.json" % name))
 
-    def write(lap, age=0.0):
+    def write(lap, age=0.0, work=None):
         ts = time.time() - age
         with open(os.path.join(str(tmp_path), "chain.json"), "w", encoding="utf-8") as fh:
             json.dump({"name": "chain", "pid": 1, "ts": ts, "beats": 1, "started_at": ts,
-                       "note": None, "work": {}, "laps": {"chain": dict(lap, at=ts)}}, fh)
+                       "note": None, "work": work or {}, "laps": {"chain": dict(lap, at=ts)}}, fh)
     return write
 
 
@@ -87,15 +87,18 @@ def test_a_worker_of_its_own_is_read_from_its_heartbeat_lap(db_session, beats):
            "running": [{"rule": "r1", "mapper": "m", "target_table": "t", "rows_in": 3,
                         "started": started}],
            "outcomes": {"r1": {"outcome": "ran", "reason": None, "at": time.time() - 5}}},
-          age=2.0)
+          age=2.0, work={"open": 1, "oldest_what": "tx r1 · 3 row(s) of t", "oldest_stage": "write:t",
+                         "oldest_facts": {"line_keys": ["tx-r1"]}, "oldest_progress_ts": time.time() - 2,
+                         "oldest_started_ts": started})
     out = main.get_chain_queue_depth(db=db_session)
 
     assert out["loop_in_this_process"] is False, "this process still runs no loop"
     assert out["loop_seen_via"] == "chain_worker_heartbeat"
     assert out["loop_seen_age_seconds"] >= 2.0
     assert out["log_filename"] == "chain_worker.log", "the worker's file, not server.log"
+    # the chain's running items are its group's lines (총괄 59f2ab3f4 ㄴ), not its mappers mid-call
     chain = [item for item in out["now_running"] if item["where"] == "chain_worker"]
-    assert [item["what"] for item in chain] == ["r1"]
+    assert [item["what"] for item in chain] == ["tx-r1"]
     assert chain[0]["elapsed_seconds"] >= 90, "aged at read time, not at write"
     assert out["rule_outcomes"]["r1"]["last_outcome"] == "ran"
     assert 3500 < out["loop_uptime_seconds"] < 3700

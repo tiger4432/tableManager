@@ -121,8 +121,10 @@ def phase(name: str):
 
 
 @contextlib.contextmanager
-def stage(name: str):
+def stage(name: str, said: str = None):
     """Charge this block's WALL CLOCK to `name` among the group's MACHINERY (S-94, 판정 241).
+    `said` - what the beat says beyond the name while in it: a write carries its page line (총괄 59f2ab3f4 -
+    the write stage had replaced it on every page). The seconds still go to `name`.
 
     🔴 A SECOND LAYER, AND IT HAS TO BE A SECOND DICT. `phase` names what happens INSIDE
     one alignment view build; this names what the group does AROUND the mapper - reading
@@ -146,7 +148,7 @@ def stage(name: str):
         return
     # Entering a stage is progress on the work this thread claimed - the watcher's file,
     # the chain's group - and the stage is what a stalled line names.
-    heartbeat.progress(name)
+    heartbeat.progress(name if said is None else "%s · %s" % (name, said))
     check = _INTERRUPT.get()
     if check is not None:
         check()

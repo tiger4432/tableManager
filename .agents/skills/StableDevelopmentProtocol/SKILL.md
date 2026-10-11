@@ -83,7 +83,7 @@ description: 모든 에이전트가 준수하는 assyManager 핵심 개발 헌�
 
 인계 위치:
 - 하위 에이전트 → `agent_workspace/reports/[이름]_report.md`.
-- 마일스톤 → `docs/process/RELEASE_LOG.md` 상단에 한 줄.
+- 주요 기능 → `docs/process/RELEASE_LOG.md` 항목 하나 + 「주제별 목차」 줄 하나, 착지와 같은 커밋(규율은 `docs/process/CONTRIBUTING.md` 의 RELEASE_LOG 줄).
 - 백로그 → 루트 `task/`.
 - 코드가 없는 비-자명한 사실(설계 결정 등)은 프로젝트 메모리에 저장 제안.
 

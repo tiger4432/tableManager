@@ -27,6 +27,8 @@ import event_constants
 LOCK_SPACE = 70_190_408
 #: The stage a group is in while it waits for a table - what the queue's state seat reads.
 WAITING_FOR = event_constants.CHAIN_WAITING_FOR
+#: ... and once it holds them all (총괄 59f2ab3f4: «waiting for» stayed on the beat after the lock was got).
+HOLDING = "holding "
 
 #: One lock connection per thread that runs groups - a slot runs one group at a time, and two
 #: threads holding one session's locks would not wait for each other.
@@ -42,10 +44,10 @@ def _lock_connection(db):
 
 
 @contextmanager
-def hold(db, tables, on_wait=None):
+def hold(db, tables, on_wait=None, on_held=None):
     """Hold `tables` for the block. `on_wait(table, pid)` is called before each wait - `pid` the
-    lock connection's backend, which a pause cancels. No-op on a database without advisory locks
-    (SQLite)."""
+    lock connection's backend, which a pause cancels - and `on_held(tables)` once all are held.
+    No-op on a database without advisory locks (SQLite)."""
     tables = sorted(t for t in tables or () if t)
     if not tables or db.get_bind().dialect.name != "postgresql":
         yield
@@ -59,6 +61,8 @@ def hold(db, tables, on_wait=None):
             conn.execute(text("SELECT pg_advisory_lock(:space, hashtext(:table))"),
                          {"space": LOCK_SPACE, "table": table})
             held.append(table)
+        if on_held is not None:
+            on_held(held)
         yield
     finally:
         for table in reversed(held):

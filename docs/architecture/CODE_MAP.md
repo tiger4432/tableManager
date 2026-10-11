@@ -3477,7 +3477,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 | 술어 | 실측 |
 |---|---|
-| 규칙 | 🔴 **Claim의 Role이 `kind == "time"`이면 값은 `unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN]`에서 온다 — 바인딩이 «이름 댄 컬럼»은 읽지 «않는다».** 그 밖의 Role은 종전대로 `_evaluate_binding(binding, unit, …)` |
+| 규칙 | 🔴 **Claim의 Role이 `kind == "time"`이면 값은 `unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN]`에서 온다 — 바인딩이 «이름 댄 컬럼»은 읽지 «않는다».** 그 밖의 Role은 `_evaluate_binding(binding, unit, …)` — 🆕 [10-11 총괄] 단 Claim 의 Role 이 `required` 가 아니면(술어의 optional 한정자) `_attribute_value` 로 읽어, 칸이 빈 행은 그 한정자 없이 원자를 낸다(빈 속성과 같은 읽기). 전엔 `missing_binding_value` 로 그 묶음째 실패 |
 | 왜 셀을 안 읽나 | ① 준비 경계가 이미 그 순간을 해석해 `__occurred_at`에 발행했다 ② **`source_event_identity`가 «그 값»으로 사건 id를 채번**하므로 다른 값에서 시각을 뽑은 원자는 자기가 속한 사건의 id와 어긋난다 ③ varchar 시각 컬럼은 문자열로 도착하는데 `_validate_role_value`가 tz-aware `datetime`을 요구한다 — **`transfer_event`를 통째로 거절시킨 것이 정확히 이것이다** |
 | 새 규칙인가 | 🔴 **아니다 — 이미 시행 중이던 규칙이 마지막 맵퍼에 닿은 것이다.** 커스텀 맵퍼 둘(`ledger_v2_dt_job_mapper` · `ledger_v2_lot_event_role_mapper`)이 이미 같은 값을 쓰고 자기 `occurred_at` 바인딩을 **한 번도 안 읽는다** |
 | 두 값이 어긋나는가 | 🔴 **라이브에서 이미 어긋나 있다.** `dt_job`은 `occurred_at.basis: ingested`(컬럼 이름 없음)인데 그 소스의 모든 `bind.occurred_at`은 `event_time`이라고 적혀 있다 — 원자는 적재 시각을 이고 있고, **그 바인딩은 도는 커서 위에서 처음부터 아무 일도 안 했다** |

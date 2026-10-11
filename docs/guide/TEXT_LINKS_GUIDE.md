@@ -1,6 +1,6 @@
 # 글에서 «원인 -> 현상» 후보 뽑기
 
-> **대상:** `@mapper` 를 쓰는 운영자 | **최종 검증:** 2026-10-01 (코드 대조 — `server/utils/text_links.py` · 시험 `server/tests/test_a_sentence_names_its_cause_and_phenomenon.py`) | **관련:** [MAPPING_GUIDE](../../authoring/MAPPING_GUIDE.md) · [config/chain_rules.md](./config/chain_rules.md)
+> **대상:** `@mapper` 를 쓰는 운영자 | **최종 검증:** 2026-10-11 (코드 대조 — `server/utils/text_links.py` · `phrase_bag.py` · `dictionary_suggest.py` · 시험 `server/tests/test_a_sentence_names_its_cause_and_phenomenon.py` · `test_a_phrase_with_modifiers_finds_its_node_by_its_bag.py`) | **관련:** [MAPPING_GUIDE](../../authoring/MAPPING_GUIDE.md) · [config/chain_rules.md](./config/chain_rules.md)
 
 회의록 · 8D 같은 글에서 «무엇이 무엇의 원인이라고 적혔나»를 후보 행으로 뽑는다. 낱말은 전부 당신이 적은 사전 행에서 온다 — 코드에는 어느 언어의 낱말도 없다.
 
@@ -11,7 +11,7 @@
 | 글 | `<글 id>` · `<글>` — 회의록 한 건이든 8D 한 섹션이든. 나누는 것은 맵퍼 | 사람 · 수집기 |
 | 부르는 말 | `node_type` · `node_key` · `phrase` — 한 노드에 말 여럿 | 사람 |
 | 연결 말 | `phrase` · `meaning` · `side` | 사람 |
-| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `link` · `polarity` · `certainty` · `extractor` · `evidence` | 맵퍼 |
+| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `cause_direction` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `phenomenon_direction` · `dir` · `link` · `polarity` · `certainty` · `extractor` · `evidence` | 맵퍼 |
 
 | `meaning` | 뜻 | `side` |
 |---|---|---|
@@ -24,6 +24,7 @@
 
 같은 말을 두 행에 적으면 두 뜻이다 — 「무관」 = `cause`(`before`) 한 행 + `negation` 한 행.
 규칙으로 뽑은 행의 `*_phrase` · `link` 는 글에 «적힌 그대로»다(LLM 행은 §6). 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다(LLM 으로 뽑으면 §6 의 키).
+`*_direction` 은 LLM 이 채운다(§6) — 규칙이 뽑은 행은 비어 있다. `dir` 은 그 둘의 부호 — 둘 다 차고 같으면(up/up · down/down) `+`, 다르면(up/down · down/up) `-`, 한쪽이라도 비면 빈다. 후보 표에 이 세 칸이 없으면 쓰기가 없는 칸만 버리고 경고를 센다.
 `extractor` 는 뽑은 쪽 — `rules` 또는 `llm:<모델>`. `evidence` 는 근거 — 규칙이 뽑은 행은 그 문장, LLM 행은 모델이 쓴 인용 그대로(두 문장에 걸칠 수 있고 따옴표 · 말줄임이 글과 다를 수 있음 — 그때 문장 칸은 인용이 시작한 문장). 후보 표에 이 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 센다.
 
 ## 2. 짝짓는 규칙 — 두 줄
@@ -71,7 +72,7 @@ def text_cause_links(df, db):
 
 ## 4. 사전을 고친 뒤
 
-사전 표를 고쳐도 규칙은 안 깨어난다 — 규칙은 «글 표»에 깨어난다. 다시 돌린다:
+사전 표를 고쳐도 규칙은 안 깨어난다 — 규칙은 «글 표»에 깨어난다. LLM 후보의 빈 키만 채우려면 §8-2(LLM 을 안 부른다). 글을 다시 읽히려면 다시 돌린다:
 
 ```bash
 conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <규칙 이름>            # 미리 보기
@@ -120,11 +121,12 @@ def text_cause_links_llm(df, db):
 
 - `rows_per_run: 1` — 체인 묶음 하나 = 글 하나. 틀린 답은 그 글의 묶음만 실패시키고, 다른 글은 다음 묶음이라 계속 돈다. 다른 표의 줄은 다른 슬롯에서 돌아 LLM 이 막지 않는다([chain_rules](./config/chain_rules.md)). ⚰️ `run_in: operation`(작업 `rule_rows` 로 줄 세우기)은 은퇴했다 — 적혀 있어도 체인에서 돈다.
 - 모델은 사전을 노드마다 한 줄로 본다 — `<키> (<타입>): <구절> / <구절> / …`. 같은 키가 두 타입에 있으면 그 노드들의 식별자는 `<타입>:<키>`. 모델은 원인 · 현상마다 그 식별자(맞는 노드가 없으면 null)와 글의 가장 짧은 명사구를 답한다.
-- 노드 키는 사전에서만 온다 — 목록의 식별자면 그 노드의 `*_type` · `*_key`(말이 구절과 달라도). 빈 값(키 없음 · null · 빈 글자)이면 말이 사전 구절과 같을 때만(공백 · 대소문자 무시) 그 구절의 키, 아니면 `*_type` · `*_key` 가 빈다. 목록에 없는 식별자는 키를 비우고 로그에 한 줄 `[LLM] link N of M answers cause_key '<식별자>', which the dictionary does not list - kept with its words only (llm:<모델>): '<말>'`. `*_phrase` 는 모델이 답한 말 그대로다 — 글과 견주는 것은 `evidence` 뿐(「글에서 베껴라」는 프롬프트의 부탁).
+- 노드 키는 사전에서만 온다 — 목록의 식별자면 그 노드의 `*_type` · `*_key`(말이 구절과 달라도). 빈 값(키 없음 · null · 빈 글자)이면 말이 어느 노드의 구절을 통째로 품을 때 그 노드(낱말 주머니, §8-1), 아니면 `*_type` · `*_key` 가 빈다. 목록에 없는 식별자는 키를 비우고 로그에 한 줄 `[LLM] link N of M answers cause_key '<식별자>', which the dictionary does not list - kept with its words only (llm:<모델>): '<말>'`. `*_phrase` 는 모델이 답한 말 그대로다 — 글과 견주는 것은 `evidence` 뿐(「글에서 베껴라」는 프롬프트의 부탁).
 - 프롬프트는 사전 전체를 담는다(나눠 보내지 않는다) — 고정 약 1,200 자 + 노드마다 한 줄. 노드마다 구절 셋이면 100 노드 약 7 천 자 · 1,000 노드 약 6.6 만 자 · 5,000 노드 약 34 만 자(지어낸 사전으로 잰 수). 보낸 그대로는 `llm_requests.log` 보낸 줄의 payload.
 - 한 문장이 원인 · 현상을 여럿 말하면 모델은 짝마다 링크 하나를 답한다(같은 근거). 한 문장에서 후보가 여럿 나오므로 후보 표의 키에 `cause_phrase` · `phenomenon_phrase` 가 들어 있어야 한다 — 아니면 같은 키의 행이 서로 덮어쓴다.
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
 - `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다.
+- `cause_direction` · `phenomenon_direction` 은 글이 그것이 «늘었다 · 올랐다»고 하면 `up`, «줄었다 · 떨어졌다»고 하면 `down`, 둘 다 아니면 빈다. 모델 답이 `up` · `down` 그대로(앞뒤 공백만 무시, 대소문자는 그대로)일 때만 쓰고, 그 밖의 답은 비우고 로그에 한 줄 `[LLM] link N of M answers cause_direction '<답>', which is not up or down - kept without it (llm:<모델>): '<말>'`.
 - 운영자 지시는 셋째 인자 — `ask_links(text, names, instruction="<지시>")`. 프롬프트에 들어가는 낱말은 사전 행 · 지시 · 글뿐이다.
 - 근거(evidence)는 글 전체에서 찾는다 — 두 문장에 걸쳐도 찾고(문장 번호는 시작한 문장), 따옴표 12 자(`"'“”‘’«»「」『』`)와 말줄임(… ...)은 양쪽 다 견주지 않는다(`text_links.EVIDENCE_MARKS` — 목록 밖 따옴표는 견줌). 근거를 못 찾은 링크는 버리고 로그에 한 줄 `[LLM] link N of M quotes evidence the text does not hold - dropped (llm:<모델>): '<근거>'` — 나머지 링크는 그대로 후보가 된다.
 - 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 모든 링크의 근거가 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 묶음이 실패하고(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED), 사건의 `error_log` 에 체인 격리 기록이 남는다. 관리 화면에서 실패한 사건을 다시 돌린다.
@@ -139,7 +141,7 @@ def text_cause_links_llm(df, db):
 "leads_to": {
   "subjects": ["<원인 타입>"],
   "object": { "kind": "entity_ref", "types": ["<현상 타입>", "<다른 현상 타입>"],
-              "qualifiers": { "required": [], "optional": ["certainty"] } }
+              "qualifiers": { "required": [], "optional": ["certainty", "dir"] } }
 }
 ```
 
@@ -156,12 +158,140 @@ def text_cause_links_llm(df, db):
     "target": { "kind": "entity", "entity_type": { "kind": "column", "column": "phenomenon_type" },
                 "keys": { "<현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" },
                           "<다른 현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" } } },
-    "certainty": { "kind": "column", "column": "certainty" } } } } }
+    "certainty": { "kind": "column", "column": "certainty" },
+    "dir": { "kind": "column", "column": "dir" } } } } }
 }
 ```
 
+- 원장은 부호 `dir` 하나만 잇는다(샘플 `server/config/sample/ledger_config.json.sample` 의 `leads_to@1` 도 `dir`) — 두 방향 칸은 후보 표에 근거로 남는다. `dir` 이 빈 행은 그 엣지에 `dir` 없이 들어간다(d338d3fdc · 아래 줄).
+- `optional` 한정자의 칸이 빈 행은 그 엣지에 그 한정자만 없이 들어간다(빈 속성과 같은 읽기). `required` 한정자의 칸이 빈 행은 전처럼 그 행이 든 원장 묶음 전체를 실패시킨다(`missing_binding_value`).
 - 타입 칸의 값은 선언된 타입 이름 그대로다(옛 철자 `x@1` 도 접힌다). 행마다 그 타입의 키만 쓴다.
 - 그 자리가 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어간다 — 받는 타입은 술어 목록(`subjects` · `object.types`)이 정한다.
 - 타입 칸이 비거나 그 타입의 키 칸이 빈 행은 `no_identity`.
 - 적재에서 거절: 받는 타입의 키를 안 적음 · 어느 타입에도 없는 키 · 칸 타입에 속성 · 받는 타입에 소스 속성(`bind.entities`) · 코드 맵퍼.
 - 선언 화면의 타입 칸은 아직 이름만 고른다 — 칸에서 읽는 모양은 선언 원본(JSON)으로 적는다.
+
+## 8. 사전 키우기 — 낱말 주머니 · 다시 맞추기 · 제안 표
+
+후보 표의 빈 키 → 제안 표 → 사람이 확정 → 사전 → 빈 키가 찬다. 규칙 셋(8-2 · 8-3)은 골라 쓴다.
+
+### 8-1. 낱말 주머니 — 수식어가 붙어도 노드를 찾는다
+
+1. 말과 사전 구절을 «두 글자 조각»의 모음으로 본다 — 띄어쓰기 · 영문 대소문자 · 따옴표 · 말줄임은 빼고(근거 견주기와 같은 접기). 한 글자 구절은 그 글자 하나.
+2. 노드의 점수 = 그 노드 구절의 조각 중 말에 든 몫(구절이 여럿이면 가장 큰 것). `match_at` 이상인 노드 중 가장 높은 하나 — 맨 위가 여럿이면 다른 노드 구절 안에 든 구절이 빠지고(긴 말이 이긴다, §2 와 같다), 그래도 서로 다른 노드가 둘 이상이면 노드 없음.
+
+| 말 | 사전(노드마다 구절) | 답 |
+|---|---|---|
+| 본딩 설비의 접합 온도 파라미터 | 접합 온도 | 접합 온도의 노드 |
+| 웨이퍼 계면 미충진 발생 | 계면 미충진 | 계면 미충진의 노드 |
+| 본딩 설비의 접합 온도 파라미터 | 본딩 설비 · 접합 온도 | 없음 — 나란히 둘 다 통째로 듦 |
+| 접합 온도 | 온도 · 접합 온도 | 접합 온도의 노드 — «온도»는 «접합 온도» 안이라 빠짐 |
+| 접합 온도 상향 | 접합 온도 상승 | 1.0 이면 없음 · 0.8 이면 그 노드(조각 5 중 4) |
+
+- `match_at` 기본 1.0 = 노드 구절이 통째로 든다(`phrase_bag.MATCH_AT`). 맵퍼에서 `ask_links(글, 부르는 말 행, match_at=0.8)`.
+- 한 노드의 구절 둘이 함께 들면 그 노드다 — 겨루는 것은 서로 다른 노드뿐. 같은 구절이 두 노드에 있으면 노드 없음.
+- 알려진 한계 — 낱말 경계를 안 본다(영문 구절 `void` 가 `avoid` 안에서도 든다, 규칙 뽑기 `find_links` 는 본다) · 한 글자 구절은 한 글자 말에만 맞는다.
+
+### 8-2. 다시 맞추기 — 사전을 고치면 빈 키 후보를 LLM 없이 채운다
+
+`rematch_rows(후보 행, 부르는 말 행, match_at=None)` — `cause_key` · `phenomenon_key` 가 빈 쪽만 그 쪽 `*_phrase` 의 주머니로 채운다(타입도 비었으면 타입도). 찬 키는 안 쓴다. 타입이 찼는데 찾은 노드의 타입과 다르면 그 쪽은 그대로. 아무것도 안 채운 행은 받은 행과 같다(`==`) — 맵퍼는 바뀐 행만 낸다.
+
+```python
+import pandas as pd
+from mapper_sdk import mapper, rematch_rows, sql
+
+KEYS = ["<글 id 칸>", "sentence_no", "cause_phrase", "phenomenon_phrase"]      # 후보 표의 키 칸 (§6)
+CELLS = ["cause_type", "cause_key", "phenomenon_type", "phenomenon_key"]
+
+@mapper()
+def rematch_candidates(df, db):
+    names = sql(db, "SELECT <타입 칸> AS node_type, <키 칸> AS node_key, <말 칸> AS phrase "
+                    "FROM <부르는 말 표>").to_dict("records")
+    rows = sql(db, "SELECT " + ", ".join(KEYS + CELLS) + " FROM <후보 표> "
+                   "WHERE COALESCE(TRIM(cause_key), '') = '' "
+                   "OR COALESCE(TRIM(phenomenon_key), '') = ''").to_dict("records")
+    filled = [after for before, after in zip(rows, rematch_rows(rows, names)) if after != before]
+    return pd.DataFrame(filled, columns=KEYS + CELLS)
+```
+
+```json
+{
+  "name": "<규칙 이름>",
+  "trigger_table": "<부르는 말 표>",
+  "target_table": "<후보 표>",
+  "mapper": "rematch_candidates",
+  "is_batch": true,
+  "allow_retraction": false,
+  "allow_chain_trigger": true
+}
+```
+
+- 사전 행이 들어오거나 바뀌면 깨어난다. `allow_chain_trigger: true` — 8-3 의 확정 규칙이 쓴 사전 행에도 깨어나게.
+- 채우기만 한다(`allow_retraction: false`). 사전 행을 지워도 채운 키는 남는다.
+- 키가 구절인 후보 표(§6)라야 그 행을 고쳐 쓴다. 키에 `cause_key` 가 든 후보 표(§1 의 규칙 뽑기 모양)에서는 키를 채우면 새 행이 된다.
+- 한 번 깨어날 때 사전 전체와 키 빈 후보 행 전체를 한 번씩 읽는다.
+
+### 8-3. 제안 표 — 아무 노드도 안 받은 말을 모델이 사전 행으로 제안한다
+
+`ask_dictionary(말 행, 부르는 말 행, instruction=None)` — 말 행 `{phrase, count}` 전부를 모델에게 한 번에 묻는다: 그 말이 가리키는 목록의 노드 식별자, 없으면 null 과 새 노드의 짧은 이름 · 타입, 그리고 한 줄 이유. 사전에는 아무것도 안 쓴다. 모델은 사전을 §6 과 같은 한 줄씩으로 본다.
+
+| 제안 표 칸 | 적는 쪽 |
+|---|---|
+| `phrase`(키) · `count` · `suggested_node_type` · `suggested_node_key` · `new_node_name` · `reason` · `extractor` | 맵퍼 |
+| `<확정 칸>` — 찬 값 = 확정 | 사람 |
+
+- 새 노드 행은 `suggested_node_key` 가 비고 `suggested_node_type` 에 모델이 고른 타입이 든다. 고르는 타입은 «맵퍼가 읽은 부르는 말 행»의 타입들(겹친 것은 하나, 이름순)이다 — 모델링 노드 타입 넷 중에서만 고르게 하려면 그 SQL 에 `WHERE <타입 칸> IN (<그 넷>)` (다른 타입의 노드도 목록에서 빠진다).
+- 그 타입이 목록에 그대로(앞뒤 공백만 무시, 대소문자 그대로) 없으면 타입을 비우고 한 줄 `[LLM] phrase N of M answers new_node_type '<타입>', which the dictionary does not list - suggested without a type (llm:<모델>): '<말>'`. 목록의 노드를 답한 행의 타입은 사전의 것이다 — 모델이 다른 타입을 말해도.
+- 목록에 없는 식별자는 노드를 비우고 로그에 한 줄 `[LLM] phrase N of M answers node '<식별자>', which the dictionary does not list - suggested without a node (llm:<모델>): '<말>'`.
+- 모델이 건너뛴 말은 행이 없고 한 줄 `[LLM] phrase N of M has no answer - no suggestion (llm:<모델>): '<말>'` — 다음에 깨어날 때 다시 묻는다.
+- 답에 `phrases` 목록이 없으면 `LlmRefused` 로 그 묶음이 실패한다(§6 과 같다). 빈 말뿐이면 부르지 않는다.
+
+```python
+import pandas as pd
+from mapper_sdk import ask_dictionary, mapper, sql
+
+@mapper()
+def suggest_dictionary(df, db):
+    names = sql(db, "SELECT <타입 칸> AS node_type, <키 칸> AS node_key, <말 칸> AS phrase "
+                    "FROM <부르는 말 표>").to_dict("records")
+    phrases = sql(db, "SELECT phrase, COUNT(*) AS count FROM ("
+                      " SELECT cause_phrase AS phrase FROM <후보 표> WHERE COALESCE(TRIM(cause_key), '') = ''"
+                      " UNION ALL"
+                      " SELECT phenomenon_phrase FROM <후보 표> WHERE COALESCE(TRIM(phenomenon_key), '') = ''"
+                      ") AS p WHERE NOT EXISTS (SELECT 1 FROM <제안 표> s WHERE s.phrase = p.phrase)"
+                      " GROUP BY phrase ORDER BY count DESC LIMIT 100").to_dict("records")
+    return pd.DataFrame(ask_dictionary(phrases, names))
+
+
+@mapper()
+def confirmed_suggestion_to_dictionary(df, db):
+    return pd.DataFrame({"<타입 칸>": df["suggested_node_type"], "<키 칸>": df["suggested_node_key"],
+                         "<말 칸>": df["phrase"]})
+```
+
+```json
+{
+  "name": "<제안 규칙 이름>",
+  "trigger_table": "<후보 표>",
+  "target_table": "<제안 표>",
+  "mapper": "suggest_dictionary",
+  "is_batch": true,
+  "allow_chain_trigger": true
+}
+```
+
+```json
+{
+  "name": "<확정 규칙 이름>",
+  "trigger_table": "<제안 표>",
+  "target_table": "<부르는 말 표>",
+  "mapper": "confirmed_suggestion_to_dictionary",
+  "is_batch": true,
+  "require": ["<확정 칸>", "suggested_node_type", "suggested_node_key"]
+}
+```
+
+- 제안 규칙: 후보 표는 §6 의 맵퍼(체인)가 쓰므로 `allow_chain_trigger: true`. 제안 표에 이미 있는 말은 다시 묻지 않는다 — 새 말만, 많은 것부터 100 개(`LIMIT` 이 한 번 부를 때의 크기). `count` 는 물을 때의 수.
+- 확정 규칙: `require` 의 세 칸이 다 찬 행만 넘어간다 — 맵퍼는 칸을 옮겨 적기만 한다. `allow_chain_trigger` 를 안 적어 사람이 쓴 것에만 깨어난다.
+- 새 노드 제안(`suggested_node_key` 빔)은 확정해도 넘어가지 않는다 — 로그 `[Chain] <확정 규칙 이름>: N row(s) not handed over - required column(s) empty: suggested_node_key=N`. 사람이 `suggested_node_key` 에 새 노드의 키를 적으면(타입이 비었거나 틀렸으면 `suggested_node_type` 도) 그 쓰기로 깨어나 사전 행이 된다(`new_node_name` 은 참고).
+- 확정을 지워도 이미 쓴 사전 행은 남는다. 사전 행이 들어오면 8-2 가 깨어나 그 말을 가진 빈 키 후보를 채운다.

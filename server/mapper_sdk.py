@@ -646,8 +646,8 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
 # actually import today (`server/mappers/*.py`, gitignored - their files, read but never
 # edited). It is a CONTRACT, not a wish list: shortening it breaks files this repo cannot see.
 # ⚠️ EXCEPT THE ONES OFFERED RATHER THAN MEASURED - `find_links` · `unknown_words` (총괄 ef3b0caeb),
-# `ask_json` · `LlmRefused` · `ask_links` (총괄 b5b335f2e): a product helper written FOR mappers
-# enters by this door, not by a second import path.
+# `ask_json` · `LlmRefused` · `ask_links` (총괄 b5b335f2e), `rematch_rows` · `ask_dictionary` (소유자 10-11 ㄱ):
+# a product helper written FOR mappers enters by this door, not by a second import path.
 #
 # ⚠️ TWO OF THEM ARE PRIVATE (`_cells_of`, `_load_metas`), and they are here under exactly
 # those spellings (판정 368). A `_name` on an SDK looks wrong, and it is - but it is already
@@ -675,6 +675,7 @@ MAPPER_SURFACE = {
     "_load_metas": "map_alignment",
     "apply_dt_equations": "dt_frame_transform",
     "apply_valid_die_ref": "map_overlay",
+    "ask_dictionary": "utils.dictionary_suggest",
     "ask_json": "utils.llm",
     "ask_links": "utils.text_links",
     "basis_cells_for": "map_alignment",
@@ -696,6 +697,7 @@ MAPPER_SURFACE = {
     "load_overlay_config": "map_overlay",
     "meta_business_key": "map_meta_registrar",
     "model_column": "chain_bindings",
+    "rematch_rows": "utils.phrase_bag",
     "resolve_alignment_view": "alignment_view_service",
     "resolve_column": "chain_bindings",
     "resolve_decision_column": "chain_bindings",

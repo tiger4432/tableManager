@@ -121,45 +121,47 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-1kJngLIB.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
->            누른 빌드 — walk-1kJngLIB.js (= main, 클라 마지막 61a006f73) 에서 ③d 그래프 · ③e · ④ ev · ④ (다) · ⑤ ~ ⑨ / 앞 판 walk-wnN1ILnz.js 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음 · ③ 복사 · ⑨ 덩어리를 표로 · ⑨ 복사 · ⑨ 썸네일 · ④ 스킴 둘 · ⑨ die Trend
+>    빌드    main 의 dist walk-C1Nny51E.js(W1 d76cafd54) · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>            누른 빌드 — walk-C1Nny51E.js (= main, W1 d76cafd54) 에서 ① · ② · ③ · ③ 출처 · ③ Long · ③b · ③b 같은 표 · ③f · ③f bonded_from 넣음 · ④ / walk-1kJngLIB.js (61a006f73) 에서 ③d 그래프 · ③e · ④ ev · ④ (다) · ⑤ ~ ⑨ / 앞 판 walk-wnN1ILnz.js 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음 · ③ 복사 · ⑨ 덩어리를 표로 · ⑨ 복사 · ⑨ 썸네일 · ④ 스킴 둘 · ⑨ die Trend
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
 >            «모델 세상 1» = 리허설의 appdemo_vf
 >    ①  바구니   Type wafer · PICK A NODE 에 «불량» 앞글자 -> 목록(리허설 «SYN-BW-103-11 · 278 atoms»)에서 고름 -> Positive «+ Add» · «양품» 도 같이 -> Negative «+ Add» · Collect wafer -> Walk
->       본 것    제목 «+ 1 · − 1 → wafer» · «Nodes 32 (collect: wafer) · Edges 1650 (all) · 0.8 s» · 머리 «Positive · 1 start · 31 rows | Negative · 1 start · 1 row»
->       뜻       + 쪽 = 불량 base 에서 걸어 닿은 것 · − 쪽 = 양품 base 에서. 한쪽만 닿은 줄은 다른 쪽 칸 전부가 빨간 missing 한 칸
+>       본 것    제목 «+ 1 · − 1 → wafer» · «Nodes 32 (collect: wafer) · Edges 1650 (all) · 1.5 s» · 구역 «wafer · 32» · 도구줄 «Wide | Long | Table | Trend | Columns · 48 of 48 ▾ | Copy | All rows | Differs | Missing»
+>       뜻       한 줄 = 한 노드 · 값을 실은 엣지마다 묶음 하나(+ · Δ · −) · + 쪽 = 불량 base 에서 걸어 닿은 것 · − 쪽 = 양품 base 에서. 한쪽만 닿은 줄은 다른 쪽 칸마다 빨간 missing
 >       목록 밖 키  원장에 없는 키를 치면(리허설 «syn-bw-103-11» — 목록은 «SYN-BW-103-11 · 278 atoms») 바구니 밑에 «0 atoms · not in the ledger»
 >                그대로 + Add -> Walk 하면 «Asked 12 hops · reached 0 hops · both» · 머리 줄 «empty · No ledger evidence is connected to the selected node»
 >                표는 «Positive · 1 start · 1 row» 한 줄 «syn-bw-103-11 ¦ start» · 페이지 글에 «ledger-entity:» 0
 >                뜻: 노드는 키가 정확히 같아야 같은 노드다 — 찾기는 대소문자를 안 가리지만 넣는 것은 목록의 줄을 골라서
->    ②  Route    표 양 끝 열 — + 쪽은 맨 왼쪽 · − 쪽은 맨 오른쪽
->       본 것    «start | missing» 1 (SYN-BW-103-11) · «missing | start» 1 (SYN-BW-SPL-400-19) · «in_container → bonded_from → in_container | missing» 30 (first SYN-CW-001-02)
->       뜻       Route = 서버가 그 쪽 시작에서 걸은 길(술어만 · 걷기 답 그대로) · «start» = 그 줄이 시작 · missing = 그 쪽에서 못 닿음
+>    ②  길      노드 칸 밑 한 줄 (W1 에서 Route 열 은퇴)
+>       본 것    «start» 2 (SYN-BW-103-11 · SYN-BW-SPL-400-19) · «in_container → bonded_from → in_container» 30 (첫 SYN-CW-001-02 — 그 줄의 − 칸은 묶음마다 missing)
+>       뜻       길 = 서버가 그 쪽 시작에서 걸은 길(술어만 · 걷기 답 그대로) · «start» = 그 줄이 시작 · 두 쪽 길이 다르면 «+ <길> · − <길>»
 >                코어 웨이퍼 30 개가 «in_container → bonded_from → in_container» — 불량 base 의 다이가 본딩으로 받은 코어 다이의 웨이퍼
 >    ③  세상 · 값 표   Collect 에 quantity 를 더함 · 세상 칩 «모델 세상 1» (누르면 그 세상만 켜짐 — Type 목록도 그 세상 것만) · 이어 default 칩 -> 저절로 다시 걷는다
->       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 0.8 s» · quantity 머리 «Positive · 1 start · 49 rows | Negative · 1 start · 22 rows»
->                열 «Route · value_text · step · role · eqp_id · model · dir · model · dir · value · quantity · Δ · value · dir · model · dir · model · eqp_id · role · step · value_text · Route»
+>       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 1.0 s» · 구역 «quantity · 49»
+>                열 묶음 «measures ← wafer · value ▸ 4» 다음 «leads_to → <계측군> · dir ▸ 1» · «leads_to ← <계측군> · dir ▸ 1» — 묶음마다 + · Δ · −, «▸ N» 을 누르면 나머지 속성
 >                줄 49 · 두 쪽 값 16 · + 쪽만 25 · − 쪽만 2 · − 빨간 missing 27 · + «—» 8 · − «—» 4 · Δ 보이는 줄 5
 >                pressure_MPa  + 0.22 | Δ −0.1105 | − 0.3305
->                Route «measures | measures» 16 · «measures | missing» 13 · «measures | measures → leads_to» 3 · «measures → leads_to | measures» 2 · «measures → leads_to | measures → leads_to» 1 · «in_container → bonded_from → in_container → measures | missing» 14
->       출처     값마다 밑에 «준 노드 · 그 쪽 길» — default 세상 · Collect quantity 만으로 누름: bond_temp + 값 «+2» -> «35.5» «SYN-BW-103-11 · start» · «21.5» «SYN-CW-103-01 · in_container → bonded_from → in_container» · «23.5» «SYN-CW-103-02 · in_container → bonded_from → in_container»
->                − 값 «13» «SYN-BW-SPL-400-19 · start» · 출처 줄 258 개 중 «ledger-entity:» 0
->       뜻       한 줄 = 한 계측군 · 빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · «—» = 닿았는데 값이 없음 · 값이 여럿이면 첫 값과 «+N»(누르면 펼침)
->                Route «measures → leads_to» = 모델 세상의 leads_to 를 한 번 더 걸어 닿은 계측군
+>                길 «measures» 29 · «in_container → bonded_from → in_container → measures» 14 · «+ measures · − measures → leads_to» 3 · «+ measures → leads_to · − measures» 2 · «measures → leads_to» 1
+>       출처     다른 노드가 준 값이면 값 밑에 «준 노드 · 그 쪽 길» — 위 판 그대로: bond_temp + 칸 «35.5 +2 · SYN-BW-103-11 · start» -> «+2» 서랍 «measures ← wafer» 밑 기록 넷: «35.5 · + · 2026-11-24 03:49:00 · role fake · step FAKE · eqp_id FAKE-EQP · SYN-BW-103-11 · start» · «21.5 · + · … · SYN-CW-103-01 · in_container → bonded_from → in_container» · «23.5 · + · … · SYN-CW-103-02 · …» · «13 · − · … · SYN-BW-SPL-400-19 · start»
+>                페이지 글에 «ledger-entity:» 0
+>       Long     도구줄 «Long» -> «node · value name · value · point · time · side · from» 455 줄(+ 408 · − 47) · «Value · all» 로 이름 하나만 고름
+>       뜻       한 줄 = 한 계측군 · 빨간 missing = 그 쪽 base 가 그 계측군에 못 닿음 · «—» = 닿았는데 값이 없음 · 값이 여럿이면 첫 값과 «+N»(누르면 그 칸의 기록 서랍 — Long 과 같은 줄)
+>                길 «measures → leads_to» = 모델 세상의 leads_to 를 한 번 더 걸어 닿은 계측군
 >                출처 = 그 값을 준 노드(선언된 키 순서)와 그 쪽 시작에서 그 노드까지 서버가 걸은 길 — 코어 웨이퍼 값이 base 값과 섞여도 누구 것인지 보인다
 >                칩 순서는 답을 안 바꾼다 — 리허설 «모델 세상 1» 먼저든 default 먼저든 노드 81 · 엣지 1668, 노드와 엣지 전부 같음
->       복사     구역 머리 «Copy table» — 소유자 손 클릭으로(스크립트 클릭은 «Copy failed · Select the table and press Ctrl+C» 를 띄우고 아무것도 안 씀)
+>       복사     도구줄 «Copy»(W1 전 «Copy table» — 아래 수는 W1 전 판, W1 뒤 TSV 모양은 안 쟀다) — 소유자 손 클릭으로(스크립트 클릭은 «Copy failed · Select the table and press Ctrl+C» 를 띄우고 아무것도 안 씀)
 >                리허설(default · Collect quantity) «Copied 48 rows» · 클립보드 TSV 49 줄 × 15 칸(머리 줄 · 마지막 칸 id) + HTML 표
 >                트렌드의 «Copy points» -> «Copied 1000 points» · TSV 1001 줄 × 5 칸 «time | value | side | node | claim_id»
->    ③b 이어 걷기   표에서 줄을 체크하고 NEXT 의 «measures → wafer» (리허설: SYN-BW-103-11 만 + · Collect quantity · bond_temp 체크)
->       본 것    요청 하나 node_limit=1000&hops=1&follow=measures&collect=wafer&direction=both · «Nodes 64 (collect: wafer) · Edges 64 (all) · 0.1 s» · 머리 «Positive · 1 start · 64 rows» · 열 «wafer · value · eqp_id · role · step · Route» · 줄 64
->                첫 줄 «FAKE-W-001 ¦ 22.791 bond_temp · start ¦ FAKE-EQP bond_temp · start ¦ fake bond_temp · start ¦ FAKE-HIST bond_temp · start ¦ measures»
+>    ③b 이어 걷기   표에서 줄을 체크하고 구역 맨 아래 «Walk on from checked ▸» 의 «measures ← wafer» (리허설: SYN-BW-103-11 만 + · Collect quantity · bond_temp 체크)
+>       본 것    요청 하나 node_limit=1000&hops=1&follow=measures&collect=wafer&direction=both · «Nodes 64 (collect: wafer) · Edges 64 (all) · 0.3 s» · 탭 «Step 1 · + 1 → quantity | Step 2 · measures ← wafer» · 구역 «wafer · 64» · 머리 «wafer · measures → bond_temp · value ▸ 3» · 줄 64
+>                첫 줄 «FAKE-W-001 · measures ¦ 22.791» — 값이 그 줄 노드의 엣지라 출처 줄 없음 · eqp_id · role · step 은 «▸ 3» 을 누르면
 >       같은 표  bond_temp 하나만 + · Collect wafer · Follow measures · both · hops 1 · Walk -> 머리 · 열 · 줄 수 · 첫 세 줄이 같음
 >       뜻       이어 걷기 = 체크한 줄을 시작으로 한 바구니 걷기 — 한쪽 표 하나. 폼의 node_limit 을 같이 싣는다(③c 의 요청 7 개 전부 node_limit=1000 · fanout_limit 은 폼 칸이 비어 안 실림 — 채운 경우는 안 쟀다)
 >    ③c 걸음 탭   이어 걸을 때마다 탭이 하나씩 — 제한 없음 (리허설: SYN-BW-103-11 만 + · Walk · in_container → die / → wafer 를 번갈아 다섯 번)
 >       본 것    탭 6 «Step 1 · + 1 | Step 2 · in_container → die | Step 3 · in_container → wafer | Step 4 · in_container → die | Step 5 · in_container → wafer | Step 6 · in_container → die»
 >                여섯째 표: 체크 전 NEXT 꺼짐 «Check rows first» -> 한 줄 체크 -> «bonded_from → die(on) · in_container → wafer(on) · inspected → wafer(on) · observed → defect(on) · transfer → die(on)»
+>                (③c · ③d 는 W1 전 판 — W1 의 NEXT 는 화살표로 방향을 말한다, ③b «measures ← wafer»)
 >       앞 걸음  탭 «Step 2 · …» 를 누르면 그 걸음의 체크가 그대로 -> 그 NEXT -> 탭 3 «Step 1 · + 1 | Step 2 · in_container → die | Step 3 · in_container → wafer» — 뒤 탭은 지워진다
 >       뜻       걸음마다 자기 마킹(이름은 순번)에 체크가 남는다. 앞 걸음에서 다시 이어 걸으면 그 뒤 걸음과 그 마킹이 같이 지워진다
 >    ③d 갈래   한 걸음에서 다른 엣지로 이어 걸으면 탭이 나란히 선다 (리허설: SYN-BW-103-11 만 + · wafer 줄 체크)
@@ -179,12 +181,13 @@
 >                (밤사이 응용 QA 로 고침 6d6e235e0 — 시간 쪽은 그 노드 · 열의 것)
 >    ③f Control · B   Follow 밑의 두 번째 술어 목록 — 고르면 Walk 가 같은 바구니로 한 번 더(follow = B) 걷고 칸을 칠한다
 >                (리허설: «모델 세상 1» + default · void 혼자 + · Collect quantity · Follow = leads_to 뺀 전부 · B = leads_to)
->       본 것    요청 둘 · bonded_from 뺌: «quantity · 35» · «Positive · A only 17 A + B 15 B only 3» · 초록 줄 backside_damage Route «of_kind → observed → in_container → measures / B · leads_to» · 빨강 줄 wetting_deficit Route «— / B · leads_to»
+>       본 것    요청 둘 · bonded_from 뺌: «quantity · 35» · «Positive · A only 17 A + B 15 B only 3» · 줄 backside_damage 길 «of_kind → observed → in_container → measures» · 줄 wetting_deficit 길 «—»
+>                ⚠️ W1 회귀 — 범례 칩만 초록 · 빨강이고 줄의 칸 색이 안 보임(두 줄 칸 바탕이 같음) · B 의 길이 안 나옴. 클라에 넘김(총괄 10-11)
 >                bonded_from 넣음: «quantity · 49» · «Positive · A only 31 A + B 15 B only 3»
->       뜻       초록 = A 와 B 둘 다 닿음 · 빨강 = B 만 · 색 없음 = A 만. Route 는 두 줄 — A 의 길 / B 의 길
+>       뜻       초록 = A 와 B 둘 다 닿음 · 빨강 = B 만 · 색 없음 = A 만(W1 전 판의 화면 — 길 두 줄 A 의 길 / B 의 길)
 >                bonded_from 을 Follow 에 넣으면 A 만 줄이 는다(리허설 17 -> 31) · A + B · B only 는 같다 — 넣을지는 물음에 따라 고른다
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
->       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 82 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
+>       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 98 ms · «pressure_MPa · measures ← wafer · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
 >                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
 >       쪽 넘김  점이 많은 계측군(리허설 가짜 행 local_gap)의 + 값 «53» 을 누름 -> «1000 points · 2026-11-02 18:42 → 2026-12-15 12:55 local time» · Load earlier · Load later 켜짐
 >                Load earlier -> «1201 points · 2026-10-25 03:49 → 2026-12-15 12:55 local time» · 그 단추 꺼짐 «Nothing earlier» · Load later -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 그 단추 꺼짐 «Nothing later»
@@ -244,6 +247,87 @@
 >
 > ---
 >
+> ## [10-11] **쪽 줄이 큐 running 줄에 닿는다 · 머리 RUNNING = running 줄 수 · 잠금을 잡으면 «holding» (총괄 59f2ab3f4, 착지 31adca83c) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇        쓰기 단계의 박동 문장이 그 쪽 줄을 품는다 — 큐 running 줄 «RUNNING · write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows · moved …»
+>            단계 이름은 «write:<표>» 그대로라 쓰기 초 합계가 쪽마다 갈리지 않는다. 그 전엔 쓰기 단계가 쪽 줄을 덮어 화면엔 «write:<표>» 만 보였다
+>            머리 «RUNNING n» = running 줄 수 — 줄마다 하나, 글자는 그 줄의 «op · run» 또는 tx. 이어 붙인 그룹은 줄 수만큼 센다
+>            그 전엔 머리가 «맵퍼를 부르는 중인 규칙»을 세어, 쪽 시간 대부분인 쓰기 동안 0 이었다(줄은 RUNNING)
+>            잠금 — 기다리는 동안 «waiting for <표>»(둘째 표도 제 이름으로), 다 잡으면 «holding <표>, <표>», 박동이 그때 바로 써진다
+> 순서        pull -> 서버 · 체인 워커 재기동 -> 쪽으로 쓰는 소급 하나(replay «인벤토리 접기 규칙» --apply)
+>            -> 큐 화면 running 줄이 page 1/K 부터 늘어나는지 · 머리 RUNNING 이 running 줄 수와 같은지
+> 답의 뜻      줄이 «write:<표>» 만 말하면 체인 워커가 이 pull 전 판(쪽 줄은 체인 워커가 짓는다)
+>            머리 0 인데 줄이 RUNNING 이면 서버가 이 pull 전 판(머리는 서버가 짓는다)
+> 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+>
+> ---
+>
+> ## [10-11] **LLM 증감 부호 dir — 원장에는 dir 하나 (소유자 «같이 움직이나 / 반대로», 착지 1a1fa2647) — 이주 «없음» · 재기동 «서버 · 체인 워커»(LLM 을 부르는 프로세스)**
+>
+> ```
+> 순서        pull
+>            -> table_config.json  후보 표 column_types 에 "dir": "string"
+>            -> ontology/ledger_config.json  leads_to 의 qualifiers.optional 에 "dir" · 후보 소스 bind 에 "dir": {"kind": "column", "column": "dir"}
+>               아래 「LLM 증감 방향」 절의 두 방향 한정자를 이었으면 그 둘 대신 — 두 방향 칸은 후보 표에 그대로 둔다
+>            -> 서버 · 체인 워커 재기동 — 선언이 먼저: 체인 워커가 기동 때 새 칸을 ALTER 하고 슬롯이 기동 때 표 설정을 읽는다
+>            이 뒤에 도는 글부터 dir 이 찬다. 이미 있는 후보 행은 그 글이 다시 돌 때까지 빈다
+> 답          후보 행 dir   +     = 원인 · 현상 방향이 같다 (up/up · down/down)
+>                         -     = 다르다 (up/down · down/up)
+>                         빈 칸  = 한쪽이라도 방향이 없다 — 원장 엣지에 dir 없이 들어간다 (d338d3fdc)
+> 되돌리기      git revert <이 커밋> -> 같은 재기동
+> ```
+>
+> ---
+>
+> ## [10-11] **사전 키우기 — 낱말 주머니 · 다시 맞추기 · 제안 표 (소유자 「워드백 느낌으로」 · ㄱ, 착지 8bd6375dd) — 이주 «없음» · 재기동 «서버 · 체인 워커»(LLM 을 부르는 프로세스)**
+>
+> ```
+> 순서        pull -> 서버 · 체인 워커 재기동 -> 이 뒤에 도는 글부터. 이미 있는 후보 행은 그대로 — 8-2 를 선언했으면 사전 행이 바뀔 때 빈 키가 찬다
+> 바뀐 것      모델이 식별자를 null 로 답한 쪽 — 말이 노드 구절을 통째로 품으면 그 노드 (전: 말 = 구절일 때만)
+>            한 구절이 다른 노드 구절 안에 들면 긴 쪽 — «온도» · «접합 온도» 가 다른 노드여도 「접합 온도」는 «접합 온도» (전과 같음)
+>            서로 다른 노드의 구절이 나란히 다 들면 빈다 — 「본딩 설비의 접합 온도 파라미터」에 «본딩 설비» · «접합 온도» 둘 다 노드면 키 없음
+>            문턱 낮추기  맵퍼에서 ask_links(text, names, match_at=0.8) — 구절 조각 다섯 중 넷이 들면 그 노드
+> 선언 (골라)   TEXT_LINKS_GUIDE §8 의 맵퍼 · 규칙 · 제안 표 — server/mappers/*.py · chain_rules.json · table_config.json
+>            8-2 다시 맞추기  사전 표 -> 후보 표 · allow_retraction false · allow_chain_trigger true   후보 표 키가 구절이어야 고쳐 쓴다
+>            8-3 제안        후보 표 -> 제안 표 · allow_chain_trigger true · 제안 표에 없는 말만 묻는다
+>            8-3 확정 -> 사전  제안 표 -> 사전 표 · require [확정 칸, suggested_node_type, suggested_node_key]
+>                         새 노드 제안은 사람이 suggested_node_key 를 적어야 넘어간다 (타입이 빈 행은 suggested_node_type 도)
+> 새 노드 타입  (착지 135581d6a · 같은 재기동) 새 노드 행에 suggested_node_type — 모델이 제안 맵퍼가 읽은 사전 행의 타입 중에서 고른다
+>            넷만 고르게 하려면 그 사전 SQL 에 WHERE <타입 칸> IN (<모델링 노드 타입 넷>)
+> 새 줄        chain_worker.log  [LLM] phrase N of M answers new_node_type '<타입>', which the dictionary does not list - suggested without a type (llm:<모델>): '<말>'   = 목록에 없는 타입 — 그 행의 타입만 빈다
+>                            [LLM] phrase N of M answers node '<식별자>', which the dictionary does not list - suggested without a node (llm:<모델>): '<말>'
+>                            [LLM] phrase N of M has no answer - no suggestion (llm:<모델>): '<말>'   = 다음에 깨어날 때 다시 묻는다
+>                            [Chain] <확정 규칙>: N row(s) not handed over - required column(s) empty: suggested_node_key=N   = 확정했지만 새 노드 키가 아직 빔
+> 되돌리기      git revert <이 커밋> -> 같은 재기동. 선언을 넣었으면 그 규칙도 지운다 — rematch_rows · ask_dictionary 가 사라진다
+> ```
+>
+> ---
+>
+> ## [10-11] **LLM 증감 방향 · 원장 optional 한정자의 빈 칸 (소유자 「여기 모델링에 증감 방향은 없네」 · 총괄 10-11, 착지 d338d3fdc) — 이주 «없음» · 재기동 «서버 · 체인 워커 · 스케줄러»(원장 번역 · LLM 을 도는 프로세스)**
+>
+> ```
+> 순서        pull
+>            -> table_config.json  후보 표 column_types 에 "cause_direction": "string" · "phenomenon_direction": "string"
+>            -> ontology/ledger_config.json  leads_to 의 qualifiers.optional 에 "cause_direction" · "phenomenon_direction"
+>               후보 소스 bind 에 "cause_direction": {"kind": "column", "column": "cause_direction"} · phenomenon_direction 도 같은 모양
+>            -> 서버 · 체인 워커 · 스케줄러 재기동 (새 칸은 체인 워커가 기동 때 ALTER — 셋업 명령표 ⓪ 의 줄)
+>            이 뒤에 도는 글부터 두 칸이 찬다. 이미 있는 후보 행은 그 글이 다시 돌 때까지 빈다
+> 전에 실패한 원장 묶음  python -m ledger followup                      (server 폴더 · 읽기만)
+>            답  실패 줄 «<id> <표> <사건> — <소스>: RoleFrameError: …bind.<한정자>.column: column '<칸>' contains a missing value»
+>               = optional 한정자 칸이 빈 행 하나가 그 묶음 전체를 막았다. 이 pull 뒤로는 안 난다
+>            python -m ledger followup --requeue-failed     -> «다시 넣음 K — 체인 워커가 따라간다»
+>               = 실패한 사건 «전부»(다른 까닭의 실패도)를 체인 워커가 다시 따라간다. chain_worker.log 에 같은 실패가 다시 없으면 끝
+>            목록에 없으면(아웃박스가 이미 지운 사건)  python -m ledger.backfill --source <후보 소스> --whole-source   -> --apply
+> 새 줄        chain_worker.log  [LLM] link 1 of 2 answers cause_direction 'Up', which is not up or down - kept without it (llm:<모델>): '<말>'
+>            = 모델이 up · down 아닌 것을 답했다 — 그 쪽 방향만 빈다(대소문자 그대로 본다)
+> 그대로        required 한정자 칸이 빈 행은 전처럼 그 묶음째 실패
+> 되돌리기      git revert <이 커밋> -> 같은 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **CLI 소급이 체인 워커 재기동에 안 끊긴다 — CLI 가 자기 이름을 Retroactive 로 먼저 묶는다 (총괄 10-11 ㄱ, 착지 5e5a9d049) — 이주 «없음» · 재기동 «없음»(다음 CLI 부터)**
 >
 > ```
@@ -297,7 +381,9 @@
 >
 > ```
 > 무엇        접기 맵퍼가 진 잡 행을 1,000 행 쪽으로 넘기고, 체인 쓰기 문이 쪽마다 쓰고 커밋한 뒤 다음 쪽을 묻는다 — 조인과 같은 길(keyset_scan.pages 한 자리)
->            chain_worker.log 「[Chain] <규칙> -> <표> · page k/K · <낸 행> / <전체> rows」 — 첫 쪽부터, 그 쪽을 쓰기 전에, 조인도 같은 줄 · 큐 running 은 지금 «write:<표>» — 쪽 줄이 화면에 닿는 것은 총괄 59f2ab3f4 로 고치는 중
+>            chain_worker.log 「[Chain] <규칙> -> <표> · page k/K · <낸 행> / <전체> rows」 — 첫 쪽부터, 그 쪽을 쓰기 전에, 조인도 같은 줄 · 큐 running 줄도 «write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows»(31adca83c 뒤)
+>            큐 머리 «RUNNING n» = running 줄 수 — 줄마다 하나(이어 붙인 그룹은 줄 수만큼), 글자는 그 줄의 «op · run» 또는 tx (31adca83c 뒤)
+>            잠금 — 기다리는 동안 «waiting for <표>», 다 잡으면 «holding <표>, <표>» (31adca83c 뒤)
 > 멈추면      쓴 쪽까지 커밋돼 남는다. 다시 돌리면 진 잡 행을 «전부» 다시 넘기고(4c27f4b8c — 빼면 표시가 거둬진다) 쓴 쪽은 같은 값이라 안 바뀐다
 > 순서        pull -> 체인 워커 재기동 -> python scripts/chain_replay_cli.py replay «인벤토리 접기 규칙» --apply -> chain_worker.log 의 page 줄이 1/K 부터 늘어나는지
 > 박스 수       이 박스 dt_log 사본(키를 1,000 단위로 펼침, 스크래치 스키마) · 체인 쓰기 문 그대로(층 · 이력 · 아웃박스):
@@ -494,7 +580,7 @@
 >            «다른» 인벤토리 행이 바뀌어 이기면           옛 표시 남음 — 이긴 잡 아웃 시각을 고침 · 이긴 잡 행을 지움
 >            로그 행의 잡 칸을 고쳐 다른 잡으로 옮기면     옛 표시 남음
 >            남은 옛 표시는 아래 초기화 줄로 걷는다
-> 소급 동안    chain_worker.log «… <규칙> -> <로그 표> · page k/K · <낸 행> / <전체> rows» — 1,000 행 쪽마다 쓰고 커밋 · 큐 running 은 지금 «write:<표>» — 쪽 줄이 화면에 닿는 것은 총괄 59f2ab3f4 로 고치는 중
+> 소급 동안    chain_worker.log «… <규칙> -> <로그 표> · page k/K · <낸 행> / <전체> rows» — 1,000 행 쪽마다 쓰고 커밋 · 큐 running 줄도 «write:<표> · <규칙> -> <표> · page k/K · <낸 행> / <전체> rows»(31adca83c 뒤)
 >            멈추면 쓴 쪽까지 남고, 다시 돌리면 1 쪽부터 다시 — 쓴 쪽은 같은 값으로 다시 쓰고 나머지가 써진다(「접기 · 조인 쓰기는 1,000 행씩」 절)
 > 안 되는 것   인벤토리 행을 지우면 그 웨이퍼를 다시 안 정함
 > 초기화       python server/scripts/chain_replay_cli.py withdraw dt_log chain_ingestion --columns fold_mark   (보고 --apply)
