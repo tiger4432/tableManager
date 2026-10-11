@@ -65917,3 +65917,13 @@ require 보류(0117a0048)   ㄱ 가 끝 — 복사 replay -> 다시 세기 repla
 같은 커밋  chain_rules 안내(decide 칸 표) · RELEASE_LOG
 순서   접기 맵퍼 -> 이것 -> 층 원천 행마다
 ```
+
+> **[총괄 -> 구현자] 10-11 오후 — 덧붙임: 8b487d2e6 (aggregations 폼) — 응용 18766 재현으로 바로잡음 + 둘 더**
+
+```
+바로잡음  지시의 «레코드 줄을 안 그림»은 틀렸음 — 오늘 폼(Chain 탭 Rules)은 레코드를 «고칠 수 없는 글자»로 그리고(툴팁 not editable in this form), 폼 저장 뒤 raw 에 그대로 남음. 고칠 것(레코드를 칸으로)은 그대로
+더 ①     decide 선언의 «맨 위» · «derive 바로 밑»에 적은 모르는 칸이 이름 없이 사라짐(응용: 맨 위 aggregations · derive 밑 aggregations · zzz_cell — notes 0 · refusal 0 · params.aggregations {})
+         decide 안의 오타는 「derive.decide cell this product does not read — agregations. The rule runs.」 로 말함 -> 같은 판정(rule_shape.expand_declaration)이 맨 위 · derive 밑의 모르는 칸도 같은 모양 한 줄로 말함. 꺼진 규칙도 칸 판정은 함(지금은 enabled=false 에서 먼저 돌아감)
+         join · mapper 선언도 같은 자리를 지나는지 세고 같이
+더 ②     같은 폼 ADVANCED 줄에 한국어가 그려짐 — 「mappers.ledger_v2_dt_job_mapper · 원장 롤프레임 매퍼입니다 — 체인 규칙이 이 모듈을 들지 않습니다」(서버 맵퍼 안내 문장) -> 영어로(UI 문자열은 영어, 소유자 상설)
+게이트   맨 위 · derive 밑 모르는 칸 -> 저장 답 · 로드 줄에 이름 · 레코드 칸 편집 왕복 · 그 문장 영어 · 변이
