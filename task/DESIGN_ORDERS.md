@@ -37839,3 +37839,15 @@ E2   표 구역에 Table ⇄ Trend 토글 — Trend = trend.js · x = 행마다 
 게이트    18766 두 스킴: 같은 quantity 의 값 열 트렌드가 변 스킴과 이벤트 스킴에서 같은 점(값 · 시각) · 시각 없는 속성은 «no time» 수로 · 변이
 순서      G-2 앞(작음) -> G-2 -> 값 대응
 ```
+
+> **[총괄 -> 클라] 10-11 — Q: 대기열 박자가 굳지 않게 — 읽기에 시한 + 마지막 읽은 시각 (소유자 「메인 그리드 체인 대기열 동기화 제대로 안 되는데 가만히 멈춰 있길래 아무것도 안 된 줄 알았더니 새로고침하니 다 끝나 있었음」 -> ㄱ)**
+
+```
+짐작(코드)  queue_poll 의 pollBeat 는 앞 읽기가 «아직»이면 박자를 건너뜀 — main.js refreshQueue(/outbox/queue/rows) · admin.js refreshQueue 둘 다 fetch 에 시한이 없어
+            한 요청이 안 끝나면 queueReading/queueRead 가 참으로 남아 새로고침 전까지 굳음 (박스 0.1 s 라 재현 못 함 · 운영 시간 못 잼)
+고칠 것     박자 자리 하나(queue_poll)에 시한 — 읽기가 QUEUE_READ_TIMEOUT_MS(이름 붙인 상수 하나, 예 15 s)를 넘으면 그 읽기를 끊고(AbortController) 다음 박자에 다시
+            두 화면(메인 그리드 Queue 탭 · 어드민 체인 대기열)이 같은 자리를 지남 — 화면마다 따로 시한 금지
+            화면에 «Read N s ago»(마지막으로 읽은 시각) · 시한에 끊기면 «Read timed out · retrying» 한 줄 — 굳으면 보이게
+게이트      안 끝나는 fetch 스텁 -> 시한 뒤 다음 박자가 다시 읽음 · 두 화면 다 · «Read N s ago» 가 박자마다 줆 · 변이(시한 빼기 -> 굳음 -> 빨강)
+순서        G-2 다음
+```
