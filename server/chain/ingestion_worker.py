@@ -4596,7 +4596,8 @@ def _end_queries_a_gone_chain_worker_left_sync(db_session_factory):
     it before the first beat, and the heartbeat kept the dead pid (`foreign_beat`).
 
     ⚠️ «NOT MINE» IS «NAMED LIKE ME AND OPENED BEFORE I WAS IMPORTED». Only this process's
-    name - so a retroactive child or a script is never touched - and only in the chain's
+    name - so a process that names itself first (the retroactive child, the replay CLI) is never touched; a script
+    that names nothing takes "Chain" from this module's import and is (bb4d53e9e) - and only in the chain's
     own process: a loop running inside the API would be naming the API's connections.
     Skipped while another chain loop is alive (it is not gone)."""
     from database.database import connection_name

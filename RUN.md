@@ -244,6 +244,22 @@
 >
 > ---
 >
+> ## [10-11] **CLI 소급이 체인 워커 재기동에 안 끊긴다 — CLI 가 자기 이름을 Retroactive 로 먼저 묶는다 (총괄 10-11 ㄱ, 착지 {LANDING}) — 이주 «없음» · 재기동 «없음»(다음 CLI 부터)**
+>
+> ```
+> 무엇        chain_replay_cli.py 가 시작할 때 프로세스 이름을 Retroactive 로 묶는다 — 큐의 소급 자식(admin/retroactive_run.py)과 같은 두 줄
+>            그 전엔 체인 모듈을 import 할 때 «Chain» 이 먼저 묶여 CLI 연결이 assy_chain 이었고,
+>            체인 워커 재기동의 기동 정리가 그것을 «떠난 워커가 남긴 연결»로 보고 끊었다(bb4d53e9e — replay --apply 가 다음 쪽에서 멈춤)
+> 순서        pull -> 다음 CLI 부터. 재기동 필요 없음
+> 볼 줄       CLI 화면 첫머리 «[logging] this process already logs to retroactive.log (opened by Retroactive); chain_worker.log stays closed here»
+>            이 줄이 보이면 이 고침이 든 CLI. 안 보이고 [ChainRules] 줄이 바로 나오면 pull 전 판
+> 바뀐 것      CLI 의 [Chain] · [admin.retroactive] 로그 줄은 retroactive.log 에 남는다(그 전엔 chain_worker.log 에 섞였다). CLI 화면 출력은 그대로
+> 그대로       이름을 안 묶는 다른 스크립트(python -c 로 run_here 를 부르는 줄 등)는 체인 모듈에 닿으면 여전히 assy_chain — 시연 뒤 총괄 ㄴ
+> 되돌리기      git revert <이 커밋>
+> ```
+>
+> ---
+>
 > ## [10-11] **LLM 노드 키 — 모델이 사전의 노드를 고른다 · 원인 · 현상은 글의 짧은 명사구 · 짝마다 링크 하나 (소유자 「프레이즈로 뽑네 — 노드 키가 아니라」, 착지 1807f326b) — 이주 «없음» · 재기동 «서버 · 체인 워커»(LLM 을 부르는 프로세스)**
 >
 > ```
@@ -324,7 +340,7 @@
 > ```
 > 지금 운영에서   table_config.json «로그 표» 에  "indexes": [{"columns": ["dt_job_id", "dt_wafer_id"]}]   (접기 params match 의 왼쪽 칸 둘)
 >   (이 pull 전에도) -> 체인 워커 재기동 -> chain_worker.log «[Indexes] building <이름> on <로그 표>» -> «[Indexes] <이름> built in N s»
->              -> python scripts/chain_replay_cli.py replay «인벤토리 접기 규칙»   -> --apply      (인덱스는 Reload 가 아니라 체인 워커 기동이 짓는다 — 「표 선언 인덱스」 절)
+>              -> python scripts/chain_replay_cli.py replay «인벤토리 접기 규칙»   -> --apply      (인덱스는 체인 워커 기동 · FULL Reload 뒤에 짓는다 — 「표 선언 인덱스」 절)
 > 이 pull 뒤    pull -> 체인 워커 재기동 (접기 맵퍼는 체인 워커가 부른다)
 > 무엇        맵퍼가 읽는 로그 행 = 진 잡의 것만(이긴 잡 행은 안 쓰니 안 읽음) · 진 잡 행은 돌 때마다 «전부» 다시 넘긴다
 > 🔴 거둠      같이 들어갔던 «이미 같은 표시인 행은 안 넘김»은 4c27f4b8c 로 거뒀다 — replay 를 두 번째 돌리자 표시 321,315 -> 0
@@ -496,7 +512,8 @@
 >            old marks withdrawn — 이제 이긴 잡 · 다른 잡으로 옮긴 로그 행의 옛 표시를 거둔 수
 >   그 뒤      ⑥ 복사 replay 를 꼭 — 이 명령은 아무 규칙도 안 깨운다. 열린 그리드는 새로 고침해야 보인다
 >   멈춤      소급 탭 × — 쪽 사이에서 선다 · 다시 돌리면 남은 것만 · 멈춘 판은 옛 표시를 안 걷는다(끝까지 한 번 더)
-> 🔴 돌리는 동안   체인 워커를 재기동하지 않는다 — 재기동의 기동 정리가 이 명령의 연결을 끊어 «server closed the connection unexpectedly» 로 멈춤(구현자 bb4d53e9e, CLI 소급 전부 같음). 멈췄으면 같은 명령을 다시
+> 돌리는 동안    체인 워커를 재기동해도 안 끊긴다 — {LANDING} pull 뒤(CLI 연결 assy_retroactive). 그 전 판에선 재기동의 기동 정리가
+>            이 명령의 연결을 끊어 «server closed the connection unexpectedly» 로 멈춤(bb4d53e9e) — 멈췄으면 같은 명령을 다시
 >   초기화      위 「초기화」 첫 줄 -> fold-units dt_log_fold_by_inventory --apply
 >   박스 수     박스 DESKTOP-OVKV3HK(AMD Family 23) · assy_test 스크래치 스키마 · 만든 데이터(인벤토리 1,000 · 웨이퍼 400 · 로그 535,000 · 표시 321,000)
 >            쪽으로 답하는 맵퍼(1,000 행 쪽) 그대로: 미리보기 26.7 초 · --apply 91.6 초(17 쪽, 쪽마다 4.7~6.5 초)

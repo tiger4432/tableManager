@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-11 · CLI 소급이 체인 워커 재기동에 끊기지 않는다
+
+- **무엇** — 총괄 10-11 ㄱ. CLI 소급(replay --apply · fold-units --apply 들)이 도는 중에 체인 워커를 재기동하면, 워커의 기동 정리가 CLI 의 연결을 «떠난 워커가 남긴 연결»로 보고 끊었습니다. CLI 연결의 이름이 체인 워커와 같은 assy_chain 이었기 때문입니다. 이제 CLI 는 시작할 때 이름을 Retroactive 로 묶어(큐의 소급 자식과 같음) 연결이 assy_retroactive 이고, 기동 정리가 건드리지 않습니다.
+- **선언 예시** — 새 선언은 없습니다.
+- **화면에서** — CLI 화면 첫머리에 «[logging] this process already logs to retroactive.log …» 한 줄이 나옵니다.
+- **필요한 조건** — pull 뿐입니다. 재기동은 필요 없고 다음 CLI 부터 적용됩니다.
+- **바뀐 동작** — CLI 의 로그 줄이 chain_worker.log 대신 retroactive.log 에 남습니다.
+- **자세히** — RUN.md 같은 절 · task/scoped_redo_report.md.
+
 ## 2026-10-11 · 걷기 표 W 1: Wide | Long, 열 묶음, 화살표 열 이름, Route 열 은퇴
 
 - **무엇** — 총괄 W 1 조각(시안 2판 B-ㄱ). 구역마다 도구줄 한 줄: Wide | Long · Table | Trend · Columns · Copy · All rows | Differs | Missing. 이어 걷기(Walk on from checked ▸)는 구역 맨 아래 한 줄.

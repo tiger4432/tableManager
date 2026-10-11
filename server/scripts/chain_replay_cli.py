@@ -347,4 +347,9 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # 🔴 NAMED AS THE QUEUE'S CHILD IS (admin/retroactive_run.py), BEFORE ANY IMPORT NAMES IT: `chain.ingestion_worker`
+    # binds "Chain" when imported, and a connection named `assy_chain` is one a restarting chain worker's startup
+    # cleanup ends as its own (bb4d53e9e: the run died at its next page). Here, not at import - a test imports main.
+    from utils.logger import get_process_logger
+    get_process_logger("Retroactive", "retroactive.log")
     sys.exit(main())
