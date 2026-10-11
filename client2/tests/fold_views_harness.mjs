@@ -1,6 +1,6 @@
-// FOLD VIEWS - the pure half (leads 793017c62 · edcc0568c · 5ef260acf · 10-08): what a folded lump's table and
-// points read, the one start-branch question, the window, and the one drawing. Fed the implementer's captures of
-// the real walk (walk_fold_*.json, PostgreSQL), turned into the picture's nodes by the part's own `subgraphLayout`.
+// FOLD VIEWS - the pure half (leads 793017c62 · 5ef260acf · 10-08 · 10-11 E2b): what a value reads as, the one start-branch
+// question, a lump's answer and the points its page step's Trend reads, and the one drawing. Fed the implementer's
+// captures of the real walk (walk_fold_*.json, PostgreSQL; walk_next_18766.json, one step from bond_temp).
 //
 // Run: node client2/tests/fold_views_harness.mjs
 import { readFileSync } from 'node:fs';
@@ -15,6 +15,7 @@ const WAFER = fx('walk_fold_wafer.json');
 const STEP = fx('walk_fold_recipe_step.json');
 const PROCESS = fx('walk_fold_process_lump.json');
 const nodesOf = (...bodies) => subgraphLayout([{ results: bodies }], []).nodes;
+const NEXT = fx('walk_next_18766.json');
 const COLOURS = { lit: '#a00', ring: '#000', rest: '#999', text: '#111', font: 'sans-serif' };
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -32,21 +33,6 @@ async function suite(m) {
   const read = ['10.1', ' 3 ', '0', 0, 'S1', '', '  ', null, undefined, NaN, '1e3'].map((v) => m.numberOf(v));
   say('R1 text that is a number reads as it; text that is not, blank or nothing reads as none; 0 is a value',
     JSON.stringify(read) === JSON.stringify([10.1, 3, 0, 0, null, null, null, null, null, null, 1000]), JSON.stringify(read));
-  const stepNodes = nodesOf(STEP);
-  const processNodes = nodesOf(WAFER).filter((n) => n.type === 'process_event');
-  say('R2 the y choices are the attributes some node holds a number in: the measurements\' value, none of the process events\' steps',
-    JSON.stringify(m.valueAttributes(stepNodes)) === '["value"]' && processNodes.length > 0
-      && JSON.stringify(m.valueAttributes(processNodes)) === '[]',
-    JSON.stringify({ step: m.valueAttributes(stepNodes), process: m.valueAttributes(processNodes) }));
-  const node = stepNodes[0];
-  const two = { ...node, attributes: { value: '7' }, attributesByWorld: { value: [
-    { world: 'what-if', value: '9', occurred_at: '2026-10-01T01:00:00+00:00' },
-    { world: 'default', value: '7', occurred_at: '2026-10-01T02:00:00+00:00' }] } };
-  say('R3 a value is said when the world that says it said it, not the first world listed',
-    m.saidAt(two, 'value') === Date.parse('2026-10-01T02:00:00+00:00')
-      && m.saidAt(node, 'value') === Date.parse(node.attributesByWorld.value[0].occurred_at),
-    String(m.saidAt(two, 'value')));
-
   console.log('\n[S] the one start-branch question');
   const later = { results: [STEP] };
   const lit = m.startBranch([{ results: [WAFER] }, later]);
@@ -56,29 +42,38 @@ async function suite(m) {
     waferIds.length > 0 && waferIds.every((id) => lit.has(id)) && others.length > 0 && others.every((id) => !lit.has(id))
       && lit.size === new Set(waferIds).size, JSON.stringify({ lit: lit.size, wafer: waferIds.length, others: others.length }));
 
-  console.log('\n[P] the points one attribute gives');
-  const p = m.pointsOf(stepNodes, 'value', lit);
-  const times = p.points.map((x) => x.t);
-  say('P1 a point per node holding a number, at the time it was said, oldest first; the start branch\'s are lit',
-    p.points.length === stepNodes.length && JSON.stringify(times) === JSON.stringify(times.slice().sort((a, b) => a - b))
-      && p.points.filter((x) => x.lit).map((x) => x.id).sort().join() === stepNodes.filter((n) => lit.has(n.id)).map((n) => n.id).sort().join()
-      && p.points.some((x) => x.lit) && p.points.some((x) => !x.lit),
-    JSON.stringify({ points: p.points.length, lit: p.points.filter((x) => x.lit).length }));
-  const odd = [{ ...node, id: 'a', attributes: { value: 'S1' } }, { ...node, id: 'b', attributesByWorld: {} },
-    { ...node, id: 'c', attributes: {} }, node];
-  const q = m.pointsOf(odd, 'value', new Set());
-  say('P2 a value that is not a number, a value said at no time and a node without it are left out, each counted',
-    q.points.length === 1 && q.notNumber === 1 && q.noTime === 1 && q.noValue === 1,
-    JSON.stringify({ points: q.points.length, notNumber: q.notNumber, noTime: q.noTime, noValue: q.noValue }));
-
-  console.log('\n[W] the window of the one more step');
-  const w = m.windowAround([Date.parse('2026-10-01T00:00:00Z'), Date.parse('2026-10-03T00:00:00Z'), NaN]);
-  say('W1 the start branch\'s times, AROUND_DAYS each side; no time known, no window',
-    m.AROUND_DAYS === 7 && w && w.since === Date.parse('2026-10-01T00:00:00Z') - 7 * DAY
-      && w.until === Date.parse('2026-10-03T00:00:00Z') + 7 * DAY && m.windowAround([NaN]) === null && m.windowAround([]) === null,
-    JSON.stringify(w));
+  console.log('\n[L] a lump\'s answer and its points (lead 10-11 E2b)');
+  // bond_temp's measures from 64 wafers: the lump its owner, the wafers its members; one edge of another predicate, one
+  // between two members, a node beyond and one more measures of bond_temp from a wafer not a member - none the lump's.
+  const q = NEXT.seed.id;
+  const wafers = NEXT.nodes.filter((n) => n.type === 'wafer').map((n) => n.id);
+  const extra = { ...NEXT, nodes: [...NEXT.nodes, { id: q, type: 'quantity', label: 'bond_temp', keys: { quantity: 'bond_temp' } }, { id: 'x:far', type: 'wafer', label: 'X', keys: { wafer: 'X' } },
+    { id: 'x:txt', type: 'wafer', label: 'T', keys: { wafer: 'T' } }],
+  edges: [...NEXT.edges, { id: 'x:1', source: wafers[0], target: q, predicate: 'leads_to' }, { id: 'x:2', source: wafers[0], target: wafers[1], predicate: 'measures' },
+    { id: 'x:3', source: 'x:far', target: wafers[2], predicate: 'measures' },
+    { id: 'x:4', source: 'x:txt', target: q, predicate: 'measures', qualifiers: { value: 'n/a' }, occurred_at: NEXT.edges[0].occurred_at }] };
+  const lump = { owner: q, members: wafers, predicate: 'measures', farType: 'wafer' };
+  const answer = m.lumpAnswer([extra], lump);
+  const ownEdges = NEXT.edges.filter((e) => e.predicate === 'measures' && (e.target === q || e.source === q)).map((e) => e.id);
+  say('L1 a lump\'s answer: its owner and members, the edges between them along its predicate - another predicate, an edge between members, a node beyond left out',
+    answer.nodes.map((n) => n.id).sort().join() === [q, ...wafers].sort().join()
+      && answer.edges.map((e) => e.id).sort().join() === ownEdges.sort().join() && ownEdges.length === wafers.length,
+    JSON.stringify({ nodes: answer.nodes.length, edges: answer.edges.length, own: ownEdges.length }));
+  const litL = new Set(wafers.slice(0, 5));
+  const pts = m.lumpPoints(answer, lump, NEXT._decl.entities, [], litL);
+  // The page's own read of the whole walk, the same rows and the same column: the wafers' measures value toward q.
+  const { walkTableView } = await import('../src/walk/table_view.js');
+  const { rowsPoints } = await import('../src/walk/trend.js');
+  const full = walkTableView(NEXT, NEXT._decl.entities, [], undefined, { positive: [q], negative: [] });
+  const sec = full.sections.find((x) => x.type === 'wafer');
+  const page = rowsPoints(full, wafers, sec.columns[0]).map((x) => [x.t, Number(x.value), litL.has(x.row)]);
+  say('L2 a lump\'s points: those the page reads for the same rows and column - numbers, its start branch lit',
+    pts.length === wafers.length && JSON.stringify(pts.map((x) => [x.t, x.v, x.lit])) === JSON.stringify(page)
+      && pts.some((x) => x.lit) && pts.some((x) => !x.lit),
+    JSON.stringify({ points: pts.length, page: page.length, lit: pts.filter((x) => x.lit).length }));
 
   console.log('\n[D] the one drawing');
+  const p = { points: pts };
   const svg = m.pointsSvg(p.points, { width: 200, height: 80, pad: 6.8, r: 3.4, colours: COLOURS, axes: true });
   const circles = [...svg.matchAll(/<circle [^>]*>/g)].map((c) => c[0]);
   const litAt = circles.map((c) => c.includes(`fill="${COLOURS.lit}"`));
@@ -112,16 +107,12 @@ const failures = [];
   const M = (id, what, catches, from, to) => ({ id, what, catches, from, to });
   const MUTANTS = [
     M('Rm2', 'a blank text reads as 0', 'R1', "if (typeof value !== 'string' || !value.trim()) return null;", "if (typeof value !== 'string') return null;"),
-    M('Rm3', 'a value is said when the first world said something', 'R3',
-      'const said = saids.find((s) => s && s.value === value) || saids[0];', 'const said = saids[0];'),
     M('Sm1', 'the start branch is everything any step reached', 'S1',
       'const first = (steps || [])[0];\n  return new Set(((first && first.results) || [])',
       'return new Set((steps || []).flatMap((s) => s.results || [])'),
-    M('Pm1', 'the points are not lit from the start branch', 'P1', 'lit: Boolean(lit && lit.has(node.id))', 'lit: false'),
-    M('Pm2', 'a value said at no time stands at time 0', 'P2', "if (t === null) { noTime += 1; continue; }", ''),
-    M('Pm3', 'a node without the attribute is dropped uncounted (lead 161757c35)', 'P2',
-      'if (!(attribute in attrs)) { noValue += 1; continue; }', 'if (!(attribute in attrs)) continue;'),
-    M('Wm1', 'the window is a day each side', 'W1', 'export const AROUND_DAYS = 7;', 'export const AROUND_DAYS = 1;'),
+    M('Lm1', 'a lump\'s answer keeps every predicate between owner and member', 'L1',
+      'if (e.predicate === lump.predicate && far !== null', 'if (far !== null'),
+    M('Lm2', 'a lump\'s points not lit from the start branch', 'L2', 'lit: Boolean(lit && lit.has(p.row))', 'lit: false'),
     M('Dm1', 'the start branch is drawn under the rest', 'D1', '[...labels, ...rest, ...lit]', '[...labels, ...lit, ...rest]'),
     M('Dm2', 'the rest is not faded', 'D1', ' opacity="0.4"/>', '/>'),
   ];

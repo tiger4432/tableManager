@@ -391,17 +391,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-mark.is-on { color: var(--accent); background: var(--accent-weak); border-color: var(--accent); font-weight: 600; }
 .sg-mark[disabled] { opacity: 0.5; cursor: not-allowed; }
 .sg-facts-head { font-weight: 600; }
-/* A lump in the info box (lead 10-08): what it is, its switch and its y on one line, its counts, then the table or the
-   points. The box keeps its height and scrolls inside itself. */
-.sg-lv-kind { min-height: var(--wk-h); padding: 0 var(--space-3); }
-.sg-lv-kind[aria-pressed="true"] { color: var(--accent); background: var(--accent-weak); border-color: var(--accent);
-  font-weight: 600; }
-.sg-lv-y { min-height: var(--wk-h); padding: 0 var(--space-2); font: inherit; color: var(--text); background: var(--bg-inset);
-  border: 1px solid var(--border); border-radius: 0; }
-.sg-lv-choice { display: inline-flex; align-items: center; gap: var(--space-2); }
-.sg-lv-word { font-size: var(--wk-fs-line); color: var(--text-dim); }
-.sg-lv-meta { font-size: var(--wk-fs-line); color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.sg-lv-plot { display: block; width: 100%; height: 80px; flex: none; }
+/* A lump in the info box (lead 10-08): what it is, and its one press - the lump as a step of the page's table (10-11). */
+.sg-lv-open { min-height: var(--wk-h); padding: 0 var(--space-3); }
 .sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); overflow-wrap: anywhere; }
 /* Which world says an edge or an attribute, when the walk reads several (leads 99032248f, ee0f66e7b, 4e1e49fe9):
    one row per world under it, its chip first, then what that world says. */

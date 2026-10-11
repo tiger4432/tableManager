@@ -1,46 +1,8 @@
-// A folded lump seen another way (lead 793017c62 · edcc0568c · 5ef260acf, owner 10-07): as a table of its nodes or
-// as plain points (x the time a value was said, y the value), with the walk's start branch drawn over the rest -
-// to see at a glance whether what the start reached stands apart. The pure half: what the views read and draw.
-import { parseServerInstant } from '../server_time.js';
-
-/** Days around the start branch's times that a definition node's one more step reads (lead 10-08). Named here
- *  until the demo is over, then a declaration. */
-export const AROUND_DAYS = 7;
-/** The one more step's node budget, inside the walk's node_limit range (lead 10-08). Same: a declaration later. */
-export const STEP_NODE_LIMIT = 200;
-
-/** The ways a lump is seen, in the order its switch shows them; the first is the lump's own list (today's). */
-export const FOLD_VIEWS = Object.freeze(['Nodes', 'Table', 'Trend']);
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** What each lump is seen as, its y and what was walked for it - nothing yet. A part holds its own. */
-export function openLumpSeen() {
-  return { kind: new Map(), y: new Map(), data: new Map(), from: new Map(), choices: new Map() };
-}
-
-/** Where this browser keeps, per members' type, the type a lump's points were taken from and the value attribute. */
-const PICKS_KEY = 'walk.lumpPointsFrom';
-
-/** What this browser remembers for a members' type - `{from, y}` - or nothing (no storage, none kept, unreadable). */
-export function rememberedPick(storage, membersType) {
-  try {
-    return JSON.parse(storage.getItem(PICKS_KEY) || '{}')[membersType] || null;
-  } catch (e) {
-    return null;
-  }
-}
-
-/** Keep a pick for a members' type; a browser that keeps nothing asks for the pick again next time. */
-export function rememberPick(storage, membersType, pick) {
-  try {
-    const all = JSON.parse(storage.getItem(PICKS_KEY) || '{}');
-    all[membersType] = { ...(all[membersType] || {}), ...pick };
-    storage.setItem(PICKS_KEY, JSON.stringify(all));
-  } catch (e) {
-    // Nothing kept: the picker shows again.
-  }
-}
+// A folded lump seen another way (lead 793017c62 · edcc0568c · 5ef260acf, owner 10-07): opened as a step of the page's
+// table (lead 10-11 E2b) and, in its own place, its numbers as plain points (x the time, y the value) with the walk's
+// start branch drawn over the rest. The pure half: what the lump's read is and how its points are drawn.
+import { walkTableView } from './table_view.js';
+import { rowsPoints } from './trend.js';
 
 /** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing. */
 export function numberOf(value) {
@@ -48,26 +10,6 @@ export function numberOf(value) {
   if (typeof value !== 'string' || !value.trim()) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-/** The attributes some of these nodes hold a number in, in the order they are first met - the y choices. */
-export function valueAttributes(nodes) {
-  const out = [];
-  for (const node of nodes || []) {
-    for (const [name, value] of Object.entries((node && node.attributes) || {})) {
-      if (!out.includes(name) && numberOf(value) !== null) out.push(name);
-    }
-  }
-  return out;
-}
-
-/** When a node's attribute was said, in ms: the world entry that says the value shown, else the first. */
-export function saidAt(node, attribute) {
-  const saids = ((node && node.attributesByWorld) || {})[attribute] || [];
-  const value = ((node && node.attributes) || {})[attribute];
-  const said = saids.find((s) => s && s.value === value) || saids[0];
-  const at = said ? parseServerInstant(said.occurred_at) : null;
-  return at ? at.getTime() : null;
 }
 
 /**
@@ -81,35 +23,36 @@ export function startBranch(steps) {
 }
 
 /**
- * The points one attribute gives: every node holding it, at the time it was said. A value that does not read as a
- * number, one said at no time, or a node without it at all, is not a point - each is counted, so the view can say
- * how many it left out.
+ * A lump's answer (lead 10-11 E2b): what the steps brought, narrowed to its owner, its members and the edges between
+ * them along its predicate - nothing walked. The page opens it as a step; the thumbnail reads it the same way.
  */
-export function pointsOf(nodes, attribute, lit) {
-  const points = [];
-  let notNumber = 0;
-  let noTime = 0;
-  let noValue = 0;
-  for (const node of nodes || []) {
-    const attrs = (node && node.attributes) || {};
-    // A node the walk brought without it (a claims cut leaves nodes bare, lead 161757c35) is counted, not dropped.
-    if (!(attribute in attrs)) { noValue += 1; continue; }
-    const v = numberOf(attrs[attribute]);
-    if (v === null) { notNumber += 1; continue; }
-    const t = saidAt(node, attribute);
-    if (t === null) { noTime += 1; continue; }
-    points.push({ id: node.id, label: node.label, t, v, lit: Boolean(lit && lit.has(node.id)) });
+export function lumpAnswer(results, lump) {
+  const keep = new Set([lump.owner, ...lump.members]);
+  const nodes = new Map();
+  const edges = new Map();
+  for (const r of results || []) {
+    for (const n of (r && r.nodes) || []) if (keep.has(n.id) && !nodes.has(n.id)) nodes.set(n.id, n);
+    for (const e of (r && r.edges) || []) {
+      const far = e.source === lump.owner ? e.target : e.target === lump.owner ? e.source : null;
+      if (e.predicate === lump.predicate && far !== null && lump.members.includes(far) && !edges.has(e.id)) edges.set(e.id, e);
+    }
   }
-  points.sort((a, b) => a.t - b.t);
-  return { points, notNumber, noTime, noValue };
+  return { ok: true, state: 'ready', nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
-/** The window a definition node's one more step reads: the start branch's times, AROUND_DAYS each side; none known,
- *  no window (the walk then reads all time - the view says so). */
-export function windowAround(times) {
-  const known = (times || []).filter((t) => Number.isFinite(t));
-  if (!known.length) return null;
-  return { since: Math.min(...known) - AROUND_DAYS * DAY_MS, until: Math.max(...known) + AROUND_DAYS * DAY_MS };
+/**
+ * A lump's points as its page step's Trend reads them (lead 10-11 E2b): its answer's table from its owner, the members'
+ * section, its first value column, every member's walked reads - numbers only, the start branch's lit. No reading of
+ * its own: the same table, the same reads, nothing paged.
+ */
+export function lumpPoints(answer, lump, entities, predicates, lit) {
+  const view = walkTableView(answer, entities, predicates, undefined, { positive: [lump.owner], negative: [] });
+  const section = view.sections.find((x) => x.type === lump.farType);
+  const column = section && section.columns[0];
+  if (!column) return [];
+  return rowsPoints(view, section.rows.map((r) => r.id), column)
+    .map((p) => ({ t: p.t, v: numberOf(p.value), lit: Boolean(lit && lit.has(p.row)) }))
+    .filter((p) => Number.isFinite(p.t) && p.v !== null);
 }
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');

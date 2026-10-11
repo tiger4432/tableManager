@@ -1405,7 +1405,7 @@ const FLOORS = new Map([
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 33],   // 36 -> 33: R13 R14 and FM10 retired with viaDepth - the table's Route reads the answer's evidence, walk_table Z29-Z32 (lead 1333a5ec9)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
-  ['trend_harness.mjs', 50],   // -> 50: Copy points - TC1 TC2, TCm1 TCm2, TM15 re-aimed (lead a27dfbb0f)
+  ['trend_harness.mjs', 53],   // -> 53: the lump's step - OT3, OTm3 OTm4 (lead 10-11 E2b)
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1447,19 +1447,17 @@ const FLOORS = new Map([
   // 88 -> 138 (leads 5e1d9e372 · e523cfe91 · 03bc94b6b): drawn by Cytoscape, read off the part's instance; one
   // lump opens only what is ticked, the view and what stands never move; tokens, curves, the pointer, Reset;
   // a press lands on a node's name and survives a hand that wanders a little (lead 5f1eb137e); a new start keeps
-  // none of the last picture's marks, and a lump on its way reads Loading and is asked once (lead 10-07); a folded
-  // lump seen as its list, a table or points with the start branch lit, walked once for its values (lead 10-08);
-  // a lump of events walked to the type the operator picks in Points from, the pick kept per members' type;
-  // the list is the declaration's, a picture with no measurement in it lists them too; what a lump lets out
-  // stands clear of it, a big lump's row goes to points in one press, a lump of values asks nothing (owner 10-08);
-  // a lump's head says every axis its walk cut and the nodes left bare (lead 161757c35).
+  // none of the last picture's marks, and a lump on its way reads Loading and is asked once (lead 10-07); what a lump
+  // lets out stands clear of it (owner 10-08); a lump's one press «Open as table» - its info box, a big lump's row -
+  // hands the page its answer narrowed to its owner, its members and the edges between, nothing walked, and its
+  // numbers are its picture (lead 10-11 E2b; its own views, walks and type pick retired).
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 386],   // -> 386: the page's branch drawn again keeps its marks - Y7, Y7m (lead 5ea461e04)
-  // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
-  // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
-  ['fold_views_harness.mjs', 19],
+  ['subgraph_view_harness.mjs', 338],   // -> 338: Open as table - OT1 OT2 SP1, OTm1 OTm2 SPm1; J O I cells retired with the lump views (lead 10-11 E2b)
+  // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's pure half - what a value reads as, the one start-branch
+  // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b), the one drawing.
+  ['fold_views_harness.mjs', 13],   // -> 13: a lump's answer and points - L1 L2, Lm1 Lm2; R2 R3 P1 P2 W1 retired (lead 10-11 E2b)
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants. 33 -> 30 (lead 5e1d9e372): the subgraph

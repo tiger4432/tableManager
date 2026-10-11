@@ -162,6 +162,51 @@ async function stepViewsRun(M) {
   return [Boolean(toggle), onTwo, onOne, trended()];
 }
 
+/** A lump of the graph opened as a step of the page (lead 10-11 E2b): Step 2 walked on, then the lump q1 · measures ·
+ *  its wafers handed in - its tab, its table, its section's Trend, what was asked. */
+async function lumpStepRun(M) {
+  const urls = [];
+  const DECL = { entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'quantity', keys: ['quantity'] }], predicates: [], worlds: [], operating: null };
+  const paged = (u) => u.includes('around=') || u.includes('later=') || u.includes('earlier=');
+  const doc = makeDoc('light');
+  doc.head = doc.createElement('head');
+  const host = doc.createElement('div');
+  const handle = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+    const u = String(url);
+    urls.push(u);
+    return { ok: true, status: 200, json: async () => (paged(u) ? PAGE : DECL) };
+  } });
+  await settle();
+  handle.state.type = 'wafer';
+  handle.state.asked = { type: 'wafer', keys: {}, positive: ['wp'], negative: ['wn'] };
+  handle.state.run = 'done';
+  handle.state.result = WALK;
+  // A step walked on, by an id the page's own counter does not give.
+  handle.state.steps = [{ id: 99, parent: 0, title: 'measures → wafer', run: 'done', result: WALK_RE, reason: '', marks: 'walk-x',
+    asked: { positive: ['wa'], negative: ['wb'], follow: ['measures'], collect: ['wafer'], direction: 'both', hops: 1 } }];
+  handle.state.at = 99;
+  handle.state.leaf = 99;
+  handle.render();
+  urls.length = 0;
+  const lump = { owner: 'q1', ownerLabel: 'Q1', predicate: 'measures', farType: 'wafer', words: '← measures wafer' };
+  handle.graph.openTable(M.fold.lumpAnswer([WALK], { ...lump, members: ['wp', 'wn'] }), lump);
+  await settle();
+  const step = handle.state.steps.find((x) => x.title === 'From Q1 · ← measures wafer') || {};
+  const wafer = () => walkAll(host).filter((n) => n.className === 'wk-sec').find((x) => /^wafer/.test(x.children[0]._text || ''));
+  const rows = (walkAll(wafer() || { children: [] }).filter((n) => n.attrs && n.attrs['data-row-id']).map((n) => n.attrs['data-row-id'])).sort();
+  const toggle = wafer() && walkAll(wafer()).find((n) => n.attrs && n.attrs['data-section-view'] === 'trend');
+  if (toggle) toggle.dispatch('click', {});
+  await settle();
+  const dots = walkAll(host).filter((n) => n.tagName === 'CIRCLE' && n.attrs && n.attrs['data-key']).map((n) => n.attrs['data-key']).sort();
+  // The page's own read of the whole walk, the same rows and the same column (the wafers' measures value toward q1).
+  const full = M.table.walkTableView(WALK, DECL.entities, [], undefined, { positive: ['q1'], negative: [] });
+  const sec = full.sections.find((x) => x.type === 'wafer');
+  const walked = M.trend.rowsPoints(full, ['wn', 'wp'], sec.columns[0]).map((x) => x.key).sort();
+  return { parent: step.parent, shown: handle.state.at === step.id && handle.state.view === 'table', rows, walked,
+    dotsWalked: dots.filter((k) => walked.includes(k)), walks: urls.filter((u) => u.includes('/subgraph') && !paged(u)).length,
+    page: urls.filter(paged).map((u) => new URLSearchParams(u.split('?')[1]).get('id')) };
+}
+
 /** The walk page with `answer` walked: a press on the quantity's + cell, then Load earlier. */
 async function pageRun(M, answer) {
   const urls = [];
@@ -296,6 +341,8 @@ async function seen(M) {
   const re = await rewalkRun(M);
   out.rewalk = [re.toggled, re.dots, re.pages];
   out.stepViews = await stepViewsRun(M);
+  const ls = await lumpStepRun(M);
+  out.lumpStep = [ls.parent, ls.shown, ls.rows, ls.walked, ls.dotsWalked, ls.walks, ls.page];
   // Copy points (lead a27dfbb0f): the sheet - time in this screen's, the value as it is, its side, who gave it, its claim.
   const cp = M.trend.pointsSheet([{ t: Date.parse(T(3)), value: 30.5, group: 0, key: 'c1', node: 'wp' },
     { t: null, value: 'A', group: null, key: 'c9', node: 'wz' }], ['Positive', 'Negative'], (p) => p.node.toUpperCase());
@@ -361,6 +408,8 @@ function suite(out) {
   eq('TC1 Copy points: time · value · side · node · claim_id - its time in this screen' + "'" + 's, none none, its value as it is, its side or none, who gave it, its claim',
     out.copySheet, [['time', 'value', 'side', 'node', 'claim_id'], [[true, '30.5', 'Positive', 'WP', 'c1'], [true, 'A', '', 'WZ', 'c9']]]);
   eq('TC2 the part' + "'" + 's «Copy points»: the page copies, the part says what happened beside it', out.copyPart, [true, 1, 'Copied 2 points']);
+  eq('OT3 a lump opened as a step: the chosen branch' + "'" + 's child, shown; its rows the members, its section' + "'" + 's Trend the points the page reads for the same rows and column, its page from the owner; nothing walked (lead 10-11 E2b)',
+    out.lumpStep, [99, true, ['wn', 'wp'], ['c1', 'c2'], ['c1', 'c2'], 0, ['q1']]);
   eq('TV1 the Table/Trend choice is its step' + "'" + 's: Step 2' + "'" + 's section in Trend, Step 1 gone back to stays Table, Step 2 again its Trend (lead 10-11)',
     out.stepViews, [true, true, false, true]);
   return { ran: names.length, names, failures };
@@ -370,6 +419,8 @@ const REAL = {
   trend: await import('../src/walk/trend.js'),
   view: await import('../src/walk/trend_view.js'),
   page: await import('../src/walk/main.js'),
+  fold: await import('../src/walk/fold_views.js'),
+  table: await import('../src/walk/table_view.js'),
 };
 console.log('\n[1] trend');
 const base = suite(await seen(REAL));
@@ -388,7 +439,11 @@ const MUTANTS = [
   { id: 'TSm2', what: 'reads ending at two nodes paged from the first', catches: 'TS3', ...TREND,
     mutate: (t) => swap(t, '  return ends.length === 1' + String.fromCharCode(10), '  return ends.length >= 1' + String.fromCharCode(10)) },
   { id: 'TSm3', what: 'a section' + "'" + 's trend its first row alone', catches: 'TS1', ...PAGE_,
-    mutate: (t) => swap(t, 'const own = rows.flatMap(', 'const own = rows.slice(0, 1).flatMap(') },
+    mutate: (t) => swap(t, 'const own = rowsPoints(view, rows, at.column);', 'const own = rowsPoints(view, rows.slice(0, 1), at.column);') },
+  { id: 'OTm3', what: 'the lump' + "'" + 's step walks the server', catches: 'OT3', ...PAGE_,
+    mutate: (t) => swap(t, "    step.run = 'done';\n    step.result = answer;\n", "    void walk(asked).then((res) => { step.run = 'done'; step.result = res; render(); });\n") },
+  { id: 'OTm4', what: 'the lump' + "'" + 's step the start' + "'" + 's child, not the chosen branch' + "'" + 's', catches: 'OT3', ...PAGE_,
+    mutate: (t) => swap(t, '    const step = placeStep(state.leaf, `From ', '    const step = placeStep(0, `From ') },
   { id: 'TSm4', what: 'a walk-only trend not said', catches: 'TS4', ...VIEW,
     mutate: (t) => swap(t, "spec.walkOnly ? TREND_WORDS.noPage : ''", "''") },
   { id: 'TSm5', what: 'a walked point read toward the anchor named by its far end', catches: 'TS1', ...PAGE_,

@@ -40,8 +40,6 @@ export class TablePart extends Panel {
     this.onRowClick = options.onRowClick || null;
     // 누르기를 `data-action` 으로 받는 화면(원장 선언 화면)이면 그 이름 — 행이 그것을 달고, 마킹 대신 화면이 받습니다.
     this.rowAction = options.rowAction || null;
-    // A row the reader should see first (the walk's start branch in a lump's table, lead 10-08) - not a marking.
-    this.rowLit = options.rowLit || null;
   }
 
   /** 데이터만 갈아끼웁니다. 컬럼 선언은 그대로입니다. */
@@ -107,8 +105,7 @@ export class TablePart extends Panel {
     const sign = id ? this.signOf(id) : SIGN.ABSENT;
     el.className = 'rb-table-row'
       + (sign === SIGN.CASE ? ' is-marked-case' : '')
-      + (sign === SIGN.CONTROL ? ' is-marked-control' : '')
-      + (this.rowLit && this.rowLit(row) ? ' is-lit' : '');
+      + (sign === SIGN.CONTROL ? ' is-marked-control' : '');
     el.style.gridTemplateColumns = this._template();
     if (id) el.setAttribute('data-row-id', String(id));
     if (id && this.rowAction) {
