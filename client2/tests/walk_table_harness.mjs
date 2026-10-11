@@ -231,6 +231,17 @@ const srcsOf = (c) => ((c && c.children) || []).filter((k) => k.className === 'w
 const sideCells = (r) => r.cells.flatMap((c) => (c.sides.length === 2 && c.delta ? [c.sides[0], c.delta, c.sides[1]] : c.sides));
 /** A node cell's name, without the source line under it. */
 const labelOf = (c) => walkAll(c).filter((k) => k.className === 'wk-centrelabel').map((k) => k._text).join('');
+/** A head as one line. A group's (owner 10-12) draws its far end, then its way and leaf: read as its whole - «<way>
+ *  <far> · <leaf>», its tags after - when the two drawn lines and its title say the same; else as drawn. */
+const headSaid = (th) => {
+  const text = th.children.find((c) => c.className === 'wk-headtext');
+  if (!text) return th.textContent;
+  const [far = '', via = ''] = text.children.map((c) => c.textContent);
+  const way = (/^.*[→←]/.exec(via) || [''])[0];
+  const whole = [way ? `${way} ${far}` : far, via.slice(way.length).replace(/^ · /, '')].filter(Boolean).join(' · ');
+  if (!far || whole !== th.title) return th.textContent;
+  return whole + th.children.filter((c) => c !== text).map((c) => c.textContent).join('');
+};
 // A die's gate, read in from the wafers that inspected it: one group, its far type (lead 10-11 W addendum 8 (다)).
 const GATE_IN = 'inspected ← wafer@1 · gate';
 const ALL = 'd:1,d:2,d:3,d:4,s:a,s:b,s:c';
@@ -277,7 +288,7 @@ async function suite(mod) {
     view.sections.map((s) => s.heading).join(' | '));
   // Wide (lead 10-11 W): a section's heads say its node columns, each group's step and far end, its values' names; a
   // row's cells its node's, then each column's groups' cells, a cell drawn as its value line.
-  const heads = byTag(host, 'thead').map((t) => walkAll(t).filter((c) => c.tagName === 'th' && c.className !== 'wk-check').map((c) => c.textContent).join(' '));
+  const heads = byTag(host, 'thead').map((t) => walkAll(t).filter((c) => c.tagName === 'th' && c.className !== 'wk-check').map(headSaid).join(' '));
   const drawn = byTag(host, 'tbody').flatMap((b) => b.children.map((tr) => tr.children.filter((c) => c.className !== 'wk-check')));
   const said = (c) => (has(c, 'wk-centre') ? labelOf(c) : valsOf(c));
   ok('V2 the heads say the view\'s words: its node columns, each group\'s step and far end, each value\'s name',
@@ -409,7 +420,7 @@ async function suite(mod) {
       ...['follow', 'collect', 'direction', 'hops', 'node_limit', 'fanout_limit'].map((k) => `${k}=${query(u).getAll(k).join(',')}`)].join('&');
     const bodyRows = (sec) => walkAll(sec).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).length;
     const headOf = (sec) => (walkAll(sec).filter((e) => e.tagName === 'thead').map((t) => t.children[t.children.length - 1])[0] || { children: [] })
-      .children.filter((c) => c.className !== 'wk-check').map((c) => c.textContent);
+      .children.filter((c) => c.className !== 'wk-check').map(headSaid);
     const q = NEXT_18766.seed;
     // (a) bond_temp alone in +, the form set to the step a Next takes.
     handle.state.type = 'quantity';
@@ -450,7 +461,7 @@ async function suite(mod) {
       JSON.stringify({ a: a.map((sec) => sec.slice(0, 5)), b: b.map((sec) => sec.slice(0, 5)), wafers, head, askA: shape(askA), askB: shape(askB) }));
     // ▸ N (lead 10-11 W addendum 8): pressed, the group's folded cells stand in place after its number; pressed again, folded.
     const wSec = () => walkAll(host).filter((e) => e.className === 'wk-sec').find((sec) => /^wafer/.test(sec.children[0].textContent)) || { children: [] };
-    const heads = () => walkAll(wSec()).filter((e) => e.tagName === 'th' && e.className !== 'wk-check').map((e) => e.textContent);
+    const heads = () => walkAll(wSec()).filter((e) => e.tagName === 'th' && e.className !== 'wk-check').map(headSaid);
     const foldTag = () => walkAll(wSec()).find((e) => e.tagName === 'button' && has(e, 'wk-tag') && /^[▸▾]/.test(e.textContent));
     const shut = heads();
     click(foldTag());
@@ -975,8 +986,8 @@ async function suite(mod) {
     // Wide's heads (lead 10-11 W): the node's columns, each group - its step and far end, its value's name when it shows
     // one - over its columns, the signs and Δ under; the rows below carry their id.
     const headRows = () => walkAll(table()).filter((e) => e.tagName === 'tr' && !(e.attrs && e.attrs['data-row-id']) && !has(e, 'wk-drawer'));
-    const headTexts = () => headRows().map((r) => r.children.filter((c) => c.className !== 'wk-check').map((c) => c.textContent));
-    const groupHeads = () => walkAll(table()).filter((e) => has(e, 'wk-stephead')).map((c) => [c.textContent, c.colSpan]);
+    const headTexts = () => headRows().map((r) => r.children.filter((c) => c.className !== 'wk-check').map(headSaid));
+    const groupHeads = () => walkAll(table()).filter((e) => has(e, 'wk-stephead')).map((c) => [headSaid(c), c.colSpan]);
     const rowOf = (id) => walkAll(table()).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === id);
     const tds = (id) => ((rowOf(id) || { children: [] }).children).filter((c) => c.className !== 'wk-check')
       .map((c) => (has(c, 'wk-centre') ? labelOf(c) : valsOf(c)));
