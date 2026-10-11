@@ -613,7 +613,7 @@
 
 ### ⭐ **「이 타입에서 저 타입으로 걸을 길」은 «한 함수»가 선언에서 답한다 — 화면이 길 목록을 다시 적지 않는다** (2026-10-08 등록 · `db120a54c`)
 
-- **어디**: `client2/src/walk/derive.js` `walkableRoutes(declaration, from, to)` — 선언의 길(`pathsBetween`)에서 걷기가 거절할 것을 뺀 것(`keepWalkableRoutes`). 부르는 곳: 걷기 페이지의 길 목록(`walk/main.js`) · 접힌 묶음의 점을 어디서 가져오나(`walk/subgraph_view.js::_lumpSource`).
+- **어디**: `client2/src/walk/derive.js` `walkableRoutes(declaration, from, to)` — 선언의 길(`pathsBetween`)에서 걷기가 거절할 것을 뺀 것(`keepWalkableRoutes`). 부르는 곳: 걷기 페이지의 길 목록(`walk/main.js`) · ~~접힌 묶음의 점을 어디서 가져오나(`walk/subgraph_view.js::_lumpSource`)~~(10-11 E2b `350e736b3` 은퇴).
 - **같은 꼴의 둘째**: «시작 갈래»는 `walk/fold_views.js::startBranch(steps)` 하나 — 첫 걸음의 답 전부. 목록의 줄 · 표의 줄 · 점이 모두 이것을 묻는다.
 - **같은 꼴의 셋째** (10-10 `10d5b9e1b`): 두 꼭짓점 사이 길 찾기는 `walk/paths.js::simplePaths` 하나 — 선언의 타입 길(`pathsBetween`)과 그래프의 두 마킹 노드 사이 Paths 상자가 같이 부른다. 표의 칸과 트렌드의 점도 한 읽기 `walk/reach_table.js::readsOf` 를 지난다(`ed98accb7`).
 - **언제 재사용**: 화면이 「A 에서 B 로 걸을 수 있나 · 무엇을 따라가나」를 물을 때, 또는 「첫 시작에서 닿았나」를 물을 때.
