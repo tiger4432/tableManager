@@ -78650,3 +78650,25 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
     bonding_map · 019ee4e1-4390-736d-be86-b0569e7579f6 · leg : 'user'='d' -> 'user (HFZ123.12_15_7_019ee4)'='12321'
   -> 판정대로 사본은 오늘 순위 — 이 셋은 안 바뀜
 ```
+
+## [10-11] 접기 맵퍼 착지 7037aa148 (총괄 402f1ab2e · 소유자 「AUTO 먼저 · 시간 빠른 거 · 매뉴얼끼리도」 · 「30 분 내로」)
+
+```
+착지 7037aa148 — server/mappers/fold_unit.py(추적, .gitignore 예외 한 줄) · 맵퍼 fold_by_unit · 순위는 replay._ranked_duplicates 를 부름
+     (단위 표, [group], order, min, prefer) — 둘째 철자 없음. 진 단위의 로그 행만 «folded into <이긴 단위>» · origin = 그 행의 단위 표 행
+     이긴 단위의 행은 안 씀(총괄 10-11) · within_keys 는 이번에 뺌 — ⑤b fold-rows 그대로(RUN.md)
+     params: unit_table(로그 표 줄이 단위 표를 알아야 함) · group · unit · order · prefer_column · prefer_text · match · mark_column
+게이트 pytest sqlite tests/test_the_fold_mapper_keeps_one_unit_per_group.py — 다섯 칸, 워커의 묶음 길로 두 규칙 줄
+  CW1 AUTO_J1 · AUTO_J5 -> J5 표시 · CW3 MAN_J3 · AUTO_J4 -> J3 표시 · CW2 AUTO_J2 하나 -> 0 · CW4 MAN_J6 · MAN_J7 -> J7 표시
+  진 잡에 새 로그 행 -> 표시 · 늦은 AUTO 잡 -> 매뉴얼 둘 다 표시 · 다시 돌리면 쓰기 0(이력 · 층 수 그대로)
+  이긴 쪽이 바뀐 단위는 옛 표시가 남음 — 지금 모양 그대로 시험에 적음(RUN.md 초기화 줄)
+변이(빨강 = 실패한 시험, md5 복원)
+  baseline ['5 passed in 0.98s']
+  prefer ignored                           RED | test_a_later_auto_job_takes_the_wafer_from_the_manual_ones, test_a_new_log_row_of_a_losing_job_is_marked, test_a_unit_that_now_wins_keeps_its_old_mark_until_withdrawn, test_
+  ranked per unit, not per wafer           RED | test_a_later_auto_job_takes_the_wafer_from_the_manual_ones, test_a_new_log_row_of_a_losing_job_is_marked, test_a_unit_that_now_wins_keeps_its_old_mark_until_withdrawn, test_
+  restored True
+같이 돈 것  맵퍼 등록 · 골격 · 폼 목록을 부르는 시험 여섯 파일 61 통과
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리뿐 · PG · 박스 안 씀 · 지운 것 0
+진짜 프로세스 판 — 응용 rh_world_inv(착지 즉시, 응용이 몇 분짜리인지 먼저 알림)
+세운 것   체인 층 원천 행마다 — wt-impl 로컬 커밋 그대로(안 푸시). 진짜 프로세스 판 · 박스 사본 PG 재기 끝, 착지는 다음
+```
