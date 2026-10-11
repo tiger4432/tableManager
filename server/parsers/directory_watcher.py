@@ -1732,7 +1732,8 @@ class IngestionHandler(FileSystemEventHandler):
     def _external_cell_source_name(file_path: str, parse_meta: dict | None) -> str | None:
         """Stable, traceable CellSource name for an external file.
 
-        Every producer artifact is named ``voids.json``.  Using only that basename
+        External artifacts share basenames (every ``voids.json``; a glob source takes
+        same-named files from many folders).  Using only the basename
         collapses all wafers and work times into one opaque source label.  Preserve
         the full watcher-supplied path so a displayed cell can be traced back to the
         exact external artifact that asserted it.

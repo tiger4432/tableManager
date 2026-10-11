@@ -307,7 +307,7 @@ SAT 보이드 출력 하나가 **두 테이블**을 채웁니다 — `inspection
 보여 줍니다. 파일 계약은 다음 하나입니다.
 
 ```text
-C:/Users/kk980/void/
+<외부 폴더>/
 └── WAFERID/
     └── WORK_YYYYMMDD_HHMMSS/
         └── voids.json
