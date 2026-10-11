@@ -225,6 +225,44 @@ def test_a_page_with_no_total_is_said_without_one():
     assert worker._page_said("r", "t", 2, None, 5, None, 7) == "r -> t · page 2 · 5 rows"
 
 
+def test_the_queue_reads_each_pages_line_while_that_page_is_written(db, monkeypatch):
+    """총괄 59f2ab3f4 ①: on the real process the write stage replaced the page line on every page (157 running samples,
+    0 page lines) while the cell above counted the progress call. This reads what a queue line reads - the chain's
+    beat, written during each page's write, through the running seat - with the group claimed as the loop claims it."""
+    import threading
+
+    from chain import keyset_scan
+    from maps import alignment_batch_counts
+    from runtime import running
+    from utils import heartbeat
+
+    monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", 2)
+    _logs_then_inventory(db)
+    seen, real = [], crud.apply_batch_updates
+
+    def reading(session, table, batch, *a, **k):
+        if table == LOG:
+            # from another thread, as the loop beats for its group - a beat on the claim's thread is its progress
+            beater = threading.Thread(target=heartbeat.beat, args=(worker.GROUP_BEAT,), kwargs={"force": True})
+            beater.start()
+            beater.join()
+            seen.append(sorted({facts["stage"] for facts in running.chain_lines_running().values()}))
+        return real(session, table, batch, *a, **k)
+
+    monkeypatch.setattr(crud, "apply_batch_updates", reading)
+    events = (db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.table_name == INV,
+                                                     models.DatabaseOutbox.processed_chain.is_(False)).all())
+    token = worker._GROUP_LINE_KEYS.set(("tx-fold",))
+    try:
+        with alignment_batch_counts.counting_group():
+            ok, _error, _ = worker._claimed_group_sync("tx-fold", events, db, [dict(r) for r in RULES])
+    finally:
+        worker._GROUP_LINE_KEYS.reset(token)
+    assert ok
+    assert seen == [["write:fu_log · fu_by_unit -> fu_log · page %d/5 · %d / 9 rows" % (k, n)]
+                    for k, n in ((1, 2), (2, 4), (3, 6), (4, 8), (5, 9))], seen
+
+
 def test_the_winners_log_rows_are_not_read(db):
     """총괄 3ec26c632 ① (소유자 「인벤토리 1,000 · 매칭 로그 수십만 행」): the log read names the losing units' keys only -
     a winner's rows are never written, and reading them was most of the work."""

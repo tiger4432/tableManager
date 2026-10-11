@@ -124,10 +124,12 @@ def test_a_wide_fan_out_is_written_page_by_page_and_ends_as_one_write_would(monk
     assert results[1000][0] == [35]
     assert paged_cells == results[1000][2], "the pages end where one write ends, cell by cell"
     assert set(paged_cells.values()) == {"LOT-W"}
-    # each page's SELECT and each page's write enter a stage - the claim beats per page
-    write_stage = "write:%s" % LEFT
-    assert paged_stages.count(write_stage) == 4
-    after_first = paged_stages[paged_stages.index(write_stage) + 1:]
+    # each page's SELECT and each page's write enter a stage - the claim beats per page, the write with its page
+    # line (총괄 59f2ab3f4)
+    writes_said = [s for s in paged_stages if s.startswith("write:%s" % LEFT)]
+    assert writes_said == ["write:%s · %s -> %s · page %d/4 · %d / 35 rows" % (LEFT, DECLARATION["name"], LEFT, k, n)
+                           for k, n in ((1, 10), (2, 20), (3, 30), (4, 35))], writes_said
+    after_first = paged_stages[paged_stages.index(writes_said[0]) + 1:]
     assert after_first.count("mapper") == 3, "pages two to four were read without a beat"
 
 

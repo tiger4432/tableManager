@@ -674,3 +674,37 @@ def test_a_line_behind_three_thousand_replay_events_takes_the_free_slot(slot_box
         slots_peak, all_peak = peak.stop()
         print("[slot-test] connections while 2 slots ran a 3,000-event replay and a live line: slots' peak %d,"
               " this database's peak %d (this box)" % (slots_peak, all_peak))
+
+
+@pytest.mark.pg
+def test_a_held_lock_is_said_on_the_beat_at_once(pg_engine, box, monkeypatch):
+    """총괄 59f2ab3f4: the beat kept «waiting for <table>» after the lock was got (the application's lock samples: 31
+    «waiting for», 0 real waits, 29 with the lock already held) - only a changed lock pid rewrote it, so the second
+    table's wait said the first. Read from the beat file itself, no beat forced between: after each wait the group
+    begins, and in its mapper once both tables are held - the group's own path, on a real lock."""
+    mapper = box
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    key = "H-%d" % int(time.time() * 1000)
+    said, real_wait = [], worker._waiting_for_a_table
+
+    def on_the_beat():
+        return heartbeat.read_all()[worker.GROUP_BEAT]["work"]["stage"]
+
+    def waiting(table, pid):
+        real_wait(table, pid)
+        said.append(on_the_beat())
+
+    monkeypatch.setattr(worker, "_waiting_for_a_table", waiting)
+    try:
+        _write(db, SA, [{"k": key, "n": "held"}])
+        [event] = _events_of(db, SA, key)
+        mapper.HOOK = lambda n: said.append(on_the_beat()) if n == "held" else None
+        out = {}
+        _run_group(pg_engine, lambda s: [s.get(models.DatabaseOutbox, event.id)], out, "held").join(20)
+        assert out["held"][0], out
+    finally:
+        mapper.HOOK = None
+        db.rollback()
+        db.close()
+    assert said == ["waiting for %s" % SA, "waiting for %s" % SB, "holding %s, %s" % (SA, SB)], said

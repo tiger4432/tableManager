@@ -533,6 +533,29 @@ def test_a_running_line_says_its_stage_and_since_when_it_moved(client, db_sessio
         assert said["why"]["moved_seconds"] < 5 and said["why"]["elapsed_seconds"] is not None
 
 
+def test_the_head_counts_the_lines_the_queue_says_running(client, db_session, claim):
+    """총괄 59f2ab3f4 ②: the head («RUNNING n», `now_running`) read the mappers mid-call and said 0 through every
+    write while the line said RUNNING. Both read the group's beat now - one item per line it holds (a merged group's
+    two lines are two), named as the queue names the line: a job's op and run, else its transaction."""
+    from runtime import running
+    from utils import heartbeat
+
+    db_session.add(models.RetroactiveRun(run_id="run-x", op="withdraw", params="{}", state="running"))
+    for tx in ("tx-a", "tx-idle"):
+        _waiting_row(db_session, tx)
+    _waiting_row(db_session, "tx-of-x", run_id="run-x")
+    claim("tx-a", "write:u · r -> u · page 2/3 · 5 / 9 rows")
+    heartbeat.note_work(line_keys=["tx-a", "run-x"])
+    heartbeat.beat("chain", force=True)
+
+    body = client.get("/admin/chain/queue").json()
+    states = {line["cancel"]["key"]: line["chain_state"]["state"] for line in body["waiting_transactions"]
+              if line["cancel"]["key"] in ("tx-a", "run-x", "tx-idle")}
+    chain = [i for i in body["now_running"] if i["where"] == running.WHERE_CHAIN_WORKER]
+    assert states == {"tx-a": "running", "run-x": "running", "tx-idle": "waiting"}, "CANARY: the lines' own states"
+    assert sorted((i["what"], i["state"]) for i in chain) == [("tx-a", "running"), ("withdraw · run-x", "running")]
+
+
 def test_a_line_past_the_stall_threshold_is_stalled_and_a_new_page_moves_it_again(client, db_session, claim):
     """The threshold is the beat's own - /health's one value (`DEFAULT_STALL_AFTER_SEC`)."""
     from utils import heartbeat
