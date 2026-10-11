@@ -79148,3 +79148,57 @@ RELEASE_LOG  새 항목 + 앞 항목의 «다시 안 넘김» 문장 고침
   collect=wafer+quantity · claims_scanned 1657 · edges 486 · nodes 18 · bytes 1426248 · edge records max 4 total 608 (edges with more than one 110) · node-name records max 0 total 0
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 assy_manager 읽기 전용 · public 전후 같음 · 지운 것 0
 ```
+
+## [10-11] 체인 워커 기동 정리가 CLI 소급 연결을 끊나 — 끊는다 (총괄 10-11 큐 첫째, 재기만)
+
+```
+CLI 연결 이름   assy_chain — 연결 3 개 전부 (접두 뗀 값)
+   왜  CLI 는 자기 이름을 안 묶는다. find_rule -> load_rules 가 chain.ingestion_worker 를 import 하고,
+       그 모듈이 import 때 get_process_logger("Chain") — 먼저 묶은 자가 이긴다. 연결은 그 뒤에 열린다
+   CLI active_process_name at exit: Chain · its connection name, unprefixed: assy_chain
+   큐 버튼 소급(스케줄러 자식 admin/retroactive_run.py)은 "Retroactive" 를 먼저 묶는다 -> assy_retroactive (코드 읽기, 안 잼)
+«떠났다»의 판단  이름(assy_chain · assy_chainslot%) + 같은 DB + 정리 프로세스 import 시각보다 먼저 열림 — 살아 있는 pid 대조 «없음»
+   pid 를 보는 것은 another_chain_loop_is_running(하트비트 pid) 하나 — 워커 «자신»을 세울지이지 연결마다가 아니다
+재기 — assy_test 스키마 assy_impl_clicut_1011 · 연결 이름 전부 앞에 assy_probe1011_(제품 이름 함수를 같은 접두로 감쌈)
+   진짜 CLI  replay clicut_join --apply --pace trickle --chunk-size 100 (오른쪽 1,000 행 · 왼쪽 2,000 행, 제품 쓰기 문으로 씨앗)
+   워커     run_chain_worker 처럼("Chain" 먼저 -> 체인 모듈) 기동한 프로세스에서 _end_queries_a_gone_chain_worker_left_sync 그대로
+   WORKER pid 58828 · active_process_name Chain · name assy_probe1011_chain · slots assy_probe1011_chainslot% · another loop None
+   sees pid 12244 · assy_probe1011_chain · opened before import True · idle · COMMIT
+   sees pid 21660 · assy_probe1011_chain · opened before import True · idle · ROLLBACK
+   sees pid 40856 · assy_probe1011_chain · opened before import False · active · SELECT pid, application_name, backend_start < to_timestamp(1
+   sees pid 53800 · assy_probe1011_chain_replay_cli · opened before import True · active · SELECT pg_sleep(90)
+   WARNING - [Chain] ended pid 12244, left by a chain worker that is gone - idle 2 s (last query: COMMIT)
+   WARNING - [Chain] ended pid 21660, left by a chain worker that is gone - idle 2 s (last query: ROLLBACK)
+   CLI      [Retroactive] run_id=b7f08783ca97 op=chain_replay FAILED: (psycopg2.OperationalError) server closed the connection unexpectedly · CLI exit 1
+   실행 기록 run chain_replay · failed · runner retroactive/DESKTOP-OVKV3HK/47552 · rows 200 / None · error '(psycopg2.OperationalError) server closed the connection unexpectedly'
+   대조     HOLD survived 90 s — CLI 가 체인 모듈을 안 불렀을 때의 이름, 같은 때 열림
+그래서 누가 무엇을 하나
+   CLI 는 다음 쪽 읽기에서 죽는다(위 줄). 끊긴 뒤 CLI 가 새로 연 연결 1 개 — 그 뒤 실행 기록이 failed 라
+   큐 게이트를 안 잡는다
+   replay --apply 는 쓰지 않고 쪽마다 아웃박스로 넘긴다 — 안 끊긴 판: source rows scanned  : 1000 in 10 page(s) · rows handed over   : 1000 in 10 outbox event(s)
+   그 쪽은 체인 워커가 쓴다 — CLI 의 말: the worker writes them under one transaction; watch the chain log
+   끊긴 판: 끊기기 전에 넘긴 쪽은 남고(실행 기록의 행 수) 나머지는 안 넘어간다 — 아웃박스 행 수는 안 셌다
+   다시 돌리면 규칙 전체를 처음부터 넘긴다
+덤 — CLI 의 줄이 chain_worker.log 로 간다: 안 끊긴 판 데이터 루트의 chain_worker.log 7 줄 중 CLI 의 것 4 ([Chain] 3 · [admin.retroactive] 1)
+   나머지 3 줄은 제 씨앗 스크립트(제품 crud 쓰기 문만 부름)의 [ChainRules] 줄 — 그 스크립트도 Chain 으로 묶였다
+   운영 데이터 루트는 server/ 라 CLI 의 줄이 워커가 쓰는 그 파일에 섞인다
+fold-units  origin/main 에 그 낱말 0 (카나리아 fold-rows 3). 이 CLI 의 하위 명령이 되거나, 따로 된 스크립트라도
+   이름을 안 묶고 체인 모듈에 닿으면 같은 답
+남의 연결  정리가 끝낸 pid = 정리 전에 열린 CLI 연결 2 개뿐(접속 로그와 대조) · assy_test 의 내 것 아닌 연결: 정리 전 5 · 뒤 5
+   전에만 15940 assy_fold_units_scale_sql 2026-10-11T19:13:41.363804+09:00
+   뒤에만 41740 assy_chain 2026-10-11T19:15:59.180872+09:00
+   (내 정리가 찾은 이름은 assy_probe1011_chain · assy_probe1011_chainslot% 뿐이고, 둘 다 끝낸 pid 목록에 없다)
+고칠 자리 안 셋 (짓지 않음 — 총괄 판정 대기)
+   ㄱ CLI 가 맨 위에서 "Retroactive" 를 묶는다(retroactive_run.py 와 같은 두 줄) — 이름 assy_retroactive · 줄은 retroactive.log
+      버튼 소급과 같은 이름·같은 파일 · 다른 스크립트는 그대로 · 크기 한 파일 + 칸 하나 + RUN.md 말
+   ㄴ 체인 모듈이 import 때 프로세스 이름을 안 묶는다(ingestion_worker 의 get_process_logger -> 이름만 가진 logger) —
+      원인 자리. 체인 워커는 run_chain_worker.py 가 이미 먼저 묶는다 · 그 import 에 기대 줄을 갖던 진입점은 줄을 잃는다
+      — 진입점 전수 안 셈 · 크기 안 쟀다
+   ㄷ 연결 이름에 OS pid 를 싣고 정리는 pid 가 죽은 연결만 끝낸다 — 판단 자체를 고침 · application_name 을 = 로
+      견주는 자리 전부가 바뀐다(자리 수 안 셈) · 크기 안 쟀다, 셋 중 가장 큼
+어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_clicut_1011 · assy_impl_clicut2_1011(안 끊긴 판) — 둘 다 만들고 지움
+   dropped schema assy_impl_clicut_1011 (15 tables) - left 0
+   public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428
+   dropped schema assy_impl_clicut2_1011 (15 tables) - left 0
+   public relations 325 -> 325 · added [] · gone [] · rows changed {} · public writes 12929428 -> 12929428
+```
