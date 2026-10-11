@@ -445,9 +445,13 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   };
   // A node a row: one row whichever groups reached it.
   const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
-  const shown = members.slice(0, cap);
+  // The cap is a section's own (lead 10-12, 18766: one cap over the answer's order drew no defect section of 188 and 20
+  // of 32 quantities): each type draws up to `cap` of its rows, in its order, and says what it did not.
   const sections = [];
-  for (const [type, rows] of sectionsByType(shown)) {
+  let shown = 0;
+  for (const [type, typed] of sectionsByType(members)) {
+    const rows = typed.slice(0, cap);
+    shown += rows.length;
     const ids = rows.map((n) => n.id);
     const entity = (entities || []).find((e) => e && e.type === type) || {};
     const off = (fold.off && fold.off.get(type)) || new Set();
@@ -554,9 +558,10 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       long: [...ownAll.filter((c, i) => ownValued[i] && saysValue(c)).map((column) => ({ column, head: column.words.join(' · '), own: true })),
         ...folds.flatMap((b) => b.first.map((c) => ({ column: sideAll[c], head: b.first.length === 1 ? b.step : headOf(c), own: false })))],
       trendable,
+      hidden: typed.length - rows.length,
     });
   }
-  return { sections, shown: shown.length, hidden: Math.max(0, members.length - shown.length), groups,
+  return { sections, shown, hidden: members.length - shown, groups,
     unsplit: !ranked && negative.length > 0, index, sources };
 }
 

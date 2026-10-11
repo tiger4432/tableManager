@@ -1614,6 +1614,14 @@ const sideSuite = (TV) => {
   const moreAdd = addOf(MORE_ANSWER, ['d:3'], 'More');
   const union = new Set([...SIGNED.nodes, ...ADD.nodes, ...MORE_ANSWER.nodes].map((n) => n.id));
   const both = withAdds([add, moreAdd]);
+  // The cap is a section's own (lead 10-12): wafer 1 · die 250 · defect 50 from one start.
+  const perType = { nodes: [{ id: 'w', type: 'wafer', depth: 0 }, ...Array.from({ length: 250 }, (_, i) => ({ id: `d${i}`, type: 'die', depth: 1 })),
+    ...Array.from({ length: 50 }, (_, i) => ({ id: `f${i}`, type: 'defect', depth: 2 }))], edges: [] };
+  const capView = TV.walkTableView(perType, [], [], undefined, { positive: ['w'], negative: [] });
+  ok('CAP1 each section its own 200: die 200 and «50 more» under it, the defect section all 50, the wafer its 1',
+    JSON.stringify([capView.sections.map((s) => [s.type, s.rows.length, s.hidden]), capView.shown, capView.hidden])
+      === JSON.stringify([[['wafer', 1, 0], ['die', 200, 50], ['defect', 50, 0]], 251, 50]),
+    JSON.stringify([capView.sections.map((s) => [s.type, s.rows.length, s.hidden]), capView.shown, capView.hidden]));
   ok('MO1 two additions (Add here, d:3\'s walk): merged rows = the union; × on Add here leaves the other\'s',
     JSON.stringify([both.shown, rowIds(withAdds([moreAdd]))])
       === JSON.stringify([union.size, `${ALL},d:10,d:9`.split(',').sort().join(',')]),
@@ -1838,8 +1846,8 @@ const MUTANTS = [
     to: '    state.asked = { ...asked, keys: { ...asked.keys } };' },
   { id: 'M4', what: 'the cap note prints the total instead of what was hidden',
     catches: 'C3 the total is not what is printed',
-    from: '      box.append(el(doc, \'div\', \'wk-note\', `${view.hidden} more not drawn`));',
-    to: '      box.append(el(doc, \'div\', \'wk-note\', `${view.shown + view.hidden} more not drawn`));' },
+    from: '      if (section.hidden) sec.append(el(doc, \'div\', \'wk-note\', `${section.hidden} more not drawn`));',
+    to: '      if (section.hidden) sec.append(el(doc, \'div\', \'wk-note\', `${section.rows.length + section.hidden} more not drawn`));' },
   { id: 'M6', what: 'the type placeholder carries its text as its value again',
     catches: 'P1 picking the placeholder',
     from: "    none.value = '';\n", to: '' },
@@ -1955,6 +1963,8 @@ const TV_MUTANTS = [
     from: "const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');", to: "const reachedBy = (inA, inB) => (inA ? 'a' : inB ? 'b' : 'ab');" },
   { id: 'DM2', what: 'B\'s nodes not merged into the rows', catches: 'ZD1',
     from: '  const walked = control ? mergeWalks(result, control) : result;', to: '  const walked = result;' },
+  { id: 'CAPm1', what: 'one cap over every section: the first 200 of the answer, a later type dropped', catches: 'CAP1',
+    from: '  for (const [type, typed] of sectionsByType(members)) {', to: '  for (const [type, typed] of sectionsByType(members.slice(0, cap))) {' },
   { id: 'AHM1', what: 'an Add here or More answer overwrites the step instead of merging', catches: 'AH1',
     from: '  const merged = adds.reduce((graph, add) => mergeWalks(graph, add.answer), walked);', to: '  const merged = adds.reduce((graph, add) => add.answer, walked);' },
   { id: 'DM3', what: 'a side coloured by the + side\'s B', catches: 'ZD3',

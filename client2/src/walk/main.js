@@ -1535,13 +1535,11 @@ export function boot(doc, host, deps) {
         tableBoxes.set(section.type, scroller);
         sec.append(scroller);
       }
+      // The rows of this type past the cap, under its own table (lead 10-12: the cap is a section's).
+      if (section.hidden) sec.append(el(doc, 'div', 'wk-note', `${section.hidden} more not drawn`));
       // Walk on from the rows checked, the section's last line (lead 10-11 W).
       if (checks) sec.append(nextRow(at, section, checks, shown));
       box.append(sec);
-    }
-
-    if (view.hidden) {
-      box.append(el(doc, 'div', 'wk-note', `${view.hidden} more not drawn`));
     }
   }
 
