@@ -79492,3 +79492,20 @@ da6c523e1  decide 의 fields 가 비거나 없으면 aggregations 가 있어야 
 
 멈춘 것    ㄱ(웨이퍼 단위 본딩 엣지 선언) — 소유자 판정으로 멈춤. 트리 파일 0 · 박스 읽기 전용 수만 재서 총괄께 메시지로 드림
 ```
+
+## [10-11] 목록 답 다섯 자리 one_of 착지 d177b7003 (총괄 · 응용 감사)
+
+```
+사전 식별자 둘(ask_links · ask_dictionary) · 확실성이 one_of 로 — 증감 방향 · 새 노드 타입과 같은 판정
+확실성 목록 밖 = suspected 그대로 + 경고 한 줄 · PRIMITIVES 의 «함정» 줄(셋 남음) 지움
+LLM 시험 세 파일 137 초록(이 착지 rebase 뒤) · 변이 셋:
+  BASE 121 passed
+  RED ask_links' identifier is looked up as written - 1 failed, 120 passed
+    test_a_listed_identifier_written_with_spaces_is_that_identifier
+  RED ask_links' certainty is compared as written, nothing said - 2 failed, 119 passed
+    test_a_certainty_is_one_of_the_two_or_said[spaces]
+    test_a_certainty_is_one_of_the_two_or_said[unlisted]
+  RED ask_dictionary's node is looked up as written - 1 failed, 120 passed
+    test_a_listed_node_written_with_spaces_is_that_node
+  AFTER 121 passed
+```
