@@ -294,7 +294,7 @@
 >            8-3 제안        후보 표 -> 제안 표 · allow_chain_trigger true · 제안 표에 없는 말만 묻는다
 >            8-3 확정 -> 사전  제안 표 -> 사전 표 · require [확정 칸, suggested_node_type, suggested_node_key]
 >                         새 노드 제안은 사람이 suggested_node_key 를 적어야 넘어간다 (타입이 빈 행은 suggested_node_type 도)
-> 새 노드 타입  (착지 {LANDING} · 같은 재기동) 새 노드 행에 suggested_node_type — 모델이 제안 맵퍼가 읽은 사전 행의 타입 중에서 고른다
+> 새 노드 타입  (착지 135581d6a · 같은 재기동) 새 노드 행에 suggested_node_type — 모델이 제안 맵퍼가 읽은 사전 행의 타입 중에서 고른다
 >            넷만 고르게 하려면 그 사전 SQL 에 WHERE <타입 칸> IN (<모델링 노드 타입 넷>)
 > 새 줄        chain_worker.log  [LLM] phrase N of M answers new_node_type '<타입>', which the dictionary does not list - suggested without a type (llm:<모델>): '<말>'   = 목록에 없는 타입 — 그 행의 타입만 빈다
 >                            [LLM] phrase N of M answers node '<식별자>', which the dictionary does not list - suggested without a node (llm:<모델>): '<말>'
