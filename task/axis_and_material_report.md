@@ -1,3 +1,14 @@
+> ## [09:04 디자인] 덩어리 «Open as table» = 페이지 스텝 착지 350e736b3 (총괄 E2b ③)
+
+- **무엇** — 덩어리 정보 상자(작은 덩어리)와 큰 덩어리의 줄에 «Open as table» 하나. 누르면 고른 스텝 아래 «From <주인> · <술어> <타입>» 탭, 답은 이미 받은 답에서 주인 · 구성원 · 그 사이 엣지만 남긴 것, 걷기 0. 페이지 표 · Trend · 체크 · Next · Copy table 이 그대로 받습니다.
+- **한 자리로 접은 것** — 점 읽기 rowsPoints(view, rows, column) 하나를 페이지 트렌드와 썸네일이 같이 부름. 스텝을 나무에 앉히는 placeStep 하나를 walkOn 과 덩어리 스텝이 같이 부름. 덩어리 답 좁히기는 fold_views.lumpAnswer 하나.
+- **은퇴** — pointsOf · windowAround · AROUND_DAYS · STEP_NODE_LIMIT · FOLD_VIEWS · openLumpSeen · rememberPick/rememberedPick · 덩어리 창 표/점 보기 · 덩어리 걷기 둘 · «Points from». 호출자 0(git grep, 카나리아 lumpAnswer 1).
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built walk page as a probe copy on the box as it is, /assets/walk-OEs4tFkh.js, 1920x1080): SYN-BW-103-11 in +, Walk, the graph: «← in_container +159 more die» pressed - its bundle walked by its own door (1), the info box «← in_container die · Open as table»; «Open as table»: 0 walks, the tab «Step 2 · From SYN-BW-103-11 · ← in_container die», wafer · 1 1 rows | die · 159 159 rows. temp_C in +, Walk, the graph: «← measures +2579 more wafer» pressed (1), its thumbnail 199 dots; «Open as table»: 0 walks, «Step 2 · From temp_C · ← measures wafer», quantity · 1 1 rows | wafer · 199 199 rows; the wafer section's Trend walked dots 199 = the thumbnail's. Writes 0.
+- **게이트** — subgraph_view 338 with --mutate --control (OT1 a small lump's info box hands its answer, OT2 a big lump's row its branch with its rows lit, SP1 the thumbnail a dot per point; OTm1 OTm2 SPm1, J0m J8m re-aimed at OT2; the J O I cells and their mutants retired with the lump views); fold_views 13 (L1 the answer narrowed, L2 the points the page reads; Lm1 Lm2); trend 53 (OT3 the page's lump step: the chosen branch's child, its rows, its Trend's points, nothing walked; OTm3 OTm4; TSm3 at rowsPoints); walk_table 173 with --mutate --control (FM1 FM2 GM1 GM3 at placeStep); retired names' callers 0 (git grep, lumpAnswer 1); screen gate 249 with --mutate; walk_layout 38, node_search 45, start_baskets 24, walk_worlds 18, walk_wire 95, rnd_board_walk_box 104, reach_table 33, walk_route_fill 80, rnd_board_composition 47, rnd_board_reach 63.
+- **남은 빈칸(판정 요청 아님, 알림)** — ① 노드 속성 값만 있는 덩어리는 썸네일 · 트렌드 없음(E2a 트렌드가 엣지 값만 읽음). ② 섞인 열의 트렌드는 첫 값 열(E2a 그대로). ③ 서버가 안 보낸 묶음은 자기 문으로 한 번 걷고 나서 열림(탭 1 걷기, Open as table 0). ④ CODE_MAP.md · frontend.md 가 아직 pointsOf · 덩어리 보기를 적음 — 문서 레인 몫.
+
+다음: G-2(그래프 = 줄기 스텝은 체크한 행까지의 증거 경로만 + 끝 스텝은 답 전체, 걷기 0, 총괄 ②) -> 값 대응(그 표에도 Copy table).
+
 > ## [07:52 디자인] 표 복사 — «Copy table» · «Copy points» 착지 fcf89d3ba (총괄 a27dfbb0f)
 
 - **무엇** — 구획마다 «Copy table»: TSV + HTML 를 clipboard_write.js 하나로. 머리 한 줄(쪽 부호 열 · 노드 자기 · Δ · 끝 id), 접힌 열까지, 거르기가 보이는 행만, 날값(여럿 «; » · 빈 값 빈 칸 · missing · Δ 숫자). 트렌드 «Copy points»(time · value · side · node · claim_id). 옆에 «Copied N rows».
