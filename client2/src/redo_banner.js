@@ -174,9 +174,10 @@ export class RedoBanner {
   /** 선택이 바뀌면 버튼의 활성/비활성이 바뀝니다. 화면이 알려 줍니다. */
   selectionChanged() { this.render(); }
 
-  sourceRow() {
-    if (!Array.isArray(this.sources) || !this.relation) return null;
-    return this.sources.find((row) => row && row.relation === this.relation) || null;
+  /** Every (world, source) that reads this table - source tables are every world's (owner 10-12). */
+  sourceRows() {
+    if (!Array.isArray(this.sources) || !this.relation) return [];
+    return this.sources.filter((row) => row && row.relation === this.relation);
   }
 
   render() {
@@ -190,18 +191,18 @@ export class RedoBanner {
     this.box = null;
     this.host.textContent = '';
     const rows = this.getSelection() || [];
-    const row = this.sourceRow();
+    const sources = this.sourceRows();
 
     const bar = doc.createElement('span');
     bar.className = 'redo-banner';
     // 🔴 원장 버튼은 «이 표가 원장 소스일 때만» 존재합니다. 아닌 표에서 비활성으로 두면
     //    「행을 안 골랐다」와 「이 표는 원장이 아니다」가 같은 픽셀이 됩니다.
-    if (row) bar.appendChild(this.button('ledger', 'Re-translate', rows.length > 0));
+    if (sources.length) bar.appendChild(this.button('ledger', 'Re-translate', rows.length > 0));
     bar.appendChild(this.button('chain', 'Replay chain', rows.length > 0));
     this.host.appendChild(bar);
 
     if (this.open) {
-      const box = this.panel(rows, row);
+      const box = this.panel(rows, sources);
       this.host.appendChild(box);
       this.box = box;
       this.place(box, bar);
@@ -242,7 +243,7 @@ export class RedoBanner {
   }
 
   /** 「무엇이 어떻게 묶여 같이 도는가」 — 넘기기 «전»에 여기서 봅니다. 모달이 아닙니다. */
-  panel(rows, sourceRow) {
+  panel(rows, sources) {
     const doc = this.doc;
     const box = doc.createElement('div');
     // 🔴 이 화면에 «이미 있는» 드롭다운 껍데기입니다. 세로도 간격도 그림자도 거기서 옵니다.
@@ -251,7 +252,7 @@ export class RedoBanner {
     this.list = null;
 
     const assembled = this.open === 'ledger'
-      ? this.ledgerPayload(rows, sourceRow)
+      ? this.ledgerPayload(rows, sources)
       : this.chainPayload(rows);
 
     if (assembled.note) {
@@ -339,29 +340,42 @@ export class RedoBanner {
     return box;
   }
 
-  ledgerPayload(rows, sourceRow) {
-    if (!sourceRow) return { note: 'Not a ledger source' };
-    const columns = Array.isArray(sourceRow.scope_columns) ? sourceRow.scope_columns : [];
-    if (!columns.length) return { note: 'No scope column declared' };
-    const { groups, dropped } = ledgerGroups(rows, columns, this.readValue);
-    if (!groups.length) return { note: 'No scope value in the selected rows' };
-    const lineRows = groups.map((g) => {
-      const skipped = g.missing ? ` · ${g.missing} without a value` : '';
-      const n = g.values.length;
-      return {
-        text: `${g.key} — ${unitText(n, 'group')} from ${unitText(g.rows, 'row')}${skipped}`,
-        params: {
-          source: sourceRow.source,
-          scope_column: g.key,
-          scope_values: g.values.join(','),
-        },
-      };
+  ledgerPayload(rows, sources) {
+    if (!sources.length) return { note: 'Not a ledger source' };
+    const scoped = (s) => (Array.isArray(s.scope_columns) ? s.scope_columns : []);
+    if (!sources.some((s) => scoped(s).length)) return { note: 'No scope column declared' };
+    // A line per (world, source) and column; the world and source are named only when there is more than one.
+    const named = sources.length > 1;
+    const lineRows = [];
+    sources.forEach((sourceRow) => {
+      const head = named ? `${sourceRow.world} · ${sourceRow.source} · ` : '';
+      if (!scoped(sourceRow).length) {
+        lineRows.push({ text: `${head}no scope column declared`, params: null });
+        return;
+      }
+      const { groups, dropped } = ledgerGroups(rows, scoped(sourceRow), this.readValue);
+      groups.forEach((g) => {
+        const skipped = g.missing ? ` · ${g.missing} without a value` : '';
+        const n = g.values.length;
+        lineRows.push({
+          text: `${head}${g.key} — ${unitText(n, 'group')} from ${unitText(g.rows, 'row')}${skipped}`,
+          label: `${head}${g.key}`,
+          params: {
+            source: sourceRow.source,
+            scope_column: g.key,
+            scope_values: g.values.join(','),
+            // 🔴 The world rides every line (CLAUDE.md 「세상은 인자다」): a run naming none runs the operating world.
+            world: sourceRow.world,
+          },
+        });
+      });
+      // 못 넘긴 컬럼도 «말합니다». 조용히 빼면 운영자는 그 컬럼을 기다립니다.
+      // 돌릴 것이 없으므로 `params` 가 없고, 그래서 «누르는 줄이 아닙니다».
+      dropped.forEach((column) => lineRows.push({
+        text: `${head}${column} — no value in the selected rows`, params: null,
+      }));
     });
-    // 못 넘긴 컬럼도 «말합니다». 조용히 빼면 운영자는 그 컬럼을 기다립니다.
-    // 돌릴 것이 없으므로 `params` 가 없고, 그래서 «누르는 줄이 아닙니다».
-    dropped.forEach((column) => lineRows.push({
-      text: `${column} — no value in the selected rows`, params: null,
-    }));
+    if (!lineRows.some((entry) => entry.params)) return { note: 'No scope value in the selected rows' };
     return {
       op: 'ledger_rescope',
       rows: lineRows,
@@ -372,7 +386,7 @@ export class RedoBanner {
         // 🔴 그리고 «누르면 도는 것»과 «넘기는 것»이 같은 자리에서 나옵니다. 두 벌로 두었더니
         //    한쪽의 join 만 바꿔도 하니스가 초록이었습니다 (실측 2026-09-02).
         groups: lineRows.filter((entry) => entry.params)
-          .map((entry) => ({ label: entry.params.scope_column, params: entry.params })),
+          .map((entry) => ({ label: entry.label, params: entry.params })),
       },
     };
   }

@@ -35,6 +35,7 @@ const CHAIN_BADGE_POLL_MS = 20000;
 import { startup } from './startup.js';
 import { GridSourceLabel } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
+import { withWorld } from './world.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
 import { setMatchCount } from './match_count.js';
 // 🔴 C-122. 이 페이지가 `/admin/**` 을 «맨 fetch»로 부르는 저장소의 «유일한» 자리였습니다
@@ -208,16 +209,18 @@ async function init() {
 // 🔴 주소는 «합성 루트»가 압니다 (조립식 상설). 부품은 라우트도 apiBase 도 모르고
 //    이 함수 하나를 받습니다. 성공도 실패도 «같은 모양»(`{ok}`)으로 답해서, 읽는 쪽이
 //    「못 읽음」과 「소스가 아님」을 구별할 수 있게 합니다.
-async function loadLedgerDeclaration() {
+async function loadLedgerDeclaration(world) {
   try {
-    const res = await fetch(`${API_BASE}/api/ledger/declaration`);
+    // `world`: one world's declaration; none reads the operating world's.
+    const res = await withWorld((url, init) => fetch(url, init), () => world)(`${API_BASE}/api/ledger/declaration`);
     const body = await res.json().catch(() => null);
     if (!res.ok || !body) {
       // 🔴 «사유»만 돌려줍니다. 부품이 「선언을 못 읽었습니다」를 이미 말하므로, 여기서 같은
       //    문장을 또 쓰면 화면에 두 번 나옵니다 (실측 2026-08-31에 실제로 그렇게 나왔습니다).
       return { ok: false, message: `server refused (${res.status})` };
     }
-    return { ok: true, sources: Array.isArray(body.sources) ? body.sources : null };
+    return { ok: true, sources: Array.isArray(body.sources) ? body.sources : null,
+      worlds: Array.isArray(body.worlds) ? body.worlds : [], operating: body.operating };
   } catch (err) {
     return { ok: false, message: `route unreachable — ${err && err.message}` };
   }
@@ -336,9 +339,13 @@ function initRedoBanner() {
       window.location.href = '/admin.html';
     },
   });
-  // 선언은 라벨이 이미 읽습니다. 같은 답을 «두 번» 긷지 않도록 그 결과를 나눠 씁니다.
-  loadLedgerDeclaration().then((got) => {
-    part.setSources(got && got.ok ? got.sources : null);
+  // Source tables are every world's (owner 10-12): the operating world's declaration, then each other world's,
+  // one request each - asked together, a source id two worlds declare comes back once (first world wins).
+  loadLedgerDeclaration().then(async (got) => {
+    if (!got || !got.ok) { part.setSources(null); return; }
+    const others = await Promise.all(got.worlds.filter((world) => world !== got.operating)
+      .map((world) => loadLedgerDeclaration(world)));
+    part.setSources([got, ...others].flatMap((each) => (each.ok && each.sources) || []));
   });
   // 체인은 `rule` 이 «필수» 파라미터라, 이름을 모르면 돌릴 줄이 없습니다. 그 목록은
   // 이제 «표가 정해질 때» 옴니다(`redoBannerFollows`) — 부팅도 그 자리를 지납니다.

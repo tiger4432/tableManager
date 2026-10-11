@@ -168,6 +168,26 @@ function build(rows, opts = {}) {
   return { part, host, handed: () => handed };
 }
 
+/** One source id declared in two worlds on one table: the lines drawn, and the runs of pressing each. */
+function twoWorlds(M) {
+  const doc = mkDoc();
+  const host = doc.createElement('div');
+  const calls = [];
+  const part = new M.RedoBanner(host, {
+    doc, getSelection: () => [envelope({ lot_id: 'L1' })], readValue: readEnvelope, handOff: () => {},
+    hasToken: () => true, run: (op, params) => { calls.push({ op, params }); return new Promise(() => {}); },
+    sources: ['default', 'modeling'].map((world) => ({ relation: 'dt_log', source: 'dt_log_src', world,
+      scope_columns: ['lot_id'] })),
+  });
+  part.setRelation('dt_log');
+  part.render();
+  buttons(host).find((b) => b.dataset.redo === 'ledger').click();
+  const lines = groupsShown(host);
+  // Each press redraws the panel, so the second line is found again after the first is pressed.
+  [0, 1].forEach((at) => { const line = byClass(host, 'redo-panel__group')[at]; if (line) line.click(); });
+  return { lines, calls };
+}
+
 const buttons = (host) => byClass(host, 'redo-banner__btn');
 const groupsShown = (host) => byClass(host, 'redo-panel__group').map((n) => n.textContent);
 const note = (host) => (byClass(host, 'redo-panel__note')[0] || {}).textContent;
@@ -271,6 +291,13 @@ console.log('\n── C. THE LEDGER GROUPS, ASSEMBLED HERE ───────
     pl[1] === 'wafer_id \u2014 1 group from 1 row \u00b7 2 without a value', pl);
   ok('C9 ... and a column every row does carry still counts them all',
     pl[0] === 'lot_id \u2014 2 groups from 3 rows', pl);
+
+  // Owner 10-12: a table is a source in each world that declares one on it, and each line runs in ITS world.
+  const two = twoWorlds(X);
+  ok('C10 a table that is a source in two worlds draws a line per world, and each pressed line runs in its world',
+    two.lines.length === 2 && two.lines[0].startsWith('default \u00b7 dt_log_src \u00b7 lot_id')
+      && two.lines[1].startsWith('modeling \u00b7 dt_log_src \u00b7 lot_id')
+      && two.calls.map((c) => c.params.world).join(',') === 'default,modeling', two);
 }
 
 console.log('\n── D. THE CHAIN KEYS, GROUPED ELSEWHERE ────────────────────────────');
@@ -633,7 +660,7 @@ const DEFECTS = [
     swap("setDisabledReason(btn, enabled ? '' : NEEDS_A_ROW);",
       'btn.disabled = !enabled;')],
   ['M2 the ledger button is drawn on a table that is not a source',
-    swap('if (row) bar.appendChild', 'bar.appendChild')],
+    swap('if (sources.length) bar.appendChild', 'bar.appendChild')],
   ['M3 the group count counts rows instead of distinct values',
     swap('      const n = g.values.length;', '      const n = g.rows;')],
   ['M4 a column with no values is handed over as an empty scope',
@@ -683,6 +710,8 @@ const DEFECTS = [
   // lead QA 0056ebc9d: the panel left on the body at each redraw, and no cell saw it
   ['M20 a redraw leaves the panel it moved to the body behind',
     swap('    if (this.box && this.box.placedFrom) this.box.remove();\n', '')],
+  ['M21 a pressed line drops its world, so a branch line runs in the operating world',
+    swap('            world: sourceRow.world,\n', '')],
 ];
 
 const CONTROLS = [
@@ -717,7 +746,7 @@ const CATCHES = {
   M16: 'R23', M17: 'R24',
   // C-120. M1 은 R1(꺼짐)이 잡고, M1b 는 R25(왜)가 잡습니다 — 실제 run 에서 읽었습니다.
   M1b: 'R25',
-  M18: 'R26', M19: 'R27', M20: 'R28',
+  M18: 'R26', M19: 'R27', M20: 'R28', M21: 'R29',
 };
 /** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
 const named = (list) => list.map(([name, mutate, where]) => ({
@@ -940,6 +969,8 @@ async function runMutant({ name, mutate, where }) {
           () => !!handed && !('cascade' in handed.params)],
         ['R28 the panel on the body is one however often it is drawn, none once shut',
           () => { const got = panelsOnBody(M); return got.open === 1 && got.shut === 0; }],
+        ['R29 a source in two worlds runs each line in its own world (owner 10-12)',
+          () => twoWorlds(M).calls.map((c) => c.params.world).join(',') === 'default,modeling'],
       ];
       // Recorded once, so the 「unexercised」 line below is COMPUTED from the checks that
       // actually ran rather than typed out beside them -- a hand-written list of names drifts
