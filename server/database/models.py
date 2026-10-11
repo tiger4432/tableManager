@@ -429,6 +429,18 @@ class RetroactiveRun(Base):
     )
 
 
+class FileRereadMark(Base):
+    """A log row the re-read handed to the watcher, and the state it had then (총괄 10-11 ㄱ, 소유자 「다시 읽기 잘못
+    걸었다가 파일 너무 많아서 서버 뻗었어」) - what «cancel» puts back while the row still waits. A table of its own,
+    not a column on `file_ingestion_logs`, for FileIngestionCheckpoint's reason ①: create_all makes it, no ALTER order."""
+    __tablename__ = "file_reread_marks"
+
+    log_id = Column(Integer, primary_key=True)
+    status_before = Column(String(20), nullable=False)
+    folder = Column(String, nullable=True)
+    marked_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class FileIngestionCheckpoint(Base):
     """[P2] 파일 인제션 오프셋 체크포인트 + 해시 dedup 원장.
 

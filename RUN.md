@@ -252,6 +252,26 @@
 >
 > ---
 >
+> ## [10-11] **파일 다시 읽기 안전판 — 상한 · 넘기기 전 상태 · 취소 (총괄, 소유자 「다시 읽기 잘못 걸었다가 … 서버 뻗었어」, 착지 {LANDING}) — 이주 «없음»(새 표 file_reread_marks 는 기동이 만듦) · 재기동 «서버»**
+>
+> ```
+> 상한        ingestion_settings.json "reread_max_files" (없으면 25 = 박스 와쳐가 가장 바빴던 1 분에 읽은 수)
+>            넘으면 Retry 가 409 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» · 아무것도 안 넘김
+>            미리보기(preview) 는 그대로 수를 보이고 "limit" 칸에 상한
+> 잘못 걸었을 때 (오늘 드린 UPDATE 대신)
+>   미리보기   curl.exe --noproxy "*" -X POST -G "http://127.0.0.1:8080/admin/file-ingestion/cancel-reread" -H "X-Admin-Token: <토큰>" --data-urlencode "folder=<폴더>" --data-urlencode "preview=true"
+>   되돌림     같은 명령에서 preview 줄만 뺀다
+>   답의 뜻    count = 아직 기다리던(PENDING_RETRY) 행 중 넘기기 전 상태로 돌아갈 수 · by_state = 돌아갈 상태별 수
+>            unmarked = 기다리는데 넘기기 전 상태가 안 남은 행(이 착지 전에 넘긴 것) — 그대로 둠
+>            와쳐가 이미 집어 간 행(PENDING 이후)은 안 건드림 — 그 파일은 읽힘
+>            folder 를 빼면 기다리는 행 전부
+> 폴더 거름     SQL 로(경로 접두 · 대소문자 · 구분자, 폴더와 그 실제 경로) — 전 표를 메모리로 읽지 않음. 같은 답을 파이썬 판정이 마지막에 한 번 더
+>            정션을 «거쳐서만» 그 폴더 아래가 되는 저장 경로는 이제 안 잡힘
+> 되돌리기      git revert <이 커밋> -> 서버 재기동 (file_reread_marks 표는 남아도 무해)
+> ```
+>
+> ---
+>
 > ## [10-11] **표기 소급 빠르게 — 쪽마다 철자 하나에 접기 한 번, 바뀐 것은 한꺼번에 (소유자 「노테이션 소급 엄청 빨리」, 착지 770707f34) — 이주 «없음» · 재기동 «없음»(명령줄) · 소급 탭은 «서버 · 스케줄러»**
 >
 > ```

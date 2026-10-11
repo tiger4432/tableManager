@@ -2,6 +2,8 @@
   "_comment": "파일 인제션 시스템 설정. 실제 적용하려면 이 파일을 ingestion_settings.json으로 복사하세요. 파일이 없으면 모든 값이 기본값으로 동작합니다.",
   "_heavy_file_mb_doc": "heavy 레인 라우팅 크기 임계(MB, 양수). 이 크기 이상 파일은 전용 heavy 워커에서 처리되어 다른 테이블의 소형 파일을 막지 않습니다. 기본값 10. 핫리로드: 다음 파일 이벤트부터 반영.",
   "heavy_file_mb": 10,
+  "_reread_max_files_doc": "파일 다시 읽기(Retry) 한 번에 와쳐에 넘기는 파일 수 상한(양의 정수). 넘으면 «N files - over the limit M» 으로 거절하고 아무것도 안 넘김. 기본값 25 = 박스 와쳐가 가장 바빴던 1 분에 읽은 수. 넘긴 것은 POST /admin/file-ingestion/cancel-reread 로 되돌림.",
+  "reread_max_files": 25,
   "_heavy_lane_workers_doc": "heavy 레인 워커 수(1 이상 정수). 한 표의 파일은 한 워커가 차례대로, 다른 표끼리는 동시에 처리합니다. 기본값 1(= 워커 하나, 전 표 한 줄). 감시자 재기동 때 읽습니다(핫리로드 없음). 쓰기가 대부분인 적재라 워커를 늘리면 DB 부하도 같이 늘어납니다.",
   "heavy_lane_workers": 1,
   "_dedup_by_signature_doc": "[P2] 동일 내용(sha256 시그니처) 파일이 이미 적재 완료됐으면 재처리를 건너뜁니다(기본 true). 스킵은 무음이 아니라 로그 + FileIngestionLog(status=SKIPPED, 사유) + 완료 통지 detail로 남습니다. 개별 파일만 강제 재처리하려면 파일명에 '__force__'를 포함시키세요(예: report__force__.csv). false로 두면 dedup 자체를 끕니다.",
