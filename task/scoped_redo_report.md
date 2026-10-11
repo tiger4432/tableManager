@@ -78438,3 +78438,36 @@ public: 시험 PG 전후 public relations 325 -> 325 · added [] · gone [] · r
   /c/Users/kk980/Developments/assyManager/server/config/table_config.json: OK
   그 API 로그의 거절 사유: source_plan|bonded_from is NOT read: bundle.sources.bonded_from.relation source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (view); a ledger source must read a table that has row_id
 ```
+
+## [10-11 아침] 소급 대기열이 안 빠짐 — 은퇴 op 의 running 줄이 관문을 잡음 (총괄 a276bcb8b) — 지은 것 0 · RUN.md 절만
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 스크래치 assy_impl_rq_1011(지움) · 데이터 루트 스크래치 · 운영 설정 · 운영 DB · 박스 DB 안 만짐
+
+```
+결론    ② running 인 은퇴 reread_files 줄(주인 죽음)이 관문을 닫아 뒤 줄이 queued 에 묶임 · ① queued 인 은퇴 줄은 스스로 빠짐
+        화면엔 그 줄의 × 가 없고(은퇴 op -> cancel_reaches never) 「restart the scheduler」 안내로는 안 풀림 — 취소 API 는 놓음
+        푸는 법은 RUN.md 「소급 대기열이 안 빠질 때」 · 결함은 총괄이 시연 뒤 보드에
+```
+
+```
+잼 — 제품 스케줄러 틱(스텁 없음, 실제 자식 프로세스) · 제품 취소 함수 · 제품 화면 판정 둘
+PRECREATE 57 tables in assy_impl_rq_1011 · public tables still shadowing a product table: []
+== ① a queued reread_files run, and a fold_withdrawal_events run queued behind it
+   before: A ('queued', '') · B ('queued', '')
+   screens for A: {"run_list_label": "reread_files (retired)", "in_flight": null, "running_line_cancel": [], "gate": "open"}
+   B finished after 10 tick(s), 9.2 s
+   after:  A ('failed', "unknown retroactive operation 'reread_files'; available: chain_replay, collector_backfill, enrichment_backfill") 
+           B ('done', '')
+== ② a running reread_files run whose runner is dead, and a fold_withdrawal_events run queued behind it
+   runner stamp retroactive/DESKTOP-OVKV3HK/26456 · judged orphaned
+   ticks while C holds the gate after 6 tick(s), 6.0 s
+   D after those ticks: ('queued', '')
+   screens for C: {"run_list_label": "reread_files (retired)", "in_flight": {"run_id": "rrf3ca2138e7", "op": "reread_files", "cancel_reaches": "never", "recovery": "This run cannot be stopped with a cancel. Collect the log first, restart the scheduler, and run it AGAIN - the guarantee is at-most-once, so it did not finish."}, "running_line_cancel": [null], "gate": "run_id=rrf3ca2138e7 op=reread_files is held by runner=retroactive/DESKTOP-OVKV3HK/26456, and that process is NOT alive — cancelling RELEASES this lock (the run "}
+   cancel C (what POST /admin/retroactive/runs/<id>/cancel calls): {'run_id': 'rrf3ca2138e7', 'op': 'reread_files', 'state': 'failed', 'released': True} in 0.00 s
+   C now ('failed', 'released as a ghost lock: the runner that started it is not alive (runner=retroactive/DESKTOP-OVKV3HK/26456; j')
+   D finished after 7 tick(s), 6.0 s
+   D ('done', '')
+dropped schema assy_impl_rq_1011 (62 tables) - left 0
+public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+public relations 325 -> 325 · added [] · gone [] · rows changed {}
+```

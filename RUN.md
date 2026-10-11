@@ -228,6 +228,24 @@
 >
 > ---
 >
+> ## [10-11] **소급 대기열이 안 빠질 때 — 은퇴한 «Re-read files» 실행이 관문을 잡고 있나 (총괄 a276bcb8b) — 이주 «없음» · 재기동 «없음»**
+>
+> ```
+> 읽기만      SELECT run_id, op, state, runner, started_at, last_progress_at FROM retroactive_runs WHERE state IN ('queued', 'running', 'cancel_requested') ORDER BY queued_at;
+> 답의 뜻      op=reread_files · state running 또는 cancel_requested -> 이 줄이 관문을 잡고 있음, 그 밑 queued 줄은 전부 뒤에서 기다림
+>             op=reread_files · state queued -> 막는 것 아님 — 스케줄러 다음 틱에 스스로 failed(unknown retroactive operation)
+>             running · cancel_requested 줄이 0 -> 관문은 열려 있음 — 다른 원인
+> 푸는 한 줄   curl.exe --noproxy "*" -X POST "http://127.0.0.1:8080/admin/retroactive/runs/<run_id>/cancel" -H "X-Admin-Token: <토큰>"
+>             화면엔 이 줄의 × 가 없음 — 은퇴 op 은 «취소가 안 닿음»으로 판정돼 × 를 안 그림. 「restart the scheduler」 안내로는 안 풀림
+> 답의 뜻      "released": true, "state": "failed" -> 주인 프로세스가 죽은 줄을 놓음, 스케줄러 다음 틱에 뒤 줄이 돎
+>             "released": false, "state": "cancel_requested" -> 10-09 빌드의 자식이 살아서 감시기를 기다리는 중 — 3 초마다 멈춤을 읽고
+>             받은 파일의 상태를 되돌린 뒤 cancelled. 1 분 뒤 «읽기만» 줄을 다시
+> 최후 수단    curl 이 거절할 때만(4xx · 5xx) 운영 DB 에서:
+>             UPDATE retroactive_runs SET state='failed', finished_at=now(), error='released by hand' WHERE run_id='<id>' AND state IN ('running','cancel_requested');
+> ```
+>
+> ---
+>
 > ## [10-10] **bonded_from 이 Follow 에 돌아옴 — 거절된 소스가 같은 이름의 술어를 안 넘어뜨림 (총괄 fe72e5c32) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
