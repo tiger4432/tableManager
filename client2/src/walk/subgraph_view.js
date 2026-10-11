@@ -95,7 +95,9 @@ export function subgraphLayout(steps, entities) {
     for (const result of step.results || []) {
       const owner = result.opened && at.get(keyParts(result.opened).node);
       const base = owner ? owner.layer : stepBase;
-      const reached = result.walk ? result.walk.hops_reached : undefined;
+      // Stopped by its hop limit, not out of edges (lead 10-12): the last hop it was asked for, past the start.
+      const reached = result.walk && result.walk.hops_reached > 0 && result.walk.hops_reached === result.walk.hops_requested
+        ? result.walk.hops_reached : undefined;
       for (const node of (Array.isArray(result.nodes) ? result.nodes : [])) {
         const type = String(node.type || '');
         if (!colourOf.has(type)) colourOf.set(type, colourOf.size);

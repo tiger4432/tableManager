@@ -1561,15 +1561,19 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const on = walkOnOf();
     if (on) on.dispatch('click', {});
     const cutLabel = s.view.cy ? s.view.cy.getElementById('e:c').style('label') : '';
+    // Asked three hops, out of edges at two: it did not stop there - no ring but the cut one.
+    const short = await seat([{ ...ENDS, walk: { hops_requested: 3, hops_reached: 2 } }]);
+    openAll(short);
+    const shortEnds = short.view.cy ? short.view.cy.nodes('[?end]').map((n) => n.id()) : ['none'];
     say('WH1 the last hop\'s nodes and a cut fan-out\'s node ringed dashed, «cut» said, the legend line; a ringed node\'s press hands it to the basket, nothing walked',
       JSON.stringify(ids('[?end]')) === JSON.stringify(last) && JSON.stringify(ids('[?cut]')) === JSON.stringify(['e:c'])
         && JSON.stringify(ringed) === JSON.stringify([...last, 'e:c'].sort()) && cutLabel === 'e:c · cut'
         && textOf(s.host, 'sg-endkey').join() === 'dashed = walked up to here'
         && offStart === null && Boolean(on) && on.textContent === 'Walk on from here'
         && JSON.stringify(handed) === JSON.stringify([{ id: 'e:a', label: 'e:a', type: 'die', keys: { mat_id: 'e:a' } }])
-        && s.urls.length === asked,
+        && s.urls.length === asked && shortEnds.length === 0,
       JSON.stringify({ end: ids('[?end]'), last, cut: ids('[?cut]'), ringed, cutLabel, legend: textOf(s.host, 'sg-endkey'),
-        offStart: Boolean(offStart), on: on && on.textContent, handed, asks: s.urls.length - asked }));
+        offStart: Boolean(offStart), on: on && on.textContent, handed, asks: s.urls.length - asked, shortEnds }));
   }
 
   for (const view of seated) if (view.cy) view.cy.destroy();
@@ -1859,6 +1863,8 @@ const failures = [];
       "  for (const step of steps || []) {\n    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) Object.assign(at.get(keyParts(r.opened).node), { unwalked: false, end: false });\n  }\n", ''),
     M('WHm1', 'no node said to stand at its answer\'s last hop', 'WH1',
       '          end: Number.isFinite(reached) && node.depth === reached,', '          end: false,'),
+    M('WHm2', 'a walk out of edges before its hop limit ringed at its last depth', 'WH1',
+      ' && result.walk.hops_reached === result.walk.hops_requested\n', '\n'),
     M('AWm4', 'walked, its branches not folded into its big lump', 'AW2',
       '      this.fold.big.set(lump.owner, branchKeys(this.layout, lump.owner));\n', ''),
     M('LA5m', 'one node ticked lets its whole branch out', 'LM12',
