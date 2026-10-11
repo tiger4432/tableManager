@@ -6,9 +6,10 @@ A unit table holds one row per unit (a job on a wafer). Per group (`group`) one 
 `prefer_column` holds `prefer_text` (any case), then the earliest `order` (a blank last), then the smaller row_id -
 `replay._ranked_duplicates`, the row fold's own ranking. A losing unit's log rows (`match`: log column = unit column)
 are marked «folded into <winning unit>», each mark carrying its unit row as `origin_row_id`. The winner's rows are not
-written (총괄 10-11 - the row fold marks the same column inside the kept job) - nor read, and a row whose mark already
-says it is not handed again (총괄 3ec26c632: 1,000 units, hundreds of thousands of log rows): a unit that loses and
-later wins keeps its old mark until withdrawn (RUN.md).
+written (총괄 10-11 - the row fold marks the same column inside the kept job) - nor read (총괄 3ec26c632: 1,000 units,
+hundreds of thousands of log rows). Every losing row is handed every time: the chain takes back what a rule's edited
+source row fed and this run did not hand, so a row left out is a mark withdrawn (총괄 406d7c102 - the second replay
+took 321,315 marks). A unit that loses and later wins keeps its old mark until withdrawn (RUN.md).
 
 Two rules call it with the same params: on the unit table, and on the log table (`unit_table` named) - a new log row
 re-decides its group too. A deleted unit row takes back its marks but does not re-decide its group: replay the unit
@@ -74,17 +75,14 @@ def fold_by_unit(db, payloads, rule=None):
             name_of[row[0]] = row[1]
             unit_of.setdefault(tuple(row[2:]), row[0])
     log_key = tuple_(*[getattr(logs, left) for left, _r in pairs])
-    mark = getattr(logs, params["mark_column"])
     # the winner's rows are not written (총괄 10-11: the row fold marks them too), so they are not read
     losing = {key: unit for key, unit in unit_of.items() if kept[unit] != unit}
     updates = []
     for part in chunks(losing):
-        for row in db.query(logs.row_id, mark, *[getattr(logs, left) for left, _r in pairs]).filter(log_key.in_(part)):
-            unit = losing[tuple(row[2:])]
-            said = FOLDED_INTO % name_of[kept[unit]]
-            if row[1] != said:      # marked so already - not handed again
-                updates.append({"row_id": row[0], "origin_row_id": unit,
-                                "updates": {params["mark_column"]: said}})
+        for row in db.query(logs.row_id, *[getattr(logs, left) for left, _r in pairs]).filter(log_key.in_(part)):
+            unit = losing[tuple(row[1:])]
+            updates.append({"row_id": row[0], "origin_row_id": unit,
+                            "updates": {params["mark_column"]: FOLDED_INTO % name_of[kept[unit]]}})
     return {"updates": updates}
 
 

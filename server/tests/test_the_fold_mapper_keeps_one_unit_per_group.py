@@ -128,8 +128,33 @@ def test_running_it_again_writes_nothing(db):
         **item, source_name=rule_run.layer_of_a_rules_write(None, item["origin_row_id"]),   # the worker's seat
         updated_by=fold_unit.NAME) for item in out["updates"]]))
     db.commit()
-    # 총괄 3ec26c632 ③: the losing jobs' 3 + 3 + 3 rows hold their mark already - none is handed again
-    assert out["updates"] == [] and count() == before, out["updates"]
+    # 총괄 406d7c102: every losing row is handed again - one left out is a mark the edit's withdrawal takes back
+    assert len(out["updates"]) == 9 and count() == before, "the losing jobs' 3 + 3 + 3 rows, written again as they are"
+
+
+@pytest.mark.parametrize("times", [2, 3])
+def test_replaying_the_inventory_rule_keeps_every_mark(db, times):
+    """응용 진짜 프로세스 (총괄 406d7c102): the second replay withdrew all 321,315 marks - the chain takes back what a
+    rule's edited source rows fed and this run did not hand, and the mapper had left the marked rows out."""
+    from chain import replay
+
+    _seed(db)
+    for _ in range(times):
+        replay.replay_rule(db, dict(RULES[0]), apply=True, log=lambda *a, **k: None)
+        _drain(db)
+        assert _marks(db) == SEEDED
+
+
+def test_a_losing_jobs_inventory_row_edited_keeps_its_marks(db):
+    _seed(db)
+    inv = models.DYNAMIC_TABLES[INV]
+    row = db.query(inv).filter(inv.dt_job_id == "AUTO_J5").one()
+    crud.apply_batch_updates(db, INV, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=row.row_id, updates={"wafer_out_time": "2026-10-02 10:00:00"}, source_name="user",
+        updated_by="fu")]))
+    db.commit()
+    _drain(db)
+    assert _marks(db) == SEEDED, "AUTO_J5 still loses to the earlier AUTO_J1 - its rows keep their mark"
 
 
 def test_the_winners_log_rows_are_not_read(db):
