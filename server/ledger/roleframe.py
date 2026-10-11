@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import numbers
+import re
 from types import MappingProxyType
 from typing import Any, final
 import uuid
@@ -1027,6 +1028,12 @@ def _frame_row_refs(frame: pd.DataFrame) -> tuple[str, ...]:
     return tuple(refs)
 
 
+#: The only text read with no declared format - ISO 8601 extended, the same on every Python (총괄 10-11 ㄱ: 3.11+
+#: `fromisoformat` also reads «20261011_213631», 3.10 refuses it, so a test run and a backfill run by another
+#: interpreter disagreed).
+ISO_EXTENDED = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}(?::\d{2}(?::\d{2}(?:\.\d{1,6})?)?)?)?(?:Z|[+-]\d{2}:\d{2})?")
+
+
 def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str | None = None) -> datetime:
     """A timezone-AWARE datetime out of whatever a source column holds. One spelling.
 
@@ -1042,7 +1049,7 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str |
 
     🆕 `fmt` - the binding's declared `format` (총괄 ca87ffdb3, 소유자 「yyyymmdd_hhmmss」): text
     is read by THE parser for a declared shape, `time_format.parse_occurred_at` - not a second one.
-    A datetime value reads as it always has. Nothing is guessed: no format, no reading.
+    A datetime value reads as it always has. Nothing is guessed: no format, ISO_EXTENDED text only.
 
     A string this cannot read falls through to the refusal rather than being replaced by
     ingestion time: a value we could not read is not a value we may invent.
@@ -1054,6 +1061,10 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str |
             raise refuse("invalid_time_value", path, f"{value!r} does not match format {fmt}")
         return parsed
     if isinstance(value, str):
+        if not ISO_EXTENDED.fullmatch(value):
+            raise refuse("invalid_time_value", path,
+                         f"{value!r} is not ISO 8601 (2026-10-11 21:36:31) - declare the format its text is "
+                         f"written in, e.g. \"format\": \"%Y%m%d_%H%M%S\"")
         try:
             value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
