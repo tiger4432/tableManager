@@ -121,8 +121,8 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-C1Nny51E.js(W1 d76cafd54) · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
->            누른 빌드 — walk-C1Nny51E.js (= main, W1 d76cafd54) 에서 ① · ② · ③ · ③ 출처 · ③ Long · ③b · ③b 같은 표 · ③f · ③f bonded_from 넣음 · ④ / walk-1kJngLIB.js (61a006f73) 에서 ③d 그래프 · ③e · ④ ev · ④ (다) · ⑤ ~ ⑨ / 앞 판 walk-wnN1ILnz.js 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음 · ③ 복사 · ⑨ 덩어리를 표로 · ⑨ 복사 · ⑨ 썸네일 · ④ 스킴 둘 · ⑨ die Trend
+>    빌드    main 의 dist walk-CWo9azvd.js(Control · B 고침 a0ea30c06) · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>            누른 빌드 — walk-CWo9azvd.js (= main, a0ea30c06) 에서 ③f / walk-C1Nny51E.js (W1 d76cafd54) 에서 ① · ② · ③ · ③ 출처 · ③ Long · ③b · ③b 같은 표 · ③f bonded_from 넣음 · ④ / walk-1kJngLIB.js (61a006f73) 에서 ③d 그래프 · ③e · ④ ev · ④ (다) · ⑤ ~ ⑨ / 앞 판 walk-wnN1ILnz.js 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음 · ③ 복사 · ⑨ 덩어리를 표로 · ⑨ 복사 · ⑨ 썸네일 · ④ 스킴 둘 · ⑨ die Trend
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
 >            «모델 세상 1» = 리허설의 appdemo_vf
@@ -181,10 +181,9 @@
 >                (밤사이 응용 QA 로 고침 6d6e235e0 — 시간 쪽은 그 노드 · 열의 것)
 >    ③f Control · B   Follow 밑의 두 번째 술어 목록 — 고르면 Walk 가 같은 바구니로 한 번 더(follow = B) 걷고 칸을 칠한다
 >                (리허설: «모델 세상 1» + default · void 혼자 + · Collect quantity · Follow = leads_to 뺀 전부 · B = leads_to)
->       본 것    요청 둘 · bonded_from 뺌: «quantity · 35» · «Positive · A only 17 A + B 15 B only 3» · 줄 backside_damage 길 «of_kind → observed → in_container → measures» · 줄 wetting_deficit 길 «—»
->                ⚠️ W1 회귀 — 범례 칩만 초록 · 빨강이고 줄의 칸 색이 안 보임(두 줄 칸 바탕이 같음) · B 의 길이 안 나옴. 클라에 넘김(총괄 10-11)
+>       본 것    요청 둘 · bonded_from 뺌: «quantity · 35» · «Positive · A only 17 A + B 15 B only 3» · 초록 줄 backside_damage 길 «A of_kind → observed → in_container → measures · B leads_to» · 빨강 줄 wetting_deficit 길 «B leads_to»
 >                bonded_from 넣음: «quantity · 49» · «Positive · A only 31 A + B 15 B only 3»
->       뜻       초록 = A 와 B 둘 다 닿음 · 빨강 = B 만 · 색 없음 = A 만(W1 전 판의 화면 — 길 두 줄 A 의 길 / B 의 길)
+>       뜻       초록 = A 와 B 둘 다 닿음 · 빨강 = B 만 · 색 없음 = A 만 — 칸 색 = 범례 칩 색, 길은 «A <길> · B <길>»
 >                bonded_from 을 Follow 에 넣으면 A 만 줄이 는다(리허설 17 -> 31) · A + B · B only 는 같다 — 넣을지는 물음에 따라 고른다
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
 >       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 98 ms · «pressure_MPa · measures ← wafer · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
@@ -268,8 +267,11 @@
 >            머리 «RUNNING n» = running 줄 수 — 줄마다 하나, 글자는 그 줄의 «op · run» 또는 tx. 이어 붙인 그룹은 줄 수만큼 센다
 >            그 전엔 머리가 «맵퍼를 부르는 중인 규칙»을 세어, 쪽 시간 대부분인 쓰기 동안 0 이었다(줄은 RUNNING)
 >            잠금 — 기다리는 동안 «waiting for <표>»(둘째 표도 제 이름으로), 다 잡으면 «holding <표>, <표>», 박동이 그때 바로 써진다
+>            화면의 page 는 박동 주기만큼 늦다 — 진짜 런처(응용 10-11 · 322 쪽 · 2 초 표본 135): 약 20 초에 한 번 바뀌고(화면 page 12 개, 첫 25 · 끝 310)
+>            로그보다 중앙값 13 · 최대 27 쪽 뒤, 그동안 moved 가 20 초 안쪽으로 오르다 뜀 · 진행 확인은 chain_worker.log 의 page 줄이 정확
+>            같은 판: holding 10 표본(잠금 표본 278 번 중 기다리는 쪽 0 — 쥔 것은 그 슬롯 자신) · 머리 RUNNING = running 줄 수 135/135
 > 순서        pull -> 서버 · 체인 워커 재기동 -> 쪽으로 쓰는 소급 하나(replay «인벤토리 접기 규칙» --apply)
->            -> 큐 화면 running 줄이 page 1/K 부터 늘어나는지 · 머리 RUNNING 이 running 줄 수와 같은지
+>            -> 큐 화면 running 줄의 page 가 늘어나는지(첫 쪽은 화면에 안 보일 수 있다 — 위 «박동 주기») · 머리 RUNNING 이 running 줄 수와 같은지
 > 답의 뜻      줄이 «write:<표>» 만 말하면 체인 워커가 이 pull 전 판(쪽 줄은 체인 워커가 짓는다)
 >            머리 0 인데 줄이 RUNNING 이면 서버가 이 pull 전 판(머리는 서버가 짓는다)
 > 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동
@@ -603,7 +605,8 @@
 >            python server/scripts/chain_replay_cli.py withdraw dt_log fold_duplicate_rows --columns fold_mark  (보고 --apply) -> ⑤b 다시
 > 스크립트로     python server/scripts/chain_replay_cli.py fold-units dt_log_fold_by_inventory   (미리보기, 쓰지 않음) -> 같은 명령 + --apply
 > (소유자 「맵퍼 말고」) 대기열 없이 위 replay 가 남기는 상태 그대로를 2만 행 쪽마다 씀 — 표시 · 행마다 체인 층 · 이력 줄 · 옛 표시 걷기까지
->            PostgreSQL 만 · 아웃박스 사건 · 화면 알림 · 규칙 깨우기는 없음
+>            PostgreSQL 만 · 표시 쪽은 아웃박스 사건 · 화면 알림 · 규칙 깨우기 없음 — 끝의 옛 표시 걷기는 거둔 행마다 소급 채널 EDIT 사건,
+>            규칙은 안 깨운다(진짜 런처 10-11: 이긴 잡을 옮긴 웨이퍼 하나 -> 사건 2 · channel retroactive · 복사 규칙 실행 0 · 공식 표 그대로)
 >   진행      쪽마다 «[fold-units] x / N rows (page k, s s)»
 >   답        units — 인벤토리 행 · 웨이퍼 · 진 잡 수 / rows the rule names — 진 잡의 로그 행
 >            rows to mark — 이번에 체인 층을 쓰는 행, 그 아래 shown value stays — 사람 값 같은 더 높은 층이 쥐어 보이는 값이 그대로인 행
