@@ -1007,7 +1007,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 그건 정규 해시 재료라서 고치지 않는다 — **읽는 순서는 스켈레톤이 만든다**(화면 라벨
 읽기 · 준비 · 매핑 · 연결. 키는 영어 그대로).
 
-🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `map.unit`(⚰️ `map.input_columns` 기본값 `[]` 은 10-03 에 같이 은퇴). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 접힌 한 줄(`Defaults · N`)로 보이고, 펼치면 칸마다 기본값(`Default: …`)이다(10-02 `d06199e6a`). 초안은 파일에 적힌 선언 그대로 열리고, 저장은 로더가 채우는 칸을 파일에 적지 않는다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
+🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각 `ingested` — 🆕 10-11 `96f54ab36` zone 없이, 읽기가 `setup_registry.BASIS_TIMEZONE`(UTC)) · `map.unit`(⚰️ `map.input_columns` 기본값 `[]` 은 10-03 에 같이 은퇴). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 접힌 한 줄(`Defaults · N`)로 보이고, 펼치면 칸마다 기본값(`Default: …`)이다(10-02 `d06199e6a`). 초안은 파일에 적힌 선언 그대로 열리고, 저장은 로더가 채우는 칸을 파일에 적지 않는다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
 
 | 필드 | 설명 |
 |---|---|
@@ -1028,7 +1028,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
 
 `read`의 여섯(`unit`·`identity`·`group_by`·`order_by`·`occurred_at`·`cursor`)은 번들에 전부
-있어야 한다. **다만 사람이 적는 것은 다섯이다(row 소스는 넷)** —
+있어야 한다. **다만 사람이 적는 것은 다섯이다(row 소스는 넷)** — 🆕 10-02 부터 안 적은 칸은 제품이 채우고(위), 10-11 `96f54ab36` 부터 스켈레톤은 `occurred_at` 을 묻지 않는다(`required: false`) —
 `cursor`는 아래대로 파생되고, row 소스는 `group_by`를 적지 않는다. `occurred_at`의 `column`과 `basis`는 **정확히 하나**여야 한다 —
 둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
 
@@ -1053,8 +1053,8 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 없다** — 다르게 적어도 번들이 `order_by` 쪽으로 맞춰 쓴다.
 
 Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다. `event_time`이 이미 offset을
-갖는지, 현장 local time인지 확인하고 실제 의미를 적는다. 없거나 잘못된 timezone은 validation
-단계에서 거절한다.
+갖는지, 현장 local time인지 확인하고 실제 의미를 적는다. `column` 옆에 없는 timezone(`missing_timezone`)과 적힌
+잘못된 timezone(`invalid_timezone`)은 validation 단계에서 거절한다 — 🆕 10-11 `basis` 는 zone 을 묻지 않는다.
 
 🔴 **`occurred_at.timezone`은 offset 없는 컬럼을 «읽는다»** (소유자 판정 2026-08-21,
 `9aa147b9`). 자기 offset을 적는 값은 그것을 그대로 지키고, **이 선언은 offset이 없는 값에
@@ -1096,7 +1096,7 @@ Timezone은 “DB session timezone을 쓰겠지”라고 추측하지 않는다.
   `created_at`을 `column`에 직접 적을 필요는 없다 — 적으면 그건 「이 표의 세계 시각이
   적재 시각이다」라는 **다른 주장**이 된다.
 - 허용값은 `"ingested"` 하나다. 닫힌 목록이라 오타는 이름을 대며 거절된다.
-- `timezone`은 두 형태 모두 필수다.
+- `timezone`은 `column` 형태에서만 필수다(없으면 `missing_timezone`). 🆕 10-11 `96f54ab36` — `basis` 는 저장된 순간이라 묻지 않고, 안 적으면 UTC 로 읽는다(`setup_registry.BASIS_TIMEZONE`, 시간대 없는 읽기에만 닿음).
 
 **여러 행이 한 사건인 소스에서 그 시각은 `min`이다**(소유자 판정 2026-08-19). 한 사건의
 행들이 한 인제션 배치에 다 들어온다는 보장이 없어서 `created_at`이 그룹 안에서 하나가
@@ -1349,7 +1349,7 @@ binding만으로 표현되면 Python을 한 줄도 쓰지 않는다. `map.implem
 - relation과 row/group 단위를 정한다.
 - identity/group_by를 relation의 물리 컬럼으로 적는다.
 - order/cursor가 catalog UNIQUE key 전체를 포함하게 한다.
-- occurred_at physical column과 timezone을 명시한다.
+- 사건 엣지가 있으면 그 매핑의 `occurred_at` 에 시각 칸과 timezone 을 적는다 — 없으면 안 적는다(저장 시각 `ingested`, 🆕 10-11 `96f54ab36`).
 
 🔴 **연결할 ID가 없다.** 소스 하나를 만드는 것은 이제 **한 번의 행위**다 — `map`·
 `bind`가 같은 항목 안에 있으므로 서로를 이름으로 부르지 않고, 서로를 되가리키는 선언을
@@ -1651,7 +1651,7 @@ CAS activation 전까지 active snapshot을 바꾸지 않는다.
 
 **② 후보는 «칸을 완성»해야 후보다** (`88c0c76d`). `occurred_at` 후보를 누르면 컬럼만 들어가고
 timezone이 빈 채로 남아, 화면은 빨강 0인데 소스는 컴파일을 거절했다. 지금 후보는 **객체를
-통째로** 낸다. timezone 값은 이 모듈이 아니라 **파일에서** 온다 — 그 소스의 선언 → 없으면 같은
+통째로** 낸다(🆕 10-11 `96f54ab36` — basis 후보는 zone 없이: 저장된 순간). timezone 값은 이 모듈이 아니라 **파일에서** 온다 — 그 소스의 선언 → 없으면 같은
 파일의 다른 소스가 쓰는 값 → 없으면 이름 붙은 폴백. 강제하지도 목록을 내지도 않으므로
 서울 밖 공장은 **첫 소스에서 한 번 타이핑하면** 이후 소스가 그 답을 제안받는다(코드 0줄).
 timezone은 **자기 행을 유지한다** — 채워지는 것과 바꿀 수 있는 것은 다르다.
