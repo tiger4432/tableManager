@@ -230,6 +230,17 @@ def _evidence(text):
     return "".join(folded[i] for i in kept), [where[i] for i in kept]
 
 
+def one_of(answer, listed):
+    """(kept, unlisted) of an answer that must be one of `listed`: kept is the answer as written
+    (spaces trimmed, case kept) when listed, else None; unlisted is that answer when it is neither
+    blank nor listed, else None - each caller says it in its own warning line."""
+    from database import crud
+
+    answer = answer.strip() if isinstance(answer, str) else answer
+    kept = answer if answer in listed else None
+    return kept, (answer if kept is None and not crud.is_blank_value(answer) else None)
+
+
 def _listing(names):
     """({identifier: (node_type, node_key)}, the dictionary as the model sees it - one line per node,
     «<identifier> (<type>): <phrase> / <phrase>»; the identifier is the key, `<type>:<key>` for a
@@ -305,10 +316,8 @@ def ask_links(text, names, instruction=None, match_at=None):
         sentence = text[start:end]
         node, direction = {}, {}
         for side in ("cause", "effect"):
-            turned = item.get(side + "_direction")
-            turned = turned.strip() if isinstance(turned, str) else turned
-            direction[side] = turned if turned in DIRECTIONS else None
-            if direction[side] is None and not crud.is_blank_value(turned):
+            direction[side], turned = one_of(item.get(side + "_direction"), DIRECTIONS)
+            if turned is not None:
                 logger.warning("[LLM] link %d of %d answers %s_direction %r, which is not %s"
                                " - kept without it (%s): %r", number, len(links), side, turned,
                                " or ".join(DIRECTIONS), extractor, said[side][:120])

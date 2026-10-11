@@ -85,13 +85,12 @@ def ask_dictionary(phrases, names, instruction=None):
                                " - suggested without a node (%s): %r",
                                number, len(asked), item["node"], extractor, str(row["phrase"])[:120])
         else:
-            typed = item.get("new_node_type")
-            typed = typed.strip() if isinstance(typed, str) else typed
-            node = (typed if typed in types else None, None)
-            if node[0] is None and not crud.is_blank_value(typed):
+            typed, unlisted = text_links.one_of(item.get("new_node_type"), types)
+            node = (typed, None)
+            if unlisted is not None:
                 logger.warning("[LLM] phrase %d of %d answers new_node_type %r, which the dictionary does not list"
                                " - suggested without a type (%s): %r",
-                               number, len(asked), typed, extractor, str(row["phrase"])[:120])
+                               number, len(asked), unlisted, extractor, str(row["phrase"])[:120])
         out.append({"phrase": row["phrase"], "count": row.get("count"),
                     "suggested_node_type": node[0], "suggested_node_key": node[1],
                     "new_node_name": _said(item.get("new_node")), "reason": _said(item.get("reason")),
