@@ -222,18 +222,31 @@ def _evidence(text):
     return "".join(folded[i] for i in kept), [where[i] for i in kept]
 
 
-def _named(answered, by_phrase):
-    """(node_type, node_key) of the dictionary row the answered words name, or (None, None)."""
-    row = by_phrase.get(_fold(str(answered))[0])
-    return (row["node_type"], row["node_key"]) if row else (None, None)
+def _listing(names):
+    """({identifier: (node_type, node_key)}, the dictionary as the model sees it - one line per node,
+    «<identifier> (<type>): <phrase> / <phrase>»; the identifier is the key, `<type>:<key>` for a
+    key two types share)."""
+    from chain.mapper_call import without_missing
+    from database import crud
+
+    phrases = {}
+    for row in names or ():
+        row = without_missing(dict(row))
+        if not crud.is_blank_value(row.get("phrase")):
+            phrases.setdefault((row.get("node_type"), row.get("node_key")), []).append(str(row["phrase"]))
+    shared = Counter(str(key) for _type, key in phrases)
+    by_id = {(str(key) if shared[str(key)] == 1 else "%s:%s" % (node_type, key)): (node_type, key)
+             for node_type, key in phrases}
+    return by_id, "\n".join("%s (%s): %s" % (ident, node[0], " / ".join(phrases[node]))
+                            for ident, node in by_id.items())
 
 
-def ask_links(text, names, instruction=None):
+def ask_links(text, names, instruction=None, match_at=None):
     """`find_links`' rows, read by the language model `mapper_sdk.ask_json` reaches. The model
     sees `names` one node per line - its identifier (the key; `<type>:<key>` for a key two
     types share) and all its phrases - and answers a node's identifier or null for a cause and
     an effect, with the text's own words. A listed identifier gives that node's type and key;
-    null gives the key of the phrase its words are (`_named`); an identifier not listed gives
+    null gives the node whose phrase its words hold (`phrase_bag`); an identifier not listed gives
     none and is said in one warning line. *_phrase is always the words. `certainty` is what the
     text says, `suspected` when it says nothing - nothing becomes a fact before a person confirms it.
     `cause_direction` / `phenomenon_direction` is the answer when it is one of DIRECTIONS as
@@ -246,22 +259,13 @@ def ask_links(text, names, instruction=None):
 
     Refused by name (`LlmRefused`) when the answer has not this shape, or every link it gave
     quotes evidence the text does not hold."""
-    from chain.mapper_call import without_missing
     from database import crud
-    from utils import llm
+    from utils import llm, phrase_bag
 
-    rows = [without_missing(dict(row)) for row in names or ()]
-    by_phrase, phrases = {}, {}
-    for row in rows:
-        if not crud.is_blank_value(row.get("phrase")):
-            by_phrase.setdefault(_fold(str(row["phrase"]))[0], row)
-            phrases.setdefault((row.get("node_type"), row.get("node_key")), []).append(str(row["phrase"]))
-    shared = Counter(str(key) for _type, key in phrases)
-    by_id = {(str(key) if shared[str(key)] == 1 else "%s:%s" % (node_type, key)): (node_type, key)
-             for node_type, key in phrases}
+    names = list(names or ())
+    by_id, dictionary = _listing(names)
     prompt = (ASK_LINKS_PROMPT
-              .replace("<<dictionary>>", "\n".join("%s (%s): %s" % (ident, node[0], " / ".join(phrases[node]))
-                                                   for ident, node in by_id.items()))
+              .replace("<<dictionary>>", dictionary)
               .replace("<<instruction>>", "%s\n%s" % (INSTRUCTION_HEADING, instruction)
                        if not crud.is_blank_value(instruction) else "")
               .replace("<<text>>", str(text or "")))
@@ -302,7 +306,8 @@ def ask_links(text, names, instruction=None):
                                " or ".join(DIRECTIONS), extractor, said[side][:120])
             answered = item.get(side + "_key")
             if crud.is_blank_value(answered):
-                node[side] = _named(said[side], by_phrase)
+                found = phrase_bag.match_phrase(said[side], names, match_at) or {}
+                node[side] = (found.get("node_type"), found.get("node_key"))
             elif str(answered) in by_id:
                 node[side] = by_id[str(answered)]
             else:

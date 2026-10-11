@@ -11,7 +11,7 @@ file's cells reach the client, not what the real client sends.
   answer names a listed identifier     type and key of that node, whatever its words
   answer names an unlisted identifier  type and key empty, *_phrase kept, one warning line
   one key under two types              <type>:<key> in the list; the bare key is unlisted
-  identifier null, words a phrase      key from the dictionary (`_named`)
+  identifier null, words a phrase      key from the dictionary (`phrase_bag`)
   identifier null, other words         type and key empty, *_phrase kept
   identifier in another case           unlisted - compared as written (총괄 6e251ed32)
   direction up / down / null           kept as written, spaces trimmed · a blank is null

@@ -247,6 +247,27 @@
 >
 > ---
 >
+> ## [10-11] **사전 키우기 — 낱말 주머니 · 다시 맞추기 · 제안 표 (소유자 「워드백 느낌으로」 · ㄱ, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»(LLM 을 부르는 프로세스)**
+>
+> ```
+> 순서        pull -> 서버 · 체인 워커 재기동 -> 이 뒤에 도는 글부터. 이미 있는 후보 행은 그대로 — 8-2 를 선언했으면 사전 행이 바뀔 때 빈 키가 찬다
+> 바뀐 것      모델이 식별자를 null 로 답한 쪽 — 말이 노드 구절을 통째로 품으면 그 노드 (전: 말 = 구절일 때만)
+>            한 구절이 다른 노드 구절 안에 들면 긴 쪽 — «온도» · «접합 온도» 가 다른 노드여도 「접합 온도」는 «접합 온도» (전과 같음)
+>            서로 다른 노드의 구절이 나란히 다 들면 빈다 — 「본딩 설비의 접합 온도 파라미터」에 «본딩 설비» · «접합 온도» 둘 다 노드면 키 없음
+>            문턱 낮추기  맵퍼에서 ask_links(text, names, match_at=0.8) — 구절 조각 다섯 중 넷이 들면 그 노드
+> 선언 (골라)   TEXT_LINKS_GUIDE §8 의 맵퍼 · 규칙 · 제안 표 — server/mappers/*.py · chain_rules.json · table_config.json
+>            8-2 다시 맞추기  사전 표 -> 후보 표 · allow_retraction false · allow_chain_trigger true   후보 표 키가 구절이어야 고쳐 쓴다
+>            8-3 제안        후보 표 -> 제안 표 · allow_chain_trigger true · 제안 표에 없는 말만 묻는다
+>            8-3 확정 -> 사전  제안 표 -> 사전 표 · require [확정 칸, suggested_node_type, suggested_node_key]
+>                         새 노드 제안은 사람이 suggested_node_type · suggested_node_key 를 적어야 넘어간다
+> 새 줄        chain_worker.log  [LLM] phrase N of M answers node '<식별자>', which the dictionary does not list - suggested without a node (llm:<모델>): '<말>'
+>                            [LLM] phrase N of M has no answer - no suggestion (llm:<모델>): '<말>'   = 다음에 깨어날 때 다시 묻는다
+>                            [Chain] <확정 규칙>: N row(s) not handed over - required column(s) empty: suggested_node_key=N   = 확정했지만 새 노드 키가 아직 빔
+> 되돌리기      git revert <이 커밋> -> 같은 재기동. 선언을 넣었으면 그 규칙도 지운다 — rematch_rows · ask_dictionary 가 사라진다
+> ```
+>
+> ---
+>
 > ## [10-11] **LLM 증감 방향 · 원장 optional 한정자의 빈 칸 (소유자 「여기 모델링에 증감 방향은 없네」 · 총괄 10-11, 착지 d338d3fdc) — 이주 «없음» · 재기동 «서버 · 체인 워커 · 스케줄러»(원장 번역 · LLM 을 도는 프로세스)**
 >
 > ```
