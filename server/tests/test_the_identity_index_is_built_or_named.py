@@ -34,6 +34,20 @@ class _Conn:
     def execution_options(self, **kw):
         return self
 
+    def execute(self, *a, **k):                       # the DDL door's SET / RESET and the leftover probe (none)
+        return _Scalar()
+
+    def close(self):
+        pass
+
+    def invalidate(self):
+        pass
+
+
+class _Scalar:
+    def scalar(self):
+        return 0
+
 
 class _Engine:
     def __init__(self):
@@ -100,17 +114,17 @@ def test_a_table_with_duplicates_is_named_and_left_alone(monkeypatch):
     assert not engine.autocommit_asked, "no DDL may be attempted on a table that refused"
 
 
-def test_a_valid_index_is_left_alone_and_an_invalid_one_is_named(monkeypatch):
-    """⚠️ 「the name exists」 IS NOT THE PREDICATE. An invalid leftover holds the name and
-    enforces nothing, so treating it as done would ship the silent hole the script exists to
-    close — and dropping it belongs to an operator, not to a daemon at startup."""
+def test_a_valid_index_is_left_alone_an_invalid_leftover_is_rebuilt_and_another_name_is_named(monkeypatch):
+    """⚠️ 「the name exists」 IS NOT THE PREDICATE. An invalid leftover under the unique name enforces nothing, and
+    since 총괄 49792d3f6 A it is the leftover of a build that gave up its wait - dropped and built again here. An
+    invalid index under another name is not this build's, and is named."""
     out, _engine = run(
-        monkeypatch, tables=["ok", "leftover"],
-        existing={"ok": ("uq_bk_ok", True), "leftover": ("uq_bk_leftover", False)},
-        census={})
+        monkeypatch, tables=["ok", "leftover", "other"],
+        existing={"ok": ("uq_bk_ok", True), "leftover": ("uq_bk_leftover", False), "other": ("custom", False)},
+        census={"leftover": {"surplus": 0}})
 
-    assert out["built"] == [] and out["refused"] == []
-    assert out["invalid"] == [("leftover", "uq_bk_leftover")]
+    assert out["built"] == [("leftover", "created", "ok")] and out["refused"] == []
+    assert out["invalid"] == [("other", "custom")]
 
 
 def test_the_startup_calls_it_and_survives_it(monkeypatch):
@@ -119,6 +133,22 @@ def test_the_startup_calls_it_and_survives_it(monkeypatch):
     import inspect
 
     body = inspect.getsource(worker.start_chain_ingestion_worker)
-    assert "_ensure_business_key_unique_indexes_sync" in body
-    after = body.split("_ensure_business_key_unique_indexes_sync")[1][:400]
-    assert "logger.error" in after, "a failure here is named, not fatal"
+    assert "_start_business_key_indexes(db_session_factory)" in body
+    assert "_ensure_business_key_unique_indexes_sync" not in body, "the startup does not run the build itself"
+    assert "logger.error" in inspect.getsource(worker._start_business_key_indexes), "a failure is named, not fatal"
+
+
+def test_the_build_runs_beside_the_start_and_is_not_waited_on(monkeypatch):
+    """총괄 49792d3f6 A: a build held by an open transaction must not hold the worker's start."""
+    import threading
+    import time
+
+    release = threading.Event()
+    monkeypatch.setattr(worker, "_ensure_business_key_unique_indexes_sync", lambda factory: release.wait(30))
+    started = time.monotonic()
+    thread = worker._start_business_key_indexes(None)
+    try:
+        assert time.monotonic() - started < 1 and thread.is_alive() and thread.daemon
+    finally:
+        release.set()
+        thread.join(5)

@@ -14,6 +14,7 @@ from sqlalchemy import text
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from chain import ingestion_worker as worker                                   # noqa: E402
+import db_safety                                                               # noqa: E402
 from conftest import PG_TEST_SCHEMA                                            # noqa: E402
 from migrations import add_business_key_unique_index as uq                     # noqa: E402
 
@@ -27,12 +28,16 @@ def _build_here(conn, table, name):
         conn.execute(text('CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS %s ON "%s"."%s" (business_key_val)'
                           % (uq.quote_ident(name), PG_TEST_SCHEMA, table)))
     except Exception as e:                                                     # noqa: BLE001
-        return uq.FAILED, str(e).strip().splitlines()[0]
+        return (uq.BLOCKED if db_safety.waited_past_the_lock_timeout(e) else uq.FAILED), str(e).splitlines()[0]
     return uq.OK_CREATED, "built"
 
 
-def test_a_build_held_by_an_open_transaction_gives_up_names_the_holder_and_leaves_no_index(pg_engine, caplog):
-    seat = SimpleNamespace(build_index=_build_here, FAILED=uq.FAILED, quote_ident=uq.quote_ident)
+def test_a_build_held_by_an_open_transaction_gives_up_names_the_holder_and_leaves_no_index(pg_engine, caplog,
+                                                                                          monkeypatch):
+    import db_safety as safety
+
+    monkeypatch.setattr(safety, "DDL_LOCK_TIMEOUT", "2s")
+    seat = SimpleNamespace(build_index=_build_here, BLOCKED=uq.BLOCKED, quote_ident=uq.quote_ident)
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
         conn.execute(text('CREATE TABLE "%s"."%s" (business_key_val text)' % (PG_TEST_SCHEMA, TABLE)))
@@ -43,18 +48,18 @@ def test_a_build_held_by_an_open_transaction_gives_up_names_the_holder_and_leave
              "n.oid = c.relnamespace WHERE n.nspname = :s AND c.relname = :n AND i.indisvalid")
     try:
         caplog.set_level(logging.WARNING)
-        with pg_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            started = time.monotonic()
-            first, _detail = worker._build_unique_index_waiting(conn, seat, TABLE, NAME, wait=2)
-            took = time.monotonic() - started
-            holder.rollback()                                                  # what held it ends
-            second, _detail = worker._build_unique_index_waiting(conn, seat, TABLE, NAME, wait=2)
+        started = time.monotonic()
+        first, _detail = worker._build_unique_index_waiting(pg_engine, seat, TABLE, NAME)
+        took = time.monotonic() - started
+        holder.rollback()                                                      # what held it ends
+        second, _detail = worker._build_unique_index_waiting(pg_engine, seat, TABLE, NAME)
+        with pg_engine.connect() as conn:
             built = conn.execute(text(valid), {"s": PG_TEST_SCHEMA, "n": NAME}).scalar()
     finally:
         holder.rollback()
         holder.close()
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
-    said = [r.getMessage() for r in caplog.records if "not built - waited 2 s" in r.getMessage()]
-    assert (first, second, built) == (uq.FAILED, uq.OK_CREATED, 1) and took < 30, (first, second, built, took)
+    said = [r.getMessage() for r in caplog.records if "not built - waited 2s" in r.getMessage()]
+    assert (first, second, built) == (uq.BLOCKED, uq.OK_CREATED, 1) and took < 30, (first, second, built, took)
     assert said and "pid %d" % holder_pid in said[0], said
