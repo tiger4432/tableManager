@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-10-11 · 걷기 표: Control · B 칸이 다시 범례 색 · 노드 칸의 길이 두 걷기를 다 말함 (W 1 회귀)
+
+- **무엇** — W 1 뒤로 Control · B 로 두 번 걸으면 값 칸이 모두 + 쪽 띠 색 하나로 칠해져, 범례(초록 A + B · 빨강 B only)와 같은 색이 칸에 안 보였습니다. 이제 B 가 닿은 칸은 범례 칩과 같은 색입니다.
+- **길** — 노드 칸 밑 길 줄이 A 의 길만 말해서 B 만 닿은 줄은 «—» 였습니다. 이제 닿은 걷기마다 이름을 붙여 한 줄로 말합니다: «A of_kind → observed → … · B leads_to», B 만 닿은 줄은 «B leads_to», 둘이 같은 길이면 «A + B …». 줄이 길면 말줄임, 전부는 툴팁.
+- **어디서** — 걷기 화면, Follow 와 함께 Control · B 에 술어를 고르고 Walk.
+- **필요한 조건** — 클라 빌드만.
+- **자세히** — 이 항목과 같은 커밋.
+
 ## 2026-10-11 · 선언 폼: 접힌 줄도 계획 note 를 보입니다 · 새로 만들기가 «스냅숏이 바뀜»으로 거절되면 «Reload and try again»
 
 - **무엇** — 총괄 10-11 «선언 폼 작은 둘». ① 계획이 단 note(«Default: row time (ingested · created_at)» · «Only for a time column» 같은 한 줄)를 접힌 줄에서도 보입니다. 접힌 값 밑에 한 줄로, 접힌 RECORD 는 그 줄 오른쪽에. 펴면 그 줄 자신의 카드가 보이고, 같은 note 가 두 번 나오지 않습니다. ② + New 의 Create 가 «active snapshot changed before draft creation»(409 stale_base_snapshot)으로 거절되면 그 문장 옆에 «Reload and try again» 단추가 섭니다. 누르면 화면을 다시 읽고 같은 Create 를 한 번 다시 보냅니다. 그것도 거절되면 서버 문장이 그대로 남고, 저절로 다시 보내지는 않습니다.

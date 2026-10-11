@@ -357,6 +357,19 @@ for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell', 'L
   // The S cells read the table: none is drawn on the graph.
   for (const [rule, expr] of WALK_LOOK) if (!(after === 'Graph' && /^S\d/.test(rule))) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
 }
+// A cell B reached wears its legend chip's colour, not its side's band (lead 10-11, the W 1 regression).
+CELLS.push({ entry: 'walk.html', after: 'Control · B', rule: 'control colours', at: 'wk-page', expr: `(() => {
+  const cells = [...document.querySelectorAll('table.wk-wide td.is-ctl-ab, table.wk-wide td.is-ctl-b')];
+  if (!cells.length) return 'no cell B reached';
+  for (const td of cells) {
+    const kind = td.classList.contains('is-ctl-ab') ? 'ab' : 'b';
+    const chip = document.querySelector('.wk-reachedn.is-ctl-' + kind);
+    const want = chip ? getComputedStyle(chip).backgroundColor : '(no legend chip)';
+    const got = getComputedStyle(td).backgroundColor;
+    if (got !== want) return 'a ' + (kind === 'ab' ? 'A + B' : 'B only') + ' cell ' + got + ', its legend ' + want;
+  }
+  return null;
+})()` });
 // Node, Δ and the − side's first column in the first screen are asked at the sizes the lead named (34d91c09d (나);
 // 10-10 after 517eb6c2c, the demo pair): at 1280 the table's box is narrower than node, Δ and a − column together.
 const FIRST_SCREEN = ['1568x775', '1896x907', '1280x720'];
@@ -787,6 +800,14 @@ const DRIVE = {
       await evaluate(c, `(() => { const b = document.querySelector('.wk-sec [data-shape="long"]'); if (b) b.click(); return Boolean(b); })()`);
       await until(c, "document.querySelector('table.wk-long')");
     }],
+    // Control · B (lead 99ed68cb7 D): leads_to walked once more from the same baskets (10-11, the W 1 regression).
+    ['Control · B', async (c) => {
+      // The wafer section back in Wide: B reaches the two start wafers, A + B on each side.
+      await evaluate(c, `(() => { const b = document.querySelector('.wk-sec [data-shape="wide"]'); if (b) b.click(); return Boolean(b); })()`);
+      await evaluate(c, `(() => { const box = document.querySelector('[data-control="leads_to"] input'); if (box && !box.checked) box.click(); return Boolean(box); })()`);
+      await press(c, 'Walk');
+      await until(c, "document.querySelector('.wk-reachedn')");
+    }],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
@@ -993,6 +1014,11 @@ const MUTANTS = [
     file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); }', '.wk-sec { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }']] },
   { name: 'table cells padded --space-2 --space-3 again', entry: 'walk.html', rule: 'S3 table cells', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; }']] },
+  { name: 'the side bands over the control colours again', entry: 'walk.html', rule: 'control colours', at: 'wk-page',
+    file: 'src/walk/styles.js', edits: [['.wk-table td.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }',
+      '.wk-table td.is-ctl-b { box-shadow: inset 3px 0 0 var(--danger); background: var(--danger-weak); }\n'
+        + '.wk-sides td.wk-plus { background: color-mix(in srgb, var(--wk-plus) 7%, var(--bg-surface)); }\n'
+        + '.wk-sides td.wk-minus { background: color-mix(in srgb, var(--wk-minus) 7%, var(--bg-surface)); }']] },
   { name: 'a «+N» tag growing its row', entry: 'walk.html', rule: 'S4 one row height', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['gap: var(--space-1); max-height: var(--space-5); }', 'gap: var(--space-1); }']] },
   { name: 'the result boxed again, off the head\'s left edge', entry: 'walk.html', rule: 'S5 one left edge', at: 'wk-page',
