@@ -2908,14 +2908,11 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                 # atom built from it would then be refused at translation - which is the
                 # exact trap 판정 178 narrowed the form to avoid. Refused HERE, where an
                 # author can still fix it, and named rather than implied.
-                # ⚠️ THE VALUE ROLE ONLY, AND `occurred_at` IS THE REASON THE SCOPE HAS
-                # TO BE NAMED. It is a `time` role too, and it already has a timezone -
-                # the source declares it on `read.occurred_at`, which is what makes that
-                # declaration mean "the timezone of this source's naive values". Its
-                # binding's column is documented as ignored ALWAYS. Requiring the field
-                # there refused every existing declaration - measured, fifty reds on the
-                # first run - so the requirement belongs to the role that has no other
-                # place to get one.
+                # ⚠️ THE VALUE ROLE ONLY. `occurred_at` is a `time` role too, and its zone is judged
+                # where the source's time is (`_event_edge_time` · `missing_time`): an event edge's
+                # column with its zone, or `read.occurred_at`'s zone beside a column (총괄 10-11).
+                # Asking it here as well refused every existing declaration - measured, fifty reds
+                # on the first run.
                 if (role == VALUE_ROLE
                         and roles[role].get("kind") == "time"
                         and bindings[role].get("kind") == "column"

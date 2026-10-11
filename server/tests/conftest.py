@@ -199,13 +199,16 @@ def run_join_and_write(db, rule, row_ids):
     that half, once: three files need it, and three copies is how they come to disagree.
 
     ⚠️ IT IS NOT A SECOND SEAT. Production callers (the worker's batch step, replay's page
-    loop) write these items themselves; nothing imports this but tests.
+    loop) write these items themselves; nothing imports this but tests. Each item's layer is named by the
+    worker's own call (총괄 10-11 ④ - a row's join landed under the plain name here, under its row's there).
     """
-    from chain import join_into
+    from chain import join_into, rule_run
     from database import crud, schemas
 
     outcome = join_into.propose(db, rule, row_ids)
     updates = outcome.get("updates") or []
+    for item in updates:
+        item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
     if updates:
         crud.apply_batch_updates(
             db, str((rule or {}).get("target_table") or ""),

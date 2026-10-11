@@ -86,8 +86,10 @@ def _left(db):
 
 
 def _chain_layers(db, column):
-    return db.query(models.CellSource).filter_by(
-        table_name=LEFT, column_name=column, source_name=join_into.CHAIN_LAYER).count()
+    from chain import cell_layer
+
+    return db.query(models.CellSource).filter(
+        *cell_layer._claimed_filter(LEFT, join_into.CHAIN_LAYER, [column])).count()
 
 
 def _run(db, declaration, side):

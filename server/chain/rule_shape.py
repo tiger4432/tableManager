@@ -655,6 +655,14 @@ def unread_cells(declaration: dict) -> list:
     return [(where, cells) for where, cells in (("top-level", top), ("derive", under)) if cells]
 
 
+def flat_cell_notes(rule) -> list:
+    """The loader's 「still written flat」 line for one rule (`chain_bindings.rule_warnings`), as a note - said where
+    the other cells a rule does not read are said, so the save answers it too (총괄 10-11 ③)."""
+    flat = [w.path.rsplit(".", 1)[-1] for w in chain_bindings.rule_warnings(rule)] if isinstance(rule, dict) else []
+    return (["%s: %d cell(s) still written flat \u2014 move them under 'params': %s"
+             % (rule.get("name"), len(flat), ", ".join(flat))] if flat else [])
+
+
 def with_aggregation_records(declaration):
     """The declaration as the chain form draws it: each `derive.decide.aggregations` item as its record
     (`enrichment.config.aggregation_record` - the reader's one fold of "count"). A copy; the file is as written."""
@@ -710,16 +718,19 @@ def expand_declaration(declaration, table_config=None,
     flat return and before the off switch, or `enabled: 0` would leave as 「off」 and
     `allow_retraction: "false"` would stand a rule that removes.
     """
+    # 🔴 [총괄 10-11 ③] A REFUSED DECLARATION SAYS ITS UNREAD CELLS TOO, and a flat rule its flat ones - every
+    #    return below carries them, so the save's refusal and the loader's line name what it does not read.
+    unified = isinstance(declaration, dict) and isinstance(declaration.get("derive"), dict)
+    name = declaration.get("name") if isinstance(declaration, dict) else None
+    unread = ["%s: %s cell this product does not read \u2014 %s." % (name, where, ", ".join(cells))
+              for where, cells in unread_cells(declaration)] if unified else flat_cell_notes(declaration)
     flags = chain_bindings.flag_refusals(declaration)
     if flags:
-        return ([], "%s: %s" % (declaration.get("name"), "; ".join(flags)), [])
-    if not isinstance(declaration, dict) or not isinstance(declaration.get("derive"), dict):
-        return ([declaration], None, [])
+        return ([], "%s: %s" % (name, "; ".join(flags)), unread)
+    if not unified:
+        return ([declaration], None, unread)
 
     internal = from_declaration(declaration)
-    name = declaration.get("name")
-    unread = ["%s: %s cell this product does not read \u2014 %s." % (name, where, ", ".join(cells))
-              for where, cells in unread_cells(declaration)]
     if is_switched_off(internal):
         # a rule that is off is still read for its cells (\ucd1d\uad04 6c6d76924 \u2460)
         return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name] + unread
@@ -731,7 +742,7 @@ def expand_declaration(declaration, table_config=None,
     #    sentence. A declaration that writes no kind but names its `derive` cell is read by
     #    `from_declaration` and passes.
     if (internal.get("derive") or {}).get("kind") not in DECLARED_KINDS:
-        return ([], "%s: %s" % (name, unknown_derive_kind(declaration["derive"].get("kind"))), [])
+        return ([], "%s: %s" % (name, unknown_derive_kind(declaration["derive"].get("kind"))), unread)
 
     # 🔴 [S-282 · 판정 440] A READ-TIME JOIN IS REFUSED HERE, BY NAME. `into: {read: true}`
     # declares a join that answers when somebody READS; the owner's ruling is that production
@@ -753,16 +764,16 @@ def expand_declaration(declaration, table_config=None,
     # brings that exact shape back unless the retirement names itself, so it does.
     if ((internal.get("derive") or {}).get("kind") == "join"
             and any((internal.get("into") or {}).get(kind) for kind in RETIRED_INTO_KINDS)):
-        return ([], "%s: %s" % (name, READ_TIME_RETIRED), [])
+        return ([], "%s: %s" % (name, READ_TIME_RETIRED), unread)
     if (internal.get("derive") or {}).get("kind") == "join":
         old_source = ((internal.get("derive") or {}).get("join") or {}).get("right_table")
         if old_source is not None:
-            return ([], "%s: %s" % (name, JOIN_RIGHT_TABLE_RETIRED % old_source), [])
+            return ([], "%s: %s" % (name, JOIN_RIGHT_TABLE_RETIRED % old_source), unread)
         if not (internal.get("on") or {}).get("table"):
-            return ([], "%s: %s" % (name, JOIN_NEEDS_SOURCE), [])
+            return ([], "%s: %s" % (name, JOIN_NEEDS_SOURCE), unread)
         blank = join_into.blank_refusal((internal.get("derive") or {}).get("join") or {})
         if blank:
-            return ([], "%s: %s" % (name, blank), [])
+            return ([], "%s: %s" % (name, blank), unread)
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,
@@ -770,7 +781,7 @@ def expand_declaration(declaration, table_config=None,
     decided, decide_refusal = decide_rules(internal, table_config,
                                            rejections=rejections, caps=caps)
     if decide_refusal:
-        return ([], "%s: %s" % (name, decide_refusal), [])
+        return ([], "%s: %s" % (name, decide_refusal), unread)
     if decided:
         stood = decided
         notes = ["%s: derive.decide cell this product does not read — %s. "
@@ -780,7 +791,7 @@ def expand_declaration(declaration, table_config=None,
         try:
             old_shape = refuse_join_trigger_conflict(internal)
         except JoinTriggerConflict as conflict:
-            return ([], "join_trigger_conflict: %s" % conflict, [])
+            return ([], "join_trigger_conflict: %s" % conflict, unread)
 
         notes = [old_shape] if old_shape else []
         unknown = unknown_join_cells(internal)
@@ -800,5 +811,6 @@ def expand_declaration(declaration, table_config=None,
     # ⚠️ `as_chain_rule` ALREADY APPLIED IT on the join/mapper arm. Re-applying is the point:
     #   the merge is idempotent, so this seat needs no 「did that arm already do it」
     #   question - and that question is the door this round removes.
-    return ([with_declared_cells(rule, internal) for rule in stood], None,
-            [line + " The rule runs." for line in unread] + notes)
+    stood = [with_declared_cells(rule, internal) for rule in stood]
+    return (stood, None, [line + " The rule runs." for line in unread] + notes
+            + [line for rule in stood for line in flat_cell_notes(rule)])

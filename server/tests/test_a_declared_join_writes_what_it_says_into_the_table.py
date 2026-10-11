@@ -349,9 +349,11 @@ def test_the_written_layer_is_the_rules_own_name(db, monkeypatch):
     seen.clear()
     run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
-    # The LAYER is the chain's (so the wake filter treats this write like every other
-    # chain write) and the AUTHOR is the rule's (so an operator can still see who wrote it).
-    assert seen and seen[0].updates[0].source_name == join_into.CHAIN_LAYER
+    # The LAYER is the chain's - its source row's, named at the write seat (총괄 8ec008914) - so the wake filter
+    # treats this write like every other chain write, and the AUTHOR is the rule's (so an operator can still see
+    # who wrote it).
+    item = seen and seen[0].updates[0]
+    assert item and item.source_name == crud.merged_layer_name(join_into.CHAIN_LAYER, item.origin_row_id)
     assert seen[0].updates[0].updated_by == DECLARATION["name"]
 
 

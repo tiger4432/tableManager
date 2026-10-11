@@ -1549,7 +1549,8 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any], time_s
                 + (f" · not sampled: {', '.join(unsampled)}" if unsampled else ""),
                 (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(time_columns)),
             # 🔴 A PENDING RULING IS NOT A FORM FIELD'S BUSINESS: what is left is what it is filled with.
-            note=_time_default_said(time_default) if time_default else "Pick one of column · basis",
+            note=(_time_default_said(time_default) if time_default
+                  else "" if answered else "Pick one of column · basis"),
             reshapes=True,
         )
         # 🔴 THE SQUARE THE TIMEZONE REFUSAL LANDS ON - asked only where a time COLUMN is the origin (총괄 10-11:
@@ -1575,7 +1576,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any], time_s
                 # 🔴 A SUGGESTION, NEVER A LIST TO PICK FROM.  What the file already answers
                 # plus the default -- no IANA table is shipped and none is enforced.
                 candidates=timezone_candidates,
-                note="Filled with the time · type another if it differs",
+                note="Filled with the time · type another if it differs" if zone_default and not answered_zone else "",
                 # A zone the file leaves out is the product's default (its event edges' zone), stated
                 # as `_answer_or_default` states one - a derived row with no ground fails the whole
                 # plan, so a slim source's form did not open (lead 5c3e49954).

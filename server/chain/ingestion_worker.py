@@ -795,11 +795,7 @@ def load_chain_rules():
                         if rule.get("allow_retraction") else
                         "map by map - the target's map_key_columns")
 
-        flat = [w.path.rsplit(".", 1)[-1] for w in chain_bindings.rule_warnings(rule)]
-        if flat:
-            logger.warning(
-                "[ChainRules] %s: %d cell(s) still written flat — move them under 'params': %s",
-                rule.get("name"), len(flat), ", ".join(flat))
+        # the 「still written flat」 line is `rule_shape.flat_cell_notes`, logged with the declaration's notes above
         # 🪦 [S-152, 판정 372] AN UNDECLARED PARAM USED TO WARN HERE, and a warning is what
         #    let `trigger_colums` roll on against the whole table. It is a REFUSAL now, and
         #    it is raised by `rule_refusals` above - so the save and the config screen, which

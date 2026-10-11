@@ -733,8 +733,8 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
     fold's: old run records and the CLI name it.
 
     Per cell, `crud.stacked_layers`: file layers that repeat one go; the chain's plain layer stamped
-    with a source row becomes that row's (`chain_ingestion (<row>)`), and one that a row layer repeats
-    goes - a key column's plain layer stays. A cell of two layers and more holding a chain row layer,
+    with a source row becomes that row's (`chain_ingestion (<row>)`), or goes when that row's layer is
+    there; one with no source row stays (총괄 10-11 «다»), and so does a key column's. A cell of two layers and more holding a chain row layer,
     whose layers now answer another value (a row layer ranks as the chain's), gets R3's write - the
     value and one history line. One commit per page; a stop lands between pages and a re-run finds
     only what is left.
@@ -846,7 +846,7 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
         f"{stats['cells_folded']} cell(s) repeat a newer one - layers {stats['layers_before']} "
         f"-> {stats['layers_after']}, deepest cell {stats['deepest_before']} -> "
         f"{stats['deepest_after']}; chain plain layers off the keys {stats['chain_renamed']} renamed to their row's, "
-        f"{stats['chain_deleted']} repeating a row layer deleted, {stats['chain_differs']} kept differing "
+        f"{stats['chain_deleted']} whose row layer is there deleted, {stats['chain_differs']} kept differing "
         f"({stats['chain_unstamped']} without a source row); {stats['chain_copies']} chain merge copies; "
         f"{stats['shown_changed']} shown value(s) move")
     return stats

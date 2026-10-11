@@ -814,9 +814,9 @@ def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: 
       file     file layers that repeat one - per priority class and value the layer it ranks first
                stays; the cell's winner is first in its own group, so it stays
       renamed  {chain_ingestion: chain_ingestion (<row>)} - the plain chain layer stamped with a source row
-      chain    [chain_ingestion] - its row's layer is there already, or it has no source row and a row
-               layer of the cell holds its value
-      differs  the plain chain layer stays: no source row, and no row layer of the cell holds its value
+      chain    [chain_ingestion] - its row's layer is there already
+      differs  the plain chain layer with no source row - never folded: decide, a hold item, a map derivation
+               stamp none and a write may lean on it (총괄 10-11 «다») - and no row layer of the cell holds its value
       copies   chain layers whose bracket is not their source row (a collision merge's)"""
     layers = layers or {}
     groups = {}
@@ -844,11 +844,8 @@ def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: 
             out["chain"].append(CHAIN_SOURCE)
         else:
             out["renamed"][CHAIN_SOURCE] = mine
-    elif rows:
-        if any(not values_differ(layers[name].get("value"), plain.get("value"), col_type) for name in rows):
-            out["chain"].append(CHAIN_SOURCE)
-        else:
-            out["differs"] = True
+    elif rows and all(values_differ(layers[name].get("value"), plain.get("value"), col_type) for name in rows):
+        out["differs"] = True
     return out
 
 # Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).

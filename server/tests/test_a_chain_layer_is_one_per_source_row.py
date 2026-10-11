@@ -9,8 +9,8 @@
   ② a row layer ranks as the chain's: it beats a newer file layer
   ③ a row layer's blank means emptied · `withdraw_source(chain_ingestion)` takes the row layers · an old
     envelope that names a row layer is the chain's
-  ④ the layer fold: the preview counts what the run does, a re-run does nothing, and a row taken back
-    after the fold shows what is left beneath - not the old plain layer
+  ④ the layer fold: the preview counts what the run does, a re-run does nothing, and a plain layer with no
+    source row is not folded - a row taken back shows it, as before the landing (총괄 10-11 «다»)
 """
 import os
 import sys
@@ -229,7 +229,7 @@ def _stacked(db):
     cells = {
         "A": ([(plain, "a", "r1")], "a"),                                   # renamed
         "B": ([(plain, "b", "r1"), (row("r1"), "b2", "r1")], "b"),          # its row's layer is there: goes
-        "C": ([("f.csv", "F", None), (plain, "c", None), (row("r2"), "c", "r2")], "c"),   # repeated: goes
+        "C": ([("f.csv", "F", None), (plain, "c", None), (row("r2"), "c", "r2")], "c"),   # no source row: stays
         "D": ([(row("r2"), "d", "r2"), (plain, "Z", None)], "Z"),           # differs, newer: stays and shows
         "E": ([(plain, "e", None)], "e"),                                   # alone: stays
         "F": ([(copy, "M", None), ("f.csv", "F1", None)], "F1"),            # a merge copy now ranks as the chain
@@ -252,7 +252,7 @@ def test_the_fold_previews_what_it_does_and_a_rerun_does_nothing(db):
     _stacked(db)
     dry = replay.fold_file_layers(db, TGT, apply=False)
     assert {key: dry[key] for key in ACTIONS + ("chain_differs", "chain_unstamped", "chain_copies")} == {
-        "layers_deleted": 0, "chain_renamed": 1, "chain_deleted": 2, "shown_changed": 4,
+        "layers_deleted": 0, "chain_renamed": 1, "chain_deleted": 1, "shown_changed": 4,
         "chain_differs": 2, "chain_unstamped": 4, "chain_copies": 1}
     assert _cell(db, "A")[1] == {crud.CHAIN_SOURCE: "a"}, "a dry run changes nothing"
     counted = retroactive._count_fold_file_layers(db, {"table": TGT}, 100000)
@@ -264,7 +264,7 @@ def test_the_fold_previews_what_it_does_and_a_rerun_does_nothing(db):
     assert {key: _cell(db, key) for key in "ABCDEFGH"} == {
         "A": ("a", {row("r1"): "a"}),
         "B": ("b2", {row("r1"): "b2"}),
-        "C": ("c", {"f.csv": "F", row("r2"): "c"}),
+        "C": ("c", {"f.csv": "F", crud.CHAIN_SOURCE: "c", row("r2"): "c"}),
         "D": ("Z", {row("r2"): "d", crud.CHAIN_SOURCE: "Z"}),
         "E": ("e", {crud.CHAIN_SOURCE: "e"}),
         "F": ("M", {crud.merged_layer_name(crud.CHAIN_SOURCE, "K9_abc123"): "M", "f.csv": "F1"}),
@@ -280,9 +280,10 @@ def test_the_fold_previews_what_it_does_and_a_rerun_does_nothing(db):
 
 
 def test_a_row_taken_back_after_the_fold_shows_what_is_left_beneath(db):
-    """총괄 4dd303f01: C's plain layer said what r2's layer says - folded, taking r2 back shows the file's F."""
+    """총괄 10-11 «다» (4dd303f01 withdrawn): C's plain layer has no source row and stays - taking r2 back shows it."""
     _stacked(db)
     replay.fold_file_layers(db, TGT, apply=True)
     stats = cell_layer.withdraw_by_origin(db, ["r2"], apply=True, table=TGT)
     assert stats["cells_withdrawn"] == 2
-    assert (_cell(db, "C"), _cell(db, "D")) == (("F", {"f.csv": "F"}), ("Z", {crud.CHAIN_SOURCE: "Z"}))
+    assert (_cell(db, "C"), _cell(db, "D")) == (("c", {"f.csv": "F", crud.CHAIN_SOURCE: "c"}),
+                                                ("Z", {crud.CHAIN_SOURCE: "Z"}))

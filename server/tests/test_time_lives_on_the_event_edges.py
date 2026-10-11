@@ -376,6 +376,26 @@ def test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone():
     assert (plan.basis, plan.column, plan.timezone) == ("ingested", "created_at", "UTC")
 
 
+def test_a_time_rows_note_speaks_for_its_state():
+    """응용 18766 (2''): a Time the file answers said «Pick one of column · basis», and a zone the file owes said
+    «Filled with the time …» - nothing filled it. Each note is said only in the state it is about."""
+    document = _document()
+    source = _die_inspection(document)
+    source["read"]["occurred_at"] = {"column": source["read"]["occurred_at"]["column"]}
+    del source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]
+    base = "bundle.sources.die_inspection.read.occurred_at"
+    rows = _plan_rows(document)
+    assert [(rows[p]["state"], rows[p]["note"]) for p in (base, base + ".timezone")] == [
+        ("answered", ""), ("missing", "")]
+    del source["read"]["occurred_at"]
+    source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"] = {
+        "kind": "column", "column": "observed_at", "timezone": ZONE}
+    rows = _plan_rows(document)
+    assert [(rows[p]["state"], rows[p]["note"]) for p in (base, base + ".timezone")] == [
+        ("derived", "Default: the event edges' time (observed_at · %s)" % ZONE),
+        ("derived", "Filled with the time · type another if it differs")]
+
+
 def test_the_skeleton_asks_neither_the_time_nor_its_zone():
     from ledger.config_authoring import skeleton
 

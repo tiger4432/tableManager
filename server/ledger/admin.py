@@ -649,16 +649,22 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
     #    rule must not stand, and calling it refused would report a choice as a mistake.
     # 🔴 [총괄 872f6cb6b] BUT THE SWITCH ITSELF IS JUDGED FIRST - the copy below overwrites it,
     #    and `enabled: "false"` must be refused at the moment of saving, not after the restart.
+    # 🔴 [총괄 10-11 ② · ③] WHAT THE LOADER WILL SAY OF THE ENTRY AS SAVED - the judged copy below is on, so its
+    #    notes said 「The rule runs.」 of a rule saved off; and a refusal names the cells it does not read too.
+    _saved, _saved_refusal, saved_notes = rule_shape.expand_declaration(entry, _catalogue.TABLE_CONFIG)
     flags = chain_bindings.flag_refusals(entry)
     if flags:
         raise _table_config_refusal("declaration_refused", f"rules.{name}",
-                                    "%s: %s" % (name, "; ".join(flags)))
+                                    " | ".join(["%s: %s" % (name, "; ".join(flags))] + saved_notes))
     judged = dict(entry)
     judged["enabled"] = True
     stood, expand_refusal, notes = rule_shape.expand_declaration(
         judged, _catalogue.TABLE_CONFIG)
     if expand_refusal:
-        raise _table_config_refusal("declaration_refused", f"rules.{name}", expand_refusal)
+        raise _table_config_refusal("declaration_refused", f"rules.{name}",
+                                    " | ".join([expand_refusal] + notes))
+    if rule_shape.is_switched_off(entry):
+        notes = saved_notes
 
     # The merged document as the loader will read it next boot - the derived tables are
     # asked of it, and the cycle check below reads it too.

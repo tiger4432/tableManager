@@ -88,6 +88,27 @@ class _Sent:
                 type("R", (), {"ok": True, "status_code": 200})(), None)
 
 
+class _NullSession:
+    """RunControl's own session, silenced - what is left to measure is whether it SPOKE."""
+    def query(self, *a, **k):
+        return self
+
+    def filter(self, *a, **k):
+        return self
+
+    def update(self, *a, **k):
+        return 1
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
 @pytest.fixture()
 def sent(monkeypatch):
     import internal_event_client
@@ -102,25 +123,6 @@ def test_every_progress_write_is_also_spoken(sent, monkeypatch):
     DB 쓰기는 여기서 재지 않는다 — 세션 팩토리를 갈아 끼워 그 절반을 침묵시키고,
     남는 것이 「발신이 있었나」다. 발신이 사라지면 이 단언이 빨개진다.
     """
-    class _NullSession:
-        def query(self, *a, **k):
-            return self
-
-        def filter(self, *a, **k):
-            return self
-
-        def update(self, *a, **k):
-            return 1
-
-        def commit(self):
-            pass
-
-        def rollback(self):
-            pass
-
-        def close(self):
-            pass
-
     control = retroactive.RunControl("run-abc", session_factory=_NullSession, op="withdraw")
     control.progress(processed=30, total=120)
 
@@ -153,6 +155,30 @@ def test_a_finished_run_says_so(sent, status):
     (endpoint, payload), = sent.calls
     assert payload["status"] == status
     assert payload["run_id"] == "run-z"
+
+
+def test_a_run_stops_sending_after_a_notice_nobody_heard(monkeypatch, caplog):
+    """총괄 10-11 ④: with the server down each notice waited ~2 s on this box, a page's worth, every page."""
+    import logging
+
+    import internal_event_client
+
+    tries = []
+
+    def down(*a, **k):
+        tries.append(a)
+        raise ConnectionRefusedError("nobody listens")
+
+    monkeypatch.setattr(internal_event_client, "send_internal_event", down)
+    control = retroactive.RunControl("run-abc", session_factory=_NullSession, op="withdraw")
+    with caplog.at_level(logging.WARNING):
+        for page in range(3):
+            control.progress(processed=page, total=3)
+        control.announce(ec.PROGRESS_STATUS_DONE)
+    assert len(tries) == 1, tries
+    assert [r.getMessage() for r in caplog.records if "was not heard" in r.getMessage()] == [
+        "[Retroactive] run_id=run-abc op=withdraw: a progress notice was not heard - none more for this run; "
+        "the Retroactive tab reads the run record"], caplog.text
 
 
 def test_a_refused_notification_never_fails_the_run(monkeypatch):

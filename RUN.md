@@ -243,6 +243,24 @@
 >
 > ---
 >
+> ## [10-11] **작은 판 — 층 접기가 원천 없는 체인 층을 안 지운다 · 저장 답이 꺼진 · 거절 · 평면 규칙의 모르는 칸을 말한다 · 소급 진행 알림은 한 번 못 들으면 그 실행 동안 조용 (총괄 10-11, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커 · 스케줄러»**
+>
+> ```
+> 층 접기      원천 없는 plain 체인 층은 같은 칸 행 층이 같은 값을 말해도 남는다 — decide · 보류 다시 세기 · 맵 파생 · 원천을 안 찍는 맵퍼의 쓰기
+>            대가: 행 층이 다 걷히면 그 plain 값이 다시 보인다(b566b48ae 이전과 같음). Count «… have no source row and stay»
+> 저장 답 notes  꺼진 채 저장한 규칙  «<이름>: enabled=false — no rule stands for it.» + 안 읽는 칸 줄 — «The rule runs.» 없음
+>            거절되는 선언       거절 글 뒤에 « | » 로 안 읽는 칸 줄
+>            평면 규칙          «<이름>: N cell(s) still written flat — move them under 'params': …» (체인 워커 로그도 이 글 한 번)
+> 소급 진행     서버가 꺼진 채 python -c "… run_here(…)" 로 돌리면 첫 쪽 뒤 한 줄
+>            «[Retroactive] run_id=… op=…: a progress notice was not heard - none more for this run; the Retroactive tab reads the run record»
+>            그 뒤 쪽마다 기다리던 ~2 초(이 박스)가 없다 — 진행은 소급 탭의 실행 기록이 말한다
+> 원장 계획 줄  Time 은 비었을 때만 «Pick one of column · basis», Time zone 은 시각에서 채웠을 때만 «Filled with the time …»
+> 순서        pull -> 서버 · 체인 워커 · 스케줄러 재기동
+> 되돌리기      git revert <이 커밋> -> 같은 재기동
+> ```
+>
+> ---
+>
 > ## [10-11] **원장 선언 저장이 시각을 안 묶은 문장에 원천 시각을 써 넣지 않는다 — 96f54ab36 회귀 고침 (응용 18766 · 총괄 10-11, 착지 739db5c2c) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
@@ -305,15 +323,15 @@
 >            ③ 같은 Run 한 번 더 -> 끝 줄의 renamed · deleted · shown value(s) move 가 0
 > Count 뜻    화면 Count 는 앞 200 행 «견본» — 표 전체 수는 Run 의 끝 줄
 >            Chain, outside the key columns: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
->                   M that a row layer repeats go                      그 행 층이 이미 있거나, 원천 없는 plain 을 같은 칸 행 층이 같은 값으로 말함
->                   K have no source row                               원천 없는 plain 층(남는 것 포함)
->            D plain layer(s) without a source row stay (first: <행> · <칸> …)   값이 달라 남김 — 사람이 볼 칸
+>                   M whose row's layer is already there go            원천이 찍힌 plain 인데 그 행 층이 이미 있음
+>                   K have no source row and stay                      원천 없는 plain 층 — 접지 않는다(총괄 10-11 «다»)
+>            D of those hold a value no row layer of the cell holds (first: <행> · <칸> …)   값이 다름 — 사람이 볼 칸
 >            C chain layer(s) a collision merge kept now rank as the chain's    합치기 사본의 체인 층 — 체인 순위로 오름
 >            Shown values that move: S                                     그 칸은 값 + 이력 한 줄(resolution_recompute)
-> 끝 줄       [fold] '<표>' apply: … chain plain layers off the keys N renamed to their row's, M repeating a row layer deleted, D kept differing
+> 끝 줄       [fold] '<표>' apply: … chain plain layers off the keys N renamed to their row's, M whose row layer is there deleted, D kept differing
 >            (K without a source row); C chain merge copies; S shown value(s) move
 > 그 뒤로      원천 행 하나를 지우거나 고쳐 거두면 그 행 층만 걷히고 남은 행 층(없으면 그 밑 파일 층)이 보인다
->            값이 달라 남긴 plain(D)은 행 층이 다 걷히면 다시 보인다 — 그 칸은 사람이 보고 정함
+>            원천 없는 plain(K)은 남아서, 행 층이 다 걷히면 그 값이 다시 보인다 — b566b48ae 이전과 같은 상태(총괄 10-11 «다»)
 >            키 칸의 plain 체인 층은 ② 가 안 건드림 — 보류 다시 세기가 키를 쓰는 층이라, 지우면 표시된 원천 행 하나만 먹이던 공식 행이 키 없이 남았다
 >              (응용 7e2fc0575 · 고침은 이 파일 「층 접기는 키 칸의 체인 층을 안 건드린다」 절)
 >            조인 왼쪽 행이 다른 오른쪽 행과 다시 맞으면 옛 오른쪽 행 층이 남음 — 늦게 쓴 것이 보임(시연 뒤 항목)
@@ -349,7 +367,12 @@
 > 뜻          웨이퍼마다: AUTO 가 든 잡 먼저 -> wafer_out_time 이른 잡 -> 작은 row_id (fold-rows 와 같은 순위). 매뉴얼끼리도 같음
 >            진 잡의 로그 행 fold_mark = «folded into <이긴 잡>» · 이긴 잡의 행은 안 씀(⑤b 표시 그대로)
 >            그 뒤 인벤토리 행이나 로그 행이 들어오면 그 웨이퍼를 다시 정함 — 진 잡에 새 로그 행이 오면 바로 표시
-> 안 되는 것   진 잡이 나중에 이기게 되면(아웃 시각을 고침 · 이긴 잡 행을 지움) 옛 표시가 남음 · 인벤토리 행을 지우면 그 웨이퍼를 다시 안 정함
+> 진 잡이 나중에 이길 때   표시의 원천은 진 잡의 인벤토리 행이다 — 그 행이 고쳐질 때만 옛 표시가 걷힌다
+>            진 잡 «자기» 인벤토리 행을 고쳐 이기면       옛 표시 걷힘(편집 철회)
+>            «다른» 인벤토리 행이 바뀌어 이기면           옛 표시 남음 — 이긴 잡 아웃 시각을 고침 · 이긴 잡 행을 지움
+>            로그 행의 잡 칸을 고쳐 다른 잡으로 옮기면     옛 표시 남음
+>            남은 옛 표시는 아래 초기화 줄로 걷는다
+> 안 되는 것   인벤토리 행을 지우면 그 웨이퍼를 다시 안 정함
 > 초기화       python server/scripts/chain_replay_cli.py withdraw dt_log chain_ingestion --columns fold_mark   (보고 --apply)
 >            -> python server/scripts/chain_replay_cli.py replay dt_log_fold_by_inventory --apply
 >            withdraw 는 로그 표 fold_mark 의 체인 층 전부 — ⑤b 표시(fold_duplicate_rows 층)는 그대로

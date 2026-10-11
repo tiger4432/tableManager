@@ -89,10 +89,11 @@ def test_a_join_moves_a_time_and_every_copy_is_the_same_instant(db, blank):
     outcome = run_join_and_write(db, _rule(blank), right_ids)
     db.commit()
     table = dict(db.execute(text('SELECT k, t FROM "%s"' % LEFT)).all())
-    layer = dict(db.execute(text(
-        "SELECT r.k, s.value FROM cell_sources s JOIN \"%s\" r ON r.row_id = s.row_id "
-        "WHERE s.table_name = :t AND s.column_name = 't' AND s.source_name = :c" % LEFT),
-        {"t": LEFT, "c": crud.CHAIN_SOURCE}).all())
+    from chain import cell_layer
+
+    key_of = dict(db.execute(text('SELECT row_id, k FROM "%s"' % LEFT)).all())
+    layer = {key_of[s.row_id]: s.value for s in db.query(models.CellSource).filter(
+        *cell_layer._claimed_filter(LEFT, crud.CHAIN_SOURCE, ["t"]))}
 
     assert outcome["written"] >= 1
     assert isinstance(layer["L1"], str)
