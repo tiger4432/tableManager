@@ -79077,3 +79077,39 @@ RELEASE_LOG  새 항목 + 앞 항목의 «다시 안 넘김» 문장 고침
 진짜 프로세스 게이트(replay 두 번 · 세 번 · 진 잡 인벤토리 행 고침)는 응용께 청함
 어느 DB · 어느 스키마 · 지운 것: sqlite 메모리뿐 · 지운 것 0
 ```
+
+## [10-11] 접기 · 조인 쓰기 쪽으로 착지 3f48308a2 (총괄 634c06fc3 · 소유자 「배치로」 · 「쓰는 진척률이라도 보이면」)
+
+```
+착지 3f48308a2 — 9 files changed, 176 insertions(+), 24 deletions(-)
+①  fold_by_unit 이 진 행을 한 번 읽고 keyset_scan.pages(조인과 한 자리)로 잘라 답함: 첫 답 updates · next_page · rows_total · pages
+②  _in_rule_order 의 줄 하나(_page_said) — 로그 · 큐 running 「<규칙> -> <표> · page k/K · <쓴 행> / <전체> rows」, 첫 쪽부터 · 조인도 같은 줄 ·
+    전체를 안 준 답이면 그 칸 없이 「page k · n rows」 · rule_run 이 쪽 부르기 옆에 첫 쪽의 사실(rows_total · pages · first)을 실음
+덤  test_a_wide_join… 의 «멈춘 뒤 다시» 칸이 plain 이름으로 이력을 세어 main 에서 빨강이었음(b566b48ae 뒤) — 층 순위로 셈
+4c27f4b8c 위로 다시 얹음 — 멈춘 뒤 다시 돌리면 진 행 «전부» 다시 넘김(그 칸도 그 뜻으로)
+게이트 — 쪽 · 조인 · 접기 낱말을 부르는 시험 파일, 같은 base 깨끗한 사본(wt-check)과
+  files 47
+  wt-impl:  669 passed, 1 skipped, 43 deselected in 124.66s (0:02:04)
+  wt-check: 7 failed, 652 passed, 7 skipped, 43 deselected in 95.83s (0:01:35)
+  new (only in wt-impl): 0
+  gone (only in wt-check): 7
+  PG  43 passed, 94 deselected in 224.45s (0:03:44) (깨끗한 main 같은 목록 43 passed)
+      처음 판은 11 errors 였음 — wt-impl 의 무시된 config 파일(ledger_config · chain_rules 등) 탓: main 코드 + wt-impl 데이터 루트 = 에러 둘,
+      이 코드 + 깨끗한 데이터 루트 = 통과 — 그래서 PG 줄은 깨끗한 데이터 루트로
+변이
+  next_page taken off the fold mapper      RED | test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_writes_the_rest, test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would
+  the page line says no total              RED | test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_writes_the_rest, test_every_page_says_which_of_how_many_and_the_rows_so_far, test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would
+  the first page says no line              RED | test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_writes_the_rest, test_every_page_says_which_of_how_many_and_the_rows_so_far, test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would
+  restored all
+초 — 이 박스 dt_log 사본(키 1,000 단위로 펼침) · 체인 쓰기 문 그대로 · 인벤토리 1,000 의 묶음 한 번, wt-check = 고치기 전 · wt-impl = 고친 뒤
+  setup: dt_log 535559 rows · units 1000 · 82.7 s
+  run wt-check: ok True · 1 inventory events · 252.8 s in all · marks 321349 · dt_log writes 1 (rows each: first [321349], last [321349])
+     write door seconds per write: min 242.86 · median 242.86 · max 242.86 · sum 242.9
+     page lines 0 · first [] · last []
+  run wt-impl: ok True · 1 inventory events · 291.3 s in all · marks 321349 · dt_log writes 322 (rows each: first [1000], last [349])
+     write door seconds per write: min 0.59 · median 0.80 · max 2.25 · sum 281.8
+     page lines 322 · first ['mapper · fold_pg -> dt_log · page 1/322 · 1000 / 321349 rows'] · last ['mapper · fold_pg -> dt_log · page 322/322 · 321349 / 321349 rows']
+  쪽으로 쓰면 +38.5 초 — 쪽마다 커밋 · 아웃박스 · 쓰기 문 준비
+어느 DB · 어느 스키마 · 지운 것: assy_test 의 assy_impl_foldpg_1011(만들고 지움, 16 표) · 격리 시험 DB · public 전후 같음
+진짜 프로세스(큐 화면 글자까지)는 응용께
+```
