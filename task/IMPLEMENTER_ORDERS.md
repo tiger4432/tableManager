@@ -66073,3 +66073,14 @@ RUN.md   지금 운영에서 할 수 있는 것 한 줄(인덱스 선언 -> Relo
         변이: ③ 을 되살리면 «두 번째 뒤 표시 수» 칸 빨강
 착지   RELEASE_LOG 「접기 맵퍼가 빨라진다」 항목의 «다시 돌리면 0» 줄을 고침 · RUN.md 같은 절 · 운영 줄(이미 pull 했으면: 표시가 사라졌으면 고침 pull 뒤 replay 한 번)
 ```
+
+> **[총괄 -> 구현자] 10-11 저녁 — LLM 연결 실패가 «이유»를 말한다 (소유자 「llm api 커넥션 에러 뜨는데」) — 406d7c102 다음, 작음**
+
+```
+있는 것  utils/llm.ask_json 이 실패를 «%s: %s» % (type(exc).__name__, exc) 로 llm_requests.log 와 거절 문장에 씀
+        openai 의 APIConnectionError · APITimeoutError 는 글자가 «Connection error.» · «Request timed out.» 뿐 — 진짜 이유는 __cause__(httpx ConnectError ·
+        ProxyError · ConnectTimeout · getaddrinfo …)에 있어 운영자는 «주소를 못 찾음 / 거절 / 프록시가 막음 / 시간 넘김»을 못 가른다
+할 일    같은 한 자리에서 __cause__ 사슬을 따라 가장 안쪽 이유까지 한 줄로(키는 지금처럼 가림) + 그 줄에 «proxy: 없음(바로 감) | <가린 주소>»
+게이트   가짜 openai 로 네 모양(이름 못 찾음 · 연결 거절 · 프록시 거절 · 시간 넘김) -> 로그 줄 · 거절 문장에 안쪽 이유 / 키가 안 샘 · 변이
+착지     RELEASE_LOG 「LLM 은 선언 파일 하나로」 항목에 «연결 실패 줄 읽는 법» 한 줄(네 이유 -> 각자 고칠 자리)
+```
