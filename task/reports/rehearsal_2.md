@@ -1,9 +1,11 @@
-# 리허설 2 회차 · 10-12 새벽 (판 6d7256519 = 코드 516319b65)
+# 리허설 2 회차 · 10-12 새벽 (판 6d7256519 = 코드 516319b65 → 닫은 판 9c1da298f)
 
 ```
-남은 실패 수     1 · 판 6d7256519 (코드 516319b65) — 브랜치 백필 셈이 거른 행을 «안 번역됨»으로 셈
-                (rp500g link_candidates: 백필 ok 뒤에도 «rows not yet translated 1», 초안 보기도 1 — 총괄: exclude_when 으로 빠진 행, 구현자 고침 중)
-통과한 마지막 판  516319b65 (1 회차) — 2 회차는 위 1 건 말고 전부 통과
+통과한 마지막 판  9c1da298f — 아침 «되돌릴 판» (server/ 전부 + client2/dist = 9c1da298f, 걷기 번들 walk-PGYP5dJ-.js)
+                main 머리 0bf02ea77 까지 server/ · client2/ 변경 0 (그 뒤는 문서 · 보고 커밋)
+남은 실패 수     0
+                마지막 실패(브랜치 백필 셈이 exclude_when 으로 빠진 행을 «안 번역됨»으로 셈)는 9c1da298f 에서 다시 눌러 통과 — 아래 맨 끝 줄
+                그 밖 단계는 6d7256519 (코드 516319b65) 에서 누름 · 9c1da298f 는 server/ledger/backfill.py · server/admin/retroactive.py 만 바꿈
 소유자 7 가지    노드 고르면 창 닫힘 · 컬럼 꿀렁임 · 컬럼 너무 넓음 · Types 와 구역 수 불일치 · More +0 · 체크하면 스크롤 튐 · 스티키 바구니 — 전부 통과(아래 C1 · C2 · C4 · C5 줄)
 판              18766 = origin/main 6d7256519 의 server/ 전부 + client2/dist (스크래치 줄 1 만 다름) · 04:43:55 다시 띄움
                 «[Schema] no drift» · 기동 뒤 Traceback 0 · 번들 walk-PGYP5dJ-.js
@@ -45,3 +47,4 @@ C2 기준          a Δ ≥ 0.5 · b 열 폭 ≤ max(칸 글자, 머리 몫(▾ 
 | ⑪ 세상별 Re-translate | 메인 그리드 link_candidates 2 행(마우스 · shift) → Re-translate → Open in admin → 줄 8 | 줄 40 · 폼 넷 | 줄 40 (rp500 · rp500e · rp500f · rp500g × 칸) · «40 groups from the grid» · 폼 source=link_candidates · scope_column=phenomenon_key · scope_values=bond_temp,void · world=rp500 | 통과 (실행 안 함) |
 | 초안 보기 | Ontology Explorer → fake_measures Edit draft / 브랜치 rp500g → link_candidates Edit draft | 200 | view 200 · plan 200 «Sources 1 · rows not yet translated 0» / view world=rp500g 200 · plan 200 «Sources 1 · rows not yet translated 1» | 통과 (1 은 위 백필 셈 결함과 같은 것) |
 | 공백 값 | 메인 그리드 trd_txt T3 value 더블클릭 → «a  b» → Apply → Re-translate «default · trd_txt_src · event_id» → run_queued_once → 걷기 wafer TRD-W-001 → 끝나고 «4.5» 로 되돌림 | 공백 둘이 그대로 | 실행 ok · withdrawn 2 · inserted 2 · «Nodes 19 · Edges 18» · 노드 칸 «a  b» white-space: pre · 21.2 px (공백 하나 18.1 px) · 되돌림 ok | 통과 |
+| 백필 셈 다시 (9c1da298f) | 18766 server/ 전부 9c1da298f 로 다시 띄움(05:48:23 «no drift») → 어드민 소급 «Translate the rows not yet in the ledger» · link_candidates · rp500g · count / Ontology Explorer · rp500g · link_candidates · Edit draft | 0 · 비용 줄 0 · 거른 행 문장 | «rows not yet translated 0 · exact» · «'link_candidates' has NO rows left to translate - 4 row(s) in the table, 3 in the index. Running it now does nothing and ends. 1 row(s) the declaration's exclude_when takes out are not counted.» / view world=rp500g 200 · «Sources 1 · rows not yet translated 0» | 통과 |
