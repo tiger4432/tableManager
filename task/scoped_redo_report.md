@@ -78893,3 +78893,31 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
 
 응용께 — 18766 대조군 다섯 자리를 이 착지로 다시 눌러 주시길(서버 재기동 뒤)
 ```
+
+## [10-11] 총괄 «나» 재기 — 이미 상한 공식 표에 다시 세기 replay 뒤 ⑦ (main 212227c50, 탐침 · 커밋 안 함)
+
+```
+상한 상태  고치기 전 접기(key_columns 가 빈 집합인 접기) -> 원천 행 하나만 먹이던 키의 그 행 표시 -> 체인이 거둠
+  PROBE blighted rows {'0eaa5e': ('J1', 1.0, 2.0, 7.0, 'agreed'), '5dc2d2': (None, None, None, None, 'agreed')}
+  PROBE blank-key row layers [('5dc2d2', 'hold', 'chain_ingestion', 'agreed')]
+  PROBE recount replay scanned 2 -> rows {'0eaa5e': ('J1', 1.0, 2.0, 7.0, 'agreed'), '5dc2d2': (None, None, None, None, 'agreed')}
+  PROBE blank-key row layers after recount [('5dc2d2', 'hold', 'chain_ingestion', 'agreed')]
+  PROBE remove-shells to_delete 0 deleted 0 -> rows {'0eaa5e': ('J1', 1.0, 2.0, 7.0, 'agreed'), '5dc2d2': (None, None, None, None, 'agreed')}
+  PROBE blank-key rows before 1 -> after replay + remove-shells 1
+  1 passed in 13.20s
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+답        0 이 아님 — 그 행은 키 셋이 비고 hold 층(체인, agreed) 하나만 남는다
+          다시 세기는 키로 행을 찾는데 키가 비어 그 행에 못 닿고, ⑦ 은 키 밖에 hold 값이 있어 껍데기로 안 본다
+어느 DB · 어느 스키마 · 지운 것: 격리 시험 DB(run_pg_files) · public 전후 같음 · 지운 것 0
+
+짓기 전 세 안 (총괄께 여쭘)
+  ㄱ ⑦ 을 넓힘 — 키 칸이 «전부» 비고 사람 층이 없는 행도 껍데기. cell_layer.shells 와 remove_shell_rows 의 미리 거르는 SQL 두 자리
+     운영자: ⑦ 한 번 · 좋은 점: 체인 쓰기 자리도 같은 판단이라 앞으로도 같은 행을 지움 · 위험: 키가 다 빈 행을 «주소 없음»으로 읽는 새 갈래 · 크기 안 쟀다(두 자리 + 시험 한 칸)
+  ㄴ 다시 세기가 키 빈 행을 row_id 로 집음 — 주장 0 이라 hold 가 비고, 그 뒤 쓰기 자리의 껍데기 판단이 지움
+     운영자: ⑥' 한 번 · 위험: 복사 규칙 맵퍼에 키 말고 다른 주소 갈래가 생김 · 크기 안 쟀다
+  ㄷ 코드 없음 — RUN.md 에 읽기 전용 셈 한 줄(공식 표에서 키 칸이 전부 빈 행) + 그리드에서 그 행 지우기
+     운영자: 셈 -> 있으면 그리드 삭제 · 좋은 점: 시연 전 코드 0 · 위험: 사람 손 · 크기 코드 0 (셈 줄 · 그리드 삭제가 그 행에 닿는지는 안 쟀다)
+  추천 ㄷ — 이 상태는 «이 pull 전에 접기와 ⑥ 을 이미 돌린 표»에만 생기고, 고친 뒤로는 새로 안 생김(재현 칸). 운영이 이미 돌렸는지는 모름
+  여쭐 것: 운영에서 b566b48ae 의 접기를 이미 돌리셨는지 · ㄷ 로 가도 될지
+```
