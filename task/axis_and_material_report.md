@@ -1,3 +1,15 @@
+> ## [14:47 디자인] G-2 착지 — 그래프 = 표의 답, 걷기 0 · 갈래 상한 · (가) · claim 빈칸 · 시각 있는 열만 b3564af83 (총괄 G-2 ②)
+
+- **무엇** — Graph 보기가 고른 갈래를 표가 받은 답으로 그림(걷기 0). 앞 스텝은 다음 스텝 시작까지의 증거 경로만(fold_views.pathsAnswer — lumpAnswer 와 narrowed() 하나를 나눔, 증거 읽기는 table_view.walkedPaths 하나), 마지막 스텝은 답 전체. 스텝 시작 읽기는 askedStarts 하나(renderTable 의 같은 사본도 그걸 부름).
+- **갈래 상한(안 ②, 있는 문)** — foldBeyond(첫 그림 규칙)에 그 부품 fanoutLimit: 넘는 갈래는 처음 것만 그리고 나머지는 lumpView 가 이미 그리는 작은 덩어리(fold.lumped)에. 둘째 접기 없음 · 열면 걷기 0.
+- **(가)** — 덩어리 스텝의 부모 = 그 덩어리 변을 가져온 그림 스텝(0 이면 폼 걷기, k 면 갈래의 k 번째). 박스 사례에서는 줄기의 갈래가 다음 스텝 시작(= 씨앗, 늘 보임)이라 줄기에 덩어리가 안 생겨 하니스(OT3 · OT4 · GB6)로만 잼.
+- **claim 빈칸 · 시각 있는 열만** — 점이 자기 claim 을 실음(when.claim_id), 없으면 Copy points 칸이 빔. 트렌드 열은 그 구획에서 시각 있는 읽기가 하나라도 있는 열만, 없으면 Trend 가 «No value with a time» 로 꺼짐.
+- **탐침 중 고친 것 둘** — Next 스텝 asked 에 negative 가 없는 경우 showBranch 가 던지던 것(askedStarts), 받은 답이 문서에 붙기 전 상자에 그려져 Cytoscape 가 깨지던 것(_ask 가 한 박자 뒤에 앉힘).
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built walk page as a probe copy, /assets/walk-CvAETdxc.js, 1920x1080): 8080 SYN-BW-103-11, 25 dies checked, Next «bonded_from → die» (A) and from Step 1 «in_container → wafer» (B): the graph on A «Nodes 47 · Edges 50», on B «Nodes 26 · Edges 29» - each the count the answers give (the form walk's paths to the starts, then the step's whole answer), walks 0, two pictures. The form walk's picture: «← in_container 152 more die» one small lump, 44 nodes drawn; pressed, 152 listed, walks 0; «Open as table» walks 0, «Step 2 · From SYN-BW-103-11 · ← in_container die», its die section's Trend off «No value with a time». 18766 bond_temp: appdemo_ev Copy points claim_id empty in its 4 rows, its columns value · eqp_id · role · step · unit; appdemo_ed claim_id kept in 4, its columns measures (in) · value · measures (in) · eqp_id · measures (in) · role · measures (in) · step. Writes 0.
+- **게이트** — subgraph_view 348 with --mutate --control (Y8 handed answers drawn from their starts, OT4 a lump says its step, FC1 the cap: four drawn, six in the lump, opened asks nothing; Y8m Y9m OTm5 FCm1 red; M11 OTm1 re-aimed); walk_table 181 (GB4 nothing walked, the last whole, two pictures; GB5 a step before the last its paths only; GB6 a lump step under the step that brought it; GM5-GM9 red); fold_views 21 (PA1 PA2; PAm1 PAm2); trend 62 (OT3 the form walk's lump under Step 1, SC3 claim_id, SC4 a section with no timed read off; SCm4 SCm5 red); screen gate 252 with --mutate; reach_table 36, walk_layout 38, node_search 45, start_baskets 24, walk_worlds 18, walk_wire 95, rnd_board_walk_box 104, walk_route_fill 80, rnd_board_composition 47, rnd_board_reach 63, disabled_reason 25.
+
+다음: 값 대응(e8a5933d9, 그 표에도 Copy table).
+
 > ## [13:39 디자인] 대기열 읽기 시한 · «Read N s ago» 착지 fd35266fe (총괄 Q 3f8129237)
 
 - **무엇** — queue_poll 한 자리: QUEUE_READ_TIMEOUT_MS(15 s) · timedRead(AbortController 신호 + 시한과 race — 신호를 무시하는 요청도 끝남) · readAgeWords. 두 화면(그리드 Queue 탭 /outbox/queue/rows · 어드민 체인 대기열 /admin/chain/queue)의 모든 큐 읽기(박자 · Refresh · 탭 열기 · 알림 · 어드민 30초)가 그걸 지남. 끊기면 «Read timed out · retrying», 다음 박자가 다시 읽음.
