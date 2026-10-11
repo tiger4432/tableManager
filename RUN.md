@@ -99,13 +99,13 @@
 >    답      written — 세상 1 은 11 · 7 · 세상 2 는 1 · 0 (박스 mechanism_edge 사본 · f116890f9)
 > 4  base 두 웨이퍼 id 를 여기에   불량 «______» · 양품 «______»      (박스 리허설은 SYN-BW-103-11 · SYN-BW-SPL-400-19)
 > 대본 (걷기 화면 · 누른 것 -> 본 것 · 뜻) — 리허설 18766 = 박스 조각 + 가짜 행
->    빌드    main 의 dist walk-Czt_2m62.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
->            누른 빌드 — walk-Czt_2m62.js (= main) 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음
+>    빌드    main 의 dist walk-BR4Mc7Hx.js · 18766 서버 파일과 main 의 server/ 차이 database/database.py 한 줄 = 하니스가 스크래치 스키마를 거는 줄(ASSY_SCRATCH_SCHEMA)
+>            누른 빌드 — walk-BR4Mc7Hx.js (= main) 에서 ①② · ① · ③ · ③ 칩 순서 · ③ 출처 · ④ · ④ 쪽 넘김 · ④ 점 출처 · ⑤ · ⑥ · ⑦ · ⑦ No more · ⑧ · ① 목록 밖 키 · ④ 쪽 점 출처 · ① 빈 걷기 표 · ③b 이어 걷기 · ③b 같은 표 · ③c 걸음 탭 · ③b · ③c 요청 · ③d 갈래 · ③e 구역 트렌드 · ③e 쪽 넘김 · ③e 다시 걸면 · ③f Control · B · ③f bonded_from 넣음 · ③ 복사
 >    누름    마지막 판은 페이지 스크립트로 눌렀다 — 단추 · 칸 · 체크는 요소 클릭, 타자는 입력 칸에 값 넣기, 그래프의 노드 · 덩어리는 cytoscape tap
 >            (이 박스의 브라우저 창이 그려지지 않아 좌표 클릭이 안 먹음. ① ③ ⑥ ⑦ ⑧ 은 앞선 판에서 진짜 클릭으로 눌렀을 때와 수가 같다)
 >            «모델 세상 1» = 리허설의 appdemo_vf
 >    ①  바구니   Type wafer · PICK A NODE 에 «불량» 앞글자 -> 목록(리허설 «SYN-BW-103-11 · 278 atoms»)에서 고름 -> Positive «+ Add» · «양품» 도 같이 -> Negative «+ Add» · Collect wafer -> Walk
->       본 것    제목 «+ 1 · − 1 → wafer» · «Nodes 32 (collect: wafer) · Edges 1650 (all) · 0.9 s» · 머리 «Positive · 1 start · 31 rows | Negative · 1 start · 1 row»
+>       본 것    제목 «+ 1 · − 1 → wafer» · «Nodes 32 (collect: wafer) · Edges 1650 (all) · 0.8 s» · 머리 «Positive · 1 start · 31 rows | Negative · 1 start · 1 row»
 >       뜻       + 쪽 = 불량 base 에서 걸어 닿은 것 · − 쪽 = 양품 base 에서. 한쪽만 닿은 줄은 다른 쪽 칸 전부가 빨간 missing 한 칸
 >       목록 밖 키  원장에 없는 키를 치면(리허설 «syn-bw-103-11» — 목록은 «SYN-BW-103-11 · 278 atoms») 바구니 밑에 «0 atoms · not in the ledger»
 >                그대로 + Add -> Walk 하면 «Asked 12 hops · reached 0 hops · both» · 머리 줄 «empty · No ledger evidence is connected to the selected node»
@@ -116,7 +116,7 @@
 >       뜻       Route = 서버가 그 쪽 시작에서 걸은 길(술어만 · 걷기 답 그대로) · «start» = 그 줄이 시작 · missing = 그 쪽에서 못 닿음
 >                코어 웨이퍼 30 개가 «in_container → bonded_from → in_container» — 불량 base 의 다이가 본딩으로 받은 코어 다이의 웨이퍼
 >    ③  세상 · 값 표   Collect 에 quantity 를 더함 · 세상 칩 «모델 세상 1» (누르면 그 세상만 켜짐 — Type 목록도 그 세상 것만) · 이어 default 칩 -> 저절로 다시 걷는다
->       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 1.0 s» · quantity 머리 «Positive · 1 start · 49 rows | Negative · 1 start · 22 rows»
+>       본 것    «Nodes 81 (collect: wafer, quantity) · Edges 1668 (all) · 0.8 s» · quantity 머리 «Positive · 1 start · 49 rows | Negative · 1 start · 22 rows»
 >                열 «Route · value_text · step · role · eqp_id · model · dir · model · dir · value · quantity · Δ · value · dir · model · dir · model · eqp_id · role · step · value_text · Route»
 >                줄 49 · 두 쪽 값 16 · + 쪽만 25 · − 쪽만 2 · − 빨간 missing 27 · + «—» 8 · − «—» 4 · Δ 보이는 줄 5
 >                pressure_MPa  + 0.22 | Δ −0.1105 | − 0.3305
@@ -127,8 +127,11 @@
 >                Route «measures → leads_to» = 모델 세상의 leads_to 를 한 번 더 걸어 닿은 계측군
 >                출처 = 그 값을 준 노드(선언된 키 순서)와 그 쪽 시작에서 그 노드까지 서버가 걸은 길 — 코어 웨이퍼 값이 base 값과 섞여도 누구 것인지 보인다
 >                칩 순서는 답을 안 바꾼다 — 리허설 «모델 세상 1» 먼저든 default 먼저든 노드 81 · 엣지 1668, 노드와 엣지 전부 같음
+>       복사     구역 머리 «Copy table» — 소유자 손 클릭으로(스크립트 클릭은 «Copy failed · Select the table and press Ctrl+C» 를 띄우고 아무것도 안 씀)
+>                리허설(default · Collect quantity) «Copied 48 rows» · 클립보드 TSV 49 줄 × 15 칸(머리 줄 · 마지막 칸 id) + HTML 표
+>                트렌드의 «Copy points» -> «Copied 1000 points» · TSV 1001 줄 × 5 칸 «time | value | side | node | claim_id»
 >    ③b 이어 걷기   표에서 줄을 체크하고 NEXT 의 «measures → wafer» (리허설: SYN-BW-103-11 만 + · Collect quantity · bond_temp 체크)
->       본 것    요청 하나 node_limit=1000&hops=1&follow=measures&collect=wafer&direction=both · «Nodes 64 (collect: wafer) · Edges 64 (all) · 0.2 s» · 머리 «Positive · 1 start · 64 rows» · 열 «wafer · value · eqp_id · role · step · Route» · 줄 64
+>       본 것    요청 하나 node_limit=1000&hops=1&follow=measures&collect=wafer&direction=both · «Nodes 64 (collect: wafer) · Edges 64 (all) · 0.1 s» · 머리 «Positive · 1 start · 64 rows» · 열 «wafer · value · eqp_id · role · step · Route» · 줄 64
 >                첫 줄 «FAKE-W-001 ¦ 22.791 bond_temp · start ¦ FAKE-EQP bond_temp · start ¦ fake bond_temp · start ¦ FAKE-HIST bond_temp · start ¦ measures»
 >       같은 표  bond_temp 하나만 + · Collect wafer · Follow measures · both · hops 1 · Walk -> 머리 · 열 · 줄 수 · 첫 세 줄이 같음
 >       뜻       이어 걷기 = 체크한 줄을 시작으로 한 바구니 걷기 — 한쪽 표 하나. 폼의 node_limit 을 같이 싣는다(③c 의 요청 7 개 전부 node_limit=1000 · fanout_limit 은 폼 칸이 비어 안 실림 — 채운 경우는 안 쟀다)
@@ -157,11 +160,11 @@
 >       뜻       초록 = A 와 B 둘 다 닿음 · 빨강 = B 만 · 색 없음 = A 만. Route 는 두 줄 — A 의 길 / B 의 길
 >                bonded_from 을 Follow 에 넣으면 A 만 줄이 는다(리허설 17 -> 31) · A + B · B only 는 같다 — 넣을지는 물음에 따라 고른다
 >    ④  트렌드   ③ 표의 값 칸을 누름(리허설: pressure_MPa 의 + 값)
->       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 77 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
+>       본 것    요청 하나 id=<id>&follow=measures&direction=incoming&hops=1&around=2026-08-11T16:40:00.000Z&page=1000&world=appdemo_vf&world=default · 73 ms · «pressure_MPa · measures (in) · value» «5 points · 2026-08-10 01:00 → 2026-08-12 01:40 local time» · 걸은 점 2 개에 고리
 >                Load earlier 꺼짐 «Nothing earlier» · Load later 꺼짐 «Nothing later» — 리허설에 그 계측군 점이 그것뿐
 >       쪽 넘김  점이 많은 계측군(리허설 가짜 행 local_gap)의 + 값 «53» 을 누름 -> «1000 points · 2026-11-02 18:42 → 2026-12-15 12:55 local time» · Load earlier · Load later 켜짐
 >                Load earlier -> «1201 points · 2026-10-25 03:49 → 2026-12-15 12:55 local time» · 그 단추 꺼짐 «Nothing earlier» · Load later -> «1402 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 그 단추 꺼짐 «Nothing later»
->                요청마다 page=1000 · 350 ms · 103 ms · 90 ms
+>                요청마다 page=1000 · 219 ms · 86 ms · 90 ms
 >       점 출처  bond_temp + 값을 누름 -> «bond_temp · measures (in) · value» «64 points · 2026-10-25 03:49 → 2026-12-24 03:49 local time» · 걸은 점 4 개마다 title 에 ③ 의 출처 그대로
 >                쪽으로 온 점: local_gap 를 누르면 걸은 점 2 · 쪽 점 998 개 전부 «<키> · not in this walk»(리허설 «FAKE-W-002 · not in this walk») · raw id 0
 >       뜻       누른 쪽의 걸은 시각 근방 1,000 점이 먼저 · Load earlier / Load later 가 1,000 점씩 넓힌다 · 꺼짐 글씨 = 그 쪽에 더 없음
@@ -184,7 +187,7 @@
 >                All -> 요청 2 개 · «52 next · 2 behind» · «Open 52» -> 그려짐 52 (die 47 · quantity 5) · 움직임 0 · 새 작은 덩어리 0 · base 의 덩어리 없음
 >       뜻       next = 한 걸음 너머 서로 다른 노드 수(Open 이 그리는 수) · behind = 그 너머에 접힌 채 남는 수
 >                «≤» = 안 보낸 묶음이 있어 가지끼리 겹침을 아직 모름 — All 이 그 묶음을 걸은 뒤 정확한 수(리허설: 두 가지가 같은 다이)
->    ⑨  그래프의 갈래별 그림(graph per branch) · 덩어리를 걸음 탭으로(E2b) · 표 복사 · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
+>    ⑨  그래프의 갈래별 그림(graph per branch) · 덩어리를 걸음 탭으로(E2b) · 값 대응 — main 에 없음 · 클라 착지 대기 (총괄 af004cd7d)
 >    시연 전 읽기 — 운영 DB 에서 읽기만. 모델 계측군마다 그것을 재는 measures 원자 수, 0 인 줄은 ③ 에서 닿은 쪽이 «—»(못 닿은 쪽은 빨간 missing)
 >         SELECT q.quantity, count(e.id) AS measures_atoms FROM (SELECT from_quantity AS quantity FROM mechanism_edge WHERE model = '<모델>' UNION SELECT to_quantity FROM mechanism_edge WHERE model = '<모델>' AND to_role = 'quantity') q LEFT JOIN ledger_events e ON e.predicate = 'measures' AND e.object_payload->'keys'->>'quantity' = q.quantity GROUP BY 1 ORDER BY 2, 1;
 >         박스  void_formation 계측군 18 개 중 0 인 것 18 · void_observation_bias 계측군 2 개 중 0 인 것 1 (post_bond_queue_h 2575) · 0.12 초

@@ -2267,6 +2267,13 @@
 - **언제 재사용**: 「더 불러오기」가 필요한 읽기 — 커서는 `(occurred_at, id)` 행 비교, 정렬 · 자름은 SQL 안(`LIMIT n+1` 로 「더 있음」), 오프셋 없음.
 - **함정**: 커서에 시각만 담으면 같은 시각 원자가 쪽 경계에서 빠진다(변이로 확인). 뺀 원자(사건 시각이 아닌 것)는 `not_event_time` 으로 수를 말한다 — 짧은 쪽이 「이게 다」로 읽히지 않게.
 
+### ⭐ **단추로 클립보드에 쓰는 자리는 하나 — `writeClipboardRich`. 평문 HTTP 운영엔 `navigator.clipboard` 가 없다** (2026-10-11 등록 · 걷기 «Copy table» `fcf89d3ba`)
+- **무엇**: 엑셀로 가져갈 표 · 점을 TSV(셀) + HTML(표) 한 벌로 쓴다. 운영은 LAN 평문 HTTP 라 `navigator.clipboard` 가 `undefined` — 이 함수는 화면 밖 편집 칸을 잡고 `execCommand('copy')` 로 copy 이벤트를 일으켜 그 `clipboardData` 에 쓴다. 된 일을 참 · 거짓으로 돌려준다.
+- **어디**: `client2/src/clipboard_write.js` `writeClipboardRich(html, text)` · TSV 는 `client2/src/tsv.js` `serializeTsv`. 부르는 파일 5 — `account_boot.js` · `admin.js` · `map_editor.js` · `raw_registry_panel.js` · `walk/main.js`.
+- **언제 재사용**: 「복사」 단추를 새로 만들 때 «항상». 화면이 `navigator.clipboard` 를 직접 부르면 그것이 둘째 길이고, 운영에서 아무것도 안 복사된다(10-08 `copyFullId` 가 그렇게 들어갔다가 응용 QA 에 걸림).
+- **함정**: 사용자 동작(진짜 클릭 · 키) 안에서만 된다 — 스크립트 `click()` 은 거짓을 받아 실패 문구로 간다(응용 10-11 18766). 화면 시험은 `options.writeClipboard` 처럼 갈아 끼울 자리를 두고 잰다.
+- **따로인 것**: 사용자의 Ctrl+C 가 일으킨 copy 이벤트에 쓰는 자리 — `clipboard.js` · `enrichment_reference_view.js` · `transfer_plan.js` 가 그 이벤트의 `clipboardData` 에 직접 쓴다(`git grep -n clipboardData.setData -- client2/src`, 10-11). 단추가 아니라 키라 합성할 이벤트가 없다.
+
 ### 교체 쓰기 전 수 대조 게이트 — 직렬화가 **원본 집합**보다 적으면 거부 (2026-07-28 등록 · 2026-07-30 대조축 정정)
 - **무엇**: 전량 교체(replace) 쓰기 직전에 **원본 집합(필터 이전)의 non-empty 개수 vs 직렬화 페이로드의 개수**를 대조해, 페이로드가 적으면 confirm 이전에 거부하고 **삭제될 개수를 메시지에 명시**한다. 교체 의미론에서 "빠짐 = 삭제"이므로, 이 한 줄 산술이 §1 replace_map의 "불완전한 집합을 보내면 전량 파괴" 함정의 **쓰기 쪽 집행 장치**다(읽기 쪽 짝은 위 "절단 응답은 실패로 강등").
 - **어디**: `client2/src/map_editor.js`의 `pushMapData`(`6db517d` H2) — 메타 미등록 맵을 기본 프레임으로 열어 유효 다이 마스크·격자 범위가 셀을 잘라내던 경로(실측 1293→379 삭제)를 막았다. 대조는 **원시 `gridData`의 non-empty 키 수 vs `eachSavableCell`이 낸 `updates.length`**다.
