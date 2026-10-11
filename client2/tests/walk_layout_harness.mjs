@@ -152,7 +152,7 @@ async function suite(mod, css = REAL_CSS) {
       && page.host.children.length === 2 && page.host.children[0] === rail && page.host.children[1] === main, `${Boolean(side)} ${adds.length}`);
 
   // 🔴 THE CHECK LIST IS THE MAIN PICK, THE ROUTES THE AID (owner 10-06, lead bf3653401).
-  console.log(`${LF}-- Follow: every declared predicate, open, before the routes --`);
+  console.log(`${LF}-- through: every declared predicate, before the routes --`);
   const follows = () => page.all().filter((e) => e.attrs && e.attrs['data-follow'] !== undefined).length;
   ok('L3 open at first: one box per declared predicate, and the route press ticked its predicates',
     follows() === DECL.predicates.length && page.ticked() === 'in_container,transfer',
@@ -163,7 +163,7 @@ async function suite(mod, css = REAL_CSS) {
   const holds = (test) => form.children.findIndex((c) => walkAll(c).some(test));
   const followAt = holds((e) => e.attrs && e.attrs['data-follow'] !== undefined);
   const routesAt = holds((e) => e.className === 'wk-path');
-  ok('L4 the follow list stands before the route list in the form', followAt >= 0 && routesAt > followAt,
+  ok('L4 the follow list stands before the route list in through', followAt >= 0 && routesAt > followAt,
     `follow ${followAt} | routes ${routesAt}`);
 
   console.log(`${LF}-- the picked route is the one the fields hold --`);
