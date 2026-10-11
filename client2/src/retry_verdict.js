@@ -104,6 +104,30 @@ export const isFailedStatus = (status) => retryVerdict(status).tone === 'danger'
  *  and the Retry button's off state: today's rule kept, anything not done can be retried. */
 export const isDoneStatus = (status) => retryVerdict(status).state === 'done';
 
+/** A file that went in: loaded or skipped - ended, and not failed (lead 10-11 R: the rows read again with today's parser). */
+export const wentIn = (status) => ['done', 'skipped'].includes(retryVerdict(status).state);
+
+/**
+ * A file row's Retry (owner 10-11 R): a row that went in is read again with today's parser - its request carries the
+ * statuses that include it (`includeStatuses`, folder_retry's) and says so before it runs; any other row asks as before.
+ */
+export function fileRetryAsk(log, includeStatuses) {
+  const reread = wentIn(log.status);
+  return {
+    confirm: reread ? `Read ${log.filename} again with today's parser?` : `Retry file ingestion for log #${log.id}?`,
+    query: `log_id=${encodeURIComponent(log.id)}${reread ? `&statuses=${encodeURIComponent(includeStatuses)}` : ''}`,
+  };
+}
+
+/** A file row's Retry answered: a file no longer where it was is said by name - not the row's state, which stays as it
+ *  was; else the row's state as `retryMessage` says it, with its id. */
+export function fileRetryToast(result, status, log) {
+  const gone = Number((result || {}).missing) >= 1;
+  if (gone) return { tone: 'warning', text: `Missing · ${((result.missing_files || [])[0]) || log.filename}` };
+  const said = retryMessage(status, (result || {}).message);
+  return { tone: said.tone, text: `${said.text.replace(/^(.)\s*/, '$1 ')} (ID #${log.id})` };
+}
+
 const FILE_END_TITLE = Object.freeze({
   done: '✅ File loaded', skipped: '⏭️ File skipped', failed: '❌ File load failed',
 });

@@ -1039,6 +1039,10 @@
       gap: 6px;
       flex-wrap: wrap;
     }
+    /* The tab's contents (owner 10-11 R): its operations' names, chips that wrap; a press brings that card up. */
+    #retroactive-sub { display: flex; flex-wrap: wrap; gap: 6.8px; white-space: normal; overflow: visible; }
+    .cfg-chip.retro-toc { cursor: pointer; }
+    .cfg-chip.retro-toc:hover { border-color: var(--accent); color: var(--text); }
 
     /* 모집단 카운트 칩 — 서버 어휘(effective/ineffective/rejected)를 그대로 적는다.
        한국어 라벨을 지어내면 그 순간 클라가 「효과 없음」의 뜻을 스스로 갖게 된다. */
@@ -1687,15 +1691,15 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DheP0cpU.js"></script>
+  <script type="module" crossorigin src="/assets/admin-ZlBh70DP.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-BQ4vlQu3.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">
-  <link rel="modulepreload" crossorigin href="/assets/queue_poll-FBrbE9Gd.js">
+  <link rel="modulepreload" crossorigin href="/assets/queue_poll-BhHE8Ias.js">
   <link rel="modulepreload" crossorigin href="/assets/branch_picker-Bfkl1-Xh.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CUYmTmql.js">
-  <link rel="modulepreload" crossorigin href="/assets/truncation-D6woiMEw.js">
+  <link rel="modulepreload" crossorigin href="/assets/truncation-RVp0LVJd.js">
   <link rel="modulepreload" crossorigin href="/assets/table_part-K5szQn8S.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-0pWdZgFi.css">
@@ -2150,7 +2154,7 @@
             <div class="section-header" data-section="sec-retroactive" id="retroactive-summary">
               <span class="section-title">Retroactive</span>
               <span class="section-count" id="retroactive-value">—</span>
-              <span class="section-summary" id="retroactive-sub" data-clip-ok></span>
+              <span class="section-summary" id="retroactive-sub"></span>
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body"><div class="cfg-body" id="retroactive-body"></div></div>

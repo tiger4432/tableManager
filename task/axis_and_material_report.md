@@ -1,3 +1,13 @@
+> ## [12:38 디자인] 어드민 R — 소급 탭 목차 칩 · 들어간 파일 행 Retry 착지 704882c06 (총괄 R)
+
+- **① 소급 탭 목차** — 머리의 이름 줄(retroactive-sub)이 연산마다 칩 하나(서버 이름 · 순서), 줄바꿈. 누르면 그 카드가 탭 맨 위(마지막 카드들은 굴러가는 데까지), 머리 접기는 안 일어남. 둘째 목록 · sticky · 카드 접기 없음. retroactive_view 의 titles 는 읽는 자리가 0 이 돼 은퇴.
+- **② 파일 행 Retry** — 모든 행에 단추 하나. 들어간 행은 «Read <파일> again with today's parser?» · 요청에 log_id + statuses=INCLUDE_STATUSES(folder_retry 상수). 실패 행은 그대로. 답이 missing ≥ 1 이면 «Missing · <파일>». 판단은 retry_verdict 의 fileRetryAsk · fileRetryToast 한 자리. 서버 손 0.
+- **빌드** — G-2 를 패치로 비켜 둔 트리에서 빌드(새 worktree 대신). walk 번들은 main 이 내는 그대로(walk-wnN1ILnz.js, 내용 차 0).
+- **탐침** — Probe (the built-in pane, Chrome 152.0.7977.130, the built admin page as a probe copy answered from the screen gate's fixtures, a made-up token, confirm recorded, the file Retry POST answered in the page - nothing sent, /assets/admin-ksAAGZsV.js, 1920x1080): Retroactive: 15 chips = 15 cards, same names and order; each pressed - its card at the top (Withdraw a stale source (R2) at the end, 394 px down, the tab scrolled out), the section not folded. File: 10 rows, each one enabled Retry; a SUCCESS row asked «Read user(app-lane-audit)_APPAUDIT-D2P091415_0c8d91fa.csv again with today's parser?» and sent «POST /admin/file-ingestion/retry-failed?log_id=22392&statuses=SUCCESS%2CFAILED%2CSKIPPED», its answer missing 1 -> «Missing · user(app-lane-audit)_APPAUDIT-D2P091415_0c8d91fa.csv»; a FAILED row asked «Retry file ingestion for log #22391?» and sent «POST /admin/file-ingestion/retry-failed?log_id=22391» (refused in the probe).
+- **게이트** — retry_verdict 67 (I2 every row one Retry, R1 the done row's ask, R2 the Missing toast, D1 at fileRetryToast; M23 the done row without statuses, M24 missing ignored); screen gate 252 with --mutate (contents at three sizes: a chip a card, each brings its card up; its mutant «a contents chip bringing up the card after its own» red; «the Retroactive list line cut» retired with its line); escaping 56, retroactive_view 356, retroactive_note 15, retroactive_progress 11, walk_layout 38, walk_table 173.
+
+다음: G-2(+ (가) · claim 빈칸 · 시각 없는 열은 트렌드 밖) 다시 얹고 착지 -> Q(대기열 읽기 시한) -> 값 대응.
+
 > ## [10:22 디자인] 노드 자기 값도 트렌드로 · 덩어리 스텝 Route 착지 043e99fcb (총괄 E2c 16994da07 · (나))
 
 - **무엇** — 점 읽기 하나가 노드 속성 값을 그 노드의 attributes_by_world 중 같은 값 기록의 시각으로 찍음(소유자 10-10 e54560dc2 「끝이 노드면 그 노드의 시각」이 이제 지켜짐). 구획의 «트렌드가 읽는 열» 목록 하나(table_view trendable) = 걸음 열 그대로, 뒤에 노드 자기 열(숫자 먼저) — Trend 토글 · 열 고르기 · 제목 · 썸네일이 모두 그 목록. 이벤트 스킴(측정 = 노드)의 트렌드 · 썸네일이 변 스킴과 같은 점.

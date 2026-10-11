@@ -113,6 +113,25 @@ const CELLS = [
   return log.title === t ? null : \`its title «\${log.title.slice(0, 30)}» is not its sentence «\${t.slice(0, 30)}»\`;
 })()` },
 ];
+// The Retroactive tab's contents (owner 10-11 R): a chip a card, and a press brings that card to the tab's top - the last
+// ones as far as the tab scrolls; the header's own press (folding) not taken.
+CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'retroactive-sub', expr: `(() => {
+  const chips = [...document.querySelectorAll('#retroactive-sub .retro-toc')];
+  const cards = [...document.querySelectorAll('#retroactive-body article.retro-op')];
+  if (!cards.length) return 'no card on the tab';
+  if (chips.length !== cards.length) return chips.length + ' chips for ' + cards.length + ' cards';
+  const wrap = document.getElementById('retroactive-tab-wrapper');
+  for (const chip of chips) {
+    chip.click();
+    const card = cards.find((c) => c.dataset.op === chip.dataset.op);
+    if (!card) return '«' + chip.textContent + '» has no card';
+    const off = card.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
+    const atEnd = wrap.scrollTop >= wrap.scrollHeight - wrap.clientHeight - 1;
+    if (Math.abs(off) > 2 && !(atEnd && off > 0)) return '«' + chip.textContent + '» leaves its card ' + Math.round(off) + ' px from the top';
+  }
+  wrap.scrollTop = 0;
+  return null;
+})()` });
 // The walk table as the lead reviewed it (34d91c09d gate), asked in each theme after its two steps.
 const SIDE_CELLS = [
   ['Δ in view', `(() => {
@@ -855,9 +874,11 @@ const MUTANTS = [
   { name: 'the path face breaking the server sentences between any two letters', entry: 'admin.html', rule: 'words', at: 'cfg-path',
     file: 'admin.html', edits: [['      color: var(--text-dim);\n      overflow-wrap: anywhere;\n    }\n',
       '      color: var(--text-dim);\n      word-break: break-all;\n    }\n']] },
-  { name: 'the Retroactive list line cut without saying so', entry: 'admin.html', rule: 'clip', at: 'retroactive-sub',
-    file: 'admin.html', edits: [['<span class="section-summary" id="retroactive-sub" data-clip-ok></span>',
-      '<span class="section-summary" id="retroactive-sub"></span>']] },
+  // ⚰️ «the Retroactive list line cut without saying so» retired 10-11 (owner R): the line is chips that wrap, and the clip
+  //    rule watches them now - no data-clip-ok.
+  { name: 'a contents chip bringing up the card after its own', entry: 'admin.html', rule: 'contents', at: 'retroactive-sub',
+    file: 'src/admin.js', edits: [['      const card = byId(\'retroactive-body\').querySelector(`article.retro-op[data-op="${CSS.escape(op.op)}"]`);',
+      '      const all = [...byId(\'retroactive-body\').querySelectorAll(\'article.retro-op\')]; const card = all[(all.findIndex((c) => c.dataset.op === op.op) + 1) % all.length];']] },
   { name: 'the ledger sources table back on its hand widths (Source 150px, the timestamp the rest)', entry: 'admin.html',
     rule: 'columns', at: 'ledger-sources', file: 'src/ledger_sources_panel.js', edits: [
       ["      if (fit) th.className = 'cell-fit';", "      th.style.width = { Source: '150px', State: '130px', Refused: '70px' }[label] || '';"],

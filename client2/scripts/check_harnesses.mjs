@@ -1026,7 +1026,7 @@ const FLOORS = new Map([
   // 29 -> 35 (lead f063c948e): the outbox retry reply is judged by its status - five checks, two mutants.
   // 61 -> 65 (lead 69aad666e): SKIPPED is its own end - the file words gain SKIPPED and PENDING, and
   // the card and toast sentence is judged here (four checks, four mutants).
-  ['retry_verdict_harness.mjs', 65],
+  ['retry_verdict_harness.mjs', 67],   // 65 -> 67: a file row's Retry on every row - I2 re-aimed, R1 R2, M23 M24 (owner 10-11 R)
   //
   // The Auto Update row's Backfill cell (lead 09f0be40f): the window's three states, this
   // collector's latest run read through buildRunsView, and what the page keeps drawn and escaped.
@@ -1278,7 +1278,7 @@ const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 359],
+  ['retroactive_view_harness.mjs', 356],   // 359 -> 356: the view's titles retired, no reader left - its strings no longer walked (owner 10-11 R)
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 24],
@@ -1770,7 +1770,7 @@ const FLOORS = new Map([
   // + the grid's header message cells (a press beside it reaches the button, its title is its sentence) at each size
   //   and their two mutants (lead 10-09): 176 -> 184.
   // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
-  ['screen_layout_harness.mjs', 249],   // 242 -> 249: stacked gaps on the walk page at its five sizes, two mutants (lead 348310aee)
+  ['screen_layout_harness.mjs', 252],   // 249 -> 252: the Retroactive tab's contents at its three sizes, its mutant for the cut line's (owner 10-11 R)
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

@@ -273,9 +273,7 @@ export function buildOperationsView(payload) {
     hint: chrome(RETRO_CHROME.HINT),
     operationsLabel: chrome(RETRO_CHROME.OPERATIONS),
     total: count(operations.length),
-    // The headline names the operations rather than summarising them: there is no "problem" state
-    // to summarise here, and a fabricated verdict on a toolbox is worse than a list.
-    titles: operations.map((spec) => text(spec && spec.label)).filter(Boolean),
+    // The headline names the operations - each a chip to its card (owner 10-11 R) - rather than summarising them.
     operations: operations.map(buildOperation),
     empty: operations.length === 0,
     emptyText: chrome(RETRO_CHROME.NO_OPERATIONS),
