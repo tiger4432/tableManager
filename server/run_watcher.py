@@ -270,6 +270,18 @@ def reclaim_stranded_claims(db):
     return reclaimed, skipped
 
 
+def claim_retry(db, log):
+    """PENDING_RETRY -> PENDING in one statement, only while the row still is (총괄 49792d3f6 B): a row a cancel put
+    back after the list was read is not read, and the cancel's count is what it put back. -> True when claimed."""
+    claimed = (db.query(models.FileIngestionLog)
+               .filter(models.FileIngestionLog.id == log.id, models.FileIngestionLog.status == "PENDING_RETRY")
+               .update({"status": "PENDING"}, synchronize_session=False))
+    db.commit()
+    if claimed:
+        db.refresh(log)
+    return bool(claimed)
+
+
 def pending_retries(db):
     """PENDING_RETRY rows, oldest first - none before the watcher holds its handlers
     (총괄 fab40ed69): this thread starts first, and a retry runs on the table's own handler."""
@@ -371,9 +383,9 @@ def poll_pending_retries():
             for log in pending_logs:
                 logger.info(f"Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")
 
-                # Update status to processing (PENDING) to prevent concurrent runs
-                log.status = "PENDING"
-                db.commit()
+                if not claim_retry(db, log):
+                    logger.info(f"Log ID #{log.id} ({log.filename}) is no longer PENDING_RETRY - not read")
+                    continue
                 retry_one(db, log)
                     
         except Exception as e:
