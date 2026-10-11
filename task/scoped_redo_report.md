@@ -78823,3 +78823,73 @@ public: 게이트 전후 public relations 325 -> 325 · added [] · gone [] · r
       b566b48ae 절의 재기동 줄 «체인 워커 · 서버»에 스케줄러가 빠져 있었음 — 일요일 표 ① 은 넷 다 재기동이라 그 표에선 영향 없음. 새 절엔 «서버 · 스케줄러»로 적음
 응용께 — 일요일 판 다시: ①c «공식 표 deleted 369» 와 ⑦ «알려진 것 (b566b48ae 뒤)» 줄이 이 착지로 낡습니다
 ```
+
+## [10-11] 원장 시각 · timezone 착지 96f54ab36 (소유자 「원장 선언 쓸데없이 timezone 이나 시간 쓰라고 하는 거 많은데(특히 속성) 조사해서 고쳐」 · 총괄 10-11 A ㄱ · 응용 대조군 4ded085cf)
+
+```
+착지 96f54ab36 — 10 files changed, 244 insertions(+), 71 deletions(-)
+도착지  시각은 사건 엣지에만 · timezone 은 시각 열을 적었을 때만 · 안 적은 시각은 무엇으로 채우는지 폼에 한 줄
+응용 대조군 다섯 자리 -> 지금
+  (0) 새 소스 빈 폼이 Time · timezone 으로 거절 -> read.occurred_at 선택(스켈레톤 required false), 폼 줄 «Default: row time (ingested · created_at)»
+      timezone 줄은 시각 열이 없으면 «Only for a time column» (묻지 않음)
+  (1) 속성 소스 · 시각 후보에 글자 열 · row_id -> 후보 = datetime 칸 + 앞 20 행 값이 시각으로 읽히는 글자 칸, 못 읽은 칸은 남기고 «not sampled: …»
+      채우는 UTC 와 권하는 Asia/Seoul 이 다름 -> basis 후보는 zone 을 안 들고, basis 시각은 행의 저장 시각이라 zone 을 안 묻는다
+      register 문장의 occurred_at 이 묻는 칸 -> 사건 시각 역할이 안 묶였으면 «Not an event - source time: …» (적으면 사건 엣지)
+  (2) 사건 엣지 소스의 missing_time 거절 -> 그대로
+      🔴 거절된 소스도 파일에 써짐 -> 소유자 판정대로라 안 고침(소유자 2026-08-19 「json 형식만 맞으면 다 저장하고 … resolve되는거만 읽으면」 ·
+         「안읽히는 엔티티, 팩 등등은 invalid 태그 붙이고」 — ledger/config_explorer.py 「resolving a half-written setup」 절).
+         로더는 그 소스만 빼고 나머지를 읽음(setup._resolve_refused_declarations, S-177 ②) · 화면은 목록에 invalid 태그와 첫 사유로 남김
+         == tests/test_a_broken_source_falls_alone.py
+         14 passed in 0.79s
+         == tests/test_a_left_out_declaration_is_listed_with_what_fell_with_it.py
+         4 passed in 1.95s
+  (2') 엣지에 binding timezone 을 쓰면 통과 -> 그대로 · 시각 열을 적고 timezone 을 빼면 missing_timezone 거절(그대로)
+게이트 — 바뀐 자리 낱말을 부르는 시험 파일(git grep) files 87
+  비-PG  같은 파일을 이 워크트리와 깨끗한 origin/main(wt-check)에서 — 실패 목록 비교
+         wt-fold:  79 failed, 1030 passed, 1 skipped, 139 deselected, 10 errors in 80.45s (0:01:20)
+         wt-check: 79 failed, 1026 passed, 1 skipped, 139 deselected, 10 errors in 73.37s (0:01:13)
+         new: 0 · gone: 0
+         (실패는 두 쪽 같은 목록 — 워크트리에 라이브 ledger_config 가 없어 생기는 박스 상태)
+  PG     3 failed, 136 passed, 1120 deselected in 470.84s (0:07:50)
+         FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+         FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+         FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+         깨끗한 main 에서 같은 시험: head 1a022befe
+         깨끗한 main 에서 같은 시험: 3 failed, 136 passed, 1116 deselected in 460.62s (0:07:40)
+         깨끗한 main 에서 같은 시험: FAILED tests\test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once
+         깨끗한 main 에서 같은 시험: FAILED tests\test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+         깨끗한 main 에서 같은 시험: FAILED tests\test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+  public relations 325 -> 325 · added [] · gone [] · rows changed {}
+  public writes 12929428 -> 12929428 · tables moved {} · only before [] · only after []
+변이 (sqlite, 시험 파일 둘, md5 되돌림 확인)
+  baseline ['127 passed, 1 skipped in 2.96s']
+  a zone asked of every origin         RED | test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone, test_a_source_with_no_event_edge_reads_the_rows_stored_time, test_timezone_must_be_explicit_and_valid
+  the skeleton says the time is required RED | test_the_skeleton_asks_neither_the_time_nor_its_zone
+  the sample is not judged             RED | test_a_string_column_is_a_time_candidate_only_when_its_values_read_as_a_time[values]
+  the zone row asked of every source   RED | test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone
+  an unbound event time asked again    RED | test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does
+  a basis read with no zone            RED | test_a_source_with_no_event_edge_is_asked_neither_time_nor_zone
+  restored True
+이 박스 원장 선언으로 계획 한 번 (읽기 전용 엔진 · 박스의 라이브 파일 = 박스 상태, 운영 수가 아님)
+  sources in the box's ledger_config: 15
+  plan without the sample: 0.03, 0.02, 0.02 s
+  plan with the sample:    0.57, 0.22, 0.22 s
+    bonded_from                  candidates 5 -> 1 · removed ['base_id', 'core_lot', 'core_seat', 'core_wafer'] · Candidates: 1 columns of bonding_die_from_core readable as a time + basis
+    bw_dt_seat                   candidates 7 -> 1 · removed ['base_id', 'core_lot', 'core_seat', 'core_wafer', 'dt_lot', 'dt_seat'] · Candidates: 1 columns of bonding_core_die readable as a time + basis
+    die_inspection               candidates 8 -> 2 · removed ['base_wafer_id', 'eqp_id', 'method', 'recipe_id', 'row_id', 'run_uid'] · Candidates: 2 columns of inspection_run readable as a time + basis · not sampled: work_id
+    dt_job                       candidates 14 -> 3 · removed ['c_bn', 'core_lot', 'core_slot', 'core_wafer', 'dt_cell_key', 'dt_eqp', 'dt_job', 'dt_lot', 'dt_slot', 'product', 'row_id'] · : 3 columns of dt_log readable as a time + basis · not sampled: core_wafer_id, dt_event_id
+    dt_transfer                  candidates 15 -> 4 · removed ['c_bn', 'core_lot', 'core_slot', 'core_wafer', 'dt_cell_key', 'dt_eqp', 'dt_job', 'dt_lot', 'dt_slot', 'product', 'row_id'] · ansferable readable as a time + basis · not sampled: core_wafer_id, dt_event_id, dt_job_id
+    lot_event                    candidates 9 -> 5 · removed ['child_lot', 'event_type', 'parent_lot', 'row_id'] · lot_event readable as a time + basis · not sampled: lot_id, slotnumbers, txn_seq, waferids
+    lot_slot_move                candidates 7 -> 1 · removed ['event_type', 'from_lot', 'from_slot', 'to_lot', 'to_slot', 'wafer'] · Candidates: 1 columns of lot_slot_move readable as a time + basis
+    lot_slot_wafer               candidates 1 -> 0 · removed ['row_id'] · Limit: lot_slot_wafer has no column to read as a time -> basis only
+    mechanism_edge_to_finding_causes candidates 8 -> 1 · removed ['dir', 'edge_id', 'from_quantity', 'model', 'row_id', 'to_quantity', 'to_role'] · Candidates: 1 columns of mechanism_edge_to_finding readable as a time + basis
+    mechanism_edge_to_quantity_causes candidates 8 -> 1 · removed ['dir', 'edge_id', 'from_quantity', 'model', 'row_id', 'to_quantity', 'to_role'] · Candidates: 1 columns of mechanism_edge_to_quantity readable as a time + basis
+    process_param_num_measure    candidates 11 -> 2 · removed ['eqp_id', 'param', 'param_id', 'recipe_id', 'role', 'row_id', 'step', 'unit', 'wafer_id'] · dates: 2 columns of process_param_num readable as a time + basis · not sampled: value_text
+    process_param_txt_measure    candidates 11 -> 2 · removed ['eqp_id', 'param', 'param_id', 'recipe_id', 'role', 'row_id', 'step', 'value_text', 'wafer_id'] · Candidates: 2 columns of process_param_txt readable as a time + basis · not sampled: unit
+    transfer_event               candidates 7 -> 1 · removed ['core_wafer_id', 'dt_cell_key', 'dt_job', 'dt_job_id', 'product', 'row_id'] · Candidates: 1 columns of dt_transfer_log readable as a time + basis
+    void_observation             candidates 7 -> 1 · removed ['base_wafer_id', 'eqp_id', 'recipe_id', 'run_uid', 'unit', 'void_uid'] · Candidates: 1 columns of void_obs_observed readable as a time + basis
+    wafer_process_recipe         candidates 15 -> 3 · removed ['eqp_id', 'knobs', 'lot', 'lot_id', 'proc_id', 'recipe_id', 'result', 'row_id', 'slot', 'slot_no', 'step', 'wafer_id'] · Candidates: 3 columns of wafer_process readable as a time + basis
+어느 DB · 어느 스키마 · 지운 것: 시험은 sqlite 메모리 + 격리 시험 DB(run_pg_files) · 박스 assy_manager 는 읽기 전용(시각 견본) · public 전후 같음 · 지운 것 0
+
+응용께 — 18766 대조군 다섯 자리를 이 착지로 다시 눌러 주시길(서버 재기동 뒤)
+```
