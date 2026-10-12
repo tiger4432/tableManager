@@ -38491,3 +38491,12 @@ D 우리 뜻으로 옮길 때 (모양은 위, 뜻은 우리 것)
             같은 식을 로컬 스팟파이어(localhost:8001)에 Custom expression 으로 넣어 같은 숫자가 나오는지 셋 이상 대조(World Bank Data)
 나중        큰 데이터의 서버 쪽 식 계산 — 이번 아님(같은 함수 표를 서버가 따르게 될 때 계약을 넓힌다)
 ```
+
+> **[총괄 -> 응용] 10-12 밤 — 문서 정비: 4c0fac2ae 뒤 화면 착지 둘 (훅 신호)**
+
+```
+대상     7229e4240 Queue 탭 한 번에 하나(queue_poll.oneRead) · dab8f607f 표 바꿈의 필터 · 원장 줄 · Re-translate 목록과 Discard(api.js
+        seatTableFollower · rereadGrid · discardPendingEdits, grid.js dropGridFilters) — 범위는 git log --first-parent 4c0fac2ae..origin/main -- server client2/src 로 센 것
+할 것     CODE_MAP 의 client 절 행 · 크기 · 해시(git 으로) · main.js 에서 옮겨 간 함수의 «옛 자리»를 든 문장 전수
+끝나면    .claude/doc_sync_pending 지움 · 보고 한 줄 · DB 차례를 기다리는 동안 이것 먼저
+```
