@@ -135,6 +135,7 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert explorer.entity_id("operator", {"o": "O1"}) in every, "canary: O1 is reached only by the static seed's step"
 
     wrong, said_whole_early, over_caps, deepest_read, most, ranked_wrong, spent_again = [], [], [], 0, 0, [], []
+    rank_wrong = []
     for claims in range(1, 13):
         monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", claims)
         for nodes in (10, 13, 400):                              # the walk's own floors: 10 nodes, 20 edges
@@ -163,6 +164,22 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
                           if key in trails and trails[key][0] == ids and trails[key][1] != preds]
                 if unnamed or differ:
                     ranked_wrong.append((claims, nodes, edges, "hops", len(unnamed), len(differ)))
+                # 총괄 10-12: a page's rank · top · tied · incomparable and its top_set are among every node reached so
+                # far - its own rows and the pages' before - not among its own rows alone
+                so_far = {}
+                for answer, _held in run:
+                    rows = answer["propagation"]["ranked"]
+                    so_far.update({row["id"]: row["reach"] for row in rows})
+                    if not rows:
+                        continue
+                    layers = ledger_subgraph._rank_layers([{"id": n, "reach": r} for n, r in so_far.items()])
+                    expect = {it["id"]: (it["rank"], it["rank"] == 1, it["tied"], it["incomparable"])
+                              for layer in layers for it in layer}
+                    if (any((row["rank"], row["top"], row["tied"], row["incomparable"]) != expect[row["id"]]
+                            for row in rows)
+                            or sorted(answer["propagation"]["top_set"]) != sorted(it["id"] for it in layers[0])):
+                        rank_wrong.append((claims, nodes, edges))
+                        break
                 if merged != ranked:
                     ranked_wrong.append((claims, nodes, edges, len(set(ranked) - set(merged)),
                                          sum(1 for n in merged if n in ranked and merged[n] != ranked[n])))
@@ -183,6 +200,7 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert over_caps == [], over_caps
     assert ranked_wrong == [], ranked_wrong
     assert spent_again == [], spent_again
+    assert rank_wrong == [], rank_wrong
 
 
 def test_an_atom_written_after_the_first_page_is_in_no_page_after_it(declared, monkeypatch):
