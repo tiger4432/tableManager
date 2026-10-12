@@ -974,7 +974,7 @@
 
 ### ⭐⭐ **화면이 내미는 「할 수 있는 것」 목록은 «실제로 도는 집합»에서 거른다 — 파일이 아니라 로더, 배관 이름이 아니라 선언의 낱말** (2026-09-15 등록 · S-250 `df824a9a` · C-109 `c87080e3`)
 - **무엇**: 「이 표에서 다시 돌릴 수 있는 체인 규칙」을 화면이 `GET /admin/chain/rules`(파일 원문)에서 읽었다. 그래서 통합 join 은 «안 보였고»(`on.table` 을 쓰지 `trigger_table` 이 없다), 로더가 «세우는» 규칙(enrichment · 가상 조인)은 «아예 없었고», 표로 거를 수 없어 표를 바꿔도 목록이 남았다. 목록이 도는 집합이 아니면 «소급이 거절할 이름»을 화면이 내민다 — 그리고 운영자는 «누른 뒤에» 안다.
-- **어디**: 서버 `chain/replay.replayable_rules_for(table)` — `load_rules()`(번역·합성 포함)를 `trigger_table` 로 거르고 참조 쪽은 `is_reference_side`(`find_rule` 이 거절하는 «그» 판별식)로 뺀다 · 종류는 `chain/rule_shape.declared_kind` → `join`/`decide`/`mapper`(`decide` 의 두 반쪽은 둘 다 `decide`) · 라우트 `GET /admin/chain/rules/replayable?table=`(모르는 표는 404 로 «이름을 대고» 거절) · 클라 `client2/src/replayable_rules.js::loadReplayableRules(table)`(세 상태: 배열 · `[]` · `null`)와 `main.js::redoBannerFollows`(부팅·표 바꿈이 «같은 줄»). 줄은 `name · trigger → target` + 종류 배지. 계약 [backend §2](./backend.md) · 화면 [frontend §3.1](./frontend.md).
+- **어디**: 서버 `chain/replay.replayable_rules_for(table)` — `load_rules()`(번역·합성 포함)를 `trigger_table` 로 거르고 참조 쪽은 `is_reference_side`(`find_rule` 이 거절하는 «그» 판별식)로 뺀다 · 종류는 `chain/rule_shape.declared_kind` → `join`/`decide`/`mapper`(`decide` 의 두 반쪽은 둘 다 `decide`) · 라우트 `GET /admin/chain/rules/replayable?table=`(모르는 표는 404 로 «이름을 대고» 거절) · 클라 `client2/src/replayable_rules.js::loadReplayableRules(table)`(세 상태: 배열 · `[]` · `null`)와 `main.js::redoBannerFollows`(부팅 · 드롭다운 · 이력 점프가 «같은 줄» — 🆕 10-12 `dab8f607f` `api.js::switchTable` 의 따라가기(`seatTableFollower`)에서 부른다). 줄은 `name · trigger → target` + 종류 배지. 계약 [backend §2](./backend.md) · 화면 [frontend §3.1](./frontend.md).
 - **언제 재사용**: 화면이 «실행 가능한 것»을 고르게 하는 모든 목록 — 규칙 · 연산 · 소스 · 프리셋. 판별 질문: 「이 목록의 저자가 «그것을 실행하는 함수»와 같은 집합을 읽나」. 아니면 목록과 실행이 갈릴 수 있고, 갈린 것은 오류를 안 낸다.
 - **함정**:
   - 🔴 **종류 낱말은 배관이 아니라 «선언»의 것이다.** `builtin:join_into` · `enrichment_dedup:` 을 내미는 것은 COLLECT 드롭다운의 결함(2026-08-27 「사용자가 claim, point, collection 이런 걸 어케 암」)과 같은 병이다.
@@ -1644,12 +1644,12 @@
 
 ### ⭐⭐ **부팅 «순서»는 자기 모듈에 산다 — 소켓이 «첫 줄»이고, 그 순서를 재는 하니스는 그 모듈을 import 한다** (2026-09-16 등록 · C-110 `c96527d9`)
 - **무엇**: 그리드 페이지의 부팅 순서(라이브 채널을 «무엇에도 안 걸고» 먼저 → 설치 → health → 표 목록 → 「표를 골랐다」)는 `main.js::init()` 의 본문이었고, `main.js` 는 브라우저 밖에서 import 가 안 된다(ag-grid 스타일시트 · 페이지 전체 앉힘). 그래서 하니스가 `init()` 을 «텍스트로 잘라» `vm` 에 넣었고, `main.js` 가 모듈 이름을 하나 얻을 때마다(`redoBannerFollows` 가 마지막) 24 시나리오가 «맞는 코드»에 ReferenceError 를 던져 스텁이 하나씩 늘었다 — 금지된 잘라쓰기의 실물.
-- **어디**: `client2/src/startup.js::startup({prepare, tableChosen})` — 모듈 최상단에서 DOM·CSS 를 «안 만진다». 순서: `initWebSocket()` → `prepare()` → `await checkServerHealth()` → `await loadTables()` → `tableChosen()`. `main.js::init` 은 그 둘(설치할 것 · 표가 정해지면 부품에 알릴 것)만 넘긴다. 하니스 `tests/startup_socket_gate_harness.mjs` 는 `startup.js`·`api.js`·`websocket.js` «전문»을 `lib/probe.mjs` 로 싣고(시나리오마다 새 사본 — 멈춘 REST 래치가 다음 판을 못 물들인다), 변이는 «모듈 통째». 같은 111 단언 · 9 변이 포착 · 3 대조군.
+- **어디**: `client2/src/startup.js::startup({prepare, tableChosen})` — 모듈 최상단에서 DOM·CSS 를 «안 만진다». 순서: `initWebSocket()` → `prepare()` → `await checkServerHealth()` → `await loadTables()` → `tableChosen()`. `main.js::init` 은 그 둘(설치할 것 · 표가 정해지면 부품에 알릴 것)만 넘긴다 — 🆕 10-12 `dab8f607f` 둘째는 빈 훅이 됐다: 부품이 표를 아는 것은 `api.js::switchTable` 의 따라가기(`seatTableFollower`)로, 표 바꿈 전부와 같은 길이다. 하니스 `tests/startup_socket_gate_harness.mjs` 는 `startup.js`·`api.js`·`websocket.js` «전문»을 `lib/probe.mjs` 로 싣고(시나리오마다 새 사본 — 멈춘 REST 래치가 다음 판을 못 물들인다), 변이는 «모듈 통째». 같은 111 단언 · 9 변이 포착 · 3 대조군.
 - **언제 재사용**: 「순서」가 결함의 주어인 모든 곳(부팅 · 재연결 사다리 · 저장 뒤 갱신). 판별 질문: 「그 순서를 재는 시험이 «무엇을 import» 하나」 — 답이 「파일을 읽어서」면 순서를 «이름 있는 모듈»로 뺀다([HARNESS_DISCIPLINE_GUIDE §1](../guide/HARNESS_DISCIPLINE_GUIDE.md)).
 - **함정**:
   - 🔴 **«먼저»가 아니라 «첫 줄»이다.** `prepare` 안의 어느 설치 호출도 던질 수 있으므로(빈 DOM 핸들) 소켓은 «그 전부» 앞에 선다. 소켓은 health 도 표 목록도 필요 없다 — `onopen` 이 다시 유도한다.
   - 📌 남은 결은 그대로다 — `checkServerHealth` 가 reject 하면 `loadTables` 가 건너뛰어진다(둘 다 reject 하지 않게 짜여 있고, 감싸는 것은 «자기 앵커를 가진» 별건).
-  - ⚠️ 옮겨진 것은 «순서»뿐이고, 배선(`redoBannerFollows` 같은)은 실제 페이지에서 본다([frontend §3.1](./frontend.md)).
+  - ⚠️ 옮겨진 것은 «순서»뿐이고, 배선(`redoBannerFollows` 같은)은 실제 페이지에서 본다([frontend §3.1](./frontend.md)). 🆕 10-12 `dab8f607f`: `switchTable` 이 따라가기를 부르는 것은 `grid_world_tabs_harness.mjs` W11 이 import 로 잰다.
   - 🔴 **[2026-09-17] 위에 적힌 사유의 «스타일시트 절반»은 오늘 거짓이다.** `probe_hooks.mjs:77` 이 `.css` 를 importer 와 «무관하게» 빈 모듈로 풀어 준 뒤(C-95), 프로브를 지나는 하니스에게 스타일시트는 벽이 아니다. **`main.js` 가 오늘 import 되는지는 이 패스가 «재지 않았다»** — 남은 사유(`ag-grid-community` · 모듈 최상단의 페이지 앉힘)는 스타일시트와 «다른» 사유라 같이 죽지 않는다. 🔴 사유를 인용하기 전에 «오늘» 시도할 것 — 아래 「«벽»이라 적힌 사유는 유통기한이 있다」.
 
 ### ⭐⭐ **«벽»이라 적힌 사유는 «유통기한»이 있다 — 그리고 낡은 사유는 금지된 기법을 «정당화하며» 살려 둔다** (2026-09-17 등록 · C-95 `probe_hooks` · C-117 `d11723b1`)
