@@ -1522,6 +1522,9 @@ const FLOORS = new Map([
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
+  // New (owner 10-13 via the lead): the main grid's menu - «Board» opens testbed.html as Walk opens walk.html, and every
+  // page the menu names is one the build writes (read through vite's own config loader).
+  ['main_menu_harness.mjs', 6],
   ['walk_layout_harness.mjs', 38],   // -> 38: Control · B walked once more - LD1 LD2, LDm1 LDm2 (lead 99ed68cb7 D)
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
