@@ -37,7 +37,7 @@
 // A missing line on a KNOWN_RED entry recorded as ran: 0 is tolerated: that entry already
 // says out loud that the harness dies before measuring anything.
 
-import { spawnSync } from 'node:child_process';
+import { readHarness, RUN_BUFFER } from './read_harness.mjs';
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { isProbeArtifact } from '../tests/lib/probe.mjs';
 import path from 'node:path';
@@ -1789,6 +1789,8 @@ const FLOORS = new Map([
   //   and their two mutants (lead 10-09): 176 -> 184.
   // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
   ['screen_layout_harness.mjs', 307],   // 252 -> 307: walk.html at 1280x720 too, S2-S6, missing each; the axis mutant retired (lead 10-11 W addendum 9)
+  ['screen_layout_cleanup_harness.mjs', 3],   // its verdict outlives a cleanup that throws (lead 10-13): C1-C3, D1-D2
+  ['read_harness_harness.mjs', 2],            // this runner's reader: past the buffer is no verdict (lead 10-13): R1-R2, D1-D2
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],
@@ -2003,6 +2005,8 @@ const INSTALL = NOT_INSTALLED.length > 0
 
 const blocking = [];
 const unavailable = [];
+// The runner could not read what a harness said (read_harness.mjs): no verdict - not a red one, as UNAVAILABLE is not.
+const unread = [];
 const stillRed = [];
 const recovered = [];
 const rose = [];        // ran above its recorded floor ― re-baseline when convenient
@@ -2050,8 +2054,13 @@ const flagsOf = (name) => {
 };
 
 for (const name of harnesses) {
-  const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name), ...flagsOf(name)],
-    { cwd: REPO_ROOT, encoding: 'utf8' });
+  const run = readHarness(path.join(TESTS_DIR, name), flagsOf(name), REPO_ROOT);
+  if (!run) {
+    unread.push(name);
+    console.log(`? ${name}  [NO VERDICT] instrument: its output ran past the runner's ${RUN_BUFFER / 1048576} MiB `
+      + 'buffer, so its ASSERTIONS line was never read. Not counted as passing or failing - run it alone to read it.');
+    continue;
+  }
   const ok = run.status === 0;
   const known = KNOWN_RED.get(name);
 
@@ -2189,7 +2198,8 @@ for (const name of harnesses) {
 const gated = harnesses.length - KNOWN_RED.size;
 console.log(`\n${harnesses.length} harnesses ― ${gated} gated, ${KNOWN_RED.size} on the known-red `
   + `debt list (${stillRed.length} still red, ${recovered.length} recovered)`
-  + (unavailable.length > 0 ? `, ${unavailable.length} UNMEASURED in this tree` : '') + `.`);
+  + (unavailable.length > 0 ? `, ${unavailable.length} UNMEASURED in this tree` : '')
+  + (unread.length > 0 ? `, ${unread.length} with NO VERDICT (output past the buffer)` : '') + `.`);
 
 if (recovered.length > 0) {
   console.log(`\n! ${recovered.length} harness(es) on the known-red list now PASS. Take them off `
@@ -2245,10 +2255,16 @@ if (blocking.length > 0) {
 // The unavailable set is stated HERE rather than only next to each harness, because this
 // last line is the one people quote. "Every gated harness is green" would be a false
 // summary of a run where something was never measured at all.
+if (unread.length > 0) {
+  console.log(`? ${unread.length} gave NO VERDICT: the runner could not read its output (${unread.join(', ')}). `
+    + 'Not green and not red for those; run each alone and read its ASSERTIONS line.');
+}
 if (unavailable.length > 0) {
   console.log(`✓ every gated harness that COULD run in this tree is green ― but `
     + `${unavailable.length} was not measured here (${unavailable.join(', ')}). This is not a `
     + `green build for those; run the gate in the main checkout before merging. ${INSTALL}\n`);
+} else if (unread.length > 0) {
+  console.log(`✓ every gated harness whose verdict was read is green ― ${unread.length} gave none (above).\n`);
 } else {
   console.log(`✓ every gated harness is green.\n`);
 }
