@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-C8cIBD73.js"></script>
+    <script type="module" crossorigin src="/assets/main-DWpT04k9.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/tokens-BQ4vlQu3.js">
     <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
     <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">
@@ -40,7 +40,7 @@
     <link rel="stylesheet" crossorigin href="/assets/tokens-0pWdZgFi.css">
     <link rel="stylesheet" crossorigin href="/assets/main-NphWruxx.css">
     <link rel="stylesheet" crossorigin href="/assets/base-0D6z4SYq.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-BZecgb7Y.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-pLrZXfLv.css">
   </head>
 
   <body>
@@ -188,11 +188,6 @@
               >
                 Discard
               </button>
-              <span id="tx-conflict-line" class="tx-conflict-line" style="display: none">
-                <span id="tx-conflict-text"></span>
-                <button id="tx-keep-mine-btn" type="button" class="glass-btn">Keep mine</button>
-                <button id="tx-take-server-btn" type="button" class="glass-btn">Take server</button>
-              </span>
             </span>
           </div>
           <div class="control-group">
@@ -398,6 +393,12 @@
           <div id="grid-source-label-host"></div>
           <!-- 세상 탭의 «자기 div» (총괄 120450931 ②). 세상마다 있는 표에서만 그려집니다 -->
           <div id="world-tabs-host"></div>
+          <!-- Apply 의 물음: 모아 둔 칸이 그사이 서버에서 바뀌었을 때만 섭니다(총괄 c97239697). 헤더는 꽉 차서 자기 줄 -->
+          <div id="tx-conflict-line" class="tx-conflict-line" style="display: none">
+            <span id="tx-conflict-text"></span>
+            <button id="tx-keep-mine-btn" type="button" class="glass-btn">Keep mine</button>
+            <button id="tx-take-server-btn" type="button" class="glass-btn">Take server</button>
+          </div>
           <div
             id="myGrid"
             data-clip-ok

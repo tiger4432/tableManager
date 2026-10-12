@@ -846,12 +846,16 @@ body.resizing-active .history-sidebar {
   border: 1px solid var(--warning) !important;
   border-left: 3px solid var(--warning) !important;
 }
-/* Apply's question about those cells - one line in the transaction bar, its two answers beside it. */
+/* Apply's question about those cells - its own line over the grid (the header is full), its two answers beside it. */
 .tx-conflict-line {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  margin: var(--space-1) var(--space-3);
   color: var(--warning);
+  background: var(--warning-weak);
+  border: 1px solid var(--warning);
   font-weight: 600;
 }
 
