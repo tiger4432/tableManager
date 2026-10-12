@@ -33,6 +33,7 @@ import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSourceText } from './lib/probe.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(HERE, '..');
@@ -1138,16 +1139,17 @@ async function buildMutant(m) {
   const out = mkdtempSync(path.join(tmpdir(), 'screens-mutant-'));
   const target = path.join(CLIENT, m.file).replace(/\\/g, '/');
   const hits = new Map(m.edits.map(([a]) => [a, 0]));
-  const swap = (code) => {
-    // The anchors are written with \n; a checkout with core.autocrlf holds \r\n (10-12: every mutant past the first unrun).
-    code = code.replace(/\r\n/g, '\n');
+  const swap = () => {
+    // The anchors are written with \n; a checkout with core.autocrlf holds \r\n (10-12: every mutant past the first unrun) -
+    // the file's text through the one reader (probe_mechanism P1), not a private normaliser.
+    let code = readSourceText(target).text;
     for (const [a, b] of m.edits) if (code.includes(a)) { hits.set(a, hits.get(a) + 1); code = code.split(a).join(b); }
     return code;
   };
   const mine = (id) => id.split('?')[0].replace(/\\/g, '/') === target;
   await build({ root: CLIENT, configFile: path.join(CLIENT, 'vite.config.js'), logLevel: 'silent', build: { outDir: out, emptyOutDir: true },
-    plugins: [{ name: 'screens-mutant', enforce: 'pre', transform: (code, id) => (mine(id) ? swap(code) : null),
-      transformIndexHtml: { order: 'pre', handler: (html, ctx) => (mine(ctx.filename) ? swap(html) : html) } }] });
+    plugins: [{ name: 'screens-mutant', enforce: 'pre', transform: (code, id) => (mine(id) ? swap() : null),
+      transformIndexHtml: { order: 'pre', handler: (html, ctx) => (mine(ctx.filename) ? swap() : html) } }] });
   for (const [a, n] of hits) if (!n) throw new Error(`mutant «${m.name}»: «${a.slice(0, 60)}» is not in ${m.file}`);
   return out;
 }
