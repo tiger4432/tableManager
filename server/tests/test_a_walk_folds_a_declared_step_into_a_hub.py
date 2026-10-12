@@ -202,30 +202,174 @@ PAGED = _atoms(*[("lot", "L", "made_by", "tool", "T%d" % t) for t in range(30)],
                *[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(6)])
 
 
-def _merged(answers):
-    nodes, links, rows = set(), set(), {}
-    for body in answers:
-        nodes |= {item["id"] for item in body["nodes"]}
-        links |= {(e["source"], e["target"], e["predicate"]) for e in body["edges"]}
+#: A node's counts of the atoms its page read - per page, hubs or none (open: lead d2a64a904 asked)
+PAGE_LOCAL = ("claim_count", "predicates")
+
+
+def _applied(pages):
+    """What a receiver holds after the pages, each a delta laid over the last by id (lead d2a64a904): moved and left
+    first, then the nodes (a hub head of count 0 is gone, its table with it), the edges (a hub edge of count 0 is
+    gone), the rows. -> the bytes, page-local counts aside."""
+    nodes, edges, tables = {}, {}, {}
+    for body in pages:
+        for row, old, new in body.get("moved") or ():
+            tables.setdefault(new, {})[row] = tables.get(old, {}).pop(row)
+        for hub_id, row in body.get("left") or ():
+            tables.get(hub_id, {}).pop(row, None)
+        for item in body["nodes"]:
+            if set(item) == {"id", "count"} and item["count"] == 0:
+                nodes.pop(item["id"], None)
+                tables.pop(item["id"], None)
+            else:
+                nodes[item["id"]] = {k: v for k, v in item.items() if k not in PAGE_LOCAL}
+        for edge in body["edges"]:
+            if set(edge) == {"id", "count"} and edge["count"] == 0:
+                edges.pop(edge["id"], None)
+            else:
+                edges[edge["id"]] = edge
         for hub_id, table in (body.get("tables") or {}).items():
-            rows.setdefault(hub_id, set()).update(row[2] for row in table["rows"])
-    return nodes, links, rows
+            for row in table["rows"]:
+                tables.setdefault(hub_id, {})[row[2]] = dict(zip(table["columns"], row))
+    return json.dumps({"nodes": nodes, "edges": edges, "tables": {h: rows for h, rows in tables.items() if rows}},
+                      sort_keys=True, default=str)
 
 
-def test_pages_of_a_walk_with_hubs_merged_are_the_one_walk():
-    """Gate 4: the resume carries the hubs, so a row stays its hub's on the next page."""
-    import json
+def _paged(seed, atoms, **kwargs):
+    pages, body = [], _walk(seed, atoms, **kwargs)
+    for _ in range(50):
+        pages.append(body)
+        if body["more"]["resume"] is None:
+            return pages
+        body = _walk(seed, atoms, resume=json.loads(json.dumps(body["more"]["resume"])), **kwargs)
+    raise AssertionError("the walk did not end in 50 pages")
 
+
+# the memory repro (lead d2a64a904): a wafer's dies (declared), each die's defects -> kinds (shared), each die bonded
+# from a die of one of seven other wafers. Cut by edges, a die a page answered as a row is reached again later.
+BONDED_DECLARED = ("test:walk-hubs-bonded",)
+WAFER = node("wafer", "W")
+BONDED = _atoms(*[link for d in range(60) for link in (
+    ("die", "D%d" % d, "in_container", "wafer", "W"),
+    *[("die", "D%d" % d, "observed", "defect", "F%d_%d" % (d, f)) for f in range(4)],
+    *[("defect", "F%d_%d" % (d, f), "of_kind", "kind", "K%d" % (f % 3)) for f in range(4)],
+    ("die", "D%d" % d, "bonded_from", "die", "B%d" % d),
+    ("die", "B%d" % d, "in_container", "wafer", "WB%d" % (d % 7)))])
+BONDED_KW = dict(declaration=BONDED_DECLARED, hops=6, static_types=["kind"], backbone_hops=2)
+
+
+@pytest.fixture
+def bonded(monkeypatch):
+    inverse = {"inspected": "in_container", "in_container": "inspected"}
+    monkeypatch.setitem(ledger_subgraph._declaration_facts, BONDED_DECLARED,
+                        ({}, {}, {}, inverse, {}, {}, frozenset({"in_container"}), {}))
+
+
+def test_pages_applied_as_deltas_are_the_one_walk_s_answer():
+    """Gate (lead d2a64a904): each page laid over the last by id is the one walk's answer, byte for byte - nodes, hub
+    tables, edges with their counts. The resume carries the hubs, so a row stays its hub's on the next page."""
     whole = _walk(LOT, PAGED, hops=2, node_limit=1000)
     assert whole["more"]["resume"] is None
-    answers, body = [], _walk(LOT, PAGED, hops=2, node_limit=10)
-    assert body["more"]["resume"] is not None, "canary: the first page is cut"
+    pages = _paged(LOT, PAGED, hops=2, node_limit=10)
+    assert len(pages) > 1, "canary: the first page is cut"
+    later = {hub_id for body in pages[1:] for hub_id in body.get("tables") or {}}
+    assert any(hub_id.endswith("|observed|outgoing|defect|1,0") for hub_id in later), \
+        "canary: a row's own children come on a later page, as the next hub's rows"
+    assert _applied(pages) == _applied([whole])
+
+
+def test_a_row_an_earlier_page_answered_that_leaves_its_hub_is_said_and_its_edges_read_again(bonded):
+    """A2 (lead d2a64a904): the page that reaches a row another way says it `left`, answers it as a node and reads its
+    edges again within the atom budget - what does not fit is `edges_pending`, the next page's first read."""
+    whole = _walk(WAFER, BONDED, edge_limit=10 ** 6, node_limit=1000, **BONDED_KW)
+    assert whole["more"]["resume"] is None
+    pages = _paged(WAFER, BONDED, edge_limit=40, **BONDED_KW)
+    assert _applied(pages) == _applied([whole])
+    assert any(body.get("left") for body in pages), "canary: a row of an earlier page leaves its hub"
+    assert any(body.get("edges_pending") for body in pages), "canary: a page runs out of atoms reading edges again"
+
+
+def test_rows_a_page_had_no_atoms_left_for_are_the_next_page_s_first_read(bonded, monkeypatch):
+    """A2 (lead d2a64a904): the rows whose edges a page could not read again are the next page's FIRST read - before
+    it walks on, so they do not wait behind a read that spends every page's atoms (the walk board's seed read)."""
+    reads = []
+    real = ledger_subgraph.InMemoryEvidenceLookup.claims_for_entities
+
+    def spy(self, entities, direction, limit, **kwargs):
+        reads.append([explorer.entity_id(item[0], item[1]) for item in entities])
+        return real(self, entities, direction, limit, **kwargs)
+
+    monkeypatch.setattr(ledger_subgraph.InMemoryEvidenceLookup, "claims_for_entities", spy)
+    body, firsts = _walk(WAFER, BONDED, edge_limit=40, **BONDED_KW), 0
     for _ in range(50):
-        answers.append(body)
+        pending = body.get("edges_pending") or []
         if body["more"]["resume"] is None:
             break
-        body = _walk(LOT, PAGED, hops=2, node_limit=10, resume=json.loads(json.dumps(body["more"]["resume"])))
-    assert len(answers) > 1
-    later = _merged(answers[1:])[2]
-    assert any(hub_id.endswith("|observed|outgoing|defect|1,0") for hub_id in later),         "canary: a row's own children come on a later page, as the next hub's rows"
-    assert _merged(answers) == _merged([whole])
+        reads.clear()
+        body = _walk(WAFER, BONDED, edge_limit=40, resume=json.loads(json.dumps(body["more"]["resume"])), **BONDED_KW)
+        if pending:
+            assert reads[0] == pending[:50], "the page after read something else first"
+            firsts += 1
+    assert firsts, "canary: a page ran out of atoms reading edges again"
+
+
+# the owner's example behind 250 of the lot's tools: the first page stops in the lot's read with W0..W2 rows; a later
+# page reaches W1 through the tool the lot checks - W1 leaves, the hub keeps W0 and W2
+LEAVING = _atoms(*[("lot", "L", "made_by", "tool", "T%d" % i) for i in range(250)],
+                 *[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(3)],
+                 *[("wafer", "W%d" % w, "observed", "defect", "D%d%d" % (w, d)) for w in range(3) for d in range(2)],
+                 *[("defect", "D%d%d" % (w, d), "of_kind", "kind", "K%d" % d) for w in range(3) for d in range(2)],
+                 ("lot", "L", "checks", "tool", "X"), ("tool", "X", "feeds", "tool", "G"),
+                 ("tool", "G", "near", "wafer", "W1"))
+
+
+def test_a_row_that_leaves_a_hub_that_keeps_its_others_is_said_left():
+    """left (lead d2a64a904): the receiver takes the row out of its hub's table - without it the row would stand twice,
+    as a node and as a row of a hub that still stands."""
+    whole = _walk(LOT, LEAVING, hops=3, node_limit=1000, edge_limit=10 ** 6)
+    pages = _paged(LOT, LEAVING, hops=3, edge_limit=100)
+    assert _applied(pages) == _applied([whole])
+    assert [row for body in pages for _hub, row in body.get("left") or ()] == [node("wafer", "W1")],         "canary: W1, a row of the first page, leaves on a later one"
+    assert json.loads(_applied([whole]))["nodes"][WAFERS]["count"] == 2, "canary: its hub keeps W0 and W2"
+
+
+# CONTRAST behind 150 of P's tools: the first page stops in the seeds' read with N's W1 and W2 rows of «0,1»
+MOVING = _atoms(*[("lot", "P", "made_by", "tool", "T%d" % i) for i in range(150)],
+                ("lot", "P", "has_wafer", "wafer", "W5"), ("lot", "P", "has_wafer", "wafer", "W6"),
+                ("lot", "P", "uses_tool", "tool", "X"), ("tool", "X", "feeds", "recipe", "R"),
+                *[("lot", "N", "has_wafer", "wafer", "W%d" % w) for w in range(1, 5)],
+                ("wafer", "W1", "uses", "recipe", "R"), ("wafer", "W2", "uses", "recipe", "R"))
+
+
+def test_a_row_whose_value_a_later_page_changes_is_said_moved():
+    """moved (lead d2a64a904): the page that brings P's reach through the recipe moves W1 and W2 from «0,1» to «1,1».
+    The limit (lead, 10-13 ㄱ): a row a later page does not reach again keeps its page's value - a continued page ranks
+    what it newly reached, as nodes did before hubs - so P's own wafers stay «1,0» where the one walk says «1,1»."""
+    seeds = {"positive": [P], "negative": [N]}
+    whole = _walk(seeds, MOVING, hops=2, node_limit=1000, edge_limit=10 ** 6)
+    pages = _paged(seeds, MOVING, hops=2, edge_limit=100)
+    moved = sorted((row, old.rsplit("|", 1)[-1], new.rsplit("|", 1)[-1])
+                   for body in pages for row, old, new in body.get("moved") or ())
+    assert moved == sorted([(node("wafer", "W1"), "0,1", "1,1"), (node("wafer", "W2"), "0,1", "1,1")])
+    applied, one = json.loads(_applied(pages)), json.loads(_applied([whole]))
+    for hub_id in (N + "|has_wafer|outgoing|wafer|0,1", N + "|has_wafer|outgoing|wafer|1,1"):
+        assert applied["tables"][hub_id] == one["tables"][hub_id]
+        assert applied["nodes"][hub_id] == one["nodes"][hub_id]
+
+
+def test_a_page_after_the_first_reads_as_the_walk_asked(monkeypatch):
+    """🔴 The 7-page early end (lead d2a64a904): the resume's hubs were read into the walk's own `direction`, so every
+    page after the first read one side - on the walk board, the dies gave 738 atoms of 72,018."""
+    directions = []
+    real = ledger_subgraph.InMemoryEvidenceLookup.claims_for_entities
+
+    def spy(self, entities, direction, limit, **kwargs):
+        directions.append(direction)
+        return real(self, entities, direction, limit, **kwargs)
+
+    monkeypatch.setattr(ledger_subgraph.InMemoryEvidenceLookup, "claims_for_entities", spy)
+    first = _walk(LOT, PAGED, hops=2, node_limit=10)
+    on_first = set(directions)
+    assert first["more"]["resume"]["hubs"], "canary: the next page carries hubs"
+    directions.clear()
+    _walk(LOT, PAGED, hops=2, node_limit=10, resume=json.loads(json.dumps(first["more"]["resume"])))
+    assert directions and on_first == {"both"} and set(directions) == {"both"}, (on_first, directions)
