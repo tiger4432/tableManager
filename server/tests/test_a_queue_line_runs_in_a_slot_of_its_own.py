@@ -262,11 +262,14 @@ def test_a_replay_that_read_v1_before_a_person_saved_v2_cannot_land_after_the_v2
 
 def _slot_pool(pg_engine, size=None, overflow=None, timeout=3):
     """A slot's own pool (`chain.slots.SLOT_POOL`, 2 + 2) on this test's schema, waiting `timeout` s instead of the
-    product's 30 - a connection that never comes back fails in seconds."""
+    product's 30 - a connection that never comes back fails in seconds. Named for this test: under the box fixture
+    they would be `assy_chain`, and a chain worker starting on the shared test database ends a gone worker's
+    `assy_chain` backends - their locks with them."""
     with pg_engine.connect() as conn:
         schema = conn.execute(text("SELECT current_schema()")).scalar()
     return create_engine(
-        pg_engine.url, pool_timeout=timeout, connect_args=isolated_pg.scratch_connect_args(schema),
+        pg_engine.url, pool_timeout=timeout,
+        connect_args=dict(isolated_pg.scratch_connect_args(schema), application_name="assy_lock_pool_test"),
         pool_size=int(slots.SLOT_POOL["ASSY_DB_POOL_SIZE"]) if size is None else size,
         max_overflow=int(slots.SLOT_POOL["ASSY_DB_MAX_OVERFLOW"]) if overflow is None else overflow)
 
