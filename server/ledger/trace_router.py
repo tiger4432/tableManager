@@ -187,12 +187,12 @@ def evidence_subgraph(
     fanout_limit: int | None = Query(
         None, ge=1,
         description=("Steps from one node along one predicate and direction to more than this "
-                     "many nodes are not drawn - the answer's `bundles` lists them with their "
-                     "count. Absent: everything is drawn")),
+                     "many nodes fold into a hub, as a predicate declared `hub` does - one node in "
+                     "`nodes`, its members the rows of `tables[hub id]`. Absent: only declared ones fold")),
     expand: list[str] | None = Query(
         None,
-        description=("`<node id>|<predicate>|<direction>` of a bundle to draw past "
-                     "`fanout_limit`. May repeat")),
+        description=("A hub id as the answer gave it (`<node id>|<predicate>|<direction>|<far type>|"
+                     "<value>`): that step is drawn unfolded. May repeat")),
     around: str | None = Query(
         None, description=("Time page: the instant (ISO 8601) the first page is nearest to - "
                            "`id`'s atoms along one `follow` on one `direction`, hops=1")),
