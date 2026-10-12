@@ -66,20 +66,20 @@
         }
       ],
       "group_by": "type",
-      "measure": "count",
+      "measure": "Count",
       "groups": [
         {
           "key": "defect",
           "n": 1,
           "value": {
-            "count": 1
+            "Count": 1
           }
         },
         {
           "key": "wafer",
           "n": 2,
           "value": {
-            "count": 2
+            "Count": 2
           }
         }
       ]
@@ -110,20 +110,20 @@
         }
       ],
       "group_by": "product",
-      "measure": "count",
+      "measure": "Count",
       "groups": [
         {
           "key": "A",
           "n": 2,
           "value": {
-            "count": 2
+            "Count": 2
           }
         },
         {
           "key": "B",
           "n": 1,
           "value": {
-            "count": 1
+            "Count": 1
           }
         }
       ]
@@ -151,20 +151,20 @@
         }
       ],
       "group_by": "product",
-      "measure": "count",
+      "measure": "Count",
       "groups": [
         {
           "key": "A",
           "n": 2,
           "value": {
-            "count": 2
+            "Count": 2
           }
         },
         {
           "key": "B",
           "n": 1,
           "value": {
-            "count": 1
+            "Count": 1
           }
         }
       ]
@@ -198,20 +198,20 @@
         }
       ],
       "group_by": "product",
-      "measure": "mean:yield",
+      "measure": "Avg:yield",
       "groups": [
         {
           "key": "A",
           "n": 2,
           "value": {
-            "mean:yield": 3.0
+            "Avg:yield": 3.0
           }
         },
         {
           "key": "B",
           "n": 1,
           "value": {
-            "mean:yield": 9.0
+            "Avg:yield": 9.0
           }
         }
       ]
@@ -253,13 +253,13 @@
         }
       ],
       "group_by": "g",
-      "measure": "median:v",
+      "measure": "Median:v",
       "groups": [
         {
           "key": "x",
           "n": 4,
           "value": {
-            "median:v": 2.5
+            "Median:v": 2.5
           }
         }
       ]
@@ -285,13 +285,13 @@
         }
       ],
       "group_by": "g",
-      "measure": "sum:v",
+      "measure": "Sum:v",
       "groups": [
         {
           "key": "x",
           "n": 2,
           "value": {
-            "sum:v": 3.0
+            "Sum:v": 3.0
           }
         }
       ]
@@ -325,13 +325,13 @@
         }
       ],
       "group_by": "g",
-      "measure": "distinct:v",
+      "measure": "UniqueCount:v",
       "groups": [
         {
           "key": "x",
           "n": 3,
           "value": {
-            "distinct:v": 2
+            "UniqueCount:v": 2
           }
         }
       ]
@@ -356,13 +356,13 @@
         }
       ],
       "group_by": "g",
-      "measure": "sum:v",
+      "measure": "Sum:v",
       "groups": [
         {
           "key": "x",
           "n": 2,
           "value": {
-            "sum:v": null
+            "Sum:v": null
           }
         }
       ]
@@ -391,13 +391,13 @@
         }
       ],
       "group_by": "g",
-      "measure": "sum:v",
+      "measure": "Sum:v",
       "groups": [
         {
           "key": "x",
           "n": 2,
           "value": {
-            "sum:v": 9.0
+            "Sum:v": 9.0
           }
         }
       ]
@@ -431,13 +431,13 @@
         }
       ],
       "group_by": "g",
-      "measure": "min:v",
+      "measure": "Min:v",
       "groups": [
         {
           "key": "x",
           "n": 3,
           "value": {
-            "min:v": -2.0
+            "Min:v": -2.0
           }
         }
       ]
@@ -471,13 +471,13 @@
         }
       ],
       "group_by": "g",
-      "measure": "max:v",
+      "measure": "Max:v",
       "groups": [
         {
           "key": "x",
           "n": 3,
           "value": {
-            "max:v": 11.0
+            "Max:v": 11.0
           }
         }
       ]
@@ -504,16 +504,16 @@
       ],
       "group_by": "g",
       "measure": [
-        "count",
-        "mean:v"
+        "Count",
+        "Avg:v"
       ],
       "groups": [
         {
           "key": "x",
           "n": 2,
           "value": {
-            "count": 2,
-            "mean:v": 3.0
+            "Count": 2,
+            "Avg:v": 3.0
           }
         }
       ]
@@ -555,16 +555,16 @@
       ],
       "group_by": "g",
       "measure": [
-        "sum:inspected@1",
-        "sum:observed@1"
+        "Sum:inspected@1",
+        "Sum:observed@1"
       ],
       "groups": [
         {
           "key": "x",
           "n": 2,
           "value": {
-            "sum:inspected@1": 8.0,
-            "sum:observed@1": 1.0
+            "Sum:inspected@1": 8.0,
+            "Sum:observed@1": 1.0
           }
         }
       ]
@@ -580,7 +580,7 @@
     {
       "name": "an arithmetic measure needs the name of what it folds",
       "group_by": "type",
-      "measure": "mean",
+      "measure": "Avg",
       "code": "measure_needs_a_name"
     },
     {
@@ -596,7 +596,7 @@
         }
       ],
       "group_by": "g",
-      "measure": "sum:v",
+      "measure": "Sum:v",
       "code": "measure_needs_numbers"
     },
     {
@@ -618,7 +618,7 @@
         }
       ],
       "group_by": "g",
-      "measure": "sum:dup",
+      "measure": "Sum:dup",
       "code": "ambiguous_value_name"
     }
   ]
