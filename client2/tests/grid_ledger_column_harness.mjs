@@ -171,6 +171,23 @@ async function suite(mods) {
   eq('C12 a row changed after its translation says changed', [cell(branchOnly.answer, 'dt_job', MOVED),
     cell(source.answer, 'inspection_run', MOVED_HERE)], ['dt_job · appdemo_vf · changed', 'die_inspection · changed · lot_moved']);
   const classOf = (row) => (ledgerColumnDef(branchOnly.answer, 'dt_job') || { cellClass: () => '' }).cellClass({ data: row });
+  // changed null: no print to compare - unknown, said as such and not drawn as changed (lead 1122dffcb).
+  const UNPRINTED = { row_id: '7', [ROWS]: [took('dt_job', 'appdemo_vf', null)] };
+  eq('C14 a row with no print to compare says unverified, dim as the column, not changed',
+    [cell(branchOnly.answer, 'dt_job', UNPRINTED), classOf(UNPRINTED)], ['dt_job · appdemo_vf · unverified', 'cell-system-readonly']);
+  // A world the server could not read: its sources here Unknown, not Not yet; its declaration unread too, the world.
+  const UNREAD = mods.column.LEDGER_UNREAD;
+  const twoWorlds = await labelled(mods, 'inspection_run', await mods.label.everyWorldSources(async (world) => (world
+    ? { ok: true, sources: [{ source: 'vf_insp', relation: 'inspection_run', emits: ['inspected@1'], world }] }
+    : { ...WORLDS[''], sources: DECLARATION.sources.map((s) => ({ ...s, world: 'default' })) })));
+  eq('C15 a world not read says its sources Unknown beside what the others took',
+    cell(twoWorlds.answer, 'inspection_run', { row_id: '8', [ROWS]: [took('die_inspection')], [UNREAD]: ['appdemo_vf'] }),
+    'die_inspection · vf_insp · appdemo_vf · Unknown');
+  eq('C16 nothing taken but a world not read is Unknown, not Not yet; a world with no source known here, by its name',
+    [cell(twoWorlds.answer, 'inspection_run', { row_id: '9', [ROWS]: [], [UNREAD]: ['appdemo_vf'] }),
+      cell(twoWorlds.answer, 'inspection_run', { row_id: '10', [ROWS]: [], [UNREAD]: ['appdemo_ed'] }),
+      cell(twoWorlds.answer, 'inspection_run', { row_id: '11', [ROWS]: [], [UNREAD]: [] })],
+    ['vf_insp · appdemo_vf · Unknown', 'appdemo_ed · Unknown', 'Not yet']);
   eq('C13 a changed row\'s cell stands out of the dim system column; the others stay dim',
     [classOf(MOVED), classOf(OTHER), classOf(OFF)],
     ['cell-system-readonly is-ledger-changed', 'cell-system-readonly', 'cell-system-readonly']);
@@ -216,7 +233,7 @@ const MUTANTS = [
     mutate: { column: (s) => s.replace('  if (!Array.isArray(entries)) return UNKNOWN;',
       '  if (!Array.isArray(entries)) return EMPTY_TEXT[state] || UNKNOWN;') } },
   { id: 'X2', what: '[] is drawn as a list of names (an empty one)', catches: 'C2',
-    mutate: { column: (s) => s.replace('  if (entries.length) return entries.map', '  if (true) return entries.map') } },
+    mutate: { column: (s) => s.replace('  if (said.length) return said.join', '  if (true) return said.join') } },
   { id: 'X3', what: 'an answer about another table stands the column', catches: 'A6',
     mutate: { column: (s) => s.replace('answer.relation === table && ', '') } },
   { id: 'X4', what: 'one refused source makes the whole table refused', catches: 'B1',
@@ -237,9 +254,13 @@ const MUTANTS = [
   { id: 'X12', what: 'another world\'s source said bare, as if the operating world\'s', catches: 'C11',
     mutate: { column: (s) => s.replace('entry.world && entry.world !== operating ? entry.world : null', 'null') } },
   { id: 'X13', what: 'the drift judgment not read - a changed row says nothing', catches: ['C12', 'C13'],
-    mutate: { column: (s) => s.replace('  entry.changed ? CHANGED : null', '  null').replace('row[LEDGER_ROWS].some((e) => e && e.changed)', 'false') } },
+    mutate: { column: (s) => s.replace('entry.changed === true ? CHANGED : ', 'false ? CHANGED : ').replace('row[LEDGER_ROWS].some((e) => e && e.changed === true)', 'false') } },
   { id: 'X14', what: 'the operating world not known, so its own sources say their world', catches: 'C1',
     mutate: { label: (s) => s.replace('rows, operating: this.operating };', 'rows };') } },
+  { id: 'X15', what: 'no print to compare drawn as not changed', catches: 'C14',
+    mutate: { column: (s) => s.replace(' : entry.changed === null ? UNVERIFIED : null]', ' : null]') } },
+  { id: 'X16', what: 'a world not read drawn as Not yet', catches: ['C15', 'C16'],
+    mutate: { column: (s) => s.replace('(Array.isArray(row[LEDGER_UNREAD]) ? row[LEDGER_UNREAD] : [])', '[]') } },
   { id: 'X9', what: 'the write funnels are not told, so a wide paste sends the column', catches: 'W1',
     mutate: { state: (s) => s.replace('  if (colId === LEDGER_COL_ID) return true;\n', '') } },
 ];

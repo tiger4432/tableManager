@@ -18,9 +18,13 @@ export const LEDGER_HEADER = 'Ledger';
 export const NOT_YET = 'Not yet';
 export const REFUSED = 'Refused';
 export const CHANGED = 'changed';
+export const UNVERIFIED = 'unverified';
 /** A row's ledger entries, each `{ source, world, changed }` - which source took it, in which world, and whether the row
- *  changed after it was translated (the ledger's own drift judgment, lead 6424227ff). */
+ *  changed after it was translated (the ledger's own drift judgment, lead 6424227ff): true changed, false not, null no
+ *  print to compare (translated before prints were kept) - unknown, not «not changed». */
 export const LEDGER_ROWS = 'ledger_rows';
+/** The worlds whose declaration or row index the server could not read for this row: their sources Unknown, not Not yet. */
+export const LEDGER_UNREAD = 'ledger_worlds_unread';
 
 /** 열이 서는 답. not_source · pending · idle 은 열이 없습니다. */
 const SHOWN = new Set(['source', 'refused', 'unknown']);
@@ -35,25 +39,31 @@ export function ledgerColumnShown(answer, table) {
 
 /** An entry's words: its source, its world when not the operating one, «changed» when the row moved after translation. */
 const entryText = (entry, operating) => [entry.source, entry.world && entry.world !== operating ? entry.world : null,
-  entry.changed ? CHANGED : null].filter(Boolean).join(' · ');
+  entry.changed === true ? CHANGED : entry.changed === null ? UNVERIFIED : null].filter(Boolean).join(' · ');
 
-/** 한 행의 칸 글자. `operating` 운영 세상 이름 — 그 세상 소스는 이름만(오늘 글자 그대로). */
-export function ledgerCellText(row, state, operating) {
+/** 한 행의 칸 글자. `operating` 운영 세상 이름 — 그 세상 소스는 이름만(오늘 글자 그대로). `declared` 이 표의 소스들(세상마다). */
+export function ledgerCellText(row, state, operating, declared = []) {
   const entries = row ? row[LEDGER_ROWS] : undefined;
   // 서버가 칸을 안 실었다 = 원장 색인을 못 읽었다. `[]` 로 읽으면 「아직」이라는 주장이 됩니다.
   if (!Array.isArray(entries)) return UNKNOWN;
+  // A world not read: each of its sources here Unknown; none known (its declaration unread too), the world by its name.
+  const lost = (Array.isArray(row[LEDGER_UNREAD]) ? row[LEDGER_UNREAD] : []).flatMap((world) => {
+    const there = declared.filter((s) => s.world === world).map((s) => s.source);
+    return (there.length ? there : [null]).map((source) => [source, world !== operating ? world : null, UNKNOWN].filter(Boolean).join(' · '));
+  });
   // 이름은 색인의 사실입니다 — 소스가 지금 거절됐어도 예전에 올린 것은 올린 것입니다.
-  if (entries.length) return entries.map((entry) => entryText(entry, operating)).join(' · ');
+  const said = [...entries.map((entry) => entryText(entry, operating)), ...lost];
+  if (said.length) return said.join(' · ');
   return EMPTY_TEXT[state] || UNKNOWN;
 }
 
 /** The row changed after it was translated, by any source that took it. */
-export const ledgerRowChanged = (row) => Boolean(row && Array.isArray(row[LEDGER_ROWS]) && row[LEDGER_ROWS].some((e) => e && e.changed));
+export const ledgerRowChanged = (row) => Boolean(row && Array.isArray(row[LEDGER_ROWS]) && row[LEDGER_ROWS].some((e) => e && e.changed === true));
 
 /** 열 정의 — 그리드가 목록의 «맨 끝»에 붙입니다. 열이 없으면 `null`. */
 export function ledgerColumnDef(answer, table) {
   if (!ledgerColumnShown(answer, table)) return null;
-  const { state, operating } = answer;
+  const { state, operating, rows: declared } = answer;
   return {
     headerName: LEDGER_HEADER,
     colId: LEDGER_COL_ID,
@@ -63,7 +73,7 @@ export function ledgerColumnDef(answer, table) {
     filter: false,
     floatingFilter: false,
     resizable: true,
-    valueGetter: (params) => ledgerCellText(params.data, state, operating),
+    valueGetter: (params) => ledgerCellText(params.data, state, operating, declared),
     // A changed row stands out of the dim system column (owner 10-12).
     cellClass: (params) => (ledgerRowChanged(params.data) ? 'cell-system-readonly is-ledger-changed' : 'cell-system-readonly'),
   };
