@@ -8,9 +8,10 @@
  *
  *   A  column there or not × the label's answer (and an answer about ANOTHER table)
  *   B  the label says each source's own state; `refused` only when every source reading it is refused
- *   C  the cell × `ledger_sources` × the table's answer — every cell of that table is asserted
+ *   C  the cell × the row's ledger entries × the table's answer — every cell of that table is asserted
  *   G  the real `buildColumnDefs` puts it last, after updated_at
  *   W  the write funnels skip it (the one 「may I write this grid column」 seat)
+ *   E  every world's sources (owner 10-12): the label reads the one all-worlds loader the banner reads
  *
  * Every assertion is woken by a mutant below.
  */
@@ -55,7 +56,7 @@ const REAL = {
 const REFUSAL = { code: 'source_refused', path: 'bundle.sources.bonded_from.relation',
   message: "source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (view); "
     + 'a ledger source must read a table that has row_id' };
-const DECLARATION = { ok: true, sources: [
+const DECLARATION = { ok: true, operating: 'default', sources: [
   { source: 'die_inspection', relation: 'inspection_run', emits: ['inspected@1'] },
   { source: 'bonded_from', relation: 'bonding_die_from_core', emits: ['bonded_from@1'],
     planned: false, refusal: REFUSAL },
@@ -125,11 +126,34 @@ async function suite(mods) {
   eq('B4 the answer is told once per change, not once per render',
     source.told.map((a) => a.state), ['idle', 'source']);
 
+  // ── E. every world: a table only another world declares a source of stands the column ──
+  const asked = [];
+  const WORLDS = {
+    '': { ok: true, operating: 'default', worlds: ['default', 'appdemo_vf'], sources: DECLARATION.sources },
+    appdemo_vf: { ok: true, sources: [{ source: 'dt_job', relation: 'dt_job', emits: ['ran@1'], world: 'appdemo_vf' }] },
+  };
+  const loadWorld = async (world) => { asked.push(world || ''); return WORLDS[world || '']; };
+  const branchOnly = await labelled(mods, 'dt_job', await mods.label.everyWorldSources(loadWorld));
+  eq('E1 a table whose source only another world declares has the column', shown(branchOnly.answer, 'dt_job'), true);
+  eq('E2 each world asked once, the operating world first and not again', asked, ['', 'appdemo_vf']);
+  const lines = (await labelled(mods, 'inspection_run', await mods.label.everyWorldSources(async (world) => (world
+    ? { ok: true, sources: [{ source: 'vf_insp', relation: 'inspection_run', emits: ['inspected@1'], world }] }
+    : { ...WORLDS[''], sources: DECLARATION.sources.map((s) => ({ ...s, world: 'default' })) }))))
+    .host.textContent;
+  eq('E4 the label\'s line of another world names it; the operating world\'s line reads as today',
+    [lines.includes('ledger source — vf_insp · appdemo_vf · emits inspected@1'),
+      lines.includes('ledger source — die_inspection · emits inspected@1')], [true, true]);
+  eq('E3 the operating world unreadable is unreadable, not «not a source»',
+    (await labelled(mods, 'dt_job', await mods.label.everyWorldSources(async () => ({ ok: false, message: 'server refused (503)' })))).answer.state,
+    'unknown');
+
   // ── C. the cell ─────────────────────────────────────────────────────────────────
   const cell = (answer, table, row) => (ledgerColumnDef(answer, table) || { valueGetter: () => '(no column)' })
     .valueGetter({ data: row });
-  const TWO = { row_id: '1', ledger_sources: ['die_inspection', 'lot_moved'] };
-  const NONE = { row_id: '2', ledger_sources: [] };
+  const ROWS = mods.column.LEDGER_ROWS;
+  const took = (source, world = 'default', changed = false) => ({ source, world, changed });
+  const TWO = { row_id: '1', [ROWS]: [took('die_inspection'), took('lot_moved')] };
+  const NONE = { row_id: '2', [ROWS]: [] };
   const OFF = { row_id: '3' };                     // the server could not read the row index
   eq('C1 source table · names', cell(source.answer, 'inspection_run', TWO), 'die_inspection · lot_moved');
   eq('C2 source table · [] is Not yet', cell(source.answer, 'inspection_run', NONE), 'Not yet');
@@ -138,11 +162,55 @@ async function suite(mods) {
     'die_inspection · lot_moved');
   eq('C5 refused table · [] is Refused', cell(refused.answer, 'bonding_die_from_core', NONE), 'Refused');
   eq('C6 refused table · no key is Unknown', cell(refused.answer, 'bonding_die_from_core', OFF), 'Unknown');
-  eq('C7 unreadable declaration · names', cell(unknown.answer, 'inspection_run', TWO), 'die_inspection · lot_moved');
+  // The operating world is the declaration's to say: unread, every entry says its world.
+  eq('C7 unreadable declaration · names, then their world', cell(unknown.answer, 'inspection_run', TWO),
+    'die_inspection · lot_moved · default');
   eq('C8 unreadable declaration · [] is Unknown, not Not yet', cell(unknown.answer, 'inspection_run', NONE), 'Unknown');
   eq('C9 unreadable declaration · no key is Unknown', cell(unknown.answer, 'inspection_run', OFF), 'Unknown');
   eq('C10 a table with a standing source and a refused one · [] is Not yet', cell(mixed.answer, 'lot_event', NONE),
     'Not yet');
+  // Every world (owner 10-12): the operating world's source bare, as today; another world's with its world; a row
+  // changed after its translation says so and stands out.
+  const OTHER = { row_id: '4', [ROWS]: [took('dt_job', 'appdemo_vf')] };
+  const MOVED = { row_id: '5', [ROWS]: [took('dt_job', 'appdemo_vf', true)] };
+  const MOVED_HERE = { row_id: '6', [ROWS]: [took('die_inspection', 'default', true), took('lot_moved')] };
+  eq('C11 another world\'s source says its world', cell(branchOnly.answer, 'dt_job', OTHER), 'dt_job · appdemo_vf');
+  // One word first, whole at the column's width (lead 10-12): changed > Not yet > Unknown > the sources.
+  eq('C12 a row changed after its translation says changed first, then where', [cell(branchOnly.answer, 'dt_job', MOVED),
+    cell(source.answer, 'inspection_run', MOVED_HERE)], ['changed · appdemo_vf', 'changed · die_inspection']);
+  const classOf = (row) => (ledgerColumnDef(branchOnly.answer, 'dt_job') || { cellClass: () => '' }).cellClass({ data: row });
+  // changed null: no print to compare - unknown, said as such and not drawn as changed (lead 1122dffcb).
+  const UNPRINTED = { row_id: '7', [ROWS]: [took('dt_job', 'appdemo_vf', null)] };
+  const tip = (answer, table, row) => (ledgerColumnDef(answer, table) || { tooltipValueGetter: () => '(no column)' })
+    .tooltipValueGetter({ data: row });
+  eq('C14 a row with no print to compare is not changed: dim, its hover says unverified',
+    [cell(branchOnly.answer, 'dt_job', UNPRINTED), classOf(UNPRINTED), tip(branchOnly.answer, 'dt_job', UNPRINTED)],
+    ['dt_job · appdemo_vf', 'cell-system-readonly', 'appdemo_vf — dt_job — unverified']);
+  // A world the server could not read: its sources here Unknown, not Not yet; its declaration unread too, the world.
+  const UNREAD = mods.column.LEDGER_UNREAD;
+  const twoWorlds = await labelled(mods, 'inspection_run', await mods.label.everyWorldSources(async (world) => (world
+    ? { ok: true, sources: [{ source: 'vf_insp', relation: 'inspection_run', emits: ['inspected@1'], world }] }
+    : { ...WORLDS[''], sources: DECLARATION.sources.map((s) => ({ ...s, world: 'default' })) })));
+  const READ_ONE = { row_id: '8', [ROWS]: [took('die_inspection')], [UNREAD]: ['appdemo_vf'] };
+  eq('C15 a world not read rides the tail as unknown, and its hover line says Unknown',
+    [cell(twoWorlds.answer, 'inspection_run', READ_ONE), tip(twoWorlds.answer, 'inspection_run', READ_ONE)],
+    ['die_inspection · 1 unknown', 'default — die_inspection — synced\nappdemo_vf — vf_insp — Unknown']);
+  eq('C16 nothing taken by a world read stays Not yet though a world was not read (lead 10-12)',
+    [cell(twoWorlds.answer, 'inspection_run', { row_id: '9', [ROWS]: [], [UNREAD]: ['appdemo_vf'] }),
+      cell(twoWorlds.answer, 'inspection_run', { row_id: '10', [ROWS]: [], [UNREAD]: ['appdemo_ed', 'appdemo_vf'] }),
+      cell(twoWorlds.answer, 'inspection_run', { row_id: '11', [ROWS]: [], [UNREAD]: [] })],
+    ['Not yet · 1 unknown', 'Not yet · 2 unknown', 'Not yet']);
+  const THREE = { row_id: '12', [ROWS]: [took('die_inspection'), took('vf_insp', 'appdemo_vf'), took('ed_insp', 'appdemo_ed')] };
+  const TWO_MOVED = { row_id: '13', [ROWS]: [took('die_inspection'), took('vf_insp', 'appdemo_vf', true), took('ed_insp', 'appdemo_ed', true)] };
+  eq('C17 the operating world\'s sources first and the other worlds a count; changed in two worlds, their count',
+    [cell(twoWorlds.answer, 'inspection_run', THREE), cell(twoWorlds.answer, 'inspection_run', TWO_MOVED)],
+    ['die_inspection · +2 worlds', 'changed · 2 worlds']);
+  eq('C18 the hover: a line per world and source, the operating world first, each its own word',
+    tip(twoWorlds.answer, 'inspection_run', { row_id: '14', [ROWS]: [took('vf_insp', 'appdemo_vf', true)] }),
+    'default — die_inspection — Not yet\nappdemo_vf — vf_insp — changed');
+  eq('C13 a changed row\'s cell stands out of the dim system column; the others stay dim',
+    [classOf(MOVED), classOf(OTHER), classOf(OFF)],
+    ['cell-system-readonly is-ledger-changed', 'cell-system-readonly', 'cell-system-readonly']);
 
   // ── G. the real grid puts it at the end ─────────────────────────────────────────
   // the grid (real or a mutated copy) imports the real state.js, so this is the object it reads
@@ -182,10 +250,10 @@ result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 const probed = async (file, mutate) => (await loadWithProbe(FILE(file), { mutate })).module;
 const MUTANTS = [
   { id: 'X1', what: 'a row the server could not read is drawn as Not yet', catches: 'C3',
-    mutate: { column: (s) => s.replace('  if (!Array.isArray(names)) return UNKNOWN;',
-      '  if (!Array.isArray(names)) return EMPTY_TEXT[state] || UNKNOWN;') } },
+    mutate: { column: (s) => s.replace('  if (!Array.isArray(entries)) return UNKNOWN;',
+      '  if (!Array.isArray(entries)) return EMPTY_TEXT[state] || UNKNOWN;') } },
   { id: 'X2', what: '[] is drawn as a list of names (an empty one)', catches: 'C2',
-    mutate: { column: (s) => s.replace('  if (names.length) return names.join', '  if (true) return names.join') } },
+    mutate: { column: (s) => s.replace('  if (!entries.length) return [EMPTY_TEXT', '  if (false) return [EMPTY_TEXT') } },
   { id: 'X3', what: 'an answer about another table stands the column', catches: 'A6',
     mutate: { column: (s) => s.replace('answer.relation === table && ', '') } },
   { id: 'X4', what: 'one refused source makes the whole table refused', catches: 'B1',
@@ -201,6 +269,29 @@ const MUTANTS = [
     mutate: { grid: (s) => s.replace('    columnDefs.push(ledger);', '    columnDefs.splice(0, 0, ledger);') } },
   { id: 'X10', what: 'the Ledger column is left out of the range highlight', catches: 'G3',
     mutate: { grid: (s) => s.replace("    ledger.cellClassRules = { 'custom-range-selected'", "    ledger.unused = { 'custom-range-selected'") } },
+  { id: 'X11', what: 'the label reads the operating world alone', catches: ['E1', 'E2'],
+    mutate: { label: (s) => s.replace('  const others = await Promise.all(', '  const others = [] || await Promise.all(') } },
+  { id: 'X12', what: 'another world\'s source said bare, as if the operating world\'s', catches: 'C11',
+    mutate: { column: (s) => s.replace('const head = worlds[0] === operating ? first : [...first, worlds[0]];', 'const head = first;') } },
+  { id: 'X13', what: 'the drift judgment not read - a changed row says nothing', catches: ['C12', 'C13'],
+    mutate: { column: (s) => s.replace('const changed = entries.filter((e) => e.changed === true);', 'const changed = [];').replace('row[LEDGER_ROWS].some((e) => e && e.changed === true)', 'false') } },
+  { id: 'X14', what: 'the operating world not known, so its own sources say their world', catches: 'C1',
+    mutate: { label: (s) => s.replace('rows, operating: this.operating };', 'rows };') } },
+  { id: 'X15', what: 'no print to compare drawn as not changed', catches: 'C14',
+    mutate: { column: (s) => s.replace('e.changed === false ? SYNCED : UNVERIFIED', 'SYNCED') } },
+  { id: 'X16', what: 'a world not read drawn as Not yet', catches: ['C15', 'C16'],
+    mutate: { column: (s) => s.replace('Array.isArray(row[LEDGER_UNREAD]) ? row[LEDGER_UNREAD] : []', '[]') } },
+  { id: 'X17', what: 'the source said first and the state after it (cut at the column\'s width)', catches: 'C12',
+    mutate: { column: (s) => s.replace('return [CHANGED, which, ...unknownTail]', 'return [which, CHANGED, ...unknownTail]') } },
+  { id: 'X18', what: 'a world not read drawn instead of Not yet when no world read took it', catches: 'C16',
+    mutate: { column: (s) => s.replace('  if (!entries.length) return [EMPTY_TEXT[state] || UNKNOWN, ...unknownTail]',
+      '  if (!entries.length) return [unread.length ? UNKNOWN : EMPTY_TEXT[state] || UNKNOWN, ...unknownTail]') } },
+  { id: 'X19', what: 'the other worlds not counted - the cell says the operating world alone', catches: 'C17',
+    mutate: { column: (s) => s.replace('const more = worlds.length > 1 ?', 'const more = false ?') } },
+  { id: 'X20', what: 'the hover says the cell again, not a line per world', catches: ['C15', 'C18'],
+    mutate: { column: (s) => s.replace('    tooltipValueGetter: (params) => ledgerCellTip(', '    tooltipValueGetter: (params) => ledgerCellText(') } },
+  { id: 'X21', what: 'the label\'s line of another world without its world', catches: 'E4',
+    mutate: { label: (s) => s.replace('row.world && row.world !== this.operating\n', 'false\n') } },
   { id: 'X9', what: 'the write funnels are not told, so a wide paste sends the column', catches: 'W1',
     mutate: { state: (s) => s.replace('  if (colId === LEDGER_COL_ID) return true;\n', '') } },
 ];

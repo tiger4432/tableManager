@@ -1755,7 +1755,10 @@ const FLOORS = new Map([
   // New 2026-09-25 (lead f3bc02f6e, owner 「at the end」). The grid's Ledger column takes the source
   // label's ONE answer to 「is this table a ledger source」, scored through the real label, the real
   // buildColumnDefs and the write funnels' seat; a refused source and a half-refused table included.
-  ['grid_ledger_column_harness.mjs', 36],
+  // 36 -> 46 (E1-E3 every world, C11-C13 world and changed, X11-X14; lead 6424227ff).
+  // 46 -> 51 (C14 unverified, C15 C16 a world not read Unknown, X15 X16; lead 1122dffcb).
+  // 51 -> 59 (one word first, the tail, the hover a line per world, the label's world - C17 C18 E4, X17-X21; lead 10-12).
+  ['grid_ledger_column_harness.mjs', 59],
   // New 2026-09-25 (lead b73255fc5 E). The declaration check's problem lines, the same server reason
   // folded into one — scored on the real view module; which lines are problems is POPULATION_TONE's.
   // 14 -> 17 (b93cdf327): the domain joins the key, the biggest group first, no sentence carried.

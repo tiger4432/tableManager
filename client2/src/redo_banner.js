@@ -215,12 +215,14 @@ export class RedoBanner {
     }
   }
 
-  /** 판을 버튼 줄 «밑»에 앉힙니다 — placeUnder 가 body 로 옮겨 오른쪽 끝을 버튼 줄에 맞춥니다(헤더 배율 밖, 소유자
-   *  10-09). host 에서 태어나므로 판 안 클릭은 여전히 host «안»입니다(placedFrom). 헤더 안에 두던 때는 버튼 그룹의
-   *  `overflow: hidden` 에 잘리고(09-02) 배율에 밀렸습니다(10-08). */
+  /** 판을 «연 버튼» 밑에 앉힙니다 — placeUnder 가 body 로 옮겨 오른쪽 끝을 그 버튼에 맞춥니다(헤더 배율 밖, 소유자
+   *  10-09; 버튼 줄의 끝에 맞추면 Re-translate 판이 제 버튼에서 떨어집니다, 총괄 10-12). Replay chain 은 줄의 끝이라
+   *  자리가 같습니다. host 에서 태어나므로 판 안 클릭은 여전히 host «안»입니다(placedFrom). 헤더 안에 두던 때는 버튼
+   *  그룹의 `overflow: hidden` 에 잘리고(09-02) 배율에 밀렸습니다(10-08). */
   place(box, bar) {
     if (!box.getBoundingClientRect || !bar.getBoundingClientRect) return;
-    placeUnder(box, bar);
+    const opener = bar.querySelector ? bar.querySelector(`[data-redo="${this.open}"]`) : null;
+    placeUnder(box, opener || bar);
   }
 
   button(which, label, enabled) {

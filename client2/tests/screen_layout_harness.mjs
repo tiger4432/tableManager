@@ -76,6 +76,25 @@ const QUEUE = {
       waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: s.chain_state, slot_pid: 4242 })),
   },
 };
+// The main grid's Ledger column (lead 10-12): the recorded table is declared a source of the operating world and its rows
+// carry ledger_rows - the first changed in another world, the second taken by no world read with one world not read - so
+// a cell can measure what the column draws at its own width. The answers were recorded before either.
+const LEDGER_TABLE = 'ledger_events';
+const LEDGER_SOURCE = { source: 'fake_measure_events', relation: LEDGER_TABLE, emits: ['has_measurement', 'of_quantity'], world: 'default' };
+const bodyOf = (a) => (typeof a.body === 'string' ? JSON.parse(a.body) : a.body);
+for (const [key, a] of Object.entries(ANSWERS)) {
+  if (!a || a.same_as || !a.body) continue;
+  if (key.startsWith('/api/ledger/declaration')) {
+    const b = bodyOf(a);
+    if (Array.isArray(b.sources)) a.body = { ...b, sources: [...b.sources, LEDGER_SOURCE] };
+  } else if (key.startsWith(`/tables/${LEDGER_TABLE}/data?`)) {
+    const b = bodyOf(a);
+    const took = (world, changed) => ({ source: LEDGER_SOURCE.source, world, changed });
+    if (Array.isArray(b.data)) a.body = { ...b, data: b.data.map((row, i) => ({ ...row,
+      ledger_rows: i === 0 ? [took('default', false), took('appdemo_ed', true)] : i === 1 ? [] : [took('default', false)],
+      ledger_worlds_unread: i === 1 ? ['qa_unread'] : [] })) };
+  }
+}
 const answerOf = (u) => {
   for (const [p, body] of Object.entries(QUEUE)) if (u.pathname === p) return { status: 200, type: 'application/json', body };
   const a = ANSWERS[u.pathname + u.search];
@@ -132,6 +151,32 @@ const CELLS = [
   return log.title === t ? null : \`its title «\${log.title.slice(0, 30)}» is not its sentence «\${t.slice(0, 30)}»\`;
 })()` },
 ];
+// The Ledger cell's first word whole at the column's own width (lead 10-12): the changed row starts «changed», the row no
+// world read took starts «Not yet» though a world was not read - the word's letters inside the cell, not under the ellipsis.
+CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'ledger word first', at: 'ledger-cell', expr: `(async () => {
+  const scrollers = [...document.querySelectorAll('.ag-body-horizontal-scroll-viewport, .ag-center-cols-viewport')];
+  const was = scrollers.map((s) => s.scrollLeft);
+  scrollers.forEach((s) => { s.scrollLeft = s.scrollWidth; s.dispatchEvent(new Event('scroll')); });
+  await new Promise((r) => setTimeout(r, 400));
+  try {
+    const cells = [...document.querySelectorAll('.ag-cell[col-id="#ledger"]')].filter((c) => c.getClientRects().length);
+    if (!cells.length) return 'no Ledger cell drawn';
+    for (const [word, what] of [['changed', 'the changed row'], ['Not yet', 'the row no world read took']]) {
+      const c = cells.find((x) => x.textContent.trim().startsWith(word));
+      if (!c) return 'Ledger: ' + what + ' does not start with ' + word + ' (' + cells.slice(0, 3).map((x) => x.textContent.trim()).join(' | ') + ')';
+      const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && !node.data.includes(word)) node = walker.nextNode();
+      if (!node) return 'Ledger: no text holds ' + word;
+      const range = document.createRange(), at = node.data.indexOf(word);
+      range.setStart(node, at); range.setEnd(node, at + word.length);
+      const cr = c.getBoundingClientRect(), end = cr.right - parseFloat(getComputedStyle(c).paddingRight);
+      const r = range.getBoundingClientRect();
+      if (r.right > end + 0.5) return 'Ledger: ' + word + ' cut in a ' + Math.round(cr.width) + ' px cell, its letters ' + Math.round(r.right - end) + ' px past the text';
+    }
+    return null;
+  } finally { scrollers.forEach((s, i) => { s.scrollLeft = was[i]; s.dispatchEvent(new Event('scroll')); }); }
+})()` });
 // The Retroactive tab's contents (owner 10-11 R): a chip a card, and a press brings that card to the tab's top - the last
 // ones as far as the tab scrolls; the header's own press (folding) not taken.
 CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'retroactive-sub', expr: `(() => {
@@ -1052,6 +1097,9 @@ const MUTANTS = [
       '.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; position: absolute; inset: 0 0 auto 0; z-index: 5; }']] },
   { name: 'the header message title not following its text', entry: 'index.html', rule: 'message title', at: 'performance-log',
     file: 'src/main.js', edits: [['      followTitle(elements.performanceLog);\n', '']] },
+  // The Ledger cell's source said first again (lead 10-12): its state word goes under the ellipsis at the column's width.
+  { name: 'the Ledger cell says its source before changed', entry: 'index.html', rule: 'ledger word first', at: 'ledger-cell',
+    file: 'src/grid_ledger_column.js', edits: [['return [CHANGED, which, ...unknownTail]', 'return [changed[0].source, CHANGED, which, ...unknownTail]']] },
   { name: 'the audit Kind column back at 74px', entry: 'index.html', rule: 'kind word whole', at: 'audit-kind',
     file: 'src/style.css', edits: [['70px 62px 96px 96px 110px minmax(72px, 1fr)', '70px 62px 74px 96px 110px minmax(72px, 1fr)']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',

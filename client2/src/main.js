@@ -33,7 +33,7 @@ import { WorldTabs } from './world_tabs.js';
 /** 체인 뱃지를 다시 묻는 간격. 서버의 stale_after 가 60 초라 그보다 촘촘할 이유가 없다. */
 const CHAIN_BADGE_POLL_MS = 20000;
 import { startup } from './startup.js';
-import { GridSourceLabel } from './grid_source_label.js';
+import { GridSourceLabel, everyWorldSources } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
 import { withWorld } from './world.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
@@ -226,6 +226,10 @@ async function loadLedgerDeclaration(world) {
   }
 }
 
+// Every world's sources, asked once - the label and the Re-translate banner read this one answer (owner 10-12).
+let sourcesAsked = null;
+const sourcesEveryWorld = () => (sourcesAsked = sourcesAsked || everyWorldSources(loadLedgerDeclaration));
+
 // 그리드 머리의 원장 소스 라벨. 자기 div 하나를 받고, 표 이름은 «화면이» 알려 줍니다.
 let sourceLabel = null;
 let redoBanner = null;
@@ -234,7 +238,7 @@ function initGridSourceLabel() {
   if (!host) return null;
   const part = new GridSourceLabel(host, {
     doc: document,
-    loadDeclaration: loadLedgerDeclaration,
+    loadDeclaration: sourcesEveryWorld,
     // 그리드의 Ledger 열이 라벨과 «같은 답»을 씁니다. 열 정의만 다시 씁니다 — 행은 그대로.
     onAnswer: (answer) => {
       state.ledgerAnswer = answer;
@@ -339,14 +343,8 @@ function initRedoBanner() {
       window.location.href = '/admin.html';
     },
   });
-  // Source tables are every world's (owner 10-12): the operating world's declaration, then each other world's,
-  // one request each - asked together, a source id two worlds declare comes back once (first world wins).
-  loadLedgerDeclaration().then(async (got) => {
-    if (!got || !got.ok) { part.setSources(null); return; }
-    const others = await Promise.all(got.worlds.filter((world) => world !== got.operating)
-      .map((world) => loadLedgerDeclaration(world)));
-    part.setSources([got, ...others].flatMap((each) => (each.ok && each.sources) || []), got.operating);
-  });
+  // Source tables are every world's (owner 10-12) - the label's same answer.
+  sourcesEveryWorld().then((got) => part.setSources(got.ok ? got.sources : null, got.operating));
   // 체인은 `rule` 이 «필수» 파라미터라, 이름을 모르면 돌릴 줄이 없습니다. 그 목록은
   // 이제 «표가 정해질 때» 옴니다(`redoBannerFollows`) — 부팅도 그 자리를 지납니다.
   return part;

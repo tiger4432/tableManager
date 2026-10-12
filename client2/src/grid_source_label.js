@@ -34,6 +34,20 @@ function rowsFor(sources, relation) {
 /** 로더가 이 소스를 세우지 «않았다» (선언 라우트의 `planned: false`). */
 const refusedByLoader = (row) => row.planned === false;
 
+/**
+ * Every world's sources (owner 10-12): the operating world's declaration, then each other world's, one request each -
+ * the one loader the label and the Re-translate banner both read (two loaders were the defect: the label read the
+ * operating world alone). `loadDeclaration(world)` answers one world, none the operating one.
+ */
+export async function everyWorldSources(loadDeclaration) {
+  const got = await loadDeclaration();
+  if (!got || got.ok === false || !Array.isArray(got.sources)) return { ok: false, message: (got && got.message) || null };
+  const others = await Promise.all((Array.isArray(got.worlds) ? got.worlds : []).filter((world) => world !== got.operating)
+    .map((world) => loadDeclaration(world)));
+  return { ok: true, operating: got.operating,
+    sources: [got, ...others].flatMap((each) => (each && each.ok !== false && Array.isArray(each.sources) ? each.sources : [])) };
+}
+
 export class GridSourceLabel {
   constructor(host, deps) {
     const options = deps || {};
@@ -79,6 +93,8 @@ export class GridSourceLabel {
     }
     if (got && got.ok !== false && Array.isArray(got.sources)) {
       this.sources = got.sources;
+      // The operating world's name: a row's source in it is said bare, another world's with its world (owner 10-12).
+      this.operating = got.operating || null;
       this.loadState = 'ready';
       this.message = null;
     } else {
@@ -115,7 +131,7 @@ export class GridSourceLabel {
     if (this.loadState === 'refused') return { relation, state: 'unknown', rows: [] };
     const rows = rowsFor(this.sources, relation);
     if (!rows.length) return { relation, state: 'not_source', rows };
-    return { relation, state: rows.every(refusedByLoader) ? 'refused' : 'source', rows };
+    return { relation, state: rows.every(refusedByLoader) ? 'refused' : 'source', rows, operating: this.operating };
   }
 
   render() {
@@ -176,7 +192,9 @@ export class GridSourceLabel {
       line.className = refused ? 'grid-source-label__row is-refused' : 'grid-source-label__row';
       const name = doc.createElement('span');
       name.className = 'grid-source-label__name';
-      name.textContent = `ledger source — ${row.source}`;
+      // Another world's line names its world; the operating world's reads as today (lead 10-12).
+      name.textContent = row.world && row.world !== this.operating
+        ? `ledger source — ${row.source} · ${row.world}` : `ledger source — ${row.source}`;
       line.appendChild(name);
       const makes = doc.createElement('span');
       makes.className = 'grid-source-label__emits';

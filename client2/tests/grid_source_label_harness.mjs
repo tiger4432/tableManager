@@ -204,8 +204,8 @@ const MUTANTS = [
   { id: 'M6', what: 'the label prints the relation instead of the declared source name',
     catches: 'B1',
     mutate: (s) => s.replace(
-      '      name.textContent = `ledger source — ${row.source}`;',
-      '      name.textContent = `ledger source — ${row.relation}`;') },
+      ' : `ledger source — ${row.source}`;',
+      ' : `ledger source — ${row.relation}`;') },
 ];
 
 const result = await suite(await loadModule());
