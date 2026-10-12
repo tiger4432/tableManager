@@ -517,7 +517,7 @@ export async function fetchSubgraph(params) {
 //    따로 있습니다. 이 하나를 빼는 대신 「수는 절단」을 일반 규칙으로 두면, 서버가 다음 수치
 //    절단 축을 더하는 날 이 줄이 «저절로» 압니다 — 이름 목록은 그날 조용히 짧아집니다.
 const NOT_A_CUT = 'interval_excluded';
-function truncationAxes(raw, options) {
+export function truncationAxes(raw, options) {
   if (!raw || typeof raw !== 'object') return null;
   const hopsChosen = !!(options && options.hopsChosen);
   const isCut = (key) => {

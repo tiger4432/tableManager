@@ -40,6 +40,8 @@ export default defineConfig({
         //    별도 엔트리인 이유: 그 보드는 «격자에 앉은 부품 여럿»이고 이건 «한 부품이
         //    화면을 통째로 쓰는» 페이지라, 같은 페이지의 라우트로는 배치가 안 됩니다.
         walk: resolve(__dirname, 'walk.html'),
+        // The visual testbed (lead aca803a7a): the visual part's kinds, basket, status bar, filters, properties.
+        testbed: resolve(__dirname, 'testbed.html'),
         // The base layer's sample page (lead de64fb0f9) — every base element, both themes.
         sample: resolve(__dirname, 'sample.html')
       }

@@ -81,6 +81,8 @@ function tokenGraph(overrides = {}) {
     for (const m of text.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)) defined.add(m[1]);
     // 런타임에 심는 것도 «정의»입니다. 안 세면 그 토큰이 거짓 양성으로 올라옵니다.
     for (const m of text.matchAll(/setProperty\(\s*['"`](--[A-Za-z0-9_-]+)/g)) defined.add(m[1]);
+    // ...이름을 객체 키로 들고 있다가 setProperty(k, v) 로 심는 것도 같습니다(시험대 palette.js themeVars).
+    for (const m of text.matchAll(/['"`](--[A-Za-z0-9_-]+)['"`]\s*:/g)) defined.add(m[1]);
     text.split('\n').forEach((line, i) => {
       for (const m of line.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*([,)])/g)) {
         // 🔴 대체값은 «정의된» 이름에만 뜻이 있습니다(그 토큰이 안 실린 호스트). 아무도 정의 안 한
@@ -157,6 +159,8 @@ const ADMIN_TEXT = readFileSync(ADMIN_HTML, 'utf8');
 const TOKENS_TEXT = readFileSync(TOKENS, 'utf8');
 const WALK_STYLES = path.join(CLIENT, 'src', 'walk', 'styles.js');
 const WALK_TEXT = readFileSync(WALK_STYLES, 'utf8');
+const TESTBED_PALETTE = path.join(CLIENT, 'src', 'testbed', 'palette.js');
+const TESTBED_PALETTE_TEXT = readFileSync(TESTBED_PALETTE, 'utf8');
 const swap = (text, from, to) => {
   if (!text.includes(from)) {
     console.error(`HARNESS FAILURE: mutation anchor stopped matching: ${JSON.stringify(from)}`);
@@ -188,6 +192,8 @@ const DEFECTS = [
   ['M7 걷기 화면의 CSS 문자열에 지어진 이름 하나 -> T1',
    () => ({ [WALK_STYLES]: swap(WALK_TEXT, '.wk-trunc { color: var(--warning); }',
                                 '.wk-trunc { color: var(--nowhere, #fff); }') })],
+  ['M8 시험대 팔레트가 키 하나를 잃는다 -> T1 (testbed.css 가 부르는 자리가 고아가 된다)',
+   () => ({ [TESTBED_PALETTE]: swap(TESTBED_PALETTE_TEXT, " '--tb-dim': t.dim,", '') })],
 ];
 const CONTROLS = [
   // 🔴 «정의된» 이름의 대체값은 토큰이 안 실린 호스트를 위한 것입니다. 이것이 잡히면 게이트가 정당한 코드를 빨갛게 만듭니다.

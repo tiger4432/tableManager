@@ -123,7 +123,7 @@ export const pointWords = (point) => point.map(([name, v]) => `${name} ${valueWo
 
 /** Every way from `starts` along `steps` - inside `inside` when given; a column's (`last`) ending at its node or at its far
  *  types when it names them - its end node and last edge; past `cap`, `more`. */
-function waysOf(index, inside, starts, steps, cap, last = null) {
+export function waysOf(index, inside, starts, steps, cap, last = null) {
   const lastId = last && last.end;
   const lastTypes = last && last.endTypes;
   let ends = starts.map((node) => ({ node, edge: null }));

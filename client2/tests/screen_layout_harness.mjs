@@ -151,6 +151,26 @@ const CELLS = [
   return log.title === t ? null : \`its title «\${log.title.slice(0, 30)}» is not its sentence «\${t.slice(0, 30)}»\`;
 })()` },
 ];
+// The open start picker takes a press: the centre of each of its controls reaches that control, not what lies under it
+// (lead 10-13, 18997: the testbed's picker hung clipped under its panel - the point over its key box hit the scatter).
+const PICKER_REACH = `(() => {
+  const body = [...document.querySelectorAll('details.wk-barpop[open] > .wk-barpopbody')].find((b) => b.getClientRects().length);
+  if (!body) return 'no open start picker';
+  const parts = [...body.querySelectorAll('select, input, button')].filter((x) => x.getClientRects().length);
+  if (!parts.length) return 'the open start picker shows no control';
+  for (const x of parts) {
+    const r = x.getBoundingClientRect();
+    const hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+    if (!hit || !(hit === x || x.contains(hit))) {
+      return 'a press on the picker ' + x.tagName.toLowerCase() + ' «' + (x.textContent || x.placeholder || x.value || '').trim().slice(0, 20)
+        + '» reaches ' + (hit ? hit.tagName.toLowerCase() + (hit.className ? '.' + String(hit.className).split(' ')[0] : '') : 'nothing');
+    }
+  }
+  return null;
+})()`;
+for (const entry of ['walk.html', 'testbed.html']) {
+  CELLS.push({ entry, after: 'Add start opened', rule: 'picker reachable', at: 'wk-barpopbody', expr: PICKER_REACH });
+}
 // The Ledger cell's first word whole at the column's own width (lead 10-12): the changed row starts «changed», the row no
 // world read took starts «Not yet» though a world was not read - the word's letters inside the cell, not under the ellipsis.
 CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'ledger word first', at: 'ledger-cell', expr: `(async () => {
@@ -888,6 +908,9 @@ const pickKey = async (c, key) => {
 // A basket's +: the picked node into Positive (+) or Negative (−) (lead bc63378e5).
 const basket = (c, sign) => evaluate(c, `(() => { const b = document.querySelector('.wk-basketadd[data-sign="${sign}"]');
   if (b && !b.disabled) b.click(); return Boolean(b); })()`);
+// «+ Add start»: the start baskets' picker opened (walk/start_baskets.js - a details whose body hangs under the bar).
+const openStartPicker = (c) => evaluate(c, `(() => { const pop = document.querySelector('details.wk-barpop');
+  if (pop && !pop.open) pop.querySelector('summary').click(); return Boolean(pop); })()`).then(() => sleep(300));
 const DRIVE = {
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
@@ -945,6 +968,11 @@ const DRIVE = {
       await evaluate(c, `(() => { const chip = document.querySelector('.wk-through > :first-child'); if (chip) chip.click(); return Boolean(chip); })()`);
       await until(c, "[...document.querySelectorAll('.wk-routes-head')].some((h) => h.getClientRects().length && /Walked to/.test(h.textContent))");
     }],
+    ['Add start opened', openStartPicker],
+  ],
+  // The testbed's start row (lead 10-13, 18997: its picker hung clipped under a 44 px panel - no start could be picked).
+  'testbed.html': [
+    ['Add start opened', openStartPicker],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
@@ -1181,6 +1209,9 @@ const MUTANTS = [
     file: 'src/walk/styles.js', edits: [['line-height: 1.25; overflow-wrap: anywhere;', 'line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;']] },
   { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: 5px 8px; text-align: left; vertical-align: top; }']] },
+  // The testbed's start picker clipped by its panel again (lead 10-13, 18997).
+  { name: 'the start picker hung under a panel that clips it', entry: 'testbed.html', rule: 'picker reachable', at: 'wk-barpopbody',
+    file: 'src/testbed/start_part.js', edits: [["    this.host.classList.add('tb-pops');\n", '']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-copyid { height: var(--wk-h-small);', '.wk-copyid { height: 20px;']] },
   { name: 'a 12 px line again', entry: 'walk.html', rule: 'three type sizes', at: 'wk-page',

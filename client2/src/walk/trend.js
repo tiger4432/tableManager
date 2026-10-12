@@ -14,7 +14,9 @@ export const OTHERS = 'others';
 /** The points one server page asks (the implementer's contract: page=1000, at most 5000). */
 export const PAGE_ROWS = 1000;
 
-const timeOf = (edge) => {
+/** A read's time in ms - its edge's or its node record's occurred_at - or null. The trend's points and the testbed's
+ *  Latest (testbed/slot.js) order by this one. */
+export const timeOf = (edge) => {
   const t = edge && Date.parse(edge.occurred_at);
   return Number.isFinite(t) ? t : null;
 };

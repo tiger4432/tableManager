@@ -20,6 +20,7 @@
   "dependencies": {
     "ag-grid-community": "^35.3.0",
     "cytoscape": "^3.34.3",
-    "cytoscape-dagre": "^4.0.1"
+    "cytoscape-dagre": "^4.0.1",
+    "echarts": "^6.1.0"
   }
 }

@@ -5793,6 +5793,26 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 
 ---
 
+## 7-C. 시각화 시험대 testbed — `testbed.html` + `client2/src/testbed/` (2026-10-13 신설)
+
+> 총괄 aca803a7a · d1b3c1b7f · 5835e6714. R&D 보드의 틀(`rnd_board/grid_shell.js` 배치 데이터 · `MarkingStore`)에 근원 시각화 부품 하나와 그 둘레 부품을 앉힌 화면. 하니스 `client2/tests/testbed_harness.mjs`.
+
+| 파일 | 무엇 |
+|---|---|
+| `main.js` | 페이지: `LAYOUT`(배치 데이터) · `PARTS` · `KINDS` · `MARKINGS`(사람 이름 Start · Pick) · `FILTERS` · `boot(deps)` · `laidOut`(저장한 선언을 배치에 얹음, `options` 는 늘 배치 것) · `bound`(페이지 의존을 `options` 로) · `oneValuedBy`(마지막 걸음 술어가 cardinality one 이면 Latest 자동). ECharts 는 이 파일만 import 해 `charts.init` 으로 넘긴다 |
+| `visual_part.js` | **`VisualPart`** — 근원 부품. 시작 마킹(허브는 `seedsOf` 로 구성원)에서 걷기 → 행 타입의 행 → 시스템 필터(시작 쪽: 마킹 노드를 먼저 걸러 다시 걷기, 받은 쪽) → 부품 필터 → 값 칸 → 종류 모델 → 그림. `mark` · `markHub` · `clear` · `publish`(바닥줄 · 필터 판이 읽는 수) · `setDeclaration` · `setSlot` · `declaration()`(Save 가 쓰는 것). `insideOf(answer)` |
+| `slot.js` | `readSlot` — 값 칸 하나를 행 하나에서: one · several · empty · missing (`reach_table.readsOf` 위). `categoriesOf` · `slotWords` |
+| `aggregate.js` | `REDUCES`(스팟파이어 철자 일곱 + Latest) · `fold` — 서버 걷기 집계와 같은 규칙(`contracts/walk_aggregate` 로 채점) |
+| `filter.js` | THE 필터 `keepNodes` · `nodePasses` · `valuePasses` — 조건 = 행 타입 + 값 칸 + 범위 · 값 · 기간 · 빈 값. 부르는 곳은 `visual_part.js` 하나(하니스 T14) |
+| `hubs.js` | 허브 id = 설명(`hubId(row, where)`) · `HubBook`(페이지가 만든 구성원 장부) · `seedsOf`(마킹 → 걷기 씨앗, 한 자리) · `holds` · `hubWords` |
+| `kinds/scatter.js` | 칸 x · y · color, `scatterModel`(안 찍힌 점 = `palette.mix` 20 %) · `scatterOption`(ECharts 옵션, 순수) · `idsInRange`(끌기의 좌표 범위 → 점) · `render` |
+| `kinds/cross_table.js` | 칸 rows · columns · cells, `crossModel`(값 둘인 행은 두 칸에 · 칸은 그 행들 값의 합집합을 접음 · 합계) · `render`(표는 자기 상자에서 스크롤) |
+| `picker.js` | `SlotPicker` — 알약의 고르개 세 칸(길 · 끝과 값 · 접기). `routeChoices` = `reach_table.routesFrom` 그대로 · `endChoices`(`reach_table.waysOf`) · `severalCount` |
+| `start_part.js` · `basket_part.js` · `status_part.js` · `filters_part.js` · `properties_part.js` | 시작 줄(걷기 화면의 `NodeSearch` · `StartBaskets`) · 바구니(허브 한 줄, 펼침) · 바닥줄(`statusWords`) · 필터 판(시스템 필터 고침) · 속성 창(활성 부품 선언 고침) |
+| `condition_editor.js` · `keyed_store.js` · `palette.js` · `testbed.css` | 조건 칸 하나(필터 판과 부품 Filter 가 같이 씀) · 이름 붙은 값 저장소 · 잰 색(THE 한 자리, CSS 변수로 내림) · 잰 크기 |
+
+- 같이 바뀐 공용 자리: `rnd_board/grid_shell.js` 가 부품에 `declaration`(그 항목 통째)을 넘김 · `rnd_board/api.js` `truncationAxes` export · `walk/reach_table.js` `waysOf` export · `walk/trend.js` `timeOf` export.
+
 ## 8. 주요 호출 흐름 요약
 
 > 🔒 **[`90e284f`] 아래 흐름 중 `/internal/events/*`를 지나는 것(1·3·8)은 전부 `X-Admin-Token` 헤더를 실어 나른다** — 워커측은 `admin_auth.internal_event_headers()`, 서버측은 `Depends(require_admin_token)`. 토큰 미설정이면 양쪽 다 무동작이라 흐름이 종전과 동일하다. **토큰을 웹서버에만 설정하고 런처에 안 하면 워커의 브로드캐스트가 전부 401이 되어 WS 갱신이 조용히 멎는다**(데이터는 계속 들어가고 화면만 안 바뀐다).

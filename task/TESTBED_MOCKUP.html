@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Visual testbed mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+<style>
+/* Every value below was measured on the local Spotfire (page «근원 부품», 1440x900): DOM computed style or a screenshot pixel. */
+:root {
+  --page: #232323; --bg: #2A2A2A; --text: #FFFFFF; --text-2: #C8C8C8; --dim: rgba(200, 200, 200, 0.45);
+  --line: #404040; --stripe: #404040; --axis: #666666; --pill-line: rgba(255, 255, 255, 0.45);
+  --marked: #00A650; --active: #7188F8; --status: #61646B; --title-btn: #C8C8C8;
+  --dim-fill: 0.22; --dim-stroke: 0.30;
+  --c1: #6489FA; --c2: #FA7864; --c3: #FFDE5C; --c4: #72ECA6; --c5: #ED72DD; --c6: #72BEED; --c7: #FAA264;
+  --b1: #4B67BC; --b2: #BC5A4B; --b3: #BFA645; --b4: #56B17C; --b5: #B256A6; --b6: #568EB2; --b7: #BC7A4B;
+  --one: #A0A0A0;
+}
+body.light {
+  --page: #F7F9FF; --bg: #FFFFFF; --text: #61646B; --text-2: #61646B; --dim: rgba(49, 51, 54, 0.45);
+  --line: #F0F1F2; --stripe: #F7F9FF; --axis: #D1D4DE; --pill-line: #BDBFC5; --status: #EDF0F7; --title-btn: #8A8D94;
+  --dim-fill: 0.30; --dim-stroke: 0.30;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1440px; height: 900px; overflow: hidden; }
+body { position: relative; background: var(--page); color: var(--text); font: 400 12px/15px Roboto, sans-serif; }
+.part { position: absolute; background: var(--bg); border: 2px solid transparent; padding: 12px; overflow: hidden; }
+.part.active { border-color: var(--active); }
+.title { display: flex; align-items: center; height: 31px; padding: 4px; font: 300 19px/23px Roboto, sans-serif; color: var(--text); }
+body.light .title { color: #313336; }
+.title .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.title .btns { display: none; gap: 10px; }
+.part.hover .title .btns { display: flex; }
+.title .btns span { width: 14px; height: 21px; display: inline-flex; align-items: center; justify-content: center; color: var(--title-btn); font: 400 14px/21px Roboto, sans-serif; }
+/* start row: our NodeSearch + StartBaskets in the band Spotfire gives its menu */
+.start { position: absolute; left: 56px; top: 4px; right: 8px; height: 32px; display: flex; align-items: center; gap: 10px; color: var(--text-2); }
+.start input { width: 260px; height: 24px; padding: 0 10px; border: 1px solid var(--pill-line); background: var(--bg); color: var(--text); font: inherit; border-radius: 100px; }
+/* the axis pill: transparent until the visual is hovered (sf-auto-hide-axis-tray-items) */
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 21px; padding: 2px 10px; border: 1px solid transparent; border-radius: 100px; white-space: nowrap; color: var(--text); }
+.pill .caret, .plus { visibility: hidden; }
+.part.hover .pill { border-color: var(--pill-line); }
+.part.hover .pill .caret, .part.hover .plus { visibility: visible; }
+.pill .caret { font-size: 9px; opacity: .8; }
+.plus { width: 17px; height: 17px; border: 1px solid var(--pill-line); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; color: var(--text-2); }
+.vpill { writing-mode: vertical-rl; transform: rotate(180deg); width: 21px; height: auto; padding: 10px 2px; }
+.legend { position: absolute; width: 150px; padding-left: 10px; }
+.legend .ttl { height: 19px; line-height: 19px; }
+.legend .row { display: flex; align-items: center; gap: 4px; margin-left: -10px; }
+.legend .v { display: flex; align-items: center; gap: 4px; height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legend .v.dim { color: var(--dim); }
+.legend .ico { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.legend .ico i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid; }
+.legend .v.dim .ico i { opacity: .45; }
+.legend .gap { height: 8px; }
+.note { position: absolute; color: var(--text-2); }
+/* tables (cross table + basket): Spotfire's tabular content */
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+th, td { height: 19px; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; font-weight: 400; }
+.ct th, .ct td { border-bottom: 1px solid var(--line); }
+.ct td, .ct th.col { border-left: 1px solid var(--line); }
+.ct th { font-weight: 700; }
+.ct th.col, .ct td { text-align: right; }
+.ct td.m { background: var(--marked); color: #FFFFFF; font-weight: 700; }
+.bt thead th { font-weight: 700; }
+.bt tbody tr:nth-child(odd) td { background: var(--stripe); }
+.bt td.mono { font-family: "Roboto Mono", Consolas, monospace; font-size: 11px; color: var(--text-2); }
+.bt tr.member td.name { padding-left: 18px; }
+.bt tr.hub td { font-weight: 500; }
+.tbtn { height: 21px; padding: 2px 10px; border: 1px solid var(--pill-line); border-radius: 100px; font: 400 12px/15px Roboto, sans-serif; color: var(--text); }
+/* status bar: Spotfire's bottom band, 32 px */
+.status { position: absolute; height: 32px; background: var(--status); color: var(--text); display: flex; align-items: center; justify-content: flex-end; gap: 24px; padding-right: 96px; }
+body.light .status { color: #313336; }
+/* properties panel (light in both themes) */
+.props { position: absolute; background: #FFFFFF; color: #313336; overflow: hidden; border-radius: 8px 8px 0 0; }
+.props .ph { height: 33px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #F2F5FC; border-bottom: 1px solid #EDF0F7; font-weight: 700; color: #6D7078; }
+.props .ph b { font: 400 18px/1 Roboto, sans-serif; color: #6D7078; }
+.props .search { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid #D1D4DE; color: #6D7078; font-size: 13px; }
+.props .vname { height: 24px; margin: 8px 0; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #EBEFFF; color: #000000; }
+.props .tabs { height: 47px; display: flex; align-items: flex-end; padding: 0 16px; border-bottom: 1px solid #EDF0F7; font: 500 13px/15px Roboto, sans-serif; color: #6D7078; }
+.props .tabs span { padding: 0 0 12px; margin-right: 40px; }
+.props .tabs .on { color: #3050EF; box-shadow: inset 0 -2px #3050EF; }
+.props .sec { border-bottom: 1px solid #D1D4DE; box-shadow: 0 2px #EDF0F7; margin-bottom: 2px; padding: 15px 16px 0; }
+.props .sec .h { display: flex; align-items: center; gap: 10px; height: 18px; font-size: 13px; }
+.props .sec .h i { width: 12px; height: 12px; flex: none; border-left: 2px solid #3050EF; border-bottom: 2px solid #3050EF; }
+.props .sec .body { display: flex; align-items: center; gap: 6px; padding-top: 10px; flex-wrap: wrap; }
+.props .sub { padding-top: 10px; color: #6D7078; }
+.props .cond { display: flex; align-items: center; gap: 6px; height: 24px; margin-top: 4px; padding: 0 8px; border: 1px solid #D0D0D0; font-size: 12px; color: #313336; }
+.props .cond .x { margin-left: auto; color: #6D7078; }
+.props .lnk { color: #3050EF; padding-top: 8px; }
+.ppill { display: inline-flex; align-items: center; gap: 8px; height: 22px; padding: 0 10px; border: 1px solid #D0D0D0; border-radius: 100px; font-size: 12px; color: #313336; white-space: nowrap; }
+.ppill::after { content: ""; border: 4px solid transparent; border-top: 5px solid #313336; margin-top: 4px; }
+.pplus { width: 16px; height: 16px; border: 1px solid #6D7078; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: #6D7078; }
+.props .add { text-align: center; color: #3050EF; padding: 12px 0; font-size: 13px; }
+/* the encode picker: hangs below its pill, styled as Spotfire's menus (sf_menu: white, items 31 px, text inset 40 px) */
+.picker { position: absolute; width: 330px; background: #FFFFFF; color: #313336; box-shadow: 0 8px 24px rgb(0 0 0 / .25); border: 1px solid #D1D4DE; padding: 6px 0; z-index: 3; }
+.picker .lab { height: 24px; line-height: 24px; padding: 0 16px; color: #6D7078; font-weight: 700; }
+.picker .it { height: 31px; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 40px; white-space: nowrap; position: relative; }
+.picker .it .n { margin-left: auto; color: #6D7078; font-variant-numeric: tabular-nums; }
+.picker .it.on { background: #BDCDF5; }
+.picker .it.on::before { content: "✓"; position: absolute; left: 18px; color: #313336; }
+.picker hr { border: 0; border-top: 1px solid #EDF0F7; margin: 6px 0; }
+.picker .reds { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 6px 40px; }
+.picker .reds span { height: 22px; line-height: 20px; padding: 0 10px; border: 1px solid #D0D0D0; border-radius: 100px; }
+.picker .reds span.on { background: #3050EF; border-color: #3050EF; color: #FFFFFF; }
+.picker .why { padding: 4px 16px 4px 40px; color: #6D7078; }
+</style>
+</head>
+<body>
+<script>
+const STATE = (location.hash || '#cross').slice(1);           // cross | hover | light
+if (STATE === 'light') document.body.classList.add('light');
+const PROPS = STATE === 'cross';
+// The rectangles Spotfire's page had in each shot (sf_root_cross / sf_root_hover / sf_light).
+const RIGHT = PROPS ? 1176 : 1432, SPLIT = PROPS ? 617 : 745;
+const R = { scatter: [56, 40, SPLIT, 858], cross: [SPLIT + 2, 40, RIGHT, 451], basket: [SPLIT + 2, 453, RIGHT, 858], status: [56, 860, RIGHT, 892], props: [1180, 40, 1432, 892] };
+const place = (el, [l, t, r, b]) => Object.assign(el.style, { left: `${l}px`, top: `${t}px`, width: `${r - l}px`, height: `${b - t}px` });
+const h = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; };
+
+// --- the rows the walk reached (one per wafer); values deterministic
+const RECIPES = ['R-01', 'R-02', 'R-03', 'R-04', 'R-05', 'R-06', 'R-07'];
+const EQS = ['EQ-01', 'EQ-02', 'EQ-03'];
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const rows = [];
+for (let i = 0; i < 312; i += 1) {
+  const r = i % 7, e = Math.floor(rnd() * 3);
+  const x = 190 + r * 12 + e * 4 + (rnd() - 0.5) * 22, y = 0.15 + ((r * 3 + e * 2) % 9) * 0.085 + (rnd() - 0.5) * 0.12;
+  rows.push({ id: `W-${String(i + 1).padStart(3, '0')}`, recipe: r, eq: e, x: i % 26 === 5 ? null : x, y, thick: 48 + r * 1.3 + e * 2.1 + (rnd() - 0.5) * 3 });
+}
+// marking:pick in each shot: hover = a rectangle; light = four cross cells; cross = nothing
+const inRect = (p) => p.x != null && p.x > 228 && p.x < 252 && p.y > 0.38 && p.y < 0.62;
+const LIGHT_CELLS = new Set(['1,1', '2,2', '0,2', '6,0']);
+const marked = new Set(rows.filter((p) => (STATE === 'hover' ? inRect(p) : STATE === 'light' ? LIGHT_CELLS.has(`${p.recipe},${p.eq}`) : false)).map((p) => p.id));
+const anyMarked = marked.size > 0;
+
+// --- start row (marking:start)
+document.body.append(h(`<div class="start"><span>Start</span><input value="SYN-BW-103" aria-label="Search a node">
+  <span class="pill" style="border-color:var(--pill-line)">+ lot · SYN-BW-103 <span>×</span></span>
+  <span class="pill" style="border-color:var(--pill-line)">− wafer · SYN-BW-103-07 <span>×</span></span></div>`));
+
+// --- scatter: kind of the visual part
+{
+  const el = h(`<section class="part${STATE === 'cross' ? ' active' : ' hover'}"></section>`); place(el, R.scatter); document.body.append(el);
+  el.append(h(`<div class="title"><span class="t">Avg(void_ratio) vs. Latest(bond_temp)</span><span class="btns"><span>⤢</span><span>☰</span><span>⚙</span><span>≡</span><span>✕</span></span></div>`));
+  const W = R.scatter[2] - R.scatter[0] - 28, H = R.scatter[3] - R.scatter[1] - 28;
+  const LEG = 150 + 12, TRAY = 22, XTRAY = 24, BODY_TOP = 31;
+  const svgW = W - LEG - TRAY, svgH = H - BODY_TOP - XTRAY;
+  const L = 67, T = 39, B = 26, RR = 4;
+  const xs = (v) => L + ((v - 180) / 110) * (svgW - L - RR), ys = (v) => svgH - B - (v / 1) * (svgH - B - T);
+  let g = `<line x1="${L - 0.5}" y1="${T}" x2="${L - 0.5}" y2="${svgH - B}" stroke="var(--axis)"/><line x1="${L}" y1="${svgH - B - 0.5}" x2="${svgW - RR}" y2="${svgH - B - 0.5}" stroke="var(--axis)"/>`;
+  for (let t = 0; t <= 10; t += 1) g += `<text x="${L - 7}" y="${ys(t / 10) + 4}" text-anchor="end" fill="var(--text)" font-size="12">${(t / 10).toFixed(1)} %</text>`;
+  for (let t = 180; t <= 280; t += 20) g += `<text x="${xs(t)}" y="${svgH - B + 15}" text-anchor="middle" fill="var(--text)" font-size="12">${t}</text>`;
+  const drawn = rows.filter((p) => p.x != null);
+  for (const on of [false, true]) for (const p of drawn) {
+    const m = marked.has(p.id); if (m !== on) continue;
+    const dim = anyMarked && !m;
+    g += `<circle cx="${xs(p.x).toFixed(1)}" cy="${ys(p.y).toFixed(1)}" r="6" style="fill:var(--c${p.recipe + 1});stroke:var(--b${p.recipe + 1});fill-opacity:${dim ? 'var(--dim-fill)' : 1};stroke-opacity:${dim ? 'var(--dim-stroke)' : 1}"/>`;
+  }
+  el.append(h(`<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="position:absolute;left:${12 + TRAY}px;top:${12 + BODY_TOP}px;font-family:Roboto">${g}</svg>`));
+  el.append(h(`<div style="position:absolute;left:12px;top:${12 + BODY_TOP}px;width:${TRAY}px;height:${svgH}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span class="plus">+</span><span class="pill vpill">Avg(void_ratio) <span class="caret">▸</span></span></div>`));
+  el.append(h(`<div style="position:absolute;left:${12 + TRAY + L}px;width:${svgW - L}px;top:${12 + BODY_TOP + svgH}px;height:${XTRAY}px;display:flex;align-items:center;justify-content:center;gap:6px"><span class="pill">Latest(bond_temp) <span class="caret">▾</span></span><span class="plus">+</span></div>`));
+  el.append(h(`<span class="note" style="left:${12 + TRAY}px;top:${12 + BODY_TOP + svgH + 4}px">${rows.length - drawn.length} not drawn</span>`));
+  const hit = new Set(drawn.filter((p) => marked.has(p.id)).map((p) => p.recipe));
+  const vals = RECIPES.map((r, i) => `<div class="v${anyMarked && !hit.has(i) ? ' dim' : ''}"><span class="ico"><i style="background:var(--c${i + 1});border-color:var(--b${i + 1})"></i></span>${r}</div>`).join('');
+  el.append(h(`<div class="legend" style="left:${W - LEG + 12 + 12}px;top:${12 + BODY_TOP + 6}px">
+    <div class="ttl">Marker by:</div><div class="row"><span class="pill">(Node) <span class="caret">▾</span></span><span class="plus">+</span></div><div class="gap"></div>
+    <div class="ttl">Color by:</div><div class="row"><span class="pill">recipe <span class="caret">▾</span></span><span class="plus">+</span></div><div class="gap"></div>${vals}<div class="gap"></div>
+    <div class="ttl">Shape by:</div><div class="row"><span class="pill">(None) <span class="caret">▾</span></span></div><div class="gap"></div>
+    <div class="v"><span class="ico"><i style="background:var(--one);border-color:#787878"></i></span>All values</div><div class="gap"></div>
+    <div class="ttl">Size by:</div><div class="row"><span class="pill">(None) <span class="caret">▾</span></span></div></div>`));
+}
+
+// --- cross table: the other kind of the same visual part
+{
+  const el = h(`<section class="part"></section>`); place(el, R.cross); document.body.append(el);
+  el.append(h(`<div class="title"><span class="t">Avg(thickness) per recipe and equipment</span></div>`));
+  const W = R.cross[2] - R.cross[0] - 4;
+  const avg = (ps) => (ps.length ? ps.reduce((a, p) => a + p.thick, 0) / ps.length : null);
+  const cell = (r, e) => rows.filter((p) => (r == null || p.recipe === r) && (e == null || p.eq === e));
+  const isM = (ps) => ps.some((p) => marked.has(p.id));
+  const fmt = (v) => (v == null ? '-' : v.toFixed(1));
+  let t = `<colgroup><col style="width:80px">${EQS.map(() => '<col style="width:100px">').join('')}<col style="width:100px"></colgroup>`;
+  t += `<tr><th style="text-align:right">recipe</th>${EQS.map((e) => `<th class="col">${e}</th>`).join('')}<th class="col">Total</th></tr>`;
+  RECIPES.forEach((r, i) => { t += `<tr><th>${r}</th>${EQS.map((_, j) => { const ps = cell(i, j); return `<td class="${isM(ps) ? 'm' : ''}">${fmt(avg(ps))}</td>`; }).join('')}<td>${fmt(avg(cell(i, null)))}</td></tr>`; });
+  t += `<tr><th>Total</th>${EQS.map((_, j) => `<td>${fmt(avg(cell(null, j)))}</td>`).join('')}<td>${fmt(avg(rows))}</td></tr>`;
+  const TL = 39, TABLE_W = 80 + 100 * (EQS.length + 1);
+  const LEG_L = Math.min(TL + TABLE_W + 24, W - 150 - 12);
+  el.append(h(`<div style="position:absolute;left:${TL}px;width:${LEG_L - TL}px;top:53px;height:19px;display:flex;justify-content:center;align-items:center"><span class="pill">equipment <span class="caret">▾</span></span></div>`));
+  el.append(h(`<div style="position:absolute;left:${TL}px;top:82px;width:${LEG_L - TL - 8}px;overflow:hidden"><table class="ct" style="width:${TABLE_W}px">${t}</table></div>`));
+  el.append(h(`<div style="position:absolute;left:14px;top:101px;width:21px;height:${19 * 8}px;display:flex;align-items:center;justify-content:center"><span class="pill vpill">recipe</span></div>`));
+  el.append(h(`<div style="position:absolute;left:${TL}px;width:${LEG_L - TL}px;bottom:16px;height:21px;display:flex;justify-content:center"><span class="pill">Avg(thickness) <span class="caret">▾</span></span></div>`));
+  el.append(h(`<div class="legend" style="left:${LEG_L}px;top:50px"><div class="ttl">Colors:</div><div class="v" style="padding-left:18px">All values</div></div>`));
+}
+
+// --- basket: its own part, reads marking:pick (styled as Spotfire's table visual)
+{
+  const el = h(`<section class="part"></section>`); place(el, R.basket); document.body.append(el);
+  const hubs = STATE === 'light' ? [['recipe = R-02 · equipment = EQ-02', 1, 1], ['recipe = R-03 · equipment = EQ-03', 2, 2], ['recipe = R-01 · equipment = EQ-03', 0, 2], ['recipe = R-07 · equipment = EQ-01', 6, 0]] : [];
+  const loose = STATE === 'hover' ? rows.filter((p) => marked.has(p.id)) : [];
+  el.append(h(`<div class="title"><span class="t">Marked</span><span style="display:flex;gap:6px"><span class="tbtn">Copy ids</span><span class="tbtn">Clear</span></span></div>`));
+  let b = '<colgroup><col style="width:22px"><col style="width:96px"><col style="width:220px"><col style="width:110px"><col style="width:120px"></colgroup>';
+  b += '<thead><tr><th></th><th>Type</th><th>Node</th><th style="text-align:right">Members</th><th>Id</th></tr></thead><tbody>';
+  hubs.forEach(([name, r, e], k) => {
+    const ms = rows.filter((p) => p.recipe === r && p.eq === e);
+    b += `<tr class="hub"><td>${k === 0 ? '▾' : '▸'}</td><td>hub</td><td>${name}</td><td style="text-align:right">${ms.length}</td><td></td></tr>`;
+    if (k === 0) ms.forEach((p) => { b += `<tr class="member"><td></td><td>wafer</td><td class="name">${p.id}</td><td></td><td class="mono">01a12521-${p.id.slice(2)}…</td></tr>`; });
+  });
+  loose.forEach((p) => { b += `<tr><td></td><td>wafer</td><td class="name">${p.id}</td><td></td><td class="mono">01a12521-${p.id.slice(2)}…</td></tr>`; });
+  if (!hubs.length && !loose.length) b += '<tr><td></td><td colspan="4">Nothing marked</td></tr>';
+  b += '</tbody>';
+  el.append(h(`<table class="bt" style="position:absolute;left:16px;top:66px;width:568px">${b}</table>`));
+}
+
+// --- status bar: one shared part
+{
+  const n = rows.length;
+  const el = h(`<div class="status"><span>${n.toLocaleString('en-US')} of ${n.toLocaleString('en-US')} rows</span><span>${marked.size} marked</span><span>4 columns</span><span>wafer</span></div>`);
+  place(el, R.status); document.body.append(el);
+}
+
+// --- properties panel; the encode picker open on Y-axis
+if (PROPS) {
+  const el = h(`<aside class="props"></aside>`); place(el, R.props); document.body.append(el);
+  const sec = (name, body) => `<div class="sec" style="height:${body ? 72 : 46}px"><div class="h"><i></i>${name}</div>${body ? `<div class="body">${body}</div>` : ''}</div>`;
+  el.innerHTML = `<div class="ph">Visualization properties<b>×</b></div>
+    <div class="search">⌕ Type to search</div>
+    <div class="vname">∴ Avg(void_ratio) vs. Latest(bo…</div>
+    <div class="tabs"><span class="on">Configuration</span><span>Appearance</span></div>
+    <div class="sec" style="height:214px"><div class="h"><i></i>Data</div>
+      <div class="sub">Marking</div><div class="body" style="padding-top:4px"><span class="ppill">marking:start</span></div>
+      <div class="sub">Route</div><div class="body" style="padding-top:4px"><span class="ppill">lot → wafer</span></div>
+      <div class="sub">Filter</div>
+      <div class="cond">[void_ratio] is not null<span class="x">×</span></div>
+      <div class="lnk">+ Add filter</div></div>
+    ${sec('X-axis', '<span class="ppill" id="xpill">Latest(bond_temp)</span>')}
+    ${sec('Y-axis', '<span class="ppill">Avg(void_ratio)</span><span class="pplus">+</span>')}
+    ${sec('Color by', '<span class="ppill">recipe</span><span class="pplus">+</span>')}
+    ${sec('Marker by', '<span class="ppill">(Node)</span><span class="pplus">+</span>')}
+    ${sec('Marking: marking:pick', '')}
+    ${sec('Legend', '')}
+    <div class="add">⊕ Add</div>`;
+  const pill = el.querySelector('#xpill').getBoundingClientRect();
+  const pk = h(`<div class="picker">
+    <div class="lab">Route</div>
+    <div class="it on">wafer → bond step<span class="n">1-3 / row</span></div>
+    <div class="it">wafer → recipe<span class="n">1 / row</span></div>
+    <hr><div class="lab">Value</div>
+    <div class="it on">bond_temp</div>
+    <div class="it">bond_force</div>
+    <hr><div class="lab">Reduce</div>
+    <div class="reds"><span>Count</span><span>UniqueCount</span><span>Sum</span><span>Avg</span><span>Min</span><span>Max</span><span>Median</span><span class="on">Latest</span></div>
+    <div class="why">41 rows with several values · 0 tied</div>
+    <hr><div class="it">Custom expression…</div></div>`);
+  pk.style.left = `${1432 - 330 - 8}px`; pk.style.top = `${pill.bottom + 4}px`;
+  document.body.append(pk);
+}
+document.fonts.ready.then(() => { document.title = 'READY'; });
+</script>
+</body>
+</html>
