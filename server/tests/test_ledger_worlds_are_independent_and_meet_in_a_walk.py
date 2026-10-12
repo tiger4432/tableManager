@@ -1002,3 +1002,38 @@ def test_a_row_the_read_takes_out_is_not_left_not_yet_translated(world):
             census["not_yet"]) == (3, 1, 2, 0), census
     tick = backfill.rows_not_yet_translated(world["engine"], setup, CHANGED, exact_rows=False, world=A)
     assert ("excluded_rows" in tick, tick.get("excluded_not_subtracted")) == (False, "an estimate"), tick
+
+
+def test_the_grid_says_each_worlds_sources_and_a_row_changed_since(world):
+    """총괄 6424227ff (소유자 「다른 세상 거는 메인 그리드 우측에 원장 동기화 상태 안 나와」 · 「변경 행은 다르게 표기해」):
+    `wafer_process` is read in world C alone, `lot_slot_wafer` in the default alone. A page's rows say
+    `[{source, world, changed}]` across the worlds, the operating world's names as they were; a row edited after its
+    translation is changed, and only it, until it is translated again. A world whose index cannot be read is left out
+    and named - 「not yet」 and 「not read」 do not draw alike."""
+    import main
+
+    (Path(paths.config_path("ontology")) / "ledger_config.json").write_text(json.dumps(_only(KEPT)), encoding="utf-8")
+    _write(world, "wafer_process", [{"proc_id": "P%d" % n, "wafer_id": "W1", "step": "S1", "recipe_id": "RCP-%d" % n,
+                                     "eventtime": EVENT_TIME} for n in (1, 2)])
+    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K1", "lot": "L1", "slot": "1", "wafer": "W1",
+                                      "event_type": "load", "event_time": EVENT_TIME}])
+    backfill.run(world["engine"], source=KEPT)
+    _make(world, C, _only(CHANGED), CHANGED)
+
+    def page(table, unread=()):
+        model = models.DYNAMIC_TABLES[table]
+        rows = [{"row_id": row.row_id, "key": row.business_key_val}
+                for row in world["db"].query(model).order_by(model.business_key_val)]
+        assert main._attach_ledger_sources(world["db"], table, rows) == list(unread)
+        return {row["key"]: (row["ledger_sources"], row["ledger_rows"]) for row in rows}
+
+    assert page("lot_slot_wafer") == {"K1": ([KEPT], [{"source": KEPT, "world": DEFAULT, "changed": False}])}
+    translated = [{"source": CHANGED, "world": C, "changed": False}]
+    assert page("wafer_process") == {"P1": ([], translated), "P2": ([], translated)}
+    _write(world, "wafer_process", [{"recipe_id": "RCP-9"}], key="P1")
+    assert page("wafer_process") == {"P1": ([], [dict(translated[0], changed=True)]), "P2": ([], translated)}
+    backfill.retranslate_drifted(world["engine"], load_setup(schema.require_world(C).declaration_root), CHANGED,
+                                 apply=True, world=C)
+    assert page("wafer_process") == {"P1": ([], translated), "P2": ([], translated)}
+    _declare(A, _only(CHANGED))                                   # declared, its index never made: not read
+    assert page("wafer_process", unread=[A]) == {"P1": ([], translated), "P2": ([], translated)}

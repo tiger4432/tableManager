@@ -2287,10 +2287,12 @@ def _attach_ledger_sources(db, table_name, rows):
     a `[]` there would say 「not yet」 about rows nobody looked at.
     ⚠️ Whether this table IS a ledger source is not asked here - that answer has its own seat
     (`/api/ledger/declaration`), and a second one would be free to disagree.
+    -> the worlds whose declaration or row index could not be read for `ledger_rows` ([] when every one was), None when
+    the rows carry neither key.
     """
     ids = [str(row["row_id"]) for row in rows if row.get("row_id") is not None]
     if not ids:
-        return
+        return None
     try:
         from ledger.store import LedgerStore
 
@@ -2301,9 +2303,37 @@ def _attach_ledger_sources(db, table_name, rows):
             logger.warning("[get_table_data] '%s': the ledger row index could not be read, "
                            "so rows carry no ledger_sources (drawn as Unknown): %s: %s",
                            table_name, type(exc).__name__, exc)
-        return
+        return None
     for row in rows:
         row["ledger_sources"] = found.get(str(row.get("row_id")), [])
+    # 🔴 EVERY WORLD, AND WHETHER THE ROW MOVED SINCE (총괄 6424227ff, 소유자 「다른 세상 거는 … 원장 동기화 상태 안
+    #    나와」 · 「변경 행은 다르게 표기」): each world's sources that read this table (its compiled declaration), and
+    #    for each the drift judgment narrowed to this page's rows - `[{source, world, changed}]`, a source a row's index
+    #    names; `[]` is 「not yet」 in every world read. A world that cannot be read is left out and NAMED - 「not yet」
+    #    and 「not read」 must not draw alike
+    from chain.ingestion_worker import _compiled_setup
+    from ledger import backfill, followup, schema
+
+    by_row, unread = {}, []
+    for world in schema.world_listing()["worlds"]:
+        try:
+            setup = _compiled_setup(world)
+            said = {source: backfill.rows_changed(db.get_bind(), setup, source, ids, world=world)
+                    for source in followup.sources_for_table(setup, table_name)}
+        except Exception as exc:                                    # noqa: BLE001
+            unread.append(world)
+            if (table_name, world) not in _LEDGER_SOURCES_UNREAD:
+                _LEDGER_SOURCES_UNREAD.add((table_name, world))
+                logger.warning("[get_table_data] '%s': world '%s' - its declaration or row index could not be read, "
+                               "so its sources are left out of ledger_rows and the page names it in "
+                               "ledger_worlds_unread: %s: %s", table_name, world, type(exc).__name__, exc)
+            continue
+        for source, changed_by_row in said.items():
+            for row_id, changed in changed_by_row.items():
+                by_row.setdefault(row_id, []).append({"source": source, "world": world, "changed": changed})
+    for row in rows:
+        row["ledger_rows"] = by_row.get(str(row.get("row_id")), [])
+    return unread
 
 
 def _table_data_response(payload, table_name: str):
@@ -2756,10 +2786,12 @@ def get_table_data(
         f"filters={_filtered_column_count(filters)}, "
         f"target={'set' if target_row_id else '-'}")
     
-    _attach_ledger_sources(db, table_name, data_list)
+    unread = _attach_ledger_sources(db, table_name, data_list)
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
-        "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset
+        "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset,
+        # the worlds `ledger_rows` could not read on this page - absent when the rows carry no ledger keys at all
+        **({} if unread is None else {"ledger_worlds_unread": unread}),
     }, table_name)
 
 
