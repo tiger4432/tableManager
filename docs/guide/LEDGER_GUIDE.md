@@ -64,7 +64,7 @@
 
 ### 1.2 읽기 쪽
 
-**라우트는 «넷»이다** (실측 2026-09-16 — `git grep -c '^@router\.' -- server/ledger/trace_router.py` = 4).
+**라우트는 «넷»이다** (실측 2026-09-16 — `git grep -c '^@router\.' -- server/ledger/trace_router.py` = 4). 🆕 10-13 `ace9426aa`: `/subgraph` 는 데코레이터가 아니라 호출로 선다(`router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(evidence_subgraph))` :365) — 옛 명령 `'^@router\.'` 은 이제 3 을 센다. 둘 다 세는 명령 `git grep -c -E '^@router\.|^router\.[a-z_]+\(' -- server/ledger/trace_router.py` = **4** @`ed5a6b576`.
 🔴 **[2026-09-16] 종전 이 자리는 「셋」이었고 그것이 거짓이 됐다** — `key-values` 가 붙었다. (그 앞: 「둘」 → `gaps` 가 붙어 「셋」, 2026-08-31.)
 ⚠️ **그래도 «원장의 사실»에 답하는 것은 `subgraph` 하나다** — `declaration` 과 `gaps` 는 «선언에 대해» 답하고, `key-values` 는 씨앗을 고르라고 «오늘 있는 값»을 답한다.
 

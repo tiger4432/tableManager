@@ -70,6 +70,7 @@ client2/src/rnd_board/walk_box_panel.js
 
 ```
 GET /api/ledger/subgraph     걷기. 아래 인자 «열넷» · 🆕 10-12 POST 도 — 본문 `resume`(아래 «이어 걷기»)
+                             🆕 10-13 HTTP 로 온 걷기는 걷기 프로세스에서 돈다(`runtime/process_pool.in_pool`, 설정 `walk_processes` 기본 2 · `walk_seconds_max` 기본 120 초) — 못 받으면 503 `walk_pool_busy` · `walk_process_not_ready` · `walk_timed_out`
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
                              🆕 그리고 「어느 술어가 «검사»인가」 — `absence_confirmed_by` (S-216 `09217e2e`)
 GET /api/ledger/gaps
