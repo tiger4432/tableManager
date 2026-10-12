@@ -366,6 +366,29 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
     say('PL7 the age in words: seconds since the last read; none read yet, nothing',
       m.readAgeWords(1000, 13400) === 'Read 12 s ago' && m.readAgeWords(null, 5000) === '' && m.readAgeWords(5000, 4000) === 'Read 0 s ago',
       JSON.stringify([m.readAgeWords(1000, 13400), m.readAgeWords(null, 5000)]));
+    // The one read the three triggers ask (lead 10-12): one on its way, one more waiting at most.
+    let fetched = 0;
+    let land = null;
+    const one = m.oneRead(() => { fetched += 1; return fetched === 1 ? new Promise((r) => { land = r; }) : Promise.resolve(); });
+    void one.ask();
+    for (let i = 0; i < 50; i += 1) void one.ask();
+    await flush();
+    const whileOn = [fetched, one.busy()];
+    land();
+    await flush();
+    say('PQ1 fifty broadcasts while a read is on its way read twice - the one on its way, then one more',
+      whileOn[0] === 1 && whileOn[1] === true && fetched === 2 && one.busy() === false, JSON.stringify([whileOn, fetched]));
+    let offTab = 0;
+    const away = m.oneRead(() => { offTab += 1; return Promise.resolve(); }, () => false);
+    for (let i = 0; i < 50; i += 1) await away.ask();
+    say('PQ2 off the Queue tab a broadcast reads nothing', offTab === 0, String(offTab));
+    let tries = 0;
+    const failing = m.oneRead(() => { tries += 1; return tries === 1 ? Promise.reject(new Error('read failed')) : Promise.resolve(); });
+    const first = await failing.ask().then(() => 'landed', () => 'failed');
+    const after = failing.busy();
+    await failing.ask();
+    say('PQ3 a read that fails leaves the screen free - the next trigger reads', first === 'failed' && after === false && tries === 2,
+      JSON.stringify([first, after, tries]));
   };
   const P_NAMES = [];
   await pollSuite(await import('../src/queue_poll.js'), (name, cond, shown) => { P_NAMES.push(name); ok(name, cond, shown); });
@@ -373,10 +396,12 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   const text = (f) => readFileSync(new URL(f, SRC), 'utf8').split(String.fromCharCode(13)).join('');
   const grid = text('main.js');
   const admin = text('admin.js');
-  ok('PL3 the grid\'s Queue tab beats while it is open and shown, skipping while its read is on its way - and then saying its age',
-    grid.includes("pollQueue(() => pollBeat({ onScreen: () => !document.hidden && state.activeHistoryTab === 'queue',")
-      && grid.includes('busy: () => queueReading, read: refreshQueue, waiting: () => { if (queuePanel) drawQueue(...queueDrawn); } }));')
-      && grid.includes('    queueReading = true;\n') && grid.includes('      queueReading = false;\n'), 'main.js wiring');
+  ok('PL3 the grid\'s Queue tab: the broadcast, the beat and the tab ask its one read - the beat skipping while it is on its way, then saying its age',
+    grid.includes("const queueRead = oneRead(refreshQueue, () => state.activeHistoryTab === 'queue');")
+      && grid.includes("pollQueue(() => pollBeat({ onScreen: () => !document.hidden && state.activeHistoryTab === 'queue',")
+      && grid.includes('busy: queueRead.busy, read: queueRead.ask, waiting: () => { if (queuePanel) drawQueue(...queueDrawn); } }));')
+      && grid.includes('onBroadcast(() => queueRead.ask());') && grid.split('queueRead.ask()').length === 3
+      && !grid.includes('refreshQueue()'), 'main.js wiring');
   ok('PL8 both screens\' queue reads go through the one timed read and its age - no time of their own (owner 10-11 Q)',
     grid.includes('const { res, body } = await timedRead(async (signal) => {') && grid.includes('fetch(`${API_BASE}/outbox/queue/rows?limit=50`, { signal });')
       && admin.includes('timedRead((signal) => adminFetch(`${API_BASE}/admin/chain/queue`, { signal }).then(chainQueueFrom))')
@@ -403,6 +428,14 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
       mutate: swap('Promise.resolve().then(beat).catch(() => {}); next();', 'Promise.resolve().then(beat).then(next, () => {});') },
     { id: 'PM6', what: 'the next beat waits on this one\'s read', catches: 'PL9',
       mutate: swap('Promise.resolve().then(beat).catch(() => {}); next();', 'Promise.resolve().then(beat).then(next, next);') },
+    { id: 'PM7', what: 'a broadcast reads while a read is on its way - the code before (one read per broadcast)', catches: 'PQ1',
+      mutate: swap('    if (reading) { again = true; return; }\n', '') },
+    { id: 'PM8', what: 'a broadcast during a read is dropped - never read after it', catches: 'PQ1',
+      mutate: swap('      if (again) { again = false; ask().catch(() => {}); }\n', '') },
+    { id: 'PM9', what: 'a broadcast reads off the Queue tab', catches: 'PQ2',
+      mutate: swap('    if (!shown()) return;\n', '') },
+    { id: 'PM10', what: 'a failed read leaves the screen busy for good', catches: 'PQ3',
+      mutate: swap('    try { await read(); } finally {\n      reading = false;', '    await read(); {\n      reading = false;') },
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const m = (await loadWithProbe(POLL.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
