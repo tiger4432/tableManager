@@ -204,6 +204,9 @@ def evidence_subgraph(
         None, embed=True,
         description=("A page's `more.resume`, as it came: the next page of the same walk, within the same caps, "
                      "as of the first page")),
+    # the route always folds; a direct caller that stores what it walked (the contrast mapper) passes False and gets
+    # the walk unfolded (QA F11) - a dependency, so it is never a query cell
+    fold: bool = Depends(lambda: True),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -335,6 +338,7 @@ def evidence_subgraph(
             expand=list(expand) if isinstance(expand, (list, tuple)) else None,
             aux=list(aux) if isinstance(aux, (list, tuple)) else None,
             resume=resume if isinstance(resume, dict) else None,
+            fold=fold is not False,                 # a direct call that names nothing leaves the dependency: fold
             page=time_page, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -688,7 +692,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
-                    fanout_limit=None, expand=None, page=None, aux=None, resume=None):
+                    fanout_limit=None, expand=None, page=None, aux=None, resume=None, fold=True):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -728,7 +732,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         group_by=group_by, measure=measure,
         # S-148-a. The description resolves INSIDE the walk, on the same connection.
         seed_type=seed_type, seed_limit=seed_limit,
-        fanout_limit=fanout_limit, expand=expand,
+        fanout_limit=fanout_limit, expand=expand, fold=fold,
         # the worlds' own declarations, for the walk's key order and plural names
         declaration_paths=tuple(each.declaration_path for each in names))
 
@@ -941,13 +945,13 @@ def _declared_or_refused(names, declared, *, reason, what, world, argument):
 def _expanded_bundle(item, world=None):
     """A hub id (`<node id>|<predicate>|<direction>|<far type>|<value>`, 총괄 b5f3fc849) with its predicate through
     `_declared_or_refused`; any other shape goes on to the walk, which refuses it by its own words."""
-    parts = str(item).rsplit("|", 4)
-    if ledger_subgraph.hub_step(item) is None:
+    cells = ledger_subgraph.hub_cells(item)
+    if cells is None:
         return item
-    (parts[1],) = _declared_or_refused(
-        [parts[1]], _followable_predicates(world), reason="predicate_not_declared",
+    (predicate,) = _declared_or_refused(
+        [cells["predicate"]], _followable_predicates(world), reason="predicate_not_declared",
         what="predicate", world=world, argument="expand")
-    return "|".join(parts)
+    return "|".join((cells["near"], predicate, cells["direction"], cells["far_type"], cells["value"]))
 
 
 def _value_names(world=None):

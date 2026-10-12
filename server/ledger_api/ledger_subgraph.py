@@ -370,16 +370,23 @@ def _packed(resume):
     return {"as_of": resume["as_of"],
             "frontier": [[n(item["id"]), item["depth"], item["cost"], item["arrivals"]] for item in resume["frontier"]],
             "seen": [n(node_id) for node_id in resume["seen"]],
-            "reached": [n(node_id) for node_id in resume.get("reached") or ()],
-            "shown": {"rows": [[n(row), hub_at[hub_id]] for row, hub_id in shown.get("rows", {}).items()],
-                      "hubs": [[hub_id] + mark for hub_id, mark in shown.get("hubs", {}).items()],
-                      "edges": [[edge_id] + mark for edge_id, mark in shown.get("edges", {}).items()]},
-            "row_edges": [[n(s), n(tg), p, w] for (s, tg, p), w in (resume.get("row_edges") or {}).items()],
-            "reread": [n(node_id) for node_id in resume.get("reread") or ()],
+            **({} if "reached" not in resume else {"reached": [n(node_id) for node_id in resume["reached"]]}),
+            **({} if "shown" not in resume else {"shown": {
+                "rows": [[n(row), hub_at[hub_id]] for row, hub_id in shown.get("rows", {}).items()],
+                "hubs": [[hub_id] + mark for hub_id, mark in shown.get("hubs", {}).items()],
+                "edges": [[edge_id] + mark for edge_id, mark in shown.get("edges", {}).items()]}}),
+            **({} if "row_edges" not in resume else {
+                "row_edges": [[n(s), n(tg), p, w] for (s, tg, p), w in resume["row_edges"].items()]}),
+            **({} if "reread" not in resume else {"reread": [[n(node_id), depth] for node_id, depth in resume["reread"]]}),
+            **({} if "reread_at" not in resume else {"reread_at": resume["reread_at"]}),
+            **({} if "step_counts" not in resume else {"step_counts": [
+                [n(near), predicate, direction, far_type, count]
+                for (near, predicate, direction, far_type), count in resume["step_counts"].items()]}),
             "cursor": cursor,
-            "hubs": [[step_id, near, predicate, direction, far_type, depth,
-                      [[n(member), None if parent is None else n(parent)] for member, parent in members]]
-                     for step_id, near, predicate, direction, far_type, depth, members in resume.get("hubs") or ()],
+            **({} if "hubs" not in resume else {"hubs": [
+                [step_id, near, predicate, direction, far_type, depth,
+                 [[n(member), None if parent is None else n(parent)] for member, parent in members]]
+                for step_id, near, predicate, direction, far_type, depth, members in resume["hubs"]]}),
             "reach": {str(n(seed)): {"parents": [[n(node), n(step[0]), *step[1:]] for node, step in held["parents"].items()],
                                      "arrived": [[n(node), steps] for node, steps in held["arrived"].items()],
                                      "kinds": held["kinds"]}
@@ -404,7 +411,10 @@ def _unpacked(resume):
                       "hubs": {mark[0]: list(mark[1:]) for mark in shown.get("hubs") or ()},
                       "edges": {mark[0]: list(mark[1:]) for mark in shown.get("edges") or ()}},
             "row_edges": {(ids[s], ids[tg], p): w for s, tg, p, w in resume.get("row_edges") or ()},
-            "reread": [ids[i] for i in resume.get("reread") or ()],
+            "reread": [[ids[i], depth] for i, depth in resume.get("reread") or ()],
+            "reread_at": resume.get("reread_at"),
+            "step_counts": {(ids[near], predicate, direction, far_type): count
+                            for near, predicate, direction, far_type, count in resume.get("step_counts") or ()},
             "cursor": cursor,
             "hubs": [[step_id, near, predicate, direction, far_type, depth,
                       [[ids[member], None if parent is None else ids[parent]] for member, parent in members]]
@@ -756,8 +766,10 @@ class SqlEvidenceLookup:
         return selected, (f"NOT {not_current}" if not_current and self.current_only else "")
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None, exclude=None, far=None, far_types=None, before=None):
-        """`follow` narrows which predicates the walk fetches at all; `exclude` leaves some out -
+                            follow=None, exclude=None, far=None, far_types=None, before=None, ends_only=False):
+        """`ends_only`: not the atoms but their distinct (subject type, subject keys, predicate, object kind, object
+        payload), uncut - a step's whole count, through THIS read's filters (QA F2: the fan-out limit is the step's).
+        `follow` narrows which predicates the walk fetches at all; `exclude` leaves some out -
         an opened bundle's predicate, already read first (총괄 11e5ea207). `far_types`: (`in` | `not_in`, bare
         types) of the far end (`_far_types`). `before`: (instant, atom id) - only the atoms after it in the read's own
         order (newest first), so a read the cap cut goes on where it stopped (총괄 10-12 이어 걷기).
@@ -771,7 +783,7 @@ class SqlEvidenceLookup:
         `None` means follow everything, which is what every caller did before this existed.
         An entity is `(type, keys)` or `(type, keys, {"steps": [...]})` - what `_skip` leaves out.
         """
-        if not entities or limit <= 0:
+        if not entities or (limit <= 0 and not ends_only):
             return [], False
         frontier = [{"type": item[0], "keys": item[1],
                      **({"skip": item[2]} if len(item) > 2 else {})} for item in entities]
@@ -785,6 +797,8 @@ class SqlEvidenceLookup:
             follow_clause = " AND ".join(filter(None, (follow_clause, "e.predicate <> ALL(%(exclude)s)")))
 
         selected, current = self._selected(params)
+        if ends_only:
+            selected = "e.subject_type, e.subject_keys, e.predicate, e.object_kind, e.object_payload"
         cte = FRONTIER_CTE
         if far:
             params["far"] = _canonical([{"type": t, "keys": k} for t, k in far[1]])
@@ -814,6 +828,11 @@ class SqlEvidenceLookup:
                 """)
             return " UNION ".join(built)
 
+        if ends_only:
+            return [tuple(row) for row in self._execute(f"""
+                {cte}
+                SELECT DISTINCT * FROM ({_arms(self._interval_clause(params))}) ends
+            """, params)], False
         rows = self._execute(f"""
             {cte}
             SELECT * FROM ({_arms(self._interval_clause(params))}) claims
@@ -996,7 +1015,7 @@ class InMemoryEvidenceLookup:
         return _DescribedSeeds(ids[:int(limit)], max(0, len(ids) - int(limit)))
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None, exclude=None, far=None, far_types=None, before=None):
+                            follow=None, exclude=None, far=None, far_types=None, before=None, ends_only=False):
         ends = None if not far else {(t, _canonical(k)) for t, k in far[1]}
         far_mode = far and far[0]
         wanted = {(item[0], _canonical(item[1])): (item[2] if len(item) > 2 else {})
@@ -1037,6 +1056,12 @@ class InMemoryEvidenceLookup:
                         continue
                     atom = replace(atom, not_current=True)
                 rows.append(atom)
+        if ends_only:                                   # `SqlEvidenceLookup`'s: distinct ends, uncut
+            seen = {}
+            for atom in rows:
+                end = (atom.subject_type, atom.subject_keys, atom.predicate, atom.object_kind, atom.object_payload)
+                seen.setdefault(_canonical(list(end)), end)
+            return list(seen.values()), False
         return self._result(rows, limit)
 
     def _not_current(self, atom):
@@ -1613,15 +1638,23 @@ HUB_DIRECTIONS = ("outgoing", "incoming")
 _HUB_VALUE = re.compile(r"^\d+,\d+(,(found|none|unknown))?$")
 
 
-def hub_step(hub_id):
-    """The step a hub id names - `<near's step>|<predicate>|<direction>|<far type>`, every value cell left out - or None
-    when `hub_id` is not one (총괄 b5f3fc849 · afcb79f14). A hub beyond a hub carries that hub's id as its near side,
-    so the cells are read from the right."""
+def hub_cells(hub_id):
+    """THE ONE READING OF A HUB ID (총괄 b5f3fc849 · afcb79f14; QA: five places read it) - `<near>|<predicate>|<direction>|
+    <far type>|<value>` -> {near, predicate, direction, far_type, value, step} or None when `hub_id` is not one. A hub
+    beyond a hub carries that hub's id as its near side, so the cells are read from the right; `step` is the step it
+    names, every value cell left out."""
     parts = str(hub_id).rsplit("|", 4)
     if len(parts) != 5 or not all(parts) or parts[2] not in HUB_DIRECTIONS or not _HUB_VALUE.match(parts[4]):
         return None
-    near = hub_step(parts[0]) or parts[0]
-    return "|".join((near, parts[1], parts[2], parts[3]))
+    near = hub_cells(parts[0])
+    return {"near": parts[0], "predicate": parts[1], "direction": parts[2], "far_type": parts[3], "value": parts[4],
+            "step": "|".join((near["step"] if near else parts[0], parts[1], parts[2], parts[3]))}
+
+
+def hub_step(hub_id):
+    """The step a hub id names (`hub_cells`), or None when it is not one."""
+    cells = hub_cells(hub_id)
+    return cells["step"] if cells else None
 
 
 def _hub_value(member, reach, nodes, aux_before=None):
@@ -1739,13 +1772,20 @@ def _hub_view(visible, edges, folded, nodes, entities, seed_signs, shown, row_ed
 
 def _hub_seeds(lookup, seed_id, limit):
     """`seed_id` with each hub id in it read as the far nodes of the step it names (총괄 01a56c82d). ⚠️ THE STEP'S, every
-    value: a hub's value belongs to the walk that drew it, and a walk from it has no other walk to ask."""
+    value: a hub's value belongs to the walk that drew it, and a walk from it has no other walk to ask.
+    🔴 Read through the walk's own lookup (as of its first page) and within its atom budget (QA F4). -> (seeds, atoms
+    read, whether the budget cut the read - said as a claims cut, QA F5)."""
+    spent = [0, False]
+
     def members(hub_id):
-        near, predicate, direction, far_type, _value = hub_id.rsplit("|", 4)
+        cells = hub_cells(hub_id)
+        near, predicate, direction, far_type = cells["near"], cells["predicate"], cells["direction"], cells["far_type"]
         nears = members(near) if hub_step(near) else [near]
         refs = [decode_node_id(item) for item in nears]
-        atoms, _cut = lookup.claims_for_entities([(ref["type"], ref["keys"]) for ref in refs], direction, limit,
-                                                 follow=[predicate])
+        atoms, cut = lookup.claims_for_entities([(ref["type"], ref["keys"]) for ref in refs], direction,
+                                                max(limit - spent[0], 0), follow=[predicate])
+        spent[0] += len(atoms)
+        spent[1] = spent[1] or cut or limit - spent[0] <= 0
         found = []
         for atom in atoms:
             if direction == "outgoing":
@@ -1766,11 +1806,12 @@ def _hub_seeds(lookup, seed_id, limit):
     def read(items):
         return [member for item in items or () for member in (members(str(item)) if hub_step(item) else [item])]
     if isinstance(seed_id, str) and hub_step(seed_id):
-        return {"positive": members(seed_id), "negative": []}
+        return {"positive": members(seed_id), "negative": []}, spent[0], spent[1]
     if isinstance(seed_id, dict) and any(hub_step(item) for sign in ("positive", "negative")
                                          for item in seed_id.get(sign) or ()):
-        return {"positive": read(seed_id.get("positive")), "negative": read(seed_id.get("negative"))}
-    return seed_id
+        seeds = {"positive": read(seed_id.get("positive")), "negative": read(seed_id.get("negative"))}
+        return seeds, spent[0], spent[1]
+    return seed_id, 0, False
 
 
 def _signed_seeds(start):
@@ -2772,7 +2813,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              cardinalities=None, rows=False,
              entities=None, group_by=None, measure=None,
              seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
-             registration_follow=None, fanout_limit=None, expand=None, resume=None, aux=None):
+             registration_follow=None, fanout_limit=None, expand=None, resume=None, aux=None, fold=True):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     🔴 MORE (총괄 ad3c03e71 · df746abf6 ㄴ, 소유자 「원하는 걸 다 얻었는지 파악하고 계속 추가 걷기」 · 「상한은 그대로」):
@@ -2824,13 +2865,14 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     seed_cut = 0
     # `expand` names hubs to draw unfolded - a hub id as the walk answered it; the step it names (every cell but the
     # values, 총괄 afcb79f14) is not folded at all.
-    expand_keys = set()
+    expand_keys, expand_opened = set(), []
     for item in expand or ():
-        step = hub_step(str(item))
-        if step is None:
+        cells = hub_cells(str(item))
+        if cells is None:
             raise ValueError(f"expand {item!r} is not a hub id - <node id>|<predicate>|<direction>|<far type>|<value>, "
                              f"as the walk answered it")
-        expand_keys.add(step)
+        expand_keys.add(cells["step"])
+        expand_opened.append((cells["near"], cells["predicate"]))
     if seed_type:
         # ⛔ An undeclared type is refused before this, by name, at the route's one seat for a
         # request's names (`trace_router._declared_or_refused`, 총괄 17b6337e4).
@@ -2853,7 +2895,26 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             raise ValueError(
                 "every node of type %r is named as a control; nothing is "
                 "left to walk from" % (seed_type,))
-    seed_id = _hub_seeds(lookup, seed_id, MAX_CLAIM_SCAN)
+    node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
+    edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
+    if direction not in {"outgoing", "incoming", "both"}:
+        raise ValueError("direction must be outgoing, incoming, or both")
+    claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
+    # 🔴 A CONTINUED PAGE READS AS OF ITS FIRST PAGE - every read, a hub id seed's too (QA F4), so the resume is taken
+    #    and the lookup bound here, before the seeds
+    as_of = datetime.now(timezone.utc)
+    resume_given = None if resume is None else json.dumps(resume, sort_keys=True, default=str)
+    if resume is not None:
+        try:
+            resume = _unpacked(resume)
+        except (IndexError, KeyError, TypeError, ValueError) as exc:
+            # QA F10: a place number out of range, a missing cell - not a page this walk handed out
+            raise ValueError("resume is not a page this walk handed out - send back more.resume as it came (%s: %s)"
+                             % (type(exc).__name__, exc)) from exc
+        as_of = _parse_instant(resume["as_of"])
+        lookup = copy.copy(lookup)
+        lookup.recorded_before = _as_of_bound(as_of)
+    seed_id, seed_hub_read, seed_hub_cut = _hub_seeds(lookup, seed_id, claim_limit)
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
@@ -2895,11 +2956,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     f"as 'there is nothing here'.")
             wanted.append(tuple(_json_key(keys[name]) for name in key_names))
         seed_key_sets[_bare_name(predicate)] = (tuple(key_names), set(wanted))
-    node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
-    edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
-    if direction not in {"outgoing", "incoming", "both"}:
-        raise ValueError("direction must be outgoing, incoming, or both")
-    claim_limit = min(MAX_CLAIM_SCAN, max(200, edge_limit * 2))
     # Declared, not queried.  An absent or broken declaration yields no models and no
     # bindings, so the projection simply carries no Quantity nodes — the same «state, not
     # 🔴 THE MECHANISM LOAD LEFT 2026-08-28. It ran on EVERY request to
@@ -2932,10 +2988,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     edge_records = {}
     action_claims_seen = set()
     node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
+    claim_cut = seed_hub_cut                            # ... and a seed read the budget cut is said (QA F5)
     #: nodes that have spent the node budget -- see `carried` below
     budgeted = 0
     budgeted_edges = 0
-    claims_scanned = 0
+    claims_scanned = seed_hub_read                      # a hub id seed's read spends the page's atoms (QA F4)
     actions_scanned = 0
 
     #: 🔴 THE BUDGET COUNTS WHAT THE ANSWER SHOWS: every node without `collect`, the collected
@@ -2957,15 +3014,22 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: answer a row of its hub's table, outside the node budget - its hub spends one. While walking a hub is a STEP
     #: (`<near's step>|<predicate>|<direction>|<far type>`); the walk's contrast splits it by value at the end
     #: (`_value_hubs`). row -> step; step -> {near, predicate, direction, type, depth, members: {row: parent row}}.
-    row_hub, hubs, row_children = {}, {}, defaultdict(set)
-    hub_predicates = _read_entity_declaration()[6]
+    row_hub, hubs, row_children = {}, {}, defaultdict(dict)        # children kept in order: QA F7 (not by hash)
+    # `fold=False`: a caller that stores what it walked gets every node as walked - no hub (QA F11)
+    hub_predicates = _read_entity_declaration()[6] if fold else frozenset()
+    fanout_limit = fanout_limit if fold else None
+    #: can this walk fold at all - a declared hub predicate, or a fan-out limit (QA F9: if not, its answer and its resume
+    #: are byte for byte what they were before hubs)
+    can_fold = bool(hub_predicates) or fanout_limit is not None
     #: every node a page before reached (the resume's `reached`) - a step to one is not its «first» (lead, option 1)
     earlier = set()
     #: 🔴 A PAGE IS A DELTA (lead option 1): what the pages before answered - each row's hub, each hub's count and value,
     #: each hub edge's count and worlds - and the edges of every row (`row_edges`: (source, target, predicate) ->
     #: worlds), so a hub edge is counted over the whole walk. `reread`: rows a page before answered that left their hub
     #: here - their edges are read again (A2), within the atom budget; what does not fit is the next page's first read.
-    shown, row_edges, reread, forced = {"rows": {}, "hubs": {}, "edges": {}}, {}, [], set()
+    shown, row_edges, reread, reread_at, forced = {"rows": {}, "hubs": {}, "edges": {}}, {}, [], None, set()
+    #: a step's whole count of far nodes, where a read saw only part of it (QA F2) - fan key -> count, carried on
+    step_counts = {}
 
     def add_node(node, ref, depth):
         nonlocal node_cut, budgeted
@@ -3242,12 +3306,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #    departures, arrivals - the ones it read whole (`seen`) are not read nor spent again, the read its first cap
     #    stopped goes on from that read's own place (`cursor`), and every read is as of the first page. One walk
     #    paused and continued: before the seeds, so a seed the page before answered is not counted again.
-    done, cursor, as_of = set(), None, datetime.now(timezone.utc)
+    done, cursor = set(), None
     if resume is not None:
-        resume = _unpacked(resume)
-        as_of = _parse_instant(resume["as_of"])
-        lookup = copy.copy(lookup)
-        lookup.recorded_before = _as_of_bound(as_of)
         taken_back = {str(item["id"]): item for item in resume.get("frontier") or ()}
         done.update(str(item) for item in resume.get("seen") or ())
         known.update(done, taken_back)
@@ -3260,12 +3320,15 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         earlier.update(str(item) for item in resume.get("reached") or ())
         shown = resume.get("shown") or shown
         row_edges = dict(resume.get("row_edges") or {})
-        reread = list(resume.get("reread") or ())                   # the page before ran out: this page's first read
+        # the page before ran out: this page's first read - each row with the depth it was answered at (it comes again)
+        reread = [node_id for node_id, _depth in resume.get("reread") or ()]
+        depths.update({node_id: int(depth) for node_id, depth in resume.get("reread") or ()})
+        reread_at = resume.get("reread_at")                          # ... from where its first chunk stopped
+        step_counts = dict(resume.get("step_counts") or {})
         for node_id in reread:
             if node_id not in nodes:
                 ref = decode_node_id(node_id)
                 nodes[node_id], refs[node_id] = _entity_node(ref["type"], ref["keys"]), ref
-                depths.setdefault(node_id, 1)
             forced.add(node_id)
         # 🔴 not `direction`: that is the walk's own - a page after the first read one side only (the 7-page end)
         for step_id, near, predicate, step_direction, far_type, hub_depth, members in resume.get("hubs") or ():
@@ -3275,7 +3338,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 hubs[step_id]["members"][member] = parent
                 row_hub[member] = step_id
                 if parent is not None:
-                    row_children[parent].add(member)
+                    row_children[parent][member] = None
         for node_id in (cursor or {}).get("frontier") or ():
             refs.setdefault(node_id, decode_node_id(node_id))
 
@@ -3313,8 +3376,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         rest of its node, then the rest of the group - an opened bundle spends the budget first,
         within its depth (총괄 11e5ea207 · c06b45ea5). Nothing opened: the one read it always was."""
         opened = defaultdict(set)
-        for step in expand_keys:
-            node_id, predicate, _direction, _far_type = step.rsplit("|", 3)
+        for node_id, predicate in expand_opened:
             if not group_follow or predicate in group_follow:
                 opened[node_id].add(predicate)
         by_predicates = defaultdict(list)
@@ -3328,6 +3390,22 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         return ([(items, list(predicates), None) for predicates, items in firsts]
                 + [(items, group_follow, list(predicates)) for predicates, items in firsts]
                 + ([(rest, group_follow, None)] if rest else []))
+
+    def _count_steps(entities, read_follow, read_exclude, depth, frontier_entities):
+        """QA F2 (lead 0e24891ce): the steps of a read the budget cut, or one a page before began, counted whole - once,
+        through the read's own filters (`ends_only`) and `_step`'s own judgement - so «over fanout_limit» is the step's."""
+        from types import SimpleNamespace
+
+        ends = lookup.claims_for_entities(entities, direction, 0, follow=read_follow, ends_only=True,
+                                          **({"exclude": read_exclude} if read_exclude else {}))[0]
+        far_of = defaultdict(set)
+        for subject_type, subject_keys, predicate, object_kind, object_payload in ends:
+            step = _step(SimpleNamespace(subject_type=subject_type, subject_keys=subject_keys, predicate=predicate,
+                                         object_kind=object_kind, object_payload=object_payload),
+                         depth, frontier_entities)
+            if step is not None and step["fan_key"] is not None and step["fan_key"] not in step_counts:
+                far_of[step["fan_key"]].add(step["far_id"])
+        step_counts.update({key: len(fars) for key, fars in far_of.items()})
 
     def _frontier(items, group):
         """A read's entities, each with the steps its node does not read (`_skip`): those
@@ -3368,8 +3446,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             if step_id in expand_keys:
                 continue
             if not at_row and step_id not in hubs:
-                over = fanout_limit is not None and len(fanned[members[0][1]]) > fanout_limit
-                if not ((_bare(predicate) in hub_predicates or over) and len(members) >= 2):
+                # 🔴 a declared hub predicate folds whatever its count (owner: «접을 것은 선언 — 자동 기준 수가 아니다»,
+                # QA F2); the fan-out limit reads the STEP's whole count - this read's only when it saw the whole step
+                total = step_counts.get(members[0][1], len(fanned[members[0][1]]))
+                over = fanout_limit is not None and total > fanout_limit
+                if not (_bare(predicate) in hub_predicates or over):
                     continue
             if step_id not in hubs:
                 if carried({"id": step_id, "type": far_type}):
@@ -3384,7 +3465,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 hubs[step_id]["members"][far] = parent
                 row_hub[far] = step_id
                 if parent is not None:
-                    row_children[parent].add(far)
+                    row_children[parent][far] = None
 
     def _under(node_id, row):
         """Is `node_id` a row under `row`? Reached back from below is not another way."""
@@ -3417,7 +3498,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 continue
             parent = hubs[step_id]["members"].pop(node_id, None)
             if parent is not None:
-                row_children[parent].discard(node_id)
+                row_children[parent].pop(node_id, None)
             if node_id in earlier:
                 # a page before answered it as a row: this page answers it as a node, its edges read again (A2)
                 if node_id not in nodes:
@@ -3429,28 +3510,26 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             if carried(nodes[node_id]) or node_id in forced:
                 budgeted += 1
                 node_cut = node_cut or budgeted > node_limit
-            stack.extend(row_children.pop(node_id, ()))
+            stack.extend(row_children.pop(node_id, {}))
 
-    def _read_again(rows):
+    def _read_again(rows, at=None):
         """🔴 A2 (lead d2a64a904): the edges of rows a page before answered and a page took out of their hub, read again -
         as the walk reads (its direction, its follow, its as_of and window), folded by `add_edge` as any atom is.
-        -> the rows the atom budget left (`edges_pending`): the next page's first read."""
+        🔴 IT GOES ON FROM WHERE IT STOPPED, as the walk's own reads do (QA F1: a chunk over the atom budget was handed back
+        whole, page after page). `at`: where the first chunk stopped. -> (the rows the budget left, where the first of
+        them stopped or None) - `edges_pending` and the next page's first read."""
         nonlocal claims_scanned, claim_cut
-        left_over, reached_now = [], earlier | set(nodes)
+        reached_now = earlier | set(nodes)
         rows = list(dict.fromkeys(rows))
         for start in range(0, len(rows), 50):
             chunk = rows[start:start + 50]
             room = claim_limit - claims_scanned
             if room <= 0:
-                left_over.extend(chunk)
-                continue
+                return rows[start:], at
+            before = (_parse_instant(at[0]), str(at[1])) if at else None
             batch, cut = lookup.claims_for_entities([(refs[r]["type"], refs[r]["keys"]) for r in chunk], direction, room,
-                                                    follow=follow)
+                                                    follow=follow, **({"before": before} if before else {}))
             claims_scanned += len(batch)
-            if cut:
-                claim_cut = True
-                left_over.extend(chunk)
-                continue
             for atom in batch:
                 payload = atom.object_payload or {}
                 if atom.object_kind != "entity_ref" or not payload.get("type") or not payload.get("keys"):
@@ -3460,11 +3539,15 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 if source in reached_now and target in reached_now:
                     add_edge(_claim_edge(atom, source, target, atom.predicate, cardinalities), atom.occurred_at,
                              free=True)
-        return left_over
+            if cut:
+                claim_cut = True
+                return rows[start:], [_instant(batch[-1].occurred_at), str(batch[-1].id)]
+            at = None
+        return [], None
 
     # the rows the page before had no atoms left for: this page's first read, before its walk (lead d2a64a904)
     taken_back_rows = len(reread)
-    pending = _read_again(reread)
+    pending, pending_at = _read_again(reread, reread_at)
 
     fetched = []
     for depth in range(cursor["depth"] if cursor else 0, budget_hops):
@@ -3569,6 +3652,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     **({"exclude": read_exclude} if read_exclude else {}),
                     **({"before": before} if j == first and before else {}))
                 claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
+                if fanout_limit is not None and (cut or (j == first and before)):
+                    _count_steps(_frontier(items, group), read_follow, read_exclude, depth, frontier_entities)
                 fetched.extend(batch)
                 steps.extend((atom, _step(atom, depth, frontier_entities), j) for atom in batch)
                 if cut:
@@ -3645,7 +3730,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         if not claim_id:
             continue
         for endpoint in (edge["source"], edge["target"]):
-            attached_claims[endpoint][claim_id] = edge["predicate"]
+            if endpoint in attached_claims:           # an edge read again may end at a node a page before answered
+                attached_claims[endpoint][claim_id] = edge["predicate"]
     for node_id, node in nodes.items():
         node["depth"] = depths[node_id]
         if node.get("node_kind") in {"entity", "event"}:
@@ -3680,7 +3766,10 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # walk carries no columns, and the seat that can explain why - the declaration - is the
     # caller's, not this module's: `ledger_subgraph` reads no declaration at all.
     # this page's rows that left - their edges read again after the walk; what does not fit joins the next page's first read
-    pending += _read_again(reread[taken_back_rows:])
+    if not pending:
+        pending, pending_at = _read_again(reread[taken_back_rows:])
+    else:
+        pending += list(dict.fromkeys(reread[taken_back_rows:]))     # behind the ones still waiting, in order
 
     registration_refs = []
     if registration_follow:
@@ -3754,8 +3843,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         _judge_aux(judged, aux, lookup, edge_limit, static_types)
         aux_block = judged["aux"]
     folded = {}
-    aux_before = {row: hub_id.rsplit("|", 1)[-1].split(",")[2] for row, hub_id in shown["rows"].items()
-                  if hub_id.rsplit("|", 1)[-1].count(",") == 2}
+    aux_before = {row: cells["value"].split(",")[2] for row, cells in
+                  ((row, hub_cells(hub_id)) for row, hub_id in shown["rows"].items())
+                  if cells and cells["value"].count(",") == 2}
     propagation = _propagation(
         nodes, ordered_edges, seed_signs,
         not (depth_cut or node_cut or edge_cut or claim_cut or action_cut or seed_cut),
@@ -3780,7 +3870,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         **({"left": delta["left"]} if delta.get("left") else {}),
         **({"moved": delta["moved"]} if delta.get("moved") else {}),
         **({"edges_pending": pending} if pending else {}),
-        **({} if aux_block is None else {"aux": aux_block}),
         # 🔴 WHICH ATTRIBUTE NAMES HOLD SEVERAL VALUES, BY NODE TYPE (S-144, 판정 327).
         # `attributes[name]` is a list for these names and a scalar for every other, so a
         # reader has to know which - and the DECLARATION is where that is written. The
@@ -3865,14 +3954,27 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                                     hub["depth"], [[m, p] for m, p in hub["members"].items()]]
                                    for step_id, hub in hubs.items()]}
     if more["resume"] is not None:
-        more["resume"].update(shown=shown, row_edges=row_edges, reread=pending)
+        if can_fold:
+            more["resume"].update(shown=shown, row_edges=row_edges, reread=[[row, depths[row]] for row in pending],
+                                  **({"reread_at": pending_at} if pending_at else {}),
+                                  **({"step_counts": step_counts} if step_counts else {}))
+        else:                                       # QA F9: a walk that cannot fold resumes byte for byte as before hubs
+            more["resume"].pop("reached", None)
+            more["resume"].pop("hubs", None)
         more["resume"]["reach"] = reached              # where the next page's ranking goes on from
         more["resume"] = _packed(more["resume"])
+        # 🔴 A PAGE ALWAYS MOVES ON (QA F1): one that hands out the very state it was given would be paged forever (the
+        # reading-again once did: atoms read and thrown back, the same rows pending). The walk ends here and says so.
+        if resume_given is not None and json.dumps(more["resume"], sort_keys=True, default=str) == resume_given:
+            more["resume"] = None
+            payload["truncated"]["reason"] = ", ".join(filter(None, (payload["truncated"]["reason"], "stalled")))
     if rows:
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.
         payload["rows"] = rows_projection(
             dict(payload, nodes=visible_nodes), nodes, ordered_edges, seed_signs, entities, static_types or (), (resume or {}).get("reach"))
+    if aux_block is not None:
+        payload["aux"] = aux_block                  # last, where the walk put it before hubs (QA F9)
     return payload
 
 

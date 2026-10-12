@@ -2583,6 +2583,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
 
     _cross_vocabulary(vocabulary, entities, problems)
     _cross_references(entities, vocabulary, problems)
+    _cross_hub_names(vocabulary, entities, sources, problems)
     # `_cross_packs` stood here and checked a Claim against the predicate it emitted --
     # object kind agreement, every required qualifier present, no qualifier the predicate
     # does not allow, every `$role` endpoint declared with a compatible kind.  Every one of
@@ -2779,6 +2780,28 @@ def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any]
                     problems.add("unknown_entity_type", f"{path}.object.types[{index}]",
                                  f"unknown entity type {entity_type!r}"
                                  + _did_you_mean(entity_type, entities, "entity types"))
+
+
+def _cross_hub_names(vocabulary: Mapping[str, Any], entities: Mapping[str, Any], sources: Mapping[str, Any],
+                     problems: _Problems) -> None:
+    """`hub: true` folds the steps a walk reads, and a step carries the name its atoms are STORED under (QA F8): written
+    on the other name of an inverse pair whose atoms are stored under this one, it would fold nothing - refused, naming
+    where to write it. Only when the partner is the stored name: with no source writing either, there is nothing to say.
+    ⚠️ The raw vocabulary here, not the compiled one: a reference edge of a type read from a column is not counted as
+    stored - the check stays silent there rather than refuse wrongly."""
+    stored = {bare_name(name) for source in sources.values()
+              if isinstance(source, Mapping) and not is_retired(source)
+              for name in emitted_predicates(source, entities, {})}
+    for predicate_id, item in vocabulary.items():
+        if not isinstance(item, Mapping) or item.get("hub") is not True or bare_name(predicate_id) in stored:
+            continue
+        partners = {bare_name(item["inverse_of"])} if isinstance(item.get("inverse_of"), str) else set()
+        partners |= {bare_name(key) for key, spec in vocabulary.items()
+                     if isinstance(spec, Mapping) and isinstance(spec.get("inverse_of"), str)
+                     and bare_name(spec["inverse_of"]) == bare_name(predicate_id)}
+        for partner in sorted(partners & stored):
+            problems.add("invalid_predicate", f"bundle.vocabulary.{predicate_id}.hub",
+                         f"the atoms of this link are stored under {partner!r} - write hub on {partner!r}")
 
 
 def _cross_references(entities: Mapping[str, Any], vocabulary: Mapping[str, Any],

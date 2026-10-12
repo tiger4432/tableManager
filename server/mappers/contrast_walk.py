@@ -117,7 +117,8 @@ def _walk(db, args):
         follow=args["follow"] or None, backbone_hops=args["backbone_hops"],
         collect=None, seed_type=args["seed_type"], seed_limit=args["seed_limit"],
         group_by=None, measure=None, response_format="json", db=db,
-        include_superseded=args["include_superseded"], world=args["world"])
+        include_superseded=args["include_superseded"], world=args["world"],
+        fold=False)                                 # the run rows store the walked nodes, never a hub (QA F11)
 
 
 def contrast_walk(db, payload, rule=None):
