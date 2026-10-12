@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // The walk's hubs as the screens read them (lead 10-12 · 10-13, task/WALK_HUB_ANSWER_SHAPE.md). The answers are the server
-// hub branch's own: fixtures/walk_hub_answers.json.gz, written by its hub test's scenarios through its own helpers - the
+// hub branch's own: fixtures/walk_hub_answers.json.gz, written by its hub test's scenarios through its own helpers
+// (fixtures/capture_walk_hubs.py says how to write it again) - the
 // owner's example, the same walk opened, a contrast with two values, the walk with a typed cap, and four continued walks
 // page by page with what the server's reference receiver (`_applied`) holds after them. The graph's hub cells are
 // subgraph_view_harness's [HB] and [U].
