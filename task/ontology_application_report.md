@@ -39014,3 +39014,31 @@ shared_buffers 128MB · dt_log 본체 134 MB · 인덱스 포함 389 MB · 산 �
   warm   search    3      494.4        1.0     565557.99        1511        14977  Seq Scan
   shared_buffers 128MB · dt_log heap 134 MB · with indexes 389 MB · live rows 565559
 ```
+
+---
+
+## [C 응용] 10-13 — 허브 가지에서 «쪽 합 == 한 번» · 걸음 세기 질의의 쪽당 초 (총괄 10-13)
+
+박스 수. 걷기 판 assy_impl_wm_1012 읽기만 · 씨앗 wafer SYN-BW-101-16 · hops 6 · collect wafer · die · defect · fanout_limit 20. 가지 031903979(제 작업 트리 /c/wt-apphub). 제 판 시간은 구현자 B 의 런처 판(07:08 ~ 07:20, 세 번)과 겹침 — 판정은 «같음»이 주. 명령: scratchpad/hub_pages_receiver.py · 이 절 report_1013_hub_gen.py.
+
+**1 쪽 합 == 한 번 — 받는 쪽 규칙(WALK_HUB_ANSWER_SHAPE «이어 걷기»: moved → left → nodes → edges → tables, {id, count: 0} = 없어짐)을 구현자 판정과 따로 문서만 보고 짠 받는 쪽으로**
+
+```
+허브 없음               쪽 29 · 끝까지 True · 노드 2905/2905 다름 0 · 묶음 표 470/470 다름 0 · 선 6818/6818 다름 1435
+허브 ['in_container'] 쪽 29 · 끝까지 True · 노드 2905/2905 다름 0 · 묶음 표 470/470 다름 0 · 선 6818/6818 다름 1435
+허브 없음               쪽 29 · 끝까지 True · 노드 2905/2905 다름 0 · 묶음 표 470/470 다름 0 · 선 6818/6818 다름 1435 (다시 · 모든 칸 셈)
+한 번(상한 · MAX_CLAIM_SCAN 풀고): 42.5 s 노드 2905 선 6818 · 40.0 s 노드 2905 선 6818 · 41.7 s 노드 2905 선 6818
+다른 선 1435 의 칸(문서가 «쪽마다»라 한 records · claim_id · by_world · basis 는 뺀 뒤): source_who 1399 · occurred_at 1381 · records_more 90
+```
+
+- 노드 · 묶음 표는 한 번 걸은 답과 같습니다. 선은 id · 수가 같고, 다른 것은 원자에서 나온 칸뿐입니다.
+- 🔴 문서의 «쪽마다» 목록(records · claim_id · by_world · basis)에 없는 셋이 같은 성질입니다: occurred_at · records_more · source_who. 받는 쪽이 문서대로 덮어쓰면 그 선의 «때 · 누가»가 마지막 쪽 원자의 것이 됩니다 — 목록에 넣거나(문서) 예산별 스트리밍에서 같이 누적하거나(코드).
+
+**2 걸음 세기 질의의 쪽당 초 — 구현자 A 의 쪽마다 기록(hub_gate_board3.jsonl)에서 셈, 허브 없음 판**
+
+```
+70e40f7f8+walk c6cdf3fd    쪽 29 · 쪽 초 중앙 10.27 · 최대 23.39 · 합 298.1 · 셈 질의 초 합 59.98 · 셈이 돈 쪽 29 · 이어 걷기 토큰 최대 17.5 MB
+031903979                  쪽 29 · 쪽 초 중앙 6.71 · 최대 18.94 · 합 205.0 · 셈 질의 초 합 6.29 · 셈이 돈 쪽 10 · 이어 걷기 토큰 최대 17.5 MB
+```
+
+- 이어 걷기 토큰(resume)이 마지막 쪽에서 위 크기까지 큽니다 — HTTP 로 이어 받으면 쪽마다 그 크기를 다시 보냅니다. 잰 판에서는 줄지 않았습니다.
