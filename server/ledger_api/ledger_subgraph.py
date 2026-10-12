@@ -347,6 +347,48 @@ def _instant(value):
     return value.astimezone(timezone.utc).isoformat()
 
 
+def _packed(resume):
+    """`resume` with each node id written once, in `ids`, and named by its place there everywhere else (총괄 10-12: the
+    frontier and the reach wrote every node again - 2 to 6 MB a page on a seed of 20,000 atoms). `_unpacked` reads it."""
+    ids, at = [], {}
+
+    def n(node_id):
+        if node_id not in at:
+            at[node_id] = len(ids)
+            ids.append(node_id)
+        return at[node_id]
+    cursor = dict(resume.get("cursor") or {})
+    if cursor.get("frontier") is not None:
+        cursor["frontier"] = [n(node_id) for node_id in cursor["frontier"]]
+    return {"as_of": resume["as_of"],
+            "frontier": [[n(item["id"]), item["depth"], item["cost"], item["arrivals"]] for item in resume["frontier"]],
+            "seen": [n(node_id) for node_id in resume["seen"]],
+            "cursor": cursor,
+            "reach": {str(n(seed)): {"parents": [[n(node), n(step[0]), *step[1:]] for node, step in held["parents"].items()],
+                                     "arrived": [[n(node), steps] for node, steps in held["arrived"].items()],
+                                     "kinds": held["kinds"]}
+                      for seed, held in (resume.get("reach") or {}).items()},
+            "ids": ids}
+
+
+def _unpacked(resume):
+    """The `resume` `_packed` wrote, as the walk reads it."""
+    ids = resume["ids"]
+    cursor = dict(resume.get("cursor") or {})
+    if cursor.get("frontier") is not None:
+        cursor["frontier"] = [ids[i] for i in cursor["frontier"]]
+    return {"as_of": resume["as_of"],
+            "frontier": [{"id": ids[i], "depth": depth, "cost": cost, "arrivals": arrivals}
+                         for i, depth, cost, arrivals in resume["frontier"]],
+            "seen": [ids[i] for i in resume["seen"]],
+            "cursor": cursor,
+            "reach": {ids[int(seed)]: {"parents": {ids[node]: [ids[before], *rest]
+                                                   for node, before, *rest in held["parents"]},
+                                       "arrived": {ids[node]: steps for node, steps in held["arrived"]},
+                                       "kinds": held["kinds"]}
+                      for seed, held in (resume.get("reach") or {}).items()}}
+
+
 def _as_of_bound(instant):
     """The uuid7 every atom recorded at or before `instant` sorts below: its millisecond plus one, the rest zero
     (`ledger.uuid7` - an id's leading 48 bits are when it was written)."""
@@ -1674,7 +1716,9 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None):
                                                 _kind(nxt))):
                         continue
                     if nxt not in reached:
-                        trail[nxt] = (node, predicate)
+                        # and every predicate between the two this page draws - a later page's evidence reads it here
+                        trail[nxt] = (node, predicate, sorted(
+                            {str(p) for other, p, _d in adjacency.get(node) or () if other == nxt and p}))
                     reached[nxt].add((predicate, direction, _kind(node)))
             for nxt, steps in reached.items():
                 seen.add(nxt)
@@ -1708,7 +1752,7 @@ def _trail_back(trail, node_id):
         step = trail.get(cursor)
         if step is None:
             break
-        cursor, predicate = step
+        cursor, predicate = step[0], step[1]
         predicates.append(predicate)
     ids.reverse()
     predicates.reverse()
@@ -1752,8 +1796,11 @@ def _evidence(nodes, parents, seed_signs, node_id, between):
                     or held[item].get("basis")),
         } for item in path]
         for index in range(1, len(hops)):
+            # this page's edges between the two, and what the page that drew the hop said (MORE, 응용 18766: [] after a
+            # first page)
+            drawn = trail[path[index]][2] if len(trail[path[index]]) > 2 else ()
             hops[index]["predicates"] = sorted(
-                between.get(frozenset((path[index - 1], path[index]))) or ())
+                set(between.get(frozenset((path[index - 1], path[index]))) or ()) | set(drawn))
         trails.append({
             "seed": seed,
             "sign": "+" if seed_signs[seed] > 0 else "-",
@@ -2962,6 +3009,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #    paused and continued: before the seeds, so a seed the page before answered is not counted again.
     done, cursor, as_of = set(), None, datetime.now(timezone.utc)
     if resume is not None:
+        resume = _unpacked(resume)
         as_of = _parse_instant(resume["as_of"])
         lookup = copy.copy(lookup)
         lookup.recorded_before = _as_of_bound(as_of)
@@ -3430,6 +3478,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     }
     if more["resume"] is not None:
         more["resume"]["reach"] = reached              # where the next page's ranking goes on from
+        more["resume"] = _packed(more["resume"])
     if rows:
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.
