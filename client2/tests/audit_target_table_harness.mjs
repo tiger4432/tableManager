@@ -19,13 +19,25 @@
 // 종전에는 함수 «하나»를 시그니처와 열 0 의 닫는 중괄호로 «잘라» vm 에 넣었습니다.
 // 그 함수가 헬퍼를 하나 부르게 되는 날 「코드가 맞는데」 빨개집니다.
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { loadWithProbe } from './lib/probe.mjs';//
 // 🔴 정정 (2026-09-06 오후): 이 파일은 «제가 오늘 만든» 다리를 쓰고 있었습니다. 그런데 그
 //    기제는 «이미 있었습니다» — `tests/lib/probe.mjs` (251줄 · 소비자 21). 덧붙이기도,
 //    바이트 접두 단언도, 「변이가 안 먹으면 죽는다」도, 의존 모듈 갈아끼우기도 «전부» 거기
 //    있습니다. 제가 그것을 안 찾고 두 번째 경로를 지었고, 그게 기준 ④ 위반입니다.
 //    -> 정본 하나로 모읍니다. 제 헬퍼는 삭제했습니다.
-import { auditTargetTable } from '../src/timeline.js';
+const element = () => {
+  const node = { _html: '', style: {}, dataset: {}, classList: { add() {}, remove() {}, contains: () => false },
+    set innerHTML(v) { node._html = String(v); }, get innerHTML() { return node._html; },
+    set className(v) { node._cls = v; }, get className() { return node._cls || ''; },
+    querySelector: () => element(), querySelectorAll: () => [], addEventListener() {}, setAttribute() {},
+    appendChild: (c) => c, append() {} };
+  return node;
+};
+globalThis.document = globalThis.document || { createElement: element, getElementById: () => null,
+  createDocumentFragment: element, addEventListener() {} };
+globalThis.window = globalThis.window || { addEventListener() {} };
+const { auditTargetTable } = await import('../src/timeline.js');
 
 const SRC_PATH = fileURLToPath(new URL('../src/timeline.js', import.meta.url));
 
@@ -103,6 +115,29 @@ console.log('\n── C. the empty and broken shapes ─────────
     f({ logs: [log('dt_log')] }));
 }
 
+console.log('\n── D. the row: the table a column of its own, said once (owner 10-12) ──');
+const ROW = (logs, total) => ({ transaction_id: 'TX-1', total_count: total, logs: logs.map((l, i) => ({ id: i + 1,
+  row_id: 'abcdef0123456789', column_name: 'dt_eqp', old_value: 'A', new_value: 'B', source_name: 'user', updated_by: 'kim',
+  timestamp: '2026-10-12T01:00:00', business_key: 'LOT-7', ...l })) });
+const cellsOf = (m, g) => {
+  const html = m.createGlobalTimelineItemDom(g).innerHTML;
+  const tbl = (/<div class="audit-cell audit-tbl">([\s\S]*?)<\/div>/.exec(html) || [])[1] || null;
+  const target = (/<div class="audit-cell audit-target">([\s\S]*?)<\/div>/.exec(html) || [])[1] || '';
+  const text = (s) => String(s || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  return { table: tbl === null ? null : text(tbl), target: text(target) };
+};
+const rowView = (m) => [cellsOf(m, ROW([{ table_name: 'dt_log' }], 1)), cellsOf(m, ROW([{ table_name: 'dt_log' }, { table_name: 'lot_event' }], 300))];
+{
+  const [one, many] = rowView({ createGlobalTimelineItemDom: (await import('../src/timeline.js')).createGlobalTimelineItemDom });
+  ok(one.table === 'dt_log' && many.table === 'dt_log +1 …',
+    'D1 the Table cell says auditTargetTable - one table, several «+N», a sample «…»', [one.table, many.table]);
+  ok(!one.target.includes('dt_log') && one.target.includes('LOT-7') && !many.target.includes('dt_log'),
+    'D2 the target cell says the row and its column, not the table again', [one.target, many.target]);
+  const head = readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
+  ok(/<div class="audit-cell audit-tbl">Table<\/div>\s*<div class="audit-cell audit-target">Row · column<\/div>/.test(head),
+    'D3 the head names it: Table, then Row · column', null);
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}. `
@@ -111,6 +146,10 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
+  ['the row\'s table cell left empty', swap(' title="${escapeHtml(keyTable)}">${escapeHtml(keyTable)}</span></div>',
+    ' title="${escapeHtml(keyTable)}"></span></div>')],
+  ['the table said again in the target cell', swap("  const keyRow = isSummary ? '' : rowKey;",
+    "  const keyRow = isSummary ? keyTable : `${keyTable} · ${rowKey}`;")],
   ['the first log is taken as the representative',
     swap('  const names = [...new Set(logs.map((log) => log && log.table_name).filter(Boolean))];',
       '  const names = logs.length ? [logs[0].table_name].filter(Boolean) : [];')],
@@ -134,8 +173,11 @@ const CONTROLS = [
 ];
 
 /** 채점기. 기준선과 변이가 «같은 질문»에 답해야 비교가 뜻을 가집니다. */
-function verdict(g) {
-  return g(group(['dt_log', 'dt_inventory', 'lot_event'], 3)) !== 'dt_log +2'
+function verdict(m) {
+  const g = m.auditTargetTable;
+  const [one, many] = rowView(m);
+  return one.table !== 'dt_log' || many.table !== 'dt_log +1 …' || one.target.includes('dt_log') || many.target.includes('dt_log')
+    || g(group(['dt_log', 'dt_inventory', 'lot_event'], 3)) !== 'dt_log +2'
     || g(group(['dt_log'], 128)) !== 'dt_log …'
     || g(group(['dt_log', 'dt_inventory'], 2)) !== 'dt_log +1'
     || g({ logs: [log('dt_log'), { row_id: 'r' }], total_count: 2 }) !== 'dt_log'
@@ -144,7 +186,7 @@ function verdict(g) {
 
 // 🔴 채점기가 «기준선»에서 조용한지 먼저 봅니다. 여기서 시끄러우면 아래 「잡았다」는 전부
 //    변이가 아니라 채점기를 잰 것입니다.
-if (verdict(auditTargetTable)) die('the scorer already fails on the UNMUTATED module — '
+if (verdict(await import('../src/timeline.js'))) die('the scorer already fails on the UNMUTATED module — '
   + 'every "caught" below would be scoring the scorer, not the mutant.');
 
 async function score(list, mustCatch, heading) {
@@ -157,8 +199,7 @@ async function score(list, mustCatch, heading) {
       // A mutant that throws counts as caught only because it cannot answer -- the throw is
       // recorded as such rather than hidden. A mutant that did not APPLY is not caught: that
       // is instrument failure, and it kills the run.
-      bad = verdict((await loadWithProbe(SRC_PATH, { mutate, tag: 'audittt' }))
-        .module.auditTargetTable);
+      bad = verdict((await loadWithProbe(SRC_PATH, { mutate, tag: 'audittt' })).module);
     } catch (e) {
       if (/did not mutate|unchanged/.test(String(e && e.message))) die(`${name}: ${e.message}`);
       bad = true;

@@ -1371,7 +1371,8 @@ const FLOORS = new Map([
   //    Same rule as every other new entry: the floor is what it reports on the commit that
   //    records it, because there is no earlier tree to measure it against.
   // which table an audit is about, when the answer comes from a declaration
-  ['audit_target_table_harness.mjs', 12],
+  // 12 -> 15 (D1-D3 the row's Table column, two row mutants; owner 10-12).
+  ['audit_target_table_harness.mjs', 15],
   // a one-member list is a value; and 「not arrived」 stays distinct from 「no members」
   ['closed_list_harness.mjs', 44],
   // the grid says WHERE its rows came from
