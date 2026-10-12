@@ -31,8 +31,9 @@ from .roleframe import (
     _is_missing,
     _unit_says,
     read_columns_once,
+    unit_positions,
 )
-from .setup_bundle import entity_type_column, exclusion_columns
+from .setup_bundle import entity_type_column, exclusion_columns, executes_the_bindings
 from .setup_registry import (
     LedgerSetupSnapshot,
     SourcePlan,
@@ -167,7 +168,8 @@ def is_blank_source_value(value: Any) -> bool:
 def row_excluded(clauses: Sequence[Mapping[str, Any]], value_of) -> bool:
     """Does `read.exclude_when` take this row out - ANY clause: its column blank, or its `when`
     matched the way a mapping's `when` is (`_unit_says`, one spelling of equality) - so a row whose
-    column is empty is not taken out by a value (총괄 e91433bf1). `value_of(column)` reads the row.
+    column is empty is not taken out by a value (총괄 e91433bf1), and is by `{"not": <v>}`.
+    `value_of(column)` reads the row.
     The page and the backfill's census ask this one function."""
     for clause in clauses:
         when = clause.get("when")
@@ -395,21 +397,110 @@ def _without_excluded_rows(context: SourcePreparationContext,
 
 
 def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
-    """The cells every row must fill to name its entities. A type read per row is its TYPE
-    column here; which key columns that row needs depends on its type (`_row_type_refusal`)."""
-    columns: set[str] = set()
-    for mapping in source_plan.profile.mappings.values():
-        for binding in mapping.bindings.values():
-            if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
-                continue
-            if entity_type_column(binding):
-                columns.add(entity_type_column(binding))
-                continue
-            for key_binding in binding.get("keys", {}).values():
-                if (isinstance(key_binding, Mapping)
-                        and key_binding.get("kind") == "column"):
-                    columns.add(key_binding["column"])
-    return tuple(sorted(columns))
+    """The cells that name the source's entities, every sentence's - each must be in the read; a
+    blank one refuses or only unsays its sentences (`blank_entity_cells`). A type read per row is
+    its TYPE column here; which key columns that row needs depends on its type (`_row_type_refusal`)."""
+    return tuple(sorted({column for mapping in source_plan.profile.mappings.values()
+                         for binding in mapping.bindings.values()
+                         for column in _binding_cells(binding)[0]}))
+
+
+def _binding_cells(binding, entities=None, cells=None, position=None) -> tuple:
+    """-> (the cells an entity binding fills to name its entity, does that entity allow a null key) -
+    THE one answer to 「which cells name this entity」 (총괄 10-12 QA2 ③): a declared type's key
+    columns; a type read per row, its type column and - given a row whose cell names a declared
+    type - that type's key columns. Nothing for a binding that is not an entity."""
+    if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+        return frozenset(), False
+    keys, type_column = binding.get("keys", {}), entity_type_column(binding)
+    columns = {type_column} if type_column else set()
+    if type_column:
+        named = cells[type_column][position] if cells is not None and type_column in cells else None
+        declared = (None if is_blank_source_value(named)
+                    else entities.get(bare_name(str(named).strip())))
+        keys = {key: keys.get(key) for key in (declared.identity_keys if declared else ())}
+    else:
+        declared = (entities or {}).get(bare_name(str(binding.get("entity_type"))))
+    columns |= {child["column"] for child in keys.values()
+                if isinstance(child, Mapping) and child.get("kind") == "column"}
+    return frozenset(columns), bool(declared is not None and declared.allow_null)
+
+
+def blank_entity_cells(source_plan: SourcePlan, entities, cells, positions) -> tuple:
+    """-> (`(position, column)` blank cells that do not refuse the molecule, the sentences they
+    leave unsaid) for ONE mapper unit (`roleframe.unit_positions`) - one answer for
+    `_refuse_molecule`, `_row_type_refusal` and the declarative mapper's sentence skip (소유자 10-12
+    「세 개 중 빈 거는 무시」).
+
+    A sentence needs the cells that name its entities (`_binding_cells`). Only the sentences whose
+    `when` holds for the unit are asked (총괄 10-12 QA ②) - a cell none of them needs does not
+    matter. A blank one leaves the sentences needing it unsaid - as a `when` that does not match -
+    when it is blank in EVERY row of the unit; blank in some rows only (QA ①), or needed by every
+    applying sentence at that row, or keying an `allow_null` entity, or the read's identity or time,
+    or the mapper is code (it says no declared sentence): it refuses the molecule, as every blank
+    entity cell did before."""
+    driver = source_plan.driver
+    if not executes_the_bindings(driver.mapper.implementation.implementation_id):
+        return frozenset(), frozenset()
+    positions = tuple(positions)
+    mappings = source_plan.profile.mappings
+    applying = {sentence for sentence, mapping in mappings.items()
+                if _applies(mapping, cells, positions)}
+    excused, candidates = set(), {}
+    for position in positions:
+        needs, hard = {}, {*driver.identity, driver.occurred_at.column}
+        for sentence, mapping in mappings.items():
+            needs[sentence] = set()
+            for binding in mapping.bindings.values():
+                columns, allows_null = _binding_cells(binding, entities, cells, position)
+                needs[sentence] |= columns
+                if allows_null and sentence in applying:
+                    hard |= columns
+        applied = [needs[sentence] for sentence in applying]
+        hard |= set.intersection(*applied) if applied else set()
+        used = set().union(*applied)
+        for sentence, need in needs.items():
+            for column in need - hard:
+                if not (column in cells and is_blank_source_value(cells[column][position])):
+                    continue
+                if column not in used:
+                    excused.add((position, column))
+                elif sentence in applying:
+                    candidates.setdefault((sentence, column), set()).add(position)
+    unsaid = set()
+    for (sentence, column), at in candidates.items():
+        # 총괄 10-12 QA ①: blank in some rows of a group and filled in others refuses, visibly
+        if all(is_blank_source_value(cells[column][position]) for position in positions):
+            unsaid.add(sentence)
+            excused |= {(position, column) for position in at}
+    return frozenset(excused), frozenset(unsaid)
+
+
+def _applies(mapping, cells, positions) -> bool:
+    """Does the unit say `mapping` by its `when` (S-99, `_unit_says` - the group must agree)."""
+    return not mapping.when or _unit_says(
+        {column: tuple(cells[column][position] for position in positions)
+         for column in mapping.when if column in cells}, mapping.when)
+
+
+def sentences_said(source_plan: SourcePlan, entities, cells, positions) -> tuple:
+    """The sentences this unit says: its `when` holds and no blank cell unsays it
+    (`blank_entity_cells`). The declarative mapper says exactly these; `says_nothing` asks it."""
+    positions = tuple(positions)
+    unsaid = blank_entity_cells(source_plan, entities, cells, positions)[1]
+    return tuple(sentence for sentence, mapping in source_plan.profile.mappings.items()
+                 if sentence not in unsaid and _applies(mapping, cells, positions))
+
+
+def says_nothing(context: SourcePreparationContext, cells, positions) -> bool:
+    """The translator reads this molecule (`_read_molecule` refuses nothing) and no mapper unit of
+    it says a sentence - so it writes no atom and the row index never names it. A code mapper's
+    source is never judged: what it says is its code's (총괄 10-12 QA ④, the census subtracts these)."""
+    plan = context.source_plan
+    return (executes_the_bindings(plan.driver.mapper.implementation.implementation_id)
+            and _read_molecule(context, cells, positions)[0] is None
+            and not any(sentences_said(plan, context.snapshot.entities, cells, unit)
+                        for unit in unit_positions(plan.driver.mapper, cells, positions)))
 
 
 def _row_typed(source_plan: SourcePlan) -> tuple:
@@ -421,10 +512,10 @@ def _row_typed(source_plan: SourcePlan) -> tuple:
         if entity_type_column(binding))
 
 
-def _row_type_refusal(context, cells, positions, key):
+def _row_type_refusal(context, cells, positions, key, soft=frozenset()):
     """A row whose type, read from a column, the predicate does not admit in that role - or
     whose own type's key cell is empty (총괄 7255b4918 ④). The type is the cell as written,
-    folded by `bare_name`."""
+    folded by `bare_name`. A blank cell `blank_entity_cells` excuses (`soft`) does not refuse."""
     from .gate import REFUSE_NO_IDENTITY, REFUSE_TYPE_NOT_ADMITTED
 
     for mapping, role, binding, type_column in _row_typed(context.source_plan):
@@ -432,6 +523,8 @@ def _row_type_refusal(context, cells, positions, key):
             continue
         admitted = context.snapshot.vocabulary[mapping.predicate_id].entity_types_of(role)
         for position in positions:
+            if (position, type_column) in soft:
+                continue
             named = bare_name(str(cells[type_column][position]).strip())
             path = f"event_frame.rows[{position}].{type_column}"
             if named not in admitted:
@@ -442,12 +535,10 @@ def _row_type_refusal(context, cells, positions, key):
                             f"({', '.join(admitted)})"),
                     rows=len(positions),
                     addresses=({"code": "invalid_entity_ref", "path": path},))
-            declared = context.snapshot.entities.get(named)
-            for key_name in (declared.identity_keys if declared is not None else ()):
-                child = binding.get("keys", {}).get(key_name)
-                column = (child.get("column") if isinstance(child, Mapping)
-                          and child.get("kind") == "column" else None)
-                if column in cells and is_blank_source_value(cells[column][position]):
+            keyed = _binding_cells(binding, context.snapshot.entities, cells, position)[0]
+            for column in sorted(keyed - {type_column}):
+                if (column in cells and is_blank_source_value(cells[column][position])
+                        and (position, column) not in soft):
                     path = f"event_frame.rows[{position}].{column}"
                     return MoleculeRefusal(
                         reason=REFUSE_NO_IDENTITY,
@@ -536,6 +627,11 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
                                          f"{column}"} for column in empty),
             )
 
+    # a blank entity cell no applying sentence needs, or only some do (unsaid in the mapper), does not
+    # refuse (소유자 10-12, `blank_entity_cells`)
+    # judged per mapper unit - the rows the mapper says sentences for (총괄 10-12 QA2 ①)
+    soft = frozenset().union(*(blank_entity_cells(plan, context.snapshot.entities, cells, unit)[0]
+                               for unit in unit_positions(driver.mapper, cells, positions)))
     checks = (
         (REFUSE_NO_IDENTITY, tuple(_required_entity_columns(plan)) + tuple(driver.identity)),
         (REFUSE_MISSING_OCCURRED_AT, (driver.occurred_at.column,)),
@@ -545,7 +641,7 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
             if column not in cells:
                 continue
             for position in positions:
-                if not _empty(cells[column][position]):
+                if not _empty(cells[column][position]) or (position, column) in soft:
                     continue
                 path = f"event_frame.rows[{position}].{column}"
                 return MoleculeRefusal(
@@ -556,7 +652,34 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
                     addresses=({"code": "source_preparation_incomplete",
                                 "path": path},),
                 )
-    return _row_type_refusal(context, cells, positions, key)
+    return _row_type_refusal(context, cells, positions, key, soft)
+
+
+def _read_molecule(context, cells, positions) -> tuple:
+    """-> (the refusal, None) or (None, the molecule's read instants) - every per-molecule judgement
+    the read makes, in its order: `_refuse_molecule`, then ONE read of the declared time origin (the
+    published cell and the instant the event id is minted from both come off it). `_event_frames` and
+    the census (`says_nothing`) ask this one function (총괄 10-12 QA2 ②)."""
+    driver = context.source_plan.driver
+    refusal = _refuse_molecule(context, cells, positions)
+    if refusal is not None:
+        return refusal, None
+    try:
+        return None, [
+            _aware_time(cells[driver.occurred_at.column][position], driver.occurred_at.timezone,
+                        f"source_batch.rows[{position}].{driver.occurred_at.column}",
+                        driver.occurred_at.format)
+            for position in positions]
+    except SourcePreparationError as unread:
+        # 🔴 A TIME THAT DOES NOT READ REFUSES ITS MOLECULE, NOT THE PAGE (총괄 ca87ffdb3 ②). An
+        #    empty time is refused by `_refuse_molecule`, before this.
+        from .gate import REFUSE_UNREADABLE_OCCURRED_AT
+
+        return MoleculeRefusal(
+            reason=REFUSE_UNREADABLE_OCCURRED_AT,
+            detail=f"molecule {_molecule_key(driver, cells, positions)}: {unread}",
+            rows=len(positions),
+            addresses=({"code": "source_preparation_incomplete", "path": unread.path},)), None
 
 
 def _event_frames(
@@ -601,7 +724,7 @@ def _event_frames(
         groups = list(grouped.values())
     events = []
     for positions in groups:
-        refusal = _refuse_molecule(context, cells, positions)
+        refusal, occurred_values = _read_molecule(context, cells, positions)
         if refusal is not None:
             # Counted and named, never raised: the rest of this page still lands. The
             # caller decides whether this is recorded (execute) or reported (preview).
@@ -625,35 +748,6 @@ def _event_frames(
                     "one source event has more than one identity value",
                 )
             identity[column] = cells[column][positions[0]]
-        # ONE read of the declared time origin. Both the published cell and the instant
-        # the event id is minted from come off this list, so they cannot be a pair of
-        # reads that disagree.
-        occurred_cells = [
-            cells[driver.occurred_at.column][position]
-            for position in positions
-        ]
-        try:
-            occurred_values = [
-                _aware_time(
-                    value,
-                    driver.occurred_at.timezone,
-                    f"source_batch.rows[{position}].{driver.occurred_at.column}",
-                    driver.occurred_at.format,
-                )
-                for position, value in zip(positions, occurred_cells)
-            ]
-        except SourcePreparationError as unread:
-            # 🔴 A TIME THAT DOES NOT READ REFUSES ITS MOLECULE, NOT THE PAGE (총괄 ca87ffdb3 ②).
-            #    Refused here, at the one read, not in `_refuse_molecule` - which would read every
-            #    time twice; an empty time is still refused there, before this.
-            from .gate import REFUSE_UNREADABLE_OCCURRED_AT
-
-            context.refusals.append(MoleculeRefusal(
-                reason=REFUSE_UNREADABLE_OCCURRED_AT,
-                detail=f"molecule {_molecule_key(driver, cells, positions)}: {unread}",
-                rows=len(positions),
-                addresses=({"code": "source_preparation_incomplete", "path": unread.path},)))
-            continue
         # WHICH of the group's reads IS the event's instant.  The two declarations answer
         # differently because they are not the same kind of time.
         #

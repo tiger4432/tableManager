@@ -131,6 +131,25 @@ def test_a_predicate_other_than_blank_is_refused():
     assert any("blank" in path for path in negated), sorted(negated)
 
 
+def test_a_clause_of_neither_form_is_refused_in_one_line_naming_both():
+    """소유자 10-12 「exclude when 오류남 컬럼 값 제외」 - his clause, on a relation that has the column,
+    is refused once, by a sentence that names both forms (it used to say only `blank` exists)."""
+    catalog = logical_catalog()
+    catalog[SOURCE]["columns"]["physical_object"] = "string"
+
+    def new(clauses):
+        def said(bundle):
+            return {(e.path, e.message) for e in validate_bundle_errors(bundle, catalog=catalog)}
+        return said(_with_exclusion(clauses)) - said(logical_bundle())
+
+    forms = ('a clause is {"column": <c>, "blank": true} - rows where <c> is blank - or '
+             '{"when": {<c>: <value>}} - rows where <c> is that value, {"not": <value>} for '
+             'every other value; write one of the two')
+    spot = "bundle.sources.input_rows.read.exclude_when[0]"
+    assert new([{"column": "physical_object", "value": "x"}]) == {(spot, forms)}
+    assert new([{"column": "physical_object", "blank": False}]) == {(spot + ".blank", forms)}
+
+
 # ⚰️ RETIRED with the preparer (setup_version 6): `test_declaring_it_under_a_preparer_that_
 # cannot_read_it_is_refused` (판정 194 ㉡). The clause is applied by the event frame on every
 # source now, so there is no implementation under which it could silently do nothing.
