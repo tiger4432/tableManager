@@ -1002,3 +1002,36 @@ def test_a_row_the_read_takes_out_is_not_left_not_yet_translated(world):
             census["not_yet"]) == (3, 1, 2, 0), census
     tick = backfill.rows_not_yet_translated(world["engine"], setup, CHANGED, exact_rows=False, world=A)
     assert ("excluded_rows" in tick, tick.get("excluded_not_subtracted")) == (False, "an estimate"), tick
+
+@pytest.mark.pg
+def test_the_set_door_reads_far_ends_in_or_out_of_a_set_on_the_ledger(world):
+    """총괄 41194be5d: `claims_for_entities(far=)` in SQL - `in` the atoms whose far end is in the set, `not_in` the
+    rest, no `far` all of them; and a walk judged against a recipe finds the wafer it was processed with."""
+    from ledger_api import ledger_subgraph
+
+    _seed(world)
+    with world["engine"].connect() as conn:
+        lookup = ledger_subgraph.SqlEvidenceLookup(conn)
+        wafer = [("wafer", {"wafer": "W1"})]
+        every, _ = lookup.claims_for_entities(wafer, "both", 100)
+        recipe = next((a.object_payload["type"], a.object_payload["keys"]) for a in every
+                      if a.predicate == "processed_with")
+        inside, _ = lookup.claims_for_entities(wafer, "both", 100, far=("in", [recipe]))
+        outside, _ = lookup.claims_for_entities(wafer, "both", 100, far=("not_in", [recipe]))
+        assert ([a.predicate for a in inside], len(outside)) == (["processed_with"], len(every) - 1), every
+
+        def far_type(atom):                        # the far end's bare type from W1, None when it is no entity
+            if atom.subject_keys == {"wafer": "W1"}:
+                return (atom.object_payload or {}).get("type", "").split("@")[0] if atom.object_kind == "entity_ref" \
+                    else None
+            return atom.subject_type.split("@")[0]
+        # 소유자 10-12 「2번」: the far end's class in SQL (`_far_types`) - an atom leading to no entity in neither
+        typed_in, _ = lookup.claims_for_entities(wafer, "both", 100, far_types=("in", ["recipe"]))
+        typed_out, _ = lookup.claims_for_entities(wafer, "both", 100, far_types=("not_in", ["recipe"]))
+        assert ([a.predicate for a in typed_in], sorted(a.id for a in typed_out)) == (
+            ["processed_with"], sorted(a.id for a in every if far_type(a) not in (None, "recipe"))), every
+        body = ledger_subgraph.subgraph(explorer.entity_id("wafer", {"wafer": "W1"}), lookup, hops=1,
+                                        aux=[explorer.entity_id(*recipe)])
+    seed = explorer.entity_id("wafer", {"wafer": "W1"})
+    assert {n["id"]: n["aux"] for n in body["nodes"]}[seed] == {
+        "state": "found", "hops": 1, "via": explorer.entity_id(*recipe)}, body["aux"]

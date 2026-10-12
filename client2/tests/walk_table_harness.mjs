@@ -104,6 +104,12 @@ const RESULT = {
   edges: [{ id: 'e:1', source: 'n:3', target: 'n:1', predicate: 'inspected', qualifiers: { gate: 7 } }],
 };
 
+// The walk's judgment (owner 10-12): «does a shortest path reach the auxiliary node(s)», yes · hops / no / unknown - a fake
+// answer in the server's shape (implementer, lead 10-12): each node its «aux», the answer's «aux» the seeds.
+const JUDGED = { ...RESULT,
+  nodes: RESULT.nodes.map((n) => ({ ...n, aux: { 'n:1': { state: 'found', hops: 2, via: 'q:aux' }, 'n:2': { state: 'none' }, 'n:3': { state: 'unknown' } }[n.id] })),
+  aux: { seeds: ['q:aux'], complete: true, truncated: null, hops_reached: 2 } };
+
 // Two + starts and one −; a die reached from + only, one from − only, one from both. The answer's reach is the server's.
 const SIGNED = {
   nodes: [
@@ -292,6 +298,77 @@ async function suite(mod) {
   eq('V1 one section head per section, worded by the view',
     byClass(host, 'wk-sechead').map((e) => e.textContent).join(' | '),
     view.sections.map((s) => s.heading).join(' | '));
+  // The judged walk on the page (owner 10-12): the bar's auxiliary nodes go with the walk, the section offers «Reaches only».
+  {
+    const pageOf = async () => {
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+      await settle();
+      Object.assign(handle.state, { type: 'die@1', asked: { type: 'die@1', keys: { mat_id: 'M-1' } }, run: 'done', result: JUDGED });
+      handle.render();
+      return { host, handle };
+    };
+    const one = await pageOf();
+    const two = await pageOf();
+    const before = Object.prototype.hasOwnProperty.call(one.handle.spec(), 'aux');
+    one.handle.graph.markings.set('walk-reach', 'q:aux', SIGN.CASE);
+    const chips = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-reach']).map((e) => e.attrs['data-reach']);
+    ok('AX3 an auxiliary node picked goes with the walk (aux) and says itself in the bar; none picked, nothing sent',
+      !before && JSON.stringify(one.handle.spec().aux) === '["q:aux"]' && chips(one.host).join() === 'q:aux',
+      JSON.stringify([before, one.handle.spec().aux, chips(one.host)]));
+    ok('AX4 two pages: the other page\'s walk carries no auxiliary node and its bar says none',
+      !Object.prototype.hasOwnProperty.call(two.handle.spec(), 'aux') && chips(two.host).length === 0,
+      JSON.stringify([two.handle.spec().aux, chips(two.host)]));
+    const press = (e) => { for (const fn of (e && e.listeners && e.listeners.click) || []) fn({}); };
+    const ids = () => walkAll(one.host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']);
+    const all = ids();
+    press(walkAll(one.host).find((e) => String(e.className || '').includes('wk-reachonly')));
+    ok('AX5 the page: the die section\'s «Reaches only» pressed, its table the yes row alone; the other sections as they were',
+      all.includes('n:2') && !ids().includes('n:2') && ids().includes('n:1') && ids().includes('n:3'),
+      `${all.join()} -> ${ids().join()}`);
+    const onRule = ((CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'))
+      .find(([sel]) => sel && sel.trim() === '.wk-reachonly.is-on') || [])[1] || '');
+    const pressed = walkAll(one.host).find((e) => String(e.className || '').includes('wk-reachonly'));
+    ok('AX6 «Reaches only» on says so: pressed, its class is-on, and the stylesheet fills it as a segment on is',
+      Boolean(pressed) && String(pressed.className).includes('is-on') && /background:\s*var\(--accent\)/.test(onRule),
+      `${pressed && pressed.className} | ${onRule}`);
+    // «Reaches only» is on in the die section here: its tally still counts its «none» row.
+    const tallies = walkAll(one.host).filter((e) => e.className === 'wk-reachtally').map((e) => e._text);
+    ok('AX7 each judged section says its rows\' judgments as counts beside «Reaches only», every row and not the shown ones',
+      JSON.stringify(tallies) === JSON.stringify(['→ q:aux: 1 reach · 1 none · 0 unknown', '→ q:aux: 0 reach · 0 none · 1 unknown']),
+      JSON.stringify(tallies));
+    const tallyRule = ((CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'))
+      .find(([sel]) => sel && sel.trim() === '.wk-reachtally') || [])[1] || '');
+    ok('AX8 the counts drawn in the body\'s size and colour, not the small grey words',
+      /font-size:\s*var\(--wk-fs-body\)/.test(tallyRule) && /color:\s*var\(--text\)/.test(tallyRule), tallyRule);
+    // Two auxiliary nodes: the judgment's head an auxiliary node a line, its whole in the title.
+    const twoAux = { ...JUDGED, aux: { ...JUDGED.aux, seeds: ['q:aux', 'q:aux2'] } };
+    const three = await pageOf();
+    Object.assign(three.handle.state, { result: twoAux });
+    three.handle.render();
+    const judgedHead = walkAll(three.host).find((e) => e.tagName === 'th' && String(e.title || '').startsWith('→'));
+    const drawnLines = judgedHead ? walkAll(judgedHead).filter((e) => e.className === 'wk-headfar').map((e) => e._text) : [];
+    const twoView = walkTableView(twoAux, DECL.entities).sections.find((x) => x.type === 'die@1') || {};
+    ok('AX9 two auxiliary nodes: the judgment\'s head drawn a node a line, whole in its title; one node, its one line as text',
+      JSON.stringify(drawnLines) === '["→ q:aux","→ q:aux2"]' && judgedHead.title === '→ q:aux · q:aux2'
+        && JSON.stringify((twoView.centreLines || []).slice(-1)) === '[["→ q:aux","→ q:aux2"]]'
+        && !walkAll(one.host).some((e) => e.tagName === 'th' && String(e.title || '').startsWith('→') && walkAll(e).some((c) => c.className === 'wk-headfar')),
+      JSON.stringify([drawnLines, judgedHead && judgedHead.title, twoView.centreLines]));
+    // Two auxiliary nodes with long names: the judgment's cells «2 hops → <the node>» read whole, as the node column's keys.
+    const LONG = ['q:aux-with-a-long-key-01', 'q:aux-with-a-long-key-02'];
+    const longAux = { ...JUDGED, aux: { ...JUDGED.aux, seeds: LONG },
+      nodes: JUDGED.nodes.map((n) => (n.aux && n.aux.state === 'found' ? { ...n, aux: { ...n.aux, via: LONG[0] } } : n)) };
+    const four = await pageOf();
+    Object.assign(four.handle.state, { result: longAux });
+    four.handle.render();
+    const longest = `2 hops → ${LONG[0]}`;
+    const widths = walkAll(four.host).filter((e) => e.tagName === 'col').map((e) => String((e.attrs && e.attrs.style) || ''));
+    const drawnLong = walkAll(four.host).some((e) => e.tagName === 'td' && labelOf(e) === longest || (e._text === longest));
+    ok('AX10 long auxiliary names: the judgment\'s column as wide as its longest cell, not cut at the value columns\' far end',
+      widths.some((w) => w.includes(`calc(${[...longest].length + 1}ch`)) && !widths.some((w) => /calc\(18ch \+ 2 \* var\(--space-2\)\), calc\(18ch/.test(w)),
+      JSON.stringify([longest.length, drawnLong, widths]));
+  }
   // Wide (lead 10-11 W): a section's heads say its node columns, each group's step and far end, its values' names; a
   // row's cells its node's, then each column's groups' cells, a cell drawn as its value line.
   const heads = byTag(host, 'thead').map((t) => walkAll(t).filter((c) => c.tagName === 'th' && c.className !== 'wk-check').map(headSaid).join(' '));
@@ -1768,6 +1845,27 @@ const sideSuite = (TV) => {
 };
 // ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
 const filterSuite = (TV) => {
+  {
+    const jv = TV.walkTableView(JUDGED, DECL.entities);
+    const plain = TV.walkTableView(RESULT, DECL.entities);
+    const sec = (v, t) => v.sections.find((x) => x.type === t) || { rows: [], centreHeads: [] };
+    const last = (row) => row.centre[row.centre.length - 1].text;
+    ok('AX1 a judged answer: each section\'s last own column «→ <the auxiliary node>», a row its yes · hops, no or unknown; none judged, no such column',
+      JSON.stringify([sec(jv, 'die@1').centreHeads.slice(-1), sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last),
+        sec(jv, 'die@1').judged, sec(plain, 'die@1').judged, sec(plain, 'die@1').centreHeads.some((h) => h.startsWith('→')),
+        sec(jv, 'die@1').tally, sec(jv, 'wafer@1').tally, sec(plain, 'die@1').tally])
+        === JSON.stringify([['→ q:aux'], ['2 hops', 'none'], ['unknown'], true, false, false,
+          '→ q:aux: 1 reach · 1 none · 0 unknown', '→ q:aux: 0 reach · 0 none · 1 unknown', ''])
+        // The auxiliary node itself in the answer: the server's 0, said as it is.
+        && TV.reachWords({ state: 'found', hops: 0, via: 'q:aux' }, false) === '0 hops',
+      JSON.stringify([sec(jv, 'die@1').centreHeads, sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last),
+        sec(jv, 'die@1').tally, sec(jv, 'wafer@1').tally]));
+    const only = TV.shownOf(sec(jv, 'die@1'), { reaches: true });
+    const sheet = TV.sheetOf(sec(jv, 'die@1'), { reaches: true });
+    ok('AX2 «Reaches only» is the one shown seat: the yes rows alone, and Copy the same rows',
+      JSON.stringify([only.lines.map((l) => l.row.id), only.filtering, sheet.rows.length]) === JSON.stringify([['n:1'], true, 1]),
+      JSON.stringify([only.lines.map((l) => l.row.id), only.filtering, sheet.rows.length]));
+  }
   const view = TV.walkTableView(sfAnswer(TV.PICK_MOST + 2), SF_DECL.entities, SF_DECL.predicates, undefined, SF_STARTS);
   const sec = view.sections.find((x) => x.type === 'die@1') || { rows: [], centreHeads: [], columns: [], groups: [], parts: [] };
   const grid = TV.gridOf(sec);
@@ -1904,8 +2002,16 @@ console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${
 const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
-const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
+const NEXT_ASK = '    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
+  { id: 'AXm3', what: 'the auxiliary node is not sent', catches: 'AX3',
+    from: '    return Object.assign(out, knobs(), reachArg());', to: '    return Object.assign(out, knobs());' },
+  { id: 'AXm4', what: '«Reaches only» drawn but does nothing', catches: 'AX5',
+    from: "      only.addEventListener('click', () => { setFilter(section.type, { reaches: !on }); render(); });", to: '' },
+  { id: 'AXm8', what: 'a head of several lines drawn as one cut line again', catches: 'AX9',
+    from: "      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);\n      if (lines.length > 1) {", to: "      const th = el(doc, 'th', 'wk-centre', h);\n      if (false) {" },
+  { id: 'AXm6', what: 'the judgments\' counts not drawn', catches: 'AX7',
+    from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
     from: '    void walkInto(at, more.asked, (res) => {', to: '    void walkInto(at, answerAt(at).asked, (res) => {' },
   { id: 'MOm3', what: 'More\'s answer lands nowhere - the step keeps the cut one', catches: 'MO2',
@@ -1976,7 +2082,9 @@ const MUTANTS = [
   { id: 'FWm6', what: 'a far-end name\'s share asked of Δ again', catches: 'FW3 ',
     from: '[fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side]', to: '[fit(section.rows.map((row) => said(row.cells[i].delta)), shares), side]' },
   { id: 'NWm1', what: 'the node column at the value columns\' far end again - ~185 px whatever its keys', catches: 'NW1 ',
-    from: "[' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node]", to: "[' + var(--space-1) + var(--wk-h-small)']" },
+    from: '    const whole = (i) => i === 0 ||', to: '    const whole = (i) => false ||' },
+  { id: 'AXm10', what: 'the judgment\'s column cut at the value columns\' far end, which auxiliary node unsaid', catches: 'AX10',
+    from: ' || (section.judged && i === section.centreHeads.length - 1);', to: ';' },
   { id: 'FWm4', what: 'Δ the width of its value\'s + and − again, whatever it holds', catches: 'FW2 ',
     from: '[fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side]', to: '[side, side]' },
   { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',
@@ -2046,16 +2154,16 @@ const MUTANTS = [
     from: "      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });",
     to: "      go.addEventListener('click', () => { void walkOn(at, seeds, route); });" },
   { id: 'NM3', what: 'the next step builds its own walk instead of the one step', catches: 'N4',
-    from: '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
+    from: '    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
     to: '    const asked = { positive: seeds.positive, follow: [route.predicate] };' },
   // stepAlong's own default ('both') is imported by main.js and not swapped by this loader; the call site stands in.
   { id: 'NM7', what: 'the Next walks one way only', catches: 'N8',
-    from: '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
-    to: "    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to, direction: 'outgoing' }) };" },
+    from: '    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
+    to: "    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to, direction: 'outgoing' }) };" },
   { id: 'EKm1', what: 'a Next without the form\'s knobs - a cut answer cut elsewhere', catches: 'EA1',
-    from: '    const asked = { ...knobs(), ...stepAlong(', to: '    const asked = { ...stepAlong(' },
+    from: '    const asked = { ...knobs(), ...reachArg(), ...stepAlong(', to: '    const asked = { ...reachArg(), ...stepAlong(' },
   { id: 'EKm2', what: 'a Next walks the form\'s hops, not one step', catches: 'EA1',
-    from: NEXT_ASK, to: NEXT_ASK.replace('{ ...knobs(), ...stepAlong(', '{ ...stepAlong(').replace('farType: route.to }) };', 'farType: route.to }), ...knobs() };') },
+    from: NEXT_ASK, to: NEXT_ASK.replace('{ ...knobs(), ...reachArg(), ...stepAlong(', '{ ...reachArg(), ...stepAlong(').replace('farType: route.to }) };', 'farType: route.to }), ...knobs() };') },
   { id: 'NM4', what: 'the checks are kept apart from the graph\'s marking', catches: 'N3',
     from: "  const checksOf = (at) => (at === 0 ? state.marks : stepOf(at).marks);", to: '  const checksOf = (at) => `table-${at}`;' },
   { id: 'FM1', what: 'a step\'s marking named by its place again', catches: 'CH2',
@@ -2118,6 +2226,12 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX1',
+    from: "          ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };", to: "          ] };" },
+  { id: 'AXm7', what: 'the counts taken over the reaching rows alone, as a filtered table would give them', catches: 'AX1',
+    from: "      tally: reaches ? reachTally(reachHead, said) : '',", to: "      tally: reaches ? reachTally(reachHead, said.filter((row) => row.reach && row.reach.state === 'found')) : ''," },
+  { id: 'AXm2', what: '«Reaches only» shows every row', catches: 'AX2',
+    from: "    && (!f.reaches || Boolean(line.row.reach && line.row.reach.state === 'found')));", to: '    );' },
   { id: 'CPm1', what: 'several values copied as the first alone', catches: 'CP1',
     from: "cell.values ? cell.values.join('; ')", to: 'cell.values ? cell.values[0]' },
   { id: 'CPm2', what: 'Δ copied in its words, not its number', catches: 'CP1',
@@ -2225,7 +2339,7 @@ const TV_MUTANTS = [
   { id: 'SFt9', what: 'every column a pick, however many values', catches: 'SF6 ',
     from: 'choices.filter(Boolean).length <= PICK_MOST ?', to: 'true ?' },
   { id: 'SFt10', what: 'a sort said as a filter', catches: 'SF10 ',
-    from: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 }", to: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.sort) }" },
+    from: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) }", to: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) || Boolean(f.sort) }" },
   { id: 'SFt11', what: 'Wide\'s Δ not a column of its own', catches: 'SF4 ',
     from: "section.parts[i].delta ? { key: `${columnKey(column)}\\u0000${DELTA}`", to: "false ? { key: `${columnKey(column)}\\u0000${DELTA}`" },
   { id: 'LSm1', what: 'a Long record\'s side by its node, not by its way', catches: 'LS1 ',
@@ -2281,6 +2395,10 @@ const sp = await scoreMutants(SPLIT_MUTANTS, async (m) => {
 
 // The stylesheet FW1 reads (owner 10-12: fixed widths), mutated alone; the page as it is.
 const STYLE_MUTANTS = [
+  { id: 'AXm9', what: 'the counts back in the small grey words', catches: 'AX8',
+    from: '.wk-reachtally { color: var(--text); font-size: var(--wk-fs-body);', to: '.wk-reachtally { color: var(--text-dim); font-size: var(--wk-fs-line);' },
+  { id: 'AXm5', what: '«Reaches only» on drawn as an outline, as before', catches: 'AX6 ',
+    from: '.wk-reachonly.is-on { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); font-weight: 600; }', to: '' },
   { id: 'FWm2', what: 'the tables back to auto layout', catches: 'FW1 ',
     from: '.wk-table { table-layout: fixed; width: 0;', to: '.wk-table { width: 100%; display: block; overflow-x: auto;' },
   { id: 'WSm1', what: 'a value\'s spaces collapsed again', catches: 'WS1 ',
