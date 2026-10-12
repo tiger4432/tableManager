@@ -80360,3 +80360,34 @@ measure 자리에 옛 이름이 든 줄 (measure 앞 12 글자 안에 옛 이름
 여쭐 것    풀 프로세스를 서버가 뜰 때 미리 띄울까요? 지금은 첫 걷기가 띄워서 그 걷기만 약 3 초 더 걸립니다.
           미리 띄우면 서버가 뜰 때 약 135 MB × 크기가 바로 들고, 첫 걷기의 3 초가 없어집니다. 안 지었습니다
 ```
+
+## [구현자 A → 총괄] 10-13 — 풀 고침 확인(eb9c328e4) 닫음: `f90462b44` (impl-walk-pool, 푸시됨)
+
+```
+막는 것   recycle 은 warm 을 부른 프로세스(서버 기동)에서만 일한다 — 표지 _warmed, warm 첫 줄에서 선다
+         데몬은 같은 _reload 를 돌지만 warm 을 안 부르므로 아무것도 안 한다(세대도 안 움직임)
+게이트    데몬 «모양» 스크립트를 새 프로세스로 띄워 _reload 한 번 -> 걷기 자식 0 · __mp_main__ 표지 0 · 세대 0
+         같은 스크립트 서버 모양(warm 뒤 _reload) -> 세대 1 · __mp_main__ 표지 2 이상 (카나리아: 표지 기제가 산다)
+③        recycle 을 TABLE_CONFIG 를 바꾼 «직후»로 옮김 — 뒤 스키마 동기화가 실패해도 풀이 옛 설정에 안 남음
+④        리로드 때 돌던 걷기가 답하고 내려가면 그 자리에 warm (세대가 다른 것만)
+②(M6a)   크기 1 에서 warm 둘을 같이 -> 살아 있는 걷기 자식 수(psutil, 시험 전부터 있던 것 빼고) <= 1
+L4       6 초 중 4 초를 자리 기다림에 쓰면 답은 남은 2 초 -> walk_timed_out
+```
+
+```
+변이      기준 36 passed 뒤, 변이마다 그 칸 하나만 FAILED · md5 같음
+          G1 아무 프로세스나 recycle -> 데몬 칸 · G3 recycle 을 동기화 뒤로(HEAD 모양) -> sync fails 칸만
+          G4 채움 없음 -> 채움 칸 · M6a warm 의 _taken 둘 지움 -> 두 warm 칸 · L4 기다림마다 seconds -> 마감 칸
+곁 시험    리로드에 닿는 다른 시험 파일 12 개: 145 passed · 8 skipped (두 번)
+          ⚠️ 첫 돌림에서만 test_config_reload_integrity::test_inv_9_1_atomic_save_event_applies_physical_alter 1 실패 —
+             혼자 돌리면 통과, 다시 두 번 통과. 원인은 안 밝혔다(제 변경과의 관계도 모름)
+문서      ingestion_settings(503 사유 셋 · 한 마감 · 0 과 줄임은 다음 걷기 때 · 리로드는 서버만)
+          RUN.md(새 걷기 프로세스가 뜨는 계기 넷 · 데몬은 안 띄움 · 연결 이름에 assy_walkpool)
+          backend.md 리로드 행 · CODE_MAP 행 · DOC_OWNERSHIP 에 process_pool.py 행
+```
+
+```
+안 잰 것   진짜 데몬(run_watcher.py 등)으로는 안 띄웠다 — 데몬 «모양» 스크립트로 쟀다
+          시간 넘긴 걷기의 PG 질의가 계속 도는지 — 여전히 안 잼(80ffbceb5 의 RUN 줄 그대로)
+          시험 모드에서 warm 을 부르면 표지만 선다(띄우지는 않음) — 시험이 recycle 을 재려면 warm 을 먼저 부른다
+```
