@@ -80391,3 +80391,26 @@ L4       6 초 중 4 초를 자리 기다림에 쓰면 답은 남은 2 초 -> wa
           시간 넘긴 걷기의 PG 질의가 계속 도는지 — 여전히 안 잼(80ffbceb5 의 RUN 줄 그대로)
           시험 모드에서 warm 을 부르면 표지만 선다(띄우지는 않음) — 시험이 recycle 을 재려면 warm 을 먼저 부른다
 ```
+
+## [구현자 A → 총괄] 10-13 — 걷기 풀 착지: `38cc1f604` ~ `e79b8a2a6` (main)
+
+```
+진짜 데몬   박스 베낀 판(assy_impl_mix_1012), 런처 넷(서버 · watcher · 체인 워커 · 자동 갱신) — 29c0ed3e1 과 같은 코드
+           table_config.json 을 같은 바이트로 다시 씀 -> 넷 다 «Dynamic models reloaded» 한 줄씩(카나리아: 넷 다 리로드함)
+           걷기 자식(spawn_main)   서버 2 -> 2(둘 다 새 pid)   watcher 0 -> 0   체인 워커 0 -> 0   자동 갱신 0 -> 0
+           public 표 428 -> 428 · 바뀐 행 0 · 창 01:22:40 ~ 01:23:52(응용 ㄱ · 내림)
+착지       origin/main 위로 rebase(CODE_MAP 의 offloop 행 · 풀 행이 붙어 있어 커밋마다 겹침 — main 의 offloop 행 + 커밋의 풀 행으로 풂)
+           e79b8a2a6 = RUN.md 맨 위 절에 «걷기 프로세스가 누구 밑인가» PowerShell 한 줄과 답의 뜻 + RELEASE_LOG(리로드는 서버에서만)
+           그 한 줄은 RUN.md 에 적힌 글자 그대로 .ps1 로 떼어 살아 있는 spawn 자식 하나에 대고 돌려 «1 walk processes under …» 를 봄
+재기동      서버만. 데몬은 안 해도 됨(옛 코드의 데몬은 걷기 프로세스를 안 띄움)
+```
+
+```
+reload 시험   test_config_reload_integrity.py — 여러 파일 묶음으로 돌릴 때만 두 번 실패(다른 칸 둘: test_inv_9_1… · test_h3…)
+             혼자 돌리면 main 3/3 · 이 브랜치 4/4 통과
+             두 번째 실패의 로그: «change detected» -> 단언 실패 -> 그 뒤 teardown 에서 «added column qty» · «reloaded»
+             -> wait_for_idle 이 리로드가 돌기 «전»에 한가하다고 돌아왔다
+원인 후보     config_watcher._fire 가 _timer 를 None 으로 둔 뒤 로그 한 줄을 쓰고 «나서야» _reload_lock 을 잡는다 —
+(코드로 읽음)  그 틈에 wait_for_idle 은 타이머 없음 · 잠금 비었음을 보고 True. 이 브랜치는 _fire 를 안 건드림(바꾼 것은 _reload 안 recycle 자리 8 줄)
+안 잰 것      main 에서 여러 파일 묶음으로 같은 실패를 재현하지 않았다. 첫 실패(test_inv_9_1)의 로그는 안 봤다
+```
