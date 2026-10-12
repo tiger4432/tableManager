@@ -3653,7 +3653,12 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     **({"before": before} if j == first and before else {}))
                 claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
                 if fanout_limit is not None and (cut or (j == first and before)):
-                    _count_steps(_frontier(items, group), read_follow, read_exclude, depth, frontier_entities)
+                    # only the near nodes whose steps are not counted yet - a step in the resume is not counted again -
+                    # each with every step the group follows (an opened predicate's read is only some of them)
+                    counted = {key[0] for key in step_counts}
+                    fresh = [item for item in items if item["id"] not in counted]
+                    if fresh:
+                        _count_steps(_frontier(fresh, group), group_follow, None, depth, frontier_entities)
                 fetched.extend(batch)
                 steps.extend((atom, _step(atom, depth, frontier_entities), j) for atom in batch)
                 if cut:
