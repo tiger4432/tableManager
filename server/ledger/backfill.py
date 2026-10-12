@@ -627,7 +627,7 @@ def _scope_row_ids(plan, frame):
 
 def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             withdraw=True, page_rows=None, checkpoint=None, whole_source=False,
-            world=None):
+            world=None, until=None):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
 
     `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
@@ -712,7 +712,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                               gone_atoms=sum(item.get("atoms", 0)
                                              for item in aimed["sources"].values()))
             result.update(withdraw_stale_atoms(engine, source, plan and plan.relation,
-                                               world=world))
+                                               world=world, until=until))
         elif withdraw:
             result = preview_rescope(engine, setup, source, scope_column, scope_values,
                                      world=world)
@@ -983,67 +983,83 @@ def stale_page_refs(engine, world=None):
         % (name, STALE_PAGE_REFS_UNINDEXED, " --world %s" % (world or schema.operating_world())))
 
 
-def _stale_refs(engine, source, relation, world=None):
-    """`(ref, tables, {predicate: atoms})` for each ref of this source's atoms that names a
-    table other than `relation` - atoms today's declaration does not make (총괄 e027f669d);
-    every ref when `relation` is None (a name the declaration no longer has). Aimed from the
+def _stale_atoms(engine, source, relation, world=None):
+    """`(ref, tables, predicate)` for each atom of this source - `tables` the ones its ref names
+    when today's declaration does not make it (총괄 e027f669d: a table other than `relation`; any
+    when `relation` is None, a name the declaration no longer has), else None. Aimed from the
     ledger's own refs, not the row index: an atom written before 09-08 may have no index line.
-    One pass, streamed - a source's refs are not held at once."""
+    Streamed atom by atom, not grouped by ref - a GROUP BY's first ref waited on the whole source
+    (총괄 2ea5ee2a7 ②). The ledger has no order by ref (its ref index is a hash), so one ref's atoms
+    may come apart; its judgment is kept while the ref repeats."""
     from . import schema
     from .roleframe import claim_source_row_refs
 
     connection = engine.raw_connection()
     try:
-        with connection.cursor(name="stale_refs") as cursor:
+        with connection.cursor(name="stale_atoms") as cursor:
             cursor.itersize = 10000
-            cursor.execute(
-                "SELECT ref, json_object_agg(predicate, atoms) FROM ("
-                f" SELECT source_raw_ref AS ref, predicate, count(*) AS atoms "
-                f"   FROM {schema.world_names(world).ledger} WHERE source_who = %s GROUP BY 1, 2"
-                ") per_predicate GROUP BY ref", (source,))
-            for ref, atoms in cursor:
-                tables = sorted({item.split(":", 1)[0] for item in claim_source_row_refs(ref)
-                                 if ":" in item})
-                if relation is None or (tables and relation not in tables):
-                    yield ref, tables, {str(k): int(v) for k, v in dict(atoms).items()}
+            cursor.execute(f"SELECT source_raw_ref, predicate FROM {schema.world_names(world).ledger} "
+                           "WHERE source_who = %s", (source,))
+            last, judged = None, None
+            for ref, predicate in cursor:
+                if ref != last:
+                    tables = sorted({item.split(":", 1)[0] for item in claim_source_row_refs(ref)
+                                     if ":" in item})
+                    last = ref
+                    judged = tables if relation is None or (tables and relation not in tables) else None
+                yield ref, judged, predicate
     finally:
         connection.rollback()
         connection.close()
 
 
 def withdraw_stale_atoms(engine, source, relation, apply=False, checkpoint=None, world=None,
-                         page_refs=None):
-    """Take back the atoms `_stale_refs` names: `page_refs` refs a page through `store.withdraw`
+                         page_refs=None, until=None):
+    """Take back the atoms `_stale_atoms` names: their refs gathered a page at a time - `page_refs`
+    a page, sized by `keyset_scan.PageSize` when a run reports its pages - through `store.withdraw`
     (the one statement, `_withdraw_refs`), then this source's index lines for those tables
     (`forget_row_refs` with the source - atoms first, lines last, as a deletion). A stop lands
     between pages and leaves the lines for the re-run. `apply=False` counts, per table and
-    predicate, and writes nothing (총괄 e027f669d)."""
+    predicate, and writes nothing (총괄 e027f669d); `until` (a `time.monotonic()` instant) ends its
+    reading there - `stale_cut`, with `stale_read` the atoms read (총괄 2ea5ee2a7 ②)."""
+    from chain import keyset_scan
     from . import schema
     from .store import LedgerStore
 
     store = LedgerStore(engine, world=world)
     result = {"stale_atoms": 0, "stale_refs": 0, "stale_tables": {}, "stale_withdrawn": 0,
-              "stale_forgotten": 0, "stale_pages": 0}
+              "stale_forgotten": 0, "stale_pages": 0, "stale_read": 0}
     if apply and not page_refs:
         page_refs, result["stale_page"] = stale_page_refs(engine, world)
         logger.info("[Ledger] %s", result["stale_page"])
-    page, tables = [], set()
-    for ref, named, atoms in _stale_refs(engine, source, relation, world=world):
-        result["stale_refs"] += 1
-        result["stale_atoms"] += sum(atoms.values())
-        tables.update(named)
-        by = result["stale_tables"].setdefault(", ".join(named) or "(no table named)", {})
-        for predicate, n in atoms.items():
-            by[predicate] = by.get(predicate, 0) + n
-        if apply:
-            page.append(ref)
-            if len(page) >= page_refs:
-                result["stale_withdrawn"] += store.withdraw(source, page)
-                result["stale_pages"] += 1
-                page = []
-                if checkpoint is not None and checkpoint(result["stale_withdrawn"]):
-                    result["stopped"] = True
-                    return result
+    size = keyset_scan.PageSize(page_refs) if apply and checkpoint is not None else None
+    page, most, tables, seen = [], page_refs, set(), set()
+    atoms = _stale_atoms(engine, source, relation, world=world)
+    for ref, named, predicate in atoms:
+        result["stale_read"] += 1
+        if named is not None:
+            result["stale_atoms"] += 1
+            by = result["stale_tables"].setdefault(", ".join(named) or "(no table named)", {})
+            by[predicate] = by.get(predicate, 0) + 1
+            if ref not in seen:
+                seen.add(ref)
+                result["stale_refs"] += 1
+                tables.update(named)
+                if apply:
+                    if not page and size is not None:
+                        most = size.next()
+                    page.append(ref)
+                    if len(page) >= most:
+                        result["stale_withdrawn"] += store.withdraw(source, page)
+                        result["stale_pages"] += 1
+                        page = []
+                        if checkpoint is not None and checkpoint(result["stale_withdrawn"]):
+                            result["stopped"] = True
+                            return result
+        if until is not None and time.monotonic() >= until:
+            if next(atoms, None) is not None:              # the last atom is not a cut read
+                result["stale_cut"] = True
+            break
     if not apply:
         return result
     if page:

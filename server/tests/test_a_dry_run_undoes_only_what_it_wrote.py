@@ -176,7 +176,7 @@ def test_the_sweep_no_longer_rolls_back_the_session_it_was_handed(monkeypatch):
     db = Session()
     db.rows.append("CALLER'S OWN UNCOMMITTED WORK")
 
-    monkeypatch.setattr(analysis, "iter_derived_rows", lambda *a, **k: [])
+    monkeypatch.setattr(analysis, "derived_pages", lambda *a, **k: iter([]))
     monkeypatch.setattr(enrichment.candidates, "candidate_target_fields", lambda rule: ["t"])
     monkeypatch.setattr(enrichment.candidates, "confirm_keys",
                         lambda *a, **k: db.rows.append("what the dry run wrote") or {})

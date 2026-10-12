@@ -27,7 +27,7 @@ from ledger import backfill, schema                                 # noqa: E402
 from ledger.roleframe import claim_source_row_refs                  # noqa: E402
 from ledger.setup import LedgerSetupError, load_setup               # noqa: E402
 from test_ledger_worlds_are_independent_and_meet_in_a_walk import (  # noqa: E402,F401
-    CHANGED, KEPT, _sample, _seed, fixture_config, fixture_world)
+    CHANGED, EVENT_TIME, KEPT, _sample, _seed, _write, fixture_config, fixture_world)
 
 pytestmark = pytest.mark.pg
 RENAMED, SECOND = "wafer_process_recipe_v2", "wafer_tool"
@@ -164,6 +164,31 @@ def test_another_source_on_the_same_rows_keeps_its_atoms_and_lines(world):
     _whole(world, CHANGED)
     assert OLD not in _atoms(world, CHANGED)
     assert _atoms(world, SECOND) == second and _lines(world, SECOND) == lines
+
+
+def test_stale_atoms_stream_a_cut_count_says_what_it_read_and_a_run_pages_its_refs(world, doubling_pages, monkeypatch):
+    """총괄 2ea5ee2a7 ①②: the stale atoms are read as they come, not grouped first - a count cut at its time says the
+    atoms it read; a run that reports its pages withdraws its refs 1, 2, 4 … a page."""
+    _seed(world)
+    _write(world, OLD, [{"proc_id": "P%d" % n, "wafer_id": "W1", "step": "S1", "recipe_id": "RCP-%d" % n,
+                         "eventtime": EVENT_TIME} for n in range(2, 8)])
+    backfill.run(world["engine"], source=CHANGED)
+    stale = _atoms(world, CHANGED)[OLD]
+    assert stale > 3, "canary: the old table's atoms fill more than two pages"
+    _declare(_moved())
+    preview = backfill.withdraw_stale_atoms(world["engine"], CHANGED, NEW)
+    cut = backfill.withdraw_stale_atoms(world["engine"], CHANGED, NEW, until=0)
+    assert (preview["stale_atoms"], preview.get("stale_cut"), cut.get("stale_cut"), cut["stale_read"]) == (
+        stale, None, True, 1), (preview, cut)
+    monkeypatch.setattr(retroactive, "_count_until", lambda: 0)
+    params = retroactive.validate("ledger_rescope", {"source": CHANGED, "whole_source": True})
+    said = retroactive.OPERATIONS["ledger_rescope"]["count"](world["db"], params, 1000)["detail"]
+    assert "Withdraws at least 1 atom(s) (1 atom(s) of '%s' read - stopped counting at " % CHANGED in said, said
+    pages, size, left = 0, 1, preview["stale_refs"]
+    while left > 0:
+        pages, size, left = pages + 1, size * 2, left - size
+    done = backfill.withdraw_stale_atoms(world["engine"], CHANGED, NEW, apply=True, checkpoint=lambda n: False)
+    assert (done["stale_withdrawn"], done["stale_pages"], pages > 1) == (stale, pages, True), done
 
 
 def test_the_preview_says_what_the_run_takes_and_a_second_run_takes_nothing(world, monkeypatch):

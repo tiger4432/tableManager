@@ -84,6 +84,15 @@ def fixed_pages(monkeypatch):
     monkeypatch.setattr(keyset_scan, "FIRST_PAGE", 10 ** 9)
 
 
+@pytest.fixture
+def doubling_pages(monkeypatch):
+    """Every page twice the one before from one row (the page time far off): for a cell that asserts what the paged
+    run makes - the count grows with the pages and the cell says by how much (총괄 2ea5ee2a7 ③)."""
+    import pacing
+
+    monkeypatch.setattr(pacing, "page_seconds", lambda path=None: 10 ** 6)
+
+
 @pytest.fixture(autouse=True)
 def _the_loaded_chain_rules_are_forgotten():
     """A rule set one test loaded must not answer for the next, whose fake `load_chain_rules`

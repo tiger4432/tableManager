@@ -530,6 +530,29 @@ def test_a_rule_or_a_transaction_scope_narrows_it(db, monkeypatch):
     assert set_aside.set_aside(db, tables=[PA], transactions=[tx])["events"] == 0
 
 
+def test_a_set_aside_run_marks_a_page_at_a_time_from_one_event(db, doubling_pages):
+    """총괄 2ea5ee2a7 ①: a run reads its scope a page at a time from one event - not the whole queue before its first
+    line."""
+    _write(db, PA, [{"k": "K%d" % i, "n": "0"} for i in range(5)])
+    seen = []
+    done = set_aside.set_aside(db, tables=[PA], apply=True, checkpoint=lambda n: seen.append(n) or False)
+    assert (done["events"], done["marked"], seen) == (5, 5, [1, 3, 5])
+
+
+def test_a_set_aside_count_cut_at_its_time_says_at_least(db, monkeypatch):
+    """총괄 2ea5ee2a7 ②: the count answers in the request - cut at its time it says «at least», and a read that ended
+    at the time is not a cut one."""
+    _write(db, PA, [{"k": "K%d" % i, "n": "0"} for i in range(5)])
+    monkeypatch.setattr(retroactive, "_count_until", lambda: 0)
+    monkeypatch.setattr(set_aside, "CHUNK", 2)
+    cut = retroactive.count(db, "set_aside", {"tables": [PA], "reason": "drill"})
+    assert (cut["affected"], cut["count_kind"], cut["truncated"]) == (2, retroactive.COUNT_SAMPLE, True)
+    assert cut["affected_label"].startswith("waiting events to set aside (at least - "), cut["affected_label"]
+    monkeypatch.setattr(set_aside, "CHUNK", 5)
+    whole = retroactive.count(db, "set_aside", {"tables": [PA], "reason": "drill"})
+    assert (whole["affected"], whole["count_kind"], whole["truncated"]) == (5, retroactive.COUNT_EXACT, False)
+
+
 def test_running_them_again_runs_each_rule_once_and_wakes_nothing_downstream(db, monkeypatch):
     """소유자 09-27 「큰 소급 치워둔거니 한번만」. The grid's click replay still cascades - that
     half is the parametrized replay cell in test_a_chain_write_reads_as_the_chain_whatever_its_layer."""
@@ -924,9 +947,9 @@ def test_a_cross_and_a_transactions_set_aside_read_only_their_lines_rows(db_q, q
         event.remove(models.DatabaseOutbox, "load", on_load)
 
     assert crossed["skipped_events"] == 1 and by_operator["marked"] == 10
-    # each row of the line read twice here - the scope, then SQLite's per-object mark (PostgreSQL
-    # marks set-based and reads none) - and no row of the other 50,000
-    assert (on_cross, len(loaded) - on_cross) == (2 * 1, 2 * 10), "rows read: a line's, not the queue's"
+    # each row of the line read once here - the scope's page, whose rows SQLite's per-object mark finds still loaded
+    # (PostgreSQL marks set-based and reads none) - and no row of the other 50,000
+    assert (on_cross, len(loaded) - on_cross) == (1, 10), "rows read: a line's, not the queue's"
 
 
 def test_a_cross_answers_at_once_while_another_run_is_in_flight(db_q, queue):

@@ -285,11 +285,15 @@
 >             전체를 세는 연산(표기 소급 · fold-units · fold-rows · 원천이 표인 원장 백필 — 시작에 count 한 번)은 «· <처리> / <전체> · ~<남은 시간> left»
 > 답의 뜻     줄 간격이 5 s 를 넘음 -> 1 행 쪽도 5 s 넘게 걸림 — 행 하나가 느리거나 잠금. 위 stalled 절의 잠금 질의
 >             rows 가 1~2 에서 안 자람 -> 쪽 크기와 무관한 고정 비용이 page_seconds 를 넘음 — 총괄께
->             원장 stale 철회 쪽은 5 초를 넘을 수 있음 — 쪽 크기 고정(쪽당 고정 비용), 시연 뒤 인덱스로
 >             표기 소급 · fold-units 의 옛 줄 «[notation] x / total rows (page k, s)» 는 없어짐 — 이 줄 하나로
+> 쪽 앞 읽기  set_aside · enrichment 확정 · 소급 withdraw · 원장 stale 철회도 첫 쪽 전에 전부를 읽지 않는다 — 쪽마다 읽음
+>             소급 withdraw 줄  [withdraw] '<소스>' claims in '<표>' - counting as it goes   (총계는 끝 줄)
+>             enrichment 확정 줄 [confirm] rule '<규칙>': examining the queue a page at a time, counting as it goes
+> 세기 5 초    소급 탭 Count 는 요청 안에서 답한다 — set_aside 와 원장 rescope 통째의 stale 원자는 5 s 에서 끊고
+>             «at least» (화면 칸 «sample hit its limit: true»), 문장 끝 «stopped counting at 5 s; the run counts the rest as it goes»
+> 접기 이벤트  회수 사건 접기(fold-withdraw-events)는 쪽마다 접는다 — 고정 쪽 하나보다 접힌 이벤트가 10~13 (N 2,500 ~ 1,000,000, 계산 - fold_events_at_size) 개쯤 더(쪽이 커지는 동안의 작은 것)
 > 맞춤 밖     이 루프들은 쪽 크기 고정 그대로 — 쪽 하나가 5 s 를 넘을 수 있음
->             enrichment analysis 의 큐 걷기(chain/enrichment/analysis.py) · set_aside(chain/set_aside.py)
->             원장 stale 철회(쪽당 고정 비용 — 시연 뒤 인덱스로) · retranslate_drifted · catch_up 의 삭제 철회
+>             retranslate_drifted · catch_up 의 삭제 철회
 >             소급 «규칙 행 실행»(_run_rule_rows)은 실행 하나가 쪽 하나
 > 끄는 스위치  없음 — git revert {LANDING} -> 재기동
 > ```
@@ -1765,8 +1769,9 @@
 >                보류 복사 1,000 행: 9.3 s -> 1.2 s (PG 박스 시험 수 · 풀 엔진, 운영 수 아님)
 >                거둔 층 · 남은 층 · 보이는 값 · 감사 · 사건은 전과 같다. 다만 회수 사건이 표마다 한 거래로 묶인다(전에는 층 이름마다 한 거래)
 >              운영자 회수(소급 withdraw · CLI)도 같은 한 벌을 지난다 — 답과 줄은 그대로
-> 볼 줄          [withdraw] <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>'
->                [withdraw] apply: <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+> 볼 줄          [withdraw] <N> source(s) claim in '<표>' - counting as it goes
+>                [withdraw] apply: <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>' - <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+>                 (총계는 끝 줄 — 소급 withdraw 가 주장을 쪽으로 읽는 판 impl-pagesize 부터)
 >                 = 표마다 두 줄(전에는 층 이름마다 두 줄 — 1,000 행 삭제면 2,000 줄이었다)
 >              [ChainRetract] table=<표> deleted_rows=… groups=… cells_withdrawn=… — 그대로
 > 급할 때       스위치 없음. 되돌리려면 이 커밋을 되돌리고 체인 워커 재기동

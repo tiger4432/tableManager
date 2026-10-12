@@ -3,7 +3,8 @@
 queued before fold into collapsed ones per table (`cell_layer.fold_withdrawal_events`), on PostgreSQL.
 
   ① 1,000 source rows deleted     the withdrawal stages no per-row event; the follow-up drains none row by row
-  ② 2,500 per-row events, 2 tx     3 collapsed events, the same rows; every other event as it was; again 0
+  ② 2,500 per-row events, 2 tx     13 collapsed events on doubling pages (3 on one fixed page), the same rows;
+                                   every other event as it was; again 0
      the envelope                  depth, channel, cascade, written_by and run carried; a run's own id not stamped
      the end state                 the chain on the folded events ends where it ends on the per-row ones -
                                    a person's edit after the fold included
@@ -119,7 +120,7 @@ def test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row(world, monke
 
 # ------------------------------------------------------------------ ② the queued ones fold
 
-def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, monkeypatch, fixed_pages):
+def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, monkeypatch, doubling_pages):
     db = world["db"]
     rows = _official_rows(world, 2600)
     tx1 = _per_row(world, rows[:1500])
@@ -149,13 +150,16 @@ def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, m
     after = _events(world)
 
     assert {i: e for i, e in before.items() if i not in folding} == {i: e for i, e in after.items() if i in before}
-    assert done == dict(preview, pages=done["pages"]) and done["by_table"] == {hw.OFFICIAL: [2500, 3]}
-    assert (done["rows"], done["retrying"], done["running"]) == (2500, 1, 7)
-    assert detail.startswith("'hc_official' 2500 event(s) -> 3 - 2500 row(s). Left as they are: 1 event(s) "
+    # 총괄 2ea5ee2a7 ③: a page folds its own events, so the pages (1, 2, 4 … 1,024, then the 461 left) make 13
+    # collapsed events where one fixed page of 10,000 made 3 - the 1,024 page two of them; the run's 13th page reads
+    # the collapsed event its 12th made, and leaves it
+    assert done == dict(preview, pages=done["pages"]) and done["by_table"] == {hw.OFFICIAL: [2500, 13]}
+    assert (done["rows"], done["retrying"], done["running"], done["pages"]) == (2500, 1, 7, 13)
+    assert detail.startswith("'hc_official' 2500 event(s) -> 13 - 2500 row(s). Left as they are: 1 event(s) "
                              "the chain already tried (RETRYING), 7 on a line the chain runs now."), detail
     made = [e for i, e in sorted(after.items()) if i not in before]
     assert [(t, k, s, d, len(p["row_ids"])) for t, k, s, d, p in made] == [
-        (hw.OFFICIAL, "EDIT", "PENDING", False, 1000)] * 2 + [(hw.OFFICIAL, "EDIT", "PENDING", False, 500)]
+        (hw.OFFICIAL, "EDIT", "PENDING", False, n) for n in [2 ** p for p in range(10)] + [1000, 24, 453]]
     # 총괄: every row the per-row events named is named again - one missing is a withdrawal lost
     assert sorted((t, r) for t, _k, _s, _d, p in made for r in p["row_ids"]) == sorted(
         (before[i][0], before[i][4]["row_id"]) for i in folding)
@@ -165,7 +169,7 @@ def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, m
     assert cell_layer.fold_withdrawal_events(db, apply=True)["by_table"] == {}
 
 
-def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world, fixed_pages):
+def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world, doubling_pages):
     db = world["db"]
     rows = _official_rows(world, 9)
     _per_row(world, rows[:4], depth=2, doors=(channel(event_constants.CHANNEL_CHAIN), cascade(True),
@@ -174,14 +178,14 @@ def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world, fixed_p
     before = set(_events(world))
     with retroactive_run("RUN-FOLD"):                                         # where `_run_to_the_end` runs it
         out = retroactive._run_fold_withdrawal_events(db, {}, log=lambda m: None)
-    made = sorted(((len(p["row_ids"]), {k: p.get(k) for k in ("chain_depth", "channel", "cascade",
-                                                               "written_by", "run_id")})
-                   for i, (_t, _k, _s, _d, p) in _events(world).items() if i not in before), key=lambda m: m[0])
-    assert (out["events_folded"], out["events_made"]) == (9, 2)
-    assert made == [
-        (4, {"chain_depth": 2, "channel": event_constants.CHANNEL_CHAIN, "cascade": True,
-             "written_by": [hw.RECOUNT["name"]], "run_id": None}),
-        (5, {"chain_depth": None, "channel": None, "cascade": None, "written_by": None, "run_id": "RUN-OLD"})]
+    made = [(len(p["row_ids"]), {k: p.get(k) for k in ("chain_depth", "channel", "cascade", "written_by", "run_id")})
+            for i, (_t, _k, _s, _d, p) in sorted(_events(world).items()) if i not in before]
+    first = {"chain_depth": 2, "channel": event_constants.CHANNEL_CHAIN, "cascade": True,
+             "written_by": [hw.RECOUNT["name"]], "run_id": None}
+    second = {"chain_depth": None, "channel": None, "cascade": None, "written_by": None, "run_id": "RUN-OLD"}
+    # pages 1, 2, 4, 8: the third holds the first group's last row and the second's first three (총괄 2ea5ee2a7 ③)
+    assert (out["events_folded"], out["events_made"]) == (9, 5)
+    assert made == [(1, first), (2, first), (1, first), (3, second), (2, second)]
 
 
 # ------------------------------------------------------------------ the end state

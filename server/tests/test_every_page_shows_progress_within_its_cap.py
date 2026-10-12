@@ -49,6 +49,15 @@ def _assert_within_the_cap(read, sizes, seconds, times, lines, every):
     assert max(gaps) <= CAP, (sizes, gaps)
 
 
+def test_a_page_over_the_page_time_cuts_the_next_by_its_overshoot(monkeypatch):
+    """A slow page (5 s against 3 s, on a fake clock) cuts the next page to size x 3 / 5, rounded down - neither kept
+    nor grown by the rate rule's ceiling (총괄 2ea5ee2a7 ④, the surviving «shrink off» mutant)."""
+    ticks = iter([0.0, 0.1, 0.2, 5.2])
+    monkeypatch.setattr(keyset_scan.time, "monotonic", lambda: next(ticks))
+    size = keyset_scan.PageSize(keyset_scan.DEFAULT_CHUNK_SIZE, seconds=3)
+    assert [size.next() for _ in range(4)] == [1, 2, 4, 2]
+
+
 def test_the_keyset_scan_starts_at_one_row_and_keeps_every_page_under_the_cap():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)

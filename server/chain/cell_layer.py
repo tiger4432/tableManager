@@ -270,7 +270,7 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,
     for table_name, claims in sorted(claims_by_table.items()):
         target = resolve_target(table_name, sorted({col for _row, col in claims}))
         one = _withdraw_cells(db, table_name, target,
-                              {cell: sorted(names) for cell, names in claims.items()},
+                              _pages_of({cell: sorted(names) for cell, names in claims.items()}),
                               apply=apply, log=log,
                               label="%d source(s) claim" % len({g for g in groups if g[0] == table_name}))
         stats["cells_withdrawn"] += one.get("cells_withdrawn", 0)
@@ -340,24 +340,50 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     # EXPLAINs this exact statement to prove the planner uses it. With it the same
     # query is an Index Only Scan: 10.9ms, 1,106 buffers, 0 rows discarded.
     # `count_withdrawable` below rides the same index for the same reason.
-    q = (db.query(models.CellSource.row_id, models.CellSource.column_name, models.CellSource.source_name)
-         .filter(*_claimed_filter(table_name, source_name, columns)))
+    cs = models.CellSource
+    q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(*_claimed_filter(table_name, source_name, columns))
     if row_ids:
-        q = q.filter(models.CellSource.row_id.in_(list(row_ids)))
-    claims = {}
-    for row_id, col, name in q.all():
-        claims.setdefault((row_id, col), []).append(name)
-    claims = {cell: sorted(names) for cell, names in claims.items()}
+        q = q.filter(cs.row_id.in_(list(row_ids)))
+    after = [None]
+
+    def read(size):
+        """The next `size` rows' claims, keyset by row_id - not the whole table's first (총괄 2ea5ee2a7 ①)."""
+        ids_q = q.with_entities(cs.row_id).distinct()
+        if after[0] is not None:
+            ids_q = ids_q.filter(cs.row_id > after[0])
+        ids = [row_id for (row_id,) in ids_q.order_by(cs.row_id).limit(size)]
+        claims = {}
+        if ids:
+            after[0] = ids[-1]
+            for row_id, col, name in q.filter(cs.row_id.in_(ids)):
+                claims.setdefault((row_id, col), []).append(name)
+        return ids, {cell: sorted(names) for cell, names in claims.items()}
+
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "source": source_name}
-    stats.update(_withdraw_cells(db, table_name, target, claims, apply=apply, chunk_size=chunk_size,
+    stats.update(_withdraw_cells(db, table_name, target, read, apply=apply, chunk_size=chunk_size,
                                  log=log, checkpoint=checkpoint, label=f"'{source_name}' claims"))
     return stats
 
 
-def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = False,
+def _pages_of(claims: dict):
+    """`read(size)` for `_withdraw_cells` over claims already in hand, their rows in the dict's order."""
+    by_row = {}
+    for cell, names in claims.items():
+        by_row.setdefault(cell[0], {})[cell] = names
+    rows, at = list(by_row), [0]
+
+    def read(size):
+        chunk = rows[at[0]:at[0] + size]
+        at[0] += len(chunk)
+        return chunk, {cell: names for row_id in chunk for cell, names in by_row[row_id].items()}
+    return read
+
+
+def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info, checkpoint=None,
                     label: str = "") -> dict:
-    """R2's one pass over `claims` {(row_id, column): [source_name, ...]}.
+    """R2's one pass over the claims `read(size)` hands a page at a time - `(row ids,
+    {(row_id, column): [source_name, ...]})` of at most `size` rows, no rows at the end.
 
     A cell claimed by several sources withdraws them in that order, each seeing what the one
     before it left on apply - what one `withdraw_source` call per source did, in one pass."""
@@ -366,20 +392,12 @@ def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = Fal
 
     model, col_types = target
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
-             "cells_matched": sum(len(names) for names in claims.values()), "cells_withdrawn": 0,
+             "cells_matched": 0, "cells_withdrawn": 0,
              "revealed": 0, "emptied": 0, "pinned_skipped": 0,
              "value_unchanged": 0, "samples": []}
-    if not claims:
-        return stats
-
-    by_row = {}
-    for row_id, col in claims:
-        by_row.setdefault(row_id, set()).add(col)
-    log(f"[withdraw] {label} {stats['cells_matched']} cell(s) across {len(by_row)} row(s) "
-        f"in '{table_name}'")
+    log(f"[withdraw] {label} in '{table_name}' - counting as it goes")
 
     tx_id = f"{R2_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
-    all_row_ids = list(by_row)
 
     # 🔴 THE OUTBOX LABEL. Same defect, same shape, same fix as R3 - see
     # `recompute_display_values` for why the label is separable from the layer.
@@ -422,13 +440,19 @@ def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = Fal
         # a run that reports its pages sizes them (`PageSize`); the chain's own withdrawal (`withdraw_by_origin`, no
         # checkpoint) keeps the fixed size - one write, one event (총괄 a02ad0f2b NO-GO ①)
         size, i = (keyset_scan.PageSize(chunk_size) if checkpoint is not None else None), 0
-        while i < len(all_row_ids):
+        while True:
             if checkpoint is not None and checkpoint(i):
                 stats["stopped"] = True
                 log(f"[withdraw] stopped by request after {i} rows")
                 break
-            chunk = all_row_ids[i:i + (size.next() if size else chunk_size)]
+            chunk, claims = read(size.next() if size else chunk_size)
+            if not chunk:
+                break
             i += len(chunk)
+            stats["cells_matched"] += sum(len(names) for names in claims.values())
+            by_row = {}
+            for row_id, col in claims:
+                by_row.setdefault(row_id, set()).add(col)
             rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
 
             # Remaining sources + pins for the whole chunk: two batched queries, not
@@ -518,7 +542,8 @@ def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = Fal
 
     if not apply:
         db.rollback()
-    log(f"[withdraw] {stats['mode']}: {stats['cells_withdrawn']} cell(s) withdrawn "
+    log(f"[withdraw] {stats['mode']}: {label} {stats['cells_matched']} cell(s) across {i} row(s) in "
+        f"'{table_name}' - {stats['cells_withdrawn']} cell(s) withdrawn "
         f"({stats['revealed']} revealed another source, {stats['emptied']} left empty, "
         f"{stats['pinned_skipped']} skipped as human-pinned)")
     return stats
