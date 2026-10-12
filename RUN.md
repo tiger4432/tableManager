@@ -287,6 +287,10 @@
 > 쓰는 것      없음 — 이 박스: 운영 config · server.log 전후 같음(바뀐 것은 돌던 워커의 worker_heartbeats 뿐), 복사본 data root 에 파일 0 개 생김
 > 이 박스      exit 0 · ready · «10 declaration(s) left out» — row_id 없는 뷰를 읽는 소스 9 · 은퇴한 prepare 의 lot_event 1, 다 오늘도 빠져 있는 것
 >             복사본의 die 에 from.when 값 목록을 넣으면 «18 declaration(s) left out» — entity|die · 그것을 쓰는 술어 5 · 소스 2 가 더 빠짐
+> pull 뒤      다시 번역(Re-translate)의 결과 줄 «[rescope] … written X of Y, refused N (이유 N, …)»
+>             refused 0 -> 거둔 행은 전부 다시 쓰였다 · N > 0 -> 그 분자의 원자는 거둬지고 다시 안 쓰였다 —
+>             server.log 의 «[LedgerGate] source=<소스>» 로 시작하는 refused 줄(첫 번째는 WARNING «REFUSED … reason=…»,
+>             그 뒤는 INFO «refused (<이유>), N row(s): …»)이 그 행을 말한다. 선언 · 행을 고치고 다시 번역
 > ```
 >
 > ---
