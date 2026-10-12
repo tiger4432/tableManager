@@ -415,48 +415,100 @@ def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
 
 
 def blank_entity_cells(source_plan: SourcePlan, entities, cells, positions) -> tuple:
-    """-> (`(position, column)` blank cells that only leave sentences unsaid, those sentences) - one
-    answer for `_refuse_molecule`, `_row_type_refusal` and the declarative mapper's sentence skip
-    (소유자 10-12 「세 개 중 빈 거는 무시」).
+    """-> (`(position, column)` blank cells that do not refuse the molecule, the sentences they
+    leave unsaid) - one answer for `_refuse_molecule`, `_row_type_refusal` and the declarative
+    mapper's sentence skip (소유자 10-12 「세 개 중 빈 거는 무시」).
 
-    A sentence needs the cells that name its entities: a declared type's key columns; a type read
-    per row, its type column and that type's key columns. A blank one leaves the sentences needing
-    it unsaid - as a `when` that does not match - unless every sentence needs it at that row, it
-    keys an `allow_null` entity, it is the read's identity or time, or the mapper is code (it says
-    no declared sentence): then it refuses the molecule, as every blank entity cell did before."""
+    A sentence needs the cells that name its entities (`_cells_needed`). Only the sentences whose
+    `when` holds for the unit are asked (총괄 10-12 QA ②) - a cell none of them needs does not
+    matter. A blank one leaves the sentences needing it unsaid - as a `when` that does not match -
+    when it is blank in EVERY row of the unit; blank in some rows only (QA ①), or needed by every
+    applying sentence at that row, or keying an `allow_null` entity, or the read's identity or time,
+    or the mapper is code (it says no declared sentence): it refuses the molecule, as every blank
+    entity cell did before."""
     driver = source_plan.driver
     if not executes_the_bindings(driver.mapper.implementation.implementation_id):
         return frozenset(), frozenset()
-    soft, unsaid = set(), set()
+    positions = tuple(positions)
+    mappings = source_plan.profile.mappings
+    applying = {sentence for sentence, mapping in mappings.items()
+                if _applies(mapping, cells, positions)}
+    excused, candidates = set(), {}
     for position in positions:
         needs, hard = {}, {*driver.identity, driver.occurred_at.column}
-        for sentence, mapping in source_plan.profile.mappings.items():
-            need = needs.setdefault(sentence, set())
-            for binding in mapping.bindings.values():
-                if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
-                    continue
-                keys, type_column = binding.get("keys", {}), entity_type_column(binding)
-                if type_column:
-                    need.add(type_column)
-                    named = cells[type_column][position] if type_column in cells else None
-                    declared = (None if is_blank_source_value(named)
-                                else entities.get(bare_name(str(named).strip())))
-                    keys = {key: keys.get(key) for key in (declared.identity_keys if declared else ())}
-                else:
-                    declared = entities.get(bare_name(str(binding.get("entity_type"))))
-                columns = {child["column"] for child in keys.values()
-                           if isinstance(child, Mapping) and child.get("kind") == "column"}
-                need |= columns
-                if declared is not None and declared.allow_null:
-                    hard |= columns
-        hard |= set.intersection(*needs.values()) if needs else set()
+        for sentence, mapping in mappings.items():
+            needs[sentence], nullable = _cells_needed(mapping, entities, cells, position)
+            if sentence in applying:
+                hard |= nullable
+        applied = [needs[sentence] for sentence in applying]
+        hard |= set.intersection(*applied) if applied else set()
+        used = set().union(*applied)
         for sentence, need in needs.items():
-            blank = {column for column in need - hard
-                     if column in cells and is_blank_source_value(cells[column][position])}
-            if blank:
-                unsaid.add(sentence)
-                soft |= {(position, column) for column in blank}
-    return frozenset(soft), frozenset(unsaid)
+            for column in need - hard:
+                if not (column in cells and is_blank_source_value(cells[column][position])):
+                    continue
+                if column not in used:
+                    excused.add((position, column))
+                elif sentence in applying:
+                    candidates.setdefault((sentence, column), set()).add(position)
+    unsaid = set()
+    for (sentence, column), at in candidates.items():
+        # 총괄 10-12 QA ①: blank in some rows of a group and filled in others refuses, visibly
+        if all(is_blank_source_value(cells[column][position]) for position in positions):
+            unsaid.add(sentence)
+            excused |= {(position, column) for position in at}
+    return frozenset(excused), frozenset(unsaid)
+
+
+def _cells_needed(mapping, entities, cells, position) -> tuple:
+    """-> (the cells this row fills to name the sentence's entities, those keying an `allow_null`
+    entity): a declared type's key columns; a type read per row, its type column and - when the cell
+    names a declared type - that type's key columns (`_row_type_refusal`)."""
+    need, nullable = set(), set()
+    for binding in mapping.bindings.values():
+        if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+            continue
+        keys, type_column = binding.get("keys", {}), entity_type_column(binding)
+        if type_column:
+            need.add(type_column)
+            named = cells[type_column][position] if type_column in cells else None
+            declared = (None if is_blank_source_value(named)
+                        else entities.get(bare_name(str(named).strip())))
+            keys = {key: keys.get(key) for key in (declared.identity_keys if declared else ())}
+        else:
+            declared = entities.get(bare_name(str(binding.get("entity_type"))))
+        columns = {child["column"] for child in keys.values()
+                   if isinstance(child, Mapping) and child.get("kind") == "column"}
+        need |= columns
+        if declared is not None and declared.allow_null:
+            nullable |= columns
+    return need, nullable
+
+
+def _applies(mapping, cells, positions) -> bool:
+    """Does the unit say `mapping` by its `when` (S-99, `_unit_says` - the group must agree)."""
+    return not mapping.when or _unit_says(
+        {column: tuple(cells[column][position] for position in positions)
+         for column in mapping.when if column in cells}, mapping.when)
+
+
+def sentences_said(source_plan: SourcePlan, entities, cells, positions) -> tuple:
+    """The sentences this unit says: its `when` holds and no blank cell unsays it
+    (`blank_entity_cells`). The declarative mapper says exactly these; `says_nothing` asks it."""
+    positions = tuple(positions)
+    unsaid = blank_entity_cells(source_plan, entities, cells, positions)[1]
+    return tuple(sentence for sentence, mapping in source_plan.profile.mappings.items()
+                 if sentence not in unsaid and _applies(mapping, cells, positions))
+
+
+def says_nothing(context: SourcePreparationContext, cells, positions) -> bool:
+    """The translator builds this molecule (`_refuse_molecule` passes it) and says no sentence of
+    it - so it writes no atom and the row index never names it. A code mapper's source is never
+    judged: what it says is its code's (총괄 10-12 QA ④, the census subtracts these)."""
+    plan = context.source_plan
+    return (executes_the_bindings(plan.driver.mapper.implementation.implementation_id)
+            and _refuse_molecule(context, cells, positions) is None
+            and not sentences_said(plan, context.snapshot.entities, cells, positions))
 
 
 def _row_typed(source_plan: SourcePlan) -> tuple:
@@ -471,7 +523,7 @@ def _row_typed(source_plan: SourcePlan) -> tuple:
 def _row_type_refusal(context, cells, positions, key, soft=frozenset()):
     """A row whose type, read from a column, the predicate does not admit in that role - or
     whose own type's key cell is empty (총괄 7255b4918 ④). The type is the cell as written,
-    folded by `bare_name`. A `soft` blank cell (`blank_entity_cells`) unsays its sentence instead."""
+    folded by `bare_name`. A blank cell `blank_entity_cells` excuses (`soft`) does not refuse."""
     from .gate import REFUSE_NO_IDENTITY, REFUSE_TYPE_NOT_ADMITTED
 
     for mapping, role, binding, type_column in _row_typed(context.source_plan):
@@ -586,7 +638,8 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
                                          f"{column}"} for column in empty),
             )
 
-    # a blank entity cell only some sentences need unsays them in the mapper instead (소유자 10-12)
+    # a blank entity cell no applying sentence needs, or only some do (unsaid in the mapper), does not
+    # refuse (소유자 10-12, `blank_entity_cells`)
     soft = blank_entity_cells(plan, context.snapshot.entities, cells, positions)[0]
     checks = (
         (REFUSE_NO_IDENTITY, tuple(_required_entity_columns(plan)) + tuple(driver.identity)),

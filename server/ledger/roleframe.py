@@ -351,18 +351,18 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
         unit: pd.DataFrame,
         profile: ProfileDescriptor,
     ) -> Sequence[RoleEmission]:
-        from .event_frame import blank_entity_cells
+        from .event_frame import sentences_said
 
         refs = _source_row_refs(unit)
         unit_columns = read_columns_once(unit)
-        unnamed = blank_entity_cells(context.source_plan, context.snapshot.entities,
-                                     unit_columns, range(len(unit)))[1]
+        said = sentences_said(context.source_plan, context.snapshot.entities,
+                              unit_columns, range(len(unit)))
         out = []
         for sentence, mapping in profile.mappings.items():
             # S-99. The declaration says WHEN this sentence applies; a unit that does not
             # match says nothing here and goes on to the next sentence. So does one leaving
             # blank a cell only some sentences need to name their entities (소유자 10-12).
-            if (mapping.when and not _unit_says(unit_columns, mapping.when)) or sentence in unnamed:
+            if sentence not in said:
                 continue
             claim = context.snapshot.claims.get(mapping.predicate_id)
             # 🔴 EVERY SENTENCE STATES THE MOLECULE'S TIME (총괄 0c9b6e3c0). A mapping that binds

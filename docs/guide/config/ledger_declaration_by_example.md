@@ -218,7 +218,9 @@ retired 로 적어도 계속 번역합니다」라고 적혀 있었고, 오늘�
 ```
 운영에서는 소스의 `bind.mappings.<문장>` 에 `when: {컬럼: 값}` 을 적으면 됩니다.
 그 칸 값이 맞는 행만 그 문장을 말합니다 — 한 표가 값에 따라 «다른 주어»로 말하게 할 때 씁니다.
+«아니다»는 `when: {컬럼: {"not": 값}}` — 그 칸이 그 값이 아닌 행(빈 행 포함)만 말합니다 (10-12).
 ```
+「a 가 b 면 문장 c, 아니면 문장 d」 는 c 에 `"when": {"a": "b"}`, d 에 `"when": {"a": {"not": "b"}}` — 행마다 둘 중 정확히 하나를 말합니다. 같은 철자가 `read.exclude_when` 의 `{"when": …}` 과 `entities.<타입>.references[].from.when` 에도 됩니다.
 출하 샘플 `wafer_process_recipe` 가 그 모양입니다 — 같은 술어 `processed_with` 을 문장 «둘»로 적고 주어만 가릅니다:
 ```json
 "wafer-processed-with-recipe":   { "predicate": "processed_with", "when": {"mat_type": ""},   "bind": { "subject": { "entity_type": "wafer",   ... } } },
@@ -228,4 +230,6 @@ retired 로 적어도 계속 번역합니다」라고 적혀 있었고, 오늘�
 - **빈 칸은 `""` 입니다** — 값이 없는(NULL) 칸은 `""` 로 견줍니다(09-30 전엔 `"nan"` 이 돼 어느 문장도 안 맞았다). 견줄 때 칸 값과 적은 값을 «둘 다» 같은 글자로 접습니다 — 앞뒤 공백을 떼고, `7.0` 같은 정수 실수는 `"7"`(10-01 `0ba4c82ce`, `clean_str_value`).
 - **어느 문장도 안 고른 행은 «세고 이름 댑니다»** — 모든 문장이 `when` 을 들고 그 어느 것도 안 맞으면 그 행은 아무것도 말하지 않고, 값마다 세어 하트비트 노트에 실립니다(`units no sentence said: units=N | <소스>:mat_type='WF'=N`). 한 값이 1 · 10 · 100 … 단위에 닿을 때 한 줄(10-01 d4a949a8c ⑧):
   `[Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. <소스>: mat_type='WF' said no sentence - every sentence's when passed it over | units so far in this process: N`
-  미리보기와 배치 영수증에도 `unsaid` 로 실립니다. `when` 없는 문장이 하나라도 있으면 모든 행이 그것을 말하므로 이 줄은 안 납니다.
+  미리보기와 배치 영수증에도 `unsaid` 로 실립니다. `when` 없는 문장이 하나라도 있으면 이 줄은 안 납니다 — 그래도 그 행이 아무것도 안 말할 수 있습니다(아래).
+- **대상 칸이 빈 문장은 그 행에서 빠집니다** (10-12, 소유자 「세 개 중 빈 거는 무시」) — 그 행에서 `when` 이 맞는 문장들 가운데 «일부만» 쓰는 엔티티 키 칸이 비면 그 문장들만 안 말합니다. 그 문장들이 «모두» 쓰는 칸(공통 주어 같은)이 비면, `allow_null` 엔티티의 키 칸이 비면, 맵퍼가 코드면 전처럼 `no_identity` 로 거절됩니다. 묶음(`unit: group`)은 그 칸이 «모든 행»에서 빌 때만 빠지고, 일부 행만 비면 거절됩니다.
+- **아무 문장도 안 말한 행** — 대상 칸이 전부 비었거나 어느 `when` 도 안 맞은 행은 원자를 안 쓰고 색인에도 안 올라갑니다. 사람이 돌리는 census(`python -m ledger census`)의 «not yet» 은 그런 행을 따로 세어(`said_nothing_rows`) 뺍니다.

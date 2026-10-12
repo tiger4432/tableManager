@@ -272,6 +272,25 @@
 >
 > ---
 >
+> ## [10-12] **when-not 을 pull 하기 «전» — 운영 원장 선언을 새 코드로 읽어 보기 (총괄 QA ③) — 쓰기 «없음» · 서버 안 띄움**
+>
+> ```
+> 왜          새 코드는 entities.<타입>.references[].from.when 의 값을 검사한다. 값이 목록 · null · 다른 객체면
+>             그 타입이 빠지고, 그 타입을 쓰는 술어와 소스가 같이 빠진다(로드는 계속 — 빠진 것만 안 읽힘)
+> 어디서       새 코드가 있는 체크아웃의 server 폴더 — 운영 체크아웃 말고(예: git worktree add ..\prepull origin/when-not)
+> 돌릴 명령    $env:ASSY_DATA_ROOT = "<운영 server 폴더>"; conda run -n assy_manager python -m ledger.setup --root "<운영 server 폴더>\config\ontology"
+> 답          stdout JSON 한 줄의 "readiness":"ready" · stderr 의 «left out <선언> <자리> <문장>» 줄 · 끝 줄 «N declaration(s) left out in …»
+> 답의 뜻      left out 줄이 오늘 server.log 의 «[Ledger] source … is NOT planned» 소스 · 그 타입 · 술어와 같은 것뿐 -> pull 해도 새로 빠지는 것 없음
+>             «left out entity|<타입> bundle.entities.<타입>.references[N].from.when.<칸> must be …» 가 있으면 -> pull 하면 그 타입 ·
+>                그것을 쓰는 술어 · 소스가 빠진다. 그 값을 글자 · 수 · 참거짓 하나나 {"not": 값} 으로 고치고 다시 돌려 줄이 없어지면 pull
+>             exit 1 + «N problem(s) in …» -> 읽을 소스가 하나도 안 남는다 — pull 하지 않는다
+> 쓰는 것      없음 — 이 박스: 운영 config · server.log 전후 같음(바뀐 것은 돌던 워커의 worker_heartbeats 뿐), 복사본 data root 에 파일 0 개 생김
+> 이 박스      exit 0 · ready · «10 declaration(s) left out» — row_id 없는 뷰를 읽는 소스 9 · 은퇴한 prepare 의 lot_event 1, 다 오늘도 빠져 있는 것
+>             복사본의 die 에 from.when 값 목록을 넣으면 «18 declaration(s) left out» — entity|die · 그것을 쓰는 술어 5 · 소스 2 가 더 빠짐
+> ```
+>
+> ---
+>
 > ## [10-12] **exclude_when 으로 거른 행이 «아직 번역 안 된 행»에서 빠진다 (총괄 리허설 2 회차, 착지 9c1da298f) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
@@ -279,6 +298,7 @@
 > 답의 뜻      not yet 0 -> 다 됨 (거른 행은 원래 이 소스의 행이 아님)
 >             not yet > 0 이고 다시 돌려도 그대로 -> 거름이 아닌 다른 이유로 안 읽히는 행 — 총괄께
 > 안 빼는 때   쉬지 않는 센서스 틱(S-122) · 색인에 없는 행이 100,000 넘음(로드 전) -> «exclude_when not subtracted (…)»
+>             when-not 부터 이 문장은 «rows exclude_when takes out or that say no sentence not subtracted (…)» — 말하는 문장이 없는 행도 같이 뺀다
 > 같은 낱말   «Table less indexed» 는 이름대로 표 − 색인 — 거른 행은 «New, not translated» · not yet 에서만 빠짐
 > 되돌리기     git revert 9c1da298f -> 서버 · 체인 워커 재기동
 > ```

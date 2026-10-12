@@ -457,8 +457,12 @@ def _count_ledger_backfill(db, params, scan_limit):
                   f"WHOLE set, not a sample. The run can be stopped while it goes.")
     if census.get("excluded_rows"):
         detail += " %d row(s) the declaration's exclude_when takes out are not counted." % census["excluded_rows"]
+    if census.get("said_nothing_rows"):
+        detail += (" %d row(s) that say no sentence (no when holds, or every target is blank) are "
+                   "not counted." % census["said_nothing_rows"])
     if census.get("excluded_not_subtracted"):
-        detail += " exclude_when not subtracted (%s)." % census["excluded_not_subtracted"]
+        detail += (" rows exclude_when takes out or that say no sentence not subtracted (%s)."
+                   % census["excluded_not_subtracted"])
     if gone:
         detail += (f" ⚠ The index names {gone} row(s) that are NOT in the table - deletions "
                    f"that were never swept.")

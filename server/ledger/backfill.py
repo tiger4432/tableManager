@@ -896,39 +896,50 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None, world=
 EXCLUDED_COUNT_ROWS = 100000
 
 
-def _missing_rows_excluded(engine, setup, source, exact_rows, world=None):
-    """-> (of the rows the index does not name, how many `read.exclude_when` takes out - the read's own judgement
-    (`event_frame.row_excluded`) over their clause columns; why they were not taken out, or None). Nothing to say
-    for a source with no clause; the paced tick (`exact_rows=False`) does not scan (S-122); past
-    EXCLUDED_COUNT_ROWS rows the index does not name (a load not run) none are counted."""
+def _missing_rows_taken_out(engine, setup, source, exact_rows, world=None):
+    """-> (of the rows the index does not name: how many `read.exclude_when` takes out, how many the
+    translator reads and says no sentence of; why they were not counted, or None). Both are the read's
+    own judgements over the row's declared columns - `event_frame.row_excluded` and
+    `event_frame.says_nothing` (총괄 10-12 QA ④: a row every `when` passes by or whose every target is
+    blank is never indexed). Nothing to say for a source with no clause whose mapper is code; the
+    paced tick (`exact_rows=False`) does not scan (S-122); past EXCLUDED_COUNT_ROWS rows the index does
+    not name (a load not run) none are counted."""
     from psycopg2 import sql
 
-    from .event_frame import row_excluded
-    from .setup_bundle import exclusion_columns
+    from .event_frame import SourcePreparationContext, named_columns, row_excluded, says_nothing
+    from .setup_bundle import executes_the_bindings
 
-    clauses = [clause for clause in setup.snapshot.source_plans[source].driver.exclude_when
-               if isinstance(clause, Mapping)]
-    if not clauses:
-        return 0, None
+    plan = setup.snapshot.source_plans[source]
+    clauses = [clause for clause in plan.driver.exclude_when if isinstance(clause, Mapping)]
+    if not clauses and not executes_the_bindings(plan.driver.mapper.implementation.implementation_id):
+        return 0, 0, None
     if not exact_rows:
-        return 0, "an estimate"
+        return 0, 0, "an estimate"
     ids = rows_missing_from_the_index(engine, setup, source, EXCLUDED_COUNT_ROWS + 1, world=world)
     if len(ids) > EXCLUDED_COUNT_ROWS:
-        return 0, "over %dk rows the index does not name" % (EXCLUDED_COUNT_ROWS // 1000)
+        return 0, 0, "over %dk rows the index does not name" % (EXCLUDED_COUNT_ROWS // 1000)
     if not ids:
-        return 0, None
-    columns = sorted({column for clause in clauses for column in exclusion_columns(clause)})
-    relation = sql.SQL(".").join(
-        sql.Identifier(part) for part in str(setup.snapshot.source_plans[source].relation).split("."))
+        return 0, 0, None
+    columns = list(named_columns(plan))
+    relation = sql.SQL(".").join(sql.Identifier(part) for part in str(plan.relation).split("."))
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
             cursor.execute(sql.SQL("SELECT {} FROM {} WHERE row_id = ANY(%s)").format(
                 sql.SQL(", ").join(sql.Identifier(column) for column in columns), relation), (ids,))
-            return sum(row_excluded(clauses, dict(zip(columns, row)).get) for row in cursor.fetchall()), None
+            rows = cursor.fetchall()
     finally:
         connection.rollback()
         connection.close()
+    cells = {column: tuple(row[at] for row in rows) for at, column in enumerate(columns)}
+    context = SourcePreparationContext(setup.snapshot, plan)
+    excluded = silent = 0
+    for position in range(len(rows)):
+        if clauses and row_excluded(clauses, lambda column: cells[column][position]):
+            excluded += 1
+        elif says_nothing(context, cells, (position,)):
+            silent += 1
+    return excluded, silent, None
 
 
 def rows_gone_from_the_source(engine, setup, source, world=None):
@@ -1197,10 +1208,14 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
     remainder = total - indexed
     # 🔴 a row `read.exclude_when` takes out is never translated nor indexed - it is not 「not yet」 (총괄 10-12, rp500g
     #    link_candidates kept 1 after every backfill). Taken out of a person's count; the paced tick does not scan (S-122)
-    excluded, kept_in = _missing_rows_excluded(engine, setup, source, exact_rows, world=world)
+    #    So is a row the read takes in and says no sentence of (총괄 10-12 QA ④), counted apart.
+    excluded, said_nothing, kept_in = _missing_rows_taken_out(engine, setup, source, exact_rows, world=world)
     if excluded:
         report["excluded_rows"] = excluded
         remainder -= excluded
+    if said_nothing:
+        report["said_nothing_rows"] = said_nothing
+        remainder -= said_nothing
     if kept_in:
         report["excluded_not_subtracted"] = kept_in
     report["not_yet"] = max(remainder, 0)
@@ -1276,7 +1291,8 @@ def rows_to_catch_up(engine, setup, source, world=None, census=None):
     census = census or rows_not_yet_translated(engine, setup, source, world=world)
     gone = len(rows_gone_from_the_source(engine, setup, source, world=world))
     drift = rows_drifted(engine, setup, source, world=world)
-    new = (census["relation_rows"] - census["indexed_rows"] - census.get("excluded_rows", 0) + gone
+    new = (census["relation_rows"] - census["indexed_rows"] - census.get("excluded_rows", 0)
+           - census.get("said_nothing_rows", 0) + gone
            if census.get("counts") == "rows" else None)
     return {"rows_new": new, "rows_drifted": drift["rows_drifted"], "rows_gone": gone,
             "rows_unprinted": drift["rows_unprinted"]}
@@ -1427,8 +1443,10 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
         behind = rows_to_catch_up(engine, setup, census["source"], world=world, census=census)
         new = "relation rows the index does not name" + (
             ", less %d exclude_when takes out" % census["excluded_rows"] if census.get("excluded_rows") else
-            "; exclude_when not subtracted (%s)" % census["excluded_not_subtracted"]
-            if census.get("excluded_not_subtracted") else "")
+            "; rows exclude_when takes out or that say no sentence not subtracted (%s)"
+            % census["excluded_not_subtracted"] if census.get("excluded_not_subtracted") else "") + (
+            ", less %d that say no sentence" % census["said_nothing_rows"]
+            if census.get("said_nothing_rows") else "")
         for box, method in (("rows_new", new),
                             ("rows_drifted", "index print <> print of the row's read columns now"),
                             ("rows_gone", "index rows the relation no longer holds"),

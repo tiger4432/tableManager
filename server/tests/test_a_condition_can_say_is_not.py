@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from ledger import backfill                                           # noqa: E402
 from ledger.backfill import prepare_v2_cursor_batch                   # noqa: E402
-from ledger.event_frame import row_excluded                           # noqa: E402
+from ledger.event_frame import named_columns, row_excluded            # noqa: E402
 from ledger.roleframe import _unit_says, map_event_frame              # noqa: E402
 from test_ledger_setup_bundle import (                                # noqa: E402
     DEFAULT_CATALOG, logical_bundle, validate_bundle_errors)
@@ -29,7 +29,7 @@ from test_ledger_setup_registry import snapshot                       # noqa: E4
 from test_ledger_roleframe import implementations, mapper_context     # noqa: E402
 from test_ledger_event_frame import NOW, base_rows                    # noqa: E402
 from test_an_entity_reference_is_written_by_every_source_naming_it import (  # noqa: E402
-    REFERENCE, _dies, _edges, _preview, _snapshot, _transfer_rows)
+    REFERENCE, SAMPLE, _dies, _edges, _preview, _snapshot, _transfer_rows)
 
 SOURCE = "input_rows"
 RELEASE_LOG = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "process", "RELEASE_LOG.md")
@@ -179,7 +179,7 @@ class _Cursor:
 
 
 class _Engine:
-    """Answers the census's two counts, then the clause column of the rows the index does not name."""
+    """Answers the census's two counts, then the declared columns of the rows the index does not name."""
 
     def __init__(self, counts, rows):
         self.cursor_object = _Cursor(counts, rows)
@@ -205,9 +205,12 @@ def test_the_census_takes_out_the_same_rows_the_read_does(monkeypatch):
     ids = ["RID-%04d" % i for i in range(len(A_VALUES))]
     monkeypatch.setattr(backfill, "rows_missing_from_the_index", lambda *a, **k: ids)
     setup = type("S", (), {"snapshot": compiled})()
+    columns = named_columns(compiled.source_plans[SOURCE])
+    assert "a" in columns                                          # canary: the clause column is read
 
     report = backfill.rows_not_yet_translated(
-        _Engine([len(A_VALUES), 0], [(v,) for v in A_VALUES]), setup, SOURCE)
+        _Engine([len(A_VALUES), 0], [tuple(row.get(c) for c in columns) for row in _rows()]),
+        setup, SOURCE)
 
     assert (report["relation_rows"], report["indexed_rows"], report.get("excluded_rows"),
             report["not_yet"]) == (6, 0, 4, 2), report
@@ -227,3 +230,59 @@ def test_a_reference_from_when_says_is_not():
     dt, wafer = _dies(preview, "DT"), _dies(preview, "Wafer")
     assert len(dt) == 1 and len(wafer) == 1, (dt, wafer)            # canary: both dies are named
     assert [die for die, _ in _edges(preview)] == sorted(dt)
+
+
+REFUSED_VALUE = ('must be a string, number or boolean the column equals, or {"not": <one of those>} '
+                 'for a column that does not')
+
+
+def _root_with_reference_when(tmp_path, value):
+    """The shipped sample with die's reference conditioned on `value`, as a config root."""
+    document = json.load(open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8"))
+    reference = copy.deepcopy(REFERENCE)
+    reference["from"]["when"] = {"mat_type": value}
+    document["entities"]["die@1"]["references"] = reference
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize("value", [["Wafer", "DT"], None, {"ne": "Wafer"}],
+                         ids=["a-list", "null", "another-operator"])
+def test_a_reference_from_when_of_neither_form_leaves_its_entity_and_users_out(value, tmp_path):
+    """총괄 10-12 QA ③: unchecked before this round. The load goes on without the entity, the
+    predicates naming it and the sources using it - each left out by name, the root at the value."""
+    from ledger.setup import load_setup
+    from ledger.setup_bundle import load_physical_catalog
+
+    root = _root_with_reference_when(tmp_path, value)
+    setup = load_setup(str(root), catalog=load_physical_catalog(
+        os.path.join(SAMPLE, "table_config.json.sample")))
+
+    reason = setup.left_out["entity|die"]["reasons"][0]
+    assert (reason["path"], reason["message"]) == (
+        "bundle.entities.die.references[0].from.when.mat_type", REFUSED_VALUE)
+    assert {"source_plan|transfer_event", "source_plan|die_inspection"} <= set(setup.left_out)
+    assert setup.snapshot.source_plans["transfer_event"].planned is False
+
+
+def test_the_setup_door_names_every_declaration_it_left_out(tmp_path, capsys, monkeypatch):
+    """The pre-pull check (RUN.md): `python -m ledger.setup --root` still answers «ready», and says on
+    stderr what it left out, each with its root reason, and how many."""
+    from ledger import setup as setup_module
+    from ledger.setup_bundle import load_physical_catalog
+
+    catalog = load_physical_catalog(os.path.join(SAMPLE, "table_config.json.sample"))
+    monkeypatch.setattr(setup_module, "live_physical_catalog", lambda: catalog)
+    root = _root_with_reference_when(tmp_path, ["Wafer", "DT"])
+
+    assert setup_module.main(["--root", str(root)]) == 0
+    captured = capsys.readouterr()
+    lines = captured.err.splitlines()
+    left = [line.split("\t") for line in lines if line.startswith("left out\t")]
+
+    assert json.loads(captured.out)["readiness"] == "ready"
+    assert ["left out", "entity|die", "bundle.entities.die.references[0].from.when.mat_type",
+            REFUSED_VALUE] in left
+    assert lines[-1] == "python -m ledger.setup: %d declaration(s) left out in %s" % (len(left), root)
