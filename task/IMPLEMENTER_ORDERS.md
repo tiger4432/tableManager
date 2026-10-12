@@ -66743,3 +66743,28 @@ C. 그리드 깊은 쪽 — 값 칸 정렬이 요청마다 표를 통째로 정�
 
 순서      풀 재QA 고침 -> 허브 2 단계 -> A 행 붙이기(허브 코드를 같이 씀) -> 소급 쪽 읽기(5ad030347) -> B -> C -> 예산별 스트리밍
 ```
+
+> **[총괄 -> 구현자] 10-12 밤 — 걷기 풀 재QA(c7b36d8ff): GO-WITH-FIXES — 고칠 것 (착지는 이것 뒤)**
+
+```
+확인됨     직접 호출자(AST 975 파일) · 422 는 서버 쪽 · 거절 10 건 바이트 같음 · kwargs 피클 · 늦은 답 안 샘 · _taken finally · 0 일 때 응답 자리 같음
+고칠 것
+ 중1  표 설정(TABLE_CONFIG) 바꿈이 걷기 프로세스에 안 닿는다 — config_watcher._reload 는 서버의 crud.TABLE_CONFIG 만 바꾸고, 걷기 프로세스는 import 때 한 번 읽음
+      (걷기 -> ledger/setup.py -> map_overlay.py 경로). 어드민에서 칸 타입을 image 로 저장해도 풀이면 재기동 전까지 조용히 빠짐
+      -> 설정을 다시 읽는 «그 자리»(config_watcher._reload 성공 끝)에서 process_pool.recycle(). 같은 성질의 다른 설정 캐시가 걷기 프로세스에 있는지 전수
+ 중3  주장 2 · 3 을 지키는 시험이 없다 — 변이 M1(시간 넘긴 프로세스 안 내림) · M5(쉬는 상한 무시) · M6(warm 이 띄우는 중을 안 셈)이 27 passed 로 산다.
+      M2(_taken 샘)는 뒤 시험 다섯이 실행 순서로 잡는다. walk_process_not_ready 에 닿는 시험 0
+      -> 503 뒤 그 프로세스 is_alive() False · fixture 끝에 _taken == 0 · recycle 두 번 뒤 쉬는 수 + 일하는 수 <= 상한 · not_ready 칸. 변이마다 «매치 수» 카나리아
+ 낮4  «상한 하나»가 실제로는 기다림마다 따로(최악 약 360 s) -> 마감 시각 하나에서 남은 시간을 넘긴다
+ 낮5  시험 모드에서도 recycle -> warm 이 프로세스를 띄운다(pytest 끝에 exit -15 두 번) -> recycle 안 warm 에도 TESTING 문
+ 낮7  «0 이면 쉬는 프로세스를 내린다»는 다음 걷기가 와야 일어남 · N -> M 은 요청마다 하나씩 -> 문서를 동작대로(또는 바꿀 때 한 번에 내림)
+ 낮8  git pull 뒤 재기동 전에 리로드 · 시간 넘김이 나면 새 걷기 코드가 옛 서버 밑에서 뜬다 -> RUN.md «pull 뒤 반드시 재기동» 한 줄
+ 낮9  main.py 를 AST 로 읽어 배선 순서를 단언하는 칸은 글자를 재는 대리 시험 -> 기동 · 리로드를 실제로 불러 warm · recycle 이 불렸는지로
+ PG   시간 넘긴 걷기를 내려도 그 PG 질의가 계속 도는지 확인(pg_stat_activity application_name = assy_walkpool) — 돈다면 걷기 프로세스 세션에 statement_timeout
+ 고아  서버를 강제로 죽인 뒤 spawn_main(parent_pid=…) 프로세스가 남는지 — 남으면 RUN.md 끄기 줄과 함께 막는 길
+ 문서  RUN.md 머리줄 «큰 걷기가 남의 화면을 안 멈춤»은 걷기 아닌 라우트에만 참 — 걷기끼리는 줄을 선다고 적는다 · walk_process_not_ready 를 문서에 ·
+      architecture/backend.md 라우트 행(거절에 503 셋) · 리로드 행(풀 다시 띄움)
+재기      중2: 큰 걷기 둘이 도는 중 작은 걷기(1 홉 시간 쪽 · 화면 걷기)의 p50 / p95 · 503 수를 walk_processes 2 와 0 에서 — 박스 베낀 판 런처, 응용에 창 요청
+          판정은 수를 보고 총괄이 한다(프로세스 수 · 작은 걷기 자리)
+그대로     낮6(설정 파일이 깨지면 기본값으로) — 설정 전체 관례라 이번에 안 바꾼다
+```
