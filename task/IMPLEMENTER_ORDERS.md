@@ -66693,3 +66693,17 @@ B 다시 읽기 취소와 와쳐 (응용 감사 — 임시 SQLite 로 잼, 제�
 첫 줄       쪽 전에 표를 한 번 통째 읽는 셋이 100만에서 첫 줄까지 길다: fold_duplicate_rows(hold) 10.58 s · (fold) 8.89 s · fold_units 2.86 s
             «소급 쪽 고리는 5 초 안에 진척을 보인다»(c6bc9bcc0)를 100만에서 어긴다 — 전수 표에 «첫 줄 전 통째 읽기» 칸을 같이, 같은 라운드에 닫는다
 ```
+
+> **[총괄 -> 구현자 · 클라] 10-12 밤 — 체인 집계 이름도 스팟파이어 철자로 (소유자 「체인 집계도 스팟파이어 이름으로 바꿔」)**
+
+```
+지금      server/chain/enrichment/config.py AGGREGATION_FUNCTIONS = count · min · max · unique_concat (걷기 집계는 9911db802 로 이미 Count · UniqueCount · Sum · Avg · Min · Max · Median)
+바꿈      Count · Min · Max · UniqueConcatenate (스팟파이어 함수 이름). 늘리는 함수는 없다 — 이름만
+옛 이름    count · min · max · unique_concat 은 계속 읽는다 — aggregation_record 한 자리에서 접는다(걷기 _split_measure 와 같은 모양). 운영 선언을 고치라고 하지 않는다
+같은 철자  Count · Min · Max 철자는 걷기와 체인이 «같은 상수»를 지난다 — 이름 표 한 자리, 각 자리는 그중 무엇을 받는지만 적는다
+구현자    거절 문장 · 저장 관문 · 체인 폼이 그리는 선언(rule_shape.with_aggregation_records) · AGGREGATIONS_WITHOUT_COLUMN · AGGREGATION_SEPARATOR_DEFAULTS 키 전부
+          추적 파일의 선언 예시 · 샘플 · 시험 픽스처 · 문서에 남은 옛 이름 전수(AST + git grep), 예시는 새 이름으로, «옛 이름도 읽힌다» 칸 하나
+클라      체인 폼의 집계 고르기가 새 이름을 보이고 보낸다. 옛 이름으로 저장된 선언은 새 이름으로 그린다(서버가 접은 것을 그대로)
+게이트    옛 이름 선언 · 새 이름 선언이 같은 파생 행을 쓴다 · 거절 문장이 새 이름을 든다 · 폼 왕복(열고 저장)에서 값이 안 바뀐다
+순서      구현자: 손에 든 허브 2 단계 다음, 소급 쪽 읽기 앞(작다). 클라: 충돌 고침 다음
+```

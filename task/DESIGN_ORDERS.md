@@ -38736,3 +38736,17 @@ D 우리 뜻으로 옮길 때 (모양은 위, 뜻은 우리 것)
 잴 것     같은 판에서 die × 디펙 종류별 수를 원장 원자에서 한 질의로: 초 · 계획(어느 인덱스) · 읽은 행. 씨앗 die 1,000 · 1만 · 10만 셋
           견줄 것: 같은 수를 체인 집계(decide aggregations count, 키 die + 종류)로 요약 표에 써 둔 뒤 그 표를 읽는 초 — 그리고 요약 표를 처음 채우는 초
 ```
+
+> **[총괄 -> 구현자 · 클라] 10-12 밤 — 체인 집계 이름도 스팟파이어 철자로 (소유자 「체인 집계도 스팟파이어 이름으로 바꿔」)**
+
+```
+지금      server/chain/enrichment/config.py AGGREGATION_FUNCTIONS = count · min · max · unique_concat (걷기 집계는 9911db802 로 이미 Count · UniqueCount · Sum · Avg · Min · Max · Median)
+바꿈      Count · Min · Max · UniqueConcatenate (스팟파이어 함수 이름). 늘리는 함수는 없다 — 이름만
+옛 이름    count · min · max · unique_concat 은 계속 읽는다 — aggregation_record 한 자리에서 접는다(걷기 _split_measure 와 같은 모양). 운영 선언을 고치라고 하지 않는다
+같은 철자  Count · Min · Max 철자는 걷기와 체인이 «같은 상수»를 지난다 — 이름 표 한 자리, 각 자리는 그중 무엇을 받는지만 적는다
+구현자    거절 문장 · 저장 관문 · 체인 폼이 그리는 선언(rule_shape.with_aggregation_records) · AGGREGATIONS_WITHOUT_COLUMN · AGGREGATION_SEPARATOR_DEFAULTS 키 전부
+          추적 파일의 선언 예시 · 샘플 · 시험 픽스처 · 문서에 남은 옛 이름 전수(AST + git grep), 예시는 새 이름으로, «옛 이름도 읽힌다» 칸 하나
+클라      체인 폼의 집계 고르기가 새 이름을 보이고 보낸다. 옛 이름으로 저장된 선언은 새 이름으로 그린다(서버가 접은 것을 그대로)
+게이트    옛 이름 선언 · 새 이름 선언이 같은 파생 행을 쓴다 · 거절 문장이 새 이름을 든다 · 폼 왕복(열고 저장)에서 값이 안 바뀐다
+순서      구현자: 손에 든 허브 2 단계 다음, 소급 쪽 읽기 앞(작다). 클라: 충돌 고침 다음
+```
