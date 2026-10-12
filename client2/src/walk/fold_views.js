@@ -59,11 +59,15 @@ export function pathsAnswer(answer, rows) {
 function narrowed(results, keep, keepEdge) {
   const nodes = new Map();
   const edges = new Map();
+  // A hub kept keeps its table: its rows are its members (task/WALK_HUB_ANSWER_SHAPE.md).
+  const tables = {};
   for (const r of results || []) {
     for (const n of (r && r.nodes) || []) if (keep.has(n.id) && !nodes.has(n.id)) nodes.set(n.id, n);
     for (const e of (r && r.edges) || []) if (keepEdge(e) && !edges.has(e.id)) edges.set(e.id, e);
+    for (const [hub, t] of Object.entries((r && r.tables) || {})) if (keep.has(hub) && !tables[hub]) tables[hub] = t;
   }
-  return { ok: true, state: 'ready', nodes: [...nodes.values()], edges: [...edges.values()] };
+  return { ok: true, state: 'ready', nodes: [...nodes.values()], edges: [...edges.values()],
+    ...(Object.keys(tables).length ? { tables } : {}) };
 }
 
 /**

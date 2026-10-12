@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **걷기 허브 그리기 — 서버가 접은 허브를 그림과 표에서 · 묶음 은퇴 (총괄 10-12 · 10-13, 클라 design-walk-hub)** — 서버 impl-walk-hub 와 같이 git pull · 클라는 재기동 없음
+>
+> ```
+> 무엇     서버가 접은 허브가 그림에 «▤ <타입> ×N» 한 노드(겹선 상자)로, 표에 허브마다 구획 하나로 온다
+>          그림 · Continue 는 기본으로 fanout_limit 을 안 보낸다 — 걷기 화면 STEP 의 fanout_limit 칸에 수를 적으면 간다
+>          ⚰️ 묶음(bundles) 덩어리 · «? next · not walked» · «· cut» 고리 은퇴
+> 볼 것    허브가 선언된 걸음을 걷는다 -> Graph 에 «▤ <타입> ×N», 그 선 «<술어> ×N»
+>          허브를 누름 -> 사실 상자에 + · − 수 · 구성원 표 · Open as nodes
+>          Open as nodes -> 잠깐 «Loading…» -> 구성원이 허브 자리에 서고, 서버가 그 구성원에서 이어 걸은 노드도 같이
+>          Table -> 타입 구획 뒤에 «▤ <타입> ×N · <앞 노드> <술어> →» 구획, 행 = 구성원
+> 답의 뜻   허브가 안 오고 노드만 -> 서버가 아직 옛 것(답에 tables 없음) — 서버 착지부터 확인
+>          한 갈래가 노드 상한까지 전부 옴 -> 옛 서버 + 기본 fanout 없음. 서버를 올리거나 fanout_limit 칸에 수를 적는다
+>          허브 밑 허브가 위 구획의 열로 붙음 -> 위 행마다 정확히 하나씩이라서(결함 아님). 하나라도 둘이면 제 구획
+>          Open as nodes 뒤 노드가 아주 많음 -> 허브 열기는 접지 않고 다 그린다(접기는 아직 안 함)
+> 급할 때   이 병합을 git revert -m 1 -> 클라 dist 가 앞 것으로. 서버는 서버 항목대로
+> ```
+
 > ## [10-13] **Tx 로 모아 둔 칸이 서버 값 밑에 가려지지 않음 · Apply 는 보내기 전에 다시 읽어 묻는다 (총괄 c97239697 · c96836796 · 7d59e9772, 클라 c3a3fd5cb · 5e3d05504 · 08b3e0215, 병합 4bde0aae7) — git pull 만 · 재기동 없음 · 그리드 새로 고침**
 >
 > ```
@@ -474,8 +491,8 @@
 >                hops 2 판은 둘째 홉 노드가 첫 그림에서 전부 접혀(Folded · 645) 고리가 보이는 노드 0 — 고리를 보이려면 그 덩어리를 연다
 >    ⑥  묶음 열기  불량 base 의 «measures → 8 more quantity» 를 누름 -> 창 «measures · quantity» «8 not drawn · from SYN-BW-103-11» -> post_bond_queue_h 틱 -> «Open 1»
 >       본 것    요청 0 · 그려짐 1 · 그 노드에 덩어리 없음 · 묶음은 «measures → 7 more quantity» · «Folded · 52 nodes»
->       뜻       표가 이미 받은 답에서 꺼내 그린다 — 연 노드도 걸은 답 안이라 «? next · not walked» 점선이 없다
->    ⑦  not walked   이 흐름에서는 안 생긴다 — ⑤ 의 그림 «not walked» 덩어리 0 · ⑥ 에서 연 노드 · ⑧ 뒤 그림에도 없음. 더 걸으려면 표의 NEXT
+>       뜻       표가 이미 받은 답에서 꺼내 그린다
+>    ⑦  ⚰️ not walked 은퇴(10-13) — 더 걸으려면 표의 NEXT · 서버가 접은 허브는 그래프에서 누르고 Open as nodes
 >    ⑧  덩어리 한 겹   time_s 의 큰 덩어리 «30 next · 14 behind 30 wafer» 를 누름 -> 창 «From time_s» «30 next · 14 behind» · 가지 ← measures wafer 30 · «Open as table» · All 틱 -> «Open 30»
 >       본 것    요청 0 · 그려짐 30 (wafer 30) · 움직임 0 · 새 작은 덩어리 0 · «Folded · 22 nodes»
 >       뜻       next = 한 걸음 너머 서로 다른 노드 수(Open 이 그리는 수) · behind = 그 너머에 접힌 채 남는 수

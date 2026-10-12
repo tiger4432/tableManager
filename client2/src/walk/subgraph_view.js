@@ -13,14 +13,13 @@
 // 🔴 Drawn by Cytoscape.js with a dagre layout, left to right (owner 10-06, lead 5e1d9e372). The columns are
 //    held to the depth; dagre only orders inside them. Everything is laid out once — the first draw and Reset;
 //    after that nothing already drawn moves and the view (zoom · pan) is never moved for you (lead 03bc94b6b).
-// 🔴 ONE LUMP (lead e523cfe91): a folded branch, the keys split out of it, and a fan-out the server did not send
-//    (`bundles`) are one node shape keyed like the server's bundle, `node|predicate|direction`. Pressing one
-//    lists what is inside; only what is ticked opens. A lump the server has not sent is walked first: one step
-//    from its node (`stepAlong`, lead 11e5ea207).
+// 🔴 ONE LUMP (lead e523cfe91): a folded branch and the keys split out of it are one node shape keyed
+//    `node|predicate|direction`. Pressing one lists what is inside; only what is ticked opens. A hub - the server's
+//    fold, a table behind it (task/WALK_HUB_ANSWER_SHAPE.md) - wears that shape, told apart by its mark (lead 10-13).
 
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
-import { staticTypes, cutBudgets, edgeQualifiers, qualifierWords, stepAlong } from './derive.js';
+import { staticTypes, cutBudgets, edgeQualifiers, qualifierWords, nodeWords, oneMemberHubs, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { markingIntent } from '../rnd_board/panel.js';
 import { setDisabledReason } from '../disabled_reason.js';
@@ -69,32 +68,29 @@ export function seedsOf(entries) {
 /**
  * What the walks answered, decided from the answers and the declaration only.
  *
- * One step is one marking walked; a step may hold more than one answer — each lump opened is one step from its
- * node, tagged `opened` with its key, and stands from that node's layer. Step 1's layer is the node's `depth`; a
- * later step's layers carry on from the marked points: `depth + the furthest layer its seeds already stand in`. A
- * node stands once, where it was first reached, and remembers that step. A node without a depth is counted, not
- * placed — its distance is not this screen's guess. The bundles still standing are the step's walk's, less those
- * opened.
+ * One step is one marking walked. Step 1's layer is the node's `depth`; a later step's layers carry on from the
+ * marked points: `depth + the furthest layer its seeds already stand in`. A node stands once, where it was first
+ * reached, and remembers that step. A node without a depth is counted, not placed — its distance is not this
+ * screen's guess.
  *
- * @param {Array<{results: object[], seeds?: string[]}>} steps
+ * @param {Array<{results: object[], seeds?: string[]}>} walked
  * @param {object[]} entities  the declaration's entities
  */
-export function subgraphLayout(steps, entities) {
+export function subgraphLayout(walked, entities) {
+  // A hub of one stands as that one member (lead 10-13): a node like any other, its hub id kept inside.
+  const steps = (walked || []).map((step) => ({ ...step, results: (step.results || []).map(oneMemberHubs) }));
   const statics = staticTypes(entities);
   // Colour follows the declaration's order, so a type keeps its colour from walk to walk; a type the
   // declaration does not name takes the next index in the order it first appears.
   const order = (entities || []).map((e) => String((e && e.type) || ''));
   const colourOf = new Map(order.map((type, i) => [type, i]));
-  const walked = (step) => ((step && step.results) || []).find((r) => !r.opened) || {};
   const at = new Map();
   const placed = [];
   let unplaced = 0;
   (steps || []).forEach((step, index) => {
     const seedLayers = (step.seeds || []).map((id) => at.get(id)).filter(Boolean).map((n) => n.layer);
-    const stepBase = index === 0 || !seedLayers.length ? 0 : Math.max(...seedLayers);
+    const base = index === 0 || !seedLayers.length ? 0 : Math.max(...seedLayers);
     for (const result of step.results || []) {
-      const owner = result.opened && at.get(keyParts(result.opened).node);
-      const base = owner ? owner.layer : stepBase;
       // Stopped by its hop limit, not out of edges (lead 10-12): the last hop it was asked for, past the start.
       const reached = result.walk && result.walk.hops_reached > 0 && result.walk.hops_reached === result.walk.hops_requested
         ? result.walk.hops_reached : undefined;
@@ -116,36 +112,21 @@ export function subgraphLayout(steps, entities) {
           attributes: node.attributes || {},
           // Each world's value of each attribute (server 351b23ef8), drawn like an edge's worlds.
           attributesByWorld: node.attributes_by_world || {},
-          // An opening's answer walked to it, not from it (lead f6e8ef44b): what is behind it is not known.
-          unwalked: Boolean(result.opened) && node.id !== keyParts(result.opened).node,
           // At its answer's last hop (walk.hops_reached, lead 10-11 G-2 ⑦): the walk stopped here.
           end: Number.isFinite(reached) && node.depth === reached,
+          // A hub (task/WALK_HUB_ANSWER_SHAPE.md): one node for a step's members, their rows its table; the step that
+          // brought it, to open it as nodes. A hub of one is its member and holds only the hub id it came as.
+          hub: node.hub ? { ...node.hub, id: node.id, count: node.count, value: node.value || null, step: index,
+            table: (result.tables || {})[node.id] || null } : null,
+          ...(node.hubOf ? { hubOf: node.hubOf } : {}),
         };
         at.set(node.id, one);
         placed.push(one);
       }
     }
   });
-  // A node walked from since - its own opening, every predicate one step (`<node>||both`) - is known behind.
-  for (const step of steps || []) {
-    for (const r of step.results || []) if (r.opened && at.has(keyParts(r.opened).node) && !keyParts(r.opened).predicate) Object.assign(at.get(keyParts(r.opened).node), { unwalked: false, end: false });
-  }
   // A node a later step started from is walked on.
   for (const step of (steps || []).slice(1)) for (const id of startsOf(step)) if (at.has(id)) at.get(id).end = false;
-  // The fan-outs a step's walk did not send in full and no opening has walked, under the node they leave; `drawn` is
-  // how many of `count` the walk did send (server 11e5ea207).
-  const chips = [];
-  (steps || []).forEach((step, index) => {
-    const opened = new Set((step.results || []).map((r) => r.opened).filter(Boolean));
-    for (const b of walked(step).bundles || []) {
-      const key = `${b.node}|${b.predicate}|${b.direction}`;
-      if (!at.has(b.node) || opened.has(key)) continue;
-      chips.push({ step: index, node: b.node, predicate: b.predicate, direction: b.direction,
-        farType: b.far_type, count: b.count, drawn: Number.isFinite(b.drawn) ? b.drawn : 0, key });
-      // Its next not all read: cut there.
-      at.get(b.node).cut = true;
-    }
-  });
   // Edges once every node of every answer stands, so an edge an expansion completes is drawn, not lost.
   const drawn = [];
   const edgeSeen = new Set();
@@ -159,9 +140,11 @@ export function subgraphLayout(steps, entities) {
         edgeSeen.add(edge.id);
         missing.delete(edge.id);
         drawn.push({
+          // A hub edge stands for `count` edges folded into it (the server's), drawn once with that number.
+          ...(Number.isFinite(edge.count) ? { count: edge.count } : {}),
           id: edge.id, source: edge.source, target: edge.target,
           predicate: edge.predicate_label || edge.predicate || '',
-          // The name a bundle's key spells, so a branch folded here and a fan-out the server held are one key.
+          // The name a lump's key spells.
           predicateName: edge.predicate || '',
           occurredAt: edge.occurred_at || '',
           // Each world that says it, with its evidence (lead ee0f66e7b): one line in the picture, one row each here.
@@ -177,7 +160,7 @@ export function subgraphLayout(steps, entities) {
   const legend = [...counts.entries()]
     .sort((a, b) => colourOf.get(a[0]) - colourOf.get(b[0]))
     .map(([type, count]) => ({ type, count, colour: colourOf.get(type) % TYPE_COLOURS, static: statics.has(type) }));
-  return { nodes: placed, edges: drawn, chips, legend, unplaced, loose: missing.size, cut };
+  return { nodes: placed, edges: drawn, legend, unplaced, loose: missing.size, cut };
 }
 
 /** An edge's predicate as the walk names it (the picture labels it with `predicate`). */
@@ -190,7 +173,7 @@ const PATH_WORDS = Object.freeze({
   cut: `Not all · the first ${PATHS_AT_MOST} paths`,
 });
 
-/** The key a lump and a bundle share, taken apart (a node id holds no `|`). */
+/** A lump's key taken apart (a node id holds no `|`). */
 const keyParts = (key) => {
   const [node, predicate, direction] = String(key).split('|');
   return { node, predicate, direction };
@@ -198,7 +181,7 @@ const keyParts = (key) => {
 
 /**
  * Every step the picture walks: from a node, along one edge, to a node in its layer or a later one (a walk's
- * depth can stay put along an edge), with the bundle key that step belongs to.
+ * depth can stay put along an edge), with the lump key that step belongs to.
  */
 function stepsOf(layout) {
   const layerOf = new Map(layout.nodes.map((n) => [n.id, n.layer]));
@@ -214,22 +197,19 @@ function stepsOf(layout) {
   return steps;
 }
 
-/** The keys a node's branches leave by: its steps' and its unsent bundles'. Folding it puts all of them in one lump. */
+/** The keys a node's branches leave by. Folding it puts all of them in one lump. */
 export function branchKeys(layout, id) {
-  const keys = new Set((stepsOf(layout).get(id) || []).map((s) => s.key));
-  for (const chip of layout.chips || []) if (chip.node === id) keys.add(chip.key);
-  return keys;
+  return new Set((stepsOf(layout).get(id) || []).map((s) => s.key));
 }
 
-/** Where a step's walk stood: its marked points and every node its walk put at depth 0 (a seed's twins) - not an
- *  opened lump's node, where only that one step stood. */
+/** Where a step's walk stood: its marked points and every node its walk put at depth 0 (a seed's twins). */
 export function startsOf(step) {
-  const twins = ((step && step.results) || []).filter((r) => !r.opened).flatMap((r) => (Array.isArray(r.nodes) ? r.nodes : [])
+  const twins = ((step && step.results) || []).flatMap((r) => (Array.isArray(r.nodes) ? r.nodes : [])
     .filter((n) => n.depth === 0).map((n) => n.id));
   return [...new Set([...((step && step.seeds) || []), ...twins])];
 }
 
-/** A fold that holds nothing: every branch open, no lump but the server's. */
+/** A fold that holds nothing: every branch open, no lump. */
 export function openFold() {
   return { big: new Map(), lumped: new Map() };
 }
@@ -240,7 +220,7 @@ export function openFold() {
  * server cut draws (lead 10-11 G-2: a branch the page hands over in full draws as one walked with the part's cap; the
  * lump holds what the answer brought, so opening it walks nothing). Whatever else the answer brings is held: behind a
  * node new to the picture as its one big lump, behind a node already in sight as a small lump that keeps what that node
- * already showed (nothing drawn leaves). A fan-out the server did not send stays its own dashed lump, as it is today.
+ * already showed (nothing drawn leaves).
  * A static node stands as a node one step on, wherever the answer put it (owner 10-12 「서브그래프 정적 노드는 접지
  * 말고 처음부터 다 보여줘」): drawn, its own branches held the same way. `fold` is added to and returned.
  */
@@ -287,7 +267,7 @@ export function foldBeyond(layout, fold, points, shownBefore, limit = Infinity) 
  * the server put at depth 0) over the steps, a step is not taken when its key is in its node's big lump, or when
  * its key is a small lump that has not opened its far end. A node no start reaches is left as it is; a node
  * reached another way stays. Each node still in sight then shows its big lump (the keys left in it, what they
- * hold), one small lump per key with members still inside, and one per bundle the server has not sent.
+ * hold) and one small lump per key with members still inside.
  * A static node stands where the walks stood (owner 10-12), so it is in sight whatever is folded before it; one with no
  * dynamic neighbour in sight is `statics` on each lump that holds one of its neighbours - drawn as a dashed line to it.
  */
@@ -331,9 +311,6 @@ export function lumpView(layout, fold, seeds) {
   };
   const membersOf = (owner, key) => [...new Set((steps.get(owner) || [])
     .filter((s) => s.key === key && hidden.has(s.to)).map((s) => s.to))];
-  const unsent = new Map((layout.chips || []).map((c) => [c.key, c]));
-  // What a fan-out holds that the server did not send: its count less what it drew.
-  const restOf = (key) => (unsent.has(key) ? unsent.get(key).count - unsent.get(key).drawn : 0);
   const typesOf = (members) => [...new Set(members.map((m) => typeOf.get(m)))].join(' · ');
   // A static node with no dynamic neighbour in sight hangs off each lump (not its own) that holds one of its neighbours:
   // static nodes linked only to each other hang by theirs, one beside a drawn dynamic node does not (lead 10-12).
@@ -357,44 +334,32 @@ export function lumpView(layout, fold, seeds) {
     if (!shown(node.id)) continue;
     const inBig = big.get(node.id) || new Set();
     const groups = [...inBig].map((key) => {
-      const chip = unsent.get(key);
       const members = membersOf(node.id, key);
-      const rest = restOf(key);
-      return { key, ...keyParts(key), members, rest, farType: chip ? chip.farType : typesOf(members),
-        count: members.length + rest, unsent: rest > 0 };
+      return { key, ...keyParts(key), members, farType: typesOf(members), count: members.length };
     }).filter((g) => g.count > 0);
     if (groups.length) {
       // «N next · M behind» (leads df11f9e81, 2f25c883a): next - the distinct nodes All -> Open draws; behind - what
-      // stays folded then, once. A bundle not yet walked may share nodes with another branch: next is then a bound.
+      // stays folded then, once.
       const firsts = new Set(groups.flatMap((g) => g.members));
       const held = inside([...firsts]);
-      const rest = groups.reduce((n, g) => n + g.rest, 0);
       const mix = new Map();
       for (const id of firsts) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + 1);
-      for (const g of groups) if (g.rest) mix.set(g.farType, (mix.get(g.farType) || 0) + g.rest);
       const statics = hanging(node.id, [...firsts]);
       lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, groups,
-        count: held.size + rest, next: firsts.size + rest, behind: held.size - firsts.size, bound: rest > 0,
+        count: held.size, next: firsts.size, behind: held.size - firsts.size,
         mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
         ...(statics.length ? { statics } : {}) });
-    } else if (node.unwalked) {
-      lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, key: `${node.id}||both`, groups: [], unsent: true,
-        unwalked: true, count: 0, next: 0, behind: 0, mix: [] });
     }
-    const keys = new Set([...(steps.get(node.id) || []).map((s) => s.key),
-      ...(layout.chips || []).filter((c) => c.node === node.id).map((c) => c.key)]);
+    const keys = new Set((steps.get(node.id) || []).map((s) => s.key));
     for (const key of keys) {
       if (inBig.has(key)) continue;
       const members = lumped.has(key) ? membersOf(node.id, key) : [];
-      const chip = unsent.get(key);
-      const rest = restOf(key);
-      if (!members.length && !rest) continue;
+      if (!members.length) continue;
       const statics = hanging(node.id, members);
-      // `more`: some of this fan-out is in sight - opened out of the lump, or, not lumped, what the walk drew.
+      // `more`: some of this fan-out is in sight - opened out of the lump.
       lumps.push({ id: `lump:${key}`, level: 'small', owner: node.id, key, ...keyParts(key), members,
-        farType: members.length ? typesOf(members) : chip.farType, count: members.length + rest,
-        more: lumped.has(key) ? lumped.get(key).size > 0 : Boolean(chip && chip.drawn), unsent: rest > 0,
-        ...(chip ? { step: chip.step } : {}), ...(statics.length ? { statics } : {}) });
+        farType: typesOf(members), count: members.length, more: lumped.get(key).size > 0,
+        ...(statics.length ? { statics } : {}) });
     }
   }
   return {
@@ -438,16 +403,14 @@ export function nodeFacts(layout, id) {
 /** How many qualifiers a chosen node's edge label says before the rest is one `+N` (lead 3181313b5). */
 const LABEL_QUALIFIERS = 2;
 /** A chosen node's edge label: its predicate, then its first qualifiers. */
-const edgeTag = (e) => [e.predicate, ...qualifierWords(e.qualifiers, LABEL_QUALIFIERS)].join(' · ');
+const edgeTag = (e) => `${[e.predicate, ...qualifierWords(e.qualifiers, LABEL_QUALIFIERS)].join(' · ')}${e.count > 1 ? ` ×${e.count}` : ''}`;
 
 /** A cut walk's words on the picture's status line (lead 161757c35): every axis cut, with its budget where the answer
  *  says it (`cutBudgets`). */
 const truncatedWords = (budgets, where = '') => `Truncated · ${where}${budgets.join(' · ')}`;
 
-/** A big lump's count words, on the lump and atop its window: «≤» while a bundle is not walked (lead 2f25c883a);
- *  a node the server never walked from, «?» (lead f6e8ef44b). */
-const NOT_WALKED = 'not walked';
-const nextWords = (lump) => (lump.unwalked ? `? next · ${NOT_WALKED}` : `${lump.bound ? '≤ ' : ''}${lump.next} next · ${lump.behind} behind`);
+/** A big lump's count words, on the lump and atop its window. */
+const nextWords = (lump) => `${lump.next} next · ${lump.behind} behind`;
 
 /** A lump's words: the predicate with its arrow, then what it holds. */
 function lumpLabel(lump) {
@@ -455,15 +418,17 @@ function lumpLabel(lump) {
     const mix = lump.mix.slice(0, 3).map((m) => `${m.count} ${m.type}`).join(' · ');
     return `${nextWords(lump)}${mix ? `\n${mix}` : ''}`;
   }
-  return `${arrowed(lump)}\n${lump.unsent && lump.more ? '+' : ''}${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;
+  return `${arrowed(lump)}\n${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;
 }
 const arrowed = (g) => (g.direction === 'incoming' ? `← ${g.predicate}` : `${g.predicate} →`);
 
 /** The lump window's one press (lead 10-11 E2b): the lump as a step of the page's table. */
 const OPEN_TABLE = 'Open as table';
-/** Where the walk stopped (lead 10-11 G-2 ⑦): the ring's legend, a cut node's word, and the press that walks on from it. */
+/** A hub's press (lead 10-12 «노드로 펼치기») and its mark - a table behind it, which a lump of the picture's own has not. */
+const OPEN_HUB = 'Open as nodes';
+/** Where the walk stopped (lead 10-11 G-2 ⑦): the ring's legend and the press that walks on from it. A fan-out the server
+ *  cut is a hub now (lead 10-13), walked through - no ring. */
 export const WALKED_HERE = 'dashed = walked up to here';
-export const CUT_WORD = 'cut';
 export const WALK_ON = 'Walk on from here';
 
 export class SubgraphView {
@@ -474,8 +439,9 @@ export class SubgraphView {
    *          fanoutLimit?: number, worldChips?: boolean}} deps
    *   `walk` is the page's `createWalkBoxWalk` function; `entities` reads the declaration the page holds;
    *   `chain` names the markings: the first is the start, each next one takes the marks of a step.
-   *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): a fan-out over it comes back with its first drawn
-   *   and the rest an unsent lump.
+   *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): the picture's first draw opens up to this many of a
+   *   fan-out, the rest in its small lump - the picture's own fold, never sent: only a declared hub folds the walk
+   *   (lead 10-13).
    *   `worldChips`: the page reads several worlds, so each fact says which (lead 99032248f).
    *   `predicates()`: the declaration's predicates, which a lump's points read as the page's table does (C-98).
    *   `openTable(answer, lump)`: the page opens a lump's answer as a step of its table (lead 10-11 E2b); none, no button.
@@ -500,7 +466,7 @@ export class SubgraphView {
     // The names it has read or written, each heard once: the chain is as long as its declaration says (lead 77f1afd3b).
     this.watched = new Set();
     this.fanoutLimit = Number.isFinite(deps.fanoutLimit) ? deps.fanoutLimit : DEFAULT_FANOUT_LIMIT;
-    this.ask = deps.ask || ((starts) => ({ fanout_limit: this.fanoutLimit, ...starts }));
+    this.ask = deps.ask || ((starts) => ({ ...starts }));
     this.worldChips = Boolean(deps.worldChips);
     ensureWalkStyles(this.doc);
     this.root = this._el('div', 'sg-view');
@@ -521,8 +487,6 @@ export class SubgraphView {
     this.root.appendChild(this.wrap);
     this.state = 'idle';
     this.reason = '';
-    // A sentence about the last opening that brought nothing (lead 11e5ea207); the next walk clears it.
-    this.note = '';
     this.steps = [];
     this.layout = null;
     this.selected = null;
@@ -674,33 +638,37 @@ export class SubgraphView {
       return;
     }
     const step = { marking: name, seeds: [...seeds.positive, ...seeds.negative],
-      positive: seeds.positive, negative: seeds.negative, expand: [], results: [] };
+      positive: seeds.positive, negative: seeds.negative, results: [] };
     await this._ask(this.ask({ positive: step.positive, negative: step.negative }), [],
       (res) => [...this.steps, { ...step, results: [res] }], true, given && given.answer);
   }
 
-  /** Open one bundle a step left unsent: one step from its node along its predicate, the way it leaves, to its far
-   *  type (lead 11e5ea207 · c06b45ea5) - not the step walked again, so how deep the bundle stands does not matter. */
-  async expandBundle(index, key) {
+  /** A hub opened as nodes (lead 10-12 «노드로 펼치기»): the step's own walk asked again with that hub's five-cell id in
+   *  `expand` - the same answer with its members as nodes, standing where the hub stood, and what the walk went on
+   *  to from them. An opening changes no fold. */
+  async openHub(index, hubId) {
     const step = this.steps[index];
-    if (!step || this.state !== 'done' || step.expand.includes(key)) return;
-    const { node, predicate, direction } = keyParts(key);
-    const chip = this.layout.chips.find((c) => c.key === key);
-    const expand = [...step.expand, key];
-    await this._ask(stepAlong({ positive: [node], predicate, farType: chip && chip.farType, direction }), [key],
-      (res) => this.steps.map((s, i) => (i === index ? { ...s, expand, results: [...s.results, { ...res, opened: key }] } : s)));
+    if (!step || this.state !== 'done' || (step.hubs || []).includes(hubId)) return;
+    const hubs = [...(step.hubs || []), hubId];
+    const at = this.pos.get(hubId);
+    const before = new Set(this.layout.nodes.map((n) => n.id));
+    await this._ask({ ...this.ask({ positive: step.positive, negative: step.negative }), expand: hubs }, [hubId],
+      (res) => this.steps.map((s, i) => (i === index ? { ...s, hubs, results: [res] } : s)));
+    if (this.state !== 'done' || !at) return;
+    const out = this.layout.nodes.map((n) => n.id).filter((id) => !before.has(id));
+    this._from = { lumpId: hubId, x: at.x, y: at.y, out: new Set(out) };
+    this.render();
   }
 
-  /** One walk - a step's marking with the cap this part declares, or one bundle's step; `next` builds the steps from
-   *  the answer. A new step (`fresh`) draws its points' one step and folds the rest; an opening changes no fold.
+  /** One walk - a step's marking, or a step asked again with a hub opened; `next` builds the steps from the answer.
+   *  A new step (`fresh`) draws its points' one step and folds the rest; an opening changes no fold.
    *  `answer`: one the page holds already, landed the same way, not asked - a tick later, as a walk's: the page seats the
    *  picture's box first (drawn into a box not yet on the page, the library breaks - G-2 on the box, 10-11). */
   async _ask(asked, expanding, next, fresh, answer) {
     const steps = this.steps;
     const before = fresh && this.layout ? new Set(this._view().nodes.map((n) => n.id)) : new Set();
     this.state = 'running';
-    this.note = '';
-    // What this ask walks, so the lump pressed reads as on its way (lead 10-07); a newer ask owns it after.
+    // What this ask walks, so the hub pressed reads as on its way (lead 10-07); a newer ask owns it after.
     this.expanding = expanding;
     this.render();
     const res = await (answer || this.walk(asked));
@@ -721,32 +689,18 @@ export class SubgraphView {
   /**
    * A lump pressed: the picker lists what it holds and only what is ticked opens (lead 03bc94b6b). A big lump
    * lists its keys - those ticked become small lumps; a small lump lists its members - those ticked become nodes,
-   * each folded if it leads anywhere; a lump the server has not sent is walked first, then listed the same way.
+   * each folded if it leads anywhere.
    */
-  async openLump(id, keep) {
+  async openLump(id) {
     const lump = this._view().lumps.find((l) => l.id === id);
     if (!lump || this.state !== 'done') return;
-    // Not walked from (lead f6e8ef44b): one step from it by a bundle's own door, then its branches folded, its window.
-    if (lump.unwalked) {
-      const at = this.layout.nodes.find((n) => n.id === lump.owner);
-      await this.expandBundle(at ? at.step - 1 : 0, lump.key);
-      if (this.state !== 'done') return;
-      this.fold.big.set(lump.owner, branchKeys(this.layout, lump.owner));
-      // Nothing more from it (lead 4c53ba3b0): said, as a branch that brings nothing is, not a lump gone quiet.
-      if (!this._view().lumps.some((l) => l.id === id)) this.note = `No more · from ${this._labelOf(lump.owner)}`;
-      this.render();
-      await this.openLump(id, keep);
-      return;
-    }
     if (lump.level === 'big') {
       // One window, one layer (lead df11f9e81): a row a branch, its ▸ its nodes; what is ticked opens as nodes at
-      // once - each folded if it leads anywhere - and what is left of a branch stays its «n more». A branch the
-      // server did not send is walked first, unfolded or ticked, and the window comes back with it.
+      // once - each folded if it leads anywhere - and what is left of a branch stays its «n more».
       const view = this._view();
       const lit = startBranch(this.steps);
       const items = lump.groups.map((g) => ({ value: g.key, text: `${arrowed(g)} ${g.farType}`, count: g.count,
-        ...(g.unsent ? { load: () => this._loadBranch(id, g.key) }
-          : { members: g.members.map((m) => ({ value: m, text: this._labelOf(m), count: view.behind(m) || undefined, lit: lit.has(m) })) }) }));
+        members: g.members.map((m) => ({ value: m, text: this._labelOf(m), count: view.behind(m) || undefined, lit: lit.has(m) })) }));
       const open = (picked) => {
         const inBig = this.fold.big.get(lump.owner);
         const out = [];
@@ -766,31 +720,13 @@ export class SubgraphView {
       };
       // A row's own table (the owner's 10-08 row Trend, lead 10-11 E2b): that branch opened as a step of the page.
       const asTable = async (key) => {
-        if (lump.groups.some((g) => g.key === key && g.unsent)) await this._expandKey(key);
         this._closePicker();
         const branch = this._branchLump(key);
         if (branch) this._openTable(branch);
       };
       // «From», not «Behind»: behind is the folded count alone (lead f4e89622b).
       this._openPicker(id, items, `From ${this._labelOf(lump.owner)}`, nextWords(lump), open,
-        this.openTable ? { word: OPEN_TABLE, run: asTable } : null, keep);
-      return;
-    }
-    if (lump.unsent) {
-      // Held as a lump before the answer comes, so what it brings stays inside until it is ticked; what the walk
-      // already drew of it stays drawn.
-      if (!this.fold.lumped.has(lump.key)) {
-        const shown = new Set(this._view().nodes.map((n) => n.id));
-        this.fold.lumped.set(lump.key, new Set((stepsOf(this.layout).get(lump.owner) || [])
-          .filter((s) => s.key === lump.key && shown.has(s.to)).map((s) => s.to)));
-      }
-      const had = this.layout.nodes.length + this.layout.edges.length;
-      await this.expandBundle(lump.step, lump.key);
-      if (this._view().lumps.some((l) => l.id === id && !l.unsent)) await this.openLump(id);
-      else if (this.state === 'done' && this.layout.nodes.length + this.layout.edges.length === had) {
-        this.note = `No more ${lump.farType} · ${arrowed(lump)}`;
-        this.render();
-      }
+        this.openTable ? { word: OPEN_TABLE, run: asTable } : null);
       return;
     }
     // The info box holds the lump now (lead 10-08): its «Open as table» (lead 10-11 E2b) beside its list.
@@ -821,23 +757,6 @@ export class SubgraphView {
       if (g) return { ...g, id: `${GROUP_LUMP}${key}`, level: 'small', owner: big.owner };
     }
     return null;
-  }
-
-  /** Walk a branch the server did not send - its bundle's own step, one fan-out (lead 11e5ea207). */
-  async _expandKey(key) {
-    const chip = this.layout && this.layout.chips.find((c) => c.key === key);
-    if (chip) await this.expandBundle(chip.step, key);
-  }
-
-  /** A branch the server did not send, unfolded or ticked in the window: walked, then the window again, that branch open
-   *  - ticked, all it brought ticked - and what was ticked before still ticked. */
-  async _loadBranch(lumpId, key) {
-    const was = this.picker ? this._pickerState() : { unfolded: new Set(), values: new Set(), whole: new Set() };
-    if (this.picker) this.picker.loading(key);
-    await this._expandKey(key);
-    if (this.state !== 'done') return;
-    was.unfolded.add(key);
-    await this.openLump(lumpId, was);
   }
 
   /** Draw what a lump let out, stacked where the lump stood; the lump, if anything is left in it, goes under. */
@@ -871,7 +790,6 @@ export class SubgraphView {
     if (this.state === 'empty') status.appendChild(this._el('div', 'sg-note', 'Nothing marked'));
     if (this.state === 'failed') status.appendChild(this._el('div', 'sg-fail', `Failed · ${this.reason}`));
     if (this.state === 'running') status.appendChild(this._el('div', 'sg-note', 'Walking'));
-    if (this.note) status.appendChild(this._el('div', 'sg-note', this.note));
     if (!drawn) { this._swapFacts(); return; }
     const layout = this.layout;
     status.appendChild(this._el('div', 'sg-counts', `Nodes ${layout.nodes.length} · Edges ${layout.edges.length}`));
@@ -892,7 +810,7 @@ export class SubgraphView {
       chip.appendChild(this._el('span', '', `${item.type} ${item.count}`));
       legend.appendChild(chip);
     }
-    if (view.nodes.some((n) => n.end || n.cut)) legend.appendChild(this._el('span', 'sg-endkey', WALKED_HERE));
+    if (view.nodes.some((n) => n.end)) legend.appendChild(this._el('span', 'sg-endkey', WALKED_HERE));
     const acts = this._el('div', 'sg-acts');
     for (const [cls, word, act] of [['sg-fit', 'Fit', () => this.fit()], ['sg-reset', 'Reset', () => this.reset()]]) {
       const button = this._el('button', `sg-tool ${cls}`, word);
@@ -1019,10 +937,9 @@ export class SubgraphView {
       { selector: 'node.is-marked', style: set({ 'border-width': 3.4, 'border-style': 'solid', 'border-color': t('--accent') }) },
       // A control: the board's control colour, dashed so it reads without colour too.
       { selector: 'node.is-control', style: set({ 'border-style': 'dashed', 'border-color': t('--text-muted') }) },
-      // Walked up to here (lead 10-11 G-2 ⑦): a dashed ring outside the node's own border - the last hop, or a fan-out cut.
-      { selector: 'node[kind = "node"][?end], node[kind = "node"][?cut]', style: set({ 'outline-width': 1.7,
+      // Walked up to here (lead 10-11 G-2 ⑦): a dashed ring outside the node's own border - the last hop.
+      { selector: 'node[kind = "node"][?end]', style: set({ 'outline-width': 1.7,
         'outline-style': 'dashed', 'outline-color': t('--text'), 'outline-offset': 3.4 }) },
-      { selector: 'node[kind = "node"][?cut]', style: { label: (n) => `${n.data('label')} · ${CUT_WORD}` } },
       { selector: 'node.is-selected', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.16,
         'overlay-padding': 6.8, 'font-weight': 600 }) },
       { selector: 'node[kind = "lump"]', style: set({
@@ -1035,8 +952,15 @@ export class SubgraphView {
         'text-max-width': (n) => 122.4 + Math.min(68, Math.sqrt(n.data('count')) * 13.6) }) },
       { selector: 'node[kind = "lump"][level = "big"]', style: set({ 'font-weight': 600, 'border-width': 2.5,
         'border-color': t('--text') }) },
-      { selector: 'node[kind = "lump"][?unsent]', style: { 'border-style': 'dashed' } },
-      { selector: 'node[kind = "lump"][?loading]', style: { label: LOADING } },
+      // A hub (the server's fold, a table behind it): the lump's box and its size, told apart by its mark and a double line.
+      { selector: 'node[kind = "node"][?hub]', style: set({
+        shape: 'rectangle', 'text-wrap': 'wrap', 'text-valign': 'center', 'text-halign': 'center', 'text-margin-x': 0,
+        'background-color': t('--bg-inset'), 'border-width': 4, 'border-style': 'double', 'border-color': t('--text'),
+        width: (n) => 136 + Math.min(68, Math.sqrt(n.data('count')) * 13.6),
+        height: (n) => 54.4 + Math.min(23.8, Math.sqrt(n.data('count')) * 3.4),
+        'text-max-width': (n) => 122.4 + Math.min(68, Math.sqrt(n.data('count')) * 13.6) }) },
+      // A hub on its way to its nodes says so (lead 10-07: what is asked reads as on its way).
+      { selector: 'node[?hub][?loading]', style: { label: LOADING } },
       { selector: 'node[kind = "lump"][?spark]', style: { 'background-image': 'data(spark)', 'background-fit': 'contain' } },
       { selector: 'node.is-lit', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.1, 'overlay-padding': 6.8 }) },
       { selector: 'edge', style: set({
@@ -1114,12 +1038,13 @@ export class SubgraphView {
     const lit = startBranch(this.steps);
     const out = [];
     for (const n of view.nodes) {
-      out.push({ group: 'nodes', data: { id: n.id, kind: 'node', label: n.label, type: n.type, layer: n.layer,
-        depth: n.depth, step: n.step, colour: n.colour, static: n.static, end: Boolean(n.end), cut: Boolean(n.cut) } });
+      out.push({ group: 'nodes', data: { id: n.id, kind: 'node', label: n.hub ? `${HUB_MARK} ${n.label}` : n.label, type: n.type,
+        layer: n.layer, depth: n.depth, step: n.step, colour: n.colour, static: n.static, end: Boolean(n.end),
+        ...(n.hub ? { hub: true, count: n.hub.count, loading: this.expanding.includes(n.id) } : {}) } });
     }
     for (const l of view.lumps) {
       out.push({ group: 'nodes', data: { id: l.id, kind: 'lump', level: l.level, owner: l.owner, key: l.key || '',
-        count: l.count, unsent: Boolean(l.unsent), loading: Boolean(l.unsent) && this.expanding.includes(l.key),
+        count: l.count,
         spark: this._spark(l, lit), label: lumpLabel(l), layer: (layerOf.get(l.owner) || 0) + 1 } });
     }
     for (const e of view.edges) {
@@ -1361,15 +1286,14 @@ export class SubgraphView {
     this.markButton = mark;
     acts.appendChild(mark);
     const folded = this._isFolded(id);
-    if (folded || foldedAway(this.layout, new Set([id]), this._seeds()).size
-        || this.layout.chips.some((c) => c.node === id)) {
+    if (folded || foldedAway(this.layout, new Set([id]), this._seeds()).size) {
       const fold = this._el('button', 'sg-fold', folded ? 'Unfold' : 'Fold branches');
       fold.setAttribute('type', 'button');
       fold.setAttribute('data-fold-node', id);
       if (fold.addEventListener) fold.addEventListener('click', () => { this.toggleFold(id); });
       acts.appendChild(fold);
     }
-    if (this.walkOn && (facts.node.end || facts.node.cut)) {
+    if (this.walkOn && facts.node.end) {
       const on = this._el('button', 'sg-walkon', WALK_ON);
       on.setAttribute('type', 'button');
       on.setAttribute('data-walkon-node', id);
@@ -1377,7 +1301,15 @@ export class SubgraphView {
       if (on.addEventListener) on.addEventListener('click', () => { this.walkOn({ id, label, type, keys }); });
       acts.appendChild(on);
     }
+    if (facts.node.hub) {
+      const open = this._el('button', 'sg-tool sg-openhub', OPEN_HUB);
+      open.setAttribute('type', 'button');
+      open.setAttribute('data-open-hub', id);
+      if (open.addEventListener) open.addEventListener('click', () => { void this.openHub(facts.node.hub.step, id); });
+      acts.appendChild(open);
+    }
     box.appendChild(acts);
+    if (facts.node.hub) this._hubFacts(box, facts.node.hub);
     for (const [name, value] of Object.entries(facts.node.keys)) {
       box.appendChild(this._el('div', 'sg-fact', `${name} ${value}`));
     }
@@ -1391,6 +1323,29 @@ export class SubgraphView {
       this._worldRows(box, edge.byWorld, (said) => [said.source_who, said.occurred_at]);
     }
     return box;
+  }
+
+  /** A hub's facts (lead 10-12): its members on each side once - the head's value, every member's - then its table,
+   *  a row a member: its name and its declared columns. */
+  _hubFacts(box, hub) {
+    const [plus, minus] = hub.value || [];
+    if (hub.value) box.appendChild(this._el('div', 'sg-fact', `+ ${plus ? hub.count : 0} · − ${minus ? hub.count : 0}`));
+    const t = hub.table;
+    if (!t || !Array.isArray(t.rows) || !t.rows.length) return;
+    // The member by its keys, then the declared columns.
+    const own = t.columns.filter((c) => !HUB_ROW_COLUMNS.includes(c));
+    const table = this._el('table', 'sg-hubtable');
+    const head = this._el('tr', '');
+    for (const c of ['', ...own]) head.appendChild(this._el('th', '', c));
+    table.appendChild(head);
+    for (const row of t.rows) {
+      const cells = Object.fromEntries(t.columns.map((c, i) => [c, row[i]]));
+      const tr = this._el('tr', '');
+      tr.appendChild(this._el('td', '', nodeWords(cells.id)));
+      for (const c of own) tr.appendChild(this._el('td', '', cells[c] === null || cells[c] === undefined ? '' : String(cells[c])));
+      table.appendChild(tr);
+    }
+    box.appendChild(table);
   }
 
   /** The info box holding a lump (lead 10-08): what it is, and «Open as table» when the page opens lumps (lead 10-11). */
@@ -1452,14 +1407,10 @@ export class SubgraphView {
   /** `rowView` (if any): a press of its own on each row, `{word, run(value)}` - a big lump's rows' Trend. */
   /**
    * The picker: a row an item, ticked to open. An item with `members` is a branch - its ▸ lists them, each ticked on its
-   * own, the branch's box ticks them all; one with `load` lists nothing until it is walked (its ▸ or its box walks it).
-   * `keep` reopens it as it was: the branches unfolded, the values ticked, the branches ticked whole.
+   * own, the branch's box ticks them all.
    */
-  _openPicker(lumpId, items, title, sub, onOpen, rowView, keep = {}) {
+  _openPicker(lumpId, items, title, sub, onOpen, rowView) {
     this._closePicker();
-    const unfolded = keep.unfolded || new Set();
-    const keptValues = keep.values || new Set();
-    const keptWhole = keep.whole || new Set();
     const box = this._el('div', 'sg-pick');
     box.setAttribute('role', 'dialog');
     box.setAttribute('data-lump', lumpId);
@@ -1485,17 +1436,16 @@ export class SubgraphView {
       const row = this._el('label', `sg-pick-row${item.lit ? ' is-lit' : ''}`);
       row.setAttribute('data-value', item.value);
       const cb = box_();
-      cb.checked = keptWhole.has(item.value);
       row.appendChild(cb);
       row.appendChild(this._el('span', 'sg-pick-text', item.text));
       if (item.count !== undefined) row.appendChild(this._el('span', 'sg-pick-n', String(item.count)));
-      const branch = Boolean(item.members || item.load);
+      const branch = Boolean(item.members);
       let unfold = null;
       if (branch) {
         unfold = this._el('button', 'sg-tool sg-pick-unfold', '▸');
         unfold.setAttribute('type', 'button');
         unfold.setAttribute('data-value', item.value);
-        unfold.setAttribute('aria-expanded', String(unfolded.has(item.value) && Boolean(item.members)));
+        unfold.setAttribute('aria-expanded', 'false');
         row.appendChild(unfold);
       }
       if (rowView) {
@@ -1515,13 +1465,12 @@ export class SubgraphView {
       const entry = { row, cb, value: item.value, text: String(item.text).toLowerCase(), item, unfold, kids: [], sub: null };
       if (item.members) {
         const subList = this._el('div', 'sg-pick-members');
-        subList.hidden = !unfolded.has(item.value);
+        subList.hidden = true;
         for (const m of item.members) {
           const r = this._el('label', `sg-pick-row is-member${m.lit ? ' is-lit' : ''}`);
           const value = `${item.value}${PICK_SEP}${m.value}`;
           r.setAttribute('data-value', value);
           const c = box_();
-          c.checked = keptWhole.has(item.value) || keptValues.has(value);
           r.appendChild(c);
           r.appendChild(this._el('span', 'sg-pick-text', m.text));
           if (m.count !== undefined) r.appendChild(this._el('span', 'sg-pick-behind', `+${m.count} behind`));
@@ -1548,7 +1497,7 @@ export class SubgraphView {
     go.setAttribute('type', 'button');
     // What Open opens: a branch's ticked nodes, or a plain row's value.
     const chosenOf = () => rows.flatMap((r) => (r.item.members ? r.kids.filter((k) => k.cb.checked).map((k) => k.value)
-      : (r.item.load ? [] : (r.cb.checked ? [r.value] : []))));
+      : (r.cb.checked ? [r.value] : [])));
     const sync = () => {
       // Distinct nodes: one ticked under two branches that share it opens once.
       const n = new Set(chosenOf().map((value) => value.split(PICK_SEP).pop())).size;
@@ -1558,20 +1507,16 @@ export class SubgraphView {
     const visible = (r) => !r.row.hidden;
     if (all.addEventListener) {
       all.addEventListener('change', () => {
-        const unsent = rows.filter((r) => visible(r) && r.item.load);
         for (const r of rows) {
           if (!visible(r)) continue;
           r.cb.checked = all.checked;
           for (const k of r.kids) k.cb.checked = all.checked;
         }
         sync();
-        // All of a window with unsent branches walks them, then comes back with everything ticked.
-        if (all.checked && unsent.length) void this._loadAll(lumpId, unsent.map((r) => r.item));
       });
       for (const r of rows) {
         r.cb.addEventListener('change', () => {
           for (const k of r.kids) k.cb.checked = r.cb.checked;
-          if (r.cb.checked && r.item.load) void r.item.load();
           sync();
         });
         for (const k of r.kids) {
@@ -1581,7 +1526,6 @@ export class SubgraphView {
           r.unfold.addEventListener('click', (ev) => {
             // The row is a label: the press must not tick its box as well.
             if (ev && ev.preventDefault) ev.preventDefault();
-            if (r.item.load) { void r.item.load(); return; }
             r.sub.hidden = !r.sub.hidden;
             r.unfold.setAttribute('aria-expanded', String(!r.sub.hidden));
           });
@@ -1626,34 +1570,8 @@ export class SubgraphView {
     }
     this._onKey = (ev) => { if (ev && ev.key === 'Escape') this._closePicker(); };
     if (this.doc.addEventListener) this.doc.addEventListener('keydown', this._onKey);
-    this.picker = { box, lumpId, rows, all, filter, go, cancel,
-      // A branch being walked says so in its row until the window comes back.
-      loading: (value) => {
-        const r = rows.find((x) => x.value === value);
-        if (r) { r.row.className += ' is-loading'; if (r.unfold) { r.unfold.textContent = LOADING; setDisabledReason(r.unfold, LOADING); } }
-      } };
+    this.picker = { box, lumpId, rows, all, filter, go, cancel };
     if (filter && filter.focus) filter.focus(); else if (rows[0] && rows[0].cb.focus) rows[0].cb.focus();
-  }
-
-  /** What the open window holds: the branches unfolded, the nodes ticked, the branches ticked whole. */
-  _pickerState() {
-    const rows = (this.picker && this.picker.rows) || [];
-    return { unfolded: new Set(rows.filter((r) => r.sub && !r.sub.hidden).map((r) => r.value)),
-      values: new Set(rows.flatMap((r) => r.kids.filter((k) => k.cb.checked).map((k) => k.value))),
-      whole: new Set(rows.filter((r) => r.cb.checked).map((r) => r.value)) };
-  }
-
-  /** All ticked in a window with unsent branches: each walked, then the window again with everything ticked. */
-  async _loadAll(lumpId, items) {
-    const was = this._pickerState();
-    for (const item of items) if (this.picker) this.picker.loading(item.value);
-    for (const item of items) {
-      await this._expandKey(item.value);
-      if (this.state !== 'done') return;
-    }
-    const lump = this._view().lumps.find((l) => l.id === lumpId);
-    if (lump) for (const g of lump.groups || []) was.whole.add(g.key);
-    await this.openLump(lumpId, was);
   }
 
   _closePicker() {

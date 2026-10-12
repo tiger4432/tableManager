@@ -359,7 +359,8 @@ export async function fetchSubgraph(params) {
           // C-97 (S-148-a). 씨앗을 «열거하지 않고 서술»합니다 — 그 타입을 이름 댄 원자가 있는 노드 전부
           // (주어 쪽이든 목적어 쪽이든 — v6, 총괄 819726624 ㄹ).
           seed_type: seedType, seed_limit: seedLimit,
-          // Walk control ㄴ (b1245bab9): the fan-out cap, and the bundles to draw anyway (node|predicate|direction).
+          // A step over N folds into a hub too (a person's knob - no screen sends one by default, lead 10-13), and the
+          // hubs to draw opened, by their five-cell ids (task/WALK_HUB_ANSWER_SHAPE.md).
           fanout_limit: fanoutLimit, expand,
           // The auxiliary node(s) the walk judges its nodes against (owner 10-12) - none, nothing sent.
           aux,
@@ -408,7 +409,7 @@ export async function fetchSubgraph(params) {
   //    and a request that names neither is byte-identical to before.
   if (nodeLimit !== undefined && nodeLimit !== null) query.set('node_limit', String(nodeLimit));
   if (hops !== undefined && hops !== null) query.set('hops', String(hops));
-  // Same rule as the budget: omitted stays omitted (no `bundles` in the answer then), and each expand repeats.
+  // Same rule as the budget: omitted stays omitted (then only a declared hub folds), and each expand repeats.
   if (fanoutLimit !== undefined && fanoutLimit !== null) query.set('fanout_limit', String(fanoutLimit));
   for (const key of expand || []) query.append('expand', String(key));
   // 🔴 C-51 / S-98. 구간은 «둘 다 선택»이고 반열린 [since, until) 입니다. 예산과 «같은 규율»:
@@ -2051,8 +2052,12 @@ export function createWalkBoxWalk(deps) {
         walk: body.walk || null,
         // Which sign's starts reached each node, as the server ranked them (lead 55f854fc5 ②).
         propagation: body.propagation || null,
-        // Walk control ㄴ: the fan-outs not drawn, as the server counts them. No key unless a cap was asked: null.
-        bundles: Array.isArray(body.bundles) ? body.bundles : null,
+        // The walk's hubs (task/WALK_HUB_ANSWER_SHAPE.md): each hub's rows by hub id; on a continued walk's page what left a
+        // hub, what moved to another, the rows whose edges the next page reads first. `bundles` retired with them.
+        tables: body.tables || null,
+        left: body.left || null,
+        moved: body.moved || null,
+        edges_pending: body.edges_pending || null,
         // The walk's judgment (owner 10-12): the auxiliary node(s) - seeds, complete, truncated, hops_reached; each node its own
         // «aux» rides in nodes, which go through whole.
         aux: body.aux || null,

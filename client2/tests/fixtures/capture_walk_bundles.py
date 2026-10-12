@@ -18,8 +18,6 @@ answers the wafer's fan-outs as bundles one step from the start (10-08: the die 
 starts from no longer reaches its wafer on the box). On another box name one that does; the script stops
 when the walk answers no bundle off the start. Writes:
     walk_bundles_die.json         START walked as the viewer walks a marking: the marking and `fanout_limit` 20
-    walk_bundles_die_opened.json  its first bundle opened: one step from the bundle's node along its predicate,
-                                  the way the bundle leaves, to its far type
     walk_step_same_type.json      the declaration, and one step each way and both ways from a node along a
                                   predicate whose subject and object are that node's type - a node with a node
                                   on each side the other side does not hold
@@ -103,16 +101,8 @@ if __name__ == "__main__":
         "_what": "REAL server output (repository route code, box database). GET /api/ledger/subgraph "
                  "?id=<_start>&positive=<_start>&fanout_limit=%d, captured %s by capture_walk_bundles.py."
                  % (FANOUT, stamp), "_start": {"type": START[0], "keys": START[1]}, **body})
-    first = bundles[0]
-    opened = _get(client, "/api/ledger/subgraph",
-                  _step(first["node"], first["predicate"], first["far_type"], first["direction"]))
-    _write("walk_bundles_die_opened.json", {
-        "_what": "REAL server output, the first bundle of walk_bundles_die.json opened: one step from its node along "
-                 "its predicate, its direction, to its far type, captured %s by capture_walk_bundles.py." % stamp,
-        "_opened": first, **opened})
+    # ⚰️ walk_bundles_die_opened.json retired 10-13 with the bundle opening it fed (lead): nothing opens a bundle.
     print("static types walked with", sorted(trace_router._static_types(None)))
     print("bundles", len(bundles), "nodes", len(body["nodes"]), "edges", len(body["edges"]),
           "truncated", (body.get("truncated") or {}).get("reason"))
-    print("opened", first["predicate"], first["direction"], "count", first["count"], "drawn", first.get("drawn"),
-          "-> nodes", len(opened["nodes"]), "edges", len(opened["edges"]))
     print("same type", *_same_type(client, stamp))

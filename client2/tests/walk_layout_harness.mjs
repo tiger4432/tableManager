@@ -321,6 +321,9 @@ const MUTANTS = [
       "      const route = el(doc, 'div', 'wk-route is-on');") },
   { id: 'W4', what: 'node_limit is no longer sent', catches: 'L7 the full',
     mutate: (t) => swap(t, '      if (Number.isFinite(n)) out[wire] = n;', "      if (Number.isFinite(n) && wire !== 'node_limit') out[wire] = n;") },
+  // The blank side (lead 10-13: no screen sends a cap by default): a cap the page sends on its own.
+  { id: 'W16b', what: 'fanout_limit sent untyped', catches: 'L18 ',
+    mutate: (t) => swap(t, "nodeLimit: String(NODE_LIMIT), fanoutLimit: '',", "nodeLimit: String(NODE_LIMIT), fanoutLimit: '20',") },
   { id: 'W16', what: 'fanout_limit drawn but not sent', catches: 'L18 ',
     mutate: (t) => swap(t, '      if (Number.isFinite(n)) out[wire] = n;', "      if (Number.isFinite(n) && wire !== 'fanout_limit') out[wire] = n;") },
   { id: 'W5', what: 'the title reads the live form', catches: 'L9 the title',

@@ -514,6 +514,10 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .sg-fact--world { padding-left: var(--space-4); color: var(--text-muted); }
 .sg-world { display: inline-block; margin-right: var(--space-2); padding: 0 var(--space-1); border: 1px solid var(--border);
   font-family: var(--font-sans); font-size: var(--wk-fs-line); color: var(--text); }
+/* A hub's table in its info box (lead 10-13): a row a member, its declared columns after it. */
+.sg-hubtable { border-collapse: collapse; font-size: var(--wk-fs-line); font-variant-numeric: tabular-nums; }
+.sg-hubtable th, .sg-hubtable td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--border); text-align: left; }
+.sg-hubtable th { font-weight: 600; color: var(--text-dim); }
 `;
 
 /**

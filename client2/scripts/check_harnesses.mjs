@@ -1480,7 +1480,11 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 348],   // 338 -> 348: handed answers drawn, a lump's step, the cap - Y8 OT4 FC1, Y8m Y9m OTm5 FCm1; M11 OTm1 re-aimed (lead 10-11 G-2)
+  // 348 -> 334 (lead 10-13, the walk's hubs): the bundles retired with what read them - P1-P9 PB PC PD PL PN NF LM14
+  // AW1-AW4 and their 27 mutants (B2-B12 W4 F4 S5m LA3m LA4m LA8m AWm1-AWm4 AWm6); a hub drawn, pressed, opened, of one and
+  // under a typed cap (HB1-HB6, HBm1-HBm9 HBm11), on its way (U1-U3 on a hub), a bundles key drawing nothing (P0, P0m
+  // P0m2), the cap only when typed (D1 D2, B1 turned round); LM15 LM16 take the window head and the small lump's tick.
+  ['subgraph_view_harness.mjs', 334],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's pure half - what a value reads as, the one start-branch
   // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b) - its Route a Next from its
   // owner's, its points the same in the edge and the event scheme (lead 10-11 E2c) - the one drawing.
@@ -1522,7 +1526,10 @@ const FLOORS = new Map([
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
-  ['walk_layout_harness.mjs', 38],   // -> 38: Control · B walked once more - LD1 LD2, LDm1 LDm2 (lead 99ed68cb7 D)
+  ['walk_layout_harness.mjs', 42],   // -> 38: Control · B walked once more - LD1 LD2, LDm1 LDm2 (lead 99ed68cb7 D); -> 42 W16b the cap's blank side (lead 10-13)
+  // New (lead 10-13): the walk's hubs on the server's own answers - pages laid over by id as its reference receiver,
+  // the wire, the table's hub sections, a hub under a hub as columns or a section, a hub of one, a lump's table, no bundles reader (AST).
+  ['walk_hub_harness.mjs', 7],
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to

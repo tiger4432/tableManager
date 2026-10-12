@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, mergeWalks, walkedRoutes, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
+import { walkTableView, applyPage, walkedRoutes, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -516,14 +516,15 @@ export function boot(doc, host, deps) {
    *  × puts the one before back. */
   const moreOf = (r, asked) => moreAsk(r, asked || {});
   /** More ▸ (owner 10-12 «이어 걷기»): the next page of the step's own walk, asked again with its resume; the page merged
-   *  into the step's answer - each node and edge once (mergeWalks, as Add here's); × puts the one before back. */
+   *  over the step's answer as the delta it is - moved, left, nodes, edges, rows, each by id (applyPage, lead d2a64a904);
+   *  × puts the one before back. */
   function walkResume() {
     const at = state.at;
     const { result: was, asked } = answerAt(at);
     void walkInto(at, { ...was.ask, resume: was.more.resume }, (res) => {
       lessAt.set(at, [...(lessAt.get(at) || []), { result: was, asked }]);
       // As of the first page (the server's resume.as_of): the pages are one walk at that time.
-      setAnswer(at, { ...mergeWalks(res, was), ask: was.ask, pages: (was.pages || 1) + 1, generatedAt: was.generatedAt }, asked);
+      setAnswer(at, { ...applyPage(was, res), ask: was.ask, pages: (was.pages || 1) + 1, generatedAt: was.generatedAt }, asked);
     });
   }
   function walkMore(more) {
@@ -1636,7 +1637,7 @@ export function boot(doc, host, deps) {
   function sectionBar(section, trended, view, shown) {
     const bar = el(doc, 'div', 'wk-secbar');
     const of = shown.long ? unitText(shown.all.length, 'line') : shown.all.length;
-    bar.append(el(doc, 'span', 'wk-sechead', shown.filtering ? sectionHeading(section.type, `${shown.lines.length} of ${of}`) : section.heading));
+    bar.append(el(doc, 'span', 'wk-sechead', shown.filtering ? sectionHeading(section.name, `${shown.lines.length} of ${of}`) : section.heading));
     bar.append(segmented('wk-shape', 'data-shape', [['wide', 'Wide'], ['long', 'Long']], shapeOf(section.type),
       (value) => { state.shapes.set(section.type, value); render(); }));
     if (shapeOf(section.type) === 'long' && !trended) bar.append(longPick(section));

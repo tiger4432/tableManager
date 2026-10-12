@@ -9,7 +9,8 @@
 // 🔴 BOTH EXIST BECAUSE OF A MEASURED DEFECT, not for symmetry. Clicking a route filled `hops`
 //    and ticked nothing, and the second-hop predicate had no checkbox at all because the list
 //    only offered predicates whose subject is the START type.
-import { pathsBetween } from '../rnd_board/api.js';
+import { pathsBetween, entityOfId } from '../rnd_board/api.js';
+import { valueWords } from './reach_table.js';
 
 /** The declared predicates a route follows. */
 export function followFromRoute(declaredNames, routeFollow) {
@@ -294,10 +295,40 @@ export function cutBudgets(axes, limits) {
   });
 }
 
+/** A hub row's own columns, before the declared ones (task/WALK_HUB_ANSWER_SHAPE.md, `tables[hub].columns`): what it
+ *  is, how deep, who, under which row of the hub before, by which predicate, from which seed. */
+export const HUB_ROW_COLUMNS = Object.freeze(['type', 'depth', 'id', 'parent_id', 'via', 'seed']);
+
+/** A hub's mark (lead 10-13): before its words in the picture and over its table, so a hub reads as one. */
+export const HUB_MARK = '▤';
+
+/** A node by its keys, read off its id - for a node the answer did not send (a hub's member, a reach's via). */
+export const nodeWords = (id) => { const n = entityOfId(id) || {}; return Object.values(n.keys || {}).map(valueWords).join(' / ') || id; };
+
+/**
+ * An answer with every hub of one member as that member (lead 10-13 «×1 허브는 노드처럼»): the head a node - its row's
+ * type, depth and id, its keys its name, `hubOf` the hub it came as, which a later page moves or takes it by - and
+ * every edge to the hub run to it. The graph and the table read an answer through this.
+ */
+export function oneMemberHubs(answer) {
+  const tables = (answer && answer.tables) || {};
+  const one = new Map();
+  for (const head of (answer && Array.isArray(answer.nodes) ? answer.nodes : [])) {
+    const t = head.hub && head.count === 1 ? tables[head.id] : null;
+    if (!t || !Array.isArray(t.rows) || t.rows.length !== 1) continue;
+    const row = Object.fromEntries(t.columns.map((c, i) => [c, t.rows[0][i]]));
+    one.set(head.id, { id: row.id, type: row.type, depth: row.depth, label: nodeWords(row.id),
+      keys: (entityOfId(row.id) || {}).keys || {}, hubOf: head.id });
+  }
+  if (!one.size) return answer;
+  const end = (id) => (one.has(id) ? one.get(id).id : id);
+  return { ...answer, nodes: answer.nodes.map((n) => one.get(n.id) || n),
+    edges: (Array.isArray(answer.edges) ? answer.edges : []).map((e) => ({ ...e, source: end(e.source), target: end(e.target) })) };
+}
+
 /** One step from some nodes along one predicate, to one type when named: the walk's arguments (lead 53050a4ec). The
- *  table's Next asks it both ways; the graph opens a lump the way the lump leaves its node (lead 11e5ea207). */
+ *  table's Next asks it both ways. */
 export function stepAlong({ positive, negative, predicate, farType, direction = 'both' }) {
-  // No predicate: every predicate one step (lead f6e8ef44b - a node a bundle's opening brought, walked from).
   return { positive: [...positive], ...(negative && negative.length ? { negative: [...negative] } : {}),
     ...(predicate ? { follow: [predicate] } : {}), ...(farType ? { collect: [farType] } : {}), direction, hops: 1 };
 }

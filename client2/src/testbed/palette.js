@@ -1,3 +1,4 @@
+// 소유자 10-12 팔레트 A = 스팟파이어 그대로.
 // The testbed's colours, measured on the owner's Spotfire (task/SPOTFIRE_SCATTER_REFERENCE.md §11) - the one place they
 // are written. The page sets them as CSS variables on its root (`themeVars`) and the canvas renderer, which cannot read
 // CSS, reads them from here: one source for both.

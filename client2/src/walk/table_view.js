@@ -13,7 +13,7 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets } from './derive.js';
+import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets, nodeWords, oneMemberHubs, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
 import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, recordsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointWords } from './reach_table.js';
@@ -49,7 +49,6 @@ export const EMPTY = '—';
 /** «Does a shortest path reach the auxiliary node(s)?» (owner 10-12, the walk's judgment): its words - found with the hops
  *  (and which node, when there are several), none, unknown at the cap; a node not judged «—». */
 export const REACH_WORDS = Object.freeze({ head: '→', reach: 'reach', none: 'none', unknown: 'unknown', only: 'Reaches only' });
-const nodeWords = (id) => { const n = entityOfId(id) || {}; return Object.values(n.keys || {}).map(valueWords).join(' / ') || id; };
 export function reachWords(judged, several) {
   if (!judged) return EMPTY;
   if (judged.state === 'found') return `${judged.hops} ${judged.hops === 1 ? 'hop' : 'hops'}${several && judged.via ? ` → ${nodeWords(judged.via)}` : ''}`;
@@ -370,27 +369,84 @@ const countReached = (kinds) => ({ a: kinds.filter((k) => k === 'a').length, ab:
 export function mergeWalks(a, b) {
   const once = (list) => [...new Map(list.map((x) => [x.id, x])).values()];
   const ranked = (w) => ((w && w.propagation) || {}).ranked || [];
+  // A hub's rows from both walks, each row once (the walk's own over the other's).
+  const rows = hubRows(b.tables);
+  for (const [hub, held] of hubRows(a.tables)) for (const [id, row] of held) rowsOf(rows, hub).set(id, row);
   return { ...a, nodes: once([...(b.nodes || []), ...(a.nodes || [])]), edges: once([...(b.edges || []), ...(a.edges || [])]),
+    ...(a.tables || b.tables ? { tables: hubTables(rows) } : {}),
     ...(a.propagation || b.propagation
       ? { propagation: { ...(b.propagation || {}), ...(a.propagation || {}), ranked: once([...ranked(b), ...ranked(a)]) } } : {}) };
 }
 
+/** A hub head or a hub edge a page says is gone: its id and a count of 0, nothing else (task/WALK_HUB_ANSWER_SHAPE.md). */
+const gone = (item) => item && item.count === 0 && Object.keys(item).length === 2 && 'id' in item;
+/** `tables` as hub id -> row id -> {column: value}, the row id its `id` column. */
+function hubRows(tables) {
+  const out = new Map();
+  for (const [hub, table] of Object.entries(tables || {})) {
+    const at = (table.columns || []).indexOf('id');
+    out.set(hub, new Map((table.rows || []).map((row) => [row[at], Object.fromEntries(table.columns.map((c, i) => [c, row[i]]))])));
+  }
+  return out;
+}
+const rowsOf = (rows, hub) => { if (!rows.has(hub)) rows.set(hub, new Map()); return rows.get(hub); };
+/** Back to the answer's shape: each hub's columns in the order first met, its rows as arrays; a hub left with no row
+ *  goes. `count` the rows held - the members on the head. */
+function hubTables(rows) {
+  const out = {};
+  for (const [hub, held] of rows) {
+    if (!held.size) continue;
+    const columns = [...new Set([...held.values()].flatMap((row) => Object.keys(row)))];
+    out[hub] = { columns, rows: [...held.values()].map((row) => columns.map((c) => (c in row ? row[c] : null))), count: held.size };
+  }
+  return out;
+}
+
+/**
+ * A continued walk's next page laid over the walk held (lead d2a64a904, task/WALK_HUB_ANSWER_SHAPE.md «쪽 = 델타»): a
+ * page holds only what changed, read in the order moved -> left -> nodes -> edges -> tables, each by id. A hub head or
+ * hub edge of count 0 alone is gone, a head's table with it; a moved row keeps its cells. The server's reference
+ * receiver is `_applied` in its hub test - the gate holds this to it.
+ */
+export function applyPage(held, page) {
+  const rows = hubRows(held.tables);
+  for (const [row, from, to] of page.moved || []) {
+    const cells = rows.has(from) ? rows.get(from).get(row) : undefined;
+    if (rows.has(from)) rows.get(from).delete(row);
+    if (cells) rowsOf(rows, to).set(row, cells);
+  }
+  for (const [hub, row] of page.left || []) if (rows.has(hub)) rows.get(hub).delete(row);
+  const nodes = new Map((held.nodes || []).map((n) => [n.id, n]));
+  for (const node of page.nodes || []) {
+    if (gone(node)) { nodes.delete(node.id); rows.delete(node.id); } else nodes.set(node.id, node);
+  }
+  const edges = new Map((held.edges || []).map((e) => [e.id, e]));
+  for (const edge of page.edges || []) { if (gone(edge)) edges.delete(edge.id); else edges.set(edge.id, edge); }
+  for (const [hub, fresh] of hubRows(page.tables)) for (const [id, row] of fresh) rowsOf(rows, hub).set(id, row);
+  const ranked = (w) => ((w && w.propagation) || {}).ranked || [];
+  const once = (list) => [...new Map(list.map((x) => [x.id, x])).values()];
+  const tables = hubTables(rows);
+  return { ...page, nodes: [...nodes.values()], edges: [...edges.values()],
+    ...(Object.keys(tables).length || held.tables ? { tables } : {}),
+    ...(page.propagation || held.propagation
+      ? { propagation: { ...(held.propagation || {}), ...(page.propagation || {}), ranked: once([...ranked(held), ...ranked(page)]) } } : {}) };
+}
+
 /** The server's most for node_limit (ledger_subgraph.MAX_NODE_LIMIT, the route's `le`). */
 export const SERVER_NODE_LIMIT = 1000;
-/** The limits a walk's ask can raise, each its wire knob, where it stands in the answer and the server's most: nodes,
- *  depth (hops, up to the answer's max_hops) and fan-out (no most). Edges and claims are none: the screen sends no
- *  edge_limit and the route's default is its most, the claim scan read off it. */
+/** The limits a walk's ask can raise, each its wire knob, where it stands in the answer and the server's most: nodes and
+ *  depth (hops, up to the answer's max_hops). Edges and claims are none: the screen sends no edge_limit and the route's
+ *  default is its most, the claim scan read off it. A fan-out is no limit any more: past it the step is a hub, its rows
+ *  all there (lead 10-13, `bundles` retired). */
 const RAISES = [
   { axis: 'nodes', knob: 'node_limit', now: (r) => (r.limits || {}).nodes, most: () => SERVER_NODE_LIMIT },
   { axis: 'depth', knob: 'hops', now: (r) => (r.walk || {}).hops_requested, most: (r) => (r.limits || {}).max_hops },
-  { axis: 'fan-out', knob: 'fanout_limit', now: (r, asked) => asked.fanout_limit, most: () => Infinity },
 ];
 /** A cut answer's More (lead 10-12, the 18766 run: seeding from the deepest nodes hit the same cap): the same walk with
- *  each limit that cut it doubled up to the server's most - fan-out when a bundle drew fewer than it holds. Null when
- *  nothing cut it; no `asked` when every limit that cut it is at the server's most. `budgets` the Cut line's words. */
+ *  each limit that cut it doubled up to the server's most. Null when nothing cut it; no `asked` when every limit that
+ *  cut it is at the server's most. `budgets` the Cut line's words. */
 export function moreAsk(answer, asked = {}) {
-  const cutBy = [...((answer && answer.truncatedAxes) || []),
-    ...(((answer && answer.bundles) || []).some((b) => b.drawn < b.count) ? ['fan-out'] : [])];
+  const cutBy = (answer && answer.truncatedAxes) || [];
   if (!cutBy.length) return null;
   const raised = {};
   for (const r of RAISES) {
@@ -398,7 +454,7 @@ export function moreAsk(answer, asked = {}) {
     const most = Number(r.most(answer));
     if (cutBy.includes(r.axis) && Number.isFinite(now) && now < most) raised[r.knob] = Math.min(now * 2, most);
   }
-  const budgets = cutBudgets(cutBy, { ...(answer.limits || {}), 'fan-out': asked.fanout_limit });
+  const budgets = cutBudgets(cutBy, answer.limits || {});
   return Object.keys(raised).length ? { asked: { ...asked, ...raised }, budgets } : { asked: null, budgets };
 }
 
@@ -425,10 +481,18 @@ export function deltaWords(delta) {
  * @param {Array<{words: string, seeds: string[], answer: object}>} [adds]  walks merged into this step (lead 10-11 W
  *        addenda 5, 6: «Add here», «More»), in order: each start's side read off the groups, a node it brought on its
  *        starts' sides
+ * A hub (task/WALK_HUB_ANSWER_SHAPE.md) is a section of its own, keyed by its id, after the types' (lead 10-13): a row
+ * a member - its name, its declared columns - its sides its head's value. A hub under another (`of`) is that one's
+ * columns when every row there holds exactly one of it, else its own section with a column for the row it hangs from
+ * (lead 10-13 Q2) - judged again from every answer held, so a page can turn columns into a section. A hub of one is
+ * its member, a row of its type (`oneMemberHubs`).
  * @returns {{sections: Array, shown: number, hidden: number, groups: Array, unsplit: boolean}}
  */
-export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
-  fold = {}, control = null, adds = []) {
+export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
+  fold = {}, controlGiven = null, addsGiven = []) {
+  const result = oneMemberHubs(given);
+  const control = controlGiven && oneMemberHubs(controlGiven);
+  const adds = addsGiven.map((add) => ({ ...add, answer: oneMemberHubs(add.answer) }));
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
   const walked = control ? mergeWalks(result, control) : result;
   // The walk's judgment for each node it walked (owner 10-12): the answer's «aux» names the auxiliary node(s) (seeds), each
@@ -520,8 +584,8 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     return { text: same ? `A + B ${one(ways[0])}` : ways.map((w) => `${w.word} ${one(w)}`).join(' · '),
       values: ways.flatMap((w) => (w.values || [w.text]).map((v) => `${w.word} ${v}`)) };
   };
-  // A node a row: one row whichever groups reached it.
-  const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));
+  // A node a row: one row whichever groups reached it. A hub's head is no row: its members are its section's rows.
+  const members = nodes.filter((n) => !n.hub && groups.some((g) => g.inside.has(n.id)));
   // The cap is a section's own (lead 10-12, 18766: one cap over the answer's order drew no defect section of 188 and 20
   // of 32 quantities): each type draws up to `cap` of its rows, in its order, and says what it did not.
   const sections = [];
@@ -612,6 +676,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     const ownHeads = [...(centre.length ? centre.map((c) => c.words.join(' · ')) : [type]), ...carried.map((c) => c.name)];
     sections.push({
       type,
+      name: type,
       heading: sectionHeading(type, rows.length),
       groups: groups.map((g) => ({ sign: g.name, starts: g.starts.length, count: rows.filter((n) => g.inside.has(n.id)).length })),
       reached: groups[0].b ? groups.map((g, i) => countReached(said.map((row) => row.reached[i]).filter(Boolean))) : null,
@@ -648,7 +713,66 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       hidden: typed.length - rows.length,
     });
   }
-  return { sections, shown, hidden: members.length - shown, groups,
+  const tables = (merged && merged.tables) || {};
+  const heads = nodes.filter((n) => n.hub && tables[n.id]);
+  const headOf = new Map(heads.map((n) => [n.id, n]));
+  const rowsOfHub = (id) => tables[id].rows.map((r) => Object.fromEntries(tables[id].columns.map((c, i) => [c, r[i]])));
+  const declaredOf = (id) => tables[id].columns.filter((c) => !HUB_ROW_COLUMNS.includes(c));
+  const said = (v) => ({ text: v === null || v === undefined || v === '' ? EMPTY : valueWords(v) });
+  const arrow = (h) => (h.direction === 'incoming' ? `← ${h.predicate}` : `${h.predicate} →`);
+  const nearWords = (id) => (nodes.find((n) => n.id === id) || {}).label || nodeWords(id);
+  // One row of it under each row above, and none elsewhere.
+  const oneEach = (sub) => {
+    if (!sub.hub.of || !headOf.has(sub.hub.of)) return false;
+    const above = new Set(rowsOfHub(sub.hub.of).map((r) => r.id));
+    const under = rowsOfHub(sub.id).map((r) => r.parent_id);
+    return under.length === above.size && new Set(under).size === under.length && under.every((p) => above.has(p));
+  };
+  const asColumns = new Set(heads.filter(oneEach).map((n) => n.id));
+  let total = members.length;
+  for (const head of heads) {
+    if (asColumns.has(head.id)) continue;
+    const held = rowsOfHub(head.id);
+    const rows = held.slice(0, cap);
+    shown += rows.length;
+    total += Math.max(head.count || 0, held.length);
+    const own = declaredOf(head.id);
+    const above = head.hub.of && headOf.has(head.hub.of) ? headOf.get(head.hub.of) : null;
+    const under = heads.filter((h) => asColumns.has(h.id) && h.hub.of === head.id)
+      .map((h) => ({ h, by: new Map(rowsOfHub(h.id).map((r) => [r.parent_id, r])), own: declaredOf(h.id) }));
+    const centreHeads = [head.type, ...own, ...(above ? [above.type] : []),
+      ...under.flatMap((u) => [`${arrow(u.h.hub)} ${u.h.type}`, ...u.own.map((c) => `${u.h.type} · ${c}`)])];
+    sections.push({
+      type: head.id,
+      name: `${HUB_MARK} ${head.label}`,
+      heading: `${HUB_MARK} ${head.label} · ${nearWords(head.hub.near)} ${arrow(head.hub)}`,
+      // Its sides once, the head's value [+, −] (lead 10-13): a side holds every row or none.
+      groups: groups.map((g, i) => ({ sign: g.name, starts: g.starts.length,
+        count: groups.length > 1 && head.value ? (head.value[i] ? rows.length : 0) : rows.length })),
+      reached: null,
+      adds: [],
+      columnHeads: [],
+      parts: [],
+      centreHeads,
+      centreLines: centreHeads.map((h) => [h]),
+      judged: false,
+      tally: '',
+      centre: [],
+      rows: rows.map((r) => ({ id: r.id, label: nodeWords(r.id), differs: false, missing: false, reached: null, cells: [],
+        reach: null, routes: [],
+        centre: [{ text: nodeWords(r.id) }, ...own.map((c) => said(r[c])), ...(above ? [{ text: nodeWords(r.parent_id) }] : []),
+          ...under.flatMap((u) => {
+            const one = u.by.get(r.id) || {};
+            return [{ text: one.id ? nodeWords(one.id) : EMPTY }, ...u.own.map((c) => said(one[c]))];
+          })] })),
+      columns: [],
+      listed: [],
+      long: [],
+      trendable: [],
+      hidden: Math.max(head.count || 0, held.length) - rows.length,
+    });
+  }
+  return { sections, shown, hidden: total - shown, groups,
     unsplit: !ranked && negative.length > 0, index, sources };
 }
 
