@@ -82,6 +82,24 @@ const answerOf = (u) => {
 };
 // Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
 const CELLS = [
+  // The audit row's Kind word whole in its cell (lead 10-12: «OVERWRIT…» cut at 74 px) - every pill drawn, and the longest
+  // word the row builder can draw (timeline.js kindOf: «OVERWRITE») set in a drawn cell and measured, as the answers may
+  // hold none of it.
+  { entry: 'index.html', after: 'loaded', rule: 'kind word whole', at: 'audit-kind', expr: `(() => {
+  const pills = [...document.querySelectorAll('.audit-table .timeline-card .audit-kind .audit-pill')].filter((p) => p.getClientRects().length);
+  if (!pills.length) return 'no kind drawn in the audit table';
+  const fits = (p) => {
+    const c = p.closest('.audit-kind'), cs = getComputedStyle(c), cr = c.getBoundingClientRect(), pr = p.getBoundingClientRect();
+    const room = cr.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+    return pr.right > room + 0.5 ? 'div.audit-kind «' + p.textContent + '» ' + Math.ceil(pr.width) + ' px in ' + Math.floor(room - cr.left - parseFloat(cs.paddingLeft)) : null;
+  };
+  for (const p of pills) { const bad = fits(p); if (bad) return bad; }
+  const was = pills[0].textContent;
+  pills[0].textContent = 'OVERWRITE';
+  const longest = fits(pills[0]);
+  pills[0].textContent = was;
+  return longest;
+})()` },
   { entry: 'index.html', after: 'loaded', rule: 'beside the message', expr: `(() => {
   const log = document.getElementById('performance-log');
   if (!log || !log.getClientRects().length) return 'no header message on the page';
@@ -1002,6 +1020,8 @@ const MUTANTS = [
       '.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; position: absolute; inset: 0 0 auto 0; z-index: 5; }']] },
   { name: 'the header message title not following its text', entry: 'index.html', rule: 'message title', at: 'performance-log',
     file: 'src/main.js', edits: [['      followTitle(elements.performanceLog);\n', '']] },
+  { name: 'the audit Kind column back at 74px', entry: 'index.html', rule: 'kind word whole', at: 'audit-kind',
+    file: 'src/style.css', edits: [['70px 62px 96px 96px 110px minmax(72px, 1fr)', '70px 62px 74px 96px 110px minmax(72px, 1fr)']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',
     file: 'src/style.css', edits: [['max(96px, var(--queue-state-w, 96px))', '96px']] },
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',

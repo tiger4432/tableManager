@@ -1,5 +1,59 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 오후] **걷기 이어 걷기 · 더 가져오기 화면까지 착지 (main f88e16b86) — pull · 서버 재기동 · 걷기 화면 새로 고침**
+>
+> ```
+> 명령     git pull  ->  서버 재기동(이어 걷기 서버 2bdb44df7 · c20b96258 · 581c60c00 을 아직 안 올렸으면) -> 걷기 화면 F5
+> 쓰는 법  걷기 결과 머리에 collect 타입마다 «<타입>: all reached» 또는 «<타입>: cut · N not expanded» · 남았으면 «more to walk»
+>          «More ▸» -> 같은 요청으로 다음 쪽을 받아 지금 답에 합침 · «N pages» · 다 걸으면 «All reached» 와 More ▸ 꺼짐 · 칩 × 로 전 답
+>          쪽마다 상한(원자 6,000 · 노드 · 엣지)은 그대로 — 원자 수만 개 노드도 More ▸ 몇 번이면 끝까지 닿는다
+> 뜻      «As of» 는 첫 쪽 시각 — 쪽 사이에 들어온 원자는 이 답에 안 들어온다(다시 Walk 하면 들어옴)
+> 18766    + SYN-BW-103-11 · − SYN-BW-SPL-400-19 · collect wafer · node_limit 10 -> 표 10 -> 20 -> 30 -> 32 행 · «wafer: all reached · 4 pages»
+> ```
+
+> ## [10-12 오후] **걷기 이어 가기 (서버) — pull 하고 서버만 재기동**
+>
+> ```
+> 명령     git pull  ->  서버 재기동 (바뀐 서버 파일 ledger_subgraph.py · trace_router.py — 수집기 · 체인 워커 · 스케줄러 그대로)
+> 쓰는 법  끊긴 답의 more.resume 을 POST /api/ledger/subgraph 본문 {"resume": …} 로 돌려준다(같은 인자) — 화면은 클라 착지의 More
+> 뜻      more.reach.<타입>.complete false = 그 타입에 닿을 노드가 남음 · resume null = 다 걸음 · 쪽마다 상한은 그대로
+>          원자 수만 개 씨앗: 첫 쪽 노드 0 이어도 complete false 면 이어 걷기로 닿는다(2만 원자 판: 4 쪽째)
+> 끄는 법  스위치 없음 — resume 을 안 보내면 답은 오늘과 같다(more 칸 하나 더)
+> 볼 것    서버 로그에 새 줄 없음
+> ```
+
+> ## [10-12 오후] **걷기 «Walk ▸» 착지 (main 1f2cd132f) — git pull 만 · 재기동 없음 · 걷기 화면 새로 고침**
+>
+> ```
+> 쓰는 법  걷기 표에서 행을 체크(+ 는 클릭, − 는 Shift) -> Marked 바구니 «Walk on ▸» 줄 맨 앞 «Walk ▸»
+>          -> 그 행들을 시작으로 문장 바의 설정(collect · through · direction · 한도 · 세상 · reaching) 그대로 한 번 걷고, 지금 스텝 아래에 «Walk ▸» 스텝 하나
+>          체크가 없으면 꺼짐 «Check rows first». 옆의 «New step / Add here»(길 하나 한 걸음)는 그대로
+> 바뀐 것  그래프 «Continue» 도 같은 요청 — 이제 문장 바의 collect · through · direction 이 실린다(전에는 홉 · 한도뿐)
+> ```
+
+> ## [10-12 낮] **고침 — 체인이 방금 만든 행을 «껍데기»로 지우지 않는다 (방금 만든 행) — pull 하고 체인 워커만 재기동**
+>
+> ```
+> 명령     git pull  ->  체인 워커 재기동 (바뀐 서버 파일은 chain/ingestion_worker.py 하나 — 서버 · 수집기 · 스케줄러는 그대로)
+> 볼 줄    chain_worker.log 의 [ChainShell] table=<표> rows_deleted=N - only the chain's keys were left
+> 뜻      집계가 빈 decide 의 파생 행 표에 대해 이 줄이 더 안 뜨면 고쳐진 것 — 그 표의 행이 키 + 빈 집계로 남는다
+>          공식 표(복사 규칙)에 대해 이 줄이 뜨는 것은 설계대로다: 원본이 다 지워졌거나 접기 표시로 보류가 비워진 «기존» 행
+>          파생 표에 대해 계속 뜨면: 이미 있던 행의 집계가 값 -> 빈 값으로 바뀐 쓰기다(그 행은 지워지고 다음 트리거가 새로 만들면 남는다)
+> 끄는 법  스위치는 없다. 되돌리려면 이 커밋 revert 후 체인 워커 재기동
+> ```
+
+> ## [10-12 낮] **걷기 «보조 노드 판정» 착지 (main 3c4e5a778) — pull 하고 서버만 재기동**
+>
+> ```
+> 명령     git pull  ->  서버 재기동 (수집기 · 체인 워커 · 스케줄러는 안 바뀜 — 바뀐 서버 파일은 ledger_subgraph.py · trace_router.py 둘, 화면은 client2/dist 가 pull 로 옴)
+> 쓰는 법  걷기 화면 «+ Add start» 에서 노드를 고르고 «+ Reaching» -> 문장 바에 «reaching <노드>» -> Walk
+>          표 노드 칸 끝 «→ <노드>» 열: «N hops» · «none»(다 보고 길 없음) · «unknown»(원자 상한 6,000 이 먼저 참)
+>          «Reaches only» 옆 한 줄 «N reach · N none · N unknown» — 거르기를 켜도 그대로
+> 뜻      길 찾기는 정적 노드에서 동적 노드로 내려가지 않는다(다른 웨이퍼를 타고 오는 거짓 «닿음» 막기 · 소유자 「2번」) — 그 밖의 걷기 제약 · 시간 창은 안 봄
+>          보조 노드를 안 고르면 걷기 요청 · 답은 지금과 같다(aux 인자 없음 = 판정 없음) — 끄는 스위치가 따로 필요 없다
+> 볼 것    보조를 고르고 Walk 한 번 — 열과 한 줄이 서면 끝. 서버 로그에 새 줄은 없다
+> ```
+
 > ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 af8ef5701 -> e99f4797f, 접기 맵퍼 들어간 판 · 층 원천 행마다 착지 뒤 · ①b 만 앞 판 355ba2092)**
 >
 > ```
@@ -272,6 +326,29 @@
 >
 > ---
 >
+> ## [10-12] **걷기 보조 노드 판정 — 걸은 노드마다 «보조 노드에 닿나» (총괄 41194be5d · 20dafffee, 소유자 「메인 노드로 걸은 것들 중 관심 모델링 닿는 거만 보고 싶어서」, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 무엇        걷기에 보조 노드를 주면 걸은 노드마다 «보조 노드까지 최단 경로가 있나»를 답한다 — 3 hops · none · unknown
+>            답의 노드 · 엣지는 보조 노드가 있든 없든 같다. 판정은 걷는 길의 제약(되밟기 · Follow)과 시각 창을 안 쓴다
+>            걸은 노드 -> 보조 노드로 읽어 정적 노드에서 동적 노드로 내려가는 걸음은 안 센다(걸은 노드도 예외 없음, 소유자 10-12) — 막힌 걸음은 안 읽어 원자를 안 쓴다
+>            unknown = 원자 상한(걷기와 같은 상한 · 기본 6,000 · 읽은 «서로 다른» 원자 수)이 먼저 참. 상한 아래에서 «none» 은 안 낸다 · 상한 그대로(소유자 ㄷ) · 이어 찾기(More)는 시연 뒤
+> 순서        pull -> 서버 재기동
+> 확인        걷기 화면 · 본딩 웨이퍼 하나 Positive · Collect wafer · die · defect · «+ Add start» 에서 노드를 고르고 «+ Reaching» · Walk
+>            구역 표 끝에 «→ <보조 노드>» 열 · «Reaches only» 를 누르면 닿는 행만
+> 답의 뜻     «N hops»                    N 걸음으로 닿는다(보조가 여럿이면 어느 보조인지 같이)
+>            «none»                      다 찾았고 길이 없다
+>            «unknown»                   원자 상한이 먼저 찼다 — 고장이 아니다
+>            보조 노드를 넣자 표의 행이 바뀜   결함 — 보조 노드를 빼고 같은 걷기로 대조해 총괄께
+> 박스 수     읽기 전용 · 이 박스 원장 · 라우트 처리기를 한 프로세스 안에서 · SYN-BW-101-16 · hops 6 · Collect wafer · die · defect · 규칙 판
+>            레시피 SYN-R-DEPO-01      found 271 (2 hops 131 · 3 hops 140) · unknown 129 · none 0 · claims 6,000 · truncated claims · 2.04 s -> 1.96 s · 노드 · 엣지 같다 True
+>            quantity ramp_C_min      found 400 (1 hops 1 · 2 hops 179 · 3 hops 220) · unknown 0 · none 0 · claims 3,546 · truncated None · 1.69 s -> 4.62 s · 노드 · 엣지 같다 True
+>            «s -> s» = 보조 없이 · 보조 넣고
+>            응용 판(assy_test · assy_app_reread_dm, 읽기 전용) SYN-BW-103-11 + TRD-W-001 · reaching quantity pressure_MPa · node_limit 1000 · Collect wafer: complete True · claims 1,623 · found 31 (1 hops 1 · 4 hops 30) · none 1 · TRD-W-001 none — 규칙 전 found 의 3 hops 가 4 hops 로
+>            이 박스 원장은 서로 다른 원자만으로 6,000 이 찬다 — 위 unknown 은 상한, 다시 읽기가 아님
+> 급할 때      보조 노드를 안 고르면 오늘과 같은 걷기 · git revert <이 커밋> -> 서버 재기동
+> ```
+
 > ## [10-12] **exclude_when 으로 거른 행이 «아직 번역 안 된 행»에서 빠진다 (총괄 리허설 2 회차, 착지 9c1da298f) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```

@@ -357,9 +357,10 @@ async function suite(mods) {
     const pageChips = () => walkAll(phost).filter((e) => String(e.className).startsWith('wk-loopchip'));
     // the walkable rows (the 4-hop one steps out of a static type and the walk refuses it)
     const walkable = bbox.routes().length;
-    ok('RC8 both callers draw the same rows for die -> wafer, each with its loop chips, all off',
-      walkable > 0 && boxRows().length === walkable && pageRows().length === walkable
-        && boxChips().length === 2 * walkable && pageChips().length === 2 * walkable
+    // Before a walk the page suggests the shortest route alone (owner 10-12): the box's first row, its loop chips.
+    ok('RC8 die -> wafer: the box draws every walkable row, the page the box\'s first alone, each with its loop chips, all off',
+      walkable > 0 && boxRows().length === walkable && pageRows().length === 1
+        && boxChips().length === 2 * walkable && pageChips().length === 2
         && [...boxChips(), ...pageChips()].every((c) => c.getAttribute('aria-pressed') === 'false'),
       `box ${boxRows().length}/${boxChips().length} page ${pageRows().length}/${pageChips().length}`);
     const first = bbox.routes()[0];

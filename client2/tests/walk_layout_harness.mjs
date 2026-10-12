@@ -278,9 +278,9 @@ async function suite(mod, css = REAL_CSS) {
     predicates: [...DECL.predicates, { name: 'holds', subjects: ['lot'], object: { types: ['wafer'] } }] });
   await back.act.type('wafer');
   await back.act.add('wafer');
+  // Before a walk the page suggests the shortest route alone (owner 10-12), its chain the row's one line.
   const rowOf = () => back.find((e) => e.className === 'wk-path'
-    && e.children.some((c) => c.textContent === 'wafer \u2192 die \u2192 wafer')
-    && e.children.some((c) => String(c.textContent).endsWith(' in_container')));
+    && e.children.some((c) => c.textContent === 'wafer \u2192 die \u2192 wafer'));
   const filled = () => `${[...back.handle.state.follow].sort().join(',')}|${back.handle.state.hops}`;
   const row = rowOf();
   if (row) { fire(row, 'click'); await settle(); }

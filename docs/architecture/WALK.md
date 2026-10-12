@@ -341,6 +341,21 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 ⚠️ 🆕 10-10 `18b606d40` 클라 그래프에서 묶음을 열어 그린 노드는 서버가 «그 노드에서» 걸은 적이 없다 — 점선 덩어리 «? next · not walked», 누르면 술어 없이 한 걸음(`stepAlong`).
 ⚠️ 🆕 넘친 갈래마다 앞 N 이 노드 예산을 쓴다 — 갈래가 여럿인 깊이에서는 «넘치지 않은» 가지가 전보다 먼저 잘릴 수 있다(응용 잼 · 박스가 지은 모양: 로트 → 웨이퍼 25 · 웨이퍼마다 디펙 30 · 로트 → 레시피 → 장비 → 사이트. 전 lot 1 · recipe 1 · site 1 · tool 1 · 뒤 defect 378 · lot 1 · recipe 1 · wafer 20 · 잘림 nodes).
 
+## 🔵 보조 판정 — `aux` (소유자 10-12, `3c4e5a778`)
+
+```
+묻는 것   메인 노드로 지금처럼 걷고, 걸은 노드마다 «보조 노드(여럿이면 그중 하나)까지 최단 경로가 있나»
+답        노드마다 aux = found(hops · via) · none(다 보고 없음) · unknown(상한) — 상한 아래 none 은 없다
+          답 전체에 aux = {seeds · complete · truncated · hops_reached · claims}
+불변      답의 노드 · 엣지는 보조가 있든 없든 같다 — 판정만 싣는다
+찾기      보조 쪽과 답 쪽이 만난다 · 시간 창 · 도로 내려가기 · follow · 묶음은 끔
+규칙      정적 -> 동적 걸음은 안 밟는다(걸은 노드도 예외 없음) — 다른 랏 자재로 이름(quantity · recipe)을 타고 내려가는 길이 없다
+상한      읽은 서로 다른 원자 — 걷기의 원자 상한과 같은 값
+화면      «+ Reaching» 으로 고름 · 구역 표에 «→ <보조>» 열 · «Reaches only» · «N reach · N none · N unknown» 한 줄
+```
+
+코드 자리는 CODE_MAP 의 `ledger_subgraph.py`(`_judge_aux`) · `trace_router.py`(`aux` 인자) · `walk/table_view.js` · `walk/main.js` 행.
+
 ## 🔵 서술된 씨앗 — `seed_type` · 씨앗 예산 (S-148-a, 판정 337, 2026-09-13)
 
 > ⚰️ (🆕 10-01 `0b59a2f30`, 총괄 819726624 ㄹ) 씨앗은 이제 «그 타입을 이름 댄 원자가 있는 노드 전부»입니다 — 주어 쪽이든 `entity_ref` 목적어 쪽이든(`gaps._nodes_of_type_sql` 한 답). 판정 337 의 「등록된 주어만」을 뒤집었습니다: `lot_event` 가 은퇴해 웨이퍼·랏을 등록하는 것이 없어졌기 때문입니다. 아래 「등록된 주어」 · `register` 원자 · 등록 인덱스 줄은 그 전 모양이고, 거절 문장도 바뀌었습니다(「no node of type %r in the ledger; nothing to walk from」).

@@ -79749,3 +79749,151 @@ pagesize   e902a67e6 — impl-pagesize 위(그 아래 46324bcbb), wip 를 접어
 남은 것    운영 크기 «첫 진행 줄 ≤ 5 s»는 응용 판 게이트 — 이 박스는 읽기 전용이라 실행(apply)을 못 잼
            CODE_MAP 의 `_stale_refs` 줄은 이제 `_stale_atoms` — 문서 정비 몫(제가 안 고침)
 ```
+
+## 10-12 메인 그리드 Ledger 열 — 모든 세상의 소스 · 바뀐 행 (총괄 6424227ff, 소유자 10-12)
+
+```
+커밋        1122dffcb — impl-ledger-col(origin/main 6424227ff 위), main 아님 · 착지는 시연 뒤
+좌석 하나    _attach_ledger_sources — schema.world_listing 의 세상마다 그 세상 컴파일된 선언(체인 워커의 _compiled_setup,
+            파일이 바뀔 때만 다시) · 이 표를 읽는 소스(followup.sources_for_table) · 소스마다 drift 판정을 이 쪽 row_id 로
+            좁혀 질의 하나. backfill._drift_from 에 row_ids 인자 하나(둘째 판정 없음), backfill.rows_changed 가 행마다 접음
+칸          행마다 ledger_rows [{source, world, changed}] · changed true / false / null(색인 줄에 지문 없음 = 모름)
+            응답 맨 위 ledger_worlds_unread — 못 읽은 세상 이름(그 세상 소스는 행 칸에서 빠짐 · «아직»과 다른 모양)
+            ledger_sources(운영 세상 이름 목록)는 그대로
+변이(PG 칸 test_the_grid_says_each_worlds_sources_and_a_row_changed_since)
+            baseline                     ['1 passed, 6 warnings in 12.93s']
+            the operating world only     ['1 failed, 6 warnings in 7.55s']
+            drift not asked              ['1 failed, 6 warnings in 6.29s']
+            an unread world drops all    ['1 failed, 6 warnings in 7.93s']
+            md5 e8d61580a22447d3ff8cddc5119b4d7c e8d61580a22447d3ff8cddc5119b4d7c
+시험(닿는 파일 전부)
+            113 passed, 44 skipped, 105 warnings in 13.20s
+            sqlite exit 0
+            44 passed, 113 deselected, 67 warnings in 320.24s (0:05:20)
+            pg exit 0
+            draft 파일 셋 실패는 환경 — 깨끗한 main(같은 환경)에서도 3 failed, 12 passed, 6 warnings in 2.79s(실 table_config.json 없음)
+박스(읽기 전용, dt_log 최신 1,000 행)
+            worlds {'worlds': ['default'], 'operating': 'default'}
+            first (compiles): 1000 rows · 0.14 s · ledger_rows key on 1000 rows · names key on 1000 · entries {('default', 'dt_job', None): 807}
+            second (cached): 1000 rows · 0.11 s · ledger_rows key on 1000 rows · names key on 1000 · entries {('default', 'dt_job', None): 807}
+여쭐 것     changed 를 bool 로 정하셨는데 null(지문 없음)을 남겼습니다 — false 로 접으면 «모름»이 «올라감»으로 그려집니다
+            (이 박스는 dt_job 번역 행이 전부 null). 클라에는 셋으로 보냈습니다
+남은 것     RELEASE_LOG · RUN.md 는 클라 항목과 한 항목으로 착지 때 · 18766 진짜 크롬은 응용
+```
+
+## 10-12 보조 판정 규칙 — 걸은 노드 -> 보조로 읽어 정적 -> 동적 안 내려감 (소유자 「2번 너 말대로 해」, 총괄)
+
+```
+커밋        8ef52f385 — impl-aux-reach 위(a8474f004 다음), main 아님
+규칙        걷는 쪽은 정적 노드의 동적 먼 끝을 안 읽고, 보조 쪽(거꾸로)은 동적 노드의 정적 먼 끝을 안 읽는다 · 걸은 노드도 예외 없음
+            SQL 에서 안 읽음 — claims_for_entities(far_types=) (_far_types, 두 lookup) · 쪽마다 캐시 · 짝도 같은 규칙으로 거름
+변이(보조 파일)
+            baseline                   ['15 passed, 6 warnings in 2.26s'] []
+            rule off                   ['3 failed, 12 passed, 6 warnings in 2.20s'] ['test_a_way_down_from_a_static_name_is_none_and_the_name_itself_is_found_under_the_cap', 'test_a_static_walked_node_does_not_step_down_even_as_the_seed', 'test_the_only_way_through_another_lots_die_is_none']
+            not refused in SQL         ['1 failed, 14 passed, 6 warnings in 2.69s'] ['test_a_way_down_from_a_static_name_is_none_and_the_name_itself_is_found_under_the_cap']
+            not refused in the pairs   ['1 failed, 14 passed, 6 warnings in 2.46s'] ['test_a_static_walked_node_does_not_step_down_even_as_the_seed']
+            md5 7b0873b8dd2b38efb4baa342f00e60ab 7b0873b8dd2b38efb4baa342f00e60ab
+변이(PG 집합 문 칸 — far types 를 SQL 에서 재는지)
+            baseline                     ['1 passed, 6 warnings in 5.11s']
+            far types read as nothing    ['1 failed, 6 warnings in 5.54s']
+            md5 7b0873b8dd2b38efb4baa342f00e60ab 7b0873b8dd2b38efb4baa342f00e60ab
+시험
+            raise RuntimeError("compilation failed")
+            7 failed, 59 passed, 39 skipped, 6 warnings in 6.22s
+            sqlite exit 1
+            39 passed, 66 deselected, 57 warnings in 254.30s (0:04:14)
+            pg exit 0
+            test_ledger_subgraph 의 7 실패는 환경 — 깨끗한 main(같은 환경)에서도 7 failed, 32 passed, 1 skipped, 6 warnings in 1.77s(실 선언 파일 없음)
+박스(읽기 전용, SYN-BW-101-16 · 레시피 SYN-R-DEPO-01 그다음 quantity ramp_C_min)
+            aux {'seeds': ['ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiU1lOLVItREVQTy0wMSJ9XQ'], 'complete': False, 'truncated': 'claims', 'hops_reached': 3, 'claims': 6000}
+            states {'unknown': 129, 'found': 271} hops {3: 140, 2: 131}
+            aux {'seeds': ['ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6InJhbXBfQ19taW4ifV0'], 'complete': True, 'truncated': None, 'hops_reached': 3, 'claims': 3546}
+            states {'found': 400} hops {1: 1, 2: 179, 3: 220}
+            레시피: 규칙 전 found 272(3 hops 141) -> 위 줄 — quantity 경유 하나 빠짐 · 허브: found 400 · unknown 0 · complete
+응용 18766 판(assy_app_reread_dm, 읽기 전용, 라우트 처리기 한 프로세스)
+            nodes 32 · edges 1556 · plain 2.28 s · with aux 1.67 s · same nodes and edges True
+            aux {'complete': True, 'truncated': None, 'hops_reached': 8, 'claims': 1623}
+            states {'found': 31, 'none': 1} hops {1: 1, 4: 30}
+            TRD-W-001 {'state': 'none'}
+            found 31 은 그대로, 그중 30 의 최단이 3 hops -> 4 hops (3 hops 길이 이름에서 다이로 내려갔음)
+문서        RELEASE_LOG «판정의 뜻 (서버)» · RUN.md «무엇» 셋째 줄이 규칙을 말함 · 박스 줄 다시 잼
+```
+
+## 10-12 체인이 방금 만든 행을 «껍데기»로 지우던 것 — 고침 286f3af6d · main 75d7bd129 (소유자 「행파생 자꾸 파생하고 지 혼자 회수하는데?」, 총괄)
+
+```
+원인        체인 쓰기 자리의 껍데기 판정(5eee501eb «A ROW THIS WRITE EMPTIED»)이 «이 쓰기가 빈 값을 쓴 칸이 있는 행»을 모두 물었다.
+            새 행은 쓴 칸이 전부 «바뀐 칸»이다(apply_row_update_internal: is_new or values_differ).
+            집계가 빈 decide 는 «키 + 빈 집계»로 새 행을 쓴다 -> 같은 쓰기에서 껍데기로 판정돼 지워짐(이력 chain_shell_rows) -> 다음 트리거가 다시 만듦
+재현(SQLite, 체인 그룹 본체 두 번)
+            집계 note_min = min(note), 원본 note 빈 값    [ChainShell] rows_deleted=2 -> =1, 키 넷 모두 사라짐
+            출하 샘플 decide(사람 칸만, 집계 없음)         키만 씀 -> 판정을 안 받음, 지움 0
+고침        이 쓰기 results 의 is_new 행은 shells() 에 묻지 않음 (chain/ingestion_worker.py 한 자리)
+칸          test_a_decide_with_no_fields_stands_on_its_aggregations.py  집계가 빈 키의 행이 트리거 두 번 뒤에도 넷 그대로 — 고치기 전 빨강
+변이        새 행을 다시 물음 -> 그 칸만 failed · md5 전후 같음
+시험        decide 파일 6 passed · 껍데기 PG 파일 5 passed(원본 다 지움 · 접기 표시된 키의 공식 행은 여전히 지워짐) · 좌석 census 6 passed
+            assy_test public 70 표 / 77 행 전후 같음
+설계대로    접기 표시 -> 복사 규칙 철회 -> 키만 남은 «기존» 공식 행 지움 — 고친 뒤에도 그대로
+남는 것     이미 있던 파생 행의 집계가 값 -> 빈 값으로 바뀌는 쓰기는 그 행을 지운다(다음 트리거가 새로 만든 행은 남음) — 판정 여쭘
+코드 없이   그 decide 의 aggregations 에 count 하나(파생 표에 그 칸) — 셈은 비지 않아 껍데기로 안 잡힘
+문서        RELEASE_LOG 껍데기 항목 밑 · RUN.md 맨 위 절(체인 워커 재기동 · [ChainShell] 줄의 뜻 셋)
+이어 걷기   wt-more 2ce9f300c 에 wip 로 세움 — 커서가 «정확한 읽기»를 이름 대고 첫 상한에서 상태를 떠 두는 설계로 다시 짬(아직)
+```
+
+## 10-12 접기 두 줄 + 복사 + 소급 — 설계대로, is_new 고침은 안 바꿈 (총괄 「인벤토리 폴드 안 풀리나?」)
+
+```
+판          PG hold_world(로그 -> 공식 복사 exclude fold_mark · 다시 세기) + 인벤토리 표 + 접기 맵퍼 둘(by_unit · by_log)
+            한 웨이퍼 AUTO_J1 · MAN_J2, 잡마다 로그 행 하나 · 소급 = RUN.md ⑤ -> ⑥ -> ⑥' 두 바퀴
+1 로그 push              공식 행 둘 agreed
+2 인벤토리 push          살아 있는 접기가 M1 에 «folded into AUTO_J1» — 공식 MAN_J2 그대로(복사 규칙에 allow_chain_trigger 없음)
+3.1 접기 replay          변화 없음
+3.1 복사 replay          MAN_J2 netdie 빈 값 · hold agreed
+3.1 다시 세기 replay     보류 빔 -> 키만 -> [ChainShell] rows_deleted=1 (설계대로)
+3.2 셋 다                변화 없음 — 공식 CREATE 사건 1 -> 1 · [ChainShell] 줄 1 -> 1
+고침 되돌린 판           모든 단계 같음 · md5 전후 같음
+public                   assy_test 70 표 / 77 행 전후 같음 · 탐침 파일 지움(커밋 0)
+판정                     [ChainShell] 이 공식 표면 접힌 잡의 행이 ⑥' 에서 한 번 지워진 것(설계대로) · 파생 표면 75d7bd129 가 고친 결함
+```
+
+## 10-12 걷기 이어 가기 착지 — main 2bdb44df7 · 고침 c20b96258 (소유자 「이어 걷기랑 더 가져오기 15 분 이내로 착지」, 총괄)
+
+```
+계약        POST /api/ledger/subgraph (GET 과 같은 인자) + 본문 {"resume": <앞 답의 more.resume>}
+            more = {reach: {타입: {complete, unexpanded}}, resume, unexpanded} · 이어 걷는 쪽에 as_of
+설계        첫 상한(원자 · 노드 · 엣지)에서 상태를 떠 둠 — 안 넓힌 노드(깊이 · 출발 비용 · 도착 걸음) · 다 읽은 노드 ·
+            커서 = 깊이 · 그 깊이의 프런티어 · 무리 · 읽기 순번 · 마지막 원자. 쪽은 오늘처럼 들어가는 만큼 그림
+칸          상한 1~12 원자 × 노드 10/13/400 × 엣지 20/6000, follow 없음 · 라우트의 빈 follow — 합친 쪽 = 한 번 걷기 ·
+            남았는데 complete 0 · 쪽마다 상한 안 / 첫 쪽 뒤 원자 안 들어옴 / 씨앗 원자 2만(collect recipe) 4 쪽째 5 개
+변이        빨강: 읽기 순번 빼기 · 쪽 끝에서 뜸 · 닿음 한 걸음 · 남은 씨앗 첫 걸음 묶음 · as-of 빼기 · 빈 follow 좌석 되돌림
+            살아남음: 경계 노드 안 넘김(다음 쪽이 다시 찾음)
+resume 없음  걷기 37 개 답(generated_at · more 빼고) sha256 main = 이 나무
+시험        SQLite 관련 48 파일 451 passed, 실패 21 = 깨끗한 main 과 같은 목록(실 선언 없음) · PG 104 passed(2bdb44df7)
+            assy_test public 70 / 77 전후 같음
+고침 둘     3e0e980c0 계열(착지에 접힘): 남은 정적 씨앗의 첫 걸음을 닿음 계산이 묶음 -> 첫 쪽 «recipe complete» 거짓
+            c20b96258: 라우트의 follow=[] 를 닿음 계산이 «술어 0»으로 읽음 -> follow 없는 걷기의 끊긴 쪽이 모든 타입 complete
+            (응용 18766 node_limit 10 · collect wafer: unexpanded 490 에 wafer complete) — _group_follow 가 빈 follow 에 None
+남은 것     «많은 → 적은» 측정 판 assy_impl_hub_1012(원자 660,000) 세워 둠, 잼은 멈춤 · 원장 백필 쪽 ①②③ 다음
+```
+
+## 10-12 이어 걷기 순위 · 행 고침 (main 581c60c00 · b5b40b6b8) · pagesize 셋째 판 (가지 d80fe8115) · «많은 → 적은» 설계
+
+```
+581c60c00   이어 걷는 쪽 propagation.ranked 0 행(클라 · 응용 18766) — _reach 가 그 쪽 엣지만 봄
+            -> 씨앗마다 앞 쪽이 닿은 것(노드 · 들어온 걸음 · 길 · 타입)을 resume.reach 로 넘기고 같은 좌석에서 이어 BFS
+            칸: + W · − Q0, 상한 격자 전부 — 쪽 ranked 를 id 로 합친 것(뒤 쪽이 덮음) = 한 번 걸은 ranked(집합 · reach)
+            변이 «이어받은 상태 무시» 빨강 · resume 없는 걷기 37 개 해시 = 이어 걷기 전 main
+            응용 18766 GO: 합친 786 = 한 번 786 · reach 다른 것 0
+b5b40b6b8   행 투영(format=rows)도 같은 좌석 — 쪽 나눈 (노드, 씨앗) 행 = 한 번 · path 가 씨앗에서 시작 · 변이 빨강
+            걷기 SQLite 관련 452 passed, 실패 21 = 깨끗한 main · PG 확인은 응용 60 분 판 뒤
+d80fe8115   (impl-pagesize, 시연 뒤 착지)
+   ①       백필 쪽 탐침(박스, PG hold 210,000 행, 시험 엔진 NullPool): 308 쪽 862 s · 쪽 중앙 2.81 · p95 3.63 · 최대 5.02
+            rescope 밖 중앙 0.4 · 최대 3.0 s(그 쪽: 새 연결 3.4 s + anti-join 1.34 s) · 새 연결 쪽마다 5 번, 253.8 s / 862
+            anti-join 처음 50 쪽 0.19 -> 마지막 50 쪽 0.39 s · 제품 엔진은 QueuePool(20) — 응용 판의 풀은 여쭘
+   ②       쪽 안 단계 줄 read · translated — 쪽 단계 자리 keyset_scan.step_of 하나(replay._step_of 옮김)
+   ③       fold_units 첫 «rule» 줄 = 첫 그룹 2 단위 칸
+            PG 13 passed · 변이 «read 줄 지움» · «그룹 한 번에» 빨강 · SQLite 17 실패 = 깨끗한 8aaf903dc
+설계        «많은 → 적은» 안 셋 — A 묶음에 다음 걸음 끝 + 수(SQL 한 번) · B through + 이어 걷기(코드 0) ·
+            C decide 집계 표 + 원장 소스(선언 두 칸) — 추천 C 먼저(칸이 있으면), A 는 시연 뒤 · 여쭘 둘
+            측정 판 assy_impl_hub_1012(원자 660,000) 세워 둠 — 응용 판 «내림» 뒤에 잰다
+```

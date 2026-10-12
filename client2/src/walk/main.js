@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
+import { walkTableView, mergeWalks, walkedRoutes, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -55,7 +55,7 @@ import { NodeSearch, SEARCH_LIMIT } from './node_search.js';
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 // Copy key (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
 import { writeClipboardRich } from '../clipboard_write.js';
-import { entitySeedId } from '../rnd_board/api.js';
+import { entitySeedId, entityOfId } from '../rnd_board/api.js';
 // An image reference's value (server c5463a475): the main grid's image cell and its one preview (lead 191912ce2).
 import { ImagePreview } from '../image_preview.js';
 import { ImageCellRenderer } from '../grid_image_column.js';
@@ -70,6 +70,9 @@ import { BranchPicker } from '../branch_picker.js';
 /** The graph's chain of markings: the start, then one per Continue. Its length is the chain's length. */
 /** The start marking the baskets edit; each step's checks write a marking of their own (stepMarks). */
 const START = 'walk-start';
+// The auxiliary node(s) the walk judges its nodes against (owner 10-12): a marking of their own, picked as a start is.
+const REACH = 'walk-reach';
+const REACH_ADD = '+ Reaching';
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = WALKING;
@@ -83,8 +86,11 @@ const CONTROL_WORD = 'Compare with (B)';
 const CHECK_ROWS_FIRST = 'Check rows first';
 /** A Walk on's two presses (lead 10-11 W addendum 5): a step of its own, or its answer merged into this one; a cut walk
  *  walked once more. */
-const NEXT_WORDS = Object.freeze({ step: 'New step', here: 'Add here' });
+const NEXT_WORDS = Object.freeze({ step: 'New step', here: 'Add here', walk: 'Walk ▸' });
 const MORE = 'More';
+const MORE_ON = 'More ▸';
+const ALL_REACHED = 'All reached';
+const MORE_TO_WALK = 'more to walk';
 const AT_SERVER_LIMIT = 'at the server limit';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
@@ -232,7 +238,7 @@ export function boot(doc, host, deps) {
   };
   /** Drop these steps' markings and the graph's own past them. */
   const dropMarks = (steps) => { for (const name of [...steps.map((s) => s.marks), ...tail.splice(0)]) markings.clear(name); };
-  const graph = new SubgraphView(graphMount, { doc, walk, knobs, entities, markings, chain: chainAt,
+  const graph = new SubgraphView(graphMount, { doc, walk, ask: askFrom, entities, markings, chain: chainAt,
     worldChips: worlds.length > 1, predicates: () => (state.decl && state.decl.predicates) || [],
     openTable: (answer, lump) => openLumpTable(answer, lump), walkOn: (node) => baskets.add(SIGN.CASE, node) });
   // The box is the key it searches by: what is typed is that key, a node picked fills every key.
@@ -298,6 +304,9 @@ export function boot(doc, host, deps) {
   // Walk follows the baskets as they change, not only when the page redraws.
   let goButton = null;
   markings.subscribe(START, () => { if (goButton) setDisabledReason(goButton, goReason()); });
+  // The bar says the auxiliary nodes as they stand; their names, as they were picked.
+  const reachNames = new Map();
+  markings.subscribe(REACH, () => render());
   /** The graph on the chosen branch (lead 5ea461e04), the table's own answers drawn, nothing walked (lead 10-11 G-2): the
    *  form walk's, then each step's down the branch, each from the starts it walked; a step before the last only its
    *  paths to the next one's starts, the last its whole answer. The same branch drawn already is not drawn again; with
@@ -337,13 +346,20 @@ export function boot(doc, host, deps) {
   }
 
   /** 폼의 칸 -> 전선의 인자. «빈 칸은 안 싣습니다» — 그것이 「안 골랐다」의 정직한 모양입니다. */
+  /** The auxiliary node(s) as the wire takes them (owner 10-12, the walk's judgment) - none picked, nothing sent. Every walk
+   *  of the page asks it: the form's and a walk on's. */
+  function reachArg() {
+    const ids = markings.entries(REACH).map(([id]) => id);
+    return ids.length ? { aux: ids } : {};
+  }
+
   function spec() {
     const out = { type: state.type, keys: state.keys };
     if (state.follow.size) out.follow = [...state.follow];
     // 🔴 `follow` 와 «같은 규율». 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
     if (state.collect.size) out.collect = [...state.collect];
     if (state.direction) out.direction = state.direction;
-    return Object.assign(out, knobs());
+    return Object.assign(out, knobs(), reachArg());
   }
 
   /** STEP's number knobs as the wire takes them, blank ones not sent - the form's walk and a Next's read them here, so a
@@ -355,6 +371,15 @@ export function boot(doc, host, deps) {
       if (Number.isFinite(n)) out[wire] = n;
     }
     return out;
+  }
+
+  /** The bar's walk from these signed starts (owner 10-12 「다음 걷기는 메인 걷기랑 똑같이」): Walk's from the baskets,
+   *  Walk ▸'s from the rows checked, the graph's Continue from its marks - one ask, the starts the only difference. One
+   *  + start alone goes by its type and keys, as the form asked it (walk_layout L7 · L8). */
+  function askFrom(starts) {
+    const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
+    const one = signed ? null : baskets.describe(starts.positive[0]) || entityOfId(starts.positive[0]);
+    return { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed || !one ? starts : {}) };
   }
 
   /** Walk: the baskets as they are (lead bc63378e5). Ctrl and Shift on it retired - the baskets add and sign. */
@@ -371,9 +396,7 @@ export function boot(doc, host, deps) {
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
     // One + start alone is asked by its type and keys, as the form asked it (walk_layout L7 · L8: the request does not change).
     const starts = seedsOf(markings.entries(START));
-    const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
-    const one = signed ? null : baskets.describe(starts.positive[0]);
-    const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };
+    const asked = askFrom(starts);
     state.run = 'running'; state.result = null; state.resultB = null; state.reason = '';
     // The table reads the walk's starts here whichever way the wire carried them: one + start alone goes by its type and
     // keys, and its table is a Next's from that node (owner 10-10 E1: the same as one basket walked).
@@ -424,7 +447,19 @@ export function boot(doc, host, deps) {
    *  knobs ride along; the step's own hops is its one. */
   async function walkOn(at, seeds, route) {
     const asked = askAlong(seeds, route);
-    const step = placeStep(at, route.words, asked);
+    await walkStep(at, route.words, asked, asked);
+  }
+
+  /** Walk ▸ (owner 10-12): the bar's walk from the rows checked - their signs as they are - a child step of `at`. The
+   *  step keeps its starts for its table; the wire is the bar's ask. */
+  async function walkFull(at, seeds) {
+    const asked = askFrom(seeds);
+    await walkStep(at, NEXT_WORDS.walk, { ...asked, positive: seeds.positive, negative: seeds.negative }, asked);
+  }
+
+  /** A child step of `at` titled `title`, holding `shown` for its table, walking `asked`. */
+  async function walkStep(at, title, shown, asked) {
+    const step = placeStep(at, title, shown);
     render();
     const began = Date.now();
     const res = await walk(asked);
@@ -437,7 +472,7 @@ export function boot(doc, host, deps) {
 
   /** One step from the rows checked along `route` - New step's ask and Add here's. */
   function askAlong(seeds, route) {
-    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
+    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
     return asked;
   }
 
@@ -479,6 +514,17 @@ export function boot(doc, host, deps) {
    *  (18766: merged, the step's rows came first and nothing new drew) - its starts, checks, filters and sort the step's;
    *  × puts the one before back. */
   const moreOf = (r, asked) => moreAsk(r, asked || {});
+  /** More ▸ (owner 10-12 «이어 걷기»): the next page of the step's own walk, asked again with its resume; the page merged
+   *  into the step's answer - each node and edge once (mergeWalks, as Add here's); × puts the one before back. */
+  function walkResume() {
+    const at = state.at;
+    const { result: was, asked } = answerAt(at);
+    void walkInto(at, { ...was.ask, resume: was.more.resume }, (res) => {
+      lessAt.set(at, [...(lessAt.get(at) || []), { result: was, asked }]);
+      // As of the first page (the server's resume.as_of): the pages are one walk at that time.
+      setAnswer(at, { ...mergeWalks(res, was), ask: was.ask, pages: (was.pages || 1) + 1, generatedAt: was.generatedAt }, asked);
+    });
+  }
   function walkMore(more) {
     const at = state.at;
     void walkInto(at, more.asked, (res) => {
@@ -636,20 +682,24 @@ export function boot(doc, host, deps) {
   //    지금 고른 줄은 «지금 칸의 값»과 같은 줄입니다 — 손으로 고치면 표시가 정직하게 빠집니다.
   function renderRoutes(root) {
     if (!state.type || !state.collect.size) return;
-    const found = routes();
+    // After a walk, the ways it walked (owner 10-12 「실제 걸은 경로로 리턴 안 해?」); before, the declaration's shortest
+    // one, said as a suggestion - the list of every simple path and its predicate line retired.
+    const shown = shownStep();
+    const walked = shown.run === 'done' && shown.result ? walkedRoutes(shown.result, state.collect) : null;
+    const first = walked ? null : routes()[0];
+    const found = walked || (first ? [first] : []);
     const box = el(doc, 'div', 'wk-field');
     const head = el(doc, 'div', 'wk-routes-head');
-    head.append(el(doc, 'span', 'wk-label', `Route to ${[...state.collect].join(', ')}`),
-      el(doc, 'span', 'wk-note', unitText(found.length, 'route')));
+    head.append(el(doc, 'span', 'wk-label', `${walked ? 'Walked to' : 'Route to'} ${[...state.collect].join(', ')}`),
+      el(doc, 'span', 'wk-note', walked ? unitText(walked.length, 'route') : 'Suggested'));
     box.append(head);
     if (!found.length) {
       // 「길이 없다」는 답입니다. 빈 칸으로 두면 「아직 안 셌다」와 같아 보입니다.
       box.append(el(doc, 'div', 'wk-note',
         `No route from ${state.type} to ${[...state.collect].join(' · ')}`));
     }
-    // A route with the loop chips that are on fills follow and hops.
-    const useRoute = (r, on) => {
-      const asked = routeWith(r, on);
+    // A route (with the loop chips that are on) fills follow and hops.
+    const useRoute = (asked) => {
       // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
       state.follow = new Set([...state.follow, ...followFromRoute(allPredicates(), asked.follow)]);
       state.hops = String(asked.hops);
@@ -657,25 +707,22 @@ export function boot(doc, host, deps) {
     };
     const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
     for (const r of found) {
-      const asked = routeWith(r, loopsOf(r));
+      const asked = walked ? { follow: r.follow, hops: r.hops } : routeWith(r, loopsOf(r));
       const picked = state.hops === String(asked.hops)
         && sameSet(state.follow, new Set(followFromRoute(allPredicates(), asked.follow)));
       const route = el(doc, 'div', 'wk-route' + (picked ? ' is-on' : ''));
       const row = el(doc, 'button', 'wk-path');
       row.type = 'button';
       row.setAttribute('aria-pressed', picked ? 'true' : 'false');
-      row.append(el(doc, 'span', 'wk-pathto', `→ ${r.to}`));
-      // A line each, cut at the row's end on purpose (lead 18da45b73): the whole in its title, and in the form once pressed.
-      for (const [cls, text] of [['wk-pathchain', r.chain.join(' → ')], ['wk-pathmeta', `${unitText(asked.hops, 'hop')} · ${asked.follow.join(', ')}`]]) {
-        const line = el(doc, 'span', cls, text);
-        line.title = text;
-        line.setAttribute('data-clip-ok', '');
-        row.append(line);
-      }
-      row.addEventListener('click', () => useRoute(r, loopsOf(r)));
+      // The way whole, wrapped in the popover rather than cut (owner 10-12).
+      const text = walked ? `${r.words} · ${r.count}` : r.chain.join(' → ');
+      const line = el(doc, 'span', 'wk-pathchain', text);
+      line.title = text;
+      row.append(line);
+      row.addEventListener('click', () => useRoute(walked ? asked : routeWith(r, loopsOf(r))));
       route.append(row);
       // The route's self-loops: pressing one adds it to this route and uses the route.
-      if (r.loops.length) {
+      if (!walked && r.loops.length) {
         // Its word on its own line: beside it the 44 px chips stood boxed taller than their line (lead 34d91c09d 8).
         route.append(el(doc, 'div', 'wk-note', 'self-loops'));
         const chips = el(doc, 'div', 'wk-loops');
@@ -689,7 +736,7 @@ export function boot(doc, host, deps) {
             const next = new Set(loopsOf(r));
             if (on) next.delete(loop.predicate); else next.add(loop.predicate);
             state.loopsOn.set(routeKey(r), next);
-            useRoute(r, next);
+            useRoute(routeWith(r, next));
           });
           chips.append(chip);
         }
@@ -768,8 +815,32 @@ export function boot(doc, host, deps) {
   function renderBar(root) {
     startMount.textContent = '';
     renderStart(startMount);
+    // The node picked here is an auxiliary node too, on «+ Reaching» (owner 10-12): the same picker, its own marking.
+    const addReach = el(doc, 'button', 'wk-act wk-reachadd', REACH_ADD);
+    addReach.type = 'button';
+    addReach.addEventListener('click', () => {
+      const node = pickedNode();
+      if (!node) return;
+      reachNames.set(node.id, node.label);
+      markings.set(REACH, node.id, SIGN.CASE);
+    });
+    startMount.append(addReach);
     root.append(el(doc, 'span', 'wk-barword', 'From'), basketMount, el(doc, 'span', 'wk-barword', 'collect'));
     renderCollect(root);
+    // reaching: the auxiliary nodes picked, × takes one out.
+    const reach = markings.entries(REACH).map(([id]) => id);
+    if (reach.length) {
+      root.append(el(doc, 'span', 'wk-barword', 'reaching'));
+      for (const id of reach) {
+        const name = reachNames.get(id) || id;
+        const chip = el(doc, 'button', 'wk-chip wk-reachchip', `${name} ×`);
+        chip.type = 'button';
+        chip.setAttribute('data-reach', id);
+        chip.setAttribute('aria-label', `Remove ${name}`);
+        chip.addEventListener('click', () => markings.set(REACH, id, SIGN.ABSENT));
+        root.append(chip);
+      }
+    }
     through.chip.textContent = throughWord();
     through.body.textContent = '';
     renderThrough(through.body);
@@ -907,6 +978,16 @@ export function boot(doc, host, deps) {
     typed(find, `find\u0000${section.type}`, (value) => setFilter(section.type, { find: value }));
     seat.append(find, segmented('wk-rowfilter', 'data-rows', [['all', 'All rows'], ['differs', 'Differs'], ['missing', 'Missing']],
       filterOf(section.type).rows || 'all', (value) => { setFilter(section.type, { rows: value }); render(); }));
+    // A judged walk (owner 10-12): only the rows a shortest path takes to the auxiliary node(s) - the same seat as the rest.
+    if (section.judged) {
+      const on = Boolean(filterOf(section.type).reaches);
+      const only = el(doc, 'button', 'wk-act wk-reachonly' + (on ? ' is-on' : ''), REACH_WORDS.only);
+      only.type = 'button';
+      only.setAttribute('aria-pressed', String(on));
+      only.addEventListener('click', () => { setFilter(section.type, { reaches: !on }); render(); });
+      seat.append(only);
+      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));
+    }
     return seat;
   }
 
@@ -1104,9 +1185,12 @@ export function boot(doc, host, deps) {
     const said = (cell) => (cell ? `${cell.text}${cell.rest ? ` ${cell.rest}` : ''}` : '');
     const sides = section.groups.length;
     const span = (group) => section.parts.reduce((n, q) => n + (q.group === group ? sides : 0), 0);
+    // Read whole to the node column's far end: the node column's keys, and the judgment's column (the section's last own
+    // one), which names its auxiliary nodes (lead 10-12: «2 hops → SYN-BW-10…» said none of them).
+    const whole = (i) => i === 0 || (section.judged && i === section.centreHeads.length - 1);
     fixedColumns(table, checks, [
-      ...section.centreHeads.map((h, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
-        lettersOf(h), ...(i === 0 ? [' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node] : []))]),
+      ...section.centreHeads.map((_, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
+        most(section.centreLines[i]), i === 0 ? ' + var(--space-1) + var(--wk-h-small)' : '', whole(i) ? COLUMN_CH.node : undefined)]),
       ...section.parts.flatMap((p, i) => {
         const one = cellsOf(p.group) === 1;
         const far = lettersOf(farEnd(p.step).far);
@@ -1127,7 +1211,13 @@ export function boot(doc, host, deps) {
     // The heads a column of the grid stands under - the node's own, then each sign and Δ, or the group's one head - each
     // its sort and filter, k in shownOf's column order.
     let k = 0;
-    section.centreHeads.forEach((h) => { const th = el(doc, 'th', 'wk-centre', h); th.title = h; th.rowSpan = depth; headTools(th, section, shown, k++); first.append(th); });
+    // A head of several lines (the judgment's, lead 10-12) drawn a line each, as a group's is; its whole in its title.
+    section.centreHeads.forEach((h, i) => {
+      const lines = section.centreLines[i];
+      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);
+      if (lines.length > 1) { const text = el(doc, 'span', 'wk-headtext'); text.append(...lines.map((line) => el(doc, 'span', 'wk-headfar', line))); th.append(text); }
+      th.title = h; th.rowSpan = depth; headTools(th, section, shown, k++); first.append(th);
+    });
     section.parts.forEach((p, i) => {
       // A group - its step and far end - said once over its columns, with «▸ N» for the cells it folds (lead 10-11 W
       // addendum 8): pressed, they open in place; «▾» folds them again.
@@ -1659,6 +1749,14 @@ export function boot(doc, host, deps) {
     const checked = new Set(marked.map(([id]) => rows.get(id).type));
     const sections = view.sections.filter((s) => !checked.size || checked.has(s.type));
     onward.append(el(doc, 'span', 'wk-markedword', 'Walk on ▸'));
+    // Walk ▸: every row checked and shown, the bar's walk from them (owner 10-12).
+    const shownIds = new Set(view.sections.flatMap((s) => shownFor(view, s).ids));
+    const all = seedsOf(marked.filter(([id]) => shownIds.has(id)));
+    const full = el(doc, 'button', 'wk-next-edge wk-walkfull', NEXT_WORDS.walk);
+    full.type = 'button';
+    setDisabledReason(full, all.positive.length ? '' : CHECK_ROWS_FIRST);
+    full.addEventListener('click', () => { if (all.positive.length) void walkFull(at, all); });
+    onward.append(full);
     for (const section of sections) {
       const shown = shownFor(view, section);
       const seeds = seedsOf(shown.ids.map((id) => [id, markings.signOf(checks, id)]));
@@ -1794,7 +1892,22 @@ export function boot(doc, host, deps) {
       // ⚠️ 절단은 «말합니다». 🔴 «자른 축»을 씁니다 — `reason` 을 그대로 쓰면 다 걸은 답에도 depth 가 실립니다.
       // The walk as merged so far: More's latest answer, or the step's own (lead 10-12).
       const askedNow = state.at === 0 ? state.asked : shown.asked;
-      const more = moreOf(r, askedNow);
+      // The server's continuation: each collected type reached or cut, its pages, and More ▸ for the next one; without it,
+      // today's More (each limit that cut it raised).
+      if (r.more) {
+        const reach = Object.entries(r.more.reach || {}).map(([type, x]) => (x && x.complete
+          ? `${type}: all reached` : `${type}: cut · ${(x && x.unexpanded) || 0} not expanded`));
+        // Whether there is more is the resume's alone (lead 10-12: a type's «complete» was true on a cut page).
+        const line = el(doc, 'div', 'wk-reachline', [...reach, ...(r.pages > 1 ? [`${r.pages} pages`] : []),
+          ...(r.more.resume ? [MORE_TO_WALK] : [])].join(' · '));
+        const go = el(doc, 'button', 'wk-next-edge wk-more', MORE_ON);
+        go.type = 'button';
+        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);
+        go.addEventListener('click', () => { if (r.more.resume) walkResume(); });
+        line.append(go);
+        box.append(line);
+      }
+      const more = r.more ? null : moreOf(r, askedNow);
       if (more) {
         const cut = el(doc, 'div', 'wk-trunc', `Cut · ${more.budgets.join(' · ')}${more.asked ? '' : ` · ${AT_SERVER_LIMIT}`}`);
         // More: the same walk, the limit that cut it raised, merged into this step; cut again, again.

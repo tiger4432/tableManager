@@ -516,14 +516,12 @@ export function createGlobalTimelineItemDom(group) {
   const stamp = new Date(baseLog.timestamp);
   const timeStr = [stamp.getHours(), stamp.getMinutes(), stamp.getSeconds()]
     .map(part => String(part).padStart(2, '0')).join(':');
-  // 대상 표는 «줄을 늘리지 않고» 이 칸 안에 들어갑니다. 묶음 줄은 원래 여기에 표 이름을
-  // 그렸고(다만 첫 로그에서 가져왔고), 낱개 줄은 표를 «아예 안 보여 줬습니다» --
-  // 소유자가 본 것이 그쪽입니다.
+  // The table a column of its own (owner 10-12 「감사로그 대상 테이블 컬럼 따로 빼」), said once: the target cell
+  // keeps the row and its column. 묶음 줄은 표본이면 첫 로그의 표라도 말합니다.
   const targetTable = auditTargetTable(group);
   const rowKey = baseLog.business_key || baseLog.row_id.slice(0, 8);
   const keyTable = isSummary ? (targetTable || baseLog.table_name) : targetTable;
-  const keyRow = isSummary ? '' : (targetTable ? ` · ${rowKey}` : rowKey);
-  const targetKey = `${keyTable}${keyRow}`;
+  const keyRow = isSummary ? '' : rowKey;
   const targetCol = isSummary
     ? `${group.total_count} ROWS`
     : baseLog.column_name;
@@ -533,8 +531,9 @@ export function createGlobalTimelineItemDom(group) {
       <div class="audit-cell audit-time">${timeStr}</div>
       <div class="audit-cell audit-user">${escapeHtml(user)}</div>
       <div class="audit-cell audit-kind"><span class="audit-pill ${kind.cls}">${kind.label}</span></div>
+      <div class="audit-cell audit-tbl"><span class="audit-target-table" data-clip-ok title="${escapeHtml(keyTable)}">${escapeHtml(keyTable)}</span></div>
       <div class="audit-cell audit-target">
-        <span class="audit-target-key" title="${escapeHtml(targetKey)}"><span class="audit-target-table" data-clip-ok>${escapeHtml(keyTable)}</span><span class="audit-target-row">${escapeHtml(keyRow)}</span></span>
+        <span class="audit-target-key" title="${escapeHtml(keyRow)}"><span class="audit-target-row">${escapeHtml(keyRow)}</span></span>
         <span class="audit-target-col">${escapeHtml(targetCol)}</span>
       </div>
       <div class="audit-cell audit-change">

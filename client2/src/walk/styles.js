@@ -130,15 +130,13 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. A control's height, its chain and its hops a
    line each, cut at the row's end with the whole in its title (lead 18da45b73: 53 and 88 px rows); a press puts the
    whole route in the form above. */
-.wk-path { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); width: 100%;
-  text-align: left; height: var(--wk-h); padding: 0 var(--space-3); margin: 0; align-content: center;
+/* A route a line, read whole (owner 10-12: a walked way runs five hops) - it wraps in the popover rather than cut. */
+.wk-path { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%;
+  text-align: left; min-height: var(--wk-h); padding: var(--space-2) var(--space-3); margin: 0; align-content: center;
   border: 0; border-radius: 6px; cursor: pointer;
   background: transparent; color: inherit; font: inherit; }
 .wk-path:hover { background: var(--accent-weak); }
-.wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
-.wk-pathchain, .wk-pathmeta { min-width: 0; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wk-pathchain { font-size: var(--wk-fs-body); }
-.wk-pathmeta { font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); }
+.wk-pathchain { min-width: 0; line-height: 1.25; overflow-wrap: anywhere; font-size: var(--wk-fs-body); }
 /* A route's self-loops, as chips under its row: off by default (lead 5d5b8d750). */
 .wk-loops { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-loopchip { min-height: var(--wk-h); padding: 0 var(--space-4); border-radius: 999px; cursor: pointer;
@@ -169,6 +167,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-act { height: var(--wk-h-small); padding: 0 var(--space-3); font: inherit; font-size: var(--wk-fs-line); color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-act.is-on { border-color: var(--accent); color: var(--accent); }
+/* «Reaches only» on is filled, as a segment on is: beside All rows · Differs · Missing it says at a glance what narrows. */
+.wk-reachonly.is-on { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); font-weight: 600; }
 .wk-secviews, .wk-copybar, .wk-colmenu { display: inline-flex; align-items: center; gap: var(--space-2); }
 .wk-secbar .wk-select { width: auto; max-width: 100%; min-height: var(--wk-h-small); height: var(--wk-h-small); font-size: var(--wk-fs-line); }
 /* Long's Value and a trend's column: as wide as a name, not as their longest choice - the toolbar stays one line. */
@@ -220,6 +220,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   max-height: 88px; overflow-y: auto; }
 .wk-markedrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-markedword { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
+/* The judgment's counts are read, not glanced at (lead 10-12): body size and colour. */
+.wk-reachtally { color: var(--text); font-size: var(--wk-fs-body); line-height: var(--wk-h-small); }
 .wk-marked .wk-chip { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
 .wk-next-edge { height: var(--wk-h-small); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }
@@ -377,6 +379,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
 .wk-walk { color: var(--text-dim, #71717a); }
 .wk-trunc { color: var(--warning); }
+/* The continuation's line (owner 10-12): read, so the body's size and colour; its More ▸ beside the words. */
+.wk-reachline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--wk-fs-body); color: var(--text); }
 .wk-fail { color: var(--danger, #dc2626); font-size: var(--wk-fs-body); }
 .wk-row { display: flex; gap: var(--space-2); align-items: baseline; padding: var(--space-1) 0;
   border-top: 1px solid var(--border, #d4d4d8); font-size: var(--wk-fs-line); }
