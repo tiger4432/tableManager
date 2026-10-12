@@ -189,7 +189,12 @@ def copies(pg_engine):
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
             db = Session()
             seeded = _seed(db)
-            out["B_dry"] = replay.fold_units(db, RULES[0]["name"], log=lambda m: None)
+            lines = out["B_dry_lines"] = []
+
+            def hook(_processed, _total):
+                return False
+            hook.step = lambda name, page, pages, rows: lines.append((name, page, rows))
+            out["B_dry"] = replay.fold_units(db, RULES[0]["name"], log=lambda m: None, checkpoint=hook)
             out["B_after_dry"] = _state(db, seeded)
             out["B_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)   # B
             out["B"] = _state(db, seeded)
@@ -273,3 +278,11 @@ def test_the_decided_cells_take_the_doors_answer(copies):
     """`_fold_units_forced` off - every cell judged by `crud.apply_row_update_internal` - leaves the same."""
     assert copies["B_door"] == copies["B"]
     assert {k: copies["B_door_stats"][k] for k in ("rows_to_mark", "rows_already_marked", "rows_higher_layer")} ==         {k: copies["B_stats"][k] for k in ("rows_to_mark", "rows_already_marked", "rows_higher_layer")}
+
+
+def test_the_first_line_comes_once_one_group_is_asked(copies):
+    """총괄 10-12 (응용: «fold_units 가 그룹을 한 번에 다 물음» 변이가 살아남음): the first line is the rule seat's
+    answer for the first group alone - not the whole answer before anything is said."""
+    first = min(w for _job, w, _t in JOBS if w)
+    assert copies["B_dry_lines"][0] == ("rule", 1, sum(1 for _job, w, _t in JOBS if w == first)), (
+        copies["B_dry_lines"][:3])

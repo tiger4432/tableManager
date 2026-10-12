@@ -1174,12 +1174,6 @@ def fold_units_target(rule_name):
     return rule, resolve_target(units)[0], resolve_target(logs, [mark])[0], mark
 
 
-def _step_of(checkpoint):
-    """`step(name, page, pages, rows)` - the step seat on a run's checkpoint (`retroactive._checkpoint`,
-    총괄 e71f7d6f1), or a no-op when there is none (a dry run, a direct call)."""
-    return getattr(checkpoint, "step", None) or (lambda *_: None)
-
-
 def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=logger.info,
                checkpoint=None) -> dict:
     """A fold rule's answer over every unit row, written without the chain's queue (총괄 10-11, 소유자
@@ -1217,7 +1211,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
 
     total = None                                   # counted as it goes - the answer is asked a few groups at a time
     size = keyset_scan.PageSize(FOLD_UNITS_PAGE)
-    step = _step_of(checkpoint)
+    step = keyset_scan.step_of(checkpoint)
 
     def asked():
         """The rule seat asked whole groups at a time - one first, twice as many each call, at most
@@ -1689,7 +1683,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     total = db.query(func.count(model.row_id)).scalar() or 0
     total = min(total, limit) if limit is not None else total
     columns = [getattr(model, column.key) for column in physical if column.key != "row_id"] if by_value else None
-    step, size = _step_of(checkpoint), keyset_scan.PageSize(chunk_size)
+    step, size = keyset_scan.step_of(checkpoint), keyset_scan.PageSize(chunk_size)
     with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
         for page in keyset_scan.iter_pages(db, model, columns=columns, chunk_size=chunk_size, limit=limit,
                                            size=size):

@@ -8,6 +8,8 @@ import os
 import sys
 import time
 
+import pytest
+
 from sqlalchemy import Column, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -79,3 +81,31 @@ def test_the_keyset_scan_starts_at_one_row_and_keeps_every_page_under_the_cap():
         [r[0] for r in page] for page in keyset_scan.iter_pages(db, Row, columns=[], size=size)))
     _assert_within_the_cap(read, sizes, seconds, times, lines, every)
 
+
+
+@pytest.mark.pg
+def test_a_ledger_backfill_page_says_its_read_and_its_translation(pg_engine, monkeypatch, tmp_path, doubling_pages):
+    """총괄 10-12 (응용: a ledger backfill page took 7.7 s with its one line at its end): inside each page a line after
+    the read and one after the translation and write - the steps a slow page passes, each stamping the progress time."""
+    import uuid
+
+    from database import models
+    from ledger import backfill
+    from support import hold_world as hw
+
+    built = hw.build(pg_engine, monkeypatch, tmp_path, batch=True)
+    world = next(built)
+    try:
+        with world["engine"].begin() as conn:
+            conn.execute(models.DYNAMIC_TABLES[hw.OFFICIAL].__table__.insert(), [
+                {"row_id": str(uuid.uuid4()), "dt_job": "J%d" % i, "dt_x": i, "dt_y": i, "netdie": 1.0 + i,
+                 "hold": "agreed"} for i in range(3)])
+        lines = []
+
+        def hook(_rows, _total):
+            return False
+        hook.step = lambda name, page, pages, rows: lines.append((name, page, rows))
+        backfill._run_via_events(world["engine"], world["setup"], hw.SOURCE, checkpoint=hook)
+        assert lines == [("read", 1, 1), ("translated", 1, 1), ("read", 2, 2), ("translated", 2, 2)], lines
+    finally:
+        next(built, None)

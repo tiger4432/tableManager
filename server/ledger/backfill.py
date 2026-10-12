@@ -337,6 +337,8 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     # translated without withdrawing (판정 166) - so it wrote that source's facts twice, once
     # more each time the declaration had moved.
     only, size = frozenset({source}), keyset_scan.PageSize(page_rows)
+    # a line inside the page - read, then translated and written - so a slow page still shows it is moving (총괄 10-12)
+    step = keyset_scan.step_of(checkpoint)
     # the rows this run has to read, for its page line - a table's (`_table_rows`)
     total = (rows_not_yet_translated(engine, setup, source, world=world)["not_yet"]
              if checkpoint is not None and _table_rows(engine, plan, count=False) else None)
@@ -345,6 +347,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
                                            world=world)
         if not page:
             break
+        step("read", report["batches"] + 1, None, len(page))
         after = page[-1]
         report["batches"] += 1
         report["rows_read"] += len(page)
@@ -353,6 +356,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
                                         followup.queue_depth())
         while followup.queue_depth() >= EVENT_LOAD_QUEUE_LIMIT:
             _drain_into(engine, setup, report, world=world, sources=only)
+        step("translated", report["batches"], None, len(page))
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
             size.rest(rest_seconds)

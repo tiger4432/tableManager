@@ -74,6 +74,12 @@ class PageSize:
             self._since += seconds
 
 
+def step_of(checkpoint):
+    """`step(name, page, pages, rows)` - the step seat on a run's checkpoint (`retroactive._checkpoint`, 총괄 e71f7d6f1):
+    a line and the progress time inside a page; a no-op when there is none (a dry run, a direct call)."""
+    return getattr(checkpoint, "step", None) or (lambda *_: None)
+
+
 def pages(items, start: int = 0):
     """`(the page of `items` from `start`, the start of the next page or None)` - DEFAULT_CHUNK_SIZE at a time, and
     the page count when `start` is 0. A proposal that writes in pages (the join, the fold mapper - 총괄 e10c58e5e ·
