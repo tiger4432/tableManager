@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+
+from runtime.offloop_json import OffLoopJSONRoute
 from sqlalchemy.orm import Session
 
 from admin import sso
@@ -16,7 +18,7 @@ from ledger.schema import DEFAULT_WORLD
 from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 
 
-router = APIRouter(prefix="/admin/ontology-explorer", tags=["ontology-explorer"])
+router = APIRouter(prefix="/admin/ontology-explorer", tags=["ontology-explorer"], route_class=OffLoopJSONRoute)
 #: One explorer per ledger world, built from the world seat's names (총괄 60d7e8e42): its
 #: declaration root, its drafts, and the declaration a new branch starts from. Key None is
 #: the default world.

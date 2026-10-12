@@ -18,6 +18,8 @@ import json
 import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+
+from runtime.offloop_json import OffLoopJSONRoute
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -29,7 +31,7 @@ from declaration_names import bare_name as _bare_name
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/ledger", tags=["ledger"])
+router = APIRouter(prefix="/api/ledger", tags=["ledger"], route_class=OffLoopJSONRoute)
 
 def _worlds(world):
     """The names of the ledger worlds a request asked for, in the order asked (총괄 60d7e8e42 ·

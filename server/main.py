@@ -8,6 +8,7 @@ from outbox_listener import OutboxListener
 from database import models, schemas, crud
 from runtime import system_reload
 from runtime import request_timing  # Server-Timing and the slow-request line (총괄 10-07 ④)
+from runtime.offloop_json import OffLoopJSONRoute
 from listing_absence import absent_listing
 from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
 import uuid 
@@ -135,6 +136,8 @@ def bootstrap_database_schema(bind=None):
         logger.error(f"Failed to sync dynamic tables schema: {e}")
 
 app = FastAPI(title="AssyManager Table Server")
+# Every sync route's answer becomes bytes on its worker thread, not the event loop (runtime.offloop_json).
+app.router.route_class = OffLoopJSONRoute
 
 # --- ContextVars Middleware config ---
 from database.context import (request_user, request_transaction_id, request_source,
