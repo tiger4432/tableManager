@@ -3,12 +3,15 @@
 최단경로」): `aux` judges each walked node - found (hops to the nearest aux) · none · unknown - by the same walk from the
 aux nodes with the guards that drop a step off; the answer's nodes and edges stay as walked. Seed: wafer W, its dies
 D0 · D1 · D2; each cell an aux node of its own:
-  A1  reaches D0 only through a static name (quantity Q, a hub of 50 more dies)   found
+  A1  reaches D0 only through a hub - quantity Q of 300 more dies - under a 200-atom cap: found only when the
+      meeting reads the hub's edges to what the walk holds, not all of them (the set door)
   A2  reaches D1 only by a predicate the walk does not follow   found
   A3  reaches D2 directly and through two steps                 found, the shorter
   A4  joined to nothing the walk holds                          none
   A5  a fan-out past the atom cap (the answer's node cap does not bind it)       unknown, never none
-  A6  reaches D0 only by a step back down (die -> W -> die)     found"""
+  A6  reaches D0 only by a step back down (die -> W -> die)     found
+  A7  fans out to 20, one of which meets D1's defect F: the walk's side grows to meet it    found, 3 hops
+  and the door's default (no `far`) reads what the walk read before it"""
 import json
 import os
 import sys
@@ -54,7 +57,7 @@ def die(name):
 ATOMS = ([_atom("die", die("D%d" % k), "in_container", "wafer", {"w": "W"}) for k in range(3)]
          + [_atom("die", die("D0"), "measures", "quantity", {"q": "Q"}),
             _atom("die", die("A1"), "measures", "quantity", {"q": "Q"})]               # A1 -> Q -> D0
-         + [_atom("die", die("H%d" % k), "measures", "quantity", {"q": "Q"}) for k in range(50)]
+         + [_atom("die", die("H%d" % k), "measures", "quantity", {"q": "Q"}) for k in range(300)]
          + [
             _atom("die", die("D1"), "observed", "defect", {"f": "F"}),
             _atom("die", die("A2"), "observed", "defect", {"f": "F"}),                 # A2 -> F -> D1, not followed
@@ -63,9 +66,11 @@ ATOMS = ([_atom("die", die("D%d" % k), "in_container", "wafer", {"w": "W"}) for 
             _atom("die", die("X"), "linked", "die", die("D2")),                        # A3 -> X -> D2
             _atom("die", die("A4"), "linked", "die", die("Z"))]                        # nothing the walk holds
          + [_atom("die", die("A5"), "linked", "die", die("N%d" % k)) for k in range(300)]
-         + [_atom("die", die("A6"), "in_container", "wafer", {"w": "W"})])           # A6 -> W -> D0: back down
+         + [_atom("die", die("A6"), "in_container", "wafer", {"w": "W"})]            # A6 -> W -> D0: back down
+         + [_atom("die", die("A7"), "linked", "die", die("M%d" % k)) for k in range(20)]
+         + [_atom("die", die("M0"), "observed", "defect", {"f": "F"})])         # A7 -> M0 -> F <- D1
 SEED = explorer.entity_id("wafer", {"w": "W"})
-AUX = {name: explorer.entity_id("die", die(name)) for name in ("A1", "A2", "A3", "A4", "A5", "A6")}
+AUX = {name: explorer.entity_id("die", die(name)) for name in ("A1", "A2", "A3", "A4", "A5", "A6", "A7")}
 D = {name: explorer.entity_id("die", die(name)) for name in ("D0", "D1", "D2")}
 
 
@@ -90,7 +95,8 @@ def judged(body):
 
 
 def test_a_node_reached_only_through_a_static_name_is_found(declared):
-    assert judged(walk(declared, [AUX["A1"]]))[D["D0"]] == {"state": "found", "hops": 2, "via": AUX["A1"]}
+    body = walk(declared, [AUX["A1"]], edge_limit=20)       # atom cap 200, the hub 301
+    assert judged(body)[D["D0"]] == {"state": "found", "hops": 2, "via": AUX["A1"]}, body["aux"]
 
 
 def test_a_node_reached_only_by_a_predicate_the_walk_does_not_follow_is_found(declared):
@@ -121,3 +127,18 @@ def test_several_aux_name_the_nearest_and_the_answer_is_the_walk_without_them(de
                                                                         len(body["edges"]))
     assert "aux" not in plain and all("aux" not in n for n in plain["nodes"])
     assert judged(body)[D["D2"]] == {"state": "found", "hops": 1, "via": AUX["A3"]}
+
+
+def test_the_walks_side_grows_to_meet_a_wide_aux(declared):
+    assert judged(walk(declared, [AUX["A7"]]))[D["D1"]] == {"state": "found", "hops": 3, "via": AUX["A7"]}
+
+
+def test_the_door_given_nothing_reads_what_the_walk_read():
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(ATOMS)
+    wafer = [("wafer", {"w": "W"})]
+    plain, _ = lookup.claims_for_entities(wafer, "both", 1000)
+    open_door, _ = lookup.claims_for_entities(wafer, "both", 1000, far=None)
+    inside, _ = lookup.claims_for_entities(wafer, "both", 1000, far=("in", [("die", die("D0"))]))
+    outside, _ = lookup.claims_for_entities(wafer, "both", 1000, far=("not_in", [("die", die("D0"))]))
+    assert [a.id for a in plain] == [a.id for a in open_door] and len(plain) == 4
+    assert ([a.subject_keys for a in inside], len(outside)) == ([die("D0")], 3)
