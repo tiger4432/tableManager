@@ -66487,3 +66487,31 @@ B 다시 읽기 취소와 와쳐 (응용 감사 — 임시 SQLite 로 잼, 제�
 순서      착지 전후 대조 -> 박스 베끼기 시작(뒤에서 돌게) -> 그동안 이것 -> (응답 인코딩 지시가 오면 그것) -> 섞인 부하(고친 main 위에서)
           앞서 소유자께 여쭌 «로그 표 키 칸 이름»은 이것으로 답이 된다 — 이름은 규칙 선언에서 온다
 ```
+
+> **[총괄 -> 구현자] 10-12 밤 — 짓기: 응답을 글자로 바꾸는 자리를 서버 전체에 «하나», 요청 받는 줄 밖에서 (소유자 「알아서해」 목록 ②)**
+
+```
+잰 것(총괄, 장난감 서버 · fastapi 0.135.3 그대로 · 이 박스, 세 번 중앙)
+   동기 라우트가 dict 를 돌려줌(지금 걷기와 같은 길)   1 MB 0.14 s · 10 MB 1.5 s · 50 MB 7.9 s — 그동안 async 핑 · 동기 핑 · 정적 파일 «전부» 같은 초만큼 멈춤
+   라우트 안에서 json.dumps 해 Response 로 돌려줌      1 MB 0.02 s(멈춤 안 보임) · 10 MB 0.15 s(멈춤 0.12 s) · 50 MB 0.71 s(멈춤 0.63 s)
+   읽은 코드  fastapi routing.serialize_response 의 응답 모델 없는 갈래가 jsonable_encoder 를 루프에서, JSONResponse.render 가 json.dumps 를 루프에서
+             걷기(trace_router evidence_subgraph)가 그 길 — 50 MB 의 7.7 s 중 약 7.1 s 가 jsonable_encoder 로 보임(추정, 따로 안 잼)
+도착지   응답 모델 없이 dict/list 를 돌려주는 «모든» 동기 라우트의 변환이 일꾼 스레드에서 json.dumps 로 — 루프에서 0
+무엇     자리 하나: APIRoute 하위 클래스(route_class) 를 app · 모든 APIRouter 에 — 동기 엔드포인트를 감싸, 결과가 Response 가 아니면
+        그 자리(일꾼 스레드)에서 json.dumps(default=jsonable_encoder 로 넘김, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        -> JSONResponse 와 «바이트가 같은» 몸을 돌려준다. 라우트마다 고치지 않는다. 새 의존성(orjson 등) 없음
+먼저 셀 것 (AST · 라우트 전수 · 카나리아 = 라우트 수 > 0)
+        ① decorator 에 status_code 를 적은 동기 라우트 — 감싼 Response 가 그 상태를 그대로 실어야 함
+        ② Response 인자를 받아 헤더 · 쿠키를 싣는 라우트(X-Total-Rows 등) — 돌려준 Response 에 그 헤더가 실리는지 fastapi 소스로 확인하고 맞춘다
+        ③ response_model · response_class 를 적은 라우트 — 그대로 두고 감싸지 않는다(어느 쪽인지 표로)
+        ④ async 라우트 — 감싸지 않는다(그 안의 큰 변환이 있으면 이름을 적는다)
+게이트 (표로 · 같은 커밋에)
+   ① 바이트 같음  스위트의 API 응답(상태 · 헤더 · 몸)을 감싸기 전 · 후로 기록해 «전부» 같다 — 다른 것은 라우트 이름과 함께
+   ② NaN · 날짜 · 집합 · Decimal 이 든 응답이 전과 같은 답(NaN 은 전처럼 거절)
+   ③ 멈춤     같은 장난감 측정을 «제품 앱»으로: 걷기 큰 답 하나가 도는 동안 /health 대신 DB 안 닿는 async 핑 최대 ms — 전 · 후
+              고치기 전 코드에서 큰 답 초만큼 멈춤(빨강), 뒤 0.1 배 아래
+   ④ 진짜 프로세스  런처 그대로 · 걷기 화면 · 그리드 · 내보내기 한 번씩 열어 응답 같음
+지킬 것   최소 수정 · RELEASE_LOG 한 줄 · 걷기 답의 json.dumps 가 지금 경로와 바이트가 같다는 것은 이미 잼(wk_more_bytes)
+남는 것   json.dumps 도 GIL 을 쥐어 50 MB 면 0.6 s 는 남는다 — «멈춤 0»은 무거운 일을 프로세스로 빼는 일(소유자께 여쭘)과 걷기 허브 + 표
+순서      이것을 키 인덱스 지시(74db23f4b)보다 «먼저» — 더 작고, 모든 사람의 화면이 멈추는 일이다
+```
