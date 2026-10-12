@@ -58,6 +58,8 @@
 
 ### 원장 선언
 
+- 2026-10-12 [고침 — exclude_when 의 잘못 적은 줄이 받는 두 모양을 말한다](#2026-10-12--고침--exclude_when-의-잘못-적은-줄이-받는-두-모양을-말한다) — 누르는 곳 원장 선언 화면
+- 2026-10-12 [원장 선언 — 한 소스의 문장 여럿 중 대상 칸이 빈 문장만 빠진다](#2026-10-12--원장-선언--한-소스의-문장-여럿-중-대상-칸이-빈-문장만-빠진다) — 적는 곳 `ledger_config.json` · 누르는 곳 원장 선언 화면
 - 2026-10-12 [원장 선언 — 조건에 «아니다» — 칸 a 가 b 면 문장 c, 아니면 문장 d](#2026-10-12--원장-선언--조건에-아니다--칸-a-가-b-면-문장-c-아니면-문장-d) — 적는 곳 `ledger_config.json` · 누르는 곳 원장 선언 화면
 - 2026-10-11 [format 없는 시각 글자는 확장 ISO 만 — 테스트 런과 백필이 같은 답](#2026-10-11--format-없는-시각-글자는-확장-iso-만--테스트-런과-백필이-같은-답) — 적는 곳 `ontology/ledger_config.json`
 - 2026-10-11 [원장 — optional 한정자의 칸이 빈 행은 그 한정자 없이 들어간다](#2026-10-11--원장--optional-한정자의-칸이-빈-행은-그-한정자-없이-들어간다)
@@ -304,6 +306,57 @@
 - 2026-09-29 ~ 10-01 [이번 주 고친 것 — 소유자가 신고한 화면](#2026-09-29--10-01--이번-주-고친-것--소유자가-신고한-화면)
 
 ---
+
+## 2026-10-12 · 고침 — exclude_when 의 잘못 적은 줄이 받는 두 모양을 말한다
+
+- **무엇** — `read.exclude_when` 에 `{"column": "<칸>", "value": "x"}` 처럼 두 모양 어느 것도 아닌 줄을 적으면 «the only supported condition is 'blank': true» 와 칸마다의 거절이 나왔습니다(소유자 10-12 「exclude when 오류남 컬럼 값 제외」). 10-08 부터 값 조건도 받는데 그 문장은 그것을 말하지 않았습니다. 이제 그 줄 자리에 한 줄: «a clause is {"column": <c>, "blank": true} - rows where <c> is blank - or {"when": {<c>: <value>}} - rows where <c> is that value, {"not": <value>} for every other value; write one of the two». `blank: false` 도 같은 줄입니다.
+- **선언 예시** — 새 선언은 없습니다. 값 x 인 행을 빼는 줄은 `{"when": {"<칸>": "x"}}` 입니다(10-08 항목).
+- **화면에서** — 원장 선언 화면의 거절 목록에 그 줄 자리(`read.exclude_when[N]`) 하나로.
+- **필요한 조건** — 서버 재기동.
+- **자세히** — `server/tests/test_a_source_says_which_rows_are_not_its_own.py` 의 소유자 입력 그대로의 시험 · 이 항목과 같은 커밋.
+
+## 2026-10-12 · 원장 선언 — 한 소스의 문장 여럿 중 대상 칸이 빈 문장만 빠진다
+
+- **무엇** — 한 소스에 문장 여럿을 적고 문장마다 대상을 다른 칸에서 읽을 때, 어떤 행의 그 칸이 비면 «그 문장만» 그 행에서 말하지 않습니다(소유자 10-12 「세 개 중 빈 거는 무시」). 전엔 그 행이 통째로 `no_identity` 로 거절돼 채워진 칸의 엣지까지 잃었습니다. `when` 이 안 맞는 문장과 같은 결과이고, 거절도 제외도 아닙니다.
+- **그대로인 것** — 모든 문장이 쓰는 칸(공통 주어 칸 같은)이 비면 전처럼 그 행이 `no_identity` 로 거절됩니다. 문장이 하나뿐인 소스, `allow_null` 엔티티의 키 칸, 맵퍼가 `declarative-role` 이 아닌(코드) 소스도 전처럼 거절합니다. 칸에서 타입을 읽는 역할도 같은 규칙입니다.
+- **선언 예시** — `ontology/ledger_config.json` 의 `sources` 에 소스 하나. 표 · 칸 이름은 운영 표의 것으로 바꿉니다. 술어 `related_to` 는 목적어 타입으로 셋을 받아야 하고, `read` 는 안 적었습니다(카탈로그의 키 · 행이 저장된 시각):
+
+```json
+{
+  "relation": "process_links",
+  "map": {"implementation_id": "declarative-role", "implementation_version": 1},
+  "bind": {
+    "mappings": {
+      "process-object": {
+        "predicate": "related_to",
+        "bind": {
+          "subject": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "process_id"}}},
+          "target": {"kind": "entity", "entity_type": "physical_object", "keys": {"object_id": {"kind": "column", "column": "object_id"}}}
+        }
+      },
+      "process-quantity": {
+        "predicate": "related_to",
+        "bind": {
+          "subject": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "process_id"}}},
+          "target": {"kind": "entity", "entity_type": "physical_quantity", "keys": {"quantity_id": {"kind": "column", "column": "quantity_id"}}}
+        }
+      },
+      "process-process": {
+        "predicate": "related_to",
+        "bind": {
+          "subject": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "process_id"}}},
+          "target": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "related_process_id"}}}
+        }
+      }
+    }
+  }
+}
+```
+
+- **화면에서** — 원장 선언 화면의 테스트 런에서 대상 칸이 빈 행은 거절 목록에 안 나오고, 채워진 문장의 원자만 나옵니다.
+- **필요한 조건** — 서버 · 체인 재기동. 전에 거절된 행은 원자가 없어 색인에 없으므로 «아직 번역 안 된 행»으로 남아 있습니다.
+- **아직 안 되는 것** — 대상 칸이 «전부» 빈 행은 원자를 하나도 안 쓰고, 거절 · 알림 줄도 없고, 색인에 안 올라가 «아직 번역 안 된 행»으로 계속 셉니다.
+- **자세히** — `server/tests/test_a_blank_target_leaves_only_its_sentence_unsaid.py` 가 위 예시를 이 파일에서 읽어 그대로 돌립니다 · 이 항목과 같은 커밋.
 
 ## 2026-10-12 · 원장 선언 — 조건에 «아니다» — 칸 a 가 b 면 문장 c, 아니면 문장 d
 

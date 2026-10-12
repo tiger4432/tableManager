@@ -2075,6 +2075,12 @@ def exclusion_columns(clause: Mapping[str, Any]) -> tuple:
     return tuple(when) if isinstance(when, Mapping) else (clause.get("column"),)
 
 
+#: The two clauses `read.exclude_when` takes, said in one line wherever a clause is refused.
+_EXCLUDE_CLAUSES = ('a clause is {"column": <c>, "blank": true} - rows where <c> is blank - or '
+                    '{"when": {<c>: <value>}} - rows where <c> is that value, {"not": <value>} for '
+                    'every other value; write one of the two')
+
+
 def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
     """`[{"column": <name>, "blank": true} | {"when": {<column>: <value>, ...}}, ...]` - rows this
     source says are not its own.
@@ -2091,8 +2097,9 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
     이 bbox 가 아닌 행만」): `{"when": {...}}` is `_validate_when` - `<v>` or `{"not": <v>}`, keys
     ANDed; several values are several clauses. A blank column never equals `<v>`, so a value
     clause does not take it out and a `{"not": <v>}` clause does. No operator of its own.
-    ⛔ `blank` MUST BE `true`, and a clause is one or the other. `blank: false` is refused rather
-    than read as "keep only the blanks" - a different feature, to be asked for by name.
+    ⛔ `blank` MUST BE `true`, and a clause is one or the other. Any other clause - `blank: false`,
+    or `{"column", "value"}` (소유자 10-12 「exclude when 오류남」) - is refused with the one line
+    `_EXCLUDE_CLAUSES` that names both forms.
     """
     if value is None:
         return
@@ -2106,18 +2113,19 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
             if problems.exact(clause, spot, required=("when",)):
                 _validate_when(clause["when"], f"{spot}.when", problems)
             continue
-        if not problems.exact(clause, spot, required=("column", "blank")):
+        if not isinstance(clause, Mapping) or set(clause) != {"column", "blank"}:
+            problems.add("invalid_type", spot, _EXCLUDE_CLAUSES)
             continue
+        problems.exact(clause, spot, required=("column", "blank"))  # the form's cells, for the skeleton count
         column = clause.get("column")
         if not isinstance(column, str) or not column.strip():
             problems.add("invalid_type", f"{spot}.column",
                          "must name a column of this source's relation")
-        why = validation.flag_refusal("blank", clause["blank"]) if "blank" in clause else None
+        why = validation.flag_refusal("blank", clause["blank"])
         if why:
             problems.add("invalid_type", f"{spot}.blank", why)
-        elif clause.get("blank") is not True:
-            problems.add("invalid_type", f"{spot}.blank",
-                         "the only supported condition is 'blank': true")
+        elif clause["blank"] is not True:
+            problems.add("invalid_type", f"{spot}.blank", _EXCLUDE_CLAUSES)
 
 
 def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
