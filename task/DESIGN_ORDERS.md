@@ -38534,3 +38534,19 @@ D 우리 뜻으로 옮길 때 (모양은 위, 뜻은 우리 것)
           18766 진짜 브라우저: 세 화면 각각에서 찍기 -> 바닥줄 수가 장바구니 · 강조와 같은 수
 순서       데이터 지키기(c97239697) -> 시험대(바닥줄 포함) -> 이 부품을 보드 · 걷기 화면에도 앉힘. UI 글자 영어 · RELEASE_LOG 한 줄
 ```
+
+> **[총괄 -> 클라] 10-12 밤 — 작은 고침: 표 바꿈의 «필터 비우기 깃발»이 읽기를 못 막는다 (응용 3a9ffafeb 문서 정비 중 18766 에서 잼)**
+
+```
+잰 것     grid.js dropGridFilters 의 droppingFilters 는 finally 에서 내려가는데, AG Grid 는 filterChanged 를 setTimeout 뒤에 보낸다
+         -> ROW_ID 필터를 건 fake_measure -> ledger_events: /schema 와 /data 가 같은 25 ms 에 나감(/data 하나)
+            필터 없이 바꾸면 /data 는 /schema 뒤 332 ms. 즉 필터가 있을 때의 첫 읽기는 «새 칸이 오기 전» onFilterChanged 가 낸 것이고,
+            switchTable 자신의 읽기는 isLoadingMore 로 건너뛰어진 모양(응용: 마지막 원인은 코드 읽기, 안 잼)
+         이번 판은 행이 맞았다(48) — 순서에 기대 맞은 것이다. 그리고 «깃발이 읽기를 막는다»는 줄이 참이 아니다(깔끔 기준 첫째)
+도착지    표 바꿈의 읽기는 «새 표의 칸이 온 뒤» «한 번» — 필터가 있든 없든 같은 순서
+무엇      못 막는 깃발을 없애고, 필터 비우기가 내는 filterChanged 를 «그 출처»로 가려 읽지 않거나(AG Grid 의 이벤트 source), 비우기를 칸이 온 뒤로 옮긴다
+         — 둘 중 하나, 더 단순한 것. 읽기를 내는 자리는 switchTable 의 그 하나
+게이트    하니스: 가짜 gridApi 가 filterChanged 를 «setTimeout 뒤에» 보내게 해 실제 순서를 재현 -> /data 는 /schema 뒤 정확히 한 번 · 고치기 전 코드 빨강
+         18766: 필터 있는 표 -> 다른 표, Network 에서 /schema 다음 /data 하나
+순서      데이터 지키기(c97239697)와 같은 가지여도 됨 — 그 다음 시험대
+```
