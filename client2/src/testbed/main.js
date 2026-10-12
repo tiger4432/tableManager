@@ -78,6 +78,9 @@ export async function boot(deps) {
   const root = (doc.documentElement && doc.documentElement.style) ? doc.documentElement : host;
   for (const [k, v] of Object.entries(themeVars(theme))) root.style.setProperty(k, v);
   root.setAttribute('data-tb-theme', theme);
+  // The site's tokens the same way: the walk page's parts on this page (the start row, its picker) wear them (lead 10-13:
+  // the open picker a white box on the dark page).
+  root.setAttribute('data-theme', theme);
   const markings = new MarkingStore();
   const filters = new KeyedStore({ 'filter:1': [] });
   const stats = new KeyedStore();
