@@ -784,10 +784,10 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[ST] every static node is drawn from the first picture, at every step; its own branches stay folded (owner 10-12)');
-  if (want(['ST1', 'ST2', 'ST3', 'ST4', 'ST5', 'ST6', 'ST7'])) {
+  if (want(['ST1', 'ST2', 'ST3', 'ST4', 'ST5', 'ST6', 'ST7', 'ST8'])) {
     // A hand walk from die s: s -> wafer a -> dies b, c -> defect d -> defect_kind k, three steps behind dynamic nodes;
     // k <- defect x <- die y is k's own branch. a -> quantity q -> quantity q2 <- c: a static chain off a node in sight,
-    // q2 with one neighbour in sight and one folded.
+    // q2 beside a static node in sight and a folded die.
     const sn = (id, type, depth) => ({ id, type, label: id, depth, keys: { k: id } });
     const se = (source, predicate, target) => ({ id: `${source}>${predicate}>${target}`, source, target, predicate });
     const HS = { state: 'ready', seed: { id: 'st:s' }, truncated: { reason: null },
@@ -817,14 +817,15 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       first.lumps === 'big:st:a,big:st:k' && labelOf(h, 'big:st:k').startsWith('1 next · 1 behind')
         && labelOf(h, 'big:st:a').startsWith('2 next · 1 behind'),
       JSON.stringify({ lumps: first.lumps, k: labelOf(h, 'big:st:k'), a: labelOf(h, 'big:st:a') }));
-    say('ST3 a static node with every neighbour folded hangs off the lump holding one by a dashed line; one with a neighbour in sight has none',
-      first.dashed === 'big:st:a>st:k:dashed' && Boolean(h.view.cy) && h.view.cy.getElementById('to:big:st:a').style('line-style') === 'solid',
+    say('ST3 a static node with no dynamic neighbour in sight hangs off the lump holding one of its neighbours by a dashed line, a static neighbour in sight or not; one beside a drawn dynamic node has none',
+      first.dashed === 'big:st:a>st:k:dashed,big:st:a>st:q2:dashed' && Boolean(h.view.cy)
+        && h.view.cy.getElementById('to:big:st:a').style('line-style') === 'solid',
       JSON.stringify({ dashed: first.dashed }));
     openWhole(h, 'big:st:a');
     const once = { ids: ids(h), dashed: dashed(h) };
     openWhole(h, 'big:st:b');
     const twice = { ids: ids(h), dashed: dashed(h), lumps: lumpIds(h) };
-    say('ST4 a lump opened: the dashed line follows the folded neighbour to the lump that holds it now, and gives way to the edge once it is drawn; the static node\'s own branch stays folded',
+    say('ST4 a lump opened: a dashed line follows the folded neighbour to the lump that holds it now, and goes once a dynamic neighbour is drawn; the static node\'s own branch stays folded',
       once.ids === 'st:a,st:b,st:c,st:k,st:q,st:q2,st:s' && once.dashed === 'big:st:b>st:k:dashed'
         && twice.ids === 'st:a,st:b,st:c,st:d,st:k,st:q,st:q2,st:s' && twice.dashed === '' && twice.lumps === 'big:st:k'
         && lineIds(h).includes('st:d>of_kind>st:k'),
@@ -859,6 +860,18 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
         && recipes.length === 10 && recipes.every((id) => ids(r).split(',').includes(id))
         && lumpsOf(r, 'small').filter((n) => String(n.data('key')).includes('|processed_with|')).length === 0,
       JSON.stringify({ hung, recipes: recipes.filter((id) => ids(r).split(',').includes(id)).length }));
+    // Static nodes linked only to each other: defect_kind k -> quantity k2, k's defect folded in a's lump. And quantity m
+    // beside wafer a in sight and die f2 in the start's fan-out over a cap of one.
+    const HG = { state: 'ready', seed: { id: 'g:s' }, truncated: { reason: null },
+      nodes: [sn('g:s', 'die', 0), sn('g:a', 'wafer', 1), sn('g:f1', 'die', 1), sn('g:f2', 'die', 1), sn('g:b', 'die', 2),
+        sn('g:m', 'quantity', 2), sn('g:d', 'defect', 3), sn('g:k', 'defect_kind', 4), sn('g:k2', 'quantity', 5)],
+      edges: [se('g:s', 'in_container', 'g:a'), se('g:s', 'transfer', 'g:f1'), se('g:s', 'transfer', 'g:f2'),
+        se('g:a', 'inspected', 'g:b'), se('g:a', 'measures', 'g:m'), se('g:f2', 'measures', 'g:m'), se('g:b', 'observed', 'g:d'),
+        se('g:d', 'of_kind', 'g:k'), se('g:k', 'leads_to', 'g:k2')] };
+    const gr = await seat([HG], { fanoutLimit: 1 });
+    say('ST8 static nodes linked only to each other hang by the one whose dynamic neighbour is folded; one beside a drawn dynamic node has no dashed line, another neighbour folded or not',
+      ids(gr) === 'g:a,g:f1,g:k,g:k2,g:m,g:s' && dashed(gr) === 'big:g:a>g:k:dashed',
+      JSON.stringify({ ids: ids(gr), dashed: dashed(gr) }));
   }
 
   console.log('\n[LM] a lump opens only what is ticked, out of where it stood; the view does not move (lead 03bc94b6b)');
@@ -1867,12 +1880,14 @@ const failures = [];
     // them a hidden static node is hung by a line Cytoscape refuses, and a throw is no catch.
     M('STm2', 'a static node\'s own branches come out open', 'ST2',
       '  const near = new Set(layout.nodes.filter((n) => n.static && !from.has(n.id)).map((n) => n.id));\n', '  const near = new Set();\n'),
-    M('STm3', 'a static node with every neighbour folded floats - no dashed line', 'ST3',
+    M('STm3', 'a static node with no dynamic neighbour in sight floats - no dashed line', 'ST3',
       '      for (const s of l.statics || []) {\n', '      for (const s of []) {\n'),
     M('STm4', 'the line a static node hangs by is solid', 'ST3',
       "      { selector: 'edge[kind = \"lump\"][?static]', style: { 'line-style': 'dashed' } },\n", ''),
-    M('STm5', 'a static node with a neighbour in sight hangs off a lump too', 'ST3',
-      'nextTo.get(n.id).every((id) => hidden.has(id))', 'nextTo.get(n.id).some((id) => hidden.has(id))'),
+    M('STm5', 'a static node beside a drawn dynamic node hangs off a lump too', 'ST8',
+      '(id) => !hidden.has(id) && !staticIds.has(id))', '() => false)'),
+    M('STm6', 'a static node beside a drawn static node floats again - the group hangs by nothing', 'ST8',
+      '!hidden.has(id) && !staticIds.has(id)', '!hidden.has(id)'),
     { ...M('STm0', 'today\'s rule: static nodes fold like any node', 'ST1'),
       mutate: (t) => swap(swap(swap(t, '...layout.nodes.filter((n) => n.depth === 0 || n.static).map(', '...layout.nodes.filter((n) => n.depth === 0).map('),
         '  const near = new Set(layout.nodes.filter((n) => n.static && !from.has(n.id)).map((n) => n.id));\n', '  const near = new Set();\n'),

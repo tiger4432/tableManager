@@ -288,8 +288,8 @@ export function foldBeyond(layout, fold, points, shownBefore, limit = Infinity) 
  * its key is a small lump that has not opened its far end. A node no start reaches is left as it is; a node
  * reached another way stays. Each node still in sight then shows its big lump (the keys left in it, what they
  * hold), one small lump per key with members still inside, and one per bundle the server has not sent.
- * A static node stands where the walks stood (owner 10-12), so it is in sight whatever is folded before it; one whose
- * every neighbour is folded is `statics` on each lump that holds one of them - drawn as a dashed line to it.
+ * A static node stands where the walks stood (owner 10-12), so it is in sight whatever is folded before it; one with no
+ * dynamic neighbour in sight is `statics` on each lump that holds one of its neighbours - drawn as a dashed line to it.
  */
 export function lumpView(layout, fold, seeds) {
   const big = (fold && fold.big) || new Map();
@@ -335,7 +335,8 @@ export function lumpView(layout, fold, seeds) {
   // What a fan-out holds that the server did not send: its count less what it drew.
   const restOf = (key) => (unsent.has(key) ? unsent.get(key).count - unsent.get(key).drawn : 0);
   const typesOf = (members) => [...new Set(members.map((m) => typeOf.get(m)))].join(' · ');
-  // A static node with no neighbour in sight hangs off each lump (not its own) that holds one of them.
+  // A static node with no dynamic neighbour in sight hangs off each lump (not its own) that holds one of its neighbours:
+  // static nodes linked only to each other hang by theirs, one beside a drawn dynamic node does not (lead 10-12).
   const nextTo = new Map();
   for (const e of layout.edges) {
     for (const [a, b] of [[e.source, e.target], [e.target, e.source]]) {
@@ -343,7 +344,9 @@ export function lumpView(layout, fold, seeds) {
       nextTo.get(a).push(b);
     }
   }
-  const floating = layout.nodes.filter((n) => n.static && nextTo.has(n.id) && nextTo.get(n.id).every((id) => hidden.has(id)));
+  const staticIds = new Set(layout.nodes.filter((n) => n.static).map((n) => n.id));
+  const floating = layout.nodes.filter((n) => n.static && nextTo.has(n.id)
+    && !nextTo.get(n.id).some((id) => !hidden.has(id) && !staticIds.has(id)));
   const hanging = (owner, members) => {
     if (!floating.length) return [];
     const held = inside(members);
@@ -1130,7 +1133,7 @@ export class SubgraphView {
       const back = l.direction === 'incoming';
       out.push({ group: 'edges', data: { id: `to:${l.id}`, source: back ? l.id : l.owner, target: back ? l.owner : l.id,
         kind: 'lump' } });
-      // A static node whose neighbours are all in this lump hangs off it (owner 10-12); a node id holds no `|`.
+      // A static node with no dynamic neighbour in sight hangs off a lump holding one (owner 10-12); a node id holds no `|`.
       for (const s of l.statics || []) {
         out.push({ group: 'edges', data: { id: `to:${l.id}|${s}`, source: l.id, target: s, kind: 'lump', static: true } });
       }
