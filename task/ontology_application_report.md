@@ -38350,3 +38350,243 @@ QA ①    ledger_subgraph.py 주석 「the screen's picker (AGGREGATIONS) names 
 QA ②    LEDGER_SCHEMA_COMPLETENESS 의 「walk_aggregate 가 서버 · 클라 양쪽을 채점」은 이번 착지 전부터 거짓 — 클라 하니스가 없다
         (contracts/walk_aggregate 에는 vectors.json 하나) · 고침
 ```
+
+---
+
+## [C 응용] 10-12 밤 ~ 10-13 — 속도 전수 (b2cd0549b · ea78290a5 · 95a7bc04c · 2e8c6ac9c) · 허브 «값마다 허브» · 바이트 나누기 · 원장 원자
+
+박스 수다 — 운영 주장이 아니다. 코드 main 1e23bc216 · assy_test 의 pytest 스크래치 스키마 · 연산마다 45 초 상한 · 1,000 행당 초는 «첫 줄 뒤».
+겹침: 100만 outbox 세계는 구현자 3 분(23:06:19~07:08)과 겹쳐 다시 쟀고 아래 표는 다시 잰 값이다(R5 set_aside, R5 withdraw_source, fold_withdrawal_events).
+그리드 100만(23:25:56~34:58)은 제 파일 셈(CPU)과 원장 원자 셈(읽기 5 초)과 겹쳤다.
+명령: run_census_all.sh · run_census_rest.sh · run_census_confirm.sh(스크래치) → qa_census_gen.py · qa_census_detail_gen.py.
+
+```
+on main 1e23bc216 22:43:16
+start R1fold 1000000 22:43:16
+end R1fold 1000000 exit 1 22:43:35 1 failed 
+start R 1000000 22:43:36
+end R 1000000 exit 1 23:08:57 4 passed 
+start R 10000 23:08:58
+end R 10000 exit 1 23:11:57 4 passed 
+start R 100000 23:11:58
+end R 100000 exit 1 23:19:35 4 passed 
+start R1fold 10000 23:19:35
+end R1fold 10000 exit 1 23:20:04 1 passed 
+start R1fold 100000 23:20:05
+end R1fold 100000 exit 1 23:21:32 1 passed 
+start G 10000 23:21:33
+end G 10000 exit 1 23:23:12 1 passed 
+start G 100000 23:23:12
+end G 100000 exit 1 23:25:55 1 passed 
+start G 1000000 23:25:56
+end G 1000000 exit 1 23:34:58 1 passed 
+start I1 10000 23:34:58
+end I1 10000 exit 1 23:35:37 1 passed 
+start I1 100000 23:35:39
+end I1 100000 exit 1 23:36:41 1 passed 
+start I1 1000000 23:36:42
+end I1 1000000 exit 1 23:43:48 1 passed 
+all done 23:43:48
+on main 1e23bc216 23:44:14
+start R1fold 1000000 23:44:14
+end R1fold 1000000 exit 1 23:48:50 1 passed 
+start R-outbox 1000000 23:48:51
+end R-outbox 1000000 exit 1 23:53:28 1 passed 
+all done 23:53:28
+on main 1e23bc216 23:53:51
+start confirm 10000 23:53:51
+end confirm 10000 exit 1 23:54:23 1 passed 
+start confirm 100000 23:54:23
+end confirm 100000 exit 1 23:56:08 1 passed 
+start confirm 1000000 23:56:09
+end confirm 1000000 exit 1 00:11:02 1 passed 
+all done 00:11:05
+```
+
+소급 R1~R5 — 1만 · 10만 · 100만
+
+| path | size | wall s | start→first line s | s / 1,000 rows (after first line) | rows paged | SQL | SQL / 1,000 rows | python share | seq scans (table: rows read) |
+|---|---|---|---|---|---|---|---|---|---|
+| R1 fold_written_notation | 10,000 | 0.5 | 0.12 | 0.036 | 10,497 | 30 | 2.9 | 0.66 | hc_official: 20,994 |
+| R1 fold_written_notation | 100,000 | 5.83 | 0.27 | 0.053 | 104,997 | 40 | 0.4 | 0.43 | hc_official: 209,994 |
+| R1 fold_written_notation | 1,000,000 | 45.91 | 1.84 | 0.199 | 221,342 | 58 | 0.3 | 0.1 | cell_sources: 130,000,000 · hc_official: 1,050,159 |
+| ↳ ×10 | | | 2.3× → 6.8× | 1.5× → 3.8× | | | | | |
+| R2 ledger_backfill | 10,000 | 27.39 | 0.84 | 2.655 | 9,997 | 19 | 1.9 | 1.0 | hc_official: 209,940 · ledger_source_row_ref: 118,686 |
+| R2 ledger_backfill | 100,000 | 51.38 | 0.25 | 2.842 | 17,988 | 25 | 1.4 | 1.0 | hc_official: 314,991 |
+| R2 ledger_backfill | 1,000,000 | 47.33 | 0.47 | 2.37 | 19,773 | 25 | 1.3 | 1.0 | hc_official: 2,100,318 · ledger_source_row_ref: 247,244 |
+| ↳ ×10 | | | 0.3× → 1.9× | 1.1× → 0.8× | | | | | |
+| R3 chain_replay (staging) | 10,000 | 0.25 | 0.11 | 0.013 | 10,496 | 61 | 5.8 | 0.73 | none |
+| R3 chain_replay (staging) | 100,000 | 1.11 | 0.11 | 0.01 | 105,069 | 346 | 3.3 | 0.55 | none |
+| R3 chain_replay (staging) | 1,000,000 | 10.62 | 0.12 | 0.01 | 1,050,508 | 3,181 | 3.0 | 0.58 | none |
+| ↳ ×10 | | | 1.0× → 1.1× | 0.8× → 1.0× | | | | | |
+| resolve | 10,000 | 3.31 | 0.59 | 0.259 | 10,497 | 61 | 5.8 | 0.85 | none |
+| resolve | 100,000 | 25.31 | 0.11 | 0.24 | 104,997 | 343 | 3.3 | 0.83 | none |
+| resolve | 1,000,000 | 45.09 | 0.14 | 0.221 | 203,023 | 637 | 3.1 | 0.81 | none |
+| ↳ ×10 | | | 0.2× → 1.3× | 0.9× → 0.9× | | | | | |
+| fold_file_layers | 10,000 | 3.22 | 0.11 | 0.296 | 10,497 | 81 | 7.7 | 0.86 | none |
+| fold_file_layers | 100,000 | 32.92 | 0.12 | 0.312 | 104,997 | 457 | 4.4 | 0.86 | none |
+| fold_file_layers | 1,000,000 | 45.14 | 0.11 | 0.281 | 160,023 | 677 | 4.2 | 0.84 | none |
+| ↳ ×10 | | | 1.1× → 0.9× | 1.1× → 0.9× | | | | | |
+| R4 fold_duplicate_rows (hold log) | 10,000 | 0.8 | 0.36 | 0.883 | 496 | 86 | 173.4 | 0.38 | hc_log: 52,480 |
+| R4 fold_duplicate_rows (hold log) | 100,000 | 6.75 | 2.81 | 0.777 | 5,069 | 140 | 27.6 | 0.22 | hc_log: 525,345 · cell_overwrites: 10,000 |
+| R4 fold_duplicate_rows (hold log) | 1,000,000 | 45.55 | 10.58 | 0.777 | 45,023 | 491 | 10.9 | 0.26 | hc_log: 5,252,540 · cell_overwrites: 110,000 |
+| ↳ ×10 | | | 7.8× → 3.8× | 0.9× → 1.0× | | | | | |
+| R4 remove_shell_rows (hold official) | 10,000 | 0.47 | 0.17 | 0.598 | 497 | 103 | 207.2 | 0.54 | hc_official: 83,729 |
+| R4 remove_shell_rows (hold official) | 100,000 | 3.67 | 0.22 | 0.691 | 4,997 | 158 | 31.6 | 0.25 | hc_official: 1,255,905 |
+| R4 remove_shell_rows (hold official) | 1,000,000 | 32.94 | 0.73 | 0.642 | 50,159 | 664 | 13.2 | 0.18 | hc_official: 41,539,657 |
+| ↳ ×10 | | | 1.3× → 3.3× | 1.2× → 0.9× | | | | | |
+| R4 fold_units | 10,000 | 2.33 | 0.16 | 0.434 | 5,000 | 159 | 31.8 | 0.44 | fu_inventory: 52,000 |
+| R4 fold_units | 100,000 | 19.34 | 0.34 | 0.38 | 50,000 | 347 | 6.9 | 0.34 | fu_inventory: 800,000 |
+| R4 fold_units | 1,000,000 | 45.08 | 2.86 | 0.454 | 93,011 | 503 | 5.4 | 0.28 | fu_inventory: 12,000,000 |
+| ↳ ×10 | | | 2.1× → 8.4× | 0.9× → 1.2× | | | | | |
+| R4 inventory_replay (staging) | 10,000 | 0.59 | 0.52 | 0.039 | 2,000 | 34 | 17.0 | 0.93 | fu_inventory: 2,000 |
+| R4 inventory_replay (staging) | 100,000 | 0.41 | 0.2 | 0.01 | 20,000 | 88 | 4.4 | 0.74 | none |
+| R4 inventory_replay (staging) | 1,000,000 | 1.55 | 0.12 | 0.007 | 200,000 | 628 | 3.1 | 0.67 | none |
+| ↳ ×10 | | | 0.4× → 0.6× | 0.3× → 0.7× | | | | | |
+| R4 fold_duplicate_rows (fold log) | 10,000 | 6.7 | 0.56 | 0.768 | 8,000 | 158 | 19.8 | 0.41 | fu_log: 30,000 · audit_logs: 4,508 |
+| R4 fold_duplicate_rows (fold log) | 100,000 | 45.42 | 1.38 | 0.71 | 62,023 | 644 | 10.4 | 0.38 | none |
+| R4 fold_duplicate_rows (fold log) | 1,000,000 | 45.41 | 8.89 | 0.716 | 51,023 | 545 | 10.7 | 0.35 | audit_logs: 91,683 |
+| ↳ ×10 | | | 2.5× → 6.4× | 0.9× → 1.0× | | | | | |
+| R5 enrichment_backfill | 10,000 | 3.78 | 0.11 | 0.367 | 10,000 | 213 | 21.3 | 0.62 | bkfl_test_derived: 11,552 |
+| R5 enrichment_backfill | 100,000 | 32.2 | 0.09 | 0.321 | 100,000 | 1,293 | 12.9 | 0.58 | bkfl_test_derived: 1,238,342 |
+| R5 enrichment_backfill | 1,000,000 | 45.03 | 0.11 | 0.356 | 126,023 | 1,605 | 12.7 | 0.58 | bkfl_test_derived: 1,969,748 |
+| ↳ ×10 | | | 0.8× → 1.2× | 0.9× → 1.1× | | | | | |
+| R5 enrichment confirm (dry: the knob refuses apply) | 10,000 | 0.0 | None | None | 0 | 0 | — | None | none | ERROR
+| R5 enrichment confirm (dry: the knob refuses apply) | 100,000 | 0.0 | None | None | 0 | 0 | — | None | none | ERROR
+| R5 enrichment confirm (dry: the knob refuses apply) | 1,000,000 | 0.02 | None | None | 0 | 0 | — | 1.0 | none | ERROR
+| ↳ ×10 | | | — → — | — → — | | | | | |
+| R5 set_aside | 10,000 | 1.16 | 0.11 | 0.105 | 10,000 | 58 | 5.8 | 0.75 | none |
+| R5 set_aside | 100,000 | 9.16 | 0.42 | 0.087 | 100,000 | 328 | 3.3 | 0.69 | audit_logs: 60,671 |
+| R5 set_aside | 1,000,000 | 45.03 | 0.14 | 0.085 | 527,023 | 1,608 | 3.1 | 0.7 | none |
+| ↳ ×10 | | | 3.8× → 0.3× | 0.8× → 1.0× | | | | | |
+| R5 withdraw_source | 10,000 | 4.17 | 0.0 | 0.417 | 9,999 | 206 | 20.6 | 0.59 | cell_sources: 103,914 · qa_t: 1,111 |
+| R5 withdraw_source | 100,000 | 34.28 | 0.0 | 0.343 | 99,999 | 485 | 4.9 | 0.58 | none |
+| R5 withdraw_source | 1,000,000 | 47.05 | 0.0 | 0.352 | 133,839 | 576 | 4.3 | 0.6 | none |
+| ↳ ×10 | | | — → — | 0.8× → 1.0× | | | | | |
+| fold_withdrawal_events | 10,000 | 0.58 | 0.12 | 0.045 | 10,000 | 88 | 8.8 | 0.64 | database_outbox: 20,011 |
+| fold_withdrawal_events | 100,000 | 4.84 | 0.22 | 0.046 | 100,000 | 297 | 3.0 | 0.37 | none |
+| fold_withdrawal_events | 1,000,000 | 45.2 | 3.11 | 0.052 | 806,385 | 1,927 | 2.4 | 0.34 | none |
+| ↳ ×10 | | | 1.8× → 14.1× | 1.0× → 1.1× | | | | | |
+
+
+100만에서 통째 읽기와 그 문장(첫 둘)
+
+```
+R1 fold_written_notation — seq cell_sources 30 scans / 130,000,000 rows · hc_official 3 scans / 1,050,159 rows
+   38.83 s · 28 calls · max 27.213 s · SELECT cell_sources.column_name, CAST(cell_sources.value AS TEXT) AS value, count(*) AS count_1 FROM cell_sources WHERE cell_sources.table_name = %(ta  ⟶ ->  Parallel Seq Scan on cell_sources  (cost=40.96..394807.30 rows=66643 width=3
+   1.74 s · 1 calls · max 1.736 s · SELECT count(hc_official.row_id) AS count_1 FROM hc_official  ⟶ ->  Parallel Seq Scan on hc_official  (cost=0.00..23944.66 rows=437566 width=41)
+R4 remove_shell_rows (hold official) — seq hc_official 120 scans / 41,539,657 rows
+   17.27 s · 61 calls · max 1.497 s · SELECT hc_official.row_id FROM hc_official WHERE (CASE WHEN (hc_official.netdie >= %(netdie_1)s AND hc_official.netdie <= %(netdie_2)s) THEN CASE WHEN  ⟶ ->  Parallel Seq Scan on hc_official  (cost=0.00..58949.96 rows=1 width=41)
+   3.67 s · 59 calls · max 0.1 s · INSERT INTO audit_logs (table_name, row_id, column_name, old_value, new_value, source_name, updated_by, transaction_id, timestamp, business_key) VALUE
+R4 fold_units — seq fu_inventory 176 scans / 12,000,000 rows
+   5.86 s · 26 calls · max 0.5 s · UPDATE "fu_log" SET "fold_mark" = v.a1, "updated_at" = %(updated_at)s FROM unnest(CAST(%(a0)s AS VARCHAR[]), CAST(%(a1)s AS VARCHAR[])) AS v(a0, a1) W
+   5.85 s · 29 calls · max 0.454 s · SELECT anon_1.row_id, anon_1.kept FROM (SELECT fu_inventory.row_id AS row_id, fu_inventory.wafer_out_time AS order_value, fu_inventory.dt_job_id AS pr  ⟶ ->  Parallel Seq Scan on fu_inventory  (cost=2.50..4631.97 rows=827 width=45)
+R5 enrichment_backfill — seq bkfl_test_derived 130 scans / 1,969,748 rows
+   9.14 s · 256 calls · max 0.077 s · INSERT INTO cell_sources (column_name, ingested_at, source_name, origin_row_id, table_name, row_id, updated_by, value) VALUES (%s,%s,%s,%s,%s,%s,%s,%s
+   2.56 s · 132 calls · max 0.025 s · INSERT INTO audit_logs (table_name, row_id, column_name, old_value, new_value, source_name, updated_by, transaction_id, timestamp, business_key) VALUE
+R4 fold_duplicate_rows (hold log) — seq hc_log 15 scans / 5,252,540 rows · cell_overwrites 44 scans / 110,000 rows
+   11.92 s · 54 calls · max 0.303 s · UPDATE hc_log SET updated_at=%(updated_at)s, fold_mark=%(fold_mark)s WHERE hc_log.row_id = %(hc_log_row_id)s
+   4.6 s · 50 calls · max 0.155 s · INSERT INTO cell_sources (column_name, ingested_at, source_name, origin_row_id, table_name, row_id, updated_by, value) VALUES (%s,%s,%s,%s,%s,%s,%s,%s
+R2 ledger_backfill — seq hc_official 6 scans / 2,100,318 rows · ledger_source_row_ref 15 scans / 247,244 rows
+   1.55 s · 37 calls · max 0.092 s · INSERT INTO ledger_events (id, subject_type, subject_keys, predicate, object_kind, object_payload, occurred_at, source_who, source_translator_ver, sou
+   1.08 s · 191 calls · max 0.013 s · INSERT INTO ledger_source_row_ref (relation, row_id, source_who, source_raw_ref) VALUES (?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?
+```
+
+R1 표기, 접을 것이 있는 판(qa_nf)
+
+```
+10,000 · R1 fold_written_notation (foldable) · wall 4.33 s · first line 0.11 s · 0.422 s / 1,000 rows · rows 10,000 · cells folded 13,500
+100,000 · R1 fold_written_notation (foldable) · wall 45.25 s · first line 0.19 s · 0.451 s / 1,000 rows · rows 100,000 · cells folded 135,000
+1,000,000 · R1 fold_written_notation (foldable) · wall 46.84 s · first line 1.98 s · 0.473 s / 1,000 rows · rows 94,790 · cells folded 126,790
+```
+
+그리드 G1 · 검색 G2 · 걷기 첫 쪽 · 맵 G4 (요청 다섯 번의 중앙값 · 최대)
+
+```
+10,000 · G1 first page · median 0.031 s · max 0.219 s · SQL/request 3.2 · seq {}
+10,000 · G1 deep page by value · median 0.063 s · max 0.265 s · SQL/request 3.2 · seq {'hc_official': [5, 50000]}
+10,000 · G1 filtered page · median 0.031 s · max 0.218 s · SQL/request 3.2 · seq {}
+10,000 · G1 count · median 0.0 s · max 0.109 s · SQL/request 0.2 · seq {}
+10,000 · G2 search · median 0.031 s · max 0.235 s · SQL/request 4.2 · seq {'hc_official': [1, 10000]}
+10,000 · walk first page · median 0.094 s · max 0.188 s · SQL/request 3.0 · seq {}
+10,000 · G4 map 20x20 · median 0.047 s · max 0.25 s · SQL/request 3.0 · seq {}
+100,000 · G1 first page · median 0.031 s · max 0.219 s · SQL/request 3.2 · seq {'hc_official': [1, 100000]}
+100,000 · G1 deep page by value · median 0.312 s · max 0.578 s · SQL/request 3.2 · seq {'hc_official': [6, 600000]}
+100,000 · G1 filtered page · median 0.016 s · max 0.234 s · SQL/request 3.2 · seq {}
+100,000 · G1 count · median 0.0 s · max 0.11 s · SQL/request 0.2 · seq {'hc_official': [1, 100000]}
+100,000 · G2 search · median 0.031 s · max 0.328 s · SQL/request 4.2 · seq {'hc_official': [2, 100000]}
+100,000 · walk first page · median 0.125 s · max 0.25 s · SQL/request 3.0 · seq {'ledger_events_2026_10': [5, 71720]}
+100,000 · G4 map 20x20 · median 0.047 s · max 0.25 s · SQL/request 3.0 · seq {}
+1,000,000 · G1 first page · median 0.016 s · max 0.329 s · SQL/request 3.2 · seq {'hc_official': [3, 1000000]}
+1,000,000 · G1 deep page by value · median 1.641 s · max 1.734 s · SQL/request 3.2 · seq {'hc_official': [18, 6000000]}
+1,000,000 · G1 filtered page · median 0.032 s · max 0.547 s · SQL/request 3.2 · seq {'hc_official': [3, 1000000]}
+1,000,000 · G1 count · median 0.0 s · max 0.204 s · SQL/request 0.2 · seq {}
+1,000,000 · G2 search · median 0.047 s · max 1.187 s · SQL/request 4.2 · seq {'hc_official': [3, 1000000]}
+1,000,000 · walk first page · median 0.125 s · max 0.469 s · SQL/request 3.0 · seq {'ledger_events_2026_10': [5, 83585]}
+1,000,000 · G4 map 20x20 · median 0.063 s · max 0.25 s · SQL/request 3.0 · seq {}
+```
+
+파일 수집 I1 (1,000 행 CSV, 체인 없음)
+
+```
+10,000 · I1 1,000 new rows · [Ingest] qa_ingest FILE new_aaaaaaa1.csv: 1000 row(s) in 1.485 s (40404 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 1000 · chang
+10,000 · I1 1,000 changed rows · [Ingest] qa_ingest FILE chg_bbbbbbb2.csv: 1000 row(s) in 2.047 s (29311 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 0 · changed 
+100,000 · I1 1,000 new rows · [Ingest] qa_ingest FILE new_aaaaaaa1.csv: 1000 row(s) in 1.407 s (42643 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 1000 · chang
+100,000 · I1 1,000 changed rows · [Ingest] qa_ingest FILE chg_bbbbbbb2.csv: 1000 row(s) in 2.391 s (25094 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 0 · changed 
+1,000,000 · I1 1,000 new rows · [Ingest] qa_ingest FILE new_aaaaaaa1.csv: 1000 row(s) in 1.656 s (36231 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 1000 · chang
+1,000,000 · I1 1,000 changed rows · [Ingest] qa_ingest FILE chg_bbbbbbb2.csv: 1000 row(s) in 2.515 s (23856 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 0 · changed 
+```
+
+보강 확인 (규칙에 candidate_for — 판단키로 원본의 min(chip_id)) · sweep 은 드라이
+
+```
+10,000 · source 10,000 · derived 2,500 · fill 3.7 s · sweep (dry) 3.69 s · keys 2,500 · confirmed 2,500 · SQL 7,518 · 1.48 ms/key
+100,000 · source 100,000 · derived 25,000 · fill 33.6 s · sweep (dry) 40.76 s · keys 25,000 · confirmed 25,000 · SQL 75,062 · 1.63 ms/key
+1,000,000 · source 1,000,000 · derived 250,000 · fill 351.0 s · sweep (dry) 450.55 s · keys 250,000 · confirmed 250,000 · SQL 750,512 · 1.80 ms/key
+발견  드라이 길은 대기열을 처음에 전부 읽고 SAVEPOINT 하나에서 키 전부를 확인한다 — 쪽도 멈춤도 없다(100만에서 45 초 상한을 넘어 끝까지)
+```
+
+허브 «값마다 허브» (답 ②, 소유자 확정) · 바이트 나누기 · 원장 원자 주어 타입별
+
+```
+canary: nodes 41057 · edges 84330 · seeds 2 (in nodes 2) · nodes with a reach pair 41056 · answer bytes 301,933,948
+nothing declared: nodes 41,057 · edges 84,330 · graph bytes 202,385,946 (rest of the answer 99,548,014, unchanged by a fold)
+contrast rule: one hub per contrast pair, a pair with one member stays a node (--hub-per-value)
+| predicate declared alone | its edges | hubs | members | dropped · hubs lost | cells | nodes − | edges − | bytes − (rows in) | bytes − (rows on open) | unfold nodes · edges | hubs (members) with split contrast | members reach ≠ parent | largest steps (direction · far type: members) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| observed | 32,040 | 504 | 32,040 | 0 · 0 | 0 | 31,536 | 63,072 | 23,931,267 | 154,333,953 | True · True | 0 (0) | 0 | out · defect: 32,040 |
+| in_container | 8,514 | 3 | 5,400 | 0 · 0 | 1,818 | 7,215 | 15,825 | 5,563,062 | 34,497,206 | True · True | 0 (0) | 0 | in · die: 5,400 |
+| bonded_from | 2,520 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| inspected | 702 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| of_kind | 32,040 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| transfer | 8,514 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+top three together dropped 0 · hubs lost 0
+top three together ['observed', 'in_container']: hubs 507 · members 37,440 · cells 1,818 · nodes 41,057 -> 2,306 · edges 84,330 -> 5,433 · graph bytes 202,385,946 -> 172,891,642 (rows on open 13,554,812) · unfold nodes = True · edges = True · split-contrast hubs 0 (members 0) · members reach ≠ parent 0
+```
+
+```
+canary: nodes 41057 · edges 84330 · seeds 2 (in nodes 2) · nodes with a reach pair 41056 · answer bytes 301,933,948
+signed answer, one hub per value, rows on open: 13,554,812 B · nodes 1799 (+ hubs 507) · edges 3888 (+ hub lines 1545)
+  nodes (drawn, not hubs)                                 824,318 B    6.1%
+  edges (drawn, not hub lines)                         12,175,998 B   89.8%
+  hub heads (hub nodes + parent lines + hub lines)        270,490 B    2.0%
+  hub tables (head only, rows on open)                    283,979 B    2.1%
+  the rest (brackets, top-level keys)                          27 B    0.0%
+  nodes by key: predicates 233,926 · id 216,170 · keys 127,756 · label 76,185 · schema_kind 57,568 · node_kind 37,779 · claim_count 29,898 · type 23,447 · depth 17,990
+  edges by key: records 5,226,228 · by_world 2,142,780 · basis 1,563,432 · id 1,274,183 · source 455,640 · target 421,476 · claim_id 194,400 · occurred_at 147,150 · original_predicate 132,084 · predicate_label 120,420 · source_who 109,494 · predicate 97,092 · worlds 81,648 · cardinality 73,872 · records_more 66,114 · qualifiers 62,208
+walk atoms read (claims_scanned) 157,104 · atoms drawn on edges (records + records_more) 122,184 · not drawn as edges 34,920
+  predicates the nodes count: {'observed': 64080, 'of_kind': 32040, 'in_container': 17028, 'transfer': 17028, 'bonded_from': 5040, 'inspected': 1404}
+  predicates the edges draw: {'observed': 32040, 'of_kind': 32040, 'in_container': 8514, 'transfer': 8514, 'bonded_from': 2520, 'inspected': 702}
+  nodes carrying an attribute/value key: 0
+```
+
+```
+== assy_test · schema assy_impl_wm_1012 · atoms 261,180
+  by subject type: die 228,402 (87.5%) · defect 32,040 (12.3%) · wafer 738 (0.3%)
+  by predicate: in_container 115,830 (44.3%) · transfer 78,012 (29.9%) · observed 32,040 (12.3%) · of_kind 32,040 (12.3%) · bonded_from 2,520 (1.0%) · inspected 738 (0.3%)
+  defect and below (observed + of_kind): 64,080 of 261,180 = 24.5%
+== assy_manager · schema public · atoms 2,380,869
+  by subject type: dtjob 866,192 (36.4%) · wafer 688,030 (28.9%) · die 680,993 (28.6%) · defect 103,863 (4.4%) · lot_slot 37,470 (1.6%) · lot 4,299 (0.2%) · quantity 22 (0.0%)
+  by predicate: processed_with 478,718 (20.1%) · register 446,652 (18.8%) · has_netdie 433,096 (18.2%) · transfer 402,156 (16.9%) · in_container 156,365 (6.6%) · inspected 117,742 (4.9%) · of_kind 103,863 (4.4%) · observed 103,863 (4.4%) · measures 80,327 (3.4%) · has_wafer 37,335 (1.6%) · bonded_from 18,609 (0.8%) · derived_from 1,986 (0.1%) · slot_map 135 (0.0%) · leads_to 22 (0.0%)
+  defect and below (observed + of_kind): 207,726 of 2,380,869 = 8.7%
+```
