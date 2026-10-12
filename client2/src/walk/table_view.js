@@ -46,6 +46,21 @@ export const ROW_CAP = 200;
 /** A group's cell for a node it did not reach; a reached cell with no value; a start's route; the Δ head. */
 export const MISSING = 'missing';
 export const EMPTY = '—';
+/** «Does a shortest path reach the auxiliary node(s)?» (owner 10-12, the walk's judgment): its words - found with the hops
+ *  (and which node, when there are several), none, unknown at the cap; a node not judged «—». */
+export const REACH_WORDS = Object.freeze({ head: '→', reach: 'reach', none: 'none', unknown: 'unknown', only: 'Reaches only' });
+const nodeWords = (id) => { const n = entityOfId(id) || {}; return Object.values(n.keys || {}).map(valueWords).join(' / ') || id; };
+export function reachWords(judged, several) {
+  if (!judged) return EMPTY;
+  if (judged.state === 'found') return `${judged.hops} ${judged.hops === 1 ? 'hop' : 'hops'}${several && judged.via ? ` → ${nodeWords(judged.via)}` : ''}`;
+  return judged.state === 'none' ? REACH_WORDS.none : REACH_WORDS.unknown;
+}
+
+/** A judged section's rows told by their judgment (owner 10-12 «ㄷ»): «<head>: N reach · N none · N unknown». */
+export function reachTally(head, rows) {
+  const n = (state) => rows.filter((row) => row.reach && row.reach.state === state).length;
+  return `${head}: ${n('found')} ${REACH_WORDS.reach} · ${n('none')} ${REACH_WORDS.none} · ${n('unknown')} ${REACH_WORDS.unknown}`;
+}
 export const STARTED = 'start';
 export const DELTA = 'Δ';
 // ⚰️ ROUTE retired 10-11 with the Route column (lead W): how a side reached a row is the node cell's source line.
@@ -189,7 +204,8 @@ export function shownOf(section, f = {}, lines = null) {
   const found = (line) => !find || [...line.cells.map((c) => c.words), ...line.row.centre.map((c) => c.text)]
     .some((w) => lower(w).includes(find));
   let shown = grid.lines.filter((line) => (filter === 'all' || (filter === 'differs' ? line.row.differs : line.row.missing))
-    && found(line) && tests.every(([k, x]) => passes(line.cells[k], x)));
+    && found(line) && tests.every(([k, x]) => passes(line.cells[k], x))
+    && (!f.reaches || Boolean(line.row.reach && line.row.reach.state === 'found')));
   const by = f.sort && at.has(f.sort.key) ? at.get(f.sort.key) : -1;
   if (by >= 0) {
     const sign = f.sort.dir === 'desc' ? -1 : 1;
@@ -198,7 +214,7 @@ export function shownOf(section, f = {}, lines = null) {
       return a.blank || b.blank ? Number(a.blank) - Number(b.blank) : sign * compareCells(a, b);
     });
   }
-  return { columns: grid.columns, lines: shown, all: grid.lines, filtering: filter !== 'all' || Boolean(find) || tests.length > 0 };
+  return { columns: grid.columns, lines: shown, all: grid.lines, filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) };
 }
 
 /** A cell on the clipboard - Copy's, and a node's keys' (owner 10-12): several «; », none empty, a side that did not
@@ -390,6 +406,15 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   fold = {}, control = null, adds = []) {
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
   const walked = control ? mergeWalks(result, control) : result;
+  // The walk's judgment for each node it walked (owner 10-12): the answer's «aux» names the auxiliary node(s) (seeds), each
+  // node its own «aux» - found · hops · via / none / unknown.
+  const reaches = (result && result.aux) || null;
+  const reachTo = reaches ? (reaches.seeds || []) : [];
+  const reachHead = `${REACH_WORDS.head} ${reachTo.map(nodeWords).join(' · ')}`;
+  // Drawn an auxiliary node a line (lead 10-12: two read «→ pressure_MPa · SY…», cut).
+  const reachLines = reachTo.length > 1 ? reachTo.map((id) => `${REACH_WORDS.head} ${nodeWords(id)}`) : [reachHead];
+  const judgedById = new Map(((result && result.nodes) || []).map((n) => [n.id, n.aux || null]));
+  const judgedOf = (id) => judgedById.get(id) || null;
   // Each addition merged by the same merge; the step's rows keep their order, what an addition brought after them.
   const merged = adds.reduce((graph, add) => mergeWalks(graph, add.answer), walked);
   const before = new Map(((walked && walked.nodes) || []).map((n, i) => [n.id, i]));
@@ -550,13 +575,16 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
       }));
       const reached = groups[0].b ? groups.map((g) => (g.inside.has(node.id) ? reachedBy(g.a.has(node.id), g.b.has(node.id)) : null)) : null;
       return { id: node.id, label: node.label || node.id, differs: row.differs, missing: row.missing, reached, cells,
+        reach: reaches ? judgedOf(node.id) : null,
         // How each side reached the row (lead 10-11 W: the Route column retired - the way is the node's source line).
         routes: groups.filter((g) => g.inside.has(node.id)).map((g) => ({ sign: g.name, ...routeCell(g, node.id) })),
         // A type with no own column says the node's name there.
         centre: [...(ownAt.length ? ownAt.map((c) => cellWords(ownCells[r][c], 'string')) : [{ text: node.label || node.id }]),
-          ...carried.map((c) => cellWords({ values: [cellSource(c, node, {}, plural.get(node.type))].filter((v) => v !== undefined) }, 'string'))] };
+          ...carried.map((c) => cellWords({ values: [cellSource(c, node, {}, plural.get(node.type))].filter((v) => v !== undefined) }, 'string')),
+          ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };
     });
     const groupOf = new Map(folds.map((b) => [b.key, b]));
+    const ownHeads = [...(centre.length ? centre.map((c) => c.words.join(' · ')) : [type]), ...carried.map((c) => c.name)];
     sections.push({
       type,
       heading: sectionHeading(type, rows.length),
@@ -574,7 +602,12 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
         return { step: b.step, leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`, delta: deltaAt.has(i),
           group: b.key, folded: b.folded, open: b.open };
       }),
-      centreHeads: [...(centre.length ? centre.map((c) => c.words.join(' · ')) : [type]), ...carried.map((c) => c.name)],
+      centreHeads: [...ownHeads, ...(reaches ? [reachHead] : [])],
+      // Each head's drawn lines: its words, the judgment's an auxiliary node a line.
+      centreLines: [...ownHeads.map((h) => [h]), ...(reaches ? [reachLines] : [])],
+      // A judged walk (owner 10-12): its section offers «Reaches only» and tallies every row's judgment, not the shown ones.
+      judged: Boolean(reaches),
+      tally: reaches ? reachTally(reachHead, said) : '',
       centre,
       rows: said,
       columns,

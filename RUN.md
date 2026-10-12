@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 낮] **걷기 «보조 노드 판정» 착지 (main 3c4e5a778) — pull 하고 서버만 재기동**
+>
+> ```
+> 명령     git pull  ->  서버 재기동 (수집기 · 체인 워커 · 스케줄러는 안 바뀜 — 바뀐 서버 파일은 ledger_subgraph.py · trace_router.py 둘, 화면은 client2/dist 가 pull 로 옴)
+> 쓰는 법  걷기 화면 «+ Add start» 에서 노드를 고르고 «+ Reaching» -> 문장 바에 «reaching <노드>» -> Walk
+>          표 노드 칸 끝 «→ <노드>» 열: «N hops» · «none»(다 보고 길 없음) · «unknown»(원자 상한 6,000 이 먼저 참)
+>          «Reaches only» 옆 한 줄 «N reach · N none · N unknown» — 거르기를 켜도 그대로
+> 뜻      길 찾기는 정적 노드에서 동적 노드로 내려가지 않는다(다른 웨이퍼를 타고 오는 거짓 «닿음» 막기 · 소유자 「2번」) — 그 밖의 걷기 제약 · 시간 창은 안 봄
+>          보조 노드를 안 고르면 걷기 요청 · 답은 지금과 같다(aux 인자 없음 = 판정 없음) — 끄는 스위치가 따로 필요 없다
+> 볼 것    보조를 고르고 Walk 한 번 — 열과 한 줄이 서면 끝. 서버 로그에 새 줄은 없다
+> ```
+
 > ## [10-11 일요일] **셋업 명령표 — 위에서부터 그대로 친다 · 시연 선언은 맨 아래 (응용 · 리허설 af8ef5701 -> e99f4797f, 접기 맵퍼 들어간 판 · 층 원천 행마다 착지 뒤 · ①b 만 앞 판 355ba2092)**
 >
 > ```
@@ -272,6 +284,29 @@
 >
 > ---
 >
+> ## [10-12] **걷기 보조 노드 판정 — 걸은 노드마다 «보조 노드에 닿나» (총괄 41194be5d · 20dafffee, 소유자 「메인 노드로 걸은 것들 중 관심 모델링 닿는 거만 보고 싶어서」, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버»**
+>
+> ```
+> 무엇        걷기에 보조 노드를 주면 걸은 노드마다 «보조 노드까지 최단 경로가 있나»를 답한다 — 3 hops · none · unknown
+>            답의 노드 · 엣지는 보조 노드가 있든 없든 같다. 판정은 걷는 길의 제약(되밟기 · Follow)과 시각 창을 안 쓴다
+>            걸은 노드 -> 보조 노드로 읽어 정적 노드에서 동적 노드로 내려가는 걸음은 안 센다(걸은 노드도 예외 없음, 소유자 10-12) — 막힌 걸음은 안 읽어 원자를 안 쓴다
+>            unknown = 원자 상한(걷기와 같은 상한 · 기본 6,000 · 읽은 «서로 다른» 원자 수)이 먼저 참. 상한 아래에서 «none» 은 안 낸다 · 상한 그대로(소유자 ㄷ) · 이어 찾기(More)는 시연 뒤
+> 순서        pull -> 서버 재기동
+> 확인        걷기 화면 · 본딩 웨이퍼 하나 Positive · Collect wafer · die · defect · «+ Add start» 에서 노드를 고르고 «+ Reaching» · Walk
+>            구역 표 끝에 «→ <보조 노드>» 열 · «Reaches only» 를 누르면 닿는 행만
+> 답의 뜻     «N hops»                    N 걸음으로 닿는다(보조가 여럿이면 어느 보조인지 같이)
+>            «none»                      다 찾았고 길이 없다
+>            «unknown»                   원자 상한이 먼저 찼다 — 고장이 아니다
+>            보조 노드를 넣자 표의 행이 바뀜   결함 — 보조 노드를 빼고 같은 걷기로 대조해 총괄께
+> 박스 수     읽기 전용 · 이 박스 원장 · 라우트 처리기를 한 프로세스 안에서 · SYN-BW-101-16 · hops 6 · Collect wafer · die · defect · 규칙 판
+>            레시피 SYN-R-DEPO-01      found 271 (2 hops 131 · 3 hops 140) · unknown 129 · none 0 · claims 6,000 · truncated claims · 2.04 s -> 1.96 s · 노드 · 엣지 같다 True
+>            quantity ramp_C_min      found 400 (1 hops 1 · 2 hops 179 · 3 hops 220) · unknown 0 · none 0 · claims 3,546 · truncated None · 1.69 s -> 4.62 s · 노드 · 엣지 같다 True
+>            «s -> s» = 보조 없이 · 보조 넣고
+>            응용 판(assy_test · assy_app_reread_dm, 읽기 전용) SYN-BW-103-11 + TRD-W-001 · reaching quantity pressure_MPa · node_limit 1000 · Collect wafer: complete True · claims 1,623 · found 31 (1 hops 1 · 4 hops 30) · none 1 · TRD-W-001 none — 규칙 전 found 의 3 hops 가 4 hops 로
+>            이 박스 원장은 서로 다른 원자만으로 6,000 이 찬다 — 위 unknown 은 상한, 다시 읽기가 아님
+> 급할 때      보조 노드를 안 고르면 오늘과 같은 걷기 · git revert <이 커밋> -> 서버 재기동
+> ```
+
 > ## [10-12] **exclude_when 으로 거른 행이 «아직 번역 안 된 행»에서 빠진다 (총괄 리허설 2 회차, 착지 9c1da298f) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```

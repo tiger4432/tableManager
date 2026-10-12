@@ -29,6 +29,7 @@ from __future__ import annotations
 import base64
 import contextvars
 import bisect
+import copy
 import json
 import logging
 import re
@@ -524,6 +525,30 @@ def _skip(arm):
             f"{_NAMES[other].format(f='g')}), false)")
 
 
+#: The set a read's far ends are asked against (`claims_for_entities(far=)`), beside the frontier.
+FAR_CTE = """,
+            far AS (
+                SELECT type, keys FROM jsonb_to_recordset(CAST(%(far)s AS jsonb)) AS item(type text, keys jsonb)
+            )
+        """
+
+
+def _far(arm, mode):
+    """THE SET DOOR (총괄 41194be5d): the far end of an atom read on `arm` in (`in`) or out of (`not_in`) the set
+    `far` - where two sides of a search meet, and what a continued walk has seen. Spelled as `_skip` spells it."""
+    other = "incoming" if arm == "outgoing" else "outgoing"
+    there = f"EXISTS (SELECT 1 FROM far g WHERE {_NAMES[other].format(f='g')})"
+    return there if mode == "in" else f"NOT {there}"
+
+
+def _far_types(arm, mode):
+    """The far end's bare type in (`in`) or out of (`not_in`) `far_types` - a step refused by the far end's class is not
+    read, so not spent (소유자 10-12 「2번 너 말대로 해」: no step from a static node down to a dynamic one). An atom
+    with no entity at the far end is not read either: it leads nowhere."""
+    named = f"split_part({_FAR_TYPE[arm]}, '@', 1) = ANY(%(far_types)s)"
+    return named if mode == "in" else f"NOT ({named})"
+
+
 def _where(*conditions):
     kept = [item for item in conditions if item]
     return ("WHERE " + " AND ".join(kept)) if kept else ""
@@ -646,9 +671,10 @@ class SqlEvidenceLookup:
         return selected, (f"NOT {not_current}" if not_current and self.current_only else "")
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None, exclude=None):
+                            follow=None, exclude=None, far=None, far_types=None):
         """`follow` narrows which predicates the walk fetches at all; `exclude` leaves some out -
-        an opened bundle's predicate, already read first (총괄 11e5ea207).
+        an opened bundle's predicate, already read first (총괄 11e5ea207). `far_types`: (`in` | `not_in`, bare
+        types) of the far end (`_far_types`).
 
         🔴 IT BELONGS IN THE SQL, NOT IN A PROJECTION, because a predicate filtered here is
         never fetched and therefore never spends the budget. Filtering after the fetch would
@@ -673,6 +699,12 @@ class SqlEvidenceLookup:
             follow_clause = " AND ".join(filter(None, (follow_clause, "e.predicate <> ALL(%(exclude)s)")))
 
         selected, current = self._selected(params)
+        cte = FRONTIER_CTE
+        if far:
+            params["far"] = _canonical([{"type": t, "keys": k} for t, k in far[1]])
+            cte = FRONTIER_CTE.rstrip() + FAR_CTE
+        if far_types:
+            params["far_types"] = sorted(far_types[1])
 
         # 🔴 ONE ARM BUILDER, TWO QUESTIONS (ruling 208). The fetch asks for the claims
         # INSIDE the interval and the census asks how many fall OUTSIDE it; they must differ
@@ -686,17 +718,18 @@ class SqlEvidenceLookup:
                     SELECT {selected} FROM frontier f
                     JOIN {self.relation} e
                       ON {ARM_JOIN[arm]}
-                    {_where(follow_clause, extra_clause, current, _skip(arm))}
+                    {_where(follow_clause, extra_clause, current, _skip(arm), far and _far(arm, far[0]),
+                            far_types and _far_types(arm, far_types[0]))}
                 """)
             return " UNION ".join(built)
 
         rows = self._execute(f"""
-            {FRONTIER_CTE}
+            {cte}
             SELECT * FROM ({_arms(self._interval_clause(params))}) claims
             ORDER BY occurred_at DESC, id DESC
             LIMIT %(fetch)s
         """, params)
-        self._count_excluded(FRONTIER_CTE, _arms, params)
+        self._count_excluded(cte, _arms, params)
         return self._bounded(rows, limit)
 
     def _count_excluded(self, frontier_cte, arms, params):
@@ -865,13 +898,19 @@ class InMemoryEvidenceLookup:
         return _DescribedSeeds(ids[:int(limit)], max(0, len(ids) - int(limit)))
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None, exclude=None):
+                            follow=None, exclude=None, far=None, far_types=None):
+        ends = None if not far else {(t, _canonical(k)) for t, k in far[1]}
+        far_mode = far and far[0]
         wanted = {(item[0], _canonical(item[1])): (item[2] if len(item) > 2 else {})
                   for item in entities}
 
         def read(arm, near, far, far_type, atom):
             """`SqlEvidenceLookup`'s arm with `_skip` - the same steps, the same exemption."""
             step = {"p": atom.predicate, "d": arm, "t": far_type}
+            if ends is not None and (far in ends) != (far_mode == "in"):
+                return False                            # the set door, as `_far` spells it
+            if far_types and (far is None or (_bare_name(str(far_type)) in far_types[1]) != (far_types[0] == "in")):
+                return False                            # the far end's class, as `_far_types` spells it
             return not (step in (wanted[near].get("steps") or ()) and far not in wanted)
 
         rows = []
@@ -2068,18 +2107,191 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     return "\n".join(lines) + "\n"
 
 
-def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, **arguments):
+def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, aux=None, **arguments):
     """`_walk` over the declarations of the worlds it walks (`declaration_paths`, in the order
     picked; None: the operating world's) - bound for this walk alone, so a concurrent walk of
-    other worlds reads their own files. `page`: the walk widened to time, `_time_page`."""
+    other worlds reads their own files. `page`: the walk widened to time, `_time_page`. `aux`: node ids each walked
+    node is judged against (`_judge_aux`)."""
     token = _WALK_DECLARATION.set(declaration_paths)
     try:
         if page is not None:
             return _time_page(seed_id, lookup, page, **arguments)
-        return _walk(seed_id, lookup, **arguments)
+        payload = _walk(seed_id, lookup, **arguments)
+        if aux:
+            _judge_aux(payload, aux, lookup, arguments.get("edge_limit", DEFAULT_EDGE_LIMIT),
+                       arguments.get("static_types"))
+        return payload
     finally:
         _WALK_DECLARATION.reset(token)
 
+
+def _judge_aux(payload, aux, lookup, edge_limit, static_types=None):
+    """THE AUX JUDGMENT (총괄 41194be5d, 소유자 「메인 노드로 걷고 걸은 것들 중에서 보조 노드로 경로가 있는지 판정만 -
+    정적 동적 제한 없이 최단경로」): each node of `payload` says `found` (hops to the nearest aux, and which), `none`
+    (searched out, no way) or `unknown` (the atom cap came first - never «none» under a cap).
+
+    🔴 ONE RULE ON THE WAY (소유자 10-12 「2번 너 말대로 해」): read from the answer's node to the aux, no step from a
+    static node down to a dynamic one - a die of another lot does not join through a recipe or a quantity name - a
+    walked node no exception. The walk's side does not read a static node's dynamic far ends; the aux side, read
+    backwards, not a dynamic node's static ones; a refused step is not read, so not spent (`_far_types`).
+
+    A meeting of two sides. A grows from the aux nodes through the set door (`claims_for_entities(far=)`): far ends not
+    in what A has seen, then its new layer is read against M (far ends in it) - the only edges a hub is read for. M grows
+    from the answer's nodes, each node holding {answer node number: hops from it}; a node passes the origins it gained to
+    EVERY neighbour, seen or not, and a neighbour that gains one is M's next frontier (총괄 QA: an answer node whose only
+    neighbour is another answer node kept its origin to itself and read «none» under the cap). The smaller frontier
+    grows. Every way of `a + m + 1` steps or fewer has then been read, so a node whose best is within that is settled;
+    when A is searched out its own hops are exact. No other step guard (back down · follow) and no time window - whether
+    a way exists is a question of structure, and a mapping edge has no event time. The cap is the walk's atom
+    cap (`edge_limit` as `_walk` counts it): the search's nodes are not the answer's, so its node cap is not spent. The
+    answer's nodes and edges stay as walked."""
+    timeless = copy.copy(lookup)
+    timeless.since = timeless.until = None
+    timeless.interval_excluded = None
+    cap = min(MAX_CLAIM_SCAN, max(200, max(20, min(int(edge_limit), MAX_EDGE_LIMIT)) * 2))
+    budget = [cap]
+    seeds = list(dict.fromkeys(str(item) for item in aux))
+    main = [node["id"] for node in payload["nodes"]]
+    number = {node_id: n for n, node_id in enumerate(main)}
+    refs = {}
+    for node_id in set(main) | set(seeds):
+        decoded = decode_node_id(node_id)
+        if decoded and decoded.get("kind") == "entity":
+            refs[node_id] = (decoded["type"], decoded["keys"])
+
+    statics = sorted({_bare_name(name) for name in (static_types or ())})
+    #: the near class each side refuses a far end of the other class from - the walk's side (m) a static node's dynamic
+    #: far ends, the aux side (a, read backwards) a dynamic node's static ones
+    held = {"m": True, "a": False}
+    #: per side, as its rule reads: id -> neighbours read · ids every atom of which that side reads is read; atom ids
+    near_of, whole, spent = {"m": {}, "a": {}}, {"m": set(), "a": set()}, set()
+
+    def static(node_id):
+        return _bare_name(refs[node_id][0]) in statics
+
+    def refused(side, near, far_id):
+        return static(near) == held[side] and static(far_id) != held[side]
+
+    def read(frontier, door, side):
+        """`frontier`'s neighbours on `side` (through the door when given) -> [(near id, far id)], or None at the cap.
+        A node's atoms are read once (총괄 10-12, 18766: a node read again for each origin it passed on spent the cap on
+        the same atoms - more than the whole ledger): a node read whole answers from `near_of`; a read without a door
+        reads the rest whole, its far ends already whole left out - their atoms toward it came with them, unless the
+        rule kept their read from it; the budget is spent on atoms not read before. A near node of the refusing class
+        reads only far ends of its own class (`_far_types`)."""
+        if not frontier:
+            return []
+        unread = [i for i in frontier if i not in whole[side]]
+        for refusing in (True, False):
+            near = [i for i in unread if (static(i) == held[side]) == refusing]
+            if not near:
+                continue
+            if door is not None:
+                far = (door[0], [refs[i] for i in door[1]])
+            else:
+                read_whole = [i for i in whole[side] if refusing or static(i) != held[side]]
+                far = ("not_in", [refs[i] for i in read_whole]) if read_whole else None
+            # an atom read before may come again through another door: the fetch makes room for every one of them,
+            # and only the new ones spend - the cap bounds the distinct atoms read
+            atoms, cut = timeless.claims_for_entities(
+                [refs[i] for i in near], "both", budget[0] + len(spent), far=far,
+                far_types=(("in" if held[side] else "not_in"), statics) if refusing else None)
+            fresh = {atom.id for atom in atoms} - spent
+            spent.update(fresh)
+            cut, budget[0] = cut or len(fresh) > budget[0], max(0, budget[0] - len(fresh))
+            if cut:
+                return None
+            for atom in atoms:
+                named = [(atom.subject_type, dict(atom.subject_keys or {}))]
+                payload_ = atom.object_payload or {}
+                if atom.object_kind == "entity_ref" and payload_.get("type"):
+                    named.append((str(payload_["type"]), dict(payload_.get("keys") or {})))
+                ids = [(explorer.entity_id(t, k), (t, k)) for t, k in named]
+                for one, _ref in ids:
+                    for far_id, ref in ids:
+                        if far_id != one:
+                            refs.setdefault(far_id, ref)
+                            near_of[side].setdefault(one, set()).add(far_id)
+        if door is None:
+            whole[side].update(unread)
+        return [(near, far_id) for near in frontier for far_id in near_of[side].get(near, ())
+                if (door is None or (far_id in door[1]) == (door[0] == "in")) and not refused(side, near, far_id)]
+
+    a_seen = {s: (0, s) for s in seeds if s in refs}                  # id -> (hops from the aux, which aux)
+    reach = {i: {number[i]: 0} for i in main if i in refs}            # id -> {answer node number: hops from it}
+    a_front, m_front, a_depth, m_depth, cut = set(a_seen), set(reach), 0, 0, False
+    best = {}                                                          # answer node number -> (hops, aux)
+
+    def met(a_id, m_id, origins):
+        step = 0 if a_id == m_id else 1
+        for n, hops in origins.items():
+            total = a_seen[a_id][0] + hops + step
+            if n not in best or total < best[n][0]:
+                best[n] = (total, a_seen[a_id][1])
+
+    for shared in set(a_seen) & set(reach):
+        met(shared, shared, reach[shared])
+    pairs = read(a_front, ("in", reach), "a")
+    cut = pairs is None
+    for near, far in pairs or ():
+        if far in reach:                                 # an atom between two frontier nodes pairs both ways
+            met(near, far, reach[far])
+    judged = [number[i] for i in main if i in refs]
+    while not cut:
+        if all(n in best and best[n][0] <= a_depth + m_depth + 1 for n in judged):
+            break
+        if not a_front:                                  # A searched out: its hops are exact, the rest has no way
+            for node_id in main:
+                if node_id in a_seen and (number[node_id] not in best
+                                          or a_seen[node_id][0] < best[number[node_id]][0]):
+                    best[number[node_id]] = a_seen[node_id]
+            break
+        if not m_front:                                  # M searched out: an origin that never met has no way
+            break
+        if len(a_front) <= len(m_front):
+            pairs = read(a_front, ("not_in", a_seen), "a")
+            if pairs is None:
+                cut = True
+                break
+            new = {}
+            for near, far in pairs:
+                if far not in a_seen and far not in new:
+                    new[far] = (a_depth + 1, a_seen[near][1])
+            a_seen.update(new)
+            a_front, a_depth = set(new), a_depth + 1
+            for shared in set(new) & set(reach):
+                met(shared, shared, reach[shared])
+            pairs = read(a_front, ("in", reach), "a")
+            cut = pairs is None
+            for near, far in pairs or ():
+                if far in reach:
+                    met(near, far, reach[far])
+        else:
+            pairs = read(m_front, None, "m")
+            if pairs is None:
+                cut = True
+                break
+            gained = {}
+            for near, far in pairs:
+                for n, hops in reach[near].items():
+                    if hops == m_depth and n not in reach.get(far, {}):
+                        gained.setdefault(far, {})[n] = m_depth + 1
+            for node_id, origins in gained.items():
+                reach.setdefault(node_id, {}).update(origins)
+            m_front, m_depth = set(gained), m_depth + 1
+            for shared in set(gained) & set(a_seen):
+                met(shared, shared, gained[shared])
+            pairs = read(m_front, ("in", a_seen), "m")
+            cut = pairs is None
+            for near, far in pairs or ():
+                if far in a_seen:
+                    met(far, near, gained[near])
+    for node in payload["nodes"]:
+        found = best.get(number[node["id"]])
+        node["aux"] = ({"state": "found", "hops": found[0], "via": found[1]} if found
+                       else {"state": "unknown"} if cut or node["id"] not in refs else {"state": "none"})
+    payload["aux"] = {"seeds": seeds, "complete": not cut, "truncated": "claims" if cut else None,
+                      "hops_reached": a_depth + m_depth + 1, "claims": cap - budget[0]}
 
 #: Below every atom id, so (t0, this) splits a node's atoms at t0 exactly: `>=` is 「at or after t0」.
 _BEFORE_EVERY_ID = "00000000-0000-0000-0000-000000000000"

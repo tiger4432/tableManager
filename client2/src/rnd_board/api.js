@@ -360,7 +360,9 @@ export async function fetchSubgraph(params) {
           // (주어 쪽이든 목적어 쪽이든 — v6, 총괄 819726624 ㄹ).
           seed_type: seedType, seed_limit: seedLimit,
           // Walk control ㄴ (b1245bab9): the fan-out cap, and the bundles to draw anyway (node|predicate|direction).
-          fanout_limit: fanoutLimit, expand } = params || {};
+          fanout_limit: fanoutLimit, expand,
+          // The auxiliary node(s) the walk judges its nodes against (owner 10-12) - none, nothing sent.
+          aux } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -453,6 +455,7 @@ export async function fetchSubgraph(params) {
   // 🔴 C-53. `collect` — 「무엇을 «가져오나»」. `follow` 가 길이면 이것이 짐입니다. 걷기 상자만
   //    싣던 것을 «정본 생성기»로 올립니다: 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
   for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t));
+  for (const id of Array.isArray(aux) ? aux : []) query.append('aux', String(id));
   if (direction) query.set('direction', direction);
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
   const res = await (fetchImpl || fetch)(url);
@@ -1945,7 +1948,7 @@ export function createWalkBoxWalk(deps) {
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
     const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
-            since, until, positive, negative, fanout_limit: fanoutLimit, expand } = spec || {};
+            since, until, positive, negative, fanout_limit: fanoutLimit, expand, aux } = spec || {};
     // A marking is a start too (lead f6fc6ba66): its signed ids, in the shape the board's walk sends.
     const marked = Array.isArray(positive) && positive.length > 0;
     if (!type && !marked) return { ok: false, message: PICK_TYPE_FIRST };
@@ -1976,7 +1979,7 @@ export function createWalkBoxWalk(deps) {
         hops: hops || undefined,
         node_limit: nodeLimit || undefined,
         since, until,
-        fanout_limit: fanoutLimit || undefined, expand,
+        fanout_limit: fanoutLimit || undefined, expand, aux,
       });
       if (!got.ok || !got.body) {
         return { ok: false, message: refusalSentence(got.detail, got.status) };
@@ -2043,6 +2046,9 @@ export function createWalkBoxWalk(deps) {
         propagation: body.propagation || null,
         // Walk control ㄴ: the fan-outs not drawn, as the server counts them. No key unless a cap was asked: null.
         bundles: Array.isArray(body.bundles) ? body.bundles : null,
+        // The walk's judgment (owner 10-12): the auxiliary node(s) - seeds, complete, truncated, hops_reached; each node its own
+        // «aux» rides in nodes, which go through whole.
+        aux: body.aux || null,
       };
     } catch (err) {
       return { ok: false, message: `Walk unreachable — ${err && err.message}` };

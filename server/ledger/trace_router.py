@@ -126,6 +126,9 @@ def evidence_subgraph(
         description="응답 엣지 상한"),
     positive: list[str] | None = Query(
         None, description="추가 관측 씨앗. `id` 는 항상 positive 다"),
+    aux: list[str] | None = Query(
+        None, description="보조 노드 — 걸은 노드마다 이 노드(여럿이면 가장 가까운 것)까지 최단 경로가 있나: "
+                          "found · none · unknown (총괄 41194be5d)"),
     negative: list[str] | None = Query(
         None, description="대조군 씨앗 — 봤는데 안 난 주어. 목록에 없는 주어는 미검사이지 대조군이 아니다"),
     follow: list[str] | None = Query(
@@ -322,6 +325,7 @@ def evidence_subgraph(
             # A direct call leaves FastAPI's `Query` sentinels here, as for `collect` above.
             fanout_limit=fanout_limit if isinstance(fanout_limit, int) else None,
             expand=list(expand) if isinstance(expand, (list, tuple)) else None,
+            aux=list(aux) if isinstance(aux, (list, tuple)) else None,
             page=time_page, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -675,7 +679,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
-                    fanout_limit=None, expand=None, page=None):
+                    fanout_limit=None, expand=None, page=None, aux=None):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -699,7 +703,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
             cardinalities=cardinalities,
             declaration_paths=tuple(each.declaration_path for each in names))
     return ledger_subgraph.subgraph(
-        node_id, lookup,
+        node_id, lookup, aux=aux,
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
