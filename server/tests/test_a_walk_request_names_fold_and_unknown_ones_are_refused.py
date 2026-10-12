@@ -7,7 +7,7 @@ with an empty walk.
   field        old spelling                      unknown name
   collect      wafer@1 -> wafer                  422 node_type_not_declared
   follow       processed_with@1:wafer -> bare    422 predicate_not_declared
-  expand       <id>|processed_with@1|outgoing    422 predicate_not_declared
+  expand       <id>|processed_with@1|outgoing|wafer|0,1   422 predicate_not_declared  (a hub id, 총괄 b5f3fc849)
   seed_type    wafer@1 -> wafer                  422 seed_type_not_declared
   group_by     inspected@1 -> inspected          422 value_name_not_declared
   measure      sum:inspected@1 kept as asked     422 value_name_not_declared
@@ -68,8 +68,8 @@ def test_an_old_spelling_reaches_the_walk_bare(asked):
     walked = asked(follow=["processed_with@1:wafer"])
     assert (walked["follow"], walked["follow_keys"]) == (["processed_with"], {"processed_with": ("wafer",)})
     assert asked(follow=["processed_with@1"])["follow"] == asked(follow=["processed_with"])["follow"]
-    assert asked(expand=["%s|processed_with@1|outgoing" % SEED])["expand"] == [
-        "%s|processed_with|outgoing" % SEED]
+    assert asked(expand=["%s|processed_with@1|outgoing|wafer|0,1" % SEED])["expand"] == [
+        "%s|processed_with|outgoing|wafer|0,1" % SEED]
     assert asked(seed_type="wafer@1")["seed_type"] == "wafer"
     assert asked(group_by="inspected@1")["group_by"] == "inspected"
 
@@ -90,7 +90,7 @@ def test_a_measure_named_in_the_old_spelling_is_not_refused(asked):
 @pytest.mark.parametrize("arguments,reason,argument", [
     ({"collect": ["nosuch"]}, "node_type_not_declared", "collect"),
     ({"follow": ["nosuch"]}, "predicate_not_declared", "follow"),
-    ({"expand": ["%s|nosuch|outgoing" % SEED]}, "predicate_not_declared", "expand"),
+    ({"expand": ["%s|nosuch|outgoing|wafer|0,1" % SEED]}, "predicate_not_declared", "expand"),
     ({"seed_type": "nosuch"}, "seed_type_not_declared", "seed_type"),
     ({"group_by": "nosuch"}, "value_name_not_declared", "group_by"),
     ({"measure": ["sum:nosuch"]}, "value_name_not_declared", "measure"),

@@ -939,10 +939,10 @@ def _declared_or_refused(names, declared, *, reason, what, world, argument):
 
 
 def _expanded_bundle(item, world=None):
-    """`<node id>|<predicate>|<direction>` with its predicate through `_declared_or_refused`; a
-    shape that is not three parts goes on to the walk, which refuses it by its own words."""
-    parts = str(item).split("|")
-    if len(parts) != 3 or not parts[1].strip():
+    """A hub id (`<node id>|<predicate>|<direction>|<far type>|<value>`, 총괄 b5f3fc849) with its predicate through
+    `_declared_or_refused`; any other shape goes on to the walk, which refuses it by its own words."""
+    parts = str(item).rsplit("|", 4)
+    if ledger_subgraph.hub_step(item) is None:
         return item
     (parts[1],) = _declared_or_refused(
         [parts[1]], _followable_predicates(world), reason="predicate_not_declared",

@@ -369,6 +369,9 @@ def _packed(resume):
             "frontier": [[n(item["id"]), item["depth"], item["cost"], item["arrivals"]] for item in resume["frontier"]],
             "seen": [n(node_id) for node_id in resume["seen"]],
             "cursor": cursor,
+            "hubs": [[step_id, near, predicate, direction, far_type, depth,
+                      [[n(member), None if parent is None else n(parent)] for member, parent in members]]
+                     for step_id, near, predicate, direction, far_type, depth, members in resume.get("hubs") or ()],
             "reach": {str(n(seed)): {"parents": [[n(node), n(step[0]), *step[1:]] for node, step in held["parents"].items()],
                                      "arrived": [[n(node), steps] for node, steps in held["arrived"].items()],
                                      "kinds": held["kinds"]}
@@ -387,6 +390,9 @@ def _unpacked(resume):
                          for i, depth, cost, arrivals in resume["frontier"]],
             "seen": [ids[i] for i in resume["seen"]],
             "cursor": cursor,
+            "hubs": [[step_id, near, predicate, direction, far_type, depth,
+                      [[ids[member], None if parent is None else ids[parent]] for member, parent in members]]
+                     for step_id, near, predicate, direction, far_type, depth, members in resume.get("hubs") or ()],
             "reach": {ids[int(seed)]: {"parents": {ids[node]: [ids[before], *rest]
                                                    for node, before, *rest in held["parents"]},
                                        "arrived": {ids[node]: steps for node, steps in held["arrived"]},
@@ -1081,7 +1087,7 @@ def _read_entity_declaration():
     facts = _declaration_facts.get(paths)
     if facts is not None:
         return facts
-    order, plural_by_type, confirmers, inverses, labels, steps, hubs = {}, {}, {}, {}, {}, {}, set()
+    order, plural_by_type, confirmers, inverses, labels, steps, hubs, specs = {}, {}, {}, {}, {}, {}, set(), {}
     try:
         documents = []
         for path in paths:
@@ -1117,6 +1123,8 @@ def _read_entity_declaration():
         for name, spec in declared.items():
             spec = spec or {}
             bare = _bare_name(name)
+            # The eighth: each type's declaration, for a hub table's declared columns (`_declared_columns`, 총괄 b5f3fc849)
+            specs[bare] = spec
             keys = [str(key) for key in (spec.get("keys") or [])]
             if keys:
                 order[bare] = keys
@@ -1132,9 +1140,9 @@ def _read_entity_declaration():
                 if plural:
                     plural_by_type[bare] = plural
     except Exception:
-        order, plural_by_type, confirmers, inverses, labels, steps, hubs = {}, {}, {}, {}, {}, {}, set()
+        order, plural_by_type, confirmers, inverses, labels, steps, hubs, specs = {}, {}, {}, {}, {}, {}, set(), {}
     facts = _declaration_facts[paths] = (order, plural_by_type, confirmers, inverses, labels, steps,
-                                         frozenset(hubs))
+                                         frozenset(hubs), specs)
     return facts
 
 
@@ -1585,6 +1593,128 @@ def _canonical_seed(item):
     return explorer.entity_id(bare, keys)
 
 
+HUB_DIRECTIONS = ("outgoing", "incoming")
+_HUB_VALUE = re.compile(r"^\d+,\d+$")
+
+
+def hub_step(hub_id):
+    """The step a hub id names - `<near's step>|<predicate>|<direction>|<far type>`, every value cell left out - or None
+    when `hub_id` is not one (총괄 b5f3fc849 · afcb79f14). A hub beyond a hub carries that hub's id as its near side,
+    so the cells are read from the right."""
+    parts = str(hub_id).rsplit("|", 4)
+    if len(parts) != 5 or not all(parts) or parts[2] not in HUB_DIRECTIONS or not _HUB_VALUE.match(parts[4]):
+        return None
+    near = hub_step(parts[0]) or parts[0]
+    return "|".join((near, parts[1], parts[2], parts[3]))
+
+
+def _value_hubs(step_hubs, reach):
+    """The walk's step hubs split by contrast value (총괄 afcb79f14, 소유자 「그렇게해」): a hub is ONE step and ONE value,
+    its value its members' own. The id is the step's with the value as a fifth cell; a hub beyond a hub takes its
+    member's parent's hub as its near side. Step hubs come in the order made, so a parent's hub is there first.
+    -> {"hubs": {hub id: {near, predicate, direction, type, depth, value, of, label, members: {row: parent}}},
+        "row_hub": {row: hub id}}"""
+    hubs, row_hub = {}, {}
+    for step in step_hubs.values():
+        for member, parent in step["members"].items():
+            near = row_hub.get(parent, step["near"]) if parent is not None else step["near"]
+            value = [int(count) for count in reach.get(member, (0, 0))]
+            hub_id = "|".join((near, step["predicate"], step["direction"], step["type"], "%d,%d" % tuple(value)))
+            hub = hubs.setdefault(hub_id, {
+                "near": near, "predicate": step["predicate"], "direction": step["direction"], "type": step["type"],
+                "depth": step["depth"], "value": value, "of": near if near in hubs else None, "members": {}})
+            hub["members"][member] = parent
+            row_hub[member] = hub_id
+    for hub in hubs.values():
+        hub["label"] = "%s \u00d7%d" % (hub["type"], len(hub["members"]))
+    return {"hubs": hubs, "row_hub": row_hub}
+
+
+#: A hub table's own columns - the first of format=rows' (총괄 b5f3fc849), then the declared ones (`_declared_columns`).
+HUB_TABLE_COLUMNS = ("type", "depth", "id", "parent_id", "via", "seed")
+
+
+def _hub_view(visible, edges, folded, nodes, entities, seed_signs):
+    """The answer's nodes, edges and tables with the hubs folded (총괄 b5f3fc849): a row leaves `nodes` for its hub's
+    table, an edge to a row is drawn as one edge to its hub with `count`, an edge between two rows of one hub is in the
+    table only. Without hubs the answer is as before and there is no `tables`."""
+    hubs, row_hub = folded.get("hubs") or {}, folded.get("row_hub") or {}
+    if not hubs:
+        return visible, edges, None
+    shown_ids = {node["id"] for node in visible}
+    only_seed = next(iter(seed_signs)) if len(seed_signs) == 1 else None
+    hub_nodes, tables = [], {}
+    for hub_id, hub in hubs.items():
+        rows_nodes = [nodes[member] for member in hub["members"] if member in shown_ids]
+        if not rows_nodes:
+            continue
+        hub_nodes.append({"id": hub_id, "type": hub["type"], "label": hub["label"], "depth": hub["depth"],
+                          "node_kind": rows_nodes[0].get("node_kind"), "count": len(hub["members"]),
+                          "value": hub["value"], "hub": {"near": hub["near"], "predicate": hub["predicate"],
+                                                         "direction": hub["direction"], "of": hub["of"]}})
+        declared = _declared_columns(rows_nodes, entities)
+        rows = []
+        for node in rows_nodes:
+            parent = hub["members"][node["id"]]
+            fixed = {"type": node.get("type"), "depth": node.get("depth"), "id": node["id"],
+                     "parent_id": parent if parent is not None else hub["near"], "via": hub["predicate"],
+                     "seed": only_seed}
+            values = {**(node.get("keys") or {}), **(node.get("qualifiers") or {}), **(node.get("attributes") or {})}
+            rows.append([fixed[name] for name in HUB_TABLE_COLUMNS] + [values.get(name) for name in declared])
+        tables[hub_id] = {"columns": list(HUB_TABLE_COLUMNS) + declared, "rows": rows, "count": len(rows)}
+    kept, joined = [], {}
+    for edge in edges:
+        source, target = row_hub.get(edge["source"], edge["source"]), row_hub.get(edge["target"], edge["target"])
+        if source == target:
+            continue
+        if (source, target) == (edge["source"], edge["target"]):
+            kept.append(edge)
+            continue
+        key = (source, target, edge["predicate"])
+        if key not in joined:
+            joined[key] = dict(edge, id=_edge(edge["predicate"], source, target)["id"], source=source, target=target,
+                               records=[], records_more=0, count=0)
+        joined[key]["count"] += 1
+    shown = [node for node in visible if node["id"] not in row_hub]
+    return shown + hub_nodes, kept + list(joined.values()), tables
+
+
+def _hub_seeds(lookup, seed_id, limit):
+    """`seed_id` with each hub id in it read as the far nodes of the step it names (총괄 01a56c82d). ⚠️ THE STEP'S, every
+    value: a hub's value belongs to the walk that drew it, and a walk from it has no other walk to ask."""
+    def members(hub_id):
+        near, predicate, direction, far_type, _value = hub_id.rsplit("|", 4)
+        nears = members(near) if hub_step(near) else [near]
+        refs = [decode_node_id(item) for item in nears]
+        atoms, _cut = lookup.claims_for_entities([(ref["type"], ref["keys"]) for ref in refs], direction, limit,
+                                                 follow=[predicate])
+        found = []
+        for atom in atoms:
+            if direction == "outgoing":
+                payload = atom.object_payload or {}
+                if atom.object_kind != "entity_ref" or _bare(payload.get("type")) != far_type:
+                    continue
+                far = explorer.entity_id(payload["type"], payload["keys"])
+            else:
+                if _bare(atom.subject_type) != far_type:
+                    continue
+                far = explorer.entity_id(atom.subject_type, atom.subject_keys)
+            if far not in found:
+                found.append(far)
+        if not found:
+            raise ValueError(f"hub {hub_id!r} names no node - its step reaches nothing now")
+        return found
+
+    def read(items):
+        return [member for item in items or () for member in (members(str(item)) if hub_step(item) else [item])]
+    if isinstance(seed_id, str) and hub_step(seed_id):
+        return {"positive": members(seed_id), "negative": []}
+    if isinstance(seed_id, dict) and any(hub_step(item) for sign in ("positive", "negative")
+                                         for item in seed_id.get(sign) or ()):
+        return {"positive": read(seed_id.get("positive")), "negative": read(seed_id.get("negative"))}
+    return seed_id
+
+
 def _signed_seeds(start):
     """`start` widens from one id to a signed SET without leaving its argument slot.
 
@@ -1865,7 +1995,8 @@ def _rank_layers(items):
     return layers
 
 
-def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=None, keep=None, hubs=None):
+def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=None, keep=None, hubs=None,
+                 folded=None):
     """Rank every node this walk REACHED, by the contrast between the two signed reaches.
 
     🔴 THE POPULATION IS EVERY REACHED NODE, and that is an owner ruling
@@ -1979,10 +2110,15 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
             if bare and bare in kinds.get(seed, ()):
                 pair[0 if sign > 0 else 1] += 1
         return pair
-    # 🔴 RANKED ON THE FOLDED GRAPH (총괄 b5f3fc849): a hub is ONE candidate, as its first member reached (its
-    # members were reached by the one step that made it), and says how many it stands for; a row is no candidate.
-    rows = {member for hub in (hubs or {}).values() for member in hub["members"]}
-    standing = {hub_id: next(iter(hub["members"])) for hub_id, hub in (hubs or {}).items() if hub["members"]}
+    # 🔴 RANKED ON THE FOLDED GRAPH (총괄 b5f3fc849 · afcb79f14): the walk's step hubs split by this reach into value
+    # hubs, each ONE candidate with its members' value, saying how many it stands for; a row is no candidate.
+    # `folded` takes the value hubs back - the answer's nodes, edges and tables are folded with the same ones.
+    split = _value_hubs(hubs or {}, reach)
+    if folded is not None:
+        folded.update(split)
+    hubs = split["hubs"]
+    rows = split["row_hub"]
+    standing = {hub_id: next(iter(hub["members"])) for hub_id, hub in hubs.items()}
     collected = [{
         "id": node["id"],
         # 🔴 THE DECLARED ENTITY TYPE, not `node_kind`.  `node_kind` is this projection's
@@ -1998,7 +2134,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
     collected += [{"id": node_id, "reach": counts} for node_id, counts in reach.items()
                   if node_id not in nodes and node_id not in seed_signs]
     collected += [{"id": hub_id, "type": hubs[hub_id]["type"], "label": hubs[hub_id]["label"],
-                   "reach": reach.get(member, [0, 0]), "tied_members": len(hubs[hub_id]["members"])}
+                   "reach": hubs[hub_id]["value"], "tied_members": len(hubs[hub_id]["members"])}
                   for hub_id, member in standing.items() if member in reach]
     if not collected:
         block["message"] = "This walk reached no node beyond its seeds"
@@ -2632,15 +2768,15 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # enumerate subjects, against a connection the caller never opened.
     seed_type = seed_type if isinstance(seed_type, str) and seed_type.strip() else None
     seed_cut = 0
-    # `expand` names bundles to draw past `fanout_limit`: `<node id>|<predicate>|<direction>`.
+    # `expand` names hubs to draw unfolded - a hub id as the walk answered it; the step it names (every cell but the
+    # values, 총괄 afcb79f14) is not folded at all.
     expand_keys = set()
     for item in expand or ():
-        parts = tuple(str(item).split("|"))
-        if len(parts) != 3 or not all(parts) or parts[2] not in ("outgoing", "incoming"):
-            raise ValueError(f"expand {item!r} is not <node id>|<predicate>|<direction> - "
-                             f"direction is outgoing or incoming, as a bundle says it")
-        expand_keys.add(parts)
-    bundles = []
+        step = hub_step(str(item))
+        if step is None:
+            raise ValueError(f"expand {item!r} is not a hub id - <node id>|<predicate>|<direction>|<far type>|<value>, "
+                             f"as the walk answered it")
+        expand_keys.add(step)
     if seed_type:
         # ⛔ An undeclared type is refused before this, by name, at the route's one seat for a
         # request's names (`trace_router._declared_or_refused`, 총괄 17b6337e4).
@@ -2663,6 +2799,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             raise ValueError(
                 "every node of type %r is named as a control; nothing is "
                 "left to walk from" % (seed_type,))
+    seed_id = _hub_seeds(lookup, seed_id, MAX_CLAIM_SCAN)
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
@@ -2762,6 +2899,13 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         """Whether `node` is in the answer's `nodes` - the one test the budget and the list share."""
         return (collected_types is None or _bare_name(node.get("type")) in collected_types) and node["id"] not in known
 
+    #: 🔴 HUBS (총괄 b5f3fc849 · afcb79f14). A row is a reached node folded into a hub: walked like any node, but in the
+    #: answer a row of its hub's table, outside the node budget - its hub spends one. While walking a hub is a STEP
+    #: (`<near's step>|<predicate>|<direction>|<far type>`); the walk's contrast splits it by value at the end
+    #: (`_value_hubs`). row -> step; step -> {near, predicate, direction, type, depth, members: {row: parent row}}.
+    row_hub, hubs, row_children = {}, {}, defaultdict(set)
+    hub_predicates = _read_entity_declaration()[6]
+
     def add_node(node, ref, depth):
         nonlocal node_cut, budgeted
         node_id = node["id"]
@@ -2775,7 +2919,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # against 149 entities, so counting them saturates the cap and the answer falls out:
         # MEASURED, quantity ranked drops 9 -> 4 and the recipe's trail disappears entirely.
         # Whether a measurement should share the entity budget is a ruling, not a default.
-        if node.get("node_kind") != "value" and carried(node):
+        if node.get("node_kind") != "value" and carried(node) and node_id not in row_hub:
             if budgeted >= node_limit:
                 node_cut = True
                 return False
@@ -2804,10 +2948,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             # 🔴 EVERY ATOM OF IT IS A RECORD OF IT (총괄 e5e0a87e2 · 10-11 ㄱ) - once each
             edge_records[row["id"]].setdefault(row["claim_id"], (instant, row["claim_id"], row["records"][0]))
             return True
-        if budgeted_edges >= edge_limit:
+        folded = row["source"] in row_hub or row["target"] in row_hub   # drawn as its hub's edge, not spent here
+        if not folded and budgeted_edges >= edge_limit:
             edge_cut = True
             return False
-        budgeted_edges += 1
+        budgeted_edges += 0 if folded else 1
         edges[row["id"]] = row
         edge_records[row["id"]] = {row["claim_id"]: (instant, row["claim_id"], row["records"][0])}
         return True
@@ -3051,6 +3196,14 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             depths[node_id], dep_cost[node_id] = int(item["depth"]), int(item["cost"])
             arrivals[node_id] = {tuple(step) for step in item.get("arrivals") or ()}
         cursor = resume.get("cursor")
+        for step_id, near, predicate, direction, far_type, hub_depth, members in resume.get("hubs") or ():
+            hubs[step_id] = {"near": near, "predicate": predicate, "direction": direction, "type": far_type,
+                             "depth": hub_depth, "members": {}}
+            for member, parent in members:
+                hubs[step_id]["members"][member] = parent
+                row_hub[member] = step_id
+                if parent is not None:
+                    row_children[parent].add(member)
         for node_id in (cursor or {}).get("frontier") or ():
             refs.setdefault(node_id, decode_node_id(node_id))
 
@@ -3076,14 +3229,19 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                                            "arrivals": sorted((list(step) for step in arrivals.get(node_id, ())),
                                                               key=str)}
                                           for node_id in open_ids],
-                             "seen": sorted(whole), "cursor": at}}
+                             "seen": sorted(whole), "cursor": at,
+                             # the hubs as they stood here - a row stays its hub's on the next page (총괄 b5f3fc849)
+                             "hubs": [[step_id, hub["near"], hub["predicate"], hub["direction"], hub["type"],
+                                       hub["depth"], [[member, parent] for member, parent in hub["members"].items()]]
+                                      for step_id, hub in hubs.items()]}}
 
     def _reads(group, group_follow):
         """What one frontier group reads, in order: an opened bundle's predicate first, then the
         rest of its node, then the rest of the group - an opened bundle spends the budget first,
         within its depth (총괄 11e5ea207 · c06b45ea5). Nothing opened: the one read it always was."""
         opened = defaultdict(set)
-        for node_id, predicate, _direction in expand_keys:
+        for step in expand_keys:
+            node_id, predicate, _direction, _far_type = step.rsplit("|", 3)
             if not group_follow or predicate in group_follow:
                 opened[node_id].add(predicate)
         by_predicates = defaultdict(list)
@@ -3115,6 +3273,82 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         return entities
 
     #: every atom read, at every level - `current_conflicts` counts over all of them
+    def _hub_rows(batch, fanned, depth):
+        """THE ONE SEAT of «does this step fold» (총괄 b5f3fc849). A far node this read reached FIRST, by one near node and
+        one (predicate, direction, far type), becomes a row of the step `<near's face>|<predicate>|<direction>|<far type>`
+        when its near node is a row (its own child - the next hub, parent = that row), or when the predicate is declared
+        `hub` or the step passes `fanout_limit` with two or more such far nodes - and the step was not opened by `expand`."""
+        nonlocal budgeted, node_cut
+        reached = defaultdict(set)
+        for _atom, step, _j in batch:
+            if step is not None and step["fan_key"] is not None and step["far_id"] not in nodes:
+                reached[step["far_id"]].add(step["fan_key"])
+        by_step = defaultdict(list)
+        for far, keys in reached.items():
+            if len(keys) == 1:
+                (key,) = keys
+                by_step["|".join((row_hub.get(key[0], key[0]), _bare(key[1]), key[2], str(key[3])))].append((far, key))
+        for step_id, members in by_step.items():
+            near, predicate, direction, far_type = members[0][1]
+            at_row = near in row_hub
+            if step_id in expand_keys:
+                continue
+            if not at_row and step_id not in hubs:
+                over = fanout_limit is not None and len(fanned[members[0][1]]) > fanout_limit
+                if not ((_bare(predicate) in hub_predicates or over) and len(members) >= 2):
+                    continue
+            if step_id not in hubs:
+                if carried({"id": step_id, "type": far_type}):
+                    if budgeted >= node_limit:
+                        node_cut = True
+                        continue
+                    budgeted += 1
+                hubs[step_id] = {"near": row_hub.get(near, near), "predicate": _bare(predicate), "direction": direction,
+                                 "type": str(far_type), "depth": depth + 1, "members": {}}
+            for far, key in members:
+                parent = key[0] if at_row else None
+                hubs[step_id]["members"][far] = parent
+                row_hub[far] = step_id
+                if parent is not None:
+                    row_children[parent].add(far)
+
+    def _under(node_id, row):
+        """Is `node_id` a row under `row`? Reached back from below is not another way."""
+        walked = set()
+        while node_id in row_hub and node_id not in walked:
+            walked.add(node_id)
+            node_id = hubs[row_hub[node_id]]["members"].get(node_id)
+            if node_id == row:
+                return True
+        return False
+
+    def _own(step):
+        """Is this the step that made its far node a row - its hub's, from its parent? Anything else is another way."""
+        far = step["far_id"]
+        hub = hubs[row_hub[far]]
+        near, predicate, direction, _far_type = step["fan_key"]
+        parent = hub["members"].get(far)
+        own = (near == parent) if parent is not None else (
+            near == hub["near"] and _bare(predicate) == hub["predicate"] and direction == hub["direction"])
+        return own or _under(near, far)
+
+    def _extract(row_id):
+        """A row reached another way at a later read stands on its own (총괄 b5f3fc849) - and the rows under it with it."""
+        nonlocal budgeted, node_cut
+        stack = [row_id]
+        while stack:
+            node_id = stack.pop()
+            step_id = row_hub.pop(node_id, None)
+            if step_id is None:
+                continue
+            parent = hubs[step_id]["members"].pop(node_id, None)
+            if parent is not None:
+                row_children[parent].discard(node_id)
+            if carried(nodes[node_id]):
+                budgeted += 1
+                node_cut = node_cut or budgeted > node_limit
+            stack.extend(row_children.pop(node_id, ()))
+
     fetched = []
     for depth in range(cursor["depth"] if cursor else 0, budget_hops):
         # 🔴 A NODE THAT HAS SPENT ITS DEPARTURES IS NOT EXPANDED, however shallow it is.
@@ -3223,26 +3457,18 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 if cut:
                     stop = j
                     break
-            # 🔴 A FAN-OUT OVER `fanout_limit` DRAWS ITS FIRST `fanout_limit` AND BUNDLES THE REST
-            # (총괄 11e5ea207, 소유자 「잘려도 일부는 나와야지」 - it used to draw none, c9bf53033 ㄴ).
-            # Distinct far nodes per (node, predicate, direction, far type), over the steps the
-            # guards pass; the first are the first read (the lookup's order, newest first). A
-            # bundle is not a node: it rides in `bundles`, beside `truncated` and never inside it.
+            # 🔴 THE ONE SEAT DECIDES WHICH FAR NODES THIS READ FOLDS (총괄 b5f3fc849): every step is drawn and walked now,
+            # a folded far node as a row of its hub; a row this read reaches another way stands on its own again.
             fanned = defaultdict(set)
             for atom, step, _j in steps:
                 if step is not None and step["fan_key"] is not None:
                     fanned[step["fan_key"]].add(step["far_id"])
-            over = {key for key, far in fanned.items()
-                    if fanout_limit is not None and len(far) > fanout_limit
-                    and key[:3] not in expand_keys}
-            taken = defaultdict(set)
+            rows_before = set(row_hub)
+            _hub_rows(steps, fanned, depth)
             for atom, step, j in steps:
-                key = None if step is None else step["fan_key"]
-                if key in over:
-                    if step["far_id"] not in taken[key] and len(taken[key]) >= fanout_limit:
-                        last_of[j] = (atom.occurred_at, atom.id)
-                        continue
-                    taken[key].add(step["far_id"])
+                if (step is not None and step["far_id"] in rows_before and step["far_id"] in row_hub
+                        and step["fan_key"] is not None and not _own(step)):
+                    _extract(step["far_id"])
                 # the first cap keeps the walk's state there; the page goes on drawing what still fits, as it did
                 if not _expand_atom(atom, step) and paused is None:
                     _pause(_place(j), _whole_before(j))
@@ -3251,18 +3477,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 _pause(_place(stop), _whole_before(stop))
             elif paused is None:
                 read_whole.update(frontier_entities)
-            # An opened bundle the budget still cut comes back as one, with what it drew - a far
-            # node counts as drawn when this step's edge was kept, not merely its node.
-            told = over | {key for key in fanned if key[:3] in expand_keys}
-            joined = ({(_bare(e["predicate"]), e["source"], e["target"]) for e in edges.values()}
-                      if told else set())
-            for key in sorted(told, key=str):
-                drawn = sum(1 for far in (taken[key] if key in over else fanned[key])
-                            if ((_bare(key[1]), key[0], far) if key[2] == "outgoing"
-                                else (_bare(key[1]), far, key[0])) in joined)
-                if key in over or drawn < len(fanned[key]):
-                    bundles.append({"node": key[0], "predicate": key[1], "direction": key[2],
-                                    "far_type": key[3], "count": len(fanned[key]), "drawn": drawn})
 
         # 🔴 FOUR BRANCHES LEFT HERE ON 2026-08-28: finding summaries, finding
         # points, quantities and source events, plus the enrich-action tail. Each expanded a
@@ -3413,6 +3627,13 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # 🔴 THE VERDICTS NEED THE CUTS, so they are folded once the budget is known — the same
     # walk, no second pass over the store.
     _absence_verdicts(nodes, not reasons, reasons[0] if reasons else None)
+    folded = {}
+    propagation = _propagation(
+        nodes, ordered_edges, seed_signs,
+        not (depth_cut or node_cut or edge_cut or claim_cut or action_cut or seed_cut),
+        static_types, (resume or {}).get("reach"), reached, hubs=hubs, folded=folded)
+    answer_nodes, answer_edges, tables = _hub_view(
+        visible_nodes, ordered_edges, folded, nodes, _read_entity_declaration()[7], seed_signs)
     payload = {
         # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
         #    하니스·계약·서버 시험 전수), 「다를 때 무엇을 하나」가 «어디에도» 안 적혀 있었으며,
@@ -3422,7 +3643,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         #    「다를 때의 «행동»」이고, 그것은 계약 라운드다.
         "state": "ready" if found else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "seed": seed, "nodes": visible_nodes, "edges": ordered_edges,
+        "seed": seed, "nodes": answer_nodes, "edges": answer_edges,
+        # 🔴 a hub's rows, present only when the walk folded one (총괄 b5f3fc849)
+        **({} if tables is None else {"tables": tables}),
         # 🔴 WHICH ATTRIBUTE NAMES HOLD SEVERAL VALUES, BY NODE TYPE (S-144, 판정 327).
         # `attributes[name]` is a list for these names and a scalar for every other, so a
         # reader has to know which - and the DECLARATION is where that is written. The
@@ -3460,11 +3683,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         },
         "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
-        "propagation": _propagation(
-            nodes, ordered_edges, seed_signs,
-            not (depth_cut or node_cut or edge_cut or claim_cut or action_cut
-                 or seed_cut),
-            static_types, (resume or {}).get("reach"), reached),
+        "propagation": propagation,
         "walk": {
             "mode": "evidence_graph", "direction": direction,
             "start": {
@@ -3502,8 +3721,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                else {"interval_excluded": lookup.interval_excluded}),
         },
         "message": None if found else "No ledger evidence is connected to the selected node",
-        # ㄴ - present only when `fanout_limit` was asked, as `groups` is for `group_by`.
-        **({} if fanout_limit is None else {"bundles": bundles}),
     }
     if more["resume"] is not None:
         more["resume"]["reach"] = reached              # where the next page's ranking goes on from
@@ -3512,7 +3729,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.
         payload["rows"] = rows_projection(
-            payload, nodes, ordered_edges, seed_signs, entities, static_types or (), (resume or {}).get("reach"))
+            dict(payload, nodes=visible_nodes), nodes, ordered_edges, seed_signs, entities, static_types or (), (resume or {}).get("reach"))
     return payload
 
 

@@ -71,7 +71,7 @@ ATOMS = ([_atom("operator", {"o": "O1"}, "calibrates", "quantity", {"q": "Q0"})]
 # W marked, Q0 a control - the ranking's two sides (응용 18766: a page after the first ranked nothing)
 SEEDS = {"positive": [explorer.entity_id("wafer", {"w": "W"})],
          "negative": [explorer.entity_id("quantity", {"q": "Q0"})]}
-EXPAND = ["%s|linked|outgoing" % explorer.entity_id("die", die("D3"))]
+EXPAND = ["%s|linked|outgoing|die|1,0" % explorer.entity_id("die", die("D3"))]     # a hub id: the step opened, any value
 
 
 @pytest.fixture
