@@ -868,6 +868,10 @@ body.resizing-active .history-sidebar {
   font-style: normal;
   font-weight: 600;
 }
+/* A tooltip's lines are its own: the Ledger cell's hover is a line per world (lead 10-12). */
+.ag-tooltip {
+  white-space: pre-line;
+}
 
 /* The image cell and its preview carry their own look (image_preview.js IMAGE_PREVIEW_CSS) - the walk page loads no
    style.css. */

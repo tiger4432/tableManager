@@ -192,7 +192,9 @@ export class GridSourceLabel {
       line.className = refused ? 'grid-source-label__row is-refused' : 'grid-source-label__row';
       const name = doc.createElement('span');
       name.className = 'grid-source-label__name';
-      name.textContent = `ledger source — ${row.source}`;
+      // Another world's line names its world; the operating world's reads as today (lead 10-12).
+      name.textContent = row.world && row.world !== this.operating
+        ? `ledger source — ${row.source} · ${row.world}` : `ledger source — ${row.source}`;
       line.appendChild(name);
       const makes = doc.createElement('span');
       makes.className = 'grid-source-label__emits';

@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { UNKNOWN } from './absent.js';
+import { unitText } from './ui_words.js';
 
 /** 그리드 열 id. `#` 로 시작해 사용자 열 이름(SQL 식별자)과 부딪히지 않습니다. */
 export const LEDGER_COL_ID = '#ledger';
@@ -37,24 +38,54 @@ export function ledgerColumnShown(answer, table) {
   return Boolean(answer && table && answer.relation === table && SHOWN.has(answer.state));
 }
 
-/** An entry's words: its source, its world when not the operating one, «changed» when the row moved after translation. */
-const entryText = (entry, operating) => [entry.source, entry.world && entry.world !== operating ? entry.world : null,
-  entry.changed === true ? CHANGED : entry.changed === null ? UNVERIFIED : null].filter(Boolean).join(' · ');
+export const SYNCED = 'synced';
 
-/** 한 행의 칸 글자. `operating` 운영 세상 이름 — 그 세상 소스는 이름만(오늘 글자 그대로). `declared` 이 표의 소스들(세상마다). */
+const unreadOf = (row) => [...new Set(Array.isArray(row[LEDGER_UNREAD]) ? row[LEDGER_UNREAD] : [])];
+const worldsOf = (entries) => [...new Set(entries.map((e) => e.world))];
+
+/** 한 행의 칸 글자. `operating` 운영 세상 이름 — 그 세상 소스는 이름만(오늘 글자 그대로). `declared` 이 표의 소스들(세상마다).
+ *  One word first, whole at the column's width (lead 10-12): changed > Not yet > Unknown > the sources; the worlds not
+ *  named and not read ride a short tail, and every world's line is the hover's (`ledgerCellTip`). */
 export function ledgerCellText(row, state, operating, declared = []) {
   const entries = row ? row[LEDGER_ROWS] : undefined;
   // 서버가 칸을 안 실었다 = 원장 색인을 못 읽었다. `[]` 로 읽으면 「아직」이라는 주장이 됩니다.
   if (!Array.isArray(entries)) return UNKNOWN;
-  // A world not read: each of its sources here Unknown; none known (its declaration unread too), the world by its name.
-  const lost = (Array.isArray(row[LEDGER_UNREAD]) ? row[LEDGER_UNREAD] : []).flatMap((world) => {
-    const there = declared.filter((s) => s.world === world).map((s) => s.source);
-    return (there.length ? there : [null]).map((source) => [source, world !== operating ? world : null, UNKNOWN].filter(Boolean).join(' · '));
-  });
+  const unread = unreadOf(row);
+  const unknownTail = unread.length ? [`${unread.length} unknown`] : [];
+  const changed = entries.filter((e) => e.changed === true);
+  if (changed.length) {
+    const worlds = worldsOf(changed);
+    const which = worlds.length > 1 ? unitText(worlds.length, 'world')
+      : worlds[0] === operating ? changed.map((e) => e.source).join(' · ') : worlds[0];
+    return [CHANGED, which, ...unknownTail].join(' · ');
+  }
+  // No world read took it: Not yet stays though a world was not read (lead 10-12).
+  if (!entries.length) return [EMPTY_TEXT[state] || UNKNOWN, ...unknownTail].join(' · ');
   // 이름은 색인의 사실입니다 — 소스가 지금 거절됐어도 예전에 올린 것은 올린 것입니다.
-  const said = [...entries.map((entry) => entryText(entry, operating)), ...lost];
-  if (said.length) return said.join(' · ');
-  return EMPTY_TEXT[state] || UNKNOWN;
+  const worlds = worldsOf(entries).sort((a, b) => (b === operating) - (a === operating));
+  const first = entries.filter((e) => e.world === worlds[0]).map((e) => e.source);
+  const head = worlds[0] === operating ? first : [...first, worlds[0]];
+  const more = worlds.length > 1 ? [`+${unitText(worlds.length - 1, 'world')}`] : [];
+  return [...head, ...more, ...unknownTail].join(' · ');
+}
+
+/** The hover: a line per world and source, «<world> — <source> — synced/changed/unverified/Not yet/Refused/Unknown». */
+export function ledgerCellTip(row, state, operating, declared = []) {
+  const entries = row ? row[LEDGER_ROWS] : undefined;
+  if (!Array.isArray(entries)) return UNKNOWN;
+  const unread = unreadOf(row);
+  const status = (e) => (e.changed === true ? CHANGED : e.changed === false ? SYNCED : UNVERIFIED);
+  const pairs = declared.map((s) => ({ world: s.world || operating, source: s.source, refused: s.planned === false }));
+  for (const e of entries) {
+    if (!pairs.some((p) => p.world === e.world && p.source === e.source)) pairs.push({ world: e.world, source: e.source });
+  }
+  for (const world of unread) if (!pairs.some((p) => p.world === world)) pairs.push({ world, source: null });
+  pairs.sort((a, b) => (b.world === operating) - (a.world === operating));
+  return pairs.map((p) => {
+    const e = entries.find((x) => x.world === p.world && x.source === p.source);
+    const word = unread.includes(p.world) ? UNKNOWN : e ? status(e) : p.refused ? REFUSED : (EMPTY_TEXT[state] || UNKNOWN);
+    return [p.world, p.source, word].filter(Boolean).join(' — ');
+  }).join('\n');
 }
 
 /** The row changed after it was translated, by any source that took it. */
@@ -74,6 +105,7 @@ export function ledgerColumnDef(answer, table) {
     floatingFilter: false,
     resizable: true,
     valueGetter: (params) => ledgerCellText(params.data, state, operating, declared),
+    tooltipValueGetter: (params) => ledgerCellTip(params.data, state, operating, declared),
     // A changed row stands out of the dim system column (owner 10-12).
     cellClass: (params) => (ledgerRowChanged(params.data) ? 'cell-system-readonly is-ledger-changed' : 'cell-system-readonly'),
   };
