@@ -69,7 +69,7 @@ client2/src/rnd_board/walk_box_panel.js
 ## 3. 라우트 — 데이터에 답하는 것은 «하나»
 
 ```
-GET /api/ledger/subgraph     걷기. 아래 인자 «열넷»
+GET /api/ledger/subgraph     걷기. 아래 인자 «열넷» · 🆕 10-12 POST 도 — 본문 `resume`(아래 «이어 걷기»)
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
                              🆕 그리고 「어느 술어가 «검사»인가」 — `absence_confirmed_by` (S-216 `09217e2e`)
 GET /api/ledger/gaps
@@ -147,12 +147,14 @@ edges        {id, source, target, predicate, predicate_label, original_predicate
               넷째의 빈 집합은 「어느 노드도 자기 컬럼을 안 나른다」이다
 seeds        씨앗과 «부호»(+/-)
 propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로 순위 매긴다
+             🆕 10-12 이어 걸은 쪽의 `ranked` 는 그 쪽에서 새로 닿은 노드만 싣는다 — 순위는 지금까지 닿은 노드 전부 사이에서
              모집단이 전부인 것은 «소유자 판정»(2026-08-28)이다 — 한 타입으로 거르면
              묻고 있는 것보다 «좁은» 질문에 답하게 된다. `collect` 는 «짐»만 거르고
              순위는 내부에서 전부 본다. 🆕 10-11 `c17db3213` 부터 collect 는 예산이 무엇을 세는지도 바꿔,
              node_limit 이 걸리는 걷기에서는 순위가 보는 «닿은 노드»가 collect 에 따라 달라진다
              (시험 픽스처 다이 15 · 코어 3 · node_limit 10 — collect 없음 ranked 9 · complete False /
              collect=wafer ranked 33 · complete True, 10-11 문서 감사가 main 모듈을 import 해 잼)
+more         🆕 10-12 {unexpanded · reach{타입: complete · unexpanded} · resume} — 걷기 답에 늘(아래 «이어 걷기»)
 walk/state   모드·방향·시작 부호 수 / ready|empty
 ```
 ### `cardinality: one` — 지금 값은 «가장 늦은 occurred_at», 걷기가 읽을 때 정한다 (총괄 22ebdd153, 소유자 10-01 「다」)
@@ -340,6 +342,21 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 ⚠️ 🆕 그래서 `fanout_limit` 이 아끼는 것은 «덩어리로 남긴 먼 노드를 다음 깊이에서 안 넓히는» 몫뿐이다 — 그 걸음의 원자는 다 읽어 claims 에 든다(응용 10-10, 18767 리허설 조각 · 불량 base 원자 4278: 비우면 claims 6000 에서 잘림 · 100 이면 5974(다이 179 중 100 그림) · 50 이면 5180(50 그림), RUN.md 일요일 절 «잘리면 ③»).
 ⚠️ 🆕 10-10 `18b606d40` 클라 그래프에서 묶음을 열어 그린 노드는 서버가 «그 노드에서» 걸은 적이 없다 — 점선 덩어리 «? next · not walked», 누르면 술어 없이 한 걸음(`stepAlong`).
 ⚠️ 🆕 넘친 갈래마다 앞 N 이 노드 예산을 쓴다 — 갈래가 여럿인 깊이에서는 «넘치지 않은» 가지가 전보다 먼저 잘릴 수 있다(응용 잼 · 박스가 지은 모양: 로트 → 웨이퍼 25 · 웨이퍼마다 디펙 30 · 로트 → 레시피 → 장비 → 사이트. 전 lot 1 · recipe 1 · site 1 · tool 1 · 뒤 defect 378 · lot 1 · recipe 1 · wafer 20 · 잘림 nodes).
+
+## 🔵 이어 걷기 — `more` · `resume` (소유자 10-12, `2bdb44df7` … 병합 `c4b9b58a0`)
+
+```
+묻는 것   상한(원자 · 노드 · 엣지)에 잘린 걷기를, 상한은 그대로 둔 채 이어서 끝까지
+답        more = {unexpanded · reach{타입: complete · unexpanded} · resume}  — 더 있는지는 resume 하나가 답한다
+이어 걷기  resume 을 POST 본문으로 돌려준다 -> 같은 상한 · 첫 쪽 시각(as_of)으로 다음 쪽
+불변      쪽을 합치면 상한 없이 한 번 걸은 답 — 노드 · 엣지 · 순위(ranked) · 노드마다 reach
+          (시험 test_a_walk_continued_page_by_page_is_the_walk_without_caps.py)
+순위      이어지는 쪽의 ranked 는 그 쪽에서 새로 닿은 노드만, 순위는 지금까지 닿은 노드 전부 사이에서
+          시드의 닿음 · 행 투영의 길 · evidence 의 hop 술어는 앞 쪽들이 닿은 것(resume.reach)에서 이어 간다
+화면      More ▸ 가 다음 쪽을 그 걸음에 합친다(뒤 쪽 순위가 이김) · «N pages» · 타입마다 «<타입>: all reached» / «cut · N not expanded» · 마지막에 More 꺼짐(꺼진 까닭 «All reached»)
+```
+
+코드 자리는 CODE_MAP 의 `ledger_subgraph.py`(`_still_reaches` · `_reach` · `_packed`) · `trace_router.py`(POST `resume`) · `rnd_board/api.js`(`fetchSubgraph`) · `walk/main.js`(`walkResume`) 행.
 
 ## 🔵 보조 판정 — `aux` (소유자 10-12, `3c4e5a778`)
 
