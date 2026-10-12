@@ -8,9 +8,10 @@
  *
  *   A  column there or not × the label's answer (and an answer about ANOTHER table)
  *   B  the label says each source's own state; `refused` only when every source reading it is refused
- *   C  the cell × `ledger_sources` × the table's answer — every cell of that table is asserted
+ *   C  the cell × the row's ledger entries × the table's answer — every cell of that table is asserted
  *   G  the real `buildColumnDefs` puts it last, after updated_at
  *   W  the write funnels skip it (the one 「may I write this grid column」 seat)
+ *   E  every world's sources (owner 10-12): the label reads the one all-worlds loader the banner reads
  *
  * Every assertion is woken by a mutant below.
  */
@@ -55,7 +56,7 @@ const REAL = {
 const REFUSAL = { code: 'source_refused', path: 'bundle.sources.bonded_from.relation',
   message: "source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (view); "
     + 'a ledger source must read a table that has row_id' };
-const DECLARATION = { ok: true, sources: [
+const DECLARATION = { ok: true, operating: 'default', sources: [
   { source: 'die_inspection', relation: 'inspection_run', emits: ['inspected@1'] },
   { source: 'bonded_from', relation: 'bonding_die_from_core', emits: ['bonded_from@1'],
     planned: false, refusal: REFUSAL },
@@ -125,11 +126,27 @@ async function suite(mods) {
   eq('B4 the answer is told once per change, not once per render',
     source.told.map((a) => a.state), ['idle', 'source']);
 
+  // ── E. every world: a table only another world declares a source of stands the column ──
+  const asked = [];
+  const WORLDS = {
+    '': { ok: true, operating: 'default', worlds: ['default', 'appdemo_vf'], sources: DECLARATION.sources },
+    appdemo_vf: { ok: true, sources: [{ source: 'dt_job', relation: 'dt_job', emits: ['ran@1'], world: 'appdemo_vf' }] },
+  };
+  const loadWorld = async (world) => { asked.push(world || ''); return WORLDS[world || '']; };
+  const branchOnly = await labelled(mods, 'dt_job', await mods.label.everyWorldSources(loadWorld));
+  eq('E1 a table whose source only another world declares has the column', shown(branchOnly.answer, 'dt_job'), true);
+  eq('E2 each world asked once, the operating world first and not again', asked, ['', 'appdemo_vf']);
+  eq('E3 the operating world unreadable is unreadable, not «not a source»',
+    (await labelled(mods, 'dt_job', await mods.label.everyWorldSources(async () => ({ ok: false, message: 'server refused (503)' })))).answer.state,
+    'unknown');
+
   // ── C. the cell ─────────────────────────────────────────────────────────────────
   const cell = (answer, table, row) => (ledgerColumnDef(answer, table) || { valueGetter: () => '(no column)' })
     .valueGetter({ data: row });
-  const TWO = { row_id: '1', ledger_sources: ['die_inspection', 'lot_moved'] };
-  const NONE = { row_id: '2', ledger_sources: [] };
+  const ROWS = mods.column.LEDGER_ROWS;
+  const took = (source, world = 'default', changed = false) => ({ source, world, changed });
+  const TWO = { row_id: '1', [ROWS]: [took('die_inspection'), took('lot_moved')] };
+  const NONE = { row_id: '2', [ROWS]: [] };
   const OFF = { row_id: '3' };                     // the server could not read the row index
   eq('C1 source table · names', cell(source.answer, 'inspection_run', TWO), 'die_inspection · lot_moved');
   eq('C2 source table · [] is Not yet', cell(source.answer, 'inspection_run', NONE), 'Not yet');
@@ -138,11 +155,25 @@ async function suite(mods) {
     'die_inspection · lot_moved');
   eq('C5 refused table · [] is Refused', cell(refused.answer, 'bonding_die_from_core', NONE), 'Refused');
   eq('C6 refused table · no key is Unknown', cell(refused.answer, 'bonding_die_from_core', OFF), 'Unknown');
-  eq('C7 unreadable declaration · names', cell(unknown.answer, 'inspection_run', TWO), 'die_inspection · lot_moved');
+  // The operating world is the declaration's to say: unread, every entry says its world.
+  eq('C7 unreadable declaration · names, each with its world', cell(unknown.answer, 'inspection_run', TWO),
+    'die_inspection · default · lot_moved · default');
   eq('C8 unreadable declaration · [] is Unknown, not Not yet', cell(unknown.answer, 'inspection_run', NONE), 'Unknown');
   eq('C9 unreadable declaration · no key is Unknown', cell(unknown.answer, 'inspection_run', OFF), 'Unknown');
   eq('C10 a table with a standing source and a refused one · [] is Not yet', cell(mixed.answer, 'lot_event', NONE),
     'Not yet');
+  // Every world (owner 10-12): the operating world's source bare, as today; another world's with its world; a row
+  // changed after its translation says so and stands out.
+  const OTHER = { row_id: '4', [ROWS]: [took('dt_job', 'appdemo_vf')] };
+  const MOVED = { row_id: '5', [ROWS]: [took('dt_job', 'appdemo_vf', true)] };
+  const MOVED_HERE = { row_id: '6', [ROWS]: [took('die_inspection', 'default', true), took('lot_moved')] };
+  eq('C11 another world\'s source says its world', cell(branchOnly.answer, 'dt_job', OTHER), 'dt_job · appdemo_vf');
+  eq('C12 a row changed after its translation says changed', [cell(branchOnly.answer, 'dt_job', MOVED),
+    cell(source.answer, 'inspection_run', MOVED_HERE)], ['dt_job · appdemo_vf · changed', 'die_inspection · changed · lot_moved']);
+  const classOf = (row) => (ledgerColumnDef(branchOnly.answer, 'dt_job') || { cellClass: () => '' }).cellClass({ data: row });
+  eq('C13 a changed row\'s cell stands out of the dim system column; the others stay dim',
+    [classOf(MOVED), classOf(OTHER), classOf(OFF)],
+    ['cell-system-readonly is-ledger-changed', 'cell-system-readonly', 'cell-system-readonly']);
 
   // ── G. the real grid puts it at the end ─────────────────────────────────────────
   // the grid (real or a mutated copy) imports the real state.js, so this is the object it reads
@@ -182,10 +213,10 @@ result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 const probed = async (file, mutate) => (await loadWithProbe(FILE(file), { mutate })).module;
 const MUTANTS = [
   { id: 'X1', what: 'a row the server could not read is drawn as Not yet', catches: 'C3',
-    mutate: { column: (s) => s.replace('  if (!Array.isArray(names)) return UNKNOWN;',
-      '  if (!Array.isArray(names)) return EMPTY_TEXT[state] || UNKNOWN;') } },
+    mutate: { column: (s) => s.replace('  if (!Array.isArray(entries)) return UNKNOWN;',
+      '  if (!Array.isArray(entries)) return EMPTY_TEXT[state] || UNKNOWN;') } },
   { id: 'X2', what: '[] is drawn as a list of names (an empty one)', catches: 'C2',
-    mutate: { column: (s) => s.replace('  if (names.length) return names.join', '  if (true) return names.join') } },
+    mutate: { column: (s) => s.replace('  if (entries.length) return entries.map', '  if (true) return entries.map') } },
   { id: 'X3', what: 'an answer about another table stands the column', catches: 'A6',
     mutate: { column: (s) => s.replace('answer.relation === table && ', '') } },
   { id: 'X4', what: 'one refused source makes the whole table refused', catches: 'B1',
@@ -201,6 +232,14 @@ const MUTANTS = [
     mutate: { grid: (s) => s.replace('    columnDefs.push(ledger);', '    columnDefs.splice(0, 0, ledger);') } },
   { id: 'X10', what: 'the Ledger column is left out of the range highlight', catches: 'G3',
     mutate: { grid: (s) => s.replace("    ledger.cellClassRules = { 'custom-range-selected'", "    ledger.unused = { 'custom-range-selected'") } },
+  { id: 'X11', what: 'the label reads the operating world alone', catches: ['E1', 'E2'],
+    mutate: { label: (s) => s.replace('  const others = await Promise.all(', '  const others = [] || await Promise.all(') } },
+  { id: 'X12', what: 'another world\'s source said bare, as if the operating world\'s', catches: 'C11',
+    mutate: { column: (s) => s.replace('entry.world && entry.world !== operating ? entry.world : null', 'null') } },
+  { id: 'X13', what: 'the drift judgment not read - a changed row says nothing', catches: ['C12', 'C13'],
+    mutate: { column: (s) => s.replace('  entry.changed ? CHANGED : null', '  null').replace('row[LEDGER_ROWS].some((e) => e && e.changed)', 'false') } },
+  { id: 'X14', what: 'the operating world not known, so its own sources say their world', catches: 'C1',
+    mutate: { label: (s) => s.replace('rows, operating: this.operating };', 'rows };') } },
   { id: 'X9', what: 'the write funnels are not told, so a wide paste sends the column', catches: 'W1',
     mutate: { state: (s) => s.replace('  if (colId === LEDGER_COL_ID) return true;\n', '') } },
 ];
