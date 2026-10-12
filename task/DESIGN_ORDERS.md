@@ -38788,3 +38788,14 @@ F6 [문서] 다시 읽은 뒤 PUT 커밋까지의 창은 여전히 안 막힌다
          그리고 18766 진짜 화면에서 F1(물은 뒤 다른 칸이 바뀜 -> 다시 물음) · F3(PUT 중 편집 -> 남아 있음) 두 장면
 참고      W18 전수는 글자 수 세기 — 다른 철자의 캐시 쓰기는 못 잡는다(이번엔 둠)
 ```
+
+> **[총괄 -> 응용] 10-13 — 문서 정비: 걷기 프로세스 풀 착지 (main 38cc1f604 ~ e79b8a2a6)**
+
+```
+대상     server/runtime/process_pool.py(in_pool · warm · recycle · 세대 · 시한 하나 · 503 사유 셋) · 라우트만 in_pool(evidence_subgraph) 로 등록(맨 함수는 그대로) ·
+        config_watcher._reload · system_reload 의 recycle(풀을 데운 프로세스에서만) · 설정 walk_processes · walk_seconds_max · logs/walk_pool.log
+할 것    CODE_MAP 해당 절 · SYSTEM_OVERVIEW 프로세스 표 · backend.md 라우트 · 리로드 행 · ingestion_settings.md · DOC_OWNERSHIP 의 process_pool.py 행 —
+        코드와 대조해 맞춘다. 적대 QA 를 같이(특히 «직접 부르는 곳은 서버 안에서 돈다» · «데몬 밑 걷기 자식 0» 문장을 코드로)
+끝나면   보고 커밋 + 메시지. 총괄이 카운터를 지운다
+순서     지금 하는 재기 사이에, 편한 때
+```
