@@ -80239,3 +80239,38 @@ log handler / heartbeat writes of 20 ms or more in that run: 0
    변이       감싸기를 끔: 2 failed (모든 라우트 감쌈 · 멈춤), md5 같음
    ④ 진짜 프로세스  아직 — 박스를 베낀 판(지금 베끼는 중)에서 런처 그대로 걷기 화면 · 그리드 · 내보내기
 ```
+
+## 10-12 짓기 — 걷기 집계 어휘를 스팟파이어 철자로 (fceba46a7) — 브랜치 impl-agg-spotfire 9911db802
+
+```
+무엇       AGGREGATE_MEASURES = Count · UniqueCount · Sum · Avg · Min · Max · Median, NUMERIC_MEASURES 는 그중 다섯
+          옛 소문자 일곱은 measure 를 읽는 한 자리(_split_measure)만 접는다 — 표 _OLD_MEASURE_NAMES 하나, 읽는 곳 하나
+          답의 키는 «물은 그대로». measure 를 안 주면 기본 키가 count -> Count (기본값 셋: _split_measure · group_nodes · 라우트)
+          ⚠️ 대소문자는 접지 않는다: avg · AVG 는 그대로 422 unknown_measure (계약의 거절 벡터가 avg 를 든다)
+계약       contracts/walk_aggregate/vectors.json: measure 19 · 답의 키 19 를 새 이름으로 (파일 모양 그대로 indent 2 · CRLF)
+          클라는 이 파일을 안 읽는다 — C-90 ② 에서 클라 접기와 같이 은퇴(api.js 1367~ 주석). 그래서 «양쪽» = 서버 시험뿐
+게이트
+   같은 답   새 시험: 벡터 13 마다 옛 이름으로 물어 같은 값 · 옛 키 — 13/13
+   422      거절의 choices == AGGREGATE_MEASURES(새 일곱), 상수 시험이 새 일곱을 못박음. 라우트는 list(exc.choices) 그대로
+   돌림      test_walk_aggregate_contract · test_a_walk_request_names_fold... · test_a_saved_contrast...: 67 passed · 4 skipped(PG, measure 안 씀)
+   변이      접는 줄을 끔: 24 failed (옛 이름 13 + 옛 이름으로 부르던 기존 시험 11), md5 같음
+문서       ledger_subgraph 머리 주석 · 라우트 설명 · WALK.md 어휘 줄 · CODE_MAP 행 · RELEASE_LOG 항목(걷기 화면)
+```
+
+옛 이름 전수 (추적 파일, git grep · 카나리아 AGGREGATE_MEASURES 정의 1)
+
+```
+measure 자리에 옛 이름이 든 줄 (measure 앞 12 글자 안에 옛 이름)
+   클라 소스   rnd_board/main.js 279 · 375  measure: ['sum:inspected', 'sum:observed']  (보드 기본 좌석 둘)
+             rnd_board/api.js 1359~1365  AGGREGATIONS id 일곱 = 고르개 알약이 `${id}:${이름}` 로 실음
+             rnd_board/control_bar_panel.js 64  기본 집계 'count'
+             -> 전부 접는 자리를 지나 같은 답 · 같은 키. 클라 철자 변경은 이 지시 밖이라 안 건드림
+   클라 시험   rnd_board_harness.mjs 829~830 (main.js 줄을 변이), 픽스처 walk_*.json 셋의 _what URL
+   서버 시험   test_walk_aggregate_contract 5 줄 · test_a_walk_request_names_fold... 3 곳 · test_the_trend_reads... 246
+             -> 그대로 둠: 옛 이름 길을 같이 잰다(변이에서 11 이 빨강)
+   계약       0 (고침)
+   문서       고친 둘(WALK · CODE_MAP) 밖에 LEDGER_SCHEMA_COMPLETENESS 352 는 상수 «이름»만 들어 그대로
+저장된 보드  이 박스 server/config 28 파일 중 "measure" 든 파일 0 (박스 · gitignore). 운영에 저장된 보드는 여기서 셀 수 없음
+          -> 셀 수 없어도 옛 이름은 같은 답을 낸다
+안 셈       따옴표 낱말 count 등의 파일별 수는 셌으나 술어 count 칸 · JSON 키와 섞여 «자리»를 세므로 보고에 안 씀
+```
