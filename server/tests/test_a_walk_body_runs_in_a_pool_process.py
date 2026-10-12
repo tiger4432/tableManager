@@ -2,13 +2,14 @@
 the same status, headers and bytes as when it runs here; a pool process killed mid-body fails that request only; a
 reload's recycle gives the next body a fresh process; a request waits a bounded time; code that calls the walk's
 function itself gets a dict, as before (QA on 407448592)."""
-import ast
+import asyncio
 import datetime
 import os
 import sys
 import threading
 import time
 
+import psutil
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -76,8 +77,16 @@ def client(monkeypatch):
     with TestClient(app, raise_server_exceptions=False) as each:
         yield each
     with process_pool._cond:
+        taken = process_pool._taken[0]
         process_pool._generation[0] += 1
         process_pool._drain_locked()
+    assert taken == 0, "a request left its slot taken"
+
+
+@pytest.fixture
+def warming(monkeypatch):
+    """`warm` starts nothing in testing mode (lead 9a3c510c5) - these cells measure it, so they leave that mode."""
+    monkeypatch.setenv("TESTING", "False")
 
 
 def _seen(response):
@@ -180,16 +189,43 @@ def test_a_reload_recycles_the_pool(monkeypatch):
     assert called == [1]
 
 
-def test_the_server_starts_the_pool_ahead_after_the_testing_return():
-    """The startup event's order, read from main.py: `process_pool.warm()` comes after the TESTING early return."""
-    tree = ast.parse(open(os.path.join(SERVER_DIR, "main.py"), encoding="utf-8").read())
-    (startup,) = [node for node in ast.walk(tree)
-                  if isinstance(node, ast.AsyncFunctionDef) and node.name == "startup_event"]
-    testing_return = next(i for i, stmt in enumerate(startup.body)
-                          if isinstance(stmt, ast.If) and "TESTING" in ast.unparse(stmt.test)
-                          and any(isinstance(s, ast.Return) for s in stmt.body))
-    warm_at = [i for i, stmt in enumerate(startup.body) if "process_pool.warm()" in ast.unparse(stmt)]
-    assert warm_at and warm_at[0] > testing_return
+def test_the_server_s_start_starts_the_pool_ahead(monkeypatch):
+    """The startup event, run: it calls `warm` (which in testing mode starts nothing)."""
+    import main
+    from database import config_watcher
+
+    called = []
+    monkeypatch.setattr(process_pool, "warm", lambda: called.append(1))
+    monkeypatch.setattr(config_watcher, "start_config_watcher", lambda engine=None: None)
+    asyncio.run(main.startup_event())
+    assert called == [1]
+
+
+def test_testing_mode_starts_no_pool_process(monkeypatch):
+    monkeypatch.setenv("TESTING", "True")
+    process_pool.warm()
+    time.sleep(0.5)
+    assert process_pool._idle == [] and process_pool._taken[0] == 0
+
+
+def test_a_table_config_reload_recycles_the_pool(monkeypatch):
+    """lead 9a3c510c5 중1: a pool process reads the table config when it starts - the reload gives new ones."""
+    from database import config_watcher, crud, models
+
+    called = []
+    monkeypatch.setattr(process_pool, "recycle", lambda: called.append(1))
+    monkeypatch.setattr(crud, "TABLE_CONFIG", {})
+    monkeypatch.setattr(crud, "load_table_config", lambda: {"t": {}})
+    monkeypatch.setattr(models, "init_dynamic_models", lambda config, engine=None: None)
+    monkeypatch.setattr(config_watcher, "_report_unsearchable_declarations", lambda config: None)
+    config_watcher.ConfigChangeHandler(engine=None)._reload("table_config.json")
+    assert called == [1]
+
+
+def test_a_walk_process_that_does_not_start_in_time_is_a_503(client, monkeypatch):
+    _set(monkeypatch, walk_processes=2, walk_seconds_max=0.05)
+    got = client.get("/body", params={"kind": "pid"})
+    assert got.status_code == 503 and got.json()["detail"]["reason"] == "walk_process_not_ready"
 
 
 def test_a_request_waits_for_a_busy_pool_a_bounded_time(client, monkeypatch, tmp_path):
@@ -204,7 +240,7 @@ def test_a_request_waits_for_a_busy_pool_a_bounded_time(client, monkeypatch, tmp
     assert waited.status_code == 503 and waited.json()["detail"]["reason"] == "walk_pool_busy"
 
 
-def test_a_walk_that_does_not_finish_in_time_is_stopped(client, monkeypatch, tmp_path):
+def test_a_walk_that_does_not_finish_in_time_is_stopped(client, warming, monkeypatch, tmp_path):
     process_pool.warm()
     _until_idle(2)
     _set(monkeypatch, walk_processes=2, walk_seconds_max=3)
@@ -214,7 +250,11 @@ def test_a_walk_that_does_not_finish_in_time_is_stopped(client, monkeypatch, tmp
     thread.join(30)
     assert out["response"].status_code == 503
     assert out["response"].json()["detail"]["reason"] == "walk_timed_out"
-    time.sleep(0.5)
+    for _ in range(50):
+        if not psutil.pid_exists(stuck):
+            break
+        time.sleep(0.1)
+    assert not psutil.pid_exists(stuck), "the walk process that ran out of time was not ended"
     assert stuck not in {worker[0].pid for worker in process_pool._idle}
     assert client.get("/body", params={"kind": "pid"}).json()["pid"] != stuck
 
@@ -250,18 +290,45 @@ def _until_idle(count):
     raise AssertionError("the pool did not start %d ahead" % count)
 
 
-def test_the_pool_started_ahead_hands_the_first_body_a_ready_process(client):
+def test_the_pool_started_ahead_hands_the_first_body_a_ready_process(client, warming):
     process_pool.warm()
     _until_idle(2)
     ready = {worker[0].pid for worker in process_pool._idle}
     assert client.get("/body", params={"kind": "pid"}).json()["pid"] in ready
 
 
-def test_a_reload_starts_the_pool_ahead_again_and_keeps_no_older_process(client):
+def _within_the_size(seconds, size=2):
+    """Idle plus working never above `size` while the pool settles."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        with process_pool._cond:
+            assert len(process_pool._idle) + process_pool._taken[0] <= size
+        time.sleep(0.02)
+
+
+def test_two_starts_ahead_at_once_stay_within_the_size(client, warming):
+    process_pool.warm()
+    process_pool.warm()
+    _within_the_size(8)
+    assert len(process_pool._idle) == 2
+    assert process_pool._taken[0] == 0, "warm's starts were not counted, or not given back"
+
+
+def test_lowering_the_size_ends_the_extra_one_when_a_walk_returns(client, warming, monkeypatch):
+    process_pool.warm()
+    _until_idle(2)
+    _set(monkeypatch, walk_processes=1, walk_seconds_max=60)
+    assert client.get("/body", params={"kind": "pid"}).status_code == 200
+    assert len(process_pool._idle) + process_pool._taken[0] <= 1
+
+
+def test_a_reload_starts_the_pool_ahead_again_and_keeps_no_older_process(client, warming):
     process_pool.warm()
     _until_idle(2)
     before = {worker[0].pid for worker in process_pool._idle}
     process_pool.recycle()
+    process_pool.recycle()
+    _within_the_size(8)
     _until_idle(2)
     assert all(worker[2] == process_pool._generation[0] for worker in process_pool._idle)
     assert not before & {worker[0].pid for worker in process_pool._idle}

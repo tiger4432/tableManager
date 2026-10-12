@@ -1,21 +1,26 @@
 # 지금 돌리면 되는 것
 
-> ## [10-12 밤] **큰 걷기가 다른 사람의 화면을 멈추지 않음 — 걷기는 서버 밖 걷기 프로세스에서 (총괄 b47388fde)** — git pull · 서버 재기동
+> ## [10-12 밤] **큰 걷기가 «걷기 아닌» 화면을 멈추지 않음 — 걷기는 서버 밖 걷기 프로세스에서 (총괄 b47388fde)** — git pull · 서버 «반드시» 재기동
 >
 > ```
 > 무엇     걷기의 계산과 글자 변환을 서버가 띄운 걷기 프로세스(기본 둘)가 한다. 서버는 글자를 보내기만 한다
+>          걷기끼리는 walk_processes 만큼만 같이 돌고 나머지는 줄을 선다(줄이 walk_seconds_max 를 넘으면 503)
+> ⚠️ pull 뒤 재기동 «전»에 설정 리로드가 나면 새 걷기 코드가 옛 서버 밑에서 뜬다 — pull 하면 곧바로 재기동
 > 볼 것    걷기 화면에서 큰 걷기를 돌리는 동안 다른 창에서 그리드를 넘겨 본다 — 멈추지 않으면 됨
 >          작업 관리자에 python 이 둘 더(걷기 프로세스, 각 140 MB 안팎) — 서버가 뜬 뒤 몇 초 안에 뜬다
 > 답의 뜻   재기동 직후 첫 걷기만 3~4 초 더 걸림 -> 걷기 프로세스가 아직 뜨는 중(그다음부터는 없음)
 >          server.log 에 «walk processes not started ahead» -> 미리 띄우기 실패, 첫 걷기가 띄움(서버는 정상)
 >          걷기가 500 이고 server.log 에 «the pool process running this request ended» -> 그 걷기 프로세스가 죽은 것, 다음 걷기는 새로 뜸
 >          걷기 셋을 같이 돌리면 하나가 늦음 -> walk_processes 보다 많이 동시에 돌린 것(차례를 기다림)
->          걷기가 503 walk_pool_busy -> 걷기 프로세스가 walk_seconds_max 동안 다 바빴음 / walk_timed_out -> 그 걷기가
+>          걷기가 503 walk_pool_busy -> 걷기 프로세스가 walk_seconds_max 동안 다 바빴음 / walk_process_not_ready -> 걷기
+>            프로세스가 그 시간 안에 안 떴음 / walk_timed_out -> 그 걷기가
 >            그 시간 안에 안 끝나 걷기 프로세스를 내림(다음 걷기는 새로) — 둘 다 결함이 아니라 상한에 닿은 것
 >          걷기 프로세스 안에서 난 일은 logs/walk_pool.log, 걷기 500 의 추적은 server.log
 > 멈춘 걷기 프로세스 찾기  PowerShell: Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*spawn_main(parent_pid=<서버 pid>*' } | select ProcessId,CommandLine
 >          끄기: taskkill /PID <그 ProcessId> /F  (그 걷기만 500, 다음 걷기는 새 프로세스)
-> 급할 때   ingestion_settings.json 에 "walk_processes": 0 -> 다음 걷기부터 전처럼 서버 안에서, 쉬는 걷기 프로세스도 내림(재기동 없음)
+> 급할 때   ingestion_settings.json 에 "walk_processes": 0 -> 다음 걷기부터 전처럼 서버 안에서, 그 걷기가 올 때 쉬는 걷기
+>          프로세스도 내림(재기동 없음). 수를 줄이면 넘치는 것은 걷기가 끝날 때마다 하나씩 내린다
+>          표 설정(table_config) · 시스템 리로드 뒤에는 걷기 프로세스를 새로 띄운다(새 설정을 읽게)
 > ```
 
 > ## [10-12 밤] **서버가 큰 답을 보내는 동안 다른 요청이 멈추지 않음 · 걷기 집계 이름이 스팟파이어 철자 (총괄 3d1f25056 · fceba46a7, 소유자 「알아서해」 · 「1 ㅇㅇ」, 착지 911fc8821 · e6f2d23b3 · 9911db802) — 이주 «없음» · 재기동 «서버»**

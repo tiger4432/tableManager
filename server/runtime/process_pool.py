@@ -104,7 +104,11 @@ def in_pool(body):
 
 def warm():
     """Start `size()` pool processes behind the server's start and after a reload (lead b47388fde), so the first walk
-    does not pay for one. A walk that comes first starts its own, as before; a failure is one log line."""
+    does not pay for one. A walk that comes first starts its own, as before; a failure is one log line. Testing mode
+    starts none."""
+    if os.getenv("TESTING") == "True":
+        return
+
     def start_all():
         try:
             while True:
@@ -179,6 +183,7 @@ def _unavailable(reason, message):
 
 
 def _run(target, kwargs, limit, seconds):
+    """🔴 ONE DEADLINE (lead 9a3c510c5): a slot, a start and the answer share `seconds` - not `seconds` each."""
     deadline = time.monotonic() + seconds
     with _cond:
         while _taken[0] >= max(limit, 1):
@@ -197,10 +202,10 @@ def _run(target, kwargs, limit, seconds):
     keep = False
     try:
         if worker is None:
-            worker = _start(seconds)                # outside the lock: another body takes an idle one meanwhile
+            worker = _start(max(deadline - time.monotonic(), 0))   # outside the lock: another body takes an idle one
         process, connection, _generation_of = worker
         connection.send((target, kwargs))
-        if not connection.poll(seconds):
+        if not connection.poll(max(deadline - time.monotonic(), 0)):
             raise _unavailable("walk_timed_out", "The walk did not finish in %g s and its walk process was stopped - "
                                "narrow the walk, or raise walk_seconds_max in ingestion_settings.json" % seconds)
         try:

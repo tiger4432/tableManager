@@ -170,6 +170,14 @@ class ConfigChangeHandler(FileSystemEventHandler):
             logger.info("Dynamic models reloaded and hot-swapped successfully.")
         except Exception as e:
             logger.error(f"Failed to hot-swap configuration changes: {e}", exc_info=True)
+            return
+        # The walk's pool processes read the table config when they start (lead 9a3c510c5): new ones read this one
+        try:
+            from runtime import process_pool
+            process_pool.recycle()
+        except Exception as exc:                                  # noqa: BLE001
+            logger.error("[Reload] walk pool NOT recycled - its processes keep the table config they read until "
+                         "restart: %s: %s", type(exc).__name__, exc)
 
 
 def start_config_watcher(engine=None):
