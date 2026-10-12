@@ -1492,7 +1492,8 @@ const FLOORS = new Map([
   // 283 -> 287 (AX8 the counts in body size and colour, AX9 the judgment head an auxiliary node a line, AXm8 AXm9, lead 10-12).
   // 287 -> 289 (AX10 the judgment column read whole with long auxiliary names, AXm10; NWm1 re-aimed, lead 10-12).
   // 289 -> 297 (the auxiliary judgment (main 3c4e5a778) with Walk ▸: askAlong and spec keep reachArg, Walk ▸ and Continue go by askFrom, so they carry reaching too; walk_table counted).
-  ['walk_table_harness.mjs', 297],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
+  // 297 -> 303 (RT1-RT3 the Route panel the ways walked, RTm1-RTm3; owner 10-12).
+  ['walk_table_harness.mjs', 303],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
