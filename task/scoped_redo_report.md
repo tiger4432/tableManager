@@ -80185,3 +80185,57 @@ RELEASE_LOG 같은 커밋 — 「고침 — 체인 슬롯이 오래 돌아도 �
 public     428 -> 428 · 더한 것 · 지운 것 0
 판에 남은 것 이벤트 21 개 FAILED (맵퍼 파일을 빠뜨린 돌림과 멈춘 돌림의 것) — 스크래치 판에만
 ```
+
+## 10-12 착지 전후 대조 (3fcd9411c · 1b88d536b) — C1 판 10만 · 100만, 후보 여섯의 앞 · 그 커밋 · main (재기만, 박스 수)
+
+판: «소유자 말로 맞춘 박스 모양», 상태마다 그 워크트리의 워커 · 쓰기 문, 일마다 1,000 행 묶음 한 번 · 로그 편집 셋 · 인벤토리 편집 셋의 중앙값. 30 s 연결 기다림 0 (모든 상태 · 모든 일). 요약기 출력 그대로:
+
+```
+== board assy_impl_c1b_1012
+   de09e2499  batch group x0.95 end x0.97 · log group x1.08 end x0.98 · inventory group x1.00 end x1.04
+   daf4985d5  batch group x1.01 end x0.94 · log group x0.90 end x0.86 · inventory group x0.87 end x0.89
+   422d075c7  batch group x2.43 end x1.46 · log group x0.63 end x1.39 · inventory group x0.98 end x1.12
+   9263f03a7  batch group x0.95 end x0.84 · log group x1.88 end x1.57 · inventory group x0.96 end x0.92
+   95cffa5af  batch group x1.18 end x1.15 · log group x1.00 end x1.00 · inventory group x0.98 end x0.99
+   b566b48ae  batch group x1.25 end x1.15 · log group x1.11 end x2.03 · inventory group x0.93 end x0.96
+== board assy_impl_c1_1012
+   de09e2499  batch group x0.96 end x1.02 · log group x1.08 end x1.02 · inventory group x1.27 end x1.34
+   daf4985d5  batch group x1.10 end x1.05 · log group x0.36 end x0.79 · inventory group x1.26 end x1.38
+   422d075c7  batch group x2.52 end x1.33 · log group x0.30 end x0.98 · inventory group x0.89 end x1.10
+   9263f03a7  batch group x1.04 end x1.03 · log group x0.90 end x0.95 · inventory group x1.00 end x1.05
+   95cffa5af  batch group x1.07 end x1.01 · log group x1.00 end x1.01 · inventory group x0.90 end x0.96
+   b566b48ae  batch group x1.50 end x1.27 · log group x0.78 end x0.94 · inventory group x0.94 end x0.93
+```
+
+422d075c7 의 ×2.4~2.5 는 «새로 뜬 슬롯의 첫 그룹» 값 — 같은 슬롯에서 묶음 셋을 잇달아 (100만 판, s04c_422):
+
+```
+batch 0 · edit -> end 6.13 s · first group 1.735 s · broadcast build 0.484 · write:dt_inventory 0.422
+batch 1 · edit -> end 2.80 s · first group 0.515 s · broadcast build 0.032 · write:dt_inventory 0.015
+batch 2 · edit -> end 2.77 s · first group 0.531 s · broadcast build 0.016 · write:dt_inventory 0.016
+log handler / heartbeat writes of 20 ms or more in that run: 0
+```
+
+## 10-12 짓기 — 응답을 글자로 바꾸는 자리 하나 (3d1f25056) — 브랜치 impl-json-offloop 911fc8821
+
+```
+자리       server/runtime/offloop_json.py OffLoopJSONRoute — app.router.route_class + APIRouter 셋(route_class=)
+          동기 · 응답 모델 없음 · 응답 클래스 없음 -> 엔드포인트를 감싸 그 일꾼 스레드에서 json.dumps(default=jsonable_encoder,
+          JSONResponse 의 설정) -> _Encoded(str, payload) -> _EncodedJSONResponse.render 가 그대로. 상태 · 바디 없는 상태 ·
+          의존성 헤더는 fastapi 가 짓는다
+먼저 센 것  (AST, 테스트 · _archive 밖 server .py) 라우트 139 · 동기 120 · async 19 · 감쌈 114 (앱에서 다시 셈 114)
+          ① status_code 2 (admin/sso.py 201 · 204) ② Response 인자 0 ③ response_model 6 · response_class 0
+          ④ async 19 (감싸지 않음) · APIRouter 3 · FastAPI 1
+게이트
+   ① 바이트   TestClient 쓰는 시험 파일 36 개(-m "not pg")를 감싼 채 돌리며 답마다 옛 길(jsonable_encoder -> JSONResponse)과
+             견줌: 243 개 · 같음 243 · 다름 0. 같은 파일들의 실패는 기준(같은 바탕 6b545fd23)과 같다, 하나 빼고 —
+             test_config_reload_integrity::test_h3_cross_directory... 가 브랜치 전체 돌림에서만 떨어지고 혼자 돌리면 양쪽 3/3 통과(순서 의존)
+   ② 값       새 시험: 날짜 · 집합 · Decimal · pydantic 모델 · None · 201 · 204(몸 없음) · 의존성 헤더 · 응답 그대로 — 상태 · 몸 ·
+             머리 같음, NaN 은 둘 다 500
+   ③ 멈춤     시험(17 MB 답, 한 루프): 옛 길보다 0.3 배 아래. 진짜 걷기(상한 없는 한 번, 235,758,845 바이트 양쪽 같음,
+             걷기 판 읽기 전용, 같은 루프의 DB 안 닿는 async 핑): 전 가장 긴 기다림 15.676 s · 후 2.251 s = 0.14 배 —
+             «0.1 배 아래»는 못 넘음. 남은 2.25 s 는 json.dumps 가 GIL 을 쥔 몫(이 답의 json.dumps 2.28 s, 앞서 잼) — 프로세스 풀
+             지시(b47388fde)의 몫. 걷기 요청 자체도 49.5 -> 36.1 s
+   변이       감싸기를 끔: 2 failed (모든 라우트 감쌈 · 멈춤), md5 같음
+   ④ 진짜 프로세스  아직 — 박스를 베낀 판(지금 베끼는 중)에서 런처 그대로 걷기 화면 · 그리드 · 내보내기
+```
