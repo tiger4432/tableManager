@@ -1813,20 +1813,25 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
                 #    the grid's delete (its layers, a history line, one DELETE, which wakes no rule). Asked
                 #    here, after the write, and not at the withdrawal: the recount that empties a hold has
-                #    not run there yet. A row the write only keyed is not asked.
+                #    not run there yet. A row the write only keyed is not asked, nor one it created - a new row was
+                #    never emptied (총괄 10-12: a decide's row whose aggregation is blank was deleted by the write
+                #    that made it, and made again by the next trigger).
                 with alignment_batch_counts.stage("shells"):
+                    from sqlalchemy import inspect as identity_of
+
                     from chain import cell_layer
 
                     keys = cell_layer.key_columns(target_table)
                     # the columns this write wrote blank, outside the keys - read off its items, no query
                     blanked = {column for item in batch_data.updates for column, value in (item.updates or {}).items()
                                if column not in keys and crud.is_blank_value(value)}
+                    # their identity, so an expired row is not loaded to be asked
+                    created = {identity_of(row).identity[0] for row, is_new in results if is_new} if blanked else ()
                     gone = cell_layer.shells(db, target_table, [
-                        row_id for row_id, column in changed_cells if column in blanked]) if blanked else []
+                        row_id for row_id, column in changed_cells
+                        if column in blanked and row_id not in created]) if blanked else []
                     if gone:
-                        # the upsert broadcast below reads its rows back - not the gone ones (their
-                        # identity, so an expired row is not loaded to be asked)
-                        from sqlalchemy import inspect as identity_of
+                        # the upsert broadcast below reads its rows back - not the gone ones
                         gone_ids = set(gone)
                         results = [(row, is_new) for row, is_new in results
                                    if identity_of(row).identity[0] not in gone_ids]
