@@ -1555,6 +1555,51 @@ async function suite(mod) {
       JSON.stringify({ marks: marked.length, plain, n2marks: marksOf('n:2').length, drawn, before, timers: timers.map((t) => t.ms), dwelt, src, after: asked() }));
   }
 
+  console.log(`${LF}-- More ▸: the server's next page of the same walk, merged (owner 10-12 «이어 걷기») --`);
+  {
+    // The second page: d:3 again, d:20 new, and every collected type reached.
+    const PAGE2 = { ...SIGNED, nodes: [SIGNED.nodes[5], { id: 'd:20', type: 'die@1', label: 'D-20', depth: 2, keys: { mat_id: 'M-20' } }],
+      edges: [{ id: 'e:a20', source: 's:a', target: 'd:20', predicate: 'inspected', qualifiers: { gate: 2, note: null } }],
+      propagation: { ranked: [{ id: 'd:20', reach: [1, 0], evidence: [{ seed: 's:a', sign: '+', hops: [{ id: 's:a' }, { id: 'd:20', predicates: ['inspected'] }] }] }] },
+      generated_at: '2026-10-12T05:30:00', more: { reach: { 'die@1': { complete: true, unexpanded: 0 } }, resume: null, as_of: '2026-10-12T05:00:00' } };
+    const sent = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url, init) => {
+      const u = String(url);
+      if (!u.includes('/subgraph')) return { ok: true, status: 200, json: async () => DECL };
+      sent.push({ u, method: (init && init.method) || 'GET', body: init && init.body });
+      return { ok: true, status: 200, json: async () => PAGE2 };
+    } });
+    await settle();
+    const ASK = { type: 'die@1', keys: { mat_id: 'A' }, ...SIGNED_STARTS, collect: ['die@1'], node_limit: 1000 };
+    handle.state.asked = { ...ASK };
+    handle.state.run = 'done';
+    handle.state.result = { ...SIGNED, ok: true, ask: ASK, generatedAt: '2026-10-12T05:00:00',
+      more: { reach: { 'die@1': { complete: false, unexpanded: 3 } }, resume: { cursor: 'c1' } } };
+    handle.render();
+    const line = () => (walkAll(host).find((e) => e.className === 'wk-reachline') || { textContent: '' });
+    const go = () => walkAll(line()).find((e) => String(e.className || '').includes('wk-more'));
+    const rowIds = () => walkAll(host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']).sort().join();
+    const said = (e) => walkAll(e).filter((k) => k._text).map((k) => k._text).join('|');
+    const before = [said(line()), go() && go().disabled, rowIds()];
+    for (const fn of (go() || { listeners: {} }).listeners.click || []) fn({});
+    await settle();
+    const q = new URLSearchParams((sent[0] && sent[0].u.split('?')[1]) || '');
+    ok('MR1 the head says each collected type cut or reached; More ▸ asks the same walk again, a POST with its resume',
+      before[0].includes('die@1: cut · 3 not expanded') && before[0].includes('more to walk') && before[1] === false
+        && sent.length === 1 && sent[0].method === 'POST'
+        && sent[0].body === JSON.stringify({ resume: { cursor: 'c1' } }) && q.getAll('positive').join() === 's:a,s:c'
+        && q.getAll('negative').join() === 's:b' && q.getAll('collect').join() === 'die@1',
+      JSON.stringify([before, sent.map((s) => [s.method, s.body, s.u.slice(0, 120)])]));
+    ok('MR2 the next page merged into the step - the rows of both, each once - its pages said; all reached, More ▸ off and says so',
+      rowIds() === [...before[2].split(','), 'd:20'].sort().join() && said(line()).includes('die@1: all reached')
+        && said(line()).includes('2 pages') && !said(line()).includes('more to walk') && go().disabled === true
+        && go().getAttribute('title') === 'All reached'
+        && handle.state.result.generatedAt === '2026-10-12T05:00:00',
+      JSON.stringify([rowIds(), said(line()), go() && go().disabled, handle.state.result.generatedAt]));
+  }
+
   console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
   {
     const doc = makeDoc();
@@ -1952,6 +1997,18 @@ const sideSuite = (TV) => {
 // ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
 const filterSuite = (TV) => {
   {
+    // A walk's pages merged (owner 10-12 «이어 걷기»): nodes, edges and ranked rows each once, the newer page's first.
+    const pageA = { nodes: [{ id: 'x' }, { id: 'y' }], edges: [{ id: 'e1' }], propagation: { ranked: [{ id: 'x' }, { id: 'y' }] } };
+    const pageB = { nodes: [{ id: 'z' }], edges: [{ id: 'e2' }], propagation: { ranked: [{ id: 'z' }] } };
+    const m = TV.mergeWalks(pageB, pageA);
+    ok('MR3 pages merged: every node, edge and ranked row once',
+      JSON.stringify([m.nodes.map((n) => n.id), m.edges.map((e) => e.id), m.propagation.ranked.map((r) => r.id)])
+        === JSON.stringify([['x', 'y', 'z'], ['e1', 'e2'], ['x', 'y', 'z']]), JSON.stringify(m));
+    // The server: a node a later page reached further comes again in that page's ranked - the later row stands.
+    const again = TV.mergeWalks({ nodes: [], edges: [], propagation: { ranked: [{ id: 'x', reach: [2, 0] }] } },
+      { nodes: [{ id: 'x' }], edges: [], propagation: { ranked: [{ id: 'x', reach: [1, 0] }] } });
+    ok('MR4 a node ranked on two pages: the later page\'s row (its reach grown) stands', JSON.stringify(again.propagation.ranked)
+      === JSON.stringify([{ id: 'x', reach: [2, 0] }]), JSON.stringify(again.propagation));
     // The ways a walk took to the collected types (owner 10-12): a line a way, its nodes counted, the most first.
     const ways = TV.walkedRoutes(WALKED, new Set(['die@1']));
     ok('RT1 the walked routes to die, the most first: wafer —in→ lot —has→ die for two, wafer —inspected→ die for one; the lot not counted',
@@ -2134,6 +2191,14 @@ const MUTANTS = [
     from: "      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);\n      if (lines.length > 1) {", to: "      const th = el(doc, 'th', 'wk-centre', h);\n      if (false) {" },
   { id: 'AXm6', what: 'the judgments\' counts not drawn', catches: 'AX7',
     from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
+  { id: 'MRm1', what: 'the next page replaces the step\'s answer, not merged into it', catches: 'MR2',
+    from: '{ ...mergeWalks(res, was), ask: was.ask,', to: '{ ...res, ask: was.ask,' },
+  { id: 'MRm2', what: 'More ▸ never off, all reached or not', catches: 'MR2',
+    from: "        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);", to: "        setDisabledReason(go, '');" },
+  { id: 'MRm5', what: 'a resume left does not say there is more to walk', catches: 'MR1',
+    from: '          ...(r.more.resume ? [MORE_TO_WALK] : [])].join', to: '          ...[]].join' },
+  { id: 'MRm3', what: 'the next page asked without its resume - the first page again, a GET', catches: 'MR1',
+    from: '{ ...was.ask, resume: was.more.resume }', to: '{ ...was.ask }' },
   { id: 'RTm2', what: 'the Route panel the declaration\'s after a walk too, not the ways it walked', catches: 'RT2',
     from: "    const walked = shown.run === 'done' && shown.result ? walkedRoutes(shown.result, state.collect) : null;",
     to: '    const walked = null;' },
@@ -2353,6 +2418,10 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'MRm4', what: 'the pages merged without their ranked rows - a later page\'s row drawn in no sign', catches: 'MR3',
+    from: 'ranked: once([...ranked(b), ...ranked(a)])', to: 'ranked: ranked(a)' },
+  { id: 'MRm6', what: 'a node ranked on two pages keeps the earlier row - the reach a later page grew lost', catches: 'MR4',
+    from: 'ranked: once([...ranked(b), ...ranked(a)])', to: 'ranked: once([...ranked(a), ...ranked(b)])' },
   { id: 'RTm1', what: 'the walked routes in no order - the commonest not first', catches: 'RT1',
     from: '    .sort((a, b) => b.count - a.count || a.hops - b.hops);', to: '    ;' },
   { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX1',
