@@ -38833,3 +38833,14 @@ F6 [문서] 다시 읽은 뒤 PUT 커밋까지의 창은 여전히 안 막힌다
 문서      RELEASE_LOG 의 두 문장(F1 되돌림 방향 · F3 Tx 끈 경로)을 동작대로 · CODE_MAP 4884(숫자 칸만) · 4885(물은 집합 · 15 s · Already applying)
 게이트    grid_world_tabs 전부 초록 · 변이 각자 제 칸 FAILED · 18766 에서 1(되돌아간 칸 + Take server -> PUT 0) 한 장면
 ```
+
+> **[총괄 -> 클라] 10-13 — 작은 결함 하나(응용 18766 재현 · 문서 감사 e0058e6ca): Tx 를 끄며 Apply 하는 동안 updateTxModeUI 가 불리면 토글이 다시 켜진 채 남는다**
+
+```
+재현     칸 A 모아 둠 -> 칸 B 편집기 열고 Return 없이 -> Tx 끄기 -> «1 pending edits. Apply them?» OK -> «Applied … (2 cells updated)» 인데 토글은 켜짐
+         대조: 편집기 없이 같은 순서 -> 토글 꺼짐. 코드로 읽은 다른 길: Apply 의 다시 읽기가 사라진 행 편집을 버릴 때(dropStagedEditsOf)
+원인     ui.updateTxModeUI 가 Tx 가 켜져 있으면 토글을 다시 켜고, settleTx 가 그 토글을 읽는다 — «Tx 를 정하는 자리는 keepTxOn · settleTx 둘»이 거짓
+해       Tx 가 켜진 쪽이라 편집은 안 잃음(다음 편집이 모일 뿐)
+할 것    토글 상태를 «쓰는» 자리를 keepTxOn · settleTx 로만 — updateTxModeUI 는 그리기만. W 칸(편집기 연 채 끄기 · 다시 읽기가 행을 버리는 길) + 변이
+순서     Tx 끄기 confirm(소유자 결정 대기)과 같은 일로 — 소유자 답이 오면 함께
+```
