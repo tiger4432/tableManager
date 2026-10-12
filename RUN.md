@@ -10,7 +10,12 @@
 >          server.log 에 «walk processes not started ahead» -> 미리 띄우기 실패, 첫 걷기가 띄움(서버는 정상)
 >          걷기가 500 이고 server.log 에 «the pool process running this request ended» -> 그 걷기 프로세스가 죽은 것, 다음 걷기는 새로 뜸
 >          걷기 셋을 같이 돌리면 하나가 늦음 -> walk_processes 보다 많이 동시에 돌린 것(차례를 기다림)
-> 급할 때   ingestion_settings.json 에 "walk_processes": 0 -> 다음 걷기부터 전처럼 서버 안에서(재기동 없음)
+>          걷기가 503 walk_pool_busy -> 걷기 프로세스가 walk_seconds_max 동안 다 바빴음 / walk_timed_out -> 그 걷기가
+>            그 시간 안에 안 끝나 걷기 프로세스를 내림(다음 걷기는 새로) — 둘 다 결함이 아니라 상한에 닿은 것
+>          걷기 프로세스 안에서 난 일은 logs/walk_pool.log, 걷기 500 의 추적은 server.log
+> 멈춘 걷기 프로세스 찾기  PowerShell: Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*spawn_main(parent_pid=<서버 pid>*' } | select ProcessId,CommandLine
+>          끄기: taskkill /PID <그 ProcessId> /F  (그 걷기만 500, 다음 걷기는 새 프로세스)
+> 급할 때   ingestion_settings.json 에 "walk_processes": 0 -> 다음 걷기부터 전처럼 서버 안에서, 쉬는 걷기 프로세스도 내림(재기동 없음)
 > ```
 
 > ## [10-12 밤] **서버가 큰 답을 보내는 동안 다른 요청이 멈추지 않음 · 걷기 집계 이름이 스팟파이어 철자 (총괄 3d1f25056 · fceba46a7, 소유자 「알아서해」 · 「1 ㅇㅇ」, 착지 911fc8821 · e6f2d23b3 · 9911db802) — 이주 «없음» · 재기동 «서버»**
