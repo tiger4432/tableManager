@@ -497,10 +497,19 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
   '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.txt': 'text/plain', '.ico': 'image/x-icon' };
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
+// The temp folders go only after the verdict line, and one that will not go says so and changes nothing (lead 10-13:
+// a killed Chrome's children still held its cache, and the EBUSY thrown in a timer between two mutants ended the run
+// before its ASSERTIONS line). Every run's folders are its own (mkdtempSync).
+const folders = [];
+function removeFolder(dir, what) {
+  try { rmSync(dir, { recursive: true, force: true }); } catch (err) { console.log(`${what} folder not removed: ${dir} ${err.code || err.message}`); }
+}
+
 async function openChrome() {
   if (!existsSync(CHROME)) throw new Error(`no Chrome at ${CHROME} - the screens cannot be opened`);
   const port = 9300 + Math.floor(Math.random() * 500);
   const profile = mkdtempSync(path.join(tmpdir(), 'screens-'));
+  folders.push(profile);
   const proc = spawn(CHROME, ['--headless=new', '--hide-scrollbars', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
     '--window-size=1920,950', 'about:blank'], { stdio: 'ignore' });
   let target;
@@ -521,7 +530,7 @@ async function openChrome() {
   });
   const send = (method, params = {}) => new Promise((ok) => { id += 1; waiting.set(id, ok); ws.send(JSON.stringify({ id, method, params })); })
     .then((m) => { if (m.error) throw new Error(`${method}: ${m.error.message}`); return m.result; });
-  const close = () => { try { ws.close(); } catch { /* gone */ } proc.kill(); setTimeout(() => rmSync(profile, { recursive: true, force: true }), 1500); };
+  const close = () => { try { ws.close(); } catch { /* gone */ } proc.kill(); };
   return { send, on: (h) => handlers.push(h), close };
 }
 
@@ -1212,9 +1221,11 @@ if (MUTATE) {
       if (!got.length) failed += 1;
       console.log(`${got.length ? '✓' : '✗'} mutant «${m.name}» ${got.length ? `red: ${got[0].path} · ${got[0].what}` : `ESCAPED - no ${m.rule} line at ${m.at}`}`);
     } finally {
-      rmSync(out, { recursive: true, force: true });
+      removeFolder(out, 'mutant build');
     }
   }
 }
 console.log(`ASSERTIONS ${ran} ${failed}`);
+await sleep(1500);   // the last Chrome's children let go of its profile
+for (const dir of folders) removeFolder(dir, 'profile');
 process.exit(failed ? 1 : 0);

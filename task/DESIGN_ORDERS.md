@@ -38766,3 +38766,70 @@ D 우리 뜻으로 옮길 때 (모양은 위, 뜻은 우리 것)
    식에서는 [<소스>.<칸>] — «+ Column» 고르기(reach_table routesFrom)에 붙인 소스가 걸음으로 뜬다
 순서      충돌 고침 아홉 -> 0 -> 시험대(1 포함) -> 2(서버 착지 뒤)
 ```
+
+> **[총괄 -> 클라] 10-13 — 충돌 가드 재QA(710408842): GO-WITH-FIXES — 열 가지 고침은 확인됨(W 59/0 · G22~G33 잡힘 · 그리드에 행이 드는 자리 14 곳 전수 · 캐시 쓰기 전부 복사본). 병합 전 고칠 것**
+
+```
+F1 [높음] Keep mine / Take server 가 «물은» 충돌이 아니라 «누른 순간»의 충돌에 적용된다 — api.js applyPendingEdits('mine') 가 다시 읽은 뒤 그때의 conflictedEdits() 전부를 보냄
+         발단: 체인 그룹이 100 행을 넘게 쓰면 행 대신 batch_refresh_required 만 방송(ingestion_worker.py · event_constants.py) -> 클라는 캐시만 비움 -> 물음 수가 못 따라옴
+         실측: 물음 «1 cell changed»(R1) 뒤 서버 R2 가 7 로 -> Keep mine 이 [R1:10, R2:20] 전송(R2 는 안 물음) / Take server 는 R2 의 20 을 묻지 않고 버림
+         -> 물을 때 {키 -> 그때 서버 값}을 묶어 둔다. 답을 받고 다시 읽은 뒤 그 집합 밖 키가 생겼거나 값이 움직였으면 «다시 묻고» 돌아간다
+F2 [중]  숫자 견주기가 칸 타입이 아니라 글자 모양으로 갈림 — 텍스트 칸의 실제 변경 일곱이 «같음»("12345678901234567890" 대 …891 · "1.10" 대 "1.1" · "0012" 대 "12" · "0x1F" · "1e3" · " 7" · "+5")
+         -> state.currentColumnTypes[칸] 이 number 일 때만 숫자로. W24(29.5 와 "29.50")는 그대로
+F3 [높음, 옮겨 온 함수의 기존 결함] PUT 이 오가는 동안 적은 편집이 안 보내졌는데 저장 표시 — 성공 뒤 그때의 pendingTxEdits 전부를 저장으로 표시하고 비움
+         실측: PUT 대기 중 R2 를 20 으로 -> 보낸 것은 [R1:10] 뿐인데 R2 가 is_overwrite · priority_source user, pending 0, 서버에는 없음
+         -> 보낸 페이로드의 키와 값을 기억하고, 그 뒤 안 바뀐 것만 지운다
+F4 [중]  Tx 를 끄고 Apply 했는데 다시 읽기가 실패하면 Tx 가 꺼진 채 편집이 모여 남음 -> 다음 칸 편집이 바로 PUT · 모아 둔 것은 그대로
+         -> 고침 3(«아직 모여 있으면 Tx 를 다시 켠다»)을 이 갈래에도
+F5 [낮음] 다시 읽는 동안 표시 없음 · 두 번째 클릭 조용히 무시 · fetch 시간 상한 없음 -> applying 이 true 로 고정되면 Apply · Keep · Take 가 새로 열 때까지 먹통
+         -> 다시 읽기에 시간 상한(Queue 탭 queue_poll 과 같은 한 자리) · 상태 줄 «Checking N rows on the server…» · 두 번째 클릭에 «Already applying»
+F6 [문서] 다시 읽은 뒤 PUT 커밋까지의 창은 여전히 안 막힌다(서버에 «편집 전 값으로 견주어 쓰기» 문이 없음) — RELEASE_LOG 제목 · 커밋 문장의 «덮지 않는다» 단정을 그 창을 밝힌 문장으로
+게이트    각각 W 칸 하나 + 변이 하나 · node tests/grid_world_tabs_harness.mjs 다시 전부 초록(고칠 줄이 G18 · G19 · G30 앵커와 겹침) ·
+         그리고 18766 진짜 화면에서 F1(물은 뒤 다른 칸이 바뀜 -> 다시 물음) · F3(PUT 중 편집 -> 남아 있음) 두 장면
+참고      W18 전수는 글자 수 세기 — 다른 철자의 캐시 쓰기는 못 잡는다(이번엔 둠)
+```
+
+> **[총괄 -> 응용] 10-13 — 문서 정비: 걷기 프로세스 풀 착지 (main 38cc1f604 ~ e79b8a2a6)**
+
+```
+대상     server/runtime/process_pool.py(in_pool · warm · recycle · 세대 · 시한 하나 · 503 사유 셋) · 라우트만 in_pool(evidence_subgraph) 로 등록(맨 함수는 그대로) ·
+        config_watcher._reload · system_reload 의 recycle(풀을 데운 프로세스에서만) · 설정 walk_processes · walk_seconds_max · logs/walk_pool.log
+할 것    CODE_MAP 해당 절 · SYSTEM_OVERVIEW 프로세스 표 · backend.md 라우트 · 리로드 행 · ingestion_settings.md · DOC_OWNERSHIP 의 process_pool.py 행 —
+        코드와 대조해 맞춘다. 적대 QA 를 같이(특히 «직접 부르는 곳은 서버 안에서 돈다» · «데몬 밑 걷기 자식 0» 문장을 코드로)
+끝나면   보고 커밋 + 메시지. 총괄이 카운터를 지운다
+순서     지금 하는 재기 사이에, 편한 때
+```
+
+> **[총괄 -> 응용] 10-13 — 재기: «가만히 있어도 느림»과 섞인 부하 — 풀 · 응답 자리가 든 main 에서 (소유자 10-12 「시스템이 전체적으로 느려터졌어」, 보드 «모름» 첫 줄)**
+
+```
+판        박스 베낀 판 + 진짜 런처 넷(서버 · watcher · 체인 워커 · 자동 갱신), main 지금(걷기 풀 38cc1f604~ 포함) · 운영 규격(맵 20x20 · 동시 사용자 ~10)
+1 쉬는 때  아무도 안 누를 때 10 분: 프로세스마다 CPU % · 초당 DB 질의 수(pg_stat_statements 또는 pg_stat_activity 표본) · 서버 이벤트 루프 지연 최대 ·
+          무엇이 도는지(데몬마다 주기 일의 이름과 초) — «가만히 있어도 느린» 것이 무엇이 깨어 있어서인지
+2 섞인 부하 가상 사용자 10: 그리드 쪽 넘김 · 필터 · 검색 · 걷기(작은 것 · 큰 것) · 맵 · 체인 그룹 1,000 행 넣기를 섞어 5 분:
+          라우트마다 p50 / p95 · 503 · 이벤트 루프 지연 최대 · 체인 그룹 끝까지 초. walk_processes 2 와 0 두 판
+보고      수마다 «무엇의 수인가» · 박스 수 · 명령 · 창 시각(구현자 창과 겹침 대조)
+순서      지금 (식 계약 첫 판은 구현자 B 큐 4 라 한참 뒤)
+```
+
+> **[총괄 -> 클라] 10-13 — 충돌 가드 확인(c3a3fd5cb): F1~F6 메커니즘은 다 있다(F2 · F4 · F5 · F6 GO). 병합 전 셋 + 작은 것**
+
+```
+1 [중] Take server 가 «편집 전 값으로 되돌아간» 칸에는 내 값을 보낸다 — api.js 694-719
+       서버 값이 편집 전 값으로 돌아가면 충돌이 사라져 conflicted 가 빈 배열 -> answered 를 안 보고 'server' 갈래가 버릴 것 없이 PUT 으로
+       실측: 28.5 -> 28.9 편집 · 서버 29.7 에서 물음 · 서버가 28.5 로 돌아간 뒤 Take server -> [R1:28.9] 전송. 두 칸이면 아직 충돌인 R1 은 버리고 되돌아간 R2 는 보냄
+       -> 'server' 는 «물은 키 전부»를 버린다. 그리고 답은 «물은 키 집합 == 지금 충돌 키 집합»(양쪽)일 때만 그대로 간다 — 아니면 다시 묻는다
+2 [중] Tx 를 끄면서 Apply 하면 PUT 도중 고친 칸이 직접 저장 길로 바로 나가고, 배치 응답이 옛 값을 다시 그린다 — main.js:679 가 txModeActive=false 를 먼저 놓음
+       실측: PUT [28.9] 다음 [29.1] · 칸은 29.1 이었다가 최종 28.9 -> 토글 핸들러가 false 를 먼저 놓지 않는다(성공 경로가 이미 토글을 따름)
+3 [중] PUT 실패에는 keepTxOn 이 없다(F4 의 형제) — Tx 끄고 Apply 후 PUT 500 · 네트워크 오류 -> Tx false · 편집 남음 · beforeunload 경고 false
+       -> PUT 실패 갈래도 keepTxOn 하나를 지난다
+작은 것
+ 4  다시 읽기의 res.json() 이 timedRead 밖 — 본문이 안 오면 끝나지 않음 -> 본문까지 상한 안에서(Queue 탭처럼)
+ 5  PUT 에 signal 이 없다 — 멈춘 PUT 하나가 applying 가드로 영구 잠금 -> PUT 도 같은 시한 · 상한이면 Tx 켠 채 편집 유지
+ 6  상한이 50 행 묶음마다 하나씩이라 전체는 15 s × 묶음 수 -> 문구를 묶음 수로 말하거나 전체에 마감 하나
+ 7  keepTxOn 본문 사본이 switchTable(api.js 258-261)에 — 접는다
+시험      G34 변이를 «원래 코드» 꼴(answered = Boolean(choice))로 · V1 이 signal 의 «있음»이 아니라 «상한에 끊김»을 재게(절대 안 끊기는 signal 변이가 빨강) ·
+          W28 에 «다시 고친 칸을 한 틱 뒤 지우는» 변이가 빨강인 칸 · 1 · 2 · 3 마다 W 칸(handleCellEdit 을 지나는 실제 경로로)
+문서      RELEASE_LOG 의 두 문장(F1 되돌림 방향 · F3 Tx 끈 경로)을 동작대로 · CODE_MAP 4884(숫자 칸만) · 4885(물은 집합 · 15 s · Already applying)
+게이트    grid_world_tabs 전부 초록 · 변이 각자 제 칸 FAILED · 18766 에서 1(되돌아간 칸 + Take server -> PUT 0) 한 장면
+```

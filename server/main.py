@@ -411,6 +411,10 @@ async def startup_event():
         logger.info("Dynamic table config watcher started.")
     except Exception as e:
         logger.error(f"Failed to start config watcher: {e}")
+    # The walk's pool processes, started behind the start - a walk that comes first starts its own (lead b47388fde);
+    # in testing mode `warm` starts none
+    from runtime import process_pool
+    process_pool.warm()
     
     if os.getenv("TESTING") == "True":
         logger.info("Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")

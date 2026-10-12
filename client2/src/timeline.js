@@ -6,7 +6,7 @@ import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
 import { state, gridFetch } from './state.js';
 import { elements } from './dom.js';
-import { switchTable, fetchData } from './api.js';
+import { switchTable, fetchData, overlayStagedEdits, copyRows } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI, sortQueryTail } from './grid.js';
 import { setMatchCount } from './match_count.js';
@@ -1334,7 +1334,7 @@ export function navigatorStep2(log) {
       const found = cached.data.some(r => (r.row_id || r.id) === log.row_id);
       if (found) {
         state.currentSkip = skip;
-        state.gridApi.setGridOption('rowData', cached.data);
+        state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
         updateGridSortState();
         updateLoadedCount(cached.data.length);
         setMatchCount(elements.totalRowsCount, cached.total);
@@ -1396,7 +1396,7 @@ export async function navigatorStep3(log) {
     }
 
     // Load returned chunk page to local grid
-    state.gridApi.setGridOption('rowData', result.data);
+    state.gridApi.setGridOption('rowData', overlayStagedEdits(result.data));
     updateGridSortState();
 
     // Update skip counter
@@ -1410,7 +1410,7 @@ export async function navigatorStep3(log) {
     updatePaginationUI(result.total);
 
     // Save to Cache
-    state.pageCache.set(state.currentSkip, { data: result.data, total: result.total });
+    state.pageCache.set(state.currentSkip, { data: copyRows(result.data), total: result.total });
 
     // Check if target node loaded successfully
     setTimeout(() => {

@@ -143,6 +143,14 @@ class ConfigChangeHandler(FileSystemEventHandler):
 
             crud.TABLE_CONFIG.clear()
             crud.TABLE_CONFIG.update(new_config)
+            # The walk's pool processes read the table config when they start (lead 9a3c510c5): new ones read this
+            # one - here, so a schema sync that fails below does not leave the pool on the old one (lead eb9c328e4)
+            try:
+                from runtime import process_pool
+                process_pool.recycle()
+            except Exception as exc:                              # noqa: BLE001
+                logger.error("[Reload] walk pool NOT recycled - its processes keep the table config they read until "
+                             "restart: %s: %s", type(exc).__name__, exc)
 
             # 🔴 A `search_columns` ENTRY NOTHING CAN SEARCH IS NAMED HERE, NOT WHEN
             # SOMEBODY SEARCHES (판정 255). A typo in that cell is invisible until a

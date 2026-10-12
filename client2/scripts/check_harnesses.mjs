@@ -37,7 +37,7 @@
 // A missing line on a KNOWN_RED entry recorded as ran: 0 is tolerated: that entry already
 // says out loud that the harness dies before measuring anything.
 
-import { spawnSync } from 'node:child_process';
+import { readHarness, RUN_BUFFER } from './read_harness.mjs';
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { isProbeArtifact } from '../tests/lib/probe.mjs';
 import path from 'node:path';
@@ -1400,7 +1400,21 @@ const FLOORS = new Map([
   // a pick reads again and every read after it carries the world, other tables byte for byte. Floor = first run.
   // 19 -> 29: what a table switch leaves and Discard (lead 10-12) - W10 the last table's filter, W11 every way to a
   //    table tells the label and the banner, W12 W13 Discard: the value before the edit at once, then the read; G10-G15.
-  ['grid_world_tabs_harness.mjs', 29],
+  // 29 -> 39: a staged edit under a server change (lead c97239697) - W14 a read, W15 a broadcast draw the staged value
+  //    and its conflict, W16 Apply asks (Keep mine / Take server); W17 the filter drop takes AG Grid's late
+  //    filterChanged (lead 80172956e); G16-G21.
+  // 39 -> 59: the lead's QA of it (10-12) - W18 the cache and the grid share no row, W19 a broadcast adding a staged row,
+  //    W20 asking turns Tx back on, W21 one PUT for two clicks, W22 Apply reads the staged rows again (and the cache
+  //    takes them), W23 the question's count follows, W24 numbers by value, W25 a deleted row's edit dropped; G22-G33.
+  // 59 -> 72: the lead's re-QA (10-13, F1-F5) - W26 an answer holds for what was asked, W27 a text column's spellings apart,
+  //    W28 an edit made while the PUT is out stays staged, W29 a failed read again turns Tx back on, V1 the read again's
+  //    status line, its second click and its abort signal; G34-G41.
+  // 72 -> 77: an editor open at Apply (lead 10-13) - W30 its value goes with that Apply, W31 one left unchanged does not
+  //    hold Apply; G42-G44. The four mutants naming W3 now name 'W3 ', W30 and W31 having been born under that prefix.
+  // 77 -> 87: the lead's check of c3a3fd5cb (10-13) - W32 Take server drops every cell asked (one back at its pre-edit
+  //    value too), W33 Tx turned off to apply keeps a mid-PUT edit staged, W34 a refused PUT turns Tx back on, W35 the PUT
+  //    under the cap; V1 measures the cut, W28 a timer later; G45-G50.
+  ['grid_world_tabs_harness.mjs', 87],
   // 0 -> 44: the visual testbed (lead aca803a7a, d1b3c1b7f, 5835e6714) - T1-T17 (the reduces against contracts/walk_aggregate,
   //    the one filter, hubs, the two kinds, the root part, two parts on one page, a kind added, save and reopen, the census,
   //    the bundle); M1-M23.
@@ -1793,6 +1807,8 @@ const FLOORS = new Map([
   //   and their two mutants (lead 10-09): 176 -> 184.
   // + a file row's Retry boxed at the base button height (lead a4d135a06's round): 184 -> 185.
   ['screen_layout_harness.mjs', 307],   // 252 -> 307: walk.html at 1280x720 too, S2-S6, missing each; the axis mutant retired (lead 10-11 W addendum 9)
+  ['screen_layout_cleanup_harness.mjs', 3],   // its verdict outlives a cleanup that throws (lead 10-13): C1-C3, D1-D2
+  ['read_harness_harness.mjs', 2],            // this runner's reader: past the buffer is no verdict (lead 10-13): R1-R2, D1-D2
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],
@@ -2007,6 +2023,8 @@ const INSTALL = NOT_INSTALLED.length > 0
 
 const blocking = [];
 const unavailable = [];
+// The runner could not read what a harness said (read_harness.mjs): no verdict - not a red one, as UNAVAILABLE is not.
+const unread = [];
 const stillRed = [];
 const recovered = [];
 const rose = [];        // ran above its recorded floor ― re-baseline when convenient
@@ -2054,8 +2072,13 @@ const flagsOf = (name) => {
 };
 
 for (const name of harnesses) {
-  const run = spawnSync(process.execPath, [path.join(TESTS_DIR, name), ...flagsOf(name)],
-    { cwd: REPO_ROOT, encoding: 'utf8' });
+  const run = readHarness(path.join(TESTS_DIR, name), flagsOf(name), REPO_ROOT);
+  if (!run) {
+    unread.push(name);
+    console.log(`? ${name}  [NO VERDICT] instrument: its output ran past the runner's ${RUN_BUFFER / 1048576} MiB `
+      + 'buffer, so its ASSERTIONS line was never read. Not counted as passing or failing - run it alone to read it.');
+    continue;
+  }
   const ok = run.status === 0;
   const known = KNOWN_RED.get(name);
 
@@ -2193,7 +2216,8 @@ for (const name of harnesses) {
 const gated = harnesses.length - KNOWN_RED.size;
 console.log(`\n${harnesses.length} harnesses ― ${gated} gated, ${KNOWN_RED.size} on the known-red `
   + `debt list (${stillRed.length} still red, ${recovered.length} recovered)`
-  + (unavailable.length > 0 ? `, ${unavailable.length} UNMEASURED in this tree` : '') + `.`);
+  + (unavailable.length > 0 ? `, ${unavailable.length} UNMEASURED in this tree` : '')
+  + (unread.length > 0 ? `, ${unread.length} with NO VERDICT (output past the buffer)` : '') + `.`);
 
 if (recovered.length > 0) {
   console.log(`\n! ${recovered.length} harness(es) on the known-red list now PASS. Take them off `
@@ -2249,10 +2273,16 @@ if (blocking.length > 0) {
 // The unavailable set is stated HERE rather than only next to each harness, because this
 // last line is the one people quote. "Every gated harness is green" would be a false
 // summary of a run where something was never measured at all.
+if (unread.length > 0) {
+  console.log(`? ${unread.length} gave NO VERDICT: the runner could not read its output (${unread.join(', ')}). `
+    + 'Not green and not red for those; run each alone and read its ASSERTIONS line.');
+}
 if (unavailable.length > 0) {
   console.log(`✓ every gated harness that COULD run in this tree is green ― but `
     + `${unavailable.length} was not measured here (${unavailable.join(', ')}). This is not a `
     + `green build for those; run the gate in the main checkout before merging. ${INSTALL}\n`);
+} else if (unread.length > 0) {
+  console.log(`✓ every gated harness whose verdict was read is green ― ${unread.length} gave none (above).\n`);
 } else {
   console.log(`✓ every gated harness is green.\n`);
 }

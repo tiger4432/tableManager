@@ -165,6 +165,13 @@ def reload_local_process_cache():
         ledger_subgraph.reset_declaration_cache()
     except Exception:
         pass
+    # The walk's pool processes hold their own copies of every cache above (lead b47388fde).
+    try:
+        from runtime import process_pool
+        process_pool.recycle()
+    except Exception as exc:                                   # noqa: BLE001
+        logger.error("[Reload] walk pool NOT recycled - its processes answer from the caches they "
+                     "read until restart: %s: %s", type(exc).__name__, exc)
 
     # [Ledger skeleton] The authoring screen GENERATES its form from
     # `ledger/ledger_skeleton.json`, and the loader caches it for the life of the process.

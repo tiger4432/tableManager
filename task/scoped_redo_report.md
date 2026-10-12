@@ -80360,3 +80360,129 @@ measure 자리에 옛 이름이 든 줄 (measure 앞 12 글자 안에 옛 이름
 여쭐 것    풀 프로세스를 서버가 뜰 때 미리 띄울까요? 지금은 첫 걷기가 띄워서 그 걷기만 약 3 초 더 걸립니다.
           미리 띄우면 서버가 뜰 때 약 135 MB × 크기가 바로 들고, 첫 걷기의 3 초가 없어집니다. 안 지었습니다
 ```
+
+## [구현자 A → 총괄] 10-13 — 풀 고침 확인(eb9c328e4) 닫음: `f90462b44` (impl-walk-pool, 푸시됨)
+
+```
+막는 것   recycle 은 warm 을 부른 프로세스(서버 기동)에서만 일한다 — 표지 _warmed, warm 첫 줄에서 선다
+         데몬은 같은 _reload 를 돌지만 warm 을 안 부르므로 아무것도 안 한다(세대도 안 움직임)
+게이트    데몬 «모양» 스크립트를 새 프로세스로 띄워 _reload 한 번 -> 걷기 자식 0 · __mp_main__ 표지 0 · 세대 0
+         같은 스크립트 서버 모양(warm 뒤 _reload) -> 세대 1 · __mp_main__ 표지 2 이상 (카나리아: 표지 기제가 산다)
+③        recycle 을 TABLE_CONFIG 를 바꾼 «직후»로 옮김 — 뒤 스키마 동기화가 실패해도 풀이 옛 설정에 안 남음
+④        리로드 때 돌던 걷기가 답하고 내려가면 그 자리에 warm (세대가 다른 것만)
+②(M6a)   크기 1 에서 warm 둘을 같이 -> 살아 있는 걷기 자식 수(psutil, 시험 전부터 있던 것 빼고) <= 1
+L4       6 초 중 4 초를 자리 기다림에 쓰면 답은 남은 2 초 -> walk_timed_out
+```
+
+```
+변이      기준 36 passed 뒤, 변이마다 그 칸 하나만 FAILED · md5 같음
+          G1 아무 프로세스나 recycle -> 데몬 칸 · G3 recycle 을 동기화 뒤로(HEAD 모양) -> sync fails 칸만
+          G4 채움 없음 -> 채움 칸 · M6a warm 의 _taken 둘 지움 -> 두 warm 칸 · L4 기다림마다 seconds -> 마감 칸
+곁 시험    리로드에 닿는 다른 시험 파일 12 개: 145 passed · 8 skipped (두 번)
+          ⚠️ 첫 돌림에서만 test_config_reload_integrity::test_inv_9_1_atomic_save_event_applies_physical_alter 1 실패 —
+             혼자 돌리면 통과, 다시 두 번 통과. 원인은 안 밝혔다(제 변경과의 관계도 모름)
+문서      ingestion_settings(503 사유 셋 · 한 마감 · 0 과 줄임은 다음 걷기 때 · 리로드는 서버만)
+          RUN.md(새 걷기 프로세스가 뜨는 계기 넷 · 데몬은 안 띄움 · 연결 이름에 assy_walkpool)
+          backend.md 리로드 행 · CODE_MAP 행 · DOC_OWNERSHIP 에 process_pool.py 행
+```
+
+```
+안 잰 것   진짜 데몬(run_watcher.py 등)으로는 안 띄웠다 — 데몬 «모양» 스크립트로 쟀다
+          시간 넘긴 걷기의 PG 질의가 계속 도는지 — 여전히 안 잼(80ffbceb5 의 RUN 줄 그대로)
+          시험 모드에서 warm 을 부르면 표지만 선다(띄우지는 않음) — 시험이 recycle 을 재려면 warm 을 먼저 부른다
+```
+
+## [구현자 A → 총괄] 10-13 — 걷기 풀 착지: `38cc1f604` ~ `e79b8a2a6` (main)
+
+```
+진짜 데몬   박스 베낀 판(assy_impl_mix_1012), 런처 넷(서버 · watcher · 체인 워커 · 자동 갱신) — 29c0ed3e1 과 같은 코드
+           table_config.json 을 같은 바이트로 다시 씀 -> 넷 다 «Dynamic models reloaded» 한 줄씩(카나리아: 넷 다 리로드함)
+           걷기 자식(spawn_main)   서버 2 -> 2(둘 다 새 pid)   watcher 0 -> 0   체인 워커 0 -> 0   자동 갱신 0 -> 0
+           public 표 428 -> 428 · 바뀐 행 0 · 창 01:22:40 ~ 01:23:52(응용 ㄱ · 내림)
+착지       origin/main 위로 rebase(CODE_MAP 의 offloop 행 · 풀 행이 붙어 있어 커밋마다 겹침 — main 의 offloop 행 + 커밋의 풀 행으로 풂)
+           e79b8a2a6 = RUN.md 맨 위 절에 «걷기 프로세스가 누구 밑인가» PowerShell 한 줄과 답의 뜻 + RELEASE_LOG(리로드는 서버에서만)
+           그 한 줄은 RUN.md 에 적힌 글자 그대로 .ps1 로 떼어 살아 있는 spawn 자식 하나에 대고 돌려 «1 walk processes under …» 를 봄
+재기동      서버만. 데몬은 안 해도 됨(옛 코드의 데몬은 걷기 프로세스를 안 띄움)
+```
+
+```
+reload 시험   test_config_reload_integrity.py — 여러 파일 묶음으로 돌릴 때만 두 번 실패(다른 칸 둘: test_inv_9_1… · test_h3…)
+             혼자 돌리면 main 3/3 · 이 브랜치 4/4 통과
+             두 번째 실패의 로그: «change detected» -> 단언 실패 -> 그 뒤 teardown 에서 «added column qty» · «reloaded»
+             -> wait_for_idle 이 리로드가 돌기 «전»에 한가하다고 돌아왔다
+원인 후보     config_watcher._fire 가 _timer 를 None 으로 둔 뒤 로그 한 줄을 쓰고 «나서야» _reload_lock 을 잡는다 —
+(코드로 읽음)  그 틈에 wait_for_idle 은 타이머 없음 · 잠금 비었음을 보고 True. 이 브랜치는 _fire 를 안 건드림(바꾼 것은 _reload 안 recycle 자리 8 줄)
+안 잰 것      main 에서 여러 파일 묶음으로 같은 실패를 재현하지 않았다. 첫 실패(test_inv_9_1)의 로그는 안 봤다
+```
+
+## [구현자 A → 총괄] 10-13 — 행 붙이기(attach 문장) 짓기 전 전수 ①② (읽기만, impl-walk-hub fc4ce3147 위)
+
+### 오늘 attach 소스를 적으면
+```
+모든 화면 · 서버   _validate_sources 의 칸 검사 하나(setup_bundle:2460)가 «unknown_field …attach»로 그 소스만 거절 · 이름으로 떨어짐
+                 터지는 곳 0. 다만 그 소스 하나뿐이면 every_source_refused -> 선언 라우트 503
+먼저 걸리는 것     로더가 검증 «전»에 빈 read · map 을 지어 넣는다(source_defaults setup_bundle:1001-1026, _derived_cursor :804)
+                 -> «read · map · bind 없음»은 지금 그대로는 성립 안 한다. 첫 자리는 이것이다
+```
+
+### 검증만 넓히고 아무것도 안 고치면 — 터지는 자리 13
+```
+전부 못 읽음     setup_registry:632 snapshot_compile_errors (load_setup 의 try 밖 -> 어떤 선언도 안 읽힘) · config_drafts:273
+컴파일          setup_registry:1010 · 1056 · 1210 (KeyError)
+지문            setup_registry:825 source_cursor_fingerprint (AttributeError) <- backfill:330 · 1614 · runtime_v2:289
+세기 · 표 읽음    backfill:958 · 2133 rows_not_yet_translated — 표를 «읽고 나서» 터짐, 워커 바퀴마다 경고(ingestion_worker:3792)
+                admin/retroactive:437 도 같음
+돌리기 · 미리보기 backfill:2211 · event_frame:275 (run · rescope · preview_first_batch · test_run) · admin/retroactive:1636
+                event_frame · roleframe · runtime_v2 의 맥락 코드
+```
+runs 를 안 묻는 다른 갈래: census_sources(backfill:1648, status 만) · _require_declared_source(setup:575, planned · status) ·
+config_resolve_report:1091(«읽힌다»고 거짓) · chain/graph:259(원장으로 흐른다고 그림).
+
+### 술어 P · 타입 E 를 «쓰는 소스»를 모으는 자리 — 전부 bind 만 본다 -> attach 를 «놓친다»
+```
+emitted_predicates (setup_bundle:1965)   -> config_resolve_report 에 «선언됐지만 안 쓰임» · trace_router:1288 emits: []
+탐색기 선 (config_explorer:932 · 953 · 959) -> used_by · 닿음 걷기에서 빠짐 -> referrers() · deletion_plan 이 그 술어 · 타입 «지우기를 안 막는다»
+_cross_profile_contract · _cross_profile_source · registering_sentences · attribute_registrations — bind 만
+```
+🔴 지우기 막기는 데이터를 지키는 가드다 — 이번 일 안에서 닫아야 한다.
+
+### 화면 ②
+```
+탐색기       목록에 «invalid» 로 뜸 · 읽기 나무는 뼈대 칸만 그려 attach 를 안 그림 · 술어 · 엔티티 밑에 안 걸림
+선언 폼      클라는 뼈대 따라 그려 클라 코드 0(ontology_skeleton.js:3-8). 그러나 역할 칸 줄(후보 · missing)은 서버 _mapping_fields 가
+            bind.mappings 밑에서만 낸다(config_authoring:1001-1069) -> attach 칸은 줄 없이 그려짐. 새 소스는 read · map · bind 빈 그릇으로 시작하고
+            필수라 지울 수 없다 -> 폼으로는 못 만들고 원문 편집기로만. 뼈대 ↔ 검증기 표류 시험(test_ledger_skeleton.py)이 둘을 같이 묶음
+원장 소스 줄  격자 라벨 «refused» · Ledger 칸 «Refused» · 다시 하기 배너 «No scope column» · 소스 패널 «not measured» 한 줄
+클라 몫      터지는 곳 0. 서버가 줄을 내면 폼은 클라 코드 0 — «−» 단추 · 새 소스 시작 모양만 클라 확인거리
+```
+
+### 안 — 자리 넷, 각자 «한 판단 한 자리»
+```
+1 문법   _validate_sources: {relation, attach, status} 또는 {relation, read, map, bind, status} 둘 중 하나.
+         attach 는 문장 — subject · target 은 _validate_binding · _binding_refs 그대로, predicate 는 어휘에 있어야(없으면 «어디 · 무엇을 적으라»)
+         source_defaults · _derived_cursor · upgrade_setup 은 attach 소스를 건너뜀 — 묻는 자리는 함수 하나 is_attach(source)
+         뼈대에 attach(역할 정의 재사용) — 표류 시험이 같이 감
+2 컴파일  SourcePlan 에 attach 칸 · driver/profile 없음. snapshot_compile_errors · _compile_mappers · _compile_profiles 는 is_attach 로 건너뜀
+3 runs   runs = active ∧ planned ∧ attach 아님. planned+status 나 아무것도 안 묻던 소비자(위 13 + census_sources · _require_declared_source ·
+         config_resolve_report · chain/graph)는 runs 를 묻는다. _require_declared_source 는 attach 를 «번역하지 않는 소스» 사유로 거절
+4 쓰는 곳 «한 소스의 문장들» 함수 하나 — bind.mappings 문장 + attach 문장. emitted_predicates · 탐색기 선 · referrers/deletion_plan ·
+         cross_profile 이 그것을 부른다(개념을 넓힘 — attach 는 «문장»이라 같은 칸에 든다)
+게이트   소비자마다 «원자 0 · 읽은 행 0»(backfill · catch_up · 따라가기 · 번역기 도장 · 소급 세기 · 미리보기) · attach 술어/타입 지우기가 막힌다 ·
+         attach 없는 선언은 답 · 지문 바이트 같음 · 변이
+크기     자리 약 스물 · 파일 열 남짓 — 안 쟀다(줄 수)
+```
+### 못 정한 것
+```
+· filled_declaration(config_authoring:1877) · index_existing_refs(backfill:1752) · 이주 스크립트(v4/v5/v6 · slim) — 끝까지 안 따라감
+· isolation_key 가 .attach 경로를 그 소스로 잇는지 — 안 봄
+```
+
+### [구현자 A] 10-13 — 행 붙이기: 총괄 승인 «네 자리 안» + 조건 (받은 그대로 적어 둠 · 허브 착지 뒤 짓기)
+```
+① «attach 인가»를 묻는 자리는 is_attach 하나 — 기본값 · 커서 · 업그레이드 · 뼈대 · 컴파일이 다 부른다. 착지 보고에 AST 로 «is_attach 밖 attach 키 직접 읽기 0»
+② «한 소스의 문장들» 함수 하나를 모으는 자리 전부가 부른다. 지우기 막기는 이 일 안에서 닫는다 — 게이트: attach 문장의 술어 · 타입 지우기가 막힌다
+③ planned + status 를 묻던 넷도 runs 로. 소비자마다 «원자 0 · 읽은 행 0» 칸
+④ 선언 폼: 서버가 attach 문장의 역할 칸 줄도 낸다. 클라 확인(«−» 단추 · 새 소스 시작 모양)은 착지 뒤 클라 일
+⑤ 못 따라간 넷(filled_declaration · index_existing_refs · 이주 스크립트 · isolation_key)은 닫거나 «남음 — 이유»로 단언
+따로   snapshot_compile_errors 가 load_setup 의 try 밖 — attach 와 무관한 기존 위험. 섞지 않고 보고에 한 줄(총괄이 따로 띄움)
+```

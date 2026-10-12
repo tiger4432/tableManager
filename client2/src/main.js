@@ -29,7 +29,10 @@ import {
   pickGridWorld,
   seatTableFollower,
   rereadGrid,
-  discardPendingEdits
+  discardPendingEdits,
+  applyPendingEdits,
+  overlayStagedEdits,
+  txToggled
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -71,7 +74,6 @@ import {
   updateLoadedCount,
   updateViewModeUI,
   updatePaginationUI,
-  markCellOverwritten,
   renderGrid,
   registerSelectionListener,
   applyFillTargetHeaders,
@@ -79,12 +81,10 @@ import {
 import {
   showToast,
   showIngestionProgress,
-  finishIngestionProgress,
-  getLocalTimeString
+  finishIngestionProgress
 } from './utils.js';
 import {
   updateSelectedCellUI,
-  updateTxModeUI,
   setTransactionFilter,
   applyValueToSelectedRange,
   setupBeforeUnloadWarning,
@@ -108,8 +108,6 @@ import {
   installGlobalListeners,
   installNavLinkCounting,
   countNav,
-  snapshot,
-  commitIfRecorded,
   ROUTES
 } from './effort_meter.js';
 
@@ -676,32 +674,11 @@ function setupEventListeners() {
   onBroadcast(() => queueRead.ask());
 
   // Transaction Mode listeners
-  if (elements.txModeToggle) {
-    elements.txModeToggle.addEventListener('change', () => {
-      state.txModeActive = elements.txModeToggle.checked;
-      if (!state.txModeActive) {
-        const pendingCount = Object.keys(state.pendingTxEdits).length;
-        if (pendingCount > 0) {
-          const confirmApply = confirm(`${pendingCount} pending edits. Apply them?\n\nOK applies them all.\nCancel discards them all.`);
-          if (confirmApply) {
-            applyPendingTxEdits();
-          } else {
-            discardPendingEdits();
-          }
-        } else {
-          updateTxModeUI();
-          state.gridApi.refreshCells({ force: true });
-        }
-      } else {
-        updateTxModeUI();
-        state.gridApi.refreshCells({ force: true });
-      }
-    });
-  }
+  if (elements.txModeToggle) elements.txModeToggle.addEventListener('change', txToggled);
 
   if (elements.txApplyBtn) {
     elements.txApplyBtn.addEventListener('click', () => {
-      applyPendingTxEdits();
+      applyPendingEdits();
     });
   }
 
@@ -710,6 +687,9 @@ function setupEventListeners() {
       discardPendingEdits();
     });
   }
+  // Apply's question when a staged cell changed on the server since the edit (lead 10-12).
+  if (elements.txKeepMineBtn) elements.txKeepMineBtn.addEventListener('click', () => applyPendingEdits('mine'));
+  if (elements.txTakeServerBtn) elements.txTakeServerBtn.addEventListener('click', () => applyPendingEdits('server'));
 
   // Prevent accidental page leave with unsaved edits
   window.addEventListener('beforeunload', (e) => {
@@ -1171,7 +1151,7 @@ function setupEventListeners() {
         state.hasMoreData = false;
 
         // 그리드 데이터 로드
-        state.gridApi.setGridOption('rowData', accumulatedData);
+        state.gridApi.setGridOption('rowData', overlayStagedEdits(accumulatedData));
         updateGridSortState();
 
         updateLoadedCount(accumulatedData.length);
@@ -2078,84 +2058,6 @@ document.addEventListener('mouseup', () => {
 });
 
 // Transaction Mode Helpers
-async function applyPendingTxEdits() {
-  const pendingCount = Object.keys(state.pendingTxEdits).length;
-  if (pendingCount === 0) return;
-
-  elements.performanceLog.textContent = 'Applying batch transaction updates...';
-  const applyStartTime = performance.now();
-
-  const grouped = {};
-  Object.values(state.pendingTxEdits).forEach(edit => {
-    if (!grouped[edit.rowId]) {
-      grouped[edit.rowId] = {};
-    }
-    grouped[edit.rowId][edit.colId] = edit.newValue;
-  });
-
-  const updates = Object.keys(grouped).map(rowId => ({
-    row_id: rowId,
-    updates: grouped[rowId],
-    source_name: 'user',
-    updated_by: CURRENT_USER
-  }));
-
-  const payload = {
-    updates: updates,
-    silent: false,
-    // V1 instrument: optional field. Raw counts only — the server weights at query time.
-    effort: snapshot()
-  };
-
-  try {
-    const res = await fetch(`${API_BASE}/tables/${state.currentTable}/data/updates`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.ok) {
-      state.pageCache.clear();
-      const result = await res.json();
-      const saveTime = (performance.now() - applyStartTime).toFixed(1);
-
-      // Update cell is_overwrite status locally on the latest nodes directly
-      Object.values(state.pendingTxEdits).forEach(edit => {
-        const { rowId, colId, newValue, data } = edit;
-        const latestNode = state.gridApi.getRowNode(rowId);
-        const latestData = latestNode ? latestNode.data : data;
-        if (latestData) {
-          markCellOverwritten(latestData, colId, newValue);
-          latestData.updated_at = getLocalTimeString();
-        }
-      });
-
-      state.pendingTxEdits = {};
-      // V1 instrument: reset ONLY when the server confirms it recorded the effort. Two
-      // gates, not one: a failed save keeps accumulating because retry effort is real human
-      // effort, and a 200 that changed nothing (every staged edit already matched storage)
-      // records no effort row — resetting there would delete the effort it cost.
-      commitIfRecorded(result);
-      state.txModeActive = elements.txModeToggle.checked;
-      updateTxModeUI();
-      updateGridSortState();
-      state.gridApi.refreshCells({ force: true });
-
-      elements.performanceLog.textContent = `Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)`;
-    } else {
-      const errData = await res.json().catch(() => ({}));
-      const errMsg = errData.detail || 'Save failed';
-      throw new Error(errMsg);
-    }
-  } catch (err) {
-    console.error('Batch apply failed', err);
-    alert(`Apply failed: ${err.message}`);
-    elements.performanceLog.textContent = '❌ Batch apply failed';
-  }
-}
-
 // Start Application.
 // The `catch` NAMES the failure instead of leaving it as a bare unhandled rejection — it does
 // not swallow it. Startup dying silently is how the missing WebSocket stayed invisible; the

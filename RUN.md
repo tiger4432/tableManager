@@ -1,5 +1,57 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **Tx 로 모아 둔 칸이 서버 값 밑에 가려지지 않음 · Apply 는 보내기 전에 다시 읽어 묻는다 (총괄 c97239697 · c96836796 · 7d59e9772, 클라 c3a3fd5cb · 5e3d05504 · 08b3e0215, 병합 4bde0aae7) — git pull 만 · 재기동 없음 · 그리드 새로 고침**
+>
+> ```
+> 무엇     Tx 로 모아 둔 칸은 다시 읽기나 방송이 와도 모아 둔 값을 보인다. 서버 값이 편집 전 값과 달라지면
+>          그 칸이 경고 색 + 툴팁 «Server: <값> · <시각>» 으로 충돌을 말한다
+>          Apply 는 보내기 전에 모아 둔 행을 서버에서 다시 읽는다 — 바닥줄 «Checking N rows on the server…»
+>          충돌이 있으면 그리드 위 줄에 «N cells changed on the server since you edited» 와 Keep mine · Take server
+>          칸을 고치는 중에(Return 없이) Apply 를 눌러도 그 칸이 같이 간다
+> 볼 것    탭 둘: A 에서 Tx 로 칸 하나 고쳐 둠 -> B 에서 같은 칸을 다른 값으로 저장 -> A 칸 툴팁에 «Server: …»
+>          -> A 에서 Apply -> 물음 줄이 서고 B 의 값은 그대로(아직 아무것도 안 보냄)
+> 답의 뜻   Keep mine -> 모아 둔 내 값을 보낸다 / Take server -> 그 칸의 편집을 버리고 서버 값을 그린다
+>          누른 뒤 물은 적 없는 칸이 충돌하거나 물은 칸의 서버 값이 또 움직였으면 -> 보내지 않고 다시 묻는다(결함 아님)
+>          Take server 는 물은 칸을 전부 버린다 — 그 사이 서버가 편집 전 값으로 돌아간 칸도 내 값으로 안 보낸다
+>          «Apply stopped: the staged rows did not answer in 15 s» -> 다시 읽기가 15 초 안에 안 끝남. 편집은 남아 있다 — 다시 Apply
+>          «Apply failed: the save did not answer in 15 s …» -> 저장이 15 초 안에 답이 없음. 서버에 들어갔을 수도 있다 —
+>            다시 Apply 하면 먼저 읽고, 들어갔으면 그 칸이 충돌로 물어 온다
+>          «Already applying» -> 앞 Apply 가 아직 도는 중(두 번 보내지 않음)
+> ⚠️ 남은 창  다시 읽은 뒤 저장이 커밋될 때까지의 아주 짧은 사이에 남이 쓴 것은 못 잡는다(서버에 «편집 전 값으로 견주어 쓰기» 문이 없음)
+> 급할 때   git revert -m 1 4bde0aae7 -> 그리드 새로 고침
+> ```
+
+> ## [10-12 밤] **큰 걷기가 «걷기 아닌» 화면을 멈추지 않음 — 걷기는 서버 밖 걷기 프로세스에서 (총괄 b47388fde)** — git pull · 서버 «반드시» 재기동
+>
+> ```
+> 무엇     걷기의 계산과 글자 변환을 서버가 띄운 걷기 프로세스(기본 둘)가 한다. 서버는 글자를 보내기만 한다
+>          걷기끼리는 walk_processes 만큼만 같이 돌고 나머지는 줄을 선다(줄이 walk_seconds_max 를 넘으면 503)
+> ⚠️ pull 뒤 재기동 «전»에 걷기 프로세스가 새로 뜨면 새 걷기 코드가 옛 서버 밑에서 돈다 — pull 하면 곧바로 재기동
+>          새로 뜨는 계기: 설정 리로드 · 시간 넘김(walk_timed_out) · 걷기 프로세스 죽음 · walk_processes 늘림
+> 볼 것    걷기 화면에서 큰 걷기를 돌리는 동안 다른 창에서 그리드를 넘겨 본다 — 멈추지 않으면 됨
+>          작업 관리자에 python 이 둘 더(걷기 프로세스, 각 140 MB 안팎) — 서버가 뜬 뒤 몇 초 안에 뜬다
+> 답의 뜻   재기동 직후 첫 걷기만 3~4 초 더 걸림 -> 걷기 프로세스가 아직 뜨는 중(그다음부터는 없음)
+>          server.log 에 «walk processes not started ahead» -> 미리 띄우기 실패, 첫 걷기가 띄움(서버는 정상)
+>          걷기가 500 이고 server.log 에 «the pool process running this request ended» -> 그 걷기 프로세스가 죽은 것, 다음 걷기는 새로 뜸
+>          걷기 셋을 같이 돌리면 하나가 늦음 -> walk_processes 보다 많이 동시에 돌린 것(차례를 기다림)
+>          걷기가 503 walk_pool_busy -> 걷기 프로세스가 walk_seconds_max 동안 다 바빴음 / walk_process_not_ready -> 걷기
+>            프로세스가 그 시간 안에 안 떴음 / walk_timed_out -> 그 걷기가
+>            그 시간 안에 안 끝나 걷기 프로세스를 내림(다음 걷기는 새로) — 둘 다 결함이 아니라 상한에 닿은 것
+>          걷기 프로세스 안에서 난 일은 server\walk_pool.log(server.log 옆), 걷기 500 의 추적은 server.log
+> ⚠️ 안 잰 것   시간을 넘겨 내린 걷기의 PG 질의가 PG 안에서 계속 도는지(pg_stat_activity, application_name assy_walkpool)
+> 멈춘 걷기 프로세스 찾기  PowerShell: Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*spawn_main(parent_pid=<서버 pid>*' } | select ProcessId,CommandLine
+>          끄기: taskkill /PID <그 ProcessId> /F  (그 걷기만 500, 다음 걷기는 새 프로세스)
+> 걷기 프로세스가 누구 밑인가  PowerShell 한 줄 — 부모마다 걷기 프로세스 수와 부모의 명령줄:
+>          Get-CimInstance Win32_Process | ? { $_.CommandLine -match 'spawn_main\(parent_pid=\d+' } | group { [regex]::Match($_.CommandLine, 'parent_pid=(\d+)').Groups[1].Value } | % { "{0} walk processes under {1}" -f $_.Count, (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Name)").CommandLine }
+>          답의 뜻: uvicorn main:app 이 부모인 줄 하나에 walk_processes 수 -> 정상(표 설정을 저장한 뒤에도 같은 수, 새 pid)
+>            run_watcher.py · run_chain_worker.py · run_auto_update.py 가 부모인 줄이 있으면 -> 데몬이 걷기 프로세스를
+>            띄운 것(10-13 에 막은 결함) — 그 데몬을 재기동. 줄이 하나도 없으면 -> walk_processes 0 이거나 서버가 아직 안 띄움
+> 급할 때   ingestion_settings.json 에 "walk_processes": 0 -> 다음 걷기부터 전처럼 서버 안에서, 그 걷기가 올 때 쉬는 걷기
+>          프로세스도 내림(재기동 없음). 수를 줄이면 넘치는 것은 걷기가 끝날 때마다 하나씩 내린다
+>          표 설정(table_config) · 시스템 리로드 뒤에는 걷기 프로세스를 새로 띄운다(새 설정을 읽게) — 서버만.
+>            워처 · 체인 워커 · 자동 갱신 데몬의 리로드는 안 띄운다. 리로드 때 돌던 걷기는 답한 뒤 새 것으로 바뀐다
+> ```
+
 > ## [10-12 밤] **서버가 큰 답을 보내는 동안 다른 요청이 멈추지 않음 · 걷기 집계 이름이 스팟파이어 철자 (총괄 3d1f25056 · fceba46a7, 소유자 「알아서해」 · 「1 ㅇㅇ」, 착지 911fc8821 · e6f2d23b3 · 9911db802) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
@@ -4491,7 +4543,7 @@
 > ## 🔴 [09-26 밤 1] **체인 멈춤 증거 — 연결 이름 · 멈춤 줄 · 이전 체인 워커가 남긴 쿼리 끊기 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러 — 연결 이름은 프로세스를 새로 띄워야 붙음)**
 >
 > ```
-> 연결 이름    pg_stat_activity 의 application_name — assy_server · assy_watcher · assy_chain · assy_scheduler · assy_retroactive · 스크립트는 assy_<스크립트>
+> 연결 이름    pg_stat_activity 의 application_name — assy_server · assy_watcher · assy_chain · assy_scheduler · assy_retroactive · assy_walkpool(걷기 프로세스, 10-12) · 스크립트는 assy_<스크립트>
 >             체인이 멈춤을 물을 때 여는 짧은 연결은 assy_chain_probe
 > 찾기        Select-String -Path server\chain_worker.log -Pattern ": stalled \d+ s in "        <- 멈춘 묶음마다 한 번
 >             Select-String -Path server\chain_worker.log -Pattern "left by a chain worker"       <- 기동 때 끊은 남은 쿼리

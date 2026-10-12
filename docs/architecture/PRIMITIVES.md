@@ -1692,6 +1692,20 @@
   - 🔴 **허용 목록이 «코드 상수»다**(`CAPABILITY_ALLOWED`, 시험 파일 안의 dict). 선언이 아니라서 운영자가 못 고치고, 넓히려면 커밋이다 — 그 대신 **항목마다 사유가 붙고 「지우면 빨개지는지」가 단언된다**.
   - ⚠️ **`from . import x` 형태는 허용표가 대변할 수 없다** — 그 문법에서는 모든 이름이 «모듈»이라 `(module, name)` 키가 성립하지 않는다. 그래서 그 가지는 허용 조회 «전»에 거절된다.
 
+### 무거운 라우트의 «몸»을 자기 프로세스에서 — `runtime/process_pool.in_pool` (2026-10-13 등록 · `38cc1f604`..`29c0ed3e1`)
+- **무엇**: 큰 걷기 하나가 웹 프로세스의 GIL 과 코어를 쥐면 다른 요청이 모두 기다린다. 라우트로 등록한 «자리»(`in_pool(body)`)가 그 몸을 걷기 프로세스(spawn)로 넘기고, 그 프로세스는 자기 작은 DB 풀로 돌아 «바이트»를 돌려준다. 이름(함수)은 그대로라 직접 부르는 코드는 전처럼 dict 를 받는다.
+- **어디**: `server/runtime/process_pool.py` (308줄 @`29c0ed3e1`) — `in_pool` · `warm()`(서버 기동 뒤 미리 띄움) · `recycle()`(리로드 · 표 설정 갱신 때, 데운 프로세스에서만) · 설정 `walk_processes`(기본 2, 0 = 끔) · `walk_seconds_max`(기본 120 초, 기다림 · 시작 · 답이 «한 마감»). 등록은 `trace_router.py` :365.
+- **언제 재사용**: 몸이 크고 답이 큰 동기 라우트. 판별 질문 — «이 라우트가 도는 동안 다른 요청의 초가 출렁이나».
+- **함정**:
+  - 🔴 시험의 세션 덮어쓰기 · 위치 인자 호출은 이 프로세스에서 돈다(다른 엔진의 세션은 못 넘긴다) — 시험이 풀을 «안» 탈 수 있다.
+  - 🔴 프로세스는 캐시 «사본»을 든다 — 리로드가 `recycle()` 을 안 부르면 옛 선언으로 답한다.
+  - ⚠️ 응답은 `runtime/offloop_json.OffLoopJSONRoute` 와 겹쳐 선다: 풀 래퍼가 동기 · 반환 주석 없음이라 감싸이고, 풀이 낸 Response 는 그대로 통과.
+
+### 응답을 바이트로 바꾸는 자리 하나 — `runtime/offloop_json.OffLoopJSONRoute` (2026-10-13 등록 · `911fc8821` · `e6f2d23b3`)
+- **무엇**: fastapi 는 동기 라우트가 돌려준 dict 도 이벤트 루프에서 `jsonable_encoder` · `json.dumps` 했다 — 큰 답 동안 모든 요청이 멈춘다. app 과 APIRouter 의 route_class 가 응답 모델 · 응답 클래스 없는 동기 엔드포인트를 감싸 그 일꾼 스레드에서 바이트로 바꾼다.
+- **어디**: `server/runtime/offloop_json.py` · `main.py` 의 `app.router.route_class` · 라우터 셋의 `route_class=`.
+- **언제 재사용**: 새 APIRouter 는 `route_class=OffLoopJSONRoute` 로 연다. 큰 답을 내는 새 라우트는 async · `response_model` · 응답 클래스를 피한다(그 셋은 감싸지 않는다).
+
 ## 6-bis. 살아 있음을 판정하기
 
 ### ⭐⭐ **두 번째 판정자를 짓지 말고 «진짜»를 한 배치 돌려라 — 쓰지 않고, 커서를 안 움직이고, 거절은 그대로** (2026-08-21 등록 · `fd3dda05`)

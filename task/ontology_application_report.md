@@ -38350,3 +38350,667 @@ QA ①    ledger_subgraph.py 주석 「the screen's picker (AGGREGATIONS) names 
 QA ②    LEDGER_SCHEMA_COMPLETENESS 의 「walk_aggregate 가 서버 · 클라 양쪽을 채점」은 이번 착지 전부터 거짓 — 클라 하니스가 없다
         (contracts/walk_aggregate 에는 vectors.json 하나) · 고침
 ```
+
+---
+
+## [C 응용] 10-12 밤 ~ 10-13 — 속도 전수 (b2cd0549b · ea78290a5 · 95a7bc04c · 2e8c6ac9c) · 허브 «값마다 허브» · 바이트 나누기 · 원장 원자
+
+박스 수다 — 운영 주장이 아니다. 코드 main 1e23bc216 · assy_test 의 pytest 스크래치 스키마 · 연산마다 45 초 상한 · 1,000 행당 초는 «첫 줄 뒤».
+겹침: 100만 outbox 세계는 구현자 3 분(23:06:19~07:08)과 겹쳐 다시 쟀고 아래 표는 다시 잰 값이다(R5 set_aside, R5 withdraw_source, fold_withdrawal_events).
+그리드 100만(23:25:56~34:58)은 제 파일 셈(CPU)과 원장 원자 셈(읽기 5 초)과 겹쳤다.
+명령: run_census_all.sh · run_census_rest.sh · run_census_confirm.sh(스크래치) → qa_census_gen.py · qa_census_detail_gen.py.
+
+```
+on main 1e23bc216 22:43:16
+start R1fold 1000000 22:43:16
+end R1fold 1000000 exit 1 22:43:35 1 failed 
+start R 1000000 22:43:36
+end R 1000000 exit 1 23:08:57 4 passed 
+start R 10000 23:08:58
+end R 10000 exit 1 23:11:57 4 passed 
+start R 100000 23:11:58
+end R 100000 exit 1 23:19:35 4 passed 
+start R1fold 10000 23:19:35
+end R1fold 10000 exit 1 23:20:04 1 passed 
+start R1fold 100000 23:20:05
+end R1fold 100000 exit 1 23:21:32 1 passed 
+start G 10000 23:21:33
+end G 10000 exit 1 23:23:12 1 passed 
+start G 100000 23:23:12
+end G 100000 exit 1 23:25:55 1 passed 
+start G 1000000 23:25:56
+end G 1000000 exit 1 23:34:58 1 passed 
+start I1 10000 23:34:58
+end I1 10000 exit 1 23:35:37 1 passed 
+start I1 100000 23:35:39
+end I1 100000 exit 1 23:36:41 1 passed 
+start I1 1000000 23:36:42
+end I1 1000000 exit 1 23:43:48 1 passed 
+all done 23:43:48
+on main 1e23bc216 23:44:14
+start R1fold 1000000 23:44:14
+end R1fold 1000000 exit 1 23:48:50 1 passed 
+start R-outbox 1000000 23:48:51
+end R-outbox 1000000 exit 1 23:53:28 1 passed 
+all done 23:53:28
+on main 1e23bc216 23:53:51
+start confirm 10000 23:53:51
+end confirm 10000 exit 1 23:54:23 1 passed 
+start confirm 100000 23:54:23
+end confirm 100000 exit 1 23:56:08 1 passed 
+start confirm 1000000 23:56:09
+end confirm 1000000 exit 1 00:11:02 1 passed 
+all done 00:11:05
+```
+
+소급 R1~R5 — 1만 · 10만 · 100만
+
+| path | size | wall s | start→first line s | s / 1,000 rows (after first line) | rows paged | SQL | SQL / 1,000 rows | python share | seq scans (table: rows read) |
+|---|---|---|---|---|---|---|---|---|---|
+| R1 fold_written_notation | 10,000 | 0.5 | 0.12 | 0.036 | 10,497 | 30 | 2.9 | 0.66 | hc_official: 20,994 |
+| R1 fold_written_notation | 100,000 | 5.83 | 0.27 | 0.053 | 104,997 | 40 | 0.4 | 0.43 | hc_official: 209,994 |
+| R1 fold_written_notation | 1,000,000 | 45.91 | 1.84 | 0.199 | 221,342 | 58 | 0.3 | 0.1 | cell_sources: 130,000,000 · hc_official: 1,050,159 |
+| ↳ ×10 | | | 2.3× → 6.8× | 1.5× → 3.8× | | | | | |
+| R2 ledger_backfill | 10,000 | 27.39 | 0.84 | 2.655 | 9,997 | 19 | 1.9 | 1.0 | hc_official: 209,940 · ledger_source_row_ref: 118,686 |
+| R2 ledger_backfill | 100,000 | 51.38 | 0.25 | 2.842 | 17,988 | 25 | 1.4 | 1.0 | hc_official: 314,991 |
+| R2 ledger_backfill | 1,000,000 | 47.33 | 0.47 | 2.37 | 19,773 | 25 | 1.3 | 1.0 | hc_official: 2,100,318 · ledger_source_row_ref: 247,244 |
+| ↳ ×10 | | | 0.3× → 1.9× | 1.1× → 0.8× | | | | | |
+| R3 chain_replay (staging) | 10,000 | 0.25 | 0.11 | 0.013 | 10,496 | 61 | 5.8 | 0.73 | none |
+| R3 chain_replay (staging) | 100,000 | 1.11 | 0.11 | 0.01 | 105,069 | 346 | 3.3 | 0.55 | none |
+| R3 chain_replay (staging) | 1,000,000 | 10.62 | 0.12 | 0.01 | 1,050,508 | 3,181 | 3.0 | 0.58 | none |
+| ↳ ×10 | | | 1.0× → 1.1× | 0.8× → 1.0× | | | | | |
+| resolve | 10,000 | 3.31 | 0.59 | 0.259 | 10,497 | 61 | 5.8 | 0.85 | none |
+| resolve | 100,000 | 25.31 | 0.11 | 0.24 | 104,997 | 343 | 3.3 | 0.83 | none |
+| resolve | 1,000,000 | 45.09 | 0.14 | 0.221 | 203,023 | 637 | 3.1 | 0.81 | none |
+| ↳ ×10 | | | 0.2× → 1.3× | 0.9× → 0.9× | | | | | |
+| fold_file_layers | 10,000 | 3.22 | 0.11 | 0.296 | 10,497 | 81 | 7.7 | 0.86 | none |
+| fold_file_layers | 100,000 | 32.92 | 0.12 | 0.312 | 104,997 | 457 | 4.4 | 0.86 | none |
+| fold_file_layers | 1,000,000 | 45.14 | 0.11 | 0.281 | 160,023 | 677 | 4.2 | 0.84 | none |
+| ↳ ×10 | | | 1.1× → 0.9× | 1.1× → 0.9× | | | | | |
+| R4 fold_duplicate_rows (hold log) | 10,000 | 0.8 | 0.36 | 0.883 | 496 | 86 | 173.4 | 0.38 | hc_log: 52,480 |
+| R4 fold_duplicate_rows (hold log) | 100,000 | 6.75 | 2.81 | 0.777 | 5,069 | 140 | 27.6 | 0.22 | hc_log: 525,345 · cell_overwrites: 10,000 |
+| R4 fold_duplicate_rows (hold log) | 1,000,000 | 45.55 | 10.58 | 0.777 | 45,023 | 491 | 10.9 | 0.26 | hc_log: 5,252,540 · cell_overwrites: 110,000 |
+| ↳ ×10 | | | 7.8× → 3.8× | 0.9× → 1.0× | | | | | |
+| R4 remove_shell_rows (hold official) | 10,000 | 0.47 | 0.17 | 0.598 | 497 | 103 | 207.2 | 0.54 | hc_official: 83,729 |
+| R4 remove_shell_rows (hold official) | 100,000 | 3.67 | 0.22 | 0.691 | 4,997 | 158 | 31.6 | 0.25 | hc_official: 1,255,905 |
+| R4 remove_shell_rows (hold official) | 1,000,000 | 32.94 | 0.73 | 0.642 | 50,159 | 664 | 13.2 | 0.18 | hc_official: 41,539,657 |
+| ↳ ×10 | | | 1.3× → 3.3× | 1.2× → 0.9× | | | | | |
+| R4 fold_units | 10,000 | 2.33 | 0.16 | 0.434 | 5,000 | 159 | 31.8 | 0.44 | fu_inventory: 52,000 |
+| R4 fold_units | 100,000 | 19.34 | 0.34 | 0.38 | 50,000 | 347 | 6.9 | 0.34 | fu_inventory: 800,000 |
+| R4 fold_units | 1,000,000 | 45.08 | 2.86 | 0.454 | 93,011 | 503 | 5.4 | 0.28 | fu_inventory: 12,000,000 |
+| ↳ ×10 | | | 2.1× → 8.4× | 0.9× → 1.2× | | | | | |
+| R4 inventory_replay (staging) | 10,000 | 0.59 | 0.52 | 0.039 | 2,000 | 34 | 17.0 | 0.93 | fu_inventory: 2,000 |
+| R4 inventory_replay (staging) | 100,000 | 0.41 | 0.2 | 0.01 | 20,000 | 88 | 4.4 | 0.74 | none |
+| R4 inventory_replay (staging) | 1,000,000 | 1.55 | 0.12 | 0.007 | 200,000 | 628 | 3.1 | 0.67 | none |
+| ↳ ×10 | | | 0.4× → 0.6× | 0.3× → 0.7× | | | | | |
+| R4 fold_duplicate_rows (fold log) | 10,000 | 6.7 | 0.56 | 0.768 | 8,000 | 158 | 19.8 | 0.41 | fu_log: 30,000 · audit_logs: 4,508 |
+| R4 fold_duplicate_rows (fold log) | 100,000 | 45.42 | 1.38 | 0.71 | 62,023 | 644 | 10.4 | 0.38 | none |
+| R4 fold_duplicate_rows (fold log) | 1,000,000 | 45.41 | 8.89 | 0.716 | 51,023 | 545 | 10.7 | 0.35 | audit_logs: 91,683 |
+| ↳ ×10 | | | 2.5× → 6.4× | 0.9× → 1.0× | | | | | |
+| R5 enrichment_backfill | 10,000 | 3.78 | 0.11 | 0.367 | 10,000 | 213 | 21.3 | 0.62 | bkfl_test_derived: 11,552 |
+| R5 enrichment_backfill | 100,000 | 32.2 | 0.09 | 0.321 | 100,000 | 1,293 | 12.9 | 0.58 | bkfl_test_derived: 1,238,342 |
+| R5 enrichment_backfill | 1,000,000 | 45.03 | 0.11 | 0.356 | 126,023 | 1,605 | 12.7 | 0.58 | bkfl_test_derived: 1,969,748 |
+| ↳ ×10 | | | 0.8× → 1.2× | 0.9× → 1.1× | | | | | |
+| R5 enrichment confirm (dry: the knob refuses apply) | 10,000 | 0.0 | None | None | 0 | 0 | — | None | none | ERROR
+| R5 enrichment confirm (dry: the knob refuses apply) | 100,000 | 0.0 | None | None | 0 | 0 | — | None | none | ERROR
+| R5 enrichment confirm (dry: the knob refuses apply) | 1,000,000 | 0.02 | None | None | 0 | 0 | — | 1.0 | none | ERROR
+| ↳ ×10 | | | — → — | — → — | | | | | |
+| R5 set_aside | 10,000 | 1.16 | 0.11 | 0.105 | 10,000 | 58 | 5.8 | 0.75 | none |
+| R5 set_aside | 100,000 | 9.16 | 0.42 | 0.087 | 100,000 | 328 | 3.3 | 0.69 | audit_logs: 60,671 |
+| R5 set_aside | 1,000,000 | 45.03 | 0.14 | 0.085 | 527,023 | 1,608 | 3.1 | 0.7 | none |
+| ↳ ×10 | | | 3.8× → 0.3× | 0.8× → 1.0× | | | | | |
+| R5 withdraw_source | 10,000 | 4.17 | 0.0 | 0.417 | 9,999 | 206 | 20.6 | 0.59 | cell_sources: 103,914 · qa_t: 1,111 |
+| R5 withdraw_source | 100,000 | 34.28 | 0.0 | 0.343 | 99,999 | 485 | 4.9 | 0.58 | none |
+| R5 withdraw_source | 1,000,000 | 47.05 | 0.0 | 0.352 | 133,839 | 576 | 4.3 | 0.6 | none |
+| ↳ ×10 | | | — → — | 0.8× → 1.0× | | | | | |
+| fold_withdrawal_events | 10,000 | 0.58 | 0.12 | 0.045 | 10,000 | 88 | 8.8 | 0.64 | database_outbox: 20,011 |
+| fold_withdrawal_events | 100,000 | 4.84 | 0.22 | 0.046 | 100,000 | 297 | 3.0 | 0.37 | none |
+| fold_withdrawal_events | 1,000,000 | 45.2 | 3.11 | 0.052 | 806,385 | 1,927 | 2.4 | 0.34 | none |
+| ↳ ×10 | | | 1.8× → 14.1× | 1.0× → 1.1× | | | | | |
+
+
+100만에서 통째 읽기와 그 문장(첫 둘)
+
+```
+R1 fold_written_notation — seq cell_sources 30 scans / 130,000,000 rows · hc_official 3 scans / 1,050,159 rows
+   38.83 s · 28 calls · max 27.213 s · SELECT cell_sources.column_name, CAST(cell_sources.value AS TEXT) AS value, count(*) AS count_1 FROM cell_sources WHERE cell_sources.table_name = %(ta  ⟶ ->  Parallel Seq Scan on cell_sources  (cost=40.96..394807.30 rows=66643 width=3
+   1.74 s · 1 calls · max 1.736 s · SELECT count(hc_official.row_id) AS count_1 FROM hc_official  ⟶ ->  Parallel Seq Scan on hc_official  (cost=0.00..23944.66 rows=437566 width=41)
+R4 remove_shell_rows (hold official) — seq hc_official 120 scans / 41,539,657 rows
+   17.27 s · 61 calls · max 1.497 s · SELECT hc_official.row_id FROM hc_official WHERE (CASE WHEN (hc_official.netdie >= %(netdie_1)s AND hc_official.netdie <= %(netdie_2)s) THEN CASE WHEN  ⟶ ->  Parallel Seq Scan on hc_official  (cost=0.00..58949.96 rows=1 width=41)
+   3.67 s · 59 calls · max 0.1 s · INSERT INTO audit_logs (table_name, row_id, column_name, old_value, new_value, source_name, updated_by, transaction_id, timestamp, business_key) VALUE
+R4 fold_units — seq fu_inventory 176 scans / 12,000,000 rows
+   5.86 s · 26 calls · max 0.5 s · UPDATE "fu_log" SET "fold_mark" = v.a1, "updated_at" = %(updated_at)s FROM unnest(CAST(%(a0)s AS VARCHAR[]), CAST(%(a1)s AS VARCHAR[])) AS v(a0, a1) W
+   5.85 s · 29 calls · max 0.454 s · SELECT anon_1.row_id, anon_1.kept FROM (SELECT fu_inventory.row_id AS row_id, fu_inventory.wafer_out_time AS order_value, fu_inventory.dt_job_id AS pr  ⟶ ->  Parallel Seq Scan on fu_inventory  (cost=2.50..4631.97 rows=827 width=45)
+R5 enrichment_backfill — seq bkfl_test_derived 130 scans / 1,969,748 rows
+   9.14 s · 256 calls · max 0.077 s · INSERT INTO cell_sources (column_name, ingested_at, source_name, origin_row_id, table_name, row_id, updated_by, value) VALUES (%s,%s,%s,%s,%s,%s,%s,%s
+   2.56 s · 132 calls · max 0.025 s · INSERT INTO audit_logs (table_name, row_id, column_name, old_value, new_value, source_name, updated_by, transaction_id, timestamp, business_key) VALUE
+R4 fold_duplicate_rows (hold log) — seq hc_log 15 scans / 5,252,540 rows · cell_overwrites 44 scans / 110,000 rows
+   11.92 s · 54 calls · max 0.303 s · UPDATE hc_log SET updated_at=%(updated_at)s, fold_mark=%(fold_mark)s WHERE hc_log.row_id = %(hc_log_row_id)s
+   4.6 s · 50 calls · max 0.155 s · INSERT INTO cell_sources (column_name, ingested_at, source_name, origin_row_id, table_name, row_id, updated_by, value) VALUES (%s,%s,%s,%s,%s,%s,%s,%s
+R2 ledger_backfill — seq hc_official 6 scans / 2,100,318 rows · ledger_source_row_ref 15 scans / 247,244 rows
+   1.55 s · 37 calls · max 0.092 s · INSERT INTO ledger_events (id, subject_type, subject_keys, predicate, object_kind, object_payload, occurred_at, source_who, source_translator_ver, sou
+   1.08 s · 191 calls · max 0.013 s · INSERT INTO ledger_source_row_ref (relation, row_id, source_who, source_raw_ref) VALUES (?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?
+```
+
+R1 표기, 접을 것이 있는 판(qa_nf)
+
+```
+10,000 · R1 fold_written_notation (foldable) · wall 4.33 s · first line 0.11 s · 0.422 s / 1,000 rows · rows 10,000 · cells folded 13,500
+100,000 · R1 fold_written_notation (foldable) · wall 45.25 s · first line 0.19 s · 0.451 s / 1,000 rows · rows 100,000 · cells folded 135,000
+1,000,000 · R1 fold_written_notation (foldable) · wall 46.84 s · first line 1.98 s · 0.473 s / 1,000 rows · rows 94,790 · cells folded 126,790
+```
+
+그리드 G1 · 검색 G2 · 걷기 첫 쪽 · 맵 G4 (요청 다섯 번의 중앙값 · 최대)
+
+```
+10,000 · G1 first page · median 0.031 s · max 0.219 s · SQL/request 3.2 · seq {}
+10,000 · G1 deep page by value · median 0.063 s · max 0.265 s · SQL/request 3.2 · seq {'hc_official': [5, 50000]}
+10,000 · G1 filtered page · median 0.031 s · max 0.218 s · SQL/request 3.2 · seq {}
+10,000 · G1 count · median 0.0 s · max 0.109 s · SQL/request 0.2 · seq {}
+10,000 · G2 search · median 0.031 s · max 0.235 s · SQL/request 4.2 · seq {'hc_official': [1, 10000]}
+10,000 · walk first page · median 0.094 s · max 0.188 s · SQL/request 3.0 · seq {}
+10,000 · G4 map 20x20 · median 0.047 s · max 0.25 s · SQL/request 3.0 · seq {}
+100,000 · G1 first page · median 0.031 s · max 0.219 s · SQL/request 3.2 · seq {'hc_official': [1, 100000]}
+100,000 · G1 deep page by value · median 0.312 s · max 0.578 s · SQL/request 3.2 · seq {'hc_official': [6, 600000]}
+100,000 · G1 filtered page · median 0.016 s · max 0.234 s · SQL/request 3.2 · seq {}
+100,000 · G1 count · median 0.0 s · max 0.11 s · SQL/request 0.2 · seq {'hc_official': [1, 100000]}
+100,000 · G2 search · median 0.031 s · max 0.328 s · SQL/request 4.2 · seq {'hc_official': [2, 100000]}
+100,000 · walk first page · median 0.125 s · max 0.25 s · SQL/request 3.0 · seq {'ledger_events_2026_10': [5, 71720]}
+100,000 · G4 map 20x20 · median 0.047 s · max 0.25 s · SQL/request 3.0 · seq {}
+1,000,000 · G1 first page · median 0.016 s · max 0.329 s · SQL/request 3.2 · seq {'hc_official': [3, 1000000]}
+1,000,000 · G1 deep page by value · median 1.641 s · max 1.734 s · SQL/request 3.2 · seq {'hc_official': [18, 6000000]}
+1,000,000 · G1 filtered page · median 0.032 s · max 0.547 s · SQL/request 3.2 · seq {'hc_official': [3, 1000000]}
+1,000,000 · G1 count · median 0.0 s · max 0.204 s · SQL/request 0.2 · seq {}
+1,000,000 · G2 search · median 0.047 s · max 1.187 s · SQL/request 4.2 · seq {'hc_official': [3, 1000000]}
+1,000,000 · walk first page · median 0.125 s · max 0.469 s · SQL/request 3.0 · seq {'ledger_events_2026_10': [5, 83585]}
+1,000,000 · G4 map 20x20 · median 0.063 s · max 0.25 s · SQL/request 3.0 · seq {}
+```
+
+파일 수집 I1 (1,000 행 CSV, 체인 없음)
+
+```
+10,000 · I1 1,000 new rows · [Ingest] qa_ingest FILE new_aaaaaaa1.csv: 1000 row(s) in 1.485 s (40404 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 1000 · chang
+10,000 · I1 1,000 changed rows · [Ingest] qa_ingest FILE chg_bbbbbbb2.csv: 1000 row(s) in 2.047 s (29311 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 0 · changed 
+100,000 · I1 1,000 new rows · [Ingest] qa_ingest FILE new_aaaaaaa1.csv: 1000 row(s) in 1.407 s (42643 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 1000 · chang
+100,000 · I1 1,000 changed rows · [Ingest] qa_ingest FILE chg_bbbbbbb2.csv: 1000 row(s) in 2.391 s (25094 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 0 · changed 
+1,000,000 · I1 1,000 new rows · [Ingest] qa_ingest FILE new_aaaaaaa1.csv: 1000 row(s) in 1.656 s (36231 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 1000 · chang
+1,000,000 · I1 1,000 changed rows · [Ingest] qa_ingest FILE chg_bbbbbbb2.csv: 1000 row(s) in 2.515 s (23856 rows/min) · normal lane · waited 0.000 s (table lock) · sent: new 0 · changed 
+```
+
+보강 확인 (규칙에 candidate_for — 판단키로 원본의 min(chip_id)) · sweep 은 드라이
+
+```
+10,000 · source 10,000 · derived 2,500 · fill 3.7 s · sweep (dry) 3.69 s · keys 2,500 · confirmed 2,500 · SQL 7,518 · 1.48 ms/key
+100,000 · source 100,000 · derived 25,000 · fill 33.6 s · sweep (dry) 40.76 s · keys 25,000 · confirmed 25,000 · SQL 75,062 · 1.63 ms/key
+1,000,000 · source 1,000,000 · derived 250,000 · fill 351.0 s · sweep (dry) 450.55 s · keys 250,000 · confirmed 250,000 · SQL 750,512 · 1.80 ms/key
+발견  드라이 길은 대기열을 처음에 전부 읽고 SAVEPOINT 하나에서 키 전부를 확인한다 — 쪽도 멈춤도 없다(100만에서 45 초 상한을 넘어 끝까지)
+```
+
+허브 «값마다 허브» (답 ②, 소유자 확정) · 바이트 나누기 · 원장 원자 주어 타입별
+
+```
+canary: nodes 41057 · edges 84330 · seeds 2 (in nodes 2) · nodes with a reach pair 41056 · answer bytes 301,933,948
+nothing declared: nodes 41,057 · edges 84,330 · graph bytes 202,385,946 (rest of the answer 99,548,014, unchanged by a fold)
+contrast rule: one hub per contrast pair, a pair with one member stays a node (--hub-per-value)
+| predicate declared alone | its edges | hubs | members | dropped · hubs lost | cells | nodes − | edges − | bytes − (rows in) | bytes − (rows on open) | unfold nodes · edges | hubs (members) with split contrast | members reach ≠ parent | largest steps (direction · far type: members) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| observed | 32,040 | 504 | 32,040 | 0 · 0 | 0 | 31,536 | 63,072 | 23,931,267 | 154,333,953 | True · True | 0 (0) | 0 | out · defect: 32,040 |
+| in_container | 8,514 | 3 | 5,400 | 0 · 0 | 1,818 | 7,215 | 15,825 | 5,563,062 | 34,497,206 | True · True | 0 (0) | 0 | in · die: 5,400 |
+| bonded_from | 2,520 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| inspected | 702 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| of_kind | 32,040 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| transfer | 8,514 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+top three together dropped 0 · hubs lost 0
+top three together ['observed', 'in_container']: hubs 507 · members 37,440 · cells 1,818 · nodes 41,057 -> 2,306 · edges 84,330 -> 5,433 · graph bytes 202,385,946 -> 172,891,642 (rows on open 13,554,812) · unfold nodes = True · edges = True · split-contrast hubs 0 (members 0) · members reach ≠ parent 0
+```
+
+```
+canary: nodes 41057 · edges 84330 · seeds 2 (in nodes 2) · nodes with a reach pair 41056 · answer bytes 301,933,948
+signed answer, one hub per value, rows on open: 13,554,812 B · nodes 1799 (+ hubs 507) · edges 3888 (+ hub lines 1545)
+  nodes (drawn, not hubs)                                 824,318 B    6.1%
+  edges (drawn, not hub lines)                         12,175,998 B   89.8%
+  hub heads (hub nodes + parent lines + hub lines)        270,490 B    2.0%
+  hub tables (head only, rows on open)                    283,979 B    2.1%
+  the rest (brackets, top-level keys)                          27 B    0.0%
+  nodes by key: predicates 233,926 · id 216,170 · keys 127,756 · label 76,185 · schema_kind 57,568 · node_kind 37,779 · claim_count 29,898 · type 23,447 · depth 17,990
+  edges by key: records 5,226,228 · by_world 2,142,780 · basis 1,563,432 · id 1,274,183 · source 455,640 · target 421,476 · claim_id 194,400 · occurred_at 147,150 · original_predicate 132,084 · predicate_label 120,420 · source_who 109,494 · predicate 97,092 · worlds 81,648 · cardinality 73,872 · records_more 66,114 · qualifiers 62,208
+walk atoms read (claims_scanned) 157,104 · atoms drawn on edges (records + records_more) 122,184 · not drawn as edges 34,920
+  predicates the nodes count: {'observed': 64080, 'of_kind': 32040, 'in_container': 17028, 'transfer': 17028, 'bonded_from': 5040, 'inspected': 1404}
+  predicates the edges draw: {'observed': 32040, 'of_kind': 32040, 'in_container': 8514, 'transfer': 8514, 'bonded_from': 2520, 'inspected': 702}
+  nodes carrying an attribute/value key: 0
+```
+
+```
+== assy_test · schema assy_impl_wm_1012 · atoms 261,180
+  by subject type: die 228,402 (87.5%) · defect 32,040 (12.3%) · wafer 738 (0.3%)
+  by predicate: in_container 115,830 (44.3%) · transfer 78,012 (29.9%) · observed 32,040 (12.3%) · of_kind 32,040 (12.3%) · bonded_from 2,520 (1.0%) · inspected 738 (0.3%)
+  defect and below (observed + of_kind): 64,080 of 261,180 = 24.5%
+== assy_manager · schema public · atoms 2,380,869
+  by subject type: dtjob 866,192 (36.4%) · wafer 688,030 (28.9%) · die 680,993 (28.6%) · defect 103,863 (4.4%) · lot_slot 37,470 (1.6%) · lot 4,299 (0.2%) · quantity 22 (0.0%)
+  by predicate: processed_with 478,718 (20.1%) · register 446,652 (18.8%) · has_netdie 433,096 (18.2%) · transfer 402,156 (16.9%) · in_container 156,365 (6.6%) · inspected 117,742 (4.9%) · of_kind 103,863 (4.4%) · observed 103,863 (4.4%) · measures 80,327 (3.4%) · has_wafer 37,335 (1.6%) · bonded_from 18,609 (0.8%) · derived_from 1,986 (0.1%) · slot_map 135 (0.0%) · leads_to 22 (0.0%)
+  defect and below (observed + of_kind): 207,726 of 2,380,869 = 8.7%
+```
+
+---
+
+## [C 응용] 10-13 — 보강 확인 «적용 길» (3eca39091, 구현자 B 기준선)
+
+박스 수. 같은 decide 판 · 규칙에 candidate_for 와 auto_confirm · sweep apply · 45 초 상한. 명령 run_census_confirm_apply.sh(스크래치, QA_CONFIRM_APPLY=1).
+
+```
+on main 1e23bc216 00:13:48
+start confirm-apply 10000 00:13:48
+end confirm-apply 10000 exit 1 00:15:02 1 passed 
+start confirm-apply 100000 00:15:02
+end confirm-apply 100000 exit 1 00:17:27 1 passed 
+start confirm-apply 1000000 00:17:27
+end confirm-apply 1000000 exit 1 00:25:10 1 passed 
+all done 00:25:10
+10,000 · derived 2,500 · fill 13.9 s · sweep 20.39 s · pages 15 · keys 2,500 · stopped None · 8.156 s / 1,000 keys (steady 9.375) · SQL 7,666 · seq {'cell_sources': (4, 56564), 'bkfl_test_derived': (28, 70000)}
+   5.93 s · 15 calls · max 0.867 s · UPDATE bkfl_test_derived SET updated_at=%(updated_at)s, wafer_id=%(wafer_id)s WHERE bkfl_test_derived.row_id = %(bkfl_te
+   2.99 s · 11 calls · max 0.57 s · INSERT INTO cell_sources (value, origin_row_id, updated_by, table_name, row_id, column_name, source_name, ingested_at) V
+   2.95 s · 14 calls · max 0.595 s · INSERT INTO audit_logs (table_name, row_id, column_name, old_value, new_value, source_name, updated_by, transaction_id, 
+100,000 · derived 25,000 · fill 51.3 s · sweep 46.11 s · pages 26 · keys 15,563 · stopped True · 2.963 s / 1,000 keys (steady 2.6) · SQL 46,975 · seq {'audit_logs': (7, 23410), 'bkfl_test_derived': (5, 125000)}
+   9.31 s · 15563 calls · max 0.015 s · SELECT __c, COUNT(*) AS __n, SUM(COUNT(*)) OVER () AS __scanned FROM (SELECT __enrichment_ref."wafer_id" AS __c FROM (SE
+   4.88 s · 26 calls · max 0.346 s · UPDATE bkfl_test_derived SET updated_at=%(updated_at)s, wafer_id=%(wafer_id)s WHERE bkfl_test_derived.row_id = %(bkfl_te
+   2.0 s · 25 calls · max 0.981 s · INSERT INTO database_outbox (event_uuid, event_type, table_name, payload, status, retry_count, processed_chain, processe
+1,000,000 · derived 250,000 · fill 320.8 s · sweep 47.16 s · pages 26 · keys 16,573 · stopped True · 2.845 s / 1,000 keys (steady 2.798) · SQL 50,005 · seq {'audit_logs': (16, 49152), 'bkfl_test_derived': (45, 3750000)}
+   8.92 s · 16573 calls · max 0.018 s · SELECT __c, COUNT(*) AS __n, SUM(COUNT(*)) OVER () AS __scanned FROM (SELECT __enrichment_ref."wafer_id" AS __c FROM (SE
+   4.77 s · 26 calls · max 0.325 s · UPDATE bkfl_test_derived SET updated_at=%(updated_at)s, wafer_id=%(wafer_id)s WHERE bkfl_test_derived.row_id = %(bkfl_te
+   4.32 s · 26 calls · max 1.377 s · SELECT bkfl_test_derived.row_id AS bkfl_test_derived_row_id, bkfl_test_derived.business_key_val AS bkfl_test_derived_bus  ⟶ ->  Parallel Seq Scan on bkfl_test_derived  (cost=4.59..7111.54 rows=7
+```
+
+---
+
+## [C 응용] 10-13 — 쉬는 때 · 섞인 부하, 진짜 런처 넷 (62e4310e2)
+
+박스 수. 판 assy_impl_mix_1012(구현자 A 의 박스 베낀 판) · 런처 run_decoupled_app.py --server-only 를 /c/wt-qa3 main 994a4861d 에서 18790 으로 · 창 02:47:33 ~ 03:09:28 · 구현자 A · B 는 그 창 동안 assy_test 를 안 썼습니다(약속 · 내림 / 끝 교환). 박스의 다른 프로세스(8080 · 18766)는 안 쟀습니다. public 전후 같음. 명령: scratchpad/mix/mix_run_app.sh · 표 mix_report.py · 이 절 report_1013_mix_gen.py.
+
+```
+1 쉬는 때 10 분 — 무거운 일 없음
+  DB 문장 초당: 체인 워커 2.81 · watcher 1.0 · 스케줄러 0.8 · 서버 · 슬롯 · 걷기 풀 0 (아홉 프로세스 모두 계수 훅 있음)
+  루프 지연 (핑만 하는 프로세스, 490 번): p99 0.0108 · 최대 0.0244 초 · py-spy --idle 30 초: 루프 스레드 표본 1497 중 1479 이 poll
+  CPU: 서버 평균 3.3 % 는 제 핑(초당 약 10)의 몫 · 계기 없는 서버의 쉬는 CPU 는 모름 · CPU 표본 381 초 / 600
+2 섞인 부하 5 분 × 2 (사용자 10 + 1,000 행 파일 매 60 초)
+  503: wp2 0 / 741 · wp0 0 / 754
+  걷기 p50 작은 것 0.207 / 0.216 · 큰 것 0.206 / 0.213 초 (wp2 / wp0) — 사용자 10 에선 풀이 지연을 안 바꿈
+  풀이 옮긴 것: 걷기 문장 wp2 풀 프로세스 516 · wp0 서버 537 · 서버 CPU 평균 10.0 → 17.0 · 최대 54.6 → 94.4 %
+  루프 지연 p99 0.028 → 0.0943 · 최대 0.388 → 0.2731 초 (wp2 → wp0) — 이것도 순서와 못 가름
+  ⚠️ 순서 wp2 → wp0 (차가움 → 데움): 검색 DB 48.3 → 21.8 초 · 개수 37.7 → 13.8 초 — 풀로 못 가릅니다
+  제일 무거운 것: 검색 p95 2.498 / 0.754 · 개수 p95 0.991 / 0.517 초 — dt_log 전체 훑기(ILIKE · count)
+3 체인 그룹 1,000 행 — 체인 다리만 잼
+  processed_chain 까지 wp2 [9.0, 5.0, 6.0, 5.0, 5.2] · wp0 [5.0, 5.0, 5.0, 6.0, 6.0] 초
+  원장 다리: 아웃박스 30 행 중 10 행 failed, 그 10 행 모두 ProgramLimitExceeded → «끝까지 초» 없음
+```
+
+**곁 발견 — 원장 행 색인의 키에 «분자의 행 목록 전부»가 들어 있습니다.**
+
+```
+코드 (운영에도 참)
+  ledger_source_row_ref 의 PRIMARY KEY (relation, row_id, source_who, source_raw_ref) — schema.create_row_ref_sql
+  group_by 분자의 source_raw_ref = 그 분자 행 참조 «전부»의 JSON — roleframe._claim_source_raw_ref
+  btree 한 줄 상한은 «압축 뒤 바이트» -> 넘는 분자의 사건 «통째»가 failed. 상한은 행 수가 아니라 바이트
+  다시 안 집음: drain_outbox_once 는 ledger_state IS NULL 만 · failed 는 남고 requeue_failed 로만 돌아감(같은 행이면 같은 키)
+박스 선언 (운영 선언인지 모름)
+  dt_log 를 읽는 소스는 dt_job 하나 · group_by dt_job
+박스 수
+  제가 넣은 10 파일(파일마다 dt_job 2 개 × 500 행): 10 / 10 failed · 오류 바이트 4464 > 2704 · 넣은 10000 행의 행 색인 0 (대조: 박스 행 2,000 에 1996)
+  박스 베낀 판의 기존 묶음: 150 행 -> 색인 있음(글자 26879 · 저장 1368 바이트) · 원자 2
+                          400 행 -> 색인 0 · 원자 0   ·   12000 행 -> 색인 0 · 원자 0
+  -> 이 실패와 «들어맞을» 뿐, 증명은 아님: 베낀 판에 아웃박스 이력이 없어 그 묶음이 번역에 올랐는지 모름
+  100 행 이상 묶음 153 · 300 행 이상 묶음 2 (묶음 488428 중)
+```
+
+계기 둘을 이 판 안에서 고쳤습니다 (구현자 키트에서 베낀 c1_mix.py): CPU 칸이 늘 0.0(틱마다 새 psutil 객체) -> cpu_watch.py 로 · 같은 프로세스 핑이 제 스레드 때문에 p95 가 부풀음 -> lone_ping.py 로. 앞선 보고에 그 두 칸을 인용한 곳은 git grep 으로 못 찾았습니다.
+
+```
+== idle · 02:49:01 .. 02:59:05 (604 s, incl. the feed watcher's wait) · loads none · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 2721 · p50 0.006 · p95 0.287 · max 0.706 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 381 s of the 600 s window):
+    server (57792)             avg    3.3   p95    7.6   max   11.9   (368 samples)
+    chain worker (70492)       avg    1.3   p95    3.0   max    9.1   (368 samples)
+    watcher (65844)            avg    0.6   p95    3.0   max    6.1   (368 samples)
+    scheduler (5276)           avg    0.5   p95    1.5   max    4.5   (368 samples)
+    slot (62448)               avg    0.1   p95    1.5   max    1.5   (368 samples)
+    slot (64476)               avg    0.1   p95    1.5   max    1.5   (368 samples)
+    walk pool (19972)          avg    0.1   p95    1.5   max    1.5   (368 samples)
+    walk pool (58784)          avg    0.1   p95    1.5   max    1.5   (368 samples)
+  event loop lag (lone_ping.py, a process that only pings, 98 s of the window): n 490 · p50 0.0062 · p95 0.0086 · p99 0.0108 · max 0.0244 s · over 0.1 s 0 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  y_manager\python.exe run_chain_worker.py         1696    2.81    1.31
+  s\assy_manager\python.exe run_watcher.py          603    1.00    0.38
+  sy_manager\python.exe run_auto_update.py          484    0.80    0.34
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 0 last 0
+  lock waits sampled (1 s): 0 · queue tab {}
+  top statements (DB s, n, process, head):
+        0.54     698  .exe run_chain_worker.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+        0.37     299  .exe run_chain_worker.py SELECT anon_1.key, anon_1.run, anon_1.table_name, anon_1.event_type, anon_1.events, anon_1.rows, anon_1.first_
+        0.24     363  n.exe run_auto_update.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+        0.20     402  ython.exe run_watcher.py SELECT file_ingestion_logs.id AS file_ingestion_logs_id, file_ingestion_logs.filename AS file_ingestion_logs_f
+        0.17     201  ython.exe run_watcher.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+        0.16     299  .exe run_chain_worker.py SELECT retroactive_runs.run_id AS retroactive_runs_run_id, retroactive_runs.op AS retroactive_runs_op, retroac
+        0.16     200  .exe run_chain_worker.py UPDATE database_outbox SET ledger_state = %(done)s WHERE processed_chain = true AND ledger_state IS NULL AND e
+        0.10     121  n.exe run_auto_update.py SELECT retroactive_runs.run_id AS retroactive_runs_run_id, retroactive_runs.op AS retroactive_runs_op, retroac
+  py-spy dumps (ping over 1 s): 0
+
+== users_wp2 · 02:59:07 .. 03:04:11 (304 s, incl. the feed watcher's wait) · loads feed,users · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 1475 · p50 0.006 · p95 0.012 · max 0.41 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 298 s of the 300 s window):
+    server (57792)             avg   10.0   p95   23.9   max   54.6   (287 samples)
+    walk pool (19972)          avg    4.4   p95   21.9   max   71.6   (287 samples)
+    walk pool (58784)          avg    3.8   p95   19.4   max   56.1   (287 samples)
+    watcher (65844)            avg    3.7   p95   26.9   max   73.5   (287 samples)
+    chain worker (70492)       avg    1.9   p95    4.5   max   32.3   (287 samples)
+    slot (62448)               avg    1.6   p95    1.5   max   68.2   (287 samples)
+    scheduler (5276)           avg    0.5   p95    1.5   max    6.1   (287 samples)
+    slot (64476)               avg    0.1   p95    1.5   max    1.5   (287 samples)
+  event loop lag (lone_ping.py, a process that only pings, 300 s of the window): n 1494 · p50 0.0062 · p95 0.0125 · p99 0.0280 · max 0.3880 s · over 0.1 s 6 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  -m uvicorn main:app --host  --port 18790         1207    3.97   94.33
+  y_manager\python.exe run_chain_worker.py         1093    3.60    1.00
+  assy_manager\python.exe -m chain.slots 1          493    1.62    0.62
+  s\assy_manager\python.exe run_watcher.py          488    1.61    7.09
+  walk pool                                         402    1.32    2.17
+  walk pool                                         372    1.22    1.72
+  sy_manager\python.exe run_auto_update.py          244    0.80    0.17
+  route (requests by 10 users, seconds client side)     n     p50     p95     max   not 200
+  grid count                                         134   0.006   0.991   5.600       0
+  grid filter                                         64   0.030   0.088   1.682       0
+  grid page                                          134   0.076   0.218   1.717       0
+  map (one core wafer)                                52   0.077   1.297   1.666       0
+  queue rows                                         165   0.055   0.093   0.180       0
+  search                                              62   0.527   2.498   4.426       0
+  walk big (caps 1000/6000)                           53   0.206   0.430   0.492       0
+  walk small (hops 3)                                 77   0.207   0.494   3.538       0
+  not-200 by kind and status: none
+  chain group mix_users_wp2_1791827948_0.csv · 1000 rows · first outbox row after 7.0 s · all processed after 9.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828008_1.csv · 1000 rows · first outbox row after 4.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828068_2.csv · 1000 rows · first outbox row after 5.0 s · all processed after 6.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828128_3.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828188_4.csv · 1000 rows · first outbox row after 5.2 s · all processed after 5.2 s · outbox rows 1
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 3 last 0
+  lock waits sampled (1 s): 0 · queue tab {"files fed": 5, "broadcasts": 165, "requests": 165, "overlapping": 92}
+  top statements (DB s, n, process, head):
+       48.15      62  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log WHERE CAST(dt_log.dt_job AS VARCHAR) ILIKE %(param_1)s ESCAP
+       37.69      53  app --host  --port 18790 SELECT count(*) AS count_1 FROM (SELECT dt_log.row_id AS dt_log_row_id, dt_log.business_key_val AS dt_log_busi
+        5.28      60  ython.exe run_watcher.py INSERT INTO cell_sources (updated_by, source_name, row_id, value, ingested_at, table_name, origin_row_id, colu
+        4.93     132  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log ORDER BY dt_log.row_id ASC LIMIT %(param_1)s OFFSET %(param_
+        2.08     268  walk pool                WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        1.65     248  walk pool                WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        1.24      51  app --host  --port 18790 SELECT core_wafer_map.row_id AS core_wafer_map_row_id FROM core_wafer_map WHERE CAST(core_wafer_map.wafer_id A
+        0.85     309  app --host  --port 18790 SELECT cell_overwrites.row_id AS cell_overwrites_row_id, cell_overwrites.column_name AS cell_overwrites_column
+  py-spy dumps (ping over 1 s): 0
+
+== users_wp0 · 03:04:20 .. 03:09:24 (304 s, incl. the feed watcher's wait) · loads feed,users · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 1474 · p50 0.006 · p95 0.04 · max 0.234 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 298 s of the 300 s window):
+    server (57792)             avg   17.0   p95   45.5   max   94.4   (289 samples)
+    watcher (65844)            avg    3.1   p95    8.6   max   72.7   (289 samples)
+    chain worker (70492)       avg    1.9   p95    4.5   max   35.8   (289 samples)
+    walk pool (58784)          avg    1.5   p95    1.5   max    1.5   (1 samples)
+    slot (62448)               avg    1.3   p95    1.5   max   64.3   (289 samples)
+    scheduler (5276)           avg    0.4   p95    1.5   max    3.0   (289 samples)
+    slot (64476)               avg    0.1   p95    1.5   max    1.5   (289 samples)
+    walk pool (19972)          avg    0.0   p95    0.0   max    0.0   (1 samples)
+  event loop lag (lone_ping.py, a process that only pings, 300 s of the window): n 1495 · p50 0.0063 · p95 0.0350 · p99 0.0943 · max 0.2731 s · over 0.1 s 12 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  -m uvicorn main:app --host  --port 18790         2034    6.69   47.82
+  y_manager\python.exe run_chain_worker.py         1076    3.54    0.88
+  assy_manager\python.exe -m chain.slots 1          490    1.61    0.40
+  s\assy_manager\python.exe run_watcher.py          483    1.59    6.22
+  sy_manager\python.exe run_auto_update.py          244    0.80    0.20
+  route (requests by 10 users, seconds client side)     n     p50     p95     max   not 200
+  grid count                                         139   0.006   0.517   0.947       0
+  grid filter                                         63   0.031   0.071   0.298       0
+  grid page                                          139   0.067   0.191   0.322       0
+  map (one core wafer)                                52   0.070   0.286   0.360       0
+  queue rows                                         162   0.055   0.181   0.225       0
+  search                                              62   0.356   0.754   0.962       0
+  walk big (caps 1000/6000)                           58   0.213   0.399   0.520       0
+  walk small (hops 3)                                 79   0.216   0.407   0.570       0
+  not-200 by kind and status: none
+  chain group mix_users_wp0_1791828260_0.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828320_1.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828380_2.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828440_3.csv · 1000 rows · first outbox row after 5.0 s · all processed after 6.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828500_4.csv · 1000 rows · first outbox row after 5.0 s · all processed after 6.0 s · outbox rows 1
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 1 last 0
+  lock waits sampled (1 s): 0 · queue tab {"files fed": 5, "broadcasts": 162, "requests": 162, "overlapping": 101}
+  top statements (DB s, n, process, head):
+       21.71      62  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log WHERE CAST(dt_log.dt_job AS VARCHAR) ILIKE %(param_1)s ESCAP
+       13.78      51  app --host  --port 18790 SELECT count(*) AS count_1 FROM (SELECT dt_log.row_id AS dt_log_row_id, dt_log.business_key_val AS dt_log_busi
+        5.10     537  app --host  --port 18790 WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        4.70      60  ython.exe run_watcher.py INSERT INTO cell_sources (updated_by, source_name, row_id, value, ingested_at, table_name, origin_row_id, colu
+        3.77     139  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log ORDER BY dt_log.row_id ASC LIMIT %(param_1)s OFFSET %(param_
+        0.96      52  app --host  --port 18790 SELECT core_wafer_map.row_id AS core_wafer_map_row_id FROM core_wafer_map WHERE CAST(core_wafer_map.wafer_id A
+        0.66     316  app --host  --port 18790 SELECT cell_overwrites.row_id AS cell_overwrites_row_id, cell_overwrites.column_name AS cell_overwrites_column
+        0.65       5  ython.exe run_watcher.py INSERT INTO dt_log (row_id, business_key_val, b_wx, b_wy, c_bn, c_wx, c_wy, core_lot, core_slot, core_wafer, c
+  py-spy dumps (ping over 1 s): 0
+
+== idle window daemon log lines by tag
+== auto_update.log · 0 lines in the window
+== auto_update_stdout.log · 0 lines in the window
+== chain_worker.log · 12 lines in the window
+     10  Ledger                                    e.g. NOT planned: bundle.sources.bonded_from.relation source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (v
+      2  LedgerCensus                              e.g. .172s, measured 0.124s (rest 60s between, relation rows are planner estimates - `python -m ledger census` counts) · refused by the loader (n
+== chain_worker_stdout.log · 12 lines in the window
+     10  Ledger                                    e.g. NOT planned: bundle.sources.bonded_from.relation source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (v
+      2  LedgerCensus                              e.g. .172s, measured 0.124s (rest 60s between, relation rows are planner estimates - `python -m ledger census` counts) · refused by the loader (n
+== launcher.log · 0 lines in the window
+== server.log · 0 lines in the window
+== server_stdout.log · 3327 lines in the window
+   3327  uvicorn.access                            e.g. [uvicorn.access] [2026-10-13 02:49:02,541] INFO - 127.0.0.1:5869 - "GET /__c1_loop_ping HTTP/1.1" 200
+== walk_pool.log · 0 lines in the window
+== watcher.log · 0 lines in the window
+== watcher_stdout.log · 0 lines in the window
+```
+
+---
+
+## [C 응용] 10-13 — 둘째 판: 순서 바꿔 풀 가르기 · 원장 다리 기준선 · 검색 / 개수 표 (62e4310e2, 총괄 답)
+
+박스 수. 같은 판 assy_impl_mix_1012 · main 994a4861d · 18790 · 창 04:24:37 ~ 04:42:05. 구현자 A · B 판 없음(B 는 04:24 에 pytest 게이트를 멈춤 · 그 앞 04:15 판은 B 의 1M 판과 겹쳐 버림). public 전후 같음. 명령: scratchpad/mix/mix_run_app2.sh · 이 절 report_1013_mix2_gen.py. 첫 판 창(02:47 ~ 03:09)엔 B 의 PG 판이 없었다고 B 가 답했습니다.
+
+**1 풀 대 순서 — 두 판을 순서만 바꿔 나란히** (사용자 10 · 5 분씩, 판 이름 = 판 · 순서 · walk_processes)
+
+```
+p50 / p95 초                     1 · 1st · pool 2    1 · 2nd · pool 0    2 · 1st · pool 0    2 · 2nd · pool 2
+search                             0.527 / 2.498       0.356 / 0.754       0.437 / 0.984       0.517 / 1.371
+grid count                         0.006 / 0.991       0.006 / 0.517       0.006 / 0.664       0.006 / 0.746
+grid page                          0.076 / 0.218       0.067 / 0.191       0.070 / 0.208       0.071 / 0.187
+grid filter                        0.030 / 0.088       0.031 / 0.071       0.036 / 0.135       0.032 / 0.066
+map (one core wafer)               0.077 / 1.297       0.070 / 0.286       0.067 / 1.770       0.068 / 0.382
+walk small (hops 3)                0.207 / 0.494       0.216 / 0.407       0.208 / 0.454       0.202 / 0.267
+walk big (caps 1000/6000)          0.206 / 0.430       0.213 / 0.399       0.207 / 0.400       0.199 / 0.283
+queue rows                         0.055 / 0.093       0.055 / 0.181       0.049 / 0.173       0.042 / 0.077
+loop lag p99 / max                0.0280 / 0.388      0.0943 / 0.273      0.0847 / 0.344      0.0227 / 0.248
+server CPU % avg / max               10.0 / 54.6         17.0 / 94.4        18.1 / 110.4         10.4 / 57.6
+search DB s / statements               48.2 / 62           21.7 / 62           30.8 / 62           38.0 / 64
+count DB s / statements                37.7 / 53           13.8 / 51           17.2 / 45           25.0 / 53
+503 · other not-200                        0 · 0               0 · 0               0 · 2               0 · 2
+```
+
+- 루프 지연 p99: 풀 2 - 풀 0 = 첫 판 -0.066 · 둘째 판 -0.062 → 두 순서 모두 풀 2 가 낮음 — 순서가 아니라 풀의 몫
+- 서버 CPU 평균: 풀 2 - 풀 0 = 첫 판 -7.000 · 둘째 판 -7.700 → 두 순서 모두 풀 2 가 낮음 — 순서가 아니라 풀의 몫
+- 검색 p50: 풀 2 - 풀 0 = 첫 판 +0.171 · 둘째 판 +0.080 → 두 순서 모두 풀 2 가 높음 — 순서가 아니라 풀의 몫
+- 개수 p95: 풀 2 - 풀 0 = 첫 판 +0.474 · 둘째 판 +0.082 → 두 순서 모두 풀 2 가 높음 — 순서가 아니라 풀의 몫
+- 걷기 작은 것 p95: 풀 2 - 풀 0 = 첫 판 +0.087 · 둘째 판 -0.187 → 순서에 따라 갈림 — 풀로 못 가름
+- 걷기 큰 것 p95: 풀 2 - 풀 0 = 첫 판 +0.031 · 둘째 판 -0.117 → 순서에 따라 갈림 — 풀로 못 가름
+- 판마다 검색 · 개수는 60 여 번 · 걷기는 50 ~ 80 번 — 표본이 작습니다. 원인은 안 쟀습니다.
+- 둘째 판 풀 2 는 실행 중 0 → 2 로 바꿈: 풀은 «첫 걷기»가 프로세스를 띄움(in_pool → _run → _start, warm() 은 기동 때만). 그래서 그 판의 걷기 최대(4.365 · 5.534 초)는 기동 값을 품음.
+- 그 밖 not-200 은 queue rows 의 ConnectionError — 제 드라이버의 5 초 박자가 uvicorn keep-alive 기본 5 초와 같아 끊긴 연결을 다시 쓴 것으로 보임(requests 는 재시도 안 함). 확인 안 함.
+
+**2 체인 그룹 1,000 행 · 묶음 125 행 — 원장 다리 기준선** (파일마다: 체인 끝 / 원장 끝, 떨어뜨린 때부터 초)
+
+```
+users_wp0 (사용자 10)       8.0/16.0  6.0/15.0  6.0/13.0  6.0/15.0  6.1/14.1 · 실패 0 / 5 · 행 ['dt_inventory', 'dt_log']
+users_wp2 (사용자 10)       6.0/15.0  6.0/14.0  6.0/15.0  6.1/14.1  6.1/16.1 · 실패 0 / 5 · 행 ['dt_inventory', 'dt_log']
+chain_only (사용자 0)       7.0/16.0  6.0/16.0  6.0/14.0  5.0/13.0  6.0/14.0 · 실패 0 / 5 · 행 ['dt_inventory', 'dt_log']
+```
+
+**3 검색 · 개수 — 서버가 실제로 보낸 문장, EXPLAIN (ANALYZE, BUFFERS)** (블록 8 kB)
+
+```
+label  query    ms(1/2/3)                rows scanned   shared hit / read (run 1)   scan
+cold   search  317 / 306 / 257                 550557   583 / 15405                 Seq Scan
+cold   count   544 / 132 / 153                 550559   11 / 997                    Index Only Scan ix_dt_log_updated_at
+warm   search  559 / 269 / 494                 565557   1135 / 15353                Seq Scan
+warm   count   502 / 120 / 118                 565559   1531 / 0                    Index Only Scan ix_dt_log_updated_at
+shared_buffers 128MB · dt_log 본체 134 MB · 인덱스 포함 389 MB · 산 행 565559
+```
+
+- 검색: 표 전체 순차 훑기 — 데움 전후 모두 14841 ~ 15405 블록을 PG 밖에서 읽음(PG 는 shared_buffers 의 1/4 보다 큰 표를 순차로 훑을 때 작은 고리 버퍼만 써서 캐시가 안 데워짐). 부하 아래 한 번에 0.35 ~ 0.78 초(위 1 의 DB 초 / 문장).
+- 개수: 인덱스만 훑기(ix_dt_log_updated_at)로 산 행 전부 — 새 연결의 첫 번이 블록을 다 캐시에서 읽어도(warm) 느림, 그다음부터 빠름. 그 첫 번 값은 버퍼 데움이 아니라 연결 첫 문장의 몫으로 보임(원인은 안 잼).
+- 두 문장 모두 읽는 행 = 표의 산 행 전부. 운영 dt_log 의 크기는 모름 — 행 수에 비례해 늘어남.
+
+```
+== users_wp0 · 04:25:55 .. 04:30:59 (304 s, incl. the feed watcher's wait) · loads feed,users · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 1473 · p50 0.006 · p95 0.038 · max 0.404 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 298 s of the 300 s window):
+    server (60144)             avg   18.1   p95   42.4   max  110.4   (290 samples)
+    watcher (69984)            avg    3.6   p95   19.7   max   90.9   (290 samples)
+    chain worker (69132)       avg    2.2   p95    4.5   max   47.0   (290 samples)
+    slot (68472)               avg    1.5   p95    1.5   max   74.3   (290 samples)
+    scheduler (61504)          avg    0.5   p95    1.5   max    4.5   (290 samples)
+    slot (70160)               avg    0.3   p95    1.5   max   50.7   (290 samples)
+  event loop lag (lone_ping.py, a process that only pings, 300 s of the window): n 1494 · p50 0.0061 · p95 0.0290 · p99 0.0847 · max 0.3440 s · over 0.1 s 10 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  -m uvicorn main:app --host  --port 18790         2149    7.07   60.57
+  y_manager\python.exe run_chain_worker.py         1078    3.55    0.99
+  assy_manager\python.exe -m chain.slots 1          689    2.27    0.70
+  s\assy_manager\python.exe run_watcher.py          487    1.60    6.72
+  sy_manager\python.exe run_auto_update.py          240    0.79    0.17
+  assy_manager\python.exe -m chain.slots 2          107    0.35    0.30
+  route (requests by 10 users, seconds client side)     n     p50     p95     max   not 200
+  grid count                                         137   0.006   0.664   3.109       0
+  grid filter                                         64   0.036   0.135   1.603       0
+  grid page                                          137   0.070   0.208   1.793       0
+  map (one core wafer)                                56   0.067   1.770   1.787       0
+  queue rows                                         329   0.049   0.173   1.309       2
+  search                                              62   0.437   0.984   2.825       0
+  walk big (caps 1000/6000)                           50   0.207   0.400   0.499       0
+  walk small (hops 3)                                 77   0.208   0.454   1.542       0
+  not-200 by kind and status: {"queue rows · error:ConnectionError": 2}
+  chain group mix_users_wp0_1791833155_0.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 8.0 s · ledger done 16.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp0_1791833215_1.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 15.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp0_1791833275_2.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 13.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp0_1791833335_3.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 15.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp0_1791833395_4.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.1 s · chain done 6.1 s · ledger done 14.1 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 2 last 0
+  lock waits sampled (1 s): 0 · queue tab {"asks tab": 3, "requests": 329, "files fed": 5, "broadcasts": 165, "asks broadcast": 165, "beats skipped, a read on its way": 9, "asks beat": 168}
+  top statements (DB s, n, process, head):
+       30.78      62  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log WHERE CAST(dt_log.dt_job AS VARCHAR) ILIKE %(param_1)s ESCAP
+       17.23      45  app --host  --port 18790 SELECT count(*) AS count_1 FROM (SELECT dt_log.row_id AS dt_log_row_id, dt_log.business_key_val AS dt_log_busi
+        4.97      60  ython.exe run_watcher.py INSERT INTO cell_sources (column_name, value, row_id, origin_row_id, source_name, ingested_at, table_name, upd
+        4.81     504  app --host  --port 18790 WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        3.87     137  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log ORDER BY dt_log.row_id ASC LIMIT %(param_1)s OFFSET %(param_
+        1.25      56  app --host  --port 18790 SELECT core_wafer_map.row_id AS core_wafer_map_row_id FROM core_wafer_map WHERE CAST(core_wafer_map.wafer_id A
+        0.85     327  app --host  --port 18790 SELECT database_outbox.id AS database_outbox_id, database_outbox.event_type AS database_outbox_event_type, dat
+        0.73     319  app --host  --port 18790 SELECT cell_overwrites.row_id AS cell_overwrites_row_id, cell_overwrites.column_name AS cell_overwrites_column
+  py-spy dumps (ping over 1 s): 0
+
+== users_wp2 · 04:31:46 .. 04:36:50 (304 s, incl. the feed watcher's wait) · loads feed,users · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 1476 · p50 0.006 · p95 0.011 · max 0.206 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 299 s of the 300 s window):
+    server (60144)             avg   10.4   p95   22.7   max   57.6   (290 samples)
+    walk pool (69660)          avg    5.4   p95   20.0   max   81.8   (277 samples)
+    walk pool (70380)          avg    4.2   p95   19.7   max   80.3   (289 samples)
+    watcher (69984)            avg    3.2   p95   16.7   max   89.3   (290 samples)
+    chain worker (69132)       avg    2.1   p95    6.1   max   33.3   (290 samples)
+    slot (68472)               avg    1.4   p95    1.5   max   68.2   (290 samples)
+    scheduler (61504)          avg    0.5   p95    1.5   max    6.1   (290 samples)
+    slot (70160)               avg    0.1   p95    1.5   max    1.5   (290 samples)
+  event loop lag (lone_ping.py, a process that only pings, 300 s of the window): n 1495 · p50 0.0066 · p95 0.0110 · p99 0.0227 · max 0.2481 s · over 0.1 s 4 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  -m uvicorn main:app --host  --port 18790         1412    4.64   70.29
+  y_manager\python.exe run_chain_worker.py         1073    3.53    0.92
+  assy_manager\python.exe -m chain.slots 1          790    2.60    0.60
+  s\assy_manager\python.exe run_watcher.py          483    1.59    6.73
+  walk pool                                         438    1.44    1.98
+  walk pool                                         342    1.12    1.62
+  sy_manager\python.exe run_auto_update.py          240    0.79    0.18
+  route (requests by 10 users, seconds client side)     n     p50     p95     max   not 200
+  grid count                                         139   0.006   0.746   3.647       0
+  grid filter                                         61   0.032   0.066   0.393       0
+  grid page                                          139   0.071   0.187   0.413       0
+  map (one core wafer)                                55   0.068   0.382   0.406       0
+  queue rows                                         340   0.042   0.077   0.327       2
+  search                                              64   0.517   1.371   2.752       0
+  walk big (caps 1000/6000)                           54   0.199   0.283   5.534       0
+  walk small (hops 3)                                 76   0.202   0.267   4.365       0
+  not-200 by kind and status: {"queue rows · error:ConnectionError": 2}
+  chain group mix_users_wp2_1791833506_0.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 15.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp2_1791833566_1.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 14.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp2_1791833626_2.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 15.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp2_1791833686_3.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.1 s · chain done 6.1 s · ledger done 14.1 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_users_wp2_1791833746_4.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.1 s · chain done 6.1 s · ledger done 16.1 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 2 last 0
+  lock waits sampled (1 s): 0 · queue tab {"asks tab": 3, "requests": 340, "files fed": 5, "broadcasts": 165, "asks broadcast": 165, "asks beat": 177}
+  top statements (DB s, n, process, head):
+       38.03      64  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log WHERE CAST(dt_log.dt_job AS VARCHAR) ILIKE %(param_1)s ESCAP
+       24.97      53  app --host  --port 18790 SELECT count(*) AS count_1 FROM (SELECT dt_log.row_id AS dt_log_row_id, dt_log.business_key_val AS dt_log_busi
+        5.01      60  ython.exe run_watcher.py INSERT INTO cell_sources (column_name, value, row_id, origin_row_id, source_name, ingested_at, table_name, upd
+        4.22     139  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log ORDER BY dt_log.row_id ASC LIMIT %(param_1)s OFFSET %(param_
+        1.89     292  walk pool                WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        1.55     228  walk pool                WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        1.02      55  app --host  --port 18790 SELECT core_wafer_map.row_id AS core_wafer_map_row_id FROM core_wafer_map WHERE CAST(core_wafer_map.wafer_id A
+        0.69     338  app --host  --port 18790 SELECT database_outbox.id AS database_outbox_id, database_outbox.event_type AS database_outbox_event_type, dat
+  py-spy dumps (ping over 1 s): 0
+
+== chain_only · 04:36:53 .. 04:41:57 (304 s, incl. the feed watcher's wait) · loads feed · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 1474 · p50 0.006 · p95 0.008 · max 0.019 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 299 s of the 300 s window):
+    server (60144)             avg    5.4   p95   11.9   max   15.4   (290 samples)
+    watcher (69984)            avg    3.1   p95   13.6   max   75.8   (290 samples)
+    chain worker (69132)       avg    2.0   p95    6.0   max   31.8   (290 samples)
+    slot (68472)               avg    1.6   p95    1.5   max   80.3   (290 samples)
+    scheduler (61504)          avg    0.4   p95    1.5   max    6.0   (290 samples)
+    slot (70160)               avg    0.1   p95    1.5   max    3.0   (290 samples)
+    walk pool (70380)          avg    0.1   p95    1.5   max    1.5   (290 samples)
+    walk pool (69660)          avg    0.1   p95    1.5   max    1.5   (290 samples)
+  event loop lag (lone_ping.py, a process that only pings, 300 s of the window): n 1496 · p50 0.0064 · p95 0.0090 · p99 0.0114 · max 0.0362 s · over 0.1 s 0 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  y_manager\python.exe run_chain_worker.py         1082    3.56    0.91
+  assy_manager\python.exe -m chain.slots 1          790    2.60    0.56
+  s\assy_manager\python.exe run_watcher.py          484    1.59    6.90
+  sy_manager\python.exe run_auto_update.py          244    0.80    0.18
+  chain group mix_chain_only_1791833813_0.csv · 1000 rows (dt_job groups of 125) · first outbox row 6.0 s · chain done 7.0 s · ledger done 16.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_chain_only_1791833873_1.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 16.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_chain_only_1791833933_2.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 14.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_chain_only_1791833993_3.csv · 1000 rows (dt_job groups of 125) · first outbox row 4.0 s · chain done 5.0 s · ledger done 13.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  chain group mix_chain_only_1791834053_4.csv · 1000 rows (dt_job groups of 125) · first outbox row 5.0 s · chain done 6.0 s · ledger done 14.0 s · outbox rows 3 (failed 0) · tables dt_inventory,dt_log
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 2 last 0
+  lock waits sampled (1 s): 0 · queue tab {"files fed": 5}
+  top statements (DB s, n, process, head):
+        5.17      60  ython.exe run_watcher.py INSERT INTO cell_sources (column_name, value, row_id, origin_row_id, source_name, ingested_at, table_name, upd
+        0.76       5  ython.exe run_watcher.py INSERT INTO dt_log (row_id, business_key_val, b_wx, b_wy, c_bn, c_wx, c_wy, core_lot, core_slot, core_wafer, c
+        0.57       5  ython.exe run_watcher.py INSERT INTO audit_logs (table_name, row_id, column_name, old_value, new_value, source_name, updated_by, transa
+        0.37     451  .exe run_chain_worker.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+        0.20     165  .exe run_chain_worker.py SELECT anon_1.key, anon_1.run, anon_1.table_name, anon_1.event_type, anon_1.events, anon_1.rows, anon_1.first_
+        0.17     200  ython.exe run_watcher.py SELECT file_ingestion_logs.id AS file_ingestion_logs_id, file_ingestion_logs.filename AS file_ingestion_logs_f
+        0.16     233  .exe run_chain_worker.py SELECT retroactive_runs.run_id AS retroactive_runs_run_id, retroactive_runs.op AS retroactive_runs_op, retroac
+        0.14     183  n.exe run_auto_update.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+  py-spy dumps (ping over 1 s): 0
+
+== the grid's search and count, EXPLAIN (ANALYZE, BUFFERS) as the server sent them (8 kB blocks)
+  label  query   run        ms   rows out  rows scanned  shared hit  shared read  scans
+  cold   count     1      544.0        1.0     550559.01          11          997  Index Only Scan ix_dt_log_updated_at
+  cold   count     2      131.6        1.0     550559.01        1008            0  Index Only Scan ix_dt_log_updated_at
+  cold   count     3      152.6        1.0     550559.01        1008            0  Index Only Scan ix_dt_log_updated_at
+  cold   search    1      316.9        1.0     550557.99         583        15405  Seq Scan
+  cold   search    2      305.9        1.0     550557.99         865        15123  Seq Scan
+  cold   search    3      256.7        1.0     550557.99        1147        14841  Seq Scan
+  warm   count     1      502.4        1.0     565559.01        1531            0  Index Only Scan ix_dt_log_updated_at
+  warm   count     2      120.3        1.0     565559.01        1531            0  Index Only Scan ix_dt_log_updated_at
+  warm   count     3      118.1        1.0     565559.01        1531            0  Index Only Scan ix_dt_log_updated_at
+  warm   search    1      559.2        1.0     565557.99        1135        15353  Seq Scan
+  warm   search    2      268.5        1.0     565557.99        1229        15259  Seq Scan
+  warm   search    3      494.4        1.0     565557.99        1511        14977  Seq Scan
+  shared_buffers 128MB · dt_log heap 134 MB · with indexes 389 MB · live rows 565559
+```

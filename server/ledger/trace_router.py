@@ -20,6 +20,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from runtime.offloop_json import OffLoopJSONRoute
+from runtime.process_pool import in_pool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -106,7 +107,6 @@ def _subgraph_contract_state(connection, relation):
 
 
 # POST as well: a continued page hands back its `resume` in the body (MORE, 총괄 ad3c03e71)
-@router.api_route("/subgraph", methods=["GET", "POST"])
 def evidence_subgraph(
     node_id: str | None = Query(None, alias="id",
                          description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
@@ -358,6 +358,11 @@ def evidence_subgraph(
         if _is_undefined_table(exc):
             raise _relation_absent(", ".join(each.ledger for each in _worlds(world)))
         raise
+
+
+# 🔴 THE ROUTE RUNS IN THE WALK POOL, THE NAME DOES NOT (총괄 QA on b47388fde): code that calls `evidence_subgraph`
+# itself - `mappers/contrast_walk.py` in a chain slot - gets the answer as a dict, as before.
+router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(evidence_subgraph))
 
 
 def _given(value):
