@@ -368,6 +368,7 @@ def _packed(resume):
     return {"as_of": resume["as_of"],
             "frontier": [[n(item["id"]), item["depth"], item["cost"], item["arrivals"]] for item in resume["frontier"]],
             "seen": [n(node_id) for node_id in resume["seen"]],
+            "reached": [n(node_id) for node_id in resume.get("reached") or ()],
             "cursor": cursor,
             "hubs": [[step_id, near, predicate, direction, far_type, depth,
                       [[n(member), None if parent is None else n(parent)] for member, parent in members]]
@@ -389,6 +390,7 @@ def _unpacked(resume):
             "frontier": [{"id": ids[i], "depth": depth, "cost": cost, "arrivals": arrivals}
                          for i, depth, cost, arrivals in resume["frontier"]],
             "seen": [ids[i] for i in resume["seen"]],
+            "reached": [ids[i] for i in resume.get("reached") or ()],
             "cursor": cursor,
             "hubs": [[step_id, near, predicate, direction, far_type, depth,
                       [[ids[member], None if parent is None else ids[parent]] for member, parent in members]]
@@ -2911,6 +2913,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: (`_value_hubs`). row -> step; step -> {near, predicate, direction, type, depth, members: {row: parent row}}.
     row_hub, hubs, row_children = {}, {}, defaultdict(set)
     hub_predicates = _read_entity_declaration()[6]
+    #: every node a page before reached (the resume's `reached`) - a step to one is not its «first» (lead, option 1)
+    earlier = set()
 
     def add_node(node, ref, depth):
         nonlocal node_cut, budgeted
@@ -3202,6 +3206,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             depths[node_id], dep_cost[node_id] = int(item["depth"]), int(item["cost"])
             arrivals[node_id] = {tuple(step) for step in item.get("arrivals") or ()}
         cursor = resume.get("cursor")
+        earlier.update(str(item) for item in resume.get("reached") or ())
         for step_id, near, predicate, direction, far_type, hub_depth, members in resume.get("hubs") or ():
             hubs[step_id] = {"near": near, "predicate": predicate, "direction": direction, "type": far_type,
                              "depth": hub_depth, "members": {}}
@@ -3236,6 +3241,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                                                               key=str)}
                                           for node_id in open_ids],
                              "seen": sorted(whole), "cursor": at,
+                             "reached": sorted(earlier | set(nodes)),
                              # the hubs as they stood here - a row stays its hub's on the next page (총괄 b5f3fc849)
                              "hubs": [[step_id, hub["near"], hub["predicate"], hub["direction"], hub["type"],
                                        hub["depth"], [[member, parent] for member, parent in hub["members"].items()]]
@@ -3287,7 +3293,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         nonlocal budgeted, node_cut
         reached = defaultdict(set)
         for _atom, step, _j in batch:
-            if step is not None and step["fan_key"] is not None and step["far_id"] not in nodes:
+            if (step is not None and step["fan_key"] is not None and step["far_id"] not in nodes
+                    and step["far_id"] not in earlier):
                 reached[step["far_id"]].add(step["fan_key"])
         by_step = defaultdict(list)
         for far, keys in reached.items():
