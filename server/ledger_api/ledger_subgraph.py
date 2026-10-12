@@ -51,20 +51,24 @@ MAX_HOPS = 40
 # ---------------------------------------------------------------------------
 # S-146 — group · aggregate, where the population is whole (판정 331)
 # ---------------------------------------------------------------------------
-#: 🔴 THE SEVEN THE SCREEN ALREADY OFFERS, spelled ONCE and on the server side.
-#: `client2/src/rnd_board/api.js` has held this exact table (`AGGREGATE`) and the operator
-#: has been choosing from it; inventing an eighth here, or renaming one, would make the
-#: screen and the answer disagree about what 「mean」 means. The names are the client's.
+#: 🔴 SEVEN, spelled ONCE and on the server side. Spotfire's spelling since 10-12 (fceba46a7);
+#: the old lowercase seven are folded by `_split_measure` alone, so a saved board still answers.
+#: An eighth is a decision, not an edit: the screen's picker (`AGGREGATIONS`) names these.
 #:
 #: 🔴 AND THE AXIS MOVES TO THE SERVER BECAUSE THE POPULATION DOES. Folding on the client
 #: needs the walk to carry EVERYTHING back, and at 10⁸ the budget cuts first -- measured:
 #: `trendFromWalk` REFUSES to count a truncated walk, so the screen goes blank rather than
 #: wrong. Counting here counts over the set the walk actually reached.
-AGGREGATE_MEASURES = ("count", "distinct", "sum", "mean", "min", "max", "median")
+AGGREGATE_MEASURES = ("Count", "UniqueCount", "Sum", "Avg", "Min", "Max", "Median")
 
 #: Which of them need numbers. `count` and `distinct` fold anything; the rest are arithmetic
 #: and a string in the stream is a refusal rather than a zero.
-NUMERIC_MEASURES = frozenset({"sum", "mean", "min", "max", "median"})
+NUMERIC_MEASURES = frozenset({"Sum", "Avg", "Min", "Max", "Median"})
+
+#: The names before 10-12 (fceba46a7), still on saved boards. Read only by `_split_measure`, which
+#: folds them to the names above; the answer's key stays the measure as asked.
+_OLD_MEASURE_NAMES = {"count": "Count", "distinct": "UniqueCount", "sum": "Sum", "mean": "Avg",
+                      "min": "Min", "max": "Max", "median": "Median"}
 
 #: What `group_by` may name: a node's TYPE, or one of the values it carries.
 #: ⚠️ NOT A PREDICATE. 「사용자가 고르는 축은 노드 타입 하나, 술어는 follow 로만」 — a key that
@@ -98,9 +102,9 @@ def _numbers(values):
 
 def _fold(measure, values):
     """One measure over one group's values. The seven, and nothing else."""
-    if measure == "count":
+    if measure == "Count":
         return len(values)
-    if measure == "distinct":
+    if measure == "UniqueCount":
         return len({_canonical(value) for value in values})
     numbers = _numbers(values)
     if numbers is None:
@@ -112,13 +116,13 @@ def _fold(measure, values):
         # 🔴 AN EMPTY GROUP HAS NO SUM TO STATE. `0` would say the values were there and
         # added to nothing, which is a different fact from 「no values were carried」.
         return None
-    if measure == "sum":
+    if measure == "Sum":
         return sum(numbers)
-    if measure == "mean":
+    if measure == "Avg":
         return sum(numbers) / len(numbers)
-    if measure == "min":
+    if measure == "Min":
         return min(numbers)
-    if measure == "max":
+    if measure == "Max":
         return max(numbers)
     ordered = sorted(numbers)
     middle = len(ordered) // 2
@@ -184,7 +188,8 @@ def _group_keys(node, group_by):
 
 def _split_measure(measure):
     """One `measure` argument -> (fold name, the value name it folds). Refuses by name."""
-    name, _sep, qualifier = str(measure or "count").partition(":")
+    name, _sep, qualifier = str(measure or "Count").partition(":")
+    name = _OLD_MEASURE_NAMES.get(name, name)
     if name not in AGGREGATE_MEASURES:
         raise AggregateRefused(
             "unknown_measure", "no measure named %r" % name, AGGREGATE_MEASURES)
@@ -232,7 +237,7 @@ def group_nodes(nodes, group_by, measure, edges=()):
     """
     asked = [measure] if isinstance(measure, (str, bytes)) or measure is None else list(measure)
     if not asked:
-        asked = ["count"]
+        asked = ["Count"]
     folds = [(str(item), ) + _split_measure(item) for item in asked]
 
     edges_by_node = {}
@@ -3428,7 +3433,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # spelling for one fact, rather than a second absence word in here.
         **({} if group_by is None
            else {"groups": group_nodes(visible_nodes, str(group_by),
-                                       measure or "count", ordered_edges)}),
+                                       measure or "Count", ordered_edges)}),
         # ⚠️ WHERE A MEASURE NAME IS LOOKED UP, IN ORDER (판정 336). Carried so the screen
         # learns the order rather than guessing it, and so a name answered by two sources
         # is a refusal both sides can explain.

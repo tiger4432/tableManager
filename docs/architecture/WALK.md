@@ -429,11 +429,12 @@ GET /api/ledger/subgraph?…&group_by=<type|값 이름>&measure=<일곱 중 하�
 왜 옮겼나   클라가 접으려면 걷기가 «전부»를 실어 와야 합니다. 운영 규격에서는 예산이 «먼저» 끊고,
            `rnd_board/api.js` 의 `trendFromWalk` 은 잘린 걷기를 «세기를 거부»합니다
            => 증상은 「기울어진 답」이 아니라 «영구 빈 화면»이었습니다 (실측 2026-09-13)
-어휘 일곱   count · distinct · sum · mean · min · max · median   («여덟째 없음» — 비율은 두 수를
+어휘 일곱   Count · UniqueCount · Sum · Avg · Min · Max · Median   («여덟째 없음» — 비율은 두 수를
            나란히 내고 나누는 것은 화면의 일입니다: 접는 규칙을 서버가 지어내지 않습니다)
            🔴 출처는 «서버 상수 하나» — `ledger_subgraph.AGGREGATE_MEASURES`.
-              화면이 이미 고르던 그 일곱이고 이름도 «그대로»입니다(여덟째 0)
-           수를 접는 다섯은 «이름이 필요»합니다: `mean:<값 이름>`
+              옛 소문자 일곱(count · distinct · mean …)은 `_split_measure` 한 자리만 받아 접고,
+              답의 키는 «물은 그대로»입니다 (fceba46a7, 10-12)
+           수를 접는 다섯은 «이름이 필요»합니다: `Avg:<값 이름>`
 무리의 키   `type`(노드 타입) 또는 노드가 «드는 값의 이름». 술어는 여기 안 옵니다 — 길은 `follow`
            복수값 속성(S-144)이면 그 노드는 «자기가 대는 무리 전부»에 듭니다
 봉투        "groups": [{ "key": ..., "n": <노드 수>, "value": { "<measure 문자열>": <수> }, "at"? }]

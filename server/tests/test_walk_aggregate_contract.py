@@ -64,12 +64,31 @@ def test_a_refusal_is_named_and_carries_the_choices(case):
     assert refused.value.detail
 
 
-def test_the_seven_are_the_clients_seven():
-    """🔴 THE VOCABULARY HAS ONE AUTHOR. The client's table is the one an operator has been
-    choosing from; this asserts the server did not quietly gain an eighth or rename one."""
+def test_the_seven_are_spotfires_seven():
+    """🔴 THE VOCABULARY HAS ONE AUTHOR, so it did not quietly gain an eighth (fceba46a7)."""
     assert ledger_subgraph.AGGREGATE_MEASURES == (
-        "count", "distinct", "sum", "mean", "min", "max", "median")
-    assert ledger_subgraph.NUMERIC_MEASURES == {"sum", "mean", "min", "max", "median"}
+        "Count", "UniqueCount", "Sum", "Avg", "Min", "Max", "Median")
+    assert ledger_subgraph.NUMERIC_MEASURES == {"Sum", "Avg", "Min", "Max", "Median"}
+
+
+#: Written out here, not imported: a saved board's names, which the seat must still answer.
+_OLD_SPELLING = {"Count": "count", "UniqueCount": "distinct", "Sum": "sum", "Avg": "mean",
+                 "Min": "min", "Max": "max", "Median": "median"}
+
+
+def _old(measure):
+    name, sep, qualifier = measure.partition(":")
+    return _OLD_SPELLING[name] + sep + qualifier
+
+
+@pytest.mark.parametrize("vector", _contract()["vectors"],
+                         ids=[v["name"] for v in _contract()["vectors"]])
+def test_an_old_name_folds_as_its_new_name_under_the_key_asked(vector):
+    measure = vector["measure"]
+    asked = [_old(m) for m in measure] if isinstance(measure, list) else _old(measure)
+    expected = [dict(group, value={_old(k): v for k, v in group["value"].items()})
+                for group in vector["groups"]]
+    assert ledger_subgraph.group_nodes(vector["nodes"], vector["group_by"], asked) == expected
 
 
 def test_the_contract_vector_exercises_every_measure():
