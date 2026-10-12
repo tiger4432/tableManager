@@ -79663,3 +79663,46 @@ quantity ramp_C_min      found 180 (1 hops 1 · 2 hops 179) · unknown 220 · no
 규칙 답이 오면 바뀌는 줄  RELEASE_LOG «판정의 뜻 (서버)» 의 둘째 문장 · RUN.md «무엇» 셋째 줄 (둘 다 「정적 -> 동적 걸음도 지금은 센다」)
 다음        impl-pagesize 고칠 것 넷(2ea5ee2a7) 시작 — 규칙 답이 오면 그쪽 먼저
 ```
+
+## 10-12 보조 판정 — 이웃 캐시 · 서로 다른 원자만 예산 (총괄 10-12, 응용 18766 ③ 판)
+
+```
+커밋        cad766c97 — impl-aux-reach 위(main 아님)
+고친 것     걷는 쪽이 출신을 넘길 때마다 같은 노드를 다시 읽었고, 다른 문으로 같은 원자가 다시 와서 상한을 원장보다 많이 썼다
+            -> 문 없이 읽은 노드는 «다 읽음»: 이웃은 메모리(near_of)에서 · 다음 통째 읽기는 이미 다 읽은 끝을 뺀다
+            -> 가져오기는 이미 읽은 원자 몫만큼 자리를 더 주고, 예산은 처음 보는 원자 id 만 깎는다
+판          응용 18766 ③ 판 그대로 — assy_test · 스키마 assy_app_reread_dm · 읽기 전용(접속마다 SET READ ONLY · 단언)
+            라우트 처리기를 한 프로세스 안에서 · 화면이 보낸 요청(id · positive 둘 · node_limit 1000 · collect wafer · aux)
+            ⚠️ 18766 프로세스 자체를 바꿔 띄운 것은 아니다 — 응용이 그 판에서 이 커밋으로 다시 열어야 «진짜 프로세스»
+첫 판(같은 판, 캐시만 넣고 가져오기에 이미 읽은 원자 몫의 자리를 안 줌 — 다시 온 원자가 상한의 행을 먹음)
+            aux {'complete': False, 'truncated': 'claims', 'hops_reached': 5, 'claims': 5448}
+            TRD-W-001 {'state': 'unknown'}
+변이(같은 판)
+            == baseline
+            nodes 32 · edges 1556 · plain 2.21 s · with aux 2.67 s · same nodes and edges True
+            aux {'complete': True, 'truncated': None, 'hops_reached': 8, 'claims': 5659}
+            TRD-W-001 {'state': 'none'}
+            == cache off
+            nodes 32 · edges 1556 · plain 1.77 s · with aux 3.05 s · same nodes and edges True
+            aux {'complete': True, 'truncated': None, 'hops_reached': 8, 'claims': 5659}
+            TRD-W-001 {'state': 'none'}
+            == every row spends
+            nodes 32 · edges 1556 · plain 1.85 s · with aux 1.62 s · same nodes and edges True
+            aux {'complete': False, 'truncated': 'claims', 'hops_reached': 4, 'claims': 6000}
+            TRD-W-001 {'state': 'unknown'}
+            md5 f4c63cb8f0da812b7ec53ac9ecab4b1e f4c63cb8f0da812b7ec53ac9ecab4b1e
+칸 test_the_cap_bounds_the_atoms_read_not_the_reads — 기준 · 변이
+            == baseline
+            1 passed, 6 warnings in 0.88s
+            == cache off
+            1 failed, 6 warnings in 1.25s
+            == every row spends
+            1 failed, 6 warnings in 0.85s
+            md5 f4c63cb8f0da812b7ec53ac9ecab4b1e f4c63cb8f0da812b7ec53ac9ecab4b1e
+파일 전체   12 passed, 6 warnings in 1.57s
+뜻          «캐시 끔»은 판정이 그대로다(예산이 서로 다른 원자를 세므로) — 캐시가 하는 일은 다시 읽는 행 수. 칸은 행 수로 잡는다
+            이 박스 원장(SYN-BW-101-16)의 수는 캐시를 넣어도 그대로 — 서로 다른 원자만으로 상한이 찬다
+            (RUN.md 박스 줄을 이 판으로 다시 잼, 수는 그 줄에)
+남은 것     규칙(정적 뒤 동적 금지)은 소유자 답 기다림 · 응용 18766 에서 이 커밋으로 다시 열기
+pagesize    고칠 것 넷은 로컬 가지 impl-pagesize 에 wip aa733f506 로 묶어 둠 — 시험 · 변이 안 돌림, QA 대상 아님. 이 다음에 잇는다
+```
