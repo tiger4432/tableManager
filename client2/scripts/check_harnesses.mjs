@@ -1409,7 +1409,9 @@ const FLOORS = new Map([
   // 59 -> 72: the lead's re-QA (10-13, F1-F5) - W26 an answer holds for what was asked, W27 a text column's spellings apart,
   //    W28 an edit made while the PUT is out stays staged, W29 a failed read again turns Tx back on, V1 the read again's
   //    status line, its second click and its abort signal; G34-G41.
-  ['grid_world_tabs_harness.mjs', 72],
+  // 72 -> 77: an editor open at Apply (lead 10-13) - W30 its value goes with that Apply, W31 one left unchanged does not
+  //    hold Apply; G42-G44. The four mutants naming W3 now name 'W3 ', W30 and W31 having been born under that prefix.
+  ['grid_world_tabs_harness.mjs', 77],
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)

@@ -420,6 +420,46 @@ async function conflicts(M) {
   toggle.checked = false; S.txModeActive = false;
   try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
   out.failedRead = { checked: toggle.checked, active: S.txModeActive, pending: Object.keys(S.pendingTxEdits).length };
+  // An editor open at Apply (lead 10-13): the grid hands a changed value to handleCellEdit after a timeout, as AG Grid
+  // fires cellValueChanged - so it goes with this Apply only if Apply closes the editor and waits for that.
+  const editorSent = [];
+  server = { R1: 28.5, R2: 4 };
+  globalThis.fetch = async (url, init) => {
+    if (init && init.method === 'PUT') {
+      editorSent.push(JSON.parse(init.body).updates);
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
+    }
+    const filters = new URL(String(url), 'http://box').searchParams.get('filters');
+    const ids = filters ? JSON.parse(filters).row_id.conditions.map((c) => c.filter) : [];
+    const data = ids.filter((id) => id in server).map((id) => ({ row_id: id, updated_at: null, data: { a: { value: server[id] } } }));
+    return { ok: true, status: 200, text: async () => '', json: async () => ({ data, total: null }) };
+  };
+  const editorRow = { row_id: 'R1', data: { a: { value: 28.5 } } };
+  const grid = S.gridApi;
+  const openEditor = (typed) => {
+    let open = true;
+    S.gridApi = { ...grid, getEditingCells: () => (open ? [{ rowIndex: 0, column: { getColId: () => 'a' } }] : []),
+      getDisplayedRowAtIndex: () => ({ data: editorRow }), getCellValue: () => editorRow.data.a.value,
+      stopEditing() {
+        if (!open) return;
+        open = false;
+        const old = editorRow.data.a.value;
+        if (typed === old) return;
+        editorRow.data.a.value = typed;
+        setTimeout(() => M.api.handleCellEdit({ data: editorRow, colDef: { field: 'a' }, newValue: typed, oldValue: old }), 0);
+      } };
+  };
+  const finishes = (going) => Promise.race([going.then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 500))]);
+  S.pendingTxEdits = { R2_a: { rowId: 'R2', colId: 'a', newValue: 20, oldValue: 4, data: null } };
+  openEditor(29.1);
+  const changedDone = await finishes(M.api.applyPendingEdits());
+  out.editorOpen = { finished: changedDone, sent: asSent(editorSent), pending: Object.keys(S.pendingTxEdits) };
+  editorSent.length = 0;
+  S.pendingTxEdits = { R2_a: { rowId: 'R2', colId: 'a', newValue: 21, oldValue: 4, data: null } };
+  openEditor(editorRow.data.a.value);
+  const sameDone = await finishes(M.api.applyPendingEdits());
+  out.editorSame = { finished: sameDone, sent: asSent(editorSent) };
+  S.gridApi = grid;
   globalThis.fetch = keep;
   S.pendingTxEdits = {};
   return out;
@@ -593,6 +633,10 @@ function suite(out, sent) {
     out.left.conflict.putWindow, { sent: [[{ row_id: 'R1', updates: { a: 28.9 } }]], pending: ['R1_a', 'R2_a'], r1Over: 28.9 });
   eq('W29 Tx off and the read again fails: Tx comes back on, the edit still staged', out.left.conflict.failedRead,
     { checked: true, active: true, pending: 1 });
+  eq('W30 an editor open at Apply: Apply closes it and waits for the grid to hand the edit over, and its value goes with that Apply',
+    out.left.conflict.editorOpen, { finished: true, sent: [[{ row_id: 'R2', updates: { a: 20 } }, { row_id: 'R1', updates: { a: 29.1 } }]], pending: [] });
+  eq('W31 an editor left unchanged hands nothing over: Apply goes on without it', out.left.conflict.editorSame,
+    { finished: true, sent: [[{ row_id: 'R2', updates: { a: 21 } }]] });
   eq('V1 the read again says itself on the bottom line; a second click says it is already applying; the read carries the one time cap\'s abort signal (queue_poll timedRead)',
     out.left.conflict.saying, ['Checking 1 row on the server\u2026', 'Already applying', true]);
   eq('W25 a deleted row\'s staged edit is dropped and the bottom line says so - a broadcast delete, and a row Apply\'s read no longer finds',
@@ -621,20 +665,20 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  () => (tableIsPerWorld() ? state.gridWorld : null));', '  () => state.gridWorld);') },
   { id: 'G2', what: 'a switch keeps the picked world', catches: 'W7', file: 'api.js',
     mutate: (t) => swap(t, '  state.gridWorld = null;\n  drawWorldTabs();\n', '  drawWorldTabs();\n') },
-  { id: 'G3', what: 'a switch does not redraw the tabs', catches: 'W3', file: 'api.js',
+  { id: 'G3', what: 'a switch does not redraw the tabs', catches: 'W3 ', file: 'api.js',
     mutate: (t) => swap(t, '  state.gridWorld = null;\n  drawWorldTabs();\n', '  state.gridWorld = null;\n') },
   { id: 'G4', what: 'a pick does not read again', catches: 'W5', file: 'api.js',
     mutate: (t) => swap(t, '  drawWorldTabs();\n  await fetchData(true);\n}', '  drawWorldTabs();\n}') },
   { id: 'G5', what: 'the page read goes round the seat', catches: 'W6', file: 'api.js',
     mutate: (t) => swap(t, '    const res = await gridFetch(url);\n    // ', '    const res = await fetch(url);\n    // ') },
-  { id: 'G6', what: 'the list load drops per_world', catches: 'W3', file: 'api.js',
+  { id: 'G6', what: 'the list load drops per_world', catches: 'W3 ', file: 'api.js',
     mutate: (t) => swap(t, 'perWorld: data.per_world,', 'perWorld: undefined,') },
   { id: 'G7', what: 'the row jump goes round the seat', catches: 'W6', file: 'timeline.js',
     mutate: (t) => swap(t, '    const res = await gridFetch(url);\n    const result = await res.json();',
       '    const res = await fetch(url);\n    const result = await res.json();') },
-  { id: 'G8', what: 'the operating world is not marked', catches: 'W3', file: 'world_tabs.js',
+  { id: 'G8', what: 'the operating world is not marked', catches: 'W3 ', file: 'world_tabs.js',
     mutate: (t) => swap(t, '      if (name === view.operating) {', '      if (false) {') },
-  { id: 'G9', what: 'no tab is shown while none is picked', catches: 'W3', file: 'world_tabs.js',
+  { id: 'G9', what: 'no tab is shown while none is picked', catches: 'W3 ', file: 'world_tabs.js',
     mutate: (t) => swap(t, 'const shown = view.current || view.operating;', 'const shown = view.current;') },
   { id: 'G10', what: 'a switch keeps the last table\'s filters - the code before', catches: 'W10', file: 'api.js',
     mutate: (t) => swap(t, '  if (leaving !== tableName) await dropGridFilters();\n', '') },
@@ -687,6 +731,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, "  elements.performanceLog.textContent = `Checking ${unitText(rowsStaged, 'row')} on the server\u2026`;\n", '') },
   { id: 'G41', what: 'the read again has no time cap', catches: 'V1', file: 'api.js',
     mutate: (t) => swap(t, 'const res = await timedRead((signal) => gridFetch(', 'const res = await ((signal) => gridFetch(').replace(', { signal }));\n', ', { signal }))(undefined);\n') },
+  { id: 'G42', what: 'Apply leaves an open editor open - its value misses this Apply (the code before)', catches: 'W30', file: 'api.js',
+    mutate: (t) => swap(t, '    const handingOver = closeOpenEditor();\n    if (handingOver) await handingOver;\n', '') },
+  { id: 'G43', what: 'Apply closes the editor but does not wait for the hand-over', catches: 'W30', file: 'api.js',
+    mutate: (t) => swap(t, '    if (handingOver) await handingOver;\n', '') },
+  { id: 'G44', what: 'Apply waits for a hand-over an unchanged editor never makes', catches: 'W31', file: 'api.js',
+    mutate: (t) => swap(t, '  if (Object.is(read(), before)) { cellHandedOver.delete(key); return null; }\n', '') },
   { id: 'G29', what: 'the question keeps the count it was asked with', catches: 'W23', file: 'api.js',
     mutate: (t) => swap(t, '  if (askingConflicts) sayConflicts(conflictedEdits().length);\n  return out;', '  return out;') },
   { id: 'G30', what: 'numbers compared by spelling - the code before', catches: 'W24', file: 'api.js',

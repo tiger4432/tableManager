@@ -666,10 +666,32 @@ export async function applyPendingEdits(choice = null) {
   if (applying) { elements.performanceLog.textContent = 'Already applying'; return; }
   applying = true;
   try {
+    const handingOver = closeOpenEditor();
+    if (handingOver) await handingOver;
     await applyStaged(choice);
   } finally {
     applying = false;
   }
+}
+
+/** An editor still open when Apply is pressed: its value goes with this Apply (lead 10-13). The grid hands a changed
+ *  value to handleCellEdit only after a timeout (AG Grid fires its public events async), so Apply closes the editor and
+ *  waits for that hand-over - an event, not a pause: the promise of it, or null when there is nothing to wait for (no
+ *  editor, or a value that did not change and so hands nothing over). */
+function closeOpenEditor() {
+  const api = state.gridApi;
+  const [open] = (api && api.getEditingCells && api.getEditingCells()) || [];
+  if (!open) return null;
+  const node = api.getDisplayedRowAtIndex(open.rowIndex);
+  const colId = open.column.getColId();
+  const read = () => api.getCellValue({ rowNode: node, colKey: colId });
+  const key = node && node.data ? `${node.data.row_id}_${colId}` : null;
+  const before = key ? read() : undefined;
+  const handedOver = key ? new Promise((resolve) => cellHandedOver.set(key, resolve)) : null;
+  api.stopEditing();
+  if (!key) return null;
+  if (Object.is(read(), before)) { cellHandedOver.delete(key); return null; }
+  return handedOver;
 }
 
 async function applyStaged(choice) {
@@ -837,8 +859,23 @@ export function discardPendingEdits() {
   return rereadGrid();
 }
 
+/** An Apply waiting for a cell's edit to be handed over, by cell key (closeOpenEditor). */
+const cellHandedOver = new Map();
+
 // Handle inline editing updates to DB
 export async function handleCellEdit(event) {
+  try {
+    await editCell(event);
+  } finally {
+    // Every way out of it - staged, sent, refused, unchanged - lets an Apply waiting on this cell go on.
+    const key = `${event.data && event.data.row_id}_${event.colDef && event.colDef.field}`;
+    const handedOver = cellHandedOver.get(key);
+    cellHandedOver.delete(key);
+    if (handedOver) handedOver();
+  }
+}
+
+async function editCell(event) {
   const { data, colDef, newValue, oldValue } = event;
   const colId = colDef.field;
   const rowId = data.row_id;
