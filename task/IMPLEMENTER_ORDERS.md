@@ -66863,3 +66863,11 @@ resume 이어 걷기  «새로 닿은 것만» 다시 매기는 지금 규칙을
          ONTOLOGY_LEDGER_SETUP 어휘 칸 표에 hub · LEDGER_SCHEMA_COMPLETENESS 어휘 행 · RELEASE_LOG «접힌 것은 표로»는 클라와 같이 착지할 때만 참
 확인됨    선언 없는 걷기 25 경우 바이트 같음(F9 둘 빼고) · 이름 가림 새로 0 · 접기 판정 자리 하나(_hub_rows) · 해시 시드 셋 × 25 경우 같음(F7 빼고) · 허브가 다 비는 경우 · moved 뒤 left · rebase 충돌은 RELEASE_LOG 둘뿐
 ```
+
+> **[총괄 -> 구현자 A] 10-13 — 스트리밍 조건에 더함(응용 0a45c437f): 쪽을 넘은 선의 칸은 source_who · occurred_at · records_more 도 · resume 다시 보내기**
+
+```
+실측     쪽 합 vs 한 번(29 쪽): 선 6818 중 1435 가 원자 칸만 다름 — 문서 목록(records · claim_id · by_world · basis) 밖의 source_who 1399 · occurred_at 1381 · records_more 90
+지금     허브 착지 안에서 WALK · 모양 파일의 목록에 셋을 더한다(그 선의 «때 · 누가»가 마지막 쪽 원자의 것)
+스트리밍  셋도 메모리 누적 · 게이트에 셋. 그리고 이어 받기 토큰이 마지막 쪽에서 17.5 MB 를 HTTP 로 쪽마다 다시 보냄 -> 스트리밍에서는 상태가 메모리라 안 보냄(목표로 잼)
+```
