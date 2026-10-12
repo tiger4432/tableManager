@@ -37,6 +37,25 @@ export function pollBeat({ onScreen, busy, read, waiting = () => {} }) {
   return Promise.resolve(read()).then(() => true);
 }
 
+/** A queue screen's one read, whoever asks - a broadcast, the beat, the tab (lead 10-12): one on its way and one more
+ *  waiting at most. Off screen (`shown`) an ask reads nothing; while a read is on its way it only marks «once more», and
+ *  when that read ends - landed or failed - a mark reads once more. `busy()` is the beat's. */
+export function oneRead(read, shown = () => true) {
+  let reading = false;
+  let again = false;
+  const ask = async () => {
+    if (!shown()) return;
+    if (reading) { again = true; return; }
+    reading = true;
+    try { await read(); } finally {
+      reading = false;
+      // The read says its own failure on its screen; the one more is no caller's to wait on.
+      if (again) { again = false; ask().catch(() => {}); }
+    }
+  };
+  return { ask, busy: () => reading };
+}
+
 /** Beat every QUEUE_POLL_MS for as long as the page lives - the next beat does not wait on this one's read, so a beat
  *  that finds it still on its way says its age (owner 10-11 Q); a beat that fails still leaves the next. */
 export function pollQueue(beat, wait = (fn, ms) => setTimeout(fn, ms)) {

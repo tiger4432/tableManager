@@ -98,7 +98,7 @@ const copyHeaderToggles = () =>
   [elements.copyHeaderToggle, elements.copyHeaderMenuToggle].filter(Boolean);
 import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
 import { OutboxQueuePanel } from './outbox_queue_panel.js';
-import { pollBeat, pollQueue, timedRead, readAgeWords, QueueReadTimeout, READ_TIMED_OUT } from './queue_poll.js';
+import { pollBeat, pollQueue, timedRead, readAgeWords, oneRead } from './queue_poll.js';
 import { onBroadcast } from './websocket.js';
 import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
@@ -633,7 +633,6 @@ function setupEventListeners() {
   //    방아쇠는 탭을 열 때 · 브로드캐스트가 올 때 · 탭이 열려 보이는 동안의 박자(어드민 대기열과 같은 queue_poll,
   //    총괄 427451855) — 체인이 막히면 브로드캐스트가 안 와서 목록이 굳었다.
   let queuePanel = null;
-  let queueReading = false;
   // The last read drawn and when one last landed (owner 10-11 Q): a beat that finds a read on its way draws its age.
   let queueDrawn = [null, {}];
   let queueReadAt = null;
@@ -645,7 +644,6 @@ function setupEventListeners() {
     const mount = elements.queueView;
     if (!mount) return;
     if (!queuePanel) queuePanel = new OutboxQueuePanel(mount);
-    queueReading = true;
     try {
       // One read, cut at queue_poll's time - its body too.
       const { res, body } = await timedRead(async (signal) => {
@@ -656,26 +654,25 @@ function setupEventListeners() {
       // 사유 없는 「모름」은 고칠 자리가 없다 — 실패 문장은 그 좌석이 짓는다.
       drawQueue(body, res.ok ? {} : { failed: fetchFailureLine(failureFactOf(res), CHROME.FETCH_FAILED) });
     } catch (e) {
-      drawQueue(null, { failed: e instanceof QueueReadTimeout ? READ_TIMED_OUT : String((e && e.message) || e) });
-    } finally {
-      queueReading = false;
+      // A cut read's message is queue_poll's READ_TIMED_OUT.
+      drawQueue(null, { failed: String((e && e.message) || e) });
     }
   };
+  // The three triggers ask the one read: one on its way, one more waiting at most, however many broadcasts (lead 10-12).
+  const queueRead = oneRead(refreshQueue, () => state.activeHistoryTab === 'queue');
   pollQueue(() => pollBeat({ onScreen: () => !document.hidden && state.activeHistoryTab === 'queue',
-    busy: () => queueReading, read: refreshQueue, waiting: () => { if (queuePanel) drawQueue(...queueDrawn); } }));
+    busy: queueRead.busy, read: queueRead.ask, waiting: () => { if (queuePanel) drawQueue(...queueDrawn); } }));
   if (elements.tabQueueBtn) {
     elements.tabQueueBtn.addEventListener('click', () => {
       activateHistoryTab(elements.tabQueueBtn);
       showHistoryPane(elements.queueView);
       state.activeHistoryTab = 'queue';
-      refreshQueue();
+      queueRead.ask();
     });
   }
   // 🔴 알림은 체인이 «돈 뒤에» 나간다. 그래서 이 방아쇠만으로는 대기 구간을 놓칠 수 있고,
   //    그 한계는 화면의 «기준 시각»이 말한다 (자기 쓰기 방아쇠는 아직 없다 — 보고 참조).
-  onBroadcast(() => {
-    if (state.activeHistoryTab === 'queue') refreshQueue();
-  });
+  onBroadcast(() => queueRead.ask());
 
   // Transaction Mode listeners
   if (elements.txModeToggle) {
