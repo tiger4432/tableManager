@@ -35,7 +35,7 @@ import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel, skipLine } from './chain_queue_panel.js';
-import { pollBeat, pollQueue, timedRead, readAgeWords, QueueReadTimeout, READ_TIMED_OUT } from './queue_poll.js';
+import { pollBeat, pollQueue, timedRead, readAgeWords, QueueReadTimeout } from './queue_poll.js';
 import { ChainPauseControl, chainPauseView } from './chain_pause.js';
 // 시안 A ② Status — 줄 판정은 `overview_status` 한 자리, 판은 그리기만 한다.
 import { OverviewBoard } from './overview_board.js';
@@ -1476,7 +1476,7 @@ function readQueue() {
     // One read, cut at queue_poll's time - its body too; a cut read says so and the next beat reads again.
     queueRead = timedRead((signal) => adminFetch(`${API_BASE}/admin/chain/queue`, { signal }).then(chainQueueFrom))
       .then((got) => { if (got.body) queueReadAt = Date.now(); return got; },
-        (e) => (e instanceof QueueReadTimeout ? { body: null, opts: { unavailable: READ_TIMED_OUT } } : chainQueueFrom(null)))
+        (e) => (e instanceof QueueReadTimeout ? { body: null, opts: { unavailable: fetchFailureLine({ timedOut: true }) } } : chainQueueFrom(null)))
       .finally(() => { queueRead = null; });
   }
   return queueRead;

@@ -1576,8 +1576,8 @@ console.log('\n[11] a create refused for a moved snapshot');
   const run = async (create) => judge(await walk(create), await walk(create, { again: true }), await walk(create, { save: true }));
   const base = await run(createOntologyExplorerController);
   for (const [name, cond] of base) ok(name, cond);
-  const swap = (from, to) => async () => (await loadWithProbe(SUBJECT, { mutate: (t) => {
-    const text = t.replace(/\r\n/g, '\n');
+  // loadWithProbe hands mutate the subject's text on LF already (lib/probe.mjs readSourceText).
+  const swap = (from, to) => async () => (await loadWithProbe(SUBJECT, { mutate: (text) => {
     if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
     return text.split(from).join(to);
   } })).module.createOntologyExplorerController;

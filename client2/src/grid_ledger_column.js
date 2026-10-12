@@ -24,7 +24,8 @@ export const UNVERIFIED = 'unverified';
  *  changed after it was translated (the ledger's own drift judgment, lead 6424227ff): true changed, false not, null no
  *  print to compare (translated before prints were kept) - unknown, not «not changed». */
 export const LEDGER_ROWS = 'ledger_rows';
-/** The worlds whose declaration or row index the server could not read for this row: their sources Unknown, not Not yet. */
+/** The worlds whose declaration or row index the server could not read for this row: a tail «N unknown» and their hover
+ *  lines Unknown - not Not yet, and not hiding the Not yet of the worlds read. */
 export const LEDGER_UNREAD = 'ledger_worlds_unread';
 
 /** 열이 서는 답. not_source · pending · idle 은 열이 없습니다. */

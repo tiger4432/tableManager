@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 저녁] **빌드 전 점검의 남은 빨강 둘 (클라 19a78f5bc) — git pull 만 · 재기동 없음**
+>
+> ```
+> 뜻      npm run build 의 점검(check:harnesses)이 빨강 없이 끝난다 — 화면 글자는 그대로(큐 읽기 끊김 «Read timed out · retrying»)
+> ```
+
+> ## [10-12 저녁] **걷기 표 머리 두 줄 사이 간격 (클라 6b63a4782 · e96767571) — git pull 만 · 재기동 없음 · 걷기 화면 새로 고침**
+>
+> ```
+> 볼 것    걷기 표의 열 머리 «adhesive_residue / measures → · value» 두 줄이 붙지 않고 한 칸 띄어 선다 · 머리 ▾ 자리 그대로
+> 뜻      화면 관문(npm run build 의 점검)의 걷기 화면 빨강이 없어짐 — 남은 빨강 둘(probe_mechanism P1 · refusal_seat S5)은 다음 착지
+> ```
+
 > ## [10-12 저녁] **소급 진행이 5 초에 한 번 — 쪽 크기를 스스로 맞추고 첫 쪽은 1 행 (총괄 a02ad0f2b, 소유자 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」 · 「인벤토리 리플레이는 1 행씩 시작해야지」, 착지 c6bc9bcc0) — 이주 «없음» · 재기동 «서버 · 체인 워커»(소급 · 명령줄은 다음 실행부터)**
 >
 > ```
@@ -436,9 +449,11 @@
 > ## [10-12] **메인 그리드 Ledger 열 — 모든 세상의 소스 · 바뀐 행 (총괄 6424227ff, 소유자 「다른 세상 거는 … 원장 동기화 상태 안 나와」 · 「변경 행은 다르게 표기」, 착지 서버 1122dffcb · 6ed3ace86 · 클라 4000bd04e · e78ccbf20) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
-> 무엇        행 칸이 세상마다 그 행을 번역한 소스를 말한다 — 운영 세상 «dt_job», 다른 세상 «dt_job · <세상>»
->             번역 뒤 그 소스가 읽는 칸이 바뀐 행 «… · changed» · 비교할 지문이 없는 행 «… · unverified»
->             선언이나 색인을 못 읽은 세상은 «아직»이 아니라 못 읽음으로(응답 ledger_worlds_unread)
+> 무엇        행 칸의 맨 앞 낱말 하나 — changed > Not yet > Unknown > 소스 이름 (총괄 10-12, 응용 18766 확인)
+>             바뀐 행 «changed · <세상>»(운영 세상은 소스 이름) · 여러 세상 «changed · N worlds»
+>             읽은 세상 어디서도 번역 안 된 행 «Not yet» · 그 밖 운영 세상 소스 «dt_job» + «+N worlds»
+>             못 읽은 세상(응답 ledger_worlds_unread)은 꼬리 «N unknown» · 마우스를 올리면 세상 · 소스마다
+>             «<세상> — <소스> — synced/changed/unverified/Not yet/Refused/Unknown» 한 줄
 > 확인        메인 그리드 · 소스인 표 · 행 하나의 그 소스가 읽는 칸을 고침 -> 그 행만 changed
 > changed 지우기  바뀐 행만 다시 번역 — python -m ledger.backfill --source <소스> --drifted --apply (--world <세상>) · --apply 없이는 수만
 > unverified 지우기 그 소스를 통째로 다시 번역 — 소급 연산 ledger_rescope 의 whole source, 또는

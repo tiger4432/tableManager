@@ -170,7 +170,7 @@ const columnCh = (letters, min, max) => Math.min(max, Math.max(min, Math.ceil(le
  */
 export function columnWidth(cells, head = 0, extra = '', max = COLUMN_CH.max) {
   const cell = `calc(${columnCh(cells, COLUMN_CH.min, max)}ch + 2 * var(--space-2)${extra})`;
-  return head ? `max(${cell}, calc(${columnCh(head, 0, max)}ch + var(--space-2) + var(--wk-h-small)))` : cell;
+  return head ? `max(${cell}, calc(${columnCh(head, 0, max)}ch + var(--space-2) + var(--space-6)))` : cell;
 }
 
 /** A column filter that says something: words it contains, a number at least or at most, values picked out. */

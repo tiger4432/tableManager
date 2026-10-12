@@ -1,5 +1,6 @@
 import { isGateRejection } from './admin_token.js';
 import { isSessionRejection } from './auth_gate.js';
+import { READ_TIMED_OUT } from './queue_poll.js';
 
 // CONFIG RESOLVE REPORT — the view model for `GET /admin/config/resolve`.
 //
@@ -51,6 +52,8 @@ export const CHROME = Object.freeze({
   // Company SSO's gate (WWW-Authenticate: Session, lead 2095014ee): its 401 and its 403.
   FETCH_SIGNED_OUT: 'Not signed in · reload to sign in',
   FETCH_NOT_ADMIN: 'Not an administrator · ask to be on the admin list',
+  // A read cut at its time (queue_poll's timedRead): nothing answered in time; the next beat reads again.
+  FETCH_TIMED_OUT: READ_TIMED_OUT,
   NO_DOMAINS: 'No config domains',
   // C-87. 막힌 걸음이 «기다리는 걸음»을 가리키는 부호. 문장이 아니라 부호 하나이고, 번호는
   // 서버의 값입니다 — 「⑤ 가 안 서서 막혔습니다」라고 쓰면 그 문장의 저자가 화면이 됩니다.
@@ -112,6 +115,7 @@ export const TEXT_SOURCES = Object.freeze(['server', 'value', 'chrome', 'count']
  */
 export function fetchFailureText(failure, fallback = CHROME.FETCH_FAILED) {
   if (!failure) return CHROME.FETCH_UNREACHABLE;
+  if (failure.timedOut) return CHROME.FETCH_TIMED_OUT;
   if (failure.status === 404) return CHROME.FETCH_OLD_SERVER;
   if (failure.status === 401 || failure.status === 403) {
     if (failure.session) return failure.status === 401 ? CHROME.FETCH_SIGNED_OUT : CHROME.FETCH_NOT_ADMIN;

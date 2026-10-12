@@ -79934,3 +79934,55 @@ d6d6bca89   멈춤 없음 + 새로 닿은 노드만 ranked + BFS 시작 좁힘 �
             C 클라 끝까지 이어 걷기(서버 0)
 그 밖       Ledger 열 가지 impl-ledger-col 원격에 올림(6ed3ace86) · impl-pagesize-land c6bc9bcc0 응용 재검수 중
 ```
+
+## 10-12 B 의 실제 몫 — 운영 판 층별 측정 (main c4b9b58a0) · 라이브 쪽 변이 물음
+
+```
+B 어긋남    메모리 판 wm/b_divergence_shape.py: 상한에 막힌 노드가 줄 들어온 걸음이 빠진 채 collect 밖 노드가 상한 뒤에
+            읽히면 그 읽기가 한 번 걷기와 다른 걸음을 건너뜀 — 오늘은 다음 쪽이 다시 읽어 맞고, B 면 영영 못 읽음
+            게이트 판 60 판에서는 상한 뒤 읽기 970 번 다른 것 0 (모양이 없음)
+운영 판     assy_impl_wm_1012 읽기 전용 · 103 쪽 · 731.7 s · 쪽 최대 17.6 s · 5 s 넘는 쪽 65 · 원자 616,050 (한 번 150,192)
+            합친 노드 · 엣지 · ranked = 상한 없는 한 번(54.4 s) · 답 최대 27.8 MB(앞 판 22.4, 까닭 안 팜)
+층별        첫 상한 전 3,041 원자 0.3 s · 첫 상한이 걸린 읽기 580,772 · 98.2 s · 그 뒤 같은 층 0 · 35.5 s ·
+            그 뒤 깊은 층 28,187 · 17.4 s — 다시 읽기의 94 % 가 상한이 걸린 그 배치 · B(같은 층만) 몫 0
+            쪽 시간 중 DB 읽기 151 s, 나머지 약 580 s 는 처리
+남은 안     막힌 원자 id 를 들고 가기 · 이어 걷는 쪽 읽기 크기를 남은 노드 예산에 맞추기 · C — 짓지 않음, 소유자 답 대기
+라이브 쪽   «keyset_scan.pages 첫 쪽 1 행» 변이: test_the_live_path_is_still_one_page 는 못 잡음(rescope 경로) ·
+            wide_join 5 칸 · fold_mapper 4 칸이 빨강 (SQLite 33 -> 9 failed) · md5 같음
+그 밖       pagesize main 011df243d 착지(응용 재검수 GO, 백필 간격 최대 3.55 s 풀 엔진; 셋째 판 7.7 s 는 NullPool)
+```
+
+## 10-12 쪽 시간이 어디로 가나 — 단계별 · 상한 없는 한 번 · 바로 직렬화 바이트 (main c4b9b58a0, 재기만)
+
+```
+판          assy_impl_wm_1012 읽기 전용 · 같은 걷기 · 프로파일은 쪽을 약 1.6 배 늦춤 (97 쪽 맨 12.6~12.5 s 앞뒤)
+단계 (프로파일 누적 s)        1 쪽        52 쪽        97 쪽        103 쪽
+  프로파일 초               4.1        14.1        23.1        14.6
+  답 MB                     1.14        10.26        27.76        12.57
+  요청 본문(resume) MB       0.00        5.36        10.40        10.65
+  답 속 resume MB            0.03        5.47        10.63        0.0
+  답 속 엣지 MB              1.08        1.74        12.17        7.24
+  top_set id · MB           77 · 0.01   19,286 · 2.80   37,240 · 5.38   37,409 · 5.40
+  jsonable_encoder s        0.4        4.07        7.71        1.42
+  SQL 읽기 s                1.02        1.16        2.79        1.82
+  원자 단계 + 그리기 s       1.05        1.44        1.56        0.83
+  닿음 · 순위 · evidence s    0.01        0.16        0.25        0.31
+  resume 풀기 · 짓기 s        0.0        0.65        0.69        0.53
+  JSON dumps · loads s       0.58        2.22        3.28        3.61
+97 쪽 함수 (프로파일 20.5 s)
+  jsonable_encoder 자기 4.04 · 누적 6.82 s · 1,283,955 번   SQL execute 2.10 s
+  decode_entity_id 누적 2.87 s · 82,667 번   entity_id 1.95 s · 131,554 번
+  _node_label 1.70 s · 42,887 번   _read_entity_declaration 0.82 s · 130,074 번
+답이 는 까닭 29e5c20d1 의 top_set = 전체 1층 (97 쪽 37,240 개 · 5.38 MB)
+상한 없는 한 번  노드 37,409 · 엣지 77,418 · 원자 150,192 · ranked 37,409 · truncated None · resume none
+            요청 51.1 s (걷기 33.2 s) · 답 235.8 MB (edges 170.13 · propagation 46.91 · nodes 18.73)
+            직렬화 jsonable_encoder 14.61 s + render 2.11 s · 바로 json.dumps 2.28 s · 바이트 같음 True
+바로 직렬화  json.dumps(ensure_ascii=False, allow_nan=False, separators, default=jsonable_encoder 의 타입 표)
+            1 쪽  요청 1.4 s (걷기 1.2) · 1,143,305 바이트 같음 True · 라우트 0.17 + 0.01 s · 바로 0.01 s · default nothing
+            97 쪽 요청 10.5 s (걷기 7.6) · 27,756,427 바이트 같음 True · 라우트 2.29 + 0.25 s · 바로 0.25 s · default nothing
+            이 걷기의 답에는 날짜 · Decimal · set 이 없음 (default 0 번) — 다른 모드(time 쪽 · group_by · rows)는 안 잼
+            쪽 103
+public      public relations 415 -> 415 · added [] · gone [] · rows changed {} / public relations 415 -> 415 · added [] · gone [] · rows changed {}
+안          ㄱ 배관만(미리 직렬화 · 이어 걷는 쪽 top_set 줄임 · 이어받은 노드 쓸 때만 짓기) · ㄴ ㄱ + resume 서버에 ·
+            ㄷ 끝까지는 상한 없이 한 번 — 총괄이 소유자께, 답 오기 전 짓지 않음
+```
