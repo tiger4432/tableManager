@@ -1239,17 +1239,37 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
     return report
 
 
-def _drift_from(setup, source, world=None):
-    """(FROM ... JOIN, the print expression, params) over this source's index lines."""
+def _drift_from(setup, source, world=None, row_ids=None):
+    """(FROM ... JOIN, the print expression, params) over this source's index lines - `row_ids` narrows them to those
+    rows (the grid's page, 총괄 6424227ff)."""
     from .event_frame import bound_select_columns
     from .store import ROW_FINGERPRINT_COLUMN, _relation_sql, row_fingerprint_sql
     from . import schema
 
     plan = setup.snapshot.source_plans[source]
+    narrow = "" if row_ids is None else " AND row_id = ANY(%s)"
     return (f"FROM (SELECT DISTINCT row_id, {ROW_FINGERPRINT_COLUMN} AS printed "
-            f"FROM {schema.world_names(world).row_ref} WHERE relation = %s AND source_who = %s) r "
+            f"FROM {schema.world_names(world).row_ref} WHERE relation = %s AND source_who = %s{narrow}) r "
             f"JOIN {_relation_sql(plan.relation)} t ON t.row_id = r.row_id",
-            row_fingerprint_sql(bound_select_columns(plan), "t"), (plan.relation, source))
+            row_fingerprint_sql(bound_select_columns(plan), "t"),
+            (plan.relation, source) + (() if row_ids is None else ([str(item) for item in row_ids],)))
+
+
+def rows_changed(engine, setup, source, row_ids, world=None):
+    """`{row_id: changed}` for the rows of `row_ids` this source's index names - the drift judgment `rows_drifted`
+    counts, narrowed to them: True when a row no longer holds the values it was translated from, None when its index
+    line carries no print to compare, else False."""
+    joined, printed, params = _drift_from(setup, source, world, row_ids=row_ids)
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT r.row_id, bool_or(r.printed IS NULL), bool_or(r.printed <> {printed}) "
+                           f"{joined} GROUP BY r.row_id", params)
+            return {str(row_id): True if moved else (None if unprinted else False)
+                    for row_id, unprinted, moved in cursor.fetchall()}
+    finally:
+        connection.rollback()
+        connection.close()
 
 
 def rows_drifted(engine, setup, source, world=None):
