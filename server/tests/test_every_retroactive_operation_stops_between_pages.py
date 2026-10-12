@@ -154,7 +154,14 @@ def confirm_doors(monkeypatch):
     calls = []
     queue = [{"row_id": "r%d" % i, "business_key_val": None, "keys": {}, "targets": {}}
              for i in range(5)]
-    monkeypatch.setattr(analysis, "iter_derived_rows", lambda *a, **k: iter(queue))
+    def pages(*_a, size=None, **_k):
+        at = 0
+        while at < len(queue):
+            n = size.next() if size else len(queue)
+            yield queue[at:at + n]
+            at += n
+
+    monkeypatch.setattr(analysis, "derived_pages", pages)
     monkeypatch.setattr(candidates, "rule_auto_confirm_enabled", lambda rule: True)
     monkeypatch.setattr(candidates, "candidate_target_fields", lambda rule: ["t"])
     monkeypatch.setattr(candidates, "log_stats", lambda *a, **k: None)
@@ -173,15 +180,16 @@ RULE = {"name": "r", "target_fields": ["t"]}
 
 
 def test_a_confirm_stop_lands_between_pages_under_one_transaction(confirm_doors):
+    # the page confirmed is the page read, one row first and at most `page_rows` (총괄 2ea5ee2a7 ①)
     stopped = analysis.run_auto_confirm_sweep(None, RULE, apply=True, caps={}, page_rows=2,
                                               checkpoint=lambda processed, total: True)
-    assert stopped["stopped"] is True and stopped["confirmed"] == 2
-    assert [ids for ids, _tx in confirm_doors] == [["r0", "r1"]]
+    assert stopped["stopped"] is True and stopped["confirmed"] == 1
+    assert [ids for ids, _tx in confirm_doors] == [["r0"]]
 
     confirm_doors.clear()
     done = analysis.run_auto_confirm_sweep(None, RULE, apply=True, caps={}, page_rows=2)
     assert "stopped" not in done and done["confirmed"] == 5
-    assert [ids for ids, _tx in confirm_doors] == [["r0", "r1"], ["r2", "r3"], ["r4"]]
+    assert [ids for ids, _tx in confirm_doors] == [["r0"], ["r1", "r2"], ["r3", "r4"]]
     txs = {tx for _ids, tx in confirm_doors}
     assert len(txs) == 1 and None not in txs, "one sweep, one transaction id"
 

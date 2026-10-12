@@ -2261,7 +2261,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 #   still owns what it wrote before - a join whose value row moved to a key no left
                 #   row carries proposes nothing, and the cells it filled under the old key stay.
                 known = rule_run.stamps_its_origin(rule) if edited else False
-                columns = rule_run.columns_a_rule_writes(rule, target_payload["updates"]) if known else None
+                columns = (rule_run.columns_a_rule_writes(rule, target_payload["updates"],
+                                                     more=bool(target_payload.get("next_page")))
+                           if known else None)
                 if columns:
                     edit_retractions[target_table].append({
                         "trigger_table": table_name, "declaration": rule_shape.declaration_of(rule),

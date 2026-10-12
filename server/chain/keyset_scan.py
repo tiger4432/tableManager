@@ -23,10 +23,61 @@ WHY PAGES AND NOT ROWS
     would quietly invite N+1.
 """
 import logging
+import math
+import time
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 1000
+#: A run's first page (소유자 10-12 「인벤토리 리플레이는 1 행씩 시작해야지」).
+FIRST_PAGE = 1
+
+
+class PageSize:
+    """THE ONE PAGE-SIZE RULE every retroactive page loop asks (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게 배치
+    크기 조절해」): the first page is FIRST_PAGE; a page that took under half the declared page time
+    (`pacing.page_seconds`) doubles the next, one under the page time grows the next to what the slower of its own and
+    the page before's rate fills in that time (at most double - a fixed cost between half and the whole page time held
+    a one-row page there; the slower rate - 총괄 2ea5ee2a7, 응용: a page sized by a fast page before it took 5.2 s), one
+    that took longer cuts the next by its overshoot; never above `most`
+    (a hand-given chunk_size is the ceiling). A page's time runs from one `next()` to the next - the read and whatever
+    its caller did with it - less the pace's rests (`rest`). A live proposal's pages (`pages`) stay fixed: there one
+    write is one event (총괄 a02ad0f2b NO-GO ①)."""
+
+    def __init__(self, most=None, seconds=None):
+        import pacing
+
+        self.most = most or DEFAULT_CHUNK_SIZE
+        self.seconds = pacing.page_seconds() if seconds is None else seconds
+        self.size = min(FIRST_PAGE, self.most)
+        self._since = self._rate = None
+
+    def next(self) -> int:
+        now = time.monotonic()
+        if self._since is not None:
+            took = now - self._since
+            rate = self.size / took if took > 0 else None
+            if took > self.seconds:
+                self.size = max(1, int(self.size * self.seconds / took))
+            else:
+                slower = min(r for r in (rate, self._rate) if r) if rate or self._rate else None
+                self.size = min(self.most, self.size * 2,
+                                math.ceil(slower * self.seconds) if slower else self.size * 2)
+            self._rate = rate
+        self._since = now
+        return self.size
+
+    def rest(self, seconds) -> None:
+        """The pace's rest between pages - slept, and not counted as the page's time."""
+        time.sleep(seconds)
+        if self._since is not None:
+            self._since += seconds
+
+
+def step_of(checkpoint):
+    """`step(name, page, pages, rows)` - the step seat on a run's checkpoint (`retroactive._checkpoint`, 총괄 e71f7d6f1):
+    a line and the progress time inside a page; a no-op when there is none (a dry run, a direct call)."""
+    return getattr(checkpoint, "step", None) or (lambda *_: None)
 
 
 def pages(items, start: int = 0):
@@ -39,7 +90,7 @@ def pages(items, start: int = 0):
 
 
 def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAULT_CHUNK_SIZE,
-               limit: int = None, max_row_id: str = None):
+               limit: int = None, max_row_id: str = None, size=None):
     """Yield pages of rows ordered by `row_id`, keyset-seeked.
 
     :param columns: column expressions to select. `model.row_id` is ALWAYS
@@ -52,10 +103,14 @@ def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAUL
         is itself creating, or it walks its own output forever. Snapshot the max
         row_id before writing and pass it here.
 
+    :param chunk_size: the largest page; each page's size is `PageSize`'s answer.
+    :param size: the `PageSize` to ask, when the caller rests between pages (`PageSize.rest`).
+
     Yields: list of result rows. With `columns`, row[0] is always `row_id`.
     """
     if chunk_size is None or chunk_size <= 0:
         raise ValueError(f"chunk_size must be positive (got {chunk_size})")
+    size = size or PageSize(chunk_size)
 
     entity_mode = columns is None
     select_cols = None if entity_mode else [model.row_id] + list(columns)
@@ -69,12 +124,12 @@ def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAUL
             q = q.filter(condition)
         if max_row_id is not None:
             q = q.filter(model.row_id <= max_row_id)
-        page_size = chunk_size
+        page_size = size.next()
         if limit is not None:
             remaining = limit - seen
             if remaining <= 0:
                 return
-            page_size = min(chunk_size, remaining)
+            page_size = min(page_size, remaining)
         page = q.order_by(model.row_id.asc()).limit(page_size).all()
         if not page:
             return

@@ -507,10 +507,11 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         # ⚠️ `_payload_columns` ABOVE STAYS: it is the refusal 「this trigger table declares no
         #    data columns」, which is about whether the rule can say anything at all, not
         #    about what this scan needs.
+        size = keyset_scan.PageSize(chunk_size)
         for page in keyset_scan.iter_pages(db, trg_model, columns=[],
                                            condition=selection,
                                            chunk_size=chunk_size, limit=limit,
-                                           max_row_id=max_row_id):
+                                           max_row_id=max_row_id, size=size):
             # The batch boundary, and the only place a stop is safe: the previous page is
             # committed and this one has not begun. `checkpoint(processed)` is called at each batch boundary and returns True to stop. It is one call rather than two because both facts belong to the same instant - where the run has got to, and whether it should go on - and a stop is only safe AT that instant, where the previous batch is committed and the next has not started. Returning True breaks the loop; the operation returns its stats as usual with `stopped` set, because a cancelled run has done real work and must report it.
             if checkpoint is not None and checkpoint(stats["rows_scanned"]):
@@ -597,7 +598,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             # that SLOWS, and most of the time slowing is enough that nobody has to stop.
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 db.rollback()
-                time.sleep(rest_seconds)
+                size.rest(rest_seconds)
     finally:
         if stage_token is not None:
             request_transaction_id.reset(stage_token)
@@ -772,8 +773,9 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
 
     tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
     with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):   # the label R3's writes carry
+        size = keyset_scan.PageSize(chunk_size)
         for page in keyset_scan.iter_pages(db, model, columns=[], chunk_size=chunk_size,
-                                           limit=limit):
+                                           limit=limit, size=size):
             if checkpoint is not None and checkpoint(stats["rows_scanned"]):
                 stats["stopped"] = True
                 log(f"[fold] stopped by request after {stats['rows_scanned']} rows")
@@ -839,7 +841,7 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
                     _write_resolved(db, table_name, row, col, decision, tx_id)
                 db.commit()
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                time.sleep(rest_seconds)
+                size.rest(rest_seconds)
     if not apply:
         db.rollback()
     log(f"[fold] '{table_name}' {stats['mode']}: {stats['layers_deleted']} file layer(s) in "
@@ -1008,17 +1010,19 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     if apply and to_go:
         losers = [(r, k) for r, k in db.execute(select(ranked.c.row_id, ranked.c.kept).where(ranked.c.n > 1)
                                                .order_by(ranked.c.row_id))]
-        for start in range(0, len(losers), FOLD_ROWS_PAGE):
+        size, start = keyset_scan.PageSize(FOLD_ROWS_PAGE), 0
+        while start < len(losers):
             if checkpoint is not None and checkpoint(stats[done], len(losers)):
                 stats["stopped"] = True
                 log(f"[fold-rows] stopped by request after {stats[done]} of {len(losers)} rows")
                 break
-            page = losers[start:start + FOLD_ROWS_PAGE]
+            page = losers[start:start + size.next()]
+            start += len(page)
             stats[done] += (_mark_folded(db, table_name, mark, page, woken, recounts) if mark else
                             crud.delete_rows_batch(db, table_name, [r for r, _k in page], FOLD_ROWS_BY))
             stats["pages"] += 1
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                time.sleep(rest_seconds)
+                size.rest(rest_seconds)
     log(f"[fold-rows] '{table_name}' {stats['mode']}: {folded_keys} key(s) of ({', '.join(keys)}) "
         f"hold more than one row - keep "
         + (f"a row whose {prefer[0]} holds '{prefer[1]}' ({preferred_keys} key(s)), then " if prefer else "")
@@ -1053,7 +1057,7 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows_read": 0,
              "rows_to_delete": 0, "rows_deleted": 0, "pages": 0, "stopped": False, "sample": []}
-    after = None
+    after, size = None, keyset_scan.PageSize(SHELL_PAGE)
     while True:
         if apply and checkpoint is not None and checkpoint(stats["rows_deleted"], None):
             stats["stopped"] = True
@@ -1061,7 +1065,7 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
             break
         page = [row_id for (row_id,) in db.execute(
             select(model.row_id).where(shown_blank, *([model.row_id > after] if after is not None else []))
-            .order_by(model.row_id).limit(SHELL_PAGE))]
+            .order_by(model.row_id).limit(size.next()))]
         if not page:
             break
         after = page[-1]
@@ -1075,7 +1079,7 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
             stats["rows_deleted"] += crud.delete_rows_batch(db, table_name, gone, cell_layer.SHELL_DELETER)
             stats["pages"] += 1
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                time.sleep(rest_seconds)
+                size.rest(rest_seconds)
     log(f"[remove-shells] '{table_name}' {stats['mode']}: {stats['rows_read']} row(s) show nothing outside "
         f"their keys, {stats['rows_to_delete']} of them only the chain's keys left, {stats['rows_deleted']} deleted")
     return stats
@@ -1143,6 +1147,8 @@ def _mark_folded(db, table_name, mark, page, woken, recounts=()) -> int:
 
 #: Rows of a fold rule's answer one page of `fold_units` judges and writes in one commit.
 FOLD_UNITS_PAGE = 20000
+#: The most whole groups fold-units asks the rule seat for at once (`fold_units`).
+FOLD_UNITS_GROUPS = 1000
 
 
 def fold_units_target(rule_name):
@@ -1168,12 +1174,6 @@ def fold_units_target(rule_name):
     return rule, resolve_target(units)[0], resolve_target(logs, [mark])[0], mark
 
 
-def _step_of(checkpoint):
-    """`step(name, page, pages, rows)` - the step seat on a run's checkpoint (`retroactive._checkpoint`,
-    총괄 e71f7d6f1), or a no-op when there is none (a dry run, a direct call)."""
-    return getattr(checkpoint, "step", None) or (lambda *_: None)
-
-
 def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=logger.info,
                checkpoint=None) -> dict:
     """A fold rule's answer over every unit row, written without the chain's queue (총괄 10-11, 소유자
@@ -1197,10 +1197,10 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     groups, losing = db.execute(select(func.count().filter(ranked.c.n == 1),
                                        func.count().filter(ranked.c.n > 1)).select_from(ranked)).one()
     unit_ids = [row_id for (row_id,) in db.execute(select(units.row_id).order_by(units.row_id))]
-    _model, found = outbox_expand.load_rows_by_ids(db, params["unit_table"], unit_ids)
+    group = getattr(units, params["group"])
+    in_order = [value for (value,) in db.execute(select(group).where(group.isnot(None)).distinct().order_by(group))]
     columns = outbox_expand._data_columns(units)
-    answer = rule_run.run_rule(db, rule, payloads=[outbox_expand._synthesize_payload(found[row_id], columns, {})
-                                                   for row_id in unit_ids if row_id in found])
+    answers = []
     stats = {"mode": "apply" if apply else "dry-run", "rule": rule_name, "table": log_table, "units": len(unit_ids),
              "groups": groups, "units_losing": losing, "rows_proposed": 0, "rows_to_mark": 0,
              "rows_marked": 0, "rows_higher_layer": 0, "rows_already_marked": 0, "rows_gone": 0, "rows_refused": 0,
@@ -1209,36 +1209,53 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     tx_id = "chain_fold_units_%s" % uuid.uuid4().hex[:8]
     keep = set()
 
-    # the rule seat's paging records (`next_page`: call · rows_total · first) - every page followed
-    more = answer["next_page"]
-    total = (len(answer["updates"]) + sum(m["rows_total"] - m["first"] for m in more)
-             if all(m["rows_total"] is not None for m in more) else None)
+    total = None                                   # counted as it goes - the answer is asked a few groups at a time
+    size = keyset_scan.PageSize(FOLD_UNITS_PAGE)
+    step = keyset_scan.step_of(checkpoint)
+
+    def asked():
+        """The rule seat asked whole groups at a time - one first, twice as many each call, at most
+        FOLD_UNITS_GROUPS - so the first page does not wait on every group's answer (총괄 2ea5ee2a7, 응용: 12.2 s
+        before the first line); a group is asked once, so no mark is proposed twice. Its paging records
+        (`next_page`) followed."""
+        at, n = 0, 1
+        while at < len(in_order):
+            part, at, n = in_order[at:at + n], at + n, min(n * 2, FOLD_UNITS_GROUPS)
+            ids = [row_id for (row_id,) in db.execute(
+                select(units.row_id).where(group.in_(part)).order_by(units.row_id))]
+            _model, found = outbox_expand.load_rows_by_ids(db, params["unit_table"], ids)
+            answer = rule_run.run_rule(db, rule, payloads=[
+                outbox_expand._synthesize_payload(found[row_id], columns, {}) for row_id in ids if row_id in found])
+            answers.append(answer)
+            step("rule", stats["pages"] + 1, None, len(ids))
+            yield answer["updates"]
+            for record in answer["next_page"]:
+                call = record["call"]
+                while call is not None:
+                    result = without_missing(call()) or {}
+                    yield result.get("updates") or ()
+                    call = result.get("next_page")
 
     def pages():
-        page = list(answer["updates"])
-        for record in more:
-            call = record["call"]
-            while call is not None:
-                while len(page) >= FOLD_UNITS_PAGE:
-                    yield page[:FOLD_UNITS_PAGE]
-                    page = page[FOLD_UNITS_PAGE:]
-                result = without_missing(call()) or {}
-                page.extend(result.get("updates") or ())
-                call = result.get("next_page")
+        page, n = [], size.next()
+        for updates in asked():
+            page.extend(updates)
+            while len(page) >= n:
+                yield page[:n]
+                page, n = page[n:], size.next()
         while page:
-            yield page[:FOLD_UNITS_PAGE]
-            page = page[FOLD_UNITS_PAGE:]
+            yield page[:n]
+            page, n = page[n:], size.next()
 
-    step, pages_total = _step_of(checkpoint), (-(-total // FOLD_UNITS_PAGE) if total else None)
     for proposed in pages():
-        step("read", stats["pages"] + 1, pages_total, len(proposed))
-        if apply and checkpoint is not None and checkpoint(stats["rows_proposed"], total):
+        step("read", stats["pages"] + 1, None, len(proposed))
+        if checkpoint is not None and checkpoint(stats["rows_proposed"], total):
             stats["stopped"] = True
             log(f"[fold-units] stopped by request after {stats['rows_proposed']} of {total} rows")
             break
         page_started = time.monotonic()
         counts, items = _fold_units_page(db, log_table, logs, mark, proposed, tx_id, apply, on_fold=lambda: step(
-            "fold", stats["pages"] + 1, pages_total, len(proposed)))
+            "fold", stats["pages"] + 1, None, len(proposed)))
         keep |= ingestion_worker._rows_written_from(db, log_table, items)
         for reason, n in counts.pop("version_gate", {}).items():
             stats["version_gate"][reason] = stats["version_gate"].get(reason, 0) + n
@@ -1246,15 +1263,15 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             stats[key] += value
         stats["rows_proposed"] += len(proposed)
         stats["pages"] += 1
-        step("write", stats["pages"], pages_total, len(proposed))
+        step("write", stats["pages"], None, len(proposed))
         stats["page_seconds"].append(round(time.monotonic() - page_started, 2))
-        log(f"[fold-units] {stats['rows_proposed']} / {total} rows (page {stats['pages']}, "
-            f"{stats['page_seconds'][-1]} s)")
         if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-            time.sleep(rest_seconds)
+            size.rest(rest_seconds)
     # the worker's edit withdrawal (`apply_chain_writes`): the unit rows handed, the columns the rule writes
     if not stats["stopped"] and unit_ids and rule_run.stamps_its_origin(rule):
-        written = rule_run.columns_a_rule_writes(rule, answer["updates"])
+        written = rule_run.columns_a_rule_writes(
+            rule, answers[0]["updates"] if answers else [],
+            more=len(answers) > 1 or bool(answers and answers[0]["next_page"]))
         if written:
             retraction_started = time.monotonic()
             if apply:
@@ -1666,15 +1683,15 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     total = db.query(func.count(model.row_id)).scalar() or 0
     total = min(total, limit) if limit is not None else total
     columns = [getattr(model, column.key) for column in physical if column.key != "row_id"] if by_value else None
-    step, pages_total = _step_of(checkpoint), (-(-total // chunk_size) if total else None)
+    step, size = keyset_scan.step_of(checkpoint), keyset_scan.PageSize(chunk_size)
     with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
-        for page in keyset_scan.iter_pages(db, model, columns=columns, chunk_size=chunk_size, limit=limit):
-            step("read", stats["pages"] + 1, pages_total, len(page))
+        for page in keyset_scan.iter_pages(db, model, columns=columns, chunk_size=chunk_size, limit=limit,
+                                           size=size):
+            step("read", stats["pages"] + 1, None, len(page))
             if checkpoint is not None and checkpoint(stats["rows_scanned"], total):
                 stats["stopped"] = True
                 log(f"[notation] stopped by request after {stats['rows_scanned']} rows")
                 break
-            started = time.monotonic()
             stats["pages"] += 1
             stats["rows_scanned"] += len(page)
             if by_value:
@@ -1704,7 +1721,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 values, again = None, []
                 plans = plan_rows(page, again, fold)
                 again = [(entry, 1) for entry in again]
-            step("fold", stats["pages"], pages_total, len(page))
+            step("fold", stats["pages"], None, len(page))
             for entry, n in again:
                 stats["moves_again"] += n
                 stats["again"].extend([entry] * min(n, max(0, max_report - len(stats["again"]))))
@@ -1746,11 +1763,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     source_name=NOTATION_BACKFILL_SOURCE,
                     updated_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
                 db.commit()
-            step("write", stats["pages"], pages_total, len(page))
-            log(f"[notation] {stats['rows_scanned']} / {total} rows (page {stats['pages']}, "
-                f"{round(time.monotonic() - started, 2)} s)")
+            step("write", stats["pages"], None, len(page))
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                time.sleep(rest_seconds)
+                size.rest(rest_seconds)
     log(f"[notation] '{table_name}' {stats['mode']}: {stats['cells_folded']} cell(s) and "
         f"{stats['layers_folded']} layer(s) folded in {stats['rows_scanned']} row(s), "
         f"{stats['keys_changed']} key(s) changed, {stats['keys_not_rebuilt']} row(s) skipped "

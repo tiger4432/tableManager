@@ -132,7 +132,8 @@ def test_replay_no_longer_imports_the_worker_for_the_executor():
     running = sorted(fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef) and any(
         isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "rule_run"
         for n in ast.walk(fn)))
-    assert running == ["_fold_units_page", "fold_units"], (
+    # `asked` is fold_units' own, nested: it asks the seat a few groups at a time (총괄 2ea5ee2a7)
+    assert running == ["_fold_units_page", "asked", "fold_units"], (
         "a replay function reaches the seat; replay hands rows over, it does not run rules (only fold-units does)",
         running)
     # 🔴 THE SEAT STILL LIVES IN ITS OWN HOUSE. `mapper_call` kept the two pieces that are

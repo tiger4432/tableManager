@@ -217,15 +217,16 @@ def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env):
     _clear_outbox(rep_env)
 
     stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, log=lambda *_: None)
-    assert stats["rows_staged"] == 2 and stats["events_staged"] == 1
+    # one event a PAGE, not a row - the pages start at one row (총괄 a02ad0f2b ㄱ)
+    assert stats["rows_staged"] == 2 and stats["events_staged"] == stats["pages"] >= 2, stats
     assert _target(rep_env, "P1") is None, "it wrote by itself; it must only hand over"
 
     events = _staged(rep_env, "crep_test_trigger")
-    assert len(events) == 1
+    assert len(events) == stats["pages"]
     payload = events[0].payload
     assert events[0].event_type == "EDIT", "a new event type would not be a trigger at all"
     assert payload["only_rule"] == RULE_RESERVE["name"]
-    assert len(payload["row_ids"]) == 2
+    assert sum(len(e.payload["row_ids"]) for e in events) == 2
     assert "columns" not in payload, (
         "an empty column set reads as 「nothing changed」 and skips every column-scoped rule")
 
@@ -253,10 +254,10 @@ def test_one_replay_is_one_transaction(rep_env):
 
     stats = replay.replay_rule(rep_env, RULE_RESERVE, apply=True, chunk_size=2,
                                log=lambda *_: None)
-    assert stats["events_staged"] == 3, "the pages must actually be several, or this is vacuous"
+    assert stats["events_staged"] == stats["pages"] >= 2, "the pages must actually be several, or this is vacuous"
 
     ids = {e.payload["transaction_id"] for e in _staged(rep_env, "crep_test_trigger")}
-    assert len(ids) == 1, "three pages, three transactions: %r" % (ids,)
+    assert len(ids) == 1, "a transaction a page: %r" % (ids,)
 
 
 def test_only_the_named_rule_wakes(rep_env):
@@ -439,6 +440,17 @@ def test_r2_withdrawal_reveals_the_next_source_not_a_hole(rep_env):
     rep_env.refresh(row)
     assert row.note == "FROM_SCRIPT", "the layer underneath must become visible"
     assert set(_sources(rep_env, "crep_test_target", row.row_id, "note")) == {"custom_script"}
+
+
+def test_r2_a_run_reads_its_claims_a_page_at_a_time(rep_env, doubling_pages):
+    """총괄 2ea5ee2a7 ①: a run's withdrawal reads its first page's claims - one row's - not the whole table's before
+    its first line: stopped after that page, it matched and withdrew one cell of four."""
+    _seed(rep_env, "crep_test_target", [{"part_no": "P%d" % i, "note": "N%d" % i} for i in range(4)],
+          source_name="pipeline_parser", tx_id="s9")
+    seen = []
+    stats = replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser", columns=["note"], apply=True,
+                                   log=lambda *_: None, checkpoint=lambda done: seen.append(done) or len(seen) > 1)
+    assert (seen, stats["cells_matched"], stats["cells_withdrawn"], stats.get("stopped")) == ([0, 1], 1, 1, True)
 
 
 def test_r2_refuses_to_withdraw_the_user_layer(rep_env):

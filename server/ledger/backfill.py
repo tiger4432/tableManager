@@ -319,6 +319,8 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     nothing advances a position any more, and `translator_ver` is the fingerprint that
     remains.
     """
+    from chain import keyset_scan
+
     from . import followup, schema
     from .setup_registry import cursor_translator_version
 
@@ -334,12 +336,18 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     # ITS index alone: another source reading the table has them already, and a CREATE is
     # translated without withdrawing (판정 166) - so it wrote that source's facts twice, once
     # more each time the declaration had moved.
-    only = frozenset({source})
+    only, size = frozenset({source}), keyset_scan.PageSize(page_rows)
+    # a line inside the page - read, then translated and written - so a slow page still shows it is moving (총괄 10-12)
+    step = keyset_scan.step_of(checkpoint)
+    # the rows this run has to read, for its page line - a table's (`_table_rows`)
+    total = (rows_not_yet_translated(engine, setup, source, world=world)["not_yet"]
+             if checkpoint is not None and _table_rows(engine, plan, count=False) else None)
     while max_pages is None or report["batches"] < max_pages:
-        page = rows_missing_from_the_index(engine, setup, source, page_rows, after,
+        page = rows_missing_from_the_index(engine, setup, source, size.next(), after,
                                            world=world)
         if not page:
             break
+        step("read", report["batches"] + 1, None, len(page))
         after = page[-1]
         report["batches"] += 1
         report["rows_read"] += len(page)
@@ -348,10 +356,11 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
                                         followup.queue_depth())
         while followup.queue_depth() >= EVENT_LOAD_QUEUE_LIMIT:
             _drain_into(engine, setup, report, world=world, sources=only)
+        step("translated", report["batches"], None, len(page))
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
-            time.sleep(rest_seconds)
-        if checkpoint is not None and checkpoint(report["rows_read"]):
+            size.rest(rest_seconds)
+        if checkpoint is not None and checkpoint(report["rows_read"], total):
             report["stopped"] = True
             logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
             break
@@ -622,7 +631,7 @@ def _scope_row_ids(plan, frame):
 
 def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             withdraw=True, page_rows=None, checkpoint=None, whole_source=False,
-            world=None):
+            world=None, until=None):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
 
     `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
@@ -708,7 +717,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                               gone_atoms=sum(item.get("atoms", 0)
                                              for item in aimed["sources"].values()))
             result.update(withdraw_stale_atoms(engine, source, plan and plan.relation,
-                                               world=world))
+                                               world=world, until=until))
         elif withdraw:
             result = preview_rescope(engine, setup, source, scope_column, scope_values,
                                      world=world)
@@ -741,6 +750,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     #    only then is the checkpoint asked - so a stop leaves whole pages behind it and
     #    untouched ones ahead. `page_rows=None` is one page, the whole scope: the live
     #    follow-up path, whose receipt rides that one commit.
+    total = _table_rows(engine, plan) if whole_source and checkpoint is not None else None
     for frame in _scope_pages(engine, plan, scoped, page_rows):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
@@ -788,7 +798,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         read = executed.preview if executed is not None else previewed and previewed["preview"]
         for reason, count in _refusal_reasons(getattr(read, "refusals", ())).items():
             result["refused"][reason] = result["refused"].get(reason, 0) + count
-        if checkpoint is not None and checkpoint(result["rows_in_scope"]):
+        if checkpoint is not None and checkpoint(result["rows_in_scope"], total):
             result["stopped"] = True
             break
     if whole_source and not result.get("stopped"):
@@ -817,6 +827,29 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
 RESCOPE_PAGE_ROWS = 1000
 
 
+def _table_rows(engine, plan, count=True):
+    """The source's rows, counted once at a run's start for its page line's total and time left (총괄 a02ad0f2b ①) -
+    a table's only (relkind r · p): a view's count runs its whole query, and views leave production. `count=False`:
+    True for a table, without counting."""
+    from psycopg2 import sql
+
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)", (str(plan.relation),))
+            kind = cursor.fetchone()
+            if kind is None or kind[0] not in ("r", "p"):
+                return None
+            if not count:
+                return True
+            cursor.execute(sql.SQL("SELECT count(*) FROM {}").format(
+                sql.SQL(".").join(sql.Identifier(part) for part in str(plan.relation).split("."))))
+            return cursor.fetchone()[0]
+    finally:
+        connection.rollback()
+        connection.close()
+
+
 def _scope_pages(engine, plan, scoped, page_rows):
     """The scope's rows a page at a time, in page-key order, each as a frame.
 
@@ -824,15 +857,18 @@ def _scope_pages(engine, plan, scoped, page_rows):
     (`_page_key`), so a page that took the rest of its last key's rows cannot split a
     molecule - half a group remade on its own is a wrong atom, not a smaller one.
     `page_rows=None` is the whole scope, one read."""
+    from chain import keyset_scan
+
     key = None if page_rows is None else _page_key(plan)
-    after = None
+    after, size = None, None if page_rows is None else keyset_scan.PageSize(page_rows)
     readable = _readable_columns(engine, plan)
     while True:
         read = engine.raw_connection()
         try:
-            rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=page_rows,
+            limit = None if size is None else size.next()
+            rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=limit,
                                           scope=scoped)
-            if page_rows is not None and len(rows) >= page_rows:
+            if limit is not None and len(rows) >= limit:
                 last = rows[-1][key]
                 rows = [row for row in rows if row[key] != last] + _fetch_v2_lineage_rows(
                     read, plan, readable, group_value=last, scope=scoped)
@@ -857,7 +893,9 @@ def _scope_pages(engine, plan, scoped, page_rows):
 #: cannot simply enqueue them all -- the ruling that asked for this said so before the code
 #: did. The loader therefore reads, enqueues, and BLOCKS on its own drain, so the number of
 #: row ids held at once is bounded by this times the page size.
-EVENT_LOAD_QUEUE_LIMIT = 4
+#: 🔴 ONE: each page is followed before the next is read (총괄 a02ad0f2b ④). With four queued, a page's size was set
+#: by the follow of the page three before it, and a page line waited on up to four follows (9 of 40 gaps over 5 s).
+EVENT_LOAD_QUEUE_LIMIT = 1
 
 
 def rows_missing_from_the_index(engine, setup, source, limit, after=None, world=None):
@@ -1007,67 +1045,83 @@ def stale_page_refs(engine, world=None):
         % (name, STALE_PAGE_REFS_UNINDEXED, " --world %s" % (world or schema.operating_world())))
 
 
-def _stale_refs(engine, source, relation, world=None):
-    """`(ref, tables, {predicate: atoms})` for each ref of this source's atoms that names a
-    table other than `relation` - atoms today's declaration does not make (총괄 e027f669d);
-    every ref when `relation` is None (a name the declaration no longer has). Aimed from the
+def _stale_atoms(engine, source, relation, world=None):
+    """`(ref, tables, predicate)` for each atom of this source - `tables` the ones its ref names
+    when today's declaration does not make it (총괄 e027f669d: a table other than `relation`; any
+    when `relation` is None, a name the declaration no longer has), else None. Aimed from the
     ledger's own refs, not the row index: an atom written before 09-08 may have no index line.
-    One pass, streamed - a source's refs are not held at once."""
+    Streamed atom by atom, not grouped by ref - a GROUP BY's first ref waited on the whole source
+    (총괄 2ea5ee2a7 ②). The ledger has no order by ref (its ref index is a hash), so one ref's atoms
+    may come apart; its judgment is kept while the ref repeats."""
     from . import schema
     from .roleframe import claim_source_row_refs
 
     connection = engine.raw_connection()
     try:
-        with connection.cursor(name="stale_refs") as cursor:
+        with connection.cursor(name="stale_atoms") as cursor:
             cursor.itersize = 10000
-            cursor.execute(
-                "SELECT ref, json_object_agg(predicate, atoms) FROM ("
-                f" SELECT source_raw_ref AS ref, predicate, count(*) AS atoms "
-                f"   FROM {schema.world_names(world).ledger} WHERE source_who = %s GROUP BY 1, 2"
-                ") per_predicate GROUP BY ref", (source,))
-            for ref, atoms in cursor:
-                tables = sorted({item.split(":", 1)[0] for item in claim_source_row_refs(ref)
-                                 if ":" in item})
-                if relation is None or (tables and relation not in tables):
-                    yield ref, tables, {str(k): int(v) for k, v in dict(atoms).items()}
+            cursor.execute(f"SELECT source_raw_ref, predicate FROM {schema.world_names(world).ledger} "
+                           "WHERE source_who = %s", (source,))
+            last, judged = None, None
+            for ref, predicate in cursor:
+                if ref != last:
+                    tables = sorted({item.split(":", 1)[0] for item in claim_source_row_refs(ref)
+                                     if ":" in item})
+                    last = ref
+                    judged = tables if relation is None or (tables and relation not in tables) else None
+                yield ref, judged, predicate
     finally:
         connection.rollback()
         connection.close()
 
 
 def withdraw_stale_atoms(engine, source, relation, apply=False, checkpoint=None, world=None,
-                         page_refs=None):
-    """Take back the atoms `_stale_refs` names: `page_refs` refs a page through `store.withdraw`
+                         page_refs=None, until=None):
+    """Take back the atoms `_stale_atoms` names: their refs gathered a page at a time - `page_refs`
+    a page, sized by `keyset_scan.PageSize` when a run reports its pages - through `store.withdraw`
     (the one statement, `_withdraw_refs`), then this source's index lines for those tables
     (`forget_row_refs` with the source - atoms first, lines last, as a deletion). A stop lands
     between pages and leaves the lines for the re-run. `apply=False` counts, per table and
-    predicate, and writes nothing (총괄 e027f669d)."""
+    predicate, and writes nothing (총괄 e027f669d); `until` (a `time.monotonic()` instant) ends its
+    reading there - `stale_cut`, with `stale_read` the atoms read (총괄 2ea5ee2a7 ②)."""
+    from chain import keyset_scan
     from . import schema
     from .store import LedgerStore
 
     store = LedgerStore(engine, world=world)
     result = {"stale_atoms": 0, "stale_refs": 0, "stale_tables": {}, "stale_withdrawn": 0,
-              "stale_forgotten": 0, "stale_pages": 0}
+              "stale_forgotten": 0, "stale_pages": 0, "stale_read": 0}
     if apply and not page_refs:
         page_refs, result["stale_page"] = stale_page_refs(engine, world)
         logger.info("[Ledger] %s", result["stale_page"])
-    page, tables = [], set()
-    for ref, named, atoms in _stale_refs(engine, source, relation, world=world):
-        result["stale_refs"] += 1
-        result["stale_atoms"] += sum(atoms.values())
-        tables.update(named)
-        by = result["stale_tables"].setdefault(", ".join(named) or "(no table named)", {})
-        for predicate, n in atoms.items():
-            by[predicate] = by.get(predicate, 0) + n
-        if apply:
-            page.append(ref)
-            if len(page) >= page_refs:
-                result["stale_withdrawn"] += store.withdraw(source, page)
-                result["stale_pages"] += 1
-                page = []
-                if checkpoint is not None and checkpoint(result["stale_withdrawn"]):
-                    result["stopped"] = True
-                    return result
+    size = keyset_scan.PageSize(page_refs) if apply and checkpoint is not None else None
+    page, most, tables, seen = [], page_refs, set(), set()
+    atoms = _stale_atoms(engine, source, relation, world=world)
+    for ref, named, predicate in atoms:
+        result["stale_read"] += 1
+        if named is not None:
+            result["stale_atoms"] += 1
+            by = result["stale_tables"].setdefault(", ".join(named) or "(no table named)", {})
+            by[predicate] = by.get(predicate, 0) + 1
+            if ref not in seen:
+                seen.add(ref)
+                result["stale_refs"] += 1
+                tables.update(named)
+                if apply:
+                    if not page and size is not None:
+                        most = size.next()
+                    page.append(ref)
+                    if len(page) >= most:
+                        result["stale_withdrawn"] += store.withdraw(source, page)
+                        result["stale_pages"] += 1
+                        page = []
+                        if checkpoint is not None and checkpoint(result["stale_withdrawn"]):
+                            result["stopped"] = True
+                            return result
+        if until is not None and time.monotonic() >= until:
+            if next(atoms, None) is not None:              # the last atom is not a cut read
+                result["stale_cut"] = True
+            break
     if not apply:
         return result
     if page:
