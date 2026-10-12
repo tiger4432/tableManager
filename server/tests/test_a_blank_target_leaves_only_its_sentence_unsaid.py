@@ -31,7 +31,13 @@ from ledger.runtime_v2 import last_cursor, preview_cursor_batch               # 
 from ledger.setup_bundle import (SETUP_VERSION, require_ready_bundle,         # noqa: E402
                                  validate_bundle, validate_bundle_errors)
 from ledger.setup_registry import compile_setup_snapshot                     # noqa: E402
+from sqlalchemy import text as sql_text                                      # noqa: E402
+from conftest import PG_TEST_SCHEMA                                          # noqa: E402
+from ledger import schema as ledger_schema                                   # noqa: E402
 from test_a_condition_can_say_is_not import _Engine                          # noqa: E402
+from test_ledger_worlds_are_independent_and_meet_in_a_walk import (          # noqa: E402,F401
+    CHANGED, EVENT_TIME as WORLD_EVENT_TIME, _sample, _seed, _write, fixture_config, fixture_world)
+from test_whole_source_takes_back_what_the_declaration_no_longer_makes import _declare  # noqa: E402
 from test_an_entity_type_can_be_read_from_a_column import (                  # noqa: E402,F401
     CANDIDATES, COLUMNS, SOURCE as TYPED_SOURCE, column, document as typed_document,
     fixture_catalog, fixture_shipped, row as typed_row, typed)
@@ -413,3 +419,87 @@ def test_a_blank_time_cell_refuses_even_where_one_sentence_alone_keys_by_it():
     assert _refused(preview) == [(
         "no_identity", "molecule rows[0] declares 'event_at' and the row at "
                        "event_frame.rows[0].event_at leaves it empty")]
+
+
+# ------------------------------------------------------------------ the grid's Re-translate (PostgreSQL)
+
+#: Rows the shipped `wafer_process_recipe` reads; P1 comes from `_seed` (no eqp_id, no mat_type).
+TOOLED_ROWS = [
+    {"proc_id": "P2", "wafer_id": "W2", "step": "S2", "recipe_id": "RCP-1", "eqp_id": "EQP-2",
+     "mat_type": "DT", "eventtime": WORLD_EVENT_TIME},
+    {"proc_id": "P3", "wafer_id": "W3", "step": "S3", "recipe_id": "RCP-1", "eqp_id": "EQP-3",
+     "eventtime": WORLD_EVENT_TIME},
+    {"proc_id": "P4", "wafer_id": "W4", "step": "S4", "recipe_id": "RCP-1", "eventtime": WORLD_EVENT_TIME},
+    # no wafer: every sentence's subject is blank - refused before and after, and the line says so
+    {"proc_id": "P5", "step": "S5", "recipe_id": "RCP-1", "eqp_id": "EQP-5", "eventtime": WORLD_EVENT_TIME},
+]
+
+
+def _with_a_tool_sentence(when):
+    """The shipped declaration plus one sentence whose target key is `eqp_id` - blank on P1, P4."""
+    document = _sample("ledger_config.json.sample")
+    document["entities"]["tool@1"] = {"keys": ["tool"]}
+    document["vocabulary"]["processed_on@1"] = {
+        "status": "active", "subjects": ["wafer@1"],
+        "object": {"kind": "entity_ref", "types": ["tool@1"], "qualifiers": {"required": [], "optional": []}}}
+    sentence = {"predicate": "processed_on@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}},
+        "target": {"kind": "entity", "entity_type": "tool@1",
+                   "keys": {"tool": {"kind": "column", "column": "eqp_id"}}}}}
+    if when is not None:
+        sentence["when"] = when
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-on-tool"] = sentence
+    return document
+
+
+def _said_by_row(world):
+    """({proc_id: {predicate: atoms}} through the row index, {proc_id: index lines})."""
+    with world["engine"].connect() as conn:
+        rows = conn.execute(sql_text(
+            'SELECT w.proc_id, a.predicate, count(*) FROM %s a JOIN %s r '
+            'ON r.source_who = a.source_who AND r.source_raw_ref = a.source_raw_ref '
+            'JOIN "%s".wafer_process w ON w.row_id::text = r.row_id '
+            'WHERE a.source_who = :s GROUP BY 1, 2' % (ledger_schema.LEDGER_TABLE,
+                                                       ledger_schema.ROW_REF_TABLE, PG_TEST_SCHEMA)),
+            {"s": CHANGED}).fetchall()
+        lines = dict(conn.execute(sql_text(
+            'SELECT w.proc_id, count(*) FROM %s r JOIN "%s".wafer_process w ON w.row_id::text = r.row_id '
+            'WHERE r.source_who = :s GROUP BY 1' % (ledger_schema.ROW_REF_TABLE, PG_TEST_SCHEMA)),
+            {"s": CHANGED}).fetchall())
+    said = {}
+    for proc, predicate, count in rows:
+        said.setdefault(proc, {})[predicate] = int(count)
+    return said, {proc: int(count) for proc, count in lines.items()}
+
+
+@pytest.mark.parametrize("scope", [{"scope_column": "wafer_id", "scope_values": "W1,W2,W3,W4"},
+                                   {"whole_source": True}], ids=["scoped", "whole-source"])
+@pytest.mark.parametrize("when", [None, {"mat_type": "DT"}], ids=["no-when", "when-DT"])
+def test_re_translating_after_adding_a_sentence_keeps_the_old_sentences_atoms(world, when, scope):
+    """총괄 10-12 (probe on main 06eb5c172): a source gains a sentence whose key is blank on some
+    rows, then the grid's Re-translate (`ledger_rescope`). On main those rows were refused
+    `no_identity`, their old sentence's atoms withdrawn with nothing remade, and the line read
+    «withdrawn 4, written 4 of 4». Now the new sentence is unsaid there and the old one is remade."""
+    from admin import retroactive
+
+    _write(world, "wafer_process", TOOLED_ROWS)
+    _seed(world)
+    assert _said_by_row(world) == (
+        {proc: {"processed_with": 1} for proc in ("P1", "P2", "P3", "P4")},
+        {proc: 1 for proc in ("P1", "P2", "P3", "P4")}), "canary: the seed said the old sentence"
+    _declare(_with_a_tool_sentence(when))
+    lines = []
+    result = retroactive.OPERATIONS["ledger_rescope"]["run"](
+        world["db"], retroactive.validate("ledger_rescope", {"source": CHANGED, **scope}), lines.append)
+
+    tooled = {"P2", "P3"} if when is None else {"P2"}
+    assert _said_by_row(world) == (
+        {proc: {"processed_with": 1, **({"processed_on": 1} if proc in tooled else {})}
+         for proc in ("P1", "P2", "P3", "P4")},
+        {proc: 1 for proc in ("P1", "P2", "P3", "P4")})
+    # P5 is in a whole-source run only (the scope names wafers, P5 has none)
+    said = ", refused 1 (no_identity 1)" if scope.get("whole_source") else ", refused 0"
+    assert (result["refused"], said + "," in lines[0] + ",") == (1 if scope.get("whole_source") else 0, True), (
+        result, lines)

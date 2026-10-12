@@ -358,6 +358,8 @@
 - **필요한 조건** — 서버 · 체인 재기동. 전에 거절된 행은 원자가 없어 색인에 없으므로, 그 소스를 다시 백필하면 읽혀 채워진 칸의 엣지가 들어갑니다.
 - **아무 문장도 안 말한 행** — 대상 칸이 «전부» 빈 행(또는 어느 `when` 도 안 맞은 행)은 원자를 하나도 안 쓰고 색인에 안 올라갑니다. 사람이 돌리는 census(`python -m ledger census`, 소급 탭의 남은 행 수)는 그런 행을 번역기와 같은 판정으로 따로 세어 «not yet» 에서 뺍니다 — 답의 `said_nothing_rows`, 문장 «N row(s) that say no sentence (no when holds, or every target is blank) are not counted.». 쉬지 않는 센서스 틱은 전처럼 세지 않습니다. 맵퍼가 코드인 소스는 세지 않습니다.
 - **아직 안 되는 것** — 그런 행은 거절 · 알림 줄이 없고, 색인에 안 올라가므로 백필이 매번 다시 읽습니다.
+- **있는 소스에 문장을 더하고 다시 번역(Re-translate)** — 새 문장의 대상 칸이 빈 행에서도 옛 문장의 원자는 다시 쓰이고 새 문장만 빠집니다. 전엔 그 행이 거절돼 옛 원자가 거둬지고 다시 안 쓰였습니다.
+- **다시 번역의 결과 줄** — `written X of Y` 옆에 `refused N (no_identity N, …)` 가 붙고 결과에 `refused` · `refused_reasons` 가 들어갑니다. 거절된 분자의 행은 원자가 (있었다면) 거둬지고 다시 안 쓰였으니, 0 이 아니면 그 행들을 봐야 합니다.
 - **자세히** — `server/tests/test_a_blank_target_leaves_only_its_sentence_unsaid.py` 가 위 예시를 이 파일에서 읽어 그대로 돌립니다 · 이 항목과 같은 커밋.
 
 ## 2026-10-12 · 원장 선언 — 조건에 «아니다» — 칸 a 가 b 면 문장 c, 아니면 문장 d

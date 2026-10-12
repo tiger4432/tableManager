@@ -722,14 +722,20 @@ def _run_ledger_rescope(db, params, log, control=None):
         params.get("scope_values") or [], apply=True,
         page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control),
         whole_source=bool(params.get("whole_source")), world=_ledger_world(params))
+    # 🔴 a refused row was withdrawn and not remade - said beside «written», never left to read as a
+    #    success (총괄 10-12: «rows 4, withdrawn 4, written 4 of 4» while 2 rows lost their atoms)
+    refused = s.get("refused") or {}
+    why = ", ".join("%s %d" % pair for pair in sorted(refused.items()))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
-        f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}"
+        f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}, "
+        f"refused {sum(refused.values())}" + (f" ({why})" if why else "")
         + (f", from tables the declaration does not read {s['stale_withdrawn']}"
            if "stale_withdrawn" in s else ""))
     _final_progress(control, s.get("rows_in_scope"), s)
     return {"withdrawn": s["withdrawn"], "attempted": s["attempted"],
             "inserted": s["inserted"], "deduped": s["deduped"],
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"],
+            "refused": sum(refused.values()), **({"refused_reasons": why} if why else {}),
             **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages") if key in s}}
 
 
@@ -3346,6 +3352,7 @@ RESULT_NAMES = {
     "withdrawn": "atoms withdrawn", "attempted": "atoms attempted",
     "inserted": "atoms inserted", "deduped": "already in the ledger",
     "rows_in_scope": "rows in scope", "applied": "applied",
+    "refused": "molecules refused", "refused_reasons": "refused for",
     "rows_staged": "rows staged", "events_staged": "events staged",
     "rows_scanned": "rows scanned", "rows_read": "rows read",
     "cells_withdrawn": "cells withdrawn", "revealed": "values revealed",

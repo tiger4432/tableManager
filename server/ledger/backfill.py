@@ -676,6 +676,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     twice. Any register atom that is in fact still there collides with `uq_ledger_atom` and
     comes back as `deduped`, which is the mechanism that already exists for exactly this.
     """
+    from .runtime_v2 import _refusal_reasons
     from .store import LedgerStore
     from .setup import execute_selected_scoped_batch
 
@@ -689,7 +690,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     # ⚠️ EDIT STILL WITHDRAWS. A corrected row DOES hold atoms, and remaking without
     # withdrawing would leave the old generation standing beside the new one.
     zeros = {"applied": False, "withdrawn": 0, "forgotten": 0,
-             "attempted": 0, "inserted": 0, "deduped": 0}
+             "attempted": 0, "inserted": 0, "deduped": 0, "refused": {}}
     if not apply:
         if whole_source:
             # 🔴 A WHOLE SOURCE PREVIEWS WHAT IS CHEAP (총괄 3a109bfd9 ③): the table's rows,
@@ -756,6 +757,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             aimed = sorted(set(previewed["refs"]) | indexed)
         # Neither the new translation nor the index says anything about these rows: there
         # is nothing to withdraw and nothing to put in its place.
+        executed = None
         if aimed is None or aimed:
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
@@ -781,6 +783,11 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                 if stale:
                     result["forgotten"] += store.forget_row_refs(
                         plan.relation, stale, source=source)
+        # 🔴 what the page's read refused, by the gate's reason - a remake that refuses a row writes
+        #    nothing for it and takes its old atoms with the withdrawal (총괄 10-12: it read as a success)
+        read = executed.preview if executed is not None else previewed and previewed["preview"]
+        for reason, count in _refusal_reasons(getattr(read, "refusals", ())).items():
+            result["refused"][reason] = result["refused"].get(reason, 0) + count
         if checkpoint is not None and checkpoint(result["rows_in_scope"]):
             result["stopped"] = True
             break
