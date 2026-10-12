@@ -79818,3 +79818,24 @@ pagesize   e902a67e6 — impl-pagesize 위(그 아래 46324bcbb), wip 를 접어
             found 31 은 그대로, 그중 30 의 최단이 3 hops -> 4 hops (3 hops 길이 이름에서 다이로 내려갔음)
 문서        RELEASE_LOG «판정의 뜻 (서버)» · RUN.md «무엇» 셋째 줄이 규칙을 말함 · 박스 줄 다시 잼
 ```
+
+## 10-12 체인이 방금 만든 행을 «껍데기»로 지우던 것 — 고침 286f3af6d · main 75d7bd129 (소유자 「행파생 자꾸 파생하고 지 혼자 회수하는데?」, 총괄)
+
+```
+원인        체인 쓰기 자리의 껍데기 판정(5eee501eb «A ROW THIS WRITE EMPTIED»)이 «이 쓰기가 빈 값을 쓴 칸이 있는 행»을 모두 물었다.
+            새 행은 쓴 칸이 전부 «바뀐 칸»이다(apply_row_update_internal: is_new or values_differ).
+            집계가 빈 decide 는 «키 + 빈 집계»로 새 행을 쓴다 -> 같은 쓰기에서 껍데기로 판정돼 지워짐(이력 chain_shell_rows) -> 다음 트리거가 다시 만듦
+재현(SQLite, 체인 그룹 본체 두 번)
+            집계 note_min = min(note), 원본 note 빈 값    [ChainShell] rows_deleted=2 -> =1, 키 넷 모두 사라짐
+            출하 샘플 decide(사람 칸만, 집계 없음)         키만 씀 -> 판정을 안 받음, 지움 0
+고침        이 쓰기 results 의 is_new 행은 shells() 에 묻지 않음 (chain/ingestion_worker.py 한 자리)
+칸          test_a_decide_with_no_fields_stands_on_its_aggregations.py  집계가 빈 키의 행이 트리거 두 번 뒤에도 넷 그대로 — 고치기 전 빨강
+변이        새 행을 다시 물음 -> 그 칸만 failed · md5 전후 같음
+시험        decide 파일 6 passed · 껍데기 PG 파일 5 passed(원본 다 지움 · 접기 표시된 키의 공식 행은 여전히 지워짐) · 좌석 census 6 passed
+            assy_test public 70 표 / 77 행 전후 같음
+설계대로    접기 표시 -> 복사 규칙 철회 -> 키만 남은 «기존» 공식 행 지움 — 고친 뒤에도 그대로
+남는 것     이미 있던 파생 행의 집계가 값 -> 빈 값으로 바뀌는 쓰기는 그 행을 지운다(다음 트리거가 새로 만든 행은 남음) — 판정 여쭘
+코드 없이   그 decide 의 aggregations 에 count 하나(파생 표에 그 칸) — 셈은 비지 않아 껍데기로 안 잡힘
+문서        RELEASE_LOG 껍데기 항목 밑 · RUN.md 맨 위 절(체인 워커 재기동 · [ChainShell] 줄의 뜻 셋)
+이어 걷기   wt-more 2ce9f300c 에 wip 로 세움 — 커서가 «정확한 읽기»를 이름 대고 첫 상한에서 상태를 떠 두는 설계로 다시 짬(아직)
+```
