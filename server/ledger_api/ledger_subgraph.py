@@ -2115,18 +2115,21 @@ def _judge_aux(payload, aux, lookup, edge_limit):
     정적 동적 제한 없이 최단경로」): each node of `payload` says `found` (hops to the nearest aux, and which), `none`
     (searched out, no way) or `unknown` (the atom cap came first - never «none» under a cap).
 
-    A meeting of two sides, read through the set door only (`claims_for_entities(far=)`): A grows from the aux nodes,
-    M from the answer's nodes - each M node carrying the numbers of the answer nodes it came from. The smaller frontier
-    grows one layer (far ends not in what that side has seen), then its new layer is read against what the other side
-    has seen (far ends in it): the only edges a hub is read for. Every way of `a + m + 1` steps or fewer has then been
-    read, so a node whose best is within that is settled. No step guard (static rule · back down · follow) and no time
-    window - whether a way exists is a question of structure, and a mapping edge has no event time. The cap is the
-    walk's atom cap (`edge_limit` as `_walk` counts it): the search's nodes are not the answer's, so its node cap is not
-    spent. The answer's nodes and edges stay as walked."""
+    A meeting of two sides. A grows from the aux nodes through the set door (`claims_for_entities(far=)`): far ends not
+    in what A has seen, then its new layer is read against M (far ends in it) - the only edges a hub is read for. M grows
+    from the answer's nodes, each node holding {answer node number: hops from it}; a node passes the origins it gained to
+    EVERY neighbour, seen or not, and a neighbour that gains one is M's next frontier (총괄 QA: an answer node whose only
+    neighbour is another answer node kept its origin to itself and read «none» under the cap). The smaller frontier
+    grows. Every way of `a + m + 1` steps or fewer has then been read, so a node whose best is within that is settled;
+    when A is searched out its own hops are exact. No step guard (static rule · back down · follow) and no time window
+    - whether a way exists is a question of structure, and a mapping edge has no event time. The cap is the walk's atom
+    cap (`edge_limit` as `_walk` counts it): the search's nodes are not the answer's, so its node cap is not spent. The
+    answer's nodes and edges stay as walked."""
     timeless = copy.copy(lookup)
     timeless.since = timeless.until = None
     timeless.interval_excluded = None
-    budget = [min(MAX_CLAIM_SCAN, max(200, max(20, min(int(edge_limit), MAX_EDGE_LIMIT)) * 2))]
+    cap = min(MAX_CLAIM_SCAN, max(200, max(20, min(int(edge_limit), MAX_EDGE_LIMIT)) * 2))
+    budget = [cap]
     seeds = list(dict.fromkeys(str(item) for item in aux))
     main = [node["id"] for node in payload["nodes"]]
     number = {node_id: n for n, node_id in enumerate(main)}
@@ -2136,12 +2139,13 @@ def _judge_aux(payload, aux, lookup, edge_limit):
         if decoded and decoded.get("kind") == "entity":
             refs[node_id] = (decoded["type"], decoded["keys"])
 
-    def read(frontier, mode, against):
-        """One read through the door -> [(near id, far id)], or None when the cap came first."""
+    def read(frontier, door=None):
+        """One read of `frontier`'s atoms (through the door when given) -> [(near id, far id)], or None at the cap."""
         if not frontier:
             return []
-        atoms, cut = timeless.claims_for_entities([refs[i] for i in frontier], "both", budget[0],
-                                                  far=(mode, [refs[i] for i in against]))
+        atoms, cut = timeless.claims_for_entities(
+            [refs[i] for i in frontier], "both", budget[0],
+            far=None if door is None else (door[0], [refs[i] for i in door[1]]))
         budget[0] -= len(atoms)
         if cut:
             return None
@@ -2160,32 +2164,39 @@ def _judge_aux(payload, aux, lookup, edge_limit):
                             pairs.append((near, far))
         return pairs
 
-    a_seen = {s: (0, s) for s in seeds if s in refs}                  # id -> (depth, the aux it came from)
-    m_seen = {i: (0, frozenset([number[i]])) for i in main if i in refs}  # id -> (depth, answer node numbers)
-    a_front, m_front, a_depth, m_depth, cut = set(a_seen), set(m_seen), 0, 0, False
+    a_seen = {s: (0, s) for s in seeds if s in refs}                  # id -> (hops from the aux, which aux)
+    reach = {i: {number[i]: 0} for i in main if i in refs}            # id -> {answer node number: hops from it}
+    a_front, m_front, a_depth, m_depth, cut = set(a_seen), set(reach), 0, 0, False
     best = {}                                                          # answer node number -> (hops, aux)
 
-    def met(a_id, m_id):
-        for n in m_seen[m_id][1]:
-            hops = a_seen[a_id][0] + m_seen[m_id][0] + (0 if a_id == m_id else 1)
-            if n not in best or hops < best[n][0]:
-                best[n] = (hops, a_seen[a_id][1])
+    def met(a_id, m_id, origins):
+        step = 0 if a_id == m_id else 1
+        for n, hops in origins.items():
+            total = a_seen[a_id][0] + hops + step
+            if n not in best or total < best[n][0]:
+                best[n] = (total, a_seen[a_id][1])
 
-    for shared in set(a_seen) & set(m_seen):
-        met(shared, shared)
-    pairs = read(a_front, "in", m_seen)
+    for shared in set(a_seen) & set(reach):
+        met(shared, shared, reach[shared])
+    pairs = read(a_front, ("in", reach))
     cut = pairs is None
     for near, far in pairs or ():
-        if far in m_seen:                               # an atom between two frontier nodes pairs both ways
-            met(near, far)
+        if far in reach:                                 # an atom between two frontier nodes pairs both ways
+            met(near, far, reach[far])
     judged = [number[i] for i in main if i in refs]
     while not cut:
         if all(n in best and best[n][0] <= a_depth + m_depth + 1 for n in judged):
             break
-        if not a_front or not m_front:
-            break                                        # one side searched out: its component is known
+        if not a_front:                                  # A searched out: its hops are exact, the rest has no way
+            for node_id in main:
+                if node_id in a_seen and (number[node_id] not in best
+                                          or a_seen[node_id][0] < best[number[node_id]][0]):
+                    best[number[node_id]] = a_seen[node_id]
+            break
+        if not m_front:                                  # M searched out: an origin that never met has no way
+            break
         if len(a_front) <= len(m_front):
-            pairs = read(a_front, "not_in", a_seen)
+            pairs = read(a_front, ("not_in", a_seen))
             if pairs is None:
                 cut = True
                 break
@@ -2195,40 +2206,39 @@ def _judge_aux(payload, aux, lookup, edge_limit):
                     new[far] = (a_depth + 1, a_seen[near][1])
             a_seen.update(new)
             a_front, a_depth = set(new), a_depth + 1
-            for shared in set(new) & set(m_seen):
-                met(shared, shared)
-            pairs = read(a_front, "in", m_seen)
+            for shared in set(new) & set(reach):
+                met(shared, shared, reach[shared])
+            pairs = read(a_front, ("in", reach))
             cut = pairs is None
             for near, far in pairs or ():
-                if far in m_seen:
-                    met(near, far)
+                if far in reach:
+                    met(near, far, reach[far])
         else:
-            pairs = read(m_front, "not_in", m_seen)
+            pairs = read(m_front)
             if pairs is None:
                 cut = True
                 break
-            new = {}
+            gained = {}
             for near, far in pairs:
-                if far not in m_seen:
-                    new[far] = (m_depth + 1, m_seen[near][1] | (new[far][1] if far in new else frozenset()))
-            m_seen.update(new)
-            m_front, m_depth = set(new), m_depth + 1
-            for shared in set(new) & set(a_seen):
-                met(shared, shared)
-            pairs = read(m_front, "in", a_seen)
+                for n, hops in reach[near].items():
+                    if hops == m_depth and n not in reach.get(far, {}):
+                        gained.setdefault(far, {})[n] = m_depth + 1
+            for node_id, origins in gained.items():
+                reach.setdefault(node_id, {}).update(origins)
+            m_front, m_depth = set(gained), m_depth + 1
+            for shared in set(gained) & set(a_seen):
+                met(shared, shared, gained[shared])
+            pairs = read(m_front, ("in", a_seen))
             cut = pairs is None
             for near, far in pairs or ():
                 if far in a_seen:
-                    met(far, near)
+                    met(far, near, gained[near])
     for node in payload["nodes"]:
         found = best.get(number[node["id"]])
         node["aux"] = ({"state": "found", "hops": found[0], "via": found[1]} if found
                        else {"state": "unknown"} if cut or node["id"] not in refs else {"state": "none"})
     payload["aux"] = {"seeds": seeds, "complete": not cut, "truncated": "claims" if cut else None,
-                      "hops_reached": a_depth + m_depth + 1,
-                      "claims": min(MAX_CLAIM_SCAN, max(200, max(20, min(int(edge_limit), MAX_EDGE_LIMIT)) * 2))
-                      - budget[0]}
-
+                      "hops_reached": a_depth + m_depth + 1, "claims": cap - budget[0]}
 
 #: Below every atom id, so (t0, this) splits a node's atoms at t0 exactly: `>=` is 「at or after t0」.
 _BEFORE_EVERY_ID = "00000000-0000-0000-0000-000000000000"

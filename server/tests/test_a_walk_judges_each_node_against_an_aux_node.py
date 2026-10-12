@@ -152,3 +152,24 @@ def test_an_atom_between_two_nodes_of_one_side_meets_nothing_by_itself(declared)
     body = walk(declared, [D["D1"], defect])
     assert (judged(body)[D["D1"]], judged(body)[SEED]) == (
         {"state": "found", "hops": 0, "via": D["D1"]}, {"state": "found", "hops": 1, "via": D["D1"]})
+
+
+BEHIND = ([_atom("die", die("B0"), "in_container", "wafer", {"w": "V"}),
+           _atom("die", die("B1"), "linked", "die", die("B0")),                     # B1's only neighbour is B0
+           _atom("die", die("B0"), "linked", "die", die("BX")),
+           _atom("die", die("BX"), "linked", "die", die("BZ"))]                     # B0 - BX - BZ
+          + [_atom("die", die("BH%d" % k), "linked", "die", die("BZ")) for k in range(50)])   # BZ: a hub aux
+
+
+def test_an_answer_node_behind_another_answer_node_is_found_not_none(declared):
+    """총괄 QA (349f3ec71): V's and B1's only neighbour is B0, another answer node, and their origin never left them -
+    «none» under the cap with the hub aux BZ. Their hops pass through B0: V 3, B1 3, B0 2."""
+    body = ledger_subgraph.subgraph(
+        explorer.entity_id("wafer", {"w": "V"}), ledger_subgraph.InMemoryEvidenceLookup(BEHIND),
+        declaration_paths=declared, hops=2, follow=["in_container", "linked"], node_limit=4,
+        collect=["wafer", "die"], aux=[explorer.entity_id("die", die("BZ"))])
+    hops = {n["id"]: n["aux"].get("hops") for n in body["nodes"]}
+    states = {n["aux"]["state"] for n in body["nodes"]}
+    want = {explorer.entity_id("wafer", {"w": "V"}): 3, explorer.entity_id("die", die("B1")): 3,
+            explorer.entity_id("die", die("B0")): 2}
+    assert ({i: hops[i] for i in want}, states) == (want, {"found"}), (hops, body["aux"])
