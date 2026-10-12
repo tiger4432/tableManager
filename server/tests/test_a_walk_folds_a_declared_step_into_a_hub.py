@@ -139,11 +139,19 @@ def test_one_step_with_two_values_is_two_hubs_and_each_ranks_with_its_own_value(
     assert not {node("wafer", "W%d" % w) for w in range(1, 7)} & set(ranked)
 
 
-def test_a_seed_is_never_folded_and_a_row_reached_another_way_stands_alone():
-    atoms = OWNER + _atoms(("lot", "L", "ships", "wafer", "W1"))
+def test_one_far_node_is_no_hub():
+    assert "tables" not in _walk(LOT, _atoms(("lot", "L", "has_wafer", "wafer", "W0")), hops=1)
+
+
+def test_a_seed_is_never_folded_and_a_row_reached_another_way_later_stands_alone_with_its_rows():
+    """W1 is a row at depth 1; at depth 2 a tool the lot checks reaches it - another way: W1 and its own defects stand
+    alone, the other wafers stay rows."""
+    atoms = OWNER + _atoms(("lot", "L", "checks", "tool", "X"), ("tool", "X", "feeds", "tool", "G"),
+                           ("tool", "G", "near", "wafer", "W1"))
     body = _walk(LOT, atoms, hops=3)
     ids = _ids(body)
     assert LOT in ids and node("wafer", "W1") in ids
+    assert {node("defect", "D10"), node("defect", "D11")} <= set(ids)
     assert body["tables"][WAFERS]["count"] == 2
 
 
@@ -187,9 +195,11 @@ def test_an_aux_judgement_splits_a_hub_as_the_contrast_does_and_rides_its_head()
     assert body["aux"]["seeds"] == [node("kind", "K0")]
 
 
-PAGED = _atoms(*[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(6)],
+# read newest first, so the wafers (the later atoms) are drawn before the tools cut the first page: the wafers are rows
+# when it stops, and their defects - on the next page - fold only because the resume carried the hub
+PAGED = _atoms(*[("lot", "L", "made_by", "tool", "T%d" % t) for t in range(30)],
                *[("wafer", "W%d" % w, "observed", "defect", "D%d" % w) for w in range(6)],
-               *[("lot", "L", "made_by", "tool", "T%d" % t) for t in range(12)])
+               *[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(6)])
 
 
 def _merged(answers):
@@ -216,4 +226,6 @@ def test_pages_of_a_walk_with_hubs_merged_are_the_one_walk():
             break
         body = _walk(LOT, PAGED, hops=2, node_limit=10, resume=json.loads(json.dumps(body["more"]["resume"])))
     assert len(answers) > 1
+    later = _merged(answers[1:])[2]
+    assert any(hub_id.endswith("|observed|outgoing|defect|1,0") for hub_id in later),         "canary: a row's own children come on a later page, as the next hub's rows"
     assert _merged(answers) == _merged([whole])
