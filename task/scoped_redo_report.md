@@ -79875,3 +79875,25 @@ resume 없음  걷기 37 개 답(generated_at · more 빼고) sha256 main = 이 
             (응용 18766 node_limit 10 · collect wafer: unexpanded 490 에 wafer complete) — _group_follow 가 빈 follow 에 None
 남은 것     «많은 → 적은» 측정 판 assy_impl_hub_1012(원자 660,000) 세워 둠, 잼은 멈춤 · 원장 백필 쪽 ①②③ 다음
 ```
+
+## 10-12 이어 걷기 순위 · 행 고침 (main 581c60c00 · b5b40b6b8) · pagesize 셋째 판 (가지 d80fe8115) · «많은 → 적은» 설계
+
+```
+581c60c00   이어 걷는 쪽 propagation.ranked 0 행(클라 · 응용 18766) — _reach 가 그 쪽 엣지만 봄
+            -> 씨앗마다 앞 쪽이 닿은 것(노드 · 들어온 걸음 · 길 · 타입)을 resume.reach 로 넘기고 같은 좌석에서 이어 BFS
+            칸: + W · − Q0, 상한 격자 전부 — 쪽 ranked 를 id 로 합친 것(뒤 쪽이 덮음) = 한 번 걸은 ranked(집합 · reach)
+            변이 «이어받은 상태 무시» 빨강 · resume 없는 걷기 37 개 해시 = 이어 걷기 전 main
+            응용 18766 GO: 합친 786 = 한 번 786 · reach 다른 것 0
+b5b40b6b8   행 투영(format=rows)도 같은 좌석 — 쪽 나눈 (노드, 씨앗) 행 = 한 번 · path 가 씨앗에서 시작 · 변이 빨강
+            걷기 SQLite 관련 452 passed, 실패 21 = 깨끗한 main · PG 확인은 응용 60 분 판 뒤
+d80fe8115   (impl-pagesize, 시연 뒤 착지)
+   ①       백필 쪽 탐침(박스, PG hold 210,000 행, 시험 엔진 NullPool): 308 쪽 862 s · 쪽 중앙 2.81 · p95 3.63 · 최대 5.02
+            rescope 밖 중앙 0.4 · 최대 3.0 s(그 쪽: 새 연결 3.4 s + anti-join 1.34 s) · 새 연결 쪽마다 5 번, 253.8 s / 862
+            anti-join 처음 50 쪽 0.19 -> 마지막 50 쪽 0.39 s · 제품 엔진은 QueuePool(20) — 응용 판의 풀은 여쭘
+   ②       쪽 안 단계 줄 read · translated — 쪽 단계 자리 keyset_scan.step_of 하나(replay._step_of 옮김)
+   ③       fold_units 첫 «rule» 줄 = 첫 그룹 2 단위 칸
+            PG 13 passed · 변이 «read 줄 지움» · «그룹 한 번에» 빨강 · SQLite 17 실패 = 깨끗한 8aaf903dc
+설계        «많은 → 적은» 안 셋 — A 묶음에 다음 걸음 끝 + 수(SQL 한 번) · B through + 이어 걷기(코드 0) ·
+            C decide 집계 표 + 원장 소스(선언 두 칸) — 추천 C 먼저(칸이 있으면), A 는 시연 뒤 · 여쭘 둘
+            측정 판 assy_impl_hub_1012(원자 660,000) 세워 둠 — 응용 판 «내림» 뒤에 잰다
+```
