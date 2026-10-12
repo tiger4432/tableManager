@@ -20,6 +20,11 @@
 > ⚠️ 안 잰 것   시간을 넘겨 내린 걷기의 PG 질의가 PG 안에서 계속 도는지(pg_stat_activity, application_name assy_walkpool)
 > 멈춘 걷기 프로세스 찾기  PowerShell: Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*spawn_main(parent_pid=<서버 pid>*' } | select ProcessId,CommandLine
 >          끄기: taskkill /PID <그 ProcessId> /F  (그 걷기만 500, 다음 걷기는 새 프로세스)
+> 걷기 프로세스가 누구 밑인가  PowerShell 한 줄 — 부모마다 걷기 프로세스 수와 부모의 명령줄:
+>          Get-CimInstance Win32_Process | ? { $_.CommandLine -match 'spawn_main\(parent_pid=\d+' } | group { [regex]::Match($_.CommandLine, 'parent_pid=(\d+)').Groups[1].Value } | % { "{0} walk processes under {1}" -f $_.Count, (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Name)").CommandLine }
+>          답의 뜻: uvicorn main:app 이 부모인 줄 하나에 walk_processes 수 -> 정상(표 설정을 저장한 뒤에도 같은 수, 새 pid)
+>            run_watcher.py · run_chain_worker.py · run_auto_update.py 가 부모인 줄이 있으면 -> 데몬이 걷기 프로세스를
+>            띄운 것(10-13 에 막은 결함) — 그 데몬을 재기동. 줄이 하나도 없으면 -> walk_processes 0 이거나 서버가 아직 안 띄움
 > 급할 때   ingestion_settings.json 에 "walk_processes": 0 -> 다음 걷기부터 전처럼 서버 안에서, 그 걷기가 올 때 쉬는 걷기
 >          프로세스도 내림(재기동 없음). 수를 줄이면 넘치는 것은 걷기가 끝날 때마다 하나씩 내린다
 >          표 설정(table_config) · 시스템 리로드 뒤에는 걷기 프로세스를 새로 띄운다(새 설정을 읽게) — 서버만.
