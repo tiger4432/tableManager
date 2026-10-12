@@ -411,6 +411,8 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   const reaches = (result && result.aux) || null;
   const reachTo = reaches ? (reaches.seeds || []) : [];
   const reachHead = `${REACH_WORDS.head} ${reachTo.map(nodeWords).join(' · ')}`;
+  // Drawn an auxiliary node a line (lead 10-12: two read «→ pressure_MPa · SY…», cut).
+  const reachLines = reachTo.length > 1 ? reachTo.map((id) => `${REACH_WORDS.head} ${nodeWords(id)}`) : [reachHead];
   const judgedById = new Map(((result && result.nodes) || []).map((n) => [n.id, n.aux || null]));
   const judgedOf = (id) => judgedById.get(id) || null;
   // Each addition merged by the same merge; the step's rows keep their order, what an addition brought after them.
@@ -582,6 +584,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
           ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };
     });
     const groupOf = new Map(folds.map((b) => [b.key, b]));
+    const ownHeads = [...(centre.length ? centre.map((c) => c.words.join(' · ')) : [type]), ...carried.map((c) => c.name)];
     sections.push({
       type,
       heading: sectionHeading(type, rows.length),
@@ -599,8 +602,9 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
         return { step: b.step, leaf: `${c.words[c.words.length - 1]}${kinds[i] === 'mixed' ? ' (mixed)' : ''}`, delta: deltaAt.has(i),
           group: b.key, folded: b.folded, open: b.open };
       }),
-      centreHeads: [...(centre.length ? centre.map((c) => c.words.join(' · ')) : [type]), ...carried.map((c) => c.name),
-        ...(reaches ? [reachHead] : [])],
+      centreHeads: [...ownHeads, ...(reaches ? [reachHead] : [])],
+      // Each head's drawn lines: its words, the judgment's an auxiliary node a line.
+      centreLines: [...ownHeads.map((h) => [h]), ...(reaches ? [reachLines] : [])],
       // A judged walk (owner 10-12): its section offers «Reaches only» and tallies every row's judgment, not the shown ones.
       judged: Boolean(reaches),
       tally: reaches ? reachTally(reachHead, said) : '',

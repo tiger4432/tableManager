@@ -338,6 +338,23 @@ async function suite(mod) {
     ok('AX7 each judged section says its rows\' judgments as counts beside «Reaches only», every row and not the shown ones',
       JSON.stringify(tallies) === JSON.stringify(['→ q:aux: 1 reach · 1 none · 0 unknown', '→ q:aux: 0 reach · 0 none · 1 unknown']),
       JSON.stringify(tallies));
+    const tallyRule = ((CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'))
+      .find(([sel]) => sel && sel.trim() === '.wk-reachtally') || [])[1] || '');
+    ok('AX8 the counts drawn in the body\'s size and colour, not the small grey words',
+      /font-size:\s*var\(--wk-fs-body\)/.test(tallyRule) && /color:\s*var\(--text\)/.test(tallyRule), tallyRule);
+    // Two auxiliary nodes: the judgment's head an auxiliary node a line, its whole in the title.
+    const twoAux = { ...JUDGED, aux: { ...JUDGED.aux, seeds: ['q:aux', 'q:aux2'] } };
+    const three = await pageOf();
+    Object.assign(three.handle.state, { result: twoAux });
+    three.handle.render();
+    const judgedHead = walkAll(three.host).find((e) => e.tagName === 'th' && String(e.title || '').startsWith('→'));
+    const drawnLines = judgedHead ? walkAll(judgedHead).filter((e) => e.className === 'wk-headfar').map((e) => e._text) : [];
+    const twoView = walkTableView(twoAux, DECL.entities).sections.find((x) => x.type === 'die@1') || {};
+    ok('AX9 two auxiliary nodes: the judgment\'s head drawn a node a line, whole in its title; one node, its one line as text',
+      JSON.stringify(drawnLines) === '["→ q:aux","→ q:aux2"]' && judgedHead.title === '→ q:aux · q:aux2'
+        && JSON.stringify((twoView.centreLines || []).slice(-1)) === '[["→ q:aux","→ q:aux2"]]'
+        && !walkAll(one.host).some((e) => e.tagName === 'th' && String(e.title || '').startsWith('→') && walkAll(e).some((c) => c.className === 'wk-headfar')),
+      JSON.stringify([drawnLines, judgedHead && judgedHead.title, twoView.centreLines]));
   }
   // Wide (lead 10-11 W): a section's heads say its node columns, each group's step and far end, its values' names; a
   // row's cells its node's, then each column's groups' cells, a cell drawn as its value line.
@@ -1978,6 +1995,8 @@ const MUTANTS = [
     from: '    return Object.assign(out, knobs(), reachArg());', to: '    return Object.assign(out, knobs());' },
   { id: 'AXm4', what: '«Reaches only» drawn but does nothing', catches: 'AX5',
     from: "      only.addEventListener('click', () => { setFilter(section.type, { reaches: !on }); render(); });", to: '' },
+  { id: 'AXm8', what: 'a head of several lines drawn as one cut line again', catches: 'AX9',
+    from: "      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);\n      if (lines.length > 1) {", to: "      const th = el(doc, 'th', 'wk-centre', h);\n      if (false) {" },
   { id: 'AXm6', what: 'the judgments\' counts not drawn', catches: 'AX7',
     from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
@@ -2361,6 +2380,8 @@ const sp = await scoreMutants(SPLIT_MUTANTS, async (m) => {
 
 // The stylesheet FW1 reads (owner 10-12: fixed widths), mutated alone; the page as it is.
 const STYLE_MUTANTS = [
+  { id: 'AXm9', what: 'the counts back in the small grey words', catches: 'AX8',
+    from: '.wk-reachtally { color: var(--text); font-size: var(--wk-fs-body);', to: '.wk-reachtally { color: var(--text-dim); font-size: var(--wk-fs-line);' },
   { id: 'AXm5', what: '«Reaches only» on drawn as an outline, as before', catches: 'AX6 ',
     from: '.wk-reachonly.is-on { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); font-weight: 600; }', to: '' },
   { id: 'FWm2', what: 'the tables back to auto layout', catches: 'FW1 ',

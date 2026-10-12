@@ -220,7 +220,9 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   padding: var(--space-2) var(--space-3); background: var(--bg-surface); border-top: 1px solid var(--border);
   max-height: 88px; overflow-y: auto; }
 .wk-markedrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.wk-markedword, .wk-reachtally { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
+.wk-markedword { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
+/* The judgment's counts are read, not glanced at (lead 10-12): body size and colour. */
+.wk-reachtally { color: var(--text); font-size: var(--wk-fs-body); line-height: var(--wk-h-small); }
 .wk-marked .wk-chip { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
 .wk-next-edge { height: var(--wk-h-small); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }

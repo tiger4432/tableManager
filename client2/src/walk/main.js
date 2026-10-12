@@ -1152,8 +1152,8 @@ export function boot(doc, host, deps) {
     const sides = section.groups.length;
     const span = (group) => section.parts.reduce((n, q) => n + (q.group === group ? sides : 0), 0);
     fixedColumns(table, checks, [
-      ...section.centreHeads.map((h, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
-        lettersOf(h), ...(i === 0 ? [' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node] : []))]),
+      ...section.centreHeads.map((_, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
+        most(section.centreLines[i]), ...(i === 0 ? [' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node] : []))]),
       ...section.parts.flatMap((p, i) => {
         const one = cellsOf(p.group) === 1;
         const far = lettersOf(farEnd(p.step).far);
@@ -1174,7 +1174,13 @@ export function boot(doc, host, deps) {
     // The heads a column of the grid stands under - the node's own, then each sign and Δ, or the group's one head - each
     // its sort and filter, k in shownOf's column order.
     let k = 0;
-    section.centreHeads.forEach((h) => { const th = el(doc, 'th', 'wk-centre', h); th.title = h; th.rowSpan = depth; headTools(th, section, shown, k++); first.append(th); });
+    // A head of several lines (the judgment's, lead 10-12) drawn a line each, as a group's is; its whole in its title.
+    section.centreHeads.forEach((h, i) => {
+      const lines = section.centreLines[i];
+      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);
+      if (lines.length > 1) { const text = el(doc, 'span', 'wk-headtext'); text.append(...lines.map((line) => el(doc, 'span', 'wk-headfar', line))); th.append(text); }
+      th.title = h; th.rowSpan = depth; headTools(th, section, shown, k++); first.append(th);
+    });
     section.parts.forEach((p, i) => {
       // A group - its step and far end - said once over its columns, with «▸ N» for the cells it folds (lead 10-11 W
       // addendum 8): pressed, they open in place; «▾» folds them again.
