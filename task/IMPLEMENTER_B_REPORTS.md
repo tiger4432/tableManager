@@ -232,3 +232,45 @@ auto_confirm 켠 판의 처음 채우기              재현 안 됨(1만, 한 �
              withdraw 경로 칸 277 초록(SQLite + PG)
 착지 문안    RELEASE_LOG · RUN.md 에서 Withdraw 를 «키 순서 쪽» 목록에서 뺌
 ```
+
+> **[구현자 B -> 총괄] 10-13 f7394bfdf 원장 행 색인 키 — 짓기 전 전수 · 안 셋 · 이주 초 (물음 하나)**
+
+```
+전수(AST/grep + 함수 열어 확인)  행 색인 표를 직접 만지는 자리 26 · 그 값을 나르는 자리 10
+  키에 ref 전문이 «필요한» 곳     PRIMARY KEY 하나뿐 — 쓰기(_write_row_refs)는 «과녁 없는» ON CONFLICT DO NOTHING 이라 어느 유일 인덱스든 받음
+  ref 로 견주는 곳               뷰 ledger_atom_rows 가 이미 md5(r.ref) = md5(e.ref) AND r.ref = e.ref
+                               거두기(withdraw_deleted_rows · rescope)는 행 색인에서 «전문»을 꺼내 원장 사건을 source_raw_ref = ANY 로 지움
+                               — 원장 사건 쪽은 hash 인덱스(전문)라 바이트 상한 없음
+  선례                          원장 사건의 유일 키 uq_ledger_atom 이 이미 md5(source_raw_ref) 로 겨룸(DEDUPE_COLUMNS, 4bdbff36: 1,123MB -> 160MB)
+  이주가 «안» 되는 까닭          ensure_schema 는 있는 표의 키를 안 바꾸고(CREATE IF NOT EXISTS), 인덱스 · 뷰도 «이름이 없을 때만» 짓는다
+                               migrations/add_ledger_atom_rows.py 는 기본 세상만 — 가지 세상은 길이 없다
+```
+
+| 안 | 무엇을 | 운영자가 할 일 | 좋은 점 | 위험 |
+|---|---|---|---|---|
+| ㄱ 식 유일 인덱스 | PRIMARY KEY 를 떼고 `UNIQUE (relation, row_id, source_who, md5(source_raw_ref))`. 지문 식은 상수 하나 — 이 인덱스 · 원장 DEDUPE_COLUMNS · 행 색인 raw 인덱스 · 뷰 조인이 그 상수를 지남. 전문은 같은 칸(키 밖) | 이주 명령 한 줄(세상마다) | 표를 다시 쓰지 않음 — CONCURRENTLY 로 지은 뒤 PK 만 뗌. 쓰는 쪽 코드 변경 0 | 표에 PRIMARY KEY 가 없어짐(유일성은 인덱스가 지킴) · md5 가 겹치면 둘째 줄이 말없이 빠짐(원장 키와 같은 성질) |
+| ㄴ 생성 칸 | `source_raw_ref_md5 TEXT GENERATED ALWAYS AS (md5(source_raw_ref)) STORED` + 그 칸으로 PK | 이주 명령 한 줄 | PK 가 남음 | 칸 더하기가 «표 다시 쓰기» — 그동안 읽기 · 쓰기 다 막힘(ACCESS EXCLUSIVE) |
+| ㄷ 파이썬 지문 칸 | 쓰는 쪽이 지문을 지어 칸에 넣고 PK 를 그 칸으로 | 이주(칸 · 채우기 · 키) | PK 가 남음 | 채우기 UPDATE 가 표 전부(표 두 배) · 쓰는 쪽 · 시험 고침이 가장 많음 |
+
+**이주 초 — 박스(PG 시험 DB, 스크래치 스키마, 행 색인과 같은 모양의 표)** · 잠금: CIC = 쓰기 안 막음 / 그 밖 ALTER = 읽기 · 쓰기 다 막음
+```
+                         100만 · ref 95 B(496MB)   100만 · ref 1,503 B(1.9GB)   500만 · ref 96 B(2.6GB)
+ㄱ 식 인덱스 CONCURRENTLY      6.7 s                    10.1 s                   22.4 s
+  PK 떼기(막음)               0.04 s                   0.01 s                   0.18 s
+  되돌리기(원래 PK CIC + 붙이기 + 식 인덱스 지우기)  6.7 + 0.04 + 0.17 s   12.0 + 0.0 + 0.01 s   25.2 + 0.01 + 0.05 s
+ㄴ 생성 칸 더하기(막음)        27.3 s                   66.6 s                   103.9 s
+  PK 바꾸기(막음)             11.7 s                   39.0 s                   46.7 s
+ㄷ 채우기 UPDATE              78.8 s                   157.3 s                  679.8 s
+  PK 바꾸기(막음)             12.5 s                   59.7 s                   44.3 s
+⚠️ CONCURRENTLY 는 «시작할 때 열려 있던 DB 의 모든 트랜잭션»을 기다린다 — 1천 행 판에서 다른 세션 트랜잭션 때문에 215 s(재기 전 가장 오래된 트랜잭션 나이를 같이 찍음)
+⚠️ PK 떼기는 짧지만 그 표를 쓰는 트랜잭션이 끝날 때까지 줄을 선다 — 이주 명령은 lock_timeout 을 걸고, 못 잡으면 다시 하라고 말한다
+```
+
+```
+내 추천   ㄱ — 지문을 PG 가 짓는 «한 식»으로 두면 짓는 자리가 하나이고(원장 키와 같은 상수), 쓰는 쪽 · 지우는 쪽 · 읽는 쪽 코드가 안 갈라진다. 이주가 쓰기를 막지 않는다
+이주(ㄱ)   세상마다: CREATE UNIQUE INDEX CONCURRENTLY … md5(source_raw_ref) -> 유효한지 확인 -> SET lock_timeout · ALTER TABLE … DROP CONSTRAINT <pkey>
+          되돌리기: (전문이 상한 안인 행만 있을 때) CREATE UNIQUE INDEX CONCURRENTLY … (원래 넷) -> ADD CONSTRAINT … PRIMARY KEY USING INDEX -> 식 인덱스 지움
+          ensure_schema 는 새 세상에 같은 모양으로 짓고, 있는 세상에 옛 키가 있으면 이주 명령을 한 줄 말함(짓지 않음)
+          이주 뒤 RUN.md: requeue_failed 한 줄 + 답의 뜻 · 이 실패가 지금 운영자 화면 어디에 보이는지 열어서 적음
+여쭐 것   PRIMARY KEY 없이 유일 인덱스로 키를 지켜도 되는지(ㄱ) — 아니면 ㄴ / ㄷ 중 무엇
+```
