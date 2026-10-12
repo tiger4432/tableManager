@@ -634,8 +634,8 @@ export function ensureCellObject(dataObj, colId) {
 //    has one writer instead. `PRIORITY_SOURCE_USER` is exported for the same reason: the rule
 //    that reads this value and the code that writes it now share one spelling, so they cannot
 //    drift apart in silence.
-// ⚠️ NOT the rollback direction. Discard (api.js `discardPendingEdits`) restores nothing it staged: it reads the
-//    rows again, and the server's flag and pin come with them (lead 10-12).
+// ⚠️ NOT the rollback direction. Discard (api.js `discardPendingEdits`) restores both halves it staged, then reads the
+//    rows again so the server's flag and pin replace them (lead 10-12).
 export const PRIORITY_SOURCE_USER = 'user';
 
 export function markCellOverwritten(dataObj, colId, value) {

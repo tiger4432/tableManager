@@ -198,16 +198,23 @@ async function leftovers(M) {
   left.followed = followed.slice();
   M.api.seatTableFollower(null);
   // A stored 28.5 the grid holds since a Refresh; the edit was staged over the 28 from before it.
-  const node = { data: { row_id: 'R1', data: { a: { value: 28.5, is_overwrite: false, priority_source: null } } } };
+  const node = { data: { row_id: 'R1', data: { a: { value: 28.5, is_overwrite: true, priority_source: 'user' } } } };
   reset();
   S.gridApi = { ...gridApi, getRowNode: (id) => (id === 'R1' ? node : null) };
   S.currentTable = 'dt_log';
   S.pendingTxEdits = { R1_a: { rowId: 'R1', colId: 'a', newValue: 28.7, oldValue: 28, oldIsOverwrite: false,
     oldPrioritySource: null, data: node.data } };
-  try { await M.api.discardPendingEdits(); } catch (e) { /* as above */ }
+  let atOnce = null;
+  try {
+    const going = M.api.discardPendingEdits();
+    const cell = node.data.data.a;
+    atOnce = { value: cell.value, is_overwrite: cell.is_overwrite, priority_source: cell.priority_source };
+    await going;
+  } catch (e) { /* as above */ }
   await settle();
-  left.discard = { value: node.data.data.a.value, pending: Object.keys(S.pendingTxEdits).length,
+  left.discard = { pending: Object.keys(S.pendingTxEdits).length,
     reads: reads().filter((u) => u.includes('/tables/dt_log/data?')).length };
+  left.atOnce = atOnce;
   S.gridApi = gridApi;
   return left;
 }
@@ -274,8 +281,10 @@ function suite(out, sent) {
   eq('W11 every way to a table tells the label and the banner - boot\'s first table and a jump alike; the page tells them nowhere else',
     [out.left.followed, (grid.match(/sourceLabel\.setRelation\(/g) || []).length, (grid.match(/redoBannerFollows\(/g) || []).length],
     [['dt_log', 'ledger_atom_rows'], 1, 2]);
-  eq('W12 Discard draws the cell from the server\'s read, not from the value before the edit',
-    out.left.discard, { value: 28.5, pending: 0, reads: 1 });
+  eq('W12 Discard reads the rows again - the server\'s value replaces a value that moved since the edit',
+    out.left.discard, { pending: 0, reads: 1 });
+  eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
+    out.left.atOnce, { value: 28, is_overwrite: false, priority_source: null });
   eq('W9 census: the grid\'s reads of the open table go through the seat - api 3 (schema, data, count), main 3 '
     + '(load all twice, export), timeline 1 (row jump), value_suggest 1 (column values)',
     { api: callsIn('api.js'), main: callsIn('main.js'), timeline: callsIn('timeline.js'), suggest: callsIn('value_suggest.js') },
@@ -318,11 +327,11 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  if (leaving !== tableName) dropGridFilters();', '  dropGridFilters();') },
   { id: 'G12', what: 'a switch tells the label and the banner nothing - only the dropdown and boot did', catches: 'W11', file: 'api.js',
     mutate: (t) => swap(t, '  if (tableFollower) tableFollower(tableName);\n', '') },
-  { id: 'G13', what: 'Discard draws the value from before the edit - the code before', catches: 'W12', file: 'api.js',
-    mutate: (t) => swap(t, '  state.pendingTxEdits = {};\n  state.txModeActive = elements.txModeToggle.checked;',
-      '  Object.values(state.pendingTxEdits).forEach((e) => { const n = state.gridApi.getRowNode(e.rowId); if (n) n.data.data[e.colId].value = e.oldValue; });\n'
-      + '  state.pendingTxEdits = {};\n  state.txModeActive = elements.txModeToggle.checked;') },
-  { id: 'G14', what: 'Discard reads nothing again', catches: 'W12', file: 'api.js',
+  { id: 'G13', what: 'Discard puts nothing back at once - the staged value stays until the read', catches: 'W13', file: 'api.js',
+    mutate: (t) => swap(t, '    row.data[colId].value = oldValue;\n', '') },
+  { id: 'G15', what: 'Discard puts the value back and not the pin', catches: 'W13', file: 'api.js',
+    mutate: (t) => swap(t, '    row.data[colId].priority_source = oldPrioritySource ?? null;\n', '') },
+  { id: 'G14', what: 'Discard reads nothing again - the code before, a value moved since stays stale', catches: 'W12', file: 'api.js',
     mutate: (t) => swap(t, "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return rereadGrid();",
       "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return Promise.resolve();") },
 ];

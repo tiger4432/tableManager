@@ -549,15 +549,25 @@ export function rereadGrid() {
   return fetchData(false);
 }
 
-/** Discard the staged edits. Their cells are drawn from what the server holds now, read again - not from the value the
- *  screen had when each was edited, which a write or a Refresh since makes stale (lead 10-12; 18766: a stored 28.5
- *  drawn as the 28 from before the edit until Refresh). */
+/** Discard the staged edits: each cell back at once to the value it had when edited, then the rows read again from the
+ *  server - a write or a Refresh since makes that value stale, and the read corrects it (lead 10-12; 18766: a stored
+ *  28.5 drawn as the 28 from before the edit until Refresh). */
 export function discardPendingEdits() {
-  if (Object.keys(state.pendingTxEdits).length === 0) return Promise.resolve();
+  const staged = Object.values(state.pendingTxEdits);
+  if (staged.length === 0) return Promise.resolve();
+  for (const { rowId, colId, oldValue, oldIsOverwrite, oldPrioritySource, data } of staged) {
+    const node = state.gridApi.getRowNode(rowId);
+    const row = node ? node.data : data;
+    if (!row) continue;
+    ensureCellObject(row, colId);
+    row.data[colId].value = oldValue;
+    // 🔴 C-22. Both halves: the paint rule reads `priority_source`, never `is_overwrite`.
+    row.data[colId].is_overwrite = oldIsOverwrite;
+    row.data[colId].priority_source = oldPrioritySource ?? null;
+  }
   state.pendingTxEdits = {};
   state.txModeActive = elements.txModeToggle.checked;
   updateTxModeUI();
-  // The dirty marks go now; the values come with the read.
   state.gridApi.refreshCells({ force: true });
   elements.performanceLog.textContent = 'Pending updates discarded';
   return rereadGrid();
