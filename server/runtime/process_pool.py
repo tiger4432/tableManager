@@ -38,6 +38,7 @@ _modules = []                   # the modules of the bodies in_pool wraps - a po
 _cond = threading.Condition()
 _generation = [0]               # recycle() moves it; a process of an older one is not given a body again
 _said = set()                   # a wrong setting value is said once
+_warmed = [False]               # warm() was called here - the server's start; a daemon running the same reload never
 
 
 def _settings():
@@ -106,6 +107,7 @@ def warm():
     """Start `size()` pool processes behind the server's start and after a reload (lead b47388fde), so the first walk
     does not pay for one. A walk that comes first starts its own, as before; a failure is one log line. Testing mode
     starts none."""
+    _warmed[0] = True
     if os.getenv("TESTING") == "True":
         return
 
@@ -133,7 +135,11 @@ def warm():
 
 def recycle():
     """A reload empties this process's caches; a pool process holds its own copies. The idle ones end now, a running
-    one after its answer - and new ones start behind it."""
+    one after its answer - and new ones start behind it, and in its place when it ends.
+    🔴 Only in a process that warmed the pool (lead eb9c328e4): the watcher, chain worker and auto-update daemons run the
+    same table-config reload, and a walk process started there runs the daemon's top level again as `__mp_main__`."""
+    if not _warmed[0]:
+        return
     with _cond:
         _generation[0] += 1
         _drain_locked()
@@ -218,11 +224,14 @@ def _run(target, kwargs, limit, seconds):
     finally:
         with _cond:
             _taken[0] -= 1
+            older = worker is not None and worker[2] != _generation[0]
             if keep:
                 _keep_or_end(worker, limit)
             elif worker is not None:
                 _end(worker)                        # a stuck or broken one does not take another body
             _cond.notify()
+        if older:
+            warm()                                  # a walk a reload ran through: a new one takes its place (lead eb9c328e4)
 
 
 def _start(seconds):
