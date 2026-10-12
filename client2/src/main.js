@@ -31,7 +31,8 @@ import {
   rereadGrid,
   discardPendingEdits,
   applyPendingEdits,
-  overlayStagedEdits
+  overlayStagedEdits,
+  txToggled
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -84,7 +85,6 @@ import {
 } from './utils.js';
 import {
   updateSelectedCellUI,
-  updateTxModeUI,
   setTransactionFilter,
   applyValueToSelectedRange,
   setupBeforeUnloadWarning,
@@ -674,28 +674,7 @@ function setupEventListeners() {
   onBroadcast(() => queueRead.ask());
 
   // Transaction Mode listeners
-  if (elements.txModeToggle) {
-    elements.txModeToggle.addEventListener('change', () => {
-      state.txModeActive = elements.txModeToggle.checked;
-      if (!state.txModeActive) {
-        const pendingCount = Object.keys(state.pendingTxEdits).length;
-        if (pendingCount > 0) {
-          const confirmApply = confirm(`${pendingCount} pending edits. Apply them?\n\nOK applies them all.\nCancel discards them all.`);
-          if (confirmApply) {
-            applyPendingEdits();
-          } else {
-            discardPendingEdits();
-          }
-        } else {
-          updateTxModeUI();
-          state.gridApi.refreshCells({ force: true });
-        }
-      } else {
-        updateTxModeUI();
-        state.gridApi.refreshCells({ force: true });
-      }
-    });
-  }
+  if (elements.txModeToggle) elements.txModeToggle.addEventListener('change', txToggled);
 
   if (elements.txApplyBtn) {
     elements.txApplyBtn.addEventListener('click', () => {

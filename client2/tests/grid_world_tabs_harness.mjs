@@ -282,20 +282,32 @@ async function conflicts(M) {
   // Apply: asked, then each answer. Apply reads the staged rows again first - the stub answers that read from `server`.
   const sent = [];
   const reread = [];
-  const signaled = [];
   let server = { R1: 29.7, R2: 4 };
-  globalThis.fetch = async (url, init) => {
+  // A stub server for Apply: reads answer from `server`; PUTs are kept in `into` and answer as `put` says - nothing:
+  // saved; a function: awaited first; a number: that status.
+  const answering = (into, put) => async (url, init) => {
     if (init && init.method === 'PUT') {
-      sent.push(JSON.parse(init.body).updates);
+      const body = JSON.parse(init.body);
+      into.push(body.updates);
+      if (typeof put === 'function') await put();
+      if (typeof put === 'number') return { ok: false, status: put, text: async () => 'boom', json: async () => ({ detail: 'boom' }) };
       return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
     }
     const filters = new URL(String(url), 'http://box').searchParams.get('filters');
     const ids = filters ? JSON.parse(filters).row_id.conditions.map((c) => c.filter) : [];
     reread.push(ids);
-    signaled.push(Boolean(init && init.signal && typeof init.signal.aborted === 'boolean'));
     const data = ids.filter((id) => id in server).map((id) => ({ row_id: id, updated_at: null, data: { a: { value: server[id] } } }));
     return { ok: true, status: 200, text: async () => '', json: async () => ({ data, total: null }) };
   };
+  // An Apply that should end does, within half a second; false when it hangs.
+  const finishes = (going) => Promise.race([going.then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 500))]);
+  // The one time cap (15 s) cut at once, for the scenarios that ask what happens past it.
+  const atOnce = async (run) => {
+    const real = globalThis.setTimeout;
+    globalThis.setTimeout = (fn, ms, ...rest) => real(fn, ms === 15000 ? 1 : ms, ...rest);
+    try { return await run(); } finally { globalThis.setTimeout = real; }
+  };
+  globalThis.fetch = answering(sent);
   const line = document.getElementById('tx-conflict-line');
   const text = document.getElementById('tx-conflict-text');
   stage();
@@ -329,7 +341,6 @@ async function conflicts(M) {
   // Two Keep mine clicks before the first PUT answers: one PUT (lead QA 10-12 4).
   // ...with nothing conflicted, so the second click has only the guard to stop it.
   sent.length = 0;
-  signaled.length = 0;
   server = { R1: 28.5, R2: 4 };
   stage();
   const log = document.getElementById('performance-log');
@@ -339,7 +350,15 @@ async function conflicts(M) {
   const already = log.textContent;
   try { await Promise.all([first, second]); } catch (e) { /* as above */ }
   out.twice = sent.length;
-  out.saying = [checking, already, signaled.length > 0 && signaled.every(Boolean)];
+  // ...and a read that never answers is cut at the cap: the request itself aborted, Apply stopped and saying so.
+  let aborted = false;
+  globalThis.fetch = (url, init) => new Promise((_, reject) => {
+    if (init && init.signal) init.signal.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')); });
+  });
+  stage();
+  const cut = await atOnce(() => finishes(M.api.applyPendingEdits()));
+  out.saying = [checking, already, { cut, aborted, said: log.textContent }];
+  globalThis.fetch = answering(sent);
   server = { R1: 29.7, R2: 4 };
   // The question's count follows the conflicts, and it goes when they do (lead QA 10-12 6).
   S.pendingTxEdits = {
@@ -395,17 +414,7 @@ async function conflicts(M) {
   let release = null;
   const putSent = [];
   server = { R1: 28.5, R2: 4 };
-  globalThis.fetch = async (url, init) => {
-    if (init && init.method === 'PUT') {
-      putSent.push(JSON.parse(init.body).updates);
-      await new Promise((r) => { release = r; });
-      return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
-    }
-    const filters = new URL(String(url), 'http://box').searchParams.get('filters');
-    const ids = filters ? JSON.parse(filters).row_id.conditions.map((c) => c.filter) : [];
-    const data = ids.filter((id) => id in server).map((id) => ({ row_id: id, updated_at: null, data: { a: { value: server[id] } } }));
-    return { ok: true, status: 200, text: async () => '', json: async () => ({ data, total: null }) };
-  };
+  globalThis.fetch = answering(putSent, () => new Promise((r) => { release = r; }));
   stage();
   const going = M.api.applyPendingEdits();
   for (let i = 0; i < 50 && !release; i += 1) await new Promise((r) => setImmediate(r));
@@ -413,6 +422,7 @@ async function conflicts(M) {
   S.pendingTxEdits.R2_a = { rowId: 'R2', colId: 'a', newValue: 20, oldValue: 4, data: null };
   if (release) release();
   try { await going; } catch (e) { /* as above */ }
+  await new Promise((r) => setTimeout(r, 5));   // ...and still so a timer later
   out.putWindow = { sent: asSent(putSent), pending: Object.keys(S.pendingTxEdits).sort(), r1Over: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.oldValue };
   // Tx off, and the read again fails: Tx comes back on, the edit still staged (lead re-QA F4).
   globalThis.fetch = async () => ({ ok: false, status: 500, text: async () => 'boom', json: async () => ({ detail: 'boom' }) });
@@ -424,16 +434,7 @@ async function conflicts(M) {
   // fires cellValueChanged - so it goes with this Apply only if Apply closes the editor and waits for that.
   const editorSent = [];
   server = { R1: 28.5, R2: 4 };
-  globalThis.fetch = async (url, init) => {
-    if (init && init.method === 'PUT') {
-      editorSent.push(JSON.parse(init.body).updates);
-      return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
-    }
-    const filters = new URL(String(url), 'http://box').searchParams.get('filters');
-    const ids = filters ? JSON.parse(filters).row_id.conditions.map((c) => c.filter) : [];
-    const data = ids.filter((id) => id in server).map((id) => ({ row_id: id, updated_at: null, data: { a: { value: server[id] } } }));
-    return { ok: true, status: 200, text: async () => '', json: async () => ({ data, total: null }) };
-  };
+  globalThis.fetch = answering(editorSent);
   const editorRow = { row_id: 'R1', data: { a: { value: 28.5 } } };
   const grid = S.gridApi;
   const openEditor = (typed) => {
@@ -449,7 +450,6 @@ async function conflicts(M) {
         setTimeout(() => M.api.handleCellEdit({ data: editorRow, colDef: { field: 'a' }, newValue: typed, oldValue: old }), 0);
       } };
   };
-  const finishes = (going) => Promise.race([going.then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 500))]);
   S.pendingTxEdits = { R2_a: { rowId: 'R2', colId: 'a', newValue: 20, oldValue: 4, data: null } };
   openEditor(29.1);
   const changedDone = await finishes(M.api.applyPendingEdits());
@@ -459,6 +459,71 @@ async function conflicts(M) {
   openEditor(editorRow.data.a.value);
   const sameDone = await finishes(M.api.applyPendingEdits());
   out.editorSame = { finished: sameDone, sent: asSent(editorSent) };
+  // The lead's check of c3a3fd5cb (10-13), each through handleCellEdit as the grid makes an edit.
+  const rowsById = { R1: { row_id: 'R1', data: { a: { value: 28.5 } } }, R2: { row_id: 'R2', data: { a: { value: 4 } } } };
+  const fresh = () => {
+    rowsById.R1.data.a.value = 28.5; rowsById.R2.data.a.value = 4;
+    S.pendingTxEdits = {}; toggle.checked = true; S.txModeActive = true; S.currentColumnTypes = { a: 'number' };
+  };
+  const edit = (id, from, to) => M.api.handleCellEdit({ data: rowsById[id], colDef: { field: 'a' }, newValue: to, oldValue: from });
+  S.gridApi = { ...grid, getRowNode: (id) => (rowsById[id] ? { data: rowsById[id] } : null) };
+  const keepAlert = globalThis.alert;
+  const keepConfirm = globalThis.confirm;
+  globalThis.alert = () => {};
+  globalThis.confirm = () => true;
+  // 1: Take server on a cell whose server value went back to the value it was edited over - no conflict now, and not
+  //    sent; two asked and one went back - both go.
+  const backSent = [];
+  globalThis.fetch = answering(backSent);
+  fresh();
+  await edit('R1', 28.5, 28.9);
+  server = { R1: 29.7, R2: 4 };
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  server = { R1: 28.5, R2: 4 };
+  try { await M.api.applyPendingEdits('server'); } catch (e) { /* as above */ }
+  const one = { sent: asSent(backSent), pending: Object.keys(S.pendingTxEdits), drawn: rowsById.R1.data.a.value };
+  backSent.length = 0;
+  fresh();
+  await edit('R1', 28.5, 28.9);
+  await edit('R2', 4, 5);
+  server = { R1: 29.7, R2: 6 };
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  server = { R1: 29.7, R2: 4 };
+  try { await M.api.applyPendingEdits('server'); } catch (e) { /* as above */ }
+  out.wentBack = { one, two: { sent: asSent(backSent), pending: Object.keys(S.pendingTxEdits), drawn: [rowsById.R1.data.a.value, rowsById.R2.data.a.value] } };
+  // 2: Tx turned off to apply, and the cell edited again while that PUT is out - staged, not sent straight, not painted
+  //    over by the batch's answer; Tx back on for it.
+  // Every PUT is held until released - one sent straight (the code before) is held too, so nothing waits on another.
+  const holds = [];
+  const offSent = [];
+  globalThis.fetch = answering(offSent, () => new Promise((r) => holds.push(r)));
+  fresh();
+  server = { R1: 28.5, R2: 4 };
+  await edit('R1', 28.5, 28.9);
+  toggle.checked = false;
+  M.api.txToggled();
+  for (let i = 0; i < 50 && !holds.length; i += 1) await new Promise((r) => setImmediate(r));
+  edit('R1', 28.9, 29.1);
+  for (let k = 0; k < 3; k += 1) { holds.splice(0).forEach((r) => r()); await settle(); }
+  out.offApply = { sent: asSent(offSent), pending: Object.values(S.pendingTxEdits).map((e) => [e.rowId, e.newValue]),
+    drawn: rowsById.R1.data.a.value, tx: [toggle.checked, S.txModeActive] };
+  // 3: Tx turned off to apply, and the PUT refused - the edit still staged, Tx back on.
+  globalThis.fetch = answering([], 500);
+  fresh();
+  await edit('R1', 28.5, 28.9);
+  toggle.checked = false;
+  M.api.txToggled();
+  await settle();
+  out.putRefused = { pending: Object.keys(S.pendingTxEdits), tx: [toggle.checked, S.txModeActive] };
+  // 5: a PUT that never answers is cut at the cap - Apply ends, the edit still staged, Tx on.
+  globalThis.fetch = answering([], () => new Promise(() => {}));
+  fresh();
+  await edit('R1', 28.5, 28.9);
+  const putCut = await atOnce(() => finishes(M.api.applyPendingEdits()));
+  out.putCut = { finished: putCut, pending: Object.keys(S.pendingTxEdits), tx: [toggle.checked, S.txModeActive] };
+  globalThis.alert = keepAlert;
+  globalThis.confirm = keepConfirm;
+  S.currentColumnTypes = {};
   S.gridApi = grid;
   globalThis.fetch = keep;
   S.pendingTxEdits = {};
@@ -637,8 +702,17 @@ function suite(out, sent) {
     out.left.conflict.editorOpen, { finished: true, sent: [[{ row_id: 'R2', updates: { a: 20 } }, { row_id: 'R1', updates: { a: 29.1 } }]], pending: [] });
   eq('W31 an editor left unchanged hands nothing over: Apply goes on without it', out.left.conflict.editorSame,
     { finished: true, sent: [[{ row_id: 'R2', updates: { a: 21 } }]] });
-  eq('V1 the read again says itself on the bottom line; a second click says it is already applying; the read carries the one time cap\'s abort signal (queue_poll timedRead)',
-    out.left.conflict.saying, ['Checking 1 row on the server\u2026', 'Already applying', true]);
+  eq('V1 the read again says itself on the bottom line; a second click says it is already applying; a read that never answers is cut at the one time cap - the request aborted, Apply stopped and saying so (queue_poll timedRead)',
+    out.left.conflict.saying, ['Checking 1 row on the server\u2026', 'Already applying',
+      { cut: true, aborted: true, said: 'Apply stopped: the staged rows did not answer in 15 s' }]);
+  eq('W32 Take server on a cell whose server value went back to the value it was edited over: not sent, the edit gone, the cell at that value; two asked and one went back: both go (lead 10-13 1)',
+    out.left.conflict.wentBack, { one: { sent: [], pending: [], drawn: 28.5 }, two: { sent: [], pending: [], drawn: [29.7, 4] } });
+  eq('W33 Tx turned off to apply: the cell edited again while that PUT is out is staged, not sent straight nor painted over by the batch\'s answer; Tx back on for it (lead 10-13 2)',
+    out.left.conflict.offApply, { sent: [[{ row_id: 'R1', updates: { a: 28.9 } }]], pending: [['R1', 29.1]], drawn: 29.1, tx: [true, true] });
+  eq('W34 Tx turned off to apply and the PUT refused: the edit still staged, Tx back on (lead 10-13 3)',
+    out.left.conflict.putRefused, { pending: ['R1_a'], tx: [true, true] });
+  eq('W35 a PUT that never answers is cut at the one time cap: Apply ends, the edit still staged, Tx on (lead 10-13 5)',
+    out.left.conflict.putCut, { finished: true, pending: ['R1_a'], tx: [true, true] });
   eq('W25 a deleted row\'s staged edit is dropped and the bottom line says so - a broadcast delete, and a row Apply\'s read no longer finds',
     [out.left.conflict.deleted, out.left.conflict.goneOnRead],
     [{ pending: 0, said: true }, { pending: 0, sent: 0, said: true }]);
@@ -716,27 +790,41 @@ const MUTANTS = [
   { id: 'G33', what: 'Apply\'s read leaves the cached pages stale (18766: a false conflict after another page and back)', catches: 'W22', file: 'api.js',
     mutate: (t) => swap(t, '    cached.data = cached.data.map((row) => (fresh.has(row.row_id) ? copyRow(fresh.get(row.row_id)) : row));\n', '') },
   { id: 'G34', what: 'an answer applies to whatever conflicts when it is pressed (the code before)', catches: 'W26', file: 'api.js',
-    mutate: (t) => swap(t, 'const answered = Boolean(choice && asked) && conflicted.every(', 'const answered = Boolean(choice) || conflicted.every(') },
+    mutate: (t) => swap(t, "  const answered = within && (choice === 'server' || conflicted.length === 0 || conflicted.length === asked.size);", '  const answered = Boolean(choice);') },
   { id: 'G35', what: 'an answer holds for a cell whose server value moved after the question', catches: 'W26', file: 'api.js',
     mutate: (t) => swap(t, '\n    && sameCellValue(asked.get(keyOf(edit)), edit.conflict.server, edit.colId));', ');') },
   { id: 'G36', what: 'numbers by value in a text column too (the code before)', catches: 'W27', file: 'api.js',
     mutate: (t) => swap(t, "  if ((state.currentColumnTypes || {})[colId] === 'number') {", '  if (true) {') },
   { id: 'G37', what: 'a saved PUT clears every staged edit - one made while it was out is lost (the code before)', catches: 'W28', file: 'api.js',
-    mutate: (t) => swap(t, '        delete state.pendingTxEdits[key];\n      }\n', '        delete state.pendingTxEdits[key];\n      }\n      state.pendingTxEdits = {};\n') },
+    mutate: (t) => swap(t, '      delete state.pendingTxEdits[key];\n    }\n    // V1 instrument', '      delete state.pendingTxEdits[key];\n    }\n    state.pendingTxEdits = {};\n    // V1 instrument') },
   { id: 'G38', what: 'an edit made again while the PUT was out is marked saved', catches: 'W28', file: 'api.js',
-    mutate: (t) => swap(t, '        if (edit.newValue !== value) {', '        if (false) {') },
+    mutate: (t) => swap(t, '      if (edit.newValue !== value) {', '      if (false) {') },
   { id: 'G39', what: 'a failed read again leaves Tx off', catches: 'W29', file: 'api.js',
     mutate: (t) => swap(t, '    keepTxOn();\n    elements.performanceLog.textContent = `Apply stopped:', '    elements.performanceLog.textContent = `Apply stopped:') },
   { id: 'G40', what: 'the read again says nothing while it runs', catches: 'V1', file: 'api.js',
     mutate: (t) => swap(t, "  elements.performanceLog.textContent = `Checking ${unitText(rowsStaged, 'row')} on the server\u2026`;\n", '') },
   { id: 'G41', what: 'the read again has no time cap', catches: 'V1', file: 'api.js',
-    mutate: (t) => swap(t, 'const res = await timedRead((signal) => gridFetch(', 'const res = await ((signal) => gridFetch(').replace(', { signal }));\n', ', { signal }))(undefined);\n') },
+    mutate: (t) => swap(t, 'const rows = await timedRead(async (signal) => {', 'const rows = await (async (signal) => {').replace('    return read;\n  });\n', '    return read;\n  })(undefined);\n') },
+  { id: 'G46', what: 'the read again\'s request carries a signal the cap never aborts', catches: 'V1', file: 'api.js',
+    mutate: (t) => swap(t, '`&defer_total=true&filters=${encodeURIComponent(filters)}`, { signal });', '`&defer_total=true&filters=${encodeURIComponent(filters)}`, { signal: new AbortController().signal });') },
   { id: 'G42', what: 'Apply leaves an open editor open - its value misses this Apply (the code before)', catches: 'W30', file: 'api.js',
     mutate: (t) => swap(t, '    const handingOver = closeOpenEditor();\n    if (handingOver) await handingOver;\n', '') },
   { id: 'G43', what: 'Apply closes the editor but does not wait for the hand-over', catches: 'W30', file: 'api.js',
     mutate: (t) => swap(t, '    if (handingOver) await handingOver;\n', '') },
   { id: 'G44', what: 'Apply waits for a hand-over an unchanged editor never makes', catches: 'W31', file: 'api.js',
     mutate: (t) => swap(t, '  if (Object.is(read(), before)) { cellHandedOver.delete(key); return null; }\n', '') },
+  { id: 'G45', what: 'an edit made again while the PUT was out is dropped a tick later', catches: 'W28', file: 'api.js',
+    mutate: (t) => swap(t, '        edit.conflict = null;\n        continue;\n', '        edit.conflict = null;\n        setTimeout(() => { delete state.pendingTxEdits[key]; }, 0);\n        continue;\n') },
+  { id: 'G47', what: 'Take server drops only the cells that still conflict - one whose server value went back goes as mine (the code before)', catches: 'W32', file: 'api.js',
+    mutate: (t) => swap(t, '      if (!edit) continue;\n      const node = state.gridApi.getRowNode(edit.rowId);\n', '      if (!edit || !edit.conflict) continue;\n      const node = state.gridApi.getRowNode(edit.rowId);\n') },
+  { id: 'G48', what: 'the toggle turns Tx off before Apply has sent (the code before)', catches: 'W33', file: 'api.js',
+    mutate: (t) => swap(t, '  const pendingCount = Object.keys(state.pendingTxEdits).length;\n  if (elements.txModeToggle && !elements.txModeToggle.checked',
+      '  const pendingCount = Object.keys(state.pendingTxEdits).length;\n  state.txModeActive = elements.txModeToggle.checked;\n  if (elements.txModeToggle && !elements.txModeToggle.checked') },
+  { id: 'G49', what: 'a refused PUT leaves Tx off (the code before)', catches: 'W34', file: 'api.js',
+    mutate: (t) => swap(t, "    keepTxOn();\n    console.error('Batch apply failed', err);", "    console.error('Batch apply failed', err);") },
+  { id: 'G50', what: 'the PUT has no time cap', catches: 'W35', file: 'api.js',
+    mutate: (t) => swap(t, '    const result = await timedRead(async (signal) => {', '    const result = await (async (signal) => {').replace('      return res.json();\n    });\n    state.pageCache.clear();', '      return res.json();\n    })(undefined);\n    state.pageCache.clear();') },
+
   { id: 'G29', what: 'the question keeps the count it was asked with', catches: 'W23', file: 'api.js',
     mutate: (t) => swap(t, '  if (askingConflicts) sayConflicts(conflictedEdits().length);\n  return out;', '  return out;') },
   { id: 'G30', what: 'numbers compared by spelling - the code before', catches: 'W24', file: 'api.js',
@@ -746,7 +834,7 @@ const MUTANTS = [
   { id: 'G32', what: 'a row Apply\'s read no longer finds keeps its edit', catches: 'W25', file: 'api.js',
     mutate: (t) => swap(t, '  return dropStagedEditsOf(ids.filter((id) => !found.has(id)));', '  return 0;') },
   { id: 'G19', what: 'Take server still sends the conflicted cell', catches: 'W16', file: 'api.js',
-    mutate: (t) => swap(t, '      delete state.pendingTxEdits[`${edit.rowId}_${edit.colId}`];\n', '') },
+    mutate: (t) => swap(t, '      delete state.pendingTxEdits[key];\n    }\n    state.gridApi.refreshCells({ force: true });\n', '    }\n    state.gridApi.refreshCells({ force: true });\n') },
   { id: 'G20', what: 'the server value compared with the staged one, not the one the edit was made over', catches: 'W14', file: 'api.js',
     mutate: (t) => swap(t, 'sameCellValue(cell.value, edit.oldValue, edit.colId)', 'sameCellValue(cell.value, edit.newValue, edit.colId)') },
   { id: 'G14', what: 'Discard reads nothing again - the code before, a value moved since stays stale', catches: 'W12', file: 'api.js',
