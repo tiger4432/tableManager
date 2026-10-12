@@ -66263,3 +66263,21 @@ B 다시 읽기 취소와 와쳐 (응용 감사 — 임시 SQLite 로 잼, 제�
         못 닿으면 시연 판(9c1da298f)을 지키고 시연 뒤 — 반쪽 착지 금지(서버만 · 클라만 따로 main 에 안 올림)
 응용    pagesize 재검수는 그대로 하되, 보조 노드 판정 가지가 오면 그 QA 가 먼저
 ```
+
+> **[총괄 -> 구현자] 10-12 — impl-pagesize(46324bcbb) 재검수 NO-GO 의 고칠 것 «한 번에» · 보조 노드 판정 «다음» 순서 (응용 80fb27e94 보고 · 소유자 「모든 소급은 5초에 한 번은 진행 상황이 보이게」 · 「카운팅에서 멈춤」)**
+
+```
+막는 것 = 쪽 «앞»의 전체 읽기. 쪽 크기 규칙 자체는 쓰는 자리에서 맞게 돎(첫 쪽 1 · 넘으면 줄임 실측)
+① 실행 — 시작 → 첫 진행 줄 ≤ 5 s (운영 크기 판)
+   set_aside        _in_scope 전체 읽기 뒤 첫 쪽 — 50만 15.27 s. 범위 읽기를 쪽으로 · 쪽은 PageSize 로(지금 range(…, CHUNK))
+   enrichment_confirm  _run_enrichment_confirm 이 limit 없이 대기열 전부를 먼저 읽음(100만 > 7.11 s) · 확정 쪽 candidates.CHUNK_SIZE 고정 → 둘 다 PageSize
+   withdraw_source  cell_layer.withdraw_source 첫 읽기 q.all() — 90만 5.38~6.08 s. 쪽으로
+   withdraw_stale_atoms  page_refs 고정 → PageSize (첫 줄 3.77 s @200만 은 지금 안 넘음, 규칙만)
+② 세기 — GET /admin/retroactive/{op}/count 는 요청 안 · 줄 없음 → 5 s 안에 답하거나 «적어도 N» 으로 끊는다
+   set_aside 세기 scan_limit 안 받음(50만 14.11 s) · ledger_rescope(whole_source) 세기의 withdraw_stale_atoms dry 200만 7.17 s
+③ 소급 접기의 이벤트 수가 쪽 수만큼 늘어남(fold_withdrawal_events 2500 → 13, 고정 쪽이면 3) — 가지 시험은 fixed_pages 로 옛 수를 박아 «안 보이게» 함
+   늘어난 수를 시험이 «단언»하고, 그 이벤트가 깨우는 뒤따름 비용을 운영 크기에서 한 줄. 한 실행 = 한 이벤트로 접을지는 그 수를 보고 총괄이 정함
+④ 살아남은 변이 «넘으면 줄이기 끔» — 목표를 넘는 쪽을 만드는 칸 하나(느린 쪽 흉내)로 «failed» 빨강
+게이트  응용이 운영 크기 판에서 다시 잼 — 위 ✗ 넷 + 아직 안 잰 쪽 칸(노테이션 · 접기 넷 · 원장 백필 · 인벤토리 리플레이 · resolve · enrichment_backfill)
+순서    보조 노드 판정(41194be5d · ec3cce694)이 먼저. 그게 착지하거나 소유자 확인 기다림에 걸리면 이것
+```
