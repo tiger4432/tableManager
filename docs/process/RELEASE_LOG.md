@@ -304,6 +304,14 @@
 
 ---
 
+## 2026-10-12 · 걷기: 체크한 행에서 «Walk ▸» — 메인 걷기와 같은 걷기 한 번 · 그래프 Continue 도 같은 요청
+
+- **무엇** — 표에서 체크한 행을 시작으로(+ / − 부호 그대로) 문장 바의 지금 설정 그대로 메인 걷기를 한 번 더 합니다(소유자 10-12 「다음 걷기는 메인 걷기랑 똑같이」). 결과는 스텝 나무에 지금 스텝의 자식 «Walk ▸» 로 섭니다.
+- **어디** — 표 아래 Marked 바구니의 «Walk on ▸» 줄 맨 앞 «Walk ▸» 단추. 체크한 행이 없으면 꺼져 있고 «Check rows first» 라고 말합니다. 기존 «New step / Add here»(한 걸음)는 그대로입니다.
+- **같은 요청** — 바의 Walk · «Walk ▸» · 그래프의 Continue 가 요청을 짓는 함수 하나를 지납니다. 시작만 다르고 collect · through · direction · hops · node_limit 등은 같습니다.
+- **바뀌는 것** — 그래프의 Continue 요청에 문장 바의 collect · through(follow) · direction 이 이제 실립니다(전에는 hops · node_limit · fan-out 과 시작만 실렸습니다). 그래서 Continue 의 답이 바의 걷기와 같은 범위로 좁혀집니다.
+- **자세히** — 이 항목과 같은 커밋.
+
 ## 2026-10-12 · 고침 — exclude_when 으로 거른 행이 «아직 번역 안 된 행»에 영원히 남던 것
 
 - **무엇** — 리허설(rp500g 의 link_candidates, 4 행 중 1 행이 `read.exclude_when` `[{column: confirmed, blank: true}]` 로 빠짐)에서 백필을 몇 번 돌려도 «rows not yet translated 1» 이 남았습니다. 거른 행은 원자도 거절도 색인도 없어서 «아직»으로 셌기 때문입니다. 이제 사람이 묻는 «아직 번역 안 된 행»(소급 탭의 남은 행 수 · 원장 센서스의 «New, not translated» · 명령줄 census)은 색인에 없는 행 가운데 읽기가 거르는 행을 같은 판정(`row_excluded`)으로 빼고 셉니다. «Table less indexed»는 이름대로 표 − 색인 그대로입니다.

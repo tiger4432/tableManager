@@ -384,6 +384,76 @@ async function suite(mod) {
       n.toString().slice(0, 200));
   }
 
+  console.log(`${LF}-- Walk ▸ and Continue: the bar's walk from other starts (owner 10-12) --`);
+  {
+    const { entitySeedId } = await import('../src/rnd_board/api.js');
+    const DECLS = { ok: true,
+      entities: [{ type: 'die@1', keys: ['mat_id'] }, { type: 'wafer@1', keys: ['wafer'] }],
+      predicates: [{ name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } }] };
+    const page = async () => {
+      const asked = [];
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+        const u = String(url);
+        if (u.includes('/subgraph')) asked.push(u);
+        return { ok: true, status: 200, json: async () => (u.includes('/subgraph') ? RESULT : DECLS) };
+      } });
+      await settle();
+      // The bar as an operator leaves it: what to collect, which way, through what, how far.
+      Object.assign(handle.state, { collect: new Set(['die@1']), follow: new Set(['inspected@1']), direction: 'out', hops: '3' });
+      return { asked, host, handle };
+    };
+    const click = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
+    const one = await page();
+    const two = await page();
+    const full = (p) => walkAll(p.host).find((e) => String(e.className || '').includes('wk-walkfull'));
+    const last = (p) => p.asked[p.asked.length - 1] || '';
+    // Signed starts: + n:2 and − n:1 - in the baskets and Walk; then checked and Walk ▸; then the graph's Continue ask.
+    one.handle.graph.markings.set('walk-start', 'n:2', SIGN.CASE);
+    one.handle.graph.markings.set('walk-start', 'n:1', SIGN.CONTROL);
+    await one.handle.fire();
+    await settle();
+    const byWalk = last(one);
+    const offBefore = full(one);
+    const offWhy = [Boolean(offBefore && offBefore.disabled), offBefore && offBefore.getAttribute('title')];
+    one.handle.graph.markings.set(one.handle.state.marks, 'n:2', SIGN.CASE);
+    one.handle.graph.markings.set(one.handle.state.marks, 'n:1', SIGN.CONTROL);
+    one.handle.render();
+    const stepsBefore = one.handle.state.steps.length;
+    const at = one.handle.state.at;
+    click(full(one));
+    await settle();
+    const byFull = last(one);
+    const placed = one.handle.state.steps.slice(stepsBefore);
+    await one.handle.graph.walk(one.handle.graph.ask({ positive: ['n:2'], negative: ['n:1'] }));
+    const byContinue = last(one);
+    const q = new URLSearchParams(byWalk.split('?')[1] || '');
+    ok('W1 the same starts and bar: Walk, Walk ▸ and the graph\'s Continue send the same request, the bar whole',
+      Boolean(byWalk) && byWalk === byFull && byFull === byContinue && q.getAll('collect').join() === 'die@1'
+        && q.getAll('follow').join() === 'inspected@1' && q.get('direction') === 'out' && q.get('hops') === '3'
+        && q.getAll('positive').join() === 'n:2' && q.getAll('negative').join() === 'n:1',
+      JSON.stringify([byWalk.slice(0, 220), byFull === byWalk, byContinue === byWalk]));
+    // One + start alone goes by its type and keys - a node the baskets never held too, read off its id.
+    const zed = entitySeedId('wafer@1', { wafer: 'Z' });
+    await two.handle.graph.walk(two.handle.graph.ask({ positive: [zed], negative: [] }));
+    const zedByContinue = last(two);
+    Object.assign(two.handle.state, { type: 'wafer@1', keys: { wafer: 'Z' } });
+    click(walkAll(two.host).find((e) => e.className === 'wk-basketadd' && e.attrs['data-sign'] === '+'));
+    await two.handle.fire();
+    await settle();
+    const zq = new URLSearchParams(last(two).split('?')[1] || '');
+    ok('W2 one + start alone: Continue asks it by its type and keys as Walk does, a node the baskets never held as well',
+      zedByContinue === last(two) && zq.getAll('positive').length === 0 && zq.getAll('collect').join() === 'die@1',
+      JSON.stringify([zedByContinue.slice(0, 200), last(two).slice(0, 200)]));
+    ok('W3 Walk ▸ is off until a row is checked, and says so; pressed, one child step of the step it was on, titled Walk ▸',
+      offWhy[0] === true && offWhy[1] === 'Check rows first' && placed.length === 1 && placed[0].parent === at
+        && placed[0].title === 'Walk ▸' && JSON.stringify(placed[0].asked.positive) === '["n:2"]',
+      JSON.stringify([offWhy, placed.map((s) => [s.parent, s.title])]));
+    ok('W4 two pages: the other page\'s checks are its own - its Walk ▸ stays off',
+      Boolean(full(two)) && full(two).disabled === true, String(full(two) && full(two).disabled));
+  }
+
   console.log(`${LF}-- the server's sentence in the head (lead b5cdcbc75) --`);
   {
     const said = async (result) => {
@@ -1906,6 +1976,14 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
+  { id: 'WFm1', what: 'Walk ▸ builds its own ask - the bar\'s collect, through and direction left behind', catches: 'W1',
+    from: '    const asked = askFrom(seeds);\n    await walkStep(', to: '    const asked = { ...knobs(), ...seeds };\n    await walkStep(' },
+  { id: 'WFm2', what: 'the graph\'s Continue asks its own walk again, not the bar\'s', catches: ['W1', 'W2'],
+    from: '{ doc, walk, ask: askFrom, entities,', to: '{ doc, walk, entities,' },
+  { id: 'WFm3', what: 'a node the baskets never held goes as a + start, not by its type and keys', catches: 'W2',
+    from: 'baskets.describe(starts.positive[0]) || entityOfId(starts.positive[0])', to: 'baskets.describe(starts.positive[0])' },
+  { id: 'WFm4', what: 'Walk ▸ on with nothing checked', catches: 'W3',
+    from: "    setDisabledReason(full, all.positive.length ? '' : CHECK_ROWS_FIRST);", to: "    setDisabledReason(full, '');" },
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
     from: '    void walkInto(at, more.asked, (res) => {', to: '    void walkInto(at, answerAt(at).asked, (res) => {' },
   { id: 'MOm3', what: 'More\'s answer lands nowhere - the step keeps the cut one', catches: 'MO2',
@@ -2034,7 +2112,7 @@ const MUTANTS = [
   // ── lead 53050a4ec: the table's continue ────────────────────────────────────────────────
   // The board's markingIntent on the walk page (lead 10-09).
   { id: 'SM2', what: 'the table walks the form\'s subject alone, not the starts', catches: 'S1',
-    from: '    const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };', to: '    const asked = spec();' },
+    from: '    return { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed || !one ? starts : {}) };', to: '    return spec();' },
   { id: 'SM3', what: 'a check takes no sign from Shift', catches: 'S3',
     from: "markings.toggle(checks, id, markingIntent(event).sign); render(); });", to: "markings.toggle(checks, id, SIGN.CASE); render(); });" },
   { id: 'SM4', what: 'Next drops the - rows', catches: 'S4',
