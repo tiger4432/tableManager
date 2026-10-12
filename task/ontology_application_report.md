@@ -38619,3 +38619,191 @@ all done 00:25:10
    4.77 s · 26 calls · max 0.325 s · UPDATE bkfl_test_derived SET updated_at=%(updated_at)s, wafer_id=%(wafer_id)s WHERE bkfl_test_derived.row_id = %(bkfl_te
    4.32 s · 26 calls · max 1.377 s · SELECT bkfl_test_derived.row_id AS bkfl_test_derived_row_id, bkfl_test_derived.business_key_val AS bkfl_test_derived_bus  ⟶ ->  Parallel Seq Scan on bkfl_test_derived  (cost=4.59..7111.54 rows=7
 ```
+
+---
+
+## [C 응용] 10-13 — 쉬는 때 · 섞인 부하, 진짜 런처 넷 (62e4310e2)
+
+박스 수. 판 assy_impl_mix_1012(구현자 A 의 박스 베낀 판) · 런처 run_decoupled_app.py --server-only 를 /c/wt-qa3 main 994a4861d 에서 18790 으로 · 창 02:47:33 ~ 03:09:28 · 구현자 A · B 는 그 창 동안 assy_test 를 안 썼습니다(약속 · 내림 / 끝 교환). 박스의 다른 프로세스(8080 · 18766)는 안 쟀습니다. public 전후 같음. 명령: scratchpad/mix/mix_run_app.sh · 표 mix_report.py · 이 절 report_1013_mix_gen.py.
+
+```
+1 쉬는 때 10 분 — 무거운 일 없음
+  DB 문장 초당: 체인 워커 2.81 · watcher 1.0 · 스케줄러 0.8 · 서버 · 슬롯 · 걷기 풀 0 (아홉 프로세스 모두 계수 훅 있음)
+  루프 지연 (핑만 하는 프로세스, 490 번): p99 0.0108 · 최대 0.0244 초 · py-spy --idle 30 초: 루프 스레드 표본 1497 중 1479 이 poll
+  CPU: 서버 평균 3.3 % 는 제 핑(초당 약 10)의 몫 · 계기 없는 서버의 쉬는 CPU 는 모름 · CPU 표본 381 초 / 600
+2 섞인 부하 5 분 × 2 (사용자 10 + 1,000 행 파일 매 60 초)
+  503: wp2 0 / 741 · wp0 0 / 754
+  걷기 p50 작은 것 0.207 / 0.216 · 큰 것 0.206 / 0.213 초 (wp2 / wp0) — 사용자 10 에선 풀이 지연을 안 바꿈
+  풀이 옮긴 것: 걷기 문장 wp2 풀 프로세스 516 · wp0 서버 537 · 서버 CPU 평균 10.0 → 17.0 · 최대 54.6 → 94.4 %
+  루프 지연 p99 0.028 → 0.0943 · 최대 0.388 → 0.2731 초 (wp2 → wp0) — 이것도 순서와 못 가름
+  ⚠️ 순서 wp2 → wp0 (차가움 → 데움): 검색 DB 48.3 → 21.8 초 · 개수 37.7 → 13.8 초 — 풀로 못 가릅니다
+  제일 무거운 것: 검색 p95 2.498 / 0.754 · 개수 p95 0.991 / 0.517 초 — dt_log 전체 훑기(ILIKE · count)
+3 체인 그룹 1,000 행 — 체인 다리만 잼
+  processed_chain 까지 wp2 [9.0, 5.0, 6.0, 5.0, 5.2] · wp0 [5.0, 5.0, 5.0, 6.0, 6.0] 초
+  원장 다리: 아웃박스 30 행 중 10 행 failed, 그 10 행 모두 ProgramLimitExceeded → «끝까지 초» 없음
+```
+
+**곁 발견 — 원장 행 색인의 키에 «분자의 행 목록 전부»가 들어 있습니다.**
+
+```
+코드 (운영에도 참)
+  ledger_source_row_ref 의 PRIMARY KEY (relation, row_id, source_who, source_raw_ref) — schema.create_row_ref_sql
+  group_by 분자의 source_raw_ref = 그 분자 행 참조 «전부»의 JSON — roleframe._claim_source_raw_ref
+  btree 한 줄 상한은 «압축 뒤 바이트» -> 넘는 분자의 사건 «통째»가 failed. 상한은 행 수가 아니라 바이트
+  다시 안 집음: drain_outbox_once 는 ledger_state IS NULL 만 · failed 는 남고 requeue_failed 로만 돌아감(같은 행이면 같은 키)
+박스 선언 (운영 선언인지 모름)
+  dt_log 를 읽는 소스는 dt_job 하나 · group_by dt_job
+박스 수
+  제가 넣은 10 파일(파일마다 dt_job 2 개 × 500 행): 10 / 10 failed · 오류 바이트 4464 > 2704 · 넣은 10000 행의 행 색인 0 (대조: 박스 행 2,000 에 1996)
+  박스 베낀 판의 기존 묶음: 150 행 -> 색인 있음(글자 26879 · 저장 1368 바이트) · 원자 2
+                          400 행 -> 색인 0 · 원자 0   ·   12000 행 -> 색인 0 · 원자 0
+  -> 이 실패와 «들어맞을» 뿐, 증명은 아님: 베낀 판에 아웃박스 이력이 없어 그 묶음이 번역에 올랐는지 모름
+  100 행 이상 묶음 153 · 300 행 이상 묶음 2 (묶음 488428 중)
+```
+
+계기 둘을 이 판 안에서 고쳤습니다 (구현자 키트에서 베낀 c1_mix.py): CPU 칸이 늘 0.0(틱마다 새 psutil 객체) -> cpu_watch.py 로 · 같은 프로세스 핑이 제 스레드 때문에 p95 가 부풀음 -> lone_ping.py 로. 앞선 보고에 그 두 칸을 인용한 곳은 git grep 으로 못 찾았습니다.
+
+```
+== idle · 02:49:01 .. 02:59:05 (604 s, incl. the feed watcher's wait) · loads none · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 2721 · p50 0.006 · p95 0.287 · max 0.706 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 381 s of the 600 s window):
+    server (57792)             avg    3.3   p95    7.6   max   11.9   (368 samples)
+    chain worker (70492)       avg    1.3   p95    3.0   max    9.1   (368 samples)
+    watcher (65844)            avg    0.6   p95    3.0   max    6.1   (368 samples)
+    scheduler (5276)           avg    0.5   p95    1.5   max    4.5   (368 samples)
+    slot (62448)               avg    0.1   p95    1.5   max    1.5   (368 samples)
+    slot (64476)               avg    0.1   p95    1.5   max    1.5   (368 samples)
+    walk pool (19972)          avg    0.1   p95    1.5   max    1.5   (368 samples)
+    walk pool (58784)          avg    0.1   p95    1.5   max    1.5   (368 samples)
+  event loop lag (lone_ping.py, a process that only pings, 98 s of the window): n 490 · p50 0.0062 · p95 0.0086 · p99 0.0108 · max 0.0244 s · over 0.1 s 0 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  y_manager\python.exe run_chain_worker.py         1696    2.81    1.31
+  s\assy_manager\python.exe run_watcher.py          603    1.00    0.38
+  sy_manager\python.exe run_auto_update.py          484    0.80    0.34
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 0 last 0
+  lock waits sampled (1 s): 0 · queue tab {}
+  top statements (DB s, n, process, head):
+        0.54     698  .exe run_chain_worker.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+        0.37     299  .exe run_chain_worker.py SELECT anon_1.key, anon_1.run, anon_1.table_name, anon_1.event_type, anon_1.events, anon_1.rows, anon_1.first_
+        0.24     363  n.exe run_auto_update.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+        0.20     402  ython.exe run_watcher.py SELECT file_ingestion_logs.id AS file_ingestion_logs_id, file_ingestion_logs.filename AS file_ingestion_logs_f
+        0.17     201  ython.exe run_watcher.py SELECT database_outbox.id AS database_outbox_id, database_outbox.event_uuid AS database_outbox_event_uuid, dat
+        0.16     299  .exe run_chain_worker.py SELECT retroactive_runs.run_id AS retroactive_runs_run_id, retroactive_runs.op AS retroactive_runs_op, retroac
+        0.16     200  .exe run_chain_worker.py UPDATE database_outbox SET ledger_state = %(done)s WHERE processed_chain = true AND ledger_state IS NULL AND e
+        0.10     121  n.exe run_auto_update.py SELECT retroactive_runs.run_id AS retroactive_runs_run_id, retroactive_runs.op AS retroactive_runs_op, retroac
+  py-spy dumps (ping over 1 s): 0
+
+== users_wp2 · 02:59:07 .. 03:04:11 (304 s, incl. the feed watcher's wait) · loads feed,users · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 1475 · p50 0.006 · p95 0.012 · max 0.41 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 298 s of the 300 s window):
+    server (57792)             avg   10.0   p95   23.9   max   54.6   (287 samples)
+    walk pool (19972)          avg    4.4   p95   21.9   max   71.6   (287 samples)
+    walk pool (58784)          avg    3.8   p95   19.4   max   56.1   (287 samples)
+    watcher (65844)            avg    3.7   p95   26.9   max   73.5   (287 samples)
+    chain worker (70492)       avg    1.9   p95    4.5   max   32.3   (287 samples)
+    slot (62448)               avg    1.6   p95    1.5   max   68.2   (287 samples)
+    scheduler (5276)           avg    0.5   p95    1.5   max    6.1   (287 samples)
+    slot (64476)               avg    0.1   p95    1.5   max    1.5   (287 samples)
+  event loop lag (lone_ping.py, a process that only pings, 300 s of the window): n 1494 · p50 0.0062 · p95 0.0125 · p99 0.0280 · max 0.3880 s · over 0.1 s 6 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  -m uvicorn main:app --host  --port 18790         1207    3.97   94.33
+  y_manager\python.exe run_chain_worker.py         1093    3.60    1.00
+  assy_manager\python.exe -m chain.slots 1          493    1.62    0.62
+  s\assy_manager\python.exe run_watcher.py          488    1.61    7.09
+  walk pool                                         402    1.32    2.17
+  walk pool                                         372    1.22    1.72
+  sy_manager\python.exe run_auto_update.py          244    0.80    0.17
+  route (requests by 10 users, seconds client side)     n     p50     p95     max   not 200
+  grid count                                         134   0.006   0.991   5.600       0
+  grid filter                                         64   0.030   0.088   1.682       0
+  grid page                                          134   0.076   0.218   1.717       0
+  map (one core wafer)                                52   0.077   1.297   1.666       0
+  queue rows                                         165   0.055   0.093   0.180       0
+  search                                              62   0.527   2.498   4.426       0
+  walk big (caps 1000/6000)                           53   0.206   0.430   0.492       0
+  walk small (hops 3)                                 77   0.207   0.494   3.538       0
+  not-200 by kind and status: none
+  chain group mix_users_wp2_1791827948_0.csv · 1000 rows · first outbox row after 7.0 s · all processed after 9.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828008_1.csv · 1000 rows · first outbox row after 4.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828068_2.csv · 1000 rows · first outbox row after 5.0 s · all processed after 6.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828128_3.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp2_1791828188_4.csv · 1000 rows · first outbox row after 5.2 s · all processed after 5.2 s · outbox rows 1
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 3 last 0
+  lock waits sampled (1 s): 0 · queue tab {"files fed": 5, "broadcasts": 165, "requests": 165, "overlapping": 92}
+  top statements (DB s, n, process, head):
+       48.15      62  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log WHERE CAST(dt_log.dt_job AS VARCHAR) ILIKE %(param_1)s ESCAP
+       37.69      53  app --host  --port 18790 SELECT count(*) AS count_1 FROM (SELECT dt_log.row_id AS dt_log_row_id, dt_log.business_key_val AS dt_log_busi
+        5.28      60  ython.exe run_watcher.py INSERT INTO cell_sources (updated_by, source_name, row_id, value, ingested_at, table_name, origin_row_id, colu
+        4.93     132  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log ORDER BY dt_log.row_id ASC LIMIT %(param_1)s OFFSET %(param_
+        2.08     268  walk pool                WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        1.65     248  walk pool                WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        1.24      51  app --host  --port 18790 SELECT core_wafer_map.row_id AS core_wafer_map_row_id FROM core_wafer_map WHERE CAST(core_wafer_map.wafer_id A
+        0.85     309  app --host  --port 18790 SELECT cell_overwrites.row_id AS cell_overwrites_row_id, cell_overwrites.column_name AS cell_overwrites_column
+  py-spy dumps (ping over 1 s): 0
+
+== users_wp0 · 03:04:20 .. 03:09:24 (304 s, incl. the feed watcher's wait) · loads feed,users · walk seeds 40
+  driver's own ping (same process as the users - its threads add to it): n 1474 · p50 0.006 · p95 0.04 · max 0.234 s · over 1 s 0
+  CPU % of one core (cpu_watch.py, 1 s, 298 s of the 300 s window):
+    server (57792)             avg   17.0   p95   45.5   max   94.4   (289 samples)
+    watcher (65844)            avg    3.1   p95    8.6   max   72.7   (289 samples)
+    chain worker (70492)       avg    1.9   p95    4.5   max   35.8   (289 samples)
+    walk pool (58784)          avg    1.5   p95    1.5   max    1.5   (1 samples)
+    slot (62448)               avg    1.3   p95    1.5   max   64.3   (289 samples)
+    scheduler (5276)           avg    0.4   p95    1.5   max    3.0   (289 samples)
+    slot (64476)               avg    0.1   p95    1.5   max    1.5   (289 samples)
+    walk pool (19972)          avg    0.0   p95    0.0   max    0.0   (1 samples)
+  event loop lag (lone_ping.py, a process that only pings, 300 s of the window): n 1495 · p50 0.0063 · p95 0.0350 · p99 0.0943 · max 0.2731 s · over 0.1 s 12 · over 1 s 0 · not 200 0
+  DB statements by process (census hook, every statement the process ran in the phase):
+  process args (last 40)                    statements   per s    DB s
+  -m uvicorn main:app --host  --port 18790         2034    6.69   47.82
+  y_manager\python.exe run_chain_worker.py         1076    3.54    0.88
+  assy_manager\python.exe -m chain.slots 1          490    1.61    0.40
+  s\assy_manager\python.exe run_watcher.py          483    1.59    6.22
+  sy_manager\python.exe run_auto_update.py          244    0.80    0.20
+  route (requests by 10 users, seconds client side)     n     p50     p95     max   not 200
+  grid count                                         139   0.006   0.517   0.947       0
+  grid filter                                         63   0.031   0.071   0.298       0
+  grid page                                          139   0.067   0.191   0.322       0
+  map (one core wafer)                                52   0.070   0.286   0.360       0
+  queue rows                                         162   0.055   0.181   0.225       0
+  search                                              62   0.356   0.754   0.962       0
+  walk big (caps 1000/6000)                           58   0.213   0.399   0.520       0
+  walk small (hops 3)                                 79   0.216   0.407   0.570       0
+  not-200 by kind and status: none
+  chain group mix_users_wp0_1791828260_0.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828320_1.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828380_2.csv · 1000 rows · first outbox row after 5.0 s · all processed after 5.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828440_3.csv · 1000 rows · first outbox row after 5.0 s · all processed after 6.0 s · outbox rows 1
+  chain group mix_users_wp0_1791828500_4.csv · 1000 rows · first outbox row after 5.0 s · all processed after 6.0 s · outbox rows 1
+  queue (every 10 s): unprocessed max 0 last 0 · ledger pending max 1 last 0
+  lock waits sampled (1 s): 0 · queue tab {"files fed": 5, "broadcasts": 162, "requests": 162, "overlapping": 101}
+  top statements (DB s, n, process, head):
+       21.71      62  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log WHERE CAST(dt_log.dt_job AS VARCHAR) ILIKE %(param_1)s ESCAP
+       13.78      51  app --host  --port 18790 SELECT count(*) AS count_1 FROM (SELECT dt_log.row_id AS dt_log_row_id, dt_log.business_key_val AS dt_log_busi
+        5.10     537  app --host  --port 18790 WITH frontier AS ( SELECT type, keys, skip FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb)) AS item(type t
+        4.70      60  ython.exe run_watcher.py INSERT INTO cell_sources (updated_by, source_name, row_id, value, ingested_at, table_name, origin_row_id, colu
+        3.77     139  app --host  --port 18790 SELECT dt_log.row_id AS dt_log_row_id FROM dt_log ORDER BY dt_log.row_id ASC LIMIT %(param_1)s OFFSET %(param_
+        0.96      52  app --host  --port 18790 SELECT core_wafer_map.row_id AS core_wafer_map_row_id FROM core_wafer_map WHERE CAST(core_wafer_map.wafer_id A
+        0.66     316  app --host  --port 18790 SELECT cell_overwrites.row_id AS cell_overwrites_row_id, cell_overwrites.column_name AS cell_overwrites_column
+        0.65       5  ython.exe run_watcher.py INSERT INTO dt_log (row_id, business_key_val, b_wx, b_wy, c_bn, c_wx, c_wy, core_lot, core_slot, core_wafer, c
+  py-spy dumps (ping over 1 s): 0
+
+== idle window daemon log lines by tag
+== auto_update.log · 0 lines in the window
+== auto_update_stdout.log · 0 lines in the window
+== chain_worker.log · 12 lines in the window
+     10  Ledger                                    e.g. NOT planned: bundle.sources.bonded_from.relation source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (v
+      2  LedgerCensus                              e.g. .172s, measured 0.124s (rest 60s between, relation rows are planner estimates - `python -m ledger census` counts) · refused by the loader (n
+== chain_worker_stdout.log · 12 lines in the window
+     10  Ledger                                    e.g. NOT planned: bundle.sources.bonded_from.relation source 'bonded_from' reads 'bonding_die_from_core', which is not a table that has row_id (v
+      2  LedgerCensus                              e.g. .172s, measured 0.124s (rest 60s between, relation rows are planner estimates - `python -m ledger census` counts) · refused by the loader (n
+== launcher.log · 0 lines in the window
+== server.log · 0 lines in the window
+== server_stdout.log · 3327 lines in the window
+   3327  uvicorn.access                            e.g. [uvicorn.access] [2026-10-13 02:49:02,541] INFO - 127.0.0.1:5869 - "GET /__c1_loop_ping HTTP/1.1" 200
+== walk_pool.log · 0 lines in the window
+== watcher.log · 0 lines in the window
+== watcher_stdout.log · 0 lines in the window
+```
