@@ -59,3 +59,26 @@ fold 판: 인벤토리 40,000 · 로그 200,000 행(로그 인덱스 8) · enric
 백필 전체 세기 rows_not_yet_translated, main 코드(382c5f444, exclude_when 셈 9c1da298f 포함), hold 209,998 행: 1.12 s · excluded_not_subtracted = over 100k rows the index does not name
 
 public: 전 70 표 · 67 행 -> 후 70 표 · 67 행 · 바뀐 표 0
+
+## 3 회차 — 8aaf903dc (fold_units 그룹씩 묻기 · 쪽 크기는 앞 두 쪽 중 느린 속도)
+
+| 칸 | 시작 → 첫 줄 | 쪽 최대 초 | 줄 간 최대 | 판 |
+|---|---|---|---|---|
+| fold_units | 0.75 s | 3.9 s | 1.95 s | 인벤토리 40,000 · 로그 200,000 |
+| ledger_backfill | 1.09 s | 7.7 s | 7.74 s | hold 210,028 행 |
+| resolve | 0.05 s | 0.9 s | 0.86 s | hold |
+| inventory_replay | 0.48 s | 0.6 s | 0.62 s | fold 판 |
+| set_aside_dry | 0.0 s | — | 0.11 s | 이벤트 500,000 · 셀 900,000 |
+| set_aside_apply | 0.03 s | — | 0.19 s | 이벤트 500,000 · 셀 900,000 |
+| withdraw_source_dry | 0.0 s | — | 0.86 s | 이벤트 500,000 · 셀 900,000 |
+| withdraw_source_apply | 0.0 s | — | 3.51 s | 이벤트 500,000 · 셀 900,000 |
+| confirm 쪽(derived_pages) | 첫 쪽 0.031 s | 0.062 s | — | 대기열 1,000,000 |
+| withdraw_stale_atoms apply | 0.19 s | — | 0.12 s | 원자 2,000,000 |
+
+**ledger_backfill — 총괄 가설 칸(쪽 초가 rescope 가 번역한 행을 따르나)**
+
+- scope 칸: `row_id` · rescope 부름 320 · 물은 값 합 209,528 · rows_in_scope 합 209,528 · 쪽이 읽은 행 합 209,528
+- 5 s 넘는 쪽 8 / 320 · 가장 느린 쪽 348 행 7.7 s
+- 쪽 초 ↔ 쪽 행 수 상관 0.38
+
+public: 전 70 표 · 67 행 -> 후 70 표 · 67 행

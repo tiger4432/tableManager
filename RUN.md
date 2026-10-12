@@ -1,5 +1,47 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 오후] **걷기 이어 걷기 · 더 가져오기 화면까지 착지 (main f88e16b86) — pull · 서버 재기동 · 걷기 화면 새로 고침**
+>
+> ```
+> 명령     git pull  ->  서버 재기동(이어 걷기 서버 2bdb44df7 · c20b96258 · 581c60c00 을 아직 안 올렸으면) -> 걷기 화면 F5
+> 쓰는 법  걷기 결과 머리에 collect 타입마다 «<타입>: all reached» 또는 «<타입>: cut · N not expanded» · 남았으면 «more to walk»
+>          «More ▸» -> 같은 요청으로 다음 쪽을 받아 지금 답에 합침 · «N pages» · 다 걸으면 «All reached» 와 More ▸ 꺼짐 · 칩 × 로 전 답
+>          쪽마다 상한(원자 6,000 · 노드 · 엣지)은 그대로 — 원자 수만 개 노드도 More ▸ 몇 번이면 끝까지 닿는다
+> 뜻      «As of» 는 첫 쪽 시각 — 쪽 사이에 들어온 원자는 이 답에 안 들어온다(다시 Walk 하면 들어옴)
+> 18766    + SYN-BW-103-11 · − SYN-BW-SPL-400-19 · collect wafer · node_limit 10 -> 표 10 -> 20 -> 30 -> 32 행 · «wafer: all reached · 4 pages»
+> ```
+
+> ## [10-12 오후] **걷기 이어 가기 (서버) — pull 하고 서버만 재기동**
+>
+> ```
+> 명령     git pull  ->  서버 재기동 (바뀐 서버 파일 ledger_subgraph.py · trace_router.py — 수집기 · 체인 워커 · 스케줄러 그대로)
+> 쓰는 법  끊긴 답의 more.resume 을 POST /api/ledger/subgraph 본문 {"resume": …} 로 돌려준다(같은 인자) — 화면은 클라 착지의 More
+> 뜻      more.reach.<타입>.complete false = 그 타입에 닿을 노드가 남음 · resume null = 다 걸음 · 쪽마다 상한은 그대로
+>          원자 수만 개 씨앗: 첫 쪽 노드 0 이어도 complete false 면 이어 걷기로 닿는다(2만 원자 판: 4 쪽째)
+> 끄는 법  스위치 없음 — resume 을 안 보내면 답은 오늘과 같다(more 칸 하나 더)
+> 볼 것    서버 로그에 새 줄 없음
+> ```
+
+> ## [10-12 오후] **걷기 «Walk ▸» 착지 (main 1f2cd132f) — git pull 만 · 재기동 없음 · 걷기 화면 새로 고침**
+>
+> ```
+> 쓰는 법  걷기 표에서 행을 체크(+ 는 클릭, − 는 Shift) -> Marked 바구니 «Walk on ▸» 줄 맨 앞 «Walk ▸»
+>          -> 그 행들을 시작으로 문장 바의 설정(collect · through · direction · 한도 · 세상 · reaching) 그대로 한 번 걷고, 지금 스텝 아래에 «Walk ▸» 스텝 하나
+>          체크가 없으면 꺼짐 «Check rows first». 옆의 «New step / Add here»(길 하나 한 걸음)는 그대로
+> 바뀐 것  그래프 «Continue» 도 같은 요청 — 이제 문장 바의 collect · through · direction 이 실린다(전에는 홉 · 한도뿐)
+> ```
+
+> ## [10-12 낮] **고침 — 체인이 방금 만든 행을 «껍데기»로 지우지 않는다 (방금 만든 행) — pull 하고 체인 워커만 재기동**
+>
+> ```
+> 명령     git pull  ->  체인 워커 재기동 (바뀐 서버 파일은 chain/ingestion_worker.py 하나 — 서버 · 수집기 · 스케줄러는 그대로)
+> 볼 줄    chain_worker.log 의 [ChainShell] table=<표> rows_deleted=N - only the chain's keys were left
+> 뜻      집계가 빈 decide 의 파생 행 표에 대해 이 줄이 더 안 뜨면 고쳐진 것 — 그 표의 행이 키 + 빈 집계로 남는다
+>          공식 표(복사 규칙)에 대해 이 줄이 뜨는 것은 설계대로다: 원본이 다 지워졌거나 접기 표시로 보류가 비워진 «기존» 행
+>          파생 표에 대해 계속 뜨면: 이미 있던 행의 집계가 값 -> 빈 값으로 바뀐 쓰기다(그 행은 지워지고 다음 트리거가 새로 만들면 남는다)
+> 끄는 법  스위치는 없다. 되돌리려면 이 커밋 revert 후 체인 워커 재기동
+> ```
+
 > ## [10-12 낮] **걷기 «보조 노드 판정» 착지 (main 3c4e5a778) — pull 하고 서버만 재기동**
 >
 > ```

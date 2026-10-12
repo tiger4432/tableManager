@@ -362,7 +362,9 @@ export async function fetchSubgraph(params) {
           // Walk control ㄴ (b1245bab9): the fan-out cap, and the bundles to draw anyway (node|predicate|direction).
           fanout_limit: fanoutLimit, expand,
           // The auxiliary node(s) the walk judges its nodes against (owner 10-12) - none, nothing sent.
-          aux } = params || {};
+          aux,
+          // The next page of the same walk (owner 10-12 «이어 걷기»): the answer's more.resume, sent as the body of a POST.
+          resume } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -458,7 +460,8 @@ export async function fetchSubgraph(params) {
   for (const id of Array.isArray(aux) ? aux : []) query.append('aux', String(id));
   if (direction) query.set('direction', direction);
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
-  const res = await (fetchImpl || fetch)(url);
+  const res = await (fetchImpl || fetch)(url, ...(resume ? [{ method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resume }) }] : []));
   if (!res.ok) {
     let detail = null;
     try { detail = await res.json(); } catch (e) { detail = null; }
@@ -1948,7 +1951,7 @@ export function createWalkBoxWalk(deps) {
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
     const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
-            since, until, positive, negative, fanout_limit: fanoutLimit, expand, aux } = spec || {};
+            since, until, positive, negative, fanout_limit: fanoutLimit, expand, aux, resume } = spec || {};
     // A marking is a start too (lead f6fc6ba66): its signed ids, in the shape the board's walk sends.
     const marked = Array.isArray(positive) && positive.length > 0;
     if (!type && !marked) return { ok: false, message: PICK_TYPE_FIRST };
@@ -1979,7 +1982,7 @@ export function createWalkBoxWalk(deps) {
         hops: hops || undefined,
         node_limit: nodeLimit || undefined,
         since, until,
-        fanout_limit: fanoutLimit || undefined, expand, aux,
+        fanout_limit: fanoutLimit || undefined, expand, aux, resume,
       });
       if (!got.ok || !got.body) {
         return { ok: false, message: refusalSentence(got.detail, got.status) };
@@ -2035,6 +2038,10 @@ export function createWalkBoxWalk(deps) {
         // 🔴 S-13: 「«얼마»에서 잘렸나」. `truncated` 는 읽고 있었으므로 화면이 「절단됨」을
         //    말할 수는 있었는데, 예산을 몰라 「많아서」와 「상한이 낮아서」가 같아 보였습니다.
         limits: body.limits || null,
+        // The server's continuation (owner 10-12 «이어 걷기»): each collected type reached whole or cut, and the next
+        // page's resume; `ask` this walk's own spec, which the next page is asked with again.
+        more: body.more || null,
+        ask: { ...(spec || {}), resume: undefined },
         // 「닿은 것이 없다」와 「못 물어봤다」를 화면이 가를 수 있게 «둘 다» 나릅니다.
         state: body.state || null,
         message: body.message || null,
