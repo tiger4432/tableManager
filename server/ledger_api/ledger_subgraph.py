@@ -1594,7 +1594,7 @@ def _canonical_seed(item):
 
 
 HUB_DIRECTIONS = ("outgoing", "incoming")
-_HUB_VALUE = re.compile(r"^\d+,\d+$")
+_HUB_VALUE = re.compile(r"^\d+,\d+(,(found|none|unknown))?$")
 
 
 def hub_step(hub_id):
@@ -1608,7 +1608,15 @@ def hub_step(hub_id):
     return "|".join((near, parts[1], parts[2], parts[3]))
 
 
-def _value_hubs(step_hubs, reach):
+def _hub_value(member, reach, nodes):
+    """THE ONE LIST OF WHAT SPLITS A HUB (총괄 afcb79f14 · 5ad030347): the contrast value, then the aux judgement when the
+    walk was asked one. -> (the id's value cell, the value, the aux state or None)"""
+    value = [int(count) for count in reach.get(member, (0, 0))]
+    state = ((nodes.get(member) or {}).get("aux") or {}).get("state")
+    return "%d,%d" % tuple(value) + ("," + state if state else ""), value, state
+
+
+def _value_hubs(step_hubs, reach, nodes=None):
     """The walk's step hubs split by contrast value (총괄 afcb79f14, 소유자 「그렇게해」): a hub is ONE step and ONE value,
     its value its members' own. The id is the step's with the value as a fifth cell; a hub beyond a hub takes its
     member's parent's hub as its near side. Step hubs come in the order made, so a parent's hub is there first.
@@ -1618,11 +1626,12 @@ def _value_hubs(step_hubs, reach):
     for step in step_hubs.values():
         for member, parent in step["members"].items():
             near = row_hub.get(parent, step["near"]) if parent is not None else step["near"]
-            value = [int(count) for count in reach.get(member, (0, 0))]
-            hub_id = "|".join((near, step["predicate"], step["direction"], step["type"], "%d,%d" % tuple(value)))
+            cell, value, state = _hub_value(member, reach, nodes or {})
+            hub_id = "|".join((near, step["predicate"], step["direction"], step["type"], cell))
             hub = hubs.setdefault(hub_id, {
                 "near": near, "predicate": step["predicate"], "direction": step["direction"], "type": step["type"],
-                "depth": step["depth"], "value": value, "of": near if near in hubs else None, "members": {}})
+                "depth": step["depth"], "value": value, "of": near if near in hubs else None, "members": {},
+                **({"aux": {"state": state}} if state else {})})
             hub["members"][member] = parent
             row_hub[member] = hub_id
     for hub in hubs.values():
@@ -1650,8 +1659,9 @@ def _hub_view(visible, edges, folded, nodes, entities, seed_signs):
             continue
         hub_nodes.append({"id": hub_id, "type": hub["type"], "label": hub["label"], "depth": hub["depth"],
                           "node_kind": rows_nodes[0].get("node_kind"), "count": len(hub["members"]),
-                          "value": hub["value"], "hub": {"near": hub["near"], "predicate": hub["predicate"],
-                                                         "direction": hub["direction"], "of": hub["of"]}})
+                          "value": hub["value"], **({"aux": hub["aux"]} if "aux" in hub else {}),
+                          "hub": {"near": hub["near"], "predicate": hub["predicate"],
+                                  "direction": hub["direction"], "of": hub["of"]}})
         declared = _declared_columns(rows_nodes, entities)
         rows = []
         for node in rows_nodes:
@@ -2113,7 +2123,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
     # 🔴 RANKED ON THE FOLDED GRAPH (총괄 b5f3fc849 · afcb79f14): the walk's step hubs split by this reach into value
     # hubs, each ONE candidate with its members' value, saying how many it stands for; a row is no candidate.
     # `folded` takes the value hubs back - the answer's nodes, edges and tables are folded with the same ones.
-    split = _value_hubs(hubs or {}, reach)
+    split = _value_hubs(hubs or {}, reach, nodes)
     if folded is not None:
         folded.update(split)
     hubs = split["hubs"]
@@ -2431,11 +2441,7 @@ def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, aux=None, **
     try:
         if page is not None:
             return _time_page(seed_id, lookup, page, **arguments)
-        payload = _walk(seed_id, lookup, **arguments)
-        if aux:
-            _judge_aux(payload, aux, lookup, arguments.get("edge_limit", DEFAULT_EDGE_LIMIT),
-                       arguments.get("static_types"))
-        return payload
+        return _walk(seed_id, lookup, aux=aux, **arguments)
     finally:
         _WALK_DECLARATION.reset(token)
 
@@ -2718,7 +2724,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              cardinalities=None, rows=False,
              entities=None, group_by=None, measure=None,
              seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
-             registration_follow=None, fanout_limit=None, expand=None, resume=None):
+             registration_follow=None, fanout_limit=None, expand=None, resume=None, aux=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     🔴 MORE (총괄 ad3c03e71 · df746abf6 ㄴ, 소유자 「원하는 걸 다 얻었는지 파악하고 계속 추가 걷기」 · 「상한은 그대로」):
@@ -3627,6 +3633,12 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # 🔴 THE VERDICTS NEED THE CUTS, so they are folded once the budget is known — the same
     # walk, no second pass over the store.
     _absence_verdicts(nodes, not reasons, reasons[0] if reasons else None)
+    # 🔴 THE AUX JUDGEMENT READS THE WALKED NODES BEFORE THEY FOLD (총괄 5ad030347): a hub splits by it, as by the contrast
+    aux_block = None
+    if aux:
+        judged = {"nodes": visible_nodes}
+        _judge_aux(judged, aux, lookup, edge_limit, static_types)
+        aux_block = judged["aux"]
     folded = {}
     propagation = _propagation(
         nodes, ordered_edges, seed_signs,
@@ -3646,6 +3658,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         "seed": seed, "nodes": answer_nodes, "edges": answer_edges,
         # 🔴 a hub's rows, present only when the walk folded one (총괄 b5f3fc849)
         **({} if tables is None else {"tables": tables}),
+        **({} if aux_block is None else {"aux": aux_block}),
         # 🔴 WHICH ATTRIBUTE NAMES HOLD SEVERAL VALUES, BY NODE TYPE (S-144, 판정 327).
         # `attributes[name]` is a list for these names and a scalar for every other, so a
         # reader has to know which - and the DECLARATION is where that is written. The

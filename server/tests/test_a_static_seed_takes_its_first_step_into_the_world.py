@@ -81,11 +81,11 @@ def test_a_static_node_met_on_the_way_is_held_as_before():
     assert _labels(body, "wafer") == ["W9"], "the walk left a name it met and came back into the world"
 
 
-def test_a_static_seeds_fan_out_draws_its_first_n_and_bundles_the_rest():
-    """총괄 11e5ea207: over the limit, the first `fanout_limit` are drawn - it drew none before."""
+def test_a_static_seeds_fan_out_over_the_limit_is_one_hub():
+    """총괄 b5f3fc849: over the limit, the step folds into a hub (it drew the first `fanout_limit` before)."""
     body = _walk(_id("defect_kind", "K"), follow=["of_kind"], fanout_limit=2)
-    assert len(_labels(body, "defect")) == 2
-    assert [(b["far_type"], b["count"], b["drawn"]) for b in body["bundles"]] == [("defect", 3, 2)]
+    assert _labels(body, "defect") == ["defect ×3"]               # the hub, its members its table's rows
+    assert [(n["type"], n["count"]) for n in body["nodes"] if "hub" in n] == [("defect", 3)]
 
 
 def test_the_table_rows_open_the_seed_the_same_way():

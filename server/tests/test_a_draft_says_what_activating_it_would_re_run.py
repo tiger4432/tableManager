@@ -177,6 +177,13 @@ def test_an_inverse_only_predicate_draft_re_runs_no_source(sample_setup, monkeyp
     assert redo["count"] == {"absence": retroactive.ABSENCE_TRULY_NONE}
 
 
+def test_a_hub_predicate_draft_re_runs_no_source(sample_setup, monkeypatch):
+    """`hub` is walk-only (lead b5f3fc849): written, no source re-runs and no atom moves."""
+    redo = _word_redo(sample_setup, "predicate|inspected", lambda raw: dict(raw, hub=True), monkeypatch)
+    assert redo["sources"] == []
+    assert redo["count"] == {"absence": retroactive.ABSENCE_TRULY_NONE}
+
+
 def test_the_absence_word_lives_in_the_counters_vocabulary():
     """⚠️ ONE PLACE FOR THE CLIENT TO LEARN IT. A word invented beside the report would be a
     second vocabulary for the same idea."""

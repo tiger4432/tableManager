@@ -578,6 +578,15 @@
                 }
               },
               {
+                "key": "hub",
+                "required": false,
+                "label": "Hub - a walk folds the far nodes this predicate reaches from one node into one hub, with a table of them (blank = not folded)",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              },
+              {
                 "key": "class",
                 "required": false,
                 "label": "Classes - words you choose to group predicates; follow=class:<word> walks every predicate that has it (blank = no class)",
