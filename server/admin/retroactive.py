@@ -46,6 +46,22 @@ COUNT_UPPER_BOUND = "upper_bound"
 #: as `main.ENRICHMENT_DRY_RUN_DEFAULT_LIMIT`: a request path gets a sample.
 DEFAULT_SCAN_LIMIT = 200
 MAX_SCAN_LIMIT = 2000
+
+
+def _count_until():
+    """When a count that reads row by row stops - the page cap from now: a count answers in the request, with no
+    line, so within the 5 s or «at least» (소유자 「5 초」, 총괄 2ea5ee2a7 ②)."""
+    import time
+    import pacing
+
+    return time.monotonic() + pacing.PAGE_SECONDS_CAP
+
+
+def _cut_said():
+    """The sentence a count cut at `_count_until` ends with."""
+    import pacing
+
+    return " - stopped counting at %g s; the run counts the rest as it goes" % pacing.PAGE_SECONDS_CAP
 #: How much of a failed run's error its row keeps (`_mark_run`). A rule run's failure record
 #: gives way in its reason to fit, so the row holds whole JSON (총괄 ff60fe669 ①).
 RUN_ERROR_LIMIT = 2000
@@ -565,7 +581,8 @@ def _count_ledger_rescope(db, params, scan_limit):
 
     `count_kind` is EXACT and `scan_limit` is null because the SCOPE is the budget: this
     compiles exactly the rows the operator named and nothing besides. Echoing a scan
-    budget would describe a walk this never takes.
+    budget would describe a walk this never takes. A whole source's stale atoms are the one
+    read that stops at `_count_until` - then «at least» (총괄 2ea5ee2a7 ②).
     """
     from ledger import backfill
 
@@ -574,22 +591,27 @@ def _count_ledger_rescope(db, params, scan_limit):
         # 총괄 8d10633ae ㉡ · 3a109bfd9 ③: the rescope's own whole-source preview - the table's
         # rows, the rows it lost and their atoms. Not translated: that would be the whole job.
         said = backfill.rescope(db.get_bind(), _ledger_setup(params), source, None, None,
-                                apply=False, whole_source=True, world=_ledger_world(params))
+                                apply=False, whole_source=True, world=_ledger_world(params),
+                                until=_count_until())
         total, gone, atoms = said["relation_rows"], said["gone_rows"], said["gone_atoms"]
-        stale = said["stale_atoms"]
+        stale, cut = said["stale_atoms"], bool(said.get("stale_cut"))
+        stale_said = ("at least %d atom(s) (%d atom(s) of '%s' read%s)" % (stale, said["stale_read"], source,
+                                                                         _cut_said())
+                      if cut else "%d atom(s)" % stale)
         where = "; ".join("%s: %s" % (table, ", ".join("%s %d" % pair for pair in sorted(by.items())))
                           for table, by in sorted(said["stale_tables"].items())) or "none"
         extra = {"source": source, "whole_source": True, "relation_rows": total, "gone_rows": gone,
                  "gone_atoms": atoms, "stale_atoms": stale, "stale_refs": said["stale_refs"],
-                 "stale_tables": said["stale_tables"]}
+                 "stale_tables": said["stale_tables"], "stale_read": said["stale_read"], "stale_cut": cut}
         if total is None:
             # 총괄 e027f669d: a name today's declaration does not have - its atoms, all of them
             return {
-                "affected": stale, "affected_label": "atoms withdrawn",
-                "absence": ABSENCE_TRULY_NONE if not stale else None, "count_kind": COUNT_EXACT,
-                "scanned": stale, "scan_limit": None, "truncated": False,
+                "affected": stale, "affected_label": "atoms withdrawn (at least)" if cut else "atoms withdrawn",
+                "absence": ABSENCE_TRULY_NONE if not stale and not cut else None,
+                "count_kind": COUNT_SAMPLE if cut else COUNT_EXACT,
+                "scanned": said["stale_read"] if cut else stale, "scan_limit": None, "truncated": cut,
                 "detail": (f"'{source}' is not in today's declaration: withdraws every atom it "
-                           f"wrote - {stale} atom(s) by table and predicate: {where}. Nothing is "
+                           f"wrote - {stale_said} by table and predicate: {where}. Nothing is "
                            f"re-translated. Cannot be undone."),
                 "extra": extra}
         return {
@@ -601,7 +623,7 @@ def _count_ledger_rescope(db, params, scan_limit):
                        f"atoms withdrawn and new ones written in one commit. Withdraws "
                        f"{atoms} atom(s) of {gone} row(s) the table no longer has. The "
                        f"re-translation is not previewed - that would be the whole job. "
-                       f"Withdraws {stale} atom(s) it wrote from tables today's declaration "
+                       f"Withdraws {stale_said} it wrote from tables today's declaration "
                        f"does not read, by table and predicate: {where}."),
             "extra": extra}
     column = params["scope_column"]
@@ -782,13 +804,15 @@ def _judge_set_aside(params):
 def _count_set_aside(db, params, scan_limit):
     from chain import set_aside
 
-    found = set_aside.set_aside(db, apply=False, **_scope(params))
+    found = set_aside.set_aside(db, apply=False, until=_count_until(), **_scope(params))
+    cut = bool(found.get("cut"))
     return {"affected": found["events"],
             "absence": ABSENCE_TRULY_NONE if not found["events"] else ABSENCE_NOT_APPLICABLE,
-            "affected_label": "waiting events to set aside (%d row(s))" % found["rows"],
-            "count_kind": COUNT_EXACT, "scanned": None, "scan_limit": None,
-            "truncated": False,
-            "detail": "by table: %s" % (found["by_table"] or "none")}
+            "affected_label": "waiting events to set aside (%s%d row(s))" % (
+                "at least - " if cut else "", found["rows"]),
+            "count_kind": COUNT_SAMPLE if cut else COUNT_EXACT, "scanned": None, "scan_limit": None,
+            "truncated": cut,
+            "detail": "by table: %s%s" % (found["by_table"] or "none", _cut_said() if cut else "")}
 
 
 def _run_set_aside(db, params, log, control=None):
@@ -2406,6 +2430,10 @@ class RunControl:
         self._moved = time.monotonic()
         #: The run's own log (`log` of `execute` / `run_here`) - a step line goes where the run's lines go.
         self._log = log or logger.info
+        #: The last page boundary's count, clock and number - what the page line (`_page_line`) measures from - and the
+        #: run's start, whose rate the time left is told by (a page's own rate swings on a one-row page).
+        self._said, self._boundary, self._pages = 0, time.monotonic(), 0
+        self._began, self._total = self._boundary, None
 
     def _session(self):
         if self._session_factory is not None:
@@ -2444,6 +2472,7 @@ class RunControl:
 
     def progress(self, processed=None, total=None) -> None:
         """Record how far this run has got. `total=None` stays NULL - unknown, not zero."""
+        self._page_line(processed, total)
         if not self.run_id:
             return
         values = {}
@@ -2457,6 +2486,27 @@ class RunControl:
         import event_constants
         self.announce(event_constants.PROGRESS_STATUS_RUNNING, processed=processed, total=total)
         self._moved = time.monotonic()      # the next step's seconds leave out this boundary's notice
+
+    def _page_line(self, processed, total) -> None:
+        """THE PAGE LINE (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」): at each page boundary that moved
+        the count, `[<op>] page k: <rows> rows · <seconds> s · <rows/s> rows/s · <done> / <total> · ~<left> left` - the
+        total and the time left only when the op counted its rows."""
+        # the total once told holds for the run's later lines (the op's headline at its end comes without it)
+        total = self._total = total if total is not None else self._total
+        if processed is None or processed == self._said:
+            return
+        now = time.monotonic()
+        if processed < self._said:
+            # another count began - a later step's (from 0 again) or the op's headline at its end: lines go on from it
+            self._said, self._boundary = processed, now
+            return
+        rows, seconds = processed - self._said, now - self._boundary
+        rate = rows / seconds if seconds > 0 else 0
+        self._pages += 1
+        done = ("%d done" % processed if not total else "%d / %d · ~%s left" % (
+            processed, total, _clock(max(total - processed, 0) * (now - self._began) / processed)))
+        self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s" % (self.op, self._pages, rows, seconds, rate, done))
+        self._said, self._boundary = processed, now
 
     def step(self, name, page, pages, rows) -> None:
         """A step of page `page` (of `pages`, None = unknown) returned (총괄 e71f7d6f1, 소유자 「죄다 stalled」 ·
@@ -2499,6 +2549,11 @@ class RunControl:
             self.announcing = False
             logger.warning("[Retroactive] run_id=%s op=%s: a progress notice was not heard - none more for this "
                            "run; the Retroactive tab reads the run record", self.run_id, self.op)
+
+
+def _clock(seconds):
+    """`42 s` · `7 min` · `3.1 h` - a page line's time left."""
+    return "%d s" % seconds if seconds < 120 else "%d min" % (seconds / 60) if seconds < 7200 else "%.1f h" % (seconds / 3600)
 
 
 def announce_progress(run_id, op, status, processed=None, total=None):

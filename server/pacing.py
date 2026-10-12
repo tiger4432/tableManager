@@ -19,6 +19,7 @@ exact. The table does not need to know.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 PACING_PATH = Path(__file__).with_name("pacing.json")
@@ -40,6 +41,24 @@ class UnknownPace(ValueError):
 
 def load_paces(path=None):
     return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8"))["paces"]
+
+
+#: The seconds a page aims at unless pacing.json says `page_seconds` (소유자 10-12 「모든 소급은 5 초에 한 번은 진행
+#: 상황이 보이게」 · 「한 배치에 5 초 이내 무조건」) - never above the cap.
+PAGE_SECONDS_KEY, PAGE_SECONDS_DEFAULT, PAGE_SECONDS_CAP = "page_seconds", 3.0, 5.0
+
+
+def page_seconds(path=None):
+    """The declared page time, the default when absent, unreadable or not a positive number, and never above the cap -
+    a typo in pacing.json must not stop every page loop (the ledger follow-up reads its pace the same way)."""
+    try:
+        value = json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8")).get(PAGE_SECONDS_KEY)
+    except Exception as exc:                      # noqa: BLE001
+        logging.getLogger(__name__).warning("[Pacing] page_seconds unreadable, using the default: %s", exc)
+        return PAGE_SECONDS_DEFAULT
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return PAGE_SECONDS_DEFAULT
+    return min(float(value), PAGE_SECONDS_CAP)
 
 
 def load_jobs(path=None):

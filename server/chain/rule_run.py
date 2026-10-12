@@ -290,7 +290,7 @@ def stamps_its_origin(rule):
     return dynamic_mappers.stamps_origin((rule or {}).get("mapper"), rule)
 
 
-def columns_a_rule_writes(rule, items=()):
+def columns_a_rule_writes(rule, items=(), more=False):
     """The columns this rule writes, or None - not known.
 
     This run's rows when it proposed any. 🔴 [총괄 10-08] A run that proposed none still owns what it
@@ -300,6 +300,10 @@ def columns_a_rule_writes(rule, items=()):
     총괄 016a766af), and a mapper that declares nothing with what it last wrote in this process.
     """
     columns = {column for item in items or () for column in (item_cell(item, "updates") or ())}
+    if more:
+        # an answer with more pages (`next_page`) is its first page here - with the declaration, or a join whose first
+        # page skipped a blank take in every row leaves that column's old cells (총괄 a02ad0f2b ㄱ)
+        columns |= set(dynamic_mappers.columns_declared_for(rule) or ())
     if columns:
         return columns
     declared = dynamic_mappers.columns_declared_for(rule)

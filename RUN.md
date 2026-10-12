@@ -358,6 +358,31 @@
 > 안 빼는 때   쉬지 않는 센서스 틱(S-122) · 색인에 없는 행이 100,000 넘음(로드 전) -> «exclude_when not subtracted (…)»
 > 같은 낱말   «Table less indexed» 는 이름대로 표 − 색인 — 거른 행은 «New, not translated» · not yet 에서만 빠짐
 > 되돌리기     git revert 9c1da298f -> 서버 · 체인 워커 재기동
+> ## [10-12] **소급 진행이 5 초에 한 번 — 쪽 크기를 스스로 맞추고 첫 쪽은 1 행 (총괄 a02ad0f2b, 소유자 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」 · 「인벤토리 리플레이는 1 행씩 시작해야지」, 착지 {LANDING}) — 이주 «없음» · 재기동 «서버 · 체인 워커»(소급 · 명령줄은 다음 실행부터)**
+>
+> ```
+> 무엇        쪽을 도는 소급 · 원장 백필의 쪽이 1 행에서 시작해, 쪽 하나가 page_seconds 아래면 그 쪽의 행당 속도로
+>             page_seconds 를 채울 크기까지 키움(한 번에 두 배까지), 넘으면 넘은 비율만큼 바로 줄임.
+>             손으로 준 chunk_size · 쪽 상수는 «최대». pace 의 쉼은 쪽 시간에 안 셈. 원장 백필은 쪽마다 읽고 바로 번역
+>             체인의 조인 · 접기 맵퍼 쪽(라이브)은 고정 1,000 그대로 — 쓰기 하나 = 이벤트 하나
+> 선언 칸     server/pacing.json "page_seconds": 3 (5 를 넘게 적어도 5). 다음 실행부터, 재기동 없이
+> 볼 줄       retroactive.log (명령줄이면 그 창) — 쪽마다
+>             [ledger_rescope] page 11: 512 rows · 1.5 s · 330 rows/s · 1024 done
+>             전체를 세는 연산(표기 소급 · fold-rows · 원천이 표인 원장 백필 — 시작에 count 한 번)은 «· <처리> / <전체> · ~<남은 시간> left»
+>             fold-units 는 전체를 미리 안 센다 — 규칙 자리에 그룹을 1 개, 그다음 두 배씩(최대 1,000) 묻고 물을 때마다 «rule» 단계 줄
+> 답의 뜻     줄 간격이 5 s 를 넘음 -> 1 행 쪽도 5 s 넘게 걸림 — 행 하나가 느리거나 잠금. 위 stalled 절의 잠금 질의
+>             rows 가 1~2 에서 안 자람 -> 쪽 크기와 무관한 고정 비용이 page_seconds 를 넘음 — 총괄께
+>             표기 소급 · fold-units 의 옛 줄 «[notation] x / total rows (page k, s)» 는 없어짐 — 이 줄 하나로
+> 쪽 앞 읽기  set_aside · enrichment 확정 · 소급 withdraw · 원장 stale 철회도 첫 쪽 전에 전부를 읽지 않는다 — 쪽마다 읽음
+>             소급 withdraw 줄  [withdraw] '<소스>' claims in '<표>' - counting as it goes   (총계는 끝 줄)
+>             enrichment 확정 줄 [confirm] rule '<규칙>': examining the queue a page at a time, counting as it goes
+> 세기 5 초    소급 탭 Count 는 요청 안에서 답한다 — set_aside 와 원장 rescope 통째의 stale 원자는 5 s 에서 끊고
+>             «at least» (화면 칸 «sample hit its limit: true»), 문장 끝 «stopped counting at 5 s; the run counts the rest as it goes»
+> 접기 이벤트  회수 사건 접기(fold-withdraw-events)는 쪽마다 접는다 — 고정 쪽 하나보다 접힌 이벤트가 10~13 (N 2,500 ~ 1,000,000, 계산 - fold_events_at_size) 개쯤 더(쪽이 커지는 동안의 작은 것)
+> 맞춤 밖     이 루프들은 쪽 크기 고정 그대로 — 쪽 하나가 5 s 를 넘을 수 있음
+>             retranslate_drifted · catch_up 의 삭제 철회
+>             소급 «규칙 행 실행»(_run_rule_rows)은 실행 하나가 쪽 하나
+> 끄는 스위치  없음 — git revert {LANDING} -> 재기동
 > ```
 >
 > ---
@@ -368,14 +393,14 @@
 > 뜻          stalled = 그 실행이 300 s 동안 «한 단계도» 못 마침 — 잠금 대기 · 끊긴 프로세스 · 5 분 넘는 단계 하나
 >             쪽 하나가 5 분을 넘어도 단계가 끝나는 동안은 progressing (표기 소급 · fold-units 만. 다른 소급은 전처럼 쪽 경계에서만)
 > 볼 줄       retroactive.log (명령줄이면 그 창) — 단계가 끝날 때마다
->             [fold_written_notation] page 3/12: fold · 20000 rows · 41.2 s
+>             [fold_written_notation] page <k>: fold · <rows> rows · <s> s
 >             줄이 이어지면 느린 것. 끊기면 마지막 줄의 «다음» 단계에서 서 있음 (read -> fold -> write -> 다음 쪽 read)
 > 잠금인가    읽기만, 운영 DB:
 >             SELECT pid, wait_event_type, wait_event, pg_blocking_pids(pid) AS blocked_by, round(extract(epoch FROM now() - query_start)) AS seconds, left(query, 60) AS query FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle' ORDER BY query_start;
 > 답의 뜻     소급 표 이름이 든 query 줄에 blocked_by 가 있음 · wait_event_type Lock -> 잠금 대기. blocked_by 의 pid 줄이 잡은 쪽
 >             blocked_by 비어 있음 · 같은 query 의 seconds 가 계속 늚 -> 단계 하나가 느린 것(잠금 아님)
 >             소급 query 줄이 없음 -> 그 프로세스가 DB 를 안 쓰는 중 — stop_retroactive.bat 목록의 runner 부터
-> 안 찍는 곳   fold-units 의 첫 쪽 전(규칙 답 전체 계산) · 마지막 쪽 뒤(옛 표시 거두기) — 5 분 넘으면 그 동안 stalled
+> 안 찍는 곳   fold-units 의 마지막 쪽 뒤(옛 표시 거두기) — 5 분 넘으면 그 동안 stalled (첫 쪽 전 규칙 답 전체 계산은 impl-pagesize 부터 그룹씩 · 줄 찍음)
 > 화면        큐 줄은 moving progressing / stalled 와 no_progress 초뿐 — 단계 낱말은 로그 줄에만
 
 > ## [10-12] **와쳐가 아직 기다리는 행만 집는다 — 다시 읽기 취소와 안 엇갈림 (총괄 49792d3f6 B, 착지 e49ad12e3) — 이주 «없음» · 재기동 «수집기(run_watcher)»**
@@ -1831,8 +1856,9 @@
 >                보류 복사 1,000 행: 9.3 s -> 1.2 s (PG 박스 시험 수 · 풀 엔진, 운영 수 아님)
 >                거둔 층 · 남은 층 · 보이는 값 · 감사 · 사건은 전과 같다. 다만 회수 사건이 표마다 한 거래로 묶인다(전에는 층 이름마다 한 거래)
 >              운영자 회수(소급 withdraw · CLI)도 같은 한 벌을 지난다 — 답과 줄은 그대로
-> 볼 줄          [withdraw] <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>'
->                [withdraw] apply: <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+> 볼 줄          [withdraw] <N> source(s) claim in '<표>' - counting as it goes
+>                [withdraw] apply: <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>' - <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+>                 (총계는 끝 줄 — 소급 withdraw 가 주장을 쪽으로 읽는 판 impl-pagesize 부터)
 >                 = 표마다 두 줄(전에는 층 이름마다 두 줄 — 1,000 행 삭제면 2,000 줄이었다)
 >              [ChainRetract] table=<표> deleted_rows=… groups=… cells_withdrawn=… — 그대로
 > 급할 때       스위치 없음. 되돌리려면 이 커밋을 되돌리고 체인 워커 재기동
