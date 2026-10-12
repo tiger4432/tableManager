@@ -18,6 +18,7 @@
 .tb-head__sp { flex: 1; }
 .tb-page .rb-board { min-height: 0; background: var(--tb-page); gap: var(--tb-gap); }
 .tb-page .rb-panel { overflow: hidden; }
+.tb-page .rb-panel.tb-pops { overflow: visible; z-index: 3; }
 .tb-btn { height: var(--tb-pill-h); padding: 2px 10px; border: 1px solid var(--tb-pill); border-radius: 100px; background: transparent;
   color: var(--tb-text); font: 400 12px/15px var(--tb-font); cursor: pointer; }
 

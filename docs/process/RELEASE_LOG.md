@@ -328,6 +328,7 @@
 - **값 칸** — 칸마다 { 길, 끝 노드(고르면), 값, 접기 } 입니다. 고르개는 걷기 표 «+ Column» 과 같은 함수(`routesFrom` · `valuesAt`)를 씁니다. 접기는 스팟파이어 철자 일곱(Count · UniqueCount · Sum · Avg · Min · Max · Median)과 우리 Latest(원자 시각으로 가장 늦은 값, 같은 시각에 둘이면 안 고름)입니다. 일곱은 서버 걷기 집계와 같은 규칙으로 접습니다(빈 무리 null · 짝수 중앙값은 두 가운데의 평균 · 여럿 값은 펼쳐 넣음). 접기 없이 값이 여럿인 행은 안 그리고 «N rows with several values» 라고 말합니다. 크로스 테이블은 축 값이 둘인 행을 두 칸에 다 셉니다.
 - **마킹** — 산점도에서 사각형을 끌면 그 안 점이 찍힙니다(Ctrl 은 더하기, Shift 는 −). 안 찍힌 점은 제 색 20 % + 바탕 80 % 의 불투명 점입니다(스팟파이어에서 잰 비율). 크로스 테이블 칸 · 머리 · 범례 값을 누르면 그 행들의 «허브» 하나가 통째로 찍히고, 바구니에 한 줄로 서서 펼치면 구성원이 나옵니다. 찍힌 행이 든 칸은 초록(#00A650)입니다.
 - **바닥줄** — 활성 부품의 «N of M rows · system −a · part −b · K marked · hidden H · C columns · 행 타입» 입니다. M 은 걸어 받은 행, a 와 b 는 두 겹이 뺀 행, hidden 은 필터에 가려진 찍힌 노드입니다. 걷기가 예산에 잘렸으면 «filter over a cut walk» 가 같은 줄에 섭니다.
+- **시작 고르개** — «+ Add start» 의 고르개(타입 · 키 · + Positive · − Negative)가 시작 줄 패널에 잘리지 않고 아래 부품들 위로 뜹니다. 처음 착지본에서는 높이 44 의 패널 안에 잘려 시작을 고를 수 없었습니다(총괄 10-13, 18997). 화면 검사기가 고르개를 연 뒤 칸마다 «누르면 그 칸에 닿는가»를 잽니다(걷기 화면도).
 - **필터 판 · 속성 창** — 필터 판은 시스템 필터(이름 «Filter»)를 고칩니다. 활성 부품의 값 칸마다 조건 하나(숫자는 범위, 글은 값 체크와 개수, «Include empty»)이고 고치는 즉시 반영됩니다. 속성 창은 활성 부품의 선언을 그 자리에서 고칩니다: Data(Marking · Route · Filtering · Filter + Add filter), 칸마다 알약, Marking(Writes · Shows).
 - **저장** — Save 는 부품 선언을 이 브라우저에 두고, 다시 열면 같은 그림입니다. Reset 은 지우고 처음 배치로 돌아갑니다. Light/Dark 로 테마를 바꿉니다.
 - **화면에서** — `testbed.html` → 오른쪽 위 Visualization properties 에서 Marking «All» · Route 를 고르고, X-axis 알약을 눌러 Route · Ends at · Value · Reduce 를 고릅니다.
