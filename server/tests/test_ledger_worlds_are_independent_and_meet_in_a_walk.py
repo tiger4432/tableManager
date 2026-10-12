@@ -1019,6 +1019,17 @@ def test_the_set_door_reads_far_ends_in_or_out_of_a_set_on_the_ledger(world):
         inside, _ = lookup.claims_for_entities(wafer, "both", 100, far=("in", [recipe]))
         outside, _ = lookup.claims_for_entities(wafer, "both", 100, far=("not_in", [recipe]))
         assert ([a.predicate for a in inside], len(outside)) == (["processed_with"], len(every) - 1), every
+
+        def far_type(atom):                        # the far end's bare type from W1, None when it is no entity
+            if atom.subject_keys == {"wafer": "W1"}:
+                return (atom.object_payload or {}).get("type", "").split("@")[0] if atom.object_kind == "entity_ref" \
+                    else None
+            return atom.subject_type.split("@")[0]
+        # 소유자 10-12 「2번」: the far end's class in SQL (`_far_types`) - an atom leading to no entity in neither
+        typed_in, _ = lookup.claims_for_entities(wafer, "both", 100, far_types=("in", ["recipe"]))
+        typed_out, _ = lookup.claims_for_entities(wafer, "both", 100, far_types=("not_in", ["recipe"]))
+        assert ([a.predicate for a in typed_in], sorted(a.id for a in typed_out)) == (
+            ["processed_with"], sorted(a.id for a in every if far_type(a) not in (None, "recipe"))), every
         body = ledger_subgraph.subgraph(explorer.entity_id("wafer", {"wafer": "W1"}), lookup, hops=1,
                                         aux=[explorer.entity_id(*recipe)])
     seed = explorer.entity_id("wafer", {"wafer": "W1"})

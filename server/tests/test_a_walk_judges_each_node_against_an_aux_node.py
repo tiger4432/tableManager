@@ -3,8 +3,8 @@
 최단경로」): `aux` judges each walked node - found (hops to the nearest aux) · none · unknown - by the same walk from the
 aux nodes with the guards that drop a step off; the answer's nodes and edges stay as walked. Seed: wafer W, its dies
 D0 · D1 · D2; each cell an aux node of its own:
-  A1  reaches D0 only through a hub - quantity Q of 300 more dies - under a 200-atom cap: found only when the
-      meeting reads the hub's edges to what the walk holds, not all of them (the set door)
+  A1  reaches D0 only down from a static name - quantity Q of 300 more dies: none (the rule, 소유자 10-12); Q itself
+      found under a 200-atom cap only when the meeting reads the hub's edges to what the walk holds (the set door)
   A2  reaches D1 only by a predicate the walk does not follow   found
   A3  reaches D2 directly and through two steps                 found, the shorter
   A4  joined to nothing the walk holds                          none
@@ -36,7 +36,8 @@ def _predicate(subject, far):
 
 VOCABULARY = {"in_container@1": _predicate("die", "wafer"), "measures@1": _predicate("die", "quantity"),
               "observed@1": _predicate("die", "defect"), "bonded_from@1": _predicate("die", "die"),
-              "linked@1": _predicate("die", "die")}
+              "linked@1": _predicate("die", "die"), "in_lot@1": _predicate("wafer", "lot"),
+              "processed_by@1": _predicate("die", "tool")}
 COUNTER = iter(range(1, 10 ** 6))
 DEFAULT_EDGES = ledger_subgraph.DEFAULT_EDGE_LIMIT
 
@@ -94,9 +95,57 @@ def judged(body):
     return {node["id"]: node["aux"] for node in body["nodes"]}
 
 
-def test_a_node_reached_only_through_a_static_name_is_found(declared):
+def test_a_way_down_from_a_static_name_is_none_and_the_name_itself_is_found_under_the_cap(declared):
+    """소유자 10-12 「2번 너 말대로 해」: A1's only way is D0 -> Q -> A1, and Q -> A1 steps from the name down to a die -
+    none, searched out. Q itself, a hub of 300 more dies, is found one step from D0 under a 200-atom cap: the meeting
+    reads the hub's atoms toward what the walk holds, not all of them (the set door)."""
     body = walk(declared, [AUX["A1"]], edge_limit=20)       # atom cap 200, the hub 301
-    assert judged(body)[D["D0"]] == {"state": "found", "hops": 2, "via": AUX["A1"]}, body["aux"]
+    # the refused step A1 -> Q is not read at all - not read and dropped
+    assert (judged(body)[D["D0"]], body["aux"]["complete"], body["aux"]["claims"]) == ({"state": "none"}, True, 0), \
+        body["aux"]
+    hub = explorer.entity_id("quantity", {"q": "Q"})
+    body = walk(declared, [hub], edge_limit=20)
+    assert judged(body)[D["D0"]] == {"state": "found", "hops": 1, "via": hub}, body["aux"]
+
+
+OTHER_LOT = [_atom("wafer", {"w": "W1"}, "in_lot", "lot", {"l": "L1"}),
+             _atom("die", die("D1"), "in_container", "wafer", {"w": "W1"}),
+             _atom("wafer", {"w": "W9"}, "in_lot", "lot", {"l": "L2"}),
+             _atom("die", die("D9"), "in_container", "wafer", {"w": "W9"}),
+             _atom("die", die("D1"), "processed_by", "tool", {"t": "T"}),
+             _atom("die", die("D9"), "processed_by", "tool", {"t": "T"}),
+             _atom("die", die("D9"), "measures", "quantity", {"q": "Q"})]
+
+
+def test_a_static_walked_node_does_not_step_down_even_as_the_seed(declared):
+    """소유자 10-12 「2번」, no first-step exception: the walk starts at tool T and steps down to its die D1 (a static
+    seed's first step), D1 - AUX. Judged, D1 is found one step away and T is none - T -> D1 is a step down from a name,
+    even though one read of D1 brings the atom between them both ways. Two more aux nodes with nothing (X1, X2) widen
+    the aux side, so the walk's side grows with T and D1 on one frontier."""
+    tool, d1 = explorer.entity_id("tool", {"t": "T"}), D_ID("D1")
+    body = ledger_subgraph.subgraph(
+        tool, ledger_subgraph.InMemoryEvidenceLookup([
+            _atom("die", die("D1"), "processed_by", "tool", {"t": "T"}),
+            _atom("die", die("D1"), "linked", "die", die("AUX"))]),
+        declaration_paths=declared, hops=1, follow=["processed_by"], static_types={"tool"},
+        aux=[D_ID("AUX"), D_ID("X1"), D_ID("X2")])
+    assert {n["id"]: n["aux"] for n in body["nodes"]} == {
+        tool: {"state": "none"}, d1: {"state": "found", "hops": 1, "via": D_ID("AUX")}}, body["aux"]
+
+
+def D_ID(name):
+    return explorer.entity_id("die", die(name))
+
+
+def test_the_only_way_through_another_lots_die_is_none(declared):
+    """응용 QA (소유자 「다른 랏들 경로 타고 안 오는지 체크해」 · 「2번 너 말대로 해」): lot L1 <- W1 <- D1; D1 -> tool T <-
+    D9 (W9, lot L2) -> quantity Q, the aux. The only way leaves L1 through the name T down to another lot's die: none,
+    searched out under the cap."""
+    body = ledger_subgraph.subgraph(
+        explorer.entity_id("lot", {"l": "L1"}), ledger_subgraph.InMemoryEvidenceLookup(OTHER_LOT),
+        declaration_paths=declared, hops=2, follow=["in_lot", "in_container"], static_types={"tool", "quantity"},
+        aux=[explorer.entity_id("quantity", {"q": "Q"})])
+    assert (body["aux"]["complete"], {n["aux"]["state"] for n in body["nodes"]}) == (True, {"none"}), body["aux"]
 
 
 def test_a_node_reached_only_by_a_predicate_the_walk_does_not_follow_is_found(declared):
