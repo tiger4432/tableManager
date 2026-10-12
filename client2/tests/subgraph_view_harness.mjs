@@ -1438,7 +1438,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
-  if (want(["Q1", "Q12", "Q2", "Q3", "Q4", "Q6"])) {
+  if (want(["Q01", "Q12", "Q2", "Q3", "Q4", "Q6"])) {
     const s = await seat([DIE, STEP2]);
     openAll(s);
     const id = STEP2._marked;
@@ -1452,7 +1452,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const marked = button().getAttribute('aria-pressed') === 'true' && on(button()) && isMarked();
     mark(s.host);
     const back = JSON.stringify(s.markings.entries('s1')) === '[]' && button().getAttribute('aria-pressed') === 'false' && !isMarked();
-    say('Q1 Mark shows whether this node is marked, and pressing it again takes it out',
+    say('Q01 Mark shows whether this node is marked, and pressing it again takes it out',
       Boolean(off) && Boolean(marked) && back, JSON.stringify({ off, marked, back }));
     const kids = (byClass(s.host, 'sg-facts')[0] || { children: [] }).children;
     const has = (n, cls) => String(n.className || '').split(/\s+/).includes(cls);
@@ -1731,7 +1731,7 @@ const failures = [];
       '    if (name) this.markings.toggle(name, id, markingIntent(event).sign);\n', ''),
     M('QS1m', 'Mark takes no sign from Shift (lead 10-09)', 'QS1',
       'this.markings.toggle(name, id, markingIntent(event).sign);', 'this.markings.toggle(name, id, SIGN.CASE);'),
-    M('Q2m', 'Mark does not show its state', 'Q1',
+    M('Q2m', 'Mark does not show its state', 'Q01',
       "      this.markButton.setAttribute('aria-pressed', String(on));\n", ''),
     M('Q3m', 'Mark is live past the chain\'s end', 'L2',
       "      setDisabledReason(this.markButton, name ? '' : 'End of chain');\n", ''),

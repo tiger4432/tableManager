@@ -1741,12 +1741,12 @@ const sideSuite = (TV) => {
     && plain.sections.every((x) => x.groups.length === 1) && rowIds(plain) === ALL,
     `${JSON.stringify(plain.groups)} ${rowIds(plain)}`);
   const two = view(SIGNED_STARTS);
-  ok('Z2 a node a row: one row whichever groups reached it', rowIds(two) === ALL
+  ok('Z02 a node a row: one row whichever groups reached it', rowIds(two) === ALL
     && two.sections.every((x) => new Set(x.rows.map((r) => r.id)).size === x.rows.length), rowIds(two));
   ok('Z3 reached by one group only: the other says missing',
     cell(two, 'die@1', 'd:1', GATE_IN, 1) === '[missing]' && cell(two, 'die@1', 'd:2', GATE_IN, 0) === '[missing]',
     `${cell(two, 'die@1', 'd:1', GATE_IN, 1)} | ${cell(two, 'die@1', 'd:2', GATE_IN, 0)}`);
-  ok('Z4 reached but no value says so, not missing',
+  ok('Z04 reached but no value says so, not missing',
     cell(two, 'die@1', 'd:1', GATE_IN, 0) === TV.EMPTY && cell(two, 'die@1', 'd:2', GATE_IN, 1) === TV.EMPTY,
     `${cell(two, 'die@1', 'd:1', GATE_IN, 0)} | ${cell(two, 'die@1', 'd:2', GATE_IN, 1)}`);
   ok('Z5 a cell reads its group\'s edges only: the node both reached says each group\'s own value - one group, its far type (lead 10-11 W addendum 8 (다))',
@@ -2023,7 +2023,7 @@ const filterSuite = (TV) => {
     const plain = TV.walkTableView(RESULT, DECL.entities);
     const sec = (v, t) => v.sections.find((x) => x.type === t) || { rows: [], centreHeads: [] };
     const last = (row) => row.centre[row.centre.length - 1].text;
-    ok('AX1 a judged answer: each section\'s last own column «→ <the auxiliary node>», a row its yes · hops, no or unknown; none judged, no such column',
+    ok('AX01 a judged answer: each section\'s last own column «→ <the auxiliary node>», a row its yes · hops, no or unknown; none judged, no such column',
       JSON.stringify([sec(jv, 'die@1').centreHeads.slice(-1), sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last),
         sec(jv, 'die@1').judged, sec(plain, 'die@1').judged, sec(plain, 'die@1').centreHeads.some((h) => h.startsWith('→')),
         sec(jv, 'die@1').tally, sec(jv, 'wafer@1').tally, sec(plain, 'die@1').tally])
@@ -2426,9 +2426,9 @@ const TV_MUTANTS = [
     from: 'ranked: once([...ranked(b), ...ranked(a)])', to: 'ranked: once([...ranked(a), ...ranked(b)])' },
   { id: 'RTm1', what: 'the walked routes in no order - the commonest not first', catches: 'RT1',
     from: '    .sort((a, b) => b.count - a.count || a.hops - b.hops);', to: '    ;' },
-  { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX1',
+  { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX01',
     from: "          ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };", to: "          ] };" },
-  { id: 'AXm7', what: 'the counts taken over the reaching rows alone, as a filtered table would give them', catches: 'AX1',
+  { id: 'AXm7', what: 'the counts taken over the reaching rows alone, as a filtered table would give them', catches: 'AX01',
     from: "      tally: reaches ? reachTally(reachHead, said) : '',", to: "      tally: reaches ? reachTally(reachHead, said.filter((row) => row.reach && row.reach.state === 'found')) : ''," },
   { id: 'AXm2', what: '«Reaches only» shows every row', catches: 'AX2',
     from: "    && (!f.reaches || Boolean(line.row.reach && line.row.reach.state === 'found')));", to: '    );' },
@@ -2454,7 +2454,7 @@ const TV_MUTANTS = [
     from: 'byB(g, id) && !g.a.has(id) ?', to: 'false ?' },
   { id: 'DM6', what: 'no B, rows said reached anyway', catches: 'ZD2',
     from: 'a: g.inside, b: groupsB[i].inside })) : groupsA;', to: 'a: g.inside, b: groupsB[i].inside })) : groupsA.map((g) => ({ ...g, a: g.inside, b: new Set() }));' },
-  { id: 'ZM1', what: 'the rows only those the first group reached', catches: 'Z2',
+  { id: 'ZM1', what: 'the rows only those the first group reached', catches: 'Z02',
     from: '  const members = nodes.filter((n) => groups.some((g) => g.inside.has(n.id)));',
     to: '  const members = nodes.filter((n) => groups[0].inside.has(n.id));' },
   { id: 'ZM2', what: 'the node\'s own columns a group\'s, not the centre\'s', catches: 'Z17',
@@ -2472,7 +2472,7 @@ const TV_MUTANTS = [
   { id: 'ZM4b', what: 'a column no row has a Δ for draws its «—» Δ again', catches: 'DX1 ',
     from: '    const deltaAt = new Set(sideAt.flatMap((c, k) => (hasDelta(c) ? [k] : [])));',
     to: '    const deltaAt = new Set(groups.length === 2 ? sideAt.map((_, k) => k) : []);' },
-  { id: 'ZM5', what: 'reached but no value drawn missing', catches: 'Z4',
+  { id: 'ZM5', what: 'reached but no value drawn missing', catches: 'Z04',
     from: '  if (!values.length) return { text: EMPTY };', to: '  if (!values.length) return { text: MISSING, missing: true };' },
   { id: 'ZM6', what: 'several values: the first alone', catches: 'Z6',
     from: '  if (values.length === 1 && !cell.more)', to: '  if (values.length >= 1 && !cell.more)' },

@@ -230,6 +230,21 @@ export function holdsWholeTable() {
 //    because the cost of the first one being wrong in some version is an infinite fetch loop.
 let applyingSortState = false;
 
+// A table's filters die with it (lead 10-12): the grid keeps a filter across a columnDefs swap for a column id it still
+// has, and ROW_ID is on every table - the last table's filter ran the next one's reads to 0 rows. Dropping them reads
+// nothing of its own: the switch's first read is the table's, and its renderGrid draws the chips again.
+let droppingFilters = false;
+export function dropGridFilters() {
+  const api = state.gridApi;
+  if (!api || !Object.keys(api.getFilterModel() || {}).length) return;
+  droppingFilters = true;
+  try {
+    api.setFilterModel(null);
+  } finally {
+    droppingFilters = false;
+  }
+}
+
 export function updateGridSortState() {
   if (!state.gridApi) return;
 
@@ -619,11 +634,8 @@ export function ensureCellObject(dataObj, colId) {
 //    has one writer instead. `PRIORITY_SOURCE_USER` is exported for the same reason: the rule
 //    that reads this value and the code that writes it now share one spelling, so they cannot
 //    drift apart in silence.
-// ⚠️ NOT the rollback direction. `main.js:discardPendingTxEdits` restores `is_overwrite` alone
-//    and CANNOT restore the other half -- the staged edit record captures `oldIsOverwrite` and
-//    no `oldPrioritySource`, so the value to restore does not exist. Closing that needs the
-//    staging site to capture it, which is a wider change than routing the writers, and it is
-//    reported rather than done here.
+// ⚠️ NOT the rollback direction. Discard (api.js `discardPendingEdits`) restores both halves it staged, then reads the
+//    rows again so the server's flag and pin replace them (lead 10-12).
 export const PRIORITY_SOURCE_USER = 'user';
 
 export function markCellOverwritten(dataObj, colId, value) {
@@ -1273,6 +1285,7 @@ export function renderGrid(initialRows) {
       updateVisibleColIndexMap();
     },
     onFilterChanged: () => {
+      if (droppingFilters) return;
       fetchData(true);
       renderFilterBar();
     },
