@@ -952,6 +952,7 @@ export function boot(doc, host, deps) {
       only.setAttribute('aria-pressed', String(on));
       only.addEventListener('click', () => { setFilter(section.type, { reaches: !on }); render(); });
       seat.append(only);
+      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));
     }
     return seat;
   }

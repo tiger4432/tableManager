@@ -169,6 +169,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-act { height: var(--wk-h-small); padding: 0 var(--space-3); font: inherit; font-size: var(--wk-fs-line); color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .wk-act.is-on { border-color: var(--accent); color: var(--accent); }
+/* «Reaches only» on is filled, as a segment on is: beside All rows · Differs · Missing it says at a glance what narrows. */
+.wk-reachonly.is-on { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); font-weight: 600; }
 .wk-secviews, .wk-copybar, .wk-colmenu { display: inline-flex; align-items: center; gap: var(--space-2); }
 .wk-secbar .wk-select { width: auto; max-width: 100%; min-height: var(--wk-h-small); height: var(--wk-h-small); font-size: var(--wk-fs-line); }
 /* Long's Value and a trend's column: as wide as a name, not as their longest choice - the toolbar stays one line. */
@@ -218,7 +220,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
   padding: var(--space-2) var(--space-3); background: var(--bg-surface); border-top: 1px solid var(--border);
   max-height: 88px; overflow-y: auto; }
 .wk-markedrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.wk-markedword { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
+.wk-markedword, .wk-reachtally { color: var(--text-dim); font-size: var(--wk-fs-line); line-height: var(--wk-h-small); }
 .wk-marked .wk-chip { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
 .wk-next-edge { height: var(--wk-h-small); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px;
   background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--wk-fs-line); cursor: pointer; }

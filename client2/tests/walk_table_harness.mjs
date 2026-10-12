@@ -327,6 +327,17 @@ async function suite(mod) {
     ok('AX5 the page: the die section\'s «Reaches only» pressed, its table the yes row alone; the other sections as they were',
       all.includes('n:2') && !ids().includes('n:2') && ids().includes('n:1') && ids().includes('n:3'),
       `${all.join()} -> ${ids().join()}`);
+    const onRule = ((CSS_NOW.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((r) => r.split('{'))
+      .find(([sel]) => sel && sel.trim() === '.wk-reachonly.is-on') || [])[1] || '');
+    const pressed = walkAll(one.host).find((e) => String(e.className || '').includes('wk-reachonly'));
+    ok('AX6 «Reaches only» on says so: pressed, its class is-on, and the stylesheet fills it as a segment on is',
+      Boolean(pressed) && String(pressed.className).includes('is-on') && /background:\s*var\(--accent\)/.test(onRule),
+      `${pressed && pressed.className} | ${onRule}`);
+    // «Reaches only» is on in the die section here: its tally still counts its «none» row.
+    const tallies = walkAll(one.host).filter((e) => e.className === 'wk-reachtally').map((e) => e._text);
+    ok('AX7 each judged section says its rows\' judgments as counts beside «Reaches only», every row and not the shown ones',
+      JSON.stringify(tallies) === JSON.stringify(['→ q:aux: 1 reach · 1 none · 0 unknown', '→ q:aux: 0 reach · 0 none · 1 unknown']),
+      JSON.stringify(tallies));
   }
   // Wide (lead 10-11 W): a section's heads say its node columns, each group's step and far end, its values' names; a
   // row's cells its node's, then each column's groups' cells, a cell drawn as its value line.
@@ -1811,9 +1822,14 @@ const filterSuite = (TV) => {
     const last = (row) => row.centre[row.centre.length - 1].text;
     ok('AX1 a judged answer: each section\'s last own column «→ <the auxiliary node>», a row its yes · hops, no or unknown; none judged, no such column',
       JSON.stringify([sec(jv, 'die@1').centreHeads.slice(-1), sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last),
-        sec(jv, 'die@1').judged, sec(plain, 'die@1').judged, sec(plain, 'die@1').centreHeads.some((h) => h.startsWith('→'))])
-        === JSON.stringify([['→ q:aux'], ['2 hops', 'none'], ['unknown'], true, false, false]),
-      JSON.stringify([sec(jv, 'die@1').centreHeads, sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last)]));
+        sec(jv, 'die@1').judged, sec(plain, 'die@1').judged, sec(plain, 'die@1').centreHeads.some((h) => h.startsWith('→')),
+        sec(jv, 'die@1').tally, sec(jv, 'wafer@1').tally, sec(plain, 'die@1').tally])
+        === JSON.stringify([['→ q:aux'], ['2 hops', 'none'], ['unknown'], true, false, false,
+          '→ q:aux: 1 reach · 1 none · 0 unknown', '→ q:aux: 0 reach · 0 none · 1 unknown', ''])
+        // The auxiliary node itself in the answer: the server's 0, said as it is.
+        && TV.reachWords({ state: 'found', hops: 0, via: 'q:aux' }, false) === '0 hops',
+      JSON.stringify([sec(jv, 'die@1').centreHeads, sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last),
+        sec(jv, 'die@1').tally, sec(jv, 'wafer@1').tally]));
     const only = TV.shownOf(sec(jv, 'die@1'), { reaches: true });
     const sheet = TV.sheetOf(sec(jv, 'die@1'), { reaches: true });
     ok('AX2 «Reaches only» is the one shown seat: the yes rows alone, and Copy the same rows',
@@ -1962,6 +1978,8 @@ const MUTANTS = [
     from: '    return Object.assign(out, knobs(), reachArg());', to: '    return Object.assign(out, knobs());' },
   { id: 'AXm4', what: '«Reaches only» drawn but does nothing', catches: 'AX5',
     from: "      only.addEventListener('click', () => { setFilter(section.type, { reaches: !on }); render(); });", to: '' },
+  { id: 'AXm6', what: 'the judgments\' counts not drawn', catches: 'AX7',
+    from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
     from: '    void walkInto(at, more.asked, (res) => {', to: '    void walkInto(at, answerAt(at).asked, (res) => {' },
   { id: 'MOm3', what: 'More\'s answer lands nowhere - the step keeps the cut one', catches: 'MO2',
@@ -2176,6 +2194,8 @@ const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
   { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX1',
     from: "          ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };", to: "          ] };" },
+  { id: 'AXm7', what: 'the counts taken over the reaching rows alone, as a filtered table would give them', catches: 'AX1',
+    from: "      tally: reaches ? reachTally(reachHead, said) : '',", to: "      tally: reaches ? reachTally(reachHead, said.filter((row) => row.reach && row.reach.state === 'found')) : ''," },
   { id: 'AXm2', what: '«Reaches only» shows every row', catches: 'AX2',
     from: "    && (!f.reaches || Boolean(line.row.reach && line.row.reach.state === 'found')));", to: '    );' },
   { id: 'CPm1', what: 'several values copied as the first alone', catches: 'CP1',
@@ -2341,6 +2361,8 @@ const sp = await scoreMutants(SPLIT_MUTANTS, async (m) => {
 
 // The stylesheet FW1 reads (owner 10-12: fixed widths), mutated alone; the page as it is.
 const STYLE_MUTANTS = [
+  { id: 'AXm5', what: '«Reaches only» on drawn as an outline, as before', catches: 'AX6 ',
+    from: '.wk-reachonly.is-on { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); font-weight: 600; }', to: '' },
   { id: 'FWm2', what: 'the tables back to auto layout', catches: 'FW1 ',
     from: '.wk-table { table-layout: fixed; width: 0;', to: '.wk-table { width: 100%; display: block; overflow-x: auto;' },
   { id: 'WSm1', what: 'a value\'s spaces collapsed again', catches: 'WS1 ',

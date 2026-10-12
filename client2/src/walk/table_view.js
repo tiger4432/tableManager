@@ -48,12 +48,18 @@ export const MISSING = 'missing';
 export const EMPTY = '—';
 /** «Does a shortest path reach the auxiliary node(s)?» (owner 10-12, the walk's judgment): its words - found with the hops
  *  (and which node, when there are several), none, unknown at the cap; a node not judged «—». */
-export const REACH_WORDS = Object.freeze({ head: '→', none: 'none', unknown: 'unknown', only: 'Reaches only' });
+export const REACH_WORDS = Object.freeze({ head: '→', reach: 'reach', none: 'none', unknown: 'unknown', only: 'Reaches only' });
 const nodeWords = (id) => { const n = entityOfId(id) || {}; return Object.values(n.keys || {}).map(valueWords).join(' / ') || id; };
 export function reachWords(judged, several) {
   if (!judged) return EMPTY;
   if (judged.state === 'found') return `${judged.hops} ${judged.hops === 1 ? 'hop' : 'hops'}${several && judged.via ? ` → ${nodeWords(judged.via)}` : ''}`;
   return judged.state === 'none' ? REACH_WORDS.none : REACH_WORDS.unknown;
+}
+
+/** A judged section's rows told by their judgment (owner 10-12 «ㄷ»): «<head>: N reach · N none · N unknown». */
+export function reachTally(head, rows) {
+  const n = (state) => rows.filter((row) => row.reach && row.reach.state === state).length;
+  return `${head}: ${n('found')} ${REACH_WORDS.reach} · ${n('none')} ${REACH_WORDS.none} · ${n('unknown')} ${REACH_WORDS.unknown}`;
 }
 export const STARTED = 'start';
 export const DELTA = 'Δ';
@@ -404,6 +410,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   // node its own «aux» - found · hops · via / none / unknown.
   const reaches = (result && result.aux) || null;
   const reachTo = reaches ? (reaches.seeds || []) : [];
+  const reachHead = `${REACH_WORDS.head} ${reachTo.map(nodeWords).join(' · ')}`;
   const judgedById = new Map(((result && result.nodes) || []).map((n) => [n.id, n.aux || null]));
   const judgedOf = (id) => judgedById.get(id) || null;
   // Each addition merged by the same merge; the step's rows keep their order, what an addition brought after them.
@@ -593,9 +600,10 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
           group: b.key, folded: b.folded, open: b.open };
       }),
       centreHeads: [...(centre.length ? centre.map((c) => c.words.join(' · ')) : [type]), ...carried.map((c) => c.name),
-        ...(reaches ? [`${REACH_WORDS.head} ${reachTo.map(nodeWords).join(' · ')}`] : [])],
-      // A judged walk (owner 10-12): its section offers «Reaches only».
+        ...(reaches ? [reachHead] : [])],
+      // A judged walk (owner 10-12): its section offers «Reaches only» and tallies every row's judgment, not the shown ones.
       judged: Boolean(reaches),
+      tally: reaches ? reachTally(reachHead, said) : '',
       centre,
       rows: said,
       columns,
