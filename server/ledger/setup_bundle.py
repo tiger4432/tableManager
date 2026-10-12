@@ -2028,16 +2028,12 @@ def _validate_references(value, path, own_keys, section, problems):
         if source is not None and problems.exact(
                 source, f"{here}.from", required=(), optional=("when",)):
             when = source.get("when")
-            if when is not None:
-                if not isinstance(when, Mapping) or not when:
-                    problems.add("invalid_type", f"{here}.from.when",
-                                 "must be a non-empty object")
-                else:
-                    for name in sorted(when, key=str):
-                        if own and name not in own:
-                            problems.add(
-                                "invalid_entity_ref", f"{here}.from.when.{name}",
-                                "condition must name one of this entity's identity keys")
+            _validate_when(when, f"{here}.from.when", problems)
+            for name in sorted(when if isinstance(when, Mapping) else (), key=str):
+                if own and name not in own:
+                    problems.add(
+                        "invalid_entity_ref", f"{here}.from.when.{name}",
+                        "condition must name one of this entity's identity keys")
         target = ref.get("to")
         if not problems.exact(target, f"{here}.to", required=("entity", "keys")):
             continue
@@ -2079,6 +2075,12 @@ def exclusion_columns(clause: Mapping[str, Any]) -> tuple:
     return tuple(when) if isinstance(when, Mapping) else (clause.get("column"),)
 
 
+#: The two clauses `read.exclude_when` takes, said in one line wherever a clause is refused.
+_EXCLUDE_CLAUSES = ('a clause is {"column": <c>, "blank": true} - rows where <c> is blank - or '
+                    '{"when": {<c>: <value>}} - rows where <c> is that value, {"not": <value>} for '
+                    'every other value; write one of the two')
+
+
 def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
     """`[{"column": <name>, "blank": true} | {"when": {<column>: <value>, ...}}, ...]` - rows this
     source says are not its own.
@@ -2092,10 +2094,12 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
     A list, and a row matching ANY clause is excluded.
 
     🔴 A VALUE IS ASKED THE WAY A MAPPING'S `when` ASKS IT (총괄 e91433bf1 · f500524be, 소유자 「type
-    이 bbox 가 아닌 행만」): `{"when": {...}}` is `_validate_when` - equality, keys ANDed; several
-    values are several clauses. No operator of its own - one spelling of a condition here.
-    ⛔ `blank` MUST BE `true`, and a clause is one or the other. `blank: false` is refused rather
-    than read as "keep only the blanks" - a different feature, to be asked for by name.
+    이 bbox 가 아닌 행만」): `{"when": {...}}` is `_validate_when` - `<v>` or `{"not": <v>}`, keys
+    ANDed; several values are several clauses. A blank column never equals `<v>`, so a value
+    clause does not take it out and a `{"not": <v>}` clause does. No operator of its own.
+    ⛔ `blank` MUST BE `true`, and a clause is one or the other. Any other clause - `blank: false`,
+    or `{"column", "value"}` (소유자 10-12 「exclude when 오류남」) - is refused with the one line
+    `_EXCLUDE_CLAUSES` that names both forms.
     """
     if value is None:
         return
@@ -2109,18 +2113,19 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
             if problems.exact(clause, spot, required=("when",)):
                 _validate_when(clause["when"], f"{spot}.when", problems)
             continue
-        if not problems.exact(clause, spot, required=("column", "blank")):
+        if not isinstance(clause, Mapping) or set(clause) != {"column", "blank"}:
+            problems.add("invalid_type", spot, _EXCLUDE_CLAUSES)
             continue
+        problems.exact(clause, spot, required=("column", "blank"))  # the form's cells, for the skeleton count
         column = clause.get("column")
         if not isinstance(column, str) or not column.strip():
             problems.add("invalid_type", f"{spot}.column",
                          "must name a column of this source's relation")
-        why = validation.flag_refusal("blank", clause["blank"]) if "blank" in clause else None
+        why = validation.flag_refusal("blank", clause["blank"])
         if why:
             problems.add("invalid_type", f"{spot}.blank", why)
-        elif clause.get("blank") is not True:
-            problems.add("invalid_type", f"{spot}.blank",
-                         "the only supported condition is 'blank': true")
+        elif clause["blank"] is not True:
+            problems.add("invalid_type", f"{spot}.blank", _EXCLUDE_CLAUSES)
 
 
 def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
@@ -2303,9 +2308,10 @@ def _validate_when(value: Any, path: str, problems: _Problems) -> None:
     `exclude_when`, where the row is not the source's at all. The difference shows up as
     the per-sentence atom count of a test run, not as a refusal anywhere.
 
-    ⛔ A MAP, AND EQUALITY ONLY. Same shape as `entities.references[].from.when`, which
+    ⛔ A MAP, EQUAL OR NOT EQUAL. Same shape as `entities.references[].from.when`, which
     ruling 195 named as the model: keys are ANDed, there is no list, no range, no OR and
-    no comparison. One spelling of "condition" in this grammar rather than two.
+    no comparison. A value is `<v>` (the column equals it) or `{"not": <v>}` (it does not -
+    a blank column included, 소유자 10-12). One spelling of "condition" in this grammar.
     """
     if value is None:
         return
@@ -2317,10 +2323,14 @@ def _validate_when(value: Any, path: str, problems: _Problems) -> None:
         if not isinstance(column, str) or not column.strip():
             problems.add("invalid_type", f"{path}.{column}", "must name a column")
             continue
-        if isinstance(value[column], (Mapping, list, tuple)) or value[column] is None:
+        said = value[column]
+        if isinstance(said, Mapping) and set(said) == {"not"}:
+            said = said["not"]
+        if isinstance(said, (Mapping, list, tuple)) or said is None:
             problems.add(
                 "invalid_type", f"{path}.{column}",
-                "must be a single string, number or boolean to compare the column with")
+                'must be a string, number or boolean the column equals, or {"not": <one of '
+                'those>} for a column that does not')
 
 
 def _validate_binding(value: Any, path: str, problems: _Problems) -> None:

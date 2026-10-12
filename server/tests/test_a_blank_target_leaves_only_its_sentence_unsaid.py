@@ -1,0 +1,505 @@
+# -*- coding: utf-8 -*-
+"""소유자 10-12 「맵핑에 process - relatedto - (object, quantity, process) 세 개 중 빈 거는 무시」 ·
+「선언 아이덴티티가 없다고 하나만 적은 거 안 나오는데」.
+
+A cell only SOME sentences of a source need to name their entities, left blank, leaves only those
+sentences unsaid - as a `when` that does not match. A cell every sentence needs (the shared subject),
+an `allow_null` entity's key, or any cell of a code mapper's source still refuses the molecule. One
+seat: `event_frame.blank_entity_cells`.
+
+The source is the RELEASE_LOG example, read out of the log and run as written.
+"""
+from __future__ import annotations
+
+import copy
+import json
+import os
+import re
+import sys
+
+import pandas as pd
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from ledger import backfill                                                  # noqa: E402
+from ledger.backfill import _v2_frame, prepare_v2_cursor_batch               # noqa: E402
+from ledger.event_frame import named_columns                                 # noqa: E402
+from ledger.implementations import role_mapper_registry, trusted_implementations  # noqa: E402
+from ledger.roleframe import dry_run_event_frame, mapper_context              # noqa: E402
+from ledger.runtime_v2 import last_cursor, preview_cursor_batch               # noqa: E402
+from ledger.setup_bundle import (SETUP_VERSION, require_ready_bundle,         # noqa: E402
+                                 validate_bundle, validate_bundle_errors)
+from ledger.setup_registry import compile_setup_snapshot                     # noqa: E402
+from sqlalchemy import text as sql_text                                      # noqa: E402
+from conftest import PG_TEST_SCHEMA                                          # noqa: E402
+from ledger import schema as ledger_schema                                   # noqa: E402
+from test_a_condition_can_say_is_not import _Engine                          # noqa: E402
+from test_ledger_worlds_are_independent_and_meet_in_a_walk import (          # noqa: E402,F401
+    CHANGED, EVENT_TIME as WORLD_EVENT_TIME, _sample, _seed, _write, fixture_config, fixture_world)
+from test_whole_source_takes_back_what_the_declaration_no_longer_makes import _declare  # noqa: E402
+from test_an_entity_type_can_be_read_from_a_column import (                  # noqa: E402,F401
+    CANDIDATES, COLUMNS, SOURCE as TYPED_SOURCE, column, document as typed_document,
+    fixture_catalog, fixture_shipped, row as typed_row, typed)
+
+SOURCE = "process_links"
+RELEASE_LOG = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "process", "RELEASE_LOG.md")
+HEADING = "## 2026-10-12 · 원장 선언 — 한 소스의 문장 여럿 중 대상 칸이 빈 문장만 빠진다"
+#: The physical half, written here - the deployment's table_config would carry it.
+CATALOG = {SOURCE: {"columns": {"row_id": "string", "process_id": "string", "object_id": "string",
+                                "quantity_id": "string", "related_process_id": "string",
+                                "kind": "string", "event_at": "datetime", "created_at": "datetime"},
+                    "business_key": "row_id"}}
+STORED_AT = pd.Timestamp("2026-10-12T01:00:00+00:00")
+
+#: The owner's rows: P1 all filled · P2 NULL / filled / '' · P3 spaces / NULL / filled · P4 all blank.
+OWNER_ROWS = [
+    {"row_id": "R1", "process_id": "P1", "object_id": "O1", "quantity_id": "Q1", "related_process_id": "PR1"},
+    {"row_id": "R2", "process_id": "P2", "object_id": None, "quantity_id": "QB", "related_process_id": ""},
+    {"row_id": "R3", "process_id": "P3", "object_id": "  ", "quantity_id": None, "related_process_id": "PC"},
+    {"row_id": "R4", "process_id": "P4", "object_id": None, "quantity_id": "", "related_process_id": "  "},
+]
+SHARED_BLANK = {"row_id": "R5", "process_id": None, "object_id": "O5", "quantity_id": "Q5",
+                "related_process_id": "PR5"}
+
+
+def release_log_source():
+    text = open(RELEASE_LOG, encoding="utf-8").read()
+    assert HEADING in text, "the RELEASE_LOG entry is gone or renamed"
+    return json.loads(re.search(r"```json\n(.*?)\n```", text.split(HEADING, 1)[1], re.S).group(1))
+
+
+def _document(source=None, allow_null=False):
+    out = {
+        "setup_version": SETUP_VERSION,
+        "vocabulary": {"related_to": {
+            "status": "active", "subjects": ["physical_process"],
+            "object": {"kind": "entity_ref",
+                       "types": ["physical_object", "physical_quantity", "physical_process"],
+                       "qualifiers": {"required": [], "optional": []}}}},
+        "entities": {"physical_process": {"keys": ["process_id"]},
+                     "physical_object": {"keys": ["object_id"]},
+                     "physical_quantity": {"keys": ["quantity_id"]}},
+        "sources": {SOURCE: source if source is not None else release_log_source()},
+    }
+    if allow_null:
+        out["entities"]["physical_object"]["allow_null"] = True
+    return out
+
+
+def _snapshot(document):
+    return compile_setup_snapshot(require_ready_bundle(validate_bundle(document, catalog=CATALOG)),
+                                  trusted_implementations(), catalog=CATALOG)
+
+
+def _preview(document, rows):
+    snapshot = _snapshot(document)
+    frame = _v2_frame([dict(row, created_at=STORED_AT) for row in rows])
+    return preview_cursor_batch(snapshot, SOURCE, frame,
+                                last_cursor(snapshot.source_plans[SOURCE], frame),
+                                role_mapper_registry(), known_registrations=())
+
+
+def _edges(preview):
+    """process -> sorted (target type, target key) its row said."""
+    out = {}
+    for atom in preview.candidate_semantics:
+        target = atom["object_payload"]
+        out.setdefault(atom["subject_keys"]["process_id"], []).append(
+            (target["type"], next(iter(target["keys"].values()))))
+    return {process: sorted(edges) for process, edges in out.items()}
+
+
+def _refused(preview):
+    return [(refusal.reason, refusal.detail) for refusal in preview.refusals]
+
+
+def _one_sentence():
+    source = release_log_source()
+    for sentence in ("process-quantity", "process-process"):
+        del source["bind"]["mappings"][sentence]
+    return source
+
+
+# ------------------------------------------------------------------ the owner's source
+
+def test_the_example_loads_through_the_product_validator():
+    assert list(validate_bundle_errors(_document(), catalog=CATALOG)) == []
+
+
+def test_each_row_says_the_edges_its_filled_targets_name():
+    preview = _preview(_document(), OWNER_ROWS)
+
+    assert len(_edges(preview).get("P1", ())) == 3, _edges(preview)     # canary: all three say
+    assert _edges(preview) == {
+        "P1": [("physical_object", "O1"), ("physical_process", "PR1"), ("physical_quantity", "Q1")],
+        "P2": [("physical_quantity", "QB")],
+        "P3": [("physical_process", "PC")],
+    }
+    assert _refused(preview) == []
+
+
+def test_a_row_whose_targets_are_all_blank_writes_nothing_and_is_not_indexed():
+    """P4: no atom, no refusal, no `unsaid` line - and no row reference, so the row index never
+    names it and `rows_not_yet_translated` keeps counting it."""
+    preview = _preview(_document(), OWNER_ROWS)
+
+    assert "P4" not in _edges(preview)
+    assert (preview.refusals, dict(preview.unsaid)) == ((), {})
+    assert sorted({ref[1] for ref in preview.row_refs}) == ["R1", "R2", "R3"]
+
+
+def test_a_blank_shared_subject_still_refuses_the_row():
+    preview = _preview(_document(), [OWNER_ROWS[0], SHARED_BLANK])
+
+    assert _refused(preview) == [(
+        "no_identity", "molecule rows[1] declares 'process_id' and the row at "
+                       "event_frame.rows[1].process_id leaves it empty")]
+    assert set(_edges(preview)) == {"P1"}
+
+
+def test_one_sentence_with_a_blank_target_is_refused_as_before():
+    preview = _preview(_document(_one_sentence()), OWNER_ROWS[:2])
+
+    assert _refused(preview) == [(
+        "no_identity", "molecule rows[1] declares 'object_id' and the row at "
+                       "event_frame.rows[1].object_id leaves it empty")]
+
+
+def test_an_allow_null_target_is_refused_as_before():
+    """A column-bound key of an `allow_null` entity was never a null-key atom - the read refused
+    the row (measured on the code before this round) - and it still is."""
+    preview = _preview(_document(allow_null=True), OWNER_ROWS[:2])
+
+    assert _refused(preview) == [(
+        "no_identity", "molecule rows[1] declares 'object_id' and the row at "
+                       "event_frame.rows[1].object_id leaves it empty")]
+    assert set(_edges(preview)) == {"P1"}
+
+
+def test_a_code_mappers_source_refuses_as_before():
+    """A code mapper says no declared sentence, so there is no sentence to leave unsaid."""
+    source = release_log_source()
+    source["map"]["implementation_id"] = "dt-job-role"
+    snapshot = _snapshot(_document(source))
+    refusals = []
+    prepare_v2_cursor_batch(snapshot, SOURCE, _v2_frame([dict(row, created_at=STORED_AT)
+                                                         for row in OWNER_ROWS]),
+                            refusals=refusals)
+
+    assert [refusal.reason for refusal in refusals] == ["no_identity"] * 3
+
+
+# ------------------------------------------------------------------ a type read from a column
+
+def test_a_typed_target_with_a_blank_key_or_type_unsays_only_its_sentence(shipped, catalog):
+    """Two sentences share the typed subject; `leads` reads its target's type and key from
+    phenomenon_*, `leads-eqp` from cause_type / dt_eqp. A blank phenomenon key or type leaves
+    `leads` unsaid; a blank shared subject key still refuses (`_row_type_refusal`)."""
+    source = copy.deepcopy(TYPED_SOURCE)
+    source["bind"]["mappings"]["leads-eqp"] = {"predicate": "leads_to@1", "bind": {
+        "subject": typed("cause_type", {"quantity": column("cause_key")}),
+        "target": typed("cause_type", {"quantity": column("dt_eqp"),
+                                       "defect_kind": column("dt_eqp")})}}
+    snapshot = compile_setup_snapshot(
+        require_ready_bundle(validate_bundle(typed_document(shipped, source), catalog=catalog)),
+        trusted_implementations(), catalog=catalog)
+    rows = [dict(typed_row(1, "quantity", "q-1", "defect_kind", ""), dt_eqp="q-9"),
+            dict(typed_row(2, "quantity", "q-2", "", "d-1"), dt_eqp="q-8"),
+            dict(typed_row(3, "quantity", "", "defect_kind", "d-2"), dt_eqp="q-7")]
+    frame = _v2_frame([{**{name: r.get(name) for name in COLUMNS}, "created_at": STORED_AT}
+                       for r in rows])
+    refusals = []
+    events = prepare_v2_cursor_batch(snapshot, CANDIDATES, frame, refusals=refusals)
+    said = sorted((atom["subject_keys"]["quantity"], atom["object_payload"]["type"],
+                   atom["object_payload"]["keys"])
+                  for event in events
+                  for atom in dry_run_event_frame(mapper_context(snapshot, CANDIDATES), event,
+                                                  role_mapper_registry()).ledger_frame.to_dict("records")
+                  if atom["predicate"] == "leads_to")
+
+    assert said == [("q-1", "quantity", {"quantity": "q-9"}),
+                    ("q-2", "quantity", {"quantity": "q-8"})]
+    assert [(r.reason, r.detail) for r in refusals] == [(
+        "no_identity", "molecule rows[2]: a row of type 'quantity' needs 'cause_key' and the row at "
+                       "event_frame.rows[2].cause_key leaves it empty")]
+
+
+# ------------------------------------------------------------------ a group (총괄 10-12 QA ①)
+
+def test_a_group_skips_a_sentence_only_when_its_cell_is_blank_in_every_row():
+    """A group read whose mapper reads the group as one unit (the default `map.unit`): a cell blank
+    in some rows and filled in others refuses the group, whichever row is first - the filled value is
+    not dropped in silence. Blank in every row: that sentence only."""
+    source = release_log_source()
+    source["read"] = {"unit": "group", "identity": ["process_id"], "group_by": ["process_id"],
+                      "order_by": ["row_id"]}
+    rows = [
+        {"row_id": "R1", "process_id": "P1", "object_id": None, "quantity_id": "Q1", "related_process_id": "PR1"},
+        {"row_id": "R2", "process_id": "P1", "object_id": "O1", "quantity_id": "Q1", "related_process_id": "PR1"},
+        {"row_id": "R3", "process_id": "P2", "object_id": "O2", "quantity_id": "Q2", "related_process_id": "PR2"},
+        {"row_id": "R4", "process_id": "P2", "object_id": "", "quantity_id": "Q2", "related_process_id": "PR2"},
+        {"row_id": "R5", "process_id": "P3", "object_id": None, "quantity_id": "Q3", "related_process_id": "PR3"},
+        {"row_id": "R6", "process_id": "P3", "object_id": " ", "quantity_id": "Q3", "related_process_id": "PR3"},
+    ]
+    preview = _preview(_document(source), rows)
+
+    assert _edges(preview) == {"P3": [("physical_process", "PR3"), ("physical_quantity", "Q3")]}
+    assert [(r.reason, "'object_id'" in r.detail, r.addresses[0]["path"]) for r in preview.refusals] == [
+        ("no_identity", True, "event_frame.rows[0].object_id"),
+        ("no_identity", True, "event_frame.rows[3].object_id")]
+
+
+#: A group read whose mapper speaks per row - the shape of the shipped `dt_log` (총괄 10-12 QA2 ①).
+GROUP_READ = {"unit": "group", "identity": ["process_id"], "group_by": ["process_id"],
+              "order_by": ["row_id"]}
+PER_ROW = [{"kind": "row"}, {"kind": "group_by", "columns": ["row_id"]}]
+
+
+@pytest.mark.parametrize("unit", PER_ROW, ids=["row", "group_by-row_id"])
+def test_a_row_mapper_inside_a_group_read_judges_each_row(unit):
+    """QA2 probe A: R1 leaves its object blank, R2 of the same group fills it - each row speaks for
+    itself, as the mapper does (on base the group was refused for R1's blank)."""
+    source = release_log_source()
+    source["read"], source["map"]["unit"] = dict(GROUP_READ), unit
+    rows = [
+        {"row_id": "R1", "process_id": "P1", "object_id": None, "quantity_id": "Q1", "related_process_id": "PR1"},
+        {"row_id": "R2", "process_id": "P1", "object_id": "O2", "quantity_id": "Q1", "related_process_id": "PR1"},
+    ]
+    preview = _preview(_document(source), rows)
+
+    assert _refused(preview) == []
+    assert _edges(preview) == {"P1": [("physical_object", "O2"), ("physical_process", "PR1"),
+                                      ("physical_process", "PR1"), ("physical_quantity", "Q1"),
+                                      ("physical_quantity", "Q1")]}
+
+
+@pytest.mark.parametrize("unit", PER_ROW + [None], ids=["row", "group_by-row_id", "the-group"])
+@pytest.mark.parametrize("quantity_when", [{"kind": "qty"}, {"kind": {"not": "obj"}}],
+                         ids=["equals", "not"])
+def test_a_when_mixed_inside_a_group_read_never_raises(unit, quantity_when):
+    """QA2 probe B. R1 (kind obj, object blank) and R2 (kind qty) share a group read. Per row: R1's
+    one applying sentence has a blank target, so the group is refused `no_identity` - as on base;
+    before this round it raised `missing_binding_value` and failed the whole batch. The group as one
+    unit: the kinds disagree, no sentence applies, and the group is counted under its `when`."""
+    source = _gated()
+    source["bind"]["mappings"]["process-quantity"]["when"] = quantity_when
+    source["read"] = dict(GROUP_READ)
+    if unit:
+        source["map"]["unit"] = unit
+    rows = [{"row_id": "R1", "process_id": "P1", "kind": "obj", "object_id": None, "quantity_id": "Q1"},
+            {"row_id": "R2", "process_id": "P1", "kind": "qty", "object_id": "O2", "quantity_id": "Q2"},
+            {"row_id": "R3", "process_id": "P3", "kind": "obj", "object_id": "O3", "quantity_id": "Q3"}]
+    preview = _preview(_document(source), rows)
+
+    assert _edges(preview) == {"P3": [("physical_object", "O3")]}
+    if unit:
+        assert [(r.reason, r.addresses[0]["path"]) for r in preview.refusals] == [
+            ("no_identity", "event_frame.rows[0].object_id")]
+        assert dict(preview.unsaid) == {}
+    else:
+        assert (preview.refusals, dict(preview.unsaid)) == ((), {(("kind", "obj, qty"),): 1})
+
+
+# ------------------------------------------------------------------ sentences a `when` gates (QA ②)
+
+def _gated():
+    """`process-object` is said when kind = obj, `process-quantity` when kind = qty."""
+    source = release_log_source()
+    mappings = source["bind"]["mappings"]
+    del mappings["process-process"]
+    mappings["process-object"]["when"] = {"kind": "obj"}
+    mappings["process-quantity"]["when"] = {"kind": "qty"}
+    return source
+
+
+#: W2 the one applying sentence's target blank · W4 the other sentence's target blank ·
+#: W5 no sentence applies, both blank.
+GATED_ROWS = [
+    {"row_id": "W2", "process_id": "P2", "kind": "obj", "object_id": None, "quantity_id": "Q2"},
+    {"row_id": "W4", "process_id": "P4", "kind": "obj", "object_id": "O4", "quantity_id": None},
+    {"row_id": "W5", "process_id": "P5", "kind": "other", "object_id": None, "quantity_id": ""},
+]
+
+
+def test_only_the_sentences_whose_when_holds_decide_what_every_one_needs():
+    """W2: one sentence applies, so it is a one-sentence source - its blank target refuses, as
+    before. W4: the blank cell is another sentence's, which does not apply. W5: no sentence applies,
+    so nothing is refused and the row is counted under the `when` it passed by."""
+    preview = _preview(_document(_gated()), GATED_ROWS)
+
+    assert _edges(preview) == {"P4": [("physical_object", "O4")]}
+    assert _refused(preview) == [(
+        "no_identity", "molecule rows[0] declares 'object_id' and the row at "
+                       "event_frame.rows[0].object_id leaves it empty")]
+    assert dict(preview.unsaid) == {(("kind", "other"),): 1}
+
+
+def test_an_allow_null_key_of_a_sentence_whose_when_does_not_hold_refuses_nothing():
+    """QA2 ④ (N2_nullable_all): kind = qty, so the object sentence does not apply and its
+    `allow_null` key cell is nobody's - the quantity edge is said."""
+    rows = [{"row_id": "Q", "process_id": "PQ", "kind": "qty", "object_id": None, "quantity_id": "QQ"}]
+    preview = _preview(_document(_gated(), allow_null=True), rows)
+
+    assert (_refused(preview), _edges(preview)) == ([], {"PQ": [("physical_quantity", "QQ")]})
+
+
+# ------------------------------------------------------------------ the census (QA ④)
+
+def _census(document, rows, monkeypatch):
+    snapshot = _snapshot(document)
+    columns = named_columns(snapshot.source_plans[SOURCE])
+    assert "process_id" in columns                                    # canary: declared columns read
+    ids = [row["row_id"] for row in rows]
+    monkeypatch.setattr(backfill, "rows_missing_from_the_index", lambda *a, **k: ids)
+    fetched = [tuple(dict(row, created_at=STORED_AT).get(c) for c in columns) for row in rows]
+    return backfill.rows_not_yet_translated(_Engine([len(rows), 0], fetched),
+                                            type("S", (), {"snapshot": snapshot})(), SOURCE)
+
+
+#: A blank subject AND every target blank: refused - not «says nothing» (QA2 ④ N4_refused_counted).
+ALL_BLANK = {"row_id": "R6", "process_id": None, "object_id": None, "quantity_id": "",
+             "related_process_id": " "}
+
+
+def test_the_census_takes_out_a_row_that_says_no_sentence_and_keeps_a_refused_one(monkeypatch):
+    """P4 (every target blank) and W5 (no `when` holds) say nothing and are never indexed; the
+    refused rows (a blank shared subject - with its targets filled or blank -, W2) stay «not yet»:
+    a refusal is something to fix."""
+    owner = _census(_document(), OWNER_ROWS + [SHARED_BLANK, ALL_BLANK], monkeypatch)
+    gated = _census(_document(_gated()), GATED_ROWS, monkeypatch)
+
+    assert (owner.get("excluded_rows"), owner.get("said_nothing_rows"), owner["not_yet"]) == (None, 1, 5)
+    assert (gated.get("said_nothing_rows"), gated["not_yet"]) == (1, 2)
+
+
+def test_the_census_keeps_a_row_whose_time_does_not_read(monkeypatch):
+    """QA2 ⑤: the census asks the read's whole judgement (`_read_molecule`) - a row refused for an
+    unreadable time is not a row that says nothing, even with every target blank."""
+    source = release_log_source()
+    source["read"] = {"occurred_at": {"column": "event_at", "timezone": "UTC"}}
+    rows = [dict(OWNER_ROWS[3], event_at="not a time"),
+            dict(OWNER_ROWS[3], row_id="R4b", event_at=STORED_AT)]
+    census = _census(_document(source), rows, monkeypatch)
+
+    assert (census.get("said_nothing_rows"), census["not_yet"]) == (1, 1)
+
+
+def test_a_row_the_read_excludes_is_counted_once(monkeypatch):
+    """QA2 ④ (N4_if): P4 is excluded and would say nothing - it is the clause's, once."""
+    source = release_log_source()
+    source["read"] = {"exclude_when": [{"when": {"process_id": "P4"}}]}
+    census = _census(_document(source), OWNER_ROWS, monkeypatch)
+
+    assert (census.get("excluded_rows"), census.get("said_nothing_rows"), census["not_yet"]) == (1, None, 3)
+
+
+def test_the_census_reads_no_row_when_nothing_is_left(monkeypatch):
+    """QA2 ②: table rows = indexed rows - nothing to take out, so no scan."""
+    def scanned(*args, **kwargs):
+        raise AssertionError("the rows the index does not name were read")
+
+    monkeypatch.setattr(backfill, "rows_missing_from_the_index", scanned)
+    report = backfill.rows_not_yet_translated(
+        _Engine([4, 4], []), type("S", (), {"snapshot": _snapshot(_document())})(), SOURCE)
+
+    assert (report["not_yet"], report.get("said_nothing_rows")) == (0, None)
+
+
+# ------------------------------------------------------------------ the read's time (QA ⑤)
+
+def test_a_blank_time_cell_refuses_even_where_one_sentence_alone_keys_by_it():
+    """The read's time is never «some sentences'» cell: blank, it refuses as before. (The read's
+    identity never gets here - a blank one stops the page in `_validate_base_frame`.)"""
+    source = release_log_source()
+    source["read"] = {"occurred_at": {"column": "event_at", "timezone": "UTC"}}
+    source["bind"]["mappings"]["process-object"]["bind"]["target"]["keys"]["object_id"]["column"] = "event_at"
+    preview = _preview(_document(source), [dict(OWNER_ROWS[0], event_at=None)])
+
+    assert _refused(preview) == [(
+        "no_identity", "molecule rows[0] declares 'event_at' and the row at "
+                       "event_frame.rows[0].event_at leaves it empty")]
+
+
+# ------------------------------------------------------------------ the grid's Re-translate (PostgreSQL)
+
+#: Rows the shipped `wafer_process_recipe` reads; P1 comes from `_seed` (no eqp_id, no mat_type).
+TOOLED_ROWS = [
+    {"proc_id": "P2", "wafer_id": "W2", "step": "S2", "recipe_id": "RCP-1", "eqp_id": "EQP-2",
+     "mat_type": "DT", "eventtime": WORLD_EVENT_TIME},
+    {"proc_id": "P3", "wafer_id": "W3", "step": "S3", "recipe_id": "RCP-1", "eqp_id": "EQP-3",
+     "eventtime": WORLD_EVENT_TIME},
+    {"proc_id": "P4", "wafer_id": "W4", "step": "S4", "recipe_id": "RCP-1", "eventtime": WORLD_EVENT_TIME},
+    # no wafer: every sentence's subject is blank - refused before and after, and the line says so
+    {"proc_id": "P5", "step": "S5", "recipe_id": "RCP-1", "eqp_id": "EQP-5", "eventtime": WORLD_EVENT_TIME},
+]
+
+
+def _with_a_tool_sentence(when):
+    """The shipped declaration plus one sentence whose target key is `eqp_id` - blank on P1, P4."""
+    document = _sample("ledger_config.json.sample")
+    document["entities"]["tool@1"] = {"keys": ["tool"]}
+    document["vocabulary"]["processed_on@1"] = {
+        "status": "active", "subjects": ["wafer@1"],
+        "object": {"kind": "entity_ref", "types": ["tool@1"], "qualifiers": {"required": [], "optional": []}}}
+    sentence = {"predicate": "processed_on@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}},
+        "target": {"kind": "entity", "entity_type": "tool@1",
+                   "keys": {"tool": {"kind": "column", "column": "eqp_id"}}}}}
+    if when is not None:
+        sentence["when"] = when
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-on-tool"] = sentence
+    return document
+
+
+def _said_by_row(world):
+    """({proc_id: {predicate: atoms}} through the row index, {proc_id: index lines})."""
+    with world["engine"].connect() as conn:
+        rows = conn.execute(sql_text(
+            'SELECT w.proc_id, a.predicate, count(*) FROM %s a JOIN %s r '
+            'ON r.source_who = a.source_who AND r.source_raw_ref = a.source_raw_ref '
+            'JOIN "%s".wafer_process w ON w.row_id::text = r.row_id '
+            'WHERE a.source_who = :s GROUP BY 1, 2' % (ledger_schema.LEDGER_TABLE,
+                                                       ledger_schema.ROW_REF_TABLE, PG_TEST_SCHEMA)),
+            {"s": CHANGED}).fetchall()
+        lines = dict(conn.execute(sql_text(
+            'SELECT w.proc_id, count(*) FROM %s r JOIN "%s".wafer_process w ON w.row_id::text = r.row_id '
+            'WHERE r.source_who = :s GROUP BY 1' % (ledger_schema.ROW_REF_TABLE, PG_TEST_SCHEMA)),
+            {"s": CHANGED}).fetchall())
+    said = {}
+    for proc, predicate, count in rows:
+        said.setdefault(proc, {})[predicate] = int(count)
+    return said, {proc: int(count) for proc, count in lines.items()}
+
+
+@pytest.mark.parametrize("scope", [{"scope_column": "wafer_id", "scope_values": "W1,W2,W3,W4"},
+                                   {"whole_source": True}], ids=["scoped", "whole-source"])
+@pytest.mark.parametrize("when", [None, {"mat_type": "DT"}], ids=["no-when", "when-DT"])
+def test_re_translating_after_adding_a_sentence_keeps_the_old_sentences_atoms(world, when, scope):
+    """총괄 10-12 (probe on main 06eb5c172): a source gains a sentence whose key is blank on some
+    rows, then the grid's Re-translate (`ledger_rescope`). On main those rows were refused
+    `no_identity`, their old sentence's atoms withdrawn with nothing remade, and the line read
+    «withdrawn 4, written 4 of 4». Now the new sentence is unsaid there and the old one is remade."""
+    from admin import retroactive
+
+    _write(world, "wafer_process", TOOLED_ROWS)
+    _seed(world)
+    assert _said_by_row(world) == (
+        {proc: {"processed_with": 1} for proc in ("P1", "P2", "P3", "P4")},
+        {proc: 1 for proc in ("P1", "P2", "P3", "P4")}), "canary: the seed said the old sentence"
+    _declare(_with_a_tool_sentence(when))
+    lines = []
+    result = retroactive.OPERATIONS["ledger_rescope"]["run"](
+        world["db"], retroactive.validate("ledger_rescope", {"source": CHANGED, **scope}), lines.append)
+
+    tooled = {"P2", "P3"} if when is None else {"P2"}
+    assert _said_by_row(world) == (
+        {proc: {"processed_with": 1, **({"processed_on": 1} if proc in tooled else {})}
+         for proc in ("P1", "P2", "P3", "P4")},
+        {proc: 1 for proc in ("P1", "P2", "P3", "P4")})
+    # P5 is in a whole-source run only (the scope names wafers, P5 has none)
+    said = ", refused 1 (no_identity 1)" if scope.get("whole_source") else ", refused 0"
+    assert (result["refused"], said + "," in lines[0] + ",") == (1 if scope.get("whole_source") else 0, True), (
+        result, lines)
