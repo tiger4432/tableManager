@@ -282,6 +282,7 @@ async function conflicts(M) {
   // Apply: asked, then each answer. Apply reads the staged rows again first - the stub answers that read from `server`.
   const sent = [];
   const reread = [];
+  const signaled = [];
   let server = { R1: 29.7, R2: 4 };
   globalThis.fetch = async (url, init) => {
     if (init && init.method === 'PUT') {
@@ -291,6 +292,7 @@ async function conflicts(M) {
     const filters = new URL(String(url), 'http://box').searchParams.get('filters');
     const ids = filters ? JSON.parse(filters).row_id.conditions.map((c) => c.filter) : [];
     reread.push(ids);
+    signaled.push(Boolean(init && init.signal && typeof init.signal.aborted === 'boolean'));
     const data = ids.filter((id) => id in server).map((id) => ({ row_id: id, updated_at: null, data: { a: { value: server[id] } } }));
     return { ok: true, status: 200, text: async () => '', json: async () => ({ data, total: null }) };
   };
@@ -306,6 +308,7 @@ async function conflicts(M) {
   stage();
   S.pendingTxEdits.R2_a = { rowId: 'R2', colId: 'a', newValue: 5, oldValue: 4, data: null };
   node.data.data.a.value = 28.9;
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
   try { await M.api.applyPendingEdits('server'); } catch (e) { /* as above */ }
   out.server = { sent: asSent(sent), cell: node.data.data.a.value, pending: Object.keys(S.pendingTxEdits).length };
   // A change no redraw brought (lead QA 10-12 5): nothing on the edit says so; Apply's own read finds it and asks.
@@ -324,10 +327,20 @@ async function conflicts(M) {
   try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
   out.txBack = { checked: toggle.checked, active: S.txModeActive, sent: sent.length };
   // Two Keep mine clicks before the first PUT answers: one PUT (lead QA 10-12 4).
+  // ...with nothing conflicted, so the second click has only the guard to stop it.
   sent.length = 0;
+  signaled.length = 0;
+  server = { R1: 28.5, R2: 4 };
   stage();
-  try { await Promise.all([M.api.applyPendingEdits('mine'), M.api.applyPendingEdits('mine')]); } catch (e) { /* as above */ }
+  const log = document.getElementById('performance-log');
+  const first = M.api.applyPendingEdits();
+  const checking = log.textContent;
+  const second = M.api.applyPendingEdits();
+  const already = log.textContent;
+  try { await Promise.all([first, second]); } catch (e) { /* as above */ }
   out.twice = sent.length;
+  out.saying = [checking, already, signaled.length > 0 && signaled.every(Boolean)];
+  server = { R1: 29.7, R2: 4 };
   // The question's count follows the conflicts, and it goes when they do (lead QA 10-12 6).
   S.pendingTxEdits = {
     R1_a: { rowId: 'R1', colId: 'a', newValue: 28.9, oldValue: 28.5, data: null },
@@ -340,19 +353,73 @@ async function conflicts(M) {
   said.push(line.style.display);
   out.follows = said;
   // A number spelled as text - a paste or a fill keeps the stored "29.50" - is the same as 29.5 (lead QA 10-12 7).
+  S.currentColumnTypes = { a: 'number' };
   S.pendingTxEdits = { R1_a: { rowId: 'R1', colId: 'a', newValue: 30, oldValue: '29.50', data: null } };
   M.api.overlayStagedEdits([{ row_id: 'R1', data: { a: { value: 29.5 } } }]);
   out.spelled = S.pendingTxEdits.R1_a.conflict;
+  // A text column: "1.10" and "1.1" are two values (lead re-QA F2).
+  S.currentColumnTypes = { a: 'string' };
+  S.pendingTxEdits = { R1_a: { rowId: 'R1', colId: 'a', newValue: 'x', oldValue: '1.10', data: null } };
+  M.api.overlayStagedEdits([{ row_id: 'R1', updated_at: null, data: { a: { value: '1.1' } } }]);
+  out.textSpelled = S.pendingTxEdits.R1_a.conflict;
+  S.currentColumnTypes = {};
   // A row deleted: its staged edit goes and the bottom line says so - by a broadcast, and by Apply's read (9).
   stage();
   try { M.ws.handleWebSocketMessage({ event: 'batch_row_delete', table_name: 'dt_log', row_ids: ['R1'] }); } catch (e) { /* as above */ }
-  const log = document.getElementById('performance-log');
   out.deleted = { pending: Object.keys(S.pendingTxEdits).length, said: log.textContent.endsWith(' 1 row removed · 1 staged edit dropped (row deleted)') };
   sent.length = 0;
   server = { R2: 4 };
   stage();
   try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
   out.goneOnRead = { pending: Object.keys(S.pendingTxEdits).length, sent: sent.length, said: log.textContent === 'Nothing applied · 1 staged edit dropped (row deleted)' };
+  // An answer holds for what was asked (lead re-QA F1): another cell conflicts after the question - asked again; then sent.
+  sent.length = 0;
+  server = { R1: 29.7, R2: 4 };
+  stage();
+  S.pendingTxEdits.R2_a = { rowId: 'R2', colId: 'a', newValue: 20, oldValue: 4, data: null };
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  server = { R1: 29.7, R2: 7 };
+  try { await M.api.applyPendingEdits('mine'); } catch (e) { /* as above */ }
+  const reask = { sent: sent.length, text: text.textContent };
+  try { await M.api.applyPendingEdits('mine'); } catch (e) { /* as above */ }
+  const then = asSent(sent);
+  // ...and a value that moved after the question is asked again too.
+  sent.length = 0;
+  server = { R1: 29.7, R2: 4 };
+  stage();
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  server = { R1: 30.1, R2: 4 };
+  try { await M.api.applyPendingEdits('server'); } catch (e) { /* as above */ }
+  out.bound = { reask, then, moved: { sent: sent.length, text: text.textContent } };
+  // An edit made while the PUT is out stays staged (lead re-QA F3): only what was sent is saved.
+  let release = null;
+  const putSent = [];
+  server = { R1: 28.5, R2: 4 };
+  globalThis.fetch = async (url, init) => {
+    if (init && init.method === 'PUT') {
+      putSent.push(JSON.parse(init.body).updates);
+      await new Promise((r) => { release = r; });
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
+    }
+    const filters = new URL(String(url), 'http://box').searchParams.get('filters');
+    const ids = filters ? JSON.parse(filters).row_id.conditions.map((c) => c.filter) : [];
+    const data = ids.filter((id) => id in server).map((id) => ({ row_id: id, updated_at: null, data: { a: { value: server[id] } } }));
+    return { ok: true, status: 200, text: async () => '', json: async () => ({ data, total: null }) };
+  };
+  stage();
+  const going = M.api.applyPendingEdits();
+  for (let i = 0; i < 50 && !release; i += 1) await new Promise((r) => setImmediate(r));
+  S.pendingTxEdits.R1_a.newValue = 29.1;
+  S.pendingTxEdits.R2_a = { rowId: 'R2', colId: 'a', newValue: 20, oldValue: 4, data: null };
+  if (release) release();
+  try { await going; } catch (e) { /* as above */ }
+  out.putWindow = { sent: asSent(putSent), pending: Object.keys(S.pendingTxEdits).sort(), r1Over: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.oldValue };
+  // Tx off, and the read again fails: Tx comes back on, the edit still staged (lead re-QA F4).
+  globalThis.fetch = async () => ({ ok: false, status: 500, text: async () => 'boom', json: async () => ({ detail: 'boom' }) });
+  stage();
+  toggle.checked = false; S.txModeActive = false;
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  out.failedRead = { checked: toggle.checked, active: S.txModeActive, pending: Object.keys(S.pendingTxEdits).length };
   globalThis.fetch = keep;
   S.pendingTxEdits = {};
   return out;
@@ -510,13 +577,24 @@ function suite(out, sent) {
       create: { drawn: 28.9, conflict: { server: 29.7, at: '2026-10-12 12:00:00' } } });
   eq('W20 Tx turned off while a cell is conflicted: Apply asks and Tx comes back on', out.left.conflict.txBack,
     { checked: true, active: true, sent: 0 });
-  eq('W21 two Keep mine clicks before the first answers send one PUT', out.left.conflict.twice, 1);
+  eq('W21 two Apply clicks before the first answers send one PUT', out.left.conflict.twice, 1);
   eq('W22 a change no redraw brought: Apply reads the staged rows again first, finds it, asks and sends nothing; '
     + 'the cached page takes the server\'s value too',
     out.left.conflict.unseen, { sent: 0, reread: [['R1']], conflict: { server: 29.7, at: null }, cached: 29.7 });
   eq('W23 the question\'s count follows the conflicts and it goes when they do',
     out.left.conflict.follows, ['2 cells changed on the server since you edited', '1 cell changed on the server since you edited', '', 'none']);
-  eq('W24 a number spelled as text is the same number - "29.50" and 29.5 are no conflict', out.left.conflict.spelled, null);
+  eq('W24 a number spelled as text is the same number in a number column - "29.50" and 29.5 are no conflict', out.left.conflict.spelled, null);
+  eq('W26 an answer holds for what was asked: a cell that conflicts after the question, or a server value that moved, is asked again; the next answer sends',
+    out.left.conflict.bound, { reask: { sent: 0, text: '2 cells changed on the server since you edited' },
+      then: [[{ row_id: 'R1', updates: { a: 28.9 } }, { row_id: 'R2', updates: { a: 20 } }]],
+      moved: { sent: 0, text: '1 cell changed on the server since you edited' } });
+  eq('W27 a text column keeps its spellings apart - "1.10" and "1.1" are a conflict', out.left.conflict.textSpelled, { server: '1.1', at: null });
+  eq('W28 an edit made while the PUT is out stays staged; one edited again stays, now made over the value just saved',
+    out.left.conflict.putWindow, { sent: [[{ row_id: 'R1', updates: { a: 28.9 } }]], pending: ['R1_a', 'R2_a'], r1Over: 28.9 });
+  eq('W29 Tx off and the read again fails: Tx comes back on, the edit still staged', out.left.conflict.failedRead,
+    { checked: true, active: true, pending: 1 });
+  eq('V1 the read again says itself on the bottom line; a second click says it is already applying; the read carries the one time cap\'s abort signal (queue_poll timedRead)',
+    out.left.conflict.saying, ['Checking 1 row on the server\u2026', 'Already applying', true]);
   eq('W25 a deleted row\'s staged edit is dropped and the bottom line says so - a broadcast delete, and a row Apply\'s read no longer finds',
     [out.left.conflict.deleted, out.left.conflict.goneOnRead],
     [{ pending: 0, said: true }, { pending: 0, sent: 0, said: true }]);
@@ -576,7 +654,7 @@ const MUTANTS = [
   { id: 'G17', what: 'a broadcast draws the server value over a staged cell - the code before', catches: 'W15', file: 'websocket.js',
     mutate: (t) => swap(t, '        update: overlayStagedEdits(updatedRows),', '        update: updatedRows,') },
   { id: 'G18', what: 'Apply sends a conflicted cell unasked - the code before', catches: 'W16', file: 'api.js',
-    mutate: (t) => swap(t, '  if (conflicted.length && !choice) {\n', '  if (false) {\n') },
+    mutate: (t) => swap(t, '  if (conflicted.length && !answered) {\n', '  if (false) {\n') },
   { id: 'G22', what: 'the cache keeps the rows the grid draws - the code before', catches: 'W18', file: 'api.js',
     mutate: (t) => swap(t, '{ data: copyRows(result.data), total: result.total }', '{ data: result.data, total: result.total }') },
   { id: 'G23', what: 'a page from the cache hands the grid the cache\'s own rows', catches: 'W18', file: 'api.js',
@@ -586,17 +664,33 @@ const MUTANTS = [
   { id: 'G25', what: 'a create broadcast adds its rows round the overlay - the code before', catches: 'W19', file: 'websocket.js',
     mutate: (t) => swap(t, 'applyTransaction({ add: overlayStagedEdits(normalizedItems) })', 'applyTransaction({ add: normalizedItems })') },
   { id: 'G26', what: 'asking leaves Tx off', catches: 'W20', file: 'api.js',
-    mutate: (t) => swap(t, '    if (elements.txModeToggle) elements.txModeToggle.checked = true;\n    state.txModeActive = true;\n', '') },
+    mutate: (t) => swap(t, '  if (elements.txModeToggle) elements.txModeToggle.checked = true;\n  state.txModeActive = true;\n', '') },
   { id: 'G27', what: 'a second Apply runs beside the first', catches: 'W21', file: 'api.js',
-    mutate: (t) => swap(t, '  if (applying) return;\n', '') },
+    mutate: (t) => swap(t, "  if (applying) { elements.performanceLog.textContent = 'Already applying'; return; }\n", '') },
   { id: 'G28', what: 'Apply reads nothing again - only a redraw finds a conflict (the code before)', catches: 'W22', file: 'api.js',
     mutate: (t) => swap(t, '    dropped = await rereadStagedRows();\n', '') },
   { id: 'G33', what: 'Apply\'s read leaves the cached pages stale (18766: a false conflict after another page and back)', catches: 'W22', file: 'api.js',
     mutate: (t) => swap(t, '    cached.data = cached.data.map((row) => (fresh.has(row.row_id) ? copyRow(fresh.get(row.row_id)) : row));\n', '') },
+  { id: 'G34', what: 'an answer applies to whatever conflicts when it is pressed (the code before)', catches: 'W26', file: 'api.js',
+    mutate: (t) => swap(t, 'const answered = Boolean(choice && asked) && conflicted.every(', 'const answered = Boolean(choice) || conflicted.every(') },
+  { id: 'G35', what: 'an answer holds for a cell whose server value moved after the question', catches: 'W26', file: 'api.js',
+    mutate: (t) => swap(t, '\n    && sameCellValue(asked.get(keyOf(edit)), edit.conflict.server, edit.colId));', ');') },
+  { id: 'G36', what: 'numbers by value in a text column too (the code before)', catches: 'W27', file: 'api.js',
+    mutate: (t) => swap(t, "  if ((state.currentColumnTypes || {})[colId] === 'number') {", '  if (true) {') },
+  { id: 'G37', what: 'a saved PUT clears every staged edit - one made while it was out is lost (the code before)', catches: 'W28', file: 'api.js',
+    mutate: (t) => swap(t, '        delete state.pendingTxEdits[key];\n      }\n', '        delete state.pendingTxEdits[key];\n      }\n      state.pendingTxEdits = {};\n') },
+  { id: 'G38', what: 'an edit made again while the PUT was out is marked saved', catches: 'W28', file: 'api.js',
+    mutate: (t) => swap(t, '        if (edit.newValue !== value) {', '        if (false) {') },
+  { id: 'G39', what: 'a failed read again leaves Tx off', catches: 'W29', file: 'api.js',
+    mutate: (t) => swap(t, '    keepTxOn();\n    elements.performanceLog.textContent = `Apply stopped:', '    elements.performanceLog.textContent = `Apply stopped:') },
+  { id: 'G40', what: 'the read again says nothing while it runs', catches: 'V1', file: 'api.js',
+    mutate: (t) => swap(t, "  elements.performanceLog.textContent = `Checking ${unitText(rowsStaged, 'row')} on the server\u2026`;\n", '') },
+  { id: 'G41', what: 'the read again has no time cap', catches: 'V1', file: 'api.js',
+    mutate: (t) => swap(t, 'const res = await timedRead((signal) => gridFetch(', 'const res = await ((signal) => gridFetch(').replace(', { signal }));\n', ', { signal }))(undefined);\n') },
   { id: 'G29', what: 'the question keeps the count it was asked with', catches: 'W23', file: 'api.js',
     mutate: (t) => swap(t, '  if (askingConflicts) sayConflicts(conflictedEdits().length);\n  return out;', '  return out;') },
   { id: 'G30', what: 'numbers compared by spelling - the code before', catches: 'W24', file: 'api.js',
-    mutate: (t) => swap(t, '  if (Number.isFinite(x) && Number.isFinite(y)) return x === y;\n', '') },
+    mutate: (t) => swap(t, '    if (Number.isFinite(x) && Number.isFinite(y)) return x === y;\n', '') },
   { id: 'G31', what: 'a broadcast delete leaves the row\'s staged edit - the code before', catches: 'W25', file: 'websocket.js',
     mutate: (t) => swap(t, '${droppedText(dropStagedEditsOf(rowIds))}', '') },
   { id: 'G32', what: 'a row Apply\'s read no longer finds keeps its edit', catches: 'W25', file: 'api.js',
@@ -604,7 +698,7 @@ const MUTANTS = [
   { id: 'G19', what: 'Take server still sends the conflicted cell', catches: 'W16', file: 'api.js',
     mutate: (t) => swap(t, '      delete state.pendingTxEdits[`${edit.rowId}_${edit.colId}`];\n', '') },
   { id: 'G20', what: 'the server value compared with the staged one, not the one the edit was made over', catches: 'W14', file: 'api.js',
-    mutate: (t) => swap(t, 'sameCellValue(cell.value, edit.oldValue)', 'sameCellValue(cell.value, edit.newValue)') },
+    mutate: (t) => swap(t, 'sameCellValue(cell.value, edit.oldValue, edit.colId)', 'sameCellValue(cell.value, edit.newValue, edit.colId)') },
   { id: 'G14', what: 'Discard reads nothing again - the code before, a value moved since stays stale', catches: 'W12', file: 'api.js',
     mutate: (t) => swap(t, "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return rereadGrid();",
       "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return Promise.resolve();") },
