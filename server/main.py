@@ -416,6 +416,10 @@ async def startup_event():
         logger.info("Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
         return
 
+    # The walk's pool processes, started behind the start - a walk that comes first starts its own (lead b47388fde)
+    from runtime import process_pool
+    process_pool.warm()
+
     # 🔴 THE MAPPERS THIS PROCESS CAN NAME (S-204 (3), 판정 326). The chain rule editor
     # refuses a rule naming a mapper nothing implements, and that judgement is only the
     # LOADER'S judgement if both seats look at the same registry -- a judge with an empty

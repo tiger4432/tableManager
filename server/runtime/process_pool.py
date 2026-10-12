@@ -29,7 +29,8 @@ PROCESS_NAME = "WalkPool"
 logger = logging.getLogger("Server")
 
 _idle = []                      # [process, connection, generation] ready for a body
-_running = []                   # the same, while a body runs - read by recycle() and by tests
+_taken = [0]                    # pool processes running a body, or being started for one
+_modules = []                   # the modules of the bodies in_pool wraps - a pool process imports them before it is ready
 _cond = threading.Condition()
 _generation = [0]               # recycle() moves it; a process of an older one is not given a body again
 
@@ -49,6 +50,7 @@ def in_pool(body):
     ⚠️ A session on another engine than this process's own (a test's override) cannot be carried
     there, so that call runs here - as it does with `walk_processes: 0`."""
     target = (body.__module__, body.__name__)
+    _modules.append(body.__module__)
 
     @functools.wraps(body)
     def pooled(*args, db=None, **kwargs):
@@ -61,6 +63,26 @@ def in_pool(body):
 
     pooled.__pool_body__ = body
     return pooled
+
+
+def warm():
+    """Start `size()` pool processes behind the server's start (lead b47388fde), so the first walk does not pay
+    for one. A walk that comes first starts its own, as before; a failure is one log line."""
+    def start_all():
+        try:
+            while True:
+                with _cond:
+                    if len(_idle) + _taken[0] >= size():
+                        return
+                worker = _start()
+                with _cond:
+                    _idle.append(worker)
+                    _cond.notify()
+        except Exception as exc:                                # noqa: BLE001 - the server starts all the same
+            logger.error("[Pool] walk processes not started ahead - the first walk starts one: %s: %s",
+                         type(exc).__name__, exc)
+
+    threading.Thread(target=start_all, name="walk-pool-warm", daemon=True).start()
 
 
 def recycle():
@@ -92,19 +114,19 @@ def _reply(answer):
 
 def _run(target, kwargs):
     with _cond:
-        while len(_running) >= max(size(), 1):
+        while _taken[0] >= max(size(), 1):
             _cond.wait()
+        _taken[0] += 1
         worker = None
         while _idle and worker is None:
             worker = _idle.pop()
             if not worker[0].is_alive():            # one that died while it waited is not handed a body
                 _end(worker)
                 worker = None
-        if worker is None:
-            worker = _start()
-        _running.append(worker)
     keep = False
     try:
+        if worker is None:
+            worker = _start()                       # outside the lock: another body takes an idle one meanwhile
         process, connection, _generation_of = worker
         connection.send((target, kwargs))
         try:
@@ -117,21 +139,29 @@ def _run(target, kwargs):
         return answer
     finally:
         with _cond:
-            _running.remove(worker)
-            if keep and worker[2] == _generation[0] and len(_idle) + len(_running) < size():
+            _taken[0] -= 1
+            if worker is not None and keep and worker[2] == _generation[0] and len(_idle) + _taken[0] < size():
                 _idle.append(worker)
-            else:
+            elif worker is not None:
                 _end(worker)
             _cond.notify()
 
 
 def _start():
+    """A pool process that has imported its bodies' modules - so the first body it runs pays nothing for that."""
+    generation = _generation[0]
     context = multiprocessing.get_context("spawn")
     mine, theirs = context.Pipe()
-    process = context.Process(target=_serve, args=(theirs,), name=PROCESS_NAME, daemon=True)
+    process = context.Process(target=_serve, args=(theirs, list(dict.fromkeys(_modules))), name=PROCESS_NAME,
+                              daemon=True)
     process.start()
     theirs.close()
-    return [process, mine, _generation[0]]
+    try:
+        mine.recv()
+    except (EOFError, OSError):
+        process.join(1)
+        raise RuntimeError("a pool process ended before it was ready (exit code %s)" % process.exitcode)
+    return [process, mine, generation]
 
 
 def _end(worker):
@@ -141,12 +171,17 @@ def _end(worker):
         process.terminate()
 
 
-def _serve(connection):
-    """The pool process: one body at a time, until the server's end of the pipe closes."""
+def _serve(connection, modules):
+    """The pool process: ready once its bodies' modules are imported, then one body at a time, until the server's
+    end of the pipe closes."""
     os.environ.update(POOL_DB)
     from utils.logger import get_process_logger
 
     get_process_logger(PROCESS_NAME, "walk_pool.log")
+    for module in modules:
+        importlib.import_module(module)
+    import database.database                                    # noqa: F401 - its engine, before the first body
+    connection.send("ready")
     while True:
         try:
             target, kwargs = connection.recv()

@@ -71,6 +71,18 @@ def test_a_pool_answer_is_the_answer_given_here(client, monkeypatch, kind):
     assert pooled[0] == {"json": 200, "rows": 200, "refuse": 422, "boom": 500}[kind]
 
 
+def test_the_pool_started_ahead_hands_the_first_body_a_ready_process(client):
+    process_pool.recycle()
+    process_pool.warm()
+    for _ in range(600):
+        if len(process_pool._idle) == 2:
+            break
+        time.sleep(0.1)
+    ready = {worker[0].pid for worker in process_pool._idle}
+    assert len(ready) == 2
+    assert client.get("/body", params={"kind": "pid"}).json()["pid"] in ready
+
+
 def test_the_body_ran_in_another_process(client):
     assert client.get("/body", params={"kind": "pid"}).json()["pid"] != os.getpid()
 
