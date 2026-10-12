@@ -55,7 +55,7 @@ import { NodeSearch, SEARCH_LIMIT } from './node_search.js';
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 // Copy key (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
 import { writeClipboardRich } from '../clipboard_write.js';
-import { entitySeedId } from '../rnd_board/api.js';
+import { entitySeedId, entityOfId } from '../rnd_board/api.js';
 // An image reference's value (server c5463a475): the main grid's image cell and its one preview (lead 191912ce2).
 import { ImagePreview } from '../image_preview.js';
 import { ImageCellRenderer } from '../grid_image_column.js';
@@ -86,7 +86,7 @@ const CONTROL_WORD = 'Compare with (B)';
 const CHECK_ROWS_FIRST = 'Check rows first';
 /** A Walk on's two presses (lead 10-11 W addendum 5): a step of its own, or its answer merged into this one; a cut walk
  *  walked once more. */
-const NEXT_WORDS = Object.freeze({ step: 'New step', here: 'Add here' });
+const NEXT_WORDS = Object.freeze({ step: 'New step', here: 'Add here', walk: 'Walk ▸' });
 const MORE = 'More';
 const AT_SERVER_LIMIT = 'at the server limit';
 
@@ -235,7 +235,7 @@ export function boot(doc, host, deps) {
   };
   /** Drop these steps' markings and the graph's own past them. */
   const dropMarks = (steps) => { for (const name of [...steps.map((s) => s.marks), ...tail.splice(0)]) markings.clear(name); };
-  const graph = new SubgraphView(graphMount, { doc, walk, knobs, entities, markings, chain: chainAt,
+  const graph = new SubgraphView(graphMount, { doc, walk, ask: askFrom, entities, markings, chain: chainAt,
     worldChips: worlds.length > 1, predicates: () => (state.decl && state.decl.predicates) || [],
     openTable: (answer, lump) => openLumpTable(answer, lump), walkOn: (node) => baskets.add(SIGN.CASE, node) });
   // The box is the key it searches by: what is typed is that key, a node picked fills every key.
@@ -370,6 +370,15 @@ export function boot(doc, host, deps) {
     return out;
   }
 
+  /** The bar's walk from these signed starts (owner 10-12 「다음 걷기는 메인 걷기랑 똑같이」): Walk's from the baskets,
+   *  Walk ▸'s from the rows checked, the graph's Continue from its marks - one ask, the starts the only difference. One
+   *  + start alone goes by its type and keys, as the form asked it (walk_layout L7 · L8). */
+  function askFrom(starts) {
+    const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
+    const one = signed ? null : baskets.describe(starts.positive[0]) || entityOfId(starts.positive[0]);
+    return { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed || !one ? starts : {}) };
+  }
+
   /** Walk: the baskets as they are (lead bc63378e5). Ctrl and Shift on it retired - the baskets add and sign. */
   async function fire() {
     await walkStarts();
@@ -384,9 +393,7 @@ export function boot(doc, host, deps) {
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
     // One + start alone is asked by its type and keys, as the form asked it (walk_layout L7 · L8: the request does not change).
     const starts = seedsOf(markings.entries(START));
-    const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
-    const one = signed ? null : baskets.describe(starts.positive[0]);
-    const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };
+    const asked = askFrom(starts);
     state.run = 'running'; state.result = null; state.resultB = null; state.reason = '';
     // The table reads the walk's starts here whichever way the wire carried them: one + start alone goes by its type and
     // keys, and its table is a Next's from that node (owner 10-10 E1: the same as one basket walked).
@@ -437,7 +444,19 @@ export function boot(doc, host, deps) {
    *  knobs ride along; the step's own hops is its one. */
   async function walkOn(at, seeds, route) {
     const asked = askAlong(seeds, route);
-    const step = placeStep(at, route.words, asked);
+    await walkStep(at, route.words, asked, asked);
+  }
+
+  /** Walk ▸ (owner 10-12): the bar's walk from the rows checked - their signs as they are - a child step of `at`. The
+   *  step keeps its starts for its table; the wire is the bar's ask. */
+  async function walkFull(at, seeds) {
+    const asked = askFrom(seeds);
+    await walkStep(at, NEXT_WORDS.walk, { ...asked, positive: seeds.positive, negative: seeds.negative }, asked);
+  }
+
+  /** A child step of `at` titled `title`, holding `shown` for its table, walking `asked`. */
+  async function walkStep(at, title, shown, asked) {
+    const step = placeStep(at, title, shown);
     render();
     const began = Date.now();
     const res = await walk(asked);
@@ -1715,6 +1734,14 @@ export function boot(doc, host, deps) {
     const checked = new Set(marked.map(([id]) => rows.get(id).type));
     const sections = view.sections.filter((s) => !checked.size || checked.has(s.type));
     onward.append(el(doc, 'span', 'wk-markedword', 'Walk on ▸'));
+    // Walk ▸: every row checked and shown, the bar's walk from them (owner 10-12).
+    const shownIds = new Set(view.sections.flatMap((s) => shownFor(view, s).ids));
+    const all = seedsOf(marked.filter(([id]) => shownIds.has(id)));
+    const full = el(doc, 'button', 'wk-next-edge wk-walkfull', NEXT_WORDS.walk);
+    full.type = 'button';
+    setDisabledReason(full, all.positive.length ? '' : CHECK_ROWS_FIRST);
+    full.addEventListener('click', () => { if (all.positive.length) void walkFull(at, all); });
+    onward.append(full);
     for (const section of sections) {
       const shown = shownFor(view, section);
       const seeds = seedsOf(shown.ids.map((id) => [id, markings.signOf(checks, id)]));
