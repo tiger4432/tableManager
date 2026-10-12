@@ -1611,7 +1611,7 @@ def _signed_seeds(start):
     return signs
 
 
-def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None):
+def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, fresh=None):
     """Signed reach of every walked node from the signed seeds.  Pure — no query.
 
     ONE RULE: A SEED THAT REACHES A NODE COUNTS 1.  Reach is therefore how many marked
@@ -1689,13 +1689,15 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None):
             continue
         slot = 0 if sign > 0 else 1
         before = (carried or {}).get(seed) or {}
-        trail = parents.setdefault(seed, {
-            node: tuple(step) for node, step in (before.get("parents") or {}).items()})
+        trail = parents.setdefault(seed, dict(before.get("parents") or {}))
         reached_kinds = kinds.setdefault(seed, set(before.get("kinds") or ()))
+        # a node an earlier page reached goes on only along this page's edges - only those are read here (MORE: a
+        # page that began from every node it carried spent 42 % of itself here, 3 of 7 s on a 20,000-atom seed)
+        earlier = before.get("arrived") or {}
         arrived = {seed: set(), **{node: {tuple(step) for step in steps}
-                                   for node, steps in (before.get("arrived") or {}).items()}}
-        seen = set(arrived)
-        for node in seen - {seed}:
+                                   for node, steps in earlier.items() if node in adjacency}}
+        seen = {seed} | set(earlier)
+        for node in earlier:
             reach.setdefault(node, [0, 0])[slot] += 1
         level = list(arrived)
         while level:
@@ -1722,14 +1724,16 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None):
                     reached[nxt].add((predicate, direction, _kind(node)))
             for nxt, steps in reached.items():
                 seen.add(nxt)
+                if fresh is not None:
+                    fresh.add(nxt)                      # a seed reached it on this page
                 arrived[nxt] = steps
                 reached_kinds.add(_kind(nxt))
                 reach.setdefault(nxt, [0, 0])[slot] += 1
             level = list(reached)
         if keep is not None:
             keep[seed] = {"parents": {node: list(step) for node, step in trail.items()},
-                          "arrived": {node: sorted((list(step) for step in steps), key=str)
-                                      for node, steps in arrived.items() if node != seed},
+                          "arrived": {**earlier, **{node: sorted((list(step) for step in steps), key=str)
+                                                    for node, steps in arrived.items() if node != seed}},
                           "kinds": sorted(kind for kind in reached_kinds if kind)}
     return reach, parents, kinds
 
@@ -1890,7 +1894,9 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
         "top_set": [],
         "message": None,
     }
-    reach, parents, kinds = _reach(nodes, edges, seed_signs, static_types, carried, keep)
+    # a continued page ranks what a seed newly reached on it; the rest stands as an earlier page ranked it (MORE)
+    fresh = set() if carried is not None else None
+    reach, parents, kinds = _reach(nodes, edges, seed_signs, static_types, carried, keep, fresh)
     # 🔴 THE DENOMINATOR. A reach of zero says nothing about itself: the control may have
     # HAD the path and not carried this factor, or it may have had no path to that kind at
     # all, and those two read identically as 0. So each side is reported as a pair --
@@ -1973,6 +1979,11 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
         "reach": reach.get(node["id"], [0, 0]),
     } for node in nodes.values()
         if node["id"] not in seed_signs and node["id"] in reach]
+    # a continued page ranks among every node reached so far - the ones the pages before reached ride as their reach
+    # alone - and lists the ones a seed newly reached on it (총괄 10-12: a rank among this page's nodes only was not
+    # the rank its name says)
+    collected += [{"id": node_id, "reach": counts} for node_id, counts in reach.items()
+                  if node_id not in nodes and node_id not in seed_signs]
     if not collected:
         block["message"] = "This walk reached no node beyond its seeds"
         return block
@@ -1997,7 +2008,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
         # population was ONE collected kind; it is now every reached node, so the item
         # count is the node budget rather than a fraction of it.
         "evidence": _evidence(nodes, parents, seed_signs, item["id"], between),
-    } for layer in layers for item in layer]
+    } for layer in layers for item in layer if fresh is None or item["id"] in fresh]
     block["top_set"] = [item["id"] for item in layers[0]]
     return block
 
