@@ -38270,3 +38270,83 @@ QA ②  구역 Trend 를 연 채 앞 걸음에서 다른 줄로 다시 이어 �
 RUN.md 일요일 절  마지막 판 eb599a113 — 대본 줄 전부 walk-B1AneZ3H.js(main dist) 에서 누름 · ⑨ 에 main 에 없는 것 · ③e 에 QA ② 를 «알려진 것»으로
 누름     착지마다 총괄이 이름 댄 경우는 진짜 클릭 위주(요소 클릭 · cy tap 은 줄에 적음) · 마지막 판은 페이지 스크립트 · 쓰기 요청 0 (18766 접속 기록 GET 만)
 ```
+
+---
+
+## [C 응용] 10-12 밤 — 걷기 허브 술어별 측정 (74db23f4b · b5f3fc849) · 문서 정비 0cc1f04a2 (068dc405d)
+
+박스 수다 — 운영 주장이 아니다. 판 assy_impl_wm_1012(읽기 전용, 구현자의 걷기 판) · 코드 main 1e23bc216 · 걷기 SYN-BW-101-16 ·
+collect wafer,die,defect · 6 홉 · 상한 없음. 계산은 qa_hub_fold.py(접은 답 «하나만»으로 다시 지어 원본과 견줌, 변이 둘에 빨강).
+
+```
+답 ① + 씨앗 하나          235,758,845 B  (wk_save_uncapped.py)
+답 ② + 와 − SYN-CW-101-01  301,933,948 B  (스크래치 wk_save_signed.py — 같은 것 + negative)
+선의 바이트  그래프 188,852,631 B 중 선 170,126,019 B — by_world 42,049,702 · basis 30,019,294 · id 28,166,054 · records 23,359,500
+```
+
+답 ①
+
+```
+canary: nodes 37409 · edges 77418 · seeds 1 (in nodes 1) · nodes with a reach pair 37409 · answer bytes 235,758,845
+nothing declared: nodes 37,409 · edges 77,418 · graph bytes 188,852,643 (rest of the answer 46,906,214, unchanged by a fold)
+| predicate declared alone | its edges | hubs | members | cells | nodes − | edges − | bytes − (rows in) | bytes − (rows on open) | unfold nodes · edges | hubs (members) with split contrast | members reach ≠ parent | largest steps (direction · far type: members) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| observed | 32,040 | 504 | 32,040 | 0 | 31,536 | 63,072 | 23,931,267 | 154,333,953 | True · True | 0 (0) | 0 | out · defect: 32,040 |
+| in_container | 5,058 | 1 | 1,836 | 1,818 | 3,653 | 8,897 | 3,078,954 | 20,335,192 | True · True | 0 (0) | 0 | in · die: 1,836 |
+| bonded_from | 2,520 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| inspected | 702 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| of_kind | 32,040 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| transfer | 5,058 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+top three together ['observed', 'in_container']: hubs 505 · members 33,876 · cells 1,818 · nodes 37,409 -> 2,220 · edges 77,418 -> 5,449 · graph bytes 188,852,643 -> 161,842,431 (rows on open 14,183,507) · unfold nodes = True · edges = True · split-contrast hubs 0 (members 0) · members reach ≠ parent 0
+```
+
+답 ②
+
+```
+canary: nodes 41057 · edges 84330 · seeds 2 (in nodes 2) · nodes with a reach pair 41056 · answer bytes 301,933,948
+nothing declared: nodes 41,057 · edges 84,330 · graph bytes 202,385,946 (rest of the answer 99,548,014, unchanged by a fold)
+| predicate declared alone | its edges | hubs | members | cells | nodes − | edges − | bytes − (rows in) | bytes − (rows on open) | unfold nodes · edges | hubs (members) with split contrast | members reach ≠ parent | largest steps (direction · far type: members) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| observed | 32,040 | 504 | 32,040 | 0 | 31,536 | 63,072 | 23,931,267 | 154,333,953 | True · True | 0 (0) | 0 | out · defect: 32,040 |
+| in_container | 8,514 | 2 | 5,400 | 1,818 | 7,216 | 15,826 | 5,553,417 | 34,497,936 | True · True | 1 (3,564) | 0 | in · die: 5,400 |
+| bonded_from | 2,520 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| inspected | 702 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| of_kind | 32,040 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| transfer | 8,514 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+top three together ['observed', 'in_container']: hubs 506 · members 37,440 · cells 1,818 · nodes 41,057 -> 2,305 · edges 84,330 -> 5,432 · graph bytes 202,385,946 -> 172,901,279 (rows on open 13,554,074) · unfold nodes = True · edges = True · split-contrast hubs 1 (members 3,564) · members reach ≠ parent 0
+```
+
+답 ② in_container 허브의 구성원 대조값
+
+```
+SYN-BW-101-16 (seed +) · in_container · in · die · members 1,836 · pairs (1, 1) 1,836
+SYN-CW-101-01 (seed -) · in_container · in · die · members 3,564 · pairs (0, 1) 3,456 · (1, 1) 108
+```
+
+답 ② 총괄 빼기 규칙(허브 값 = 부모에서 흘러 들어온 값 · 씨앗이면 그 부호) — `qa_hub_fold.py <답> --drop-split`
+
+```
+canary: nodes 41057 · edges 84330 · seeds 2 (in nodes 2) · nodes with a reach pair 41056 · answer bytes 301,933,948
+nothing declared: nodes 41,057 · edges 84,330 · graph bytes 202,385,946 (rest of the answer 99,548,014, unchanged by a fold)
+contrast rule: members whose pair differs from the hub's leave it (--drop-split)
+| predicate declared alone | its edges | hubs | members | dropped · hubs lost | cells | nodes − | edges − | bytes − (rows in) | bytes − (rows on open) | unfold nodes · edges | hubs (members) with split contrast | members reach ≠ parent | largest steps (direction · far type: members) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| observed | 32,040 | 504 | 32,040 | 0 · 0 | 0 | 31,536 | 63,072 | 23,931,267 | 154,333,953 | True · True | 0 (0) | 0 | out · defect: 32,040 |
+| in_container | 8,514 | 1 | 3,456 | 1,944 · 1 | 0 | 3,455 | 6,719 | 2,393,493 | 13,433,437 | True · True | 0 (0) | 0 | in · die: 3,456 |
+| bonded_from | 2,520 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| inspected | 702 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| of_kind | 32,040 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+| transfer | 8,514 | 0 | 0 | 0 · 0 | 0 | 0 | 0 | 0 | 0 | True · True | 0 (0) | 0 |  |
+top three together dropped 1,944 · hubs lost 1
+top three together ['observed', 'in_container']: hubs 505 · members 35,496 · cells 0 · nodes 41,057 -> 6,066 · edges 84,330 -> 14,539 · graph bytes 202,385,946 -> 176,061,195 (rows on open 34,618,565) · unfold nodes = True · edges = True · split-contrast hubs 0 (members 0) · members reach ≠ parent 0
+```
+
+문서 정비 0cc1f04a2 (068dc405d) — 응답 자리 911fc8821 · e6f2d23b3 · 집계 이름 9911db802
+
+```
+게이트   55 passed, 6 warnings in 7.49s  (test_a_route_answer_becomes_bytes_on_its_worker_thread.py · test_walk_aggregate_contract.py, main 1e23bc216)
+QA ①    ledger_subgraph.py 주석 「the screen's picker (AGGREGATIONS) names these」 — 오늘 고르개는 옛 소문자(mean · distinct …)를 보낸다.
+        서버가 _split_measure 에서 접어 받아 답은 맞다. 주석은 클라 몫(fceba46a7) 착지 때까지 거짓 — 문서에는 «현재 옛 소문자»로 적음
+QA ②    LEDGER_SCHEMA_COMPLETENESS 의 「walk_aggregate 가 서버 · 클라 양쪽을 채점」은 이번 착지 전부터 거짓 — 클라 하니스가 없다
+        (contracts/walk_aggregate 에는 vectors.json 하나) · 고침
+```
