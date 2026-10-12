@@ -245,9 +245,9 @@ console.log('\n[6] the value cell is read at the panel\'s width (lead 3e8b6171f)
     .map((m) => m[2].replace(/\s+/g, ' ').trim());
   const grid = bodiesOf('.audit-table .timeline-card').join(' ');
   ok('S1 the row\'s second line is the change, across every column',
-    /grid-template-areas: "time user kind target tx" "change change change change change"/.test(grid), grid);
-  ok('S2 ...the five on the first line keep their widths, the target at 110px',
-    /grid-template-columns: 70px 62px 74px 110px minmax\(120px, 1fr\)/.test(grid), grid);
+    /grid-template-areas: "time user kind tbl target tx" "change change change change change change"/.test(grid), grid);
+  ok('S2 ...the six on the first line keep their widths, the table its own column (owner 10-12), the target as wide as before',
+    /grid-template-columns: 70px 62px 96px 96px 110px minmax\(72px, 1fr\)/.test(grid), grid);
   ok('S3 the change cell sits in that line', bodiesOf('.audit-table .timeline-card > .audit-change')
     .some((body) => /grid-area: change/.test(body)));
   ok('S4 the header\'s Change gives way to the line it heads', bodiesOf('.timeline-container > .audit-head > .audit-change')
