@@ -80414,3 +80414,65 @@ reload 시험   test_config_reload_integrity.py — 여러 파일 묶음으로 �
 (코드로 읽음)  그 틈에 wait_for_idle 은 타이머 없음 · 잠금 비었음을 보고 True. 이 브랜치는 _fire 를 안 건드림(바꾼 것은 _reload 안 recycle 자리 8 줄)
 안 잰 것      main 에서 여러 파일 묶음으로 같은 실패를 재현하지 않았다. 첫 실패(test_inv_9_1)의 로그는 안 봤다
 ```
+
+## [구현자 A → 총괄] 10-13 — 행 붙이기(attach 문장) 짓기 전 전수 ①② (읽기만, impl-walk-hub fc4ce3147 위)
+
+### 오늘 attach 소스를 적으면
+```
+모든 화면 · 서버   _validate_sources 의 칸 검사 하나(setup_bundle:2460)가 «unknown_field …attach»로 그 소스만 거절 · 이름으로 떨어짐
+                 터지는 곳 0. 다만 그 소스 하나뿐이면 every_source_refused -> 선언 라우트 503
+먼저 걸리는 것     로더가 검증 «전»에 빈 read · map 을 지어 넣는다(source_defaults setup_bundle:1001-1026, _derived_cursor :804)
+                 -> «read · map · bind 없음»은 지금 그대로는 성립 안 한다. 첫 자리는 이것이다
+```
+
+### 검증만 넓히고 아무것도 안 고치면 — 터지는 자리 13
+```
+전부 못 읽음     setup_registry:632 snapshot_compile_errors (load_setup 의 try 밖 -> 어떤 선언도 안 읽힘) · config_drafts:273
+컴파일          setup_registry:1010 · 1056 · 1210 (KeyError)
+지문            setup_registry:825 source_cursor_fingerprint (AttributeError) <- backfill:330 · 1614 · runtime_v2:289
+세기 · 표 읽음    backfill:958 · 2133 rows_not_yet_translated — 표를 «읽고 나서» 터짐, 워커 바퀴마다 경고(ingestion_worker:3792)
+                admin/retroactive:437 도 같음
+돌리기 · 미리보기 backfill:2211 · event_frame:275 (run · rescope · preview_first_batch · test_run) · admin/retroactive:1636
+                event_frame · roleframe · runtime_v2 의 맥락 코드
+```
+runs 를 안 묻는 다른 갈래: census_sources(backfill:1648, status 만) · _require_declared_source(setup:575, planned · status) ·
+config_resolve_report:1091(«읽힌다»고 거짓) · chain/graph:259(원장으로 흐른다고 그림).
+
+### 술어 P · 타입 E 를 «쓰는 소스»를 모으는 자리 — 전부 bind 만 본다 -> attach 를 «놓친다»
+```
+emitted_predicates (setup_bundle:1965)   -> config_resolve_report 에 «선언됐지만 안 쓰임» · trace_router:1288 emits: []
+탐색기 선 (config_explorer:932 · 953 · 959) -> used_by · 닿음 걷기에서 빠짐 -> referrers() · deletion_plan 이 그 술어 · 타입 «지우기를 안 막는다»
+_cross_profile_contract · _cross_profile_source · registering_sentences · attribute_registrations — bind 만
+```
+🔴 지우기 막기는 데이터를 지키는 가드다 — 이번 일 안에서 닫아야 한다.
+
+### 화면 ②
+```
+탐색기       목록에 «invalid» 로 뜸 · 읽기 나무는 뼈대 칸만 그려 attach 를 안 그림 · 술어 · 엔티티 밑에 안 걸림
+선언 폼      클라는 뼈대 따라 그려 클라 코드 0(ontology_skeleton.js:3-8). 그러나 역할 칸 줄(후보 · missing)은 서버 _mapping_fields 가
+            bind.mappings 밑에서만 낸다(config_authoring:1001-1069) -> attach 칸은 줄 없이 그려짐. 새 소스는 read · map · bind 빈 그릇으로 시작하고
+            필수라 지울 수 없다 -> 폼으로는 못 만들고 원문 편집기로만. 뼈대 ↔ 검증기 표류 시험(test_ledger_skeleton.py)이 둘을 같이 묶음
+원장 소스 줄  격자 라벨 «refused» · Ledger 칸 «Refused» · 다시 하기 배너 «No scope column» · 소스 패널 «not measured» 한 줄
+클라 몫      터지는 곳 0. 서버가 줄을 내면 폼은 클라 코드 0 — «−» 단추 · 새 소스 시작 모양만 클라 확인거리
+```
+
+### 안 — 자리 넷, 각자 «한 판단 한 자리»
+```
+1 문법   _validate_sources: {relation, attach, status} 또는 {relation, read, map, bind, status} 둘 중 하나.
+         attach 는 문장 — subject · target 은 _validate_binding · _binding_refs 그대로, predicate 는 어휘에 있어야(없으면 «어디 · 무엇을 적으라»)
+         source_defaults · _derived_cursor · upgrade_setup 은 attach 소스를 건너뜀 — 묻는 자리는 함수 하나 is_attach(source)
+         뼈대에 attach(역할 정의 재사용) — 표류 시험이 같이 감
+2 컴파일  SourcePlan 에 attach 칸 · driver/profile 없음. snapshot_compile_errors · _compile_mappers · _compile_profiles 는 is_attach 로 건너뜀
+3 runs   runs = active ∧ planned ∧ attach 아님. planned+status 나 아무것도 안 묻던 소비자(위 13 + census_sources · _require_declared_source ·
+         config_resolve_report · chain/graph)는 runs 를 묻는다. _require_declared_source 는 attach 를 «번역하지 않는 소스» 사유로 거절
+4 쓰는 곳 «한 소스의 문장들» 함수 하나 — bind.mappings 문장 + attach 문장. emitted_predicates · 탐색기 선 · referrers/deletion_plan ·
+         cross_profile 이 그것을 부른다(개념을 넓힘 — attach 는 «문장»이라 같은 칸에 든다)
+게이트   소비자마다 «원자 0 · 읽은 행 0»(backfill · catch_up · 따라가기 · 번역기 도장 · 소급 세기 · 미리보기) · attach 술어/타입 지우기가 막힌다 ·
+         attach 없는 선언은 답 · 지문 바이트 같음 · 변이
+크기     자리 약 스물 · 파일 열 남짓 — 안 쟀다(줄 수)
+```
+### 못 정한 것
+```
+· filled_declaration(config_authoring:1877) · index_existing_refs(backfill:1752) · 이주 스크립트(v4/v5/v6 · slim) — 끝까지 안 따라감
+· isolation_key 가 .attach 경로를 그 소스로 잇는지 — 안 봄
+```
