@@ -241,13 +241,14 @@ export function openFold() {
  * lump holds what the answer brought, so opening it walks nothing). Whatever else the answer brings is held: behind a
  * node new to the picture as its one big lump, behind a node already in sight as a small lump that keeps what that node
  * already showed (nothing drawn leaves). A fan-out the server did not send stays its own dashed lump, as it is today.
- * `fold` is added to and returned.
+ * A static node stands as a node one step on, wherever the answer put it (owner 10-12 「서브그래프 정적 노드는 접지
+ * 말고 처음부터 다 보여줘」): drawn, its own branches held the same way. `fold` is added to and returned.
  */
 export function foldBeyond(layout, fold, points, shownBefore, limit = Infinity) {
   const steps = stepsOf(layout);
   const from = new Set(points);
   const before = shownBefore || new Set();
-  const near = new Set();
+  const near = new Set(layout.nodes.filter((n) => n.static && !from.has(n.id)).map((n) => n.id));
   for (const s of from) {
     fold.big.delete(s);
     const fan = new Map();
@@ -287,13 +288,15 @@ export function foldBeyond(layout, fold, points, shownBefore, limit = Infinity) 
  * its key is a small lump that has not opened its far end. A node no start reaches is left as it is; a node
  * reached another way stays. Each node still in sight then shows its big lump (the keys left in it, what they
  * hold), one small lump per key with members still inside, and one per bundle the server has not sent.
+ * A static node stands where the walks stood (owner 10-12), so it is in sight whatever is folded before it; one whose
+ * every neighbour is folded is `statics` on each lump that holds one of them - drawn as a dashed line to it.
  */
 export function lumpView(layout, fold, seeds) {
   const big = (fold && fold.big) || new Map();
   const lumped = (fold && fold.lumped) || new Map();
   const steps = stepsOf(layout);
   const ids = new Set(layout.nodes.map((n) => n.id));
-  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.depth === 0).map((n) => n.id)]
+  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.depth === 0 || n.static).map((n) => n.id)]
     .filter((id) => ids.has(id));
   const closed = (from, s) => ((big.get(from) || new Set()).has(s.key)
     || (lumped.has(s.key) && !lumped.get(s.key).has(s.to)));
@@ -332,6 +335,20 @@ export function lumpView(layout, fold, seeds) {
   // What a fan-out holds that the server did not send: its count less what it drew.
   const restOf = (key) => (unsent.has(key) ? unsent.get(key).count - unsent.get(key).drawn : 0);
   const typesOf = (members) => [...new Set(members.map((m) => typeOf.get(m)))].join(' · ');
+  // A static node with no neighbour in sight hangs off each lump (not its own) that holds one of them.
+  const nextTo = new Map();
+  for (const e of layout.edges) {
+    for (const [a, b] of [[e.source, e.target], [e.target, e.source]]) {
+      if (!nextTo.has(a)) nextTo.set(a, []);
+      nextTo.get(a).push(b);
+    }
+  }
+  const floating = layout.nodes.filter((n) => n.static && nextTo.has(n.id) && nextTo.get(n.id).every((id) => hidden.has(id)));
+  const hanging = (owner, members) => {
+    if (!floating.length) return [];
+    const held = inside(members);
+    return floating.filter((n) => n.id !== owner && nextTo.get(n.id).some((id) => held.has(id))).map((n) => n.id);
+  };
   const lumps = [];
   for (const node of layout.nodes) {
     if (!shown(node.id)) continue;
@@ -352,9 +369,11 @@ export function lumpView(layout, fold, seeds) {
       const mix = new Map();
       for (const id of firsts) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + 1);
       for (const g of groups) if (g.rest) mix.set(g.farType, (mix.get(g.farType) || 0) + g.rest);
+      const statics = hanging(node.id, [...firsts]);
       lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, groups,
         count: held.size + rest, next: firsts.size + rest, behind: held.size - firsts.size, bound: rest > 0,
-        mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })) });
+        mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
+        ...(statics.length ? { statics } : {}) });
     } else if (node.unwalked) {
       lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, key: `${node.id}||both`, groups: [], unsent: true,
         unwalked: true, count: 0, next: 0, behind: 0, mix: [] });
@@ -367,11 +386,12 @@ export function lumpView(layout, fold, seeds) {
       const chip = unsent.get(key);
       const rest = restOf(key);
       if (!members.length && !rest) continue;
+      const statics = hanging(node.id, members);
       // `more`: some of this fan-out is in sight - opened out of the lump, or, not lumped, what the walk drew.
       lumps.push({ id: `lump:${key}`, level: 'small', owner: node.id, key, ...keyParts(key), members,
         farType: members.length ? typesOf(members) : chip.farType, count: members.length + rest,
         more: lumped.has(key) ? lumped.get(key).size > 0 : Boolean(chip && chip.drawn), unsent: rest > 0,
-        ...(chip ? { step: chip.step } : {}) });
+        ...(chip ? { step: chip.step } : {}), ...(statics.length ? { statics } : {}) });
     }
   }
   return {
@@ -1027,6 +1047,7 @@ export class SubgraphView {
         'line-style': 'dashed', width: 1 }) },
       { selector: 'edge[kind = "lump"]', style: set({ 'line-color': t('--border'), 'target-arrow-shape': 'none',
         'curve-style': 'straight' }) },
+      { selector: 'edge[kind = "lump"][?static]', style: { 'line-style': 'dashed' } },
       { selector: 'edge.is-hot', style: set({ label: 'data(tag)', width: 2.4, 'line-style': 'solid',
         'line-color': t('--accent'), 'target-arrow-color': t('--accent') }) },
       { selector: '.is-faded', style: { opacity: 0.18 } },
@@ -1109,6 +1130,10 @@ export class SubgraphView {
       const back = l.direction === 'incoming';
       out.push({ group: 'edges', data: { id: `to:${l.id}`, source: back ? l.id : l.owner, target: back ? l.owner : l.id,
         kind: 'lump' } });
+      // A static node whose neighbours are all in this lump hangs off it (owner 10-12); a node id holds no `|`.
+      for (const s of l.statics || []) {
+        out.push({ group: 'edges', data: { id: `to:${l.id}|${s}`, source: l.id, target: s, kind: 'lump', static: true } });
+      }
     }
     return out;
   }

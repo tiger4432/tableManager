@@ -54,6 +54,9 @@ const ENTITIES = DECL.entities;
 // The oracle reads the declaration itself: the types whose classes hold 'static'.
 const STATIC = new Set(ENTITIES.filter((e) => Array.isArray(e.class) && e.class.includes('static'))
   .map((e) => String(e.type).split('@')[0]));
+// The same declaration with no type static: the lump cells' fixtures fan out to quantity and recipe, which the picture
+// now draws from the first (owner 10-12), so a lump is measured where the declaration holds nothing static.
+const DYNAMIC = ENTITIES.map((e) => ({ ...e, class: (Array.isArray(e.class) ? e.class : []).filter((c) => c !== 'static') }));
 const startId = (body) => (body._start ? entitySeedId(body._start.type, body._start.keys) : body.seed.id);
 // Two themes of token values the stub document answers with, so a colour drawn can be traced to its token.
 const TOKENS = {
@@ -123,7 +126,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const markings = opts.markings || new MarkingStore();
     const chain = opts.chain || ['s0', 's1', 's2'];
     if (!opts.keepStart) markings.replace(chain[0], [[startId(bodies[0]), SIGN.CASE]]);
-    const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => ENTITIES, markings, chain: (k) => chain[k] || '',
+    const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => opts.entities || ENTITIES, markings, chain: (k) => chain[k] || '',
       worldChips: opts.worldChips, openTable: opts.openTable, predicates: opts.predicates, fanoutLimit: opts.fanoutLimit,
       walkOn: opts.walkOn });
     seated.push(view);
@@ -217,20 +220,23 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   const die = await seat([DIE]);
   const dieFirst = positions(die);
   const dieFirstLumps = lumpsOf(die).map((n) => n.id()).sort().join(',');
-  console.log('\n[0] the first picture: the start and its one step; what lies behind is folded (owner 10-06)');
+  console.log('\n[0] the first picture: the start and its one step, and every static node; what lies behind is folded (owner 10-06 · 10-12)');
   if (want(["A5"])) {
     const r = await wire([DIE], [])(DIE._start);
     const from = new Set([...die.view.steps[0].seeds, ...r.nodes.filter((n) => n.depth === 0).map((n) => n.id)]);
     const near = oneStep(die.view.layout, from);
+    const statics = r.nodes.filter((n) => STATIC.has(String(n.type).split('@')[0])).map((n) => n.id);
+    const shown = new Set([...from, ...near, ...statics]);
     const drawn = new Set(nodesOf(die).map((n) => n.id()));
     const v = m.lumpView(die.view.layout, die.view.fold, die.view.steps.flatMap((x) => x.seeds));
     const leads = [...near].filter((id) => oneStep(die.view.layout, new Set([id])).size > 0);
-    say('A5 drawn are the start, its twins and their one step; each of those that leads further has its big lump; the rest is inside',
-      near.size > 0 && drawn.size === from.size + near.size && [...from, ...near].every((id) => drawn.has(id))
+    say('A5 drawn are the start, its twins, their one step and every static node; each of those one step on that leads further has its big lump; the rest is inside',
+      near.size > 0 && statics.some((id) => !from.has(id) && !near.has(id))
+        && drawn.size === shown.size && [...shown].every((id) => drawn.has(id))
         && leads.length > 0 && leads.every((id) => lumpsOf(die, 'big').some((n) => n.data('owner') === id))
         && drawn.size + v.hidden === r.nodes.length
         && JSON.stringify(textOf(die.host, 'sg-counts')) === `["Nodes ${r.nodes.length} · Edges ${r.edges.length}"]`,
-      JSON.stringify({ drawn: drawn.size, from: from.size, near: near.size, leads: leads.length, hidden: v.hidden }));
+      JSON.stringify({ drawn: drawn.size, from: from.size, near: near.size, statics: statics.length, leads: leads.length, hidden: v.hidden }));
   }
   openAll(die);
   console.log('\n[1] all opened, what is drawn is what the walk answered - the same count the table shows');
@@ -429,16 +435,20 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       union.size > one.size && new Set(drawnIds).size === drawnIds.length && drawnIds.length + both.hidden === union.size
         && s.view.layout.edges.length === edgeUnion.size && edgesOf(s).length === both.edges.length,
       JSON.stringify({ drawn: drawnIds.length, hidden: both.hidden, union: union.size, edges: edgesOf(s).length, edgeUnion: edgeUnion.size }));
-    // 🔴 THE FIRST PICTURE'S RULE, FROM THE MARKED POINT (owner 10-06): its one step drawn, what lies behind held.
+    // 🔴 THE FIRST PICTURE'S RULE, FROM THE MARKED POINT (owner 10-06): its one step drawn, and every static node the
+    //    answer brings (owner 10-12); what else lies behind is held. What this answer brings past the step is all static -
+    //    K8's hand walk holds a new node that is not.
     const from2 = new Set([marked, ...STEP2.nodes.filter((n) => n.depth === 0).map((n) => n.id)]);
     const step2 = [...oneStep(s.view.layout, from2)];
     const fresh2 = [...union].filter((id) => !one.has(id));
-    const beyond = fresh2.filter((id) => !step2.includes(id));
-    say('K7 Continue draws the marked point\'s one step; what the answer brings beyond it is inside a lump',
+    const isStatic = (id) => STATIC.has(String((STEP2.nodes.find((n) => n.id === id) || {}).type).split('@')[0]);
+    const statics2 = fresh2.filter((id) => !step2.includes(id) && isStatic(id));
+    const beyond = fresh2.filter((id) => !step2.includes(id) && !isStatic(id));
+    say('K7 Continue draws the marked point\'s one step and every static node the answer brings; anything else new is inside a lump',
       step2.length > 0 && step2.every((id) => drawnIds.includes(id))
-        && beyond.length > 0 && beyond.every((id) => !drawnIds.includes(id))
-        && fresh2.filter((id) => drawnIds.includes(id)).every((id) => step2.includes(id)),
-      JSON.stringify({ step2: step2.length, beyond: beyond.length, drawnNew: fresh2.filter((id) => drawnIds.includes(id)).length }));
+        && statics2.length > 0 && statics2.every((id) => drawnIds.includes(id)) && beyond.every((id) => !drawnIds.includes(id))
+        && fresh2.filter((id) => drawnIds.includes(id)).every((id) => step2.includes(id) || isStatic(id)),
+      JSON.stringify({ step2: step2.length, statics: statics2.length, beyond: beyond.length, drawnNew: fresh2.filter((id) => drawnIds.includes(id)).length }));
     say('K6 Continue moves nothing already drawn and leaves the view where it was',
       before.size > 0 && stayed(before, s) && viewport(s) === viewBefore, JSON.stringify({ view: viewport(s) === viewBefore }));
     say('K5 each cut step says so with its step',
@@ -773,9 +783,87 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       `${marksPressed} -> ${JSON.stringify(a.markings.entries(a.chain[1]))}`);
   }
 
+  console.log('\n[ST] every static node is drawn from the first picture, at every step; its own branches stay folded (owner 10-12)');
+  if (want(['ST1', 'ST2', 'ST3', 'ST4', 'ST5', 'ST6', 'ST7'])) {
+    // A hand walk from die s: s -> wafer a -> dies b, c -> defect d -> defect_kind k, three steps behind dynamic nodes;
+    // k <- defect x <- die y is k's own branch. a -> quantity q -> quantity q2 <- c: a static chain off a node in sight,
+    // q2 with one neighbour in sight and one folded.
+    const sn = (id, type, depth) => ({ id, type, label: id, depth, keys: { k: id } });
+    const se = (source, predicate, target) => ({ id: `${source}>${predicate}>${target}`, source, target, predicate });
+    const HS = { state: 'ready', seed: { id: 'st:s' }, truncated: { reason: null },
+      nodes: [sn('st:s', 'die', 0), sn('st:a', 'wafer', 1), sn('st:b', 'die', 2), sn('st:c', 'die', 2), sn('st:q', 'quantity', 2),
+        sn('st:q2', 'quantity', 3), sn('st:d', 'defect', 3), sn('st:k', 'defect_kind', 4), sn('st:x', 'defect', 5), sn('st:y', 'die', 6)],
+      edges: [se('st:s', 'in_container', 'st:a'), se('st:a', 'inspected', 'st:b'), se('st:a', 'inspected', 'st:c'),
+        se('st:a', 'measures', 'st:q'), se('st:q', 'leads_to', 'st:q2'), se('st:c', 'measures', 'st:q2'), se('st:b', 'observed', 'st:d'),
+        se('st:d', 'of_kind', 'st:k'), se('st:x', 'of_kind', 'st:k'), se('st:y', 'observed', 'st:x')] };
+    // Continued from a: a -> die g -> defect h -> defect_kind k3, a static node two steps past the marked point's one.
+    const HS2 = { state: 'ready', seed: { id: 'st:a' }, truncated: { reason: null },
+      nodes: [sn('st:a', 'wafer', 0), sn('st:g', 'die', 1), sn('st:h', 'defect', 2), sn('st:k3', 'defect_kind', 3)],
+      edges: [se('st:a', 'inspected', 'st:g'), se('st:g', 'observed', 'st:h'), se('st:h', 'of_kind', 'st:k3')] };
+    const ids = (s) => nodesOf(s).map((n) => n.id()).sort().join();
+    const lumpIds = (s) => lumpsOf(s).map((n) => n.id()).sort().join();
+    const lineIds = (s) => edgesOf(s).map((e) => e.id()).sort().join();
+    const dashed = (s) => (s.view.cy ? s.view.cy.edges('[kind = "lump"][?static]') : none)
+      .map((e) => `${e.source().id()}>${e.target().id()}:${e.style('line-style')}`).sort().join();
+    const labelOf = (s, id) => { const n = s.view.cy && s.view.cy.getElementById(id); return n && n.nonempty() ? n.data('label') : ''; };
+    const openWhole = (s, id) => { press(s, id); tickAll(s); openTicked(s); };
+    const h = await seat([HS]);
+    const first = { ids: ids(h), lumps: lumpIds(h), dashed: dashed(h) };
+    say('ST1 the first picture: the start, its one step and every static node of the answer, however far behind dynamic nodes; nothing else',
+      first.ids === 'st:a,st:k,st:q,st:q2,st:s'
+        && lineIds(h) === 'st:a>measures>st:q,st:q>leads_to>st:q2,st:s>in_container>st:a',
+      JSON.stringify({ ids: first.ids, lines: lineIds(h) }));
+    say('ST2 a static node\'s own branch into dynamic nodes stays folded in its big lump; the lump before it does not count it',
+      first.lumps === 'big:st:a,big:st:k' && labelOf(h, 'big:st:k').startsWith('1 next · 1 behind')
+        && labelOf(h, 'big:st:a').startsWith('2 next · 1 behind'),
+      JSON.stringify({ lumps: first.lumps, k: labelOf(h, 'big:st:k'), a: labelOf(h, 'big:st:a') }));
+    say('ST3 a static node with every neighbour folded hangs off the lump holding one by a dashed line; one with a neighbour in sight has none',
+      first.dashed === 'big:st:a>st:k:dashed' && Boolean(h.view.cy) && h.view.cy.getElementById('to:big:st:a').style('line-style') === 'solid',
+      JSON.stringify({ dashed: first.dashed }));
+    openWhole(h, 'big:st:a');
+    const once = { ids: ids(h), dashed: dashed(h) };
+    openWhole(h, 'big:st:b');
+    const twice = { ids: ids(h), dashed: dashed(h), lumps: lumpIds(h) };
+    say('ST4 a lump opened: the dashed line follows the folded neighbour to the lump that holds it now, and gives way to the edge once it is drawn; the static node\'s own branch stays folded',
+      once.ids === 'st:a,st:b,st:c,st:k,st:q,st:q2,st:s' && once.dashed === 'big:st:b>st:k:dashed'
+        && twice.ids === 'st:a,st:b,st:c,st:d,st:k,st:q,st:q2,st:s' && twice.dashed === '' && twice.lumps === 'big:st:k'
+        && lineIds(h).includes('st:d>of_kind>st:k'),
+      JSON.stringify({ once, twice }));
+    const c = await seat([HS, HS2]);
+    press(c, 'st:a');
+    mark(c.host);
+    if (c.view.continueButton) c.view.continueButton.dispatch('click', {});
+    await settle();
+    say('ST5 a Continue: its one step drawn and the static node two steps past it, hanging off the lump that holds its neighbour',
+      ['st:g', 'st:k3'].every((id) => ids(c).split(',').includes(id)) && !ids(c).split(',').includes('st:h')
+        && dashed(c).split(',').includes('big:st:g>st:k3:dashed'),
+      JSON.stringify({ ids: ids(c), dashed: dashed(c) }));
+    const doc = stubDoc();
+    const p1 = await seat([HS], { doc });
+    const p2 = await seat([HS], { doc });
+    openWhole(p1, 'big:st:a');
+    say('ST6 two on one page: opening one leaves the other\'s static nodes, lumps and dashed line as they were',
+      p1.view.cy !== p2.view.cy && dashed(p1) === 'big:st:b>st:k:dashed'
+        && JSON.stringify({ ids: ids(p2), lumps: lumpIds(p2), dashed: dashed(p2) }) === JSON.stringify(first),
+      JSON.stringify({ p1: dashed(p1), p2: { ids: ids(p2), lumps: lumpIds(p2), dashed: dashed(p2) } }));
+    // The captured walks: the die's one defect_kind sits behind 31 defects in the wafer's lump; the wafer's ten recipes
+    // are a fan-out over a cap of four.
+    const seedsDie = die.view.steps.flatMap((x) => x.seeds);
+    const kind = DIE.nodes.find((n) => n.type === 'defect_kind');
+    const wafer = DIE.nodes.find((n) => n.type === 'wafer');
+    const hung = m.lumpView(die.view.layout, die.view._firstFold(), seedsDie).lumps.filter((l) => l.statics).map((l) => [l.id, l.statics]);
+    const r = await seat([WAFER], { fanoutLimit: 4 });
+    const recipes = WAFER.nodes.filter((n) => n.type === 'recipe').map((n) => n.id);
+    say('ST7 on the captured walks: the defect_kind hangs off the wafer\'s big lump alone; ten static recipes over a cap of four are all drawn, no lump',
+      JSON.stringify(hung) === JSON.stringify([[`big:${wafer.id}`, [kind.id]]])
+        && recipes.length === 10 && recipes.every((id) => ids(r).split(',').includes(id))
+        && lumpsOf(r, 'small').filter((n) => String(n.data('key')).includes('|processed_with|')).length === 0,
+      JSON.stringify({ hung, recipes: recipes.filter((id) => ids(r).split(',').includes(id)).length }));
+  }
+
   console.log('\n[LM] a lump opens only what is ticked, out of where it stood; the view does not move (lead 03bc94b6b)');
   if (want(["LM1", "LM2", "LM3", "LM4", "LM5", "LM6", "LM7", "LM8", "LM9", "LM10", "LM11", "LM12", "LM13", "LM14"])) {
-    const s = await seat([DIE]);
+    const s = await seat([DIE], { entities: DYNAMIC });
     openAll(s);
     const seeds = s.view.steps.flatMap((x) => x.seeds);
     // The node whose fold leaves the most keys, among those with a key of three or more members.
@@ -861,7 +949,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
         && stood.big > stood.left,
       JSON.stringify({ lumpAt, ys, left: leftNow.length && leftNow[0].position('y'), stood }));
     // «N next · M behind» (lead df11f9e81): N is what All -> Open draws, M what stays folded after it - done, not read.
-    const w = await seat([DIE]);
+    const w = await seat([DIE], { entities: DYNAMIC });
     openAll(w);
     press(w, pick ? pick.id : '');
     const foldW = byClass(w.host, 'sg-fold')[0];
@@ -1205,7 +1293,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   console.log('\n[FC] a branch handed over in full draws as one walked with the part\'s cap (lead 10-11 G-2)');
   if (want(['FC1'])) {
     // The wafer's ten processed_with recipes, the cap four: four drawn, six in its small lump; opening it walks nothing.
-    const f = await seat([WAFER], { fanoutLimit: 4 });
+    // Recipes not static here: a static fan-out is drawn whole (ST7).
+    const f = await seat([WAFER], { fanoutLimit: 4, entities: DYNAMIC });
     const answer = await wire([WAFER], [])({ positive: [startId(WAFER)] });
     f.urls.length = 0;
     await f.view.show({ given: { positive: [startId(WAFER)], negative: [], answer } });
@@ -1254,7 +1343,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     };
     // A big lump's row: «Open as table» hands the page that branch - its owner, its members, the edges between; nothing asked.
     const handed = [];
-    const t = await seat([FOLD_WAFER, FOLD_STEP], { openTable: (answer, lump) => handed.push({ answer, lump }) });
+    const t = await seat([FOLD_WAFER, FOLD_STEP], { openTable: (answer, lump) => handed.push({ answer, lump }), entities: DYNAMIC });
     const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
     const startIds = new Set(FOLD_WAFER.nodes.map((n) => n.id));
     t.urls.length = 0;
@@ -1304,7 +1393,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       edges: [{ id: 'sp:e0', source: 'sp:s', target: 'sp:a', predicate: 'bonded_to' },
         ...[1, 2, 3, 4, 5].map((k) => ({ id: `sp:m${k}`, source: 'sp:a', target: `sp:q${k}`, predicate: 'measures',
           qualifiers: { value: 10 + k }, occurred_at: new Date(T0 + k * 3600000).toISOString() }))] };
-    const w = await seat([SP]);
+    const w = await seat([SP], { entities: DYNAMIC });
     press(w, 'big:sp:a');
     const mkey = (branchRows(w).find((r) => r.attrs['data-value'].includes('|measures|')) || { attrs: {} }).attrs['data-value'];
     unfoldRow(w, mkey);
@@ -1315,7 +1404,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const spNode = spLump && w.view.cy.getElementById(spLump.id);
     const spark = spNode && spNode.nonempty() ? String(spNode.data('spark') || '') : '';
     const dots = (decodeURIComponent(spark.split(',').slice(1).join(',')).match(/<circle /g) || []).length;
-    const want = spLump ? lumpPoints(lumpAnswer(w.view.steps.flatMap((x) => x.results), spLump), spLump, ENTITIES, [], new Set()).length : -1;
+    const want = spLump ? lumpPoints(lumpAnswer(w.view.steps.flatMap((x) => x.results), spLump), spLump, DYNAMIC, [], new Set()).length : -1;
     say('SP1 a lump whose edges carry the values: its picture a dot per point its page step\'s Trend reads, none more',
       Boolean(spLump) && spLump.members.length === 4 && want === 4 && dots === want,
       JSON.stringify({ lump: Boolean(spLump), members: spLump && spLump.members.length, want, dots }));
@@ -1720,8 +1809,8 @@ const failures = [];
       '        ...(marked ? { nodeId: positive[0], positive, negative }\n',
       '        ...(false ? { nodeId: positive[0], positive, negative }\n'), file: WIRE },
     M('F1', 'the fold walks from the seed ids only, not from every depth-0 node', 'N3',
-      '  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.depth === 0).map((n) => n.id)]\n',
-      '  const starts = [...(seeds || [])]\n'),
+      '  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.depth === 0 || n.static).map((n) => n.id)]\n',
+      '  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.static).map((n) => n.id)]\n'),
     M('F2', 'a same-depth edge is not walked', 'N1',
       '      if (!(layerOf.get(b) >= layerOf.get(a))) continue;\n', '      if (!(layerOf.get(b) > layerOf.get(a))) continue;\n'),
     M('F3', 'a folded node is walked past', 'N1',
@@ -1774,7 +1863,21 @@ const failures = [];
       '  return [...new Set([...((step && step.seeds) || []), ...twins])];\n', '  return [...((step && step.seeds) || [])];\n'),
     M('F10', 'a folded point stays folded', 'N9', '    fold.big.delete(s);\n', ''),
     M('F11', 'a new node one step on comes out open', 'A5', '      fold.big.set(id, new Set(out.map((x) => x.key)));\n', ''),
-    M('S6m', 'what a Continue brings past a node already in sight is drawn at once', 'K7',
+    // The static rule (owner 10-12): today's rule whole, and a mutant per part. The starts alone are not one: without
+    // them a hidden static node is hung by a line Cytoscape refuses, and a throw is no catch.
+    M('STm2', 'a static node\'s own branches come out open', 'ST2',
+      '  const near = new Set(layout.nodes.filter((n) => n.static && !from.has(n.id)).map((n) => n.id));\n', '  const near = new Set();\n'),
+    M('STm3', 'a static node with every neighbour folded floats - no dashed line', 'ST3',
+      '      for (const s of l.statics || []) {\n', '      for (const s of []) {\n'),
+    M('STm4', 'the line a static node hangs by is solid', 'ST3',
+      "      { selector: 'edge[kind = \"lump\"][?static]', style: { 'line-style': 'dashed' } },\n", ''),
+    M('STm5', 'a static node with a neighbour in sight hangs off a lump too', 'ST3',
+      'nextTo.get(n.id).every((id) => hidden.has(id))', 'nextTo.get(n.id).some((id) => hidden.has(id))'),
+    { ...M('STm0', 'today\'s rule: static nodes fold like any node', 'ST1'),
+      mutate: (t) => swap(swap(swap(t, '...layout.nodes.filter((n) => n.depth === 0 || n.static).map(', '...layout.nodes.filter((n) => n.depth === 0).map('),
+        '  const near = new Set(layout.nodes.filter((n) => n.static && !from.has(n.id)).map((n) => n.id));\n', '  const near = new Set();\n'),
+        '      for (const s of l.statics || []) {\n', '      for (const s of []) {\n') },
+    M('S6m', 'what a Continue brings past a node already in sight is drawn at once', 'K8',
       '        fold.lumped.set(step.key, new Set(out.filter((x) => x.key === step.key && before.has(x.to)).map((x) => x.to)));\n', ''),
     M('S4m', 'a Continue takes nothing as already in sight', 'K8',
       '    const before = fresh && this.layout ? new Set(this._view().nodes.map((n) => n.id)) : new Set();\n',
