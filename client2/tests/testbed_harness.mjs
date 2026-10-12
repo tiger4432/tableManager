@@ -253,7 +253,15 @@ async function reopen(M) {
   const second = await open();
   const t = second.shell.partOf('scatter-1');
   const picture = (part) => JSON.stringify([part.declaration(), part.model && part.model.points.map((p) => [p.id, p.x, p.y])]);
-  return { same: picture(s) === picture(t), points: t.model ? t.model.points.length : -1 };
+  // T18: the site's theme follows the page's, whatever the document came with.
+  const themed = async (was, theme) => {
+    const doc = makeDoc(was);
+    await M.main.boot({ doc, host: doc.createElement('div'), apiBase: '', fetchImpl, charts: chartsRecorder(), storage: null, theme });
+    await settle();
+    return doc.documentElement.getAttribute('data-theme');
+  };
+  return { same: picture(s) === picture(t), points: t.model ? t.model.points.length : -1,
+    siteTheme: [await themed('light', 'dark'), await themed('dark', 'light')] };
 }
 
 /** T14 / T15: the census and the bundle. */
@@ -318,7 +326,8 @@ function suite(out, page, saved, counted) {
     page.status, [['4 of 6 rows', 'system −1 · part −1', '2 marked · hidden 1', '3 columns', 'wafer'],
       ['1 of 1 rows', 'filter over a cut walk', '0 marked', '0 columns', 'wafer']]);
   eq('T17 a cut walk is the board\'s reading of truncated (an axis true), not «truncated is there»', page.cut, [false, true]);
-  eq('T12 Save, then a new page from it: the same declaration, the same points', saved, { same: true, points: 4 });
+  eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 4 });
+  eq('T18 the site\'s theme is the page\'s - the walk page\'s parts on it (the start picker) wear the same tokens', saved.siteTheme, ['dark', 'light']);
   eq('T14 census: the visual part is the one caller of the filter; no kind imports it', [counted.callers, counted.kindsFilter], [['visual_part.js'], []]);
   if (counted.bundle) eq('T15 the bundle: the testbed chunk under 700 kB, ECharts in no other page\'s chunk', counted.bundle, { testbedUnder700k: true, chartsElsewhere: 0 });
   return { ran: names.length, names, failures };
@@ -382,6 +391,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  if (s.system || s.part) words.push(', '  if (false) words.push(') },
   { id: 'M23', what: 'a saved page reopens on the layout, not on what was saved', catches: 'T12', file: 'testbed/main.js',
     mutate: (t) => swap(t, '  const layout = laidOut(LAYOUT, saved, entities());', '  const layout = laidOut(LAYOUT, null, entities());') },
+  { id: 'M24', what: 'the site\'s theme left as it came (the code before: a white picker on the dark page)', catches: 'T18', file: 'testbed/main.js',
+    mutate: (t) => swap(t, "  root.setAttribute('data-theme', theme);\n", '') },
 ];
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',

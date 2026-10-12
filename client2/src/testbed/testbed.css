@@ -95,9 +95,12 @@
   color: var(--tb-status-text); white-space: nowrap; overflow: hidden; }
 
 /* start row */
-.tb-start { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 var(--tb-pad); background: var(--tb-bg); color: var(--tb-text-2); }
+.tb-start { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 var(--tb-pad); background: var(--tb-bg); color: var(--tb-text-2);
+  /* The walk page's pickers in this row (the open «+ Add start» box, its key box) wear the site's roles - here this
+     page's palette, so the box is the page's dark, not the site's (lead 10-13: a white box, then a navy one). */
+  --bg-surface: var(--tb-bg); --text: var(--tb-text); --border: var(--tb-pill); --border-strong: var(--tb-pill); }
 .tb-start__pick { display: flex; align-items: center; gap: 8px; }
-.tb-start__type { height: 24px; }
+.tb-start__type { height: 24px; background: var(--tb-bg); color: var(--tb-text); border: 1px solid var(--tb-pill); }
 
 /* properties · filters - light panels in both themes */
 .tb-side { height: 100%; box-sizing: border-box; overflow: auto; background: var(--tb-panel-bg); color: var(--tb-panel-text); border-radius: 8px 8px 0 0; }
