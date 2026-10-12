@@ -480,8 +480,8 @@ export class SubgraphView {
    *   `predicates()`: the declaration's predicates, which a lump's points read as the page's table does (C-98).
    *   `openTable(answer, lump)`: the page opens a lump's answer as a step of its table (lead 10-11 E2b); none, no button.
    *   `walkOn({id, label, type, keys})`: the page puts a node in its start basket (lead 10-11 G-2 ⑦); none, no button.
-   *   `knobs()`: what a walk the picture asks (Continue) carries beside its seeds - the page's bar, its hops, node_limit
-   *   and fan-out as set (lead 10-12); none, its own fan-out cap.
+   *   `ask(starts)`: the walk the picture asks from its marks (Continue) - the page's own walk from those starts, its bar
+   *   whole (owner 10-12: one ask for every next walk); none, the starts with its own fan-out cap.
    */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('SubgraphView needs a mount element');
@@ -500,7 +500,7 @@ export class SubgraphView {
     // The names it has read or written, each heard once: the chain is as long as its declaration says (lead 77f1afd3b).
     this.watched = new Set();
     this.fanoutLimit = Number.isFinite(deps.fanoutLimit) ? deps.fanoutLimit : DEFAULT_FANOUT_LIMIT;
-    this.knobs = deps.knobs || (() => ({ fanout_limit: this.fanoutLimit }));
+    this.ask = deps.ask || ((starts) => ({ fanout_limit: this.fanoutLimit, ...starts }));
     this.worldChips = Boolean(deps.worldChips);
     ensureWalkStyles(this.doc);
     this.root = this._el('div', 'sg-view');
@@ -675,7 +675,7 @@ export class SubgraphView {
     }
     const step = { marking: name, seeds: [...seeds.positive, ...seeds.negative],
       positive: seeds.positive, negative: seeds.negative, expand: [], results: [] };
-    await this._ask({ ...this.knobs(), positive: step.positive, negative: step.negative }, [],
+    await this._ask(this.ask({ positive: step.positive, negative: step.negative }), [],
       (res) => [...this.steps, { ...step, results: [res] }], true, given && given.answer);
   }
 

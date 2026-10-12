@@ -79855,3 +79855,64 @@ pagesize   e902a67e6 — impl-pagesize 위(그 아래 46324bcbb), wip 를 접어
 public                   assy_test 70 표 / 77 행 전후 같음 · 탐침 파일 지움(커밋 0)
 판정                     [ChainShell] 이 공식 표면 접힌 잡의 행이 ⑥' 에서 한 번 지워진 것(설계대로) · 파생 표면 75d7bd129 가 고친 결함
 ```
+
+## 10-12 걷기 이어 가기 착지 — main 2bdb44df7 · 고침 c20b96258 (소유자 「이어 걷기랑 더 가져오기 15 분 이내로 착지」, 총괄)
+
+```
+계약        POST /api/ledger/subgraph (GET 과 같은 인자) + 본문 {"resume": <앞 답의 more.resume>}
+            more = {reach: {타입: {complete, unexpanded}}, resume, unexpanded} · 이어 걷는 쪽에 as_of
+설계        첫 상한(원자 · 노드 · 엣지)에서 상태를 떠 둠 — 안 넓힌 노드(깊이 · 출발 비용 · 도착 걸음) · 다 읽은 노드 ·
+            커서 = 깊이 · 그 깊이의 프런티어 · 무리 · 읽기 순번 · 마지막 원자. 쪽은 오늘처럼 들어가는 만큼 그림
+칸          상한 1~12 원자 × 노드 10/13/400 × 엣지 20/6000, follow 없음 · 라우트의 빈 follow — 합친 쪽 = 한 번 걷기 ·
+            남았는데 complete 0 · 쪽마다 상한 안 / 첫 쪽 뒤 원자 안 들어옴 / 씨앗 원자 2만(collect recipe) 4 쪽째 5 개
+변이        빨강: 읽기 순번 빼기 · 쪽 끝에서 뜸 · 닿음 한 걸음 · 남은 씨앗 첫 걸음 묶음 · as-of 빼기 · 빈 follow 좌석 되돌림
+            살아남음: 경계 노드 안 넘김(다음 쪽이 다시 찾음)
+resume 없음  걷기 37 개 답(generated_at · more 빼고) sha256 main = 이 나무
+시험        SQLite 관련 48 파일 451 passed, 실패 21 = 깨끗한 main 과 같은 목록(실 선언 없음) · PG 104 passed(2bdb44df7)
+            assy_test public 70 / 77 전후 같음
+고침 둘     3e0e980c0 계열(착지에 접힘): 남은 정적 씨앗의 첫 걸음을 닿음 계산이 묶음 -> 첫 쪽 «recipe complete» 거짓
+            c20b96258: 라우트의 follow=[] 를 닿음 계산이 «술어 0»으로 읽음 -> follow 없는 걷기의 끊긴 쪽이 모든 타입 complete
+            (응용 18766 node_limit 10 · collect wafer: unexpanded 490 에 wafer complete) — _group_follow 가 빈 follow 에 None
+남은 것     «많은 → 적은» 측정 판 assy_impl_hub_1012(원자 660,000) 세워 둠, 잼은 멈춤 · 원장 백필 쪽 ①②③ 다음
+```
+
+## 10-12 이어 걷기 순위 · 행 고침 (main 581c60c00 · b5b40b6b8) · pagesize 셋째 판 (가지 d80fe8115) · «많은 → 적은» 설계
+
+```
+581c60c00   이어 걷는 쪽 propagation.ranked 0 행(클라 · 응용 18766) — _reach 가 그 쪽 엣지만 봄
+            -> 씨앗마다 앞 쪽이 닿은 것(노드 · 들어온 걸음 · 길 · 타입)을 resume.reach 로 넘기고 같은 좌석에서 이어 BFS
+            칸: + W · − Q0, 상한 격자 전부 — 쪽 ranked 를 id 로 합친 것(뒤 쪽이 덮음) = 한 번 걸은 ranked(집합 · reach)
+            변이 «이어받은 상태 무시» 빨강 · resume 없는 걷기 37 개 해시 = 이어 걷기 전 main
+            응용 18766 GO: 합친 786 = 한 번 786 · reach 다른 것 0
+b5b40b6b8   행 투영(format=rows)도 같은 좌석 — 쪽 나눈 (노드, 씨앗) 행 = 한 번 · path 가 씨앗에서 시작 · 변이 빨강
+            걷기 SQLite 관련 452 passed, 실패 21 = 깨끗한 main · PG 확인은 응용 60 분 판 뒤
+d80fe8115   (impl-pagesize, 시연 뒤 착지)
+   ①       백필 쪽 탐침(박스, PG hold 210,000 행, 시험 엔진 NullPool): 308 쪽 862 s · 쪽 중앙 2.81 · p95 3.63 · 최대 5.02
+            rescope 밖 중앙 0.4 · 최대 3.0 s(그 쪽: 새 연결 3.4 s + anti-join 1.34 s) · 새 연결 쪽마다 5 번, 253.8 s / 862
+            anti-join 처음 50 쪽 0.19 -> 마지막 50 쪽 0.39 s · 제품 엔진은 QueuePool(20) — 응용 판의 풀은 여쭘
+   ②       쪽 안 단계 줄 read · translated — 쪽 단계 자리 keyset_scan.step_of 하나(replay._step_of 옮김)
+   ③       fold_units 첫 «rule» 줄 = 첫 그룹 2 단위 칸
+            PG 13 passed · 변이 «read 줄 지움» · «그룹 한 번에» 빨강 · SQLite 17 실패 = 깨끗한 8aaf903dc
+설계        «많은 → 적은» 안 셋 — A 묶음에 다음 걸음 끝 + 수(SQL 한 번) · B through + 이어 걷기(코드 0) ·
+            C decide 집계 표 + 원장 소스(선언 두 칸) — 추천 C 먼저(칸이 있으면), A 는 시연 뒤 · 여쭘 둘
+            측정 판 assy_impl_hub_1012(원자 660,000) 세워 둠 — 응용 판 «내림» 뒤에 잰다
+```
+
+## 10-12 이어 걷기 evidence 술어 · resume 줄이기 (f147b2dca, 총괄 착지) · 변이 사고 · «많은 → 적은» 수
+
+```
+f147b2dca   뒤 쪽 evidence 의 hop 술어 [] (응용 18766: 합친 786 중 537) — 길이 걸음마다 그 둘 사이 술어를 들고 감
+            resume 노드 id 를 ids 표로 — 원자 2만 판 1~3 쪽 2.06 / 4.10 / 6.13 MB -> 1.05 / 2.11 / 3.17 MB
+            칸: 합친 ranked reach · 씨앗별 길 길이 = 한 번 · 빈 술어 hop 0 · 같은 길이면 같은 술어 ·
+                노드 · 엣지 상한 없으면 쪽 원자 합 = 한 번 · 판에 F1 -twin-> D4 고리
+            응용 18766 GO: 빈 술어 행 0 / 786 · reach 786 같음 · POST 본문 약 190 KB
+            PG 걷기 파일 104 passed (f147b2dca) · public 70 / 77 전후 같음
+변이(메모리) 빨강: 닿음 한 걸음 · as-of 빼기 · 남은 씨앗 첫 걸음 묶음 · 쪽 끝에서 뜸 · 앞 쪽 hop 술어 뺌 · seen 번호 그대로
+            멈춤(300 s): 읽기 순번 빼기 — 쪽이 끝나지 않음 · 살아남음: 경계 노드 안 넘김
+사고        timeout 으로 감싼 변이 스크립트가 끊기며 wt-more 의 ledger_subgraph.py 를 빈 파일로 남김 —
+            그 워크트리의 커밋(f147b2dca)으로 되돌림, md5 변이 전 값과 같음 · 나간 곳 없음(착지는 커밋에서)
+            스크립트는 자식에만 시간 제한(subprocess timeout) — 기억 mutant-script-never-under-outer-timeout
+많은 → 적은  assy_impl_hub_1012(원자 660,000, 박스): 오늘 읽기 한 번 6,000 에서 끊김 P1 0.27 s · P2 1.17 s
+            두 걸음 한 문장 P1(보이드 2만) 0.55~0.58 s · P2(20만) 5.05~5.13 s(순차 읽기 + 병합 조인 + 임시 파일)
+            현재 것만 P1 0.40~0.42 · P2 1.65~2.17 s · 끝 5 × 4,000 / 40,000 · 탐침의 «걷기 한 번» 줄은 claims 0(탐침 결함)
+```

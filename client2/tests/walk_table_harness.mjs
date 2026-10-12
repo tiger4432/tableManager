@@ -132,6 +132,18 @@ const SIGNED = {
       { seed: 's:c', sign: '+', hops: [{ id: 's:c' }, { id: 'd:4', predicates: ['inspected'] }] }] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
+const DECL_RT = { ok: true,
+  entities: [{ type: 'wafer@1', keys: ['wafer'] }, { type: 'lot@1', keys: ['lot'] }, { type: 'die@1', keys: ['mat_id'] }],
+  predicates: [{ name: 'in@1', subjects: ['wafer@1'], object: { types: ['lot@1'] } }, { name: 'has@1', subjects: ['lot@1'], object: { types: ['die@1'] } },
+    { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } }] };
+// The single way listed first, so a list in its own order says nothing about the order asked.
+const WALKED = { nodes: [{ id: 's:a', type: 'wafer@1', keys: { wafer: 'A' } }, { id: 'l:1', type: 'lot@1', keys: { lot: 'L' } },
+  { id: 'd:1', type: 'die@1', keys: { mat_id: 'M-1' } }, { id: 'd:2', type: 'die@1', keys: { mat_id: 'M-2' } }, { id: 'd:3', type: 'die@1', keys: { mat_id: 'M-3' } }],
+  edges: [], propagation: { ranked: [
+    { id: 'd:3', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'd:3', predicates: ['inspected@1'] }] }] },
+    { id: 'd:1', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'l:1', predicates: ['in@1'] }, { id: 'd:1', predicates: ['has@1'] }] }] },
+    { id: 'd:2', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'l:1', predicates: ['in@1'] }, { id: 'd:2', predicates: ['has@1'] }] }] },
+    { id: 'l:1', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'l:1', predicates: ['in@1'] }] }] }] } };
 // Long by side (owner 10-12): one quantity both baskets reached, measured from 3 + wafers, 5 − wafers and one wafer each
 // basket reached (a shared lot's) - a record's side is its way's, not the quantity's.
 const LS_PLUS = ['p:1', 'p:2', 'p:3'];
@@ -459,6 +471,78 @@ async function suite(mod) {
     ok('S4 Next walks on from the + rows with the - rows as negative',
       asked.length === before + 1 && n.getAll('positive').join() === 'n:2' && n.getAll('negative').join() === 'n:1',
       n.toString().slice(0, 200));
+  }
+
+  console.log(`${LF}-- Walk ▸ and Continue: the bar's walk from other starts (owner 10-12) --`);
+  {
+    const { entitySeedId } = await import('../src/rnd_board/api.js');
+    const DECLS = { ok: true,
+      entities: [{ type: 'die@1', keys: ['mat_id'] }, { type: 'wafer@1', keys: ['wafer'] }],
+      predicates: [{ name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } }] };
+    const page = async () => {
+      const asked = [];
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+        const u = String(url);
+        if (u.includes('/subgraph')) asked.push(u);
+        return { ok: true, status: 200, json: async () => (u.includes('/subgraph') ? RESULT : DECLS) };
+      } });
+      await settle();
+      // The bar as an operator leaves it: what to collect, which way, through what, how far.
+      Object.assign(handle.state, { collect: new Set(['die@1']), follow: new Set(['inspected@1']), direction: 'out', hops: '3' });
+      return { asked, host, handle };
+    };
+    const click = (e) => { for (const fn of (e && e.listeners.click) || []) fn({}); };
+    const one = await page();
+    const two = await page();
+    const full = (p) => walkAll(p.host).find((e) => String(e.className || '').includes('wk-walkfull'));
+    const last = (p) => p.asked[p.asked.length - 1] || '';
+    // Signed starts: + n:2 and − n:1 - in the baskets and Walk; then checked and Walk ▸; then the graph's Continue ask.
+    one.handle.graph.markings.set('walk-start', 'n:2', SIGN.CASE);
+    one.handle.graph.markings.set('walk-start', 'n:1', SIGN.CONTROL);
+    await one.handle.fire();
+    await settle();
+    const byWalk = last(one);
+    const offBefore = full(one);
+    const offWhy = [Boolean(offBefore && offBefore.disabled), offBefore && offBefore.getAttribute('title')];
+    one.handle.graph.markings.set(one.handle.state.marks, 'n:2', SIGN.CASE);
+    one.handle.graph.markings.set(one.handle.state.marks, 'n:1', SIGN.CONTROL);
+    one.handle.render();
+    const stepsBefore = one.handle.state.steps.length;
+    const at = one.handle.state.at;
+    click(full(one));
+    await settle();
+    const byFull = last(one);
+    const placed = one.handle.state.steps.slice(stepsBefore);
+    await one.handle.graph.walk(one.handle.graph.ask({ positive: ['n:2'], negative: ['n:1'] }));
+    const byContinue = last(one);
+    const q = new URLSearchParams(byWalk.split('?')[1] || '');
+    ok('W1 the same starts and bar: Walk, Walk ▸ and the graph\'s Continue send the same request, the bar whole',
+      Boolean(byWalk) && byWalk === byFull && byFull === byContinue && q.getAll('collect').join() === 'die@1'
+        && q.getAll('follow').join() === 'inspected@1' && q.get('direction') === 'out' && q.get('hops') === '3'
+        && q.getAll('positive').join() === 'n:2' && q.getAll('negative').join() === 'n:1',
+      JSON.stringify([byWalk.slice(0, 220), byFull === byWalk, byContinue === byWalk]));
+    // One + start the baskets never held goes as itself, its id exact: the server wrote x 9.0, and an id rebuilt from the
+    // keys says 9 - another node (walk_worlds G4, 10-12). One the baskets hold goes by its type and keys, as Walk asks it.
+    const exact = 'ledger-entity:v1:' + Buffer.from('["wafer@1",{"wafer":"Z","x":9.0}]').toString('base64url');
+    await two.handle.graph.walk(two.handle.graph.ask({ positive: [exact], negative: [] }));
+    const cq = new URLSearchParams(last(two).split('?')[1] || '');
+    Object.assign(two.handle.state, { type: 'wafer@1', keys: { wafer: 'Z' } });
+    click(walkAll(two.host).find((e) => e.className === 'wk-basketadd' && e.attrs['data-sign'] === '+'));
+    await two.handle.fire();
+    await settle();
+    const zq = new URLSearchParams(last(two).split('?')[1] || '');
+    ok('W2 one + start alone: one the baskets never held goes as itself, its id exact; the baskets\' own by its type and keys, as Walk asks it',
+      cq.getAll('positive').join() === exact && cq.get('id') === exact && cq.getAll('collect').join() === 'die@1'
+        && zq.getAll('positive').length === 0 && zq.get('id') === entitySeedId('wafer@1', { wafer: 'Z' }) && zq.getAll('collect').join() === 'die@1',
+      JSON.stringify([cq.toString().slice(0, 200), zq.toString().slice(0, 200)]));
+    ok('W3 Walk ▸ is off until a row is checked, and says so; pressed, one child step of the step it was on, titled Walk ▸',
+      offWhy[0] === true && offWhy[1] === 'Check rows first' && placed.length === 1 && placed[0].parent === at
+        && placed[0].title === 'Walk ▸' && JSON.stringify(placed[0].asked.positive) === '["n:2"]',
+      JSON.stringify([offWhy, placed.map((s) => [s.parent, s.title])]));
+    ok('W4 two pages: the other page\'s checks are its own - its Walk ▸ stays off',
+      Boolean(full(two)) && full(two).disabled === true, String(full(two) && full(two).disabled));
   }
 
   console.log(`${LF}-- the server's sentence in the head (lead b5cdcbc75) --`);
@@ -1473,6 +1557,75 @@ async function suite(mod) {
       JSON.stringify({ marks: marked.length, plain, n2marks: marksOf('n:2').length, drawn, before, timers: timers.map((t) => t.ms), dwelt, src, after: asked() }));
   }
 
+  console.log(`${LF}-- More ▸: the server's next page of the same walk, merged (owner 10-12 «이어 걷기») --`);
+  {
+    // The second page: d:3 again, d:20 new, and every collected type reached.
+    const PAGE2 = { ...SIGNED, nodes: [SIGNED.nodes[5], { id: 'd:20', type: 'die@1', label: 'D-20', depth: 2, keys: { mat_id: 'M-20' } }],
+      edges: [{ id: 'e:a20', source: 's:a', target: 'd:20', predicate: 'inspected', qualifiers: { gate: 2, note: null } }],
+      propagation: { ranked: [{ id: 'd:20', reach: [1, 0], evidence: [{ seed: 's:a', sign: '+', hops: [{ id: 's:a' }, { id: 'd:20', predicates: ['inspected'] }] }] }] },
+      generated_at: '2026-10-12T05:30:00', more: { reach: { 'die@1': { complete: true, unexpanded: 0 } }, resume: null, as_of: '2026-10-12T05:00:00' } };
+    const sent = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url, init) => {
+      const u = String(url);
+      if (!u.includes('/subgraph')) return { ok: true, status: 200, json: async () => DECL };
+      sent.push({ u, method: (init && init.method) || 'GET', body: init && init.body });
+      return { ok: true, status: 200, json: async () => PAGE2 };
+    } });
+    await settle();
+    const ASK = { type: 'die@1', keys: { mat_id: 'A' }, ...SIGNED_STARTS, collect: ['die@1'], node_limit: 1000 };
+    handle.state.asked = { ...ASK };
+    handle.state.run = 'done';
+    handle.state.result = { ...SIGNED, ok: true, ask: ASK, generatedAt: '2026-10-12T05:00:00',
+      more: { reach: { 'die@1': { complete: false, unexpanded: 3 } }, resume: { cursor: 'c1' } } };
+    handle.render();
+    const line = () => (walkAll(host).find((e) => e.className === 'wk-reachline') || { textContent: '' });
+    const go = () => walkAll(line()).find((e) => String(e.className || '').includes('wk-more'));
+    const rowIds = () => walkAll(host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']).sort().join();
+    const said = (e) => walkAll(e).filter((k) => k._text).map((k) => k._text).join('|');
+    const before = [said(line()), go() && go().disabled, rowIds()];
+    for (const fn of (go() || { listeners: {} }).listeners.click || []) fn({});
+    await settle();
+    const q = new URLSearchParams((sent[0] && sent[0].u.split('?')[1]) || '');
+    ok('MR1 the head says each collected type cut or reached; More ▸ asks the same walk again, a POST with its resume',
+      before[0].includes('die@1: cut · 3 not expanded') && before[0].includes('more to walk') && before[1] === false
+        && sent.length === 1 && sent[0].method === 'POST'
+        && sent[0].body === JSON.stringify({ resume: { cursor: 'c1' } }) && q.getAll('positive').join() === 's:a,s:c'
+        && q.getAll('negative').join() === 's:b' && q.getAll('collect').join() === 'die@1',
+      JSON.stringify([before, sent.map((s) => [s.method, s.body, s.u.slice(0, 120)])]));
+    ok('MR2 the next page merged into the step - the rows of both, each once - its pages said; all reached, More ▸ off and says so',
+      rowIds() === [...before[2].split(','), 'd:20'].sort().join() && said(line()).includes('die@1: all reached')
+        && said(line()).includes('2 pages') && !said(line()).includes('more to walk') && go().disabled === true
+        && go().getAttribute('title') === 'All reached'
+        && handle.state.result.generatedAt === '2026-10-12T05:00:00',
+      JSON.stringify([rowIds(), said(line()), go() && go().disabled, handle.state.result.generatedAt]));
+  }
+
+  console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL_RT }) });
+    await settle();
+    Object.assign(handle.state, { type: 'wafer@1', collect: new Set(['die@1']) });
+    handle.render();
+    const rows = () => walkAll(host).filter((e) => e.className === 'wk-path');
+    const words = () => rows().map((r) => walkAll(r).filter((k) => k.className === 'wk-pathchain').map((k) => k._text).join(''));
+    const headNote = () => walkAll(host).filter((e) => e.className === 'wk-routes-head').map((h) => walkAll(h).map((k) => k._text || '').join(' ')).join();
+    const before = [rows().length, headNote()];
+    Object.assign(handle.state, { run: 'done', result: { ...WALKED, ok: true }, asked: { type: 'wafer@1', keys: { wafer: 'A' } } });
+    handle.render();
+    const after = [words(), headNote()];
+    for (const fn of (rows()[0] || { listeners: {} }).listeners.click || []) fn({});
+    ok('RT2 after a walk: the ways it walked to die, most nodes first - pressed, through takes that way\'s predicates and hops',
+      JSON.stringify(after[0]) === JSON.stringify(['wafer@1 —in@1→ lot@1 —has@1→ die@1 · 2', 'wafer@1 —inspected@1→ die@1 · 1'])
+        && after[1].includes('Walked to die@1') && handle.state.follow.has('in@1') && handle.state.follow.has('has@1') && handle.state.hops === '2',
+      JSON.stringify([after, [...handle.state.follow], handle.state.hops]));
+    ok('RT3 before a walk: the shortest declared route alone, said as Suggested', before[0] === 1 && before[1].includes('Suggested'),
+      JSON.stringify(before));
+  }
+
   console.log(`${LF}-- More: the same walk, the limit that cut it raised (lead 10-12) --`);
   {
     // The same walk at 800 brings d:10 from s:a and is not cut.
@@ -1846,6 +1999,26 @@ const sideSuite = (TV) => {
 // ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
 const filterSuite = (TV) => {
   {
+    // A walk's pages merged (owner 10-12 «이어 걷기»): nodes, edges and ranked rows each once, the newer page's first.
+    const pageA = { nodes: [{ id: 'x' }, { id: 'y' }], edges: [{ id: 'e1' }], propagation: { ranked: [{ id: 'x' }, { id: 'y' }] } };
+    const pageB = { nodes: [{ id: 'z' }], edges: [{ id: 'e2' }], propagation: { ranked: [{ id: 'z' }] } };
+    const m = TV.mergeWalks(pageB, pageA);
+    ok('MR3 pages merged: every node, edge and ranked row once',
+      JSON.stringify([m.nodes.map((n) => n.id), m.edges.map((e) => e.id), m.propagation.ranked.map((r) => r.id)])
+        === JSON.stringify([['x', 'y', 'z'], ['e1', 'e2'], ['x', 'y', 'z']]), JSON.stringify(m));
+    // The server: a node a later page reached further comes again in that page's ranked - the later row stands.
+    const again = TV.mergeWalks({ nodes: [], edges: [], propagation: { ranked: [{ id: 'x', reach: [2, 0] }] } },
+      { nodes: [{ id: 'x' }], edges: [], propagation: { ranked: [{ id: 'x', reach: [1, 0] }] } });
+    ok('MR4 a node ranked on two pages: the later page\'s row (its reach grown) stands', JSON.stringify(again.propagation.ranked)
+      === JSON.stringify([{ id: 'x', reach: [2, 0] }]), JSON.stringify(again.propagation));
+    // The ways a walk took to the collected types (owner 10-12): a line a way, its nodes counted, the most first.
+    const ways = TV.walkedRoutes(WALKED, new Set(['die@1']));
+    ok('RT1 the walked routes to die, the most first: wafer —in→ lot —has→ die for two, wafer —inspected→ die for one; the lot not counted',
+      JSON.stringify(ways.map((w) => [w.words, w.count, w.hops, w.follow]))
+        === JSON.stringify([['wafer@1 —in@1→ lot@1 —has@1→ die@1', 2, 2, ['in@1', 'has@1']], ['wafer@1 —inspected@1→ die@1', 1, 1, ['inspected@1']]]),
+      JSON.stringify(ways));
+  }
+  {
     const jv = TV.walkTableView(JUDGED, DECL.entities);
     const plain = TV.walkTableView(RESULT, DECL.entities);
     const sec = (v, t) => v.sections.find((x) => x.type === t) || { rows: [], centreHeads: [] };
@@ -2004,6 +2177,14 @@ const base = { ran, names: NAMES.slice(), failed: failures.length };
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
 const NEXT_ASK = '    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
+  { id: 'WFm1', what: 'Walk ▸ builds its own ask - the bar\'s collect, through and direction left behind', catches: 'W1',
+    from: '    const asked = askFrom(seeds);\n    await walkStep(', to: '    const asked = { ...knobs(), ...seeds };\n    await walkStep(' },
+  { id: 'WFm2', what: 'the graph\'s Continue asks its own walk again, not the bar\'s', catches: ['W1', 'W2'],
+    from: '{ doc, walk, ask: askFrom, entities,', to: '{ doc, walk, entities,' },
+  { id: 'WFm3', what: 'a node the baskets never held not sent - the form\'s subject walked instead', catches: 'W2',
+    from: '...(signed || !one ? starts : {}) };', to: '...(signed ? starts : {}) };' },
+  { id: 'WFm4', what: 'Walk ▸ on with nothing checked', catches: 'W3',
+    from: "    setDisabledReason(full, all.positive.length ? '' : CHECK_ROWS_FIRST);", to: "    setDisabledReason(full, '');" },
   { id: 'AXm3', what: 'the auxiliary node is not sent', catches: 'AX3',
     from: '    return Object.assign(out, knobs(), reachArg());', to: '    return Object.assign(out, knobs());' },
   { id: 'AXm4', what: '«Reaches only» drawn but does nothing', catches: 'AX5',
@@ -2012,6 +2193,19 @@ const MUTANTS = [
     from: "      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);\n      if (lines.length > 1) {", to: "      const th = el(doc, 'th', 'wk-centre', h);\n      if (false) {" },
   { id: 'AXm6', what: 'the judgments\' counts not drawn', catches: 'AX7',
     from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
+  { id: 'MRm1', what: 'the next page replaces the step\'s answer, not merged into it', catches: 'MR2',
+    from: '{ ...mergeWalks(res, was), ask: was.ask,', to: '{ ...res, ask: was.ask,' },
+  { id: 'MRm2', what: 'More ▸ never off, all reached or not', catches: 'MR2',
+    from: "        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);", to: "        setDisabledReason(go, '');" },
+  { id: 'MRm5', what: 'a resume left does not say there is more to walk', catches: 'MR1',
+    from: '          ...(r.more.resume ? [MORE_TO_WALK] : [])].join', to: '          ...[]].join' },
+  { id: 'MRm3', what: 'the next page asked without its resume - the first page again, a GET', catches: 'MR1',
+    from: '{ ...was.ask, resume: was.more.resume }', to: '{ ...was.ask }' },
+  { id: 'RTm2', what: 'the Route panel the declaration\'s after a walk too, not the ways it walked', catches: 'RT2',
+    from: "    const walked = shown.run === 'done' && shown.result ? walkedRoutes(shown.result, state.collect) : null;",
+    to: '    const walked = null;' },
+  { id: 'RTm3', what: 'before a walk every declared route listed again', catches: 'RT3',
+    from: '    const found = walked || (first ? [first] : []);', to: '    const found = walked || routes();' },
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
     from: '    void walkInto(at, more.asked, (res) => {', to: '    void walkInto(at, answerAt(at).asked, (res) => {' },
   { id: 'MOm3', what: 'More\'s answer lands nowhere - the step keeps the cut one', catches: 'MO2',
@@ -2142,7 +2336,7 @@ const MUTANTS = [
   // ── lead 53050a4ec: the table's continue ────────────────────────────────────────────────
   // The board's markingIntent on the walk page (lead 10-09).
   { id: 'SM2', what: 'the table walks the form\'s subject alone, not the starts', catches: 'S1',
-    from: '    const asked = { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed ? starts : {}) };', to: '    const asked = spec();' },
+    from: '    return { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed || !one ? starts : {}) };', to: '    return spec();' },
   { id: 'SM3', what: 'a check takes no sign from Shift', catches: 'S3',
     from: "markings.toggle(checks, id, markingIntent(event).sign); render(); });", to: "markings.toggle(checks, id, SIGN.CASE); render(); });" },
   { id: 'SM4', what: 'Next drops the - rows', catches: 'S4',
@@ -2226,6 +2420,12 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'MRm4', what: 'the pages merged without their ranked rows - a later page\'s row drawn in no sign', catches: 'MR3',
+    from: 'ranked: once([...ranked(b), ...ranked(a)])', to: 'ranked: ranked(a)' },
+  { id: 'MRm6', what: 'a node ranked on two pages keeps the earlier row - the reach a later page grew lost', catches: 'MR4',
+    from: 'ranked: once([...ranked(b), ...ranked(a)])', to: 'ranked: once([...ranked(a), ...ranked(b)])' },
+  { id: 'RTm1', what: 'the walked routes in no order - the commonest not first', catches: 'RT1',
+    from: '    .sort((a, b) => b.count - a.count || a.hops - b.hops);', to: '    ;' },
   { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX1',
     from: "          ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };", to: "          ] };" },
   { id: 'AXm7', what: 'the counts taken over the reaching rows alone, as a filtered table would give them', catches: 'AX1',
