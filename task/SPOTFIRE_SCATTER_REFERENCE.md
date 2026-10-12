@@ -128,3 +128,74 @@ outline(document.querySelector('.sf-element-visual.sfc-scatter-plot'));
 허브에서 걷기     그 구성원들에서 걷는다 — 걷기가 허브를 시작점으로 받는다
 값 조건 허브      걷기에 «값 조건» 인자가 생겨야 시작점이 된다(스팟파이어 식 조건 · 필터와 같은 넓히기)
 ```
+
+## 8. 크로스 테이블 부품 하나의 짜임 (클라 10-12 밤, §6 스크립트로 뜸)
+
+```
+visual.cross-table
+  visual-content
+    legend (세로 · 오른쪽)
+      legend-item «Colors:»          제목(+ «값 가로로» 단추) + 값 «All values»(marked · markable)
+      scroll-bar 오른쪽 · 아래
+    axis-tray-area  (위)  [Income Group ▾] + [+ Add one more column]      열 축
+    axis-tray-area  (왼쪽) [Region ▾](세로 글) + [+ Add one more column]   행 축
+    axis-tray-area  (아래) [Sum(Population) ▾] + [+ Add one more column]  칸 값
+    tabular-content
+      top-left-header «Region»       행 축 이름이 머리줄 왼쪽 칸에
+      column-header × N              단계 level-1 … level-last (열 축이 여럿이면 층)
+      row-header × N                 같은 단계 칸
+      value-cell × N                 보이는 칸만 그린다(7×4 중 28) · 숫자 오른쪽 정렬
+      table-gradient                 스크롤 가장자리 흐림
+  visual-title                       제목 + 단추 여섯(산점도와 같음)
+```
+- 세 축 다 마우스를 올려야 알약 테두리 · ▾ · ⊕ 가 보인다(auto-hide). 안 올렸을 때는 글만 있다.
+- 칸 높이 19, 왼쪽 여백 7, 칸 사이 세로 · 가로 1px 선. 머리줄 · 행 머리 700. 긴 이름은 «…» 로 자르고, 그림 폭을 넘는 열은 범례 앞에서 잘린다.
+- 이 문서는 총계(Grand total)가 꺼져 있다.
+
+## 9. 표 부품 하나의 짜임
+
+```
+visual.table
+  visual-content
+    tabular-content
+      column-header × N              머리줄 700 · 이름 왼쪽, 숫자 칸은 오른쪽
+      value-cell × N                 odd/even-row · odd/even-column 표시 — 줄무늬는 홀수 행
+      scroll-bar 오른쪽 · 아래 · table-gradient
+  visual-title                       제목 + 단추 여섯
+```
+- 축 칸(axis-tray)이 «없다». 칸 고르기는 속성 창에서만.
+- 행 높이 19, 열 폭 기본 100.
+
+## 10. 마킹 연동 (세 그림이 같은 마킹 «Marking» 을 쓴다)
+
+| 누른 것 | 산점도 | 크로스 테이블 | 표 | 바닥줄 |
+|---|---|---|---|---|
+| 산점도 사각형 (40 행) | 찍힌 점 제 색 · 나머지 흐림 · 범례도 marked/dimmed | 찍힌 행이 «하나라도» 든 칸이 통째로 초록 — 칸 숫자는 칸 전체 합 그대로 (네 칸) | 안 쟀다 | «40 marked» |
+| 크로스 칸 누르기 | 그 칸의 행 전부가 제 색 | 그 칸 초록 | 안 쟀다 | «216 marked» (그 칸 행 전부) |
+| 표 행 누르기 | 안 쟀다 | 안 쟀다 | 안 쟀다 | 안 쟀다 |
+| 다른 마킹을 쓰는 그림 | §4 — 좁히는 마킹으로 «거르고», 제 마킹에 따로 쓴다 | | | |
+| 빈 곳 누르기 | 마킹 지움 (§4) | | | «0 marked» |
+
+우리 뜻(소유자 10-12 밤 「시스템 마킹 리스트(기본 전체, 마킹1, 마킹2 …) -> 부품이 마킹 라우트해서 받음 -> 부품 내 추가 필터 -> 뷰용 데이터」):
+```
+부품 선언의 Data 절   마킹 하나 고르기(기본 = 전체) · 그 마킹에서 걷는 길(collect) · 부품 안 필터 조건들
+보이는 마킹(highlight) 과 걷는 마킹(start) 은 다른 칸 — 같은 마킹을 보이면서 다른 마킹에서 걸을 수 있다
+스팟파이어는 마킹으로 «행을 거르기»만 한다. 우리는 그 마킹에서 «이어 걷는다» — 다른 타입으로 넘어간다
+```
+
+## 11. 잰 값 (근원 부품 · 1440×900 · DOM 계산 스타일 또는 스크린샷 화소)
+
+| 자리 | 어두운(Custom) | 밝은(Light) |
+|---|---|---|
+| 그림 바탕 · 그림 사이 2px | #2A2A2A · #232323 | #FFFFFF · #F7F9FF |
+| 활성 그림 테두리 | 2px #7188F8 | — |
+| 제목 | Roboto Light 19 / 23 · 위아래 4 | 같음 · #313336 |
+| 글 · 흐린 글 | #FFFFFF · rgba(200,200,200,.45) | #61646B · rgba(49,51,54,.45) |
+| 축 선 · 눈금 글 | 1px #666666 · 12 | 1px #D1D4DE · 12 |
+| 축 알약 | 높이 21 · 둥글기 100 · 안쪽 2 10 · 올렸을 때만 테두리 | 테두리 ≈ #BDBFC5 |
+| 범례 | 폭 150 · 제목 12 · 값 줄 20 · 아이콘 14 | 같음 |
+| 크로스 칸 · 선 · 찍힌 칸 | 19 · #404040 · #00A650 흰 굵은 글 | 19 · #F0F1F2 · #00A650 |
+| 표 줄무늬 | #404040 (홀수 행) | #F7F9FF |
+| 바닥줄 | 높이 32 · #61646B · 활성 탭 = 그림 바탕 | #EDF0F7 |
+| 속성 창 | 머리 #F2F5FC 12 굵게 #6D7078 · 위 둥글기 8 · 탭 13 Roboto Medium #3050EF / #6D7078 · 절 사이 1px #D1D4DE + 2px #EDF0F7 · 알약 테두리 #D0D0D0 | (밝은 창 하나) |
+| 범주 색 (채움 / 테두리) | #6489FA/#4B67BC · #FA7864/#BC5A4B · #FFDE5C/#BFA645 · #72ECA6/#56B17C · #ED72DD/#B256A6 · #72BEED/#568EB2 · #FAA264/#BC7A4B · 하나 #A0A0A0 | 같음 |
