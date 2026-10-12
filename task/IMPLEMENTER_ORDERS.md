@@ -66581,3 +66581,16 @@ B 다시 읽기 취소와 와쳐 (응용 감사 — 임시 SQLite 로 잼, 제�
 값 조건 허브(타입 + 값 조건, 크로스 테이블 칸)는 걷기에 «값 조건» 인자가 생겨야 한다 — 설명된 씨앗(seed_type)을 넓히는 일, 따로 지시
 순서는 그대로(허브 2 단계 안에서 «허브 id 를 씨앗으로»까지)
 ```
+
+> **[총괄 -> 구현자] 10-12 밤 — 작은 일: 걷기 집계 어휘를 스팟파이어 철자로 (소유자 「선언까지 스팟파이어 식 — ㅇㅇ」)**
+
+```
+무엇     ledger_subgraph.AGGREGATE_MEASURES · NUMERIC_MEASURES 의 이름을 Count · UniqueCount · Sum · Avg · Min · Max · Median 으로
+        (count -> Count · distinct -> UniqueCount · sum -> Sum · mean -> Avg · min -> Min · max -> Max · median -> Median)
+옛 이름   요청의 measure 를 읽는 «한 자리»(지금 이름을 맨이름으로 접는 그 자리)에서만 옛 소문자를 받아 새 이름으로 접는다 — 다른 데 사본 없음
+        저장된 보드 · 선언 · 시험 · 문서에 든 옛 이름을 «전수» 세어 보고에(git grep · 카나리아 = AGGREGATE_MEASURES 정의 1)
+        답의 키는 «물은 그대로»(저장된 보드가 자기 문자열로 찾는다 — 지금 규칙) 유지
+계약     contracts/walk_aggregate 벡터 이름을 새 철자로 — 클라도 같은 계약을 채점한다(클라 지시와 순서: 먼저 착지한 쪽이 계약을 고침)
+게이트    옛 이름 요청이 새 이름과 같은 답 · 모르는 이름은 지금처럼 422 unknown_measure(목록은 새 이름) · 계약 양쪽 초록
+순서     응답 자리 하나(3d1f25056) 다음, 프로세스 풀 앞 — 작다
+```
