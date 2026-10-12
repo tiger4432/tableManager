@@ -282,7 +282,8 @@
 > 선언 칸     server/pacing.json "page_seconds": 3 (5 를 넘게 적어도 5). 다음 실행부터, 재기동 없이
 > 볼 줄       retroactive.log (명령줄이면 그 창) — 쪽마다
 >             [ledger_rescope] page 11: 512 rows · 1.5 s · 330 rows/s · 1024 done
->             전체를 세는 연산(표기 소급 · fold-units · fold-rows · 원천이 표인 원장 백필 — 시작에 count 한 번)은 «· <처리> / <전체> · ~<남은 시간> left»
+>             전체를 세는 연산(표기 소급 · fold-rows · 원천이 표인 원장 백필 — 시작에 count 한 번)은 «· <처리> / <전체> · ~<남은 시간> left»
+>             fold-units 는 전체를 미리 안 센다 — 규칙 자리에 그룹을 1 개, 그다음 두 배씩(최대 1,000) 묻고 물을 때마다 «rule» 단계 줄
 > 답의 뜻     줄 간격이 5 s 를 넘음 -> 1 행 쪽도 5 s 넘게 걸림 — 행 하나가 느리거나 잠금. 위 stalled 절의 잠금 질의
 >             rows 가 1~2 에서 안 자람 -> 쪽 크기와 무관한 고정 비용이 page_seconds 를 넘음 — 총괄께
 >             표기 소급 · fold-units 의 옛 줄 «[notation] x / total rows (page k, s)» 는 없어짐 — 이 줄 하나로
@@ -313,7 +314,7 @@
 > 답의 뜻     소급 표 이름이 든 query 줄에 blocked_by 가 있음 · wait_event_type Lock -> 잠금 대기. blocked_by 의 pid 줄이 잡은 쪽
 >             blocked_by 비어 있음 · 같은 query 의 seconds 가 계속 늚 -> 단계 하나가 느린 것(잠금 아님)
 >             소급 query 줄이 없음 -> 그 프로세스가 DB 를 안 쓰는 중 — stop_retroactive.bat 목록의 runner 부터
-> 안 찍는 곳   fold-units 의 첫 쪽 전(규칙 답 전체 계산) · 마지막 쪽 뒤(옛 표시 거두기) — 5 분 넘으면 그 동안 stalled
+> 안 찍는 곳   fold-units 의 마지막 쪽 뒤(옛 표시 거두기) — 5 분 넘으면 그 동안 stalled (첫 쪽 전 규칙 답 전체 계산은 impl-pagesize 부터 그룹씩 · 줄 찍음)
 > 화면        큐 줄은 moving progressing / stalled 와 no_progress 초뿐 — 단계 낱말은 로그 줄에만
 
 > ## [10-12] **와쳐가 아직 기다리는 행만 집는다 — 다시 읽기 취소와 안 엇갈림 (총괄 49792d3f6 B, 착지 e49ad12e3) — 이주 «없음» · 재기동 «수집기(run_watcher)»**

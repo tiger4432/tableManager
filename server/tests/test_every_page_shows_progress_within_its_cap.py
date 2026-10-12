@@ -58,6 +58,15 @@ def test_a_page_over_the_page_time_cuts_the_next_by_its_overshoot(monkeypatch):
     assert [size.next() for _ in range(4)] == [1, 2, 4, 2]
 
 
+def test_a_page_grows_by_the_slower_of_its_own_and_the_page_befores_rate(monkeypatch):
+    """A slow page (1 row in 1 s) then a fast one (2 rows in 0.1 s): the next fills 3 s at the slower rate - 3, not the
+    fast page's 4 (총괄 2ea5ee2a7, 응용: a page sized by a fast page before it took 5.2 s)."""
+    ticks = iter([0.0, 1.0, 1.1])
+    monkeypatch.setattr(keyset_scan.time, "monotonic", lambda: next(ticks))
+    size = keyset_scan.PageSize(keyset_scan.DEFAULT_CHUNK_SIZE, seconds=3)
+    assert [size.next() for _ in range(3)] == [1, 2, 3]
+
+
 def test_the_keyset_scan_starts_at_one_row_and_keeps_every_page_under_the_cap():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)

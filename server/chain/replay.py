@@ -1147,6 +1147,8 @@ def _mark_folded(db, table_name, mark, page, woken, recounts=()) -> int:
 
 #: Rows of a fold rule's answer one page of `fold_units` judges and writes in one commit.
 FOLD_UNITS_PAGE = 20000
+#: The most whole groups fold-units asks the rule seat for at once (`fold_units`).
+FOLD_UNITS_GROUPS = 1000
 
 
 def fold_units_target(rule_name):
@@ -1201,10 +1203,10 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     groups, losing = db.execute(select(func.count().filter(ranked.c.n == 1),
                                        func.count().filter(ranked.c.n > 1)).select_from(ranked)).one()
     unit_ids = [row_id for (row_id,) in db.execute(select(units.row_id).order_by(units.row_id))]
-    _model, found = outbox_expand.load_rows_by_ids(db, params["unit_table"], unit_ids)
+    group = getattr(units, params["group"])
+    in_order = [value for (value,) in db.execute(select(group).where(group.isnot(None)).distinct().order_by(group))]
     columns = outbox_expand._data_columns(units)
-    answer = rule_run.run_rule(db, rule, payloads=[outbox_expand._synthesize_payload(found[row_id], columns, {})
-                                                   for row_id in unit_ids if row_id in found])
+    answers = []
     stats = {"mode": "apply" if apply else "dry-run", "rule": rule_name, "table": log_table, "units": len(unit_ids),
              "groups": groups, "units_losing": losing, "rows_proposed": 0, "rows_to_mark": 0,
              "rows_marked": 0, "rows_higher_layer": 0, "rows_already_marked": 0, "rows_gone": 0, "rows_refused": 0,
@@ -1213,29 +1215,44 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     tx_id = "chain_fold_units_%s" % uuid.uuid4().hex[:8]
     keep = set()
 
-    # the rule seat's paging records (`next_page`: call · rows_total · first) - every page followed
-    more = answer["next_page"]
-    total = (len(answer["updates"]) + sum(m["rows_total"] - m["first"] for m in more)
-             if all(m["rows_total"] is not None for m in more) else None)
-
+    total = None                                   # counted as it goes - the answer is asked a few groups at a time
     size = keyset_scan.PageSize(FOLD_UNITS_PAGE)
+    step = _step_of(checkpoint)
+
+    def asked():
+        """The rule seat asked whole groups at a time - one first, twice as many each call, at most
+        FOLD_UNITS_GROUPS - so the first page does not wait on every group's answer (총괄 2ea5ee2a7, 응용: 12.2 s
+        before the first line); a group is asked once, so no mark is proposed twice. Its paging records
+        (`next_page`) followed."""
+        at, n = 0, 1
+        while at < len(in_order):
+            part, at, n = in_order[at:at + n], at + n, min(n * 2, FOLD_UNITS_GROUPS)
+            ids = [row_id for (row_id,) in db.execute(
+                select(units.row_id).where(group.in_(part)).order_by(units.row_id))]
+            _model, found = outbox_expand.load_rows_by_ids(db, params["unit_table"], ids)
+            answer = rule_run.run_rule(db, rule, payloads=[
+                outbox_expand._synthesize_payload(found[row_id], columns, {}) for row_id in ids if row_id in found])
+            answers.append(answer)
+            step("rule", stats["pages"] + 1, None, len(ids))
+            yield answer["updates"]
+            for record in answer["next_page"]:
+                call = record["call"]
+                while call is not None:
+                    result = without_missing(call()) or {}
+                    yield result.get("updates") or ()
+                    call = result.get("next_page")
 
     def pages():
-        page, n = list(answer["updates"]), size.next()
-        for record in more:
-            call = record["call"]
-            while call is not None:
-                while len(page) >= n:
-                    yield page[:n]
-                    page, n = page[n:], size.next()
-                result = without_missing(call()) or {}
-                page.extend(result.get("updates") or ())
-                call = result.get("next_page")
+        page, n = [], size.next()
+        for updates in asked():
+            page.extend(updates)
+            while len(page) >= n:
+                yield page[:n]
+                page, n = page[n:], size.next()
         while page:
             yield page[:n]
             page, n = page[n:], size.next()
 
-    step = _step_of(checkpoint)
     for proposed in pages():
         step("read", stats["pages"] + 1, None, len(proposed))
         if checkpoint is not None and checkpoint(stats["rows_proposed"], total):
@@ -1258,7 +1275,9 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             size.rest(rest_seconds)
     # the worker's edit withdrawal (`apply_chain_writes`): the unit rows handed, the columns the rule writes
     if not stats["stopped"] and unit_ids and rule_run.stamps_its_origin(rule):
-        written = rule_run.columns_a_rule_writes(rule, answer["updates"], more=bool(answer["next_page"]))
+        written = rule_run.columns_a_rule_writes(
+            rule, answers[0]["updates"] if answers else [],
+            more=len(answers) > 1 or bool(answers and answers[0]["next_page"]))
         if written:
             retraction_started = time.monotonic()
             if apply:
