@@ -1,5 +1,14 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 오후] **걷기 «Walk ▸» 착지 (main 1f2cd132f) — git pull 만 · 재기동 없음 · 걷기 화면 새로 고침**
+>
+> ```
+> 쓰는 법  걷기 표에서 행을 체크(+ 는 클릭, − 는 Shift) -> Marked 바구니 «Walk on ▸» 줄 맨 앞 «Walk ▸»
+>          -> 그 행들을 시작으로 문장 바의 설정(collect · through · direction · 한도 · 세상 · reaching) 그대로 한 번 걷고, 지금 스텝 아래에 «Walk ▸» 스텝 하나
+>          체크가 없으면 꺼짐 «Check rows first». 옆의 «New step / Add here»(길 하나 한 걸음)는 그대로
+> 바뀐 것  그래프 «Continue» 도 같은 요청 — 이제 문장 바의 collect · through · direction 이 실린다(전에는 홉 · 한도뿐)
+> ```
+
 > ## [10-12 낮] **고침 — 체인이 방금 만든 행을 «껍데기»로 지우지 않는다 (방금 만든 행) — pull 하고 체인 워커만 재기동**
 >
 > ```
