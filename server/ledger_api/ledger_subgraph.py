@@ -1569,7 +1569,7 @@ def _signed_seeds(start):
     return signs
 
 
-def _reach(nodes, edges, seed_signs, static_types=()):
+def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None):
     """Signed reach of every walked node from the signed seeds.  Pure — no query.
 
     ONE RULE: A SEED THAT REACHES A NODE COUNTS 1.  Reach is therefore how many marked
@@ -1612,6 +1612,11 @@ def _reach(nodes, edges, seed_signs, static_types=()):
     instead of keeping one path per node per seed alive for the whole walk, and `kinds` is
     `seed -> {declared type it reached}` — the DENOMINATOR the ranking needs and the one
     thing a reach of zero cannot supply about itself.
+
+    🔴 A CONTINUED WALK'S PAGE GOES ON FROM WHAT THE PAGES BEFORE REACHED (MORE, 응용 18766: a page after the first
+    ranked nothing - its new nodes hang off edges an earlier page drew). `carried` - per seed, the nodes reached with
+    the steps that reached them, the trail and the types - is where each seed's reach resumes; `keep`, when given, is
+    filled with the same per seed after this page, for the next page's `resume`.
     """
     # 🔴 THIS WALKS UNDER THE SAME TWO RULES THE FETCH DOES, and it has to.  It used to
     # build a plain undirected adjacency and let every seed flood it, which was invisible
@@ -1641,11 +1646,16 @@ def _reach(nodes, edges, seed_signs, static_types=()):
         if seed not in nodes:
             continue
         slot = 0 if sign > 0 else 1
-        trail = parents.setdefault(seed, {})
-        reached_kinds = kinds.setdefault(seed, set())
-        seen = {seed}
-        arrived = {seed: set()}
-        level = [seed]
+        before = (carried or {}).get(seed) or {}
+        trail = parents.setdefault(seed, {
+            node: tuple(step) for node, step in (before.get("parents") or {}).items()})
+        reached_kinds = kinds.setdefault(seed, set(before.get("kinds") or ()))
+        arrived = {seed: set(), **{node: {tuple(step) for step in steps}
+                                   for node, steps in (before.get("arrived") or {}).items()}}
+        seen = set(arrived)
+        for node in seen - {seed}:
+            reach.setdefault(node, [0, 0])[slot] += 1
+        level = list(arrived)
         while level:
             reached = defaultdict(set)
             for node in level:
@@ -1672,6 +1682,11 @@ def _reach(nodes, edges, seed_signs, static_types=()):
                 reached_kinds.add(_kind(nxt))
                 reach.setdefault(nxt, [0, 0])[slot] += 1
             level = list(reached)
+        if keep is not None:
+            keep[seed] = {"parents": {node: list(step) for node, step in trail.items()},
+                          "arrived": {node: sorted((list(step) for step in steps), key=str)
+                                      for node, steps in arrived.items() if node != seed},
+                          "kinds": sorted(kind for kind in reached_kinds if kind)}
     return reach, parents, kinds
 
 
@@ -1725,13 +1740,16 @@ def _evidence(nodes, parents, seed_signs, node_id, between):
         if node_id not in trail:
             continue
         path, _predicates = _trail_back(trail, node_id)
+        # a trail of a continued walk passes nodes an earlier page drew (MORE) - read off their ids
+        held = {item: nodes.get(item) or _entity_node(decode_node_id(item)["type"], decode_node_id(item)["keys"])
+                for item in path}
         hops = [{
             "id": item,
-            "node_kind": nodes[item].get("node_kind"),
-            "label": nodes[item].get("label"),
-            "atom": (nodes[item].get("keys") or {}).get("id"),
-            "ref": (nodes[item].get("source_raw_ref")
-                    or nodes[item].get("basis")),
+            "node_kind": held[item].get("node_kind"),
+            "label": held[item].get("label"),
+            "atom": (held[item].get("keys") or {}).get("id"),
+            "ref": (held[item].get("source_raw_ref")
+                    or held[item].get("basis")),
         } for item in path]
         for index in range(1, len(hops)):
             hops[index]["predicates"] = sorted(
@@ -1787,7 +1805,7 @@ def _rank_layers(items):
     return layers
 
 
-def _propagation(nodes, edges, seed_signs, complete, static_types=()):
+def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=None, keep=None):
     """Rank every node this walk REACHED, by the contrast between the two signed reaches.
 
     🔴 THE POPULATION IS EVERY REACHED NODE, and that is an owner ruling
@@ -1825,7 +1843,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
         "top_set": [],
         "message": None,
     }
-    reach, parents, kinds = _reach(nodes, edges, seed_signs, static_types)
+    reach, parents, kinds = _reach(nodes, edges, seed_signs, static_types, carried, keep)
     # 🔴 THE DENOMINATOR. A reach of zero says nothing about itself: the control may have
     # HAD the path and not carried this factor, or it may have had no path to that kind at
     # all, and those two read identically as 0. So each side is reported as a pair --
@@ -3195,6 +3213,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     still = _still_reaches([(_bare(nodes[node_id].get("type")), node_id in seed_signs) for node_id in left], wanted,
                            follow, static_follow,
                            static_types, direction)
+    #: each seed's reach after this page - the ranking's (`_propagation`), handed on in `resume` (MORE)
+    reached = {}
     # a continued page says the first page's instant it reads as of; a first page carries it in its `resume`
     more = {"unexpanded": len(left),
             "reach": {kind: {"complete": not still[kind], "unexpanded": still[kind]} for kind in wanted},
@@ -3366,7 +3386,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             nodes, ordered_edges, seed_signs,
             not (depth_cut or node_cut or edge_cut or claim_cut or action_cut
                  or seed_cut),
-            static_types),
+            static_types, (resume or {}).get("reach"), reached),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
             "start": {
@@ -3407,6 +3427,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # ㄴ - present only when `fanout_limit` was asked, as `groups` is for `group_by`.
         **({} if fanout_limit is None else {"bundles": bundles}),
     }
+    if more["resume"] is not None:
+        more["resume"]["reach"] = reached              # where the next page's ranking goes on from
     if rows:
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.
