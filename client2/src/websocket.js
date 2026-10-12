@@ -5,7 +5,7 @@ import {
 import { state } from './state.js';
 import { unitText } from './ui_words.js';
 import { elements } from './dom.js';
-import { checkServerHealth, loadTables, fetchData } from './api.js';
+import { checkServerHealth, loadTables, fetchData, overlayStagedEdits } from './api.js';
 import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress,
          finishRetroactiveProgress, showToast, getLocalTimeString } from './utils.js';
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
@@ -500,8 +500,9 @@ export function handleWebSocketMessage(msg) {
 
     if (updatedRows.length > 0 || addedRows.length > 0) {
       // High-performance batch transaction update in AG-Grid
+      // A staged cell keeps its staged value and learns the server's (lead 10-12) - the one overlay every read passes.
       const res = state.gridApi.applyTransaction({
-        update: updatedRows,
+        update: overlayStagedEdits(updatedRows),
         add: addedRows
       });
       console.log('[WebSocket Sync] applyTransaction output result:', {

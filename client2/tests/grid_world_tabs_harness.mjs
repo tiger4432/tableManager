@@ -94,6 +94,8 @@ const REAL = {
   state: await import('../src/state.js'),
   timeline: await import('../src/timeline.js'),
   tabs: await import('../src/world_tabs.js'),
+  ws: await import('../src/websocket.js'),
+  grid: await import('../src/grid.js'),
 };
 const S = REAL.state.state;
 
@@ -180,7 +182,8 @@ async function leftovers(M) {
   const filterOn = () => ({ row_id: { filterType: 'text', type: 'equals', filter: 'R1' } });
   let model = filterOn();
   const cleared = [];
-  S.gridApi = { ...gridApi, getFilterModel: () => model, setFilterModel: (m) => { cleared.push(m); model = m || {}; } };
+  S.gridApi = { ...gridApi, getFilterModel: () => model,
+    setFilterModel: (m) => { cleared.push(m); model = m || {}; setTimeout(() => { try { M.grid.gridFilterChanged(); } catch (e) { /* the chips */ } }, 5); } };
   const followed = [];
   M.api.seatTableFollower((table) => followed.push(table));
   S.currentTable = 'dt_log';
@@ -190,6 +193,23 @@ async function leftovers(M) {
   cleared.length = 0;
   try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
   left.same = { cleared: cleared.slice(), model: Object.keys(model) };
+  // The drop on its own: it takes the grid's filterChanged (sent after a timer) and reads nothing; the next change reads.
+  reset();
+  let held = filterOn();
+  S.gridApi = { ...gridApi, getFilterModel: () => held,
+    setFilterModel: (m) => { held = m || {}; setTimeout(() => { try { M.grid.gridFilterChanged(); } catch (e) { /* the chips */ } }, 5); } };
+  S.currentTable = 'dt_log';
+  urls = [];
+  try { await M.grid.dropGridFilters(); } catch (e) { /* as above */ }
+  await new Promise((r) => setTimeout(r, 30));
+  await settle();
+  left.drop = { reads: reads().filter((u) => u.includes('/data?')).length, model: Object.keys(held) };
+  urls = [];
+  try { M.grid.gridFilterChanged(); } catch (e) { /* the chips */ }
+  await settle();
+  left.dropAfter = reads().filter((u) => u.includes('/data?')).length;
+  S.gridApi = { ...gridApi, getFilterModel: () => model,
+    setFilterModel: (m) => { cleared.push(m); model = m || {}; setTimeout(() => { try { M.grid.gridFilterChanged(); } catch (e) { /* the chips */ } }, 5); } };
   // Boot opens the first table; a history jump calls switchTable itself.
   followed.length = 0;
   S.currentTable = '';
@@ -215,8 +235,73 @@ async function leftovers(M) {
   left.discard = { pending: Object.keys(S.pendingTxEdits).length,
     reads: reads().filter((u) => u.includes('/tables/dt_log/data?')).length };
   left.atOnce = atOnce;
+  left.conflict = await conflicts(M);
   S.gridApi = gridApi;
   return left;
+}
+
+// A staged edit the server changed under it (lead 10-12, 18766: 28.9 staged, 29.7 saved by another, a broadcast drew
+// 29.7 and Apply sent 28.9 over it unasked).
+async function conflicts(M) {
+  const out = {};
+  const stage = () => {
+    S.pendingTxEdits = { R1_a: { rowId: 'R1', colId: 'a', newValue: 28.9, oldValue: 28.5, oldIsOverwrite: false,
+      oldPrioritySource: null, data: null } };
+  };
+  const serverRow = () => ({ row_id: 'R1', updated_at: '2026-10-12 12:00:00', data: { a: { value: 29.7 } } });
+  let drawn = null;
+  let updated = null;
+  const node = { data: { row_id: 'R1', data: { a: { value: 28.9 } } } };
+  // A read: the page comes back with the server's 29.7.
+  reset();
+  S.gridApi = { ...gridApi, getRowNode: (id) => (id === 'R1' ? node : null), flashCells() {},
+    setGridOption: (key, value) => { if (key === 'rowData') drawn = value; },
+    applyTransaction: (tx) => { updated = tx.update || null; return { update: tx.update || [], add: tx.add || [] }; } };
+  S.currentTable = 'dt_log';
+  stage();
+  const keep = globalThis.fetch;
+  globalThis.fetch = async (url) => ({ ok: true, status: 200, text: async () => '',
+    json: async () => (String(url).includes('/data/count') ? { total: 1 } : { data: [serverRow()], total: null }) });
+  try { await M.api.fetchData(true); } catch (e) { /* as above */ }
+  await settle();
+  const cellOf = (rows) => (rows && rows[0] && rows[0].data && rows[0].data.a ? rows[0].data.a.value : null);
+  out.read = { drawn: cellOf(drawn), conflict: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.conflict };
+  // The server still at the value the edit was made over: no conflict - the staged cell drawn all the same.
+  globalThis.fetch = async (url) => ({ ok: true, status: 200, text: async () => '',
+    json: async () => (String(url).includes('/data/count') ? { total: 1 }
+      : { data: [{ ...serverRow(), data: { a: { value: 28.5 } } }], total: null }) });
+  try { await M.api.fetchData(true); } catch (e) { /* as above */ }
+  await settle();
+  out.unmoved = { drawn: cellOf(drawn), conflict: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.conflict };
+  // A broadcast with the same row.
+  stage();
+  try { M.ws.handleWebSocketMessage({ event: 'batch_row_upsert', table_name: 'dt_log', items: [serverRow()] }); } catch (e) { /* as above */ }
+  out.broadcast = { drawn: cellOf(updated), conflict: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.conflict };
+  // Apply: asked, then each answer.
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    if (init && init.method === 'PUT') sent.push(JSON.parse(init.body).updates);
+    return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
+  };
+  const line = document.getElementById('tx-conflict-line');
+  const text = document.getElementById('tx-conflict-text');
+  stage();
+  S.pendingTxEdits.R1_a.conflict = { server: 29.7, at: null };
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  out.asked = { sent: sent.length, line: line.style.display, text: text.textContent, pending: Object.keys(S.pendingTxEdits).length };
+  try { await M.api.applyPendingEdits('mine'); } catch (e) { /* as above */ }
+  const asSent = (list) => list.map((updates) => updates.map(({ row_id, updates: u }) => ({ row_id, updates: u })));
+  out.mine = { sent: asSent(sent), pending: Object.keys(S.pendingTxEdits).length, line: line.style.display };
+  sent.length = 0;
+  stage();
+  S.pendingTxEdits.R1_a.conflict = { server: 29.7, at: null };
+  S.pendingTxEdits.R2_a = { rowId: 'R2', colId: 'a', newValue: 5, oldValue: 4, data: null };
+  node.data.data.a.value = 28.9;
+  try { await M.api.applyPendingEdits('server'); } catch (e) { /* as above */ }
+  out.server = { sent: asSent(sent), cell: node.data.data.a.value, pending: Object.keys(S.pendingTxEdits).length };
+  globalThis.fetch = keep;
+  S.pendingTxEdits = {};
+  return out;
 }
 
 // The seat itself, on the state module under test (a state.js copy carries its own state object).
@@ -278,11 +363,23 @@ function suite(out, sent) {
   eq('W10 a switch to another table drops the grid\'s filters; the same table switched again keeps them',
     [out.left.other, out.left.same], [{ cleared: [null], model: [] }, { cleared: [], model: ['row_id'] }]);
   const grid = readFileSync(join(SRC, 'main.js'), 'utf8');
+  eq('W17 the drop takes the grid\'s own filterChanged, sent after a timer - no read of its own; the next filter change reads',
+    [out.left.drop, out.left.dropAfter], [{ reads: 0, model: [] }, 1]);
   eq('W11 every way to a table tells the label and the banner - boot\'s first table and a jump alike; the page tells them nowhere else',
     [out.left.followed, (grid.match(/sourceLabel\.setRelation\(/g) || []).length, (grid.match(/redoBannerFollows\(/g) || []).length],
     [['dt_log', 'ledger_atom_rows'], 1, 2]);
   eq('W12 Discard reads the rows again - the server\'s value replaces a value that moved since the edit',
     out.left.discard, { pending: 0, reads: 1 });
+  eq('W14 a read draws a staged cell at its staged value, and an edit the server moved under it says so',
+    [out.left.conflict.read, out.left.conflict.unmoved],
+    [{ drawn: 28.9, conflict: { server: 29.7, at: '2026-10-12 12:00:00' } }, { drawn: 28.9, conflict: null }]);
+  eq('W15 a broadcast too - the same overlay',
+    out.left.conflict.broadcast, { drawn: 28.9, conflict: { server: 29.7, at: '2026-10-12 12:00:00' } });
+  eq('W16 Apply asks before a conflicted cell - Keep mine sends it, Take server draws the server value and sends the rest',
+    [out.left.conflict.asked, out.left.conflict.mine, out.left.conflict.server],
+    [{ sent: 0, line: '', text: '1 cell changed on the server since you edited', pending: 1 },
+      { sent: [[{ row_id: 'R1', updates: { a: 28.9 } }]], pending: 0, line: 'none' },
+      { sent: [[{ row_id: 'R2', updates: { a: 5 } }]], cell: 29.7, pending: 0 }]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
     out.left.atOnce, { value: 28, is_overwrite: false, priority_source: null });
   eq('W9 census: the grid\'s reads of the open table go through the seat - api 3 (schema, data, count), main 3 '
@@ -322,20 +419,33 @@ const MUTANTS = [
   { id: 'G9', what: 'no tab is shown while none is picked', catches: 'W3', file: 'world_tabs.js',
     mutate: (t) => swap(t, 'const shown = view.current || view.operating;', 'const shown = view.current;') },
   { id: 'G10', what: 'a switch keeps the last table\'s filters - the code before', catches: 'W10', file: 'api.js',
-    mutate: (t) => swap(t, '  if (leaving !== tableName) dropGridFilters();\n', '') },
+    mutate: (t) => swap(t, '  if (leaving !== tableName) await dropGridFilters();\n', '') },
   { id: 'G11', what: 'the same table switched again loses its filters', catches: 'W10', file: 'api.js',
-    mutate: (t) => swap(t, '  if (leaving !== tableName) dropGridFilters();', '  dropGridFilters();') },
+    mutate: (t) => swap(t, '  if (leaving !== tableName) await dropGridFilters();', '  await dropGridFilters();') },
   { id: 'G12', what: 'a switch tells the label and the banner nothing - only the dropdown and boot did', catches: 'W11', file: 'api.js',
     mutate: (t) => swap(t, '  if (tableFollower) tableFollower(tableName);\n', '') },
   { id: 'G13', what: 'Discard puts nothing back at once - the staged value stays until the read', catches: 'W13', file: 'api.js',
     mutate: (t) => swap(t, '    row.data[colId].value = oldValue;\n', '') },
   { id: 'G15', what: 'Discard puts the value back and not the pin', catches: 'W13', file: 'api.js',
     mutate: (t) => swap(t, '    row.data[colId].priority_source = oldPrioritySource ?? null;\n', '') },
+  { id: 'G21', what: 'the drop takes no event - the timer\'s filterChanged reads the table (the flag before)', catches: 'W17', file: 'grid.js',
+    mutate: (t) => swap(t, '  if (takeFilterChange) { takeFilterChange(); return; }\n', '') },
+  { id: 'G16', what: 'a read draws the server value over a staged cell - the code before', catches: 'W14', file: 'api.js',
+    mutate: (t) => swap(t, "    } else {\n      state.gridApi.setGridOption('rowData', overlayStagedEdits(result.data));\n    }",
+      "    } else {\n      state.gridApi.setGridOption('rowData', result.data);\n    }") },
+  { id: 'G17', what: 'a broadcast draws the server value over a staged cell - the code before', catches: 'W15', file: 'websocket.js',
+    mutate: (t) => swap(t, '        update: overlayStagedEdits(updatedRows),', '        update: updatedRows,') },
+  { id: 'G18', what: 'Apply sends a conflicted cell unasked - the code before', catches: 'W16', file: 'api.js',
+    mutate: (t) => swap(t, '  if (conflicted.length && !choice) { sayConflicts(conflicted.length); return; }\n', '') },
+  { id: 'G19', what: 'Take server still sends the conflicted cell', catches: 'W16', file: 'api.js',
+    mutate: (t) => swap(t, '      delete state.pendingTxEdits[`${edit.rowId}_${edit.colId}`];\n', '') },
+  { id: 'G20', what: 'the server value compared with the staged one, not the one the edit was made over', catches: 'W14', file: 'api.js',
+    mutate: (t) => swap(t, 'sameCellValue(cell.value, edit.oldValue)', 'sameCellValue(cell.value, edit.newValue)') },
   { id: 'G14', what: 'Discard reads nothing again - the code before, a value moved since stays stale', catches: 'W12', file: 'api.js',
     mutate: (t) => swap(t, "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return rereadGrid();",
       "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return Promise.resolve();") },
 ];
-const KEY = { 'state.js': 'state', 'api.js': 'api', 'timeline.js': 'timeline', 'world_tabs.js': 'tabs' };
+const KEY = { 'state.js': 'state', 'api.js': 'api', 'timeline.js': 'timeline', 'world_tabs.js': 'tabs', 'websocket.js': 'ws', 'grid.js': 'grid' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;
   if (m.file === 'state.js') return suite(await seen(REAL), await seat(copy));

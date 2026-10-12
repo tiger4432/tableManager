@@ -2,6 +2,7 @@ import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
+import { isBlank } from './absent.js';
 import { refuseWrite, applyWriteGuards, writeRefusal } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
@@ -253,6 +254,7 @@ export async function switchTable(tableName) {
 
   // Discard pending edits on table switch
   state.pendingTxEdits = {};
+  sayConflicts(0);
   state.txModeActive = true;
   if (elements.txModeToggle) elements.txModeToggle.checked = true;
   updateTxModeUI();
@@ -263,7 +265,7 @@ export async function switchTable(tableName) {
   //    to earn. It dies with the table, like the transaction filter above it.
   state.serverSort = null;
   // The grid's filters die with the table too (lead 10-12); the same table drawn again keeps them.
-  if (leaving !== tableName) dropGridFilters();
+  if (leaving !== tableName) await dropGridFilters();
   // The world tab dies with the table too (lead 120450931 ②); the row is drawn for the table now open.
   state.gridWorld = null;
   drawWorldTabs();
@@ -451,7 +453,7 @@ export async function fetchData(resetSkip = true) {
   } else {
     if (state.viewMode !== 'infinite' && state.pageCache.has(state.currentSkip)) {
       const cached = state.pageCache.get(state.currentSkip);
-      state.gridApi.setGridOption('rowData', cached.data);
+      state.gridApi.setGridOption('rowData', overlayStagedEdits(cached.data));
       updateGridSortState();
       updateLoadedCount(cached.data.length);
       setMatchCount(elements.totalRowsCount, cached.total);
@@ -502,12 +504,12 @@ export async function fetchData(resetSkip = true) {
     // Render rowData depending on View Mode
     if (state.viewMode === 'infinite') {
       if (resetSkip || state.currentSkip === 0) {
-        state.gridApi.setGridOption('rowData', result.data);
+        state.gridApi.setGridOption('rowData', overlayStagedEdits(result.data));
       } else {
-        state.gridApi.applyTransaction({ add: result.data });
+        state.gridApi.applyTransaction({ add: overlayStagedEdits(result.data) });
       }
     } else {
-      state.gridApi.setGridOption('rowData', result.data);
+      state.gridApi.setGridOption('rowData', overlayStagedEdits(result.data));
     }
     updateGridSortState();
 
@@ -535,6 +537,142 @@ export async function fetchData(resetSkip = true) {
     console.error('Failed to fetch data', err);
     elements.performanceLog.textContent = 'Data fetch failed';
     state.isLoadingMore = false;
+  }
+}
+
+/** The same value on both sides - blank alike (absent.js isBlank) or the same spelling (28.5 and "28.5"). */
+const sameCellValue = (a, b) => (isBlank(a) && isBlank(b)) || String(a) === String(b);
+
+/** Rows from the server as the grid draws them while edits are staged on them (lead 10-12): a staged cell shows its
+ *  staged value, and an edit whose cell the server no longer holds at the value it was made over says so -
+ *  `conflict: { server, at }`. Every place server rows reach the grid passes them here - a read, a cached page, a
+ *  broadcast, a row jump - so a staged edit is never hidden under the server's value and sent over it unseen.
+ *  Rows with nothing staged come back as they were; the others are copies (the page cache keeps the server's). */
+export function overlayStagedEdits(rows) {
+  const staged = Object.values(state.pendingTxEdits);
+  if (!staged.length || !Array.isArray(rows)) return rows;
+  const byRow = new Map();
+  for (const edit of staged) byRow.set(edit.rowId, [...(byRow.get(edit.rowId) || []), edit]);
+  return rows.map((row) => {
+    const edits = row && byRow.get(row.row_id);
+    if (!edits) return row;
+    const data = { ...row.data };
+    for (const edit of edits) {
+      const cell = data[edit.colId];
+      // A broadcast carries the columns it changed; one it does not carry says nothing about this edit.
+      if (!cell) continue;
+      edit.conflict = sameCellValue(cell.value, edit.oldValue) ? null : { server: cell.value, at: row.updated_at || null };
+      data[edit.colId] = { ...cell, value: edit.newValue };
+    }
+    return { ...row, data };
+  });
+}
+
+/** Staged edits whose cell changed on the server since they were made. */
+export const conflictedEdits = () => Object.values(state.pendingTxEdits).filter((edit) => edit.conflict);
+
+/** The in-screen question Apply asks before sending a conflicted cell (lead 10-12 - not a confirm()). */
+function sayConflicts(count) {
+  const line = elements.txConflictLine;
+  if (!line) return;
+  line.style.display = count > 0 ? '' : 'none';
+  if (elements.txConflictText) {
+    elements.txConflictText.textContent = count > 0 ? `${unitText(count, 'cell')} changed on the server since you edited` : '';
+  }
+}
+
+/** Apply the staged edits. Conflicted cells are not sent unasked: without `choice` Apply stops and asks; 'mine' sends
+ *  them, 'server' drops them and draws the server's value - the cells without a conflict go as they always did. */
+export async function applyPendingEdits(choice = null) {
+  if (Object.keys(state.pendingTxEdits).length === 0) { sayConflicts(0); return; }
+  const conflicted = conflictedEdits();
+  if (conflicted.length && !choice) { sayConflicts(conflicted.length); return; }
+  sayConflicts(0);
+  if (choice === 'server') {
+    for (const edit of conflicted) {
+      const node = state.gridApi.getRowNode(edit.rowId);
+      if (node && node.data) {
+        ensureCellObject(node.data, edit.colId);
+        node.data.data[edit.colId].value = edit.conflict.server;
+      }
+      delete state.pendingTxEdits[`${edit.rowId}_${edit.colId}`];
+    }
+    state.gridApi.refreshCells({ force: true });
+    updateTxModeUI();
+    if (Object.keys(state.pendingTxEdits).length === 0) return;
+  }
+
+  elements.performanceLog.textContent = 'Applying batch transaction updates...';
+  const applyStartTime = performance.now();
+
+  const grouped = {};
+  Object.values(state.pendingTxEdits).forEach(edit => {
+    if (!grouped[edit.rowId]) {
+      grouped[edit.rowId] = {};
+    }
+    grouped[edit.rowId][edit.colId] = edit.newValue;
+  });
+
+  const updates = Object.keys(grouped).map(rowId => ({
+    row_id: rowId,
+    updates: grouped[rowId],
+    source_name: 'user',
+    updated_by: CURRENT_USER
+  }));
+
+  const payload = {
+    updates: updates,
+    silent: false,
+    // V1 instrument: optional field. Raw counts only — the server weights at query time.
+    effort: snapshot()
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/tables/${state.currentTable}/data/updates`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      state.pageCache.clear();
+      const result = await res.json();
+      const saveTime = (performance.now() - applyStartTime).toFixed(1);
+
+      // Update cell is_overwrite status locally on the latest nodes directly
+      Object.values(state.pendingTxEdits).forEach(edit => {
+        const { rowId, colId, newValue, data } = edit;
+        const latestNode = state.gridApi.getRowNode(rowId);
+        const latestData = latestNode ? latestNode.data : data;
+        if (latestData) {
+          markCellOverwritten(latestData, colId, newValue);
+          latestData.updated_at = getLocalTimeString();
+        }
+      });
+
+      state.pendingTxEdits = {};
+      // V1 instrument: reset ONLY when the server confirms it recorded the effort. Two
+      // gates, not one: a failed save keeps accumulating because retry effort is real human
+      // effort, and a 200 that changed nothing (every staged edit already matched storage)
+      // records no effort row — resetting there would delete the effort it cost.
+      commitIfRecorded(result);
+      state.txModeActive = elements.txModeToggle.checked;
+      updateTxModeUI();
+      updateGridSortState();
+      state.gridApi.refreshCells({ force: true });
+
+      elements.performanceLog.textContent = `Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)`;
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.detail || 'Save failed';
+      throw new Error(errMsg);
+    }
+  } catch (err) {
+    console.error('Batch apply failed', err);
+    alert(`Apply failed: ${err.message}`);
+    elements.performanceLog.textContent = '❌ Batch apply failed';
   }
 }
 
@@ -566,6 +704,7 @@ export function discardPendingEdits() {
     row.data[colId].priority_source = oldPrioritySource ?? null;
   }
   state.pendingTxEdits = {};
+  sayConflicts(0);
   state.txModeActive = elements.txModeToggle.checked;
   updateTxModeUI();
   state.gridApi.refreshCells({ force: true });

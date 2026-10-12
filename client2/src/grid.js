@@ -25,6 +25,7 @@ import { ledgerColumnDef } from './grid_ledger_column.js';
 import { imageColumnParts } from './grid_image_column.js';
 import { ImagePreview } from './image_preview.js';
 import { localStamp, NO_TIME } from './server_time.js';
+import { ABSENT, isBlank } from './absent.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
 // The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
@@ -232,17 +233,26 @@ let applyingSortState = false;
 
 // A table's filters die with it (lead 10-12): the grid keeps a filter across a columnDefs swap for a column id it still
 // has, and ROW_ID is on every table - the last table's filter ran the next one's reads to 0 rows. Dropping them reads
-// nothing of its own: the switch's first read is the table's, and its renderGrid draws the chips again.
-let droppingFilters = false;
+// nothing of its own: the switch's first read, after the new columns, is the table's, and its renderGrid draws the chips
+// again. AG Grid says filterChanged after a timer (18766, lead 80172956e: the read went out with the schema read), so
+// the drop waits for that one event and takes it - with a time cap, so a grid that never says it cannot hold the switch.
+const FILTER_DROP_WAIT_MS = 1000;
+let takeFilterChange = null;
 export function dropGridFilters() {
   const api = state.gridApi;
-  if (!api || !Object.keys(api.getFilterModel() || {}).length) return;
-  droppingFilters = true;
-  try {
+  if (!api || !Object.keys(api.getFilterModel() || {}).length) return Promise.resolve();
+  return new Promise((done) => {
+    const timer = setTimeout(() => { takeFilterChange = null; done(); }, FILTER_DROP_WAIT_MS);
+    takeFilterChange = () => { clearTimeout(timer); takeFilterChange = null; done(); };
     api.setFilterModel(null);
-  } finally {
-    droppingFilters = false;
-  }
+  });
+}
+
+/** The grid's filterChanged: a read of the narrowed table, and the chips - unless it is the drop's own event. */
+export function gridFilterChanged() {
+  if (takeFilterChange) { takeFilterChange(); return; }
+  fetchData(true);
+  renderFilterBar();
 }
 
 export function updateGridSortState() {
@@ -891,6 +901,13 @@ export function buildColumnDefs() {
         }
         return true;
       },
+      // A staged cell the server changed since the edit says what it holds now, and since when (lead 10-12).
+      tooltipValueGetter: (params) => {
+        const edit = params.data ? state.pendingTxEdits[`${params.data.row_id}_${col}`] : null;
+        if (!edit || !edit.conflict) return undefined;
+        const { server, at } = edit.conflict;
+        return `Server: ${isBlank(server) ? ABSENT : server}${at ? ` · ${localStamp(at)}` : ''}`;
+      },
       cellClassRules: {
         'cell-system-readonly': () => isSystem,
         'cell-dirty-tx': (params) => {
@@ -898,6 +915,12 @@ export function buildColumnDefs() {
           if (!params.data) return false;
           const key = `${params.data.row_id}_${col}`;
           return state.pendingTxEdits.hasOwnProperty(key);
+        },
+        // The server changed this cell since the edit was staged: Apply asks before sending it (lead 10-12).
+        'cell-tx-conflict': (params) => {
+          if (isSystem || !params.data) return false;
+          const edit = state.pendingTxEdits[`${params.data.row_id}_${col}`];
+          return Boolean(edit && edit.conflict);
         },
         // 🔴 F-13. BOTH rules also read `manual_priority_source`, and that is the whole fix.
         //    `priority_source` is computed TWICE on the server with different answers
@@ -1284,11 +1307,7 @@ export function renderGrid(initialRows) {
     onColumnEverythingChanged: () => {
       updateVisibleColIndexMap();
     },
-    onFilterChanged: () => {
-      if (droppingFilters) return;
-      fetchData(true);
-      renderFilterBar();
-    },
+    onFilterChanged: () => gridFilterChanged(),
     // A-6. A HEADER SORT IS A QUESTION ABOUT THE TABLE, NOT ABOUT THE PAGE.
     //
     // 🔴 Until this existed, clicking a header re-ordered the rows the grid happened to hold
