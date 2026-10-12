@@ -1151,9 +1151,12 @@ export function boot(doc, host, deps) {
     const said = (cell) => (cell ? `${cell.text}${cell.rest ? ` ${cell.rest}` : ''}` : '');
     const sides = section.groups.length;
     const span = (group) => section.parts.reduce((n, q) => n + (q.group === group ? sides : 0), 0);
+    // Read whole to the node column's far end: the node column's keys, and the judgment's column (the section's last own
+    // one), which names its auxiliary nodes (lead 10-12: «2 hops → SYN-BW-10…» said none of them).
+    const whole = (i) => i === 0 || (section.judged && i === section.centreHeads.length - 1);
     fixedColumns(table, checks, [
       ...section.centreHeads.map((_, i) => [i === 0 ? 'node' : 'value', columnWidth(most(section.rows.map((row) => row.centre[i].text)),
-        most(section.centreLines[i]), ...(i === 0 ? [' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node] : []))]),
+        most(section.centreLines[i]), i === 0 ? ' + var(--space-1) + var(--wk-h-small)' : '', whole(i) ? COLUMN_CH.node : undefined)]),
       ...section.parts.flatMap((p, i) => {
         const one = cellsOf(p.group) === 1;
         const far = lettersOf(farEnd(p.step).far);

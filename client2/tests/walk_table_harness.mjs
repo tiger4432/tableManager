@@ -355,6 +355,19 @@ async function suite(mod) {
         && JSON.stringify((twoView.centreLines || []).slice(-1)) === '[["→ q:aux","→ q:aux2"]]'
         && !walkAll(one.host).some((e) => e.tagName === 'th' && String(e.title || '').startsWith('→') && walkAll(e).some((c) => c.className === 'wk-headfar')),
       JSON.stringify([drawnLines, judgedHead && judgedHead.title, twoView.centreLines]));
+    // Two auxiliary nodes with long names: the judgment's cells «2 hops → <the node>» read whole, as the node column's keys.
+    const LONG = ['q:aux-with-a-long-key-01', 'q:aux-with-a-long-key-02'];
+    const longAux = { ...JUDGED, aux: { ...JUDGED.aux, seeds: LONG },
+      nodes: JUDGED.nodes.map((n) => (n.aux && n.aux.state === 'found' ? { ...n, aux: { ...n.aux, via: LONG[0] } } : n)) };
+    const four = await pageOf();
+    Object.assign(four.handle.state, { result: longAux });
+    four.handle.render();
+    const longest = `2 hops → ${LONG[0]}`;
+    const widths = walkAll(four.host).filter((e) => e.tagName === 'col').map((e) => String((e.attrs && e.attrs.style) || ''));
+    const drawnLong = walkAll(four.host).some((e) => e.tagName === 'td' && labelOf(e) === longest || (e._text === longest));
+    ok('AX10 long auxiliary names: the judgment\'s column as wide as its longest cell, not cut at the value columns\' far end',
+      widths.some((w) => w.includes(`calc(${[...longest].length + 1}ch`)) && !widths.some((w) => /calc\(18ch \+ 2 \* var\(--space-2\)\), calc\(18ch/.test(w)),
+      JSON.stringify([longest.length, drawnLong, widths]));
   }
   // Wide (lead 10-11 W): a section's heads say its node columns, each group's step and far end, its values' names; a
   // row's cells its node's, then each column's groups' cells, a cell drawn as its value line.
@@ -2069,7 +2082,9 @@ const MUTANTS = [
   { id: 'FWm6', what: 'a far-end name\'s share asked of Δ again', catches: 'FW3 ',
     from: '[fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side]', to: '[fit(section.rows.map((row) => said(row.cells[i].delta)), shares), side]' },
   { id: 'NWm1', what: 'the node column at the value columns\' far end again - ~185 px whatever its keys', catches: 'NW1 ',
-    from: "[' + var(--space-1) + var(--wk-h-small)', COLUMN_CH.node]", to: "[' + var(--space-1) + var(--wk-h-small)']" },
+    from: '    const whole = (i) => i === 0 ||', to: '    const whole = (i) => false ||' },
+  { id: 'AXm10', what: 'the judgment\'s column cut at the value columns\' far end, which auxiliary node unsaid', catches: 'AX10',
+    from: ' || (section.judged && i === section.centreHeads.length - 1);', to: ';' },
   { id: 'FWm4', what: 'Δ the width of its value\'s + and − again, whatever it holds', catches: 'FW2 ',
     from: '[fit(section.rows.map((row) => said(row.cells[i].delta)), 0), side]', to: '[side, side]' },
   { id: 'SFm8', what: 'a section\'s Trend reads every row, the hidden too', catches: 'PF8 ',
