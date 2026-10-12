@@ -82,33 +82,35 @@ def declared(tmp_path):
 
 
 def walk(declared, atoms, resume=None, nodes=ledger_subgraph.DEFAULT_NODE_LIMIT,
-         edges=ledger_subgraph.DEFAULT_EDGE_LIMIT):
+         edges=ledger_subgraph.DEFAULT_EDGE_LIMIT, follow=None):
     return ledger_subgraph.subgraph(
         SEEDS, ledger_subgraph.InMemoryEvidenceLookup(atoms), declaration_paths=declared, hops=2,
         backbone_hops=2, static_types=["quantity", "recipe"], static_follow=["leads_to"], node_limit=nodes,
-        edge_limit=edges, expand=EXPAND, resume=resume)
+        edge_limit=edges, expand=EXPAND, resume=resume, follow=follow)
 
 
 def _kind(node):
     return str(node["type"]).split("@")[0]
 
 
-def pages(declared, atoms, nodes, edges, first=None):
+def pages(declared, atoms, nodes, edges, first=None, follow=None):
     """Every page until none is left: [(answer, nodes so far)] - from `first`, a page already walked, when given."""
     out, held = [], set()
-    answer = first or walk(declared, atoms, None, nodes, edges)
+    answer = first or walk(declared, atoms, None, nodes, edges, follow)
     for _ in range(200):
         held |= {node["id"] for node in answer["nodes"]}
         out.append((answer, set(held)))
         if answer["more"]["resume"] is None:
             return out
         # what a client hands back is what went over the wire
-        answer = walk(declared, atoms, json.loads(json.dumps(answer["more"]["resume"])), nodes, edges)
+        answer = walk(declared, atoms, json.loads(json.dumps(answer["more"]["resume"])), nodes, edges, follow)
     raise AssertionError("still more after 200 pages")
 
 
-def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypatch):
-    whole = walk(declared, ATOMS)
+# the route hands [] when no follow was asked (응용 10-12: every type said complete on a cut page)
+@pytest.mark.parametrize("follow", [None, []], ids=["no follow", "the route's empty follow"])
+def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypatch, follow):
+    whole = walk(declared, ATOMS, follow=follow)
     assert whole["more"]["resume"] is None and not whole["truncated"]["reason"], whole["truncated"]
     every = {node["id"]: _kind(node) for node in whole["nodes"]}
     joined = {edge["id"] for edge in whole["edges"]}
@@ -120,7 +122,7 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
         monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", claims)
         for nodes in (10, 13, 400):                              # the walk's own floors: 10 nodes, 20 edges
             for edges in (20, 6000):
-                run = pages(declared, ATOMS, nodes, edges)
+                run = pages(declared, ATOMS, nodes, edges, follow=follow)
                 most = max(most, len(run))
                 got = {node["id"] for answer, _held in run for node in answer["nodes"]}
                 drawn = {edge["id"] for answer, _held in run for edge in answer["edges"]}

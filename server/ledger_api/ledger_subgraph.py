@@ -1101,9 +1101,10 @@ def _held_to_names(kind, starts_here, static_types):
 
 def _group_follow(held, follow, static_follow):
     """The predicates a node reads, by whether it is held to names (`_held_to_names`) - None: every one. THE ONE SEAT
-    the walk's fetch split and the reach of what a walk left unexpanded (`_still_reaches`) both ask."""
+    the walk's fetch split and the reach of what a walk left unexpanded (`_still_reaches`) both ask. An empty `follow` is
+    every one, as the read takes it (the route hands [] when none was asked - 응용 10-12: every type said complete)."""
     if not held:
-        return follow
+        return follow or None
     return sorted(static_follow & set(follow)) if follow else sorted(static_follow)
 
 
