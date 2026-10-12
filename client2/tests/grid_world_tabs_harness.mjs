@@ -236,6 +236,8 @@ async function leftovers(M) {
     reads: reads().filter((u) => u.includes('/tables/dt_log/data?')).length };
   left.atOnce = atOnce;
   left.conflict = await conflicts(M);
+  left.cacheTrip = await cacheTrip(M);
+  left.addedRows = await addedRows(M);
   S.gridApi = gridApi;
   return left;
 }
@@ -277,16 +279,24 @@ async function conflicts(M) {
   stage();
   try { M.ws.handleWebSocketMessage({ event: 'batch_row_upsert', table_name: 'dt_log', items: [serverRow()] }); } catch (e) { /* as above */ }
   out.broadcast = { drawn: cellOf(updated), conflict: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.conflict };
-  // Apply: asked, then each answer.
+  // Apply: asked, then each answer. Apply reads the staged rows again first - the stub answers that read from `server`.
   const sent = [];
+  const reread = [];
+  let server = { R1: 29.7, R2: 4 };
   globalThis.fetch = async (url, init) => {
-    if (init && init.method === 'PUT') sent.push(JSON.parse(init.body).updates);
-    return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
+    if (init && init.method === 'PUT') {
+      sent.push(JSON.parse(init.body).updates);
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ change_count: 1 }) };
+    }
+    const filters = new URL(String(url), 'http://box').searchParams.get('filters');
+    const ids = filters ? JSON.parse(filters).row_id.conditions.map((c) => c.filter) : [];
+    reread.push(ids);
+    const data = ids.filter((id) => id in server).map((id) => ({ row_id: id, updated_at: null, data: { a: { value: server[id] } } }));
+    return { ok: true, status: 200, text: async () => '', json: async () => ({ data, total: null }) };
   };
   const line = document.getElementById('tx-conflict-line');
   const text = document.getElementById('tx-conflict-text');
   stage();
-  S.pendingTxEdits.R1_a.conflict = { server: 29.7, at: null };
   try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
   out.asked = { sent: sent.length, line: line.style.display, text: text.textContent, pending: Object.keys(S.pendingTxEdits).length };
   try { await M.api.applyPendingEdits('mine'); } catch (e) { /* as above */ }
@@ -294,13 +304,122 @@ async function conflicts(M) {
   out.mine = { sent: asSent(sent), pending: Object.keys(S.pendingTxEdits).length, line: line.style.display };
   sent.length = 0;
   stage();
-  S.pendingTxEdits.R1_a.conflict = { server: 29.7, at: null };
   S.pendingTxEdits.R2_a = { rowId: 'R2', colId: 'a', newValue: 5, oldValue: 4, data: null };
   node.data.data.a.value = 28.9;
   try { await M.api.applyPendingEdits('server'); } catch (e) { /* as above */ }
   out.server = { sent: asSent(sent), cell: node.data.data.a.value, pending: Object.keys(S.pendingTxEdits).length };
+  // A change no redraw brought (lead QA 10-12 5): nothing on the edit says so; Apply's own read finds it and asks.
+  // The cached page still holds the value from before: the read puts the server's there too.
+  sent.length = 0; reread.length = 0;
+  stage();
+  S.pageCache = new Map([[0, { data: [{ row_id: 'R1', data: { a: { value: 28.5 } } }], total: 1 }]]);
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  out.unseen = { sent: sent.length, reread: reread.slice(), conflict: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.conflict,
+    cached: S.pageCache.has(0) ? S.pageCache.get(0).data[0].data.a.value : 'cache cleared' };
+  S.pageCache = new Map();
+  // Tx turned off while a cell is conflicted: Apply asks, so Tx comes back on (lead QA 10-12 3).
+  const toggle = document.getElementById('tx-mode-toggle');
+  stage();
+  toggle.checked = false; S.txModeActive = false;
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  out.txBack = { checked: toggle.checked, active: S.txModeActive, sent: sent.length };
+  // Two Keep mine clicks before the first PUT answers: one PUT (lead QA 10-12 4).
+  sent.length = 0;
+  stage();
+  try { await Promise.all([M.api.applyPendingEdits('mine'), M.api.applyPendingEdits('mine')]); } catch (e) { /* as above */ }
+  out.twice = sent.length;
+  // The question's count follows the conflicts, and it goes when they do (lead QA 10-12 6).
+  S.pendingTxEdits = {
+    R1_a: { rowId: 'R1', colId: 'a', newValue: 28.9, oldValue: 28.5, data: null },
+    R2_a: { rowId: 'R2', colId: 'a', newValue: 5, oldValue: 3, data: null } };
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  const said = [text.textContent];
+  M.api.overlayStagedEdits([{ row_id: 'R2', data: { a: { value: 3 } } }]);
+  said.push(text.textContent, line.style.display);
+  M.api.overlayStagedEdits([{ row_id: 'R1', data: { a: { value: 28.5 } } }]);
+  said.push(line.style.display);
+  out.follows = said;
+  // A number spelled as text - a paste or a fill keeps the stored "29.50" - is the same as 29.5 (lead QA 10-12 7).
+  S.pendingTxEdits = { R1_a: { rowId: 'R1', colId: 'a', newValue: 30, oldValue: '29.50', data: null } };
+  M.api.overlayStagedEdits([{ row_id: 'R1', data: { a: { value: 29.5 } } }]);
+  out.spelled = S.pendingTxEdits.R1_a.conflict;
+  // A row deleted: its staged edit goes and the bottom line says so - by a broadcast, and by Apply's read (9).
+  stage();
+  try { M.ws.handleWebSocketMessage({ event: 'batch_row_delete', table_name: 'dt_log', row_ids: ['R1'] }); } catch (e) { /* as above */ }
+  const log = document.getElementById('performance-log');
+  out.deleted = { pending: Object.keys(S.pendingTxEdits).length, said: log.textContent.endsWith(' 1 row removed · 1 staged edit dropped (row deleted)') };
+  sent.length = 0;
+  server = { R2: 4 };
+  stage();
+  try { await M.api.applyPendingEdits(); } catch (e) { /* as above */ }
+  out.goneOnRead = { pending: Object.keys(S.pendingTxEdits).length, sent: sent.length, said: log.textContent === 'Nothing applied · 1 staged edit dropped (row deleted)' };
   globalThis.fetch = keep;
   S.pendingTxEdits = {};
+  return out;
+}
+
+// The page cache and the grid never share a row (lead QA 10-12 1): an edit made through handleCellEdit, a trip to
+// another page and back - no conflict with itself; and a row with nothing staged edited on the page the cache gave back.
+async function cacheTrip(M) {
+  const out = {};
+  const pages = { 0: [{ row_id: 'R1', data: { a: { value: 28.5 } } }, { row_id: 'R2', data: { a: { value: 4 } } }],
+    100: [{ row_id: 'R3', data: { a: { value: 1 } } }] };
+  let drawn = [];
+  reset();
+  S.viewMode = 'pagination';
+  S.gridApi = { ...gridApi, setGridOption: (key, value) => { if (key === 'rowData') drawn = value; },
+    getRowNode: (id) => { const row = drawn.find((r) => r.row_id === id); return row ? { data: row } : null; } };
+  S.currentTable = 'dt_log';
+  S.pendingTxEdits = {};
+  S.txModeActive = true;
+  const keep = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const skip = Number(new URL(String(url), 'http://box').searchParams.get('skip') || 0);
+    const data = JSON.parse(JSON.stringify(pages[skip] || []));
+    return { ok: true, status: 200, text: async () => '', json: async () => (String(url).includes('/data/count') ? { total: 3 } : { data, total: null }) };
+  };
+  const go = async (skip, reset_) => { S.currentSkip = skip; try { await M.api.fetchData(reset_); } catch (e) { /* as above */ } await settle(); };
+  const editCell = async (rowId, newValue) => {
+    const row = drawn.find((r) => r.row_id === rowId);
+    try { await M.api.handleCellEdit({ data: row, colDef: { field: 'a' }, newValue, oldValue: row.data.a.value }); } catch (e) { /* as above */ }
+  };
+  await go(0, true);
+  await editCell('R1', 28.9);
+  await go(100, false);
+  await go(0, false);
+  const r1 = drawn.find((r) => r.row_id === 'R1');
+  out.staged = { drawn: r1 && r1.data.a.value, conflict: S.pendingTxEdits.R1_a && S.pendingTxEdits.R1_a.conflict };
+  await editCell('R2', 5);
+  await go(100, false);
+  await go(0, false);
+  out.again = S.pendingTxEdits.R2_a && S.pendingTxEdits.R2_a.conflict;
+  globalThis.fetch = keep;
+  S.pendingTxEdits = {};
+  S.txModeActive = false;
+  S.gridApi = gridApi;
+  return out;
+}
+
+// A broadcast of a staged row the grid does not hold (it is on another page): added at the staged value, with its
+// conflict - both ways a broadcast adds rows (lead QA 10-12 2).
+async function addedRows(M) {
+  const out = {};
+  let added = null;
+  reset();
+  S.gridApi = { ...gridApi, getRowNode: () => null, flashCells() {},
+    applyTransaction: (tx) => { added = tx.add || null; return { update: tx.update || [], add: tx.add || [] }; } };
+  S.currentTable = 'dt_log';
+  const stage = () => { S.pendingTxEdits = { R1_a: { rowId: 'R1', colId: 'a', newValue: 28.9, oldValue: 28.5, data: null } }; };
+  const item = () => ({ row_id: 'R1', updated_at: '2026-10-12 12:00:00', data: { a: { value: 29.7 } } });
+  const look = () => ({ drawn: added && added[0] ? added[0].data.a.value : null, conflict: S.pendingTxEdits.R1_a.conflict });
+  stage();
+  try { M.ws.handleWebSocketMessage({ event: 'batch_row_upsert', table_name: 'dt_log', items: [item()] }); } catch (e) { /* as above */ }
+  out.upsert = look();
+  stage(); added = null;
+  try { M.ws.handleWebSocketMessage({ event: 'batch_row_create', table_name: 'dt_log', items: [item()] }); } catch (e) { /* as above */ }
+  out.create = look();
+  S.pendingTxEdits = {};
+  S.gridApi = gridApi;
   return out;
 }
 
@@ -380,12 +499,33 @@ function suite(out, sent) {
     [{ sent: 0, line: '', text: '1 cell changed on the server since you edited', pending: 1 },
       { sent: [[{ row_id: 'R1', updates: { a: 28.9 } }]], pending: 0, line: 'none' },
       { sent: [[{ row_id: 'R2', updates: { a: 5 } }]], cell: 29.7, pending: 0 }]);
+  const both = (re) => ['api.js', 'timeline.js'].map((f) => (readFileSync(join(SRC, f), 'utf8').match(re) || []).length);
+  eq('W18 an edit, another page and back: no conflict with itself; a row the cache gave back, edited and left: none either; '
+    + 'census - every cache write and cache read in api and timeline passes copyRows',
+    [out.left.cacheTrip, both(/pageCache\.set\(/g), both(/pageCache\.set\(state\.currentSkip, \{ data: copyRows\(/g),
+      both(/overlayStagedEdits\(cached\.data\)/g), both(/overlayStagedEdits\(copyRows\(cached\.data\)\)/g)],
+    [{ staged: { drawn: 28.9, conflict: null }, again: null }, [1, 1], [1, 1], [0, 0], [1, 1]]);
+  eq('W19 a broadcast of a staged row the grid does not hold adds it at the staged value, with its conflict - upsert and create',
+    out.left.addedRows, { upsert: { drawn: 28.9, conflict: { server: 29.7, at: '2026-10-12 12:00:00' } },
+      create: { drawn: 28.9, conflict: { server: 29.7, at: '2026-10-12 12:00:00' } } });
+  eq('W20 Tx turned off while a cell is conflicted: Apply asks and Tx comes back on', out.left.conflict.txBack,
+    { checked: true, active: true, sent: 0 });
+  eq('W21 two Keep mine clicks before the first answers send one PUT', out.left.conflict.twice, 1);
+  eq('W22 a change no redraw brought: Apply reads the staged rows again first, finds it, asks and sends nothing; '
+    + 'the cached page takes the server\'s value too',
+    out.left.conflict.unseen, { sent: 0, reread: [['R1']], conflict: { server: 29.7, at: null }, cached: 29.7 });
+  eq('W23 the question\'s count follows the conflicts and it goes when they do',
+    out.left.conflict.follows, ['2 cells changed on the server since you edited', '1 cell changed on the server since you edited', '', 'none']);
+  eq('W24 a number spelled as text is the same number - "29.50" and 29.5 are no conflict', out.left.conflict.spelled, null);
+  eq('W25 a deleted row\'s staged edit is dropped and the bottom line says so - a broadcast delete, and a row Apply\'s read no longer finds',
+    [out.left.conflict.deleted, out.left.conflict.goneOnRead],
+    [{ pending: 0, said: true }, { pending: 0, sent: 0, said: true }]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
     out.left.atOnce, { value: 28, is_overwrite: false, priority_source: null });
-  eq('W9 census: the grid\'s reads of the open table go through the seat - api 3 (schema, data, count), main 3 '
-    + '(load all twice, export), timeline 1 (row jump), value_suggest 1 (column values)',
+  eq('W9 census: the grid\'s reads of the open table go through the seat - api 4 (schema, data, count, Apply\'s read of the '
+    + 'staged rows), main 3 (load all twice, export), timeline 1 (row jump), value_suggest 1 (column values)',
     { api: callsIn('api.js'), main: callsIn('main.js'), timeline: callsIn('timeline.js'), suggest: callsIn('value_suggest.js') },
-    { api: 3, main: 3, timeline: 1, suggest: 1 });
+    { api: 4, main: 3, timeline: 1, suggest: 1 });
   return { ran: names.length, names, failures };
 }
 
@@ -436,7 +576,31 @@ const MUTANTS = [
   { id: 'G17', what: 'a broadcast draws the server value over a staged cell - the code before', catches: 'W15', file: 'websocket.js',
     mutate: (t) => swap(t, '        update: overlayStagedEdits(updatedRows),', '        update: updatedRows,') },
   { id: 'G18', what: 'Apply sends a conflicted cell unasked - the code before', catches: 'W16', file: 'api.js',
-    mutate: (t) => swap(t, '  if (conflicted.length && !choice) { sayConflicts(conflicted.length); return; }\n', '') },
+    mutate: (t) => swap(t, '  if (conflicted.length && !choice) {\n', '  if (false) {\n') },
+  { id: 'G22', what: 'the cache keeps the rows the grid draws - the code before', catches: 'W18', file: 'api.js',
+    mutate: (t) => swap(t, '{ data: copyRows(result.data), total: result.total }', '{ data: result.data, total: result.total }') },
+  { id: 'G23', what: 'a page from the cache hands the grid the cache\'s own rows', catches: 'W18', file: 'api.js',
+    mutate: (t) => swap(t, 'overlayStagedEdits(copyRows(cached.data))', 'overlayStagedEdits(cached.data)') },
+  { id: 'G24', what: 'a broadcast adds a row the grid does not hold round the overlay - the code before', catches: 'W19', file: 'websocket.js',
+    mutate: (t) => swap(t, '        add: overlayStagedEdits(addedRows)\n', '        add: addedRows\n') },
+  { id: 'G25', what: 'a create broadcast adds its rows round the overlay - the code before', catches: 'W19', file: 'websocket.js',
+    mutate: (t) => swap(t, 'applyTransaction({ add: overlayStagedEdits(normalizedItems) })', 'applyTransaction({ add: normalizedItems })') },
+  { id: 'G26', what: 'asking leaves Tx off', catches: 'W20', file: 'api.js',
+    mutate: (t) => swap(t, '    if (elements.txModeToggle) elements.txModeToggle.checked = true;\n    state.txModeActive = true;\n', '') },
+  { id: 'G27', what: 'a second Apply runs beside the first', catches: 'W21', file: 'api.js',
+    mutate: (t) => swap(t, '  if (applying) return;\n', '') },
+  { id: 'G28', what: 'Apply reads nothing again - only a redraw finds a conflict (the code before)', catches: 'W22', file: 'api.js',
+    mutate: (t) => swap(t, '    dropped = await rereadStagedRows();\n', '') },
+  { id: 'G33', what: 'Apply\'s read leaves the cached pages stale (18766: a false conflict after another page and back)', catches: 'W22', file: 'api.js',
+    mutate: (t) => swap(t, '    cached.data = cached.data.map((row) => (fresh.has(row.row_id) ? copyRow(fresh.get(row.row_id)) : row));\n', '') },
+  { id: 'G29', what: 'the question keeps the count it was asked with', catches: 'W23', file: 'api.js',
+    mutate: (t) => swap(t, '  if (askingConflicts) sayConflicts(conflictedEdits().length);\n  return out;', '  return out;') },
+  { id: 'G30', what: 'numbers compared by spelling - the code before', catches: 'W24', file: 'api.js',
+    mutate: (t) => swap(t, '  if (Number.isFinite(x) && Number.isFinite(y)) return x === y;\n', '') },
+  { id: 'G31', what: 'a broadcast delete leaves the row\'s staged edit - the code before', catches: 'W25', file: 'websocket.js',
+    mutate: (t) => swap(t, '${droppedText(dropStagedEditsOf(rowIds))}', '') },
+  { id: 'G32', what: 'a row Apply\'s read no longer finds keeps its edit', catches: 'W25', file: 'api.js',
+    mutate: (t) => swap(t, '  return dropStagedEditsOf(ids.filter((id) => !found.has(id)));', '  return 0;') },
   { id: 'G19', what: 'Take server still sends the conflicted cell', catches: 'W16', file: 'api.js',
     mutate: (t) => swap(t, '      delete state.pendingTxEdits[`${edit.rowId}_${edit.colId}`];\n', '') },
   { id: 'G20', what: 'the server value compared with the staged one, not the one the edit was made over', catches: 'W14', file: 'api.js',

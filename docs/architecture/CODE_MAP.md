@@ -4849,7 +4849,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 > 🆕⑪ ⚠️ **[2026-08-23] 이 절의 라인 앵커는 이 패스가 재측정하지 않았다.** 이 구간에 `d21fd821`(감사 필터 스트립 배선)·`c3b248fa`·`db5feac3`·`ce68f849`가 이 파일을 건드렸으므로 **아래 `~NNNN` 값은 밀렸다고 가정하라** — 위치는 `git grep -n "<심볼>" -- client2/src/main.js`로 확정하라.
 - 진입 `init()`(**~77**, `initTraceEntry()` 호출 포함 · **~112**에서 `registerSmartPasteHandler(smartPasteFromPasteEvent)`) → `setupEventListeners()`(**~120**, 거대 — 툴바·모달·키보드 전체 배선), `setupDragAndDrop()`(**~1083**).
 - 셀 범위 `getSelectedCells()`(**~1168**), 소스 모달 `openSourcesModal/refreshSourcesList`(**~1215/1240**).
-- 트랜잭션 모드 커밋/롤백 `applyPendingTxEdits()`/`discardPendingTxEdits()`(**~1917/1997**).
+- 트랜잭션 모드: ⚰️ ~~`applyPendingTxEdits()`/`discardPendingTxEdits()`~~ 는 «없다»(10-12) — 몸은 `api.js` 의 `applyPendingEdits(choice)` · `discardPendingEdits()` 로 갔고, 여기는 토글 · Apply · Discard · Keep mine · Take server 단추를 그 둘에 잇는 배선뿐이다.
 - export 없음(엔트리) — 다른 모듈을 소비만 한다.
 - 🆕 **[`c3a5239`] 스마트 페이스트 — 「버튼이 클립보드를 읽을 수 없다」는 물리적 제약 위에 다시 지었다**(사유 블록 **~1489–1506**).
   - 🔴 **프로덕션은 평문 HTTP = 비보안 컨텍스트라 `navigator.clipboard`가 `undefined`다.** 클립보드로 가는 문은 **네이티브 `paste` 이벤트의 `e.clipboardData` 하나뿐**이고, 버튼 클릭은 그것을 만들어내지 못한다(`document.execCommand('paste')`는 웹 콘텐츠에서 차단). 즉 **종전 버튼 경로는 이 배포에서 한 번도 동작한 적이 없다.**
@@ -4880,6 +4880,12 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 > - ⚠️ **`collide` 이름은 저장 컬럼이라 앞 루프가 이미 제안했다** — 그대로 덧붙이면 **같은 쿼리를 만드는 동일 옵션이 둘** 생기므로, 알림을 이미 제안한 것과 **차집합**해서 붙인다.
 - export **8종**: `checkServerHealth`(~14) · `loadTables`(~31) · `switchTable`(~59, 말미에 `refreshTraceEntry()` fire-and-forget) · **`loadSchema`(~102 — 🆕 `virtual_columns`·`join_resolved_columns`를 `state`에 싣는 지점)** · `fetchData(resetSkip)`(**~156**, 메인 조회+세션가드) · `handleCellEdit(event)`(**~249**, 셀 편집→PUT updates) · `addRows`(**~402**) · `deleteSelectedRows`(**~421** — 🆕 a0ae05b60 기다림이 «보인다»: 버튼은 `setDisabledReason` 으로 꺼지고 상태줄이 초를 센다 · 진행 중 표지 `state.isDeletingRows`(우클릭 메뉴도 같은 깔때기라 두 번째 요청을 막는다) · 답이 오면 그리드에 남은 행만 뺀다 · 거절은 `refusalText` + 「reload the table to see which rows remain」).
 - 소비 API: `/tables*`, `/tables/{t}/data`, `/schema`, PUT `/data/updates`, POST `rows`, `batch_delete`.
+- 🆕 **[10-12 모아 둔 편집 충돌 가드 + 총괄 적대 QA]**
+  - **`overlayStagedEdits(rows)`** — 서버 행이 그리드에 닿는 자리가 «전부» 이 하나를 지난다: 읽기 · 캐시 쪽 · 방송 update/add · create · 행 점프 둘(`timeline.js`) · Load all(`main.js`) · Apply 의 다시 읽기. 모아 둔 칸은 모아 둔 값으로 그리고, 서버 값이 편집 전 값과 다르면 `edit.conflict = { server, at }`. 견주기는 `sameCellValue` — 빈 값끼리 · 숫자 모양은 숫자로 · 그 밖은 글로.
+  - **`applyPendingEdits(choice)`** — 보내기 «전»에 모아 둔 행을 `GET /tables/{t}/data?filters={row_id: OR equals}` 로 50 개씩 다시 읽어 위 함수에 통과시킨다. 충돌이면 묻고(`choice` 없음), `'mine'` 은 보내고 `'server'` 는 그 칸을 버린다. 도는 동안 두 번째 부름은 돌아간다.
+  - **`discardPendingEdits()`** — 편집 전 값을 그 자리에서 되돌리고(두 반쪽, C-22) 다시 읽는다(`rereadGrid()`).
+  - **`copyRow` · `copyRows`** — 쪽 캐시는 서버 행을 복사본으로 지닌다. 넣을 때 · 꺼낼 때(`api.js` · `timeline.js`) · 방송 반영(`ui.updatePageCacheOnUpsert`) 모두.
+  - **`dropStagedEditsOf(rowIds)` · `droppedText(n)`** — 지운 행의 모아 둔 편집을 버리고 바닥줄 글을 붙인다. 부르는 곳: 여기의 행 지우기 · 방송 `batch_row_delete` · Apply 의 다시 읽기.
 - 🔴 **[F3 `d5f75a8`] `loadSchema`가 첫 줄에서 `resetSuggestLearning()`을 부른다(**~110**)** — `import { resetSuggestLearning } from './value_suggest.js'`(~10). 이유가 배선의 전부다: 제안 모듈이 붙드는 부정 사실(비대상 컬럼·프리픽스 바닥·불가 쿨다운)은 **서버의 거절**에서 배웠고 그 거절은 `table_config`에서 나오는데, **`table_config`는 핫리로드**다. `/schema` 재조회는 클라가 그 선언을 다시 읽는 **유일한 신호 지점**이므로, 여기서 비우지 않으면 새로 제안 대상이 된 컬럼이 이미 열린 탭에서 `LEARNED_TTL_MS`(60초) 동안 죽어 있다. 래치들은 시간으로도 만료되지만 **이 호출이 신호가 있는 경로에서 즉시 반영시킨다**([§7 `value_suggest.js`](#7-client2src--웹-클라이언트)).
 
 ### `grid.js` (🆕⑰ **1,304줄** @`64b562b6` — 🆕⑯ 1,144 @`9eb30691`, 🆕⑪ 1,142 @`b3e1ec83`, 구 표기 871) — AG-Grid 구성
@@ -4897,6 +4903,8 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
   - `import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js'`(~15).
   - **`buildColumnDefs` 안에서 `colDef.cellEditor = SuggestCellEditor`(~323)** — **`string` 컬럼에만, 시스템 컬럼 제외**. 범위가 좁은 것이 의도다: `number`는 `agNumberCellEditor`가 나르는 숫자 검증을 이 그리드의 `valueSetter`가 의존하고, `datetime`은 엔드포인트 자신이 거부한다. 서버는 숫자 프리픽스를 **지원하므로**(`_numeric_values`) 넓히는 것은 이 술어 한 줄의 변경이지만 에디터 안에 숫자 검증을 다시 구현하는 별도 라운드다.
   - 🔴 **`renderGrid`의 `defaultColDef.suppressKeyboardEvent`(~389) 안, 다른 어떤 분기보다 먼저**(~402): `if (params.editing && isSuggestEditorActive())` → `handleEditorKey(event)`의 3값 판정을 그대로 옮긴다 — `'suppress'`면 `true`(리스트가 키를 먹었다), **`'accepted'`면 `false`**(="이 이벤트가 커밋하게 두라"), `'pass'`면 아래 기존 분기로 낙하. **`false`를 돌려주는 것이 포기가 아니라 커밋이다**: AG-Grid의 `processCellKeyboardEvent`가 `suppressKeyboardEvent`를 `cellCtrl.onKeyDown`**보다 먼저** 보고, `onKeyDown`의 Enter 분기가 `stopEditing` → `cellEditor.getValue()`를 부른다. 그래서 후보는 **같은 이벤트 디스패치가 커밋하는 시점에 이미 input 안에 있다** — 수락과 커밋이 한 번의 Enter이고, 그 순서는 타이머도 마이크로태스크도 아닌 **프레임워크 자신의 시퀀스**가 보장한다.
+
+- 🆕 **[10-12]** **`dropGridFilters()`** — 표를 바꿀 때 그리드 필터를 비운다. AG Grid 는 필터 바뀜을 타이머 «뒤에» 알리므로, 그 `filterChanged` 하나를 기다려 받아 넘긴다(상한 1 s). 그래서 표의 읽기는 새 칸이 온 뒤 한 번이다. **`gridFilterChanged()`** — `gridOptions.onFilterChanged` 가 부르는 하나: 받아 넘길 것이 있으면 넘기고, 아니면 읽기(`fetchData(true)`) + 필터 칩.
 
 ### `value_suggest.js` (**1,003줄**, `77a2c15`+`847ceaf`+`e14b1d0`+`d5f75a8` 신설) — **F3 값 제안의 클라 절반**
 

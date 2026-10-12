@@ -5,7 +5,7 @@ import {
 import { state } from './state.js';
 import { unitText } from './ui_words.js';
 import { elements } from './dom.js';
-import { checkServerHealth, loadTables, fetchData, overlayStagedEdits } from './api.js';
+import { checkServerHealth, loadTables, fetchData, overlayStagedEdits, dropStagedEditsOf, droppedText } from './api.js';
 import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress,
          finishRetroactiveProgress, showToast, getLocalTimeString } from './utils.js';
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
@@ -446,7 +446,7 @@ export function handleWebSocketMessage(msg) {
         created_at: item.created_at || nowStr,
         updated_at: item.updated_at || nowStr
       }));
-      state.gridApi.applyTransaction({ add: normalizedItems });
+      state.gridApi.applyTransaction({ add: overlayStagedEdits(normalizedItems) });
       state.gridApi.refreshCells({ force: true });
       updateGridSortState();
       updateLoadedCount();
@@ -503,7 +503,7 @@ export function handleWebSocketMessage(msg) {
       // A staged cell keeps its staged value and learns the server's (lead 10-12) - the one overlay every read passes.
       const res = state.gridApi.applyTransaction({
         update: overlayStagedEdits(updatedRows),
-        add: addedRows
+        add: overlayStagedEdits(addedRows)
       });
       console.log('[WebSocket Sync] applyTransaction output result:', {
         updatedCount: res.update?.length || 0,
@@ -543,7 +543,7 @@ export function handleWebSocketMessage(msg) {
     state.gridApi.applyTransaction({ remove: deleteTx });
 
     updateLoadedCount();
-    elements.performanceLog.textContent = `🗑️ Real-time deleted: ${unitText(rowIds.length, 'row')} removed`;
+    elements.performanceLog.textContent = `🗑️ Real-time deleted: ${unitText(rowIds.length, 'row')} removed${droppedText(dropStagedEditsOf(rowIds))}`;
 
     if (state.selectedCell && rowIds.includes(state.selectedCell.rowId)) {
       state.selectedCell = null;

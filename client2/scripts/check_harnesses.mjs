@@ -1403,7 +1403,10 @@ const FLOORS = new Map([
   // 29 -> 39: a staged edit under a server change (lead c97239697) - W14 a read, W15 a broadcast draw the staged value
   //    and its conflict, W16 Apply asks (Keep mine / Take server); W17 the filter drop takes AG Grid's late
   //    filterChanged (lead 80172956e); G16-G21.
-  ['grid_world_tabs_harness.mjs', 39],
+  // 39 -> 59: the lead's QA of it (10-12) - W18 the cache and the grid share no row, W19 a broadcast adding a staged row,
+  //    W20 asking turns Tx back on, W21 one PUT for two clicks, W22 Apply reads the staged rows again (and the cache
+  //    takes them), W23 the question's count follows, W24 numbers by value, W25 a deleted row's edit dropped; G22-G33.
+  ['grid_world_tabs_harness.mjs', 59],
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)

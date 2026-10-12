@@ -453,7 +453,7 @@ export async function fetchData(resetSkip = true) {
   } else {
     if (state.viewMode !== 'infinite' && state.pageCache.has(state.currentSkip)) {
       const cached = state.pageCache.get(state.currentSkip);
-      state.gridApi.setGridOption('rowData', overlayStagedEdits(cached.data));
+      state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
       updateGridSortState();
       updateLoadedCount(cached.data.length);
       setMatchCount(elements.totalRowsCount, cached.total);
@@ -527,7 +527,7 @@ export async function fetchData(resetSkip = true) {
 
     // Save to Cache
     if (state.viewMode !== 'infinite') {
-      state.pageCache.set(state.currentSkip, { data: result.data, total: result.total });
+      state.pageCache.set(state.currentSkip, { data: copyRows(result.data), total: result.total });
     }
 
     state.isLoadingMore = false;
@@ -540,8 +540,24 @@ export async function fetchData(resetSkip = true) {
   }
 }
 
-/** The same value on both sides - blank alike (absent.js isBlank) or the same spelling (28.5 and "28.5"). */
-const sameCellValue = (a, b) => (isBlank(a) && isBlank(b)) || String(a) === String(b);
+/** A cell value as a number when it is one or is spelled as one ("29.50"), else NaN. */
+const asNumber = (v) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
+
+/** The same value on both sides - blank alike (absent.js isBlank), the same number however spelled (29.5, "29.50" -
+ *  an edit keeps a number cell's old value as a number, a paste or a fill as the stored text; lead QA 10-12), or the
+ *  same text. */
+function sameCellValue(a, b) {
+  if (isBlank(a) || isBlank(b)) return isBlank(a) && isBlank(b);
+  const x = asNumber(a), y = asNumber(b);
+  if (Number.isFinite(x) && Number.isFinite(y)) return x === y;
+  return String(a) === String(b);
+}
+
+/** A row with its own cell objects. The page cache keeps the server's rows and the grid edits its own in place, so
+ *  the two never share one (lead QA 10-12: an edit written into the cached row came back as a conflict with itself). */
+export const copyRow = (row) => (row && row.data ? { ...row, data: Object.fromEntries(Object.entries(row.data)
+  .map(([col, cell]) => [col, cell && typeof cell === 'object' ? { ...cell } : cell])) } : row);
+export const copyRows = (rows) => rows.map(copyRow);
 
 /** Rows from the server as the grid draws them while edits are staged on them (lead 10-12): a staged cell shows its
  *  staged value, and an edit whose cell the server no longer holds at the value it was made over says so -
@@ -553,26 +569,45 @@ export function overlayStagedEdits(rows) {
   if (!staged.length || !Array.isArray(rows)) return rows;
   const byRow = new Map();
   for (const edit of staged) byRow.set(edit.rowId, [...(byRow.get(edit.rowId) || []), edit]);
-  return rows.map((row) => {
+  const out = rows.map((row) => {
     const edits = row && byRow.get(row.row_id);
     if (!edits) return row;
     const data = { ...row.data };
     for (const edit of edits) {
       const cell = data[edit.colId];
-      // A broadcast carries the columns it changed; one it does not carry says nothing about this edit.
+      // A row without this column (a broadcast item may carry fewer) says nothing about this edit.
       if (!cell) continue;
       edit.conflict = sameCellValue(cell.value, edit.oldValue) ? null : { server: cell.value, at: row.updated_at || null };
       data[edit.colId] = { ...cell, value: edit.newValue };
     }
     return { ...row, data };
   });
+  if (askingConflicts) sayConflicts(conflictedEdits().length);
+  return out;
 }
+
+/** The staged edits of rows that are gone (deleted here, by a broadcast, or missing from Apply's read) are dropped -
+ *  Apply would send them to no row (lead QA 10-12). Returns how many; `droppedText` is the bottom line's words. */
+export function dropStagedEditsOf(rowIds) {
+  const gone = new Set(rowIds);
+  const keys = Object.keys(state.pendingTxEdits).filter((key) => gone.has(state.pendingTxEdits[key].rowId));
+  for (const key of keys) delete state.pendingTxEdits[key];
+  if (keys.length) {
+    updateTxModeUI();
+    if (askingConflicts) sayConflicts(conflictedEdits().length);
+  }
+  return keys.length;
+}
+export const droppedText = (count) => (count ? ` · ${unitText(count, 'staged edit')} dropped (row deleted)` : '');
 
 /** Staged edits whose cell changed on the server since they were made. */
 export const conflictedEdits = () => Object.values(state.pendingTxEdits).filter((edit) => edit.conflict);
 
-/** The in-screen question Apply asks before sending a conflicted cell (lead 10-12 - not a confirm()). */
+/** The in-screen question Apply asks before sending a conflicted cell (lead 10-12 - not a confirm()). While it is up
+ *  its count follows the conflicts, and it goes when they do (lead QA 10-12). */
+let askingConflicts = false;
 function sayConflicts(count) {
+  askingConflicts = count > 0;
   const line = elements.txConflictLine;
   if (!line) return;
   line.style.display = count > 0 ? '' : 'none';
@@ -581,12 +616,70 @@ function sayConflicts(count) {
   }
 }
 
+/** The staged rows read again from the server, through the overlay, so a change no redraw brought (a refresh notice,
+ *  an ingest's end, a dropped socket) is caught before Apply sends (lead QA 10-12). Rows the read no longer finds lose
+ *  their edits. One read per REREAD_CHUNK rows - the ids ride in the url. Returns how many edits were dropped. */
+const REREAD_CHUNK = 50;
+async function rereadStagedRows() {
+  const ids = [...new Set(Object.values(state.pendingTxEdits).map((edit) => edit.rowId))];
+  const rows = [];
+  for (let i = 0; i < ids.length; i += REREAD_CHUNK) {
+    const part = ids.slice(i, i + REREAD_CHUNK);
+    const filters = JSON.stringify({ row_id: { operator: 'OR', conditions: part.map((id) => ({ type: 'equals', filter: id })) } });
+    const res = await gridFetch(`${API_BASE}/tables/${state.currentTable}/data?skip=0&limit=${part.length}`
+      + `&defer_total=true&filters=${encodeURIComponent(filters)}`);
+    if (!res.ok) throw new Error(await refusalText(res, 'The staged rows could not be read again'));
+    rows.push(...(await res.json()).data);
+  }
+  const onGrid = overlayStagedEdits(rows).filter((row) => state.gridApi.getRowNode(row.row_id));
+  if (onGrid.length) state.gridApi.applyTransaction({ update: onGrid });
+  // The cached pages take the server's rows too - a page drawn from a stale cache would claim a conflict with a value
+  // already gone (18766: a silent write, Take server, another page and back -> «conflict» with the old value).
+  const fresh = new Map(rows.map((row) => [row.row_id, row]));
+  for (const cached of state.pageCache.values()) {
+    cached.data = cached.data.map((row) => (fresh.has(row.row_id) ? copyRow(fresh.get(row.row_id)) : row));
+  }
+  const found = new Set(fresh.keys());
+  return dropStagedEditsOf(ids.filter((id) => !found.has(id)));
+}
+
 /** Apply the staged edits. Conflicted cells are not sent unasked: without `choice` Apply stops and asks; 'mine' sends
  *  them, 'server' drops them and draws the server's value - the cells without a conflict go as they always did. */
+let applying = false;
 export async function applyPendingEdits(choice = null) {
+  // A second click while the first Apply is on the wire would send the same edits twice (lead QA 10-12).
+  if (applying) return;
+  applying = true;
+  try {
+    await applyStaged(choice);
+  } finally {
+    applying = false;
+  }
+}
+
+async function applyStaged(choice) {
   if (Object.keys(state.pendingTxEdits).length === 0) { sayConflicts(0); return; }
+  let dropped = 0;
+  try {
+    dropped = await rereadStagedRows();
+  } catch (err) {
+    elements.performanceLog.textContent = `Apply stopped: ${err.message}`;
+    return;
+  }
+  if (Object.keys(state.pendingTxEdits).length === 0) {
+    sayConflicts(0);
+    elements.performanceLog.textContent = `Nothing applied${droppedText(dropped)}`;
+    return;
+  }
   const conflicted = conflictedEdits();
-  if (conflicted.length && !choice) { sayConflicts(conflicted.length); return; }
+  if (conflicted.length && !choice) {
+    // Tx off with a conflict asks too - Tx comes back on, since the edits are still staged (lead QA 10-12).
+    if (elements.txModeToggle) elements.txModeToggle.checked = true;
+    state.txModeActive = true;
+    updateTxModeUI();
+    sayConflicts(conflicted.length);
+    return;
+  }
   sayConflicts(0);
   if (choice === 'server') {
     for (const edit of conflicted) {
@@ -663,7 +756,7 @@ export async function applyPendingEdits(choice = null) {
       updateGridSortState();
       state.gridApi.refreshCells({ force: true });
 
-      elements.performanceLog.textContent = `Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)`;
+      elements.performanceLog.textContent = `Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)${droppedText(dropped)}`;
     } else {
       const errData = await res.json().catch(() => ({}));
       const errMsg = errData.detail || 'Save failed';
@@ -949,7 +1042,7 @@ export async function deleteSelectedRows() {
       const left = rowIds.filter((rowId) => state.gridApi.getRowNode(rowId));
       if (left.length) state.gridApi.applyTransaction({ remove: left.map((rowId) => ({ row_id: rowId })) });
       updateLoadedCount();
-      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} · ${seconds()} s`;
+      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} · ${seconds()} s${droppedText(dropStagedEditsOf(rowIds))}`;
     } else {
       refused = await refusalText(res, 'Delete failed');
     }
