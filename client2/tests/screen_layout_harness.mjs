@@ -318,7 +318,7 @@ const WALK_LOOK = [
   if (!page) return 'no walk page';
   const head = page.querySelector('.wk-mainhead');
   const bar = page.querySelector('.wk-secbar');
-  const table = page.querySelector('.wk-sec > .wk-table');
+  const table = page.querySelector('.wk-sec > .wk-tablebox > .wk-table');
   if (!head || !bar || !table) return 'no head, toolbar or table drawn';
   const xs = [head, bar, table].map((e) => Math.round(e.getBoundingClientRect().left));
   return Math.max(...xs) - Math.min(...xs) > 1 ? 'the head, a toolbar and its table start at ' + xs.join(' · ') + ' px' : null;
@@ -1060,13 +1060,13 @@ const MUTANTS = [
     file: 'src/walk/styles.js', edits: [['gap: var(--space-1); max-height: var(--space-5); }', 'gap: var(--space-1); }']] },
   { name: 'the result boxed again, off the head\'s left edge', entry: 'walk.html', rule: 'S5 one left edge', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-result { display: flex; flex-direction: column; gap: var(--space-2); }', '.wk-result { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); }']] },
-  { name: 'a group head cut short', entry: 'walk.html', rule: 'S6 no clipped letters', at: 'wk-page',
-    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small); }', '.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small); max-width: 3ch; overflow: hidden; }']] },
+  // ⚰️ «a group head cut short» retired 10-12: the walk table is fixed-width and data-clip-ok (owner 10-12 「폭이 꿀렁꿀렁」),
+  //    a head two lines each cut whole in its title (owner 10-12 «m..») - S6 skips it by design; its anchor had gone too.
   // The walk page's spacing, heights and type (lead 18da45b73), built back.
   { name: 'the parts of a section stacked with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2);', '.wk-sec { display: flex; flex-direction: column; gap: 0;']] },
-  { name: 'a route row\'s two lines with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
-    file: 'src/walk/styles.js', edits: [['grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3);', 'grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--space-3);']] },
+  // ⚰️ «a route row's two lines with no gap» retired 10-12: the route rows live in «through»'s route finder, which no
+  //    drive step opens any more - the rule had nothing to read (lead: a drive step for it is a question, not done).
   { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: 5px 8px; text-align: left; vertical-align: top; }']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
@@ -1076,7 +1076,8 @@ const MUTANTS = [
   // ⚰️ «the table drawn without its axis in the middle» retired 10-11 with the mirrored sides (lead W): the node is first,
   //    the first column's + · Δ · − beside it - its − cell in view is still asked (− side in view).
   { name: 'the first column\'s − cell pushed past the table\'s view', entry: 'walk.html', rule: '− side in view', at: 'wk-sides',
-    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }', '.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }\n.wk-wide th.wk-sidehead.wk-plus { min-width: 1600px; }']] },
+    // The table is fixed-width (owner 10-12): a head's min-width moves nothing - the columns' own widths push it.
+    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }', '.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }\n.wk-sides col.wk-col-value { width: 1600px !important; }']] },
 ];
 async function buildMutant(m) {
   const { build } = await import('vite');
@@ -1084,6 +1085,8 @@ async function buildMutant(m) {
   const target = path.join(CLIENT, m.file).replace(/\\/g, '/');
   const hits = new Map(m.edits.map(([a]) => [a, 0]));
   const swap = (code) => {
+    // The anchors are written with \n; a checkout with core.autocrlf holds \r\n (10-12: every mutant past the first unrun).
+    code = code.replace(/\r\n/g, '\n');
     for (const [a, b] of m.edits) if (code.includes(a)) { hits.set(a, hits.get(a) + 1); code = code.split(a).join(b); }
     return code;
   };

@@ -289,9 +289,9 @@ function suite(out) {
   eq('T23 the page: the 50-node dropdown is gone', out.noDropdown, false);
   eq('T25 the ledger holds none of the letters typed: only letter for letter (another case is another node), only from '
     + 'a whole answer - a cut one, or letters it was not asked, cannot say', out.holdsNone, [true, false, false, false]);
-  eq('T26 the page: a key typed that no listed node is letter for letter - beside each + Add «0 atoms · not in the ledger», '
+  eq('T26 the page: a key typed that no listed node is letter for letter - «0 atoms · not in the ledger» once under + Add, '
     + '+ Add still on; typed as the node is, nothing said (lead b5cdcbc75)', out.unheld,
-    [['0 atoms · not in the ledger', '0 atoms · not in the ledger'], true, []]);
+    [['0 atoms · not in the ledger'], true, []]);
   return { ran: names.length, names, failures };
 }
 
