@@ -304,9 +304,10 @@ def test_the_record_says_which_os_account_ran_it(retro_env, monkeypatch):
     assert _row(retro_env).requested_by is None
 
 
-def test_the_withdrawal_fold_previews_then_folds_as_a_run(retro_env, capsys):
+def test_the_withdrawal_fold_previews_then_folds_as_a_run(retro_env, capsys, doubling_pages):
     """총괄 eddf9e38e ②: `chain_replay_cli.py fold-withdraw-events` - the preview's sentence, then
-    `--apply` through the run record; three per-row withdrawal events become one."""
+    `--apply` through the run record; three per-row withdrawal events become two - pages of 1 and 2
+    (총괄 2ea5ee2a7 ③)."""
     import os
     import sys
     import uuid
@@ -337,13 +338,13 @@ def test_the_withdrawal_fold_previews_then_folds_as_a_run(retro_env, capsys):
 
     assert chain_replay_cli.main(["fold-withdraw-events"]) == 0
     said = capsys.readouterr().out
-    assert "'retro_test_target' 3 event(s) -> 1 - 3 row(s)." in said and said.rstrip().endswith(
+    assert "'retro_test_target' 3 event(s) -> 2 - 3 row(s)." in said and said.rstrip().endswith(
         "-> add --apply to fold"), said
     assert len(withdrawal_events()) == 3
     assert chain_replay_cli.main(["fold-withdraw-events", "--apply"]) == 0
     said = capsys.readouterr().out
-    assert "fold-withdraw-events: 'retro_test_target' 3 event(s) -> 1 - 3 row(s)." in said, said
-    assert [len(p.get("row_ids") or ()) for p in withdrawal_events()] == [3]
+    assert "fold-withdraw-events: 'retro_test_target' 3 event(s) -> 2 - 3 row(s)." in said, said
+    assert [len(p.get("row_ids") or ()) for p in withdrawal_events()] == [1, 2]
     assert retro_env.query(models.RetroactiveRun).filter(
         models.RetroactiveRun.op == "fold_withdrawal_events").one().state == retroactive.RUN_DONE
 

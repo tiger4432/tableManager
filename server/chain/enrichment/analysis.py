@@ -197,10 +197,20 @@ def _queue_condition(table_model, rule: dict, resolved: bool = False,
 
 def iter_derived_rows(db, rule: dict, resolved: bool = False, limit: int = None,
                       extra_columns: list = None, scope: str = SCOPE_KEYED):
-    """Yield derived rows matching the queue predicate (or its complement).
+    """Yield derived rows matching the queue predicate (or its complement), one at a time
+    (`derived_pages`)."""
+    for page in derived_pages(db, rule, resolved=resolved, limit=limit,
+                              extra_columns=extra_columns, scope=scope):
+        yield from page
 
-    Keyset pagination on `row_id` (PK) - no OFFSET, no full load. Yields dicts
-    of {row_id, business_key_val, keys{}, targets{}, extra{}}.
+
+def derived_pages(db, rule: dict, resolved: bool = False, limit: int = None,
+                  extra_columns: list = None, scope: str = SCOPE_KEYED, size=None):
+    """Pages of derived rows matching the queue predicate (or its complement).
+
+    Keyset pagination on `row_id` (PK) - no OFFSET, no full load; `size` (`keyset_scan.PageSize`)
+    sizes the pages, SCAN_CHUNK a page without it. Each page a list of dicts of
+    {row_id, business_key_val, keys{}, targets{}, extra{}}.
     """
     from database import models
 
@@ -222,18 +232,20 @@ def iter_derived_rows(db, rule: dict, resolved: bool = False, limit: int = None,
     # `keyset_scan.iter_pages` prepends row_id as the cursor, so `cols` must not
     # repeat it - the shared walk owns the cursor.
     for page in keyset_scan.iter_pages(db, model, columns=cols, condition=cond,
-                                       chunk_size=SCAN_CHUNK, limit=limit):
+                                       chunk_size=SCAN_CHUNK, limit=limit, size=size):
+        rows = []
         for row in page:
             i = 2
             keys = dict(zip(decision_key, row[i:i + len(decision_key)]))
             i += len(decision_key)
             targets = dict(zip(target_fields, row[i:i + len(target_fields)]))
             i += len(target_fields)
-            yield {
+            rows.append({
                 "row_id": row[0], "business_key_val": row[1],
                 "keys": keys, "targets": targets,
                 "extra": dict(zip(extra, row[i:])),
-            }
+            })
+        yield rows
 
 
 def _typed_key_values(rule: dict, keys: dict) -> tuple:
@@ -733,14 +745,14 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
             f"there is nothing to confirm. Declare which view column carries a target's "
             f"candidate - it is never guessed.")
 
-    keyed = []
-    for r in iter_derived_rows(db, rule, resolved=False, limit=limit, scope=SCOPE_QUEUE):
-        blanks = [t for t in rule["target_fields"]
-                  if crud.clean_str_value(r["targets"].get(t)) == ""]
-        keyed.append({"row_id": r["row_id"], "business_key_val": r["business_key_val"],
-                      "keys": r["keys"], "blank_targets": blanks})
-    log(f"[confirm] rule '{rule['name']}': {len(keyed)} queue entr"
-        f"{'y' if len(keyed) == 1 else 'ies'} to examine")
+    def keyed_of(page):
+        return [{"row_id": r["row_id"], "business_key_val": r["business_key_val"], "keys": r["keys"],
+                 "blank_targets": [t for t in rule["target_fields"]
+                                   if crud.clean_str_value(r["targets"].get(t)) == ""]}
+                for r in page]
+
+    pages = derived_pages(db, rule, resolved=False, limit=limit, scope=SCOPE_QUEUE,
+                          size=keyset_scan.PageSize(page_rows) if page_rows else None)
 
     # 🔴 [S-274, 판정 415] A BORROWED SESSION IS NEVER ROLLED BACK - IT IS ROLLED BACK TO A
     # SAVEPOINT OF ITS OWN. This read `db.rollback()  # belt and braces`, and inside this
@@ -758,30 +770,38 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
         # 🔴 A PAGE IS WHERE A STOP LANDS (총괄 8d8abfb5d). Each page's writes commit inside
         #    its own call, so a stop between two leaves whole pages behind; the counters
         #    accumulate in one dict and the pages share one transaction id - one sweep in
-        #    the history. `page_rows=None` is the whole queue as one page.
+        #    the history. The page confirmed is the page read (`keyset_scan.PageSize`, at most
+        #    `page_rows`): the queue is not read whole before the first (총괄 2ea5ee2a7 ①).
+        log(f"[confirm] rule '{rule['name']}': examining the queue a page at a time, "
+            f"counting as it goes")
         stats, tx_id = {}, enrichment.candidates.new_tx_id("enrichment_sweep")
-        page = page_rows or len(keyed) or 1
-        for start in range(0, len(keyed), page) or [0]:
+        examined = 0
+        for page in pages:
+            keyed = keyed_of(page)
             enrichment.candidates.confirm_keys(
-                db, rule, keyed[start:start + page], apply=True, stats=stats,
+                db, rule, keyed, apply=True, stats=stats,
                 tx_prefix="enrichment_sweep", caps=caps, tx_id=tx_id)
-            if checkpoint is not None and checkpoint(
-                    min(start + page, len(keyed)), len(keyed)):
+            examined += len(keyed)
+            if checkpoint is not None and checkpoint(examined, None):
                 stats["stopped"] = True
                 break
     else:
         import session_contract
 
+        keyed = [row for page in pages for row in keyed_of(page)]
+        examined = len(keyed)
+        log(f"[confirm] rule '{rule['name']}': {examined} queue entr"
+            f"{'y' if examined == 1 else 'ies'} to examine")
         stats = session_contract.discarding(
             db, "enrichment_sweep",
             lambda: enrichment.candidates.confirm_keys(
                 db, rule, keyed, apply=False, tx_prefix="enrichment_sweep", caps=caps))
     stats["mode"] = "apply" if apply else "dry-run"
     stats["rule"] = rule["name"]
-    stats["queue_size"] = len(keyed)
+    stats["queue_size"] = examined
     # 🔴 [판정 480 ④] AND THIS ONE APPLIES WRITES. A sweep that says 「queue_size: 5,000」
     # off a read capped at 5,000 tells an operator the queue is drained when it is not,
     # and on `--apply` that is a decision about what to stop looking at.
-    stats["truncated"] = {"queue_rows": _read_note(keyed, limit, "queue")}
+    stats["truncated"] = {"queue_rows": _read_note(range(examined), limit, "queue")}
     enrichment.candidates.log_stats(rule["name"], stats, apply=apply)
     return stats

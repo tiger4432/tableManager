@@ -40,8 +40,18 @@ def _rules_named(names):
 
 def _in_scope(db, done, tables=(), rules=(), transactions=(), since=None, per_row_only=False,
               ids=()):
-    """Chain events in scope - waiting ones (`done=False`) or ones set aside (`done=True`).
-    Every criterion given narrows the set; `rules` asks the worker's own `fires`; `ids` is
+    """Chain events in scope, one at a time (`_scope_pages`)."""
+    for kept, _read in _scope_pages(db, done, tables, rules, transactions, since, per_row_only, ids):
+        yield from kept
+
+
+def _scope_pages(db, done, tables=(), rules=(), transactions=(), since=None, per_row_only=False,
+                 ids=(), size=None):
+    """Chain events in scope - waiting ones (`done=False`) or ones set aside (`done=True`) - a page
+    at a time: `(the page's events in scope with their payloads, the events it read)`, keyset by id,
+    `size`'s answer (`keyset_scan.PageSize`) or CHUNK a page - a page reads before the next is asked
+    for, so a run's first line does not wait on the whole queue (총괄 2ea5ee2a7 ①: 500,000 events
+    15.27 s). Every criterion given narrows the set; `rules` asks the worker's own `fires`; `ids` is
     one chain queue line's rows (its ×, 소유자 10-08)."""
     from database.models import DatabaseOutbox
     from chain.ingestion_worker import fires
@@ -61,48 +71,63 @@ def _in_scope(db, done, tables=(), rules=(), transactions=(), since=None, per_ro
     if since:
         query = query.filter(DatabaseOutbox.created_at >= since)
     rules = _rules_named(rules) if rules and isinstance(next(iter(rules)), str) else rules
-    for event in query.order_by(DatabaseOutbox.id).yield_per(CHUNK):
-        payload = get_payload_dict(event)
-        if done and payload.get(event_constants.CANCEL_MARK) != OPERATOR:
-            continue
-        if per_row_only and event_constants.is_collapsed_payload(payload):
-            continue
-        if rules and not any(fires(rule, event) for rule in rules):
-            continue
-        yield event, payload
+    after = None
+    while True:
+        page = query if after is None else query.filter(DatabaseOutbox.id > after)
+        read = page.order_by(DatabaseOutbox.id).limit(size.next() if size else CHUNK).all()
+        if not read:
+            return
+        after, kept = read[-1].id, []
+        for event in read:
+            payload = get_payload_dict(event)
+            if done and payload.get(event_constants.CANCEL_MARK) != OPERATOR:
+                continue
+            if per_row_only and event_constants.is_collapsed_payload(payload):
+                continue
+            if rules and not any(fires(rule, event) for rule in rules):
+                continue
+            kept.append((event, payload))
+        yield kept, len(read)
 
 
 def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only=False,
-              apply=False, reason="set aside by an operator", checkpoint=None, ids=()):
-    """-> `{"events", "rows", "by_table"}` for what is (dry run) or was (apply) set aside -
-    apply adds `marked` and `marked_by_table`: the events this call ended, which leaves out any
-    the chain finished in between - and cuts the query of a group running one of them
-    (`control.cancel_running_group`)."""
-    found = [(event.id, event.table_name, len(rows_of(payload)))
-             for event, payload in _in_scope(db, False, tables, rules, transactions, since,
-                                             per_row_only, ids)]
-    by_table = {}
-    for _id, table, rows in found:
-        by_table[table] = by_table.get(table, 0) + 1
-    out = {"events": len(found), "rows": sum(r for _i, _t, r in found), "by_table": by_table}
-    if not apply or not found:
-        return dict(out, marked=0, marked_by_table={}) if apply else out
-    found_ids = [i for i, _t, _r in found]
-    out["marked"], out["marked_by_table"], done = 0, {}, 0
-    for start in range(0, len(found_ids), CHUNK):
-        # Between committed chunks - the one place a stop is safe (a run's cancel).
-        if checkpoint is not None and checkpoint(start):
-            out["stopped_after"] = start
+              apply=False, reason="set aside by an operator", checkpoint=None, ids=(), until=None):
+    """-> `{"events", "rows", "by_table"}` for what is (dry run) or was (apply) set aside, a page at a
+    time - a run that reports its pages sizes them (`keyset_scan.PageSize`); apply adds `marked` and
+    `marked_by_table`: the events this call ended, which leaves out any the chain finished in between
+    - and cuts the query of a group running one of them (`control.cancel_running_group`). `until` (a
+    `time.monotonic()` instant) ends a dry run's reading there, and `cut` says so - the count's
+    answer within the page cap (총괄 2ea5ee2a7 ②)."""
+    import time
+    from chain import control, keyset_scan
+
+    out = {"events": 0, "rows": 0, "by_table": {}}
+    if apply:
+        out["marked"], out["marked_by_table"] = 0, {}
+    size = keyset_scan.PageSize(CHUNK) if checkpoint is not None else None
+    pages = _scope_pages(db, False, tables, rules, transactions, since, per_row_only, ids, size=size)
+    for kept, _read in pages:
+        page_ids = [event.id for event, _payload in kept]
+        for event, payload in kept:
+            out["rows"] += len(rows_of(payload))
+            out["by_table"][event.table_name] = out["by_table"].get(event.table_name, 0) + 1
+        out["events"] += len(page_ids)
+        if apply and page_ids:
+            for table, marked in _mark(db, page_ids, reason).items():
+                out["marked"] += marked
+                out["marked_by_table"][table] = out["marked_by_table"].get(table, 0) + marked
+            db.commit()
+            # A group running one of them now is cut and rewinds without them - the rest of its
+            # line runs on in the same slot (총괄 10-08: only stopping a WHOLE line stops its slot).
+            control.cancel_running_group(db, ids=page_ids)
+        # Between committed pages - the one place a stop is safe (a run's cancel).
+        if checkpoint is not None and checkpoint(out["events"]):
+            out["stopped_after"] = out["events"]
             break
-        for table, marked in _mark(db, found_ids[start:start + CHUNK], reason).items():
-            out["marked"] += marked
-            out["marked_by_table"][table] = out["marked_by_table"].get(table, 0) + marked
-        db.commit()
-        done = start + CHUNK
-    # A group running one of them now is cut and rewinds without them - the rest of its line
-    # runs on in the same slot (총괄 10-08: only stopping a WHOLE line stops its slot).
-    from chain import control
-    control.cancel_running_group(db, ids=found_ids[:done])
+        if until is not None and time.monotonic() >= until:
+            if next(pages, None) is not None:              # a last page is not a cut one
+                out["cut"] = True
+            break
     return out
 
 

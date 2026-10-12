@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import event_constants                                              # noqa: E402
 import notation_norm as nn                                          # noqa: E402
-from chain import replay                                            # noqa: E402
+from chain import keyset_scan, replay                               # noqa: E402
 from conftest import PG_TEST_SCHEMA, _declared_as_test_database, _resolve_pg_test_url, retire_dynamic_model  # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from product_tables import NOTATION_ALIAS_TABLE, PRODUCT_TABLES     # noqa: E402
@@ -239,6 +239,9 @@ def copies(pg_engine, tmp_path_factory):
     with _declared_as_test_database(url), pytest.MonkeyPatch.context() as mp:
         mp.setattr(nn, "NOTATION_RULES_PATH", str(rules_path))
         mp.setattr(replay, "_fold_by_values", by_values)
+        # pages of PAGE from the first - the cells below read which page a key lands on (a02ad0f2b: under pages from
+        # one row, A = B held and only those two moved)
+        mp.setattr(keyset_scan, "FIRST_PAGE", 10 ** 9)
         mp.setattr(replay, "_write_by_values", write)
         scratch.create_all(pg_engine)
         try:
