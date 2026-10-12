@@ -29,6 +29,7 @@ from __future__ import annotations
 import base64
 import contextvars
 import bisect
+import copy
 import json
 import logging
 import re
@@ -1446,7 +1447,7 @@ def _signed_seeds(start):
     return signs
 
 
-def _reach(nodes, edges, seed_signs, static_types=()):
+def _reach(nodes, edges, seed_signs, static_types=(), back_down=True):
     """Signed reach of every walked node from the signed seeds.  Pure — no query.
 
     ONE RULE: A SEED THAT REACHES A NODE COUNTS 1.  Reach is therefore how many marked
@@ -1536,7 +1537,7 @@ def _reach(nodes, edges, seed_signs, static_types=()):
                         continue
                     # and no step goes back down what reached this node -- between two
                     # names there is no container and so no siblings, so that pair is exempt
-                    if (not _between_names(_kind(node), _kind(nxt), static)
+                    if (back_down and not _between_names(_kind(node), _kind(nxt), static)
                             and _goes_back_down(arrived[node], predicate, direction,
                                                 _kind(nxt))):
                         continue
@@ -2068,17 +2069,60 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     return "\n".join(lines) + "\n"
 
 
-def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, **arguments):
+def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, aux=None, **arguments):
     """`_walk` over the declarations of the worlds it walks (`declaration_paths`, in the order
     picked; None: the operating world's) - bound for this walk alone, so a concurrent walk of
-    other worlds reads their own files. `page`: the walk widened to time, `_time_page`."""
+    other worlds reads their own files. `page`: the walk widened to time, `_time_page`. `aux`: node ids each walked
+    node is judged against (`_judge_aux`)."""
     token = _WALK_DECLARATION.set(declaration_paths)
     try:
         if page is not None:
             return _time_page(seed_id, lookup, page, **arguments)
-        return _walk(seed_id, lookup, **arguments)
+        payload = _walk(seed_id, lookup, **arguments)
+        if aux:
+            _judge_aux(payload, aux, lookup, arguments)
+        return payload
     finally:
         _WALK_DECLARATION.reset(token)
+
+
+def _judge_aux(payload, aux, lookup, arguments):
+    """THE AUX JUDGMENT (총괄 41194be5d, 소유자 「메인 노드로 걷고 걸은 것들 중에서 보조 노드로 경로가 있는지 판정만 -
+    정적 동적 제한 없이 최단경로」): the same walk again, from the aux nodes - the static rule off (`static_types=()`),
+    every predicate, both ways, this request's caps, as deep as the caps let it - and each node of `payload` says
+    `found` (hops to the nearest aux by its trail, and which), `none` (that walk was cut nowhere and did not reach it)
+    or `unknown` (it was cut - never «none» under a cap). The guards that drop a step are off in it: the static rule
+    (`static_types=()`), the step back down (`back_down=False`), follow · follow_keys · bundles (None) - 총괄 「거짓
+    none 은 상한만이 아니다」. Breadth first, so it stops at the depth where every walked node is reached (`until`).
+    Its nodes are not the answer's, so the answer's caps (nodes · edges) do not bind it - the atom cap, the read's
+    cost, does (`answer_budget=False`); and the main walk's time window does not apply.
+    The answer's nodes and edges stay as walked."""
+    seeds = list(dict.fromkeys(str(item) for item in aux))
+    # the window is the main walk's: whether a way exists is a question of structure, and a mapping edge has no
+    # event time - a window would make a false «none» (총괄 41194be5d ②)
+    timeless = copy.copy(lookup)
+    timeless.since = timeless.until = None
+    timeless.interval_excluded = None
+    reached = _walk({"positive": seeds, "negative": []}, timeless, **dict(
+        arguments, hops=MAX_HOPS, direction="both", follow=None, follow_keys=None, static_types=(),
+        static_follow=None, collect=None, rows=False, entities=None, group_by=None, measure=None, seed_type=None,
+        fanout_limit=None, expand=None, back_down=False, until={node["id"] for node in payload["nodes"]},
+        answer_budget=False))
+    cut = reached["truncated"]["reason"]
+    _, parents, _ = _reach({node["id"]: node for node in reached["nodes"]}, reached["edges"],
+                           {seed: 1 for seed in seeds}, (), back_down=False)
+    nearest = {}
+    for seed, trail in parents.items():
+        for node_id in (seed, *trail):
+            hops = len(_trail_back(trail, node_id)[1])
+            if node_id not in nearest or hops < nearest[node_id][0]:
+                nearest[node_id] = (hops, seed)
+    for node in payload["nodes"]:
+        found = nearest.get(node["id"])
+        node["aux"] = ({"state": "found", "hops": found[0], "via": found[1]} if found
+                       else {"state": "unknown"} if cut else {"state": "none"})
+    payload["aux"] = {"seeds": seeds, "complete": not cut, "truncated": cut,
+                      "hops_reached": reached["walk"]["hops_reached"]}
 
 
 #: Below every atom id, so (t0, this) splits a node's atoms at t0 exactly: `>=` is 「at or after t0」.
@@ -2191,7 +2235,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              cardinalities=None, rows=False,
              entities=None, group_by=None, measure=None,
              seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
-             registration_follow=None, fanout_limit=None, expand=None):
+             registration_follow=None, fanout_limit=None, expand=None, back_down=True, until=None,
+             answer_budget=True):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -2373,7 +2418,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # against 149 entities, so counting them saturates the cap and the answer falls out:
         # MEASURED, quantity ranked drops 9 -> 4 and the recipe's trail disappears entirely.
         # Whether a measurement should share the entity budget is a ruling, not a default.
-        if node.get("node_kind") != "value" and carried(node):
+        if answer_budget and node.get("node_kind") != "value" and carried(node):
             if budgeted >= node_limit:
                 node_cut = True
                 return False
@@ -2402,7 +2447,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             # 🔴 EVERY ATOM OF IT IS A RECORD OF IT (총괄 e5e0a87e2 · 10-11 ㄱ) - once each
             edge_records[row["id"]].setdefault(row["claim_id"], (instant, row["claim_id"], row["records"][0]))
             return True
-        if budgeted_edges >= edge_limit:
+        if answer_budget and budgeted_edges >= edge_limit:
             edge_cut = True
             return False
         budgeted_edges += 1
@@ -2562,7 +2607,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # differential a person is asking for. MEASURED: seeded at `defect_kind{void}` with
         # follow=leads_to, refusing the step costs 2 of 21 nodes -- one of them another
         # defect kind the same cause produces.
-        if (step_dir is not None
+        if (back_down and step_dir is not None
                 and not _between_names(near_kind, far_kind, static_types)
                 and _goes_back_down(arrivals.get(near_id), atom.predicate, step_dir,
                                     far_kind)):
@@ -2664,7 +2709,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         for item in items:
             near = _bare(item["type"])
             steps = [{"p": p, "d": d, "t": t}
-                     for p, d, t in sorted(_back_down_steps(arrivals.get(item["id"])))
+                     for p, d, t in sorted(_back_down_steps(arrivals.get(item["id"])) if back_down else ())
                      if not _between_names(near, t, static_types) and t not in outside]
             entities.append((item["type"], item["keys"], {"steps": steps})
                             if steps else (item["type"], item["keys"]))
@@ -2673,6 +2718,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: every atom read, at every level - `current_conflicts` counts over all of them
     fetched = []
     for depth in range(budget_hops):
+        if until is not None and until <= depths.keys():
+            break                                       # every node asked about is reached (`_judge_aux`)
         # 🔴 A NODE THAT HAS SPENT ITS DEPARTURES IS NOT EXPANDED, however shallow it is.
         # That is the whole of the second budget: the walk keeps going while it stays on
         # the material, and stops going FURTHER AFIELD at exactly the same `hops` it always
