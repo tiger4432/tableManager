@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Body, HTTPException, Request
+
+from runtime.offloop_json import OffLoopJSONRoute
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.requests import HTTPConnection
 
@@ -58,7 +60,7 @@ LOGIN_REQUIRED = {"reason": "login_required", "login": "/auth/login", "message":
 ADMIN_REQUIRED = {"reason": "admin_required", "message": "This needs an administrator."}
 NOT_LISTED_REASON = "not_on_users_list"
 
-router = APIRouter()
+router = APIRouter(route_class=OffLoopJSONRoute)
 
 
 @functools.lru_cache(maxsize=None)
