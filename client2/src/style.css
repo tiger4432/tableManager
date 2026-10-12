@@ -2674,7 +2674,8 @@ body.resizing-active .history-sidebar {
    판을 거의 다 먹어 1440px 창의 판(485px)에서 변경 칸이 46px 였다(2026-10-04 미리보기). 머리줄의 Change 는 그 줄이
    대신하고, 남는 폭은 Tx 가 받는다 — 대상은 소유자 지시대로 좁게 둔다. */
 .timeline-container > .audit-head, .audit-table .timeline-card {
-  grid-template-columns: 70px 62px 74px 96px 110px minmax(72px, 1fr);
+  /* Kind 96: its longest word «OVERWRITE» is a 79 px pill and the cell pads 8 + 8 and a 1 px line (measured 10-12). */
+  grid-template-columns: 70px 62px 96px 96px 110px minmax(72px, 1fr);
   grid-template-areas: "time user kind tbl target tx" "change change change change change change";
 }
 :is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-time { grid-area: time; }
