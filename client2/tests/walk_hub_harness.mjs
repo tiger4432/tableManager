@@ -133,7 +133,7 @@ async function measure(mutate = {}) {
     edges: asMember.edges.map((e) => e.target === member), table: sections(ofOne, { positive: [ID.lot], negative: [] }) };
   // A lump of the picture opened as a table (lead 10-11 E2b) holding a hub: the wafers hub's branch, the defects hub.
   const { module: fv } = await loadWithProbe(path.join(SRC, 'walk', 'fold_views.js'), { mutate: mutate['fold_views.js'] });
-  const lumped = fv.lumpAnswer([OWNER], { owner: ID.wafers, members: [ID.defects], predicate: 'observed' });
+  const lumped = fv.lumpAnswer([OWNER], { owner: ID.wafers, owners: [ID.wafers], members: [ID.defects], predicate: 'observed' });
   out.lumpTable = sections(lumped, { positive: [ID.wafers], negative: [] }).map((s) => s[0]);
   // No client source reads an answer's `bundles`; the parser reads members, and the hubs' own key is read.
   const bundles = readersOf('bundles', mutate.census);

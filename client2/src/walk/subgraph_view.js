@@ -270,8 +270,11 @@ export function foldBeyond(layout, fold, points, shownBefore, limit = Infinity) 
  * hold) and one small lump per key with members still inside.
  * A static node stands where the walks stood (owner 10-12), so it is in sight whatever is folded before it; one with no
  * dynamic neighbour in sight is `statics` on each lump that holds one of its neighbours - drawn as a dashed line to it.
+ * `cohorts`: [hub id, its members] for each hub opened (lead 10-13, owner «ㅇㅇ 1번»): what its members' folds hold is
+ * one lump a predicate, a way and a far type, whichever member it hangs from - `owners` those members, `parts` each
+ * member's key and what it holds. Every lump carries `owners` and `parts`; a node's own lump, one owner.
  */
-export function lumpView(layout, fold, seeds) {
+export function lumpView(layout, fold, seeds, cohorts = []) {
   const big = (fold && fold.big) || new Map();
   const lumped = (fold && fold.lumped) || new Map();
   const steps = stepsOf(layout);
@@ -345,7 +348,8 @@ export function lumpView(layout, fold, seeds) {
       const mix = new Map();
       for (const id of firsts) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + 1);
       const statics = hanging(node.id, [...firsts]);
-      lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, groups,
+      lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, owners: [node.id], groups,
+        parts: groups.map((g) => ({ owner: node.id, key: g.key, members: g.members })),
         count: held.size, next: firsts.size, behind: held.size - firsts.size,
         mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
         ...(statics.length ? { statics } : {}) });
@@ -357,15 +361,38 @@ export function lumpView(layout, fold, seeds) {
       if (!members.length) continue;
       const statics = hanging(node.id, members);
       // `more`: some of this fan-out is in sight - opened out of the lump.
-      lumps.push({ id: `lump:${key}`, level: 'small', owner: node.id, key, ...keyParts(key), members,
+      lumps.push({ id: `lump:${key}`, level: 'small', owner: node.id, owners: [node.id], parts: [{ owner: node.id, key, members }],
+        key, ...keyParts(key), members,
         farType: typesOf(members), count: members.length, more: lumped.get(key).size > 0,
         ...(statics.length ? { statics } : {}) });
     }
   }
+  const cohortOf = new Map();
+  for (const [hub, members] of cohorts) for (const m of members) cohortOf.set(m, hub);
+  const pools = new Map();
+  for (const part of lumps.filter((l) => cohortOf.has(l.owner)).flatMap((l) => l.parts)) {
+    const { predicate, direction } = keyParts(part.key);
+    for (const far of part.members) {
+      const at = `${cohortOf.get(part.owner)}${PICK_SEP}${predicate}|${direction}|${typeOf.get(far)}`;
+      if (!pools.has(at)) pools.set(at, { at, predicate, direction, farType: typeOf.get(far), parts: new Map() });
+      const parts = pools.get(at).parts;
+      if (!parts.has(part.key)) parts.set(part.key, { owner: part.owner, key: part.key, members: [] });
+      parts.get(part.key).members.push(far);
+    }
+  }
+  const pooled = [...pools.values()].map((p) => {
+    const parts = [...p.parts.values()];
+    const members = [...new Set(parts.flatMap((x) => x.members))];
+    const owners = [...new Set(parts.map((x) => x.owner))];
+    const statics = hanging(null, members);
+    return { id: `pool:${p.at}`, level: 'small', pooled: true, owner: owners[0], owners, parts, key: '',
+      predicate: p.predicate, direction: p.direction, farType: p.farType, members, count: members.length,
+      more: parts.some((x) => lumped.has(x.key) && lumped.get(x.key).size > 0), ...(statics.length ? { statics } : {}) };
+  });
   return {
     nodes: layout.nodes.filter((n) => shown(n.id)),
     edges: layout.edges.filter((e) => shown(e.source) && shown(e.target)),
-    lumps,
+    lumps: [...lumps.filter((l) => !cohortOf.has(l.owner)), ...pooled],
     hidden: hidden.size,
     // What a member leaves behind it: everything hidden it leads to, itself not counted.
     behind: (id) => inside([id]).size - 1,
@@ -418,6 +445,8 @@ function lumpLabel(lump) {
     const mix = lump.mix.slice(0, 3).map((m) => `${m.count} ${m.type}`).join(' · ');
     return `${nextWords(lump)}${mix ? `\n${mix}` : ''}`;
   }
+  // An opened hub's members' pooled lump says what the owner named (10-13 «<타입> ×<수> · <술어>»).
+  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${lump.predicate}`;
   return `${arrowed(lump)}\n${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;
 }
 const arrowed = (g) => (g.direction === 'incoming' ? `← ${g.predicate}` : `${g.predicate} →`);
@@ -551,7 +580,10 @@ export class SubgraphView {
   _seeds() { return this.steps.flatMap((s) => s.seeds); }
 
   /** The view as drawn now. */
-  _view() { return lumpView(this.layout, this.fold, this._seeds()); }
+  _view() { return lumpView(this.layout, this.fold, this._seeds(), this._cohorts()); }
+
+  /** Each hub a step opened and its members (`openHub`), so a Reset pools them again. */
+  _cohorts() { return this.steps.flatMap((s) => Object.entries(s.cohorts || {})); }
 
   /** The fold state a node's own presses touch: its big lump and its keys' small lumps. */
   _isFolded(id) {
@@ -652,9 +684,15 @@ export class SubgraphView {
     const hubs = [...(step.hubs || []), hubId];
     const at = this.pos.get(hubId);
     const before = new Set(this.layout.nodes.map((n) => n.id));
+    const head = this.layout.nodes.find((n) => n.id === hubId);
+    const t = head && head.hub && head.hub.table;
+    const members = t ? t.rows.map((r) => r[t.columns.indexOf('id')]) : [];
     await this._ask({ ...this.ask({ positive: step.positive, negative: step.negative }), expand: hubs }, [hubId],
-      (res) => this.steps.map((s, i) => (i === index ? { ...s, hubs, results: [res] } : s)));
+      (res) => this.steps.map((s, i) => (i === index ? { ...s, hubs, cohorts: { ...(s.cohorts || {}), [hubId]: members },
+        results: [res] } : s)));
     if (this.state !== 'done' || !at) return;
+    // Past its members, folded as the first picture folds (owner «ㅇㅇ 1번»): each member's own fold, pooled in the view.
+    for (const m of members) if (this.layout.nodes.some((n) => n.id === m)) this.fold.big.set(m, branchKeys(this.layout, m));
     const out = this.layout.nodes.map((n) => n.id).filter((id) => !before.has(id));
     this._from = { lumpId: hubId, x: at.x, y: at.y, out: new Set(out) };
     this.render();
@@ -737,13 +775,18 @@ export class SubgraphView {
     const items = lump.members.map((m) => ({ value: m, text: this._labelOf(m), count: view.behind(m) || undefined,
       lit: lit.has(m) }));
     this._openPicker(id, items, `${lump.predicate} · ${lump.farType}`,
-      `${lump.count} not drawn · from ${this._labelOf(lump.owner)}`, (members) => {
-        const opened = this.fold.lumped.get(lump.key);
-        for (const m of members) {
-          opened.add(m);
-          // What it leads to comes out folded, so an opening does not open more (lead 03bc94b6b).
-          this.fold.big.set(m, branchKeys(this.layout, m));
+      `${lump.count} not drawn · from ${this._fromWords(lump)}`, (members) => {
+        // Each part its owner's: a key still in the owner's big lump comes out of it, its members ticked opened.
+        for (const part of lump.parts) {
+          const out = part.members.filter((m) => members.includes(m));
+          if (!out.length) continue;
+          const inBig = this.fold.big.get(part.owner);
+          if (inBig && inBig.delete(part.key) && !inBig.size) this.fold.big.delete(part.owner);
+          if (!this.fold.lumped.has(part.key)) this.fold.lumped.set(part.key, new Set());
+          for (const m of out) this.fold.lumped.get(part.key).add(m);
         }
+        // What it leads to comes out folded, so an opening does not open more (lead 03bc94b6b).
+        for (const m of members) this.fold.big.set(m, branchKeys(this.layout, m));
         this._openedFrom(id, members);
       });
     this._swapFacts();
@@ -754,7 +797,7 @@ export class SubgraphView {
   _branchLump(key) {
     for (const big of this._view().lumps.filter((l) => l.level === 'big')) {
       const g = big.groups.find((x) => x.key === key);
-      if (g) return { ...g, id: `${GROUP_LUMP}${key}`, level: 'small', owner: big.owner };
+      if (g) return { ...g, id: `${GROUP_LUMP}${key}`, level: 'small', owner: big.owner, owners: [big.owner] };
     }
     return null;
   }
@@ -765,6 +808,12 @@ export class SubgraphView {
     this._from = at ? { lumpId, x: at.x, y: at.y, out: new Set(out) } : null;
     this._closePicker();
     this.render();
+  }
+
+  /** Who a lump hangs from: its node, or its owners counted. */
+  _fromWords(lump) {
+    if (lump.owners.length === 1) return this._labelOf(lump.owner);
+    return unitText(lump.owners.length, (this.layout.nodes.find((n) => n.id === lump.owner) || {}).type || 'node');
   }
 
   _labelOf(id) {
@@ -1056,8 +1105,8 @@ export class SubgraphView {
     }
     for (const l of view.lumps) {
       const back = l.direction === 'incoming';
-      out.push({ group: 'edges', data: { id: `to:${l.id}`, source: back ? l.id : l.owner, target: back ? l.owner : l.id,
-        kind: 'lump' } });
+      l.owners.forEach((o, i) => out.push({ group: 'edges', data: { id: i ? `to:${l.id}${PICK_SEP}${o}` : `to:${l.id}`,
+        source: back ? l.id : o, target: back ? o : l.id, kind: 'lump' } }));
       // A static node with no dynamic neighbour in sight hangs off a lump holding one (owner 10-12); a node id holds no `|`.
       for (const s of l.statics || []) {
         out.push({ group: 'edges', data: { id: `to:${l.id}|${s}`, source: l.id, target: s, kind: 'lump', static: true } });
@@ -1373,7 +1422,7 @@ export class SubgraphView {
     const answer = lumpAnswer(this._results(), lump);
     const kept = new Set(answer.edges.map((e) => e.id));
     const step = this.steps.findIndex((s) => s.results.some((r) => ((r && r.edges) || []).some((e) => kept.has(e.id))));
-    this.openTable(answer, { owner: lump.owner, ownerLabel: this._labelOf(lump.owner),
+    this.openTable(answer, { owner: lump.owner, owners: lump.owners, ownerLabel: this._fromWords(lump),
       predicate: lump.predicate, farType: lump.farType, words: `${arrowed(lump)} ${lump.farType}`, step });
   }
 

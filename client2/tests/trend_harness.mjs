@@ -215,7 +215,7 @@ async function lumpStepRun(M) {
   handle.state.leaf = 99;
   handle.render();
   urls.length = 0;
-  const lump = { owner: 'q1', ownerLabel: 'Q1', predicate: 'measures', farType: 'wafer', words: '← measures wafer' };
+  const lump = { owner: 'q1', owners: ['q1'], ownerLabel: 'Q1', predicate: 'measures', farType: 'wafer', words: '← measures wafer' };
   // Its edges the form walk's answer - the picture's first step (lead 10-11): its step Step 1's child, not Step 2's.
   handle.graph.openTable(M.fold.lumpAnswer([WALK], { ...lump, members: ['wp', 'wn'] }), { ...lump, step: 0 });
   await settle();

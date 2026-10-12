@@ -1127,7 +1127,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[HB] a hub: the server\'s fold, one node with its table; opened, its members and what the walk went on to (lead 10-13)');
-  if (want(['HB1', 'HB2', 'HB3', 'HB4', 'HB5', 'HB6'])) {
+  if (want(['HB1', 'HB2', 'HB3', 'HB4', 'HB5', 'HB6', 'HB7', 'HB8'])) {
     const OWNER = HUBS.single.owner;
     const OPENED = HUBS.single.wafers_opened;
     const wafers = HUBS.ids.wafers;
@@ -1154,6 +1154,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       Boolean(openB) && openB.textContent === 'Open as nodes' && JSON.stringify(sides) === JSON.stringify(['+ 3 · − 0'])
         && JSON.stringify(firsts) === JSON.stringify(members.map(nameOf).sort()) && members.every(nameOf),
       JSON.stringify({ open: openB && openB.textContent, sides, firsts }));
+    const drawnBefore = new Set(nodesOf(s).map((n) => n.id()));
+    const lumpsBefore = new Set(lumpsOf(s).map((n) => n.id()));
     s.urls.length = 0;
     if (openB) openB.dispatch('click', {});
     await settle();
@@ -1164,12 +1166,50 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
         && wafers.split('|').length === 5 && extra.length === 0, JSON.stringify([...asked.entries()]));
     const layerOf = new Map(s.view.layout.nodes.map((n) => [n.id, n.layer]));
     const beyond = OPENED.nodes.filter((n) => n.depth > 1).map((n) => n.id);
-    say('HB4 opened - the control for the retired «not walked» (lead 10-13): the hub gone, its three members drawn where it stood, and what the walk went on to from them - their defects and kinds - drawn too',
-      s.view.cy.getElementById(wafers).empty() && members.length === 3
-        && members.every((id) => s.view.cy.getElementById(id).nonempty() && layerOf.get(id) === 1)
-        && beyond.length === 8 && beyond.every((id) => s.view.cy.getElementById(id).nonempty()) && s.urls.length === 1,
-      JSON.stringify({ hub: s.view.cy.getElementById(wafers).nonempty(), members: members.map((id) => layerOf.get(id)),
-        beyond: beyond.filter((id) => s.view.cy.getElementById(id).nonempty()).length, asks: s.urls.length }));
+    const defects = OPENED.nodes.filter((n) => n.depth === 2).map((n) => n.id);
+    const cameNodes = nodesOf(s).map((n) => n.id()).filter((id) => !drawnBefore.has(id)).sort();
+    const cameLumps = lumpsOf(s).filter((n) => !lumpsBefore.has(n.id()));
+    const pool = cameLumps[0] || { id: () => '', data: () => '' };
+    const linesTo = (t, lump, m) => (t.view.cy ? t.view.cy.edges('[kind = "lump"]').filter((e) => e.data('target') === lump && e.data('source') === m).length : 0);
+    say('HB4 opened (owner «ㅇㅇ 1번»): the hub gone, its three members drawn where it stood and nothing past them; what the walk went on to from them one lump a predicate, a way, a far type - «defect ×6 · observed», a line from each member - the control for the retired «not walked»',
+      s.view.cy.getElementById(wafers).empty() && members.length === 3 && JSON.stringify(cameNodes) === JSON.stringify([...members].sort())
+        && members.every((id) => layerOf.get(id) === 1) && beyond.length === 8 && beyond.every((id) => s.view.cy.getElementById(id).empty())
+        && cameLumps.length === 1 && defects.length === 6 && pool.data('label') === 'defect ×6 · observed'
+        && members.every((m) => linesTo(s, pool.id(), m) === 1) && s.urls.length === 1,
+      JSON.stringify({ hub: s.view.cy.getElementById(wafers).nonempty(), came: cameNodes.length, lumps: cameLumps.map((n) => n.data('label')),
+        lines: members.map((m) => linesTo(s, pool.id(), m)), asks: s.urls.length }));
+    // The table reads the step's answer, which no fold touches.
+    const tableOf = (t) => JSON.stringify(walkTableView(t.view.steps[0].results[0], ENTITIES, [], undefined,
+      { positive: [startId(OWNER)], negative: [] }).sections.map((x) => [x.heading, x.rows.map((r) => r.id).sort()]));
+    const table0 = tableOf(s);
+    s.urls.length = 0;
+    press(s, pool.id());
+    const listed = rowsOf(s).map((r) => r.attrs['data-value']).sort();
+    tickAll(s);
+    openTicked(s);
+    const stood = defects.filter((id) => s.view.cy.getElementById(id).nonempty());
+    say('HB7 the lump pressed lists the six; All, Open: they stand, the lump gone; nothing asked, the table as it was',
+      JSON.stringify(listed) === JSON.stringify([...defects].sort()) && stood.length === 6
+        && s.view.cy.getElementById(pool.id()).empty() && s.urls.length === 0 && tableOf(s) === table0,
+      JSON.stringify({ listed: listed.length, stood: stood.length, lump: s.view.cy.getElementById(pool.id()).nonempty(), asks: s.urls.length }));
+    // Folded back by a member's own press: Unfold lets its part out, Fold branches puts it back in the one lump.
+    const back = await seat([OWNER, OPENED]);
+    openHub(back, wafers);
+    await settle();
+    const poolOf = (t) => lumpsOf(t).filter((n) => String(n.id()).startsWith('pool:'));
+    const foldPress = (t, id) => { press(t, id); const b = byClass(t.host, 'sg-fold')[0]; const word = b && b.textContent; if (b) b.dispatch('click', {}); return word; };
+    const tableBack = tableOf(back);
+    back.urls.length = 0;
+    const word1 = foldPress(back, members[0]);
+    const mid = poolOf(back).map((n) => n.data('label'));
+    const out = defects.filter((id) => back.view.cy.getElementById(id).nonempty()).length;
+    const word2 = foldPress(back, members[0]);
+    const after = poolOf(back).map((n) => n.data('label'));
+    say('HB8 a member\'s Unfold lets its part out of the one lump (6 -> 4, its two drawn); its Fold branches puts them back (4 -> 6); nothing asked, the table as it was',
+      word1 === 'Unfold' && JSON.stringify(mid) === '["defect ×4 · observed"]' && out === 2
+        && word2 === 'Fold branches' && JSON.stringify(after) === '["defect ×6 · observed"]'
+        && defects.every((id) => back.view.cy.getElementById(id).empty()) && back.urls.length === 0 && tableOf(back) === tableBack,
+      JSON.stringify({ word1, mid, out, word2, after, asks: back.urls.length }));
     // No capture holds a hub of one: the owner's wafers hub cut to its first member.
     const memberId = members[0];
     const ONE = { ...OWNER, nodes: OWNER.nodes.filter((n) => n.depth <= 1).map((n) => (n.id === wafers ? { ...n, count: 1 } : n)),
@@ -1195,12 +1235,15 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     openHub(capped, wafers);
     await settle();
     const cappedAsk = paramsOf(capped.urls[0] || '');
-    const cameOn = HUBS.single.capped_opened.nodes.filter((n) => n.depth > 1).map((n) => n.id);
-    say('HB6 a cap typed in the knob: the fan-out past it comes as a hub; Open as nodes asks with that cap and the hub id, and the walk goes on from its members',
+    const cameOn = HUBS.single.capped_opened.nodes.filter((n) => n.depth === 2).map((n) => n.id);
+    const cappedPool = lumpsOf(capped).filter((n) => String(n.id()).startsWith('pool:'));
+    press(capped, cappedPool.length ? cappedPool[0].id() : '');
+    const cappedListed = rowsOf(capped).map((r) => r.attrs['data-value']).sort();
+    say('HB6 a cap typed in the knob: the fan-out past it comes as a hub; Open as nodes asks with that cap and the hub id; the walk went on from its members - what it brought one lump that lists them',
       wasHub && capped.urls.length === 1 && cappedAsk.get('fanout_limit') === '2' && JSON.stringify(cappedAsk.getAll('expand')) === JSON.stringify([wafers])
-        && members.every((id) => capped.view.cy.getElementById(id).nonempty()) && cameOn.length === 8
-        && cameOn.every((id) => capped.view.cy.getElementById(id).nonempty()),
-      JSON.stringify({ wasHub, asked: [...cappedAsk.entries()], cameOn: cameOn.filter((id) => capped.view.cy.getElementById(id).nonempty()).length }));
+        && members.every((id) => capped.view.cy.getElementById(id).nonempty()) && cameOn.length === 6
+        && cappedPool.length === 1 && JSON.stringify(cappedListed) === JSON.stringify([...cameOn].sort()),
+      JSON.stringify({ wasHub, asked: [...cappedAsk.entries()], pools: cappedPool.length, listed: cappedListed.length }));
   }
 
   console.log('\n[S] a key let out of a big lump stands clear of it (owner 10-08)');
@@ -1262,9 +1305,9 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     o.urls.length = 0;
     await o.view.show({ given: { positive: [measured[0].source], negative: [], answer: first } });
     await o.view.continueWalk({ positive: [recipe], negative: [], answer: second });
-    o.view._openTable({ owner: measured[0].source, predicate: 'measured', direction: 'outgoing', farType: typeOf(measured[0].target),
+    o.view._openTable({ owner: measured[0].source, owners: [measured[0].source], predicate: 'measured', direction: 'outgoing', farType: typeOf(measured[0].target),
       members: measured.map((e) => e.target) });
-    o.view._openTable({ owner: recipe, predicate: 'used', direction: 'incoming', farType: typeOf(stepOnly[0]), members: stepOnly });
+    o.view._openTable({ owner: recipe, owners: [recipe], predicate: 'used', direction: 'incoming', farType: typeOf(stepOnly[0]), members: stepOnly });
     say('OT4 a lump says the step whose answer brought its edges: the wafer\'s measurements the first, the recipe\'s other uses the second (lead 10-11)',
       o.urls.length === 0 && stepOnly.length > 0 && JSON.stringify(handed4.map((l) => l.step)) === JSON.stringify([0, 1]),
       JSON.stringify({ urls: o.urls.length, steps: handed4.map((l) => l.step), stepOnly: stepOnly.length }));
@@ -1647,11 +1690,19 @@ const failures = [];
     M('HBm7', 'Open as nodes sends the hub\'s node, not its five-cell id', 'HB3',
       'const hubs = [...(step.hubs || []), hubId];', "const hubs = [...(step.hubs || []), hubId.split('|')[0]];"),
     M('HBm8', 'the opened answer laid beside the folded one, not over it', 'HB4',
-      '(i === index ? { ...s, hubs, results: [res] } : s)', '(i === index ? { ...s, hubs, results: [...s.results, res] } : s)'),
+      '        results: [res] } : s)));', '        results: [...s.results, res] } : s)));'),
     M('HBm11', 'Open as nodes asks without the page\'s ask - its typed cap lost', 'HB6',
       '    await this._ask({ ...this.ask({ positive: step.positive, negative: step.negative }), expand: hubs }, [hubId],',
       '    await this._ask({ positive: step.positive, negative: step.negative, expand: hubs }, [hubId],'),
     // A hub of one is one seat's (derive.oneMemberHubs - its own cells are walk_hub_harness H5): here, the graph reads it.
+    M('HBm12', 'an opened hub\'s members come out open - all past them drawn', 'HB4',
+      '    for (const m of members) if (this.layout.nodes.some((n) => n.id === m)) this.fold.big.set(m, branchKeys(this.layout, m));\n', ''),
+    M('HBm13', 'an opened hub\'s members each their own lump, not one pooled', 'HB4',
+      '    lumps: [...lumps.filter((l) => !cohortOf.has(l.owner)), ...pooled],', '    lumps,'),
+    M('HBm14', 'the pooled lump not in the owner\'s words', 'HB4',
+      '  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${lump.predicate}`;\n', ''),
+    M('HBm15', 'the pooled lump lets out one member\'s part only', 'HB7', '        for (const part of lump.parts) {', '        for (const part of lump.parts.slice(0, 1)) {'),
+    M('HBm16', 'Fold branches holds nothing', 'HB8', '    else this.fold.big.set(id, branchKeys(this.layout, id));', '    else this.fold.big.set(id, new Set());'),
     M('HBm9', 'a hub of one drawn as a hub', 'HB5',
       '  const steps = (walked || []).map((step) => ({ ...step, results: (step.results || []).map(oneMemberHubs) }));\n',
       '  const steps = walked || [];\n'),
@@ -1682,7 +1733,7 @@ const failures = [];
     M('L1m', 'opening a big lump opens every branch\'s nodes, not the ticked', 'LM3',
       '        for (const value of picked) {', '        for (const value of lump.groups.flatMap((g) => g.members.map((x) => `${g.key}${PICK_SEP}${x}`))) {'),
     M('L2m', 'opening a small lump draws every member, not the ticked', 'LM16',
-      '        for (const m of members) {\n          opened.add(m);', '        for (const m of lump.members) {\n          opened.add(m);'),
+      '          const out = part.members.filter((m) => members.includes(m));', '          const out = part.members;'),
     M('L3m', 'a node let out comes out open', 'LM4',
       '          this.fold.big.set(member, branchKeys(this.layout, member));\n', ''),
     M('L4m', 'an opening fits the view', 'LM5',

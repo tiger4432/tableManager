@@ -1484,7 +1484,9 @@ const FLOORS = new Map([
   // AW1-AW4 and their 27 mutants (B2-B12 W4 F4 S5m LA3m LA4m LA8m AWm1-AWm4 AWm6); a hub drawn, pressed, opened, of one and
   // under a typed cap (HB1-HB6, HBm1-HBm9 HBm11), on its way (U1-U3 on a hub), a bundles key drawing nothing (P0, P0m
   // P0m2), the cap only when typed (D1 D2, B1 turned round); LM15 LM16 take the window head and the small lump's tick.
-  ['subgraph_view_harness.mjs', 334],
+  // 334 -> 343 (owner «ㅇㅇ 1번», lead 10-13): past an opened hub's members one pooled lump a predicate, a way and a far
+  // type - HB4 HB6 re-aimed, HB7 HB8, HBm12-HBm16; HBm8 L2m re-aimed.
+  ['subgraph_view_harness.mjs', 343],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's pure half - what a value reads as, the one start-branch
   // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b) - its Route a Next from its
   // owner's, its points the same in the edge and the event scheme (lead 10-11 E2c) - the one drawing.

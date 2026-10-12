@@ -557,7 +557,7 @@ export function boot(doc, host, deps) {
    *  edges between - nothing walked; a child of the step whose answer brought its edges (lead 10-11) - the picture's
    *  step k is the drawn branch's k-th, the form walk's at 0 - else of the branch's end; the table shown. */
   function openLumpTable(answer, lump) {
-    const asked = { positive: [lump.owner], negative: [], follow: [lump.predicate], collect: [lump.farType], direction: 'both', hops: 1 };
+    const asked = { positive: [...lump.owners], negative: [], follow: [lump.predicate], collect: [lump.farType], direction: 'both', hops: 1 };
     const parent = lump.step === 0 ? 0 : (pathTo(state.leaf)[lump.step - 1] || { id: state.leaf }).id;
     const step = placeStep(parent, `From ${lump.ownerLabel} · ${lump.words}`, asked);
     step.run = 'done';

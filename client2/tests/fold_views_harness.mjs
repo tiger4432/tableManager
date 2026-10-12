@@ -51,7 +51,7 @@ async function suite(m) {
   edges: [...NEXT.edges, { id: 'x:1', source: wafers[0], target: q, predicate: 'leads_to' }, { id: 'x:2', source: wafers[0], target: wafers[1], predicate: 'measures' },
     { id: 'x:3', source: 'x:far', target: wafers[2], predicate: 'measures' },
     { id: 'x:4', source: 'x:txt', target: q, predicate: 'measures', qualifiers: { value: 'n/a' }, occurred_at: NEXT.edges[0].occurred_at }] };
-  const lump = { owner: q, members: wafers, predicate: 'measures', farType: 'wafer' };
+  const lump = { owner: q, owners: [q], members: wafers, predicate: 'measures', farType: 'wafer' };
   const answer = m.lumpAnswer([extra], lump);
   const ownEdges = NEXT.edges.filter((e) => e.predicate === 'measures' && (e.target === q || e.source === q)).map((e) => e.id);
   say('L1 a lump\'s answer: its owner and members, the edges between them along its predicate - another predicate, an edge between members, a node beyond left out',
@@ -82,7 +82,7 @@ async function suite(m) {
   const scheme = (F, predicate, farType) => {
     const owner = F._seed;
     const members = F.nodes.filter((n) => n.type === farType).map((n) => n.id);
-    const one = { owner, members, predicate, farType };
+    const one = { owner, owners: [owner], members, predicate, farType };
     return m.lumpPoints(m.lumpAnswer([F], one), one, F._decl.entities, F._decl.predicates, new Set()).map((x) => JSON.stringify([x.t, x.v])).sort();
   };
   const ed = scheme(ED, 'measures', 'wafer');

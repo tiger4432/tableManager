@@ -21,17 +21,18 @@ export function startBranch(steps) {
  * them along its predicate - nothing walked. The page opens it as a step; the thumbnail reads it the same way.
  */
 export function lumpAnswer(results, lump) {
-  const keep = new Set([lump.owner, ...lump.members]);
+  const owners = new Set(lump.owners);
+  const keep = new Set([...owners, ...lump.members]);
   const answer = narrowed(results, keep, (e) => {
-    const far = e.source === lump.owner ? e.target : e.target === lump.owner ? e.source : null;
+    const far = owners.has(e.source) ? e.target : owners.has(e.target) ? e.source : null;
     return e.predicate === lump.predicate && far !== null && lump.members.includes(far);
   });
-  // What the kept edges prove, as a Next from the owner along the predicate says it (lead 10-11): the owner its start,
+  // What the kept edges prove, as a Next from the owners along the predicate says it (lead 10-11): the owner its start,
   // each member reached from it - its Route and sources read as that Next's. Nothing past the kept edges.
   const ranked = new Map();
   for (const e of answer.edges) {
-    const member = e.source === lump.owner ? e.target : e.source;
-    ranked.set(member, { id: member, evidence: [{ seed: lump.owner, sign: '+', hops: [{ id: lump.owner }, { id: member, predicates: [lump.predicate] }] }] });
+    const [owner, member] = owners.has(e.source) ? [e.source, e.target] : [e.target, e.source];
+    ranked.set(member, { id: member, evidence: [{ seed: owner, sign: '+', hops: [{ id: owner }, { id: member, predicates: [lump.predicate] }] }] });
   }
   return { ...answer, propagation: { ranked: [...ranked.values()] } };
 }
@@ -76,7 +77,7 @@ function narrowed(results, keep, keepEdge) {
  * its own: the same table, the same reads, nothing paged.
  */
 export function lumpPoints(answer, lump, entities, predicates, lit) {
-  const view = walkTableView(answer, entities, predicates, undefined, { positive: [lump.owner], negative: [] });
+  const view = walkTableView(answer, entities, predicates, undefined, { positive: [...lump.owners], negative: [] });
   const section = view.sections.find((x) => x.type === lump.farType);
   const at = section && section.trendable[0];
   if (!at) return [];

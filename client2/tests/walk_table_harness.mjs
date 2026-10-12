@@ -1030,7 +1030,7 @@ async function suite(mod) {
       JSON.stringify([drawnB.first, drawnA.first, drawnB.picture, drawnA.picture]));
     // A lump of the picture opened while A1 ends the branch (lead 10-11): its step a child of the step whose answer brought
     // its edges - the picture's second step, A.
-    handle.graph.openTable({ ok: true, nodes: [], edges: [] }, { owner: 'n:1', ownerLabel: 'D-1', predicate: 'bonded_to@1', farType: 'die@1',
+    handle.graph.openTable({ ok: true, nodes: [], edges: [] }, { owner: 'n:1', owners: ['n:1'], ownerLabel: 'D-1', predicate: 'bonded_to@1', farType: 'die@1',
       words: 'bonded_to@1 \u2192 die@1', step: 1 });
     await settle();
     const lumpStep = handle.state.steps.find((x) => x.title === 'From D-1 · bonded_to@1 \u2192 die@1') || {};
