@@ -1,5 +1,14 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 오후] **«아니다» · 빈 칸 무시 · 다시 번역의 거절 수 착지 (main e3ee42295) — pull «전»에 아래 «when-not 을 pull 하기 전» 절의 명령 한 번 · 그다음 pull · 서버 · 체인 워커 재기동**
+>
+> ```
+> 왜 먼저   새 코드는 참조 조건(references[].from.when)의 값을 검사한다 — 목록 · null 이면 그 타입 · 술어 · 소스가 빠진다. 명령이 «left out … from.when» 을 안 말하면 pull
+> 쓰는 법   문장의 "when": {"<칸>": {"not": "<값>"}} — 그 값이 아닌 행(빈 칸 포함). 같은 소스의 c 는 {"<칸>": "<값>"}, d 는 {"not"} 로 모든 행이 둘 중 하나
+>          대상 칸이 빈 행은 그 문장만 빠지고 나머지 문장은 나온다(행 단위 소스 · 또는 묶음의 모든 행에서 빌 때) — 맵핑 표를 소스 하나 · 문장 셋으로
+> 볼 것    다시 번역(Re-translate) 결과 줄 «… written X of Y, refused N (이유 N)» — refused N > 0 이면 그 행은 거둬지고 다시 안 쓰였다(아래 절)
+> ```
+
 > ## [10-12 오후] **고침 — More ▸ 뒤 경로 줄의 술어가 비던 것 (main f147b2dca) — pull 하고 서버만 재기동**
 >
 > ```
@@ -362,7 +371,7 @@
 > ```
 > 왜          새 코드는 entities.<타입>.references[].from.when 의 값을 검사한다. 값이 목록 · null · 다른 객체면
 >             그 타입이 빠지고, 그 타입을 쓰는 술어와 소스가 같이 빠진다(로드는 계속 — 빠진 것만 안 읽힘)
-> 어디서       새 코드가 있는 체크아웃의 server 폴더 — 운영 체크아웃 말고(예: git worktree add ..\prepull origin/when-not)
+> 어디서       새 코드가 있는 체크아웃의 server 폴더 — 운영 체크아웃 말고(예: git fetch -> git worktree add ..\prepull origin/main)
 > 돌릴 명령    $env:ASSY_DATA_ROOT = "<운영 server 폴더>"; conda run -n assy_manager python -m ledger.setup --root "<운영 server 폴더>\config\ontology"
 > 답          stdout JSON 한 줄의 "readiness":"ready" · stderr 의 «left out <선언> <자리> <문장>» 줄 · 끝 줄 «N declaration(s) left out in …»
 > 답의 뜻      left out 줄이 오늘 server.log 의 «[Ledger] source … is NOT planned» 소스 · 그 타입 · 술어와 같은 것뿐 -> pull 해도 새로 빠지는 것 없음
