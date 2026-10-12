@@ -80031,3 +80031,126 @@ public relations 415 -> 415 · added [] · gone [] · rows changed {}
 page 52 total 5.72 | g1 0.82 g3 0.03 g4 1.00 -> 3.87 | + after-loop decode 0.32 + registration SQL 0.09 -> 3.46 | loop SQL 1.03 pre 0.30 (parse 0.29)
 page 97 total 10.70 | g1 2.40 g3 0.03 g4 1.92 -> 6.35 | + after-loop decode 0.52 + registration SQL 0.65 -> 5.18 | loop SQL 2.34 pre 0.57 (parse 0.13)
 ```
+
+## 10-12 C1 행 하나 편집 -> 체인 끝, dt_log 1만 · 10만 · 100만 · 조용한 창 · EXPLAIN (재기만, 박스 수)
+
+판: assy_impl_c1_1012 «소유자 말로 맞춘 박스 모양» (박스 표 · 체인 선언 복사 + 접기 둘 + 파생 행 하나), 한 잡 셀 100, 같은 워커(데워짐), 크기마다 편집 셋 중앙값. 아래는 요약기 출력(c1_summary.py) 그대로.
+
+```
+== inventory · dt_log 10000 (live: {'dt_inventory': 100, 'dt_log': 10000, 'cell_sources': 111496, 'audit_logs': 10710})
+   edit -> chain end median 0.584 s [1.526, 0.584, 0.54] · write door median 0.01 s [0.955, 0.01, 0.009]
+   groups [2, 2, 2] · group seconds median 0.379 · SQL median 140 statements, 0.125 s
+   rules (median mapper s): {'inventory_confirmed': 0.01, 'test': 0.009, 'c1_fold_by_unit': 0.008, 'enrichment_auto_confirm:enrich_in_chain_probe': 0.006, 'dt_transform_update': 0.006, 'dt_inventory_to_standard_dt_map': 0.001}
+   stages (median s): {'broadcast build': 0.141, 'write:dt_log': 0.141, 'mapper': 0.046, 'edit retraction:dt_log': 0.016, 'outbox read': 0.015, 'write:dt_inventory': 0.015, 'commit': 0.0}
+   slowest statements: [(0.0301, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s'), (0.0282, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s'), (0.025, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s')]
+   full-table reads (seq_scan, rows read, live) per edit: {'database_outbox': [(68, 456, 8), (61, 534, 10), (64, 688, 12)], 'dt_inventory': [(15, 1500, 100), (15, 1500, 100), (15, 1500, 100)]}
+== inventory · dt_log 100000 (live: {'dt_inventory': 1000, 'dt_log': 100000, 'cell_sources': 1105098, 'audit_logs': 101916})
+   edit -> chain end median 0.488 s [1.434, 0.462, 0.488] · write door median 0.011 s [0.912, 0.011, 0.011]
+   groups [2, 2, 2] · group seconds median 0.339 · SQL median 140 statements, 0.094 s
+   rules (median mapper s): {'inventory_confirmed': 0.008, 'c1_fold_by_unit': 0.008, 'test': 0.007, 'dt_transform_update': 0.006, 'enrichment_auto_confirm:enrich_in_chain_probe': 0.004, 'dt_inventory_to_standard_dt_map': 0.001}
+   stages (median s): {'write:dt_log': 0.125, 'broadcast build': 0.11, 'mapper': 0.031, 'edit retraction:dt_log': 0.016, 'mark processed': 0.016, 'write:dt_inventory': 0.015, 'commit': 0.0}
+   slowest statements: [(0.0277, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s'), (0.0254, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s'), (0.024, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s')]
+   full-table reads (seq_scan, rows read, live) per edit: {'database_outbox': [(66, 1034, 16), (63, 1119, 18), (62, 1225, 20)], 'dt_inventory': [(1, 1000, 1000), (1, 1000, 1000), (1, 1000, 1000)]}
+== inventory · dt_log 1000000 (live: {'dt_inventory': 10000, 'dt_log': 1000000, 'cell_sources': 11041098, 'audit_logs': 1011222})
+   edit -> chain end median 0.477 s [1.46, 0.432, 0.477] · write door median 0.012 s [0.995, 0.009, 0.012]
+   groups [2, 2, 2] · group seconds median 0.329 · SQL median 140 statements, 0.092 s
+   rules (median mapper s): {'c1_fold_by_unit': 0.008, 'test': 0.007, 'inventory_confirmed': 0.006, 'dt_transform_update': 0.005, 'enrichment_auto_confirm:enrich_in_chain_probe': 0.004, 'dt_inventory_to_standard_dt_map': 0.001}
+   stages (median s): {'write:dt_log': 0.125, 'broadcast build': 0.11, 'mapper': 0.031, 'edit retraction:dt_inventory': 0.015, 'commit': 0.0, 'edit retraction:dt_log': 0.0, 'key gate': 0.0}
+   slowest statements: [(0.025, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s'), (0.0238, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s'), (0.0234, 'UPDATE dt_log SET updated_at=%(updated_at)s, dt_lot=%(dt_lot)s WHERE dt_log.row_id = %(dt_log_row_id)s')]
+   full-table reads (seq_scan, rows read, live) per edit: {'database_outbox': [(66, 1628, 25), (64, 1713, 27), (65, 1869, 29)], 'dt_inventory': [(1, 10000, 10000), (1, 10000, 10000), (1, 10000, 10000)]}
+== log · dt_log 10000 (live: {'dt_inventory': 100, 'dt_log': 10000, 'cell_sources': 111497, 'audit_logs': 11013})
+   edit -> chain end median 0.099 s [1.065, 0.093, 0.099] · write door median 0.009 s [0.955, 0.009, 0.009]
+   groups [1, 1, 1] · group seconds median 0.018 · SQL median 11 statements, 0.006 s
+   rules (median mapper s): {'enrichment_dedup:c1_core_cells': 0.003, 'enrichment_dedup:enrich_in_chain_probe': 0.001}
+   stages (median s): {'broadcast build': 0.0, 'commit': 0.0, 'key gate': 0.0, 'mapper': 0.0, 'mark processed': 0.0, 'outbox read': 0.0, 'retraction': 0.0}
+   slowest statements: [(0.0059, 'SELECT dt_core_cells.row_id AS dt_core_cells_row_id, dt_core_cells.business_key_val AS dt_core_cells_business_'), (0.0025, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c'), (0.002, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c')]
+   full-table reads (seq_scan, rows read, live) per edit: {'database_outbox': [(48, 570, 13), (46, 595, 14), (48, 669, 15)], 'dt_log': [(1, 10000, 10000), (1, 10000, 10000), (1, 10000, 10000)], 'dt_inventory': [(1, 100, 100), (1, 100, 100), (1, 100, 100)], 'dt_core_cells': [(1, 2, 4), (1, 2, 4), (1, 2, 4)]}
+== log · dt_log 100000 (live: {'dt_inventory': 1000, 'dt_log': 100000, 'cell_sources': 1105098, 'audit_logs': 102219})
+   edit -> chain end median 0.192 s [0.968, 0.192, 0.1] · write door median 0.012 s [0.869, 0.012, 0.01]
+   groups [1, 1, 1] · group seconds median 0.032 · SQL median 11 statements, 0.021 s
+   rules (median mapper s): {'enrichment_dedup:c1_core_cells': 0.017, 'enrichment_dedup:enrich_in_chain_probe': 0.001}
+   stages (median s): {'mapper': 0.016, 'write:dt_core_cells': 0.015, 'broadcast build': 0.0, 'commit': 0.0, 'key gate': 0.0, 'mark processed': 0.0, 'outbox read': 0.0}
+   slowest statements: [(0.0197, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c'), (0.0155, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c'), (0.0147, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c')]
+   full-table reads (seq_scan, rows read, live) per edit: {'audit_logs': [(13, 90446, 103432)], 'database_outbox': [(48, 1002, 21), (47, 1031, 22), (48, 1101, 23)], 'dt_log': [(1, 100000, 99980), (1, 100000, 99980), (1, 100000, 99980)], 'dt_core_cells': [(1, 2, 2), (1, 2, 2), (1, 2, 2)]}
+== log · dt_log 1000000 (live: {'dt_inventory': 10000, 'dt_log': 1000000, 'cell_sources': 11041098, 'audit_logs': 1011525})
+   edit -> chain end median 1.172 s [1.172, 0.206, 32.277] · write door median 0.019 s [0.966, 0.01, 0.019]
+   groups [1, 1, 1] · group seconds median 0.133 · SQL median 11 statements, 0.122 s
+   rules (median mapper s): {'enrichment_dedup:c1_core_cells': 0.12, 'enrichment_dedup:enrich_in_chain_probe': 0.001}
+   stages (median s): {'mapper': 0.125, 'broadcast build': 0.0, 'commit': 0.0, 'key gate': 0.0, 'mark processed': 0.0, 'outbox read': 0.0, 'retraction': 0.0}
+   slowest statements: [(0.119, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c'), (0.1189, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c'), (0.1097, 'SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(c')]
+   full-table reads (seq_scan, rows read, live) per edit: {'database_outbox': [(48, 1437, 30), (47, 1454, 31), (309, 9885, 32)], 'dt_log': [(3, 1000000, 999679), (3, 1000000, 999679), (3, 1000000, 999679)], 'dt_core_cells': [(1, 2, 2), (1, 2, 2), (1, 2, 2)]}
+idle 10000: IDLE 11 s · {"database_outbox": {"seq_scan": 17, "seq_tup_read": 85, "idx_scan": 5, "live": 6}, "retroactive_runs": {"idx_scan": 5, "live": 0}}
+idle 100000: IDLE 11 s · {"database_outbox": {"seq_scan": 20, "seq_tup_read": 280, "idx_scan": 6, "live": 14}, "retroactive_runs": {"idx_scan": 6, "live": 0}}
+idle 1000000: IDLE 11 s · {"audit_logs": {"seq_scan": 14, "seq_tup_read": 97697, "live": 1011222}, "database_outbox": {"seq_scan": 20, "seq_tup_read": 460, "idx_scan": 6, "live": 23}, "retroactive_runs": {"idx_scan": 6, "live": 0}}
+RATIO inventory edit -> chain end per tenfold: ['10000->100000 x0.84', '100000->1000000 x0.98']
+RATIO log edit -> chain end per tenfold: ['10000->100000 x1.94', '100000->1000000 x6.10']
+writecost.txt 
+```
+
+조용한 60 초 (처리된 outbox 1,000,036 행, 프로세스마다 따로 · 넷 함께) — c1_quiet.py 출력
+
+```
+OUTBOX 1000036 rows · 33.0 s
+WINDOW chain · 60 quiet s · alive at the window's start {'chain': True}
+   table database_outbox            {'idx_scan': 152, 'live': 1000012}
+   table retroactive_runs           {'idx_scan': 35, 'live': 0}
+WINDOW server · 60 quiet s · alive at the window's start {'server': True}
+WINDOW scheduler · 60 quiet s · alive at the window's start {'scheduler': True}
+   table database_outbox            {'idx_scan': 56, 'live': 1000012}
+   table retroactive_runs           {'idx_scan': 14, 'live': 0}
+WINDOW watcher · 60 quiet s · alive at the window's start {'watcher': True}
+   table database_outbox            {'idx_scan': 48, 'live': 1000012}
+   table file_ingestion_logs        {'idx_scan': 48, 'live': 0}
+WINDOW all · 60 quiet s · alive at the window's start {'server': True, 'chain': True, 'scheduler': True, 'watcher': True}
+   table database_outbox            {'idx_scan': 254, 'live': 1000012}
+   table file_ingestion_logs        {'idx_scan': 46, 'live': 0}
+   table retroactive_runs           {'idx_scan': 49, 'live': 0}
+```
+
+EXPLAIN ANALYZE (편집 여섯 + 조용한 60 초, 문장마다 세어 표본으로) — 통째 읽기만
+
+```
+== d703b/scratchpad/c1/c1_run.py edit log 3 · n 1 in the process · SELECT row_id FROM dt_log WHERE dt_cell_key = 'AUTO_000000|0|0'
+      ->  Parallel Seq Scan on dt_log  (cost=0.00..30344.38 rows=1 width=37) (actual time=19.375..55.955 rows=0.33 loops=3)
+== assy_manager\python.exe -m chain.slots 1 · n 3 in the process · SELECT dt_log.core_wafer AS dt_log_core_wafer, count(*) AS count_1 FROM dt_log WHERE dt_log.core_wafer IN (%(core_wafer_1_1)s) GROUP BY dt_log.core_waf
+      ->  Parallel Seq Scan on dt_log  (cost=0.00..30344.38 rows=83 width=9) (actual time=16.747..54.198 rows=66.67 loops=3)
+      ->  Seq Scan on dt_inventory  (cost=0.00..342.60 rows=2 width=74) (actual time=0.027..1.881 rows=2.00 loops=1)
+== y_manager\python.exe run_chain_worker.py · n 2 in the process · SELECT coalesce("dt_job", '') AS k0, count(*) AS n FROM "dt_inventory" GROUP BY coalesce("dt_job", '') HAVING count(*) > 1 ORDER BY n DESC LIMIT %(lim)
+      ->  Seq Scan on dt_inventory  (cost=0.00..292.06 rows=10106 width=32) (actual time=0.010..1.466 rows=10040.00 loops=1)
+```
+
+## 10-12 슬롯 연결 풀 바닥 — 원인 (재기만, 짓지 않음)
+
+판: assy_impl_c1_1012 (dt_log 100만, 박스 모양) · 측정용 체인 워커 하나(슬롯 둘) · 쥔 자 탐침은 스크래치 사이트 훅(c1/site3)뿐, 제품 파일 변경 0. 박스 수.
+
+```
+풀 크기     chain/slots.py SLOT_POOL = {ASSY_DB_POOL_SIZE: 2, ASSY_DB_MAX_OVERFLOW: 2} 를 슬롯 환경에 넣고(같은 파일 :200),
+           database/database.py build_engine 이 그 둘을 읽는다. 기다림 한도는 SQLAlchemy 기본 pool_timeout 30 s
+누가 쥐었나   (기다림이 한도를 넘은 순간마다 그 풀의 연결 넷 — 꺼낸 자리 · 스레드 · 그 백엔드의 pg_stat_activity)
+   셋       chain/table_locks.py:41 _lock_connection — 그룹을 돌린 실행기 스레드 asyncio_0 · _1 · _2 가 하나씩
+            state idle · 마지막 질의 SELECT pg_advisory_unlock(...) — 잠금은 풀었는데 연결은 풀로 안 돌아감
+            스레드마다 하나(_mine = threading.local()), 닫는 자리가 없다
+   넷째      MainThread 의 배치 세션 (chain/slots.py:547 _run_batch -> chain/ingestion_worker.py:4653 pending_chain_events)
+            idle in transaction · 30 s (그룹이 끝나기를 트랜잭션을 연 채 기다린다)
+기다린 쪽   asyncio_3 — 그룹은 asyncio 기본 실행기 스레드에서 돈다(_claimed_group_sync -> table_locks.hold).
+           처음 쓰는 스레드라 잠금 연결을 새로 꺼내려다 30 s 뒤 TimeoutError, 배치가 실패하고 다시 줄 선다
+조건 한 줄  슬롯 하나가 서로 다른 실행기 스레드 셋에서 그룹을 돌린 «뒤로는», 넷째 스레드에 떨어지는 그룹이
+           «매번» 30 s 기다리고 실패한다 — 한 번이 아니라 그 뒤로 계속
+재현       로그 편집 20 개(그룹 하나씩): 0 번 · 이어서 인벤토리 편집(그룹 둘씩): 첫 편집부터 연달아 18 번,
+           모두 asyncio_3 이 기다림, 약 36 s 간격 — 그 편집의 체인이 10 분 넘게 안 끝나 판을 내가 끊음
+           (100만 C1 판에서 본 32 s 한 번도 같은 줄: «QueuePool limit of size 2 overflow 2 reached», 다시 돈 배치 0.17 s)
+           표 크기와는 무관 — 슬롯이 오래 살아 실행기 스레드가 늘어난 뒤에 난다
+연결 여는 자리 (체인이 도는 코드, `git grep -n -E "\.connect\(|SessionLocal\(|Session\(bind|raw_connection\(|session_factory\(\)"`
+            -- chain/*.py chain/enrichment/*.py maps/*.py mappers/*.py, 줄 단위, 카나리아 def build_engine 1)
+            chain/ingestion_worker.py 23 줄 · chain/slots.py 3 줄(545 · 574 · 588) · chain/table_locks.py 1 줄(41) ·
+            chain/unique_key.py 1 줄(44, DDL) · chain/synthesis.py 1 줄(467)
+            «돌려주지 않는» 것은 table_locks.py:41 하나를 찾았다(스레드에 묶임). 나머지는 이번에 하나씩 열지 않았다
+판 사실     C1 판에는 원장 소스 선언이 없었다 — 원장 행 세기는 매분 «선언을 못 읽음», 원장 따라가기는 멈춤.
+           그래서 앞의 조용한 창에는 원장 일이 없었다(섞인 부하 판에서 원장 선언을 넣고 다시 잰다)
+이 박스     운영 런처(run_decoupled_app --server-only)의 체인 워커도 슬롯 둘을 띄운 상태 — 같은 기제. 운영 주장은 아님
+고칠 안 후보 (짓지 않음 · 계측 표가 모이면 함께)
+   ㄱ 잠금 연결을 그룹 끝에 풀로 돌려준다(hold 의 finally 에서 close) — 매 그룹 연결 하나를 새로 연다
+   ㄴ 잠금 연결을 풀 밖 전용 연결 하나로(슬롯은 한 번에 한 그룹) — 스레드가 바뀌어도 같은 연결
+   ㄷ 그룹을 슬롯의 한 스레드에 고정(전용 실행기 1 스레드)
+   (앞서 적은 둘: 결정 판단키 인덱스가 alignment 만 · 조인은 ensure_declared_lookup_keys 로 갈림 · 접기 «남길 잡» 거름에 인덱스 없음)
+```
