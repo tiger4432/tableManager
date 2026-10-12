@@ -900,6 +900,9 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
     the same function the business key and the event frame's key parts are built with; a
     second spelling here would disagree with them about exactly these values.
 
+    `{"not": v}` is the same comparison flipped, so per row it is the exact complement of `v`:
+    a blank column does not equal `v`, so it says `{"not": v}` (소유자 10-12 「아니다도 추가해」).
+
     A column the frame does not carry answers False rather than raising: the validator
     already refused unknown columns at load, so reaching here means the column is declared
     and absent from THIS unit, and a sentence about a value that is not there is not said.
@@ -908,8 +911,9 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
         values = unit_columns.get(column)
         if values is None:
             return False
-        target = clean_str_value(expected)
-        if any(clean_str_value(value) != target for value in values):
+        negated = isinstance(expected, Mapping)
+        target = clean_str_value(expected["not"] if negated else expected)
+        if any((clean_str_value(value) == target) == negated for value in values):
             return False
     return True
 
@@ -1853,7 +1857,8 @@ def _reference_rows(context: MapperContext, named, rows, source_raw_ref: str,
         if entity_type not in entities:
             continue
         for ref in entities[entity_type].references:
-            if any(_plain(keys.get(name)) != value for name, value in ref.when):
+            # the one judge of a `when` - a sentence's, an exclusion's, a reference's
+            if not _unit_says({name: (keys.get(name),) for name, _ in ref.when}, dict(ref.when)):
                 continue
             target = {}
             for target_key, kind, value in ref.keys:

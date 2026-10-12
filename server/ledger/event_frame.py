@@ -167,7 +167,8 @@ def is_blank_source_value(value: Any) -> bool:
 def row_excluded(clauses: Sequence[Mapping[str, Any]], value_of) -> bool:
     """Does `read.exclude_when` take this row out - ANY clause: its column blank, or its `when`
     matched the way a mapping's `when` is (`_unit_says`, one spelling of equality) - so a row whose
-    column is empty is not taken out by a value (총괄 e91433bf1). `value_of(column)` reads the row.
+    column is empty is not taken out by a value (총괄 e91433bf1), and is by `{"not": <v>}`.
+    `value_of(column)` reads the row.
     The page and the backfill's census ask this one function."""
     for clause in clauses:
         when = clause.get("when")
