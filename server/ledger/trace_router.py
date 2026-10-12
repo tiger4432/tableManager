@@ -20,6 +20,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from runtime.offloop_json import OffLoopJSONRoute
+from runtime.process_pool import in_pool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -107,6 +108,7 @@ def _subgraph_contract_state(connection, relation):
 
 # POST as well: a continued page hands back its `resume` in the body (MORE, 총괄 ad3c03e71)
 @router.api_route("/subgraph", methods=["GET", "POST"])
+@in_pool
 def evidence_subgraph(
     node_id: str | None = Query(None, alias="id",
                          description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),

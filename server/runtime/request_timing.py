@@ -72,6 +72,19 @@ def begin():
     return _counter.set([0.0, 0]), time.perf_counter()
 
 
+def spent():
+    """[database seconds, queries] counted so far in this request - what a pool process hands back."""
+    return list(_counter.get() or (0.0, 0))
+
+
+def add(seconds, queries):
+    """Database time a pool process spent for this request (`runtime.process_pool`)."""
+    counter = _counter.get()
+    if counter is not None:
+        counter[0] += seconds
+        counter[1] += queries
+
+
 def end(began, method, path, response):
     """Stamp the response's header and, over the budget, say it once. No response (the app
     raised): the counter is only put away."""
