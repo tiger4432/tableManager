@@ -161,6 +161,54 @@ BEHIND = ([_atom("die", die("B0"), "in_container", "wafer", {"w": "V"}),
           + [_atom("die", die("BH%d" % k), "linked", "die", die("BZ")) for k in range(50)])   # BZ: a hub aux
 
 
+class _Counting(ledger_subgraph.InMemoryEvidenceLookup):
+    """The rows each read hands back, summed."""
+    rows = 0
+
+    def claims_for_entities(self, *args, **kwargs):
+        got, cut = super().claims_for_entities(*args, **kwargs)
+        type(self).rows += len(got)
+        return got, cut
+
+
+def _tails(declared, tail, width, depth, meet):
+    """Wafer U's ten dies, each down a tail of `tail`; the aux hub HX, `width` chains of `depth`; the first `meet`
+    chains' ends joined to a tail's end."""
+    atoms = [_atom("die", die("U%d" % k), "in_container", "wafer", {"w": "U"}) for k in range(10)]
+    for k in range(10):
+        for t in range(tail):
+            atoms.append(_atom("die", die("U%d" % k if t == 0 else "U%d_%d" % (k, t - 1)), "linked", "die",
+                               die("U%d_%d" % (k, t))))
+    for g in range(width):
+        for t in range(depth):
+            atoms.append(_atom("die", die("HX" if t == 0 else "HX%d_%d" % (g, t - 1)), "linked", "die",
+                               die("HX%d_%d" % (g, t))))
+    for g in range(meet):
+        atoms.append(_atom("die", die("HX%d_%d" % (g, depth - 1)), "linked", "die", die("U%d_%d" % (g % 10, tail - 1))))
+    _Counting.rows = 0
+    return atoms, ledger_subgraph.subgraph(
+        explorer.entity_id("wafer", {"w": "U"}), _Counting(atoms), declaration_paths=declared, hops=1,
+        edge_limit=200, follow=["in_container", "linked"], collect=["wafer", "die"],
+        aux=[explorer.entity_id("die", die("HX"))])
+
+
+def test_the_cap_bounds_the_atoms_read_not_the_reads(declared):
+    """총괄 10-12, 18766: the walk's side read a node again for each origin it passed on, and atoms came again through
+    another door - the cap spent past the whole ledger, «unknown» where the truth was «none». A node's atoms are read
+    once and only new ones spend (cap 400):
+      ① the whole ledger under the cap - tails of 5, 60 chains of 3 meeting them, 300 atoms: complete, every node
+         found, the 300 spent (spent per row read: unknown)
+      ② nothing met - tails of 20, 60 chains of 10: complete, «none», the walk's side 210 and the hub's own 60 spent,
+         and the rows read under twice that (read again per origin: 900)"""
+    atoms, body = _tails(declared, 5, 60, 3, 60)
+    assert ({n["aux"]["state"] for n in body["nodes"]}, body["aux"]["complete"], body["aux"]["claims"]) == (
+        {"found"}, True, len(atoms)), body["aux"]
+    _atoms, body = _tails(declared, 20, 60, 10, 0)
+    assert ({n["aux"]["state"] for n in body["nodes"]}, body["aux"]["complete"], body["aux"]["claims"]) == (
+        {"none"}, True, 270), body["aux"]
+    assert _Counting.rows < 2 * 270, _Counting.rows
+
+
 def test_an_answer_node_behind_another_answer_node_is_found_not_none(declared):
     """총괄 QA (349f3ec71): V's and B1's only neighbour is B0, another answer node, and their origin never left them -
     «none» under the cap with the hub aux BZ. Their hops pass through B0: V 3, B1 3, B0 2."""

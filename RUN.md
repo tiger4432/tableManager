@@ -278,7 +278,7 @@
 > 무엇        걷기에 보조 노드를 주면 걸은 노드마다 «보조 노드까지 최단 경로가 있나»를 답한다 — 3 hops · none · unknown
 >            답의 노드 · 엣지는 보조 노드가 있든 없든 같다. 판정은 걷는 길의 제약(정적 규칙 · 되밟기 · Follow)과 시각 창을 안 쓴다
 >            정적 노드에서 동적 노드로 내려가는 걸음도 지금은 센다 — 소유자 답을 기다림(답이 오면 이 줄이 바뀐다)
->            unknown = 원자 상한(걷기와 같은 상한 · 기본 6,000)이 먼저 참. 상한 아래에서 «none» 은 안 낸다 · 상한 그대로(소유자 ㄷ) · 이어 찾기(More)는 시연 뒤
+>            unknown = 원자 상한(걷기와 같은 상한 · 기본 6,000 · 읽은 «서로 다른» 원자 수)이 먼저 참. 상한 아래에서 «none» 은 안 낸다 · 상한 그대로(소유자 ㄷ) · 이어 찾기(More)는 시연 뒤
 > 순서        pull -> 서버 재기동
 > 확인        걷기 화면 · 본딩 웨이퍼 하나 Positive · Collect wafer · die · defect · «+ Add start» 에서 노드를 고르고 «+ Reaching» · Walk
 >            구역 표 끝에 «→ <보조 노드>» 열 · «Reaches only» 를 누르면 닿는 행만
@@ -286,10 +286,12 @@
 >            «none»                      다 찾았고 길이 없다
 >            «unknown»                   원자 상한이 먼저 찼다 — 고장이 아니다
 >            보조 노드를 넣자 표의 행이 바뀜   결함 — 보조 노드를 빼고 같은 걷기로 대조해 총괄께
-> 박스 수     읽기 전용 · 이 박스 원장 · 라우트 처리기를 한 프로세스 안에서 · SYN-BW-101-16 · hops 6 · Collect wafer · die · defect · 판 b2bcf476f
->            레시피 SYN-R-DEPO-01      found 272 (2 hops 131 · 3 hops 141) · unknown 128 · none 0 · claims 6,000 · truncated claims · 1.92 s -> 1.97 s · 노드 · 엣지 같다 True
->            quantity ramp_C_min      found 180 (1 hops 1 · 2 hops 179) · unknown 220 · none 0 · claims 6,000 · truncated claims · 1.72 s -> 4.58 s · 노드 · 엣지 같다 True
+> 박스 수     읽기 전용 · 이 박스 원장 · 라우트 처리기를 한 프로세스 안에서 · SYN-BW-101-16 · hops 6 · Collect wafer · die · defect · 이웃 캐시 판
+>            레시피 SYN-R-DEPO-01      found 272 (2 hops 131 · 3 hops 141) · unknown 128 · none 0 · claims 6,000 · truncated claims · 2.33 s -> 2.25 s · 노드 · 엣지 같다 True
+>            quantity ramp_C_min      found 180 (1 hops 1 · 2 hops 179) · unknown 220 · none 0 · claims 6,000 · truncated claims · 1.96 s -> 4.88 s · 노드 · 엣지 같다 True
 >            «s -> s» = 보조 없이 · 보조 넣고
+>            응용 판(assy_test · assy_app_reread_dm, 읽기 전용) SYN-BW-103-11 + TRD-W-001 · reaching quantity pressure_MPa · node_limit 1000 · Collect wafer: complete True · claims 5,659 · found 31 · none 1 · TRD-W-001 none (캐시 전: unknown · claims 6,000)
+>            이 박스 원장은 서로 다른 원자만으로 6,000 이 찬다 — 위 unknown 은 상한, 다시 읽기가 아님
 > 급할 때      보조 노드를 안 고르면 오늘과 같은 걷기 · git revert <이 커밋> -> 서버 재기동
 > ```
 

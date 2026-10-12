@@ -2139,30 +2139,44 @@ def _judge_aux(payload, aux, lookup, edge_limit):
         if decoded and decoded.get("kind") == "entity":
             refs[node_id] = (decoded["type"], decoded["keys"])
 
+    near_of, whole, spent = {}, set(), set()    # id -> neighbours read · ids every atom of which is read · atom ids
+
     def read(frontier, door=None):
-        """One read of `frontier`'s atoms (through the door when given) -> [(near id, far id)], or None at the cap."""
+        """`frontier`'s neighbours (through the door when given) -> [(near id, far id)], or None at the cap. A node's
+        atoms are read once (총괄 10-12, 18766: a node read again for each origin it passed on spent the cap on the
+        same atoms - more than the whole ledger): a node read whole answers from `near_of`; a read without a door reads
+        the rest whole, its far ends already whole left out - their atoms toward it came with them; the budget is spent
+        on atoms not read before."""
         if not frontier:
             return []
-        atoms, cut = timeless.claims_for_entities(
-            [refs[i] for i in frontier], "both", budget[0],
-            far=None if door is None else (door[0], [refs[i] for i in door[1]]))
-        budget[0] -= len(atoms)
-        if cut:
-            return None
-        pairs = []
-        for atom in atoms:
-            named = [(atom.subject_type, dict(atom.subject_keys or {}))]
-            payload_ = atom.object_payload or {}
-            if atom.object_kind == "entity_ref" and payload_.get("type"):
-                named.append((str(payload_["type"]), dict(payload_.get("keys") or {})))
-            ids = [(explorer.entity_id(t, k), (t, k)) for t, k in named]
-            for near, _ref in ids:
-                if near in frontier:
-                    for far, ref in ids:
-                        if far != near:
-                            refs.setdefault(far, ref)
-                            pairs.append((near, far))
-        return pairs
+        unread = [i for i in frontier if i not in whole]
+        if unread:
+            far = (("not_in", [refs[i] for i in whole]) if whole else None) if door is None else (
+                door[0], [refs[i] for i in door[1]])
+            # an atom read before may come again through another door: the fetch makes room for every one of them,
+            # and only the new ones spend - the cap bounds the distinct atoms read
+            atoms, cut = timeless.claims_for_entities([refs[i] for i in unread], "both", budget[0] + len(spent),
+                                                      far=far)
+            fresh = {atom.id for atom in atoms} - spent
+            spent.update(fresh)
+            cut, budget[0] = cut or len(fresh) > budget[0], max(0, budget[0] - len(fresh))
+            if cut:
+                return None
+            for atom in atoms:
+                named = [(atom.subject_type, dict(atom.subject_keys or {}))]
+                payload_ = atom.object_payload or {}
+                if atom.object_kind == "entity_ref" and payload_.get("type"):
+                    named.append((str(payload_["type"]), dict(payload_.get("keys") or {})))
+                ids = [(explorer.entity_id(t, k), (t, k)) for t, k in named]
+                for near, _ref in ids:
+                    for far_id, ref in ids:
+                        if far_id != near:
+                            refs.setdefault(far_id, ref)
+                            near_of.setdefault(near, set()).add(far_id)
+            if door is None:
+                whole.update(unread)
+        return [(near, far_id) for near in frontier for far_id in near_of.get(near, ())
+                if door is None or (far_id in door[1]) == (door[0] == "in")]
 
     a_seen = {s: (0, s) for s in seeds if s in refs}                  # id -> (hops from the aux, which aux)
     reach = {i: {number[i]: 0} for i in main if i in refs}            # id -> {answer node number: hops from it}
