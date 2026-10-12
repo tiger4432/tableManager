@@ -344,10 +344,14 @@ const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');
 const countReached = (kinds) => ({ a: kinds.filter((k) => k === 'a').length, ab: kinds.filter((k) => k === 'ab').length,
   b: kinds.filter((k) => k === 'b').length });
 
-/** A walk and its control walk as one graph: each node and edge once, the walk's own first (lead 99ed68cb7 D). */
+/** A walk and its control walk as one graph: each node and edge once, the walk's own first (lead 99ed68cb7 D); a walk's
+ *  pages too (owner 10-12 «이어 걷기») - each ranked row once, so the signed table reads every page's rows. */
 export function mergeWalks(a, b) {
-  const once = (key) => [...new Map([...(b[key] || []), ...(a[key] || [])].map((x) => [x.id, x])).values()];
-  return { ...a, nodes: once('nodes'), edges: once('edges') };
+  const once = (list) => [...new Map(list.map((x) => [x.id, x])).values()];
+  const ranked = (w) => ((w && w.propagation) || {}).ranked || [];
+  return { ...a, nodes: once([...(b.nodes || []), ...(a.nodes || [])]), edges: once([...(b.edges || []), ...(a.edges || [])]),
+    ...(a.propagation || b.propagation
+      ? { propagation: { ...(b.propagation || {}), ...(a.propagation || {}), ranked: once([...ranked(b), ...ranked(a)]) } } : {}) };
 }
 
 /** The server's most for node_limit (ledger_subgraph.MAX_NODE_LIMIT, the route's `le`). */

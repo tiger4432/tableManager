@@ -380,6 +380,8 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--wk-fs-line); }
 .wk-walk { color: var(--text-dim, #71717a); }
 .wk-trunc { color: var(--warning); }
+/* The continuation's line (owner 10-12): read, so the body's size and colour; its More ▸ beside the words. */
+.wk-reachline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--wk-fs-body); color: var(--text); }
 .wk-fail { color: var(--danger, #dc2626); font-size: var(--wk-fs-body); }
 .wk-row { display: flex; gap: var(--space-2); align-items: baseline; padding: var(--space-1) 0;
   border-top: 1px solid var(--border, #d4d4d8); font-size: var(--wk-fs-line); }

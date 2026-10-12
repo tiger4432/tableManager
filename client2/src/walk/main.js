@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
+import { walkTableView, mergeWalks, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -88,6 +88,9 @@ const CHECK_ROWS_FIRST = 'Check rows first';
  *  walked once more. */
 const NEXT_WORDS = Object.freeze({ step: 'New step', here: 'Add here', walk: 'Walk ▸' });
 const MORE = 'More';
+const MORE_ON = 'More ▸';
+const ALL_REACHED = 'All reached';
+const MORE_TO_WALK = 'more to walk';
 const AT_SERVER_LIMIT = 'at the server limit';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
@@ -511,6 +514,17 @@ export function boot(doc, host, deps) {
    *  (18766: merged, the step's rows came first and nothing new drew) - its starts, checks, filters and sort the step's;
    *  × puts the one before back. */
   const moreOf = (r, asked) => moreAsk(r, asked || {});
+  /** More ▸ (owner 10-12 «이어 걷기»): the next page of the step's own walk, asked again with its resume; the page merged
+   *  into the step's answer - each node and edge once (mergeWalks, as Add here's); × puts the one before back. */
+  function walkResume() {
+    const at = state.at;
+    const { result: was, asked } = answerAt(at);
+    void walkInto(at, { ...was.ask, resume: was.more.resume }, (res) => {
+      lessAt.set(at, [...(lessAt.get(at) || []), { result: was, asked }]);
+      // As of the first page (the server's resume.as_of): the pages are one walk at that time.
+      setAnswer(at, { ...mergeWalks(res, was), ask: was.ask, pages: (was.pages || 1) + 1, generatedAt: was.generatedAt }, asked);
+    });
+  }
   function walkMore(more) {
     const at = state.at;
     void walkInto(at, more.asked, (res) => {
@@ -1877,7 +1891,22 @@ export function boot(doc, host, deps) {
       // ⚠️ 절단은 «말합니다». 🔴 «자른 축»을 씁니다 — `reason` 을 그대로 쓰면 다 걸은 답에도 depth 가 실립니다.
       // The walk as merged so far: More's latest answer, or the step's own (lead 10-12).
       const askedNow = state.at === 0 ? state.asked : shown.asked;
-      const more = moreOf(r, askedNow);
+      // The server's continuation: each collected type reached or cut, its pages, and More ▸ for the next one; without it,
+      // today's More (each limit that cut it raised).
+      if (r.more) {
+        const reach = Object.entries(r.more.reach || {}).map(([type, x]) => (x && x.complete
+          ? `${type}: all reached` : `${type}: cut · ${(x && x.unexpanded) || 0} not expanded`));
+        // Whether there is more is the resume's alone (lead 10-12: a type's «complete» was true on a cut page).
+        const line = el(doc, 'div', 'wk-reachline', [...reach, ...(r.pages > 1 ? [`${r.pages} pages`] : []),
+          ...(r.more.resume ? [MORE_TO_WALK] : [])].join(' · '));
+        const go = el(doc, 'button', 'wk-next-edge wk-more', MORE_ON);
+        go.type = 'button';
+        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);
+        go.addEventListener('click', () => { if (r.more.resume) walkResume(); });
+        line.append(go);
+        box.append(line);
+      }
+      const more = r.more ? null : moreOf(r, askedNow);
       if (more) {
         const cut = el(doc, 'div', 'wk-trunc', `Cut · ${more.budgets.join(' · ')}${more.asked ? '' : ` · ${AT_SERVER_LIMIT}`}`);
         // More: the same walk, the limit that cut it raised, merged into this step; cut again, again.
