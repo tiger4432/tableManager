@@ -79648,3 +79648,18 @@ PG:
         ⚠️ 흉내의 한계: 씨앗 여럿을 깊이 0 으로 다시 걸어 쪽마다 조금만 나아감 — 실제 이어 걷기 쪽 수는 지어야 나옴
 ② seen   «넓힌 전부» 쪽 100 에서 1.09 MB · «frontier 깊이 앞뒤 세 층만» 1.08 MB — 거의 안 줄음 (이 판에서 세 층이 대부분)
 ```
+
+## 10-12 보조 판정 — RELEASE_LOG · RUN.md 를 지금 판(규칙 없음) 기준으로 (총괄 10-12)
+
+```
+커밋        cd004e6c3 — impl-aux-reach 위(main 아님) · 그 아래 b2bcf476f 는 그대로(응용 QA 가 보는 해시 안 바뀜)
+RELEASE_LOG 클라 가지(design-aux af502e714)에 같은 기능 항목이 이미 있다 -> 둘째 항목을 안 만들고, 그 항목 글 그대로에
+            서버 줄 둘(«판정의 뜻 (서버)» · «라우트»)을 더한 «한 항목» + 걷기 화면 목차 한 줄
+            착지 때 두 가지가 같은 자리에 겹친다 — 이 쪽이 클라 글을 다 담으므로 이 쪽을 받으면 된다
+RUN.md      10-12 절 하나 — 무엇 · 순서(pull -> 서버 재기동) · 확인 · 답의 뜻 · 박스 수 · 급할 때. {LANDING} 은 착지 때
+박스 수     읽기 전용 · aux_box.py 를 이 박스 원장에(지금 다시 잰 것, 출력 파일에서 옮김)
+레시피 SYN-R-DEPO-01      found 272 (2 hops 131 · 3 hops 141) · unknown 128 · none 0 · claims 6,000 · truncated claims · 1.92 s -> 1.97 s · 노드 · 엣지 같다 True
+quantity ramp_C_min      found 180 (1 hops 1 · 2 hops 179) · unknown 220 · none 0 · claims 6,000 · truncated claims · 1.72 s -> 4.58 s · 노드 · 엣지 같다 True
+규칙 답이 오면 바뀌는 줄  RELEASE_LOG «판정의 뜻 (서버)» 의 둘째 문장 · RUN.md «무엇» 셋째 줄 (둘 다 「정적 -> 동적 걸음도 지금은 센다」)
+다음        impl-pagesize 고칠 것 넷(2ea5ee2a7) 시작 — 규칙 답이 오면 그쪽 먼저
+```
