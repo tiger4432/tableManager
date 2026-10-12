@@ -2333,6 +2333,9 @@ def _attach_ledger_sources(db, table_name, rows):
                 by_row.setdefault(row_id, []).append({"source": source, "world": world, "changed": changed})
     for row in rows:
         row["ledger_rows"] = by_row.get(str(row.get("row_id")), [])
+        # on the row too: a screen seats a page's rows in more than one place and its cache keeps rows alone - a row
+        # that carries its own «not read» cannot be drawn «not yet» by a seat that forgot the page's key (클라 10-12)
+        row["ledger_worlds_unread"] = list(unread)
     return unread
 
 

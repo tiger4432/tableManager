@@ -1025,6 +1025,7 @@ def test_the_grid_says_each_worlds_sources_and_a_row_changed_since(world):
         rows = [{"row_id": row.row_id, "key": row.business_key_val}
                 for row in world["db"].query(model).order_by(model.business_key_val)]
         assert main._attach_ledger_sources(world["db"], table, rows) == list(unread)
+        assert all(row["ledger_worlds_unread"] == list(unread) for row in rows), rows   # on each row too (클라)
         return {row["key"]: (row["ledger_sources"], row["ledger_rows"]) for row in rows}
 
     assert page("lot_slot_wafer") == {"K1": ([KEPT], [{"source": KEPT, "world": DEFAULT, "changed": False}])}
