@@ -297,8 +297,10 @@
 > 돌릴 명령    python -m ledger census --source <소스>   (센서스 기록만 새로 씀 — 원장 · 표는 그대로)
 > 답의 뜻      not yet 0 -> 다 됨 (거른 행은 원래 이 소스의 행이 아님)
 >             not yet > 0 이고 다시 돌려도 그대로 -> 거름이 아닌 다른 이유로 안 읽히는 행 — 총괄께
-> 안 빼는 때   쉬지 않는 센서스 틱(S-122) · 색인에 없는 행이 100,000 넘음(로드 전) -> «exclude_when not subtracted (…)»
+> 안 빼는 때   쉬지 않는 센서스 틱(S-122) · 색인에 없는 행이 100,000 넘음 — 그때는 하나도 안 빼고 답이 그렇다고 말한다
+>             -> «exclude_when not subtracted (over 100k rows the index does not name)»
 >             when-not 부터 이 문장은 «rows exclude_when takes out or that say no sentence not subtracted (…)» — 말하는 문장이 없는 행도 같이 뺀다
+>             남은 행(표 − 색인)이 0 이하이면 세지 않는다(빼 줄 것이 없음)
 > 같은 낱말   «Table less indexed» 는 이름대로 표 − 색인 — 거른 행은 «New, not translated» · not yet 에서만 빠짐
 > 되돌리기     git revert 9c1da298f -> 서버 · 체인 워커 재기동
 > ```

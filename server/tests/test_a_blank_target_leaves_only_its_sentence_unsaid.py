@@ -18,6 +18,7 @@ import re
 import sys
 
 import pandas as pd
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -221,8 +222,9 @@ def test_a_typed_target_with_a_blank_key_or_type_unsays_only_its_sentence(shippe
 # ------------------------------------------------------------------ a group (총괄 10-12 QA ①)
 
 def test_a_group_skips_a_sentence_only_when_its_cell_is_blank_in_every_row():
-    """A cell blank in some rows of a group and filled in others refuses the group, whichever row
-    is first - the filled value is not dropped in silence. Blank in every row: that sentence only."""
+    """A group read whose mapper reads the group as one unit (the default `map.unit`): a cell blank
+    in some rows and filled in others refuses the group, whichever row is first - the filled value is
+    not dropped in silence. Blank in every row: that sentence only."""
     source = release_log_source()
     source["read"] = {"unit": "group", "identity": ["process_id"], "group_by": ["process_id"],
                       "order_by": ["row_id"]}
@@ -240,6 +242,57 @@ def test_a_group_skips_a_sentence_only_when_its_cell_is_blank_in_every_row():
     assert [(r.reason, "'object_id'" in r.detail, r.addresses[0]["path"]) for r in preview.refusals] == [
         ("no_identity", True, "event_frame.rows[0].object_id"),
         ("no_identity", True, "event_frame.rows[3].object_id")]
+
+
+#: A group read whose mapper speaks per row - the shape of the shipped `dt_log` (총괄 10-12 QA2 ①).
+GROUP_READ = {"unit": "group", "identity": ["process_id"], "group_by": ["process_id"],
+              "order_by": ["row_id"]}
+PER_ROW = [{"kind": "row"}, {"kind": "group_by", "columns": ["row_id"]}]
+
+
+@pytest.mark.parametrize("unit", PER_ROW, ids=["row", "group_by-row_id"])
+def test_a_row_mapper_inside_a_group_read_judges_each_row(unit):
+    """QA2 probe A: R1 leaves its object blank, R2 of the same group fills it - each row speaks for
+    itself, as the mapper does (on base the group was refused for R1's blank)."""
+    source = release_log_source()
+    source["read"], source["map"]["unit"] = dict(GROUP_READ), unit
+    rows = [
+        {"row_id": "R1", "process_id": "P1", "object_id": None, "quantity_id": "Q1", "related_process_id": "PR1"},
+        {"row_id": "R2", "process_id": "P1", "object_id": "O2", "quantity_id": "Q1", "related_process_id": "PR1"},
+    ]
+    preview = _preview(_document(source), rows)
+
+    assert _refused(preview) == []
+    assert _edges(preview) == {"P1": [("physical_object", "O2"), ("physical_process", "PR1"),
+                                      ("physical_process", "PR1"), ("physical_quantity", "Q1"),
+                                      ("physical_quantity", "Q1")]}
+
+
+@pytest.mark.parametrize("unit", PER_ROW + [None], ids=["row", "group_by-row_id", "the-group"])
+@pytest.mark.parametrize("quantity_when", [{"kind": "qty"}, {"kind": {"not": "obj"}}],
+                         ids=["equals", "not"])
+def test_a_when_mixed_inside_a_group_read_never_raises(unit, quantity_when):
+    """QA2 probe B. R1 (kind obj, object blank) and R2 (kind qty) share a group read. Per row: R1's
+    one applying sentence has a blank target, so the group is refused `no_identity` - as on base;
+    before this round it raised `missing_binding_value` and failed the whole batch. The group as one
+    unit: the kinds disagree, no sentence applies, and the group is counted under its `when`."""
+    source = _gated()
+    source["bind"]["mappings"]["process-quantity"]["when"] = quantity_when
+    source["read"] = dict(GROUP_READ)
+    if unit:
+        source["map"]["unit"] = unit
+    rows = [{"row_id": "R1", "process_id": "P1", "kind": "obj", "object_id": None, "quantity_id": "Q1"},
+            {"row_id": "R2", "process_id": "P1", "kind": "qty", "object_id": "O2", "quantity_id": "Q2"},
+            {"row_id": "R3", "process_id": "P3", "kind": "obj", "object_id": "O3", "quantity_id": "Q3"}]
+    preview = _preview(_document(source), rows)
+
+    assert _edges(preview) == {"P3": [("physical_object", "O3")]}
+    if unit:
+        assert [(r.reason, r.addresses[0]["path"]) for r in preview.refusals] == [
+            ("no_identity", "event_frame.rows[0].object_id")]
+        assert dict(preview.unsaid) == {}
+    else:
+        assert (preview.refusals, dict(preview.unsaid)) == ((), {(("kind", "obj, qty"),): 1})
 
 
 # ------------------------------------------------------------------ sentences a `when` gates (QA ②)
@@ -276,6 +329,15 @@ def test_only_the_sentences_whose_when_holds_decide_what_every_one_needs():
     assert dict(preview.unsaid) == {(("kind", "other"),): 1}
 
 
+def test_an_allow_null_key_of_a_sentence_whose_when_does_not_hold_refuses_nothing():
+    """QA2 ④ (N2_nullable_all): kind = qty, so the object sentence does not apply and its
+    `allow_null` key cell is nobody's - the quantity edge is said."""
+    rows = [{"row_id": "Q", "process_id": "PQ", "kind": "qty", "object_id": None, "quantity_id": "QQ"}]
+    preview = _preview(_document(_gated(), allow_null=True), rows)
+
+    assert (_refused(preview), _edges(preview)) == ([], {"PQ": [("physical_quantity", "QQ")]})
+
+
 # ------------------------------------------------------------------ the census (QA ④)
 
 def _census(document, rows, monkeypatch):
@@ -289,14 +351,53 @@ def _census(document, rows, monkeypatch):
                                             type("S", (), {"snapshot": snapshot})(), SOURCE)
 
 
+#: A blank subject AND every target blank: refused - not «says nothing» (QA2 ④ N4_refused_counted).
+ALL_BLANK = {"row_id": "R6", "process_id": None, "object_id": None, "quantity_id": "",
+             "related_process_id": " "}
+
+
 def test_the_census_takes_out_a_row_that_says_no_sentence_and_keeps_a_refused_one(monkeypatch):
     """P4 (every target blank) and W5 (no `when` holds) say nothing and are never indexed; the
-    refused rows (a blank shared subject, W2) stay «not yet» - a refusal is something to fix."""
-    owner = _census(_document(), OWNER_ROWS + [SHARED_BLANK], monkeypatch)
+    refused rows (a blank shared subject - with its targets filled or blank -, W2) stay «not yet»:
+    a refusal is something to fix."""
+    owner = _census(_document(), OWNER_ROWS + [SHARED_BLANK, ALL_BLANK], monkeypatch)
     gated = _census(_document(_gated()), GATED_ROWS, monkeypatch)
 
-    assert (owner.get("excluded_rows"), owner.get("said_nothing_rows"), owner["not_yet"]) == (None, 1, 4)
+    assert (owner.get("excluded_rows"), owner.get("said_nothing_rows"), owner["not_yet"]) == (None, 1, 5)
     assert (gated.get("said_nothing_rows"), gated["not_yet"]) == (1, 2)
+
+
+def test_the_census_keeps_a_row_whose_time_does_not_read(monkeypatch):
+    """QA2 ⑤: the census asks the read's whole judgement (`_read_molecule`) - a row refused for an
+    unreadable time is not a row that says nothing, even with every target blank."""
+    source = release_log_source()
+    source["read"] = {"occurred_at": {"column": "event_at", "timezone": "UTC"}}
+    rows = [dict(OWNER_ROWS[3], event_at="not a time"),
+            dict(OWNER_ROWS[3], row_id="R4b", event_at=STORED_AT)]
+    census = _census(_document(source), rows, monkeypatch)
+
+    assert (census.get("said_nothing_rows"), census["not_yet"]) == (1, 1)
+
+
+def test_a_row_the_read_excludes_is_counted_once(monkeypatch):
+    """QA2 ④ (N4_if): P4 is excluded and would say nothing - it is the clause's, once."""
+    source = release_log_source()
+    source["read"] = {"exclude_when": [{"when": {"process_id": "P4"}}]}
+    census = _census(_document(source), OWNER_ROWS, monkeypatch)
+
+    assert (census.get("excluded_rows"), census.get("said_nothing_rows"), census["not_yet"]) == (1, None, 3)
+
+
+def test_the_census_reads_no_row_when_nothing_is_left(monkeypatch):
+    """QA2 ②: table rows = indexed rows - nothing to take out, so no scan."""
+    def scanned(*args, **kwargs):
+        raise AssertionError("the rows the index does not name were read")
+
+    monkeypatch.setattr(backfill, "rows_missing_from_the_index", scanned)
+    report = backfill.rows_not_yet_translated(
+        _Engine([4, 4], []), type("S", (), {"snapshot": _snapshot(_document())})(), SOURCE)
+
+    assert (report["not_yet"], report.get("said_nothing_rows")) == (0, None)
 
 
 # ------------------------------------------------------------------ the read's time (QA ⑤)

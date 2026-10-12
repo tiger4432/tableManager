@@ -891,8 +891,8 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None, world=
         connection.close()
 
 
-#: The most rows the index does not name that a count reads to take out `read.exclude_when`'s - past it the load has
-#: not run, and its remainder is not the excluded rows' question.
+#: The most rows the index does not name that a count reads to take out the rows the read takes out or says
+#: nothing of - past it none are subtracted, and the answer says so (`excluded_not_subtracted`).
 EXCLUDED_COUNT_ROWS = 100000
 
 
@@ -901,9 +901,9 @@ def _missing_rows_taken_out(engine, setup, source, exact_rows, world=None):
     translator reads and says no sentence of; why they were not counted, or None). Both are the read's
     own judgements over the row's declared columns - `event_frame.row_excluded` and
     `event_frame.says_nothing` (총괄 10-12 QA ④: a row every `when` passes by or whose every target is
-    blank is never indexed). Nothing to say for a source with no clause whose mapper is code; the
-    paced tick (`exact_rows=False`) does not scan (S-122); past EXCLUDED_COUNT_ROWS rows the index does
-    not name (a load not run) none are counted."""
+    blank is never indexed; a row the read refuses stays). Nothing to say for a source with no clause
+    whose mapper is code; the paced tick (`exact_rows=False`) does not scan (S-122); past
+    EXCLUDED_COUNT_ROWS rows the index does not name none are subtracted and the reason says so."""
     from psycopg2 import sql
 
     from .event_frame import SourcePreparationContext, named_columns, row_excluded, says_nothing
@@ -1208,8 +1208,10 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
     remainder = total - indexed
     # 🔴 a row `read.exclude_when` takes out is never translated nor indexed - it is not 「not yet」 (총괄 10-12, rp500g
     #    link_candidates kept 1 after every backfill). Taken out of a person's count; the paced tick does not scan (S-122)
-    #    So is a row the read takes in and says no sentence of (총괄 10-12 QA ④), counted apart.
-    excluded, said_nothing, kept_in = _missing_rows_taken_out(engine, setup, source, exact_rows, world=world)
+    #    So is a row the read takes in and says no sentence of (총괄 10-12 QA ④), counted apart. Nothing left
+    #    over, nothing to take out - no scan (QA2 ②).
+    excluded, said_nothing, kept_in = (_missing_rows_taken_out(engine, setup, source, exact_rows, world=world)
+                                       if remainder > 0 else (0, 0, None))
     if excluded:
         report["excluded_rows"] = excluded
         remainder -= excluded

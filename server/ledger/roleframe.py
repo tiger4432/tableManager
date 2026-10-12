@@ -864,18 +864,10 @@ def _partition_units(
             raise RoleFrameError(
                 "invalid_mapper_unit", "mapper.unit.group_by",
                 "MapperDescriptor group_by columns must exist in EventFrame")
-        frame_columns = read_columns_once(frame)
-        groups: dict[str, list[int]] = {}
-        for position in range(len(frame)):
-            token = _canonical(
-                {column: frame_columns[column][position] for column in columns},
-                path=f"event_frame.rows[{position}]",
-            )
-            groups.setdefault(token, []).append(position)
         refs = _frame_row_refs(frame)
         units = []
-        for token in sorted(groups):
-            positions = groups[token]
+        for positions in unit_positions(descriptor, read_columns_once(frame), range(len(frame))):
+            positions = list(positions)
             unit = frame.iloc[positions].copy(deep=False)
             unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = tuple(
                 sorted(refs[position] for position in positions))
@@ -884,6 +876,24 @@ def _partition_units(
     raise RoleFrameError(
         "unsupported_mapper_unit", "mapper.unit.kind",
         f"unsupported mapper unit {kind!r}")
+
+
+def unit_positions(descriptor: MapperDescriptor, cells: Mapping[Any, tuple], positions) -> list:
+    """Which of these rows the mapper reads as one unit (`map.unit`): each row, the rows sharing the
+    unit columns, or all of them - the cut `_partition_units` makes, asked by the read's refusal so the
+    two judge a blank cell on the same rows (총괄 10-12 QA2 ①)."""
+    positions = tuple(positions)
+    if descriptor.unit_kind == "row":
+        return [(position,) for position in positions]
+    if descriptor.unit_kind == "group_by":
+        groups: dict[str, list[int]] = {}
+        for position in positions:
+            token = _canonical(
+                {column: cells[column][position] for column in descriptor.unit_columns},
+                path=f"event_frame.rows[{position}]")
+            groups.setdefault(token, []).append(position)
+        return [tuple(groups[token]) for token in sorted(groups)]
+    return [positions]
 
 
 def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bool:
