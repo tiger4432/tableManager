@@ -16,7 +16,7 @@ import { snapshot, commitIfRecorded } from './effort_meter.js';
 //    ENTRY chunk. The grid page then statically imported that chunk for the helper alone --
 //    evaluating admin's top level on every grid load (1 TypeError) and pulling ~197 KB of admin
 //    js+css nobody on that page used. Removing this one `import()` removed the helper itself.
-import { fetchData } from './api.js';
+import { fetchData, copyRow } from './api.js';
 
 export function setupBeforeUnloadWarning() {
   window.onbeforeunload = (e) => {
@@ -307,13 +307,14 @@ export function updatePageCacheOnUpsert(items) {
       if (idx !== -1) {
         foundAnywhere = true;
         const oldRowData = cached.data[idx];
+        // The broadcast's cells are the grid's too - the cache keeps copies (api.js copyRow).
         cached.data[idx] = {
           ...oldRowData,
           created_at: item.created_at || oldRowData.created_at,
           updated_at: item.updated_at || oldRowData.updated_at,
           data: {
             ...oldRowData.data,
-            ...item.data
+            ...copyRow(item).data
           }
         };
       }
@@ -326,7 +327,7 @@ export function updatePageCacheOnUpsert(items) {
         if (skip === 0 && isSortLatest) {
           const nowStr = getLocalTimeString();
           const newItem = {
-            ...item,
+            ...copyRow(item),
             created_at: item.created_at || nowStr,
             updated_at: item.updated_at || nowStr
           };
