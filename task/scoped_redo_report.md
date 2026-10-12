@@ -80274,3 +80274,34 @@ measure 자리에 옛 이름이 든 줄 (measure 앞 12 글자 안에 옛 이름
           -> 셀 수 없어도 옛 이름은 같은 답을 낸다
 안 셈       따옴표 낱말 count 등의 파일별 수는 셌으나 술어 count 칸 · JSON 키와 섞여 «자리»를 세므로 보고에 안 씀
 ```
+
+## 10-12 재기 — 응답 자리 ④ + 집계 어휘, 박스 베낀 판 · 런처 그대로 (3d1f25056 · fceba46a7)
+
+```
+판        assy_test.assy_impl_mix_1012 — 박스(assy_manager) 읽기 전용 베낌 21:38:58 ~ 21:50:44(박스 읽기) · 22:01:15 끝
+          표 57 · 원자 2,380,869 · 인덱스 326 다시 지음 · 뷰 11 중 7 (못 만든 넷: bonding_core_die · bonding_core_lot ·
+          dt_log_transferable · lot_slot_move — 섞인 부하 전에 원인 봄). 박스에서 같이 온 상태: 대기열(outbox) 0 행 ·
+          소급 실행 failed 25 · cancelled 13 · done 50 (안 지움). public 표 428 -> 428 · 행 바뀜 0
+          ⚠️ 제 도구의 대기열 채우기 단계가 current_schema 단언에서 멈춤 — 아무것도 안 씀(섞인 부하 전에 고침)
+트리      wt-gate4 = origin/main 575223786 + impl-json-offloop 911fc8821 + impl-agg-spotfire 9911db802 (로컬 병합, 안 올림)
+          겹침은 RELEASE_LOG 항목 순서 하나 — 둘 다 남김. 두 가지 시험 셋 65 passed
+런처      run_decoupled_app.py --server-only 그대로 · 포트 18797 · mixroot 설정(박스 사본, database.json 없음)
+```
+
+| 부름 | 상태 | 초 | 바이트 · 모양 |
+|---|---|---|---|
+| 걷기 화면(씨앗 웨이퍼 하나 · hops 6 · 노드 400) | 200 | 0.68 | 1,920,521 · 노드 400 · 엣지 566 · 잘림 depth, nodes |
+| 같은 걷기 format=rows | 200 | 0.65 | 251,629 · 402 줄 · text/tab-separated-values |
+| 집계 옛 이름 count · distinct:wafer | 200 | 0.50 | 키 count · distinct:wafer — defect 89 · die 310 · wafer 1 |
+| 집계 새 이름 Count · UniqueCount:wafer | 200 | 0.56 | 키 Count · UniqueCount:wafer — 같은 값 |
+| 집계 measure 없음 | 200 | 0.51 | 키 Count — 같은 값 |
+| 집계 avg | 422 | 0.45 | unknown_measure · choices 새 일곱 |
+| 그리드 dt_log 첫 쪽(100 행, defer_total) | 200 | 0.23 | 412,797 |
+| 그리드 행 수 | 200 | 0.46 | |
+| 내보내기 step_inspection_run | 200 | 0.17 | 947,382 · text/csv |
+
+```
+⚠️ 상한 없는 걷기는 HTTP 로 안 간다 — node_limit 은 라우트에서 le=MAX_NODE_LIMIT(1000)이라 422.
+   앞서 잰 235 MB 걷기(③)는 라우트 함수를 직접 부른 것이었다. 그래서 «화면이 부를 수 있는 가장 큰 걷기»는
+   노드 1,000 · 엣지 6,000 이고, 프로세스 풀 게이트 ②③ 은 그 크기로 잰다
+```
