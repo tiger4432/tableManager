@@ -1081,7 +1081,7 @@ def _read_entity_declaration():
     facts = _declaration_facts.get(paths)
     if facts is not None:
         return facts
-    order, plural_by_type, confirmers, inverses, labels, steps = {}, {}, {}, {}, {}, {}
+    order, plural_by_type, confirmers, inverses, labels, steps, hubs = {}, {}, {}, {}, {}, {}, set()
     try:
         documents = []
         for path in paths:
@@ -1100,6 +1100,9 @@ def _read_entity_declaration():
                 confirmers[_bare_name(predicate)] = (
                     _bare_name(confirmer), confirmer in vocabulary)
             # The fourth: a declared inverse pair, read both ways (총괄 739edd59c).
+            # The seventh: the predicates whose far nodes fold into a hub (총괄 b5f3fc849) - read by `_hub_members`.
+            if (spec or {}).get("hub") is True:
+                hubs.add(_bare_name(predicate))
             other = (spec or {}).get("inverse_of")
             if isinstance(other, str) and other in vocabulary:
                 mine, theirs = _bare_name(predicate), _bare_name(other)
@@ -1129,8 +1132,9 @@ def _read_entity_declaration():
                 if plural:
                     plural_by_type[bare] = plural
     except Exception:
-        order, plural_by_type, confirmers, inverses, labels, steps = {}, {}, {}, {}, {}, {}
-    facts = _declaration_facts[paths] = (order, plural_by_type, confirmers, inverses, labels, steps)
+        order, plural_by_type, confirmers, inverses, labels, steps, hubs = {}, {}, {}, {}, {}, {}, set()
+    facts = _declaration_facts[paths] = (order, plural_by_type, confirmers, inverses, labels, steps,
+                                         frozenset(hubs))
     return facts
 
 
@@ -1861,7 +1865,7 @@ def _rank_layers(items):
     return layers
 
 
-def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=None, keep=None):
+def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=None, keep=None, hubs=None):
     """Rank every node this walk REACHED, by the contrast between the two signed reaches.
 
     🔴 THE POPULATION IS EVERY REACHED NODE, and that is an owner ruling
@@ -1975,6 +1979,10 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
             if bare and bare in kinds.get(seed, ()):
                 pair[0 if sign > 0 else 1] += 1
         return pair
+    # 🔴 RANKED ON THE FOLDED GRAPH (총괄 b5f3fc849): a hub is ONE candidate, as its first member reached (its
+    # members were reached by the one step that made it), and says how many it stands for; a row is no candidate.
+    rows = {member for hub in (hubs or {}).values() for member in hub["members"]}
+    standing = {hub_id: next(iter(hub["members"])) for hub_id, hub in (hubs or {}).items() if hub["members"]}
     collected = [{
         "id": node["id"],
         # 🔴 THE DECLARED ENTITY TYPE, not `node_kind`.  `node_kind` is this projection's
@@ -1983,12 +1991,15 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
         "type": node.get("type"), "label": node.get("label"),
         "reach": reach.get(node["id"], [0, 0]),
     } for node in nodes.values()
-        if node["id"] not in seed_signs and node["id"] in reach]
+        if node["id"] not in seed_signs and node["id"] in reach and node["id"] not in rows]
     # a continued page ranks among every node reached so far - the ones the pages before reached ride as their reach
     # alone - and lists the ones a seed newly reached on it (총괄 10-12: a rank among this page's nodes only was not
     # the rank its name says)
     collected += [{"id": node_id, "reach": counts} for node_id, counts in reach.items()
                   if node_id not in nodes and node_id not in seed_signs]
+    collected += [{"id": hub_id, "type": hubs[hub_id]["type"], "label": hubs[hub_id]["label"],
+                   "reach": reach.get(member, [0, 0]), "tied_members": len(hubs[hub_id]["members"])}
+                  for hub_id, member in standing.items() if member in reach]
     if not collected:
         block["message"] = "This walk reached no node beyond its seeds"
         return block
@@ -1998,9 +2009,10 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
     block["ranked"] = [{
         "id": item["id"], "type": item["type"], "label": item["label"],
         "reach": item["reach"],
-        "reachable": _reachable(item["type"], item["id"]),
+        "reachable": _reachable(item["type"], standing.get(item["id"], item["id"])),
         "rank": item["rank"], "top": item["rank"] == 1,
         "tied": item["tied"], "incomparable": item["incomparable"],
+        **({"tied_members": item["tied_members"]} if "tied_members" in item else {}),
         # 🔴 The trails go on EVERY rank, not only the top set.  「reached from the marked
         # subjects and never from a control」 is a different answer from 「not first」, and
         # what carries that distinction is `evidence[].sign` — one `+`/`−` per seed that
@@ -2012,8 +2024,9 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
         # graph's DIAMETER rather than by `hops`.  ⚠️ That measurement was taken when the
         # population was ONE collected kind; it is now every reached node, so the item
         # count is the node budget rather than a fraction of it.
-        "evidence": _evidence(nodes, parents, seed_signs, item["id"], between),
-    } for layer in layers for item in layer if fresh is None or item["id"] in fresh]
+        "evidence": _evidence(nodes, parents, seed_signs, standing.get(item["id"], item["id"]), between),
+    } for layer in layers for item in layer
+        if fresh is None or standing.get(item["id"], item["id"]) in fresh]
     block["top_set"] = [item["id"] for item in layers[0]]
     return block
 

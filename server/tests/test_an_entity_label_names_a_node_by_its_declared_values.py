@@ -46,7 +46,7 @@ def test_a_name_the_entity_does_not_carry_is_refused_by_name():
 def declaration():
     fake = "test:entity-label"
     token = ledger_subgraph._WALK_DECLARATION.set(fake)
-    ledger_subgraph._declaration_facts[fake] = (ORDER, {}, {}, {}, LABELS, {})
+    ledger_subgraph._declaration_facts[fake] = (ORDER, {}, {}, {}, LABELS, {}, frozenset())
     try:
         yield
     finally:

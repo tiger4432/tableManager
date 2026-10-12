@@ -1704,7 +1704,7 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         #: word from quietly reading as a live rule.
         if not problems.exact(
                 item, path, required=("status", "subjects", "object"),
-                optional=("cardinality", "absence_confirmed_by", "class", "inverse_of")):
+                optional=("cardinality", "absence_confirmed_by", "class", "inverse_of", "hub")):
             continue
         _validate_class(item, path, problems, "invalid_predicate")
         status = item.get("status")
@@ -1759,6 +1759,10 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         # One side is enough; written on both, it must name the same pair.
         if "inverse_of" in item:
             _validate_inverse(predicate_id, item, section, f"{path}.inverse_of", problems)
+        # A walk folds the far nodes this predicate reaches from one node into one hub (총괄 b5f3fc849). Only the
+        # walk reads it, as `inverse_of`: no source's fingerprint moves, no atom.
+        if "hub" in item and not isinstance(item["hub"], bool):
+            problems.add("invalid_predicate", f"{path}.hub", "must be true or false")
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)
         obj = item.get("object")
         if problems.exact(
