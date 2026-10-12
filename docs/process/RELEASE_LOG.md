@@ -58,6 +58,9 @@
 
 ### 원장 선언
 
+- 2026-10-12 [고침 — exclude_when 의 잘못 적은 줄이 받는 두 모양을 말한다](#2026-10-12--고침--exclude_when-의-잘못-적은-줄이-받는-두-모양을-말한다) — 누르는 곳 원장 선언 화면
+- 2026-10-12 [원장 선언 — 한 소스의 문장 여럿 중 대상 칸이 빈 문장만 빠진다](#2026-10-12--원장-선언--한-소스의-문장-여럿-중-대상-칸이-빈-문장만-빠진다) — 적는 곳 `ledger_config.json` · 누르는 곳 원장 선언 화면
+- 2026-10-12 [원장 선언 — 조건에 «아니다» — 칸 a 가 b 면 문장 c, 아니면 문장 d](#2026-10-12--원장-선언--조건에-아니다--칸-a-가-b-면-문장-c-아니면-문장-d) — 적는 곳 `ledger_config.json` · 누르는 곳 원장 선언 화면
 - 2026-10-11 [format 없는 시각 글자는 확장 ISO 만 — 테스트 런과 백필이 같은 답](#2026-10-11--format-없는-시각-글자는-확장-iso-만--테스트-런과-백필이-같은-답) — 적는 곳 `ontology/ledger_config.json`
 - 2026-10-11 [원장 — optional 한정자의 칸이 빈 행은 그 한정자 없이 들어간다](#2026-10-11--원장--optional-한정자의-칸이-빈-행은-그-한정자-없이-들어간다)
 - 2026-10-11 [선언 폼: 접힌 줄도 계획 note 를 보입니다 · 새로 만들기가 «스냅숏이 바뀜»으로 거절되면 «Reload and try again»](#2026-10-11--선언-폼-접힌-줄도-계획-note-를-보입니다--새로-만들기가-스냅숏이-바뀜으로-거절되면-reload-and-try-again) — 누르는 곳 원장 선언 화면
@@ -311,6 +314,11 @@
 
 - **무엇** — 걷기 표의 두 줄 머리(먼 끝 · 그 밑의 길)가 붙어 있던 것을 간격 하나(3.4 px)로 띄웠고, 정렬 ▾ 자리를 손으로 적은 28 px 대신 간격 토큰(27.2 px)으로 맞췄습니다. 열 너비가 그 자리를 같은 토큰으로 셉니다.
 - **관문** — 화면 관문의 걷기 화면 빨강 18줄이 사라졌습니다(간격 규칙 · 붙은 두 줄 · S5 가 표를 스크롤 상자 안에서 찾게). node_search 의 T26 은 문장 바 이후 «+ Add start» 가 하나라 «0 atoms · not in the ledger» 를 한 번 기대합니다. 그리고 화면 관문의 변이가 core.autocrlf 체크아웃(\r\n)에서도 돕니다 — 전에는 첫 변이에서 멈춰 그 뒤 변이가 하나도 안 돌았습니다.
+## 2026-10-12 · 고침 — Continue · Walk ▸ 의 시작 노드 하나가 «다른 노드»로 물리던 것
+
+- **무엇** — 그래프의 Continue 나 표의 Walk ▸ 로 바구니에 없던 노드 하나에서 이어 걸을 때, 그 노드의 id 를 키에서 다시 지어 물었습니다. 서버가 키를 9.0 으로 적은 노드가 9 로 다시 지어져 다른 id 가 되었습니다(화면에서는 그 노드가 없는 걷기). 이제 그 노드의 id 를 그대로 보냅니다. 바구니에 담은 시작 하나는 지금처럼 타입 · 키로.
+- **자세히** — 이 항목과 같은 커밋.
+
 ## 2026-10-12 · 감사 표: «Table» 열을 따로
 
 - **무엇** — 전역 감사 표(Global 탭)에 «Table» 열이 따로 섭니다(소유자 10-12 「감사로그 대상 테이블 컬럼 따로 빼 — 어느 테이블 업데이트된 거 중요한 정보잖아」). 값은 그 줄이 건드린 표: 여럿이면 «dt_log +1», 표본만 들고 있으면 «…»(펼치면 정확해짐). 본문 크기 · 본문 색.
@@ -367,13 +375,86 @@
 - **필요한 조건** — 서버의 보조 노드 판정(subgraph 의 aux 인자)과 같이 착지. 클라 빌드.
 - **자세히** — 이 항목과 같은 커밋.
 
+## 2026-10-12 · 고침 — exclude_when 의 잘못 적은 줄이 받는 두 모양을 말한다
+
+- **무엇** — `read.exclude_when` 에 `{"column": "<칸>", "value": "x"}` 처럼 두 모양 어느 것도 아닌 줄을 적으면 «the only supported condition is 'blank': true» 와 칸마다의 거절이 나왔습니다(소유자 10-12 「exclude when 오류남 컬럼 값 제외」). 10-08 부터 값 조건도 받는데 그 문장은 그것을 말하지 않았습니다. 이제 그 줄 자리에 한 줄: «a clause is {"column": <c>, "blank": true} - rows where <c> is blank - or {"when": {<c>: <value>}} - rows where <c> is that value, {"not": <value>} for every other value; write one of the two». `blank: false` 도 같은 줄입니다.
+- **선언 예시** — 새 선언은 없습니다. 값 x 인 행을 빼는 줄은 `{"when": {"<칸>": "x"}}` 입니다(10-08 항목).
+- **화면에서** — 원장 선언 화면의 거절 목록에 그 줄 자리(`read.exclude_when[N]`) 하나로.
+- **필요한 조건** — 서버 재기동.
+- **자세히** — `server/tests/test_a_source_says_which_rows_are_not_its_own.py` 의 소유자 입력 그대로의 시험 · 이 항목과 같은 커밋.
+
+## 2026-10-12 · 원장 선언 — 한 소스의 문장 여럿 중 대상 칸이 빈 문장만 빠진다
+
+- **무엇** — 한 소스에 문장 여럿을 적고 문장마다 대상을 다른 칸에서 읽을 때, 어떤 행의 그 칸이 비면 «그 문장만» 그 행에서 말하지 않습니다(소유자 10-12 「세 개 중 빈 거는 무시」). 전엔 그 행이 통째로 `no_identity` 로 거절돼 채워진 칸의 엣지까지 잃었습니다. `when` 이 안 맞는 문장과 같은 결과이고, 거절도 제외도 아닙니다.
+- **그대로인 것** — 그 행에서 `when` 이 맞는 문장들이 «모두» 쓰는 칸(공통 주어 칸 같은)이 비면 전처럼 그 행이 `no_identity` 로 거절됩니다. 그래서 `when` 으로 문장 하나만 맞는 행은 문장이 하나뿐인 소스와 같습니다 — 그 문장의 대상 칸이 비면 거절. `allow_null` 엔티티의 키 칸, 맵퍼가 `declarative-role` 이 아닌(코드) 소스도 전처럼 거절합니다. 칸에서 타입을 읽는 역할도 같은 규칙입니다.
+- **판단 단위는 맵퍼 단위(`map.unit`)** — 맵퍼가 문장을 말하는 행 묶음마다 따로 봅니다. `map.unit` 이 `row` 면 읽기가 묶음(`read.unit: group`)이어도 행마다: 한 행만 그 칸이 비면 그 행의 그 문장만 빠지고 다른 행은 말합니다. `map.unit` 이 `group_by` · `event` 면 그 칸이 그 단위의 «모든 행»에서 빌 때만 그 문장이 빠지고, 어떤 행은 비고 어떤 행은 채워졌으면 전처럼 그 분자가 `no_identity` 로 거절됩니다(채워진 값이 조용히 버려지지 않게).
+- **선언 예시** — `ontology/ledger_config.json` 의 `sources` 에 소스 하나. 표 · 칸 이름은 운영 표의 것으로 바꿉니다. 술어 `related_to` 는 목적어 타입으로 셋을 받아야 하고, `read` 는 안 적었습니다(카탈로그의 키 · 행이 저장된 시각):
+
+```json
+{
+  "relation": "process_links",
+  "map": {"implementation_id": "declarative-role", "implementation_version": 1},
+  "bind": {
+    "mappings": {
+      "process-object": {
+        "predicate": "related_to",
+        "bind": {
+          "subject": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "process_id"}}},
+          "target": {"kind": "entity", "entity_type": "physical_object", "keys": {"object_id": {"kind": "column", "column": "object_id"}}}
+        }
+      },
+      "process-quantity": {
+        "predicate": "related_to",
+        "bind": {
+          "subject": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "process_id"}}},
+          "target": {"kind": "entity", "entity_type": "physical_quantity", "keys": {"quantity_id": {"kind": "column", "column": "quantity_id"}}}
+        }
+      },
+      "process-process": {
+        "predicate": "related_to",
+        "bind": {
+          "subject": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "process_id"}}},
+          "target": {"kind": "entity", "entity_type": "physical_process", "keys": {"process_id": {"kind": "column", "column": "related_process_id"}}}
+        }
+      }
+    }
+  }
+}
+```
+
+- **화면에서** — 원장 선언 화면의 테스트 런에서 대상 칸이 빈 행은 거절 목록에 안 나오고, 채워진 문장의 원자만 나옵니다.
+- **필요한 조건** — 서버 · 체인 재기동. 전에 거절된 행은 원자가 없어 색인에 없으므로, 그 소스를 다시 백필하면 읽혀 채워진 칸의 엣지가 들어갑니다.
+- **아무 문장도 안 말한 행** — 대상 칸이 «전부» 빈 행(또는 어느 `when` 도 안 맞은 행)은 원자를 하나도 안 쓰고 색인에 안 올라갑니다. 사람이 돌리는 census(`python -m ledger census`, 소급 탭의 남은 행 수)는 그런 행을 번역기와 같은 판정으로 따로 세어 «not yet» 에서 뺍니다 — 답의 `said_nothing_rows`, 문장 «N row(s) that say no sentence (no when holds, or every target is blank) are not counted.». 쉬지 않는 센서스 틱은 전처럼 세지 않습니다. 맵퍼가 코드인 소스는 세지 않습니다.
+- **아직 안 되는 것** — 그런 행은 거절 · 알림 줄이 없고, 색인에 안 올라가므로 백필이 매번 다시 읽습니다.
+- **있는 소스에 문장을 더하고 다시 번역(Re-translate)** — 새 문장의 대상 칸이 빈 행에서도 옛 문장의 원자는 다시 쓰이고 새 문장만 빠집니다. 전엔 그 행이 거절돼 옛 원자가 거둬지고 다시 안 쓰였습니다. ⚠️ 행 단위로 번역하는 소스이거나, 그 칸이 묶음의 «모든» 행에서 빌 때입니다 — 묶음을 통째로 번역하는 소스에서 묶음의 일부 행만 비면 그 묶음은 거절되고 옛 원자가 거둬집니다(결과 줄의 refused N 이 그 수).
+- **다시 번역의 결과 줄** — `written X of Y` 옆에 `refused N (no_identity N, …)` 가 붙고 결과에 `refused` · `refused_reasons` 가 들어갑니다. 거절된 분자의 행은 원자가 (있었다면) 거둬지고 다시 안 쓰였으니, 0 이 아니면 그 행들을 봐야 합니다.
+- **자세히** — `server/tests/test_a_blank_target_leaves_only_its_sentence_unsaid.py` 가 위 예시를 이 파일에서 읽어 그대로 돌립니다 · 이 항목과 같은 커밋.
+
+## 2026-10-12 · 원장 선언 — 조건에 «아니다» — 칸 a 가 b 면 문장 c, 아니면 문장 d
+
+- **무엇** — `when` 의 값에 `{"not": <값>}` 을 적으면 «그 칸이 그 값이 아니다»입니다(소유자 10-12 「아니다도 추가해」). 같은 소스의 두 문장에 c 는 `{"a": "b"}`, d 는 `{"a": {"not": "b"}}` 를 적으면 행마다 둘 중 정확히 하나만 말합니다. a 가 빈 행(NULL · 빈 글자)은 b 가 아니므로 d 입니다. 맵퍼 단위(`map.unit`)가 여러 행이면(`group_by` · `event`) 같음과 같은 규칙으로 그 단위의 모든 행이 b 가 아닐 때만 d 이고, a 칸에 b 와 다른 값이 섞인 단위는 c · d 둘 다 말하지 않습니다(이것은 `when` 의 규칙 — 대상 칸이 일부 행만 빈 단위는 거절, 「대상 칸이 빈 문장만 빠진다」 항목). `map.unit` 이 `row` 면 읽기가 묶음이어도 행마다 정확히 하나입니다. 키가 여럿이면 전처럼 AND 이고, 목록 · 범위 · OR 는 없습니다.
+- **선언 예시** — `ontology/ledger_config.json` 의 소스 `bind.mappings` 에서 두 문장에 이 `when` 을 더합니다(`predicate` · `bind` 는 각 문장 그대로):
+
+```json
+{
+  "c": {"when": {"a": "b"}},
+  "d": {"when": {"a": {"not": "b"}}}
+}
+```
+
+- **같은 철자가 도는 자리** — `read.exclude_when` 의 `[{"when": {"a": {"not": "b"}}}]` 는 «a 가 b 가 아닌 행은 내 것이 아니다»(a 가 빈 행도 빠짐) · `entities.<타입>.references[].from.when` 도 같습니다. 셋 다 판정 하나(`roleframe._unit_says`)를 지납니다.
+- **화면에서** — 원장 선언 폼의 «Row condition»(references 는 «Key condition») 칸마다 고르개 `equals` · `not`, `not` 을 고르면 «Is not» 칸 하나. 스켈레톤만 바꿨고 화면은 아직 안 열어 봤습니다.
+- **필요한 조건** — 서버 · 체인 재기동.
+- **바뀐 동작** — `references[].from.when` 이 매핑의 `when` 과 같은 견주기를 지납니다. 전엔 값을 글자 그대로 견줘 `1` 과 `"1"` 이 달랐고 값의 모양을 안 봤습니다. 이제 양쪽을 같은 함수로 접어 견주고(`1` = `1.0` = `"1"`, 앞뒤 빈칸 무시), 값이 목록 · null · 다른 객체면 로드가 그 자리를 이름 대어 거절합니다. 🔴 그 거절은 «그 엔티티 타입»을 빼고, 그 타입을 쓰는 술어와 소스도 같이 빠집니다(나머지는 계속 읽힘) — 박스 복사본에서 `die` 의 값 하나를 목록으로 바꾸면 빠진 선언이 10 → 18(엔티티 1 · 술어 5 · 소스 2). pull 하기 전에 새 코드로 운영 선언을 읽어 «left out» 줄을 보는 명령이 RUN.md 「when-not 을 pull 하기 «전»」 절에 있습니다: `python -m ledger.setup --root <운영 ontology 폴더>`(그 체크아웃에서 `ASSY_DATA_ROOT` 를 운영 server 폴더로) — 쓰기 없음, 빠진 선언마다 «left out <선언> <자리> <문장>» 한 줄.
+- **자세히** — `server/tests/test_a_condition_can_say_is_not.py` 가 위 예시를 이 파일에서 읽어 그대로 돌립니다 · 이 항목과 같은 커밋.
+
 ## 2026-10-12 · 고침 — exclude_when 으로 거른 행이 «아직 번역 안 된 행»에 영원히 남던 것
 
 - **무엇** — 리허설(rp500g 의 link_candidates, 4 행 중 1 행이 `read.exclude_when` `[{column: confirmed, blank: true}]` 로 빠짐)에서 백필을 몇 번 돌려도 «rows not yet translated 1» 이 남았습니다. 거른 행은 원자도 거절도 색인도 없어서 «아직»으로 셌기 때문입니다. 이제 사람이 묻는 «아직 번역 안 된 행»(소급 탭의 남은 행 수 · 원장 센서스의 «New, not translated» · 명령줄 census)은 색인에 없는 행 가운데 읽기가 거르는 행을 같은 판정(`row_excluded`)으로 빼고 셉니다. «Table less indexed»는 이름대로 표 − 색인 그대로입니다.
 - **선언 예시** — 새 선언은 없습니다. `read.exclude_when` 이 있는 소스에만 해당합니다.
 - **화면에서** — 백필 뒤 «not yet 0». 남은 행 문장에 «N row(s) the declaration's exclude_when takes out are not counted.» 가, 빼지 못한 판에는 «exclude_when not subtracted (over 100k rows the index does not name).» 가 붙습니다.
 - **필요한 조건** — pull 뒤 서버 · 체인 워커 재기동.
-- **바뀐 동작** — 사람이 묻는 셈에서만 뺍니다. 쉬지 않는 센서스 틱은 예전대로 빼지 않고(틱은 스캔하지 않는다, S-122) 답에 `excluded_not_subtracted: an estimate` 를 남깁니다. 색인에 없는 행이 100,000 을 넘으면(로드 전) 빼지 않고 그렇다고 말합니다.
+- **바뀐 동작** — 사람이 묻는 셈에서만 뺍니다. 쉬지 않는 센서스 틱은 예전대로 빼지 않고(틱은 스캔하지 않는다, S-122) 답에 `excluded_not_subtracted: an estimate` 를 남깁니다. 색인에 없는 행이 100,000 을 넘으면 하나도 빼지 않고 그렇다고 말합니다.
 - **자세히** — RUN.md 「exclude_when 으로 거른 행」 절 · 이 항목과 같은 커밋.
 
 ## 2026-10-12 · 걷기 표: 체크한 행이 결과 아래 스티키 «Marked» 바구니에

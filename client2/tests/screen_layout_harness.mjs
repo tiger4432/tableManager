@@ -375,6 +375,32 @@ for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell', 'L
   // The S cells read the table: none is drawn on the graph.
   for (const [rule, expr] of WALK_LOOK) if (!(after === 'Graph' && /^S\d/.test(rule))) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
 }
+// The Route panel's walked ways (lead 10-12): each line whole in its row, and a wrapped line's lines and the rows apart.
+CELLS.push({ entry: 'walk.html', after: 'Route walked', rule: 'route whole', at: 'wk-route', expr: `(() => {
+  const lines = [...document.querySelectorAll('.wk-route .wk-pathchain')].filter((e) => e.getClientRects().length);
+  if (!lines.length) return 'no walked route drawn';
+  for (const l of lines) {
+    const row = l.closest('.wk-path').getBoundingClientRect(), r = l.getBoundingClientRect();
+    if (l.scrollWidth > l.clientWidth + 1 || l.scrollHeight > l.clientHeight + 1 || r.bottom > row.bottom + 0.5 || r.right > row.right + 0.5) {
+      return 'wk-route «' + l.textContent.slice(0, 40) + '…» cut: ' + l.scrollWidth + ' of ' + l.clientWidth + ' px wide';
+    }
+  }
+  return null;
+})()` });
+CELLS.push({ entry: 'walk.html', after: 'Route walked', rule: 'route lines apart', at: 'wk-route', expr: `(() => {
+  const lines = [...document.querySelectorAll('.wk-route .wk-pathchain')].filter((e) => e.getClientRects().length);
+  if (!lines.length) return 'no walked route drawn';
+  for (const l of lines) {
+    const cs = getComputedStyle(l), lh = parseFloat(cs.lineHeight) / parseFloat(cs.fontSize);
+    if (!(lh >= 1.2)) return 'wk-route the lines of a way ' + lh.toFixed(2) + ' apart, not 1.2';
+  }
+  const rows = [...document.querySelectorAll('.wk-route')].filter((e) => e.getClientRects().length);
+  for (let i = 1; i < rows.length; i += 1) {
+    const gap = rows[i].getBoundingClientRect().top - rows[i - 1].getBoundingClientRect().bottom;
+    if (gap < 3.4 - 0.5) return 'wk-route rows ' + gap.toFixed(1) + ' px apart';
+  }
+  return null;
+})()` });
 // The basket stays at the result's foot while the table scrolls, and never covers the last row (W addendum 3, S5).
 CELLS.push({ entry: 'walk.html', after: 'A row ticked mid-table', rule: 'basket at the foot', at: 'wk-page', expr: `(() => {
   const main = document.querySelector('.wk-main'), basket = document.querySelector('.wk-main .wk-marked');
@@ -859,6 +885,11 @@ const DRIVE = {
       window.__place = { top: main.scrollTop, left: table.scrollLeft, ticked: Boolean(rows[0]) };
       if (rows[0]) rows[0].click();
       return true; })()`).then(() => sleep(300))],
+    // through ▾ opened after the walk: its Route says the ways walked (owner 10-12 «실제 걸은 경로로»), a long way wrapping.
+    ['Route walked', async (c) => {
+      await evaluate(c, `(() => { const chip = document.querySelector('.wk-through > :first-child'); if (chip) chip.click(); return Boolean(chip); })()`);
+      await until(c, "[...document.querySelectorAll('.wk-routes-head')].some((h) => h.getClientRects().length && /Walked to/.test(h.textContent))");
+    }],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
@@ -1085,8 +1116,11 @@ const MUTANTS = [
   // The walk page's spacing, heights and type (lead 18da45b73), built back.
   { name: 'the parts of a section stacked with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2);', '.wk-sec { display: flex; flex-direction: column; gap: 0;']] },
-  // ⚰️ «a route row's two lines with no gap» retired 10-12: the route rows live in «through»'s route finder, which no
-  //    drive step opens any more - the rule had nothing to read (lead: a drive step for it is a question, not done).
+  // «a route row's two lines with no gap», re-aimed 10-12 (lead): the Route walked step opens through ▾, a way wraps in two.
+  { name: 'a route row\'s two lines with no gap', entry: 'walk.html', rule: 'route lines apart', at: 'wk-route',
+    file: 'src/walk/styles.js', edits: [['.wk-pathchain { min-width: 0; line-height: 1.25;', '.wk-pathchain { min-width: 0; line-height: 0.9;']] },
+  { name: 'a walked way cut at its row\'s end again', entry: 'walk.html', rule: 'route whole', at: 'wk-route',
+    file: 'src/walk/styles.js', edits: [['line-height: 1.25; overflow-wrap: anywhere;', 'line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;']] },
   { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: 5px 8px; text-align: left; vertical-align: top; }']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',

@@ -38,7 +38,7 @@ def _predicate(subject, far):
 
 VOCABULARY = {"in_container@1": _predicate("die", "wafer"), "measures@1": _predicate("die", "quantity"),
               "linked@1": _predicate("die", "die"), "leads_to@1": _predicate("quantity", "recipe"),
-              "calibrates@1": _predicate("operator", "quantity")}
+              "calibrates@1": _predicate("operator", "quantity"), "twin@1": _predicate("die", "die")}
 COUNTER = iter(range(1, 10 ** 6))
 
 
@@ -66,7 +66,8 @@ ATOMS = ([_atom("operator", {"o": "O1"}, "calibrates", "quantity", {"q": "Q0"})]
          + [_atom("die", die("D3"), "measures", "quantity", {"q": "T"}),
             _atom("quantity", {"q": "S"}, "leads_to", "recipe", {"r": "R"}),
             _atom("die", die("F0"), "linked", "die", die("G0")),
-            _atom("die", die("D5"), "linked", "die", die("H0"))])
+            _atom("die", die("D5"), "linked", "die", die("H0")),
+            _atom("die", die("F1"), "twin", "die", die("D4"))])                         # back to a die read whole
 # W marked, Q0 a control - the ranking's two sides (응용 18766: a page after the first ranked nothing)
 SEEDS = {"positive": [explorer.entity_id("wafer", {"w": "W"})],
          "negative": [explorer.entity_id("quantity", {"q": "Q0"})]}
@@ -94,6 +95,18 @@ def _kind(node):
     return str(node["type"]).split("@")[0]
 
 
+def _ranked(answer):
+    """{node: (reach, per seed its trail's hop count)} and {(node, seed): (hop ids, hop predicates)} of one answer's
+    ranking. A trail is the first shortest path, so two of one length may differ in which - the count may not."""
+    ranked, hops = {}, {}
+    for row in answer["propagation"]["ranked"]:
+        ranked[row["id"]] = (row["reach"], sorted((trail["seed"], len(trail["hops"])) for trail in row["evidence"]))
+        for trail in row["evidence"]:
+            hops[(row["id"], trail["seed"])] = (tuple(hop["id"] for hop in trail["hops"]),
+                                                tuple(tuple(hop.get("predicates") or ()) for hop in trail["hops"]))
+    return ranked, hops
+
+
 def pages(declared, atoms, nodes, edges, first=None, follow=None):
     """Every page until none is left: [(answer, nodes so far)] - from `first`, a page already walked, when given."""
     out, held = [], set()
@@ -115,12 +128,13 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert whole["more"]["resume"] is None and not whole["truncated"]["reason"], whole["truncated"]
     every = {node["id"]: _kind(node) for node in whole["nodes"]}
     joined = {edge["id"] for edge in whole["edges"]}
-    ranked = {row["id"]: row["reach"] for row in whole["propagation"]["ranked"]}
-    assert any(r[0] for r in ranked.values()) and any(r[1] for r in ranked.values()), "canary: both sides reach"
+    ranked, trails = _ranked(whole)
+    assert any(r[0] for r, _e in ranked.values()) and any(r[1] for r, _e in ranked.values()), "canary: both sides reach"
+    assert all(all(p) for _ids, preds in trails.values() for p in preds[1:]), "canary: the one walk's hops are named"
     assert explorer.entity_id("recipe", {"r": "R"}) in every, "canary: R is reached only through S at one departure"
     assert explorer.entity_id("operator", {"o": "O1"}) in every, "canary: O1 is reached only by the static seed's step"
 
-    wrong, said_whole_early, over_caps, deepest_read, most, ranked_wrong = [], [], [], 0, 0, []
+    wrong, said_whole_early, over_caps, deepest_read, most, ranked_wrong, spent_again = [], [], [], 0, 0, [], []
     for claims in range(1, 13):
         monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", claims)
         for nodes in (10, 13, 400):                              # the walk's own floors: 10 nodes, 20 edges
@@ -132,8 +146,23 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
                 if got != set(every) or drawn != joined:
                     wrong.append((claims, nodes, edges, sorted(set(every) - got), sorted(got - set(every)),
                                   len(joined - drawn), len(drawn - joined)))
+                # an atom cap alone: no node read whole is read again, so the pages read what the one walk read
+                spent = sum(answer["walk"]["claims_scanned"] for answer, _held in run)
+                if (nodes, edges) == (400, 6000) and spent != whole["walk"]["claims_scanned"]:
+                    spent_again.append((claims, spent, whole["walk"]["claims_scanned"]))
                 # the screen merges the pages' ranked rows by id, a later page's over an earlier one's
-                merged = {row["id"]: row["reach"] for answer, _held in run for row in answer["propagation"]["ranked"]}
+                merged, merged_trails = {}, {}
+                for answer, _held in run:
+                    one, its = _ranked(answer)
+                    merged.update(one)
+                    merged_trails.update(its)
+                # every hop after the seed names what joins it (응용 18766: [] on a hop an earlier page drew), and a
+                # trail that took the one walk's path says the one walk's predicates on it
+                unnamed = [key for key, (_ids, preds) in merged_trails.items() if not all(preds[1:])]
+                differ = [key for key, (ids, preds) in merged_trails.items()
+                          if key in trails and trails[key][0] == ids and trails[key][1] != preds]
+                if unnamed or differ:
+                    ranked_wrong.append((claims, nodes, edges, "hops", len(unnamed), len(differ)))
                 if merged != ranked:
                     ranked_wrong.append((claims, nodes, edges, len(set(ranked) - set(merged)),
                                          sum(1 for n in merged if n in ranked and merged[n] != ranked[n])))
@@ -153,6 +182,7 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert said_whole_early == [], said_whole_early
     assert over_caps == [], over_caps
     assert ranked_wrong == [], ranked_wrong
+    assert spent_again == [], spent_again
 
 
 def test_an_atom_written_after_the_first_page_is_in_no_page_after_it(declared, monkeypatch):

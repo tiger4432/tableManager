@@ -684,6 +684,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         dict(dry_run_report(setup)), ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), default=lambda value: dict(value),
     ))
+    # What the load dropped and kept going without (S-177 ②), each with its root reason - a
+    # «ready» above says nothing about these (총괄 10-12 QA ③: the pre-pull check reads them).
+    for key, entry in sorted(setup.left_out.items()):
+        reason = (entry.get("reasons") or [{}])[0]
+        print(f"left out\t{key}\t{reason.get('path')}\t{reason.get('message')}", file=sys.stderr)
+    print(f"{parser.prog}: {len(setup.left_out)} declaration(s) left out in {root}", file=sys.stderr)
     return 0
 
 

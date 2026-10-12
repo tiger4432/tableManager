@@ -55,7 +55,7 @@ import { NodeSearch, SEARCH_LIMIT } from './node_search.js';
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 // Copy key (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
 import { writeClipboardRich } from '../clipboard_write.js';
-import { entitySeedId, entityOfId } from '../rnd_board/api.js';
+import { entitySeedId } from '../rnd_board/api.js';
 // An image reference's value (server c5463a475): the main grid's image cell and its one preview (lead 191912ce2).
 import { ImagePreview } from '../image_preview.js';
 import { ImageCellRenderer } from '../grid_image_column.js';
@@ -375,10 +375,11 @@ export function boot(doc, host, deps) {
 
   /** The bar's walk from these signed starts (owner 10-12 「다음 걷기는 메인 걷기랑 똑같이」): Walk's from the baskets,
    *  Walk ▸'s from the rows checked, the graph's Continue from its marks - one ask, the starts the only difference. One
-   *  + start alone goes by its type and keys, as the form asked it (walk_layout L7 · L8). */
+   *  + start the baskets hold goes by its type and keys, as the form asked it (walk_layout L7 · L8); one they never held
+   *  goes as itself - its id exact, never rebuilt from its keys (a key the server wrote 9.0 came back 9, another node). */
   function askFrom(starts) {
     const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
-    const one = signed ? null : baskets.describe(starts.positive[0]) || entityOfId(starts.positive[0]);
+    const one = signed ? null : baskets.describe(starts.positive[0]);
     return { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed || !one ? starts : {}) };
   }
 
