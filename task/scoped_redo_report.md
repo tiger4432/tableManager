@@ -79780,3 +79780,41 @@ pagesize   e902a67e6 — impl-pagesize 위(그 아래 46324bcbb), wip 를 접어
             (이 박스는 dt_job 번역 행이 전부 null). 클라에는 셋으로 보냈습니다
 남은 것     RELEASE_LOG · RUN.md 는 클라 항목과 한 항목으로 착지 때 · 18766 진짜 크롬은 응용
 ```
+
+## 10-12 보조 판정 규칙 — 걸은 노드 -> 보조로 읽어 정적 -> 동적 안 내려감 (소유자 「2번 너 말대로 해」, 총괄)
+
+```
+커밋        8ef52f385 — impl-aux-reach 위(a8474f004 다음), main 아님
+규칙        걷는 쪽은 정적 노드의 동적 먼 끝을 안 읽고, 보조 쪽(거꾸로)은 동적 노드의 정적 먼 끝을 안 읽는다 · 걸은 노드도 예외 없음
+            SQL 에서 안 읽음 — claims_for_entities(far_types=) (_far_types, 두 lookup) · 쪽마다 캐시 · 짝도 같은 규칙으로 거름
+변이(보조 파일)
+            baseline                   ['15 passed, 6 warnings in 2.26s'] []
+            rule off                   ['3 failed, 12 passed, 6 warnings in 2.20s'] ['test_a_way_down_from_a_static_name_is_none_and_the_name_itself_is_found_under_the_cap', 'test_a_static_walked_node_does_not_step_down_even_as_the_seed', 'test_the_only_way_through_another_lots_die_is_none']
+            not refused in SQL         ['1 failed, 14 passed, 6 warnings in 2.69s'] ['test_a_way_down_from_a_static_name_is_none_and_the_name_itself_is_found_under_the_cap']
+            not refused in the pairs   ['1 failed, 14 passed, 6 warnings in 2.46s'] ['test_a_static_walked_node_does_not_step_down_even_as_the_seed']
+            md5 7b0873b8dd2b38efb4baa342f00e60ab 7b0873b8dd2b38efb4baa342f00e60ab
+변이(PG 집합 문 칸 — far types 를 SQL 에서 재는지)
+            baseline                     ['1 passed, 6 warnings in 5.11s']
+            far types read as nothing    ['1 failed, 6 warnings in 5.54s']
+            md5 7b0873b8dd2b38efb4baa342f00e60ab 7b0873b8dd2b38efb4baa342f00e60ab
+시험
+            raise RuntimeError("compilation failed")
+            7 failed, 59 passed, 39 skipped, 6 warnings in 6.22s
+            sqlite exit 1
+            39 passed, 66 deselected, 57 warnings in 254.30s (0:04:14)
+            pg exit 0
+            test_ledger_subgraph 의 7 실패는 환경 — 깨끗한 main(같은 환경)에서도 7 failed, 32 passed, 1 skipped, 6 warnings in 1.77s(실 선언 파일 없음)
+박스(읽기 전용, SYN-BW-101-16 · 레시피 SYN-R-DEPO-01 그다음 quantity ramp_C_min)
+            aux {'seeds': ['ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiU1lOLVItREVQTy0wMSJ9XQ'], 'complete': False, 'truncated': 'claims', 'hops_reached': 3, 'claims': 6000}
+            states {'unknown': 129, 'found': 271} hops {3: 140, 2: 131}
+            aux {'seeds': ['ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6InJhbXBfQ19taW4ifV0'], 'complete': True, 'truncated': None, 'hops_reached': 3, 'claims': 3546}
+            states {'found': 400} hops {1: 1, 2: 179, 3: 220}
+            레시피: 규칙 전 found 272(3 hops 141) -> 위 줄 — quantity 경유 하나 빠짐 · 허브: found 400 · unknown 0 · complete
+응용 18766 판(assy_app_reread_dm, 읽기 전용, 라우트 처리기 한 프로세스)
+            nodes 32 · edges 1556 · plain 2.28 s · with aux 1.67 s · same nodes and edges True
+            aux {'complete': True, 'truncated': None, 'hops_reached': 8, 'claims': 1623}
+            states {'found': 31, 'none': 1} hops {1: 1, 4: 30}
+            TRD-W-001 {'state': 'none'}
+            found 31 은 그대로, 그중 30 의 최단이 3 hops -> 4 hops (3 hops 길이 이름에서 다이로 내려갔음)
+문서        RELEASE_LOG «판정의 뜻 (서버)» · RUN.md «무엇» 셋째 줄이 규칙을 말함 · 박스 줄 다시 잼
+```
