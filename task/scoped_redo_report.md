@@ -79986,3 +79986,48 @@ public      public relations 415 -> 415 · added [] · gone [] · rows changed {
 안          ㄱ 배관만(미리 직렬화 · 이어 걷는 쪽 top_set 줄임 · 이어받은 노드 쓸 때만 짓기) · ㄴ ㄱ + resume 서버에 ·
             ㄷ 끝까지는 상한 없이 한 번 — 총괄이 소유자께, 답 오기 전 짓지 않음
 ```
+
+## 10-12 52 · 97 쪽 벽시계 단계 (프로파일 없음, 재기만) · ㄱ 합 계산
+
+탐침 wk_more_wall.py — `_walk` 안은 모듈 함수 호출로 자른 단계 (원자 단계 · 그리기는 닫힘 함수라 «고리 나머지»), 판 assy_impl_wm_1012 읽기 전용. g1 = jsonable_encoder · g3 = top_set [] 일 때 덜 드는 dumps 초 · g4 = 이어받은 노드 다시 짓기.
+
+```
+PAGE 52 · request 5.72 s (wrapped) · body 5.07 MB · answer 10.26 MB
+   request start -> handler 0.30 s (Request.json parse 0.29 s)
+   handler: before the walk                             0.04 s
+   walk: before the taken-back state                    0.00 s  [rest 0.00 · decode_node_id 0.00 (1)]
+   walk: unpack resume                                  0.04 s
+   walk: rebuild taken-back nodes                       1.00 s  [rest 0.12 · _entity_node 0.47 (18886) · decode_node_id 0.41 (21424)]
+   walk: loop (atoms, SQL, cap)                         2.33 s  [rest 0.75 · SQL claims_for_entities 1.03 (1) · decode_node_id 0.40 (6000) · _entity_node 0.15 (6001)]
+   walk: after the loop (tally, registrations, sort)    0.55 s  [rest 0.13 · decode_node_id 0.32 (19287) · SQL claims_for_entities 0.09 (1) · _apply_registrations 0.00 (1)]
+   walk: ranking (_propagation)                         0.09 s  [rest 0.04 · _reach 0.03 (1) · _rank_layers 0.02 (1) · _evidence 0.00 (400)]
+   walk: after ranking (payload)                        0.38 s  [rest 0.05 · _packed 0.33 (1)]
+   after the walk (handler)                             0.00 s
+   handler: done                                        0.00 s
+   jsonable_encoder                                     0.82 s
+   after encoder                                        0.00 s
+   render                                               0.13 s
+   after render -> client has it 0.04 s
+   json.dumps of this payload: whole 0.13 s 10.26 MB · top_set [] 0.10 s 7.48 MB · top_set [] and resume None 0.02 s 2.31 MB · same as the route's bytes True
+PAGE 97 · request 10.70 s (wrapped) · body 9.84 MB · answer 27.76 MB
+   request start -> handler 0.57 s (Request.json parse 0.13 s)
+   handler: before the walk                             0.03 s
+   walk: before the taken-back state                    0.00 s  [rest 0.00 · decode_node_id 0.00 (1)]
+   walk: unpack resume                                  0.06 s
+   walk: rebuild taken-back nodes                       1.92 s  [rest 0.20 · _entity_node 1.07 (36886) · decode_node_id 0.65 (39424)]
+   walk: loop (atoms, SQL, cap)                         3.62 s  [rest 0.74 · SQL claims_for_entities 2.34 (2) · _entity_node 0.45 (6001) · decode_node_id 0.10 (6000)]
+   walk: after the loop (tally, registrations, sort)    1.42 s  [rest 0.25 · SQL claims_for_entities 0.65 (1) · decode_node_id 0.52 (37241) · _apply_registrations 0.00 (1)]
+   walk: ranking (_propagation)                         0.21 s  [rest 0.08 · _reach 0.09 (1) · _rank_layers 0.03 (1) · _evidence 0.00 (353)]
+   walk: after ranking (payload)                        0.14 s  [rest 0.07 · _packed 0.07 (1)]
+   after the walk (handler)                             0.00 s
+   handler: done                                        0.00 s
+   jsonable_encoder                                     2.40 s
+   after encoder                                        0.00 s
+   render                                               0.27 s
+   after render -> client has it 0.06 s
+   json.dumps of this payload: whole 0.26 s 27.76 MB · top_set [] 0.23 s 22.41 MB · top_set [] and resume None 0.10 s 12.36 MB · same as the route's bytes True
+pages walked 97
+public relations 415 -> 415 · added [] · gone [] · rows changed {}
+page 52 total 5.72 | g1 0.82 g3 0.03 g4 1.00 -> 3.87 | + after-loop decode 0.32 + registration SQL 0.09 -> 3.46 | loop SQL 1.03 pre 0.30 (parse 0.29)
+page 97 total 10.70 | g1 2.40 g3 0.03 g4 1.92 -> 6.35 | + after-loop decode 0.52 + registration SQL 0.65 -> 5.18 | loop SQL 2.34 pre 0.57 (parse 0.13)
+```
