@@ -319,9 +319,9 @@ const MUTANTS = [
   { id: 'W12', what: 'a failed Walk on the Graph view says nothing there', catches: 'G3', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "const status = state.view === 'graph' && walkStatus(state);", 'const status = false;') },
   { id: 'W13', what: 'the picture\'s Continue walks with its own fan-out, not the bar\'s knobs', catches: 'G4', file: 'walk/main.js', key: 'page',
-    mutate: (t) => swap(t, 'new SubgraphView(graphMount, { doc, walk, knobs, entities,', 'new SubgraphView(graphMount, { doc, walk, entities,') },
-  { id: 'W9', what: 'Walk on the Graph view sends the graph\'s own ask again, not the bar\'s', catches: 'G1', file: 'walk/main.js', key: 'page',
-    mutate: (t) => swap(t, '    if (!markings.count(START)) return;\n', "    if (!markings.count(START)) return;\n    if (state.view === 'graph') { graph.show(); return; }\n") },
+    mutate: (t) => swap(t, 'new SubgraphView(graphMount, { doc, walk, ask: askFrom, entities,', 'new SubgraphView(graphMount, { doc, walk, entities,') },
+  // ⚰️ W9 «Walk on the Graph view sends the graph's own ask» retired 10-12: the graph walks with the bar's ask (askFrom,
+  //    owner 10-12 «one ask for every next walk»), so «its own» is the same request and G1 cannot tell them apart.
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;

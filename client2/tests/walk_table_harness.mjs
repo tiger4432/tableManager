@@ -523,18 +523,20 @@ async function suite(mod) {
         && q.getAll('follow').join() === 'inspected@1' && q.get('direction') === 'out' && q.get('hops') === '3'
         && q.getAll('positive').join() === 'n:2' && q.getAll('negative').join() === 'n:1',
       JSON.stringify([byWalk.slice(0, 220), byFull === byWalk, byContinue === byWalk]));
-    // One + start alone goes by its type and keys - a node the baskets never held too, read off its id.
-    const zed = entitySeedId('wafer@1', { wafer: 'Z' });
-    await two.handle.graph.walk(two.handle.graph.ask({ positive: [zed], negative: [] }));
-    const zedByContinue = last(two);
+    // One + start the baskets never held goes as itself, its id exact: the server wrote x 9.0, and an id rebuilt from the
+    // keys says 9 - another node (walk_worlds G4, 10-12). One the baskets hold goes by its type and keys, as Walk asks it.
+    const exact = 'ledger-entity:v1:' + Buffer.from('["wafer@1",{"wafer":"Z","x":9.0}]').toString('base64url');
+    await two.handle.graph.walk(two.handle.graph.ask({ positive: [exact], negative: [] }));
+    const cq = new URLSearchParams(last(two).split('?')[1] || '');
     Object.assign(two.handle.state, { type: 'wafer@1', keys: { wafer: 'Z' } });
     click(walkAll(two.host).find((e) => e.className === 'wk-basketadd' && e.attrs['data-sign'] === '+'));
     await two.handle.fire();
     await settle();
     const zq = new URLSearchParams(last(two).split('?')[1] || '');
-    ok('W2 one + start alone: Continue asks it by its type and keys as Walk does, a node the baskets never held as well',
-      zedByContinue === last(two) && zq.getAll('positive').length === 0 && zq.getAll('collect').join() === 'die@1',
-      JSON.stringify([zedByContinue.slice(0, 200), last(two).slice(0, 200)]));
+    ok('W2 one + start alone: one the baskets never held goes as itself, its id exact; the baskets\' own by its type and keys, as Walk asks it',
+      cq.getAll('positive').join() === exact && cq.get('id') === exact && cq.getAll('collect').join() === 'die@1'
+        && zq.getAll('positive').length === 0 && zq.get('id') === entitySeedId('wafer@1', { wafer: 'Z' }) && zq.getAll('collect').join() === 'die@1',
+      JSON.stringify([cq.toString().slice(0, 200), zq.toString().slice(0, 200)]));
     ok('W3 Walk ▸ is off until a row is checked, and says so; pressed, one child step of the step it was on, titled Walk ▸',
       offWhy[0] === true && offWhy[1] === 'Check rows first' && placed.length === 1 && placed[0].parent === at
         && placed[0].title === 'Walk ▸' && JSON.stringify(placed[0].asked.positive) === '["n:2"]',
@@ -2179,8 +2181,8 @@ const MUTANTS = [
     from: '    const asked = askFrom(seeds);\n    await walkStep(', to: '    const asked = { ...knobs(), ...seeds };\n    await walkStep(' },
   { id: 'WFm2', what: 'the graph\'s Continue asks its own walk again, not the bar\'s', catches: ['W1', 'W2'],
     from: '{ doc, walk, ask: askFrom, entities,', to: '{ doc, walk, entities,' },
-  { id: 'WFm3', what: 'a node the baskets never held goes as a + start, not by its type and keys', catches: 'W2',
-    from: 'baskets.describe(starts.positive[0]) || entityOfId(starts.positive[0])', to: 'baskets.describe(starts.positive[0])' },
+  { id: 'WFm3', what: 'a node the baskets never held not sent - the form\'s subject walked instead', catches: 'W2',
+    from: '...(signed || !one ? starts : {}) };', to: '...(signed ? starts : {}) };' },
   { id: 'WFm4', what: 'Walk ▸ on with nothing checked', catches: 'W3',
     from: "    setDisabledReason(full, all.positive.length ? '' : CHECK_ROWS_FIRST);", to: "    setDisabledReason(full, '');" },
   { id: 'AXm3', what: 'the auxiliary node is not sent', catches: 'AX3',
