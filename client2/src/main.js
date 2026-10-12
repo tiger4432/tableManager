@@ -26,7 +26,10 @@ import {
   deleteSelectedRows,
   checkChainHealth,
   seatWorldTabs,
-  pickGridWorld
+  pickGridWorld,
+  seatTableFollower,
+  rereadGrid,
+  discardPendingEdits
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -68,7 +71,6 @@ import {
   updateLoadedCount,
   updateViewModeUI,
   updatePaginationUI,
-  ensureCellObject,
   markCellOverwritten,
   renderGrid,
   registerSelectionListener,
@@ -181,6 +183,12 @@ async function init() {
       // `setRelation` 한 번으로 문장이 확정됩니다.
       sourceLabel = initGridSourceLabel();
       redoBanner = initRedoBanner();
+      // 🔴 부팅 자동 선택도 · 드롭다운도 · 이력 점프도 «표를 고른 것»입니다 — 셋 다 switchTable 을 지나므로 거기서 한 번
+      //    알립니다. 손으로 알리던 두 자리(부팅 · 드롭다운)는 이력 점프를 빠뜨렸습니다(총괄 10-12).
+      seatTableFollower((table) => {
+        if (sourceLabel) sourceLabel.setRelation(table);
+        redoBannerFollows(table);
+      });
       // Seated before the table list loads, so the first table switch finds it.
       const tabsHost = document.getElementById('world-tabs-host');
       if (tabsHost) seatWorldTabs(new WorldTabs(tabsHost, { doc: document, onPick: (name) => void pickGridWorld(name) }));
@@ -195,14 +203,8 @@ async function init() {
       registerSmartPasteHandler(smartPasteFromPasteEvent);
       setupDragAndDrop();
     },
-    tableChosen() {
-      // 🔴 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 첫 화면의 라벨만
-      //    조용히 비고, 사용자가 표를 «한 번 바꿔야» 나타납니다 (그 침묵이 「아님」처럼 보입니다).
-      if (sourceLabel) sourceLabel.setRelation(state.currentTable);
-      // 부팅 자동 선택도 «표를 고른 것»입니다. 여기서 안 알려 주면 체인 버튼이 첫 화면에서
-      // 「업무 키가 없다」고 말합니다 -- 있는데도 (라이브 실측 2026-08-31).
-      redoBannerFollows(state.currentTable);
-    },
+    // The label and the banner learn the boot table from switchTable (seatTableFollower above), like every other.
+    tableChosen() {},
   });
 }
 
@@ -298,7 +300,8 @@ function redoBannerFollows(table) {
   //    `row_id` 이고, 그것은 행이 «이미 들고 있는» 것이라 표마다 알려 줄 것이 없습니다.
   // 🔴 C-109. 고를 규칙도 «이 표»의 것입니다 — 트리거가 이 표인 규칙만, 조인 포함.
   //    거르는 것은 서버입니다 — 화면이 거르면 그 규칙이 «두 곳»에 살게 됩니다.
-  loadReplayableRules(table).then((rules) => redoBanner.setRules(rules));
+  // An answer for a table no longer open is not this table's list (lead 10-12).
+  loadReplayableRules(table).then((rules) => { if (redoBanner.relation === (table || null)) redoBanner.setRules(rules); });
 }
 
 /**
@@ -527,8 +530,6 @@ function setupEventListeners() {
       // also called on boot auto-select and by navigateToLog — neither is a user move.
       countNav(ROUTES.GRID, 'grid:table');
       await switchTable(table);
-      if (sourceLabel) sourceLabel.setRelation(table);
-      redoBannerFollows(table);
     }
   });
   // Typing narrows the dropdown by table name; the open table stays in it (lead 685f236d7).
@@ -685,7 +686,7 @@ function setupEventListeners() {
           if (confirmApply) {
             applyPendingTxEdits();
           } else {
-            discardPendingTxEdits();
+            discardPendingEdits();
           }
         } else {
           updateTxModeUI();
@@ -706,7 +707,7 @@ function setupEventListeners() {
 
   if (elements.txDiscardBtn) {
     elements.txDiscardBtn.addEventListener('click', () => {
-      discardPendingTxEdits();
+      discardPendingEdits();
     });
   }
 
@@ -724,14 +725,7 @@ function setupEventListeners() {
     elements.refreshGridBtn.addEventListener('click', () => {
       if (!state.currentTable) return;
       elements.performanceLog.textContent = 'Refreshing current page...';
-      state.pageCache.clear();
-      if (state.viewMode === 'infinite' || state.allDataLoaded) {
-        state.allDataLoaded = false;
-        state.hasMoreData = true;
-        fetchData(true);
-      } else {
-        fetchData(false);
-      }
+      rereadGrid();
       showToast('🔄 Refreshed with the latest data', 'success');
     });
   }
@@ -2160,34 +2154,6 @@ async function applyPendingTxEdits() {
     alert(`Apply failed: ${err.message}`);
     elements.performanceLog.textContent = '❌ Batch apply failed';
   }
-}
-
-function discardPendingTxEdits() {
-  const pendingCount = Object.keys(state.pendingTxEdits).length;
-  if (pendingCount === 0) return;
-
-  Object.values(state.pendingTxEdits).forEach(edit => {
-    const { rowId, colId, oldValue, oldIsOverwrite, oldPrioritySource, data } = edit;
-    const latestNode = state.gridApi.getRowNode(rowId);
-    const latestData = latestNode ? latestNode.data : data;
-    if (latestData) {
-      ensureCellObject(latestData, colId);
-      latestData.data[colId].value = oldValue;
-      // 🔴 C-22. BOTH halves, because the paint rule reads `priority_source` and never
-      //    `is_overwrite`: restoring one left a discarded edit still drawn as a pin.
-      //    `?? null` rather than a bare read — a record staged before this field existed has
-      //    no key, and writing `undefined` there is not the same as clearing it.
-      latestData.data[colId].is_overwrite = oldIsOverwrite;
-      latestData.data[colId].priority_source = oldPrioritySource ?? null;
-    }
-  });
-
-  state.pendingTxEdits = {};
-  state.txModeActive = elements.txModeToggle.checked;
-  updateTxModeUI();
-  updateGridSortState();
-  state.gridApi.refreshCells({ force: true });
-  elements.performanceLog.textContent = 'Pending updates discarded';
 }
 
 // Start Application.

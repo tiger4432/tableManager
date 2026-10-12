@@ -1398,7 +1398,9 @@ const FLOORS = new Map([
   ['table_menu_harness.mjs', 15],
   // New with lead 120450931 ②: the grid's world tabs - only over a per-world table, the operating one marked,
   // a pick reads again and every read after it carries the world, other tables byte for byte. Floor = first run.
-  ['grid_world_tabs_harness.mjs', 19],
+  // 19 -> 27: what a table switch leaves and Discard (lead 10-12) - W10 the last table's filter, W11 every way to a
+  //    table tells the label and the banner, W12 Discard draws from the server's read; G10-G14.
+  ['grid_world_tabs_harness.mjs', 27],
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)

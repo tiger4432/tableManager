@@ -8,7 +8,7 @@ import { elements } from './dom.js';
 import { activateHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
+import { renderGrid, dropGridFilters, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -230,10 +230,18 @@ export async function pickGridWorld(world) {
   await fetchData(true);
 }
 
+// The parts that follow the open table - the source label, the Re-translate banner (lead 10-12: a history jump left the
+// last table's lists). The page seats them once; every way to a table goes through switchTable, boot's included.
+let tableFollower = null;
+export function seatTableFollower(follow) {
+  tableFollower = follow;
+}
+
 // Switch current working table
 export async function switchTable(tableName) {
   // Every way in (the dropdown, a history jump) leaves the opened table in the list, search or not.
   drawTableMenu(tableName);
+  const leaving = state.currentTable;
   state.currentTable = tableName;
   window.currentTable = tableName; // Expose globally for Desktop Wrapper
   elements.performanceLog.textContent = `Switching to ${tableName}...`;
@@ -254,6 +262,8 @@ export async function switchTable(tableName) {
   //    the wire, and the server answers that with a 422 — a refusal the operator did nothing
   //    to earn. It dies with the table, like the transaction filter above it.
   state.serverSort = null;
+  // The grid's filters die with the table too (lead 10-12); the same table drawn again keeps them.
+  if (leaving !== tableName) dropGridFilters();
   // The world tab dies with the table too (lead 120450931 ②); the row is drawn for the table now open.
   state.gridWorld = null;
   drawWorldTabs();
@@ -269,6 +279,8 @@ export async function switchTable(tableName) {
   //    아는 «첫» 자리입니다. 컨트롤이 각자 물으면 새 컨트롤마다 한 번씩 빠집니다.
   //    C-107: 이제 «쓰는 컨트롤 전부»와 머리의 배지가 같은 줄에서 맞춰집니다.
   applyWriteGuards();
+  // The label and the banner know the table once its columns are read - the label's answer redraws them.
+  if (tableFollower) tableFollower(tableName);
   // Re-create empty grid to bind new columns
   renderGrid([]);
   // Fetch initial chunk of data (reset skip to 0)
@@ -524,6 +536,31 @@ export async function fetchData(resetSkip = true) {
     elements.performanceLog.textContent = 'Data fetch failed';
     state.isLoadingMore = false;
   }
+}
+
+/** The rows on screen read again from the server - the Refresh button's read, and Discard's (lead 10-12). */
+export function rereadGrid() {
+  state.pageCache.clear();
+  if (state.viewMode === 'infinite' || state.allDataLoaded) {
+    state.allDataLoaded = false;
+    state.hasMoreData = true;
+    return fetchData(true);
+  }
+  return fetchData(false);
+}
+
+/** Discard the staged edits. Their cells are drawn from what the server holds now, read again - not from the value the
+ *  screen had when each was edited, which a write or a Refresh since makes stale (lead 10-12; 18766: a stored 28.5
+ *  drawn as the 28 from before the edit until Refresh). */
+export function discardPendingEdits() {
+  if (Object.keys(state.pendingTxEdits).length === 0) return Promise.resolve();
+  state.pendingTxEdits = {};
+  state.txModeActive = elements.txModeToggle.checked;
+  updateTxModeUI();
+  // The dirty marks go now; the values come with the read.
+  state.gridApi.refreshCells({ force: true });
+  elements.performanceLog.textContent = 'Pending updates discarded';
+  return rereadGrid();
 }
 
 // Handle inline editing updates to DB

@@ -38,6 +38,7 @@ function fakeNode(tag) {
     set innerHTML(v) { node._text = String(v); node.children = []; },
     get innerHTML() { return node._text; },
     appendChild(c) { node.children.push(c); return c; },
+    replaceChildren(...items) { node._text = ''; node.children = [...items]; },
     append(...items) { for (const i of items) if (i) node.children.push(i); },
     setAttribute(k, v) { node.attrs[String(k)] = String(v); },
     getAttribute(k) { return Object.prototype.hasOwnProperty.call(node.attrs, String(k)) ? node.attrs[String(k)] : null; },
@@ -167,7 +168,48 @@ async function seen(M) {
   try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
   out.oldTabs = tabsOf(host).length;
   answer = PER_WORLD;
+  out.left = await leftovers(M);
   return out;
+}
+
+// What a table switch leaves behind, and Discard (lead 10-12): the last table's filter, the label and the banner told
+// only by the dropdown and boot, a discarded cell drawn from the value before the edit.
+async function leftovers(M) {
+  reset();
+  const left = {};
+  const filterOn = () => ({ row_id: { filterType: 'text', type: 'equals', filter: 'R1' } });
+  let model = filterOn();
+  const cleared = [];
+  S.gridApi = { ...gridApi, getFilterModel: () => model, setFilterModel: (m) => { cleared.push(m); model = m || {}; } };
+  const followed = [];
+  M.api.seatTableFollower((table) => followed.push(table));
+  S.currentTable = 'dt_log';
+  try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
+  left.other = { cleared: cleared.slice(), model: Object.keys(model) };
+  model = filterOn();
+  cleared.length = 0;
+  try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
+  left.same = { cleared: cleared.slice(), model: Object.keys(model) };
+  // Boot opens the first table; a history jump calls switchTable itself.
+  followed.length = 0;
+  S.currentTable = '';
+  try { await M.api.loadTables(); } catch (e) { /* as above */ }
+  try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
+  left.followed = followed.slice();
+  M.api.seatTableFollower(null);
+  // A stored 28.5 the grid holds since a Refresh; the edit was staged over the 28 from before it.
+  const node = { data: { row_id: 'R1', data: { a: { value: 28.5, is_overwrite: false, priority_source: null } } } };
+  reset();
+  S.gridApi = { ...gridApi, getRowNode: (id) => (id === 'R1' ? node : null) };
+  S.currentTable = 'dt_log';
+  S.pendingTxEdits = { R1_a: { rowId: 'R1', colId: 'a', newValue: 28.7, oldValue: 28, oldIsOverwrite: false,
+    oldPrioritySource: null, data: node.data } };
+  try { await M.api.discardPendingEdits(); } catch (e) { /* as above */ }
+  await settle();
+  left.discard = { value: node.data.data.a.value, pending: Object.keys(S.pendingTxEdits).length,
+    reads: reads().filter((u) => u.includes('/tables/dt_log/data?')).length };
+  S.gridApi = gridApi;
+  return left;
 }
 
 // The seat itself, on the state module under test (a state.js copy carries its own state object).
@@ -226,6 +268,14 @@ function suite(out, sent) {
   eq('W7 a switch drops the pick and the tabs; the plain table asks what it asked before',
     [out.backWorld, out.backTabs, out.back], [null, 0, out.plainBefore]);
   eq('W8 a server that names no per-world table: no tab row', out.oldTabs, 0);
+  eq('W10 a switch to another table drops the grid\'s filters; the same table switched again keeps them',
+    [out.left.other, out.left.same], [{ cleared: [null], model: [] }, { cleared: [], model: ['row_id'] }]);
+  const grid = readFileSync(join(SRC, 'main.js'), 'utf8');
+  eq('W11 every way to a table tells the label and the banner - boot\'s first table and a jump alike; the page tells them nowhere else',
+    [out.left.followed, (grid.match(/sourceLabel\.setRelation\(/g) || []).length, (grid.match(/redoBannerFollows\(/g) || []).length],
+    [['dt_log', 'ledger_atom_rows'], 1, 2]);
+  eq('W12 Discard draws the cell from the server\'s read, not from the value before the edit',
+    out.left.discard, { value: 28.5, pending: 0, reads: 1 });
   eq('W9 census: the grid\'s reads of the open table go through the seat - api 3 (schema, data, count), main 3 '
     + '(load all twice, export), timeline 1 (row jump), value_suggest 1 (column values)',
     { api: callsIn('api.js'), main: callsIn('main.js'), timeline: callsIn('timeline.js'), suggest: callsIn('value_suggest.js') },
@@ -262,6 +312,19 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      if (name === view.operating) {', '      if (false) {') },
   { id: 'G9', what: 'no tab is shown while none is picked', catches: 'W3', file: 'world_tabs.js',
     mutate: (t) => swap(t, 'const shown = view.current || view.operating;', 'const shown = view.current;') },
+  { id: 'G10', what: 'a switch keeps the last table\'s filters - the code before', catches: 'W10', file: 'api.js',
+    mutate: (t) => swap(t, '  if (leaving !== tableName) dropGridFilters();\n', '') },
+  { id: 'G11', what: 'the same table switched again loses its filters', catches: 'W10', file: 'api.js',
+    mutate: (t) => swap(t, '  if (leaving !== tableName) dropGridFilters();', '  dropGridFilters();') },
+  { id: 'G12', what: 'a switch tells the label and the banner nothing - only the dropdown and boot did', catches: 'W11', file: 'api.js',
+    mutate: (t) => swap(t, '  if (tableFollower) tableFollower(tableName);\n', '') },
+  { id: 'G13', what: 'Discard draws the value from before the edit - the code before', catches: 'W12', file: 'api.js',
+    mutate: (t) => swap(t, '  state.pendingTxEdits = {};\n  state.txModeActive = elements.txModeToggle.checked;',
+      '  Object.values(state.pendingTxEdits).forEach((e) => { const n = state.gridApi.getRowNode(e.rowId); if (n) n.data.data[e.colId].value = e.oldValue; });\n'
+      + '  state.pendingTxEdits = {};\n  state.txModeActive = elements.txModeToggle.checked;') },
+  { id: 'G14', what: 'Discard reads nothing again', catches: 'W12', file: 'api.js',
+    mutate: (t) => swap(t, "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return rereadGrid();",
+      "  elements.performanceLog.textContent = 'Pending updates discarded';\n  return Promise.resolve();") },
 ];
 const KEY = { 'state.js': 'state', 'api.js': 'api', 'timeline.js': 'timeline', 'world_tabs.js': 'tabs' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
