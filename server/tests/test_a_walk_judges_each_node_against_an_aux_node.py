@@ -221,3 +221,27 @@ def test_an_answer_node_behind_another_answer_node_is_found_not_none(declared):
     want = {explorer.entity_id("wafer", {"w": "V"}): 3, explorer.entity_id("die", die("B1")): 3,
             explorer.entity_id("die", die("B0")): 2}
     assert ({i: hops[i] for i in want}, states) == (want, {"found"}), (hops, body["aux"])
+
+
+LATE = ([_atom("die", die("P"), "in_container", "wafer", {"w": "W"}),
+         _atom("die", die("D1"), "in_container", "wafer", {"w": "W"}),
+         _atom("die", die("D1"), "bonded_from", "die", die("D2")),
+         _atom("die", die("D2"), "bonded_from", "die", die("m")),
+         _atom("die", die("P"), "linked", "die", die("X")), _atom("die", die("X"), "linked", "die", die("Y")),
+         _atom("die", die("Y"), "linked", "die", die("Z")), _atom("die", die("Z"), "linked", "die", die("m")),
+         _atom("die", die("X"), "linked", "die", die("V")), _atom("die", die("V"), "linked", "die", die("AUX"))]
+        + [_atom("die", die("AUX"), "linked", "die", die("H%d" % k)) for k in range(50)])
+
+
+def test_a_late_origin_goes_back_through_a_node_read_whole_earlier(declared):
+    """응용 QA (cad766c97: «only the side read keeps its neighbours» passed every cell). The walk (in_container ·
+    bonded_from, hops 3): W <- P, W <- D1 -> D2 -> m. Not followed (linked): P - X - V - AUX, X - Y - Z - m, AUX a hub
+    of 50. X is read whole a layer before Y, and m's shortest way goes m - Z - Y - X - V - AUX, back into X: X's
+    neighbours must hold Y from Y's read. P 3 · W 4 · D1 5 · m 5 · D2 6."""
+    body = ledger_subgraph.subgraph(
+        SEED, ledger_subgraph.InMemoryEvidenceLookup(LATE), declaration_paths=declared, hops=3,
+        follow=["in_container", "bonded_from"], static_types=set(), aux=[explorer.entity_id("die", die("AUX"))])
+    names = {"W": SEED, **{n: explorer.entity_id("die", die(n)) for n in ("P", "D1", "D2", "m")}}
+    judged_ = {n["id"]: n["aux"] for n in body["nodes"]}
+    assert {k: (judged_[i]["state"], judged_[i].get("hops")) for k, i in names.items()} == {
+        "W": ("found", 4), "P": ("found", 3), "D1": ("found", 5), "D2": ("found", 6), "m": ("found", 5)}, body["aux"]
