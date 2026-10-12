@@ -104,6 +104,12 @@ const RESULT = {
   edges: [{ id: 'e:1', source: 'n:3', target: 'n:1', predicate: 'inspected', qualifiers: { gate: 7 } }],
 };
 
+// The walk's judgment (owner 10-12): «does a shortest path reach the auxiliary node(s)», yes · hops / no / unknown - a fake
+// answer in the server's shape (implementer, lead 10-12): each node its «aux», the answer's «aux» the seeds.
+const JUDGED = { ...RESULT,
+  nodes: RESULT.nodes.map((n) => ({ ...n, aux: { 'n:1': { state: 'found', hops: 2, via: 'q:aux' }, 'n:2': { state: 'none' }, 'n:3': { state: 'unknown' } }[n.id] })),
+  aux: { seeds: ['q:aux'], complete: true, truncated: null, hops_reached: 2 } };
+
 // Two + starts and one −; a die reached from + only, one from − only, one from both. The answer's reach is the server's.
 const SIGNED = {
   nodes: [
@@ -292,6 +298,36 @@ async function suite(mod) {
   eq('V1 one section head per section, worded by the view',
     byClass(host, 'wk-sechead').map((e) => e.textContent).join(' | '),
     view.sections.map((s) => s.heading).join(' | '));
+  // The judged walk on the page (owner 10-12): the bar's auxiliary nodes go with the walk, the section offers «Reaches only».
+  {
+    const pageOf = async () => {
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+      await settle();
+      Object.assign(handle.state, { type: 'die@1', asked: { type: 'die@1', keys: { mat_id: 'M-1' } }, run: 'done', result: JUDGED });
+      handle.render();
+      return { host, handle };
+    };
+    const one = await pageOf();
+    const two = await pageOf();
+    const before = Object.prototype.hasOwnProperty.call(one.handle.spec(), 'aux');
+    one.handle.graph.markings.set('walk-reach', 'q:aux', SIGN.CASE);
+    const chips = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-reach']).map((e) => e.attrs['data-reach']);
+    ok('AX3 an auxiliary node picked goes with the walk (aux) and says itself in the bar; none picked, nothing sent',
+      !before && JSON.stringify(one.handle.spec().aux) === '["q:aux"]' && chips(one.host).join() === 'q:aux',
+      JSON.stringify([before, one.handle.spec().aux, chips(one.host)]));
+    ok('AX4 two pages: the other page\'s walk carries no auxiliary node and its bar says none',
+      !Object.prototype.hasOwnProperty.call(two.handle.spec(), 'aux') && chips(two.host).length === 0,
+      JSON.stringify([two.handle.spec().aux, chips(two.host)]));
+    const press = (e) => { for (const fn of (e && e.listeners && e.listeners.click) || []) fn({}); };
+    const ids = () => walkAll(one.host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']);
+    const all = ids();
+    press(walkAll(one.host).find((e) => String(e.className || '').includes('wk-reachonly')));
+    ok('AX5 the page: the die section\'s «Reaches only» pressed, its table the yes row alone; the other sections as they were',
+      all.includes('n:2') && !ids().includes('n:2') && ids().includes('n:1') && ids().includes('n:3'),
+      `${all.join()} -> ${ids().join()}`);
+  }
   // Wide (lead 10-11 W): a section's heads say its node columns, each group's step and far end, its values' names; a
   // row's cells its node's, then each column's groups' cells, a cell drawn as its value line.
   const heads = byTag(host, 'thead').map((t) => walkAll(t).filter((c) => c.tagName === 'th' && c.className !== 'wk-check').map(headSaid).join(' '));
@@ -1768,6 +1804,22 @@ const sideSuite = (TV) => {
 };
 // ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
 const filterSuite = (TV) => {
+  {
+    const jv = TV.walkTableView(JUDGED, DECL.entities);
+    const plain = TV.walkTableView(RESULT, DECL.entities);
+    const sec = (v, t) => v.sections.find((x) => x.type === t) || { rows: [], centreHeads: [] };
+    const last = (row) => row.centre[row.centre.length - 1].text;
+    ok('AX1 a judged answer: each section\'s last own column «→ <the auxiliary node>», a row its yes · hops, no or unknown; none judged, no such column',
+      JSON.stringify([sec(jv, 'die@1').centreHeads.slice(-1), sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last),
+        sec(jv, 'die@1').judged, sec(plain, 'die@1').judged, sec(plain, 'die@1').centreHeads.some((h) => h.startsWith('→'))])
+        === JSON.stringify([['→ q:aux'], ['2 hops', 'none'], ['unknown'], true, false, false]),
+      JSON.stringify([sec(jv, 'die@1').centreHeads, sec(jv, 'die@1').rows.map(last), sec(jv, 'wafer@1').rows.map(last)]));
+    const only = TV.shownOf(sec(jv, 'die@1'), { reaches: true });
+    const sheet = TV.sheetOf(sec(jv, 'die@1'), { reaches: true });
+    ok('AX2 «Reaches only» is the one shown seat: the yes rows alone, and Copy the same rows',
+      JSON.stringify([only.lines.map((l) => l.row.id), only.filtering, sheet.rows.length]) === JSON.stringify([['n:1'], true, 1]),
+      JSON.stringify([only.lines.map((l) => l.row.id), only.filtering, sheet.rows.length]));
+  }
   const view = TV.walkTableView(sfAnswer(TV.PICK_MOST + 2), SF_DECL.entities, SF_DECL.predicates, undefined, SF_STARTS);
   const sec = view.sections.find((x) => x.type === 'die@1') || { rows: [], centreHeads: [], columns: [], groups: [], parts: [] };
   const grid = TV.gridOf(sec);
@@ -1904,8 +1956,12 @@ console.log(`${LF}${failures.length === 0 ? 'PASS' : 'FAIL'} baseline with Q: ${
 const base = { ran, names: NAMES.slice(), failed: failures.length };
 
 // ═══ mutants ════════════════════════════════════════════════════════════════════════════
-const NEXT_ASK = '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
+const NEXT_ASK = '    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };';
 const MUTANTS = [
+  { id: 'AXm3', what: 'the auxiliary node is not sent', catches: 'AX3',
+    from: '    return Object.assign(out, knobs(), reachArg());', to: '    return Object.assign(out, knobs());' },
+  { id: 'AXm4', what: '«Reaches only» drawn but does nothing', catches: 'AX5',
+    from: "      only.addEventListener('click', () => { setFilter(section.type, { reaches: !on }); render(); });", to: '' },
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
     from: '    void walkInto(at, more.asked, (res) => {', to: '    void walkInto(at, answerAt(at).asked, (res) => {' },
   { id: 'MOm3', what: 'More\'s answer lands nowhere - the step keeps the cut one', catches: 'MO2',
@@ -2046,16 +2102,16 @@ const MUTANTS = [
     from: "      go.addEventListener('click', () => { if (seeds.positive.length) void walkOn(at, seeds, route); });",
     to: "      go.addEventListener('click', () => { void walkOn(at, seeds, route); });" },
   { id: 'NM3', what: 'the next step builds its own walk instead of the one step', catches: 'N4',
-    from: '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
+    from: '    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
     to: '    const asked = { positive: seeds.positive, follow: [route.predicate] };' },
   // stepAlong's own default ('both') is imported by main.js and not swapped by this loader; the call site stands in.
   { id: 'NM7', what: 'the Next walks one way only', catches: 'N8',
-    from: '    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
-    to: "    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to, direction: 'outgoing' }) };" },
+    from: '    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };',
+    to: "    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to, direction: 'outgoing' }) };" },
   { id: 'EKm1', what: 'a Next without the form\'s knobs - a cut answer cut elsewhere', catches: 'EA1',
-    from: '    const asked = { ...knobs(), ...stepAlong(', to: '    const asked = { ...stepAlong(' },
+    from: '    const asked = { ...knobs(), ...reachArg(), ...stepAlong(', to: '    const asked = { ...reachArg(), ...stepAlong(' },
   { id: 'EKm2', what: 'a Next walks the form\'s hops, not one step', catches: 'EA1',
-    from: NEXT_ASK, to: NEXT_ASK.replace('{ ...knobs(), ...stepAlong(', '{ ...stepAlong(').replace('farType: route.to }) };', 'farType: route.to }), ...knobs() };') },
+    from: NEXT_ASK, to: NEXT_ASK.replace('{ ...knobs(), ...reachArg(), ...stepAlong(', '{ ...reachArg(), ...stepAlong(').replace('farType: route.to }) };', 'farType: route.to }), ...knobs() };') },
   { id: 'NM4', what: 'the checks are kept apart from the graph\'s marking', catches: 'N3',
     from: "  const checksOf = (at) => (at === 0 ? state.marks : stepOf(at).marks);", to: '  const checksOf = (at) => `table-${at}`;' },
   { id: 'FM1', what: 'a step\'s marking named by its place again', catches: 'CH2',
@@ -2118,6 +2174,10 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX1',
+    from: "          ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };", to: "          ] };" },
+  { id: 'AXm2', what: '«Reaches only» shows every row', catches: 'AX2',
+    from: "    && (!f.reaches || Boolean(line.row.reach && line.row.reach.state === 'found')));", to: '    );' },
   { id: 'CPm1', what: 'several values copied as the first alone', catches: 'CP1',
     from: "cell.values ? cell.values.join('; ')", to: 'cell.values ? cell.values[0]' },
   { id: 'CPm2', what: 'Δ copied in its words, not its number', catches: 'CP1',
@@ -2225,7 +2285,7 @@ const TV_MUTANTS = [
   { id: 'SFt9', what: 'every column a pick, however many values', catches: 'SF6 ',
     from: 'choices.filter(Boolean).length <= PICK_MOST ?', to: 'true ?' },
   { id: 'SFt10', what: 'a sort said as a filter', catches: 'SF10 ',
-    from: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 }", to: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.sort) }" },
+    from: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) }", to: "filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) || Boolean(f.sort) }" },
   { id: 'SFt11', what: 'Wide\'s Δ not a column of its own', catches: 'SF4 ',
     from: "section.parts[i].delta ? { key: `${columnKey(column)}\\u0000${DELTA}`", to: "false ? { key: `${columnKey(column)}\\u0000${DELTA}`" },
   { id: 'LSm1', what: 'a Long record\'s side by its node, not by its way', catches: 'LS1 ',

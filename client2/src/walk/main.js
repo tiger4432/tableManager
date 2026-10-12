@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
+import { walkTableView, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -70,6 +70,9 @@ import { BranchPicker } from '../branch_picker.js';
 /** The graph's chain of markings: the start, then one per Continue. Its length is the chain's length. */
 /** The start marking the baskets edit; each step's checks write a marking of their own (stepMarks). */
 const START = 'walk-start';
+// The auxiliary node(s) the walk judges its nodes against (owner 10-12): a marking of their own, picked as a start is.
+const REACH = 'walk-reach';
+const REACH_ADD = '+ Reaching';
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = WALKING;
@@ -298,6 +301,9 @@ export function boot(doc, host, deps) {
   // Walk follows the baskets as they change, not only when the page redraws.
   let goButton = null;
   markings.subscribe(START, () => { if (goButton) setDisabledReason(goButton, goReason()); });
+  // The bar says the auxiliary nodes as they stand; their names, as they were picked.
+  const reachNames = new Map();
+  markings.subscribe(REACH, () => render());
   /** The graph on the chosen branch (lead 5ea461e04), the table's own answers drawn, nothing walked (lead 10-11 G-2): the
    *  form walk's, then each step's down the branch, each from the starts it walked; a step before the last only its
    *  paths to the next one's starts, the last its whole answer. The same branch drawn already is not drawn again; with
@@ -337,13 +343,20 @@ export function boot(doc, host, deps) {
   }
 
   /** 폼의 칸 -> 전선의 인자. «빈 칸은 안 싣습니다» — 그것이 「안 골랐다」의 정직한 모양입니다. */
+  /** The auxiliary node(s) as the wire takes them (owner 10-12, the walk's judgment) - none picked, nothing sent. Every walk
+   *  of the page asks it: the form's and a walk on's. */
+  function reachArg() {
+    const ids = markings.entries(REACH).map(([id]) => id);
+    return ids.length ? { aux: ids } : {};
+  }
+
   function spec() {
     const out = { type: state.type, keys: state.keys };
     if (state.follow.size) out.follow = [...state.follow];
     // 🔴 `follow` 와 «같은 규율». 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
     if (state.collect.size) out.collect = [...state.collect];
     if (state.direction) out.direction = state.direction;
-    return Object.assign(out, knobs());
+    return Object.assign(out, knobs(), reachArg());
   }
 
   /** STEP's number knobs as the wire takes them, blank ones not sent - the form's walk and a Next's read them here, so a
@@ -437,7 +450,7 @@ export function boot(doc, host, deps) {
 
   /** One step from the rows checked along `route` - New step's ask and Add here's. */
   function askAlong(seeds, route) {
-    const asked = { ...knobs(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
+    const asked = { ...knobs(), ...reachArg(), ...stepAlong({ positive: seeds.positive, negative: seeds.negative, predicate: route.predicate, farType: route.to }) };
     return asked;
   }
 
@@ -768,8 +781,32 @@ export function boot(doc, host, deps) {
   function renderBar(root) {
     startMount.textContent = '';
     renderStart(startMount);
+    // The node picked here is an auxiliary node too, on «+ Reaching» (owner 10-12): the same picker, its own marking.
+    const addReach = el(doc, 'button', 'wk-act wk-reachadd', REACH_ADD);
+    addReach.type = 'button';
+    addReach.addEventListener('click', () => {
+      const node = pickedNode();
+      if (!node) return;
+      reachNames.set(node.id, node.label);
+      markings.set(REACH, node.id, SIGN.CASE);
+    });
+    startMount.append(addReach);
     root.append(el(doc, 'span', 'wk-barword', 'From'), basketMount, el(doc, 'span', 'wk-barword', 'collect'));
     renderCollect(root);
+    // reaching: the auxiliary nodes picked, × takes one out.
+    const reach = markings.entries(REACH).map(([id]) => id);
+    if (reach.length) {
+      root.append(el(doc, 'span', 'wk-barword', 'reaching'));
+      for (const id of reach) {
+        const name = reachNames.get(id) || id;
+        const chip = el(doc, 'button', 'wk-chip wk-reachchip', `${name} ×`);
+        chip.type = 'button';
+        chip.setAttribute('data-reach', id);
+        chip.setAttribute('aria-label', `Remove ${name}`);
+        chip.addEventListener('click', () => markings.set(REACH, id, SIGN.ABSENT));
+        root.append(chip);
+      }
+    }
     through.chip.textContent = throughWord();
     through.body.textContent = '';
     renderThrough(through.body);
@@ -907,6 +944,15 @@ export function boot(doc, host, deps) {
     typed(find, `find\u0000${section.type}`, (value) => setFilter(section.type, { find: value }));
     seat.append(find, segmented('wk-rowfilter', 'data-rows', [['all', 'All rows'], ['differs', 'Differs'], ['missing', 'Missing']],
       filterOf(section.type).rows || 'all', (value) => { setFilter(section.type, { rows: value }); render(); }));
+    // A judged walk (owner 10-12): only the rows a shortest path takes to the auxiliary node(s) - the same seat as the rest.
+    if (section.judged) {
+      const on = Boolean(filterOf(section.type).reaches);
+      const only = el(doc, 'button', 'wk-act wk-reachonly' + (on ? ' is-on' : ''), REACH_WORDS.only);
+      only.type = 'button';
+      only.setAttribute('aria-pressed', String(on));
+      only.addEventListener('click', () => { setFilter(section.type, { reaches: !on }); render(); });
+      seat.append(only);
+    }
     return seat;
   }
 

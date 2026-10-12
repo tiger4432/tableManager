@@ -1487,7 +1487,8 @@ const FLOORS = new Map([
   // nodes call the same simplePaths.
   ['paths_harness.mjs', 22],
   // 184 -> 191 (MB1-MB4 the Marked basket, MBm1-MBm3; NM1 NZ2 re-aimed, owner 10-11 W addendum 3).
-  ['walk_table_harness.mjs', 191],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
+  // 191 -> 278 (AX1-AX5 the auxiliary node judgment, AXm1-AXm4; the merged main cells counted, owner 10-12).
+  ['walk_table_harness.mjs', 278],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
