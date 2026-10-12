@@ -16,7 +16,7 @@
 >          걷기가 503 walk_pool_busy -> 걷기 프로세스가 walk_seconds_max 동안 다 바빴음 / walk_process_not_ready -> 걷기
 >            프로세스가 그 시간 안에 안 떴음 / walk_timed_out -> 그 걷기가
 >            그 시간 안에 안 끝나 걷기 프로세스를 내림(다음 걷기는 새로) — 둘 다 결함이 아니라 상한에 닿은 것
->          걷기 프로세스 안에서 난 일은 logs/walk_pool.log, 걷기 500 의 추적은 server.log
+>          걷기 프로세스 안에서 난 일은 server\walk_pool.log(server.log 옆), 걷기 500 의 추적은 server.log
 > ⚠️ 안 잰 것   시간을 넘겨 내린 걷기의 PG 질의가 PG 안에서 계속 도는지(pg_stat_activity, application_name assy_walkpool)
 > 멈춘 걷기 프로세스 찾기  PowerShell: Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*spawn_main(parent_pid=<서버 pid>*' } | select ProcessId,CommandLine
 >          끄기: taskkill /PID <그 ProcessId> /F  (그 걷기만 500, 다음 걷기는 새 프로세스)

@@ -14,6 +14,7 @@ import importlib
 import logging
 import multiprocessing
 import os
+import reprlib
 import threading
 import time
 import traceback
@@ -218,6 +219,9 @@ def _run(target, kwargs, limit, seconds):
             answer = connection.recv()
         except (EOFError, OSError):
             process.join(1)
+            # said in server.log here (lead, 10-13): raised bare it reached only uvicorn's «Exception in ASGI application»
+            logger.error("[Pool] the pool process running this request ended - pid %s, exit code %s, %s.%s(%s)",
+                         process.pid, process.exitcode, target[0], target[1], reprlib.repr(kwargs))
             raise RuntimeError("the pool process running this request ended (exit code %s)" % process.exitcode)
         keep = True
         return answer

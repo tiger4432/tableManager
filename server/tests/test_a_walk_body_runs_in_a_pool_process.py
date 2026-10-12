@@ -320,7 +320,10 @@ def test_a_walk_that_does_not_finish_in_time_is_stopped(client, warming, monkeyp
     assert client.get("/body", params={"kind": "pid"}).json()["pid"] != stuck
 
 
-def test_a_killed_pool_process_fails_only_its_request(client, tmp_path):
+def test_a_killed_pool_process_fails_only_its_request(client, tmp_path, monkeypatch):
+    said, error = [], process_pool.logger.error
+    monkeypatch.setattr(process_pool.logger, "error",
+                        lambda message, *args, **kwargs: (said.append(message % args), error(message, *args, **kwargs)))
     pid_file, hung = str(tmp_path / "pid"), {}
     thread = _hang_in_a_thread(client, pid_file, hung)
     other = client.get("/body", params={"kind": "pid"})
@@ -329,6 +332,8 @@ def test_a_killed_pool_process_fails_only_its_request(client, tmp_path):
     os.kill(killed, 9)
     thread.join(30)
     assert hung["response"].status_code == 500
+    assert any("the pool process running this request ended - pid %d" % killed in line for line in said), \
+        ("the Server log says which walk process ended under which request (lead 10-13)", said)
     assert other.status_code == 200
     after = client.get("/body", params={"kind": "pid"})
     assert after.status_code == 200 and after.json()["pid"] != killed
