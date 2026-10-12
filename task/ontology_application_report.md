@@ -38590,3 +38590,32 @@ walk atoms read (claims_scanned) 157,104 · atoms drawn on edges (records + reco
   by predicate: processed_with 478,718 (20.1%) · register 446,652 (18.8%) · has_netdie 433,096 (18.2%) · transfer 402,156 (16.9%) · in_container 156,365 (6.6%) · inspected 117,742 (4.9%) · of_kind 103,863 (4.4%) · observed 103,863 (4.4%) · measures 80,327 (3.4%) · has_wafer 37,335 (1.6%) · bonded_from 18,609 (0.8%) · derived_from 1,986 (0.1%) · slot_map 135 (0.0%) · leads_to 22 (0.0%)
   defect and below (observed + of_kind): 207,726 of 2,380,869 = 8.7%
 ```
+
+---
+
+## [C 응용] 10-13 — 보강 확인 «적용 길» (3eca39091, 구현자 B 기준선)
+
+박스 수. 같은 decide 판 · 규칙에 candidate_for 와 auto_confirm · sweep apply · 45 초 상한. 명령 run_census_confirm_apply.sh(스크래치, QA_CONFIRM_APPLY=1).
+
+```
+on main 1e23bc216 00:13:48
+start confirm-apply 10000 00:13:48
+end confirm-apply 10000 exit 1 00:15:02 1 passed 
+start confirm-apply 100000 00:15:02
+end confirm-apply 100000 exit 1 00:17:27 1 passed 
+start confirm-apply 1000000 00:17:27
+end confirm-apply 1000000 exit 1 00:25:10 1 passed 
+all done 00:25:10
+10,000 · derived 2,500 · fill 13.9 s · sweep 20.39 s · pages 15 · keys 2,500 · stopped None · 8.156 s / 1,000 keys (steady 9.375) · SQL 7,666 · seq {'cell_sources': (4, 56564), 'bkfl_test_derived': (28, 70000)}
+   5.93 s · 15 calls · max 0.867 s · UPDATE bkfl_test_derived SET updated_at=%(updated_at)s, wafer_id=%(wafer_id)s WHERE bkfl_test_derived.row_id = %(bkfl_te
+   2.99 s · 11 calls · max 0.57 s · INSERT INTO cell_sources (value, origin_row_id, updated_by, table_name, row_id, column_name, source_name, ingested_at) V
+   2.95 s · 14 calls · max 0.595 s · INSERT INTO audit_logs (table_name, row_id, column_name, old_value, new_value, source_name, updated_by, transaction_id, 
+100,000 · derived 25,000 · fill 51.3 s · sweep 46.11 s · pages 26 · keys 15,563 · stopped True · 2.963 s / 1,000 keys (steady 2.6) · SQL 46,975 · seq {'audit_logs': (7, 23410), 'bkfl_test_derived': (5, 125000)}
+   9.31 s · 15563 calls · max 0.015 s · SELECT __c, COUNT(*) AS __n, SUM(COUNT(*)) OVER () AS __scanned FROM (SELECT __enrichment_ref."wafer_id" AS __c FROM (SE
+   4.88 s · 26 calls · max 0.346 s · UPDATE bkfl_test_derived SET updated_at=%(updated_at)s, wafer_id=%(wafer_id)s WHERE bkfl_test_derived.row_id = %(bkfl_te
+   2.0 s · 25 calls · max 0.981 s · INSERT INTO database_outbox (event_uuid, event_type, table_name, payload, status, retry_count, processed_chain, processe
+1,000,000 · derived 250,000 · fill 320.8 s · sweep 47.16 s · pages 26 · keys 16,573 · stopped True · 2.845 s / 1,000 keys (steady 2.798) · SQL 50,005 · seq {'audit_logs': (16, 49152), 'bkfl_test_derived': (45, 3750000)}
+   8.92 s · 16573 calls · max 0.018 s · SELECT __c, COUNT(*) AS __n, SUM(COUNT(*)) OVER () AS __scanned FROM (SELECT __enrichment_ref."wafer_id" AS __c FROM (SE
+   4.77 s · 26 calls · max 0.325 s · UPDATE bkfl_test_derived SET updated_at=%(updated_at)s, wafer_id=%(wafer_id)s WHERE bkfl_test_derived.row_id = %(bkfl_te
+   4.32 s · 26 calls · max 1.377 s · SELECT bkfl_test_derived.row_id AS bkfl_test_derived_row_id, bkfl_test_derived.business_key_val AS bkfl_test_derived_bus  ⟶ ->  Parallel Seq Scan on bkfl_test_derived  (cost=4.59..7111.54 rows=7
+```
