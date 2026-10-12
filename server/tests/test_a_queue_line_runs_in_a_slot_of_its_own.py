@@ -29,7 +29,7 @@ import time
 
 import psutil
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -256,6 +256,102 @@ def test_a_replay_that_read_v1_before_a_person_saved_v2_cannot_land_after_the_v2
         mapper.HOOK = None
         db.rollback()
         db.close()
+
+
+# ------------------------------------------------------------- the lock connection goes back to the pool
+
+def _slot_pool(pg_engine, size=None, overflow=None, timeout=3):
+    """A slot's own pool (`chain.slots.SLOT_POOL`, 2 + 2) on this test's schema, waiting `timeout` s instead of the
+    product's 30 - a connection that never comes back fails in seconds. Named for this test: under the box fixture
+    they would be `assy_chain`, and a chain worker starting on the shared test database ends a gone worker's
+    `assy_chain` backends - their locks with them."""
+    with pg_engine.connect() as conn:
+        schema = conn.execute(text("SELECT current_schema()")).scalar()
+    return create_engine(
+        pg_engine.url, pool_timeout=timeout,
+        connect_args=dict(isolated_pg.scratch_connect_args(schema), application_name="assy_lock_pool_test"),
+        pool_size=int(slots.SLOT_POOL["ASSY_DB_POOL_SIZE"]) if size is None else size,
+        max_overflow=int(slots.SLOT_POOL["ASSY_DB_MAX_OVERFLOW"]) if overflow is None else overflow)
+
+
+@pytest.mark.pg
+def test_groups_on_five_threads_of_a_slot_never_wait_for_a_connection(pg_engine):
+    """07c5a261d: a slot's groups run on its executor's threads, and each thread kept a lock connection for good - after
+    three threads, a group on a fourth waited the pool's whole timeout and failed, every time. Here the batch session
+    holds a connection throughout, as the slot's does, and five threads that stay alive take the table locks in turn."""
+    engine = _slot_pool(pg_engine)
+    batch = sessionmaker(bind=engine)()
+    batch.execute(text("SELECT 1"))
+    done, results, threads = threading.Event(), [], []
+
+    def group():
+        started = time.monotonic()
+        try:
+            with table_locks.hold(batch, [SA]):
+                pass
+            results.append(("ok", round(time.monotonic() - started, 3)))
+        except Exception as exc:                                      # noqa: BLE001
+            results.append((type(exc).__name__, round(time.monotonic() - started, 3)))
+        done.wait(30)                                                 # the thread stays, as an executor's does
+
+    try:
+        for _ in range(5):
+            threads.append(threading.Thread(target=group, daemon=True))
+            threads[-1].start()
+            assert _wait(lambda: len(results) == len(threads), 15), results
+        assert [outcome for outcome, _ in results] == ["ok"] * 5, results
+        assert max(seconds for _, seconds in results) < 1.0, results
+        assert engine.pool.checkedout() == 1, engine.pool.status()   # the batch session's alone
+    finally:
+        done.set()
+        for thread in threads:
+            thread.join(5)
+        batch.close()
+        engine.dispose()
+
+
+@pytest.mark.pg
+def test_a_lock_connection_goes_back_to_the_pool_as_it_came(pg_engine):
+    """The connection that held the locks is the pool's next one, holding no lock and not in AUTOCOMMIT - the session
+    that gets it next commits table by table."""
+    engine = _slot_pool(pg_engine, size=1, overflow=0)
+    pids = []
+    try:
+        with table_locks.hold(sessionmaker(bind=engine)(), [SA, SB], on_wait=lambda table, pid: pids.append(pid)):
+            pass
+        with engine.connect() as conn:
+            dbapi = conn.connection.dbapi_connection
+            assert dbapi.get_backend_pid() == pids[0], "not the pool's connection back"
+            assert dbapi.autocommit is False
+            assert conn.get_isolation_level() == conn.default_isolation_level
+            assert conn.execute(text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = :pid"),
+                                {"pid": pids[0]}).scalar() == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.pg
+def test_a_lock_connection_whose_unlock_failed_is_closed_not_pooled(pg_engine, monkeypatch):
+    """A connection whose unlock raised may still hold its table - pooled, it would hold it for every slot until the
+    process ended. It is closed instead, and the lock goes with its backend."""
+    engine = _slot_pool(pg_engine, size=1, overflow=0)
+    real, pids = table_locks.text, []
+    monkeypatch.setattr(table_locks, "text",
+                        lambda sql: real(sql.replace("pg_advisory_unlock(", "pg_advisory_unlock_missing(")))
+    try:
+        with pytest.raises(Exception, match="pg_advisory_unlock_missing"):
+            with table_locks.hold(sessionmaker(bind=engine)(), [SA], on_wait=lambda table, pid: pids.append(pid)):
+                pass
+        with engine.connect() as conn:
+            assert conn.connection.dbapi_connection.get_backend_pid() != pids[0], "the failed connection was pooled"
+
+        def let_go():
+            with pg_engine.connect() as conn:
+                return conn.execute(text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = :pid"),
+                                    {"pid": pids[0]}).scalar() == 0
+        assert _wait(let_go, 10), "the lock outlived its connection"
+    finally:
+        engine.dispose()
 
 
 # ------------------------------------------------------------------------------ real slots

@@ -10,13 +10,14 @@ process taking groups in id order never let the two overlap.
 ⚠️ THE SET IS THE ONE THE ORDER GUARD ASKS: `_group_target_tables | _group_read_tables`, from
 the caller. No second overlap judgement here.
 ⚠️ SESSION LOCKS ON A CONNECTION OF THEIR OWN. A group's writes commit table by table, so a
-transaction lock would go at the first commit; and a pooled connection could be handed to
-someone else still holding it. The group's thread's lock connection holds them, in sorted order
-(no deadlock between slots), and lets them go when the group ends - or when the process dies.
+transaction lock would go at the first commit. The group takes a connection from the pool for the
+block, holds them on it in sorted order (no deadlock between slots), lets them go when the group
+ends and gives the connection back; one whose unlock failed is closed instead, so a pooled
+connection never holds a table. Kept per thread, three of them held a slot's 2 + 2 pool for good
+and a group on a fourth thread waited 30 s every time (07c5a261d).
 ⚠️ A BLOCKING WAIT, NOT A RETRY LOOP. PostgreSQL queues the waiters, so a group waiting behind
 a replay group runs before that replay's next group asks again.
 """
-import threading
 from contextlib import contextmanager
 
 from sqlalchemy import text
@@ -30,19 +31,6 @@ WAITING_FOR = event_constants.CHAIN_WAITING_FOR
 #: ... and once it holds them all (총괄 59f2ab3f4: «waiting for» stayed on the beat after the lock was got).
 HOLDING = "holding "
 
-#: One lock connection per thread that runs groups - a slot runs one group at a time, and two
-#: threads holding one session's locks would not wait for each other.
-_mine = threading.local()
-
-
-def _lock_connection(db):
-    conn = getattr(_mine, "conn", None)
-    if conn is None or conn.closed:
-        conn = db.get_bind().connect().execution_options(isolation_level="AUTOCOMMIT")
-        _mine.conn = conn
-    return conn
-
-
 @contextmanager
 def hold(db, tables, on_wait=None, on_held=None):
     """Hold `tables` for the block. `on_wait(table, pid)` is called before each wait - `pid` the
@@ -52,7 +40,7 @@ def hold(db, tables, on_wait=None, on_held=None):
     if not tables or db.get_bind().dialect.name != "postgresql":
         yield
         return
-    conn = _lock_connection(db)
+    conn = db.get_bind().connect().execution_options(isolation_level="AUTOCOMMIT")
     held = []
     try:
         for table in tables:
@@ -65,6 +53,12 @@ def hold(db, tables, on_wait=None, on_held=None):
             on_held(held)
         yield
     finally:
-        for table in reversed(held):
-            conn.execute(text("SELECT pg_advisory_unlock(:space, hashtext(:table))"),
-                         {"space": LOCK_SPACE, "table": table})
+        try:
+            for table in reversed(held):
+                conn.execute(text("SELECT pg_advisory_unlock(:space, hashtext(:table))"),
+                             {"space": LOCK_SPACE, "table": table})
+        except BaseException:
+            conn.invalidate()
+            raise
+        finally:
+            conn.close()
