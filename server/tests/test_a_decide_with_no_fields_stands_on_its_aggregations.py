@@ -26,9 +26,10 @@ DIE = "nf_die"
 PAIR = "nf_pair"
 TABLES = {
     DIE: {"business_key": "die_key", "composite_key_source": ["die_key"],
-          "column_types": {"die_key": "string", "bonded_wafer": "string", "core_wafer": "string"}},
+          "column_types": {"die_key": "string", "bonded_wafer": "string", "core_wafer": "string", "note": "string"}},
     PAIR: {"business_key": None, "composite_key_source": ["bonded_wafer", "core_wafer"],
-           "column_types": {"bonded_wafer": "string", "core_wafer": "string", "die_count": "number"}},
+           "column_types": {"bonded_wafer": "string", "core_wafer": "string", "die_count": "number",
+                            "note_min": "string"}},
 }
 KEY = ["bonded_wafer", "core_wafer"]
 COUNT = {"die_count": "count"}
@@ -74,13 +75,13 @@ def test_no_fields_and_no_aggregations_is_refused_by_name(db):
     assert not rules and "'aggregations' must be declared" in str(refusal), refusal
 
 
-def _seed_and_run(db):
+def _seed_and_run(db, decide=None):
     dies = [("W1", "C1")] * 3 + [("W1", "C2")] * 2 + [("W2", "C1")]
     crud.apply_batch_updates(db, DIE, schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(updates={"die_key": "D%d" % i, "bonded_wafer": w, "core_wafer": c},
                                   source_name="seed", updated_by="nf") for i, (w, c) in enumerate(dies)]))
     db.commit()
-    rules = _declared({"key": KEY, "fields": [], "aggregations": COUNT})[0]
+    rules = _declared(decide or {"key": KEY, "fields": [], "aggregations": COUNT})[0]
     events = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.table_name == DIE).all()
     assert events, "CANARY: the die rows staged events"
     worker._process_chain_transaction_group_sync(
@@ -110,3 +111,25 @@ def test_a_fields_less_rule_queues_nothing(db):
 
     assert [rows(s) for s in enrichment.config.QUEUE_SCOPES] == [
         every if s == enrichment.config.QUEUE_SCOPE_RESOLVED else 0 for s in enrichment.config.QUEUE_SCOPES]
+
+
+
+def test_a_derived_row_whose_aggregation_is_blank_stays_trigger_after_trigger(db):
+    """총괄 10-12 (소유자 「행파생 자꾸 파생하고 지 혼자 회수하는데?」): a row per key whose only aggregation is blank - the
+    rows of that key carry no value for it. The chain's shell question (5eee501eb, «a row THIS WRITE EMPTIED») took
+    the row the same write had just made for a shell and deleted it, and the next trigger made it again."""
+    pair = _seed_and_run(db, {"key": KEY, "fields": [], "aggregations": {"note_min": {"fn": "min", "column": "note"}}})
+    die = models.DYNAMIC_TABLES[DIE]
+    seen = max(e.id for e in db.query(models.DatabaseOutbox))
+    crud.apply_batch_updates(db, DIE, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=db.query(die).filter(die.die_key == "D0").one().row_id, updates={"core_wafer": "C9"},
+        source_name="seed", updated_by="nf")]))
+    db.commit()
+    worker._process_chain_transaction_group_sync(
+        "tx-nf-2", db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > seen).all(), db,
+        [r for r in _declared({"key": KEY, "fields": [], "aggregations": {"note_min": {"fn": "min", "column": "note"}}})[0]
+         if r["name"].startswith("enrichment_dedup:")])
+    db.commit()
+    db.expire_all()
+    assert sorted((r.bonded_wafer, r.core_wafer, r.note_min) for r in db.query(pair).all()) == [
+        ("W1", "C1", None), ("W1", "C2", None), ("W1", "C9", None), ("W2", "C1", None)]

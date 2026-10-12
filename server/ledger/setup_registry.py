@@ -340,7 +340,7 @@ class ProfileMappingDescriptor:
     predicate_id: str
     bindings: Mapping[str, Any]
     config_path: str
-    #: S-99. `{column: value}` - the rows this sentence is said for, ANDed, equality only.
+    #: S-99. `{column: value | {"not": value}}` - the rows this sentence is said for, ANDed.
     #: Empty means "every row", which is what every sentence declared before this meant.
     when: Mapping[str, Any] = MappingProxyType({})
     #: The roles whose bound attributes the translator registers (`setup_bundle.attribute_registrations`).

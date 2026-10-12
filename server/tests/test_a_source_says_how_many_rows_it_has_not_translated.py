@@ -42,7 +42,10 @@ class _Plan:
         self.frame_row_id = frame_row_id
         self.planned = planned
         self.refusal = refusal
-        self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by), "exclude_when": ()})()
+        # the mapper the census asks before it reads rows (a code mapper's say is its own)
+        mapper = type("M", (), {"implementation": type("I", (), {"implementation_id": "code"})()})()
+        self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by), "exclude_when": (),
+                                     "mapper": mapper})()
 
 
 def _setup(plans):

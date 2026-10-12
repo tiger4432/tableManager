@@ -2680,12 +2680,14 @@ body.resizing-active .history-sidebar {
    판을 거의 다 먹어 1440px 창의 판(485px)에서 변경 칸이 46px 였다(2026-10-04 미리보기). 머리줄의 Change 는 그 줄이
    대신하고, 남는 폭은 Tx 가 받는다 — 대상은 소유자 지시대로 좁게 둔다. */
 .timeline-container > .audit-head, .audit-table .timeline-card {
-  grid-template-columns: 70px 62px 74px 110px minmax(120px, 1fr);
-  grid-template-areas: "time user kind target tx" "change change change change change";
+  /* Kind 96: its longest word «OVERWRITE» is a 79 px pill and the cell pads 8 + 8 and a 1 px line (measured 10-12). */
+  grid-template-columns: 70px 62px 96px 96px 110px minmax(72px, 1fr);
+  grid-template-areas: "time user kind tbl target tx" "change change change change change change";
 }
 :is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-time { grid-area: time; }
 :is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-user { grid-area: user; }
 :is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-kind { grid-area: kind; }
+:is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-tbl { grid-area: tbl; }
 :is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-target { grid-area: target; }
 :is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-tx { grid-area: tx; }
 .timeline-container > .audit-head > .audit-change { display: none; }
@@ -2772,6 +2774,9 @@ body.resizing-active .history-sidebar {
    the title (lead 10-09). */
 .audit-target-key { display: flex; max-width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; }
 .audit-target-table { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The table read, not glanced at (owner 10-12): body size and colour, cut whole in its title. */
+.audit-table .timeline-card > .audit-tbl { font-family: var(--font-mono); font-size: var(--fs-body); color: var(--text);
+  white-space: nowrap; overflow: hidden; }
 .audit-target-row { flex: 0 0 auto; }
 /* 🔴 규칙은 «접지 않는다» (소유자 2026-09-23). 이름이 한 줄씩 서고 끊기지 않는다 — 칸이 가장 긴 이름만큼
    잡힌다(_fitColumns).

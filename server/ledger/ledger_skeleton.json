@@ -196,6 +196,37 @@
           }
         }
       ]
+    },
+    "when_value": {
+      "kind": "oneOf",
+      "hint": "choice",
+      "pick": "shape",
+      "branches": {
+        "equals": {
+          "kind": "leaf",
+          "hint": "free"
+        },
+        "not": {
+          "kind": "record",
+          "fields": [
+            {
+              "key": "not",
+              "required": true,
+              "label": "Is not",
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            }
+          ]
+        }
+      },
+      "empty": {
+        "equals": "",
+        "not": {
+          "not": ""
+        }
+      }
     }
   },
   "root": {
@@ -364,14 +395,13 @@
                             {
                               "key": "when",
                               "required": false,
-                              "label": "This entity's key equals",
+                              "label": "Key condition",
                               "node": {
                                 "kind": "map",
                                 "keyed_by": "name",
                                 "member": "Key",
                                 "of": {
-                                  "kind": "leaf",
-                                  "hint": "free"
+                                  "use": "when_value"
                                 }
                               }
                             }
@@ -722,8 +752,7 @@
                                 "keyed_by": "name",
                                 "member": "Column",
                                 "of": {
-                                  "kind": "leaf",
-                                  "hint": "free"
+                                  "use": "when_value"
                                 }
                               }
                             }
@@ -876,8 +905,7 @@
                                 "keyed_by": "name",
                                 "member": "Column",
                                 "of": {
-                                  "kind": "leaf",
-                                  "hint": "free"
+                                  "use": "when_value"
                                 }
                               }
                             }

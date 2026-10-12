@@ -56,9 +56,11 @@ class _Plan:
         # the way the real `SourcePlan` does rather than answering a constant.
         self.planned = planned
         self.refusal = refusal
+        # the mapper the census asks before it reads rows (a code mapper's say is its own)
+        mapper = type("M", (), {"implementation": type("I", (), {"implementation_id": "code"})()})()
         self.driver = type("D", (), {
             "unit": unit, "group_by": tuple(group_by),
-            "exclude_when": tuple(exclude_when)})()
+            "exclude_when": tuple(exclude_when), "mapper": mapper})()
 
     @property
     def runs(self):

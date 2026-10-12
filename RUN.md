@@ -1,5 +1,64 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 오후] **«아니다» · 빈 칸 무시 · 다시 번역의 거절 수 착지 (main e3ee42295) — pull «전»에 아래 «when-not 을 pull 하기 전» 절의 명령 한 번 · 그다음 pull · 서버 · 체인 워커 재기동**
+>
+> ```
+> 왜 먼저   새 코드는 참조 조건(references[].from.when)의 값을 검사한다 — 목록 · null 이면 그 타입 · 술어 · 소스가 빠진다. 명령이 «left out … from.when» 을 안 말하면 pull
+> 쓰는 법   문장의 "when": {"<칸>": {"not": "<값>"}} — 그 값이 아닌 행(빈 칸 포함). 같은 소스의 c 는 {"<칸>": "<값>"}, d 는 {"not"} 로 모든 행이 둘 중 하나
+>          대상 칸이 빈 행은 그 문장만 빠지고 나머지 문장은 나온다(행 단위 소스 · 또는 묶음의 모든 행에서 빌 때) — 맵핑 표를 소스 하나 · 문장 셋으로
+> 볼 것    다시 번역(Re-translate) 결과 줄 «… written X of Y, refused N (이유 N)» — refused N > 0 이면 그 행은 거둬지고 다시 안 쓰였다(아래 절)
+> ```
+
+> ## [10-12 오후] **고침 — More ▸ 뒤 경로 줄의 술어가 비던 것 (main f147b2dca) — pull 하고 서버만 재기동**
+>
+> ```
+> 무엇     이어 걷기 다음 쪽이 앞 쪽에서 걸은 걸음의 술어를 [] 로 보내 « →  → in_container » 처럼 비던 것 — 이제 «in_container → bonded_from → in_container»
+>          같이: 이어 걷기의 되돌려 보내는 정보(resume)가 절반 크기(노드 id 를 한 번만 적음) — 화면은 그대로
+> 볼 것    걷기에서 More ▸ 를 눌러도 표 행의 경로 줄에 술어 이름이 남으면 끝
+> ```
+
+> ## [10-12 오후] **걷기 이어 걷기 · 더 가져오기 화면까지 착지 (main f88e16b86) — pull · 서버 재기동 · 걷기 화면 새로 고침**
+>
+> ```
+> 명령     git pull  ->  서버 재기동(이어 걷기 서버 2bdb44df7 · c20b96258 · 581c60c00 을 아직 안 올렸으면) -> 걷기 화면 F5
+> 쓰는 법  걷기 결과 머리에 collect 타입마다 «<타입>: all reached» 또는 «<타입>: cut · N not expanded» · 남았으면 «more to walk»
+>          «More ▸» -> 같은 요청으로 다음 쪽을 받아 지금 답에 합침 · «N pages» · 다 걸으면 «All reached» 와 More ▸ 꺼짐 · 칩 × 로 전 답
+>          쪽마다 상한(원자 6,000 · 노드 · 엣지)은 그대로 — 원자 수만 개 노드도 More ▸ 몇 번이면 끝까지 닿는다
+> 뜻      «As of» 는 첫 쪽 시각 — 쪽 사이에 들어온 원자는 이 답에 안 들어온다(다시 Walk 하면 들어옴)
+> 18766    + SYN-BW-103-11 · − SYN-BW-SPL-400-19 · collect wafer · node_limit 10 -> 표 10 -> 20 -> 30 -> 32 행 · «wafer: all reached · 4 pages»
+> ```
+
+> ## [10-12 오후] **걷기 이어 가기 (서버) — pull 하고 서버만 재기동**
+>
+> ```
+> 명령     git pull  ->  서버 재기동 (바뀐 서버 파일 ledger_subgraph.py · trace_router.py — 수집기 · 체인 워커 · 스케줄러 그대로)
+> 쓰는 법  끊긴 답의 more.resume 을 POST /api/ledger/subgraph 본문 {"resume": …} 로 돌려준다(같은 인자) — 화면은 클라 착지의 More
+> 뜻      more.reach.<타입>.complete false = 그 타입에 닿을 노드가 남음 · resume null = 다 걸음 · 쪽마다 상한은 그대로
+>          원자 수만 개 씨앗: 첫 쪽 노드 0 이어도 complete false 면 이어 걷기로 닿는다(2만 원자 판: 4 쪽째)
+> 끄는 법  스위치 없음 — resume 을 안 보내면 답은 오늘과 같다(more 칸 하나 더)
+> 볼 것    서버 로그에 새 줄 없음
+> ```
+
+> ## [10-12 오후] **걷기 «Walk ▸» 착지 (main 1f2cd132f) — git pull 만 · 재기동 없음 · 걷기 화면 새로 고침**
+>
+> ```
+> 쓰는 법  걷기 표에서 행을 체크(+ 는 클릭, − 는 Shift) -> Marked 바구니 «Walk on ▸» 줄 맨 앞 «Walk ▸»
+>          -> 그 행들을 시작으로 문장 바의 설정(collect · through · direction · 한도 · 세상 · reaching) 그대로 한 번 걷고, 지금 스텝 아래에 «Walk ▸» 스텝 하나
+>          체크가 없으면 꺼짐 «Check rows first». 옆의 «New step / Add here»(길 하나 한 걸음)는 그대로
+> 바뀐 것  그래프 «Continue» 도 같은 요청 — 이제 문장 바의 collect · through · direction 이 실린다(전에는 홉 · 한도뿐)
+> ```
+
+> ## [10-12 낮] **고침 — 체인이 방금 만든 행을 «껍데기»로 지우지 않는다 (방금 만든 행) — pull 하고 체인 워커만 재기동**
+>
+> ```
+> 명령     git pull  ->  체인 워커 재기동 (바뀐 서버 파일은 chain/ingestion_worker.py 하나 — 서버 · 수집기 · 스케줄러는 그대로)
+> 볼 줄    chain_worker.log 의 [ChainShell] table=<표> rows_deleted=N - only the chain's keys were left
+> 뜻      집계가 빈 decide 의 파생 행 표에 대해 이 줄이 더 안 뜨면 고쳐진 것 — 그 표의 행이 키 + 빈 집계로 남는다
+>          공식 표(복사 규칙)에 대해 이 줄이 뜨는 것은 설계대로다: 원본이 다 지워졌거나 접기 표시로 보류가 비워진 «기존» 행
+>          파생 표에 대해 계속 뜨면: 이미 있던 행의 집계가 값 -> 빈 값으로 바뀐 쓰기다(그 행은 지워지고 다음 트리거가 새로 만들면 남는다)
+> 끄는 법  스위치는 없다. 되돌리려면 이 커밋 revert 후 체인 워커 재기동
+> ```
+
 > ## [10-12 낮] **걷기 «보조 노드 판정» 착지 (main 3c4e5a778) — pull 하고 서버만 재기동**
 >
 > ```
@@ -307,13 +366,39 @@
 > 급할 때      보조 노드를 안 고르면 오늘과 같은 걷기 · git revert <이 커밋> -> 서버 재기동
 > ```
 
+> ## [10-12] **when-not 을 pull 하기 «전» — 운영 원장 선언을 새 코드로 읽어 보기 (총괄 QA ③) — 쓰기 «없음» · 서버 안 띄움**
+>
+> ```
+> 왜          새 코드는 entities.<타입>.references[].from.when 의 값을 검사한다. 값이 목록 · null · 다른 객체면
+>             그 타입이 빠지고, 그 타입을 쓰는 술어와 소스가 같이 빠진다(로드는 계속 — 빠진 것만 안 읽힘)
+> 어디서       새 코드가 있는 체크아웃의 server 폴더 — 운영 체크아웃 말고(예: git fetch -> git worktree add ..\prepull origin/main)
+> 돌릴 명령    $env:ASSY_DATA_ROOT = "<운영 server 폴더>"; conda run -n assy_manager python -m ledger.setup --root "<운영 server 폴더>\config\ontology"
+> 답          stdout JSON 한 줄의 "readiness":"ready" · stderr 의 «left out <선언> <자리> <문장>» 줄 · 끝 줄 «N declaration(s) left out in …»
+> 답의 뜻      left out 줄이 오늘 server.log 의 «[Ledger] source … is NOT planned» 소스 · 그 타입 · 술어와 같은 것뿐 -> pull 해도 새로 빠지는 것 없음
+>             «left out entity|<타입> bundle.entities.<타입>.references[N].from.when.<칸> must be …» 가 있으면 -> pull 하면 그 타입 ·
+>                그것을 쓰는 술어 · 소스가 빠진다. 그 값을 글자 · 수 · 참거짓 하나나 {"not": 값} 으로 고치고 다시 돌려 줄이 없어지면 pull
+>             exit 1 + «N problem(s) in …» -> 읽을 소스가 하나도 안 남는다 — pull 하지 않는다
+> 쓰는 것      없음 — 이 박스: 운영 config · server.log 전후 같음(바뀐 것은 돌던 워커의 worker_heartbeats 뿐), 복사본 data root 에 파일 0 개 생김
+> 이 박스      exit 0 · ready · «10 declaration(s) left out» — row_id 없는 뷰를 읽는 소스 9 · 은퇴한 prepare 의 lot_event 1, 다 오늘도 빠져 있는 것
+>             복사본의 die 에 from.when 값 목록을 넣으면 «18 declaration(s) left out» — entity|die · 그것을 쓰는 술어 5 · 소스 2 가 더 빠짐
+> pull 뒤      다시 번역(Re-translate)의 결과 줄 «[rescope] … written X of Y, refused N (이유 N, …)»
+>             refused 0 -> 거절된 분자는 없다(새 선언이 아무 문장도 말하지 않는 행 — 예: 옛 문장에 when 을 더함 — 은 거절 없이 거둬질 수 있다) · N > 0 -> 그 분자의 원자는 거둬지고 다시 안 쓰였다 —
+>             server.log 의 «[LedgerGate] source=<소스>» 로 시작하는 refused 줄(첫 번째는 WARNING «REFUSED … reason=…»,
+>             그 뒤는 INFO «refused (<이유>), N row(s): …»)이 그 행을 말한다. 선언 · 행을 고치고 다시 번역
+> ```
+>
+> ---
+>
 > ## [10-12] **exclude_when 으로 거른 행이 «아직 번역 안 된 행»에서 빠진다 (총괄 리허설 2 회차, 착지 9c1da298f) — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
 > 돌릴 명령    python -m ledger census --source <소스>   (센서스 기록만 새로 씀 — 원장 · 표는 그대로)
 > 답의 뜻      not yet 0 -> 다 됨 (거른 행은 원래 이 소스의 행이 아님)
 >             not yet > 0 이고 다시 돌려도 그대로 -> 거름이 아닌 다른 이유로 안 읽히는 행 — 총괄께
-> 안 빼는 때   쉬지 않는 센서스 틱(S-122) · 색인에 없는 행이 100,000 넘음(로드 전) -> «exclude_when not subtracted (…)»
+> 안 빼는 때   쉬지 않는 센서스 틱(S-122) · 색인에 없는 행이 100,000 넘음 — 그때는 하나도 안 빼고 답이 그렇다고 말한다
+>             -> «exclude_when not subtracted (over 100k rows the index does not name)»
+>             when-not 부터 이 문장은 «rows exclude_when takes out or that say no sentence not subtracted (…)» — 말하는 문장이 없는 행도 같이 뺀다
+>             남은 행(표 − 색인)이 0 이하이면 세지 않는다(빼 줄 것이 없음)
 > 같은 낱말   «Table less indexed» 는 이름대로 표 − 색인 — 거른 행은 «New, not translated» · not yet 에서만 빠짐
 > 되돌리기     git revert 9c1da298f -> 서버 · 체인 워커 재기동
 > ```
