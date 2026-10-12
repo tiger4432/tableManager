@@ -2131,7 +2131,7 @@ def _row_cell(value):
 
 
 def rows_projection(payload, nodes, edges, seed_signs, entities,
-                    static_types=()):
+                    static_types=(), carried=None):
     """The walk's answer as TSV — one row per reached node.
 
     🔴 THE TRUNCATION MARKER IS THE FIRST LINE, ALWAYS. 「끊김 ≠ 없음」: a reader who
@@ -2148,7 +2148,8 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
 
     ⚠️ ONE PATH — the first that reached the node. `_trail_back` says why.
     """
-    reach, parents, _kinds = _reach(nodes, edges, seed_signs, static_types)
+    # a continued page's paths go on from what the pages before reached (`resume.reach`, MORE) - as its ranking does
+    reach, parents, _kinds = _reach(nodes, edges, seed_signs, static_types, carried)
     visible = payload.get("nodes") or []
     limits = payload.get("limits") or {}
     truncation = payload.get("truncated") or {}
@@ -3433,7 +3434,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.
         payload["rows"] = rows_projection(
-            payload, nodes, ordered_edges, seed_signs, entities, static_types or ())
+            payload, nodes, ordered_edges, seed_signs, entities, static_types or (), (resume or {}).get("reach"))
     return payload
 
 

@@ -192,3 +192,33 @@ def test_a_seed_whose_newest_twenty_thousand_atoms_lead_elsewhere_reaches_the_co
     ledger_subgraph.reset_declaration_cache()
     assert [len(a["nodes"]) for a in answers] == [0, 0, 0, 5]
     assert [a["more"]["reach"]["recipe"]["complete"] for a in answers] == [False, False, False, True]
+
+
+def test_a_continued_pages_rows_take_their_paths_from_the_seeds(declared, monkeypatch):
+    """총괄 10-12: the rows a continued page answers (`format=rows`) read their path from the seed that reached each
+    node, as its ranking does - the pages' (node, seed) rows merged = the one walk's, every path starting at its seed."""
+    def rows(answer):
+        lines = answer["rows"].splitlines()
+        header = lines[1].split("\t")
+        return [dict(zip(header, line.split("\t"))) for line in lines[2:]]
+
+    def walk_rows(atoms, resume=None):
+        return ledger_subgraph.subgraph(
+            SEEDS, ledger_subgraph.InMemoryEvidenceLookup(atoms), declaration_paths=declared, hops=2, backbone_hops=2,
+            static_types=["quantity", "recipe"], static_follow=["leads_to"], expand=EXPAND, resume=resume, rows=True,
+            entities={})
+
+    whole = {(row["id"], row["seed"]) for row in rows(walk_rows(ATOMS)) if row["seed"]}
+    monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", 3)
+    merged, answer, pages_walked = set(), walk_rows(ATOMS), 1
+    while True:
+        for row in rows(answer):
+            if row["seed"]:
+                assert row["path_ids"].split(ledger_subgraph.PATH_SEPARATOR)[0] == row["seed"], row
+                merged.add((row["id"], row["seed"]))
+        if answer["more"]["resume"] is None:
+            break
+        answer, pages_walked = walk_rows(ATOMS, json.loads(json.dumps(answer["more"]["resume"]))), pages_walked + 1
+    assert pages_walked >= 3, "canary: the walk was paged"
+    assert merged == whole, (sorted(whole - merged)[:5], sorted(merged - whole)[:5])
+
