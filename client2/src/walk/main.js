@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
+import { walkTableView, walkedRoutes, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -668,20 +668,24 @@ export function boot(doc, host, deps) {
   //    지금 고른 줄은 «지금 칸의 값»과 같은 줄입니다 — 손으로 고치면 표시가 정직하게 빠집니다.
   function renderRoutes(root) {
     if (!state.type || !state.collect.size) return;
-    const found = routes();
+    // After a walk, the ways it walked (owner 10-12 「실제 걸은 경로로 리턴 안 해?」); before, the declaration's shortest
+    // one, said as a suggestion - the list of every simple path and its predicate line retired.
+    const shown = shownStep();
+    const walked = shown.run === 'done' && shown.result ? walkedRoutes(shown.result, state.collect) : null;
+    const first = walked ? null : routes()[0];
+    const found = walked || (first ? [first] : []);
     const box = el(doc, 'div', 'wk-field');
     const head = el(doc, 'div', 'wk-routes-head');
-    head.append(el(doc, 'span', 'wk-label', `Route to ${[...state.collect].join(', ')}`),
-      el(doc, 'span', 'wk-note', unitText(found.length, 'route')));
+    head.append(el(doc, 'span', 'wk-label', `${walked ? 'Walked to' : 'Route to'} ${[...state.collect].join(', ')}`),
+      el(doc, 'span', 'wk-note', walked ? unitText(walked.length, 'route') : 'Suggested'));
     box.append(head);
     if (!found.length) {
       // 「길이 없다」는 답입니다. 빈 칸으로 두면 「아직 안 셌다」와 같아 보입니다.
       box.append(el(doc, 'div', 'wk-note',
         `No route from ${state.type} to ${[...state.collect].join(' · ')}`));
     }
-    // A route with the loop chips that are on fills follow and hops.
-    const useRoute = (r, on) => {
-      const asked = routeWith(r, on);
+    // A route (with the loop chips that are on) fills follow and hops.
+    const useRoute = (asked) => {
       // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
       state.follow = new Set([...state.follow, ...followFromRoute(allPredicates(), asked.follow)]);
       state.hops = String(asked.hops);
@@ -689,25 +693,22 @@ export function boot(doc, host, deps) {
     };
     const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
     for (const r of found) {
-      const asked = routeWith(r, loopsOf(r));
+      const asked = walked ? { follow: r.follow, hops: r.hops } : routeWith(r, loopsOf(r));
       const picked = state.hops === String(asked.hops)
         && sameSet(state.follow, new Set(followFromRoute(allPredicates(), asked.follow)));
       const route = el(doc, 'div', 'wk-route' + (picked ? ' is-on' : ''));
       const row = el(doc, 'button', 'wk-path');
       row.type = 'button';
       row.setAttribute('aria-pressed', picked ? 'true' : 'false');
-      row.append(el(doc, 'span', 'wk-pathto', `→ ${r.to}`));
-      // A line each, cut at the row's end on purpose (lead 18da45b73): the whole in its title, and in the form once pressed.
-      for (const [cls, text] of [['wk-pathchain', r.chain.join(' → ')], ['wk-pathmeta', `${unitText(asked.hops, 'hop')} · ${asked.follow.join(', ')}`]]) {
-        const line = el(doc, 'span', cls, text);
-        line.title = text;
-        line.setAttribute('data-clip-ok', '');
-        row.append(line);
-      }
-      row.addEventListener('click', () => useRoute(r, loopsOf(r)));
+      // The way whole, wrapped in the popover rather than cut (owner 10-12).
+      const text = walked ? `${r.words} · ${r.count}` : r.chain.join(' → ');
+      const line = el(doc, 'span', 'wk-pathchain', text);
+      line.title = text;
+      row.append(line);
+      row.addEventListener('click', () => useRoute(walked ? asked : routeWith(r, loopsOf(r))));
       route.append(row);
       // The route's self-loops: pressing one adds it to this route and uses the route.
-      if (r.loops.length) {
+      if (!walked && r.loops.length) {
         // Its word on its own line: beside it the 44 px chips stood boxed taller than their line (lead 34d91c09d 8).
         route.append(el(doc, 'div', 'wk-note', 'self-loops'));
         const chips = el(doc, 'div', 'wk-loops');
@@ -721,7 +722,7 @@ export function boot(doc, host, deps) {
             const next = new Set(loopsOf(r));
             if (on) next.delete(loop.predicate); else next.add(loop.predicate);
             state.loopsOn.set(routeKey(r), next);
-            useRoute(r, next);
+            useRoute(routeWith(r, next));
           });
           chips.append(chip);
         }

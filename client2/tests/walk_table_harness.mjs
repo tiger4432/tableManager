@@ -132,6 +132,18 @@ const SIGNED = {
       { seed: 's:c', sign: '+', hops: [{ id: 's:c' }, { id: 'd:4', predicates: ['inspected'] }] }] }] },
 };
 const SIGNED_STARTS = { positive: ['s:a', 's:c'], negative: ['s:b'] };
+const DECL_RT = { ok: true,
+  entities: [{ type: 'wafer@1', keys: ['wafer'] }, { type: 'lot@1', keys: ['lot'] }, { type: 'die@1', keys: ['mat_id'] }],
+  predicates: [{ name: 'in@1', subjects: ['wafer@1'], object: { types: ['lot@1'] } }, { name: 'has@1', subjects: ['lot@1'], object: { types: ['die@1'] } },
+    { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } }] };
+// The single way listed first, so a list in its own order says nothing about the order asked.
+const WALKED = { nodes: [{ id: 's:a', type: 'wafer@1', keys: { wafer: 'A' } }, { id: 'l:1', type: 'lot@1', keys: { lot: 'L' } },
+  { id: 'd:1', type: 'die@1', keys: { mat_id: 'M-1' } }, { id: 'd:2', type: 'die@1', keys: { mat_id: 'M-2' } }, { id: 'd:3', type: 'die@1', keys: { mat_id: 'M-3' } }],
+  edges: [], propagation: { ranked: [
+    { id: 'd:3', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'd:3', predicates: ['inspected@1'] }] }] },
+    { id: 'd:1', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'l:1', predicates: ['in@1'] }, { id: 'd:1', predicates: ['has@1'] }] }] },
+    { id: 'd:2', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'l:1', predicates: ['in@1'] }, { id: 'd:2', predicates: ['has@1'] }] }] },
+    { id: 'l:1', evidence: [{ seed: 's:a', hops: [{ id: 's:a' }, { id: 'l:1', predicates: ['in@1'] }] }] }] } };
 // Long by side (owner 10-12): one quantity both baskets reached, measured from 3 + wafers, 5 − wafers and one wafer each
 // basket reached (a shared lot's) - a record's side is its way's, not the quantity's.
 const LS_PLUS = ['p:1', 'p:2', 'p:3'];
@@ -1543,6 +1555,30 @@ async function suite(mod) {
       JSON.stringify({ marks: marked.length, plain, n2marks: marksOf('n:2').length, drawn, before, timers: timers.map((t) => t.ms), dwelt, src, after: asked() }));
   }
 
+  console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL_RT }) });
+    await settle();
+    Object.assign(handle.state, { type: 'wafer@1', collect: new Set(['die@1']) });
+    handle.render();
+    const rows = () => walkAll(host).filter((e) => e.className === 'wk-path');
+    const words = () => rows().map((r) => walkAll(r).filter((k) => k.className === 'wk-pathchain').map((k) => k._text).join(''));
+    const headNote = () => walkAll(host).filter((e) => e.className === 'wk-routes-head').map((h) => walkAll(h).map((k) => k._text || '').join(' ')).join();
+    const before = [rows().length, headNote()];
+    Object.assign(handle.state, { run: 'done', result: { ...WALKED, ok: true }, asked: { type: 'wafer@1', keys: { wafer: 'A' } } });
+    handle.render();
+    const after = [words(), headNote()];
+    for (const fn of (rows()[0] || { listeners: {} }).listeners.click || []) fn({});
+    ok('RT2 after a walk: the ways it walked to die, most nodes first - pressed, through takes that way\'s predicates and hops',
+      JSON.stringify(after[0]) === JSON.stringify(['wafer@1 —in@1→ lot@1 —has@1→ die@1 · 2', 'wafer@1 —inspected@1→ die@1 · 1'])
+        && after[1].includes('Walked to die@1') && handle.state.follow.has('in@1') && handle.state.follow.has('has@1') && handle.state.hops === '2',
+      JSON.stringify([after, [...handle.state.follow], handle.state.hops]));
+    ok('RT3 before a walk: the shortest declared route alone, said as Suggested', before[0] === 1 && before[1].includes('Suggested'),
+      JSON.stringify(before));
+  }
+
   console.log(`${LF}-- More: the same walk, the limit that cut it raised (lead 10-12) --`);
   {
     // The same walk at 800 brings d:10 from s:a and is not cut.
@@ -1916,6 +1952,14 @@ const sideSuite = (TV) => {
 // ── sort · filter as the one «what does this table show» seat (lead 10-11 W addendum 7: table_view.shownOf) ──
 const filterSuite = (TV) => {
   {
+    // The ways a walk took to the collected types (owner 10-12): a line a way, its nodes counted, the most first.
+    const ways = TV.walkedRoutes(WALKED, new Set(['die@1']));
+    ok('RT1 the walked routes to die, the most first: wafer —in→ lot —has→ die for two, wafer —inspected→ die for one; the lot not counted',
+      JSON.stringify(ways.map((w) => [w.words, w.count, w.hops, w.follow]))
+        === JSON.stringify([['wafer@1 —in@1→ lot@1 —has@1→ die@1', 2, 2, ['in@1', 'has@1']], ['wafer@1 —inspected@1→ die@1', 1, 1, ['inspected@1']]]),
+      JSON.stringify(ways));
+  }
+  {
     const jv = TV.walkTableView(JUDGED, DECL.entities);
     const plain = TV.walkTableView(RESULT, DECL.entities);
     const sec = (v, t) => v.sections.find((x) => x.type === t) || { rows: [], centreHeads: [] };
@@ -2090,6 +2134,11 @@ const MUTANTS = [
     from: "      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);\n      if (lines.length > 1) {", to: "      const th = el(doc, 'th', 'wk-centre', h);\n      if (false) {" },
   { id: 'AXm6', what: 'the judgments\' counts not drawn', catches: 'AX7',
     from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
+  { id: 'RTm2', what: 'the Route panel the declaration\'s after a walk too, not the ways it walked', catches: 'RT2',
+    from: "    const walked = shown.run === 'done' && shown.result ? walkedRoutes(shown.result, state.collect) : null;",
+    to: '    const walked = null;' },
+  { id: 'RTm3', what: 'before a walk every declared route listed again', catches: 'RT3',
+    from: '    const found = walked || (first ? [first] : []);', to: '    const found = walked || routes();' },
   { id: 'MOm2', what: 'More asks the cut walk again with the limit that cut it', catches: 'MO2',
     from: '    void walkInto(at, more.asked, (res) => {', to: '    void walkInto(at, answerAt(at).asked, (res) => {' },
   { id: 'MOm3', what: 'More\'s answer lands nowhere - the step keeps the cut one', catches: 'MO2',
@@ -2304,6 +2353,8 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'RTm1', what: 'the walked routes in no order - the commonest not first', catches: 'RT1',
+    from: '    .sort((a, b) => b.count - a.count || a.hops - b.hops);', to: '    ;' },
   { id: 'AXm1', what: 'the judgment drawn nowhere', catches: 'AX1',
     from: "          ...(reaches ? [{ text: reachWords(judgedOf(node.id), reachTo.length > 1) }] : [])] };", to: "          ] };" },
   { id: 'AXm7', what: 'the counts taken over the reaching rows alone, as a filtered table would give them', catches: 'AX1',
