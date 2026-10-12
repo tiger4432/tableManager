@@ -80476,3 +80476,13 @@ _cross_profile_contract · _cross_profile_source · registering_sentences · att
 · filled_declaration(config_authoring:1877) · index_existing_refs(backfill:1752) · 이주 스크립트(v4/v5/v6 · slim) — 끝까지 안 따라감
 · isolation_key 가 .attach 경로를 그 소스로 잇는지 — 안 봄
 ```
+
+### [구현자 A] 10-13 — 행 붙이기: 총괄 승인 «네 자리 안» + 조건 (받은 그대로 적어 둠 · 허브 착지 뒤 짓기)
+```
+① «attach 인가»를 묻는 자리는 is_attach 하나 — 기본값 · 커서 · 업그레이드 · 뼈대 · 컴파일이 다 부른다. 착지 보고에 AST 로 «is_attach 밖 attach 키 직접 읽기 0»
+② «한 소스의 문장들» 함수 하나를 모으는 자리 전부가 부른다. 지우기 막기는 이 일 안에서 닫는다 — 게이트: attach 문장의 술어 · 타입 지우기가 막힌다
+③ planned + status 를 묻던 넷도 runs 로. 소비자마다 «원자 0 · 읽은 행 0» 칸
+④ 선언 폼: 서버가 attach 문장의 역할 칸 줄도 낸다. 클라 확인(«−» 단추 · 새 소스 시작 모양)은 착지 뒤 클라 일
+⑤ 못 따라간 넷(filled_declaration · index_existing_refs · 이주 스크립트 · isolation_key)은 닫거나 «남음 — 이유»로 단언
+따로   snapshot_compile_errors 가 load_setup 의 try 밖 — attach 와 무관한 기존 위험. 섞지 않고 보고에 한 줄(총괄이 따로 띄움)
+```
