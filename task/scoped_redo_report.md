@@ -79855,3 +79855,23 @@ pagesize   e902a67e6 — impl-pagesize 위(그 아래 46324bcbb), wip 를 접어
 public                   assy_test 70 표 / 77 행 전후 같음 · 탐침 파일 지움(커밋 0)
 판정                     [ChainShell] 이 공식 표면 접힌 잡의 행이 ⑥' 에서 한 번 지워진 것(설계대로) · 파생 표면 75d7bd129 가 고친 결함
 ```
+
+## 10-12 걷기 이어 가기 착지 — main 2bdb44df7 · 고침 c20b96258 (소유자 「이어 걷기랑 더 가져오기 15 분 이내로 착지」, 총괄)
+
+```
+계약        POST /api/ledger/subgraph (GET 과 같은 인자) + 본문 {"resume": <앞 답의 more.resume>}
+            more = {reach: {타입: {complete, unexpanded}}, resume, unexpanded} · 이어 걷는 쪽에 as_of
+설계        첫 상한(원자 · 노드 · 엣지)에서 상태를 떠 둠 — 안 넓힌 노드(깊이 · 출발 비용 · 도착 걸음) · 다 읽은 노드 ·
+            커서 = 깊이 · 그 깊이의 프런티어 · 무리 · 읽기 순번 · 마지막 원자. 쪽은 오늘처럼 들어가는 만큼 그림
+칸          상한 1~12 원자 × 노드 10/13/400 × 엣지 20/6000, follow 없음 · 라우트의 빈 follow — 합친 쪽 = 한 번 걷기 ·
+            남았는데 complete 0 · 쪽마다 상한 안 / 첫 쪽 뒤 원자 안 들어옴 / 씨앗 원자 2만(collect recipe) 4 쪽째 5 개
+변이        빨강: 읽기 순번 빼기 · 쪽 끝에서 뜸 · 닿음 한 걸음 · 남은 씨앗 첫 걸음 묶음 · as-of 빼기 · 빈 follow 좌석 되돌림
+            살아남음: 경계 노드 안 넘김(다음 쪽이 다시 찾음)
+resume 없음  걷기 37 개 답(generated_at · more 빼고) sha256 main = 이 나무
+시험        SQLite 관련 48 파일 451 passed, 실패 21 = 깨끗한 main 과 같은 목록(실 선언 없음) · PG 104 passed(2bdb44df7)
+            assy_test public 70 / 77 전후 같음
+고침 둘     3e0e980c0 계열(착지에 접힘): 남은 정적 씨앗의 첫 걸음을 닿음 계산이 묶음 -> 첫 쪽 «recipe complete» 거짓
+            c20b96258: 라우트의 follow=[] 를 닿음 계산이 «술어 0»으로 읽음 -> follow 없는 걷기의 끊긴 쪽이 모든 타입 complete
+            (응용 18766 node_limit 10 · collect wafer: unexpanded 490 에 wafer complete) — _group_follow 가 빈 follow 에 None
+남은 것     «많은 → 적은» 측정 판 assy_impl_hub_1012(원자 660,000) 세워 둠, 잼은 멈춤 · 원장 백필 쪽 ①②③ 다음
+```

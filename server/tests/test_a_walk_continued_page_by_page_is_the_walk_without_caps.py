@@ -67,8 +67,9 @@ ATOMS = ([_atom("operator", {"o": "O1"}, "calibrates", "quantity", {"q": "Q0"})]
             _atom("quantity", {"q": "S"}, "leads_to", "recipe", {"r": "R"}),
             _atom("die", die("F0"), "linked", "die", die("G0")),
             _atom("die", die("D5"), "linked", "die", die("H0"))])
-SEEDS = {"positive": [explorer.entity_id("wafer", {"w": "W"}), explorer.entity_id("quantity", {"q": "Q0"})],
-         "negative": []}
+# W marked, Q0 a control - the ranking's two sides (응용 18766: a page after the first ranked nothing)
+SEEDS = {"positive": [explorer.entity_id("wafer", {"w": "W"})],
+         "negative": [explorer.entity_id("quantity", {"q": "Q0"})]}
 EXPAND = ["%s|linked|outgoing" % explorer.entity_id("die", die("D3"))]
 
 
@@ -114,10 +115,12 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert whole["more"]["resume"] is None and not whole["truncated"]["reason"], whole["truncated"]
     every = {node["id"]: _kind(node) for node in whole["nodes"]}
     joined = {edge["id"] for edge in whole["edges"]}
+    ranked = {row["id"]: row["reach"] for row in whole["propagation"]["ranked"]}
+    assert any(r[0] for r in ranked.values()) and any(r[1] for r in ranked.values()), "canary: both sides reach"
     assert explorer.entity_id("recipe", {"r": "R"}) in every, "canary: R is reached only through S at one departure"
     assert explorer.entity_id("operator", {"o": "O1"}) in every, "canary: O1 is reached only by the static seed's step"
 
-    wrong, said_whole_early, over_caps, deepest_read, most = [], [], [], 0, 0
+    wrong, said_whole_early, over_caps, deepest_read, most, ranked_wrong = [], [], [], 0, 0, []
     for claims in range(1, 13):
         monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", claims)
         for nodes in (10, 13, 400):                              # the walk's own floors: 10 nodes, 20 edges
@@ -129,6 +132,11 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
                 if got != set(every) or drawn != joined:
                     wrong.append((claims, nodes, edges, sorted(set(every) - got), sorted(got - set(every)),
                                   len(joined - drawn), len(drawn - joined)))
+                # the screen merges the pages' ranked rows by id, a later page's over an earlier one's
+                merged = {row["id"]: row["reach"] for answer, _held in run for row in answer["propagation"]["ranked"]}
+                if merged != ranked:
+                    ranked_wrong.append((claims, nodes, edges, len(set(ranked) - set(merged)),
+                                         sum(1 for n in merged if n in ranked and merged[n] != ranked[n])))
                 for answer, held in run:
                     deepest_read = max(deepest_read, int(((answer["more"]["resume"] or {}).get("cursor") or {})
                                                          .get("read") or 0))
@@ -144,6 +152,7 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert wrong == [], wrong
     assert said_whole_early == [], said_whole_early
     assert over_caps == [], over_caps
+    assert ranked_wrong == [], ranked_wrong
 
 
 def test_an_atom_written_after_the_first_page_is_in_no_page_after_it(declared, monkeypatch):

@@ -75,6 +75,27 @@ export const routeWords = (path) => path.hops.slice(1).map((hop) => (hop.predica
  *  graph's branch (lead 10-11 G-2) read them here. */
 export const walkedPaths = (result) => new Map((((result && result.propagation) || {}).ranked || []).map((row) => [row.id, row.evidence || []]));
 
+/** The ways a walk took to the collected types (owner 10-12 「실제 걸은 경로로 리턴 안 해?」): each node of those types by
+ *  the way its evidence walked - «type —predicate→ type …» - a line a way, its nodes counted, the most first. */
+export function walkedRoutes(result, collect) {
+  const types = new Map(((result && result.nodes) || []).map((n) => [n.id, n.type]));
+  const typeOf = (id) => types.get(id) || (entityOfId(id) || {}).type || id;
+  const ways = new Map();
+  for (const [id, evidence] of walkedPaths(result)) {
+    if (!collect.has(typeOf(id))) continue;
+    for (const e of evidence) {
+      const hops = e.hops || [];
+      if (hops.length < 2) continue;
+      const words = hops.map((h, i) => (i ? `—${(h.predicates || []).join('/')}→ ${typeOf(h.id)}` : typeOf(h.id))).join(' ');
+      const way = ways.get(words) || { words, follow: [...new Set(hops.slice(1).flatMap((h) => h.predicates || []))], hops: hops.length - 1, nodes: new Set() };
+      way.nodes.add(id);
+      ways.set(words, way);
+    }
+  }
+  return [...ways.values()].map((w) => ({ words: w.words, follow: w.follow, hops: w.hops, count: w.nodes.size }))
+    .sort((a, b) => b.count - a.count || a.hops - b.hops);
+}
+
 /**
  * How a side reached a node and who gave a value, read off one walk's answer (leads df11f9e81 B, 99ed68cb7 C):
  *   route(g, id)   the paths the server walked to `id` from side g's starts - its evidence - a start «start»
