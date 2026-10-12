@@ -66783,3 +66783,21 @@ C. 그리드 깊은 쪽 — 값 칸 정렬이 요청마다 표를 통째로 정�
 문서      WALK_HUB_ANSWER_SHAPE.md 에 «쪽 = 델타» 절 + 클라에 메시지
 열린 것    in_container 만 선언하면 7 쪽 만에 «완료»(6 쪽이 안 넓힌 2,539 를 남기고 7 쪽이 원자 2,646 만 읽고 끝) — 같은 뿌리인지 밝힌다
 ```
+
+> **[총괄 -> 구현자 A] 10-13 — 풀 고침 확인(b10ec5053): 병합 전에 고칠 것 하나 + 작은 넷**
+
+```
+막는 것   중1 의 부작용 — config_watcher._reload 는 서버만 도는 함수가 아니다(start_config_watcher: main.py · run_watcher.py · run_chain_worker.py · run_auto_update.py)
+         데몬 모양으로 _reload 한 번 -> 걷기 프로세스 2 개가 뜨고, 두 자식이 데몬 스크립트의 최상위 코드를 __mp_main__ 으로 다시 돈다
+         (run_watcher 최상위의 sync_dynamic_tables_schema · ensure_ingestion_checkpoint_table 이 자식마다 운영 DB 에 대고 다시 돌 것 — 코드로 읽음, 안 잼)
+         운영 뜻: table_config 저장마다 데몬마다 아무도 안 쓰는 걷기 프로세스 2 개(기본 6 개)
+         -> recycle 은 «이 프로세스가 풀을 데운 적이 있을 때만» 일한다(성질로 거름 — 웹서버 표지 같은 대리로 거르지 않는다). 데운 적 없으면 아무것도 안 함
+         게이트: 데몬 모양 __main__ 에서 _reload -> 자식 0 · __mp_main__ 표지 0 / 서버 모양에서 -> 다시 띄움
+작은 것
+ ③  TABLE_CONFIG 를 바꾼 뒤 sync_dynamic_tables_schema 가 실패하면 recycle 전에 return — 서버와 풀이 갈라진다 -> TABLE_CONFIG 를 바꾼 직후(또는 finally)에서 recycle
+ ④  걷기 N 개가 도는 중 recycle 하면 풀이 size − N 에 머문다(옛 세대 걷기는 답한 뒤 내려가고 다시 안 띄움) -> 옛 세대가 내려갈 때 새 세대로 채운다. 문서의 «다시 미리 띄운다»가 참이 되게
+ ②  변이 M6a(118 · 124 행 _taken 증감 둘 다 지움)가 32 passed 로 산다 — 칸이 장부를 읽어서. 두 warm 이 동시에 도는 동안 살아 있는 걷기 자식 수(psutil) <= 상한
+ L4  마감 시각 하나(205 · 208 행)를 기다림마다로 되돌린 변이가 산다 — 시험 0. 칸 하나
+문서      ingestion_settings.md 89-90(503 사유 셋 · 0 은 «다음 걷기가 올 때» 내림) · RUN.md(사유 셋 · 새 코드를 띄우는 계기는 리로드 말고도 시간 넘김 · 죽음 · 수 늘림) ·
+         RUN.md 연결 이름 목록에 assy_walkpool · DOC_OWNERSHIP 에 process_pool.py 행
+```
