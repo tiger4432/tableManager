@@ -79706,3 +79706,46 @@ quantity ramp_C_min      found 180 (1 hops 1 · 2 hops 179) · unknown 220 · no
 남은 것     규칙(정적 뒤 동적 금지)은 소유자 답 기다림 · 응용 18766 에서 이 커밋으로 다시 열기
 pagesize    고칠 것 넷은 로컬 가지 impl-pagesize 에 wip aa733f506 로 묶어 둠 — 시험 · 변이 안 돌림, QA 대상 아님. 이 다음에 잇는다
 ```
+
+## 10-12 보조 판정 살아남은 변이 · pagesize NO-GO 2차 (총괄 10-12 · 2ea5ee2a7)
+
+```
+보조       a8474f004 — impl-aux-reach 위. 응용 late_origin 픽스처의 데이터만 옮긴 칸 하나(프로브 파일은 안 읽음)
+           test_a_late_origin_goes_back_through_a_node_read_whole_earlier — 변이 «읽은 쪽만 이웃 기억»(read side only)
+            == baseline
+            1 passed, 6 warnings in 0.51s
+            == cache off
+            1 passed, 6 warnings in 0.48s
+            == every row spends
+            1 passed, 6 warnings in 0.46s
+            == read side only
+            1 failed, 6 warnings in 0.87s
+            md5 f4c63cb8f0da812b7ec53ac9ecab4b1e f4c63cb8f0da812b7ec53ac9ecab4b1e
+           파일 전체 13 passed, 6 warnings in 1.61s
+pagesize   e902a67e6 — impl-pagesize 위(그 아래 46324bcbb), wip 를 접어 한 커밋. main 아님 · 18766 교체 아님
+ ①         set_aside 범위 읽기 id 키셋 쪽 · enrichment 확정은 읽은 쪽 = 확정 쪽(PageSize) · 소급 withdraw 주장 row_id 키셋 쪽
+           (총계는 끝 줄, 시작 줄 «counting as it goes») · 원장 stale 은 묶지 않고 흘려 읽고 실행은 ref 를 쪽마다(PageSize)
+ ②         세기 5 초 = pacing.PAGE_SECONDS_CAP — set_aside 세기 · rescope 통째의 stale 원자가 끊기면 «at least»(sample · truncated)
+ ③         접기 칸 셋(2,500 건 · CLI · 봉투)이 쪽마다 두 배 판(doubling_pages)에서 늘어난 수를 단언 — 수는 시험 안에
+           운영 크기의 늘어남(계산, 한 묶음 · 쪽마다 두 배 = 가장 많이 느는 경우)
+            chunk 1000 rows an event · page at most 10000 events
+            N     2,500  doubling pages:    13 events ·   12 pages   one fixed page size:     3 events ·    1 pages   more 10
+            N   100,000  doubling pages:   113 events ·   23 pages   one fixed page size:   100 events ·   10 pages   more 13
+            N 1,000,000  doubling pages:  1013 events ·  113 pages   one fixed page size:  1000 events ·  100 pages   more 13
+           뒤따름 비용의 «초»(늘어난 작은 이벤트가 깨우는 체인 그룹)는 안 쟀다 — 체인 워커를 판에 띄워야 한다(여쭘)
+ ④         가짜 시계 칸: 목표를 넘은 쪽이 다음 쪽을 넘은 비율로 줄임(수는 시험 안에) — «줄이기 끔» · «올림으로 줄이기» 둘 다 failed
+변이       자리마다 칸 하나 · 변이 하나(기준 · 변이 · md5)
+            set_aside run whole-size pages   baseline ['1 passed, 6 warnings in 0.52s'] | mutant ['1 failed, 6 warnings in 0.91s'] · md5 same True
+            set_aside count never cut        baseline ['1 passed, 6 warnings in 0.54s'] | mutant ['1 failed, 6 warnings in 0.94s'] · md5 same True
+            confirm pages fixed              baseline ['1 passed, 6 warnings in 0.41s'] | mutant ['1 failed, 6 warnings in 0.72s'] · md5 same True
+            withdraw claims read whole       baseline ['1 passed, 6 warnings in 0.57s'] | mutant ['1 failed, 6 warnings in 0.91s'] · md5 same True
+            stale pages fixed                baseline ['1 passed, 6 warnings in 8.20s'] | mutant ['1 failed, 6 warnings in 11.02s'] · md5 same True
+            stale count never cut            baseline ['1 passed, 6 warnings in 7.90s'] | mutant ['1 failed, 6 warnings in 7.41s'] · md5 same True
+시험       손댄 파일 전부, 커밋된 판으로
+            238 passed, 7 skipped, 1264 warnings in 77.36s (0:01:17)
+            sqlite exit 0
+            29 passed, 51 deselected, 40 warnings in 183.17s (0:03:03)
+            pg exit 0
+남은 것    운영 크기 «첫 진행 줄 ≤ 5 s»는 응용 판 게이트 — 이 박스는 읽기 전용이라 실행(apply)을 못 잼
+           CODE_MAP 의 `_stale_refs` 줄은 이제 `_stale_atoms` — 문서 정비 몫(제가 안 고침)
+```
