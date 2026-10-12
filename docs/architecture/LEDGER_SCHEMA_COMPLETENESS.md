@@ -349,7 +349,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 | **정체** | 「어느 것인가」 | `resolve`(K→M) · `collect`(노드 타입) | ① |
 | **값** | 「값이 무엇인가」 | 노드 `attributes` · 엣지 `qualifiers` | ① |
 | **차이** | 「무엇이 다른가」 | `propagation`(부호 대조 · 동률 · `complete`) | ① 대부분 (B6 — 접는 규칙·항목 분모만 ③) |
-| **수** | 「몇인가」 | ✅ **①** (S-146 · S-146-c, 2026-09-13) — `group_by` + `measure` 가 라우트 인자이고 무리의 `value` 는 measure 문자열로 키 잡은 «맵»이다. 어휘 일곱은 `AGGREGATE_MEASURES` «하나»가 정본이고 `contracts/walk_aggregate/` 가 서버·클라 «양쪽»을 같은 벡터로 채점한다 | 🪦 당시 근거: ⚠️ «고정 배율»만: 노드마다 `claim_count` · `predicates[{predicate, count}]` — 세는 «자리»는 있고 «고를 수» 없었다. 🔵 그 `predicates[].count` 가 이제 measure 의 «값 출처»라, 「이 술어로 닿은 수」가 엣지를 다시 걷지 않고 세어진다 |
+| **수** | 「몇인가」 | ✅ **①** (S-146 · S-146-c, 2026-09-13) — `group_by` + `measure` 가 라우트 인자이고 무리의 `value` 는 measure 문자열로 키 잡은 «맵»이다. 어휘 일곱은 `AGGREGATE_MEASURES` «하나»가 정본이고(🆕 10-12 `9911db802` 스팟파이어 철자 `Count` · `UniqueCount` · `Sum` · `Avg` · `Min` · `Max` · `Median`, 옛 소문자는 `_split_measure` 가 접어 받음) `contracts/walk_aggregate/` 는 서버(`server/tests/test_walk_aggregate_contract.py`)가 채점한다 — 클라는 접지 않아(C-90 뒤 서버가 접은 `groups` 를 읽음) 그 벡터를 읽는 클라 하니스는 없다 | 🪦 당시 근거: ⚠️ «고정 배율»만: 노드마다 `claim_count` · `predicates[{predicate, count}]` — 세는 «자리»는 있고 «고를 수» 없었다. 🔵 그 `predicates[].count` 가 이제 measure 의 «값 출처»라, 「이 술어로 닿은 수」가 엣지를 다시 걷지 않고 세어진다 |
 | **원인** | 「왜 그런가」 | 엣지의 `claim_id`·`basis` ✅ / 순위 트레일은 «인용 못 함** | ⚠️ (B11 — 한 조인 차이) |
 | **시각** | 「그때는 어땠나」 = as-of 🔴 ③ (기제 없음 — 철회가 삭제) / 「그 사이에 일어난 것」 = 구간 🟡 ② (자리 있음, 인자 없음) | (없음) | D-13 |
 | **진위** | 「참인가」 | (없음) | 🔴 ③ (B12 — 새로 나온 것) |

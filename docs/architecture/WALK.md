@@ -434,6 +434,7 @@ GET /api/ledger/subgraph?…&group_by=<type|값 이름>&measure=<일곱 중 하�
            🔴 출처는 «서버 상수 하나» — `ledger_subgraph.AGGREGATE_MEASURES`.
               옛 소문자 일곱(count · distinct · mean …)은 `_split_measure` 한 자리만 받아 접고,
               답의 키는 «물은 그대로»입니다 (fceba46a7, 10-12)
+              ⚠️ 화면 고르개(`rnd_board/api.js` `AGGREGATIONS`)는 10-12 현재 옛 소문자를 보냅니다 — 서버가 접어 받습니다
            수를 접는 다섯은 «이름이 필요»합니다: `Avg:<값 이름>`
 무리의 키   `type`(노드 타입) 또는 노드가 «드는 값의 이름». 술어는 여기 안 옵니다 — 길은 `follow`
            복수값 속성(S-144)이면 그 노드는 «자기가 대는 무리 전부»에 듭니다
