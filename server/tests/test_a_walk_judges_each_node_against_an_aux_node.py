@@ -142,3 +142,13 @@ def test_the_door_given_nothing_reads_what_the_walk_read():
     outside, _ = lookup.claims_for_entities(wafer, "both", 1000, far=("not_in", [("die", die("D0"))]))
     assert [a.id for a in plain] == [a.id for a in open_door] and len(plain) == 4
     assert ([a.subject_keys for a in inside], len(outside)) == ([die("D0")], 3)
+
+
+def test_an_atom_between_two_nodes_of_one_side_meets_nothing_by_itself(declared):
+    """The recipe board's KeyError: an `in` read pairs an atom's two ends both ways, so an atom between two frontier
+    nodes once handed a node the other side had not seen as a meeting. Aux D1 - a walked node too - and its defect
+    F, which the walk does not hold, with the atom D1 -> F between them: D1 is its own aux, 0 hops; the wafer 1."""
+    defect = explorer.entity_id("defect", {"f": "F"})
+    body = walk(declared, [D["D1"], defect])
+    assert (judged(body)[D["D1"]], judged(body)[SEED]) == (
+        {"state": "found", "hops": 0, "via": D["D1"]}, {"state": "found", "hops": 1, "via": D["D1"]})
