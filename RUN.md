@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-12 오후] **걷기 이어 가기 (서버) — pull 하고 서버만 재기동**
+>
+> ```
+> 명령     git pull  ->  서버 재기동 (바뀐 서버 파일 ledger_subgraph.py · trace_router.py — 수집기 · 체인 워커 · 스케줄러 그대로)
+> 쓰는 법  끊긴 답의 more.resume 을 POST /api/ledger/subgraph 본문 {"resume": …} 로 돌려준다(같은 인자) — 화면은 클라 착지의 More
+> 뜻      more.reach.<타입>.complete false = 그 타입에 닿을 노드가 남음 · resume null = 다 걸음 · 쪽마다 상한은 그대로
+>          원자 수만 개 씨앗: 첫 쪽 노드 0 이어도 complete false 면 이어 걷기로 닿는다(2만 원자 판: 4 쪽째)
+> 끄는 법  스위치 없음 — resume 을 안 보내면 답은 오늘과 같다(more 칸 하나 더)
+> 볼 것    서버 로그에 새 줄 없음
+> ```
+
 > ## [10-12 오후] **걷기 «Walk ▸» 착지 (main 1f2cd132f) — git pull 만 · 재기동 없음 · 걷기 화면 새로 고침**
 >
 > ```
