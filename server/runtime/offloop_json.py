@@ -10,12 +10,15 @@ stopped async pings, sync pings and static files alike for 7.9 s; turned into by
 HOW. `OffLoopJSONRoute` is the route class of the app and of every APIRouter. For a sync endpoint with no response
 model and no response class of its own, it wraps the endpoint: the answer is dumped right there, on the worker thread
 the endpoint already runs on, with JSONResponse's own settings and `jsonable_encoder` for what json cannot take - the
-same bytes. The bytes go back as `_Encoded` (a str, so fastapi's encoder hands it through untouched) and
+same bytes, with two known differences: a dict key json cannot take (a date, a UUID, a Decimal, an Enum) is dumped
+by a second pass over `jsonable_encoder(answer)`, as before; a key starting with `_sa` is no longer dropped (the
+encoder's sqlalchemy_safe removed a name an operator wrote). The bytes go back as `_Encoded` (a str, so fastapi's encoder hands it through untouched) and
 `_EncodedJSONResponse` renders them as they are. fastapi still builds the response: the decorator's status code, a
 bodyless status, and headers a dependency set all stay its own.
 
-⚠️ NOT WRAPPED: an async endpoint (its answer is the loop's anyway), a route that declares `response_model` (or a
-return annotation fastapi reads as one) or its own `response_class`, and an endpoint that returns a Response.
+⚠️ NOT WRAPPED, so still turned into bytes on the loop: an async endpoint, a route that declares `response_model` (or
+a return annotation fastapi reads as one) or its own `response_class`. An endpoint that returns a Response is wrapped
+and its Response passes through as it is.
 """
 import functools
 import inspect
@@ -39,11 +42,18 @@ class _EncodedJSONResponse(JSONResponse):
         return super().render(content)
 
 
+_dumps = functools.partial(json.dumps, ensure_ascii=False, allow_nan=False, indent=None, separators=(",", ":"))
+
+
 def encode(answer) -> _Encoded:
     """`answer` as JSONResponse would write it, here."""
     encoded = _Encoded("")
-    encoded.payload = json.dumps(answer, ensure_ascii=False, allow_nan=False, indent=None, separators=(",", ":"),
-                                 default=jsonable_encoder).encode("utf-8")
+    try:
+        text = _dumps(answer, default=jsonable_encoder)
+    except TypeError:
+        # json.dumps never asks `default` about a dict KEY - a date or a UUID key is the old path's whole pass
+        text = _dumps(jsonable_encoder(answer))
+    encoded.payload = text.encode("utf-8")
     return encoded
 
 

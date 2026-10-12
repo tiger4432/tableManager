@@ -10,10 +10,12 @@
 """
 import datetime
 import decimal
+import enum
 import os
 import sys
 import threading
 import time
+import uuid
 
 import pytest
 from fastapi import Depends, FastAPI, Response
@@ -26,6 +28,10 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from runtime import offloop_json                                      # noqa: E402
+
+
+class _Kind(str, enum.Enum):
+    WAFER = "wafer"
 
 
 class _Point(BaseModel):
@@ -73,6 +79,14 @@ def _app(seat):
     def a_response():
         return Response(content=b"plain", media_type="text/plain")
 
+    @app.get("/keys")
+    def keys():
+        return {when.date(): 1, uuid.UUID(int=7): 2, decimal.Decimal("1.5"): 3, _Kind.WAFER: 4, "s": 5}
+
+    @app.get("/sa")
+    def sa():
+        return {"_sa_note": 1, "a": 2}
+
     return app
 
 
@@ -93,7 +107,8 @@ def _is_async(route):
 
 
 @pytest.mark.parametrize("method,path", [("get", "/mixed"), ("get", "/none"), ("get", "/nan"), ("post", "/made"),
-                                         ("delete", "/gone"), ("get", "/headed"), ("get", "/response")])
+                                         ("delete", "/gone"), ("get", "/headed"), ("get", "/response"),
+                                         ("get", "/keys")])
 def test_the_seat_answers_as_fastapi_did(method, path):
     before = getattr(TestClient(_app(False), raise_server_exceptions=False), method)(path)
     after = getattr(TestClient(_app(True), raise_server_exceptions=False), method)(path)
@@ -107,11 +122,19 @@ def test_the_seat_answers_as_fastapi_did(method, path):
         assert after.content == b""
 
 
-#: About 17 MB as JSON. Built once, before any endpoint, so what is timed is turning it into bytes.
-_BIG = {"rows": [{"id": i, "name": "row %d" % i, "at": "2026-10-12", "v": [i, i + 1]} for i in range(250000)]}
+def test_a_key_starting_with_sa_is_kept_where_the_old_path_dropped_it():
+    """⚠️ A KNOWN DIFFERENCE: jsonable_encoder's sqlalchemy_safe dropped any `_sa…` key - a name an operator wrote."""
+    before = TestClient(_app(False)).get("/sa").json()
+    after = TestClient(_app(True)).get("/sa").json()
+    assert (before, after) == ({"a": 2}, {"_sa_note": 1, "a": 2})
 
 
-def _longest_ping_wait(seat):
+def _big():
+    """About 17 MB as JSON. Built before the endpoint runs, so what is timed is turning it into bytes."""
+    return {"rows": [{"id": i, "name": "row %d" % i, "at": "2026-10-12", "v": [i, i + 1]} for i in range(250000)]}
+
+
+def _longest_ping_wait(seat, answer):
     """The longest an async route waits while a big sync answer is turned into bytes and sent. ⚠️ ONE CLIENT IN A
     `with`: outside one, TestClient opens an event loop per request and the pings never share the big answer's loop."""
     app = FastAPI()
@@ -120,7 +143,7 @@ def _longest_ping_wait(seat):
 
     @app.get("/big")
     def big():
-        return _BIG
+        return answer
 
     @app.get("/ping")
     async def ping():
@@ -146,6 +169,7 @@ def _longest_ping_wait(seat):
 
 
 def test_an_async_route_answers_while_a_big_answer_is_made():
-    old, new = _longest_ping_wait(False), _longest_ping_wait(True)
+    answer = _big()
+    old, new = _longest_ping_wait(False, answer), _longest_ping_wait(True, answer)
     assert old > 0.5, "the old path did not stop the loop here (%.3f s) - this measures nothing" % old
     assert new < 0.3 * old, "the seat still stops the loop: %.3f s against %.3f s" % (new, old)
