@@ -132,3 +132,25 @@
 상한        «사전 + 아는 링크» 글자 수 상한 한 칸(설정) — 위 차례로 채우고, 못 실은 것은 답에 «n 줄 중 k 줄 · 사전 m 중 j»
 게이트      가짜 LLM: 다리 링크가 1 걸음보다 먼저 · 씨앗마다 k 줄 · 같은 묶음 두 번 -> 같은 프롬프트(바이트) · 상한에서 잘린 수가 답에 · 사전에 씨앗 밖 노드 0
 ```
+
+> **[총괄 -> 구현자 B] 10-13 — 큐 1 QA(3ff350a46): GO-WITH-FIXES — 틀린 답 재현 0 · 접기 차분 기점과 7/7 · PG 83 초록. 착지 전 고칠 것 (53537acd7 · 94db41466 은 다음 확인에서)**
+
+```
+1 [중] 한 선언에 판정이 둘 — 참조뷰가 «:bind::type» 철자를 쓰면 한 키 길(SQLAlchemy text)은 42601 로 거절, 묶음 길(로더 _BIND_PARAM_RE)은 후보를 냄(config.py:1679)
+       쪽 크기가 1 에서 시작하니 첫 쪽은 거절 · 둘째 쪽부터 확정(apply 면 씀). 체인 훅도 flush 키 1 개면 거절 · 여럿이면 확정
+       -> 바인드를 읽는 자리는 하나. 로더가 적재 때 «:x::type» 을 거절하고 «CAST(:x AS type) 로 쓰라» 한 줄 — 두 길이 같은 파서를 지난다(이 박스 선언에는 그 철자 0 — 박스 수)
+2 [중] 묶음 실패가 운영자에게 조용하고, 로그 문장은 진짜 뷰 고장과 같은 SITE_CANDIDATE_PROBE(config.py:1694) — probe_batch_fallbacks 를 읽는 곳 0
+       실측: 숫자 칸과 글 키를 견주는 뷰는 VALUES 칸이 text 로 굳어 쪽마다 묶음 실패(UndefinedFunction) -> 키마다 다시(답은 맞음) · ERROR 트레이스 · 진짜 실패가 throttle 에 묻힘
+       -> 묶음 실패에 제 문장 · 실행 결과와 로그에 «묶음 -> 키마다 n 번». 그리고 VALUES 칸의 형을 판단키 칸의 형으로(한 키 길과 같은 비교가 되게)
+3 [중] 중복 접기 dry · 미리보기(GET /admin/retroactive/fold_duplicate_rows/count)가 지울 행을 전부 받아 버림(replay.py:1045 _fold_read · 995-1000) — 1M 판 80 만 행 -> apply 때만
+4 [중] SHELL_PAGE = 20000 이 한 쪽 = 한 트랜잭션 — uuid7 이라 껍데기가 몰린 구간에서 한 쪽 약 9.7 s(보고서 0.485 s/1000) · 2 만 행 한 커밋 -> 5 초 규칙 넘음
+       -> 읽는 쪽은 크게 두고 지우기는 쪽 크기 규칙에 맞춘 작은 묶음으로 나눠 커밋
+5 [중] 살아남은 변이 둘, 둘 다 답을 바꿈: M7(in_scope 의 coalesce 빼기 — rows_out_of_scope 269 -> 83) · M10(정렬 맨 앞 case 빼기 — 표시 47 줄이 엉뚱한 kept) -> 칸 둘
+6 [중/낮] derived_pages 의 드문 대기열 맞바꿈 — SCAN_CHUNK 1000 이라 대기열이 드물면 요청 경로(count 미리보기 · dry-run)가 파생 표 전체를 1,000 행씩 걸음. withdraw 물음 2 와 같은 성질 — 같은 판 A/B 로 재고 같은 기준(전체 초 · 한 문장 5 초)으로 정한다
+7 [낮] fold_withdrawal_events 가 모든 대기 사건의 payload row_ids 를 받아 옴(cell_layer.py:584) — 필요한 종류만 ·
+       판정 415 좌석 discarding 을 지나는 운영 코드가 1 -> 0 — 이 일이 비웠으니 이 일에서 은퇴(약속 든 자리 전수: CODE_MAP:2125 등) ·
+       FOLD_BY_VALUE_DIALECTS 를 «LATERAL 이 되나»의 대리로 씀(config.py:1672) — 그 물음의 이름을 가진 상수로 · M3(withdraw 셈) 칸
+문서      «답이 같다» 표에 원장 원자를 더함(지시 5ad030347 의 셋째) · CODE_MAP:3104 · BACKFILL_GUIDE:62 «1,000 행씩» · count_withdrawable 독스트링(replay.py:667) ·
+          주장 목록에 빠진 둘: 묶음 질의는 체인 훅 live 경로도 탄다(confirm_keys) · CANDIDATE_GROUP_WRAP_SQL 에 ORDER BY __c 가 더해져 한 키 길도 바뀜 — RELEASE_LOG 에
+덧        pytest -m pg 는 ASSY_PG_TEST_DATABASE_URL 없이 조용히 skip — 보고의 PG 수는 «passed 수»로 적는다
+```
