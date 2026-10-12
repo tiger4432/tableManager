@@ -1401,6 +1401,10 @@ const FLOORS = new Map([
   // 19 -> 29: what a table switch leaves and Discard (lead 10-12) - W10 the last table's filter, W11 every way to a
   //    table tells the label and the banner, W12 W13 Discard: the value before the edit at once, then the read; G10-G15.
   ['grid_world_tabs_harness.mjs', 29],
+  // 0 -> 44: the visual testbed (lead aca803a7a, d1b3c1b7f, 5835e6714) - T1-T17 (the reduces against contracts/walk_aggregate,
+  //    the one filter, hubs, the two kinds, the root part, two parts on one page, a kind added, save and reopen, the census,
+  //    the bundle); M1-M23.
+  ['testbed_harness.mjs', 44],
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)

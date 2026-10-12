@@ -102,6 +102,9 @@ export class GridShell {
         start: decl.start || null,
         legacyRoute: decl.legacyRoute || null,
         title: decl.title || '',
+        // The whole entry too: a part whose declaration is more than these (the testbed's visual - kind, row, encode,
+        // filter) reads it here, and hands it back for Save.
+        declaration: decl,
         ...(decl.options || {}),
       });
       part.mount();

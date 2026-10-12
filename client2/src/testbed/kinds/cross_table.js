@@ -1,0 +1,117 @@
+// The cross table kind of the visual part (reference §8): a row axis, a column axis, the cell values folded over the
+// rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its rows, marked whole.
+
+import { fold } from '../aggregate.js';
+import { categoriesOf } from '../slot.js';
+
+export const SLOTS = Object.freeze([
+  { key: 'rows', label: 'Row axis', category: true },
+  { key: 'columns', label: 'Column axis', category: true },
+  { key: 'cells', label: 'Cell values', folds: true },
+]);
+export const EMPTY = '(Empty)';
+const TOTAL = 'Total';
+
+/** A cell's number as the table says it: thousands grouped, at most three decimals. */
+export const cellWords = (v) => (v === null || v === undefined ? '-'
+  : typeof v === 'number' ? v.toLocaleString('en-US', { maximumFractionDigits: 3 }) : String(v));
+
+/**
+ * @param {Array<{id, reads: object, raw: object}>} rows  `raw.cells` - the cell slot's every value of the row, {value, t}
+ * @param {{marked: (id) => boolean, reduce?: string}} ctx  the cell slot's reduce; none - Count
+ */
+export function crossModel(rows, ctx) {
+  const reduce = ctx.reduce || 'Count';
+  const cells = new Map();
+  const keyOf = (r, c) => `${r}\u0000${c}`;
+  const rowKeys = new Set();
+  const colKeys = new Set();
+  for (const row of rows) {
+    // A row with two values on an axis stands in both (lead aca803a7a «counts twice»); none - (Empty).
+    const rs = row.reads.rows ? (categoriesOf(row.reads.rows).length ? categoriesOf(row.reads.rows) : [EMPTY]) : [''];
+    const cs = row.reads.columns ? (categoriesOf(row.reads.columns).length ? categoriesOf(row.reads.columns) : [EMPTY]) : [''];
+    for (const r of rs.map(String)) {
+      for (const c of cs.map(String)) {
+        rowKeys.add(r);
+        colKeys.add(c);
+        if (!cells.has(keyOf(r, c))) cells.set(keyOf(r, c), { ids: [] });
+        cells.get(keyOf(r, c)).ids.push(row.id);
+      }
+    }
+  }
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  /** A set of rows folded: the cell slot's values of each row once (a row in two columns counts once in its row's total). */
+  const folded = (ids) => {
+    const once = [...new Set(ids)];
+    if (!rows.some((row) => row.raw && row.raw.cells)) return once.length;
+    return fold(reduce, once.flatMap((id) => (byId.get(id).raw.cells || []))).value;
+  };
+  const sort = (keys) => [...keys].sort((a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0));
+  const R = sort(rowKeys);
+  const C = sort(colKeys);
+  const grid = R.map((r) => C.map((c) => {
+    const cell = cells.get(keyOf(r, c));
+    if (!cell) return { value: null, ids: [], marked: false };
+    return { value: folded(cell.ids), ids: cell.ids, marked: cell.ids.some(ctx.marked) };
+  }));
+  const rowIds = R.map((_, i) => grid[i].flatMap((cell) => cell.ids));
+  const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
+  return {
+    rowKeys: R, colKeys: C, grid, reduce,
+    rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.id)),
+    rowIds, colIds, anyMarked: rows.some((row) => ctx.marked(row.id)),
+  };
+}
+
+/**
+ * Draw a model: the column tray over the table, the row tray beside it, the cell tray under it, the legend; the table
+ * scrolls inside its own box (mockup fix ①). A cell, a row head or a column head marks its hub through `ctx.markHub`.
+ */
+export function render(body, model, ctx) {
+  const doc = ctx.doc;
+  const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  body.className = 'tb-body tb-cross';
+  const top = el('div', 'tb-cross__top');
+  top.append(ctx.pill('columns'), ctx.plus('columns'));
+  const left = el('div', 'tb-cross__left');
+  left.append(ctx.pill('rows', { vertical: true }));
+  const wrap = el('div', 'tb-cross__wrap');
+  const table = el('table', 'tb-ct');
+  const head = el('tr');
+  head.append(el('th', 'tb-ct__corner', ctx.words('rows')));
+  const words = { rows: ctx.words('rows'), columns: ctx.words('columns') };
+  model.colKeys.forEach((c, j) => {
+    const th = el('th', 'tb-ct__col', c);
+    th.addEventListener('click', (event) => ctx.markHub([[words.columns, c]], model.colIds[j], event));
+    head.append(th);
+  });
+  head.append(el('th', 'tb-ct__col tb-ct__total', TOTAL));
+  table.append(head);
+  model.rowKeys.forEach((r, i) => {
+    const tr = el('tr');
+    const th = el('th', 'tb-ct__row', r);
+    th.addEventListener('click', (event) => ctx.markHub([[words.rows, r]], model.rowIds[i], event));
+    tr.append(th);
+    model.grid[i].forEach((cell, j) => {
+      const td = el('td', cell.marked ? 'is-marked' : '', cellWords(cell.value));
+      if (cell.ids.length) td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
+      tr.append(td);
+    });
+    tr.append(el('td', 'tb-ct__total', cellWords(model.rowTotals[i])));
+    table.append(tr);
+  });
+  const foot = el('tr', 'tb-ct__totals');
+  foot.append(el('th', 'tb-ct__row', TOTAL));
+  model.colTotals.forEach((v) => foot.append(el('td', 'tb-ct__total', cellWords(v))));
+  foot.append(el('td', 'tb-ct__total', cellWords(model.total)));
+  table.append(foot);
+  wrap.append(table);
+  const bottom = el('div', 'tb-cross__bottom');
+  bottom.append(ctx.pill('cells'), ctx.plus('cells'));
+  const legend = el('div', 'tb-legend');
+  legend.append(el('div', 'tb-legend__ttl', 'Colors:'), el('div', 'tb-legend__v tb-legend__plain', 'All values'));
+  body.replaceChildren(top, left, wrap, legend, bottom);
+  return { resize: () => {}, dispose: () => {} };
+}
+
+export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, model: crossModel, render };
