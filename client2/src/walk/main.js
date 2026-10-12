@@ -700,11 +700,10 @@ export function boot(doc, host, deps) {
       const row = el(doc, 'button', 'wk-path');
       row.type = 'button';
       row.setAttribute('aria-pressed', picked ? 'true' : 'false');
-      // One line, cut at the row's end on purpose (lead 18da45b73): the whole in its title, and in the form once pressed.
+      // The way whole, wrapped in the popover rather than cut (owner 10-12).
       const text = walked ? `${r.words} · ${r.count}` : r.chain.join(' → ');
       const line = el(doc, 'span', 'wk-pathchain', text);
       line.title = text;
-      line.setAttribute('data-clip-ok', '');
       row.append(line);
       row.addEventListener('click', () => useRoute(walked ? asked : routeWith(r, loopsOf(r))));
       route.append(row);
