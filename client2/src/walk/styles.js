@@ -200,6 +200,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* Over a fixed-width column the far end reads first and the way under it, each one line cut (owner 10-12 «m..»). */
 .wk-headfar, .wk-headvia { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-headvia { color: var(--text-dim); font-size: var(--wk-fs-line); }
+.wk-headtext > * + * { margin-top: var(--space-1); }
 /* Its «▸ N» a size up from the head's letters: a press among them, not one more word. */
 .wk-wide th.wk-stephead > .wk-tag { font-size: var(--wk-fs-body); }
 .wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }
@@ -279,7 +280,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* A value as Copy gives it (owner 10-12: the cell hid spaces Copy had) - its spaces drawn, one line, cut, whole in its title. */
 .wk-valline > .wk-val, .wk-valline > .wk-centrelabel, .wk-long td { white-space: pre; }
 /* A head's «▾» at its right edge, out of the words' way: a long head is cut, its filter stays. */
-.wk-table th.wk-sortable { padding-right: var(--wk-h-small); }
+.wk-table th.wk-sortable { padding-right: var(--space-6); }
 .wk-table th > .wk-colfilter { position: absolute; top: var(--space-1); right: 0; }
 .wk-table th { font-weight: 600; font-size: var(--wk-fs-line); color: var(--text-dim, #71717a); position: sticky; top: 0;
   background: var(--bg-surface); }

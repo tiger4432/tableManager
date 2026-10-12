@@ -1305,8 +1305,8 @@ async function suite(mod) {
     const stable = ({ before, after }) => JSON.stringify(before.cols) === JSON.stringify(after.cols) && after.rows < before.rows
       && before.spans === before.cols.length && before.across === before.cols.length && after.spans === after.cols.length;
     const values = ({ before }) => before.cols.filter(([c]) => c === 'wk-col-value').map(([, w]) => w);
-    const sized = (n) => `max(calc(${n}ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--wk-h-small)))`;
-    const NODE_W = 'max(calc(5ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(7ch + var(--space-2) + var(--wk-h-small)))';
+    const sized = (n) => `max(calc(${n}ch + 2 * var(--space-2)), calc(2ch + var(--space-2) + var(--space-6)))`;
+    const NODE_W = 'max(calc(5ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(7ch + var(--space-2) + var(--space-6)))';
     const dashed = await fixedWidths(FW_DASHED);
     ok('FW1 fixed widths from the answer: a <col> a column - check a finger, node its keys and icon, + and − of one value the width of the longest words of both (28 · 1050.25 · missing · 10 → 8ch, not 96px); a Δ no row has not drawn - unchanged by a sort, a filter and a check; the head spans those columns; the stylesheet lays the table out fixed (owner 10-12)',
       stable(dashed) && dashed.before.cols.length === 4
@@ -1348,7 +1348,7 @@ async function suite(mod) {
     const nodeCol = (re) => (walkAll(sec(re)).filter((e) => e.tagName === 'col' && e.className === 'wk-col-node')
       .map((e) => (e.attrs.style || '').replace(/^width: /, ''))[0]) || '';
     const labels = (re) => walkAll(sec(re)).filter((e) => e.className === 'wk-centrelabel').map((e) => [e._text, e.title]);
-    const nodeW = (n, head) => 'max(calc(' + n + 'ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(' + head + 'ch + var(--space-2) + var(--wk-h-small)))';
+    const nodeW = (n, head) => 'max(calc(' + n + 'ch + 2 * var(--space-2) + var(--space-1) + var(--wk-h-small)), calc(' + head + 'ch + var(--space-2) + var(--space-6)))';
     ok('NW1 the node column a section\'s own: quantity keys of 21 letters whole (22ch), a 65-letter defect key at the far end (36ch) - cut, whole in its title (lead 10-12)',
       nodeCol(/^quantity/) === nodeW(22, 9) && nodeCol(/^defect/) === nodeW(36, 7)
         && JSON.stringify(labels(/^defect/)) === JSON.stringify([[LONG_KEY, LONG_KEY]]),

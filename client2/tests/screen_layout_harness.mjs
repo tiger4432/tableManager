@@ -33,6 +33,7 @@ import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSourceText } from './lib/probe.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(HERE, '..');
@@ -85,7 +86,7 @@ const CELLS = [
   // The audit row's Kind word whole in its cell (lead 10-12: «OVERWRIT…» cut at 74 px) - every pill drawn, and the longest
   // word the row builder can draw (timeline.js kindOf: «OVERWRITE») set in a drawn cell and measured, as the answers may
   // hold none of it.
-  { entry: 'index.html', after: 'loaded', rule: 'kind word whole', expr: `(() => {
+  { entry: 'index.html', after: 'loaded', rule: 'kind word whole', at: 'audit-kind', expr: `(() => {
   const pills = [...document.querySelectorAll('.audit-table .timeline-card .audit-kind .audit-pill')].filter((p) => p.getClientRects().length);
   if (!pills.length) return 'no kind drawn in the audit table';
   const fits = (p) => {
@@ -336,7 +337,7 @@ const WALK_LOOK = [
   if (!page) return 'no walk page';
   const head = page.querySelector('.wk-mainhead');
   const bar = page.querySelector('.wk-secbar');
-  const table = page.querySelector('.wk-sec > .wk-table');
+  const table = page.querySelector('.wk-sec > .wk-tablebox > .wk-table');
   if (!head || !bar || !table) return 'no head, toolbar or table drawn';
   const xs = [head, bar, table].map((e) => Math.round(e.getBoundingClientRect().left));
   return Math.max(...xs) - Math.min(...xs) > 1 ? 'the head, a toolbar and its table start at ' + xs.join(' · ') + ' px' : null;
@@ -375,6 +376,32 @@ for (const after of ['Graph', 'Side by side, light', 'Trend of a value cell', 'L
   // The S cells read the table: none is drawn on the graph.
   for (const [rule, expr] of WALK_LOOK) if (!(after === 'Graph' && /^S\d/.test(rule))) CELLS.push({ entry: 'walk.html', after, rule, at: 'wk-page', expr });
 }
+// The Route panel's walked ways (lead 10-12): each line whole in its row, and a wrapped line's lines and the rows apart.
+CELLS.push({ entry: 'walk.html', after: 'Route walked', rule: 'route whole', at: 'wk-route', expr: `(() => {
+  const lines = [...document.querySelectorAll('.wk-route .wk-pathchain')].filter((e) => e.getClientRects().length);
+  if (!lines.length) return 'no walked route drawn';
+  for (const l of lines) {
+    const row = l.closest('.wk-path').getBoundingClientRect(), r = l.getBoundingClientRect();
+    if (l.scrollWidth > l.clientWidth + 1 || l.scrollHeight > l.clientHeight + 1 || r.bottom > row.bottom + 0.5 || r.right > row.right + 0.5) {
+      return 'wk-route «' + l.textContent.slice(0, 40) + '…» cut: ' + l.scrollWidth + ' of ' + l.clientWidth + ' px wide';
+    }
+  }
+  return null;
+})()` });
+CELLS.push({ entry: 'walk.html', after: 'Route walked', rule: 'route lines apart', at: 'wk-route', expr: `(() => {
+  const lines = [...document.querySelectorAll('.wk-route .wk-pathchain')].filter((e) => e.getClientRects().length);
+  if (!lines.length) return 'no walked route drawn';
+  for (const l of lines) {
+    const cs = getComputedStyle(l), lh = parseFloat(cs.lineHeight) / parseFloat(cs.fontSize);
+    if (!(lh >= 1.2)) return 'wk-route the lines of a way ' + lh.toFixed(2) + ' apart, not 1.2';
+  }
+  const rows = [...document.querySelectorAll('.wk-route')].filter((e) => e.getClientRects().length);
+  for (let i = 1; i < rows.length; i += 1) {
+    const gap = rows[i].getBoundingClientRect().top - rows[i - 1].getBoundingClientRect().bottom;
+    if (gap < 3.4 - 0.5) return 'wk-route rows ' + gap.toFixed(1) + ' px apart';
+  }
+  return null;
+})()` });
 // The basket stays at the result's foot while the table scrolls, and never covers the last row (W addendum 3, S5).
 CELLS.push({ entry: 'walk.html', after: 'A row ticked mid-table', rule: 'basket at the foot', at: 'wk-page', expr: `(() => {
   const main = document.querySelector('.wk-main'), basket = document.querySelector('.wk-main .wk-marked');
@@ -859,6 +886,11 @@ const DRIVE = {
       window.__place = { top: main.scrollTop, left: table.scrollLeft, ticked: Boolean(rows[0]) };
       if (rows[0]) rows[0].click();
       return true; })()`).then(() => sleep(300))],
+    // through ▾ opened after the walk: its Route says the ways walked (owner 10-12 «실제 걸은 경로로»), a long way wrapping.
+    ['Route walked', async (c) => {
+      await evaluate(c, `(() => { const chip = document.querySelector('.wk-through > :first-child'); if (chip) chip.click(); return Boolean(chip); })()`);
+      await until(c, "[...document.querySelectorAll('.wk-routes-head')].some((h) => h.getClientRects().length && /Walked to/.test(h.textContent))");
+    }],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
@@ -1080,13 +1112,16 @@ const MUTANTS = [
     file: 'src/walk/styles.js', edits: [['gap: var(--space-1); max-height: var(--space-5); }', 'gap: var(--space-1); }']] },
   { name: 'the result boxed again, off the head\'s left edge', entry: 'walk.html', rule: 'S5 one left edge', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-result { display: flex; flex-direction: column; gap: var(--space-2); }', '.wk-result { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); }']] },
-  { name: 'a group head cut short', entry: 'walk.html', rule: 'S6 no clipped letters', at: 'wk-page',
-    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small); }', '.wk-wide th.wk-stephead > span { display: inline-block; margin-right: var(--space-1); line-height: var(--wk-h-small); max-width: 3ch; overflow: hidden; }']] },
+  // ⚰️ «a group head cut short» retired 10-12: the walk table is fixed-width and data-clip-ok (owner 10-12 「폭이 꿀렁꿀렁」),
+  //    a head two lines each cut whole in its title (owner 10-12 «m..») - S6 skips it by design; its anchor had gone too.
   // The walk page's spacing, heights and type (lead 18da45b73), built back.
   { name: 'the parts of a section stacked with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-sec { display: flex; flex-direction: column; gap: var(--space-2);', '.wk-sec { display: flex; flex-direction: column; gap: 0;']] },
-  { name: 'a route row\'s two lines with no gap', entry: 'walk.html', rule: 'stacked gaps', at: 'wk-page',
-    file: 'src/walk/styles.js', edits: [['grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3);', 'grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--space-3);']] },
+  // «a route row's two lines with no gap», re-aimed 10-12 (lead): the Route walked step opens through ▾, a way wraps in two.
+  { name: 'a route row\'s two lines with no gap', entry: 'walk.html', rule: 'route lines apart', at: 'wk-route',
+    file: 'src/walk/styles.js', edits: [['.wk-pathchain { min-width: 0; line-height: 1.25;', '.wk-pathchain { min-width: 0; line-height: 0.9;']] },
+  { name: 'a walked way cut at its row\'s end again', entry: 'walk.html', rule: 'route whole', at: 'wk-route',
+    file: 'src/walk/styles.js', edits: [['line-height: 1.25; overflow-wrap: anywhere;', 'line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;']] },
   { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: 5px 8px; text-align: left; vertical-align: top; }']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
@@ -1096,21 +1131,25 @@ const MUTANTS = [
   // ⚰️ «the table drawn without its axis in the middle» retired 10-11 with the mirrored sides (lead W): the node is first,
   //    the first column's + · Δ · − beside it - its − cell in view is still asked (− side in view).
   { name: 'the first column\'s − cell pushed past the table\'s view', entry: 'walk.html', rule: '− side in view', at: 'wk-sides',
-    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }', '.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }\n.wk-wide th.wk-sidehead.wk-plus { min-width: 1600px; }']] },
+    // The table is fixed-width (owner 10-12): a head's min-width moves nothing - the columns' own widths push it.
+    file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }', '.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }\n.wk-sides col.wk-col-value { width: 1600px !important; }']] },
 ];
 async function buildMutant(m) {
   const { build } = await import('vite');
   const out = mkdtempSync(path.join(tmpdir(), 'screens-mutant-'));
   const target = path.join(CLIENT, m.file).replace(/\\/g, '/');
   const hits = new Map(m.edits.map(([a]) => [a, 0]));
-  const swap = (code) => {
+  const swap = () => {
+    // The anchors are written with \n; a checkout with core.autocrlf holds \r\n (10-12: every mutant past the first unrun) -
+    // the file's text through the one reader (probe_mechanism P1), not a private normaliser.
+    let code = readSourceText(target).text;
     for (const [a, b] of m.edits) if (code.includes(a)) { hits.set(a, hits.get(a) + 1); code = code.split(a).join(b); }
     return code;
   };
   const mine = (id) => id.split('?')[0].replace(/\\/g, '/') === target;
   await build({ root: CLIENT, configFile: path.join(CLIENT, 'vite.config.js'), logLevel: 'silent', build: { outDir: out, emptyOutDir: true },
-    plugins: [{ name: 'screens-mutant', enforce: 'pre', transform: (code, id) => (mine(id) ? swap(code) : null),
-      transformIndexHtml: { order: 'pre', handler: (html, ctx) => (mine(ctx.filename) ? swap(html) : html) } }] });
+    plugins: [{ name: 'screens-mutant', enforce: 'pre', transform: (code, id) => (mine(id) ? swap() : null),
+      transformIndexHtml: { order: 'pre', handler: (html, ctx) => (mine(ctx.filename) ? swap() : html) } }] });
   for (const [a, n] of hits) if (!n) throw new Error(`mutant «${m.name}»: «${a.slice(0, 60)}» is not in ${m.file}`);
   return out;
 }
