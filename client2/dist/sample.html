@@ -41,13 +41,13 @@
       .sample-sf-grid { grid-template-columns: minmax(0, 1fr); }
     }
   </style>
-  <script type="module" crossorigin src="/assets/sample-B8A6u6Js.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/tokens-DNDptdsJ.js">
-  <link rel="modulepreload" crossorigin href="/assets/account_boot-D7Lsk3Z7.js">
-  <link rel="stylesheet" crossorigin href="/assets/tokens-B6uMZ4Mb.css">
+  <script type="module" crossorigin src="/assets/sample-CGWjfv1q.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-BUYaZQbI.js">
+  <link rel="modulepreload" crossorigin href="/assets/account_boot-CF2Wp28t.js">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-DefiSF9k.css">
   <link rel="stylesheet" crossorigin href="/assets/account_boot-Dn-l1TZG.css">
   <link rel="stylesheet" crossorigin href="/assets/base-0D6z4SYq.css">
-  <link rel="stylesheet" crossorigin href="/assets/spotfire-6e67f09x.css">
+  <link rel="stylesheet" crossorigin href="/assets/spotfire-C-AECv0Q.css">
 </head>
 <body>
   <main class="sample-page">
@@ -176,6 +176,21 @@
               </div>
               <div class="sf-tools sample-sf-tools"><button type="button" class="sf-tool" title="Maximize visualization"><svg viewBox="0 0 14 14"><path d="M8 1h5v5h-1.6V3.7L8.7 6.4 7.6 5.3l2.7-2.7H8z"/><path d="M6 13H1V8h1.6v2.3l2.7-2.7 1.1 1.1-2.7 2.7H6z"/></svg></button><button type="button" class="sf-tool" title="Close"><svg viewBox="0 0 14 14"><path d="M2.1.9l11 11-1.2 1.2-11-11z"/><path d="M11.9.9l1.2 1.2-11 11-1.2-1.2z"/></svg></button></div>
               <div class="sf-drop sample-sf-drop"></div>
+            </section>
+            <section class="sf-part">
+              <div class="sf-part__title" data-part-title><span class="sf-part__t">Sheet</span></div>
+              <div class="sf-part__body sf-sheet">
+                <div class="sf-sheet__bar"><span class="sf-sheet__name">B1</span><input class="sf-sheet__input" type="text" aria-label="Cell input" value="=Avg([measures.value])"><span class="sf-sheet__lab">Format</span><select class="sf-sheet__fmt" aria-label="Format"><option>General</option><option selected>0.00</option></select><input class="sf-sheet__fmtx" type="text" placeholder="key:lot" aria-label="Format, typed"><button type="button" class="sf-btn sf-sheet__key">Key</button></div>
+                <div class="sf-sheet__say">3 values — wrap in an aggregate</div>
+                <div class="sf-sheet__wrap">
+                  <table class="sf-table sf-sheet__grid">
+                    <tr><th class="sf-table__corner"></th><th class="sf-table__col">A</th><th class="sf-table__col">B</th><th class="sf-table__col">C</th></tr>
+                    <tr><th class="sf-table__row">1</th><td class="is-key">L1 · 05</td><td class="is-num is-sel">3.14</td><td class="is-num">12</td></tr>
+                    <tr><th class="sf-table__row">2</th><td>temp</td><td class="is-err" title="3 values — wrap in an aggregate">#MANY</td><td class="is-num">1,235</td></tr>
+                    <tr><th class="sf-table__row">3</th><td></td><td class="is-err" title="No value named nope on lot_slot">#NAME?</td><td></td></tr>
+                  </table>
+                </div>
+              </div>
             </section>
             <div class="sample-sf-left-bar">
               <nav class="sf-banner"><button type="button" class="sf-banner__b is-on" title="Visualization types"><svg viewBox="0 0 24 24"><path d="M4 12h4v9H4zM10 7h4v14h-4zM16 3h4v18h-4z"/></svg></button></nav>
