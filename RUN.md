@@ -114,19 +114,12 @@
 > 되돌리기  git revert $(git log -1 --format=%h --grep="re-translate says each stage")
 > ```
 
-> ## [10-13] 🔴 **원장 다시 번역이 쪽마다 원장 «통째»를 두 번 읽는다 — 원장 ref 인덱스가 파티션에 없으면 (구현자 B 실측, 소유자 「재번역 5초에 1개도 안됨」)** — 먼저 이것 · 재기동 없음 · 쓰기를 안 막음
+> ## [10-13] ⚰️ **원장 ref 인덱스 손 명령 — 이제 체인 워커가 짓는다(17d8ea0d6, 위 절)** — 이 절의 «먼저 이것»은 내림
 >
 > ```
-> 왜       다시 번역의 쪽 하나 = «거둘 원자 세기» + «거둔 원자 지우기» — 둘 다 source_who = … AND source_raw_ref = ANY(…) 로 원장을 친다
->          그 문장이 타는 인덱스는 idx_ledger_events_source_raw_ref_hash 하나. 서버 기동은 부모 쪽 껍데기만 짓고(valid = false),
->          이미 있는 파티션의 인덱스는 아래 명령으로만 생긴다 — 없으면 쪽마다 원장 전부를 두 번 훑는다(한 백엔드 = 코어 하나라 CPU 는 낮게 보임)
-> 박스 실측  원자 238만 · 파티션 8 개 모두 없음: 그 문장 하나가 ref 1 개에도 1.0~3.0 s(인덱스를 끈 대조군과 같은 초). 원자가 더 많으면 더 길다
-> 미리보기   python server/scripts/build_ledger_ref_index.py
-> 답의 뜻   파티션마다 «already» · 끝에 «the parent index is valid» -> 이미 있음 — 다시 번역이 느린 것은 다른 원인(아래 절 «무엇을 기다리나»)
->          «would build N» -> 없는 것이 그 수만큼. 아래 --apply
-> 만들기    python server/scripts/build_ledger_ref_index.py --apply      (파티션마다 CONCURRENTLY · 한 줄씩 · 다시 돌려도 이미 있는 것은 안 지음)
->          끝 줄 «the parent index is valid» 가 나오면 끝. 그다음 다시 번역을 다시 돌림
-> ⚠️ 안 잰 것  운영 크기에서 만드는 데 걸리는 시간 · 만든 뒤 쪽마다 몇 초가 되는지
+> 🔴 체인 워커가 짓는 동안(기동 · Reload 직후, server.log 에 원장 인덱스 짓는 줄) build_ledger_ref_index.py --apply 를 «같이» 돌리지 않는다
+>    두 짓는 쪽이 겹치면 교착 — 하나는 실패하고 다른 하나는 처음부터 다시 짓는다(박스 300만 행: 혼자 9.3 s -> 겹치면 21.3 s, 총괄 검수 10-13). 고침은 구현자 B 다음 커밋
+> 손 명령은 미리보기(--apply 없이)로 상태만 보는 데 쓴다 — «already» 면 끝, «would build» 면 체인 워커를 재기동(또는 Reload)해 맡긴다
 > ```
 
 > ## [10-13] **급한 손 — 400만 행 표 검색 40 초: 검색 칸에 글자 찾기 인덱스 (소유자 「400만행 표는 이제 검색 40초 걸린다」)** — 재기동 없음 · 되돌릴 수 있음
