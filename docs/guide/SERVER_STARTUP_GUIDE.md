@@ -39,7 +39,7 @@ python run_decoupled_app.py
 웹서버(:8080) + 워커 4종의 **5프로세스**가 한 번에 뜹니다. 절차·정지·헬스 판정은 [SYSTEM_OVERVIEW §7](../overview/SYSTEM_OVERVIEW.md)이 정본입니다.
 
 ## 4. 성능 모니터링 및 검증
-서버 콘솔 로그를 통해 현재 쿼리 성능을 실시간으로 확인할 수 있습니다.
+서버 콘솔 로그를 통해 현재 쿼리 성능을 실시간으로 확인할 수 있습니다. 🆕 10-13 그리드 쪽 줄(`[get_table_data] Total …`)은 그리드 프로세스의 `grid_pool.log` 에 나옵니다(`grid_processes: 0` 이면 서버 로그).
 
 *   **정상 수치**: 
     *   `ID Scan`: 0.1s 미만 (인덱스 전용 스캔)

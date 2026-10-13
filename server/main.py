@@ -2777,9 +2777,8 @@ def _filtered_column_count(filters) -> int:
 
 
 # [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
-@app.get("/tables/{table_name}/data")
 @grid_read
-def get_table_data(
+def grid_page(
     table_name: str, 
     skip: int = 0, 
     limit: int = 500, 
@@ -2796,7 +2795,8 @@ def get_table_data(
     world: str = None,                  # 세상마다 있는 표를 그 세상에서 (총괄 2bb20ff56)
     after: str = None,                  # 앞 쪽의 마지막 행 row_id - 다음 쪽을 열쇠로 (총괄 e570dcda5, key_page)
     before: str = None,                 # 뒤 쪽의 첫 행 row_id - 앞 쪽을 열쇠로
-    db: Session = Depends(get_db)
+    counted: dict = None,               # the door's count (`grid_count`) - taken in the server process, not here
+    db: Session = None
 ):
     """
     Lazy Loading을 위한 페이징 엔드포인트
@@ -2819,7 +2819,6 @@ def get_table_data(
     """
     t_total_start = time.time()
     t_target = 0.0
-    t_count = 0.0
     
     table_model = grid_model(table_name, world)
     if not table_model:
@@ -2936,11 +2935,7 @@ def get_table_data(
     # 🔴 `defer_total`이면 캐시도 보지 않는다. 히트를 먼저 보면 「보통은 빠르고 가끔
     #    2초」라는 지금 그 진동이 그대로 남고, 이 라운드가 없애려는 것이 바로 그것이다.
     #    `None`으로 나가고 `/data/count`가 같은 키로 답한다.
-    total_count, counted = None, None
-    if not defer_total:
-        t_tmp = time.time()
-        counted = table_total(db, table_name, world, table_model, query, cache_key)
-        total_count, t_count = counted["total"], time.time() - t_tmp
+    total_count = None if counted is None else counted["total"]   # the door counted it (총괄 e570dcda5 ㄴ)
     
     from sqlalchemy.sql import func
     # `final_sort` 는 [Step 0] 에서 이미 해석됐다 — 이름을 «한 자리**에서만 읽는다.
@@ -3040,10 +3035,10 @@ def get_table_data(
     # (declaration lookup, the filter build, the response wrapper), so without this term
     # the line's parts silently fail to add up to its own total - and a reader would
     # subtract them by hand and get a number nobody named.
-    t_other = t_total - (t_target + t_count + t_id_scan + t_row_scan + t_dict)
+    t_other = t_total - (t_target + t_id_scan + t_row_scan + t_dict)
     logger.info(
         f"[get_table_data] Total: {t_total:.3f}s | Target: {t_target:.3f}s | "
-        f"Count: {t_count:.3f}s | ID Scan: {t_id_scan:.3f}s | "
+        f"ID Scan: {t_id_scan:.3f}s | "
         f"Entity Fetch: {t_row_scan:.3f}s | Layer Merge: {t_dict:.3f}s | "
         f"Other: {t_other:.3f}s | table={table_name} rows={len(data_list)} "
         # ⛔ THE SEARCH TERM IS MASKED, NOT LOGGED (판정 09-10 13:09). This line is now
@@ -3082,6 +3077,58 @@ def get_table_data(
     }, table_name)
 
 
+from runtime import process_pool  # noqa: E402
+
+grid_page = process_pool.in_pool(grid_page, pool=process_pool.GRID)
+
+
+def grid_count(db, table_name, world, table_model, **narrowing):
+    """A grid read's count - `table_total` over `narrowed_table_query` - in the server process, where the kept counts,
+    their worker and their invalidation live (총괄 e570dcda5 ㄴ): the /data door and /data/count."""
+    query, cache_key = narrowed_table_query(db, table_name, table_model, **narrowing)
+    return table_total(db, table_name, world, table_model, query, cache_key)
+
+
+@app.get("/tables/{table_name}/data")
+def get_table_data(
+    table_name: str,
+    skip: int = 0,
+    limit: int = 500,
+    q: str = None,
+    cols: str = None,
+    order_by: str = "row_id",
+    order_desc: bool = False,
+    target_row_id: str = None,
+    transaction_id: str = None,
+    filters: str = None,
+    enrichment_queue: str = None,
+    enrichment_queue_scope: str = None,
+    defer_total: bool = False,
+    world: str = None,
+    after: str = None,
+    before: str = None,
+    db: Session = Depends(get_db)
+):
+    """🔴 THE ONE DOOR OF A GRID PAGE (총괄 e570dcda5 ㄴ): its count here, in the server process (`grid_count`), and
+    its page in the grid pool (`grid_page`, `grid_processes` - 0: here). Every caller of /data passes this door - the
+    grid, the map editor, the R&D board, the admin cards; no code calls the two halves apart. A sort name it cannot
+    sort by is refused before anything is counted."""
+    counted = None
+    if not defer_total:
+        table_model = grid_model(table_name, world)
+        if not table_model:
+            raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+        resolve_sort(None, table_model, table_name, order_by, order_desc)
+        counted = grid_count(db, table_name, world, table_model, q=q, cols=cols, transaction_id=transaction_id,
+                             filters=filters, enrichment_queue=enrichment_queue,
+                             enrichment_queue_scope=enrichment_queue_scope)
+    return grid_page(table_name=table_name, skip=skip, limit=limit, q=q, cols=cols, order_by=order_by,
+                     order_desc=order_desc, target_row_id=target_row_id, transaction_id=transaction_id,
+                     filters=filters, enrichment_queue=enrichment_queue,
+                     enrichment_queue_scope=enrichment_queue_scope, defer_total=defer_total, world=world,
+                     after=after, before=before, counted=counted, db=db)
+
+
 @app.get("/tables/{table_name}/data/count")
 @grid_read
 def get_table_data_count(
@@ -3114,11 +3161,9 @@ def get_table_data_count(
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
-    query, cache_key = narrowed_table_query(
-        db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
-        filters=filters, enrichment_queue=enrichment_queue,
-        enrichment_queue_scope=enrichment_queue_scope)
-    counted = table_total(db, table_name, world, table_model, query, cache_key)
+    counted = grid_count(db, table_name, world, table_model, q=q, cols=cols, transaction_id=transaction_id,
+                         filters=filters, enrichment_queue=enrichment_queue,
+                         enrichment_queue_scope=enrichment_queue_scope)
     return {"table_name": table_name, **counted}
 
 import json

@@ -208,7 +208,7 @@ def test_the_timing_line_carries_the_shape_and_not_the_content():
 
     import main
 
-    body = inspect.getsource(main.get_table_data)
+    body = inspect.getsource(main.grid_page)
     assert "filters={_filtered_column_count(filters)}" in body, body[-1400:]
     assert "target={'set' if target_row_id else '-'}" in body, body[-1400:]
     assert "filters={filters}" not in body, "the filter object must never reach the line"
@@ -223,7 +223,7 @@ def test_the_timing_line_says_whether_a_search_was_set_and_never_what_it_was():
 
     import main
 
-    body = inspect.getsource(main.get_table_data)
+    body = inspect.getsource(main.grid_page)
     # ⚰️ THE FLAG GREW A NUMBER (S-125, 판정 255). `set` alone could not say WHICH scope
     # answered, and the scope is now declarable - so two searches of the same table could
     # build 3 arms or 31 and read identically here. The term itself still never appears.
