@@ -16,7 +16,7 @@ import { StatusPart } from './status_part.js';
 import { FiltersPart } from './filters_part.js';
 import { PropertiesPart } from './properties_part.js';
 import { SlotPicker } from './picker.js';
-import { HubBook } from './hubs.js';
+import { HubBook, isHubId } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
 import { GraphBook, MarkingLayers } from './marking_layer.js';
 import { kind as scatterKind } from './kinds/scatter.js';
@@ -176,6 +176,12 @@ export async function boot(deps) {
     askKeys: ({ type, startsWith }) => fetchKeyValues({ apiBase, fetchImpl, type, startsWith, limit: 20 }),
     onAdd: (kind) => add(kind),
   };
+  // What was marked when it was saved - the start too, a hub with its members (Spotfire keeps the markings in the file):
+  // in the stores before the parts are seated, so they walk from it.
+  if (saved && !Array.isArray(saved)) {
+    for (const [id, members] of Object.entries(saved.hubs || {})) hubs.put(id, members);
+    for (const [name, entries] of Object.entries(saved.marks || {})) markings.replace(name, entries);
+  }
   const layout = laidOut(LAYOUT, saved, entities());
   shell.render(bound(layout, shared));
   const firstVisual = layout.panels.find((p) => p.part === 'visual');
@@ -193,7 +199,10 @@ export async function boot(deps) {
   const declarations = () => shell.layoutNow().panels.filter((p) => p.part === 'visual');
   /** What Save writes and the next boot lays over the layout: the tree, the visuals and the markings. */
   const save = () => {
-    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list') };
+    const names = markingList.get('list').map((m) => m.name);
+    const marks = Object.fromEntries(names.map((name) => [name, markings.entries(name)]).filter(([, entries]) => entries.length));
+    const held = Object.fromEntries([...new Set(Object.values(marks).flat().map(([id]) => id))].filter(isHubId).map((id) => [id, hubs.membersOf(id)]));
+    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };
     try { if (storage) storage.setItem(SAVED, JSON.stringify(kept)); } catch (e) { /* not kept */ }
     return kept;
   };

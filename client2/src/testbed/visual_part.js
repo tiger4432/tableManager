@@ -16,7 +16,7 @@
 // markings' limit -> drawn.
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
-import { indexGraph } from '../walk/reach_table.js';
+import { indexGraph, valuesAt } from '../walk/reach_table.js';
 import { readSlot, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId } from './hubs.js';
@@ -352,8 +352,12 @@ export class VisualPart extends Panel {
     if (!this.index || !this.kind) return [];
     const encode = this.decl.encode || {};
     const received = this.rowsOf(this.answer);
-    return this.slotList().filter((s) => encode[s.key]).map((s) => {
-      const slot = encode[s.key];
+    // its slots, then the rows' own values (keys, attributes - the walk table's «+ Column» values at no step) a filter can
+    // take too (the 18766 run: «+ Add filter» offered the axes only)
+    const held = new Set(Object.values(encode).filter((s) => s && Array.isArray(s.steps) && !s.steps.length && s.value).map((s) => `${s.value.on}:${s.value.name}`));
+    const own = valuesAt(this.index, received, []).filter((v) => !held.has(`${v.on}:${v.name}`))
+      .map((value) => ({ key: `own:${value.on}:${value.name}`, slot: { steps: [], value, words: [value.on === 'label' ? 'name' : value.name] } }));
+    return [...this.slotList().filter((s) => encode[s.key]).map((s) => ({ key: s.key, slot: encode[s.key] })), ...own].map(({ key, slot }) => {
       const counts = new Map();
       let empty = 0;
       for (const id of received) {
@@ -362,7 +366,7 @@ export class VisualPart extends Panel {
         if (!values.length) empty += 1;
         for (const v of values) counts.set(JSON.stringify(v), [v, (counts.get(JSON.stringify(v)) || [v, 0])[1] + 1]);
       }
-      return { key: s.key, words: slotWords(slot), slot, row: this.decl.row, values: [...counts.values()], empty };
+      return { key, words: slotWords(slot), slot, row: this.decl.row, values: [...counts.values()], empty };
     });
   }
 

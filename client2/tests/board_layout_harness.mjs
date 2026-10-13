@@ -144,6 +144,7 @@ async function seated(M) {
   part.mount();
   await settle();
   const before = (({ rows, of, limit, hidden, marked }) => ({ rows, of, limit, hidden, marked }))(stats.get('T'));
+  const filterable = stats.get('T').slots.map((s) => [s.key, s.words]);
   markings.set('marking:lim', 'W4', SIGN.CASE);
   await settle();
   const after = part.model.lines.map((l) => l.id);
@@ -154,7 +155,7 @@ async function seated(M) {
   press('W4', true);
   const added = picked();
   press('W1', false);
-  return { before, after, added, replaced: picked() };
+  return { before, after, added, replaced: picked(), filterable };
 }
 
 async function shells(M) {
@@ -304,12 +305,13 @@ async function chains(M) {
   // K5: Save, then a new page from it - the markings and the chain's declarations
   p.save();
   const again = await page(M, storage, chainAnswer);
+  const marksKept = [m3, m4, m5].map((name) => again.markings.entries(name).map(([id]) => id));
   const decl = (q, id) => { const s = q.shell.partOf(id); if (!s) return null; const d = s.declaration(); return [d.start && d.start.marking, d.writes]; };
   const before2 = again.asked.length;
   if (again.shell.partOf(a)) again.shell.partOf(a).mark(['W2'], {});
   await settle();
   out.reopen = { labels: again.markingBook.list.get('list').map((m) => m.label), chain: [decl(again, a), decl(again, b), decl(again, c)],
-    walks: seedsAsked(again.asked.slice(before2)) };
+    walks: seedsAsked(again.asked.slice(before2)), marksKept };
   const older = memoryStorage();
   older.setItem('testbed:visuals', JSON.stringify({ root: again.shell.layoutNow().root, visuals: again.declarations() }));
   out.olderSave = (await page(M, older, chainAnswer)).markingBook.list.get('list').map((m) => m.label);
@@ -682,6 +684,7 @@ async function suite(M) {
     judge('L4 a limited part counts the limit\'s drop apart: a marked row it leaves out is not hidden; a limiting marking changed, it folds again',
       { before: one.before, after: one.after }, { before: { rows: 1, of: 4, limit: 3, hidden: 0, marked: 1 }, after: ['W1', 'W4'] }),
     judge('T2 a table line pressed with Ctrl joins the pick; pressed alone it is the pick', [one.added, one.replaced], [['W2', 'W4'], ['W1']]),
+    judge('F1 a filter can take a slot or a row\'s own value - its keys and attributes, not only the axes', one.filterable, [['col1', 'name'], ['own:key:wafer', 'wafer']]),
     judge('K1 markings added: the next free names, «Marking (n)», each its own colour', k.added,
       { names: ['marking:3', 'marking:4', 'marking:5'], labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'], colours: true }),
     judge('K1b a chain declared: B walks from what A marks, C from what B marks', k.built,
@@ -696,7 +699,7 @@ async function suite(M) {
         self: ['marking:3', 'S', 'marking:3'], limitIsNoStep: null }),
     judge('K5 Save keeps the markings and the chain; a new page from it follows the chain; an older save opens on the default markings',
       { ...k.reopen, olderSave: k.olderSave }, { labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'],
-        chain: [['marking:start', 'marking:3'], ['marking:3', 'marking:4'], ['marking:4', 'marking:5']], walks: ['W2'], olderSave: ['Start', 'Pick'] }),
+        chain: [['marking:start', 'marking:3'], ['marking:3', 'marking:4'], ['marking:4', 'marking:5']], walks: ['W2'], marksKept: [['W1'], ['W2'], ['W3']], olderSave: ['Start', 'Pick'] }),
     judge('K4 a marking deleted: its users named first; the part writing it writes none, the part walking from it walks from All (once), a limit loses it; the start row\'s marking not deleted, named; a new one takes the next free name',
       k.deleted, { shown: ['marking:start', 'marking:pick', 'marking:3', 'marking:4', 'marking:5'], ask: ['Used by Marked, wafer, wafer'],
         after: ['marking:start', 'marking:pick', 'marking:3', 'marking:5', 'marking:6'], b: ['marking:3', null], c: [null, 'marking:5'],
@@ -774,7 +777,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    this.root = dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
       '    this.render({ ...this.layoutNow(), root: dockLeaf(this.root, id, targetId, edge) });') },
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
-    mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list') };", '    const kept = declarations();') },
+    mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',
     mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });",
       "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], {}); });") },
@@ -785,6 +788,8 @@ const MUTANTS = [
       '    for (const from of markingsOf(d).limit) { if (!next.has(from)) next.set(from, []); next.get(from).push([d.id, emits]); }\n    if (!next.has(start)) next.set(start, []);') },
   { id: 'M14', what: 'Save leaves the markings out - a reopen has the default two', catches: 'K5 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, ", markings: markingList.get('list'), relations", ', relations') },
+  { id: 'M27', what: 'Save keeps no marks - a reopen starts unmarked', catches: 'K5 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, '    for (const [name, entries] of Object.entries(saved.marks || {})) markings.replace(name, entries);', '') },
   { id: 'M15', what: 'a marking a docked panel writes is deleted too', catches: 'K4 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, '      if (fixed.length) return', '      if (fixed.length && false) return') },
   { id: 'M16', what: 'a marked mark keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/color_by.js', key: 'color',
