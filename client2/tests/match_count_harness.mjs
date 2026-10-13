@@ -25,6 +25,7 @@ import { loadWithProbe } from './lib/probe.mjs';//
 //    있습니다. 제가 그것을 안 찾고 두 번째 경로를 지었고, 그게 기준 ④ 위반입니다.
 //    -> 정본 하나로 모읍니다. 제 헬퍼는 삭제했습니다.
 import * as BASELINE from '../src/match_count.js';
+import { localStamp } from '../src/server_time.js';
 
 const SRC_PATH = fileURLToPath(new URL('../src/match_count.js', import.meta.url));
 
@@ -43,12 +44,15 @@ function ok(name, cond, saw) {
   else { failed++; console.log(`  FAIL ${name}${saw === undefined ? '' : `  saw: ${JSON.stringify(saw)}`}`); }
 }
 
-/** An element stub with the one thing `setMatchCount` touches beyond textContent. */
+/** An element stub with what `setMatchCount` touches beyond textContent - its mark and its hover line. */
 const mkEl = () => {
   const flags = new Set();
+  const attrs = {};
   return {
-    textContent: '',
+    textContent: '', attrs, style: {},
     classList: { toggle(name, on) { if (on) flags.add(name); else flags.delete(name); } },
+    setAttribute(k, v) { attrs[k] = String(v); },
+    removeAttribute(k) { delete attrs[k]; },
     has: (name) => flags.has(name),
   };
 };
@@ -63,8 +67,8 @@ console.log('\n── A. THREE ANSWERS, THREE TEXTS ─────────�
   const counted = X.matchCountText(12);
   const none = X.matchCountText(0);
   const unknown = X.matchCountText(null);
-  ok('A1 a number is the number', counted === '12', counted);
-  ok('A2 zero is zero', none === '0', none);
+  ok('A1 a number is the number of rows', counted === '12 rows', counted);
+  ok('A2 zero is zero rows', none === '0 rows', none);
   // 🔴 THE PAIR THIS FILE EXISTS FOR. Either of these alone passes with the defect in place.
   ok('A3 an unknown count is neither of those', unknown !== none && unknown !== counted, unknown);
   ok('A4 ... and it says it is still counting', unknown.includes(X.COUNTING), unknown);
@@ -89,7 +93,7 @@ console.log('\n── B. THE ELEMENT IS MARKED, AND ZERO IS NOT UNKNOWN ──�
   const none = mkEl();
   X.setMatchCount(none, 0);
   ok('B3 zero is a COUNTED answer and carries no mark',
-    !none.has('is-counting') && none.textContent === '0',
+    !none.has('is-counting') && none.textContent === '0 rows',
     { mark: none.has('is-counting'), text: none.textContent });
   ok('B4 a missing element is not an error', (() => {
     try { X.setMatchCount(null, 3); return true; } catch (e) { return false; }
@@ -124,6 +128,80 @@ console.log('\n── C. PAGING: UNKNOWN IS NOT ONE PAGE ───────�
     && none.nextDisabled !== unknown.nextDisabled, [none, unknown]);
 }
 
+// ── D. THE COUNT IS «AS OF» A TIME (ㄱ-1: implementer A 67e5e9ccd, lead 10-13) ─────────────────
+const AT = '2026-10-13T07:00:00+00:00';
+const NOW = Date.parse(AT) + 10000;
+const WHOLE = { total: 4012334, capped: false, counted_at: AT, count_seconds: 1.6, counting: false };
+function dChecks(M) {
+  const el = mkEl();
+  let now = NOW;
+  const timers = [];
+  const stopped = [];
+  const clock = { now: () => now, every: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, stop: (h) => stopped.push(h) };
+  M.setMatchCount(el, WHOLE, clock);
+  const first = [el.textContent, el.attrs.title];
+  const floorCounted = el.style.minWidth;
+  now += 50000;
+  for (const tm of timers) tm.fn();
+  const ticked = [el.textContent, timers.map((tm) => tm.ms)];
+  M.setMatchCount(el, { total: 10000, capped: true }, clock);
+  const next = [el.textContent, stopped.slice(), timers.length, el.matchAgeTimer, 'title' in el.attrs];
+  const floorCapped = el.style.minWidth;
+  M.setMatchCount(el, { total: null, counting: true }, clock);
+  const floorCounting = el.style.minWidth;
+  M.setMatchCount(el, null, clock);
+  const floorUnasked = el.style.minWidth;
+  M.setMatchCount(el, { failed: { reason: 'HTTP 503' } }, clock);
+  const failedFloor = el.style.minWidth;
+  const capFull = M.pagingView({ total: 10000, capped: true }, 0, LIMIT, LIMIT);
+  const capShort = M.pagingView({ total: 10000, capped: true }, 250, LIMIT, 20);
+  const countingShort = M.pagingView({ total: null, counting: true }, 0, LIMIT, 7);
+  const cOf = (x) => M.countOf(x);
+  return [
+    ['D1 the table whole: its count and how long ago it was counted', M.matchCountText(WHOLE, NOW) === '4,012,334 rows · 10s ago', M.matchCountText(WHOLE, NOW)],
+    ['D2 a narrowed read past the cap: 10,000+, no age', M.matchCountText({ count: { total: 10000, capped: true, counted_at: AT } }, NOW) === '10,000+ rows'],
+    ['D3 an answer not counted yet says it is counting - the server\'s counting and a deferred page alike; a read never asked stays «…»',
+      M.matchCountText({ total: null, counting: true }, NOW) === 'Counting rows…' && M.matchCountText({ data: [], total: null }) === 'Counting rows…'
+        && M.matchCountText(null) === M.COUNTING],
+    ['D4 one row is a row', M.matchCountText(1) === '1 row'],
+    ['D5 the number alone, for a word before it: 10,050+ · 4,012,334', M.countNumberText({ total: 10050, capped: true }) === '10,050+' && M.countNumberText(4012334) === '4,012,334'],
+    ['D6 hover: when it was counted (the viewer\'s zone) and the seconds it took', first[1] === `Counted ${localStamp(AT)} · took 1.6 s`, first[1]],
+    ['D7 the age is drawn again every 10 s from the same count - nothing asked', first[0] === '4,012,334 rows · 10s ago' && ticked[0] === '4,012,334 rows · 1m ago'
+      && JSON.stringify(ticked[1]) === '[10000]', ticked],
+    ['D8 the next count stops the old timer; a count with no age starts none and has no hover line',
+      next[0] === '10,000+ rows' && JSON.stringify(next[1]) === '[1]' && next[2] === 1 && next[3] === null && next[4] === false, next],
+    ['D9 10,000+: 200+ pages, next stays on a full page and goes off on a short one', capFull.totalPagesText === '200+' && capFull.totalPages === null
+      && capFull.nextDisabled === false && capShort.nextDisabled === true, [capFull, capShort]],
+    ['D10 still counting: a short page is the end too', countingShort.nextDisabled === true && countingShort.totalPagesText === M.COUNTING, countingShort],
+    // A kept count can be old (lead 0fd18ae19 5): its last page that came back full is not the end.
+    ['D11 an exact count ends by its own pages and a short page - a full last page keeps next on',
+      M.pagingView({ total: 100, capped: false }, 50, LIMIT, 50).nextDisabled === false
+      && M.pagingView({ total: 100, capped: false }, 50, LIMIT, 30).nextDisabled === true
+      && M.pagingView({ total: 100, capped: false }, 50, LIMIT).nextDisabled === true
+      && M.pagingView(120, 50, LIMIT, 50).nextDisabled === false],
+    // A count the server could not make says so (lead 0fd18ae19 6) - neither «Counting rows…» nor a number.
+    ['D15 a failed count: «Count failed (<reason>)», not counting; a held count with a failed recount stays its number',
+      M.matchCountText({ table_name: 't', total: null, capped: false, counted_at: null, count_seconds: null, counting: false,
+        failed: { reason: 'count stopped after 10 s', at: AT } }) === 'Count failed (count stopped after 10 s)'
+      && M.countOf({ total: null, failed: { reason: 'x' } }).counting === false
+      && M.matchCountText({ total: 7, failed: { reason: 'x', at: AT } }) === '7 rows'],
+    ['D16 ... and its floor is the words, so a narrow bar never cuts it to a lone «…»', failedFloor === '13ch', failedFloor],
+    ['D17 ... and its hover is the whole line and when, as a narrow bar cuts the reason',
+      M.matchCountTitle({ total: null, failed: { reason: 'count stopped after 10 s', at: AT } }) === `Count failed (count stopped after 10 s) · ${localStamp(AT)}`
+      && M.matchCountTitle({ total: null, failed: { reason: 'HTTP 503' } }) === 'Count failed (HTTP 503)'],
+    ['D12 a live row moves an exact count, not a 10,000+ one nor an unknown one', M.shiftCount(WHOLE, 1).total === 4012335
+      && M.shiftCount({ total: 10000, capped: true }, -1).total === 10000 && M.shiftCount(null, 1).total === null && M.shiftCount({ total: 0 }, -1).total === 0],
+    ['D14 a narrow bar cuts the tail, never the number: the floor is the number and its «…» - 4,012,334 · 10,000+ · Counting · a lone «…»',
+      JSON.stringify([floorCounted, floorCapped, floorCounting, floorUnasked]) === JSON.stringify(['10ch', '8ch', '9ch', '1ch']),
+      [floorCounted, floorCapped, floorCounting, floorUnasked]],
+    ['D13 the shapes the server sends read alike - /data\'s count, /data/count\'s answer, a plain number',
+      cOf({ data: [], total: 7, count: { total: 7, capped: false, counted_at: AT } }).countedAt === AT
+        && cOf({ table_name: 't', total: 7, counted_at: AT, counting: false }).countedAt === AT && cOf(7).total === 7 && cOf(7).countedAt === null],
+  ];
+}
+console.log('\n── D. THE COUNT IS «AS OF» A TIME ─────────────────────────────────');
+for (const [name, cond, saw] of dChecks(X)) ok(name, cond, saw);
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}. `
@@ -133,8 +211,7 @@ const swap = (from, to) => (src) => {
 
 const DEFECTS = [
   ['M1 an unknown count falls back to zero',
-    swap('return `${isCounted(total) ? total : COUNTING}`;',
-      'return `${isCounted(total) ? total : 0}`;')],
+    swap('const total = isCounted(c.total) ? c.total : null;', 'const total = isCounted(c.total) ? c.total : 0;')],
   ['M2 the counting mark is blank, so unknown reads as an empty field',
     swap("export const COUNTING = '…';", "export const COUNTING = '';")],
   ['M3 anything non-null counts, so `null` prints itself',
@@ -144,11 +221,31 @@ const DEFECTS = [
     swap('const totalPages = counted ? (Math.ceil(total / pageLimit) || 1) : null;',
       'const totalPages = Math.ceil(total / pageLimit) || 1;')],
   ['M5 next is switched off while the count is unknown',
-    swap('nextDisabled: counted ? currentPage >= totalPages : false,',
+    swap('nextDisabled: counted ? currentPage >= totalPages && !(isCounted(shown) && shown >= pageLimit) : isCounted(shown) && shown < pageLimit,',
       'nextDisabled: currentPage >= totalPages,')],
   ['M6 the element mark is set by truthiness, so a real zero reads as still counting',
-    swap("if (el.classList) el.classList.toggle('is-counting', !isCounted(total));",
-      "if (el.classList) el.classList.toggle('is-counting', !total);")],
+    swap("if (el.classList) el.classList.toggle('is-counting', c.total === null);",
+      "if (el.classList) el.classList.toggle('is-counting', !c.total);")],
+  // ── ㄱ-1 (lead 10-13) ──
+  ['N1 10,000+ loses its +', swap("${c.capped ? '+' : ''}", '')],
+  ['N2 the age is not said', swap('return at ? `${rows} · ${ageText(Math.max(0, (now - at.getTime()) / 1000))} ago` : rows;', 'return rows;')],
+  ['N3 a capped count says an age', swap('const at = c.capped ? null : parseServerInstant(c.countedAt);', 'const at = parseServerInstant(c.countedAt);')],
+  ['N4 a read never asked says it is counting', swap('return c.counting ? COUNTING_ROWS : COUNTING;', 'return COUNTING_ROWS;')],
+  ['N5 the age is never drawn again', swap('el.matchAgeTimer = c.countedAt && !c.capped ? clock.every(draw, AGE_EVERY_MS) : null;', 'el.matchAgeTimer = null;')],
+  ['N6 the old timer runs on beside the new count', swap('  if (el.matchAgeTimer) clock.stop(el.matchAgeTimer);\n', '')],
+  ['N7 the timer draws the age it had', swap('const draw = () => { el.textContent = matchCountText(c, clock.now()); };',
+    'const drawn = matchCountText(c, clock.now()); const draw = () => { el.textContent = drawn; };')],
+  ['N8 10,000+ is taken for an exact count, so paging ends at its 200 pages', swap('const counted = total !== null && !capped;', 'const counted = total !== null;')],
+  ['N9 a 10,000+ page that came back short still offers next', swap('isCounted(shown) && shown < pageLimit,', 'false,')],
+  ['N10 a live row moves a 10,000+ count', swap('return c.total === null || c.capped ? c :', 'return c.total === null ? c :')],
+  ['N11 /data\'s count is not read', swap("(x.count !== null && typeof x.count === 'object' ? x.count : x)", 'x')],
+  ['N13 the bar has no floor, so a narrow one cuts the number', swap("  if (el.style) el.style.minWidth = `${floor.length + (floor === el.textContent ? 0 : 1)}ch`;\n", '')],
+  ['N14 the floor leaves no room for the «…», so the ellipsis eats the last digit', swap('(floor === el.textContent ? 0 : 1)', '0')],
+  ['N12 the hover line drops the seconds it took', swap("${c.seconds === null ? '' : ` · took ${c.seconds} s`}", '')],
+  ['N15 an exact count\'s last page that came back full offers no next', swap('currentPage >= totalPages && !(isCounted(shown) && shown >= pageLimit)', 'currentPage >= totalPages')],
+  ['N16 a failed count reads as still counting', swap('  if (c.failed) return c.failed.reason ? `${COUNT_FAILED} (${c.failed.reason})` : COUNT_FAILED;\n', '')],
+  ['N17 a failed count\'s floor is a lone «…»', swap(': c.failed ? COUNT_FAILED : c.counting', ': c.counting')],
+  ['N18 a failed count has no hover, so a cut reason is lost', swap('  if (c.failed) return c.failed.at ? `${matchCountText(c)} · ${localStamp(c.failed.at)}` : matchCountText(c);\n', '')],
   ['M7 NaN is treated as a counted number',
     swap('typeof total === \'number\' && Number.isFinite(total)',
       "typeof total === 'number'")],
@@ -169,8 +266,8 @@ function verdict(M) {
   const unknown = M.pagingView(null, 0, LIMIT);
   const none = M.pagingView(0, 0, LIMIT);
   const counted = M.pagingView(120, 0, LIMIT);
-  return M.matchCountText(12) !== '12'
-    || M.matchCountText(0) !== '0'
+  return M.matchCountText(12) !== '12 rows'
+    || M.matchCountText(0) !== '0 rows'
     || M.matchCountText(null) === M.matchCountText(0)
     || !M.matchCountText(null).includes(M.COUNTING)
     || String(M.COUNTING).length === 0
@@ -183,7 +280,8 @@ function verdict(M) {
     || none.totalPages !== 1
     || none.nextDisabled !== true
     || counted.totalPages !== 3
-    || counted.nextDisabled !== false;
+    || counted.nextDisabled !== false
+    || dChecks(M).some(([, cond]) => !cond);
 }
 
 // 🔴 채점기가 «기준선»에서 조용한지 먼저 봅니다. 여기서 시끄러우면 아래 「잡았다」는 전부

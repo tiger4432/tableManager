@@ -13,7 +13,7 @@ import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state, gridFetch } from './state.js';
+import { state } from './state.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
@@ -32,7 +32,9 @@ import {
   discardPendingEdits,
   applyPendingEdits,
   overlayStagedEdits,
-  txToggled
+  txToggled,
+  fetchAllRows,
+  openExport
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -1092,52 +1094,15 @@ function setupEventListeners() {
 
       try {
         const chunkLimit = 3000; // 청크 단위로 분할 로드
-        let accumulatedData = [];
-        let totalRows = 0;
-        let currentSkipOffset = 0;
 
         elements.performanceLog.textContent = '⚡ 1/3. Fetching initial row chunk...';
 
-        // 1. 첫 번째 청크 요청하여 전체 개수(total)와 첫 데이터를 받아옴
-        const firstUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
-        const firstRes = await gridFetch(firstUrl);
-        if (!firstRes.ok) throw new Error(`HTTP error! status: ${firstRes.status}`);
-        const firstResult = await firstRes.json();
-
-        accumulatedData = firstResult.data || [];
-        totalRows = firstResult.total || 0;
-        currentSkipOffset += accumulatedData.length;
-
-        // 실시간 진행률 업데이트
-        if (totalRows > 0) {
-          const percent = Math.min(100, Math.floor((accumulatedData.length / totalRows) * 100));
-          elements.performanceLog.textContent = `⏳ 2/3. Fetching rows: ${percent}% (${accumulatedData.length} / ${totalRows})`;
-        } else {
-          elements.performanceLog.textContent = `⏳ 2/3. Fetching rows: 100% (0 / 0)`;
-        }
-
-        // 2. 전체 데이터 개수가 첫 번째 수집량보다 많다면 루프를 돌며 추가 청크 수집
-        while (accumulatedData.length < totalRows && currentSkipOffset < totalRows) {
-          // 브라우저 렌더링 프레임 양보하여 UI 갱신 보장
-          await new Promise(resolve => setTimeout(resolve, 5));
-
-          const nextUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
-          const nextRes = await gridFetch(nextUrl);
-          if (!nextRes.ok) throw new Error(`HTTP error! status: ${nextRes.status}`);
-          const nextResult = await nextRes.json();
-
-          const nextChunk = nextResult.data || [];
-          if (nextChunk.length === 0) {
-            // 더 이상 가져올 데이터가 없음 (서버 데이터 변동 가능성 대비 탈출)
-            break;
-          }
-
-          accumulatedData = accumulatedData.concat(nextChunk);
-          currentSkipOffset += nextChunk.length;
-
-          const percent = Math.min(100, Math.floor((accumulatedData.length / totalRows) * 100));
-          elements.performanceLog.textContent = `⏳ 2/3. Fetching rows: ${percent}% (${accumulatedData.length} / ${totalRows})`;
-        }
+        // The end is a short chunk (api.js fetchAllRows); the percent only against an exact count.
+        const { rows: accumulatedData } = await fetchAllRows(baseApiUrl, queryParams, chunkLimit, (n, known) => {
+          elements.performanceLog.textContent = known === null
+            ? `⏳ 2/3. Fetching rows: ${unitText(n, 'row')} so far`
+            : `⏳ 2/3. Fetching rows: ${known > 0 ? Math.min(100, Math.floor((n / known) * 100)) : 100}% (${n} / ${known})`;
+        });
 
         const fetchEndTime = performance.now();
         const totalFetchTime = (fetchEndTime - startTime).toFixed(0);
@@ -1155,7 +1120,7 @@ function setupEventListeners() {
         updateGridSortState();
 
         updateLoadedCount(accumulatedData.length);
-        setMatchCount(elements.totalRowsCount, totalRows);
+        setMatchCount(elements.totalRowsCount, accumulatedData.length);
         updateViewModeUI();
 
         const renderEndTime = performance.now();
@@ -1249,10 +1214,13 @@ function setupEventListeners() {
       showToast('📄 CSV download started', 'success');
 
       try {
-        const response = await gridFetch(url);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        const opened = await openExport(url);
+        if (opened.refused) {
+          elements.performanceLog.textContent = opened.refused;
+          showToast(opened.refused, 'error');
+          return;
         }
+        const response = opened.res;
 
         const totalBytesHeader = response.headers.get('X-Estimated-Content-Length') || response.headers.get('Content-Length');
         const totalBytes = totalBytesHeader ? parseInt(totalBytesHeader, 10) : 0;

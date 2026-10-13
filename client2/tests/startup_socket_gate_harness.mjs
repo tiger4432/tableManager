@@ -77,6 +77,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadWithProbe, readSourceText } from './lib/probe.mjs';
 import * as CFG from '../src/config.js';
+import { countOf as realCountOf } from '../src/match_count.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = (f) => join(HERE, '..', 'src', f);
@@ -293,7 +294,7 @@ async function drive(mut, {
       './timeline.js': { loadHistory: async () => {} },
       './utils.js': { showToast: noop, getLocalTimeString: () => '' },
       './value_suggest.js': { resetSuggestLearning: noop },
-      './match_count.js': { setMatchCount: noop },
+      './match_count.js': { setMatchCount: noop, countOf: realCountOf },
     },
     mutate: mut.api, tag: 'sgapi',
   });

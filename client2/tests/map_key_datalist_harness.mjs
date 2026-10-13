@@ -621,6 +621,17 @@ async function runChecks(src, { strict = true } = {}) {
     }
   }
 
+  // ── 1-quater-b. PAST THE SERVER'S COUNT CAP THE POPULATION IS «10,000+» (lead 0fd18ae19 7) ──
+  //   A narrowed read is counted up to 10,000 and says `capped` past it: `total` 10000 is not the population.
+  {
+    const capped = metaAnswer('valid_die_ref', 10000);
+    capped.body = { ...capped.body, count: { total: 10000, capped: true, counted_at: null, count_seconds: null, counting: false } };
+    const env = await build(src, { table: 'bonding_map', answers: [capped] });
+    await env.sandbox.populateValidDieRefList();
+    r.vdCappedTitle = env.el.validDieRefKey.title.includes('10,000+개 중');
+    if (strict) check('past the count cap the population says 10,000+, not 10000', r.vdCappedTitle, true);
+  }
+
   // ── 1-quinquies. THE KEY CONTROL'S SHAPE — <select> ONLY WHEN THE LIST IS THE WHOLE
   //   POPULATION (user request 2026-08-04: "valid die 리스트를 datalist 말고 preset과 같은
   //   형식으로 가능?").
@@ -1434,6 +1445,12 @@ const MUTATIONS = [
     repl: `      o.value = v.label ? (v.value + ' ' + v.label) : v.value; /* MUTANT */`,
     breaks: 'picking a candidate types the key and nothing but the key',
   },
+  {
+    name: 'M23 [MEDIUM] past the count cap the population is drawn as an exact 10000',
+    find: '${countNumberText(counted)}',
+    repl: '${total}',
+    breaks: 'past the count cap the population says 10,000+',
+  },
 ];
 
 // ── Controls (must ESCAPE) ──────────────────────────────────────────────────────
@@ -1522,6 +1539,8 @@ const CATCHES = {
       "...and the fixture specs really do discriminate (>1 distinct l",
     "M22 [HIGH] the label is folded into the option VALUE (the key stops being typeable)":
       "the datalist holds exactly the returned map_ids, sorted",
+    "M23 [MEDIUM] past the count cap the population is drawn as an exact 10000":
+      "past the count cap the population says 10,000+",
 };
 
 async function sweep(list, expectCaught, heading) {

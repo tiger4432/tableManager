@@ -1,4 +1,4 @@
-import{d as e,n as t}from"./tokens-JNgYoaf9.js";import{a as n}from"./absent-o9jpRT19.js";import{f as r,i,t as a}from"./disabled_reason-BP_E0n0W.js";import{t as o}from"./grid_image_column-B3uDJH4b.js";import{Q as s}from"./panel-DQRGKBJM.js";var c=`data-wk-styles`,l=`
+import{d as e,n as t}from"./tokens-C-bY7bCA.js";import{a as n}from"./absent-o9jpRT19.js";import{d as r,r as i}from"./ui_words-Dstj9_ze.js";import{t as a}from"./disabled_reason-BCuzM_C1.js";import{t as o}from"./grid_image_column-B3uDJH4b.js";import{Q as s}from"./panel-v4oE_8G-.js";var c=`data-wk-styles`,l=`
 /* The walk page's type, heights and spaces (lead 34d91c09d 8, 18da45b73; owner «간격 정리 넣어»): letters 13 (a line
    beside, the result tables - lead 10-11 W 12), 14 (body), 16 (titles); a control 44 high, a small one in a cell 28; every space a --space-* token.
    The screen gate asks all three of every element on the page. */

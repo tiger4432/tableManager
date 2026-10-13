@@ -340,6 +340,11 @@ body.resizing-active .history-sidebar {
   font-variant-numeric: tabular-nums;
 }
 .status-left > .count-num { flex: none; }
+/* The match count's tail («rows · 10s ago») gives way after the words - theirs shrink a thousand times as fast, so
+   a word is gone before a glyph of the tail goes - and down to the floor match_count.js sets: the number and its «…»
+   (ㄱ-1, lead 10-13). A shrink below 1 would not do: the browser then hands out only that share of the missing width. */
+.status-left > .count-word { flex-shrink: 1000; }
+.status-left > #total-rows { flex: 0 1 auto; }
 
 .status-left .divider {
   color: var(--text-dim);
