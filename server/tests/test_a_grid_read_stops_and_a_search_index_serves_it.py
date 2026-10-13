@@ -11,7 +11,20 @@ from database import crud, models
 
 TABLE = "grid_read_probe"
 ENTRY = {"business_key": "k", "composite_key_source": ["k"],
-         "column_types": {"k": "string", "n": "number", "v": "string"}}
+         "column_types": {"k": "string", "n": "number", "v": "string", "t": "datetime"}}
+LIMIT = "the limit is grid_read_timeout_seconds in the ingestion settings"
+
+
+def _held(monkeypatch, state, building=None):
+    """The one comparison (`index_states`) answering `state` for every table index - the database's word, not the file's."""
+    real = models.index_states
+
+    def held(engine, tables=None, static=True):
+        states = real(engine, tables, static)
+        for row in states["declared"]:
+            row.update(state=state, building=building)
+        return states
+    monkeypatch.setattr(models, "index_states", held)
 
 
 # ── ② the declaration ──────────────────────────────────────────────────────────
@@ -19,10 +32,21 @@ ENTRY = {"business_key": "k", "composite_key_source": ["k"],
 @pytest.mark.parametrize("item,refused", [
     ({"columns": ["k"], "search": "yes"}, "search must be true or false"),
     ({"columns": ["k"], "search": True, "unique": True}, "never unique"),
+    ({"columns": ["t"], "search": True}, "t is a time column"),
+    ({"columns": ["updated_at"], "search": True}, "updated_at is a time column"),
 ])
 def test_a_search_index_is_declared_true_or_false_and_never_unique(item, refused):
     _path, sentence = models.table_index_refusal(TABLE, dict(ENTRY, indexes=[item]))
     assert refused in sentence
+
+
+def test_the_save_takes_what_the_builder_builds_on_a_key_less_table():
+    """Both doors one judgment (총괄 ad38ae9c6): business_key_val is on every dynamic table, as row_id is."""
+    entry = {"column_types": {"a": "string"},
+             "indexes": [{"columns": ["row_id"], "search": True}, {"columns": ["business_key_val"], "search": True}]}
+    assert models.table_index_refusal("keyless", entry) is None
+    assert models.search_index_refusal(["a"], {"kind": "view", "column_types": {"a": "string"}}) == \
+        "a view cannot carry an index"
 
 
 def test_a_search_index_and_an_ordered_one_on_the_same_column_are_two_indexes():
@@ -48,10 +72,52 @@ def test_a_search_index_is_built_over_the_expression_the_search_reads():
                    '((CAST(k AS VARCHAR)) gin_trgm_ops, (CAST(n AS VARCHAR)) gin_trgm_ops)')
 
 
+@pytest.mark.parametrize("f_type,pattern", [("contains", "%K1%"), ("startsWith", "K1%"), ("endsWith", "%K1")])
+def test_a_column_filter_s_pattern_reads_the_same_expression(f_type, pattern):
+    """The grid's «search» is a column filter (총괄 10-13) - its pattern runs over `search_text`, so the index serves it."""
+    from sqlalchemy import Column, Float, MetaData, String, Table
+    from sqlalchemy.dialects import postgresql
+
+    from column_filter import get_column_filter_condition
+
+    table = Table("t", MetaData(), Column("k", String), Column("n", Float))
+    for name in ("k", "n"):
+        said = get_column_filter_condition(table.c, name, {"filterType": "text", "type": f_type, "filter": "K1"})
+        sql = str(said.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        assert sql == "CAST(t.%s AS VARCHAR) ILIKE '%s'" % (name, pattern.replace("%", "%%")), sql   # pyformat
+
+
+def test_a_column_filter_s_text_form_is_search_text_s(monkeypatch):
+    """One author: the expression a search index is built on is the one the filter sends - change it, both change."""
+    from sqlalchemy import Column, MetaData, String, Table, func
+    from sqlalchemy.dialects import postgresql
+
+    from column_filter import get_column_filter_condition
+
+    monkeypatch.setattr(models, "search_text", lambda column: func.lower(column))
+    table = Table("t", MetaData(), Column("k", String))
+    said = get_column_filter_condition(table.c, "k", {"filterType": "text", "type": "contains", "filter": "K1"})
+    sql = str(said.compile(dialect=postgresql.dialect()))
+    assert sql.startswith("lower(t.k) ILIKE"), sql
+
+
+def test_the_columns_a_filter_narrows_by_a_pattern():
+    import json
+
+    from column_filter import pattern_filtered_columns
+
+    model = {"a": {"type": "contains", "filter": "x"}, "b": {"type": "notContains", "filter": "x"},
+             "c": {"type": "blank"}, "d": {"filterType": "number", "type": "inRange", "filter": 1, "filterTo": 2},
+             "e": {"operator": "OR", "conditions": [{"type": "equals", "filter": "x"}, {"type": "endsWith", "filter": "y"}]},
+             "f": {"type": "startsWith"}}
+    assert pattern_filtered_columns(json.dumps(model)) == ["a", "e"]
+    assert pattern_filtered_columns(None) == [] and pattern_filtered_columns("not json") == []
+
+
 def test_a_search_index_the_database_cannot_build_is_named_and_not_attempted(monkeypatch):
     """No pg_trgm: the state says what to do, and the builder says it instead of failing a build."""
     owed = {"name": "idx_t_k_search", "table": "t", "columns": ["k"], "search": True, "state": models.INDEX_MISSING,
-            "failure": models.PG_TRGM_MISSING, "constraint": False, "source": "table"}
+            "failure": models.PG_TRGM_MISSING, "unbuildable": True, "constraint": False, "source": "table"}
     monkeypatch.setattr(models, "index_states", lambda engine, tables=None: {"declared": [owed], "outside": []})
     built, said = [], []
     monkeypatch.setattr(models, "_build_one", lambda *a, **k: built.append(a) or models.INDEX_BUILT)
@@ -61,18 +127,67 @@ def test_a_search_index_the_database_cannot_build_is_named_and_not_attempted(mon
 
 # ── ① a stopped read, said ─────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("q,declared,message", [
-    ("x", [], "Search stopped after 7 s - add a search index on k in the table's indexes"),
-    ("x", [{"columns": ["k"], "search": True}],
-     "Search stopped after 7 s - the limit is grid_read_timeout_seconds in the ingestion settings"),
-    (None, [], "Read stopped after 7 s - the limit is grid_read_timeout_seconds in the ingestion settings"),
+@pytest.mark.parametrize("q,declared,state,building,message", [
+    ("x", [], None, None, "Search stopped after 7 s - add a search index on k in the table's indexes"),
+    ("x", [{"columns": ["k"], "search": True}], models.INDEX_PRESENT, None, "Search stopped after 7 s - " + LIMIT),
+    ("x", [{"columns": ["k"], "search": True}], models.INDEX_BUILDING, "building - waiting for transactions older than it",
+     "Search stopped after 7 s - the search index on k is declared, not built yet (building - waiting for "
+     "transactions older than it)"),
+    ("x", [{"columns": ["k"], "search": True}], models.INDEX_MISSING, None,
+     "Search stopped after 7 s - the search index on k is declared, not built yet (built at the next Reload or restart)"),
+    (None, [], None, None, "Read stopped after 7 s - " + LIMIT),
 ])
-def test_a_stopped_read_says_what_stopped_and_what_to_do(q, declared, message, monkeypatch):
+def test_a_stopped_read_says_what_stopped_and_what_to_do(q, declared, state, building, message, monkeypatch):
+    """«Built» is the database's word (총괄 ad38ae9c6) - a declared index still building is not said as built."""
     import main
 
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(ENTRY, indexes=declared))
+    _held(monkeypatch, state, building)
     said = main.grid_read_stopped(TABLE, q, None, 7.0)
     assert said["reason"] == "grid_read_stopped" and said["message"] == message
+
+
+def test_a_stopped_read_never_asks_for_an_index_the_builder_cannot_make(monkeypatch):
+    import json
+
+    import main
+
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(ENTRY))
+    said = main.grid_read_stopped(TABLE, None, None, 7.0, json.dumps({"t": {"type": "contains", "filter": "2026"}}))
+    assert said["message"] == "Filter stopped after 7 s - " + LIMIT and said["unindexed"] == []
+    assert said["search_index"]["t"].startswith("cannot be built (t is a time column")
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(ENTRY, kind="view"))
+    said = main.grid_read_stopped(TABLE, None, None, 7.0, json.dumps({"k": {"type": "contains", "filter": "x"}}))
+    assert said["search_index"] == {"k": "cannot be built (a view cannot carry an index)"} and said["unindexed"] == []
+
+
+def test_a_cancel_with_the_limit_off_is_said_not_a_500():
+    """`grid_read_timeout_seconds` 0 or null and a statement cancelled anyway (pg_cancel_backend, a database limit)."""
+    import main
+
+    said = main.grid_read_stopped(TABLE, None, None, None)
+    assert said["message"] == "Read was cancelled by the database" and said["seconds"] is None
+
+
+@pytest.mark.parametrize("filters,declared,message,unindexed", [
+    ({"v": {"type": "contains", "filter": "x"}}, [],
+     "Filter stopped after 7 s - add a search index on v in the table's indexes", ["v"]),
+    ({"k": {"type": "contains", "filter": "x"}}, [{"columns": ["k"], "search": True}],
+     "Filter stopped after 7 s - " + LIMIT, []),
+    ({"n": {"filterType": "number", "type": "inRange", "filter": 1, "filterTo": 2}}, [],
+     "Read stopped after 7 s - " + LIMIT, None),
+])
+def test_a_stopped_filter_names_the_columns_it_narrowed_by_a_pattern(filters, declared, message, unindexed,
+                                                                      monkeypatch):
+    """The grid's «search» is a column filter (총괄 10-13): its stop names the filtered columns no search index covers."""
+    import json
+
+    import main
+
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(ENTRY, indexes=declared))
+    _held(monkeypatch, models.INDEX_PRESENT)
+    said = main.grid_read_stopped(TABLE, None, None, 7.0, json.dumps(filters))
+    assert said["message"] == message and said.get("unindexed") == unindexed
 
 
 # ── on PostgreSQL ──────────────────────────────────────────────────────────────
@@ -117,6 +232,31 @@ def grid(pg_engine, monkeypatch):
 
 
 @pytest.mark.pg
+def test_a_pooled_connection_does_not_keep_a_grid_read_s_limit(pg_engine):
+    """`SET LOCAL`: the next request that borrows the same pooled connection reads with no limit of its own - on a
+    QueuePool of one, as production pools (the test engine's NullPool would hide a plain SET, 총괄 ad38ae9c6)."""
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import QueuePool
+
+    from database.context import read_limit
+
+    pooled = create_engine(pg_engine.url, poolclass=QueuePool, pool_size=1, max_overflow=0)
+    made = sessionmaker(bind=pooled)
+    try:
+        with made() as session:
+            with read_limit(0.25):
+                pid = session.execute(text("SELECT pg_backend_pid()")).scalar()
+                assert session.execute(text("SHOW statement_timeout")).scalar() == "250ms"
+            session.commit()
+        with made() as session:
+            assert session.execute(text("SELECT pg_backend_pid()")).scalar() == pid
+            assert session.execute(text("SHOW statement_timeout")).scalar() != "250ms"
+    finally:
+        pooled.dispose()
+
+
+@pytest.mark.pg
 def test_the_limit_is_the_transaction_s_only_inside_a_grid_read(grid):
     from sqlalchemy import text
 
@@ -148,6 +288,16 @@ def test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean(grid, m
     for path in ("/tables/%s/data?q=K1" % TABLE, "/tables/%s/data/count?q=K1" % TABLE):
         answer = client.get(path)
         assert answer.status_code == 503 and answer.json()["detail"]["reason"] == "grid_read_stopped"
+    filtered = client.get("/tables/%s/data/count" % TABLE,
+                          params={"filters": '{"v": {"filterType": "text", "type": "contains", "filter": "x"}}'})
+    assert filtered.status_code == 503 and filtered.json()["detail"]["message"] == (
+        "Filter stopped after 0.05 s - add a search index on v in the table's indexes"), filtered.text
+    monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: None)
+    monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
+        text("(SELECT pg_cancel_backend(pg_backend_pid())) AND (SELECT true FROM pg_sleep(0.5))")))
+    cancelled = client.get("/tables/%s/data/count" % TABLE)
+    assert cancelled.status_code == 503 and cancelled.json()["detail"]["message"] == \
+        "Read was cancelled by the database", cancelled.text
     monkeypatch.setattr(main, "apply_column_filters", slow)
     assert client.get("/tables/%s/data/count?q=K1" % TABLE).json()["total"] == 1111      # K1 · K10-19 · K100-199 · K1000-1999
 
@@ -160,6 +310,8 @@ def test_a_declared_search_index_is_read_by_the_search_and_said_in_the_answer(gr
     from database.database import SessionLocal  # noqa: F401 - the product's engine is not the test's
 
     client, made = grid
+    assert client.get("/tables/%s/data?q=K17" % TABLE).json()["search_index"] == {
+        "k": "declared, not built yet (built at the next Reload or restart)"}
     built = models.ensure_model_indexes(pg_engine, tables={TABLE: crud.TABLE_CONFIG[TABLE]}, say=lambda line: None)
     assert built == {"idx_grid_read_probe_k_search": models.INDEX_BUILT}
     session = made()
@@ -171,7 +323,11 @@ def test_a_declared_search_index_is_read_by_the_search_and_said_in_the_answer(gr
     finally:
         session.close()
     assert "idx_grid_read_probe_k_search" in plan
-    assert client.get("/tables/%s/data?q=K17" % TABLE).json()["search_index"] == {"k": True}
+    assert client.get("/tables/%s/data?q=K17" % TABLE).json()["search_index"] == {"k": "built"}
+    filtered = client.get("/tables/%s/data" % TABLE, params={
+        "filters": '{"k": {"filterType": "text", "type": "contains", "filter": "K17"}, '
+                   '"v": {"filterType": "text", "type": "startsWith", "filter": "v"}}'}).json()
+    assert filtered["search_index"] == {"k": "built", "v": "not declared"} and len(filtered["data"]) == 111   # K17 · K170-179 · K1700-1799
 
 
 @pytest.mark.pg
@@ -192,3 +348,23 @@ def test_a_database_without_pg_trgm_is_named_on_the_search_index_it_owes(grid, p
         assert owed() == [models.PG_TRGM_MISSING]
     finally:
         event.remove(pg_engine, "before_cursor_execute", no_trgm)
+
+
+def test_a_read_s_comparison_reads_its_table_alone():
+    """A grid read asks about one table: no static model's rows and no ledger's (총괄 ad38ae9c6, per request)."""
+    from sqlalchemy import create_engine
+
+    entry = dict(ENTRY, indexes=[{"columns": ["k"], "search": True}])
+    states = models.index_states(create_engine("sqlite://"), {TABLE: entry}, static=False)
+    assert [(row["source"], row["name"]) for row in states["declared"]] == [("table", "idx_grid_read_probe_k_search")]
+
+
+@pytest.mark.pg
+def test_a_time_column_s_search_index_written_by_hand_is_said_and_not_built(grid, pg_engine, monkeypatch):
+    """The save refuses it; a table_config.json edited by hand still gets the same sentence, and no build."""
+    entry = dict(ENTRY, indexes=[{"columns": ["t"], "search": True}])
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, entry)
+    said = []
+    assert models.ensure_model_indexes(pg_engine, tables={TABLE: entry}, say=said.append) == {}
+    assert any("idx_grid_read_probe_t_search on grid_read_probe is not built: t is a time column" in line
+               for line in said), said

@@ -1900,7 +1900,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
 # import is a deliberate RE-EXPORT: `main.get_column_filter_condition` keeps
 # resolving. It moved because a worker process cannot rely on `main` naming this
 # module - see the module docstring of `column_filter.py` for the failure it caused.
-from column_filter import ROW_ID_FILTER_NAMES, get_column_filter_condition, model_has_row_id
+from column_filter import ROW_ID_FILTER_NAMES, get_column_filter_condition, model_has_row_id, pattern_filtered_columns
 
 # ---------------------------------------------------------------------------
 # Shared query construction for the two routes that read a table with the same
@@ -2523,25 +2523,39 @@ def grid_read(route):
             if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
                 raise
             asked = inspect.signature(route).bind_partial(*args, **kwargs).arguments
+            db = asked.get("db")
             raise HTTPException(status_code=503, detail=grid_read_stopped(
-                asked.get("table_name"), asked.get("q"), asked.get("cols"), seconds)) from None
+                asked.get("table_name"), asked.get("q"), asked.get("cols"), seconds, asked.get("filters"),
+                db.get_bind() if db is not None else None)) from None
     return read
 
 
-def grid_read_stopped(table_name, q, cols, seconds):
-    """A stopped grid read said as what stopped and the next thing to do (총괄 d16033b63) - for a search, the searched
-    columns no declared search index covers."""
+def text_looked_columns(searched, filters):
+    """The columns a grid read looked up by text: the searched ones, then the ones its column filter narrows by a
+    pattern (총괄 10-13: the grid's «search» is a column filter) - what a declared search index serves."""
+    searched = list(searched)
+    return searched + [col for col in pattern_filtered_columns(filters) if col not in searched]
+
+
+def grid_read_stopped(table_name, q, cols, seconds, filters=None, bind=None):
+    """A stopped grid read said as what stopped and the next thing to do (총괄 d16033b63) - for a search or a pattern
+    filter, each column it looked up by text as the database holds its search index (총괄 ad38ae9c6): one not
+    declared is asked for, one declared and not built yet says why, one that cannot carry it is not asked for."""
     from parsers.directory_watcher import GRID_READ_TIMEOUT_SETTING
 
-    unindexed = []
-    if q:
-        indexed = models.declared_search_columns(table_name)
-        unindexed = [col for col in search_scope_columns(table_name, cols) if col not in indexed]
-    then = ("add a search index on %s in the table's indexes" % ", ".join(unindexed) if unindexed
-            else "the limit is %s in the ingestion settings" % GRID_READ_TIMEOUT_SETTING)
+    looked = text_looked_columns(search_scope_columns(table_name, cols) if q else (), filters)
+    states = models.search_column_states(engine if bind is None else bind, table_name, looked)
+    unindexed = [col for col, state in states.items() if state == models.SEARCH_NOT_DECLARED]
+    then = ((["add a search index on %s in the table's indexes" % ", ".join(unindexed)] if unindexed else [])
+            + ["the search index on %s is %s" % (col, state) for col, state in states.items()
+               if state.startswith("declared")])
+    if not then and seconds:
+        then = ["the limit is %s in the ingestion settings" % GRID_READ_TIMEOUT_SETTING]
+    said = "%s %s" % ("Search" if q else "Filter" if looked else "Read",
+                      "stopped after %g s" % seconds if seconds else "was cancelled by the database")
     return {"reason": "grid_read_stopped", "seconds": seconds,
-            "message": "%s stopped after %g s - %s" % ("Search" if q else "Read", seconds, then),
-            **({"unindexed": unindexed} if q else {})}
+            "message": " - ".join([said, "; ".join(then)]) if then else said,
+            **({"unindexed": unindexed, "search_index": states} if looked else {})}
 
 
 def cached_table_count(query, cache_key):
@@ -2851,14 +2865,14 @@ def get_table_data(
         f"target={'set' if target_row_id else '-'}")
     
     unread = _attach_ledger_sources(db, table_name, data_list)
+    looked = text_looked_columns(search_scope.get("columns") or () if q else (), filters)
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset,
         # the worlds `ledger_rows` could not read on this page - absent when the rows carry no ledger keys at all
         **({} if unread is None else {"ledger_worlds_unread": unread}),
-        # a search: each searched column, and whether a declared search index covers it (총괄 d16033b63)
-        **({"search_index": {col: col in models.declared_search_columns(table_name)
-                             for col in search_scope.get("columns") or ()}} if q else {}),
+        # a search or a pattern filter: each column it looked up by text, as the database holds its search index
+        **({"search_index": models.search_column_states(db.get_bind(), table_name, looked)} if looked else {}),
     }, table_name)
 
 
@@ -2997,94 +3011,6 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     # `deleted_count`; the history is in the database and rides the broadcast above.
     transaction_id = created_logs[0]["transaction_id"] if created_logs else None
     return {"status": "success", "deleted_count": deleted_count, "transaction_id": transaction_id}
-
-@app.post("/tables/{table_name}/row_ids/target")
-def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, transaction_id: str = None, world: str = None, db: Session = Depends(get_db)):
-    """Targeted RowID Scanner: 오프셋 리스트 기반 초고속 UUID 추출"""
-    table_model = grid_model(table_name, world)
-    if not table_model:
-        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
-    refuse_row_address(table_name)
-        
-    query = db.query(table_model)
-    
-    if transaction_id:
-        subquery = db.query(models.AuditLog.row_id).filter(
-            models.AuditLog.table_name == table_name,
-            models.AuditLog.transaction_id == transaction_id
-        )
-        query = query.filter(table_model.row_id.in_(subquery))
-    
-    if req.q:
-        from sqlalchemy import cast, String, or_, and_, func
-        safe_q = req.q.replace("%", "\\%").replace("_", "\\_")
-        
-        cfg = crud.TABLE_CONFIG.get(table_name, {})
-        col_types = cfg.get("column_types", {})
-        
-        if req.cols:
-            col_list = [c.strip() for c in req.cols.split(",") if c.strip()]
-        else:
-            col_list = ["row_id", "business_key_val"] + [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-            
-        conditions = []
-        for col in col_list:
-            if col in ["created_at", "updated_at"]:
-                target_col = table_model.created_at if col == "created_at" else table_model.updated_at
-                conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
-            elif col in ["row_id", "id"]:
-                conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
-            elif col == "business_key_val":
-                conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
-            else:
-                if hasattr(table_model, col):
-                    conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
-        
-        if conditions:
-            query = query.filter(or_(*conditions))
-
-    from sqlalchemy.sql import func
-    if req.order_by == "updated_at":
-        sort_expr = table_model.updated_at
-        sort_expr = sort_expr.desc() if req.order_desc else sort_expr.asc()
-        # [Fix] 메인 테이블과 동일한 Tie-breaker 방향 적용 (Index 성능 및 정합성)
-        tie_breaker = table_model.row_id.desc() if req.order_desc else table_model.row_id.asc()
-        query = query.order_by(sort_expr, tie_breaker)
-    elif req.order_by == "id":
-        bk_null_last = (table_model.business_key_val == None).asc()
-        bk_sort = table_model.business_key_val.desc() if req.order_desc else table_model.business_key_val.asc()
-        final_sort = [bk_null_last, bk_sort, table_model.row_id.asc()]
-        query = query.order_by(*final_sort)
-    else:
-        sort_expr = table_model.row_id.asc()
-        query = query.order_by(sort_expr)
-
-    offsets = sorted(req.offsets)
-    if not offsets:
-        return {"row_ids": []}
-        
-    min_offset = offsets[0]
-    max_offset = offsets[-1]
-    limit = max_offset - min_offset + 1
-    
-    print(f"[Server] Scan Range: {min_offset} to {max_offset} (Total range count: {limit})")
-    
-    if limit > 50000:
-        # 너무 큰 범위는 서버 보호를 위해 거절 (추후 Window Function 기반 정밀 쿼리로 고도화 필요)
-        print(f"[Server] Scan rejected: Range {limit} exceeds safety limit of 50,000")
-        return {"row_ids": [], "error": "Scan range too large"}
-
-    # 튜플 단위 최적화 (딕셔너리 빌드 생략)
-    results = query.with_entities(table_model.row_id).offset(min_offset).limit(limit).all()
-    print(f"[Server] DB Query finished. Fetched {len(results)} row_id entities.")
-    
-    matched_ids = []
-    for offset in req.offsets:
-        local_idx = offset - min_offset
-        if 0 <= local_idx < len(results):
-            matched_ids.append(results[local_idx][0])
-            
-    return {"row_ids": matched_ids}
 
 
 #: 한 번의 CSV 추출이 내보낼 수 있는 최대 행 수. **이 선언이 유일본이다** -

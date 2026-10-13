@@ -38,10 +38,13 @@ WHAT USES IT
     `crud.blank_sql_condition` / `crud.not_blank_sql_condition`, which is the one
     funnel for that rule (see the comment at the `blank` branch below).
 """
-from database import crud
+from database import crud, models
 
 #: The filter names read as the row's `row_id` (`id` is the grid's spelling of the identity).
 ROW_ID_FILTER_NAMES = ("row_id", "id")
+#: The text types that match a pattern with ILIKE over `models.search_text` - the ones a declared search index
+#: serves (총괄 10-13: the grid's «search» is a column filter's contains).
+TEXT_PATTERNS = {"contains": "%{}%", "startsWith": "{}%", "endsWith": "%{}"}
 
 
 def model_has_row_id(table_model) -> bool:
@@ -73,7 +76,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     right column is declared numeric.
     """
     from sqlalchemy.dialects.postgresql import JSONB
-    from sqlalchemy import cast, String, func, or_, and_
+    from sqlalchemy import func, or_, and_
 
     # 1. Handle compound filter conditions (AND / OR)
     if "operator" in f_info:
@@ -113,10 +116,10 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     is_numeric = False
     if col_expr_override is not None:
         # No model lookup: this column is computed, not stored.
-        col_expr = cast(col_expr_override, String)
+        col_expr = models.search_text(col_expr_override)
     elif col_name in ["created_at", "updated_at"]:
         target_col = table_model.created_at if col_name == "created_at" else table_model.updated_at
-        col_expr = cast(target_col, String)
+        col_expr = models.search_text(target_col)
     elif col_name in ROW_ID_FILTER_NAMES:
         col_expr = table_model.row_id
     else:
@@ -131,8 +134,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
         if is_numeric and f_type in numeric_operators:
             col_expr = raw_col
         else:
-            from sqlalchemy import cast, String
-            col_expr = cast(raw_col, String)
+            col_expr = models.search_text(raw_col)
             
     # Condition mapping based on type
     #
@@ -152,7 +154,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     #
     # The `is_numeric` special-case that used to live here is GONE, not moved: for
     # `blank`/`notBlank` these operators are deliberately absent from `numeric_operators`
-    # above, so `col_expr` is ALWAYS already `cast(raw_col, String)`. A cast numeric is
+    # above, so `col_expr` is ALWAYS already `models.search_text(raw_col)`. A cast numeric is
     # never the empty string when it is non-NULL, so `IS NULL OR = ''` and the old
     # `IS NULL` return the same rows - one redundant disjunct, one fewer spelling.
     #
@@ -193,17 +195,32 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
                 return col_expr >= val
     else:
         # String comparison
-        if f_type == "contains":
-            return col_expr.ilike(f"%{f_val}%")
+        if f_type in TEXT_PATTERNS:
+            return col_expr.ilike(TEXT_PATTERNS[f_type].format(f_val))
         elif f_type == "notContains":
             return ~col_expr.ilike(f"%{f_val}%")
         elif f_type == "equals":
             return col_expr == f_val
         elif f_type == "notEqual":
             return col_expr != f_val
-        elif f_type == "startsWith":
-            return col_expr.ilike(f"{f_val}%")
-        elif f_type == "endsWith":
-            return col_expr.ilike(f"%{f_val}")
         else:
             return col_expr.ilike(f"%{f_val}%")
+
+
+def pattern_filtered_columns(filters):
+    """The columns a `?filters=` model narrows by a text pattern (`TEXT_PATTERNS`), in its order - a compound one when
+    any of its conditions does; [] for none, or for a model that is not JSON (its read refuses it)."""
+    import json
+
+    try:
+        model = json.loads(filters) if filters else {}
+    except (TypeError, ValueError):
+        return []
+
+    def by_pattern(f_info):
+        if not isinstance(f_info, dict):
+            return False
+        if "operator" in f_info:
+            return any(by_pattern(each) for each in f_info.get("conditions") or ())
+        return f_info.get("type", "contains") in TEXT_PATTERNS and f_info.get("filter") is not None
+    return [name for name, f_info in model.items() if by_pattern(f_info)] if isinstance(model, dict) else []

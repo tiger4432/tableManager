@@ -299,7 +299,6 @@ ROW_ADDRESSED = [
     ("get", "/tables/%s/EV-1/id/sources", None),
     ("get", "/tables/%s/rows/EV-1/history", None),
     ("get", "/tables/%s/rows/EV-1/cells/id/history", None),
-    ("post", "/tables/%s/row_ids/target", {"offsets": [0]}),
     ("post", "/tables/%s/cells/sources/query",
      {"updates": [{"row_id": "EV-1", "column_name": "id"}]}),
     ("get", "/tables/%s/data?transaction_id=tx", None),

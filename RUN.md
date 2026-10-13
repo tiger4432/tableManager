@@ -27,7 +27,7 @@
 >
 > ```
 > 🔴 어느 칸   메인 그리드 화면에는 검색어 칸이 없다 — 화면의 «검색»은 칸 필터(contains)다(클라 실측 10-13). 그러니 «거르는 그 칸»에 search 색인을 단다
->            칸 필터로 끊기면 문장이 «Read stopped after 10 s - the limit is …» 로 나와 칸 이름을 안 댄다(서버가 q 만 봄 — 고치는 중)
+>            칸 필터(contains · startsWith · endsWith)로 끊기면 «Filter stopped after 10 s - add a search index on <칸> in the table's indexes»
 > 선언       table_config.json 의 그 표에, 거르는 칸마다 한 줄 (검색어 q 로 부르는 자리가 있으면 아래 «급한 손» 절의 «검색 칸» 순서도)
 >              "indexes": [{"columns": ["dt_job"], "search": true},
 >                          {"columns": ["b_wx"], "search": true},
@@ -38,7 +38,8 @@
 >              [Indexes] N declared index(es) the database lacks or holds invalid: … idx_<표>_<칸>_search on <표> (missing)
 >              [Indexes] building idx_<표>_<칸>_search on <표>
 >              [Indexes] idx_<표>_<칸>_search built in 3.2 s          <- 끝. CONCURRENTLY 라 표를 안 잠근다
->              [Indexes] idx_<표>_<칸>_search on <표> is not built: it needs the pg_trgm extension …   <- 아래 pg_trgm
+>              [Indexes] idx_<표>_<칸>_search on <표> is not built: the pg_trgm extension is missing …   <- 아래 pg_trgm
+>              [Indexes] idx_<표>_<칸>_search on <표> is not built: <칸> is a time column …   <- 시각 칸에는 못 단다(탐색기 저장도 거절)
 > pg_trgm    없으면 위 줄이 그렇게 말하고 짓지 않는다. 슈퍼유저로 한 번  CREATE EXTENSION IF NOT EXISTS pg_trgm;  그다음 Reload
 > 손 인덱스   아래 «급한 손» 절의 tmp_search_<표>_<칸> 이 있어도 선언은 «또» 짓는다 — 색인을 이름으로 견주기 때문(식은 같은 문장)
 >            선언 것이 «built» 줄을 낸 «뒤에» 손 것을 지운다:  DROP INDEX CONCURRENTLY tmp_search_<표>_<칸>;
@@ -46,18 +47,21 @@
 > 상한       ingestion_settings.json "grid_read_timeout_seconds" — 기본 10 · 요청마다 읽어 재기동 없이 바뀐다 · 0 또는 null = 상한 없음(급할 때 끄는 스위치)
 >            그리드의 행 읽기 · 세기 · 검색(GET /tables/<표>/data · /data/count)만 — 저장 · 체인 · 파일 쓰기는 각자 상한 그대로
 >            ⚠️ 같은 라우트를 맵 에디터 · R&D 보드 · 어드민 카드도 쓴다 — 큰 표의 «검색 없는» 읽기 · 세기가 10 s 를 넘으면 그쪽도 503(바닥줄 총수 빈 칸 · 맵 셀 읽기 오류)
->            그런 줄이 검색 없이 나오면 이 칸을 올리거나 0 (재기동 없음). 화면 읽기로만 좁히는 고침은 구현자 A 다음 커밋
+>            그런 줄이 검색 없이 나오면 이 칸을 올리거나 0 (재기동 없음). 그리드 화면 읽기로만 좁힐지는 총괄께 안으로 올림(아직 안 좁힘)
 > ⚠️ 재기동    서버 «와» 체인 워커 둘 다 — 색인은 체인 워커가 짓는다
 > 끊겼을 때   HTTP 503, 답의 detail.message 가 다음 할 일
->              Search stopped after 10 s - add a search index on b_wy in the table's indexes   -> 그 칸에 위 선언
->              Search stopped after 10 s - the limit is grid_read_timeout_seconds in the ingestion settings
->                                                    -> 검색 칸이 다 «선언»됨 — 아직 짓는 중일 수 있다(server.log 의 [Indexes] … built 줄이 그 칸마다 났나 먼저 본다).
->                                                       다 지어졌으면 상한을 올리거나 검색어를 좁힌다 · 검색어 2 글자 이하는 색인이 있어도 느릴 수 있다
->              Read stopped after 10 s - the limit is …   -> 검색이 아닌 읽기(필터 · 정렬 · 전체 세기)
+>            칸마다 DB 가 «가진» 색인 그대로 말한다(선언만 보고 말하지 않는다)
+>              Filter stopped after 10 s - add a search index on b_wy in the table's indexes   -> 그 칸에 위 선언 (검색어 q 면 Search …)
+>              … - the search index on b_wx is declared, not built yet (<사유>)   -> 짓는 중 · Reload 기다림 · pg_trgm 없음 — 사유대로
+>              … - the limit is grid_read_timeout_seconds in the ingestion settings
+>                                                    -> 거른 칸의 색인이 다 지어짐. 상한을 올리거나 좁힌다 · 검색어 2 글자 이하는 색인이 있어도 느릴 수 있다
+>              Read stopped after 10 s - the limit is …   -> 검색 · 칸 무늬 필터가 아닌 읽기(숫자 · 날짜 필터 · 정렬 · 전체 세기)
+>              Read was cancelled by the database   -> 상한을 껐는데(0 · null) DB 쪽이 끊음(pg_cancel_backend · DB 의 statement_timeout)
+>            시각 칸 · 뷰의 칸에는 «add a search index» 를 안 시킨다 — 색인을 못 단다
 >            끊긴 문장은 DB 가 취소하고 연결은 풀로 돌아간다
 >            ⚠️ 화면은 아직 «Data fetch failed (HTTP 503)» 토스트만 그린다 — 문장은 클라 레인이 붙인다
-> 답의 칸    검색한 /data 답에 "search_index": {"dt_job": true, "b_wy": false} — false 인 칸이 선언할 칸
->            컬럼 필터의 contains 도 같은 색인을 탄다(같은 CAST 문장)
+> 답의 칸    검색 · 무늬 필터한 /data 답(과 503 의 detail)에 "search_index": {"dt_job": "built", "b_wy": "not declared"} — 값 넷
+>            built · declared, not built yet (<사유>) · not declared(선언할 칸) · cannot be built (<사유>)(시각 칸 · 뷰)
 > 박스 판 실측 (400만 행 dt_log · 운영 주장 아님)
 >            0 건 검색  쪽 2.30 s · 세기 2.17 s  ->  세 칸 다 색인 뒤 0.09 s · 0.03 s
 >            5 개 동시  하나에 4.4~8 s  ->  0.15~0.29 s

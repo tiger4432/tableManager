@@ -1688,7 +1688,7 @@ def model_tables():
 #    index over `search_text` of each column, the very expression the search condition is.
 
 #: Why a search index is not built where the trigram operator class is missing - said in its state.
-PG_TRGM_MISSING = ("needs the pg_trgm extension - run CREATE EXTENSION pg_trgm once as a superuser, then reload")
+PG_TRGM_MISSING = ("the pg_trgm extension is missing - run CREATE EXTENSION pg_trgm once as a superuser, then reload")
 
 
 def search_text(column):
@@ -1699,10 +1699,50 @@ def search_text(column):
     return cast(column, String)
 
 
-def declared_search_columns(table, tables=None):
-    """The columns of `table` a declared search index covers - what a search answer says is indexed."""
-    return {column for name_table, _name, shape in table_declared_indexes(tables)
-            if name_table == table and shape["search"] for column in shape["columns"]}
+def search_index_refusal(columns, entry):
+    """Why a search index over `columns` of the table `entry` declares cannot be built - a sentence, or None. The save
+    refuses it, the build leaves it, a stopped read does not ask for it - one judgment (총괄 ad38ae9c6)."""
+    if (entry or {}).get("kind") == "view":
+        return "a view cannot carry an index"
+    types = (entry or {}).get("column_types") or {}
+    times = [column for column in columns if column in ("created_at", "updated_at") or types.get(column) == "datetime"]
+    if times:
+        return ("%s is a time column - its text depends on the session time zone, so PostgreSQL cannot index it"
+                % ", ".join(times))
+    return None
+
+
+#: A column's search index in a stopped read and a search answer (총괄 ad38ae9c6) - the rest say why not.
+SEARCH_BUILT, SEARCH_NOT_DECLARED = "built", "not declared"
+
+
+def search_column_states(engine, table, columns, tables=None):
+    """Each column a grid read looked up by text -> «built» · «declared, not built yet (<why>)» · «not declared» ·
+    «cannot be built (<why>)» - read from the one comparison (`index_states`, this table alone), not from the
+    declaration (총괄 ad38ae9c6: a declared index still building was said as built)."""
+    if not columns:
+        return {}
+    if tables is None:
+        from database import crud
+        tables = crud.TABLE_CONFIG
+    entry = (tables or {}).get(table) or {}
+    rows = [row for row in index_states(engine, {table: entry}, static=False)["declared"] if row.get("search")]
+    states = {}
+    for column in columns:
+        covering = [row for row in rows if column in row["columns"]]
+        why = search_index_refusal([column], entry)
+        if any(row["state"] == INDEX_PRESENT for row in covering):
+            states[column] = SEARCH_BUILT
+        elif why:
+            states[column] = "cannot be built (%s)" % why
+        elif covering:
+            row = covering[0]
+            states[column] = "declared, not built yet (%s)" % (
+                row["failure"] or row["building"] or ("invalid" if row["state"] == INDEX_INVALID else None)
+                or ("not compared" if row["state"] == INDEX_UNKNOWN else "built at the next Reload or restart"))
+        else:
+            states[column] = SEARCH_NOT_DECLARED
+    return states
 
 #: PostgreSQL's identifier length - a longer name keeps its first part and a hash tail.
 INDEX_NAME_LIMIT = 63
@@ -1728,7 +1768,7 @@ def table_index_refusal(table, entry):
         return path, 'indexes must be a list of {"columns": [...], "unique": false, "search": false, "purpose": "..."}'
     if indexes and (entry or {}).get("kind") == "view":
         return path, "%s is a view - a view cannot carry an index" % table
-    known = set((entry or {}).get("column_types") or {}) | set(FRAMEWORK_COLUMNS)
+    known = set((entry or {}).get("column_types") or {}) | set(FRAMEWORK_COLUMNS) | {"business_key_val"}
     seen = set()
     for number, item in enumerate(indexes):
         columns = item.get("columns") if isinstance(item, dict) else None
@@ -1743,6 +1783,8 @@ def table_index_refusal(table, entry):
             return "%s[%d].search" % (path, number), "search must be true or false"
         if search and item.get("unique") is True:
             return "%s[%d].unique" % (path, number), "a search index finds part of a word - it is never unique"
+        if search and search_index_refusal(columns, entry):
+            return "%s[%d].search" % (path, number), search_index_refusal(columns, entry)
         if (tuple(columns), search) in seen:
             return ("%s[%d].columns" % (path, number),
                     "(%s) is declared twice" % ", ".join(columns))
@@ -1766,7 +1808,8 @@ def table_declared_indexes(tables=None):
                 search = item.get("search") is True
                 out.append((table, table_index_name(table, columns + (["search"] if search else [])),
                             {"columns": columns, "unique": item.get("unique") is True and not search,
-                             "search": search, "purpose": item.get("purpose")}))
+                             "search": search, "purpose": item.get("purpose"),
+                             "refused": search_index_refusal(columns, entry) if search else None}))
     return out
 
 
@@ -1817,27 +1860,28 @@ def _building(connection):
             for row in connection.execute(text(_BUILDING))}
 
 
-def index_states(engine, tables=None):
+def index_states(engine, tables=None, static=True):
     """-> {"declared": [...], "outside": [...]} - each declared index beside the database: its
     state (present · missing · invalid · building), size, scans, what a build waits on and why the
     last build failed; and the database's indexes on the static models' tables that nothing declares
     (a primary key counts as declared). Declared: the static models' (`source` model) and each
     table's own in table_config.json (`source` table; `tables` as `table_declared_indexes` reads it).
-    🔴 THE ONE COMPARISON - the boot's notice, its build and GET /admin/indexes all read this.
+    🔴 THE ONE COMPARISON - the boot's notice, its build, GET /admin/indexes and a grid read's search states all read
+    this. `static` False: `tables`' own indexes alone, no ledger and no «outside» (a read asks about one table).
     PostgreSQL only; elsewhere every state is `unknown`."""
     unread = dict(state=INDEX_UNKNOWN, building=None, failure=None, size_bytes=None, scans=None)
     declared = [dict(name=name, table=table.name, **_shape(item), purpose=item.info.get("purpose"),
                      serves=item.info.get("serves"), source="model", **unread)
-                for table, name, item in declared_indexes()]
+                for table, name, item in (declared_indexes() if static else ())]
     declared += [dict(name=name, table=table, columns=shape["columns"], where=None, include=[],
                       using="gin" if shape["search"] else None, search=shape["search"],
                       unique=shape["unique"], constraint=False, purpose=shape["purpose"], serves=None,
-                      source="table", **unread)
+                      source="table", refused=shape["refused"], **unread)
                  for table, name, shape in table_declared_indexes(tables)]
     if engine.dialect.name != "postgresql":
         return {"declared": declared, "outside": []}
-    ledger = _ledger_index_rows(engine)
-    models_tables = [table.name for table in model_tables()]
+    ledger = _ledger_index_rows(engine) if static else []
+    models_tables = [table.name for table in model_tables()] if static else []
     with engine.connect() as connection:
         held = {row.name: row for row in connection.execute(
             text(_HELD), {"tables": models_tables + sorted({row["table"] for row in declared})})}
@@ -1852,8 +1896,8 @@ def index_states(engine, tables=None):
             row.update(size_bytes=found.size_bytes, scans=found.scans)
             if not found.valid and (found.said or "").startswith(INDEX_FAILED_SAID):
                 row["failure"] = found.said[len(INDEX_FAILED_SAID):]
-        elif row.get("search") and not trigram:
-            row["failure"] = PG_TRGM_MISSING
+        elif row.get("search") and (row.get("refused") or not trigram):
+            row.update(failure=row.get("refused") or PG_TRGM_MISSING, unbuildable=True)
     outside = [{"name": name, "table": row.table_name, "valid": row.valid, "building": building.get(name),
                 "size_bytes": row.size_bytes, "scans": row.scans}
                for name, row in sorted(held.items())
@@ -1910,9 +1954,9 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
     -> {name: INDEX_BUILT | INDEX_PRESENT | INDEX_FAILED} of what was built."""
     owed = [row for row in index_states(engine, tables)["declared"]
             if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
-    for row in [row for row in owed if row.get("failure") == PG_TRGM_MISSING]:
-        say("[Indexes] %s on %s is not built: it %s" % (row["name"], row["table"], PG_TRGM_MISSING))
-    owed = [row for row in owed if row.get("failure") != PG_TRGM_MISSING]
+    for row in [row for row in owed if row.get("unbuildable")]:
+        say("[Indexes] %s on %s is not built: %s" % (row["name"], row["table"], row["failure"]))
+    owed = [row for row in owed if not row.get("unbuildable")]
     if not owed:
         return {}
     say("[Indexes] %d declared index(es) the database lacks or holds invalid: %s - %s" % (
