@@ -769,3 +769,35 @@ stop_line 원장 일은 큐 화면에 «줄»로 안 그려짐(개요의 /runtim
 ```
 
 다음: 원장 프로세스 고침(fa5417c28) 여섯 -> 뷰 읽는 원장 소스 재기(짓지 않음).
+
+> **[구현자 B -> 총괄] 10-13 원장 프로세스 고침 착지 76d1cd698 (fa5417c28 여섯) · 가 후속 0396c73cb · ⚠️ 사고: 33f5cdac3 이 d430d5a1d 문서 줄을 되돌렸음 → 0a6f5fff7 로 되살림**
+
+```
+고침     1 체인 워커가 첫 박동 뒤 박동 한 주기(60 s)에 «ledger» 박동이 없으면 한 줄(어느 프로세스 박동이든 — 서버 단독은 한 프로세스)
+         2 그룹의 지운 행을 성공 · 격리 커밋 «전»에 읽음(_deleted_rows_of) — 커밋 뒤 사건을 다시 안 읽음
+         3 큐 화면 × 로 치운 지움(set_aside 쪽마다 커밋 뒤) · 깊이 상한 거절 지움(FAILED 표시 커밋 뒤)도 같은 거두기
+         4 거두기 실패에 db.rollback()
+         5 따라가기는 id · 행 수(payload 의 row_count · row_id)만 먼저, payload 는 예산 안 사건만
+         6 devenv up 이 런처 자식 목록(launcher_specs)에서 체인 · 원장을 받아 띄움 — 감시기 · 스케줄러는 그대로 뺌
+         RUN.md 세 줄(런처 전체 재기동 · 원장만 세우는 법 없음 · 상한 1000 행) · RELEASE_LOG 원장 항목 밑 «고침» 줄
+시험     test_the_chain_withdraws_every_deletion_it_ends 6 + 원장 묶음 시험의 payload 칸 · 변이 일곱 다 빨강(자리마다 하나)
+         손댄 자리 비PG 645 통과 + 격리 스택 시험(up = {api, chain, ledger} 로 고침) 35 통과 · PG 179 통과 · 4 실패:
+         셋은 같은 시간대에 기준(0396c73cb)에서도 실패 · 뒤에 두 번씩 다시 돌리자 양쪽 다 통과(흔들림, 원인은 안 잼) · 하나는 따로 돌리면 통과
+         런처 판은 안 돌림(말씀대로 시험 칸 · 변이만)
+가 후속   0396c73cb — 말씀하신 셋 반영(빈 집계가 고를 층 없으면 문 · 줄 없음 · RELEASE_LOG 에 첫 fold-units 판의 processed 늘어남)
+```
+
+**⚠️ 사고와 되살림**
+```
+무엇     가 착지 33f5cdac3 이 총괄 d430d5a1d(오늘 밤 병합들의 문서 동기화)의 RUN.md 다섯 줄 · CODE_MAP 두 행(walk/main.js · start_baskets.js)을 옛것으로 되돌렸음
+까닭     wip 를 한 커밋으로 접을 때 «git reset --soft origin/main» 을 썼는데, 같은 저장소의 다른 나무가 fetch 해서 공유 참조 origin/main 이
+         그새 d430d5a1d 로 앞당겨져 있었음 — 제 나무(밑 4b1f2f29f)의 옛 문서가 d430d5a1d 위에 그대로 커밋됨. 코드 파일은 그 사이 바뀐 것이 없어 영향 없음
+되살림   0a6f5fff7 — d430d5a1d 의 줄을 다시 얹음. 자동 인덱스 «볼 것» 로그 줄만은 그 뒤 그리드 풀 착지가 이미 새로 고쳐 두어 지금 것을 둠.
+         원장 프로세스 되돌리기 줄은 d430d5a1d 의 «f620962c7 먼저»와 76d1cd698 해시를 같이 적음
+확인     나 76ad487be · ㄷ 19d6da585 · 0396c73cb · 76d1cd698 은 부모가 제 직전 커밋이거나 merge-base 로 접어 같은 일 없음(지운 줄 전부 제 것)
+막음     접기는 merge-base 로만(기억에 남김) · 푸시 전 «git diff origin/main --stat» 에 제 파일만 · RUN.md 는 줄 끝을 건드리지 않고 글자 그대로 바꿈
+```
+
+다음: 뷰 읽는 원장 소스 재기(짓지 않음) — 18766 박스 선언의 원장 소스 15 개 중 뷰를 읽는 일곱(process_param_num_measure · process_param_txt_measure ·
+void_observation · dt_transfer · bonded_from · lot_slot_move · bw_dt_seat), 거절은 setup_bundle 의 relation_not_a_row_table(총괄 f3bc02f6e · da3fa7493,
+소유자 09-25 «운영은 뷰를 안 씀 · 그냥 빼라», 착지 c193986a8).
