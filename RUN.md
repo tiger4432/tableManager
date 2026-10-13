@@ -13,7 +13,7 @@
 > 설정     ingestion_settings.json "grid_auto_index_after_seconds": 1   없으면 1 · 0/null = 그리드가 안 물음 · 요청마다 읽음
 >                                  "auto_index_per_table": 10          없으면 10 · 0 = 자동 인덱스 안 지음
 > 볼 것    어드민 Overview «Indexes» 표 — source auto, purpose «auto (decide key)» · «auto (slow sort)» · «auto (slow filter)»
->          server.log(그리드 프로세스가 돌면 grid_pool.log)
+>          server.log(그리드 읽기는 웹 프로세스에서 돈다 — 풀로 가는 라우트는 걷기 /subgraph 하나)
 >            [Indexes] asked for an automatic index on dt_log (dt_lot) - slow sort, the read took 1.0 s
 >          chain_worker.log
 >            [Indexes] building ix_auto_dt_log_dt_lot on dt_log  ·  [Indexes] ix_auto_dt_log_dt_lot built in N s
@@ -54,6 +54,7 @@
 >            OFFSET   가운데 쪽 1.0~2.8 s · 마지막 쪽 1.8~4.1 s  (같은 요청이 돌 때마다 이만큼 흔들림)
 >            열쇠     다음 0.36~0.44 · 가운데 0.31~0.54 · 마지막 0.19~0.40 · 앞 0.34~0.57 s
 >            dt_eqp 정렬의 다음 쪽(열쇠)  색인 없이 4.29 s -> (dt_eqp, row_id) 지은 뒤 0.20 s
+> 되돌리기  git revert -m 1 8ca133b7f -> 서버 재기동 (코드는 혼자 되돌아감 — 10-13 잼. 지어진 정렬 칸 색인은 남음)
 > ⚠️ 안 잰 것  운영 크기에서 짓는 시간 — 판에서는 다른 연결의 4M 행 복사가 끝나기를 기다려 22 분이 걸려 짓는 시간만 따로 못 쟀다
 >            10 명 동시 — 그리드 몸통을 프로세스 풀로 옮기는 다음 일(ㄴ)에서 잰다
 > ```
@@ -95,7 +96,7 @@
 >          가장 커서 600 MB ≈ 300,000 노드(121 씨앗 쪽 25 는 0.69 KB)
 >          메모리  가장 새 · 걷는 중 걷기를 뺀 나머지가 약 600 MB, 가장 새 걷기는 씨앗 수 × 닿음만큼(씨앗 500 · 4 쪽 걷기 하나 — 센 노드 1,253,000 · 455 MB, 총괄 b47c7c8a3 잼)
 >                  합계는 그 × walk_processes(walk_processes 0 이면 웹 프로세스 하나)
-> 되돌리기  git revert -m 1 f405c3159 다음 git revert -m 1 9033b58f9 -> 서버 재기동 · 걷기 화면 새로고침(화면 · 서버 반쪽은 같이 — 서버만 되돌리면 화면이 resumable 을 계속 보냄)
+> 되돌리기  git revert -m 1 fdcca63ce · f405c3159 · 9033b58f9 차례로 (Walk again 고침 fdcca63ce 가 같은 화면 파일 위 — 10-13 잼. client2/dist 는 늘 충돌 — src 를 되돌린 뒤 다시 빌드해 담는다) -> 서버 재기동 · 걷기 화면 새로고침(화면 · 서버 반쪽은 같이 — 서버만 되돌리면 화면이 resumable 을 계속 보냄)
 > ⚠️ 안 잰 것  허브 씨앗(허브 가지 — main 밖) · 걷기 풀 경유 초(이 판은 프로세스 안) · 쪽 25 넘은 121 씨앗
 > ```
 >
@@ -132,7 +133,7 @@
 >          capped true -> 거른 행이 10,000 을 넘음. 정확한 수는 더 좁혀야 나온다
 >          내보내기 413 «More than 1,000,000 rows match - over the export cap. …» -> 그 조건이 상한을 넘음(정확한 수는 안 셈)
 > 급할 때   "count_recount_seconds" 를 크게(예 300) — 재기동 없음 · 다음 세기부터
-> 되돌리기  git revert -m 1 6204d74bc 다음 git revert -m 1 edd78a7d2 -> 서버 재기동 · 열린 그리드 탭 새로고침(화면 · 서버 반쪽은 같이 되돌림)
+> 되돌리기  git revert -m 1 6204d74bc 다음 git revert -m 1 edd78a7d2 — ⚠️ 지금은 혼자 안 됨(10-13 잼): 화면 반쪽은 fdcca63ce · 62b9cf5e4 · f405c3159 를, 서버 반쪽은 f620962c7 을 먼저 되돌려야 src 충돌이 없다. 급하면 위 «급할 때» 줄. client2/dist 는 늘 충돌 — src 를 되돌린 뒤 다시 빌드해 담는다 -> 서버 재기동 · 열린 그리드 탭 새로고침(화면 · 서버 반쪽은 같이 되돌림)
 > 재기동 뒤 큰 표의 첫 /data/count 가 counting -> 몇 초 안에 수 · server.log 에 [Count] 줄이 없음
 > 이 판에서 400만 행 dt_log · 실제 런처(API + 체인 워커 + 감시자) · 박스 판, 운영 주장 아님
 >          필터 없는 세기 요청 20 번 5~29 ms · 그 요청이 읽은 행 0 · 필터 10,000 넘음 0.05 s(센 행 10,001 · 지나며 읽은 행 10,006 — 일치가 많은 필터. 세는 것은 10,001 까지, 훑기는 읽기 상한까지)
@@ -161,7 +162,7 @@
 > 서버 단독   런처 없이 uvicorn 만 띄우면 체인과 원장이 그 프로세스 안(ASSY_CHAIN_WORKER=0 이면 둘 다 안 뜸)
 > 박스 판    런처 다섯 · hold 3000 행: 따라가기 한 바퀴 사건 3 개(3000 행) 4.8 s · 원장을 세운 채 추가 2.2 s · 고침 1.7 s · 지움 거두기 0.5 s 에 공식 표까지 ·
 >          Pause 12 s 동안 원장 대기 그대로, 풀자 1.3 s 에 따라감 · 원장 프로세스를 죽이자 감독이 5 s 에 다시 띄움 (운영 주장 아님)
-> 되돌리기  git revert 19d6da585 -> 런처 재기동
+> 되돌리기  git revert -m 1 f620962c7 다음 git revert 19d6da585 -> 런처 재기동 (자동 인덱스가 ingestion_worker.py · models.py 의 같은 자리 위 — 혼자 되돌리면 충돌, 10-13 잼)
 > ```
 >
 > ---
