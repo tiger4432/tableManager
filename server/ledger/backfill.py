@@ -845,7 +845,7 @@ def say_what_every_page_pays(engine, plan, world, withdraw):
         name, valid, build = ref_index_state(engine, world)
         if not valid:
             keyset_scan.say("%s missing or not valid - each page's withdrawal count and DELETE read the whole ledger; "
-                            "the chain worker builds it at its start (build_missing_indexes), or now: %s" % (name, build))
+                            "the ledger process builds it at its start (build_missing_indexes), or now: %s" % (name, build))
     connection = engine.raw_connection()
     try:
         keyed = _page_key_index(connection, plan)

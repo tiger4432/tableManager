@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.logger import get_process_logger  # noqa: E402
+from utils.logger import answers_on_stdout, get_process_logger  # noqa: E402
 
 LOG_FILENAME = "retroactive.log"
 
@@ -45,9 +45,7 @@ def main(argv=None):
 def _slice(args):
     # the answers keep stdout; anything else printed goes up stderr with the lines (`chain.slots.main`'s way). A name of
     # its own: its connections are its own in pg_stat_activity, and its beat reads only them.
-    answers = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8", buffering=1)
-    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
-    sys.stdout = sys.stderr
+    answers = answers_on_stdout()
     logger = get_process_logger("Retroactive_slice" + (args[0].split("/")[0] if args else ""), LOG_FILENAME,
                                 relay=sys.stderr)
     if len(args) != 2:

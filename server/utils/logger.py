@@ -204,6 +204,15 @@ def relayed(line):
     return None
 
 
+def answers_on_stdout():
+    """A relaying child's answer stream: its stdout kept for its JSON answers, everything else printed sent up stderr
+    with its log lines - a chain slot, a retroactive slice and a follow-up slice are started this way."""
+    answers = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8", buffering=1)
+    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+    sys.stdout = sys.stderr
+    return answers
+
+
 def relay_lines(stream, prefix, name):
     """A relaying child's `stream` into this process's log, line by line - each under the logger that wrote it, after
     `prefix`; a continuation line under the line before's (`name` at WARNING before any)."""
