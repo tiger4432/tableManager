@@ -31,9 +31,15 @@ const REAL = {
   route: await import('../src/testbed/route.js'),
   trend: await import('../src/walk/trend.js'),
   reach: await import('../src/walk/reach_table.js'),
+  show: await import('../src/testbed/show_items.js'),
+  tooltip: await import('../src/testbed/tooltip.js'),
+  cond: await import('../src/testbed/condition_editor.js'),
+  trellis: await import('../src/testbed/trellis.js'),
+  shape: await import('../src/testbed/shape_by.js'),
 };
+const { localStamp } = await import('../src/server_time.js');
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
-const { HubBook, hubId, holds, isHubId } = await import('../src/testbed/hubs.js');
+const { HubBook, hubId, holds, isHubId, hubOf } = await import('../src/testbed/hubs.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
 const { Panel } = await import('../src/rnd_board/panel.js');
 const { statusWords } = await import('../src/testbed/status_part.js');
@@ -817,6 +823,144 @@ async function tipsAndLabels(M) {
   return { pointTip, gone, marked, all, none, desc, cellTip };
 }
 
+/** Top/Bottom N (base set 11, show_items.js): the rule itself, then seated - a scatter's points, a hub's folded value. */
+async function showCases(M) {
+  const one = (value) => ({ reads: { show: { state: 'one', value } } });
+  const marks = [{ id: 'a', ...one(5) }, { id: 'b', ...one('7') }, { id: 'c', ...one(7) }, { id: 'd', reads: { show: { state: 'several', values: [1, 9] } } }, { id: 'e', ...one('x') }];
+  const ids = (rule, n) => M.show.showItems(marks, { encode: { show: {} }, show: { rule, n } }).kept.map((m) => m.id);
+  const rule = [ids('top', 2), ids('top', 1), ids('bottom', 1), ids('top', 9), ids('all', 1), M.show.showItems(marks, { show: { rule: 'top', n: 1 } }).kept.length];
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 4, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const seat = async (encode, show) => {
+    const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'die', start: { marking: null }, system: null, filter: [], encode, show };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return [part.model.points.map((pt) => pt.label), (statusWords(part.stats.get('S')) || []).find((w) => w.includes('not shown')) || null];
+  };
+  const points = await seat({ x: key('x'), y: key('y'), show: key('x') }, { rule: 'top', n: 1 });
+  const hubs = await seat({ x: { ...key('x'), reduce: 'Avg' }, y: { ...key('y'), reduce: 'Avg' }, marker1: key('p'), show: { ...key('x'), reduce: 'Avg' } }, { rule: 'top', n: 1 });
+  return { rule, points, hubs };
+}
+
+/** The three the app found on 18766 (lead 10-14): a time shown as the grid shows it (tooltip, filter - the one place
+ *  slot.valueText), a label on the point's inner side, a filter value one line with its words in its tooltip. */
+async function shownWords(M) {
+  const ISO = '2026-11-23T18:49:00Z';
+  const answer = { nodes: [{ id: 'D1', type: 'die', label: 'D1', keys: {}, attributes: { when: { $datetime: ISO } } }], edges: [], truncated: ANSWER.truncated };
+  const index = M.reach.indexGraph(answer);
+  const inside = new Set(['D1']);
+  const when = { steps: [], value: { on: 'node', name: 'when' }, words: ['when'] };
+  const read = M.slot.readSlot(index, inside, 'D1', when);
+  const tip = M.tooltip.tipLines({ id: 'D1', ids: ['D1'] }, { rowsById: new Map([['D1', { id: 'D1', label: 'D1', reads: { tip1: read } }]]), slots: [{ key: 'tip1' }], encode: { tip1: when } });
+  const doc = makeDoc('dark');
+  const spans = (summary) => walk(M.cond.drawCondition(doc, summary, null, () => {})).filter((n) => String(n.className) === 'sf-filter__t')
+    .map((n) => [n._text, n.title, n.getAttribute('data-clip-ok') !== null]);
+  const LONG = 'fake-SYN-CW-103-01-core_cmp_nonuniform';
+  const filter = [spans({ row: 'die', words: 'when', slot: when, values: [[read.value, 1]], empty: 0, time: read.time }),
+    spans({ row: 'die', words: 'meas_id', slot: { ...when, value: { on: 'node', name: 'meas_id' } }, values: [[LONG, 2]], empty: 0 })];
+  const pal = { bg: '#000000', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: '#000000', one: ['#111111', '#222222'], cat: [] };
+  const pt = (id, x) => ({ id, ids: [id], label: id, tag: id, x, y: 1, fill: '#111111', border: '#222222', marked: false });
+  const option = M.scatter.scatterOption({ points: [pt('a', 1), pt('b', 2), pt('c', 3)], xKind: 'value', yKind: 'value', size: 6 }, pal);
+  const sides = option.series[0].data.map((d) => [d.id, d.label.position]);
+  return { read: [read.state, read.time], tip, stamp: localStamp(ISO), filter, sides, LONG };
+}
+
+/** Trellis (base set 12, trellis.js): the rows split by Panel by, each panel the kind's picture of its rows; one extent
+ *  for every panel; a press in a panel marks its rows there, the panel's value among the conditions. */
+async function trellisCases(M) {
+  const one = (value) => ({ state: 'one', value });
+  const rows = [{ id: 'r1', reads: { panel: one('B') } }, { id: 'r2', reads: { panel: { state: 'several', values: ['A', 'B'] } } }, { id: 'r3', reads: {} }];
+  const split = M.trellis.panelsOf(rows, { encode: { panel: { steps: [], value: { on: 'key', name: 'p' }, words: ['p'] } } });
+  const panel = split[0];
+  const hub = M.trellis.inPanel([{ id: 'h', ids: ['r2'], where: [['lot', 'L1']] }], panel, 'die')[0];
+  const pure = [split.map((s) => [s.name, s.rows.map((r) => r.id)]), M.trellis.withPanel(M.trellis.withPanel([['lot', 'L1']], panel), panel), [hub.id === hubId('die', [['lot', 'L1'], ['p', 'A']]), hub.where],
+    M.trellis.panelsOf(rows, { encode: {} })];
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 9, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  const charts = [];
+  const stubCharts = { init: () => { const h = {}; charts.push(h); return { setOption(o) { h.option = o; }, dispatchAction() {}, on(name, fn) { h[name] = fn; }, getZr() { return { on() {} }; }, resize() {}, dispose() {} }; } };
+  const markings = new MarkingStore();
+  const hubs = new HubBook();
+  const crossKind = (await import('../src/testbed/kinds/cross_table.js')).kind;
+  const seat = async (kind, encode) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind, crossTable: crossKind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs, names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return part;
+  };
+  const sc = await seat('scatter', { x: key('x'), y: key('y'), panel: key('p') });
+  const drawnPanels = walk(sc.root).filter((n) => String(n.className) === 'sf-trellis__h').map((n) => n._text);
+  const axes = (sc.panels || []).map((pn) => { const o = M.scatter.scatterOption(pn.model, { bg: '#000000', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: '#000000', one: ['#111111', '#222222'], cat: [] });
+    return [pn.name, pn.model.points.map((pt) => pt.id), o.xAxis.min, o.xAxis.max, o.yAxis.min, o.yAxis.max]; });
+  const hubsSeat = await seat('scatter', { x: { ...key('x'), reduce: 'Avg' }, y: { ...key('y'), reduce: 'Avg' }, marker1: key('x'), panel: key('p') });
+  const aThree = hubsSeat.panels ? hubsSeat.panels[0].model.points.find((pt) => pt.label === '3') : null;
+  const held = () => markings.entries('marking:pick').map(([id]) => [hubOf(id) ? hubOf(id).where : id, hubs.membersOf(id)]);
+  if (aThree) hubsSeat.markHubs([[aThree.where, aThree.ids]], {});
+  await settle();
+  const marker = held();
+  const cross = await seat('crossTable', { rows: key('x'), panel: key('p') });
+  const cell = walk(cross.root).filter((n) => n.tagName === 'TD' && n.listeners && n.listeners.click);
+  cell[cell.length - 1].listeners.click[0]({});
+  await settle();
+  const cellHeld = held();
+  // a marking holding the wafer node (pressed in a part with no panels): a panel's cell of that wafer is its rows there,
+  // the panel's value a second condition - not the wafer, so not drawn marked (as a two-axis cell)
+  const wafer = (id, label) => ({ id, type: 'wafer', label, keys: {}, attributes: {} });
+  answer.nodes.push(wafer('W1', 'W1'));
+  answer.edges = ['D1', 'D2', 'D3'].map((d, i) => ({ id: `e${i}`, source: d, target: 'W1', predicate: 'in_container', qualifiers: {} }));
+  markings.replace('marking:pick', [['W1', SIGN.CASE]]);
+  const byWafer = await seat('crossTable', { rows: { steps: [{ predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['wafer'] }, panel: key('p') });
+  const waferCells = (byWafer.panels || []).map((pn) => [pn.name, pn.model.grid[0][0].marked]);
+  return { pure, drawnPanels, axes, marker, cell: cellHeld, waferCells };
+}
+
+/** Shape by (base set 7-b, shape_by.js): a category's shape - declared, else the next one free (the colours' rule); a points
+ *  kind draws it and the legend says the same names; a kind that draws no points holds no Shape by. */
+async function shapeCases(M) {
+  const one = (value) => ({ state: 'one', value });
+  const rows = [{ id: 'r1', reads: { shape: one('A') } }, { id: 'r2', reads: { shape: one('B') } }, { id: 'r3', reads: { shape: one('A') } }, { id: 'r4', reads: {} }];
+  const s = M.shape.shapesOf(rows, { encode: { shape: {} }, shapes: { B: 'diamond' } });
+  const pure = [s.categories.map((c) => [c.name, c.shape, c.ids]), s.assigned, M.shape.shapeOfIds(s, ['r1', 'r3']), M.shape.shapeOfIds(s, ['r1', 'r2']),
+    M.color.assignLooks(['x', 'y', 'z'], { y: 'p1' }, ['p1', 'p2'])];
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 9, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const markings = new MarkingStore();
+  const crossKind = (await import('../src/testbed/kinds/cross_table.js')).kind;
+  const seat = async (kind, encode) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind, crossTable: crossKind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return part;
+  };
+  const sc = await seat('scatter', { x: key('x'), y: key('y'), shape: key('p') });
+  const pal = { bg: '#000000', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: '#000000', one: ['#111111', '#222222'], cat: [] };
+  const drawn = M.scatter.scatterOption(sc.model, pal).series[0].data.map((d) => [d.id, d.symbol || null]);
+  const glyphs = walk(sc.root).filter((n) => String(n.className) === 'sf-legend__shape').map((n) => n.getAttribute('data-shape'));
+  const name = walk(sc.root).find((n) => String(n.className) === 'sf-legend__name' && n._text === 'B' && n.parentNode.children.some((c) => String(c.className) === 'sf-legend__shape'));
+  if (name) name.listeners.click[0]({});
+  await settle();
+  const pressed = markings.entries('marking:pick').map(([id]) => (hubOf(id) ? hubOf(id).where : id));
+  const cross = await seat('crossTable', { rows: key('x') });
+  return { pure, drawn, glyphs, kept: sc.declaration().shapes || null, pressed, crossSlots: cross.slotList().some((x) => x.key === 'shape') };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -843,6 +987,10 @@ async function suite(M) {
   const sh = await sheetRoot(M);
   const ks = await keptStart(M);
   const tl = await tipsAndLabels(M);
+  const si = await showCases(M);
+  const sw = await shownWords(M);
+  const tr = await trellisCases(M);
+  const shp = await shapeCases(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -916,7 +1064,7 @@ async function suite(M) {
       { points: [['L1', 26, 5, ['W1', 'W3'], false], ['L2', 40, 6, ['W2', 'W4'], false]], several: 0 }),
     judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
       [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
-        [['x', 'y', 'marker1', 'color', 'label', 'tip1'], ['x*', 'y*', 'marker1', 'marker2', 'color', 'label', 'tip1']]]),
+        [['x', 'y', 'marker1', 'color', 'shape', 'label', 'tip1', 'show', 'panel'], ['x*', 'y*', 'marker1', 'marker2', 'color', 'shape', 'label', 'tip1', 'show*', 'panel']]]),
     judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
       ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
     judge('Y1 no relation: the layer of a marking is its members (a hub its members) - for every node the same as holds()', [ly.none, ly.same],
@@ -967,6 +1115,24 @@ async function suite(M) {
     judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
+    judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
+      shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
+    judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows; a cross table holds no Shape by',
+      [shp.drawn, shp.glyphs, shp.kept, shp.pressed, shp.crossSlots], [[['D1', 'circle'], ['D2', 'rect'], ['D3', 'circle']], ['circle', 'rect'], { A: 'circle', B: 'rect' }, [[['p', 'B']]], false]),
+    judge('TR1 Panel by splits the rows - two values in both, none (Empty) last; a hub in a panel carries the panel\'s value once; no slot - no panels',
+      tr.pure, [[['A', ['r2']], ['B', ['r1', 'r2']], ['(Empty)', ['r3']]], [['lot', 'L1'], ['p', 'A']], [true, [['lot', 'L1'], ['p', 'A']]], null]),
+    judge('TR2 a scatter in panels: a panel a value, its rows\' points, every panel on the same x and y extent', [tr.drawnPanels, tr.axes],
+      [['A', 'B'], [['A', ['D1', 'D3'], 1, 3, 2, 9], ['B', ['D2'], 1, 3, 2, 9]]]),
+    judge('TR3 a press in a panel marks its rows there - a marker of x 3 in A is D3, not D2; a cross table cell the same', [tr.marker, tr.cell],
+      [[[[['x', '3'], ['p', 'A']], ['D3']]], [[[['x', '3'], ['(None)', ''], ['p', 'B']], ['D2']]]]),
+    judge('TR4 a panel\'s cell is painted as it is pressed - a marking holding the wafer leaves the wafer\'s cells in panels unmarked (two conditions, the rows)', tr.waferCells, [['A', false], ['B', false]]),
+    judge('TM1 a time the server sends is a time read; the tooltip and the filter say it as the grid does (local, no T · Z), a long value one line with its words in its tooltip',
+      [sw.read, sw.tip, sw.filter], [['one', true], ['D1', `when: ${sw.stamp}`], [[[sw.stamp, sw.stamp, true]], [[sw.LONG, sw.LONG, true]]]]),
+    judge('LB2 a label on the point\'s inner side - right in the left half, left in the right half (not under the legend)', sw.sides, [['a', 'right'], ['b', 'right'], ['c', 'left']]),
+    judge('SI1 Top/Bottom N: the highest or lowest N by the slot, a number written as text a number, equal values by id, no number not among them; all or no slot - every mark',
+      si.rule, [['b', 'c'], ['b'], ['a'], ['a', 'b', 'c'], ['a', 'b', 'c', 'd', 'e'], 5]),
+    judge('SI2 a scatter showing the top 1 by x draws that point only and the status says how many are not shown', si.points, [['D2'], 'Top 1 by x · 2 not shown']),
+    judge('SI3 a Marker by hub ranked by its rows folded (Avg of x: A 2, B 3)', si.hubs, [['B'], 'Top 1 by Avg(x) · 1 not shown']),
     judge('P6 a marker by lot pressed marks the lot node it stands for (hubs.js nodesOfPress) - the Marked table of wafers holds none of it, no relation declared', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['L1'], lines: [], said: '0 marked rows - marking holds lot; no relation to wafer' }),
   ];
@@ -1076,6 +1242,38 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null)', 'painted(ids, null)') },
   { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'P6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'marked: received.filter(marked).length, hidden, heldOnly,', 'marked: received.filter(marked).length, hidden,') },
+  { id: 'M39', what: 'the kind handed every mark - Top/Bottom N not applied', catches: 'SI2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'this.kind.model(showing.kept,', 'this.kind.model(units,') },
+  { id: 'M40', what: 'the Top/Bottom by slot not folded for a hub - a hub reads nothing and none is shown', catches: 'SI3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '      folded(SHOW_SLOT), PANEL_SLOT];', '      SHOW_SLOT, PANEL_SLOT];') },
+  { id: 'M41', what: 'equal values by id backwards', catches: 'SI1 ', file: 'testbed/show_items.js', key: 'show',
+    mutate: (t) => swap(t, '(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)', '(a.id < b.id ? 1 : a.id > b.id ? -1 : 0)') },
+  { id: 'M42', what: 'a time read not said a time', catches: 'TM1 ', file: 'testbed/slot.js', key: 'slot',
+    mutate: (t) => swap(t, "=== 'string') return { time: true };", "=== 'string') return {};") },
+  { id: 'M43', what: 'the tooltip says a value as it came - the UTC text', catches: 'TM1 ', file: 'testbed/tooltip.js', key: 'tooltip',
+    mutate: (t) => swap(t, 'return valueText(read.value, isTimeRead(read));', 'return String(read.value);') },
+  { id: 'M44', what: 'a filter value as it came, no tooltip', catches: 'TM1 ', file: 'testbed/condition_editor.js', key: 'cond',
+    mutate: (t) => swap(t, '      words.title = said;', '      words.title = \'\';') },
+  { id: 'M45', what: 'every label right of its point', catches: 'LB2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, "(along(p.x) > mid ? 'left' : 'right')", "'right'") },
+  { id: 'M46', what: 'no panels - Panel by drawn as one picture', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    const split = panelsOf(rows, this.decl);', '    const split = null;') },
+  { id: 'M47', what: 'a press in a panel marks without the panel - a cross table cell of the same x in another panel the same hub', catches: 'TR3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),', 'markHub: (where, ids, event) => this.markHub(where, ids, event),') },
+  { id: 'M48', what: 'each panel its own extent', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent,', 'this.kind.model(marks[i], { ...modelCtx,') },
+  { id: 'M54', what: 'a panel\'s mark painted without the panel - pressed one way, drawn another', catches: 'TR4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));', '}) }));') },
+  { id: 'M49', what: 'the panel condition appended again on every pass', catches: 'TR1 ', file: 'testbed/trellis.js', key: 'trellis',
+    mutate: (t) => swap(t, 'return where.some(([w]) => w === words) ? where : [...where, ...panel.where];', 'return [...where, ...panel.where];') },
+  { id: 'M50', what: 'the kind handed no shape - every point the one shape', catches: 'SP2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'askMarked, label, shape, palette', 'askMarked, label, shape: null, palette') },
+  { id: 'M51', what: 'the shapes given not kept - more categories deal them again', catches: 'SP2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'if (shapes && shapes.any && Object.keys(shapes.assigned).length)', 'if (false)') },
+  { id: 'M52', what: 'a category not declared given no shape', catches: 'SP1 ', file: 'testbed/shape_by.js', key: 'shape',
+    mutate: (t) => swap(t, 'const assigned = assignLooks(seen, own, SHAPES);', 'const assigned = {};') },
+  { id: 'M53', what: 'the scatter draws every point a circle', catches: 'SP2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, '...(p.shape ? { symbol: p.shape } : {}),', '') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

@@ -59,12 +59,14 @@ function foldedRead(rows, key, slot, marked) {
   if (!slot) return undefined;
   if (slot.reduce || isExpression(slot)) {
     const value = foldRows(slot, rows.map((r) => r.raw && r.raw[key]), marked);
-    return value === null || value === undefined ? { state: 'empty' } : { state: 'one', value };
+    const time = rows.some((r) => ((r.raw && r.raw[key]) || []).some((x) => x.time)) ? { time: true } : {};
+    return value === null || value === undefined ? { state: 'empty' } : { state: 'one', value, ...time };
   }
   const reads = rows.map((r) => r.reads[key]).filter(Boolean);
-  if (reads.some((r) => r.state === 'several')) return { state: 'several', values: [] };
+  const time = reads.some((r) => r.time) ? { time: true } : {};
+  if (reads.some((r) => r.state === 'several')) return { state: 'several', values: [], ...time };
   const said = [...new Map(reads.filter((r) => r.state === 'one').map((r) => [JSON.stringify(r.value), r.value])).values()];
-  return said.length === 1 ? { state: 'one', value: said[0] } : said.length ? { state: 'several', values: said } : { state: 'empty' };
+  return said.length === 1 ? { state: 'one', value: said[0], ...time } : said.length ? { state: 'several', values: said, ...time } : { state: 'empty' };
 }
 
 /** A row's value records as units: each record of the record slot its own; that slot with a reduce - each read's records

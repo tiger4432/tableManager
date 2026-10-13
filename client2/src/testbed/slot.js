@@ -5,9 +5,9 @@
 // own value. Or { self: true } - the row's own node (a sheet's key cell), or { constant } - a value as written (a
 // sheet's cell). This file is the one place that asks which a slot is.
 
-import { readsOf, recordsOf, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
+import { readsOf, recordsOf, waysOf, WAYS_A_CELL, valueWords } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
-import { parseServerInstant } from '../server_time.js';
+import { parseServerInstant, localStamp, NO_TIME } from '../server_time.js';
 import { isBlank } from '../absent.js';
 import { compile, run, Reads, ExpressionError } from '../expression.js';
 import { fold } from './aggregate.js';
@@ -38,14 +38,29 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
   if (got.missing) return { state: 'missing' };
   const reads = got.reads;
   const reduce = slot.reduce || (oneValued ? 'Latest' : null);
+  // a time read (readsAt) - said as a time wherever it is shown (valueText)
+  const time = reads.some((r) => r.time) ? { time: true } : {};
   if (reduce) {
     const f = fold(reduce, reads);
-    return f.value === null ? { state: 'empty', n: f.n, tied: f.tied } : { state: 'one', value: f.value, n: f.n };
+    return f.value === null ? { state: 'empty', n: f.n, tied: f.tied } : { state: 'one', value: f.value, n: f.n, ...time };
   }
   const values = [...new Map(reads.flatMap((r) => [].concat(r.value)).map((v) => [spelling(v), v])).values()];
   if (!values.length) return { state: 'empty', n: 0 };
-  return values.length === 1 ? { state: 'one', value: values[0], n: reads.length } : { state: 'several', values, n: reads.length };
+  return values.length === 1 ? { state: 'one', value: values[0], n: reads.length, ...time } : { state: 'several', values, n: reads.length, ...time };
 }
+
+/** Whether a read is a time: the walk says so - its column declared datetime (an edge's `column_types`, a node record's
+ *  `column_type`), or a calculator's name of that type (`types`) - or it reads the time itself. */
+export const isTimeRead = (read) => Boolean(read && (read.time || (read.types && Object.values(read.types).includes('datetime'))));
+
+/** A value as it is shown - THE one place (tooltip, label, filter, Sheet): a time in the viewer's zone as the grid shows a
+ *  datetime cell (server_time localStamp), the rest valueWords. */
+export function valueText(value, time = false) {
+  return (time && timeText(value)) || valueWords(value);
+}
+
+/** A time value in the viewer's zone (server_time localStamp); not a time - null. */
+export const timeText = (value) => (localStamp(value) !== NO_TIME ? localStamp(value) : null);
 
 /**
  * Every slot of a row, `pairs` [key, slot]. With `cells` (a kind of cells - the sheet, owner 3b97fcfb9) an expression
@@ -188,9 +203,18 @@ export function readsAt(index, inside, x, slot, records = false) {
   const got = readsOf(index, inside, x, slot, Infinity);
   if (got.missing) return { missing: true, reads: [] };
   // records - each read spread into its records (reach_table.recordsOf: an edge's every atom), `read` the read it is of
-  const reads = records ? got.reads.flatMap((r, read) => recordsOf(index, slot, r).map((rec) => ({ value: plainValue(rec.value), t: timeOf(rec.when), read })))
-    : got.reads.map((r) => ({ value: plainValue(r.value), t: timeOf(r.when) }));
-  return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ ...r, value: new Date(r.t).toISOString() })) : reads };
+  const reads = records ? got.reads.flatMap((r, read) => recordsOf(index, slot, r).map((rec) => ({ value: plainValue(rec.value), t: timeOf(rec.when), read, ...timeOfRead(index, slot, { ...r, value: rec.value }) })))
+    : got.reads.map((r) => ({ value: plainValue(r.value), t: timeOf(r.when), ...timeOfRead(index, slot, r) }));
+  return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ ...r, value: new Date(r.t).toISOString(), time: true })) : reads };
+}
+
+/** A read a time: the server's {"$datetime"}, or a column the walk declares datetime - {time: true}; else {}. */
+function timeOfRead(index, slot, r) {
+  if (r.value && typeof r.value === 'object' && typeof r.value.$datetime === 'string') return { time: true };
+  const name = slot.value && slot.value.name;
+  const said = slot.value && slot.value.on === 'edge' ? r.edge && (r.edge.column_types || {})[name]
+    : ((((index.nodes.get(r.node) || {}).records || {})[name] || [])[0] || {}).column_type;
+  return said === 'datetime' ? { time: true } : {};
 }
 
 /** A value as a slot reads it: a time the server sends as {"$datetime": iso} (ledger roleframe) its instant in ISO -

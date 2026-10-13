@@ -224,7 +224,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  const own = body.sheetPick || (body.sheetPick = { sel: [\'A1\'], anchor: \'A1\', say: \'\' });',
       '  const own = SHARED;').replace('export function render(', "const SHARED = { sel: ['A1'], anchor: 'A1', say: '' };\nexport function render(") },
   { id: 'SM15', what: 'a datetime answer drawn as the server wrote it (the code before, 18766)', catches: 'S22',
-    mutate: (t) => swap(t, "    if (read && read.types) time = Object.values(read.types).includes('datetime');\n", '') },
+    mutate: (t) => swap(t, "    if (read && read.types) time = isTimeRead(read);\n", '') },
   { id: 'SM12', what: 'the grid does not grow past the cells written', catches: 'S1 the grid', mutate: (t) => swap(t, 'const MARGIN = { c: 2, r: 5 };', 'const MARGIN = { c: 0, r: 0 };') },
 ];
 const scored = await scoreMutants(MUTANTS.map((m) => ({ ...m, file: F })), async (m) => {

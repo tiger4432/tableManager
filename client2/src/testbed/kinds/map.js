@@ -32,7 +32,9 @@ export function mapModel(rows, ctx) {
     cells.push({ ids, where: values, x, y, tag, marked: p.marked, fill: p.fill, line: p.line });
   }
   const span = (k) => (cells.length ? [Math.min(...cells.map((c) => c[k])), Math.max(...cells.map((c) => c[k]))] : [0, 0]);
-  return { cells, notDrawn, note: notDrawn ? `${notDrawn} not drawn` : '', x: span('x'), y: span('y') };
+  // a trellis panel's grid: the extents over every panel (the root's)
+  const extent = (k) => (ctx.extent && ctx.extent(k)) || span(k);
+  return { cells, notDrawn, note: notDrawn ? `${notDrawn} not drawn` : '', x: extent('x'), y: extent('y') };
 }
 
 /** Draw a model into the template's area: the grid (an SVG, a cell a rect). */

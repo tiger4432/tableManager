@@ -2,6 +2,7 @@
 // with its count; «Include empty». The filters panel and a part's own Filter draw this same control.
 
 import { numberOf } from '../walk/reach_table.js';
+import { valueText } from './slot.js';
 
 /** A condition's identity - its row type and its slot - so one slot holds one condition. */
 export const conditionKey = (c) => JSON.stringify([c.row, c.steps || [], c.value, c.end || null, c.endTypes || null, c.reduce || null, c.expr || null]);
@@ -34,7 +35,10 @@ export function drawCondition(doc, summary, condition, onChange) {
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const c = condition || conditionFor(summary);
   const box = el('div', 'sf-filter');
-  box.append(el('div', 'sf-filter__h', summary.words));
+  const head = el('div', 'sf-filter__h', summary.words);
+  head.title = summary.words;
+  head.setAttribute('data-clip-ok', '');
+  box.append(head);
   if (c.range) {
     const line = el('div', 'sf-filter__range');
     for (const end of ['min', 'max']) {
@@ -60,7 +64,12 @@ export function drawCondition(doc, summary, condition, onChange) {
         const next = summary.values.map(([x]) => x).filter((x) => (JSON.stringify(x) === JSON.stringify(v) ? check.checked : kept.has(JSON.stringify(x))));
         onChange({ ...c, values: next });
       });
-      label.append(check, el('span', '', String(v)), el('span', 'sf-filter__n', String(n)));
+      // one line - a long value cut with its whole words in its tooltip (lead 10-14: two lines ran over the next)
+      const said = valueText(v, summary.time);
+      const words = el('span', 'sf-filter__t', said);
+      words.title = said;
+      words.setAttribute('data-clip-ok', '');
+      label.append(check, words, el('span', 'sf-filter__n', String(n)));
       box.append(label);
     }
   }

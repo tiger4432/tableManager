@@ -5,8 +5,7 @@
 // one. A label is the Label by slot's value (else the mark's name), shown on none, the marked marks or all (`labels`).
 // The kind asks neither: it hands the root what is under the pointer and draws the label the root gives.
 
-import { slotWords } from './slot.js';
-import { valueWords } from '../walk/reach_table.js';
+import { slotWords, valueText, isTimeRead } from './slot.js';
 
 const TIP = /^tip(\d+)$/;
 const tipOrder = (key) => Number(TIP.exec(key)[1]);
@@ -23,7 +22,7 @@ export const LABEL_SHOWS = Object.freeze([['none', 'None'], ['marked', 'Marked r
 /** A read in words: one value, several (how many), nothing - null. */
 const readWords = (read) => {
   if (!read) return null;
-  if (read.state === 'one') return valueWords(read.value);
+  if (read.state === 'one') return valueText(read.value, isTimeRead(read));
   if (read.state === 'several') return `${(read.values || []).length || 'several'} values`;
   return null;
 };

@@ -56,6 +56,12 @@
 .sf-frame__left .sf-frame__pills { flex-direction: column; }
 .sf-frame__pills:empty { display: none; }
 .sf-frame__area { grid-row: 2; grid-column: 2; display: grid; min-height: 0; min-width: 0; }
+/* trellis (base set 12): panels in a grid, each its value's band over its own picture */
+.sf-trellis { grid-auto-rows: minmax(0, 1fr); gap: var(--space-1); }
+.sf-trellis__panel { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; border: 1px solid var(--sf-line); }
+.sf-trellis__h { padding: 0 var(--space-2); background: var(--sf-status); color: var(--sf-status-text); line-height: var(--sf-lh); text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-trellis__area { display: grid; min-height: 0; min-width: 0; }
 .sf-frame > .sf-legend { grid-row: 1 / span 3; grid-column: 3; }
 .sf-say { padding: 10px 4px; color: var(--sf-text-2); }
 
@@ -85,6 +91,14 @@
 /* Color by (the root's): a category's circle opens its palette, its name marks its rows */
 .sf-pop.sf-swatches { display: block; width: auto; }
 button.sf-legend__ico { padding: 0; min-height: 0; cursor: pointer; }
+/* Shape by's glyphs - the names the scatter draws (shape_by.js SHAPES) */
+.sf-legend__shape { flex: none; width: var(--sf-icon); height: var(--sf-icon); background: var(--sf-one); }
+.sf-legend__shape[data-shape="circle"] { border-radius: 50%; }
+.sf-legend__shape[data-shape="roundRect"] { border-radius: 25%; }
+.sf-legend__shape[data-shape="triangle"] { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.sf-legend__shape[data-shape="diamond"] { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.sf-legend__shape[data-shape="pin"] { border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
+.sf-legend__shape[data-shape="arrow"] { clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%); }
 button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: normal; text-align: left; cursor: pointer; }
 .sf-swatches { padding: var(--sf-tool-gap); }
 .sf-swatches__grid { display: grid; grid-template-columns: repeat(5, var(--sf-pill-h)); gap: 6px; }
@@ -147,12 +161,15 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-props__add { height: auto; margin-top: 6px; padding: 0; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-panel-accent); font: inherit; cursor: pointer; }
 .sf-filter { padding: 8px 16px; border-bottom: 1px solid var(--sf-panel-line-2); }
 .sf-filter__h { font-weight: 500; margin-bottom: 4px; }
+/* a filter's name and its values one line each - cut, their words in their tooltip */
+.sf-filter__h, .sf-filter__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sf-filter__range { display: flex; gap: 6px; }
 /* a range end: the box the browser drew for it (90 x 22 inside, 98 x 28 whole), its line the panel's */
 .sf-filter__num { box-sizing: border-box; width: 98px; height: 28px; min-height: 0; padding: 1px 4px; border: 1px solid var(--sf-panel-line); border-radius: 0;
   background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
 .sf-filter__v { display: flex; align-items: center; gap: 6px; height: 20px; }
 .sf-filter__n { margin-left: auto; color: var(--sf-panel-muted); }
+.sf-filter__t { flex: 1 1 auto; }
 
 /* ── the page's editing (lead 10-13, Spotfire's): a part's title bar buttons on its hover, the line between two parts,
       where a moved part lands, the left bar and the add window beside it ── */

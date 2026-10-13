@@ -18,12 +18,15 @@
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
-import { readSlot, readSlots, slotWords, rawOf } from './slot.js';
+import { readSlot, readSlots, slotWords, rawOf, isTimeRead } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId, nodesOfPress } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
+import { SHOW_SLOT, showItems } from './show_items.js';
+import { PANEL_SLOT, panelsOf, inPanel, withPanel, extentsOf } from './trellis.js';
+import { SHAPE_SLOT, SHAPE_LEGEND, shapesOf, shapeOfIds } from './shape_by.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
 import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
 import { fitUnder } from '../dropdown.js';
@@ -80,10 +83,12 @@ export class VisualPart extends Panel {
     const own = typeof listed === 'function' ? listed(this.decl.encode || {}, this.decl) : listed;
     // A kind drawing a mark a unit holds Marker by (units.js); a hub folds its rows' reads, a value record reads records.
     const unit = this.kind && this.kind.units ? unitOf(this.decl) : 'node';
-    const read = unit === 'node' ? own : own.map((s) => ({ ...s, folds: true, records: unit === 'record' }));
-    // Color by is the root's - every kind holds it (color_by.js).
-    // Color by, Label by and the Tooltip slots too (tooltip.js) - the root's, every kind's.
-    return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, LABEL_SLOT, ...tipSlots(this.decl.encode)];
+    const folded = (s) => (unit === 'node' ? s : { ...s, folds: true, records: unit === 'record' });
+    // Color by, Label by and the Tooltip slots (tooltip.js) - the root's, every kind's; Top/Bottom by (show_items.js) too,
+    // read the way the kind's own slots are (a hub its rows folded)
+    // Shape by (shape_by.js) - a kind that draws points
+    return [...own.map(folded), ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, ...(this.kind && this.kind.points ? [SHAPE_SLOT] : []), LABEL_SLOT, ...tipSlots(this.decl.encode),
+      folded(SHOW_SLOT), PANEL_SLOT];
   }
 
   /** The slots it reads, by key: a slot the kind hands with its own (a sheet's cell) or the declaration's. */
@@ -379,14 +384,35 @@ export class VisualPart extends Panel {
     // the colours given to categories not declared yet are kept in the declaration - Save keeps them, more categories
     // later leave them where they are (a declaration field, no walk)
     if (colors.any && Object.keys(colors.assigned).length) this.decl = { ...this.decl, colors: { ...(this.decl.colors || {}), ...colors.assigned } };
+    // each row's shape (shape_by.js) - a points kind's; the shapes given kept in the declaration as the colours are
+    const shapes = this.kind.points ? shapesOf(rows, this.decl) : null;
+    this.shapes = shapes;
+    if (shapes && shapes.any && Object.keys(shapes.assigned).length) this.decl = { ...this.decl, shapes: { ...(this.decl.shapes || {}), ...shapes.assigned } };
+    const shape = shapes && shapes.any ? (ids) => shapeOfIds(shapes, ids) : null;
     const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record, askMarked) : rows;
     // what a tooltip and a label read: the marks the kind draws (units) and the rows (a mark a kind groups itself)
     this.rowsById = new Map(rows.map((r) => [r.id, r]));
     this.unitsById = new Map(units.map((u) => [u.id, u]));
     const label = (mark) => labelOf(mark, { decl: this.decl, rowsById: this.rowsById, marked: (ids) => ids.some(marked) });
+    // the top or bottom N marks by the Top/Bottom by slot (show_items.js) - the rest not drawn, said in the status
+    const showing = showItems(units, this.decl);
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
-    this.model = this.kind.model(units, { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start });
+    const modelCtx = { paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start };
+    this.model = this.kind.model(showing.kept, modelCtx);
+    // Trellis (trellis.js): a panel a Panel by value - its rows' marks, the shown ones only, every panel on one extent
+    const split = panelsOf(rows, this.decl);
+    if (split) {
+      const keep = new Set(showing.kept.map((u) => u.id));
+      const keys = this.slotList().map((s) => s.key);
+      const marks = split.map((panel) => inPanel((this.kind.units ? unitsOf(panel.rows, this.decl, keys, this.kind.units.record, askMarked) : panel.rows)
+        .filter((u) => keep.has(u.id)), panel, this.rowType()));
+      const extent = extentsOf(marks.flat());
+      for (const u of marks.flat()) this.unitsById.set(u.id, u);
+      // a mark in a panel is painted as it is pressed - the panel's value among its conditions (hubs.js nodesOfPress)
+      this.panels = split.map((panel, i) => ({ name: panel.name, where: panel.where, model: this.kind.model(marks[i], { ...modelCtx, extent,
+        paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));
+    } else this.panels = null;
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -398,6 +424,7 @@ export class VisualPart extends Panel {
     // are not among M: they were never walked from.
     this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0, otherStarts: this.otherStarts,
       part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden, heldOnly,
+      shown: showing.rule ? { rule: showing.rule, n: showing.n, by: slotWords(encode.show), hidden: showing.hidden } : null,
       columns: Object.keys(encode).length, source: this.rowType(),
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
@@ -442,13 +469,15 @@ export class VisualPart extends Panel {
     return [...this.slotList().filter((s) => encode[s.key]).map((s) => ({ key: s.key, slot: encode[s.key] })), ...own].map(({ key, slot }) => {
       const counts = new Map();
       let empty = 0;
+      let time = false;
       for (const id of received) {
         const read = readSlot(this.index, this.inside, id, slot, this.oneValued(slot));
+        if (isTimeRead(read)) time = true;
         const values = read.state === 'one' ? [read.value] : read.state === 'several' ? read.values : [];
         if (!values.length) empty += 1;
         for (const v of values) counts.set(JSON.stringify(v), [v, (counts.get(JSON.stringify(v)) || [v, 0])[1] + 1]);
       }
-      return { key, words: slotWords(slot), slot, row: this.rowType(), values: [...counts.values()], empty };
+      return { key, words: slotWords(slot), slot, row: this.rowType(), values: [...counts.values()], empty, time };
     });
   }
 
@@ -530,11 +559,13 @@ export class VisualPart extends Panel {
       else line.append(this.pill(nextMarker(encode), { words: unitWords(this.decl) }));
       legend.append(el('div', 'sf-legend__ttl', 'Marker by:'), line);
     }
-    legend.append(legendBlock(this.colors, { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
+    const legendCtx = { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
       words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
-      openPalette: (category, anchor) => this.openPalette(category, anchor) }));
+      openPalette: (category, anchor) => this.openPalette(category, anchor) };
+    legend.append(legendBlock(this.colors, legendCtx));
+    if (this.shapes) legend.append(legendBlock(this.shapes, legendCtx, SHAPE_LEGEND));
     body.append(trays.top, trays.left, area, trays.bottom, legend);
-    this.drawn = this.kind.render(area, this.model, {
+    const drawCtx = {
       doc, palette: this.palette(), charts: this.charts,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       plus: (key) => this.plus(key),
@@ -548,7 +579,24 @@ export class VisualPart extends Panel {
       declare: (patch) => this.setDeclaration({ ...this.decl, ...patch }),
       remember: (event) => this.remember(event),
       lastEvent: () => this.lastEvent(),
+    };
+    if (!this.panels) { this.drawn = this.kind.render(area, this.model, drawCtx); return; }
+    // the panels (trellis.js): each drawn by the kind as one picture; a press in one marks its rows there
+    area.classList.add('sf-trellis');
+    if (area.style) area.style.gridTemplateColumns = `repeat(${Math.ceil(Math.sqrt(this.panels.length))}, minmax(0, 1fr))`;
+    const drawn = this.panels.map((panel) => {
+      const box = el('div', 'sf-trellis__panel');
+      const head = el('div', 'sf-trellis__h', panel.name);
+      head.title = panel.name;
+      head.setAttribute('data-clip-ok', '');
+      const at = el('div', 'sf-trellis__area');
+      box.append(head, at);
+      area.append(box);
+      return this.kind.render(at, panel.model, { ...drawCtx,
+        markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),
+        markHubs: (list, event) => this.markHubs(list.map(([where, ids]) => [withPanel(where, panel), ids]), event) });
     });
+    this.drawn = { resize: () => drawn.forEach((d) => d && d.resize()), dispose: () => drawn.forEach((d) => d && d.dispose()) };
   }
 
   /** A slot's «+» - pressed, its picker. */

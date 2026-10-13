@@ -4,7 +4,7 @@
 // it (a scatter point, a table line, a cross table cell, a map cell). The legend and its palette are drawn here too.
 // The one seat a colour is asked: colorsOf; a hub (a marker, a cell) asks colorOfIds.
 
-import { categoryColor, mix } from './palette.js';
+import { mix } from './palette.js';
 
 /** The Color by slot every kind of the root holds. */
 export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true });
@@ -30,14 +30,7 @@ export function colorsOf(rows, ctx) {
   const anyMarked = rows.some((r) => marked(r.id));
   // A category not declared yet: the palette's next colour no category holds, in the order the rows show them (QA 10-14:
   // a colour by the value's hash put two of seven on one colour)
-  const held = new Set(Object.values(own));
-  const assigned = {};
-  for (const name of seen.filter((n) => !own[n])) {
-    const free = palette.cat.findIndex(([fill]) => !held.has(fill));
-    const fill = categoryColor(palette, free >= 0 ? free : held.size)[0];
-    assigned[name] = fill;
-    held.add(fill);
-  }
+  const assigned = assignLooks(seen, own, palette.cat.map(([fill]) => fill));
   const lineOf = (fill) => (palette.cat.find(([f]) => f === fill) || [fill, fill])[1];
   const categories = names.map((name) => {
     const fill = own[name] || assigned[name];
@@ -51,6 +44,21 @@ export function colorsOf(rows, ctx) {
     return [r.id, c ? { fill: c.fill, line: c.line, category: c.name } : { fill: palette.one[0], line: palette.one[1], category: null }];
   }));
   return { any: Boolean(decl.encode && decl.encode.color), of, categories, one: palette.one, assigned };
+}
+
+/** A category's look not declared yet - THE one rule for Color by's colours and Shape by's shapes: the pool's next one no
+ *  category holds, in the order the rows show them (all held - round the pool again); handed back for the declaration to
+ *  keep, so a value keeps its look as more come (Spotfire's). */
+export function assignLooks(seen, own, pool) {
+  const held = new Set(Object.values(own));
+  const assigned = {};
+  for (const name of seen.filter((n) => !own[n])) {
+    const free = pool.findIndex((look) => !held.has(look));
+    const look = pool[free >= 0 ? free : held.size % pool.length];
+    assigned[name] = look;
+    held.add(look);
+  }
+  return assigned;
 }
 
 /** A hub's colour - its rows' when they share one category, else the one colour. */
@@ -84,39 +92,47 @@ export function paintRows(rows, { palette, declaration, marked = () => false, ma
   return { colors, colored: colors.any, paint: painter({ colors, marked, markColor, palette, ids: rows.map((r) => r.id), anyHeld }) };
 }
 
+/** The Color by legend's look: a category's colour circle (pressed, the palette for it); none - the one colour. */
+export const COLOR_LEGEND = Object.freeze({
+  key: 'color', title: 'Color by:',
+  icon(c, ctx, el) {
+    const ico = el(c ? 'button' : 'span', 'sf-legend__ico');
+    ico.style.background = c ? c.fill : ctx.looks.one[0];
+    ico.style.borderColor = c ? c.line : ctx.looks.one[1];
+    if (!c) return ico;
+    ico.type = 'button';
+    ico.setAttribute('aria-label', `Colour of ${c.name}`);
+    ico.addEventListener('click', (event) => { if (event.stopPropagation) event.stopPropagation(); ctx.openPalette(c.name, ico); });
+    return ico;
+  },
+});
+
 /**
- * The legend's Color by block: its title, the slot's pill and «+», a line a category - its colour (pressed, the palette
- * for it) and its name (pressed, its rows marked as a hub) - or «All values».
+ * A legend block (Color by, Shape by - `look`): its title, the slot's pill and «+», a line a category - its look and its
+ * name (pressed, its rows marked as a hub) - or «All values».
  * @param {{doc, pill, plus, words, markHub, openPalette}} ctx  the root's
  */
-export function legendBlock(colors, ctx) {
+export function legendBlock(looks, ctx, look = COLOR_LEGEND) {
   const doc = ctx.doc;
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const at = { ...ctx, looks };
   const block = el('div', 'sf-legend__block');
   const row = el('div', 'sf-legend__row');
-  row.append(ctx.pill('color'), ctx.plus('color'));
-  block.append(el('div', 'sf-legend__ttl', 'Color by:'), row);
-  if (!colors.categories.length) {
+  row.append(ctx.pill(look.key), ctx.plus(look.key));
+  block.append(el('div', 'sf-legend__ttl', look.title), row);
+  if (!looks.categories.length) {
     const v = el('div', 'sf-legend__v');
-    const ico = el('span', 'sf-legend__ico');
-    ico.style.background = colors.one[0];
-    ico.style.borderColor = colors.one[1];
-    v.append(ico, el('span', 'sf-legend__name', 'All values'));
+    v.append(look.icon(null, at, el), el('span', 'sf-legend__name', 'All values'));
     block.append(v);
     return block;
   }
-  for (const c of colors.categories) {
+  for (const c of looks.categories) {
     const v = el('div', `sf-legend__v${c.dim ? ' is-dim' : ''}`);
     v.setAttribute('data-category', c.name);
-    const ico = el('button', 'sf-legend__ico');
-    ico.type = 'button';
-    ico.setAttribute('aria-label', `Colour of ${c.name}`);
-    ico.style.background = c.fill;
-    ico.style.borderColor = c.line;
-    ico.addEventListener('click', (event) => { if (event.stopPropagation) event.stopPropagation(); ctx.openPalette(c.name, ico); });
+    const ico = look.icon(c, at, el);
     const name = el('button', 'sf-legend__name', c.name);
     name.type = 'button';
-    name.addEventListener('click', (event) => ctx.markHub([[ctx.words('color'), c.name]], c.ids, event));
+    name.addEventListener('click', (event) => ctx.markHub([[ctx.words(look.key), c.name]], c.ids, event));
     v.append(ico, name);
     block.append(v);
   }
