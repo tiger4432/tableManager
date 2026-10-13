@@ -7,7 +7,8 @@ import {
   // 791c0f45e: whether the draft moved a leaf the plan marks as shaping the form.
   draftReshapesPlan,
 } from './ontology_explorer_store.js';
-import { renderOntologyExplorer, nodeTrail, placePopover } from './ontology_explorer_view.js';
+import { renderOntologyExplorer, nodeTrail, placePopover, declarationView } from './ontology_explorer_view.js';
+import { editDeclaration } from './ledger_declaration_bar.js';
 import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
 import { CURRENT_USER } from './config.js';
@@ -1011,6 +1012,16 @@ No effect`;
     }
   };
 
+  // One edit of the bar on the draft's text - the same EDITOR_CHANGED every form writer ends in; the list it came from closes.
+  const editBar = (op) => {
+    let raw;
+    try { raw = JSON.parse(state.editorText); } catch { return; }
+    const view = declarationView(state, null);
+    const next = editDeclaration(raw, op, { entities: view.entities, predicates: view.predicates });
+    state = reduceExplorerState(state, { type: 'DECL_UI', decl: { open: null, typing: null } });
+    dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
+  };
+
   // The typing into the open draft's record, in the world the screen reads now: Save's first step, and
   // the whole of a branch pick's Keep.
   const putDraft = () => jsonRequest(`/drafts/${state.draft.draft_id}`, {
@@ -1146,6 +1157,25 @@ No effect`;
       target.dataset.pathId || null,
     );
     else if (action === 'tab') dispatch({ type: 'TAB_CHANGED', tab: target.dataset.value });
+    else if (action === 'decl-open') {
+      const path = target.dataset.path;
+      dispatch({ type: 'DECL_UI', decl: { open: state.decl.open === path ? null : path, typing: null } });
+    }
+    else if (action === 'decl-type') dispatch({ type: 'DECL_UI', decl: { typing: target.dataset.path } });
+    else if (action === 'decl-json') dispatch({ type: 'DECL_UI', decl: { json: !state.decl.json } });
+    else if (action === 'decl-pick' || action === 'decl-add' || action === 'decl-remove') {
+      let value;
+      try { value = action === 'decl-pick' ? JSON.parse(target.dataset.value) : undefined; } catch { return; }
+      editBar({ op: action === 'decl-pick' ? 'set' : action === 'decl-add' ? 'add' : 'remove', path: target.dataset.path, value });
+    }
+    else if (action === 'save-draft-only') {
+      // Save draft: the draft's record only - the config file is written by Activate (owner 10-14 «초안 따로 둬»)
+      try {
+        const saved = await putDraft();
+        dispatch({ type: 'DRAFT_SAVED', draft: saved.draft || saved });
+        showToast('Draft saved', 'success');
+      } catch (error) { showToast(errorMessage(error), 'error'); }
+    }
     else if (action === 'bootstrap-config') {
       // A refusal is kept on the offer, not floated as a toast: the next move is to read it and act.
       const refused = await bootstrapConfig();
@@ -1350,7 +1380,9 @@ No effect`;
           // 🔴 C-59. 「몇 행」 옆에 「어느 행」을 그리려면 표본을 «물어야» 합니다. 화면이
           //    기본 10 을 «보내고», 사용자가 바꾸는 축은 «안 만듭니다»(지금은) — 고를 수
           //    있게 하면 그 수가 무엇을 뜻하는지 설명해야 하고, 그건 이 화면의 일이 아닙니다.
-          body: JSON.stringify({ source_id: sourceId, sample_rows: TEST_RUN_SAMPLE_ROWS }),
+          // The bar's Test run names its draft (implementer B 10-14: the draft's declaration, no test_runs record).
+        body: JSON.stringify({ source_id: sourceId, sample_rows: TEST_RUN_SAMPLE_ROWS,
+          ...(target.dataset.draft ? { draft_id: target.dataset.draft } : {}) }),
         });
         dispatch({ type: 'TEST_RUN_RECEIVED', result });
         // Only a PASS changes what the tree says about this source, and only the server
@@ -1480,6 +1512,24 @@ No effect`;
   const TYPED_BOXES = new Set(['edit-draft-item', 'edit-shape', 'edit-field-item', 'edit-field',
     'edit-entity-key']);
   root.addEventListener('change', (event) => {
+    // The bar's typed value (Enter or the box left): a constant, a when's «= …», a name.
+    if (event.target?.dataset?.action === 'decl-const') {
+      const { path, chip } = event.target.dataset;
+      const typed = event.target.value;
+      let raw = null;
+      try { raw = JSON.parse(state.editorText); } catch { return; }
+      let value = typed;
+      if (chip === 'col') value = { const: typed };
+      else if (chip === 'when') {
+        const segs = path.split('.');
+        const now = segs.reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), raw);
+        const column = now && typeof now === 'object' ? Object.keys(now)[0] : null;
+        if (!column) return;
+        value = { [column]: typed };
+      }
+      editBar({ op: 'set', path, value });
+      return;
+    }
     // Draw what was typed, once — the same dispatch typing skipped, so the column-stats hook runs too.
     if (TYPED_BOXES.has(event.target?.dataset?.action)) dispatch({ type: 'EDITOR_CHANGED', text: state.editorText });
     void reshapeIfMoved();
@@ -1610,6 +1660,7 @@ No effect`;
       editorCheckpoint: state.dirty ? checkpoint() : null,
     }),
     destroy: () => clearTimeout(searchTimer),
+    tablesChanged: () => { dispatch({ type: 'AUTHORING_INVALIDATED', tables: true }); return loadAuthoring(planSelection); },
     getState: () => state,
   };
 }
@@ -1622,4 +1673,9 @@ export function initOntologyExplorer(options) {
 
 export function refreshOntologyExplorer() {
   return controller?.refresh();
+}
+
+/** A table declaration was saved: the explorer's column lists are read again (lead 10-14, no new event name). */
+export function tablesChangedForOntologyExplorer() {
+  return controller?.tablesChanged();
 }

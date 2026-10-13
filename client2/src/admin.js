@@ -95,7 +95,7 @@ import { FolderRetryPanel, INCLUDE_STATUSES } from './folder_retry.js';
 import { setDisabledReason } from './disabled_reason.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
-import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
+import { initOntologyExplorer, refreshOntologyExplorer, tablesChangedForOntologyExplorer } from './ontology_explorer.js';
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
 import { censusBySource, censusNames } from './source_backlog.js';
 import { TableConfigPanel } from './table_config_panel.js';
@@ -1362,6 +1362,7 @@ async function saveTableConfig({ table, base, raw, from }) {
       return;
     }
     await refreshTableConfig(table, { saved: answer || {} });
+    tablesChangedForOntologyExplorer();
   } catch (e) {                                              // noqa
     await refreshTableConfig(table, { refusal: {
       code: '', path: '', message: 'Save request did not reach the server (network)' } });

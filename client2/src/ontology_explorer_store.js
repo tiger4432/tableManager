@@ -62,6 +62,8 @@ export const initialExplorerState = Object.freeze({
   authoringSchema: null,
   authoringAll: null,
   authoringError: null,
+  // The declaration bar (ledger_declaration_bar.js): the chip whose list is open, the constant being typed, JSON shown.
+  decl: Object.freeze({ open: null, typing: null, json: false }),
   // The declaration being NAMED, before the server has a draft for it. Local only, and
   // deliberately not merged into `items`: `items` mirrors what the server has, and a name
   // nobody has accepted yet is not that. Conflating them is how a create that was refused
@@ -406,7 +408,11 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       // read as "nothing left to author", which is the silent empty panel again.
       return { ...state, authoringError: action.message };
     case 'AUTHORING_INVALIDATED':
-      return { ...state, authoring: null, authoringAll: null, authoringError: null };
+      // `tables`: a table declaration was saved - the schema's column lists are read again (lead 10-14)
+      return { ...state, authoring: null, authoringAll: null, authoringError: null,
+        ...(action.tables ? { authoringSchema: null } : {}) };
+    case 'DECL_UI':
+      return { ...state, decl: { ...state.decl, ...action.decl } };
     default:
       return state;
   }

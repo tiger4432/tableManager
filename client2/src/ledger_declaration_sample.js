@@ -4,17 +4,13 @@
 
 export const SAMPLE_RAW = Object.freeze({
   table: 'wafer_process_recipe',
-  occurred_at: { column: 'eventtime', timezone: 'Asia/Seoul' },
-  identity: 'row_id',
   attributes: { wafer: { lot: 'lot_id', step: 'step' } },
   sentences: [
     { sentence: 'wafer-processed-with-recipe', subject: { node: 'wafer', keys: { wafer: 'wafer_id' } }, predicate: 'processed_with',
-      target: { node: 'recipe', keys: { recipe: 'recipe_id' } }, step: 'step', when: { column: 'mat_type', is: 'blank' } },
+      target: { node: 'recipe', keys: { recipe: 'recipe_id' } }, step: 'step', when: { mat_type: null },
+      occurred_at: { column: 'eventtime', timezone: 'Asia/Seoul' } },
     { sentence: 'dtwafer-processed-with-recipe', subject: { node: 'dt_wafer', keys: { dt_wafer: 'wafer_id' } }, predicate: 'processed_with',
-      target: { node: 'recipe', keys: { recipe: 'recipe_id' } }, when: { column: 'mat_type', equals: 'DT' } },
-    { sentence: 'die-transfer', source: 'transfer_event, a key of four parts',
-      subject: { node: 'die', keys: { mat_id: 'core_wafer_id', mat_type: { const: 'Wafer' }, x: 'c_wx', y: 'c_wy' } }, predicate: 'transferred_to',
-      target: { node: 'die', keys: { mat_id: 'dt_job_id', mat_type: { const: 'DT' }, x: 'b_wx', y: 'b_wy' } } },
+      target: { node: 'recipe', keys: { recipe: 'recipe_id' } }, when: { mat_type: 'DT' }, occurred_at: { column: 'eventtime', timezone: 'Asia/Seoul' } },
   ],
 });
 
@@ -36,4 +32,7 @@ export const SAMPLE_VIEW = Object.freeze({
     { row: '1203', sentence: 'dtwafer-processed-with-recipe', subject: { node: 'dt_wafer', key: 'DT-0412' }, predicate: 'processed_with',
       target: { node: 'recipe', key: 'RCP-DT-02' }, with: null, at: '2026-10-14 09:20:05' }] },
   cost: { before: 'this source today: ', strong: 'same as before', after: ' — no re-translate' },
+  others: [{ source: 'transfer_event, a key of four parts', sentence: { sentence: 'die-transfer',
+    subject: { node: 'die', keys: { mat_id: 'core_wafer_id', mat_type: { const: 'Wafer' }, x: 'c_wx', y: 'c_wy' } }, predicate: 'transferred_to',
+    target: { node: 'die', keys: { mat_id: 'dt_job_id', mat_type: { const: 'DT' }, x: 'b_wx', y: 'b_wy' } } } }],
 });

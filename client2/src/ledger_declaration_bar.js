@@ -12,30 +12,47 @@
 //   decl-remove data-path     that sentence (or chip) out
 //   decl-json                 the declaration as JSON (the owner 2026-08-15: the form is not the only door)
 //
-// A source in the short form (implementer B, owner 10-13): { table, occurred_at: {column, timezone}, identity,
-//   attributes: {type: {attribute: column}}, sentences: [{sentence, subject: {node, keys}, predicate, target: {node, keys},
-//   when, <qualifier>: column, source?}] } - a column is its name, a constant {const: value}.
+// A source in the short form (implementer B 10-14): { table, status?, attributes?: {type: {attribute: value}},
+//   sentences: [{sentence, predicate, when?, <role>: value}] } - the roles subject · target · value · occurred_at and the
+//   qualifiers. A value is a column's name, {const: v}, a time {column, timezone, format} or an end {node: type|{column}, keys}.
+//   A when is {column: condition}: null blank, {not: null} not blank, v equals, {not: v} differs.
+// The atom time is each sentence's occurred_at; the Read line's chips write it on every sentence (path `sentences.*.…`).
 
 export const BAR_WORDS = Object.freeze({
   title: 'Ledger declaration', source: 'Source', active: 'active', draft: (age) => `draft · ${age}`,
   shortForm: (n) => `short form · ${n} sentence${n === 1 ? '' : 's'}`, testRun: 'Test run', saveDraft: 'Save draft', activate: 'Activate', json: 'JSON',
-  read: 'Read', table: 'table', atomTime: '· atom time', identity: '· identity', tableKey: 'table key (row_id)',
+  read: 'Read', table: 'table', atomTime: '· atom time', identity: '· identity', tableKey: 'table key',
   attributes: 'Attributes', has: 'has', addAttribute: '+ Attribute', addNodeType: '+ Node type',
   sentences: 'Sentences', perRow: 'one row → one edge per sentence', with: '· with', when: '· when', addQualifier: '+ Qualifier',
   addSentence: '+ Sentence', remove: 'Remove sentence', fromSource: (s) => `— from source ${s}`,
   run: 'Test run · draft', runSummary: (r) => `first ${r.rows} rows → ${r.edges} edges · ${r.refused} refused`, runNone: 'Not run yet',
-  constant: 'Constant…', blank: 'is blank', unset: '?',
+  constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', unset: '?', mixed: 'mixed',
   nodeType: 'Node type', keys: 'keys', addKey: '+ Key', predicate: 'Predicate', from: 'from', addSubject: '+ Subject', addType: '+ Type',
 });
-const RESERVED = new Set(['sentence', 'subject', 'predicate', 'target', 'when', 'source']);
+const RESERVED = new Set(['sentence', 'subject', 'predicate', 'target', 'value', 'when', 'occurred_at']);
 const KINDS = Object.freeze(['entity_ref', 'value', 'none']);
 
 /** A source in the short form - its sentences are a list (implementer B). */
 export const isShortForm = (raw) => Boolean(raw) && typeof raw === 'object' && Array.isArray(raw.sentences);
 
 const isConst = (v) => Boolean(v) && typeof v === 'object' && 'const' in v;
-const words = (v) => (isConst(v) ? JSON.stringify(v.const) : (v === undefined || v === null || v === '' ? BAR_WORDS.unset : String(v)));
-const whenWords = (w) => (!w ? BAR_WORDS.unset : 'equals' in w ? `${w.column} = ${JSON.stringify(w.equals)}` : `${w.column} ${BAR_WORDS.blank}`);
+const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+const words = (v) => (isConst(v) ? JSON.stringify(v.const) : isObj(v) && 'column' in v ? words(v.column)
+  : (v === undefined || v === null || v === '' ? BAR_WORDS.unset : String(v)));
+const whenColumn = (w) => (isObj(w) ? Object.keys(w)[0] || null : null);
+function whenWords(w) {
+  const c = whenColumn(w);
+  if (!c) return BAR_WORDS.unset;
+  const v = w[c];
+  if (v === null) return `${c} ${BAR_WORDS.blank}`;
+  if (isObj(v) && 'not' in v) return v.not === null ? `${c} ${BAR_WORDS.notBlank}` : `${c} ≠ ${JSON.stringify(v.not)}`;
+  return `${c} = ${JSON.stringify(v)}`;
+}
+/** Every sentence's one atom time - the sentences' common column (or timezone), `mixed` when they differ. */
+function sharedTime(raw, part) {
+  const seen = [...new Set((raw.sentences || []).map((s) => (isObj(s.occurred_at) ? s.occurred_at[part] : s.occurred_at) || ''))];
+  return seen.length > 1 ? BAR_WORDS.mixed : seen[0] || '';
+}
 const qualifiersOf = (s) => Object.keys(s || {}).filter((k) => !RESERVED.has(k));
 
 // ── editing: one function, a path and a value - the declaration a new object, the old one untouched ──
@@ -49,6 +66,18 @@ const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
  */
 export function editDeclaration(raw, op, ctx = {}) {
   const out = clone(raw) || {};
+  // `a.*.b` - the same edit on every member of `a`
+  const star = String(op.path).split('.').indexOf('*');
+  if (star >= 0) {
+    const parts = String(op.path).split('.');
+    const head = parts.slice(0, star).join('.');
+    let list = out;
+    for (const k of segs(head)) list = list && list[k];
+    if (!Array.isArray(list)) return out;
+    let next = out;
+    list.forEach((_, i) => { next = editDeclaration(next, { ...op, path: [head, i, ...parts.slice(star + 1)].join('.') }, ctx); });
+    return next;
+  }
   const at = segs(op.path);
   const last = at.pop();
   let box = out;
@@ -68,7 +97,10 @@ export function editDeclaration(raw, op, ctx = {}) {
   } else if (op.op === 'add') {
     const holder = last === undefined ? box : box[last] === undefined ? (box[last] = {}) : box[last];
     if (Array.isArray(holder)) {
-      if (op.path === 'sentences') holder.push({ sentence: `sentence-${holder.length + 1}`, subject: { node: '', keys: {} }, predicate: '', target: { node: '', keys: {} } });
+      if (op.path === 'sentences') {
+        const time = holder.length ? clone(holder[holder.length - 1].occurred_at) : null;
+        holder.push({ sentence: `sentence-${holder.length + 1}`, subject: { node: '', keys: {} }, predicate: '', target: { node: '', keys: {} }, ...(time ? { occurred_at: time } : {}) });
+      }
       else holder.push('');
     } else if (op.path === 'attributes') {
       const free = (ctx.entities || []).map((e) => e.type).find((t) => !(t in holder));
@@ -86,6 +118,43 @@ export function editDeclaration(raw, op, ctx = {}) {
     if (Array.isArray(box)) box.splice(last, 1); else delete box[last];
   }
   return out;
+}
+
+// ── the server's answers, as the bar's words ──
+const keyWords = (keys) => (isObj(keys) ? Object.values(keys).map((v) => (v === null || v === undefined ? '' : String(v))).join(' · ') : '');
+
+/**
+ * The test run's answer (POST /test-run, as it comes) as the bar's table: rows read, atoms, refused, each refusal a
+ * pill (its row and the server's sentence), and an atom a line. Null before a run.
+ */
+export function barRun(run) {
+  if (!run || typeof run !== 'object') return null;
+  const refused = isObj(run.refused) ? run.refused : {};
+  const refusals = (Array.isArray(refused.samples) ? refused.samples : []).filter(isObj).map((s) => {
+    const at = isObj(s.row_key) && s.row_key.position !== undefined && s.row_key.position !== null ? `row ${s.row_key.position}: ` : '';
+    return `${at}${s.detail || s.reason || ''}`;
+  });
+  if (isObj(run.refusal) && run.refusal.message) refusals.unshift(String(run.refusal.message));
+  const lines = (Array.isArray(run.atoms_sample) ? run.atoms_sample : []).filter(isObj).map((a) => {
+    const payload = isObj(a.object_payload) ? a.object_payload : {};
+    const quals = isObj(payload.qualifiers) ? Object.entries(payload.qualifiers) : [];
+    const target = a.object_kind === 'entity_ref' ? { node: payload.type || '', key: keyWords(payload.keys) }
+      : { node: a.object_kind || '', key: 'value' in payload ? String(payload.value) : '' };
+    return { row: (Array.isArray(a.row_ids) ? a.row_ids : []).join(', '), sentence: a.sentence || '', subject: { node: a.subject_type || '', key: keyWords(a.subject_keys) },
+      predicate: a.predicate || '', target, with: quals.length ? { name: quals[0][0], value: String(quals[0][1]) } : null, at: a.occurred_at || '' };
+  });
+  const count = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return { rows: count(run.rows_read), edges: count(run.atoms), refused: count(refused.count), refusals, lines };
+}
+
+/** «edited N min ago» off the draft's `updated_at` - the words the mockup draws. */
+export function draftAge(updatedAt, now = Date.now()) {
+  const t = Date.parse(updatedAt || '');
+  if (!Number.isFinite(t)) return '';
+  const min = Math.max(0, Math.round((now - t) / 60000));
+  if (min < 60) return `edited ${min} min ago`;
+  const hours = Math.round(min / 60);
+  return hours < 48 ? `edited ${hours} h ago` : `edited ${Math.round(hours / 24)} d ago`;
 }
 
 // ── drawing ──
@@ -165,7 +234,7 @@ function head(el, view, raw) {
   top.append(el('div', 'ldb-grow'));
   const btn = (words, action, cls = '', value) => { const b = el('button', `ldb-btn${cls}`, words); b.type = 'button'; b.dataset.action = action; if (value !== undefined) b.dataset.value = value; return b; };
   top.append(btn(BAR_WORDS.json, 'decl-json'));
-  if (view.kind === 'source') top.append(btn(BAR_WORDS.testRun, 'test-run', '', view.sourceId || ''));
+  if (view.kind === 'source') { const run = btn(BAR_WORDS.testRun, 'test-run', '', view.sourceId || ''); if (view.draftId) run.dataset.draft = view.draftId; top.append(run); }
   top.append(btn(BAR_WORDS.saveDraft, 'save-draft-only'), btn(BAR_WORDS.activate, 'save-draft', ' is-primary'));
   return top;
 }
@@ -174,16 +243,15 @@ function readBar(el, view, raw) {
   const bar = el('section', 'ldb-bar');
   bar.setAttribute('aria-label', BAR_WORDS.read);
   const tables = Object.keys(((view.catalog || {}).tables) || {});
-  const time = raw.occurred_at || {};
-  const zones = [...new Set([time.timezone, 'UTC', ...(view.zones || [])].filter(Boolean))];
+  const time = { column: sharedTime(raw, 'column'), timezone: sharedTime(raw, 'timezone') };
+  const zones = [...new Set([time.timezone, 'UTC', ...(view.zones || [])].filter((z) => z && z !== BAR_WORDS.mixed))];
   bar.append(el('span', 'ldb-label is-row', BAR_WORDS.read), el('span', 'ldb-word', BAR_WORDS.table),
     chip(el, view, { kind: 'table', path: 'table', cls: 'is-col', text: words(raw.table), options: tables.map((t) => ({ value: t, words: t, on: t === raw.table })) }),
     el('span', 'ldb-word', BAR_WORDS.atomTime),
-    chip(el, view, { kind: 'col', path: 'occurred_at.column', cls: 'is-col', text: words(time.column), options: columnOptions(view, raw.table, time.column) }),
-    chip(el, view, { kind: 'tz', path: 'occurred_at.timezone', text: words(time.timezone), options: zones.map((z) => ({ value: z, words: z, on: z === time.timezone })) }),
-    el('span', 'ldb-word', BAR_WORDS.identity),
-    chip(el, view, { kind: 'identity', path: 'identity', text: !raw.identity || raw.identity === 'row_id' ? BAR_WORDS.tableKey : raw.identity,
-      options: [{ value: 'row_id', words: BAR_WORDS.tableKey, on: !raw.identity || raw.identity === 'row_id' }, ...columnOptions(view, raw.table, raw.identity)] }));
+    chip(el, view, { kind: 'col', path: 'sentences.*.occurred_at.column', cls: 'is-col', text: words(time.column), options: columnOptions(view, raw.table, time.column) }),
+    chip(el, view, { kind: 'tz', path: 'sentences.*.occurred_at.timezone', text: words(time.timezone), options: zones.map((z) => ({ value: z, words: z, on: z === time.timezone })) }),
+    // the short form has no identity: the table's own key (implementer B 10-14)
+    el('span', 'ldb-word', BAR_WORDS.identity), el('span', 'ldb-chip', BAR_WORDS.tableKey));
   return bar;
 }
 
@@ -214,7 +282,8 @@ function addChip(el, path, text, cls = '') {
 /** A sentence's end: its node, then its keys «key ← column» (a constant dashed). */
 function end(el, view, raw, at, side) {
   const e = (raw.sentences[at] || {})[side] || {};
-  const out = [chip(el, view, { kind: 'node', path: `sentences.${at}.${side}.node`, cls: 'is-node', text: words(e.node), options: nodeOptions(view, e.node) }),
+  const node = isObj(e.node) ? `← ${words(e.node)}` : words(e.node);
+  const out = [chip(el, view, { kind: 'node', path: `sentences.${at}.${side}.node`, cls: 'is-node', text: node, options: nodeOptions(view, e.node) }),
     el('span', 'ldb-word', '(')];
   for (const [k, v] of Object.entries(e.keys || {})) {
     out.push(chip(el, view, { kind: 'col', path: `sentences.${at}.${side}.keys.${k}`, constant: true, cls: isConst(v) ? 'is-const' : 'is-col', hint: isConst(v) ? JSON.stringify(v.const) : '',
@@ -225,12 +294,14 @@ function end(el, view, raw, at, side) {
   return out;
 }
 
-function sentenceBar(el, view, raw, at) {
+function sentenceBar(el, view, raw, at, from = null) {
   const s = raw.sentences[at];
-  const bar = el('section', `ldb-bar${view.picked === at ? ' is-picked' : ''}${s.source ? ' is-other' : ''}`);
+  const bar = el('section', `ldb-bar${!from && view.picked === at ? ' is-picked' : ''}${from ? ' is-other' : ''}`);
   bar.setAttribute('aria-label', `Sentence ${s.sentence}`);
+  // another source's sentence on the same table: drawn as one, not this draft's to edit
+  if (from) bar.setAttribute('inert', '');
   const name = el('span', 'ldb-sname', s.sentence);
-  if (s.source) name.append(' ', el('span', 'ldb-sname-from', BAR_WORDS.fromSource(s.source)));
+  if (from) name.append(' ', el('span', 'ldb-sname-from', BAR_WORDS.fromSource(from)));
   bar.append(name, ...end(el, view, raw, at, 'subject'), el('span', 'ldb-arrow', '—'),
     chip(el, view, { kind: 'pred', path: `sentences.${at}.predicate`, cls: 'is-pred', text: words(s.predicate),
       options: (view.predicates || []).map((p) => ({ value: p.name, words: p.name, on: p.name === s.predicate })) }),
@@ -246,8 +317,12 @@ function sentenceBar(el, view, raw, at) {
   }
   bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));
   if (s.when !== undefined) {
+    const wc = whenColumn(s.when);
     bar.append(el('span', 'ldb-word', BAR_WORDS.when), chip(el, view, { kind: 'when', path: `sentences.${at}.when`, cls: 'is-col', constant: true, text: whenWords(s.when),
-      options: columnOptions(view, raw.table, s.when && s.when.column).map((o) => ({ ...o, value: { column: o.value, is: 'blank' }, words: `${o.words} ${BAR_WORDS.blank}` })) }));
+      hint: wc ? `${wc} = …` : '',
+      options: columnOptions(view, raw.table, wc).flatMap((o) => [
+        { ...o, value: { [o.value]: null }, words: `${o.words} ${BAR_WORDS.blank}`, on: o.on && s.when[wc] === null },
+        { ...o, value: { [o.value]: { not: null } }, words: `${o.words} ${BAR_WORDS.notBlank}`, on: o.on && isObj(s.when[wc]) && s.when[wc].not === null }]) }));
   }
   const x = el('button', 'ldb-x', '×');
   x.type = 'button';
@@ -332,7 +407,8 @@ function predicateBar(el, view, raw) {
  * @param {object} raw  the draft's declaration (parsed)
  * @param {{kind: 'source'|'entity'|'predicate', name, sourceId?, open?: string, picked?: number, catalog?: {tables: {[t]: Array<{name, type}>}},
  *          entities?: Array<{type, keys, attributes}>, predicates?: Array<{name, qualifiers}>, sources?: Array<{key, id}>, zones?: string[],
- *          active?: boolean, draftAge?: string, run?: object, cost?: string, json?: Node}} view
+ *          active?: boolean, draftAge?: string, run?: object, cost?: {before, strong, after}, json?: Node,
+ *          others?: Array<{source, sentence}>, draftId?: string}} view   others: other sources' sentences on this table, drawn inert
  */
 export function renderDeclarationBar(doc, raw, view) {
   const el = make(doc);
@@ -349,6 +425,7 @@ export function renderDeclarationBar(doc, raw, view) {
     top.append(el('span', 'ldb-label', BAR_WORDS.sentences), el('span', 'ldb-word', BAR_WORDS.perRow));
     list.append(top);
     (raw.sentences || []).forEach((_, i) => list.append(sentenceBar(el, view, raw, i)));
+    for (const o of view.others || []) list.append(sentenceBar(el, view, { table: raw.table, sentences: [o.sentence] }, 0, o.source));
     const add = el('div');
     add.append(addChip(el, 'sentences', BAR_WORDS.addSentence, ' is-big'));
     list.append(add);
