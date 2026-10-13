@@ -392,6 +392,9 @@ def _count_enrichment_confirm(db, params, scan_limit):
     detail = (f"Sampled {s.get('queue_size', 0)} queued item(s): "
               f"{s.get('confirmed', 0)} can be confirmed without a person "
               f"({s.get('written_cells', 0)} cell(s)).")
+    if s.get("probe_batch_fallbacks"):
+        detail += (f" Batch -> key by key: {sum(s['probe_batch_fallbacks'].values())} key(s) asked one at a time "
+                   f"after a page's one probe statement failed.")
     if not knob_on:
         detail += (" ⚠️ This rule's auto_confirm knob is off, so the run "
                    "button is refused - the number answers 'what happens if I turn "
@@ -1085,7 +1088,8 @@ def _count_fold_duplicate_rows(db, params, scan_limit):
             + (f"a row whose {prefer[0]} holds '{prefer[1]}' (any case) stays first - {s['keys_preferred']} "
                f"key(s) keep one - then " if prefer else "")
             + f"the {which} {params['order']} stays (a blank one last, a tie the smaller row id). "
-            f"{s['rows_blank_key']} row(s) with a blank key part are left as they are."
+            f"{s['rows_blank_key']} row(s) with a blank key part are left as they are. Index on the keys: "
+            f"{s['key_index']}."
             + (f" Only rows whose {scope[0]} holds '{scope[1]}' (any case) fold - {s['rows_out_of_scope']} "
                f"row(s) outside are left as they are." if scope else "")
             + (f" {s['rows_already_marked']} row(s) marked before rank no more." if mark else "")
@@ -1117,7 +1121,7 @@ def _run_fold_duplicate_rows(db, params, log, control=None):
     _final_progress(control, s[done], s)
     return {key: s[key] for key in (done, "rows_to_mark" if done == "rows_marked" else "rows_to_delete",
                                     "keys_folded", "keys_preferred", "rows_blank_key", "rows_out_of_scope",
-                                    "pages", "stopped")}
+                                    "pages", "stopped", "key_index")}
 
 
 def _judge_fold_duplicate_rows(params):
@@ -1362,7 +1366,8 @@ def _run_enrichment_confirm(db, params, log, control=None):
     # stopped it. `queue_size` would call a stopped run's unread pages processed.
     _final_progress(control, s.get("rows_examined"), s)
     return {"confirmed": s.get("confirmed", 0), "written_cells": s.get("written_cells", 0),
-            "queue_size": s.get("queue_size", 0)}
+            "queue_size": s.get("queue_size", 0),
+            **({"probe_batch_fallbacks": sum(s["probe_batch_fallbacks"].values())} if s.get("probe_batch_fallbacks") else {})}
 
 
 def _enrichment_rule(name):
@@ -3582,7 +3587,8 @@ RESULT_NAMES = {
     "confirmed": "confirmed", "written_cells": "cells written", "queue_size": "queue size",
     "batches": "batches", "molecules": "molecules", "stopped": "stopped early",
     "days": "days in the window", "days_done": "days collected",
-    "done_until": "collected up to (KST)",
+    "done_until": "collected up to (KST)", "key_index": "index on the keys",
+    "probe_batch_fallbacks": "batch -> key by key (keys)",
 }
 
 

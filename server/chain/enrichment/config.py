@@ -117,8 +117,12 @@ SHIPPED_READ_CAPS = {
 
 INGESTION_SETTINGS_PATH = os.path.join(CONFIG_DIR, "ingestion_settings.json")
 
-# SQLAlchemy text()와 동일 계열의 바인드 파라미터 패턴 (`::text` 캐스트는 매치되지 않음)
-_BIND_PARAM_RE = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
+# The one bind parser: text()'s own. The single-key probe runs the view through text() and the batched one substitutes
+# by this, so a spelling text() reads no bind in (`:x::int`) cannot become a bind on one path only (총괄 59c0bfb8c 1)
+from sqlalchemy.sql.elements import TextClause as _TextClause  # noqa: E402
+_BIND_PARAM_RE = _TextClause._bind_params_regex
+#: a bind a `::` cast follows - text() reads no bind there and the database refuses the statement; refused at load
+_BIND_CAST_RE = re.compile(r"(?<![:\w\x5c]):(\w+)::(\w+)")
 _QUERY_REF_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 # `candidate_for`의 뷰 결과 컬럼명. 후보 프로브 SQL에는 이 이름이 **보간**되므로
@@ -398,6 +402,10 @@ def _validate_view_sql(sql: str, allowed_binds) -> str:
     head = body.lstrip("(").lstrip().lower()
     if not (head.startswith("select") or head.startswith("with")):
         return "only SELECT (or WITH ... SELECT) statements are allowed"
+    cast = _BIND_CAST_RE.search(body)
+    if cast:
+        return (f"write CAST(:{cast.group(1)} AS {cast.group(2)}) instead of :{cast.group(1)}::{cast.group(2)} - "
+                f"a bind a :: cast follows is not read as a bind")
     binds = set(_BIND_PARAM_RE.findall(body))
     invalid = sorted(binds - set(allowed_binds))
     if invalid:
@@ -416,6 +424,11 @@ def required_bind_params(sql: str) -> set:
     """
     return set(_BIND_PARAM_RE.findall((sql or "").strip().rstrip(";")))
 
+
+
+def view_binds(view: dict) -> set:
+    """The bind names a reference view reads - its loaded `required_binds`, else its query's."""
+    return set(view.get("required_binds") or required_bind_params(view.get("query", "")))
 
 def _normalize_candidate_for(rule_name: str, label: str, raw, target_fields: list,
                              rejections: list = None) -> dict:
@@ -1002,7 +1015,7 @@ CANDIDATE_GROUP_WRAP_SQL = (
     'SELECT __c, COUNT(*) AS __n, SUM(COUNT(*)) OVER () AS __scanned FROM ('
     'SELECT __enrichment_ref."{column}" AS __c FROM ({query}) AS __enrichment_ref '
     'LIMIT :__enrichment_scan_rows'
-    ') AS __enrichment_cand GROUP BY __c LIMIT :__enrichment_limit'
+    ') AS __enrichment_cand GROUP BY __c ORDER BY __c LIMIT :__enrichment_limit'
 )
 
 # 프로브가 훑을 **행** 상한은 이제 `enrichment_read_caps.probe_scan_rows`다(위 블록).
@@ -1225,6 +1238,11 @@ DRIVER_ERROR_REPEAT_EVERY = 50
 # sites read them, so there is no third spelling to drift.
 SITE_REFERENCE_VIEW = "reference query execution failed"
 SITE_CANDIDATE_PROBE = "candidate probe execution failed"
+#: A page's one probe statement failed and each key was asked alone - its own sentence and throttle, so it never
+#: reads as the view failing nor buries the view's own failure (총괄 59c0bfb8c 2)
+SITE_CANDIDATE_PROBE_BATCH = "candidate probe batch failed - each key asked alone"
+#: The dialects a page's keys are asked on in one statement (VALUES × LATERAL)
+LATERAL_DIALECTS = ("postgresql",)
 
 _driver_error_incidents = {}   # (site, condition) -> repeats suppressed since the first
 
@@ -1423,7 +1441,7 @@ def missing_binds(view: dict, bind_params: dict = None) -> list:
     """
     from database import crud
 
-    needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
+    needed = view_binds(view)
     # 🔴 「없는 것」과 「있고 비어 있는 것」은 다른 사실이다 (S-136). A column the derived
     # row does not HAVE cannot be asked with and is named here; a column it has whose
     # value is empty binds as NULL, because that is what the row knows.
@@ -1514,7 +1532,7 @@ def execute_reference_view(db, view: dict, bind_params: dict = None,
     """
     from sqlalchemy import text
 
-    needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
+    needed = view_binds(view)
     supplied = dict(bind_params or {})
     missing = missing_binds(view, supplied)
     if missing:
@@ -1599,7 +1617,7 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
         # 로더가 이미 막지만, 이 함수는 SQL을 보간하므로 자기 입력을 스스로 검증한다.
         raise ReferenceViewError("candidate column is not a plain SQL identifier")
 
-    needed = set(view.get("required_binds") or required_bind_params(view.get("query", "")))
+    needed = view_binds(view)
     supplied = dict(bind_params or {})
     missing = missing_binds(view, supplied)
     if missing:
@@ -1624,10 +1642,15 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
         # view, continuously, and nothing bounds that but this flag.
         raise _reference_view_failure(SITE_CANDIDATE_PROBE, e, throttle=True) from e
 
-    rows = [(r[0], int(r[1] or 0)) for r in raw]
     # `__scanned`는 바깥 LIMIT이 그룹을 자르기 **전**의 전체 행수다. 반환된 그룹의
     # count 합으로 대신하면, 그룹이 잘린 순간 `scanned`가 과소 보고되고 `row_truncated`가
     # 진짜 잘린 읽기를 놓친다(2026-07-30 QA). 두 절단은 별개 사실이므로 별개로 센다.
+    return _probe_answer(raw, caps, distinct_cap, distinct_declared, scan_rows)
+
+
+def _probe_answer(raw, caps, distinct_cap, distinct_declared, scan_rows) -> dict:
+    """One key's probe rows (`__c`, `__n`, `__scanned`) -> `execute_candidate_probe`'s answer."""
+    rows = [(r[0], int(r[1] or 0)) for r in raw]
     scanned = int(raw[0][2] or 0) if raw else 0
     return {
         "pairs": rows,
@@ -1644,6 +1667,60 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
         "distinct_values_cap_declared": distinct_declared,
     }
 
+
+
+def execute_candidate_probes(db, view: dict, column: str, keys: list, caps: dict = None) -> tuple:
+    """`execute_candidate_probe` for many keys of one view -> ([each key's answer, or the
+    `ReferenceViewError` it raised], why the one statement failed or None). On `LATERAL_DIALECTS` one
+    statement asks every key - VALUES of the keys CROSS JOIN LATERAL the probe, the view's binds read off
+    the key's row (`_BIND_PARAM_RE`, text()'s own parser); elsewhere, or when that statement fails, each key
+    alone - a query a key was 25,000 at 100k (총괄 3eca39091). A VALUES column takes its type from the
+    values the caller hands (the derived table's own, as the rows were read), so a view comparing a bind
+    with another type can fail the one statement where a key alone (an untyped literal) does not: then the
+    page is asked key by key, the answer is the same, and the failure says itself
+    (SITE_CANDIDATE_PROBE_BATCH). Not cast to a column type (총괄 ff4eb2cf0 ②: it changed no operating
+    value and broke a `round(:x, 1)` view). Every key carries its view's binds, none blank (the caller's
+    `missing_binds`)."""
+    from sqlalchemy import text
+
+    failed = None
+    dialect = db.get_bind().dialect
+    if len(keys) > 1 and dialect.name in LATERAL_DIALECTS:
+        if not _CANDIDATE_COLUMN_RE.match(column or ""):
+            raise ReferenceViewError("candidate column is not a plain SQL identifier")
+        needed = sorted(view_binds(view))
+        caps = caps if caps is not None else load_read_caps()
+        distinct_cap, distinct_declared = probe_distinct_cap(view, caps)
+        scan_rows = cap_value(caps, CAP_PROBE_SCAN_ROWS)
+        query = _BIND_PARAM_RE.sub(lambda m: '__keys."%s"' % m.group(1) if m.group(1) in needed else m.group(0),
+                                   view["query"])
+        params = {"__enrichment_limit": distinct_cap + 1, "__enrichment_scan_rows": scan_rows}
+        for i, key_values in enumerate(keys):
+            params["__k%d" % i] = i
+            params.update(("__k%d_%d" % (i, j), key_values.get(name)) for j, name in enumerate(needed))
+        stmt = text("SELECT __keys.__k, __probe.__c, __probe.__n, __probe.__scanned FROM (VALUES %s) AS __keys(__k%s) "
+                    "CROSS JOIN LATERAL (%s) AS __probe" % (
+                        ", ".join("(%s)" % ", ".join([":__k%d" % i] + [":__k%d_%d" % (i, j) for j in range(len(needed))])
+                                  for i in range(len(keys))),
+                        "".join(', "%s"' % name for name in needed),
+                        CANDIDATE_GROUP_WRAP_SQL.format(query=query, column=column)))
+        try:
+            _, raw = _isolated_execute(db, stmt, params)
+        except Exception as e:                                       # noqa: BLE001
+            failed = str(_reference_view_failure(SITE_CANDIDATE_PROBE_BATCH, e, throttle=True))
+        else:
+            by_key = {}
+            for row in raw:
+                by_key.setdefault(row[0], []).append(row[1:])
+            return [_probe_answer(by_key.get(i, []), caps, distinct_cap, distinct_declared, scan_rows)
+                    for i in range(len(keys))], None
+    answers = []
+    for key_values in keys:
+        try:
+            answers.append(execute_candidate_probe(db, view, column, key_values, caps=caps))
+        except ReferenceViewError as e:
+            answers.append(e)
+    return answers, failed
 
 def to_public_rule(rule: dict) -> dict:
     """경계 계약(총괄 확정)에 따른 클라이언트 노출 형태.

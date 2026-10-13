@@ -262,6 +262,21 @@ def test_loader_reference_view_safety():
     assert labels == ["good"]
 
 
+def test_a_bind_a_cast_follows_is_refused_at_load_and_both_probe_paths_read_one_set_of_binds():
+    """총괄 59c0bfb8c 1: `:x::type` was no bind to text() (the key alone: 42601) and a bind to the loader's parser
+    (the page together: candidates) - the loader now reads binds as text() does and refuses that spelling by name."""
+    from sqlalchemy import text
+    from chain.enrichment import config
+
+    why = config._validate_view_sql("SELECT chip_id FROM t WHERE equipment = :equipment::text", {"equipment"})
+    assert why and why.startswith("write CAST(:equipment AS text) instead of :equipment::text"), why
+    assert config._validate_view_sql("SELECT chip_id FROM t WHERE equipment = CAST(:equipment AS text)",
+                                     {"equipment"}) is None
+    for sql in ("SELECT 1 WHERE a = :a", "SELECT 1 WHERE a = :a::int", "SELECT 1 WHERE a = :a_1 AND b = :b",
+                "SELECT x::int WHERE a = :a", "SELECT 1 WHERE a = '\\:a'", "SELECT 1 WHERE a = :1a"):
+        assert set(config._BIND_PARAM_RE.findall(sql)) == set(text(sql)._bindparams), sql
+
+
 def test_loader_disabled_rule_stands_nothing(tmp_path):
     raw = {"r": _base_rule(enabled=False)}
     assert validate_rules(raw, known_tables=KNOWN) == []

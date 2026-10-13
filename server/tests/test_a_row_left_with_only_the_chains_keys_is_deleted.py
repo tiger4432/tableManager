@@ -136,6 +136,41 @@ def test_4_the_fold_marked_the_only_row_of_a_key_and_that_official_row_goes(mark
     assert {key: rest[1:] for key, rest in _official(world).items()} == {("J1", 1, 2): (7.0, "agreed")}
 
 
+class _Fixed:
+    """A page size that does not move - the read's and the delete's apart."""
+    def __init__(self, size):
+        self.size = size
+
+    def next(self):
+        return self.size
+
+    def rest(self, seconds):
+        pass
+
+
+def test_a_read_pages_shells_go_in_deletes_of_their_own_size_a_commit_each_and_a_stop_lands_between(world, monkeypatch):
+    """총괄 59c0bfb8c 4: the reads are large and one read's shells went as one delete - one 20,000-row transaction,
+    9.7 s where shells crowd. The deletes keep their own page size, a commit each, and a stop lands between them."""
+    from chain import keyset_scan
+
+    for x in range(1, 8):
+        key = {"dt_job": "J9", "dt_x": x, "dt_y": 1}
+        _write_official(world, crud.CHAIN_SOURCE, key, on=event_constants.CHANNEL_RETROACTIVE)
+    monkeypatch.setattr(keyset_scan, "PageSize", lambda most=None, seconds=None: _Fixed(
+        1000 if most == replay.SHELL_PAGE else 3))
+    pieces, real = [], crud.delete_rows_batch
+
+    def counted(db, table_name, row_ids, user_name):
+        pieces.append(len(row_ids))
+        return real(db, table_name, row_ids, user_name)
+    monkeypatch.setattr(crud, "delete_rows_batch", counted)
+    db = world["db"]
+    stopped = replay.remove_shell_rows(db, hw.OFFICIAL, apply=True, checkpoint=lambda done, total=None: done >= 3)
+    assert (pieces, stopped["rows_deleted"], stopped["stopped"]) == ([3], 3, True)
+    done = replay.remove_shell_rows(db, hw.OFFICIAL, apply=True)
+    assert (pieces, done["rows_deleted"]) == ([3, 3, 1], 4)
+
+
 def test_5_and_6_the_sweep_takes_the_shells_already_there_and_nothing_a_person_or_a_file_keyed(world):
     def shell(job, x, y, keys_by=crud.CHAIN_SOURCE):
         key = {"dt_job": job, "dt_x": x, "dt_y": y}

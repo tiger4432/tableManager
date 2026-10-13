@@ -168,6 +168,7 @@ def confirm_doors(monkeypatch):
 
     def _confirm(db, rule, keyed, apply=False, stats=None, tx_prefix=None, caps=None,
                  tx_id=None, **_):
+        assert db is not BORROWED, "a page is confirmed on the sweep's own session (총괄 3eca39091)"
         calls.append(([row["row_id"] for row in keyed], tx_id))
         stats["confirmed"] = stats.get("confirmed", 0) + len(keyed)
         return stats
@@ -177,21 +178,31 @@ def confirm_doors(monkeypatch):
 
 
 RULE = {"name": "r", "target_fields": ["t"]}
+#: The session a sweep is handed - the loop takes its bind and nothing else (판정 415, 총괄 3eca39091).
+BORROWED = SimpleNamespace(get_bind=lambda: None)
 
 
-def test_a_confirm_stop_lands_between_pages_under_one_transaction(confirm_doors):
-    # the page confirmed is the page read, one row first and at most `page_rows` (총괄 2ea5ee2a7 ①)
-    stopped = analysis.run_auto_confirm_sweep(None, RULE, apply=True, caps={}, page_rows=2,
+@pytest.mark.parametrize("apply,end", [(True, "commit"), (False, "rollback")])
+def test_a_confirm_stop_lands_between_pages_under_one_transaction(confirm_doors, monkeypatch, apply, end):
+    # the page confirmed is the page read, one row first and at most `page_rows` (총괄 2ea5ee2a7 ①); dry and
+    # apply are one page loop on the sweep's own session, and a page's end is the one place they differ (3eca39091)
+    from sqlalchemy.orm import Session
+
+    ends = []
+    monkeypatch.setattr(Session, "commit", lambda self: ends.append("commit"))
+    monkeypatch.setattr(Session, "rollback", lambda self: ends.append("rollback"))
+    stopped = analysis.run_auto_confirm_sweep(BORROWED, RULE, apply=apply, caps={}, page_rows=2,
                                               checkpoint=lambda processed, total: True)
     assert stopped["stopped"] is True and stopped["confirmed"] == 1
-    assert [ids for ids, _tx in confirm_doors] == [["r0"]]
+    assert [ids for ids, _tx in confirm_doors] == [["r0"]] and ends == [end]
 
     confirm_doors.clear()
-    done = analysis.run_auto_confirm_sweep(None, RULE, apply=True, caps={}, page_rows=2)
+    ends.clear()
+    done = analysis.run_auto_confirm_sweep(BORROWED, RULE, apply=apply, caps={}, page_rows=2)
     assert "stopped" not in done and done["confirmed"] == 5
-    assert [ids for ids, _tx in confirm_doors] == [["r0"], ["r1", "r2"], ["r3", "r4"]]
+    assert [ids for ids, _tx in confirm_doors] == [["r0"], ["r1", "r2"], ["r3", "r4"]] and ends == [end] * 3
     txs = {tx for _ids, tx in confirm_doors}
-    assert len(txs) == 1 and None not in txs, "one sweep, one transaction id"
+    assert (len(txs), None in txs) == (1, not apply), "one sweep, one transaction id - none on a dry run"
 
 
 def test_the_operator_confirm_pages_at_the_write_chunk_and_asks_the_run(monkeypatch):

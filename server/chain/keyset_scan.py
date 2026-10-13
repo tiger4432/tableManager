@@ -126,7 +126,7 @@ def pages(items, start: int = 0):
 
 
 def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAULT_CHUNK_SIZE,
-               limit: int = None, max_row_id: str = None, size=None):
+               limit: int = None, max_row_id: str = None, size=None, ranged: bool = False):
     """Yield pages of rows ordered by `row_id`, keyset-seeked.
 
     :param columns: column expressions to select. `model.row_id` is ALWAYS
@@ -141,6 +141,10 @@ def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAUL
 
     :param chunk_size: the largest page; each page's size is `PageSize`'s answer.
     :param size: the `PageSize` to ask, when the caller rests between pages (`PageSize.rest`).
+    :param ranged: `condition` judged within each page's row_id range - the table's next `PageSize` rows by the
+        primary key, its end named by one index read - so one statement reads at most a page of the table
+        wherever the matching rows sit (총괄 ff4eb2cf0 6: in the WHERE, the gap before a sparse match was one
+        statement - 8.68 s at 4M rows with the first 50 queued). A page may then hold none of them.
 
     Yields: list of result rows. With `columns`, row[0] is always `row_id`.
     """
@@ -165,7 +169,26 @@ def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAUL
             remaining = limit - seen
             if remaining <= 0:
                 return
-            page_size = min(page_size, remaining)
+            page_size = page_size if ranged else min(page_size, remaining)
+        if ranged:
+            # the range's end: the page_size-th row after the cursor, read off the primary key alone
+            bound = (db.query(model.row_id).filter(model.row_id > last_row_id,
+                                                   *([model.row_id <= max_row_id] if max_row_id is not None else []))
+                     .order_by(model.row_id.asc()).offset(page_size - 1).limit(1).scalar())
+            if bound is not None:
+                q = q.filter(model.row_id <= bound)
+            q = q.order_by(model.row_id.asc())
+            page = (q.limit(limit - seen) if limit is not None else q).all()
+            seen += len(page)
+            if bound is None:
+                if page:
+                    yield page
+                return
+            last_row_id = bound
+            yield page
+            if limit is not None and seen >= limit:
+                return
+            continue
         page = q.order_by(model.row_id.asc()).limit(page_size).all()
         if not page:
             return

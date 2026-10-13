@@ -67,7 +67,8 @@ def fold_by_unit(db, payloads, rule=None):
     for part in chunks(sorted(groups)):
         ranked = replay._ranked_duplicates(units, [params["group"]], params["order"], "min", prefer,
                                            among=[group.in_(part)])
-        kept.update({row_id: winner for row_id, winner in db.execute(select(ranked.c.row_id, ranked.c.kept))})
+        kept.update({row_id: winner for row_id, winner in db.execute(
+            select(ranked.c.row_id, ranked.c.kept).where(ranked.c.ranks))})
     unit_of, name_of = {}, {}
     for part in chunks(kept):
         for row in db.query(units.row_id, getattr(units, params["unit"]),

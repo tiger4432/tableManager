@@ -209,8 +209,13 @@ def derived_pages(db, rule: dict, resolved: bool = False, limit: int = None,
     """Pages of derived rows matching the queue predicate (or its complement).
 
     Keyset pagination on `row_id` (PK) - no OFFSET, no full load; `size` (`keyset_scan.PageSize`)
-    sizes the pages, SCAN_CHUNK a page without it. Each page a list of dicts of
-    {row_id, business_key_val, keys{}, targets{}, extra{}}.
+    sizes the pages, SCAN_CHUNK a page without it. A page is a row_id range of the table - its next rows -
+    and the predicate is judged within it (`iter_pages(ranged=True)`), so a statement reads at most a page
+    of the table: in the WHERE alone, the gap before a sparse queue was one statement (8.68 s at 4M rows
+    with the first 50 waiting, 총괄 ff4eb2cf0 6). The price, taken under the 5-second rule: a sparse queue
+    walks the table a page at a time - the whole read longer where few rows wait (box A/B at 1M, one row
+    in 1,000: 0.6-1.8 s by the WHERE against 5.2-5.5 s by the rows, 총괄 59c0bfb8c 6). A page may hold no
+    row. Each page a list of dicts of {row_id, business_key_val, keys{}, targets{}, extra{}}.
     """
     from database import models
 
@@ -232,7 +237,7 @@ def derived_pages(db, rule: dict, resolved: bool = False, limit: int = None,
     # `keyset_scan.iter_pages` prepends row_id as the cursor, so `cols` must not
     # repeat it - the shared walk owns the cursor.
     for page in keyset_scan.iter_pages(db, model, columns=cols, condition=cond,
-                                       chunk_size=SCAN_CHUNK, limit=limit, size=size):
+                                       chunk_size=SCAN_CHUNK, limit=limit, size=size, ranged=True):
         rows = []
         for row in page:
             i = 2
@@ -751,51 +756,36 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
                                    if crud.clean_str_value(r["targets"].get(t)) == ""]}
                 for r in page]
 
-    pages = derived_pages(db, rule, resolved=False, limit=limit, scope=SCOPE_QUEUE,
-                          size=keyset_scan.PageSize(page_rows) if page_rows else None)
+    # 🔴 ONE PAGE LOOP FOR BOTH PATHS, ON A SESSION OF ITS OWN (총괄 3eca39091 · 8d8abfb5d). A page is read and
+    #    confirmed on `own`, and its end is the one place the paths differ - committed or rolled back - so a
+    #    stop lands between pages and no transaction outlives its page. The dry path read the whole queue into
+    #    one list under one SAVEPOINT of the caller's session: 450 s past a 45 s cap at 1M.
+    # ⚠️ [S-274, 판정 415] THE BORROWED SESSION IS NEVER ENDED HERE - nor held between pages: past the checks
+    #    above the loop does not touch it. The caller may hold uncommitted work of its own on it.
+    from sqlalchemy.orm import sessionmaker
 
-    # 🔴 [S-274, 판정 415] A BORROWED SESSION IS NEVER ROLLED BACK - IT IS ROLLED BACK TO A
-    # SAVEPOINT OF ITS OWN. This read `db.rollback()  # belt and braces`, and inside this
-    # seat that is right: a dry run must leave nothing behind. Outside it is destructive -
-    # the session belongs to the CALLER, who may be holding uncommitted work of their own,
-    # and `_count_chain_replay` / `_run_chain_replay` / the dry-run route all reach this
-    # arm. The repository had already paid for the same shape once: `config._isolated_execute`
-    # documents a poisoned session escaping into `process_pending_groups`, whose
-    # `processed_chain=True` commit was turned into a rollback, so the group was never
-    # marked and the batch loop re-ran it forever.
-    #
-    # ⚠️ THE SCOPE IS THE FIX, NOT THE ABSENCE OF ONE. `discarding` still undoes everything
-    # this call wrote - it undoes exactly that and nothing above it.
-    if apply:
-        # 🔴 A PAGE IS WHERE A STOP LANDS (총괄 8d8abfb5d). Each page's writes commit inside
-        #    its own call, so a stop between two leaves whole pages behind; the counters
-        #    accumulate in one dict and the pages share one transaction id - one sweep in
-        #    the history. The page confirmed is the page read (`keyset_scan.PageSize`, at most
-        #    `page_rows`): the queue is not read whole before the first (총괄 2ea5ee2a7 ①).
-        log(f"[confirm] rule '{rule['name']}': examining the queue a page at a time, "
-            f"counting as it goes")
-        stats, tx_id = {}, enrichment.candidates.new_tx_id("enrichment_sweep")
-        examined = 0
-        for page in pages:
+    log(f"[confirm] rule '{rule['name']}': examining the queue a page at a time, "
+        f"counting as it goes")
+    own = sessionmaker(autocommit=False, autoflush=False, bind=db.get_bind())()
+    stats = {}
+    tx_id = enrichment.candidates.new_tx_id("enrichment_sweep") if apply else None
+    examined, step, reads = 0, keyset_scan.step_of(checkpoint), 0
+    try:
+        for page in derived_pages(own, rule, resolved=False, limit=limit, scope=SCOPE_QUEUE,
+                                  size=keyset_scan.PageSize(page_rows) if page_rows else None):
+            reads += 1
+            step("read", reads, None, len(page))
             keyed = keyed_of(page)
-            enrichment.candidates.confirm_keys(
-                db, rule, keyed, apply=True, stats=stats,
-                tx_prefix="enrichment_sweep", caps=caps, tx_id=tx_id)
+            if keyed:
+                enrichment.candidates.confirm_keys(own, rule, keyed, apply=apply, stats=stats,
+                                                   tx_prefix="enrichment_sweep", caps=caps, tx_id=tx_id)
+            (own.commit if apply else own.rollback)()
             examined += len(keyed)
             if checkpoint is not None and checkpoint(examined, None):
                 stats["stopped"] = True
                 break
-    else:
-        import session_contract
-
-        keyed = [row for page in pages for row in keyed_of(page)]
-        examined = len(keyed)
-        log(f"[confirm] rule '{rule['name']}': {examined} queue entr"
-            f"{'y' if examined == 1 else 'ies'} to examine")
-        stats = session_contract.discarding(
-            db, "enrichment_sweep",
-            lambda: enrichment.candidates.confirm_keys(
-                db, rule, keyed, apply=False, tx_prefix="enrichment_sweep", caps=caps))
+    finally:
+        own.close()
     stats["mode"] = "apply" if apply else "dry-run"
     stats["rule"] = rule["name"]
     stats["queue_size"] = examined

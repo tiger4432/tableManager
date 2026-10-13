@@ -150,16 +150,16 @@ def test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves(world, m
     after = _events(world)
 
     assert {i: e for i, e in before.items() if i not in folding} == {i: e for i, e in after.items() if i in before}
-    # 총괄 2ea5ee2a7 ③: a page folds its own events, so the pages (1, 2, 4 … 1,024, then the 461 left) make 13
-    # collapsed events where one fixed page of 10,000 made 3 - the 1,024 page two of them; the run's 13th page reads
-    # the collapsed event its 12th made, and leaves it
-    assert done == dict(preview, pages=done["pages"]) and done["by_table"] == {hw.OFFICIAL: [2500, 13]}
+    # 총괄 2ea5ee2a7 ③: a page folds its own events. A page is the queue's next waiting events (5ad030347), and the
+    # rows' three creation events wait first: pages 1 and 2 fold none, 4 … 1,024 fold 4 … 1,024 (the 1,024 page two
+    # events), the 2,048 page the 456 left - 11 collapsed events; the 13th page reads what the 12th made, and leaves it
+    assert done == dict(preview, pages=done["pages"]) and done["by_table"] == {hw.OFFICIAL: [2500, 11]}
     assert (done["rows"], done["retrying"], done["running"], done["pages"]) == (2500, 1, 7, 13)
-    assert detail.startswith("'hc_official' 2500 event(s) -> 13 - 2500 row(s). Left as they are: 1 event(s) "
+    assert detail.startswith("'hc_official' 2500 event(s) -> 11 - 2500 row(s). Left as they are: 1 event(s) "
                              "the chain already tried (RETRYING), 7 on a line the chain runs now."), detail
     made = [e for i, e in sorted(after.items()) if i not in before]
     assert [(t, k, s, d, len(p["row_ids"])) for t, k, s, d, p in made] == [
-        (hw.OFFICIAL, "EDIT", "PENDING", False, n) for n in [2 ** p for p in range(10)] + [1000, 24, 453]]
+        (hw.OFFICIAL, "EDIT", "PENDING", False, n) for n in [2 ** p for p in range(2, 10)] + [1000, 24, 456]]
     # 총괄: every row the per-row events named is named again - one missing is a withdrawal lost
     assert sorted((t, r) for t, _k, _s, _d, p in made for r in p["row_ids"]) == sorted(
         (before[i][0], before[i][4]["row_id"]) for i in folding)
@@ -183,9 +183,10 @@ def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world, doublin
     first = {"chain_depth": 2, "channel": event_constants.CHANNEL_CHAIN, "cascade": True,
              "written_by": [hw.RECOUNT["name"]], "run_id": None}
     second = {"chain_depth": None, "channel": None, "cascade": None, "written_by": None, "run_id": "RUN-OLD"}
-    # pages 1, 2, 4, 8: the third holds the first group's last row and the second's first three (총괄 2ea5ee2a7 ③)
-    assert (out["events_folded"], out["events_made"]) == (9, 5)
-    assert made == [(1, first), (2, first), (1, first), (3, second), (2, second)]
+    # pages 1, 2, 4, 8 of the queue's waiting events (총괄 2ea5ee2a7 ③ · 5ad030347): the first is the rows' creation
+    # event, the third holds the first group's last two rows and the second's first two
+    assert (out["events_folded"], out["events_made"]) == (9, 4)
+    assert made == [(2, first), (2, first), (2, second), (3, second)]
 
 
 # ------------------------------------------------------------------ the end state

@@ -665,8 +665,9 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 
     Two aggregate queries, no row materialisation, no per-cell recompute - so this
     is the half of `withdraw_source` that can sit on a request path. The first
-    rides `idx_sources_by_source` (see `withdraw_source` step 1 for the measured
-    before/after); the second is driven from `cell_overwrites` and is therefore
+    counts the source's claims among the table's layers - the source is the lookup
+    index's last column (`idx_sources_by_source` is retired, S-118; `withdraw_source`
+    step 1); the second is driven from `cell_overwrites` and is therefore
     bounded by the number of manual pins, not by `cell_sources`.
 
     Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
@@ -892,28 +893,34 @@ def _holds(model, pair):
     return cast(getattr(model, pair[0]), String).icontains(pair[1], autoescape=True)
 
 
-def _ranked_duplicates(model, keys, order, keep, prefer=None, among=()):
-    """Every row whose key has a value in each part (and that meets `among`), with its place among
-    the rows of its key (`n`, 1 = kept), the row kept (`kept`) and how many share the key (`c`):
-    first a row whose `prefer` column holds its text (any case), then by `order` - `min` earliest,
-    `max` latest - a blank `order` last; a tie, the smaller row_id kept."""
-    from sqlalchemy import String, case, cast, false, func, literal, not_, select
+def _ranked_duplicates(model, keys, order, keep, prefer=None, among=(), judged=()):
+    """Every row that meets `among` (what is read), with `ranks` - a value in each key part and every labelled
+    condition of `judged` met, each carried as its own column - and its place among the ranking rows of its key
+    (`n`, 1 = kept), the row kept (`kept`) and how many rank (`c`): first a row whose `prefer` column holds its text
+    (any case), then by `order` - `min` earliest, `max` latest - a blank `order` last; a tie, the smaller row_id
+    kept. A key is its columns as stored (`p0` …), so an index on them can hand the rows over in order, and a row
+    that does not rank is read in the same pass - the fold counted those apart in four more reads (총괄 5ad030347)."""
+    from sqlalchemy import String, and_, case, cast, false, func, literal, not_, select
 
     from database import crud
 
-    parts = [cast(getattr(model, k), String) for k in keys]
+    parts = [getattr(model, k) for k in keys]
     by = getattr(model, order)
+    blank = _blank_key(model, keys)
+    ranks = and_(not_(blank), *[condition.element for condition in judged])
     preferred = _holds(model, prefer) if prefer else false()
-    ranked = [case((preferred, 0), else_=1), case((crud.blank_sql_condition(cast(by, String)), 1), else_=0),
+    ranked = [case((ranks, 0), else_=1), case((preferred, 0), else_=1),
+              case((crud.blank_sql_condition(cast(by, String)), 1), else_=0),
               by.asc() if keep == "min" else by.desc(), model.row_id.asc()]
     return select(model.row_id.label("row_id"), by.label("order_value"),
                   (getattr(model, prefer[0]) if prefer else literal(None)).label("prefer_value"),
                   case((preferred, 1), else_=0).label("preferred"),
-                  *[part.label("k%d" % i) for i, part in enumerate(parts)],
-                  func.row_number().over(partition_by=parts, order_by=ranked).label("n"),
+                  *[part.label("p%d" % i) for i, part in enumerate(parts)],
+                  *[cast(part, String).label("k%d" % i) for i, part in enumerate(parts)],
+                  blank.label("blank_key"), ranks.label("ranks"), *judged,
+                  func.count().filter(ranks).over(partition_by=parts, order_by=ranked, rows=(None, 0)).label("n"),
                   func.first_value(model.row_id).over(partition_by=parts, order_by=ranked).label("kept"),
-                  func.count().over(partition_by=parts).label("c")).where(
-                      not_(_blank_key(model, keys)), *among).subquery()
+                  func.count().filter(ranks).over(partition_by=parts).label("c")).where(*among).subquery()
 
 
 def fold_target(table_name, keys, order, keep="min", prefer_column=None, prefer_text=None,
@@ -957,46 +964,48 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     A marked row ranks no more. `only_column` · `only_text` (83c05cfbb): only rows whose column holds
     the text rank - the rest stay as they are, counted.
     """
-    from sqlalchemy import String, and_, cast, func, not_, select
+    from sqlalchemy import String, cast, false, func, not_, select
 
     from database import crud
 
     keys, model, prefer, scope, mark = fold_target(table_name, keys, order, keep, prefer_column, prefer_text,
                                                    mark_column, only_column, only_text)
     pages_per_cycle, rest_seconds = resolve_pace(pace)
-    marked = crud.not_blank_sql_condition(cast(getattr(model, mark), String)) if mark else None
-    in_scope = _holds(model, scope) if scope else None
-    ranked = _ranked_duplicates(model, keys, order, keep, prefer, among=[
-        c for c in (in_scope, not_(marked) if mark else None) if c is not None])
-    rows, to_go, folded_keys, preferred_keys = db.execute(select(
-        func.count(), func.count().filter(ranked.c.n > 1),
-        func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1)),
-        func.count().filter(and_(ranked.c.n == 1, ranked.c.c > 1, ranked.c.preferred == 1)))
-        .select_from(ranked)).one()
-    keyed = not_(_blank_key(model, keys))
+    judged = [func.coalesce(_holds(model, scope), false()).label("in_scope")] if scope else []
+    if mark:
+        judged.append(not_(crud.not_blank_sql_condition(cast(getattr(model, mark), String))).label("unmarked"))
+    ranked = _ranked_duplicates(model, keys, order, keep, prefer, judged=judged)
     woken = _excluding_by(table_name, mark) if mark else []
     recounts = _recounting(woken, mark) if woken else []
-
-    def counted(*where):
-        return db.execute(select(func.count()).select_from(model).where(*where)).scalar()
-    blank = counted(_blank_key(model, keys))
-    # by difference: a NULL scope column holds no text, and NOT of its test is NULL, not true
-    out_of_scope = counted(keyed) - counted(keyed, in_scope) if scope else 0
-    already = counted(keyed, *([in_scope] if scope else []), marked) if mark else 0
+    found = _key_index(db, table_name, keys)
+    index = ("%s%s" % (found["name"], "" if found["state"] in ("present", "unknown") else " (%s)" % found["state"])
+             if found else "none - declare one on (%s) in the table's indexes" % ", ".join(keys))
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
-             "rows": rows + blank + out_of_scope + already, "keys_folded": folded_keys,
-             "keys_preferred": preferred_keys, "rows_to_mark" if mark else "rows_to_delete": to_go,
-             "rows_kept": rows + blank + out_of_scope + already - to_go, "rows_blank_key": blank,
-             "rows_out_of_scope": out_of_scope, "rows_already_marked": already,
+             "rows": 0, "keys_folded": 0, "keys_preferred": 0, "rows_to_mark" if mark else "rows_to_delete": 0,
+             "rows_kept": 0, "rows_blank_key": 0, "rows_out_of_scope": 0, "rows_already_marked": 0,
              "rows_marked" if mark else "rows_deleted": 0, "pages": 0, "stopped": False, "sample": [],
              "rules_woken": [rule.get("name") for rule in woken], "rules_recounting": [
-                 rule.get("name") for rule in recounts]}
-    key_cols = [ranked.c["k%d" % i] for i in range(len(keys))]
+                 rule.get("name") for rule in recounts], "key_index": index}
+    to_go, done = ("rows_to_mark", "rows_marked") if mark else ("rows_to_delete", "rows_deleted")
+    # 🔴 ONE READ OF THE TABLE (총괄 5ad030347 · 2e8c6ac9c): the counts, the sample and the rows to go come out of
+    #    one pass in key order - five passes before the first line, 10.58 s at 1M. Without an index on the keys
+    #    the table is sorted before the first row; the line says so before the sort starts.
+    log(f"[fold-rows] '{table_name}': reading its rows by ({', '.join(keys)}) - index on the keys: {index}"
+        + ("" if found else "; the first row comes after the sort"))
+    losers, shown = [], []
+    for row in db.execute(_fold_read(keys, ranked, scope, mark, losers=apply).execution_options(yield_per=FOLD_ROWS_PAGE)):
+        # by place, not by name: 800,000 rows to go read by name were 5 s of a 13 s read (box 1M, by place 8 s)
+        part = row[0]
+        if part == 1:
+            losers.append((row[1], row[2]))
+        elif part == 0:
+            stats.update(rows=row.a0, rows_blank_key=row.a1, rows_out_of_scope=row.a2, rows_already_marked=row.a3,
+                         keys_folded=row.a5, keys_preferred=row.a6, **{to_go: row.a4})
+        else:
+            shown.append(row)
     sample = {}
-    for row in db.execute(select(ranked).where(ranked.c.c > 1, ranked.c.n <= FOLD_ROWS_SAMPLE_ROWS)
-                          .order_by(*key_cols, ranked.c.n)
-                          .limit(FOLD_ROWS_SAMPLE_KEYS * FOLD_ROWS_SAMPLE_ROWS)):
-        key = tuple(row._mapping["k%d" % i] for i in range(len(keys)))
+    for row in sorted(shown, key=lambda row: row.a0):
+        key = tuple(getattr(row, "k%d" % i) for i in range(len(keys)))
         if key not in sample and len(sample) == FOLD_ROWS_SAMPLE_KEYS:
             break
         one = sample.setdefault(key, {"key": dict(zip(keys, key)), "rows": row.c, "kept": None, "deleted": []})
@@ -1004,12 +1013,13 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
         if row.n == 1:
             one["kept"] = seen
         else:
-            one["deleted"].append(seen)
+            one["deleted"].append((row.n, seen))
+    for one in sample.values():
+        one["deleted"] = [seen for _n, seen in sorted(one["deleted"], key=lambda pair: pair[0])]
     stats["sample"] = list(sample.values())
-    done = "rows_marked" if mark else "rows_deleted"
-    if apply and to_go:
-        losers = [(r, k) for r, k in db.execute(select(ranked.c.row_id, ranked.c.kept).where(ranked.c.n > 1)
-                                               .order_by(ranked.c.row_id))]
+    stats["rows_kept"] = stats["rows"] - stats[to_go]
+    if apply and losers:
+        losers.sort()
         size, start = keyset_scan.PageSize(FOLD_ROWS_PAGE), 0
         while start < len(losers):
             if checkpoint is not None and checkpoint(stats[done], len(losers)):
@@ -1023,19 +1033,69 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
             stats["pages"] += 1
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 size.rest(rest_seconds)
-    log(f"[fold-rows] '{table_name}' {stats['mode']}: {folded_keys} key(s) of ({', '.join(keys)}) "
+    log(f"[fold-rows] '{table_name}' {stats['mode']}: {stats['keys_folded']} key(s) of ({', '.join(keys)}) "
         f"hold more than one row - keep "
-        + (f"a row whose {prefer[0]} holds '{prefer[1]}' ({preferred_keys} key(s)), then " if prefer else "")
+        + (f"a row whose {prefer[0]} holds '{prefer[1]}' ({stats['keys_preferred']} key(s)), then " if prefer else "")
         + f"the {'earliest' if keep == 'min' else 'latest'} {order}, "
-        f"{to_go} row(s) to {'mark' if mark else 'delete'}, {stats[done]} {'marked' if mark else 'deleted'}, "
-        f"{blank} row(s) with a blank key part"
-        + (f", {out_of_scope} out of scope" if scope else "")
-        + (f", {already} marked before" if mark else "") + " left as they are")
+        f"{stats[to_go]} row(s) to {'mark' if mark else 'delete'}, {stats[done]} {'marked' if mark else 'deleted'}, "
+        f"{stats['rows_blank_key']} row(s) with a blank key part"
+        + (f", {stats['rows_out_of_scope']} out of scope" if scope else "")
+        + (f", {stats['rows_already_marked']} marked before" if mark else "") + " left as they are")
     return stats
 
 
-#: Rows one page of the shell sweep judges and deletes at once, and the keys its preview shows (5eee501eb).
-SHELL_PAGE = 1000
+
+def _fold_read(keys, ranked, scope, mark, losers=True):
+    """The fold's one read: `ranked` once (a CTE, read three times) - one row of counts (`part` 0: rows, blank key,
+    out of scope, marked before, to go, keys folded, keys preferred - `a0` … `a6`), the rows to go when `losers`
+    (`part` 1, the row kept beside each) and the preview's rows (`part` 2: the first by the key's text and place, as it always
+    chose them; `a0` their order). The counts and the order stay in the database - every row through the client,
+    sorted, was slower than the five reads it replaced (box, 1M: 27.6 s to the first page against 8.9 s)."""
+    from sqlalchemy import BigInteger, and_, cast, func, literal, not_, null, select, union_all
+    from sqlalchemy.types import NullType
+
+    r = select(ranked).cte("fold_ranked")
+    c = r.c
+    keyed = not_(c.blank_key)
+    kept = and_(c.ranks, c.n == 1, c.c > 1)
+    counts = [func.count(), func.count().filter(c.blank_key),
+              func.count().filter(and_(keyed, not_(c.in_scope))) if scope else literal(0),
+              func.count().filter(and_(keyed, *([c.in_scope] if scope else []), not_(c.unmarked))) if mark else literal(0),
+              func.count().filter(and_(c.ranks, c.n > 1)), func.count().filter(kept),
+              func.count().filter(and_(kept, c.preferred == 1))]
+    labels = [c["k%d" % i] for i in range(len(keys))]
+    shape = [c.row_id, c.kept, c.n, c.c, c.preferred, c.order_value, c.prefer_value, *labels]
+
+    def blank(col):
+        return (null() if isinstance(col.type, NullType) else cast(null(), col.type)).label(col.name)
+    head = select(literal(0).label("part"), *[blank(col) for col in shape],
+                  *[cast(n, BigInteger).label("a%d" % i) for i, n in enumerate(counts)]).select_from(r)
+    togo = select(literal(1).label("part"), c.row_id, c.kept, *[blank(col) for col in shape[2:]],
+                  *[cast(null(), BigInteger).label("a%d" % i) for i in range(len(counts))]).where(c.ranks, c.n > 1)
+    shown = (select(*shape).where(c.ranks, c.c > 1, c.n <= FOLD_ROWS_SAMPLE_ROWS)
+             .order_by(*labels, c.n).limit(FOLD_ROWS_SAMPLE_KEYS * FOLD_ROWS_SAMPLE_ROWS).subquery())
+    # numbered above the LIMIT: under it the window sorted every row whole (box 1M, 800k rows: 1.5 s more)
+    sample = select(literal(2).label("part"), *[shown.c[col.name] for col in shape],
+                    func.row_number().over(order_by=[*[shown.c[col.name] for col in labels], shown.c.n]).label("a0"),
+                    *[cast(null(), BigInteger).label("a%d" % i) for i in range(1, len(counts))])
+    # a dry run and the preview count the rows to go and take none of them (1M: 800,000 rows, 총괄 59c0bfb8c 3)
+    return union_all(head, togo, sample) if losers else union_all(head, sample)
+
+def _key_index(db, table_name, keys):
+    """The index the table's own declaration («indexes» in table_config.json) has on `keys` in their order, as
+    the index master reads it - {name, state} - or None: an operator writes one there (총괄 5ad030347)."""
+    from database import crud, models
+
+    for row in models.index_states(db.get_bind(), tables={table_name: crud.TABLE_CONFIG.get(table_name)})["declared"]:
+        if row["source"] == "table" and row["table"] == table_name and row["columns"][:len(keys)] == list(keys):
+            return {"name": row["name"], "state": row["state"]}
+    return None
+
+
+#: Rows one page of the shell sweep reads - the shells among them judged and deleted at once - and the keys its
+#: preview shows (5eee501eb). A page of 1,000 made a 1M table 1,000 commits (box: fewer deleted in 45 s than the
+#: whole-table read it replaced); the page size rule still keeps a page within its time.
+SHELL_PAGE = 20000
 SHELL_SAMPLE = 5
 
 
@@ -1043,9 +1103,11 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
                       checkpoint=None) -> dict:
     """The shells already on `table_name` (총괄 5eee501eb, 소유자 10-09 「공식표에 껍데기 행 잔뜩 쌓여 있음」):
     the rows `cell_layer.shells` judges - the judgement the chain's write seat asks - deleted through the
-    grid's door, `crud.delete_rows_batch`, a page at a time. The rows read are those that show nothing
-    outside their keys, by row_id pages; a stop lands between pages and a re-run finds only what is left."""
-    from sqlalchemy import and_, select, true
+    grid's door, `crud.delete_rows_batch`, a page at a time. A page is the table's next rows by row_id
+    (`keyset_scan.iter_pages`), and «shows nothing outside its keys» is judged on those rows - in the WHERE it
+    read on to the next match, the table whole at 1M (총괄 5ad030347); `rows_read` counts the rows that do. A stop
+    lands between pages and a re-run finds only what is left."""
+    from sqlalchemy import and_, true
 
     from chain import cell_layer
     from database import crud
@@ -1057,29 +1119,40 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows_read": 0,
              "rows_to_delete": 0, "rows_deleted": 0, "pages": 0, "stopped": False, "sample": []}
-    after, size = None, keyset_scan.PageSize(SHELL_PAGE)
-    while True:
+    # the reads double to SHELL_PAGE whatever the deletes take (a page time no read reaches); the deletes keep the page time, a commit each - one
+    # 20,000-row delete was one 9.7 s transaction where shells crowd (총괄 59c0bfb8c 4)
+    size, write = keyset_scan.PageSize(SHELL_PAGE, seconds=10 ** 6), keyset_scan.PageSize()
+    step, reads = keyset_scan.step_of(checkpoint), 0
+
+    def stop():
         if apply and checkpoint is not None and checkpoint(stats["rows_deleted"], None):
             stats["stopped"] = True
             log(f"[remove-shells] stopped by request after {stats['rows_deleted']} rows")
+        return stats["stopped"]
+    for read in keyset_scan.iter_pages(db, model, columns=[shown_blank.label("shown_blank")],
+                                       chunk_size=SHELL_PAGE, size=size):
+        reads += 1
+        step("read", reads, None, len(read))
+        if stop():
             break
-        page = [row_id for (row_id,) in db.execute(
-            select(model.row_id).where(shown_blank, *([model.row_id > after] if after is not None else []))
-            .order_by(model.row_id).limit(size.next()))]
+        page = [row_id for row_id, blank in read if blank]
         if not page:
-            break
-        after = page[-1]
+            continue
         stats["rows_read"] += len(page)
         gone = cell_layer.shells(db, table_name, page)
         stats["rows_to_delete"] += len(gone)
         if len(stats["sample"]) < SHELL_SAMPLE and gone:
             stats["sample"] += [{key: getattr(row, key, None) for key in sorted(keys)} for row in db.query(model)
                                 .filter(model.row_id.in_(gone[:SHELL_SAMPLE - len(stats["sample"])])).all()]
-        if apply and gone:
-            stats["rows_deleted"] += crud.delete_rows_batch(db, table_name, gone, cell_layer.SHELL_DELETER)
+        while apply and gone and not (stats["pages"] and stop()):
+            n = write.next()
+            piece, gone = gone[:n], gone[n:]
+            stats["rows_deleted"] += crud.delete_rows_batch(db, table_name, piece, cell_layer.SHELL_DELETER)
             stats["pages"] += 1
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                size.rest(rest_seconds)
+                write.rest(rest_seconds)
+        if stats["stopped"]:
+            break
     log(f"[remove-shells] '{table_name}' {stats['mode']}: {stats['rows_read']} row(s) show nothing outside "
         f"their keys, {stats['rows_to_delete']} of them only the chain's keys left, {stats['rows_deleted']} deleted")
     return stats
@@ -1194,8 +1267,8 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     prefer = ((params["prefer_column"], params["prefer_text"])
               if params.get("prefer_column") and params.get("prefer_text") else None)
     ranked = _ranked_duplicates(units, [params["group"]], params["order"], "min", prefer)
-    groups, losing = db.execute(select(func.count().filter(ranked.c.n == 1),
-                                       func.count().filter(ranked.c.n > 1)).select_from(ranked)).one()
+    groups, losing = db.execute(select(func.count().filter(ranked.c.ranks, ranked.c.n == 1),
+                                       func.count().filter(ranked.c.ranks, ranked.c.n > 1)).select_from(ranked)).one()
     unit_ids = [row_id for (row_id,) in db.execute(select(units.row_id).order_by(units.row_id))]
     group = getattr(units, params["group"])
     in_order = [value for (value,) in db.execute(select(group).where(group.isnot(None)).distinct().order_by(group))]
@@ -1820,9 +1893,12 @@ def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_val
                 shown.setdefault(column, {})[(kind, value)] = stored
     layered = {}                                    # column -> {stored text: folded value}
     ids = bindparam("ids", list(rows), type_=ARRAY(String))
+    # a read of the page's layers names the page's row_id range - what the index reads in order; by its id list
+    # alone the plan turned to a whole read of cell_sources from about 10,000 ids at 13M layers (box, 총괄
+    # 5ad030347). The list stays: a deleted row's layers in the range are not the page's
+    in_page = (cs.table_name == table_name, cs.row_id >= page[0].row_id, cs.row_id <= page[-1].row_id)
     for column, text, n in db.execute(select(cs.column_name, said, func.count())
-                                      .where(cs.table_name == table_name, cs.column_name.in_(folded),
-                                             cs.row_id == any_(ids))
+                                      .where(*in_page, cs.column_name.in_(folded), cs.row_id == any_(ids))
                                       .group_by(cs.column_name, said)):
         value = None if text is None else json.loads(text)
         # a layer saying what a shown value says shares its fold; a JSON object goes by its text
@@ -1833,7 +1909,7 @@ def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_val
     def moving(column, among):
         """The rows of `among` with a layer of `column` whose text moves."""
         return select(cs.row_id).where(
-            cs.table_name == table_name, cs.column_name == column, cs.row_id == any_(among),
+            *in_page, cs.column_name == column, cs.row_id == any_(among),
             said == any_(bindparam("moves", list(layered[column]), type_=ARRAY(Text))))
 
     for column in key_parts:
@@ -1856,8 +1932,7 @@ def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_val
             moves, cells = layered[column], {}
             for layer_id, row_id, source, text in db.execute(
                     select(cs.id, cs.row_id, cs.source_name, said)
-                    .where(cs.table_name == table_name, cs.column_name == column,
-                           cs.row_id.in_(moving(column, among)))):
+                    .where(*in_page, cs.column_name == column, cs.row_id.in_(moving(column, among)))):
                 cells.setdefault(row_id, []).append((source, text))
                 if text in moves:
                     out["layers"][layer_id] = moves[text]

@@ -382,7 +382,7 @@ def _diagnose_probe_failure(db, view: dict, column: str, key_values: dict) -> st
 
 
 def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str,
-                             caps: dict = None) -> dict:
+                             caps: dict = None, asked: dict = None) -> dict:
     """THE predicate: does exactly one candidate exist for this (key, field)?
 
     Returns a dict; `status` is `single` (safe to confirm) or `refused` (with a
@@ -421,6 +421,9 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     `caps`: the read-cap snapshot (`enrichment_config.load_read_caps`). Passed in
     from the work-unit boundary so every key in one sweep is measured against the
     same ceilings; loaded here only when a caller has none.
+
+    `asked`: {(target_field, view index): {key: probe answer or its error}} - the probes a
+    page asked together (`confirm_keys`, 총괄 3eca39091); a key not there is asked here.
     """
     from chain.enrichment import config as _enrichment_config
     from database import crud
@@ -446,7 +449,7 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
     evidence = []    # per-view contribution
     errors = []      # per-view failure, each with a named reason
 
-    for view in views:
+    for number, view in enumerate(views):
         label = view.get("label")
         column = (view.get("candidate_for") or {})[target_field]
         needed = set(view.get("required_binds") or [])
@@ -456,8 +459,12 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
             errors.append({"label": label, "reason": REASON_MISSING_BIND, "detail": missing})
             continue
         try:
-            probe = _enrichment_config.execute_candidate_probe(db, view, column, key_values,
-                                                              caps=caps)
+            probe = (asked or {}).get((target_field, number), {}).get(_probe_key(view, key_values))
+            if probe is None:
+                probe = _enrichment_config.execute_candidate_probe(db, view, column, key_values,
+                                                                  caps=caps)
+            elif isinstance(probe, Exception):
+                raise probe
         except _enrichment_config.ReferenceViewError as e:
             errors.append({"label": label,
                            "reason": _diagnose_probe_failure(db, view, column, key_values),
@@ -529,6 +536,43 @@ def resolve_target_candidate(db, rule: dict, key_values: dict, target_field: str
                  "value": distinct[0], "support": values[distinct[0]],
                  "candidates": distinct, "evidence": evidence, "errors": []}, **partial)
 
+
+
+def _probe_key(view: dict, key_values: dict) -> tuple:
+    """One key as a view asks it - the values of the binds it reads, in their name order."""
+    from chain.enrichment import config as _enrichment_config
+
+    return tuple(key_values.get(name) for name in sorted(_enrichment_config.view_binds(view)))
+
+
+def ask_together(db, rule: dict, keyed_rows: list, writable: set, caps: dict, st: dict) -> dict:
+    """The probes a page of keys needs, asked a view at a time (`execute_candidate_probes`) -> `asked` for
+    `resolve_target_candidate`. A view whose one statement failed was asked key by key, and the
+    answer says so: `probe_batch_fallbacks` {view label: keys} (총괄 3eca39091 - never slower in silence)."""
+    from chain.enrichment import config as _enrichment_config
+
+    asked = {}
+    for field in candidate_target_fields(rule):
+        for number, view in enumerate(declaring_views(rule, field)):
+            keys = []
+            for entry in keyed_rows:
+                key_values = entry.get("keys") or {}
+                if (field not in set(entry.get("blank_targets") or [field])
+                        or (entry.get("row_id") and (entry.get("row_id"), field) not in writable)
+                        or _enrichment_config.key_is_wholly_blank(rule, key_values)
+                        or _enrichment_config.missing_binds(view, key_values)):
+                    continue
+                keys.append(key_values)
+            if not keys:
+                continue
+            answers, failed = _enrichment_config.execute_candidate_probes(
+                db, view, (view.get("candidate_for") or {})[field], keys, caps=caps)
+            asked[(field, number)] = {_probe_key(view, key_values): answer
+                                      for key_values, answer in zip(keys, answers)}
+            if failed:
+                fallbacks = st.setdefault("probe_batch_fallbacks", {})
+                fallbacks[view.get("label")] = fallbacks.get(view.get("label"), 0) + len(keys)
+    return asked
 
 def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: list) -> set:
     """Which (row_id, column) target cells have NO provenance at all?
@@ -691,6 +735,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
     # carries provenance is never probed, so a resolved queue costs no queries.
     writable = find_unresolved_cells(
         db, derived_table, [r.get("row_id") for r in keyed_rows], target_fields)
+    asked = ask_together(db, rule, keyed_rows, writable, caps, st)
 
     items = []
     for entry in keyed_rows:
@@ -725,7 +770,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                 continue
             st["keys_examined"] += 1
             res = resolve_target_candidate(db, rule, entry.get("keys") or {}, field,
-                                           caps=caps)
+                                           caps=caps, asked=asked)
             if res["status"] != STATUS_SINGLE:
                 # This column stays blank and its reason is recorded AGAINST THE
                 # COLUMN. The row carries on: a sibling column with unanimous
@@ -807,6 +852,14 @@ def log_stats(rule_name: str, st: dict, apply: bool):
         "written" if apply else "would be written",
         st.get("rows_examined", 0), st.get("rows_fully_confirmed", 0),
         st.get("rows_partly_confirmed", 0), st.get("rows_unconfirmed", 0), detail)
+    fallbacks = st.get("probe_batch_fallbacks") or {}
+    if fallbacks:
+        from chain.enrichment import config as _enrichment_config
+        logger.warning(
+            "[Enrichment:%s] candidate probes: batch -> key by key for %d key(s) (%s) - why is logged as '%s'",
+            rule_name, sum(fallbacks.values()),
+            ", ".join(f"{label}: {n}" for label, n in sorted(fallbacks.items(), key=lambda kv: str(kv[0]))),
+            _enrichment_config.SITE_CANDIDATE_PROBE_BATCH)
     per_target = st.get("per_target") or {}
     if len(per_target) > 1:
         logger.info(

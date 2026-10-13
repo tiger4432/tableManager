@@ -292,6 +292,47 @@ def test_only_the_rows_in_scope_fold_and_the_rest_are_left_and_counted(db):
     assert "Only rows whose job holds 'auto' (any case) fold - 2 row(s) outside" in preview["detail"]
 
 
+def test_a_row_with_no_scope_value_is_out_of_scope_and_counted(db):
+    """총괄 59c0bfb8c 5 (M7): the scope's test on a blank job is NULL, not false - counted out of scope all the same."""
+    _seed(db, [{"log_id": "a1", "wafer": "W1", "ts": "2026-10-01 10:00:00", "job": "auto"},
+               {"log_id": "a2", "wafer": "W1", "ts": "2026-10-01 10:05:00", "job": "auto"},
+               {"log_id": "n1", "wafer": "W1", "ts": "2026-10-01 10:09:00"}])
+    done = _fold(db, **SCOPE)
+    assert (done["rows_to_delete"], done["rows_out_of_scope"]) == (1, 1)
+    assert _left(db) == ["a1", "n1"]
+
+
+def test_a_row_out_of_scope_that_sorts_first_is_not_the_row_kept(db, monkeypatch):
+    """총괄 59c0bfb8c 5 (M10): the row a mark names is the first of the rows that rank - one out of scope that is
+    earlier stays out of it, and is named by no mark."""
+    monkeypatch.setattr(replay, "load_rules", lambda: [])
+    _seed(db, [{"log_id": "m1", "wafer": "W1", "ts": "2026-10-01 09:00:00", "job": "manual"},
+               {"log_id": "a1", "wafer": "W1", "ts": "2026-10-01 10:00:00", "job": "auto"},
+               {"log_id": "a2", "wafer": "W1", "ts": "2026-10-01 10:05:00", "job": "auto"}])
+    _fold(db, mark_column="mark", **SCOPE)
+    marks = {r.log_id: r.mark for r in db.query(models.DYNAMIC_TABLES[TABLE]).all()}
+    assert marks == {"m1": None, "a1": None, "a2": replay.FOLD_MARK % _row_id(db, "a1")}, marks
+
+
+def test_a_dry_run_and_the_preview_count_the_rows_to_go_and_take_none(db, monkeypatch):
+    """총괄 59c0bfb8c 3: only apply reads the rows to go (1M: 800,000 of them) - the dry run and the preview count
+    them in the database and say the same numbers."""
+    monkeypatch.setattr(replay, "load_rules", lambda: [])
+    _seed(db, [{"log_id": "a%d" % i, "wafer": "W%d" % (i % 2), "ts": "2026-10-01 10:%02d:00" % i} for i in range(7)])
+    asked, real = [], replay._fold_read
+
+    def spy(*args, **kw):
+        asked.append(kw.get("losers", True))
+        return real(*args, **kw)
+    monkeypatch.setattr(replay, "_fold_read", spy)
+    dry = replay.fold_duplicate_rows(db, TABLE, ["wafer"], "ts", apply=False, log=lambda m: None)
+    preview = retroactive.count(db, "fold_duplicate_rows", {"table": TABLE, "keys": "wafer", "order": "ts"})
+    done = _fold(db)
+    assert asked == [False, False, True]
+    assert (dry["rows_to_delete"], preview["affected"], done["rows_to_delete"], done["rows_deleted"]) == (5, 5, 5, 5)
+    assert dry["sample"] == done["sample"] and len(dry["sample"]) == 2
+
+
 @pytest.mark.parametrize("half", [{"only_column": "job"}, {"only_text": "auto"}])
 def test_a_scope_written_half_is_refused_by_name(db, half):
     with pytest.raises(retroactive.RetroactiveRefused, match="only_column and only_text go together"):
@@ -332,3 +373,76 @@ def test_a_mark_column_that_is_not_text_is_refused(db):
     with pytest.raises(retroactive.RetroactiveRefused, match="mark_column 'v' is a number column"):
         retroactive.validate("fold_duplicate_rows", {"table": TABLE, "keys": "wafer", "order": "ts",
                                                      "mark_column": "v"})
+
+
+def test_the_fold_names_the_declared_index_on_its_keys_or_says_where_to_declare_one(db, monkeypatch):
+    """총괄 5ad030347: the table's own «indexes» leading on the keys is what the one read can ride; without one the
+    line before the read says the first row comes after the sort, and the answer says where to declare it."""
+    _seed(db, [{"log_id": "a1", "wafer": "W1", "ts": "1"}, {"log_id": "a2", "wafer": "W1", "ts": "2"}])
+    said = []
+    assert replay.fold_duplicate_rows(db, TABLE, ["wafer"], "ts", log=said.append)["key_index"] == (
+        "none - declare one on (wafer) in the table's indexes")
+    assert said[0] == ("[fold-rows] 'fold_rows_log': reading its rows by (wafer) - index on the keys: none - "
+                       "declare one on (wafer) in the table's indexes; the first row comes after the sort")
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(TABLES[TABLE], indexes=[{"columns": ["ts", "wafer"]}]))
+    assert replay.fold_duplicate_rows(db, TABLE, ["wafer"], "ts", log=lambda m: None)["key_index"].startswith(
+        "none"), "an index that does not lead on the keys gives them in no order"
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(TABLES[TABLE], indexes=[{"columns": ["wafer", "ts"]}]))
+    said.clear()
+    run = retroactive._run_fold_duplicate_rows(db, {"table": TABLE, "keys": ["wafer"], "order": "ts"}, log=said.append)
+    assert run["key_index"] == models.table_index_name(TABLE, ["wafer", "ts"]) and run["rows_deleted"] == 1
+    assert said[0].endswith("index on the keys: %s" % run["key_index"])
+
+
+
+def test_the_preview_takes_its_example_keys_in_their_text_order(db):
+    """총괄 10-13: the preview's three example keys are the first by the key's text, as they always were - a number
+    key 10, 100, 2 - though the one read now groups by the key as stored."""
+    _seed(db, [{"log_id": "%s%d" % (tag, v), "v": v, "ts": tag} for v in (9, 10, 100, 2) for tag in ("a", "b")])
+    sample = replay.fold_duplicate_rows(db, TABLE, ["v"], "ts", log=lambda m: None)["sample"]
+    assert [float(one["key"]["v"]) for one in sample] == [10, 100, 2]
+
+
+@pytest.fixture(name="pgdb")
+def fixture_pgdb(pg_engine):
+    """The fold's table in the PG suite's scratch schema - the statement the dry run reads is PostgreSQL's there."""
+    from sqlalchemy import MetaData
+    from conftest import PG_TEST_SCHEMA, retire_dynamic_model
+
+    retire_dynamic_model(TABLE)
+    models.init_dynamic_models(TABLES)
+    crud.TABLE_CONFIG.update(TABLES)
+    scratch = MetaData(schema=PG_TEST_SCHEMA)
+    models.DYNAMIC_TABLES[TABLE].__table__.to_metadata(scratch, schema=None)
+    scratch.create_all(pg_engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)()
+    try:
+        yield session
+    finally:
+        session.close()
+        with pg_engine.begin() as conn:
+            conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
+            for table in ("cell_sources", "database_outbox", "audit_logs"):
+                conn.execute(text('DELETE FROM "%s".%s WHERE table_name = :t' % (PG_TEST_SCHEMA, table)), {"t": TABLE})
+        crud.TABLE_CONFIG.pop(TABLE, None)
+        retire_dynamic_model(TABLE)
+
+
+@pytest.mark.pg
+def test_a_dry_run_and_the_preview_read_no_row_to_go(pgdb, monkeypatch):
+    """총괄 ff4eb2cf0 3: what the read hands back, not how it was asked - the dry run's and the preview's statement
+    return no `part` 1 row (a row to go, with the row kept beside it); apply's returns each one."""
+    monkeypatch.setattr(replay, "load_rules", lambda: [])
+    _seed(pgdb, [{"log_id": "a%d" % i, "wafer": "W%d" % (i % 2), "ts": "2026-10-01 10:%02d:00" % i} for i in range(7)])
+    parts, real = [], replay._fold_read
+
+    def counted(*args, **kw):
+        statement = real(*args, **kw)
+        parts.append(sum(1 for row in pgdb.execute(statement) if row[0] == 1))
+        return statement
+    monkeypatch.setattr(replay, "_fold_read", counted)
+    dry = replay.fold_duplicate_rows(pgdb, TABLE, ["wafer"], "ts", apply=False, log=lambda m: None)
+    preview = retroactive.count(pgdb, "fold_duplicate_rows", {"table": TABLE, "keys": "wafer", "order": "ts"})
+    done = _fold(pgdb)
+    assert parts == [0, 0, 5]
+    assert (dry["rows_to_delete"], preview["affected"], done["rows_deleted"]) == (5, 5, 5)

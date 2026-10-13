@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **소급 쪽이 제 행만 읽는다 — 표가 커져도 쪽이 느려지지 않는다 (총괄 5ad030347 · 2e8c6ac9c · 3eca39091 · QA 59c0bfb8c · ff4eb2cf0, 소유자 「알아서해」) — 이주 «없음» · 재기동 «체인 워커»(소급 · 명령줄은 다음 실행부터)**
+>
+> ```
+> 무엇     빈 행 지우기 · 회수 사건 접기 · Withdraw 가 쪽마다 표를 통째로 읽지 않는다 — 쪽 = 키 순서로 다음 N 행. 빈 행 지우기는 조각마다 커밋
+>          표기 소급이 cell_sources 를 쪽의 행 범위로 읽는다 · 중복 행 접기가 표를 한 번만 읽는다(드라이 · 미리보기는 지울 행을 안 받음)
+>          보강 확인 드라이런도 쪽마다 멈추고, 대기열 쪽은 파생 표의 row_id 범위 · 쪽의 판단키를 참조뷰마다 한 질의로 묻는다(소급 sweep · 체인 훅 둘 다)
+> 볼 것    소급 탭에서 Fold duplicate rows 를 Count -> 문장 끝 «Index on the keys: …»
+>          retroactive.log 에 [fold-rows] '<표>': reading its rows by (…) - index on the keys: …
+>          chain_worker.log · retroactive.log 에 «batch -> key by key for n key(s)» 가 있나
+> 답의 뜻   «none - declare one on (…) in the table's indexes» -> 그 표 indexes 에 키 칸을 적고 체인 워커 재기동하면 지어진다
+>             인덱스 없이도 돈다 — 다만 첫 행이 표 정렬 뒤라 큰 표에선 첫 쪽 줄이 늦다
+>          «idx_… (missing)» -> 적었는데 아직 안 지어짐 — 체인 워커 기동 줄 [Indexes] 를 본다
+>          «batch -> key by key» -> 그 뷰의 묶음 질의가 실패해 키마다 물었다(답은 같고 느려짐). 까닭은 같은 로그의
+>             «candidate probe batch failed - each key asked alone» 줄(대개 뷰가 견주는 칸의 형과 파생 표의 판단키 칸 형이 다름)
+>             «candidate probe execution failed» 는 뷰 «자체»가 실패한 것 — 묶음과 다른 문제다
+>          적재 때 «reference view '…' dropped: write CAST(:x AS type) instead of :x::type» -> 선언의 그 철자를 CAST 로 고친다
+>          Withdraw 가 전보다 오래 걸린다 -> 정상. 그 표의 행을 다 쪽으로 지난다(소스가 드문 표에서 3.0~4.4 배, 많아야 6.3 배 — 박스 100만 · 1,000 행에 1 행).
+>             진행 줄은 쪽마다 나오고 Cancel 은 쪽 사이에 듣는다. 진행 줄이 10 s 넘게 안 나오면 그것이 문제 — retroactive.log 의 마지막 [withdraw] 줄을 본다
+> 배포 뒤   chain_worker.log · server 로그에 «reference view '…' dropped: write CAST(:x AS type) instead of :x::type» 가 있나
+>          있으면 그 운영 뷰가 적재에서 빠진 것 — 뷰 글의 :x::type 을 CAST(:x AS type) 로 고친다. 안 고치면 그 뷰의 자동확정이 멈춘다
+> 급할 때   git revert $(git log -1 --format=%h --grep="retroactive pages read their own rows") -> 체인 워커 재기동
+> ```
+
 > ## [10-13] 🔴 **큰 표 검색 — 표 선언에 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다 (총괄 d16033b63, 소유자 「서버가 다 느림」 · 「400만행 표는 이제 검색 40초」)** — git pull · 재기동 · 되돌릴 수 있음
 >
 > ```

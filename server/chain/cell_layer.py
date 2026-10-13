@@ -324,40 +324,35 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
             f"this tool does not do. Edit the cell instead.")
     target = resolve_target(table_name, columns)
 
-    # 1) Cells this source claims.
-    #
-    # COST, corrected by measurement 2026-07-31 (the earlier note here guessed,
-    # and guessed generously). `idx_sources_lookup_source` is
-    # (table_name, row_id, column_name, source_name) -- `source_name` LAST -- so
-    # it cannot serve this predicate at all, and PostgreSQL did not fall back to
-    # an in-index filter: it fell back to a full parallel Seq Scan of the WHOLE
-    # `cell_sources` table. On 13,148,355 rows that was 861ms and 263,369 buffers
-    # to return 75,000 matches.
-    #
-    # `idx_sources_by_source` (table_name, source_name, column_name, row_id)
-    # exists for this predicate -- declared in models.py CellSource and built on
-    # existing databases by scripts/ops_setup_db_performance.py Step 3.10, which then
-    # EXPLAINs this exact statement to prove the planner uses it. With it the same
-    # query is an Index Only Scan: 10.9ms, 1,106 buffers, 0 rows discarded.
-    # `count_withdrawable` below rides the same index for the same reason.
+    # 1) Cells this source claims, a page of the table's own rows at a time (`read`): the next rows by the table's
+    #    key (`keyset_scan.iter_pages`), their claims asked by id. Keyed on cell_sources the read took the row_id
+    #    index through other tables' layers - one statement 10.4 s after another table's 13M layers were deleted,
+    #    no progress line and no stop meanwhile (box, 1M). The price, kept by the owner's 5-second rule: where the
+    #    source claims few rows the whole run pages the whole table, 3.0-4.4x longer and 6.3x at most (1M rows, 9M
+    #    layers, one row in 1,000 claimed - QA's turns, 총괄 ff4eb2cf0) - 총괄 5ad030347 · 10-13.
     cs = models.CellSource
     q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(*_claimed_filter(table_name, source_name, columns))
-    if row_ids:
-        q = q.filter(cs.row_id.in_(list(row_ids)))
-    after = [None]
+    asked = [chunk_size]
+
+    class _Asked:
+        """The size `_withdraw_cells` asked for the page being read."""
+        def next(self):
+            return asked[0]
+    pages = keyset_scan.iter_pages(db, target[0], columns=[], chunk_size=chunk_size, size=_Asked(),
+                                   condition=target[0].row_id.in_(list(row_ids)) if row_ids else None)
 
     def read(size):
-        """The next `size` rows' claims, keyset by row_id - not the whole table's first (총괄 2ea5ee2a7 ①)."""
-        ids_q = q.with_entities(cs.row_id).distinct()
-        if after[0] is not None:
-            ids_q = ids_q.filter(cs.row_id > after[0])
-        ids = [row_id for (row_id,) in ids_q.order_by(cs.row_id).limit(size)]
+        """(the page's rows this source claims, their claims), None past the last row."""
+        asked[0] = size
+        page = next(pages, None)
+        if page is None:
+            return None
+        ids = [row_id for (row_id,) in page]
         claims = {}
-        if ids:
-            after[0] = ids[-1]
-            for row_id, col, name in q.filter(cs.row_id.in_(ids)):
-                claims.setdefault((row_id, col), []).append(name)
-        return ids, {cell: sorted(names) for cell, names in claims.items()}
+        for row_id, col, name in q.filter(cs.row_id.in_(ids)):
+            claims.setdefault((row_id, col), []).append(name)
+        claimed = {row_id for row_id, _col in claims}
+        return [row_id for row_id in ids if row_id in claimed], {cell: sorted(names) for cell, names in claims.items()}
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "source": source_name}
     stats.update(_withdraw_cells(db, table_name, target, read, apply=apply, chunk_size=chunk_size,
@@ -375,7 +370,7 @@ def _pages_of(claims: dict):
     def read(size):
         chunk = rows[at[0]:at[0] + size]
         at[0] += len(chunk)
-        return chunk, {cell: names for row_id in chunk for cell, names in by_row[row_id].items()}
+        return (chunk, {cell: names for row_id in chunk for cell, names in by_row[row_id].items()}) if chunk else None
     return read
 
 
@@ -383,7 +378,8 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info, checkpoint=None,
                     label: str = "") -> dict:
     """R2's one pass over the claims `read(size)` hands a page at a time - `(row ids,
-    {(row_id, column): [source_name, ...]})` of at most `size` rows, no rows at the end.
+    {(row_id, column): [source_name, ...]})` of at most `size` rows, none in it on a page that holds none, None at
+    the end.
 
     A cell claimed by several sources withdraws them in that order, each seeing what the one
     before it left on apply - what one `withdraw_source` call per source did, in one pass."""
@@ -440,14 +436,20 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
         # a run that reports its pages sizes them (`PageSize`); the chain's own withdrawal (`withdraw_by_origin`, no
         # checkpoint) keeps the fixed size - one write, one event (총괄 a02ad0f2b NO-GO ①)
         size, i = (keyset_scan.PageSize(chunk_size) if checkpoint is not None else None), 0
+        step, pages = keyset_scan.step_of(checkpoint), 0
         while True:
             if checkpoint is not None and checkpoint(i):
                 stats["stopped"] = True
                 log(f"[withdraw] stopped by request after {i} rows")
                 break
-            chunk, claims = read(size.next() if size else chunk_size)
-            if not chunk:
+            got = read(size.next() if size else chunk_size)
+            if got is None:
                 break
+            chunk, claims = got
+            pages += 1
+            step("read", pages, None, len(chunk))
+            if not chunk:
+                continue
             i += len(chunk)
             stats["cells_matched"] += sum(len(names) for names in claims.values())
             by_row = {}
@@ -568,7 +570,7 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
     "stopped"}` - the dry run counts what apply does, page by page."""
     import event_constants
     from contextlib import ExitStack
-    from sqlalchemy import delete
+    from sqlalchemy import and_, case, delete, null
     from database import crud
     from database.context import cascade, channel, request_chain_depth, retroactive_run, written_by
     from database.database import stage_collapsed_event
@@ -577,16 +579,20 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
 
     chunk = event_constants.OUTBOX_COLLAPSE_CHUNK_ROWS
     p = outbox.payload
+    # a page is the queue's next waiting events by id (the partial index) and the mark is judged on them - in the
+    # WHERE it read on to the next marked event, the whole waiting queue before the first page (총괄 5ad030347)
+    # the payload's lists ride only on events that carry the withdrawal's mark - every other waiting event's
+    # row_ids came along and were dropped (총괄 59c0bfb8c 7)
+    marked = and_(p["updated_by"].as_string() == R2_AUDIT_SOURCE, p["source_name"].as_string() == R1_SOURCE_NAME)
     read = (db.query(outbox.id, outbox.table_name, outbox.event_type, outbox.status,
-                     event_constants.queue_line_key(outbox), p["row_id"].as_string(), p["row_ids"],
+                     event_constants.queue_line_key(outbox), p["row_id"].as_string(),
+                     case((marked, p["row_ids"]), else_=null()),
                      p[event_constants.CHAIN_DEPTH_KEY].as_integer(), p[event_constants.CHANNEL_KEY].as_string(),
-                     p[event_constants.CASCADE_KEY].as_boolean(), p[event_constants.WRITTEN_BY_KEY],
-                     p[event_constants.RUN_KEY].as_string())
-            .filter(outbox.processed_chain == False,  # noqa: E712 - 부분 인덱스의 술어 철자
-                    p["updated_by"].as_string() == R2_AUDIT_SOURCE,
-                    p["source_name"].as_string() == R1_SOURCE_NAME))
+                     p[event_constants.CASCADE_KEY].as_boolean(), case((marked, p[event_constants.WRITTEN_BY_KEY]), else_=null()),
+                     p[event_constants.RUN_KEY].as_string(), p["updated_by"].as_string(), p["source_name"].as_string())
+            .filter(outbox.processed_chain == False))  # noqa: E712 - 부분 인덱스의 술어 철자
     out = {"by_table": {}, "rows": 0, "retrying": 0, "running": 0, "pages": 0, "stopped": False}
-    after, folded, size = 0, 0, keyset_scan.PageSize(page)
+    after, folded, size, step = 0, 0, keyset_scan.PageSize(page), keyset_scan.step_of(checkpoint)
     while True:
         if checkpoint is not None and checkpoint(folded):
             out["stopped"] = True
@@ -596,9 +602,11 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
         if not found:
             break
         after, out["pages"] = found[-1][0], out["pages"] + 1
+        step("read", out["pages"], None, len(found))
         chosen, lines = {}, running.chain_lines_running()
-        for event_id, table, kind, status, line, row_id, row_ids, depth, chan, casc, wrote, run in found:
-            if event_constants.is_collapsed_payload({"row_ids": row_ids}) or not row_id:
+        for event_id, table, kind, status, line, row_id, row_ids, depth, chan, casc, wrote, run, who, source in found:
+            if (who, source) != (R2_AUDIT_SOURCE, R1_SOURCE_NAME) or event_constants.is_collapsed_payload(
+                    {"row_ids": row_ids}) or not row_id:
                 continue
             state = event_constants.chain_state_of(False, status, running=lines.get(line))["state"]
             if state == event_constants.CHAIN_STATE_RETRYING:

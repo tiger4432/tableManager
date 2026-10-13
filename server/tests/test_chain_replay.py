@@ -453,6 +453,19 @@ def test_r2_a_run_reads_its_claims_a_page_at_a_time(rep_env, doubling_pages):
     assert (seen, stats["cells_matched"], stats["cells_withdrawn"], stats.get("stopped")) == ([0, 1], 1, 1, True)
 
 
+def test_r2_a_row_the_source_claims_nothing_on_is_read_and_not_counted(rep_env):
+    """총괄 59c0bfb8c 7 (M3): the pages are the table's own rows - a row this source claims nothing on is read and is
+    not one of the rows done."""
+    _seed(rep_env, "crep_test_target", [{"part_no": "P%d" % i, "note": "N%d" % i} for i in range(3)],
+          source_name="pipeline_parser", tx_id="s10")
+    _seed(rep_env, "crep_test_target", [{"part_no": "Q%d" % i, "note": "M%d" % i} for i in range(4)],
+          source_name="custom_script", tx_id="s11")
+    seen = []
+    stats = replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser", columns=["note"], apply=False,
+                                   log=lambda *_: None, checkpoint=lambda done: seen.append(done) and False)
+    assert (seen[-1], stats["cells_matched"], stats["cells_withdrawn"]) == (3, 3, 3), seen
+
+
 def test_r2_refuses_to_withdraw_the_user_layer(rep_env):
     _seed(rep_env, "crep_test_target", [{"part_no": "P1", "note": "HUMAN"}],
           source_name="user", tx_id="h")

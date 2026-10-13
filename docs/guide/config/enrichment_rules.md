@@ -60,6 +60,7 @@
 | ② | `decision_key` ∩ `target_fields` = ∅ (`:157-159`) | `decision_key and target_fields must not overlap: [...]` |
 | ③ | `composite_key_source ⊆ decision_key` **또는** `business_key ∈ decision_key` (`:30-32`, `:202-216`) | `derived table composite_key_source must be a subset of decision_key (violation: [...])` 또는 `derived table must declare composite_key_source ⊆ decision_key or business_key ∈ decision_key (dedup upsert key contract)` |
 | ④ | 참조뷰 `:바인딩`은 `decision_key` 컬럼만 (`:81-100`) | *(규칙이 아니라 그 뷰만 제거)* `reference view '<label>' dropped: bind params must be decision_key columns only; invalid: [...]` |
+| ④-2 | 참조뷰에 `:x::type` 철자 금지 — 바인드 뒤에 `::` 형 변환이 붙으면 바인드로 안 읽힌다 | *(그 뷰만 제거)* `reference view '<label>' dropped: write CAST(:x AS type) instead of :x::type` — 뷰 글을 `CAST(:x AS type)` 로 고친다 |
 
 - **② 왜**: `target_fields`는 사람이 앞으로 채울 결손 필드입니다. 판단 시점에 비어 있는 값이 판단 근거(키)일 수는 없습니다.
 - **③ 왜**: 판단 1건은 파생 행 **정확히 1개**에 내려앉아야 합니다. dedup mapper는 `decision_key` 값만으로 파생 행의 `business_key_val`을 결정론적으로 조립해 upsert하는데, 파생 테이블의 키가 `decision_key` 밖 컬럼을 요구하면 판단이 자기 행을 주소지정할 수 없습니다 — 어느 행을 갱신할지 정할 수 없는 판단이 됩니다.
