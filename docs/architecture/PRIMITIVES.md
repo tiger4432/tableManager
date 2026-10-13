@@ -2333,6 +2333,7 @@
 ### **무거운 라우트를 서버 밖 프로세스로 — `runtime.process_pool.in_pool(body, pool=…)` 하나, 풀은 `WALK` · `GRID`** (2026-10-14 등록 · `6f34a1320` · `a4e647ab6`)
 - **어디**: `Pool` 둘 — `WALK`(`walk_processes` · `walk_pool.log` · 연결 `assy_walkpool`) · `GRID`(`grid_processes` 기본 2 · `grid_wait_seconds` 기본 60 · `grid_pool.log` · 연결 `assy_gridpool`). 라우트를 `in_pool(body, pinned_by=None, gone=None, pool=None)` 로 등록한다 — 지금 둘: 걷기 `/subgraph` · 그리드 `grid_page`.
 - **언제 재사용**: 한 요청이 서버를 오래 쥐는 자리 — 스레드 풀이나 새 프로세스 기제를 따로 짓지 않고 `Pool` 을 하나 더한다.
+- **잰 수**: `task/scoped_redo_report.md` «10-14 새벽 — 9f1be4122 속도 다시 재기» (A `2838665e2`, 박스 판 · 운영 주장 아님) — 그리드 동시 10 은 쪽 몸통보다 풀 기다림, 걷기는 프로세스마다 첫 요청이 선언 컴파일.
 - **함정**: 풀 안에서 찍는 줄은 그 풀의 로그로 간다(server.log 가 아님). 프로세스가 다 바쁘면 기다림 상한 뒤 503 `<풀>_pool_busy`. 크기 0 이면 서버 안에서 돈다.
 
 ### **«쓰이는 칸만» 인덱스는 청하는 자리와 짓는 자리가 따로 — `runtime.index_wants.want` · `models.ensure_auto_indexes`** (2026-10-14 등록 · `f620962c7`)
