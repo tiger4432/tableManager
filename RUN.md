@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **decide 집계 Latest — 키의 원천 행 중 원장 원자 시각이 가장 늦은 행의 값 (총괄 112293f73, 소유자 «원자시각»)** — git pull · 런처 재기동 · 이주 «없음»
+>
+> ```
+> 선언     derive.decide.aggregations 에 "last_owner": "Latest([owner])" — 새 칸 없음
+> 시각     그 원천 표를 읽는 원장 소스의 occurred_at 칸 · 형식 · 시간대 — 원장이 원자 시각을 짓는 같은 파서. 운영 세상의 원장 선언
+>          ingested 소스의 Latest 는 적재 순서(그 소스의 원자 시각이 적재 시각이라서)
+>          그 소스의 exclude_when 에 걸리는 행 · 시각을 못 읽는 행은 후보가 아님(원자가 없음)
+> 동점     가장 늦은 시각에 값이 둘 이상 다르면 빈칸 — 화면 계산기 Latest 와 같은 규칙(row_id 로 안 가름)
+> 거절     «aggregation '<이름>': Latest needs the ledger time of <표> - no ledger source reads it»
+>          «… - its sources read it at different times: <소스> (<칸>), <소스> (<칸>)»
+>          «… - the ledger declaration did not load: <사유>»
+>          선언을 읽을 때 거절 · 원장 선언이 그 뒤 바뀌면 그 decide 실행이 같은 문장으로 실패
+> 지금 있는 파생 행에 채우려면  python scripts/chain_replay_cli.py replay enrichment_dedup:<결정 이름> --apply
+> 되돌리기  git revert <이 커밋> -> 런처 재기동 (그 전에 선언의 Latest 줄을 지움 — 되돌린 코드는 Latest 를 거절)
+> ```
+>
+> ---
+>
 > ## [10-14] **편집 사건이 바꾼 칸의 옛 값을 늘 싣는다 — 커밋 뒤 안 읽고 바로 쓴 행도 (총괄 10-14 active_history)** — git pull · 런처 재기동 · 이주 «없음»
 >
 > ```

@@ -312,7 +312,48 @@ def aggregation_record(spec, column_types=None):
     return EXPRESSED[fn] % column.strip().replace("]", "]]"), None
 
 
-def _parse_expression(name: str, text: str):
+def ledger_time(table):
+    """(time, None) or (None, why) - the time a decide's Latest orders `table`'s rows by: the ledger time of each row
+    (총괄 112293f73, 소유자 «원자시각»), read from the operating world's declaration (`followup.time_of_table`)."""
+    from ledger import followup
+    from ledger.worker import _compiled_setup
+
+    try:
+        setup = _compiled_setup(None)
+    except Exception as exc:                                    # noqa: BLE001 - said in the refusal
+        return None, "the ledger declaration did not load: %s" % (str(exc).splitlines() or [type(exc).__name__])[0]
+    return followup.time_of_table(setup, table)
+
+
+def latest_refusal(name, table, why) -> str:
+    return "aggregation '%s': Latest needs the ledger time of %s - %s" % (name, table, why)
+
+
+def time_columns(time) -> list:
+    """The source columns a row's ledger time is read from: the time column and the columns `exclude_when` asks."""
+    columns = [time["occurred_at"].column]
+    for clauses in time["excluded_by"]:
+        for clause in clauses:
+            columns.extend([clause["column"]] if "column" in clause else list(clause.get("when") or ()))
+    return list(dict.fromkeys(columns))
+
+
+def row_time(time, row):
+    """A row's ledger time in ms - read by the ledger's own reader (`roleframe.aware_time`) - or None: a row every
+    source's `exclude_when` takes out, or a time it cannot read, has no atom and so no time."""
+    from ledger.event_frame import row_excluded
+    from ledger.roleframe import aware_time
+
+    if time["excluded_by"] and all(row_excluded(clauses, row.get) for clauses in time["excluded_by"]):
+        return None
+    at = time["occurred_at"]
+    try:
+        return aware_time(row.get(at.column), at.timezone, "occurred_at", fmt=at.format).timestamp() * 1000
+    except Exception:                                           # noqa: BLE001 - no time, as the ledger refuses it
+        return None
+
+
+def _parse_expression(name: str, text: str, table=None):
     """`({"expression": text}, None)` or `(None, why)` - a decide aggregation folds the key's rows into one value."""
     import expression
 
@@ -323,12 +364,13 @@ def _parse_expression(name: str, text: str):
         return None, (f"aggregation '{name}': {text!r} is a value per row - an aggregation folds the key's rows "
                       f"(Avg([x]), not [x])")
     if "Latest" in compiled["calls"]:
-        return None, (f"aggregation '{name}': Latest needs each source row's time, and a decide declares none yet - "
-                      f"use Max or Min")
+        _time, why = ledger_time(table) if table else (None, "its source table is not named")
+        if why:
+            return None, latest_refusal(name, table, why)
     return {"expression": text, "reads": compiled["names"]}, None
 
 
-def _parse_aggregation(name: str, spec, column_types=None):
+def _parse_aggregation(name: str, spec, column_types=None, table=None):
     """`(normalized, None)` 또는 `(None, 사유)`. 정규형은 `{"expression": 글자, "reads": [칸…]}` 이고, 수식으로 같은 답이
     안 나는 옛 레코드만 `{"fn":…, "column":…}` 그대로다(lead 5667ea0fe — `aggregation_record` 가 가른다).
 
@@ -342,7 +384,7 @@ def _parse_aggregation(name: str, spec, column_types=None):
     """
     spec, _kept = aggregation_record(spec, column_types)
     if isinstance(spec, str):
-        return _parse_expression(name, spec)
+        return _parse_expression(name, spec, table)
     if not isinstance(spec, dict):
         return None, (f"aggregation '{name}' must be \"count\" or "
                       f"{{\"fn\": ..., \"column\": ...}}, not {type(spec).__name__}")
@@ -719,7 +761,7 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         # 스킵은 아무도 보지 못하는 스킵이다」는 이 모듈이 `_record` 옆에 이미 적어 둔 문장이고,
         # 그 문장은 「고쳐야 할 선언」에 대해서는 «거절»까지 간다.
         parsed, why = _parse_aggregation(col, spec, ((known_tables or {}).get(source_table) or {}).get(
-            "column_types"))
+            "column_types"), source_table)
         if parsed is None:
             return None, why
         aggregations[col] = parsed

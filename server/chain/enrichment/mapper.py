@@ -142,7 +142,11 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
     names = sorted(n for n in plan if "sql" in plan[n])
     exprs = [plan[n]["sql"] for n in names]
     by_rows = sorted(n for n in plan if "rows" in plan[n])
-    read = list(dict.fromkeys(c for n in by_rows for c in plan[n]["rows"]["names"]))
+    from chain.enrichment.config import row_time, time_columns
+
+    timed = next((plan[n]["time"] for n in by_rows if "time" in plan[n]), None)
+    read = list(dict.fromkeys([c for n in by_rows for c in plan[n]["rows"]["names"]]
+                              + (time_columns(timed) if timed else [])))
     key_rows = {}
 
     by_pattern = {}
@@ -171,7 +175,10 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
             if by_rows:
                 for row in db.query(*cols, *[getattr(model, c) for c in read]).filter(and_(*conds)):
                     key = _clean_key(source_table, decision_key, row[:len(cols)])
-                    key_rows.setdefault(key, []).append(dict(zip(read, row[len(cols):])))
+                    values = dict(zip(read, row[len(cols):]))
+                    if timed:
+                        values["$at"] = row_time(timed, values)
+                    key_rows.setdefault(key, []).append(values)
             for row in rows:
                 key = _clean_key(source_table, decision_key, row[:len(cols)])
                 # FOLD, not assign. `NULL` and `''` are two SQL groups and one
@@ -243,7 +250,14 @@ def _plan(name, spec, model, source_table, types):
             return {"sql": sql(column(args[0]["name"])), "fold": keep(fold), "done": lambda v: v, "empty": None}
     for col in compiled["names"]:
         column(col)                                     # a column the model lost is said by name, as above
-    return {"rows": compiled}
+    if "Latest" not in compiled["calls"]:
+        return {"rows": compiled}
+    from chain.enrichment.config import latest_refusal, ledger_time
+
+    time, why = ledger_time(source_table)               # 총괄 112293f73 - each row's ledger time is its $at
+    if why:
+        raise ValueError(latest_refusal(name, source_table, why))
+    return {"rows": compiled, "time": time}
 
 
 def _union(running, value):

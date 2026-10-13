@@ -246,6 +246,21 @@ def sources_for_table(setup, table_name):
                         if plan.relation == table_name and plan.runs))
 
 
+def time_of_table(setup, table_name):
+    """(time, None) - the one time the ledger gives this table's rows: {"occurred_at": the sources' OccurredAtPlan,
+    "excluded_by": each source's `read.exclude_when`} - or (None, why): no source reads it, or its sources read
+    it at different times (총괄 112293f73 - a decide's Latest orders rows by it)."""
+    names = sources_for_table(setup, table_name)
+    if not names:
+        return None, "no ledger source reads it"
+    plans = [setup.snapshot.source_plans[name] for name in names]
+    times = [plan.driver.occurred_at for plan in plans]
+    if len({(at.column, at.timezone, at.format) for at in times}) > 1:
+        return None, "its sources read it at different times: " + ", ".join(
+            "%s (%s)" % (name, at.column) for name, at in zip(names, times))
+    return {"occurred_at": times[0], "excluded_by": [plan.driver.exclude_when for plan in plans]}, None
+
+
 def reads_none_of(plan, columns) -> bool:
     """An edit that set `columns` - known, and not one of them a column this source reads - can
     move none of its atoms (판정 201), so re-translating it is cost for nothing (총괄 «소스가 안 읽는
