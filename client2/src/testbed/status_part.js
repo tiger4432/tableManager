@@ -41,7 +41,7 @@ export class StatusPart extends Panel {
   render() {
     const doc = this.doc;
     const bar = doc.createElement('div');
-    bar.className = 'tb-status';
+    bar.className = 'sf-status';
     for (const words of statusWords(this.stats.get(this.active.get('active')))) {
       const span = doc.createElement('span');
       span.textContent = words;

@@ -26,18 +26,18 @@ export class BasketPart extends Panel {
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     const entries = this.reads ? this.markings.entries(this.reads) : [];
     const hubs = entries.filter(([id]) => isHubId(id)).length;
-    const root = el('section', 'tb-visual tb-basket');
-    const title = el('div', 'tb-title');
-    title.append(el('span', 'tb-title__t', this.title || 'Marked'),
-      el('span', 'tb-basket__n', `${entries.length - hubs} nodes · ${hubs} hubs`));
-    const copy = el('button', 'tb-btn', 'Copy ids');
+    const root = el('section', 'sf-part tb-basket');
+    const title = el('div', 'sf-part__title');
+    title.append(el('span', 'sf-part__t', this.title || 'Marked'),
+      el('span', 'sf-part__meta', `${entries.length - hubs} nodes · ${hubs} hubs`));
+    const copy = el('button', 'sf-btn', 'Copy ids');
     copy.type = 'button';
     copy.addEventListener('click', () => { const ids = this.nodeIds(); writeClipboardRich(`<pre>${escapeHtml(ids.join('\n'))}</pre>`, ids.join('\n')); });
-    const clear = el('button', 'tb-btn', 'Clear');
+    const clear = el('button', 'sf-btn', 'Clear');
     clear.type = 'button';
     clear.addEventListener('click', () => { if (this.reads) this.markings.clear(this.reads); });
     title.append(copy, clear);
-    const table = el('table', 'tb-bt');
+    const table = el('table', 'sf-table sf-table--rows');
     const head = el('tr');
     for (const words of ['', 'Type', 'Node', 'Members', 'Id']) head.append(el('th', '', words));
     table.append(head);
@@ -47,7 +47,7 @@ export class BasketPart extends Panel {
     for (const [id] of entries) {
       if (isHubId(id)) {
         const members = this.hubs.membersOf(id);
-        const toggle = el('button', 'tb-bt__toggle', this.open.has(id) ? '▾' : '▸');
+        const toggle = el('button', 'sf-table__toggle', this.open.has(id) ? '▾' : '▸');
         toggle.type = 'button';
         toggle.setAttribute('aria-label', this.open.has(id) ? 'Close the hub' : 'Open the hub');
         toggle.addEventListener('click', () => { if (this.open.has(id)) this.open.delete(id); else this.open.add(id); this.render(); });

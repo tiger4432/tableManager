@@ -50,37 +50,37 @@ export class SlotPicker {
     const slot = (part.decl.encode || {})[key] || null;
     const rows = part.rowIds || [];
     const draw = (chosen) => {
-      const box = el('div', 'tb-picker');
-      if (!part.index) { box.append(el('div', 'tb-picker__why', 'Walk first - nothing to pick from')); this.host.replaceChildren(box); return; }
+      const box = el('div', 'sf-pop');
+      if (!part.index) { box.append(el('div', 'sf-pop__why', 'Walk first - nothing to pick from')); this.host.replaceChildren(box); return; }
       // Three columns side by side - the route, then where it ends and its value, then how they fold.
-      const [routes, at, folds] = [el('div', 'tb-picker__col'), el('div', 'tb-picker__col'), el('div', 'tb-picker__col')];
+      const [routes, at, folds] = [el('div', 'sf-pop__col'), el('div', 'sf-pop__col'), el('div', 'sf-pop__col')];
       box.append(routes, at, folds);
-      routes.append(el('div', 'tb-picker__lab', 'Route'));
+      routes.append(el('div', 'sf-pop__lab', 'Route'));
       for (const route of routeChoices(part.index, rows)) {
-        const it = el('button', `tb-picker__it${sameSteps(route.steps, chosen.steps) ? ' is-on' : ''}`, route.words.join(' · '));
+        const it = el('button', `sf-pop__it${sameSteps(route.steps, chosen.steps) ? ' is-on' : ''}`, route.words.join(' · '));
         it.type = 'button';
         it.addEventListener('click', () => draw({ ...chosen, steps: route.steps, end: undefined, value: null }));
         routes.append(it);
       }
       const ends = endChoices(part.index, rows, chosen.steps);
       if (ends.length) {
-        at.append(el('div', 'tb-picker__lab', 'Ends at'));
+        at.append(el('div', 'sf-pop__lab', 'Ends at'));
         for (const end of [{ id: undefined, label: '(any)' }, ...ends]) {
-          const it = el('button', `tb-picker__it${chosen.end === end.id ? ' is-on' : ''}`, end.label);
+          const it = el('button', `sf-pop__it${chosen.end === end.id ? ' is-on' : ''}`, end.label);
           it.type = 'button';
           it.addEventListener('click', () => draw({ ...chosen, end: end.id, value: null }));
           at.append(it);
         }
       }
-      if (ends.length) at.append(el('hr', 'tb-picker__hr'));
-      at.append(el('div', 'tb-picker__lab', 'Value'));
+      if (ends.length) at.append(el('hr', 'sf-pop__hr'));
+      at.append(el('div', 'sf-pop__lab', 'Value'));
       const values = valuesAt(part.index, rows, chosen.steps || []);
-      if (!values.length) at.append(el('div', 'tb-picker__why', 'No value on this route'));
+      if (!values.length) at.append(el('div', 'sf-pop__why', 'No value on this route'));
       for (const value of values) {
         const on = chosen.value && chosen.value.on === value.on && chosen.value.name === value.name;
-        const it = el('button', `tb-picker__it${on ? ' is-on' : ''}`, value.name);
+        const it = el('button', `sf-pop__it${on ? ' is-on' : ''}`, value.name);
         it.type = 'button';
-        it.append(el('span', 'tb-picker__n', value.on));
+        it.append(el('span', 'sf-pop__n', value.on));
         it.addEventListener('click', () => {
           const far = chosen.end ? (part.index.nodes.get(chosen.end) || {}).label || chosen.end : null;
           const next = { steps: chosen.steps || [], end: chosen.end, value, reduce: chosen.reduce || undefined, words: [far ? `${far} · ${value.name}` : value.name] };
@@ -89,10 +89,10 @@ export class SlotPicker {
         });
         at.append(it);
       }
-      folds.append(el('div', 'tb-picker__lab', 'Reduce'));
-      const chips = el('div', 'tb-picker__reds');
+      folds.append(el('div', 'sf-pop__lab', 'Reduce'));
+      const chips = el('div', 'sf-pop__reds');
       for (const r of [null, ...REDUCES]) {
-        const chip = el('button', `tb-picker__red${(chosen.reduce || null) === r ? ' is-on' : ''}`, r || 'None');
+        const chip = el('button', `sf-pop__red${(chosen.reduce || null) === r ? ' is-on' : ''}`, r || 'None');
         chip.type = 'button';
         setDisabledReason(chip, chosen.value ? null : 'Pick a value first');
         chip.addEventListener('click', () => {
@@ -104,12 +104,12 @@ export class SlotPicker {
       }
       folds.append(chips);
       const several = chosen.value ? severalCount(part, chosen) : 0;
-      if (several) folds.append(el('div', 'tb-picker__why', `${several} rows with several values`));
-      folds.append(el('hr', 'tb-picker__hr'));
-      const none = el('button', 'tb-picker__it', '(None)');
+      if (several) folds.append(el('div', 'sf-pop__why', `${several} rows with several values`));
+      folds.append(el('hr', 'sf-pop__hr'));
+      const none = el('button', 'sf-pop__it', '(None)');
       none.type = 'button';
       none.addEventListener('click', () => { part.setSlot(key, null); this.close(); });
-      const custom = el('button', 'tb-picker__it', 'Custom expression…');
+      const custom = el('button', 'sf-pop__it', 'Custom expression…');
       custom.type = 'button';
       setDisabledReason(custom, 'Waits for contracts/expression/vectors.json');
       folds.append(none, custom);

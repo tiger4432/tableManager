@@ -19,6 +19,7 @@ import { keepNodes } from './filter.js';
 import { hubId, holds } from './hubs.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes } from '../rnd_board/api.js';
+import { paletteOf } from './palette.js';
 
 export class VisualPart extends Panel {
   constructor(host, deps) {
@@ -35,7 +36,8 @@ export class VisualPart extends Panel {
     this.hubs = d.hubs;
     this.names = d.names;
     this.charts = d.charts;
-    this.theme = d.theme || 'dark';
+    // The colours a canvas draws with, read when it draws (testbed/palette.js); the page's tokens by default.
+    this.palette = d.palette || (() => paletteOf(this.doc));
     this.openPicker = d.openPicker || (() => {});
     this.oneValued = d.oneValued || (() => false);
     this.walkParams = d.walkParams || {};
@@ -198,7 +200,7 @@ export class VisualPart extends Panel {
     });
     const entries = this.reads ? this.markings.entries(this.reads) : [];
     const marked = (id) => holds(entries, this.hubs, id);
-    this.model = this.kind.model(rows, { marked, theme: this.theme, declaration: this.decl });
+    this.model = this.kind.model(rows, { marked, palette: this.palette(), declaration: this.decl });
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
     // M - the rows the walk brought; a and b - what each layer took from them (lead 5835e6714). The start side's drops
@@ -266,26 +268,26 @@ export class VisualPart extends Panel {
     if (!doc || !this.host) return;
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     if (this.drawn) { this.drawn.dispose(); this.drawn = null; }
-    const root = el('section', 'tb-visual');
+    const root = el('section', 'sf-part');
     root.setAttribute('data-kind', this.decl.kind || '');
-    const title = el('div', 'tb-title');
-    title.append(el('span', 'tb-title__t', this.titleWords()));
-    const body = el('div', 'tb-body');
+    const title = el('div', 'sf-part__title');
+    title.append(el('span', 'sf-part__t', this.titleWords()));
+    const body = el('div', 'sf-part__body');
     root.append(title, body);
     this.host.replaceChildren(root);
     this.root = root;
     this.paintActive();
-    if (!this.kind) { body.append(el('div', 'tb-say', `Unknown kind: ${this.decl.kind}`)); return; }
+    if (!this.kind) { body.append(el('div', 'sf-say', `Unknown kind: ${this.decl.kind}`)); return; }
     if (this.state !== 'ready' || !this.model) {
       const words = { 'no-start': 'Mark a start', walking: 'Walking…', refused: this.refusal || 'Walk refused', idle: '' }[this.state] || '';
-      body.append(el('div', 'tb-say', words));
+      body.append(el('div', 'sf-say', words));
       return;
     }
     this.drawn = this.kind.render(body, this.model, {
-      doc, theme: this.theme, charts: this.charts,
+      doc, palette: this.palette(), charts: this.charts,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       pill: (key, opts) => this.pill(key, opts),
-      plus: (key) => { const p = el('button', 'tb-plus', '+'); p.type = 'button'; p.title = 'Add one more column'; p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p })); return p; },
+      plus: (key) => { const p = el('button', 'sf-plus', '+'); p.type = 'button'; p.title = 'Add one more column'; p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p })); return p; },
       mark: (ids, event) => this.mark(ids, event),
       markHub: (where, ids, event) => this.markHub(where, ids, event),
       clear: () => this.clear(),
@@ -299,11 +301,11 @@ export class VisualPart extends Panel {
     const doc = this.doc;
     const p = doc.createElement('button');
     p.type = 'button';
-    p.className = `tb-pill${opts.vertical ? ' tb-pill--v' : ''}`;
+    p.className = `sf-pill${opts.vertical ? ' sf-pill--v' : ''}`;
     const slot = (this.decl.encode || {})[key];
     p.textContent = opts.words || slotWords(slot);
     const caret = doc.createElement('span');
-    caret.className = 'tb-pill__caret';
+    caret.className = 'sf-pill__caret';
     caret.textContent = '▾';
     p.append(caret);
     if (this.kind.slots.some((s) => s.key === key)) p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p }));

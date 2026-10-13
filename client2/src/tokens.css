@@ -108,6 +108,21 @@
      Value = --danger at 0.15 alpha, i.e. identical in meaning to the JS fallback
      `rgba(194, 47, 47, 0.15)`. */
   --canvas-danger-fill: rgba(194, 47, 47, 0.15);
+
+  /* Spotfire standard (owner 10-13, task/SPOTFIRE_SCATTER_REFERENCE.md §11, measured on the owner's Spotfire): the
+     declaration UI's and the visual parts' surfaces - Light. */
+  --sf-page: #F7F9FF;
+  --sf-bg: #FFFFFF;
+  --sf-text: #61646B;
+  --sf-text-2: #61646B;
+  --sf-title: #313336;
+  --sf-dim: rgba(49, 51, 54, 0.45);
+  --sf-line: #F0F1F2;
+  --sf-stripe: #F7F9FF;
+  --sf-axis: #D1D4DE;
+  --sf-pill: #BDBFC5;
+  --sf-status: #EDF0F7;
+  --sf-status-text: #313336;
 }
 
 /* ── 값 세트 2: Dark (진한 다크 — 지면 L* 9.2, 탈네온 유지) ──
@@ -177,6 +192,20 @@
   /* Same alpha the dark --danger-weak already had, so the dark canvas keeps the
      exact appearance it has today — only light is being fixed. */
   --canvas-danger-fill: rgba(248, 126, 126, 0.14);
+
+  /* Spotfire standard (owner 10-13, §11) - Dark («Custom»). */
+  --sf-page: #232323;
+  --sf-bg: #2A2A2A;
+  --sf-text: #FFFFFF;
+  --sf-text-2: #C8C8C8;
+  --sf-title: #FFFFFF;
+  --sf-dim: rgba(200, 200, 200, 0.45);
+  --sf-line: #404040;
+  --sf-stripe: #404040;
+  --sf-axis: #666666;
+  --sf-pill: rgba(255, 255, 255, 0.45);
+  --sf-status: #61646B;
+  --sf-status-text: #FFFFFF;
 }
 
 /* ── 테마 무관 공통 ───────────────────────────────────────── */
@@ -243,6 +272,54 @@
   --menu-max-height: 50vh;
   /* The image preview box's side cap (lead 191912ce2) - image_preview.js reads it to keep the box on screen. */
   --image-preview-max: 320px;
+
+  /* ── Spotfire standard — what both themes share (owner 10-13 «선언 UI 는 스팟파이어 표준으로»; ui-design-system §9) ──
+     The properties and filters panels are light in both themes, as Spotfire's; the active border, the brush, the marked
+     cell and the category colours are one set. Sizes measured at 1440x900 (§11). */
+  --sf-active: #7188F8;
+  --sf-brush: rgba(113, 136, 248, 0.15);
+  --sf-marked: #00A650;
+  --sf-marked-text: #FFFFFF;
+  --sf-panel-bg: #FFFFFF;
+  --sf-panel-head: #F2F5FC;
+  --sf-panel-text: #313336;
+  --sf-panel-muted: #6D7078;
+  --sf-panel-accent: #3050EF;
+  --sf-panel-accent-text: #FFFFFF;
+  --sf-panel-line: #D1D4DE;
+  --sf-panel-line-2: #EDF0F7;
+  --sf-panel-pill: #D0D0D0;
+  --sf-panel-pick: #BDCDF5;
+  --sf-panel-name-bg: #EBEFFF;
+  --sf-panel-name-text: #000000;
+  --sf-shadow: 0 8px 24px rgb(0 0 0 / .25);
+  /* the category colours, fill and line, in Spotfire's order; one value alone */
+  --sf-cat-1: #6489FA;  --sf-cat-1-line: #4B67BC;
+  --sf-cat-2: #FA7864;  --sf-cat-2-line: #BC5A4B;
+  --sf-cat-3: #FFDE5C;  --sf-cat-3-line: #BFA645;
+  --sf-cat-4: #72ECA6;  --sf-cat-4-line: #56B17C;
+  --sf-cat-5: #ED72DD;  --sf-cat-5-line: #B256A6;
+  --sf-cat-6: #72BEED;  --sf-cat-6-line: #568EB2;
+  --sf-cat-7: #FAA264;  --sf-cat-7-line: #BC7A4B;
+  --sf-one: #A0A0A0;    --sf-one-line: #787878;
+  /* faces and sizes */
+  --sf-font: Roboto, system-ui, sans-serif;
+  --sf-fs: 12px;          /* text · tick · cell */
+  --sf-lh: 15px;
+  --sf-fs-title: 19px;    /* a part's title, Roboto Light */
+  --sf-lh-title: 23px;
+  --sf-fs-tab: 13px;      /* the properties panel's tabs, Roboto Medium */
+  --sf-fs-caret: 10px;    /* a pill's ▾ */
+  --sf-pad: 12px;         /* a part's padding */
+  --sf-title-h: 31px;     /* title row: 19 / 23, 4 around */
+  --sf-pill-h: 21px;
+  --sf-cell-h: 19px;
+  --sf-cell-pad: 7px;
+  --sf-legend-w: 150px;
+  --sf-legend-row: 20px;
+  --sf-icon: 14px;        /* a legend value's icon */
+  --sf-gap: 2px;          /* between parts */
+  --sf-status-h: 32px;
 
   /* ── 레거시 별칭 (기존 변수명 → 시맨틱 토큰 브리지) ──
      인라인 style="" 등 잔존 참조가 테마를 따라오도록 유지. 신규 코드는 시맨틱 토큰 직접 참조. */

@@ -62,6 +62,19 @@ const press = { steps: [{ predicate: 'measures', direction: 'outgoing' }], end: 
 const lot = { steps: [{ predicate: 'in_lot', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['lot'] };
 const product = { steps: [], value: { on: 'node', name: 'product' }, words: ['product'] };
 const WAFERS = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6'];
+// The measured Spotfire colours (task/SPOTFIRE_SCATTER_REFERENCE.md §11), as this harness writes them: the palette a
+// part is handed (a canvas reads the page's tokens; T25 holds tokens.css to these).
+const CAT = [['#6489FA', '#4B67BC'], ['#FA7864', '#BC5A4B'], ['#FFDE5C', '#BFA645'], ['#72ECA6', '#56B17C'], ['#ED72DD', '#B256A6'],
+  ['#72BEED', '#568EB2'], ['#FAA264', '#BC7A4B']];
+const MEASURED = {
+  dark: { '--sf-bg': '#2A2A2A', '--sf-page': '#232323', '--sf-text': '#FFFFFF', '--sf-text-2': '#C8C8C8', '--sf-title': '#FFFFFF', '--sf-axis': '#666666',
+    '--sf-line': '#404040', '--sf-stripe': '#404040', '--sf-status': '#61646B' },
+  light: { '--sf-bg': '#FFFFFF', '--sf-page': '#F7F9FF', '--sf-text': '#61646B', '--sf-title': '#313336', '--sf-axis': '#D1D4DE', '--sf-line': '#F0F1F2',
+    '--sf-stripe': '#F7F9FF', '--sf-status': '#EDF0F7' },
+  both: { '--sf-active': '#7188F8', '--sf-marked': '#00A650', '--sf-panel-head': '#F2F5FC', '--sf-panel-accent': '#3050EF', '--sf-one': '#A0A0A0',
+    ...Object.fromEntries(CAT.flatMap(([fill, line], k) => [[`--sf-cat-${k + 1}`, fill], [`--sf-cat-${k + 1}-line`, line]])) },
+};
+const DARK = { bg: '#2A2A2A', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: 'rgba(113, 136, 248, 0.15)', one: ['#A0A0A0', '#787878'], cat: CAT };
 
 // ── a recording chart and a page ──
 function chartsRecorder() {
@@ -78,7 +91,7 @@ function seat(M, decl, { answer = ANSWER, markings = new MarkingStore(), filters
   const host = doc.createElement('div');
   const fetchWalk = async (params) => { asked.push(params); return { ok: true, body: typeof answer === 'function' ? answer(params) : JSON.parse(JSON.stringify(answer)) }; };
   const part = new M.visual.VisualPart(host, { doc, markings, reads: decl.reads, writes: decl.writes, start: decl.start, declaration: decl,
-    kinds: { scatter: M.scatter.kind, crossTable: M.cross.kind, ...kinds }, fetchWalk, filters, stats, active: new KeyedStore(), hubs, names: new Map(), charts, theme: 'dark' });
+    kinds: { scatter: M.scatter.kind, crossTable: M.cross.kind, ...kinds }, fetchWalk, filters, stats, active: new KeyedStore(), hubs, names: new Map(), charts, palette: () => DARK });
   part.mount();
   return { part, host, doc, markings, filters, charts, stats, hubs, asked };
 }
@@ -137,12 +150,12 @@ async function measure(M) {
   // T5 / T6: the scatter model, its option, a drag
   const rowsOf = (ids, slots) => ids.map((id) => ({ id, label: id, reads: Object.fromEntries(Object.entries(slots).map(([k, s]) => [k, readSlot(index, inside, id, s)])) }));
   const marked = new Set(['W1', 'W2']);
-  const model = M.scatter.scatterModel(rowsOf(WAFERS, { x: temp, y: press, color: product }), { marked: (id) => marked.has(id), theme: 'dark' });
+  const model = M.scatter.scatterModel(rowsOf(WAFERS, { x: temp, y: press, color: product }), { marked: (id) => marked.has(id), palette: DARK });
   const p1 = model.points.find((p) => p.id === 'W1');
   const p4 = model.points.find((p) => p.id === 'W4');
   out.scatter = { drawn: model.points.map((p) => p.id), notDrawn: model.notDrawn, several: model.several, kinds: [model.xKind, model.yKind],
     marked: p1.fill, dimmed: p4.fill, legend: model.legend.map((l) => [l.name, l.dim, l.ids]) };
-  const option = M.scatter.scatterOption(model, 'dark');
+  const option = M.scatter.scatterOption(model, DARK);
   out.drag = [M.scatter.idsInRange(model, option, [[15, 45], [1.5, 4.5]]), M.scatter.idsInRange(model, option, [[15, 45], [3.5, 4.5]]),
     M.scatter.idsInRange(model, option, [[0, 5], [0, 1]])];
   // T7: the cross table
@@ -161,6 +174,14 @@ async function measure(M) {
   out.walkSeeds = M.store.seedsOf([['A', SIGN.CASE], ['B', SIGN.CONTROL], ['C', SIGN.CASE], ['D', SIGN.ABSENT]]);
   // T16: the picker's routes are the walk table's
   out.routes = JSON.stringify(M.picker.routeChoices(index, WAFERS).slice(1)) === JSON.stringify(routesFrom(index, WAFERS));
+  // T26: the palette a canvas draws with is what the document's root computes - each token by its name, trimmed
+  const said = { '--sf-bg': '#111111', '--sf-text': '#222222', '--sf-axis': '#333333', '--sf-active': '#444444', '--sf-brush': 'rgba(1, 2, 3, 0.5)',
+    '--sf-one': '#555555', '--sf-one-line': '#666666', ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].flatMap((k) => [[`--sf-cat-${k}`, `#00000${k}`], [`--sf-cat-${k}-line`, `#11111${k}`]])) };
+  const docOf = { documentElement: {}, defaultView: { getComputedStyle: () => ({ getPropertyValue: (name) => ` ${said[name] || ''}` }) } };
+  const read = M.palette.paletteOf(docOf);
+  out.palette = [read.bg, read.text, read.axis, read.active, read.brush, read.one, read.cat[0], read.cat[6], read.cat.length, M.palette.categoryColor(read, 8),
+    // the build writes #FFFFFF as #fff and the page computes that: a dimmed point the same either way
+    M.palette.mix('#6489FA', '#fff'), M.palette.mix('#6489fa', '#FFFFFF')];
   return out;
 }
 
@@ -188,7 +209,7 @@ async function parts(M) {
   await settle();
   const held = a.markings.entries('marking:pick');
   out.hubMark = [held.length, M.hubs.isHubId(held[0][0]), a.hubs.membersOf(held[0][0]).sort()];
-  const again = a.charts.made[a.charts.made.length - 1].option.series[0].data.filter((d) => d.itemStyle.color === M.palette.categoryColor(0)[0] || d.itemStyle.color === M.palette.categoryColor(1)[0]).map((d) => d.id).sort();
+  const again = a.charts.made[a.charts.made.length - 1].option.series[0].data.filter((d) => d.itemStyle.color === M.palette.categoryColor(DARK, 0)[0] || d.itemStyle.color === M.palette.categoryColor(DARK, 1)[0]).map((d) => d.id).sort();
   out.hubShown = again;
   // T9c': the status bar's «K marked rows» counts the part's rows the marking holds - a hub of two is two, not one entry
   out.hubCounted = [held.length, a.stats.get('S1').marked];
@@ -261,9 +282,9 @@ async function parts(M) {
     } };
   const k = seat(M, { ...scatterDecl({ id: 'K1', kind: 'list', every: 3 }), encode: { v: { ...temp, reduce: 'Max' } } }, { kinds: { list: stub } });
   await settle();
-  const pills = walk(k.host).filter((n) => n.className && String(n.className).startsWith('tb-pill') && n.tagName === 'BUTTON');
+  const pills = walk(k.host).filter((n) => n.className && String(n.className).startsWith('sf-pill') && n.tagName === 'BUTTON');
   out.kindAdd = { drawn: walk(k.host).filter((n) => n.tagName === 'P').map((n) => n.textContent),
-    title: walk(k.host).filter((n) => n.className === 'tb-title__t').map((n) => n.textContent), statTitle: k.stats.get('K1').title,
+    title: walk(k.host).filter((n) => n.className === 'sf-part__t').map((n) => n.textContent), statTitle: k.stats.get('K1').title,
     pills: pills.map((n) => [n.textContent.replace('▾', ''), Boolean(n.listeners && n.listeners.click)]) };
   // T13 / T17: the status words, a cut walk only when an axis says so
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
@@ -354,7 +375,20 @@ function census(texts = {}) {
     .concat(readdirSync(join(TB, 'kinds')).map((f) => [`kinds/${f}`, read(`kinds/${f}`)]));
   const rootAsks = kindAsks(read('visual_part.js'));
   const css = read('testbed.css');
-  const cssColours = [...css.matchAll(/#[0-9A-Fa-f]{3,8}\b|rgba?\([^)]*\)/g)].map((m) => m[0]);
+  const base = texts['spotfire.css'] !== undefined ? texts['spotfire.css'] : readFileSync(join(SRC, 'spotfire.css'), 'utf8');
+  const colours = (text) => [...text.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/#[0-9A-Fa-f]{3,8}\b|rgba?\([^)]*\)/g)].map((m) => m[0]);
+  const cssColours = { testbed: colours(css), base: colours(base) };
+  // T25: tokens.css holds the measured values - each theme's block and the shared one
+  const tokens = texts['tokens.css'] !== undefined ? texts['tokens.css'] : readFileSync(join(SRC, 'tokens.css'), 'utf8');
+  const blockOf = (head) => { const at = tokens.indexOf(head); return at < 0 ? '' : tokens.slice(at, tokens.indexOf('\n}', at)); };
+  const valueIn = (block, name) => { const m = new RegExp(`${name}:\\s*([^;]+);`).exec(block); return m ? m[1].trim() : null; };
+  const blocks = { light: blockOf(':root[data-theme="light"] {'), dark: blockOf(':root[data-theme="dark"] {'), both: blockOf('/* ── Spotfire standard — what both themes share') };
+  const measured = Object.entries(MEASURED).flatMap(([side, want]) => Object.entries(want).filter(([name, v]) => valueIn(blocks[side], name) !== v)
+    .map(([name, v]) => `${side} ${name} ${valueIn(blocks[side], name)} not ${v}`));
+  // ...and every token the canvas reads is defined there
+  const palNames = [REAL.palette.TOKENS.bg, REAL.palette.TOKENS.text, REAL.palette.TOKENS.axis, REAL.palette.TOKENS.active, REAL.palette.TOKENS.brush,
+    ...REAL.palette.TOKENS.one, ...REAL.palette.TOKENS.cat.flat()];
+  const undefinedNames = palNames.filter((name) => !new RegExp(`${name}:`).test(tokens));
   const callers = files.filter(([f, t]) => f !== 'filter.js' && /\bkeepNodes\(/.test(t)).map(([f]) => f);
   const kindsFilter = files.filter(([f, t]) => f.startsWith('kinds/') && /from '\.\.\/filter\.js'/.test(t)).map(([f]) => f);
   const dist = join(HERE, '..', 'dist', 'assets');
@@ -365,9 +399,10 @@ function census(texts = {}) {
     const others = all.filter((f) => !/^testbed-/.test(f) && /zrender|echarts/.test(readFileSync(join(dist, f), 'utf8'))).length;
     bundle = { testbedUnder700k: tb.length > 0 && Math.max(...tb) < 700 * 1024, chartsElsewhere: others };
   }
-  return { callers, kindsFilter, bundle, rootAsks, seeds: seedsOfSeats(), cssColours,
-    // the canaries: the walk reads real text - the scatter kind names its own slots; the css has its colours by var()
-    canary: [kindAsks(read('kinds/scatter.js')).length > 0, (css.match(/var\(--tb-/g) || []).length > 0] };
+  return { callers, kindsFilter, bundle, rootAsks, seeds: seedsOfSeats(), cssColours, measured, undefinedNames,
+    // the canaries: the walk reads real text - the scatter kind names its own slots; the css has its colours by var();
+    // the token blocks were found
+    canary: [kindAsks(read('kinds/scatter.js')).length > 0, (base.match(/var\(--sf-/g) || []).length > 0, Object.values(blocks).every((b) => b.length > 100)] };
 }
 
 function suite(out, page, saved, counted) {
@@ -402,6 +437,8 @@ function suite(out, page, saved, counted) {
     out.hubs, [{ positive: ['W1', 'W2', 'W3'], negative: ['W9'] }, true, 0, 'wafer · lot = L1']);
   eq('T20 the walk page\'s reading of a marking is the same function - no opener: each entry itself, the marking\'s order, an absent sign no seed',
     out.walkSeeds, { positive: ['A', 'C'], negative: ['B'] });
+  eq('T26 the palette a canvas draws with is the document root\'s tokens - each by its name, trimmed; the categories repeat past the seventh; a short hex mixed as its long one',
+    out.palette, ['#111111', '#222222', '#333333', '#444444', 'rgba(1, 2, 3, 0.5)', ['#555555', '#666666'], ['#000001', '#111111'], ['#000007', '#111117'], 7, ['#000002', '#111112'], '#E0E7FE', '#E0E7FE']);
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
   eq('T9a All walks the row type described; the rows and counts; every drawable point drawn',
     [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null]], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);
@@ -422,9 +459,11 @@ function suite(out, page, saved, counted) {
     page.kindAdd, { drawn: ['rows 6 · every 3 · Max'], title: ['List of Max(temp · value)'], statTitle: 'List of Max(temp · value)',
       pills: [['Each row', false], ['Max(temp · value)', true]] });
   eq('T19 census: the root names no kind - no kind name or slot key as a string, no .kind compared, no slot read off encode by name',
-    [counted.rootAsks, counted.canary], [[], [true, true]]);
+    [counted.rootAsks, counted.canary], [[], [true, true, true]]);
   eq('T21 census: one seedsOf in the client - the marking store\'s', counted.seeds, ['rnd_board/marking_store.js']);
-  eq('T22 census: testbed.css writes no colour - every one a --tb-* token (the picker\'s shadow the one literal left)', counted.cssColours, ['rgb(0 0 0 / .25)']);
+  eq('T22 census: the Spotfire base layer and testbed.css write no colour - every one a --sf-* token', counted.cssColours, { testbed: [], base: [] });
+  eq('T25 the Spotfire tokens hold the measured values (§11) in each theme\'s block and the shared one, and every token the canvas reads is defined',
+    [counted.measured, counted.undefinedNames], [[], []]);
   eq('T13 the status words: N of M, the drops (the start side\'s when not 0), marked rows and hidden, columns, the row type; a cut walk said',
     page.status, [['4 of 6 rows', 'system −1 · part −1', '2 marked rows · hidden 1', '3 columns', 'wafer'],
       ['1 of 1 rows', 'filter over a cut walk', '0 marked rows', '0 columns', 'wafer'],
@@ -466,7 +505,7 @@ const MUTANTS = [
   { id: 'M8', what: 'a period closed at its end', catches: 'T4', file: 'testbed/filter.js',
     mutate: (t) => swap(t, '!(Number.isFinite(to) && t >= to)', '!(Number.isFinite(to) && t > to)') },
   { id: 'M9', what: 'a dimmed point keeps its colour (no mix)', catches: 'T5', file: 'testbed/kinds/scatter.js',
-    mutate: (t) => swap(t, 'fill: dim ? mix(fill, theme.bg) : fill', 'fill: fill') },
+    mutate: (t) => swap(t, 'fill: dim ? mix(fill, palette.bg) : fill', 'fill: fill') },
   { id: 'M10', what: 'a several drawn - not counted apart', catches: 'T5', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, "    if ([x, y, color].some((r) => r && r.state === 'several')) { several += 1; continue; }\n", '') },
   { id: 'M11', what: 'a drag tests only x', catches: 'T6', file: 'testbed/kinds/scatter.js',
@@ -512,7 +551,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '{ marked, theme: this.theme, declaration: this.decl }', '{ marked, theme: this.theme, reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
+    mutate: (t) => swap(t, '{ marked, palette: this.palette(), declaration: this.decl }', '{ marked, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
   { id: 'M31', what: 'a words-only pill opens the picker too', catches: 'T11', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    if (this.kind.slots.some((s) => s.key === key)) p.addEventListener(', '    if (true) p.addEventListener(') },
   { id: 'M32', what: 'the cross table reads no reduce off its declaration - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
@@ -526,10 +565,26 @@ const MUTANTS = [
   { id: 'M24', what: 'the site\'s theme left as it came (the code before: a white picker on the dark page)', catches: 'T18', file: 'testbed/main.js',
     mutate: (t) => swap(t, "  root.setAttribute('data-theme', theme);\n", '') },
 ];
+MUTANTS.push(
+  { id: 'M35', what: 'a measured colour moved in the move to tokens (the dark part\'s ground)', catches: 'T25', file: 'tokens.css',
+    mutate: (t) => swap(t, '  --sf-bg: #2A2A2A;', '  --sf-bg: #2B2B2B;') },
+  { id: 'M36', what: 'a colour written in the base layer, not a token', catches: 'T22', file: 'spotfire.css',
+    mutate: (t) => swap(t, '.sf-table td.is-marked { background: var(--sf-marked);', '.sf-table td.is-marked { background: #00A650;') },
+  { id: 'M37', what: 'a token the canvas reads defined nowhere', catches: 'T25', file: 'tokens.css',
+    mutate: (t) => swap(t, '--sf-cat-7-line: #BC7A4B;', '--sf-cat-7-edge: #BC7A4B;') },
+  { id: 'M38', what: 'the palette reads a category\'s line as its fill', catches: 'T26', file: 'testbed/palette.js',
+    mutate: (t) => swap(t, '  const pair = ([fill, line]) => [read(fill), read(line)];', '  const pair = ([fill, line]) => [read(line), read(fill)];') },
+  { id: 'M40', what: 'the mix reads only the long hex - in the built page #fff mixed to a grey (the code before)', catches: 'T26', file: 'testbed/palette.js',
+    mutate: (t) => swap(t, "  const full = s.length === 3 ? [...s].map((c) => c + c).join('') : s;", '  const full = s;') },
+  { id: 'M39', what: 'a kind handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, '  const palette = ctx.palette;\n', "  const palette = { bg: '#000000', one: ['#000000', '#000000'], cat: [['#000000', '#000000']] };\n") },
+);
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
-  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store' };
+  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
+  // A stylesheet is no module: its mutant is the census's text alone.
+  if (m.file.endsWith('.css')) return run(REAL, { [m.file]: m.mutate(readFileSync(join(SRC, m.file), 'utf8')) });
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;
   // The census reads the mutant's text too: a mutant that asks the kind again is counted where it asks.
   return run({ ...REAL, [KEY[m.file]]: copy }, { [m.file]: m.mutate(readSourceText(join(SRC, m.file)).text) });

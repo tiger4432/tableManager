@@ -33,17 +33,17 @@ export class FiltersPart extends Panel {
   render() {
     const doc = this.doc;
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-    const root = el('aside', 'tb-side tb-filters');
-    const head = el('div', 'tb-side__h');
+    const root = el('aside', 'sf-panel tb-filters');
+    const head = el('div', 'sf-panel__h');
     head.append(el('span', '', this.title || 'Filters'));
-    const reset = el('button', 'tb-btn', 'Reset');
+    const reset = el('button', 'sf-btn', 'Reset');
     reset.type = 'button';
     reset.addEventListener('click', () => this.filters.set(this.name, []));
     head.append(reset);
     root.append(head);
     const stats = this.stats.get(this.active.get('active'));
     const held = new Map(this.conditions().map((c) => [conditionKey(c), c]));
-    if (!stats || !stats.slots || !stats.slots.length) root.append(el('div', 'tb-say', 'No values to filter'));
+    if (!stats || !stats.slots || !stats.slots.length) root.append(el('div', 'sf-say', 'No values to filter'));
     for (const summary of (stats && stats.slots) || []) {
       const key = conditionKey({ row: summary.row, ...summary.slot });
       root.append(drawCondition(doc, summary, held.get(key) || null, (next) => this.put(next)));

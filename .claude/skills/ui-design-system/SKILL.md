@@ -1,6 +1,6 @@
 ---
 name: ui-design-system
-description: The one visual system for every client2 screen, measured from the ledger declaration window (client2/src/ontology_explorer.css). Load before writing or reviewing any HTML/CSS/DOM-rendering JS. Owner 2026-09-11 「디자인 스킬 하나 만들어라. 원장 선언 창 css 기준으로」.
+description: The one visual system for every client2 screen, measured from the ledger declaration window (client2/src/ontology_explorer.css); the declaration UI and the visual parts on its Spotfire standard (§9, client2/src/spotfire.css). Load before writing or reviewing any HTML/CSS/DOM-rendering JS. Owner 2026-09-11 「디자인 스킬 하나 만들어라. 원장 선언 창 css 기준으로」.
 ---
 
 # UI design system — the ledger declaration window is the canon
@@ -93,6 +93,41 @@ a new screen or state   a step in the checker's DRIVE, in the same commit as the
 report   every screen commit's report carries one line: «크롬 MCP 로 연 화면 · 크기 · 본 것» - Claude in Chrome, the
          built page, opened by hand. Without it the lead does not merge, and the lead opens the same screen first
 ```
+
+## 9. 스팟파이어 표준 — the Spotfire standard (owner 10-13 「선언 ui 같은 거는 스팟파이어 표준으로 스킬이랑 css 부품, 디자인 규격 만들어서 계속 써」, lead b72a0ea4f)
+The one system, widened - not a second one. §0's rules hold (base layer once · sample page first · document drawn from it).
+```
+when     the declaration UI and the visual parts: a visual part and its kinds · its properties and filters panels · the
+         slot picker · the Sheet · the R&D board's parts. Other screens (the grid · admin · walk) stay on the canon above
+         until the owner says otherwise; the ledger declaration window is read as this standard's when it is next rebuilt
+source   measured on the owner's Spotfire (task/SPOTFIRE_SCATTER_REFERENCE.md §11)
+files    tokens   client2/src/tokens.css  --sf-*  - both themes' blocks and the shared one; nothing else defines a Spotfire value
+         parts    client2/src/spotfire.css      - the base layer, once; `.sf` on a screen's root gives the face, text, ground
+         canvas   client2/src/testbed/palette.js - only reads the tokens (paletteOf), read again each time a part draws
+         sample   client2/sample.html «Spotfire standard» - every part below, both themes
+```
+```
+part     .sf-part (.is-active) · .sf-part__title · .sf-part__t · .sf-part__meta · .sf-part__body · .sf-say
+pill     .sf-pill (.sf-pill--v) · .sf-pill__caret · .sf-plus · .sf-note        border and caret on the part's hover, always in a panel
+legend   .sf-legend · __ttl · __row · __v (.is-dim) · __plain · __ico · __name
+table    .sf-table (a grid: __col · __row · __corner · __total · td.is-marked) · .sf-table--rows (a striped list: .is-num ·
+         .is-id · .is-member · tr.is-hub · __toggle)
+status   .sf-status                                                       panel   .sf-panel · __h - light in both themes
+props    .sf-props__name · __tabs (.is-on) · __sec · __h · __line · __lab · __sel · __cond · __x · __add
+filter   .sf-filter · __h · __range · __num · __v · __n
+popover  .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __hr · __reds · __red (.is-on) · __why
+button   .sf-btn
+```
+```
+sizes    text 12/15 Roboto · title 19/23 Roboto Light · tabs 13 Medium · pill 21 high, radius 100 · cell 19 high, 7 each side ·
+         legend 150 wide, a value line 20, its icon 14 · part padding 12 · between parts 2 · status bar 32
+colours  dark ground #2A2A2A / page #232323 · marked cell #00A650 white bold · the seven category colours fill / line - all
+         as --sf-* tokens; a part writes none
+```
+- One class of specificity, not the base layer's zero: on a page that loads base.css too, its element rules never win, whatever order the sheets load in. A part that is a button, a field, a table or a cell says every property base.css sets on those (height, letter-spacing, centring, uppercase heads, cell padding, full width).
+- A screen's own layout (its grid, a kind's trays) is the screen's CSS, more specific than the part (its container class with the part's) - the test bed's `testbed.css` is the example.
+- Don't: a `--tb-*` or any second name for a Spotfire value · a colour or a Spotfire size written in a part · a canvas colour as a JS constant (the canvas reads `paletteOf`) · a part added to a screen before the sample draws it.
+- Gate: `testbed_harness` T22 (no colour in spotfire.css · testbed.css) · T25 (the tokens hold §11's values; every token the canvas reads defined) · T26 (the palette read off a document; the build's short hex mixed as its long one) · `css_token_definition` · `screen_layout` (the sample's section and the test bed, both themes) · before/after shots of a screen moved onto it, pixel by pixel, beside the Spotfire screen with the spacings measured.
 
 ## How to apply — every UI round
 ```

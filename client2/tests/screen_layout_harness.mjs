@@ -973,6 +973,14 @@ const DRIVE = {
   // The testbed's start row (lead 10-13, 18997: its picker hung clipped under a 44 px panel - no start could be picked).
   'testbed.html': [
     ['Add start opened', openStartPicker],
+    // The Spotfire standard's tokens in the other theme (lead b72a0ea4f: the sample and the test bed, dark and light).
+    ['light theme', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'light'); true").then(() => sleep(300))],
+  ],
+  // The sample's Spotfire standard section (src/spotfire.css), in each theme.
+  'sample.html': [
+    ['Spotfire standard, light', (c) => evaluate(c, `(() => { document.documentElement.setAttribute('data-theme', 'light');
+      const s = document.querySelector('.sample-sf'); if (s) s.scrollIntoView({ block: 'start' }); return Boolean(s); })()`).then(() => sleep(300))],
+    ['Spotfire standard, dark', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'dark'); true").then(() => sleep(300))],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
