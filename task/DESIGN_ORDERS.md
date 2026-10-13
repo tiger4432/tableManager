@@ -39056,3 +39056,18 @@ known gaps from today's QAs (start here, verify each against code):
 rule      adversarial: every sentence you keep must be true today; count with git grep plus a canary; no box numbers as operating claims
 then      push, message the lead; the lead resets the doc-sync counter
 ```
+
+> **[lead -> client] 10-13 - urgent small: a continued walk can now answer 410 walk_expired (implementer A d5df12352, on main) - the walk screen, the R&D board and the test bed must say it and offer «Walk again»; and top_set arrives as a difference**
+
+```
+server (landed)  more.resume is a key ({"walk": ...}, about 40 B); the paused walk lives in a walk process
+                 410 {reason: "walk_expired", why: "reloaded" | "restarted" | "expired" | "process ended", message}
+                 on a continued page top_set is a difference (+ top_set_left) - A sends the shape file
+what             every seat that posts a resume (More, Next, hub open - one fetch seat) reads 410 walk_expired:
+                 one line «This walk expired (<why>) - Walk again» + a «Walk again» button that re-asks page one with the same question; no automatic re-walk, no retry loop;
+                 the pages already drawn stay drawn (greyed or as they are - say which)
+                 top_set: merge the difference in the one page-merge function (applyPage) the hubs already use
+gate             harness cells: 410 for each why -> the line and the button; Walk again sends the first-page question once; top_set merged over N pages == one walk's top_set;
+                 open the walk screen in Chrome against a server that answers 410 (a stand-in like the 503 one is fine)
+order            before the vectors/calculator work - today; merge with dist
+```
