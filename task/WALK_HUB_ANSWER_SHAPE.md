@@ -72,7 +72,8 @@ edges_pending [행 id …] — 혼자 선 행의 선을 이 쪽 원자 예산 �
 선언      sources.<이름> = { relation, attach: { subject: <부모 노드>, predicate: <어휘의 술어>, target: <행 노드>, columns: [선택] } }
           노드는 짧은 꼴의 {"node": <타입>, "keys": {<키>: <칸>}} (B 의 원장 선언 간소화 위에 앉는다 — 선언 칸은 아직)
           대상 타입은 entities 에(keys · attributes), 술어는 vocabulary 에(entity_ref, 주어 타입 -> 대상 타입)
-          columns 를 안 적으면 대상 타입의 attributes — 이름 목록은 타입이 가진다. 원자는 0 (번역 · backfill · 소급 · 따라가기)
+          columns 를 안 적으면 그 표의 칸 전부(표 선언의 칸 목록), 적으면 좁힘 — 허브 표 열도 같은 목록(총괄 10-13 «행을 통째로»)
+          원자는 0 (번역 · backfill · 소급 · 따라가기)
 답        행 노드 = 대상 타입의 보통 노드(키 = 그 표의 키 칸, attributes = columns 의 값, 글로). 선 = 그 술어, 보통 선
           술어에 hub: true 면 허브로 접힌다(×1 도) — id 도 보통 허브 id <노드>|<술어>|<방향>|<대상 타입>|<값>, 표 = tables[허브 id]
           fanout_limit 을 넘어도 같은 허브. expand · 예산 · 이어 걷기 · left/moved 모두 허브 그대로
@@ -84,7 +85,7 @@ edges_pending [행 id …] — 혼자 선 행의 선을 이 쪽 원자 예산 �
 남음      시간 쪽(around · earlier · later)은 원장만 읽어 붙인 행이 안 나온다
 ```
 
-예시 — 다이 D1 의 결함 표 행 하나(`has_defect` 가 hub: true, 대상 타입 `defect_row` 의 attributes = size · kind)
+예시 — 다이 D1 의 결함 표 행 하나(`has_defect` 가 hub: true, attach 의 columns = size · kind)
 ```json
 {"nodes": [{"id": "<D1>|has_defect|outgoing|defect_row|1,0", "type": "defect_row", "label": "defect_row ×1",
             "depth": 2, "node_kind": "entity", "count": 1, "value": [1, 0],
