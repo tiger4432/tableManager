@@ -119,17 +119,12 @@ def _key_types(db, source, keys) -> dict:
 def _gated(db, source, gates) -> str:
     """` AND <each require column filled> AND <each exclude column blank>` for `source`, or '' - the row
     gates `rule_run.held_back` judges, in `crud`'s SQL judgement, compiled."""
-    import chain_bindings
-    from database import crud, models
+    from chain.rule_run import gate_conditions
+    from database import models
 
-    judge = {chain_bindings.REQUIRE_KEY: crud.not_blank_sql_condition,
-             chain_bindings.EXCLUDE_KEY: crud.blank_sql_condition}
-    asked = [(judge[gate], column) for gate in chain_bindings.ROW_GATE_KEYS for column in (gates or {}).get(gate) or ()]
-    if not asked:
-        return ""
-    model, dialect = models.DYNAMIC_TABLES[source], db.get_bind().dialect
-    return "".join(" AND (%s)" % condition(crud.column_text_sql(getattr(model, column))).compile(
-        dialect=dialect, compile_kwargs={"literal_binds": True}) for condition, column in asked)
+    dialect = db.get_bind().dialect
+    return "".join(" AND (%s)" % condition.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
+                   for condition in gate_conditions(gates or {}, models.DYNAMIC_TABLES.get(source)))
 
 
 def _holds_only(rule) -> bool:

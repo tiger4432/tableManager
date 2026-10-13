@@ -413,12 +413,13 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
     # specs; the answer wanted here is the same one it always gave. Calling the same
     # function with a count spec keeps the blank-key partitioning in ONE place - the
     # comment above already says why a second copy of it goes wrong.
+    from chain import rule_run
     from chain.enrichment.mapper import _aggregate_affected_keys
 
     _ROW_TOTAL = "__rows__"
     totals = _aggregate_affected_keys(
         db, rule["source_table"], rule["decision_key"], key_raw,
-        {_ROW_TOTAL: {"expression": "Count()"}}) if key_raw else {}
+        {_ROW_TOTAL: {"expression": "Count()"}}, rule_run.gates_of(rule)) if key_raw else {}
     total_per_key = {k: v[_ROW_TOTAL] for k, v in totals.items()}
     presence = {t: _source_target_presence(db, rule, t, key_raw) for t in same_name_targets}
 

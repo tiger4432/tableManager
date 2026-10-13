@@ -300,7 +300,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     # `require` columns ride along so the seat below can judge them (총괄 2276e38cf ③).
     payload_cols = list(dict.fromkeys(
         decision_key + [c for c in rule.get("list_columns", []) if c in src_cols]
-        + [c for c in rule.get(chain_bindings.REQUIRE_KEY) or () if c in src_cols]
+        + [c for gate in chain_bindings.ROW_GATE_KEYS for c in rule.get(gate) or () if c in src_cols]
     ))
 
     # `scan_limit` picks the resolver, not a preference: it is exactly the signal
@@ -316,7 +316,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     # The cell the mapper reads its declaration from. ⚰️ This said `"enrichment"` until the
     # dedup half became a registered mapper: that key was a second copy of `params`, and this
     # was its other author.
-    mapper_rule = {"params": rule if apply else {**rule, "aggregations": {}}}
+    mapper_rule = {"params": rule if apply else {**rule, "aggregations": {}}, **rule_run.gates_of(rule)}
     # the rule a live recount writes these cells as - the decide's dedup half
     writer = rule_shape.declaration_of(enrichment.config.chain_rules_for(rule)[0])
 

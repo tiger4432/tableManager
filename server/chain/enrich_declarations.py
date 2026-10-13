@@ -118,11 +118,10 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
                                    "detail": str(refusal)})
             continue
         declared = (stood[0].get("params") or {})
-        # 🔴 [총괄 2276e38cf ③] `on.require` stands on the RULE, not in `params`, and the
-        #   backfill reads only this - so it is carried here, from the rule the loader stands.
-        if stood[0].get(chain_bindings.REQUIRE_KEY):
-            declared = {**declared,
-                        chain_bindings.REQUIRE_KEY: list(stood[0][chain_bindings.REQUIRE_KEY])}
+        # 🔴 [총괄 2276e38cf ③] `on.require` · `on.exclude` stand on the RULE, not in `params`, and the
+        #   backfill reads only this - so they are carried here, from the rule the loader stands.
+        declared = {**declared, **{gate: list(stood[0][gate]) for gate in chain_bindings.ROW_GATE_KEYS
+                                   if stood[0].get(gate)}}
         if declared.get("name"):
             seen.add(name)
             out.append(declared)

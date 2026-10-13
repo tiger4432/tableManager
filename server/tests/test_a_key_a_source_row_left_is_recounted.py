@@ -530,3 +530,62 @@ def test_the_copy_takes_a_deletion_back_without_the_cell(pg_engine, monkeypatch,
         assert not [r["name"] for r in world["rules"] if worker.wakes(r, deletion)]
         hw.settle(world)
         assert (hw.official(world).netdie, hw.hold(world)) == (7, "agreed")
+
+
+# 총괄 63c747046 - the rows a decide counts are the rows its rule takes (`rule_run.gate_misses` / `gate_conditions`):
+#   gate      require (the column filled) · exclude (the column blank)
+#   rows      a row outside the gate is not counted · an edit that takes a row out leaves its key's count, and the
+#             key's only row takes the key's row · a row that was never in is not handed
+GATED = {"require": ({"L1": "1", "L2": "", "L3": "3"}, "1", ""),    # (t per seeded row, a t inside, a t outside)
+         "exclude": ({"L1": "", "L2": "2", "L3": ""}, "", "x")}
+
+
+def _gate(db, gate, t):
+    """okey_rule with `on.<gate>: [t]`, and three rows whose t is `t` {log_id: t}."""
+    import pathlib
+
+    declarations = [as_declaration(name, cells) for name, cells in RULE.items()]
+    declarations[0]["on"][gate] = ["t"]
+    pathlib.Path(worker.RULES_PATH).write_text(json.dumps({"rules": declarations}), encoding="utf-8")
+    assert [r.get(gate) for r in _rules() if r["name"] == enrichment.config.synthesized_rule_names(
+        "okey_rule")[0]] == [["t"]], "control: the dedup rule carries the gate"
+    _write(db, [{"updates": {"log_id": "L1", "job": "J1", "lot": "A", "t": t["L1"]}},
+                {"updates": {"log_id": "L2", "job": "J1", "lot": "B", "t": t["L2"]}},
+                {"updates": {"log_id": "L3", "job": "J3", "lot": "C", "t": t["L3"]}}])
+    _chain(db)
+
+
+@pytest.mark.parametrize("gate", sorted(GATED))
+def test_a_row_outside_the_decides_gate_is_not_counted(db, gate):
+    _gate(db, gate, GATED[gate][0])
+
+    assert _inv(db) == {"J1": ("A", 1), "J3": ("C", 1)}, "L2 is outside the gate - not in J1's lot or count"
+
+
+@pytest.mark.parametrize("gate", sorted(GATED))
+def test_an_edit_that_takes_a_row_out_of_the_gate_leaves_its_keys_count(db, gate, caplog):
+    inside, outside = GATED[gate][1:]
+    _gate(db, gate, {"L1": inside, "L2": inside, "L3": inside})
+    assert _inv(db) == {"J1": ("A, B", 2), "J3": ("C", 1)}, "control: every row inside"
+    with caplog.at_level(logging.INFO):
+        _write(db, [{"row_id": _src(db, "L2").row_id, "updates": {"t": outside}},
+                    {"row_id": _src(db, "L3").row_id, "updates": {"t": outside}}])
+        _chain(db)
+
+    assert _inv(db) == {"J1": ("A", 1)}, "J1 counts without L2 - J3's only row left, so J3's row goes"
+    assert any("2 of them handed as rows that left" in r.getMessage() for r in caplog.records)
+
+
+def test_a_row_that_was_never_inside_is_not_handed_and_one_that_left_is_handed_as_it_was():
+    from chain import rule_run
+
+    rule = {"name": "r", "require": ["t"], "allow_delete_trigger": True}
+    never = {"row_id": 1, "data": {"t": {"value": ""}, "job": {"value": "J1"}}, "old": {"job": "J0"}}
+    left = {"row_id": 2, "data": {"t": {"value": ""}, "job": {"value": "J1"}}, "old": {"t": "1"}}
+    inside = {"row_id": 3, "data": {"t": {"value": "2"}, "job": {"value": "J1"}}}
+
+    handed, missed = rule_run.held_back(rule, [never, left, inside])
+    assert handed == [{"row_id": 2, "data": {}, "old": {"t": "1", "job": "J1"}}, inside]
+    assert missed == {"t": 2}
+    assert rule_run.held_back({**rule, "allow_delete_trigger": False}, [never, left, inside])[0] == [inside], \
+        "a rule that does not read rows that left is not handed them"
