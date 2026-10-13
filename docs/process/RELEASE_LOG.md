@@ -357,8 +357,9 @@
 - **무엇** — 서버가 이어 걷기를 걷기 프로세스에 남겨 두고 쪽마다 열쇠(`more.resume`)를 주게 되면서(구현자 A impl-walk-keep2 fe2b894f0, 총괄 eb1ae8c9f · 9752e91f7) 화면 쪽 셋입니다.
 - **화면에서** — ① 걷기 화면의 걷기는 첫 쪽부터 «이어 걸을 걷기»로 묻습니다(`resumable=true`). 서버는 그렇게 물은 걷기만 남겨 두므로, 이게 없으면 잘린 걷기도 열쇠가 없어 «More ▸» 가 «All reached» 로 꺼집니다. 보드 · 시험대 · 체인 맵퍼는 묻지 않습니다. ② 이어 걷기가 410 walk_expired 를 받으면 결과 머리에 서버 문장 한 줄(«This walk expired (restarted) - walk again» 등)과 «Walk again» 단추가 섭니다. 누르면 같은 질문의 첫 쪽을 한 번 묻고 그 답이 그 스텝의 답이 됩니다(× 로 전 답). 저절로 다시 걷지 않고 다시 시도하지도 않습니다 — 그 줄이 선 동안 «More ▸» 는 꺼지고 마우스를 올리면 같은 줄이 나옵니다. 이미 그린 쪽은 그대로 있습니다(흐리게 하지 않음). ③ 이어지는 쪽의 top set 은 차이로 옵니다 — 쪽을 합칠 때(`mergeWalks`) «앞의 것 − 빠진 것 ∪ 든 것»으로 읽어 합친 답의 top set 이 한 번 걸은 것과 같습니다. 대조 걷기(차이가 없는 답)는 전처럼 자기 것입니다.
 - **More ▸ 의 사유는 한 줄** — 도는 중이면 «Walking…», 만료 줄이 서 있으면 서버 문장, 다 닿았으면 «All reached».
+- **고침 (같은 날, 18766)** — «Walk again» 은 새 걷기입니다: 그 단계의 첫 쪽을 Walk(단계 0) · Next(그 밑 단계)를 누른 것과 같은 자리로 다시 걷습니다. 씨앗 행은 «start», «+0 from More ×» 칩은 안 남습니다 — 전에는 More 처럼 합쳐져 씨앗 행이 «—» 였습니다(총괄 10-13).
 - **필요한 조건** — 서버의 이어 걷기 다시 착지(impl-walk-keep2)와 한 병합. 옛 서버는 `resumable` 을 모르는 칸으로 받고 넘깁니다.
-- **자세히** — 이 항목과 같은 커밋 · `client2/tests/walk_table_harness.mjs` EX1(why 다섯: reloaded · restarted · expired · process ended · server updated) · EX2 · TS1 · MR1 · `walk_wire_harness` F9 · F10 · F11. 허브 가지(design-walk-hub)의 쪽 합치기 `applyPage` 는 허브를 다시 열 때 `mergeWalks` 와 하나로 모읍니다.
+- **자세히** — 이 항목과 같은 커밋 · `client2/tests/walk_table_harness.mjs` EX1(why 다섯: reloaded · restarted · expired · process ended · server updated) · EX2 · EX3 · TS1 · MR1 · `walk_wire_harness` F9 · F10 · F11. 허브 가지(design-walk-hub)의 쪽 합치기 `applyPage` 는 허브를 다시 열 때 `mergeWalks` 와 하나로 모읍니다.
 ## 2026-10-13 · 그리드 행 수 — 표 전체는 일꾼이 미리 센 수와 그 시각, 거르면 10,000 까지
 
 - **무엇** — 소유자 ㄱ · 총괄 67e5e9ccd ㄱ-1. 그리드 바닥줄 · 쪽 끝 · 내보내기 머리줄의 수가 서버 함수 하나(`table_total`)에서 나옵니다. 검색 · 필터 없는 표 전체 수는 요청이 세지 않습니다 — 웹 프로세스의 일꾼 하나가, 그 표가 바뀌었다는 알림(그리드 쓰기 · 감시자 적재 · 체인 워커 쓰기 · 소급) 뒤에, 표마다 최소 `count_recount_seconds` 간격으로, 한 번에 한 표씩 셉니다. 다시 세는 동안은 지난 수와 그 시각이 나갑니다. 검색 · 필터 · 큐 · 트랜잭션으로 거른 수는 그 요청에서 10,000 까지만 셉니다.
