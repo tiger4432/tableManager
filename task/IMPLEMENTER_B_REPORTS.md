@@ -801,3 +801,71 @@ stop_line 원장 일은 큐 화면에 «줄»로 안 그려짐(개요의 /runtim
 다음: 뷰 읽는 원장 소스 재기(짓지 않음) — 18766 박스 선언의 원장 소스 15 개 중 뷰를 읽는 일곱(process_param_num_measure · process_param_txt_measure ·
 void_observation · dt_transfer · bonded_from · lot_slot_move · bw_dt_seat), 거절은 setup_bundle 의 relation_not_a_row_table(총괄 f3bc02f6e · da3fa7493,
 소유자 09-25 «운영은 뷰를 안 씀 · 그냥 빼라», 착지 c193986a8).
+
+> **[구현자 B -> 총괄] 10-13 재기만 — 뷰를 읽는 원장 소스 일곱이 원자를 안 내는 까닭 · 읽게 하려면 · 간소화와 · 안 셋 (짓지 않음)**
+
+**① 거절 자리와 사유**
+```
+코드     server/ledger/setup_bundle.py — 소스의 relation 이 «row_id 가 있는 표»(reads_a_row_table: 카탈로그 kind 가 table 이고 row_id 칸)가 아니면
+         그 소스만 떨어뜨림(나머지는 섬). 문구 «source 'X' reads 'Y', which is not a table that has row_id (view); a ledger source must read
+         a table that has row_id» · 코드 relation_not_a_row_table
+판정     총괄 f3bc02f6e · da3fa7493, 소유자 09-25 «운영은 뷰를 안 씀 · 백필 없이 그냥 빼라 · 있는 그대로» — 착지 c193986a8
+         (뷰 따라가기 기제 · 샘플의 뷰 소스 아홉 · create_*_view 스크립트 여섯을 지움)
+박스     18766 선언(dm_root2) 소스 15 → 제품 로더(ledger.config.load)가 8 만 세움, 뷰를 읽는 일곱이 떨어짐:
+         process_param_num_measure · process_param_txt_measure · void_observation · dt_transfer · bonded_from · lot_slot_move · bw_dt_seat
+         지금 샘플엔 이 일곱이 없음(c193986a8 이 지움) — 이 박스 선언은 09-25 전 것
+```
+
+**뷰 일곱이 하는 일**(박스 table_config 의 주석)
+```
+거르기만    process_param_num / _txt   process_param 에서 value / value_text 가 빈 행 빼기(빈 숫자 칸이 NaN 이 되어서)
+           dt_log_transferable        dt_log 에서 core_wafer(와 event_time)가 빈 행 빼기
+           bonding_die_from_core      bonding_core_die 에서 core wafer 를 못 찾은 행 빼기
+계산       void_obs_observed          void_obs 와 inspection_run 을 run_uid 로 조인(검사 시각)
+           bonding_core_die           dt_log 행을 붙인 다이 하나에 한 행으로 접기(DISTINCT)
+           lot_slot_move              lot_event 두 행을 웨이퍼로 짝짓고 양방향을 합치기(배열 펼치기)
+```
+
+**② 뷰를 읽게 하려면 — c193986a8 이 지운 것을 되살리는 일**
+```
+행 id      원자 · 행 색인이 (relation, row_id)로 행을 가리킴. 일곱 중 넷(void_obs_observed · bonding_* 둘 · lot_slot_move)은 row_id 칸이 없고,
+           조인 · 접기 · 짝짓기 뷰는 «밑 행 하나»가 없음
+커서       쪽마다 뷰 질의 전체가 돎 — 세기도 같음(backfill 의 «a view's count runs its whole query»)
+따라가기    뷰에는 outbox 사건이 없음 → 밑 표 사건을 뷰 소스로 잇는 길(pg_depend 걷기 · view_followers_of, 지워짐)이 필요하고,
+           밑 행 하나가 뷰 행 여럿에 닿는 조인 · 합치기는 다시 번역할 범위를 키로 넓혀야 함
+지움 거두기 밑 행이 지워지면 어느 뷰 행이었는지 — row_id 가 없으면 못 찾음
+```
+
+**③ 간소화(read 은퇴)와**
+```
+간소화 소스 = {table, attributes, sentences(when)} · 신원 · 순서 · 커서는 «표의 유일 키» 기본값 — 뷰엔 유일 키 · 색인이 없어 기본값이 안 섬
+오늘의 거르기 read.exclude_when({"column": c, "blank": true})은 간소화에서 문장 when 으로 감 — 거르기 뷰는 그대로 옮겨짐
+뷰 따라가기 정보를 적던 자리(read)가 은퇴 — 뷰 소스를 되살리는 안은 간소화와 정면으로 부딪힘
+```
+
+**안 셋**
+```
+ㄱ (추천) 뷰를 «선언»으로 옮김 — 원장은 표만 읽음
+   하는 일    거르기 넷: 밑 표를 읽고 exclude_when(간소화 뒤엔 문장 when) — process_param + {value 빈 칸} / {value_text 빈 칸},
+                        dt_log + {core_wafer 빈 칸}·{event_time 빈 칸}, (아래 bonding 표) + {core_wafer 빈 칸}
+             계산 셋: 체인이 표로 씀 — void_obs 에 선언 조인(inspection_run 의 시각, run_uid) · bonding_core_die 는 decide(키 base_id · bx · by)로
+                        파생 표 · lot_slot_move 는 짝짓기 · 합치기라 조인 · decide 로 안 됨 → 맵퍼가 표를 씀
+   운영자     chain_rules.json 에 조인 하나 · decide 하나 · 맵퍼 규칙 하나, ledger_config 소스 일곱의 relation 을 밑 표 · 새 표로 + 거르기
+   좋은 점    «원장 선언은 국소적 · 무계산 — 그 밖은 체인이 표에 쓴다»와 같음 · 실시간 전파 · 지움 거두기 · 행 색인 그대로 · 간소화와 안 부딪힘 ·
+             제품 코드 0(맵퍼 하나 빼고)
+   위험       lot_slot_move 맵퍼는 새 코드(소유자 맵퍼 자리) · 파생 표를 한 번 채우는 소급(박스 주석 수: bonding_core_die 371,593 행 ·
+             void_obs 103,729 행 — 박스) · decide 가 DISTINCT 접기와 같은 답을 내는지 안 쟀다
+   크기       선언 셋 + 소스 일곱 고침 + 맵퍼 하나 — 코드 줄 수 안 쟀다
+ㄴ 뷰 소스를 되살림(c193986a8 이전)
+   소유자 09-25 판정을 뒤집는 안 — 제가 고를 수 없음. 지운 기제(pg_depend 따라가기 · 행 id 없는 소스 갈래) 복원, 행 id 없는 넷은 그래도 안 됨,
+   간소화와 부딪힘. 크기 큼(c193986a8 이 followup.py 에서만 251 줄 지움)
+ㄷ 박스만 지금 샘플로
+   18766 선언을 지금 샘플(뷰 소스 없음)로 — 거절은 사라지지만 계측 소스 자체가 없어져 «계측 항목에서 걸어도 안 나옴»은 그대로. 박스 상태 답이지 구조 답 아님
+```
+
+**여쭐 것**
+```
+1  운영에 뷰가 정말 없나(소유자 09-25 말씀) — 있으면 운영의 «계측 항목에서 안 나옴»도 같은 원인, 없으면 운영 원인은 따로(운영 선언을 안 봐 모름)
+2  ㄱ 이면 lot_slot_move 같은 «짝짓기» 뷰를 맵퍼로 옮겨도 되나
+3  박스 선언을 ㄱ 로 옮기는 일은 누가(응용 세션 박스)
+```
