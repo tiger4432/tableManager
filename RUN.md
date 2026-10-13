@@ -26,7 +26,9 @@
 > ## [10-13] 🔴 **큰 표 검색 — 표 선언에 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다 (총괄 d16033b63, 소유자 「서버가 다 느림」 · 「400만행 표는 이제 검색 40초」)** — git pull · 재기동 · 되돌릴 수 있음
 >
 > ```
-> 선언       table_config.json 의 그 표에, 검색 칸마다 한 줄 (검색 칸이 무엇인지는 아래 «급한 손» 절의 «검색 칸» 순서 그대로)
+> 🔴 어느 칸   메인 그리드 화면에는 검색어 칸이 없다 — 화면의 «검색»은 칸 필터(contains)다(클라 실측 10-13). 그러니 «거르는 그 칸»에 search 색인을 단다
+>            칸 필터로 끊기면 문장이 «Read stopped after 10 s - the limit is …» 로 나와 칸 이름을 안 댄다(서버가 q 만 봄 — 고치는 중)
+> 선언       table_config.json 의 그 표에, 거르는 칸마다 한 줄 (검색어 q 로 부르는 자리가 있으면 아래 «급한 손» 절의 «검색 칸» 순서도)
 >              "indexes": [{"columns": ["dt_job"], "search": true},
 >                          {"columns": ["b_wx"], "search": true},
 >                          {"columns": ["b_wy"], "search": true}]
@@ -128,6 +130,7 @@
 > ```
 > 왜       그리드 검색은 검색 칸마다 «CAST(칸 AS VARCHAR) ILIKE '%글%'» 을 OR 로 묶는다 — 인덱스가 없으면 표 끝까지 읽고, 결과 0 건이면 반드시 끝까지
 > 박스 실측  40만 행 · 0 건 검색: 인덱스 없음 748 ms(Seq Scan) -> 칸마다 아래 인덱스 0.12 ms(BitmapOr · Bitmap Index Scan) — 제품이 보내는 그 문장 그대로
+> 🔴 정정    메인 그리드 화면의 «검색»은 칸 필터(contains)다 — 손 인덱스도 «거르는 그 칸»에. 아래 «검색 칸» 순서는 검색어(q)로 부를 때만
 > 검색 칸   table_config.json 의 그 표: "search_columns" 가 있으면 그 칸들 / 없으면 "composite_key_source" 칸들 / 없으면 "business_key" / 없으면 row_id · business_key_val
 >          🔴 «전부»에 하나씩 — 하나라도 빠지면 다시 표 끝까지
 > 만들기    CREATE EXTENSION IF NOT EXISTS pg_trgm;
