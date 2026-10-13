@@ -504,3 +504,17 @@ retired   the «refuse by name» sentence of 993d17c31 - not built
      recipe walk 둘(환경) · 진짜 결함 하나 — backfill.py:1328-1335 행 수 추정이 ANALYZE 전이면 다른 스키마 같은 이름 표를 집음(478,718) -> 스키마 붙여 묻기. 낡은 시험 둘 고치기와 함께 작게
 순서  가 -> 나 -> 다 -> ㄷ 이어서
 ```
+
+> **[총괄 -> 구현자 B] 10-13 밤 — 원장 프로세스(19d6da585) 짧은 검수: GO-WITH-FIXES (가 다음, 작게 한 커밋)**
+
+```
+1 [높음] 체인 워커만 재기동하면(런처는 옛 코드 그대로) 원장 따라가기가 조용히 0 — 런처 자식 목록은 런처 기동 때만 읽힘
+       -> 체인 워커가 기동 뒤 N 초 안에 신선한 "ledger" 박동이 없으면 경고 한 줄 · RUN.md 에 «이 착지는 런처 전체 재기동, 체인 워커만이면 원장이 멈춤 · 확인은 pg_stat_activity 의 assy_ledger»
+2 [중] 성공 · 격리 그룹마다 commit 뒤 event.event_type 을 읽어 사건마다 SELECT(ingestion_worker:2990 · 3094 · 3420) -> DELETE 의 {표: row_ids} 를 commit 전에 event_ids 옆에서 잡음
+3 [중] 큐 화면 × 로 치운 DELETE · 깊이 상한으로 거절된 DELETE 가 이제 안 거둬짐(전에는 따라가기가 상태 무관하게 거둠) — 총괄 결정: 전 동작으로(행이 지워진 것은 사실 — 치움은 체인 규칙을 안 돌릴 뿐)
+       그 둘의 자리에서도 같은 _retract_deleted_rows 를 부름
+4 [중] 거두기 실패를 삼키고 rollback 안 함(3412-3414) — 공유 세션 오염 -> except 안에서 db.rollback()
+5 [중] drain_outbox_once 가 LIMIT 1000 으로 payload 까지 읽고 행 예산에서 끊음 — 밀린 큐에서 배치마다 1000 읽고 1~2 씀 -> id 와 행 수만 먼저, payload 는 예산 안의 것만
+6 [낮] QA 격리 스택(devenv.py:157)에 원장 프로세스 없음 -> 같은 자식 목록에서
+RUN.md  되돌리기 해시 19d6da585 · «원장만 세우는 법은 없음(Pause 는 체인도 세움)» · «상한 1000 행 — 사건 하나가 1000 행을 넘으면 그만큼»
+```
