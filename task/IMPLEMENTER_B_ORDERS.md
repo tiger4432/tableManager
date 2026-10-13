@@ -209,3 +209,26 @@ map      declarative-role 하나 — implementation_id 를 적지 않는다
 크기      안 쟀다
 순서      큐 1 착지 -> 원장 행 색인 키 -> 이것 -> decide 옛 키 -> LLM 묶음 -> 큐 2
 ```
+
+> **[총괄 -> 구현자 B] 10-13 — 원장 선언 짧은 꼴(b9d33d6f6) 모양을 소유자 안으로 바꾼다: "타입(키:칸)" 글 은퇴 · 문장 목록 + 노드 객체 (소유자 「{attr.. : {node : {attr1 : col, ...}, ...}, sentences : [sentence : predicate : edge, subject : {node : dt_job, keys : {dt_jobid : dtjobid} ] } 이게 낫지 않나?」)**
+
+```
+모양(견본 dt_job)
+  "dt_job": {
+    "table": "dt_job_rollup",
+    "attributes": {"dtjob": {"dt_eqp": "dt_eqp"}},
+    "sentences": [
+      {"sentence": "counted", "predicate": "has_netdie",
+       "subject": {"node": "dtjob", "keys": {"dt_job": "dt_job"}},
+       "value": "netdie_count", "occurred_at": "event_time"},
+      {"sentence": "register", "predicate": "register",
+       "subject": {"node": "dtjob", "keys": {"dt_job": "dt_job"}},
+       "occurred_at": "event_time"}
+    ]
+  }
+값       글 = 컬럼 · {"const": "K1"} = 상수(키 안에서도 같음) · 노드 = {"node": 타입, "keys": {키: 값}} (subject · target 같은 모양)
+문장     sentence = 오늘 매핑 이름 그대로(원자 신원이 안 바뀐다 — 앞 지시의 «매핑 이름» 위험은 이 모양에서 사라짐) · predicate = 어휘 술어 · 그 밖 칸 = 오늘의 역할(value · occurred_at · 수식어) · when 칸 하나
+은퇴     앞 지시의 "타입(키)" · "타입(키:칸)" · "'상수'" 글과 edges 사전 — 작은 언어를 파싱하지 않는다
+그대로   앞 지시(b9d33d6f6)의 나머지 전부 — read · map 은퇴, 행 단위만, upgrade_setup v6 -> v7 한 자리, 못 옮김 이름 대어 거절, dry-run, 펼친 번들 == 오늘 번들, 자리 전수, 게이트, 순서
+행 붙이기 A 의 붙이기 칸도 이 노드 객체 {"node", "keys"} 를 쓴다
+```
