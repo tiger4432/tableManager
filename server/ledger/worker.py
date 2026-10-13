@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """The ledger process's work (총괄 7763dd6d0, 소유자 「원장 프로세스 ㄱ」): the follow-up, the row census, the
 ledger's schema and cursor fingerprints at start, and the ledger's index line - moved out of the chain worker
-unchanged, so the chain writes on when the ledger stops. `start_ledger_worker` runs them; the launcher starts it as its
+unchanged, so the chain writes on when the ledger stops. The chain's Pause holds both loops too: no new batch or
+source is taken while it lasts, and the one running finishes (소유자 10-08 «Pause 만 전부»). `start_ledger_worker` runs them; the launcher starts it as its
 own process (`run_ledger_worker.py`), and a server run alone starts it beside the chain loop (`main.py`)."""
 import asyncio
 import logging
 import time
 
+from chain import control as chain_control
+from chain import keyset_scan
 from ledger import followup as ledger_followup
 from utils import heartbeat
 from utils.logger import count_crossed
@@ -32,8 +35,9 @@ def _ledger_outbox_depth_sync(db_session_factory):
         db.close()
 
 
-def _drain_ledger_followup_sync(db_session_factory):
-    """One follow-up batch, in a thread. The session is this call's and closes with it.
+def _drain_ledger_followup_sync(db_session_factory, rows=None):
+    """One follow-up batch of at most `rows` rows (one event when None), in a thread. The session is this call's and
+    closes with it.
 
     🔴 INTO EVERY WORLD THAT FOLLOWS LIVE, EACH ON ITS OWN DECLARATION (총괄 092a6f9e5) - asked
     of the layout every batch (`schema.live_worlds`), so a world switched on or off takes the
@@ -53,7 +57,7 @@ def _drain_ledger_followup_sync(db_session_factory):
                 if world == schema.operating_world():
                     raise FollowUpStopped(world, exc) from exc
                 _switch_off(world, exc)
-        return ledger_followup.drain_outbox_once(engine, None, followers)
+        return ledger_followup.drain_outbox_once(engine, None, followers, rows=rows)
     finally:
         db.close()
 
@@ -267,6 +271,8 @@ async def run_ledger_row_census(db_session_factory):
         lap_started = time.monotonic()
         measured_seconds = 0.0
         for source in sources:
+            if chain_control.paused() is not None:
+                break
             source_started = time.monotonic()
             census = None
             try:
@@ -348,13 +354,15 @@ async def run_ledger_followup(db_session_factory):
         confirmed_total = refused_total = 0
         skipped = {}
         lap_started = time.monotonic()
-        while units is None or drained < units:
+        # a batch's rows by the one page-size rule (총괄 796f04605 ② - the pace is seconds of work, not events)
+        size = keyset_scan.PageSize()
+        while (units is None or drained < units) and chain_control.paused() is None:
             try:
                 # S-176 덧붙임: the batch already COUNTS what it auto-confirmed; the return
                 # value was being discarded, so the two numbers died one frame above where
                 # they were computed. Carried, not re-measured.
                 done = await asyncio.to_thread(_drain_ledger_followup_sync,
-                                               db_session_factory)
+                                               db_session_factory, size.next())
             except FollowUpStopped as stop:
                 await asyncio.to_thread(_say_the_follow_up, stop,
                                         lambda: _ledger_outbox_depth_sync(db_session_factory))
@@ -378,7 +386,7 @@ async def run_ledger_followup(db_session_factory):
             for source, said in (done.get("sources") or {}).items():
                 if (said or {}).get("skipped"):
                     skipped[source] = skipped.get(source, 0) + 1
-            drained += 1
+            drained += done.get("events", 1)
         # 🔴 A SUCCESSFUL DRAIN USED TO SAY NOTHING, and that silence cost a measurement
         # (S-160, 판정 269). Asked whether the drain was working DURING a reproduction
         # window, nothing could answer: failures warn, successes were mute, and the queue

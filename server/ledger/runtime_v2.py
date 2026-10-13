@@ -104,7 +104,8 @@ RECEIPT_SOURCE = "ledger"
 
 
 def _batch_receipt(store, plan, preview, rows: int, batch_id: str):
-    """A callable that turns this batch's own counts into ONE audit row (S-117, 판정 248).
+    """A callable that turns this batch's own counts into ONE audit row per followed transaction
+    (S-117, 판정 248; a batch folds several - 총괄 796f04605 ② (가)).
 
     🔴 IT IS CALLED INSIDE THE ATOMS' TRANSACTION, which is why it is a callable rather
     than a dict: `atoms_written` and `atoms_deduped` are not known until the insert has
@@ -121,41 +122,43 @@ def _batch_receipt(store, plan, preview, rows: int, batch_id: str):
     and that emptiness is the value: it is what separates "this moved because somebody
     edited a cell" from "this moved because a backfill was running" on the timeline.
     """
-    def build(written: Mapping[str, Any]) -> Mapping[str, Any]:
+    def build(written: Mapping[str, Any]) -> list:
         from database import crud
 
         from . import followup
 
-        followed = followup.event_transaction_id()
-        row = crud.create_audit_log(
-            None, plan.relation, batch_id, RECEIPT_COLUMN, None,
-            {
-                "rows": rows,
-                "molecules": preview.molecule_count,
-                "atoms_written": written.get("inserted"),
-                "atoms_deduped": written.get("deduped"),
-                "atoms_withdrawn": written.get("withdrawn"),
-                "refused": len(preview.refusals),
-                "reasons": _refusal_reasons(preview.refusals),
-                "unsaid": sum(preview.unsaid.values()),
-                "translator_ver": preview.translator_version,
-                # the world it was written into - one event is followed in every live world
-                # (총괄 6091a7ae3 ③)
-                "world": store.names.name,
-                "status": "ok",
-                "error": None,
-            },
-            RECEIPT_SOURCE, store.who,
-            transaction_id=followed, add_to_cache=False)
-        # 🔴 AND THE EMPTY FIELD SURVIVES `create_audit_log`'S DEFAULT (판정 248, measured
-        # on the first live run). That function invents a transaction id when given none,
-        # which is right for a cell edit - every human write belongs to some group - and
-        # wrong for a receipt: an invented id makes a backfill look like a group of ONE,
-        # indistinguishable on the timeline from a chain event that happened to touch a
-        # single table. The difference is exactly what this record exists to show, so the
-        # field is put back to what was followed, which may be nothing.
-        row["transaction_id"] = followed
-        return row
+        receipts = []
+        for followed in followup.event_transaction_ids():
+            row = crud.create_audit_log(
+                None, plan.relation, batch_id, RECEIPT_COLUMN, None,
+                {
+                    "rows": rows,
+                    "molecules": preview.molecule_count,
+                    "atoms_written": written.get("inserted"),
+                    "atoms_deduped": written.get("deduped"),
+                    "atoms_withdrawn": written.get("withdrawn"),
+                    "refused": len(preview.refusals),
+                    "reasons": _refusal_reasons(preview.refusals),
+                    "unsaid": sum(preview.unsaid.values()),
+                    "translator_ver": preview.translator_version,
+                    # the world it was written into - one event is followed in every live world
+                    # (총괄 6091a7ae3 ③)
+                    "world": store.names.name,
+                    "status": "ok",
+                    "error": None,
+                },
+                RECEIPT_SOURCE, store.who,
+                transaction_id=followed, add_to_cache=False)
+            # 🔴 AND THE EMPTY FIELD SURVIVES `create_audit_log`'S DEFAULT (판정 248, measured
+            # on the first live run). That function invents a transaction id when given none,
+            # which is right for a cell edit - every human write belongs to some group - and
+            # wrong for a receipt: an invented id makes a backfill look like a group of ONE,
+            # indistinguishable on the timeline from a chain event that happened to touch a
+            # single table. The difference is exactly what this record exists to show, so the
+            # field is put back to what was followed, which may be nothing.
+            row["transaction_id"] = followed
+            receipts.append(row)
+        return receipts
 
     return build
 
