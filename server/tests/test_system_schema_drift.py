@@ -221,8 +221,6 @@ SYSTEM_TABLE_COLUMNS = {
     "file_reread_marks": ('folder', 'log_id', 'marked_at', 'status_before'),
     "file_ingestion_checkpoints": ('chunk_index', 'file_mtime', 'file_signature', 'file_size', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'updated_at'),
     "file_ingestion_logs": ('created_at', 'error_message', 'filename', 'filepath', 'id', 'retry_count', 'status', 'table_name', 'updated_at'),
-    # llm_calls: the LLM seat's per-minute limit (총괄 ded29a831) - a new table made whole by create_all
-    "llm_calls": ('called_at', 'id'),
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_assumed: migrations/add_frame_confirmation.py (spec MAP_ALIGNMENT 9a - which
     # confirmations rest on a borrowed wafer spec)

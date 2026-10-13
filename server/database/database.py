@@ -131,13 +131,13 @@ def _note_the_backend(session, transaction, connection):
     """The database pid a claimed unit of work is running on (a chain group, a watcher
     file) - read off the driver, no query, and re-read on every transaction, so a commit
     that hands the session another pooled connection keeps it true. A thread with no open
-    claim notes nothing."""
+    claim notes nothing; a claim that names its own session takes only that session's pid."""
     try:
         pid = connection.connection.dbapi_connection.get_backend_pid()
     except Exception:                                   # noqa: BLE001 - SQLite has none
         return
     from utils import heartbeat
-    heartbeat.note_work(db_pid=pid)
+    heartbeat.note_work(db_session=id(session), db_pid=pid)
 
 
 @event.listens_for(Session, "after_begin")

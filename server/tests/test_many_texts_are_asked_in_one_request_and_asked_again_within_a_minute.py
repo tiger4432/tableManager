@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""총괄 f7a79b242 · ded29a831 (소유자 10-13 「체인 배치로 받아서 문장 잘 합쳐서 지시문 구성해서 요청 날려」 ·
-「분당 20 회 제한 있음」): `ask_links` takes many texts in one request, and every call of the one LLM
-seat (`utils.llm.ask_json`) waits for room under a per-minute limit. A fake model - `llm.ask_json`
-replaced by one that answers each [id] of the prompt - except where the seat itself is measured.
+"""총괄 f7a79b242 (소유자 10-13 「체인 배치로 받아서 문장 잘 합쳐서 지시문 구성해서 요청 날려」): `ask_links` takes many
+texts in one request; the one LLM seat (`utils.llm.ask_json`) keeps no limit of its own (소유자 「어차피 서버가 거절함」)
+and asks again what got no answer, a 429 too, within a minute of the first failure (총괄 10-13 ④). A fake model -
+`llm.ask_json` replaced by one that answers each [id] of the prompt - except where the seat itself is measured.
 
   one text (a str)                    the rows today's code gave, byte for byte (67 recorded calls)
   n texts of one length, cap c        ceil(n x length / c) requests · `requests` says it
@@ -14,10 +14,12 @@ replaced by one that answers each [id] of the prompt - except where the seat its
   every text refused                  LlmRefused, the first text's reason
   the same id twice                   ValueError before any request
   the prompt                          snapshot below
-  the per-minute limit                the 21st call of a minute waits for the oldest to leave
-  a 429                               asked again after its Retry-After, RATE_LIMITED_TRIES times
+  no answer · a 429                   asked again after 5 · 10 · 20 · 20 s (a 429 after its Retry-After) while the next
+                                      try starts within 60 s of the first failure - back within ~55 s passes
+  a Retry-After over 60 s             not waited for: LlmCallFailed at once
+  a key refused · a 4xx · own errors  not asked again (4xx: text by text)
+  a pause during a wait               ChainPaused in a chain group - rewound, not failed
   number cells                        defaults · a bad value refused by name
-  two processes (PostgreSQL)          one limit: `llm_calls` under the advisory lock · no table: refused with the fix
 """
 import json
 import logging
@@ -241,41 +243,22 @@ def test_the_prompt_of_a_batch(model):
     assert fake.prompts == [SNAPSHOT]
 
 
-# ---------------------------------------------------------------------------- the seat: per-minute limit · 429
+# ---------------------------------------------------------------------------- the seat: asking again
 
 
 @pytest.fixture(name="clock")
 def fixture_clock(monkeypatch):
-    """The seat's clock stands still unless a wait moves it; `clock.waits` are the waits asked."""
+    """The seat's clocks stand still unless a wait moves them; `clock.waits` are the waits asked - whole, the
+    slice set past any wait (`test_a_pause_during_a_wait_*` slices them)."""
     clock = types.SimpleNamespace(now=1000.0, waits=[])
 
     def sleep(seconds):
         clock.waits.append(seconds)
         clock.now += seconds
-    monkeypatch.setattr(llm, "_clock", lambda: clock.now)
+    monkeypatch.setattr(llm, "_steady", lambda: clock.now)
     monkeypatch.setattr(llm, "_sleep", sleep)
+    monkeypatch.setattr(llm, "WAIT_SLICE_S", 1e9)
     return clock
-
-
-def test_the_21st_call_of_a_minute_waits_for_the_oldest_to_leave(answer, clock, caplog):
-    answer('{"ok": 1}')
-    caplog.set_level(logging.INFO)
-    for n in range(20):
-        llm.ask_json("call %d" % n)
-        clock.now += 1.0                       # one call a second: the first left at 1000
-    assert clock.waits == []
-    llm.ask_json("the 21st")
-    assert clock.waits == [40.0], "the oldest (1000) leaves the window at 1060; the 21st came at 1020"
-    assert "[LLM] per-minute limit - waiting 40 s (20 requests a minute)" in [
-        r.getMessage() for r in caplog.records if r.name == "utils.llm"]
-
-
-def test_the_limit_is_the_files_cell(answer, root, clock):
-    _declare(root, **CELLS, requests_per_minute=2)
-    answer('{"ok": 1}')
-    for _n in range(3):
-        llm.ask_json("call")
-    assert clock.waits == [60.0]
 
 
 class TooMany(Exception):
@@ -309,157 +292,56 @@ def _client_saying(monkeypatch, *said):
     return calls
 
 
-def test_a_429_is_asked_again_after_its_retry_after(root, clock, monkeypatch, caplog):
-    _declare(root, **CELLS)
+TOO_MANY = "TooMany: Error code: 429 - too many requests · proxy: none (direct)"
+
+
+def test_a_429_is_asked_again_after_its_retry_after(retrying, monkeypatch, caplog, root):
+    """A 429 waits what it asks (7 s); without a Retry-After, the next step of the ladder (10 s)."""
     calls = _client_saying(monkeypatch, TooMany("7"), TooMany(), '{"ok": 1}')
     caplog.set_level(logging.WARNING)
     assert llm.ask_json("anything") == {"ok": 1}
-    assert len(calls) == 3 and clock.waits == [7.0, 60.0]
+    assert len(calls) == 3 and retrying.waits == [7.0, 10]
     assert [line.get("status") for line in _log_lines(root) if "received" in line] == [429, 429, 200]
     assert [r.getMessage() for r in caplog.records if r.name == "utils.llm"] == [
-        "[LLM] the gateway answered 429 (too many requests) - waiting 7 s, then try 2 of 4",
-        "[LLM] the gateway answered 429 (too many requests) - waiting 60 s, then try 3 of 4"]
+        "[LLM] call failed (%s) - retrying in 7 s (1 of 4)" % TOO_MANY,
+        "[LLM] call failed (%s) - retrying in 10 s (2 of 4)" % TOO_MANY]
 
 
-def test_a_429_past_the_tries_is_refused(root, clock, monkeypatch):
-    _declare(root, **CELLS)
-    calls = _client_saying(monkeypatch, *[TooMany("1")] * (llm.RATE_LIMITED_TRIES + 1))
-    with pytest.raises(llm.LlmRefused, match="the language model call failed: TooMany: Error code: 429"):
+def test_a_429_past_its_retries_is_a_call_that_failed(retrying, monkeypatch):
+    calls = _client_saying(monkeypatch, *[TooMany("1")] * 5)
+    with pytest.raises(llm.LlmCallFailed, match="the language model call failed: TooMany: Error code: 429"):
         llm.ask_json("anything")
-    assert len(calls) == llm.RATE_LIMITED_TRIES + 1 and clock.waits == [1.0] * llm.RATE_LIMITED_TRIES
+    assert len(calls) == 5 and retrying.waits == [1.0] * 4
 
 
-def test_another_failure_is_not_asked_again(root, clock, monkeypatch):
-    failure = RuntimeError("upstream said no")
-    failure.status_code = 503
-    _declare(root, **CELLS)
+def test_a_429_whose_wait_ends_past_the_minute_is_not_waited(retrying, monkeypatch):
+    """Retry-After 40 after 30 s of 429s: the next try would start 70 s after the first failure."""
+    calls = _client_saying(monkeypatch, TooMany("30"), TooMany("40"), '{"ok": 1}')
+    with pytest.raises(llm.LlmCallFailed):
+        llm.ask_json("anything")
+    assert len(calls) == 2 and retrying.waits == [30.0]
+
+
+@pytest.mark.parametrize("failure", [TypeError("bad header value"), UnicodeEncodeError("ascii", "é", 0, 1, "x")],
+                         ids=["TypeError", "UnicodeEncodeError"])
+def test_another_failure_is_not_asked_again(retrying, monkeypatch, failure):
+    """최종 검수 6: only no answer (connection, time limit, 5xx, 408) is asked again - an error of the call's own
+    making, with no status, fails at once (a 503 is asked again: `test_no_answer_*`)."""
     calls = _client_saying(monkeypatch, failure)
-    with pytest.raises(llm.LlmRefused, match="503|upstream said no"):
+    with pytest.raises(llm.LlmCallFailed):
         llm.ask_json("anything")
-    assert len(calls) == 1 and clock.waits == []
+    assert len(calls) == 1 and retrying.waits == []
 
 
 def test_the_number_cells_default_and_a_bad_one_is_refused(root):
     _declare(root, **CELLS)
     cells = llm.settings()
     assert {name: cells[name] for name in llm.NUMBER_CELLS} == {
-        "timeout_s": 60.0, "requests_per_minute": 20, "batch_chars": 4000, "known_chars": 4000, "known_per_seed": 5}
-    for name, bad in (("requests_per_minute", 0), ("batch_chars", 1.5), ("known_chars", "9"), ("known_per_seed", True)):
+        "timeout_s": 60.0, "batch_chars": 4000, "known_chars": 4000, "known_per_seed": 5}
+    for name, bad in (("batch_chars", 0), ("batch_chars", 1.5), ("known_chars", "9"), ("known_per_seed", True)):
         _declare(root, **CELLS, **{name: bad})
         with pytest.raises(llm.LlmRefused, match="%s in config/llm_config.json is not a whole number" % name):
             llm.settings()
-
-
-# ---------------------------------------------------------------------------- PostgreSQL: one limit, many processes
-
-
-def _public_calls(engine):
-    from sqlalchemy import text
-    with engine.connect() as conn:
-        if conn.execute(text("SELECT to_regclass('public.llm_calls')")).scalar() is None:
-            return None
-        return conn.execute(text("SELECT count(*) FROM public.llm_calls")).scalar()
-
-
-@pytest.fixture(name="two_processes")
-def fixture_two_processes(pg_engine, monkeypatch):
-    """Two engines on the scratch schema - two processes as the database sees them - and the seat's
-    engine switched between them; public.llm_calls counted before and after."""
-    from sqlalchemy import create_engine, text
-    from sqlalchemy.pool import NullPool
-
-    from database import database
-    from tests.conftest import PG_TEST_SCHEMA, scratch_connect_args
-
-    other = create_engine(pg_engine.url, poolclass=NullPool, connect_args=scratch_connect_args(PG_TEST_SCHEMA))
-    with pg_engine.begin() as conn:
-        schema = conn.execute(text("SELECT current_schema()")).scalar()
-        conn.execute(text("DELETE FROM llm_calls"))          # the scratch table: this test's calls only
-    with other.connect() as conn:
-        assert conn.execute(text("SELECT current_schema()")).scalar() == schema != "public"
-    before = _public_calls(pg_engine)
-    engines = {"A": pg_engine, "B": other}
-
-    def be(name):
-        monkeypatch.setattr(database, "engine", engines[name])
-    yield be
-    assert _public_calls(pg_engine) == before, "public.llm_calls untouched"
-    other.dispose()
-
-
-@pytest.mark.pg
-def test_two_processes_share_one_limit(two_processes, clock):
-    from sqlalchemy import text
-
-    from database import database
-    for name in "ABA":
-        two_processes(name)
-        llm._take_a_turn(3)
-    assert clock.waits == []
-    two_processes("B")
-    llm._take_a_turn(3)
-    assert clock.waits == [60.0], "B's first call is the fourth of the minute"
-    with database.engine.connect() as conn:
-        assert conn.execute(text("SELECT called_at FROM llm_calls")).scalars().all() == [1060.0], (
-            "the three of 1000 left the window at 1060 and were deleted; B's call is the one row")
-
-
-@pytest.mark.pg
-def test_callers_at_one_instant_get_exactly_the_cap(two_processes, clock, monkeypatch):
-    from sqlalchemy import text
-
-    from database import database
-
-    class Waited(Exception):
-        pass
-
-    def sleep(_seconds):
-        raise Waited
-    monkeypatch.setattr(llm, "_sleep", sleep)
-    real_wait = llm._wait_s
-
-    def slow_wait(times, now, cap):
-        """Between the count and the write, so callers without the lock would all read the same count."""
-        time.sleep(0.2)
-        return real_wait(times, now, cap)
-    monkeypatch.setattr(llm, "_wait_s", slow_wait)
-    two_processes("A")
-    engine = database.engine
-    passed, waited = [], []
-
-    def call():
-        try:
-            llm._take_a_turn(5)
-            passed.append(1)
-        except Waited:
-            waited.append(1)
-    threads = [threading.Thread(target=call) for _n in range(8)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-    with engine.connect() as conn:
-        assert conn.execute(text("SELECT count(*) FROM llm_calls")).scalar() == 5
-    assert (len(passed), len(waited)) == (5, 3)
-
-
-@pytest.mark.pg
-def test_a_database_without_the_table_is_refused_by_name(two_processes, clock, monkeypatch):
-    """A slot that asks before the web server made `llm_calls`: the call is refused with the fix, not a raw
-    database error. The table's place taken by one of its shape under a name nobody made - nothing dropped."""
-    from sqlalchemy import Column, Float, Integer, MetaData, Table
-
-    from database import models
-    two_processes("A")
-    absent = Table("llm_calls_never_made", MetaData(), Column("id", Integer, primary_key=True),
-                   Column("called_at", Float, nullable=False))
-    monkeypatch.setattr(models.LlmCall, "__table__", absent)
-    with pytest.raises(llm.LlmCallFailed) as refused:
-        llm._take_a_turn(3)
-    said = str(refused.value)
-    assert said.startswith("the per-minute limit could not use table llm_calls_never_made (ProgrammingError: ")
-    assert said.endswith(" - it is made by the web server's boot (create_all): start it once on this code")
-    assert clock.waits == []
 
 
 def _failing(at, failure):
@@ -523,30 +405,61 @@ def _gateway_down_until(monkeypatch, clock, until, per_try=0.0):
     return began
 
 
-def test_a_gateway_down_for_30_s_is_waited_out_and_the_batch_reads(retrying, monkeypatch, caplog):
-    """총괄 10-13 ④: no answer is asked again after 5, 10, 20 s - each try a turn under the per-minute limit."""
-    began = _gateway_down_until(monkeypatch, retrying, until=1030)
+TRIES = [1000.0, 1005.0, 1015.0, 1035.0, 1055.0]
+
+
+@pytest.mark.parametrize("down,tries", [(30, 4), (36, 5), (50, 5)])
+def test_a_gateway_back_within_55_s_is_waited_out_and_the_batch_reads(retrying, monkeypatch, caplog, down, tries):
+    """총괄 10-13 ④ · 최종 검수 1: no answer is asked again after 5, 10, 20, 20 s - tries at 0 · 5 · 15 · 35 · 55 s."""
+    began = _gateway_down_until(monkeypatch, retrying, until=1000 + down)
     caplog.set_level(logging.WARNING)
     rows = text_links.ask_links(A, NAMES)
     assert [row["cause_phrase"] for row in rows] == ["bond temperature"] and rows.requests == 1
-    assert began == [1000.0, 1005.0, 1015.0, 1035.0] and retrying.waits == [5, 10, 20]
-    assert len(llm._recent) == 4, "the limit counted every try"
+    assert began == TRIES[:tries] and retrying.waits == [5, 10, 20, 20][:tries - 1]
     assert [r.getMessage() for r in caplog.records if r.name == "utils.llm"] == [
-        "[LLM] call failed (%s) - retrying in %d s (%d of 3)" % (DOWN, wait, n)
-        for n, wait in enumerate((5, 10, 20), 1)]
+        "[LLM] call failed (%s) - retrying in %d s (%d of 4)" % (DOWN, wait, n)
+        for n, wait in enumerate((5, 10, 20, 20)[:tries - 1], 1)]
 
 
-def test_a_gateway_down_for_90_s_fails_the_batch_once(retrying, monkeypatch):
-    began = _gateway_down_until(monkeypatch, retrying, until=1090)
+@pytest.mark.parametrize("down", [59, 90])
+def test_a_gateway_down_past_55_s_fails_the_batch_once(retrying, monkeypatch, down):
+    began = _gateway_down_until(monkeypatch, retrying, until=1000 + down)
     with pytest.raises(llm.LlmCallFailed) as refused:
         text_links.ask_links(BATCH, NAMES)
     assert str(refused.value) == "the language model call failed: " + DOWN
-    assert began == [1000.0, 1005.0, 1015.0, 1035.0] and retrying.waits == [5, 10, 20]
+    assert began == TRIES and retrying.waits == [5, 10, 20, 20]
+
+
+def test_a_pause_during_a_wait_rewinds_the_group_and_is_not_a_failure(retrying, monkeypatch):
+    """최종 검수 3: the wait is slept in slices; in a chain group each asks the pause - paused, `ChainPaused` (the
+    group is rewound at that boundary, not failed), and nothing more is asked. Each slice is progress."""
+    from chain import control
+    from database.context import chain_group
+    from utils import heartbeat
+
+    monkeypatch.setattr(llm, "WAIT_SLICE_S", 1.0)
+    began = _gateway_down_until(monkeypatch, retrying, until=2000)
+    monkeypatch.setattr(control, "paused", lambda: {"by": "t"} if retrying.now >= 1003 else None)
+    slices = []
+    monkeypatch.setattr(heartbeat, "progress", lambda stage: slices.append(stage))
+    with chain_group(), pytest.raises(control.ChainPaused):
+        llm.ask_json("anything")
+    assert began == [1000.0] and retrying.waits == [1.0, 1.0, 1.0] and slices == [None] * 3
+
+
+def test_outside_a_group_a_wait_does_not_ask_the_pause(retrying, monkeypatch):
+    from chain import control
+
+    monkeypatch.setattr(llm, "WAIT_SLICE_S", 1.0)
+    began = _gateway_down_until(monkeypatch, retrying, until=1004)
+    monkeypatch.setattr(control, "paused", lambda: {"by": "t"})
+    assert llm.ask_json("anything") == {"texts": [{"id": 1, "links": LINKS[A][:1]}]}
+    assert began == [1000.0, 1005.0] and retrying.waits == [1.0] * 5
 
 
 def test_tries_that_take_long_stop_at_the_minute(retrying, monkeypatch):
-    """The window counts from the first failure: tries of 25 s each fail at 1025 and 1055; a third wait (20 s)
-    would end past 1025 + 60, so the third try is the last."""
+    """The window counts from the first failure: tries of 25 s each fail at 1025, 1055 and 1090; the next would
+    start at 1110, past 1025 + 60, so the third try is the last."""
     began = _gateway_down_until(monkeypatch, retrying, until=10_000, per_try=25)
     with pytest.raises(llm.LlmCallFailed):
         llm.ask_json("anything")
@@ -564,24 +477,22 @@ class Status(Exception):
         self.status_code = status
 
 
-def test_a_retry_after_past_one_window_is_a_call_that_failed_not_a_wait(root, clock, monkeypatch):
+def test_a_retry_after_past_one_window_is_a_call_that_failed_not_a_wait(retrying, monkeypatch):
     """1: a gateway asking 3600 s would hold the group (and its tables) for hours - refused at once."""
-    _declare(root, **CELLS)
     calls = _client_saying(monkeypatch, TooMany("3600"), '{"ok": 1}')
     with pytest.raises(llm.LlmCallFailed) as refused:
         llm.ask_json("anything")
-    assert len(calls) == 1 and clock.waits == []
+    assert len(calls) == 1 and retrying.waits == []
     assert str(refused.value).endswith(" - it asked to wait 3600 s (Retry-After), more than 60 s")
 
 
-def test_a_retry_after_of_one_window_is_waited(root, clock, monkeypatch):
-    _declare(root, **CELLS)
+def test_a_retry_after_of_one_window_is_waited(retrying, monkeypatch):
     calls = _client_saying(monkeypatch, TooMany("60"), '{"ok": 1}')
-    assert llm.ask_json("anything") == {"ok": 1} and len(calls) == 2 and clock.waits == [60.0]
+    assert llm.ask_json("anything") == {"ok": 1} and len(calls) == 2 and retrying.waits == [60.0]
 
 
 def test_the_client_makes_no_request_of_its_own(answer):
-    """5: the SDK's own retries went around the per-minute limit - every request is the seat's."""
+    """5: the SDK's own retries were a second ladder beside the seat's - every request is the seat's."""
     answer('{"ok": 1}')
     llm.ask_json("anything")
     assert [made["max_retries"] for made in answer.made] == [0]
@@ -592,12 +503,11 @@ def _one(ident):
 
 
 @pytest.mark.parametrize("status", [400, 413, 404, 422])
-def test_a_request_refused_as_too_large_or_bad_is_asked_text_by_text(root, clock, monkeypatch, status):
-    """8: a 4xx other than the key's is the request's - each text alone once."""
-    _declare(root, **CELLS)
+def test_a_request_refused_as_too_large_or_bad_is_asked_text_by_text(retrying, monkeypatch, status):
+    """8: a 4xx other than the key's is the request's - not asked again as no answer, each text alone once."""
     calls = _client_saying(monkeypatch, Status(status), _one("a"), _one("7"), _one("c"))
     found = text_links.ask_links(BATCH, NAMES)
-    assert (len(calls), found.requests, found.refused) == (4, 4, [])
+    assert (len(calls), found.requests, found.refused, retrying.waits) == (4, 4, [], [])
 
 
 @pytest.mark.parametrize("status", [401, 403])
@@ -611,29 +521,42 @@ def test_a_refused_key_says_to_check_it(root, clock, monkeypatch, status):
                                   " config/llm_config.json: Status: Error code: %d · proxy: none (direct)" % (status, status))
 
 
-@pytest.mark.parametrize("failure,waits", [(Status(500), [5, 10, 20]), (Status(503), [5, 10, 20]),
-                                           (TimeoutError("timed out"), [5, 10, 20]), (TooMany("1"), [1.0, 1.0, 1.0])],
-                         ids=["500", "503", "timeout", "429-past-its-tries"])
-def test_no_answer_fails_the_batch_once_after_its_tries(retrying, monkeypatch, failure, waits):
-    """Text by text never: four tries of the batch's one request, then `LlmCallFailed` - a spent 429 by its own count."""
-    calls = _client_saying(monkeypatch, *[failure] * 4)
+NO_ANSWER_WAITS = [5, 10, 20, 20]
+
+
+@pytest.mark.parametrize("failure,tries,waits", [
+    (Status(500), 5, NO_ANSWER_WAITS), (Status(503), 5, NO_ANSWER_WAITS), (Status(408), 5, NO_ANSWER_WAITS),
+    (TimeoutError("timed out"), 5, NO_ANSWER_WAITS), (ConnectionError("reset"), 5, NO_ANSWER_WAITS),
+    (TooMany("1"), 5, [1.0] * 4)], ids=["500", "503", "408", "timeout", "connection", "429-past-its-retries"])
+def test_no_answer_fails_the_batch_once_after_its_tries(retrying, monkeypatch, failure, tries, waits):
+    """Text by text never: the batch's one request tried again, then `LlmCallFailed` - a 429 by the same ladder."""
+    calls = _client_saying(monkeypatch, *[failure] * tries)
     with pytest.raises(llm.LlmCallFailed):
         text_links.ask_links(BATCH, NAMES)
-    assert len(calls) == 4 and retrying.waits == waits
+    assert len(calls) == tries and retrying.waits == waits
 
 
-def test_a_key_refused_or_a_request_refused_is_not_asked_again(retrying, monkeypatch):
-    calls = _client_saying(monkeypatch, Status(401))
-    with pytest.raises(llm.LlmRefused):
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_key_refused_is_not_asked_again(retrying, monkeypatch, status):
+    calls = _client_saying(monkeypatch, Status(status))
+    with pytest.raises(llm.LlmRefused) as refused:
         llm.ask_json("anything")
-    assert len(calls) == 1 and retrying.waits == []
+    assert len(calls) == 1 and retrying.waits == [] and not isinstance(refused.value, llm.LlmCallFailed)
 
 
-def test_a_client_that_cannot_be_built_is_not_a_call_that_failed(root, clock, monkeypatch):
+def test_a_key_refused_in_a_batch_is_asked_text_by_text_never_again(retrying, monkeypatch):
+    calls = _client_saying(monkeypatch, *[Status(401)] * 4)
+    with pytest.raises(llm.LlmRefused) as refused:
+        text_links.ask_links(BATCH, NAMES)
+    assert len(calls) == 4 and retrying.waits == [] and "refused the key (401)" in str(refused.value)
+
+
+def test_a_client_that_cannot_be_built_is_not_asked_again(retrying, root):
     _declare(root, **CELLS, proxy="http://user:p/w@proxy.test:8080")
     with pytest.raises(llm.LlmRefused) as refused:
         llm.ask_json("anything")
-    assert not isinstance(refused.value, llm.LlmCallFailed)
+    assert not isinstance(refused.value, llm.LlmCallFailed) and retrying.waits == []
+    assert len([line for line in _log_lines(root) if "received" in line]) == 1
 
 
 def test_one_text_answered_the_one_text_way_is_read(model):
@@ -669,20 +592,3 @@ def test_the_first_item_of_an_id_is_its_answer(model):
                                           {"id": "a", "links": []}, {"id": "c", "links": []}]})
     rows = text_links.ask_links(BATCH, NAMES)
     assert [(row["text_id"], row["cause_phrase"]) for row in rows] == [(7, "humidity")]
-
-
-@pytest.mark.pg
-def test_a_table_the_limit_cannot_read_is_said_without_the_boot(two_processes, clock, monkeypatch):
-    """9: only a missing table names the boot - a table of another shape says what the database said."""
-    from sqlalchemy import Column, Float, Integer, MetaData, Table
-
-    from database import models
-    two_processes("A")
-    # a table the scratch schema has, without the column: the statement fails at its column (42703), deletes nothing
-    other = Table("database_outbox", MetaData(), Column("id", Integer, primary_key=True),
-                  Column("called_at", Float, nullable=False))
-    monkeypatch.setattr(models.LlmCall, "__table__", other)
-    with pytest.raises(llm.LlmCallFailed) as refused:
-        llm._take_a_turn(3)
-    assert str(refused.value).startswith("the per-minute limit could not use table database_outbox (ProgrammingError: ")
-    assert "boot" not in str(refused.value)

@@ -37,7 +37,7 @@ from ledger_api import ledger_subgraph                                     # noq
 from utils import llm, text_links                                          # noqa: E402
 from test_a_text_is_read_by_a_language_model import (                      # noqa: E402,F401 - the fixtures are used
     CELLS, _declare, fixture_root)
-from test_many_texts_are_asked_in_one_request_under_a_per_minute_limit import Model   # noqa: E402
+from test_many_texts_are_asked_in_one_request_and_asked_again_within_a_minute import Model   # noqa: E402
 from tests.test_ledger_trace_pg import ledger_engine   # noqa: E402,F401 - the shipped ledger schema, for the pg proof
 
 NOW = datetime(2026, 5, 1, tzinfo=timezone.utc)
@@ -320,6 +320,50 @@ def test_the_walk_runs_under_the_chains_statement_limit_in_a_group(pg_engine, mo
         text_links._walked([("thing", "N1")], ["leads_to"], 2)
     text_links._walked([("thing", "N1")], ["leads_to"], 2)
     assert seen[0] == "2min" and seen[1] != "2min", seen
+
+
+@pytest.mark.pg
+def test_a_walk_in_a_group_leaves_the_groups_backend_as_the_pid_a_pause_cancels(pg_engine, monkeypatch):
+    """최종 검수 2: the known walk (and any side session - a probe in its own session, synthesis.py's shape) begins a
+    transaction on the group's thread; the claim names the group's session as its owner, so the facts a pause reads
+    (`db_pid`, written to the beat at once) keep the group's backend. Pids as the hook reads them - the driver's."""
+    from sqlalchemy.orm import Session
+
+    from database import database
+    from ledger import trace_router
+    from utils import heartbeat
+
+    def pid_of(session):
+        return session.connection().connection.dbapi_connection.get_backend_pid()
+    walked = {}
+
+    def walk(connection, **_kwargs):
+        walked["pid"] = connection.connection.dbapi_connection.get_backend_pid()
+        return {"nodes": [], "edges": []}
+    monkeypatch.setattr(database, "engine", pg_engine)
+    monkeypatch.setattr(trace_router, "_evidence_graph", walk)
+    monkeypatch.setattr(ledger_subgraph, "_declared_key_order", lambda entity_type: ["key"])
+    name = "qa_group_%s" % uuid.uuid4().hex[:6]
+    group = Session(bind=pg_engine)
+    try:
+        with heartbeat.work_claim(name, "a group", acted_on=True, owner=id(group)):
+            group_pid = pid_of(group)
+            text_links._walked([("thing", "N1")], ["leads_to"], 2)
+            with Session(bind=pg_engine) as probe:
+                probe_pid = pid_of(probe)
+            claimed = [dict(c, facts=dict(c["facts"])) for c in heartbeat.open_claims()]   # facts as they are now
+            written = heartbeat.read_all()[name]["work"]
+            group.commit()
+            again = pid_of(group)                                    # its next transaction, its next connection
+            after_commit = heartbeat.open_claims()
+    finally:
+        group.close()
+    assert len({group_pid, walked["pid"], probe_pid}) == 3, "three backends - else the cell measures nothing"
+    (facts,) = [c["facts"] for c in claimed if c["name"] == name]
+    assert facts["db_pid"] == group_pid
+    assert written["facts"]["db_pid"] == group_pid, "the beat as a pause reads it (cancel_running_group) - the group's backend"
+    (facts_after,) = [c["facts"] for c in after_commit if c["name"] == name]
+    assert facts_after["db_pid"] == again, "the owner's later transaction is still noted"
 
 
 # ---------------------------------------------------------------------------- PostgreSQL: the real walk

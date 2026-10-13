@@ -62,9 +62,8 @@ def fixture_root(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
     for name in llm.RETIRED_ENV:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(llm, "_recent", [])       # the per-minute limit counts this test's calls only
-    # one try per call here - the no-answer retries are measured on a stopped clock in
-    # test_many_texts_are_asked_in_one_request_under_a_per_minute_limit.py (`retrying`)
+    # one try per call here - the retries are measured on a stopped clock in
+    # test_many_texts_are_asked_in_one_request_and_asked_again_within_a_minute.py (`retrying`)
     monkeypatch.setattr(llm, "CALL_RETRY_WAITS", ())
     (tmp_path / "config").mkdir()
     return tmp_path

@@ -2493,7 +2493,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
     from database.context import chain_group
     from database.database import _set_statement_time_limits
 
-    with heartbeat.work_claim(GROUP_BEAT, what, note=_worker_note(), acted_on=True), \
+    with heartbeat.work_claim(GROUP_BEAT, what, note=_worker_note(), acted_on=True, owner=id(db)), \
             alignment_batch_counts.interrupt_at_stages(chain_control.raise_if_paused), \
             chain_group():
         # 🔴 THE TRANSACTION OPEN AT THE GROUP'S START IS BOUNDED WHERE IT STANDS (소유자 10-08 「체인
@@ -2506,7 +2506,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
         # The backend is read here once; a later transaction notes its own (database.py).
         try:
             heartbeat.note_work(
-                db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
+                db_session=id(db), db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
         except Exception:                                   # noqa: BLE001 - SQLite has none
             pass
         # its first and last event too: a set-aside asks whether this group holds its events, and

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint, Float
+from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint
 from sqlalchemy.sql import func
 from .database import Base, is_sqlite
 
@@ -1039,17 +1039,6 @@ class AuthApiKey(Base):
         UniqueConstraint("key_hash", name="auth_api_keys_key_hash_key",
                          info={"purpose": "one key per hash", "serves": "API key sign-in"}),
     )
-
-
-class LlmCall(Base):
-    """One call the language model seat (`utils.llm.ask_json`) made in the last minute - the per-minute
-    limit every process that asks shares (총괄 10-13, 소유자 「분당 20 회 제한」). Epoch seconds. A call
-    deletes the rows older than the window, so the table holds at most the limit's number of rows."""
-
-    __tablename__ = "llm_calls"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    called_at = Column(Float, nullable=False)
 
 
 import sys

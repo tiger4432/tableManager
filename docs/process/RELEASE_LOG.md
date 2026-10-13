@@ -14,7 +14,7 @@
 ### 체인 규칙
 
 - 2026-10-13 [LLM 후보 뽑기 — 이미 아는 인과를 프롬프트에 싣고, 연결성을 재는 명령](#2026-10-13--llm-후보-뽑기--이미-아는-인과를-프롬프트에-싣고-연결성을-재는-명령) — 명령 `python server/scripts/causal_graph_connectivity.py` · 적는 곳 `llm_config.json` · 맵퍼
-- 2026-10-13 [LLM 후보 뽑기 — 묶음의 글을 한 요청으로, 부름은 분당 20 번까지](#2026-10-13--llm-후보-뽑기--묶음의-글을-한-요청으로-부름은-분당-20-번까지) — 적는 곳 `llm_config.json` · 맵퍼 · `chain_rules.json`
+- 2026-10-13 [LLM 후보 뽑기 — 묶음의 글을 한 요청으로, 답이 없으면 1 분 안에서 다시](#2026-10-13--llm-후보-뽑기--묶음의-글을-한-요청으로-답이-없으면-1-분-안에서-다시) — 적는 곳 `llm_config.json` · 맵퍼 · `chain_rules.json`
 - 2026-10-12 [고침 — 체인 슬롯이 오래 돌아도 그룹이 DB 연결을 30 초 기다리지 않는다](#2026-10-12--고침--체인-슬롯이-오래-돌아도-그룹이-db-연결을-30-초-기다리지-않는다)
 - 2026-10-12 [체인 워커가 키 인덱스를 기다리지 않고 켜진다 — 인덱스는 옆에서, 기다림 20 초](#2026-10-12--체인-워커가-키-인덱스를-기다리지-않고-켜진다--인덱스는-옆에서-기다림-20-초)
 - 2026-10-11 [LLM 링크의 문장이 줄바꿈에서 안 잘린다](#2026-10-11--llm-링크의-문장이-줄바꿈에서-안-잘린다)
@@ -348,13 +348,13 @@
   `server/config/llm_config.json` 에 `"known_chars": 4000` · `"known_per_seed": 5`(없으면 이 값).
 - **명령** — `conda run -n assy_manager python server/scripts/causal_graph_connectivity.py --predicate <인과 술어>` → `nodes` · `links` · `pieces` · `largest piece` · `lone pairs`. 바꾸기 전과 후에 돌려 견줍니다.
 - **화면에서** — 바뀌는 화면은 없습니다.
-- **필요한 조건** — 체인 워커 재기동(「LLM 후보 뽑기 — 묶음의 글을 한 요청으로, 부름은 분당 20 번까지」의 조건 위에). 맵퍼가 `known` 을 넘겨야 켜집니다 — 안 넘기면 프롬프트는 전과 같습니다. 씨앗의 노드 타입이 키를 정확히 하나 선언해야 그 씨앗에서 걷습니다.
+- **필요한 조건** — 체인 워커 재기동(「LLM 후보 뽑기 — 묶음의 글을 한 요청으로, 답이 없으면 1 분 안에서 다시」의 조건 위에). 맵퍼가 `known` 을 넘겨야 켜집니다 — 안 넘기면 프롬프트는 전과 같습니다. 씨앗의 노드 타입이 키를 정확히 하나 선언해야 그 씨앗에서 걷습니다.
 - **바뀐 동작** — «확인된 것 먼저»는 `known` 의 `certainty` 칸이 이름 댄 한정자로 판정합니다(안 적으면 그 정렬 없이 — 결과 `known` 의 `certainty` 가 null). 걷기는 체인 묶음의 문장 시한 아래에서 돌고, 요청마다 체인 일시정지를 묻습니다. 결과에 `known`(요청마다 링크 n 중 k · 사전 m 중 j)과 로그 한 줄 `[LLM] known links for N text(s): S seed(s), K of L link(s), dictionary J of M node(s)`. 사전이 줄어서 글에 구절이 그대로 안 나오는 동의어 노드는 모델이 못 봅니다 — 그 쪽은 null 로 오고 낱말 주머니가 받습니다. 진짜 모델에서 연결이 좋아지는지는 이 박스에서 못 잽니다 — 위 명령으로 운영에서 잽니다.
 - **자세히** — 이 항목과 같은 커밋 · RUN.md 「LLM 후보 뽑기」 절 · [TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §6-2.
 
-## 2026-10-13 · LLM 후보 뽑기 — 묶음의 글을 한 요청으로, 부름은 분당 20 번까지
+## 2026-10-13 · LLM 후보 뽑기 — 묶음의 글을 한 요청으로, 답이 없으면 1 분 안에서 다시
 
-- **무엇** — 소유자 「체인 배치로 받아서 문장 잘 합쳐서 지시문 구성해서 요청 날려」 · 「분당 20 회 제한 있음」 (총괄 f7a79b242 · ded29a831). `ask_links` 가 글 여럿을 받습니다 — 사전 · 지시는 요청에 한 번, 글은 `[<글 id>]` 줄 뒤에 이어서, 글 길이 합이 `batch_chars` 를 넘으면 다음 요청. 답에 빠진 글 · 모양이 틀린 글은 그 글만 혼자 한 번 더 묻고, 그래도 안 되면 그 글만 거절합니다(묶음은 안 버림). LLM 을 부르는 자리 하나(`ask_json`)가 분당 상한을 지킵니다 — PostgreSQL 이면 체인 슬롯 · 소급 실행 · 서버가 표 `llm_calls` 하나로 같은 상한을 씁니다. 게이트웨이의 429 는 기다렸다 세 번까지 다시 묻습니다.
+- **무엇** — 소유자 「체인 배치로 받아서 문장 잘 합쳐서 지시문 구성해서 요청 날려」 (총괄 f7a79b242). `ask_links` 가 글 여럿을 받습니다 — 사전 · 지시는 요청에 한 번, 글은 `[<글 id>]` 줄 뒤에 이어서, 글 길이 합이 `batch_chars` 를 넘으면 다음 요청. 답에 빠진 글 · 모양이 틀린 글은 그 글만 혼자 한 번 더 묻고, 그래도 안 되면 그 글만 거절합니다(묶음은 안 버림). LLM 을 부르는 자리 하나(`ask_json`)는 부름 수를 세지 않습니다 — 속도는 게이트웨이의 거절(429)이 정합니다(소유자 「어차피 서버가 거절함」). 답이 없거나 429 면 그 요청을 첫 실패 뒤 1 분 안에서 다시 묻습니다.
 - **선언 예시** — 맵퍼([TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §6 — 제품 로더 `mapper_sdk.discover` 로 읽혀 체인 규칙 자리에서 도는 것을 확인):
   ```python
   texts = [{"id": text_id, "text": text} for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])]
@@ -363,11 +363,11 @@
   out.attrs[UNREAD_JOBS] = [item["id"] for item in found.refused]
   return out
   ```
-  규칙에 `"rows_per_run": 20`. `server/config/llm_config.json` 에 `"requests_per_minute": 20` · `"batch_chars": 4000`(없으면 이 값).
+  규칙에 `"rows_per_run": 20`. `server/config/llm_config.json` 에 `"batch_chars": 4000`(없으면 이 값).
 - **화면에서** — 바뀌는 화면은 없습니다.
-- **필요한 조건** — 웹 서버 재기동(기동이 표 `llm_calls` 를 만듭니다) 뒤 체인 워커 재기동. 맵퍼를 글 여럿 모양으로 고치고 규칙의 `rows_per_run` 을 묶음 크기로.
-- **바뀐 동작** — 글 하나(문자열)로 부르면 결과 행은 전과 같습니다(기록한 67 번의 부름이 바이트까지). 다만 프롬프트가 묶음 모양이고(`[1]` 줄 뒤 글 · 답 `{"texts": [...]}`), 답에 `texts` 목록이 없을 때의 거절 문장이 `the answer has no 'texts' list: …` 입니다. 거절된 글은 이번에 후보를 안 냅니다 — 맵퍼가 그 id 를 결과의 `attrs[UNREAD_JOBS]` 에 실으면 `allow_retraction` 규칙이 그 글의 옛 후보를 지우지 않습니다(`[Chain] <규칙>: kept old cells of N job(s) the mapper could not read`, 안 실으면 지워짐 — §6). 모든 글이 거절되면 전처럼 묶음이 실패합니다. 호출 자체가 실패하면(연결 · 시한 · 5xx) 글마다 다시 묻지 않고, LLM 자리가 그 요청을 5 · 10 · 20 초 뒤 다시 묻습니다(첫 실패부터 1 분 안 · 다시 부름도 분당 상한을 셈 · 줄 `[LLM] call failed (…) - retrying in N s (K of 3)`) — 1 분 안의 깜빡임은 지나가고, 그보다 길면(또는 다 쓴 429 · 60 초 넘게 기다리라는 429) 묶음이 실패합니다(`LlmCallFailed`). ⚠️ `max_group_attempts` 기본 1 이면 그 묶음은 FAILED 입니다 — 관리 화면에서 다시 돌립니다(replay). 400 · 413 같은 요청 거절은 글마다 혼자 다시, 401 · 403 은 키를 확인하라는 문장으로 거절. openai 클라이언트 자체의 다시 시도는 끕니다(`max_retries=0`). 상한의 기다림(한 번에 60 초까지)은 그 묶음이 쥔 표를 쥔 채라 같은 표의 다른 규칙 · 소급이 그동안 섭니다. 모델은 id 를 괄호 없이 답하고, 받은 id 는 괄호 · 따옴표를 벗겨 글로 견줍니다. 로그 줄 `[LLM] a request of N texts left K unread - each asked alone: …` · `[LLM] text <id> refused - no rows (llm:<모델>): …` · `[LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused` · `[LLM] per-minute limit - waiting N s (20 requests a minute)` · `[LLM] the gateway answered 429 (too many requests) - waiting N s, then try 2 of 4`.
-- **자세히** — 이 항목과 같은 커밋 · RUN.md 「LLM 후보 뽑기 — 묶음 · 분당 상한」 절 · [TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §6.
+- **필요한 조건** — 체인 워커 재기동. 맵퍼를 글 여럿 모양으로 고치고 규칙의 `rows_per_run` 을 묶음 크기로.
+- **바뀐 동작** — 글 하나(문자열)로 부르면 결과 행은 전과 같습니다(기록한 67 번의 부름이 바이트까지). 다만 프롬프트가 묶음 모양이고(`[1]` 줄 뒤 글 · 답 `{"texts": [...]}`), 답에 `texts` 목록이 없을 때의 거절 문장이 `the answer has no 'texts' list: …` 입니다. 거절된 글은 이번에 후보를 안 냅니다 — 맵퍼가 그 id 를 결과의 `attrs[UNREAD_JOBS]` 에 실으면 `allow_retraction` 규칙이 그 글의 옛 후보를 지우지 않습니다(`[Chain] <규칙>: kept old cells of N job(s) the mapper could not read`, 안 실으면 지워짐 — §6). 모든 글이 거절되면 전처럼 묶음이 실패합니다. 답이 없거나(연결 · 시한 · 5xx · 408) 429 면 글마다 다시 묻지 않고, LLM 자리가 그 요청을 5 · 10 · 20 · 20 초 뒤(429 는 Retry-After 초) 다시 묻습니다 — 다음 시도가 첫 실패 뒤 60 초 안에 시작할 때만, 줄 `[LLM] call failed (…) - retrying in N s (K of 4)`. 첫 실패 뒤 약 55 초 안에 살아나면 지나가고, 그보다 길면(또는 Retry-After 가 60 초를 넘으면) 묶음이 실패합니다(`LlmCallFailed`). 기다리는 동안 체인 일시정지는 1 초 안에 그 묶음을 되감습니다(실패로 안 셈). ⚠️ `max_group_attempts` 기본 1 이면 그 묶음은 FAILED 입니다 — 관리 화면에서 다시 돌립니다(replay). 400 · 413 같은 요청 거절은 글마다 혼자 다시, 401 · 403 은 키를 확인하라는 문장으로 거절. openai 클라이언트 자체의 다시 시도는 끕니다(`max_retries=0`). 다시 묻는 기다림은 그 묶음이 쥔 표를 쥔 채라 같은 표의 다른 규칙 · 소급이 그동안 섭니다(요청 하나 최악 약 2 × timeout_s + 60 초). 모델은 id 를 괄호 없이 답하고, 받은 id 는 괄호 · 따옴표를 벗겨 글로 견줍니다. 로그 줄 `[LLM] a request of N texts left K unread - each asked alone: …` · `[LLM] text <id> refused - no rows (llm:<모델>): …` · `[LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused` · `[LLM] call failed (<사유>) - retrying in N s (K of 4)`.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 「LLM 후보 뽑기」 절 · [TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §6.
 
 ## 2026-10-13 · 이어 걷기(More)가 쪽마다 느려지지 않는다 — 멈춘 걷기는 걷기 프로세스에 남고, 돌려줄 것은 열쇠 하나
 
