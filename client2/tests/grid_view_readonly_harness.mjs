@@ -636,6 +636,20 @@ async function suite(M) {
       const exact = [];
       await M.api.fetchAllRows('/tables/t/data', 'q', 2, (n, known) => exact.push([n, known]));
       ok(JSON.stringify(exact) === '[[2,3],[3,3]]', `K5 ... an exact count gives the percent its total [${JSON.stringify(exact)}]`);
+      // Load All pressed on page 5 (lead ba39f4ef7): every row from the first on the grid - «1 - N», not «4001 - …».
+      realState.viewMode = 'pagination';
+      realState.currentSkip = 4000;
+      const drawn = [];
+      const savedSet = realState.gridApi.setGridOption;
+      const savedCount = realState.gridApi.getDisplayedRowCount;
+      realState.gridApi.setGridOption = (k, v) => { if (k === 'rowData') drawn.push(v.length); };
+      realState.gridApi.getDisplayedRowCount = () => 3;
+      M.api.showAllRows([rowData(), rowData(), rowData()]);
+      realState.gridApi.setGridOption = savedSet;
+      realState.gridApi.getDisplayedRowCount = savedCount;
+      const range = document.getElementById('exposed-rows').textContent;
+      ok(range === '1 - 3' && realState.currentSkip === 0 && JSON.stringify(drawn) === '[3]' && realState.allDataLoaded === true,
+        `K9 Load All from page 5: the grid holds every row from the first and says 1 - 3 [${range} ${realState.currentSkip} ${JSON.stringify(drawn)}]`);
       // The export's refusal: the server's sentence through the one refusal seat.
       const OVER = 'More than 1,000,000 rows match - over the export cap. No CSV is cut short: narrow the search or the filter.';
       globalThis.fetch = async () => answer({ detail: OVER }, 413);
@@ -966,6 +980,8 @@ const DEFECTS = [
     s => s.replace('fillMatchCount(params, table, since);\n        }, RECOUNT_ASK_MS);', 'fillMatchCount(params, table);\n        }, RECOUNT_ASK_MS);')],
   ['api.js: Load All ends at the count again', 'api',
     s => s.replace('  while (last === chunkLimit) {', '  while (rows.length < (exact || 0)) {')],
+  ['api.js: Load All keeps the page place - «4001 - 4003» for every row from the first', 'api',
+    s => s.replace('  state.hasMoreData = false;\n  state.currentSkip = 0;\n', '  state.hasMoreData = false;\n')],
   ['api.js: Load All counts every chunk', 'api',
     s => s.replace('const chunk = (await read(rows.length, true)).data || [];', 'const chunk = (await read(rows.length, false)).data || [];')],
   ['api.js: Load All says a percent against 10,000+', 'api',
