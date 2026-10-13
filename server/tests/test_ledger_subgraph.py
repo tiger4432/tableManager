@@ -262,7 +262,7 @@ def test_the_two_open_routes_take_the_signed_seeds_and_the_frozen_ones_do_not():
         "positive": [seed], "negative": ["c"]}
 
 
-def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal():
+def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal(monkeypatch, tmp_path):
     """🔴 THE REFUSAL PATH IS EXECUTED HERE, not merely described.
 
     It shipped broken on 2026-08-25: the check was rewritten to use
@@ -275,6 +275,9 @@ def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal():
     Calling the route function is the point of this test. Asserting the message without
     executing the branch would reproduce exactly the hole it closes.
     """
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
     followable = trace_router._followable_predicates()
     assert "processed_with" in followable, "a real predicate must be followable"
 
@@ -354,7 +357,7 @@ def test_each_undeclared_subject_type_seeds_on_its_own():
         assert ref["keys"] == keys, subject_type
 
 
-def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
+def test_restoring_the_write_gate_on_the_read_path_refuses_all_three(monkeypatch, tmp_path):
     """🔴 THE MUTATION - without it the two tests above pass by not looking.
 
     Reinstates the pre-2026-08-23 ending of `decode_entity_id`, where the READ ran the
@@ -367,6 +370,9 @@ def test_restoring_the_write_gate_on_the_read_path_refuses_all_three():
     makes it a mutation -- but it must not restate it from a source the product no longer
     reads, or the control would go on passing after the rule itself changed.
     """
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
     from ledger import config as ledger_config
     declared_entities = {
         str(key).split("@", 1)[0]: set((value or {}).get("keys") or ())
@@ -828,7 +834,7 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
 
 
 # ------------------------------------------------ the declaration's sources section
-def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts():
+def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts(monkeypatch, tmp_path):
     """🔴 THE SEAM, ASSERTED FROM BOTH ENDS RATHER THAN FROM A COPY OF ONE.
 
     The screen builds its column choices from `scope_columns` and the server refuses a
@@ -840,6 +846,9 @@ def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts
     Asserting a spelling would be the copy this exists to prevent: the declaration moves
     and a literal list here would keep saying what it used to say.
     """
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
     from ledger import backfill
     from ledger.setup import LedgerSetupError, load_setup
     from ledger.event_frame import base_select_columns
@@ -871,7 +880,7 @@ def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts
         assert caught.value.code == "scope_column_not_declared"
 
 
-def test_a_setup_that_will_not_compile_OMITS_the_key_instead_of_answering_none(monkeypatch):
+def test_a_setup_that_will_not_compile_OMITS_the_key_instead_of_answering_none(monkeypatch, tmp_path):
     """🔴 "NOT A SOURCE" AND "COULD NOT FIND OUT" MUST NOT RENDER THE SAME.
 
     The label this feeds says one of three things, and the third is "the declaration could
@@ -882,6 +891,9 @@ def test_a_setup_that_will_not_compile_OMITS_the_key_instead_of_answering_none(m
     `entities` or `predicates` untrue, and blanking them would take the walk search box
     down with it.
     """
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
     from ledger import setup as ledger_setup
 
     def _refuse(*args, **kwargs):
@@ -1017,7 +1029,10 @@ def test_an_unconstrained_follow_answers_exactly_what_it_answered_before():
         ["inspected", "slot_map"], {})
 
 
-def test_the_follow_key_parser_keeps_the_bare_name_for_the_declaration_check():
+def test_the_follow_key_parser_keeps_the_bare_name_for_the_declaration_check(monkeypatch, tmp_path):
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
     names, keys = trace_router._split_follow(
         ["inspected:x,y", "slot_map", "observed: run_uid "])
     assert names == ["inspected", "slot_map", "observed"], (
@@ -1028,7 +1043,7 @@ def test_the_follow_key_parser_keeps_the_bare_name_for_the_declaration_check():
     assert "inspected" in followable and set(names[:1]) <= followable
 
 
-def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monkeypatch):
+def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monkeypatch, tmp_path):
     """🔴 ZERO AND 「unanswerable」 RENDER IDENTICALLY. A wafer has no x/y, so
     `follow=inspected:x,y` from a wafer seed can never match; answering an empty graph
     would read as 「this wafer has no dies」, which is the opposite of true.
@@ -1036,6 +1051,9 @@ def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monk
     Driven through the ROUTE, because the 422 is the route's translation and a guard that
     has never been reached is a guard that goes wrong the day it is.
     """
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
 
     class _Db:
         def connection(self):
@@ -1191,10 +1209,13 @@ def test_the_collected_nodes_are_still_capped_by_the_node_limit():
     assert body["truncated"]["nodes"] is True
 
 
-def test_an_undeclared_node_type_is_refused_by_name():
+def test_an_undeclared_node_type_is_refused_by_name(monkeypatch, tmp_path):
     """🔴 GATE ③, THE REFUSAL EXECUTED. Same rule as `follow`: a type nobody declared can
     never match, so an empty graph would be indistinguishable from 'there is nothing
     here' and a typo would read as a fact."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
     with pytest.raises(HTTPException) as raised:
         trace_router.evidence_subgraph(
             node_id=explorer.entity_id("Lot", {"lot": "A"}),

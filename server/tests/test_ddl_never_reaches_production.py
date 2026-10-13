@@ -87,14 +87,18 @@ class TestTheDecisionIsAnAllowlist:
         assert v, "the production database URL was accepted for a test process"
         assert "assy_manager" in " ".join(v), v
 
-    def test_an_undeclared_postgres_url_is_refused_even_when_it_looks_harmless(self):
+    def test_an_undeclared_postgres_url_is_refused_even_when_it_looks_harmless(self, monkeypatch):
         """The test that separates an allowlist from a blocklist.
 
         `assy_qa` is the ISOLATED database - a blocklist of production names
         would wave it through, and would wave through every other name too, so
         the day a second production database exists the guard is already gone.
         Only an explicit declaration may open the door.
+
+        Undeclared means the variable is unset - for this test: the session-scoped `pg_engine` holds it set from
+        its first use to the end of the run, so this read it after any PG proof (총괄 568388892).
         """
+        monkeypatch.delenv(db_safety.TEST_DATABASE_URL_ENV, raising=False)
         v = db_safety.check_test_database(
             "postgresql://postgres:admin@localhost:5432/assy_qa", opt_in=None)
         assert v, "an undeclared postgres target was accepted"

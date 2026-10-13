@@ -106,9 +106,9 @@ def test_the_schema_route_says_the_same_thing_for_one_table(client):
         assert body["kind"] == listed[name], name
 
 
-def test_the_schema_route_moved_nothing_else(client):
-    from database import crud
+def test_the_schema_route_moved_nothing_else(client, monkeypatch):
+    from tests.support.declaration import use_committed_catalogue
 
-    name = next(iter(crud.TABLE_CONFIG))
+    name = next(iter(use_committed_catalogue(monkeypatch)))     # the shipped catalogue, not this box's
     assert set(client.get(f"/tables/{name}/schema").json()) == (
         SCHEMA_KEYS_BEFORE | {"kind", "smart_paste"})       # smart_paste: 총괄 12cc7dd1f ⓪

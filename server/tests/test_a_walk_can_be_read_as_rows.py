@@ -257,12 +257,15 @@ def test_the_server_half_matches_every_contract_vector():
 # 🔴 THE ROUTE'S rows BRANCH — the one the unit tests above could not reach
 # ---------------------------------------------------------------------------
 
-def test_the_router_can_read_the_declarations_it_hands_the_fold():
+def test_the_router_can_read_the_declarations_it_hands_the_fold(monkeypatch, tmp_path):
     """🔴 THE ONE ASSERTION THAT WOULD HAVE CAUGHT THE 500. `_evidence_graph` reached for
     `_config` — a name every sibling handler imports LOCALLY and this one never did — so
     the rows branch raised `NameError` on its first live call while the whole suite stayed
     green. Calling the accessor is enough to prove the name resolves."""
     from ledger import trace_router as router
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
 
     entities = router._declared_entities()
     assert isinstance(entities, dict)

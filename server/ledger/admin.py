@@ -115,13 +115,8 @@ def source_raw_view(source: str = None) -> dict:
     The whole file is still READABLE here (`document`) so the operator can see their edit
     in context; it is simply not the unit of writing.
     """
-    from ledger import config as ledger_config
-
     path = sources_path()
     read_path = path
-    sample = ledger_config.sample_path(read_path)
-    if not os.path.exists(read_path) and os.path.exists(sample):
-        read_path = sample
     document, error = {}, None
     try:
         document = _read_json(read_path, {})
@@ -1296,10 +1291,6 @@ def sources_view(db=None) -> dict:
     document, error = {}, None
     try:
         document = _read_json(path, {})
-        sample = ledger_config.sample_path(path)
-        if not os.path.exists(path) and os.path.exists(sample):
-            document = _read_json(sample, {})
-            path = sample
     except Exception as exc:
         error = f"{exc.__class__.__name__}: {exc}"
     sources = (document.get("sources") or {})
