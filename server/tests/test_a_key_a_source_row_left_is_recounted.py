@@ -446,7 +446,7 @@ def test_a_failed_delete_fails_the_group_and_its_retry_deletes(db, monkeypatch, 
         anyio.run(run)
     assert said[0][0] is False
     assert set(_inv(db)) == {"J1", "J3"}
-    assert [r for r in caplog.records if "goes back to be retried" in r.getMessage()]
+    assert [r for r in caplog.records if "then FAILED" in r.getMessage()]
     monkeypatch.setattr(crud, "delete_rows_batch", real)
     _chain(db)
 

@@ -7,6 +7,8 @@ per row (box c1: ~1,000 for a 1,000-row chain group). SQLite keeps the ORM's own
   same bytes  rows · layers · history lines · outbox events are what the ORM's flush leaves
   read again  the session reads the new values, before and after it expires
   row gone    an UPDATE that touches fewer rows than it names is refused, as the ORM refuses it
+  left alone  a column of two kinds of value, an updated_at of None - the ORM writes them, row by row (총괄 10-14)
+  in order    groups by (table, columns), rows by row_id - the row lock order of the write door
 """
 import os
 import sys
@@ -169,3 +171,68 @@ def test_a_row_gone_from_under_the_write_is_refused(db):
         conn.execute(text('DELETE FROM "%s"."%s" WHERE k = :k' % (PG_TEST_SCHEMA, T)), {"k": "K0004"})
     with pytest.raises(RuntimeError, match="went from under the write"):
         db.flush()
+
+
+def _array_updates(db, run):
+    """The array writer's statements (quoted table name) with their parameters, in order."""
+    seen = []
+
+    def grab(conn, cursor, statement, params, context, many):
+        if statement.lstrip().startswith('UPDATE "%s"' % T):
+            seen.append((statement, params))
+
+    engine = db.get_bind()
+    event.listen(engine, "before_cursor_execute", grab)
+    try:
+        run()
+    finally:
+        event.remove(engine, "before_cursor_execute", grab)
+    return seen
+
+
+def _pg_only(db):
+    if db.get_bind().dialect.name != "postgresql":
+        pytest.skip("the array writer is PostgreSQL's")
+
+
+@pytest.mark.pg
+def test_a_column_of_two_kinds_of_value_stays_with_the_orm(db):
+    _pg_only(db)
+    _seed_and_cross(db)
+    model = models.DYNAMIC_TABLES[T]
+    rows = db.query(model).filter(model.business_key_val.in_(["K0010", "K0012"])).order_by(model.row_id).all()
+    rows[0].a, rows[1].a = 12, "L-12"           # an integer and a text in one text column
+    arrays = _array_updates(db, db.commit)
+
+    assert arrays == []
+    db.expire_all()
+    assert sorted(r.a for r in db.query(model).filter(model.business_key_val.in_(["K0010", "K0012"]))) == ["12", "L-12"]
+
+
+@pytest.mark.pg
+def test_an_updated_at_of_none_stays_with_the_orm(db):
+    _pg_only(db)
+    _seed_and_cross(db)
+    model = models.DYNAMIC_TABLES[T]
+    rows = db.query(model).filter(model.business_key_val.in_(["K0020", "K0022"])).all()
+    for row in rows:
+        row.a, row.updated_at = "a5", None
+    arrays = _array_updates(db, db.commit)
+
+    assert arrays == []
+    db.expire_all()
+    assert [r.updated_at for r in db.query(model).filter(model.business_key_val.in_(["K0020", "K0022"]))] == [None, None]
+
+
+@pytest.mark.pg
+def test_groups_go_by_table_and_columns_and_rows_by_row_id(db):
+    _pg_only(db)
+    _write(db, [("K%04d" % i, "f0.csv", {"k": "K%04d" % i, "a": "a0", "b": "b0", "n": i}) for i in range(40)], "seed")
+    arrays = _array_updates(db, lambda: _write(db, [
+        ("K%04d" % i, "f1.csv", {"b": "b1"}) if i % 2 else ("K%04d" % i, crud.USER_SOURCE, {"a": "a1"})
+        for i in reversed(range(40))], "cross"))
+
+    shapes = [statement.split(" SET ", 1)[1].split(" FROM ", 1)[0] for statement, _params in arrays]
+    assert shapes == sorted(shapes) and len(shapes) == 2
+    for _statement, params in arrays:
+        assert params["a0"] == sorted(params["a0"])

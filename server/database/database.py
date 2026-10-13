@@ -377,6 +377,10 @@ def write_changed_rows_by_shape(session, flush_context, instances):
        history first. Only the columns a row changed are written, as the ORM writes them. A value the ORM would
        compute in SQL (an expression) and a changed key stay with the flush. Each statement must touch every row it
        names - fewer is a row gone from under the write, refused as the ORM refuses it (its row count check).
+    ⚠️ LEFT WITH THE FLUSH (총괄 10-14): a group whose column holds values of two kinds (text and a number, a
+       boolean - the ORM casts each row on assignment, one array takes one type), and a row whose `updated_at` is
+       None (the array writes now() for it). In key order, groups by (table, columns) - the row lock order the
+       write door keeps against deadlocks.
     """
     from .models import DYNAMIC_TABLES
     dynamic = tuple(DYNAMIC_TABLES.values())
@@ -386,6 +390,11 @@ def write_changed_rows_by_shape(session, flush_context, instances):
     from sqlalchemy.orm.attributes import set_committed_value
     from sqlalchemy.sql import ClauseElement
 
+    import numbers
+
+    def kind(value):
+        return "bool" if isinstance(value, bool) else "number" if isinstance(value, numbers.Number) else type(value)
+
     shapes = {}
     for obj in session.dirty:
         if not isinstance(obj, dynamic):
@@ -393,13 +402,18 @@ def write_changed_rows_by_shape(session, flush_context, instances):
         state = inspect(obj)
         changed = {attr.key: attr.value for attr in state.attrs if attr.history.has_changes()}
         if (not state.persistent or not changed or "row_id" in changed
+                or ("updated_at" in changed and changed["updated_at"] is None)
                 or any(isinstance(value, ClauseElement) for value in changed.values())):
             continue
         stamp = changed.get("updated_at")
         shapes.setdefault((obj.__table__, tuple(sorted(changed)), stamp), []).append((obj, changed))
     from database import crud
 
-    for (table, names, stamp), rows in shapes.items():
+    for (table, names, stamp) in sorted(shapes, key=lambda shape: (shape[0].name, shape[1], repr(shape[2]))):
+        rows = sorted(shapes[(table, names, stamp)], key=lambda row: row[0].row_id)
+        if any(len({kind(changed[name]) for _obj, changed in rows if changed[name] is not None}) > 1
+               for name in names):
+            continue
         written = crud.update_by_arrays(session, table, names, [
             [obj.row_id] + [changed[name] for name in names if name != "updated_at"] for obj, changed in rows], stamp)
         if written.rowcount != len(rows):

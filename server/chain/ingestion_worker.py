@@ -1860,7 +1860,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                             logger.error(
                                 f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | deleting "
                                 f"{len(gone_keys)} row(s) whose key no source row holds failed - the group "
-                                f"goes back to be retried: [{type(gone_err).__name__}] {gone_err}")
+                                f"fails (retried up to its rules' max_group_attempts, then FAILED): "
+                                f"[{type(gone_err).__name__}] {gone_err}")
                             raise
 
                 # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
