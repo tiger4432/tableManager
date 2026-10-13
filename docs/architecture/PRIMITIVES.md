@@ -1278,7 +1278,7 @@
 
 ### ⭐ **문장 하나가 «얼마나» 돌 수 있나는 좌석 «하나»가 건다** (🆕 10-13 등록 · `database._set_statement_time_limits`)
 - **무엇**: 트랜잭션이 시작될 때마다 `SET LOCAL` 로 잠금 대기 · 문장 상한을 건다 — 트랜잭션과 함께 끝나므로 풀의 연결은 온 그대로 돌아간다.
-- **어디**: `server/database/database.py` `_set_statement_time_limits` · 상한 값은 `ingestion_settings.json` 을 같은 읽기(`directory_watcher._timeout_seconds`: null/0 = 없음, 틀린 값 = 기본값)로 · 소비자 **셋** — 파일 쓰기(`lock_timeout_seconds` · `statement_timeout_seconds`, 파일 채널) · 체인 묶음(`chain_statement_timeout_seconds`, 묶음 안) · 🆕 그리드 읽기(`grid_read_timeout_seconds`, `read_limit` 안 — `main.grid_read`).
+- **어디**: `server/database/database.py` `_set_statement_time_limits` · 상한 값은 `ingestion_settings.json` 을 같은 읽기(`directory_watcher._timeout_seconds`: null/0 = 없음, 틀린 값 = 기본값)로 · 소비자 **셋** — 파일 쓰기(`lock_timeout_seconds` · `statement_timeout_seconds`, 파일 채널) · 체인 묶음(`chain_statement_timeout_seconds`, 묶음 안) · 🆕 그리드 검색(`grid_read_timeout_seconds`, `read_limit` 안 — `main.grid_read`; 검색어나 칸 무늬 필터가 있는 읽기만, 10-13 `00be98805`).
 - **언제 재사용**: 「이 읽기 · 쓰기가 끝없이 돌며 남을 막는다」가 나올 때 — 새 상한을 따로 걸지 말고 이 좌석에 소비자 하나(컨텍스트 하나)를 더한다.
 - **함정**: ⚠️ 상한에 걸린 문장은 그 트랜잭션을 죽인다 — 소비자가 그것을 «다음 할 일»이 든 문장으로 바꿔 말해야 한다(그리드는 503 `grid_read_stopped`). PostgreSQL 밖에서는 아무것도 안 건다.
 
