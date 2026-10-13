@@ -20,6 +20,7 @@
 > 박스 견본  출하 견본 chain_rules.json.sample: decide 6 · 집계 1(cell_count "count" -> Count()) · 못 옮김 0 / 이 박스 설정: decide 1 · 집계 0 (운영 주장 아님)
 > 급할 때   --apply 뒤가 이상하면 백업 chain_rules.json.bak.<시각> 을 제자리에 — 로더는 옛 모양도 같은 답으로 읽는다
 > 볼 것    체인 폼: 집계 칸이 글자 한 줄(수식) · 못 옮기는 옛 것은 fn · column · separator 칸 그대로
+> 되돌리기  git revert -m 1 1912e583d 다음 git revert -m 1 f7ce1e465 -> 체인 워커 · 서버 재기동 · 화면 새로고침(이미 --apply 한 선언 파일은 백업에서 되돌림)
 > ```
 >
 > ---
