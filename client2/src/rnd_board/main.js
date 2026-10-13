@@ -276,9 +276,9 @@ export const BOARD = Object.freeze({
       // ⚠️ 이름은 맨이름입니다: 무리 값은 노드가 든 `predicates[].count` 에서 오고, 서버가 그 이름을 맨이름으로
       //    내며(f34f16892) 이름을 그대로 견줍니다 — `inspected@1` 로 물으면 값이 비어 옵니다 (WALK.md 「이름 찾기」).
       group_by: 'wafer',
-      measure: ['sum:inspected', 'sum:observed'],
+      measure: ['Sum:inspected', 'Sum:observed'],
       // 비율의 분자·분모. 나누는 것은 «화면»의 일입니다 — 서버는 접는 규칙을 지어내지 않습니다.
-      ratio: { found: 'sum:observed', of: 'sum:inspected' },
+      ratio: { found: 'Sum:observed', of: 'Sum:inspected' },
       // Y 축 알약이 고를 수 있는 «종류»가 어느 타입의 어느 키에 사는지. 이것도 선언입니다.
       kinds: { type: 'defect_kind', key: 'defect_kind' },
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
@@ -372,9 +372,9 @@ export const BOARD = Object.freeze({
       // ⚠️ 이름은 맨이름입니다: 무리 값은 노드가 든 `predicates[].count` 에서 오고, 서버가 그 이름을 맨이름으로
       //    내며(f34f16892) 이름을 그대로 견줍니다 — `inspected@1` 로 물으면 값이 비어 옵니다 (WALK.md 「이름 찾기」).
       group_by: 'wafer',
-      measure: ['sum:inspected', 'sum:observed'],
+      measure: ['Sum:inspected', 'Sum:observed'],
       // 비율의 분자·분모. 나누는 것은 «화면»의 일입니다 — 서버는 접는 규칙을 지어내지 않습니다.
-      ratio: { found: 'sum:observed', of: 'sum:inspected' },
+      ratio: { found: 'Sum:observed', of: 'Sum:inspected' },
       // Y 축 알약이 고를 수 있는 «종류»가 어느 타입의 어느 키에 사는지. 이것도 선언입니다.
       kinds: { type: 'defect_kind', key: 'defect_kind' },
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서

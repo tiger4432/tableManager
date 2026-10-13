@@ -17,7 +17,7 @@
                 .sf-table--rows - a list (striped, .is-num · .is-id · .is-member · .is-hub · __toggle)
      status     .sf-status
      panel      .sf-panel · __h - light in both themes; the properties panel .sf-props__* ; the filters panel .sf-filter__*
-     popover    .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __hr · __reds · __red (.is-on) · __why
+     popover    .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __hr · __reds · __red (.is-on) · __why · __edit · __line · __expr
      button     .sf-btn */
 
 .sf { font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); color: var(--sf-text); background: var(--sf-page); }
@@ -92,7 +92,7 @@
 .sf-panel__h { display: flex; align-items: center; justify-content: space-between; height: 33px; padding: 0 16px; background: var(--sf-panel-head);
   border-bottom: 1px solid var(--sf-panel-line-2); color: var(--sf-panel-muted); font-weight: 700; }
 .sf-panel .sf-say { color: var(--sf-panel-muted); padding: 10px 16px; }
-.sf-panel .sf-btn { border-color: var(--sf-panel-pill); color: var(--sf-panel-text); }
+.sf-panel .sf-btn, .sf-pop .sf-btn { border-color: var(--sf-panel-pill); color: var(--sf-panel-text); }
 .sf-panel .sf-pill { border-color: var(--sf-panel-pill); color: var(--sf-panel-text); background: var(--sf-panel-bg); }
 .sf-props__name { margin: 8px 0; padding: 4px 16px; background: var(--sf-panel-name-bg); color: var(--sf-panel-name-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sf-props__tabs { display: flex; gap: 40px; padding: 0 16px; border-bottom: 1px solid var(--sf-panel-line-2);
@@ -134,3 +134,7 @@
 .sf-pop__red { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; letter-spacing: normal; border: 1px solid var(--sf-panel-pill); border-radius: 100px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .sf-pop__red.is-on { background: var(--sf-panel-accent); border-color: var(--sf-panel-accent); color: var(--sf-panel-accent-text); }
 .sf-pop__why { padding: 4px 16px; color: var(--sf-panel-muted); }
+.sf-pop__edit { grid-column: 1 / -1; padding: 6px 0 0 0; border-top: 1px solid var(--sf-panel-line-2); }
+.sf-pop__line { display: flex; gap: 8px; padding: 0 16px; }
+.sf-pop__expr { flex: 1; min-width: 0; box-sizing: border-box; height: 28px; padding: 1px 6px; border: 1px solid var(--sf-panel-line);
+  background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }

@@ -29,6 +29,7 @@ const REAL = {
   palette: await import('../src/testbed/palette.js'),
 };
 REAL.store = await import('../src/rnd_board/marking_store.js');
+REAL.cond = await import('../src/testbed/condition_editor.js');
 const { MarkingStore, SIGN } = REAL.store;
 const { parseAst } = await import('rolldown/parseAst');
 const { indexGraph, routesFrom } = await import('../src/walk/reach_table.js');
@@ -163,6 +164,30 @@ async function measure(M) {
     raw: { cells: index.out.get(id) ? index.out.get(id).filter((e) => e.target === 'QP').map((e) => ({ value: e.qualifiers.value, t: null })) : [] } }));
   const ct = M.cross.crossModel(crossRows, { marked: (id) => id === 'W1', declaration: crossDecl() });
   out.cross = { rows: ct.rowKeys, cols: ct.colKeys, grid: ct.grid.map((line) => line.map((c) => [c.value, c.ids, c.marked])), rowTotals: ct.rowTotals, colTotals: ct.colTotals, total: ct.total };
+  // T27: an expression slot - the calculator over the row's own values (src/expression.js)
+  const exprSlot = (expr) => ({ expr, words: [expr] });
+  const isA = exprSlot('If([product] = "A", 1, 0)');
+  out.exprReads = ['W1', 'W2', 'W3', 'W6', 'NOPE'].map((id) => { const r = readSlot(index, inside, id, isA); return [r.state, r.value === undefined ? null : r.value]; });
+  out.exprFolds = ['W1', 'W3', 'W6'].map((id) => readSlot(index, inside, id, exprSlot('Count([product])')).value);
+  // ... a cross table cell: Count() as the table with no cell slot, Count([product]) as the product slot counted
+  const exprCross = (cells) => {
+    const decl = crossDecl({ encode: { rows: lot, columns: product, ...(cells ? { cells } : {}) } });
+    const xs = WAFERS.map((id) => ({ id, reads: { rows: readSlot(index, inside, id, lot), columns: readSlot(index, inside, id, product) },
+      raw: cells ? { cells: M.slot.rawOf(index, inside, id, cells) } : {} }));
+    const m = M.cross.crossModel(xs, { marked: () => false, declaration: decl });
+    return JSON.stringify([m.grid.map((line) => line.map((c) => c.value)), m.rowTotals, m.colTotals, m.total]);
+  };
+  out.exprCross = [exprCross(exprSlot('Count()')) === exprCross(null), exprCross(exprSlot('Count([product])')) === exprCross({ ...product, reduce: 'Count' }),
+    M.cross.title({ rows: lot, columns: product, cells: exprSlot('Avg([wafer])') })];
+  // T30: an operator over a text that is not a number - the row empty and said so; a list is several, an empty value empty
+  out.notNumber = ['W1', 'W3', 'W6'].map((id) => { const r = readSlot(index, inside, id, exprSlot('[product] * 2')); return [r.state, Boolean(r.notNumber)]; });
+  // T29: a filter condition on an expression slot carries the expression and is judged by it; two expression
+  //      conditions on one row type stay two
+  const cA = M.cond.conditionFor({ row: 'wafer', slot: isA, words: isA.expr, values: [[1, 2], [0, 2]], empty: 1 });
+  // a condition that lost its expression reads a slot with no value - the filter throws (the defect M43 makes)
+  const passing = () => { try { return keepNodes(index, inside, WAFERS, [{ ...cA, range: { min: 1, max: 1 }, empty: false }]).kept; } catch (e) { return 'threw'; } };
+  out.exprCondition = [cA.expr, passing(),
+    M.cond.conditionKey(cA) !== M.cond.conditionKey({ row: 'wafer', ...exprSlot('Count([product])') })];
   // T23: each kind words its own title
   out.titles = [M.scatter.title(scatterDecl().encode), M.cross.title(crossDecl().encode), M.cross.title({ rows: lot, columns: product })];
   // T8: hubs
@@ -286,10 +311,32 @@ async function parts(M) {
   out.kindAdd = { drawn: walk(k.host).filter((n) => n.tagName === 'P').map((n) => n.textContent),
     title: walk(k.host).filter((n) => n.className === 'sf-part__t').map((n) => n.textContent), statTitle: k.stats.get('K1').title,
     pills: pills.map((n) => [n.textContent.replace('▾', ''), Boolean(n.listeners && n.listeners.click)]) };
+  // T28: Custom expression in the picker - a refusal says why and leaves the slot; a valid one sets it and is drawn
+  const xp = seat(M, scatterDecl({ id: 'X1' }));
+  await settle();
+  const pickHost = xp.doc.createElement('div');
+  new M.picker.SlotPicker(pickHost, { doc: xp.doc }).open({ part: xp.part, key: 'color', anchor: null });
+  walk(pickHost).find((n) => n.tagName === 'BUTTON' && n.textContent === 'Custom expression…').listeners.click[0]({});
+  const exprInput = () => walk(pickHost).find((n) => n.className === 'sf-pop__expr');
+  const exprWhy = () => (walk(pickHost).find((n) => n.className === 'sf-pop__why' && n.parentNode && n.parentNode.className === 'sf-pop__edit') || {}).textContent;
+  const enter = (text) => { exprInput().value = text; exprInput().listeners.keydown[0]({ key: 'Enter' }); };
+  enter('Avg(');
+  const custom = [exprWhy(), JSON.stringify(xp.part.declaration().encode.color) === JSON.stringify(product)];
+  enter('If([nope] = 1, 1, 0)');
+  custom.push(exprWhy());
+  enter('If([product] = "A", "is A", "not A")');
+  await settle();
+  custom.push(xp.part.declaration().encode.color, (xp.part.model.legend || []).map((l) => l.name).filter((n) => n === 'is A' || n === 'not A').sort());
+  out.custom = custom;
   // T13 / T17: the status words, a cut walk only when an axis says so
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, startDropped: 2, marked: 1, columns: 1, source: 'wafer', cut: false })];
+  // T30: the bottom line counts the drawn rows an expression left empty on a text (W1 W2 W4 W5 - W3 several, W6 empty)
+  const nn = seat(M, scatterDecl({ id: 'S9', encode: { x: { expr: '[product] * 2', words: ['[product] * 2'] }, y: press } }));
+  await settle();
+  out.notNumberBar = [nn.stats.get('S9').notNumber, M.status.statusWords(nn.stats.get('S9')).filter((w) => w.includes('not a number')),
+    M.status.statusWords({ rows: 1, of: 1, notNumber: 1, marked: 0, columns: 1 }).filter((w) => w.includes('not a number'))];
   const cutAnswer = { ...ANSWER, truncated: { ...ANSWER.truncated, nodes: true } };
   const g = seat(M, scatterDecl(), { answer: cutAnswer });
   await settle();
@@ -431,6 +478,13 @@ function suite(out, page, saved, counted) {
       grid: [[[2, ['W1', 'W3'], true], [2.5, ['W2', 'W3'], false], [null, [], false]], [[4, ['W4'], false], [5, ['W5'], false], [null, [], false]],
         [[null, [], false], [null, [], false], [null, ['W6'], false]]],
       rowTotals: [2, 4.5, null], colTotals: [2.6666666666666665, 3.3333333333333335, null], total: 3 });
+  eq('T27 an expression slot reads through the calculator: a row\'s own value row by row (a list several, none empty, not walked missing); folded (a list its items); a cross cell as the table with no cell slot and as the slot counted; the title its text',
+    [out.exprReads, out.exprFolds, out.exprCross],
+    [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
+  eq('T30 an operator over a text that is not a number: the row empty and marked; a list several; an empty value empty, not marked; the bottom line counts the drawn rows so marked',
+    [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
+  eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
+    out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
     out.titles, ['press · value vs. temp · value', 'Avg(press · value) per lot and product', 'Count per lot and product']);
   eq('T8 hubs: members take the hub\'s sign, a + wins over a -, a node stands as itself; a hub holds its members; said in words',
@@ -439,6 +493,9 @@ function suite(out, page, saved, counted) {
     out.walkSeeds, { positive: ['A', 'C'], negative: ['B'] });
   eq('T26 the palette a canvas draws with is the document root\'s tokens - each by its name, trimmed; the categories repeat past the seventh; a short hex mixed as its long one',
     out.palette, ['#111111', '#222222', '#333333', '#444444', 'rgba(1, 2, 3, 0.5)', ['#555555', '#666666'], ['#000001', '#111111'], ['#000007', '#111117'], 7, ['#000002', '#111112'], '#E0E7FE', '#E0E7FE']);
+  eq('T28 Custom expression: a text that does not read says why and the slot stays; a name the rows do not have says so; a valid one is the slot and its values drawn',
+    page.custom, ['The expression ends too soon', true, 'No value named nope on wafer',
+      { expr: 'If([product] = "A", "is A", "not A")', words: ['If([product] = "A", "is A", "not A")'] }, ['is A', 'not A']]);
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
   eq('T9a All walks the row type described; the rows and counts; every drawable point drawn',
     [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null]], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);
@@ -487,12 +544,10 @@ const swap = (text, from, to) => {
   return text.split(from).join(to);
 };
 const MUTANTS = [
-  { id: 'M1', what: 'an even median the lower middle', catches: 'T1', file: 'testbed/aggregate.js',
-    mutate: (t) => swap(t, ': (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;', ': sorted[sorted.length / 2 - 1];') },
-  { id: 'M2', what: 'a fold of nothing 0, not null', catches: 'T1', file: 'testbed/aggregate.js',
-    mutate: (t) => swap(t, '  if (!nums.length) return { value: null, n, skipped };', '  if (!nums.length) return { value: 0, n, skipped };') },
-  { id: 'M3', what: 'Latest picks one of two values at the newest time', catches: 'T2', file: 'testbed/aggregate.js',
-    mutate: (t) => swap(t, '  return at.length === 1 ? { value: at[0], n: flat.length, untimed }', '  return at.length >= 1 ? { value: at[0], n: flat.length, untimed }') },
+  // ⚠️ M1-M3 (an even median the lower middle · a fold of nothing 0 · Latest picks one at the newest time) moved with
+  //    the fold to src/expression.js - expression_vectors_harness X20 · X21 · X17. What stays here is the bridge.
+  { id: 'M1', what: 'the test bed fold folds by another name than its reduce', catches: 'T1 the reduces', file: 'testbed/aggregate.js',
+    mutate: (t) => swap(t, '  const { value, n, ...rest } = foldItems(reduce, reads || []);', "  const { value, n, ...rest } = foldItems('Count', reads || []);") },
   { id: 'M4', what: 'several values drawn as the first', catches: 'T3', file: 'testbed/slot.js',
     mutate: (t) => swap(t, "  return values.length === 1 ? { state: 'one', value: values[0], n: reads.length } : { state: 'several', values, n: reads.length };",
       "  return { state: 'one', value: values[0], n: reads.length };") },
@@ -554,8 +609,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '{ marked, palette: this.palette(), declaration: this.decl }', '{ marked, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
   { id: 'M31', what: 'a words-only pill opens the picker too', catches: 'T11', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    if (this.kind.slots.some((s) => s.key === key)) p.addEventListener(', '    if (true) p.addEventListener(') },
-  { id: 'M32', what: 'the cross table reads no reduce off its declaration - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, "  const reduce = (cellSlot && cellSlot.reduce) || 'Count';", "  const reduce = 'Count';") },
+  { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells));', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells));') },
   { id: 'M33', what: 'the scatter\'s title y and x swapped', catches: 'T23', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '`${slotWords(encode.y)} vs. ${slotWords(encode.x)}`', '`${slotWords(encode.x)} vs. ${slotWords(encode.y)}`') },
   { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not Count', catches: 'T23', file: 'testbed/kinds/cross_table.js',
@@ -576,12 +631,22 @@ MUTANTS.push(
     mutate: (t) => swap(t, '  const pair = ([fill, line]) => [read(fill), read(line)];', '  const pair = ([fill, line]) => [read(line), read(fill)];') },
   { id: 'M40', what: 'the mix reads only the long hex - in the built page #fff mixed to a grey (the code before)', catches: 'T26', file: 'testbed/palette.js',
     mutate: (t) => swap(t, "  const full = s.length === 3 ? [...s].map((c) => c + c).join('') : s;", '  const full = s;') },
+  { id: 'M41', what: 'an expression reads a row\'s own value as its label', catches: 'T27', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, "  if (has(node.attributes)) return { on: 'node', name };", "  if (has(node.attributes)) return { on: 'label', name: 'name' };") },
+  { id: 'M42', what: 'the picker sets an expression it refused', catches: 'T28', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '        if (said) { why.textContent = said; return; }', '        if (said) { why.textContent = said; }') },
+  { id: 'M44', what: 'the part counts no row an expression could not take as a number', catches: 'T30', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,', '      notNumber: 0,') },
+  { id: 'M45', what: 'the bottom line does not say the rows that are not a number', catches: 'T30', file: 'testbed/status_part.js',
+    mutate: (t) => swap(t, "  if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);\n", '') },
+  { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
+    mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'a kind handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '  const palette = ctx.palette;\n', "  const palette = { bg: '#000000', one: ['#000000', '#000000'], cat: [['#000000', '#000000']] };\n") },
 );
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
-  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette' };
+  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker', 'testbed/condition_editor.js': 'cond' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   // A stylesheet is no module: its mutant is the census's text alone.
   if (m.file.endsWith('.css')) return run(REAL, { [m.file]: m.mutate(readFileSync(join(SRC, m.file), 'utf8')) });

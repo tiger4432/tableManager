@@ -116,6 +116,7 @@ status   .sf-status                                                       panel 
 props    .sf-props__name · __tabs (.is-on) · __sec · __h · __line · __lab · __sel · __cond · __x · __add
 filter   .sf-filter · __h · __range · __num · __v · __n
 popover  .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __hr · __reds · __red (.is-on) · __why
+         · __edit (the expression row under the columns) · __line · __expr (its text box)
 button   .sf-btn
 ```
 ```

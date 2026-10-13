@@ -10220,7 +10220,7 @@ async function populateMapKeyDatalist(table, listEl, input) {
       if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
       // 서버가 답을 주지 못했다. 빈 목록으로 남기면 "이 테이블에는 등록된 맵이 없다"로 읽힌다.
       markSuggestState(input, 'unavailable',
-        `맵 키 목록을 읽지 못했습니다 (HTTP ${res.status}) — 키는 직접 입력할 수 있습니다.`);
+        `Map keys could not be read (HTTP ${res.status}) - type the key`);
       return;
     }
     const result = await res.json();
@@ -10242,19 +10242,19 @@ async function populateMapKeyDatalist(table, listEl, input) {
   } catch (e) {
     if (!isCurrent()) return;   // 낡은 실패가 새 질문의 상태를 덮지 못한다
     markSuggestState(input, 'unavailable',
-      `맵 키 목록 조회 실패 · ${(e && e.message) ? e.message : e}`);
+      `Map keys could not be read · ${(e && e.message) ? e.message : e}`);
     return;
   }
   if (Number.isFinite(total) && total > rowCount) {
     // 절단은 성공이 아니다(INV-④와 같은 규율): 목록이 모집단인 척하지 못하게 사실을 남긴다.
     markSuggestState(input, 'truncated',
-      `등록된 맵 ${countNumberText(counted)}개 중 ${items.length}개만 목록에 있습니다 — 없는 키도 직접 입력할 수 있습니다.`);
+      `${items.length} of ${countNumberText(counted)} registered maps listed - a key not listed can be typed`);
   } else if (items.length === 0) {
     // [1-a] **성공했는데 0건**이다. 종전에는 이 자리가 `markSuggestState(input, '', '')` —
     // 즉 침묵이었고, 침묵은 「목록이 고장났다」와 구별되지 않는다. 상태는 여전히 완전
     // (`complete`)이므로 캐시도 하고 select도 쓸 수 있지만, **말은 한다**.
     markSuggestState(input, '',
-      `${table}에 등록된 맵이 아직 없습니다 · 조회는 성공했고 정말로 0건입니다.`);
+      `No map registered on ${table} yet - the list read fine and holds 0`);
     mapKeyListCache.set(table, items);
   } else {
     markSuggestState(input, '', '');

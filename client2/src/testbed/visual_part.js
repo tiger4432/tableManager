@@ -12,9 +12,8 @@
 // Flow (owner 10-12): system marking + system filter -> the part walks from the marking -> its own filter -> drawn.
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
-import { indexGraph, readsOf } from '../walk/reach_table.js';
-import { timeOf } from '../walk/trend.js';
-import { readSlot, slotWords } from './slot.js';
+import { indexGraph } from '../walk/reach_table.js';
+import { readSlot, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId, holds } from './hubs.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
@@ -194,7 +193,7 @@ export class VisualPart extends Panel {
         const slot = encode[s.key];
         if (!slot) continue;
         reads[s.key] = readSlot(index, inside, id, slot, this.oneValued(slot));
-        if (s.folds) raw[s.key] = readsOf(index, inside, id, slot).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
+        if (s.folds) raw[s.key] = rawOf(index, inside, id, slot);
       }
       return { id, label: node.label || id, reads, raw };
     });
@@ -207,6 +206,8 @@ export class VisualPart extends Panel {
     // are not among M: they were never walked from.
     this.counts = { rows: afterPart.kept.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
       part: afterPart.dropped, marked: received.filter(marked).length, hidden, columns: Object.keys(encode).length, source: this.decl.row,
+      // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
+      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
       // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).
       cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };
     this.publish();

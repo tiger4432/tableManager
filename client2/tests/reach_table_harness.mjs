@@ -207,7 +207,8 @@ const MUTANTS = [
   { id: 'FM17', what: 'no delta of numerals in strings', catches: 'R19',
     mutate: (t) => swap(t, 'cell.values.length === 1 ? numberOf(cell.values[0]) : null)', "cell.values.length === 1 && typeof cell.values[0] === 'number' ? cell.values[0] : null)") },
   { id: 'FM23', what: 'a blank text reads as 0', catches: 'R24',
-    mutate: (t) => swap(t, "if (typeof value !== 'string' || !value.trim()) return null;", "if (typeof value !== 'string') return null;") },
+    // re-aimed (lead 10-13): numberOf reads a numeral by its rule now; a blank text past it is Number('') = 0
+    mutate: (t) => swap(t, "if (typeof value !== 'string' || !NUMERAL.test(value.trim())) return null;", "if (typeof value !== 'string' || (value.trim() && !NUMERAL.test(value.trim()))) return null;") },
   { id: 'FM13', what: 'a row key read as an attribute', catches: 'R16',
     mutate: (t) => swap(t, "  if (value.on === 'key') return { value: (node.keys || {})[value.name], when: end.edge };\n", '') },
   { id: 'FM18', what: 'a node attribute timed by its first record, not the one saying its value', catches: 'R20',
