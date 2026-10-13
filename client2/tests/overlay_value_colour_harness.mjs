@@ -570,7 +570,7 @@ async function runAll(src) {
 
     // ── A9: THE CHIP. It exists only when there is something to say, and it says WHAT. ──
     const chip = ctx.overlayLegendChip(layer);
-    ok(chip.includes('범례 밖 2종'), 'A9 the chip states how many values have no colour', chip);
+    ok(chip.includes('2 off legend'), 'A9 the chip states how many values have no colour', chip);
     ok(chip.includes('ZZ9') && chip.includes('QQ'), 'A9b the chip names them', chip);
     ok(chip.includes('ov-chip'), 'A9c the chip reuses the existing chip class (no new UI region)', chip);
     eq(ctx.overlayLegendChip({ items: new Map([['0_0', [item('1')]]]) }), '',

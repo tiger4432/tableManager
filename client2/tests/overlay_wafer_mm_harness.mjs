@@ -629,7 +629,7 @@ async function runAll(mutate) {
       `layer says ${l.outside}, the inside-set says ${byInside}`);
     ok(byInside > byAll, 'A14c defect reproduces -- the grid-membership count under-reports',
       `inside-based ${byInside} vs grid-based ${byAll}: the old number was not smaller`);
-    ok(/가져오기/.test(l.seatNote) || l.outside === 0, 'A14d the sentence names import');
+    ok(/Import/.test(l.seatNote) || l.outside === 0, 'A14d the sentence names import');
 
     // A14e -- and the set must honour the TARGET's OWN valid-die mask, because import does.
     //         `isValidDieAt` answers with the bare circle whenever a frame window is open
@@ -680,9 +680,9 @@ async function runAll(mutate) {
     ok(lCon.conflictCells === 1, 'A15e a value conflict on one coordinate is counted', `${lCon.conflictCells}`);
     ok(lCon.fanCells === 0, 'A15f and it is NOT reported as pitch fan-out', `fanCells ${lCon.fanCells}`);
     ok(lCon.dupCollapsed === 0, 'A15g a differing value is never collapsed', `${lCon.dupCollapsed}`);
-    ok(!/타깃 셀이 더 굵어/.test(lCon.seatNote), 'A15h the note does not blame the cell size',
+    ok(!/target cells are coarser/.test(lCon.seatNote), 'A15h the note does not blame the cell size',
       `note: ${lCon.seatNote}`);
-    ok(/중복/.test(lCon.seatNote), 'A15i the note names the real reason', `note: ${lCon.seatNote}`);
+    ok(/duplicate/.test(lCon.seatNote), 'A15i the note names the real reason', `note: ${lCon.seatNote}`);
     setScreen(ctx, TGT);
   }
 

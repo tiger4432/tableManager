@@ -439,9 +439,9 @@ const MUTATIONS = [
   {
     name: 'N7 [MEDIUM] a fourth control lands on the row',
     file: 'js',
-    find: `        <button type="button" class="ov-btn ov-del" data-act="del" title="제거">✕</button>`,
-    repl: `        <button type="button" class="ov-btn" data-act="rename" title="이름">✎</button>
-        <button type="button" class="ov-btn ov-del" data-act="del" title="제거">✕</button>`,
+    find: `        <button type="button" class="ov-btn ov-del" data-act="del" title="Remove">✕</button>`,
+    repl: `        <button type="button" class="ov-btn" data-act="rename" title="Rename">✎</button>
+        <button type="button" class="ov-btn ov-del" data-act="del" title="Remove">✕</button>`,
     breaks: 'the overlay row holds its 3-button budget',
   },
   {

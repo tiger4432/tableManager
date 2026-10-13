@@ -42,7 +42,9 @@ const HANGUL = /[가-힣]/;
 const FAILURE = /(실패|오류|에러|거부|불가|failed|error|unavailable)/;
 // ⚠️ 넓은 그물. 고치는 데 «안 씁니다» — 「안 본 것」의 크기를 재는 데만 씁니다.
 const WIDE = /(실패|없음|없습니다|불가|오류|에러|거부|끊|안 |못 |unavailable|failed|error)/;
-const IMPERATIVE = /(하십시오|하세요|해 ?주세요)/;
+const IMPERATIVE = /(하십시오|하세요|해 ?주세요|\bplease\b)/i;
+// The console's own lines ([Map Editor] …) are not screen copy.
+const CONSOLE_TAG = /^\[[A-Za-z][\w &]*\]/;
 const DASH_JOINT = / [—―] /;
 
 function strings(file) {
@@ -51,7 +53,8 @@ function strings(file) {
 }
 const all = FILES.flatMap(strings);
 const korean = [...new Set(all.filter((s) => HANGUL.test(s)))];
-const failureCopy = korean.filter((s) => FAILURE.test(s));
+// Both languages: the screen's words go English (owner), and a failure line is one in either.
+const failureCopy = [...new Set(all)].filter((s) => FAILURE.test(s) && !CONSOLE_TAG.test(s));
 const wideNet = korean.filter((s) => WIDE.test(s));
 
 // ═══ ① 계기가 «눈이 멀지» 않았는지 ═══════════════════════════════════════════════════
@@ -63,11 +66,10 @@ const wideNet = korean.filter((s) => WIDE.test(s));
 console.log('\n[1] the instrument can still see');
 {
   ok('the three files are read at all', all.length > 200, `saw ${all.length}`);
-  // ⚠️ English DOES shrink it (owner: UI strings in English): 41 -> 40 when the map-key list's lines went English
-  //    (63e6deda4). The lead's queued pass over the map editor's Korean takes this population toward 0 - re-aim this
-  //    harness at English failure copy in that pass; until then the floor is the count as measured.
+  // ⚠️ Korean only, English shrank it (41 -> 40, 63e6deda4); the map editor's English pass counts both languages,
+  //    so a line keeps its place when it goes English. The floor is the count as measured.
   ok('failure copy is found, and fixing a shape does not shrink this',
-    failureCopy.length >= 40, `saw ${failureCopy.length}`);
+    failureCopy.length >= 71, `saw ${failureCopy.length}`);
   ok('the imperative test fires on an instruction', IMPERATIVE.test('다시 시도해 주세요'));
   ok('...and not on a bare reason', !IMPERATIVE.test('확인 중에 실패했습니다'));
 }

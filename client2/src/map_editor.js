@@ -10518,8 +10518,8 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   // painted. The old guard here made that impossible.
   const targetKey = (targetOverride && targetOverride.key)
     || ((loadedIdentity && loadedIdentity.table === targetTable) ? loadedIdentity.mapKey : '');
-  if (!sourceTable || !sourceKey) return { error: '오버레이 대상 맵 식별자가 없습니다.' };
-  if (!targetTable) return { error: '현재 캔버스의 테이블을 알 수 없습니다.' };
+  if (!sourceTable || !sourceKey) return { error: 'No overlay map: pick a table and a map key.' };
+  if (!targetTable) return { error: 'The canvas has no table: load a map first.' };
   const fail = (msg, status, extra) => {
     pushFailedOverlay(sourceTable, sourceKey, status || 'error', msg, targetOverride);
     return { error: msg, status, ...(extra || {}) };
@@ -10537,13 +10537,13 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   try {
     binding = await fetchServedBinding(sourceTable);
   } catch (e) {
-    return fail(`${sourceTable}: 좌표 바인딩 조회 실패 · ${errText(e)}`, 'error');
+    return fail(`${sourceTable}: coordinate binding lookup failed · ${errText(e)}`, 'error');
   }
   if (!binding) {
     return fail(
-      `${sourceTable}: 맵 좌표 바인딩을 해석할 수 없습니다 · table_config에 x/y 컬럼, ` +
-      `map_key_columns(또는 lot/slot), 값 컬럼 후보가 있어야 합니다. 컬럼명이 관례와 다르면 ` +
-      `map_overlay_config.table_bindings에 선언하십시오.`,
+      `${sourceTable}: no map coordinate binding · table_config needs x/y columns, ` +
+      `map_key_columns (or lot/slot) and a value column. If the column names differ from those, ` +
+      `declare them in map_overlay_config.table_bindings.`,
       'binding_unavailable');
   }
   // [F2] A guessed value column never reaches this data path — same discipline as the
@@ -10554,9 +10554,9 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   // would.)
   if (binding.source === 'fallback_guess') {
     return fail(
-      `${sourceTable}: 값 컬럼을 확정할 수 없습니다 · 후보에 없는 '${binding.val}' 추측뿐입니다. ` +
-      `엉뚱한 값이 겹쳐 보이는 것을 막기 위해 겹치지 않습니다. map_overlay_config.table_bindings에 ` +
-      `값 컬럼을 선언하십시오.`,
+      `${sourceTable}: no value column · only a guess, '${binding.val}'. ` +
+      `Not overlaid: a guessed column paints wrong values. Declare the value column ` +
+      `in map_overlay_config.table_bindings.`,
       'binding_unavailable');
   }
 
@@ -10592,7 +10592,7 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     const result = await cellR.value.json();
     rows = Array.isArray(result && result.data) ? result.data : [];
   } catch (e) {
-    return fail(`${sourceTable}: 셀 조회 실패 · ${errText(e)}`, 'error');
+    return fail(`${sourceTable}: cell lookup failed · ${errText(e)}`, 'error');
   }
   // 🔴 A failed spec *fetch* is not "spec not registered". Falling back to identity without
   //    confirming puts markers at silently wrong coordinates and leaves the chip showing
@@ -10600,14 +10600,14 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   //    The row keeps its retry button, so this is recoverable.
   if (sMetaR.status === 'rejected') {
     return fail(
-      `${sourceTable}: 소스 맵 규격(wafer_map_metadata)을 확인하지 못했습니다 — ${errText(sMetaR.reason)}. ` +
-      `규격을 모르는 채로 겹치면 좌표가 조용히 어긋나므로 겹치지 않습니다.`,
+      `${sourceTable}: source map spec (wafer_map_metadata) not read — ${errText(sMetaR.reason)}. ` +
+      `Not overlaid: without the spec the coordinates shift silently.`,
       'meta_unavailable');
   }
   if (tMetaR.status === 'rejected') {
     return fail(
-      `${targetTable}: 타깃 맵 규격(wafer_map_metadata)을 확인하지 못했습니다 — ${errText(tMetaR.reason)}. ` +
-      `기준 프레임을 모르는 채로 겹치면 좌표가 조용히 어긋나므로 겹치지 않습니다.`,
+      `${targetTable}: target map spec (wafer_map_metadata) not read — ${errText(tMetaR.reason)}. ` +
+      `Not overlaid: without the target frame the coordinates shift silently.`,
       'meta_unavailable');
   }
   sourceMeta = sMetaR.value;
@@ -10625,7 +10625,7 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     const v = (binding.val && d[binding.val]) ? d[binding.val].value : null;
     cells.push({ x: xn, y: yn, val: v });
   });
-  if (cells.length === 0) return fail(`${sourceTable}: 겹칠 셀이 없습니다.`, 'no_data');
+  if (cells.length === 0) return fail(`${sourceTable}: no cells to overlay.`, 'no_data');
 
   // ④ 프레임 확정. 소스 메타가 없으면 **현재 화면 규격으로 해석(identity)** 한다 —
   //    서버 규율 3과 동일(선언 부재는 실패가 아니다). 대신 칩에 "무보정"으로 드러난다.
@@ -10651,8 +10651,8 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   const seatDimErr = frameDimError(seatFrame);
   if (srcDimErr || seatDimErr) {
     return fail(
-      `${sourceTable}: 격자 치수가 편집기의 정의역 밖입니다 — `
-      + [srcDimErr ? `소스 ${srcDimErr}` : '', seatDimErr ? `타깃 ${seatDimErr}` : ''].filter(Boolean).join(' · '),
+      `${sourceTable}: grid size outside the editor's range — `
+      + [srcDimErr ? `source ${srcDimErr}` : '', seatDimErr ? `target ${seatDimErr}` : ''].filter(Boolean).join(' · '),
       'align_unavailable');
   }
 
@@ -10676,16 +10676,16 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     //      섞인다. 사유는 사람이 읽는 자리이므로 한 번만 사람 말로 옮긴다 — 판정은 위
     //      `unusable`이 이미 끝냈고 여기서는 **표시만** 한다(두 번째 판정이 아니다).
     const sayOne = (d) => (d.value !== null ? String(d.value)
-      : d.source === 'auto_registered' ? '미선언(자동 등록된 합성 규격)' : d.source);
+      : d.source === 'auto_registered' ? 'not declared (auto-registered spec)' : d.source);
     const say = (p) => `${sayOne(p.x)}x${sayOne(p.y)}`;
     const autoNote = (srcPitch.x.source === 'auto_registered' || seatPitch.x.source === 'auto_registered')
-      ? ` 자동 등록된 규격은 칩 크기를 잰 적이 없어(합성값) 정렬 근거가 되지 못합니다 — `
-        + `해당 맵의 물리 규격을 선언한 뒤 다시 시도하십시오.`
+      ? ` An auto-registered spec never measured its chip size, so it cannot align — `
+        + `declare the map's physical spec, then retry.`
       : '';
     return fail(
-      `${sourceTable}: 칩 크기(phys_chip_x/phys_chip_y)를 확정할 수 없습니다 · `
-      + `소스 ${say(srcPitch)} · 타깃 ${say(seatPitch)}. `
-      + `셀 크기를 모르면 웨이퍼 내 물리 위치를 맞출 근거가 없으므로 겹치지 않습니다.${autoNote}`,
+      `${sourceTable}: no chip size (phys_chip_x/phys_chip_y) · `
+      + `source ${say(srcPitch)} · target ${say(seatPitch)}. `
+      + `Not overlaid: without the cell size there is no wafer position to match.${autoNote}`,
       'align_unavailable');
   }
   // 🔴 **프레임을 선언한 소스는 그 프레임의 피치도 선언해야 한다.** 소스 메타가 격자를
@@ -10695,10 +10695,10 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   //    해석하겠다는 명시적 선택**이고(위 ④) 칩에 그렇게 적힌다.
   if (srcMetaFrame && (srcPitch.x.source !== 'frame' || srcPitch.y.source !== 'frame')) {
     return fail(
-      `${sourceTable}: 소스 맵이 격자(${srcResolved.cols}x${srcResolved.rows})는 선언했는데 `
-      + `칩 크기를 선언하지 않았습니다(phys_chip_x=${srcPitch.x.source}, phys_chip_y=${srcPitch.y.source}). `
-      + `그대로 겹치면 타깃의 셀 크기를 소스의 것으로 가정하게 되어 화면은 맞아 보이고 좌표가 전부 `
-      + `어긋납니다. wafer_map_metadata에 셀 크기를 등록하십시오.`,
+      `${sourceTable}: the source map declares a grid (${srcResolved.cols}x${srcResolved.rows}) but `
+      + `no chip size (phys_chip_x=${srcPitch.x.source}, phys_chip_y=${srcPitch.y.source}). `
+      + `Overlaid as is, it takes the target's cell size: the screen looks aligned and every coordinate `
+      + `is wrong. Register the cell size in wafer_map_metadata.`,
       'meta_unavailable');
   }
 
@@ -10706,32 +10706,32 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
   //    rotation/flip만 보면 y반전·START만 다른 정상 케이스를 "무보정"으로 오표시한다.
   const identical = frameAxesKey(srcResolved) === frameAxesKey(tgtResolved);
   const diffs = [];
-  if (srcResolved.rotation !== tgtResolved.rotation) diffs.push(`회전(${srcResolved.rotation}°→${tgtResolved.rotation}°)`);
-  if (srcResolved.side !== tgtResolved.side) diffs.push(`면(${srcResolved.side}→${tgtResolved.side})`);
-  if (srcResolved.invertY !== tgtResolved.invertY) diffs.push(`y반전(${srcResolved.invertY}→${tgtResolved.invertY})`);
+  if (srcResolved.rotation !== tgtResolved.rotation) diffs.push(`rotation (${srcResolved.rotation}°→${tgtResolved.rotation}°)`);
+  if (srcResolved.side !== tgtResolved.side) diffs.push(`side (${srcResolved.side}→${tgtResolved.side})`);
+  if (srcResolved.invertY !== tgtResolved.invertY) diffs.push(`invert Y (${srcResolved.invertY}→${tgtResolved.invertY})`);
   if (srcResolved.startX !== tgtResolved.startX || srcResolved.startY !== tgtResolved.startY) {
-    diffs.push(`시작좌표(${srcResolved.startX},${srcResolved.startY})→(${tgtResolved.startX},${tgtResolved.startY})`);
+    diffs.push(`start (${srcResolved.startX},${srcResolved.startY})→(${tgtResolved.startX},${tgtResolved.startY})`);
   }
   // [규칙 6] 셀 크기는 **따로 말한다** — 겹치기의 근거를 정하는 축이라 「물리 규격 상이」라는
   // 뭉뚱그린 문구에 섞이면 조작자가 실제 값을 못 본다. 나머지 물리 항목은 바운딩박스에만
   // 영향을 주므로 종전 문구 그대로다.
   if (srcResolved.chipX !== seatFrame.chipX || srcResolved.chipY !== seatFrame.chipY) {
-    diffs.push(`셀 크기(${srcResolved.chipX}x${srcResolved.chipY}mm→${seatFrame.chipX}x${seatFrame.chipY}mm)`);
+    diffs.push(`cell size (${srcResolved.chipX}x${srcResolved.chipY}mm→${seatFrame.chipX}x${seatFrame.chipY}mm)`);
   }
   if (srcResolved.offsetX !== tgtResolved.offsetX || srcResolved.offsetY !== tgtResolved.offsetY
     || srcResolved.waferDia !== tgtResolved.waferDia || srcResolved.edgeMargin !== tgtResolved.edgeMargin) {
-    diffs.push('웨이퍼 물리 규격 상이(바운딩박스 재계산)');
+    diffs.push('wafer physical spec differs (bounding box recomputed)');
   }
-  const missingPhys = !sourceMeta ? '소스 맵 규격 미등록 — 현재 화면 규격으로 해석'
+  const missingPhys = !sourceMeta ? 'source map spec not registered — read with the screen\'s spec'
     : (srcMetaFrame && [srcFrame.waferDia, srcFrame.chipX, srcFrame.chipY,
     srcFrame.offsetX, srcFrame.offsetY, srcFrame.edgeMargin].some(v => v === undefined)
-      ? '소스 물리 규격 일부 미등록 — 현재 화면 값으로 대체' : '');
+      ? 'source physical spec partly not registered — screen values used' : '');
   // 타깃 프레임의 근거가 **등록 규격**인지 **지금 화면**인지. 두 상태를 같은 칩으로 보이면
   // "규격에 맞춰 정렬됨"과 "지금 화면에 맞춰 정렬됨"이 구분되지 않는다.
   const targetBasis = tgtMetaFrame ? 'spec' : 'screen';
   const targetNote = tgtMetaFrame ? ''
-    : (targetKey ? `타깃 맵 규격 미등록(${targetTable} · ${targetKey}) — 현재 화면 격자 설정 기준`
-      : '기준 맵 미로드 — 현재 화면 격자 설정 기준');
+    : (targetKey ? `target map spec not registered (${targetTable} · ${targetKey}) — aligned to the screen's grid`
+      : 'no map loaded — aligned to the screen\'s grid');
   const align = {
     origin: identical ? 'identity' : 'derived',
     targetBasis,
@@ -10741,9 +10741,9 @@ export async function addOverlayLayer(sourceTable, sourceKey, targetOverride) {
     // 🔴 좌석에 딸린 수(격자 밖·n:1)는 여기 넣지 않는다 — 그 수들은 화면 규격이 바뀔 때마다
     //    달라지는데 이 문자열은 추가 시점에 한 번만 만들어져 조용히 낡는다. 좌석 쪽 문구는
     //    `seatNote`가 재좌석마다 다시 쓴다.
-    note: [diffs.length ? `프레임 정규화: ${diffs.join(', ')}` : '', missingPhys, targetNote]
+    note: [diffs.length ? `frame normalized: ${diffs.join(', ')}` : '', missingPhys, targetNote]
       .filter(Boolean).join(' · ')
-      || (identical ? '소스와 타깃의 좌표계가 완전히 같습니다 (변환 없음)' : ''),
+      || (identical ? 'source and target frames are the same (no transform)' : ''),
   };
 
   const layer = {
@@ -10873,11 +10873,11 @@ export function reseatOverlayLayer(o) {
   o.dupCollapsed = duplicates;
   o.outside = outside;
   o.seatNote = [
-    outside ? `격자 밖 ${outside}칩 — [↓ 가져오기] 제외` : '',
-    fanCells ? `타깃 셀이 더 굵어 한 칸이 최대 ${fanout}칩 — ${fanCells}칸이 여러 다이의 값을 받음` : '',
-    conflictCells ? `같은 좌표에 다른 값 ${conflictCells}칸 (소스 중복 행)` : '',
-    duplicates ? `같은 행 ${duplicates}건 병합 (버린 값 없음)` : '',
-    multiCells ? `여러 값을 받은 ${multiCells}칸 — [↓ 가져오기] 제외 (점으로는 남아 있음)` : '',
+    outside ? `${outside} chips outside the grid — left out of [↓ Import]` : '',
+    fanCells ? `target cells are coarser, up to ${fanout} chips a cell — ${fanCells} cells take several dies' values` : '',
+    conflictCells ? `${conflictCells} cells with different values at one XY (source duplicate rows)` : '',
+    duplicates ? `${duplicates} identical rows merged (no value dropped)` : '',
+    multiCells ? `${multiCells} cells with several values — left out of [↓ Import] (still drawn as dots)` : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -10935,7 +10935,7 @@ function overlayAlignChip(o) {
   if (o.failed) {
     return `<span class="ov-chip bad" title="${escapeHtmlAttr(o.reason || '')}">${escapeHtmlAttr(o.status)}</span>`;
   }
-  if (!o.align) return '<span class="ov-chip dim" title="정렬 정보가 없습니다">align 미상</span>';
+  if (!o.align) return '<span class="ov-chip dim" title="No alignment record">Align unknown</span>';
   const origin = String(o.align.origin || '');
   // 🔴 좌석 쪽 문구(`seatNote`)는 **재좌석마다 다시 쓰인 것**이고 프레임 비교 문구(`note`)는
   //    추가 시점의 것이다. 둘을 합쳐야 칩의 설명이 지금 화면과 어긋나지 않는다.
@@ -10944,14 +10944,14 @@ function overlayAlignChip(o) {
   // 무엇에 맞춰 정렬했는가 — 등록 규격(wafer_map_metadata)인가, 지금 화면의 격자 설정인가.
   // 후자를 전자처럼 보여주면 "규격대로 맞췄다"는 거짓 진술이 된다(빈 맵 오버레이의 기본 상태).
   const basis = o.align.targetBasis === 'screen'
-    ? '<span class="ov-chip dim" title="타깃 규격 미등록 — 현재 화면의 격자 설정 기준">화면기준</span>'
+    ? '<span class="ov-chip dim" title="Target spec not registered — aligned to the screen\'s grid">Screen grid</span>'
     : '';
   if (origin === 'identity') {
-    return `<span class="ov-chip dim" title="${escapeHtmlAttr(note || '좌표 보정 없음')}">무보정</span>${basis}`;
+    return `<span class="ov-chip dim" title="${escapeHtmlAttr(note || 'No coordinate correction')}">As is</span>${basis}`;
   }
   // derived(및 그 외 비-identity) = 보정 적용됨. 회전은 0일 수 있으므로 있을 때만 덧붙인다.
-  const label = rot ? `정렬됨 ${rot}°` : '정렬됨';
-  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || '소스 메타 프레임으로 해석해 물리 좌표에 맞춤')}">${escapeHtmlAttr(label)}</span>${basis}`;
+  const label = rot ? `Aligned ${rot}°` : 'Aligned';
+  return `<span class="ov-chip ok" title="${escapeHtmlAttr(note || o.alignText || 'Read in the source spec\'s frame and matched on physical coordinates')}">${escapeHtmlAttr(label)}</span>${basis}`;
 }
 
 // 한 칸이 값을 여럿 받았을 때의 상태 칩. 🔴 **라벨이 사연을 구별한다** — 소스에 같은 좌표가
@@ -10959,7 +10959,7 @@ function overlayAlignChip(o) {
 // 크기를 의심하며 엉뚱한 곳을 고치게 된다. 상세는 `seatNote`가 재좌석마다 다시 쓴다.
 function overlayFanChip(o) {
   if (o.failed || !(o.multiCells > 0)) return '';
-  const label = o.fanCells > 0 ? `최대 ${o.fanout}:1` : '중복 좌표';
+  const label = o.fanCells > 0 ? `Up to ${o.fanout}:1` : 'Duplicate XY';
   return `<span class="ov-chip warn" title="${escapeHtmlAttr(o.seatNote || '')}">${escapeHtmlAttr(label)}</span>`;
 }
 
@@ -10978,8 +10978,8 @@ export function overlayLegendChip(o) {
   const miss = overlayUnlistedValues(o);
   if (miss.length === 0) return '';
   const shown = miss.slice(0, 8).join(', ') + (miss.length > 8 ? ' ...' : '');
-  const tip = `범례 미선언 — 속이 빈 점으로 그립니다 · ${shown}`;
-  return `<span class="ov-chip warn" title="${escapeHtmlAttr(tip)}">범례 밖 ${miss.length}종</span>`;
+  const tip = `Not in the legend — drawn as hollow dots · ${shown}`;
+  return `<span class="ov-chip warn" title="${escapeHtmlAttr(tip)}">${miss.length} off legend</span>`;
 }
 
 // ── [신규] 오버레이 → 실맵 가져오기 ────────────────────────
@@ -10995,7 +10995,7 @@ export function overlayLegendChip(o) {
 function importOverlayToGrid(id) {
   const o = overlayLayers.find(x => x.id === id);
   if (!o || o.failed || !o.cells || o.cells.size === 0) {
-    showToast('가져올 셀이 없는 오버레이입니다.', 'warning');
+    showToast('This overlay has no cells to import.', 'warning');
     return;
   }
   // ③ 현재 격자의 "웨이퍼 안" 물리키 집합 (gridCells2D는 렌더 결과물이라 최신화 후 사용)
@@ -11030,8 +11030,8 @@ function importOverlayToGrid(id) {
   });
 
   if (applied === 0) {
-    showToast(`가져온 셀이 없습니다 (잠금 ${locked} · 격자 밖 ${outside} · 빈 값 ${blank}`
-      + (multi ? ` · 여러 값 ${multi}` : '') + ').', 'warning');
+    showToast(`No cells imported (locked ${locked} · outside the grid ${outside} · blank ${blank}`
+      + (multi ? ` · several values ${multi}` : '') + ').', 'warning');
     return;
   }
 
@@ -11047,17 +11047,17 @@ function importOverlayToGrid(id) {
   scheduleCellDraft();
   framePushed = false; // 미저장 편집이 생겼다 — 뒤로가기 가드가 작동해야 한다
 
-  const parts = [`${applied}셀 반영`];
-  if (locked > 0) parts.push(`${locked}셀 건너뜀(잠금)`);
-  if (outside > 0) parts.push(`${outside}셀 건너뜀(격자 밖)`);
-  if (multi > 0) parts.push(`${multi}셀 건너뜀(한 칸에 여러 값)`);
-  if (added.length > 0) parts.push(`legend ${added.length}종 추가`);
+  const parts = [`${applied} cells imported`];
+  if (locked > 0) parts.push(`${locked} skipped (locked)`);
+  if (outside > 0) parts.push(`${outside} skipped (outside the grid)`);
+  if (multi > 0) parts.push(`${multi} skipped (several values in a cell)`);
+  if (added.length > 0) parts.push(`${added.length} values added to the legend`);
   const msg = `${o.sourceTable} · ${o.sourceKey} → ${parts.join(' · ')}`;
   // [1e] Speak ONLY when cells were skipped — those are "I pressed import and this did not
   // arrive", a reason the user needs. If everything landed, the result is on the canvas and
   // "not saved yet" is already stated by the plan-head chip, so no toast is layered on top.
   if (locked > 0 || outside > 0) {
-    showToast(`${msg} — 저장은 [⚡ Push]`, 'warning');
+    showToast(`${msg} — save with [⚡ Push]`, 'warning');
   } else {
     console.debug(`[map] overlay imported — ${msg}`);
   }
@@ -11167,11 +11167,11 @@ export function renderOverlayList() {
       <span class="ov-name" title="${escapeHtmlAttr(o.sourceTable + ' · ' + o.sourceKey + (o.reason ? ' — ' + o.reason : ''))}">
         <span class="ov-src">${escapeHtmlAttr(o.sourceTable)}</span><span class="ov-key">${escapeHtmlAttr(o.sourceKey)}</span>
       </span>
-      <span class="ov-meta">${o.failed ? '' : `${o.count}칩${(o.fanout > 1) ? `→${o.cellCount}칸 ` : ' '}`}${overlayAlignChip(o)}${overlayFanChip(o)}${overlayLegendChip(o)}${o.truncated ? `<span class="ov-chip warn" title="서버 상한 ${escapeHtmlAttr(String(o.cap || '?'))}">일부만</span>` : ''}</span>
+      <span class="ov-meta">${o.failed ? '' : `${o.count} chips${(o.fanout > 1) ? `→${o.cellCount} cells ` : ' '}`}${overlayAlignChip(o)}${overlayFanChip(o)}${overlayLegendChip(o)}${o.truncated ? `<span class="ov-chip warn" title="Server cap ${escapeHtmlAttr(String(o.cap || '?'))}">Partial</span>` : ''}</span>
       <span class="ov-btns">
-        ${o.failed ? '' : `<button type="button" class="ov-btn ov-import" data-act="import" title="현재 맵으로 가져오기 (잠금 셀 제외 · Push 전까지 서버 반영 없음)">↓</button>`}
-        <button type="button" class="ov-btn" data-act="${o.failed ? 'retry' : 'toggle'}" title="${o.failed ? '다시 시도' : '표시/숨김'}">${o.failed ? '↻' : (o.visible ? '👁' : '🚫')}</button>
-        <button type="button" class="ov-btn ov-del" data-act="del" title="제거">✕</button>
+        ${o.failed ? '' : `<button type="button" class="ov-btn ov-import" data-act="import" title="Import into this map (locked cells skipped · nothing saved until Push)">↓</button>`}
+        <button type="button" class="ov-btn" data-act="${o.failed ? 'retry' : 'toggle'}" title="${o.failed ? 'Retry' : 'Show/hide'}">${o.failed ? '↻' : (o.visible ? '👁' : '🚫')}</button>
+        <button type="button" class="ov-btn ov-del" data-act="del" title="Remove">✕</button>
       </span>
     </div>`).join('');
   box.querySelectorAll('.ov-row').forEach(row => {
@@ -11208,16 +11208,16 @@ async function handleAddOverlayClick() {
   const table = el.overlaySrcTable ? el.overlaySrcTable.value : '';
   const key = el.overlaySrcKey ? el.overlaySrcKey.value.trim() : '';
   if (!table || !key) {
-    showToast('겹칠 맵의 테이블과 맵 키를 입력하십시오.', 'warning');
+    showToast('Enter the overlay map\'s table and map key.', 'warning');
     return;
   }
   // 빈 격자에서도 겹칠 수 있다 — 본딩 계획은 **맵이 없는 상태에서 시작**하고, EDS/defect를
   // 먼저 겹쳐 보고 나서 칠한다. 기준은 지금 화면의 격자 설정이며 그 사실은 칩(화면기준)에 뜬다.
   el.btnAddOverlay.disabled = true;
-  el.btnAddOverlay.textContent = '정렬 중…';
+  el.btnAddOverlay.textContent = 'Aligning…';
   const r = await addOverlayLayer(table, key);
   el.btnAddOverlay.disabled = false;
-  el.btnAddOverlay.textContent = '＋ 겹치기';
+  el.btnAddOverlay.textContent = '＋ Overlay';
   if (r.error) {
     // 실패도 목록에 행으로 남는다 — 토스트로 흘리면 "왜 안 겹쳤는지"가 화면에서 증발한다
     showToast(r.error, r.unsupported ? 'warning' : 'error');
@@ -11225,8 +11225,8 @@ async function handleAddOverlayClick() {
     // [1e] Truncation is a DEGRADATION (§7: with total > rows we cannot claim to know the
     // server's state), so "you are seeing only part of the source" must be said. A complete
     // load shows up as a row plus its chip count in the overlay list, so it goes to console.
-    const head = `오버레이 추가: ${r.layer.sourceTable} · ${r.layer.sourceKey} — ${r.layer.count}칩`;
-    if (r.layer.truncated) showToast(`${head} (일부만 표시 — 서버 절단)`, 'warning');
+    const head = `Overlay added: ${r.layer.sourceTable} · ${r.layer.sourceKey} — ${r.layer.count} chips`;
+    if (r.layer.truncated) showToast(`${head} (partial — server cap)`, 'warning');
     else console.debug(`[map] ${head}`);
     if (el.overlaySrcKey) el.overlaySrcKey.value = '';
   }
