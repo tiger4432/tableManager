@@ -184,9 +184,18 @@ def test_a_delete_event_cannot_wake_the_chain():
     assert worker._is_trigger_event(ev("DELETE")) is False
     assert worker._group_triggered_rules([ev("DELETE")], [rule]) == []
     assert worker._group_target_tables([ev("DELETE")], [rule]) == set()
+    # 총괄 옛 키: WIDENED BY ONE CELL, NOT REVERSED - a rule that declares it takes deletions
+    taker = dict(rule, allow_delete_trigger=True)
+    assert worker._group_triggered_rules([ev("DELETE")], [taker]) == [taker]
 
     # 🔴 그리고 DELETE 가 «갈래»로 되살아나지 않는지는 여전히 텍스트가 주어다 —
     #    「이 낱말이 코드에 없다」는 돌려서는 못 재는 주장이다.
     source = inspect.getsource(worker)
-    assert 'event_type == "DELETE"' not in source
+    # a deletion is asked in two places: the wake seat, which asks the rule's cell, and what the deleted rows fed
+    # (`_deleted_rows_of` - a fact whether or not a rule runs, fa5417c28; red on main since 76d1cd698 landed it)
+    askers = sorted(name for name, function in inspect.getmembers(worker, inspect.isfunction)
+                    if function.__module__ == worker.__name__
+                    and 'event_type == "DELETE"' in inspect.getsource(function))
+    assert source.count('event_type == "DELETE"') == 2
+    assert askers == ["_deleted_rows_of", "_is_trigger_event"]
     assert '"DELETE"' not in source.split("def _rule_accepts_event", 1)[1][:400]

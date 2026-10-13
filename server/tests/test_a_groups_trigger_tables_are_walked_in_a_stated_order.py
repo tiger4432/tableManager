@@ -65,13 +65,13 @@ def test_the_order_is_the_one_the_function_states():
     assert worker.trigger_tables_in_order(events) == sorted(NAMES)
 
 
-def test_only_a_create_or_an_edit_is_a_trigger():
-    """The filter is part of the answer: a DELETE does not wake a rule, so its table must not
-    appear and then match nothing."""
+def test_the_order_is_handed_waking_events_and_does_not_judge_them():
+    """총괄 옛 키: which events wake is `wakes`'s, judged once into the group's `valid_events` - a DELETE is one
+    when a rule takes deletions. The order walks the tables it is handed, the deletion's too."""
     events = [_Event("kept", "CREATE"), _Event("also_kept", "EDIT"),
-              _Event("dropped", "DELETE")]
+              _Event("deleted", "DELETE")]
 
-    assert worker.trigger_tables_in_order(events) == ["also_kept", "kept"]
+    assert worker.trigger_tables_in_order(events) == ["also_kept", "deleted", "kept"]
 
 
 def test_one_table_named_by_many_events_is_walked_once():

@@ -31,6 +31,7 @@ from chain import ingestion_worker as worker                         # noqa: E40
 from database import crud, models, schemas                           # noqa: E402
 from database.context import channel, retroactive_run                # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
+from utils.payload_helper import get_payload_dict                   # noqa: E402
 
 pytestmark = pytest.mark.pg
 MARK = "fold_mark"
@@ -93,6 +94,8 @@ def test_1_every_source_gone_the_official_row_goes(world, caplog):
     assert hw.said(world) == []
     deletions = [e for e in world["db"].query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last)
                  if e.table_name == hw.OFFICIAL and e.event_type == "DELETE"]
+    # the shell's deletion is the chain's event, read at the one seat by its channel (총괄 옛 키)
+    assert {event_constants.channel_of(get_payload_dict(e)) for e in deletions} == {event_constants.CHANNEL_CHAIN}
     assert deletions and not [(r["name"], e.id) for e in deletions for r in world["rules"]
                               if worker._is_trigger_event(e) and worker.fires(r, e)], "the deletion wakes a rule"
     said = [r.getMessage() for r in caplog.records]
