@@ -39073,3 +39073,14 @@ order            before the vectors/calculator work - today; merge with dist
 ```
 
 > **[lead -> client] 10-13 - hold eb1ae8c9f (410 line, Walk again, top_set difference): the server landing d5df12352 was reverted (8091ed6f3, post-landing QA NO-GO - the resume key was not idempotent). Implementer A relands with «same key = same page»; the order reopens with the new shape file. Keep one piece now: disable More while its request runs (walkStatus reads shown.run only - a second press posts the same resume)**
+
+> **[lead -> client] 10-13 urgent small - the owner: on the Board (test bed, the main build) the X axis declaration window opens off the screen and cannot be seen («스팟파이어 부품은 화면 밖으로 x축 선언창 삐져나가서 안보임»)**
+
+```
+what     every popover / picker window of the root part (axis pill ▾, value pill, legend picker, filter picker, start picker) stays inside the viewport:
+         placed below its pill when it fits, otherwise flipped above, shifted left/right to fit, and capped to the viewport height with its own scroll - one placement function for all of them
+         (the start picker's «hangs over the panels» fix 941fde9a4 is the same family - fold it into the one function, no second placement code)
+gate     screen checker cell: open each picker at 1920x1080, 1440x900, 1280x720 and 1024x768, with the part at the right edge and at the bottom of the grid -
+         the window's rect is inside the viewport and every control's centre reaches that control (elementFromPoint); dark and light
+land     on the branch that goes to main next (design-spotfire carries the test bed now) with a dist commit; tell the lead - this one is merged as soon as it comes, the Spotfire layer with it
+```
