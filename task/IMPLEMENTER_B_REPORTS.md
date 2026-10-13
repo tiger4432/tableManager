@@ -665,3 +665,58 @@ test_ledger_worlds_are_independent_and_meet_in_a_walk.py::test_every_live_world_
 - 여쭐 것 1: 여러 거래를 한 번에 번역할 때 영수증의 거래 id — (가) 거래마다 영수증 한 장(수는 묶음 전체) · (나) 한 장에 거래 id 목록. 타임라인이 무엇을 읽는지에 달렸습니다.
 - 여쭐 것 2: 다시 셌더니 소스 행이 0 인 키의 파생 행 — 사람이 확정한 값이 있는 행도 지우나, 남기고 이름을 대나.
 - 여쭐 것 3: ④ 를 decide 와 복사의 다시 세기에만 넓히나, 사실을 안 적은 맵퍼(«모름»)에도 같은 칸을 읽게 하나.
+
+> **[구현자 B -> 총괄] 10-13 검수 a08c95676 나 착지 76ad487be — 한 행 분자도 이름 붙은 칸의 정규형 검사를 함**
+
+```
+무엇     roleframe._partition_units 가 한 행 지름길 «앞»에서 행마다 정렬 토큰(이름 붙은 칸의 정규형 JSON)을 지음
+         -> Decimal · date · 시간대 없는 datetime 이 한 행 분자에서도 쪽을 멈춤(a08c95676 이전과 같음). 여러 행은 같은 토큰으로 정렬
+게이트    test_a_named_cell_with_no_canonical_form_stops_the_page_whatever_its_row_count
+           decimal · date · naive_datetime × 1 · 2 행 — 옛 지름길에서 6 빨강
+           칸은 mat_type(recipe_id 는 다른 자리에서 멈춰 옛 코드에서도 초록 — 공허해서 바꿈)
+         test_each_row_of_a_molecule_carries_its_own_row_ref — 두 행 분자, 변이 «분자 안 행 참조 뒤집기» 빨강
+값       박스 · 미리보기 번역만(DB 없음) · 표본 행 소스 2,000 행 · 다섯 번씩 두 판
+           옛 지름길 1.25-1.60 ms/행 · 검사 넣고 1.47-1.78 ms/행 — 행당 약 +0.2 ms (ㄴ 이 번 몫의 일부를 돌려줌)
+시험     그 두 파일은 ㄷ 착지 직전 손댄 시험 판(163 passed)에 들어 있음
+문서     RUN.md 제목과 RELEASE_LOG 에 잰 범위(실제 쪽 18 · 소스 다섯 앞 3,000 행) · RELEASE_LOG «고침» 줄 · S-64-c 갱신
+         RUN.md 되돌리기 줄의 해시는 이 보고 커밋에서 채움
+안 한 것  런처 실제 판 — 번역기 안의 한 함수라 안 돌렸음. 상설(착지 전 실제 프로세스) 위반이면 풀어 주실 때 돌립니다
+```
+
+> **[구현자 B -> 총괄] 10-13 ㄷ 착지 19d6da585 — 원장 일이 원장 프로세스로 · 지운 행 거두기는 체인 그룹 끝에서 · 따라가기는 사건 여럿을 한 번에 (7763dd6d0 · 796f04605 ①②)**
+
+```
+무엇     런처 자식 하나 더: Ledger Worker(run_ledger_worker.py · 로그 ledger.log · 연결 assy_ledger · 박동 ledger)
+         원장 따라가기 · 원장 행 센서스 · 시작 때 원장 스키마 · 지문 · 원장 인덱스 줄 — 체인 워커의 함수를 그대로 ledger/worker.py 로 옮김
+         체인 워커는 체인만. 지운 행이 먹인 칸 거두기는 체인 그룹 끝(성공 커밋 · 격리 커밋)에서 — 원장이 서도 거둬짐
+         따라가기: 대기 사건을 id 순으로 행 수가 쪽 크기 규칙(PageSize)에 닿을 때까지 집어, 표마다 같은 종류 덩어리를 한 번 번역
+           지움과 추가 · 고침은 섞지 않음(순서 지킴) · 덩어리에 추가가 있으면 «읽는 칸 안 바뀜» 건너뛰기 없음 · 덮은 거래마다 영수증
+         체인 Pause 동안 따라가기 · 센서스가 새 묶음 · 소스를 안 집음(돌던 묶음은 끝까지, 상한 1000 행)
+         다른 원장 프로세스가 살아 있으면 안 섬 — 체인의 같은 판정을 이름으로 넓힘(heartbeat.another_process_beats)
+         서버 단독(uvicorn)이면 체인과 원장이 같은 프로세스 — 같은 스위치(ASSY_CHAIN_WORKER)
+         걷기(ledger_subgraph) · main 의 컴파일 캐시 import 한 줄 — A 동의
+뺀 것     큰 묶음 자식 N — 총괄 판정대로 이번 착지에 없음
+stop_line 원장 일은 큐 화면에 «줄»로 안 그려짐(개요의 /runtime 루프 행뿐) — stop_line 그대로, Pause 만
+되돌리기  git revert 19d6da585 -> 런처 재기동 (RUN.md 의 그 줄에 이 커밋에서 적음)
+```
+
+**잰 것**
+```
+게이트      test_the_ledger_follows_a_batch_of_events_behind_the_chain (PG) 4:
+            묶음이 하나씩 따라간 것과 같은 원자 · 행 색인(읽는 표의 지움이 추가 사이에 있는 판) · 호출 수는 적음
+            거래 셋을 접은 번역 → 거래마다 영수증, 수는 그 번역의 것 · Pause 동안 안 집음 · Resume 뒤 따라감
+변이        넷 다 빨강 (한 묶음 한 사건 · 표마다 한 덩어리 · 첫 거래만 영수증 · Pause 안 물음)
+시험        손댄 시험 비PG 162 passed · PG 79 passed · 1 failed(아래 세상 시험 — ㄴ 이전부터)
+실제 판      런처 다섯 · assy_test 스크래치 assy_b_ledgerproc_1013 · hold 세상 · 원천 행은 감시 폴더 CSV:
+            pg_stat_activity 에 assy_ledger 3 · 3000 행 따라감 · 따라가기 한 바퀴 «사건 3 개(3000 행) 4.8 s»
+            원장 선언을 깨뜨려 세운 채: 체인 추가 2.2 s · 고침 1.7 s · 지움 거두기 0.5 s 에 공식 표까지
+            Pause 12 s(선언 복구 상태) 동안 원장 대기 6 → 7 그대로, Resume 뒤 1.3 s 에 따라감
+            따라가기가 쓴 원자 · 행 색인 = 소스 통째 다시 번역(3005, True)
+            원장 프로세스를 죽이자 감독이 5.0 s 에 다시 띄움, 다음 행 따라감 · public 행 변화 0
+운영 규격     원장 따라가기 1000 행 ≈ 1.6 s(위 한 바퀴 4.8 s / 3000 행, 박스 · 번역 + IO 합) — «체인 그룹 1000 행 ≤ 5 s» 안
+            IO 몫만 따로는 안 잼(«≤ 1.3 s/1k» 는 이 수로 판정 못 함)
+```
+
+**다른 PG 실패** — 세상 시험 test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up 은 ㄴ 이전부터 같은 사유로 실패(보고 6e8815ee9 의 여덟 중 하나). 이주 시험 둘(test_an_index_build_cut_off… · test_the_migration_names_the_session…)은 한 판에서 «다른 세션(assy_server, idle in transaction)이 outbox 를 쥠»으로 실패, 다시 돌리자 가지 · main 둘 다 통과 — 환경.
+
+다음: 가(decide 빈 집계 거두기를 워커 한 문으로) — 멈춤 동안 코드까지만, 시험 · 판은 풀어 주실 때. 그다음 다 · ④ 옛 키 ㄱ.
