@@ -2234,6 +2234,42 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc):
         expr, total_order_keys(table_model, table_name), order_desc)
 
 
+def key_page(query, keys, final_sort, boundary, limit, backward=False):
+    """🔴 A PAGE READ BY KEY, NOT BY OFFSET (총괄 e570dcda5 ㄱ): the `limit` rows of `query` in `final_sort` after the row
+    `boundary` names (`backward`: before it, in order) - a page costs its own rows however deep (400만 판: OFFSET 의 가운데
+    쪽 724 ms · 마지막 1,345 ms, 열쇠 0.5~0.8 ms). None when that row is gone - the caller pages by OFFSET.
+    The sort column's NULLs are a run of their own in PostgreSQL's order - ascending after the rest, descending before -
+    and a row comparison never matches them, so the run is read on its own, by the keys."""
+    from sqlalchemy import and_, tuple_
+    from sqlalchemy.sql import operators
+
+    terms = [clause.element for clause in final_sort]
+    expr = terms[0] if len(terms) > len(keys) else None
+    down = (final_sort[0].modifier is operators.desc_op) != backward          # the direction this read walks
+    held = query.session.query(*([expr] if expr is not None else []), *keys).filter(keys[0] == boundary).first()
+    if held is None:
+        return None
+    value, ids = (held[0], tuple(held[1:])) if expr is not None else (None, tuple(held))
+    by_keys = [key.desc() if down else key.asc() for key in keys]
+    past_keys = tuple_(*keys) < ids if down else tuple_(*keys) > ids
+
+    def read(condition, order, n):
+        return query.with_entities(*keys).filter(condition).order_by(*order).limit(n).all() if n > 0 else []
+
+    if expr is None:
+        rows = read(past_keys, by_keys, limit)
+    elif value is None:                                         # in the NULL run: its rest, then (descending) the values
+        rows = read(and_(expr.is_(None), past_keys), by_keys, limit)
+        if down:
+            rows += read(expr.isnot(None), [expr.desc()] + by_keys, limit - len(rows))
+    else:
+        past = tuple_(expr, *keys) < (value, *ids) if down else tuple_(expr, *keys) > (value, *ids)
+        rows = read(past, [expr.desc() if down else expr.asc()] + by_keys, limit)
+        if not down:                                            # ascending, the NULL run comes after the values
+            rows += read(expr.is_(None), by_keys, limit - len(rows))
+    return list(reversed(rows)) if backward else rows
+
+
 def apply_column_filters(query, table_model, table_name, filters):
     """`?filters=` (AG-Grid filter model) -> query. Shared by the grid and the export."""
     if not filters:
@@ -2757,6 +2793,8 @@ def get_table_data(
     enrichment_queue_scope: str = None, # queue(기본) | keyed | blank_key | resolved
     defer_total: bool = False,          # [2026-09-02] 세는 것을 GET .../data/count 로 미룬다
     world: str = None,                  # 세상마다 있는 표를 그 세상에서 (총괄 2bb20ff56)
+    after: str = None,                  # 앞 쪽의 마지막 행 row_id - 다음 쪽을 열쇠로 (총괄 e570dcda5, key_page)
+    before: str = None,                 # 뒤 쪽의 첫 행 row_id - 앞 쪽을 열쇠로
     db: Session = Depends(get_db)
 ):
     """
@@ -2931,7 +2969,12 @@ def get_table_data(
     # one, so the phase selects the whole key and the re-fetch matches on the whole key -
     # taking the first part alone would pull in every row that shares it.
     page_keys = total_order_keys(table_model, table_name)
-    id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
+    # the next / previous page by key when the screen names the row it went on from - a page-number jump stays OFFSET;
+    # a relation without row_id, a jump to a row, or a row that is gone pages by OFFSET (`skip`)
+    by_key = (after or before) and not target_row_id and page_keys[0] is getattr(table_model, "row_id", None)
+    id_results = key_page(query, page_keys, final_sort, after or before, limit, backward=not after) if by_key else None
+    if id_results is None:
+        id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [row[0] if len(page_keys) == 1 else tuple(row) for row in id_results]
     t_id_scan = time.time() - t_id_start
     
@@ -3008,7 +3051,7 @@ def get_table_data(
         # is what a plan question needs, and the values are theirs.
         f"skip={skip}, limit={limit}, order={order_by}, q={'set/' + str(search_scope.get('arms', 0)) if q else '-'}, "
         f"filters={_filtered_column_count(filters)}, "
-        f"target={'set' if target_row_id else '-'}")
+        f"target={'set' if target_row_id else '-'}, key={'after' if after else 'before' if before else '-'}")
     
     unread = _attach_ledger_sources(db, table_name, data_list)
     looked = text_looked_columns(search_scope.get("columns") or () if q else (), filters)
@@ -3021,6 +3064,10 @@ def get_table_data(
         **({} if unread is None else {"ledger_worlds_unread": unread}),
         # a search or a pattern filter: each column it looked up by text, as the database holds its search index
         **({"search_index": models.search_column_states(db.get_bind(), table_name, looked)} if looked else {}),
+        # sorted by a table column: whether an index gives its order - without one every page of it sorts the table
+        **({"sort_index": models.sort_column_states(db.get_bind(), table_name, [order_by],
+                                                     [key.name for key in page_keys])}
+           if _named_sort(table_model, table_name, order_by, order_desc) is None else {}),
     }, table_name)
 
 
