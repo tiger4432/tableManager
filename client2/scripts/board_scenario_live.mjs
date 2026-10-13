@@ -105,7 +105,7 @@ part(B).markHub([['core wafer', b.rowKeys[otherRow]]], b.rowIds[otherRow], {});
 await settle();
 await until(ready(C));
 await until(ready(D));
-say(`B pressed ${b.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5} (C and D walk from the new marking)`);
+say(`B pressed ${b.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5}`);
 say(`D B wafers now: ${bWafers().join(', ')}; unknown ${stat(D).unknown || 0}`);
 const kept = page.save();
 // No relation: D's points all other
@@ -116,5 +116,8 @@ for (const p of part(D).model.points) none[p.category] = (none[p.category] || 0)
 say(`no relations: D ${JSON.stringify(none)}`);
 say(`graph: ${page.layers.graph.nodes.size} nodes, ${page.layers.graph.edges.size} edges; walks in all ${walks() - step0}`);
 const save = argOf('--save', null);
-if (save) { writeFileSync(save, JSON.stringify({ kept, wafer: WAFER, ids: { A, B, C, D } }, null, 1)); say(`saved ${save}`); }
+// Saved on a two-by-two layout - A B over C D - so the shots show the four alike.
+const leaf = (pid) => ({ id: pid, size: 1 });
+const grid = { split: 'column', children: [{ split: 'row', size: 1, children: [leaf(A), leaf(B)] }, { split: 'row', size: 1, children: [leaf(C), leaf(D)] }] };
+if (save) { writeFileSync(save, JSON.stringify({ kept: { ...kept, root: grid }, wafer: WAFER, ids: { A, B, C, D } }, null, 1)); say(`saved ${save}`); }
 process.exit(0);

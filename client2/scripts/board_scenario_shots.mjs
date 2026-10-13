@@ -81,7 +81,10 @@ try {
   // The start: the type, the key typed, «+» - the start row's own controls.
   await evaluate(`(() => { const s = document.querySelector('.tb-start__type'); s.value = 'wafer'; s.dispatchEvent(new Event('change', { bubbles: true }));
     const i = document.querySelector('.tb-start .wk-input'); i.value = ${JSON.stringify(scenario.wafer)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
-  await sleep(1500);
+  // The key's line in the list picked (a mousedown, as the list takes it), then «+».
+  await until(`[...document.querySelectorAll('.tb-start .wk-searchitem')].some((n) => n.textContent.startsWith(${JSON.stringify(scenario.wafer)}))`);
+  await evaluate(`(() => { const it = [...document.querySelectorAll('.tb-start .wk-searchitem')].find((n) => n.textContent.startsWith(${JSON.stringify(scenario.wafer)})); it.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return true; })()`);
+  await sleep(300);
   await evaluate(`(() => { const b = document.querySelector('.tb-start .wk-basketadd[data-sign="+"]'); b.click(); return true; })()`);
   await until(`(${inPanel(A, 'rect[data-cell]')} || []).length > 0`);
   const t0 = asked.length;
@@ -100,6 +103,12 @@ try {
   console.log(`core wafer ${core} · step ${step} · walks after the die press ${asked.length - t0} · all walks ${asked.length}`);
   console.log(`status: ${status}`);
   console.log(`page errors: ${thrown.length ? thrown.join(' / ') : 'none'}`);
+} catch (err) {
+  console.log(`stopped: ${String(err.message).slice(0, 200)}`);
+  try { await shot('stopped.png'); } catch { /* no page */ }
+  console.log(`walks asked ${asked.length}: ${asked.slice(-3).join(' | ').slice(0, 300)}`);
+  console.log(`page errors: ${thrown.length ? thrown.join(' / ') : 'none'}`);
+  try { console.log(`start row: ${await evaluate("(document.querySelector('.tb-start') || {}).textContent")}`); } catch { /* none */ }
 } finally {
   try { ws.close(); } catch { /* gone */ }
   proc.kill();
