@@ -16,7 +16,7 @@ import { StatusPart } from './status_part.js';
 import { FiltersPart } from './filters_part.js';
 import { PropertiesPart } from './properties_part.js';
 import { SlotPicker } from './picker.js';
-import { HubBook } from './hubs.js';
+import { HubBook, isHubId } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
 import { GraphBook, MarkingLayers } from './marking_layer.js';
 import { kind as scatterKind } from './kinds/scatter.js';
@@ -139,12 +139,18 @@ export async function boot(deps) {
     add() {
       const list = markingList.get('list');
       let n = list.length + 1;
-      while (list.some((m) => m.name === `marking:${n}`)) n += 1;
+      while (list.some((m) => m.name === `marking:${n}` || m.label === `Marking (${n})`)) n += 1;
       const color = MARKING_COLORS.find((c) => !list.some((m) => m.color === c)) || MARKING_COLORS[0];
       markingList.set('list', [...list, { name: `marking:${n}`, label: `Marking (${n})`, color }]);
       return `marking:${n}`;
     },
-    edit(name, patch) { markingList.set('list', markingList.get('list').map((m) => (m.name === name ? { ...m, ...patch } : m))); },
+    /** A label or colour changed - a label another marking has is refused, the reply naming it. */
+    edit(name, patch) {
+      const list = markingList.get('list');
+      if (patch.label !== undefined && list.some((m) => m.name !== name && m.label === patch.label)) return { refused: `Another marking is named ${patch.label}` };
+      markingList.set('list', list.map((m) => (m.name === name ? { ...m, ...patch } : m)));
+      return { refused: null };
+    },
     users: (name) => usersOf(name).map(titleOf),
     remove(name) {
       const users = usersOf(name);
@@ -166,9 +172,16 @@ export async function boot(deps) {
     entities, markingList, markingBook, relations, layers, filterNames: FILTERS,
     predicates: () => (declaration.ok ? declaration.predicates : []),
     peers: () => declarations(),
+    vocabulary: () => (declaration.ok ? declaration : null),
     askKeys: ({ type, startsWith }) => fetchKeyValues({ apiBase, fetchImpl, type, startsWith, limit: 20 }),
     onAdd: (kind) => add(kind),
   };
+  // What was marked when it was saved - the start too, a hub with its members (Spotfire keeps the markings in the file):
+  // in the stores before the parts are seated, so they walk from it.
+  if (saved && !Array.isArray(saved)) {
+    for (const [id, members] of Object.entries(saved.hubs || {})) hubs.put(id, members);
+    for (const [name, entries] of Object.entries(saved.marks || {})) markings.replace(name, entries);
+  }
   const layout = laidOut(LAYOUT, saved, entities());
   shell.render(bound(layout, shared));
   const firstVisual = layout.panels.find((p) => p.part === 'visual');
@@ -186,7 +199,10 @@ export async function boot(deps) {
   const declarations = () => shell.layoutNow().panels.filter((p) => p.part === 'visual');
   /** What Save writes and the next boot lays over the layout: the tree, the visuals and the markings. */
   const save = () => {
-    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list') };
+    const names = markingList.get('list').map((m) => m.name);
+    const marks = Object.fromEntries(names.map((name) => [name, markings.entries(name)]).filter(([, entries]) => entries.length));
+    const held = Object.fromEntries([...new Set(Object.values(marks).flat().map(([id]) => id))].filter(isHubId).map((id) => [id, hubs.membersOf(id)]));
+    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };
     try { if (storage) storage.setItem(SAVED, JSON.stringify(kept)); } catch (e) { /* not kept */ }
     return kept;
   };
@@ -210,7 +226,9 @@ if (typeof document !== 'undefined' && document.getElementById('tb-board')) {
     charts: { init: (el) => echarts.init(el, null, { renderer: 'canvas' }) }, storage, theme: params.get('theme') })).then((page) => {
     const save = document.getElementById('tb-save');
     save.addEventListener('click', () => { page.save(); save.textContent = 'Saved'; setTimeout(() => { save.textContent = 'Save'; }, 1200); });
-    document.getElementById('tb-reset').addEventListener('click', () => {
+    // Reset - back to what was saved (Spotfire's «Reset to saved»); Clear saved - forget it, the page's own layout next.
+    document.getElementById('tb-reset').addEventListener('click', () => window.location.reload());
+    document.getElementById('tb-clear').addEventListener('click', () => {
       try { if (storage) storage.removeItem(SAVED); } catch (e) { /* nothing kept */ }
       window.location.reload();
     });

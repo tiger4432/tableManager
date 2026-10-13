@@ -33,10 +33,10 @@ export function valuePasses(condition, value) {
 }
 
 /** Whether node `id` passes one condition: its slot read, then each value it holds (several: any). */
-export function nodePasses(index, inside, id, condition, oneValued) {
+export function nodePasses(index, inside, id, condition, oneValued, marked = null) {
   const node = index.nodes.get(id);
   if (!node || node.type !== condition.row) return true;
-  const read = readSlot(index, inside, id, condition, oneValued && oneValued(condition));
+  const read = readSlot(index, inside, id, condition, oneValued && oneValued(condition), marked);
   if (read.state === 'missing' || read.state === 'empty') return condition.empty !== false;
   const values = read.state === 'one' ? [read.value] : read.values;
   return values.some((v) => valuePasses(condition, v));
@@ -46,9 +46,10 @@ export function nodePasses(index, inside, id, condition, oneValued) {
  * THE filter: the ids that pass every condition, and how many each condition list dropped.
  * @returns {{kept: string[], dropped: number}}
  */
-export function keepNodes(index, inside, ids, conditions, oneValued = null) {
+export function keepNodes(index, inside, ids, conditions, oneValued = null, marked = null) {
   const list = (conditions || []).filter(Boolean);
   if (!list.length) return { kept: [...ids], dropped: 0 };
-  const kept = ids.filter((id) => list.every((c) => nodePasses(index, inside, id, c, oneValued)));
+  // marked - an expression condition's Marked() (the page's marking layer, handed in by the root)
+  const kept = ids.filter((id) => list.every((c) => nodePasses(index, inside, id, c, oneValued, marked)));
   return { kept, dropped: ids.length - kept.length };
 }

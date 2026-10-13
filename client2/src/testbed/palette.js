@@ -7,6 +7,7 @@ export const TOKENS = Object.freeze({
   bg: '--sf-bg', text: '--sf-text', axis: '--sf-axis', active: '--sf-active', brush: '--sf-brush',
   one: ['--sf-one', '--sf-one-line'],
   cat: [1, 2, 3, 4, 5, 6, 7].map((k) => [`--sf-cat-${k}`, `--sf-cat-${k}-line`]),
+  swatches: ['--sf-swatch-red', '--sf-swatch-grey'],
 });
 
 /** A point not marked while others are: its colour this much, the background the rest - opaque (measured 0.20 on every
@@ -20,7 +21,7 @@ export const MARKER_PCT = 19;
 export function readPalette(read) {
   const pair = ([fill, line]) => [read(fill), read(line)];
   return { bg: read(TOKENS.bg), text: read(TOKENS.text), axis: read(TOKENS.axis), active: read(TOKENS.active), brush: read(TOKENS.brush),
-    one: pair(TOKENS.one), cat: TOKENS.cat.map(pair) };
+    one: pair(TOKENS.one), cat: TOKENS.cat.map(pair), swatches: TOKENS.swatches.map(read) };
 }
 
 /** The palette a document's root computes now - the page's theme as its tokens say it. */

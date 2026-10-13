@@ -302,6 +302,8 @@
   --sf-cat-6: #72BEED;  --sf-cat-6-line: #568EB2;
   --sf-cat-7: #FAA264;  --sf-cat-7-line: #BC7A4B;
   --sf-one: #A0A0A0;    --sf-one-line: #787878;
+  /* the colour palette's two past the categories (a legend colour picked - owner 10-13 «빨강 · 회색») */
+  --sf-swatch-red: #E8423F;  --sf-swatch-grey: #8C8C8C;
   /* faces and sizes */
   --sf-font: Roboto, system-ui, sans-serif;
   --sf-fs: 12px;          /* text · tick · cell */

@@ -1,37 +1,16 @@
-// The scatter kind of the visual part: its slots, its model, its picture (ECharts, injected - the kind never imports it).
-// What the root hands in is the same for every kind: rows and their slots read, what is marked, the declaration, the
-// palette its tokens give (testbed/palette.js).
+// The scatter kind - its visible area only (docs/architecture/ROOT_PART_BASE_SET.md: the root is the template): a point a
+// unit the root made (a node, a hub, a value record) at its x and y, painted as the root says; a press or a rectangle
+// gives back which. Its trays, legend, marking and colour are the root's.
 
 import { numberOf } from '../../walk/reach_table.js';
-import { categoryColor, mix, MARKER_PX, MARKER_PCT } from '../palette.js';
-import { slotWords, combosOf, foldRows, isExpression } from '../slot.js';
-import { hubId } from '../hubs.js';
+import { MARKER_PX, MARKER_PCT } from '../palette.js';
+import { slotWords } from '../slot.js';
 
+/** Its slots: the axes on the template's trays - Y on the left, X under. */
 export const SLOTS = Object.freeze([
-  { key: 'x', label: 'X-axis' },
-  { key: 'y', label: 'Y-axis' },
-  { key: 'color', label: 'Color by', category: true },
+  { key: 'x', label: 'X-axis', tray: 'bottom', plus: true },
+  { key: 'y', label: 'Y-axis', tray: 'left', plus: true },
 ]);
-const MARKER = /^marker(\d+)$/;
-const markerOrder = (key) => Number(MARKER.exec(key)[1]);
-/** The Marker by keys the declaration holds, in order. */
-export const markersOf = (encode) => Object.keys(encode || {}).filter((k) => MARKER.test(k)).sort((a, b) => markerOrder(a) - markerOrder(b));
-/** The key «+» on Marker by fills next. */
-export const nextMarker = (encode) => { const keys = markersOf(encode); return `marker${keys.length ? markerOrder(keys[keys.length - 1]) + 1 : 1}`; };
-
-/** What a point is (Spotfire's «Marker by»): a hub of the rows a combination of the Marker by values holds; else one
- *  value record - a read of Y, a row spread into its reads (`markerBy: 'record'`); else a node. */
-export const unitOf = (decl) => (markersOf((decl || {}).encode).length ? 'hub' : (decl || {}).markerBy === 'record' ? 'record' : 'node');
-/** The Marker by choices that are not a slot - the next one's picker lists them. */
-const UNITS = Object.freeze([{ words: '(Node)', patch: { markerBy: null } }, { words: '(Value record)', patch: { markerBy: 'record' } }]);
-
-/** Its slots: the axes, Color by, each Marker by held and the next one. A hub or a record reads every value of the axes. */
-export const slots = (encode, decl) => {
-  const spread = unitOf({ ...(decl || {}), encode }) !== 'node';
-  const axes = SLOTS.map((s) => (spread && (s.key === 'x' || s.key === 'y') ? { ...s, folds: true } : s));
-  return [...axes, ...markersOf(encode).map((key) => ({ key, label: 'Marker by', category: true })),
-    { key: nextMarker(encode), label: 'Marker by', category: true, choices: UNITS }];
-};
 
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 /** An axis by what its values are: all numbers a value axis, all ISO times a time axis, else categories. */
@@ -43,79 +22,28 @@ export function axisKind(values) {
 }
 
 /**
- * The picture's model. A point is a row whose x and y each hold one value (a several without a reduce is not drawn -
- * lead aca803a7a «N rows with several values»); its colour is its category's, mixed toward the background when something
- * else is marked and it is not.
- * @param {Array<{id, label, reads: Record<string, object>}>} rows
- * @param {{marked: (id) => boolean, markColor?: string|null, palette: object, declaration?: object}} ctx  the declaration's
- *   markerPct - the marker size
+ * The picture's model. A point is a unit whose x and y each hold one value (a several without a reduce is not drawn -
+ * lead aca803a7a «N rows with several values»); its paint is the root's (`ctx.paint(ids)`: colour, marked, dimmed).
+ * @param {Array<{id, ids?, where?, label, reads: Record<string, object>}>} units
+ * @param {{paint?: (ids) => {fill, line, marked}, palette: object, declaration?: object}} ctx  the declaration's markerPct -
+ *   the marker size
  */
-export function scatterModel(rows, ctx) {
-  const palette = ctx.palette;
-  const encode = (ctx.declaration && ctx.declaration.encode) || {};
-  const markers = markersOf(encode);
-  const unit = unitOf(ctx.declaration);
-  const drawable = [];
+export function scatterModel(units, ctx) {
+  const paint = ctx.paint || (() => ({ fill: ctx.palette.one[0], line: ctx.palette.one[1], marked: false }));
+  const points = [];
   let notDrawn = 0;
   let several = 0;
-  // Each marker's rows read as one row: a slot with a reduce folds their values (all of them, not of each row's fold); one
-  // without says its value when they all say the same one, several when not.
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const units = unit === 'hub' ? combosOf(rows, markers).map(({ values, ids }) => ({ ids, values, rows: ids.map((id) => byId.get(id)) }))
-    : unit === 'record' ? rows.flatMap((row) => ((row.raw && row.raw.y) || []).map((_, k) => ({ ids: [row.id], values: null, rows: [row], k })))
-      : rows.map((row) => ({ ids: [row.id], values: null, rows: [row] }));
-  for (const one of units) {
-    const read = (key) => (unit === 'hub' ? foldedRead(one.rows, key, encode[key]) : unit === 'record' ? recordRead(one.rows[0], key, one.k, encode[key])
-      : one.rows[0].reads[key]);
-    const [x, y, color] = ['x', 'y', 'color'].map(read);
-    if ([x, y, color].some((r) => r && r.state === 'several')) { several += 1; continue; }
+  for (const u of units) {
+    const { x, y } = u.reads;
+    if ([x, y].some((r) => r && r.state === 'several')) { several += 1; continue; }
     if (!x || !y || x.state !== 'one' || y.state !== 'one') { notDrawn += 1; continue; }
-    const where = one.values && markers.map((k, i) => [slotWords(encode[k]), one.values[i]]);
-    const id = where ? hubId(ctx.declaration.row, where) : unit === 'record' ? `${one.ids[0]}#${one.k}` : one.ids[0];
-    drawable.push({ id, ids: one.ids, where, label: where ? one.values.join(' · ') : one.rows[0].label,
-      x: x.value, y: y.value, category: color && color.state === 'one' ? color.value : null });
+    const ids = u.ids || [u.id];
+    const p = paint(ids);
+    points.push({ id: u.id, ids, where: u.where || null, label: u.label, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });
   }
-  const categories = [...new Set(drawable.map((p) => p.category).filter((c) => c !== null).map(String))].sort();
-  // A marker is marked when a row of it is (a hub as its members).
-  const isMarked = (p) => p.ids.some(ctx.marked);
-  const anyMarked = drawable.some(isMarked);
-  const points = drawable.map((p) => {
-    const k = p.category === null ? -1 : categories.indexOf(String(p.category));
-    const [fill, border] = k < 0 ? palette.one : categoryColor(palette, k);
-    const marked = isMarked(p);
-    const dim = anyMarked && !marked;
-    // A marked point in its marking's colour (Spotfire's), the others dimmed toward the background.
-    if (marked && ctx.markColor) return { ...p, marked, fill: ctx.markColor, border: ctx.markColor };
-    return { ...p, marked, fill: dim ? mix(fill, palette.bg) : fill, border: dim ? mix(border, palette.bg) : border };
-  });
-  const legend = categories.map((name, k) => ({ name, fill: categoryColor(palette, k)[0], border: categoryColor(palette, k)[1],
-    ids: points.filter((p) => String(p.category) === name).flatMap((p) => p.ids),
-    dim: anyMarked && !points.some((p) => p.marked && String(p.category) === name) }));
-  return { points, legend, one: palette.one, anyMarked, notDrawn, several, encode, unit,
+  return { points, notDrawn, several, note: [notDrawn ? `${notDrawn} not drawn` : '', several ? `${several} rows with several values` : ''].filter(Boolean).join(' · '),
     xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
     size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
-}
-
-/** A marker's rows read as one on a slot: with a reduce or an expression, every value of theirs folded (slot.foldRows - the
- *  cross table's rule); without, the value when they all say one and the same, several when not, empty when none says one. */
-function foldedRead(rows, key, slot) {
-  if (!slot) return undefined;
-  if (slot.reduce || isExpression(slot)) {
-    const value = foldRows(slot, rows.map((r) => r.raw && r.raw[key]));
-    return value === null || value === undefined ? { state: 'empty' } : { state: 'one', value };
-  }
-  const reads = rows.map((r) => r.reads[key]).filter(Boolean);
-  if (reads.some((r) => r.state === 'several')) return { state: 'several', values: [] };
-  const said = [...new Map(reads.filter((r) => r.state === 'one').map((r) => [JSON.stringify(r.value), r.value])).values()];
-  return said.length === 1 ? { state: 'one', value: said[0] } : said.length ? { state: 'several', values: said } : { state: 'empty' };
-}
-
-/** A value record's read on a slot: the k-th of the row's reads when the slot reads as many as Y (Y itself; its time),
- *  else the row's one value. */
-function recordRead(row, key, k, slot) {
-  if (!slot) return undefined;
-  const raw = row.raw && row.raw[key];
-  return raw && raw.length === row.raw.y.length ? { state: 'one', value: raw[k].value } : row.reads[key];
 }
 
 /** A number as an axis says it - no unit added (mockup fix ③: «1.0 %» on a ratio was a wrong sentence). */
@@ -158,52 +86,16 @@ export function idsInRange(model, option, coordRange) {
 }
 
 /**
- * Draw a model into the body the root hands over: the Y tray, the plot (an ECharts instance from `ctx.charts`), the
- * legend, the X tray. Brushing a rectangle marks what it holds, a click marks one point, a press on nothing clears -
- * each through `ctx.mark`; a legend value marks its hub through `ctx.markHub`.
+ * Draw a model into the area the template hands over (an ECharts instance from `ctx.charts`). Brushing a rectangle gives
+ * back what it holds, a click one point, a press on nothing clears - a node or a value record its node through
+ * `ctx.mark`, a Marker by hub whole through `ctx.markHubs`.
  * @returns {{resize: () => void, dispose: () => void}}
  */
-export function render(body, model, ctx) {
+export function render(area, model, ctx) {
   const doc = ctx.doc;
-  const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-  body.className = 'sf-part__body tb-scatter';
-  const ytray = el('div', 'tb-ytray');
-  ytray.append(ctx.plus('y'), ctx.pill('y', { vertical: true }));
-  const plot = el('div', 'tb-plot');
-  const legend = el('div', 'sf-legend');
-  const ttl = (words) => el('div', 'sf-legend__ttl', words);
-  const row = (...kids) => { const r = el('div', 'sf-legend__row'); r.append(...kids); return r; };
-  // Marker by: a pill each one held and «+» for one more; none held - «(Node)» or «(Value record)», pressed picks the first.
-  const encode = model.encode || {};
-  const held = markersOf(encode);
-  const markerRow = held.length ? row(...held.map((k) => ctx.pill(k)), ctx.plus(nextMarker(encode)))
-    : row(ctx.pill(nextMarker(encode), { words: model.unit === 'record' ? '(Value record)' : '(Node)' }));
-  legend.append(ttl('Marker by:'), markerRow, ttl('Color by:'), row(ctx.pill('color'), ctx.plus('color')));
-  if (model.legend.length) {
-    for (const item of model.legend) {
-      const v = el('button', `sf-legend__v${item.dim ? ' is-dim' : ''}`);
-      v.type = 'button';
-      const ico = el('span', 'sf-legend__ico');
-      ico.style.background = item.fill;
-      ico.style.borderColor = item.border;
-      v.append(ico, el('span', 'sf-legend__name', item.name));
-      v.addEventListener('click', (event) => ctx.markHub([[ctx.words('color'), item.name]], item.ids, event));
-      legend.append(v);
-    }
-  } else {
-    const v = el('div', 'sf-legend__v');
-    const ico = el('span', 'sf-legend__ico');
-    ico.style.background = model.one[0];
-    ico.style.borderColor = model.one[1];
-    v.append(ico, el('span', 'sf-legend__name', 'All values'));
-    legend.append(v);
-  }
-  const xtray = el('div', 'tb-xtray');
-  const note = el('span', 'sf-note', [model.notDrawn ? `${model.notDrawn} not drawn` : '',
-    model.several ? `${model.several} rows with several values` : ''].filter(Boolean).join(' · '));
-  xtray.append(note, ctx.pill('x'), ctx.plus('x'));
-  body.replaceChildren(ytray, plot, legend, xtray);
-
+  const plot = doc.createElement('div');
+  plot.className = 'tb-plot';
+  area.replaceChildren(plot);
   const option = scatterOption(model, ctx.palette);
   // A point pressed or in a rectangle: a node or a value record marks its node; a Marker by marker marks its hub whole.
   const byId = new Map(model.points.map((p) => [p.id, p]));
@@ -217,10 +109,10 @@ export function render(body, model, ctx) {
   chart.dispatchAction({ type: 'takeGlobalCursor', key: 'brush', brushOption: { brushType: 'rect', brushMode: 'single' } });
   // A rectangle drawn marks what it holds; the rectangle then goes (Spotfire keeps none on screen).
   chart.on('brushEnd', (params) => {
-    const area = params && params.areas && params.areas[0];
-    if (!area) return;
+    const drawn = params && params.areas && params.areas[0];
+    if (!drawn) return;
     chart.dispatchAction({ type: 'brush', areas: [] });
-    markPoints(idsInRange(model, option, area.coordRange), ctx.lastEvent());
+    markPoints(idsInRange(model, option, drawn.coordRange), ctx.lastEvent());
   });
   chart.on('click', (params) => { if (params && params.data && params.data.id) markPoints([params.data.id], params.event && params.event.event); });
   const zr = chart.getZr && chart.getZr();
@@ -237,4 +129,5 @@ export const title = (encode) => `${slotWords(encode.y)} vs. ${slotWords(encode.
 /** The add window's picture of it: points. */
 export const icon = { tone: 'cat-1', paths: [['M4 16h3v3H4zM8 11h3v3H8zM13 13h3v3h-3zM12 6h3v3h-3zM17 3h3v3h-3zM18 9h3v3h-3z', 1]] };
 
-export const kind = { name: 'scatter', label: 'Scatter plot', slots, title, model: scatterModel, render, icon };
+// units - a point a unit of the root's Marker by; a value record spreads Y's records.
+export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, units: { record: 'y' }, title, model: scatterModel, render, icon };

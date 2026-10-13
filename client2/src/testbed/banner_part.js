@@ -147,7 +147,10 @@ export class BannerPart extends Panel {
       label.type = 'text';
       label.value = m.label;
       label.setAttribute('aria-label', 'Marking name');
-      label.addEventListener('change', () => { if (label.value.trim()) this.book.edit(m.name, { label: label.value.trim() }); });
+      label.addEventListener('change', () => {
+        const reply = label.value.trim() ? this.book.edit(m.name, { label: label.value.trim() }) : { refused: 'A marking needs a name' };
+        if (reply.refused) { label.value = m.label; this.asking = { name: m.name, said: reply.refused }; this.render(); }
+      });
       const x = el('button', 'sf-mark__x', '×');
       x.type = 'button';
       x.setAttribute('aria-label', `Delete ${m.label}`);
@@ -201,6 +204,7 @@ export class BannerPart extends Panel {
   /** Under a marking whose × asked: who uses it, and Delete / Cancel - or who keeps it. */
   askLine(el, m) {
     const ask = el('div', 'sf-mark__ask');
+    if (this.asking.said) { ask.append(el('span', '', this.asking.said)); return ask; }
     if (this.asking.removed === false) {
       ask.append(el('span', '', `Not deleted - used by ${this.asking.users.join(', ')}`));
       return ask;

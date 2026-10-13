@@ -30,12 +30,15 @@ function compare(a, b) {
 
 /**
  * @param {Array<{id, label, reads: object}>} rows
- * @param {{marked: (id) => boolean, declaration?: object}} ctx  the declaration's `sort` {key, desc}
+ * @param {{paint: (ids) => {marked, color}, colored: boolean, declaration?: object}} ctx  the root's paint; the declaration's
+ *   `sort` {key, desc}
  */
 export function tableModel(rows, ctx) {
   const decl = ctx.declaration || {};
   const keys = slots(decl.encode).map((s) => s.key);
-  let lines = rows.map((row) => ({ id: row.id, cells: keys.map((k) => cellOf(row.reads[k])), marked: ctx.marked(row.id) }));
+  // a line's paint is the root's: marked, and its row's Color by colour when one is declared
+  let lines = rows.map((row) => { const p = ctx.paint([row.id]);
+    return { id: row.id, cells: keys.map((k) => cellOf(row.reads[k])), marked: p.marked, color: ctx.colored ? p.color : null }; });
   const sort = decl.sort && keys.includes(decl.sort.key) ? decl.sort : null;
   if (sort) {
     const at = keys.indexOf(sort.key);
@@ -54,11 +57,11 @@ export function tableModel(rows, ctx) {
   return { keys, lines, sort, numeric, next };
 }
 
-/** Draw a model: the column heads (each sorts; «+» adds one), a line a row, the marked ones marked. */
-export function render(body, model, ctx) {
+/** Draw a model into the template's area: the column heads (each sorts; «+» adds one), a line a row, the marked ones
+ *  marked. */
+export function render(area, model, ctx) {
   const doc = ctx.doc;
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-  body.className = 'sf-part__body tb-table';
   const wrap = el('div', 'tb-table__wrap');
   const table = el('table', 'sf-table sf-table--rows');
   const head = el('tr');
@@ -75,6 +78,7 @@ export function render(body, model, ctx) {
   table.append(head);
   for (const line of model.lines) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
+    if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
     tr.append(el('td', 'sf-table__add'));
     tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
@@ -83,7 +87,7 @@ export function render(body, model, ctx) {
   wrap.append(table);
   // A press on the table's own ground, not on a line or a head, unmarks (Spotfire: a click on nothing).
   wrap.addEventListener('click', (event) => { if (event.target === wrap) ctx.clear(); });
-  body.replaceChildren(wrap);
+  area.replaceChildren(wrap);
   return { resize: () => {}, dispose: () => {} };
 }
 

@@ -21,6 +21,9 @@ const REAL = {
   visual: await import('../src/testbed/visual_part.js'),
   table: await import('../src/testbed/kinds/table.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
+  baskets: await import('../src/walk/start_baskets.js'),
+  units: await import('../src/testbed/units.js'),
+  color: await import('../src/testbed/color_by.js'),
   layer: await import('../src/testbed/marking_layer.js'),
   map: await import('../src/testbed/kinds/map.js'),
   trend: await import('../src/walk/trend.js'),
@@ -30,6 +33,7 @@ const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js')
 const { HubBook, hubId, holds } = await import('../src/testbed/hubs.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
 const { Panel } = await import('../src/rnd_board/panel.js');
+const { statusWords } = await import('../src/testbed/status_part.js');
 
 const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 const json = (x) => JSON.stringify(x);
@@ -119,7 +123,8 @@ async function measure(M) {
   // T1: the table's model - its columns by the encode, sorted both ways, blanks last, numbers by number
   const read = (v) => (v === null ? { state: 'empty' } : { state: 'one', value: v });
   const rows = [['W1', '30'], ['W2', '10'], ['W3', null], ['W4', '9']].map(([id, t]) => ({ id, label: id, reads: { col1: read(id), col3: read(t) } }));
-  const model = (sort) => M.table.tableModel(rows, { marked: (id) => id === 'W2', declaration: { encode: { col3: TEMP, col1: NAME }, sort } });
+  const tdecl = (sort) => ({ encode: { col3: TEMP, col1: NAME }, sort });
+  const model = (sort) => M.table.tableModel(rows, { ...M.color.paintRows(rows, { palette: { one: ['#111111', '#222222'], bg: '#000000', cat: [] }, declaration: tdecl(sort), marked: (id) => id === 'W2' }), declaration: tdecl(sort) });
   const order = (m) => m.lines.map((l) => l.id);
   out.table = { keys: model().keys, next: model().next, numeric: model().numeric, asc: order(model({ key: 'col3', desc: false })),
     desc: order(model({ key: 'col3', desc: true })), marked: model().lines.filter((l) => l.marked).map((l) => l.id), stale: order(model({ key: 'col9' })) };
@@ -141,6 +146,7 @@ async function seated(M) {
   part.mount();
   await settle();
   const before = (({ rows, of, limit, hidden, marked }) => ({ rows, of, limit, hidden, marked }))(stats.get('T'));
+  const filterable = stats.get('T').slots.map((s) => [s.key, s.words]);
   markings.set('marking:lim', 'W4', SIGN.CASE);
   await settle();
   const after = part.model.lines.map((l) => l.id);
@@ -151,7 +157,7 @@ async function seated(M) {
   press('W4', true);
   const added = picked();
   press('W1', false);
-  return { before, after, added, replaced: picked() };
+  return { before, after, added, replaced: picked(), filterable };
 }
 
 async function shells(M) {
@@ -301,12 +307,13 @@ async function chains(M) {
   // K5: Save, then a new page from it - the markings and the chain's declarations
   p.save();
   const again = await page(M, storage, chainAnswer);
+  const marksKept = [m3, m4, m5].map((name) => again.markings.entries(name).map(([id]) => id));
   const decl = (q, id) => { const s = q.shell.partOf(id); if (!s) return null; const d = s.declaration(); return [d.start && d.start.marking, d.writes]; };
   const before2 = again.asked.length;
   if (again.shell.partOf(a)) again.shell.partOf(a).mark(['W2'], {});
   await settle();
   out.reopen = { labels: again.markingBook.list.get('list').map((m) => m.label), chain: [decl(again, a), decl(again, b), decl(again, c)],
-    walks: seedsAsked(again.asked.slice(before2)) };
+    walks: seedsAsked(again.asked.slice(before2)), marksKept };
   const older = memoryStorage();
   older.setItem('testbed:visuals', JSON.stringify({ root: again.shell.layoutNow().root, visuals: again.declarations() }));
   out.olderSave = (await page(M, older, chainAnswer)).markingBook.list.get('list').map((m) => m.label);
@@ -335,8 +342,8 @@ async function chains(M) {
   await settle();
   const sec = walk(part(a).host).find((n) => n.tagName === 'SECTION');
   const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: [['#6489FA', '#4B67BC']] };
-  const pts = M.scatter.scatterModel([{ id: 'W1', label: 'W1', reads: { x: { state: 'one', value: 1 }, y: { state: 'one', value: 2 } } },
-    { id: 'W2', label: 'W2', reads: { x: { state: 'one', value: 3 }, y: { state: 'one', value: 4 } } }], { marked: (id) => id === 'W2', markColor: '#123456', palette: pal }).points;
+  const two = [{ id: 'W1', label: 'W1', reads: { x: { state: 'one', value: 1 }, y: { state: 'one', value: 2 } } }, { id: 'W2', label: 'W2', reads: { x: { state: 'one', value: 3 }, y: { state: 'one', value: 4 } } }];
+  const pts = M.scatter.scatterModel(two, { ...M.color.paintRows(two, { marked: (id) => id === 'W2', markColor: '#123456', palette: pal }), palette: pal }).points;
   out.colour = { line: sec.style._props['--sf-marked'], unmarked: pts[0].fill !== '#123456', marked: pts[1].fill };
   return out;
 }
@@ -385,8 +392,9 @@ function markerModels(M) {
     reads: { x: temps.length === 1 ? one(temps[0][0]) : { state: 'several', values: temps.map(([v]) => v) }, y: one(press), marker1: one(lot), marker2: one(product) },
     raw: { x: temps.map(([value, t]) => ({ value, t })), y: [{ value: press, t: 1 }] } }));
   const model = (encode, marked = () => false) => {
-    const m = M.scatter.scatterModel(rows.map((r) => ({ ...r, reads: Object.fromEntries(Object.entries(r.reads).filter(([k]) => encode[k])) })),
-      { marked, palette: pal, declaration: { row: 'wafer', encode } });
+    const own = rows.map((r) => ({ ...r, reads: Object.fromEntries(Object.entries(r.reads).filter(([k]) => encode[k])) }));
+    const decl = { row: 'wafer', encode };
+    const m = M.scatter.scatterModel(M.units.unitsOf(own, decl, Object.keys(encode), 'y'), { ...M.color.paintRows(own, { marked, palette: pal, declaration: decl }), palette: pal, declaration: decl });
     return { points: m.points.map((p) => [p.label, Math.round(p.x * 1000) / 1000, p.y, p.ids, p.marked]), several: m.several };
   };
   const X = (reduce) => ({ ...TEMP, reduce });
@@ -396,8 +404,18 @@ function markerModels(M) {
     lot: model({ x: X('Avg'), y: Y, marker1: LOT }, (id) => id === 'W3'),
     two: model({ x: X('Count'), y: Y, marker1: LOT, marker2: PRODUCT }),
     latest: model({ x: X('Latest'), y: { ...Y, reduce: 'Avg' }, marker1: LOT }),
-    hub: M.scatter.scatterModel(rows, { marked: () => false, palette: pal, declaration: { row: 'wafer', encode: { x: X('Avg'), y: { ...Y, reduce: 'Avg' }, marker1: LOT } } }).points.map((p) => p.id),
-    slots: [M.scatter.kind.slots({}).map((s) => s.key), M.scatter.kind.slots({ marker1: LOT }).map((s) => `${s.key}${s.folds ? '*' : ''}`)],
+    hub: M.units.unitsOf(rows, { row: 'wafer', encode: { x: X('Avg'), y: { ...Y, reduce: 'Avg' }, marker1: LOT } }, ['x', 'y', 'marker1'], 'y').map((p) => p.id),
+    // value records: W9's two edges, three records then one - a unit a record; Latest on Y - a unit an edge
+    records: (() => {
+      const rec = (value, t, read) => ({ value, t, read });
+      const row = { id: 'W9', label: 'W9', reads: { y: { state: 'several', values: ['1', '2', '3', '7'] } },
+        raw: { y: [rec('1', 1, 0), rec('2', 2, 0), rec('3', 3, 0), rec('7', 4, 1)], x: [rec('t1', 1, 0), rec('t2', 2, 0), rec('t3', 3, 0), rec('t4', 4, 1)] } };
+      const read = (decl) => M.units.unitsOf([row], decl, ['x', 'y'], 'y').map((u) => [u.id, u.reads.x.state === 'one' ? u.reads.x.value : u.reads.x.state, u.reads.y.value]);
+      return [read({ markerBy: 'record', encode: { x: TEMP, y: TEMP } }), read({ markerBy: 'record', encode: { x: { ...TEMP, reduce: 'Latest' }, y: { ...TEMP, reduce: 'Latest' } } })];
+    })(),
+    // the root's slot list for a scatter: its axes, Marker by held and the next, Color by
+    slots: [{}, { marker1: LOT }].map((encode) => new M.visual.VisualPart(makeDoc('dark').createElement('div'), { doc: makeDoc('dark'), markings: new MarkingStore(),
+      declaration: { id: 'S', kind: 'scatter', row: 'wafer', encode }, kinds: { scatter: M.scatter.kind } }).slotList().map((s) => `${s.key}${s.folds ? '*' : ''}`)),
   };
 }
 
@@ -520,7 +538,7 @@ async function markedColour(M, withRelations) {
     fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(LAYER_GRAPH)) }) });
   part.mount();
   await settle();
-  const colours = () => Object.fromEntries(part.model.points.map((p) => [p.label, p.category]));
+  const colours = () => Object.fromEntries(part.model.points.map((p) => [p.label, part.colors.of.get(p.ids[0]).category]));
   const first = { colours: colours(), unknown: stats.get('D').unknown };
   // the core wafer marking moved to CW2's die: D folds again (it asked that marking) - CW2 now
   markings.replace('marking:core', [['d2', SIGN.CASE]]);
@@ -549,6 +567,134 @@ async function mapPress(M) {
   return { cells, marked, drawnMarked: part.model.cells.filter((c) => c.marked).map((c) => `${c.x},${c.y}`) };
 }
 
+/** A value record a point (owner 10-13 «선 하나에 기록 넷이면 점 넷»): W1's measure edge with three records, W2's with one -
+ *  no reduce: a point a record; Latest on X and Y: a point an edge, its newest record. */
+async function recordPoints(M) {
+  const rec = (value, d) => ({ occurred_at: `2026-02-0${d}T00:00:00Z`, qualifiers: { value } });
+  const answer = { nodes: [wafer('W1'), wafer('W2'), ANSWER.nodes[4]],
+    edges: [{ id: 'e1', source: 'W1', target: 'QT', predicate: 'measures', qualifiers: { value: '3' }, occurred_at: '2026-02-03T00:00:00Z', records: [rec('3', 3), rec('2', 2), rec('1', 1)] },
+      { id: 'e2', source: 'W2', target: 'QT', predicate: 'measures', qualifiers: { value: '9' }, occurred_at: '2026-02-05T00:00:00Z', records: [rec('9', 5)] }],
+    truncated: ANSWER.truncated };
+  const seatWith = async (encode) => {
+    const doc = makeDoc('dark');
+    const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'wafer', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', markerBy: 'record', encode };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return part.model.points.map((p) => [p.label, String(p.x).slice(0, 10), p.y]).sort();
+  };
+  return { all: await seatWith({ x: { ...TEMP, of: 'time' }, y: TEMP }),
+    latest: await seatWith({ x: { ...TEMP, of: 'time', reduce: 'Latest' }, y: { ...TEMP, reduce: 'Latest' } }) };
+}
+
+/** The route (lead 10-14 «다른 다이라»): a bonding die d1 of BW (its sibling d2), bonded from c1 on CW1 (d2 from c2 on
+ *  CW2). A part starting from d1 walks only its route, and its rows are the route's ends. */
+async function routed(M) {
+  const { entitySeedId } = await import('../src/rnd_board/api.js');
+  const id = (type, key) => entitySeedId(type, { [type]: key });
+  const [BW, CW1, CW2, d1, d2, c1, c2] = [['wafer', 'BW'], ['wafer', 'CW1'], ['wafer', 'CW2'], ['die', 'd1'], ['die', 'd2'], ['die', 'c1'], ['die', 'c2']].map(([t, k]) => id(t, k));
+  const label = new Map([[BW, 'BW'], [CW1, 'CW1'], [CW2, 'CW2'], [d1, 'd1'], [d2, 'd2'], [c1, 'c1'], [c2, 'c2']]);
+  const node = (nid) => ({ id: nid, type: nid === BW || nid === CW1 || nid === CW2 ? 'wafer' : 'die', label: label.get(nid), keys: {}, attributes: {} });
+  const answer = { nodes: [BW, CW1, CW2, d1, d2, c1, c2].map(node),
+    edges: [[d1, 'in_container', BW], [d2, 'in_container', BW], [d1, 'bonded_from', c1], [d2, 'bonded_from', c2], [c1, 'in_container', CW1], [c2, 'in_container', CW2]]
+      .map(([source, predicate, target], i) => ({ id: `r${i}`, source, target, predicate, qualifiers: {} })), truncated: ANSWER.truncated };
+  const vocabulary = { entities: [{ type: 'die' }, { type: 'wafer' }],
+    predicates: [{ name: 'in_container', subjects: ['die'], object: { kind: 'entity_ref', types: ['wafer'] } }, { name: 'bonded_from', subjects: ['die'], object: { kind: 'entity_ref', types: ['die'] } }] };
+  const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
+  const seat = async (decl, withVocabulary = true, alsoWafer = false) => {
+    const doc = makeDoc('dark');
+    const markings = new MarkingStore();
+    markings.set('marking:die', d1, SIGN.CASE);
+    if (alsoWafer) markings.set('marking:die', BW, SIGN.CASE);
+    const asked = [];
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: null, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
+      kinds: { crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
+    part.mount();
+    await settle();
+    const said = statusWords(part.stats.get('B')).find((w) => w.startsWith('route from')) || null;
+    return { said, rows: part.model.rowKeys, total: part.model.total, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
+  };
+  const base = { id: 'B', part: 'visual', kind: 'crossTable', start: { marking: 'marking:die' }, system: null, filter: [] };
+  const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } });
+  const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } });
+  const wafers = await seat({ ...base, row: 'wafer', encode: {} });
+  const core = await seat({ ...base, row: 'wafer', encode: {}, route: wafers.part.routes()[1] });
+  const mixed = await seat({ ...base, row: 'die', encode: { rows: CORE }, walk: { node_limit: 1000, hops: 9 } }, true, true);
+  return { mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+}
+
+/** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
+ *  - die D1 (p = A) one colour in all four; A's colour declared - all four draw it. */
+async function colourEverywhere(M) {
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 0, 0, 'A'), die('D2', 1, 0, 'B'), die('D3', 2, 1, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const encodes = { scatter: { x: key('x'), y: key('y') }, table: { col1: NAME }, crossTable: { rows: key('x') }, map: { x: key('x'), y: key('y') } };
+  const kinds = { scatter: M.scatter.kind, table: M.table.kind, crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind, map: M.map.kind };
+  const doc = makeDoc('dark');
+  const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: [['#6489FA', '#4B67BC'], ['#FA7864', '#BC5A4B']] };
+  const parts = Object.keys(encodes).map((kind) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode: { ...encodes[kind], color: key('p') } };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl, palette: () => pal,
+      kinds, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    return part;
+  });
+  await settle();
+  // D1's colour as each kind drew it
+  const drawn = () => parts.map((part) => {
+    const k = part.decl.kind;
+    if (k === 'scatter') return part.model.points.find((p) => p.id === 'D1').fill;
+    if (k === 'table') return walk(part.host).find((n) => n.tagName === 'TR' && n.children.length > 1 && n.children[0]._text === 'D1').attrs['data-color'];
+    if (k === 'crossTable') return walk(part.host).find((n) => n.tagName === 'TH' && n._text === '0').parentNode.children[1].style.background;
+    return walk(part.host).find((n) => n.attrs && n.attrs['data-cell'] === '0,0').attrs.fill;
+  });
+  const first = drawn();
+  for (const part of parts) part.setDeclaration({ ...part.declaration(), colors: { A: '#123456' } });
+  await settle();
+  return { first: [new Set(first).size, first[0] === M.color.colorsOf([{ id: 'D1', reads: { color: { state: 'one', value: 'A' } } }], { palette: pal, declaration: { encode: { color: key('p') } } }).categories[0].fill], declared: drawn() };
+}
+
+/** A start read back from a save (QA 10-14: a reload showed «ledger-entity:v1:Wy…»): the basket names it by its id - its
+ *  keys, as the picker named it when it was put in. */
+async function keptStart(M) {
+  const { entitySeedId } = await import('../src/rnd_board/api.js');
+  const doc = makeDoc('dark');
+  const markings = new MarkingStore();
+  const id = entitySeedId('wafer', { wafer: 'SYN-BW-103-11' });
+  markings.set('marking:start', id, SIGN.CASE);
+  markings.set('marking:start', 'W1', SIGN.CASE);
+  const b = new M.baskets.StartBaskets(doc.createElement('div'), { doc, markings, name: 'marking:start' });
+  return walk(b.root).filter((n) => String(n.className) === 'wk-basketlabel').map((n) => n._text);
+}
+
+/** Category colours (QA 10-14): seven categories seven colours, in the order the rows show them, kept in the declaration;
+ *  walked again with one more category seen first - the seven keep theirs. */
+async function categoryColours(M) {
+  const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: ['#1', '#2', '#3', '#4', '#5', '#6', '#7'].map((c) => [c, c + 'L']) };
+  const node = (id, p) => ({ id, type: 'die', label: id, keys: { x: '0', y: '0', p }, attributes: {} });
+  let answer = { nodes: 'ABCDEFG'.split('').map((p, i) => node('D' + i, p)), edges: [], truncated: ANSWER.truncated };
+  const doc = makeDoc('dark');
+  const decl = { id: 'T', part: 'visual', kind: 'table', row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick',
+    encode: { col1: NAME, color: { steps: [], value: { on: 'key', name: 'p' }, words: ['p'] } } };
+  const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl, palette: () => pal,
+    kinds: { table: M.table.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+    fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+  part.mount();
+  await settle();
+  const first = { ...part.declaration().colors };
+  answer = { ...answer, nodes: [node('Z0', 'Z'), ...answer.nodes] };
+  part.seedWalk = null;
+  part.load();
+  await settle();
+  const after = part.declaration().colors || {};
+  return { seven: new Set(Object.values(first)).size, order: 'ABCDEFG'.split('').map((p) => first[p]).join(''), kept: 'ABCDEFG'.split('').every((p) => after[p] === first[p]), z: Boolean(after.Z) };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -570,6 +716,11 @@ async function suite(M) {
   const mk = markerModels(M);
   const mp = await markerPress(M);
   const ts = await trendAsScatter(M);
+  const rt = await routed(M);
+  const ce = await colourEverywhere(M);
+  const ks = await keptStart(M);
+  const cc = await categoryColours(M);
+  const rp = await recordPoints(M);
   const ly = await layered(M);
   const cRel = await markedColour(M, true);
   const cNone = await markedColour(M, false);
@@ -610,6 +761,7 @@ async function suite(M) {
     judge('L4 a limited part counts the limit\'s drop apart: a marked row it leaves out is not hidden; a limiting marking changed, it folds again',
       { before: one.before, after: one.after }, { before: { rows: 1, of: 4, limit: 3, hidden: 0, marked: 1 }, after: ['W1', 'W4'] }),
     judge('T2 a table line pressed with Ctrl joins the pick; pressed alone it is the pick', [one.added, one.replaced], [['W2', 'W4'], ['W1']]),
+    judge('F1 a filter can take a slot or a row\'s own value - its keys and attributes, not only the axes', one.filterable, [['col1', 'name'], ['own:key:wafer', 'wafer']]),
     judge('K1 markings added: the next free names, «Marking (n)», each its own colour', k.added,
       { names: ['marking:3', 'marking:4', 'marking:5'], labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'], colours: true }),
     judge('K1b a chain declared: B walks from what A marks, C from what B marks', k.built,
@@ -624,7 +776,7 @@ async function suite(M) {
         self: ['marking:3', 'S', 'marking:3'], limitIsNoStep: null }),
     judge('K5 Save keeps the markings and the chain; a new page from it follows the chain; an older save opens on the default markings',
       { ...k.reopen, olderSave: k.olderSave }, { labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'],
-        chain: [['marking:start', 'marking:3'], ['marking:3', 'marking:4'], ['marking:4', 'marking:5']], walks: ['W2'], olderSave: ['Start', 'Pick'] }),
+        chain: [['marking:start', 'marking:3'], ['marking:3', 'marking:4'], ['marking:4', 'marking:5']], walks: ['W2'], marksKept: [['W1'], ['W2'], ['W3']], olderSave: ['Start', 'Pick'] }),
     judge('K4 a marking deleted: its users named first; the part writing it writes none, the part walking from it walks from All (once), a limit loses it; the start row\'s marking not deleted, named; a new one takes the next free name',
       k.deleted, { shown: ['marking:start', 'marking:pick', 'marking:3', 'marking:4', 'marking:5'], ask: ['Used by Marked, wafer, wafer'],
         after: ['marking:start', 'marking:pick', 'marking:3', 'marking:5', 'marking:6'], b: ['marking:3', null], c: [null, 'marking:5'],
@@ -640,7 +792,7 @@ async function suite(M) {
       { points: [['L1', 26, 5, ['W1', 'W3'], false], ['L2', 40, 6, ['W2', 'W4'], false]], several: 0 }),
     judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
       [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
-        [['x', 'y', 'color', 'marker1'], ['x*', 'y*', 'color', 'marker1', 'marker2']]]),
+        [['x', 'y', 'marker1', 'color'], ['x*', 'y*', 'marker1', 'marker2', 'color']]]),
     judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
       ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
     judge('Y1 no relation: the layer of a marking is its members (a hub its members) - for every node the same as holds()', [ly.none, ly.same],
@@ -654,6 +806,23 @@ async function suite(M) {
       { colours: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' }, unknown: 0, moved: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' } }),
     judge('Y6 the map: a cell a coordinate - two dies at one x, y one cell; pressed, both marked and the cell drawn marked', mpp,
       { cells: [[0, 0, ['a1', 'b1']], [1, 0, ['a2']], [0, 2, ['a3']]], marked: ['a1', 'b1'], drawnMarked: ['0,0'] }),
+    judge('R2 a value record a point: an edge of three records three points, of one one; Latest on X and Y - a point an edge, its newest record',
+      rp, { all: [['W1', '2026-02-01', '1'], ['W1', '2026-02-02', '2'], ['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']],
+        latest: [['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']] }),
+    judge('P7 the units of a value record: a record a unit, X its own record; a reduce - an edge a unit, folded', mk.records,
+      [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
+    judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
+      rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
+    judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
+      rt.mixed, [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
+    judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
+    judge('W3 die to wafer: the shortest route its own wafer; the route with the bonded_from loop the core wafer, the walk asking that route',
+      [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['in_container', 'bonded_from'], 2, ['d1']]]]]),
+    judge('C1 the same Color by on four kinds: a row one colour in all four (the value gives it); a category colour declared - all four draw it',
+      ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456'] }),
+    judge('K7 a start read back from a save is named by its id - its keys; an id that is not an entity\'s as it is', ks, ['SYN-BW-103-11', 'W1']),
+    judge('C2 seven categories seven colours in the order the rows show them, kept in the declaration; one more seen first - the seven keep theirs',
+      cc, { seven: 7, order: '#1#2#3#4#5#6#7', kept: true, z: true }),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -692,7 +861,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    this.root = dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
       '    this.render({ ...this.layoutNow(), root: dockLeaf(this.root, id, targetId, edge) });') },
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
-    mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list') };", '    const kept = declarations();') },
+    mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',
     mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });",
       "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], {}); });") },
@@ -703,16 +872,20 @@ const MUTANTS = [
       '    for (const from of markingsOf(d).limit) { if (!next.has(from)) next.set(from, []); next.get(from).push([d.id, emits]); }\n    if (!next.has(start)) next.set(start, []);') },
   { id: 'M14', what: 'Save leaves the markings out - a reopen has the default two', catches: 'K5 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, ", markings: markingList.get('list'), relations", ', relations') },
+  { id: 'M27', what: 'Save keeps no marks - a reopen starts unmarked', catches: 'K5 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, '    for (const [name, entries] of Object.entries(saved.marks || {})) markings.replace(name, entries);', '') },
   { id: 'M15', what: 'a marking a docked panel writes is deleted too', catches: 'K4 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, '      if (fixed.length) return', '      if (fixed.length && false) return') },
-  { id: 'M16', what: 'a marked point keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
-    mutate: (t) => swap(t, '    if (marked && ctx.markColor) return', '    if (false) return') },
-  { id: 'M17', what: 'a marker\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 ', 'P6 '], file: 'testbed/kinds/scatter.js', key: 'scatter',
+  { id: 'M16', what: 'a marked mark keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/color_by.js', key: 'color',
+    mutate: (t) => swap(t, '{ fill: markColor || c.fill, line: markColor || c.line,', '{ fill: c.fill, line: c.line,') },
+  { id: 'M17', what: 'a hub\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 '], file: 'testbed/units.js', key: 'units',
     mutate: (t) => swap(t, '  if (slot.reduce || isExpression(slot)) {', '  if (false) {') },
   { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
-  { id: 'M19', what: 'a value record reads the row\'s first read for every point - not its own', catches: 'R1 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
-    mutate: (t) => swap(t, "{ state: 'one', value: raw[k].value }", "{ state: 'one', value: raw[0].value }") },
+  { id: 'M19', what: 'a value record reads the row\'s first record for every unit - not its own', catches: 'P7 ', file: 'testbed/units.js', key: 'units',
+    mutate: (t) => swap(t, 'const items = picks.map((k) => raw[k]);', 'const items = picks.map(() => raw[0]);') },
+  { id: 'M24', what: 'a value record with a reduce still a unit a record - not folded by its edge', catches: 'P7 ', file: 'testbed/units.js', key: 'units',
+    mutate: (t) => swap(t, '  if (!(recordSlot && recordSlot.reduce)) return ys.map((_, k) => [k]);', '  return ys.map((_, k) => [k]);') },
   { id: 'M20', what: 'a layer that does not spread - the members only', catches: ['Y2 ', 'Y4 '], file: 'testbed/marking_layer.js', key: 'layer',
     mutate: (t) => swap(t, '      for (const to of ways.next.get(queue.pop()) || [])', '      for (const to of (queue.pop(), []))') },
   { id: 'M21', what: 'a layer computed on every ask - no cache', catches: 'Y3 ', file: 'testbed/marking_layer.js', key: 'layer',
@@ -721,6 +894,18 @@ const MUTANTS = [
     mutate: (t) => swap(t, "!this.steps().touched.has(id) ? null : false;", '!this.steps().touched.has(id) ? false : false;') },
   { id: 'M23', what: 'a map cell a die, not a coordinate - its press marks one', catches: 'Y6 ', file: 'testbed/kinds/map.js', key: 'map',
     mutate: (t) => swap(t, "  for (const { values, ids } of combosOf(rows, ['x', 'y'])) {", "  for (const { values, ids } of rows.flatMap((r) => combosOf([r], ['x', 'y']))) {") },
+  { id: 'M25', what: 'the rows every node of the row type the walk reached - not the route\'s ends', catches: 'W1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (this.walkedRoute && this.walkedSeeds) return routeEnds(', '    if (false) return routeEnds(') },
+  { id: 'M26', what: 'the walk asks no route - every predicate, the default steps', catches: ['W1 ', 'W3 '], file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '{ ...base, ...along, nodeId:', '{ ...base, nodeId:') },
+  { id: 'M28', what: 'the root hands the colours no declared category colour - the palette colour always', catches: 'C1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'paintRows(rows, { palette: this.palette(), declaration: this.decl,', 'paintRows(rows, { palette: this.palette(), declaration: { ...this.decl, colors: {} },') },
+  { id: 'M29', what: 'a start no basket was handed is its raw id', catches: 'K7 ', file: 'walk/start_baskets.js', key: 'baskets',
+    mutate: (t) => swap(t, '    const said = entityOfId(id);', '    const said = null;') },
+  { id: 'M30', what: 'the colours given are not kept in the declaration - more categories deal them again', catches: 'C2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (colors.any && Object.keys(colors.assigned).length) this.decl =', '    if (false) this.decl =') },
+  { id: 'M31', what: 'a start of another type walked from as if the route started there', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '      if (other.length) {', '      if (false) {') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

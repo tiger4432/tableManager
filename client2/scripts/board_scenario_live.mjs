@@ -56,12 +56,14 @@ const C = page.add('crossTable');
 const D = page.add('scatter');
 declare(A, { row: 'die', start: { marking: 'marking:start' }, writes: die, encode: { x: key('x'), y: key('y') } });
 declare(B, { walk: WIDE, row: 'die', start: { marking: die }, writes: core, encode: { rows: { steps: [out('bonded_from'), out('in_container')], value: { on: 'label', name: 'name' }, words: ['core wafer'] } } });
-declare(C, { walk: WIDE, row: 'wafer', start: { marking: core }, writes: step, encode: { rows: { steps: [out('measures')], value: { on: 'edge', name: 'step' }, words: ['step'] } } });
+declare(C, { walk: WIDE, row: 'wafer', route: { hops: 2, follow: ['in_container', 'bonded_from'], chain: ['die', 'die', 'wafer'] }, start: { marking: core }, writes: step, encode: { rows: { steps: [out('measures')], value: { on: 'edge', name: 'step' }, words: ['step'] } } });
 declare(D, { walk: WIDE, row: 'wafer', start: { marking: step }, writes: 'marking:pick', markerBy: 'record',
   encode: { x: { steps: [out('measures')], value: { on: 'edge', name: 'value' }, words: ['value'], of: 'time' },
     y: { steps: [out('measures')], value: { on: 'edge', name: 'value' }, words: ['value'] }, color: { expr: 'If(Marked("Core wafer"), "B", "other")' } } });
 
 const say = (...x) => console.log(...x);
+// C's route: from the bonding dies through their bonded_from to the core dies' wafers (die -> die -> wafer).
+const takeRoute = (id, chain) => { const r = part(id).routes().find((x) => x.chain.join('>') === chain); if (r) declare(id, { ...part(id).declaration(), route: r }); return Boolean(r); };
 const walks = () => asked.length;
 const stat = (id) => page.stats.get(id) || {};
 const report = [];
@@ -71,14 +73,33 @@ page.markings.set('marking:start', entitySeedId('wafer', { wafer: WAFER }), SIGN
 await until(ready(A));
 const cells = part(A).model.cells;
 say(`A map: ${cells.length} cells drawn, ${part(A).model.notDrawn} not drawn, walks ${walks() - step0}`);
-// A die that was bonded: the one whose B shows core wafers - the first drawn
+// A coordinate pressed - B walks from its die along B's route (die to die: the die itself) and counts its core wafer.
+const press = async (cell) => {
+  const ticket = part(B).walking;
+  part(A).markHub([['x', cell.where[0]], ['y', cell.where[1]]], cell.ids, {});
+  await until(() => part(B).walking > ticket && ready(B)());
+  return part(B).model;
+};
 const s1 = walks();
 const t1 = Date.now();
-part(A).markHub([['x', cells[0].where[0]], ['y', cells[0].where[1]]], cells[0].ids, {});
-await until(ready(B));
-const b = part(B).model;
+const coresOf = (m) => m.rowKeys.filter((k) => k !== '(Empty)');
+let b = null;
+let first = null;
+const seen = [];
+for (const cell of cells) {
+  b = await press(cell);
+  if (coresOf(b).length) {
+    if (!first) first = { cell, cores: coresOf(b) };
+    else if (coresOf(b).join() !== first.cores.join()) { seen.push({ cell, cores: coresOf(b) }); break; }
+  }
+}
+say(`B route ${JSON.stringify(part(B).walkedRoute)} asked follow/hops ${(() => { const q = new URL(asked[asked.length - 1]).searchParams; return JSON.stringify([q.getAll('follow'), q.get('hops')]); })()}`);
+say(`B die ${first.cell.where} -> core wafers ${first.cores.join(', ')}; die ${seen[0] ? seen[0].cell.where : '-'} -> ${seen[0] ? seen[0].cores.join(', ') : '-'}`);
+b = await press(first.cell);
 say(`B cross: rows ${b.rowKeys.length} (${b.rowKeys.slice(0, 4).join(', ')}...), total ${b.total}, walks ${walks() - s1}, ${Date.now() - t1} ms, layer ${JSON.stringify(page.layers.last)}`);
 report.push({ step: 'A->B', walks: walks() - s1 });
+say(`C routes: ${part(C).routes().map((r) => r.chain.join('>') + ' ' + r.follow.join('+')).join(' | ')}`);
+say(`C route taken: ${JSON.stringify(part(C).walkedRoute)}`);
 // B: a core wafer pressed - its row head's hub
 const coreRow = b.rowKeys.findIndex((k) => k !== '(Empty)');
 const s2 = walks();
@@ -93,26 +114,28 @@ part(C).markHub([['step', c.rowKeys[stepRow]]], c.rowIds[stepRow], {});
 await until(ready(D));
 const d = part(D).model;
 const byCat = {};
-for (const p of d.points) byCat[p.category] = (byCat[p.category] || 0) + 1;
+const catOf = (pt) => part(D).colors.of.get(pt.ids[0]).category;
+for (const pt of d.points) byCat[catOf(pt)] = (byCat[catOf(pt)] || 0) + 1;
 say(`D scatter: ${d.points.length} points (${JSON.stringify(byCat)}), x ${d.xKind}, ${d.notDrawn} not drawn, ${d.several} several, unknown ${stat(D).unknown || 0}, walks ${walks() - s3}`);
-const bWafers = () => [...new Set(part(D).model.points.filter((p) => p.category === 'B').map((p) => p.label))];
+const bWafers = () => [...new Set(part(D).model.points.filter((pt) => catOf(pt) === 'B').map((pt) => pt.label))];
 say(`D B wafers: ${bWafers().join(', ')} (B pressed: ${b.rowKeys[coreRow]})`);
-// The numbers: the layer on a marking change (another core wafer pressed in B), the graph
-const otherRow = b.rowKeys.findIndex((k, i) => i !== coreRow && k !== '(Empty)');
+// The numbers: the layer on a marking change (the other die's core wafer pressed in B), the graph
+const b2 = seen[0] ? await press(seen[0].cell) : b;
+const otherRow = b2.rowKeys.findIndex((k) => k !== '(Empty)');
 const computed0 = page.layers.computed;
 const s5 = walks();
-part(B).markHub([['core wafer', b.rowKeys[otherRow]]], b.rowIds[otherRow], {});
+part(B).markHub([['core wafer', b2.rowKeys[otherRow]]], b2.rowIds[otherRow], {});
 await settle();
 await until(ready(C));
-await until(ready(D));
-say(`B pressed ${b.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5}`);
-say(`D B wafers now: ${bWafers().join(', ')}; unknown ${stat(D).unknown || 0}`);
+await until(() => part(D).state !== 'walking');
+say(`B pressed ${b2.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5}`);
+say(`D after: ${part(D).state} (the Step marking pruned: ${page.markings.entries(step).length} entries); unknown ${stat(D).unknown || 0}`);
 const kept = page.save();
 // No relation: D's points all other
 page.relations.set('list', []);
 await settle();
 const none = {};
-for (const p of part(D).model.points) none[p.category] = (none[p.category] || 0) + 1;
+for (const pt of part(D).model.points) none[catOf(pt)] = (none[catOf(pt)] || 0) + 1;
 say(`no relations: D ${JSON.stringify(none)}`);
 say(`graph: ${page.layers.graph.nodes.size} nodes, ${page.layers.graph.edges.size} edges; walks in all ${walks() - step0}`);
 const save = argOf('--save', null);

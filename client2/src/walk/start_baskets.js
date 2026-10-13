@@ -6,6 +6,7 @@
 // Negative its - marks. A node has one sign, so + on the other basket moves it. What a basket remembers is only how to
 // name a node it was handed (label, type, keys) - the page asks it that when it walks or names a start.
 // ═══════════════════════════════════════════════════════════════════════════════
+import { entityOfId } from '../rnd_board/api.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { fitUnder, watchForDismiss } from '../dropdown.js';
@@ -66,8 +67,13 @@ export class StartBaskets {
     this.render();
   }
 
-  /** How a start was named when it was put in: `{ label, type, keys }`, or null for a node no basket was handed. */
-  describe(id) { return this.known.get(id) || null; }
+  /** How a start was named when it was put in: `{ label, type, keys }`; one no basket was handed (a marking kept and
+   *  read back) by its entity id - its type and keys, its keys' values its label, as the picker names it; else null. */
+  describe(id) {
+    if (this.known.has(id)) return this.known.get(id);
+    const said = entityOfId(id);
+    return said ? { label: Object.values(said.keys).join(' · '), type: said.type, keys: said.keys } : null;
+  }
 
   /** The picked node - or the one handed (the graph's «Walk on from here») - into the basket of `sign`; from the other
    *  basket it moves. */

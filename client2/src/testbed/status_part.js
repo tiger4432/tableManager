@@ -17,6 +17,7 @@ export function statusWords(s) {
     words.push([s.startDropped ? `start −${n(s.startDropped)}` : null, `system −${n(s.system)}`, `part −${n(s.part)}`,
       s.limit ? `marking −${n(s.limit)}` : null].filter(Boolean).join(' · '));
   }
+  if (s.otherStarts) words.push(`route from ${s.otherStarts.from}; ${unitText(n(s.otherStarts.n), 'start')} of other types not walked`);
   if (s.cut) words.push('filter over a cut walk');
   if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);
   if (s.unknown) words.push(`${unitText(n(s.unknown), 'row')} unknown`);

@@ -5,6 +5,7 @@
 import { Panel } from '../rnd_board/panel.js';
 import { drawCondition, conditionKey, conditionWords } from './condition_editor.js';
 import { markingsOf } from './visual_part.js';
+import { routeKey, routeWords } from './route.js';
 
 export class PropertiesPart extends Panel {
   constructor(host, deps) {
@@ -65,7 +66,14 @@ export class PropertiesPart extends Panel {
     }
     data.append(select('Start from', [[null, 'All'], ...marks.map((m) => [m.name, m.label])], got.start,
       (v) => part.setDeclaration({ ...decl, start: { ...(decl.start || {}), marking: v } })));
-    data.append(select('Route', this.entities().map((e) => [e.type, e.type]), decl.row, (v) => part.setDeclaration({ ...decl, row: v })));
+    data.append(select('Rows', this.entities().map((e) => [e.type, e.type]), decl.row, (v) => part.setDeclaration({ ...decl, row: v, route: null })));
+    // the route from the start to the rows (route.js) - the rows are its ends
+    const routes = part.routes();
+    if (routes.length) {
+      const taken = part.route();
+      data.append(select('Route', routes.map((r) => [routeKey(r), routeWords(r)]), routeKey(taken),
+        (v) => part.setDeclaration({ ...decl, route: routes.find((r) => routeKey(r) === v) || null })));
+    }
     data.append(select('Filtering', [[null, '(None)'], ...this.filterNames.map((f) => [f.name, f.label])], decl.system,
       (v) => part.setDeclaration({ ...decl, system: v })));
     data.append(el('div', 'sf-props__lab', 'Filter'));
@@ -99,7 +107,8 @@ export class PropertiesPart extends Panel {
     // ── Limit data using markings (Spotfire's, the Data section's): the markings, all or any, when none is marked ──
     data.append(el('div', 'sf-props__lab', 'Limit by'));
     const limit = { must: 'all', none: 'all', ...(decl.limit || {}), markings: got.limit };
-    const limitTo = (next) => part.setDeclaration({ ...decl, limit: next.markings.length ? next : null });
+    // all/any and «if none» kept even before a marking is checked - no marking checked is no limit (limitRows)
+    const limitTo = (next) => part.setDeclaration({ ...decl, limit: next });
     for (const m of marks) {
       const line = el('label', 'sf-props__check');
       const box = el('input');
@@ -110,12 +119,10 @@ export class PropertiesPart extends Panel {
       line.append(box, el('span', '', m.label));
       data.append(line);
     }
-    if (limit.markings.length) {
-      data.append(select('Rows in', [['all', 'All markings'], ['any', 'Any marking']], limit.must || 'all',
-        (v) => limitTo({ ...limit, must: v })));
-      data.append(select('If none', [['all', 'Show all data'], ['empty', 'Show empty']], limit.none || 'all',
-        (v) => limitTo({ ...limit, none: v })));
-    }
+    data.append(select('Rows in', [['all', 'All markings'], ['any', 'Any marking']], limit.must || 'all',
+      (v) => limitTo({ ...limit, must: v })));
+    data.append(select('If none', [['all', 'Show all data'], ['empty', 'Show empty']], limit.none || 'all',
+      (v) => limitTo({ ...limit, none: v })));
     // The one it emits: a press marks it, and it is the marking drawn marked here (Spotfire's one «Marking»).
     data.append(select('Marking', [[null, '(None)'], ...marks.map((m) => [m.name, m.label])], got.emits,
       (v) => part.setDeclaration({ ...decl, writes: v })));
