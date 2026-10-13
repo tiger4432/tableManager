@@ -1,8 +1,7 @@
 // The cross table kind of the visual part (reference §8): a row axis, a column axis, the cell values folded over the
 // rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its rows, marked whole.
 
-import { fold } from '../aggregate.js';
-import { categoriesOf, slotWords } from '../slot.js';
+import { categoriesOf, slotWords, foldRows } from '../slot.js';
 
 export const SLOTS = Object.freeze([
   { key: 'rows', label: 'Row axis', category: true },
@@ -17,12 +16,11 @@ export const cellWords = (v) => (v === null || v === undefined ? '-'
   : typeof v === 'number' ? v.toLocaleString('en-US', { maximumFractionDigits: 3 }) : String(v));
 
 /**
- * @param {Array<{id, reads: object, raw: object}>} rows  `raw.cells` - the cell slot's every value of the row, {value, t}
- * @param {{marked: (id) => boolean, declaration?: object}} ctx  the declaration's cell slot's reduce; none - Count
+ * @param {Array<{id, reads: object, raw: object}>} rows  `raw.cells` - what the cell slot keeps of the row (slot.js rawOf)
+ * @param {{marked: (id) => boolean, declaration?: object}} ctx  the declaration's cell slot: its reduce (none - Count) or its expression
  */
 export function crossModel(rows, ctx) {
   const cellSlot = ((ctx.declaration && ctx.declaration.encode) || {}).cells;
-  const reduce = (cellSlot && cellSlot.reduce) || 'Count';
   const cells = new Map();
   const keyOf = (r, c) => `${r}\u0000${c}`;
   const rowKeys = new Set();
@@ -45,7 +43,7 @@ export function crossModel(rows, ctx) {
   const folded = (ids) => {
     const once = [...new Set(ids)];
     if (!rows.some((row) => row.raw && row.raw.cells)) return once.length;
-    return fold(reduce, once.flatMap((id) => (byId.get(id).raw.cells || []))).value;
+    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells));
   };
   const sort = (keys) => [...keys].sort((a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0));
   const R = sort(rowKeys);
@@ -58,7 +56,7 @@ export function crossModel(rows, ctx) {
   const rowIds = R.map((_, i) => grid[i].flatMap((cell) => cell.ids));
   const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
   return {
-    rowKeys: R, colKeys: C, grid, reduce,
+    rowKeys: R, colKeys: C, grid,
     rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.id)),
     rowIds, colIds, anyMarked: rows.some((row) => ctx.marked(row.id)),
   };
