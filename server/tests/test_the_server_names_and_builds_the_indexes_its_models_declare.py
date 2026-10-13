@@ -43,45 +43,54 @@ def test_every_declared_index_compiles_to_one_concurrent_build_of_its_own_name()
 
 
 def test_the_index_work_builds_the_model_indexes_after_the_declared_keys(monkeypatch):
-    """One task, one after the other - so two never build at once - on threads beside the loop."""
+    """One task, one after the other - so two never build at once - on threads beside the loop. The ledger's
+    partitions are not the chain's line any more (총괄 7763dd6d0 - the ledger process builds them)."""
     ran = []
     monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda rules, factory: ran.append("keys"))
-    monkeypatch.setattr(worker, "_ensure_model_indexes_sync", lambda factory, sources: ran.append(sources))
+    monkeypatch.setattr(models, "ensure_model_indexes_sync", lambda factory, sources, say: ran.append(sources))
 
     async def start():
         await worker._start_index_work([], None)
-        await worker._LEDGER_INDEX_LINE["task"]
 
     asyncio.run(start())
-    assert [step for step in ran if step != ("ledger",)] == ["keys", ("model", "table")]
-    assert ran.count(("ledger",)) == 1
+    assert ran == ["keys", ("model", "table")]
 
 
-def test_a_ledger_build_that_waits_holds_back_no_join_key(monkeypatch):
-    """총괄 bdc08ec39 ②: a reload's join keys are built while the ledger's partitions still wait - the ledger's own
-    line runs after its own last only."""
-    release, ran, began = threading.Event(), [], []
+def test_a_ledger_build_that_waits_holds_back_neither_the_follow_up_nor_the_census(monkeypatch):
+    """총괄 bdc08ec39 ② in the split shape (7763dd6d0): the ledger's partitions wait on the database's older
+    transactions, so the ledger process builds them beside its loops - the follow-up and the census start while the
+    build still waits, and the chain's line never had them."""
+    from ledger import worker as ledger_worker
 
-    def build(factory, sources):
-        if sources == ("ledger",):
-            began.append(sources)
-            release.wait(10)
-        ran.append(sources)
-    monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda rules, factory: ran.append("keys"))
-    monkeypatch.setattr(worker, "_ensure_model_indexes_sync", build)
+    release, began, started = threading.Event(), [], []
+
+    def build(factory, sources, say):
+        began.append(sources)
+        release.wait(10)
+
+    async def loop(name, factory):
+        started.append(name)
+
+    monkeypatch.setattr(models, "ensure_model_indexes_sync", build)
+    monkeypatch.setattr(ledger_worker, "_ensure_ledger_schema_sync", lambda factory: None)
+    monkeypatch.setattr(ledger_worker, "_restamp_moved_fingerprints_sync", lambda factory: None)
+    monkeypatch.setattr(ledger_worker, "run_ledger_followup", lambda factory: loop("followup", factory))
+    monkeypatch.setattr(ledger_worker, "run_ledger_row_census", lambda factory: loop("census", factory))
+    monkeypatch.setattr(ledger_worker.heartbeat, "another_process_beats", lambda name, now=None: None)
+    monkeypatch.setattr(ledger_worker.heartbeat, "beat", lambda *a, **k: None)
 
     async def go():
-        first = worker._start_index_work([], None)
-        second = worker._start_index_work([], None, after=first)          # a reload while the ledger's build waits
-        await asyncio.wait_for(second, 5)
-        await asyncio.sleep(0.3)                                          # room for a second ledger build to begin
-        built = (ran.count("keys"), ran.count(("ledger",)), len(began))   # ... it must not: one at a time
+        task = asyncio.ensure_future(ledger_worker.start_ledger_worker(None))
+        for _ in range(50):
+            await asyncio.sleep(0.05)
+            if len(started) == 2:
+                break
+        seen = (sorted(started), began, release.is_set())
         release.set()
-        await worker._LEDGER_INDEX_LINE["task"]
-        return built
+        task.cancel()
+        return seen
 
-    assert asyncio.run(go()) == (2, 0, 1)
-    assert ran.count(("ledger",)) == 2
+    assert asyncio.run(go()) == (["census", "followup"], [("ledger",)], False)
 
 
 # ------------------------------------------------------------------------------------- PG
@@ -210,11 +219,11 @@ def test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing(scratch
     import parsers.directory_watcher as directory_watcher
 
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings",
-                        lambda: {worker.BUILD_MISSING_INDEXES_SETTING: False})
+                        lambda: {models.BUILD_MISSING_INDEXES_SETTING: False})
     _ddl(scratch, "DROP INDEX %s" % DROPPED)
     caplog.set_level("WARNING", logger=worker.logger.name)
 
-    worker._ensure_model_indexes_sync(sessionmaker(bind=scratch), models.INDEX_SOURCES)
+    models.ensure_model_indexes_sync(sessionmaker(bind=scratch), models.INDEX_SOURCES, worker.logger.warning)
 
     said = [r.getMessage() for r in caplog.records if "[Indexes]" in r.getMessage()]
     assert len(said) == 1 and "not built: build_missing_indexes is off" in said[0], said

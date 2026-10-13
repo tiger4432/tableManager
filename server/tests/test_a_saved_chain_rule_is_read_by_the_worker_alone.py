@@ -219,9 +219,7 @@ def fixture_loop(monkeypatch):
     monkeypatch.setattr(models, "refresh_dynamic_models",
                         lambda *a, **k: seen.__setitem__("refresh", seen["refresh"] + 1))
     monkeypatch.setattr(worker, "sweep_undelivered_broadcasts", no_sweep)
-    # The loop's ledger tasks and startup query-ender are not this file's subject.
-    monkeypatch.setattr(worker, "run_ledger_followup", no_sweep)
-    monkeypatch.setattr(worker, "run_ledger_row_census", no_sweep)
+    # The startup query-ender is not this file's subject.
     monkeypatch.setattr(worker, "_end_queries_a_gone_chain_worker_left_sync", lambda *a: None)
     monkeypatch.setattr(worker, "another_chain_loop_is_running", lambda *a, **k: None)
     monkeypatch.setattr(worker, "OutboxListener", _Listener)

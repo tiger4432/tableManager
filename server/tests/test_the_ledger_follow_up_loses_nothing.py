@@ -26,6 +26,9 @@ from support import hold_world as hw                                # noqa: E402
 pytestmark = pytest.mark.pg
 
 
+from ledger import worker as ledger_worker  # noqa: E402
+
+
 @pytest.fixture(name="world")
 def fixture_world(pg_engine, monkeypatch, tmp_path):
     yield from hw.build(pg_engine, monkeypatch, tmp_path)
@@ -167,7 +170,7 @@ def test_the_workers_drain_takes_from_the_outbox(world, monkeypatch):
     hw.run_chain(world)
     followup.reset()
     before = followup.outbox_depth(world["engine"])
-    done = worker._drain_ledger_followup_sync(sessionmaker(bind=world["engine"]))
+    done = ledger_worker._drain_ledger_followup_sync(sessionmaker(bind=world["engine"]))
     assert done is not None and followup.outbox_depth(world["engine"]) == before - 1
 
 

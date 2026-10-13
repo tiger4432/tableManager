@@ -116,8 +116,6 @@ def test_the_first_beat_goes_out_before_the_index_work_and_the_loop_does_not_wai
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
     monkeypatch.setattr(worker, "warmup_worker", lambda *a, **k: None)
     monkeypatch.setattr(worker, "sweep_undelivered_broadcasts", _nothing)
-    monkeypatch.setattr(worker, "run_ledger_followup", _nothing)
-    monkeypatch.setattr(worker, "run_ledger_row_census", _nothing)
     monkeypatch.setattr(worker.internal_event_client, "startup_lines", lambda *a, **k: [])
     monkeypatch.setattr(worker.heartbeat, "beat",
                         lambda name, *a, **k: beats.append(name) if name == "chain" else None)
@@ -138,7 +136,7 @@ def test_the_first_beat_goes_out_before_the_index_work_and_the_loop_does_not_wai
     assert _Listener.waits >= 5
 
 
-@pytest.mark.parametrize("step", ["sync_dynamic_tables_schema", "ensure_ledger_schema"])
+@pytest.mark.parametrize("step", ["sync_dynamic_tables_schema", "ensure_dynamic_table_indexes"])
 def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypatch, tmp_path,
                                                                       caplog, step):
     """총괄 bdb356d3f 5b (· 5b-2 the schema sync): a restart, the dead predecessor's beat still fresh on disk, and a startup
@@ -187,8 +185,6 @@ def test_a_startup_step_past_the_grace_reads_as_starting_and_that_step(monkeypat
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
     monkeypatch.setattr(worker, "warmup_worker", lambda *a, **k: None)
     monkeypatch.setattr(worker, "sweep_undelivered_broadcasts", _nothing)
-    monkeypatch.setattr(worker, "run_ledger_followup", _nothing)
-    monkeypatch.setattr(worker, "run_ledger_row_census", _nothing)
     monkeypatch.setattr(worker.internal_event_client, "startup_lines", lambda *a, **k: [])
     threading.Thread(target=watch, daemon=True).start()
     session = _Session(threading.Event())
@@ -381,8 +377,6 @@ def test_the_business_key_index_build_is_not_waited_on_by_the_start(monkeypatch)
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
     monkeypatch.setattr(worker, "warmup_worker", lambda *a, **k: None)
     monkeypatch.setattr(worker, "sweep_undelivered_broadcasts", _nothing)
-    monkeypatch.setattr(worker, "run_ledger_followup", _nothing)
-    monkeypatch.setattr(worker, "run_ledger_row_census", _nothing)
     monkeypatch.setattr(worker.internal_event_client, "startup_lines", lambda *a, **k: [])
     monkeypatch.setattr(worker.heartbeat, "beat", lambda *a, **k: None)
     monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda *a: None)

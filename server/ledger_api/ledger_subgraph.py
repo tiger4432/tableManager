@@ -458,7 +458,7 @@ def _say_image_values(nodes, edges):
         if key not in said:
             if world not in setups:
                 try:
-                    from chain.ingestion_worker import _compiled_setup
+                    from ledger.worker import _compiled_setup
                     setups[world] = _compiled_setup(world)
                 except Exception as exc:                          # noqa: BLE001 - what goes quiet is said
                     logging.getLogger(__name__).warning(

@@ -27,6 +27,9 @@ from ledger import backfill, schema                                  # noqa: E40
 import pytest                                                        # noqa: E402
 
 
+from ledger import worker as ledger_worker  # noqa: E402
+
+
 @pytest.fixture(autouse=True)
 def _no_drift_scan(monkeypatch):
     """(나) The drift and gone counts scan the relation through a real plan; this file's
@@ -388,15 +391,15 @@ def test_the_worker_lap_measures_what_the_sweep_measures(monkeypatch, caplog):
 
     setup = _one_of_each()
     monkeypatch.setattr(pacing, "job_pace", lambda job: (1, 60.0))
-    monkeypatch.setattr(worker, "_load_setup_sync", lambda factory: setup)
-    monkeypatch.setattr(worker, "_measure_one_source_sync",
+    monkeypatch.setattr(ledger_worker, "_load_setup_sync", lambda factory: setup)
+    monkeypatch.setattr(ledger_worker, "_measure_one_source_sync",
                         lambda factory, source, setup=None: measured.append(source) or (
                             {"refused": "source_refused"} if source == "r" else {}))
     monkeypatch.setattr(worker.heartbeat, "record_lap", lambda *a, **k: laps.append(k))
     monkeypatch.setattr(worker.asyncio, "sleep", rest_then_end_after_the_lap_line)
     with caplog.at_level(logging.INFO):
         try:
-            asyncio.run(worker.run_ledger_row_census(lambda: None))
+            asyncio.run(ledger_worker.run_ledger_row_census(lambda: None))
         except _LapEnded:
             pass
 

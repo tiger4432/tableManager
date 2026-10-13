@@ -109,23 +109,26 @@ _FOLLOWING: contextvars.ContextVar = contextvars.ContextVar(
 
 @contextlib.contextmanager
 def following(transaction_id):
-    """Mark this thread as following `transaction_id` for the duration of one batch."""
-    token = _FOLLOWING.set(str(transaction_id) if transaction_id else None)
+    """Mark this thread as following `transaction_id` - one, or the several a batch folded (796f04605 ②) - for the
+    duration of one batch."""
+    ids = transaction_id if isinstance(transaction_id, (list, tuple)) else (transaction_id,)
+    token = _FOLLOWING.set(tuple(str(one) if one else None for one in ids) or (None,))
     try:
         yield
     finally:
         _FOLLOWING.reset(token)
 
 
-def event_transaction_id():
-    """The chain transaction this batch is following, or `None`.
+def event_transaction_ids():
+    """The chain transactions this batch is following - one receipt each (lead (가) - the history reads a receipt per
+    transaction) - or `(None,)`.
 
     🔴 `None` IS A VALUE HERE, NOT A GAP. A backfill or a retroactive run fills this queue
     with no chain transaction behind it, and that emptiness is what tells an operator on the
     timeline that a row came from a backfill rather than from somebody's edit. Inventing an
     id would erase exactly the distinction S-117 exists to show.
     """
-    return _FOLLOWING.get()
+    return _FOLLOWING.get() or (None,)
 
 
 # ------------------------------------------------------------------- the chain's one line
@@ -141,7 +144,7 @@ def enqueue(table_name, row_ids, event_type, transaction_id=None, chain_depth=No
     `transaction_id` is the chain transaction of that event, so the receipt this batch
     writes lands in the SAME audit group as the table change that caused it (S-117,
     판정 248). Absent for a backfill or retroactive filler, and LEFT absent - see
-    `event_transaction_id`.
+    `event_transaction_ids`.
 
     🔴 [S-249 ⓒ] `chain_depth` RIDES ALONG BECAUSE THE FOLLOW-UP LAP IS A HOP. Measured
     before building: `request_chain_depth` is set in exactly ONE place - the chain group step
@@ -298,7 +301,7 @@ def _scope_values_from(connection, relation_name, column, row_ids):
 
 
 def _write_failure_receipt(engine, relation, source, transaction_id, exc, world):
-    """One audit row saying this batch failed, in a commit of its own. Never raises.
+    """An audit row per followed transaction saying this batch failed, in a commit of its own. Never raises.
 
     ⚠️ A RECEIPT THAT CAN TAKE THE DRAIN DOWN WITH IT IS WORSE THAN NO RECEIPT. This runs
     inside the handler for a failure that has already been named and counted; letting a
@@ -311,15 +314,16 @@ def _write_failure_receipt(engine, relation, source, transaction_id, exc, world)
 
         from . import store as store_module
 
-        row = crud.create_audit_log(
-            None, relation, str(uuid6.uuid7()), RECEIPT_COLUMN, None,
-            {"source": source, "world": world, "status": RECEIPT_FAILED,
-             "error": f"{type(exc).__name__}: {exc}"},
-            RECEIPT_SOURCE, RECEIPT_WRITER,
-            transaction_id=transaction_id, add_to_cache=False)
+        ids = transaction_id if isinstance(transaction_id, (list, tuple)) else (transaction_id,)
         connection = engine.raw_connection()
         try:
-            store_module._insert_audit_row(connection, row)
+            for one in ids or (None,):
+                store_module._insert_audit_row(connection, crud.create_audit_log(
+                    None, relation, str(uuid6.uuid7()), RECEIPT_COLUMN, None,
+                    {"source": source, "world": world, "status": RECEIPT_FAILED,
+                     "error": f"{type(exc).__name__}: {exc}"},
+                    RECEIPT_SOURCE, RECEIPT_WRITER,
+                    transaction_id=one, add_to_cache=False))
             connection.commit()
         finally:
             connection.close()
@@ -532,52 +536,105 @@ def _payload(value):
     return value if isinstance(value, dict) else {}
 
 
-def drain_outbox_once(engine, setup, followers=None):
-    """Follow the oldest outbox event the chain processed and the ledger has not. Or `None`.
+#: The most waiting events one follow-up batch reads to fill its row budget.
+MAX_EVENTS_A_BATCH = 1000
 
+
+def _runs(events):
+    """`events` - (outbox row, payload, row ids) in id order - as the follows they fold into: per table, each run of
+    one kind in id order (deletions apart from additions and edits, so a row deleted then added back is followed in
+    that order). A run with an addition is never skipped by its columns - an addition alone is not. -> [(item, outbox
+    ids)], an item as `_follow` reads it."""
+    import event_constants
+
+    runs, by_table = [], {}
+    for row, payload, ids in events:
+        table, kind = str(row.table_name), str(row.event_type)
+        open_run = by_table.get(table)
+        if open_run is None or (open_run["kind"] == "DELETE") != (kind == "DELETE"):
+            open_run = by_table[table] = {"kind": kind, "events": []}
+            runs.append(open_run)
+        open_run["events"].append((row, payload, ids, kind))
+    out = []
+    for run in runs:
+        rows, kinds, columns, transactions, depths = {}, set(), set(), {}, []
+        for row, payload, ids, kind in run["events"]:
+            rows.update(dict.fromkeys(ids))
+            kinds.add(kind)
+            said = event_constants.changed_columns_of(payload)
+            columns = None if said is None or columns is None else columns | set(said)
+            transactions.setdefault(payload.get("transaction_id"), None)
+            depth = event_constants.chain_depth_of(payload)
+            if depth is not None:
+                depths.append(depth)
+        kind = "DELETE" if "DELETE" in kinds else "CREATE" if kinds == {"CREATE"} else "EDIT"
+        first = run["events"][0][0]
+        queued_at = first.created_at.timestamp() if first.created_at is not None else time.time()
+        out.append(((str(first.table_name), tuple(rows), kind, queued_at, tuple(transactions),
+                     max(depths) if depths else None,
+                     sorted(columns) if columns is not None and kinds == {"EDIT"} else None),
+                    [row.id for row, _payload, _ids, _kind in run["events"]]))
+    return out
+
+
+def drain_outbox_once(engine, setup, followers=None, rows=None):
+    """Follow the oldest outbox events the chain processed and the ledger has not. Or `None`.
+
+    `rows` - how many rows this batch may follow (the lap's page size): the oldest events in id order until their rows
+    reach it, at least one (총괄 796f04605 ②). None: one event. A table's run of one kind is followed once - its rows
+    together - so a source translates once whatever size the events were; each event is marked with its run's outcome.
     Marked after the follow, in its own statement: a process that dies inside a follow leaves
-    the event unmarked and the next run follows it again (`rescope` is idempotent). An event
+    the events unmarked and the next run follows them again (`rescope` is idempotent). An event
     of a kind the ledger does not follow is marked DONE on the way past.
 
     `followers` - (world, its compiled declaration) for each world that follows its tables live
     (`schema.live_worlds`, 총괄 092a6f9e5); a deletion is withdrawn in each. None: `setup`, in the
-    operating world.
+    operating world. -> the first run's record with `events` (taken), `outbox_id` (the last) and every run's sources.
     """
     from sqlalchemy import text
-    import event_constants
 
     kinds = ", ".join("'%s'" % kind for kind in FOLLOWED_EVENT_TYPES)
     with engine.begin() as connection:
         connection.execute(text(
             "UPDATE database_outbox SET ledger_state = :done WHERE %s AND event_type NOT IN (%s)"
             % (_PENDING, kinds)), {"done": LEDGER_DONE})
-        row = connection.execute(text(
+        taken = connection.execute(text(
             "SELECT id, table_name, event_type, payload, created_at FROM database_outbox "
-            "WHERE %s ORDER BY id LIMIT 1" % _PENDING)).fetchone()
-    if row is None:
+            "WHERE %s ORDER BY id LIMIT %d" % (_PENDING, 1 if rows is None else MAX_EVENTS_A_BATCH))).fetchall()
+    events, total = [], 0
+    for row in taken:
+        payload = _payload(row.payload)
+        ids = tuple(str(item) for item in row_ids_of(payload))
+        if events and total + len(ids) > rows:
+            break
+        events.append((row, payload, ids))
+        total += len(ids)
+    if not events:
         return None
-    payload = _payload(row.payload)
-    ids = tuple(str(item) for item in row_ids_of(payload))
-    queued_at = row.created_at.timestamp() if row.created_at is not None else time.time()
-    done = (_follow_worlds((str(row.table_name), ids, str(row.event_type), queued_at,
-                            payload.get("transaction_id"), event_constants.chain_depth_of(payload),
-                            event_constants.changed_columns_of(payload)),
-                           engine, followers or ((None, setup),))
-            if ids else {"table": row.table_name, "event_type": row.event_type, "rows": 0,
-                         "row_ids": [], "sources": {}})
-    errors = [done["error"]] if done.get("error") else []
-    errors += ["%s: %s" % (source, said["error"])
-               for source, said in sorted((done.get("sources") or {}).items())
-               if "error" in (said or {})]
-    skipped = [source for source, said in sorted((done.get("sources") or {}).items())
-               if (said or {}).get("skipped")]
-    state = (LEDGER_FAILED + " | ".join(errors) if errors
-             else LEDGER_SKIPPED + ", ".join(skipped) if skipped else LEDGER_DONE)
+    record, marks = None, []
+    for item, outbox_ids in _runs(events):
+        done = (_follow_worlds(item, engine, followers or ((None, setup),))
+                if item[1] else {"table": item[0], "event_type": item[2], "rows": 0,
+                                 "row_ids": [], "sources": {}})
+        errors = [done["error"]] if done.get("error") else []
+        errors += ["%s: %s" % (source, said["error"])
+                   for source, said in sorted((done.get("sources") or {}).items())
+                   if "error" in (said or {})]
+        skipped = [source for source, said in sorted((done.get("sources") or {}).items())
+                   if (said or {}).get("skipped")]
+        state = (LEDGER_FAILED + " | ".join(errors) if errors
+                 else LEDGER_SKIPPED + ", ".join(skipped) if skipped else LEDGER_DONE)
+        marks.extend({"state": state[:1000], "id": outbox_id} for outbox_id in outbox_ids)
+        if record is None:
+            record = done
+        else:
+            for source, said in (done.get("sources") or {}).items():
+                if source not in record["sources"] or "error" in (said or {}):
+                    record["sources"][source] = said
     with engine.begin() as connection:
-        connection.execute(text("UPDATE database_outbox SET ledger_state = :state WHERE id = :id"),
-                           {"state": state[:1000], "id": row.id})
-    done["outbox_id"] = row.id
-    return done
+        connection.execute(text("UPDATE database_outbox SET ledger_state = :state WHERE id = :id"), marks)
+    record["events"], record["outbox_id"] = len(events), events[-1][0].id
+    return record
 
 
 def outbox_depth(engine):
@@ -640,7 +697,7 @@ def main(argv=None) -> int:
     from database.database import engine
 
     if args.requeue_failed:
-        print("다시 넣음 %d — 체인 워커가 따라간다" % requeue_failed(engine))
+        print("다시 넣음 %d — 원장 프로세스가 따라간다" % requeue_failed(engine))
         return 0
     total, rows = failed_events(engine)
     print("따라갈 일 %d · 실패 %d" % (outbox_depth(engine), total))

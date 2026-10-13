@@ -59,13 +59,16 @@ def test_a_backfill_fills_the_same_queue_with_no_transaction_and_that_is_kept():
 
 
 def test_the_scope_is_open_only_inside_the_batch_it_was_opened_for():
-    assert followup.event_transaction_id() is None
+    assert followup.event_transaction_ids() == (None,)
     with followup.following("tx-9"):
-        assert followup.event_transaction_id() == "tx-9"
-    assert followup.event_transaction_id() is None
+        assert followup.event_transaction_ids() == ("tx-9",)
+    assert followup.event_transaction_ids() == (None,)
 
     with followup.following(None):
-        assert followup.event_transaction_id() is None
+        assert followup.event_transaction_ids() == (None,)
+    # a batch that folded several transactions follows each of them (총괄 796f04605 ② (가))
+    with followup.following(("tx-1", "tx-2")):
+        assert followup.event_transaction_ids() == ("tx-1", "tx-2")
 
 
 # ── the row ──────────────────────────────────────────────────────────────────
@@ -92,7 +95,7 @@ def test_the_receipt_carries_this_batchs_own_counts():
     build = runtime_v2._batch_receipt(_Writer(), _Plan(), _Preview(), rows=11,
                                       batch_id="batch-1")
 
-    row = build({"inserted": 5, "deduped": 2, "withdrawn": 1})
+    [row] = build({"inserted": 5, "deduped": 2, "withdrawn": 1})
 
     assert row["table_name"] == "some_relation"
     assert row["row_id"] == "batch-1"
@@ -112,7 +115,18 @@ def test_the_receipt_takes_the_transaction_of_whatever_batch_is_running():
                                       batch_id="batch-1")
 
     with followup.following("tx-9"):
-        assert build({"inserted": 0, "deduped": 0})["transaction_id"] == "tx-9"
+        assert [row["transaction_id"] for row in build({"inserted": 0, "deduped": 0})] == ["tx-9"]
+
+
+def test_a_batch_that_folded_transactions_leaves_a_receipt_in_each():
+    """총괄 796f04605 ② (가): the history reads a receipt per transaction - each carries the batch's counts."""
+    build = runtime_v2._batch_receipt(_Writer(), _Plan(), _Preview(), rows=4,
+                                      batch_id="batch-1")
+
+    with followup.following(("tx-1", "tx-2")):
+        rows = build({"inserted": 3, "deduped": 0})
+    assert [row["transaction_id"] for row in rows] == ["tx-1", "tx-2"]
+    assert [row["new_value"]["atoms_written"] for row in rows] == [3, 3]
 
 
 def test_an_unfollowed_batch_keeps_the_empty_field_that_says_so():
@@ -127,7 +141,7 @@ def test_an_unfollowed_batch_keeps_the_empty_field_that_says_so():
     build = runtime_v2._batch_receipt(_Writer(), _Plan(), _Preview(), rows=1,
                                       batch_id="batch-1")
 
-    assert build({"inserted": 0, "deduped": 0})["transaction_id"] is None
+    assert [row["transaction_id"] for row in build({"inserted": 0, "deduped": 0})] == [None]
 
 
 
@@ -220,7 +234,7 @@ def test_the_receipt_is_written_before_the_commit_that_makes_the_atoms_durable()
     def receipt(written):
         written_at["commits_so_far"] = connection.committed
         written_at["counts"] = dict(written)
-        return {"table_name": "t", "row_id": "r", "column_name": "c"}
+        return [{"table_name": "t", "row_id": "r", "column_name": "c"}]
 
     result = _Store(connection).write_batch(
         "src", "v1", [], {"k": 1}, 2, reasons={}, receipt=receipt)

@@ -546,7 +546,8 @@ class LedgerStore:
             # is what the caller uses. A dict assembled here would be a second spelling
             # of that, free to drift the day a column is added.
             if receipt is not None:
-                _insert_audit_row(connection, receipt(written))
+                for row in receipt(written):
+                    _insert_audit_row(connection, row)
             with stage("commit"):
                 connection.commit()
             return written

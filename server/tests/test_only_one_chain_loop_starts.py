@@ -96,7 +96,7 @@ def test_standing_down_is_not_silent(monkeypatch, caplog):
     beats, steps = [], []
     monkeypatch.setattr(worker.heartbeat, "beat", lambda name, **k: beats.append(k))
     monkeypatch.setattr(worker, "_end_queries_a_gone_chain_worker_left_sync", steps.append)
-    monkeypatch.setattr(worker, "_ensure_ledger_schema_sync", steps.append)
+    monkeypatch.setattr(worker, "_sync_dynamic_tables_schema_sync", steps.append)
     with caplog.at_level(logging.WARNING):
         asyncio.run(worker.start_chain_ingestion_worker(None))
 

@@ -24,6 +24,9 @@ from ledger.setup_registry import _semantic_plain                    # noqa: E40
 from ledger.store import LedgerStore                                 # noqa: E402
 
 
+from ledger import worker as ledger_worker  # noqa: E402
+
+
 @dataclass(frozen=True)
 class Narrow:
     name: str
@@ -171,7 +174,7 @@ def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, capl
             pass
 
     with caplog.at_level(logging.INFO):
-        worker._restamp_moved_fingerprints_sync(lambda: _Session())
+        ledger_worker._restamp_moved_fingerprints_sync(lambda: _Session())
 
     assert set(worlds) == {"default"}, worlds                   # each in its speaking world
     assert written == [("stale", "ledger-v2:old", "ledger-v2:new")], (
