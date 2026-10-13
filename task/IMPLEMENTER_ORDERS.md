@@ -67126,3 +67126,17 @@ M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 
 게이트        벡터 270 서버 채점 · 옛/새 선언 같은 판 같은 값 · 변이 셋
 순서          지금 — B 에는 이 일이 A 로 갔다고 알림
 ```
+
+> **[총괄 -> 구현자 A] 10-14 새벽 — 걷기 이웃 빨강 13 갈래 뒤: 결함 둘 고침 + 「환경 10」을 저장소 안 선언으로 (A 보고: 환경 10 · 순서 1 · 결함 2)**
+
+```
+① 제품  ledger/backfill.rows_not_yet_translated 빠른 추정이 pg_class 를 relname 으로만 찾아 다른 스키마 같은 이름 표의 reltuples 를 읽음
+        -> 관계 oid(to_regclass, 지금 search_path 의 그 표)로 찾고, 분석 전(-1)이면 지금처럼 count(*). 같은 물음을 하는 다른 자리(reltuples 읽는 곳 전부)를 AST/git grep 로 세어 같은 함수로 — 수와 센 명령을 보고에
+        게이트 같은 이름 표가 public 에 있고 스크래치 표가 분석 전일 때 difference 0 · 변이 하나(relname 으로 되돌리면 빨강)
+② 시험  test_a_recipe_walk fixture — 걷기 풀 뒤 걷기 프로세스가 자기 엔진으로 감. 6f34a1320 의 그 한 줄(walk_processes 0)을 같은 자리 도우미로(사본 둘째 금지 — 이미 두 곳이면 도우미 하나로 접음)
+③ 시험  「환경 10」— 시험이 gitignore 된 ledger_config 를 읽어 새 나무에서 503. 결함 1 이 이 빨강 속에 숨어 있었음
+        -> 그 시험들이 저장소에 커밋된 선언(이미 있는 sample/fixture 선언이 있으면 그것, 없으면 시험 fixture 한 벌)을 데이터 루트로 받게. 박스 · 운영 설정 사본 금지
+        게이트 새 worktree(설정 없음)에서 13 중 결함 아닌 것 전부 초록 · 순서 1(test_ddl…harmless)은 앞 시험 이름 하나 찾아 보고(고치기는 작으면 같이)
+착지    한 커밋 묶음 · 짧은 검수 · RELEASE_LOG 는 ①만(제품 동작)
+다음    끝나면 보고 — 다음 일은 그때 지시서에
+```
