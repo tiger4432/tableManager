@@ -107,7 +107,10 @@ function seen(M) {
     // two cells, one format: one declaration, their inputs as they were
     declared.length = 0;
     cellTd(body, 'B2').dispatch('click', {});
+    const oneOn = [bar(body).disabled, walkAll(body).find((n) => hasClass(n, 'sf-sheet__key')).disabled, bar(body).attrs.title || null];
     cellTd(body, 'C1').dispatch('click', { ctrlKey: true });
+    const keyTwo = walkAll(body).find((n) => hasClass(n, 'sf-sheet__key'));
+    out.page.pickOne = [oneOn, [bar(body).disabled, bar(body).attrs.title || null, keyTwo.disabled, keyTwo.attrs.title || null]];
     const fmt = walkAll(body).find((n) => hasClass(n, 'sf-sheet__fmt'));
     fmt.value = '#,##0';
     fmt.dispatch('change', {});
@@ -187,6 +190,8 @@ function suite(out) {
     ['12', ['=C1*2'], false]);
   eq('S14 a format on two cells: one declaration of cells, their formats set and their inputs as they were', out.page && out.page.format,
     [1, '#,##0', '#,##0', '=[measures.value]', '12', 'cells']);
+  eq('S23 two cells picked: the formula bar and Key off, each saying why; one picked - on, saying nothing', out.page && out.page.pickOne,
+    [[false, false, null], [true, 'Pick one cell', true, 'Pick one cell']]);
   eq('S15 a typed format not in the table: «unknown format», nothing written', out.page && out.page.unknown, [0, 'unknown format']);
   eq('S16 a second key: «one key per sheet», nothing written', out.page && out.page.secondKey, [0, 'one key per sheet']);
   eq('S17 an error cell picked says its reason', out.page && out.page.reason, '3 values — wrap in an aggregate');
@@ -225,6 +230,8 @@ const MUTANTS = [
       '  const own = SHARED;').replace('export function render(', "const SHARED = { sel: ['A1'], anchor: 'A1', say: '' };\nexport function render(") },
   { id: 'SM15', what: 'a datetime answer drawn as the server wrote it (the code before, 18766)', catches: 'S22',
     mutate: (t) => swap(t, "    if (read && read.types) time = isTimeRead(read);\n", '') },
+  { id: 'SM16', what: 'Key off with two cells picked and saying nothing (the code before)', catches: 'S23',
+    mutate: (t) => swap(t, "  setDisabledReason(key, own.sel.length === 1 ? '' : SHEET_WORDS.pickOne);", '  key.disabled = own.sel.length !== 1;') },
   { id: 'SM12', what: 'the grid does not grow past the cells written', catches: 'S1 the grid', mutate: (t) => swap(t, 'const MARGIN = { c: 2, r: 5 };', 'const MARGIN = { c: 0, r: 0 };') },
 ];
 const scored = await scoreMutants(MUTANTS.map((m) => ({ ...m, file: F })), async (m) => {

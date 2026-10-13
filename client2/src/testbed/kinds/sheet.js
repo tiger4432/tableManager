@@ -11,6 +11,7 @@ import { parseServerInstant } from '../../server_time.js';
 import { timeText, isTimeRead } from '../slot.js';
 import { entityOfId } from '../../rnd_board/api.js';
 import { place, address, letters } from '../../expression.js';
+import { setDisabledReason } from '../../disabled_reason.js';
 
 export const SHEET_WORDS = Object.freeze({
   oneKey: 'one key per sheet',
@@ -21,6 +22,7 @@ export const SHEET_WORDS = Object.freeze({
   general: 'General',
   format: 'Format',
   noKey: (name) => `No key ${name} on this node`,
+  pickOne: 'Pick one cell',
 });
 
 /** The formats a cell can say (a closed table): numbers and times as Excel spells them, a node by its name or keys. */
@@ -190,7 +192,7 @@ export function render(body, model, ctx) {
   input.type = 'text';
   input.setAttribute('aria-label', 'Cell input');
   input.value = own.sel.length === 1 ? first().input : '';
-  input.disabled = own.sel.length !== 1;
+  setDisabledReason(input, own.sel.length === 1 ? '' : SHEET_WORDS.pickOne);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); commit(own.sel[0], input.value); }
     if (e.key === 'Escape') input.value = first().input;
@@ -219,7 +221,7 @@ export function render(body, model, ctx) {
   typed.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); setFormat(typed.value.trim()); } });
   const key = el('button', 'sf-btn sf-sheet__key', SHEET_WORDS.key);
   key.type = 'button';
-  key.disabled = own.sel.length !== 1;
+  setDisabledReason(key, own.sel.length === 1 ? '' : SHEET_WORDS.pickOne);
   key.addEventListener('click', () => {
     const got = keyPatch({ key: model.key, cells: model.cells, start: model.start && { node: model.start.text } }, own.sel[0]);
     if (got.refused) { own.say = got.refused; redraw(); return; }
