@@ -1971,7 +1971,12 @@ class _RowAsWritten:
         self.__table__, self._row, self._cells = table, row, cells
 
     def __getattr__(self, name):
-        return self._cells[name] if name in self._cells else getattr(self._row, name)
+        # by the row's names, not its attributes - a column named `t` or `count` is a Row method (총괄 10-14 e)
+        if name in self._cells:
+            return self._cells[name]
+        if name in self._row._mapping:
+            return self._row._mapping[name]
+        raise AttributeError(name)
 
 
 def _write_by_values(db, table_name, model, values, tx_id):
