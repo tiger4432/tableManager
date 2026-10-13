@@ -1,5 +1,33 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **그리드 다음 · 앞 쪽을 열쇠로 — 깊은 쪽도 쪽 비용만 · 정렬 칸 색인은 표 선언 indexes 에 (총괄 e570dcda5 ㄱ)** — git pull · 서버 재기동 · 이주 «없음» · 화면은 클라 반쪽이 붙어야 탄다
+>
+> ```
+> 무엇     GET /tables/<표>/data 가 after=<앞 쪽 마지막 row_id> · before=<뒤 쪽 첫 row_id> 를 받으면 그 행 다음 · 앞 쪽을 키 순서로 읽는다
+>          쪽 번호로 뛰는 것은 지금처럼 skip(OFFSET) — 깊을수록 느린 것은 그대로
+> 화면     클라 레인이 다음 · 앞 단추에 after · before 를 싣기 전에는 화면 동작이 안 바뀐다
+> 정렬 칸  머리글로 정렬하는 칸마다 table_config.json 의 그 표에 (칸, row_id) 한 줄
+>            "indexes": [{"columns": ["dt_eqp", "row_id"]}]
+>          칸 하나만 적으면 안 탄다 — 같은 값이 많은 칸은 그 묶음을 row_id 로 다시 정렬한다
+>          저장 뒤 어드민 Reload(또는 재기동) -> 체인 워커가 짓는다
+>            chain_worker.log  [Indexes] idx_dt_log_dt_eqp_row_id built in N s
+> 답의 칸   표 칸으로 정렬한 /data 답에 "sort_index": {"dt_eqp": "built"}
+>            built                              -> 그 정렬의 다음 · 앞 쪽이 쪽 비용만
+>            declared, not built yet (<사유>)   -> 짓는 중 · Reload 기다림. 그동안은 쪽마다 표를 정렬한다(지금과 같음)
+>            not declared                       -> 위 한 줄을 적는다
+>            cannot be built (a view cannot carry an index)   -> 뷰. 바탕 표에 단다
+> 로그     server.log 의 그리드 쪽 줄 끝  key=after · key=before · key=-
+> 행이 없을 때  after · before 의 행이 지워졌으면 같이 보낸 skip 으로 읽는다(OFFSET) — 빈 쪽이 되지 않는다
+> 박스 판 실측 (400만 행 dt_log + 원장 행 색인 349만 + cell_overwrites 1,175 · 운영 주장 아님)
+>            OFFSET   가운데 쪽 1.0~2.8 s · 마지막 쪽 1.8~4.1 s  (같은 요청이 돌 때마다 이만큼 흔들림)
+>            열쇠     다음 0.36~0.44 · 가운데 0.31~0.54 · 마지막 0.19~0.40 · 앞 0.34~0.57 s
+>            dt_eqp 정렬의 다음 쪽(열쇠)  색인 없이 4.29 s -> (dt_eqp, row_id) 지은 뒤 0.20 s
+> ⚠️ 안 잰 것  운영 크기에서 짓는 시간 — 판에서는 다른 연결의 4M 행 복사가 끝나기를 기다려 22 분이 걸려 짓는 시간만 따로 못 쟀다
+>            10 명 동시 — 그리드 몸통을 프로세스 풀로 옮기는 다음 일(ㄴ)에서 잰다
+> ```
+>
+> ---
+>
 > ## [10-13] **걷기 이어 가기 다시 착지 — 같은 열쇠 = 같은 쪽 · 이어 갈 화면만 남김 · 시계로 쓸기 (총괄 9752e91f7, d5df12352 NO-GO 뒤)** — 이주 «없음» · 재기동 «서버» · 클라 반쪽(resumable)과 같이 병합
 >
 > ```

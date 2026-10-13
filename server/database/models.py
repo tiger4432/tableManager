@@ -1716,21 +1716,22 @@ def search_index_refusal(columns, entry):
 SEARCH_BUILT, SEARCH_NOT_DECLARED = "built", "not declared"
 
 
-def search_column_states(engine, table, columns, tables=None):
-    """Each column a grid read looked up by text -> «built» · «declared, not built yet (<why>)» · «not declared» ·
-    «cannot be built (<why>)» - read from the one comparison (`index_states`, this table alone), not from the
-    declaration (총괄 ad38ae9c6: a declared index still building was said as built)."""
+def column_index_states(engine, table, columns, covers, refusal, tables=None):
+    """Each column -> «built» · «declared, not built yet (<why>)» · «not declared» · «cannot be built (<why>)» of the
+    declared indexes `covers(row, column)` takes - read from the one comparison (`index_states`, this table alone), not
+    from the declaration (총괄 ad38ae9c6: a declared index still building was said as built). A search's
+    (`search_column_states`) and a sort's (`sort_column_states`)."""
     if not columns:
         return {}
     if tables is None:
         from database import crud
         tables = crud.TABLE_CONFIG
     entry = (tables or {}).get(table) or {}
-    rows = [row for row in index_states(engine, {table: entry}, static=False)["declared"] if row.get("search")]
+    rows = index_states(engine, {table: entry}, static=False)["declared"]
     states = {}
     for column in columns:
-        covering = [row for row in rows if column in row["columns"]]
-        why = search_index_refusal([column], entry)
+        covering = [row for row in rows if covers(row, column)]
+        why = refusal(column, entry)
         if any(row["state"] == INDEX_PRESENT for row in covering):
             states[column] = SEARCH_BUILT
         elif why:
@@ -1743,6 +1744,22 @@ def search_column_states(engine, table, columns, tables=None):
         else:
             states[column] = SEARCH_NOT_DECLARED
     return states
+
+
+def search_column_states(engine, table, columns, tables=None):
+    """Each column a grid read looked up by text -> the state of its search index (`column_index_states`)."""
+    return column_index_states(engine, table, columns, lambda row, column: row.get("search") and column in row["columns"],
+                               lambda column, entry: search_index_refusal([column], entry), tables)
+
+
+def sort_column_states(engine, table, columns, keys, tables=None):
+    """Each column a grid read sorted by -> the state of an index that gives the rows in its page's order, the column
+    then the total-order `keys` (`orders_rows_by`, 총괄 e570dcda5): without one built, every page of that sort sorts the
+    table. The column alone does not serve - its equal values are sorted by the keys (1M 판: dt_eqp 하나 724 ms ·
+    (dt_eqp, row_id) 3.3 ms)."""
+    return column_index_states(
+        engine, table, columns, lambda row, column: not row.get("search") and orders_rows_by(row, [column, *keys]),
+        lambda column, entry: "a view cannot carry an index" if (entry or {}).get("kind") == "view" else None, tables)
 
 #: PostgreSQL's identifier length - a longer name keeps its first part and a hash tail.
 INDEX_NAME_LIMIT = 63
