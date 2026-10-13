@@ -7,7 +7,8 @@ while other requests wait. The walk is the first user.
 `ingestion_settings.json`, read once per request: `walk_processes` - how many may run at once (0: the body runs in
 this process, as before); `walk_seconds_max` - how long a request waits for one and for its answer (then a 503).
 Two pools, one mechanism (`Pool`): WALK above and GRID (총괄 e570dcda5 ㄴ) - the grid page's body, `grid_processes`
-processes (default 2), no deadline (a plain grid read has none; a search's statements have grid_read_timeout_seconds).
+processes (default 2); `grid_wait_seconds` (default 60) bounds only the wait for a process - not the answer: a plain
+grid read has no deadline (a search's statements have grid_read_timeout_seconds), and a body cut short ends its process.
 An HTTPException raised there is raised here as the same one; anything else is this request's 500.
 A pool process that dies fails only the request it was running; the next request starts another.
 A body may keep something between requests (a paused walk, 총괄 54f7edfdb): its key begins with `here()`, and the next
@@ -54,17 +55,20 @@ PROCESS_NAME = "WalkPool"
 
 logger = logging.getLogger("Server")
 
-#: The grid page's pool (총괄 e570dcda5 ㄴ): its own size cell; no wait setting - it waits as a grid read does today.
+#: The grid page's pool (총괄 e570dcda5 ㄴ): its own size cell, and a wait for a process only (lead, after 6f34a1320:
+#: two processes stuck on plain reads, which have no statement limit, queued every grid request without end).
 GRID_SETTING, GRID_DEFAULT = "grid_processes", 2
+GRID_WAIT_SETTING, GRID_WAIT_DEFAULT = "grid_wait_seconds", 60
 
 
 class Pool:
-    """One kind of route body's processes: its size cell, its wait cell (None: no deadline), its process name and log
-    file, and its state."""
+    """One kind of route body's processes: its size cell, its wait cell (None: no deadline) - and whether that wait
+    covers the answer too (`answer_waits`) or only the wait for a process -, its process name and log file, its state."""
 
-    def __init__(self, name, setting, default, wait_setting, wait_default, process_name, log_file, runs):
+    def __init__(self, name, setting, default, wait_setting, wait_default, process_name, log_file, runs,
+                 answer_waits=True):
         self.name, self.setting, self.default, self.runs = name, setting, default, runs
-        self.wait_setting, self.wait_default = wait_setting, wait_default
+        self.wait_setting, self.wait_default, self.answer_waits = wait_setting, wait_default, answer_waits
         self.process_name, self.log_file = process_name, log_file
         self.idle = []                  # [process, connection, generation] ready for a body
         self.taken = [0]                # pool processes running a body, or being started
@@ -76,7 +80,8 @@ class Pool:
 
 
 WALK = Pool("walk", SETTING, DEFAULT, WAIT_SETTING, DEFAULT_WAIT, PROCESS_NAME, "walk_pool.log", "walks")
-GRID = Pool("grid", GRID_SETTING, GRID_DEFAULT, None, None, "GridPool", "grid_pool.log", "grid pages")
+GRID = Pool("grid", GRID_SETTING, GRID_DEFAULT, GRID_WAIT_SETTING, GRID_WAIT_DEFAULT, "GridPool", "grid_pool.log",
+            "grid pages", answer_waits=False)
 POOLS = (WALK, GRID)
 _idle, _taken, _modules, _cond = WALK.idle, WALK.taken, WALK.modules, WALK.cond          # the walk's, by their names
 _generation, _busy, _ended = WALK.generation, WALK.busy, WALK.ended
@@ -105,7 +110,8 @@ def size(settings=None, pool=None):
 
 
 def wait_seconds(settings=None, pool=None):
-    """How long a request waits for a pool process, and then for its answer - None: as long as it takes."""
+    """How long a request waits for a pool process, and then for its answer when the pool's wait covers it - None: as
+    long as it takes."""
     pool = WALK if pool is None else pool
     if pool.wait_setting is None:
         return None
@@ -294,7 +300,7 @@ def _unavailable(reason, message):
 
 def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
     """🔴 ONE DEADLINE (lead 9a3c510c5): a slot, a start and the answer share `seconds` - not `seconds` each (None: no
-    deadline - the grid's). `pid`: the pool process that keeps what this request continues - only it answers; busy, it
+    deadline); a pool whose wait does not cover the answer (the grid's) lifts it once its body is handed over. `pid`: the pool process that keeps what this request continues - only it answers; busy, it
     is waited for up to `seconds` of its own and the body then has `seconds` (총괄 9752e91f7: a wait for another's walk
     is not this walk being slow, and a body cut short ends the process and every walk it keeps); not there, `gone(why it
     ended)`."""
@@ -326,10 +332,10 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
                         worker = None
                 break
             if left() == 0:
-                raise _unavailable("walk_pool_busy", (
-                    "The walk process keeping this walk stayed busy for %g s with another walk - ask More again"
-                    if pid is not None else "Every walk process stayed busy for %g s - try again, or raise "
-                    "walk_processes in ingestion_settings.json") % seconds)
+                raise _unavailable("%s_pool_busy" % pool.name, (
+                    "The walk process keeping this walk stayed busy for %g s with another walk - ask More again" % seconds
+                    if pid is not None else "Every %s process stayed busy for %g s - try again, or raise %s in "
+                    "ingestion_settings.json" % (pool.name, seconds, pool.setting)))
             pool.cond.wait(left())
         if pid is not None and seconds is not None:
             deadline = time.monotonic() + seconds
@@ -342,6 +348,8 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
             worker = _start(left(), pool)                   # outside the lock: another body takes an idle one
             with pool.cond:
                 pool.busy.add(worker[0].pid)
+        if not pool.answer_waits:
+            deadline = None
         process, connection, _generation_of = worker
         connection.send((target, kwargs))
         if not connection.poll(left()):
@@ -386,7 +394,7 @@ def _start(seconds, pool=None):
     try:
         if not mine.poll(seconds):
             _end([process, mine, generation], pool=pool)
-            raise _unavailable("walk_process_not_ready", "A %s process did not start in %g s" % (pool.name, seconds))
+            raise _unavailable("%s_process_not_ready" % pool.name, "A %s process did not start in %g s" % (pool.name, seconds))
         mine.recv()
     except (EOFError, OSError):
         process.join(1)
@@ -414,6 +422,15 @@ def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.l
     from utils.logger import get_process_logger
 
     get_process_logger(process_name, log_file)
+    made = logging.getLogRecordFactory()
+
+    def headed(*args, **kwargs):            # a line heads with its pool process, then its logger (lead, 10-13)
+        record = made(*args, **kwargs)
+        if not record.name.startswith(process_name):
+            record.name = "%s.%s" % (process_name, record.name)
+        return record
+
+    logging.setLogRecordFactory(headed)
     for module in modules:
         importlib.import_module(module)
     import database.database                                    # noqa: F401 - its engine, before the first body

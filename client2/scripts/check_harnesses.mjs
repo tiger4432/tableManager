@@ -1392,7 +1392,7 @@ const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 88],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19); -> 88: K9 Load All from page 5 says 1 - N (lead ba39f4ef7)
+  ['grid_view_readonly_harness.mjs', 89],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19); -> 88: K9 Load All from page 5 says 1 - N (lead ba39f4ef7); -> 89: R10 a busy grid pool's sentence (lead, after 6f34a1320)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],

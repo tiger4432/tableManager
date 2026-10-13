@@ -7,15 +7,22 @@
 >          수는 지금처럼 서버가 센다(보관 수 · 세는 일꾼 · 무효화가 서버에 있어서) — 라우트 하나가 수를 붙이고 쪽을 그리드 프로세스에 묻는다
 >          걷기 프로세스와 같은 자리(runtime/process_pool) · 같은 모양 — 크기 칸만 따로
 > 설정     ingestion_settings.json "grid_processes": 2   없으면 2 · 0 = 전처럼 서버 안(쉬는 그리드 프로세스는 다음 쪽이 올 때 내림) · 요청마다 읽음
->          기다림 상한은 없다 — 둘 다 바쁘면 차례를 기다린다(검색 · 무늬 필터는 지금처럼 grid_read_timeout_seconds 가 묶는다)
+>                                  "grid_wait_seconds": 60   없으면 60 · 그리드 프로세스를 «얻는» 상한(빈 것을 기다림 · 새로 뜨기) · 요청마다 읽음
+>          넘으면 503 grid_pool_busy — 화면 토스트 «Every grid process stayed busy for N s - try again, or raise grid_processes in ingestion_settings.json»
+>          쪽의 «답»은 안 묶는다 — 평범한 읽기는 문장 상한이 없고(검색 · 무늬 필터만 grid_read_timeout_seconds), 쪽을 시한으로 끊으면 그 그리드 프로세스를 내려야 해서
 > 볼 것    작업 관리자에 python 이 넷 더(걷기 둘 + 그리드 둘) — 서버가 뜬 뒤 몇 초 안에. 그리드 프로세스 하나가 뜨는 데 약 5 s(main 을 읽음)
 >          pg_stat_activity 의 연결 이름 assy_gridpool
 > ⚠️ 로그 자리  그리드 쪽 줄 [get_table_data] Total … 은 이제 server\grid_pool.log(server.log 옆) — server.log 에는 안 나온다
+>            풀 프로세스의 줄 머리는 [GridPool.Server] · 걷기 프로세스는 [WalkPool.Server] (앞 = 프로세스, 뒤 = 로거)
 >            그 줄의 «Count:» 칸은 빠졌다 — 수는 서버가 세고 그 쪽 줄은 수를 안 센다
 > 답의 뜻   재기동 직후 첫 쪽이 몇 초 더 -> 그리드 프로세스가 아직 뜨는 중
 >          server.log 에 «grid processes not started ahead» -> 미리 띄우기 실패, 첫 쪽이 띄움(서버는 정상)
 >          그리드 쪽이 500 이고 server.log 에 «the pool process running this request ended» -> 그 그리드 프로세스가 죽음, 다음 쪽은 새로
 >          여럿이 쪽을 넘길 때 쪽 p95 가 길다 -> 그리드 프로세스가 다 바빠 차례를 기다림 — grid_processes 를 올린다(2 넘는 값은 안 잼)
+>          그리드 쪽이 503 grid_pool_busy -> 그리드 프로세스가 grid_wait_seconds 동안 다 바빴음
+>            계속 나면 pg_stat_activity 에서 application_name = 'assy_gridpool' 이고 오래 도는 문장을 본다
+>            그 문장을 DB 에서 끊으면(pg_cancel_backend) 그 쪽만 거절되고 그 그리드 프로세스는 다음 쪽을 받는다(코드로 읽음 · 판에서 안 잼)
+>          그리드 쪽이 503 grid_process_not_ready -> 그리드 프로세스가 grid_wait_seconds 안에 못 떴음(하나 뜨는 데 약 5 s)
 > 급할 때   "grid_processes": 0 -> 다음 쪽부터 전처럼 서버 안(재기동 없음)
 > 리로드    표 설정 · 시스템 리로드 뒤 그리드 프로세스도 새로 뜬다(걷기와 같이) — 서버만
 > 박스 판 실측 (400만 행 dt_log + 원장 행 색인 349만 · 실제 런처 API + 체인 워커 + 감시자 · 10 명 · 박스 판, 운영 주장 아님)
