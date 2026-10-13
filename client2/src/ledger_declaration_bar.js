@@ -6,6 +6,7 @@
 //
 //   decl-open  data-path      open (or close) that chip's list - the page's `open` says which one is open
 //   decl-pick  data-path · data-value (JSON)   that value at that path
+//   decl-type  data-path      the list's «Constant…» line pressed - it becomes the box to type in
 //   decl-const data-path · data-chip           a typed value (Enter): a column chip's constant, a when's «= …», a name
 //   decl-add   data-path      one more attribute, node type, sentence, qualifier, key, subject or type
 //   decl-remove data-path     that sentence (or chip) out
@@ -122,6 +123,17 @@ function chip(el, view, c) {
   }
   if (c.constant) {
     if ((c.options || []).length) pop.append(el('div', 'ldb-hr'));
+    // «Constant…» a line of the list as the mockup draws it; pressed, the line is the box to type it in.
+    if (view.typing !== c.path) {
+      const line = el('button', 'ldb-opt');
+      line.type = 'button';
+      line.dataset.action = 'decl-type';
+      line.dataset.path = c.path;
+      line.append(el('span', '', c.kind === 'name' ? 'Name…' : BAR_WORDS.constant), el('span', 'ldb-type', c.hint || ''));
+      pop.append(line);
+      wrap.append(b, pop);
+      return wrap;
+    }
     const input = el('input', 'ldb-opt-input');
     input.type = 'text';
     input.placeholder = c.kind === 'name' ? 'Name' : BAR_WORDS.constant;
@@ -205,7 +217,7 @@ function end(el, view, raw, at, side) {
   const out = [chip(el, view, { kind: 'node', path: `sentences.${at}.${side}.node`, cls: 'is-node', text: words(e.node), options: nodeOptions(view, e.node) }),
     el('span', 'ldb-word', '(')];
   for (const [k, v] of Object.entries(e.keys || {})) {
-    out.push(chip(el, view, { kind: 'col', path: `sentences.${at}.${side}.keys.${k}`, constant: true, cls: isConst(v) ? 'is-const' : 'is-col',
+    out.push(chip(el, view, { kind: 'col', path: `sentences.${at}.${side}.keys.${k}`, constant: true, cls: isConst(v) ? 'is-const' : 'is-col', hint: isConst(v) ? JSON.stringify(v.const) : '',
       text: isConst(v) ? `${k} = ${JSON.stringify(v.const)}` : `${k} ← ${words(v)}`, options: columnOptions(view, raw.table, isConst(v) ? null : v),
       parts: isConst(v) ? undefined : [k, ' ', el('span', 'ldb-arrow', '←'), ' ', words(v)] }));
   }
@@ -254,7 +266,8 @@ function preview(el, view) {
   top.append(el('span', 'ldb-label', BAR_WORDS.run), el('span', 'ldb-word', run ? BAR_WORDS.runSummary(run) : BAR_WORDS.runNone));
   for (const r of (run && run.refusals) || []) top.append(el('span', 'ldb-pill is-bad', r));
   top.append(el('div', 'ldb-grow'));
-  if (view.cost) { const c = el('span', 'ldb-word'); c.append(view.cost); top.append(c); }
+  // What this save would run again (the explorer's redo cost) - its answer in bold, as the mockup.
+  if (view.cost) { const c = el('span', 'ldb-word'); c.append(view.cost.before || '', el('b', '', view.cost.strong || ''), view.cost.after || ''); top.append(c); }
   box.append(top);
   if (run && (run.lines || []).length) {
     const scroll = el('div', 'ldb-scroll');

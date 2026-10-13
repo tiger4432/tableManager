@@ -6,6 +6,8 @@
   <title>Base elements</title>
   <script type="module" src="/src/account_boot.js"></script>
   <script type="module" src="/src/sample.js"></script>
+  <!-- The ledger declaration window's faces (the owner's mockup, IBM Plex). -->
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
   <!-- The page places its boxes; every look below is the base layer's (src/base.css). -->
   <style>
     .sample-page { box-sizing: border-box; max-width: 1280px; margin: 0 auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
@@ -232,6 +234,12 @@
           <div class="sf-status sample-sf-status"><span>4 of 6 rows</span><span>start −1 · system −1 · part −0</span><span>2 marked rows · hidden 1</span><span>3 columns</span><span>wafer</span></div>
         </div>
       </div>
+    </section>
+    <!-- THE LEDGER DECLARATION WINDOW (src/ledger_declaration_bar.js · .css): the owner's mockup drawn by the module, on its
+         own sample (src/ledger_declaration_sample.js) - one chip's list open, as the mockup shows it. -->
+    <section class="box">
+      <div class="box-head"><h2 class="box-title">Ledger declaration</h2><span class="meta">sentence bars · the mockup's data</span></div>
+      <div class="box-body"><div id="sample-decl-bar"></div></div>
     </section>
   </main>
 </body>

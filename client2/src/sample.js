@@ -4,6 +4,10 @@ import './tokens.css';
 import './base.css';
 // The Spotfire standard's parts (ui-design-system §9), drawn on this page too.
 import './spotfire.css';
+// The ledger declaration window, drawn by its module on the mockup's data.
+import './ledger_declaration_bar.css';
+import { renderDeclarationBar } from './ledger_declaration_bar.js';
+import { SAMPLE_RAW, SAMPLE_VIEW } from './ledger_declaration_sample.js';
 
 const root = document.documentElement;
 const button = document.getElementById('sample-theme');
@@ -17,3 +21,5 @@ button.addEventListener('click', () => {
 });
 if (!root.dataset.theme) root.dataset.theme = 'light';
 draw();
+const declMount = document.getElementById('sample-decl-bar');
+if (declMount) declMount.replaceChildren(renderDeclarationBar(document, SAMPLE_RAW, SAMPLE_VIEW));
