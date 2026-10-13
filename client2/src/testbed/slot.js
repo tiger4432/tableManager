@@ -4,7 +4,7 @@
 // 10-13 plan a): the calculator (src/expression.js) answers it over the rows a point or a cell holds, [name] the row's
 // own value. This file is the one place that asks which of the two a slot is.
 
-import { readsOf, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
+import { readsOf, recordsOf, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
 import { isBlank } from '../absent.js';
 import { compile, run, Reads, ExpressionError } from '../expression.js';
@@ -102,11 +102,12 @@ function answerOne(out) {
   return isBlank(v) ? { state: 'empty', n: 0, why: out.why, notNumber: out.notNumber > 0 } : { state: 'one', value: v, n: 1 };
 }
 
-/** What a folding slot keeps of a row: its reads {value, t}, or the row itself for an expression. */
-export function rawOf(index, inside, x, slot) {
+/** What a folding slot keeps of a row: its reads {value, t} (`records` - each read spread into its records), or the row
+ *  itself for an expression. */
+export function rawOf(index, inside, x, slot, records = false) {
   if (isExpression(slot)) return calcRow(index, inside, x);
   // A calculation reads every way (lead 10-13: a fold over 50 of 2,199 is a wrong answer said as a right one).
-  return readsAt(index, inside, x, slot).reads;
+  return readsAt(index, inside, x, slot, records).reads;
 }
 
 /** A set of rows' raws folded - a cell, a total: the expression over the rows, or the reduce over their reads. */
@@ -125,11 +126,13 @@ export function categoriesOf(read) {
 
 /** Every read of a slot from row `x`: {value, t} - t its time (trend.js timeOf: its edge's or node record's occurred_at).
  *  A slot `of: 'time'` reads the time itself (ISO, the trend's time axis), a read with none left out. */
-export function readsAt(index, inside, x, slot) {
+export function readsAt(index, inside, x, slot, records = false) {
   const got = readsOf(index, inside, x, slot, Infinity);
   if (got.missing) return { missing: true, reads: [] };
-  const reads = got.reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
-  return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ value: new Date(r.t).toISOString(), t: r.t })) : reads };
+  // records - each read spread into its records (reach_table.recordsOf: an edge's every atom), `read` the read it is of
+  const reads = records ? got.reads.flatMap((r, read) => recordsOf(index, slot, r).map((rec) => ({ value: rec.value, t: timeOf(rec.when), read })))
+    : got.reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
+  return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ ...r, value: new Date(r.t).toISOString() })) : reads };
 }
 
 /** A category saying none. */

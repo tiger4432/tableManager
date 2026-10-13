@@ -266,7 +266,7 @@ export class VisualPart extends Panel {
         const slot = encode[s.key];
         if (!slot) continue;
         reads[s.key] = readSlot(index, inside, id, slot, this.oneValued(slot), askMarked);
-        if (s.folds) raw[s.key] = rawOf(index, inside, id, slot);
+        if (s.folds) raw[s.key] = rawOf(index, inside, id, slot, Boolean(s.records));
       }
       return { id, label: node.label || id, reads, raw };
     });

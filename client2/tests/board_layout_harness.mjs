@@ -549,6 +549,28 @@ async function mapPress(M) {
   return { cells, marked, drawnMarked: part.model.cells.filter((c) => c.marked).map((c) => `${c.x},${c.y}`) };
 }
 
+/** A value record a point (owner 10-13 «선 하나에 기록 넷이면 점 넷»): W1's measure edge with three records, W2's with one -
+ *  no reduce: a point a record; Latest on X and Y: a point an edge, its newest record. */
+async function recordPoints(M) {
+  const rec = (value, d) => ({ occurred_at: `2026-02-0${d}T00:00:00Z`, qualifiers: { value } });
+  const answer = { nodes: [wafer('W1'), wafer('W2'), ANSWER.nodes[4]],
+    edges: [{ id: 'e1', source: 'W1', target: 'QT', predicate: 'measures', qualifiers: { value: '3' }, occurred_at: '2026-02-03T00:00:00Z', records: [rec('3', 3), rec('2', 2), rec('1', 1)] },
+      { id: 'e2', source: 'W2', target: 'QT', predicate: 'measures', qualifiers: { value: '9' }, occurred_at: '2026-02-05T00:00:00Z', records: [rec('9', 5)] }],
+    truncated: ANSWER.truncated };
+  const seatWith = async (encode) => {
+    const doc = makeDoc('dark');
+    const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'wafer', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', markerBy: 'record', encode };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return part.model.points.map((p) => [p.label, String(p.x).slice(0, 10), p.y]).sort();
+  };
+  return { all: await seatWith({ x: { ...TEMP, of: 'time' }, y: TEMP }),
+    latest: await seatWith({ x: { ...TEMP, of: 'time', reduce: 'Latest' }, y: { ...TEMP, reduce: 'Latest' } }) };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -570,6 +592,7 @@ async function suite(M) {
   const mk = markerModels(M);
   const mp = await markerPress(M);
   const ts = await trendAsScatter(M);
+  const rp = await recordPoints(M);
   const ly = await layered(M);
   const cRel = await markedColour(M, true);
   const cNone = await markedColour(M, false);
@@ -654,6 +677,9 @@ async function suite(M) {
       { colours: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' }, unknown: 0, moved: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' } }),
     judge('Y6 the map: a cell a coordinate - two dies at one x, y one cell; pressed, both marked and the cell drawn marked', mpp,
       { cells: [[0, 0, ['a1', 'b1']], [1, 0, ['a2']], [0, 2, ['a3']]], marked: ['a1', 'b1'], drawnMarked: ['0,0'] }),
+    judge('R2 a value record a point: an edge of three records three points, of one one; Latest on X and Y - a point an edge, its newest record',
+      rp, { all: [['W1', '2026-02-01', '1'], ['W1', '2026-02-02', '2'], ['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']],
+        latest: [['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']] }),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -712,7 +738,9 @@ const MUTANTS = [
   { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
   { id: 'M19', what: 'a value record reads the row\'s first read for every point - not its own', catches: 'R1 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
-    mutate: (t) => swap(t, "{ state: 'one', value: raw[k].value }", "{ state: 'one', value: raw[0].value }") },
+    mutate: (t) => swap(t, 'const items = picks.map((k) => raw[k]);', 'const items = picks.map(() => raw[0]);') },
+  { id: 'M24', what: 'a value record with a reduce on Y still a point a record - not folded by its edge', catches: 'R2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, '  if (!(ySlot && ySlot.reduce)) return ys.map((_, k) => [k]);', '  return ys.map((_, k) => [k]);') },
   { id: 'M20', what: 'a layer that does not spread - the members only', catches: ['Y2 ', 'Y4 '], file: 'testbed/marking_layer.js', key: 'layer',
     mutate: (t) => swap(t, '      for (const to of ways.next.get(queue.pop()) || [])', '      for (const to of (queue.pop(), []))') },
   { id: 'M21', what: 'a layer computed on every ask - no cache', catches: 'Y3 ', file: 'testbed/marking_layer.js', key: 'layer',

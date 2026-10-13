@@ -27,8 +27,9 @@ const UNITS = Object.freeze([{ words: '(Node)', patch: { markerBy: null } }, { w
 
 /** Its slots: the axes, Color by, each Marker by held and the next one. A hub or a record reads every value of the axes. */
 export const slots = (encode, decl) => {
-  const spread = unitOf({ ...(decl || {}), encode }) !== 'node';
-  const axes = SLOTS.map((s) => (spread && (s.key === 'x' || s.key === 'y') ? { ...s, folds: true } : s));
+  const unit = unitOf({ ...(decl || {}), encode });
+  // a hub folds its rows' reads; a value record reads the records themselves
+  const axes = SLOTS.map((s) => (unit !== 'node' && (s.key === 'x' || s.key === 'y') ? { ...s, folds: true, records: unit === 'record' } : s));
   return [...axes, ...markersOf(encode).map((key) => ({ key, label: 'Marker by', category: true })),
     { key: nextMarker(encode), label: 'Marker by', category: true, choices: UNITS }];
 };
@@ -62,10 +63,10 @@ export function scatterModel(rows, ctx) {
   // without says its value when they all say the same one, several when not.
   const byId = new Map(rows.map((r) => [r.id, r]));
   const units = unit === 'hub' ? combosOf(rows, markers).map(({ values, ids }) => ({ ids, values, rows: ids.map((id) => byId.get(id)) }))
-    : unit === 'record' ? rows.flatMap((row) => ((row.raw && row.raw.y) || []).map((_, k) => ({ ids: [row.id], values: null, rows: [row], k })))
+    : unit === 'record' ? rows.flatMap((row) => recordUnits(row, encode.y).map((picks, k) => ({ ids: [row.id], values: null, rows: [row], k, picks })))
       : rows.map((row) => ({ ids: [row.id], values: null, rows: [row] }));
   for (const one of units) {
-    const read = (key) => (unit === 'hub' ? foldedRead(one.rows, key, encode[key]) : unit === 'record' ? recordRead(one.rows[0], key, one.k, encode[key])
+    const read = (key) => (unit === 'hub' ? foldedRead(one.rows, key, encode[key]) : unit === 'record' ? recordRead(one.rows[0], key, one.picks, encode[key])
       : one.rows[0].reads[key]);
     const [x, y, color] = ['x', 'y', 'color'].map(read);
     if ([x, y, color].some((r) => r && r.state === 'several')) { several += 1; continue; }
@@ -110,12 +111,26 @@ function foldedRead(rows, key, slot) {
   return said.length === 1 ? { state: 'one', value: said[0] } : said.length ? { state: 'several', values: said } : { state: 'empty' };
 }
 
-/** A value record's read on a slot: the k-th of the row's reads when the slot reads as many as Y (Y itself; its time),
- *  else the row's one value. */
-function recordRead(row, key, k, slot) {
+/** A row's value records as points (owner 10-13 «기록 하나가 점 하나»): each of Y's records its own point; Y with a reduce -
+ *  each read's records (an edge's) folded into one. -> the record indexes each point takes. */
+function recordUnits(row, ySlot) {
+  const ys = (row.raw && row.raw.y) || [];
+  if (!(ySlot && ySlot.reduce)) return ys.map((_, k) => [k]);
+  const byRead = new Map();
+  ys.forEach((r, k) => { if (!byRead.has(r.read)) byRead.set(r.read, []); byRead.get(r.read).push(k); });
+  return [...byRead.values()];
+}
+
+/** A value record's read on a slot: the records it takes when the slot reads as many as Y (Y itself; its time) - folded by
+ *  the slot's reduce, else their one value (several when they differ); else the row's one value. */
+function recordRead(row, key, picks, slot) {
   if (!slot) return undefined;
   const raw = row.raw && row.raw[key];
-  return raw && raw.length === row.raw.y.length ? { state: 'one', value: raw[k].value } : row.reads[key];
+  if (!raw || raw.length !== row.raw.y.length) return row.reads[key];
+  const items = picks.map((k) => raw[k]);
+  if (slot.reduce) { const value = foldRows(slot, [items]); return value === null || value === undefined ? { state: 'empty' } : { state: 'one', value }; }
+  const said = [...new Map(items.map((r) => [JSON.stringify(r.value), r.value])).values()];
+  return said.length === 1 ? { state: 'one', value: said[0] } : { state: 'several', values: said };
 }
 
 /** A number as an axis says it - no unit added (mockup fix ③: «1.0 %» on a ratio was a wrong sentence). */
