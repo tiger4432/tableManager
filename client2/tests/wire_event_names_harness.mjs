@@ -39,6 +39,9 @@ function ok(cond, name) {
 // module dies on `window.addEventListener`. The stand-in has to answer what the guard implies.
 globalThis.window = globalThis.window
   || { addEventListener() {}, removeEventListener() {} };
+// batch_refresh_required asks the count again (lead 0fd18ae19 7), which reads the search box and the filter model -
+// a page with none of them here.
+globalThis.document = globalThis.document || { getElementById: () => null, querySelector: () => null, addEventListener() {}, removeEventListener() {} };
 
 // One run of the wire suite against one loaded copy of websocket.js.
 async function wireSuite(mutate) {
@@ -53,7 +56,7 @@ async function wireSuite(mutate) {
   // The copy sits beside the subject, so `./state.js` resolves to the module this file already
   // imported -- setting it here is setting the state the subject reads.
   state.currentTable = 'T';
-  state.gridApi = { applyTransaction() {}, refreshCells() {}, getRowNode: () => null };
+  state.gridApi = { applyTransaction() {}, refreshCells() {}, getRowNode: () => null, getFilterModel: () => ({}) };
   state.pageCache = new Map();
 
   said.length = 0;

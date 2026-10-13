@@ -684,6 +684,31 @@ async function suite(M) {
       const moved2 = [...realState.pageCache.values()].map((e) => e.count.total);
       ok(JSON.stringify(moved) === '[7,10000]' && JSON.stringify(moved2) === '[8,10000]',
         `K8 a live row moves an exact cached count, not a 10,000+ one [${JSON.stringify([moved, moved2])}]`);
+      // Next and Prev by key (lead e570dcda5, server key_page): after=<the shown page's last row>, before=<its first>,
+      // skip beside it; a page-number jump and a page with nothing cached go by skip alone.
+      const pageOf = (tag) => [{ ...rowData(), row_id: `${tag}-first` }, { ...rowData(), row_id: `${tag}-last` }];
+      const reads = [];
+      globalThis.fetch = async (url) => {
+        const u = new URL(String(url), 'http://x');
+        if (!u.pathname.endsWith('/data')) return answer(COUNTED);
+        const skip = Number(u.searchParams.get('skip'));
+        reads.push([skip, u.searchParams.get('after'), u.searchParams.get('before')]);
+        return answer({ data: pageOf(`p${skip / 1000}`), total: null });
+      };
+      realState.pageCache = new Map();
+      realState.viewMode = 'pagination';
+      await M.api.fetchData(true);
+      await M.api.nextPage();
+      await M.api.nextPage();
+      realState.pageCache.delete(1000);
+      await M.api.prevPage();
+      realState.currentSkip = 4000;
+      await M.api.fetchData(false);
+      realState.pageCache = new Map();
+      await M.api.nextPage();
+      ok(JSON.stringify(reads) === JSON.stringify([[0, null, null], [1000, 'p0-last', null], [2000, 'p1-last', null],
+        [1000, null, 'p2-first'], [4000, null, null], [5000, null, null]]),
+        `K13 Next asks after the shown page's last row, Prev before its first, skip beside it; a page jump and an uncached page by skip alone [${JSON.stringify(reads)}]`);
       // A count the server could not make (lead 0fd18ae19 6): its `failed` field, or a refused /data/count, is said -
       // not «Counting rows…» for ever - and not asked again by the screen (the server keeps the pace).
       let countReply = () => answer(COUNTED);
@@ -1034,6 +1059,12 @@ const DEFECTS = [
     s => s.replace('{ failed: { reason: (await refusalSaid(res)) || ', '{ failed: { reason: ')],
   ['websocket.js: a batch refresh asks no count', 'ws',
     s => s.replace('    state.pageCache.clear();\n    askMatchCount();\n', '    state.pageCache.clear();\n')],
+  ['api.js: Next and Prev ask by skip alone again (OFFSET however deep - the code before)', 'api',
+    s => s.replace('  if (key) url += `&${new URLSearchParams(key)}`;\n', '')],
+  ['api.js: Next asks after the page\'s first row', 'api',
+    s => s.replace("  const row = side === 'after' ? rows[rows.length - 1] : rows[0];", '  const row = rows[0];')],
+  ['api.js: the key is read after the page moved - the page it lands on, not the one shown', 'api',
+    s => s.replace("  const key = pageKey('after');\n  state.currentSkip += pageLimit;", "  state.currentSkip += pageLimit;\n  const key = pageKey('after');")],
   ['timeline.js: a row jump onto an uncounted table never asks', 'timeline',
     s => s.replace('    if (count.total === null) askMatchCount();\n', '')],
   ['ui.js: a live row does not move the cached count', 'ui',
