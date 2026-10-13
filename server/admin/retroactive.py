@@ -764,13 +764,16 @@ def _run_ledger_rescope(db, params, log, control=None):
         f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}, "
         f"refused {sum(refused.values())}" + (f" ({why})" if why else "")
         + (f", from tables the declaration does not read {s['stale_withdrawn']}"
-           if "stale_withdrawn" in s else ""))
+           if "stale_withdrawn" in s else "")
+        + (f", rows without a page key (not read) {s['rows_without_page_key']}"
+           if "rows_without_page_key" in s else ""))
     _final_progress(control, s.get("rows_in_scope"), s)
     return {"withdrawn": s["withdrawn"], "attempted": s["attempted"],
             "inserted": s["inserted"], "deduped": s["deduped"],
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"],
             "refused": sum(refused.values()), **({"refused_reasons": why} if why else {}),
-            **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages") if key in s}}
+            **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages", "rows_without_page_key")
+               if key in s}}
 
 
 def _rescope_in_slices(db, params, control):
@@ -787,8 +790,13 @@ def _rescope_in_slices(db, params, control):
     if plan is None:
         return None
     wanted, cores = translate_slices()
+    started = time.monotonic()
+    if wanted > 1:
+        # the cut counts the relation and reads it at N-1 offsets - minutes on a large one, said before
+        control.say("cutting %s into %d slices - counting its rows" % (plan.relation, wanted))
     bounds, total = backfill.slice_bounds(engine, plan, wanted)
-    control.say("%d slice%s (cores %d)" % (len(bounds), "s" if len(bounds) > 1 else "", cores))
+    control.say("%d slice%s (cores %d)%s" % (len(bounds), "s" if len(bounds) > 1 else "", cores,
+                                             " - cut in %.1f s" % (time.monotonic() - started) if wanted > 1 else ""))
     if len(bounds) == 1:
         return None
     # the slices find the world made - none of them races another to make it
@@ -2670,14 +2678,21 @@ def slow_statement_seconds(settings=None):
 
 
 def translate_slices(settings=None):
-    """-> `(slices, cores)`: `ledger_translate_slices`, and the cores its default is half of."""
+    """-> `(slices, cores)`: `ledger_translate_slices` - a whole number from 1 to the cores; absent the default, anything
+    else says so once and reads the default (총괄 9752e91f7: 64 was 64 processes, 0 · -2 · '8' the default unsaid)."""
     from ingestion.settings import read_ingestion_settings
 
     cores = os.cpu_count() or 1
+    default = min(TRANSLATE_SLICES_MOST, max(1, cores // 2))
     settings = read_ingestion_settings() if settings is None else settings
-    value = settings.get(TRANSLATE_SLICES_SETTING)
-    good = isinstance(value, int) and not isinstance(value, bool) and value > 0
-    return (value if good else min(TRANSLATE_SLICES_MOST, max(1, cores // 2))), cores
+    value = settings.get(TRANSLATE_SLICES_SETTING, default)
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= cores:
+        return value, cores
+    if TRANSLATE_SLICES_SETTING not in _REFUSED_SETTINGS:
+        _REFUSED_SETTINGS.add(TRANSLATE_SLICES_SETTING)
+        logger.warning("[Retroactive] ingestion_settings.json: %s is %r - a whole number from 1 to %d (the cores); "
+                       "read as %d", TRANSLATE_SLICES_SETTING, value, cores, default)
+    return default, cores
 
 
 @contextlib.contextmanager

@@ -116,3 +116,24 @@ def test_a_slice_that_cannot_start_leaves_none_before_it_holding_on(monkeypatch)
     while started[0].poll() is None and time.monotonic() < deadline:
         time.sleep(0.05)
     assert [proc.poll() for proc in started] == [0]
+
+
+@pytest.mark.parametrize("cells, read, said", [
+    ({}, 4, False),                                         # absent: half the cores, 4 at most
+    ({"ledger_translate_slices": 2}, 2, False),
+    ({"ledger_translate_slices": 16}, 16, False),           # up to the cores
+    ({"ledger_translate_slices": 17}, 4, True),
+    ({"ledger_translate_slices": 0}, 4, True),
+    ({"ledger_translate_slices": -2}, 4, True),
+    ({"ledger_translate_slices": "8"}, 4, True),
+    ({"ledger_translate_slices": True}, 4, True),
+])
+def test_the_slices_setting_is_a_whole_number_from_one_to_the_cores(monkeypatch, caplog, cells, read, said):
+    """lead 9752e91f7: 64 was 64 processes and 0 · -2 · '8' read as the default unsaid - now one line says it."""
+    monkeypatch.setattr(retroactive.os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(retroactive, "_REFUSED_SETTINGS", set())
+    with caplog.at_level(logging.WARNING):
+        assert retroactive.translate_slices(cells) == (read, 16)
+        retroactive.translate_slices(cells)
+    lines = [r.getMessage() for r in caplog.records if "ledger_translate_slices" in r.getMessage()]
+    assert len(lines) == (1 if said else 0), lines                   # once, however often it is read

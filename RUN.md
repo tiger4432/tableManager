@@ -10,38 +10,46 @@
 >
 > ---
 >
-> ## [10-13] **원장 다시 번역을 조각 N 개로 · 원장 인덱스 짓기 고침 (총괄 fd550df13 ㄱ · 0cd396d3d · 검수 bdc08ec39)** — 이주 «없음» · 재기동 «체인 워커»(원장 인덱스 줄 · 체인 리플레이 박동) · 다시 번역은 다음 실행부터
+> ## [10-13] **원장 다시 번역을 조각 N 개로 · 원장 인덱스 짓기 고침 (총괄 fd550df13 ㄱ · 0cd396d3d · 검수 bdc08ec39 · 9752e91f7)** — 이주 «없음» · 재기동 «체인 워커»(원장 인덱스 줄 · 체인 리플레이 박동) · 다시 번역은 다음 실행부터
 >
 > ```
 > 무엇     원장 다시 번역(소스 전체)이 쪽 열쇠 범위를 N 조각으로 나눠 프로세스 N 개가 같이 돈다 — 실행 행 하나 · 진행 수는 조각 합 · × 는 조각 전부에
->          원장 ref 인덱스 짓기: 남이 짓는 중인 파티션은 손대지 않음 · 파티션 하나 실패가 나머지를 안 세움 · 오래된 트랜잭션 기다림 20 초 상한 · 조인 키 짓기와 다른 줄
+>          원장 ref 인덱스 짓기: 남이 짓는 중인 파티션은 손대지 않음 · 파티션 하나 실패가 나머지를 안 세움 · 조인 키 짓기와 다른 줄 ·
+>          오래된 트랜잭션은 끝날 때까지 기다리며 누구를 기다리는지 파티션 · 상대마다 한 번 말함(상한 없음 — 20 초 상한은 다 지은 것을 버리고 다시 지었다)
 >          소급 박동은 그 실행이 쥔 연결만 말한다 · 단계 줄은 실행 기록을 안 고친다(쪽마다 한 번)
 > 설정     ingestion_settings.json "ledger_translate_slices": 4   없으면 코어 절반(4 이하) · 1 = 예전처럼 한 프로세스 · 실행마다 읽음
 > 볼 것    retroactive.log
->            [ledger_rescope] 4 slices (cores 16)
+>            [ledger_rescope] cutting wafer_process into 4 slices - counting its rows
+>            [ledger_rescope] 4 slices (cores 16) - cut in N s
 >            [ledger_rescope] page 3: 9000 rows · 5.0 s · 1800 rows/s · 12000 / 120000 · ~60 s left · slices 4: 4 working   <- 5 초에 한 번
 >            [Retroactive_slice2] … [slice 2/4 pid 5512] [ledger_rescope] beat: page 3 · write > insert atoms 1.2 s · …       <- 조각마다
 >            [ledger_rescope] slice 2/4 done: 30000 rows
+>            [rescope] … rows without a page key (not read) N   <- 쪽 열쇠가 NULL 인 행: 어느 쪽도 안 읽는다(조각이든 한 프로세스든)
 >          chain_worker.log [Indexes] 원장 줄
 >            … ledger_events_2026_09: ledger_events_2026_09_ref_hash building - … by pid N - left to it
 >            … ledger_events_2026_09_ref_hash still building after 10 s - building - waiting for transactions older than it: pid N (이름)
->            … ledger_events_2026_09: ledger_events_2026_09_ref_hash failed after 21.0 s - LockNotAvailable: …; the other partitions go on, this one is built at the next start
+>            … ledger_events_2026_09: ledger_events_2026_09_ref_hash failed after N s - <사유>; the other partitions go on, this one is built at the next start
 > 답의 뜻   «1 slice (cores C)» 다음 줄이 «page key … has no index - … the run goes in one slice; declare one …»
->             -> 그 표 indexes 에 쪽 열쇠 칸을 적고 체인 워커 재기동 — 지어진 뒤 다음 실행부터 나뉜다
+>             -> 그 표 indexes 에 쪽 열쇠 칸을 «맨 앞»에 적고 체인 워커 재기동 — 지어진 뒤 다음 실행부터 나뉜다
+>             «인덱스»는 쪽 열쇠 칸이 맨 앞인 btree · WHERE 없음만 친다 — hash · gin(search) · 부분 인덱스는 순서를 안 줘 «없음»
 >          «1 slice» 인데 그 줄이 없다 -> 설정이 1 이거나, 쪽 열쇠 칸이 빈(NULL) 행이 있거나, 소스가 뷰 — 예전처럼 한 프로세스
 >          실행이 failed 이고 오류가 «slice 2/4 ended without its answer - … (1/4 9000 rows stopped · 2/4 3000 rows failed · …)»
 >             -> 조각 2 의 줄([slice 2/4 pid …])에 까닭. 쓴 쪽은 남는다 — 그대로 다시 돌린다(같은 답)
->          원장 인덱스 «failed after … LockNotAvailable» -> 그때 오래된 트랜잭션이 있었다(바로 앞 «waiting for … pid N (이름)» 줄이 누구인지)
->             다음 기동 · Reload 에 그 파티션만 다시 짓는다. ⚠️ 이 기다림은 짓기가 «끝난 뒤»라 끊기면 그 파티션 짓기 시간을 버린다
->             -> 오래 쥔 트랜잭션(idle in transaction)을 먼저 끝내고 Reload
+>          원장 인덱스 «still building … waiting for transactions older than it: pid N (이름)» 가 오래 남는다
+>             -> 그 pid 가 오래 쥔 트랜잭션(대개 idle in transaction). 끝나면 그 파티션이 이어서 지어진다 — 끊지 않고 기다린다
+>          원장 인덱스 «failed after …» -> 그 파티션만 실패(사유는 그 줄) · 나머지는 지어짐 · 다음 기동 · Reload 에 그 파티션만 다시
+>          «rows without a page key (not read) N» -> 그 표의 N 행이 쪽 열쇠 칸이 비어 번역이 안 된다 — 칸을 채우면 다음 실행이 읽는다
 >          GET /admin/indexes 원장 줄 state building -> 다른 세션(손 명령 · 앞 기동이 남긴 DB 쪽 짓기)이 그 파티션을 짓는 중 — building 칸이 무엇을 기다리나
+>          «ledger_translate_slices is … - a whole number from 1 to C (the cores); read as D» -> 설정 값이 범위 밖 · 글자 · 참/거짓 — 기본값으로 돈다
+> 멈춤      × -> 조각마다 지금 쪽을 끝내고(커밋) 멈춘다 · 실행 프로세스가 죽으면 조각들의 stdin 이 닫혀 같은 자리에서 멈춘다
+>          (총괄 잰 판 qab3_orphan_driver) — 둘 다 «지금 쪽»은 끝까지 가고, 잠금을 기다리는 조각은 그 잠금이 풀릴 때까지 상한 없이 기다린다
 > 급할 때   "ledger_translate_slices": 1 (재기동 없음 · 다음 실행부터 한 프로세스)
 > 재기동 뒤 chain_worker.log 의 [Indexes] — 원장 줄이 조인 키 · 표 인덱스 줄을 기다리지 않고 따로 나온다
-> 이 판에서 실제 런처 · hold 판 3000 행 · 스크래치 스키마: N=1 · N=4 의 원자(id 뺀 칸 전부)+행 색인 같음 · 실행 몸통 9.9 s -> 7.4 s
->          (조각 기동 3.3 s 포함, 일 자체 약 2.9 배 — 박스 판, 운영 주장 아님) · 원장 잠금 중 × -> 네 조각 «stopped» 뒤 cancelled ·
+> 이 판에서 실제 런처 · hold 판 3000 행 · 스크래치 스키마(착지 머리 9351a3580): N=1 · N=4 의 원자(id 뺀 칸 전부)+행 색인 같음 · 실행 몸통 9.1 s -> 6.1 s
+>          (조각 기동 약 3 s 포함 — 박스 판, 운영 주장 아님) · 원장 잠금 중 × -> 네 조각 «stopped» 뒤 cancelled ·
 >          잠금 중 조각 2 를 taskkill -> 나머지 쪽 경계에서 멈춤 · failed 와 위 문장 · 다시 돌리면 처음과 같은 답 · public 행 변화 0
 > ⚠️ 안 잰 것  운영 크기에서 조각 N 개가 DB 를 얼마나 더 쓰나(쓰기 · 연결 N 배) · 어디서 DB 가 병목이 되나
-> 되돌리기  git revert $(git log -1 --format=%h --grep="re-translate in slices") $(git log -1 --format=%h --grep="QA bdc08ec39")
+> 되돌리기  git revert <검수 9752e91f7 고침 커밋> 9351a3580   (고침 커밋 해시는 착지 뒤 이 줄에 적는다)
 > ```
 
 > ## [10-13] **소급 쪽이 제 행만 읽는다 — 표가 커져도 쪽이 느려지지 않는다 (총괄 5ad030347 · 2e8c6ac9c · 3eca39091 · QA 59c0bfb8c · ff4eb2cf0, 소유자 「알아서해」) — 이주 «없음» · 재기동 «체인 워커»(소급 · 명령줄은 다음 실행부터)**

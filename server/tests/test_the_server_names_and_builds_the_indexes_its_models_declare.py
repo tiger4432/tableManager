@@ -369,72 +369,108 @@ def test_the_route_shows_a_table_index_beside_the_models(probe, monkeypatch):
     assert "zz_probe_undeclared" not in {row["name"] for row in answer.json()["outside"]}
 
 
-@pytest.mark.pg
-def test_the_ledgers_ref_index_is_named_and_built_a_partition_at_a_time(scratch):
-    """Lead 10-13: the ledger's ref index reached production only by a person's command - now the index master names
-    it per world (source ledger, how many partitions lack it) and its build makes it, a partition at a time."""
+@pytest.fixture(name="ledger_space")
+def fixture_ledger_space(pg_engine):
+    """A schema of the case's own: its ledger and only the partitions it makes (총괄 9752e91f7 ⑥ - a partition another
+    case left in the shared scratch made these red after it). Its build is the ledger's line alone."""
+    from sqlalchemy import create_engine
+
+    from conftest import PG_TEST_SCHEMA
+    from ledger import schema
+    from support.isolated_pg import scratch_connect_args
+
+    space = PG_TEST_SCHEMA + "_lx"
+    _ddl(pg_engine, 'DROP SCHEMA IF EXISTS "%s" CASCADE' % space, 'CREATE SCHEMA "%s"' % space)
+    engine = create_engine(pg_engine.url, connect_args=scratch_connect_args(space))
+    raw = engine.raw_connection()
+    try:
+        with raw.cursor() as cursor:
+            cursor.execute("SELECT current_schema()")
+            assert cursor.fetchone()[0] == space
+        schema.ensure_schema(raw)
+        raw.commit()
+    finally:
+        raw.close()
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+        _ddl(pg_engine, 'DROP SCHEMA IF EXISTS "%s" CASCADE' % space)
+
+
+def _months(engine, *months):
     from datetime import datetime, timezone
     from ledger import schema
 
-    raw = scratch.raw_connection()
+    raw = engine.raw_connection()
     try:
-        schema.ensure_schema(raw)
-        raw.commit()
-        for month in (1, 2):
+        for month in months:
             schema.ensure_partition(raw, datetime(2026, month, 15, tzinfo=timezone.utc))
     finally:
         raw.close()
-    _ddl(scratch, "DROP INDEX IF EXISTS %s" % schema.REF_INDEX)          # every partition's goes with the parent's
-    name = schema.in_space(schema.world_names(None), schema.REF_INDEX)
-    row = _states(scratch)[name]
+    _ddl(engine, "DROP INDEX IF EXISTS %s" % schema.REF_INDEX)            # every partition's goes with the parent's
+    return schema.in_space(schema.world_names(None), schema.REF_INDEX)
+
+
+LEDGER = ("ledger",)
+
+
+@pytest.mark.pg
+def test_the_ledgers_ref_index_is_named_and_built_a_partition_at_a_time(ledger_space):
+    """Lead 10-13: the ledger's ref index reached production only by a person's command - now the index master names
+    it per world (source ledger, how many partitions lack it) and its build makes it, a partition at a time."""
+    name = _months(ledger_space, 1, 2)
+    row = _states(ledger_space)[name]
     assert (row["source"], row["state"], row["using"], row["columns"]) == ("ledger", "missing", "hash", ["source_raw_ref"])
-    assert row["partitions_missing"] == row["partitions"] >= 2
+    assert row["partitions_missing"] == row["partitions"] == 2
 
     off = []
-    assert models.ensure_model_indexes(scratch, build=False, say=off.append) == {}
+    assert models.ensure_model_indexes(ledger_space, build=False, say=off.append, sources=LEDGER) == {}
     assert len(off) == 1 and "%s on ledger_events (missing)" % name in off[0] and "build_missing_indexes is off" in off[0]
     said = []
-    assert models.ensure_model_indexes(scratch, say=said.append)[name] == models.INDEX_BUILT
-    assert len([line for line in said if ": built ledger_events_" in line]) == row["partitions"], said
-    row = _states(scratch)[name]
+    assert models.ensure_model_indexes(ledger_space, say=said.append, sources=LEDGER)[name] == models.INDEX_BUILT
+    assert len([line for line in said if ": built ledger_events_" in line]) == 2, said
+    row = _states(ledger_space)[name]
     assert (row["state"], row["partitions_missing"]) == ("present", 0)
 
 
-@pytest.mark.pg
-def test_a_partition_another_session_builds_is_left_to_it_and_a_wait_is_given_up(scratch, monkeypatch):
-    """총괄 bdc08ec39 ① ②: a second builder dropped the first's index in progress - a deadlock (9.3 -> 21.3 s at 3M).
-    Now that partition is left to its session and the route says building; a partition whose build waits on an older
-    transaction says whom, gives up at DDL_LOCK_TIMEOUT, and the next one is still tried; once the wait is gone the
-    next build attaches what the other session made and builds the rest."""
-    from datetime import datetime, timezone
+def _build_pid(engine, partition):
+    """The backend building `partition`'s index now, or None."""
+    with engine.connect() as conn:
+        return conn.execute(text(
+            "SELECT p.pid FROM pg_stat_progress_create_index p JOIN pg_class c ON c.oid = p.index_relid "
+            "WHERE c.relname = :n"), {"n": "%s_ref_hash" % partition}).scalar()
 
+
+@pytest.mark.pg
+def test_a_partition_another_session_builds_is_left_to_it_and_a_wait_is_said_once(ledger_space, monkeypatch):
+    """총괄 bdc08ec39 ① ② · 9752e91f7 ②: a second builder dropped the first's index in progress - a deadlock (9.3 ->
+    21.3 s at 3M). Now that partition is left to its session and the route says building; a build waits on an older
+    transaction as long as it lasts - given up at a limit it threw the build away - and says whom once; a partition
+    that fails (cancelled here) is said and the next one is built; once the wait is gone the next build attaches what
+    the other session made and builds the rest."""
     import psycopg2
 
-    import db_safety
     from ledger import schema
 
+    import db_safety
+
+    monkeypatch.setattr(models, "LEDGER_WAIT_SAY_SECONDS", 0.3)
     monkeypatch.setattr(db_safety, "DDL_LOCK_TIMEOUT", "2s")
-    monkeypatch.setattr(models, "LEDGER_WAIT_SAY_SECONDS", 0.5)
-    raw = scratch.raw_connection()
-    try:
-        schema.ensure_schema(raw)
-        raw.commit()
-        for month in (1, 2, 3):
-            schema.ensure_partition(raw, datetime(2026, month, 15, tzinfo=timezone.utc))
-    finally:
-        raw.close()
-    _ddl(scratch, "DROP INDEX IF EXISTS %s" % schema.REF_INDEX)
-    name = schema.in_space(schema.world_names(None), schema.REF_INDEX)
-    dsn = scratch.url.render_as_string(hide_password=False).replace("postgresql+psycopg2", "postgresql")
-    with scratch.connect() as conn:
+    engine = ledger_space
+    name = _months(engine, 1, 2, 3)
+    dsn = engine.url.render_as_string(hide_password=False).replace("postgresql+psycopg2", "postgresql")
+    with engine.connect() as conn:
         space = conn.execute(text("SELECT current_schema()")).scalar()
     holder = psycopg2.connect(dsn, application_name="b_old_snapshot")
     holder.set_session(isolation_level="REPEATABLE READ")
     with holder.cursor() as cur:
         cur.execute("SELECT 1")                                          # an older snapshot, on nothing indexed here
     holder_pid = holder.get_backend_pid()
-    other, ended = psycopg2.connect(dsn, application_name="b_other_builder"), {}
+    other, ended, done = psycopg2.connect(dsn, application_name="b_other_builder"), {}, {}
     other.autocommit = True
+    canceller = psycopg2.connect(dsn, application_name="b_canceller")
+    canceller.autocommit = True
 
     def build_january():
         try:
@@ -446,26 +482,41 @@ def test_a_partition_another_session_builds_is_left_to_it_and_a_wait_is_given_up
             ended["error"] = exc
     january = threading.Thread(target=build_january)
     said = []
+    build = threading.Thread(target=lambda: done.update(
+        models.ensure_model_indexes(engine, say=said.append, sources=LEDGER)))
     try:
         january.start()
-        assert _wait(lambda: _states(scratch)[name]["building"]), "the other session's build never showed"
-        assert models.ensure_model_indexes(scratch, say=said.append)[name] == models.INDEX_FAILED
-        row = _states(scratch)[name]
-    finally:
-        holder.rollback()
-        holder.close()
+        assert _wait(lambda: _states(engine)[name]["building"]), "the other session's build never showed"
+        build.start()
+        february = _wait(lambda: _build_pid(engine, "ledger_events_2026_02") if [
+            line for line in said if "ledger_events_2026_02_ref_hash still building" in line] else None)
+        assert february, said                                           # February built, now waiting on the holder
+        with canceller.cursor() as cur:
+            cur.execute("SELECT pg_cancel_backend(%s)", (february,))
+        assert _wait(lambda: [line for line in said if "ledger_events_2026_02: " in line and " failed after " in line])
+        assert _wait(lambda: [line for line in said if "ledger_events_2026_03_ref_hash still building" in line])
+        time.sleep(3)                    # March waits past any limit a wait once had (DDL_LOCK_TIMEOUT, made 2 s here)
+        assert build.is_alive() and not [line for line in said if "ledger_events_2026_03: " in line], said
+        holder.rollback()                                                # the older snapshot gone: the waits end
+        build.join(60)
         january.join(60)
+    finally:
+        holder.close()
         other.close()
+        canceller.close()
+    assert not build.is_alive() and done == {name: models.INDEX_FAILED}, (done, said)
     assert ended == {"ok": True}, ended                                   # its build was not dropped from under it
     assert [line for line in said if line.startswith(
         "[Indexes] ledger_events_2026_01: ledger_events_2026_01_ref_hash building - ") and "left to it" in line], said
-    waits = [line for line in said if "still building after" in line
-             and "waiting for transactions older than it: pid %s (b_old_snapshot)" % holder_pid in line]
-    gave_up = [line for line in said if ": ledger_events_2026_0" in line and " failed after " in line
-               and "the other partitions go on" in line]
-    assert waits and len(gave_up) == 2, said                             # February's and March's, one after the other
-    assert row["state"] == models.INDEX_MISSING and row["partitions_missing"] == 2
+    waits = [line for line in said if "still building after" in line]
+    assert waits and all("waiting for transactions older than it: pid " in line for line in waits), waits
+    assert any("pid %s (b_old_snapshot)" % holder_pid in line for line in waits), waits
+    assert len(waits) == len({line.split(" still building after ")[0] + line.split(" - building - ")[1]
+                              for line in waits}), waits             # once a partition and a waiter
+    assert [line for line in said if "ledger_events_2026_02: " in line and " failed after " in line
+            and "the other partitions go on" in line]
+    assert [line for line in said if "ledger_events_2026_03: built ledger_events_2026_03_ref_hash in " in line], said
     again = []
-    assert models.ensure_model_indexes(scratch, say=again.append)[name] == models.INDEX_BUILT
+    assert models.ensure_model_indexes(engine, say=again.append, sources=LEDGER)[name] == models.INDEX_BUILT
     assert any("attached the ledger_events_2026_01_ref_hash already there" in line for line in again), again
-    assert _states(scratch)[name]["state"] == models.INDEX_PRESENT
+    assert _states(engine)[name]["state"] == models.INDEX_PRESENT

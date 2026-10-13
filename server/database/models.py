@@ -1654,7 +1654,7 @@ def _note_failure(engine, name, err):
 
 #: How often a build waiting on older transactions says whom it waits for.
 INDEX_WAIT_SAY_SECONDS = 600
-#: ... and a ledger partition's - its wait ends at DDL_LOCK_TIMEOUT (`_build_ledger_index`), so said within it.
+#: How often a ledger partition's build is looked at - whom it waits for said once a waiter (`_build_ledger_index`).
 LEDGER_WAIT_SAY_SECONDS = 5
 #: Where a declared index comes from (`index_states` `source`): the static models', a table's own in table_config.json,
 #: the ledger's partitioned ones - the chain worker builds the ledger's on a line of its own (총괄 bdc08ec39 ②).
@@ -1852,6 +1852,34 @@ def _shape(item):
             "unique": bool(item.unique), "constraint": False}
 
 
+def orders_rows_by(index, keys) -> bool:
+    """Does `index` give its table's rows in `keys` order - a btree (no `using`, or btree) with no WHERE whose leading
+    columns are `keys` (총괄 9752e91f7 ①: on a hash, a GIN or a partial index the read is Seq Scan + Sort). `index`: a
+    declared row (`index_states`) or the catalogue's (`catalogue_indexes`), {columns, using, where}. THE one answer for
+    a fold's keys (`replay._key_index`) and a re-translate's page key (`ledger.backfill._page_key_index`)."""
+    return (index.get("using") in (None, "btree") and not index.get("where")
+            and list(index.get("columns") or ())[:len(keys)] == list(keys))
+
+
+_CATALOGUE_INDEXES = (
+    "SELECT i.relname, am.amname, x.indpred IS NOT NULL,"
+    "       ARRAY(SELECT a.attname FROM unnest(x.indkey::int2[]) WITH ORDINALITY AS k(attnum, n)"
+    "             LEFT JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = k.attnum"
+    "             WHERE k.n <= x.indnkeyatts ORDER BY k.n)"
+    "  FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_am am ON am.oid = i.relam"
+    " WHERE x.indrelid = to_regclass(%s) AND x.indisvalid ORDER BY i.relname")
+
+
+def catalogue_indexes(dbapi_conn, relation) -> list:
+    """`relation`'s valid indexes as the catalogue has them, in `orders_rows_by`'s shape: {name, columns (an expression
+    is None), using, where ("partial" or None)}."""
+    with dbapi_conn.cursor() as cursor:
+        cursor.execute(_CATALOGUE_INDEXES, (".".join('"%s"' % part for part in str(relation).split(".")),))
+        rows = cursor.fetchall()
+    return [{"name": name, "columns": list(columns), "using": using, "where": "partial" if partial else None}
+            for name, using, partial, columns in rows]
+
+
 def _building(connection):
     """-> {index name: what its build is doing} in this schema (`db_waits.index_builds`)."""
     import db_waits
@@ -1991,7 +2019,6 @@ def _build_ledger_index(engine, row, say):
     names = schema.world_names(row["world"])
     index, columns, child, _serves = next(item for item in schema.PARTITIONED_INDEXES
                                           if schema.in_space(names, item[0]) == row["name"])
-    import db_safety
     import db_waits
 
     say("[Indexes] building %s on %s - %d of %d partition(s) lack it" % (
@@ -2000,19 +2027,23 @@ def _build_ledger_index(engine, row, say):
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
-            # 🔴 no statement limit - a partition's build is long by design - and its wait for the database's older
-            #    transactions given up at DDL_LOCK_TIMEOUT, as a unique key's is: that partition is left for the next
-            #    start, and a wait is said while it lasts (총괄 bdc08ec39 ②)
+            # 🔴 no limit on a statement or a wait: a partition's build is long, and its wait for the database's older
+            #    transactions comes AFTER the build - given up at DDL_LOCK_TIMEOUT it threw the build away and the next
+            #    start built it again (총괄 9752e91f7 ②, 8.3 · 10.3 s built and dropped). The line is its own, so no join
+            #    key waits behind it; whom it waits for is said once a partition and a waiter
             cursor.execute("SET statement_timeout = 0")
-            cursor.execute("SET lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
+            cursor.execute("SET lock_timeout = 0")
             cursor.execute("SELECT pg_backend_pid()")
             pid = cursor.fetchone()[0]
         connection.commit()
+        told = {}
 
         def waiting(watch):
-            return next(((name, said) for (_space, name), (by, locker, said)
-                         in db_waits.index_builds(watch.connection.dbapi_connection).items()
-                         if by == pid and locker), (None, None))
+            for (_space, name), (by, locker, said) in db_waits.index_builds(watch.connection.dbapi_connection).items():
+                if by == pid and locker and told.get(name) != locker:
+                    told[name] = locker
+                    return name, said
+            return None, None
         threading.Thread(target=_say_while_building, daemon=True,
                          args=(engine, waiting, started, stop, say, LEDGER_WAIT_SAY_SECONDS)).start()
         done = schema.build_partitioned_index(connection, names, index, columns, apply=True,

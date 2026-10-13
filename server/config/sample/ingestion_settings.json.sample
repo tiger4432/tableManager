@@ -24,6 +24,8 @@
   "retroactive_debug": true,
   "_retroactive_slow_statement_seconds_doc": "소급 실행 프로세스의 SQL 문장 하나가 이 초를 넘겨 도는 중이면 retroactive.log 에 «slow statement» 한 줄(문장 앞 400 자), 끝나면 «ended» 한 줄. 적지 않으면 2. null 이나 0 이면 안 찍음. 재기동 없이 다음 박동부터.",
   "retroactive_slow_statement_seconds": 2,
+  "_ledger_translate_slices_doc": "원장 다시 번역(Re-translate, 소스 전체)을 나눠 돌리는 프로세스 수. 1 부터 코어 수까지의 정수 · 적지 않으면 코어 수의 절반(4 이하) · 1 이면 한 프로세스. 그 밖의 값은 retroactive.log 에 한 줄 남기고 기본값으로 읽음. 그 표의 쪽 열쇠 칸에 순서를 주는 인덱스(btree, WHERE 없음)가 없으면 한 조각. 실행마다 읽음 · 재기동 없음.",
+  "ledger_translate_slices": 4,
   "_walk_processes_doc": "걷기(걷기 화면 · 보드)를 도는 걷기 프로세스 수. 서버가 뜬 뒤 미리 띄우고, 걷기 하나가 하나를 씁니다. 0 이면 전처럼 서버 안에서 돕니다(급할 때 끄는 법). 0 이상의 정수만 읽고 그 밖은 0. 요청마다 읽어 재기동 없이 바뀝니다.",
   "walk_processes": 2,
   "_walk_seconds_max_doc": "걷기 하나가 걷기 프로세스를 기다리고 그 답을 기다리는 상한(초). 넘으면 503 으로 답하고 안 끝난 걷기 프로세스를 내립니다.",

@@ -863,13 +863,40 @@ def whole_source_tail(engine, setup, source, plan, checkpoint=None, world=None):
     """What a whole source's re-translate does after its pages, once - by one process or after every slice.
     🔴 THE PAGES CAN ONLY REMAKE ROWS THAT ARE STILL THERE (총괄 3a109bfd9 ③). What the relation lost is withdrawn
     the way a delete is: a live world's follow-up has usually taken it already (then 0), a world switched off has
-    not. And what today's declaration no longer makes - a table it stopped reading (총괄 e027f669d)."""
+    not. And what today's declaration no longer makes - a table it stopped reading (총괄 e027f669d). And the rows no
+    page read: a NULL page key falls outside every page's `>` and every slice's range (총괄 9752e91f7 ⑤) - counted and
+    said, never silent."""
+    from chain import keyset_scan
+
     gone = rows_gone_from_the_source(engine, setup, source, world=world)
     taken = withdraw_deleted_rows(engine, setup, plan.relation, gone, apply=True, world=world)
     out = {"gone_rows": len(gone),
            "gone_withdrawn": sum(item["withdrawn"] for item in taken["sources"].values())}
     out.update(withdraw_stale_atoms(engine, source, plan.relation, apply=True, checkpoint=checkpoint, world=world))
+    unread = _rows_without_page_key(engine, plan)
+    if unread:
+        out["rows_without_page_key"] = unread
+        keyset_scan.say("%d rows of %s have no %s (the page key) - no page reads them; they are translated once it "
+                        "holds a value" % (unread, plan.relation, _page_key(plan)))
     return out
+
+
+def _rows_without_page_key(engine, plan):
+    """The relation's rows whose page key is NULL - a table's only (a view's count runs its query)."""
+    from psycopg2 import sql
+
+    if not _table_rows(engine, plan, count=False):
+        return 0
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql.SQL("SELECT count(*) FROM {} WHERE {} IS NULL").format(
+                sql.SQL(".").join(sql.Identifier(part) for part in str(plan.relation).split(".")),
+                sql.Identifier(_page_key(plan))))
+            return cursor.fetchone()[0]
+    finally:
+        connection.rollback()
+        connection.close()
 
 
 def slice_bounds(engine, plan, slices):
@@ -891,22 +918,24 @@ def slice_bounds(engine, plan, slices):
         if not _page_key_index(connection, plan):
             return whole, None
         with connection.cursor() as cursor:
-            cursor.execute(sql.SQL("SELECT count(*), count({k}), max({k})::text FROM {r}").format(k=key, r=relation))
+            cursor.execute(sql.SQL("SELECT count(*), count({k}), max({k}) FROM {r}").format(k=key, r=relation))
             rows, keyed, top = cursor.fetchone()
             if keyed < rows:
                 return whole, rows
             cuts = []
             for k in range(1, slices):
-                cursor.execute(sql.SQL("SELECT {k}::text FROM {r} ORDER BY {k} OFFSET %s LIMIT 1").format(
+                cursor.execute(sql.SQL(
+                    "SELECT {k} AS cut, {k}::text AS cut_text FROM {r} ORDER BY {k} OFFSET %s LIMIT 1").format(
                     k=key, r=relation), (rows * k // slices,))
                 found = cursor.fetchone()
-                # one value past two cuts is one cut; a cut at the last value would leave the range after it empty
-                if found is not None and found[0] != top and (not cuts or found[0] != cuts[-1]):
-                    cuts.append(found[0])
+                # one value past two cuts is one cut; a cut at the last value would leave the range after it empty -
+                # judged on the VALUE (numeric 1.0 and 1.00 are one value and two texts, 총괄 9752e91f7)
+                if found is not None and found[0] != top and (not cuts or found[0] != cuts[-1][0]):
+                    cuts.append(found)
     finally:
         connection.rollback()
         connection.close()
-    edges = [None] + cuts + [None]
+    edges = [None] + [text for _value, text in cuts] + [None]
     return list(zip(edges, edges[1:])), rows
 
 
@@ -2487,15 +2516,13 @@ def plan_said(lines):
 
 
 def _page_key_index(connection, plan):
-    """The valid index on the source's relation whose first column is the page key, or None (총괄 d9be013cb ①)."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT i.relname FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid "
-            "JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = x.indkey[0] "
-            "WHERE x.indrelid = to_regclass(%s) AND a.attname = %s AND x.indisvalid ORDER BY 1 LIMIT 1",
-            (".".join('"%s"' % part for part in str(plan.relation).split(".")), _page_key(plan)))
-        row = cursor.fetchone()
-    return row[0] if row else None
+    """The valid index on the source's relation that gives its rows in page-key order (`models.orders_rows_by`), or
+    None (총괄 d9be013cb ① · 9752e91f7 ①)."""
+    from database import models
+
+    key = [_page_key(plan)]
+    return next((index["name"] for index in models.catalogue_indexes(connection, plan.relation)
+                 if models.orders_rows_by(index, key)), None)
 
 
 def beat(result):

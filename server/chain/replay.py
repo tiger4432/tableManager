@@ -1083,13 +1083,12 @@ def _fold_read(keys, ranked, scope, mark, losers=True):
 
 def _key_index(db, table_name, keys):
     """The index the table's own declaration («indexes» in table_config.json) has on `keys` in their order, as
-    the index master reads it - {name, state} - or None: an operator writes one there (총괄 5ad030347). A search
-    index on them is not one - it gives the keys in no order (총괄 10-13)."""
+    the index master reads it - {name, state} - or None: an operator writes one there (총괄 5ad030347). One that gives
+    the rows in their order (`models.orders_rows_by`) - a search index on them does not."""
     from database import crud, models
 
     for row in models.index_states(db.get_bind(), tables={table_name: crud.TABLE_CONFIG.get(table_name)})["declared"]:
-        if (row["source"] == "table" and row["table"] == table_name and not row.get("search")
-                and row["columns"][:len(keys)] == list(keys)):
+        if row["source"] == "table" and row["table"] == table_name and models.orders_rows_by(row, keys):
             return {"name": row["name"], "state": row["state"]}
     return None
 
