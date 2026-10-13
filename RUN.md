@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **원장 엔티티 키 — 코드 맵퍼 · 참조 상수 키도 한 철자로 (정수 값인 수는 정수 글자) (총괄 112293f73 ①, 소유자 «접어, 정수변환»)** — git pull · 런처 재기동(원장 프로세스)
+>
+> ```
+> 무엇     원자의 엔티티 키를 쓰는 한 자리(주어 · 대상 · 참조)에서 코드 맵퍼가 준 키와 참조(entities.<타입>.references)의 상수 키를
+>          map_overlay.canonical_key_value 로 접음 — 수 1.0 -> «1» · 3 -> «3» · 1.5 -> «1.5», 참거짓 True -> «True»
+>          글은 글 그대로 — «01» · «1.0» 은 바뀌지 않음
+>          선언 바인딩 길은 7233a7a31(10-01)부터 칸 형으로 이미 접힘 — 그 길은 바뀌는 것 없음
+> 앞으로만  이 착지 전에 번역된 원자의 키 철자는 그대로 — 운영엔 해당 없음(소유자 10-14)
+>          박스 판의 수 키(die x: 7.0 같은 JSON 수)는 옛 번역기의 원자(translator_ver ledger-v2:b2b0e7b2… · c47f70c3… · 888c9fb7…)
+>          — 지금 번역 길은 그 철자를 안 낳음(제품 결함 아님), 다시 번역하면 접힘
+> 운영 확인 읽기 전용 한 줄 — 원장 전체를 한 번 훑음(행 수에 비례). 키가 수 · 참거짓 철자로 남은 원자를 소스별로 셈:
+>          SELECT source_who, count(*) FROM ledger_events a WHERE EXISTS (SELECT 1 FROM jsonb_each(a.subject_keys) k
+>            WHERE jsonb_typeof(k.value) IN ('number','boolean')) OR (jsonb_typeof(a.object_payload->'keys') = 'object' AND EXISTS
+>            (SELECT 1 FROM jsonb_each(a.object_payload->'keys') k WHERE jsonb_typeof(k.value) IN ('number','boolean'))) GROUP BY 1;
+> 뜻       줄 0 -> 앞으로만으로 충분(할 일 없음)
+>          어떤 소스가 > 0 -> 그 소스만 다시 번역: python server/ledger/backfill.py --source <소스> --whole-source (미리보기)
+>                         -> 같은 줄 --apply --pace slow
+> 되돌리기  git revert <착지 커밋> -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-14] **decide 집계 Latest — 키의 원천 행 중 원장 원자 시각이 가장 늦은 행의 값 (총괄 112293f73, 소유자 «원자시각»)** — git pull · 런처 재기동 · 이주 «없음»
 >
 > ```
