@@ -190,7 +190,11 @@
 > 무엇     런처 자식 하나 더: Ledger Worker(run_ledger_worker.py) — 원장 따라가기 · 원장 행 센서스 · 원장 인덱스 짓기
 >          체인 워커는 체인만. 지운 행이 먹인 칸 거두기는 체인 그룹 끝에서 — 원장이 서도 거둬짐
 >          따라가기는 대기 사건을 여럿 집어(행 수가 쪽 크기 규칙에 닿을 때까지) 표마다 한 번 번역 · 덮은 거래마다 영수증
->          체인 Pause 동안 원장도 새 묶음을 안 집음 — 돌던 묶음은 끝까지(상한 1000 행)
+>          체인 Pause 동안 원장도 새 묶음을 안 집음 — 돌던 묶음은 끝까지(상한 1000 행 — 사건 하나가 1000 행을 넘으면 그만큼)
+>          원장만 세우는 법은 없음 — Pause 는 체인도 세움
+>          🔴 이 착지는 «런처 전체» 재기동 — 체인 워커만 다시 띄우면(런처는 옛 코드) 원장 자식이 없어 원장 따라가기가 멈춤
+>            확인: pg_stat_activity 의 application_name assy_ledger · 없으면 chain_worker.log 에 박동 한 주기(60 s) 뒤 한 줄
+>            «[Chain] no ledger process beats (no beat | last beat N s ago) - the ledger is not following the chain's writes …»
 > 볼 것    ledger.log «[Ledger] started - the follow-up, the census and the ledger's index line» · «[LedgerFollowUp] lap: N item(s) in X s, M left in the queue»
 >          pg_stat_activity 의 application_name assy_ledger
 > 답의 뜻   M(남은 수)이 계속 자람 = 원장이 체인을 못 따라감 · 0 근처 = 따라감
@@ -200,7 +204,10 @@
 > 서버 단독   런처 없이 uvicorn 만 띄우면 체인과 원장이 그 프로세스 안(ASSY_CHAIN_WORKER=0 이면 둘 다 안 뜸)
 > 박스 판    런처 다섯 · hold 3000 행: 따라가기 한 바퀴 사건 3 개(3000 행) 4.8 s · 원장을 세운 채 추가 2.2 s · 고침 1.7 s · 지움 거두기 0.5 s 에 공식 표까지 ·
 >          Pause 12 s 동안 원장 대기 그대로, 풀자 1.3 s 에 따라감 · 원장 프로세스를 죽이자 감독이 5 s 에 다시 띄움 (운영 주장 아님)
-> 되돌리기  git revert 19d6da585 -> 런처 재기동
+> 고침(총괄 fa5417c28)  지운 행이 먹인 칸 거두기가 큐 화면 × 로 치운 지움 · 깊이 상한으로 거절된 지움에서도 다시 돔(전처럼 — 행이 지워진 것은 사실)
+>          그룹은 지운 행을 커밋 «전»에 읽음(커밋 뒤 사건마다 다시 읽던 것 없앰) · 거두기가 실패하면 세션을 되돌림(rollback)
+>          따라가기는 사건의 id · 행 수만 먼저 읽고 payload 는 예산 안 사건만 · QA 격리 스택(devenv up)이 원장 프로세스도 띄움
+> 되돌리기  git revert 19d6da585 -> 런처 재기동 · 고침만은 git revert <이 커밋> -> 런처 재기동
 > ```
 >
 > ---

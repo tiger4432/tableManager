@@ -11,7 +11,7 @@ import os
 import sys
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event as sa_event, text
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -130,6 +130,28 @@ def test_every_event_of_a_batch_is_marked_with_its_runs_outcome(world):
                                              {"i": done["outbox_id"]})}
     assert done["events"] >= 4 and left == 0, (done, left)
     assert states <= {followup.LEDGER_DONE} | {s for s in states if s and s.startswith(followup.LEDGER_SKIPPED)}
+
+
+def test_a_batch_reads_the_payload_of_only_the_events_its_rows_take(world):
+    """총괄 fa5417c28 5: ids and row counts first - the payloads read are those of the events the row budget takes."""
+    hw.push(world, [_row(1, 10), _row(2, 20)])
+    hw.push(world, [_row(3, 30)])
+    hw.run_chain(world)
+    with world["engine"].connect() as conn:
+        pending = conn.execute(text("SELECT count(*) FROM database_outbox WHERE %s" % followup._PENDING)).scalar()
+    read = []
+
+    def seen(conn, cursor, statement, parameters, context, executemany):
+        if "payload" in statement and "WHERE id IN" in statement:
+            read.append([value for key, value in parameters.items() if key.startswith("ids")])
+
+    sa_event.listen(world["engine"], "before_cursor_execute", seen)
+    try:
+        done = followup.drain_outbox_once(world["engine"], world["setup"], rows=2)
+    finally:
+        sa_event.remove(world["engine"], "before_cursor_execute", seen)
+    assert pending > done["events"], "CANARY: the budget cut the batch (%d waiting)" % pending
+    assert [len(ids) for ids in read] == [done["events"]], read
 
 
 def test_the_pause_holds_the_follow_up_and_resuming_lets_it_go(world, monkeypatch, tmp_path):

@@ -156,12 +156,23 @@ def cmd_snapshot(args):
 PROCESSES = [
     ("api", [sys.executable, "-m", "uvicorn", "main:app",
              "--host", "127.0.0.1", "--port", str(API_PORT)]),
-    ("chain", [sys.executable, "run_chain_worker.py"]),
+    # + the chain's and the ledger's processes, from the launcher's own roster (`_workers`)
     # ⚰️ [R-2026-08-14-H] ("graph", run_graph_sync.py) 가 여기 있었다. 격리 스택은
     # 운영 스택의 축소판이어야 하므로 같이 뺀다 — 격리 환경에만 죽은 갈래가 남으면
     # QA가 운영에 없는 동작을 재현하게 된다.
     # DELIBERATELY ABSENT: run_watcher.py, run_auto_update.py.
 ]
+
+
+def _workers():
+    """(beat, command) of the launcher's children that work the queue - the chain's and the ledger's - read off its own
+    roster rather than spelled again (총괄 fa5417c28 6)."""
+    if SERVER_DIR not in sys.path:
+        sys.path.insert(0, SERVER_DIR)
+    from runtime.launcher_specs import child_specs
+
+    return [(spec.heartbeat, spec.cmd) for spec in child_specs(sys.executable, SERVER_DIR, [], "127.0.0.1", API_PORT)
+            if spec.heartbeat in ("chain", "ledger")]
 
 
 def _read_pids(path=PID_FILE):
@@ -228,7 +239,7 @@ def cmd_up(args):
 
     env = isolated_env()
     pids = {}
-    for name, cmd in PROCESSES:
+    for name, cmd in PROCESSES + _workers():
         logfile = os.path.join(LOG_DIR, f"{name}.log")
         f = open(logfile, "ab")
         proc = subprocess.Popen(cmd, cwd=SERVER_DIR, env=env, stdout=f, stderr=f)

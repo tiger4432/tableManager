@@ -591,24 +591,31 @@ def drain_outbox_once(engine, setup, followers=None, rows=None):
     (`schema.live_worlds`, 총괄 092a6f9e5); a deletion is withdrawn in each. None: `setup`, in the
     operating world. -> the first run's record with `events` (taken), `outbox_id` (the last) and every run's sources.
     """
-    from sqlalchemy import text
+    from sqlalchemy import bindparam, case, select, text
+    from database.models import DatabaseOutbox as outbox
 
     kinds = ", ".join("'%s'" % kind for kind in FOLLOWED_EVENT_TYPES)
+    # what an event costs the budget, read without its payload (총괄 fa5417c28 5): a collapsed event's row_count, a
+    # per-row event's one row - the rows `row_ids_of` names
+    cost = case((outbox.payload["row_count"].as_integer().isnot(None), outbox.payload["row_count"].as_integer()),
+                (outbox.payload["row_id"].as_string().isnot(None), 1), else_=0)
     with engine.begin() as connection:
         connection.execute(text(
             "UPDATE database_outbox SET ledger_state = :done WHERE %s AND event_type NOT IN (%s)"
             % (_PENDING, kinds)), {"done": LEDGER_DONE})
+        costs = connection.execute(select(outbox.id, cost).where(text(_PENDING)).order_by(outbox.id)
+                                   .limit(1 if rows is None else MAX_EVENTS_A_BATCH)).fetchall()
+        within, total = [], 0
+        for outbox_id, rows_of_event in costs:
+            if within and total + rows_of_event > rows:
+                break
+            within.append(outbox_id)
+            total += rows_of_event
         taken = connection.execute(text(
-            "SELECT id, table_name, event_type, payload, created_at FROM database_outbox "
-            "WHERE %s ORDER BY id LIMIT %d" % (_PENDING, 1 if rows is None else MAX_EVENTS_A_BATCH))).fetchall()
-    events, total = [], 0
-    for row in taken:
-        payload = _payload(row.payload)
-        ids = tuple(str(item) for item in row_ids_of(payload))
-        if events and total + len(ids) > rows:
-            break
-        events.append((row, payload, ids))
-        total += len(ids)
+            "SELECT id, table_name, event_type, payload, created_at FROM database_outbox WHERE id IN :ids ORDER BY id")
+            .bindparams(bindparam("ids", expanding=True)), {"ids": within}).fetchall() if within else ()
+    events = [(row, payload, tuple(str(item) for item in row_ids_of(payload)))
+              for row, payload in ((row, _payload(row.payload)) for row in taken)]
     if not events:
         return None
     record, marks = None, []
