@@ -2038,7 +2038,8 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
 # import is a deliberate RE-EXPORT: `main.get_column_filter_condition` keeps
 # resolving. It moved because a worker process cannot rely on `main` naming this
 # module - see the module docstring of `column_filter.py` for the failure it caused.
-from column_filter import ROW_ID_FILTER_NAMES, get_column_filter_condition, model_has_row_id, pattern_filtered_columns
+from column_filter import (ROW_ID_FILTER_NAMES, get_column_filter_condition, model_has_row_id,  # noqa: E402
+                           ordered_filtered_columns, pattern_filtered_columns)
 
 # ---------------------------------------------------------------------------
 # Shared query construction for the two routes that read a table with the same
@@ -2977,6 +2978,16 @@ def get_table_data(
         id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [row[0] if len(page_keys) == 1 else tuple(row) for row in id_results]
     t_id_scan = time.time() - t_id_start
+    # a slow id scan asks for an automatic index of its sort and its equal/range filter columns (총괄 ff7890892) - only
+    # queued here; checked and written after, on its own thread (`runtime.index_wants`)
+    from parsers.directory_watcher import grid_auto_index_after
+    slow = None if world else grid_auto_index_after()
+    if slow and t_id_scan > slow:
+        from runtime import index_wants
+        if _named_sort(table_model, table_name, order_by, order_desc) is None:
+            index_wants.want(table_name, [order_by], models.AUTO_SLOW_SORT, t_id_scan, db.get_bind())
+        for column in ordered_filtered_columns(filters):
+            index_wants.want(table_name, [column], models.AUTO_SLOW_FILTER, t_id_scan, db.get_bind())
     
     t_row_start = time.time()
     

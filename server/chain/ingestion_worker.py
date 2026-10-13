@@ -2764,7 +2764,7 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
                      "(체인은 계속): %s", _key_error)
 
 
-def _start_index_work(rules, db_session_factory, after=None):
+def _start_index_work(rules, db_session_factory, after=None, wanted=None):
     """The index work as a task beside the loop - after `after` (the previous start's or
     reload's), so two never build the same index at once. On a thread: the loop - its slot
     dispatcher too - goes on while an index builds. The ledger's partitions are the ledger process's line
@@ -2777,10 +2777,14 @@ def _start_index_work(rules, db_session_factory, after=None):
             await asyncio.wait({previous})
         for work in works:
             await asyncio.to_thread(*work)
-    return asyncio.create_task(line(
-        after, (_ensure_declared_indexes_sync, rules, db_session_factory),
+    # `wanted` (INDEX_WANTED asks, 총괄 ff7890892): the automatic indexes alone; none - a start or a reload - the
+    # declared keys', the models', and every decide rule's key as the rules stand
+    works = [] if wanted is not None else [
+        (_ensure_declared_indexes_sync, rules, db_session_factory),
         (models.ensure_model_indexes_sync, db_session_factory,
-         tuple(source for source in models.INDEX_SOURCES if source != "ledger"), logger.warning)))
+         tuple(source for source in models.INDEX_SOURCES if source != "ledger"), logger.warning)]
+    works.append((models.ensure_auto_indexes_sync, db_session_factory, wanted, logger.warning, wanted is None))
+    return asyncio.create_task(line(after, *works))
 
 
 def _rules_for_group(events_in_tx, rules):
@@ -4185,6 +4189,7 @@ def _starting(steps, step):
 
 async def start_chain_ingestion_worker(db_session_factory):
     from runtime import system_reload
+    from runtime import index_wants
 
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -4380,10 +4385,18 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                 # Check for SYSTEM_RELOAD outbox event to reload configs and code on-demand (throttled)
                 now_ts = time.monotonic()
-                new_reloads = []
+                new_reloads, index_asks = [], []
                 if now_ts - last_reload_check_ts >= RELOAD_CHECK_INTERVAL:
                     last_reload_check_ts = now_ts
                     new_reloads = system_reload.reloads_after(db, last_reload_event_id)
+                    index_asks = index_wants.taken(db)
+                if index_asks:                              # a slow grid read's automatic index (총괄 ff7890892)
+                    asked = [each for _row, each in index_asks if each is not None]
+                    if asked:
+                        index_work = _start_index_work(rules, db_session_factory, after=index_work, wanted=asked)
+                    for row, _each in index_asks:
+                        mark_processed(row, "SUCCESS")
+                    db.commit()
                 latest_reload = new_reloads[-1] if new_reloads else None
                 if latest_reload is not None:
                     last_reload_event_id = latest_reload.id

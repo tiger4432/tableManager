@@ -251,7 +251,7 @@ def test_the_loop_starts_it_after_its_beat_and_again_after_every_reload():
     """⚠️ A text oracle: the reload branch cannot run without the process around it."""
     source = inspect.getsource(worker.start_chain_ingestion_worker)
 
-    assert source.count("_start_index_work(") == 2
+    assert source.count("_start_index_work(") == 3      # the start, every reload, an INDEX_WANTED ask (총괄 ff7890892)
     assert "after=index_work" in source
     assert "ensure_declared_unique_keys" not in inspect.getsource(worker.warmup_worker)
 

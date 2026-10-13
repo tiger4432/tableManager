@@ -1,5 +1,36 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **쓰이는 칸만 자동 인덱스 — decide 판단 키 · 느렸던 그리드 정렬 · 같음/범위 필터 칸 (총괄 ff7890892, 소유자 「쓰이는 칸만」)** — git pull · 서버 «와» 체인 워커 재기동 · 이주 «없음»
+>
+> ```
+> 무엇     제품이 스스로 짓는 인덱스 (칸, row_id) — 이름 ix_auto_<표>_<칸>. 짓는 자리는 체인 워커의 인덱스 줄(선언 인덱스와 같은 자리 · CONCURRENTLY 하나씩)
+>          ① decide 규칙의 판단 키(원천 표) — 체인 워커 기동 · 리로드 때. 규칙에서 빠지면 그 자동 인덱스를 걷는다
+>          ② 그리드 읽기의 id 훑기가 grid_auto_index_after_seconds 를 넘었던 정렬 칸 · 같음/범위 필터 칸
+>             그 읽기가 답한 «뒤» 스레드가 INDEX_WANTED 한 행을 아웃박스에 쓰고(칸마다 한 번), 체인 워커가 다음 박동에 짓는다
+>             느린 칸의 자동 인덱스는 걷지 않는다 — 그 인덱스가 곧 «느렸다»의 기록
+>          이미 같은 일을 하는 인덱스가 있으면 안 짓는다 — 정렬은 (칸, row_id) 순서를 주는 것, 같음 · 범위 · 판단 키는 그 칸이 맨 앞인 것
+>          표마다 auto_index_per_table(기본 10) — 넘으면 안 짓고 한 줄
+> 설정     ingestion_settings.json "grid_auto_index_after_seconds": 1   없으면 1 · 0/null = 그리드가 안 물음 · 요청마다 읽음
+>                                  "auto_index_per_table": 10          없으면 10 · 0 = 자동 인덱스 안 지음
+> 볼 것    어드민 Overview «Indexes» 표 — source auto, purpose «auto (decide key)» · «auto (slow sort)» · «auto (slow filter)»
+>          server.log(그리드 프로세스가 돌면 grid_pool.log)
+>            [Indexes] asked for an automatic index on dt_log (dt_lot) - slow sort, the read took 1.0 s
+>          chain_worker.log
+>            [Indexes] building ix_auto_dt_log_dt_lot on dt_log  ·  [Indexes] ix_auto_dt_log_dt_lot built in N s
+>            [Indexes] ix_auto_… on <표> is not built: <표> already holds 10 automatic indexes (auto_index_per_table 10) - …
+>            [Indexes] ix_auto_… dropped - no decide rule keys on it any more
+> 지우기   DROP INDEX CONCURRENTLY ix_auto_<표>_<칸>;
+>          느린 칸의 것은 그 칸이 다시 느리게 읽히면 다시 묻는다 — 다시 안 짓게 하려면 auto_index_per_table 을 낮춘다
+> 급할 때   "grid_auto_index_after_seconds": 0 -> 그리드가 더 안 물음 · "auto_index_per_table": 0 -> 더 안 지음(둘 다 재기동 없음)
+> 박스 판 실측 (400만 행 dt_log · 실제 런처 API + 체인 워커 + 감시자 · 문턱 0.5 s 로 낮춰서 — 이 판의 dt_lot 정렬이 0.79~1.5 s · 박스 판, 운영 주장 아님)
+>          dt_lot 정렬 첫 쪽 1.54 s -> 서버 줄 «asked … slow sort, the read took 1.1 s» -> 7 s 뒤 체인 워커가 짓기 시작 -> 23.0 s 에 지어짐
+>          같은 쪽 다시 0.30 · 0.42 · 0.30 s · 답의 sort_index 가 not declared -> built
+>          decide 판단 키는 이 판 선언에 decide 규칙이 없어 PG 시험 칸으로만 잼
+> ⚠️ 안 잰 것  운영 크기에서 짓는 시간 · 이 자동 인덱스들의 쓰기 비용(총괄 잼: 26 칸 전부 지으면 체인 쓰기 +14~17 %)
+> ```
+>
+> ---
+>
 > ## [10-13] **그리드 다음 · 앞 쪽을 열쇠로 — 깊은 쪽도 쪽 비용만 · 정렬 칸 색인은 표 선언 indexes 에 (총괄 e570dcda5 ㄱ)** — git pull · 서버 재기동 · 이주 «없음» · 화면은 클라 반쪽이 붙어야 탄다
 >
 > ```

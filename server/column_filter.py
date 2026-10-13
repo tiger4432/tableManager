@@ -207,8 +207,8 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
             return col_expr.ilike(f"%{f_val}%")
 
 
-def pattern_filtered_columns(filters):
-    """The columns a `?filters=` model narrows by a text pattern (`TEXT_PATTERNS`), in its order - a compound one when
+def filtered_columns(filters, by):
+    """The columns a `?filters=` model narrows by a condition `by(condition)` takes, in its order - a compound one when
     any of its conditions does; [] for none, or for a model that is not JSON (its read refuses it)."""
     import json
 
@@ -217,10 +217,26 @@ def pattern_filtered_columns(filters):
     except (TypeError, ValueError):
         return []
 
-    def by_pattern(f_info):
+    def taken(f_info):
         if not isinstance(f_info, dict):
             return False
         if "operator" in f_info:
-            return any(by_pattern(each) for each in f_info.get("conditions") or ())
-        return f_info.get("type", "contains") in TEXT_PATTERNS and f_info.get("filter") is not None
-    return [name for name, f_info in model.items() if by_pattern(f_info)] if isinstance(model, dict) else []
+            return any(taken(each) for each in f_info.get("conditions") or ())
+        return by(f_info)
+    return [name for name, f_info in model.items() if taken(f_info)] if isinstance(model, dict) else []
+
+
+def pattern_filtered_columns(filters):
+    """The columns a `?filters=` model narrows by a text pattern (`TEXT_PATTERNS`)."""
+    return filtered_columns(filters, lambda f: f.get("type", "contains") in TEXT_PATTERNS and f.get("filter") is not None)
+
+
+#: The condition types an ordered index serves - an equal value or a range (총괄 ff7890892).
+ORDERED_TYPES = frozenset({"equals", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange"})
+
+
+def ordered_filtered_columns(filters):
+    """The columns a `?filters=` model narrows by an equal value or a range (`ORDERED_TYPES`) - a number's, a date's or
+    a text's - what an automatic (column, row_id) index serves."""
+    return filtered_columns(filters, lambda f: f.get("type") in ORDERED_TYPES
+                            and (f.get("filter") is not None or f.get("dateFrom") is not None))

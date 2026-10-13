@@ -39,9 +39,13 @@ EVENT_RETROACTIVE_RUN = "RETROACTIVE_RUN"
 #: place to be wrong. See internal_event_client.record_undelivered_notification.
 EVENT_BROADCAST_RECOVERY = "BROADCAST_RECOVERY"
 
+#: Published after a slow grid read (`runtime.index_wants`, 총괄 ff7890892) - {table, columns, why, seconds}; consumed
+#: by the chain worker's index line, which builds the automatic index (`models.ensure_auto_indexes`).
+EVENT_INDEX_WANTED = "INDEX_WANTED"
+
 #: Every control type. The chain worker filters on membership, not on a literal.
 CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN,
-                                 EVENT_BROADCAST_RECOVERY})
+                                 EVENT_BROADCAST_RECOVERY, EVENT_INDEX_WANTED})
 
 #: `database_outbox.table_name` is not empty by convention, so a row that is about no
 #: single table fills the column with an invented name. `retroactive` writes this one: a
