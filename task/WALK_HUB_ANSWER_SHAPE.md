@@ -74,7 +74,9 @@ edges_pending [행 id …] — 혼자 선 행의 선을 이 쪽 원자 예산 �
           대상 타입은 entities 에(keys · attributes), 술어는 vocabulary 에(entity_ref, 주어 타입 -> 대상 타입)
           columns 를 안 적으면 그 표의 칸 전부(표 선언의 칸 목록), 적으면 좁힘 — 허브 표 열도 같은 목록(총괄 10-13 «행을 통째로»)
           원자는 0 (번역 · backfill · 소급 · 따라가기)
-답        행 노드 = 대상 타입의 보통 노드(키 = 그 표의 키 칸, attributes = columns 의 값, 글로). 선 = 그 술어, 보통 선
+답        행 노드 = 대상 타입의 보통 노드(키 = 그 표의 키 칸, attributes = columns 의 값). 선 = 그 술어, 보통 선
+          값은 칸의 형 그대로 — 숫자 칸은 숫자(소수 없으면 정수), 시각 칸은 답의 시각 모양(UTC ISO), 빈 칸은 null, 글은 그대로
+          허브 표 rows 와 노드 attributes 가 같은 값
           술어에 hub: true 면 허브로 접힌다(×1 도) — id 도 보통 허브 id <노드>|<술어>|<방향>|<대상 타입>|<값>, 표 = tables[허브 id]
           fanout_limit 을 넘어도 같은 허브. expand · 예산 · 이어 걷기 · left/moved 모두 허브 그대로
           거꾸로도 걷는다 — 행 노드에서 부모로(incoming)
@@ -94,7 +96,7 @@ edges_pending [행 id …] — 혼자 선 행의 선을 이 쪽 원자 예산 �
             "predicate": "has_defect", "count": 1, "records": [], "records_more": 0, "worlds": ["default"]}],
  "tables": {"<D1>|has_defect|outgoing|defect_row|1,0": {
      "columns": ["type", "depth", "id", "parent_id", "via", "seed", "defect_id", "size", "kind"],
-     "rows": [["defect_row", 2, "<F4>", "<D1>", "has_defect", "<W>", "F4", "7", "void"]], "count": 1}},
+     "rows": [["defect_row", 2, "<F4>", "<D1>", "has_defect", "<W>", "F4", 7, "void"]], "count": 1}},
  "truncated": {"…": "…"}}
 ```
 since · until 을 준 걷기 — `"truncated": {…, "rows_withheld": "rows are attached as their tables are now - a walk with since or until carries none"}`
