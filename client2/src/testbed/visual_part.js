@@ -26,6 +26,7 @@ import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
 import { SHOW_SLOT, showItems } from './show_items.js';
 import { PANEL_SLOT, panelsOf, inPanel, withPanel, extentsOf } from './trellis.js';
+import { SHAPE_SLOT, SHAPE_LEGEND, shapesOf, shapeOfIds } from './shape_by.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
 import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
 import { fitUnder } from '../dropdown.js';
@@ -85,7 +86,8 @@ export class VisualPart extends Panel {
     const folded = (s) => (unit === 'node' ? s : { ...s, folds: true, records: unit === 'record' });
     // Color by, Label by and the Tooltip slots (tooltip.js) - the root's, every kind's; Top/Bottom by (show_items.js) too,
     // read the way the kind's own slots are (a hub its rows folded)
-    return [...own.map(folded), ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, LABEL_SLOT, ...tipSlots(this.decl.encode),
+    // Shape by (shape_by.js) - a kind that draws points
+    return [...own.map(folded), ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, ...(this.kind && this.kind.points ? [SHAPE_SLOT] : []), LABEL_SLOT, ...tipSlots(this.decl.encode),
       folded(SHOW_SLOT), PANEL_SLOT];
   }
 
@@ -382,6 +384,11 @@ export class VisualPart extends Panel {
     // the colours given to categories not declared yet are kept in the declaration - Save keeps them, more categories
     // later leave them where they are (a declaration field, no walk)
     if (colors.any && Object.keys(colors.assigned).length) this.decl = { ...this.decl, colors: { ...(this.decl.colors || {}), ...colors.assigned } };
+    // each row's shape (shape_by.js) - a points kind's; the shapes given kept in the declaration as the colours are
+    const shapes = this.kind.points ? shapesOf(rows, this.decl) : null;
+    this.shapes = shapes;
+    if (shapes && shapes.any && Object.keys(shapes.assigned).length) this.decl = { ...this.decl, shapes: { ...(this.decl.shapes || {}), ...shapes.assigned } };
+    const shape = shapes && shapes.any ? (ids) => shapeOfIds(shapes, ids) : null;
     const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record, askMarked) : rows;
     // what a tooltip and a label read: the marks the kind draws (units) and the rows (a mark a kind groups itself)
     this.rowsById = new Map(rows.map((r) => [r.id, r]));
@@ -391,7 +398,7 @@ export class VisualPart extends Panel {
     const showing = showItems(units, this.decl);
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
-    const modelCtx = { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start };
+    const modelCtx = { paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start };
     this.model = this.kind.model(showing.kept, modelCtx);
     // Trellis (trellis.js): a panel a Panel by value - its rows' marks, the shown ones only, every panel on one extent
     const split = panelsOf(rows, this.decl);
@@ -550,9 +557,11 @@ export class VisualPart extends Panel {
       else line.append(this.pill(nextMarker(encode), { words: unitWords(this.decl) }));
       legend.append(el('div', 'sf-legend__ttl', 'Marker by:'), line);
     }
-    legend.append(legendBlock(this.colors, { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
+    const legendCtx = { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
       words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
-      openPalette: (category, anchor) => this.openPalette(category, anchor) }));
+      openPalette: (category, anchor) => this.openPalette(category, anchor) };
+    legend.append(legendBlock(this.colors, legendCtx));
+    if (this.shapes) legend.append(legendBlock(this.shapes, legendCtx, SHAPE_LEGEND));
     body.append(trays.top, trays.left, area, trays.bottom, legend);
     const drawCtx = {
       doc, palette: this.palette(), charts: this.charts,

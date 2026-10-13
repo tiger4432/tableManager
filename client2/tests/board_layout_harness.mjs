@@ -35,6 +35,7 @@ const REAL = {
   tooltip: await import('../src/testbed/tooltip.js'),
   cond: await import('../src/testbed/condition_editor.js'),
   trellis: await import('../src/testbed/trellis.js'),
+  shape: await import('../src/testbed/shape_by.js'),
 };
 const { localStamp } = await import('../src/server_time.js');
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
@@ -915,6 +916,42 @@ async function trellisCases(M) {
   return { pure, drawnPanels, axes, marker, cell: held() };
 }
 
+/** Shape by (base set 7-b, shape_by.js): a category's shape - declared, else the next one free (the colours' rule); a points
+ *  kind draws it and the legend says the same names; a kind that draws no points holds no Shape by. */
+async function shapeCases(M) {
+  const one = (value) => ({ state: 'one', value });
+  const rows = [{ id: 'r1', reads: { shape: one('A') } }, { id: 'r2', reads: { shape: one('B') } }, { id: 'r3', reads: { shape: one('A') } }, { id: 'r4', reads: {} }];
+  const s = M.shape.shapesOf(rows, { encode: { shape: {} }, shapes: { B: 'diamond' } });
+  const pure = [s.categories.map((c) => [c.name, c.shape, c.ids]), s.assigned, M.shape.shapeOfIds(s, ['r1', 'r3']), M.shape.shapeOfIds(s, ['r1', 'r2']),
+    M.color.assignLooks(['x', 'y', 'z'], { y: 'p1' }, ['p1', 'p2'])];
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 9, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const markings = new MarkingStore();
+  const crossKind = (await import('../src/testbed/kinds/cross_table.js')).kind;
+  const seat = async (kind, encode) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind, crossTable: crossKind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return part;
+  };
+  const sc = await seat('scatter', { x: key('x'), y: key('y'), shape: key('p') });
+  const pal = { bg: '#000000', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: '#000000', one: ['#111111', '#222222'], cat: [] };
+  const drawn = M.scatter.scatterOption(sc.model, pal).series[0].data.map((d) => [d.id, d.symbol || null]);
+  const glyphs = walk(sc.root).filter((n) => String(n.className) === 'sf-legend__shape').map((n) => n.getAttribute('data-shape'));
+  const name = walk(sc.root).find((n) => String(n.className) === 'sf-legend__name' && n._text === 'B' && n.parentNode.children.some((c) => String(c.className) === 'sf-legend__shape'));
+  if (name) name.listeners.click[0]({});
+  await settle();
+  const pressed = markings.entries('marking:pick').map(([id]) => (hubOf(id) ? hubOf(id).where : id));
+  const cross = await seat('crossTable', { rows: key('x') });
+  return { pure, drawn, glyphs, kept: sc.declaration().shapes || null, pressed, crossSlots: cross.slotList().some((x) => x.key === 'shape') };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -944,6 +981,7 @@ async function suite(M) {
   const si = await showCases(M);
   const sw = await shownWords(M);
   const tr = await trellisCases(M);
+  const shp = await shapeCases(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -1017,7 +1055,7 @@ async function suite(M) {
       { points: [['L1', 26, 5, ['W1', 'W3'], false], ['L2', 40, 6, ['W2', 'W4'], false]], several: 0 }),
     judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
       [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
-        [['x', 'y', 'marker1', 'color', 'label', 'tip1', 'show', 'panel'], ['x*', 'y*', 'marker1', 'marker2', 'color', 'label', 'tip1', 'show*', 'panel']]]),
+        [['x', 'y', 'marker1', 'color', 'shape', 'label', 'tip1', 'show', 'panel'], ['x*', 'y*', 'marker1', 'marker2', 'color', 'shape', 'label', 'tip1', 'show*', 'panel']]]),
     judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
       ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
     judge('Y1 no relation: the layer of a marking is its members (a hub its members) - for every node the same as holds()', [ly.none, ly.same],
@@ -1068,6 +1106,10 @@ async function suite(M) {
     judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
+    judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
+      shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
+    judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows; a cross table holds no Shape by',
+      [shp.drawn, shp.glyphs, shp.kept, shp.pressed, shp.crossSlots], [[['D1', 'circle'], ['D2', 'rect'], ['D3', 'circle']], ['circle', 'rect'], { A: 'circle', B: 'rect' }, [[['p', 'B']]], false]),
     judge('TR1 Panel by splits the rows - two values in both, none (Empty) last; a hub in a panel carries the panel\'s value once; no slot - no panels',
       tr.pure, [[['A', ['r2']], ['B', ['r1', 'r2']], ['(Empty)', ['r3']]], [['lot', 'L1'], ['p', 'A']], [true, [['lot', 'L1'], ['p', 'A']]], null]),
     judge('TR2 a scatter in panels: a panel a value, its rows\' points, every panel on the same x and y extent', [tr.drawnPanels, tr.axes],
@@ -1212,6 +1254,14 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent })', 'this.kind.model(marks[i], modelCtx)') },
   { id: 'M49', what: 'the panel condition appended again on every pass', catches: 'TR1 ', file: 'testbed/trellis.js', key: 'trellis',
     mutate: (t) => swap(t, 'return where.some(([w]) => w === words) ? where : [...where, ...panel.where];', 'return [...where, ...panel.where];') },
+  { id: 'M50', what: 'the kind handed no shape - every point the one shape', catches: 'SP2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'askMarked, label, shape, palette', 'askMarked, label, shape: null, palette') },
+  { id: 'M51', what: 'the shapes given not kept - more categories deal them again', catches: 'SP2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'if (shapes && shapes.any && Object.keys(shapes.assigned).length)', 'if (false)') },
+  { id: 'M52', what: 'a category not declared given no shape', catches: 'SP1 ', file: 'testbed/shape_by.js', key: 'shape',
+    mutate: (t) => swap(t, 'const assigned = assignLooks(seen, own, SHAPES);', 'const assigned = {};') },
+  { id: 'M53', what: 'the scatter draws every point a circle', catches: 'SP2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, '...(p.shape ? { symbol: p.shape } : {}),', '') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

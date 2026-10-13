@@ -41,7 +41,9 @@ export function scatterModel(units, ctx) {
     const p = paint(ids, u.where || null);
     // its label - the root's (none, marked, all)
     const tag = ctx.label ? ctx.label(u) : null;
-    points.push({ id: u.id, ids, where: u.where || null, label: u.label, tag, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });
+    // its shape - the root's (Shape by)
+    const shape = ctx.shape ? ctx.shape(ids) : null;
+    points.push({ id: u.id, ids, where: u.where || null, label: u.label, tag, shape, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });
   }
   return { points, notDrawn, several, note: [notDrawn ? `${notDrawn} not drawn` : '', several ? `${several} rows with several values` : ''].filter(Boolean).join(' · '),
     xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
@@ -81,7 +83,7 @@ export function scatterOption(model, palette) {
     series: [{
       type: 'scatter', symbolSize: model.size, cursor: 'pointer',
       data: ordered.map((p) => ({ value: [model.xKind === 'category' ? String(p.x) : p.x, model.yKind === 'category' ? String(p.y) : p.y],
-        id: p.id, name: p.label, itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 },
+        id: p.id, name: p.label, ...(p.shape ? { symbol: p.shape } : {}), itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 },
         label: { show: p.tag !== null && p.tag !== undefined, formatter: String(p.tag), position: side(p), color: t.text, fontFamily: 'Roboto', fontSize: 12 } })),
       emphasis: { scale: false },
     }],
@@ -146,4 +148,4 @@ export const title = (encode) => `${slotWords(encode.y)} vs. ${slotWords(encode.
 export const icon = { tone: 'cat-1', paths: [['M4 16h3v3H4zM8 11h3v3H8zM13 13h3v3h-3zM12 6h3v3h-3zM17 3h3v3h-3zM18 9h3v3h-3z', 1]] };
 
 // units - a point a unit of the root's Marker by; a value record spreads Y's records.
-export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, units: { record: 'y' }, title, model: scatterModel, render, icon };
+export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, units: { record: 'y' }, points: true, title, model: scatterModel, render, icon };

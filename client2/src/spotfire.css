@@ -91,6 +91,14 @@
 /* Color by (the root's): a category's circle opens its palette, its name marks its rows */
 .sf-pop.sf-swatches { display: block; width: auto; }
 button.sf-legend__ico { padding: 0; min-height: 0; cursor: pointer; }
+/* Shape by's glyphs - the names the scatter draws (shape_by.js SHAPES) */
+.sf-legend__shape { flex: none; width: var(--sf-icon); height: var(--sf-icon); background: var(--sf-one); }
+.sf-legend__shape[data-shape="circle"] { border-radius: 50%; }
+.sf-legend__shape[data-shape="roundRect"] { border-radius: 25%; }
+.sf-legend__shape[data-shape="triangle"] { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.sf-legend__shape[data-shape="diamond"] { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.sf-legend__shape[data-shape="pin"] { border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
+.sf-legend__shape[data-shape="arrow"] { clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%); }
 button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: normal; text-align: left; cursor: pointer; }
 .sf-swatches { padding: var(--sf-tool-gap); }
 .sf-swatches__grid { display: grid; grid-template-columns: repeat(5, var(--sf-pill-h)); gap: 6px; }
