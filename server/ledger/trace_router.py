@@ -379,7 +379,8 @@ def _kept_walk_key(kwargs):
 
 router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(
     evidence_subgraph, pinned_by=_kept_walk_key,
-    gone=lambda why: HTTPException(status_code=410, detail=ledger_subgraph.walk_expired(why))))
+    gone=lambda why: HTTPException(status_code=410, detail=ledger_subgraph.walk_expired(why)),
+    warm=ledger_subgraph.warm_declarations))
 
 
 def _given(value):

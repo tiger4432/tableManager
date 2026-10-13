@@ -73,6 +73,7 @@ class Pool:
         self.idle = []                  # [process, connection, generation] ready for a body
         self.taken = [0]                # pool processes running a body, or being started
         self.modules = []               # the modules of the bodies in_pool wraps - imported before a process is ready
+        self.warms = []                 # (module, function) a body's registration asks run before ready (in_pool warm=)
         self.cond = threading.Condition()
         self.generation = [0]           # recycle() moves it; a process of an older one is not given a body again
         self.busy = set()               # the pids of the pool processes running a body
@@ -173,15 +174,20 @@ def _say_once(name, value, reading):
         logger.error("[Pool] ingestion_settings.json %s is %r - read as %s", name, value, reading)
 
 
-def in_pool(body, pinned_by=None, gone=None, pool=None):
+def in_pool(body, pinned_by=None, gone=None, pool=None, warm=None):
     """`body` as a route endpoint that runs it in a process of `pool` (WALK unless named), with that process's own
     session as `db`. `pinned_by(kwargs)`: the key of what a process keeps for this request, or None - the request goes to
     that process alone, and `gone(why)` (reloaded · restarted · process ended) is raised when it is no longer there.
+
+    `warm()`: what the body fills before its first request (총괄 8af4d378c - the walk's compiled declarations), run in
+    each pool process before it says ready; it returns the sentence the process logs.
 
     ⚠️ A session on another engine than this process's own (a test's override) cannot be carried there, so that call
     runs here - as it does with the pool's size 0."""
     pool = WALK if pool is None else pool
     target = (body.__module__, body.__name__)
+    if warm is not None:
+        pool.warms.append((warm.__module__, warm.__name__))
     pool.modules.append(body.__module__)
 
     @functools.wraps(body)
@@ -388,7 +394,8 @@ def _start(seconds, pool=None):
     context = multiprocessing.get_context("spawn")
     mine, theirs = context.Pipe()
     process = context.Process(target=_serve, args=(theirs, list(dict.fromkeys(pool.modules)), pool.process_name,
-                                                   pool.log_file), name=pool.process_name, daemon=True)
+                                                   pool.log_file, list(dict.fromkeys(pool.warms))),
+                              name=pool.process_name, daemon=True)
     process.start()
     theirs.close()
     try:
@@ -415,9 +422,10 @@ def _end(worker, why="process ended", pool=None):
         process.terminate()
 
 
-def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.log"):
-    """The pool process: ready once its bodies' modules are imported, then one body at a time, until the server's
-    end of the pipe closes. Its lines go to its pool's log file."""
+def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.log", warms=()):
+    """The pool process: ready once its bodies' modules are imported and their warms ran (one line each - a slow
+    start says why), then one body at a time, until the server's end of the pipe closes. Its lines go to its pool's
+    log file."""
     os.environ.update(POOL_DB)
     from utils.logger import get_process_logger
 
@@ -434,6 +442,11 @@ def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.l
     for module in modules:
         importlib.import_module(module)
     import database.database                                    # noqa: F401 - its engine, before the first body
+    for module, name in warms:
+        try:
+            logger.info("[Pool] %s", getattr(importlib.import_module(module), name)())
+        except Exception as exc:                                # noqa: BLE001 - the process serves all the same
+            logger.error("[Pool] %s.%s did not warm: %s: %s", module, name, type(exc).__name__, exc)
     connection.send("ready")
     while True:
         try:
