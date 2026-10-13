@@ -5795,23 +5795,23 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 
 ## 7-C. 시각화 시험대 testbed — `testbed.html` + `client2/src/testbed/` (2026-10-13 신설)
 
-> 총괄 aca803a7a · d1b3c1b7f · 5835e6714. R&D 보드의 틀(`rnd_board/grid_shell.js` 배치 데이터 · `MarkingStore`)에 근원 시각화 부품 하나와 그 둘레 부품을 앉힌 화면. 하니스 `client2/tests/testbed_harness.mjs`.
+> 총괄 aca803a7a · d1b3c1b7f · 5835e6714. R&D 보드의 틀(`rnd_board/grid_shell.js` 배치 데이터 · `MarkingStore`)에 근원 시각화 부품 하나와 그 둘레 부품을 앉힌 화면. 하니스 `client2/tests/testbed_harness.mjs`. 들어가는 곳: 메인 그리드 nav 드롭다운 «📊 Board»(`index.html`, Walk 바로 아래 · 같은 탭, `e8c47a7e7`, 하니스 `main_menu_harness.mjs`).
 
 | 파일 | 무엇 |
 |---|---|
-| `main.js` | 페이지: `LAYOUT`(배치 데이터) · `PARTS` · `KINDS` · `MARKINGS`(사람 이름 Start · Pick) · `FILTERS` · `boot(deps)` · `laidOut`(저장한 선언을 배치에 얹음, `options` 는 늘 배치 것) · `bound`(페이지 의존을 `options` 로) · `oneValuedBy`(마지막 걸음 술어가 cardinality one 이면 Latest 자동). ECharts 는 이 파일만 import 해 `charts.init` 으로 넘긴다 |
-| `visual_part.js` | **`VisualPart`** — 근원 부품. 시작 마킹(허브는 `seedsOf` 로 구성원)에서 걷기 → 행 타입의 행 → 시스템 필터(시작 쪽: 마킹 노드를 먼저 걸러 다시 걷기, 받은 쪽) → 부품 필터 → 값 칸 → 종류 모델 → 그림. `mark` · `markHub` · `clear` · `publish`(바닥줄 · 필터 판이 읽는 수) · `setDeclaration` · `setSlot` · `declaration()`(Save 가 쓰는 것). `insideOf(answer)` |
+| `main.js` | 페이지: `LAYOUT`(배치 데이터) · `PARTS` · `KINDS` · `MARKINGS`(사람 이름 Start · Pick) · `FILTERS` · `boot(deps)` · `laidOut`(저장한 선언을 배치에 얹음, `options` 는 늘 배치 것) · `bound`(페이지 의존을 `options` 로) · `oneValuedBy`(마지막 걸음 술어가 cardinality one 이면 Latest 자동). ECharts 는 이 파일만 import 해 `charts.init` 으로 넘긴다. 🆕 `d9b663583` `boot` 이 사이트의 `data-theme` 를 페이지 뿌리에 단다 — 시작 줄 고르개(걷기 화면 부품)가 페이지의 어두운 판을 입는다(하니스 T18 · 변이 M24) |
+| `visual_part.js` | **`VisualPart`** — 근원 부품. 시작 마킹(허브는 `seedsOf` 로 구성원)에서 걷기 → 행 타입의 행 → 시스템 필터(시작 쪽: 마킹 노드를 먼저 걸러 다시 걷기, 받은 쪽) → 부품 필터 → 값 칸 → 종류 모델 → 그림. `mark` · `markHub` · `clear` · `publish`(바닥줄 · 필터 판 · 속성 창이 읽는 수) · `setDeclaration` · `setSlot` · `declaration()`(Save 가 쓰는 것). `insideOf(answer)`. ⚠️ 시스템 필터를 고치면 받은 쪽만 다시 접고(`refold`) 시작 쪽은 다음 걷기에서야 — 넓혀도 시작 쪽에서 뺀 노드는 안 돌아온다(`setDeclaration` 은 start · row 가 바뀔 때만 다시 걷는다 — 그 머리 주석의 «system filter walks again» 과 다름). ⚠️ 종류를 묻는 자리가 이 파일에 셋 — 제목(`kind === 'scatter'` 이면 «y vs. x», 아니면 크로스 테이블의 rows · columns · cells) · 모든 종류 모델에 넘기는 `encode.cells.reduce` · `marker` 알약(산점도 것) |
 | `slot.js` | `readSlot` — 값 칸 하나를 행 하나에서: one · several · empty · missing (`reach_table.readsOf` 위). `categoriesOf` · `slotWords` |
-| `aggregate.js` | `REDUCES`(스팟파이어 철자 일곱 + Latest) · `fold` — 서버 걷기 집계와 같은 규칙(`contracts/walk_aggregate` 로 채점) |
+| `aggregate.js` | `REDUCES`(스팟파이어 철자 일곱 + Latest) · `fold` — 서버 걷기 집계와 같은 규칙(`contracts/walk_aggregate` 로 채점). 빈 무리의 Count · UniqueCount 는 0 · ⚠️ 하니스 T1 은 맨 Count 를 `fold` 로 안 넘긴다(노드 수로 답함) |
 | `filter.js` | THE 필터 `keepNodes` · `nodePasses` · `valuePasses` — 조건 = 행 타입 + 값 칸 + 범위 · 값 · 기간 · 빈 값. 부르는 곳은 `visual_part.js` 하나(하니스 T14) |
-| `hubs.js` | 허브 id = 설명(`hubId(row, where)`) · `HubBook`(페이지가 만든 구성원 장부) · `seedsOf`(마킹 → 걷기 씨앗, 한 자리) · `holds` · `hubWords` |
+| `hubs.js` | 허브 id = 설명(`hubId(row, where)`) · `HubBook`(페이지가 만든 구성원 장부) · `seedsOf`(마킹 → 걷기 씨앗 — 시험대 안에서 한 자리. ⚠️ 같은 물음의 둘째가 `walk/subgraph_view.js::seedsOf` — 허브 · «+ 이김» 없음) · `holds` · `hubWords` |
 | `kinds/scatter.js` | 칸 x · y · color, `scatterModel`(안 찍힌 점 = `palette.mix` 20 %) · `scatterOption`(ECharts 옵션, 순수) · `idsInRange`(끌기의 좌표 범위 → 점) · `render` |
 | `kinds/cross_table.js` | 칸 rows · columns · cells, `crossModel`(값 둘인 행은 두 칸에 · 칸은 그 행들 값의 합집합을 접음 · 합계) · `render`(표는 자기 상자에서 스크롤) |
-| `picker.js` | `SlotPicker` — 알약의 고르개 세 칸(길 · 끝과 값 · 접기). `routeChoices` = `reach_table.routesFrom` 그대로 · `endChoices`(`reach_table.waysOf`) · `severalCount` |
+| `picker.js` | `SlotPicker` — 알약의 고르개 세 칸(길 · 끝과 값 · 접기). `routeChoices` = 맨 앞 `(row)` + `reach_table.routesFrom` · `endChoices`(`reach_table.waysOf`) · `severalCount` |
 | `start_part.js` · `basket_part.js` · `status_part.js` · `filters_part.js` · `properties_part.js` | 시작 줄(걷기 화면의 `NodeSearch` · `StartBaskets`) · 바구니(허브 한 줄, 펼침) · 바닥줄(`statusWords`) · 필터 판(시스템 필터 고침) · 속성 창(활성 부품 선언 고침) |
-| `condition_editor.js` · `keyed_store.js` · `palette.js` · `testbed.css` | 조건 칸 하나(필터 판과 부품 Filter 가 같이 씀) · 이름 붙은 값 저장소 · 잰 색(THE 한 자리, CSS 변수로 내림) · 잰 크기 |
+| `condition_editor.js` · `keyed_store.js` · `palette.js` · `testbed.css` | 조건 칸 하나(필터 판과 부품 Filter 가 같이 씀) · 이름 붙은 값 저장소 · 잰 색(JS 의 한 자리, CSS 변수로 내림 — ⚠️ `testbed.css` 가 `var()` 대체값으로 같은 색을 다시 적는다) · 잰 크기 |
 
-- 같이 바뀐 공용 자리: `rnd_board/grid_shell.js` 가 부품에 `declaration`(그 항목 통째)을 넘김 · `rnd_board/api.js` `truncationAxes` export · `walk/reach_table.js` `waysOf` export · `walk/trend.js` `timeOf` export.
+- 같이 바뀐 공용 자리: `rnd_board/grid_shell.js` 가 부품에 `declaration`(그 항목 통째)을 넘김 · `rnd_board/api.js` `truncationAxes` export · `walk/reach_table.js` `waysOf` export · `walk/trend.js` `timeOf` export. 그 밖 공용(6): `vite.config.js`(testbed 입구) · `package.json` · 잠금 파일(echarts) · `screen_layout_harness.mjs`(walk.html 에도 «picker reachable» 칸) · `css_token_definition_harness.mjs` · `check_harnesses.mjs`.
 
 ## 8. 주요 호출 흐름 요약
 

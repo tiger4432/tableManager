@@ -611,6 +611,12 @@
   - 🔴 **⚠️ 축이 «class» 로 올라가면서 읽을 수 없는 선언의 폴백이 «뒤집혔다» — 그리고 오늘은 그게 안 보인다.** 종전(플래그): 못 읽으면 계속 술어가 0 → **모든 걸음이 떠나는 걸음**. 지금(class): 못 읽으면 정적 타입이 0 → **모든 걸음이 «자재 걸음»(둘 다 dynamic)** 이다. 정확히 반대다. 🔴 **`backbone_hops = 0` 인 동안 두 폴백은 «같은 답»을 낸다**(둘째 예산이 0 이면 자재 걸음도 못 쓴다) — 그래서 이 뒤집힘은 **누군가 `backbone_hops` 를 켜는 날** 처음 관측된다. 「아직 그럴 일이 없어서 안전」은 안전이 아니다.
   - 🔴 **「기본이 0」과 「아무도 안 켠다」는 «다른 문장»이고, 나는 앞의 것에서 뒤의 것을 추론했다가 틀렸다.** 앞은 코드에서 «읽고» 뒤는 호출자를 «세야» 한다. 실측 2026-08-29 밤: 이 축을 켜는 호출자가 **넷**(`client2/src/rnd_board/main.js` 의 좌석 선언, `2`×3 · `1`×1)인데 몇 시간 전 나는 「오늘 아무 화면도 안 켠다」고 적었다. 🔴 **그 오독은 이 항목 밖까지 샜다** — 이 축은 「동적→동적 걸음은 떠남이 아니다」를 구현하는 «유일한» 기계라, `0` 이면 그 정책이 «관측 불가»다. 그래서 「안 켠다」가 참이면 그 정책의 등급도 내려가야 하고, 거짓이면 올라간다. **소비자 수를 안 세면 «다른 문서의 등급»이 틀린다.**
 
+### ⭐ **걷기의 접기(Count · UniqueCount · Sum · Avg · Min · Max · Median · Latest)는 서버와 화면이 «같은 규칙» — 계약 벡터 하나로 둘을 채점한다** (2026-10-13 등록 · `f186a6a44`)
+
+- **어디**: 서버 `server/ledger_api/ledger_subgraph.py::_fold` · 화면 `client2/src/testbed/aggregate.js` `REDUCES` · `fold`. 기대값은 `contracts/walk_aggregate/vectors.json` 한 곳 — 서버 `server/tests/test_walk_aggregate_contract.py`, 화면 `testbed_harness.mjs` T1.
+- **언제 재사용**: 화면이 걷기 답의 값을 접어 그릴 때(축 · 칸 · 합계). 화면에 접기를 새로 적지 말고 `fold` 를 부른다 — 화면 쪽 사본은 지금 이것 하나(`client2/src` 에 Median · UniqueCount 를 적는 다른 자리 없음, 10-13 `git grep`).
+- **함정**: ⚠️ 하니스 T1 은 맨 Count 를 `fold` 로 넘기지 않고 노드 수로 답한다 — 빈 무리의 Count 0 은 `fold` 쪽에서 계약으로 안 채점된다.
+
 ### ⭐ **「이 타입에서 저 타입으로 걸을 길」은 «한 함수»가 선언에서 답한다 — 화면이 길 목록을 다시 적지 않는다** (2026-10-08 등록 · `db120a54c`)
 
 - **어디**: `client2/src/walk/derive.js` `walkableRoutes(declaration, from, to)` — 선언의 길(`pathsBetween`)에서 걷기가 거절할 것을 뺀 것(`keepWalkableRoutes`). 부르는 곳: 걷기 페이지의 길 목록(`walk/main.js`) · ~~접힌 묶음의 점을 어디서 가져오나(`walk/subgraph_view.js::_lumpSource`)~~(10-11 E2b `350e736b3` 은퇴).
