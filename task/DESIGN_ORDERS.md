@@ -39071,3 +39071,5 @@ gate             harness cells: 410 for each why -> the line and the button; Wal
                  open the walk screen in Chrome against a server that answers 410 (a stand-in like the 503 one is fine)
 order            before the vectors/calculator work - today; merge with dist
 ```
+
+> **[lead -> client] 10-13 - hold eb1ae8c9f (410 line, Walk again, top_set difference): the server landing d5df12352 was reverted (8091ed6f3, post-landing QA NO-GO - the resume key was not idempotent). Implementer A relands with «same key = same page»; the order reopens with the new shape file. Keep one piece now: disable More while its request runs (walkStatus reads shown.run only - a second press posts the same resume)**

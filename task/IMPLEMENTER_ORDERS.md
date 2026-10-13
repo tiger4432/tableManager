@@ -66994,3 +66994,25 @@ M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 
           RELEASE_LOG «재기동 — 서버» 에 «체인 워커도(짓는 쪽)» · 3 글자 미만 검색어는 색인 있어도 표 행을 다시 확인(1M 0.70 s) 한 줄
 화면      3(detail 이 객체라 클라가 문장을 못 그림 · 세기 실패가 조용히 빈 칸)은 클라 87dfa71d7 이 받음 — 답 모양(detail.message) 그대로 두고 클라에 한 줄 알림
 ```
+
+> **[총괄 -> 구현자 A] 10-13 — 걷기 이어 가기(d5df12352) 착지 뒤 검수 NO-GO -> 총괄이 되돌림(8091ed6f3). 고쳐서 다시 착지 (probe 총괄 scratchpad qaa4_*.py)**
+
+```
+높음  열쇠가 멱등이 아님 — 같은 열쇠를 다시 물으면 다음 쪽(ledger_subgraph.py:2349 _keep_walk 가 나아간 상태를 같은 열쇠에 다시 넣음)
+      × 뒤 More · More 두 번(walkStatus 가 shown.run 만 봄) · 다시 보내기 · _keep_walk 뒤 실패(_judge_aux · 직렬화 · 전송) -> 쪽이 조용히 빠지고 마지막 쪽은 complete: true
+      실측(qaa4_idempotent): 한 번 걸은 답보다 노드 3 · 엣지 3 빠짐, 같은 열쇠 동시 둘은 겹침 0 인 두 쪽. 직전 커밋은 같은 토큰 = 같은 쪽
+      -> 총괄 결정 (i): 쪽마다 열쇠가 바뀌고, 다음 쪽이 물어질 때까지 앞 쪽 상태를 남겨 둠 — «같은 열쇠 = 같은 쪽»(답 바이트). 메모리 마지막 한 단계만큼 늘어나는 것을 잼
+      게이트: 같은 열쇠 다시 · 동시 둘 · 나아간 뒤 앞 열쇠 · _keep_walk 뒤 실패 주입 — 모두 쪽 합 == 한 번
+중    핀 요청의 기다림이 몸의 시한을 먹고, 시한이 넘으면 그 프로세스의 걷기가 전부 410(process_pool.py _run :247-312) — 기다림과 몸에 시한을 따로 · 문구도 따로(기다린 것 ≠ 걷기가 느림)
+중    지시 게이트 미이행 — 씨앗 1 · 121 · 허브 씨앗에서 쪽 1 · 10 · 25 토큰 바이트 · 쪽 초 · 그리고 «보관 상태 메모리» (121 씨앗 하나 × walk_live_walks × 프로세스)
+중    이어 갈 수 없는 걷기까지 보관(R&D 보드 패널 · 시험대 · 체인 워커 contrast_walk · rows TSV) — 걷기 화면의 멈춘 걷기를 LRU 로 밀어냄
+      -> 보관은 «이어 갈 사람이 있는» 요청만(요청이 그렇다고 말하는 칸 하나 — 걷기 화면이 보냄) · 그 밖은 오늘처럼 토큰 없이 잘린 답
+중    walk_live_minutes 가 메모리를 제때 안 돌려줌 — _sweep_kept 가 다음 걷기 요청에서만 돎 -> 프로세스 안 시계(몸과 몸 사이)
+중    walk_processes 0 에서 리로드 사이 «새 선언으로 이어 감»이 살아 있음(system_reload.py:165 가 _KEPT 를 안 비움) — 은퇴 문장과 같게
+낮    L1 마지막 쪽 뒤 그 열쇠 = 410 «process ended»(거짓) · L2 핀 503 walk_pool_busy 문구 · L3 pid 재사용 + _KEPT_COUNT 겹침 -> 남의 걷기 이어 받음(열쇠에 무작위 · 사용자) ·
+      L4 열쇠 추측 · 사용자 범위 없음 · L5 한 사람의 시한이 남의 걷기를 끝냄 · L6 표 설정 저장 = recycle = 모두 reloaded(문서) · L7 mergeWalks 의 top_set 차이
+변이 생존 셋(_asked 에서 worlds · since · until · current_only 빼기 · 씨앗 다시 안 그리기 · _sweep_kept 잠금 가드) -> 칸
+문서      WALK.md:358-361 · CODE_MAP:4294 · :4289 · :860 · LEDGER_EVIDENCE_SUBGRAPH_SPEC:240 · :291 · backend.md:388 · PRIMITIVES:1709 · ingestion_settings.md:91 — 다시 착지 때
+클라      eb1ae8c9f(410 한 줄 · Walk again)는 보류시킴 — 다시 착지 때 모양 파일과 함께 다시 엶. 도는 동안 More 끄기는 클라에 같이
+순서      세기 ㄱ(하던 것) 착지 뒤 이것 — 운영은 되돌린 판(느리지만 맞음)이라 급함은 한 단계 내려감
+```
