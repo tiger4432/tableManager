@@ -884,3 +884,83 @@ void_observation · dt_transfer · bonded_from · lot_slot_move · bw_dt_seat), 
 ```
 
 다음: 원장 선언 간소화 — 짓기 전 전수 표(오늘 문법 칸 → 짧은 꼴 칸 | 뺌)와 «어긋나는 칸»을 수와 함께 먼저 올립니다.
+
+> **[구현자 B -> 총괄] 10-14 원장 선언 간소화 — 짓기 전 표: 오늘 문법 칸 → 짧은 꼴 칸 | 뺌, 소스별 옮김 판정, 어긋나는 칸과 수 (짓지 않음)**
+
+**칸 전수**(setup_bundle 의 `_validate_*` · `exact(required/optional)` 23 자리 + 바인딩 세 종류, AST 로 셈)
+```
+번들      setup_version                       -> 7
+          vocabulary · entities               -> 그대로
+          virtual_joins                       -> 뺌 — 비면 버림 · 규칙 있으면 이름 대어 거절
+소스      relation                            -> table
+          status                              -> status
+          read.unit · identity · order_by     -> 뺌 — 기본값(표의 가장 짧은 유일 키 · row). 기본과 다르면 거절
+          read.group_by · cursor              -> 뺌 — group_by 는 거절 · cursor 는 오늘도 무시
+          read.occurred_at {column · timezone · format} -> 문장 occurred_at 객체 {column · timezone · format}
+          read.occurred_at.basis              -> 뺌 — 엣지 시각이 없으면 저장 시각 자동
+          read.registration_probe             -> 뺌
+          read.exclude_when [{column · blank}] -> 문장마다 when 의 «빈 칸 아님»
+          read.exclude_when [{when: {c: v}}]   -> 문장마다 when {c: {"not": v}} — 한 칸일 때만, 여러 칸(= 또는)은 거절
+          map.implementation_id · version · unit -> 뺌 — declarative-role 기본 · 다르면 거절
+bind      mappings.<이름>                      -> sentences[{sentence: <이름>}] (원자 신원 그대로)
+          mapping.predicate · when            -> predicate · when
+          mapping.bind.<역할>                   -> 그 역할 칸(subject · target · value · occurred_at · 수식어)
+          entities.<타입>.attributes            -> 소스 attributes.<타입>
+바인딩    column {column}                      -> "칸" 글
+          column {column · timezone · format}  -> {"column", "timezone", "format"}
+          constant {value}                     -> {"const": 값}
+          entity {entity_type · keys}          -> {"node": 타입, "keys": {키: 값}}
+          entity {entity_type: {kind: column}} -> {"node": {"column": 칸}, "keys": …}
+          entity attributes                    -> 소스 attributes.<타입> — 한 문장에 같은 타입 노드가 둘이면 거절
+          approval_status · binding_origin · suggestion_reason -> 뺌(오늘도 무시)
+빈 칸     0
+```
+
+**소스별 판정**(저장소의 선언 셋 — 견본 · transfer_explorer 견본 · 시험 v5_setup)
+```
+견본 dt_job              read.occurred_at = 저장 시각(basis ingested) 인데 엣지는 event_time 을 묶음 — 짧은 꼴의 «사건 시각 = 엣지 시각»과 다름
+     lot_event (retired) group_by · 사용자 맵퍼 lot-event-role · identity · order_by 기본과 다름
+     transfer_event      옮김(시간대만 옮김)
+     die_inspection      옮김(시간대만 옮김)
+     wafer_process_recipe identity · order_by = row_id (기본 = 유일 키 proc_id)
+     lot_slot_wafer      옮김(시간대만 옮김)
+     lot_lineage         order_by = event_time + lot_lineage_key (기본 = lot_lineage_key)
+transfer_explorer dt_log group_by · identity · order_by 기본과 다름 · virtual_joins 규칙 1
+v5_setup (시험)          견본과 같은 꼴 + registration_probe(dt_job · lot_event)
+```
+
+**어긋나는 칸**(짓기 «전»에 수와 함께)
+```
+1 시간대   견본 활성 6 소스 전부 시간대를 read.occurred_at 에만 적고 사건 엣지 바인딩엔 없음.
+           짧은 꼴은 시간대를 문장 occurred_at 객체에 싣는다 -> 그대로 펼치면 바인딩에 timezone 이 생겨 «펼친 번들 ≠ 오늘 번들(해시)»
+           원자 값은 같을 것으로 보이나 안 쟀다. 번들 해시(setup_snapshot_hash)가 원자 행에 실림 — 해시가 바뀌면 다시 번역이 도는지 안 쟀다
+2 순서     ref 는 order_by 값으로, 사건 id 는 identity 로 지어짐(event_frame) -> 기본 키로 바꾸면 원자 신원이 바뀜 = 그 소스 전부 다시 번역(소급)
+           견본 활성 6 중 2(wafer_process_recipe · lot_lineage)
+3 시각 기준 dt_job 의 분자 시각 = 저장 시각, 엣지 = event_time -> 엣지 시각으로 바꾸면 사건 id 가 바뀜 = 소급. 견본 활성 6 중 1
+4 은퇴 소스 lot_event(retired)는 group_by · 사용자 맵퍼라 «못 옮김» -> «하나라도 못 옮기면 파일을 안 쓴다»에 걸려 견본 파일이 통째로 안 옮겨짐
+운영 수     운영 선언은 못 봐 소스 · 행 수 모름
+```
+
+**안 셋**
+```
+ㄱ (추천) 같은 번들로 펼치는 규칙을 둠 + 바뀌는 것만 거절
+   1 시간대: 펼칠 때 문장들의 occurred_at 이 한 {column · timezone} 이면 그 시간대를 read.occurred_at 으로 올리고 바인딩에선 뺌 — 오늘 견본 꼴이 그대로 나옴
+     (오늘 바인딩에 시간대가 따로 적힌 선언은 이 규칙으로 안 돌아옴 — 저장소 선언에선 0, 변환기가 그런 소스를 이름 대어 거절)
+   2 · 3 순서 · 시각 기준이 기본과 다른 소스는 거절 + 다음 행동(«그 소스를 다시 번역할 각오로 순서를 지우거나, 그대로 둠»)
+   4 은퇴 소스는 옮기지 않고 «은퇴 소스 N 개는 짧은 꼴에서 지움»으로 말함(번역하는 것이 없음) — 지우기가 싫으면 거절로
+   운영자: 변환 명령 dry-run -> 거절 목록 보고 그 소스만 손봄 -> --apply
+   좋은 점: 옮겨지는 소스는 원자 · 해시 그대로(다시 돌 것 0)  위험: 견본에서도 2~3 소스는 손으로 정해야 함  크기: 안 쟀다
+ㄴ 바뀌는 것도 옮기고 «다시 번역할 소스»로 말함
+   순서 · 시각 기준이 다른 소스도 짧은 꼴로 옮기고, dry-run 에 «이 소스는 전부 다시 번역 — N 행»을 적음, --apply 가 그 소스의 다시 번역을 큐에 넣음
+   좋은 점: 견본이 한 번에 옮겨짐  위험: 운영 크기에서 그 소급이 얼마인지 모름(운영 선언 · 행 수를 못 봄)  크기: 안 쟀다
+ㄷ 짧은 꼴에 «순서» 칸 하나를 남김
+   identity · order_by 를 소스 칸 하나(예 "order": [...])로 남겨 기본과 다른 소스도 신원 그대로 옮김 — 시각 기준도 같은 식
+   좋은 점: 소급 0 · 거절 0  위험: 소유자 «read 관련 다 빼고»와 어긋남(소유자께 여쭐 일)  크기: 안 쟀다
+```
+
+**여쭐 것**
+```
+1 ㄱ · ㄴ · ㄷ 중 어느 것(소유자 몫이면 그대로 올려 주세요)
+2 «하나라도 못 옮기면 파일을 안 쓴다» — 은퇴 소스는 예외로 지워도 되나
+3 번들 해시가 바뀌면 다시 번역이 도는지 — 짓기 전에 박스에서 재 볼까요(안 쟀다)
+```
