@@ -129,7 +129,7 @@ const DECLARATION = {
 // C-90 ②. 좌석의 «선언» -- 도메인 낱말이 사는 자리. `trendFromWalk` 에는 하나도 없습니다.
 const TREND_SEAT = {
   group_by: 'wafer',
-  ratio: { found: 'sum:observed@1', of: 'sum:inspected@1' },
+  ratio: { found: 'Sum:observed@1', of: 'Sum:inspected@1' },
   kinds: { type: 'defect_kind', key: 'defect_kind' },
 };
 
@@ -165,8 +165,8 @@ const TREND_WALK = {
   //    the same walk -- 「같은 걷기, 같은 예산」.
   groups: [
     { key: 'W-1', n: 2, at: '2026-07-11T08:00:00+09:00',
-      value: { 'median:radius_x': 3, 'count:radius_x': 3,
-               'sum:inspected@1': 2, 'sum:observed@1': 3 } },
+      value: { 'Median:radius_x': 3, 'Count:radius_x': 3,
+               'Sum:inspected@1': 2, 'Sum:observed@1': 3 } },
   ],
 };
 
@@ -264,7 +264,7 @@ async function suite(mods) {
       && texts.some((t) => t.startsWith('radius_x')), note && note.textContent);
     // 🔴 집계는 «데이터가 필요 없습니다». 마킹이 비어도 일곱이 전부 서 있어야 합니다.
     ok('A9 every aggregation is offered with no data at all',
-      ['median', 'mean', 'sum', 'min', 'max', 'count', 'distinct']
+      ['Median', 'Avg', 'Sum', 'Min', 'Max', 'Count', 'UniqueCount']
         .every((agg) => texts.includes(agg)),
       texts.join(' | '));
 
@@ -324,16 +324,16 @@ async function suite(mods) {
       return Boolean(el);
     };
     // 집계만 고른 상태는 «아직 축이 아닙니다» -- 무엇을 잴지가 없으면 잴 수 없습니다.
-    ok('B5 an aggregation alone is not yet an axis', pick('axis:aggregation:median')
+    ok('B5 an aggregation alone is not yet an axis', pick('axis:aggregation:Median')
       && markings.count('axis:y') === 0, `count ${markings.count('axis:y')}`);
     ok('B2 picking a qualifier completes the PAIR, and writes exactly one',
       pick('axis:qualifier:radius_x') && markings.count('axis:y') === 1,
       `count ${markings.count('axis:y')}`);
     eq('B3 ... and the pair is written as one id, aggregation and qualifier together',
-      markings.signOf('axis:y', 'axis:agg:median:radius_x'), SIGN.CASE);
+      markings.signOf('axis:y', 'axis:agg:Median:radius_x'), SIGN.CASE);
     ok('B6 changing the aggregation keeps the qualifier and still writes one',
-      pick('axis:aggregation:max') && markings.count('axis:y') === 1
-      && markings.signOf('axis:y', 'axis:agg:max:radius_x') === SIGN.CASE,
+      pick('axis:aggregation:Max') && markings.count('axis:y') === 1
+      && markings.signOf('axis:y', 'axis:agg:Max:radius_x') === SIGN.CASE,
       String(markings.entries('axis:y')));
     eq('B4 nothing was written under any other name', markings.names(), ['axis:y']);
   }
@@ -453,7 +453,7 @@ async function suite(mods) {
   // 🔴 게이트 ① (총괄 지시 ①-a): 「알약이 집계를 고르고, 고르면 «차트가 바뀐다»」. 안 바뀌면
   //    그것이 2026-08-24 에 소유자가 지적한 「알약이 차트를 안 바꾼다」의 재발입니다.
   {
-    const median = api.trendFromWalk(TREND_WALK, { aggregation: 'median', qualifier: 'radius_x' });
+    const median = api.trendFromWalk(TREND_WALK, { aggregation: 'Median', qualifier: 'radius_x' });
     eq('F1 a numeric aggregation skips the non-numeric value rather than dying on it',
       [median.points.length, median.points[0].value, median.valueKind],
       [1, 3, 'aggregate']);
@@ -463,7 +463,7 @@ async function suite(mods) {
     //    would say 「세었고 없었다」, which is the collapse this repository keeps refusing.
     //    ⚠️ The FACT is not lost quietly -- it is reported as the one thing this move costs.
     eq('F2 ... and no longer claims a skipped count, because nobody counted it', median.skipped, null);
-    const counted = api.trendFromWalk(TREND_WALK, { aggregation: 'count', qualifier: 'radius_x' });
+    const counted = api.trendFromWalk(TREND_WALK, { aggregation: 'Count', qualifier: 'radius_x' });
     eq('F3 a different pill reads a DIFFERENT measure out of the same envelope',
       [counted.points[0].value, counted.skipped], [3, null]);
     // 🔴 「하나라도 수치면 수치」는 «세는 쪽»이 두 수를 다 들고 있어야 말할 수 있습니다.
@@ -479,14 +479,14 @@ async function suite(mods) {
       [bogus.ok, bogus.state, bogus.points[0].value], [true, 'ready', null]);
     // ... and a refusal from the server is still a refusal, drawn as one.
     const refused = api.trendFromWalk({ ok: false, message: '서버가 거절했습니다' },
-      { aggregation: 'median', qualifier: 'radius_x' });
+      { aggregation: 'Median', qualifier: 'radius_x' });
     eq('F5b a refused walk stays a refusal rather than an empty chart',
       [refused.ok, refused.state], [false, 'refused']);
     // 🔴 AND A CUT WALK IS NOW A MARKER, NOT A REFUSAL. This is the defect the round exists to
     //    close: a seat whose budget cut the walk drew an EMPTY chart forever, because counting
     //    was refused outright. The numbers are drawn and the cut is said beside them.
     const cutWalk = { ...TREND_WALK, complete: false, truncated: ['nodes'] };
-    const cut = api.trendFromWalk(cutWalk, { aggregation: 'median', qualifier: 'radius_x' });
+    const cut = api.trendFromWalk(cutWalk, { aggregation: 'Median', qualifier: 'radius_x' });
     eq('F5c a cut walk still draws its numbers, and says it was cut',
       [cut.state, cut.points.length, cut.cut], ['ready', 1, true]);
 
@@ -501,12 +501,12 @@ async function suite(mods) {
       // 🔴 AND THE LOADER MODELS THE SERVER, because the fold is the server's: the measure goes
       //    on the wire, so the ANSWER depends on the axis. A fixture that answered the same
       //    thing for every pill would make 「the pill moves the chart」 unmeasurable.
-      //    `max:unit` is the contract's own refusal case (`measure_needs_numbers`) -- folding a
+      //    `Max:unit` is the contract's own refusal case (`measure_needs_numbers`) -- folding a
       //    value that is not a number is refused BY NAME rather than coerced or skipped.
       load: async ({ axis }) => {
         const key = axis && axis.aggregation && axis.qualifier
           ? `${axis.aggregation}:${axis.qualifier}` : null;
-        if (key === 'max:unit') {
+        if (key === 'Max:unit') {
           return api.trendFromWalk(
             { ok: false, reason: 'measure_needs_numbers',
               message: "'unit' is not a number" }, axis, TREND_SEAT);
@@ -514,7 +514,7 @@ async function suite(mods) {
         const folded = key && !(key in TREND_WALK.groups[0].value)
           ? { ...TREND_WALK,
               groups: [{ ...TREND_WALK.groups[0],
-                value: { ...TREND_WALK.groups[0].value, ...(key === 'max:radius_x' ? { [key]: 4 } : {}) } }] }
+                value: { ...TREND_WALK.groups[0].value, ...(key === 'Max:radius_x' ? { [key]: 4 } : {}) } }] }
           : TREND_WALK;
         return api.trendFromWalk(folded, axis, TREND_SEAT);
       },
@@ -524,12 +524,12 @@ async function suite(mods) {
     // 🔴 축은 한 번에 하나입니다 -- 화면의 `mark()` 도 지우고 씁니다. `set` 으로 쌓으면
     //    이름 아래에 둘이 남아 읽는 쪽이 «첫 것»을 보고, 그러면 바뀌지 않은 것을 바뀌었다고 재게 됩니다.
     const chooseAxis = (id) => markings.replace('axis:y', [[id, SIGN.CASE]]);
-    chooseAxis('axis:agg:median:radius_x');
+    chooseAxis('axis:agg:Median:radius_x');
     await flush(); await flush();
     const titleOf = () => String((byClass(host, 'rb-trend-dot')[0] || { getAttribute: () => '' })
       .getAttribute('title') || '');
     ok('F6 choosing the pair draws the AGGREGATE, in the axis own words',
-      titleOf().includes('median(radius_x) 3'), titleOf());
+      titleOf().includes('Median(radius_x) 3'), titleOf());
     // Guarded: a mutant that kills the axis must FAIL a named line, not crash the suite --
     // a crash reads as INERT, which is the honest word for 「아무것도 시험 안 했다」.
     const aggLegend = byClass(host, 'rb-trend-legend')[0];
@@ -539,16 +539,21 @@ async function suite(mods) {
     ok('F7 the legend no longer states a skipped count, because nobody counts it',
       Boolean(aggLegend) && !aggLegend.textContent.includes('건너뜀'),
       aggLegend ? aggLegend.textContent : host.textContent.slice(0, 140));
-    chooseAxis('axis:agg:max:radius_x');
+    chooseAxis('axis:agg:Max:radius_x');
     await flush(); await flush();
     // 🔴 이것이 게이트 ① 그 자체입니다 -- 알약이 바뀌면 «그린 수»가 바뀝니다.
     ok('F8 picking a different aggregation changes what the chart draws',
-      titleOf().includes('max(radius_x) 4'), titleOf());
+      titleOf().includes('Max(radius_x) 4'), titleOf());
+    // A board saved before Spotfire's spelling (lead fceba46a7): its marking says `max`, the chart asks and says Max.
+    chooseAxis('axis:agg:max:radius_x');
+    await flush(); await flush();
+    ok('F8b a marking saved with an old name reads as its new one - Max asked, Max drawn',
+      titleOf().includes('Max(radius_x) 4'), titleOf());
 
     // 🔴 C-90 ② / 판정 341. 「두 가지 0」의 구분은 이제 «서버»가 이름으로 답합니다: 수가 아닌
     //    값을 접는 것은 거절(`measure_needs_numbers`)이고, 화면은 그 이름을 «그대로» 그립니다.
     //    전에는 이 화면이 두 문장을 «지어» 그 구분을 흉내 냈습니다.
-    chooseAxis('axis:agg:max:unit');
+    chooseAxis('axis:agg:Max:unit');
     await flush(); await flush();
     const text = host.textContent;
     ok('F9 a fold the server refused is drawn in the SERVER`s word, not in a sentence of ours',
@@ -557,7 +562,7 @@ async function suite(mods) {
       text.slice(0, 220));
     // 그리고 «봉투가 답하지 않은» 이름은 거절이 «아닙니다» -- 값이 없을 뿐이고, 화면은 그것에
     // 대해서도 문장을 짓지 않습니다. 두 경우가 «같은 낱말»이 되면 구분이 사라집니다.
-    chooseAxis('axis:agg:max:gate');
+    chooseAxis('axis:agg:Max:gate');
     await flush(); await flush();
     ok('F10 ... and a measure the envelope simply did not answer invents no sentence either',
       !host.textContent.includes('measure_needs_numbers')
@@ -677,6 +682,9 @@ const MUTANTS = [
       '    yTop.textContent = formatValue(m, top);') } },
   // 🔴 총괄이 라이브에서 잡은 결함입니다 (14:3x): 좌석이 이름을 똄 뒤에도 «부품의 기본값»이
   //    죽은 라우트를 되살립니다. 선언에서 사라졌는지를 재는 게이트는 그때 «초록»입니다.
+  { id: 'M21', what: 'an old saved name is not folded, so a board saved before Spotfire\'s spelling asks a name nobody answers',
+    catches: 'F8b',
+    mutate: { 'api.js': (s) => s.replace('  return AGGREGATION_WAS[name] || name;', '  return name;') } },
   { id: 'M20', what: 'the trend invents a collect nobody declared, reviving the dead route',
     catches: 'E2',
     mutate: { 'main_trend_panel.js': (s) => s.replace(

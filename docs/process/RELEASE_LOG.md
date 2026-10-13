@@ -457,7 +457,7 @@
 - **화면에서** — 알약 → «Custom expression…» → 칸에 식 → Enter 또는 «OK». 못 읽는 식은 칸 밑에 사유 한 줄이고 칸은 그대로입니다 — 예 «The expression ends too soon» · «No value named nope on wafer» · «NormDist is not in this edition». 알약 · 제목에는 식 글이 그대로 나옵니다.
 - **쓰는 법** — `[이름]` 은 그 행 노드의 자기 값입니다(속성 · 키, `[name]` 은 이름표). 예 `Avg([void_ratio])` · `If([size] > 10, 1, 0)` · `case [recipe] when "A" then 1 else 0 end`. 산점도의 점은 그 행 하나로, 크로스 테이블의 칸 · 합계는 그 칸의 행 전부로 계산합니다. 값을 여럿 가진 행을 집계 없이 쓰면 그 점은 그리지 않습니다(값 여럿).
 - **필요한 조건** — 클라 빌드만.
-- **바뀐 동작** — 시험대의 접기(Count · UniqueCount · Sum · Avg · Min · Max · Median · Latest)는 계산기의 함수 표를 부릅니다 — 답은 같습니다. 글로 적힌 수는 앞뒤 빈칸을 떼고 «부호 · 숫자 · 소수점 · 지수»만일 때 수입니다(총괄 10-13). 전에 수로 읽히던 `0x10` 같은 글은 이제 글이고, 걷기 표 · 트렌드도 같은 함수(`numberOf`)라 같이 바뀝니다.
+- **바뀐 동작** — 시험대의 접기(Count · UniqueCount · Sum · Avg · Min · Max · Median · Latest)는 계산기의 함수 표를 부릅니다 — 답은 같습니다. 글로 적힌 수는 앞뒤 빈칸을 떼고 «부호 · 숫자 · 소수점 · 지수»만일 때 수입니다(총괄 10-13). 전에 수로 읽히던 `0x10` 같은 글은 이제 글이고, 걷기 표 · 트렌드도 같은 함수(`numberOf`)라 같이 바뀝니다. R&D 보드의 집계 알약도 스팟파이어 철자입니다(Median · Avg · Sum · Min · Max · Count · UniqueCount, 소유자가 정한 이름 — 총괄 fceba46a7). 옛 이름(median · mean · sum · min · max · count · distinct)으로 적힌 선언 · 마킹은 새 이름으로 읽힙니다.
 - **아직 아님** — `[길.이름]` · 타입("키") · Reach · 칠 때 추천 목록은 다음 착지입니다. 분포 함수(NormDist 등)는 둘째 판입니다.
 - **자세히** — 이 항목과 같은 커밋 · `contracts/expression/vectors.json` · `task/SPOTFIRE_FUNCTIONS.md` · 하니스 `client2/tests/expression_vectors_harness.mjs` · `testbed_harness` T27 · T28.
 
@@ -474,7 +474,7 @@
 - **필터 판 · 속성 창** — 필터 판은 시스템 필터(이름 «Filter»)를 고칩니다. 활성 부품의 값 칸마다 조건 하나(숫자는 범위, 글은 값 체크와 개수, «Include empty»)입니다. 고치면 그 필터를 쓰는 부품이 시작 쪽부터 다시 거릅니다 — 넓히면 시작 쪽에서 뺐던 노드가 돌아옵니다. 씨앗에서 걸은 답은 들고 있던 것을 다시 쓰고, 시작 노드를 뺐을 때만 남은 시작에서 다시 걷습니다(전에는 받은 쪽만 다시 접어서 넓혀도 안 돌아왔음, 총괄 9e6223919). 속성 창은 활성 부품의 선언을 그 자리에서 고칩니다: Data(Marking · Route · Filtering · Filter + Add filter), 칸마다 알약, Marking(Writes · Shows).
 - **저장** — Save 는 부품 선언만 이 브라우저에 둡니다. 마킹과 필터 판은 저장되지 않아서 다시 열면 비어 있습니다 — 시작이 «All» 인 부품은 같은 그림이고, 마킹에서 걷는 부품은 시작을 다시 고르면 같은 그림입니다. Reset 은 지우고 처음 배치로 돌아갑니다. Light/Dark 로 테마를 바꿉니다.
 - **화면에서** — `testbed.html` → 오른쪽 위 Visualization properties 에서 Marking «All» · Route 를 고르고, X-axis 알약을 눌러 Route · Ends at · Value · Reduce 를 고릅니다.
-- **아직 아님** — 계산식(Custom expression…)은 「계산식 — 시험대 값 칸에 스팟파이어 식(Custom expression…), 계산기 하나 · 함수 표 하나」에서 켜졌습니다. 칸 하나에 값 여럿(+)은 아직 고르개를 다시 엽니다. R&D 보드의 집계 고르개 이름(`AGGREGATIONS`)의 스팟파이어 철자는 아직입니다(계산식 착지와 따로, 총괄 판단 대기).
+- **아직 아님** — 계산식(Custom expression…)은 「계산식 — 시험대 값 칸에 스팟파이어 식(Custom expression…), 계산기 하나 · 함수 표 하나」에서 켜졌습니다. 칸 하나에 값 여럿(+)은 아직 고르개를 다시 엽니다. R&D 보드의 집계 고르개 이름은 「계산식」 착지에서 스팟파이어 철자가 됐습니다.
 - **필요한 조건** — 클라 빌드만(새 의존성 `echarts` 6.1.0, 이 화면 번들에만 들어감).
 - **자세히** — 이 항목과 같은 커밋. 참조 `task/SPOTFIRE_SCATTER_REFERENCE.md`, 시안 `task/TESTBED_MOCKUP.html`.
 

@@ -31,7 +31,7 @@
 
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
-import { createWalk, AGGREGATIONS, qualifiersFromDeclaration, qualifierTypesFromWalk } from './api.js';
+import { createWalk, AGGREGATIONS, aggregateAxisOf, aggregationName, qualifiersFromDeclaration, qualifierTypesFromWalk } from './api.js';
 import { LOADING, NO_VALUE } from '../ui_words.js';
 
 /**
@@ -61,7 +61,7 @@ export class ControlBarPanel extends Panel {
     this.declarationState = 'idle';
     this.declarationMessage = null;
     // 아직 아무 쌍도 안 골랐을 때의 «집계». 고정 목록에서 오므로 데이터가 없어도 값이 있습니다.
-    this.aggregation = options.aggregation || 'count';
+    this.aggregation = aggregationName(options.aggregation) || 'Count';
     this._numericOff = null;
     this._sampledKey = null;
     // 🔴 후보 «질문 전체»를 받습니다. 전에는 `candidateCollect` 한 칸만 받아서 맨몸으로
@@ -164,13 +164,9 @@ export class ControlBarPanel extends Panel {
    */
   _chosenPair() {
     const entries = this.markings && this.reads ? this.markings.entries(this.reads) : [];
-    const id = entries.length ? entries[0][0] : null;
-    const parts = String(id || '').split(':');
-    if (parts[1] !== 'agg') return { aggregation: this.aggregation, qualifier: null };
-    const rest = parts.slice(2).join(':');
-    const cut = rest.indexOf(':');
-    if (cut < 0) return { aggregation: rest || this.aggregation, qualifier: null };
-    return { aggregation: rest.slice(0, cut), qualifier: rest.slice(cut + 1) };
+    const pair = aggregateAxisOf(entries.length ? entries[0][0] : null);
+    if (!pair) return { aggregation: this.aggregation, qualifier: null };
+    return { aggregation: pair.aggregation || this.aggregation, qualifier: pair.qualifier };
   }
 
   /** 쌍이 «완성됐을 때만» 축이 됩니다. 집계만 고른 상태는 아직 축이 아니라 «고르는 중»입니다. */
