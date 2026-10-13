@@ -26,6 +26,7 @@
 >          작은 라우트 /tables  p50 2.05 s · p95 2.45 s          p50 0.006 s · p95 0.02 s
 >          웹 연결 최대        20~27                            9 (+ 그리드 프로세스 4)
 >          섞인 판(쪽 · 정렬 · 필터 · 수)은 쪽 p50 이 줄고 p95 는 늘었다(첫 쪽 2.63 -> 3.72 s) — 쪽이 그리드 프로세스 둘을 기다린 것
+> 되돌리기  git revert -m 1 6f34a1320 -> 서버 재기동 (혼자 되돌아감 — 10-13 잼. 급하면 위 «급할 때» 줄이 재기동 없이 같은 동작)
 > ⚠️ 안 잰 것  grid_processes 2 넘는 값 · 운영 크기 · 그리드 프로세스 하나의 메모리
 > ```
 >
@@ -44,7 +45,7 @@
 > 설정     ingestion_settings.json "grid_auto_index_after_seconds": 1   없으면 1 · 0/null = 그리드가 안 물음 · 요청마다 읽음
 >                                  "auto_index_per_table": 10          없으면 10 · 0 = 자동 인덱스 안 지음
 > 볼 것    어드민 Overview «Indexes» 표 — source auto, purpose «auto (decide key)» · «auto (slow sort)» · «auto (slow filter)»
->          server.log(그리드 프로세스가 돌면 grid_pool.log)
+>          grid_pool.log(그리드 쪽 몸통이 그리드 프로세스에서 돈다 — grid_processes 0 이면 server.log)
 >            [Indexes] asked for an automatic index on dt_log (dt_lot) - slow sort, the read took 1.0 s
 >          chain_worker.log
 >            [Indexes] building ix_auto_dt_log_dt_lot on dt_log  ·  [Indexes] ix_auto_dt_log_dt_lot built in N s
