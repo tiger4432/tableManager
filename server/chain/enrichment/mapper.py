@@ -177,7 +177,7 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                     key = _clean_key(source_table, decision_key, row[:len(cols)])
                     values = dict(zip(read, row[len(cols):]))
                     if timed:
-                        values["$at"] = row_time(timed, values)
+                        values["$at"] = row_time(timed, values, source_table)
                     key_rows.setdefault(key, []).append(values)
             for row in rows:
                 key = _clean_key(source_table, decision_key, row[:len(cols)])
@@ -200,7 +200,10 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
             # A set is only a set until every storage of the key is folded - then it is the cell.
             bucket[name] = plan[name]["done"](bucket[name]) if name in bucket else plan[name]["empty"]
         for name in by_rows:
-            answer = expression.run(plan[name]["rows"], key_rows.get(key, []), types)
+            rows = key_rows.get(key, [])
+            if "time" in plan[name]:                    # a row with no atom is not in Latest's set (총괄 review)
+                rows = [row for row in rows if row["$at"] is not None]
+            answer = expression.run(plan[name]["rows"], rows, types)
             bucket[name] = answer.get("value")
     return results
 

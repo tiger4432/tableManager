@@ -249,15 +249,21 @@ def sources_for_table(setup, table_name):
 def time_of_table(setup, table_name):
     """(time, None) - the one time the ledger gives this table's rows: {"occurred_at": the sources' OccurredAtPlan,
     "excluded_by": each source's `read.exclude_when`} - or (None, why): no source reads it, or its sources read
-    it at different times (총괄 112293f73 - a decide's Latest orders rows by it)."""
+    it at different times, or a source's time is a group's and not a row's (총괄 112293f73 - a decide's Latest orders
+    rows by it; a `basis` source that groups rows times the group by its earliest load, `event_frame`)."""
     names = sources_for_table(setup, table_name)
     if not names:
         return None, "no ledger source reads it"
     plans = [setup.snapshot.source_plans[name] for name in names]
     times = [plan.driver.occurred_at for plan in plans]
+    grouped = [(name, plan) for name, plan in zip(names, plans) if plan.driver.occurred_at.basis and plan.driver.group_by]
+    if grouped:
+        name, plan = grouped[0]
+        return None, "it needs one atom time per row; %s groups rows by %s" % (name, ", ".join(plan.driver.group_by))
     if len({(at.column, at.timezone, at.format) for at in times}) > 1:
         return None, "its sources read it at different times: " + ", ".join(
-            "%s (%s)" % (name, at.column) for name, at in zip(names, times))
+            "%s (%s)" % (name, " ".join(str(part) for part in (at.column, at.timezone, at.format) if part))
+            for name, at in zip(names, times))
     return {"occurred_at": times[0], "excluded_by": [plan.driver.exclude_when for plan in plans]}, None
 
 

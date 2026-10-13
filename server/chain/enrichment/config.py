@@ -331,26 +331,30 @@ def latest_refusal(name, table, why) -> str:
 
 def time_columns(time) -> list:
     """The source columns a row's ledger time is read from: the time column and the columns `exclude_when` asks."""
-    columns = [time["occurred_at"].column]
-    for clauses in time["excluded_by"]:
-        for clause in clauses:
-            columns.extend([clause["column"]] if "column" in clause else list(clause.get("when") or ()))
-    return list(dict.fromkeys(columns))
+    from ledger.setup_bundle import exclusion_columns
+
+    return list(dict.fromkeys([time["occurred_at"].column] + [
+        column for clauses in time["excluded_by"] for clause in clauses for column in exclusion_columns(clause)]))
 
 
-def row_time(time, row):
-    """A row's ledger time in ms - read by the ledger's own reader (`roleframe.aware_time`) - or None: a row every
-    source's `exclude_when` takes out, or a time it cannot read, has no atom and so no time."""
-    from ledger.event_frame import row_excluded
-    from ledger.roleframe import aware_time
+def row_time(time, row, table):
+    """A row's ledger time in ms, read by the ledger's own reader (`roleframe.aware_time`) - or None for a row with no
+    atom: every source's `exclude_when` takes it out, or its time is blank. A time the ledger cannot read is a failure
+    named by its cell, not a row quietly left out (총괄 review of e2c3a9a15)."""
+    from ledger.event_frame import is_blank_source_value, row_excluded
+    from ledger.roleframe import RoleFrameError, aware_time
 
     if time["excluded_by"] and all(row_excluded(clauses, row.get) for clauses in time["excluded_by"]):
         return None
     at = time["occurred_at"]
-    try:
-        return aware_time(row.get(at.column), at.timezone, "occurred_at", fmt=at.format).timestamp() * 1000
-    except Exception:                                           # noqa: BLE001 - no time, as the ledger refuses it
+    value = row.get(at.column)
+    if is_blank_source_value(value):
         return None
+    try:
+        return aware_time(value, at.timezone, "occurred_at", fmt=at.format).timestamp() * 1000
+    except RoleFrameError as exc:
+        raise ValueError("Latest: %s.%s holds %r, which the ledger cannot read as its time - %s"
+                         % (table, at.column, value, exc)) from exc
 
 
 def _parse_expression(name: str, text: str, table=None):
