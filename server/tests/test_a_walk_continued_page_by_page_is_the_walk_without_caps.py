@@ -83,10 +83,6 @@ def declared(tmp_path):
     ledger_subgraph.reset_declaration_cache()
 
 
-CURSORS = {}                    # id(page) -> the kept walk's cursor after it
-TOKEN_BYTES = 100               # a page's more.resume as sent: {"walk": "<server start>.<pid>.<n>"}
-
-
 def walk(declared, atoms, resume=None, nodes=ledger_subgraph.DEFAULT_NODE_LIMIT,
          edges=ledger_subgraph.DEFAULT_EDGE_LIMIT, follow=None):
     return ledger_subgraph.subgraph(
@@ -112,8 +108,7 @@ def _ranked(answer):
 
 
 def pages(declared, atoms, nodes, edges, first=None, follow=None):
-    """Every page until none is left: [(answer, nodes so far)] - from `first`, a page already walked, when given. The
-    paused walk stays in this process (총괄 54f7edfdb): its cursor is read from where it is kept, beside each page."""
+    """Every page until none is left: [(answer, nodes so far)] - from `first`, a page already walked, when given."""
     out, held = [], set()
     answer = first or walk(declared, atoms, None, nodes, edges, follow)
     for _ in range(200):
@@ -121,7 +116,6 @@ def pages(declared, atoms, nodes, edges, first=None, follow=None):
         out.append((answer, set(held)))
         if answer["more"]["resume"] is None:
             return out
-        CURSORS[id(answer)] = ledger_subgraph._KEPT[answer["more"]["resume"]["walk"]]["state"]["cursor"]
         # what a client hands back is what went over the wire
         answer = walk(declared, atoms, json.loads(json.dumps(answer["more"]["resume"])), nodes, edges, follow)
     raise AssertionError("still more after 200 pages")
@@ -141,7 +135,6 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert explorer.entity_id("operator", {"o": "O1"}) in every, "canary: O1 is reached only by the static seed's step"
 
     wrong, said_whole_early, over_caps, deepest_read, most, ranked_wrong, spent_again = [], [], [], 0, 0, [], []
-    big_token = []
     rank_wrong = []
     for claims in range(1, 13):
         monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", claims)
@@ -173,13 +166,10 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
                     ranked_wrong.append((claims, nodes, edges, "hops", len(unnamed), len(differ)))
                 # 총괄 10-12: a page's rank · top · tied · incomparable and its top_set are among every node reached so
                 # far - its own rows and the pages' before - not among its own rows alone
-                # 총괄 54f7edfdb: a page is a delta - top_set came in, top_set_left went out; read in turn, the top set
-                so_far, top_now = {}, set()
+                so_far = {}
                 for answer, _held in run:
                     rows = answer["propagation"]["ranked"]
                     so_far.update({row["id"]: row["reach"] for row in rows})
-                    top_now = ((top_now - set(answer["propagation"].get("top_set_left") or ()))
-                               | set(answer["propagation"]["top_set"]))
                     if not rows:
                         continue
                     layers = ledger_subgraph._rank_layers([{"id": n, "reach": r} for n, r in so_far.items()])
@@ -187,17 +177,15 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
                               for layer in layers for it in layer}
                     if (any((row["rank"], row["top"], row["tied"], row["incomparable"]) != expect[row["id"]]
                             for row in rows)
-                            or sorted(top_now) != sorted(it["id"] for it in layers[0])):
+                            or sorted(answer["propagation"]["top_set"]) != sorted(it["id"] for it in layers[0])):
                         rank_wrong.append((claims, nodes, edges))
                         break
                 if merged != ranked:
                     ranked_wrong.append((claims, nodes, edges, len(set(ranked) - set(merged)),
                                          sum(1 for n in merged if n in ranked and merged[n] != ranked[n])))
                 for answer, held in run:
-                    deepest_read = max(deepest_read, int((CURSORS.get(id(answer)) or {}).get("read") or 0))
-                    # the token is a key, whatever the walk has reached (총괄 54f7edfdb: 10 MB at page 47 before)
-                    if len(json.dumps(answer["more"]["resume"])) > TOKEN_BYTES:
-                        big_token.append((claims, nodes, edges, len(json.dumps(answer["more"]["resume"]))))
+                    deepest_read = max(deepest_read, int(((answer["more"]["resume"] or {}).get("cursor") or {})
+                                                         .get("read") or 0))
                     for kind, said in answer["more"]["reach"].items():
                         missing = {n for n, k in every.items() if k == kind} - held
                         if said["complete"] and missing:
@@ -210,7 +198,6 @@ def test_every_cap_paged_and_merged_is_the_walk_without_caps(declared, monkeypat
     assert wrong == [], wrong
     assert said_whole_early == [], said_whole_early
     assert over_caps == [], over_caps
-    assert big_token == [], big_token
     assert ranked_wrong == [], ranked_wrong
     assert spent_again == [], spent_again
     assert rank_wrong == [], rank_wrong
@@ -226,10 +213,9 @@ def test_an_atom_written_after_the_first_page_is_in_no_page_after_it(declared, m
     monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", 6000)
     assert new in {node["id"] for node in walk(declared, later)["nodes"]}, "canary: a walk now reaches it"
     monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", 3)
-    first_as_of = ledger_subgraph._KEPT[first["more"]["resume"]["walk"]]["state"]["as_of"]    # kept with the walk
     run = pages(declared, later, 400, 6000, first=first)
     assert len(run) >= 2
-    assert {answer["more"]["as_of"] for answer, _held in run[1:]} == {first_as_of}
+    assert {answer["more"]["as_of"] for answer, _held in run[1:]} == {first["more"]["resume"]["as_of"]}
     assert new not in run[-1][1]
 
 
