@@ -631,7 +631,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '{ marked, palette: this.palette(), declaration: this.decl }', '{ marked, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
+    mutate: (t) => swap(t, '{ marked, markColor: this.markColor(), palette: this.palette(), declaration: this.decl }', '{ marked, markColor: this.markColor(), palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
   { id: 'M31', what: 'a words-only pill opens the picker too', catches: 'T11', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    if (this.slotList().some((s) => s.key === key)) p.addEventListener(', '    if (true) p.addEventListener(') },
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',

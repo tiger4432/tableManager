@@ -9,7 +9,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { GridShell } from '../rnd_board/grid_shell.js';
 import { MarkingStore } from '../rnd_board/marking_store.js';
 import { fetchSubgraph, fetchDeclaration, fetchKeyValues } from '../rnd_board/api.js';
-import { VisualPart } from './visual_part.js';
+import { VisualPart, markingsOf, withoutMarking } from './visual_part.js';
 import { StartPart } from './start_part.js';
 import { BannerPart } from './banner_part.js';
 import { StatusPart } from './status_part.js';
@@ -26,15 +26,19 @@ export const PARTS = Object.freeze({ visual: VisualPart, start: StartPart, statu
   properties: PropertiesPart, banner: BannerPart });
 /** The kinds, in the add window's order (Spotfire's: Table, Cross table, …, Scatter plot). */
 export const KINDS = Object.freeze({ table: tableKind, crossTable: crossKind, scatter: scatterKind });
-/** The page's markings and system filters, each its people's name (mockup fix ④). */
-export const MARKINGS = Object.freeze([{ name: 'marking:start', label: 'Start' }, { name: 'marking:pick', label: 'Pick' }]);
+/** The page's markings when nothing is saved - a declaration the people add to, rename, colour and delete (Spotfire's
+ *  Edit › Markings; Pick in Spotfire's default marking green). Its system filters. Each its people's name (mockup fix ④). */
+export const MARKINGS = Object.freeze([{ name: 'marking:start', label: 'Start', color: '#F08C00' },
+  { name: 'marking:pick', label: 'Pick', color: '#00A650' }]);
+/** A new marking's colours, in turn (the first not in use). */
+export const MARKING_COLORS = Object.freeze(['#3B82F6', '#D63384', '#8B5CF6', '#14B8A6', '#E11D48', '#84CC16']);
 export const FILTERS = Object.freeze([{ name: 'filter:1', label: 'Filter' }]);
 const SAVED = 'testbed:visuals';
 
 /** A visual as the page seats one - the layout's and one the left bar adds: walked from the start, the page's filter,
  *  showing and writing the pick. Its kind, id and row type are its own. */
 export const VISUAL = Object.freeze({ part: 'visual', row: null, start: { marking: 'marking:start' }, system: 'filter:1', filter: [],
-  encode: {}, reads: 'marking:pick', writes: 'marking:pick' });
+  encode: {}, writes: 'marking:pick' });
 
 // The page (lead 10-13, Spotfire's): the visualization area is a split tree of the visuals; the left bar, the start row,
 // the status bar, the properties and the filters are docked chrome around it (rnd_board/grid_shell.js).
@@ -114,6 +118,38 @@ export async function boot(deps) {
   let saved = null;
   try { saved = storage ? JSON.parse(storage.getItem(SAVED) || 'null') : null; } catch (e) { saved = null; }
   const shell = new GridShell(host, { doc, markings, parts: PARTS });
+  const markingList = new KeyedStore({ list: ((saved && !Array.isArray(saved) && saved.markings) || MARKINGS).map((m) => ({ ...m })) });
+  /** The panels that name a marking - received or emitted (visual_part.markingsOf). */
+  const usersOf = (name) => shell.layoutNow().panels.filter((p) => {
+    const { start, limit, emits } = markingsOf(p);
+    return start === name || emits === name || limit.includes(name);
+  });
+  const titleOf = (p) => (shell.partOf(p.id) && shell.partOf(p.id).titleWords ? shell.partOf(p.id).titleWords() : p.title || p.id);
+  /** Spotfire's Edit › Markings: a new one (its name the next free, its colour the next unused), a label or colour
+   *  changed, one deleted - the visuals that walked from it walk from «All», limits lose it, a part writing it writes
+   *  none. One a docked panel names (the start row writes Start) is not deleted: the reply names it. */
+  const markingBook = {
+    list: markingList,
+    add() {
+      const list = markingList.get('list');
+      let n = list.length + 1;
+      while (list.some((m) => m.name === `marking:${n}`)) n += 1;
+      const color = MARKING_COLORS.find((c) => !list.some((m) => m.color === c)) || MARKING_COLORS[0];
+      markingList.set('list', [...list, { name: `marking:${n}`, label: `Marking (${n})`, color }]);
+      return `marking:${n}`;
+    },
+    edit(name, patch) { markingList.set('list', markingList.get('list').map((m) => (m.name === name ? { ...m, ...patch } : m))); },
+    users: (name) => usersOf(name).map(titleOf),
+    remove(name) {
+      const users = usersOf(name);
+      const fixed = users.filter((p) => p.part !== 'visual');
+      if (fixed.length) return { removed: false, users: fixed.map(titleOf) };
+      for (const p of users) shell.partOf(p.id).setDeclaration(withoutMarking(shell.partOf(p.id).declaration(), name));
+      markings.clear(name);
+      markingList.set('list', markingList.get('list').filter((m) => m.name !== name));
+      return { removed: true, users: users.map(titleOf) };
+    },
+  };
   const shared = {
     kinds: KINDS, filters, stats, active, hubs, names, charts: deps.charts,
     fetchWalk: (params) => fetchSubgraph({ apiBase, fetchImpl, ...params }),
@@ -121,7 +157,8 @@ export async function boot(deps) {
     oneValued: oneValuedBy(declaration.ok ? declaration.predicates : []),
     openPicker: (at) => picker.open(at),
     partOf: (id) => shell.partOf(id),
-    entities, markingNames: MARKINGS, filterNames: FILTERS,
+    entities, markingList, markingBook, filterNames: FILTERS,
+    peers: () => declarations(),
     askKeys: ({ type, startsWith }) => fetchKeyValues({ apiBase, fetchImpl, type, startsWith, limit: 20 }),
     onAdd: (kind) => add(kind),
   };
@@ -140,9 +177,9 @@ export async function boot(deps) {
   };
   /** The visuals' declarations as they stand, in the tree as it stands. */
   const declarations = () => shell.layoutNow().panels.filter((p) => p.part === 'visual');
-  /** What Save writes and the next boot lays over the layout: the tree and the visuals. */
+  /** What Save writes and the next boot lays over the layout: the tree, the visuals and the markings. */
   const save = () => {
-    const kept = { root: shell.layoutNow().root, visuals: declarations() };
+    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list') };
     try { if (storage) storage.setItem(SAVED, JSON.stringify(kept)); } catch (e) { /* not kept */ }
     return kept;
   };
@@ -153,7 +190,7 @@ export async function boot(deps) {
       if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.sf-pill, .sf-plus'))) picker.close();
     });
   }
-  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add };
+  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add, markingBook };
 }
 
 // ── the browser ──

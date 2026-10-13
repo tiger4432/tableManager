@@ -144,6 +144,14 @@
 .sf-flyout__it { display: flex; align-items: center; justify-content: flex-start; gap: 20px; width: 100%; height: var(--sf-flyout-row); min-height: 0; padding: 0 12px;
   letter-spacing: normal; border: 0; background: transparent; color: inherit; font: 700 var(--sf-fs-flyout)/var(--sf-lh) var(--sf-font); text-align: left; cursor: pointer; }
 .sf-flyout__it:hover { background: var(--sf-panel-head); }
+/* the markings window: a line a marking - its colour, its name, × */
+.sf-mark { display: flex; align-items: center; gap: var(--sf-tool-gap); height: var(--sf-flyout-row); padding: 0 12px; }
+.sf-mark__color { width: var(--sf-banner-icon); height: var(--sf-banner-icon); min-height: 0; padding: 0; border: 1px solid var(--sf-panel-pill); background: transparent; cursor: pointer; }
+.sf-mark__name { flex: 1 1 auto; min-width: 0; height: var(--sf-pill-h); min-height: 0; padding: 0 8px; border: 1px solid var(--sf-panel-pill); border-radius: 100px;
+  background: var(--sf-panel-bg); color: inherit; font: 400 var(--sf-fs-flyout)/var(--sf-lh) var(--sf-font); }
+.sf-mark__x { width: var(--sf-tool-w); min-height: 0; padding: 0; border: 0; background: transparent; color: var(--sf-tool); font-size: var(--sf-fs-flyout); cursor: pointer; }
+.sf-mark__ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sf-tool-gap); padding: 4px 12px 8px; color: var(--sf-panel-muted); }
+.sf-props__refused { color: var(--sf-panel-text); }
 
 /* ── a popover (the slot picker): Spotfire's menu - white, items 31, text inset 40 ── */
 .sf-pop-host { position: fixed; z-index: 30; }

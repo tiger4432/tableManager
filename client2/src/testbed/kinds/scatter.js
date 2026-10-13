@@ -26,7 +26,8 @@ export function axisKind(values) {
  * lead aca803a7a «N rows with several values»); its colour is its category's, mixed toward the background when something
  * else is marked and it is not.
  * @param {Array<{id, label, reads: Record<string, object>}>} rows
- * @param {{marked: (id) => boolean, palette: object, declaration?: object}} ctx  the declaration's markerPct - the marker size
+ * @param {{marked: (id) => boolean, markColor?: string|null, palette: object, declaration?: object}} ctx  the declaration's
+ *   markerPct - the marker size
  */
 export function scatterModel(rows, ctx) {
   const palette = ctx.palette;
@@ -46,6 +47,8 @@ export function scatterModel(rows, ctx) {
     const [fill, border] = k < 0 ? palette.one : categoryColor(palette, k);
     const marked = ctx.marked(p.id);
     const dim = anyMarked && !marked;
+    // A marked point in its marking's colour (Spotfire's), the others dimmed toward the background.
+    if (marked && ctx.markColor) return { ...p, marked, fill: ctx.markColor, border: ctx.markColor };
     return { ...p, marked, fill: dim ? mix(fill, palette.bg) : fill, border: dim ? mix(border, palette.bg) : border };
   });
   const legend = categories.map((name, k) => ({ name, fill: categoryColor(palette, k)[0], border: categoryColor(palette, k)[1],

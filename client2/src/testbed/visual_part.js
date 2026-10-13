@@ -5,7 +5,9 @@
 // 갈리는 축이 아니다»).
 //
 // declaration  { id, part: 'visual', kind, title?, row, start: {marking: name|null}, system: name|null,
-//                filter: [conditions], limit: {markings, must, none} | null, encode: {slotKey: slot}, reads: name, writes: name }
+//                filter: [conditions], limit: {markings, must, none} | null, encode: {slotKey: slot}, writes: name }
+//   the markings it RECEIVES - start.marking (walked from) and limit.markings; the one it EMITS - writes, the one a press
+//   marks and the one it shows marked (Spotfire's one «Marking»). markingsOf is the one place that reads the three.
 //   start.marking null - «All»: every node of the row type (seed_type)
 //   system - the system filter it uses (Spotfire «Use filtering from page»), null none; filter - its own final conditions
 //   limit - Spotfire's «Limit data using markings» (owner 10-13): only the rows the named markings hold (limitRows)
@@ -27,8 +29,15 @@ export class VisualPart extends Panel {
     super(host, deps);
     const d = deps || {};
     // The declaration without the page's dependencies (`options` - the stores, the walk): those are the page's, not saved.
-    const { options: _pageDeps, ...own } = d.declaration || {};
+    // `reads` is not a field: the marking it shows is the one it writes (an older save's reads is dropped).
+    const { options: _pageDeps, reads: _shown, ...own } = d.declaration || {};
     this.decl = JSON.parse(JSON.stringify(own));
+    this.writes = this.decl.writes || null;
+    this.reads = this.writes;
+    // The page's declared markings ({list: [{name, label, color}]}) and the other visuals' declarations (the loop check).
+    this.markingList = d.markingList || null;
+    this.peers = d.peers || (() => []);
+    this.loop = null;
     this.kinds = d.kinds || {};
     this.fetchWalk = d.fetchWalk;
     this.filters = d.filters;
@@ -64,6 +73,8 @@ export class VisualPart extends Panel {
     // The system filter changed: from its start side again - a node it let go comes back when it widens.
     if (this.filters) off.push(this.filters.subscribe('*', (name) => { if (name === this.decl.system) this.load(); }));
     if (this.active) off.push(this.active.subscribe('active', () => this.paintActive()));
+    // A marking's colour changed: its marked points and lines.
+    if (this.markingList) off.push(this.markingList.subscribe('list', () => this.refold()));
     this._offs = off;
     this.listenLimit();
     if (this.host && typeof this.host.addEventListener === 'function') {
@@ -85,8 +96,12 @@ export class VisualPart extends Panel {
   /** The declaration as it stands - what Save writes and a reopen reads back. */
   declaration() { return JSON.parse(JSON.stringify(this.decl)); }
 
-  /** A changed declaration: a new start, row type or system filter walks again; anything else folds again. */
-  setDeclaration(next) {
+  /** A changed declaration: a new start, row type or system filter walks again; anything else folds again. One that
+   *  closes a loop of markings with the page's other visuals is refused and the loop named (`this.loop`). */
+  setDeclaration(asked) {
+    const { reads: _shown, ...next } = asked;
+    this.loop = chainLoop([...this.peers().filter((d) => d.id !== next.id), next]);
+    if (this.loop) { this.publish(); return false; }
     const walkAgain = JSON.stringify([next.start, next.row, next.system]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system]);
     const before = this.decl;
     this.decl = JSON.parse(JSON.stringify(next));
@@ -95,14 +110,15 @@ export class VisualPart extends Panel {
     this.listen(before);
     this.listenLimit();
     if (walkAgain) this.load(); else this.refold();
+    return true;
   }
 
-  /** The markings it hears follow its declaration: the one it shows, the one it starts from. */
+  /** The markings it hears follow its declaration: the one it writes (and shows), the one it starts from. */
   listen(before) {
     if (!this.markings) return;
-    if ((before.reads || null) !== (this.decl.reads || null)) {
+    if ((before.writes || null) !== (this.decl.writes || null)) {
       if (this._unsubscribe) this._unsubscribe();
-      this.reads = this.decl.reads || null;
+      this.reads = this.decl.writes || null;
       this._unsubscribe = this.reads ? this.markings.subscribe(this.reads, () => this.onMarkingChanged()) : null;
     }
     const was = before.start && before.start.marking;
@@ -121,8 +137,6 @@ export class VisualPart extends Panel {
     const names = ((this.decl.limit && this.decl.limit.markings) || []).filter((n) => !heard.has(n));
     this._limitOffs = this.markings ? names.map((n) => this.markings.subscribe(n, () => this.refold())) : [];
   }
-
-  showMarking(name) { this.setDeclaration({ ...this.decl, reads: name }); }
 
   setSlot(key, slot) {
     const encode = { ...(this.decl.encode || {}) };
@@ -148,7 +162,7 @@ export class VisualPart extends Panel {
 
   async load() {
     const seeds = this.seeds();
-    if (!seeds) { this.state = 'no-start'; this.answer = null; this.publish(); this.render(); return; }
+    if (!seeds) { this.state = 'no-start'; this.answer = null; this.publish(); this.render(); this.prune(new Set()); return; }
     const ticket = (this.walking += 1);
     this.state = 'walking';
     this.render();
@@ -184,6 +198,22 @@ export class VisualPart extends Panel {
     this.answer = res.body;
     this.state = 'ready';
     this.refold();
+    this.prune(insideOf(res.body));
+  }
+
+  /** Its data walked anew: what its marking holds that the new data does not hold leaves the marking (Spotfire: rows
+   *  filtered out are no longer marked); a part that starts from that marking walks next - a chain follows in one pass. */
+  prune(inside) {
+    if (!this.writes || !this.markings) return;
+    const entries = this.markings.entries(this.writes);
+    const kept = entries.filter(([id]) => this.hubs.open(id).some((n) => inside.has(n)));
+    if (kept.length !== entries.length) this.markings.replace(this.writes, kept);
+  }
+
+  /** The colour of the marking it writes - its marked points and lines (Spotfire's marking colour). */
+  markColor() {
+    const m = ((this.markingList && this.markingList.get('list')) || []).find((x) => x.name === this.writes);
+    return (m && m.color) || null;
   }
 
   walkFrom(seeds) {
@@ -223,7 +253,7 @@ export class VisualPart extends Panel {
     });
     const entries = this.reads ? this.markings.entries(this.reads) : [];
     const marked = (id) => holds(entries, this.hubs, id);
-    this.model = this.kind.model(rows, { marked, palette: this.palette(), declaration: this.decl });
+    this.model = this.kind.model(rows, { marked, markColor: this.markColor(), palette: this.palette(), declaration: this.decl });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -297,6 +327,7 @@ export class VisualPart extends Panel {
     if (this.drawn) { this.drawn.dispose(); this.drawn = null; }
     const root = el('section', 'sf-part');
     root.setAttribute('data-kind', this.decl.kind || '');
+    if (this.markColor() && root.style && root.style.setProperty) root.style.setProperty('--sf-marked', this.markColor());
     const title = el('div', 'sf-part__title');
     // The handle a page moves the part by (grid_shell: drag the title bar onto another part's edge).
     title.setAttribute('data-part-title', '');
@@ -365,6 +396,49 @@ export function limitRows(ids, limit, entriesOf, book) {
   if (held.every((entries) => !entries.length)) return limit.none === 'empty' ? [] : ids;
   const test = limit.must === 'any' ? 'some' : 'every';
   return ids.filter((id) => held[test]((entries) => holds(entries, book, id)));
+}
+
+/** THE one place a declaration's markings are read: the ones it receives (`start` it walks from, `limit` it is limited
+ *  by) and the one it emits (`writes`). Any panel's declaration - the start row's writes too. */
+export function markingsOf(decl) {
+  const d = decl || {};
+  return { start: (d.start && d.start.marking) || null, limit: (d.limit && d.limit.markings) || [], emits: d.writes || null };
+}
+
+/** A declaration without a deleted marking: walked from it - «All»; limited by it - not; writing it - nothing. */
+export function withoutMarking(decl, name) {
+  const { start, limit, emits } = markingsOf(decl);
+  const rest = limit.filter((n) => n !== name);
+  return { ...decl, start: start === name ? { ...(decl.start || {}), marking: null } : decl.start,
+    limit: rest.length === limit.length ? decl.limit : (rest.length ? { ...decl.limit, markings: rest } : null),
+    writes: emits === name ? null : decl.writes };
+}
+
+/** A loop the visuals' markings make - a part walks from one marking and writes the next; a loop comes back to the
+ *  marking it left: [marking, part id, marking, …, that marking], or null. A limit is not a step (it folds again and does
+ *  not walk), so a table limited by the marking it writes (the Marked table) is not a loop. */
+export function chainLoop(decls) {
+  const next = new Map();
+  for (const d of decls || []) {
+    const { start, emits } = markingsOf(d);
+    if (!start || !emits) continue;
+    if (!next.has(start)) next.set(start, []);
+    next.get(start).push([d.id, emits]);
+  }
+  const done = new Set();
+  const visit = (m, path) => {
+    const at = path.indexOf(m);
+    if (at >= 0) return [...path.slice(at), m];
+    if (done.has(m)) return null;
+    for (const [id, to] of next.get(m) || []) {
+      const loop = visit(to, [...path, m, id]);
+      if (loop) return loop;
+    }
+    done.add(m);
+    return null;
+  };
+  for (const m of next.keys()) { const loop = visit(m, []); if (loop) return loop; }
+  return null;
 }
 
 /** Every node the walk holds - its nodes and its edges' ends (a type the answer did not carry still stands on a way). */

@@ -20,6 +20,7 @@ const REAL = {
   main: await import('../src/testbed/main.js'),
   visual: await import('../src/testbed/visual_part.js'),
   table: await import('../src/testbed/kinds/table.js'),
+  scatter: await import('../src/testbed/kinds/scatter.js'),
 };
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
 const { HubBook, hubId } = await import('../src/testbed/hubs.js');
@@ -52,7 +53,7 @@ function countingPart(seen) {
 function charts() { return { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) }; }
 
 /** The test bed page booted on a stub, its walks counted; `storage` shared between pages to reopen a save. */
-async function page(M, storage = null) {
+async function page(M, storage = null, answerOf = () => ANSWER) {
   const doc = makeDoc('dark');
   const host = doc.createElement('div');
   doc.body.appendChild(host);
@@ -61,7 +62,7 @@ async function page(M, storage = null) {
     const u = String(url);
     if (u.includes('/api/ledger/subgraph')) asked.push(u);
     const body = u.includes('/api/ledger/declaration') ? { entities: [{ type: 'wafer' }], predicates: [] }
-      : u.includes('/api/ledger/subgraph') ? ANSWER : { nodes: [] };
+      : u.includes('/api/ledger/subgraph') ? answerOf(u) : { nodes: [] };
     return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)) };
   };
   const p = await M.main.boot({ doc, host, apiBase: '', fetchImpl, charts: charts(), storage, theme: 'dark' });
@@ -216,7 +217,7 @@ async function pages(M) {
   await settle();
   out.add = { ids: added, kinds: added.map((id) => fourth.shell.partOf(id).decl.kind), active: fourth.active.get('active'),
     firstPath, scatterPath, walked: fourth.asked.length - walked,
-    flyout: (() => { const banner = fourth.shell.partOf('banner'); banner.toggle(true); const names = walk(banner.host).filter((n) => String(n.className) === 'sf-flyout__it').map((n) => n.textContent); banner.toggle(false); return names; })() };
+    flyout: (() => { const banner = fourth.shell.partOf('banner'); banner.toggle('types'); const names = walk(banner.host).filter((n) => String(n.className) === 'sf-flyout__it').map((n) => n.textContent); banner.toggle(null); return names; })() };
   // L3 / T2: the Marked table - limited by the pick: empty, then a hub's members, a line pressed re-marks, a head sorts
   const fifth = await page(M);
   const marked = fifth.shell.partOf('marked');
@@ -241,6 +242,129 @@ async function pages(M) {
   return out;
 }
 
+// ── the markings as a declaration and the chain (owner 10-13 «마킹 클래스 추가» · «a 부품 마킹 -> b 부품 입력 마킹2 -> c …») ──
+// A walk from the positive seeds reaches them and the next wafer: W1 -> W2 -> W3 -> W4 -> W5.
+const NEXT = { W1: 'W2', W2: 'W3', W3: 'W4', W4: 'W5' };
+function chainAnswer(url) {
+  const seeds = new URL(url, 'http://x').searchParams.getAll('positive');
+  const ids = [...new Set(seeds.flatMap((s) => [s, NEXT[s]]).filter(Boolean))];
+  return { nodes: ids.map(wafer), edges: [], truncated: ANSWER.truncated };
+}
+const seedsAsked = (urls) => urls.map((u) => { const q = new URL(u, 'http://x').searchParams; return q.get('seed_type') ? `type:${q.get('seed_type')}` : q.getAll('positive').join('+'); });
+
+async function chains(M) {
+  const out = {};
+  const storage = memoryStorage();
+  const p = await page(M, storage, chainAnswer);
+  const book = p.markingBook;
+  // K1: three markings added - the next free names, the people's words, a colour each not in use
+  const [m3, m4, m5] = [book.add(), book.add(), book.add()];
+  const list = book.list.get('list');
+  out.added = { names: [m3, m4, m5], labels: list.map((m) => m.label), colours: new Set(list.map((m) => m.color)).size === list.length };
+  // A emits m3; B receives m3 and emits m4; C receives m4 and emits m5 - each through its declaration
+  const [a, b, c] = ['table', 'table', 'table'].map((k) => p.add(k));
+  const part = (id) => p.shell.partOf(id);
+  const declare = (id, patch) => part(id).setDeclaration({ ...part(id).declaration(), system: null, ...patch });
+  declare(a, { writes: m3 });
+  declare(b, { start: { marking: m3 }, writes: m4 });
+  declare(c, { start: { marking: m4 }, writes: m5 });
+  await settle();
+  const lines = (id) => (part(id).model ? part(id).model.lines.map((l) => l.id) : []);
+  const held = (name) => p.markings.entries(name).map(([id]) => id).sort();
+  part(a).mark(['W2'], {});
+  await settle();
+  part(b).mark(['W2', 'W3'], {});
+  await settle();
+  part(c).mark(['W3', 'W4'], {});
+  await settle();
+  out.built = { b: lines(b), c: lines(c), held: [held(m3), held(m4), held(m5)] };
+  // K2: A marks again - B walks from it, its marking keeps what its new data holds, so C walks from that: one walk each
+  const before = p.asked.length;
+  part(a).mark(['W1'], {});
+  await settle();
+  out.chain = { walks: seedsAsked(p.asked.slice(before)), b: lines(b), c: lines(c), held: [held(m3), held(m4), held(m5)] };
+  // K3: a loop refused and named - A walking from m5 (m5 -> A -> m3 -> B -> m4 -> C -> m5); one part from what it writes
+  const aWas = JSON.stringify(part(a).declaration());
+  const refused = declare(a, { start: { marking: m5 } });
+  p.active.set('active', a);
+  await settle();
+  const said = walk(p.shell.partOf('properties').host).filter((n) => String(n.className).includes('sf-props__refused')).map((n) => n._text);
+  out.loop = { refused, kept: JSON.stringify(part(a).declaration()) === aWas, loop: part(a).loop, said,
+    self: M.visual.chainLoop([{ id: 'S', start: { marking: m3 }, writes: m3 }]), limitIsNoStep: M.visual.chainLoop([{ id: 'T', start: { marking: 'marking:start' }, limit: { markings: [m3] }, writes: m3 }]) };
+  // K5: Save, then a new page from it - the markings and the chain's declarations
+  p.save();
+  const again = await page(M, storage, chainAnswer);
+  const decl = (q, id) => { const s = q.shell.partOf(id); if (!s) return null; const d = s.declaration(); return [d.start && d.start.marking, d.writes]; };
+  const before2 = again.asked.length;
+  if (again.shell.partOf(a)) again.shell.partOf(a).mark(['W2'], {});
+  await settle();
+  out.reopen = { labels: again.markingBook.list.get('list').map((m) => m.label), chain: [decl(again, a), decl(again, b), decl(again, c)],
+    walks: seedsAsked(again.asked.slice(before2)) };
+  const older = memoryStorage();
+  older.setItem('testbed:visuals', JSON.stringify({ root: again.shell.layoutNow().root, visuals: again.declarations() }));
+  out.olderSave = (await page(M, older, chainAnswer)).markingBook.list.get('list').map((m) => m.label);
+  // K4: a marking deleted from the markings window - asked first, its users named; B writes none, C walks from «All», a
+  // limit loses it; the start row's marking not deleted, the reply naming it
+  part('marked').setDeclaration({ ...part('marked').declaration(), limit: { markings: ['marking:pick', m4], must: 'all', none: 'empty' } });
+  await settle();
+  const banner = part('banner');
+  banner.toggle('markings');
+  const rows = () => walk(banner.host).filter((n) => n.attrs && n.attrs['data-marking']).map((n) => n.attrs['data-marking']);
+  const shown = rows();
+  const x = (name) => walk(banner.host).find((n) => n.attrs && n.attrs['data-marking'] === name).children.find((k) => String(k.className) === 'sf-mark__x');
+  const before3 = p.asked.length;
+  x(m4).dispatch('click');
+  const ask = walk(banner.host).filter((n) => String(n.className) === 'sf-mark__ask').map((n) => n.children[0]._text);
+  walk(banner.host).find((n) => n.tagName === 'BUTTON' && n._text === 'Delete').dispatch('click');
+  await settle();
+  x('marking:start').dispatch('click');
+  try { walk(banner.host).find((n) => n.tagName === 'BUTTON' && n._text === 'Delete').dispatch('click'); } catch (e) { /* a throw is a wrong answer below */ }
+  const kept = walk(banner.host).filter((n) => String(n.className) === 'sf-mark__ask').map((n) => n.children[0]._text);
+  walk(banner.host).find((n) => String(n.className).includes('sf-mark__add')).dispatch('click');
+  out.deleted = { shown, ask, after: rows(), b: decl(p, b), c: decl(p, c), limit: part('marked').declaration().limit.markings,
+    walks: seedsAsked(p.asked.slice(before3)), kept };
+  // K6: a marking's colour is its marked lines' and points'
+  book.edit(m3, { color: '#123456' });
+  await settle();
+  const sec = walk(part(a).host).find((n) => n.tagName === 'SECTION');
+  const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: [['#6489FA', '#4B67BC']] };
+  const pts = M.scatter.scatterModel([{ id: 'W1', label: 'W1', reads: { x: { state: 'one', value: 1 }, y: { state: 'one', value: 2 } } },
+    { id: 'W2', label: 'W2', reads: { x: { state: 'one', value: 3 }, y: { state: 'one', value: 4 } } }], { marked: (id) => id === 'W2', markColor: '#123456', palette: pal }).points;
+  out.colour = { line: sec.style._props['--sf-marked'], unmarked: pts[0].fill !== '#123456', marked: pts[1].fill };
+  return out;
+}
+
+/** The chain seated alone from M's visual part (three tables on one marking store) - what each walked from, what each
+ *  marking keeps. */
+async function seatedChain(M) {
+  const doc = makeDoc('dark');
+  const markings = new MarkingStore();
+  const hubs = new HubBook();
+  const walked = [];
+  const seat = (id, start, writes) => {
+    const decl = { id, part: 'visual', kind: 'table', row: 'wafer', start: { marking: start }, system: null, filter: [], encode: { col1: NAME }, writes };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes, start: decl.start, declaration: decl,
+      kinds: { table: M.table.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs, names: new Map(), charts: charts(),
+      fetchWalk: async (params) => { walked.push(`${id}:${(params.positive || []).join('+')}`); return { ok: true, body: chainAnswer(`/?${(params.positive || []).map((s) => `positive=${s}`).join('&')}`) }; } });
+    part.mount();
+    return part;
+  };
+  const [a, b, c] = [seat('A', 'm0', 'm1'), seat('B', 'm1', 'm2'), seat('C', 'm2', 'm3')];
+  markings.set('m0', 'W1', SIGN.CASE);
+  await settle();
+  a.mark(['W2'], {});
+  await settle();
+  b.mark(['W2', 'W3'], {});
+  await settle();
+  c.mark(['W3', 'W4'], {});
+  await settle();
+  walked.length = 0;
+  a.mark(['W1'], {});
+  await settle();
+  const held = (name) => markings.entries(name).map(([id]) => id).sort();
+  return { walked: [...walked], held: [held('m1'), held('m2'), held('m3')] };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -257,6 +381,8 @@ async function suite(M) {
   const s = await shells(M);
   const p = await pages(M);
   const one = await seated(M);
+  const k = await chains(M);
+  const sc = await seatedChain(M);
   const lines = [
     judge('S1 a part docked on each edge of another: side by side or stacked, on that side', m.dock,
       [['row', ['B', 'A']], ['row', ['A', 'B']], ['column', ['B', 'A']], ['column', ['A', 'B']]]),
@@ -293,6 +419,26 @@ async function suite(M) {
     judge('L4 a limited part counts the limit\'s drop apart: a marked row it leaves out is not hidden; a limiting marking changed, it folds again',
       { before: one.before, after: one.after }, { before: { rows: 1, of: 4, limit: 3, hidden: 0, marked: 1 }, after: ['W1', 'W4'] }),
     judge('T2 a table line pressed with Ctrl joins the pick; pressed alone it is the pick', [one.added, one.replaced], [['W2', 'W4'], ['W1']]),
+    judge('K1 markings added: the next free names, «Marking (n)», each its own colour', k.added,
+      { names: ['marking:3', 'marking:4', 'marking:5'], labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'], colours: true }),
+    judge('K1b a chain declared: B walks from what A marks, C from what B marks', k.built,
+      { b: ['W2', 'W3'], c: ['W2', 'W3', 'W4'], held: [['W2'], ['W2', 'W3'], ['W3', 'W4']] }),
+    judge('K2 A marks again: B walks once from it, its marking keeps what its new data holds, so C walks once from that - and its marking the same',
+      k.chain, { walks: ['W1', 'W2'], b: ['W1', 'W2'], c: ['W2', 'W3'], held: [['W1'], ['W2'], ['W3']] }),
+    judge('K2b the same chain seated alone: B and C walk once each, in turn; each marking keeps what its part\'s new data holds',
+      sc, { walked: ['B:W1', 'C:W2'], held: [['W1'], ['W2'], ['W3']] }),
+    judge('K3 a loop of markings refused and named, the declaration kept; a part walking from what it writes is one; a limit is not a step',
+      k.loop, { refused: false, kept: true, loop: ['marking:3', 'table-2', 'marking:4', 'table-3', 'marking:5', 'table-1', 'marking:3'],
+        said: ['Refused - a loop: Marking (3) → wafer → Marking (4) → wafer → Marking (5) → wafer → Marking (3)'],
+        self: ['marking:3', 'S', 'marking:3'], limitIsNoStep: null }),
+    judge('K5 Save keeps the markings and the chain; a new page from it follows the chain; an older save opens on the default markings',
+      { ...k.reopen, olderSave: k.olderSave }, { labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'],
+        chain: [['marking:start', 'marking:3'], ['marking:3', 'marking:4'], ['marking:4', 'marking:5']], walks: ['W2'], olderSave: ['Start', 'Pick'] }),
+    judge('K4 a marking deleted: its users named first; the part writing it writes none, the part walking from it walks from All (once), a limit loses it; the start row\'s marking not deleted, named; a new one takes the next free name',
+      k.deleted, { shown: ['marking:start', 'marking:pick', 'marking:3', 'marking:4', 'marking:5'], ask: ['Used by Marked, wafer, wafer'],
+        after: ['marking:start', 'marking:pick', 'marking:3', 'marking:5', 'marking:6'], b: ['marking:3', null], c: [null, 'marking:5'],
+        limit: ['marking:pick'], walks: ['type:wafer'], kept: ['Not deleted - used by start'] }),
+    judge('K6 a marking\'s colour is its marked lines\' and points\'', k.colour, { line: '#123456', unmarked: true, marked: '#123456' }),
   ];
   return { lines, ran: names.length, names: [...names], failures: [...failures] };
 }
@@ -329,10 +475,21 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    this.root = dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
       '    this.render({ ...this.layoutNow(), root: dockLeaf(this.root, id, targetId, edge) });') },
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
-    mutate: (t) => swap(t, '    const kept = { root: shell.layoutNow().root, visuals: declarations() };', '    const kept = declarations();') },
+    mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list') };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',
     mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });",
       "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], {}); });") },
+  { id: 'M12', what: 'a part walked anew leaves its marking alone - the chain does not follow', catches: 'K2b ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (kept.length !== entries.length) this.markings.replace(this.writes, kept);', '') },
+  { id: 'M13', what: 'a limit counted as a step of the chain - the Marked table a loop', catches: 'K3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (!next.has(start)) next.set(start, []);',
+      '    for (const from of markingsOf(d).limit) { if (!next.has(from)) next.set(from, []); next.get(from).push([d.id, emits]); }\n    if (!next.has(start)) next.set(start, []);') },
+  { id: 'M14', what: 'Save leaves the markings out - a reopen has the default two', catches: 'K5 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, ", markings: markingList.get('list') };", ' };') },
+  { id: 'M15', what: 'a marking a docked panel writes is deleted too', catches: 'K4 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, '      if (fixed.length) return', '      if (fixed.length && false) return') },
+  { id: 'M16', what: 'a marked point keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, '    if (marked && ctx.markColor) return', '    if (false) return') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

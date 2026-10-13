@@ -1,11 +1,14 @@
 // The left bar (lead 10-13, Spotfire's): its chart button opens the add window beside it - a line a kind of the visual
 // part, its picture and its name, in the kinds' order; a pick adds one (the page's `onAdd`) and the window closes, as a
-// press outside it or Escape does. The window hangs over the page, not inside the bar.
+// press outside it or Escape does. Its marking button opens the markings window (Spotfire's Edit › Markings): a line a
+// marking - its colour, its name, × - and «+ New marking»; × on a marking parts use names them first. The windows hang
+// over the page, not inside the bar.
 
 import { Panel } from '../rnd_board/panel.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const CHART = 'M4 12h4v9H4zM10 7h4v14h-4zM16 3h4v18h-4z';
+const MARKING = 'M3 17l9-9 4 4-9 9H3zM14 6l2-2 4 4-2 2z';
 
 export class BannerPart extends Panel {
   constructor(host, deps) {
@@ -13,7 +16,11 @@ export class BannerPart extends Panel {
     const d = deps || {};
     this.kinds = d.kinds || {};
     this.onAdd = d.onAdd || (() => {});
-    this.open = false;
+    this.book = d.markingBook || null;
+    /** The window open: 'types', 'markings' or null. */
+    this.open = null;
+    /** A marking whose × asks first (parts use it), or one a docked panel keeps: {name, users, removed}. */
+    this.asking = null;
   }
 
   mount() {
@@ -22,11 +29,12 @@ export class BannerPart extends Panel {
     this._press = (event) => {
       if (!this.open) return;
       const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
-      if (!path.includes(this.flyout) && !path.includes(this.button)) this.toggle(false);
+      if (!path.includes(this.flyout) && !this.buttons.some((b) => path.includes(b))) this.toggle(null);
     };
-    this._key = (event) => { if (event.key === 'Escape') this.toggle(false); };
+    this._key = (event) => { if (event.key === 'Escape') this.toggle(null); };
     doc.addEventListener('mousedown', this._press);
     doc.addEventListener('keydown', this._key);
+    if (this.book) this._listOff = this.book.list.subscribe('list', () => { if (this.open === 'markings') this.render(); });
   }
 
   destroy() {
@@ -34,18 +42,30 @@ export class BannerPart extends Panel {
       this.doc.removeEventListener('mousedown', this._press);
       this.doc.removeEventListener('keydown', this._key);
     }
+    if (this._listOff) this._listOff();
     super.destroy();
   }
 
-  toggle(open) {
-    this.open = open;
+  toggle(which) {
+    this.open = which || null;
+    this.asking = null;
     this.render();
   }
 
   /** A kind's line in the window: picked, the kind added. */
   pick(name) {
-    this.toggle(false);
+    this.toggle(null);
     this.onAdd(name);
+  }
+
+  /** × on a marking: one no part names goes; one parts name asks first (`sure`), then goes - or stays when a docked
+   *  panel names it, the reply naming it. */
+  remove(name, sure = false) {
+    const users = this.book.users(name);
+    if (users.length && !sure) { this.asking = { name, users, removed: null }; this.render(); return; }
+    const reply = this.book.remove(name);
+    this.asking = reply.removed ? null : { name, users: reply.users, removed: false };
+    this.render();
   }
 
   render() {
@@ -64,29 +84,25 @@ export class BannerPart extends Panel {
       return svg;
     };
     const bar = el('nav', 'sf-banner');
-    this.button = el('button', `sf-banner__b${this.open ? ' is-on' : ''}`);
-    this.button.type = 'button';
-    this.button.title = 'Visualization types';
-    this.button.setAttribute('aria-label', 'Visualization types');
-    this.button.setAttribute('aria-expanded', String(this.open));
-    this.button.append(icon([[CHART, 1]]));
-    this.button.addEventListener('click', () => this.toggle(!this.open));
-    bar.append(this.button);
+    const button = (which, words, d) => {
+      const b = el('button', `sf-banner__b${this.open === which ? ' is-on' : ''}`);
+      b.type = 'button';
+      b.title = words;
+      b.setAttribute('aria-label', words);
+      b.setAttribute('aria-expanded', String(this.open === which));
+      b.append(icon([[d, 1]]));
+      b.addEventListener('click', () => this.toggle(this.open === which ? null : which));
+      bar.append(b);
+      return b;
+    };
+    this.buttons = [button('types', 'Visualization types', CHART)];
+    if (this.book) this.buttons.push(button('markings', 'Markings', MARKING));
+    this.button = this.buttons[0];
     this.flyout = null;
     if (this.open) {
       const fly = el('div', 'sf-flyout');
       fly.setAttribute('role', 'menu');
-      fly.append(el('div', 'sf-flyout__h', 'Visualization types'));
-      for (const [name, kind] of Object.entries(this.kinds)) {
-        const it = el('button', 'sf-flyout__it');
-        it.type = 'button';
-        it.setAttribute('role', 'menuitem');
-        const pic = icon((kind.icon && kind.icon.paths) || [], 'sf-flyout__ico');
-        if (kind.icon) pic.style.color = `var(--sf-${kind.icon.tone})`;
-        it.append(pic, el('span', '', kind.label || name));
-        it.addEventListener('click', () => this.pick(name));
-        fly.append(it);
-      }
+      if (this.open === 'types') this.drawTypes(fly, el, icon); else this.drawMarkings(fly, el);
       // Beside the bar, its height: the bar's box on the screen.
       if (this.host.getBoundingClientRect) {
         const box = this.host.getBoundingClientRect();
@@ -96,5 +112,66 @@ export class BannerPart extends Panel {
       bar.append(fly);
     }
     this.host.replaceChildren(bar);
+  }
+
+  drawTypes(fly, el, icon) {
+    fly.append(el('div', 'sf-flyout__h', 'Visualization types'));
+    for (const [name, kind] of Object.entries(this.kinds)) {
+      const it = el('button', 'sf-flyout__it');
+      it.type = 'button';
+      it.setAttribute('role', 'menuitem');
+      const pic = icon((kind.icon && kind.icon.paths) || [], 'sf-flyout__ico');
+      if (kind.icon) pic.style.color = `var(--sf-${kind.icon.tone})`;
+      it.append(pic, el('span', '', kind.label || name));
+      it.addEventListener('click', () => this.pick(name));
+      fly.append(it);
+    }
+  }
+
+  drawMarkings(fly, el) {
+    fly.append(el('div', 'sf-flyout__h', 'Markings'));
+    for (const m of this.book.list.get('list')) {
+      const line = el('div', 'sf-mark');
+      line.setAttribute('data-marking', m.name);
+      const color = el('input', 'sf-mark__color');
+      color.type = 'color';
+      color.value = m.color;
+      color.setAttribute('aria-label', `${m.label} colour`);
+      color.addEventListener('change', () => this.book.edit(m.name, { color: color.value }));
+      const label = el('input', 'sf-mark__name');
+      label.type = 'text';
+      label.value = m.label;
+      label.setAttribute('aria-label', 'Marking name');
+      label.addEventListener('change', () => { if (label.value.trim()) this.book.edit(m.name, { label: label.value.trim() }); });
+      const x = el('button', 'sf-mark__x', '×');
+      x.type = 'button';
+      x.setAttribute('aria-label', `Delete ${m.label}`);
+      x.addEventListener('click', () => this.remove(m.name));
+      line.append(color, label, x);
+      fly.append(line);
+      if (this.asking && this.asking.name === m.name) fly.append(this.askLine(el, m));
+    }
+    const add = el('button', 'sf-flyout__it sf-mark__add', '+ New marking');
+    add.type = 'button';
+    add.addEventListener('click', () => this.book.add());
+    fly.append(add);
+  }
+
+  /** Under a marking whose × asked: who uses it, and Delete / Cancel - or who keeps it. */
+  askLine(el, m) {
+    const ask = el('div', 'sf-mark__ask');
+    if (this.asking.removed === false) {
+      ask.append(el('span', '', `Not deleted - used by ${this.asking.users.join(', ')}`));
+      return ask;
+    }
+    ask.append(el('span', '', `Used by ${this.asking.users.join(', ')}`));
+    const yes = el('button', 'sf-btn', 'Delete');
+    yes.type = 'button';
+    yes.addEventListener('click', () => this.remove(m.name, true));
+    const no = el('button', 'sf-btn', 'Cancel');
+    no.type = 'button';
+    no.addEventListener('click', () => { this.asking = null; this.render(); });
+    ask.append(yes, no);
+    return ask;
   }
 }
