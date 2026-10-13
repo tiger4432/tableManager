@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
+import { entitySeedId } from '../src/rnd_board/api.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
@@ -43,12 +44,15 @@ function suite(M, quiet = false) {
   const asCopy = (row) => (M.expr === REAL.expr ? row : { ...row, get: (n) => { const r = row.get(n); return r instanceof REAL.expr.Reads ? new M.expr.Reads(r.items) : r; } });
   const score = (tag, v) => {
     scored.add(v.id);
-    const c = M.expr.compile(v.expr);
+    // Screen only (a sheet): `nodes` the page's node types for type("key"), the id as the start row builds it.
+    const nodes = v.nodes ? Object.fromEntries(Object.entries(v.nodes).map(([type, keys]) => [type, { keys, id: (k) => entitySeedId(type, k) }])) : null;
+    const c = M.expr.compile(v.expr, nodes ? { nodes } : {});
     // A vector with a graph names its rows by node id; the screen reads them as the test bed does (testbed/slot.js calcRow).
     const index = v.graph ? M.reach.indexGraph(v.graph) : null;
     // Screen only (Marked): the vector fakes the page's marking layer. `types`: the columns' type words, as the server's run takes them.
     const page = v.markings ? { marked: (name, id) => { const m = v.markings[name] || {}; return (m.in || []).includes(id) ? true : (m.unknown || []).includes(id) ? null : false; } } : {};
     if (v.types) page.types = v.types;
+    if (v.cells) page.cell = (at) => v.cells[at];
     const out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page);
     const rows = 'expect_rows' in v;
     const good = rows
@@ -86,6 +90,17 @@ function suite(M, quiet = false) {
   // Marked without the page's markings is refused by name - the server's calculator has none.
   const blind = M.expr.run(M.expr.compile('Marked("B")'), [{ x: 1 }]);
   ok('E4 Marked with no page markings refused by name', /Marked is the screen's/.test(String(blind.why)), ascii(blind));
+  // A cell reference with no sheet is refused by name (owner: the sheet's grammar); a type with no page's node types is no
+  // function; a constructor given the wrong number of keys says how many and which.
+  const noSheet = M.expr.run(M.expr.compile('Sum(B1:B3)'), []);
+  ok('E5 a cell reference with no sheet refused by name', /Cell references are the sheet's/.test(String(noSheet.why)), ascii(noSheet));
+  const wafer = { wafer: { keys: ['wafer'], id: (k) => k.wafer } };
+  const noTypes = M.expr.compile('wafer("W01")');
+  const twoKeys = M.expr.compile('wafer("W01", 2)', { nodes: wafer });
+  ok('E6 a type the page did not give is no function; the wrong number of keys says the keys',
+    /No function named wafer/.test(String(noTypes.why)) && /wafer takes 1 key \(wafer\) - got 2/.test(String(twoKeys.why)), ascii([noTypes, twoKeys]));
+  // P10 before «(» is a call, not the cell P10.
+  ok('E7 a name with digits before «(» is a call', M.expr.run(M.expr.compile('P10([x])'), [{ x: 1 }, { x: 3 }]).value === 1.2);
   const met = M.expr.run(M.expr.compile('[x] * 2 + [x]'), [{ x: '29 mm' }, { x: '29.50' }, { x: null }, { x: 'a' }, { x: 3 }]);
   ok('E1 the rows an operator met a text that is not a number on: counted once each, an empty value not', met.notNumber === 2
     && JSON.stringify(met.values) === JSON.stringify([null, 88.5, null, null, 9]), ascii(met));
@@ -164,6 +179,17 @@ const MUTANTS = [
     mutate: (t) => swap(t, "  if (BY_TIME[node.name] && args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime') return BY_TIME[node.name](items).value;\n", '') },
   { id: 'X31', what: 'the same instant twice: the one met last', catches: 'V[time.min.offset.same.instant]', file: E,
     mutate: (t) => swap(t, 'const BY_TIME = { Min: times((a, b) => a < b),', 'const BY_TIME = { Min: times((a, b) => a <= b),') },
+  { id: 'X32', what: 'a range read a column at a time', catches: 'O[sheet.range.order]', file: E,
+    mutate: (t) => swap(t, '  for (let r = Math.min(a.r, b.r); r <= Math.max(a.r, b.r); r += 1) {\n    for (let c = Math.min(a.c, b.c); c <= Math.max(a.c, b.c); c += 1) out.push(`${letters(c)}${r}`);',
+      '  for (let c = Math.min(a.c, b.c); c <= Math.max(a.c, b.c); c += 1) {\n    for (let r = Math.min(a.r, b.r); r <= Math.max(a.r, b.r); r += 1) out.push(`${letters(c)}${r}`);') },
+  { id: 'X33', what: 'a fold over cells folds them once a row', catches: 'O[sheet.range.once]', file: E,
+    mutate: (t) => swap(t, '  const once = !rowLevel(args[0]) && cellsOf(args[0]).size > 0;', '  const once = false;') },
+  { id: 'X34', what: 'a constructor\'s keys taken in the id\'s order, not the declared one', catches: 'O[node.keys.declared.order]', file: E,
+    mutate: (t) => swap(t, 'node.id(Object.fromEntries(node.keys.map((k, i) => [k, keys[i]])))', 'node.id(Object.fromEntries([...node.keys].sort().reverse().map((k, i) => [k, keys[i]])))') },
+  { id: 'X35', what: 'a cell reference with no sheet reads empty', catches: 'E5', file: E,
+    mutate: (t) => swap(t, "  if (typeof ctx.cell !== 'function') throw new ExpressionError(", "  if (typeof ctx.cell !== 'function') return null; if (false) throw new ExpressionError(") },
+  { id: 'X36', what: 'P10( read as the cell P10', catches: 'E7', file: E,
+    mutate: (t) => swap(t, '(?![A-Za-z0-9_])(?!\\s*\\()/;', '(?![A-Za-z0-9_])/;') },
   { id: 'X24', what: '«~» read as forwards', catches: 'O[way.backward.fold]', file: S,
     mutate: (t) => swap(t, "{ predicate: p.slice(0, -1), direction: 'incoming' }", "{ predicate: p.slice(0, -1), direction: 'outgoing' }") },
   { id: 'X25', what: 'a way\'s two answers taken as the edge\'s', catches: 'E2', file: S,
