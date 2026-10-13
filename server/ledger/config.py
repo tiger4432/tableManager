@@ -371,30 +371,13 @@ def config_path(filename: str = CONFIG_FILENAME) -> str:
     return os.path.join(world_names().declaration_root, filename)
 
 
-def sample_path(path: str = None) -> str:
-    """Where the shipped fallback lives.
-
-    Anchored to the CONFIG ROOT rather than to `config_path()`'s directory, because the
-    canonical file moved down into `ontology/` on 2026-08-24 while the sample still ships at
-    `config/sample/`. Deriving it from the active path would have looked for
-    `config/ontology/sample/...` and quietly reported "no sample" on a fresh checkout.
-    """
-    active = path or config_path()
-    root = _config_dir() if not path else os.path.dirname(os.path.abspath(active))
-    return os.path.join(
-        root,
-        "sample",
-        os.path.basename(active) + ("" if active.endswith(".sample") else ".sample"),
-    )
-
-
 def load(path: str = None, catalog=None) -> dict:
-    """Load and validate. Falls back to ``sample/<name>.sample`` when live is absent.
+    """Load and validate. No declaration file is refused - nothing is translated, nothing is guessed.
 
-    The `.sample` fallback is this project's convention for gitignored operator config
-    (`server/config/*.json` is the operator's, `sample/*.json.sample` ships). Without it
-    a fresh checkout could not run the backfill at all, and "it works on the box that has
-    the untracked file" is not a deployable state.
+    ⚰️ A `sample/<name>.sample` fallback was promised here and reached by nothing since the declaration moved into
+    `ontology/` (08-24): it looked for `config/ontology/sample/...`, which nothing ships (총괄 568388892). Running on
+    the shipped sample when the operator's file is gone would translate production tables by an example, so the
+    refusal stays; a new install copies the sample (config/ontology/README.md).
 
     \U0001f534 `catalog` NAMES WHICH PHYSICAL SCHEMA THE DECLARATION IS CHECKED AGAINST, and
     omitting it keeps today's answer exactly: the deployment's own `table_config.json`, which
@@ -410,13 +393,8 @@ def load(path: str = None, catalog=None) -> dict:
     """
     path = path or config_path()
     if not os.path.exists(path):
-        sample = sample_path(path)
-        if os.path.exists(sample):
-            path = sample
-        else:
-            raise LedgerConfigError(
-                f"no ledger configuration at {path} (and no sample at {sample}). The "
-                f"translator refuses to run rather than guess a time column.")
+        raise LedgerConfigError(
+            f"no ledger configuration at {path}. The translator refuses to run rather than guess a time column.")
     with open(path, "r", encoding="utf-8") as handle:
         raw = fold_versions(json.load(handle))
     raw = _validate_for_version(raw, origin=path, catalog=catalog)

@@ -921,6 +921,18 @@ OUTBOX_PAYLOAD_EXCLUDED_COLUMNS = frozenset({
 })
 
 
+#: What a row held BEFORE its event (총괄 옛 키 ㄱ) - a deletion every column, an edit the columns it changed. A
+#: collapsed event carries a list beside `row_ids` (one dict per row, same order), an expanded payload one dict. A
+#: column whose old value was not read is ABSENT, never `None` - `None` is 「it was blank」. No value, no key.
+OLD_VALUES_KEY = "old"
+
+
+def old_values_of(payload) -> dict:
+    """{column: value before the event} of one expanded payload, or {}."""
+    value = payload.get(OLD_VALUES_KEY) if isinstance(payload, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
 def is_collapsed_payload(payload) -> bool:
     """True if this outbox payload NAMES rows instead of CARRYING one row's values.
 

@@ -45,8 +45,11 @@ const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
 // 1896x907 with the demo pair, lead 10-10 after 517eb6c2c).
 // The test bed and the main grid at the four sizes their pickers are asked at (lead 72b2d7f8f) - 1280x720 is SIZES'.
 const EDGE_SIZES = [[1920, 1080], [1440, 900], [1024, 768]];
-// The main grid at the two wide ones only (lead 10-13 ②): at 1024x768 its own layout is red before any picker - next.
-const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'testbed.html': EDGE_SIZES, 'index.html': EDGE_SIZES.slice(0, 2) };
+// The main grid at all three too: its counts at 1024x768 were 0 wide under «‹ Prev» (lead 10-14).
+const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'testbed.html': EDGE_SIZES, 'index.html': EDGE_SIZES };
+// At 1024x768 the main grid is driven to its first state only: past it (a filter typed at the right end) the run loses
+// Chrome and ends unsettled - not chased (lead 10-14 «그 밖의 1024 결함은 찾아 나서지 말 것»).
+const FIRST_STATE_ONLY = { 'index.html': ['1024x768'] };
 const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
 const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns', 'words'];
 const TOL = 12;
@@ -142,6 +145,18 @@ const CELLS = [
         return \`a press on «\${(x.b.textContent || x.b.title || '').trim().slice(0, 24)}» at x \${Math.round(px)} reaches \${hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing'}\`;
       }
     }
+  }
+  return null;
+})()` },
+  // The status bar's counts take a press: the centre of each reaches it, not a page button laid over it (lead 10-14).
+  { entry: 'index.html', after: 'loaded', rule: 'counts reachable', at: 'status-left', expr: `(() => {
+  for (const id of ['exposed-rows', 'total-rows']) {
+    const x = document.getElementById(id);
+    if (!x || !x.getClientRects().length) return 'no #' + id + ' on the page';
+    const r = x.getBoundingClientRect();
+    if (r.width < 1) return 'the count #' + id + ' is ' + Math.round(r.width) + ' wide';
+    const hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+    if (!hit || !(hit === x || x.contains(hit))) return 'a point on the count #' + id + ' reaches ' + (hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing');
   }
   return null;
 })()` },
@@ -653,7 +668,8 @@ async function servePage(chrome, dist) {
     if (resourceType === 'Other' && u.pathname === '/favicon.ico') { reply(404, 'text/plain', ''); return; }
     const a = answerOf(u);
     if (!a) { log.missing.add(u.pathname + u.search); reply(404, 'application/json', JSON.stringify({ detail: 'no answer in screens_answers.json.gz' })); return; }
-    reply(a.status, a.type || 'application/json', typeof a.body === 'string' ? a.body : JSON.stringify(a.body));
+    // An answer captured with no body (a 204) is an empty one - not a crash of the whole run.
+    reply(a.status, a.type || 'application/json', typeof a.body === 'string' ? a.body : a.body === undefined ? '' : JSON.stringify(a.body));
   });
   await chrome.send('Page.enable');
   await chrome.send('Runtime.enable');
@@ -1207,7 +1223,8 @@ async function runScreens(dist, label, one = only) {
         const add = (state, lines) => { for (const l of lines) found.push({ entry, size, state, ...l }); };
         const panels = [];
         try {
-        const states = DRIVE[entry] || [['loaded', async () => true]];
+        const all = DRIVE[entry] || [['loaded', async () => true]];
+        const states = (FIRST_STATE_ONLY[entry] || []).includes(size) ? all.slice(0, 1) : all;
         let state = 'loaded';
         waitsRunOut.length = 0;
         for (const [name, step] of states) {
@@ -1291,6 +1308,9 @@ const MUTANTS = [
   { name: 'the header message laid over the button beside it', entry: 'index.html', rule: 'beside the message', at: 'performance-log',
     file: 'src/style.css', edits: [['.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; }',
       '.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; position: absolute; inset: 0 0 auto 0; z-index: 5; }']] },
+  { name: 'the status bar on one line again - its counts 0 wide at 1024', entry: 'index.html', rule: 'counts reachable', at: 'status-left',
+    file: 'src/style.css', edits: [['  flex-wrap: wrap;\n  align-items: center;\n  justify-content: space-between;', '  align-items: center;\n  justify-content: space-between;'],
+      ['  min-width: 30ch;\n', '  min-width: 0;\n']] },
   { name: 'the header message title not following its text', entry: 'index.html', rule: 'message title', at: 'performance-log',
     file: 'src/main.js', edits: [['      followTitle(elements.performanceLog);\n', '']] },
   // The Ledger cell's source said first again (lead 10-12): its state word goes under the ellipsis at the column's width.

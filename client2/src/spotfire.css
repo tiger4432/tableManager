@@ -42,9 +42,9 @@
 .sf-frame__top { grid-row: 1; grid-column: 2; }
 .sf-frame__left { grid-row: 2; grid-column: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
 .sf-frame__bottom { grid-row: 3; grid-column: 2; }
-.sf-frame__top, .sf-frame__bottom { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: var(--sf-pill-h); padding: 2px 0; }
+.sf-frame__top, .sf-frame__bottom { display: grid; grid-template-columns: minmax(min-content, 1fr) auto 1fr; align-items: center; min-height: var(--sf-pill-h); padding: 2px 0; }
 .sf-frame__top .sf-frame__pills, .sf-frame__bottom .sf-frame__pills { grid-column: 2; }
-.sf-frame__bottom .sf-note { grid-column: 1; }
+.sf-frame__bottom .sf-note { grid-column: 1; min-width: 0; white-space: normal; } /* wraps between words at a narrow width, not cut (QA 10-14 at 1024) */
 .sf-frame__pills { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .sf-frame__left .sf-frame__pills { flex-direction: column; }
 .sf-frame__pills:empty { display: none; }

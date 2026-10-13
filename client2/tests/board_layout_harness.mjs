@@ -21,6 +21,7 @@ const REAL = {
   visual: await import('../src/testbed/visual_part.js'),
   table: await import('../src/testbed/kinds/table.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
+  baskets: await import('../src/walk/start_baskets.js'),
   units: await import('../src/testbed/units.js'),
   color: await import('../src/testbed/color_by.js'),
   layer: await import('../src/testbed/marking_layer.js'),
@@ -35,6 +36,7 @@ const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js')
 const { HubBook, hubId, holds } = await import('../src/testbed/hubs.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
 const { Panel } = await import('../src/rnd_board/panel.js');
+const { statusWords } = await import('../src/testbed/status_part.js');
 
 const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 const json = (x) => JSON.stringify(x);
@@ -604,24 +606,27 @@ async function routed(M) {
   const vocabulary = { entities: [{ type: 'die' }, { type: 'wafer' }],
     predicates: [{ name: 'in_container', subjects: ['die'], object: { kind: 'entity_ref', types: ['wafer'] } }, { name: 'bonded_from', subjects: ['die'], object: { kind: 'entity_ref', types: ['die'] } }] };
   const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
-  const seat = async (decl, withVocabulary = true) => {
+  const seat = async (decl, withVocabulary = true, alsoWafer = false) => {
     const doc = makeDoc('dark');
     const markings = new MarkingStore();
     markings.set('marking:die', d1, SIGN.CASE);
+    if (alsoWafer) markings.set('marking:die', BW, SIGN.CASE);
     const asked = [];
     const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: null, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
       kinds: { crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
-      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
+      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
     part.mount();
     await settle();
-    return { rows: part.model.rowKeys, total: part.model.total, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
+    const said = statusWords(part.stats.get('B')).find((w) => w.startsWith('route from')) || null;
+    return { said, rows: part.model.rowKeys, total: part.model.total, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
   };
   const base = { id: 'B', part: 'visual', kind: 'crossTable', start: { marking: 'marking:die' }, system: null, filter: [] };
   const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } });
   const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } });
   const wafers = await seat({ ...base, row: 'wafer', encode: {} });
   const core = await seat({ ...base, row: 'wafer', encode: {}, route: wafers.part.routes()[1] });
-  return { dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+  const mixed = await seat({ ...base, row: 'die', encode: { rows: CORE }, walk: { node_limit: 1000, hops: 9 } }, true, true);
+  return { mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
 }
 
 /** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
@@ -710,6 +715,42 @@ async function sheetRoot(M) {
   return { walked, ring: { why: ringCell.why, other: otherWhy }, again, empty };
 }
 
+/** A start read back from a save (QA 10-14: a reload showed «ledger-entity:v1:Wy…»): the basket names it by its id - its
+ *  keys, as the picker named it when it was put in. */
+async function keptStart(M) {
+  const { entitySeedId } = await import('../src/rnd_board/api.js');
+  const doc = makeDoc('dark');
+  const markings = new MarkingStore();
+  const id = entitySeedId('wafer', { wafer: 'SYN-BW-103-11' });
+  markings.set('marking:start', id, SIGN.CASE);
+  markings.set('marking:start', 'W1', SIGN.CASE);
+  const b = new M.baskets.StartBaskets(doc.createElement('div'), { doc, markings, name: 'marking:start' });
+  return walk(b.root).filter((n) => String(n.className) === 'wk-basketlabel').map((n) => n._text);
+}
+
+/** Category colours (QA 10-14): seven categories seven colours, in the order the rows show them, kept in the declaration;
+ *  walked again with one more category seen first - the seven keep theirs. */
+async function categoryColours(M) {
+  const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: ['#1', '#2', '#3', '#4', '#5', '#6', '#7'].map((c) => [c, c + 'L']) };
+  const node = (id, p) => ({ id, type: 'die', label: id, keys: { x: '0', y: '0', p }, attributes: {} });
+  let answer = { nodes: 'ABCDEFG'.split('').map((p, i) => node('D' + i, p)), edges: [], truncated: ANSWER.truncated };
+  const doc = makeDoc('dark');
+  const decl = { id: 'T', part: 'visual', kind: 'table', row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick',
+    encode: { col1: NAME, color: { steps: [], value: { on: 'key', name: 'p' }, words: ['p'] } } };
+  const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl, palette: () => pal,
+    kinds: { table: M.table.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+    fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+  part.mount();
+  await settle();
+  const first = { ...part.declaration().colors };
+  answer = { ...answer, nodes: [node('Z0', 'Z'), ...answer.nodes] };
+  part.seedWalk = null;
+  part.load();
+  await settle();
+  const after = part.declaration().colors || {};
+  return { seven: new Set(Object.values(first)).size, order: 'ABCDEFG'.split('').map((p) => first[p]).join(''), kept: 'ABCDEFG'.split('').every((p) => after[p] === first[p]), z: Boolean(after.Z) };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -734,6 +775,8 @@ async function suite(M) {
   const rt = await routed(M);
   const ce = await colourEverywhere(M);
   const sh = await sheetRoot(M);
+  const ks = await keptStart(M);
+  const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
   const cRel = await markedColour(M, true);
@@ -826,10 +869,12 @@ async function suite(M) {
     judge('P7 the units of a value record: a record a unit, X its own record; a reduce - an edge a unit, folded', mk.records,
       [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
     judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
-      rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2]], ['die']]),
+      rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
+    judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
+      rt.mixed, [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
     judge('W3 die to wafer: the shortest route its own wafer; the route with the bonded_from loop the core wafer, the walk asking that route',
-      [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['in_container', 'bonded_from'], 2]]]]),
+      [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['in_container', 'bonded_from'], 2, ['d1']]]]]),
     judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
       ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456', '#123456'] }),
     judge('SH1 the sheet\'s written start: walked from that node alone, along the ways its cells name (measures), its row its type; the cells read in the order they name each other',
@@ -841,6 +886,9 @@ async function suite(M) {
       sh.again, { walks: [1, 2, 2, 2], seeds: ['ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMiIsInNsb3QiOiIwNiJ9XQ'], refused: ['#NAME?', 'No function named nope'] }),
     judge('SH4 a sheet with no key yet draws its grid - its values written, the formulas empty - and walks nothing', sh.empty,
       { state: 'ready', walks: 0, cells: { C1: '4', B1: '' } }),
+    judge('K7 a start read back from a save is named by its id - its keys; an id that is not an entity\'s as it is', ks, ['SYN-BW-103-11', 'W1']),
+    judge('C2 seven categories seven colours in the order the rows show them, kept in the declaration; one more seen first - the seven keep theirs',
+      cc, { seven: 7, order: '#1#2#3#4#5#6#7', kept: true, z: true }),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -928,6 +976,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, '{ ...base, ...along, nodeId:', '{ ...base, nodeId:') },
   { id: 'M28', what: 'the root hands the colours no declared category colour - the palette colour always', catches: 'C1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'paintRows(rows, { palette: this.palette(), declaration: this.decl,', 'paintRows(rows, { palette: this.palette(), declaration: { ...this.decl, colors: {} },') },
+  { id: 'M29', what: 'a start no basket was handed is its raw id', catches: 'K7 ', file: 'walk/start_baskets.js', key: 'baskets',
+    mutate: (t) => swap(t, '    const said = entityOfId(id);', '    const said = null;') },
+  { id: 'M30', what: 'the colours given are not kept in the declaration - more categories deal them again', catches: 'C2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (colors.any && Object.keys(colors.assigned).length) this.decl =', '    if (false) this.decl =') },
+  { id: 'M31', what: 'a start of another type walked from as if the route started there', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '      if (other.length) {', '      if (false) {') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

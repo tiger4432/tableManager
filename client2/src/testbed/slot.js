@@ -24,7 +24,13 @@ const spelling = (v) => JSON.stringify(v);
  *   an expression's operator met a text that is not a number); missing - the row is not in the walk
  */
 export function readSlot(index, inside, x, slot, oneValued = false, marked = null, cell = undefined) {
-  if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)], { marked, cell })) : { state: 'missing' };
+  if (isExpression(slot)) {
+    if (!inside.has(x)) return { state: 'missing' };
+    const c = compile(slot.expr);
+    // Each name's declared column type, as the walk says it (a datetime's Min and Max compare instants - lead 10-13).
+    const types = c.ok ? Object.fromEntries(c.names.map((n) => [n, typeOfName(index, inside, x, n)]).filter(([, t]) => t)) : {};
+    return answerOne(run(c, [calcRow(index, inside, x)], { marked, cell, types }));
+  }
   if (slot.self) return inside.has(x) ? { state: 'one', value: x, n: 1 } : { state: 'missing' };
   if ('constant' in slot) return isBlank(slot.constant) ? { state: 'empty', n: 0 } : { state: 'one', value: slot.constant, n: 1 };
   const got = readsAt(index, inside, x, slot);
@@ -112,6 +118,21 @@ export function nameValue(index, inside, x, name) {
   const own = ends.map((e) => ownValue(index.nodes.get(e.node) || {}, way.name)).find(Boolean) || null;
   if (onEdge && own) throw new ExpressionError(`[${name}] is both a value of the node it reaches and of its edge`);
   return { steps: way.steps, value: onEdge ? { on: 'edge', name: way.name } : own };
+}
+
+/** A name's declared column type - the walk's (`column_type` on a node's record, `column_types` on an edge, implementer
+ *  A d1f1c3e4b): its own value's, or its way's ends' first that says one; none - null. */
+export function typeOfName(index, inside, x, name) {
+  let at;
+  try { at = nameValue(index, inside, x, name); } catch (e) { return null; }
+  if (!at.value) return null;
+  const ends = at.steps.length ? waysOf(index, inside, [x], at.steps, WAYS_A_CELL).ends : [{ node: x, edge: null }];
+  for (const e of ends) {
+    const said = at.value.on === 'edge' ? e.edge && (e.edge.column_types || {})[at.value.name]
+      : ((((index.nodes.get(e.node) || {}).records || {})[at.value.name] || [])[0] || {}).column_type;
+    if (said) return said;
+  }
+  return null;
 }
 
 /** A row as the calculator reads it: each name its value's reads (its own, or a way's), with their times. */

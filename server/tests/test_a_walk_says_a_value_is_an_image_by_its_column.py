@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""총괄 2d6a0fd58 ㄱ (소유자 「걷기 뒤에 붙여」): the walk answer says a value is an image reference when the ledger read
-it from a column typed `image` - the value's source, the column that source binds the name to, that column's
-table_config type (`ledger.setup.declared_value_type`) - never the value's shape.
+"""총괄 2d6a0fd58 ㄱ (소유자 「걷기 뒤에 붙여」), widened 10-14 to every declared type: the walk answer says the type of the
+column the ledger read a value from - the value's source, the column that source binds the name to, that column's
+table_config type as written (`ledger.setup.declared_value_type`) - never the value's shape.
 
-  a node name    its records and per-world values carry `column_type: "image"`
-  an edge        its records and the edge carry `column_types: {<qualifier>: "image"}`
+  a node name    its records and per-world values carry `column_type` ("image", "datetime", "TEXT" ... as declared)
+  an edge        its records and the edge carry `column_types: {<qualifier>: <type>}`
   two sources    one name, two sources binding it to columns of two types - each record says its own source's
-  not image      no cell at all: the answer is the bytes it was
+  no one type    a name bound to two columns of two types in one source: no cell (unknown)
   a reload       the type changed in table_config reaches the next walk, no restart (the singleton is read live)
 
 On the shipped sample's `lot_slot_wafer` (lot_slot --has_wafer--> wafer), compiled from a declaration in tmp_path."""
@@ -81,34 +81,21 @@ def _wafer(body):
     return next(n for n in body["nodes"] if n["id"] == explorer.entity_id("wafer", {"wafer": "W000"}))
 
 
-def test_a_name_read_from_an_image_column_says_so_on_its_records(declared):
-    atoms = declared(_declared(), event_type="image", lot="TEXT")
+@pytest.mark.parametrize("kind", ["image", "datetime", "number", "TEXT"])
+def test_a_name_says_the_type_of_its_column_on_its_records(declared, kind):
+    atoms = declared(_declared(), event_type=kind, lot="TEXT")
     node = _wafer(_walk(atoms))
     assert node["records"]["event_type"], "CANARY: the wafer's registration was walked"
-    assert {r.get("column_type") for r in node["records"]["event_type"]} == {"image"}
-    assert {v.get("column_type") for v in node["attributes_by_world"]["event_type"]} == {"image"}
+    assert {r.get("column_type") for r in node["records"]["event_type"]} == {kind}
+    assert {v.get("column_type") for v in node["attributes_by_world"]["event_type"]} == {kind}
 
 
-def test_a_name_read_from_any_other_column_adds_nothing_and_a_reload_reaches_the_next_walk(declared, monkeypatch):
-    """The answer with no image is the bytes it was - the pass made a no-op gives the same bytes; then the type
-    changed in the live table_config reaches the next walk, nothing restarted."""
+def test_a_reload_reaches_the_next_walk(declared):
+    """The type changed in the live table_config reaches the next walk, nothing restarted."""
     atoms = declared(_declared(), event_type="TEXT", lot="TEXT")
-    said = json.dumps(_walk(atoms), sort_keys=True, default=str)
-    monkeypatch.setattr(ledger_subgraph, "_say_image_values", lambda nodes, edges: None)
-    unsaid = json.dumps(_walk(atoms), sort_keys=True, default=str)
-    monkeypatch.undo()
-    assert "column_type" not in said and _same_but_time(said, unsaid)
+    assert {r.get("column_type") for r in _wafer(_walk(atoms))["records"]["event_type"]} == {"TEXT"}
     atoms = declared(_declared(), event_type="image", lot="TEXT")
     assert {r.get("column_type") for r in _wafer(_walk(atoms))["records"]["event_type"]} == {"image"}
-
-
-def _same_but_time(a, b):
-    """Two answers equal but for when each was made."""
-    a, b = json.loads(a), json.loads(b)
-    for body in (a, b):
-        body.pop("generated_at", None)
-        (body.get("walk") or {}).pop("elapsed_ms", None)
-    return a == b
 
 
 def test_each_record_says_its_own_sources_column(declared):
@@ -119,7 +106,7 @@ def test_each_record_says_its_own_sources_column(declared):
               for a in registrations]
     records = _wafer(_walk(atoms + copied))["records"]["event_type"]
     assert sorted({(r["source_who"], r.get("column_type")) for r in records}) == [
-        (SOURCE, "image"), (OTHER, None)], records
+        (SOURCE, "image"), (OTHER, "TEXT")], records
 
 
 def test_one_name_bound_to_two_columns_of_two_types_in_one_source_says_none(declared):
@@ -146,9 +133,9 @@ def test_one_name_bound_to_two_columns_of_two_types_in_one_source_says_none(decl
 
 
 def test_an_edge_qualifier_read_from_an_image_column_says_so_on_the_edge_and_its_records(declared):
-    atoms = declared(_declared(as_qualifier=True), event_type="image", lot="TEXT")
+    atoms = declared(_declared(as_qualifier=True), event_type="datetime", lot="TEXT")
     body = _walk(atoms)
     (edge,) = [e for e in body["edges"] if "shot" in (e.get("qualifiers") or {})]
-    assert edge.get("column_types") == {"shot": "image"}
+    assert edge.get("column_types") == {"shot": "datetime"}
     assert edge["records"] and {json.dumps(r.get("column_types")) for r in edge["records"]} == {
-        json.dumps({"shot": "image"})}
+        json.dumps({"shot": "datetime"})}

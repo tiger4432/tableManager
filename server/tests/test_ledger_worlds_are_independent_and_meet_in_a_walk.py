@@ -242,10 +242,9 @@ def fixture_world(pg_engine, config, monkeypatch):
         assert conn.execute(text("SELECT count(*) FROM pg_namespace WHERE nspname = :s"),
                             {"s": PG_TEST_SCHEMA}).scalar() == 1
     monkeypatch.setattr(database_module, "engine", pg_engine)
-    # the product engine is this test's now, so a pooled body would go to a pool process - which reads the server's
-    # engine and data root, not this test's worlds (총괄 e570dcda5 ㄴ): the bodies run here
-    from runtime import process_pool
-    monkeypatch.setattr(process_pool, "_settings", lambda: {"walk_processes": 0, "grid_processes": 0})
+    from tests.support.pools import bodies_here
+
+    bodies_here(monkeypatch)                    # the product engine is this test's now
     monkeypatch.setattr(explorer_router, "_services", {})
     sample = _sample("table_config.json.sample")
     declared = {name: sample[name] for name in (*TABLES, VIEW)}
@@ -438,9 +437,10 @@ def test_a_nodes_attribute_shows_each_worlds_value_beside_the_one(world):
 
     node, when = node_and_when([A, C])
     assert set(when) == {A, C} and None not in when.values()        # canary: an event time each
+    # each value says its column's declared type (10-14: every type, not image alone)
     assert node["attributes_by_world"] == {"label": [
-        {"world": A, "value": "S1", "occurred_at": when[A], "source_who": CHANGED},
-        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED}]}
+        {"world": A, "value": "S1", "occurred_at": when[A], "source_who": CHANGED, "column_type": "string"},
+        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED, "column_type": "string"}]}
     assert node["attributes"]["label"] in ("S1", "RCP-1") and node["attribute_conflicts"] == 1
 
     back, _ = node_and_when([C, A])                                 # in the order picked (4be010312)
@@ -448,7 +448,7 @@ def test_a_nodes_attribute_shows_each_worlds_value_beside_the_one(world):
 
     alone, when = node_and_when([C])
     assert alone["attributes_by_world"] == {"label": [
-        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED}]}
+        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED, "column_type": "string"}]}
     assert (alone["attributes"], alone["attribute_conflicts"]) == ({"label": "RCP-1"}, 0)
 
 

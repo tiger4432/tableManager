@@ -1044,9 +1044,7 @@ def _resolve_ledger() -> dict:
     # ---- 소스 선언
     document, load_error = {}, None
     read_path = sources_path
-    sample_path = ledger_config.sample_path(read_path)
-    if not os.path.exists(read_path) and os.path.exists(sample_path):
-        read_path = sample_path
+    missing = not os.path.exists(read_path)
     try:
         with open(read_path, "r", encoding="utf-8") as handle:
             document = fold_versions(json.load(handle))
@@ -1059,7 +1057,7 @@ def _resolve_ledger() -> dict:
     #    the retired grammar's validator, so every source of today's grammar was 「rejected」 -
     #    and a source the ledger reads was reported as one it refuses.
     setup, setup_error = None, None
-    if not load_error and read_path == sources_path:
+    if not load_error and not missing:
         try:
             from ledger.setup import load_setup
 
@@ -1069,7 +1067,13 @@ def _resolve_ledger() -> dict:
 
     declared_names = sorted(name for name in (document.get("sources") or {})
                             if not str(name).startswith("__"))
-    if load_error:
+    if missing:
+        ineffective.append(entry(
+            SCOPE_FILE, os.path.basename(sources_path),
+            "There is no declaration file - no table is translated into the ledger. A new install copies "
+            "config/sample/ledger_config.json.sample into config/ontology/.",
+            reason=REASON_NOT_DECLARED))
+    elif load_error:
         rejected.append(entry(
             SCOPE_FILE, os.path.basename(sources_path),
             f"The source declaration file could not be read ({load_error}). While it "
@@ -1081,12 +1085,6 @@ def _resolve_ledger() -> dict:
             f"The declaration does not compile ({setup_error}). Until it does, no table is "
             f"translated into the ledger.",
             reason=REASON_MAPPING_UNAVAILABLE))
-    elif setup is None and declared_names:
-        ineffective.append(entry(
-            SCOPE_FILE, os.path.basename(sources_path),
-            f"There is no declaration file; the shipped sample is shown and no table is "
-            f"translated into the ledger.",
-            reason=REASON_NOT_DECLARED))
     else:
         plans = setup.snapshot.source_plans if setup is not None else {}
         for name in declared_names:
@@ -1118,7 +1116,7 @@ def _resolve_ledger() -> dict:
     #    그 갈래도 그것을 만들던 확장 파일도 없어졌습니다. 선언 하나가 낱말을 정하므로
     #    보고도 하나입니다: 「선언이 무엇을 싣고, 그중 무엇이 아직 발화되지 않나」.
     declared_vocabulary = (document.get("vocabulary") or {})
-    if not declared_vocabulary:
+    if not declared_vocabulary and not missing:            # no file is said once, above
         ineffective.append(entry(
             SCOPE_FILE, os.path.basename(sources_path),
             "The declaration has no vocabulary - no predicate can be stated and every atom "

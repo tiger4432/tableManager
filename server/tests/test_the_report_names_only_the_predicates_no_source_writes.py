@@ -130,16 +130,12 @@ def test_a_declaration_that_does_not_compile_is_one_line_and_no_source_is_called
     assert not [item for item in domain["effective"] if "source" in item["fields"]]
 
 
-def test_with_no_declaration_file_the_sample_is_shown_and_no_source_is_called_read(
-        tmp_path, monkeypatch):
+def test_with_no_declaration_file_it_says_so_and_no_source_is_called_read(tmp_path, monkeypatch):
+    """No sample stands in for it (총괄 568388892 - that fallback was reached by nothing and is retired)."""
     root = tmp_path / "world"
     root.mkdir()
-    with open(SHIPPED[0], encoding="utf-8") as handle:
-        (root / (ledger_config.CONFIG_FILENAME + ".sample")).write_text(handle.read(),
-                                                                       encoding="utf-8")
     monkeypatch.setattr(ledger_config, "config_path",
                         lambda filename=ledger_config.CONFIG_FILENAME: str(root / filename))
-    monkeypatch.setattr(ledger_config, "sample_path", lambda path: path + ".sample")
     domain = report._resolve_ledger()
     (line,) = [item for item in domain["ineffective"] if item["scope"] == report.SCOPE_FILE]
     assert "no declaration file" in line["detail"]

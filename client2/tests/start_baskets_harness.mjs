@@ -289,7 +289,8 @@ function suite(out) {
     [[['1', ['B']], ['1', ['A']]], [[W('A'), SIGN.CONTROL], [W('B'), SIGN.CASE]]]);
   eq('B4 x takes a node out of its basket and the marking', [out.removed.shown, out.removed.marks],
     [[['0', []], ['1', ['A']]], [[W('A'), SIGN.CONTROL]]]);
-  eq('B5 the baskets say the marking whoever writes it', out.other, [['1', [W('C')]], ['1', ['A']]]);
+  // one another wrote: named by its id - its keys (QA 10-14: a start read back from a save showed its raw id)
+  eq('B5 the baskets say the marking whoever writes it - one they were not handed by the keys in its id', out.other, [['1', ['C']], ['1', ['A']]]);
   eq('B14 «+ Add start»: a click inside keeps it open; put a start in, a click outside shuts it and the page is no longer heard; Escape shuts it too',
     out.dismiss, [true, false, 0, false, 0]);
   eq('B15 a node picked from the start list goes in as Positive and «+ Add start» shuts', out.picked, [true, ['1', ['A']], false]);

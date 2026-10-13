@@ -264,6 +264,8 @@ RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", REQUIRE_KEY, EXCLUDE_KEY, *SOURCE_GATE_KEYS.values(), "enabled", "is_batch",
     "allow_chain_trigger", "allow_map_metadata_upsert",
+    # 옛 키 (총괄): a deletion wakes the rule only when it says so - it reads the rows' old values
+    "allow_delete_trigger",
     # 총괄 fe020274d: write permissions `dt_map_derivation` reads off the rule, not arguments.
     "allow_replace_map", "allow_retraction",
     *COLUMN_BINDING_KEYS,
@@ -602,6 +604,8 @@ RUN_IN_VALUES = (RUN_IN_CHAIN, RUN_IN_OPERATION)
 #: (`event_constants.trim_events_to_row_budget`), so a rule of 1 runs one text a group and a
 #: wrong answer fails that text only (총괄 72f419bd1). Not written: no cut of its own.
 ROWS_PER_RUN_KEY = "rows_per_run"
+#: A DELETE wakes this rule - one that reads the deleted rows' old values (총괄 옛 키 ㄱ). Not written: it does not.
+ALLOW_DELETE_TRIGGER_KEY = "allow_delete_trigger"
 #: Cells the loader still reads, so an old declaration loads, and the form no longer offers.
 RETIRED_CELLS = (RUN_IN_KEY,)
 
@@ -617,6 +621,7 @@ _SKELETON_HINTS = {
     "enabled": "flag",
     "is_batch": "flag",
     "allow_chain_trigger": "flag",
+    "allow_delete_trigger": "flag",
     "allow_map_metadata_upsert": "flag",
     "allow_replace_map": "flag",
     "allow_retraction": "flag",

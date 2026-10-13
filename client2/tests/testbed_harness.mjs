@@ -189,6 +189,15 @@ async function measure(M) {
   // T32: Marked() reads the page's marking answer the slot is handed - true, false, unknown (empty)
   const pageMarks = (name, id) => (name !== 'pick' ? false : id === 'W1' ? true : id === 'W2' ? false : null);
   out.marked = ['W1', 'W2', 'W3'].map((id) => { const r = readSlot(index, inside, id, exprSlot('Marked("pick")'), false, pageMarks); return [r.state, r.value === undefined ? null : r.value]; });
+  // T33: a column the walk declares datetime (A d1f1c3e4b) - Max over it the latest instant; undeclared, a number fold of
+  // texts that are not numbers - nothing
+  {
+    const at = (v, typed) => ({ source: 'TW', target: 'TQ', predicate: 'measures', qualifiers: { at: v }, ...(typed ? { column_types: { at: 'datetime' } } : {}) });
+    const g = (typed) => indexGraph({ nodes: [{ id: 'TW', type: 'wafer', label: 'TW', keys: {}, attributes: {} }, { id: 'TQ', type: 'quantity', label: 'TQ', keys: {}, attributes: {} }],
+      edges: ['2026-10-01T00:00:00Z', '2026-10-03T00:00:00Z', '2026-10-02T00:00:00Z'].map((v) => at(v, typed)) });
+    const inside = new Set(['TW', 'TQ']);
+    out.typed = [true, false].map((typed) => { const r = readSlot(g(typed), inside, 'TW', exprSlot('Max([measures.at])')); return [r.state, r.value === undefined ? null : r.value]; });
+  }
   // T30: an operator over a text that is not a number - the row empty and said so; a list is several, an empty value empty
   out.notNumber = ['W1', 'W3', 'W6'].map((id) => { const r = readSlot(index, inside, id, exprSlot('[product] * 2')); return [r.state, Boolean(r.notNumber)]; });
   // T29: a filter condition on an expression slot carries the expression and is judged by it; two expression
@@ -495,7 +504,7 @@ function suite(out, page, saved, counted) {
   eq('T4 the one filter: a range; two conditions AND; checked values with empty kept; another type passes untouched; a period [from, to)',
     out.filter, [['W2', 'W3', 'W4'], ['W3', 'W4'], ['W1', 'W3', 'W4', 'W6'], ['L1'], true, false]);
   eq('T5 the scatter model: two values each drawn, several not drawn, nothing not drawn; a marked point its colour, the rest mixed 20 % toward the background; legend dim where nothing marked',
-    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 1, several: 1, kinds: ['value', 'value'], marked: '#FAA264', dimmed: '#544236',
+    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 1, several: 1, kinds: ['value', 'value'], marked: '#6489FA', dimmed: '#363D54',
       legend: [['A', false, ['W1', 'W4']], ['B', false, ['W2', 'W5']]] });
   eq('T6 a drag marks the points its rectangle holds - x and y both inside', out.drag, [['W2', 'W4'], ['W4'], []]);
   eq('T7 the cross table: a row with two values stands in both; a cell folds its rows\' values (Avg over the union, not of averages); totals; a cell with a marked row marked',
@@ -512,6 +521,8 @@ function suite(out, page, saved, counted) {
     [out.ways, page.wayStart], [[['one', 'L1'], ['empty', null], ['one', 5.5], ['several', null]],
       ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer', '']]);
   eq('T32 Marked() in a slot: the page answer for the row - true, false, unknown empty', out.marked, [['one', true], ['one', false], ['empty', null]]);
+  eq('T33 a column the walk declares datetime: Max the latest instant, as written; undeclared - a number fold, nothing', out.typed,
+    [['one', '2026-10-03T00:00:00Z'], ['empty', null]]);
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
@@ -668,6 +679,8 @@ MUTANTS.push(
     mutate: (t) => swap(t, '      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,', '      notNumber: 0,') },
   { id: 'M45', what: 'the bottom line does not say the rows that are not a number', catches: 'T30', file: 'testbed/status_part.js',
     mutate: (t) => swap(t, "  if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);\n", '') },
+  { id: 'M48', what: 'the walk\'s column types not handed to the calculator', catches: 'T33', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, 'run(c, [calcRow(index, inside, x)], { marked, cell, types })', 'run(c, [calcRow(index, inside, x)], { marked, cell })') },
   { id: 'M46', what: 'Custom expression starts empty with a route chosen (the code before)', catches: 'T31', file: 'testbed/picker.js',
     mutate: (t) => swap(t, 'isExpression(current) ? current.expr : startingExpression(chosen)', "isExpression(current) ? current.expr : ''") },
   { id: 'M47', what: 'the check reads a way as the row\'s own name, so a way the row reads is refused', catches: 'T31', file: 'testbed/picker.js',
