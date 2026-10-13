@@ -31,6 +31,8 @@
 >          «K of L link(s)» 에서 K 가 늘 작다 -> known_chars 에 걸린다 — 값을 키우면 프롬프트가 커진다
 >          «seed(s) not walked - type(s) X do not declare exactly one key» -> 그 타입의 선언 키가 하나가 아니다(둘 이상이거나 선언에 없음) — 그 씨앗에서는 안 걷는다(나머지는 그대로)
 > 급할 때   맵퍼에서 known 을 빼면 아는 인과 없이 §6 모양 그대로 · 맵퍼를 글 하나씩 부르는 옛 모양(ask_links(text, names))으로 두어도 돈다 — 요청 = 글 수, 상한은 그대로
+> 되돌리기  git revert $(git log -1 --format=%h --grep="the batch prompt carries the links already known") $(git log -1 --format=%h --grep="ask_links takes a batch of texts in one request")
+>            (뒤의 고침 둘 · 시험 둘도 같이: --grep="per-minute table refusal" · "lock gate forces" · "same-prompt gate hands")
 > 안 잰 것  진짜 모델이 묶음 답을 얼마나 잘 하나(글 id 를 섞는지) · 운영 게이트웨이의 실제 글자 한도 · 아는 인과를 실으면 운영 그래프가 실제로 이어지나(위 명령으로 소유자가 잼)
 > ```
 
