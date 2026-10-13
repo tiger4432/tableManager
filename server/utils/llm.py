@@ -257,8 +257,10 @@ def _shared_turn(engine, now, cap):
                 conn.execute(table.insert().values(called_at=now))
             return wait
     except SQLAlchemyError as exc:
-        raise LlmRefused("the per-minute limit could not use table %s (%s) - the web server's boot makes it"
-                         " (create_all): start it once on this code" % (table.name, type(exc).__name__)) from None
+        said = str(getattr(exc, "orig", None) or exc).strip().splitlines()
+        raise LlmRefused("the per-minute limit could not use table %s (%s: %s) - a missing table is made by the web"
+                         " server's boot (create_all): start it once on this code"
+                         % (table.name, type(exc).__name__, said[0] if said else "")) from None
 
 
 def _retry_after(exc):

@@ -23,7 +23,8 @@
 > 답의 뜻   «in K request(s)» 의 K 가 글 수와 같다 -> 글마다 혼자 — batch_chars 가 글보다 작다. 값을 키운다
 >          «waiting» 줄이 자주 -> 상한에 붙어 돈다(정상). 묶음이 그만큼 오래 슬롯을 쥔다 — rows_per_run 을 줄이면 묶음이 짧아진다
 >          «refused» 줄 -> 그 글은 이번에 후보 0 행. ⚠️ allow_retraction 규칙이면 그 글의 손대지 않은 옛 후보가 지워진 것 — replay 로 다시 읽힌다
->          «the per-minute limit could not use table llm_calls» -> 웹 서버를 이 코드로 아직 안 띄웠다 — 띄우면 표가 생긴다
+>          «the per-minute limit could not use table llm_calls (ProgrammingError: … does not exist …)» -> 웹 서버를 이 코드로 아직 안 띄웠다 — 띄우면 표가 생긴다
+>            괄호 안이 OperationalError 면 표가 아니라 DB 연결 문제 — 그 문장을 본다
 >          «the gateway answered 429» 가 이어진다 -> 같은 키를 다른 곳도 쓴다 — requests_per_minute 를 낮춘다
 >          연결성: pieces 가 links 와 거의 같고 lone pairs 가 100 % 근처 -> 쌍의 집합(오늘의 모양). 뒤에 pieces 가 줄고 largest piece 가 커지면 이어지고 있다
 >          «known links … 0 seed(s)» 가 계속 -> 글에 사전 구절이 그대로 안 나온다 — 사전에 구절을 더하거나 match_at 을 낮춘다

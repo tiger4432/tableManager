@@ -17,7 +17,7 @@ replaced by one that answers each [id] of the prompt - except where the seat its
   the per-minute limit                the 21st call of a minute waits for the oldest to leave
   a 429                               asked again after its Retry-After, RATE_LIMITED_TRIES times
   number cells                        defaults · a bad value refused by name
-  two processes (PostgreSQL)          one limit: `llm_calls` under the advisory lock
+  two processes (PostgreSQL)          one limit: `llm_calls` under the advisory lock · no table: refused with the fix
 """
 import json
 import logging
@@ -441,3 +441,22 @@ def test_callers_at_one_instant_get_exactly_the_cap(two_processes, clock, monkey
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM llm_calls")).scalar() == 5
     assert (len(passed), len(waited)) == (5, 3)
+
+
+@pytest.mark.pg
+def test_a_database_without_the_table_is_refused_by_name(two_processes, clock, monkeypatch):
+    """A slot that asks before the web server made `llm_calls`: the call is refused with the fix, not a raw
+    database error. The table's place taken by one of its shape under a name nobody made - nothing dropped."""
+    from sqlalchemy import Column, Float, Integer, MetaData, Table
+
+    from database import models
+    two_processes("A")
+    absent = Table("llm_calls_never_made", MetaData(), Column("id", Integer, primary_key=True),
+                   Column("called_at", Float, nullable=False))
+    monkeypatch.setattr(models.LlmCall, "__table__", absent)
+    with pytest.raises(llm.LlmRefused) as refused:
+        llm._take_a_turn(3)
+    said = str(refused.value)
+    assert said.startswith("the per-minute limit could not use table llm_calls_never_made (ProgrammingError: ")
+    assert said.endswith(" - a missing table is made by the web server's boot (create_all): start it once on this code")
+    assert clock.waits == []
