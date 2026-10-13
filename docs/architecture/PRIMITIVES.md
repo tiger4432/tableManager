@@ -2302,7 +2302,7 @@
 
 ### ⭐ **「이 값이 그림인가」는 «선언»이 답한다 — 값의 모양으로 추측하지 않는다** (2026-10-11 등록 · 걷기 `c5463a475`)
 - **무엇**: 값을 읽은 출처의 바인딩 → 그 열 → 그 열의 table_config 타입. 걷기 답은 타입이 `image` 일 때만 노드 이름의 기록 · 세상별 값에 `column_type`, 엣지 기록과 엣지에 `column_types` 를 싣는다(맨 위 `attributes` 에는 안 붙는다).
-- **어디**: `server/ledger/setup.py` `declared_value_type(setup, source_id, name)` — 부르는 곳 하나 `ledger_subgraph._say_image_values`(`_walk` · `_time_page` 가 답을 짓는 자리). 타입 낱말은 `image_sources.COLUMN_TYPE`.
+- **어디**: `server/ledger/setup.py` `declared_value_type(setup, source_id, name)` — 부르는 곳 하나 `ledger_subgraph._say_value_types`(`_walk` · `_time_page` 가 답을 짓는 자리, 🆕 10-14 선언된 타입 전부를 table_config 낱말 그대로). 그림 낱말은 `image_sources.COLUMN_TYPE`.
 - **언제 재사용**: 값의 «종류»에 따라 화면이 달리 그려야 할 때 — 값 글자가 주소처럼 생겼는지 보지 말고 이 좌석에 묻는다.
 - **함정**: 같은 이름을 두 출처가 다른 타입의 열에 묶을 수 있다 — 값마다 «자기» 출처로 묻고, 한 출처가 두 타입의 열에 묶으면 None(`e205908b8` 칸). 코드 맵퍼의 수식어는 묶인 열이 없어 None. 로더가 거절했거나 은퇴한 출처도 None — 은퇴한 출처의 원자는 계속 걸어지니 그 값의 표시는 말없이 빠진다.
 
