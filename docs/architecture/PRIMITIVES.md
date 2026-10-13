@@ -2320,6 +2320,26 @@
 - **언제 재사용**: 맵퍼가 어떤 입력을 «모름»으로 끝냈을 때(외부 호출 실패 · 모델이 못 읽음) — «아무것도 안 냄»과 가른다. `ask_links` 의 `refused` 가 그 경우.
 - **함정**: 값은 job 칸(`target_job_column`)의 값이어야 한다. `allow_replace_map` 에서는 안 읽는다.
 
+### **운영자가 적은 식을 서버에서 푸는 자리는 `server/expression.py` — 화면 계산기와 같은 문법 · 같은 벡터** (2026-10-14 등록 · `f7ce1e465`, 총괄 5667ea0fe)
+- **어디**: `compile(text)` → 나무 한 번, `run(compiled, rows, types=None)` → 행 위의 답. 화면 짝은 `client2/src/expression.js` — 둘 다 `contracts/expression/vectors.json` 으로 채점(`test_the_server_calculator_solves_the_shared_vectors.py`). 부르는 곳: `chain/enrichment/config.py` · `chain/enrichment/mapper.py`(decide 집계).
+- **언제 재사용**: 서버가 운영자가 적은 식을 풀어야 할 때 — eval 이나 SQL 문자열로 계산기를 하나 더 짓지 않는다.
+- **함정**: `Marked` 와 길(`[a.b~.x]`)은 화면 것이라 서버는 이름 대어 거절한다(`ExpressionError`). `types`(table_config `column_types` 낱말)를 안 주면 시각 칸 Min · Max 가 시각으로 견주지 않는다.
+
+### **decide 집계 한 칸이 «무엇으로 도는가»는 `chain.enrichment.config.aggregation_record`** (2026-10-14 등록 · `f7ce1e465`)
+- **어디**: `aggregation_record(spec, column_types=None)` → `(수식, None)` 또는 `(옛 기록, 사유)`. 읽는 자리 · 체인 꼴(`rule_shape.with_aggregation_records`) · 옮기는 명령(`python -m scripts.migrate_decide_aggregations` — 기본 미리보기 · `--compare N` · `--apply`)이 다 이 한 함수를 부른다.
+- **언제 재사용**: 옛 `"count"` · `{fn, column}` 을 수식으로 읽거나 바꿀 때 — 옮기는 규칙을 따로 적지 않는다.
+- **함정**: 글자 칸의 min/max, `", "` 아닌 구분자의 unique_concat 은 같은 답을 내는 수식이 없어 옛 기록 그대로 돈다(옛 SQL). `column_types` 를 모르면 min/max 는 기록으로 남는다.
+
+### **무거운 라우트를 서버 밖 프로세스로 — `runtime.process_pool.in_pool(body, pool=…)` 하나, 풀은 `WALK` · `GRID`** (2026-10-14 등록 · `6f34a1320` · `a4e647ab6`)
+- **어디**: `Pool` 둘 — `WALK`(`walk_processes` · `walk_pool.log` · 연결 `assy_walkpool`) · `GRID`(`grid_processes` 기본 2 · `grid_wait_seconds` 기본 60 · `grid_pool.log` · 연결 `assy_gridpool`). 라우트를 `in_pool(body, pinned_by=None, gone=None, pool=None)` 로 등록한다 — 지금 둘: 걷기 `/subgraph` · 그리드 `grid_page`.
+- **언제 재사용**: 한 요청이 서버를 오래 쥐는 자리 — 스레드 풀이나 새 프로세스 기제를 따로 짓지 않고 `Pool` 을 하나 더한다.
+- **함정**: 풀 안에서 찍는 줄은 그 풀의 로그로 간다(server.log 가 아님). 프로세스가 다 바쁘면 기다림 상한 뒤 503 `<풀>_pool_busy`. 크기 0 이면 서버 안에서 돈다.
+
+### **«쓰이는 칸만» 인덱스는 청하는 자리와 짓는 자리가 따로 — `runtime.index_wants.want` · `models.ensure_auto_indexes`** (2026-10-14 등록 · `f620962c7`)
+- **어디**: 화면 쪽 `want(table, columns, why, seconds, bind)` — 프로세스마다 처음 한 번 큐에 넣고, 스레드가 `ask` 로 `INDEX_WANTED` 행 하나를 쓴다(이미 그 일을 하는 인덱스가 있거나, 표가 상한이거나, 같은 청이 기다리면 안 씀). 지금 부르는 곳: `grid_page` 의 느린 정렬 · 같음/범위 필터. decide 판단 키는 `models.decide_key_wants`(규칙에서). 체인 워커가 `index_wants.taken(db)` 으로 받아 `ensure_auto_indexes` 로 `ix_auto_` 인덱스를 짓는다.
+- **언제 재사용**: 화면 · 체인이 «이 칸이 느렸다»를 알았을 때 — CREATE INDEX 를 직접 하지 않고 청한다.
+- **함정**: 청과 짓기가 다른 프로세스다 — 체인 워커가 없으면 청만 쌓인다. 표마다 `auto_index_per_table`(기본 10).
+
 ### 교체 쓰기 전 수 대조 게이트 — 직렬화가 **원본 집합**보다 적으면 거부 (2026-07-28 등록 · 2026-07-30 대조축 정정)
 - **무엇**: 전량 교체(replace) 쓰기 직전에 **원본 집합(필터 이전)의 non-empty 개수 vs 직렬화 페이로드의 개수**를 대조해, 페이로드가 적으면 confirm 이전에 거부하고 **삭제될 개수를 메시지에 명시**한다. 교체 의미론에서 "빠짐 = 삭제"이므로, 이 한 줄 산술이 §1 replace_map의 "불완전한 집합을 보내면 전량 파괴" 함정의 **쓰기 쪽 집행 장치**다(읽기 쪽 짝은 위 "절단 응답은 실패로 강등").
 - **어디**: `client2/src/map_editor.js`의 `pushMapData`(`6db517d` H2) — 메타 미등록 맵을 기본 프레임으로 열어 유효 다이 마스크·격자 범위가 셀을 잘라내던 경로(실측 1293→379 삭제)를 막았다. 대조는 **원시 `gridData`의 non-empty 키 수 vs `eachSavableCell`이 낸 `updates.length`**다.
