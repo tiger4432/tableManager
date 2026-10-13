@@ -32,6 +32,11 @@ def blank_boxes(node, value, path=()):
     if node is None or value is None:
         return []
     kind, here = node.get("kind"), ".".join(path)
+    if kind == "oneOf" and node.get("pick") == "shape":
+        # the branch of the value's shape, as the form picks it (ontology_skeleton.js shapeBranch)
+        want = "record" if isinstance(value, dict) else "leaf" if isinstance(value, (str, int, float)) else ""
+        branch = next((b for b in node["branches"].values() if b.get("kind") == want), None)
+        return blank_boxes(branch, value, path) if branch else [here]
     if kind == "leaf":
         wrong = isinstance(value, (list, dict)) or (
             isinstance(value, bool) and node.get("hint") != "flag")

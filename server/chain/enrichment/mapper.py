@@ -32,7 +32,7 @@ def _install_distinct_values_json():
     """`unique_concat`'s SQL: a group's DISTINCT values as a JSON array, as TEXT (총괄 242dea225).
 
     Values, not a joined string - the NULL/'' groups of one key are merged as SETS in
-    `_fold`, and the order and the join happen in Python, so PostgreSQL and SQLite hand back
+    `_union`, and the order and the join happen in Python, so PostgreSQL and SQLite hand back
     the same text. `@compiles` like `crud._TemporalText`: the expression outlives any
     connection that could say its dialect."""
     from sqlalchemy import String
@@ -98,7 +98,8 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
     확장성: 유니크 키 수는 배치 행 수보다 훨씬 작다(압축비). 키 500개 청크의
     `(k1,..) IN (...) GROUP BY` 쿼리만 수행 — 전량 스캔 없음. 판단키 컬럼 인덱스 권장
     (가이드 참조: docs/guide/chain_ingestion_guide.md §Enrichment).
-    ⚠️ 집계가 여럿이어도 «쿼리는 그대로 하나»다 — SELECT 목록에 열이 붙을 뿐이다.
+    ⚠️ SQL 로 내리는 집계는 여럿이어도 «쿼리 하나»다 — SELECT 목록에 열이 붙을 뿐이다. 행을 읽어 계산하는
+       수식(`_plan` 의 rows)이 있으면 같은 키 조건으로 원천 행을 한 번 더 읽는다.
 
     A BLANK KEY COLUMN CANNOT BE MATCHED BY EQUALITY  [2026-08-05, partial-key ruling]
     Since a partial decision key produces a derived identity, some keys arrive
@@ -128,32 +129,14 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
         raise ValueError(f"Source table model '{source_table}' is not initialized.")
     cols = [getattr(model, k) for k in decision_key]
 
+    types = (crud.TABLE_CONFIG.get(source_table) or {}).get("column_types") or {}
+    plan = {name: _plan(name, aggregations[name], model, source_table, types) for name in aggregations}
     # 이름 순서를 «한 번» 고정한다 — SELECT 목록과 결과 읽기가 같은 순서를 써야 한다.
-    names = sorted(aggregations)
-    exprs = []
-    for name in names:
-        spec = aggregations[name]
-        fn = spec["fn"] if isinstance(spec, dict) else spec
-        column = spec.get("column") if isinstance(spec, dict) else None
-        if fn == "count":
-            exprs.append(func.count())
-            continue
-        source_col = getattr(model, column, None)
-        if source_col is None:
-            # 선언 검증이 이미 소스 컬럼을 확인하지만, 모델이 다시 로드되는 사이에
-            # 어긋날 수 있다. 조용히 0을 쓰지 않고 이름을 대고 던진다.
-            raise ValueError(
-                f"aggregation '{name}' reads column '{column}', which table "
-                f"'{source_table}' does not have")
-        # Blank is the shared predicate's answer (crud), turned to NULL so no aggregate
-        # counts it - `unique_concat` and, since 총괄 69aad666e C, min/max too: a group of
-        # {'', 'A'} had min ''. `_joined` drops the one NULL the array may then carry.
-        value = case((crud.blank_sql_condition(crud.column_text_sql(source_col)), None),
-                     else_=source_col)
-        if fn == "unique_concat":
-            exprs.append(_DistinctValuesJson(value))
-            continue
-        exprs.append(func.min(value) if fn == "min" else func.max(value))
+    names = sorted(n for n in plan if "sql" in plan[n])
+    exprs = [plan[n]["sql"] for n in names]
+    by_rows = sorted(n for n in plan if "rows" in plan[n])
+    read = list(dict.fromkeys(c for n in by_rows for c in plan[n]["rows"]["names"]))
+    key_rows = {}
 
     by_pattern = {}
     for clean_key, raw in key_raw_values.items():
@@ -177,7 +160,11 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                 else:
                     conds.append(tuple_(*live_cols).in_(live))
             rows = (db.query(*cols, *exprs)
-                    .filter(and_(*conds)).group_by(*cols).all())
+                    .filter(and_(*conds)).group_by(*cols).all()) if exprs else []
+            if by_rows:
+                for row in db.query(*cols, *[getattr(model, c) for c in read]).filter(and_(*conds)):
+                    key = tuple(crud.clean_str_value(v) for v in row[:len(cols)])
+                    key_rows.setdefault(key, []).append(dict(zip(read, row[len(cols):])))
             for row in rows:
                 key = tuple(crud.clean_str_value(v) for v in row[:len(cols)])
                 # FOLD, not assign. `NULL` and `''` are two SQL groups and one
@@ -190,30 +177,73 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                 # two answers to the same question.
                 bucket = results.setdefault(key, {})
                 for name, value in zip(names, row[len(cols):]):
-                    bucket[name] = _fold(aggregations[name], bucket.get(name), value)
-    # A set is only a set until every storage of the key is folded - then it is the cell.
-    joins = [n for n in names
-             if isinstance(aggregations[n], dict) and aggregations[n]["fn"] == "unique_concat"]
-    for bucket in results.values():
-        for name in joins:
-            bucket[name] = _joined(aggregations[name], bucket.get(name))
+                    bucket[name] = plan[name]["fold"](bucket.get(name), value)
+    import expression
+
+    for key in key_raw_values:
+        bucket = results.setdefault(key, {})
+        for name in names:
+            # A set is only a set until every storage of the key is folded - then it is the cell.
+            bucket[name] = plan[name]["done"](bucket[name]) if name in bucket else plan[name]["empty"]
+        for name in by_rows:
+            answer = expression.run(plan[name]["rows"], key_rows.get(key, []), types)
+            bucket[name] = answer.get("value")
     return results
 
 
-def _fold(spec, running, value):
-    """같은 키의 두 SQL 그룹을 하나로 접는다. 함수마다 접는 법이 다르다."""
-    fn = spec["fn"] if isinstance(spec, dict) else spec
-    if fn == "count":
-        return int(running or 0) + int(value or 0)
-    if fn == "unique_concat":
-        import json
+def _plan(name, spec, model, source_table, types):
+    """How one aggregation is answered - THE seat that asks (lead 5667ea0fe): `sql` (a column of the grouped query,
+    `fold` for the NULL/'' twin groups of one key, `done`, `empty` for a key with no rows) or `rows` (the compiled
+    expression over the key's source rows). SQL takes Count() and Sum · Min · Max of a number column - what folds across
+    the twin groups and answers as the calculator does (test_a_decide_aggregation_is_an_expression); an old record kept
+    by `aggregation_record` runs the SQL it always did."""
+    from sqlalchemy import case, func
+    from database import crud
+    import expression
 
-        return (running or set()) | {v for v in json.loads(value or "[]") if v is not None}
-    if value is None:
-        return running
-    if running is None:
-        return value
-    return min(running, value) if fn == "min" else max(running, value)
+    def column(col):
+        source_col = getattr(model, col, None)
+        if source_col is None:
+            # 선언 검증이 이미 소스 컬럼을 확인하지만, 모델이 다시 로드되는 사이에
+            # 어긋날 수 있다. 조용히 0을 쓰지 않고 이름을 대고 던진다.
+            raise ValueError(
+                f"aggregation '{name}' reads column '{col}', which table "
+                f"'{source_table}' does not have")
+        # Blank is the shared predicate's answer (crud), turned to NULL so no aggregate counts it.
+        return case((crud.blank_sql_condition(crud.column_text_sql(source_col)), None), else_=source_col)
+
+    def keep(f):
+        return lambda running, value: running if value is None else value if running is None else f(running, value)
+
+    if "expression" not in spec:
+        fn = spec["fn"]
+        if fn == "unique_concat":
+            return {"sql": _DistinctValuesJson(column(spec["column"])), "fold": _union,
+                    "done": lambda v: _joined(spec, v), "empty": None}
+        return {"sql": (func.min if fn == "min" else func.max)(column(spec["column"])),
+                "fold": keep(min if fn == "min" else max), "done": lambda v: v, "empty": None}
+    compiled = expression.compile(spec["expression"])
+    tree = compiled["tree"]
+    if tree["t"] == "call" and not tree["distinct"]:
+        args = tree["args"]
+        if tree["name"] == "Count" and not args:
+            return {"sql": func.count(), "fold": lambda r, v: int(r or 0) + int(v or 0), "done": lambda v: v,
+                    "empty": 0}
+        if (tree["name"] in ("Sum", "Min", "Max") and len(args) == 1 and args[0]["t"] == "ref"
+                and types.get(args[0]["name"]) == "number"):
+            sql = {"Sum": func.sum, "Min": func.min, "Max": func.max}[tree["name"]]
+            fold = {"Sum": lambda a, b: a + b, "Min": min, "Max": max}[tree["name"]]
+            return {"sql": sql(column(args[0]["name"])), "fold": keep(fold), "done": lambda v: v, "empty": None}
+    for col in compiled["names"]:
+        column(col)                                     # a column the model lost is said by name, as above
+    return {"rows": compiled}
+
+
+def _union(running, value):
+    """`unique_concat`'s two SQL groups of one key (NULL and '') - their value sets, one set."""
+    import json
+
+    return (running or set()) | {v for v in json.loads(value or "[]") if v is not None}
 
 
 def _result(updates, skipped_no_key: int, partial_keys: int,
@@ -374,11 +404,8 @@ def map_enrichment_dedup(db, payloads, rule=None):
         blank = []
         for col, spec in aggregations.items():
             if col in derived_cols:
-                # ⚠️ count 가 없으면 «0», 값 집계(min/max/unique_concat)가 없으면 «None». 0 은 「그 키의
-                # 행이 없다」는 참인 답이지만, 값 집계에서 0 은 지어낸 값이다.
-                fn = spec["fn"] if isinstance(spec, dict) else spec
-                default = 0 if fn == "count" else None
-                value = (aggregated.get(key) or {}).get(col, default)
+                # 행이 없는 키의 답은 그 집계가 «빈 행»에 내는 답이다(Count() 0 · 값 집계 None — `_plan`).
+                value = (aggregated.get(key) or {}).get(col)
                 if crud.is_blank_value(value):
                     blank.append(col)
                 else:

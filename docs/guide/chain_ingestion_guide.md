@@ -781,10 +781,8 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
     "list_columns": ["chip_count", "lot_hint"],  // 선택: 워크리스트 표시 단서(배치 내 대표값)
     "aggregations": {                            // 선택(서버 전용): 그 키 그룹의 집계 — 영향 키 한정 재계산(멱등)
       "chip_count": "count",                     //   행을 센다 (컬럼 없음)
-      "bonding_time_min": {"fn": "min",          //   count | min | max | unique_concat (09-26 5dee85a5b)
-                           "column": "bonding_time"},  //   min/max/unique_concat 는 «소스» 컬럼을 읽는다
-      "wafer_ids": {"fn": "unique_concat",       //   빈 값 빼고 · 중복 없이 · 값 순서로 이어붙임
-                    "column": "wafer_id", "separator": ", "}   //   separator 는 선택(기본 ", "), unique_concat 만 받음
+      "bonding_time_min": "Min([bonding_time])", //   🆕 10-14 스팟파이어 수식 한 줄 (총괄 5667ea0fe) — 옛 {fn, column} 도 같은 수식으로 읽힘
+      "wafer_ids": "UniqueConcatenate([wafer_id])", //   빈 값 빼고 · 중복 없이 · 값 순서로 ", " 로 이어붙임
     },
     "reference_views": [
       { "label": "lot event",
@@ -808,7 +806,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
    · 컬럼이 «있고 값이 비었으면» → NULL 로 바인드(「없는 것」과 「비어 있는 것」은 다른 사실)
    · 단, «판단키»가 비면 종전대로 `missing_bind` — `slot=''` 은 합법이지만 아무것도 안 맞는
      질의를 만들고, 0행 읽기는 「그런 증거가 없다」와 구별되지 않기 때문입니다. 쿼리 본문은 서버에만 존재하며 클라이언트에는 label만 노출됩니다. LIMIT은 서버가 강제(기본 200, 최대 1000).
-4. **[확장성] 집계 인덱스**: `aggregations`(count·min·max)는 "영향받은 판단키 한정" `GROUP BY` 재계산(500키 청킹)을 수행합니다. 원본 테이블이 대규모(수백만 행 이상)라면 **decision_key 컬럼 복합 인덱스**를 생성하십시오(미생성 시 청크당 스캔 발생).
+4. **[확장성] 집계 인덱스**: `aggregations` 는 "영향받은 판단키 한정" 재계산(500키 청킹)을 수행합니다 — `Count()` 와 number 칸의 Sum · Min · Max 는 `GROUP BY`, 나머지 수식은 그 키들의 원천 행을 읽어 계산합니다(🆕 10-14). 원본 테이블이 대규모(수백만 행 이상)라면 **decision_key 컬럼 복합 인덱스**를 생성하십시오(미생성 시 청크당 스캔 발생).
 
 ### 4.3 동작 요약 (불변식)
 

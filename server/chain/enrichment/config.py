@@ -276,14 +276,61 @@ AGGREGATIONS_WITHOUT_COLUMN = ("count",)
 AGGREGATION_SEPARATOR_DEFAULTS = {"unique_concat": ", "}
 
 
-def aggregation_record(spec):
-    """An aggregation as its record: the shorthand `"count"` is `{"fn": "count"}`. The one fold - the reader below and
-    the declaration the chain form draws (`rule_shape.with_aggregation_records`) pass here (총괄 8b487d2e6)."""
-    return {"fn": spec} if isinstance(spec, str) else spec
+#: An old record and the expression that answers its rows the same (lead 5667ea0fe).
+EXPRESSED = {"count": "Count()", "min": "Min([%s])", "max": "Max([%s])", "unique_concat": "UniqueConcatenate([%s])"}
+#: The column types an old min/max says the same as Min/Max over - a text column compares text in SQL, Min numbers.
+EXPRESSED_MIN_MAX_TYPES = ("number", "datetime")
 
 
-def _parse_aggregation(name: str, spec):
-    """`(normalized, None)` 또는 `(None, 사유)`. 정규형은 `{"fn":…, "column":…|None}`.
+def aggregation_record(spec, column_types=None):
+    """An aggregation as it runs - the one fold of what a file may hold (총괄 8b487d2e6 · lead 5667ea0fe), for the reader
+    below, the chain form (`rule_shape.with_aggregation_records`) and the migration (`scripts.migrate_decide_aggregations`).
+
+    `(text, None)`: an expression - as written, or the one an old shape becomes ("count" · a record).
+    `(record, why)`: an old record no expression answers the same - min/max over a text column, unique_concat with
+    another separator (lead 10-13) - kept, with why; it runs the old SQL. `column_types`: the source table's (None:
+    unknown, and a min/max stays its record)."""
+    if isinstance(spec, str):
+        return ("Count()" if spec == "count" else spec), None
+    if not isinstance(spec, dict) or spec.get("fn") not in EXPRESSED:
+        return spec, None                                   # _parse_aggregation names what is wrong
+    fn, column = spec["fn"], spec.get("column")
+    joins = fn in AGGREGATION_SEPARATOR_DEFAULTS
+    if set(spec) - {"fn", "column", "separator"} or ("separator" in spec and not joins):
+        return spec, None                                   # a record the reader refuses stays as written
+    if fn == "count":
+        return (EXPRESSED[fn], None) if column is None else (spec, None)
+    if not isinstance(column, str) or not column.strip() or (joins and not isinstance(
+            spec.get("separator", ""), str)):
+        return spec, None
+    kind = (column_types or {}).get(column.strip())
+    if fn in ("min", "max") and kind not in EXPRESSED_MIN_MAX_TYPES:
+        return spec, "%s over a %s column" % (fn, "text" if kind else "undeclared")
+    if fn == "unique_concat" and spec.get("separator", AGGREGATION_SEPARATOR_DEFAULTS[fn]) != \
+            AGGREGATION_SEPARATOR_DEFAULTS[fn]:
+        return spec, "unique_concat with the separator %r" % spec["separator"]
+    return EXPRESSED[fn] % column.strip().replace("]", "]]"), None
+
+
+def _parse_expression(name: str, text: str):
+    """`({"expression": text}, None)` or `(None, why)` - a decide aggregation folds the key's rows into one value."""
+    import expression
+
+    compiled = expression.compile(text)
+    if not compiled["ok"]:
+        return None, f"aggregation '{name}': {compiled['why']} - in {text!r}"
+    if compiled["per_row"]:
+        return None, (f"aggregation '{name}': {text!r} is a value per row - an aggregation folds the key's rows "
+                      f"(Avg([x]), not [x])")
+    if "Latest" in compiled["calls"]:
+        return None, (f"aggregation '{name}': Latest needs each source row's time, and a decide declares none yet - "
+                      f"use Max or Min")
+    return {"expression": text, "reads": compiled["names"]}, None
+
+
+def _parse_aggregation(name: str, spec, column_types=None):
+    """`(normalized, None)` 또는 `(None, 사유)`. 정규형은 `{"expression": 글자, "reads": [칸…]}` 이고, 수식으로 같은 답이
+    안 나는 옛 레코드만 `{"fn":…, "column":…}` 그대로다(lead 5667ea0fe — `aggregation_record` 가 가른다).
 
     🔴 두 모양을 «읽고 하나로 저장한다» (S-129, 판정 16:05). 기존 선언 `{"chip_count":
     "count"}` 은 글자 그대로 계속 읽히고, 새 모양은 `{"bonding_time_min": {"fn": "min",
@@ -293,7 +340,9 @@ def _parse_aggregation(name: str, spec):
     ⛔ 집계는 «키가 아니다». 늦게 도착한 더 이른 행이 min 을 내리면 키였을 경우 그 행의
     정체성이 바뀌고, 이미 확정된 값이 고아가 된다. 키는 lot 이고 집계는 그 그룹의 «값»이다.
     """
-    spec = aggregation_record(spec)
+    spec, _kept = aggregation_record(spec, column_types)
+    if isinstance(spec, str):
+        return _parse_expression(name, spec)
     if not isinstance(spec, dict):
         return None, (f"aggregation '{name}' must be \"count\" or "
                       f"{{\"fn\": ..., \"column\": ...}}, not {type(spec).__name__}")
@@ -669,7 +718,8 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         # 파생 표의 그 칸은 영영 비어 있으면서 선언은 채워진 것처럼 보인다. 「로그에만 있는
         # 스킵은 아무도 보지 못하는 스킵이다」는 이 모듈이 `_record` 옆에 이미 적어 둔 문장이고,
         # 그 문장은 「고쳐야 할 선언」에 대해서는 «거절»까지 간다.
-        parsed, why = _parse_aggregation(col, spec)
+        parsed, why = _parse_aggregation(col, spec, ((known_tables or {}).get(source_table) or {}).get(
+            "column_types"))
         if parsed is None:
             return None, why
         aggregations[col] = parsed
@@ -721,8 +771,9 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         # 규칙은 «서고» 파생행을 만들 때가 되어서야 던진다 — 즉 선언의 오타가 적재
         # 실패로 나타난다. 여기서 이름을 대는 편이 고칠 자리를 바로 가리킨다.
         unreadable = sorted(
-            f"{name} -> {spec['column']}" for name, spec in aggregations.items()
-            if spec.get("column") and spec["column"] not in src_cols)
+            f"{name} -> {column}" for name, spec in aggregations.items()
+            for column in spec.get("reads") or ([spec["column"]] if spec.get("column") else [])
+            if column not in src_cols)
         if unreadable:
             return None, (
                 f"aggregation(s) read column(s) missing in source table "

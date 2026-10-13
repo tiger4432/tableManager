@@ -37,7 +37,8 @@ def test_the_route_hands_each_aggregation_as_its_record_and_the_reader_reads_it_
     out = admin.chain_rule_raw_view("agg_form")
     drawn = out["declaration"]["derive"]["decide"]["aggregations"]
 
-    assert drawn == {"n": {"fn": "count"}, "hi": AGGREGATIONS["hi"], "names": AGGREGATIONS["names"]}
+    # lead 5667ea0fe: "count" is drawn as its expression; max over a text column and another separator stay records
+    assert drawn == {"n": "Count()", "hi": AGGREGATIONS["hi"], "names": AGGREGATIONS["names"]}
     assert json.loads(out["raw"]) == out["declaration"], "the form is drawn from raw (raw_registry_panel)"
     for name, spec in AGGREGATIONS.items():
         assert enrichment_config._parse_aggregation(name, drawn[name]) == \

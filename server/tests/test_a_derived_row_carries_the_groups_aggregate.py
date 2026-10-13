@@ -238,7 +238,7 @@ def test_the_old_string_form_still_loads_unchanged():
     rule, why = enrichment.config._validate_rule("r", raw, TABLES)
 
     assert rule is not None, why
-    assert rule["aggregations"] == {"bond_count": {"fn": "count", "column": None}}
+    assert rule["aggregations"] == {"bond_count": {"expression": "Count()", "reads": []}}   # lead 5667ea0fe
 
 
 # ── 총괄 242dea225 — unique_concat: a group's values, blanks out, once each, in value order ──
@@ -301,7 +301,8 @@ def test_postgresql_and_sqlite_give_the_same_string(env, pg_session):
         table.drop(bind=pg_session.get_bind(), checkfirst=True)
 
 
-def test_the_default_separator_is_written_into_the_declaration():
+def test_the_default_separator_is_the_expression_s():
+    """Lead 5667ea0fe: unique_concat with its default separator is UniqueConcatenate - the same text."""
     raw = {"source_table": "s129_bond_src", "derived_table": "s129_bond_derived",
            "decision_key": ["lot"], "target_fields": ["wafer_id"],
            "aggregations": {"wafer_ids": {"fn": "unique_concat", "column": "wafer_id"}}}
@@ -310,7 +311,7 @@ def test_the_default_separator_is_written_into_the_declaration():
 
     assert rule is not None, why
     assert rule["aggregations"] == {
-        "wafer_ids": {"fn": "unique_concat", "column": "wafer_id", "separator": ", "}}
+        "wafer_ids": {"expression": "UniqueConcatenate([wafer_id])", "reads": ["wafer_id"]}}
 
 
 @pytest.mark.parametrize("spec", [{"fn": "count", "separator": ";"},
