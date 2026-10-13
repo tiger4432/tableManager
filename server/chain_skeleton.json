@@ -583,33 +583,47 @@
                     "keyed_by": "name",
                     "member": "column",
                     "of": {
-                      "kind": "record",
-                      "fields": [
-                        {
-                          "key": "fn",
-                          "required": false,
-                          "node": {
-                            "kind": "leaf",
-                            "hint": "free"
-                          }
+                      "kind": "oneOf",
+                      "hint": "choice",
+                      "pick": "shape",
+                      "branches": {
+                        "expression": {
+                          "kind": "leaf",
+                          "hint": "free"
                         },
-                        {
-                          "key": "column",
-                          "required": false,
-                          "node": {
-                            "kind": "leaf",
-                            "hint": "free"
-                          }
-                        },
-                        {
-                          "key": "separator",
-                          "required": false,
-                          "node": {
-                            "kind": "leaf",
-                            "hint": "free"
-                          }
+                        "record": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "fn",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "column",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "separator",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
                         }
-                      ]
+                      },
+                      "empty": {
+                        "expression": ""
+                      }
                     }
                   }
                 },
