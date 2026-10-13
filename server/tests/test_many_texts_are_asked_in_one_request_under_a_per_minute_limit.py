@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import threading
+import time
 import types
 
 import pytest
@@ -415,6 +416,13 @@ def test_callers_at_one_instant_get_exactly_the_cap(two_processes, clock, monkey
     def sleep(_seconds):
         raise Waited
     monkeypatch.setattr(llm, "_sleep", sleep)
+    real_wait = llm._wait_s
+
+    def slow_wait(times, now, cap):
+        """Between the count and the write, so callers without the lock would all read the same count."""
+        time.sleep(0.2)
+        return real_wait(times, now, cap)
+    monkeypatch.setattr(llm, "_wait_s", slow_wait)
     two_processes("A")
     engine = database.engine
     passed, waited = [], []
