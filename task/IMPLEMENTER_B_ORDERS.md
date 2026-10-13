@@ -232,3 +232,14 @@ map      declarative-role 하나 — implementation_id 를 적지 않는다
 그대로   앞 지시(b9d33d6f6)의 나머지 전부 — read · map 은퇴, 행 단위만, upgrade_setup v6 -> v7 한 자리, 못 옮김 이름 대어 거절, dry-run, 펼친 번들 == 오늘 번들, 자리 전수, 게이트, 순서
 행 붙이기 A 의 붙이기 칸도 이 노드 객체 {"node", "keys"} 를 쓴다
 ```
+
+> **[총괄 -> 구현자 B] 10-13 — 짧은 꼴: 소유자가 말하지 않은 기능은 «그대로» 가져온다 (소유자 「when 이런 등등 내가 언급 안한 기능은 그대로 가져와」)**
+
+```
+규칙     은퇴는 소유자가 말한 것뿐 — read 의 묶기 · 순서 · 커서 · 단위(group_by · order_by · cursor · identity · unit) · map 의 implementation_id(사용자 맵퍼).
+         그 밖에 오늘 선언이 하는 일은 «같은 이름 · 같은 뜻»으로 짧은 꼴에 남는다 — 못 옮김 거절은 위 은퇴 칸에 걸린 소스만
+예       문장의 when · 수식어 · 소스 status(retired) · attributes · 엔티티 · 어휘 절 전부 · virtual_joins 같은 선택 절 · 바인딩의 timezone · format 같은 덧칸
+         덧칸이 붙는 값은 객체로 적는다 — {"column": "event_time", "timezone": "Asia/Seoul"} (글 = 컬럼 · {"const"} = 상수는 그대로, 객체는 오늘 바인딩 칸 이름)
+read 안의 행 제외(exclude_when)는 «행 하나»를 거르는 일이라 소스 칸 exclude_when 으로 가져온다(총괄 판단 — 소유자께 한 줄로 알림)
+게이트   전수 표 하나: 오늘 문법의 칸마다(public_bundle_schema · _validate_* 가 받는 칸 전부, AST 로 셈) «짧은 꼴의 어느 칸 | 은퇴(소유자 문장)» — 빈 칸 0
+```
