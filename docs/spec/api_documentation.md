@@ -367,13 +367,22 @@ the number separately.
 - **`GET /tables/{table_name}/data?defer_total=true`** — `total` comes back **`null`**, and the
   count cache is **not consulted at all**. (Consulting it first would make the first paint
   "usually fast, occasionally slow", which is the very thing deferring removes.)
-- **`GET /tables/{table_name}/data/count`** — the deferred number. `{"table_name": …, "total": N}`.
-  This is an **exact full count**, not an approximation and not a widened TTL.
+- **`GET /tables/{table_name}/data/count`** — the deferred number (🆕 2026-10-13, owner ㄱ · lead 67e5e9ccd ·
+  0fd18ae19): `{"table_name", "total", "capped", "counted_at", "count_seconds", "counting", "failed"}` —
+  `/data` carries the same under `count` (its `total` is that `total`). One function answers both, `table_total`.
+  - **The table whole** (no search, no filter): what one worker in the web process last counted and when - never
+    counted in the request. Counted again after the table changed (at most every `count_recount_seconds`), when a
+    request reads it older than `count_max_age_seconds` (300), or after it failed.
+  - **Narrowed** (a search, a filter, a queue, a transaction): counted in the request up to 10,000 - `capped: true`
+    past it - and the count runs under `grid_read_timeout_seconds` whatever narrows it.
 
 ```
-total: 12     counted
-total: null   NOT YET KNOWN  -- ask .../data/count
-total: 0      genuinely no matches
+total: 12 · counted_at          counted (the table whole: when)
+total: 10000 · capped: true     more than 10,000 match - narrow further for the exact number
+total: null · counting: true    NOT YET KNOWN - the worker has not counted this table yet
+failed: {reason, at}            the count failed - narrowed: «count stopped after 10 s», total null;
+                                the table whole: the worker's error, total is the last count (null if none)
+total: 0                        genuinely no matches
 ```
 
 🔴 **The two routes interpret the narrowing arguments EXACTLY ONCE.** Both go through
@@ -392,7 +401,7 @@ in half and `invalidate_table_cache` would clear only one.
   nothing, and they widen a filter that was never narrow. The three states and the paging
   consequence are [frontend §3.2](../architecture/frontend.md); the reusable shape is
   [PRIMITIVES §7](../architecture/PRIMITIVES.md).
-- **Scored by** `server/tests/test_count_cache_invalidation.py`.
+- **Scored by** `server/tests/test_count_cache_invalidation.py` · `server/tests/test_a_whole_count_is_kept_and_a_narrowed_count_stops_at_the_cap.py`.
 - ⚠️ **The CSV export is a third block and is not part of this assembly** — it already differs
   (it never applies the named queue predicate), so folding it in would change what an export
   contains. That consolidation is its own item.

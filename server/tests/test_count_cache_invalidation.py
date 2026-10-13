@@ -64,7 +64,8 @@ def test_invalidation_removes_the_keys_the_endpoint_wrote(client):
     _warm(client, TABLE, q="EQP_1")
     _warm(client, TABLE, q="EQP_2", cols="EQP_ID")
     before = _keys_for(TABLE)
-    assert len(before) >= 3, f"fixture did not populate the cache: {list(main_mod.TABLE_COUNT_CACHE)}"
+    # the two searches' - the whole count is the worker's (test_a_whole_count_is_kept_...)
+    assert len(before) >= 2, f"fixture did not populate the cache: {list(main_mod.TABLE_COUNT_CACHE)}"
 
     main_mod.invalidate_table_cache(TABLE)
 
@@ -76,7 +77,7 @@ def test_invalidation_removes_the_keys_the_endpoint_wrote(client):
 def test_a_neighbouring_tables_keys_survive(client):
     """An invalidator that just cleared the dict would pass the test above."""
     _warm(client, TABLE, q="EQP_1")
-    _warm(client, OTHER)
+    _warm(client, OTHER, q="P")
     assert _keys_for(OTHER), "fixture did not populate the other table's cache"
 
     main_mod.invalidate_table_cache(TABLE)
@@ -108,9 +109,9 @@ def test_a_stale_count_is_refreshed_after_invalidation(client, db_session):
 
     The TTL is 5s, so without invalidation this row is invisible for 5 seconds
     after it is written - which is exactly what every write path calls
-    `invalidate_table_cache` to prevent.
+    `invalidate_table_cache` to prevent. A search's count - the table whole is the worker's.
     """
-    first = _warm(client, TABLE)["total"]
+    first = _warm(client, TABLE, q="EQP")["total"]
 
     model = models.DYNAMIC_TABLES[TABLE]
     db_session.add(model(row_id=str(uuid.uuid4()), business_key_val="EQP_NEW", EQP_ID="EQP_NEW"))
@@ -119,12 +120,12 @@ def test_a_stale_count_is_refreshed_after_invalidation(client, db_session):
     # Control: inside the TTL, the cache still answers with the OLD number. This is
     # what makes the assertion after invalidation mean something - if the cache were
     # not serving at all, the final assert would pass for the wrong reason.
-    assert _warm(client, TABLE)["total"] == first, \
+    assert _warm(client, TABLE, q="EQP")["total"] == first, \
         "the count cache did not serve a cached value; this test cannot prove anything"
 
     main_mod.invalidate_table_cache(TABLE)
 
-    assert _warm(client, TABLE)["total"] == first + 1, \
+    assert _warm(client, TABLE, q="EQP")["total"] == first + 1, \
         "the count survived its own invalidation"
 
 
@@ -157,9 +158,9 @@ def test_the_cache_is_bounded(client):
 # `?defer_total=true` — the count leaves the first paint, and `.../data/count`
 # answers the same question with the same filters through the same cache.
 # ---------------------------------------------------------------------------
-# 🔴 THE COUNT IS STILL EXACT. What this changes is WHEN it arrives, never how right it
-# is: no estimate, no widened TTL. So every test here compares the deferred answer to the
-# number the grid used to carry and demands they are equal.
+# 🔴 DEFERRING CHANGES WHEN THE COUNT ARRIVES, NOT WHICH COUNT IT IS: the deferred answer is the number the grid
+# carries (`table_total` - past COUNT_CAP capped, the table whole the worker's last count), and every test here
+# demands they are equal.
 
 import json as _json
 
@@ -296,13 +297,14 @@ def test_the_two_routes_share_one_cache_entry(seeded, monkeypatch):
     would double the counting, halve the hit rate, and survive `invalidate_table_cache`
     on one side. None of that shows up in a response body, so it is pinned here.
     """
-    seeded.get(f"/tables/{TABLE}/data")            # the grid warms it
+    searched = {"q": "DEFER_ODD"}                   # a narrowed count - the table whole is the worker's
+    seeded.get(f"/tables/{TABLE}/data", params=searched)            # the grid warms it
     warmed = _keys_for(TABLE)
-    assert len(warmed) == 1, f"expected one key for an unfiltered read, got {warmed}"
+    assert len(warmed) == 1, f"expected one key for one search, got {warmed}"
 
-    warmed_total = seeded.get(f"/tables/{TABLE}/data").json()["total"]
+    warmed_total = seeded.get(f"/tables/{TABLE}/data", params=searched).json()["total"]
     calls = _count_calls(monkeypatch)
-    assert seeded.get(f"/tables/{TABLE}/data/count").json()["total"] == warmed_total
+    assert seeded.get(f"/tables/{TABLE}/data/count", params=searched).json()["total"] == warmed_total
     assert calls == [], "the count route missed the entry the grid had just filled"
     assert _keys_for(TABLE) == warmed, "it wrote a second key for the same question"
 

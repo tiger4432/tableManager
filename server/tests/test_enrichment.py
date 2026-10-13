@@ -727,6 +727,8 @@ def test_rule_without_blank_key_rows_is_unchanged(client, enrich_env):
     main.TABLE_COUNT_CACHE.clear()
     b = client.get("/tables/enrich_test_derived/data",
                    params={**args, "filters": json.dumps(rule["keyed_queue_filters"])}).json()
+    for page in (a, b):                                 # each page's count was counted - when, and how long, differ
+        page["count"] = {k: v for k, v in page["count"].items() if k not in ("counted_at", "count_seconds")}
     assert a == b, "no blank-key rows exist, yet the two predicates return different pages"
 
 

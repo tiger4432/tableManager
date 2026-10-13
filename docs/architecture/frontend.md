@@ -197,6 +197,17 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 0       Matches: 0      «진짜 없다»
 ```
 
+🆕 10-13 (소유자 ㄱ · 총괄 67e5e9ccd · 0fd18ae19) 수는 «언제의 무엇»이다 — 서버의 수 묶음 `{total, capped, counted_at,
+count_seconds, counting, failed}` 을 `countOf` 가 읽는다:
+
+```
+4,012,334 rows · 10s ago   표 전체 — 일꾼이 마지막으로 센 수와 그 나이 (10 초마다 글자만 다시, 요청 없음)
+10,000+ rows               거른 읽기가 상한을 넘음 (capped)
+Counting rows…             서버가 아직 안 셈 (counting)
+Count failed (<reason>)    세기가 실패했고 지난 수도 없음 (failed) · /data/count 가 2xx 가 아니면 서버 문장
+                           — 지난 수가 있으면 그 수와 나이만. 못 센 수는 다시 묻지 않음(서버가 간격을 지킴)
+```
+
 - **정본은 `match_count.js` 하나다** (`isCounted` · `matchCountText` · `setMatchCount` · `pagingView`). 🔴 **「Matches:」를 쓰던 자리가 «다섯»이었고**(`api.js` 둘 · `timeline.js` 둘 · `main.js` 하나) 마크업에 **여섯째**가 있었다(하드코딩된 `Matches: 0` 첫 그림 — 아무것도 안 물어본 시점에 「0 건」을 말하고 있었다). 한 자리만 고치면 나머지가 그 경로에서만 `Matches: null` 을 찍는다.
 - 🔴 **표지를 «글자»와 «클래스» 둘로 단다.** truthiness 로 판정하면 **진짜 `0` 이 「세는 중」으로** 표시되고 운영자는 영원히 안 오는 수를 기다린다. 판정은 `typeof === 'number' && Number.isFinite`.
 - 🔴 **조용히 깨지는 것은 글자가 아니라 «페이지 컨트롤»이다.** `Math.ceil(null / limit) || 1` 은 **1** 이라 안 센 표가 「1쪽뿐」이 되고 `currentPage >= totalPages` 가 참이 되어 **다음 버튼이 꺼진다** — 그리고 회색은 「마지막 쪽」과 똑같이 생겼다. 그래서 판정이 `pagingView(total, skip, limit)` 라는 **수만 받는 함수**로 나가 있고(DOM 없이 채점된다), 모르는 동안 `totalPages` 는 `null` · 다음은 **켜 둔다**.
