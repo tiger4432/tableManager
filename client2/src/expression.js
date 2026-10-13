@@ -8,6 +8,7 @@
 
 import { isBlank } from './absent.js';
 import { numberOf } from './walk/reach_table.js';
+import { parseServerInstant } from './server_time.js';
 
 /** A refusal in words - what the expression box says. */
 export class ExpressionError extends Error {}
@@ -88,6 +89,19 @@ const fold = (fn, more = {}) => ({ kind: 'fold', fn, ...more });
 const row = (arity, fn) => ({ kind: 'row', arity, fn });
 const num1 = (f) => row(1, (a) => { const x = numberOf(a); return x === null ? null : f(x); });
 const num2 = (f) => row(2, (a, b) => { const x = numberOf(a); const y = numberOf(b); return x === null || y === null ? null : f(x, y); });
+
+/** A fold over a datetime column (lead 10-13): instants compared, the row's value answered; a text that is not a time and
+ *  an empty value left out; the same instant twice - the one met first. */
+const times = (wins) => (items) => {
+  let best = null;
+  for (const it of items) {
+    const at = parseServerInstant(it.value);
+    if (at && (!best || wins(at.getTime(), best.t))) best = { t: at.getTime(), value: it.value };
+  }
+  return { value: best ? best.value : null };
+};
+/** A fold whose argument is a datetime column (run's `types`) answers by these instead. */
+const BY_TIME = { Min: times((a, b) => a < b), Max: times((a, b) => a > b) };
 
 export const FUNCTIONS = Object.freeze({
   Count: fold((items) => ({ value: items.length }), { none: true }),
@@ -472,6 +486,7 @@ function foldValue(node, ctx) {
   let items = ctx.rows.flatMap((r) => itemsOf(across(args[0], r), timeOfRow(r)));
   if (node.distinct) items = [...new Map(items.map((it) => [spelling(it.value), it])).values()];
   const params = args.slice(1).map((a) => numberOf(value(a, { ...ctx, row: null })));
+  if (BY_TIME[node.name] && args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime') return BY_TIME[node.name](items).value;
   return fn.fn(items, params).value;
 }
 
@@ -508,8 +523,8 @@ function caseValue(node, ctx) {
 export function run(compiled, rows, page = {}) {
   if (!compiled.ok) return { why: compiled.why };
   // notNumber: the rows an operator met a text that is not a number on - their answer is empty; marked: the page's
-  // markings (screen only), for Marked()
-  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), marked: page.marked };
+  // markings (screen only), for Marked(); types: {column: "datetime"} (table_config's column_types words)
+  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), marked: page.marked, types: page.types || {} };
   try {
     if (!compiled.perRow) { const v = finite(value(compiled.tree, ctx)); return { value: v, notNumber: ctx.notNumber.size }; }
     const values = ctx.rows.map((r) => finite(value(compiled.tree, { ...ctx, row: r })));
