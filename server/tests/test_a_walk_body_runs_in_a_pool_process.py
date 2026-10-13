@@ -13,7 +13,7 @@ import time
 
 import psutil
 import pytest
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -52,6 +52,23 @@ def answer(kind: str, pid_file: str | None = None, db: Session = Depends(get_db)
             time.sleep(0.1)
     return {"pid": os.getpid()}
 
+
+_KEPT_HERE = {}                 # in each pool process: what it keeps, by key (총괄 54f7edfdb - a paused walk's stand-in)
+
+
+def kept(name: str, hold: float = 0, resume: dict | None = Body(None, embed=True), db: Session = Depends(get_db)):
+    if resume is None:
+        key = "%s.%d" % (process_pool.here(), len(_KEPT_HERE) + 1)
+        _KEPT_HERE[key] = name
+    else:
+        key = resume["walk"]
+    time.sleep(hold)
+    return {"walk": key, "pid": os.getpid(), "name": _KEPT_HERE[key]}
+
+
+router.api_route("/kept", methods=["POST"])(process_pool.in_pool(
+    kept, pinned_by=lambda kwargs: (kwargs.get("resume") or {}).get("walk"),
+    gone=lambda why: HTTPException(status_code=410, detail={"reason": "walk_expired", "why": why})))
 
 app = FastAPI()
 app.router.route_class = OffLoopJSONRoute
@@ -466,4 +483,68 @@ def test_one_deadline_covers_the_wait_for_a_slot_and_the_answer(client, monkeypa
     assert first["response"].status_code == 200
     assert second["response"].status_code == 503
     assert second["response"].json()["detail"]["reason"] == "walk_timed_out"
+
+
+# ── a kept walk goes back to its own process (총괄 54f7edfdb ㄴ-1) ─────────────────────────────────────────────────
+
+def _keep(client, name, out=None, hold=0):
+    answer = client.post("/kept", params={"name": name, "hold": hold}).json()
+    if out is not None:
+        out[name] = answer
+    return answer
+
+
+def _again(client, answer):
+    return client.post("/kept", params={"name": answer["name"]}, json={"resume": {"walk": answer["walk"]}})
+
+
+def test_two_kept_walks_each_go_back_to_their_own_process(client):
+    out = {}
+    both = [threading.Thread(target=_keep, args=(client, name, out, 1.0)) for name in ("A", "B")]
+    for each in both:
+        each.start()
+    for each in both:
+        each.join()
+    assert out["A"]["pid"] != out["B"]["pid"] and os.getpid() not in (out["A"]["pid"], out["B"]["pid"]), \
+        ("canary: two pool processes keep one each", out)
+    for name in ("A", "B", "A", "B", "B", "A"):
+        answer = _again(client, out[name])
+        assert answer.status_code == 200 and answer.json() == out[name], (name, answer.text)
+
+
+@pytest.mark.parametrize("why", ["reloaded", "process ended", "pool off"])
+def test_a_kept_walk_whose_process_is_gone_is_said_gone(client, monkeypatch, why):
+    kept_walk = _keep(client, "A")
+    if why == "reloaded":
+        monkeypatch.setattr(process_pool, "_warmed", [True])
+        process_pool.recycle()
+    elif why == "process ended":
+        os.kill(kept_walk["pid"], 9)
+        psutil.Process(kept_walk["pid"]).wait(10) if psutil.pid_exists(kept_walk["pid"]) else None
+    else:
+        _set(monkeypatch, walk_processes=0)
+    answer = _again(client, kept_walk)
+    assert answer.status_code == 410, answer.text
+    assert answer.json()["detail"] == {"reason": "walk_expired",
+                                       "why": {"pool off": "reloaded"}.get(why, why)}, answer.text
+
+
+def test_a_kept_walk_of_another_server_start_is_said_restarted(client):
+    answer = client.post("/kept", params={"name": "A"}, json={"resume": {"walk": "0123456789ab.%d.1" % os.getpid()}})
+    assert answer.status_code == 410 and answer.json()["detail"]["why"] == "restarted", answer.text
+
+
+def test_a_kept_walk_waits_for_its_own_busy_process(client):
+    """Its process busy with another body, the continued page waits for it - not another process."""
+    out = {}
+    first = _keep(client, "A")
+    busy = threading.Thread(target=lambda: out.setdefault("busy", _again(client, dict(first, hold=0))))
+    holding = threading.Thread(target=lambda: out.setdefault("hold", client.post(
+        "/kept", params={"name": "A", "hold": 1.0}, json={"resume": {"walk": first["walk"]}})))
+    holding.start()
+    time.sleep(0.3)
+    busy.start()
+    holding.join()
+    busy.join()
+    assert out["hold"].json()["pid"] == out["busy"].json()["pid"] == first["pid"], out
 

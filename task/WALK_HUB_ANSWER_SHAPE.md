@@ -41,6 +41,12 @@ tables                허브가 있을 때만 있다. 노드 허브의 행 = 그
 
 ```
 차례          moved -> left -> nodes -> edges -> tables
+propagation.top_set       🆕 10-13 (main, 총괄 54f7edfdb) 첫 쪽은 맨 윗층 전부 · 이어지는 쪽은 그 쪽에서 맨 윗층에 «든» id
+propagation.top_set_left  이어지는 쪽에만 — 그 쪽에서 맨 윗층에서 «빠진» id. 받는 쪽: top = (top - top_set_left) | top_set
+more.resume               {"walk": "<열쇠>"} — 안을 읽지 않고 그대로 돌려준다
+410                       {"detail": {"reason": "walk_expired", "why": "reloaded|restarted|expired|process ended",
+                                      "message": "This walk expired (<why>[: <자세히>]) - walk again"}}
+                          화면: message 한 줄 + «Walk again» 단추(첫 쪽부터). 저절로 다시 걷지 않는다
 nodes[]       새 노드 · 바뀐 허브 머리(count · value · aux 가 바뀌면 머리 전체가 다시 옴)
               {"id": <허브 id>, "count": 0} — 두 칸뿐 = 그 허브가 없어졌다. 머리와 그 표를 지운다
 edges[]       새 선 · 바뀐 허브 선(겹수 · worlds 가 바뀌면 다시 옴). 겹수는 «지금까지 전부»

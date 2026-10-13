@@ -342,6 +342,10 @@ def evidence_subgraph(
             return PlainTextResponse(payload.get("rows") or "",
                                      media_type="text/tab-separated-values")
         return payload
+    except ledger_subgraph.WalkExpired as exc:
+        # 🔴 A CONTINUED PAGE WHOSE WALK IS GONE (총괄 54f7edfdb): said with why, never walked again on its own - the
+        #    screen offers «Walk again».
+        raise HTTPException(status_code=410, detail=ledger_subgraph.walk_expired(exc.why, exc.said))
     except ledger_subgraph.AggregateRefused as exc:
         # 🔴 NAMED, WITH THE CHOICES (S-146, 판정 331). `subgraph_request_invalid` would tell
         # a caller their request was wrong and not which word -- and a screen that offers
@@ -362,7 +366,15 @@ def evidence_subgraph(
 
 # 🔴 THE ROUTE RUNS IN THE WALK POOL, THE NAME DOES NOT (총괄 QA on b47388fde): code that calls `evidence_subgraph`
 # itself - `mappers/contrast_walk.py` in a chain slot - gets the answer as a dict, as before.
-router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(evidence_subgraph))
+def _kept_walk_key(kwargs):
+    """The key of the paused walk a continued page goes on from - the walk pool sends it to the process that keeps it."""
+    resume = kwargs.get("resume")
+    return resume.get("walk") if isinstance(resume, dict) else None
+
+
+router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(
+    evidence_subgraph, pinned_by=_kept_walk_key,
+    gone=lambda why: HTTPException(status_code=410, detail=ledger_subgraph.walk_expired(why))))
 
 
 def _given(value):

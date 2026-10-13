@@ -350,6 +350,14 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 묻는 것   상한(원자 · 노드 · 엣지)에 잘린 걷기를, 상한은 그대로 둔 채 이어서 끝까지
 답        more = {unexpanded · reach{타입: complete · unexpanded} · resume}  — 더 있는지는 resume 하나가 답한다
 이어 걷기  resume 을 POST 본문으로 돌려준다 -> 같은 상한 · 첫 쪽 시각(as_of)으로 다음 쪽
+🆕 10-13  멈춘 걷기는 그 걷기 프로세스에 산다(총괄 54f7edfdb ㄴ-1) — resume = {"walk": "<서버 시작>.<pid>.<n>"} 열쇠 하나(약 40 바이트)
+          열린 노드(지은 그대로) · 다 읽은 노드 · 커서 · 씨앗마다 닿음 · top set 이 그 프로세스에 — 다음 쪽은 싸고 풀고 다시 짓지 않는다
+          걷기 풀은 열쇠의 pid 로 그 프로세스에 보낸다(바쁘면 기다림) · 같은 질문만(다르면 422) · 마지막 쪽에 놓는다
+          프로세스마다 walk_live_walks(4) · walk_live_minutes(10) — 넘으면 가장 오래 안 쓴 것부터
+만료      410 {reason: walk_expired, why, message} — why 넷: reloaded(리로드가 걷기 프로세스를 바꿈) · restarted · expired · process ended
+          화면 «This walk expired (<why>) - Walk again» 한 줄과 단추 — 저절로 다시 걷지 않는다
+          ⚰️ 리로드 사이에 새 선언으로 이어 가던 것은 은퇴 — 그 걷기는 reloaded
+쪽 = 델타  이어지는 쪽의 propagation.top_set 은 그 쪽에서 맨 윗층에 든 id, top_set_left 는 빠진 id — 빼고 더하면 한 번의 top set
 불변      쪽을 합치면 상한 없이 한 번 걸은 답 — 노드 · 엣지 · 순위(ranked) · 노드마다 reach
           (시험 test_a_walk_continued_page_by_page_is_the_walk_without_caps.py)
 순위      이어지는 쪽의 ranked 는 그 쪽에서 새로 닿은 노드만, 순위는 지금까지 닿은 노드 전부 사이에서
@@ -357,7 +365,7 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 화면      More ▸ 가 다음 쪽을 그 걸음에 합친다(뒤 쪽 순위가 이김) · «N pages» · 타입마다 «<타입>: all reached» / «cut · N not expanded» · 마지막에 More 꺼짐(꺼진 까닭 «All reached»)
 ```
 
-코드 자리는 CODE_MAP 의 `ledger_subgraph.py`(`_still_reaches` · `_reach` · `_packed`) · `trace_router.py`(POST `resume`) · `rnd_board/api.js`(`fetchSubgraph`) · `walk/main.js`(`walkResume`) 행.
+코드 자리는 CODE_MAP 의 `ledger_subgraph.py`(`_still_reaches` · `_reach` · `_kept_walk` · `_keep_walk`) · `runtime/process_pool.py`(`in_pool(pinned_by, gone)` · `here` · `owner_of`) · `trace_router.py`(POST `resume`) · `rnd_board/api.js`(`fetchSubgraph`) · `walk/main.js`(`walkResume`) 행.
 
 ## 🔵 보조 판정 — `aux` (소유자 10-12, `3c4e5a778`)
 
