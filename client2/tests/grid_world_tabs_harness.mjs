@@ -748,8 +748,9 @@ const MUTANTS = [
   { id: 'G6', what: 'the list load drops per_world', catches: 'W3 ', file: 'api.js',
     mutate: (t) => swap(t, 'perWorld: data.per_world,', 'perWorld: undefined,') },
   { id: 'G7', what: 'the row jump goes round the seat', catches: 'W6', file: 'timeline.js',
-    mutate: (t) => swap(t, '    const res = await gridFetch(url);\n    const result = await res.json();',
-      '    const res = await fetch(url);\n    const result = await res.json();') },
+    // re-aimed (lead 87dfa71d7): the jump's refusal check now stands between the read and its body
+    mutate: (t) => swap(t, '    const res = await gridFetch(url);\n\n    // 🔴 THE REFUSAL IS SHOWN',
+      '    const res = await fetch(url);\n\n    // 🔴 THE REFUSAL IS SHOWN') },
   { id: 'G8', what: 'the operating world is not marked', catches: 'W3 ', file: 'world_tabs.js',
     mutate: (t) => swap(t, '      if (name === view.operating) {', '      if (false) {') },
   { id: 'G9', what: 'no tab is shown while none is picked', catches: 'W3 ', file: 'world_tabs.js',

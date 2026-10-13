@@ -6,7 +6,7 @@ import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
 import { state, gridFetch } from './state.js';
 import { elements } from './dom.js';
-import { switchTable, fetchData, overlayStagedEdits, copyRows } from './api.js';
+import { switchTable, fetchData, overlayStagedEdits, copyRows, refusalText } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI, sortQueryTail } from './grid.js';
 import { setMatchCount } from './match_count.js';
@@ -1374,7 +1374,6 @@ export async function navigatorStep3(log) {
 
   try {
     const res = await gridFetch(url);
-    const result = await res.json();
 
     // 🔴 THE REFUSAL IS SHOWN, NOT SWALLOWED (A-6-b). Under a header sort the server refuses
     //    this jump: its offset comparison is written for three names only. Without this branch
@@ -1382,13 +1381,13 @@ export async function navigatorStep3(log) {
     //    「Server fetch error」 — a transport story for a deliberate, explained refusal. The
     //    sentence is the SERVER'S, verbatim, into the status line every other refusal uses; a
     //    Korean equivalent written here would be this side classifying evidence the server
-    //    already judged.
+    //    already judged. Worded by the one refusal seat (api.js refusalText) - a stopped read's
+    //    `detail.message` too (lead 87dfa71d7).
     if (!res.ok) {
-      releaseNavigationGuard(typeof result.detail === 'string' && result.detail
-        ? result.detail
-        : `❌ Jump refused (HTTP ${res.status})`);
+      releaseNavigationGuard(await refusalText(res, '❌ Jump refused'));
       return;
     }
+    const result = await res.json();
 
     if (result.target_offset === -1 || result.data.length === 0) {
       releaseNavigationGuard('❌ Target row does not match active search/transaction filters');
