@@ -11,7 +11,7 @@ export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', categ
 
 /**
  * Each row's colour by the declaration's Color by: a row reading one value is in that category (categories in their
- * sorted order, each its declared colour or the palette's k-th); none, several or no slot - the palette's one colour.
+ * sorted order, each its declared colour or the palette's colour its value gives); none, several or no slot - the one colour.
  * @param {Array<{id, reads: object}>} rows
  * @param {{palette: object, declaration?: object, marked?: (id) => boolean}} ctx
  * @returns {{any: boolean, of: Map<string, {fill, line, category}>, categories: Array<{name, fill, line, ids, dim}>, one: [string, string]}}
@@ -24,8 +24,10 @@ export function colorsOf(rows, ctx) {
   const names = [...new Set(rows.map(categoryOf).filter((c) => c !== null))].sort();
   const marked = ctx.marked || (() => false);
   const anyMarked = rows.some((r) => marked(r.id));
-  const categories = names.map((name, k) => {
-    const [fill, line] = own[name] ? [own[name], own[name]] : categoryColor(palette, k);
+  const categories = names.map((name) => {
+    // its own colour first; else the palette's colour its value gives - the same value the same colour whatever else is
+    // there (the 18766 run: «other» turned from orange to blue when the categories changed)
+    const [fill, line] = own[name] ? [own[name], own[name]] : categoryColor(palette, valueIndex(name));
     const ids = rows.filter((r) => categoryOf(r) === name).map((r) => r.id);
     return { name, fill, line, ids, dim: anyMarked && !ids.some(marked) };
   });
@@ -35,6 +37,13 @@ export function colorsOf(rows, ctx) {
     return [r.id, c ? { fill: c.fill, line: c.line, category: c.name } : { fill: palette.one[0], line: palette.one[1], category: null }];
   }));
   return { any: Boolean(decl.encode && decl.encode.color), of, categories, one: palette.one };
+}
+
+/** A category's place in the palette by its value alone (FNV-1a of its words) - stable as the categories come and go. */
+export function valueIndex(name) {
+  let h = 0x811c9dc5;
+  for (const ch of String(name)) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h;
 }
 
 /** A hub's colour - its rows' when they share one category, else the one colour. */

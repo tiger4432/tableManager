@@ -37,7 +37,7 @@ export function crossModel(rows, ctx) {
   const folded = (ids) => {
     const once = [...new Set(ids)];
     if (!rows.some((row) => row.raw && row.raw.cells)) return once.length;
-    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells));
+    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);
   };
   const sort = (keys) => [...keys].sort((a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0));
   const R = sort(rowKeys);

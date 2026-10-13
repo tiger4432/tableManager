@@ -215,7 +215,7 @@ export class VisualPart extends Panel {
     if (res.ok && !seeds.all) {
       const index = indexGraph(res.body);
       const inside = insideOf(res.body);
-      const { kept, dropped } = keepNodes(index, inside, positive, this.systemConditions(), this.oneValued);
+      const { kept, dropped } = keepNodes(index, inside, positive, this.systemConditions(), this.oneValued, (words, id) => this.layers.marked(this.markingNamed(words), id));
       if (dropped) {
         this.startDropped = dropped;
         positive = kept;
@@ -273,17 +273,10 @@ export class VisualPart extends Panel {
     this.inside = inside;
     const received = this.rowsOf(this.answer);
     if (this.names) for (const n of this.answer.nodes || []) this.names.set(n.id, { type: n.type, label: n.label || n.id });
-    const sys = this.systemConditions().filter((c) => c.row === this.decl.row);
-    const afterSystem = keepNodes(index, inside, received, sys, this.oneValued);
-    const afterPart = keepNodes(index, inside, afterSystem.kept, this.decl.filter || [], this.oneValued);
-    // The picker's rows: the filters' - a limit takes rows out of the picture, not out of what a column can read.
-    this.rowIds = afterPart.kept;
-    const limited = limitRows(afterPart.kept, this.decl.limit, this.layers);
-    const encode = this.decl.encode || {};
-    // An expression's Marked("name"): the marking layer; a row it cannot know is counted, the markings asked heard.
+    // An expression's Marked("name") - in a slot, a fold, a filter: the marking layer; a row it cannot know is counted,
+    // the markings asked heard. The calculator asks (name, node) -> true · false · null (expression.js Marked).
     const asked = new Set();
     const unknown = new Set();
-    // The calculator asks (name, node) -> true · false · null (expression.js Marked; a way's ends one by one).
     const askMarked = (words, id) => {
       const name = this.markingNamed(words);
       asked.add(name);
@@ -291,6 +284,13 @@ export class VisualPart extends Panel {
       if (v === null) unknown.add(id);
       return v;
     };
+    const sys = this.systemConditions().filter((c) => c.row === this.decl.row);
+    const afterSystem = keepNodes(index, inside, received, sys, this.oneValued, askMarked);
+    const afterPart = keepNodes(index, inside, afterSystem.kept, this.decl.filter || [], this.oneValued, askMarked);
+    // The picker's rows: the filters' - a limit takes rows out of the picture, not out of what a column can read.
+    this.rowIds = afterPart.kept;
+    const limited = limitRows(afterPart.kept, this.decl.limit, this.layers);
+    const encode = this.decl.encode || {};
     const rows = limited.map((id) => {
       const node = index.nodes.get(id) || {};
       const reads = {};
@@ -307,8 +307,8 @@ export class VisualPart extends Panel {
     // Each row's colour and each mark's paint - the root's, once (color_by.js); the units a kind draws a mark of (units.js).
     const { colors, colored, paint } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor() });
     this.colors = colors;
-    const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record) : rows;
-    this.model = this.kind.model(units, { paint, colored, palette: this.palette(), declaration: this.decl });
+    const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record, askMarked) : rows;
+    this.model = this.kind.model(units, { paint, colored, askMarked, palette: this.palette(), declaration: this.decl });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
