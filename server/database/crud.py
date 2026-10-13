@@ -3398,6 +3398,39 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
             
     return col_srcs, ow
 
+def array_params(db, columns, rows):
+    """`(params, casts)` - one PostgreSQL array per column, each value through its column's bind processor."""
+    dialect = db.get_bind().dialect
+    params, casts = {}, []
+    for i, (column, values) in enumerate(zip(columns, zip(*rows))):
+        bind = column.type.bind_processor(dialect)
+        params["a%d" % i] = [bind(value) if bind else value for value in values]
+        casts.append("CAST(:a%d AS %s[])" % (i, column.type.compile(dialect=dialect)))
+    return params, casts
+
+
+def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
+    """`rows` [[key, a value per name but updated_at]] into `table` in one statement - updated_at, when
+    named, is the batch's instant as the door stamps it (`batch_write_instant`, else now()). -> the result
+    (its `rowcount`). The one array writer: the notation fold, the unit mark and the flush's changed rows
+    (`database.write_changed_rows_by_shape`, 총괄 8af4d378c) call it."""
+    from sqlalchemy import text
+
+    valued = [name for name in names if name != "updated_at"]
+    columns = [table.c[key]] + [table.c[name] for name in valued]
+    params, casts = array_params(db, columns, rows)
+    sets = ['"%s" = v.a%d' % (name, i) for i, name in enumerate(valued, start=1)]
+    if "updated_at" in names:
+        sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
+        params["updated_at"] = batch_now
+    # the key's own `= ANY(keys)` bounds the table side to the page by its key index: without it a
+    # 1M-row table was hash-joined by a scan of the whole table, every page (box dt_map, 총괄 10-11)
+    return db.execute(text('UPDATE "%s" SET %s FROM unnest(%s) AS v(%s) WHERE "%s"."%s" = v.a0 AND "%s"."%s" = ANY(%s)'
+                           % (table.name, ", ".join(sets), ", ".join(casts),
+                              ", ".join("a%d" % i for i in range(len(columns))),
+                              table.name, key, table.name, key, casts[0])), params)
+
+
 def batch_write_instant(db):
     """ONE timestamp for a whole request, read from the DATABASE. `None` if it cannot be.
 

@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **체인 1,000 행 그룹 — 한 표의 바뀐 행을 «바뀐 칸 모양»마다 한 문장으로 (행마다 UPDATE 없음) (총괄 8af4d378c ㄱ)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     PostgreSQL 에서 플러시가 동적 표의 바뀐 행을 «바뀐 칸 묶음»마다 배열 UPDATE 한 문장으로 씀(crud.update_by_arrays —
+>          표기 접기 · 단위 표시가 쓰던 그 배열 쓰기를 공용 한 자리로). 쓰는 칸은 전처럼 그 행이 바꾼 칸만
+>          전에는 ORM 이 기본키 순으로 «연달아 같은 모양»인 행만 묶어, 두 규칙이 한 표의 다른 행에 다른 칸을 쓰면(조인 · 접기)
+>          거의 행마다 UPDATE 였음. 사건 · 옛 값은 그 전에 훅이 읽어 그대로. SQLite 는 ORM 그대로
+> 볼 줄    없음(문장이 줄 뿐). 문장마다 고친 행 수를 대조 — 모자라면 그 그룹 실패 «[WriteByShape] <표>: an UPDATE of N row(s) …
+>          touched M - a row went from under the write» -> 그 쓰기 실패(ORM 의 행 수 확인과 같은 자리). 체인 그룹이면 시도 상한까지
+>          다시 돌고 넘으면 FAILED(상한 기본 1). 파일 · 화면 쓰기면 그 요청이 실패
+> ORM 에 남김 한 묶음 안 한 칸에 형이 둘 이상(글 · 수 · 참거짓) · updated_at 이 None · 값이 SQL 식 · row_id 가 바뀜 — 그 묶음은 전처럼 행마다
+> 박스 판 실측 (A 의 c1 판 · 재고 10 행 -> dt_log 1,000 행 · 처음 쓰는 잡 · 박스 판, 운영 주장 아님)
+>                      전(main 4abf68886 머리)              후
+>          그룹         6.05 · 5.20 · 4.89 · 5.84 · 5.11 s   5.25 · 4.14 · 4.17 s
+>          그룹 문장     1,047~1,086                         57~60
+>          flush        1.34~1.42 s                          0.81~0.91 s
+>          런처마다 첫 그룹이 약 1 s 느림 — SQL +0.35 s · broadcast build 첫 호출 +0.35 s · 쓰기 파이썬 +0.3 s(같은 슬롯 프로세스)
+> 되돌리기  git revert <착지 커밋> -> 런처 재기동
+> ⚠️ 안 한 것 규격 5 s 를 첫 그룹이 아직 넘음(5.25 s) — 감사 줄 · prefetch · 층 쓰기를 하나씩 재는 중
 > ## [10-14] **decide 가 세는 행 = 그 규칙이 받는 행 — require · exclude 를 다시 세기에도 (총괄 63c747046)** — git pull · 런처 재기동 · 이주 «없음»
 >
 > ```
@@ -84,10 +103,11 @@
 > 볼 줄    chain_worker.log «[ChainRetract] table=<파생 표> rows_deleted=N - no source row holds their key»
 >          사람이 값을 적은 행이었으면 행마다 «[ChainRetract] deleted <표> <키>: no source rows (a person's value was on it)»
 >          다른 쓴 이(파일 · 다른 규칙 · 조인)의 층이 있으면 안 지움 «[ChainRetract] kept <표> <키>: no source rows, but <층> wrote on it»
->          지우기가 실패하면 «[ChainRetract] Table: '<표>' | … failed - the group goes back to be retried» — 그 그룹이 다시 돎
+>          지우기가 실패하면 «[ChainRetract] Table: '<표>' | … failed - the group fails (retried up to its rules'
+>          max_group_attempts, then FAILED)» — 시도 상한 기본 1 이라 대개 바로 FAILED, 상한을 적은 규칙이면 그만큼 다시
 > 뜻       deleted   그 키의 원천 행이 다 떠나 파생 행이 지워짐 — 사람이 적은 값도 같이 감(그 값은 그 사람 편집의 이력 줄에 남음)
 >          kept      원천은 다 떠났지만 그 행에 남의 값이 있음 — 지울지는 사람이: 그 층을 쓴 곳을 보고 파생 표 그리드에서 지움
->          failed    지우기 전에 다시 셈은 써졌고 그룹이 되풀이됨 — 계속 나면 그 줄의 DB 문장을 봄
+>          failed    지우기 전에 다시 셈은 써짐. 그룹이 FAILED 면 다시 넣기 전에 그 줄의 DB 문장을 봄
 > 대기열   decide 원천 표의 DELETE 행이 이제 대기열 화면에 뜬다(그 규칙이 돌 것이라)
 >          칸을 안 적은 규칙은 그 행에서 «a deletion; this rule does not declare allow_delete_trigger»
 > 급할 때   decide 선언에 "allow_delete_trigger": false -> 체인 워커 재기동. 지움은 전처럼 안 깨움(키를 바꾼 편집의 옛 키는 그대로 다시 셈)
