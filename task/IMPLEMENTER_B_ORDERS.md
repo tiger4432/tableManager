@@ -481,3 +481,26 @@ retired   the «refuse by name» sentence of 993d17c31 - not built
           로그 한 줄 «[ChainRetract] deleted <표> <키>: no source rows (a person's value was on it)» 는 사람 층이 있던 행에만
 게이트    ② 칸을 «사람 값 있는 원천 0 행이 지워지고 감사에 그 값이 남음»으로 · 변이 «사람 층이면 안 지움»이 빨강
 ```
+
+> **[총괄 -> 구현자 B] 10-13 — 착지 뒤 검수 둘: 4bb3b4d85 NO-GO -> 총괄이 되돌림(474254ed8) · a08c95676 GO-WITH-FIXES (탐침 총괄 scratchpad qab5_* · qab4_*)**
+
+```
+가 decide 집계가 제 확정 칸 채우기 — 다시 짓기 (ㄷ wip 를 커밋해 두고 이것 먼저, 소유자가 기다리는 dt_lot)
+  1 [높음] 빈 집계의 거두기가 mapper.py 안 withdraw_source(CHAIN_SOURCE, columns) — 같은 칸의 다른 체인 층(조인 · 다른 규칙)까지 거둠
+       -> 맵퍼는 «읽기만»(ingestion_worker 계약). 거두기는 쓰기 뒤 워커의 한 문 _withdraw_and_tell / withdraw_by_origin 으로,
+          «이 규칙이 그 칸에 쓴 층»만(규칙의 표 · 칸 + 그 묶음의 원천 행) — 그 문이 층 잃은 행마다 EDIT 를 내니 화면도 따라옴(결함 4 같이 닫힘)
+  2 [높음] 백필이 그 칸을 enrichment_backfill 층(99)으로 써서 끝내 안 거둬짐 -> 백필도 체인과 같은 층 · 같은 쓰기 길(쓰는 이 하나)
+  3 [중] 백필이 «안 건드린다»는 기존 행의 체인 층을 거둠 -> 백필의 쓰기 범위 밖은 거두기도 밖
+  게이트 조인 값 + 규칙 A 빈 집계 -> 조인 값 남음 · 규칙 B 값 남음 · 백필 OLD -> 원천 지움 -> 다시 셈 -> 빈 칸 · 거둔 행이 그리드 메시지에 실림
+         변이 «행의 칸 전부 거둠» · «표 전체 행 거둠» · «다른 규칙 층 거둠» 빨강
+  문서   mapper.py:8-10 · backfill.py:46-52 · enrichment_rules.md:166 · chain_ingestion_guide.md:297 · 816 · CODE_MAP:4569 · CONFIG_ROLLOUT_GUIDE:279 · RELEASE_LOG(되돌림 표시 걷고 새 항목) · RUN.md 되돌림 절
+  덤(소유자께 올림 — 짓지 않음) 파일 층 이름이 «파일마다 다른 파일명»(directory_watcher:3527)이라 순위표에 «파일»을 적을 자리가 없음 — 수와 함께 보고에 한 줄
+나 번역기 쪽마다 한 번(a08c95676) 고침 — 작게 한 커밋
+  1 [중] roleframe.py:839 한 행 단위 지름길이 «결정적 JSON» 검사(_row_sort_token)를 건너뜀 -> 한 행이면 Decimal · date · 시간대 없는 datetime · NaN 이 원자로,
+       두 행이면 전처럼 쪽이 멈춤 — 행 수로 갈리는 문. 총괄 결정: 전 동작(멈춤)으로 맞춤 — 한 행에도 같은 검사. 바꿀지는 소유자 몫이라 이번에 안 바꿈. 검사 비용 한 줄
+  2 [낮] 분자 안 행 ref 순서 칸(변이 Md 생존 — event_frame.py:824)
+  3 [낮] RUN.md «바이트까지 같다» · RELEASE_LOG 문장을 범위대로 · SERVER_DEFECT_QUEUE S-64-c 갱신 · RUN.md 되돌리기 줄에 «RUN.md 는 충돌 — 코드만 되돌아감» · roleframe.py:837 주석
+다 PG 8 실패 판정(검수관): 단독 통과 셋(순서 잔여) · test_ledger_l1_pg 둘(시험 낡음 — 샘플이 09-25 부터 process_param_num_measure 안 선언) ·
+     recipe walk 둘(환경) · 진짜 결함 하나 — backfill.py:1328-1335 행 수 추정이 ANALYZE 전이면 다른 스키마 같은 이름 표를 집음(478,718) -> 스키마 붙여 묻기. 낡은 시험 둘 고치기와 함께 작게
+순서  가 -> 나 -> 다 -> ㄷ 이어서
+```
