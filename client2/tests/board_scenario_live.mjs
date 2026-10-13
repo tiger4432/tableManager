@@ -95,12 +95,25 @@ const d = part(D).model;
 const byCat = {};
 for (const p of d.points) byCat[p.category] = (byCat[p.category] || 0) + 1;
 say(`D scatter: ${d.points.length} points (${JSON.stringify(byCat)}), x ${d.xKind}, ${d.notDrawn} not drawn, ${d.several} several, unknown ${stat(D).unknown || 0}, walks ${walks() - s3}`);
-// The numbers: the layer on a marking change, the graph
-const t4 = performance.now();
-page.layers.layer(core);
-say(`layer Core wafer: ${JSON.stringify(page.layers.last)} (asked again, cached: ${(performance.now() - t4).toFixed(2)} ms)`);
+const bWafers = () => [...new Set(part(D).model.points.filter((p) => p.category === 'B').map((p) => p.label))];
+say(`D B wafers: ${bWafers().join(', ')} (B pressed: ${b.rowKeys[coreRow]})`);
+// The numbers: the layer on a marking change (another core wafer pressed in B), the graph
+const otherRow = b.rowKeys.findIndex((k, i) => i !== coreRow && k !== '(Empty)');
+const computed0 = page.layers.computed;
+const s5 = walks();
+part(B).markHub([['core wafer', b.rowKeys[otherRow]]], b.rowIds[otherRow], {});
+await settle();
+await until(ready(C));
+await until(ready(D));
+say(`B pressed ${b.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5} (C and D walk from the new marking)`);
+say(`D B wafers now: ${bWafers().join(', ')}; unknown ${stat(D).unknown || 0}`);
+// No relation: D's points all other
+page.relations.set('list', []);
+await settle();
+const none = {};
+for (const p of part(D).model.points) none[p.category] = (none[p.category] || 0) + 1;
+say(`no relations: D ${JSON.stringify(none)}`);
 say(`graph: ${page.layers.graph.nodes.size} nodes, ${page.layers.graph.edges.size} edges; walks in all ${walks() - step0}`);
-say(`status D: ${JSON.stringify(stat(D))}`);
 const save = argOf('--save', null);
 if (save) { writeFileSync(save, JSON.stringify({ kept: page.save(), start: entitySeedId('wafer', { wafer: WAFER }) }, null, 1)); say(`saved ${save}`); }
 process.exit(0);
