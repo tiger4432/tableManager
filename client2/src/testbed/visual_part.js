@@ -224,7 +224,8 @@ export class VisualPart extends Panel {
   }
 
   walkFrom(seeds) {
-    const base = { ...this.walkParams };
+    // The walk's budget: the page's, then the declaration's own (`walk`: node_limit, hops - the server's names).
+    const base = { ...this.walkParams, ...(this.decl.walk || {}) };
     const params = seeds.all ? { ...base, seed_type: this.decl.row }
       : { ...base, nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [] };
     return this.fetchWalk(params);

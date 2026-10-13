@@ -27,7 +27,7 @@ const REAL = {
   reach: await import('../src/walk/reach_table.js'),
 };
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
-const { HubBook, hubId } = await import('../src/testbed/hubs.js');
+const { HubBook, hubId, holds } = await import('../src/testbed/hubs.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
 const { Panel } = await import('../src/rnd_board/panel.js');
 
@@ -462,6 +462,93 @@ async function trendAsScatter(M) {
     xKind: part.model.xKind, pill, marked: markings.entries('marking:pick').map(([id]) => id) };
 }
 
+// ── the marking layer (owner 10-13 «마킹 전파를 미리 층으로», Spotfire's Relations) ──
+// Bonding dies d1 (from c1 on CW1) and d2 (from c2 on CW2) on BW; CW3's die c3 not walked - its wafer has no in_container.
+const node = (id, type) => ({ id, type, label: id, keys: {}, attributes: {} });
+const LAYER_GRAPH = {
+  nodes: [node('BW', 'wafer'), node('CW1', 'wafer'), node('CW2', 'wafer'), node('CW3', 'wafer'), node('d1', 'die'), node('d2', 'die'), node('c1', 'die'), node('c2', 'die'),
+    { id: 'Q', type: 'quantity', label: 'temp', keys: {}, attributes: {} }],
+  edges: [['d1', 'bonded_from', 'c1'], ['d2', 'bonded_from', 'c2'], ['d1', 'in_container', 'BW'], ['d2', 'in_container', 'BW'], ['c1', 'in_container', 'CW1'], ['c2', 'in_container', 'CW2']]
+    .map(([source, predicate, target]) => ({ id: `${source}-${predicate}`, source, target, predicate, qualifiers: {} }))
+    .concat(['BW', 'CW1', 'CW2', 'CW3'].map((w, i) => ({ id: `${w}-m`, source: w, target: 'Q', predicate: 'measures', qualifiers: { value: String(10 + i) }, occurred_at: `2026-01-0${i + 1}T00:00:00Z` }))),
+  truncated: ANSWER.truncated,
+};
+const RELATIONS = [{ from: 'die', predicate: 'bonded_from', to: 'die', both: false }, { from: 'die', predicate: 'in_container', to: 'wafer', both: false }];
+
+async function layered(M) {
+  const markings = new MarkingStore();
+  const hubs = new HubBook();
+  const relations = new KeyedStore({ list: [] });
+  const layers = new M.layer.MarkingLayers({ markings, hubs, graph: new M.layer.GraphBook(), relations });
+  layers.graph.add(LAYER_GRAPH);
+  const ids = LAYER_GRAPH.nodes.map((n) => n.id);
+  const hub = hubs.put(hubId('die', [['core wafer', 'CW1']]), ['d1']);
+  markings.replace('B', [[hub, SIGN.CASE]]);
+  const ask = () => ids.map((id) => layers.marked('B', id));
+  const none = ask();
+  const same = ids.every((id) => (layers.marked('B', id) === true) === holds(markings.entries('B'), hubs, id));
+  relations.set('list', RELATIONS);
+  const spread = ask();
+  // asked again and again, one marking change - one more computation
+  const before = layers.computed;
+  ask();
+  ask();
+  const unchanged = layers.computed - before;
+  markings.replace('B', [['d2', SIGN.CASE]]);
+  ask();
+  ask();
+  const changed = layers.computed - before;
+  const moved = ids.filter((id) => layers.marked('B', id) === true);
+  return { none, same, spread, unchanged, changed, moved };
+}
+
+/** D in little: a scatter of wafers coloured by If(Marked("Core wafer"), "B", "other") on a page's layers, seated alone. */
+async function markedColour(M, withRelations) {
+  const doc = makeDoc('dark');
+  const markings = new MarkingStore();
+  const hubs = new HubBook();
+  const relations = new KeyedStore({ list: withRelations ? RELATIONS : [] });
+  const layers = new M.layer.MarkingLayers({ markings, hubs, graph: new M.layer.GraphBook(), relations });
+  layers.graph.add(LAYER_GRAPH);
+  const stats = new KeyedStore();
+  const markingList = new KeyedStore({ list: [{ name: 'marking:core', label: 'Core wafer', color: '#00A650' }, { name: 'marking:pick', label: 'Pick', color: '#00A650' }] });
+  markings.replace('marking:core', [[hubs.put(hubId('die', [['core wafer', 'CW1']]), ['d1']), SIGN.CASE]]);
+  const decl = { id: 'D', part: 'visual', kind: 'scatter', row: 'wafer', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', markerBy: 'record',
+    encode: { x: { ...TEMP, of: 'time' }, y: TEMP, color: { expr: 'If(Marked("Core wafer"), "B", "other")' } } };
+  const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl, layers, relations, markingList,
+    kinds: { scatter: M.scatter.kind }, filters: new KeyedStore(), stats, active: new KeyedStore(), hubs, names: new Map(), charts: charts(),
+    fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(LAYER_GRAPH)) }) });
+  part.mount();
+  await settle();
+  const colours = () => Object.fromEntries(part.model.points.map((p) => [p.label, p.category]));
+  const first = { colours: colours(), unknown: stats.get('D').unknown };
+  // the core wafer marking moved to CW2's die: D folds again (it asked that marking) - CW2 now
+  markings.replace('marking:core', [['d2', SIGN.CASE]]);
+  await settle();
+  return { ...first, moved: colours() };
+}
+
+/** The map kind seated alone: two wafers' dies at one coordinate - one cell; pressed, both marked. */
+async function mapPress(M) {
+  const doc = makeDoc('dark');
+  const markings = new MarkingStore();
+  const die = (id, x, y) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y) }, attributes: {} });
+  const answer = { nodes: [die('a1', 0, 0), die('b1', 0, 0), die('a2', 1, 0), die('a3', 0, 2)], edges: [], truncated: ANSWER.truncated };
+  const decl = { id: 'A', part: 'visual', kind: 'map', row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick',
+    encode: { x: { steps: [], value: { on: 'key', name: 'x' }, words: ['x'] }, y: { steps: [], value: { on: 'key', name: 'y' }, words: ['y'] } } };
+  const hubs = new HubBook();
+  const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl,
+    kinds: { map: M.map.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs, names: new Map(), charts: charts(),
+    fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+  part.mount();
+  await settle();
+  const cells = part.model.cells.map((c) => [c.x, c.y, c.ids]);
+  walk(part.host).find((n) => n.attrs && n.attrs['data-cell'] === '0,0').dispatch('click', { stopPropagation() {} });
+  await settle();
+  const marked = markings.entries('marking:pick').flatMap(([id]) => hubs.open(id)).sort();
+  return { cells, marked, drawnMarked: part.model.cells.filter((c) => c.marked).map((c) => `${c.x},${c.y}`) };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -483,6 +570,10 @@ async function suite(M) {
   const mk = markerModels(M);
   const mp = await markerPress(M);
   const ts = await trendAsScatter(M);
+  const ly = await layered(M);
+  const cRel = await markedColour(M, true);
+  const cNone = await markedColour(M, false);
+  const mpp = await mapPress(M);
   const lines = [
     judge('S1 a part docked on each edge of another: side by side or stacked, on that side', m.dock,
       [['row', ['B', 'A']], ['row', ['A', 'B']], ['column', ['B', 'A']], ['column', ['A', 'B']]]),
@@ -552,6 +643,17 @@ async function suite(M) {
         [['x', 'y', 'color', 'marker1'], ['x*', 'y*', 'color', 'marker1', 'marker2']]]),
     judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
       ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
+    judge('Y1 no relation: the layer of a marking is its members (a hub its members) - for every node the same as holds()', [ly.none, ly.same],
+      [[false, false, false, false, true, false, false, false, false], true]),
+    judge('Y2 relations die -bonded_from-> die, die -in_container-> wafer: the layer spreads along them; a wafer no in_container of which was walked is not known; another type not marked',
+      ly.spread, [true, true, false, null, true, false, true, false, false]),
+    judge('Y3 asked again and again - computed once; the marking changed - once more, the new spread', [ly.unchanged, ly.changed, ly.moved], [0, 1, ['BW', 'CW2', 'd2', 'c2']]),
+    judge('Y4 D in little: If(Marked("Core wafer"), "B", "other") - with the relations the points of the core wafer and of the bonding wafer B, one not known counted; the marking moved - folded again',
+      cRel, { colours: { BW: 'B', CW1: 'B', CW2: 'other', CW3: null }, unknown: 1, moved: { BW: 'B', CW1: 'other', CW2: 'B', CW3: null } }),
+    judge('Y5 no relation: every point other, none unknown', cNone,
+      { colours: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' }, unknown: 0, moved: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' } }),
+    judge('Y6 the map: a cell a coordinate - two dies at one x, y one cell; pressed, both marked and the cell drawn marked', mpp,
+      { cells: [[0, 0, ['a1', 'b1']], [1, 0, ['a2']], [0, 2, ['a3']]], marked: ['a1', 'b1'], drawnMarked: ['0,0'] }),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -611,6 +713,14 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
   { id: 'M19', what: 'a value record reads the row\'s first read for every point - not its own', catches: 'R1 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, "{ state: 'one', value: raw[k].value }", "{ state: 'one', value: raw[0].value }") },
+  { id: 'M20', what: 'a layer that does not spread - the members only', catches: ['Y2 ', 'Y4 '], file: 'testbed/marking_layer.js', key: 'layer',
+    mutate: (t) => swap(t, '      for (const to of ways.next.get(queue.pop()) || [])', '      for (const to of (queue.pop(), []))') },
+  { id: 'M21', what: 'a layer computed on every ask - no cache', catches: 'Y3 ', file: 'testbed/marking_layer.js', key: 'layer',
+    mutate: (t) => swap(t, '    if (held && held.key === key) return held;', '') },
+  { id: 'M22', what: 'a node not known said not marked', catches: ['Y2 ', 'Y4 '], file: 'testbed/marking_layer.js', key: 'layer',
+    mutate: (t) => swap(t, "!this.steps().touched.has(id) ? null : false;", '!this.steps().touched.has(id) ? false : false;') },
+  { id: 'M23', what: 'a map cell a die, not a coordinate - its press marks one', catches: 'Y6 ', file: 'testbed/kinds/map.js', key: 'map',
+    mutate: (t) => swap(t, "  for (const { values, ids } of combosOf(rows, ['x', 'y'])) {", "  for (const { values, ids } of rows.flatMap((r) => combosOf([r], ['x', 'y']))) {") },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

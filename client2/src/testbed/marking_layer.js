@@ -42,8 +42,9 @@ export class MarkingLayers {
     this.relations = deps.relations || null;
     this.cache = new Map();
     this.ways = null;
-    /** The last layer computed: its marking, its nodes, the ms it took. */
+    /** The last layer computed: its marking, its nodes, the ms it took; how many have been computed. */
     this.last = null;
+    this.computed = 0;
   }
 
   relationList() { return (this.relations && this.relations.get('list')) || []; }
@@ -77,13 +78,14 @@ export class MarkingLayers {
     if (held && held.key === key) return held;
     const t0 = now();
     const set = new Set(this.markings.entries(name).flatMap(([id]) => this.hubs.open(id)));
+    // The members' own types - before the spread: a node of one that is not in is not marked, not «not known».
+    const own = new Set([...set].map((id) => this.graph.typeOf(id)).filter(Boolean));
     const queue = [...set];
     while (queue.length) {
       for (const to of ways.next.get(queue.pop()) || []) if (!set.has(to)) { set.add(to); queue.push(to); }
     }
     // The types a spread reaches from the members' types and are not theirs - a node of one that no relation edge touches
     // is not known (its edge not walked yet); a node of the members' own type that is not in is not marked.
-    const own = new Set([...set].map((id) => this.graph.typeOf(id)).filter(Boolean));
     const reach = new Set(own);
     for (let grew = true; grew;) {
       grew = false;
@@ -94,6 +96,7 @@ export class MarkingLayers {
     const types = new Set([...reach].filter((t) => !own.has(t)));
     const out = { key, set, types, members: this.markings.entries(name).length };
     this.cache.set(name, out);
+    this.computed += 1;
     this.last = { name, nodes: set.size, ms: now() - t0 };
     return out;
   }

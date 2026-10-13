@@ -1,10 +1,12 @@
 // The map kind of the visual part (owner 10-13 scenario A «본딩 웨이퍼 다이맵»): a cell a row at its X and Y - a die at its
 // keys x and y - on a grid the rows' own coordinates span (the map editor's meta as the background is not wired: the
-// owner's «메타가 없으면 데이터 좌표로 격자»). A cell pressed marks its node (a press replaces, Ctrl adds); a press on the
-// ground clears; marked cells in their marking's colour, the rest dimmed while something is marked.
+// owner's «메타가 없으면 데이터 좌표로 격자»). A cell is a coordinate: the hub of the rows at it (two wafers' dies at one
+// x, y - one cell), pressed it marks them whole (a press replaces, Ctrl adds); a press on the ground clears; marked cells
+// in their marking's colour, the rest dimmed while something is marked.
 
 import { numberOf } from '../../walk/reach_table.js';
 import { mix } from '../palette.js';
+import { combosOf } from '../slot.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -20,10 +22,10 @@ export const SLOTS = Object.freeze([
 export function mapModel(rows, ctx) {
   const cells = [];
   let notDrawn = 0;
-  for (const row of rows) {
-    const [x, y] = ['x', 'y'].map((k) => (row.reads[k] && row.reads[k].state === 'one' ? numberOf(row.reads[k].value) : null));
-    if (x === null || y === null) { notDrawn += 1; continue; }
-    cells.push({ id: row.id, label: row.label, x, y, marked: ctx.marked(row.id) });
+  for (const { values, ids } of combosOf(rows, ['x', 'y'])) {
+    const [x, y] = values.map(numberOf);
+    if (x === null || y === null) { notDrawn += ids.length; continue; }
+    cells.push({ ids, where: values, x, y, marked: ids.some(ctx.marked) });
   }
   const anyMarked = cells.some((c) => c.marked);
   const [one, line] = ctx.palette.one;
@@ -57,7 +59,10 @@ export function render(body, model, ctx) {
     rect.setAttribute('stroke', c.line);
     rect.setAttribute('stroke-width', '0.04');
     rect.setAttribute('data-cell', `${c.x},${c.y}`);
-    rect.addEventListener('click', (event) => { if (event.stopPropagation) event.stopPropagation(); ctx.mark([c.id], event); });
+    rect.addEventListener('click', (event) => {
+      if (event.stopPropagation) event.stopPropagation();
+      ctx.markHub([[ctx.words('x'), c.where[0]], [ctx.words('y'), c.where[1]]], c.ids, event);
+    });
     svg.appendChild(rect);
   }
   svg.addEventListener('click', (event) => { if (event.target === svg) ctx.clear(); });
