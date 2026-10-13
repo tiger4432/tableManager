@@ -38983,3 +38983,28 @@ CSS 부품   바탕 층에 한 번: 부품 틀(제목 줄 · 단추 무리 · �
 문서(저자 몫) RELEASE_LOG 시험대 항목: «시스템 마킹 기본 All»(실제 Start) · «고치는 즉시 반영»(2 의 동작) · «다시 열면 같은 그림»(Save 는 부품 선언만 — 마킹 · 필터 판은 빔) ·
           크로스 테이블 범례 값 누르기(산점도만) · «예산에 잘렸으면»(홉 상한도 잘림으로 셈) · 빈 무리 Count 0 — 동작대로
 ```
+
+> **[총괄 -> 클라] 10-13 — 허브 그리기 고침 검수(941c6a872 · d1d084c62): GO-WITH-FIXES — 1 · 2 · 4 · 5 · 7~10 · 12 고쳐짐, 하니스 14 개 전부 0 실패. 착지 전 고칠 것 (재현 probe 총괄 scratchpad p1~p7 *.mjs)**
+
+```
+1 [중 · 새] 대조에서 같은 노드가 A/B 모순으로 두 번 — table_view.js:500-502 가 A · B 따로 hubsAsMembers 를 먼저 하고 :515 에서 합침
+        p7: W2 가 wafer 구획에선 «b»(B only), 허브 구획에선 «A + B». 같은 구성원이 aux 가 다른 두 허브 값 아래면 두 구획이 «전부 A only» · «전부 B only»(실제는 둘 다 셋에 닿음). Add here 합치기도 같은 길
+        -> 합친 «뒤»에 hubsAsMembers 한 번 · heldBy 는 허브 id 가 아니라 구성원 id 로
+2 [중] ask 없는 걸음에서 «Open as nodes» 가 말없이 아무것도 안 함 — subgraph_view.js:694 «if (!held || !held.ask) return». 덩어리를 표로 연 걸음(lumpAnswer)과 그것을 길로 좁힌 답이 허브를 든다(H7)
+        -> 단추를 그리는 판단과 누르는 판단이 같은 함수 하나 — 못 하는 곳엔 단추가 없다
+3 [중] More 로 받은 쪽이 Open 뒤 사라짐 — rnd_board/api.js:2047 ask 가 resume 없음 · subgraph_view.js:697 이 합친 답을 첫 쪽 답으로 «바꿈». 내 처방(«ask 에 expand 만 더함»)이 이 경우를 안 덮었다
+        -> Open 의 답은 들고 있는 «합친 답»에 More 와 «같은 합치기 함수»로 얹는다(바꾸지 않는다). 칸: 쪽 둘 받은 걸음에서 Open 뒤 둘째 쪽 노드가 남는다
+4 [중] 보드 후보 목록 라벨 · 근거가 구성원마다 복사 — derive.js:340 이 허브 순위 줄을 구성원마다 id 만 바꿔 복사
+        p2: W0 · W1 · W2 가 다 «wafer ×3», 근거 길이 다 W2 에서 끝남(대조에선 W1 근거 «N → W2»). rank_list_panel.js:165 가 그 길을 그대로 그림
+        -> 구성원 줄의 라벨은 구성원 이름 · 근거 길은 그 구성원 것(허브 표 행에 있으면) — 없으면 길을 지어내지 말고 «via hub» 한 칸
+5 [중-낮] 연 허브 너머 덩어리가 서버 허브 머리를 1 로 셈 — subgraph_view.js:389 count: members.length. p5: 디펙 4 + 서버 허브 ×5 가 «defect ×5»(실제 9) -> 허브는 구성원 수로
+6 [낮] 11 남음 — ×1 허브의 near 가 구성원으로 바뀌면 머리에 체인 뿌리 이름(table_view.js:731, p3(d) «▤ insp ×3 · L inspected →», 실제 W2) ·
+        덩어리 글자에 방향 없음(:450, 나가는 · 들어오는 덩어리가 같은 글) · main.js:1037 이 정렬도 filter 로 셈(«2 filters set aside»)
+7 [낮] 허브 표 행에서 구성원 id 읽는 줄 사본 다섯 — derive.js:321 · fold_views.js:50 · subgraph_view.js:690 · table_view.js:726 · :748 -> 함수 하나
+        (명령: git grep -n -E "columns\.indexOf\('id'\)|columns\.map\(\(c, i\) => \[c, r\[i\]\]\)" -- client2/src -> 5 · 카나리아 export function hubsAsMembers 1)
+열어서   ⑨ 흐름(구성원 체크 -> Next -> 앞 걸음 허브 Open)을 진짜 화면에서: 손 시뮬레이션에선 다음 걸음 노드 넷(D20 · D21 · K0 · K1)이 한 덩어리로 접힘(:700 이 걸음 구분 없이 접음) — 접히면 고친다(접는 키에 걸음)
+         서버 허브 · 손 덩어리 · 자동 덩어리가 눈으로 갈리나(지금 손 · 자동은 같은 level small, 글자만 다름) — 스샷 한 장
+하니스   H8 이 LEGACY_ROUTES.*.run 과 호출부(rnd_board/main.js:754 · testbed/main.js:102)를 안 돌림 -> 거기 hubs: true 를 더하면 빨개지는 칸 · H11 에 B only 칸 · H13 에 그려지는 문장 칸 · 위 1~5 마다 칸
+문서     RELEASE_LOG «잃는 것 하나»는 과소 — 후보 목록 라벨 · 근거(고치면 빠짐) · 허브 구성원 합성 선에 시각 · 수식어 · records 없음(derive.js:335) · More 쪽(고치면 빠짐) ·
+         subgraph_view.js:681 «An opening changes no fold»(지금 :700 이 바꿈) · CODE_MAP subgraph_view 행의 은퇴 이름 oneMemberHubs 1 · frontend.md walk 행(×1 허브 구성원화 · 덩어리 · 보드 구성원 받기)
+```
