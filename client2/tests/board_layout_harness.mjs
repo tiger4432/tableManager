@@ -446,7 +446,8 @@ async function markerPress(M) {
   const points = scatter.model.points.map((p) => [p.label, p.x, p.y]);
   handlers.click({ data: { id: hubId('wafer', [['lot', 'L1']]) }, event: { event: {} } });
   await settle();
-  return { points, marked: markings.entries('marking:pick').map(([id]) => id), lines: table.model.lines.map((l) => l.id) };
+  const said = (statusWords(table.stats.get('T')) || []).find((w) => w.includes('marked row')) || null;
+  return { points, marked: markings.entries('marking:pick').map(([id]) => id), lines: table.model.lines.map((l) => l.id), said };
 }
 
 // ── the walk screen's trend as one scatter declaration (owner 10-13 «트렌드 부품은 산점도로 대체») ──
@@ -636,6 +637,10 @@ async function routed(M) {
   const pressed = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE, columns: NAMED } }, true, false, 'marking:core');
   const g = pressed.part.model;
   pressed.part.markHub([['core wafer', g.rowKeys[0]], ['name', g.colKeys[0]]], g.grid[0][0].ids, {});
+  await settle();
+  press.push(held(pressed));
+  // the row head of the same two-axis table - one condition again: the row's core wafer node
+  pressed.part.markHub([['core wafer', g.rowKeys[0]]], g.rowIds[0], {});
   await settle();
   press.push(held(pressed));
   pressed.part.markHub([['name', g.colKeys[0]]], g.grid[0][0].ids, {});
@@ -872,8 +877,8 @@ async function suite(M) {
       rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
     judge('W5 a route named that does not start from the start\'s type is said and nothing is walked - not the shortest route instead',
       rt.named, ['refused', 'Route wafer → measurement · has_measurement does not start from die, the start', 0, null]),
-    judge('W6 a cell whose one condition is read off another node marks that node (the core wafer), drawn marked; with a second axis, or on the row\'s own value - the hub of its rows',
-      rt.press, [['CW1'], true, ['hub'], ['hub']]),
+    judge('W6 a cell whose one condition is read off another node marks that node (the core wafer), drawn marked; with a second axis the hub of its rows, its row head the node again; on the row\'s own value - the hub',
+      rt.press, [['CW1'], true, ['hub'], ['CW1'], ['hub']]),
     judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
       rt.mixed, [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
@@ -890,7 +895,7 @@ async function suite(M) {
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
     judge('P6 a marker by lot pressed marks the lot node it stands for (hubs.js nodesOfPress) - the Marked table of wafers holds none of it, no relation declared', mp,
-      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['L1'], lines: [] }),
+      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['L1'], lines: [], said: '0 marked rows - marking holds lot; no relation to wafer' }),
   ];
   return { lines, ran: names.length, names: [...names], failures: [...failures] };
 }
@@ -984,6 +989,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '(this.index && nodesOfPress(this.index, this.inside, encode, where, ids))', '(false)') },
   { id: 'M37', what: 'a mark whose press stands for nodes drawn by its rows only - never marked', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null)', 'painted(ids, null)') },
+  { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'P6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'marked: received.filter(marked).length, hidden, heldOnly,', 'marked: received.filter(marked).length, hidden,') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

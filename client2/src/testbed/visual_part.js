@@ -356,10 +356,14 @@ export class VisualPart extends Panel {
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
+    // the marking holds nodes of other types only and no relation takes them to the row type - why no row is marked
+    const heldTypes = this.reads && this.markings ? [...new Set(this.markings.entries(this.reads).flatMap(([id]) => this.hubs.open(id))
+      .map((id) => this.layers.graph.typeOf(id)).filter(Boolean))] : [];
+    const heldOnly = heldTypes.length && !heldTypes.includes(this.decl.row) && !this.layers.layer(this.reads).types.has(this.decl.row) ? heldTypes : null;
     // M - the rows the walk brought; a, b and c - what each layer took from them (lead 5835e6714). The start side's drops
     // are not among M: they were never walked from.
     this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0, otherStarts: this.otherStarts,
-      part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden,
+      part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden, heldOnly,
       columns: Object.keys(encode).length, source: this.decl.row,
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
