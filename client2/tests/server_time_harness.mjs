@@ -74,6 +74,9 @@ function suite(mod) {
   eq('A3 unparseable text has no time', localStamp('not a date'), NO_TIME);
   eq('A4 ...and the parse says so rather than inventing an epoch',
     parseServerInstant('not a date'), null);
+  eq('A4b an ISO-shaped day that does not exist has no time either', parseServerInstant('2026-13-45 10:00:00'), null);
+  // Only the ISO-8601 shape is a time - the server's instant_key reads no other (lead 10-13); the engine reads 5 as a year.
+  eq('A6 a bare number text is not a time', [parseServerInstant('5'), parseServerInstant('2026'), parseServerInstant('10/01/2026')], [null, null, null]);
   // 🔴 「Invalid Date」 IS A STRING THAT REACHES THE SCREEN. That is the defect class this
   //    guard exists for, and it is why the parse returns null instead of a bad Date.
   ok('A5 no rendering ever contains the words Invalid Date',
@@ -122,9 +125,13 @@ const MUTANTS = [
     from: '  const normalised = text.replace(/^(\\d{4}-\\d{2}-\\d{2}) /, \'$1T\');',
     to: '  const normalised = text.replace(/^(\\d{4}-\\d{2}-\\d{2}) /, \'$1\');' },
   { id: 'M3', what: 'an unparseable string becomes an epoch instead of nothing',
-    catches: 'A4 ...and the parse says so',
+    catches: 'A4b an ISO-shaped day that does not exist',
     from: '  return Number.isNaN(at.getTime()) ? null : at;',
     to: '  return Number.isNaN(at.getTime()) ? new Date(0) : at;' },
+  { id: 'M8', what: 'any text the engine reads is a time (the ISO shape not asked)',
+    catches: 'A6 a bare number text is not a time',
+    from: '  if (!ISO_SHAPE.test(text)) return null;',
+    to: '' },
   { id: 'M4', what: 'a naive string is given a Z the server never sent',
     catches: 'O2 ...by exactly nine hours',
     from: '  const at = new Date(normalised);',
