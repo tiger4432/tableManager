@@ -418,3 +418,14 @@ gate      every rule in the sample and the tracked fixtures: old declaration and
 docs      RUN.md: the command, what each answer means, the backup and how to go back; the decide guide shows the expression form first
 order     unchanged - after the translator per-row cost and the ledger process (owner «지금 순서»)
 ```
+
+> **[lead -> implementer B] 10-13 small - a decide's aggregation column may be one of its target_fields and nothing refuses it (owner: an aggregation of dt_lot from dt_log into dt_inventory always comes out empty, «dt_lot is also a confirm target»)**
+
+```
+what      chain/enrichment/config.py refuses decision_key ∩ target_fields by name but not aggregations ∩ target_fields - one derived column, two writers (the confirm and the aggregation)
+          -> refuse by name at save and load: «aggregation <name> is also a target field - one column has one writer; name the aggregation differently»; measure first what happens today
+             (which writer wins, is the aggregation dropped) and say it in the report; the same judgement for list_columns if it can collide
+also      the guide's decide section: a source column that another rule fills (auto-confirm, join) wakes this rule only with "allow_chain_trigger": true - and a Replay chain fills the rows already blank (one paragraph, with the owner's case as the example)
+gate      a cell that saves aggregations {dt_lot: ...} with target_fields [dt_lot] -> refused by name; the loader refuses the same; the guide example runs
+order     small, after the slices fixes landed - before ㄴ lands if it fits, otherwise right after
+```
