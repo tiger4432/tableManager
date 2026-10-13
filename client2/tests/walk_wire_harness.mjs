@@ -484,6 +484,26 @@ async function refusalSuite(M) {
     (await said(500, { detail: 'boom' })) === 'boom');
   ok('F8 and a body with nothing usable still falls back to the status',
     (await said(503, {})) === 'Walk failed (503)');
+  // A continued walk the server no longer holds (implementer A d5df12352, lead eb1ae8c9f): the server's line, marked expired.
+  const walked = async (status, body) => {
+    const r = recorder({ ok: false, status, json: async () => body });
+    return M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })({ type: 'wafer', keys: { wafer: 'W-1' } });
+  };
+  const gone = await walked(410, { detail: { reason: 'walk_expired', why: 'restarted', message: 'This walk expired (restarted) - walk again' } });
+  ok('F9 a 410 walk_expired: the server\'s line, and marked expired', gone.message === 'This walk expired (restarted) - walk again' && gone.expired === true,
+    JSON.stringify(gone));
+  const others = [await walked(410, { detail: { reason: 'gone' } }), await walked(422, { detail: { reason: 'walk_expired' } })];
+  ok('F10 any other refusal is not expired - another 410, a 422 with the same word', others.every((o) => o.expired === false), JSON.stringify(others));
+  // Only a caller that continues asks resumable (implementer A fe2b894f0): the walk screen's walk, made with it, asks
+  // resumable=true; the board's, made without, asks none.
+  const asks = async (deps) => {
+    const r = recorder();
+    await M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl, ...deps })({ type: 'wafer', keys: { wafer: 'W-1' } });
+    return r.params().get('resumable');
+  };
+  const kept = [await asks({ resumable: true }), await asks({})];
+  ok('F11 a walk made resumable asks resumable=true; one made without asks no resumable at all', kept[0] === 'true' && kept[1] === null,
+    JSON.stringify(kept));
   return { failed: failures.length - before };
 }
 
@@ -639,6 +659,14 @@ const REFUSAL_DEFECTS = [
   ['the new arm jumps the queue, so a server message stops winning',
     (src) => src.replace("  if (detail && typeof detail.message === 'string') return detail.message;\n",
       '')],
+  ['a 410 walk_expired is a refusal like any other - no Walk again',
+    (src) => src.replace('message: refusalSentence(got.detail, got.status), expired: walkExpired(got) };', 'message: refusalSentence(got.detail, got.status), expired: false };')],
+  ['any 410 is taken for an expired walk',
+    (src) => src.replace("const walkExpired = (got) => got.status === 410 && Boolean(", 'const walkExpired = (got) => got.status === 410 || Boolean(')],
+  ['resumable is never sent, so a cut walk on the walk screen comes back with no key',
+    (src) => src.replace("  if (resumable === true) query.set('resumable', 'true');\n", '')],
+  ['every walk asks resumable - the board and the test bed have the server keep walks nobody continues',
+    (src) => src.replace('resume, resumable: resumable === true,', 'resume, resumable: true,')],
 ];
 // C-53. 🔴 「생성기가 하나」가 «성질»로 서 있는지: 정본에서 규칙을 빼면 «두 호출자»가
 //    같이 빨개져야 합니다. 한쪽만 빨개지면 그때 생성기가 둘로 돌아온 것입니다.
