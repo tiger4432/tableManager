@@ -583,15 +583,18 @@ def _named(member, item):
 #: The skeleton node of each `decide` cell that is NOT one value. The reader is
 #: `chain.enrichment.config` (`chain_rules_from_cells`, `_normalize_reference_views`,
 #: `_view_reads`); the shapes sit here beside DECIDE_CELLS. A cell missing here is a value.
-#: ⚠️ `aggregations` IS AN OBJECT - the reader refuses a list. Its item is the record {fn, column,
-#:    separator}, all optional - the reader names what is wrong; the shorthand "count" reaches the
-#:    form as its record (`with_aggregation_records`, 총괄 8b487d2e6).
+#: ⚠️ `aggregations` IS AN OBJECT - the reader refuses a list. Its item is an expression's text (lead 5667ea0fe) -
+#:    or, picked by shape, an old record {fn, column, separator} no expression answers the same; the form draws
+#:    each as the reader folds it (`with_aggregation_records`, 총괄 8b487d2e6).
 DECIDE_CELL_SHAPES = {
     "key": _listed("column", _value()),
     "fields": _listed("field", _value()),
     "list_columns": _listed("column", _value()),
-    "aggregations": _named("column", {"kind": "record", "fields": [
-        {"key": key, "required": False, "node": _value()} for key in ("fn", "column", "separator")]}),
+    "aggregations": _named("column", {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
+        "expression": _value(),
+        "record": {"kind": "record", "fields": [
+            {"key": key, "required": False, "node": _value()} for key in ("fn", "column", "separator")]}},
+        "empty": {"expression": ""}}),
     "reference_views": _listed("view", {"kind": "record", "fields": [
         {"key": key, "required": False, "node": node} for key, node in (
             ("label", _value()), ("query", _value()), ("query_ref", _value()),
@@ -664,15 +667,19 @@ def flat_cell_notes(rule) -> list:
 
 
 def with_aggregation_records(declaration):
-    """The declaration as the chain form draws it: each `derive.decide.aggregations` item as its record
-    (`enrichment.config.aggregation_record` - the reader's one fold of "count"). A copy; the file is as written."""
+    """The declaration as the chain form draws it: each `derive.decide.aggregations` item as the reader folds it
+    (`enrichment.config.aggregation_record`) - its expression, or an old record no expression answers the same. A
+    copy; the file is as written."""
     from chain.enrichment.config import aggregation_record
+    from database import crud
 
     decide = ((declaration or {}).get("derive") or {}).get("decide") if isinstance(declaration, dict) else None
     named = (decide or {}).get("aggregations") if isinstance(decide, dict) else None
     if not isinstance(named, dict):
         return declaration
-    records = {name: aggregation_record(spec) for name, spec in named.items()}
+    table = ((declaration.get("on") or {}).get("table")) if isinstance(declaration.get("on"), dict) else None
+    types = (crud.TABLE_CONFIG.get(table) or {}).get("column_types")
+    records = {name: aggregation_record(spec, types)[0] for name, spec in named.items()}
     return dict(declaration, derive=dict(declaration["derive"], decide=dict(decide, aggregations=records)))
 
 

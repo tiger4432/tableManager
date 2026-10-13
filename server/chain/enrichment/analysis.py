@@ -418,7 +418,7 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
     _ROW_TOTAL = "__rows__"
     totals = _aggregate_affected_keys(
         db, rule["source_table"], rule["decision_key"], key_raw,
-        {_ROW_TOTAL: {"fn": "count", "column": None}}) if key_raw else {}
+        {_ROW_TOTAL: {"expression": "Count()"}}) if key_raw else {}
     total_per_key = {k: v[_ROW_TOTAL] for k, v in totals.items()}
     presence = {t: _source_target_presence(db, rule, t, key_raw) for t in same_name_targets}
 

@@ -680,22 +680,23 @@ def _row_level(node):
     return any(_row_level(c) for c in _children(node))
 
 
-def _names_of(node, out):
-    if node["t"] == "ref":
-        out.append(node["name"])
+def _names_of(node, out, t="ref", key="name"):
+    if node["t"] == t:
+        out.append(node[key])
     for c in _children(node):
-        _names_of(c, out)
+        _names_of(c, out, t, key)
     return out
 
 
 def compile(text):                              # noqa: A001 - the screen's name for the same step
-    """A text read once: {"ok": True, "tree", "per_row", "names"} or {"ok": False, "why"}."""
+    """A text read once: {"ok": True, "tree", "per_row", "names" (the columns it reads), "calls" (the functions it
+    calls)} or {"ok": False, "why"}."""
     try:
         tree = _parse(str(text or ""))
     except ExpressionError as exc:
         return {"ok": False, "why": str(exc)}
     return {"ok": True, "tree": tree, "per_row": _row_level(tree),
-            "names": list(dict.fromkeys(_names_of(tree, [])))}
+            "names": list(dict.fromkeys(_names_of(tree, []))), "calls": list(dict.fromkeys(_names_of(tree, [], "call")))}
 
 
 # ── answering ───────────────────────────────────────────────────────────────────────────────────────────────────────
