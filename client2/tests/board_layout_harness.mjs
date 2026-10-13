@@ -621,6 +621,39 @@ async function routed(M) {
   return { dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
 }
 
+/** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
+ *  - die D1 (p = A) one colour in all four; A's colour declared - all four draw it. */
+async function colourEverywhere(M) {
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 0, 0, 'A'), die('D2', 1, 0, 'B'), die('D3', 2, 1, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const encodes = { scatter: { x: key('x'), y: key('y') }, table: { col1: NAME }, crossTable: { rows: key('x') }, map: { x: key('x'), y: key('y') } };
+  const kinds = { scatter: M.scatter.kind, table: M.table.kind, crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind, map: M.map.kind };
+  const doc = makeDoc('dark');
+  const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: [['#6489FA', '#4B67BC'], ['#FA7864', '#BC5A4B']] };
+  const parts = Object.keys(encodes).map((kind) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode: { ...encodes[kind], color: key('p') } };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl, palette: () => pal,
+      kinds, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    return part;
+  });
+  await settle();
+  // D1's colour as each kind drew it
+  const drawn = () => parts.map((part) => {
+    const k = part.decl.kind;
+    if (k === 'scatter') return part.model.points.find((p) => p.id === 'D1').fill;
+    if (k === 'table') return walk(part.host).find((n) => n.tagName === 'TR' && n.children.length > 1 && n.children[0]._text === 'D1').attrs['data-color'];
+    if (k === 'crossTable') return walk(part.host).find((n) => n.tagName === 'TH' && n._text === '0').parentNode.children[1].style.background;
+    return walk(part.host).find((n) => n.attrs && n.attrs['data-cell'] === '0,0').attrs.fill;
+  });
+  const first = drawn();
+  for (const part of parts) part.setDeclaration({ ...part.declaration(), colors: { A: '#123456' } });
+  await settle();
+  return { first: [new Set(first).size, first[0] === M.color.colorsOf([{ id: 'D1', reads: { color: { state: 'one', value: 'A' } } }], { palette: pal, declaration: { encode: { color: key('p') } } }).categories[0].fill], declared: drawn() };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -643,6 +676,7 @@ async function suite(M) {
   const mp = await markerPress(M);
   const ts = await trendAsScatter(M);
   const rt = await routed(M);
+  const ce = await colourEverywhere(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
   const cRel = await markedColour(M, true);
@@ -739,6 +773,8 @@ async function suite(M) {
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
     judge('W3 die to wafer: the shortest route its own wafer; the route with the bonded_from loop the core wafer, the walk asking that route',
       [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['in_container', 'bonded_from'], 2]]]]),
+    judge('C1 the same Color by on four kinds: a row one colour in all four (the value gives it); a category colour declared - all four draw it',
+      ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456'] }),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -814,6 +850,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    if (this.walkedRoute && this.walkedSeeds) return routeEnds(', '    if (false) return routeEnds(') },
   { id: 'M26', what: 'the walk asks no route - every predicate, the default steps', catches: ['W1 ', 'W3 '], file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '{ ...base, ...along, nodeId:', '{ ...base, nodeId:') },
+  { id: 'M28', what: 'the root hands the colours no declared category colour - the palette colour always', catches: 'C1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'paintRows(rows, { palette: this.palette(), declaration: this.decl,', 'paintRows(rows, { palette: this.palette(), declaration: { ...this.decl, colors: {} },') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];
