@@ -22,7 +22,7 @@ const spelling = (v) => JSON.stringify(v);
  */
 export function readSlot(index, inside, x, slot, oneValued = false) {
   if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)])) : { state: 'missing' };
-  const got = readsOf(index, inside, x, slot);
+  const got = readsOf(index, inside, x, slot, Infinity);
   if (got.missing) return { state: 'missing' };
   const reads = got.reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
   const reduce = slot.reduce || (oneValued ? 'Latest' : null);
@@ -55,7 +55,7 @@ export function calcRow(index, inside, x) {
     at: null,
     get: (name) => {
       const value = ownValue(node, name);
-      return value ? new Reads(readsOf(index, inside, x, { steps: [], value }).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }))) : null;
+      return value ? new Reads(readsOf(index, inside, x, { steps: [], value }, Infinity).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }))) : null;
     },
   };
 }
@@ -70,7 +70,8 @@ function answerOne(out) {
 /** What a folding slot keeps of a row: its reads {value, t}, or the row itself for an expression. */
 export function rawOf(index, inside, x, slot) {
   if (isExpression(slot)) return calcRow(index, inside, x);
-  return readsOf(index, inside, x, slot).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
+  // A calculation reads every way (lead 10-13: a fold over 50 of 2,199 is a wrong answer said as a right one).
+  return readsOf(index, inside, x, slot, Infinity).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
 }
 
 /** A set of rows' raws folded - a cell, a total: the expression over the rows, or the reduce over their reads. */

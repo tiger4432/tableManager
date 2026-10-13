@@ -23,8 +23,8 @@ export const timeOf = (edge) => {
 const keyOf = (edge, fallback) => (edge && (edge.claim_id || edge.id)) || fallback;
 
 /** The walk's own points of one row's column: each group's reads, each at its end's time. */
-export function walkPoints(index, groups, x, column) {
-  return groups.flatMap((g, i) => readsOf(index, g.inside, x, column).reads
+export function walkPoints(index, groups, x, column, ways) {
+  return groups.flatMap((g, i) => readsOf(index, g.inside, x, column, ways).reads
     .map((r) => ({ t: timeOf(r.when), value: r.value, group: i, walked: true, key: keyOf(r.edge, `${i}:${r.node}`), node: r.node,
       giver: r.giver, claim: (r.when && r.when.claim_id) || '', point: pointOf(column, r.edge) })));
 }
@@ -32,7 +32,7 @@ export function walkPoints(index, groups, x, column) {
 /** The walked points of `rows` along `column`, each with the row it was read from - a section's trend, a cell's, a lump's
  *  thumbnail (lead 10-11 E2b): one read. */
 export function rowsPoints(view, rows, column) {
-  return rows.flatMap((x) => walkPoints(view.index, view.groups, x, column).map((p) => ({ ...p, row: x })));
+  return rows.flatMap((x) => walkPoints(view.index, view.groups, x, column, view.ways).map((p) => ({ ...p, row: x })));
 }
 
 /**
