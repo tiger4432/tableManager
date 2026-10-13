@@ -61,6 +61,11 @@ function suite(M, quiet = false) {
   const rowsInFile = FILE.vectors.length + FILE.ours.length;
   ok('C1 every scored row of the file ran, and the file is not empty', scored.size === rowsInFile && rowsInFile > 0, `${scored.size} of ${rowsInFile}`);
   ok('C2 no unsettled row is scored', (FILE.unsettled || []).every((u) => !scored.has(u.id)), ascii((FILE.unsettled || []).map((u) => u.id)));
+  // An operator that meets a text that is not a number (lead 10-13 ①): the row empty and counted once however many
+  // operators met it; an empty value is empty and not counted.
+  const met = M.expr.run(M.expr.compile('[x] * 2 + [x]'), [{ x: '29 mm' }, { x: '29.50' }, { x: null }, { x: 'a' }, { x: 3 }]);
+  ok('E1 the rows an operator met a text that is not a number on: counted once each, an empty value not', met.notNumber === 2
+    && JSON.stringify(met.values) === JSON.stringify([null, 88.5, null, null, 9]), ascii(met));
   return { ran, failures, names };
 }
 
@@ -121,6 +126,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, ': (s[n / 2 - 1] + s[n / 2]) / 2; };', ': s[n / 2 - 1]; };') },
   { id: 'X21', what: 'a numeric fold of nothing 0, not empty', catches: 'V[sum.col.all.null]', file: E,
     mutate: (t) => swap(t, '  return { value: xs.length ? f(xs, params) : null, skipped: items.length - xs.length };', '  return { value: xs.length ? f(xs, params) : 0, skipped: items.length - xs.length };') },
+  { id: 'X22', what: 'an operator meeting a text says nothing', catches: 'E1', file: E,
+    mutate: (t) => swap(t, '      if (notNumber(a) || notNumber(b)) ctx.notNumber.add(ctx.row);\n', '') },
+  { id: 'X23', what: 'an empty value is counted as not a number', catches: 'E1', file: E,
+    mutate: (t) => swap(t, 'const notNumber = (v) => !isBlank(v) && numberOf(v) === null;', 'const notNumber = (v) => numberOf(v) === null;') },
   { id: 'X19', what: 'a numeral is whatever Number() reads (0x10 is 16)', catches: 'N2', file: R,
     mutate: (t) => swap(t, "  if (typeof value !== 'string' || !NUMERAL.test(value.trim())) return null;", "  if (typeof value !== 'string' || !value.trim()) return null;") },
 ];

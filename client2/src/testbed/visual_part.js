@@ -206,6 +206,8 @@ export class VisualPart extends Panel {
     // are not among M: they were never walked from.
     this.counts = { rows: afterPart.kept.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
       part: afterPart.dropped, marked: received.filter(marked).length, hidden, columns: Object.keys(encode).length, source: this.decl.row,
+      // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
+      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
       // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).
       cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };
     this.publish();

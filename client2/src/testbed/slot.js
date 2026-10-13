@@ -16,9 +16,9 @@ const spelling = (v) => JSON.stringify(v);
  * What row `x` holds for a slot, inside the walk's node set.
  * @param {boolean} [oneValued]  the slot's value is declared one-valued (cardinality one): several reads are its history
  *   and the newest is the value - Latest without asking (lead aca803a7a).
- * @returns {{state: 'one'|'several'|'empty'|'missing', value?: *, values?: Array, n?: number, tied?: number}}
- *   one - a value to draw; several - values that differ and no reduce, so not drawn; empty - nothing said; missing -
- *   the row is not in the walk
+ * @returns {{state: 'one'|'several'|'empty'|'missing', value?: *, values?: Array, n?: number, tied?: number, notNumber?: boolean}}
+ *   one - a value to draw; several - values that differ and no reduce, so not drawn; empty - nothing said (notNumber:
+ *   an expression's operator met a text that is not a number); missing - the row is not in the walk
  */
 export function readSlot(index, inside, x, slot, oneValued = false) {
   if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)])) : { state: 'missing' };
@@ -64,7 +64,7 @@ export function calcRow(index, inside, x) {
 function answerOne(out) {
   if (out.several) return { state: 'several', values: [] };
   const v = 'values' in out ? out.values[0] : out.value;
-  return isBlank(v) ? { state: 'empty', n: 0, why: out.why } : { state: 'one', value: v, n: 1 };
+  return isBlank(v) ? { state: 'empty', n: 0, why: out.why, notNumber: out.notNumber > 0 } : { state: 'one', value: v, n: 1 };
 }
 
 /** What a folding slot keeps of a row: its reads {value, t}, or the row itself for an expression. */
