@@ -423,7 +423,9 @@ def _route(monkeypatch, **request):
             raise ledger_subgraph.WalkExpired("expired", "unused for more than 10 min")
         return {"rows": ""} if kwargs.get("rows") else {"nodes": []}
     monkeypatch.setattr(trace_router, "_evidence_graph", walked)
-    monkeypatch.setattr(process_pool, "_settings", lambda: {"walk_processes": 0})
+    from tests.support.pools import bodies_here
+
+    bodies_here(monkeypatch)
     app = FastAPI()
     app.include_router(trace_router.router)
     params = {"id": explorer.entity_id("wafer", {"w": "W"}), **request.pop("params", {})}

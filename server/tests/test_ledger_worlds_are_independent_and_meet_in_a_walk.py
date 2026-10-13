@@ -242,10 +242,9 @@ def fixture_world(pg_engine, config, monkeypatch):
         assert conn.execute(text("SELECT count(*) FROM pg_namespace WHERE nspname = :s"),
                             {"s": PG_TEST_SCHEMA}).scalar() == 1
     monkeypatch.setattr(database_module, "engine", pg_engine)
-    # the product engine is this test's now, so a pooled body would go to a pool process - which reads the server's
-    # engine and data root, not this test's worlds (총괄 e570dcda5 ㄴ): the bodies run here
-    from runtime import process_pool
-    monkeypatch.setattr(process_pool, "_settings", lambda: {"walk_processes": 0, "grid_processes": 0})
+    from tests.support.pools import bodies_here
+
+    bodies_here(monkeypatch)                    # the product engine is this test's now
     monkeypatch.setattr(explorer_router, "_services", {})
     sample = _sample("table_config.json.sample")
     declared = {name: sample[name] for name in (*TABLES, VIEW)}

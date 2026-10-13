@@ -129,12 +129,9 @@ def approximate_rows(conn, schema, table):
     decide is "empty or not", so an unknown estimate falls back to a LIMIT 1
     existence probe, which is O(1) regardless of table size.
     """
-    from sqlalchemy import text
-    est = conn.execute(text(
-        "SELECT c.reltuples::bigint FROM pg_class c "
-        "JOIN pg_namespace n ON n.oid = c.relnamespace "
-        "WHERE n.nspname = :s AND c.relname = :t"
-    ), {"s": schema, "t": table}).scalar()
+    from ledger.column_stats import estimated_rows
+
+    est = estimated_rows(conn, '"%s"."%s"' % (schema.replace('"', '""'), table.replace('"', '""')))
     if est is not None and est > 0:
         return est, False
     has_any = conn.execute(text(f'SELECT 1 FROM "{table}" LIMIT 1')).first() is not None

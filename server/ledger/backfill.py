@@ -1305,6 +1305,14 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
 
     relation = sql.SQL(".").join(
         sql.Identifier(part) for part in str(plan.relation).split("."))
+    estimated = None
+    if exact_rows is False:
+        # this search path's table, by its oid (총괄 568388892 ①) - by name it read another schema's when this one
+        # was never analysed; never analysed (None) is counted below
+        from .column_stats import estimated_rows
+
+        with engine.connect() as conn:
+            estimated = estimated_rows(conn, plan.relation)
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
@@ -1322,18 +1330,7 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
             #
             # ⚠️ `pg_class` holds -1 for a table that was never analysed, so the scan stays
             # for that one.
-            estimated = None
             from_estimate = False
-            if exact_rows is False:
-                cursor.execute(
-                    "SELECT c.reltuples::bigint FROM pg_class c "
-                    "  LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
-                    " WHERE c.relkind = 'r' AND c.relname = %s "
-                    "   AND c.reltuples >= 0 "
-                    " ORDER BY (n.nspname = current_schema()) DESC LIMIT 1",
-                    (str(plan.relation).split(".")[-1],))
-                row = cursor.fetchone()
-                estimated = None if row is None else int(row[0])
             if estimated is None:
                 cursor.execute(sql.SQL("SELECT count(*) FROM {relation}").format(
                     relation=relation))

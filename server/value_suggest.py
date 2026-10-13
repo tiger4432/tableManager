@@ -988,12 +988,10 @@ def _approx_row_count(db, table):
     This runs on the timeout path, where a real `count(*)` would be a second
     way to hang the same request.
     """
+    from ledger.column_stats import estimated_rows
+
     try:
-        n = db.execute(
-            sa.text("SELECT reltuples::bigint FROM pg_class c "
-                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                    "WHERE n.nspname = 'public' AND c.relname = :t"), {"t": table}
-        ).scalar()
+        n = estimated_rows(db, table)          # this search path's table (총괄 568388892 ①) - it read public's
     except Exception:
         try:
             db.rollback()
