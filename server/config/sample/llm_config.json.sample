@@ -4,5 +4,7 @@
   "api_key": "",
   "timeout_s": 60,
   "headers": {},
-  "proxy": null
+  "proxy": null,
+  "requests_per_minute": 20,
+  "batch_chars": 4000
 }

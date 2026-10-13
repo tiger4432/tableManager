@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **LLM 후보 뽑기 — 묶음 · 분당 상한 (총괄 f7a79b242 · ded29a831, 소유자 「분당 20 회 제한 있음」)** — 이주 «없음»(새 표는 웹 서버 기동이 만듦) · 재기동 «웹 서버 -> 체인 워커»
+>
+> ```
+> 무엇     ask_links 가 묶음의 글을 한 요청에(글 길이 합 batch_chars 마다 한 요청) · 빠진 글만 혼자 한 번 더 · 그래도 안 되면 그 글만 거절
+>          LLM 부름은 분당 requests_per_minute 번 — 체인 슬롯 · 소급 실행 · 서버가 표 llm_calls 하나를 같이 씀 · 429 는 기다렸다 세 번까지 다시
+> 설정     server/config/llm_config.json  "requests_per_minute": 20 · "batch_chars": 4000   (없으면 이 값 · 부를 때마다 읽음)
+>          맵퍼 ask_links(texts, names) — texts = [{"id": <글 id>, "text": <글>}] · 규칙 "rows_per_run": 20   (TEXT_LINKS_GUIDE §6)
+> 순서     웹 서버 재기동(기동이 llm_calls 를 만듦) -> 체인 워커 재기동
+> 볼 것    chain_worker.log
+>            [LLM] ask_links: 20 text(s) in 3 request(s) - 41 row(s), 0 text(s) refused
+>            [LLM] per-minute limit - waiting 12 s (20 requests a minute)
+>            [LLM] a request of 7 texts left 1 unread - each asked alone: 'D17': the answer has no item for text 'D17'
+>            [LLM] text 'D17' refused - no rows (llm:<모델>): the answer has no item for text 'D17'
+>          server/llm_requests.log — 부를 때마다 보냄 · 받음 두 줄(429 면 받은 줄 status 429)
+> 답의 뜻   «in K request(s)» 의 K 가 글 수와 같다 -> 글마다 혼자 — batch_chars 가 글보다 작다. 값을 키운다
+>          «waiting» 줄이 자주 -> 상한에 붙어 돈다(정상). 묶음이 그만큼 오래 슬롯을 쥔다 — rows_per_run 을 줄이면 묶음이 짧아진다
+>          «refused» 줄 -> 그 글은 이번에 후보 0 행. ⚠️ allow_retraction 규칙이면 그 글의 손대지 않은 옛 후보가 지워진 것 — replay 로 다시 읽힌다
+>          «the per-minute limit could not use table llm_calls» -> 웹 서버를 이 코드로 아직 안 띄웠다 — 띄우면 표가 생긴다
+>          «the gateway answered 429» 가 이어진다 -> 같은 키를 다른 곳도 쓴다 — requests_per_minute 를 낮춘다
+> 급할 때   맵퍼를 글 하나씩 부르는 옛 모양(ask_links(text, names))으로 두어도 돈다 — 요청 = 글 수, 상한은 그대로
+> 안 잰 것  진짜 모델이 묶음 답을 얼마나 잘 하나(글 id 를 섞는지) · 운영 게이트웨이의 실제 글자 한도
+> ```
+
 > ## [10-13] **원장 다시 번역을 조각 N 개로 · 원장 인덱스 짓기 고침 (총괄 fd550df13 ㄱ · 0cd396d3d · 검수 bdc08ec39)** — 이주 «없음» · 재기동 «체인 워커»(원장 인덱스 줄 · 체인 리플레이 박동) · 다시 번역은 다음 실행부터
 >
 > ```

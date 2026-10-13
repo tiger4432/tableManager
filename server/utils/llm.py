@@ -11,6 +11,14 @@ proxy are cells of one declaration file read on every call - a change reaches th
     timeout_s   seconds one call may take (default 60)
     headers     extra request headers (default none)
     proxy       a proxy URL; absent or null = straight to base_url, the system proxy is not read
+    requests_per_minute   calls in any 60 s, every process that asks together (default 20 - the
+                          gateway's own limit, 소유자 10-13)
+    batch_chars           `text_links.ask_links`' (NUMBER_CELLS)
+
+Every call first waits for room under requests_per_minute - in the `llm_calls` table under an advisory
+lock on PostgreSQL, so the chain's slots, the retroactive run and the server count together; within
+the process on any other database - and says «[LLM] per-minute limit - waiting n s». A 429 answer is
+asked again after its Retry-After (else one window), RATE_LIMITED_TRIES times, each through the gate.
 
 Every call writes two JSON lines to llm_requests.log beside the process logs - what is sent (before
 the call, so a call that hangs still shows) and what came back. The key is in neither.
@@ -22,7 +30,9 @@ box that still sets them and has no file is told to move them.
 import datetime
 import json
 import logging
+import math
 import os
+import threading
 import time
 import uuid
 
@@ -35,7 +45,26 @@ SAMPLE = "config/%s/%s.sample" % (paths.CONFIG_SAMPLE_DIRNAME, CONFIG_FILE)
 REQUEST_LOG = "llm_requests.log"
 REQUIRED_CELLS = ("base_url", "model", "api_key")
 DEFAULT_TIMEOUT_S = 60.0
+#: Cells that are a number above 0: (default for an absent or null cell, whole number, what it counts).
+#: batch_chars - the texts one ask_links request carries, counted as len(text) (a longer text goes alone):
+#: the answer copies each link's sentence, so it grows with the texts; 4,000 keeps it far under a
+#: 4k-token answer cap.
+NUMBER_CELLS = {"timeout_s": (DEFAULT_TIMEOUT_S, False, "a number of seconds"),
+                "requests_per_minute": (20, True, "a whole number of requests"),
+                "batch_chars": (4000, True, "a whole number of characters")}
 RETIRED_ENV = ("ASSY_LLM_BASE_URL", "ASSY_LLM_MODEL", "ASSY_LLM_API_KEY", "ASSY_LLM_TIMEOUT_S")
+#: The per-minute limit's window, and the advisory lock its table is read and written under.
+RATE_WINDOW_S = 60.0
+RATE_LOCK = "llm_calls"
+#: How many times a 429 answer is asked again before the call is refused.
+RATE_LIMITED_TRIES = 3
+TOO_MANY_REQUESTS = 429
+#: The gate's clock and sleep - tests replace them.
+_clock = time.time
+_sleep = time.sleep
+#: The calls this process made in the window - the gate on a database without advisory locks.
+_recent = []
+_recent_lock = threading.Lock()
 #: The first httpx that takes `proxy=` (0.26); an older one is refused by name.
 HTTPX_WITH_PROXY = (0, 26)
 
@@ -45,7 +74,7 @@ class LlmRefused(ValueError):
 
 
 def settings():
-    """The six cells of config/llm_config.json, read now. Refused by name when the file is absent
+    """The cells of config/llm_config.json, read now. Refused by name when the file is absent
     (with the retired environment values named when they are still set) or a cell is not usable."""
     from database.crud import _decode_config_text, _parse_position, is_blank_value
 
@@ -69,19 +98,21 @@ def settings():
     missing = [name for name in REQUIRED_CELLS if cells[name] is None]
     if missing:
         raise LlmRefused("config/%s does not set %s" % (CONFIG_FILE, ", ".join(missing)))
-    timeout = loaded.get("timeout_s")
-    if timeout is None:
-        timeout = DEFAULT_TIMEOUT_S
-    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
-        raise LlmRefused("timeout_s in config/%s is not a number of seconds above 0: %r"
-                         % (CONFIG_FILE, timeout))
+    for name, (default, whole, what) in NUMBER_CELLS.items():
+        value = loaded.get(name)
+        if value is None:
+            value = default
+        if (isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0
+                or (whole and value != int(value))):
+            raise LlmRefused("%s in config/%s is not %s above 0: %r" % (name, CONFIG_FILE, what, value))
+        cells[name] = int(value) if whole else float(value)
     headers = loaded.get("headers") or {}
     if not isinstance(headers, dict):
         raise LlmRefused("headers in config/%s is not an object" % CONFIG_FILE)
     proxy = loaded.get("proxy")
     if proxy is not None and not isinstance(proxy, str):
         raise LlmRefused("proxy in config/%s is not a URL or null" % CONFIG_FILE)
-    cells.update(timeout_s=float(timeout), headers={str(k): str(v) for k, v in headers.items()},
+    cells.update(headers={str(k): str(v) for k, v in headers.items()},
                  proxy=None if is_blank_value(proxy) else proxy.strip())
     return cells
 
@@ -173,36 +204,107 @@ def _why(exc, proxy):
     return " <- ".join(said) + " · proxy: " + (_redact_proxy(proxy) if proxy else "none (direct)")
 
 
+def _wait_s(times, now, cap):
+    """Seconds until one more call fits: 0 while fewer than `cap` of `times` fall in the window
+    ending `now`, else until the cap-th newest of them leaves it."""
+    inside = sorted(t for t in times if t > now - RATE_WINDOW_S)
+    return 0.0 if len(inside) < cap else inside[-cap] + RATE_WINDOW_S - now
+
+
+def _take_a_turn(cap):
+    """Wait until one more call fits under `cap` a minute, then write this call down. On PostgreSQL
+    the calls are the `llm_calls` rows, read and written under one advisory lock, so every process
+    counts against the same cap; elsewhere (SQLite) this process's own list."""
+    from database import database
+
+    engine = database.engine
+    shared = engine.dialect.name == "postgresql"
+    while True:
+        now = _clock()
+        if shared:
+            wait = _shared_turn(engine, now, cap)
+        else:
+            with _recent_lock:
+                _recent[:] = [t for t in _recent if t > now - RATE_WINDOW_S]
+                wait = _wait_s(_recent, now, cap)
+                if wait <= 0:
+                    _recent.append(now)
+        if wait <= 0:
+            return
+        logger.info("[LLM] per-minute limit - waiting %d s (%d requests a minute)", math.ceil(wait), cap)
+        _sleep(wait)
+
+
+def _shared_turn(engine, now, cap):
+    """One look at `llm_calls` under the lock: the rows past the window deleted, `now` written when it
+    fits -> the seconds to wait (0: written). A table the database does not have is refused by name."""
+    from sqlalchemy import select, text
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from database import models
+
+    table = models.LlmCall.__table__
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:name))"), {"name": RATE_LOCK})
+            conn.execute(table.delete().where(table.c.called_at <= now - RATE_WINDOW_S))
+            wait = _wait_s([at for (at,) in conn.execute(select(table.c.called_at))], now, cap)
+            if wait <= 0:
+                conn.execute(table.insert().values(called_at=now))
+            return wait
+    except SQLAlchemyError as exc:
+        raise LlmRefused("the per-minute limit could not use table %s (%s) - the web server's boot makes it"
+                         " (create_all): start it once on this code" % (table.name, type(exc).__name__)) from None
+
+
+def _retry_after(exc):
+    """The seconds a 429 answer asks for (its Retry-After header), else one window."""
+    try:
+        said = float(getattr(getattr(exc, "response", None), "headers", {}).get("retry-after"))
+    except (TypeError, ValueError):
+        return RATE_WINDOW_S
+    return said if said > 0 else RATE_WINDOW_S
+
+
 def ask_json(prompt, *, system=None):
     """One call -> the JSON object the model answered. Refused by name when the file refuses, the
     call fails or the answer is not a JSON object. `from None` keeps the client's own exception -
-    which may quote the key - out of every traceback."""
+    which may quote the key - out of every traceback. Each try first takes a turn under the
+    per-minute limit; a 429 is tried again RATE_LIMITED_TRIES times."""
     cells = settings()
     key = cells["api_key"]
     messages = ([{"role": "system", "content": system}] if system else []) + [
         {"role": "user", "content": prompt}]
     payload = {"model": cells["model"], "messages": messages}
-    back = {"id": uuid.uuid4().hex[:12], "status": None}
     from internal_event_client import _redact_proxy
     proxy = _redact_proxy(cells["proxy"]) if cells["proxy"] else None
-    client = None
-    started = time.monotonic()
-    try:
-        # built in here: a client that cannot be built fails like a call - a received line, one refusal (총괄 93570a1ea)
-        client = _client(cells)
-        # the URL the client posts to: its base_url always ends in "/" (the SDK adds it)
-        _log({"sent": _now(), "id": back["id"], "url": str(client.base_url) + "chat/completions",
-              "model": cells["model"], "headers": dict(client.default_headers), "payload": payload,
-              "proxy": proxy}, key)
-        raw = client.chat.completions.with_raw_response.create(**payload)
-        back.update(status=raw.status_code, answer=_body(raw.text))
-        content = raw.parse().choices[0].message.content
-    except Exception as exc:                                       # noqa: BLE001
-        if client is None:
-            # no sent line - where it was going, from the file (총괄 93570a1ea)
-            back.update(url=cells["base_url"].rstrip("/") + "/chat/completions", proxy=proxy)
-        back.update(status=back["status"] or getattr(exc, "status_code", None), error=_why(exc, cells["proxy"]))
-        raise LlmRefused("the language model call failed: %s" % _masked(back["error"], key)) from None
-    finally:
-        _log({"received": _now(), **back, "ms": round((time.monotonic() - started) * 1000)}, key)
-    return _object(content, key)
+    for tried in range(RATE_LIMITED_TRIES + 1):
+        _take_a_turn(cells["requests_per_minute"])
+        back = {"id": uuid.uuid4().hex[:12], "status": None}
+        client, again = None, None
+        started = time.monotonic()
+        try:
+            # built in here: a client that cannot be built fails like a call - a received line, one refusal (총괄 93570a1ea)
+            client = _client(cells)
+            # the URL the client posts to: its base_url always ends in "/" (the SDK adds it)
+            _log({"sent": _now(), "id": back["id"], "url": str(client.base_url) + "chat/completions",
+                  "model": cells["model"], "headers": dict(client.default_headers), "payload": payload,
+                  "proxy": proxy}, key)
+            raw = client.chat.completions.with_raw_response.create(**payload)
+            back.update(status=raw.status_code, answer=_body(raw.text))
+            content = raw.parse().choices[0].message.content
+        except Exception as exc:                                       # noqa: BLE001
+            if client is None:
+                # no sent line - where it was going, from the file (총괄 93570a1ea)
+                back.update(url=cells["base_url"].rstrip("/") + "/chat/completions", proxy=proxy)
+            back.update(status=back["status"] or getattr(exc, "status_code", None), error=_why(exc, cells["proxy"]))
+            if back["status"] != TOO_MANY_REQUESTS or tried == RATE_LIMITED_TRIES:
+                raise LlmRefused("the language model call failed: %s" % _masked(back["error"], key)) from None
+            again = _retry_after(exc)
+        finally:
+            _log({"received": _now(), **back, "ms": round((time.monotonic() - started) * 1000)}, key)
+        if again is None:
+            return _object(content, key)
+        logger.warning("[LLM] the gateway answered 429 (too many requests) - waiting %d s, then try %d of %d",
+                       math.ceil(again), tried + 2, RATE_LIMITED_TRIES + 1)
+        _sleep(again)

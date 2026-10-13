@@ -22,7 +22,7 @@ file's cells reach the client, not what the real client sends.
   a sentence's end                     . ! ? 。 + whitespace · a blank line - not one line break, not 1.5;
                                        find_links and ask_links say the same
   quote marks · ellipsis               ignored on both sides; a changed word or only marks is dropped
-  answer not JSON / no links list      refused by name
+  answer not JSON / no texts list      refused by name
   certainty said / unsaid              confirmed · suspected / suspected
   the file's cells                     reach the client · its httpx reads no system proxy
   no file / retired env / bad cell     refused by name
@@ -62,6 +62,7 @@ def fixture_root(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
     for name in llm.RETIRED_ENV:
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(llm, "_recent", [])       # the per-minute limit counts this test's calls only
     (tmp_path / "config").mkdir()
     return tmp_path
 
@@ -114,7 +115,8 @@ def fixture_answer(root, monkeypatch):
 
 
 def _links(*items):
-    return json.dumps({"links": list(items)})
+    """The answer to one text (a str) - its links under its id."""
+    return json.dumps({"texts": [{"id": text_links.ONE_TEXT_ID, "links": list(items)}]})
 
 
 def test_a_dictionary_phrase_gets_its_key_and_other_words_keep_their_phrase(answer):
@@ -148,7 +150,7 @@ def test_unsaid_certainty_is_suspected(answer, certainty, expected):
 @pytest.mark.parametrize("content,said", [
     ("not json at all", "not JSON"),
     ("[1, 2]", "not an object"),
-    ('{"rows": []}', "no 'links' list"),
+    ('{"rows": []}', "no 'texts' list"),
     (_links({"cause": "void", "evidence": "Nothing else."}), "no effect"),
     (_links({"cause": "void", "effect": "void", "evidence": "A sentence nobody wrote."}),
      "evidence the text does not hold"),
@@ -270,7 +272,7 @@ def test_the_prompt_holds_no_domain_word(answer):
     (_model, messages), = asked
     prompt = messages[-1]["content"]
     assert prompt.strip() == text_links.ASK_LINKS_PROMPT.replace("<<dictionary>>", "").replace(
-        "<<instruction>>", "").replace("<<text>>", "").strip()
+        "<<instruction>>", "").replace("<<texts>>", "[1]\n").strip()
     assert not any("가" <= ch <= "힣" for ch in text_links.ASK_LINKS_PROMPT)
     asked.clear()
     text_links.ask_links(TEXT, NAMES, instruction="only the cause of voids")
@@ -298,7 +300,7 @@ def test_the_prompt_lists_every_node_once_with_all_its_phrases(answer):
              "F1 (factor): 본딩 온도\n"
              "D7 (defect_kind): 보이드")
     assert _prompt(asked) == text_links.ASK_LINKS_PROMPT.replace("<<dictionary>>", block).replace(
-        "<<instruction>>", "").replace("<<text>>", KO_TEXT)
+        "<<instruction>>", "").replace("<<texts>>", "[1]\n" + KO_TEXT)
 
 
 def test_the_prompt_asks_for_the_shortest_noun_phrase_not_a_sentence(answer):
@@ -417,8 +419,8 @@ def test_the_prompt_asks_each_side_for_its_direction(answer):
     asked = answer(_links())
     text_links.ask_links(KO_TEXT, KO_NAMES)
     lines = _prompt(asked).splitlines()
-    shape = json.loads(next(line for line in lines if line.startswith('{"links"')))
-    assert {"cause_direction", "effect_direction"} <= set(shape["links"][0])
+    shape = json.loads(next(line for line in lines if line.startswith('{"texts"')))
+    assert {"cause_direction", "effect_direction"} <= set(shape["texts"][0]["links"][0])
     assert ('- cause_direction, effect_direction: "up" when the text says that thing increases, rises or'
             ' grows, "down" when it says it decreases, falls or shrinks, null when it says neither') in lines
 
