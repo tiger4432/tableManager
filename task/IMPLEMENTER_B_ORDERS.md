@@ -154,3 +154,20 @@
           주장 목록에 빠진 둘: 묶음 질의는 체인 훅 live 경로도 탄다(confirm_keys) · CANDIDATE_GROUP_WRAP_SQL 에 ORDER BY __c 가 더해져 한 키 길도 바뀜 — RELEASE_LOG 에
 덧        pytest -m pg 는 ASSY_PG_TEST_DATABASE_URL 없이 조용히 skip — 보고의 PG 수는 «passed 수»로 적는다
 ```
+
+> **[총괄 -> 구현자 B] 10-13 — 체인 decide 집계가 «옛 키»를 안 깨운다: 판단키 칸이 바뀌거나 행이 지워지면 옛 그룹의 수 · 집계 · 원장 엣지가 낡은 채 남는다 (응용 4b81fe0a6)**
+
+```
+실측(PG, 제품 자리만)  디펙 표 -> decide(키 die · kind · 단계, count · max size) -> 요약 표 -> 원장 die -has_defect_kind-> defect_kind -> 걷기
+  kind 를 K1 -> K2 로 고침: (die,K2) +1 맞음 · (die,K1) 은 그대로(기대 1/3, 실제 2/5) · K1 이 다 빠져도 2/5 그대로 · 원장 die->K1 안 거둬짐 · 걷기가 «디펙 없는 kind» 에 닿음
+  행 지움: 같은 모양 — 요약 · 원장 엣지 그대로
+원인(코드)  chain/enrichment/mapper.py — decide 가 다시 셀 키를 배치 payload 의 «지금» data 로 짓는다. EDIT payload 에 옛 값이 없다(칸: business_key · channel · data · row_id · source_name · timestamp · transaction_id · updated_by)
+           chain/ingestion_worker.py::_retract_what_those_rows_fed «DELETE never enters the rule loop» — 지운 행은 origin 셀 물러남만
+           깨워진 키에 행이 없으면 count 0 을 쓰고 행을 안 지움(코드로 읽음)
+도착지     ① 판단키 칸이 바뀌면 옛 키도 깨어나 다시 센다 ② 지운 행의 키도 깨어난다 ③ 다시 셌더니 그 키에 소스 행이 0 이면 파생 행을 지운다 -> 원장 엣지가 거둬진다
+           decide 하나만의 일이 아니다 — 같은 성질(«이 행이 먹이던 키»를 지금 값으로만 아는 자리)을 체인 전수로 센다(조인 · 파생 · 접기 · 복사)
+짓기 전     안 셋을 올린다(무엇 · 운영자 하는 일 · 좋은 점 · 위험 · 크기). 생각할 축: 고침 사건이 «옛 값»을 싣기(crud 가 이미 감사에 old/new 를 씀 — 그 자리를 넓힘) ·
+           소스 행 -> 키 기억 · 지움 사건을 규칙 고리로. 소급(이미 낡은 요약을 바로잡기)은 어떻게 — 한 번 다시 세기 명령과 RUN.md 줄
+게이트     응용 판 그대로(4b81fe0a6 의 칸 넷 + 지움) · 같은 성질 자리마다 칸 · 진짜 프로세스 한 판(체인 워커로)
+순서       큐 1 착지 -> 원장 행 색인 키 -> 이것 -> LLM 묶음 -> 큐 2
+```
