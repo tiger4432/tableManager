@@ -228,6 +228,7 @@
 - 2026-10-13 [큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다](#2026-10-13--큰-표-검색--표-선언의-검색-색인-그리드-읽기는-10-초에-끊고-다음-할-일을-말한다) — 적는 곳 `table_config.json` · `ingestion_settings.json`
   - 2026-10-13 [고침 — 칸 필터로 끊겨도 색인할 칸을 대고, «색인 있음»은 DB 가 지은 것만 말한다](#2026-10-13--고침--칸-필터로-끊겨도-색인할-칸을-대고-색인-있음은-db-가-지은-것만-말한다) — 적는 곳 `table_config.json`
   - 2026-10-13 [고침 — 그리드 읽기 상한은 검색어 · 칸 무늬 필터가 있을 때만 — 검색 없는 큰 읽기는 끊지 않는다](#2026-10-13--고침--그리드-읽기-상한은-검색어--칸-무늬-필터가-있을-때만--검색-없는-큰-읽기는-끊지-않는다) — 적는 곳 `ingestion_settings.json`
+  - 2026-10-13 [고침 — 그리드 읽기가 끊기면 토스트와 상태 줄이 서버 문장을 그대로 말한다](#2026-10-13--고침--그리드-읽기가-끊기면-토스트와-상태-줄이-서버-문장을-그대로-말한다) — 누르는 곳 메인 그리드
 - 2026-10-13 [원장 ref 인덱스를 체인 워커가 스스로 짓는다 — 인덱스 관리에 원장 줄, 다시 번역은 결함 두 줄을 늘 처음 한 번](#2026-10-13--원장-ref-인덱스를-체인-워커가-스스로-짓는다--인덱스-관리에-원장-줄-다시-번역은-결함-두-줄을-늘-처음-한-번) — 적는 곳 `table_config.json` · 누르는 곳 어드민 Overview
 - 2026-10-13 [원장 다시 번역이 지금 무엇을 하고 무엇을 기다리는지 로그에 — 쪽 안 단계 줄 · 5 초 박동 · 느린 문장](#2026-10-13--원장-다시-번역이-지금-무엇을-하고-무엇을-기다리는지-로그에--쪽-안-단계-줄--5-초-박동--느린-문장) — 적는 곳 `ingestion_settings.json` · 누르는 곳 소급 탭
 - 2026-10-11 [외부 소스 options.glob — 루트에서의 경로가 패턴에 맞는 파일만 받는다](#2026-10-11--외부-소스-optionsglob--루트에서의-경로가-패턴에-맞는-파일만-받는다) — 적는 곳 `ingestion_settings.json`
@@ -362,12 +363,19 @@
 - **바뀐 동작** — 칸 필터의 contains · startsWith · endsWith 로 끊기면 «Filter stopped after 10 s - add a search index on <칸> in the table's indexes» 입니다. 끊긴 문장과 답의 `search_index` 는 칸마다 DB 가 가진 그대로 말합니다 — `built` · `declared, not built yet (<사유>)` · `not declared` · `cannot be built (<사유>)`. 값이 참 · 거짓에서 이 네 낱말로 바뀝니다. 시각 칸(그 글자가 세션 시간대에 달려 PostgreSQL 이 색인을 거절)과 뷰에는 색인을 시키지 않고, 탐색기 저장도 시각 칸의 검색 색인을 거절합니다. 손으로 적은 것은 체인 워커가 짓지 않고 그 사유를 말합니다. 키 없는 표의 `business_key_val` 검색 색인은 탐색기 저장도 받습니다(파일 + Reload 와 같은 판정). 상한을 끈 채(0 · null) DB 쪽이 문장을 끊으면 500 이 아니라 «Read was cancelled by the database» 입니다. 칸 필터도 검색과 같은 식(`models.search_text`)을 보내므로 같은 색인을 탑니다. 쓰는 곳이 없던 `POST /tables/<표>/row_ids/target` 은 은퇴했습니다. 검색어 · 필터 글자가 3 글자보다 짧으면 색인이 있어도 표 행을 다시 확인해 느릴 수 있습니다(총괄 실측 100만 행 0.70 s).
 - **필요한 조건** — 서버와 체인 워커 재기동(색인은 체인 워커가 짓습니다). 이주 없음.
 - **자세히** — 이 항목과 같은 커밋 · RUN.md «큰 표 검색» 절.
+## 2026-10-13 · 고침 — 그리드 읽기가 끊기면 토스트와 상태 줄이 서버 문장을 그대로 말한다
+
+- **무엇** — 「큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다」의 503 을 화면이 «Data fetch failed (HTTP 503)» 로만 그렸습니다(총괄 87dfa71d7, 구현자 A adae5832a). 서버가 답의 `detail.message` 에 «무엇이 멈췄고 다음에 무엇을 하나»를 보내는데, 화면은 `detail` 이 글자일 때만 읽었습니다.
+- **화면에서** — 메인 그리드에서 읽기가 상한에 끊기면 빨간 토스트와 위쪽 상태 줄이 서버 문장을 그대로 말합니다. 컬럼 필터로 좁힌 읽기는 «Read stopped after 10 s - the limit is grid_read_timeout_seconds in the ingestion settings», 검색어(q)가 있는 읽기는 «Search stopped after 10 s - add a search index on <칸> in the table's indexes» 입니다. 친 필터 글은 그대로 남고, 화면이 다시 묻지 않습니다. 격자는 비고 개수는 «…»(안 셈)입니다.
+- **필요한 조건** — 클라 빌드만. 서버는 adae5832a 가 있는 판.
+- **바뀐 동작** — 거절 문장을 짓는 자리 하나(`refusalText`)가 `detail.message` 도 읽어, 행 추가 · 행 지우기 · Apply 전 다시 읽기 · 기록 줄을 눌러 그 행으로 가기(Jump)의 거절도 서버가 그 모양으로 보내면 그 문장을 말합니다. Jump 는 전에 거절 문장을 따로 읽어, 끊긴 읽기를 «❌ Jump refused (HTTP 503)» 로 말했습니다. 문장이 없는 답은 오늘처럼 «… (HTTP 상태)» 입니다.
+- **자세히** — 이 항목과 같은 커밋 · `client2/tests/grid_view_readonly_harness.mjs` 의 R6~R9 · J1~J3.
 
 ## 2026-10-13 · 큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다
 
 - **무엇** — 소유자 「서버가 다 느림 · 아무 일도 못 함」 · 「400만행 표는 이제 검색 40초」 (총괄 d16033b63). 결과 0 건 검색은 표를 끝까지 읽었고, 그동안 DB 연결 하나와 서버 일꾼 하나를 잡아 다른 요청이 그 뒤에 줄을 섰습니다. 둘을 고칩니다. ① 그리드의 행 읽기 · 세기 · 검색(GET /tables/<표>/data · /data/count)이 `grid_read_timeout_seconds`(기본 10 초)를 넘으면 DB 가 그 문장을 끊고, 서버는 503 과 «무엇이 멈췄고 다음에 무엇을 하나»를 답합니다. 끊긴 연결은 풀로 돌아갑니다. ② 「표마다 인덱스를 선언으로 — table_config 의 "indexes" 를 체인 워커가 짓는다」의 항목에 `"search": true` 갈래가 생깁니다. 그리드 검색이 보내는 바로 그 식에 글자 찾기(trigram) 색인을 같은 짓는 길로 짓습니다.
 - **선언 예시** — `table_config.json` 의 그 표: `"indexes": [{"columns": ["dt_job"], "search": true}, {"columns": ["b_wx"], "search": true}, {"columns": ["b_wy"], "search": true}]` — 검색 칸마다 하나. 이름은 `idx_dt_log_dt_job_search`. 같은 칸의 보통 인덱스와 따로 섭니다.
-- **화면에서** — 검색이 색인 없는 칸 때문에 끊기면 답의 `detail.message` 가 «Search stopped after 10 s - add a search index on b_wy in the table's indexes» 입니다. 지금 화면은 «Data fetch failed (HTTP 503)» 토스트만 그리고, 그 문장은 클라가 다음에 붙입니다. 검색한 `/data` 답에 `"search_index": {"dt_job": true, "b_wy": false}` 가 실립니다. 컬럼 필터의 contains 도 같은 색인을 탑니다.
+- **화면에서** — 검색이 색인 없는 칸 때문에 끊기면 답의 `detail.message` 가 «Search stopped after 10 s - add a search index on b_wy in the table's indexes» 입니다. 화면은 그 문장을 토스트와 상태 줄에 그대로 그립니다(「고침 — 그리드 읽기가 끊기면 토스트와 상태 줄이 서버 문장을 그대로 말한다」). 검색한 `/data` 답에 `"search_index": {"dt_job": true, "b_wy": false}` 가 실립니다. 컬럼 필터의 contains 도 같은 색인을 탑니다.
 - **필요한 조건** — 서버와 체인 워커 재기동(색인은 체인 워커가 짓습니다). 이주 없음. 검색 색인은 pg_trgm 확장이 있어야 합니다 — 없으면 짓지 않고 server.log 에 «… is not built: the pg_trgm extension is missing» 이라고 말합니다. 선언을 적은 뒤 어드민 Reload · 온톨로지 탐색기의 활성화 · 재기동 중 하나가 있어야 체인 프로세스가 짓습니다.
 - **바뀐 동작** — 상한은 그리드 읽기에만 걸립니다. 저장 · 체인 · 파일 쓰기는 각자의 상한 그대로입니다. 상한 칸은 요청마다 읽어 재기동 없이 바뀌고, 0 또는 null 이면 상한이 없습니다. `search` 와 `unique` 를 같이 적으면 저장을 거절합니다. RUN.md 의 손 인덱스(tmp_search_*)가 있어도 선언은 이름이 달라 또 짓습니다 — 선언 것이 지어진 뒤 손 것을 지웁니다. 박스 판(400만 행 dt_log, 운영 주장 아님): 0 건 검색 쪽 2.30 s · 세기 2.17 s 가 세 칸 색인 뒤 0.09 s · 0.03 s, 5 개 동시는 하나에 4.4~8 s 가 0.15~0.29 s.
 - **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · `docs/guide/config/table_config.md` 의 `indexes` 줄.

@@ -45,20 +45,22 @@ function setBadge(el, text, className) {
 /**
  * 거절의 «사유» — 서버가 문장을 보냈으면 그것이고, 아니면 상태를 이름 댑니다.
  *
- * 🔴 자리가 «하나»입니다: 쓰기(`addRows`)와 읽기(`fetchData`)가 같은 답을 내야 하고, 각자
+ * 🔴 자리가 «하나»입니다: 쓰기(`addRows`)와 읽기(`fetchData` · 행 이동 `navigatorStep3`)가 같은 답을 내야 하고, 각자
  *    적으면 한쪽이 조용히 달라집니다. 그리고 이 함수는 «던지지 않습니다» — 거절은 예외가
  *    아니라 «답»이고, 던지면 그 문장이 콘솔로만 갑니다.
- * ⚠️ `detail` 이 «문자열일 때만» 그것이 답입니다. FastAPI 의 기본 422 는 `detail` 이 목록이라,
- *    그대로 그리면 화면이 「[object Object]」를 말합니다.
+ * ⚠️ 답은 «문장»일 때만입니다 — `detail` 이 문자열이거나, 멈춘 읽기(503 grid_read_stopped, adae5832a)처럼
+ *    `detail.message` 가 문자열일 때. FastAPI 의 기본 422 는 `detail` 이 목록이라, 그대로 그리면
+ *    화면이 「[object Object]」를 말합니다.
  *
  * @param {Response} res 거절한 응답
  * @param {string} whenSilent 서버가 문장을 «안 보냈을» 때 화면이 댈 이름
  */
-async function refusalText(res, whenSilent) {
+export async function refusalText(res, whenSilent) {
   const body = await res.json().catch(() => null);
-  return (body && typeof body.detail === 'string' && body.detail)
-    ? body.detail
-    : `${whenSilent} (HTTP ${res.status})`;
+  const detail = body ? body.detail : null;
+  const said = typeof detail === 'string' ? detail
+    : (detail && typeof detail.message === 'string' ? detail.message : '');
+  return said || `${whenSilent} (HTTP ${res.status})`;
 }
 
 /**

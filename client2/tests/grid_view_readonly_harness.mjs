@@ -25,7 +25,9 @@
  *   G  a refusal is the SERVER's sentence (C-102 ②), and a `detail` that is not one does not
  *      become 「[object Object]」 on the screen
  *   R  a refused READ is an answer, not an exception (C-105): the page's data fetch draws the
- *      server's sentence, empties the grid, and says 「not counted」 rather than 「0」
+ *      server's sentence, empties the grid, and says 「not counted」 rather than 「0」; a STOPPED read
+ *      (503, its sentence in `detail.message`, 87dfa71d7) toasts that sentence, keeps the column filter, asks once;
+ *      the row jump's refusal is worded by the same seat (J)
  *   W  the row delete WAITS VISIBLY (a0ae05b60): its button off with a reason, the seconds
  *      counted, no second request, the rows removed on the answer, the server's refusal + next step
  *   L  a ledger receipt line (43a738d58) shows its transaction's rows and stops — no row jump; one
@@ -110,7 +112,13 @@ globalThis.document = {
     if (!nodes.has(id)) nodes.set(id, fakeNode(id));
     return nodes.get(id);
   },
-  createElement: () => fakeNode('created'),
+  // A toast paints its words into the child it finds by class (utils.js paintToast); null here kept every toast empty.
+  createElement: () => {
+    const n = fakeNode('created');
+    n.querySelector = (sel) => (String(sel).startsWith('.')
+      ? n.children.find((c) => String(c.className || '').split(/\s+/).includes(String(sel).slice(1))) || null : null);
+    return n;
+  },
   querySelector: () => null, querySelectorAll: () => [],
   addEventListener: (type, fn) => {
     if (!listeners.has(type)) listeners.set(type, []);
@@ -119,6 +127,10 @@ globalThis.document = {
   removeEventListener() {},
 };
 const log = () => document.getElementById('performance-log');
+const toastTexts = () => document.getElementById('toast-container').children
+  .map((el) => (el.children.find((c) => c.className === 'toast-body') || {}).textContent);
+// Each run's stopped sentence is its own, so a toast an earlier run left up cannot answer for this one.
+let stopRun = 0;
 
 // ── the wire, measured 2026-09-13 on the live box (PID 43720) ───────────────────────────
 //    `/tables/ledger_events/schema` -> `kind: "view"`; `/tables/dt_log/schema` -> `"table"`.
@@ -501,6 +513,53 @@ async function suite(M) {
   await M.api.fetchData(true);
   ok(rowsSet.length > 0 && Array.isArray(rowsSet[rowsSet.length - 1]),
     'R5 a read that is NOT refused still puts rows in the grid');
+  // 🔴 87dfa71d7. A read past grid_read_timeout_seconds answers 503 with its sentence in `detail.message` (the body
+  //    implementer A sends, adae5832a); the screen said 「Data fetch failed (HTTP 503)」. The read is the one the page
+  //    sends - a column filter; the page has no #global-search, so q never leaves it.
+  const STOPPED = `Read stopped after ${++stopRun} s - the limit is grid_read_timeout_seconds in the ingestion settings`;
+  const FILTER = { b_wy: { filterType: 'text', type: 'contains', filter: '12' } };
+  const savedModel = realState.gridApi.getFilterModel;
+  const savedSetModel = realState.gridApi.setFilterModel;
+  let filterSets = 0;
+  realState.gridApi.getFilterModel = () => FILTER;
+  realState.gridApi.setFilterModel = () => { filterSets += 1; };
+  const dataReads = [];
+  const savedR = globalThis.fetch;
+  globalThis.fetch = (url, opts) => { if (String(url).includes('/data?')) dataReads.push(String(url)); return savedR(url, opts); };
+  try {
+    readRefusal = { status: 503, body: { detail: { reason: 'grid_read_stopped', seconds: stopRun, message: STOPPED } } };
+    await M.api.fetchData(true);
+    ok(toastTexts().includes(STOPPED) && log().textContent === STOPPED,
+      `R6 a stopped read: the toast and the status line say the server's sentence [${toastTexts().slice(-1)} | ${log().textContent}]`);
+    ok(filterSets === 0 && realState.gridApi.getFilterModel() === FILTER, `R7 ... the typed column filter stays [${filterSets}]`);
+    ok(dataReads.length === 1 && dataReads[0].includes('filters='), `R8 ... and the read is asked once, not again [${dataReads.length}]`);
+    readRefusal = { status: 500, body: null };
+    await M.api.fetchData(true);
+    ok(log().textContent === 'Data fetch failed (HTTP 500)'
+      && toastTexts().some((t) => String(t).startsWith('Data fetch failed (HTTP 500)')),
+      `R9 another status with no sentence keeps today's words [${log().textContent}]`);
+  } finally {
+    globalThis.fetch = savedR;
+    readRefusal = null;
+    realState.gridApi.getFilterModel = savedModel;
+    realState.gridApi.setFilterModel = savedSetModel;
+  }
+  // ── J: the row jump's refusal through the same seat (lead 10-13 ⓑ) - it read `detail` itself ──
+  try {
+    readRefusal = { status: 422, body: { detail: 'jump refused under a header sort' } };
+    log().textContent = '';
+    await M.timeline.navigatorStep3({ row_id: 'R0' });
+    ok(log().textContent === 'jump refused under a header sort', `J1 a refused jump says the server's sentence [${log().textContent}]`);
+    readRefusal = { status: 503, body: { detail: { reason: 'grid_read_stopped', seconds: 10, message: STOPPED } } };
+    await M.timeline.navigatorStep3({ row_id: 'R0' });
+    ok(log().textContent === STOPPED, `J2 ... a stopped jump read says the stopped sentence [${log().textContent}]`);
+    readRefusal = { status: 500, body: null };
+    await M.timeline.navigatorStep3({ row_id: 'R0' });
+    ok(log().textContent === '❌ Jump refused (HTTP 500)', `J3 ... and one with no sentence names the status as before [${log().textContent}]`);
+  } finally {
+    readRefusal = null;
+    M.timeline.releaseNavigationGuard('');
+  }
   realState.gridApi.setGridOption = () => {};
 
   // ── W: the row delete waits VISIBLY (a0ae05b60, owner 「ㄱ, 한 1만행」) ─────────────────
@@ -745,9 +804,18 @@ const DEFECTS = [
   ['api.js: the server`s sentence is folded into one of ours', 'api',
     // Re-aimed by C-105: the sentence is built in ONE place now (`refusalText`), shared with the
     // READ path -- so this is where folding it away happens. Same claim, same G1.
-    s => s.replace("  return (body && typeof body.detail === 'string' && body.detail)", '  return (false)')],
+    s => s.replace('  return said || `', '  return false || `')],
   ['api.js: a detail that is not a sentence is drawn anyway', 'api',
-    s => s.replace("(body && typeof body.detail === 'string' && body.detail)", '(body && body.detail)')],
+    s => s.replace("  const said = typeof detail === 'string' ? detail", "  const said = detail && !detail.message ? String(detail)")],
+  // 🔴 87dfa71d7. The stopped read (503, detail.message).
+  ['api.js: a stopped read`s sentence is not read', 'api',
+    s => s.replace("    : (detail && typeof detail.message === 'string' ? detail.message : '');", "    : '';")],
+  ['api.js: a refused read drops the typed column filter', 'api',
+    s => s.replace('function showReadRefusal(why) {\n', 'function showReadRefusal(why) {\n  if (state.gridApi) state.gridApi.setFilterModel(null);\n')],
+  ['timeline.js: the jump words its own refusal again', 'timeline',
+    s => s.replace("      releaseNavigationGuard(await refusalText(res, '❌ Jump refused'));", "      releaseNavigationGuard('❌ Jump refused');")],
+  ['api.js: a refused read is asked again', 'api',
+    s => s.replace("      showReadRefusal(await refusalText(res, 'Data fetch failed'));\n", "      showReadRefusal(await refusalText(res, 'Data fetch failed'));\n      await gridFetch(url);\n")],
   ['source_rows.js: a caller that omits the flag gets the controls', 'rows',
     s => s.replace('  const actions = writable\n', '  const actions = writable !== false\n')],
   // ── W (a0ae05b60): the row delete's wait ────────────────────────────────────────────
