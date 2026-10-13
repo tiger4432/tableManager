@@ -119,8 +119,10 @@ popover  .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __
 button   .sf-btn
 ```
 ```
-sizes    text 12/15 Roboto · title 19/23 Roboto Light · tabs 13 Medium · pill 21 high, radius 100 · cell 19 high, 7 each side ·
-         legend 150 wide, a value line 20, its icon 14 · part padding 12 · between parts 2 · status bar 32
+sizes    text 12/15 Roboto · title 19/23 Roboto Light, its text 16 from the part's top and 20 from its left · tabs 13 Medium ·
+         pill 21 high, radius 100 · cell 18 high (a row 19 with its line), inset 2 · 8 · 1 · 1 (top right bottom left) ·
+         a list row 19 · legend 150 wide, a value line 20, its icon 14 · part padding 12 · between parts 2 · status bar 32 ·
+         the active line 2 drawn over the part's edge - it takes no room
 colours  dark ground #2A2A2A / page #232323 · marked cell #00A650 white bold · the seven category colours fill / line - all
          as --sf-* tokens; a part writes none
 ```

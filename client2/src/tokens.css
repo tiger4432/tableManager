@@ -311,10 +311,14 @@
   --sf-fs-tab: 13px;      /* the properties panel's tabs, Roboto Medium */
   --sf-fs-caret: 10px;    /* a pill's ▾ */
   --sf-pad: 12px;         /* a part's padding */
-  --sf-title-h: 31px;     /* title row: 19 / 23, 4 around */
+  --sf-title-h: 31px;     /* title row: 19 / 23, 4 around - its text 16 from the part's top */
+  --sf-title-inset: 8px;  /* the title text 20 from the part's left: the part's 12 and this */
+  --sf-active-w: 2px;     /* the active line, drawn over the part's edge - it takes no room */
   --sf-pill-h: 21px;
-  --sf-cell-h: 19px;
-  --sf-cell-pad: 7px;
+  --sf-cell-h: 18px;      /* a table cell; its line under it makes a row 19 */
+  --sf-cell-pad: 2px 8px 1px 1px;   /* a cell's inset: top · right · bottom · left */
+  --sf-legend-ttl: 19px;  /* a legend title's line */
+  --sf-row-h: 19px;       /* a list table's row (the table part's rows, no line) */
   --sf-legend-w: 150px;
   --sf-legend-row: 20px;
   --sf-icon: 14px;        /* a legend value's icon */
