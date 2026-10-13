@@ -89,6 +89,31 @@ async function seen(M) {
     out.two = { first: shownOf(mounts[0]), second: JSON.stringify(shownOf(mounts[1])), before, marks: markings.entries('two'),
       own: mounts.map((m) => m.children.length) };
   }
+  // ── «+ Add start» shuts on a click outside it and on Escape, not on a click inside (lead 10-13, 18766) ──
+  {
+    const doc = makeDoc('light');
+    const heard = {};
+    doc.addEventListener = (type, fn) => { (heard[type] ||= []).push(fn); };
+    doc.removeEventListener = (type, fn) => { heard[type] = (heard[type] || []).filter((f) => f !== fn); };
+    const fire = (type, event) => { for (const fn of [...(heard[type] || [])]) fn(event); };
+    const mount = doc.createElement('div');
+    doc.body.appendChild(mount);
+    const part = new M.baskets.StartBaskets(mount, { doc, markings: new MarkingStore(), name: 'start', picked: () => node('A') });
+    const pop = walkAll(mount).find((n) => hasClass(n, 'wk-barpop'));
+    const open = () => { pop.open = true; pop.dispatch('toggle'); };
+    const steps = [];
+    open();
+    fire('mousedown', { target: addOf(mount, '+') });
+    steps.push(pop.open);
+    press(addOf(mount, '+'));
+    fire('mousedown', { target: doc.body });
+    steps.push(pop.open, (heard.mousedown || []).length);
+    open();
+    fire('keydown', { key: 'Escape' });
+    steps.push(pop.open, (heard.keydown || []).length);
+    out.dismiss = steps;
+    void part;
+  }
   // ── the walk page ──
   {
     const urls = [];
@@ -193,6 +218,8 @@ function suite(out) {
   eq('B4 x takes a node out of its basket and the marking', [out.removed.shown, out.removed.marks],
     [[['0', []], ['1', ['A']]], [[W('A'), SIGN.CONTROL]]]);
   eq('B5 the baskets say the marking whoever writes it', out.other, [['1', [W('C')]], ['1', ['A']]]);
+  eq('B14 «+ Add start»: a click inside keeps it open; put a start in, a click outside shuts it and the page is no longer heard; Escape shuts it too',
+    out.dismiss, [true, false, 0, false, 0]);
   eq('B13 a node the ledger does not hold: under the adds «0 atoms · not in the ledger», + still on; held, nothing said',
     out.unheld, [['0 atoms · not in the ledger'], false, []]);
   eq('B6 two parts on one screen: one takes a node, the other and its marking do not move',
@@ -236,6 +263,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    this.name = deps.name;', "    this.name = 'start';") },
   { id: 'BM11', what: 'a node not held said nothing', catches: 'B13', file: 'walk/start_baskets.js', key: 'baskets',
     mutate: (t) => swap(t, "    if (node && node.unheld) this.adders.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));\n", '') },
+  { id: 'BM12', what: '«+ Add start» hears no outside click or Escape (the code before - 18766)', catches: 'B14', file: 'walk/start_baskets.js', key: 'baskets',
+    mutate: (t) => swap(t, 'if (this.pop.open && !this.unwatch) this.unwatch = watchForDismiss(this.doc, this.pop, () => this.close());', 'if (false) this.unwatch = null;') },
+  { id: 'BM13', what: 'shut, it still hears the page - the next click anywhere goes to a closed window', catches: 'B14', file: 'walk/start_baskets.js', key: 'baskets',
+    mutate: (t) => swap(t, '    if (this.unwatch) { this.unwatch(); this.unwatch = null; }\n', '') },
   { id: 'BM6', what: 'Walk on with an empty Positive', catches: 'B7', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "(seedsOf(markings.entries(START)).positive.length ? '' : BASKET_WORDS.noStart)", "''") },
   { id: 'BM7', what: 'Walk asks the form\'s node, not the baskets', catches: 'B9', file: 'walk/main.js', key: 'page',

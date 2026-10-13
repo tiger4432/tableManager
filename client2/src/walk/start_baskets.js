@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
-import { fitUnder } from '../dropdown.js';
+import { fitUnder, watchForDismiss } from '../dropdown.js';
 
 export const BASKET_WORDS = Object.freeze({
   positive: 'Positive',
@@ -51,7 +51,15 @@ export class StartBaskets {
     // foot of the page, cut and scrolled when neither fits; fixed, so a panel that clips its own box does not hide it.
     // The gap is the stylesheet's --space-1.
     this.place = () => { if (this.pop.open) fitUnder(body, chip, { align: 'left', gap: 3.4 }); };
-    if (this.pop.addEventListener) this.pop.addEventListener('toggle', this.place);
+    // Open, a click outside it or Escape shuts it - the one way a picker closes (dropdown.js watchForDismiss; lead 10-13,
+    // 18766: it stayed over the graph after a start was put in); shut, it hears nothing.
+    this.unwatch = null;
+    this.onToggle = () => {
+      this.place();
+      if (this.pop.open && !this.unwatch) this.unwatch = watchForDismiss(this.doc, this.pop, () => this.close());
+      else if (!this.pop.open) this.close();
+    };
+    if (this.pop.addEventListener) this.pop.addEventListener('toggle', this.onToggle);
     mount.appendChild(this.root);
     // Whoever writes the marking, the baskets say it as it stands.
     this.unsubscribe = this.markings.subscribe(this.name, () => this.render());
@@ -70,6 +78,12 @@ export class StartBaskets {
   }
 
   remove(id) { this.markings.set(this.name, id, SIGN.ABSENT); }
+
+  /** «+ Add start» shut, and the page no longer heard. */
+  close() {
+    this.pop.open = false;
+    if (this.unwatch) { this.unwatch(); this.unwatch = null; }
+  }
 
   _el(tag, cls, text) {
     const n = this.doc.createElement(tag);
