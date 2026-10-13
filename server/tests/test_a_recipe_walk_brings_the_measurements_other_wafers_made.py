@@ -136,6 +136,9 @@ def fixture_client(pg_engine, tmp_path, monkeypatch):
     (config / "ontology" / "ledger_config.json").write_text(json.dumps(declaration()), encoding="utf-8")
     monkeypatch.setattr(paths, "CONFIG_DIR", str(config))
     monkeypatch.setattr(database_module, "engine", pg_engine)
+    from tests.support.pools import bodies_here
+
+    bodies_here(monkeypatch)                    # the engine and the declaration are this test's (총괄 568388892 ②)
     ledger_subgraph.reset_declaration_cache()
     declared = {name: tables[name] for name in SOURCES}
     saved = dict(crud.TABLE_CONFIG)

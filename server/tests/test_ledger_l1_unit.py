@@ -194,19 +194,18 @@ def test_the_shipped_sample_config_validates():
     assert ledger_config.translator_version(cfg, "lot_event").startswith("lot_event/")
 
 
-def test_missing_live_config_falls_back_to_nested_sample(tmp_path):
+def test_a_missing_live_config_is_refused_even_beside_a_sample(tmp_path):
+    """총괄 568388892: no sample stands in for the operator's declaration - translating production tables by an
+    example is what the refusal prevents. The fallback this replaced was reached only by a test's explicit path."""
     sample_dir = tmp_path / "sample"
     sample_dir.mkdir()
     shipped = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "config", "sample",
         "ledger_config.json.sample"))
-    nested = sample_dir / "ledger_config.json.sample"
-    shutil.copyfile(shipped, nested)
+    shutil.copyfile(shipped, sample_dir / "ledger_config.json.sample")
 
-    cfg = ledger_config.load(str(tmp_path / "ledger_config.json"),
-                             catalog=shipped_catalog())
-
-    assert os.path.normcase(cfg["__origin__"]) == os.path.normcase(str(nested))
+    with pytest.raises(ledger_config.LedgerConfigError, match="no ledger configuration at"):
+        ledger_config.load(str(tmp_path / "ledger_config.json"), catalog=shipped_catalog())
 
 
 def test_the_translator_version_changes_when_a_RULE_changes():
