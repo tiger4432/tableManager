@@ -9,7 +9,7 @@ replaced by one that answers each [id] of the prompt - except where the seat its
   a text's rows in a batch            == that text asked alone
   a link quoting another text         dropped in its text, one line - the text's other links kept
   an id the answer leaves out         asked again alone once · then refused: no rows, its reason
-  a whole answer refused              each text asked alone
+  a whole answer refused              each text asked alone · a call that failed: the batch fails at once (one request)
   a text alone in its request         not asked again
   every text refused                  LlmRefused, the first text's reason
   the same id twice                   ValueError before any request
@@ -460,3 +460,42 @@ def test_a_database_without_the_table_is_refused_by_name(two_processes, clock, m
     assert said.startswith("the per-minute limit could not use table llm_calls_never_made (ProgrammingError: ")
     assert said.endswith(" - a missing table is made by the web server's boot (create_all): start it once on this code")
     assert clock.waits == []
+
+
+def _failing(at, failure):
+    """A `whole` that raises `failure` on request `at` and leaves the others to the model."""
+    def whole(number):
+        if number == at:
+            raise failure
+        return None
+    return whole
+
+
+def test_a_call_that_failed_fails_the_batch_at_once(model):
+    """총괄 10-13 ②: no answer came - asking each text alone would ask a gateway that is not answering."""
+    failure = llm.LlmCallFailed("the language model call failed: ConnectError: refused · proxy: none (direct)")
+    fake = model(links=LINKS, whole=_failing(1, failure))
+    with pytest.raises(llm.LlmCallFailed) as refused:
+        text_links.ask_links(BATCH, NAMES)
+    assert refused.value is failure and len(fake.prompts) == 1
+
+
+def test_a_call_that_failed_while_a_text_is_asked_alone_fails_the_batch(model):
+    fake = model(links=LINKS, leave_out=lambda ident, number: ident == "7",
+                 whole=_failing(2, llm.LlmCallFailed("the language model call failed: ReadTimeout: timed out")))
+    with pytest.raises(llm.LlmCallFailed):
+        text_links.ask_links(BATCH, NAMES)
+    assert len(fake.prompts) == 2
+
+
+def test_a_dead_gateway_is_asked_once_for_the_whole_batch(root, clock, monkeypatch):
+    """The seat as shipped: the client cannot connect -> one request, refused as a call that failed."""
+    _declare(root, **CELLS)
+    calls = _client_saying(monkeypatch, ConnectionError("connection refused"))
+    with pytest.raises(llm.LlmCallFailed) as refused:
+        text_links.ask_links(BATCH, NAMES)
+    assert len(calls) == 1 and clock.waits == []
+    assert str(refused.value) == ("the language model call failed: ConnectionError: connection refused"
+                                  " · proxy: none (direct)")
+    assert [line.get("error") for line in _log_lines(root) if "received" in line] == [
+        "ConnectionError: connection refused · proxy: none (direct)"]

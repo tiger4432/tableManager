@@ -93,14 +93,17 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <규�
 
 ```python
 import pandas as pd
-from mapper_sdk import ask_links, mapper, sql
+from mapper_sdk import UNREAD_JOBS, ask_links, mapper, sql
 
 @mapper()
 def text_cause_links_llm(df, db):
     names = sql(db, "SELECT <타입 칸> AS node_type, <키 칸> AS node_key, <말 칸> AS phrase "
                     "FROM <부르는 말 표>").to_dict("records")
     texts = [{"id": text_id, "text": text} for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])]
-    return pd.DataFrame(ask_links(texts, names)).rename(columns={"text_id": "<글 id 칸>"})
+    found = ask_links(texts, names)
+    out = pd.DataFrame(found).rename(columns={"text_id": "<글 id 칸>"})
+    out.attrs[UNREAD_JOBS] = [item["id"] for item in found.refused]     # 못 읽은 글 - 옛 후보를 지우지 않는다
+    return out
 ```
 
 ```json
@@ -120,7 +123,8 @@ def text_cause_links_llm(df, db):
 - 글 여럿은 `[{"id": <글 id>, "text": <글>}, …]` — id 는 묶음 안에서 겹치면 안 된다(겹치면 묻기 전에 `ValueError`). 결과 행마다 맨 앞에 `text_id`(넘긴 id 그대로). 글 하나(문자열)로 불러도 된다 — 그때 결과는 전과 같다(`text_id` 없음).
 - 요청 하나 = 사전 한 번 + 지시 한 번 + 글들(글마다 `[<글 id>]` 줄 뒤에, 빈 줄로 띄워). 글 길이 합이 `batch_chars` 를 넘으면 다음 요청으로 — 묶음 하나 = 요청 «글자 합 / batch_chars» 번(올림, 한 글이 상한보다 길면 그 글 혼자). 모델은 글 id 마다 링크를 답하고, 근거 · 방향 · 키는 «그 글 안에서만» 읽는다 — 다른 글의 문장을 근거로 댄 링크는 그 글에서 버려진다(아래 근거 줄).
 - 답에 빠진 글 · 모양이 틀린 글(링크 목록 없음 · 원인/현상/근거 빔 · 모든 링크의 근거가 그 글에 없음 · 답 전체가 JSON 아님)은 «그 글만 혼자» 한 번 더 묻는다 — 로그 한 줄 `[LLM] a request of N texts left K unread - each asked alone: <id>: <사유>; …`. 혼자 물은 요청에서도 안 되면 그 글만 거절 — 후보 0 행, 경고 한 줄 `[LLM] text <id> refused - no rows (llm:<모델>): <사유>`, 결과의 `refused` 에 `{id, reason}`. 처음부터 혼자였던 글(묶음에 글 하나, 또는 상한보다 긴 글)은 다시 묻지 않는다. 모든 글이 거절되면 `LlmRefused` 로 묶음이 실패한다(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED — 전과 같다).
-- ⚠️ 거절된 글은 이번에 후보를 «안 낸» 글이다. `allow_retraction` 규칙이면 체인이 그 글 id 를 받았으므로 그 글의 옛 후보 중 사람이 손대지 않은 것이 지워진다(20 행 이상 · 절반 넘게면 §5 처럼 거절). 그 글을 다시 읽히려면 §4 의 replay.
+- 호출 «자체»가 실패하면(연결 · 시한 · 5xx · 세 번 넘은 429 — 답이 아예 안 옴) 글마다 다시 묻지 않고 곧바로 `LlmCallFailed`(`LlmRefused` 의 하위)로 묶음이 실패한다 — 게이트웨이가 죽어도 요청은 한 번이고, 체인이 그 묶음을 나중에 다시 한다. 글마다 다시 묻는 것은 모양이 틀린 답 · 빠진 글뿐이다.
+- 거절된 글은 «이번에 낸 것이 없음»이 아니라 «모름»이다 — 예시처럼 `found.refused` 의 id 를 결과의 `attrs[UNREAD_JOBS]` 에 실으면, `allow_retraction` 규칙이 그 글의 회수 배치를 만들지 않아 옛 후보가 그대로 남는다. 로그 한 줄 `[Chain] <규칙 이름>: kept old cells of N job(s) the mapper could not read - <글 id>, …`. ⚠️ 싣지 않으면 그 글은 «아무것도 안 낸» 글로 읽혀 사람이 손대지 않은 옛 후보가 지워진다(20 행 이상 · 절반 넘게면 §5 처럼 거절). 그 글을 다시 읽히려면 §4 의 replay.
 - 결과는 행 목록이고, 덧붙여 `requests`(부른 수 — 혼자 다시 물은 것 포함) · `texts`(넘긴 글 수) · `refused` 를 든다. 같은 수가 로그 한 줄 `[LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused`.
 - 분당 상한 — LLM 을 부르는 자리(`ask_json`) 하나가 지난 60 초의 부름이 `requests_per_minute` 이면 가장 오래된 것이 60 초를 넘길 때까지 기다린다. 기다리는 동안 `[LLM] per-minute limit - waiting N s (20 requests a minute)` 한 줄(체인이면 `chain_worker.log`). PostgreSQL 이면 상한을 체인 슬롯 · 소급 실행 · 서버(맵퍼 벤치 · 소급 미리 보기)가 «같이» 쓴다 — 표 `llm_calls`(최근 부른 시각, 상한만큼의 행) 를 잠금 하나 아래에서 읽고 쓴다. 이 표는 웹 서버 기동이 만든다 — 표를 못 쓰면 `the per-minute limit could not use table llm_calls (<예외>: <DB 문장 첫 줄>) - a missing table is made by the web server's boot (create_all): start it once on this code` 로 거절(그 부름이 실패 — 체인이면 묶음이 다시 시도).
 - 게이트웨이가 429 를 주면 그 답의 `Retry-After` 초(없으면 60 초) 기다렸다 다시 — 세 번까지, 매번 분당 상한을 지난다. 줄 `[LLM] the gateway answered 429 (too many requests) - waiting N s, then try 2 of 4`. 네 번째도 429 면 거절. ⚠️ openai 클라이언트 자체의 다시 시도(기본 2 번 — 429 · 연결 실패 · 5xx)는 그대로이고, 그 다시 시도는 이 상한을 안 지난다.
@@ -143,7 +147,7 @@ def text_cause_links_llm(df, db):
 
 ```python
 import pandas as pd
-from mapper_sdk import ask_links, mapper, sql
+from mapper_sdk import UNREAD_JOBS, ask_links, mapper, sql
 
 @mapper()
 def text_cause_links_llm(df, db):
@@ -151,7 +155,9 @@ def text_cause_links_llm(df, db):
                     "FROM <부르는 말 표>").to_dict("records")
     texts = [{"id": text_id, "text": text} for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])]
     found = ask_links(texts, names, known={"follow": ["<인과 술어>"], "hops": 2})
-    return pd.DataFrame(found).rename(columns={"text_id": "<글 id 칸>"})
+    out = pd.DataFrame(found).rename(columns={"text_id": "<글 id 칸>"})
+    out.attrs[UNREAD_JOBS] = [item["id"] for item in found.refused]
+    return out
 ```
 
 1. 씨앗 — 요청의 글이 구절을 품은 사전 노드(낱말 주머니 §8-1, `match_at` 같음). 식별자 순

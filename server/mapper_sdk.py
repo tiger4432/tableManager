@@ -21,9 +21,12 @@ table declaration, and about nothing else.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def _python_scalar(value):
@@ -465,6 +468,11 @@ def _present(value) -> bool:
 #: came from elsewhere. An aggregate that drops the column is stamped with nothing.
 ORIGIN_MARK = "__origin_row_id"
 
+#: 총괄 10-13 ①: the jobs the mapper COULD NOT READ this time, on its frame - `out.attrs[UNREAD_JOBS]`, a list of
+#: job values. «Not read» is not «produced nothing»: under `allow_retraction` such a job gets no batch, so its old
+#: cells stay (and nothing of it is written). `ask_links`' `refused` ids are the case it was made for.
+UNREAD_JOBS = "unread_jobs"
+
 
 def _stamped_updates(out, table, *, source_name, updated_by) -> dict:
     """`df_to_updates` of the author's frame, each item stamped with the row it came from while the
@@ -485,7 +493,9 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> d
     이번에 안 낸 셀이 지워진다」 · 「allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다」.
     One retract batch per job, or one replace_map batch per map. The jobs and maps are read from
     the INCOMING rows as well as the result - one that produced nothing this time is still
-    named, and its old cells are what its batch removes (the half guard still judges that).
+    named, and its old cells are what its batch removes (the half guard still judges that). A job
+    the frame lists under `UNREAD_JOBS` gets no batch (`allow_retraction`) - one line says how many
+    kept their old cells.
     """
     import chain_bindings
     import dt_map_derivation
@@ -493,6 +503,7 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> d
     refusals = chain_bindings.sdk_mapper_refusals(rule)
     if refusals:
         raise MapperContractError(" ".join(why for _code, why in refusals))
+    unread = {str(job) for job in ((out.attrs.get(UNREAD_JOBS) if out is not None else None) or ())}
     out = out if out is not None else pd.DataFrame()
     trigger = str(rule.get("trigger_table") or "")
     by_job = bool(rule.get("allow_retraction"))
@@ -522,8 +533,14 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> d
         for values in frame[list(columns)].itertuples(index=False, name=None):
             if all(_present(v) for v in values):
                 named.setdefault(tuple(str(v) for v in values), None)
+    kept = [values[0] for values in named if by_job and values[0] in unread]
+    if kept:
+        logger.info("[Chain] %s: kept old cells of %d job(s) the mapper could not read - %s",
+                    rule.get("name") or "<unnamed rule>", len(kept), ", ".join(kept[:10]))
     batches = []
     for values in named:
+        if by_job and values[0] in unread:
+            continue
         batch = {"target_table": table, "updates": [items[i] for i in at.get(values, ())]}
         if by_job:
             batch["retract"] = {"source_column": keys[0], "source_value": values[0]}

@@ -77,6 +77,11 @@ class LlmRefused(ValueError):
     """A call that gave no usable answer, said by name. Its sentence never carries the key."""
 
 
+class LlmCallFailed(LlmRefused):
+    """The call itself failed - no answer came (connection, time limit, 5xx, a 429 past its tries, a client
+    that could not be built). Asking again at once asks a gateway that is not answering (총괄 10-13 ②)."""
+
+
 def settings():
     """The cells of config/llm_config.json, read now. Refused by name when the file is absent
     (with the retired environment values named when they are still set) or a cell is not usable."""
@@ -305,7 +310,7 @@ def ask_json(prompt, *, system=None):
                 back.update(url=cells["base_url"].rstrip("/") + "/chat/completions", proxy=proxy)
             back.update(status=back["status"] or getattr(exc, "status_code", None), error=_why(exc, cells["proxy"]))
             if back["status"] != TOO_MANY_REQUESTS or tried == RATE_LIMITED_TRIES:
-                raise LlmRefused("the language model call failed: %s" % _masked(back["error"], key)) from None
+                raise LlmCallFailed("the language model call failed: %s" % _masked(back["error"], key)) from None
             again = _retry_after(exc)
         finally:
             _log({"received": _now(), **back, "ms": round((time.monotonic() - started) * 1000)}, key)

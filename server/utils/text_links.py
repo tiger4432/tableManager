@@ -367,7 +367,8 @@ def _read(text, links, names, by_id, match_at, extractor):
 
 def _ask(request, prompt_of, read):
     """One request -> ({id: rows}, {id: why}) for its texts [(id, text)]: the answer's item of each id,
-    read by `read(text, links)`. A call or an answer refused whole gives every text its sentence."""
+    read by `read(text, links)`. An answer refused whole gives every text its sentence; a call that
+    failed (`LlmCallFailed`) is raised - the whole batch fails and the chain asks it again later."""
     from database import crud
     from utils import llm
 
@@ -376,6 +377,8 @@ def _ask(request, prompt_of, read):
         items = answer.get("texts")
         if not isinstance(items, list):
             raise llm.LlmRefused("the answer has no 'texts' list: %s" % sorted(answer)[:10])
+    except llm.LlmCallFailed:
+        raise
     except llm.LlmRefused as exc:
         return {}, {ident: str(exc) for ident, _text in request}
     by_id = {}
@@ -592,8 +595,10 @@ def ask_links(text, names, instruction=None, match_at=None, known=None):
     ONE_TEXT_ID). The answer gives each id its links. A text the answer has no item for, or an item
     that is not read (no links list, a link without cause, effect or evidence, every link's evidence
     outside that text), is asked again alone once - one warning line says which, for the request -
-    then refused with its sentence: no rows, one warning line, `refused`. A text alone in its request
-    is not asked again. Every text refused raises `LlmRefused` (a single text: its own sentence).
+    then refused with its sentence: no rows, one warning line, `refused` - a mapper hands those ids on
+    as `mapper_sdk.UNREAD_JOBS` so their old rows are not retracted. A text alone in its request is not
+    asked again. Every text refused raises `LlmRefused` (a single text: its own sentence). A call that
+    failed (`LlmCallFailed`) is not asked again text by text: it is raised at once.
 
     Each text's links are read in that text alone, as one text always was. The model sees `names`
     one node per line - its identifier (the key; `<type>:<key>` for a key two types share) and all its

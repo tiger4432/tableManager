@@ -22,7 +22,9 @@
 >          server/llm_requests.log — 부를 때마다 보냄 · 받음 두 줄(429 면 받은 줄 status 429)
 > 답의 뜻   «in K request(s)» 의 K 가 글 수와 같다 -> 글마다 혼자 — batch_chars 가 글보다 작다. 값을 키운다
 >          «waiting» 줄이 자주 -> 상한에 붙어 돈다(정상). 묶음이 그만큼 오래 슬롯을 쥔다 — rows_per_run 을 줄이면 묶음이 짧아진다
->          «refused» 줄 -> 그 글은 이번에 후보 0 행. ⚠️ allow_retraction 규칙이면 그 글의 손대지 않은 옛 후보가 지워진 것 — replay 로 다시 읽힌다
+>          «refused» 줄 -> 그 글은 이번에 후보 0 행. 바로 뒤 «[Chain] <규칙>: kept old cells of N job(s) the mapper could not read» 가 있으면 옛 후보는 그대로
+>            그 줄이 없으면 맵퍼가 refused 를 attrs[UNREAD_JOBS] 에 안 싣는다(가이드 §6 예시) — 그 글의 손대지 않은 옛 후보가 지워졌다. replay 로 다시 읽힌다
+>          «the language model call failed: …» 로 묶음 실패 -> 답이 아예 안 왔다(연결 · 시한 · 5xx). 글마다 다시 묻지 않고 한 번에 실패 — 체인이 나중에 다시 한다. 그 문장의 원인을 본다
 >          «the per-minute limit could not use table llm_calls (ProgrammingError: … does not exist …)» -> 웹 서버를 이 코드로 아직 안 띄웠다 — 띄우면 표가 생긴다
 >            괄호 안이 OperationalError 면 표가 아니라 DB 연결 문제 — 그 문장을 본다
 >          «the gateway answered 429» 가 이어진다 -> 같은 키를 다른 곳도 쓴다 — requests_per_minute 를 낮춘다

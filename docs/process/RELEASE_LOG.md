@@ -356,12 +356,15 @@
 - **선언 예시** — 맵퍼([TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §6 — 제품 로더 `mapper_sdk.discover` 로 읽혀 체인 규칙 자리에서 도는 것을 확인):
   ```python
   texts = [{"id": text_id, "text": text} for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])]
-  return pd.DataFrame(ask_links(texts, names)).rename(columns={"text_id": "<글 id 칸>"})
+  found = ask_links(texts, names)
+  out = pd.DataFrame(found).rename(columns={"text_id": "<글 id 칸>"})
+  out.attrs[UNREAD_JOBS] = [item["id"] for item in found.refused]
+  return out
   ```
   규칙에 `"rows_per_run": 20`. `server/config/llm_config.json` 에 `"requests_per_minute": 20` · `"batch_chars": 4000`(없으면 이 값).
 - **화면에서** — 바뀌는 화면은 없습니다.
 - **필요한 조건** — 웹 서버 재기동(기동이 표 `llm_calls` 를 만듭니다) 뒤 체인 워커 재기동. 맵퍼를 글 여럿 모양으로 고치고 규칙의 `rows_per_run` 을 묶음 크기로.
-- **바뀐 동작** — 글 하나(문자열)로 부르면 결과 행은 전과 같습니다(기록한 67 번의 부름이 바이트까지). 다만 프롬프트가 묶음 모양이고(`[1]` 줄 뒤 글 · 답 `{"texts": [...]}`), 답에 `texts` 목록이 없을 때의 거절 문장이 `the answer has no 'texts' list: …` 입니다. 거절된 글은 이번에 후보를 안 냅니다 — ⚠️ `allow_retraction` 규칙이면 그 글의 사람이 손대지 않은 옛 후보가 지워집니다(§6 ⚠️ 줄). 모든 글이 거절되면 전처럼 묶음이 실패합니다. 로그 줄 `[LLM] a request of N texts left K unread - each asked alone: …` · `[LLM] text <id> refused - no rows (llm:<모델>): …` · `[LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused` · `[LLM] per-minute limit - waiting N s (20 requests a minute)` · `[LLM] the gateway answered 429 (too many requests) - waiting N s, then try 2 of 4`.
+- **바뀐 동작** — 글 하나(문자열)로 부르면 결과 행은 전과 같습니다(기록한 67 번의 부름이 바이트까지). 다만 프롬프트가 묶음 모양이고(`[1]` 줄 뒤 글 · 답 `{"texts": [...]}`), 답에 `texts` 목록이 없을 때의 거절 문장이 `the answer has no 'texts' list: …` 입니다. 거절된 글은 이번에 후보를 안 냅니다 — 맵퍼가 그 id 를 결과의 `attrs[UNREAD_JOBS]` 에 실으면 `allow_retraction` 규칙이 그 글의 옛 후보를 지우지 않습니다(`[Chain] <규칙>: kept old cells of N job(s) the mapper could not read`, 안 실으면 지워짐 — §6). 모든 글이 거절되면 전처럼 묶음이 실패합니다. 호출 자체가 실패하면(연결 · 시한 · 5xx) 글마다 다시 묻지 않고 곧바로 묶음이 실패합니다(`LlmCallFailed`). 로그 줄 `[LLM] a request of N texts left K unread - each asked alone: …` · `[LLM] text <id> refused - no rows (llm:<모델>): …` · `[LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused` · `[LLM] per-minute limit - waiting N s (20 requests a minute)` · `[LLM] the gateway answered 429 (too many requests) - waiting N s, then try 2 of 4`.
 - **자세히** — 이 항목과 같은 커밋 · RUN.md 「LLM 후보 뽑기 — 묶음 · 분당 상한」 절 · [TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) §6.
 
 ## 2026-10-13 · 이어 걷기(More)가 쪽마다 느려지지 않는다 — 멈춘 걷기는 걷기 프로세스에 남고, 돌려줄 것은 열쇠 하나
