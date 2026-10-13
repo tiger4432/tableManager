@@ -398,12 +398,14 @@ SCREEN_ONLY = {"marked": "Marked"}
 #: task/SPOTFIRE_FUNCTIONS.md names this edition does not build (the vectors' out_of_edition) - refused by name.
 NOT_YET = {"normdist", "norminv", "tdist", "tinv", "chidist", "chiinv", "fdist", "finv", "lag", "lead", "rand",
            "randbetween", "concatenate", "reach"}
+#: A sheet's cell (A1) or range (B1:B9) - the screen's Sheet (lead 10-14, owner 3b97fcfb9).
+CELL = re.compile(r"^[A-Za-z]+[0-9]+$")
 #: A name holding one of these is a way from the row ([a.b~.x]) - not read on the server yet (lead 5667ea0fe).
 WAY_MARKS = (".", "~")
 
 # ── reading the text ────────────────────────────────────────────────────────────────────────────────────────────────
 KEYWORDS = {"and", "or", "xor", "not", "case", "when", "then", "else", "end", "is", "null", "true", "false", "distinct"}
-OPS = ["<=>", "<=", ">=", "<>", "!=", "<", ">", "=", "+", "-", "*", "/", "%", "^", "(", ")", ","]
+OPS = ["<=>", "<=", ">=", "<>", "!=", "<", ">", "=", "+", "-", "*", "/", "%", "^", "(", ")", ",", ":"]
 NUMBER = re.compile(r"(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")
 WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -588,6 +590,8 @@ def _parse(text):
             e = or_()
             need(lambda: op(")"), "«)»")
             return e
+        if kind == "id" and CELL.match(v) and not (ts[p[0] + 1][0] == "op" and ts[p[0] + 1][1] == "("):
+            raise ExpressionError("%s is the screen's - a sheet's cells (A1, B1:B9)" % v)
         if kind == "id":
             return call()
         raise ExpressionError("The expression ends too soon" if kind == "end"
@@ -601,7 +605,8 @@ def _parse(text):
             raise ExpressionError("%s is the screen's - it reads the page's markings" % SCREEN_ONLY[lw])
         name = _BY_NAME.get(lw)
         if not name:
-            raise ExpressionError("%s is not in this edition" % word if lw in NOT_YET else "No function named %s" % word)
+            raise ExpressionError("%s is not in this edition" % word if lw in NOT_YET else
+                                  "%s is not a function here - node constructors (type(\"key\")) are the screen's" % word)
         need(lambda: op("("), "«(» after %s" % name)
         distinct = kw("distinct")
         if distinct:

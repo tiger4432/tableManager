@@ -14,8 +14,12 @@ import expression  # noqa: E402
 
 FILE = json.load(open(os.path.join(SERVER_DIR, "..", "contracts", "expression", "vectors.json"), encoding="utf-8"))
 SCORED = FILE["vectors"] + FILE["ours"]
-ANSWERED = [v for v in SCORED if "graph" not in v and "markings" not in v]
-REFUSED = [v for v in SCORED if "graph" in v or "markings" in v]
+#: A vector the screen alone answers (`screen_only`: markings, a sheet's cells, node constructors) or that walks a graph.
+REFUSED = [v for v in SCORED if v.get("screen_only") or "graph" in v]
+ANSWERED = [v for v in SCORED if v not in REFUSED]
+SAID = {"markings": "is the screen's - it reads the page's markings", "cells": "is the screen's - a sheet's cells",
+        "nodes": "node constructors (type(\"key\")) are the screen's",
+        "graph": "is a way from the row - ways are not read on the server yet"}
 
 
 def _near(got, want):
@@ -44,8 +48,7 @@ def test_a_vector(vector):
 @pytest.mark.parametrize("vector", REFUSED, ids=[v["id"] for v in REFUSED])
 def test_a_screen_vector_is_refused_by_name(vector):
     compiled = expression.compile(vector["expr"])
-    said = "is the screen's - it reads the page's markings" if "markings" in vector else \
-        "is a way from the row - ways are not read on the server yet"
+    said = SAID[next(k for k in SAID if k in vector)]
     assert not compiled["ok"] and said in compiled["why"], compiled
 
 
@@ -58,6 +61,14 @@ def test_a_numeral_is_a_number(text, number):
 @pytest.mark.parametrize("text", ["29,50", "29 mm", "0x10", "", "  ", "Infinity", "1e", ".", "+", None, True])
 def test_anything_else_is_not_a_number(text):
     assert expression.number_of(text) is None
+
+
+@pytest.mark.parametrize("text, said", [
+    ("A1 * 2", "A1 is the screen's - a sheet's cells"), ("Sum(B1:B3)", "B1 is the screen's - a sheet's cells"),
+    ("wafer(\"W01\")", "wafer is not a function here - node constructors"), ("Log10(100)", None)])
+def test_a_sheet_s_cell_and_a_node_constructor_are_refused_by_name(text, said):
+    compiled = expression.compile(text)
+    assert (compiled["ok"], compiled.get("why", "")[:len(said or "")]) == (said is None, said or ""), compiled
 
 
 def test_an_operator_counts_each_row_it_met_a_text_on_once():
