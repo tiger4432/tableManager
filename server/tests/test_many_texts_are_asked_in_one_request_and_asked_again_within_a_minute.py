@@ -443,7 +443,7 @@ def test_a_pause_during_a_wait_rewinds_the_group_and_is_not_a_failure(retrying, 
     slices = []
     monkeypatch.setattr(heartbeat, "progress", lambda stage: slices.append(stage))
     with chain_group(), pytest.raises(control.ChainPaused):
-        llm.ask_json("anything")
+        text_links.ask_links(BATCH, NAMES)                      # the batch's path: not caught as a refusal
     assert began == [1000.0] and retrying.waits == [1.0, 1.0, 1.0] and slices == [None] * 3
 
 
