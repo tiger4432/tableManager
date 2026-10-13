@@ -102,7 +102,7 @@ export class GridShell {
     this.area.style.display = 'flex';
     this.area.style.minWidth = '0';
     this.area.style.minHeight = '0';
-    // The cells carry half the gap each, so the area reaches half a gap past its box: the outer panels sit on it.
+    // The frames carry half the gap each, so the area reaches half a gap past its box: the outer panels sit on it.
     this.area.style.margin = `calc(${this.gap} / -2)`;
     if (layout.height) this.area.style.height = layout.height;
     this.host.appendChild(this.area);
@@ -217,7 +217,8 @@ export class GridShell {
     this.drop = null;
   }
 
-  /** A leaf's cell: half the gap around its panel, the panel, and - unlocked - its title bar's buttons. */
+  /** A leaf's cell: its share and nothing else; inside it the frame - half the gap around it (a margin, so the share is
+   *  the weight's whatever sits beside it), the panel, and - unlocked - its title bar's buttons. */
   cell(id) {
     const doc = this.doc;
     const cell = doc.createElement('div');
@@ -226,9 +227,9 @@ export class GridShell {
     cell.style.display = 'grid';
     cell.style.minWidth = '0';
     cell.style.minHeight = '0';
-    cell.style.padding = `calc(${this.gap} / 2)`;
     const frame = doc.createElement('div');
     frame.className = 'rb-frame';
+    frame.style.margin = `calc(${this.gap} / 2)`;
     frame.style.position = 'relative';
     frame.style.display = 'grid';
     frame.style.minWidth = '0';

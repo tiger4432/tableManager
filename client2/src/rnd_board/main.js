@@ -148,7 +148,7 @@ export const BOARD = Object.freeze({
   // 7행은 「닿는 곳」의 자리입니다. 앞 여섯 행은 목업의 띠이고 이건 그 «아래»에 붙습니다 --
   // 목업에 없는 부품이라 목업의 배치를 밀어내지 않는 것이 맞습니다.
   // The bands, top to bottom, each its panels side by side - ONE layout form with the test bed's (lead 10-13). A band's
-  // share is its height in px and its gap (the cell's 5 above and below), the area the sum, so each band stands at the
+  // share is its height in px and its gap (the frame's 5 above and below), the area the sum, so each band stands at the
   // height the grid gave it: 118 · 44 (the `auto` floors, measured) · 190 · 190 · 360 · 340 · 240.
   // ⚠️ walkBox's band is 2 px - its measured height today: an implicit `auto` row the bands above overflow. Kept as found.
   gap: '10px',
