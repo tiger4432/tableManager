@@ -5,7 +5,7 @@
 // paint is the root's.
 
 import { numberOf } from '../../walk/reach_table.js';
-import { combosOf } from '../slot.js';
+import { combosOf, slotWords } from '../slot.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -25,7 +25,8 @@ export function mapModel(rows, ctx) {
     const [x, y] = values.map(numberOf);
     if (x === null || y === null) { notDrawn += ids.length; continue; }
     // its paint is the root's
-    const p = ctx.paint(ids);
+    const enc = (ctx.declaration && ctx.declaration.encode) || {};
+    const p = ctx.paint(ids, [[slotWords(enc.x), values[0]], [slotWords(enc.y), values[1]]]);
     // its label - the root's (none, marked, all)
     const tag = ctx.label ? ctx.label({ ids }) : null;
     cells.push({ ids, where: values, x, y, tag, marked: p.marked, fill: p.fill, line: p.line });

@@ -38,7 +38,7 @@ export function scatterModel(units, ctx) {
     if ([x, y].some((r) => r && r.state === 'several')) { several += 1; continue; }
     if (!x || !y || x.state !== 'one' || y.state !== 'one') { notDrawn += 1; continue; }
     const ids = u.ids || [u.id];
-    const p = paint(ids);
+    const p = paint(ids, u.where || null);
     // its label - the root's (none, marked, all)
     const tag = ctx.label ? ctx.label(u) : null;
     points.push({ id: u.id, ids, where: u.where || null, label: u.label, tag, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });

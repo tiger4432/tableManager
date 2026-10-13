@@ -19,7 +19,7 @@ import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
 import { readSlot, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
-import { hubId } from './hubs.js';
+import { hubId, nodesOfPress } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
@@ -339,7 +339,10 @@ export class VisualPart extends Panel {
     });
     const marked = (id) => this.layers.marked(this.reads, id) === true;
     // Each row's colour and each mark's paint - the root's, once (color_by.js); the units a kind draws a mark of (units.js).
-    const { colors, colored, paint } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor() });
+    // a press that stands for nodes (hubs.js) marks no row - a mark is marked when what its press stands for is
+    const anyHeld = [...inside].some(marked);
+    const { colors, colored, paint: painted } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor(), anyHeld });
+    const paint = (ids, where) => painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null);
     this.colors = colors;
     // the colours given to categories not declared yet are kept in the declaration - Save keeps them, more categories
     // later leave them where they are (a declaration field, no walk)
@@ -430,7 +433,11 @@ export class VisualPart extends Panel {
   markHub(where, ids, event) { this.markHubs([[where, ids]], event); }
 
   /** Hubs marked whole - each [where, its members], in one press. */
-  markHubs(list, event) { this.mark(list.map(([where, ids]) => this.hubs.put(hubId(this.decl.row, where), ids)), event); }
+  markHubs(list, event) {
+    const encode = this.decl.encode || {};
+    const press = ([where, ids]) => (this.index && nodesOfPress(this.index, this.inside, encode, where, ids)) || [this.hubs.put(hubId(this.decl.row, where), ids)];
+    this.mark([...new Set(list.flatMap(press))], event);
+  }
 
   clear() { if (this.writes) this.markings.clear(this.writes); }
 

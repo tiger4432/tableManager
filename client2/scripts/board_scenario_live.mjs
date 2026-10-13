@@ -57,10 +57,10 @@ const C = page.add('crossTable');
 const D = page.add('scatter');
 declare(A, { row: 'die', start: { marking: 'marking:start' }, writes: die, encode: { x: key('x'), y: key('y') } });
 declare(B, { walk: WIDE, row: 'die', start: { marking: die }, writes: core, encode: { rows: { steps: [out('bonded_from'), out('in_container')], value: { on: 'label', name: 'name' }, words: ['core wafer'] } } });
-// C: the measurements of the core wafers its start's dies were bonded from - the start a hub of B's dies (die), the route
-// die -bonded_from-> die -in_container-> wafer -has_measurement-> measurement; its rows by their step.
+// C: the measurements of the core wafer pressed in B - a B cell stands for the core wafer node (hubs.js nodesOfPress), the
+// route the shortest wafer -has_measurement-> measurement, no route named; its rows by their step.
 const attr = (name) => ({ steps: [], value: { on: 'node', name }, words: [name] });
-declare(C, { walk: WIDE, row: 'measurement', route: { hops: 3, follow: ['in_container', 'has_measurement', 'bonded_from'], chain: ['die', 'die', 'wafer', 'measurement'] },
+declare(C, { walk: WIDE, row: 'measurement',
   start: { marking: core }, writes: step, encode: { rows: attr('step') } });
 // D: those measurements of the step pressed in C - a point a measurement, X its eventtime, Y its value, red where the
 // Core wafer marking reaches it along the relations, grey elsewhere (the declaration's colours).
@@ -104,13 +104,14 @@ say(`B die ${first.cell.where} -> core wafers ${first.cores.join(', ')}; die ${s
 b = await press(first.cell);
 say(`B cross: rows ${b.rowKeys.length} (${b.rowKeys.slice(0, 4).join(', ')}...), total ${b.total}, walks ${walks() - s1}, ${Date.now() - t1} ms, layer ${JSON.stringify(page.layers.last)}`);
 report.push({ step: 'A->B', walks: walks() - s1 });
-say(`C routes: ${part(C).routes().map((r) => r.chain.join('>') + ' ' + r.follow.join('+')).join(' | ')}`);
-say(`C route taken: ${JSON.stringify(part(C).walkedRoute)}`);
-// B: a core wafer pressed - its row head's hub
+// B: a core wafer's cell pressed - it stands for the core wafer node, not a hub of B's dies
 const coreRow = b.rowKeys.findIndex((k) => k !== '(Empty)');
 const s2 = walks();
-part(B).markHub([['core wafer', b.rowKeys[coreRow]]], b.rowIds[coreRow], {});
+say(`C routes before B is pressed: ${part(C).routes().length}`);
+part(B).markHub([['core wafer', b.rowKeys[coreRow]], ['(None)', '']], b.grid[coreRow][0].ids, {});
 await until(ready(C));
+say(`B marking: ${JSON.stringify(page.markings.entries(core).map(([id]) => [id, (page.layers.graph.nodes.get(id) || {}).type || 'hub']))}; B cell marked ${part(B).model.grid[coreRow][0].marked}`);
+say(`C routes: ${part(C).routes().map((r) => r.chain.join('>') + ' ' + r.follow.join('+')).join(' | ')}; taken ${JSON.stringify(part(C).walkedRoute)}`);
 const c = part(C).model;
 say(`C cross: steps ${c.rowKeys.length} (${c.rowKeys.join(', ')}), total ${c.total}, walks ${walks() - s2}, layer ${JSON.stringify(page.layers.last)}`);
 // C: a step pressed

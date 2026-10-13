@@ -30,7 +30,7 @@ const REAL = {
   reach: await import('../src/walk/reach_table.js'),
 };
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
-const { HubBook, hubId, holds } = await import('../src/testbed/hubs.js');
+const { HubBook, hubId, holds, isHubId } = await import('../src/testbed/hubs.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
 const { Panel } = await import('../src/rnd_board/panel.js');
 const { statusWords } = await import('../src/testbed/status_part.js');
@@ -420,7 +420,7 @@ function markerModels(M) {
 }
 
 /** A scatter with Marker by lot and the Marked table limited by its pick, seated alone from M: a marker pressed - the
- *  table its members. */
+ *  lot node marked. */
 async function markerPress(M) {
   const doc = makeDoc('dark');
   const markings = new MarkingStore();
@@ -603,19 +603,19 @@ async function routed(M) {
   const vocabulary = { entities: [{ type: 'die' }, { type: 'wafer' }],
     predicates: [{ name: 'in_container', subjects: ['die'], object: { kind: 'entity_ref', types: ['wafer'] } }, { name: 'bonded_from', subjects: ['die'], object: { kind: 'entity_ref', types: ['die'] } }] };
   const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
-  const seat = async (decl, withVocabulary = true, alsoWafer = false) => {
+  const seat = async (decl, withVocabulary = true, alsoWafer = false, writes = null) => {
     const doc = makeDoc('dark');
     const markings = new MarkingStore();
     markings.set('marking:die', d1, SIGN.CASE);
     if (alsoWafer) markings.set('marking:die', BW, SIGN.CASE);
     const asked = [];
-    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: null, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
       kinds: { crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
       fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
     part.mount();
     await settle();
     const said = (statusWords(part.stats.get('B')) || []).find((w) => w.startsWith('route from')) || null;
-    return { state: part.state, refusal: part.refusal || null, said, rows: part.model ? part.model.rowKeys : null, total: part.model ? part.model.total : null, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
+    return { markings, state: part.state, refusal: part.refusal || null, said, rows: part.model ? part.model.rowKeys : null, total: part.model ? part.model.total : null, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
   };
   const base = { id: 'B', part: 'visual', kind: 'crossTable', start: { marking: 'marking:die' }, system: null, filter: [] };
   const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } });
@@ -625,7 +625,23 @@ async function routed(M) {
   // a route named that does not start from the start's type: said, nothing walked, no other route instead
   const named = await seat({ ...base, row: 'wafer', encode: {}, route: { hops: 1, follow: ['has_measurement'], chain: ['wafer', 'measurement'] } });
   const mixed = await seat({ ...base, row: 'die', encode: { rows: CORE }, walk: { node_limit: 1000, hops: 9 } }, true, true);
-  return { named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+  // a cell pressed (hubs.js nodesOfPress, the one place): its one condition the core wafer, read off another node - that
+  // wafer, drawn marked; core wafer and the row's own name - the hub of its rows; the row's own name alone - the hub
+  const NAMED = { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] };
+  const held = (s) => s.markings.entries('marking:core').map(([x]) => (isHubId(x) ? 'hub' : label.get(x)));
+  const one = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE } }, true, false, 'marking:core');
+  one.part.markHub([['core wafer', one.part.model.rowKeys[0]], ['(None)', '']], one.part.model.grid[0][0].ids, {});
+  await settle();
+  const press = [held(one), one.part.model.grid[0][0].marked];
+  const pressed = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE, columns: NAMED } }, true, false, 'marking:core');
+  const g = pressed.part.model;
+  pressed.part.markHub([['core wafer', g.rowKeys[0]], ['name', g.colKeys[0]]], g.grid[0][0].ids, {});
+  await settle();
+  press.push(held(pressed));
+  pressed.part.markHub([['name', g.colKeys[0]]], g.grid[0][0].ids, {});
+  await settle();
+  press.push(held(pressed));
+  return { press, named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
 }
 
 /** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
@@ -856,6 +872,8 @@ async function suite(M) {
       rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
     judge('W5 a route named that does not start from the start\'s type is said and nothing is walked - not the shortest route instead',
       rt.named, ['refused', 'Route wafer → measurement · has_measurement does not start from die, the start', 0, null]),
+    judge('W6 a cell whose one condition is read off another node marks that node (the core wafer), drawn marked; with a second axis, or on the row\'s own value - the hub of its rows',
+      rt.press, [['CW1'], true, ['hub'], ['hub']]),
     judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
       rt.mixed, [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
@@ -871,8 +889,8 @@ async function suite(M) {
     judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
-    judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
-      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
+    judge('P6 a marker by lot pressed marks the lot node it stands for (hubs.js nodesOfPress) - the Marked table of wafers holds none of it, no relation declared', mp,
+      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['L1'], lines: [] }),
   ];
   return { lines, ran: names.length, names: [...names], failures: [...failures] };
 }
@@ -928,7 +946,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, '{ fill: markColor || c.fill, line: markColor || c.line,', '{ fill: c.fill, line: c.line,') },
   { id: 'M17', what: 'a hub\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 '], file: 'testbed/units.js', key: 'units',
     mutate: (t) => swap(t, '  if (slot.reduce || isExpression(slot)) {', '  if (false) {') },
-  { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+  { id: 'M18', what: 'a marker pressed marks its rows one by one - not what the press stands for', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
   { id: 'M19', what: 'a value record reads the row\'s first record for every unit - not its own', catches: 'P7 ', file: 'testbed/units.js', key: 'units',
     mutate: (t) => swap(t, 'const items = picks.map((k) => raw[k]);', 'const items = picks.map(() => raw[0]);') },
@@ -962,6 +980,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    const label = (mark) => labelOf(mark,', '    const label = () => null; const unused = (mark) => labelOf(mark,') },
   { id: 'M35', what: 'the description not drawn', catches: 'DS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, "...(said ? [el('div', 'sf-part__desc', said)] : [])", '...[]') },
+  { id: 'M36', what: 'a press always a hub of its rows (the 18766 run: a core wafer cell marked its dies, C walked 17 bonding measurements)', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '(this.index && nodesOfPress(this.index, this.inside, encode, where, ids))', '(false)') },
+  { id: 'M37', what: 'a mark whose press stands for nodes drawn by its rows only - never marked', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null)', 'painted(ids, null)') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];
