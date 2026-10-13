@@ -75,6 +75,11 @@ export class StartBaskets {
     return said ? { label: Object.values(said.keys).join(' · '), type: said.type, keys: said.keys } : null;
   }
 
+  /** How a start was handed to a basket - `{ label, type, keys }` - or null: one no basket was handed (a marking kept and
+   *  read back, the graph's) goes as its id exactly (the server wrote x 9.0; an id rebuilt from its keys says 9 - another
+   *  node). describe names it; this says whether the page may ask it by its type and keys (lead 10-14 W2). */
+  held(id) { return this.known.get(id) || null; }
+
   /** The picked node - or the one handed (the graph's «Walk on from here») - into the basket of `sign`; from the other
    *  basket it moves. */
   add(sign, node = this.picked()) {
