@@ -438,9 +438,10 @@ def test_a_nodes_attribute_shows_each_worlds_value_beside_the_one(world):
 
     node, when = node_and_when([A, C])
     assert set(when) == {A, C} and None not in when.values()        # canary: an event time each
+    # each value says its column's declared type (10-14: every type, not image alone)
     assert node["attributes_by_world"] == {"label": [
-        {"world": A, "value": "S1", "occurred_at": when[A], "source_who": CHANGED},
-        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED}]}
+        {"world": A, "value": "S1", "occurred_at": when[A], "source_who": CHANGED, "column_type": "string"},
+        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED, "column_type": "string"}]}
     assert node["attributes"]["label"] in ("S1", "RCP-1") and node["attribute_conflicts"] == 1
 
     back, _ = node_and_when([C, A])                                 # in the order picked (4be010312)
@@ -448,7 +449,7 @@ def test_a_nodes_attribute_shows_each_worlds_value_beside_the_one(world):
 
     alone, when = node_and_when([C])
     assert alone["attributes_by_world"] == {"label": [
-        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED}]}
+        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED, "column_type": "string"}]}
     assert (alone["attributes"], alone["attribute_conflicts"]) == ({"label": "RCP-1"}, 0)
 
 

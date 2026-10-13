@@ -564,17 +564,17 @@ def _newest_records(said):
     return [each[2] for each in ordered[:RECORDS_PER_FACT]], max(0, len(ordered) - RECORDS_PER_FACT)
 
 
-def _say_image_values(nodes, edges):
-    """Each value the ledger read from a column typed `image` says so (총괄 2d6a0fd58 ㄱ): `column_type` on a node
-    name's record and per-world value, `column_types` {qualifier: "image"} on an edge record and on the edge itself.
+def _say_value_types(nodes, edges):
+    """Each value says the table_config type of the column the ledger read it from (총괄 2d6a0fd58 ㄱ for `image`,
+    widened 10-14 to every declared type - the test bed hands it to the calculator as `types`): `column_type` on a node
+    name's record and per-world value, `column_types` {qualifier: type} on an edge record and on the edge itself.
     The answer is the declaration's - the value's source, the column it binds that name to, that column's
-    table_config type (`ledger.setup.declared_value_type`) - never the value's shape; any other type adds no cell,
-    so an answer with no image is the bytes it was."""
-    import image_sources
-
+    table_config type, as written (`ledger.setup.declared_value_type`) - never the value's shape; a name with no one
+    declared type (a code mapper's qualifier, two columns of two types) adds no cell: unknown.
+    Measured 10-14 on 18766's bonded wafer page (773 nodes, 4.4 MB): +0.3 %, +3.9 % had every name a type."""
     setups, said = {}, {}
 
-    def image(world, source, name):
+    def kind(world, source, name):
         key = (world, source, name)
         if key not in said:
             if world not in setups:
@@ -583,28 +583,30 @@ def _say_image_values(nodes, edges):
                     setups[world] = _compiled_setup(world)
                 except Exception as exc:                          # noqa: BLE001 - what goes quiet is said
                     logging.getLogger(__name__).warning(
-                        "[walk] image values not said for world %s - its declaration could not be compiled: %s",
+                        "[walk] value types not said for world %s - its declaration could not be compiled: %s",
                         world or "(operating)", exc)
                     setups[world] = None
             from ledger.setup import declared_value_type
-            said[key] = setups[world] is not None and declared_value_type(
-                setups[world], source, name) == image_sources.COLUMN_TYPE
+            said[key] = setups[world] and declared_value_type(setups[world], source, name)
         return said[key]
 
     def mark(record, world):
-        names = [name for name in (record.get("qualifiers") or {}) if image(world, record.get("source_who"), name)]
-        if names:
-            record["column_types"] = {name: image_sources.COLUMN_TYPE for name in names}
+        types = {name: kind(world, record.get("source_who"), name) for name in (record.get("qualifiers") or {})}
+        types = {name: each for name, each in types.items() if each}
+        if types:
+            record["column_types"] = types
 
     for node in nodes:
         for name, records in (node.get("records") or {}).items():
             for record in records:
-                if image(record.get("world"), record.get("source_who"), name):
-                    record["column_type"] = image_sources.COLUMN_TYPE
+                each = kind(record.get("world"), record.get("source_who"), name)
+                if each:
+                    record["column_type"] = each
         for name, values in (node.get("attributes_by_world") or {}).items():
             for value in values:
-                if image(value.get("world"), value.get("source_who"), name):
-                    value["column_type"] = image_sources.COLUMN_TYPE
+                each = kind(value.get("world"), value.get("source_who"), name)
+                if each:
+                    value["column_type"] = each
     for edge in edges:
         for record in edge.get("records") or ():
             mark(record, record.get("world"))
@@ -2670,7 +2672,7 @@ def _time_page(seed_id, lookup, page, *, direction, follow, cardinalities=None):
         if far_id not in nodes:
             nodes[far_id] = node(*far, 1)
         edges.append(_claim_edge(atom, subject_id, target_id, atom.predicate, cardinalities))
-    _say_image_values((), edges)
+    _say_value_types((), edges)
     return {
         "state": "ready" if edges else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -3518,7 +3520,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     visible_nodes = [item for item in ordered_nodes if carried(item)]
     for edge_id, edge in edges.items():
         edge["records"], edge["records_more"] = _newest_records(edge_records[edge_id].values())
-    _say_image_values(page.values(), edges.values())
+    _say_value_types(page.values(), edges.values())
     ordered_edges = sorted(edges.values(), key=lambda item: (
         min(depths[item["source"]], depths[item["target"]]),
         item["predicate"], item["id"]))
