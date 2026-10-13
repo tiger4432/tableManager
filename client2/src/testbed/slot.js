@@ -16,12 +16,13 @@ const spelling = (v) => JSON.stringify(v);
  * What row `x` holds for a slot, inside the walk's node set.
  * @param {boolean} [oneValued]  the slot's value is declared one-valued (cardinality one): several reads are its history
  *   and the newest is the value - Latest without asking (lead aca803a7a).
+ * @param {Function} [marked]  the page's marking answer (name, node) -> true · false · null, for an expression's Marked()
  * @returns {{state: 'one'|'several'|'empty'|'missing', value?: *, values?: Array, n?: number, tied?: number, notNumber?: boolean}}
  *   one - a value to draw; several - values that differ and no reduce, so not drawn; empty - nothing said (notNumber:
  *   an expression's operator met a text that is not a number); missing - the row is not in the walk
  */
-export function readSlot(index, inside, x, slot, oneValued = false) {
-  if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)])) : { state: 'missing' };
+export function readSlot(index, inside, x, slot, oneValued = false, marked = null) {
+  if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)], { marked })) : { state: 'missing' };
   const got = readsOf(index, inside, x, slot, Infinity);
   if (got.missing) return { state: 'missing' };
   const reads = got.reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
@@ -54,8 +55,12 @@ export function wayOf(name) {
   const parts = String(name).split('.');
   if (parts.length < 2) return null;
   const last = parts.pop();
-  return { name: last, steps: parts.map((p) => (p.endsWith('~') ? { predicate: p.slice(0, -1), direction: 'incoming' } : { predicate: p, direction: 'outgoing' })) };
+  return { name: last, steps: stepsOf(parts.join('.')) };
 }
+
+/** Steps alone in the brackets' spelling - Marked's way, [in_container~.in_lot]. */
+export const stepsOf = (text) => String(text).split('.').filter(Boolean)
+  .map((p) => (p.endsWith('~') ? { predicate: p.slice(0, -1), direction: 'incoming' } : { predicate: p, direction: 'outgoing' }));
 
 /** Steps in the brackets' spelling - what Custom expression starts from. */
 export const wayWords = (steps) => (steps || []).map((s) => `${s.predicate}${s.direction === 'incoming' ? '~' : ''}`).join('.');
@@ -77,6 +82,12 @@ export function nameValue(index, inside, x, name) {
 export function calcRow(index, inside, x) {
   return {
     at: null,
+    id: x,
+    // Marked's way (lead 10-13): the nodes it ends at from this row - none, null (unknown).
+    endsOf: (text) => {
+      const { ends } = waysOf(index, inside, [x], stepsOf(text), Infinity);
+      return ends.length ? [...new Set(ends.map((e) => e.node))] : null;
+    },
     get: (name) => {
       const { steps, value } = nameValue(index, inside, x, name);
       return value ? new Reads(readsOf(index, inside, x, { steps, value }, Infinity).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }))) : null;
@@ -99,8 +110,8 @@ export function rawOf(index, inside, x, slot) {
 }
 
 /** A set of rows' raws folded - a cell, a total: the expression over the rows, or the reduce over their reads. */
-export function foldRows(slot, raws) {
-  if (isExpression(slot)) { const out = run(compile(slot.expr), raws); return 'value' in out ? out.value : null; }
+export function foldRows(slot, raws, marked = null) {
+  if (isExpression(slot)) { const out = run(compile(slot.expr), raws, { marked }); return 'value' in out ? out.value : null; }
   return fold((slot && slot.reduce) || 'Count', raws.flatMap((r) => r || [])).value;
 }
 

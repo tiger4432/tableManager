@@ -182,6 +182,9 @@ async function measure(M) {
   // T31: a way in the brackets - its end node's own value, a fold over its ends; a row the way does not reach empty
   out.ways = [['W1', '[in_lot.name]'], ['W6', '[in_lot.name]'], ['W1', 'Avg([measures.value])'], ['W1', '[measures.value]']]
     .map(([id, expr]) => { const r = readSlot(index, inside, id, exprSlot(expr)); return [r.state, r.value === undefined ? null : r.value]; });
+  // T32: Marked() reads the page's marking answer the slot is handed - true, false, unknown (empty)
+  const pageMarks = (name, id) => (name !== 'pick' ? false : id === 'W1' ? true : id === 'W2' ? false : null);
+  out.marked = ['W1', 'W2', 'W3'].map((id) => { const r = readSlot(index, inside, id, exprSlot('Marked("pick")'), false, pageMarks); return [r.state, r.value === undefined ? null : r.value]; });
   // T30: an operator over a text that is not a number - the row empty and said so; a list is several, an empty value empty
   out.notNumber = ['W1', 'W3', 'W6'].map((id) => { const r = readSlot(index, inside, id, exprSlot('[product] * 2')); return [r.state, Boolean(r.notNumber)]; });
   // T29: a filter condition on an expression slot carries the expression and is judged by it; two expression
@@ -343,7 +346,7 @@ async function parts(M) {
     return input ? input.value : null;
   };
   out.wayStart = [startOf('x'), startOf('y'), startOf('color'), M.picker.expressionRefusal(wp.part, '[in_lot.name]'),
-    M.picker.expressionRefusal(wp.part, '[in_lot.nope]')];
+    M.picker.expressionRefusal(wp.part, '[in_lot.nope]'), M.picker.expressionRefusal(wp.part, '[measures.value]')];
   // T13 / T17: the status words, a cut walk only when an axis says so
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
@@ -501,7 +504,8 @@ function suite(out, page, saved, counted) {
     [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
   eq('T31 a way in the brackets: its end node\'s name; a row it does not reach empty; folded over its ends; two ends several - and Custom expression starts from the route chosen (its reduce around it), the check reading a way as the row does',
     [out.ways, page.wayStart], [[['one', 'L1'], ['empty', null], ['one', 5.5], ['several', null]],
-      ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer']]);
+      ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer', '']]);
+  eq('T32 Marked() in a slot: the page answer for the row - true, false, unknown empty', out.marked, [['one', true], ['one', false], ['empty', null]]);
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',

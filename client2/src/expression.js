@@ -177,6 +177,8 @@ export const FUNCTIONS = Object.freeze({
   ATan: num1(Math.atan),
   ATan2: num2((y, x) => Math.atan2(y, x)),
   If: { kind: 'if' },
+  // Spotfire's Marked() (lead 10-13): the page's marking - screen only, the markings come in ctx.
+  Marked: { kind: 'mark' },
 });
 const BY_NAME = new Map(Object.keys(FUNCTIONS).map((name) => [name.toLowerCase(), name]));
 // task/SPOTFIRE_FUNCTIONS.md names this edition does not build (the vectors' out_of_edition) - refused by name.
@@ -309,13 +311,13 @@ function parse(text) {
 
 function arity({ name, fn, args, distinct }) {
   const n = args.length;
-  const fits = fn.kind === 'if' ? n === 3
+  const fits = fn.kind === 'mark' ? n === 1 || n === 2 : fn.kind === 'if' ? n === 3
     : fn.kind === 'row' ? n === fn.arity
       : fn.pair ? n === 2
         : fn.params ? n === 1 + fn.params
           : fn.rowwise ? n >= 1
             : fn.none ? n <= 1 : n === 1;
-  const want = fn.kind === 'if' ? '3' : fn.kind === 'row' ? String(fn.arity) : fn.pair ? '2' : fn.params ? String(1 + fn.params)
+  const want = fn.kind === 'mark' ? '1 or 2' : fn.kind === 'if' ? '3' : fn.kind === 'row' ? String(fn.arity) : fn.pair ? '2' : fn.params ? String(1 + fn.params)
     : fn.rowwise ? '1 or more' : fn.none ? '0 or 1' : '1';
   if (!fits) throw new ExpressionError(`${name} takes ${want} argument${want === '1' ? '' : 's'} - got ${n}`);
   if (distinct && (fn.kind !== 'fold' || fn.pair || (fn.rowwise && n > 1))) throw new ExpressionError(`distinct goes in a one-column aggregation, not ${name}`);
@@ -324,8 +326,14 @@ function arity({ name, fn, args, distinct }) {
 const children = (node) => [node.a, node.b, node.subject, node.otherwise, ...(node.args || []),
   ...(node.whens || []).flatMap((w) => [w.when, w.then])].filter(Boolean);
 /** Does `node` read a row's value outside any fold - then the answer is one per row. */
-const rowLevel = (node) => node.t === 'ref' || (!(node.t === 'call' && node.fn.kind === 'fold') && children(node).some(rowLevel));
-const namesOf = (node, out = new Set()) => { if (node.t === 'ref') out.add(node.name); children(node).forEach((c) => namesOf(c, out)); return out; };
+const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'mark')
+  || (!(node.t === 'call' && node.fn.kind === 'fold') && children(node).some(rowLevel));
+// Marked's way is steps, not a value's name - not among the names a row must have.
+const namesOf = (node, out = new Set()) => {
+  if (node.t === 'ref') out.add(node.name);
+  (node.t === 'call' && node.fn.kind === 'mark' ? node.args.slice(0, 1) : children(node)).forEach((c) => namesOf(c, out));
+  return out;
+};
 
 /** A text read once. @returns {{ok: true, tree, perRow: boolean, names: string[]} | {ok: false, why: string}} */
 export function compile(text) {
@@ -422,10 +430,29 @@ function value(node, ctx) {
     case 'case': return caseValue(node, ctx);
     case 'call':
       if (node.fn.kind === 'if') return ifValue(node, ctx);
+      if (node.fn.kind === 'mark') return markedValue(node, ctx);
       if (node.fn.kind === 'row') return finite(node.fn.fn(...node.args.map((a) => value(a, ctx))));
       return finite(foldValue(node, ctx));
     default: throw new ExpressionError(`Cannot answer ${node.t}`);
   }
+}
+
+/** Marked("name") - is this row in the page's marking `name`; Marked("name", [way]) - is one of the way's end nodes in it
+ *  (lead 10-13). A way that reaches nothing from this row: unknown (null), not false. The page answers who is in a
+ *  marking (ctx.marked, a hub by its members); without it the name is refused - the server's calculator has no markings. */
+function markedValue(node, ctx) {
+  if (typeof ctx.marked !== 'function') throw new ExpressionError("Marked is the screen's - it reads the page's markings");
+  if (!ctx.row) throw new ExpressionError('Marked is a row\'s - use it row by row');
+  const [nameArg, way] = node.args;
+  const name = String(value(nameArg, { ...ctx, row: null }));
+  // The page answers each node: true · false · unknown (null) - its marking layer (lead 10-13, owner): nothing computed here.
+  const said = (id) => { const v = ctx.marked(name, id); return v === true || v === false ? v : null; };
+  if (!way) return said(ctx.row.id);
+  if (way.t !== 'ref') throw new ExpressionError('Marked takes a way in brackets second - Marked("B", [in_container])');
+  const ends = typeof ctx.row.endsOf === 'function' ? ctx.row.endsOf(way.name) : null;
+  if (!ends || !ends.length) return null;
+  const each = ends.map(said);
+  return each.some((v) => v === true) ? true : each.every((v) => v === false) ? false : null;
 }
 
 function foldValue(node, ctx) {
@@ -478,10 +505,11 @@ function caseValue(node, ctx) {
  * Answer a compiled expression over rows: one answer, or one per row when it reads a row's value outside a fold.
  * @returns {{value: *} | {values: Array} | {several: string} | {why: string}}
  */
-export function run(compiled, rows) {
+export function run(compiled, rows, page = {}) {
   if (!compiled.ok) return { why: compiled.why };
-  // notNumber: the rows an operator met a text that is not a number on - their answer is empty
-  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set() };
+  // notNumber: the rows an operator met a text that is not a number on - their answer is empty; marked: the page's
+  // markings (screen only), for Marked()
+  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), marked: page.marked };
   try {
     if (!compiled.perRow) { const v = finite(value(compiled.tree, ctx)); return { value: v, notNumber: ctx.notNumber.size }; }
     const values = ctx.rows.map((r) => finite(value(compiled.tree, { ...ctx, row: r })));

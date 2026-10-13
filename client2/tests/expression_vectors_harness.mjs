@@ -39,12 +39,16 @@ function suite(M, quiet = false) {
     if (!quiet) console.log(`  FAIL ${name}${detail ? ` -- ${detail}` : ''}`);
   };
   const scored = new Set();
+  // A mutated calculator is a copy with its own Reads class: the test bed's row hands it its reads in the copy's.
+  const asCopy = (row) => (M.expr === REAL.expr ? row : { ...row, get: (n) => { const r = row.get(n); return r instanceof REAL.expr.Reads ? new M.expr.Reads(r.items) : r; } });
   const score = (tag, v) => {
     scored.add(v.id);
     const c = M.expr.compile(v.expr);
     // A vector with a graph names its rows by node id; the screen reads them as the test bed does (testbed/slot.js calcRow).
     const index = v.graph ? M.reach.indexGraph(v.graph) : null;
-    const out = M.expr.run(c, index ? v.rows.map((id) => M.slot.calcRow(index, new Set(index.nodes.keys()), id)) : v.rows);
+    // Screen only (Marked): the vector fakes the page's marking layer.
+    const page = v.markings ? { marked: (name, id) => { const m = v.markings[name] || {}; return (m.in || []).includes(id) ? true : (m.unknown || []).includes(id) ? null : false; } } : {};
+    const out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page);
     const rows = 'expect_rows' in v;
     const good = rows
       ? Array.isArray(out.values) && out.values.length === v.expect_rows.length && out.values.every((x, i) => near(x, v.expect_rows[i]))
@@ -70,12 +74,17 @@ function suite(M, quiet = false) {
     { id: 'e', type: 'die', attributes: {} }],
   edges: [{ source: 'w', target: 'd', predicate: 'inspected', qualifiers: { gate: 7 } }, { source: 'w', target: 'e', predicate: 'has', qualifiers: { n: 1 } },
     { source: 'w', target: 'd', predicate: 'has', qualifiers: { n: 2 } }] });
-  const wRow = () => [M.slot.calcRow(g, new Set(g.nodes.keys()), 'w')];
-  const both = M.expr.run(M.expr.compile('[inspected.gate]'), wRow());
+  const wRow = () => [asCopy(M.slot.calcRow(g, new Set(g.nodes.keys()), 'w'))];
+  // A mutated calculator's copy has its own refusal class, so the row's refusal comes out thrown there - the sentence is the claim.
+  let both;
+  try { both = M.expr.run(M.expr.compile('[inspected.gate]'), wRow()); } catch (e) { both = { why: e && e.message }; }
   const many = M.expr.run(M.expr.compile('[has.n]'), wRow());
   ok('E2 a way whose end node and last edge both say the name is refused - two answers', /both a value of the node it reaches and of its edge/.test(String(both.why)), ascii(both));
   ok('E3 a way to two ends is several values row by row; folded, both', Boolean(many.several)
     && M.expr.run(M.expr.compile('Sum([has.n])'), wRow()).value === 3, ascii(many));
+  // Marked without the page's markings is refused by name - the server's calculator has none.
+  const blind = M.expr.run(M.expr.compile('Marked("B")'), [{ x: 1 }]);
+  ok('E4 Marked with no page markings refused by name', /Marked is the screen's/.test(String(blind.why)), ascii(blind));
   const met = M.expr.run(M.expr.compile('[x] * 2 + [x]'), [{ x: '29 mm' }, { x: '29.50' }, { x: null }, { x: 'a' }, { x: 3 }]);
   ok('E1 the rows an operator met a text that is not a number on: counted once each, an empty value not', met.notNumber === 2
     && JSON.stringify(met.values) === JSON.stringify([null, 88.5, null, null, 9]), ascii(met));
@@ -144,6 +153,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      if (notNumber(a) || notNumber(b)) ctx.notNumber.add(ctx.row);\n', '') },
   { id: 'X23', what: 'an empty value is counted as not a number', catches: 'E1', file: E,
     mutate: (t) => swap(t, 'const notNumber = (v) => !isBlank(v) && numberOf(v) === null;', 'const notNumber = (v) => numberOf(v) === null;') },
+  { id: 'X27', what: 'Marked takes unknown for out', catches: 'O[marked.row]', file: E,
+    mutate: (t) => swap(t, 'return v === true || v === false ? v : null; };', 'return v === true; };') },
+  { id: 'X28', what: 'a way that reaches nothing is out, not unknown', catches: 'O[marked.way]', file: E,
+    mutate: (t) => swap(t, '  if (!ends || !ends.length) return null;', '  if (!ends || !ends.length) return false;') },
+  { id: 'X29', what: 'Marked folded once over the rows, not row by row', catches: 'O[marked.row]', file: E,
+    mutate: (t) => swap(t, "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'mark')", "const rowLevel = (node) => node.t === 'ref'") },
   { id: 'X24', what: '«~» read as forwards', catches: 'O[way.backward.fold]', file: S,
     mutate: (t) => swap(t, "{ predicate: p.slice(0, -1), direction: 'incoming' }", "{ predicate: p.slice(0, -1), direction: 'outgoing' }") },
   { id: 'X25', what: 'a way\'s two answers taken as the edge\'s', catches: 'E2', file: S,
