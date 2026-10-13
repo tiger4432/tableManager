@@ -564,6 +564,23 @@ def _newest_records(said):
     return [each[2] for each in ordered[:RECORDS_PER_FACT]], max(0, len(ordered) - RECORDS_PER_FACT)
 
 
+def prepare_operating_declaration():
+    """The walk pool's prepare (`in_pool(prepare=)`, 총괄 8af4d378c): the operating world's compiled declaration - the
+    one every walk asks - in the seat the walk reads it from (`ledger.worker._compiled_setup`, whose file stamp still
+    recompiles a changed one). Another world compiles when it is first walked, as before. Returns the line the pool
+    process logs."""
+    from ledger import schema
+    from ledger.worker import _compiled_setup
+
+    began, world = time.monotonic(), schema.operating_world()
+    try:
+        _compiled_setup(None)
+    except Exception as exc:                                    # noqa: BLE001 - the walk says it again when asked
+        return "prepared nothing - the operating world's declaration (%s) did not compile: %s" % (
+            world, str(exc).splitlines()[0][:200] if str(exc) else type(exc).__name__)
+    return "prepared the operating world's declaration (%s) in %.1f s" % (world, time.monotonic() - began)
+
+
 def _say_value_types(nodes, edges):
     """Each value says the table_config type of the column the ledger read it from (총괄 2d6a0fd58 ㄱ for `image`,
     widened 10-14 to every declared type - the test bed hands it to the calculator as `types`): `column_type` on a node
