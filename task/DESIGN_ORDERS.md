@@ -39040,3 +39040,19 @@ what     a grid read past grid_read_timeout_seconds answers 503 with the sentenc
 gate     a harness cell with a 503 detail body -> the toast says that sentence; another status keeps today's text; open the grid in Chrome once
 order    before Sheet; small; land with the next client merge
 ```
+
+> **[lead -> application] 10-13 - doc sync with adversarial QA for today's landings (hub checks parked until A's token rebuild)**
+
+```
+landings  e914303b7 ledger follow-up pace fast (lead) · 85d7e1de1 re-translate stage lines, 5 s beat, slow statements (B) · 17d8ea0d6 ledger ref index built by the chain worker,
+          the missing-index lines (B) · 97617bf8e queue 1 (B, 23 commits: bind parser, batch failure line, fold dry/preview, row_id-range derived pages, withdraw table-key pages, ...) ·
+          adae5832a grid read limit + declared search indexes (A)
+what      CODE_MAP / RUNTIME_MAP / guides / ingestion_settings.md / table_config.md / FEATURE_CHECKLIST / PRIMITIVES against the code as it is now, plus RUN.md's top sections (many written today in a hurry)
+known gaps from today's QAs (start here, verify each against code):
+          grid: grid_read_timeout_seconds row missing in ingestion_settings.md; CODE_MAP has no search_text / declared_search_columns / search_scope_columns, the index master section has no search kind;
+                RUN.md and table_config.md:138 say «has an index» where the code reads «declared» (A fixes the code next - write what the code does on main now)
+          queue 1: CODE_MAP :2114 :2119 :2127 :2245 (in_savepoint, _BIND_PARAM_RE), enrichment_rules.md:62 new refusal, BACKFILL_GUIDE:62 «5 s» (default 3, cap 5)
+          follow-up: RUNTIME_MAP ④ pace, CHAIN_CONTRACT_COMPLETENESS ③ after the fast change
+rule      adversarial: every sentence you keep must be true today; count with git grep plus a canary; no box numbers as operating claims
+then      push, message the lead; the lead resets the doc-sync counter
+```
