@@ -697,6 +697,44 @@ async function categoryColours(M) {
   return { seven: new Set(Object.values(first)).size, order: 'ABCDEFG'.split('').map((p) => first[p]).join(''), kept: 'ABCDEFG'.split('').every((p) => after[p] === first[p]), z: Boolean(after.Z) };
 }
 
+/** Tooltip, labels, description (base set 10, 9, 1) - the root's: a scatter and a cross table on three dies. */
+async function tipsAndLabels(M) {
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 4, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  const handlers = {};
+  const stubCharts = { init: () => ({ setOption(o) { handlers.option = o; }, dispatchAction() {}, on(name, fn) { handlers[name] = fn; }, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const markings = new MarkingStore();
+  markings.set('marking:pick', 'D2', SIGN.CASE);
+  const crossKind = (await import('../src/testbed/kinds/cross_table.js')).kind;
+  const seat = (kind, encode, extra = {}) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode, ...extra };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind, crossTable: crossKind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    return part;
+  };
+  const tipText = (part) => walk(part.root).filter((n) => String(n.className).startsWith('sf-tip')).flatMap((n) => n.children.map((c) => c._text));
+  const scatter = seat('scatter', { x: key('x'), y: key('y'), tip1: key('p'), label: key('p') }, { labels: 'marked', description: 'Dies by x and y' });
+  await settle();
+  handlers.mouseover({ data: { id: 'D1' }, event: { event: { clientX: 5, clientY: 5 } } });
+  const pointTip = tipText(scatter);
+  handlers.mouseout();
+  const gone = tipText(scatter).length;
+  const tags = (labels) => { scatter.setDeclaration({ ...scatter.declaration(), labels }); return scatter.model.points.map((p) => [p.id, p.tag]); };
+  const marked = scatter.model.points.map((p) => [p.id, p.tag]);
+  const all = tags('all');
+  const none = tags('none');
+  const desc = walk(scatter.host).filter((n) => String(n.className) === 'sf-part__desc').map((n) => n._text);
+  const cross = seat('crossTable', { rows: key('x'), tip1: key('p') });
+  await settle();
+  walk(cross.host).find((n) => n.tagName === 'TH' && n._text === '3').parentNode.children[1].dispatch('mousemove', { clientX: 5, clientY: 5 });
+  const cellTip = tipText(cross);
+  return { pointTip, gone, marked, all, none, desc, cellTip };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -721,6 +759,7 @@ async function suite(M) {
   const rt = await routed(M);
   const ce = await colourEverywhere(M);
   const ks = await keptStart(M);
+  const tl = await tipsAndLabels(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -827,6 +866,11 @@ async function suite(M) {
     judge('K7 a start read back from a save is named by its id - its keys; an id that is not an entity\'s as it is', ks, ['SYN-BW-103-11', 'W1']),
     judge('C2 seven categories seven colours in the order the rows show them, kept in the declaration; one more seen first - the seven keep theirs',
       cc, { seven: 7, order: '#1#2#3#4#5#6#7', kept: true, z: true }),
+    judge('TT1 a point under the pointer: the tooltip of the root - its name, the value of each slot, the Tooltip slot; gone when it leaves; a cross table cell - its rows, the value they share, how many they do not',
+      [tl.pointTip, tl.gone, tl.cellTip], [['D1', 'x: 1', 'y: 2', 'p: A', 'p: A'], 0, ['3', 'x: 3', 'p: 2 values']]),
+    judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
+      [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
+    judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -912,6 +956,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      if (other.length) {', '      if (false) {') },
   { id: 'M32', what: 'a route named that is not offered walks the shortest instead (the 18766 run: the dies\' own wafer for the core)', catches: 'W5 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (!seeds.all && !this.walkedRoute && startType &&', '    if (false &&') },
+  { id: 'M33', what: 'the tooltip never put on the part', catches: 'TT1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (this.tip.parentNode !== this.root) this.root.appendChild(this.tip);', '') },
+  { id: 'M34', what: 'no label handed to the kind', catches: 'LB1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    const label = (mark) => labelOf(mark,', '    const label = () => null; const unused = (mark) => labelOf(mark,') },
+  { id: 'M35', what: 'the description not drawn', catches: 'DS1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, "...(said ? [el('div', 'sf-part__desc', said)] : [])", '...[]') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

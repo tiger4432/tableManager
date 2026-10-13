@@ -85,7 +85,7 @@ export function render(area, model, ctx) {
       if (cell.color && !cell.marked) td.style.background = cell.color;
       if (cell.ids.length) {
         td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
-        td.addEventListener('mousemove', (event) => ctx.hover({ ids: cell.ids, label: `${r} · ${model.colKeys[j]}` }, event));
+        td.addEventListener('mousemove', (event) => ctx.hover({ ids: cell.ids, label: model.colKeys[j] ? `${r} · ${model.colKeys[j]}` : r }, event));
         td.addEventListener('mouseleave', () => ctx.hover(null));
       }
       tr.append(td);
