@@ -67029,3 +67029,22 @@ M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 
 ③        다시 잽니다 — 400만에 층(cell_sources 약 2,560 만)과 원장을 채운 판에서 ㄱ 의 전후(층 합치기 몫이 운영에서 클 수 있음). 박스 디스크 · 시간이 모자라면 100만 판 + 비율로, 그렇다고 적음
 순서      걷기 보관(impl-walk-keep2 — 클라 반쪽 대기) 병합과 무관하게 ㄱ 시작
 ```
+
+> **[총괄 -> 구현자 A] 10-13 — 걷기 보관 다시 짓기(impl-walk-keep2 4fefc050e) 검수: 서버만이면 NO-GO · 클라 resumable 반쪽과 한 병합이면 GO-WITH-FIXES. 앞 NO-GO 의 멱등은 고쳐짐(qaa4_idempotent 빠짐 0 · 동시 둘 같은 쪽). 병합 전 고칠 것 (탐침 총괄 scratchpad qaa5_*.py)**
+
+```
+1 [관문] 클라 반쪽(첫 쪽 resumable · 410 한 줄 · eb1ae8c9f)과 한 병합으로만 — 지금 어느 가지에도 resumable 클라 없음(클라는 고르개 · 세기 다음에 짓는 중)
+2 [중] walk_live_nodes 의 노드 셈(ledger_subgraph.py:490 len(built)+len(seen))이 메모리의 몸통인 씨앗마다의 reach 를 안 셈 — 씨앗 수에 비례해 헐거움
+       qaa5_memory_seeds: 같은 그래프 씨앗 1 · 10 · 100 · 500 -> 센 노드당 0.6 · 1.4 · 9.3 · 38.9 KB(2,000 씨앗 외삽 약 150 KB/노드 -> 60,000 에 9 GB)
+       -> 노드 셈에 Σ_씨앗 len(reach[씨앗]["parents"]) 를 더함 · 기본값을 그 셈으로 다시 맞춤 · 문서 넷의 «프로세스당 약 600 MB» 를 그 셈 기준 문장으로
+3 [중] 410 의 why 가 «process ended» 로 거짓 — _GONE 고리 200 이 평범한 쪽 넘김(앞 열쇠 감)으로 차서 밀려난 걷기의 기록이 빠짐(qaa5_gone_ring: expired 인데 process ended)
+       -> 평범한 «앞 열쇠 감»은 고리에 안 넣음(걷기 단위로 들기) — why 는 걷기의 마지막 사유
+4 [낮] 쓸기가 «지금 More 받는 걷기»를 먼저 내쫓음(:454 쓸기가 :462 move_to_end 보다 먼저) — 상한을 낮춘 직후 그 걷기가 410(qaa5_evict_on_own_request) -> 열쇠를 «썼음»으로 표시한 뒤 쓸기
+5 [낮] 변이 생존 K8(nodes = len(built) 만) · K14(:465 잠금 뒤 재확인 지움) -> 여러 쪽 뒤 seen > 0 단언 칸 · 재확인 칸
+6 [낮] walk_processes 0 에서 표 설정 저장이 멈춘 걷기를 안 끝냄(config_watcher.py:150 은 recycle 만) — 두 모드 답이 갈림 -> 같은 «reloaded» 끝내기를 그 자리에서도
+7 [낮] walk_processes 0 같은 프로세스 동시 N · N+1 에서 N+1 이 거짓 why — 사유를 정확히(«a later page of this walk was asked»)
+8 [낮] 배포 전 열린 화면의 옛 포장 토큰은 422 — 410 walk_expired why «server updated»로 받아 화면이 Walk again 을 보이게
+문서      CODE_MAP:4289(resumable 없으면 잘린 걷기도 None) · :4294(_packed · _unpacked 현재형) · trace_router 절(_kept_walk_key · resumable · in_pool 핀 등록) · WALK.md:372(화면은 클라 착지 때) ·
+          RELEASE_LOG 쪽 초는 이 판에서 다시 잼 · ingestion_settings.md «요청마다 읽음» -> «쓸기마다» · ingestion_settings.json.sample 에 walk_live_* 셋 · DOC_OWNERSHIP 410 행
+남는 것    L5(쪽 시한이 그 프로세스의 남의 걷기를 끝냄) 그대로 — 문서에 동작대로
+```
