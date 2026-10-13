@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <!-- 🔴 이 페이지는 «휴대폰»이 대상입니다. `maximum-scale` 을 걸지 않는 것은 의도입니다 —
+       확대를 막으면 결과 목록을 읽을 방법이 사라집니다. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>Walk</title>
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔎</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <!-- 색 토큰. 폼의 규칙은 여기 «없습니다» — `src/walk/styles.js` 가 부품과 같이 다닙니다. -->
+  <style>
+    /* 🔴 이 페이지가 소유하는 것은 «페이지»뿐입니다: 여백 · 배경 · 노치 · 한 칸 배치.
+       폼의 겉모양(`.wk-*`)은 «부품이 들고 옵니다» — 총괄 판정 2026-09-06.
+       ⚠️ 처음에 `board.css` 를 싣고 「부품 스타일은 거기 산다」고 적었는데 «거짓»이었습니다:
+          `rb-walkbox*` 14개 클래스에 대한 규칙이 저장소 전체에 «0» 건입니다(dist 포함).
+          그 부품을 안 쓰게 됐으므로 링크와 그 문장을 같이 걷어냅니다. */
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg-inset);
+      color: var(--text);
+      font-family: 'Outfit', system-ui, sans-serif;
+      /* 휴대폰이 세로 글자를 제멋대로 키우지 않게. */
+      -webkit-text-size-adjust: 100%;
+    }
+    .wk-page {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      /* 노치 있는 기기에서 첫 줄이 상태바 밑으로 들어가지 않게. */
+      padding: max(var(--space-2), env(safe-area-inset-top)) var(--space-3) max(var(--space-4), env(safe-area-inset-bottom));
+      box-sizing: border-box;
+      gap: var(--space-3);
+    }
+    .wk-head {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      font-size: var(--wk-fs-line);
+      color: var(--text-dim);
+    }
+    .wk-head b { color: var(--text); font-size: var(--wk-fs-title); }
+    .wk-head { flex-wrap: wrap; }
+    /* The sentence bar over the result (lead 10-11 W A): the page itself does not scroll - the result scrolls inside
+       itself. The worlds picker (#wk-branch) is seated in the bar's «in» by the page script. */
+    html, body { overflow: hidden; }
+    .wk-page { height: 100%; min-height: 0; }
+    #wk-host { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr);
+      border: 1px solid var(--border); background: var(--bg-surface); }
+    #wk-host > * { max-width: 100%; }
+    /* A phone: the PAGE scrolls - two nested scroll boxes in a phone's height leave neither readable. */
+    @media (max-width: 760px) {
+      html, body { overflow: auto; }
+      .wk-page { height: auto; min-height: 100%; }
+      #wk-host { display: block; }
+      #wk-host > .wk-main { overflow: visible; }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/walk-DnXvEz8h.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-C36Fm6Rm.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
+  <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
+  <link rel="modulepreload" crossorigin href="/assets/account_boot-DY3i51PD.js">
+  <link rel="modulepreload" crossorigin href="/assets/disabled_reason-BCuzM_C1.js">
+  <link rel="modulepreload" crossorigin href="/assets/branch_picker-Dt-Ca0hv.js">
+  <link rel="modulepreload" crossorigin href="/assets/image_preview-Qk-M8kUl.js">
+  <link rel="modulepreload" crossorigin href="/assets/grid_image_column-B3uDJH4b.js">
+  <link rel="modulepreload" crossorigin href="/assets/ui_words-Dstj9_ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/panel-cjpnqVT5.js">
+  <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
+  <link rel="modulepreload" crossorigin href="/assets/node_search-KGJ4q6Z2.js">
+  <link rel="modulepreload" crossorigin href="/assets/world-pS1gg4ou.js">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-B6uMZ4Mb.css">
+  <link rel="stylesheet" crossorigin href="/assets/account_boot-Dn-l1TZG.css">
+</head>
+
+<body>
+  <div class="wk-page">
+    <header class="wk-head"><b>Walk</b><span>GET /api/ledger/subgraph</span><div id="wk-branch"></div><div id="account-badge" class="acct-host"></div></header>
+    <div id="wk-host"></div>
+  </div>
+</body>
+
+</html>

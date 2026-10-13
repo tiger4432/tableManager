@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Base elements</title>
+  <!-- The page places its boxes; every look below is the base layer's (src/base.css). -->
+  <style>
+    .sample-page { box-sizing: border-box; max-width: 1280px; margin: 0 auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+    .sample-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-4); }
+    .sample-head .sample-theme { margin-left: auto; }
+    .sample-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
+    .sample-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+    .sample-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+    .sample-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+    .sample-scroll { overflow-x: auto; }
+    /* The Spotfire standard's sample: the page places its parts (a grid of fixed rows, as a board seats them). */
+    .sample-sf { padding: var(--sf-gap); }
+    .sample-sf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 240px; gap: var(--sf-gap); }
+    .sample-sf-cross { display: grid; grid-template-columns: 22px minmax(0, 1fr) 90px; grid-template-rows: 24px minmax(0, 1fr); }
+    .sample-sf-tray { grid-row: 1; grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .sample-sf-left { grid-row: 2; grid-column: 1; display: flex; align-items: center; justify-content: center; }
+    .sample-sf-wrap { grid-row: 2; grid-column: 2; overflow: auto; min-width: 0; }
+    .sample-sf .sample-sf-legend { grid-row: 1 / span 2; grid-column: 3; }
+    .sample-sf-cat1 { background: var(--sf-cat-1); border-color: var(--sf-cat-1-line); }
+    .sample-sf-cat2 { background: var(--sf-cat-2); border-color: var(--sf-cat-2-line); }
+    .sample-sf-cat1-ink { color: var(--sf-cat-1); }
+    .sample-sf-cat7-ink { color: var(--sf-cat-7); }
+    /* The page's editing parts, held still: the title bar's buttons shown, a drop's mark over the part's right half, the
+       left bar with its add window beside it (in the page they hang fixed over the board). */
+    .sample-sf .sample-sf-tools { opacity: 1; }
+    .sample-sf .sample-sf-drop { left: 50%; top: 0; width: 50%; height: 100%; }
+    .sample-sf-left-bar { display: grid; grid-template-columns: var(--sf-banner-w) minmax(0, 1fr); min-height: 0; }
+    .sample-sf .sample-sf-flyout { position: static; width: auto; max-width: var(--sf-flyout-w); }
+    .sample-sf .sample-sf-pop { grid-column: 1 / -1; width: auto; max-width: 750px; grid-template-columns: minmax(0, 320fr) minmax(0, 240fr) minmax(0, 190fr); }
+    .sample-sf .sample-sf-status { height: var(--sf-status-h); margin-top: var(--sf-gap); }
+    @media (max-width: 480px) {
+      .sample-page { padding: var(--space-4); gap: var(--space-4); }
+      .sample-grid, .sample-fields { grid-template-columns: minmax(0, 1fr); }
+      .sample-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .sample-sf-grid { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/sample-C_2e95Yo.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-C36Fm6Rm.js">
+  <link rel="modulepreload" crossorigin href="/assets/account_boot-DY3i51PD.js">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-B6uMZ4Mb.css">
+  <link rel="stylesheet" crossorigin href="/assets/account_boot-Dn-l1TZG.css">
+  <link rel="stylesheet" crossorigin href="/assets/base-0D6z4SYq.css">
+  <link rel="stylesheet" crossorigin href="/assets/spotfire-6e67f09x.css">
+</head>
+<body>
+  <main class="sample-page">
+    <div class="sample-head">
+      <h3>Base elements</h3>
+      <span class="meta">One box rule · every screen composes from these</span>
+      <button type="button" class="btn-quiet sample-theme" id="sample-theme">Dark theme</button>
+      <div id="account-badge" class="acct-host"></div>
+    </div>
+
+    <section class="box">
+      <div class="box-head"><h2 class="box-title">Stat numbers</h2><span class="meta">chain queue · now</span></div>
+      <div class="box-body">
+        <div class="sample-stats">
+          <div class="stat"><span class="stat-label">Waiting</span><span class="stat-value">1,284</span><span class="stat-sub">oldest 4 min</span></div>
+          <div class="stat"><span class="stat-label">Running</span><span class="stat-value">2</span><span class="stat-sub">longest 38 s</span></div>
+          <div class="stat" data-tone="danger"><span class="stat-label">Failed</span><span class="stat-value">17</span><span class="stat-sub">3 tables</span></div>
+          <div class="stat" data-tone="warn"><span class="stat-label">Paused</span><span class="stat-value">—</span><span class="stat-sub">not read</span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="sample-grid">
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Table</h2><span class="tag">4</span></div>
+        <div class="box-body">
+          <div class="sample-scroll">
+            <table>
+              <thead><tr><th>Rule</th><th>Trigger</th><th class="num">Rows</th><th>State</th></tr></thead>
+              <tbody>
+                <tr><td>lot_slot_join</td><td>dt_lot → dt_wafer</td><td class="num">12,480</td><td><span class="tag" data-tone="ok">On</span></td></tr>
+                <tr><td>yield_mapper</td><td>dt_lot → dt_yield</td><td class="num">3,302</td><td><span class="tag" data-tone="warn">Opt-in</span></td></tr>
+                <tr><td>wafer_confirm</td><td>dt_wafer</td><td class="num">98</td><td><span class="tag" data-tone="danger">Off</span></td></tr>
+                <tr><td>bond_join</td><td>dt_bond → dt_lot</td><td class="num">0</td><td><span class="tag" data-tone="ok">On</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="meta">Updated 21:03:12 (server time) · 4 of 4 rules</div>
+        </div>
+      </section>
+
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Form rows</h2></div>
+        <div class="box-body">
+          <div class="sample-fields">
+            <label class="form-row"><span class="form-label">Rule</span><select><option>lot_slot_join</option><option>yield_mapper</option></select><span class="form-hint">rules triggered by this table</span></label>
+            <label class="form-row"><span class="form-label">First day</span><input value="2026-09-20"><span class="form-hint">YYYY-MM-DD · KST</span></label>
+          </div>
+          <label class="form-row"><span class="form-label">Reason</span><input placeholder="Reason (optional)"></label>
+          <div class="sample-actions">
+            <button type="button" class="btn-primary">Run</button>
+            <button type="button">Count</button>
+            <button type="button" class="btn-danger">Pause chain</button>
+            <button type="button" class="btn-quiet">Cancel</button>
+            <button type="button" disabled title="Pick rows">Re-run</button>
+            <span class="meta">Re-run: pick rows</span>
+          </div>
+          <div class="refusal">Refused — 'rule' is required · pick a rule, then Count again</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="sample-grid">
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Empty line</h2><span class="tag">0</span></div>
+        <div class="box-body">
+          <div class="empty-state"><div class="empty-icon">🔗</div><div class="empty-text">Nothing waiting</div></div>
+        </div>
+      </section>
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Meta lines</h2></div>
+        <div class="box-body">
+          <div class="meta">Updated 21:03:12 (server time) · next in 30 s</div>
+          <div class="meta">Paused by operator at 2026-09-26 21:03:12 (server time) · bad join</div>
+          <div class="meta" data-tone="warn">Worker: ok · not paused yet</div>
+        </div>
+      </section>
+    </div>
+    <!-- SPOTFIRE STANDARD (src/spotfire.css, ui-design-system §9): the declaration UI's and the visual parts' base layer. -->
+    <section class="box">
+      <div class="box-head"><h2 class="box-title">Spotfire standard</h2><span class="meta">declaration UI · visual parts</span></div>
+      <div class="box-body">
+        <div class="sf sample-sf">
+          <div class="sample-sf-grid">
+            <section class="sf-part is-active">
+              <div class="sf-part__title"><span class="sf-part__t">Avg(press · value) per lot and product</span></div>
+              <div class="sf-part__body sample-sf-cross">
+                <div class="sample-sf-tray"><button type="button" class="sf-pill">product<span class="sf-pill__caret">▾</span></button><button type="button" class="sf-plus">+</button></div>
+                <div class="sample-sf-left"><button type="button" class="sf-pill sf-pill--v">lot<span class="sf-pill__caret">▾</span></button></div>
+                <div class="sample-sf-wrap">
+                  <table class="sf-table">
+                    <tr><th class="sf-table__corner">lot</th><th class="sf-table__col">A</th><th class="sf-table__col">B</th><th class="sf-table__col sf-table__total">Total</th></tr>
+                    <tr><th class="sf-table__row">L1</th><td class="is-marked">2</td><td>2.5</td><td class="sf-table__total">2</td></tr>
+                    <tr><th class="sf-table__row">L2</th><td>4</td><td>5</td><td class="sf-table__total">4.5</td></tr>
+                    <tr class="sf-table__totals"><th class="sf-table__row">Total</th><td class="sf-table__total">2.667</td><td class="sf-table__total">3.333</td><td class="sf-table__total">3</td></tr>
+                  </table>
+                </div>
+                <div class="sf-legend sample-sf-legend"><div class="sf-legend__ttl">Colors:</div><div class="sf-legend__v sf-legend__plain">All values</div></div>
+              </div>
+            </section>
+            <section class="sf-part">
+              <div class="sf-part__title"><span class="sf-part__t">Legend</span></div>
+              <div class="sf-part__body">
+                <div class="sf-legend">
+                  <div class="sf-legend__ttl">Marker by:</div>
+                  <div class="sf-legend__row"><button type="button" class="sf-pill">(Node)<span class="sf-pill__caret">▾</span></button></div>
+                  <div class="sf-legend__ttl">Color by:</div>
+                  <div class="sf-legend__row"><button type="button" class="sf-pill">product<span class="sf-pill__caret">▾</span></button><button type="button" class="sf-plus">+</button></div>
+                  <button type="button" class="sf-legend__v"><span class="sf-legend__ico sample-sf-cat1"></span><span class="sf-legend__name">A</span></button>
+                  <button type="button" class="sf-legend__v is-dim"><span class="sf-legend__ico sample-sf-cat2"></span><span class="sf-legend__name">B</span></button>
+                </div>
+                <div class="sf-say">Mark a start</div>
+                <span class="sf-note">2 not drawn · 1 rows with several values</span>
+              </div>
+            </section>
+            <section class="sf-part">
+              <div class="sf-part__title" data-part-title><span class="sf-part__t">Marked</span></div>
+              <div class="sf-part__body">
+                <table class="sf-table sf-table--rows">
+                  <tr><th>name<span class="sf-table__sort">▲</span></th><th class="is-num">temp · value</th><th class="sf-table__add"><button type="button" class="sf-plus">+</button></th></tr>
+                  <tr><td>W1</td><td class="is-num">10</td><td class="sf-table__add"></td></tr>
+                  <tr class="is-marked"><td>W2</td><td class="is-num">20</td><td class="sf-table__add"></td></tr>
+                  <tr><td>W3</td><td class="is-num">30 · 34</td><td class="sf-table__add"></td></tr>
+                  <tr><td>W6</td><td class="is-num"></td><td class="sf-table__add"></td></tr>
+                </table>
+              </div>
+              <div class="sf-tools sample-sf-tools"><button type="button" class="sf-tool" title="Maximize visualization"><svg viewBox="0 0 14 14"><path d="M8 1h5v5h-1.6V3.7L8.7 6.4 7.6 5.3l2.7-2.7H8z"/><path d="M6 13H1V8h1.6v2.3l2.7-2.7 1.1 1.1-2.7 2.7H6z"/></svg></button><button type="button" class="sf-tool" title="Close"><svg viewBox="0 0 14 14"><path d="M2.1.9l11 11-1.2 1.2-11-11z"/><path d="M11.9.9l1.2 1.2-11 11-1.2-1.2z"/></svg></button></div>
+              <div class="sf-drop sample-sf-drop"></div>
+            </section>
+            <div class="sample-sf-left-bar">
+              <nav class="sf-banner"><button type="button" class="sf-banner__b is-on" title="Visualization types"><svg viewBox="0 0 24 24"><path d="M4 12h4v9H4zM10 7h4v14h-4zM16 3h4v18h-4z"/></svg></button></nav>
+              <div class="sf-flyout sample-sf-flyout">
+                <div class="sf-flyout__h">Visualization types</div>
+                <button type="button" class="sf-flyout__it"><svg class="sf-flyout__ico sample-sf-cat1-ink" viewBox="0 0 24 24"><path d="M4 3h16v4H4z"/><path d="M4 9h16v3H4zM4 14h16v3H4zM4 19h16v2H4z" opacity="0.6"/></svg><span>Table</span></button>
+                <button type="button" class="sf-flyout__it"><svg class="sf-flyout__ico sample-sf-cat7-ink" viewBox="0 0 24 24"><path d="M4 3h16v4H4zM4 9h4v12H4z"/><path d="M10 9h4v5h-4zM16 9h4v5h-4zM10 16h4v5h-4zM16 16h4v5h-4z" opacity="0.6"/></svg><span>Cross table</span></button>
+                <button type="button" class="sf-flyout__it"><svg class="sf-flyout__ico sample-sf-cat1-ink" viewBox="0 0 24 24"><path d="M4 16h3v3H4zM8 11h3v3H8zM13 13h3v3h-3zM12 6h3v3h-3zM17 3h3v3h-3zM18 9h3v3h-3z"/></svg><span>Scatter plot</span></button>
+              </div>
+            </div>
+            <aside class="sf-panel">
+              <div class="sf-panel__h"><span>Visualization properties</span></div>
+              <div class="sf-props__name">Avg(press · value) per lot and product</div>
+              <div class="sf-props__tabs"><span class="is-on">Configuration</span><span>Appearance</span></div>
+              <div class="sf-props__sec">
+                <div class="sf-props__h">Data</div>
+                <label class="sf-props__line"><span class="sf-props__lab">Marking</span><select class="sf-props__sel"><option>Start</option><option>All</option></select></label>
+                <label class="sf-props__line"><span class="sf-props__lab">Route</span><select class="sf-props__sel"><option>wafer</option></select></label>
+                <div class="sf-props__cond"><span>press · value 2 – 4</span><button type="button" class="sf-props__x">×</button></div>
+                <button type="button" class="sf-props__add">+ Add filter</button>
+              </div>
+              <div class="sf-props__sec"><div class="sf-props__h">Cell values</div><button type="button" class="sf-pill">Avg(press · value)<span class="sf-pill__caret">▾</span></button></div>
+            </aside>
+            <aside class="sf-panel">
+              <div class="sf-panel__h"><span>Filters</span><button type="button" class="sf-btn">Reset</button></div>
+              <div class="sf-filter">
+                <div class="sf-filter__h">press · value</div>
+                <div class="sf-filter__range"><input class="sf-filter__num" type="number" value="2" aria-label="From"><input class="sf-filter__num" type="number" value="4" aria-label="To"></div>
+                <label class="sf-filter__v"><input type="checkbox" checked><span>Include empty</span><span class="sf-filter__n">1</span></label>
+              </div>
+              <div class="sf-filter">
+                <div class="sf-filter__h">product</div>
+                <label class="sf-filter__v"><input type="checkbox" checked><span>A</span><span class="sf-filter__n">3</span></label>
+                <label class="sf-filter__v"><input type="checkbox"><span>B</span><span class="sf-filter__n">2</span></label>
+              </div>
+              <div class="sf-say">No values to filter</div>
+            </aside>
+            <div class="sf-pop sample-sf-pop">
+              <div class="sf-pop__col"><div class="sf-pop__lab">Route</div><button type="button" class="sf-pop__it is-on">(row)<span class="sf-pop__n">6</span></button><button type="button" class="sf-pop__it">measures → quantity<span class="sf-pop__n">11</span></button></div>
+              <div class="sf-pop__col"><div class="sf-pop__lab">Value</div><button type="button" class="sf-pop__it">value<span class="sf-pop__n">edge</span></button><button type="button" class="sf-pop__it" disabled>Custom expression…</button><hr class="sf-pop__hr"></div>
+              <div class="sf-pop__col"><div class="sf-pop__lab">Reduce</div><div class="sf-pop__reds"><button type="button" class="sf-pop__red">None</button><button type="button" class="sf-pop__red is-on">Avg</button><button type="button" class="sf-pop__red">Max</button></div><div class="sf-pop__why">1 row with several values</div></div>
+            </div>
+          </div>
+          <div class="sf-status sample-sf-status"><span>4 of 6 rows</span><span>start −1 · system −1 · part −0</span><span>2 marked rows · hidden 1</span><span>3 columns</span><span>wafer</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
