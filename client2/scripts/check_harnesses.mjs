@@ -1425,6 +1425,7 @@ const FLOORS = new Map([
   // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
   //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
   ['testbed_harness.mjs', 85],   // 74 -> 72: the fold's three mutants moved to the calculator; -> 78: expression slots T27, Custom expression T28, a condition on one T29, with their mutants (lead 10-13 plan a); -> 81: T30 a text an operator cannot take, M44 M45
+  ['sheet_kind_harness.mjs', 31],   // the Sheet's visible area: grid, formats, key, formula bar, #MANY #NAME? #CYCLE, SM1-SM12 (lead 10-14 ㄱ)
   ['expression_vectors_harness.mjs', 285],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①)
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
