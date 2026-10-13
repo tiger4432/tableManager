@@ -125,11 +125,13 @@ export class GridShell {
     // A panel is a box with its own scroll, so one part's overflow cannot push a neighbour.
     el.style.minWidth = '0';
     el.style.minHeight = '0';
-    if (decl.dock) this.dockOf(decl.dock).appendChild(el); else this.parked.appendChild(el);
     if (decl.dock) {
+      this.dockOf(decl.dock).appendChild(el);
       // 🔴 THE ONLY PLACE A DOCKED PANEL'S SIZE IS WRITTEN: across its side; along it, the side's share.
       el.style[decl.dock === 'left' || decl.dock === 'right' ? 'width' : 'height'] = decl.size || 'auto';
       el.style.flex = '1 1 0px';
+    } else {
+      this.parked.appendChild(el);
     }
 
     const PartClass = this.parts[decl.part];
