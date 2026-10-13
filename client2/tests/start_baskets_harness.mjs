@@ -354,7 +354,7 @@ const MUTANTS = [
   { id: 'BM6', what: 'Walk on with an empty Positive', catches: 'B7', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "(seedsOf(markings.entries(START)).positive.length ? '' : BASKET_WORDS.noStart)", "''") },
   { id: 'BM7', what: 'Walk asks the form\'s node, not the baskets', catches: 'B9', file: 'walk/main.js', key: 'page',
-    mutate: (t) => swap(t, '    const one = signed ? null : baskets.describe(starts.positive[0]);', '    const one = null;') },
+    mutate: (t) => swap(t, '    const one = signed ? null : baskets.held(starts.positive[0]);', '    const one = null;') },
   { id: 'BM8', what: 'Shift on Walk marks the form\'s node a control again', catches: 'B10', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "    go.addEventListener('click', () => { void fire(); });",
       "    go.addEventListener('click', (event) => { if (event && event.shiftKey) markings.set(START, entitySeedId(state.type, state.keys), SIGN.CONTROL); void fire(); });") },

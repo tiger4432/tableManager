@@ -118,6 +118,7 @@
   --sf-title: #313336;
   --sf-dim: rgba(49, 51, 54, 0.45);
   --sf-line: #F0F1F2;
+  --sf-error: var(--danger);   /* a sheet cell's #MANY · #NAME? · #CYCLE - not measured on Spotfire */
   --sf-stripe: #F7F9FF;
   --sf-axis: #D1D4DE;
   --sf-pill: #BDBFC5;
@@ -201,6 +202,7 @@
   --sf-title: #FFFFFF;
   --sf-dim: rgba(200, 200, 200, 0.45);
   --sf-line: #404040;
+  --sf-error: var(--danger);
   --sf-stripe: #404040;
   --sf-axis: #666666;
   --sf-pill: rgba(255, 255, 255, 0.45);

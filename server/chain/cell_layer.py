@@ -117,21 +117,6 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
 
 #: Who deleted a shell row - the history line's name, the chain's write seat and the sweep alike (5eee501eb).
 SHELL_DELETER = "chain_shell_rows"
-#: Who deleted a row whose key no source row holds any more - a decide's recount (총괄 옛 키).
-GONE_DELETER = "chain_no_source_rows"
-
-
-def person_rows(db, table_name: str, row_ids) -> set:
-    """The rows a person wrote a layer on, blank or not (`crud.layer_writer`) - what a gone row says by name."""
-    from database import crud
-
-    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    found = set()
-    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
-        layers, _pins = _load_cell_state(db, table_name, ids[i:i + DEFAULT_CHUNK_SIZE])
-        found.update(row_id for (row_id, _column), named in layers.items()
-                     if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named))
-    return found
 
 
 def key_columns(table_name: str) -> set:

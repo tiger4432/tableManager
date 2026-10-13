@@ -189,6 +189,15 @@ async function measure(M) {
   // T32: Marked() reads the page's marking answer the slot is handed - true, false, unknown (empty)
   const pageMarks = (name, id) => (name !== 'pick' ? false : id === 'W1' ? true : id === 'W2' ? false : null);
   out.marked = ['W1', 'W2', 'W3'].map((id) => { const r = readSlot(index, inside, id, exprSlot('Marked("pick")'), false, pageMarks); return [r.state, r.value === undefined ? null : r.value]; });
+  // T33: a column the walk declares datetime (A d1f1c3e4b) - Max over it the latest instant; undeclared, a number fold of
+  // texts that are not numbers - nothing
+  {
+    const at = (v, typed) => ({ source: 'TW', target: 'TQ', predicate: 'measures', qualifiers: { at: v }, ...(typed ? { column_types: { at: 'datetime' } } : {}) });
+    const g = (typed) => indexGraph({ nodes: [{ id: 'TW', type: 'wafer', label: 'TW', keys: {}, attributes: {} }, { id: 'TQ', type: 'quantity', label: 'TQ', keys: {}, attributes: {} }],
+      edges: ['2026-10-01T00:00:00Z', '2026-10-03T00:00:00Z', '2026-10-02T00:00:00Z'].map((v) => at(v, typed)) });
+    const inside = new Set(['TW', 'TQ']);
+    out.typed = [true, false].map((typed) => { const r = readSlot(g(typed), inside, 'TW', exprSlot('Max([measures.at])')); return [r.state, r.value === undefined ? null : r.value, r.types || null]; });
+  }
   // T30: an operator over a text that is not a number - the row empty and said so; a list is several, an empty value empty
   out.notNumber = ['W1', 'W3', 'W6'].map((id) => { const r = readSlot(index, inside, id, exprSlot('[product] * 2')); return [r.state, Boolean(r.notNumber)]; });
   // T29: a filter condition on an expression slot carries the expression and is judged by it; two expression
@@ -512,6 +521,8 @@ function suite(out, page, saved, counted) {
     [out.ways, page.wayStart], [[['one', 'L1'], ['empty', null], ['one', 5.5], ['several', null]],
       ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer', '']]);
   eq('T32 Marked() in a slot: the page answer for the row - true, false, unknown empty', out.marked, [['one', true], ['one', false], ['empty', null]]);
+  eq('T33 a column the walk declares datetime: Max the latest instant, as written; undeclared - a number fold, nothing', out.typed,
+    [['one', '2026-10-03T00:00:00Z', { 'measures.at': 'datetime' }], ['empty', null, null]]);
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
@@ -603,7 +614,7 @@ const MUTANTS = [
   { id: 'M14b', what: 'the walk page\'s reading keeps an absent sign as a control (the - list every not-+)', catches: 'T20', file: 'rnd_board/marking_store.js',
     mutate: (t) => swap(t, '  return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };', '  return { positive: of(SIGN.CASE), negative: [...sign].filter(([, s]) => s !== SIGN.CASE).map(([id]) => id) };') },
   { id: 'M15', what: 'All walks with no seed', catches: 'T9a', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, "    const params = seeds.all ? { ...base, seed_type: this.decl.row }", '    const params = seeds.all ? { ...base }') },
+    mutate: (t) => swap(t, "    const params = seeds.all ? { ...base, seed_type: this.rowType() }", '    const params = seeds.all ? { ...base }') },
   { id: 'M16', what: 'a drag adds instead of replacing', catches: 'T9b', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, "    if (mode === 'add') { for (const id of ids) this.markings.set(this.writes, id, sign); return; }", '    { for (const id of ids) this.markings.set(this.writes, id, sign); return; }') },
   { id: 'M17', what: 'a hub not opened into its members when the marking is shown', catches: 'T8', file: 'testbed/hubs.js',
@@ -635,7 +646,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '{ paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl }', '{ paint, colored, askMarked, label, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
+    mutate: (t) => swap(t, '{ paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start }', '{ paint, colored, askMarked, label, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start }') },
   // M31 (a words-only pill opens the picker) retired 10-14: the template draws a pill only for a slot it holds.
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
     mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);') },
@@ -668,6 +679,8 @@ MUTANTS.push(
     mutate: (t) => swap(t, '      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,', '      notNumber: 0,') },
   { id: 'M45', what: 'the bottom line does not say the rows that are not a number', catches: 'T30', file: 'testbed/status_part.js',
     mutate: (t) => swap(t, "  if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);\n", '') },
+  { id: 'M48', what: 'the walk\'s column types not handed to the calculator', catches: 'T33', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, 'run(c, [calcRow(index, inside, x)], { marked, cell, types })', 'run(c, [calcRow(index, inside, x)], { marked, cell })') },
   { id: 'M46', what: 'Custom expression starts empty with a route chosen (the code before)', catches: 'T31', file: 'testbed/picker.js',
     mutate: (t) => swap(t, 'isExpression(current) ? current.expr : startingExpression(chosen)', "isExpression(current) ? current.expr : ''") },
   { id: 'M47', what: 'the check reads a way as the row\'s own name, so a way the row reads is refused', catches: 'T31', file: 'testbed/picker.js',

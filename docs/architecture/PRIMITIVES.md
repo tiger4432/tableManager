@@ -2333,12 +2333,23 @@
 ### **무거운 라우트를 서버 밖 프로세스로 — `runtime.process_pool.in_pool(body, pool=…)` 하나, 풀은 `WALK` · `GRID`** (2026-10-14 등록 · `6f34a1320` · `a4e647ab6`)
 - **어디**: `Pool` 둘 — `WALK`(`walk_processes` · `walk_pool.log` · 연결 `assy_walkpool`) · `GRID`(`grid_processes` 기본 2 · `grid_wait_seconds` 기본 60 · `grid_pool.log` · 연결 `assy_gridpool`). 라우트를 `in_pool(body, pinned_by=None, gone=None, pool=None)` 로 등록한다 — 지금 둘: 걷기 `/subgraph` · 그리드 `grid_page`.
 - **언제 재사용**: 한 요청이 서버를 오래 쥐는 자리 — 스레드 풀이나 새 프로세스 기제를 따로 짓지 않고 `Pool` 을 하나 더한다.
+- **잰 수**: `task/scoped_redo_report.md` «10-14 새벽 — 9f1be4122 속도 다시 재기» (A `2838665e2`, 박스 판 · 운영 주장 아님) — 그리드 동시 10 은 쪽 몸통보다 풀 기다림, 걷기는 프로세스마다 첫 요청이 선언 컴파일.
 - **함정**: 풀 안에서 찍는 줄은 그 풀의 로그로 간다(server.log 가 아님). 프로세스가 다 바쁘면 기다림 상한 뒤 503 `<풀>_pool_busy`. 크기 0 이면 서버 안에서 돈다.
 
 ### **«쓰이는 칸만» 인덱스는 청하는 자리와 짓는 자리가 따로 — `runtime.index_wants.want` · `models.ensure_auto_indexes`** (2026-10-14 등록 · `f620962c7`)
 - **어디**: 화면 쪽 `want(table, columns, why, seconds, bind)` — 프로세스마다 처음 한 번 큐에 넣고, 스레드가 `ask` 로 `INDEX_WANTED` 행 하나를 쓴다(이미 그 일을 하는 인덱스가 있거나, 표가 상한이거나, 같은 청이 기다리면 안 씀). 지금 부르는 곳: `grid_page` 의 느린 정렬 · 같음/범위 필터. decide 판단 키는 `models.decide_key_wants`(규칙에서). 체인 워커가 `index_wants.taken(db)` 으로 받아 `ensure_auto_indexes` 로 `ix_auto_` 인덱스를 짓는다.
 - **언제 재사용**: 화면 · 체인이 «이 칸이 느렸다»를 알았을 때 — CREATE INDEX 를 직접 하지 않고 청한다.
 - **함정**: 청과 짓기가 다른 프로세스다 — 체인 워커가 없으면 청만 쌓인다. 표마다 `auto_index_per_table`(기본 10).
+
+### **Board 의 모든 종류가 나눠 쓰는 근원 칸 셋 — 색은 `color_by.colorsOf`, 행은 `route.routeOf`, 한 표시의 단위는 `units.unitsOf`** (2026-10-14 등록 · lead-board-2 `c0c4b3f9b`, 소유자 10-13 «COLOR BY 저런 거는 모든 근원부품이 공유하게 해»)
+- **어디**: `client2/src/testbed/color_by.js` — `colorsOf(rows, ctx)` 가 행마다 색을 한 번 정한다(선언 `colors` {범주: hex} 먼저, 없으면 팔레트를 나온 순서로); 허브(마커 · 칸)는 `colorOfIds`. `testbed/route.js` — `routesFor(vocabulary, from, to)` 가 시작 타입 → 행 타입 길 목록, `routeOf(decl, routes)` 가 부품의 길, `walkOfRoute` 가 그 길의 술어 · 걸음. `testbed/units.js` — `unitOf(decl)`(node · hub · record) · `unitsOf(rows, decl, keys, recordKey, marked)`.
+- **언제 재사용**: 새 종류(산점도 · 표 · 크로스 · 맵 다음)를 짓거나, 한 종류에 색 · 행 · 마커 규칙을 넣고 싶을 때 — 종류 안에 사본을 적지 않고 이 셋을 부른다. 종류는 그리기만 한다.
+- **함정**: 행은 «걸어서 닿은 그 타입 노드 전부»가 아니라 «그 길의 끝»이다 — 길이 안 잡히면(목록이 비면) 부품이 엉뚱한 노드를 행으로 받는다(18766 10-14: 코어 웨이퍼에서 계측으로 가는 C 가 본딩 웨이퍼의 계측 17 을 셈). 범주 색이 선언에 빈 칸이면 팔레트 첫 색이 붙는다.
+
+### **표의 추정 행 수는 `ledger.column_stats.estimated_rows(db, relation)` 한 자리 — 이름이 아니라 `to_regclass` 로 찾는다** (2026-10-14 등록 · A `208d7cefc`)
+- **어디**: `SELECT reltuples FROM pg_class WHERE oid = to_regclass(:relation)` — 부르는 곳: `ledger/backfill.py` · `value_suggest.py` · `ledger/config_explorer_service.py` · `scripts/list_undeclared_tables.py`. 음수(아직 통계 없음)는 None.
+- **언제 재사용**: «이 표가 얼마나 큰가»를 공짜로 알고 싶을 때(정확한 수가 필요하면 `population` — 표를 한 번 훑는다).
+- **함정**: 전에 자리마다 `pg_class.relname = <이름>` 으로 찾았다 — 스크래치 스키마와 public 에 같은 이름 표가 있으면 엉뚱한 표의 추정을 읽는다. `to_regclass` 는 search_path 를 따라 그 연결이 보는 표 하나를 고른다. 추정이라는 것을 화면 · 로그에 붙인다.
 
 ### 교체 쓰기 전 수 대조 게이트 — 직렬화가 **원본 집합**보다 적으면 거부 (2026-07-28 등록 · 2026-07-30 대조축 정정)
 - **무엇**: 전량 교체(replace) 쓰기 직전에 **원본 집합(필터 이전)의 non-empty 개수 vs 직렬화 페이로드의 개수**를 대조해, 페이로드가 적으면 confirm 이전에 거부하고 **삭제될 개수를 메시지에 명시**한다. 교체 의미론에서 "빠짐 = 삭제"이므로, 이 한 줄 산술이 §1 replace_map의 "불완전한 집합을 보내면 전량 파괴" 함정의 **쓰기 쪽 집행 장치**다(읽기 쪽 짝은 위 "절단 응답은 실패로 강등").

@@ -1425,7 +1425,8 @@ const FLOORS = new Map([
   // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
   //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
   ['testbed_harness.mjs', 85],   // 74 -> 72: the fold's three mutants moved to the calculator; -> 78: expression slots T27, Custom expression T28, a condition on one T29, with their mutants (lead 10-13 plan a); -> 81: T30 a text an operator cannot take, M44 M45
-  ['expression_vectors_harness.mjs', 294],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]
+  ['sheet_kind_harness.mjs', 31],   // the Sheet's visible area: grid, formats, key, formula bar, #MANY #NAME? #CYCLE, SM1-SM12 (lead 10-14 ㄱ)
+  ['expression_vectors_harness.mjs', 311],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]; -> 311: the sheet O[sheet.*] O[node.*] E5-E7 X32-X36
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
@@ -1526,7 +1527,7 @@ const FLOORS = new Map([
   // 303 -> 313 (main 27e976128 (the Route panel) with More ▸: main.js imports both mergeWalks and walkedRoutes, the harness keeps both blocks and lists; MR4 a node ranked on two pages keeps the later row (the server's continuation, 581c60c00), MRm6).
   // 313 -> 317: MR7 MR8 More off while its walk runs, MRm7 MRm8 (lead 9752e91f7); -> 331: EX1 an expired page for each of the five whys,
   // EX2 Walk again, TS1 the top set over pages, EXm1-EXm4 TSm1 TSm2 RSm1, MR1 resumable (lead eb1ae8c9f).
-  ['walk_table_harness.mjs', 345],   // -> 343: WC1 WC2 RC1 Z19 a cut cell says read of total, Show all + 7 mutants (lead 10-13); -> 333: EX3 Walk again is a new walk + EXm5 (lead 10-13, 18766); 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
+  ['walk_table_harness.mjs', 346],   // -> 346: WFm5 a start no basket held goes as its id (lead 10-14 W2);   // -> 343: WC1 WC2 RC1 Z19 a cut cell says read of total, Show all + 7 mutants (lead 10-13); -> 333: EX3 Walk again is a new walk + EXm5 (lead 10-13, 18766); 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

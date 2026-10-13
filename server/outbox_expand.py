@@ -58,7 +58,6 @@ logger = logging.getLogger("Server")
 
 from event_constants import (
     CHAIN_DEPTH_KEY,
-    OLD_VALUES_KEY,
     ONLY_RULE_KEY,
     OUTBOX_COLLAPSE_CHUNK_ROWS,
     OUTBOX_PAYLOAD_EXCLUDED_COLUMNS,
@@ -80,7 +79,7 @@ def _data_columns(model) -> list:
             if c.name not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS]
 
 
-def synthesize_payload(row_id, business_key, values: dict, envelope: dict, old=None) -> dict:
+def synthesize_payload(row_id, business_key, values: dict, envelope: dict) -> dict:
     """THE payload shape a chain mapper is handed. One author, every caller.
 
     🔴 [S-279, 판정 426] A MAPPER IS WRITTEN BY THE USER, AND IT WAS BEING CALLED WITH TWO
@@ -123,13 +122,10 @@ def synthesize_payload(row_id, business_key, values: dict, envelope: dict, old=N
     for key in (CHAIN_DEPTH_KEY, ONLY_RULE_KEY):
         if key in envelope:
             payload[key] = envelope[key]
-    # 총괄 옛 키: this row's values before the event, when the event carried them
-    if old:
-        payload[OLD_VALUES_KEY] = old
     return payload
 
 
-def _synthesize_payload(row, columns, envelope, old=None) -> dict:
+def _synthesize_payload(row, columns, envelope) -> dict:
     """One ORM row -> the shape above. The live path's way of reading a row, and nothing else.
 
     `transaction_id` drives the worker's grouping and `source_name` drives the circular-loop
@@ -140,7 +136,7 @@ def _synthesize_payload(row, columns, envelope, old=None) -> dict:
         row.row_id,
         getattr(row, "business_key_val", None),
         {col: getattr(row, col, None) for col in columns},
-        envelope, old)
+        envelope)
 
 
 def is_split_leaf(payload) -> bool:
@@ -308,10 +304,6 @@ def expand_events(db, events) -> dict:
     they name, ONE query per (table, 1000 ids) for the WHOLE batch rather than
     per event - a group of 20 chunks covering 20,000 rows costs 20 indexed
     lookups, against the 20,000 JSONB payloads it replaces.
-
-    🔴 [총괄 옛 키 ㄱ] A DELETION IS ITS ROWS' OLD VALUES AND NO DATA - its rows are gone, so nothing is read: each
-    row is `data` {} and the values the event carried (`OLD_VALUES_KEY`), collapsed or per row (whose `data` was the
-    row). An edit's row carries the old values of the columns it changed beside its re-read data.
     """
     result = {}
     ids_by_table = {}
@@ -319,9 +311,7 @@ def expand_events(db, events) -> dict:
 
     for ev in events:
         payload = get_payload_dict(ev)
-        if ev.event_type == "DELETE":
-            result[event_key(ev)] = _deleted_rows(payload)
-        elif is_collapsed_payload(payload):
+        if is_collapsed_payload(payload):
             collapsed.append((ev, payload))
             ids_by_table.setdefault(ev.table_name, []).extend(payload.get("row_ids") or ())
         else:
@@ -345,15 +335,14 @@ def expand_events(db, events) -> dict:
         model, found = loaded.get(ev.table_name, (None, {}))
         columns = _data_columns(model) if model is not None else []
         row_ids = payload.get("row_ids") or []
-        old = payload.get(OLD_VALUES_KEY) or [None] * len(row_ids)
         payloads = []
         missing = []
-        for rid, was in zip(row_ids, old):
+        for rid in row_ids:
             row = found.get(rid)
             if row is None:
                 missing.append(rid)
                 continue
-            payloads.append(_synthesize_payload(row, columns, payload, was))
+            payloads.append(_synthesize_payload(row, columns, payload))
         if missing:
             # Named outcome, never a silent skip - see the module docstring.
             logger.warning(
@@ -365,19 +354,6 @@ def expand_events(db, events) -> dict:
         result[event_key(ev)] = payloads
 
     return result
-
-
-def _deleted_rows(payload) -> list:
-    """A DELETE event's rows: `data` {} and each row's old values - the collapsed event's list, or the per-row
-    event's own `data` (the row as it was)."""
-    if not is_collapsed_payload(payload):
-        was = {col: cell.get("value") if isinstance(cell, dict) else cell
-               for col, cell in (payload.get("data") or {}).items()}
-        return [synthesize_payload(payload.get("row_id"), payload.get("business_key"), {}, payload,
-                                   payload.get(OLD_VALUES_KEY) or was)]
-    row_ids = payload.get("row_ids") or []
-    old = payload.get(OLD_VALUES_KEY) or [None] * len(row_ids)
-    return [synthesize_payload(rid, None, {}, payload, was) for rid, was in zip(row_ids, old)]
 
 
 # ⚰️ [총괄 c9ee06b34, 소유자 09-29 「체인 에러나면 쪼개는게 빼자 그냥」] `reexpand_collapsed_event`,

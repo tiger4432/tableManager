@@ -26,6 +26,9 @@ const REAL = {
   color: await import('../src/testbed/color_by.js'),
   layer: await import('../src/testbed/marking_layer.js'),
   map: await import('../src/testbed/kinds/map.js'),
+  sheet: await import('../src/testbed/kinds/sheet.js'),
+  slot: await import('../src/testbed/slot.js'),
+  route: await import('../src/testbed/route.js'),
   trend: await import('../src/walk/trend.js'),
   reach: await import('../src/walk/reach_table.js'),
 };
@@ -655,12 +658,13 @@ async function colourEverywhere(M) {
   const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
   const answer = { nodes: [die('D1', 0, 0, 'A'), die('D2', 1, 0, 'B'), die('D3', 2, 1, 'A')], edges: [], truncated: ANSWER.truncated };
   const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
-  const encodes = { scatter: { x: key('x'), y: key('y') }, table: { col1: NAME }, crossTable: { rows: key('x') }, map: { x: key('x'), y: key('y') } };
-  const kinds = { scatter: M.scatter.kind, table: M.table.kind, crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind, map: M.map.kind };
+  const encodes = { scatter: { x: key('x'), y: key('y') }, table: { col1: NAME }, crossTable: { rows: key('x') }, map: { x: key('x'), y: key('y') }, sheet: {} };
+  const kinds = { scatter: M.scatter.kind, table: M.table.kind, crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind, map: M.map.kind, sheet: M.sheet.kind };
   const doc = makeDoc('dark');
   const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: [['#6489FA', '#4B67BC'], ['#FA7864', '#BC5A4B']] };
   const parts = Object.keys(encodes).map((kind) => {
-    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode: { ...encodes[kind], color: key('p') } };
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode: { ...encodes[kind], color: key('p') },
+      ...(kind === 'sheet' ? { key: 'A1' } : {}) };
     const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl, palette: () => pal,
       kinds, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
       fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
@@ -674,12 +678,69 @@ async function colourEverywhere(M) {
     if (k === 'scatter') return part.model.points.find((p) => p.id === 'D1').fill;
     if (k === 'table') return walk(part.host).find((n) => n.tagName === 'TR' && n.children.length > 1 && n.children[0]._text === 'D1').attrs['data-color'];
     if (k === 'crossTable') return walk(part.host).find((n) => n.tagName === 'TH' && n._text === '0').parentNode.children[1].style.background;
+    // the sheet's key cell, its row D1 (the first the walk brought)
+    if (k === 'sheet') return walk(part.host).find((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-at'] === 'A1').attrs['data-color'];
     return walk(part.host).find((n) => n.attrs && n.attrs['data-cell'] === '0,0').attrs.fill;
   });
   const first = drawn();
   for (const part of parts) part.setDeclaration({ ...part.declaration(), colors: { A: '#123456' } });
   await settle();
   return { first: [new Set(first).size, first[0] === M.color.colorsOf([{ id: 'D1', reads: { color: { state: 'one', value: 'A' } } }], { palette: pal, declaration: { encode: { color: key('p') } } }).categories[0].fill], declared: drawn() };
+}
+
+/** The sheet on the root (lead 10-14 ㄱ): a start written as one node, its cells the root's slots naming each other. */
+async function sheetRoot(M) {
+  const { entitySeedId } = await import('../src/rnd_board/api.js');
+  const KEY = entitySeedId('lot_slot', { lot: 'L1', slot: '05' });
+  const q = (id) => ({ id, type: 'quantity', label: id, keys: { quantity: id }, attributes: {} });
+  const answerFor = (id) => ({ nodes: [{ id, type: 'lot_slot', label: id === KEY ? 'L1 · 05' : 'L2 · 06', keys: {}, attributes: {} }, q('q1'), q('q2'), q('q3')],
+    edges: [['q1', 1], ['q2', 2], ['q3', 3]].map(([t2, v], i) => ({ id: `m${i}`, source: id, target: t2, predicate: 'measures', qualifiers: { value: v } })), truncated: ANSWER.truncated });
+  const vocabulary = { entities: [{ type: 'lot_slot', keys: ['lot', 'slot'] }, { type: 'quantity', keys: ['quantity'] }],
+    predicates: [{ name: 'measures', subjects: ['lot_slot'], object: { kind: 'entity_ref', types: ['quantity'] } }] };
+  const cells = { B1: { input: '=Avg([measures.value])' }, B2: { input: '=B1*2' }, B3: { input: '=Sum(C1:C2)' }, C1: { input: '4' }, C2: { input: '=B1' },
+    D1: { input: '=D2' }, D2: { input: '=D1' }, E1: { input: '=A1' } };
+  const seat = async (decl, kind = 'sheet') => {
+    const doc = makeDoc('dark');
+    const asked = [];
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl,
+      vocabulary: () => vocabulary, kinds: { sheet: M.sheet.kind, scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(),
+      hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, params.nodeId]); return { ok: true, body: answerFor(params.nodeId) }; } });
+    part.mount();
+    await settle();
+    void kind;
+    return { part, asked };
+  };
+  const textOf = (part, at) => { const c = part.model && part.model.grid.flat().find((x) => x.at === at); return c ? c.text : null; };
+  const base = { id: 'S', part: 'visual', kind: 'sheet', row: null, system: null, filter: [], writes: 'marking:pick', encode: {}, key: 'A1', cells };
+  const one = await seat({ ...base, start: { node: 'lot_slot("L1", "05")' } });
+  // Saved and reopened (the page's laidOut over a save, 18766 10-14): its row type left to its key, the same cells drawn.
+  const saved = one.part.declaration();
+  const reopened = M.main.laidOut(M.main.LAYOUT, { root: null, visuals: [saved] }, [{ type: 'quantity' }]).panels.find((p) => p.id === 'S');
+  const back = await seat(reopened);
+  const reopen = { row: reopened.row, cells: ['A1', 'B1', 'B3'].map((at) => textOf(back.part, at)) };
+  const walked = { asked: one.asked.slice(), row: one.part.rowType(), cells: Object.fromEntries(['A1', 'B1', 'B2', 'B3', 'C1', 'C2', 'D1', 'E1'].map((at) => [at, textOf(one.part, at)])) };
+  const ringCell = one.part.model.grid.flat().find((x) => x.at === 'D1');
+  const other = await seat({ id: 'X', part: 'visual', kind: 'scatter', row: 'lot_slot', start: { node: 'lot_slot("L1", "05")' }, system: null, filter: [], writes: null,
+    encode: { x: { expr: 'A1 + 1', words: ['A1 + 1'] }, y: { expr: '1', words: ['1'] } } });
+  const xRead = (other.part.model && other.part.model.points) ? null : null;
+  void xRead;
+  const otherWhy = (() => { const r = M.slot.readSlot(other.part.index, other.part.inside, KEY, { expr: 'A1 + 1' }); return r.why || null; })();
+  const walks = [one.asked.length];
+  one.part.setDeclaration({ ...one.part.declaration(), start: { node: 'lot_slot("L2", "06")' } });
+  await settle();
+  walks.push(one.asked.length);
+  one.part.setDeclaration({ ...one.part.declaration(), start: { node: 'lot_slot("L2", "06")' } });
+  await settle();
+  walks.push(one.asked.length);
+  one.part.setDeclaration({ ...one.part.declaration(), start: { node: 'nope("x")' } });
+  await settle();
+  walks.push(one.asked.length);
+  const keyCell = one.part.model ? one.part.model.grid.flat().find((x) => x.at === 'A1') : {};
+  const again = { walks, seeds: one.asked.slice(1).map((a) => a[2]), refused: [keyCell.text, keyCell.why] };
+  const none = await seat({ ...base, start: null });
+  const empty = { state: none.part.state, walks: none.asked.length, cells: { C1: textOf(none.part, 'C1'), B1: textOf(none.part, 'B1') } };
+  return { walked, ring: { why: ringCell.why, other: otherWhy }, again, empty, reopen };
 }
 
 /** A start read back from a save (QA 10-14: a reload showed «ledger-entity:v1:Wy…»): the basket names it by its id - its
@@ -779,6 +840,7 @@ async function suite(M) {
   const ts = await trendAsScatter(M);
   const rt = await routed(M);
   const ce = await colourEverywhere(M);
+  const sh = await sheetRoot(M);
   const ks = await keptStart(M);
   const tl = await tipsAndLabels(M);
   const cc = await categoryColours(M);
@@ -816,8 +878,8 @@ async function suite(M) {
     judge('G2 Save keeps the tree and each visual (a table\'s sort too); a reopen draws them', p.save, { tree: true, visuals: true, sortKept: true }),
     judge('G2b an older save (visuals by id) opens on the layout\'s tree, its visuals laid over, the chrome docked', p.older, { tree: true, x: true, docks: true }),
     judge('G5 each kind added: its id and kind, the largest split (the scatter, stacked: new on top), the new one active and walked; the add window lists them in order',
-      p.add, { ids: ['table-1', 'crossTable-1', 'scatter-2', 'map-1'], kinds: ['table', 'crossTable', 'scatter', 'map'], active: 'map-1', firstPath: '[0,0]',
-        scatterPath: '[0,1]', walked: 4, flyout: ['Table', 'Cross table', 'Scatter plot', 'Map'] }),
+      p.add, { ids: ['table-1', 'crossTable-1', 'scatter-2', 'map-1', 'sheet-1'], kinds: ['table', 'crossTable', 'scatter', 'map', 'sheet'], active: 'sheet-1', firstPath: '[0,0]',
+        scatterPath: '[0,1]', walked: 5, flyout: ['Table', 'Cross table', 'Scatter plot', 'Map', 'Sheet'] }),
     judge('L3 the Marked table: empty while nothing is picked; a hub picked - its members; N of M and the limit\'s drop, none hidden; a line pressed re-marks to it; a head sorts; the ground clears',
       p.marked, { emptyFirst: 0, viaHub: ['W1', 'W3'], counts: [2, 4, 2, 0], afterPress: ['W3'], sort: { key: 'col1', desc: false }, cleared: 0, emptyAgain: 0 }),
     judge('L4 a limited part counts the limit\'s drop apart: a marked row it leaves out is not hidden; a limiting marking changed, it folds again',
@@ -884,8 +946,19 @@ async function suite(M) {
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
     judge('W3 die to wafer: the shortest route its own wafer; the route with the bonded_from loop the core wafer, the walk asking that route',
       [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['in_container', 'bonded_from'], 2, ['d1']]]]]),
-    judge('C1 the same Color by on four kinds: a row one colour in all four (the value gives it); a category colour declared - all four draw it',
-      ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456'] }),
+    judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
+      ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456', '#123456'] }),
+    judge('SH1 the sheet\'s written start: walked from that node alone, along the ways its cells name (measures), its row its type; the cells read in the order they name each other',
+      sh.walked, { asked: [[['measures'], 1, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ']], row: 'lot_slot',
+        cells: { A1: 'L1 · 05', B1: '2', B2: '4', B3: '6', C1: '4', C2: '2', D1: '#CYCLE', E1: 'L1 · 05' } }),
+    judge('SH2 a ring of cells: each #CYCLE and the ring; another kind\'s cell reference refused by name', sh.ring,
+      { why: 'A cycle: D1 → D2 → D1', other: "Cell references are the sheet's - A1 reads a sheet's cell" }),
+    judge('SH3 the key written anew walks once from the new node; written the same, no walk; a type the page has not - #NAME? and its reason, no walk',
+      sh.again, { walks: [1, 2, 2, 2], seeds: ['ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMiIsInNsb3QiOiIwNiJ9XQ'], refused: ['#NAME?', 'No function named nope'] }),
+    judge('SH5 a sheet saved and reopened: its row type left to its key (not the first declared type), the same cells drawn', sh.reopen,
+      { row: null, cells: ['L1 · 05', '2', '6'] }),
+    judge('SH4 a sheet with no key yet draws its grid - its values written, the formulas empty - and walks nothing', sh.empty,
+      { state: 'ready', walks: 0, cells: { C1: '4', B1: '' } }),
     judge('K7 a start read back from a save is named by its id - its keys; an id that is not an entity\'s as it is', ks, ['SYN-BW-103-11', 'W1']),
     judge('C2 seven categories seven colours in the order the rows show them, kept in the declaration; one more seen first - the seven keep theirs',
       cc, { seven: 7, order: '#1#2#3#4#5#6#7', kept: true, z: true }),
@@ -914,6 +987,18 @@ const swap = (text, from, to) => {
   return text.split(from).join(to);
 };
 const MUTANTS = [
+  { id: 'SR6', what: 'a reopened visual walked from a written node given the first declared row type (the code before, 18766)', catches: 'SH5 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, "!d.row && !(d.start && d.start.node) ? { ...d, row: first } : d", "!d.row ? { ...d, row: first } : d") },
+  { id: 'SR1', what: 'a written start is not walked - the marking only', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (this.start && this.start.node) { const s = this.startNode(); return s && s.id ? { positive: [s.id] } : null; }\n', '') },
+  { id: 'SR2', what: 'a kind of cells read like any other - a cell naming another refused', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'this.oneValued, askMarked, Boolean(this.kind.cells));', 'this.oneValued, askMarked, false);') },
+  { id: 'SR3', what: 'a sheet with no key yet draws nothing (Mark a start)', catches: 'SH4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (!seeds && this.kind && this.kind.cells) {', '    if (false) {') },
+  { id: 'SR4', what: 'the walk asks no way an expression names', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'walkOfRoute(this.walkedRoute, this.slotsHeld())', 'walkOfRoute(this.walkedRoute, this.decl.encode)') },
+  { id: 'SR5', what: 'the kind\'s own slots not read - the declaration\'s encode only', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '[s.key, s.slot || encode[s.key]]', '[s.key, encode[s.key]]') },
   { id: 'M1', what: 'an added part splits the first one, not the largest', catches: ['S5 ', 'G5 '], file: 'rnd_board/split_tree.js', key: 'tree',
     mutate: (t) => swap(t, 'ids.reduce((best, k) => (area(k) > area(best) ? k : best), ids[0])', 'ids[0]') },
   { id: 'M2', what: 'a dragged line has no floor', catches: 'S2 ', file: 'rnd_board/split_tree.js', key: 'tree',

@@ -2,7 +2,8 @@
 // column (walk/reach_table) plus how its values fold. A row reads it the way the table reads a cell; the reduce folds
 // what it read, and no reduce takes one value only. Or an expression slot { expr, words } (Custom expression…, lead
 // 10-13 plan a): the calculator (src/expression.js) answers it over the rows a point or a cell holds, [name] the row's
-// own value. This file is the one place that asks which of the two a slot is.
+// own value. Or { self: true } - the row's own node (a sheet's key cell), or { constant } - a value as written (a
+// sheet's cell). This file is the one place that asks which a slot is.
 
 import { readsOf, recordsOf, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
@@ -22,8 +23,17 @@ const spelling = (v) => JSON.stringify(v);
  *   one - a value to draw; several - values that differ and no reduce, so not drawn; empty - nothing said (notNumber:
  *   an expression's operator met a text that is not a number); missing - the row is not in the walk
  */
-export function readSlot(index, inside, x, slot, oneValued = false, marked = null) {
-  if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)], { marked })) : { state: 'missing' };
+export function readSlot(index, inside, x, slot, oneValued = false, marked = null, cell = undefined) {
+  if (isExpression(slot)) {
+    if (!inside.has(x)) return { state: 'missing' };
+    const c = compile(slot.expr);
+    // Each name's declared column type, as the walk says it (a datetime's Min and Max compare instants - lead 10-13).
+    const types = c.ok ? Object.fromEntries(c.names.map((n) => [n, typeOfName(index, inside, x, n)]).filter(([, t]) => t)) : {};
+    const read = answerOne(run(c, [calcRow(index, inside, x)], { marked, cell, types }));
+    return Object.keys(types).length ? { ...read, types } : read;
+  }
+  if (slot.self) return inside.has(x) ? { state: 'one', value: x, n: 1 } : { state: 'missing' };
+  if ('constant' in slot) return isBlank(slot.constant) ? { state: 'empty', n: 0 } : { state: 'one', value: slot.constant, n: 1 };
   const got = readsAt(index, inside, x, slot);
   if (got.missing) return { state: 'missing' };
   const reads = got.reads;
@@ -35,6 +45,38 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
   const values = [...new Map(reads.flatMap((r) => [].concat(r.value)).map((v) => [spelling(v), v])).values()];
   if (!values.length) return { state: 'empty', n: 0 };
   return values.length === 1 ? { state: 'one', value: values[0], n: reads.length } : { state: 'several', values, n: reads.length };
+}
+
+/**
+ * Every slot of a row, `pairs` [key, slot]. With `cells` (a kind of cells - the sheet, owner 3b97fcfb9) an expression
+ * that names another slot's key (A1, B1:B9) reads that one's value: each read once, in the order they name each other;
+ * a ring of them is a cycle, each of its slots {state: 'cycle', ring}. Without, a cell reference is refused by name.
+ */
+export function readSlots(index, inside, x, pairs, oneValued, marked, cells = false) {
+  const bySlot = new Map(pairs);
+  const out = {};
+  if (!cells) { for (const [k, s] of pairs) out[k] = readSlot(index, inside, x, s, oneValued(s), marked); return out; }
+  const busy = [];
+  const need = (k) => {
+    if (out[k]) return out[k];
+    const at = busy.indexOf(k);
+    if (at >= 0) return { state: 'cycle', ring: [...busy.slice(at), k] };
+    const s = bySlot.get(k);
+    if (!s) return null;
+    busy.push(k);
+    let ring = null;
+    const value = (ref) => {
+      const r = need(ref);
+      if (r && r.state === 'cycle') { ring = ring || r.ring; return null; }
+      return r && r.state === 'one' ? r.value : null;
+    };
+    const read = readSlot(index, inside, x, s, oneValued(s), marked, value);
+    busy.pop();
+    out[k] = ring ? { state: 'cycle', ring } : read;
+    return out[k];
+  };
+  for (const [k] of pairs) need(k);
+  return out;
 }
 
 /** Is this slot an expression - the one place that asks. */
@@ -77,6 +119,21 @@ export function nameValue(index, inside, x, name) {
   const own = ends.map((e) => ownValue(index.nodes.get(e.node) || {}, way.name)).find(Boolean) || null;
   if (onEdge && own) throw new ExpressionError(`[${name}] is both a value of the node it reaches and of its edge`);
   return { steps: way.steps, value: onEdge ? { on: 'edge', name: way.name } : own };
+}
+
+/** A name's declared column type - the walk's (`column_type` on a node's record, `column_types` on an edge, implementer
+ *  A d1f1c3e4b): its own value's, or its way's ends' first that says one; none - null. */
+export function typeOfName(index, inside, x, name) {
+  let at;
+  try { at = nameValue(index, inside, x, name); } catch (e) { return null; }
+  if (!at.value) return null;
+  const ends = at.steps.length ? waysOf(index, inside, [x], at.steps, WAYS_A_CELL).ends : [{ node: x, edge: null }];
+  for (const e of ends) {
+    const said = at.value.on === 'edge' ? e.edge && (e.edge.column_types || {})[at.value.name]
+      : ((((index.nodes.get(e.node) || {}).records || {})[at.value.name] || [])[0] || {}).column_type;
+    if (said) return said;
+  }
+  return null;
 }
 
 /** A row as the calculator reads it: each name its value's reads (its own, or a way's), with their times. */
