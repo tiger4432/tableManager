@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **PostgreSQL CPU 가 높을 때 — 누가 쓰고 있나 (소유자 「psql server가 cpu 점유율 70퍼」)** — 읽기만 · 재기동 없음
+>
+> ```
+> 읽기만    SELECT coalesce(nullif(application_name,''), backend_type) AS who, state, count(*) AS n,
+>                 max(now() - query_start) AS longest, left(min(query), 160) AS one_query
+>          FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle'
+>          GROUP BY 1, 2 ORDER BY n DESC;
+>          (1 초 간격으로 서너 번 — 한 번은 순간일 뿐)
+> 답의 뜻   assy_server · 질의가 큰 표의 ILIKE · count · ORDER BY -> 그리드 요청이 표를 통째로 읽는 것(검색 · 개수 · 정렬)
+>            — 구현자 A 최우선 일(ba2b33b46)이 받는다. 화면을 여러 명이 열어 둘수록 늘어남
+>          assy_chain(또는 assy_chain_slot…) -> 체인 · 원장 따라가기. 10-13 에 따라가기를 fast 로 바꿨다(e914303b7)
+>          assy_walkpool -> 걷기 프로세스의 걷기
+>          autovacuum worker -> 큰 표를 많이 고치거나 지운 뒤의 청소 — 끝나면 내려감
+>          assy_retroactive -> 소급 실행
+>          원장 다시 번역(Re-translate)이 도는 중 -> 그 실행이 표를 쪽마다 읽고 원장에 쓰는 몫. 혼자 돌려도 느린 것은 번역기의 행당 파이썬 비용
+>            (박스 단순 선언 판 약 6 ms/행 — 운영 선언은 안 잼) — 구현자 B 최우선 일이 받는다
+> 급할 때   assy_chain 이 대부분 -> server/pacing.json jobs.chain_followup 을 "slow"(재기동 없음)
+>          assy_walkpool 이 대부분 -> ingestion_settings.json "walk_processes": 0(재기동 없음)
+>          assy_server 의 그리드 질의가 대부분 -> 큰 표 그리드 탭을 닫아 둔 사람 수만큼 준다 — 고침은 A 착지
+> ```
+
 > ## [10-13] **원장 따라가기 «fast» — 지운 행 거두기 · 원장 번역이 쉬지 않고 흐름 (소유자 「fast」)** — git pull 만 · 재기동 없음(체인 워커가 바퀴마다 pacing.json 을 다시 읽음)
 >
 > ```
