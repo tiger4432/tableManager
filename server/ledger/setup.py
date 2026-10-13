@@ -599,6 +599,11 @@ def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:
             "source_retired", f"sources.{source_id}.status",
             f"source {source_id!r} is retired; its atoms stay and nothing new is read. "
             f"Set `sources.{source_id}.status` to 'active' to read it again.")
+    if plan.attach is not None:
+        raise LedgerSetupError(
+            "source_attaches", f"sources.{source_id}.attach",
+            f"source {source_id!r} attaches its table's rows for the walk to read - it translates nothing, so "
+            f"there is nothing to run")
     return source_id
 
 

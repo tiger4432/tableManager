@@ -258,7 +258,7 @@ def _ledger_edges(db, setup):
     edges = []
     for source_id, plan in sorted(getattr(setup.snapshot, "source_plans", {}).items()):
         relation = plan.relation
-        if not relation:
+        if not relation or getattr(plan, "attach", None) is not None:      # its rows reach the walk, not the ledger
             continue
         edge = {
             "kind": "ledger", "from": relation, "to": LEDGER_NODE_ID,

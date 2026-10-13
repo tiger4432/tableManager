@@ -1107,6 +1107,12 @@ def _resolve_ledger() -> dict:
                     f"`{name}` is {plan.status}: its atoms stay and the ledger no longer reads "
                     f"`{plan.relation}`.",
                     fields={"source": name, "relation": plan.relation, "status": plan.status}))
+            elif plan.attach is not None:
+                effective.append(entry(
+                    SCOPE_RULE, name,
+                    f"`{name}` attaches the rows of `{plan.relation}` under `{plan.attach.subject_type}` nodes "
+                    f"for the walk to read - nothing is translated.",
+                    fields={"source": name, "relation": plan.relation, "status": plan.status}))
             else:
                 effective.append(entry(
                     SCOPE_RULE, name,

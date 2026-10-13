@@ -838,6 +838,11 @@ def source_cursor_fingerprint(
         raise LedgerSetupValidationError(
             "source_retired", f"bundle.sources.{source_id}.status",
             f"source {source_id!r} is retired; it has no cursor material to fingerprint")
+    if plan.attach is not None:
+        raise LedgerSetupValidationError(
+            "source_attaches", f"bundle.sources.{source_id}.attach",
+            f"source {source_id!r} attaches rows for the walk and translates nothing; it has no cursor material to "
+            f"fingerprint")
     predicate_ids = sorted({
         mapping.predicate_id for mapping in plan.profile.mappings.values()
     })

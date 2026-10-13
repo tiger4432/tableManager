@@ -1426,6 +1426,7 @@ CENSUS_NAMES = {
     "difference": "Table less indexed",
     "measured_at": "Measured",
     "source_refused": "Refused by the loader",
+    "source_attaches": "Attaches rows - the walk reads them",
     "rows_new": "New, not translated",
     "rows_drifted": "Edited, not followed",
     "rows_gone": "Gone, atoms remain",
@@ -1638,7 +1639,8 @@ def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True
 
 
 def census_sources(setup):
-    """-> (the sources a census measures, the retired ones it skips by name).
+    """-> (the sources a census measures, the retired ones it skips by name, the ones that attach rows - nothing to
+    translate, skipped by name too: 총괄 10-13).
 
     🔴 ONE ANSWER FOR BOTH CENSUS LOOPS (총괄 7426f76b0 ㉤) - the worker's lap and the sweep
     below each asked `plan.runs`, so a source the LOADER refused was never measured again.
@@ -1646,8 +1648,9 @@ def census_sources(setup):
     retired one is skipped: the operator stopped it, and nothing arrives for it.
     """
     plans = setup.snapshot.source_plans
-    return (sorted(n for n, p in plans.items() if p.status == "active"),
-            sorted(n for n, p in plans.items() if p.status != "active"))
+    return (sorted(n for n, p in plans.items() if p.status == "active" and p.attach is None),
+            sorted(n for n, p in plans.items() if p.status != "active"),
+            sorted(n for n, p in plans.items() if p.status == "active" and p.attach is not None))
 
 
 def measure_every_source(engine, setup, store=None, now=None):
@@ -1662,11 +1665,13 @@ def measure_every_source(engine, setup, store=None, now=None):
 
     writer = LedgerStore(engine) if store is None else store
     done = []
-    measured, retired = census_sources(setup)
+    measured, retired, attaching = census_sources(setup)
     # ⛔ NAMED, NOT SILENT (S-103) - a sweep that returns fewer sources than the declaration
     # has must say which ones it skipped.
     for source in retired:
         logger.info("[Ledger] census skips %s: retired (content unvalidated)", source)
+    for source in attaching:
+        logger.info("[Ledger] census skips %s: it attaches rows for the walk - nothing to translate", source)
     for source in measured:
         try:
             measure_and_store(engine, setup, source, writer, now=now)
@@ -1694,6 +1699,9 @@ def _loader_refusal(plan):
     one the loader REFUSED - and for a source typed by name those checks were the only thing
     between it and a scan. This says the real reason, in the loader's own words.
     """
+    if getattr(plan, "attach", None) is not None:
+        return {"refused": "source_attaches",
+                "remedy": "this source attaches its table's rows for the walk to read - it translates nothing"}
     if getattr(plan, "planned", True):
         return None
     refusal = dict(plan.refusal or {})

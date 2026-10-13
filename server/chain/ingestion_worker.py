@@ -3768,7 +3768,7 @@ async def run_ledger_row_census(db_session_factory):
             # at all, which would spend a lap failing once per source. The names ride on
             # the lap line, so the skip is a value rather than a silence. A source the
             # loader REFUSED is measured - its census is the refusal (총괄 7426f76b0 ㉤).
-            sources, retired = census_sources(setup)
+            sources, retired, attaching = census_sources(setup)
         except Exception as exc:
             logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
             # ✓ [S-284] NOTHING TO REPAIR HERE, AND THE REASON IS WORTH KEEPING. A census
@@ -3779,6 +3779,7 @@ async def run_ledger_row_census(db_session_factory):
             # The WARNING above is the only thing said, and that is correct.
             sources = []
             retired = []
+            attaching = []
         measured_now = 0
         refused = []
         lap_started = time.monotonic()
@@ -3818,7 +3819,9 @@ async def run_ledger_row_census(db_session_factory):
                         (f" · refused by the loader (no scan): {', '.join(refused)}"
                          if refused else "")
                         + (f" · retired (content unvalidated): {', '.join(retired)}"
-                           if retired else ""))
+                           if retired else "")
+                        + (f" · attaching rows (nothing to translate): {', '.join(attaching)}"
+                           if attaching else ""))
             # S-176. `depth` is the number of sources this lap still had to walk, which is
             # this loop's remaining work in the sense every other entry uses.
             heartbeat.record_lap("chain", "ledger_census", seconds=lap_seconds,
