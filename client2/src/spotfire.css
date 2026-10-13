@@ -147,12 +147,15 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-props__add { height: auto; margin-top: 6px; padding: 0; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-panel-accent); font: inherit; cursor: pointer; }
 .sf-filter { padding: 8px 16px; border-bottom: 1px solid var(--sf-panel-line-2); }
 .sf-filter__h { font-weight: 500; margin-bottom: 4px; }
+/* a filter's name and its values one line each - cut, their words in their tooltip */
+.sf-filter__h, .sf-filter__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sf-filter__range { display: flex; gap: 6px; }
 /* a range end: the box the browser drew for it (90 x 22 inside, 98 x 28 whole), its line the panel's */
 .sf-filter__num { box-sizing: border-box; width: 98px; height: 28px; min-height: 0; padding: 1px 4px; border: 1px solid var(--sf-panel-line); border-radius: 0;
   background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
 .sf-filter__v { display: flex; align-items: center; gap: 6px; height: 20px; }
 .sf-filter__n { margin-left: auto; color: var(--sf-panel-muted); }
+.sf-filter__t { flex: 1 1 auto; }
 
 /* ── the page's editing (lead 10-13, Spotfire's): a part's title bar buttons on its hover, the line between two parts,
       where a moved part lands, the left bar and the add window beside it ── */

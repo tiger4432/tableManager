@@ -18,7 +18,7 @@
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
-import { readSlot, readSlots, slotWords, rawOf } from './slot.js';
+import { readSlot, readSlots, slotWords, rawOf, isTimeRead } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId, nodesOfPress } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
@@ -447,13 +447,15 @@ export class VisualPart extends Panel {
     return [...this.slotList().filter((s) => encode[s.key]).map((s) => ({ key: s.key, slot: encode[s.key] })), ...own].map(({ key, slot }) => {
       const counts = new Map();
       let empty = 0;
+      let time = false;
       for (const id of received) {
         const read = readSlot(this.index, this.inside, id, slot, this.oneValued(slot));
+        if (isTimeRead(read)) time = true;
         const values = read.state === 'one' ? [read.value] : read.state === 'several' ? read.values : [];
         if (!values.length) empty += 1;
         for (const v of values) counts.set(JSON.stringify(v), [v, (counts.get(JSON.stringify(v)) || [v, 0])[1] + 1]);
       }
-      return { key, words: slotWords(slot), slot, row: this.rowType(), values: [...counts.values()], empty };
+      return { key, words: slotWords(slot), slot, row: this.rowType(), values: [...counts.values()], empty, time };
     });
   }
 

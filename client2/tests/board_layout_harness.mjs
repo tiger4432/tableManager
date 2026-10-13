@@ -32,7 +32,10 @@ const REAL = {
   trend: await import('../src/walk/trend.js'),
   reach: await import('../src/walk/reach_table.js'),
   show: await import('../src/testbed/show_items.js'),
+  tooltip: await import('../src/testbed/tooltip.js'),
+  cond: await import('../src/testbed/condition_editor.js'),
 };
+const { localStamp } = await import('../src/server_time.js');
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
 const { HubBook, hubId, holds, isHubId } = await import('../src/testbed/hubs.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
@@ -843,6 +846,29 @@ async function showCases(M) {
   return { rule, points, hubs };
 }
 
+/** The three the app found on 18766 (lead 10-14): a time shown as the grid shows it (tooltip, filter - the one place
+ *  slot.valueText), a label on the point's inner side, a filter value one line with its words in its tooltip. */
+async function shownWords(M) {
+  const ISO = '2026-11-23T18:49:00Z';
+  const answer = { nodes: [{ id: 'D1', type: 'die', label: 'D1', keys: {}, attributes: { when: { $datetime: ISO } } }], edges: [], truncated: ANSWER.truncated };
+  const index = M.reach.indexGraph(answer);
+  const inside = new Set(['D1']);
+  const when = { steps: [], value: { on: 'node', name: 'when' }, words: ['when'] };
+  const read = M.slot.readSlot(index, inside, 'D1', when);
+  const tip = M.tooltip.tipLines({ id: 'D1', ids: ['D1'] }, { rowsById: new Map([['D1', { id: 'D1', label: 'D1', reads: { tip1: read } }]]), slots: [{ key: 'tip1' }], encode: { tip1: when } });
+  const doc = makeDoc('dark');
+  const spans = (summary) => walk(M.cond.drawCondition(doc, summary, null, () => {})).filter((n) => String(n.className) === 'sf-filter__t')
+    .map((n) => [n._text, n.title, n.getAttribute('data-clip-ok') !== null]);
+  const LONG = 'fake-SYN-CW-103-01-core_cmp_nonuniform';
+  const filter = [spans({ row: 'die', words: 'when', slot: when, values: [[read.value, 1]], empty: 0, time: read.time }),
+    spans({ row: 'die', words: 'meas_id', slot: { ...when, value: { on: 'node', name: 'meas_id' } }, values: [[LONG, 2]], empty: 0 })];
+  const pal = { bg: '#000000', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: '#000000', one: ['#111111', '#222222'], cat: [] };
+  const pt = (id, x) => ({ id, ids: [id], label: id, tag: id, x, y: 1, fill: '#111111', border: '#222222', marked: false });
+  const option = M.scatter.scatterOption({ points: [pt('a', 1), pt('b', 2), pt('c', 3)], xKind: 'value', yKind: 'value', size: 6 }, pal);
+  const sides = option.series[0].data.map((d) => [d.id, d.label.position]);
+  return { read: [read.state, read.time], tip, stamp: localStamp(ISO), filter, sides, LONG };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -870,6 +896,7 @@ async function suite(M) {
   const ks = await keptStart(M);
   const tl = await tipsAndLabels(M);
   const si = await showCases(M);
+  const sw = await shownWords(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -994,6 +1021,9 @@ async function suite(M) {
     judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
+    judge('TM1 a time the server sends is a time read; the tooltip and the filter say it as the grid does (local, no T · Z), a long value one line with its words in its tooltip',
+      [sw.read, sw.tip, sw.filter], [['one', true], ['D1', `when: ${sw.stamp}`], [[[sw.stamp, sw.stamp, true]], [[sw.LONG, sw.LONG, true]]]]),
+    judge('LB2 a label on the point\'s inner side - right in the left half, left in the right half (not under the legend)', sw.sides, [['a', 'right'], ['b', 'right'], ['c', 'left']]),
     judge('SI1 Top/Bottom N: the highest or lowest N by the slot, a number written as text a number, equal values by id, no number not among them; all or no slot - every mark',
       si.rule, [['b', 'c'], ['b'], ['a'], ['a', 'b', 'c'], ['a', 'b', 'c', 'd', 'e'], 5]),
     judge('SI2 a scatter showing the top 1 by x draws that point only and the status says how many are not shown', si.points, [['D2'], 'Top 1 by x · 2 not shown']),
@@ -1113,6 +1143,14 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      folded(SHOW_SLOT)];', '      SHOW_SLOT];') },
   { id: 'M41', what: 'equal values by id backwards', catches: 'SI1 ', file: 'testbed/show_items.js', key: 'show',
     mutate: (t) => swap(t, '(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)', '(a.id < b.id ? 1 : a.id > b.id ? -1 : 0)') },
+  { id: 'M42', what: 'a time read not said a time', catches: 'TM1 ', file: 'testbed/slot.js', key: 'slot',
+    mutate: (t) => swap(t, "=== 'string') return { time: true };", "=== 'string') return {};") },
+  { id: 'M43', what: 'the tooltip says a value as it came - the UTC text', catches: 'TM1 ', file: 'testbed/tooltip.js', key: 'tooltip',
+    mutate: (t) => swap(t, 'return valueText(read.value, isTimeRead(read));', 'return String(read.value);') },
+  { id: 'M44', what: 'a filter value as it came, no tooltip', catches: 'TM1 ', file: 'testbed/condition_editor.js', key: 'cond',
+    mutate: (t) => swap(t, '      words.title = said;', '      words.title = \'\';') },
+  { id: 'M45', what: 'every label right of its point', catches: 'LB2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, "(along(p.x) > mid ? 'left' : 'right')", "'right'") },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

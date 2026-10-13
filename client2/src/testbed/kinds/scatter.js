@@ -61,10 +61,17 @@ export function scatterOption(model, palette) {
   });
   // Marked points last, so they stand over the dimmed ones as Spotfire draws them.
   const ordered = [...model.points].sort((a, b) => Number(a.marked) - Number(b.marked));
+  const xAxis = axis(model.xKind, model.points.map((p) => p.x));
+  // a label on the point's inner side - right of a point in the left half, left of one in the right half - so it stays
+  // in the plot, not under the legend beside it (lead 10-14)
+  const along = (v) => (model.xKind === 'category' ? xAxis.data.indexOf(String(v)) : model.xKind === 'time' ? Date.parse(v) : numberOf(v));
+  const xs = model.points.map((p) => along(p.x)).filter((v) => v !== null && Number.isFinite(v));
+  const mid = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0;
+  const side = (p) => (along(p.x) > mid ? 'left' : 'right');
   return {
     animation: false,
     grid: { left: 60, right: 8, top: 16, bottom: 28, containLabel: false },
-    xAxis: axis(model.xKind, model.points.map((p) => p.x)),
+    xAxis,
     yAxis: axis(model.yKind, model.points.map((p) => p.y)),
     brush: { toolbox: [], xAxisIndex: 0, brushType: 'rect', brushMode: 'single', transformable: false,
       brushStyle: { borderWidth: 1, color: t.brush, borderColor: t.active }, inBrush: {}, outOfBrush: {} },
@@ -72,7 +79,7 @@ export function scatterOption(model, palette) {
       type: 'scatter', symbolSize: model.size, cursor: 'pointer',
       data: ordered.map((p) => ({ value: [model.xKind === 'category' ? String(p.x) : p.x, model.yKind === 'category' ? String(p.y) : p.y],
         id: p.id, name: p.label, itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 },
-        label: { show: p.tag !== null && p.tag !== undefined, formatter: String(p.tag), position: 'right', color: t.text, fontFamily: 'Roboto', fontSize: 12 } })),
+        label: { show: p.tag !== null && p.tag !== undefined, formatter: String(p.tag), position: side(p), color: t.text, fontFamily: 'Roboto', fontSize: 12 } })),
       emphasis: { scale: false },
     }],
   };
