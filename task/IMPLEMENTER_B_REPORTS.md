@@ -360,3 +360,44 @@ public 행 변화 0 · 스키마 지움
 덧(작게)  표 잠금 기다림 · 빈 값 판정 둘(NaN) · 죽은 runner cancel 문장은 이 판 안에서 작게 — 지은 뒤 같은 보고에
 ③         행 하나 번역 비용은 짓기 전에 운영 규격 판에서 잰다(질의 · 파이썬 · 쓰기 몫) — 같은 판 A/B(사건 크기 1 · 10 · 1000)의 기준선
 ```
+
+> **[구현자 B -> 총괄] 10-13 d9be013cb 재번역 디버그 로그 착지 `85d7e1de1` — 단계 줄 · 5 초 박동 · 느린 문장, 그리고 재번역 비용 재기의 지금까지**
+
+```
+착지    85d7e1de1 (main) — RUN.md 맨 위 절 · RELEASE_LOG 항목 같은 커밋. pull 만, 재기동 없음(소급 실행은 실행마다 새 프로세스)
+볼 곳   retroactive.log 의 [ledger_rescope] 줄
+단계    쪽마다 read · event frames · dry run · row refs · translate · withdrawal count · index lines of the rows ·
+        screen atoms · partitions · withdraw atoms · insert atoms · index lines · commit · write · forget index lines
+        read 줄 = 쪽 열쇠 칸 + 그 칸의 인덱스(없으면 «no index on it - each page sorts the table») + 계획
+        withdrawal count 줄 = 원장 ref 인덱스 이름과 valid 여부(아니면 «missing or not valid … build it: <명령>») + 계획
+박동    5 초마다: 지금 단계 · 몇 초째 · 그 실행 프로세스의 DB 연결마다 «자기 문장 중 / 누구(pid · 이름)를 기다림 / DB 밖에서 일함»
+느림    2 초 넘게 도는 문장 한 줄(앞 400 자) · 끝날 때 한 줄
+칸      ingestion_settings retroactive_debug(기본 true — 끄면 단계 줄만 꺼짐) · retroactive_slow_statement_seconds(기본 2, null 꺼짐)
+```
+
+**게이트**
+```
+시험     test_a_retranslate_says_its_stages_and_its_wait_pg.py 5 passed — 단계 전부 · 끄면 쪽 줄만 · 잡힌 잠금을 박동이 이름으로 · 박동이 터져도 끝까지 · 켜고 끈 답 같음
+변이     m1 단계 하나 빠짐 · m2 박동 예외 안 잡음 · m3 박동이 연결을 안 말함 · m4 끄기 무시 · m5 조회마다 롤백 안 함 · m6 인덱스 이름 안 말함 — 여섯 다 그 칸 빨강
+진짜     런처 넷 · hold 판 200 행 · 실행 START 에 원장 잠금 12 초:
+         beat: page 1 · withdrawal count 5.0 s · 1 rows · db: pid … waiting Lock:relation on pid … (b_e2e_lock_holder, idle in transaction 5 s): LOCK TABLE ledger_events …
+         원자 200 개 실행 전 · 잠금 판 뒤 · 빈 판 뒤 같음 · public 행 변화 0
+기존     바뀐 자리를 지나는 시험 54 파일: not-pg 667 passed · pg 108 passed. 진 것 11 개는 기점에서도 같이 짐(워크트리에 table_config 없음 8 ·
+         박스 선언 없음 2 · 다른 스키마의 같은 이름 표 reltuples 를 읽는 worlds 시험 1 — 그 시험은 assy_test 에 wafer_process 가 여러 스키마에 있으면 진다)
+```
+
+**재번역 비용 — 지금까지 잰 것** (109c09396, 이 박스 수)
+```
+행당      hold 판 1만 행: 프로파일 켜고 6.8~7.3 ms(DB 문장 5%). 운영 선언 판(박스 행을 읽기만으로 베낀 스크래치): 프로파일 없이
+          wafer_process_recipe 3.3~3.6 ms(DB 10%) · lot_slot_wafer 3.8 ms · die_inspection 5.6~6.3 ms(DB 24% — 아래 쪽 열쇠)
+          파이썬 몫의 대부분 = 분자마다 pandas 표를 다시 짓고 복사(event_frames · _partition_units · 칸 넣기 둘)
+다툼      혼자 / 따라가기 · 그리드 저장 · 체인과 함께: 막힌 표본 0. 다시 번역은 대부분 «DB 쉼 · 파이썬 일함»
+거두기    박스 원장(원자 238만)에 ref 인덱스 없음 -> 쪽마다 셈 · DELETE 가 원장 통째(1~4.5 s). 운영은 인덱스 있음(총괄 확인)
+          복사본에 인덱스가 있으면 둘 다 탐: ref 1,000 개 셈 0.19~0.30 s · DELETE 0.07~0.49 s (없을 때 1.4~4.5 s)
+쪽 열쇠   die_inspection 의 run_uid 에 인덱스 없음(박스 원본도) -> 쪽마다 11.7만 행 표 정렬 0.3~2.0 s. 표 선언 indexes 로 적을 자리 — 값은 안 채움
+안 잰 것  운영 크기에서 쪽마다 EXPLAIN 둘이 더하는 초 · 운영의 «5 초에 1 개» 원인 — 이 로그가 운영에서 말해 줄 것
+```
+
+**사고 하나** — 운영 모양 판 재기에서 원장 영수증 255 행이 assy_test public.audit_logs 로 샜습니다(스크래치에 그 표가 없어서). 그 255 행만 지웠고 67 행으로 돌아왔습니다(앞 메시지).
+
+**다음** — ① 파티션 ref 인덱스를 기동 · 인덱스 관리가 스스로 짓고 GET /admin/indexes 에(총괄 지시) ② 쪽마다 «missing or not valid» 줄은 이 착지의 withdrawal count 줄이 같은 판정 함수(ref_index_state)로 이미 말합니다 — 단계 줄을 끄면 안 나오니, 꺼도 남겨야 하면 말씀 주세요 ③ ff4eb2cf0 큐 1 고침 ④ 번역기 행당 비용의 안 셋 ⑤ 796f04605 ①④.
