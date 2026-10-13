@@ -29,6 +29,7 @@ const REAL = {
   palette: await import('../src/testbed/palette.js'),
 };
 REAL.store = await import('../src/rnd_board/marking_store.js');
+REAL.cond = await import('../src/testbed/condition_editor.js');
 const { MarkingStore, SIGN } = REAL.store;
 const { parseAst } = await import('rolldown/parseAst');
 const { indexGraph, routesFrom } = await import('../src/walk/reach_table.js');
@@ -178,6 +179,13 @@ async function measure(M) {
   };
   out.exprCross = [exprCross(exprSlot('Count()')) === exprCross(null), exprCross(exprSlot('Count([product])')) === exprCross({ ...product, reduce: 'Count' }),
     M.cross.title({ rows: lot, columns: product, cells: exprSlot('Avg([wafer])') })];
+  // T29: a filter condition on an expression slot carries the expression and is judged by it; two expression
+  //      conditions on one row type stay two
+  const cA = M.cond.conditionFor({ row: 'wafer', slot: isA, words: isA.expr, values: [[1, 2], [0, 2]], empty: 1 });
+  // a condition that lost its expression reads a slot with no value - the filter throws (the defect M43 makes)
+  const passing = () => { try { return keepNodes(index, inside, WAFERS, [{ ...cA, range: { min: 1, max: 1 }, empty: false }]).kept; } catch (e) { return 'threw'; } };
+  out.exprCondition = [cA.expr, passing(),
+    M.cond.conditionKey(cA) !== M.cond.conditionKey({ row: 'wafer', ...exprSlot('Count([product])') })];
   // T23: each kind words its own title
   out.titles = [M.scatter.title(scatterDecl().encode), M.cross.title(crossDecl().encode), M.cross.title({ rows: lot, columns: product })];
   // T8: hubs
@@ -466,6 +474,8 @@ function suite(out, page, saved, counted) {
   eq('T27 an expression slot reads through the calculator: a row\'s own value row by row (a list several, none empty, not walked missing); folded (a list its items); a cross cell as the table with no cell slot and as the slot counted; the title its text',
     [out.exprReads, out.exprFolds, out.exprCross],
     [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
+  eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
+    out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
     out.titles, ['press · value vs. temp · value', 'Avg(press · value) per lot and product', 'Count per lot and product']);
   eq('T8 hubs: members take the hub\'s sign, a + wins over a -, a node stands as itself; a hub holds its members; said in words',
@@ -616,12 +626,14 @@ MUTANTS.push(
     mutate: (t) => swap(t, "  if (has(node.attributes)) return { on: 'node', name };", "  if (has(node.attributes)) return { on: 'label', name: 'name' };") },
   { id: 'M42', what: 'the picker sets an expression it refused', catches: 'T28', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '        if (said) { why.textContent = said; return; }', '        if (said) { why.textContent = said; }') },
+  { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
+    mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'a kind handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '  const palette = ctx.palette;\n', "  const palette = { bg: '#000000', one: ['#000000', '#000000'], cat: [['#000000', '#000000']] };\n") },
 );
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
-  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker' };
+  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker', 'testbed/condition_editor.js': 'cond' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   // A stylesheet is no module: its mutant is the census's text alone.
   if (m.file.endsWith('.css')) return run(REAL, { [m.file]: m.mutate(readFileSync(join(SRC, m.file), 'utf8')) });
