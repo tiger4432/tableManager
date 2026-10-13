@@ -2345,6 +2345,11 @@
 - **언제 재사용**: 새 종류(산점도 · 표 · 크로스 · 맵 다음)를 짓거나, 한 종류에 색 · 행 · 마커 규칙을 넣고 싶을 때 — 종류 안에 사본을 적지 않고 이 셋을 부른다. 종류는 그리기만 한다.
 - **함정**: 행은 «걸어서 닿은 그 타입 노드 전부»가 아니라 «그 길의 끝»이다 — 길이 안 잡히면(목록이 비면) 부품이 엉뚱한 노드를 행으로 받는다(18766 10-14: 코어 웨이퍼에서 계측으로 가는 C 가 본딩 웨이퍼의 계측 17 을 셈). 범주 색이 선언에 빈 칸이면 팔레트 첫 색이 붙는다.
 
+### **규칙이 이 사건에 «깨어나나»는 `chain.ingestion_worker.wakes(rule, event)` 한 자리** (2026-10-14 등록 · B `d3c143d45`, 총괄 옛 키 ㄱ)
+- **어디**: `wakes(rule, event)` = `_is_trigger_event(event, rule)`(종류 — CREATE · EDIT, 지움은 규칙이 허락할 때) 그리고 `fires(rule, event)`(쌍). 규칙을 고르는 자리(`_rows_cap` · `_group_triggered_rules` …)가 전부 이것을 묻고, 묶기(`group_id`)만 `fires` 하나를 묻는다.
+- **언제 재사용**: 사건에 따라 규칙을 고르는 새 자리 — 종류 · 쌍 판정을 옆에 다시 적지 않는다(이 셋은 아홉 자리에 사본으로 있었다).
+- **함정**: decide 가 «행이 떠난 키»(편집으로 옮겨 감 · 지움)도 다시 세려면 그 사건에도 깨어나야 한다 — 종류 판정을 좁히면 옛 키의 수가 낡은 채 남는다.
+
 ### **표의 추정 행 수는 `ledger.column_stats.estimated_rows(db, relation)` 한 자리 — 이름이 아니라 `to_regclass` 로 찾는다** (2026-10-14 등록 · A `208d7cefc`)
 - **어디**: `SELECT reltuples FROM pg_class WHERE oid = to_regclass(:relation)` — 부르는 곳: `ledger/backfill.py` · `value_suggest.py` · `ledger/config_explorer_service.py` · `scripts/list_undeclared_tables.py`. 음수(아직 통계 없음)는 None.
 - **언제 재사용**: «이 표가 얼마나 큰가»를 공짜로 알고 싶을 때(정확한 수가 필요하면 `population` — 표를 한 번 훑는다).
