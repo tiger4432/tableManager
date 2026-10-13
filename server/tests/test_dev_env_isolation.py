@@ -686,14 +686,16 @@ class TestIsolatedWatcherRefusalIsStructural:
     def test_devenv_up_still_starts_no_watcher(self):
         """watcher-up is a separate verb precisely so `up` stays churn-free."""
         import devenv
-        started = " ".join(" ".join(cmd) for _, cmd in devenv.PROCESSES)
+        up = devenv.PROCESSES + devenv._workers()
+        started = " ".join(" ".join(cmd) for _, cmd in up)
         assert "run_watcher" not in started
         assert "run_auto_update" not in started
         # "graph" was the third member until R-2026-08-14-H retired the old graph
         # branch. It is dropped from the isolated stack for the same reason it is
         # dropped from the production one: a dev environment that still runs a
         # retired process lets QA reproduce behaviour production no longer has.
-        assert {n for n, _ in devenv.PROCESSES} == {"api", "chain"}
+        # The ledger's own process joined the production stack (19d6da585), so it is here too (총괄 fa5417c28 6).
+        assert {n for n, _ in up} == {"api", "chain", "ledger"}
 
 
 class TestIsolatedWatcherLauncherEndToEnd:

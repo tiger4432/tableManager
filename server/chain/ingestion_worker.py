@@ -2786,6 +2786,22 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
                      "(체인은 계속): %s", _key_error)
 
 
+async def _say_if_no_ledger_beats(after=heartbeat.DEFAULT_STALE_AFTER_SEC):
+    """One line when no ledger process beats a beat period after this chain loop's first beat (총괄 fa5417c28 1): a
+    chain worker restarted alone - the launcher still on code from before the ledger had a process of its own - leaves
+    the ledger's follow-up at nothing, in silence. Any process's beat counts (a server run alone has both in one)."""
+    from ledger.worker import LEDGER_BEAT
+
+    await asyncio.sleep(after)
+    entry = heartbeat.read_all().get(LEDGER_BEAT) or {}
+    if not entry or entry.get("stale"):
+        logger.warning(
+            "[Chain] no ledger process beats (%s) - the ledger is not following the chain's writes. Restart the "
+            "launcher: it starts the Ledger Worker, a chain worker restarted alone does not. Check pg_stat_activity "
+            "for application_name assy_ledger.",
+            "last beat %.0f s ago" % entry["age_seconds"] if entry.get("age_seconds") is not None else "no beat")
+
+
 def _start_index_work(rules, db_session_factory, after=None, wanted=None):
     """The index work as a task beside the loop - after `after` (the previous start's or
     reload's), so two never build the same index at once. On a thread: the loop - its slot
@@ -3002,6 +3018,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # 0.875 s hook in the first place.
                 with alignment_batch_counts.stage("mark processed"):
                     event_ids = [event.id for event in events_in_tx]
+                    deleted = _deleted_rows_of(events_in_tx)
                     # asked right before the ending is written, as the failure path asks (총괄 54a53f894)
                     _ran_though_set_aside(db, tx_id, events_in_tx)
                     for event in events_in_tx:
@@ -3013,7 +3030,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 with alignment_batch_counts.stage("commit"):
                     db.commit()
                 t_commit_done = time.monotonic()
-                _retract_deleted_rows(db, events_in_tx)
+                _retract_deleted_rows(db, deleted)
                 # [Reliability F1/F2] 데이터 처리 성공 + 커밋 이후에만 통지 대상으로 누적한다(발사는 배치 끝 단일 순차).
                 # 통지 실패는 이미 커밋된 그룹의 재처리/중복을 유발하지 않는다(재시도는 오직 처리 실패로만 트리거).
                 if has_messages:
@@ -3114,10 +3131,10 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                              **{event_constants.LAST_FAILURE: failure_cause(error_reason)})
                         retrying_count += 1
 
+                deleted = _deleted_rows_of(events_in_tx) if isolate_group else {}
                 with alignment_batch_counts.stage("commit"):
                     db.commit()
-                if isolate_group:
-                    _retract_deleted_rows(db, events_in_tx)
+                _retract_deleted_rows(db, deleted)
 
                 if failed_permanently_count > 0:
                     logger.error(
@@ -3436,17 +3453,25 @@ def _retract_what_those_rows_fed(db, table, row_ids):
             if refusal:
                 logger.warning("[ChainRetract] %s", refusal)
     except Exception as err:                                       # noqa: BLE001
+        db.rollback()
         logger.error("[ChainRetract] retraction failed for table %s "
                      "(the group itself is committed): %s", table, err)
 
 
-def _retract_deleted_rows(db, events):
-    """What the rows these DELETE events name fed, withdrawn - once, when the group ends (its SUCCESS commit or its
-    quarantine), table by table."""
+def _deleted_rows_of(events):
+    """{table: row ids} these DELETE events name - read before the commit that ends them, so no event is loaded again
+    (총괄 fa5417c28 2)."""
     deleted = {}
     for event in events:
         if event.event_type == "DELETE":
             deleted.setdefault(event.table_name, []).extend(ledger_followup.row_ids_of(get_payload_dict(event)))
+    return deleted
+
+
+def _retract_deleted_rows(db, deleted):
+    """What the deleted rows `{table: row ids}` (`_deleted_rows_of`) fed, withdrawn - once, where the chain ends their
+    events: a group's SUCCESS commit or its quarantine, a depth refusal, an operator's set-aside. A row deleted is a
+    fact whether or not a rule runs on it (총괄 fa5417c28 3). Table by table."""
     for table, row_ids in sorted(deleted.items()):
         if row_ids:
             _retract_what_those_rows_fed(db, table, row_ids)
@@ -4032,7 +4057,7 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
     # Read once per batch, not per event: the declaration cannot change
     # mid-batch and reading it N times would invite N different answers.
     max_depth = event_constants.max_chain_depth(_RULES_DOCUMENT)
-    depth_refused = 0
+    depth_refused = []
     for event in pending_events:
         payload_data = get_payload_dict(event)
         event._parsed_payload = payload_data
@@ -4061,13 +4086,15 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
                 "chain_rules.json if this cascade is meant to be this long.",
                 event.id, event.table_name, depth, max_depth)
             mark_processed(event, "FAILED")
-            depth_refused += 1
+            depth_refused.append(event)
             continue
 
         normalized_events.append(event)
 
     if depth_refused:
+        deleted = _deleted_rows_of(depth_refused)
         db.commit()          # the FAILED marks, so they are not re-read
+        _retract_deleted_rows(db, deleted)
 
     if not normalized_events:
         # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and
@@ -4442,6 +4469,7 @@ async def start_chain_ingestion_worker(db_session_factory):
         if index_work is None:
             # ⑤ The index work starts only once the first beat is out, beside the loop.
             index_work = _start_index_work(rules, db_session_factory)
+            asyncio.create_task(_say_if_no_ledger_beats())
         if held is not None:
             # 🔴 THE EMERGENCY STOP (총괄 3840af307): take nothing, and wait like an idle tick
             #   (S-252 - a tick that does nothing must still await).

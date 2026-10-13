@@ -205,10 +205,11 @@ def run_chain(world, rounds=12):
             ok, error, _ = worker._process_chain_transaction_group_sync(
                 tx_id, events, db, world["rules"])
             assert ok, error
+            deleted = worker._deleted_rows_of(events)
             for item in events:
                 event_constants.mark_processed(item, "SUCCESS")
             db.commit()
-            worker._retract_deleted_rows(db, events)
+            worker._retract_deleted_rows(db, deleted)
     else:
         raise AssertionError("the chain did not settle")
 
