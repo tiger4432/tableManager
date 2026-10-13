@@ -66881,3 +66881,22 @@ resume 이어 걷기  «새로 닿은 것만» 다시 매기는 지금 규칙을
 세상 · 시각 운영 세상이 아니거나 since/until 을 준 걷기 -> 안 싣고 사유 한 줄. 이어 걷기의 as_of 는 막지 않는다 — «붙인 행은 쪽마다 그때의 표»를 문서에
 거둠       10-12 문장 «Reach 대상 아님 · 대조값 · aux 는 부모 것» — 모양이 문장(보통 노드 · 보통 허브)으로 바뀌며 거둔다. 대조는 전파로 · Reach 는 incoming 갈래로
 ```
+
+> **[총괄 -> 구현자 A] 10-13 — 허브 확인 검수(70e40f7f8 · 031903979): NO-GO 둘 — 재현 스크립트 총괄 scratchpad qa3_cycle.py · qa3_seedstall2.py · qa3_twohubs.py · qa3_rootcause.py · qa3_forge.py**
+
+```
+고쳐짐    F1 원래 재현(8 쪽 끝 · K=130 287 쪽 == 한 번) · F2(문턱 249/250/251 · as_of · 구간 쪽 합 == 한 번) · F4 as_of · F5 · F7(시드 셋 바이트 같음) · F9(허브 없는 25 경우 바이트 같음) · F11 · M3 · M8
+H1 [높음] 이어 걷기가 «주기가 1 보다 긴» 순환으로 영원히 돈다 — stalled 가드(내준 == 받은)는 주기 1 만 잡는다
+          원인(탐침으로 확인): ledger_subgraph.py:3567-3570 — 쪽 첫머리 다시 읽기(_read_again)가 예산을 다 쓰면 _pause({"depth": depth}, read_whole) 가 받은 커서(frontier · read · at · id)를 버린다
+          -> 다음 쪽이 그 깊이를 처음부터 다시 읽고, 같은 행이 다시 허브를 떠나 다시 읽혀 돈다(K=300 · edge_limit 20: 25 쪽 == 29 쪽 · fc4ce3147 도 같음 · 허브 없이는 57 쪽 끝)
+          -> 커서를 잃지 않는다. 게이트: «이어 걷기 전체에서 resume 해시가 한 번도 되풀이되지 않는다» + edge_limit 20 · 100 칸(기본 예산만으로 재지 않는다)
+H2 [높음 · 회귀 — 총괄 지시 F4 «예산 안에서»를 글자대로 넣은 결과] 허브 id 씨앗을 쪽마다 예산 안에서 다시 읽는다(:2917 _hub_seeds 가 매 쪽 · :2995)
+          기본 예산 N=6000: 0~14 쪽 씨앗만 400 씩 · 15 쪽 «claims, stalled» · 선 0. edge_limit 20 · N=250: 2 쪽에 stalled(fc4ce3147 는 25 쪽 끝)
+          허브 씨앗 둘(W 200 · V 3): 422 «names no node»(거짓 — V 는 구성원 3)
+          -> 씨앗은 첫 쪽에 «한 번» 풀어 resume 에 싣는다(또는 씨앗 읽기 커서). 예산이 0 이라 못 읽은 허브를 «names no node» 로 판정하지 않는다. F4 의 «예산 안»은 «쪽마다 다시 안 읽음»으로 고쳐 읽는다
+M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 — 필요한 답은 «fanout_limit 보다 큰가» -> 걸음마다 fanout_limit + 1 에서 끊거나 SQL 로 센다
+낮음      L1 위조 resume 형(reread depth None · reread_at 5)이 TypeError -> 500 -> 형 검사로 422 · L2 031903979 의 셈 follow 칸이 시험 0(변이 MD 생존) -> 칸 하나 ·
+          L3 F8 은 «어느 소스도 그 술어를 안 쓰면» 조용히 통과 — RUN.md «저장 때 거절»을 동작대로
+문서      RUN.md(claims 이어 잇기 문장 · stalled = 결함 안내 · 422/500) · WALK.md 332 «둘 이상» 대 334 «×1 도» · 256 «묶음(fanout_limit)» 은퇴 낱말 · 씨앗 «쪽마다 다시 읽음» 문장 ·
+          CODE_MAP 에 hub_cells · _count_steps · _read_again · _cross_hub_names · 라우트 fold
+```
