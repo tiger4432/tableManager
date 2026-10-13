@@ -14,6 +14,10 @@
     "  doc-stated  the cited page prints this result for this expression",
     "  doc-rule    the cited page states the rule; the answer applies it (computed, not typed)",
     "  measured    run in Spotfire - none in this edition",
+    "  graph         a vector that carries `graph` (a walk answer's nodes and edges) names its `rows` by node id; [a.b~.x] walks",
+    "                that graph from the row (a way: steps joined by «.», «~» backwards, the value's name last).",
+    "  screen_only   Marked() reads the page's markings - `markings` fakes the page: {name: {in: [ids], unknown: [ids]}}, every other",
+    "                node out. The server's calculator has no markings and refuses the name.",
     "  ours        our rule (the cite names the ruling) - only in `ours`",
     "  decided     no page settles it; the lead ruled it 10-13 from the nearest rule the cite names. «may differ from",
     "              Spotfire» in a cite marks a ruling Spotfire may answer otherwise, with no way left to measure it",
@@ -3405,6 +3409,662 @@
       ],
       "basis": "decided",
       "cite": "observed 10-13 in the owner's Spotfire Analyst 14.4.1 (Add calculated column): [Country Code] * 2 (a String column) and \"29 mm\" * 2 are refused as expressions (#Error, OK off) while [Population] * 2 answers Real - Spotfire refuses by type. Our columns carry no type, so the refusal falls row by row (lead 10-13): a number-text takes part as its number, a text that is not one makes the row empty, and the screen counts those rows («N rows not a number»)"
+    },
+    {
+      "id": "way.forward",
+      "expr": "[in_container.size]",
+      "rows": [
+        "w1",
+        "w3"
+      ],
+      "expect_rows": [
+        2,
+        null
+      ],
+      "graph": {
+        "nodes": [
+          {
+            "id": "w1",
+            "type": "wafer",
+            "label": "w1",
+            "keys": {
+              "wafer": "w1"
+            },
+            "attributes": {
+              "thickness": 5
+            }
+          },
+          {
+            "id": "w2",
+            "type": "wafer",
+            "label": "w2",
+            "keys": {
+              "wafer": "w2"
+            },
+            "attributes": {
+              "thickness": 7
+            }
+          },
+          {
+            "id": "w3",
+            "type": "wafer",
+            "label": "w3",
+            "keys": {
+              "wafer": "w3"
+            },
+            "attributes": {
+              "thickness": 9
+            }
+          },
+          {
+            "id": "c1",
+            "type": "container",
+            "label": "c1",
+            "keys": {
+              "container": "c1"
+            },
+            "attributes": {
+              "size": 2
+            }
+          },
+          {
+            "id": "l1",
+            "type": "lot",
+            "label": "L-1",
+            "keys": {
+              "lot": "l1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "d1",
+            "type": "die",
+            "label": "d1",
+            "keys": {
+              "die": "d1"
+            },
+            "attributes": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "w1",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "w2",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "c1",
+            "target": "l1",
+            "predicate": "in_lot",
+            "qualifiers": {}
+          },
+          {
+            "source": "w1",
+            "target": "d1",
+            "predicate": "inspected",
+            "qualifiers": {
+              "gate": 7
+            }
+          }
+        ]
+      },
+      "basis": "ours",
+      "cite": "owner afcb79f14 (lead 10-13): a way inside the brackets - «.» joins the steps and the value, the last part its name, «~» walks a predicate backwards; the value is the end node's own (attribute, key, name) or the last edge's attribute"
+    },
+    {
+      "id": "way.backward.fold",
+      "expr": "Avg([in_container~.thickness])",
+      "rows": [
+        "c1"
+      ],
+      "expect": 6,
+      "graph": {
+        "nodes": [
+          {
+            "id": "w1",
+            "type": "wafer",
+            "label": "w1",
+            "keys": {
+              "wafer": "w1"
+            },
+            "attributes": {
+              "thickness": 5
+            }
+          },
+          {
+            "id": "w2",
+            "type": "wafer",
+            "label": "w2",
+            "keys": {
+              "wafer": "w2"
+            },
+            "attributes": {
+              "thickness": 7
+            }
+          },
+          {
+            "id": "w3",
+            "type": "wafer",
+            "label": "w3",
+            "keys": {
+              "wafer": "w3"
+            },
+            "attributes": {
+              "thickness": 9
+            }
+          },
+          {
+            "id": "c1",
+            "type": "container",
+            "label": "c1",
+            "keys": {
+              "container": "c1"
+            },
+            "attributes": {
+              "size": 2
+            }
+          },
+          {
+            "id": "l1",
+            "type": "lot",
+            "label": "L-1",
+            "keys": {
+              "lot": "l1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "d1",
+            "type": "die",
+            "label": "d1",
+            "keys": {
+              "die": "d1"
+            },
+            "attributes": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "w1",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "w2",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "c1",
+            "target": "l1",
+            "predicate": "in_lot",
+            "qualifiers": {}
+          },
+          {
+            "source": "w1",
+            "target": "d1",
+            "predicate": "inspected",
+            "qualifiers": {
+              "gate": 7
+            }
+          }
+        ]
+      },
+      "basis": "ours",
+      "cite": "owner afcb79f14 (lead 10-13): a way inside the brackets - «.» joins the steps and the value, the last part its name, «~» walks a predicate backwards; the value is the end node's own (attribute, key, name) or the last edge's attribute"
+    },
+    {
+      "id": "way.edge",
+      "expr": "[inspected.gate]",
+      "rows": [
+        "w1",
+        "w2"
+      ],
+      "expect_rows": [
+        7,
+        null
+      ],
+      "graph": {
+        "nodes": [
+          {
+            "id": "w1",
+            "type": "wafer",
+            "label": "w1",
+            "keys": {
+              "wafer": "w1"
+            },
+            "attributes": {
+              "thickness": 5
+            }
+          },
+          {
+            "id": "w2",
+            "type": "wafer",
+            "label": "w2",
+            "keys": {
+              "wafer": "w2"
+            },
+            "attributes": {
+              "thickness": 7
+            }
+          },
+          {
+            "id": "w3",
+            "type": "wafer",
+            "label": "w3",
+            "keys": {
+              "wafer": "w3"
+            },
+            "attributes": {
+              "thickness": 9
+            }
+          },
+          {
+            "id": "c1",
+            "type": "container",
+            "label": "c1",
+            "keys": {
+              "container": "c1"
+            },
+            "attributes": {
+              "size": 2
+            }
+          },
+          {
+            "id": "l1",
+            "type": "lot",
+            "label": "L-1",
+            "keys": {
+              "lot": "l1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "d1",
+            "type": "die",
+            "label": "d1",
+            "keys": {
+              "die": "d1"
+            },
+            "attributes": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "w1",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "w2",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "c1",
+            "target": "l1",
+            "predicate": "in_lot",
+            "qualifiers": {}
+          },
+          {
+            "source": "w1",
+            "target": "d1",
+            "predicate": "inspected",
+            "qualifiers": {
+              "gate": 7
+            }
+          }
+        ]
+      },
+      "basis": "ours",
+      "cite": "owner afcb79f14 (lead 10-13): a way inside the brackets - «.» joins the steps and the value, the last part its name, «~» walks a predicate backwards; the value is the end node's own (attribute, key, name) or the last edge's attribute"
+    },
+    {
+      "id": "way.two.steps",
+      "expr": "[in_container.in_lot.name]",
+      "rows": [
+        "w2"
+      ],
+      "expect_rows": [
+        "L-1"
+      ],
+      "graph": {
+        "nodes": [
+          {
+            "id": "w1",
+            "type": "wafer",
+            "label": "w1",
+            "keys": {
+              "wafer": "w1"
+            },
+            "attributes": {
+              "thickness": 5
+            }
+          },
+          {
+            "id": "w2",
+            "type": "wafer",
+            "label": "w2",
+            "keys": {
+              "wafer": "w2"
+            },
+            "attributes": {
+              "thickness": 7
+            }
+          },
+          {
+            "id": "w3",
+            "type": "wafer",
+            "label": "w3",
+            "keys": {
+              "wafer": "w3"
+            },
+            "attributes": {
+              "thickness": 9
+            }
+          },
+          {
+            "id": "c1",
+            "type": "container",
+            "label": "c1",
+            "keys": {
+              "container": "c1"
+            },
+            "attributes": {
+              "size": 2
+            }
+          },
+          {
+            "id": "l1",
+            "type": "lot",
+            "label": "L-1",
+            "keys": {
+              "lot": "l1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "d1",
+            "type": "die",
+            "label": "d1",
+            "keys": {
+              "die": "d1"
+            },
+            "attributes": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "w1",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "w2",
+            "target": "c1",
+            "predicate": "in_container",
+            "qualifiers": {}
+          },
+          {
+            "source": "c1",
+            "target": "l1",
+            "predicate": "in_lot",
+            "qualifiers": {}
+          },
+          {
+            "source": "w1",
+            "target": "d1",
+            "predicate": "inspected",
+            "qualifiers": {
+              "gate": 7
+            }
+          }
+        ]
+      },
+      "basis": "ours",
+      "cite": "owner afcb79f14 (lead 10-13): a way inside the brackets - «.» joins the steps and the value, the last part its name, «~» walks a predicate backwards; the value is the end node's own (attribute, key, name) or the last edge's attribute"
+    },
+    {
+      "id": "marked.row",
+      "expr": "Marked(\"B\")",
+      "rows": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "expect_rows": [
+        true,
+        false,
+        null
+      ],
+      "graph": {
+        "nodes": [
+          {
+            "id": "c1",
+            "type": "core",
+            "label": "c1",
+            "keys": {
+              "core": "c1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "c2",
+            "type": "core",
+            "label": "c2",
+            "keys": {
+              "core": "c2"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "c3",
+            "type": "core",
+            "label": "c3",
+            "keys": {
+              "core": "c3"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w1",
+            "type": "wafer",
+            "label": "w1",
+            "keys": {
+              "wafer": "w1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w2",
+            "type": "wafer",
+            "label": "w2",
+            "keys": {
+              "wafer": "w2"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w3",
+            "type": "wafer",
+            "label": "w3",
+            "keys": {
+              "wafer": "w3"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w4",
+            "type": "wafer",
+            "label": "w4",
+            "keys": {
+              "wafer": "w4"
+            },
+            "attributes": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "w1",
+            "target": "c1",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          },
+          {
+            "source": "w2",
+            "target": "c2",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          },
+          {
+            "source": "w3",
+            "target": "c3",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          }
+        ]
+      },
+      "markings": {
+        "B": {
+          "in": [
+            "c1"
+          ],
+          "unknown": [
+            "c3"
+          ]
+        }
+      },
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "lead 10-13 (owner): Spotfire's Marked() - the page answers each node true, false or unknown from its marking layer; Marked(\"m\", [way]) - true when one end is, false when every end is out, else unknown; a way that reaches nothing from the row is unknown"
+    },
+    {
+      "id": "marked.way",
+      "expr": "Marked(\"B\", [bonded_to])",
+      "rows": [
+        "w1",
+        "w2",
+        "w3",
+        "w4"
+      ],
+      "expect_rows": [
+        true,
+        false,
+        null,
+        null
+      ],
+      "graph": {
+        "nodes": [
+          {
+            "id": "c1",
+            "type": "core",
+            "label": "c1",
+            "keys": {
+              "core": "c1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "c2",
+            "type": "core",
+            "label": "c2",
+            "keys": {
+              "core": "c2"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "c3",
+            "type": "core",
+            "label": "c3",
+            "keys": {
+              "core": "c3"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w1",
+            "type": "wafer",
+            "label": "w1",
+            "keys": {
+              "wafer": "w1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w2",
+            "type": "wafer",
+            "label": "w2",
+            "keys": {
+              "wafer": "w2"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w3",
+            "type": "wafer",
+            "label": "w3",
+            "keys": {
+              "wafer": "w3"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w4",
+            "type": "wafer",
+            "label": "w4",
+            "keys": {
+              "wafer": "w4"
+            },
+            "attributes": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "w1",
+            "target": "c1",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          },
+          {
+            "source": "w2",
+            "target": "c2",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          },
+          {
+            "source": "w3",
+            "target": "c3",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          }
+        ]
+      },
+      "markings": {
+        "B": {
+          "in": [
+            "c1"
+          ],
+          "unknown": [
+            "c3"
+          ]
+        }
+      },
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "lead 10-13 (owner): Spotfire's Marked() - the page answers each node true, false or unknown from its marking layer; Marked(\"m\", [way]) - true when one end is, false when every end is out, else unknown; a way that reaches nothing from the row is unknown"
     }
   ],
   "unsettled": [],

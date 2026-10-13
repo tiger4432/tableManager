@@ -179,6 +179,12 @@ async function measure(M) {
   };
   out.exprCross = [exprCross(exprSlot('Count()')) === exprCross(null), exprCross(exprSlot('Count([product])')) === exprCross({ ...product, reduce: 'Count' }),
     M.cross.title({ rows: lot, columns: product, cells: exprSlot('Avg([wafer])') })];
+  // T31: a way in the brackets - its end node's own value, a fold over its ends; a row the way does not reach empty
+  out.ways = [['W1', '[in_lot.name]'], ['W6', '[in_lot.name]'], ['W1', 'Avg([measures.value])'], ['W1', '[measures.value]']]
+    .map(([id, expr]) => { const r = readSlot(index, inside, id, exprSlot(expr)); return [r.state, r.value === undefined ? null : r.value]; });
+  // T32: Marked() reads the page's marking answer the slot is handed - true, false, unknown (empty)
+  const pageMarks = (name, id) => (name !== 'pick' ? false : id === 'W1' ? true : id === 'W2' ? false : null);
+  out.marked = ['W1', 'W2', 'W3'].map((id) => { const r = readSlot(index, inside, id, exprSlot('Marked("pick")'), false, pageMarks); return [r.state, r.value === undefined ? null : r.value]; });
   // T30: an operator over a text that is not a number - the row empty and said so; a list is several, an empty value empty
   out.notNumber = ['W1', 'W3', 'W6'].map((id) => { const r = readSlot(index, inside, id, exprSlot('[product] * 2')); return [r.state, Boolean(r.notNumber)]; });
   // T29: a filter condition on an expression slot carries the expression and is judged by it; two expression
@@ -328,6 +334,19 @@ async function parts(M) {
   await settle();
   custom.push(xp.part.declaration().encode.color, (xp.part.model.legend || []).map((l) => l.name).filter((n) => n === 'is A' || n === 'not A').sort());
   out.custom = custom;
+  // T31: Custom expression starts from the route chosen; the check reads a way's names the way the row does
+  const wp = seat(M, scatterDecl({ id: 'X2', encode: { x: temp, y: { ...press, reduce: 'Avg' }, color: lot } }));
+  await settle();
+  const startOf = (key) => {
+    const host = wp.doc.createElement('div');
+    new M.picker.SlotPicker(host, { doc: wp.doc }).open({ part: wp.part, key, anchor: null });
+    const custom = walk(host).find((n) => n.tagName === 'BUTTON' && n.textContent === 'Custom expression…');
+    for (const fn of (custom || { listeners: {} }).listeners.click || []) fn({});
+    const input = walk(host).find((n) => n.className === 'sf-pop__expr');
+    return input ? input.value : null;
+  };
+  out.wayStart = [startOf('x'), startOf('y'), startOf('color'), M.picker.expressionRefusal(wp.part, '[in_lot.name]'),
+    M.picker.expressionRefusal(wp.part, '[in_lot.nope]'), M.picker.expressionRefusal(wp.part, '[measures.value]')];
   // T13 / T17: the status words, a cut walk only when an axis says so
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
@@ -483,6 +502,10 @@ function suite(out, page, saved, counted) {
     [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
   eq('T30 an operator over a text that is not a number: the row empty and marked; a list several; an empty value empty, not marked; the bottom line counts the drawn rows so marked',
     [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
+  eq('T31 a way in the brackets: its end node\'s name; a row it does not reach empty; folded over its ends; two ends several - and Custom expression starts from the route chosen (its reduce around it), the check reading a way as the row does',
+    [out.ways, page.wayStart], [[['one', 'L1'], ['empty', null], ['one', 5.5], ['several', null]],
+      ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer', '']]);
+  eq('T32 Marked() in a slot: the page answer for the row - true, false, unknown empty', out.marked, [['one', true], ['one', false], ['empty', null]]);
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
@@ -639,6 +662,10 @@ MUTANTS.push(
     mutate: (t) => swap(t, '      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,', '      notNumber: 0,') },
   { id: 'M45', what: 'the bottom line does not say the rows that are not a number', catches: 'T30', file: 'testbed/status_part.js',
     mutate: (t) => swap(t, "  if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);\n", '') },
+  { id: 'M46', what: 'Custom expression starts empty with a route chosen (the code before)', catches: 'T31', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, 'isExpression(current) ? current.expr : startingExpression(chosen)', "isExpression(current) ? current.expr : ''") },
+  { id: 'M47', what: 'the check reads a way as the row\'s own name, so a way the row reads is refused', catches: 'T31', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name).value))', '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name.split(\'.\').pop()).value))') },
   { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
     mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'a kind handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/kinds/scatter.js',

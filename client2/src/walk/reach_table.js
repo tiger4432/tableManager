@@ -158,11 +158,14 @@ export function waysOf(index, inside, starts, steps, cap, last = null) {
   return { ends, more: total > ends.length, total };
 }
 
-/** The routes the rows take in this walk, up to `limit` steps, each its steps and the words that say them. */
-export function routesFrom(index, rows, limit = 3, most = 60) {
+/** The routes the rows take in this walk, up to `limit` steps (four - the owner's bonded wafer to its core wafer's
+ *  measures, lead 10-13), shortest first, each its steps and the words that say them; the first `most` - how many more
+ *  the list's `more` (counted up to ten lists' worth, then `moreFloor`: at least). */
+export function routesFrom(index, rows, limit = 4, most = 60) {
   const out = [];
+  const counted = most * 10;
   let level = [{ steps: [], ends: new Set(rows) }];
-  for (let depth = 0; depth < limit && out.length < most; depth += 1) {
+  for (let depth = 0; depth < limit && out.length < counted; depth += 1) {
     const next = [];
     for (const route of level) {
       const by = new Map();
@@ -176,7 +179,7 @@ export function routesFrom(index, rows, limit = 3, most = 60) {
         }
       }
       for (const { step, ends } of [...by.values()].sort((a, b) => (a.step.predicate < b.step.predicate ? -1 : 1))) {
-        if (out.length >= most) break;
+        if (out.length >= counted) break;
         const steps = [...route.steps, step];
         const r = { steps, ends, words: [...(route.words || []), stepWords(step, typesAt(index, ends).join(' / '))] };
         out.push(r);
@@ -185,7 +188,10 @@ export function routesFrom(index, rows, limit = 3, most = 60) {
     }
     level = next;
   }
-  return out.map(({ steps, words, ends }) => ({ steps, words, to: typesAt(index, ends) }));
+  const shown = out.slice(0, most).map(({ steps, words, ends }) => ({ steps, words, to: typesAt(index, ends) }));
+  shown.more = out.length - shown.length;
+  shown.moreFloor = out.length >= counted;
+  return shown;
 }
 
 /** The types of some nodes of the walk, sorted, each once. */

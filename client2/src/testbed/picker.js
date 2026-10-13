@@ -4,7 +4,7 @@
 
 import { routesFrom, valuesAt, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { REDUCES } from './aggregate.js';
-import { readSlot, isExpression, ownValue } from './slot.js';
+import { readSlot, isExpression, nameValue, wayWords } from './slot.js';
 import { compile, ExpressionError } from '../expression.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { fitUnder } from '../dropdown.js';
@@ -36,16 +36,27 @@ const sameSteps = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
 export function expressionRefusal(part, text) {
   const compiled = compile(text);
   if (!compiled.ok) return compiled.why;
-  const nodes = (part.rowIds || []).map((id) => part.index.nodes.get(id) || {});
+  const rows = part.rowIds || [];
   for (const name of compiled.names) {
     try {
-      if (!nodes.some((node) => ownValue(node, name))) return `No value named ${name} on ${part.decl.row}`;
+      if (!rows.some((id) => nameValue(part.index, part.inside, id, name).value)) return `No value named ${name} on ${part.decl.row}`;
     } catch (e) {
       if (e instanceof ExpressionError) return e.message;
       throw e;
     }
   }
   return '';
+}
+
+/** Custom expression's first text when a route is chosen (lead 10-13): the route and value in the brackets' spelling,
+ *  its reduce around it - [in_container~.x], Avg([measures.value]); a route with no value yet ends at its «.»; none,
+ *  nothing. «Ends at» has no spelling in the brackets: the expression reads every end. */
+export function startingExpression(slot) {
+  const way = wayWords(slot && slot.steps);
+  if (!slot || (!way && !slot.value)) return '';
+  const name = slot.value ? (slot.value.on === 'label' ? 'name' : slot.value.name) : '';
+  const ref = `[${way ? `${way}.` : ''}${name}]`;
+  return slot.value && slot.reduce ? `${slot.reduce}(${ref})` : slot.value ? ref : `[${way}.`;
 }
 
 export class SlotPicker {
@@ -139,7 +150,7 @@ export class SlotPicker {
       none.addEventListener('click', () => { part.setSlot(key, null); this.close(); });
       const custom = el('button', `sf-pop__it${isExpression(current) ? ' is-on' : ''}`, 'Custom expression…');
       custom.type = 'button';
-      custom.addEventListener('click', () => draw(current, isExpression(current) ? current.expr : ''));
+      custom.addEventListener('click', () => draw(current, isExpression(current) ? current.expr : startingExpression(chosen)));
       folds.append(none, custom);
       if (isExpression(current) || writing !== undefined) box.append(expressionRow(writing !== undefined ? writing : current.expr));
       show(box);

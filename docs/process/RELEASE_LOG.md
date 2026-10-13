@@ -355,6 +355,7 @@
 - **화면에서** — 잘린 칸은 «50 of 2,199» 처럼 읽은 수와 전체 수를 말합니다. 표 위에 «Cells cut at 50 ways» 와 «Show all» 이 서고, 누르면 그 화면의 표 · Long · 트렌드가 모든 길을 읽습니다(그 화면을 닫을 때까지). 시험대의 값 칸(접기 · 계산식)은 늘 모든 길을 읽습니다 — 50 개로 낸 Avg 는 틀린 답입니다.
 - **필요한 조건** — 클라 빌드만.
 - **바뀐 동작** — 길은 노드 단위로 다 셉니다(넓은 갈래도 노드 수만큼의 일). 칸의 «+N+» 표기는 «읽은 수 of 전체 수»로 바뀌었습니다.
+- **+ Column 네 걸음 (같은 날)** — «+ Column» 의 Route 목록이 네 걸음까지 냅니다(전엔 셋 — 본딩 웨이퍼 ← 다이 · bonded_from → 코어 다이 · → 코어 웨이퍼 · measures → 같은 길이 없었음). 목록은 «1 step · 2 steps · …» 로 묶이고, 60 개를 넘으면 끝에 «N more routes». 시험대 고르개의 Route 도 같은 목록입니다.
 - **자세히** — 이 항목과 같은 커밋 · `client2/tests/walk_table_harness.mjs` WC1 · WC2 · RC1 · Z19.
 ## 2026-10-13 · 그리드 쪽이 서버 밖 «그리드 프로세스»에서 — 열 명이 쪽을 넘겨도 다른 화면이 안 멈춘다
 
@@ -587,8 +588,10 @@
 - **쓰는 법** — `[이름]` 은 그 행 노드의 자기 값입니다(속성 · 키, `[name]` 은 이름표). 예 `Avg([void_ratio])` · `If([size] > 10, 1, 0)` · `case [recipe] when "A" then 1 else 0 end`. 산점도의 점은 그 행 하나로, 크로스 테이블의 칸 · 합계는 그 칸의 행 전부로 계산합니다. 값을 여럿 가진 행을 집계 없이 쓰면 그 점은 그리지 않습니다(값 여럿). 연산자(`+ - * / % ^`, 앞의 `-`)가 수가 아닌 글자(«29 mm»)를 만나면 그 행은 빈 값이고, 바닥줄에 «N rows not a number» 가 섭니다 — 스팟파이어는 글자 칸 × 수를 식에서 거절하지만(소유자 스팟파이어에서 관찰, 10-13) 우리 칸에는 타입이 없어 행마다 판단합니다. 수 글자(«29.50»)는 그 수로 셈합니다.
 - **필요한 조건** — 클라 빌드만.
 - **바뀐 동작** — 시험대의 접기(Count · UniqueCount · Sum · Avg · Min · Max · Median · Latest)는 계산기의 함수 표를 부릅니다 — 답은 같습니다. 글로 적힌 수는 앞뒤 빈칸을 떼고 «부호 · 숫자 · 소수점 · 지수»만일 때 수입니다(총괄 10-13). 전에 수로 읽히던 `0x10` 같은 글은 이제 글이고, 걷기 표 · 트렌드도 같은 함수(`numberOf`)라 같이 바뀝니다. R&D 보드의 집계 알약도 스팟파이어 철자입니다(Median · Avg · Sum · Min · Max · Count · UniqueCount, 소유자가 정한 이름 — 총괄 fceba46a7). 옛 이름(median · mean · sum · min · max · count · distinct)으로 적힌 선언 · 마킹은 새 이름으로 읽힙니다.
-- **아직 아님** — `[길.이름]` · 타입("키") · Reach · 칠 때 추천 목록은 다음 착지입니다. 분포 함수(NormDist 등)는 둘째 판입니다.
-- **자세히** — 이 항목과 같은 커밋 · `contracts/expression/vectors.json` · `task/SPOTFIRE_FUNCTIONS.md` · 하니스 `client2/tests/expression_vectors_harness.mjs` · `testbed_harness` T27 · T28 · T30 · 스팟파이어 관찰 스샷은 클라 레인 보고(총괄 채널).
+- **길 (같은 날)** — 대괄호 안에 길을 적습니다(소유자 afcb79f14 철자): 「.」 이 걸음과 값을 잇고 마지막이 값 이름, 술어 뒤 「~」 는 거꾸로 걷기 — `[in_container~.thickness]` · `[in_container.in_lot.name]`. 값은 끝 노드의 제 값(속성 · 키 · name)이나 마지막 엣지의 속성이고, 둘 다 그 이름이면 «is both a value of the node it reaches and of its edge» 로 거절합니다. 끝이 여럿이면 값 여럿(집계 없이 쓰면 안 그림). 고르개에서 길과 값을 고른 채 «Custom expression…» 을 열면 그 길이 식 줄에 미리 적힙니다(`Avg([measures.value])` 처럼 접기와 함께; «Ends at» 은 식 철자가 없어 빠집니다).
+- **Marked() (같은 날)** — 스팟파이어 철자 `Marked("마킹")` 은 이 행이 그 마킹에 드나, `Marked("마킹", [길])` 은 그 길 끝 노드 중 하나라도 드나(하나라도 참이면 참, 모두 밖이면 거짓, 그 밖은 모름 · 길이 아무 데도 안 닿으면 모름). 참 · 거짓 · 모름은 페이지의 마킹 층이 답합니다(계산기는 묻기만). 화면 전용 — 마킹이 없는 자리(서버 계산기)에서는 «Marked is the screen's» 로 거절.
+- **아직 아님** — 타입("키") · Reach · 칠 때 추천 목록은 다음 착지입니다. 분포 함수(NormDist 등)는 둘째 판입니다.
+- **자세히** — 이 항목과 같은 커밋 · `contracts/expression/vectors.json` · `task/SPOTFIRE_FUNCTIONS.md` · 하니스 `client2/tests/expression_vectors_harness.mjs` · `testbed_harness` T27 · T28 · T30 · T31 · T32 · 스팟파이어 관찰 스샷은 클라 레인 보고(총괄 채널).
 
 ---
 

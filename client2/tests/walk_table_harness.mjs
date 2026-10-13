@@ -1249,7 +1249,7 @@ async function suite(mod) {
     fire(addOn);
     const pick = (n, test) => {
       const sel = walkAll(dieSec()).filter((e) => e.tagName === 'select' && !has(e, 'wk-longname') && !has(e, 'wk-trendcol'))[n];
-      const opt = sel && sel.children.find((o) => test(o.textContent));
+      const opt = sel && walkAll(sel).find((o) => o.tagName === 'option' && test(o.textContent));
       if (!opt) return false;
       sel.value = opt.value;
       for (const fn of sel.listeners.change || []) fn({});
@@ -1747,6 +1747,25 @@ async function suite(mod) {
     ok('WC2 the screen says its cells were cut, with Show all; pressed, every way is read and the line goes',
       Boolean(before) && before[0].includes('Cells cut at 50 ways') && Boolean(all) && !line() && handle.state.allWays === true,
       JSON.stringify([before, Boolean(all), Boolean(line()), handle.state.allWays]));
+  }
+
+  // + Column's routes on the screen: grouped by how many steps, four of them reached (lead 10-13).
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    const CHAIN = { nodes: [{ id: 'bw', type: 'wafer', label: 'BW', depth: 0 }, { id: 'd', type: 'die', label: 'D', depth: 1 },
+      { id: 'cd', type: 'die', label: 'CD', depth: 2 }, { id: 'cw', type: 'wafer', label: 'CW', depth: 3 }, { id: 'q', type: 'quantity', label: 'temp', depth: 4 }],
+    edges: [{ id: 'e1', source: 'd', target: 'bw', predicate: 'in_wafer', qualifiers: {} }, { id: 'e2', source: 'd', target: 'cd', predicate: 'bonded_from', qualifiers: {} },
+      { id: 'e3', source: 'cd', target: 'cw', predicate: 'in_wafer', qualifiers: {} }, { id: 'e4', source: 'cw', target: 'q', predicate: 'measures', qualifiers: { value: 1 } }] };
+    handle.state.asked = { type: 'wafer', keys: { wafer: 'BW' }, positive: ['bw'], negative: [] };
+    handle.state.run = 'done';
+    handle.state.result = { ...CHAIN, ok: true, ask: { type: 'wafer', keys: { wafer: 'BW' } } };
+    handle.state.picking = 'wafer';
+    handle.render();
+    const groups = walkAll(host).filter((e) => e.tagName === 'optgroup').map((e) => e.attrs && e.attrs.label);
+    ok('RG1 + Column routes grouped by steps, four reached', JSON.stringify(groups) === JSON.stringify(['1 step', '2 steps', '3 steps', '4 steps']), JSON.stringify(groups));
   }
 
   console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
@@ -2381,6 +2400,8 @@ const MUTANTS = [
     from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
   { id: 'RSm1', what: 'the walk screen does not ask resumable - its cut walks come back with no key', catches: 'MR1',
     from: '  const walk = createWalkBoxWalk({ apiBase, fetchImpl, resumable: true });', to: '  const walk = createWalkBoxWalk({ apiBase, fetchImpl });' },
+  { id: 'RGm1', what: 'the routes in one list, not grouped by steps', catches: 'RG1',
+    from: "        g.setAttribute('label', unitText(k, 'step'));", to: "        g.setAttribute('label', 'Routes');" },
   { id: 'WCm4', what: 'Show all does nothing', catches: 'WC2',
     from: "      all.addEventListener('click', () => { state.allWays = true; render(); });", to: "      all.addEventListener('click', () => { render(); });" },
   { id: 'WCm5', what: 'a cut table says nothing (the code before)', catches: 'WC2',
