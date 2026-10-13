@@ -70,6 +70,22 @@ def test_a_cell_with_no_canonical_form_in_an_unnamed_column_moves_no_atom(snapsh
     assert _said(snapshot, odd) == expected
 
 
+@pytest.mark.parametrize("value", [decimal.Decimal("1.50"), dt.date(2026, 9, 30), dt.datetime(2026, 9, 30, 10)],
+                         ids=["decimal", "date", "naive_datetime"])
+@pytest.mark.parametrize("count", [1, 2])
+def test_a_named_cell_with_no_canonical_form_stops_the_page_whatever_its_row_count(snapshot, value, count):
+    """검수 a08c95676 ①: a NAMED column's value with no canonical form stops the page - one row as two (the one-row
+    unit shortcut had skipped the check, so one row wrote it into an atom and two rows stopped)."""
+    plan = snapshot.source_plans[ROW_SOURCE]
+    rows = [{"row_id": "P%d" % i, "wafer_id": "W%d" % i, "recipe_id": "R1", "step": "S1",
+             "eventtime": "2026-09-30 12:00:00", "mat_type": ""} for i in range(1, count + 1)]
+    odd = as_read(plan, rows)
+    assert "mat_type" in named_columns(plan), "canary: the cell under test is a named one"
+    odd["mat_type"] = [value] * len(odd)
+    with pytest.raises(Exception):
+        _said(snapshot, odd)
+
+
 # ------------------------------------------------------------------- PostgreSQL, the read
 
 

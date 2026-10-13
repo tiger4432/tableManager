@@ -834,25 +834,26 @@ def _partition_units(
     descriptor: MapperDescriptor,
 ) -> tuple[pd.DataFrame, ...]:
     kind = descriptor.unit_kind
-    # a one-row molecule of a row-unit source is its own one unit - the event's frame, not a sorted copy of its one row
-    # (ㄴ, 10-13: a one-row source read, sorted and copied every molecule for a unit equal to it)
-    if kind == "event" or (kind == "row" and len(frame) == 1):
+    if kind == "event":
         unit = frame.copy(deep=False)
         unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
         return (unit,)
     if kind == "row":
         from .event_frame import named_columns
 
-        frame_columns = read_columns_once(frame)
         # 총괄 164553a6f ①: ordered by the named columns and row_id only - a column the
         # declaration does not name may hold a value with no canonical form (NUMERIC, DATE).
         keyed = [name for name in named_columns(context.source_plan) if name in frame.columns]
-        ordered = sorted(
-            range(len(frame)),
-            key=lambda position: _row_sort_token(
-                {name: values[position] for name, values in frame_columns.items()},
-                keyed),
-        )
+        frame_columns = read_columns_once(frame)
+        # every row's token, one row too: a named value with no canonical form stops the page whatever the row count
+        # (검수 a08c95676 ① - the one-row shortcut had skipped it)
+        tokens = [_row_sort_token({name: frame_columns[name][position] for name in keyed}, keyed)
+                  for position in range(len(frame))]
+        if len(frame) == 1:     # its own one unit - the event's frame, not a sorted copy of its one row (ㄴ, 10-13)
+            unit = frame.copy(deep=False)
+            unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
+            return (unit,)
+        ordered = sorted(range(len(frame)), key=tokens.__getitem__)
         units = []
         refs = _frame_row_refs(frame)
         for position in ordered:

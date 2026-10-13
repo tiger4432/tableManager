@@ -175,6 +175,21 @@ def test_a_molecule_is_its_rows_with_the_two_engine_cells_of_its_own():
     assert events[0].attrs["source_event_id"] != events[1].attrs["source_event_id"]
 
 
+def test_each_row_of_a_molecule_carries_its_own_row_ref():
+    """검수 a08c95676 ②: a molecule of two rows - each row's ref names that row (its record), in the molecule's order."""
+    from ledger.roleframe import SOURCE_ROW_REF_COLUMN
+
+    base = base_rows(3)
+    for column in ("event_key", "event_at", "source_id", "target_id", "join_id"):
+        base.loc[1, column] = base.loc[0, column]
+    events = prepare_v2_cursor_batch(snapshot(), "input_rows", base, refusals=[])
+
+    assert [len(event) for event in events] == [2, 1]                               # canary: a two-row molecule
+    for event in events:
+        for record, ref in zip(event["record_id"], event[SOURCE_ROW_REF_COLUMN]):
+            assert '"record_id":"%s"' % record in ref, (record, ref)
+
+
 def test_a_refusal_names_the_COLUMN_in_its_sentence_not_only_its_code():
     """⚠️ IT DOES NOT PROVE "names the molecule AND the row", and the first draft of this
     test claimed it did. On a row-unit source the molecule's handle IS `rows[N]` - the
