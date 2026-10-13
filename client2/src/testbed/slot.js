@@ -4,7 +4,7 @@
 // 10-13 plan a): the calculator (src/expression.js) answers it over the rows a point or a cell holds, [name] the row's
 // own value. This file is the one place that asks which of the two a slot is.
 
-import { readsOf } from '../walk/reach_table.js';
+import { readsOf, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
 import { isBlank } from '../absent.js';
 import { compile, run, Reads, ExpressionError } from '../expression.js';
@@ -48,14 +48,38 @@ export function ownValue(node, name) {
   return name === 'name' ? { on: 'label', name } : null;
 }
 
-/** A row as the calculator reads it: each name its own value's reads, with their times. */
+/** A name with a way in it (owner afcb79f14): «.» joins the steps and the value, the last part the value's name, «~»
+ *  after a predicate walks it backwards - [in_container~.x]. -> { steps, name }, or null: a name with no way. */
+export function wayOf(name) {
+  const parts = String(name).split('.');
+  if (parts.length < 2) return null;
+  const last = parts.pop();
+  return { name: last, steps: parts.map((p) => (p.endsWith('~') ? { predicate: p.slice(0, -1), direction: 'incoming' } : { predicate: p, direction: 'outgoing' })) };
+}
+
+/** Steps in the brackets' spelling - what Custom expression starts from. */
+export const wayWords = (steps) => (steps || []).map((s) => `${s.predicate}${s.direction === 'incoming' ? '~' : ''}`).join('.');
+
+/** What `name` reads on row `x` - the one seat the calculator's row and the picker's check ask: the row's own value; or,
+ *  a name with a way in it, what the way's ends call it - an end node's own value or the last edge's attribute (both:
+ *  refused - two answers; neither: none). -> { steps, value } (value null: the name says nothing here). */
+export function nameValue(index, inside, x, name) {
+  const way = wayOf(name);
+  if (!way) return { steps: [], value: ownValue(index.nodes.get(x) || {}, name) };
+  const { ends } = waysOf(index, inside, [x], way.steps, WAYS_A_CELL);
+  const onEdge = ends.some((e) => e.edge && Object.prototype.hasOwnProperty.call(e.edge.qualifiers || {}, way.name));
+  const own = ends.map((e) => ownValue(index.nodes.get(e.node) || {}, way.name)).find(Boolean) || null;
+  if (onEdge && own) throw new ExpressionError(`[${name}] is both a value of the node it reaches and of its edge`);
+  return { steps: way.steps, value: onEdge ? { on: 'edge', name: way.name } : own };
+}
+
+/** A row as the calculator reads it: each name its value's reads (its own, or a way's), with their times. */
 export function calcRow(index, inside, x) {
-  const node = index.nodes.get(x) || {};
   return {
     at: null,
     get: (name) => {
-      const value = ownValue(node, name);
-      return value ? new Reads(readsOf(index, inside, x, { steps: [], value }).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }))) : null;
+      const { steps, value } = nameValue(index, inside, x, name);
+      return value ? new Reads(readsOf(index, inside, x, { steps, value }).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }))) : null;
     },
   };
 }
