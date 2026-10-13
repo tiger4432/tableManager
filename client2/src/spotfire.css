@@ -72,14 +72,14 @@
 .sf-table td { min-width: 70px; cursor: pointer; }
 .sf-table td.is-marked { background: var(--sf-marked); color: var(--sf-marked-text); font-weight: 700; }
 .sf-table__total { font-weight: 700; }
-.sf-table--rows { width: 100%; }
-.sf-table--rows th, .sf-table--rows td { height: var(--sf-row-h); padding: var(--sf-row-pad); border: 0; text-align: left; min-width: 0; cursor: default; }
+.sf-table--rows th, .sf-table--rows td { height: var(--sf-row-h); width: var(--sf-col-w); max-width: var(--sf-col-w); padding: var(--sf-row-pad); border: 0; text-align: left;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .sf-table--rows tr:nth-child(even) td { background: var(--sf-stripe); }
 .sf-table--rows .is-num { text-align: right; }
 .sf-table--rows td { cursor: pointer; }
 .sf-table--rows tr.is-marked td { background: var(--sf-marked); color: var(--sf-marked-row-text); }
 .sf-table__sort { margin-left: 4px; font-size: var(--sf-fs-caret); }
-.sf-table--rows th.sf-table__add { width: 1px; }
+.sf-table--rows .sf-table__add { width: auto; max-width: none; }
 
 /* ── the status bar ── */
 .sf-status { height: 100%; display: flex; align-items: center; justify-content: flex-end; gap: 24px; padding: 0 16px; background: var(--sf-status);

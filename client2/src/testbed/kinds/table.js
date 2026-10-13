@@ -76,7 +76,7 @@ export function render(body, model, ctx) {
   for (const line of model.lines) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
-    tr.append(el('td'));
+    tr.append(el('td', 'sf-table__add'));
     tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
     table.append(tr);
   }
