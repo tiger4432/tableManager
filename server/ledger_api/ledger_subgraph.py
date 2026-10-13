@@ -3449,22 +3449,34 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         """QA F2 (lead 0e24891ce): the steps of a read the budget cut, or one a page before began, counted whole - once,
         through the read's own filters (`ends_only`) and `_step`'s own judgement - so «over fanout_limit» is the step's.
         Each step is read to `fanout_limit + 1` far nodes (QA M1): `_step` passes a step's far nodes all or none, but
-        for a far node on this frontier (not a step out - left out of the read) and the seed's keys (`follow_keys`,
-        judged per far node - read whole)."""
+        for a far node on this frontier (no step out) and the seed's keys (`follow_keys`, judged per far node - read
+        whole). A near node one such end was read for under the cap is counted again, whole: that end took a place.
+        (Leaving them out in the read instead handed it the whole frontier - the walk board's count 6.3 s -> 9.4 s.)"""
         from types import SimpleNamespace
 
-        capped = {} if seed_key_sets else {
-            "per_step": fanout_limit + 1,
-            "far": ("not_in", [(refs[node_id]["type"], refs[node_id]["keys"]) for node_id in sorted(frontier_entities)])}
-        ends = lookup.claims_for_entities(entities, direction, 0, follow=read_follow, ends_only=True,
-                                          **({"exclude": read_exclude} if read_exclude else {}), **capped)[0]
-        far_of = defaultdict(set)
-        for subject_type, subject_keys, predicate, object_kind, object_payload in ends:
-            step = _step(SimpleNamespace(subject_type=subject_type, subject_keys=subject_keys, predicate=predicate,
-                                         object_kind=object_kind, object_payload=object_payload),
-                         depth, frontier_entities)
-            if step is not None and step["fan_key"] is not None and step["fan_key"] not in step_counts:
-                far_of[step["fan_key"]].add(step["far_id"])
+        def tally(items, cap):
+            ends = lookup.claims_for_entities(items, direction, 0, follow=read_follow, ends_only=True,
+                                              **({"exclude": read_exclude} if read_exclude else {}),
+                                              **({"per_step": cap} if cap else {}))[0]
+            far_of, between = defaultdict(set), set()
+            for subject_type, subject_keys, predicate, object_kind, object_payload in ends:
+                step = _step(SimpleNamespace(subject_type=subject_type, subject_keys=subject_keys, predicate=predicate,
+                                             object_kind=object_kind, object_payload=object_payload),
+                             depth, frontier_entities)
+                if step is None:
+                    continue
+                if step["fan_key"] is not None and step["fan_key"] not in step_counts:
+                    far_of[step["fan_key"]].add(step["far_id"])
+                elif step["subject_near"] and step["target_near"]:
+                    between.update((step["subject_id"], step["target"]["id"]))
+            return far_of, between
+
+        cap = None if seed_key_sets else fanout_limit + 1
+        far_of, between = tally(entities, cap)
+        again = [item for item in entities if explorer.entity_id(item[0], item[1]) in between] if cap else []
+        if again:
+            again_ids = {explorer.entity_id(item[0], item[1]) for item in again}
+            far_of = {key: fars for key, fars in far_of.items() if key[0] not in again_ids} | tally(again, None)[0]
         step_counts.update({key: len(fars) for key, fars in far_of.items()})
 
     def _frontier(items, group):
