@@ -136,11 +136,11 @@
 >              Filter stopped after 10 s - add a search index on b_wy in the table's indexes   -> 그 칸에 위 선언 (검색어 q 면 Search …)
 >              … - the search index on b_wx is declared, not built yet (<사유>)   -> 짓는 중 · Reload 기다림 · pg_trgm 없음 — 사유대로
 >              … - the limit is grid_read_timeout_seconds in the ingestion settings
->                                                    -> 거른 칸의 색인이 다 지어짐. 상한을 올리거나 좁힌다 · 검색어 2 글자 이하는 색인이 있어도 느릴 수 있다
->              Read was cancelled by the database   -> 상한 밖의 읽기(검색 없음 · 상한 0/null)를 DB 쪽이 끊음(pg_cancel_backend · DB 의 statement_timeout)
+>                                                    -> 거른 칸의 색인이 다 지어졌거나 그 칸이 색인을 못 단다(시각 칸 · 뷰 — search_index 가 «cannot be built (…)»). 상한을 올리거나 좁힌다 · 검색어 2 글자 이하는 색인이 있어도 느릴 수 있다
+>              Search · Filter · Read was cancelled by the database -> 상한이 꺼졌거나(0/null) 상한 밖의 읽기를 DB 쪽이 끊음(pg_cancel_backend · DB 의 statement_timeout) — 첫 낱말은 검색어 q 면 Search, 무늬 필터면 Filter, 둘 다 없으면 Read
 >            시각 칸 · 뷰의 칸에는 «add a search index» 를 안 시킨다 — 색인을 못 단다
 >            끊긴 문장은 DB 가 취소하고 연결은 풀로 돌아간다
->            ⚠️ 화면은 아직 «Data fetch failed (HTTP 503)» 토스트만 그린다 — 문장은 클라 레인이 붙인다
+>            화면은 그 문장을 토스트로 그린다(d59507dd4 · 병합 2723ac1af — api.refusalText). «Data fetch failed (HTTP 503)» 는 답에 문장이 없을 때만
 > 답의 칸    검색 · 무늬 필터한 /data 답(과 503 의 detail)에 "search_index": {"dt_job": "built", "b_wy": "not declared"} — 값 넷
 >            built · declared, not built yet (<사유>) · not declared(선언할 칸) · cannot be built (<사유>)(시각 칸 · 뷰)
 > 박스 판 실측 (400만 행 dt_log · 운영 주장 아님)
@@ -205,7 +205,7 @@
 > ## [10-13] ⚰️ **원장 ref 인덱스 손 명령 — 이제 체인 워커가 짓는다(17d8ea0d6, 위 절)** — 이 절의 «먼저 이것»은 내림
 >
 > ```
-> 🔴 체인 워커가 짓는 동안(기동 · Reload 직후, server.log 에 원장 인덱스 짓는 줄) build_ledger_ref_index.py --apply 를 «같이» 돌리지 않는다
+> 🔴 체인 워커가 짓는 동안(기동 · Reload 직후, chain_worker.log — 통합 모드면 server.log — 에 원장 인덱스 짓는 줄) build_ledger_ref_index.py --apply 를 «같이» 돌리지 않는다
 >    두 짓는 쪽이 겹치면 교착이었다(박스 300만 행: 혼자 9.3 s -> 겹치면 21.3 s, 총괄 검수 10-13). 맨 위 절의 고침 뒤로는 남이 짓는 파티션을
 >    «left to it» 으로 건너뛴다 — 그래도 둘이 같은 파티션을 차례로 다시 짓는 낭비는 남으니 같이 돌리지 않는다
 > 손 명령은 미리보기(--apply 없이)로 상태만 보는 데 쓴다 — «already» 면 끝, «would build» 면 체인 워커를 재기동(또는 Reload)해 맡긴다
@@ -234,7 +234,7 @@
 >
 > ```
 > 왜       × 는 멈춤을 «적어 둘» 뿐이고, 실행은 쪽(page)과 쪽 «사이»에서 그것을 읽는다 — 쪽 하나가 느리면(잠금 대기 등) 그 쪽이 끝날 때까지 안 멈춘다
-> ① 그 실행의 DB 문장 끊기   위 절(무엇을 기다리나)의 읽기 줄에서 who = assy_retroactive 인 pid 를 찾아
+> ① 그 실행의 DB 문장 끊기   위 절(무엇을 기다리나)의 읽기 줄에서 who = assy_retroactive 또는 assy_retroactive_slice<k>(9351a3580 부터 원천 통째 재번역은 조각 프로세스 N 개) 인 pid 를 찾아
 >          SELECT pg_cancel_backend(<pid>);      -> 지금 문장만 끊김. 실행이 그 실패를 받아 멈춤을 읽는다
 >          1 분 안에 안 멈추면  SELECT pg_terminate_backend(<pid>);
 > ② 그래도 돌면(파이썬이 DB 밖에서 돌고 있음) 그 프로세스를 끈다 — PowerShell:
@@ -252,12 +252,12 @@
 >                 now() - a.query_start AS running, pg_blocking_pids(a.pid) AS blocked_by, left(a.query, 120) AS query
 >          FROM pg_stat_activity a WHERE a.datname = current_database() AND a.state <> 'idle' ORDER BY a.query_start;
 >          (다시 번역이 도는 동안 3~4 번)
-> 답의 뜻   assy_retroactive 줄 · wait_event_type = Lock · blocked_by 에 pid -> 다른 연결이 잡은 것을 기다림. 그 pid 의 who 를 본다
+> 답의 뜻   assy_retroactive(조각이면 assy_retroactive_slice<k> — 그때 부모 assy_retroactive 는 대부분 쉼) 줄 · wait_event_type = Lock · blocked_by 에 pid -> 다른 연결이 잡은 것을 기다림. 그 pid 의 who 를 본다
 >            who 가 assy_chain… -> 체인 · 원장 따라가기와 부딪힘 -> 아래 급할 때 ①
 >            who 가 assy_server -> 화면 요청(그리드 저장 · 검색)과 부딪힘
 >          assy_retroactive 줄 · wait_event_type = IO(DataFileRead 등) -> 디스크 읽기 대기 — 큰 표를 캐시 밖에서 읽음
 >          assy_retroactive 줄 · wait_event 비어 있고 active -> DB 가 계산 중 — query 칸이 그 문장
->          assy_retroactive 줄이 거의 안 보임 -> 시간이 DB 가 아니라 번역 프로세스의 파이썬에 있음 — 구현자 B 최우선 일(fd550df13)이 받는다
+>          assy_retroactive · assy_retroactive_slice<k> 줄이 다 거의 안 보임 -> 시간이 DB 가 아니라 번역 프로세스의 파이썬에 있음 — 구현자 B 최우선 일(fd550df13)이 받는다
 > 급할 때   ① server/pacing.json jobs.chain_followup 을 "trickle" — 따라가기를 다시 늦춰 다시 번역에 길을 비킴(재기동 없음, 다 끝나면 "fast" 로)
 > ```
 

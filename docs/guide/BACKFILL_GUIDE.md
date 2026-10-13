@@ -500,7 +500,7 @@ curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application
 
 ### 7.3 실행은 **즉시 반환**이고, 결과는 그 응답에 없습니다
 
-`run`은 아웃박스에 한 줄 쓰고 `{"status": "queued", "run_id": …}`를 돌려줍니다. 🆕 스케줄러가 그 행을 집어 **자식 프로세스 하나**(`python -m admin.retroactive_run <run_id>`)에서 돌립니다(09-25 `bfbe8a525`). 스케줄러 로그(`auto_update.log`)에는 「[Retroactive] run_id=… runs in its own process pid=…」 한 줄만 남고, **진행과 결과는 `retroactive.log`** 에 있습니다(자식이 print 한 것은 `retroactive_stdout.log`). `POST /admin/auto-update/run-now`와 같은 형태입니다.
+`run`은 아웃박스에 한 줄 쓰고 `{"status": "queued", "run_id": …}`를 돌려줍니다. 🆕 스케줄러가 그 행을 집어 **자식 프로세스 하나**(`python -m admin.retroactive_run <run_id>`)에서 돌립니다(09-25 `bfbe8a525`). 🆕 10-13 `9351a3580` 원천 «통째» 재번역은 그 자식이 다시 조각 프로세스 N 개(`--slice k/N`, `ingestion_settings.json` 의 `ledger_translate_slices`)를 띄웁니다 — 실행 행은 하나. 스케줄러 로그(`auto_update.log`)에는 「[Retroactive] run_id=… runs in its own process pid=…」 한 줄만 남고, **진행과 결과는 `retroactive.log`** 에 있습니다(자식이 print 한 것은 `retroactive_stdout.log`). `POST /admin/auto-update/run-now`와 같은 형태입니다.
 
 - **동시 1건입니다.** 실행 중에 또 요청하면 조용히 줄 세우지 않고 **거절 + 로그**하며, 아웃박스 행은 미처리로 남아 다음 틱이 집습니다.
 - **토큰이 설정돼 있지 않으면 이 라우트만 503입니다**(조회 라우트 둘은 열립니다). 코드 실행 라우트와 같은 취급인데, 코드 실행이라서가 아니라 **테이블 전체 재작성·소스 회수·노드 삭제**라는 피해 계급이 같기 때문입니다.
