@@ -539,6 +539,12 @@ async function suite(M) {
     ok(log().textContent === 'Data fetch failed (HTTP 500)'
       && toastTexts().some((t) => String(t).startsWith('Data fetch failed (HTTP 500)')),
       `R9 another status with no sentence keeps today's words [${log().textContent}]`);
+    // Lead, after 6f34a1320: every grid process busy past grid_wait_seconds answers 503 grid_pool_busy - the same seat.
+    const BUSY = `Every grid process stayed busy for ${++stopRun} s - try again, or raise grid_processes in ingestion_settings.json`;
+    readRefusal = { status: 503, body: { detail: { reason: 'grid_pool_busy', message: BUSY } } };
+    await M.api.fetchData(true);
+    ok(toastTexts().includes(BUSY) && log().textContent === BUSY,
+      `R10 a grid pool busy past its wait: the toast and the status line say the server's sentence [${log().textContent}]`);
   } finally {
     globalThis.fetch = savedR;
     readRefusal = null;
