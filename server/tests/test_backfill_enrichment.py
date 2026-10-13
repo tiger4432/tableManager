@@ -345,18 +345,18 @@ def test_apply_provenance_and_priority(bkfl_env):
     rows = {r.business_key_val: r for r in _derived_rows(db)}
     new_row = rows["EQP1_T1"]
 
-    # Every cell layer written by the backfill is tagged enrichment_backfill.
+    # Every cell layer written by the backfill is the chain's layer, signed by the decide's dedup rule - the layer a
+    # live recount writes, so it overwrites them and a blank recount takes them back (lead bc9710454 가).
     srcs = db.query(models.CellSource).filter(
         models.CellSource.table_name == "bkfl_test_derived",
         models.CellSource.row_id == new_row.row_id,
     ).all()
     assert srcs, "backfilled cells must be recorded in the layering system"
-    assert {s.source_name for s in srcs} == {bf.SOURCE_NAME}
-    assert {s.updated_by for s in srcs} == {bf.SOURCE_NAME}
+    assert {s.source_name for s in srcs} == {crud.CHAIN_SOURCE}
+    assert {s.updated_by for s in srcs} == {enrichment.config.synthesized_rule_names("bkfl_rule")[0]}
 
     # Layering: the backfill can never outrank user edits, and later chain
     # writes supersede it for the display value.
-    assert crud.get_source_priority(bf.SOURCE_NAME) == 99
     assert crud.get_source_priority("user") == 0
     assert crud.get_source_priority("chain_ingestion") == 4
 
@@ -384,14 +384,14 @@ def test_apply_outbox_events_do_not_retrigger_rule(bkfl_env):
     bf.run_backfill(db, _rule(), apply=True, log=lambda *_: None)
 
     # The writes emit outbox events through the normal hook (graph/chain
-    # workers see them), tagged with the backfill's provenance...
+    # workers see them), under the chain's layer...
     new_events = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.id > max_id_before,
         models.DatabaseOutbox.table_name == "bkfl_test_derived",
     ).all()
     assert _outbox_count(db) > outbox_before
     assert new_events
-    assert all((e.payload or {}).get("source_name") == bf.SOURCE_NAME for e in new_events)
+    assert all((e.payload or {}).get("source_name") == crud.CHAIN_SOURCE for e in new_events)
 
     # ...but running the REAL chain path over them is a no-op for this rule:
     # its trigger table is the SOURCE table, and these events are on the

@@ -32,6 +32,7 @@ caller. The choice lives here now; the doors are unchanged.
 import collections
 import contextlib
 import importlib
+import itertools
 import logging
 import time
 
@@ -267,6 +268,25 @@ _COLUMNS_SEEN = {}
 def item_cell(item, name):
     """One cell of a proposed item, whether the mapper built a dict or a `GeneralUpdateItem`."""
     return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
+
+
+def signed(result, declaration):
+    """A proposal signed by the rule that made it (총괄 bc9710454 가-1 ㄱ): every item it proposes - updates, map
+    metadata, its batches' items and its further pages as they are asked - carries the rule's declaration in
+    `updated_by`, which the write puts on the layer row. A recount that came back blank takes back its own rule's
+    plain chain layer by it, and not another rule's that wrote the cell after it."""
+    if not isinstance(result, dict):
+        return result
+    batched = (item for batch in result.get("batches") or () for item in (item_cell(batch, "updates") or ()))
+    for item in itertools.chain(result.get("updates") or (), result.get("map_metadata_updates") or (), batched):
+        if isinstance(item, dict):
+            item["updated_by"] = declaration
+        else:
+            item.updated_by = declaration
+    more = result.get("next_page")
+    if more is not None:
+        result["next_page"] = lambda: signed(more(), declaration)
+    return result
 
 
 def output_stamps(items):
@@ -541,8 +561,9 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
     # ⚠️ IT DOES NOT NEST. A proposing rule's rows are written by the CALLER, after this
     #   returns, in the caller's own envelope - nothing enters two.
     from chain import rule_shape
+    declaration = rule_shape.declaration_of(rule)
     envelope = chain_envelope(depth, woken_by_a_replay, cascade,
-                              written_by=(rule_shape.declaration_of(rule),), run=run)
+                              written_by=(declaration,), run=run)
     # 🔴 THE LINE IS IN `finally`, SO A RULE THAT THREW STILL SAYS SO (판정 498 ③).
     # ⚰️ LEVELLING THE TWO VOCABULARIES DOWN WOULD HAVE LOST A SENTENCE THE OWNER ASKED FOR.
     #    The mapper door wrote START/END/RAISED; the builtin door wrote one line and NOTHING on
@@ -583,9 +604,9 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
             with stage_timing():
                 for one in handed_out:
                     if bound.accepts_rule:
-                        results.append(without_missing(bound.call(db, one, rule=rule)))
+                        results.append(signed(without_missing(bound.call(db, one, rule=rule)), declaration))
                     else:
-                        results.append(without_missing(bound.call(db, one)))
+                        results.append(signed(without_missing(bound.call(db, one)), declaration))
             for result in results:
                 if not isinstance(result, dict):
                     continue

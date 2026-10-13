@@ -163,8 +163,8 @@ conda run -n assy_manager python server/scripts/backfill_enrichment.py <규칙�
 ```
 
 - dry-run 보고: 스캔 행수 · blank 판단키 스킵수 · 유니크 조합수 · 기존 파생(불가침) · 신규(생성 예정).
-- 실행 경로는 체인과 **완전히 동일**합니다(실제 mapper `map_enrichment_dedup` + `crud.apply_batch_updates`) — 그룹핑/집계/키 조립의 별도 구현이 없습니다. `target_fields`는 절대 쓰지 않고 빈 채로 생성되어 워크리스트에 잡힙니다.
-- 생성 셀의 소스명은 `enrichment_backfill`(우선순위 99) — 사용자 편집(0)을 절대 이길 수 없고, 이후 체인 증분(`chain_ingestion`, 4)이 집계·단서를 자연히 갱신합니다.
+- 실행 경로는 체인과 **완전히 동일**합니다(실제 mapper `map_enrichment_dedup` + `crud.apply_batch_updates`) — 그룹핑/집계/키 조립의 별도 구현이 없습니다. `target_fields` 는 같은 이름의 집계만 쓰고(체인 층), 나머지는 빈 채로 생성되어 워크리스트에 잡힙니다.
+- 생성 셀은 체인 층(`chain_ingestion`, 4)에 decide 의 파생행 규칙 이름(`updated_by`)으로 씁니다 — 라이브 다시 세기가 쓰는 층과 같아서 이후 증분이 그 값을 덮고, 집계가 비면 거둡니다. 사용자 편집(0)은 이길 수 없습니다. (10-13 — 전에는 `enrichment_backfill`(99)이라 다시 세어도 안 거둬졌습니다. 운영에 남은 그 옛 층은 빈 집계가 같이 거둡니다.)
 - outbox를 정상 경로로 발화하므로 그래프 워커가 새 행을 그대로 승격합니다. 파생 테이블 이벤트는 규칙의 트리거(소스 테이블)와 다르므로 같은 규칙을 재점화하지 않습니다.
 - 멱등: 적용 후 재실행하면 `new 0`. 비활성(`enabled: false`) 규칙은 `--force-disabled` 없이 거부되고, 로더가 거부한 규칙은 그 사유와 함께 즉시 실패합니다.
 

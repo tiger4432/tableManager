@@ -1636,6 +1636,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             for target_table, updates_list, replace_map, scope, retract, page_said in itertools.chain(
                     write_batches, _in_rule_order(table_updates), scoped):
                 writing = target_table          # the target a failure below is about
+                # a recount's blank columns ride on its items, not into the write (`GeneralUpdateItem` has no cell)
+                blanks = [(rule_run.item_cell(item, "updated_by"), rule_run.item_cell(item, "row_id"),
+                           rule_run.item_cell(item, "business_key_val"), rule_run.item_cell(item, "withdraw"))
+                          for item in updates_list if rule_run.item_cell(item, "withdraw")]
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
                     transaction_id=chain_tx_id,
@@ -1810,6 +1814,23 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                 f"stale rows may remain: "
                                 f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
+                # 🔴 [총괄 bc9710454 가] A RECOUNT THAT CAME BACK BLANK TAKES BACK WHAT ITS RULE WROTE THERE - after
+                #    this batch's write, before the shells below ask the rows it left. Contained like the edit's
+                #    withdrawal: a failure leaves the old value, never a hole.
+                withdrawn = set()
+                if blanks:
+                    with alignment_batch_counts.stage("blank withdrawal"):
+                        try:
+                            withdrawn = _withdraw_blanks(db, target_table, blanks)
+                            # the grid hears them with this batch - a row whose write changed nothing is not in `results`
+                            results = list(results) + _rows_not_in(db, target_table, withdrawn, results)
+                        except Exception as retract_err:               # noqa: BLE001
+                            db.rollback()
+                            logger.error(
+                                f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | a blank "
+                                f"recount's withdrawal failed AFTER a committed write; old values may remain: "
+                                f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+
                 # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
                 #    the grid's delete (its layers, a history line, one DELETE, which wakes no rule). Asked
                 #    here, after the write, and not at the withdrawal: the recount that empties a hold has
@@ -1825,11 +1846,12 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     # the columns this write wrote blank, outside the keys - read off its items, no query
                     blanked = {column for item in batch_data.updates for column, value in (item.updates or {}).items()
                                if column not in keys and crud.is_blank_value(value)}
+                    # and the rows a blank recount just took a layer from
+                    asked = [row_id for row_id, column in changed_cells if column in blanked] + sorted(withdrawn)
                     # their identity, so an expired row is not loaded to be asked
-                    created = {identity_of(row).identity[0] for row, is_new in results if is_new} if blanked else ()
+                    created = {identity_of(row).identity[0] for row, is_new in results if is_new} if asked else ()
                     gone = cell_layer.shells(db, target_table, [
-                        row_id for row_id, column in changed_cells
-                        if column in blanked and row_id not in created]) if blanked else []
+                        row_id for row_id in asked if row_id not in created]) if asked else []
                     if gone:
                         # the upsert broadcast below reads its rows back - not the gone ones
                         gone_ids = set(gone)
@@ -3430,10 +3452,12 @@ def _retract_deleted_rows(db, events):
             _retract_what_those_rows_fed(db, table, row_ids)
 
 
-def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), **scope):
+def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), cells=None, **scope):
     """Withdraw what `row_ids` of `from_table` fed, then one EDIT per row that lost a layer. `why` is
     「deleted」 or 「edited」; an edit passes the rule that ran (`declarations`) and narrows the
     withdrawal (`scope`: `table` · `columns` · `keep`, see `cell_layer.withdraw_by_origin`).
+    「blank」 passes `cells` [(row_id, column)] of `from_table` in place of origins: a recount that came back
+    blank takes back the layer its rule (`declarations`) wrote there (`cell_layer.cells_written_by`).
     -> the withdrawal's stats."""
     from chain import cell_layer
     from database import crud
@@ -3444,7 +3468,9 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), **scope):
     #   own writes do - the cells it reveals and the EDIT below - so a self-filling rule is not
     #   woken by its own withdrawal. A deletion has no rule.
     with written_by(declarations):
-        stats = cell_layer.withdraw_by_origin(db, row_ids, apply=True, **scope)
+        layers = (cell_layer.cells_stamped_by(db, row_ids) if cells is None
+                  else cell_layer.cells_written_by(db, from_table, cells, declarations))
+        stats = cell_layer.withdraw_layers(db, layers, apply=True, **scope)
         # 🔴 [총괄 e11bb4de0 (나)] A layer that was not the shown one goes without changing a
         #   cell, so no edit event left and a rule that counts layers (the hold recount)
         #   never heard. One EDIT per row that lost a layer, by the door an ordinary edit
@@ -3462,6 +3488,47 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), **scope):
                 stats.get("groups", 0), stats.get("cells_withdrawn", 0),
                 stats.get("protected_skipped", 0), told)
     return stats
+
+
+def _withdraw_blanks(db, table, blanks):
+    """A recount that came back blank takes back what its rule wrote there (총괄 bc9710454 가): `blanks` are the
+    batch's `(updated_by, row_id, business_key_val, columns)` whose items named columns in `withdraw` - left out of
+    the write. One withdrawal per rule, by the one door. -> the row ids that lost a layer."""
+    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
+    from database import models
+
+    model = models.DYNAMIC_TABLES[table]
+    cells, by_key = defaultdict(set), {}
+    for writer, row_id, key, columns in blanks:
+        if row_id:
+            cells[writer].update((row_id, column) for column in columns)
+        elif key is not None:
+            by_key.setdefault(key, []).append((writer, columns))
+    keys = list(by_key)
+    for i in range(0, len(keys), DEFAULT_CHUNK_SIZE):
+        for row_id, key in (db.query(model.row_id, model.business_key_val)
+                            .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE]))):
+            for writer, columns in by_key[key]:
+                cells[writer].update((row_id, column) for column in columns)
+    lost = set()
+    for writer, wanted in sorted(cells.items()):
+        stats = _withdraw_and_tell(db, table, sorted({row_id for row_id, _column in wanted}), "blank",
+                                   declarations=(writer,), cells=sorted(wanted))
+        lost.update(row_id for _columns, rows in stats["lost_a_layer"].values() for row_id in rows)
+    return lost
+
+
+def _rows_not_in(db, table, row_ids, results):
+    """[(row, False)] for these row ids that `results` - a write's `(row, is_new)` - does not hold."""
+    from sqlalchemy import inspect as identity_of
+    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
+    from database import models
+
+    model = models.DYNAMIC_TABLES[table]
+    held = {identity_of(row).identity[0] for row, _is_new in results}
+    rest = sorted(set(row_ids) - held)
+    return [(row, False) for i in range(0, len(rest), DEFAULT_CHUNK_SIZE)
+            for row in db.query(model).filter(model.row_id.in_(rest[i:i + DEFAULT_CHUNK_SIZE]))]
 
 
 def _rows_written_from(db, table, items):

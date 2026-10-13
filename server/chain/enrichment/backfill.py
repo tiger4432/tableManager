@@ -45,11 +45,12 @@ nothing.
 Safety / provenance invariants:
 - Pre-existing derived rows are NEVER part of the write batch (value gaps on
   them are the queue's job; this module only fixes row absence).
-- target_fields are never written - the real mapper never emits them.
-- Written cells carry source_name="enrichment_backfill" (unregistered in
-  SOURCE_PRIORITY -> priority 99): they can never outrank user edits
-  (priority 0), and later chain_ingestion writes (priority 4) win the display
-  value, which is desired - fresher increments supersede the backfill.
+- target_fields are written only by an aggregation of the same name, as the mapper emits them.
+- Written cells carry the chain's own layer and rule (총괄 bc9710454 가): source_name="chain_ingestion"
+  and updated_by = the decide's dedup rule - the layer a live recount writes, so it overwrites them
+  and a recount that comes back blank takes them back. Below a person's value (priority 0).
+  ⚰️ They were "enrichment_backfill" (99), which no recount withdrew; a layer of that name still on a
+  cell is taken back with this rule's own by a blank recount.
 - Writes go through the normal outbox hook, so the graph materializer picks
   the new rows up. The chain worker sees the events too, but the enrichment
   chain rule triggers on the SOURCE table while these events are on the
@@ -262,7 +263,7 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     from database import crud, models, schemas
     import chain_bindings
     from chain.enrichment.mapper import map_enrichment_dedup
-    from chain import enrichment, rule_run
+    from chain import enrichment, rule_run, rule_shape
 
     if limit is not None and limit <= 0:
         raise BackfillRefused(f"--limit must be a positive integer (got {limit})")
@@ -316,6 +317,8 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     # dedup half became a registered mapper: that key was a second copy of `params`, and this
     # was its other author.
     mapper_rule = {"params": rule if apply else {**rule, "aggregations": {}}}
+    # the rule a live recount writes these cells as - the decide's dedup half
+    writer = rule_shape.declaration_of(enrichment.config.chain_rules_for(rule)[0])
 
     stats = {
         "mode": "apply" if apply else "dry-run",
@@ -433,8 +436,8 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
                     stats["sample_new_keys"].append(bk)
             if apply:
                 stamped = dict(item)
-                stamped["source_name"] = SOURCE_NAME
-                stamped["updated_by"] = SOURCE_NAME
+                stamped["source_name"] = rule_run.CHAIN_SOURCE
+                stamped["updated_by"] = writer
                 batch_items.append(stamped)
 
         if apply and batch_items:

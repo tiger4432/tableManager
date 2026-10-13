@@ -76,8 +76,10 @@ def _seed(db):
                                         source_name="seed.csv", updated_by="seed")])
     units = {r.dt_job: r.row_id for r in db.query(models.DYNAMIC_TABLES[INV])}
     rows = {r.record_id: r.row_id for r in db.query(models.DYNAMIC_TABLES[LOG])}
+    # the marks the chain wrote before: its layer, signed by the rule that wrote them (rule_run.signed)
     _write(db, LOG, [schemas.GeneralUpdateItem(row_id=rows[rec], origin_row_id=units[job], updates={MARK: said},
-                                               source_name=rule_run.layer_of_a_rules_write(None, units[job]))
+                                               source_name=rule_run.layer_of_a_rules_write(None, units[job]),
+                                               updated_by=RULES[0]["name"])
                      for rec, job, said in OLD_MARKS]
            + [schemas.GeneralUpdateItem(row_id=rows[BY_HAND[0]], updates={MARK: BY_HAND[1]}, source_name="user",
                                         updated_by="op")])
@@ -242,7 +244,7 @@ def test_fold_units_leaves_what_the_chain_leaves(copies, part):
 def test_the_higher_layer_keeps_its_value_and_takes_the_chains_under_it(copies):
     for copy in ("A", "B"):
         assert _marks(copies[copy])[BY_HAND[0]] == BY_HAND[1], copy
-        assert ("MAN_J3-0", "chain_ingestion (MAN_J3)", "folded into AUTO_J4", "MAN_J3", "system") in \
+        assert ("MAN_J3-0", "chain_ingestion (MAN_J3)", "folded into AUTO_J4", "MAN_J3", RULES[0]["name"]) in \
             copies[copy]["layers"], copy
     assert copies["B_stats"]["rows_higher_layer"] == 1
 

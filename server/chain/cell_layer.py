@@ -222,9 +222,32 @@ STAMPED_BY_EACH_ORIGIN = text(
     "  CROSS JOIN LATERAL (SELECT * FROM cell_sources s WHERE s.origin_row_id = o.id OFFSET 0) c")
 
 
+def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
+    """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - on these cells `(row_id, column)`, the plain
+    chain layer one of `declarations` wrote last (총괄 bc9710454 가-1 ㄱ: the layer row's `updated_by` is the rule that
+    wrote it), and an `enrichment_backfill` layer - the backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a
+    join's (its layer is named per source row), nor a rule's that wrote the cell after it. READ ONLY, the shape
+    `cells_stamped_by` answers."""
+    from sqlalchemy import and_, or_, tuple_
+    from chain.enrichment import backfill
+    from database import crud, models
+
+    S = models.CellSource
+    wanted = list(dict.fromkeys(cells or ()))
+    found = []
+    for i in range(0, len(wanted), chunk_size):
+        found.extend(tuple(row) for row in (
+            db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id)
+            .filter(S.table_name == table_name, tuple_(S.row_id, S.column_name).in_(wanted[i:i + chunk_size]),
+                    or_(and_(S.source_name == crud.CHAIN_SOURCE, S.updated_by.in_(list(declarations))),
+                        S.source_name == backfill.SOURCE_NAME)).all()))
+    return found
+
+
 def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,
                        table: str = None, columns=None, keep=()) -> dict:
-    """Withdraw every cell stamped as having been read FROM one of these rows.
+    """Withdraw every cell stamped as having been read FROM one of these rows (`withdraw_layers` over
+    `cells_stamped_by`).
 
     🔴 [S-280 · 판정 435 ③] THE LAYER THE STAMP NAMES, NOT ITS NAME. Narrowing by the source
     NAME alone is the whole-table withdrawal ruling 433 ③ found standing in `retract_rows`;
@@ -242,11 +265,18 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,
     `lost_a_layer` is {table: (columns, row ids)} of the layers withdrawn - what the delete path
     tells the rules (총괄 e11bb4de0 (나)).
     """
+    return withdraw_layers(db, cells_stamped_by(db, origin_row_ids), apply, log, table, columns, keep)
+
+
+def withdraw_layers(db, layers, apply: bool = False, log=logger.info, table: str = None, columns=None,
+                    keep=()) -> dict:
+    """Withdraw these layers `[(table_name, row_id, column, source_name, origin_row_id)]` - what `cells_stamped_by`
+    or `cells_written_by` found - narrowed by `table` · `columns` · `keep` (`withdraw_by_origin`)."""
     stats = {"mode": "apply" if apply else "dry-run", "groups": 0, "cells_withdrawn": 0,
              "protected_skipped": 0, "lost_a_layer": {}}
     keep = set(keep or ())
     claims_by_table, groups, protected = {}, set(), set()
-    for table_name, row_id, column, source_name, origin in cells_stamped_by(db, origin_row_ids):
+    for table_name, row_id, column, source_name, origin in layers:
         if ((table is not None and table_name != table) or (columns is not None and column not in columns)
                 or (origin, row_id) in keep):
             continue
