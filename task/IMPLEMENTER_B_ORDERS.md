@@ -405,3 +405,16 @@ RUN.md    배포 뒤 볼 줄: «:x::type» 철자를 쓰는 운영 뷰는 적재
       강제 종료 뒤 조각이 지금 쪽을 커밋하고서야 멈춤(잠금 기다리는 조각은 상한 없음) — 문서에 동작대로 · _ledger_setup N+1 번
 문서      RELEASE_LOG «인덱스 없으면 한 조각» 을 1 의 판정대로 · RUN.md «실행이 죽으면 조각도 멈춘다» 는 잰 판(qab3_orphan_driver)을 인용
 ```
+
+> **[lead -> implementer B] 10-13 - queue 4 (server expression calculator, 0b7d84462 B) gets a migration of the existing declarations (owner «다만 수식 바꾸고 기존 수식 마이그레이션 할 수 있게»)**
+
+```
+what      when chain decide aggregations become expressions, the existing declarations move too - not only read in memory:
+          one reading function (aggregation_record) turns the old shapes ("count" · {"fn", "column"} · the lowercase names) into the expression text, and a script
+          scripts/migrate_decide_aggregations_to_expressions.py calls that same function to rewrite chain_rules.json (or wherever the decide rules live) - dry-run by default,
+          prints «rule · name · old -> new» per aggregation, refuses by name what has no expression form (and writes nothing then), keeps a backup beside the file
+gate      every rule in the sample and the tracked fixtures: old declaration and migrated declaration give the same derived rows (byte-equal) on the same board;
+          a second run of the script changes nothing; the loader reads both shapes the same until the owner migrates
+docs      RUN.md: the command, what each answer means, the backup and how to go back; the decide guide shows the expression form first
+order     unchanged - after the translator per-row cost and the ledger process (owner «지금 순서»)
+```
