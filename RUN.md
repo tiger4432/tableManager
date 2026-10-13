@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **원장 따라가기 «fast» — 지운 행 거두기 · 원장 번역이 쉬지 않고 흐름 (소유자 「fast」)** — git pull 만 · 재기동 없음(체인 워커가 바퀴마다 pacing.json 을 다시 읽음)
+>
+> ```
+> 무엇     server/pacing.json jobs.chain_followup trickle -> fast
+>          전: 한 바퀴에 사건 1 개 · 쉼 3 s(분당 약 20 사건) / 지금: 줄이 빌 때까지 쉬지 않음, 빈 줄은 1 s 마다 봄
+> 볼 것    chain_worker.log «[LedgerFollowUp] lap: N item(s) in X s, D left in the queue (rest 0s between)»
+> 답의 뜻   rest 0s · D 가 줄어듦 -> 바뀐 대로 흐름
+>          rest 3s 그대로 -> pull 이 덜 됐거나 운영 pacing.json 의 jobs.chain_followup 칸을 손으로 고친 판
+>          X/N 이 큼(사건 하나에 몇 초) -> 남은 몫은 번역 자체 — 다음 착지(사건 묶어 번역)가 받는다
+>          화면 · API 가 같이 느려짐 -> 따라가기가 DB 를 붐비게 하는 것 — 아래 급할 때
+> 급할 때   pacing.json jobs.chain_followup 을 "slow"(사건 5 개 · 쉼 1 s) — 재기동 없이 다음 바퀴부터
+> ```
+
 > ## [10-13] **메인 그리드 메뉴에 «Board» — 시각화 시험대 열기 (소유자 10-13, 총괄 전달)** — git pull · 재기동 없음
 >
 > ```
