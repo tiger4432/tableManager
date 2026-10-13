@@ -46,8 +46,9 @@ function suite(M, quiet = false) {
     const c = M.expr.compile(v.expr);
     // A vector with a graph names its rows by node id; the screen reads them as the test bed does (testbed/slot.js calcRow).
     const index = v.graph ? M.reach.indexGraph(v.graph) : null;
-    // Screen only (Marked): the vector fakes the page's marking layer.
+    // Screen only (Marked): the vector fakes the page's marking layer. `types`: the columns' type words, as the server's run takes them.
     const page = v.markings ? { marked: (name, id) => { const m = v.markings[name] || {}; return (m.in || []).includes(id) ? true : (m.unknown || []).includes(id) ? null : false; } } : {};
+    if (v.types) page.types = v.types;
     const out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page);
     const rows = 'expect_rows' in v;
     const good = rows
@@ -159,6 +160,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  if (!ends || !ends.length) return null;', '  if (!ends || !ends.length) return false;') },
   { id: 'X29', what: 'Marked folded once over the rows, not row by row', catches: 'O[marked.row]', file: E,
     mutate: (t) => swap(t, "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'mark')", "const rowLevel = (node) => node.t === 'ref'") },
+  { id: 'X30', what: 'a datetime column folded as numbers - its types not read', catches: 'V[time.min]', file: E,
+    mutate: (t) => swap(t, "  if (BY_TIME[node.name] && args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime') return BY_TIME[node.name](items).value;\n", '') },
+  { id: 'X31', what: 'the same instant twice: the one met last', catches: 'V[time.min.offset.same.instant]', file: E,
+    mutate: (t) => swap(t, 'const BY_TIME = { Min: times((a, b) => a < b),', 'const BY_TIME = { Min: times((a, b) => a <= b),') },
   { id: 'X24', what: '«~» read as forwards', catches: 'O[way.backward.fold]', file: S,
     mutate: (t) => swap(t, "{ predicate: p.slice(0, -1), direction: 'incoming' }", "{ predicate: p.slice(0, -1), direction: 'outgoing' }") },
   { id: 'X25', what: 'a way\'s two answers taken as the edge\'s', catches: 'E2', file: S,

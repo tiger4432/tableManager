@@ -18,6 +18,8 @@
 /** 「그릴 것이 없다」 — 이 파일이 짓는 유일한 글자. 값이 아니다. */
 export const NO_TIME = '-';
 
+const ISO_SHAPE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/i;
+
 /**
  * 서버가 준 시각 문자열 -> «순간»(Date). 못 읽으면 `null`.
  *
@@ -31,6 +33,8 @@ export function parseServerInstant(value) {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   const text = String(value).trim();
   if (text === '') return null;
+  // ISO-8601 모양만 시각 — 서버 instant_key(fromisoformat)와 같은 판정. 엔진은 «5» 도 날짜로 읽는다 (총괄 10-13).
+  if (!ISO_SHAPE.test(text)) return null;
   // 공백 하나만 T 로. 나머지(offset·소수 초)는 손대지 않는다.
   const normalised = text.replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T');
   const at = new Date(normalised);

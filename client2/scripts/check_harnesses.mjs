@@ -1425,7 +1425,7 @@ const FLOORS = new Map([
   // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
   //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
   ['testbed_harness.mjs', 85],   // 74 -> 72: the fold's three mutants moved to the calculator; -> 78: expression slots T27, Custom expression T28, a condition on one T29, with their mutants (lead 10-13 plan a); -> 81: T30 a text an operator cannot take, M44 M45
-  ['expression_vectors_harness.mjs', 285],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①)
+  ['expression_vectors_harness.mjs', 294],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
@@ -1723,7 +1723,7 @@ const FLOORS = new Map([
   // wall clock -- otherwise the runner's TZ would decide the verdict.
   // 19 -> 24 (lead bed890af2): `localShortOrAsSent`, the one spelling of the sources panel's two clocks.
   // 24 -> 28 (lead e573a6edf): `localSpan`, the failure line's one-day span.
-  ['server_time_harness.mjs', 28],
+  ['server_time_harness.mjs', 31],   // -> 31: A4b A6 M8 (ISO shape only, lead 10-13)
   ['chain_graph_harness.mjs', 106],
   // 39 -> 46 (lead 13aa739f3 · 2f2a2f570): idle · the server's on-demand word · its next action.
   ['runtime_panel_harness.mjs', 46],
