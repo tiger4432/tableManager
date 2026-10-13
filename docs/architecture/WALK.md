@@ -363,13 +363,16 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
           같은 질문만(다르면 422 — worlds · since · until · current_only 포함)
           프로세스마다 walk_live_walks(4, 걷기 수) · walk_live_minutes(10) — 프로세스 안 시계가 30 초마다 쓸어 감
           넘으면 가장 오래 안 쓴 걷기부터 · 리로드(그 프로세스의 선언 다시 읽기)는 멈춘 걷기를 다 reloaded 로
-          walk_live_nodes(60,000) — 멈춘 걷기들이 함께 쥐는 노드 수 상한. 넘으면 가장 오래 안 쓴 걷기부터
-          («kept walks in this process hold N nodes - the oldest was let go») — 기본값은 노드당 9.6 KB 로 프로세스당 약 600 MB
-          (121 씨앗 쪽 25: 앞 열쇠까지 198 MB · 노드 20,666, 이 박스) · 개수 · 노드 둘 다 걷는 중 · 가장 새 걷기는 안 민다
+          walk_live_nodes(300,000) — 멈춘 걷기들이 함께 쥐는 노드 수 상한(열린 + 다 읽은 + 씨앗마다 닿은 노드)
+          넘으면 가장 오래 안 쓴 걷기부터(«kept walks in this process hold N nodes - the oldest was let go»)
+          기본값은 센 노드당 1.9 KB(걷기 판 씨앗 하나 쪽 10: 20.7 MB ÷ 10,973)로 프로세스당 약 600 MB
+          개수 · 노드 둘 다 걷는 중 · 가장 새 걷기 · 지금 More 를 받는 걷기는 안 민다
+          410 의 why 는 걷기의 끝(쪽 넘김은 안 셈) — 앞 열쇠는 «a later page of this walk was asked»
           표 설정 저장도 걷기 프로세스를 바꾼다(recycle) — 그때 멈춘 걷기는 전부 reloaded
           ⚠️ 쪽이 시한(walk_timed_out)을 넘으면 그 프로세스를 내린다 — 그 프로세스가 쥔 다른 걷기도 process ended
-만료      410 {reason: walk_expired, why, message} — why 넷: reloaded(리로드가 걷기 프로세스를 바꿈) · restarted · expired · process ended
-          화면 «This walk expired (<why>) - Walk again» 한 줄과 단추 — 저절로 다시 걷지 않는다
+만료      410 {reason: walk_expired, why, message} — why 다섯: reloaded(리로드 · 표 설정 저장이 걷기 프로세스를 바꿈) · restarted ·
+          expired · process ended · server updated(서버가 바뀌기 전 첫 쪽의 옛 포장 토큰)
+          화면 «This walk expired (<why>) - Walk again» 한 줄과 단추 — 클라 착지 때. 저절로 다시 걷지 않는다
           ⚰️ 리로드 사이에 새 선언으로 이어 가던 것은 은퇴 — 그 걷기는 reloaded
 쪽 = 델타  이어지는 쪽의 propagation.top_set 은 그 쪽에서 맨 윗층에 든 id, top_set_left 는 빠진 id — 빼고 더하면 한 번의 top set
 불변      쪽을 합치면 상한 없이 한 번 걸은 답 — 노드 · 엣지 · 순위(ranked) · 노드마다 reach

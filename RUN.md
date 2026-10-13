@@ -18,7 +18,7 @@
 >          × 두 번 뒤 More 가 410 «a later page …» -> 정상. Walk again 으로 처음부터
 >          «4 newer walks …» · «… hold N nodes …» 가 잦다 -> 상한을 올리기 전에 아래 메모리 줄을 본다
 >          쪽이 walk_timed_out 이면 그 걷기 프로세스를 내린다 — 그 프로세스가 쥔 다른 걷기도 process ended
-> 설정     ingestion_settings.json walk_live_walks(4) · walk_live_nodes(60000) · walk_live_minutes(10) · walk_seconds_max(120)
+> 설정     ingestion_settings.json walk_live_walks(4) · walk_live_nodes(300000) · walk_live_minutes(10) · walk_seconds_max(120)
 >          — 요청 · 쓸기마다 읽음. 메모리가 모자라면 walk_live_nodes 를 낮춘다(다음 쓸기부터 · 재기동 없음)
 > 이 판에서 assy_impl_wm_1012 읽기 전용 · 이 프로세스 안 걷기 라우트 · node_limit 1000 · hops 12 · 박스 판, 운영 주장 아님
 >          씨앗 1(웨이퍼)    48 쪽 · 다시 물음 47/47 같은 쪽 · 토큰 48~49 바이트 · 쪽 1 2.5 s · 쪽 10 3.2 s · 쪽 25 3.4 s · 쪽 40 4.2 s
@@ -27,7 +27,8 @@
 >            씨앗 1   쪽 10 이 열쇠 16 MB · 앞 열쇠까지 21 MB · 쪽 25 이 열쇠 57 MB · 앞 열쇠까지 74 MB · 쪽 40 이 열쇠 97 MB · 앞 열쇠까지 130 MB
 >            씨앗 121 쪽 10 이 열쇠 36 MB · 앞 열쇠까지 45 MB · 쪽 25 이 열쇠 149 MB · 앞 열쇠까지 198 MB
 >          121 씨앗 걷기 하나가 쪽 25 에 198 MB — 개수 4 만으로는 걷기 프로세스 2 에 하한 1.6 GB
->          그래서 노드 수 상한: 노드당 9.6 KB(위 걷기 — 198 MB ÷ 노드 20,666)로 프로세스당 약 600 MB ≈ 60,000 노드
+>          그래서 노드 수 상한 — 센 노드 = 열린 + 다 읽은 + 씨앗마다 닿은 노드. 씨앗 하나 쪽 10 이 노드당 1.9 KB(20.7 MB ÷ 10,973)로
+>          가장 커서 프로세스당 약 600 MB ≈ 300,000 노드(121 씨앗 쪽 25 는 0.69 KB)
 > ⚠️ 안 잰 것  허브 씨앗(허브 가지 — main 밖) · 걷기 풀 경유 초(이 판은 프로세스 안) · 쪽 25 넘은 121 씨앗
 > ```
 >

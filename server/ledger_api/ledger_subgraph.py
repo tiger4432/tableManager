@@ -356,8 +356,9 @@ def _instant(value):
 
 
 #: Why a paused walk is gone - the word its 410 carries (총괄 54f7edfdb): the walk processes reloaded, the server
-#: restarted, it went unused too long or was the least recently used past the count, or its process ended.
-WALK_GONE = ("reloaded", "restarted", "expired", "process ended")
+#: restarted, it went unused too long or was the least recently used past the count, or its process ended; a page
+#: before the kept walk handed back its packed state (총괄 ea9142edd 8).
+WALK_GONE = ("reloaded", "restarted", "expired", "process ended", "server updated")
 
 
 class WalkExpired(Exception):
@@ -383,8 +384,8 @@ def walk_expired(why, said=None):
 #    it names is only read by the next page, so asking it again (× then More, More twice, a retry) answers the same
 #    bytes. The key before goes when its next is asked; the last page's key stays until the walk is swept.
 _KEPT = OrderedDict()          # key -> {"state", "asked", "walk", "page"}
-_WALKS = OrderedDict()         # walk -> {"lock", "used", "keys"}, least recently used first
-_GONE = OrderedDict()          # key -> (why, said) for the last GONE_SAID that went
+_WALKS = OrderedDict()         # walk -> {"lock", "used", "keys", "nodes"}, least recently used first
+_GONE = OrderedDict()          # walk -> (why, said) for the last GONE_SAID walks that ended - a page turn is not one
 GONE_SAID = 200
 _KEPT_LOCK = threading.Lock()
 #: How often the process sweeps what it keeps between pages - `walk_live_minutes` is a clock, not the next request.
@@ -392,16 +393,31 @@ SWEEP_SECONDS = 30
 _SWEEPER = [None]
 
 
-def _gone(key, why, said):
-    _KEPT.pop(key, None)
-    _GONE[key] = (why, said)
+def _gone_walk(walk, why, said):
+    """`walk` ends - its keys go and why is kept for the walk."""
+    for key in _WALKS.pop(walk)["keys"]:
+        _KEPT.pop(key, None)
+    _GONE[walk] = (why, said)
+    _GONE.move_to_end(walk)
     while len(_GONE) > GONE_SAID:
         _GONE.popitem(last=False)
 
 
-def _gone_walk(walk, why, said):
-    for key in _WALKS.pop(walk)["keys"]:
-        _gone(key, why, said)
+def _why_gone(key):
+    """Why the page `key` names is not kept: its walk went on past it, the walk ended (why), or this process never kept
+    it."""
+    walk = key.rsplit(".", 1)[0]
+    if walk in _WALKS:
+        return "expired", "a later page of this walk was asked"
+    return _GONE.get(walk, ("process ended", None))
+
+
+def end_kept_walks(why):
+    """Every walk this process keeps ends - a reload, a table config save (총괄 ea9142edd 6: with walk_processes 0 the
+    walks live in the web process, which no pool recycle renews)."""
+    with _KEPT_LOCK:
+        for walk in list(_WALKS):
+            _gone_walk(walk, why, None)
 
 
 def _sweep_kept():
@@ -449,25 +465,29 @@ def _kept_walk(token, asked):
     question is not the walk's own."""
     key = token.get("walk") if isinstance(token, dict) else None
     if not isinstance(key, str):
+        if isinstance(token, dict) and "as_of" in token:   # a page from before the kept walk, its state packed
+            raise WalkExpired("server updated", "the server was updated since this walk's first page")
         raise ValueError("resume must be a page's more.resume as it came")
     with _KEPT_LOCK:
-        _sweep_kept()
         entry = _KEPT.get(key)
-        if entry is None:
-            raise WalkExpired(*_GONE.get(key, ("process ended", None)))
-        if entry["asked"] != asked:
-            raise ValueError("resume belongs to another walk - ask its next page with the question of its first")
-        held = _WALKS[entry["walk"]]
-        held["used"] = time.monotonic()
-        _WALKS.move_to_end(entry["walk"])
+        if entry is not None:                               # used first - a sweep lets the others go before it
+            if entry["asked"] != asked:
+                raise ValueError("resume belongs to another walk - ask its next page with the question of its first")
+            held = _WALKS[entry["walk"]]
+            held["used"] = time.monotonic()
+            _WALKS.move_to_end(entry["walk"])
+        _sweep_kept()
+        if _KEPT.get(key) is None:
+            raise WalkExpired(*_why_gone(key))
     held["lock"].acquire()
     with _KEPT_LOCK:
-        if _KEPT.get(key) is not entry:                     # gone while this page waited (a sweep, a reload)
+        entry = _KEPT.get(key)                              # read again: the same page asked twice kept it again
+        if entry is None:                                   # gone while this page waited (a sweep, a reload)
             held["lock"].release()
-            raise WalkExpired(*_GONE.get(key, ("process ended", None)))
+            raise WalkExpired(*_why_gone(key))
         for older in [each for each in held["keys"] if _KEPT[each]["page"] < entry["page"]]:
             held["keys"].discard(older)
-            _gone(older, "expired", "a later page of this walk was asked")
+            _KEPT.pop(older, None)
     return entry, held
 
 
@@ -482,13 +502,13 @@ def _keep_walk(entry, state, asked):
         else:
             walk, page = entry["walk"], entry["page"] + 1
         key = "%s.%d" % (walk, page)
-        if walk not in _WALKS:                              # gone while this page was walked: its next page is too
-            _GONE[key] = _GONE.get("%s.%d" % (walk, page - 1), ("process ended", None))
+        if walk not in _WALKS:                              # ended while this page was walked - its key says why
             return key
         _KEPT[key] = {"state": state, "asked": asked, "walk": walk, "page": page}
         _WALKS[walk]["keys"].add(key)
-        _WALKS[walk]["nodes"] = len(state["built"]) + len(state["seen"])         # its newest page's: open and read whole
-        _GONE.pop(key, None)
+        # its newest page's: open, read whole, and what each seed reached - the bulk of a many-seed walk (ea9142edd 2)
+        _WALKS[walk]["nodes"] = len(state["built"]) + len(state["seen"]) + sum(
+            len(reach["parents"]) for reach in (state.get("reach") or {}).values())
         _sweep_kept()
         if _SWEEPER[0] is None:
             _SWEEPER[0] = threading.Thread(target=_sweeping, name="kept-walk-sweep", daemon=True)
@@ -1345,9 +1365,7 @@ def reset_declaration_cache():
     order came from the new one - the split this module's 「one read」 note exists to stop.
     """
     _declaration_facts.clear()
-    with _KEPT_LOCK:                                        # a paused walk read the declarations it was walked under
-        for walk in list(_WALKS):
-            _gone_walk(walk, "reloaded", None)
+    end_kept_walks("reloaded")                              # a paused walk read the declarations it was walked under
 
 
 def _declared_plural_attributes(entity_type):

@@ -142,6 +142,8 @@ def test_the_last_page_s_key_answers_the_last_page_until_swept(declared, cut, mo
     assert _bytes(_next(declared, run[-2])) == _bytes(run[-1])
     monkeypatch.setattr(process_pool, "live_minutes", lambda settings=None: 1e-9)
     time.sleep(0.05)                                        # the clock's tick on this platform is ~16 ms
+    with ledger_subgraph._KEPT_LOCK:                        # the clock's sweep - asking it would be using it
+        ledger_subgraph._sweep_kept()
     with pytest.raises(ledger_subgraph.WalkExpired) as gone:
         _next(declared, run[-2])
     assert gone.value.why == "expired"
@@ -161,11 +163,12 @@ def test_an_unused_walk_goes_after_its_minutes_by_the_process_s_clock(declared, 
     monkeypatch.setattr(ledger_subgraph, "_SWEEPER", [None])          # a clock that ticks at the patched pace
     monkeypatch.setattr(process_pool, "live_minutes", lambda settings=None: 1e-9)
     key = _first(declared)["more"]["resume"]["walk"]
+    walk = ledger_subgraph._KEPT[key]["walk"]
     for _ in range(100):
-        if key in ledger_subgraph._GONE:
+        if walk in ledger_subgraph._GONE:
             break
         time.sleep(0.02)
-    assert ledger_subgraph._GONE.get(key, ("", ""))[0] == "expired" and key not in ledger_subgraph._KEPT
+    assert ledger_subgraph._GONE.get(walk, ("", ""))[0] == "expired" and key not in ledger_subgraph._KEPT
 
 
 def test_a_walk_being_walked_is_not_swept(declared, cut, monkeypatch):
@@ -203,7 +206,8 @@ def test_past_the_node_bound_the_least_recently_used_walk_goes(declared, cut, mo
     a = _first(declared)["more"]["resume"]["walk"]
     held = ledger_subgraph._WALKS[ledger_subgraph._KEPT[a]["walk"]]["nodes"]
     state = ledger_subgraph._KEPT[a]["state"]
-    assert held == len(state["built"]) + len(state["seen"]) > 0, "canary: a walk holds its newest page's nodes"
+    reached = sum(len(reach["parents"]) for reach in state["reach"].values())
+    assert held == len(state["built"]) + len(state["seen"]) + reached > 0, "canary: a walk holds its newest page's"
     monkeypatch.setattr(process_pool, "live_nodes", lambda settings=None: held + 1)
     b = _first(declared)["more"]["resume"]["walk"]
     with pytest.raises(ledger_subgraph.WalkExpired) as gone:
@@ -213,11 +217,116 @@ def test_past_the_node_bound_the_least_recently_used_walk_goes(declared, cut, mo
     assert b in ledger_subgraph._KEPT, "the newest stays"
 
 
-@pytest.mark.parametrize("value, read", [(60_000, 60_000), (1, 1), (0, 60_000), (2.5, 60_000), (True, 60_000),
-                                         ("9", 60_000)])
+@pytest.mark.parametrize("value, read", [(60_000, 60_000), (1, 1), (0, 300_000), (2.5, 300_000), (True, 300_000),
+                                         ("9", 300_000)])
 def test_the_node_bound_reads_a_whole_number_from_1(value, read):
     assert process_pool.live_nodes({"walk_live_nodes": value}) == read
-    assert process_pool.live_nodes({}) == process_pool.LIVE_NODES_DEFAULT == 60_000
+    assert process_pool.live_nodes({}) == process_pool.LIVE_NODES_DEFAULT == 300_000
+
+
+def test_a_walk_holds_its_open_and_read_nodes_and_each_seed_s_reach(declared, cut):
+    run = [_first(declared)]
+    for _ in range(3):
+        run.append(_next(declared, run[-1]))
+    entry = ledger_subgraph._KEPT[run[-1]["more"]["resume"]["walk"]]
+    state, held = entry["state"], ledger_subgraph._WALKS[entry["walk"]]["nodes"]
+    reached = sum(len(reach["parents"]) for reach in state["reach"].values())
+    assert state["seen"] and reached and state["built"], "canary: pages read nodes whole and the seeds reached"
+    assert held == len(state["built"]) + len(state["seen"]) + reached
+
+
+def test_a_walk_let_go_says_why_after_many_page_turns(declared, cut, monkeypatch):
+    monkeypatch.setattr(process_pool, "live_walks", lambda settings=None: 1)
+    monkeypatch.setattr(ledger_subgraph, "GONE_SAID", 2)
+    a = _first(declared)
+    page = _first(declared)                                 # A is let go: one walk kept
+    for _ in range(5):                                      # page turns, and walks after it - more than the ring holds
+        page = _next(declared, page) if page["more"]["resume"] else _first(declared)
+    page = _first(declared)
+    with pytest.raises(ledger_subgraph.WalkExpired) as gone:
+        _next(declared, a)
+    assert gone.value.why == "expired" and gone.value.said == "1 newer walks are kept in its process"
+
+
+def test_the_walk_asked_for_is_not_the_one_a_lowered_bound_lets_go(declared, cut, monkeypatch):
+    a, b = _first(declared), _first(declared)
+    monkeypatch.setattr(process_pool, "live_walks", lambda settings=None: 1)
+    assert _next(declared, a)["nodes"] is not None
+    assert b["more"]["resume"]["walk"] not in ledger_subgraph._KEPT
+
+
+def test_a_page_waiting_for_its_walk_reads_its_key_again(declared, cut):
+    import threading as _threading
+
+    first = _first(declared)
+    second = _next(declared, first)
+    key = second["more"]["resume"]["walk"]
+    walk = ledger_subgraph._WALKS[ledger_subgraph._KEPT[key]["walk"]]
+    want = _bytes(_next(declared, second))
+    out = {}
+    walk["lock"].acquire()
+    try:
+        waiting = _threading.Thread(target=lambda: out.setdefault("again", _next(declared, second)))
+        waiting.start()
+        import time as _time
+        _time.sleep(0.2)                                    # it fetched the entry and waits for the lock
+        with ledger_subgraph._KEPT_LOCK:                    # the same page asked again kept it again
+            ledger_subgraph._KEPT[key] = dict(ledger_subgraph._KEPT[key])
+    finally:
+        walk["lock"].release()
+    waiting.join()
+    assert _bytes(out["again"]) == want
+
+
+def test_a_page_waiting_for_a_walk_that_ends_is_told_why(declared, cut):
+    import threading as _threading
+    import time as _time
+
+    first = _first(declared)
+    walk = ledger_subgraph._WALKS[ledger_subgraph._KEPT[first["more"]["resume"]["walk"]]["walk"]]
+    out = {}
+
+    def ask():
+        try:
+            _next(declared, first)
+        except ledger_subgraph.WalkExpired as gone:
+            out["why"] = gone.why
+
+    walk["lock"].acquire()
+    try:
+        waiting = _threading.Thread(target=ask)
+        waiting.start()
+        _time.sleep(0.2)
+        ledger_subgraph.end_kept_walks("reloaded")
+    finally:
+        walk["lock"].release()
+    waiting.join()
+    assert out == {"why": "reloaded"}
+
+
+def test_a_page_of_an_older_server_is_told_the_server_was_updated(declared, cut):
+    with pytest.raises(ledger_subgraph.WalkExpired) as gone:
+        paged.walk(declared, paged.ATOMS, {"as_of": "2026-10-13T00:00:00+00:00", "frontier": [], "seen": []})
+    assert gone.value.why == "server updated" and gone.value.why in ledger_subgraph.WALK_GONE
+
+
+def test_a_table_config_save_ends_the_walks_kept_here(declared, cut, monkeypatch):
+    """walk_processes 0 (총괄 ea9142edd 6): the walks live in this process, which no pool recycle renews - a table config
+    save ends them as a reload does, so the two modes answer alike. Driven as the pool's own reload cell drives it."""
+    from database import config_watcher, crud, models
+
+    key = _first(declared)["more"]["resume"]["walk"]
+    monkeypatch.setattr(process_pool, "recycle", lambda: None)
+    monkeypatch.setattr(crud, "TABLE_CONFIG", {})
+    monkeypatch.setattr(crud, "load_table_config", lambda: {"t": {}})
+    monkeypatch.setattr(models, "init_dynamic_models", lambda config, engine=None: None)
+    monkeypatch.setattr(models, "create_missing_dynamic_tables", lambda engine: [])
+    monkeypatch.setattr(models, "sync_dynamic_tables_schema", lambda engine: None)
+    monkeypatch.setattr(config_watcher, "_report_unsearchable_declarations", lambda config: None)
+    config_watcher.ConfigChangeHandler(engine=object())._reload("table_config.json")
+    with pytest.raises(ledger_subgraph.WalkExpired) as gone:
+        paged.walk(declared, paged.ATOMS, {"walk": key})
+    assert gone.value.why == "reloaded"
 
 
 def test_a_reload_ends_the_kept_walks(declared, cut):

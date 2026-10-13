@@ -148,6 +148,8 @@ class ConfigChangeHandler(FileSystemEventHandler):
             try:
                 from runtime import process_pool
                 process_pool.recycle()
+                from ledger_api import ledger_subgraph        # walk_processes 0: the walks kept here end as the pool's
+                ledger_subgraph.end_kept_walks("reloaded")
             except Exception as exc:                              # noqa: BLE001
                 logger.error("[Reload] walk pool NOT recycled - its processes keep the table config they read until "
                              "restart: %s: %s", type(exc).__name__, exc)
