@@ -31,9 +31,9 @@ import {
   rereadGrid,
   discardPendingEdits,
   applyPendingEdits,
-  overlayStagedEdits,
   txToggled,
   fetchAllRows,
+  showAllRows,
   openExport
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
@@ -45,7 +45,6 @@ import { GridSourceLabel, everyWorldSources } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
 import { withWorld } from './world.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
-import { setMatchCount } from './match_count.js';
 // 🔴 C-122. 이 페이지가 `/admin/**` 을 «맨 fetch»로 부르는 저장소의 «유일한» 자리였습니다
 //    (실측: adminFetch 호출 59 · 맨 fetch 로 /admin 을 부르는 자리 1 — 바로 아래).
 //    그래서 토큰 부착·503 본문·게이트 재시도 넷을 «전부» 안 받고 있었습니다.
@@ -72,8 +71,6 @@ import {
   clearSelectedCells
 } from './clipboard.js';
 import {
-  updateGridSortState,
-  updateLoadedCount,
   updateViewModeUI,
   updatePaginationUI,
   renderGrid,
@@ -1112,15 +1109,7 @@ function setupEventListeners() {
 
         const renderStartTime = performance.now();
 
-        state.allDataLoaded = true;
-        state.hasMoreData = false;
-
-        // 그리드 데이터 로드
-        state.gridApi.setGridOption('rowData', overlayStagedEdits(accumulatedData));
-        updateGridSortState();
-
-        updateLoadedCount(accumulatedData.length);
-        setMatchCount(elements.totalRowsCount, accumulatedData.length);
+        showAllRows(accumulatedData);
         updateViewModeUI();
 
         const renderEndTime = performance.now();
