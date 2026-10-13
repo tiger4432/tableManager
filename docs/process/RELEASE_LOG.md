@@ -374,7 +374,7 @@
 - **선언 예시** — 없음(이미 적은 `on.require` · `on.exclude` 가 집계에도 걸림).
 - **화면에서** — 화면 글자는 그대로입니다.
 - **필요한 조건** — 런처 재기동. 이주 없음.
-- **바뀐 동작 · 주의** — require · exclude 가 있는 decide 의 집계 수가 줄 수 있습니다(전에는 문 밖 행도 셌음). 지금 있는 파생 행은 `chain_replay_cli.py replay enrichment_dedup:<결정 이름> --apply` 로 다시 셉니다. 행이 전부 문 밖인 키의 파생 행은 소급으로도 옛 수로 남습니다 — 세는 SQL 은 RUN.md 같은 절. decide 의 enrichment backfill 도 이제 `exclude` 를 겁니다.
+- **바뀐 동작 · 주의** — 키의 마지막 행이 require/exclude 문 밖으로 나가면 그 파생 행이 사람 값째 지워진다. 그런 키가 지금 몇인지는 RUN.md 같은 절의 읽기 SQL 로 지우기 전에 셉니다. require · exclude 가 있는 decide 의 집계 값(count · min · max · 대표 목록 · 수식 값)이 바뀔 수 있습니다(전에는 문 밖 행도 셌음). 지금 있는 파생 행은 `chain_replay_cli.py replay enrichment_dedup:<결정 이름> --apply` 로 다시 셉니다. 행이 전부 문 밖인 키의 파생 행은 소급으로도 옛 수로 남습니다 — 세는 SQL 은 RUN.md 같은 절. decide 의 enrichment backfill 도 이제 `exclude` 를 겁니다.
 - **자세히** — RUN.md 같은 절 · 시험 `test_a_key_a_source_row_left_is_recounted.py`(문 칸 넷) · `test_a_rule_is_handed_only_rows_its_require_fills.py`(백필 exclude).
 
 ## 2026-10-14 · Board — 위 N · 트렐리스 · Shape by

@@ -191,6 +191,28 @@ def test_no_source_rows_is_its_own_class(an_env):
     assert res["counts"].get(analysis.CLS_NO_SOURCE_ROWS) == 1
 
 
+def test_a_key_whose_source_rows_the_rule_does_not_take_has_no_source_rows(an_env):
+    """총괄 63c747046: the classes count the rows the rule takes - a source row outside `require` is not one."""
+    _seed(an_env, "enan_test_src", [{"log_key": "g1", "lot": "G1", "slot": "S1", "chip_id": "", "wafer_id": "W1"}])
+    _seed(an_env, "enan_test_derived", [{"wafer_key": "G1_S1", "lot": "G1", "slot": "S1"}])
+    rule = {**_loaded(), "require": ["chip_id"]}
+    res = analysis.classify_queue(an_env, rule, log=lambda *_: None)
+    assert res["counts"].get(analysis.CLS_NO_SOURCE_ROWS) == 1, res["counts"]
+    assert analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)["counts"].get(
+        analysis.CLS_NO_SOURCE_ROWS) is None, "control: without the gate the row counts"
+
+
+def test_a_value_only_a_row_outside_the_gate_has_is_not_a_mapping_gap(an_env):
+    """총괄 63c747046 3: the presence probe counts the rows the rule takes too - not the gate's outsiders."""
+    _seed(an_env, "enan_test_src", [{"log_key": "h1", "lot": "H1", "slot": "S1", "chip_id": "C1", "wafer_id": ""},
+                                    {"log_key": "h2", "lot": "H1", "slot": "S1", "chip_id": "", "wafer_id": "W1"}])
+    _seed(an_env, "enan_test_derived", [{"wafer_key": "H1_S1", "lot": "H1", "slot": "S1"}])
+    gated = analysis.classify_queue(an_env, {**_loaded(), "require": ["chip_id"]}, log=lambda *_: None)["counts"]
+    assert gated.get(analysis.CLS_MAPPING_GAP) is None, gated
+    assert analysis.classify_queue(an_env, _loaded(), log=lambda *_: None)["counts"].get(
+        analysis.CLS_MAPPING_GAP) == 1, "control: without the gate W1 is a gap"
+
+
 def test_probe_budget_reports_unprobed_rather_than_guessing(an_env):
     _seed(an_env, "enan_test_src", [
         {"log_key": "c1", "lot": "P1", "slot": "S1", "chip_id": "C1"},

@@ -8,17 +8,22 @@
 >          편집으로 문 밖에 나간 행(옛 값은 문 안 · 새 값은 문 밖)은 decide 에게 «지운 행» 모양으로 넘어가 그 키를 다시 셈 — 키의 마지막 행이면 그 파생 행이 감
 >          문 밖에 늘 있던 행의 편집은 안 깨움(질의 안 늚)
 >          decide 의 enrichment backfill 도 exclude 를 건다(전에는 require 만)
-> 바뀌는 수  require · exclude 가 있는 decide 의 집계가 줄 수 있음 — 전에는 문 밖 행도 셌음
+> 바뀌는 값  require · exclude 가 있는 decide 의 집계 값(count · min · max · 대표 목록 · 수식 값) — 전에는 문 밖 행도 셌음
+>          키의 마지막 행이 문 밖으로 나가면 그 파생 행이 사람 값째 지워진다(원천이 사라진 것과 같음) — 그런 키 수는 아래 읽기 SQL
 > 볼 줄    chain_worker.log «[Chain] enrichment_dedup:<이름>: N row(s) not handed over - required column(s) empty: <칸>=n - M of them handed as rows that left (an edit took them out)»
 > 소급으로 다시 세는 법  지금 있는 파생 행의 수를 새 기준으로 — decide 규칙마다
 >          python scripts/chain_replay_cli.py replay enrichment_dedup:<결정 이름>            미리보기(쓰기 없음)
 >          python scripts/chain_replay_cli.py replay enrichment_dedup:<결정 이름> --apply    문 안 행의 키를 다시 셈(체인 워커가 씀)
 > 안 하는 것  행이 «전부» 문 밖인 키의 파생 행은 소급으로도 옛 수 그대로 — 소급은 문 안 행의 키만 깨움(B 의 «착지 전 옛 키 행»과 같은 종류)
->          몇 개인지(읽기만 · PostgreSQL · 판단키 칸이 둘이면 AND 로 하나 더 · exclude 면 IS NOT NULL -> IS NULL):
+>          몇 개인지(읽기만 · PostgreSQL · 파생 표가 판단키 칸을 같은 이름으로 가진다고 놓음 · 판단키 칸 · 문 칸마다 AND 한 줄씩
+>          · exclude 칸은 IS NOT NULL -> IS NULL):
 >            SELECT count(*) FROM "<파생 표>" d WHERE NOT EXISTS (SELECT 1 FROM "<원천 표>" s
 >              WHERE COALESCE(s."<판단키 칸>"::text, '') = COALESCE(d."<판단키 칸>"::text, '')
 >                AND NULLIF(s."<require 칸>"::text, '') IS NOT NULL)
 >          이 수에는 원천 행이 아예 없는 키의 행(B 의 착지 전 옛 키)도 든다. 지우려면 파생 표 그리드에서 그 행을 골라 지움
+>          옛 값이 안 실린 편집은 «원래 문 밖»으로 읽혀 그 키를 다시 안 셈 — 옛 값 없이 EDIT 를 내는 직접 문 넷(층 거두기 · 다시
+>          돌리기 · 접기 둘)은 칸 값을 안 바꿔 문 칸을 못 옮김 = 0 (센 명령: git grep -n "stage_collapsed_event(\|row_event(" -- "*.py"
+>          ":!tests/*"). flush 길은 쓰기 전에 안 읽은 칸(커밋 뒤 만료된 행에 바로 씀)의 옛 값을 뺌 — 그렇게 문 칸을 쓰는 문 수는 못 셌음
 > 급할 때   끄는 칸 없음 — 되돌리기
 > 되돌리기  git revert <이 커밋> -> 런처 재기동
 > ```
@@ -98,7 +103,7 @@
 > 되돌리기  git revert 4abf68886 -> 런처 재기동
 > ⚠️ 안 잰 것  맵 purge(dt_map 대치)의 사건 크기 · 운영 크기
 > 안 하는 것  판단키가 정체성보다 넓을 때 원천 0 인 튜플이 정체성엔 남으면 그 행에 아무것도 안 씀 — 그 행 집계는 남은 튜플이 다음에 깰 때 갱신
->          (require 칸이 있는 decide 의 «채움 -> 빈칸» 편집 — 위 «decide 가 세는 행 = 그 규칙이 받는 행» 절에서 다시 셈)
+>          (require · exclude 칸이 있는 decide 의 문 밖으로 나가는 편집 — 위 «decide 가 세는 행 = 그 규칙이 받는 행» 절에서 다시 셈)
 >          표기 접기를 소급 연산으로 돌리면 그 사건은 cascade 없이는 규칙을 안 깨움(소급 채널) — 옛 키도 그때는 cascade 로만 다시 셈
 >          단위 표시(fold_units)의 배열 쓰기는 사건을 안 냄(전부터) — 그 칸을 판단키로 쓰면 옛 키를 모름
 > ```

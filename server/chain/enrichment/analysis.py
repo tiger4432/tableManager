@@ -283,6 +283,7 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
     source ever have it": it could not have.
     """
     from sqlalchemy import func, tuple_, cast, String, and_, or_
+    from chain.rule_run import gate_conditions, gates_of
     from database import crud, models
 
     model = models.DYNAMIC_TABLES.get(rule["source_table"])
@@ -298,6 +299,7 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
     # against `''` - the caller owns making the expression text-typed (documented on that
     # helper). This is byte-for-byte the predicate that used to be written out here.
     non_blank = crud.not_blank_sql_condition(cast(tgt, String))
+    gated = gate_conditions(gates_of(rule), model)          # the rows the rule takes (총괄 63c747046)
 
     out = {}
     items = list(key_raw_values.items())
@@ -308,7 +310,7 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
         else:
             cond = tuple_(*cols).in_([tuple(raw) for _, raw in chunk])
         rows = (db.query(*cols, func.count().label("cnt"))
-                .filter(cond, non_blank).group_by(*cols).all())
+                .filter(cond, non_blank, *gated).group_by(*cols).all())
         for row in rows:
             key = tuple(crud.clean_str_value(v) for v in row[:-1])
             out[key] = int(row[-1])
@@ -454,7 +456,7 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
             bump(CLS_BLANK_DECISION_KEY, r, "decision key is whitespace-only in the derived row")
             continue
         if total_per_key.get(key, 0) == 0:
-            bump(CLS_NO_SOURCE_ROWS, r, "no source rows for this decision key")
+            bump(CLS_NO_SOURCE_ROWS, r, "no source rows the rule takes for this decision key")
             continue
         gap = [t for t in blanks if presence.get(t, {}).get(key, 0) > 0]
         if gap:
