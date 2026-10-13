@@ -29,7 +29,8 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
     const c = compile(slot.expr);
     // Each name's declared column type, as the walk says it (a datetime's Min and Max compare instants - lead 10-13).
     const types = c.ok ? Object.fromEntries(c.names.map((n) => [n, typeOfName(index, inside, x, n)]).filter(([, t]) => t)) : {};
-    return answerOne(run(c, [calcRow(index, inside, x)], { marked, cell, types }));
+    const read = answerOne(run(c, [calcRow(index, inside, x)], { marked, cell, types }));
+    return Object.keys(types).length ? { ...read, types } : read;
   }
   if (slot.self) return inside.has(x) ? { state: 'one', value: x, n: 1 } : { state: 'missing' };
   if ('constant' in slot) return isBlank(slot.constant) ? { state: 'empty', n: 0 } : { state: 'one', value: slot.constant, n: 1 };
