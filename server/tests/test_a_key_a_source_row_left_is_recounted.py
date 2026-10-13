@@ -46,7 +46,7 @@ TABLES = {
     WINV: {"business_key": "lot", "composite_key_source": ["lot"],
            "column_types": {"lot": "string", "slot": "string", "n": "number", "note": "string"}},
     SRC: {"business_key": "log_id",
-          "column_types": {"log_id": "string", "job": "string", "lot": "string", "at": "string"}},
+          "column_types": {"log_id": "string", "job": "string", "lot": "string", "t": "string"}},
     INV: {"business_key": "job", "composite_key_source": ["job"],
           "column_types": {"job": "string", "lot": "string", "n": "number", "note": "string"}},
 }
@@ -146,9 +146,9 @@ def _src(db, log_id):
 
 
 def _seed(db):
-    _write(db, [{"updates": {"log_id": "L1", "job": "J1", "lot": "A", "at": "1"}},
-                {"updates": {"log_id": "L2", "job": "J1", "lot": "B", "at": "2"}},
-                {"updates": {"log_id": "L3", "job": "J3", "lot": "C", "at": "3"}}])
+    _write(db, [{"updates": {"log_id": "L1", "job": "J1", "lot": "A", "t": "1"}},
+                {"updates": {"log_id": "L2", "job": "J1", "lot": "B", "t": "2"}},
+                {"updates": {"log_id": "L3", "job": "J3", "lot": "C", "t": "3"}}])
     _chain(db)
     assert _inv(db) == {"J1": ("A, B", 2), "J3": ("C", 1)}
     HANDED.clear()
@@ -220,7 +220,7 @@ def test_the_map_purge_door_carries_the_rows_it_deletes_too(db):
     events = _chain(db)
 
     assert [get_payload_dict(e)[event_constants.OLD_VALUES_KEY] for e in events] == [
-        [{"log_id": "L3", "job": "J3", "lot": "C", "at": "3"}, {}]]
+        [{"log_id": "L3", "job": "J3", "lot": "C", "t": "3"}, {}]]
     assert _inv(db) == {"J1": ("A, B", 2)}
 
 
@@ -262,7 +262,7 @@ def test_the_chains_deletion_is_a_chain_event_and_a_persons_is_not(db):
 
 def test_a_rule_without_the_cell_is_not_handed_a_deletion(db):
     _seed(db)
-    _write(db, [{"row_id": _src(db, "L1").row_id, "updates": {"at": "9"}}])
+    _write(db, [{"row_id": _src(db, "L1").row_id, "updates": {"t": "9"}}])
     _chain(db)
     assert len(HANDED) == 1, "control: the plain rule is handed an edit"
     crud.delete_rows_batch(db, SRC, [_src(db, "L2").row_id], "okey")
@@ -276,7 +276,7 @@ def test_a_group_with_an_edit_and_a_deletion_hands_the_plain_rule_only_the_edit(
     """The plain rule wakes on the group's edit; the group's deletion is the decide's alone."""
     _seed(db)
     with crud.transaction_context("okey", "tx-mixed", crud.USER_SOURCE):
-        _src(db, "L1").at = "9"
+        _src(db, "L1").t = "9"
         db.delete(_src(db, "L2"))
         db.commit()
     _chain(db)
@@ -287,10 +287,10 @@ def test_a_group_with_an_edit_and_a_deletion_hands_the_plain_rule_only_the_edit(
 
 def test_a_same_key_edit_carries_no_old_key_and_takes_nothing(db):
     _seed(db)
-    _write(db, [{"row_id": _src(db, "L3").row_id, "updates": {"at": "4"}}], collapsed=True)
+    _write(db, [{"row_id": _src(db, "L3").row_id, "updates": {"t": "4"}}], collapsed=True)
     events = _chain(db)
 
-    assert [get_payload_dict(e).get(event_constants.OLD_VALUES_KEY) for e in events] == [[{"at": "3"}]]
+    assert [get_payload_dict(e).get(event_constants.OLD_VALUES_KEY) for e in events] == [[{"t": "3"}]]
     assert _inv(db) == {"J1": ("A, B", 2), "J3": ("C", 1)}
     assert _deletions(db) == []
 
@@ -378,7 +378,7 @@ def test_a_notation_fold_that_moves_a_key_recounts_the_key_it_left(db, tmp_path,
     monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(rules))
     rules.write_text(json.dumps({"columns": {}}), encoding="utf-8")
     nn.reset_cache()
-    _write(db, [{"updates": {"log_id": "L9", "job": "J . 9", "lot": "Z", "at": "9"}}])
+    _write(db, [{"updates": {"log_id": "L9", "job": "J . 9", "lot": "Z", "t": "9"}}])
     _chain(db)
     assert _inv(db) == {"J . 9": ("Z", 1)}
     rules.write_text(json.dumps({"columns": {SRC: {"job": {"write": True, "rules": {"replace": [[" *[.] *", "."]]}}}}}),
@@ -399,7 +399,7 @@ def test_a_layer_withdrawal_that_moves_a_key_recounts_the_key_it_left(db):
     declarations = [as_declaration(name, cells) for name, cells in RULE.items()]
     declarations[0]["allow_chain_trigger"] = True
     pathlib.Path(worker.RULES_PATH).write_text(json.dumps({"rules": declarations}), encoding="utf-8")
-    _write(db, [{"updates": {"log_id": "L1", "job": "J1", "lot": "A", "at": "1"}}], source="f01.csv")
+    _write(db, [{"updates": {"log_id": "L1", "job": "J1", "lot": "A", "t": "1"}}], source="f01.csv")
     row_id = _src(db, "L1").row_id
     _write(db, [{"row_id": row_id, "updates": {"job": "J9"}}], source=crud.CHAIN_SOURCE)
     _chain(db)
