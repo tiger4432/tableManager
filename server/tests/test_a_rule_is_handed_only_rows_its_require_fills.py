@@ -351,7 +351,8 @@ BF_DECIDE = {"name": "rq_bf", "on": {"table": "rq_bf_src", "require": ["lot_hint
                                                      "fields": ["wafer_id"]}}}
 
 
-def test_the_backfill_holds_back_what_the_live_chain_holds_back(db, tmp_path, monkeypatch):
+@pytest.mark.parametrize("gate, kept", [("require", ["EQP1"]), ("exclude", ["EQP2"])])  # exclude: 총괄 63c747046
+def test_the_backfill_holds_back_what_the_live_chain_holds_back(db, tmp_path, monkeypatch, gate, kept):
     from chain.enrichment import backfill
 
     models.init_dynamic_models(BF_TABLES)
@@ -359,16 +360,18 @@ def test_the_backfill_holds_back_what_the_live_chain_holds_back(db, tmp_path, mo
     Base.metadata.create_all(bind=db.get_bind())
     try:
         path = tmp_path / "chain_rules.json"
-        path.write_text(json.dumps({"rules": [BF_DECIDE]}), encoding="utf-8")
+        decide = json.loads(json.dumps(BF_DECIDE))
+        decide["on"] = {"table": "rq_bf_src", gate: ["lot_hint"]}
+        path.write_text(json.dumps({"rules": [decide]}), encoding="utf-8")
         monkeypatch.setattr(worker, "RULES_PATH", str(path))
         _push(db, "rq_bf_src", [
             {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1", "lot_hint": "L1"},
             {"equipment": "EQP2", "event_time": "T2", "chip_id": "C2", "lot_hint": ""}])
         rule = backfill.load_rule("rq_bf", crud.TABLE_CONFIG)
-        assert rule[chain_bindings.REQUIRE_KEY] == ["lot_hint"]
+        assert rule[gate] == ["lot_hint"]
         backfill.run_backfill(db, rule, apply=True, log=lambda *_: None)
         derived = models.DYNAMIC_TABLES["rq_bf_derived"]
-        assert sorted(r.equipment for r in db.query(derived).all()) == ["EQP1"]
+        assert sorted(r.equipment for r in db.query(derived).all()) == kept
     finally:
         for name in BF_TABLES:
             crud.TABLE_CONFIG.pop(name, None)

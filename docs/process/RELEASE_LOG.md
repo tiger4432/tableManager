@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-14 [decide 가 세는 행 = 그 규칙이 받는 행 (require · exclude)](#2026-10-14--decide-가-세는-행--그-규칙이-받는-행-require--exclude)
 - 2026-10-14 [decide 가 원천 행이 떠난 키를 다시 센다 — 키를 바꾼 편집 · 지움, 원천 행이 안 남은 키의 행은 지운다](#2026-10-14--decide-가-원천-행이-떠난-키를-다시-센다--키를-바꾼-편집--지움-원천-행이-안-남은-키의-행은-지운다) — 적는 곳 `chain_rules.json`
 - 2026-10-14 [decide 집계를 수식 한 줄로 — 옛 선언은 같은 수식으로 읽히고, 옮기는 명령이 있다](#2026-10-14--decide-집계를-수식-한-줄로--옛-선언은-같은-수식으로-읽히고-옮기는-명령이-있다) — 명령 `scripts.migrate_decide_aggregations` · 적는 곳 `chain_rules.json` · 누르는 곳 체인 폼
 - 2026-10-13 [원장 일이 원장 프로세스로 — 원장이 서도 체인 결과는 써지고, 따라가기는 사건 여럿을 한 번에](#2026-10-13--원장-일이-원장-프로세스로--원장이-서도-체인-결과는-써지고-따라가기는-사건-여럿을-한-번에) — 누르는 곳 없음(런처 재기동)
@@ -374,6 +375,16 @@
 - **화면에서** — ① 창을 줄였다 키우면 트렐리스 패널의 그림이 40 x 44 로 남던 것: 근원이 그림 칸(패널마다, 전체)의 크기를 지켜보고 그 그림을 맞춥니다 — 한 자리(`VisualPart.watch`). ② 툴팁에서 같은 칸(Y · Top/Bottom by · Label by 가 같은 값 칸)이 두 줄이던 것: 칸 이름마다 한 줄. ③ 레이블이 그림 끝에서 잘리던 것: 점의 안쪽 자리만큼만, 넘치면 «…»(마우스를 올리면 툴팁에 전부). ④ 좁은 패널의 x 축 시각 눈금이 겹치던 것: 폭에 맞춰 눈금 수를 줄이고 겹치는 것은 숨김(축 범위는 그대로). ⑤ 패널 안 칸을 눌러 노드가 아니라 허브가 찍히면 바닥줄에 «marked a hub of N rows - the mark has 2 conditions (wafer, p)». ⑥ Sheet 에는 «Top/Bottom by» · «Panel by» 가 없습니다(종류가 `without` 으로 말함).
 - **필요한 조건** — 클라 빌드만.
 - **자세히** — `board_layout_harness` RS1 · TT2 · TM2 · LB3 · LB4 · HW1 · WO1(변이 M55–M61) · `screen_layout_harness` 시험대 «dies in panels» · «tooltip over a cell»(time as shown) · «shrunk and grown»(picture fills its div).
+
+---
+## 2026-10-14 · decide 가 세는 행 = 그 규칙이 받는 행 (require · exclude)
+
+- **무엇** — 총괄 63c747046. decide 의 다시 세기가 규칙의 `on.require` · `on.exclude` 를 걸지 않아, 사건에서는 안 받는 행도 집계에 들었습니다. 이제 다시 세기도 같은 판정(파이썬 판 · SQL 판 한 자리)을 지납니다. 편집으로 문 밖에 나간 행은 decide 가 그 키를 다시 세게 넘어갑니다.
+- **선언 예시** — 없음(이미 적은 `on.require` · `on.exclude` 가 집계에도 걸림).
+- **화면에서** — 화면 글자는 그대로입니다.
+- **필요한 조건** — 런처 재기동. 이주 없음.
+- **바뀐 동작 · 주의** — 키의 마지막 행이 require/exclude 문 밖으로 나가면 그 파생 행이 사람 값째 지워진다. 그런 키가 지금 몇인지는 RUN.md 같은 절의 읽기 SQL 로 지우기 전에 셉니다. require · exclude 가 있는 decide 의 집계 값(count · min · max · 대표 목록 · 수식 값)이 바뀔 수 있습니다(전에는 문 밖 행도 셌음). 지금 있는 파생 행은 `chain_replay_cli.py replay enrichment_dedup:<결정 이름> --apply` 로 다시 셉니다. 행이 전부 문 밖인 키의 파생 행은 소급으로도 옛 수로 남습니다 — 세는 SQL 은 RUN.md 같은 절. decide 의 enrichment backfill 도 이제 `exclude` 를 겁니다.
+- **자세히** — RUN.md 같은 절 · 시험 `test_a_key_a_source_row_left_is_recounted.py`(문 칸 넷) · `test_a_rule_is_handed_only_rows_its_require_fills.py`(백필 exclude).
 
 ---
 

@@ -84,7 +84,7 @@ def _cell_value(data: dict, col: str):
 
 
 def _aggregate_affected_keys(db, source_table: str, decision_key: list,
-                             key_raw_values: dict, aggregations: dict) -> dict:
+                             key_raw_values: dict, aggregations: dict, gates=None) -> dict:
     """영향받은 판단키들만 대상으로 원본 테이블 집계를 재계산한다(멱등).
 
     반환 `{clean_key_tuple: {집계이름: 값}}`.
@@ -100,6 +100,8 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
     확장성: 유니크 키 수는 배치 행 수보다 훨씬 작다(압축비). 키 500개 청크의
     `(k1,..) IN (...) GROUP BY` 쿼리만 수행 — 전량 스캔 없음. 판단키 컬럼 인덱스 권장
     (가이드 참조: docs/guide/chain_ingestion_guide.md §Enrichment).
+    `gates` {gate: columns}: the rule's row gates (`rule_run.gates_of`) - a row the rule would not be handed is not
+    counted either (총괄 63c747046, `rule_run.gate_conditions` on every query below).
     ⚠️ SQL 로 내리는 집계는 여럿이어도 «쿼리 하나»다 — SELECT 목록에 열이 붙을 뿐이다. 행을 읽어 계산하는
        수식(`_plan` 의 rows)이 있으면 같은 키 조건으로 원천 행을 한 번 더 읽는다.
 
@@ -126,10 +128,13 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
     from sqlalchemy import and_, case, func, tuple_
     from database import crud, models
 
+    from chain.rule_run import gate_conditions
+
     model = models.DYNAMIC_TABLES.get(source_table)
     if model is None:
         raise ValueError(f"Source table model '{source_table}' is not initialized.")
     cols = [getattr(model, k) for k in decision_key]
+    gated = gate_conditions(gates or {}, model)
 
     types = (crud.TABLE_CONFIG.get(source_table) or {}).get("column_types") or {}
     plan = {name: _plan(name, aggregations[name], model, source_table, types) for name in aggregations}
@@ -153,7 +158,7 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                        for i in blank_at]
         for i in range(0, len(raws), RECOUNT_KEY_CHUNK):
             chunk = raws[i:i + RECOUNT_KEY_CHUNK]
-            conds = list(blank_conds)
+            conds = list(blank_conds) + gated
             if live_cols:
                 live = [tuple(v for j, v in enumerate(raw) if j not in blank_idx)
                         for raw in chunk]
@@ -258,7 +263,7 @@ def _clean_key(table, columns, values) -> tuple:
     return tuple("" if part is None else crud.clean_str_value(part) for part in parts)
 
 
-def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty) -> set:
+def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty, gates=None) -> set:
     """Of `empty` (decision keys with no source row), those whose derived row's identity - `composite_key_source`,
     else `business_key` - no source row holds either (총괄 355ee9840 1). The identity is the decision key when they
     are the same columns, so nothing more is asked; a key whose identity is all blank has no row to delete."""
@@ -273,7 +278,7 @@ def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values,
     of = {key: tuple(key[i] for i in at) for key in empty if any(key[i] != "" for i in at)}
     held = _aggregate_affected_keys(db, source_table, identity, {of[key]: tuple(key_raw_values[key][i] for i in at)
                                                                  for key in of},
-                                    {_SOURCE_ROWS: {"expression": "Count()"}})
+                                    {_SOURCE_ROWS: {"expression": "Count()"}}, gates)
     return {key for key in of if not (held.get(of[key]) or {}).get(_SOURCE_ROWS)}
 
 
@@ -405,16 +410,19 @@ def map_enrichment_dedup(db, payloads, rule=None):
     # 2) 집계 — 영향 키 한정 재계산(멱등: 재인제션에도 이중 카운트 없음)
     #    🔴 모집단은 «그 키의 커밋된 소스 행 전체»다 (S-129 ②) — 배치는 「어느 키를」만
     #    정하고, 세는 것은 소스 표를 직접 읽는다. 그래서 늦게 온 더 이른 행이 min 을 내린다.
+    from chain.rule_run import gates_of
+
+    gates = gates_of(rule)       # 총괄 63c747046: the rows the rule takes are the rows counted
     aggregated = {}
     counted = dict(aggregations, **({_SOURCE_ROWS: {"expression": "Count()"}} if left else {}))
     if counted:
         aggregated = _aggregate_affected_keys(
-            db, source_table, decision_key, key_raw_values, counted)
+            db, source_table, decision_key, key_raw_values, counted, gates)
     # 총괄 옛 키: a key a row left with no source row of its own. Whether its derived row goes is asked of the
     # columns that BUILD that row's identity (355ee9840 1): a decision key wider than them shares the row with
     # others, and the row goes only when no source row holds its identity. One that still has some writes nothing.
     empty = {key for key in left if not (aggregated.get(key) or {}).get(_SOURCE_ROWS)}
-    gone = _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty)
+    gone = _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty, gates)
 
     # 3) 키당 1행 upsert 아이템 구성 — target_fields 는 같은 이름의 집계만 쓴다. 빈 집계는 «withdraw» 에.
     #    기존 키: decision/list 컬럼 값이 동일하면 has_changed=False로 무변경 처리되고,

@@ -474,6 +474,34 @@ def rows_counted(value):
     return 1 if value else 0
 
 
+def gates_of(rule) -> dict:
+    """{gate: [columns]} - a rule's row gates (`require` · `exclude`)."""
+    import chain_bindings
+
+    return {gate: list((rule or {}).get(gate) or ()) for gate in chain_bindings.ROW_GATE_KEYS}
+
+
+def gate_misses(gates, cells) -> list:
+    """[(gate, column)] a row of `cells` {column: value} fails - [] when the rule takes it. THE row-gate judgement:
+    `require` wants the column filled, `exclude` wants it blank (`crud.is_blank_value`); `gate_conditions` is the
+    same judgement in SQL, so the rows a rule is handed and the rows a recount counts are one set (총괄 63c747046)."""
+    import chain_bindings
+    from database import crud
+
+    return [(gate, column) for gate in chain_bindings.ROW_GATE_KEYS for column in gates.get(gate) or ()
+            if crud.is_blank_value(cells.get(column)) == (gate == chain_bindings.REQUIRE_KEY)]
+
+
+def gate_conditions(gates, model) -> list:
+    """`gate_misses` in SQL over `model`'s columns: one condition per gated column, true for a row the rule takes."""
+    import chain_bindings
+    from database import crud
+
+    return [(crud.not_blank_sql_condition if gate == chain_bindings.REQUIRE_KEY else crud.blank_sql_condition)(
+        crud.column_text_sql(getattr(model, column)))
+        for gate in chain_bindings.ROW_GATE_KEYS for column in gates.get(gate) or ()]
+
+
 def held_back(rule, handed) -> tuple:
     """-> (the rows handed to the rule, {column: rows held back because it was empty}).
 
@@ -486,39 +514,45 @@ def held_back(rule, handed) -> tuple:
     The line is said here for the same reason: one event, one sentence, whoever asked.
 
     `exclude` (총괄 016a766af) is the other half, judged in the same pass: a row with any of
-    those columns filled is not handed over either."""
+    those columns filled is not handed over either.
+
+    An edit that took a row OUT of the gates (its old values passed, its new ones do not) is, to a rule that reads
+    rows that left (`allow_delete_trigger`), a row that left: handed as a deletion is - no data, the row as it was -
+    so the key it left is recounted without it (총괄 63c747046 (b)). A row that was never in is not handed."""
     import chain_bindings
-
-    wanted = list((rule or {}).get(chain_bindings.REQUIRE_KEY) or ())
-    shut = list((rule or {}).get(chain_bindings.EXCLUDE_KEY) or ())
-    if not wanted and not shut:
-        return handed, {}
-    from database import crud
-
     import event_constants
 
-    kept, empty, filled = [], collections.Counter(), collections.Counter()
+    gates = gates_of(rule)
+    if not any(gates.values()):
+        return handed, {}
+    reads_leaving = bool((rule or {}).get(chain_bindings.ALLOW_DELETE_TRIGGER_KEY))
+    kept, missed, left = [], {gate: collections.Counter() for gate in gates}, 0
     for payload in handed:
         data = payload.get("data") if isinstance(payload, dict) else None
+        old = event_constants.old_values_of(payload)
         # a deletion has no data - its row is judged as it was (총괄 355ee9840 3)
-        old = {} if data else event_constants.old_values_of(payload)
-        cells = {column: ((data or {}).get(column) or {}).get("value") if data else old.get(column)
-                 for column in wanted + shut}
-        blank = [column for column in wanted if crud.is_blank_value(cells[column])]
-        excluding = [column for column in shut if not crud.is_blank_value(cells[column])]
-        if blank or excluding:
-            empty.update(blank)
-            filled.update(excluding)
-        else:
+        now = {column: (cell or {}).get("value") if isinstance(cell, dict) else cell
+               for column, cell in data.items()} if data else dict(old)
+        misses = gate_misses(gates, now)
+        if not misses:
             kept.append(payload)
-    if empty or filled:
-        said = ([("required column(s) empty", empty)] if empty else []) + (
-            [("excluding column(s) filled", filled)] if filled else [])
-        logger.info("[Chain] %s: %d row(s) not handed over - %s",
-                    (rule or {}).get("name") or "<unnamed rule>", len(handed) - len(kept),
+            continue
+        for gate, column in misses:
+            missed[gate][column] += 1
+        was = {**now, **old}
+        if reads_leaving and data and old and not gate_misses(gates, was):
+            kept.append({**payload, "data": {}, event_constants.OLD_VALUES_KEY: was})
+            left += 1
+    said = [(words, missed[gate]) for gate, words in ((chain_bindings.REQUIRE_KEY, "required column(s) empty"),
+                                                      (chain_bindings.EXCLUDE_KEY, "excluding column(s) filled"))
+            if missed[gate]]
+    if said:
+        logger.info("[Chain] %s: %d row(s) not handed over - %s%s",
+                    (rule or {}).get("name") or "<unnamed rule>", len(handed) - len(kept) + left,
                     "; ".join("%s: %s" % (words, ", ".join("%s=%d" % pair for pair in sorted(c.items())))
-                              for words, c in said))
-    return kept, {**empty, **filled}
+                              for words, c in said),
+                    " - %d of them handed as rows that left (an edit took them out)" % left if left else "")
+    return kept, {column: n for gate in missed for column, n in missed[gate].items()}
 
 
 def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
