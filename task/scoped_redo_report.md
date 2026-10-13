@@ -81307,3 +81307,48 @@ impl-grid-pool fee6e6b23 입니다. main 0396c73cb 위의 한 커밋이고, 문�
 - 같은 파일의 `test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up`(«difference 20 != 0»)는 main 에서도 빨강입니다. 제 일과 무관해 손대지 않았습니다.
 
 **다음**: 큐가 비었습니다. 다음 일을 주시면 받겠습니다.
+
+
+---
+
+## [구현자 A -> 총괄] 10-14 — 5667ea0fe 착지: 서버 계산기 · decide 집계를 수식으로 · 옛 선언 마이그레이션 (impl-expr decc483eb)
+
+impl-expr 는 main 459ff93fa 위의 커밋 아홉입니다(wip 포함). 문서와 RELEASE_LOG 항목이 같은 가지에 있습니다. 벡터 파일은 이 가지에만 있습니다 — 병합 순서는 impl-expr → 클라 calc-types → 클라 sheet, 한 번에.
+
+**무엇을 지었나**
+
+- 서버 계산기 `server/expression.py` — 화면 `expression.js` 를 옮겼습니다(문법 하나 · 함수 표 하나 · eval 없음).
+  - `types` {칸: "datetime"} 이면 Min/Max 가 순간으로 견주고, 답은 그 행 값 그대로입니다.
+  - 이름 대어 거절하는 것: `Marked` · 길 `[a.b~.x]` · 칸 참조 `A1` · `B1:B9` · 노드 생성자처럼 부른 모르는 이름.
+- 벡터 일곱 줄(시각 Min/Max 여섯 + time.max.bare.number)을 basis decided 로 넣었습니다.
+- decide 집계를 수식으로 받습니다. 예: `"chip_count": "Count()"` · `"first_bond": "Min([bonding_time])"`.
+  - 옛 모양은 `aggregation_record` 한 자리에서 같은 수식으로 접습니다. 로더 · 체인 폼 · 마이그레이션이 이 한 함수를 지납니다.
+  - 못 옮기는 것은 옛 SQL 그대로입니다: 글자 칸의 min/max, ", " 아닌 구분자의 unique_concat.
+  - 실행은 `mapper._plan` 한 자리가 가릅니다. Count() 와 number 칸의 Sum · Min · Max 는 SQL, 나머지는 그 키의 원천 행을 읽어 계산기로.
+  - 로더가 거절하는 것: 값이 행마다인 수식 · 원천에 없는 칸 · Latest · Marked · 길.
+  - 체인 폼의 집계 칸은 oneOf · pick shape 입니다(글자 = 수식, 레코드 = 옛 것). chain_skeleton.json 을 다시 만들었습니다.
+- 마이그레이션 `scripts/migrate_decide_aggregations.py` — 기본 미리보기, `--compare N`, `--apply`(관리자의 원자적 쓰기로, 백업을 남김).
+
+**게이트**
+
+- 서버 채점 285 초록입니다(답 241 · 화면 벡터 6 거절 · 수 모양 · 칸 참조 · 생성자). design-sheet 08c1c6f05 의 벡터 파일로 돌린 판은 287 초록이고, 파일은 되돌렸습니다(md5 같음).
+- decide 판 시험(SQLite · PG 둘 다): SQL 로 내린 Count · Sum · Min · Max 가 같은 행의 계산기 답과 같습니다. NULL/'' 쌍둥이 키 묶음도 포함합니다. 옛 레코드와 바뀐 수식이 같은 칸을 냅니다.
+- 마이그레이션 시험: 미리보기 · 두 번 돌려도 같음 · compare 가 같은 칸을 셈.
+- 변이 10/10 빨강(계산기 · _plan · 접기 · 로더 · 마이그레이션), md5 되돌림 확인.
+- 이웃 시험 63 파일: 988 통과 · 19 빨강. 그 19 중 18 은 이 가지의 바탕 459ff93fa 에서도 같은 빨강이었습니다(ledger_declared_kind 15 · runtime_reference 2 · one_place 1). 나머지 하나 chain_skeleton 은 제 것이었고 고쳤습니다(decc483eb).
+- 범위를 잘못 준 첫 판에서 6 개 시험이 더 빨갰습니다. 바탕에서도 같은 6 이었습니다.
+- 바뀐 기대값(규칙대로 정규형이 바뀐 넷): count 가 {"expression": "Count()"}, 기본 구분자 unique_concat 이 UniqueConcatenate, 폼의 "count" 가 "Count()", 빈 칸 판정 시험이 pick shape 를 읽음.
+
+**박스 견본 수(운영 주장 아님)**
+
+- 출하 견본 chain_rules.json.sample: decide 6 · 집계 1(cell_count "count" → Count()) · 못 옮김 0.
+- 이 박스 설정(gitignore): decide 1 · 집계 0.
+
+**안 잰 것 · 알려 드릴 것**
+
+- 행을 읽어 계산하는 길의 속도(큰 키)는 안 쟀습니다.
+- 옛 unique_concat 은 글자 앞뒤 공백을 깎아 잇고 수식은 값 그대로입니다 — 원천에 그런 값이 있으면 다를 수 있는 한 자리입니다. --compare 가 그 줄을 찍습니다.
+- B 의 impl-b-oldkeys 가 숨은 count 를 {"fn": "count"} 로 착지합니다. 이 가지 뒤에서는 {"expression": "Count()"} 여야 합니다(옛 count 는 _plan 의 옛 갈래에 없음). 늦게 착지하는 쪽이 그 한 줄을 바꾸기로 B 와 정했습니다.
+- 체인 폼의 pick shape 그림은 브라우저로 안 열었습니다. 화면 코드(shapeBranch)가 이미 그 모양을 그리는 것만 확인했습니다.
+
+**다음**: 큐에 있는 걷기 답의 값 기록마다 원천 표 column_types 싣기(클라와 칸 이름 맞춤).
