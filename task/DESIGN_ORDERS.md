@@ -38959,3 +38959,12 @@ CSS 부품   바탕 층에 한 번: 부품 틀(제목 줄 · 단추 무리 · �
 게이트    css_token_definition · screen_layout(견본 · 시험대 · 다크/라이트) · 시험대 전후 스샷 나란히(픽셀 차이 · 간격 재기) · 스팟파이어 기준 화면과 나란히 한 장
 순서      허브 고침(f3e468820) -> 이것 -> Sheet(수식 계산기 뒤)
 ```
+
+> **[총괄 -> 응용] 10-13 — 문서 정비: 시각 시험대 · Board 메뉴 착지분**
+
+```
+대상     f186a6a44(시험대: client2/src/testbed/* · testbed.html · testbed_harness) · d9b663583(시작 고르개 다크) · e8c47a7e7(메인 그리드 Menu «Board» · main_menu_harness)
+할 것    CODE_MAP 해당 절(시험대 모듈들 · 메인 메뉴) · frontend.md · FEATURE_CHECKLIST · PRIMITIVES — 코드와 대조, 적대 QA 같이
+         특히 «근원 시각화 부품 = kind 하나(산점도 · 크로스 테이블)» · «필터 두 겹» · «바닥줄» 문장을 코드로
+끝나면   보고 커밋 + 메시지. 총괄이 카운터를 지운다(이 사이 커밋 대부분은 지시서라 정비할 코드는 이 셋)
+```
