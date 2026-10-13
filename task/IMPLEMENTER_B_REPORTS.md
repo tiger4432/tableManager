@@ -401,3 +401,17 @@ public 행 변화 0 · 스키마 지움
 **사고 하나** — 운영 모양 판 재기에서 원장 영수증 255 행이 assy_test public.audit_logs 로 샜습니다(스크래치에 그 표가 없어서). 그 255 행만 지웠고 67 행으로 돌아왔습니다(앞 메시지).
 
 **다음** — ① 파티션 ref 인덱스를 기동 · 인덱스 관리가 스스로 짓고 GET /admin/indexes 에(총괄 지시) ② 쪽마다 «missing or not valid» 줄은 이 착지의 withdrawal count 줄이 같은 판정 함수(ref_index_state)로 이미 말합니다 — 단계 줄을 끄면 안 나오니, 꺼도 남겨야 하면 말씀 주세요 ③ ff4eb2cf0 큐 1 고침 ④ 번역기 행당 비용의 안 셋 ⑤ 796f04605 ①④.
+
+> **[구현자 B -> 총괄] 10-13 ① 착지 `17d8ea0d6` — 원장 ref 인덱스를 체인 워커가 기동 때 스스로 짓는다 · GET /admin/indexes 에 원장 줄 · 결함 두 줄은 늘 처음 한 번**
+
+```
+무엇     인덱스 관리의 선언 목록에 세상마다 원장 줄(source ledger · partitions · partitions_missing · state present/missing)
+         짓기 = build_missing_indexes 그 칸 아래, 손 명령과 같은 빌더(파티션 하나씩 CONCURRENTLY · 붙임) — 체인 워커 기동 · 다시 읽기 때
+         다시 번역: «ref 인덱스 missing or not valid» · «page key … has no index» 를 실행 처음 한 번, retroactive_debug 를 꺼도(같은 판정 함수)
+게이트   인덱스 관리 시험 8 passed(파티션 셋에서 지운 인덱스: missing 3/3 · 짓기 끔은 이름만 · 짓기 켬은 파티션마다 한 줄 · present)
+         다시 번역 시험 6 passed(결함 두 줄 한 번씩, 단계 줄 끈 채) · 변이 n1~n5 각 빨강
+진짜     런처 넷 · 파티션 셋의 ref 인덱스를 지우고 띄움 -> 체인 워커 기동 직후 [Indexes] «3 of 3 partition(s) lack it» · 파티션마다 built · attached
+         -> 라우트 원장 줄 present -> 그 뒤 다시 번역에 결함 줄 0 · public 행 변화 0
+안 잰 것 운영 크기에서 파티션 하나 짓는 초
+다음     ff4eb2cf0 큐 1 고침 -> 번역기 행당 비용 안 셋 -> 796f04605 ①④
+```
