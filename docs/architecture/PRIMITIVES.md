@@ -2351,10 +2351,20 @@
 - **언제 재사용**: 규칙이 받을 행을 고르거나 세는 새 자리 — «비었나»를 옆에 다시 적지 않는다.
 - **함정**: 파이썬 쪽과 SQL 쪽이 갈라지면 규칙이 받은 행과 다시 세기가 센 행이 달라진다(10-14 전: 다시 세기가 `require` 를 안 봐 받지 않은 행까지 셈).
 
+### **decide 집계 `Latest` 는 원천 행의 «원장 원자 시각»으로 고른다 — 시각은 `ledger.followup.time_of_table` 한 자리** (2026-10-14 등록 · A `5cb412070`, 소유자 «원자시각»)
+- **어디**: `chain.enrichment.config.ledger_time(table)` → 운영 세상 선언(`ledger.worker._compiled_setup(None)`) 위의 `followup.time_of_table(setup, table)` — `{occurred_at, excluded_by}` 또는 `(None, 사유)`. 행마다 `row_time(time, row, table)` 가 원장의 읽개(`roleframe.aware_time`)로 ms 를 낸다.
+- **언제 재사용**: 체인이 «이 표 행의 시각»을 원장과 같은 뜻으로 써야 할 때 — 시각 칸을 옆에서 다시 고르지 않는다.
+- **함정**: 원자가 없는 행(모든 소스의 `exclude_when` 이 뺌 · 시각이 빈 칸)은 Latest 의 집합에 안 든다. 원장이 못 읽는 시각은 조용히 빠지지 않고 그 칸 이름으로 실패한다. 소스들이 다른 시각을 읽거나 묶음 시각이면 거절.
+
+### **바뀐 행 쓰기는 모양별 배열 UPDATE 한 번 — `database.write_changed_rows_by_shape` → `crud.update_by_arrays`** (2026-10-14 등록 · B `15ba5c63b`, 총괄 8af4d378c)
+- **어디**: flush 앞(PostgreSQL)에서 동적 표의 바뀐 행을 (표, 바뀐 칸 묶음)마다 `crud.update_by_arrays` 문장 하나로 쓰고 그 값을 커밋된 것으로 표시한다. 배열 쓰개는 이 하나 — 표기 접기 · 단위 표시도 부른다.
+- **언제 재사용**: 많은 행을 칸 몇 개씩 고치는 새 자리 — 행마다 UPDATE 를 짓지 않는다.
+- **함정**: flush 에 남는 넷 — SQL 식 값 · 바뀐 키 · 한 칸에 두 형(배열은 형 하나) · `updated_at` 이 None 인 행. 아웃박스 기록(`auto_stage_database_outbox`) «뒤»에 걸려야 사건이 옛 값을 먼저 읽는다. 문장이 이름 댄 행을 다 못 건드리면 ORM 처럼 거절.
+
 ### **규칙이 이 사건에 «깨어나나»는 `chain.ingestion_worker.wakes(rule, event)` 한 자리** (2026-10-14 등록 · B `d3c143d45`, 총괄 옛 키 ㄱ)
 - **어디**: `wakes(rule, event)` = `_is_trigger_event(event, rule)`(종류 — CREATE · EDIT, 지움은 규칙이 허락할 때) 그리고 `fires(rule, event)`(쌍). 규칙을 고르는 자리(`_rows_cap` · `_group_triggered_rules` …)가 전부 이것을 묻고, 묶기(`group_id`)만 `fires` 하나를 묻는다.
 - **언제 재사용**: 사건에 따라 규칙을 고르는 새 자리 — 종류 · 쌍 판정을 옆에 다시 적지 않는다(이 셋은 아홉 자리에 사본으로 있었다).
-- **같이 서는 자리**(🆕 10-14 `4abf68886` 다시 착지): 판단 키의 한 철자 `enrichment.mapper._clean_key` · 남의 층이 있는 행은 안 지움 `cell_layer.rows_others_wrote` · 지우기 실패 = 그룹 실패(`retry_count`, 상한 1 이면 첫 실패에 FAILED).
+- **같이 서는 자리**(🆕 10-14 `4abf68886` 다시 착지): 판단 키의 한 철자 `enrichment.mapper._clean_key` · 남의 층이 있는 행은 안 지움 `cell_layer.rows_others_wrote` · 지우기 실패 = 그룹 실패(`retry_count`, 상한 1 이면 첫 실패에 FAILED) · 사건의 옛 값은 동적 표 칸의 `active_history`(`models._mapped`, 🆕 `0585513d7`) — 안 읽힌 채 고친 행에도 실린다.
 - **함정**: decide 가 «행이 떠난 키»(편집으로 옮겨 감 · 지움)도 다시 세려면 그 사건에도 깨어나야 한다 — 종류 판정을 좁히면 옛 키의 수가 낡은 채 남는다.
 
 ### **표의 추정 행 수는 `ledger.column_stats.estimated_rows(db, relation)` 한 자리 — 이름이 아니라 `to_regclass` 로 찾는다** (2026-10-14 등록 · A `208d7cefc`)
