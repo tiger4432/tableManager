@@ -4,13 +4,13 @@
 import { numberOf } from '../walk/reach_table.js';
 
 /** A condition's identity - its row type and its slot - so one slot holds one condition. */
-export const conditionKey = (c) => JSON.stringify([c.row, c.steps || [], c.value, c.end || null, c.endTypes || null, c.reduce || null]);
+export const conditionKey = (c) => JSON.stringify([c.row, c.steps || [], c.value, c.end || null, c.endTypes || null, c.reduce || null, c.expr || null]);
 
 /** A new condition on a slot summary ({row, slot, values: [[v, n]], empty}): everything kept. */
 export function conditionFor(summary) {
   const numbers = summary.values.length > 0 && summary.values.every(([v]) => numberOf(v) !== null);
   const base = { row: summary.row, steps: summary.slot.steps || [], value: summary.slot.value, end: summary.slot.end, endTypes: summary.slot.endTypes,
-    reduce: summary.slot.reduce, words: summary.words, empty: true };
+    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };
   if (numbers) {
     const xs = summary.values.map(([v]) => numberOf(v));
     return { ...base, range: { min: Math.min(...xs), max: Math.max(...xs) } };

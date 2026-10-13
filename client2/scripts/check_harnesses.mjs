@@ -1424,7 +1424,7 @@ const FLOORS = new Map([
   //    T21 one seedsOf, T22 no colour in testbed.css, T23 each kind's title; M14b M17b M22b M25-M34.
   // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
   //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
-  ['testbed_harness.mjs', 76],   // 74 -> 72: the fold's three mutants moved to the calculator; -> 76: expression slots T27 and Custom expression T28 with their mutants (lead 10-13 plan a)
+  ['testbed_harness.mjs', 78],   // 74 -> 72: the fold's three mutants moved to the calculator; -> 78: expression slots T27, Custom expression T28, a condition on one T29, with their mutants (lead 10-13 plan a)
   ['expression_vectors_harness.mjs', 266],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a)
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
