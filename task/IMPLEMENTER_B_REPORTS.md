@@ -555,3 +555,53 @@ public    시험 정리 코드(이번 판 처음 것)가 assy_test public.idx_au
 **작은 일 993d17c31 → 459b2ae83 은 물음으로 세움** — 메시지로 드림: 오늘 그 칸이 비는 까닭은 결정 맵퍼가 target 과 이름이 같은 집계를 계산하고 버리기 때문(chain/enrichment/mapper.py 집계 루프의 `col not in target_fields`). 집계가 체인 층(서열 4)으로 쓰면 자동 확정(등록 안 된 이름 → 99)이 그 «아래»라 지시의 게이트 둘(빈 집계 뒤 자동 확정 · 자동 확정 뒤 집계)이 반대로 나옴. 안 셋과 추천(자동 확정 두 이름을 서열 3 으로)은 메시지에. allow_chain_trigger 가이드 문단은 써 두었고, 선언 맨 위 칸이 있으면 결정의 첫 규칙이 다른 규칙의 체인 쓰기를 받고(True) 없으면 안 받음(False) — 제품 함수(expand_declaration · _rule_accepts_event)로 확인.
 
 다음: ㄷ(원장 프로세스 + 796 ①②④ + 번역 N 프로세스) 안 셋 — 지금 모양 전수부터.
+
+> **[구현자 B -> 총괄] 10-13 3e5c9a69e 착지 4bb3b4d85 — decide 집계가 같은 이름의 확정 칸을 체인 층으로 채운다 · 빈 집계는 층을 안 쓰고 앞선 층을 거둔다**
+
+**원인 가르기 (고치기 전, 시험 세상 실측)**
+```
+(c) 맞음   결정 맵퍼가 target 과 같은 이름의 집계를 계산하고 버림(enrichment/mapper.py 집계 루프의 `col not in target_fields`)
+          같은 집계를 다른 이름으로 달면 'LOT-A, LOT-B' 가 차고 target 이름 쪽은 None, 그 칸의 체인 층 0 개
+(b) 아님   파일이 그 칸에 None · '' 를 써도 층이 안 생김 — 그 뒤 자동 확정 값이 그대로 보임
+(a) 아님   오늘은 체인이 그 칸에 층을 아예 안 만듦
+```
+
+**무엇**
+```
+맵퍼     집계는 target 이든 아니든 제 칸을 씀(체인 층 4). 빈 집계(crud.is_blank_value)는 안 쓰고,
+         앞서 쓴 체인 층은 cell_layer.withdraw_source 로 거둠 — 지운 행 거두기가 닿는 같은 문, 아래 층이 드러남
+         target 이 아닌 집계 칸도 같음 — 전에는 빈 집계가 «빈 체인 층»을 남겼음
+순위표    그대로. 사람 0 이 보이고, 파일 이름 층 · 자동 확정(둘 다 99)은 비지 않은 집계 아래. 자동 확정은 여전히 층 없는 칸에만 씀
+가이드    CONFIG_ROLLOUT_GUIDE ④: allow_chain_trigger 문단(선언 맨 위 칸 · Replay chain) + «한 칸에 셋이 쓸 때 무엇이 보이나»
+되돌리기  git revert 4bb3b4d85 -> 체인 워커 재기동 (RUN.md 의 그 줄에 이 커밋에서 적음)
+```
+
+**잰 것**
+```
+시험      test_an_aggregation_fills_its_own_target_field_below_a_person 5 개 — sqlite 5 passed, 같은 시험을 PG 스크래치 스키마로 5 passed
+          unique_concat · min · count 가 target 을 채움 / 사람 값이 다시 세도 남음 / 빈 집계 = 층 없음 · 큐에 있음(config.queue_predicate_condition) ·
+          자동 확정의 «층 없는 칸만» 판정이 허락 / 값 -> 빈 = 층 거둠 · 큐로 돌아옴 / 파일 층이 있으면 순위표의 맨 위 층 값(파일 이름 층 · pipeline_parser 둘 다)
+변이      셋 다 빨강 (target 다시 버림 · 빈 값을 층으로 씀 · 거두기 없음)
+묶음      decide 관련 시험 파일 30 개 비PG 619 passed(1 실패는 기준 나무도 같음 — 저장소 위치 시험) · PG 32 passed
+실제 판    런처 넷 · assy_test 스크래치 스키마 assy_b_agg_1013 · 원천 행은 감시 폴더 CSV:
+          집계가 target 을 5.9 s 에 채움 · 빈 집계는 층 없음 · 사람 값이 다시 세도 남음 ·
+          사람이 원천 값을 지우자 집계 층이 거둬짐(이력 X -> None, withdraw:chain_ingestion) ·
+          체인이 본 적 없는 행을 Replay chain 하자 1.7 s 에 채움 · public 행 변화 0
+```
+
+**운영에서 달라 보일 것** — 소유자 운영에서 파일도 dt_inventory.dt_lot 을 쓰면, dt_log 에 랏이 있는 작업은 이제 집계 값이 파일 값을 가립니다(파일 층 이름이 파일명이라 99, 체인 4). 파일을 위로 두려면 그 표 table_config 의 source_priority — 순위표는 소유자 말대로 안 건드렸습니다.
+
+**PG 8 실패 이름 (ㄴ 판 · ㄴ 앞 코드 판 같은 집합)**
+```
+test_a_recipe_walk_brings_the_measurements_other_wafers_made.py::test_a_recipe_walk_brings_the_measurements_other_wafers_made
+test_a_recipe_walk_brings_the_measurements_other_wafers_made.py::test_the_recipe_step_is_cut_by_its_window_and_capped_by_its_limit
+test_a_registration_may_carry_its_attributes_into_the_table.py::test_an_install_that_predates_attributes_is_widened_once      (단독 통과)
+test_a_withdrawal_goes_out_as_collapsed_events.py::test_a_fold_carries_each_group_s_envelope_and_not_its_own_run               (단독 통과)
+test_a_withdrawal_goes_out_as_collapsed_events.py::test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves         (단독 통과)
+test_ledger_l1_pg.py::test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+test_ledger_l1_pg.py::test_two_independent_refusals_are_counted_and_named_in_one_run
+test_ledger_worlds_are_independent_and_meet_in_a_walk.py::test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up
+```
+단독 통과 셋의 묶음 판 사유: 2026_09 파티션에 앞 시험이 남긴 행(CheckViolation ck_ledger_objectless_has_no_payload) · 쪽 수 1 차이 둘. l1 둘은 «source … is not declared in shipped_ledger_…» (LedgerSetupError).
+
+다음: ㄷ(원장 프로세스 + 796 ①②④ + 번역 N 프로세스) 안 셋.
