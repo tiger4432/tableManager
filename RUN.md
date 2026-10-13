@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **급한 손 — 400만 행 표 검색 40 초: 검색 칸에 글자 찾기 인덱스 (소유자 「400만행 표는 이제 검색 40초 걸린다」)** — 재기동 없음 · 되돌릴 수 있음
+>
+> ```
+> 왜       그리드 검색은 검색 칸마다 «CAST(칸 AS VARCHAR) ILIKE '%글%'» 을 OR 로 묶는다 — 인덱스가 없으면 표 끝까지 읽고, 결과 0 건이면 반드시 끝까지
+> 박스 실측  40만 행 · 0 건 검색: 인덱스 없음 748 ms(Seq Scan) -> 칸마다 아래 인덱스 0.12 ms(BitmapOr · Bitmap Index Scan) — 제품이 보내는 그 문장 그대로
+> 검색 칸   table_config.json 의 그 표: "search_columns" 가 있으면 그 칸들 / 없으면 "composite_key_source" 칸들 / 없으면 "business_key" / 없으면 row_id · business_key_val
+>          🔴 «전부»에 하나씩 — 하나라도 빠지면 다시 표 끝까지
+> 만들기    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+>          보통 칸:  CREATE INDEX CONCURRENTLY IF NOT EXISTS tmp_search_<표>_<칸> ON <표> USING gin ((CAST(<칸> AS VARCHAR)) gin_trgm_ops);
+>          row_id · business_key_val 는 CAST 없이:  CREATE INDEX CONCURRENTLY IF NOT EXISTS tmp_search_<표>_row_id ON <표> USING gin (row_id gin_trgm_ops);
+>          (CONCURRENTLY 라 표를 안 잠근다 · 트랜잭션 밖에서 한 줄씩 · 400만 행이면 칸마다 몇 분)
+> 답의 뜻   만든 뒤 같은 검색이 1 초 안 -> 됨 / 그대로 -> 검색 칸 하나가 빠졌다(위 순서로 다시 셈) · 글자 2 개 이하 검색은 이 인덱스로도 느릴 수 있다
+> 값       표 쓰기가 조금 느려진다(칸마다 인덱스 하나 더) · 디스크
+> 되돌리기  DROP INDEX CONCURRENTLY tmp_search_<표>_<칸>;
+>          구현자 A 의 «표 선언 indexes 의 검색 갈래»(d16033b63)가 착지하면 선언으로 옮기고 이 tmp_ 인덱스는 지운다
+> ⚠️ 안 잰 것  인덱스 관리(GET /admin/indexes)가 이 손 인덱스를 어떻게 보이는지
+> ```
+
 > ## [10-13] **원장 다시 번역이 × 로 안 멈출 때 (소유자 「원장 재번역 꺼지지도 않네 x 눌러도」)** — 순서대로, 앞에서 멈추면 거기까지
 >
 > ```
