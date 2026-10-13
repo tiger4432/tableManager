@@ -900,7 +900,7 @@ def test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_g
     assert (_saying(world, schema.LEDGER_TABLE, "RCP-9"), _saying(world, c.ledger, "RCP-9"),
             _saying(world, a.ledger, "RCP-9")) == ({CHANGED}, {CHANGED}, set())
     assert followup.outbox_depth(world["engine"]) == 0                    # the event is done
-    row = loops._lap_cells({"laps": heartbeat._laps.get("chain")}, "ledger_followup")
+    row = loops._lap_cells({"laps": heartbeat._laps.get(ledger_worker.LEDGER_BEAT)}, "ledger_followup")
     assert row["state"] == "flowing" and [w["world"] for w in row["switched_off"]] == [A]
     assert row["switched_off"][0]["said"] == last["by"][len(ledger_worker.FOLLOWUP_SWITCHED_OFF_BY):]
 
@@ -950,7 +950,7 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
         return [r.getMessage() for r in caplog.records if "[LedgerFollowUp]" in r.getMessage()]
 
     def row():
-        return loops._lap_cells({"laps": heartbeat._laps.get("chain")}, "ledger_followup")
+        return loops._lap_cells({"laps": heartbeat._laps.get(ledger_worker.LEDGER_BEAT)}, "ledger_followup")
 
     def stopped(now):
         with pytest.raises(ledger_worker.FollowUpStopped) as stop:

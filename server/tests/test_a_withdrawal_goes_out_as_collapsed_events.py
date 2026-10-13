@@ -206,7 +206,9 @@ def _ends_where(pg_engine, monkeypatch, tmp_path, fold):
         ids = [r[0] for r in db.execute(text('SELECT row_id FROM "%s" WHERE log_id LIKE \'B%%\'' % hw.LOG))]
         crud.delete_rows_batch(db, hw.LOG, ids, "hc")
         db.commit()
-        hw.run_chain(world)
+        with monkeypatch.context() as by_hand:       # the withdrawal below, row by row - not the round's own
+            by_hand.setattr(worker, "_retract_deleted_rows", lambda db, events: None)
+            hw.run_chain(world)
         while followup.drain_outbox_once(world["engine"], world["setup"]) is not None:
             pass
         with monkeypatch.context() as before_the_fix:
