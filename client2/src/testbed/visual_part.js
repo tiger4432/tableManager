@@ -25,6 +25,7 @@ import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
 import { SHOW_SLOT, showItems } from './show_items.js';
+import { PANEL_SLOT, panelsOf, inPanel, withPanel, extentsOf } from './trellis.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
 import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
 import { fitUnder } from '../dropdown.js';
@@ -85,7 +86,7 @@ export class VisualPart extends Panel {
     // Color by, Label by and the Tooltip slots (tooltip.js) - the root's, every kind's; Top/Bottom by (show_items.js) too,
     // read the way the kind's own slots are (a hub its rows folded)
     return [...own.map(folded), ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, LABEL_SLOT, ...tipSlots(this.decl.encode),
-      folded(SHOW_SLOT)];
+      folded(SHOW_SLOT), PANEL_SLOT];
   }
 
   /** The slots it reads, by key: a slot the kind hands with its own (a sheet's cell) or the declaration's. */
@@ -390,7 +391,19 @@ export class VisualPart extends Panel {
     const showing = showItems(units, this.decl);
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
-    this.model = this.kind.model(showing.kept, { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start });
+    const modelCtx = { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start };
+    this.model = this.kind.model(showing.kept, modelCtx);
+    // Trellis (trellis.js): a panel a Panel by value - its rows' marks, the shown ones only, every panel on one extent
+    const split = panelsOf(rows, this.decl);
+    if (split) {
+      const keep = new Set(showing.kept.map((u) => u.id));
+      const keys = this.slotList().map((s) => s.key);
+      const marks = split.map((panel) => inPanel((this.kind.units ? unitsOf(panel.rows, this.decl, keys, this.kind.units.record, askMarked) : panel.rows)
+        .filter((u) => keep.has(u.id)), panel, this.rowType()));
+      const extent = extentsOf(marks.flat());
+      for (const u of marks.flat()) this.unitsById.set(u.id, u);
+      this.panels = split.map((panel, i) => ({ name: panel.name, where: panel.where, model: this.kind.model(marks[i], { ...modelCtx, extent }) }));
+    } else this.panels = null;
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -541,7 +554,7 @@ export class VisualPart extends Panel {
       words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
       openPalette: (category, anchor) => this.openPalette(category, anchor) }));
     body.append(trays.top, trays.left, area, trays.bottom, legend);
-    this.drawn = this.kind.render(area, this.model, {
+    const drawCtx = {
       doc, palette: this.palette(), charts: this.charts,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       plus: (key) => this.plus(key),
@@ -555,7 +568,24 @@ export class VisualPart extends Panel {
       declare: (patch) => this.setDeclaration({ ...this.decl, ...patch }),
       remember: (event) => this.remember(event),
       lastEvent: () => this.lastEvent(),
+    };
+    if (!this.panels) { this.drawn = this.kind.render(area, this.model, drawCtx); return; }
+    // the panels (trellis.js): each drawn by the kind as one picture; a press in one marks its rows there
+    area.classList.add('sf-trellis');
+    if (area.style) area.style.gridTemplateColumns = `repeat(${Math.ceil(Math.sqrt(this.panels.length))}, minmax(0, 1fr))`;
+    const drawn = this.panels.map((panel) => {
+      const box = el('div', 'sf-trellis__panel');
+      const head = el('div', 'sf-trellis__h', panel.name);
+      head.title = panel.name;
+      head.setAttribute('data-clip-ok', '');
+      const at = el('div', 'sf-trellis__area');
+      box.append(head, at);
+      area.append(box);
+      return this.kind.render(at, panel.model, { ...drawCtx,
+        markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),
+        markHubs: (list, event) => this.markHubs(list.map(([where, ids]) => [withPanel(where, panel), ids]), event) });
     });
+    this.drawn = { resize: () => drawn.forEach((d) => d && d.resize()), dispose: () => drawn.forEach((d) => d && d.dispose()) };
   }
 
   /** A slot's «+» - pressed, its picker. */

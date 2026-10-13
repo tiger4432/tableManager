@@ -56,6 +56,12 @@
 .sf-frame__left .sf-frame__pills { flex-direction: column; }
 .sf-frame__pills:empty { display: none; }
 .sf-frame__area { grid-row: 2; grid-column: 2; display: grid; min-height: 0; min-width: 0; }
+/* trellis (base set 12): panels in a grid, each its value's band over its own picture */
+.sf-trellis { grid-auto-rows: minmax(0, 1fr); gap: var(--space-1); }
+.sf-trellis__panel { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; border: 1px solid var(--sf-line); }
+.sf-trellis__h { padding: 0 var(--space-2); background: var(--sf-status); color: var(--sf-status-text); line-height: var(--sf-lh); text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-trellis__area { display: grid; min-height: 0; min-width: 0; }
 .sf-frame > .sf-legend { grid-row: 1 / span 3; grid-column: 3; }
 .sf-say { padding: 10px 4px; color: var(--sf-text-2); }
 

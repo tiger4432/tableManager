@@ -45,6 +45,8 @@ export function scatterModel(units, ctx) {
   }
   return { points, notDrawn, several, note: [notDrawn ? `${notDrawn} not drawn` : '', several ? `${several} rows with several values` : ''].filter(Boolean).join(' · '),
     xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
+    // a trellis panel's axes: the extents over every panel (the root's)
+    range: ctx.extent ? { x: ctx.extent('x'), y: ctx.extent('y') } : null,
     size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
 }
 
@@ -54,14 +56,15 @@ export const tickWords = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? 
 /** The ECharts option for a model - pure, so the picture is scored without a canvas. */
 export function scatterOption(model, palette) {
   const t = palette;
-  const axis = (kind, values) => ({
+  const axis = (kind, values, range = null) => ({
     type: kind, scale: kind === 'value', data: kind === 'category' ? [...new Set(values.map(String))].sort() : undefined,
+    ...(kind === 'value' && range ? { min: range[0], max: range[1] } : {}),
     axisLine: { show: true, lineStyle: { color: t.axis, width: 1 } }, axisTick: { show: false }, splitLine: { show: false },
     axisLabel: { color: t.text, fontFamily: 'Roboto', fontSize: 12, formatter: kind === 'value' ? tickWords : undefined },
   });
   // Marked points last, so they stand over the dimmed ones as Spotfire draws them.
   const ordered = [...model.points].sort((a, b) => Number(a.marked) - Number(b.marked));
-  const xAxis = axis(model.xKind, model.points.map((p) => p.x));
+  const xAxis = axis(model.xKind, model.points.map((p) => p.x), model.range && model.range.x);
   // a label on the point's inner side - right of a point in the left half, left of one in the right half - so it stays
   // in the plot, not under the legend beside it (lead 10-14)
   const along = (v) => (model.xKind === 'category' ? xAxis.data.indexOf(String(v)) : model.xKind === 'time' ? Date.parse(v) : numberOf(v));
@@ -72,7 +75,7 @@ export function scatterOption(model, palette) {
     animation: false,
     grid: { left: 60, right: 8, top: 16, bottom: 28, containLabel: false },
     xAxis,
-    yAxis: axis(model.yKind, model.points.map((p) => p.y)),
+    yAxis: axis(model.yKind, model.points.map((p) => p.y), model.range && model.range.y),
     brush: { toolbox: [], xAxisIndex: 0, brushType: 'rect', brushMode: 'single', transformable: false,
       brushStyle: { borderWidth: 1, color: t.brush, borderColor: t.active }, inBrush: {}, outOfBrush: {} },
     series: [{
