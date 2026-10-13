@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from ledger.backfill import _v2_frame                                   # noqa: E402
 from ledger.implementations import role_mapper_registry, trusted_implementations  # noqa: E402
-from ledger.roleframe import (BaseLedgerMapper, RoleEmission, compile_role_frame,  # noqa: E402
-                              map_event_frame, mapper_context)
+from ledger.roleframe import (BaseLedgerMapper, ProfileSentences, RoleEmission,  # noqa: E402
+                              SentenceShape, compile_role_frame, map_event_frame, mapper_context)
 from ledger.runtime_v2 import last_cursor, preview_cursor_batch         # noqa: E402
 from ledger.setup_bundle import load_physical_catalog, require_ready_bundle, validate_bundle  # noqa: E402
 from ledger.setup_registry import compile_setup_snapshot                # noqa: E402
@@ -50,6 +50,18 @@ def test_a_code_mappers_keys_are_written_in_the_one_spelling():
 
     row = ledger.iloc[0]
     assert (row["subject_keys"], row["object_payload"]["keys"]) == ({"input_id": "1"}, {"output_id": "01"})
+
+
+def test_a_first_sight_of_1_0_and_1_is_one_sight(monkeypatch):
+    """A mapper's first sight is judged on the key as the atom writes it (총괄 10-14 ①)."""
+    monkeypatch.setattr(ProfileSentences, "_resolve", lambda self, shape: None)
+    monkeypatch.setattr(ProfileSentences, "say", lambda self, shape, subject, refs: subject)
+    class Sights:
+        SEEN = SentenceShape()
+
+    sentences = ProfileSentences(None, None, occurred_at=None)
+
+    assert [sentences.first_sight(Sights.SEEN, key, ()) for key in (1.0, "1", "01")] == [1.0, None, "01"]
 
 
 def _sample_snapshot(change):

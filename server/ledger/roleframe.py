@@ -613,7 +613,9 @@ class ProfileSentences:
         self._resolve(shape)
         token = (
             shape.sentence,
-            json.dumps(_plain(subject), ensure_ascii=False, sort_keys=True),
+            # the key as the atom writes it, so 1.0 and «1» are one sight (총괄 10-14 ①)
+            json.dumps(_plain(_key_spelling({"key": subject})["key"]), ensure_ascii=False,
+                       sort_keys=True),
         )
         if token in self._announced:
             return None
@@ -1786,9 +1788,10 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
             object_payload = {} if qualifiers else None
         elif emission.object_kind == "entity_ref":
             object_kind = "entity_ref"
+            object_keys = _key_spelling(obj_value["keys"])
             object_payload = {
                 "type": bare_name(obj_value["type"]),
-                "keys": _plain(_key_spelling(obj_value["keys"])),
+                "keys": _plain(object_keys),
             }
         elif emission.object_kind == "value":
             object_kind = "value"
@@ -1814,11 +1817,12 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
                 f"role_frame.rows[{position}].source_event_id",
                 "source_event_id does not match source provenance and occurred_at Role",
             )
+        subject_keys = _key_spelling(subject["keys"])
         rows.append({
             "source_event_id": expected_id,
             "source_event_state": event_state,
             "subject_type": bare_name(subject["type"]),
-            "subject_keys": _plain(_key_spelling(subject["keys"])),
+            "subject_keys": _plain(subject_keys),
             "predicate": plan.predicate_runtime_id,
             "object_kind": object_kind,
             "object_payload": object_payload,
@@ -1831,10 +1835,10 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
             "molecule_ref": molecule_ref,
             "derivation": row["sentence"],
         })
-        named.append((subject["type"], _key_spelling(subject["keys"]), rows[-1], row["source_row_refs"],
+        named.append((subject["type"], subject_keys, rows[-1], row["source_row_refs"],
                       _registered(context, row, emission.subject.role_id)))
         if emission.object_kind == "entity_ref":
-            named.append((obj_value["type"], _key_spelling(obj_value["keys"]), rows[-1], row["source_row_refs"],
+            named.append((obj_value["type"], object_keys, rows[-1], row["source_row_refs"],
                           _registered(context, row, emission.object_role.role_id)))
     rows.extend(_reference_rows(context, named, rows, source_raw_ref, translator_prefix))
     return validate_ledger_rows(LedgerRows(
