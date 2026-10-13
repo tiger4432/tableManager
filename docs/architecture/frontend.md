@@ -318,7 +318,7 @@ Count failed (<reason>)    세기가 실패했고 지난 수도 없음 (failed) 
 | `main.js` | 686 | 구성 루트 — 부품을 격자에 앉히고 deps 를 주입 |
 | `api.js` | 1,073 | `walk({start, collect})` 와 `COLLECTS` 선언표. 요청 중복 제거 포함. 🔴 **[2026-08-29] `COLLECTS` 는 «남은 부채»다** — 이름 없이 부르면 walk 본체이고(`collect` 를 «안 대는» 것이 옳은 길), 표에 남은 행은 «아직 라우트 이름을 대는 좌석»이다. 일곱 중 다섯(`trend_y`·`wafer_process`·`map`·`basis`·`peer`)이 **은퇴한 라우트를 부르는 fetch 함수**로 간다. **표가 0 행이 되는 것이 이 부채의 완료 조건**이고, api.js 자신이 그렇게 적고 있다 |
 | `panel.js` | 158 | 부품의 바닥 클래스 — `startFor()` 로 읽을 마킹을 푼다 |
-| `grid_shell.js` | 128 | 격자 |
+| `grid_shell.js` · `split_tree.js` | 463 · 131 | 배치 — 둘레에 붙은 판 + 나눔 나무(스팟파이어 페이지). R&D 보드는 잠금, 시험대는 끌기 · × · 더하기 |
 | `marking_store.js` · `marking_intersection.js` | 124 · 87 | 이름 붙은 마킹 여럿과 그 교집합 |
 | `table_part.js` | 158 | **표 «한 벌»** — 컬럼 선언 `{key,label,align,width,kind}` 으로 구동 |
 | `map_panel.js` | 1,053 | 맵 |
