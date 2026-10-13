@@ -6,10 +6,10 @@ import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
 import { state, gridFetch } from './state.js';
 import { elements } from './dom.js';
-import { switchTable, fetchData, overlayStagedEdits, copyRows, refusalText } from './api.js';
+import { switchTable, fetchData, overlayStagedEdits, copyRows, refusalText, askMatchCount } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI, sortQueryTail } from './grid.js';
-import { setMatchCount } from './match_count.js';
+import { countOf, setMatchCount } from './match_count.js';
 import { saysTruncated } from './truncation.js';
 import { countNav, ROUTES } from './effort_meter.js';
 
@@ -1337,8 +1337,8 @@ export function navigatorStep2(log) {
         state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
         updateGridSortState();
         updateLoadedCount(cached.data.length);
-        setMatchCount(elements.totalRowsCount, cached.total);
-        updatePaginationUI(cached.total);
+        setMatchCount(elements.totalRowsCount, cached.count);
+        updatePaginationUI(cached.count, cached.data.length);
 
         setTimeout(() => {
           const node = state.gridApi.getRowNode(log.row_id);
@@ -1403,13 +1403,16 @@ export async function navigatorStep3(log) {
 
     // Update Counts (Zero-lag counter concept)
     updateLoadedCount(result.data.length);
-    setMatchCount(elements.totalRowsCount, result.total);
+    const count = countOf(result);
+    setMatchCount(elements.totalRowsCount, count);
 
     // Update Pagination UI
-    updatePaginationUI(result.total);
+    updatePaginationUI(count, result.data.length);
+    // A table the server has not counted yet (ㄱ-1): asked the way the grid's own read asks, again while it counts.
+    if (count.total === null) askMatchCount();
 
     // Save to Cache
-    state.pageCache.set(state.currentSkip, { data: copyRows(result.data), total: result.total });
+    state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count });
 
     // Check if target node loaded successfully
     setTimeout(() => {

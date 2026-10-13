@@ -1392,7 +1392,7 @@ const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 76],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7)
+  ['grid_view_readonly_harness.mjs', 84],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],
@@ -1523,7 +1523,8 @@ const FLOORS = new Map([
   // 289 -> 297 (the auxiliary judgment (main 3c4e5a778) with Walk ▸: askAlong and spec keep reachArg, Walk ▸ and Continue go by askFrom, so they carry reaching too; walk_table counted).
   // 297 -> 303 (RT1-RT3 the Route panel the ways walked, RTm1-RTm3; owner 10-12).
   // 303 -> 313 (main 27e976128 (the Route panel) with More ▸: main.js imports both mergeWalks and walkedRoutes, the harness keeps both blocks and lists; MR4 a node ranked on two pages keeps the later row (the server's continuation, 581c60c00), MRm6).
-  ['walk_table_harness.mjs', 313],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
+  // 313 -> 317: MR7 MR8 More off while its walk runs, MRm7 MRm8 (lead 9752e91f7).
+  ['walk_table_harness.mjs', 317],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
@@ -1597,7 +1598,7 @@ const FLOORS = new Map([
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
   // how many matched, and the difference between 0 and unmeasured
-  ['match_count_harness.mjs', 20],
+  ['match_count_harness.mjs', 34],   // 20 -> 34: D1-D14 the count as of a time, 10,000+, the paging end, a live row (ㄱ-1, lead 10-13)
   // the banner that offers a re-run, and what it refuses to offer one for
   // 53 -> 57 (lead ece405110): the click replay sends cascade, the hand-off to the tab does not.
   // 57 -> 58 (lead QA 0056ebc9d): the panel placeUnder moved to the body is one panel however often it is drawn (L1, M20).
@@ -1801,7 +1802,7 @@ const FLOORS = new Map([
   // 48 -> 49 (lead 909ea2052 ①): the Ledger row draws the server's state names.
   // 49 -> 51 (lead 13aa739f3): an idle on-demand process leaves 「N of M」 - one check, one mutant.
   // 51 -> 61 (lead 558a46ef1): the Ledger row says a stopped follow-up and the worlds it switched off (L4-L7, S6b-S6g).
-  ['overview_board_harness.mjs', 61],
+  ['overview_board_harness.mjs', 64],   // 61 -> 64: N4 N5 the missing count past the cap, S5b (ㄱ-1, lead 10-13)
   // New 2026-10-09 (lead d71f931c7). The index table: the server's declared indexes beside the database, each state
   // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
   ['index_table_panel_harness.mjs', 15],

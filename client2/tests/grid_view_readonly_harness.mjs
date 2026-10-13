@@ -560,6 +560,124 @@ async function suite(M) {
     readRefusal = null;
     M.timeline.releaseNavigationGuard('');
   }
+
+  // ── K: the grid's count (ㄱ-1: implementer A 67e5e9ccd, lead 10-13) - asked again while the server counts, Load All,
+  //    the export's refusal, the row jump, a live row. The clock and the timers are the harness's.
+  {
+    const savedK = { fetch: globalThis.fetch, setTimeout: globalThis.setTimeout, now: Date.now };
+    const AT = '2026-10-13T07:00:00+00:00';
+    let now = 5000000;
+    let later = [];
+    let countAnswers = [];
+    let asked = [];
+    const answer = (body, status = 200) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) });
+    Date.now = () => now;
+    globalThis.setTimeout = (fn, ms) => { later.push({ fn, ms }); return later.length; };
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      asked.push(u);
+      if (u.endsWith('/schema')) return answer(staged);
+      if (u.includes('/data/count')) return answer(countAnswers.length > 1 ? countAnswers.shift() : countAnswers[0]);
+      if (u.includes('target_row_id=')) return answer({ data: [rowData()], total: null, count: { total: null, capped: false, counted_at: null, count_seconds: null, counting: true }, target_offset: 0, calculated_skip: 0 });
+      return answer({ data: [rowData()], total: null });
+    };
+    const counts = () => asked.filter((u) => u.includes('/data/count')).length;
+    const runLater = async () => { const due = later; later = []; for (const x of due) x.fn(); await new Promise((r) => savedK.setTimeout(r, 0)); };
+    const line = () => document.getElementById('total-rows').textContent;
+    try {
+      await stageThrough(M.api, 'table');
+      const COUNTING = { table_name: 't', total: null, capped: false, counted_at: null, count_seconds: null, counting: true };
+      const COUNTED = { table_name: 't', total: 4012334, capped: false, counted_at: AT, count_seconds: 1.6, counting: false };
+      countAnswers = [COUNTING, COUNTING, COUNTED];
+      asked = [];
+      await M.api.fetchData(true);
+      await new Promise((r) => savedK.setTimeout(r, 0));
+      const first = [counts(), later.map((x) => x.ms), line()];
+      now += 3000; await runLater();
+      now += 3000; await runLater();
+      ok(first[0] === 1 && JSON.stringify(first[1]) === '[3000]' && first[2] === 'Counting rows…' && counts() === 3
+        && line().startsWith('4,012,334 rows · ') && later.length === 0,
+        `K1 the server still counting: asked again every 3 s, and the count drawn when it comes; then asked no more [${JSON.stringify(first)} ${counts()} ${line()} ${later.length}]`);
+      // The question changes under it: the next ask is not sent.
+      countAnswers = [COUNTING];
+      asked = [];
+      await M.api.fetchData(true);
+      await new Promise((r) => savedK.setTimeout(r, 0));
+      realState.currentTable = 'another';
+      now += 3000; await runLater();
+      ok(counts() === 1 && later.length === 0, `K2 ... the table changed meanwhile: not asked again [${counts()} ${later.length}]`);
+      realState.currentTable = 't';
+      // Two minutes at most: past them the line stays and nothing more is asked.
+      asked = [];
+      later = [];
+      await M.api.fetchData(true);
+      await new Promise((r) => savedK.setTimeout(r, 0));
+      for (let i = 0; i < 60 && later.length; i += 1) { now += 3000; await runLater(); }
+      ok(counts() === 41 && later.length === 0 && line() === 'Counting rows…',
+        `K3 ... and asked for two minutes at most - 0 s to 120 s, 3 s apart, 41 asks, then the line stays [${counts()} ${later.length} ${line()}]`);
+      // Load All: the end is a short chunk; only the first chunk is counted.
+      const chunks = [[1, 2], [3, 4], [5]];
+      const loads = [];
+      globalThis.fetch = async (url) => {
+        loads.push(String(url));
+        const c = chunks[loads.length - 1] || [];
+        return answer({ data: c, total: loads.length === 1 ? 10000 : null,
+          ...(loads.length === 1 ? { count: { total: 10000, capped: true, counted_at: AT, count_seconds: 0.05, counting: false } } : {}) });
+      };
+      globalThis.setTimeout = savedK.setTimeout;
+      const progress = [];
+      const all = await M.api.fetchAllRows('/tables/t/data', 'order_by=row_id&order_desc=false', 2, (n, known) => progress.push([n, known]));
+      ok(all.rows.length === 5 && loads.length === 3 && !loads[0].includes('defer_total') && loads.slice(1).every((u) => u.includes('defer_total=true'))
+        && JSON.stringify(progress) === '[[2,null],[4,null],[5,null]]' && all.count.capped === true,
+        `K4 Load All past 10,000+: every chunk until a short one; the first counted, the rest ask no count; no percent [${all.rows.length} ${JSON.stringify(loads.map((u) => u.includes('defer_total')))} ${JSON.stringify(progress)}]`);
+      loads.length = 0;
+      chunks.splice(0, 3, [1, 2], [3]);
+      globalThis.fetch = async (url) => { loads.push(String(url)); const c = chunks[loads.length - 1] || []; return answer({ data: c, total: loads.length === 1 ? 3 : null }); };
+      const exact = [];
+      await M.api.fetchAllRows('/tables/t/data', 'q', 2, (n, known) => exact.push([n, known]));
+      ok(JSON.stringify(exact) === '[[2,3],[3,3]]', `K5 ... an exact count gives the percent its total [${JSON.stringify(exact)}]`);
+      // The export's refusal: the server's sentence through the one refusal seat.
+      const OVER = 'More than 1,000,000 rows match - over the export cap. No CSV is cut short: narrow the search or the filter.';
+      globalThis.fetch = async () => answer({ detail: OVER }, 413);
+      const refused = await M.api.openExport('/tables/t/export?x=1');
+      globalThis.fetch = async () => answer({});
+      const opened = await M.api.openExport('/tables/t/export?x=1');
+      ok(refused.refused === OVER && !refused.res && Boolean(opened.res) && !opened.refused,
+        `K6 the export past its cap says the server's sentence; an export that opens hands its response on [${JSON.stringify(refused)}]`);
+      // The row jump on a table the server has not counted: asked the grid's way.
+      globalThis.setTimeout = (fn, ms) => { later.push({ fn, ms }); return later.length; };
+      later = [];
+      asked = [];
+      countAnswers = [COUNTED];
+      globalThis.fetch = async (url) => {
+        const u = String(url);
+        asked.push(u);
+        if (u.includes('/data/count')) return answer(COUNTED);
+        if (u.includes('target_row_id=')) return answer({ data: [rowData()], total: null, count: COUNTING, target_offset: 0, calculated_skip: 0 });
+        return answer({ data: [rowData()], total: null });
+      };
+      realState.pageCache = new Map();
+      await M.timeline.navigatorStep3({ row_id: 'R0' });
+      await new Promise((r) => savedK.setTimeout(r, 0));
+      ok(counts() === 1 && line().startsWith('4,012,334 rows'), `K7 a row jump onto an uncounted table asks the count the grid's way [${counts()} ${line()}]`);
+      // A live row: an exact cached count moves, a 10,000+ one does not.
+      realState.pageCache = new Map([[0, { data: [], count: { total: 7, capped: false, countedAt: AT } }], [50, { data: [], count: { total: 10000, capped: true } }]]);
+      M.ui.updatePageCacheOnUpsert([{ row_id: 'NEW', data: {} }]);
+      M.ui.updatePageCacheOnDelete(['GONE']);
+      const moved = [...realState.pageCache.values()].map((e) => e.count.total);
+      M.ui.updatePageCacheOnUpsert([{ row_id: 'NEW2', data: {} }]);
+      const moved2 = [...realState.pageCache.values()].map((e) => e.count.total);
+      ok(JSON.stringify(moved) === '[7,10000]' && JSON.stringify(moved2) === '[8,10000]',
+        `K8 a live row moves an exact cached count, not a 10,000+ one [${JSON.stringify([moved, moved2])}]`);
+    } finally {
+      globalThis.fetch = savedK.fetch;
+      globalThis.setTimeout = savedK.setTimeout;
+      Date.now = savedK.now;
+      realState.currentTable = 't';
+      realState.pageCache = new Map();
+      M.timeline.releaseNavigationGuard('');
+    }
+  }
   realState.gridApi.setGridOption = () => {};
 
   // ── W: the row delete waits VISIBLY (a0ae05b60, owner 「ㄱ, 한 1만행」) ─────────────────
@@ -837,6 +955,27 @@ const DEFECTS = [
     s => s.replace('  const line = `${refused} — reload the table to see which rows remain`;', '  const line = refused;')],
   ['api.js: the in-flight mark is never cleared, so delete locks after one run', 'api',
     s => s.replace('    state.isDeletingRows = false;\n', '')],
+  // ── K (ㄱ-1, lead 10-13): the grid's count ──────────────────────────────────────────────
+  ['api.js: a count the server is still making is never asked again', 'api',
+    s => s.replace('      if (body.counting === true && Date.now() - since < RECOUNT_ASK_FOR_MS) {', '      if (false) {')],
+  ['api.js: asked again for another question too', 'api',
+    s => s.replace('if (mine === countGeneration && table === state.currentTable && world === state.gridWorld) fillMatchCount(params, table, since);', 'fillMatchCount(params, table, since);')],
+  ['api.js: asked again for ever', 'api',
+    s => s.replace('      if (body.counting === true && Date.now() - since < RECOUNT_ASK_FOR_MS) {', '      if (body.counting === true) {')],
+  ['api.js: each ask starts the two minutes again', 'api',
+    s => s.replace('fillMatchCount(params, table, since);\n        }, RECOUNT_ASK_MS);', 'fillMatchCount(params, table);\n        }, RECOUNT_ASK_MS);')],
+  ['api.js: Load All ends at the count again', 'api',
+    s => s.replace('  while (last === chunkLimit) {', '  while (rows.length < (exact || 0)) {')],
+  ['api.js: Load All counts every chunk', 'api',
+    s => s.replace('const chunk = (await read(rows.length, true)).data || [];', 'const chunk = (await read(rows.length, false)).data || [];')],
+  ['api.js: Load All says a percent against 10,000+', 'api',
+    s => s.replace('const exact = count.total !== null && !count.capped ? count.total : null;', 'const exact = count.total;')],
+  ['api.js: the export refusal is today\'s generic line', 'api',
+    s => s.replace('{ refused: await refusalText(res, EXPORT_FAILED) }', '{ refused: EXPORT_FAILED }')],
+  ['timeline.js: a row jump onto an uncounted table never asks', 'timeline',
+    s => s.replace('    if (count.total === null) askMatchCount();\n', '')],
+  ['ui.js: a live row does not move the cached count', 'ui',
+    s => s.replace('        cached.count = shiftCount(cached.count, 1);\n', '')],
   // ── L (43a738d58): a ledger receipt line ────────────────────────────────────────────────
   ['timeline.js: a receipt jumps to its row again', 'timeline',
     s => s.replace('  if (log && log.column_name === LEDGER_BATCH_COLUMN) return openLedgerReceipt(log);\n', '')],
