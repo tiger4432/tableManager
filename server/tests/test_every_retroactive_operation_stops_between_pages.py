@@ -38,7 +38,7 @@ class _Connection:
 _ENGINE = SimpleNamespace(raw_connection=_Connection)
 
 
-def _fetch(connection, plan, columns, *, after=None, group_value=None, limit=None, scope=None):
+def _fetch(connection, plan, columns, *, after=None, group_value=None, limit=None, scope=None, planned=None):
     rows = [{"k": k, "row_id": r} for k, r in ROWS]
     if group_value is not None:
         rows = [row for row in rows if row["k"] == group_value]

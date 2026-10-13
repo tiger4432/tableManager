@@ -1,5 +1,32 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **원장 다시 번역이 지금 무엇을 하고 무엇을 기다리나 — retroactive.log 한 곳에 단계 줄 · 5 초 박동 · 느린 문장 (총괄 d9be013cb, 소유자 「재번역 디버그 로그 다띄워 실시간으로 뭐가돌고 뭘 기다리는지」)** — git pull 만 · 재기동 없음(소급 실행은 실행마다 새 프로세스라 다음 실행부터)
+>
+> ```
+> 볼 곳     retroactive.log (다시 번역 · 모든 소급 실행이 쓰는 그 파일) — [ledger_rescope] 로 시작하는 줄
+> 줄 셋     단계  [ledger_rescope] page 3: withdrawal count · 4 rows · 2.84 s · 4 atoms by idx_… (valid) · plan: Bitmap Index Scan on ledger_events_*_… x8
+>          박동  [ledger_rescope] beat: page 3 · write > withdraw atoms 7.3 s · 4 rows · db: pid 1234 waiting Lock:relation on pid 999 (assy_chain, idle in transaction 30 s): …
+>          느림  [ledger_rescope] slow statement: pid 1234 running 2.1 s (Lock:relation): SELECT count(*) FROM ledger_events WHERE …   (끝나면 «ended … after about N s»)
+> 쪽의 단계  read(쪽 읽기) · translate = event frames + dry run + row refs(파이썬 번역) · withdrawal count(거둘 원자 세기) · index lines of the rows ·
+>          write = screen atoms + partitions + withdraw atoms + insert atoms + index lines + commit · forget index lines
+> 답의 뜻   read 가 길고 «no index on it - each page sorts the table» -> 쪽 열쇠 칸에 인덱스가 없어 쪽마다 원천 표를 통째로 정렬한다(쪽이 1 행부터라 첫 쪽들이 특히 느림)
+>             그 표의 table_config "indexes" 에 그 칸을 적는다 -> 체인 워커 기동 줄 [Indexes] 에서 지어짐
+>          withdrawal count · withdraw atoms 가 길고 plan 에 «Seq Scan on ledger_events_* xN» -> 원장 ref 인덱스를 안 탐. 줄에 «missing or not valid … build it: <명령>» 이 같이 나오면 그 명령(맨 위 절)
+>             «(valid)» 인데 Seq Scan 이면 인덱스가 있는데 안 타는 것 -> 그 줄 그대로 총괄에게
+>          event frames · dry run 이 길다 -> 파이썬 번역 몫(박스 행당 3~6 ms). 박동이 «no busy backend - the time is in this process» 를 말한다 — DB 는 한가함
+>          박동이 «waiting Lock:… on pid N (<누구>, …)» -> 그 pid 의 연결이 잡고 있다. 누구 = assy_chain… 이면 체인 · 원장 따라가기, assy_server 면 화면 요청
+>          박동이 «its own query active N s (no lock)» -> DB 가 그 문장을 일하는 중(느림 줄이 그 문장 앞 400 자를 같이 찍는다)
+>          commit 이 길다 -> 디스크(박동의 wait 가 IO:WALSync · IO:DataFileWrite)
+> 끄기      ingestion_settings.json "retroactive_debug": false -> 단계 줄만 꺼짐(쪽 줄 · 박동 · 느림 줄은 남음). 다음 쪽부터
+>          "retroactive_slow_statement_seconds": null -> 느림 줄 꺼짐 (기본 2 초). 박동은 끄는 칸이 없다 — 1 초에 pg_stat_activity 한 번
+> 이 판에서  진짜 프로세스(런처 넷 · hold 판 200 행) · 실행 START 에 원장 잠금 12 초:
+>          beat: page 1 · withdrawal count 5.0 s · 1 rows · db: pid … waiting Lock:relation on pid … (b_e2e_lock_holder,
+>          idle in transaction 5 s): LOCK TABLE ledger_events IN ACCESS EXCLUSIVE MODE  ·  느림 줄은 3.0 s 에, «ended» 는 12.1 s
+>          원자 200 개가 실행 전 · 잠금 판 뒤 · 빈 판 뒤 같음 · public 행 변화 0
+> ⚠️ 안 잰 것  운영 크기에서 쪽마다 EXPLAIN 둘(쪽 읽기 · 거두기 셈, 계획만 — 실행 안 함)이 더하는 초
+> 되돌리기  git revert $(git log -1 --format=%h --grep="re-translate says each stage")
+> ```
+
 > ## [10-13] 🔴 **원장 다시 번역이 쪽마다 원장 «통째»를 두 번 읽는다 — 원장 ref 인덱스가 파티션에 없으면 (구현자 B 실측, 소유자 「재번역 5초에 1개도 안됨」)** — 먼저 이것 · 재기동 없음 · 쓰기를 안 막음
 >
 > ```
