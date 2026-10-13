@@ -2009,6 +2009,31 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
     return done
 
 
+#: ingestion_settings.json - whether the index work builds the static models' declared indexes the
+#: database lacks (the default) or only names them (총괄 e0e8020fb).
+BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
+
+
+def ensure_model_indexes_sync(db_session_factory, sources, say):
+    """The declared indexes of `sources` the database lacks or holds invalid: named, and built one
+    at a time unless `build_missing_indexes` is false (`ensure_model_indexes`). Contained: an
+    index that cannot be compared or built is a line, never a worker that will not start. The chain
+    worker asks its sources and the ledger process the ledger's (총괄 7763dd6d0); `say` is the caller's log."""
+    from parsers.directory_watcher import load_ingestion_settings
+
+    try:
+        db = db_session_factory()
+        try:
+            engine = db.get_bind()
+        finally:
+            db.close()
+        build = load_ingestion_settings().get(BUILD_MISSING_INDEXES_SETTING, True) is not False
+        ensure_model_indexes(engine, build=build, say=say, sources=sources)
+    except Exception as exc:                                            # noqa: BLE001
+        say("[Indexes] the declared indexes of %s were not compared (this process goes on): %s"
+            % ("/".join(sources), exc))
+
+
 def _build_ledger_index(engine, row, say):
     """One world's partitioned ledger index, each partition CONCURRENTLY and attached, one at a time - the builder the
     command `build_ledger_ref_index.py --apply` runs (`ledger.schema.build_partitioned_index`), a line a partition."""

@@ -69,6 +69,12 @@ def child_specs(python_exe, server_dir, server_cmd, api_host, api_port):
         ChildSpec("Chained Ingestion Worker", [python_exe, "run_chain_worker.py"], server_dir,
                   heartbeat="chain",
                   log_file=paths.log_path("chain_worker_stdout.log")),
+        # 🔴 [총괄 7763dd6d0, 소유자 「원장 프로세스 ㄱ」] THE LEDGER'S WORK RUNS IN ITS OWN PROCESS - the
+        # follow-up, the census, the ledger's index line. It follows what the chain processed, so the chain
+        # writes on when this one stops, and this one alone can be restarted.
+        ChildSpec("Ledger Worker", [python_exe, "run_ledger_worker.py"], server_dir,
+                  heartbeat="ledger",
+                  log_file=paths.log_path("ledger_worker_stdout.log")),
         ChildSpec("Auto Update Scheduler", [python_exe, "run_auto_update.py"], server_dir,
                   heartbeat="scheduler",
                   log_file=paths.log_path("auto_update_stdout.log")),

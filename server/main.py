@@ -359,14 +359,14 @@ def _log_chain_worker_exit(task):
     error = task.exception()
     if error is None:
         # It returned. The loop runs forever, so this is still worth one line.
-        logger.warning("Chained Ingestion Worker stopped without an error.")
+        logger.warning("%s stopped without an error.", task.get_name())
         return
     if isinstance(error, _asyncio.CancelledError):
         return
     logger.error(
-        "Chained Ingestion Worker did NOT start - the line above saying it was spawned is "
+        "%s did NOT start - the line above saying it was spawned is "
         "about a task that is already gone. Reason: %s: %s",
-        type(error).__name__, error, exc_info=error)
+        task.get_name(), type(error).__name__, error, exc_info=error)
 
 
 @app.on_event("startup")
@@ -650,7 +650,11 @@ async def startup_event():
                 "run, unset this.", _chain_switch)
         else:
             from chain.ingestion_worker import start_chain_ingestion_worker
-            chain_task = main_loop.create_task(start_chain_ingestion_worker(SessionLocal))
+            from ledger.worker import start_ledger_worker
+            chain_task = main_loop.create_task(start_chain_ingestion_worker(SessionLocal),
+                                               name="Chained Ingestion Worker")
+            # The ledger's work beside it (총괄 7763dd6d0) - under the launcher it is `run_ledger_worker.py`.
+            ledger_task = main_loop.create_task(start_ledger_worker(SessionLocal), name="Ledger Worker")
             # ⚠️ [판정 406 ②] IT RUNS HERE, AND THAT COSTS SOMETHING THE OPERATOR SHOULD
             # KNOW. The loop body is synchronous database work on the event-loop thread, so
             # a slow tick freezes every HTTP request for exactly that long - which is how
@@ -674,7 +678,8 @@ async def startup_event():
         # the day it becomes the normal path: a guard goes wrong the day it is reachable.
         if chain_task is not None:
             chain_task.add_done_callback(_log_chain_worker_exit)
-            logger.info("Chained Ingestion Worker background task spawned.")
+            ledger_task.add_done_callback(_log_chain_worker_exit)
+            logger.info("Chained Ingestion Worker and Ledger Worker background tasks spawned.")
     except Exception as e:
         # 🔴 주어를 «지웠습니다». 이 try 는 워처«와» 체인 워커를 둘 다 감싸는데 문구가
         #    워처를 지목하고 있어, 체인 쪽 실패가 「워처 탓」으로 보고됐습니다 — 오진을
@@ -2324,7 +2329,7 @@ def _attach_ledger_sources(db, table_name, rows):
     #    for each the drift judgment narrowed to this page's rows - `[{source, world, changed}]`, a source a row's index
     #    names; `[]` is 「not yet」 in every world read. A world that cannot be read is left out and NAMED - 「not yet」
     #    and 「not read」 must not draw alike
-    from chain.ingestion_worker import _compiled_setup
+    from ledger.worker import _compiled_setup
     from ledger import backfill, followup, schema
 
     by_row, unread = {}, []

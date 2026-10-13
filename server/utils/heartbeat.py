@@ -567,6 +567,44 @@ def read_roster():
         return {}
 
 
+def another_process_beats(name, now=None):
+    """Is a DIFFERENT, LIVE process already beating `name` (the chain loop, the ledger's)? Returns its
+    identity or None.
+
+    🔴 IT USES THE HEARTBEAT, NOT A NEW MECHANISM. `main.py` starts this loop from the web
+    server's startup event unconditionally, so running `run_chain_worker.py` beside it
+    produces TWO loops on one queue - measured 2026-09-04, two pids alternating in one
+    heartbeat file, the same rows picked up twice, and a restart of the standalone worker
+    leaving the older code live inside uvicorn. The heartbeat already answers "who is
+    beating and how long ago", which is exactly the question, so nothing new is declared.
+
+    🔴 IT IS DELIBERATELY PERMISSIVE. Three conditions must ALL hold before it says yes:
+    the beat is FRESH, the pid is NOT this process, and that pid is ALIVE. If any of them
+    cannot be established - no psutil, unreadable file, a beat older than the stale
+    threshold - the answer is None and the loop starts, which is today's behaviour. The
+    common case this must not break is a RESTART: a killed worker leaves a heartbeat that
+    stays fresh for another minute, and refusing to start then would be a false positive
+    on the most ordinary operation there is. Checking that the pid is alive is what
+    separates "someone is running" from "someone was running".
+    """
+    import os as _os
+    try:
+        entry = read_all(now=now).get(name) or {}
+    except Exception:                                            # noqa: BLE001
+        return None
+    pid = entry.get("pid")
+    if entry.get("stale") or not pid or pid == _os.getpid():
+        return None
+    try:
+        import psutil
+        if not psutil.pid_exists(int(pid)):
+            return None
+    except Exception:                                            # noqa: BLE001
+        # Cannot tell whether it is alive. Start, rather than refuse on a guess.
+        return None
+    return "pid %s, last beat %.1fs ago" % (pid, entry.get("age_seconds") or 0.0)
+
+
 def runner_identity() -> str:
     """Who is running this, as `host/pid`.
 
