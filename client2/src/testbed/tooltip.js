@@ -45,7 +45,14 @@ export function tipLines(mark, ctx) {
   const keys = ctx.slots.map((s) => s.key).filter((k) => ctx.encode[k]);
   const reads = mark.reads || (rows.length === 1 ? rows[0].reads : sharedReads(rows, keys));
   const name = mark.label || (rows.length === 1 ? rows[0].label : `${rows.length} rows`);
-  return [name, ...keys.map((k) => [slotWords(ctx.encode[k]), readWords(reads[k])]).filter(([, w]) => w !== null).map(([s, w]) => `${s}: ${w}`)];
+  // a slot's words once - the same column on Y, Top/Bottom by and Panel by is one line (lead 10-14)
+  const lines = new Map();
+  for (const k of keys) {
+    const words = slotWords(ctx.encode[k]);
+    const said = readWords(reads[k]);
+    if (said !== null && !lines.has(words)) lines.set(words, `${words}: ${said}`);
+  }
+  return [name, ...lines.values()];
 }
 
 /** A mark's label: none, or for the marked marks only, or all - the Label by value, else the mark's name. */

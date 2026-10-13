@@ -969,6 +969,40 @@ async function shapeCases(M) {
   return { pure, drawn, glyphs, kept: sc.declaration().shapes || null, pressed, crossSlots: cross.slotList().some((x) => x.key === 'shape') };
 }
 
+/** The fourth 18766 look (lead 10-14): a picture follows its own div's size (a panel's chart resized when its div grows);
+ *  a tooltip says a slot's words once; a label no longer than its room, the x ticks as many as the width holds. */
+async function fourthLook(M) {
+  const watched = [];
+  const was = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class { constructor(cb) { this.cb = cb; this.on = true; watched.push(this); } observe() {} disconnect() { this.on = false; } };
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 9, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  let resized = 0;
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() { resized += 1; }, dispose() {} }) };
+  const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'die', start: { marking: null }, system: null, filter: [], encode: { x: key('x'), y: key('y'), panel: key('p') } };
+  const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), start: decl.start, declaration: decl,
+    kinds: { scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+    fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+  part.mount();
+  await settle();
+  const live = watched.filter((w) => w.on);
+  for (const w of live) w.cb([]);
+  const resize = [live.length, resized];
+  globalThis.ResizeObserver = was;
+  const y = key('value');
+  const tip = M.tooltip.tipLines({ id: 'M1', ids: ['M1'] }, { rowsById: new Map([['M1', { id: 'M1', label: 'M1', reads: { y: { state: 'one', value: 4 }, show: { state: 'one', value: 4 }, panel: { state: 'one', value: 'S1' } } }]]),
+    slots: [{ key: 'y' }, { key: 'show' }, { key: 'panel' }], encode: { y, show: y, panel: key('step') } });
+  const pal = { bg: '#000000', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: '#000000', one: ['#111111', '#222222'], cat: [] };
+  const pt = (id, x) => ({ id, ids: [id], label: id, tag: `fake-SYN-CW-103-01-${id}`, x, y: 1, fill: '#111111', border: '#222222', marked: false });
+  const model = { points: [pt('a', 0), pt('b', 10)], xKind: 'value', yKind: 'value', size: 6 };
+  const narrow = M.scatter.scatterOption(model, pal, 268);
+  const loose = M.scatter.scatterOption(model, pal);
+  const label = (o) => o.series[0].data.map((d) => [d.id, d.label.position, d.label.width === undefined ? null : d.label.width, d.label.overflow || null]);
+  return { resize, tip, labels: [label(narrow), label(loose)], ticks: [narrow.xAxis.splitNumber, narrow.xAxis.axisLabel.hideOverlap, loose.xAxis.splitNumber === undefined] };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -998,6 +1032,7 @@ async function suite(M) {
   const si = await showCases(M);
   const sw = await shownWords(M);
   const tr = await trellisCases(M);
+  const fl = await fourthLook(M);
   const shp = await shapeCases(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
@@ -1119,7 +1154,7 @@ async function suite(M) {
     judge('C2 seven categories seven colours in the order the rows show them, kept in the declaration; one more seen first - the seven keep theirs',
       cc, { seven: 7, order: '#1#2#3#4#5#6#7', kept: true, z: true }),
     judge('TT1 a point under the pointer: the tooltip of the root - its name, the value of each slot, the Tooltip slot; gone when it leaves; a cross table cell - its rows, the value they share, how many they do not',
-      [tl.pointTip, tl.gone, tl.cellTip], [['D1', 'x: 1', 'y: 2', 'p: A', 'p: A'], 0, ['3', 'x: 3', 'p: 2 values']]),
+      [tl.pointTip, tl.gone, tl.cellTip], [['D1', 'x: 1', 'y: 2', 'p: A'], 0, ['3', 'x: 3', 'p: 2 values']]),
     judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
@@ -1136,6 +1171,11 @@ async function suite(M) {
     judge('TR4 a panel\'s cell is painted as it is pressed - a marking holding the wafer leaves the wafer\'s cells in panels unmarked (two conditions, the rows)', tr.waferCells, [['A', false], ['B', false]]),
     judge('HW1 a press in a panel on a node slot marks a hub, and the status says why - its conditions', tr.why, 'marked a hub of 2 rows - the mark has 2 conditions (wafer, p)'),
     judge('WO1 a kind says the base set slots it takes not - the sheet holds no Top/Bottom by, no Panel by', tr.sheetSlots, []),
+    judge('RS1 a picture follows its own div: each trellis panel watched, its chart resized when its div changes', fl.resize, [2, 2]),
+    judge('TT2 a tooltip says a slot\'s words once - the same column on Y and Top/Bottom by one line', fl.tip, ['M1', 'value: 4', 'step: S1']),
+    judge('LB3 a label no longer than the room on its side, cut with «…»; unknown width - not cut', fl.labels,
+      [[['a', 'right', 194, 'truncate'], ['b', 'left', 194, 'truncate']], [['a', 'right', null, null], ['b', 'left', null, null]]]),
+    judge('LB4 the x ticks as many as the width holds, overlapping ones hidden; unknown width - as ECharts picks', fl.ticks, [2, true, true]),
     judge('TM1 a time the server sends is a time read; the tooltip and the filter say it as the grid does (local, no T · Z), a long value one line with its words in its tooltip',
       [sw.read, sw.tip, sw.filter], [['one', true], ['D1', `when: ${sw.stamp}`], [[[sw.stamp, sw.stamp, true]], [[sw.LONG, sw.LONG, true]]]]),
     judge('LB2 a label on the point\'s inner side - right in the left half, left in the right half (not under the legend)', sw.sides, [['a', 'right'], ['b', 'right'], ['c', 'left']]),
@@ -1278,6 +1318,14 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'PANEL_SLOT].filter((s) => !without.includes(s.key));', 'PANEL_SLOT];') },
   { id: 'M56', what: 'a hub marked for a node condition beside another, nothing said', catches: 'HW1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      if (why) said = { id, n: ids.length, why };', '') },
+  { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '      this.watch(at, one);', '') },
+  { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',
+    mutate: (t) => swap(t, 'if (said !== null && !lines.has(words))', 'if (said !== null)').split('lines.set(words,').join('lines.set(k,') },
+  { id: 'M59', what: 'a label as long as its words - cut by the plot\'s edge', catches: 'LB3 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, 'position: side(p), ...fit(p),', 'position: side(p),') },
+  { id: 'M60', what: 'the x ticks as many in a narrow panel as in a wide one', catches: 'LB4 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, 'splitNumber: Math.max(2, Math.floor(plotW / 110))', 'splitNumber: undefined') },
   { id: 'M49', what: 'the panel condition appended again on every pass', catches: 'TR1 ', file: 'testbed/trellis.js', key: 'trellis',
     mutate: (t) => swap(t, 'return where.some(([w]) => w === words) ? where : [...where, ...panel.where];', 'return [...where, ...panel.where];') },
   { id: 'M50', what: 'the kind handed no shape - every point the one shape', catches: 'SP2 ', file: 'testbed/visual_part.js', key: 'visual',

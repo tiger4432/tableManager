@@ -122,6 +122,7 @@ export class VisualPart extends Panel {
     this.closePalette();
     // Closed while it was the active one: no part is.
     if (this.active && this.active.get('active') === this.decl.id) this.active.set('active', null);
+    this.unwatch();
     if (this.drawn) this.drawn.dispose();
     this.drawn = null;
     super.destroy();
@@ -180,7 +181,20 @@ export class VisualPart extends Panel {
 
   onStartChanged() { this.load(); }
   onMarkingChanged() { this.refold(); }
-  onResize() { if (this.drawn) this.drawn.resize(); else this.render(); }
+  // a picture follows its own drawing div (watch, in render); a part not drawn yet draws into the box it is handed
+  onResize() { if (!this.drawn) this.render(); }
+
+  /** Each drawing div watched for its size - the picture in it follows (lead 10-14: a trellis panel kept a 40 x 44 canvas
+   *  after the window grew). THE one place a picture is resized. */
+  watch(div, drawn) {
+    const RO = (this.doc && this.doc.defaultView && this.doc.defaultView.ResizeObserver) || globalThis.ResizeObserver;
+    if (!RO || !drawn) return;
+    const ro = new RO(() => drawn.resize());
+    ro.observe(div);
+    this.watches.push(ro);
+  }
+
+  unwatch() { for (const ro of this.watches || []) ro.disconnect(); this.watches = []; }
 
   /** A start written as one node (`start.node`): its id by the page's node types (expression.js type("key")), or why not. */
   startNode() {
@@ -528,6 +542,7 @@ export class VisualPart extends Panel {
     const doc = this.doc;
     if (!doc || !this.host) return;
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+    this.unwatch();
     if (this.drawn) { this.drawn.dispose(); this.drawn = null; }
     const root = el('section', 'sf-part');
     root.setAttribute('data-kind', this.decl.kind || '');
@@ -595,7 +610,7 @@ export class VisualPart extends Panel {
       remember: (event) => this.remember(event),
       lastEvent: () => this.lastEvent(),
     };
-    if (!this.panels) { this.drawn = this.kind.render(area, this.model, drawCtx); return; }
+    if (!this.panels) { this.drawn = this.kind.render(area, this.model, drawCtx); this.watch(area, this.drawn); return; }
     // the panels (trellis.js): each drawn by the kind as one picture; a press in one marks its rows there
     area.classList.add('sf-trellis');
     if (area.style) area.style.gridTemplateColumns = `repeat(${Math.ceil(Math.sqrt(this.panels.length))}, minmax(0, 1fr))`;
@@ -607,9 +622,11 @@ export class VisualPart extends Panel {
       const at = el('div', 'sf-trellis__area');
       box.append(head, at);
       area.append(box);
-      return this.kind.render(at, panel.model, { ...drawCtx,
+      const one = this.kind.render(at, panel.model, { ...drawCtx,
         markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),
         markHubs: (list, event) => this.markHubs(list.map(([where, ids]) => [withPanel(where, panel), ids]), event) });
+      this.watch(at, one);
+      return one;
     });
     this.drawn = { resize: () => drawn.forEach((d) => d && d.resize()), dispose: () => drawn.forEach((d) => d && d.dispose()) };
   }
