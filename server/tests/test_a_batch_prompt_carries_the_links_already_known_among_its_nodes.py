@@ -76,15 +76,19 @@ def _atom(number, cause, predicate, effect, qualifiers):
 
 @pytest.fixture(name="ledger")
 def fixture_ledger(root, monkeypatch):
-    """The walk over these atoms: `ledger.walks` are the (seeds, follow, hops) it was asked."""
-    state = {"atoms": _atoms(), "walks": []}
+    """The walk over these atoms: `ledger.walks` are the (seeds, follow, hops) it was asked; `ledger.reverse`
+    hands its edges back in the other order - a database may read them in any."""
+    state = {"atoms": _atoms(), "walks": [], "reverse": False}
 
     def walked(seeds, follow, hops):
         state["walks"].append((list(seeds), list(follow), hops))
         ids = [explorer.entity_id(node_type, {"key": key}) for node_type, key in seeds]
-        return ledger_subgraph.subgraph({"positive": ids, "negative": []},
+        walk = ledger_subgraph.subgraph({"positive": ids, "negative": []},
                                         ledger_subgraph.InMemoryEvidenceLookup(state["atoms"]),
                                         hops=hops, follow=list(follow), direction="both")
+        if state["reverse"]:
+            walk["edges"] = list(reversed(walk["edges"]))
+        return walk
     monkeypatch.setattr(text_links, "_walked", walked)
     return state
 
@@ -178,7 +182,7 @@ def test_the_same_batch_twice_is_the_same_prompt(model, ledger):
     fake = model()
     batch = [{"id": "t1", "text": TEXT}, {"id": "t2", "text": "Golf and india moved."}]
     text_links.ask_links(batch, NAMES, known=FOLLOW)
-    ledger["atoms"] = list(reversed(ledger["atoms"]))           # the ledger reads in another order
+    ledger["reverse"] = True                                    # the ledger reads in another order
     text_links.ask_links(batch, NAMES, known=FOLLOW)
     assert len(fake.prompts) == 2 and fake.prompts[0] == fake.prompts[1]
 
