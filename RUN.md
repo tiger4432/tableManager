@@ -87,7 +87,7 @@
 >             진행 줄은 쪽마다 나오고 Cancel 은 쪽 사이에 듣는다. 진행 줄이 10 s 넘게 안 나오면 그것이 문제 — retroactive.log 의 마지막 [withdraw] 줄을 본다
 > 배포 뒤   chain_worker.log · server 로그에 «reference view '…' dropped: write CAST(:x AS type) instead of :x::type» 가 있나
 >          있으면 그 운영 뷰가 적재에서 빠진 것 — 뷰 글의 :x::type 을 CAST(:x AS type) 로 고친다. 안 고치면 그 뷰의 자동확정이 멈춘다
-> 급할 때   git revert $(git log -1 --format=%h --grep="retroactive pages read their own rows") -> 체인 워커 재기동
+> 급할 때   git revert 97617bf8e -> 체인 워커 재기동 (뒤의 9351a3580 · 9b1624ecd 가 같은 파일을 고쳤으니 충돌하면 그 둘을 새것부터 먼저 되돌림)
 > ```
 
 > ## [10-13] 🔴 **큰 표 검색 — 표 선언에 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다 (총괄 d16033b63, 소유자 「서버가 다 느림」 · 「400만행 표는 이제 검색 40초」)** — git pull · 재기동 · 되돌릴 수 있음
@@ -4723,7 +4723,7 @@
 >              "... value(s) change again on a second fold - the run stops there" — 선언부터 고침. 실행은 그 페이지 앞에서 멈춤
 > 사실 둘        맵 키 칸(map_key_columns)을 write 로 선언하면 소급을 같은 날 — 첫 replace_map 푸시가 옛 철자 행의 뺀 칸을 못 지움
 >              별칭 표: python server/scripts/install_product_tables.py --apply -> POST /admin/reload-configs -> 선언
-> 되돌리기       불가 — 저장돼 있던 철자는 칸마다 이력 줄(notation_backfill)의 옛 값. 코드는 git log --oneline --grep "feat(notation): notation stage three" 를 revert
+> 되돌리기       불가 — 저장돼 있던 철자는 칸마다 이력 줄(notation_backfill)의 옛 값. 코드는 git revert 0adc0e525 (09-26 — 뒤에 같은 파일을 고친 커밋이 많아 단독 되돌리기는 충돌할 수 있음)
 > ```
 
 ---
@@ -4756,7 +4756,7 @@
 >              GET /admin/config/notation/preview?table=<표>&column=<칸> 의 folds_again 이 0 이 아니면 선언부터 고침(소급이 거기서 멈춤)
 > 별칭 표        notation_alias 라이브 설치는 총괄이 소유자께(1 단계 항목의 install_product_tables.py)
 > 스위치        그 칸의 "write": true 를 지우면 5 초 안에 다음 쓰기부터 안 접음. 이미 접혀 저장된 값은 그대로
-> 되돌리기       git log --oneline --grep "feat(notation): notation stage two" 의 커밋을 git revert 뒤 네 프로세스 재기동
+> 되돌리기       git revert 7fb778219 뒤 네 프로세스 재기동 (09-26 — 뒤에 같은 파일을 고친 커밋이 많아 단독 되돌리기는 충돌할 수 있음)
 > ```
 
 ---
@@ -4810,7 +4810,7 @@
 >            실행: 같은 화면 Run  또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
 >            끝나면: python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
 > 뜻         되돌릴 수 없음 — 사라지는 것은 「같은 값을 말한 옛 파일 이름」 기록뿐. 칸 값 · 이력 · 이기는 층은 그대로
-> 되돌리기    코드: git log --oneline -1 --grep "file layer that repeats" 의 커밋을 git revert 뒤 워처 · 체인 워커 · API 재기동. 지운 층은 안 돌아옴
+> 되돌리기    코드: git revert 98471a546 뒤 워처 · 체인 워커 · API 재기동. 지운 층은 안 돌아옴 (그 --grep 은 보고 커밋 461c6fdbd 를 먼저 집었다 · 09-26 — 단독 되돌리기는 충돌할 수 있음)
 > ```
 
 ---
@@ -4868,7 +4868,7 @@
 > 뜻         저장은 2 단계([09-26 밤 5] 항목)부터 — 이 단계의 몫은 선언 점검과 미리 보기
 >            write 칸은 «적은» 규칙만 돎(기본값 separator · case 안 옴) — {"join": "-", "pad_last_number": 2} 면 wafer.1 -> wafer-01
 >            미리 보기 folds_again 이 0 이 아니면 한 번 더 접을 때 또 바뀌는 값 — 소급 전에 규칙이나 별칭 행을 고침
-> 되돌리기    git log --oneline --grep "written spelling" --grep "written column runs only" 의 커밋을 새것부터 git revert 뒤 API 재기동
+> 되돌리기    git revert 1526f6866 00a882e67(새것부터) 뒤 API 재기동 (그 --grep 은 보고 커밋 ad5387b0c 도 집었다 · 09-26 — 단독 되돌리기는 충돌할 수 있음)
 >            쓰는 것 없음(notation_alias 표는 남음 — 비어 있음)
 > ```
 
