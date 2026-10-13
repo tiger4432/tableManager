@@ -25,10 +25,17 @@
 .sf { font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); color: var(--sf-text); background: var(--sf-page); }
 
 /* ── a part: its frame, its title, its body ── */
-.sf-part { position: relative; box-sizing: border-box; height: 100%; display: grid; grid-template-rows: var(--sf-title-h) minmax(0, 1fr);
+.sf-part { position: relative; box-sizing: border-box; height: 100%; display: grid; grid-template-rows: var(--sf-title-h) auto minmax(0, 1fr);
   padding: var(--sf-pad); background: var(--sf-bg); border: 0; outline: var(--sf-active-w) solid transparent; outline-offset: calc(-1 * var(--sf-active-w));
   color: var(--sf-text); }
 .sf-part.is-active { outline-color: var(--sf-active); }
+/* the title row, the description under it (none - its row takes nothing), the body (base set 1) */
+.sf-part > .sf-part__body { grid-row: 3; }
+.sf-part__desc { grid-row: 2; padding: 0 4px 4px var(--sf-title-inset); color: var(--sf-text-2); font-size: var(--sf-fs); line-height: var(--sf-lh); }
+/* the tooltip over a part (base set 10): the mark's name, then «slot: value» a line */
+.sf-tip { position: absolute; z-index: 20; pointer-events: none; padding: 6px 8px; border: 1px solid var(--sf-panel-line); background: var(--sf-panel-bg);
+  color: var(--sf-panel-text); box-shadow: var(--sf-shadow); font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); white-space: nowrap; }
+.sf-tip__h { font-weight: 700; }
 .sf-part__title { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px var(--sf-title-inset); min-width: 0;
   font: 300 var(--sf-fs-title)/var(--sf-lh-title) var(--sf-font); color: var(--sf-title); }
 .sf-part__t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

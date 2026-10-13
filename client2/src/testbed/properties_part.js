@@ -6,6 +6,7 @@ import { Panel } from '../rnd_board/panel.js';
 import { drawCondition, conditionKey, conditionWords } from './condition_editor.js';
 import { markingsOf } from './visual_part.js';
 import { routeKey, routeWords } from './route.js';
+import { LABEL_SHOWS } from './tooltip.js';
 
 export class PropertiesPart extends Panel {
   constructor(host, deps) {
@@ -59,6 +60,19 @@ export class PropertiesPart extends Panel {
     const got = markingsOf(decl);
     const labelOf = (name) => (marks.find((m) => m.name === name) || { label: name }).label;
     // ── Data: the markings it receives (Start from, Limit by) and the one it emits (Marking) ──
+    // ── General: its title and its description (base set 1) ──
+    const general = section('General');
+    const text = (label, value, onSet) => {
+      const line = el('label', 'sf-props__line');
+      const input = el('input', 'sf-props__sel sf-props__text');
+      input.type = 'text';
+      input.value = value || '';
+      input.addEventListener('change', () => onSet(input.value.trim() || null));
+      line.append(el('span', 'sf-props__lab', label), input);
+      return line;
+    };
+    general.append(text('Title', decl.title, (v) => part.setDeclaration({ ...decl, title: v })),
+      text('Description', decl.description, (v) => part.setDeclaration({ ...decl, description: v })));
     const data = section('Data');
     if (part.loop) {
       data.append(el('div', 'sf-say sf-props__refused',
@@ -127,9 +141,13 @@ export class PropertiesPart extends Panel {
     data.append(select('Marking', [[null, '(None)'], ...marks.map((m) => [m.name, m.label])], got.emits,
       (v) => part.setDeclaration({ ...decl, writes: v })));
     // ── the kind's slots ──
+    // a section a label - its slots' pills together (Marker by, Tooltip: each held and the next)
+    let last = null;
     for (const s of part.slotList()) {
-      const sec = section(s.label);
-      sec.append(part.pill(s.key));
+      if (!last || last.label !== s.label) last = { label: s.label, sec: section(s.label) };
+      last.sec.append(part.pill(s.key));
+      // Label by: what it shows labels for (Spotfire's «Show labels for»)
+      if (s.key === 'label') last.sec.append(select('Show for', LABEL_SHOWS, decl.labels || 'none', (v) => part.setDeclaration({ ...decl, labels: v })));
     }
     this.host.replaceChildren(root);
   }

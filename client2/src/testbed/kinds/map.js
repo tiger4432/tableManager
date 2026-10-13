@@ -26,7 +26,9 @@ export function mapModel(rows, ctx) {
     if (x === null || y === null) { notDrawn += ids.length; continue; }
     // its paint is the root's
     const p = ctx.paint(ids);
-    cells.push({ ids, where: values, x, y, marked: p.marked, fill: p.fill, line: p.line });
+    // its label - the root's (none, marked, all)
+    const tag = ctx.label ? ctx.label({ ids }) : null;
+    cells.push({ ids, where: values, x, y, tag, marked: p.marked, fill: p.fill, line: p.line });
   }
   const span = (k) => (cells.length ? [Math.min(...cells.map((c) => c[k])), Math.max(...cells.map((c) => c[k]))] : [0, 0]);
   return { cells, notDrawn, note: notDrawn ? `${notDrawn} not drawn` : '', x: span('x'), y: span('y') };
@@ -53,11 +55,21 @@ export function render(area, model, ctx) {
     rect.setAttribute('stroke', c.line);
     rect.setAttribute('stroke-width', '0.04');
     rect.setAttribute('data-cell', `${c.x},${c.y}`);
+    rect.addEventListener('mousemove', (event) => ctx.hover({ ids: c.ids, label: c.ids.length > 1 ? `${c.x}, ${c.y}` : undefined }, event));
+    rect.addEventListener('mouseleave', () => ctx.hover(null));
     rect.addEventListener('click', (event) => {
       if (event.stopPropagation) event.stopPropagation();
       ctx.markHub([[ctx.words('x'), c.where[0]], [ctx.words('y'), c.where[1]]], c.ids, event);
     });
     svg.appendChild(rect);
+    if (c.tag !== null && c.tag !== undefined) {
+      const text = doc.createElementNS(SVG, 'text');
+      text.setAttribute('x', String(c.x + 0.45));
+      text.setAttribute('y', String(c.y + 0.6));
+      text.setAttribute('class', 'tb-map__tag');
+      text.textContent = String(c.tag);
+      svg.appendChild(text);
+    }
   }
   svg.addEventListener('click', (event) => { if (event.target === svg) ctx.clear(); });
   plot.append(svg);

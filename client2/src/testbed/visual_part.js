@@ -22,6 +22,7 @@ import { keepNodes } from './filter.js';
 import { hubId } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
+import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
 import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds } from './route.js';
 import { fitUnder } from '../dropdown.js';
@@ -79,7 +80,8 @@ export class VisualPart extends Panel {
     const unit = this.kind && this.kind.units ? unitOf(this.decl) : 'node';
     const read = unit === 'node' ? own : own.map((s) => ({ ...s, folds: true, records: unit === 'record' }));
     // Color by is the root's - every kind holds it (color_by.js).
-    return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT];
+    // Color by, Label by and the Tooltip slots too (tooltip.js) - the root's, every kind's.
+    return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, LABEL_SLOT, ...tipSlots(this.decl.encode)];
   }
 
   mount() {
@@ -323,7 +325,11 @@ export class VisualPart extends Panel {
     // later leave them where they are (a declaration field, no walk)
     if (colors.any && Object.keys(colors.assigned).length) this.decl = { ...this.decl, colors: { ...(this.decl.colors || {}), ...colors.assigned } };
     const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record, askMarked) : rows;
-    this.model = this.kind.model(units, { paint, colored, askMarked, palette: this.palette(), declaration: this.decl });
+    // what a tooltip and a label read: the marks the kind draws (units) and the rows (a mark a kind groups itself)
+    this.rowsById = new Map(rows.map((r) => [r.id, r]));
+    this.unitsById = new Map(units.map((u) => [u.id, u]));
+    const label = (mark) => labelOf(mark, { decl: this.decl, rowsById: this.rowsById, marked: (ids) => ids.some(marked) });
+    this.model = this.kind.model(units, { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -421,8 +427,10 @@ export class VisualPart extends Panel {
     // The handle a page moves the part by (grid_shell: drag the title bar onto another part's edge).
     title.setAttribute('data-part-title', '');
     title.append(el('span', 'sf-part__t', this.titleWords()));
+    // its description - one line under the title (base set 1)
+    const said = (this.decl.description || '').trim();
     const body = el('div', 'sf-part__body');
-    root.append(title, body);
+    root.append(title, ...(said ? [el('div', 'sf-part__desc', said)] : []), body);
     this.host.replaceChildren(root);
     this.root = root;
     this.paintActive();
@@ -465,6 +473,8 @@ export class VisualPart extends Panel {
       doc, palette: this.palette(), charts: this.charts,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       plus: (key) => this.plus(key),
+      // what is under the pointer - {id} a mark it was handed, {ids} rows it grouped; null nothing (tooltip.js)
+      hover: (mark, event) => this.showTip(mark, event),
       mark: (ids, event) => this.mark(ids, event),
       markHub: (where, ids, event) => this.markHub(where, ids, event),
       markHubs: (list, event) => this.markHubs(list, event),
@@ -504,6 +514,20 @@ export class VisualPart extends Panel {
     const key = (event) => { if (event.key === 'Escape') this.closePalette(); };
     if (typeof doc.addEventListener === 'function') { doc.addEventListener('mousedown', outside); doc.addEventListener('keydown', key); }
     this._palette = { host, off: () => { if (typeof doc.removeEventListener === 'function') { doc.removeEventListener('mousedown', outside); doc.removeEventListener('keydown', key); } } };
+  }
+
+  /** The tooltip over the part for a mark under the pointer (base set 10); none - gone. */
+  showTip(mark, event) {
+    if (!this.root || !this.doc) return;
+    if (!this.tip) { this.tip = this.doc.createElement('div'); this.tip.className = 'sf-tip'; }
+    if (!mark || !event) { this.tip.remove ? this.tip.remove() : null; return; }
+    const unit = (mark.id !== undefined && this.unitsById && this.unitsById.get(mark.id)) || mark;
+    const lines = tipLines({ ...unit, ids: unit.ids || mark.ids || [] }, { rowsById: this.rowsById || new Map(), slots: this.slotList(), encode: this.decl.encode || {} });
+    this.tip.replaceChildren(...lines.map((line, k) => { const n = this.doc.createElement('div'); if (!k) n.className = 'sf-tip__h'; n.textContent = line; return n; }));
+    const box = this.root.getBoundingClientRect ? this.root.getBoundingClientRect() : { left: 0, top: 0 };
+    this.tip.style.left = `${(event.clientX || 0) - box.left + 12}px`;
+    this.tip.style.top = `${(event.clientY || 0) - box.top + 12}px`;
+    if (this.tip.parentNode !== this.root) this.root.appendChild(this.tip);
   }
 
   closePalette() {

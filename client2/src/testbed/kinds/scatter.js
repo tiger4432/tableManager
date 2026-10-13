@@ -39,7 +39,9 @@ export function scatterModel(units, ctx) {
     if (!x || !y || x.state !== 'one' || y.state !== 'one') { notDrawn += 1; continue; }
     const ids = u.ids || [u.id];
     const p = paint(ids);
-    points.push({ id: u.id, ids, where: u.where || null, label: u.label, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });
+    // its label - the root's (none, marked, all)
+    const tag = ctx.label ? ctx.label(u) : null;
+    points.push({ id: u.id, ids, where: u.where || null, label: u.label, tag, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });
   }
   return { points, notDrawn, several, note: [notDrawn ? `${notDrawn} not drawn` : '', several ? `${several} rows with several values` : ''].filter(Boolean).join(' · '),
     xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
@@ -69,7 +71,8 @@ export function scatterOption(model, palette) {
     series: [{
       type: 'scatter', symbolSize: model.size, cursor: 'pointer',
       data: ordered.map((p) => ({ value: [model.xKind === 'category' ? String(p.x) : p.x, model.yKind === 'category' ? String(p.y) : p.y],
-        id: p.id, name: p.label, itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 } })),
+        id: p.id, name: p.label, itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 },
+        label: { show: p.tag !== null && p.tag !== undefined, formatter: String(p.tag), position: 'right', color: t.text, fontFamily: 'Roboto', fontSize: 12 } })),
       emphasis: { scale: false },
     }],
   };
@@ -115,6 +118,9 @@ export function render(area, model, ctx) {
     markPoints(idsInRange(model, option, drawn.coordRange), ctx.lastEvent());
   });
   chart.on('click', (params) => { if (params && params.data && params.data.id) markPoints([params.data.id], params.event && params.event.event); });
+  // the point under the pointer - the root says its tooltip
+  chart.on('mouseover', (params) => { if (params && params.data && params.data.id) ctx.hover({ id: params.data.id }, params.event && params.event.event); });
+  chart.on('mouseout', () => ctx.hover(null));
   const zr = chart.getZr && chart.getZr();
   if (zr) {
     zr.on('mousedown', (e) => ctx.remember(e && e.event));
