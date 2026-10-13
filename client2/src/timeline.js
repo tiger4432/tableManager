@@ -198,13 +198,18 @@ export function readHistoryPage(body, listKey = 'logs') {
   };
 }
 
+/** A person's write, by the server's own word for it (crud.USER_SOURCE) - selected by it, never by who it is not: the
+ *  chain's writes are getting their rule's name as updated_by (lead 10-13), and «not system» would paint them a person's. */
+const USER_SOURCE = 'user';
+const byPerson = (log) => Boolean(log) && log.source_name === USER_SOURCE;
+
 // Create single timeline list item DOM element
 export function createTimelineItemDom(log) {
   const li = document.createElement('li');
   li.className = 'timeline-item';
   li.style.cursor = 'pointer';
 
-  const isUser = log.updated_by !== 'system';
+  const isUser = byPerson(log);
   li.classList.add(isUser ? 'user-change' : 'system-change');
   if (log.is_row_deleted) {
     li.classList.add('deleted-row-log');
@@ -370,7 +375,7 @@ function auditKind(group, baseLog, isSummary) {
   if (col === 'DELETE') return { label: 'DELETE', cls: 'kind-delete' };
 
   const source = baseLog.source_name || '';
-  const byHand = source === 'user';
+  const byHand = byPerson(baseLog);
   const byPaste = /paste/i.test(source);
   // OVERWRITE beats MANUAL and PASTE, and only for a HUMAN source: replacing a value someone
   // already had is a different act from filling a blank, and it is the one worth spotting in a
@@ -432,7 +437,7 @@ export function createGlobalTimelineItemDom(group) {
   }
 
   const user = baseLog.updated_by || 'system';
-  const isUser = user !== 'system';
+  const isUser = byPerson(baseLog);
   li.classList.add(isUser ? 'user-change' : 'system-change');
 
   let displayTitle = '';
@@ -483,7 +488,7 @@ export function createGlobalTimelineItemDom(group) {
       colorClass = 'color-ledger';
     } else {
       displayTitle = `🔄 [${user}] edited ${col} of ${baseLog.table_name} (${targetId})`;
-      colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : (baseLog.source_name === 'user' ? 'color-user-edit' : 'color-parser-edit');
+      colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : (byPerson(baseLog) ? 'color-user-edit' : 'color-parser-edit');
     }
   }
 

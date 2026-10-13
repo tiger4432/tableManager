@@ -986,6 +986,26 @@ const entryHtml = (tl, i) => { const el = items(tl)[i]; return el ? el.innerHTML
 // ⚠️ THE REFUSAL WAS NOT DELETED, IT NARROWED (J2). `truncated` without a usable cursor is still
 //    a control with nowhere to go, and still draws as a fact — the rule A4 pins for the other tab.
 // ════════════════════════════════════════════════════════════════════════════════
+// ── K. A person's change is the layer source `user`, not «updated_by is not system» (lead 10-13) ──────────────
+// The chain's writes are getting their rule's name as updated_by (implementer B): a chain write must still paint the
+// machine's colour, and a person's - whoever it is - a person's. Both panes.
+async function sectionK() {
+  const S = await buildSandbox();
+  resetState();
+  const person = { ...log(1), updated_by: 'kim', source_name: 'user' };
+  const chain = { ...log(2), updated_by: 'fold_bonding_rule', source_name: 'chain:fold_bonding_rule' };
+  const painted = () => items(S.timeline).map((li) => [hasClass(li, 'user-change'), hasClass(li, 'system-change')]);
+  S.responses.push({ status: 200, body: page([person, chain], null) });
+  await S.ctx.loadHistory();
+  check('K1 the row pane: a person\'s edit a person\'s colour, a chain write named by its rule the machine\'s', painted(),
+    [[true, false], [false, true]]);
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-P', [person]), group('TX-C', [chain])]) });
+  await S.ctx.loadHistory();
+  check('K2 the global pane: the same two, the same colours', painted(), [[true, false], [false, true]]);
+}
+
 async function sectionJ() {
   // -- J1: a capped global list carries the control, and the control states the fact first --
   let S = await buildSandbox();
@@ -1305,6 +1325,13 @@ async function sectionI() {
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  // ── K (lead 10-13): a person's change by the layer source ──
+  { name: 'the row pane takes «not system» for a person again (the code before)', defect: true,
+    find: '  const isUser = byPerson(log);',
+    repl: "  const isUser = log.updated_by !== 'system';" },
+  { name: 'the global pane takes «not system» for a person again (the code before)', defect: true,
+    find: '  const isUser = byPerson(baseLog);',
+    repl: "  const isUser = (baseLog.updated_by || 'system') !== 'system';" },
   { name: 'envelope assigned where the array belongs (the original defect)', defect: true,
     find: 'state.cellRowHistoryData = page.logs;',
     repl: 'state.cellRowHistoryData = page;' },
@@ -1450,6 +1477,7 @@ async function sectionG() {
       await sectionH();
       await sectionI();
       await sectionJ();
+      await sectionK();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1483,6 +1511,7 @@ await sectionF();
 await sectionH();
 await sectionI();
 await sectionJ();
+await sectionK();
 const beforeG = { pass, fail };
 await sectionG();
 
