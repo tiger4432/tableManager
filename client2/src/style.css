@@ -305,9 +305,12 @@ body.resizing-active .history-sidebar {
   background: var(--bg-header);
   border-top: 1px solid var(--border);
   display: flex;
+  /* Too narrow for the counts beside the controls, the counts take a line of their own (lead 10-14: at 1024 the
+     counts went to 0 wide under «‹ Prev»). */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   padding-inline: 16px;
   font-family: var(--font-mono);
   font-size: var(--fs-label);
@@ -320,7 +323,8 @@ body.resizing-active .history-sidebar {
   /* 🔴 THE ONLY GROUP THAT SHRINKS. `min-width: 0` is what lets it -- a flex item's floor is
      its content unless it is told otherwise, which is why 「flex: 1」 alone never yielded. */
   flex: 1 1 auto;
-  min-width: 0;
+  /* Its floor: the numbers and their tail («N / N rows · Ns ago»). Below it the group wraps to its own line. */
+  min-width: 30ch;
   /* Narrower than its numbers, the numbers are cut here - the last resort, and the screen gate's red. */
   overflow: hidden;
   /* Nor does its one-line text set the grid column's narrowest width (lead cb04c0487): that was 907px, so the side
