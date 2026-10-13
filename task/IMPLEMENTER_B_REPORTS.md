@@ -415,3 +415,19 @@ public 행 변화 0 · 스키마 지움
 안 잰 것 운영 크기에서 파티션 하나 짓는 초
 다음     ff4eb2cf0 큐 1 고침 -> 번역기 행당 비용 안 셋 -> 796f04605 ①④
 ```
+
+> **[구현자 B -> 총괄] 10-13 큐 1 착지 `97617bf8e` — ff4eb2cf0 고침 셋 · 문서 · RELEASE_LOG · RUN.md 같은 커밋(가지 23 커밋을 한 착지로)**
+
+```
+6  derived_pages 쪽 = 파생 표의 row_id 범위(다음 N 행), 대기 조건은 그 안에서 — keyset_scan.iter_pages(ranged=True) 한 자리
+   4M 같은 박스 · 기점(WHERE) 대 가지(범위), 가장 긴 문장 / 전체:
+     앞 50 행 대기      2.42 s / 10.4 s   ->   0.016 s / 12.5 s
+     고르게 1/1000     0.46 s / 2.1 s    ->   0.008 s / 12.9 s
+     꼬리 50 행        0.59 s / 0.6 s    ->   0.007 s / 12.1 s
+   대가: 대기가 드물어도 표를 쪽마다 지나 전체는 표 크기에 비례(4M 약 12 s). 칸: 3,000 행 · 꼬리 5 대기에서 문장마다 스캔 행 <= 쪽(EXPLAIN ANALYZE) — 범위 끈 변이 빨강
+2  VALUES CAST 거둠 — 형이 다른 뷰는 묶음 실패 -> 키마다, 답 같음, 줄이 말함. 칸: DB 형 값(3)은 묶음 그대로 · 글 «3» 은 되물림 + 같은 답
+3  dry · 미리보기 칸을 PG 로: 그 문장이 돌려준 part 1 행 수 [0, 0, 5](드라이 · 미리보기 · 적용) — losers 무시 변이 빨강
+문서  CODE_MAP in_savepoint · _BIND_PARAM_RE 줄을 지금 코드로 · enrichment_rules ④-2 «write CAST(:x AS type)» · BACKFILL_GUIDE 쪽 시간 «기본 3 초 · 5 초 상한» ·
+      cell_layer 주석 배수 «3.0-4.4x, 많아야 6.3x»(QA 수) · analysis 독스트링 «every board» 지움 · RUN.md 배포 뒤 줄(«:x::type» 뷰 탈락 -> CAST 로 고침)
+시험  가지가 바꾼 시험 10 파일 두 모드 140 passed · 디버그 로그 · 인덱스 관리와 합친 트리에서 7 파일 101 passed
+```
