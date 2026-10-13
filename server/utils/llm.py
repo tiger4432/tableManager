@@ -63,6 +63,10 @@ RATE_LOCK = "llm_calls"
 #: How many times a 429 answer is asked again before the call is refused.
 RATE_LIMITED_TRIES = 3
 TOO_MANY_REQUESTS = 429
+#: A gateway that refuses the key - the refusal says to check it.
+KEY_REFUSED = (401, 403)
+#: PostgreSQL's «relation does not exist».
+UNDEFINED_TABLE = "42P01"
 #: The gate's clock and sleep - tests replace them.
 _clock = time.time
 _sleep = time.sleep
@@ -78,8 +82,9 @@ class LlmRefused(ValueError):
 
 
 class LlmCallFailed(LlmRefused):
-    """The call itself failed - no answer came (connection, time limit, 5xx, a 429 past its tries, a client
-    that could not be built). Asking again at once asks a gateway that is not answering (총괄 10-13 ②)."""
+    """The call itself failed or could not be made - no answer came (connection, time limit, 5xx, a 429 past
+    its tries or asking to wait more than a window, the per-minute table). Asking text by text would ask a
+    gateway that is not answering (총괄 10-13 ②)."""
 
 
 def settings():
@@ -155,7 +160,8 @@ def _client(cells):
         raise LlmRefused("proxy in config/%s is not a URL httpx reads (%s): %s"
                          % (CONFIG_FILE, type(exc).__name__, _redact_proxy(cells["proxy"]))) from None
     return OpenAI(base_url=cells["base_url"], api_key=cells["api_key"], timeout=cells["timeout_s"],
-                  default_headers=cells["headers"] or None, http_client=http_client)
+                  default_headers=cells["headers"] or None, http_client=http_client,
+                  max_retries=0)       # every request takes a turn under the per-minute limit (총괄 10-13 ⑤)
 
 
 def _now():
@@ -246,7 +252,8 @@ def _take_a_turn(cap):
 
 def _shared_turn(engine, now, cap):
     """One look at `llm_calls` under the lock: the rows past the window deleted, `now` written when it
-    fits -> the seconds to wait (0: written). A table the database does not have is refused by name."""
+    fits -> the seconds to wait (0: written). A table that cannot be used is refused by name - the call
+    could not be made, so `LlmCallFailed`; the boot is named only when the table is missing."""
     from sqlalchemy import select, text
     from sqlalchemy.exc import SQLAlchemyError
 
@@ -263,9 +270,11 @@ def _shared_turn(engine, now, cap):
             return wait
     except SQLAlchemyError as exc:
         said = str(getattr(exc, "orig", None) or exc).strip().splitlines()
-        raise LlmRefused("the per-minute limit could not use table %s (%s: %s) - a missing table is made by the web"
-                         " server's boot (create_all): start it once on this code"
-                         % (table.name, type(exc).__name__, said[0] if said else "")) from None
+        missing = getattr(getattr(exc, "orig", None), "pgcode", None) == UNDEFINED_TABLE
+        raise LlmCallFailed("the per-minute limit could not use table %s (%s: %s)%s"
+                            % (table.name, type(exc).__name__, said[0] if said else "",
+                               " - it is made by the web server's boot (create_all): start it once on this code"
+                               if missing else "")) from None
 
 
 def _retry_after(exc):
@@ -277,11 +286,30 @@ def _retry_after(exc):
     return said if said > 0 else RATE_WINDOW_S
 
 
+def _refused(status, built, error, asked=None):
+    """The refusal of a call that gave no answer, by what came back (총괄 10-13 ⑧): no answer, a 5xx or a 429
+    past its tries - or one asking more than a window - is `LlmCallFailed` (asked again later, not text by text);
+    401 · 403 says to check the key; a client that could not be built and any other 4xx (400, 413 too large,
+    404 ...) is `LlmRefused` - a request of many texts is then asked text by text. `error` is masked."""
+    said = "the language model call failed: %s" % error
+    if not built:
+        return LlmRefused(said)
+    if status in KEY_REFUSED:
+        return LlmRefused("the gateway refused the key (%s) - check api_key and headers in config/%s: %s"
+                          % (status, CONFIG_FILE, error))
+    if status is None or status >= 500 or status == TOO_MANY_REQUESTS:
+        if asked is not None:
+            said += " - it asked to wait %d s (Retry-After), more than %d s" % (math.ceil(asked), RATE_WINDOW_S)
+        return LlmCallFailed(said)
+    return LlmRefused(said)
+
+
 def ask_json(prompt, *, system=None):
     """One call -> the JSON object the model answered. Refused by name when the file refuses, the
-    call fails or the answer is not a JSON object. `from None` keeps the client's own exception -
-    which may quote the key - out of every traceback. Each try first takes a turn under the
-    per-minute limit; a 429 is tried again RATE_LIMITED_TRIES times."""
+    call fails or the answer is not a JSON object (`_refused` says which class). `from None` keeps the
+    client's own exception - which may quote the key - out of every traceback. Each try first takes a
+    turn under the per-minute limit; a 429 is tried again RATE_LIMITED_TRIES times, after its Retry-After
+    when that is at most one window."""
     cells = settings()
     key = cells["api_key"]
     messages = ([{"role": "system", "content": system}] if system else []) + [
@@ -309,9 +337,10 @@ def ask_json(prompt, *, system=None):
                 # no sent line - where it was going, from the file (총괄 93570a1ea)
                 back.update(url=cells["base_url"].rstrip("/") + "/chat/completions", proxy=proxy)
             back.update(status=back["status"] or getattr(exc, "status_code", None), error=_why(exc, cells["proxy"]))
-            if back["status"] != TOO_MANY_REQUESTS or tried == RATE_LIMITED_TRIES:
-                raise LlmCallFailed("the language model call failed: %s" % _masked(back["error"], key)) from None
-            again = _retry_after(exc)
+            if back["status"] == TOO_MANY_REQUESTS and tried < RATE_LIMITED_TRIES:
+                again = _retry_after(exc)
+            if again is None or again > RATE_WINDOW_S:
+                raise _refused(back["status"], client is not None, _masked(back["error"], key), again) from None
         finally:
             _log({"received": _now(), **back, "ms": round((time.monotonic() - started) * 1000)}, key)
         if again is None:

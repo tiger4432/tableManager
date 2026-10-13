@@ -24,17 +24,23 @@
 >          «waiting» 줄이 자주 -> 상한에 붙어 돈다(정상). 묶음이 그만큼 오래 슬롯을 쥔다 — rows_per_run 을 줄이면 묶음이 짧아진다
 >          «refused» 줄 -> 그 글은 이번에 후보 0 행. 바로 뒤 «[Chain] <규칙>: kept old cells of N job(s) the mapper could not read» 가 있으면 옛 후보는 그대로
 >            그 줄이 없으면 맵퍼가 refused 를 attrs[UNREAD_JOBS] 에 안 싣는다(가이드 §6 예시) — 그 글의 손대지 않은 옛 후보가 지워졌다. replay 로 다시 읽힌다
->          «the language model call failed: …» 로 묶음 실패 -> 답이 아예 안 왔다(연결 · 시한 · 5xx). 글마다 다시 묻지 않고 한 번에 실패 — 체인이 나중에 다시 한다. 그 문장의 원인을 본다
->          «the per-minute limit could not use table llm_calls (ProgrammingError: … does not exist …)» -> 웹 서버를 이 코드로 아직 안 띄웠다 — 띄우면 표가 생긴다
->            괄호 안이 OperationalError 면 표가 아니라 DB 연결 문제 — 그 문장을 본다
+>          «the language model call failed: …» 로 묶음 실패 -> 답이 아예 안 왔다(연결 · 시한 · 5xx · 다 쓴 429). 글마다 다시 묻지 않고 한 번에 실패
+>            ⚠️ max_group_attempts 기본 1 이면 그 묶음은 곧바로 FAILED(격리) — 관리 화면에서 다시 돌린다. 저절로 «나중에» 다시 하지 않는다
+>          «the gateway refused the key (401)» -> api_key · headers 를 고친다(llm_config.json, 다음 부름부터)
+>          «it asked to wait N s (Retry-After), more than 60 s» -> 게이트웨이가 한 시간 단위로 막았다 — 기다리지 않고 실패시켰다
+>          기다림(«waiting» 줄) 동안 그 묶음이 쥔 표의 다른 규칙 · 소급이 선다 — 한 번에 60 초까지
+>          «the per-minute limit could not use table llm_calls (…) - it is made by the web server's boot» -> 웹 서버를 이 코드로 아직 안 띄웠다 — 띄우면 표가 생긴다
+>            boot 문장 없이 끝나면 표가 아니라 DB 쪽 문제 — 괄호 안 문장을 본다
 >          «the gateway answered 429» 가 이어진다 -> 같은 키를 다른 곳도 쓴다 — requests_per_minute 를 낮춘다
 >          연결성: pieces 가 links 와 거의 같고 lone pairs 가 100 % 근처 -> 쌍의 집합(오늘의 모양). 뒤에 pieces 가 줄고 largest piece 가 커지면 이어지고 있다
+>          known 의 certainty 칸을 안 적으면 «확인된 것 먼저» 없이 근거 수로만 고른다(결과 known 의 certainty null)
 >          «known links … 0 seed(s)» 가 계속 -> 글에 사전 구절이 그대로 안 나온다 — 사전에 구절을 더하거나 match_at 을 낮춘다
 >          «K of L link(s)» 에서 K 가 늘 작다 -> known_chars 에 걸린다 — 값을 키우면 프롬프트가 커진다
 >          «seed(s) not walked - type(s) X do not declare exactly one key» -> 그 타입의 선언 키가 하나가 아니다(둘 이상이거나 선언에 없음) — 그 씨앗에서는 안 걷는다(나머지는 그대로)
 > 급할 때   맵퍼에서 known 을 빼면 아는 인과 없이 §6 모양 그대로 · 맵퍼를 글 하나씩 부르는 옛 모양(ask_links(text, names))으로 두어도 돈다 — 요청 = 글 수, 상한은 그대로
-> 되돌리기  git revert $(git log -1 --format=%h --grep="the batch prompt carries the links already known") $(git log -1 --format=%h --grep="ask_links takes a batch of texts in one request")
->            (뒤의 고침 둘 · 시험 둘도 같이: --grep="per-minute table refusal" · "lock gate forces" · "same-prompt gate hands")
+> 되돌리기  git revert --no-edit $(git log --format=%h -F --grep="review fixes for the LLM batch" --grep="a text the model could not read keeps its old candidates" --grep="CONFIG_GUIDE's llm_config row names the four new cells" --grep="the per-minute table refusal quotes" --grep="the same-prompt gate hands the walk" --grep="the batch prompt carries the links already known" --grep="the lock gate forces the callers to overlap" --grep="ask_links takes a batch of texts in one request" --grep="byte snapshot of ask_links on one text before batching")
+>            이 가지의 커밋 아홉을 최신부터 — 가지 끝(병합 전)에서 돌려 충돌 0 · 되돌린 뒤 가지 바닥(eb1ae8c9f)과 diff 0 을 잼
+>            스쿼시로 병합했으면 그 병합 커밋 하나를 git revert. 병합 뒤 다른 커밋이 같은 줄을 고쳤으면 충돌은 그때 본다(안 잼)
 > 안 잰 것  진짜 모델이 묶음 답을 얼마나 잘 하나(글 id 를 섞는지) · 운영 게이트웨이의 실제 글자 한도 · 아는 인과를 실으면 운영 그래프가 실제로 이어지나(위 명령으로 소유자가 잼)
 > ```
 
@@ -1830,6 +1836,7 @@
 >                적지 않으면 지금 그대로(자르지 않음). 다른 표의 줄은 다른 슬롯에서 돈다
 >                ⚠️ 한 이벤트에 여러 행이 묶인 것(소급 · 삭제 등)은 쪼개지 않고 통째로 간다
 > 할 일           LLM 규칙의 "run_in": "operation" 은 지워도 되고 그대로 둬도 된다(거절 안 함). "rows_per_run": 1 은 남긴다
+>                 ⚠️ 10-13 부터 LLM 맵퍼는 묶음 — rows_per_run 은 묶음 크기(예: 20), 맵퍼는 글 여럿을 한 번에(맨 위 10-13 LLM 절)
 > 볼 줄          chain_worker.log (켜질 때 · 선언 내용이 바뀐 뒤 한 번):
 >                  [ChainRules] <규칙>: run_in is retired - this rule runs in the chain; rows_per_run splits its groups
 >                  = 그 규칙에 아직 run_in 이 적혀 있다. 체인에서 돈다

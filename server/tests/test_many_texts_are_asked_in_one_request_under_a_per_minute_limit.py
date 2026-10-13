@@ -213,7 +213,7 @@ def test_no_texts_ask_nothing(model):
 #: The prompt of two texts, a dictionary of two nodes and an instruction - written out, not built.
 SNAPSHOT = """Read each text below and list every statement in it that one thing causes another.
 When one sentence names several causes or effects, list one link for each cause and effect pair - separate items, which may quote the same evidence.
-Answer with one JSON object and nothing else - one item for each text, its id as its [id] line writes it:
+Answer with one JSON object and nothing else - one item for each text, its id as written between the brackets of its [id] line, without the brackets:
 {"texts": [{"id": "...", "links": [{"cause": "...", "cause_key": null, "cause_direction": null, "effect": "...", "effect_key": null, "effect_direction": null, "link": "...", "evidence": "...", "negated": false, "certainty": null}]}]}
 - cause, effect: the shortest noun phrase of the text that names the thing, copied from the text - a few words, never a clause or a whole sentence (the whole sentence goes in evidence)
 - cause_key, effect_key: the identifier of the dictionary node the cause or the effect is, written exactly as listed; null when no listed node fits
@@ -454,11 +454,11 @@ def test_a_database_without_the_table_is_refused_by_name(two_processes, clock, m
     absent = Table("llm_calls_never_made", MetaData(), Column("id", Integer, primary_key=True),
                    Column("called_at", Float, nullable=False))
     monkeypatch.setattr(models.LlmCall, "__table__", absent)
-    with pytest.raises(llm.LlmRefused) as refused:
+    with pytest.raises(llm.LlmCallFailed) as refused:
         llm._take_a_turn(3)
     said = str(refused.value)
     assert said.startswith("the per-minute limit could not use table llm_calls_never_made (ProgrammingError: ")
-    assert said.endswith(" - a missing table is made by the web server's boot (create_all): start it once on this code")
+    assert said.endswith(" - it is made by the web server's boot (create_all): start it once on this code")
     assert clock.waits == []
 
 
@@ -499,3 +499,131 @@ def test_a_dead_gateway_is_asked_once_for_the_whole_batch(root, clock, monkeypat
                                   " · proxy: none (direct)")
     assert [line.get("error") for line in _log_lines(root) if "received" in line] == [
         "ConnectionError: connection refused · proxy: none (direct)"]
+
+
+# ---------------------------------------------------------------------------- 총괄 검수 10-13: 1 · 3 · 5 · 7 · 8 · M4
+
+
+class Status(Exception):
+    """What the client raises for an answer of that status."""
+
+    def __init__(self, status):
+        super().__init__("Error code: %d" % status)
+        self.status_code = status
+
+
+def test_a_retry_after_past_one_window_is_a_call_that_failed_not_a_wait(root, clock, monkeypatch):
+    """1: a gateway asking 3600 s would hold the group (and its tables) for hours - refused at once."""
+    _declare(root, **CELLS)
+    calls = _client_saying(monkeypatch, TooMany("3600"), '{"ok": 1}')
+    with pytest.raises(llm.LlmCallFailed) as refused:
+        llm.ask_json("anything")
+    assert len(calls) == 1 and clock.waits == []
+    assert str(refused.value).endswith(" - it asked to wait 3600 s (Retry-After), more than 60 s")
+
+
+def test_a_retry_after_of_one_window_is_waited(root, clock, monkeypatch):
+    _declare(root, **CELLS)
+    calls = _client_saying(monkeypatch, TooMany("60"), '{"ok": 1}')
+    assert llm.ask_json("anything") == {"ok": 1} and len(calls) == 2 and clock.waits == [60.0]
+
+
+def test_the_client_makes_no_request_of_its_own(answer):
+    """5: the SDK's own retries went around the per-minute limit - every request is the seat's."""
+    answer('{"ok": 1}')
+    llm.ask_json("anything")
+    assert [made["max_retries"] for made in answer.made] == [0]
+
+
+def _one(ident):
+    return json.dumps({"texts": [{"id": ident, "links": []}]})
+
+
+@pytest.mark.parametrize("status", [400, 413, 404, 422])
+def test_a_request_refused_as_too_large_or_bad_is_asked_text_by_text(root, clock, monkeypatch, status):
+    """8: a 4xx other than the key's is the request's - each text alone once."""
+    _declare(root, **CELLS)
+    calls = _client_saying(monkeypatch, Status(status), _one("a"), _one("7"), _one("c"))
+    found = text_links.ask_links(BATCH, NAMES)
+    assert (len(calls), found.requests, found.refused) == (4, 4, [])
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_refused_key_says_to_check_it(root, clock, monkeypatch, status):
+    _declare(root, **CELLS)
+    _client_saying(monkeypatch, Status(status))
+    with pytest.raises(llm.LlmRefused) as refused:
+        llm.ask_json("anything")
+    assert not isinstance(refused.value, llm.LlmCallFailed)
+    assert str(refused.value) == ("the gateway refused the key (%d) - check api_key and headers in"
+                                  " config/llm_config.json: Status: Error code: %d · proxy: none (direct)" % (status, status))
+
+
+@pytest.mark.parametrize("failure", [Status(500), Status(503), TimeoutError("timed out"), TooMany("1")],
+                         ids=["500", "503", "timeout", "429-past-its-tries"])
+def test_no_answer_fails_the_batch_in_one_request(root, clock, monkeypatch, failure):
+    _declare(root, **CELLS)
+    tries = llm.RATE_LIMITED_TRIES + 1 if isinstance(failure, TooMany) else 1
+    calls = _client_saying(monkeypatch, *[failure] * tries)
+    with pytest.raises(llm.LlmCallFailed):
+        text_links.ask_links(BATCH, NAMES)
+    assert len(calls) == tries
+
+
+def test_a_client_that_cannot_be_built_is_not_a_call_that_failed(root, clock, monkeypatch):
+    _declare(root, **CELLS, proxy="http://user:p/w@proxy.test:8080")
+    with pytest.raises(llm.LlmRefused) as refused:
+        llm.ask_json("anything")
+    assert not isinstance(refused.value, llm.LlmCallFailed)
+
+
+def test_one_text_answered_the_one_text_way_is_read(model):
+    """3: a request of one text answered {"links": [...]} - the old shape - is that text's answer."""
+    fake = model(whole=lambda number: {"links": LINKS[B]})
+    rows = text_links.ask_links([{"id": 7, "text": B}], NAMES)
+    assert [(row["text_id"], row["cause_phrase"]) for row in rows] == [(7, "humidity")] and len(fake.prompts) == 1
+    assert [row["cause_phrase"] for row in text_links.ask_links(B, NAMES)] == ["humidity"]
+
+
+def test_many_texts_answered_the_one_text_way_are_asked_alone(model):
+    fake = model(links=LINKS, whole=lambda number: {"links": LINKS[A]} if number == 1 else None)
+    found = text_links.ask_links(BATCH, NAMES)
+    assert (found.requests, len(fake.prompts), found.refused) == (4, 4, [])
+
+
+@pytest.mark.parametrize("answered,handed,read", [
+    ("[a]", "a", True), ("'7'", 7, True), ('"7"', "7", True), ("7", 7, True), (7, "7", True), (7.0, 7, True),
+    ("[ c ]", "c", True), ("007", 7, False), ("a7", "a", False)])
+def test_an_id_is_compared_as_its_text_without_brackets_or_quotes(model, answered, handed, read):
+    """7: the model writes the id it saw - with or without its brackets and quotes; "007" is not 7."""
+    text = {"a": A, "7": B, "c": C}[str(handed)]
+    model(whole=lambda number: {"texts": [{"id": answered, "links": LINKS[text]}, {"id": "other", "links": []}]}
+          if number == 1 else {"texts": []})
+    found = text_links.ask_links([{"id": handed, "text": text}, {"id": "other", "text": C}], NAMES)
+    assert (handed not in [item["id"] for item in found.refused]) is read
+
+
+def test_the_first_item_of_an_id_is_its_answer(model):
+    """M4: an answer that gives one id twice - the first item is read, the second is not."""
+    model(whole=lambda number: {"texts": [{"id": "7", "links": LINKS[B]},
+                                          {"id": "7", "links": [{"cause": "x", "effect": "y", "evidence": "nowhere"}]},
+                                          {"id": "a", "links": []}, {"id": "c", "links": []}]})
+    rows = text_links.ask_links(BATCH, NAMES)
+    assert [(row["text_id"], row["cause_phrase"]) for row in rows] == [(7, "humidity")]
+
+
+@pytest.mark.pg
+def test_a_table_the_limit_cannot_read_is_said_without_the_boot(two_processes, clock, monkeypatch):
+    """9: only a missing table names the boot - a table of another shape says what the database said."""
+    from sqlalchemy import Column, Float, Integer, MetaData, Table
+
+    from database import models
+    two_processes("A")
+    # a table the scratch schema has, without the column: the statement fails at its column (42703), deletes nothing
+    other = Table("database_outbox", MetaData(), Column("id", Integer, primary_key=True),
+                  Column("called_at", Float, nullable=False))
+    monkeypatch.setattr(models.LlmCall, "__table__", other)
+    with pytest.raises(llm.LlmCallFailed) as refused:
+        llm._take_a_turn(3)
+    assert str(refused.value).startswith("the per-minute limit could not use table database_outbox (ProgrammingError: ")
+    assert "boot" not in str(refused.value)

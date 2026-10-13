@@ -120,18 +120,18 @@ def text_cause_links_llm(df, db):
 }
 ```
 
-- 글 여럿은 `[{"id": <글 id>, "text": <글>}, …]` — id 는 묶음 안에서 겹치면 안 된다(겹치면 묻기 전에 `ValueError`). 결과 행마다 맨 앞에 `text_id`(넘긴 id 그대로). 글 하나(문자열)로 불러도 된다 — 그때 결과는 전과 같다(`text_id` 없음).
+- 글 여럿은 `[{"id": <글 id>, "text": <글>}, …]` — id 는 묶음 안에서 겹치면 안 된다(겹치면 묻기 전에 `ValueError`). 결과 행마다 맨 앞에 `text_id`(넘긴 id 그대로). 글 하나(문자열)로 불러도 된다 — 그때 결과는 전과 같다(`text_id` 없음). 모델에게는 id 를 괄호 없이 답하라고 하고, 받은 id 는 앞뒤 괄호 · 따옴표를 벗겨 «글»로 견준다 — `7` 과 `"7"` · `"[7]"` 은 같은 글, `"007"` 은 다른 글. 답에 같은 id 가 둘이면 첫째가 그 글의 답이다.
 - 요청 하나 = 사전 한 번 + 지시 한 번 + 글들(글마다 `[<글 id>]` 줄 뒤에, 빈 줄로 띄워). 글 길이 합이 `batch_chars` 를 넘으면 다음 요청으로 — 묶음 하나 = 요청 «글자 합 / batch_chars» 번(올림, 한 글이 상한보다 길면 그 글 혼자). 모델은 글 id 마다 링크를 답하고, 근거 · 방향 · 키는 «그 글 안에서만» 읽는다 — 다른 글의 문장을 근거로 댄 링크는 그 글에서 버려진다(아래 근거 줄).
-- 답에 빠진 글 · 모양이 틀린 글(링크 목록 없음 · 원인/현상/근거 빔 · 모든 링크의 근거가 그 글에 없음 · 답 전체가 JSON 아님)은 «그 글만 혼자» 한 번 더 묻는다 — 로그 한 줄 `[LLM] a request of N texts left K unread - each asked alone: <id>: <사유>; …`. 혼자 물은 요청에서도 안 되면 그 글만 거절 — 후보 0 행, 경고 한 줄 `[LLM] text <id> refused - no rows (llm:<모델>): <사유>`, 결과의 `refused` 에 `{id, reason}`. 처음부터 혼자였던 글(묶음에 글 하나, 또는 상한보다 긴 글)은 다시 묻지 않는다. 모든 글이 거절되면 `LlmRefused` 로 묶음이 실패한다(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED — 전과 같다).
-- 호출 «자체»가 실패하면(연결 · 시한 · 5xx · 세 번 넘은 429 — 답이 아예 안 옴) 글마다 다시 묻지 않고 곧바로 `LlmCallFailed`(`LlmRefused` 의 하위)로 묶음이 실패한다 — 게이트웨이가 죽어도 요청은 한 번이고, 체인이 그 묶음을 나중에 다시 한다. 글마다 다시 묻는 것은 모양이 틀린 답 · 빠진 글뿐이다.
-- 거절된 글은 «이번에 낸 것이 없음»이 아니라 «모름»이다 — 예시처럼 `found.refused` 의 id 를 결과의 `attrs[UNREAD_JOBS]` 에 실으면, `allow_retraction` 규칙이 그 글의 회수 배치를 만들지 않아 옛 후보가 그대로 남는다. 로그 한 줄 `[Chain] <규칙 이름>: kept old cells of N job(s) the mapper could not read - <글 id>, …`. ⚠️ 싣지 않으면 그 글은 «아무것도 안 낸» 글로 읽혀 사람이 손대지 않은 옛 후보가 지워진다(20 행 이상 · 절반 넘게면 §5 처럼 거절). 그 글을 다시 읽히려면 §4 의 replay.
+- 답에 빠진 글 · 모양이 틀린 글(링크 목록 없음 · 원인/현상/근거 빔 · 모든 링크의 근거가 그 글에 없음 · 답 전체가 JSON 아님 · 게이트웨이가 요청을 거절한 4xx — 400 · 413(너무 큼) · 404 · 422 …)은 «그 글만 혼자» 한 번 더 묻는다(묶음을 쪼갬) — 로그 한 줄 `[LLM] a request of N texts left K unread - each asked alone: <id>: <사유>; …`. 혼자 물은 요청에서도 안 되면 그 글만 거절 — 후보 0 행, 경고 한 줄 `[LLM] text <id> refused - no rows (llm:<모델>): <사유>`, 결과의 `refused` 에 `{id, reason}`. 처음부터 혼자였던 글(묶음에 글 하나, 또는 상한보다 긴 글)은 다시 묻지 않는다. 글 하나만 물은 요청에 모델이 한 글 모양 `{"links": [...]}` 로 답하면 그 글의 답으로 읽는다. 모든 글이 거절되면 `LlmRefused` 로 묶음이 실패한다(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED — 전과 같다).
+- 호출 «자체»가 실패하면(연결 · 시한 · 5xx · 세 번 넘은 429 · 60 초 넘게 기다리라는 429 · 분당 상한 표를 못 씀 — 답이 아예 안 옴) 글마다 다시 묻지 않고 곧바로 `LlmCallFailed`(`LlmRefused` 의 하위)로 묶음이 실패한다 — 게이트웨이가 죽어도 요청은 한 번이다. ⚠️ 그 실패는 다른 실패와 같이 `max_group_attempts`(기본 1)를 센다 — 기본값이면 첫 실패에 그 묶음이 FAILED(격리)이고, 게이트웨이가 몇 분 멈추면 그동안 돈 LLM 묶음이 다 격리된다. 다시 하는 것은 관리 화면에서 실패한 사건을 다시 돌리기, 또는 규칙에 `max_group_attempts` 를 크게(다음 바퀴에 곧바로 — 기다림 없이). 키가 거절되면(401 · 403) `the gateway refused the key (401) - check api_key and headers in config/llm_config.json: …` 로 거절된다(묶음이면 글마다 한 번 더 묻고 모두 거절 — 묶음 실패).
+- 거절된 글은 «이번에 낸 것이 없음»이 아니라 «모름»이다 — 예시처럼 `found.refused` 의 id 를 결과의 `attrs[UNREAD_JOBS]` 에 실으면, `allow_retraction` 규칙이 그 글의 회수 배치를 만들지 않아 옛 후보가 그대로 남는다. 로그 한 줄 `[Chain] <규칙 이름>: kept old cells of N job(s) the mapper could not read - <글 id>, …`. ⚠️ 싣지 않으면 그 글은 «아무것도 안 낸» 글로 읽혀 사람이 손대지 않은 옛 후보가 지워진다(20 행 이상 · 절반 넘게면 §5 처럼 거절). 그 글을 다시 읽히려면 §4 의 replay. ⚠️ 이 칸은 글 id 가 회수의 job(`target_job_column` 의 값)과 같을 때만 맞는다 — 다른 칸이면 맵퍼가 refused 의 글 id 를 그 글의 job 값으로 바꿔 싣는다. `allow_replace_map` 규칙에서는 읽지 않는다(맵 단위로 통째 교체).
 - 결과는 행 목록이고, 덧붙여 `requests`(부른 수 — 혼자 다시 물은 것 포함) · `texts`(넘긴 글 수) · `refused` 를 든다. 같은 수가 로그 한 줄 `[LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused`.
-- 분당 상한 — LLM 을 부르는 자리(`ask_json`) 하나가 지난 60 초의 부름이 `requests_per_minute` 이면 가장 오래된 것이 60 초를 넘길 때까지 기다린다. 기다리는 동안 `[LLM] per-minute limit - waiting N s (20 requests a minute)` 한 줄(체인이면 `chain_worker.log`). PostgreSQL 이면 상한을 체인 슬롯 · 소급 실행 · 서버(맵퍼 벤치 · 소급 미리 보기)가 «같이» 쓴다 — 표 `llm_calls`(최근 부른 시각, 상한만큼의 행) 를 잠금 하나 아래에서 읽고 쓴다. 이 표는 웹 서버 기동이 만든다 — 표를 못 쓰면 `the per-minute limit could not use table llm_calls (<예외>: <DB 문장 첫 줄>) - a missing table is made by the web server's boot (create_all): start it once on this code` 로 거절(그 부름이 실패 — 체인이면 묶음이 다시 시도).
-- 게이트웨이가 429 를 주면 그 답의 `Retry-After` 초(없으면 60 초) 기다렸다 다시 — 세 번까지, 매번 분당 상한을 지난다. 줄 `[LLM] the gateway answered 429 (too many requests) - waiting N s, then try 2 of 4`. 네 번째도 429 면 거절. ⚠️ openai 클라이언트 자체의 다시 시도(기본 2 번 — 429 · 연결 실패 · 5xx)는 그대로이고, 그 다시 시도는 이 상한을 안 지난다.
+- 분당 상한 — LLM 을 부르는 자리(`ask_json`) 하나가 지난 60 초의 부름이 `requests_per_minute` 이면 가장 오래된 것이 60 초를 넘길 때까지 기다린다. 기다리는 동안 `[LLM] per-minute limit - waiting N s (20 requests a minute)` 한 줄(체인이면 `chain_worker.log`). PostgreSQL 이면 상한을 체인 슬롯 · 소급 실행 · 서버(맵퍼 벤치 · 소급 미리 보기)가 «같이» 쓴다 — 표 `llm_calls`(최근 부른 시각, 상한만큼의 행) 를 잠금 하나 아래에서 읽고 쓴다. 이 표는 웹 서버 기동이 만든다 — 표를 못 쓰면 `LlmCallFailed` `the per-minute limit could not use table llm_calls (<예외>: <DB 문장 첫 줄>)`, 표가 없을 때만 끝에 ` - it is made by the web server's boot (create_all): start it once on this code`. ⚠️ 기다림(한 번에 60 초까지)은 체인 묶음 «안»에서 일어난다 — 그 묶음이 쥔 표 잠금 · 트랜잭션을 쥔 채라, 그동안 같은 표를 쓰는 다른 규칙 · 소급이 선다.
+- 게이트웨이가 429 를 주면 그 답의 `Retry-After` 초(없으면 60 초) 기다렸다 다시 — 세 번까지, 매번 분당 상한을 지난다. 줄 `[LLM] the gateway answered 429 (too many requests) - waiting N s, then try 2 of 4`. 네 번째도 429 면, 또는 `Retry-After` 가 60 초를 넘으면 기다리지 않고 `LlmCallFailed`(`… - it asked to wait N s (Retry-After), more than 60 s`). openai 클라이언트 자체의 다시 시도는 끈다(`max_retries=0`) — 모든 요청이 상한을 지나고, 연결 실패 · 5xx 를 그 자리에서 다시 묻지 않는다.
 - 묶음 하나가 슬롯을 쥐는 시간 — 요청 수 × (모델 답 시간), 분당 상한에 걸리면 그 위에 기다림. `rows_per_run` 을 크게 하면 요청은 줄지만(사전을 덜 보냄) 한 묶음이 오래 걸린다. 다른 표의 줄은 다른 슬롯에서 돌아 LLM 이 막지 않는다([chain_rules](./config/chain_rules.md)). ⚰️ `run_in: operation`(작업 `rule_rows` 로 줄 세우기)은 은퇴했다 — 적혀 있어도 체인에서 돈다.
 - 모델은 사전을 노드마다 한 줄로 본다 — `<키> (<타입>): <구절> / <구절> / …`. 같은 키가 두 타입에 있으면 그 노드들의 식별자는 `<타입>:<키>`. 모델은 원인 · 현상마다 그 식별자(맞는 노드가 없으면 null)와 글의 가장 짧은 명사구를 답한다.
 - 노드 키는 사전에서만 온다 — 목록의 식별자면 그 노드의 `*_type` · `*_key`(말이 구절과 달라도). 빈 값(키 없음 · null · 빈 글자)이면 말이 어느 노드의 구절을 통째로 품을 때 그 노드(낱말 주머니, §8-1), 아니면 `*_type` · `*_key` 가 빈다. 목록에 없는 식별자는 키를 비우고 로그에 한 줄 `[LLM] link N of M answers cause_key '<식별자>', which the dictionary does not list - kept with its words only (llm:<모델>): '<말>'`. `*_phrase` 는 모델이 답한 말 그대로다 — 글과 견주는 것은 `evidence` 뿐(「글에서 베껴라」는 프롬프트의 부탁).
-- 프롬프트는 요청마다 사전 전체를 담는다(나눠 보내지 않는다) — 고정 1,550 자(`ASK_LINKS_PROMPT` 에서 자리표시를 뺀 길이, 10-13 잼 · 묶음 전 1,404 자) + 노드마다 한 줄 + 글마다 `[<id>]` 줄. 노드마다 구절 셋이면 100 노드 약 7 천 자 · 1,000 노드 약 6.6 만 자 · 5,000 노드 약 34 만 자(지어낸 사전으로 잰 수). 보낸 그대로는 `llm_requests.log` 보낸 줄의 payload.
+- 프롬프트는 요청마다 사전 전체를 담는다(나눠 보내지 않는다) — 고정 1,594 자(`ASK_LINKS_PROMPT` 에서 자리표시를 뺀 길이, 10-13 잼 · 묶음 전 1,404 자) + 노드마다 한 줄 + 글마다 `[<id>]` 줄. 노드마다 구절 셋이면 100 노드 약 7 천 자 · 1,000 노드 약 6.6 만 자 · 5,000 노드 약 34 만 자(지어낸 사전으로 잰 수). 보낸 그대로는 `llm_requests.log` 보낸 줄의 payload.
 - 한 문장이 원인 · 현상을 여럿 말하면 모델은 짝마다 링크 하나를 답한다(같은 근거). 한 문장에서 후보가 여럿 나오므로 후보 표의 키에 `cause_phrase` · `phenomenon_phrase` 가 들어 있어야 한다 — 아니면 같은 키의 행이 서로 덮어쓴다.
 - 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
 - `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다. 모델 답은 앞뒤 공백만 무시하고 견주며, 빈 답은 말없이 `suspected`, 그 밖의 답은 `suspected` 로 두고 로그에 한 줄 `[LLM] link N of M answers certainty '<답>', which is not confirmed or suspected - kept as suspected (llm:<모델>): '<근거>'`.
@@ -143,7 +143,7 @@ def text_cause_links_llm(df, db):
 
 ### 6-2. 이미 아는 인과를 프롬프트에 — `known`
 
-맵퍼가 `known={"follow": [<술어>, …], "hops": <걸음 수>}` 를 넘기면, 요청마다 프롬프트가 «그 요청의 글이 부르는 노드 사이에 이미 아는 링크»를 싣고 사전은 그 노드들만 싣는다 — 모델이 쌍을 따로따로 내지 않고 아는 그래프에 이어 붙이게(소유자 「그래프가 아니라 그냥 쌍의 집합」). 안 넘기면 프롬프트는 §6 그대로다.
+맵퍼가 `known={"follow": [<술어>, …], "hops": <걸음 수>, "certainty": <확인을 말하는 한정자 — 없어도 됨>}` 를 넘기면, 요청마다 프롬프트가 «그 요청의 글이 부르는 노드 사이에 이미 아는 링크»를 싣고 사전은 그 노드들만 싣는다 — 모델이 쌍을 따로따로 내지 않고 아는 그래프에 이어 붙이게(소유자 「그래프가 아니라 그냥 쌍의 집합」). 안 넘기면 프롬프트는 §6 그대로다.
 
 ```python
 import pandas as pd
@@ -154,15 +154,15 @@ def text_cause_links_llm(df, db):
     names = sql(db, "SELECT <타입 칸> AS node_type, <키 칸> AS node_key, <말 칸> AS phrase "
                     "FROM <부르는 말 표>").to_dict("records")
     texts = [{"id": text_id, "text": text} for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])]
-    found = ask_links(texts, names, known={"follow": ["<인과 술어>"], "hops": 2})
+    found = ask_links(texts, names, known={"follow": ["<인과 술어>"], "hops": 2, "certainty": "certainty"})
     out = pd.DataFrame(found).rename(columns={"text_id": "<글 id 칸>"})
     out.attrs[UNREAD_JOBS] = [item["id"] for item in found.refused]
     return out
 ```
 
 1. 씨앗 — 요청의 글이 구절을 품은 사전 노드(낱말 주머니 §8-1, `match_at` 같음). 식별자 순
-2. 걷기 — 씨앗에서 운영 세상의 원장을 `follow` 술어로 `hops` 걸음. 화면의 걷기를 그대로 부른다(HTTP 없이 · 묶음 없이). 양 끝이 다 사전 노드인 링크만 쓴다 — 사전에 없는 노드는 모델이 식별자로 답할 수 없다. 씨앗의 타입이 키를 정확히 하나 선언해야 그 씨앗에서 걷는다(아니면 그 씨앗은 빼고 한 줄 `[LLM] known links: N seed(s) not walked - type(s) <타입> do not declare exactly one key`)
-3. 고르는 차례 — ① 다리: 두 씨앗을 잇는 가장 짧은 길 위의 링크 ② 씨앗에서 1 걸음 ③ 2 걸음 … 같은 차례 안에서는 확인된 것(한정자 `certainty` 가 `confirmed`, §7) · 근거 원자가 많은 것 · 식별자 순. 걸음 링크는 씨앗을 돌아가며 씨앗마다 `known_per_seed`(기본 5) 개까지 — 다리는 안 센다. 무작위가 없어 같은 묶음은 같은 프롬프트다
+2. 걷기 — 씨앗에서 운영 세상의 원장을 `follow` 술어로 `hops` 걸음. 화면의 걷기를 그대로 부른다(HTTP 없이 · 묶음 없이). 체인 묶음 안에서는 그 묶음의 문장 시한(`chain_statement_timeout_seconds`)이 걷기에도 걸리고, 요청마다 체인 일시정지를 묻는다(멈췄으면 그 묶음이 되감김). 원장에 source-event 투영이 없으면 걷기의 503(`source_event_projection_not_deployed` — `add_ledger_source_events.py --apply` 를 하라는 문장)으로 그 묶음이 실패한다. 양 끝이 다 사전 노드인 링크만 쓴다 — 사전에 없는 노드는 모델이 식별자로 답할 수 없다. 씨앗의 타입이 키를 정확히 하나 선언해야 그 씨앗에서 걷는다(아니면 그 씨앗은 빼고 한 줄 `[LLM] known links: N seed(s) not walked - type(s) <타입> do not declare exactly one key`)
+3. 고르는 차례 — ① 다리: 두 씨앗을 잇는 가장 짧은 길 위의 링크 ② 씨앗에서 1 걸음 ③ 2 걸음 … 같은 차례 안에서는 확인된 것(`known` 의 `certainty` 칸이 이름 댄 한정자가 `confirmed` — §7 선언이면 `certainty`; 칸을 안 적으면 이 정렬이 없다) · 근거 원자가 많은 것 · 식별자 순. 다리는 걷기 답의 엣지 위에서 씨앗마다 한 번 셈(링크 × 씨앗 — 이 박스 씨앗 100 · 링크 6,000 에 0.9 초). 걷기의 보조 노드 판정(aux)은 노드마다 «가장 가까운 보조 노드까지 몇 걸음»만 주고 길 위의 엣지는 안 줘서 다리에 못 쓴다. 걸음 링크는 씨앗을 돌아가며 씨앗마다 `known_per_seed`(기본 5) 개까지 — 다리는 안 센다. 무작위가 없어 같은 묶음은 같은 프롬프트다
 4. 상한 — 사전 줄과 아는 링크 줄의 글자 합 `known_chars`(기본 4,000) 안에서 씨앗 먼저, 그다음 링크를 차례대로(그 링크 양 끝의 사전 줄과 함께), 안 들어가는 첫 링크에서 멈춘다
 5. 적는 모양 — 사전 아래에 원인 하나에 결과를 모아:
    ```
@@ -171,9 +171,9 @@ def text_cause_links_llm(df, db):
    ```
    그 아래 지시 셋 — 새 링크의 양 끝은 있는 노드로 · 아는 링크 두 끝 사이의 단계를 글이 말하면 그 단계를 잇는 링크 둘로 · A 가 B 를, B 가 C 를 일으키면 A -> B 와 B -> C 를 따로, 같은 것은 같은 식별자나 같은 말로(요청 안 글 사이에서도). 답 모양은 그대로(쌍 목록) — 사슬은 «가운데 노드를 같이 쓰는 쌍들»로 온다
 6. 씨앗이 없는 요청 — 아는 링크 절이 없고 사전이 빈다(지시 셋은 남음). 걷지 않는다
-7. 결과의 `known` — 요청마다 `{texts, seeds, links, kept, nodes, listed}`: 닿은 링크 `links` 중 실은 `kept` · 사전 노드 `nodes` 중 실은 `listed`. 같은 수를 로그 한 줄 `[LLM] known links for N text(s): S seed(s), K of L link(s), dictionary J of M node(s)`
+7. 결과의 `known` — 요청마다 `{texts, seeds, links, kept, nodes, listed, certainty}`(`certainty` 가 null 이면 «확인 먼저» 정렬 없이 골랐다): 닿은 링크 `links` 중 실은 `kept` · 사전 노드 `nodes` 중 실은 `listed`. 같은 수를 로그 한 줄 `[LLM] known links for N text(s): S seed(s), K of L link(s), dictionary J of M node(s)`
 8. 대가 — 사전을 줄이므로 글에 구절이 그대로 안 나오는 동의어 노드는 빠진다 — 모델은 null 을 답하고 낱말 주머니가 받는다
-9. `known` 의 모양이 틀리면(`follow` 가 비거나 글자 하나 · `hops` 가 1 이상 정수가 아님) 묻기 전에 `ValueError`
+9. `known` 의 모양이 틀리면(`follow` 가 비거나 글자 하나 · `hops` 가 1 이상 정수가 아님 · `certainty` 가 글자가 아님) 묻기 전에 `ValueError`
 
 연결성 재기 — 바꾸기 전과 후에 같은 명령을 돌려 견준다(읽기만):
 

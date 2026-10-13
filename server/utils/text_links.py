@@ -196,7 +196,7 @@ def find_links(text, names, links):
 #: texts, put where the <<...>> marks stand.
 ASK_LINKS_PROMPT = """Read each text below and list every statement in it that one thing causes another.
 When one sentence names several causes or effects, list one link for each cause and effect pair - separate items, which may quote the same evidence.
-Answer with one JSON object and nothing else - one item for each text, its id as its [id] line writes it:
+Answer with one JSON object and nothing else - one item for each text, its id as written between the brackets of its [id] line, without the brackets:
 {"texts": [{"id": "...", "links": [{"cause": "...", "cause_key": null, "cause_direction": null, "effect": "...", "effect_key": null, "effect_direction": null, "link": "...", "evidence": "...", "negated": false, "certainty": null}]}]}
 - cause, effect: the shortest noun phrase of the text that names the thing, copied from the text - a few words, never a clause or a whole sentence (the whole sentence goes in evidence)
 - cause_key, effect_key: the identifier of the dictionary node the cause or the effect is, written exactly as listed; null when no listed node fits
@@ -365,16 +365,31 @@ def _read(text, links, names, by_id, match_at, extractor):
     return out
 
 
+#: What a model may wrap an id in - taken off both ends before ids are compared.
+ID_WRAPPING = "[]\"'“”‘’«»「」 "
+
+
+def _text_id(value):
+    """An id as compared: its text (`crud.clean_str_value` - 7, 7.0 and "7" alike, "007" not), brackets and
+    quotes off both ends."""
+    from database import crud
+
+    return crud.clean_str_value(value).strip(ID_WRAPPING)
+
+
 def _ask(request, prompt_of, read):
     """One request -> ({id: rows}, {id: why}) for its texts [(id, text)]: the answer's item of each id,
-    read by `read(text, links)`. An answer refused whole gives every text its sentence; a call that
-    failed (`LlmCallFailed`) is raised - the whole batch fails and the chain asks it again later."""
+    read by `read(text, links)` - ids compared as text, brackets and quotes off (`_text_id`). A request of one
+    text answered {"links": [...]} is that text's answer. An answer refused whole gives every text its
+    sentence; a call that failed (`LlmCallFailed`) is raised - the whole batch fails (`max_group_attempts`)."""
     from database import crud
     from utils import llm
 
     try:
         answer = llm.ask_json(prompt_of(request))
         items = answer.get("texts")
+        if not isinstance(items, list) and len(request) == 1 and isinstance(answer.get("links"), list):
+            items = [{"id": request[0][0], "links": answer["links"]}]       # one text, answered the one-text way
         if not isinstance(items, list):
             raise llm.LlmRefused("the answer has no 'texts' list: %s" % sorted(answer)[:10])
     except llm.LlmCallFailed:
@@ -384,10 +399,10 @@ def _ask(request, prompt_of, read):
     by_id = {}
     for item in items:
         if isinstance(item, dict):
-            by_id.setdefault(crud.clean_str_value(item.get("id")), item)
+            by_id.setdefault(_text_id(item.get("id")), item)       # the first item of an id is its answer
     rows, why = {}, {}
     for ident, text in request:
-        item = by_id.get(crud.clean_str_value(ident))
+        item = by_id.get(_text_id(ident))
         if item is None:
             why[ident] = "the answer has no item for text %r" % (ident,)
         elif not isinstance(item.get("links"), list):
@@ -411,15 +426,17 @@ KNOWN_ASKS = (
     "When A causes B and B causes C, answer A -> B and B -> C as two links, and give one thing the same"
     " identifier or the same words in every text of this request.",
 )
-#: The qualifier a known link is confirmed by - the cell `ask_links` rows carry, bound to the ledger as such.
-CERTAINTY = "certainty"
 
 
 def _walked(seeds, follow, hops):
     """The operating world's walk from `seeds` [(node_type, node_key)] along `follow`, `hops` steps - the
     screen's own walk (`trace_router._evidence_graph`, no bundles), called directly on a connection of its
-    own. A seed of a type that does not declare exactly one key has no id from one node_key - left out,
-    one line."""
+    own - a session's, so inside a chain group it runs under `chain_statement_timeout_seconds` like the
+    group's own reads (`database._set_statement_time_limits`). A seed of a type that does not declare
+    exactly one key has no id from one node_key - left out, one line. No source-event projection: the walk's
+    own 503 (`HTTPException`, source_event_projection_not_deployed) fails the call."""
+    from sqlalchemy.orm import Session
+
     from database import database
     from declaration_names import bare_name
     from ledger import explorer, trace_router
@@ -438,17 +455,17 @@ def _walked(seeds, follow, hops):
                        len(left), ", ".join(sorted(set(left))))
     if not ids:
         return {"nodes": [], "edges": []}
-    with database.engine.connect() as connection:
+    with Session(bind=database.engine) as session:
         return trace_router._evidence_graph(
-            connection, node_id={"positive": ids, "negative": []}, hops=hops, direction="both",
+            session.connection(), node_id={"positive": ids, "negative": []}, hops=hops, direction="both",
             node_limit=ledger_subgraph.DEFAULT_NODE_LIMIT, edge_limit=ledger_subgraph.DEFAULT_EDGE_LIMIT,
             follow=list(follow))
 
 
-def _known_links(walk, node_of, follow):
+def _known_links(walk, node_of, follow, certainty=None):
     """The walk's edges along `follow` both ends of which are dictionary nodes, as
-    {cause, effect, predicate, confirmed, support} - support = the edge's records, confirmed = a record
-    says certainty confirmed (the qualifier `ask_links` rows carry)."""
+    {cause, effect, predicate, confirmed, support} - support = the edge's records, confirmed = a record's
+    qualifier `certainty` (the mapper names it in `known`) says CONFIRMED; no name: none is."""
     from declaration_names import bare_name
     from ledger_api import ledger_subgraph
 
@@ -473,8 +490,8 @@ def _known_links(walk, node_of, follow):
         link = out.setdefault((cause, effect, predicate), {"cause": cause, "effect": effect, "predicate": predicate,
                                                            "confirmed": False, "support": 0})
         link["support"] = max(link["support"], len(records) + int(edge.get("records_more") or 0))
-        link["confirmed"] = link["confirmed"] or any(
-            (said.get("qualifiers") or {}).get(CERTAINTY) == CONFIRMED for said in [edge, *records])
+        link["confirmed"] = link["confirmed"] or certainty is not None and any(
+            (said.get("qualifiers") or {}).get(certainty) == CONFIRMED for said in [edge, *records])
     return list(out.values())
 
 
@@ -503,15 +520,20 @@ def _chosen(seeds, links, per_seed, node_of):
                     far[seed][step] = far[seed][at] + 1
                     queue.append(step)
 
-    def bridges(link):
-        a, b = link["cause"], link["effect"]
-        return any(s != t and t in far[s] and (
-            (a in far[s] and b in far[t] and far[s][a] + 1 + far[t][b] == far[s][t])
-            or (b in far[s] and a in far[t] and far[s][b] + 1 + far[t][a] == far[s][t]))
-            for s in seeds for t in seeds)
-
-    out = sorted((link for link in links if bridges(link)), key=order)
-    bridged = {id(link) for link in out}
+    # a link is a bridge when, from some seed s, it steps one further from s onto a node a shortest way from s
+    # to another seed passes - `toward`, read from the farthest node back: once per seed, links x seeds
+    seed_set, bridged = set(seeds), set()
+    for seed in seeds:
+        steps = far[seed]
+        toward = {}
+        for at in sorted(steps, key=steps.__getitem__, reverse=True):
+            toward[at] = (at != seed and at in seed_set) or any(
+                toward.get(step, False) for step in near.get(at, ()) if steps.get(step) == steps[at] + 1)
+        for link in links:
+            for a, b in ((link["cause"], link["effect"]), (link["effect"], link["cause"])):
+                if a in steps and steps.get(b) == steps[a] + 1 and toward[b]:
+                    bridged.add(id(link))
+    out = sorted((link for link in links if id(link) in bridged), key=order)
     by_step = {}
     for link in links:
         if id(link) in bridged:
@@ -557,7 +579,8 @@ def _known(texts, names, known, cells, match_at):
     by_id, lines = _node_lines(names)
     node_of = {node: ident for ident, node in by_id.items()}
     seeds = sorted(phrase_bag.held_nodes(texts, names, match_at), key=node_of.__getitem__)
-    links = _known_links(_walked(seeds, known["follow"], known["hops"]), node_of, known["follow"]) if seeds else []
+    links = (_known_links(_walked(seeds, known["follow"], known["hops"]), node_of, known["follow"],
+                          known.get("certainty")) if seeds else [])
     cap = cells["known_chars"]
 
     def size(listed, kept):
@@ -576,7 +599,8 @@ def _known(texts, names, known, cells, match_at):
         listed += more
         kept.append(link)
     block = ([KNOWN_HEADING] + _known_lines(kept, node_of) if kept else []) + list(KNOWN_ASKS)
-    said = {"seeds": len(seeds), "links": len(links), "kept": len(kept), "nodes": len(by_id), "listed": len(listed)}
+    said = {"seeds": len(seeds), "links": len(links), "kept": len(kept), "nodes": len(by_id), "listed": len(listed),
+            "certainty": known.get("certainty")}
     return "\n".join(line for node, line in lines.items() if node in listed), "\n".join(block), said
 
 
@@ -614,7 +638,9 @@ def ask_links(text, names, instruction=None, match_at=None, known=None):
     A link's evidence is looked for in the whole of its text (`_evidence`); its sentence runs from the
     start of the sentence the quote starts in to the end of the one it ends in, and sentence_no is the
     first's. A link whose evidence its text does not hold is dropped and said in one warning line."""
+    from chain import control as chain_control
     from database import crud
+    from database.context import request_chain_group
     from utils import llm
 
     many = isinstance(text, (list, tuple))
@@ -622,14 +648,16 @@ def ask_links(text, names, instruction=None, match_at=None, known=None):
              else [(ONE_TEXT_ID, str(text or ""))])
     if not texts:
         return AskedLinks()
-    seen = Counter(crud.clean_str_value(ident) for ident, _text in texts)
+    seen = Counter(_text_id(ident) for ident, _text in texts)
     twice = sorted(ident for ident, count in seen.items() if count > 1)
     if twice:
         raise ValueError("ask_links: text ids must be unique - %s given twice" % ", ".join(map(repr, twice[:5])))
     if known is not None and not (
             isinstance(known, dict) and known.get("follow") and not isinstance(known["follow"], str)
-            and isinstance(known.get("hops"), int) and not isinstance(known["hops"], bool) and known["hops"] > 0):
-        raise ValueError("ask_links: known is {'follow': [<predicate>, ...], 'hops': <steps above 0>}, got %r" % (known,))
+            and isinstance(known.get("hops"), int) and not isinstance(known["hops"], bool) and known["hops"] > 0
+            and (known.get("certainty") is None or isinstance(known["certainty"], str))):
+        raise ValueError("ask_links: known is {'follow': [<predicate>, ...], 'hops': <steps above 0>, 'certainty':"
+                         " <the qualifier that says confirmed, optional>}, got %r" % (known,))
     cells = llm.settings()
     names = list(names or ())
     by_id, dictionary = _listing(names)
@@ -639,6 +667,8 @@ def ask_links(text, names, instruction=None, match_at=None, known=None):
     cut = []
 
     def prompt_of(request):
+        if request_chain_group.get():
+            chain_control.raise_if_paused()           # a stage boundary of the group: a pause rewinds it here
         listed = dictionary
         if known is not None:
             listed, block, said = _known([one for _ident, one in request], names, known, cells, match_at)
