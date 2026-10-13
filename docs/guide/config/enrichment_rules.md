@@ -59,7 +59,7 @@
 | ① | `decision_key` 모든 컬럼이 **파생에** 존재 (같은 이름) | `decision_key column(s) missing in derived table: [...]` |
 | ② | `decision_key` ∩ `target_fields` = ∅ (`:157-159`) | `decision_key and target_fields must not overlap: [...]` |
 | ③ | `composite_key_source ⊆ decision_key` **또는** `business_key ∈ decision_key` (`:30-32`, `:202-216`) | `derived table composite_key_source must be a subset of decision_key (violation: [...])` 또는 `derived table must declare composite_key_source ⊆ decision_key or business_key ∈ decision_key (dedup upsert key contract)` |
-| ④ | 참조뷰 `:바인딩`은 `decision_key` 컬럼만 (`:81-100`) | *(규칙이 아니라 그 뷰만 제거)* `reference view '<label>' dropped: bind params must be decision_key columns only; invalid: [...]` |
+| ④ | 참조뷰 `:바인딩`은 `decision_key` 컬럼 또는 집계 이름만 (`config.py` 의 `_BIND_PARAM_RE` 로 읽음) | *(규칙이 아니라 그 뷰만 제거)* `reference view '<label>' dropped: bind params must be decision_key columns or aggregation names; invalid: [...]` |
 | ④-2 | 참조뷰에 `:x::type` 철자 금지 — 바인드 뒤에 `::` 형 변환이 붙으면 바인드로 안 읽힌다 | *(그 뷰만 제거)* `reference view '<label>' dropped: write CAST(:x AS type) instead of :x::type` — 뷰 글을 `CAST(:x AS type)` 로 고친다 |
 
 - **② 왜**: `target_fields`는 사람이 앞으로 채울 결손 필드입니다. 판단 시점에 비어 있는 값이 판단 근거(키)일 수는 없습니다.

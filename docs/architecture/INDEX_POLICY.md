@@ -107,7 +107,7 @@
 
 | 안 붙이는 것 | 이유 |
 |---|---|
-| **사용자 컬럼 일반**(키가 아닌 컬럼 전부) | 그리드 컬럼 필터(`main.apply_column_filters`)는 **아무 선언 컬럼에나** 술어를 냅니다. 그것을 근거로 삼으면 **컬럼 수만큼** 인덱스를 만들게 되고, 비용은 §4의 행당 비용 × 컬럼 수입니다. `bonding_log`는 사용자 컬럼이 16개입니다. 필터는 인덱스의 근거가 아니라 **상한(LIMIT)과 커서**의 근거입니다 |
+| **사용자 컬럼 일반**(키가 아닌 컬럼 전부) | 그리드 컬럼 필터(`main.apply_column_filters`)는 **아무 선언 컬럼에나** 술어를 냅니다. 그것을 근거로 삼으면 **컬럼 수만큼** 인덱스를 만들게 되고, 비용은 §4의 행당 비용 × 컬럼 수입니다. `bonding_log`는 사용자 컬럼이 16개입니다. 필터는 인덱스의 근거가 아니라 **상한(LIMIT)과 커서**의 근거입니다. 🆕 이것은 «제품이 스스로» 붙이지 않는다는 뜻입니다 — 10-11 부터 표 쓰는 사람이 `table_config` 의 `indexes` 에 칸을 적을 수 있고, 10-13 부터 `"search": true`(검색 · 컬럼 필터 contains 의 trigram 색인)도 적습니다([table_config](../guide/config/table_config.md) `indexes`) |
 | **`business_key` 컬럼**(복합 키를 선언한 표에서) | `core_cell_key`·`dt_cell_key`·`cell_key`·`bond_cell_key`·`pkg_id`·`split_key`·`map_pk`·`void_uid`·`delam_uid`·`wid_key`·`event_id` — 이 중 **어느 것에도 WHERE가 없습니다**(전수 확인 2026-08-14). 신원 조회는 프레임워크의 `business_key_val`로 갑니다 |
 | **UNIQUE 제약으로의 승격** | `idx_<표>_declared_key`는 **맵 신원**이지 행 신원이 아닙니다. `core_wafer_map`의 `(core_lot, core_slot)`은 맵 한 장에 수백 셀이 공유합니다. UNIQUE로 만들면 **두 번째 셀부터 거절**됩니다 |
 | **커버링 확장**(`INCLUDE`, 정렬 컬럼 추가) | 아래 §2.1이 이미 재 봤습니다: `(core_lot, core_slot, core_y, core_x, row_id) INCLUDE (c_bn)`은 셀 읽기를 0.082 ms → **0.110 ms로 느리게** 했고 `GROUP BY`를 HashAgg로 되돌렸습니다. 인제션 대상에 컬럼 여섯 폭의 쓰기 증폭을 사고 얻은 것이 없습니다 |

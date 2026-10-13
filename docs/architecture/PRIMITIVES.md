@@ -1267,14 +1267,20 @@
   - ⚠️ **상태 어휘는 닫혀 있고, `cancel_requested` 와 `cancelled` 는 «다른 상태»다**(부탁했다 ≠ 멈췄다). 둘을 하나로 접으면 화면이 아직 도는 실행을 멈춘 것으로 그린다.
 
 ### ⭐⭐ **여러 긴 작업의 «속도»는 표 «하나»가 선언한다 — 이름을 고르게 하고 숫자를 고르게 하지 마라** (2026-08-31 등록 · `server/pacing.json`)
-- **무엇**: 대량 작업이 DB 를 독점하면 **옆 질의가 느려진다.** 노브를 작업마다 만들면 운영자가 숫자를 외워야 하고, 그 숫자는 작업마다 뜻이 다르다. 처방: **이름 붙은 프로파일 표 하나**(`fast`·`slow`·`trickle`, 각 `label`·`when`·`units_per_cycle`·`rest_seconds`)를 두고 긴 작업이 전부 **같은 표**를 읽는다. 화면에 나가는 것은 값이 아니라 **이름과 「언제 쓰나」**다.
-- **어디**: 선언 `server/pacing.json`(🔴 **`server/config/` 가 아니라 «코드 옆»에 있고 git 추적된다** — `.sample` 이 없는 이유가 그것이다) · 읽기 `server/pacing.py`(`load_paces` · `resolve` · `UnknownPace`) · 소비자 **셋**: 원장 백필(`ledger/backfill.py`, 단위 = **페이지**) · 체인 재적용 R1(`chain/replay.py`, 단위 = **페이지** — 2026-09-02 합류) · 파일 인제션(`parsers/directory_watcher.py`, 단위 = **청크**, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다) · 어드민 선택지는 같은 파일에서 조립되고(§3 「닫힌 집합은 선언에서」) 등록부 연산 **둘**(`chain_replay`·`ledger_backfill`)이 `pace` 를 파라미터로 선언한다.
+- **무엇**: 대량 작업이 DB 를 독점하면 **옆 질의가 느려진다.** 노브를 작업마다 만들면 운영자가 숫자를 외워야 하고, 그 숫자는 작업마다 뜻이 다르다. 처방: **이름 붙은 프로파일 표 하나**(`fast`·`slow`·`trickle`·`background`, 각 `label`·`when`·`units_per_cycle`·`rest_seconds`)를 두고 긴 작업이 전부 **같은 표**를 읽는다. 화면에 나가는 것은 값이 아니라 **이름과 「언제 쓰나」**다.
+- **어디**: 선언 `server/pacing.json`(🔴 **`server/config/` 가 아니라 «코드 옆»에 있고 git 추적된다** — `.sample` 이 없는 이유가 그것이다) · 읽기 `server/pacing.py`(`load_paces` · `resolve` · `UnknownPace`) · 소비자 **셋**: 원장 백필(`ledger/backfill.py`, 단위 = **페이지**) · 체인 재적용 R1(`chain/replay.py`, 단위 = **페이지** — 2026-09-02 합류) · 파일 인제션(`parsers/directory_watcher.py`, 단위 = **청크**, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다) · 어드민 선택지는 같은 파일에서 조립되고(§3 「닫힌 집합은 선언에서」) 등록부 연산 **둘**(`chain_replay`·`ledger_backfill`)이 `pace` 를 파라미터로 선언한다. 🆕 아무도 시작하지 않는 일은 표의 `jobs` 칸이 이름을 고른다 — `chain_followup`(원장 따라가기, 🆕 10-13 `e914303b7` 부터 `fast`) · `ledger_row_census`(`background`), 소비자는 `pacing.job_pace`.
 - **언제 재사용**: 「이 작업이 도는 동안 화면이 느리다」가 나올 때. 그리고 **새 장기 작업을 만들 때** — 자기 노브를 만들지 말고 이 표를 읽어라.
 - **함정**:
   - 🔴 **`units_per_cycle` 의 «단위»가 소비자마다 다르다**(페이지 ↔ 청크). 표가 선언하는 것은 «리듬»이지 «양»이 아니다 — 새 소비자를 붙이면 그 단위를 문서에 적어라. 안 적으면 같은 `slow` 가 두 곳에서 전혀 다른 부하가 된다.
   - ⚠️ **모르는 이름의 처리가 소비자마다 «다르다»** — 백필과 체인 재적용은 **거절**하고(사람이 방금 친 오타를 안은 채 전속력으로 도는 것을 막는다) 인제션은 **경고 후 전속력**이다. 어느 쪽이 옳은지는 그 경로가 «사람의 요청»인지 «데몬의 기본값»인지가 정한다 — 그래서 갈림은 2 대 1 이지 「둘이 다르다」가 아니다. 통일하기 전에 그 질문부터 답할 것. 🔴 **거절은 «첫 페이지 전»에 한다** — 반쯤 돌고 나서 거절하면 그 실행은 되돌릴 것과 이어 갈 것을 둘 다 갖는다.
-  - ⚠️ **캐시도 mtime 감시도 없지만 그렇다고 «즉시 반영»은 아니다** — 읽기가 «실행 시작마다 한 번»이라 도는 중에 고쳐도 그 실행에는 안 듣는다. 재기동은 필요 없다.
+  - ⚠️ **캐시도 mtime 감시도 없지만 그렇다고 «즉시 반영»은 아니다** — 실행이 고르는 페이스는 읽기가 «실행 시작마다 한 번»이라 도는 중에 고쳐도 그 실행에는 안 듣는다(`jobs` 의 소비자는 바퀴마다 다시 읽는다). 재기동은 필요 없다.
   - 🔴 **기본값은 「오늘의 행동」이어야 한다**(`fast` = 상한 없음 · 쉼 0). 이 선언이 아직 안 켜진 배포에서 속도가 «저절로» 떨어지면 그건 성능 회귀로 보고된다.
+
+### ⭐ **문장 하나가 «얼마나» 돌 수 있나는 좌석 «하나»가 건다** (🆕 10-13 등록 · `database._set_statement_time_limits`)
+- **무엇**: 트랜잭션이 시작될 때마다 `SET LOCAL` 로 잠금 대기 · 문장 상한을 건다 — 트랜잭션과 함께 끝나므로 풀의 연결은 온 그대로 돌아간다.
+- **어디**: `server/database/database.py` `_set_statement_time_limits` · 상한 값은 `ingestion_settings.json` 을 같은 읽기(`directory_watcher._timeout_seconds`: null/0 = 없음, 틀린 값 = 기본값)로 · 소비자 **셋** — 파일 쓰기(`lock_timeout_seconds` · `statement_timeout_seconds`, 파일 채널) · 체인 묶음(`chain_statement_timeout_seconds`, 묶음 안) · 🆕 그리드 읽기(`grid_read_timeout_seconds`, `read_limit` 안 — `main.grid_read`).
+- **언제 재사용**: 「이 읽기 · 쓰기가 끝없이 돌며 남을 막는다」가 나올 때 — 새 상한을 따로 걸지 말고 이 좌석에 소비자 하나(컨텍스트 하나)를 더한다.
+- **함정**: ⚠️ 상한에 걸린 문장은 그 트랜잭션을 죽인다 — 소비자가 그것을 «다음 할 일»이 든 문장으로 바꿔 말해야 한다(그리드는 503 `grid_read_stopped`). PostgreSQL 밖에서는 아무것도 안 건다.
 
 ### Outbox + LISTEN/NOTIFY
 - **무엇**: DB 트랜잭션과 이벤트 발행을 원자적으로 묶는다.
