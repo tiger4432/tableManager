@@ -34,7 +34,7 @@
 >                          {"columns": ["b_wy"], "search": true}]
 >            저장한 뒤 어드민 Reload(POST /admin/reload-configs) · 온톨로지 탐색기의 활성화 · 재기동 중 하나 -> 체인 프로세스가 짓는다
 >            ⚠️ 파일만 고치고 Reload 를 안 하면 안 짓는다 — 표 모양은 바로 다시 읽지만 색인 일은 Reload 와 기동 때만 돈다
-> 짓는 동안   server.log 의 [Chain] 줄
+> 짓는 동안   chain_worker.log 의 줄 (런처 — 통합 모드로 띄웠으면 server.log)
 >              [Indexes] N declared index(es) the database lacks or holds invalid: … idx_<표>_<칸>_search on <표> (missing)
 >              [Indexes] building idx_<표>_<칸>_search on <표>
 >              [Indexes] idx_<표>_<칸>_search built in 3.2 s          <- 끝. CONCURRENTLY 라 표를 안 잠근다
@@ -102,7 +102,7 @@
 >          write = screen atoms + partitions + withdraw atoms + insert atoms + index lines + commit · forget index lines
 > 답의 뜻   read 가 길고 «no index on it - each page sorts the table» -> 쪽 열쇠 칸에 인덱스가 없어 쪽마다 원천 표를 통째로 정렬한다(쪽이 1 행부터라 첫 쪽들이 특히 느림)
 >             그 표의 table_config "indexes" 에 그 칸을 적는다 -> 체인 워커 기동 줄 [Indexes] 에서 지어짐
->          withdrawal count · withdraw atoms 가 길고 plan 에 «Seq Scan on ledger_events_* xN» -> 원장 ref 인덱스를 안 탐. 줄에 «missing or not valid … build it: <명령>» 이 같이 나오면 그 명령(맨 위 절)
+>          withdrawal count · withdraw atoms 가 길고 plan 에 «Seq Scan on ledger_events_* xN» -> 원장 ref 인덱스를 안 탐. 줄에 «missing or not valid … build it: <명령>» 이 같이 나오면 체인 워커 재기동 또는 Reload — 체인 워커가 짓는다(손 명령 --apply 는 그것이 짓는 중엔 금지, 아래 ⚰️ 절)
 >             «(valid)» 인데 Seq Scan 이면 인덱스가 있는데 안 타는 것 -> 그 줄 그대로 총괄에게
 >          event frames · dry run 이 길다 -> 파이썬 번역 몫(박스 행당 3~6 ms). 박동이 «no busy backend - the time is in this process» 를 말한다 — DB 는 한가함
 >          박동이 «waiting Lock:… on pid N (<누구>, …)» -> 그 pid 의 연결이 잡고 있다. 누구 = assy_chain… 이면 체인 · 원장 따라가기, assy_server 면 화면 요청
@@ -115,7 +115,8 @@
 >          idle in transaction 5 s): LOCK TABLE ledger_events IN ACCESS EXCLUSIVE MODE  ·  느림 줄은 3.0 s 에, «ended» 는 12.1 s
 >          원자 200 개가 실행 전 · 잠금 판 뒤 · 빈 판 뒤 같음 · public 행 변화 0
 > ⚠️ 안 잰 것  운영 크기에서 쪽마다 EXPLAIN 둘(쪽 읽기 · 거두기 셈, 계획만 — 실행 안 함)이 더하는 초
-> 되돌리기  git revert $(git log -1 --format=%h --grep="re-translate says each stage")
+> 되돌리기  단계 줄만 끄려면 ingestion_settings "retroactive_debug": false (박동은 스위치 없음)
+>          ⚠️ 이 커밋만 revert 하면 안 된다 — 뒤의 원장 ref 인덱스 착지(17d8ea0d6)와 큐 1(97617bf8e)이 같은 함수를 부름. 되돌리려면 그 셋을 같이
 > ```
 
 > ## [10-13] ⚰️ **원장 ref 인덱스 손 명령 — 이제 체인 워커가 짓는다(17d8ea0d6, 위 절)** — 이 절의 «먼저 이것»은 내림
@@ -141,8 +142,8 @@
 > 답의 뜻   만든 뒤 같은 검색이 1 초 안 -> 됨 / 그대로 -> 검색 칸 하나가 빠졌다(위 순서로 다시 셈) · 글자 2 개 이하 검색은 이 인덱스로도 느릴 수 있다
 > 값       표 쓰기가 조금 느려진다(칸마다 인덱스 하나 더) · 디스크
 > 되돌리기  DROP INDEX CONCURRENTLY tmp_search_<표>_<칸>;
->          구현자 A 의 «표 선언 indexes 의 검색 갈래»(d16033b63)가 착지하면 선언으로 옮기고 이 tmp_ 인덱스는 지운다
-> ⚠️ 안 잰 것  인덱스 관리(GET /admin/indexes)가 이 손 인덱스를 어떻게 보이는지
+>          선언 길이 착지했다(adae5832a · 1aa7af331) — 선언하고 그 칸의 «built» 줄이 난 «뒤» 이 tmp_ 인덱스를 지운다(맨 위 «큰 표 검색» 절)
+>          인덱스 관리(GET /admin/indexes)에는 이 손 인덱스가 안 뜬다(정적 모델 표만 봄)
 > ```
 
 > ## [10-13] **원장 다시 번역이 × 로 안 멈출 때 (소유자 「원장 재번역 꺼지지도 않네 x 눌러도」)** — 순서대로, 앞에서 멈추면 거기까지
