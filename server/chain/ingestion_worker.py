@@ -389,7 +389,7 @@ def rows_per_run(rule):
 def _rows_cap(event, rules):
     """The smallest `rows_per_run` of the rules this event wakes, or None - the row budget's cap."""
     caps = [rows_per_run(rule) for rule in rules
-            if rows_per_run(rule) is not None and wakes(rule, event)]
+            if rows_per_run(rule) is not None and _is_trigger_event(event) and fires(rule, event)]
     return min(caps) if caps else None
 
 
@@ -1161,25 +1161,14 @@ def _rule_accepts_event(rule, event) -> bool:
 _READ_BY_SOURCE_NAME = set()
 
 
-def _is_trigger_event(event, rule=None) -> bool:
-    """이 사건의 «종류»가 이 규칙을 깨울 수 있나 — CREATE · EDIT 는 언제나, DELETE 는 규칙이
-    `allow_delete_trigger` 를 적었을 때만(옛 값을 읽는 규칙, 제품의 decide). 규칙 없이 물으면 그 칸은 없다.
+def _is_trigger_event(event) -> bool:
+    """이 이벤트가 규칙을 «깨울 수 있는» 종류인가 — 이벤트 «혼자»의 성질이다.
 
-    🔴 [판정 435 ④ 를 «뒤집지 않고» 이 칸으로 넓힘 — 총괄 옛 키 ㄱ] 「DELETE 는 규칙 루프에 안 든다」는
-       칸을 안 적은 규칙에 그대로다. 끝없는 연쇄는 지금 관문 그대로 막는다 — 체인이 낸 지움도
-       `allow_chain_trigger` 없이는 안 깨운다(`fires`).
     ⛔ `CHAIN_OWNED_EVENT_TYPES` 가 아니다. 저쪽은 DELETE 를 포함하고 「이 행을 어느 데몬이
-       비우나」에 답한다 — 같은 낱말 두 물음이라 상수를 빌려 쓰면 DELETE 가 조용히 체인을 돌린다.
+       비우나」에 답한다. 이쪽은 「규칙이 깨어나나」이고 DELETE 는 깨우지 않는다 — 같은 낱말
+       두 물음이라 상수를 빌려 쓰면 DELETE 가 조용히 체인을 돌린다.
     """
-    if event.event_type == "DELETE":
-        return bool((rule or {}).get(chain_bindings.ALLOW_DELETE_TRIGGER_KEY))
     return event.event_type in ("CREATE", "EDIT")
-
-
-def wakes(rule, event) -> bool:
-    """이 규칙이 이 사건에 «깨어나나» — 종류(`_is_trigger_event`)와 쌍(`fires`) 둘 다. 규칙을 고르는 자리는
-    전부 이것을 묻는다; 묶기(`group_id`)만 `fires` 하나를 묻는다."""
-    return _is_trigger_event(event, rule) and fires(rule, event)
 
 
 def fires(rule, event) -> bool:
@@ -1229,8 +1218,6 @@ def fire_refusal(rule, event):
 #: The two answers of `fire_refusal` the pre-run outcome tells apart.
 FIRE_REFUSED_COLUMNS = "none of its wake columns changed"
 FIRE_REFUSED_CHAIN = "chain-produced event; this rule does not declare allow_chain_trigger"
-#: Why a deletion does not wake a rule (`_is_trigger_event`) - the queue screen's sentence.
-FIRE_REFUSED_DELETE = "a deletion; this rule does not declare allow_delete_trigger"
 
 
 def _report_unwatchable_trigger_columns(rules):
@@ -1393,7 +1380,7 @@ def _rule_outcome_before_running(rule, events):
         return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false"
     refused = set()
     for e in events:
-        if not _is_trigger_event(e, rule):
+        if not _is_trigger_event(e):
             continue
         why = fire_refusal(rule, e)
         if why is None:
@@ -1426,13 +1413,14 @@ def _group_triggered_rules(events_in_tx, rules):
     지나야 한다 — 갈리면 한쪽이 보는 표를 다른 쪽이 못 본다.
     """
     trigger_tables = set(
-        e.table_name for e in events_in_tx if any(wakes(r, e) for r in rules)
+        e.table_name for e in events_in_tx if _is_trigger_event(e)
+        and any(fires(r, e) for r in rules)
     )
     if not trigger_tables:
         return []
     return [r for r in rules
             if (r.get("trigger_table") in trigger_tables
-                and any(wakes(r, e) for e in events_in_tx))]
+                and any(fires(r, e) for e in events_in_tx))]
 
 
 def trigger_tables_in_order(events):
@@ -1451,11 +1439,9 @@ def trigger_tables_in_order(events):
     id order - a second axis, which would make this answer depend on how a writer chunked its
     commit. What matters here is only that every process gives the SAME answer, so that a rule
     order (S-156) has something to stand on.
-
-    ⚠️ IT IS HANDED THE GROUP'S WAKING EVENTS (`valid_events`, judged by `wakes`) and does not judge
-    them again - a DELETE is one when a rule takes deletions (총괄 옛 키).
     """
-    return sorted({event.table_name for event in events})
+    return sorted({event.table_name for event in events
+                   if _is_trigger_event(event)})
 
 
 def _group_read_tables(events_in_tx, rules):
@@ -1480,14 +1466,15 @@ def _group_target_tables(events_in_tx, rules):
     allow_chain_trigger를 선언한 규칙이 있을 때만 target 영향으로 계산한다.
     """
     trigger_tables = set(
-        e.table_name for e in events_in_tx if any(wakes(r, e) for r in rules)
+        e.table_name for e in events_in_tx if _is_trigger_event(e)
+        and any(fires(r, e) for r in rules)
     )
     if not trigger_tables:
         return set()
     targets = set()
     for r in rules:
         if (r.get("trigger_table") in trigger_tables
-                and any(wakes(r, e) for e in events_in_tx)):
+                and any(fires(r, e) for e in events_in_tx)):
             tgt = r.get("target_table")
             if tgt:
                 targets.add(tgt)
@@ -1653,11 +1640,6 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 blanks = [(rule_run.item_cell(item, "updated_by"), rule_run.item_cell(item, "row_id"),
                            rule_run.item_cell(item, "business_key_val"), rule_run.item_cell(item, "withdraw"))
                           for item in updates_list if rule_run.item_cell(item, "withdraw")]
-                # 총괄 옛 키: a key no source row holds any more - its row goes after the write, it is not written
-                gone_keys = [rule_run.item_cell(item, "business_key_val")
-                             for item in updates_list if rule_run.item_cell(item, "gone")]
-                if gone_keys:
-                    updates_list = [item for item in updates_list if not rule_run.item_cell(item, "gone")]
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
                     transaction_id=chain_tx_id,
@@ -1848,17 +1830,6 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                 f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | a blank "
                                 f"recount's withdrawal failed AFTER a committed write; old values may remain: "
                                 f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
-
-                if gone_keys:
-                    with alignment_batch_counts.stage("gone rows"):
-                        try:
-                            deleted_row_ids = list(deleted_row_ids or []) + _delete_gone(db, target_table, gone_keys)
-                        except Exception as gone_err:                   # noqa: BLE001
-                            db.rollback()
-                            logger.error(
-                                f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | deleting "
-                                f"{len(gone_keys)} row(s) whose key no source row holds failed AFTER a committed "
-                                f"write; those rows remain: [{type(gone_err).__name__}] {gone_err}", exc_info=True)
 
                 # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
                 #    the grid's delete (its layers, a history line, one DELETE, which wakes no rule). Asked
@@ -2129,7 +2100,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
     # said whether that mattered.
     with alignment_batch_counts.stage("trigger filter"):
-        valid_events = [e for e in events if any(wakes(r, e) for r in rules)]
+        valid_events = [e for e in events if _is_trigger_event(e)
+                        and any(fires(r, e) for r in rules)]
     if not valid_events:
         return True, None, broadcast_messages
 
@@ -2246,7 +2218,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
         matched_rules = [
             r for r in rules
             if r.get("trigger_table") == table_name
-            and any(wakes(r, e) for e in valid_events if e.table_name == table_name)
+            and any(fires(r, e) for e in valid_events if e.table_name == table_name)
         ]
         if not matched_rules:
             continue
@@ -2266,10 +2238,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     rule_shape.declaration_of(rule))
 
             try:
-                # `wakes`, not `fires`: a DELETE another rule on this table takes is not this rule's
                 trigger_events = [e for e in valid_events
                                   if e.table_name == table_name
-                                  and wakes(rule, e)]
+                                  and fires(rule, e)]
                 # 🪦 [판정 495] A BRANCH ON KIND STOOD HERE AND IT HAD NOTHING IN IT.
                 # `rule_run._uniform` was built (판정 428) so that 「a caller can extend all
                 # three lists unconditionally and get a no-op - that is what lets the branch
@@ -3455,8 +3426,8 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     🔴 [S-280 · 판정 435 ④ · 총괄 796f04605 ①] ASKED WHERE THE CHAIN ENDS A GROUP (`_retract_deleted_rows`), not
     behind the ledger's follow-up: a deletion is the chain's result and is withdrawn when the ledger stops too. The
     withdrawal is `cell_layer.withdraw_by_origin` - `withdraw_source`'s per-cell pass, with `apply`.
-    The ruling behind the CREATE/EDIT gate (endless cascade) stays intact: a DELETE enters the rule loop only
-    for a rule that declares `allow_delete_trigger` (총괄 옛 키 - widened by that cell, not reversed).
+    So the CREATE/EDIT gate five places assert on is not touched — the ruling behind it
+    (endless cascade) stays intact and DELETE never enters the rule loop.
 
     🔴 [판정 434 ④] AND THE KINDS THAT CANNOT BE REVERTED ARE NAMED. A rule whose kind does
     not stamp its origin leaves cells this cannot find, and answering that with a quiet zero
@@ -3574,29 +3545,6 @@ def _withdraw_blanks(db, table, blanks):
                                    declarations=(writer,), layers=found)
         lost.update(row_id for _columns, rows in stats["lost_a_layer"].values() for row_id in rows)
     return lost
-
-
-def _delete_gone(db, table, keys):
-    """The rows of these keys go - a decide's key no source row holds any more (총괄 옛 키): the grid's delete (its
-    layers, a history line, one DELETE). A row a person wrote on goes too, and is named. -> the deleted row ids."""
-    from chain import cell_layer
-    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
-    from database import crud, models
-
-    model = models.DYNAMIC_TABLES[table]
-    keys = list(dict.fromkeys(key for key in keys if key is not None))
-    found = {}
-    for i in range(0, len(keys), DEFAULT_CHUNK_SIZE):
-        found.update(db.query(model.row_id, model.business_key_val)
-                     .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE])))
-    if not found:
-        return []
-    persons = cell_layer.person_rows(db, table, found)
-    crud.delete_rows_batch(db, table, list(found), cell_layer.GONE_DELETER)
-    for row_id in sorted(persons):
-        logger.warning("[ChainRetract] deleted %s %s: no source rows (a person's value was on it)", table, found[row_id])
-    logger.info("[ChainRetract] table=%s rows_deleted=%d - no source row holds their key", table, len(found))
-    return list(found)
 
 
 def _rows_not_in(db, table, row_ids, results):

@@ -239,8 +239,6 @@ def auto_stage_database_outbox(session, flush_context, instances):
     #: ONLY - a value here would put user data in the outbox, and the question a rule
     #: asks is 「did MY column change」, not 「to what」.
     pending_columns = {}
-    #: (table, event_type) -> each row's old values, in `pending_chunks`' order (총괄 옛 키)
-    pending_old = {}
 
     def _changed_columns(obj):
         """Which columns this flush set on the row. One spelling for CREATE and EDIT."""
@@ -253,27 +251,14 @@ def auto_stage_database_outbox(session, flush_context, instances):
             # an EMPTY column set as 「unknown」 and stamps no key at all.
             return []
 
-    def _old(obj, names):
-        """{column: value before this flush} of an edit's changed columns - one whose old value was never loaded
-        is left out (unknown is not blank, 총괄 옛 키)."""
-        from event_constants import OUTBOX_PAYLOAD_EXCLUDED_COLUMNS
-        try:
-            attrs = inspect(obj).attrs
-            return {name: json_value(attrs[name].history.deleted[0]) for name in names
-                    if name not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS and attrs[name].history.deleted}
-        except Exception:                                              # noqa: BLE001 - as `_changed_columns`
-            return {}
-
     def _emit(event_type, obj, columns=None):
-        old = _old(obj, columns or ()) if event_type == "EDIT" else None   # an edit passes its changed columns
         if collapsed:
             key = (obj.__table__.name, event_type)
             pending_chunks.setdefault(key, []).append(obj.row_id)
             names = columns if columns is not None else _changed_columns(obj)
             pending_columns.setdefault(key, set()).update(names)
-            pending_old.setdefault(key, []).append(old or {})
         else:
-            stage_event(session, event_type, obj.__table__.name, obj, old=old)
+            stage_event(session, event_type, obj.__table__.name, obj)
 
     for obj in session.new:
         if isinstance(obj, dynamic_classes):
@@ -313,14 +298,11 @@ def auto_stage_database_outbox(session, flush_context, instances):
             # to anything downstream: that is why a cell records its origin while the row
             # is still there (`cell_sources.origin_row_id`) instead of being reconstructed
             # afterwards. The claim was true of this hook and read as true of the system.
-            # 🔴 [총괄 옛 키 ㄱ] AND NOW THEY DO: both doors read the rows first and stage their values as the
-            #    event's old values (`OLD_VALUES_KEY`), for a rule that takes deletions.
             stage_event(session, "DELETE", obj.__table__.name, obj)
 
     for (table_name, event_type), row_ids in pending_chunks.items():
         stage_collapsed_event(session, event_type, table_name, row_ids,
-                              pending_columns.get((table_name, event_type)),
-                              old=pending_old.get((table_name, event_type)))
+                              pending_columns.get((table_name, event_type)))
 
 
 @event.listens_for(Session, "before_flush")
@@ -395,7 +377,7 @@ def _outbox_envelope():
 
 
 def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None,
-                          only_rule=None, replay=False, old=None):
+                          only_rule=None, replay=False):
     """[OUTBOX-4] Stage ONE outbox event naming `row_ids` instead of N events.
 
     🔴 THE TRANSACTIONAL-OUTBOX GUARANTEE IS PRESERVED, AND HERE IS WHY IT SURVIVES
@@ -420,12 +402,8 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
     아웃박스에 트리거와 «같은 형태»로 꽂히게」 - so a click-replay stages rows through THIS
     door instead of running a second copy of the chain, and the one thing it needs to say
     that an ordinary edit does not is 「이 규칙만」.
-
-    `old` - each row's values before this event, in `row_ids`' order (총괄 옛 키): chunked with them, and
-    absent from a chunk none of whose rows has one.
     """
     from .models import DatabaseOutbox
-    from event_constants import OLD_VALUES_KEY
     try:
         from event_constants import (OUTBOX_COLLAPSE_CHUNK_ROWS, CHAIN_DEPTH_KEY,
                                      ONLY_RULE_KEY, CHANNEL_KEY, CASCADE_KEY,
@@ -505,46 +483,51 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         # [REPLAY] Same rule: present only when the replay's staging seat says so.
         if replay:
             chunk_event.payload[REPLAY_KEY] = True
-        old_chunk = list(old[i:i + OUTBOX_COLLAPSE_CHUNK_ROWS]) if old else []
-        if any(old_chunk):
-            chunk_event.payload[OLD_VALUES_KEY] = old_chunk
         session.add(chunk_event)
 
 
 
-def stage_event(session, event_type, table_name, data_row, old=None):
+def stage_event(session, event_type, table_name, data_row):
     from .models import DatabaseOutbox
-    session.add(DatabaseOutbox(**row_event(event_type, table_name, data_row, old=old)))
+    session.add(DatabaseOutbox(**row_event(event_type, table_name, data_row)))
 
 
-def json_value(value):
-    """A column value as the outbox's JSON holds it - a time as its ISO text, a uuid as text."""
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    if isinstance(value, uuid.UUID):
-        return str(value)
-    return value
-
-
-def row_values(row) -> dict:
-    """{column: value} of this row's payload columns (`OUTBOX_PAYLOAD_EXCLUDED_COLUMNS` left out), JSON-safe - a
-    per-row event's data and a deletion's old values (총괄 옛 키)."""
-    from event_constants import OUTBOX_PAYLOAD_EXCLUDED_COLUMNS
-    return {col.name: json_value(getattr(row, col.name, None)) for col in row.__table__.columns
-            if col.name not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS}
-
-
-def row_event(event_type, table_name, data_row, old=None) -> dict:
+def row_event(event_type, table_name, data_row) -> dict:
     """The `database_outbox` columns of one per-row event for `data_row`, read by attribute
     (`__table__`, `row_id`, `business_key_val`, each column) - `stage_event` stages it, and a bulk
     writer holding a row's values off the ORM inserts the same (`replay.fold_written_notation`)."""
-    from event_constants import CHAIN_DEPTH_KEY, CHANNEL_KEY, CASCADE_KEY, WRITTEN_BY_KEY, RUN_KEY, OLD_VALUES_KEY
+    try:
+        from event_constants import (OUTBOX_PAYLOAD_EXCLUDED_COLUMNS as _EXCLUDED,
+                                     CHAIN_DEPTH_KEY, CHANNEL_KEY, CASCADE_KEY,
+                                     WRITTEN_BY_KEY, RUN_KEY)
+    except ImportError:  # pragma: no cover
+        CHAIN_DEPTH_KEY = "chain_depth"
+        CHANNEL_KEY = "channel"
+        CASCADE_KEY = "cascade"
+        WRITTEN_BY_KEY = "written_by"
+        RUN_KEY = "run_id"
+        _EXCLUDED = frozenset({"row_id", "business_key_val", "created_at", "updated_at",
+                               "is_graph_synced", "needs_graph_rollback", "graph_synced_at"})
 
     tx_id, user, source, ts, chain_depth, channel, cascade, written_by, run_id = _outbox_envelope()
 
-    # Dynamic rows can contain temporal/UUID values (dt_log's event_time); the payload is JSONB (`json_value`).
-    data_dict = {name: {"value": val, "is_overwrite": False, "updated_by": "system"}
-                 for name, val in row_values(data_row).items()}
+    data_dict = {}
+    for col in data_row.__table__.columns:
+        if col.name not in _EXCLUDED:
+            val = getattr(data_row, col.name, None)
+            # Dynamic rows can contain temporal/UUID values (for example dt_log's
+            # event_time).  The ORM accepts them as native objects, but the outbox
+            # payload is JSONB and must be JSON-safe before this before_flush hook
+            # adds it to the same transaction.
+            if isinstance(val, (datetime, date)):
+                val = val.isoformat()
+            elif isinstance(val, uuid.UUID):
+                val = str(val)
+            data_dict[col.name] = {
+                "value": val,
+                "is_overwrite": False,
+                "updated_by": "system"
+            }
 
     payload = {
         "row_id": data_row.row_id,
@@ -566,8 +549,6 @@ def row_event(event_type, table_name, data_row, old=None) -> dict:
         payload[WRITTEN_BY_KEY] = sorted(written_by)
     if run_id:
         payload[RUN_KEY] = run_id
-    if old:
-        payload[OLD_VALUES_KEY] = old
     return {"event_uuid": str(uuid.uuid4()), "event_type": event_type,
             "table_name": table_name or "unknown", "payload": payload, "status": "PENDING"}
 

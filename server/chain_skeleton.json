@@ -174,14 +174,6 @@
         }
       },
       {
-        "key": "allow_delete_trigger",
-        "required": false,
-        "node": {
-          "kind": "leaf",
-          "hint": "flag"
-        }
-      },
-      {
         "key": "allow_replace_map",
         "required": false,
         "node": {
@@ -950,14 +942,6 @@
       },
       {
         "key": "allow_map_metadata_upsert",
-        "required": false,
-        "node": {
-          "kind": "leaf",
-          "hint": "flag"
-        }
-      },
-      {
-        "key": "allow_delete_trigger",
         "required": false,
         "node": {
           "kind": "leaf",

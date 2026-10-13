@@ -979,8 +979,6 @@ def chain_rules_for(rule: dict) -> list:
         #   `enrichment.mapper.map_enrichment_dedup`, built in process by `chain.dynamic_mappers`.
         "mapper": DEDUP_MAPPER,
         "is_batch": True,
-        # 총괄 옛 키 ㄱ: a deleted source row's key is recounted - it reads the deleted rows' old values
-        "allow_delete_trigger": True,
         "enabled": enabled,
         "params": params,
         # ⚰️ `"enrichment": rule` STOOD HERE, AND IT WAS A SECOND COPY OF `params` - both are
