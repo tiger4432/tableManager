@@ -39042,3 +39042,42 @@ shared_buffers 128MB · dt_log 본체 134 MB · 인덱스 포함 389 MB · 산 �
 ```
 
 - 이어 걷기 토큰(resume)이 마지막 쪽에서 위 크기까지 큽니다 — HTTP 로 이어 받으면 쪽마다 그 크기를 다시 보냅니다. 잰 판에서는 줄지 않았습니다.
+
+---
+
+## [C 응용] 10-13 — 디펙 분류가 «바뀔 때» · «여럿일 때» 요약 엣지가 따라오나 (총괄 b7d0f32b4, 소유자 «분류가 바뀔 수도 · 한 디펙이 여러 카인드»)
+
+PG 시험 스키마(assy_pytest_pg_*) · main b7d0f32b4 · 제품 자리만: crud 쓰기 → 체인 묶음 몸(decide · 키 die · kind · 단계, 집계 count · max size) → 요약 표 → followup.drain_outbox_once → 원장 소스 «die -has_defect_kind-> defect_kind(수식어 defect_count · size_max · step)» → 걷기(trace_router.evidence_subgraph, 1 걸음). 명령: scratchpad/dk/dk_prep.py · test_zz_app_defect_kind_pg.py · 이 절 report_1013_dk_gen.py.
+
+```
+물음 1 — 한 die 에 d1 K1 3 · d2 K1 5 · d3 K2 2 (단계 S)
+                      (die,K1) count / max · 원장 수            (die,K2) count / max · 원장 수     걷기가 닿는 kind
+시작         기대 2 / 5        실제 2.0 / 5.0 · 2.0    기대 1 / 2   실제 1.0 / 2.0 · 1.0 ['K1', 'K2']
+d2 K1→K2   기대 1 / 3        실제 2.0 / 5.0 · 2.0    기대 2 / 5   실제 2.0 / 5.0 · 2.0 ['K1', 'K2']
+d1 K1→K2   기대 0 또는 없음      실제 2.0 / 5.0 · 2.0    기대 3 / 5   실제 3.0 / 5.0 · 3.0 ['K1', 'K2']
+  ① (die,K2) +1        ✓
+  ② (die,K1) −1        ✗  옛 키가 안 깨어남 — 수 · max · 원장 수가 시작 값 그대로
+  ③ K1 이 0 이 되면     ✗  지워지지도 0 도 아님 — 마지막에 센 값(2.0 / 5.0)으로 남음
+  ④ 원장 엣지 die→K1    ✗  거둬지지 않음 — 걷기가 K1 에 닿고 수식어 defect_count 2.0
+지운 길(같은 물음의 다른 문) — 다른 die 에 d9 K3 4 하나 → d9 지움
+  요약 (die,K3)  지우기 전 1.0 / 4.0 → 지운 뒤 1.0 / 4.0 (기대: 없음 또는 0)  ✗
+  원장 die→K3   지운 뒤 수식어 1.0 · 걷기 ['K3']  ✗
+물음 2 — 후보 표 dA K1 0.6 · dA K2 0.4 · dB K1 1.0 (다른 die), decide 키 die · kind
+  요약 K1 기대 2 실제 2.0 · K2 기대 1 실제 1.0  ✓ · 걷기가 닿는 kind ['K1', 'K2']  ✓
+```
+
+**틀린 자리(코드)**
+
+```
+고침(EDIT)   chain/enrichment/mapper.py — decide 몸이 «다시 셀 키»(groups)를 배치 payload 의 «지금» data 에서 짓고,
+             _aggregate_affected_keys 는 그 키들만 다시 센다. EDIT payload 는 고친 «뒤»의 행만 싣는다
+             (잰 것: 칸 business_key · channel · data · row_id · source_name · timestamp · transaction_id · updated_by · data.kind=K2 · 옛 값 K1 은 payload 어디에도 없음)
+             → 옛 키 (die,K1) 은 아무도 안 깨움(잰 것). 그 키를 실은 다른 행이 배치에 올 때까지 낡은 값(코드로 읽음)
+지움(DELETE) chain/ingestion_worker.py::_retract_what_those_rows_fed — «DELETE never enters the rule loop»(그 독스트링).
+             지운 행은 원천 표시(origin) 셀 물러남만 받음 — 잰 것: 물러남이 돈 뒤에도 집계 칸 그대로(이유는 독스트링의
+             «origin 을 찍지 않는 규칙의 칸은 못 찾는다»로 봄, 따로 안 잼)
+0 이 되면    (코드로 읽음, 이 판에서 닿는 길 없음) 깨워진 키에 행이 없으면 count 0 을 씀(mapper 의 default 0) — 지우지 않음
+```
+
+- 물음 2(모호한 디펙)는 후보 표 위 decide 로 맞게 섭니다 — 한 디펙이 두 kind 에 각 1, die 가 두 kind 에 닿음.
+- 물음 1 은 «더하기 쪽»만 맞습니다. 빼기 쪽(옛 키)은 고침에서도 지움에서도 안 따라와, 요약 표와 원장 엣지와 걷기가 «없는 디펙의 수»를 말합니다. 대조에서 die → K1 이 거짓으로 닿습니다.
