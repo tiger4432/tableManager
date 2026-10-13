@@ -1,0 +1,345 @@
+// THE LEDGER DECLARATION WINDOW (owner 10-14 «이대로 만들어» - task/design/LEDGER_DECLARATION_BAR.dc.html): a ledger source,
+// a predicate or a node type declared as the walk page's sentence bar - chips that open a list, a sentence a row. Its
+// look is the mockup's (ledger_declaration_bar.css). This file draws and edits; it holds nothing: the explorer's draft
+// text is the declaration, and every control is a `data-action` the explorer's controller hears - its DOM is patched in
+// place (dom_patch), so a listener on a fresh node would not survive.
+//
+//   decl-open  data-path      open (or close) that chip's list - the page's `open` says which one is open
+//   decl-pick  data-path · data-value (JSON)   that value at that path
+//   decl-const data-path · data-chip           a typed value (Enter): a column chip's constant, a when's «= …», a name
+//   decl-add   data-path      one more attribute, node type, sentence, qualifier, key, subject or type
+//   decl-remove data-path     that sentence (or chip) out
+//   decl-json                 the declaration as JSON (the owner 2026-08-15: the form is not the only door)
+//
+// A source in the short form (implementer B, owner 10-13): { table, occurred_at: {column, timezone}, identity,
+//   attributes: {type: {attribute: column}}, sentences: [{sentence, subject: {node, keys}, predicate, target: {node, keys},
+//   when, <qualifier>: column, source?}] } - a column is its name, a constant {const: value}.
+
+export const BAR_WORDS = Object.freeze({
+  title: 'Ledger declaration', source: 'Source', active: 'active', draft: (age) => `draft · ${age}`,
+  shortForm: (n) => `short form · ${n} sentence${n === 1 ? '' : 's'}`, testRun: 'Test run', saveDraft: 'Save draft', activate: 'Activate', json: 'JSON',
+  read: 'Read', table: 'table', atomTime: '· atom time', identity: '· identity', tableKey: 'table key (row_id)',
+  attributes: 'Attributes', has: 'has', addAttribute: '+ Attribute', addNodeType: '+ Node type',
+  sentences: 'Sentences', perRow: 'one row → one edge per sentence', with: '· with', when: '· when', addQualifier: '+ Qualifier',
+  addSentence: '+ Sentence', remove: 'Remove sentence', fromSource: (s) => `— from source ${s}`,
+  run: 'Test run · draft', runSummary: (r) => `first ${r.rows} rows → ${r.edges} edges · ${r.refused} refused`, runNone: 'Not run yet',
+  constant: 'Constant…', blank: 'is blank', unset: '?',
+  nodeType: 'Node type', keys: 'keys', addKey: '+ Key', predicate: 'Predicate', from: 'from', addSubject: '+ Subject', addType: '+ Type',
+});
+const RESERVED = new Set(['sentence', 'subject', 'predicate', 'target', 'when', 'source']);
+const KINDS = Object.freeze(['entity_ref', 'value', 'none']);
+
+/** A source in the short form - its sentences are a list (implementer B). */
+export const isShortForm = (raw) => Boolean(raw) && typeof raw === 'object' && Array.isArray(raw.sentences);
+
+const isConst = (v) => Boolean(v) && typeof v === 'object' && 'const' in v;
+const words = (v) => (isConst(v) ? JSON.stringify(v.const) : (v === undefined || v === null || v === '' ? BAR_WORDS.unset : String(v)));
+const whenWords = (w) => (!w ? BAR_WORDS.unset : 'equals' in w ? `${w.column} = ${JSON.stringify(w.equals)}` : `${w.column} ${BAR_WORDS.blank}`);
+const qualifiersOf = (s) => Object.keys(s || {}).filter((k) => !RESERVED.has(k));
+
+// ── editing: one function, a path and a value - the declaration a new object, the old one untouched ──
+const segs = (path) => String(path).split('.').map((p) => (/^\d+$/.test(p) ? Number(p) : p));
+const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
+
+/**
+ * The declaration with one edit: `set` a value at a path (a node type's name - path `attributes.@<old>` - renames it),
+ * `add` one more of what the path holds, `remove` what is at it. A node picked for a sentence's end takes that node
+ * type's keys, each unset. @param {object} ctx  {entities: [{type, keys, attributes}], predicates: [{name, qualifiers}]}
+ */
+export function editDeclaration(raw, op, ctx = {}) {
+  const out = clone(raw) || {};
+  const at = segs(op.path);
+  const last = at.pop();
+  let box = out;
+  for (const k of at) { if (box[k] === undefined || box[k] === null) box[k] = typeof k === 'number' ? [] : {}; box = box[k]; }
+  const entity = (type) => (ctx.entities || []).find((e) => e.type === type) || null;
+  if (op.op === 'set') {
+    if (typeof last === 'string' && last.startsWith('@')) {
+      const old = last.slice(1);
+      const kept = Object.entries(box).map(([k, v]) => (k === old ? [op.value, v] : [k, v]));
+      for (const k of Object.keys(box)) delete box[k];
+      for (const [k, v] of kept) box[k] = v;
+    } else if (last === 'node' && box && typeof box === 'object') {
+      box.node = op.value;
+      const e = entity(op.value);
+      if (e) box.keys = Object.fromEntries((e.keys || []).map((k) => [k, (box.keys || {})[k] || '']));
+    } else box[last] = op.value;
+  } else if (op.op === 'add') {
+    const holder = last === undefined ? box : box[last] === undefined ? (box[last] = {}) : box[last];
+    if (Array.isArray(holder)) {
+      if (op.path === 'sentences') holder.push({ sentence: `sentence-${holder.length + 1}`, subject: { node: '', keys: {} }, predicate: '', target: { node: '', keys: {} } });
+      else holder.push('');
+    } else if (op.path === 'attributes') {
+      const free = (ctx.entities || []).map((e) => e.type).find((t) => !(t in holder));
+      holder[free || `type_${Object.keys(holder).length + 1}`] = {};
+    } else if (/^attributes\./.test(op.path)) {
+      const e = entity(segs(op.path)[1]);
+      const free = ((e && e.attributes) || []).find((a) => !(a in holder));
+      holder[free || `attribute_${Object.keys(holder).length + 1}`] = '';
+    } else if (/^sentences\.\d+$/.test(op.path)) {
+      const pred = (ctx.predicates || []).find((p) => p.name === holder.predicate);
+      const free = ((pred && pred.qualifiers) || []).find((q) => !(q in holder));
+      holder[free || `qualifier_${qualifiersOf(holder).length + 1}`] = '';
+    }
+  } else if (op.op === 'remove') {
+    if (Array.isArray(box)) box.splice(last, 1); else delete box[last];
+  }
+  return out;
+}
+
+// ── drawing ──
+const make = (doc) => (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = String(text); return n; };
+
+/**
+ * One chip and, when it is the open one, its list under it.
+ * @param {{kind: 'col'|'node'|'pred'|'table'|'tz'|'identity'|'when'|'name'|'kind'|'source', path, text, options?: Array<{value, words, type?, on?, action?, key?}>, constant?: boolean, cls?: string, parts?: Node[]}} c
+ */
+function chip(el, view, c) {
+  const open = view.open === c.path;
+  const b = el('button', `ldb-chip${c.cls ? ` ${c.cls}` : ''}${open ? ' is-open' : ''}`);
+  b.type = 'button';
+  b.dataset.action = 'decl-open';
+  b.dataset.path = c.path;
+  b.dataset.chip = c.kind;
+  if (c.parts) b.append(...c.parts); else b.append(c.text);
+  b.append(' ', el('span', 'ldb-caret', '▾'));
+  if (!open) return b;
+  const wrap = el('div', 'ldb-at');
+  const pop = el('div', 'ldb-pop');
+  pop.setAttribute('role', 'listbox');
+  for (const o of c.options || []) {
+    const opt = el('button', `ldb-opt${o.on ? ' is-on' : ''}`);
+    opt.type = 'button';
+    opt.setAttribute('role', 'option');
+    if (o.action) { opt.dataset.action = o.action; opt.dataset.value = o.key; } else {
+      opt.dataset.action = 'decl-pick';
+      opt.dataset.path = c.path;
+      opt.dataset.value = JSON.stringify(o.value);
+    }
+    opt.append(el('span', c.kind === 'node' || c.kind === 'pred' || c.kind === 'tz' || c.kind === 'kind' || c.kind === 'source' ? '' : 'ldb-mono', o.words));
+    if (o.type) opt.append(el('span', 'ldb-type', o.type));
+    pop.append(opt);
+  }
+  if (c.constant) {
+    if ((c.options || []).length) pop.append(el('div', 'ldb-hr'));
+    const input = el('input', 'ldb-opt-input');
+    input.type = 'text';
+    input.placeholder = c.kind === 'name' ? 'Name' : BAR_WORDS.constant;
+    input.setAttribute('aria-label', c.kind === 'name' ? 'Name' : 'Constant');
+    input.dataset.action = 'decl-const';
+    input.dataset.path = c.path;
+    input.dataset.chip = c.kind;
+    pop.append(input);
+  }
+  wrap.append(b, pop);
+  return wrap;
+}
+
+const columnOptions = (view, table, current) => (((view.catalog || {}).tables || {})[table] || [])
+  .map((col) => ({ value: col.name, words: col.name, type: col.type, on: col.name === current }));
+const nodeOptions = (view, current) => (view.entities || []).map((e) => ({ value: e.type, words: e.type, on: e.type === current }));
+
+/** The window's head: its title, the source picker (the tree's Sources list), its state, Test run · Save draft · Activate. */
+function head(el, view, raw) {
+  const top = el('header', 'ldb-head');
+  top.append(el('h1', 'ldb-title', BAR_WORDS.title));
+  if (view.kind === 'source') {
+    top.append(chip(el, view, { kind: 'source', path: '@source', cls: 'is-open', text: `${BAR_WORDS.source}: ${view.name || BAR_WORDS.unset}`,
+      options: (view.sources || []).map((s) => ({ words: s.id, action: 'select', key: s.key, on: s.id === view.name })) }));
+  } else top.append(el('span', 'ldb-mono', view.name || ''));
+  if (view.active) top.append(el('span', 'ldb-pill is-active', BAR_WORDS.active));
+  if (view.draftAge) top.append(el('span', 'ldb-pill is-draft', BAR_WORDS.draft(view.draftAge)));
+  if (view.kind === 'source') top.append(el('span', 'ldb-word', BAR_WORDS.shortForm((raw.sentences || []).length)));
+  top.append(el('div', 'ldb-grow'));
+  const btn = (words, action, cls = '', value) => { const b = el('button', `ldb-btn${cls}`, words); b.type = 'button'; b.dataset.action = action; if (value !== undefined) b.dataset.value = value; return b; };
+  top.append(btn(BAR_WORDS.json, 'decl-json'));
+  if (view.kind === 'source') top.append(btn(BAR_WORDS.testRun, 'test-run', '', view.sourceId || ''));
+  top.append(btn(BAR_WORDS.saveDraft, 'save-draft-only'), btn(BAR_WORDS.activate, 'save-draft', ' is-primary'));
+  return top;
+}
+
+function readBar(el, view, raw) {
+  const bar = el('section', 'ldb-bar');
+  bar.setAttribute('aria-label', BAR_WORDS.read);
+  const tables = Object.keys(((view.catalog || {}).tables) || {});
+  const time = raw.occurred_at || {};
+  const zones = [...new Set([time.timezone, 'UTC', ...(view.zones || [])].filter(Boolean))];
+  bar.append(el('span', 'ldb-label is-row', BAR_WORDS.read), el('span', 'ldb-word', BAR_WORDS.table),
+    chip(el, view, { kind: 'table', path: 'table', cls: 'is-col', text: words(raw.table), options: tables.map((t) => ({ value: t, words: t, on: t === raw.table })) }),
+    el('span', 'ldb-word', BAR_WORDS.atomTime),
+    chip(el, view, { kind: 'col', path: 'occurred_at.column', cls: 'is-col', text: words(time.column), options: columnOptions(view, raw.table, time.column) }),
+    chip(el, view, { kind: 'tz', path: 'occurred_at.timezone', text: words(time.timezone), options: zones.map((z) => ({ value: z, words: z, on: z === time.timezone })) }),
+    el('span', 'ldb-word', BAR_WORDS.identity),
+    chip(el, view, { kind: 'identity', path: 'identity', text: !raw.identity || raw.identity === 'row_id' ? BAR_WORDS.tableKey : raw.identity,
+      options: [{ value: 'row_id', words: BAR_WORDS.tableKey, on: !raw.identity || raw.identity === 'row_id' }, ...columnOptions(view, raw.table, raw.identity)] }));
+  return bar;
+}
+
+function attributesBar(el, view, raw) {
+  const bar = el('section', 'ldb-bar');
+  bar.setAttribute('aria-label', BAR_WORDS.attributes);
+  bar.append(el('span', 'ldb-label is-row', BAR_WORDS.attributes));
+  for (const [type, attrs] of Object.entries(raw.attributes || {})) {
+    bar.append(chip(el, view, { kind: 'node', path: `attributes.@${type}`, cls: 'is-node', text: type, options: nodeOptions(view, type) }), el('span', 'ldb-word', BAR_WORDS.has));
+    for (const [name, col] of Object.entries(attrs || {})) {
+      bar.append(chip(el, view, { kind: 'col', path: `attributes.${type}.${name}`, constant: true, options: columnOptions(view, raw.table, col),
+        parts: [name, ' ', el('span', 'ldb-arrow', '←'), ' ', el('span', 'ldb-mono', words(col))] }));
+    }
+    bar.append(addChip(el, `attributes.${type}`, BAR_WORDS.addAttribute), el('span', 'ldb-gap'));
+  }
+  bar.append(addChip(el, 'attributes', BAR_WORDS.addNodeType));
+  return bar;
+}
+
+function addChip(el, path, text, cls = '') {
+  const b = el('button', `ldb-chip is-add${cls}`, text);
+  b.type = 'button';
+  b.dataset.action = 'decl-add';
+  b.dataset.path = path;
+  return b;
+}
+
+/** A sentence's end: its node, then its keys «key ← column» (a constant dashed). */
+function end(el, view, raw, at, side) {
+  const e = (raw.sentences[at] || {})[side] || {};
+  const out = [chip(el, view, { kind: 'node', path: `sentences.${at}.${side}.node`, cls: 'is-node', text: words(e.node), options: nodeOptions(view, e.node) }),
+    el('span', 'ldb-word', '(')];
+  for (const [k, v] of Object.entries(e.keys || {})) {
+    out.push(chip(el, view, { kind: 'col', path: `sentences.${at}.${side}.keys.${k}`, constant: true, cls: isConst(v) ? 'is-const' : 'is-col',
+      text: isConst(v) ? `${k} = ${JSON.stringify(v.const)}` : `${k} ← ${words(v)}`, options: columnOptions(view, raw.table, isConst(v) ? null : v),
+      parts: isConst(v) ? undefined : [k, ' ', el('span', 'ldb-arrow', '←'), ' ', words(v)] }));
+  }
+  out.push(el('span', 'ldb-word', ')'));
+  return out;
+}
+
+function sentenceBar(el, view, raw, at) {
+  const s = raw.sentences[at];
+  const bar = el('section', `ldb-bar${view.picked === at ? ' is-picked' : ''}${s.source ? ' is-other' : ''}`);
+  bar.setAttribute('aria-label', `Sentence ${s.sentence}`);
+  const name = el('span', 'ldb-sname', s.sentence);
+  if (s.source) name.append(' ', el('span', 'ldb-sname-from', BAR_WORDS.fromSource(s.source)));
+  bar.append(name, ...end(el, view, raw, at, 'subject'), el('span', 'ldb-arrow', '—'),
+    chip(el, view, { kind: 'pred', path: `sentences.${at}.predicate`, cls: 'is-pred', text: words(s.predicate),
+      options: (view.predicates || []).map((p) => ({ value: p.name, words: p.name, on: p.name === s.predicate })) }),
+    el('span', 'ldb-arrow', '→'), ...end(el, view, raw, at, 'target'));
+  const quals = qualifiersOf(s);
+  if (quals.length) {
+    bar.append(el('span', 'ldb-word', BAR_WORDS.with));
+    for (const q of quals) {
+      bar.append(chip(el, view, { kind: 'col', path: `sentences.${at}.${q}`, constant: true, cls: isConst(s[q]) ? 'is-const' : 'is-col',
+        text: isConst(s[q]) ? `${q} = ${JSON.stringify(s[q].const)}` : `${q} ← ${words(s[q])}`, options: columnOptions(view, raw.table, s[q]),
+        parts: isConst(s[q]) ? undefined : [q, ' ', el('span', 'ldb-arrow', '←'), ' ', words(s[q])] }));
+    }
+  }
+  bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));
+  if (s.when !== undefined) {
+    bar.append(el('span', 'ldb-word', BAR_WORDS.when), chip(el, view, { kind: 'when', path: `sentences.${at}.when`, cls: 'is-col', constant: true, text: whenWords(s.when),
+      options: columnOptions(view, raw.table, s.when && s.when.column).map((o) => ({ ...o, value: { column: o.value, is: 'blank' }, words: `${o.words} ${BAR_WORDS.blank}` })) }));
+  }
+  const x = el('button', 'ldb-x', '×');
+  x.type = 'button';
+  x.dataset.action = 'decl-remove';
+  x.dataset.path = `sentences.${at}`;
+  x.setAttribute('aria-label', BAR_WORDS.remove);
+  bar.append(el('div', 'ldb-grow'), x);
+  return bar;
+}
+
+function preview(el, view) {
+  const run = view.run || null;
+  const box = el('section', 'ldb-preview');
+  box.setAttribute('aria-label', BAR_WORDS.run);
+  const top = el('div', 'ldb-preview-head');
+  top.append(el('span', 'ldb-label', BAR_WORDS.run), el('span', 'ldb-word', run ? BAR_WORDS.runSummary(run) : BAR_WORDS.runNone));
+  for (const r of (run && run.refusals) || []) top.append(el('span', 'ldb-pill is-bad', r));
+  top.append(el('div', 'ldb-grow'));
+  if (view.cost) { const c = el('span', 'ldb-word'); c.append(view.cost); top.append(c); }
+  box.append(top);
+  if (run && (run.lines || []).length) {
+    const scroll = el('div', 'ldb-scroll');
+    const t = el('table', 'ldb-table');
+    const hr = el('tr');
+    for (const w of ['row', 'sentence', 'subject', 'predicate', 'target', 'with', 'at']) hr.append(el('th', '', w));
+    const thead = el('thead'); thead.append(hr);
+    const tbody = el('tbody');
+    for (const l of run.lines) {
+      const tr = el('tr');
+      const nodeCell = (n) => { const td = el('td'); td.append(`${n.node} `, el('span', 'ldb-mono', n.key)); return td; };
+      tr.append(el('td', 'ldb-mono', l.row), el('td', 'ldb-mono', l.sentence), nodeCell(l.subject), el('td', '', l.predicate), nodeCell(l.target));
+      if (l.with) { const td = el('td'); td.append(`${l.with.name} `, el('span', 'ldb-mono', l.with.value)); tr.append(td); } else tr.append(el('td', 'is-none', '—'));
+      tr.append(el('td', 'ldb-mono', l.at));
+      tbody.append(tr);
+    }
+    t.append(thead, tbody);
+    scroll.append(t);
+    box.append(scroll);
+  }
+  return box;
+}
+
+/** A node type: its keys and its attributes, each a chip; a name typed in the chip's list. */
+function entityBar(el, view, raw) {
+  const bar = el('section', 'ldb-bar');
+  bar.setAttribute('aria-label', BAR_WORDS.nodeType);
+  bar.append(el('span', 'ldb-label is-row', BAR_WORDS.nodeType), el('span', 'ldb-chip is-node', view.name || ''), el('span', 'ldb-word', BAR_WORDS.keys));
+  (raw.keys || []).forEach((k, i) => bar.append(chip(el, view, { kind: 'name', path: `keys.${i}`, cls: 'is-col', constant: true, text: words(k) })));
+  bar.append(addChip(el, 'keys', BAR_WORDS.addKey));
+  if (Array.isArray(raw.attributes)) {
+    bar.append(el('span', 'ldb-word', `· ${BAR_WORDS.attributes.toLowerCase()}`));
+    raw.attributes.forEach((a, i) => bar.append(chip(el, view, { kind: 'name', path: `attributes.${i}`, cls: 'is-col', constant: true, text: words(a) })));
+    bar.append(addChip(el, 'attributes', BAR_WORDS.addAttribute));
+  }
+  return bar;
+}
+
+/** A predicate: from its subject types, its object's kind and types, its qualifiers. */
+function predicateBar(el, view, raw) {
+  const bar = el('section', 'ldb-bar');
+  bar.setAttribute('aria-label', BAR_WORDS.predicate);
+  const object = raw.object || {};
+  bar.append(el('span', 'ldb-label is-row', BAR_WORDS.predicate), el('span', 'ldb-chip is-pred', view.name || ''), el('span', 'ldb-word', BAR_WORDS.from));
+  (raw.subjects || []).forEach((s, i) => bar.append(chip(el, view, { kind: 'node', path: `subjects.${i}`, cls: 'is-node', text: words(s), options: nodeOptions(view, s) })));
+  bar.append(addChip(el, 'subjects', BAR_WORDS.addSubject), el('span', 'ldb-arrow', '→'),
+    chip(el, view, { kind: 'kind', path: 'object.kind', text: words(object.kind), options: KINDS.map((k) => ({ value: k, words: k, on: k === object.kind })) }));
+  if (object.kind === 'entity_ref') {
+    (object.types || []).forEach((t, i) => bar.append(chip(el, view, { kind: 'node', path: `object.types.${i}`, cls: 'is-node', text: words(t), options: nodeOptions(view, t) })));
+    bar.append(addChip(el, 'object.types', BAR_WORDS.addType));
+  }
+  const optional = ((object.qualifiers || {}).optional) || [];
+  bar.append(el('span', 'ldb-word', BAR_WORDS.with));
+  optional.forEach((q, i) => bar.append(chip(el, view, { kind: 'name', path: `object.qualifiers.optional.${i}`, cls: 'is-col', constant: true, text: words(q) })));
+  bar.append(addChip(el, 'object.qualifiers.optional', BAR_WORDS.addQualifier));
+  return bar;
+}
+
+/**
+ * The window for one declaration.
+ * @param {Document} doc
+ * @param {object} raw  the draft's declaration (parsed)
+ * @param {{kind: 'source'|'entity'|'predicate', name, sourceId?, open?: string, picked?: number, catalog?: {tables: {[t]: Array<{name, type}>}},
+ *          entities?: Array<{type, keys, attributes}>, predicates?: Array<{name, qualifiers}>, sources?: Array<{key, id}>, zones?: string[],
+ *          active?: boolean, draftAge?: string, run?: object, cost?: string, json?: Node}} view
+ */
+export function renderDeclarationBar(doc, raw, view) {
+  const el = make(doc);
+  const root = el('div', 'ldb');
+  root.setAttribute('data-decl-kind', view.kind);
+  root.append(head(el, view, raw || {}));
+  if (view.json) { const j = el('div', 'ldb-json'); j.append(view.json); root.append(j); }
+  if (view.kind === 'entity') root.append(entityBar(el, view, raw || {}));
+  else if (view.kind === 'predicate') root.append(predicateBar(el, view, raw || {}));
+  else {
+    root.append(readBar(el, view, raw), attributesBar(el, view, raw));
+    const list = el('div', 'ldb-sentences');
+    const top = el('div', 'ldb-sentences-head');
+    top.append(el('span', 'ldb-label', BAR_WORDS.sentences), el('span', 'ldb-word', BAR_WORDS.perRow));
+    list.append(top);
+    (raw.sentences || []).forEach((_, i) => list.append(sentenceBar(el, view, raw, i)));
+    const add = el('div');
+    add.append(addChip(el, 'sentences', BAR_WORDS.addSentence, ' is-big'));
+    list.append(add);
+    root.append(list, preview(el, view));
+  }
+  return root;
+}
