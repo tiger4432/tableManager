@@ -2331,9 +2331,9 @@
 - **함정**: 글자 칸의 min/max, `", "` 아닌 구분자의 unique_concat 은 같은 답을 내는 수식이 없어 옛 기록 그대로 돈다(옛 SQL). `column_types` 를 모르면 min/max 는 기록으로 남는다.
 
 ### **무거운 라우트를 서버 밖 프로세스로 — `runtime.process_pool.in_pool(body, pool=…)` 하나, 풀은 `WALK` · `GRID`** (2026-10-14 등록 · `6f34a1320` · `a4e647ab6`)
-- **어디**: `Pool` 둘 — `WALK`(`walk_processes` · `walk_pool.log` · 연결 `assy_walkpool`) · `GRID`(`grid_processes` 기본 2 · `grid_wait_seconds` 기본 60 · `grid_pool.log` · 연결 `assy_gridpool`). 라우트를 `in_pool(body, pinned_by=None, gone=None, pool=None)` 로 등록한다 — 지금 둘: 걷기 `/subgraph` · 그리드 `grid_page`.
+- **어디**: `Pool` 둘 — `WALK`(`walk_processes` · `walk_pool.log` · 연결 `assy_walkpool`) · `GRID`(`grid_processes` 기본 2 · `grid_wait_seconds` 기본 60 · `grid_pool.log` · 연결 `assy_gridpool`). 라우트를 `in_pool(body, pinned_by=None, gone=None, pool=None, prepare=None)` 로 등록한다(🆕 10-14 `0d402266a` `prepare` — 풀 프로세스가 «ready» 전에 부르는 함수, `Pool.prepares` 에 모임 · 걷기는 `ledger_subgraph.prepare_operating_declaration` 이 운영 세상 선언을 미리 컴파일하고 walk_pool.log 에 «[Pool] prepared the operating world's declaration (<세상>) in N s» 한 줄) — 지금 둘: 걷기 `/subgraph` · 그리드 `grid_page`.
 - **언제 재사용**: 한 요청이 서버를 오래 쥐는 자리 — 스레드 풀이나 새 프로세스 기제를 따로 짓지 않고 `Pool` 을 하나 더한다.
-- **잰 수**: `task/scoped_redo_report.md` «10-14 새벽 — 9f1be4122 속도 다시 재기» (A `2838665e2`, 박스 판 · 운영 주장 아님) — 그리드 동시 10 은 쪽 몸통보다 풀 기다림, 걷기는 프로세스마다 첫 요청이 선언 컴파일.
+- **잰 수**: `task/scoped_redo_report.md` «10-14 새벽 — 9f1be4122 속도 다시 재기» (A `2838665e2`, 박스 판 · 운영 주장 아님) — 그리드 동시 10 은 쪽 몸통보다 풀 기다림, 걷기는 프로세스마다 첫 요청이 선언 컴파일(→ 위 `prepare`). 둘째 표 — 같은 파일 «10-14 — 8af4d378c ① 박스 재기 · ② grid_processes 2·4·6» (A `70603a89a`) — 미리 컴파일 뒤의 걷기 · grid_processes 2·4·6 × 동시 10.
 - **함정**: 풀 안에서 찍는 줄은 그 풀의 로그로 간다(server.log 가 아님). 프로세스가 다 바쁘면 기다림 상한 뒤 503 `<풀>_pool_busy`. 크기 0 이면 서버 안에서 돈다.
 
 ### **«쓰이는 칸만» 인덱스는 청하는 자리와 짓는 자리가 따로 — `runtime.index_wants.want` · `models.ensure_auto_indexes`** (2026-10-14 등록 · `f620962c7`)
@@ -2342,7 +2342,7 @@
 - **함정**: 청과 짓기가 다른 프로세스다 — 체인 워커가 없으면 청만 쌓인다. 표마다 `auto_index_per_table`(기본 10).
 
 ### **Board 의 모든 종류가 나눠 쓰는 근원 칸 셋 — 색은 `color_by.colorsOf`, 행은 `route.routeOf`, 한 표시의 단위는 `units.unitsOf`** (2026-10-14 등록 · lead-board-2 `c0c4b3f9b`, 소유자 10-13 «COLOR BY 저런 거는 모든 근원부품이 공유하게 해»)
-- **어디**: `client2/src/testbed/color_by.js` — `colorsOf(rows, ctx)` 가 행마다 색을 한 번 정한다(선언 `colors` {범주: hex} 먼저, 없으면 팔레트를 나온 순서로); 허브(마커 · 칸)는 `colorOfIds`. `testbed/route.js` — `routesFor(vocabulary, from, to)` 가 시작 타입 → 행 타입 길 목록, `routeOf(decl, routes)` 가 부품의 길, `walkOfRoute` 가 그 길의 술어 · 걸음. `testbed/units.js` — `unitOf(decl)`(node · hub · record) · `unitsOf(rows, decl, keys, recordKey, marked)`.
+- **어디**(🆕 10-14 `ea3a88523` 둘 더 — 툴팁 · 레이블 `tooltip.tipLines` · `labelOf`(선언 `labels`: none · marked · all), 누른 표시가 노드인지 허브인지 `hubs.nodesOfPress` 한 자리 — 종류는 묻지 않는다): `client2/src/testbed/color_by.js` — `colorsOf(rows, ctx)` 가 행마다 색을 한 번 정한다(선언 `colors` {범주: hex} 먼저, 없으면 팔레트를 나온 순서로); 허브(마커 · 칸)는 `colorOfIds`. `testbed/route.js` — `routesFor(vocabulary, from, to)` 가 시작 타입 → 행 타입 길 목록, `routeOf(decl, routes)` 가 부품의 길, `walkOfRoute` 가 그 길의 술어 · 걸음. `testbed/units.js` — `unitOf(decl)`(node · hub · record) · `unitsOf(rows, decl, keys, recordKey, marked)`.
 - **언제 재사용**: 새 종류(산점도 · 표 · 크로스 · 맵 다음)를 짓거나, 한 종류에 색 · 행 · 마커 규칙을 넣고 싶을 때 — 종류 안에 사본을 적지 않고 이 셋을 부른다. 종류는 그리기만 한다.
 - **함정**: 행은 «걸어서 닿은 그 타입 노드 전부»가 아니라 «그 길의 끝»이다 — 길이 안 잡히면(목록이 비면) 부품이 엉뚱한 노드를 행으로 받는다(18766 10-14: 코어 웨이퍼에서 계측으로 가는 C 가 본딩 웨이퍼의 계측 17 을 셈). 범주 색이 선언에 빈 칸이면 팔레트 첫 색이 붙는다.
 
