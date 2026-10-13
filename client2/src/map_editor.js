@@ -6009,9 +6009,9 @@ export function restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serve
     const restoredCells = cellsFresh ? applyDraftCells(draft.cells) : 0;
     if (restoredDoe || restoredCells > 0) {
       restoredUnsavedEdits = true;
-      showToast(`미저장 초안 복구 — ${restoredDoe ? 'DOE' : ''}`
-        + `${restoredDoe && restoredCells ? ' · ' : ''}${restoredCells ? `셀 ${restoredCells}개` : ''}`
-        + ' (서버 미반영)', 'warning', { dedupeKey: 'draft_restored' });
+      showToast(`Unsaved draft restored — ${restoredDoe ? 'DOE' : ''}`
+        + `${restoredDoe && restoredCells ? ' · ' : ''}${restoredCells ? `${restoredCells} cells` : ''}`
+        + ' (not on the server)', 'warning', { dedupeKey: 'draft_restored' });
     }
     // 기반이 어긋난 초안이 실제로 내용을 갖고 있을 때만 말한다 — 빈 초안까지 알리면
     // 신호가 죽는다.
@@ -6019,7 +6019,7 @@ export function restoreDoeDraftWithPrecedence(selectedTable, loadedMapKey, serve
     const hasCells = draft.cells && Object.keys(draft.cells).length > 0;
     staleDraftKept = (!doeFresh && hasDoe) || (!cellsFresh && hasCells);
     if (staleDraftKept) {
-      showToast('초안보다 서버본이 최신 — 초안을 적용하지 않았습니다 (지우지도 않았습니다).',
+      showToast('The server copy is newer than the draft — draft not applied (and not deleted).',
         'warning', { dedupeKey: 'draft_stale' });
     }
   }
@@ -6122,10 +6122,12 @@ async function pushMapData() {
   // 키가 같으면 아무것도 묻지 않는다 — 정상 흐름은 무마찰이다.
   const mismatch = currentIdentityMismatch();
   if (mismatch && !confirm(
-    `로드한 맵과 적재 대상이 다릅니다.\n\n`
-    + `· 로드: ${loadedIdentity.table} · ${loadedIdentity.mapKey}\n`
-    + `· 적재: ${mismatch.table} · ${mismatch.mapKey || '(비어 있음)'}\n\n`
-    + `계속하면 적재 대상 맵의 기존 셀이 전량 삭제되고 현재 격자로 대체됩니다. 계속하시겠습니까?`
+    `The loaded map and the Push target differ.
+
+`
+    + `· Loaded: ${loadedIdentity.table} · ${loadedIdentity.mapKey}\n`
+    + `· Push to: ${mismatch.table} · ${mismatch.mapKey || '(empty)'}\n\n`
+    + `Continuing deletes every cell of the target map and replaces them with this grid. Continue?`
   )) {
     return;
   }
@@ -6146,8 +6148,8 @@ async function pushMapData() {
   //    맵 전량을 그 좌표계로 재기록한다 — 되돌릴 수 없는 자리에서 없는 선언을 만드는 셈이다.
   const panel = readGridFrameControls(el);
   if (panel.silent.length > 0) {
-    showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 적재하지 않았습니다 — `
-      + `빈 칸을 0으로 지어내 저장하지 않습니다.`, 'error');
+    showToast(`Not pushed: ${panel.silent.join(' · ')} is empty — `
+      + `a blank is not saved as 0.`, 'error');
     return;
   }
   const { cols, rows, startX, startY, invertY } = panel;
@@ -6220,14 +6222,20 @@ async function pushMapData() {
       + `(${blocking} would be deleted by replace_map: ${unsavable.offGrid.length} off-grid, `
       + `${unsavable.outsideRetained.length} outside-wafer of unproven origin; ${strayKeys.length} stray)`);
     alert(
-      `적재를 중단했습니다 — 현재 프레임이 맵 전체를 덮지 못합니다.\n\n`
-      + `값이 있는 셀 ${nonEmptyOnGrid}개 중 ${blocking}개가 현재 격자 범위·웨이퍼 영역 밖에 있어 `
-      + `이번 적재에 담기지 않습니다. 이대로 적재하면 덮어쓰기(Clean Replace) 과정에서 `
-      + `해당 ${blocking}개 셀이 서버에서 삭제됩니다.\n\n`
-      + `격자 크기·시작 좌표·회전·물리 규격을 맵 전체가 보이도록 맞춘 뒤 다시 시도하십시오.`
+      `Push stopped — this frame does not cover the whole map.
+
+`
+      + `${nonEmptyOnGrid} cells have values; ${blocking} of them lie outside the grid or the wafer, so `
+      + `this Push leaves them out. Pushed as is, the Clean Replace `
+      + `deletes those ${blocking} cells on the server.
+
+`
+      + `Set grid size, start, rotation and physical spec so the whole map shows, then retry.`
       + (strayKeys.length > 0
-        ? `\n\n(이와 별개로, 서버에 저장된 적 없는 유효 다이 밖 셀 ${strayKeys.length}개도 격자에 남아 있습니다. `
-        + `위를 먼저 해결하면 정리 방법을 안내합니다.)`
+        ? `
+
+(Also: ${strayKeys.length} cells outside the valid die, never saved on the server, are still on the grid. `
+        + `Fix the above first; the next Push says how to clear them.)`
         : '')
     );
     return;
@@ -6239,25 +6247,30 @@ async function pushMapData() {
     console.warn(`[Map Editor] push blocked by ${strayKeys.length} stray outside-wafer cells `
       + `(never rendered, never counted, never on the server) - offering cleanup`, strayKeys.slice(0, 20));
     if (!confirm(
-      `적재를 중단했습니다 — 저장할 수 없는 셀 ${strayKeys.length}개가 격자에 남아 있습니다.\n\n`
-      + `이 셀들은 격자 밖이 아니라 웨이퍼의 유효 다이 밖에 있습니다. 그래서 화면에 색이 나오지 않고 `
-      + `범례·DOE 수량에도 잡히지 않으며, 서버에 저장된 적도 없습니다. `
-      + `격자 크기·시작 좌표·회전을 맞추는 것으로는 사라지지 않습니다 — 가장 흔한 원인은 `
-      + `예전 🎨 Fill All이 격자 사각형 전체를 칠하면서 남긴 흔적입니다.\n\n`
-      + `· 이 좌표들이 원래 유효 다이여야 한다면: [취소] 후 물리 규격(직경·칩 크기·엣지 마진)이나 `
-      + `유효 다이 지정을 넓혀 다시 시도하십시오.\n`
-      + `· 아니라면 [확인]을 눌러 이 ${strayKeys.length}개 셀만 격자에서 지우십시오. `
-      + `유효 다이 안쪽 셀과 서버에 저장된 데이터는 그대로입니다. 정리한 뒤 ⚡ Push를 다시 눌러 주십시오.`
+      `Push stopped — ${strayKeys.length} cells on the grid cannot be saved.
+
+`
+      + `They are inside the grid but outside the wafer's valid die, so they show no colour, `
+      + `are not counted in the legend or DOE, and were never saved on the server. `
+      + `Changing grid size, start or rotation does not clear them — most often they are `
+      + `left by an old 🎨 Fill All that painted the whole grid rectangle.
+
+`
+      + `· If these should be valid dies: [Cancel], widen the physical spec (diameter, chip size, edge margin) or `
+      + `the valid die map, then retry.
+`
+      + `· If not: [OK] clears only these ${strayKeys.length} cells from the grid. `
+      + `Cells inside the valid die and the server's data stay. Then press ⚡ Push again.`
     )) return;
     strayKeys.forEach(k => { delete gridData[k]; });
     renderGridCanvas();
     scheduleCellDraft();   // 초안에서도 지운다 — 새로고침으로 되살아나면 정리가 아니다
-    showToast(`유효 다이 밖 ${strayKeys.length}칸 정리 — ⚡ Push를 다시 누르십시오.`, 'success');
+    showToast(`${strayKeys.length} cells outside the valid die cleared — press ⚡ Push again.`, 'success');
     return;
   }
 
   if (updates.length === 0) {
-    alert('적재할 셀 없음 · 먼저 칠하기');
+    alert('No cells to push · paint first');
     return;
   }
 
@@ -6269,10 +6282,12 @@ async function pushMapData() {
   const targetMapId = getMapIdFromMeta(metaValues, tableSchema) || 'default_map';
   const outsideNote = outsideCircleNoteForPush(cols, rows, currentRotation, gridCells2D, gridData);
   if (!confirm(
-    `총 ${updates.length}건의 활성 맵 데이터를 덮어쓰기 적재(Clean Replace)하시겠습니까?\n\n` +
-    `· 대상 테이블: ${selectedTable}\n` +
-    `· 대상 맵 키: ${targetMapId}\n` + outsideNote + `\n` +
-    `⚠️ 이 맵 키의 기존 셀은 전부 삭제된 뒤 현재 격자 내용으로 대체됩니다.`
+    `Push ${updates.length} cells as a Clean Replace?
+
+` +
+    `· Table: ${selectedTable}\n` +
+    `· Map key: ${targetMapId}\n` + outsideNote + `\n` +
+    `⚠️ Every existing cell of this map key is deleted and replaced with this grid.`
   )) {
     return;
   }
@@ -6417,7 +6432,7 @@ async function pushMapData() {
         && legendSaved.reason !== 'unknown-server-state') {
         // adopted/conflict/unknown 은 applyLegendSaveResult가 이미 정확히 알렸다 —
         // 여기서 "오프라인 캐시"로 덮어 말하면 원인이 사라진다.
-        showToast('DOE·split 서술 registry 저장 실패 · 오프라인 캐시에만 보관됨', 'warning');
+        showToast('DOE/split description save failed · kept in the offline cache only', 'warning');
       }
 
       // 🔴 판정 192: `updated_count` 는 이제 「이 요청이 «바꾸거나 만든» 행 수」다. 무변경
@@ -6427,10 +6442,10 @@ async function pushMapData() {
       const changed = changedRowsText(result, updates.length);
       if (metaPushFailed) {
         // 셀은 들어갔지만 **규격이 저장되지 않았다** — 다음 로드/오버레이가 틀린 메타로 계산된다
-        showToast(`셀 ${changed} · 맵 규격 저장 실패 `
-          + `(${metaPushFailed}) — 다시 Push하십시오.`, 'error');
+        showToast(`Cells ${changed} · map spec save failed `
+          + `(${metaPushFailed}) · Push again`, 'error');
       } else {
-        showToast(`적재 완료 — ${changed}`, 'success');
+        showToast(`Pushed — ${changed}`, 'success');
       }
     } else {
       const errData = await res.json().catch(() => ({}));
@@ -6441,7 +6456,7 @@ async function pushMapData() {
   } catch (err) {
     console.error('❌ [API Error]', err);
     console.groupEnd();
-    alert(`데이터 적재 실패 · ${err.message}`);
+    alert(`Push failed · ${err.message}`);
   } finally {
     el.btnPushMap.textContent = '⚡ Push Map Data';
     el.btnPushMap.disabled = false;
@@ -6505,14 +6520,16 @@ function confirmLogShapedPushTarget(tableSchema, el, selectedTable) {
   if (gate4.mode !== 'clean') {
     const extraDataCols = gate4.extras;
     const shown = extraDataCols.slice(0, 8).join(', ')
-      + (extraDataCols.length > 8 ? ` 외 ${extraDataCols.length - 8}개` : '');
+      + (extraDataCols.length > 8 ? ` and ${extraDataCols.length - 8} more` : '');
     if (gate4.mode === 'confirm') {
       console.warn(`[Map Editor] push into '${selectedTable}' with map_push_ok declared - `
         + `${extraDataCols.length} data column(s) outside the map contract will be lost on `
         + `replaced rows: ${extraDataCols.join(', ')}`);
       if (!confirm(
-        `이 테이블('${selectedTable}')은 맵 계약 외 컬럼(${extraDataCols.length}개: ${shown})을 갖고 있습니다.\n\n`
-        + `이 Push로 교체되는 행들의 그 컬럼 값이 소실됩니다. 계속하시겠습니까?`
+        `This table ('${selectedTable}') has columns outside the map contract (${extraDataCols.length}: ${shown}).
+
+`
+        + `Rows this Push replaces lose those columns' values. Continue?`
       )) {
         return false;
       }
@@ -6521,8 +6538,11 @@ function confirmLogShapedPushTarget(tableSchema, el, selectedTable) {
         + `${extraDataCols.length} data column(s) outside the map contract would be `
         + `destroyed by replace_map: ${extraDataCols.join(', ')}`);
       alert(
-        `적재 중단 — '${selectedTable}'은(는) 맵 전용 테이블이 아닙니다(로그형).\n\n`
-        + `Clean Replace가 파괴할 맵 계약 밖 컬럼 ${extraDataCols.length}개:\n· ${shown}`
+        `Push stopped — '${selectedTable}' is not a map table (log-shaped).
+
+`
+        + `${extraDataCols.length} columns outside the map contract that Clean Replace would destroy:
+· ${shown}`
       );
       return false;
     }
@@ -6550,7 +6570,7 @@ function collectMetaFieldValues(tableSchema) {
   });
 
   if (!hasMeta && metaInputs.length > 0) {
-    alert('맵 키를 하나 이상 입력하십시오.');
+    alert('Enter at least one map key.');
     return { ok: false, metaValues };
   }
   return { ok: true, metaValues };
@@ -6601,7 +6621,7 @@ export function readGridFrameControls(el) {
     startY: gridFrameControlNum(el.gridStartY, 0),
     invertY: el.gridYInvert.checked,
   };
-  frame.silent = [['cols', '격자 COLS'], ['rows', '격자 ROWS'],
+  frame.silent = [['cols', 'Grid COLS'], ['rows', 'Grid ROWS'],
     ['startX', 'START X'], ['startY', 'START Y']]
     .filter(([k]) => frame[k] === null).map(([, label]) => label);
   return frame;
@@ -6651,7 +6671,8 @@ function confirmMissingSplitDescriptions(updates, valCol, legend) {
   if (missingDescVals.length > 0) {
     const preview = missingDescVals.slice(0, 10).join(', ') + (missingDescVals.length > 10 ? ' …' : '');
     const okMissing = confirm(
-      `split 서술이 없는 값 ${missingDescVals.length}개 — 그래도 저장하시겠습니까?\n` +
+      `${missingDescVals.length} values have no split description — save anyway?
+` +
       `· ${preview}`
     );
     if (!okMissing) return false;
@@ -6678,7 +6699,8 @@ function outsideCircleNoteForPush(cols, rows, currentRotation, gridCells2D, grid
         if (!isCellInsideWafer(co.c, co.r, visualCols, visualRows)) n++;
       });
     });
-    if (n > 0) outsideNote = `· 웨이퍼 원 밖 셀: ${n}건 (유효 다이 근거가 원이 아닙니다)\n`;
+    if (n > 0) outsideNote = `· Cells outside the wafer circle: ${n} (the valid die is not the circle)
+`;
   }
   return outsideNote;
 }
@@ -8105,8 +8127,10 @@ function unsavedWorkNotice() {
   // 기록이고(선언 경로를 제외한 모든 `frameTouched` 지점이 같은 호흡으로 세운다), 그것이
   // 없다는 것은 이 편집이 **선언뿐**이라는 뜻이다.
   return legendDirty
-    ? `· 셀 값이 바뀌었습니다 — [⚡ Push]로 저장하십시오.\n`
-    : `· 셀은 하나도 바뀌지 않았습니다 — [📐 규격만 저장]이면 충분합니다.\n`;
+    ? `· Cell values changed — save with [⚡ Push].
+`
+    : `· No cell changed — [📐 Save spec only] is enough.
+`;
 }
 
 function snapshotEditorState() {
@@ -9791,7 +9815,7 @@ async function onValidDieRefChanged() {
 async function saveMapSpecOnly() {
   const table = selectedTable;
   if (!table) {
-    showToast('맵 테이블을 먼저 고르십시오.', 'error');
+    showToast('Pick a map table first.', 'error');
     return;
   }
   // `getCurrentMapKey`는 맵 키 칸이 비었거나 'default_map'이면 null을 준다. ⚡ Push는 그
@@ -9799,8 +9823,8 @@ async function saveMapSpecOnly() {
   // 일**이라 물러서지 않는다 — 여기서 만든 행은 영구히 진짜 등록처럼 보인다.
   const mapKey = getCurrentMapKey();
   if (!mapKey) {
-    showToast('맵 키 칸을 채워야 규격을 저장할 수 있습니다 — 어느 맵의 규격으로 등록할지 '
-      + '알 수 없습니다.', 'error');
+    showToast('Fill the map key to save the spec — without it the spec has no map '
+      + 'to belong to.', 'error');
     return;
   }
 
@@ -9809,8 +9833,8 @@ async function saveMapSpecOnly() {
   try {
     stored = await fetchGridMetaFor(table, mapKey);
   } catch (e) {
-    showToast(`맵 규격을 확인하지 못해 저장을 중단했습니다 — ${(e && e.message) ? e.message : e}. `
-      + `잠시 후 다시 시도하십시오(아무것도 기록되지 않았습니다).`, 'error');
+    showToast(`Save stopped: the map spec could not be read — ${(e && e.message) ? e.message : e}. `
+      + `Nothing was written; retry shortly.`, 'error');
     return;
   }
   const isNew = (stored === null);
@@ -9820,8 +9844,8 @@ async function saveMapSpecOnly() {
   //    빼앗는다(아래 `offGrid`가 세는 바로 그 계급을 스스로 만드는 셈이다).
   const panel = readGridFrameControls(el);
   if (panel.silent.length > 0) {
-    showToast(`${panel.silent.join(' · ')} 칸이 비어 있어 규격을 저장하지 않았습니다 — `
-      + `빈 칸을 0으로 지어내 등록하지 않습니다.`, 'error');
+    showToast(`Spec not saved: ${panel.silent.join(' · ')} is empty — `
+      + `a blank is not saved as 0.`, 'error');
     return;
   }
   const { cols, rows, startX, startY, invertY } = panel;
@@ -9843,31 +9867,41 @@ async function saveMapSpecOnly() {
   const offGrid = sameIdentity ? classifyUnsavableCells().offGrid.length : null;
   let orphanLine;
   if (!sameIdentity) {
-    orphanLine = `· 이 식별자로 불러온 셀이 화면에 없어, 격자 밖으로 밀려나는 셀 수는 `
-      + `셀 수 없습니다.\n`;
+    orphanLine = `· No cells of this map are loaded on screen, so the cells pushed outside the grid `
+      + `cannot be counted.
+`;
   } else if (offGrid > 0) {
-    orphanLine = `\n⚠️ 이 규격으로는 값이 있는 셀 ${offGrid}건이 격자 범위 밖에 놓입니다.\n`
-      + `   그 셀들은 서버에서 삭제되지 않지만, 이 맵으로는 더 이상 불러올 수 없게 됩니다.\n`
-      + `   (격자 크기·시작 좌표를 되돌려 다시 저장하면 그대로 되살아납니다.)\n\n`;
+    orphanLine = `
+⚠️ With this spec ${offGrid} cells with values fall outside the grid.
+`
+      + `   They stay on the server, but this map no longer loads them.
+`
+      + `   (Saving the old grid size and start again brings them back.)
+
+`;
   } else {
-    orphanLine = `· 격자 밖으로 밀려나는 셀: 없음\n`;
+    orphanLine = `· Cells pushed outside the grid: none
+`;
   }
 
   const shownNext = validDieRefDisplay(next.valid_die_ref);
   const vdLine = ('valid_die_ref' in next)
     ? `「${shownNext.table || VALID_DIE_TABLE} · ${shownNext.key}」`
-    : '지정 없음 (웨이퍼 원 기하)';
+    : 'none (wafer circle)';
   if (!confirm(
-    `맵 규격만 기록합니다 — 셀은 하나도 쓰지 않습니다.\n\n`
-    + `· 대상 테이블: ${table}\n`
-    + `· 대상 맵 키: ${mapKey}\n`
+    `Saves the map spec only — no cell is written.
+
+`
+    + `· Table: ${table}\n`
+    + `· Map key: ${mapKey}\n`
     + `· ${isNew
-      ? '이 식별자에는 등록된 규격이 없습니다 · 규격을 **새로 등록**합니다.'
-      : '등록된 규격을 **갱신**합니다.'}\n`
+      ? 'No spec registered for this map · the spec is **registered new**.'
+      : 'The registered spec is **updated**.'}\n`
     + orphanLine
-    + `\n· 격자 ${cols} × ${rows} · 시작 (${startX}, ${startY}) · 회전 ${currentRotation}° · ${currentSide}\n`
-    + `· 유효 다이 맵: ${vdLine}\n\n`
-    + `계속하시겠습니까?`
+    + `
+· Grid ${cols} × ${rows} · start (${startX}, ${startY}) · rotation ${currentRotation}° · ${currentSide}\n`
+    + `· Valid die map: ${vdLine}\n\n`
+    + `Continue?`
   )) {
     return;
   }
@@ -9911,7 +9945,7 @@ async function saveMapSpecOnly() {
       ...(abort ? { signal: abort.signal } : {}),
     });
     if (!res.ok) {
-      showToast(`맵 규격 저장 실패 (HTTP ${res.status}) · 아무것도 기록되지 않았습니다.`, 'error');
+      showToast(`Map spec save failed (HTTP ${res.status}) · nothing was written.`, 'error');
       return;
     }
     // 저장이 성립했으므로 **저장된 원문**이 바뀌었다. `validDie.raw`를 그 값으로 맞춘다:
@@ -9927,7 +9961,7 @@ async function saveMapSpecOnly() {
     // pre-existing path: it is reachable only from a declaration-only edit.)
     if (!legendDirty) frameTouched = false;
     syncValidDieRefControls();
-    showToast(`${table} · ${mapKey} 맵 규격 ${isNew ? '새로 등록' : '갱신'} — 셀 기록 0건`, 'success');
+    showToast(`${table} · ${mapKey} map spec ${isNew ? 'registered' : 'updated'} — 0 cells written`, 'success');
   } catch (e) {
     // 🔴 **「실패했다」와 「됐는지 모르겠다」는 다른 사실이고, 다르게 읽혀야 한다.**
     //    종전 문구는 어떤 예외에서든 "아무것도 기록되지 않았습니다"라고 단언했다. 응답을
@@ -9943,12 +9977,12 @@ async function saveMapSpecOnly() {
     //    사용자에게 의미 있는 사실이고, 그 자리에 예외 메시지("The user aborted a request")를
     //    보여 주는 것은 아무 말도 안 하는 것과 같다.
     if (timedOut) {
-      showToast(`맵 규격 저장 — ${Math.round(MAP_SPEC_SAVE_TIMEOUT_MS / 1000)}초 안에 응답이 `
-        + `오지 않았습니다. 저장됐는지 확인이 필요합니다 — 화면을 새로 고쳐 규격을 확인한 뒤 `
-        + `다시 시도하십시오.`, 'error');
+      showToast(`Map spec save — no answer within ${Math.round(MAP_SPEC_SAVE_TIMEOUT_MS / 1000)} s. `
+        + `Whether it saved is unknown: reload, check the spec, `
+        + `then retry.`, 'error');
     } else {
-      showToast(`맵 규격 저장 — 응답을 받지 못했습니다 (${(e && e.message) ? e.message : e}). `
-        + `저장됐는지 확인이 필요합니다 — 화면을 새로 고쳐 규격을 확인하십시오.`, 'error');
+      showToast(`Map spec save — no answer (${(e && e.message) ? e.message : e}). `
+        + `Whether it saved is unknown: reload and check the spec.`, 'error');
     }
   } finally {
     // 타이머는 성공 경로에서도 반드시 꺼진다. 살아남은 타이머는 이 저장이 끝난 뒤에
@@ -10198,9 +10232,9 @@ function mapSpecSummary(rawGridMeta) {
   if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return '';
   const parts = [`${cols}×${rows}`];
   const rot = Number(m.rotation);
-  if (Number.isFinite(rot) && rot !== 0) parts.push(`회전 ${rot}°`);
-  if (String(m.side || '').toLowerCase() === 'back') parts.push('뒷면');
-  if (m.grid_y_invert === true) parts.push('Y반전');
+  if (Number.isFinite(rot) && rot !== 0) parts.push(`rotation ${rot}°`);
+  if (String(m.side || '').toLowerCase() === 'back') parts.push('back');
+  if (m.grid_y_invert === true) parts.push('invert Y');
   return parts.join(' · ');
 }
 
