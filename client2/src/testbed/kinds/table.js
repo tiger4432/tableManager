@@ -35,7 +35,9 @@ function compare(a, b) {
 export function tableModel(rows, ctx) {
   const decl = ctx.declaration || {};
   const keys = slots(decl.encode).map((s) => s.key);
-  let lines = rows.map((row) => ({ id: row.id, cells: keys.map((k) => cellOf(row.reads[k])), marked: ctx.marked(row.id) }));
+  // A line in its row's Color by colour (the root's), when one is declared.
+  const colorOf = (id) => (ctx.colors && ctx.colors.any ? ctx.colors.of.get(id).fill : null);
+  let lines = rows.map((row) => ({ id: row.id, cells: keys.map((k) => cellOf(row.reads[k])), marked: ctx.marked(row.id), color: colorOf(row.id) }));
   const sort = decl.sort && keys.includes(decl.sort.key) ? decl.sort : null;
   if (sort) {
     const at = keys.indexOf(sort.key);
@@ -75,6 +77,7 @@ export function render(body, model, ctx) {
   table.append(head);
   for (const line of model.lines) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
+    if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
     tr.append(el('td', 'sf-table__add'));
     tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
@@ -83,7 +86,9 @@ export function render(body, model, ctx) {
   wrap.append(table);
   // A press on the table's own ground, not on a line or a head, unmarks (Spotfire: a click on nothing).
   wrap.addEventListener('click', (event) => { if (event.target === wrap) ctx.clear(); });
-  body.replaceChildren(wrap);
+  const legend = el('div', 'sf-legend');
+  legend.append(ctx.legend());
+  body.replaceChildren(wrap, legend);
   return { resize: () => {}, dispose: () => {} };
 }
 

@@ -7,6 +7,7 @@
 import { numberOf } from '../../walk/reach_table.js';
 import { mix } from '../palette.js';
 import { combosOf } from '../slot.js';
+import { colorOfIds } from '../color_by.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -28,9 +29,10 @@ export function mapModel(rows, ctx) {
     cells.push({ ids, where: values, x, y, marked: ids.some(ctx.marked) });
   }
   const anyMarked = cells.some((c) => c.marked);
-  const [one, line] = ctx.palette.one;
   for (const c of cells) {
-    c.fill = c.marked ? (ctx.markColor || one) : anyMarked ? mix(one, ctx.palette.bg) : one;
+    // its rows' Color by colour (the root's; the one colour when none is declared)
+    const { fill, line } = ctx.colors ? colorOfIds(ctx.colors, c.ids) : { fill: ctx.palette.one[0], line: ctx.palette.one[1] };
+    c.fill = c.marked ? (ctx.markColor || fill) : anyMarked ? mix(fill, ctx.palette.bg) : fill;
     c.line = c.marked ? (ctx.markColor || line) : anyMarked ? mix(line, ctx.palette.bg) : line;
   }
   const span = (k) => (cells.length ? [Math.min(...cells.map((c) => c[k])), Math.max(...cells.map((c) => c[k]))] : [0, 0]);
@@ -69,7 +71,9 @@ export function render(body, model, ctx) {
   plot.append(svg);
   const tray = el('div', 'tb-xtray');
   tray.append(el('span', 'sf-note', model.notDrawn ? `${model.notDrawn} not drawn` : ''), ctx.pill('x'), ctx.pill('y'));
-  body.replaceChildren(plot, tray);
+  const legend = el('div', 'sf-legend');
+  legend.append(ctx.legend());
+  body.replaceChildren(plot, legend, tray);
   return { resize: () => {}, dispose: () => {} };
 }
 

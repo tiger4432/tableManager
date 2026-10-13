@@ -3,14 +3,14 @@
 // palette its tokens give (testbed/palette.js).
 
 import { numberOf } from '../../walk/reach_table.js';
-import { categoryColor, mix, MARKER_PX, MARKER_PCT } from '../palette.js';
+import { mix, MARKER_PX, MARKER_PCT } from '../palette.js';
+import { colorsOf, colorOfIds } from '../color_by.js';
 import { slotWords, combosOf, foldRows, isExpression } from '../slot.js';
 import { hubId } from '../hubs.js';
 
 export const SLOTS = Object.freeze([
   { key: 'x', label: 'X-axis' },
   { key: 'y', label: 'Y-axis' },
-  { key: 'color', label: 'Color by', category: true },
 ]);
 const MARKER = /^marker(\d+)$/;
 const markerOrder = (key) => Number(MARKER.exec(key)[1]);
@@ -53,6 +53,8 @@ export function axisKind(values) {
  */
 export function scatterModel(rows, ctx) {
   const palette = ctx.palette;
+  // The colours are the root's (color_by.js) - handed in, or asked of the same seat when the model is made alone.
+  const colors = ctx.colors || colorsOf(rows, ctx);
   const encode = (ctx.declaration && ctx.declaration.encode) || {};
   const markers = markersOf(encode);
   const unit = unitOf(ctx.declaration);
@@ -74,25 +76,20 @@ export function scatterModel(rows, ctx) {
     const where = one.values && markers.map((k, i) => [slotWords(encode[k]), one.values[i]]);
     const id = where ? hubId(ctx.declaration.row, where) : unit === 'record' ? `${one.ids[0]}#${one.k}` : one.ids[0];
     drawable.push({ id, ids: one.ids, where, label: where ? one.values.join(' · ') : one.rows[0].label,
-      x: x.value, y: y.value, category: color && color.state === 'one' ? color.value : null });
+      x: x.value, y: y.value, color: colorOfIds(colors, one.ids) });
   }
-  const categories = [...new Set(drawable.map((p) => p.category).filter((c) => c !== null).map(String))].sort();
   // A marker is marked when a row of it is (a hub as its members).
   const isMarked = (p) => p.ids.some(ctx.marked);
   const anyMarked = drawable.some(isMarked);
   const points = drawable.map((p) => {
-    const k = p.category === null ? -1 : categories.indexOf(String(p.category));
-    const [fill, border] = k < 0 ? palette.one : categoryColor(palette, k);
+    const { fill, line: border } = p.color;
     const marked = isMarked(p);
     const dim = anyMarked && !marked;
     // A marked point in its marking's colour (Spotfire's), the others dimmed toward the background.
     if (marked && ctx.markColor) return { ...p, marked, fill: ctx.markColor, border: ctx.markColor };
     return { ...p, marked, fill: dim ? mix(fill, palette.bg) : fill, border: dim ? mix(border, palette.bg) : border };
   });
-  const legend = categories.map((name, k) => ({ name, fill: categoryColor(palette, k)[0], border: categoryColor(palette, k)[1],
-    ids: points.filter((p) => String(p.category) === name).flatMap((p) => p.ids),
-    dim: anyMarked && !points.some((p) => p.marked && String(p.category) === name) }));
-  return { points, legend, one: palette.one, anyMarked, notDrawn, several, encode, unit,
+  return { points, colors, one: palette.one, anyMarked, notDrawn, several, encode, unit,
     xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
     size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
 }
@@ -193,26 +190,7 @@ export function render(body, model, ctx) {
   const held = markersOf(encode);
   const markerRow = held.length ? row(...held.map((k) => ctx.pill(k)), ctx.plus(nextMarker(encode)))
     : row(ctx.pill(nextMarker(encode), { words: model.unit === 'record' ? '(Value record)' : '(Node)' }));
-  legend.append(ttl('Marker by:'), markerRow, ttl('Color by:'), row(ctx.pill('color'), ctx.plus('color')));
-  if (model.legend.length) {
-    for (const item of model.legend) {
-      const v = el('button', `sf-legend__v${item.dim ? ' is-dim' : ''}`);
-      v.type = 'button';
-      const ico = el('span', 'sf-legend__ico');
-      ico.style.background = item.fill;
-      ico.style.borderColor = item.border;
-      v.append(ico, el('span', 'sf-legend__name', item.name));
-      v.addEventListener('click', (event) => ctx.markHub([[ctx.words('color'), item.name]], item.ids, event));
-      legend.append(v);
-    }
-  } else {
-    const v = el('div', 'sf-legend__v');
-    const ico = el('span', 'sf-legend__ico');
-    ico.style.background = model.one[0];
-    ico.style.borderColor = model.one[1];
-    v.append(ico, el('span', 'sf-legend__name', 'All values'));
-    legend.append(v);
-  }
+  legend.append(ttl('Marker by:'), markerRow, ctx.legend());
   const xtray = el('div', 'tb-xtray');
   const note = el('span', 'sf-note', [model.notDrawn ? `${model.notDrawn} not drawn` : '',
     model.several ? `${model.several} rows with several values` : ''].filter(Boolean).join(' · '));

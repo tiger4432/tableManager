@@ -59,6 +59,17 @@
 .sf-legend__plain { cursor: default; padding-left: 18px; }
 .sf-legend__ico { flex: none; width: var(--sf-icon); height: var(--sf-icon); box-sizing: border-box; border: 1px solid; border-radius: 50%; }
 .sf-legend__name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Color by (the root's): a category's circle opens its palette, its name marks its rows */
+.sf-pop.sf-swatches { display: block; width: auto; }
+button.sf-legend__ico { padding: 0; min-height: 0; cursor: pointer; }
+button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: normal; text-align: left; cursor: pointer; }
+.sf-swatches { padding: var(--sf-tool-gap); }
+.sf-swatches__grid { display: grid; grid-template-columns: repeat(5, var(--sf-pill-h)); gap: 6px; }
+.sf-swatches__it { width: var(--sf-pill-h); height: var(--sf-pill-h); min-height: 0; padding: 0; border: 1px solid var(--sf-panel-pill); border-radius: 50%; cursor: pointer; }
+.sf-swatches__it.is-on { outline: var(--sf-active-w) solid var(--sf-active); }
+.sf-swatches__more { display: flex; align-items: center; gap: 6px; margin-top: var(--sf-tool-gap); }
+/* a table line in its row's Color by colour: a band at its start */
+.sf-table--rows tr[data-color] td:first-child { box-shadow: inset 4px 0 0 var(--sf-line-color); }
 
 /* ── a table: a grid with lines (the cross table), or a striped list (the marked rows) ── */
 .sf-table { width: auto; border-collapse: collapse; font-size: inherit; font-variant-numeric: tabular-nums; }

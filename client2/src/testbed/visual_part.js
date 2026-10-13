@@ -21,6 +21,8 @@ import { readSlot, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
+import { COLOR_SLOT, colorsOf, legendBlock, paletteBox } from './color_by.js';
+import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes } from '../rnd_board/api.js';
 import { paletteOf } from './palette.js';
@@ -68,7 +70,9 @@ export class VisualPart extends Panel {
   /** Its kind's slots - a list, or what the kind makes of the declaration (a table's columns, the scatter's Marker by). */
   slotList() {
     const listed = this.kind ? this.kind.slots : [];
-    return typeof listed === 'function' ? listed(this.decl.encode || {}, this.decl) : listed;
+    const own = typeof listed === 'function' ? listed(this.decl.encode || {}, this.decl) : listed;
+    // Color by is the root's - every kind holds it (color_by.js).
+    return [...own, COLOR_SLOT];
   }
 
   mount() {
@@ -92,6 +96,7 @@ export class VisualPart extends Panel {
   destroy() {
     for (const off of this._offs || []) off();
     for (const off of this._limitOffs || []) off();
+    this.closePalette();
     // Closed while it was the active one: no part is.
     if (this.active && this.active.get('active') === this.decl.id) this.active.set('active', null);
     if (this.drawn) this.drawn.dispose();
@@ -271,7 +276,9 @@ export class VisualPart extends Panel {
       return { id, label: node.label || id, reads, raw };
     });
     const marked = (id) => this.layers.marked(this.reads, id) === true;
-    this.model = this.kind.model(rows, { marked, markColor: this.markColor(), palette: this.palette(), declaration: this.decl });
+    // Each row's colour - the root's, once; the kind draws with it.
+    this.colors = colorsOf(rows, { palette: this.palette(), declaration: this.decl, marked });
+    this.model = this.kind.model(rows, { marked, markColor: this.markColor(), palette: this.palette(), declaration: this.decl, colors: this.colors });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -374,7 +381,11 @@ export class VisualPart extends Panel {
       doc, palette: this.palette(), charts: this.charts,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       pill: (key, opts) => this.pill(key, opts),
-      plus: (key) => { const p = el('button', 'sf-plus', '+'); p.type = 'button'; p.title = 'Add one more column'; p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p })); return p; },
+      plus: (key) => this.plus(key),
+      // the legend's Color by block - the root's, every kind's
+      legend: () => legendBlock(this.colors, { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
+        words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
+        openPalette: (category, anchor) => this.openPalette(category, anchor) }),
       mark: (ids, event) => this.mark(ids, event),
       markHub: (where, ids, event) => this.markHub(where, ids, event),
       markHubs: (list, event) => this.markHubs(list, event),
@@ -384,6 +395,43 @@ export class VisualPart extends Panel {
       remember: (event) => this.remember(event),
       lastEvent: () => this.lastEvent(),
     });
+  }
+
+  /** A slot's «+» - pressed, its picker. */
+  plus(key) {
+    const p = this.doc.createElement('button');
+    p.className = 'sf-plus';
+    p.textContent = '+';
+    p.type = 'button';
+    p.title = 'Add one more column';
+    p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p }));
+    return p;
+  }
+
+  /** A category's colour picked from the palette under its legend circle (Spotfire's) - the declaration's `colors`. */
+  openPalette(category, anchor) {
+    const doc = this.doc;
+    this.closePalette();
+    const current = ((this.decl.colors || {})[category]) || ((this.colors.categories.find((c) => c.name === category) || {}).fill);
+    const host = doc.createElement('div');
+    host.className = 'sf-pop-host';
+    host.append(paletteBox(doc, this.palette(), current, (fill) => {
+      this.closePalette();
+      this.setDeclaration({ ...this.decl, colors: { ...(this.decl.colors || {}), [category]: fill } });
+    }));
+    (doc.body || this.host).appendChild(host);
+    if (anchor && anchor.getBoundingClientRect) fitUnder(host, anchor, { align: 'left', gap: 4 });
+    const outside = (event) => { if (!(event.target && host.contains && host.contains(event.target))) this.closePalette(); };
+    const key = (event) => { if (event.key === 'Escape') this.closePalette(); };
+    if (typeof doc.addEventListener === 'function') { doc.addEventListener('mousedown', outside); doc.addEventListener('keydown', key); }
+    this._palette = { host, off: () => { if (typeof doc.removeEventListener === 'function') { doc.removeEventListener('mousedown', outside); doc.removeEventListener('keydown', key); } } };
+  }
+
+  closePalette() {
+    if (!this._palette) return;
+    this._palette.off();
+    if (this._palette.host.remove) this._palette.host.remove(); else if (this._palette.host.parentNode) this._palette.host.parentNode.removeChild(this._palette.host);
+    this._palette = null;
   }
 
   /** A slot's pill - pressed, its picker. `opts.words`: a pill that only says them (no slot of the kind, nothing to pick). */

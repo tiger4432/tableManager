@@ -2,6 +2,7 @@
 // rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its rows, marked whole.
 
 import { combosOf, slotWords, foldRows, EMPTY } from '../slot.js';
+import { colorOfIds } from '../color_by.js';
 
 export const SLOTS = Object.freeze([
   { key: 'rows', label: 'Row axis', category: true },
@@ -44,7 +45,9 @@ export function crossModel(rows, ctx) {
   const grid = R.map((r) => C.map((c) => {
     const cell = cells.get(keyOf(r, c));
     if (!cell) return { value: null, ids: [], marked: false };
-    return { value: folded(cell.ids), ids: cell.ids, marked: cell.ids.some(ctx.marked) };
+    // A cell in its rows' Color by colour (the root's), when one is declared.
+    const color = ctx.colors && ctx.colors.any ? colorOfIds(ctx.colors, cell.ids).fill : null;
+    return { value: folded(cell.ids), ids: cell.ids, marked: cell.ids.some(ctx.marked), color };
   }));
   const rowIds = R.map((_, i) => grid[i].flatMap((cell) => cell.ids));
   const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
@@ -86,6 +89,7 @@ export function render(body, model, ctx) {
     tr.append(th);
     model.grid[i].forEach((cell, j) => {
       const td = el('td', cell.marked ? 'is-marked' : '', cellWords(cell.value));
+      if (cell.color && !cell.marked) td.style.background = cell.color;
       if (cell.ids.length) td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
       tr.append(td);
     });
@@ -101,7 +105,7 @@ export function render(body, model, ctx) {
   const bottom = el('div', 'tb-cross__bottom');
   bottom.append(ctx.pill('cells'), ctx.plus('cells'));
   const legend = el('div', 'sf-legend');
-  legend.append(el('div', 'sf-legend__ttl', 'Colors:'), el('div', 'sf-legend__v sf-legend__plain', 'All values'));
+  legend.append(ctx.legend());
   body.replaceChildren(top, left, wrap, legend, bottom);
   return { resize: () => {}, dispose: () => {} };
 }
