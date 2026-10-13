@@ -121,6 +121,28 @@ SHELL_DELETER = "chain_shell_rows"
 GONE_DELETER = "chain_no_source_rows"
 
 
+def rows_others_wrote(db, table_name: str, own) -> dict:
+    """{row_id: [layer names]} - of `own` {row_id: the rules whose rows they are}, the rows another writer has a layer
+    on (총괄 355ee9840 2): not a person's (`crud.layer_writer`), not those rules' chain or auto-confirm layer
+    (`updated_by` is the rule that wrote it), not the backfill's old name for that write."""
+    from chain.enrichment import backfill, candidates
+    from database import crud, models
+
+    S = models.CellSource
+    ids = list(own)
+    mine = (crud.CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY)
+    found = {}
+    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
+        for row_id, name, by in (db.query(S.row_id, S.source_name, S.updated_by)
+                                 .filter(S.table_name == table_name, S.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))):
+            writer = crud.layer_writer(name)
+            if (writer == crud.USER_SOURCE or name == backfill.SOURCE_NAME
+                    or (name in mine and by in own[row_id])):
+                continue
+            found.setdefault(row_id, set()).add(name)
+    return {row_id: sorted(names) for row_id, names in found.items()}
+
+
 def person_rows(db, table_name: str, row_ids) -> set:
     """The rows a person wrote a layer on, blank or not (`crud.layer_writer`) - what a gone row says by name."""
     from database import crud

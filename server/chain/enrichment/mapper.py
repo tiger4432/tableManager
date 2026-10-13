@@ -248,6 +248,25 @@ def _union(running, value):
     return (running or set()) | {v for v in json.loads(value or "[]") if v is not None}
 
 
+def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty) -> set:
+    """Of `empty` (decision keys with no source row), those whose derived row's identity - `composite_key_source`,
+    else `business_key` - no source row holds either (총괄 355ee9840 1). The identity is the decision key when they
+    are the same columns, so nothing more is asked; a key whose identity is all blank has no row to delete."""
+    from database import crud
+
+    derived = crud.TABLE_CONFIG.get(enrich["derived_table"], {})
+    identity = list(derived.get("composite_key_source") or ([derived["business_key"]] if derived.get("business_key")
+                                                            else []))
+    if not empty or not identity or set(identity) == set(decision_key):
+        return set(empty)
+    at = [decision_key.index(column) for column in identity]
+    of = {key: tuple(key[i] for i in at) for key in empty if any(key[i] != "" for i in at)}
+    held = _aggregate_affected_keys(db, source_table, identity, {of[key]: tuple(key_raw_values[key][i] for i in at)
+                                                                 for key in of},
+                                    {_SOURCE_ROWS: {"expression": "Count()"}})
+    return {key for key in of if not (held.get(of[key]) or {}).get(_SOURCE_ROWS)}
+
+
 def _result(updates, skipped_no_key: int, partial_keys: int,
             skipped_blank_identity: int = 0) -> dict:
     """맵퍼의 반환 계약 — **가산적**이다(체인 워커는 `updates`만 읽는다).
@@ -380,8 +399,11 @@ def map_enrichment_dedup(db, payloads, rule=None):
     if counted:
         aggregated = _aggregate_affected_keys(
             db, source_table, decision_key, key_raw_values, counted)
-    # 총괄 옛 키: a key a row left that no source row holds any more - its derived row goes (the worker deletes it)
-    gone = {key for key in left if not (aggregated.get(key) or {}).get(_SOURCE_ROWS)}
+    # 총괄 옛 키: a key a row left with no source row of its own. Whether its derived row goes is asked of the
+    # columns that BUILD that row's identity (355ee9840 1): a decision key wider than them shares the row with
+    # others, and the row goes only when no source row holds its identity. One that still has some writes nothing.
+    empty = {key for key in left if not (aggregated.get(key) or {}).get(_SOURCE_ROWS)}
+    gone = _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty)
 
     # 3) 키당 1행 upsert 아이템 구성 — target_fields 는 같은 이름의 집계만 쓴다. 빈 집계는 «withdraw» 에.
     #    기존 키: decision/list 컬럼 값이 동일하면 has_changed=False로 무변경 처리되고,
@@ -390,6 +412,8 @@ def map_enrichment_dedup(db, payloads, rule=None):
     partial_keys = 0
     unaddressable = 0
     for key, g in groups.items():
+        if key in empty and key not in gone:
+            continue
         key_map = dict(zip(decision_key, key))
         # 같은 술어 하나 — 아래 정체성 조립과 `partial_keys` 회계가 이것을 공유한다.
         blank_key_cols = enrichment.config.blank_key_columns(enrich, key_map)
@@ -469,8 +493,9 @@ def map_enrichment_dedup(db, payloads, rule=None):
             #    «다섯째 철자»가 아니라 «닿지 않는 같은 철자»다.
             joined = comp_sep.join(key)
         item["business_key_val"] = joined
-        if key in gone:
-            item = {"business_key_val": joined, "updates": {}, "source_name": "chain_ingestion", "gone": True}
+        if key in gone:     # the worker deletes it unless another writer is on it - this declaration's halves are not
+            item = {"business_key_val": joined, "updates": {}, "source_name": "chain_ingestion", "gone": True,
+                    "own": list(enrichment.config.synthesized_rule_names(enrich["name"]))}
         if bk_col and bk_col in derived_cols and bk_col not in upd_cols and bk_col not in target_fields:
             upd_cols[bk_col] = joined
         updates.append(item)

@@ -1654,7 +1654,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                            rule_run.item_cell(item, "business_key_val"), rule_run.item_cell(item, "withdraw"))
                           for item in updates_list if rule_run.item_cell(item, "withdraw")]
                 # 총괄 옛 키: a key no source row holds any more - its row goes after the write, it is not written
-                gone_keys = [rule_run.item_cell(item, "business_key_val")
+                gone_keys = [(rule_run.item_cell(item, "business_key_val"), rule_run.item_cell(item, "own"))
                              for item in updates_list if rule_run.item_cell(item, "gone")]
                 if gone_keys:
                     updates_list = [item for item in updates_list if not rule_run.item_cell(item, "gone")]
@@ -1850,6 +1850,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                 f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
                 if gone_keys:
+                    # 🔴 355ee9840 5: a failed delete fails the GROUP - it is retried, and its recount writes the same
+                    #    values again - not a line beside a success
                     with alignment_batch_counts.stage("gone rows"):
                         try:
                             deleted_row_ids = list(deleted_row_ids or []) + _delete_gone(db, target_table, gone_keys)
@@ -1857,8 +1859,9 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                             db.rollback()
                             logger.error(
                                 f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | deleting "
-                                f"{len(gone_keys)} row(s) whose key no source row holds failed AFTER a committed "
-                                f"write; those rows remain: [{type(gone_err).__name__}] {gone_err}", exc_info=True)
+                                f"{len(gone_keys)} row(s) whose key no source row holds failed - the group "
+                                f"goes back to be retried: [{type(gone_err).__name__}] {gone_err}")
+                            raise
 
                 # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
                 #    the grid's delete (its layers, a history line, one DELETE, which wakes no rule). Asked
@@ -3576,27 +3579,34 @@ def _withdraw_blanks(db, table, blanks):
     return lost
 
 
-def _delete_gone(db, table, keys):
+def _delete_gone(db, table, gone):
     """The rows of these keys go - a decide's key no source row holds any more (총괄 옛 키): the grid's delete (its
-    layers, a history line, one DELETE). A row a person wrote on goes too, and is named. -> the deleted row ids."""
+    layers, a history line, one DELETE). `gone` [(key, the declaration's rules)]. A row a person wrote on goes too,
+    and is named; a row another writer is on stays, and is named (355ee9840 2). -> the deleted row ids."""
     from chain import cell_layer
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE
     from database import crud, models
 
     model = models.DYNAMIC_TABLES[table]
-    keys = list(dict.fromkeys(key for key in keys if key is not None))
+    own = {key: tuple(names or ()) for key, names in gone if key is not None}
+    keys = list(own)
     found = {}
     for i in range(0, len(keys), DEFAULT_CHUNK_SIZE):
         found.update(db.query(model.row_id, model.business_key_val)
                      .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE])))
-    if not found:
+    others = cell_layer.rows_others_wrote(db, table, {row_id: own[key] for row_id, key in found.items()})
+    for row_id, names in sorted(others.items()):
+        logger.warning("[ChainRetract] kept %s %s: no source rows, but %s wrote on it", table, found[row_id],
+                       ", ".join(names))
+    doomed = [row_id for row_id in found if row_id not in others]
+    if not doomed:
         return []
-    persons = cell_layer.person_rows(db, table, found)
-    crud.delete_rows_batch(db, table, list(found), cell_layer.GONE_DELETER)
+    persons = cell_layer.person_rows(db, table, doomed)
+    crud.delete_rows_batch(db, table, doomed, cell_layer.GONE_DELETER)
     for row_id in sorted(persons):
         logger.warning("[ChainRetract] deleted %s %s: no source rows (a person's value was on it)", table, found[row_id])
-    logger.info("[ChainRetract] table=%s rows_deleted=%d - no source row holds their key", table, len(found))
-    return list(found)
+    logger.info("[ChainRetract] table=%s rows_deleted=%d - no source row holds their key", table, len(doomed))
+    return doomed
 
 
 def _rows_not_in(db, table, row_ids, results):
