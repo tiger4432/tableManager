@@ -13,7 +13,7 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets, nodeWords, hubsAsMembers, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
+import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets, nodeWords, hubsAsMembers, hubRowsOf, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
 import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, recordsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointWords } from './reach_table.js';
@@ -238,10 +238,16 @@ export function shownOf(section, f = {}, lines = null) {
   }
   // A filter or a sort on a column this table no longer draws (a hub turned from columns to a section, lead QA 10-13 ⑬):
   // set aside, said, not dropped.
-  const aside = [...Object.entries(f.columns || {}).filter(([key, x]) => !at.has(key) && filterActive(x)).map(([key]) => key),
-    ...(f.sort && !at.has(f.sort.key) ? [f.sort.key] : [])];
+  const aside = { filters: Object.entries(f.columns || {}).filter(([key, x]) => !at.has(key) && filterActive(x)).map(([key]) => key),
+    sort: f.sort && !at.has(f.sort.key) ? f.sort.key : null };
   return { columns: grid.columns, lines: shown, all: grid.lines, aside,
     filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) };
+}
+
+/** What `shownOf` set aside, in words - a filter and a sort each as what it is (lead verify 1cba190fe ⑥); none, ''. */
+export function asideWords(aside) {
+  const said = [aside.filters.length ? `${aside.filters.length} ${aside.filters.length === 1 ? 'filter' : 'filters'}` : '', aside.sort ? 'the sort' : ''].filter(Boolean);
+  return said.length ? `${said.join(' and ')} set aside · column not drawn` : '';
 }
 
 /** A cell on the clipboard - Copy's, and a node's keys' (owner 10-12): several «; », none empty, a side that did not
@@ -379,10 +385,26 @@ export function mergeWalks(a, b) {
   // A hub's rows from both walks, each row once (the walk's own over the other's).
   const rows = hubRows(b.tables);
   for (const [hub, held] of hubRows(a.tables)) for (const [id, row] of held) rowsOf(rows, hub).set(id, row);
-  return { ...a, nodes: once([...(b.nodes || []), ...(a.nodes || [])]), edges: once([...(b.edges || []), ...(a.edges || [])]),
-    ...(a.tables || b.tables ? { tables: hubTables(rows) } : {}),
+  const tables = a.tables || b.tables ? hubTables(rows) : null;
+  // A hub both hold says the rows merged - its head «<type> ×<count>» (task/WALK_HUB_ANSWER_SHAPE.md): A's head over
+  // three rows said «wafer ×1» (lead verify 1cba190fe ①, the control holding all three).
+  const headed = (n) => (n.hub && tables && tables[n.id] && tables[n.id].count !== n.count
+    ? { ...n, count: tables[n.id].count, label: `${n.type} ×${tables[n.id].count}` } : n);
+  return { ...a, nodes: once([...(b.nodes || []), ...(a.nodes || [])]).map(headed), edges: once([...(b.edges || []), ...(a.edges || [])]),
+    ...(tables ? { tables } : {}),
     ...(a.propagation || b.propagation
       ? { propagation: { ...(b.propagation || {}), ...(a.propagation || {}), ranked: once([...ranked(b), ...ranked(a)]) } } : {}) };
+}
+
+/** An answer's ids in its order, a hub followed by its members. */
+const idsOf = (answer) => ((answer && answer.nodes) || [])
+  .flatMap((n) => [n.id, ...(n.hub ? hubRowsOf(((answer.tables || {})[n.id])).map((r) => r.id) : [])]);
+/** `ids` with the members of every hub of `answer` it holds (or of `only`), as the hub stands; `ids` back. */
+function withRows(ids, answer, only) {
+  for (const [hub, t] of Object.entries((answer && answer.tables) || {})) {
+    if ((only === undefined || hub === only) && ids.has(hub)) for (const r of hubRowsOf(t)) ids.add(r.id);
+  }
+  return ids;
 }
 
 /** A hub head or a hub edge a page says is gone: its id and a count of 0, nothing else (task/WALK_HUB_ANSWER_SHAPE.md). */
@@ -391,8 +413,7 @@ const gone = (item) => item && item.count === 0 && Object.keys(item).length === 
 function hubRows(tables) {
   const out = new Map();
   for (const [hub, table] of Object.entries(tables || {})) {
-    const at = (table.columns || []).indexOf('id');
-    out.set(hub, new Map((table.rows || []).map((row) => [row[at], Object.fromEntries(table.columns.map((c, i) => [c, row[i]]))])));
+    out.set(hub, new Map(hubRowsOf(table).map((row) => [row.id, row])));
   }
   return out;
 }
@@ -497,11 +518,14 @@ export function deltaWords(delta) {
  */
 export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
   fold = {}, controlGiven = null, addsGiven = []) {
+  // Each walk's own reading - its reach, its sides' values, its judgments - off its own answer, a hub of one its member.
   const result = hubsAsMembers(given);
   const control = controlGiven && hubsAsMembers(controlGiven);
   const adds = addsGiven.map((add) => ({ ...add, answer: hubsAsMembers(add.answer) }));
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
-  const walked = control ? mergeWalks(result, control) : result;
+  // The graph is merged as the walks came and a hub of one turned into its member once, after (lead verify 1cba190fe ①:
+  // turned apart, one node stood «B only» in its type and «A + B» in its hub).
+  const walked = controlGiven ? mergeWalks(given, controlGiven) : given;
   // The walk's judgment for each node it walked (owner 10-12): the answer's «aux» names the auxiliary node(s) (seeds), each
   // node its own «aux» - found · hops · via / none / unknown.
   const reaches = (result && result.aux) || null;
@@ -511,12 +535,14 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
   const reachLines = reachTo.length > 1 ? reachTo.map((id) => `${REACH_WORDS.head} ${nodeWords(id)}`) : [reachHead];
   const judgedById = new Map(((result && result.nodes) || []).map((n) => [n.id, n.aux || null]));
   const judgedOf = (id) => judgedById.get(id) || null;
-  // Each addition merged by the same merge; the step's rows keep their order, what an addition brought after them.
-  const merged = adds.reduce((graph, add) => mergeWalks(graph, add.answer), walked);
-  const before = new Map(((walked && walked.nodes) || []).map((n, i) => [n.id, i]));
+  // Each addition merged by the same merge; the step's rows keep their order, what an addition brought after them - a
+  // hub's members where the hub stood.
+  const merged = hubsAsMembers(addsGiven.reduce((graph, add) => mergeWalks(graph, add.answer), walked));
+  const before = new Map();
+  idsOf(walked).forEach((id, i) => { if (!before.has(id)) before.set(id, i); });
   const brought = new Map();
-  adds.forEach((add, k) => ((add.answer && add.answer.nodes) || []).forEach((n) => {
-    if (!before.has(n.id) && !brought.has(n.id)) brought.set(n.id, k);
+  addsGiven.forEach((add, k) => idsOf(add.answer).forEach((id) => {
+    if (!before.has(id) && !brought.has(id)) brought.set(id, k);
   }));
   const nodes = [...((merged && merged.nodes) || [])].sort((a, b) => (before.has(a.id) ? before.get(a.id) : Infinity)
     - (before.has(b.id) ? before.get(b.id) : Infinity) || 0);
@@ -546,6 +572,10 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
   // A control walk B (lead 99ed68cb7 D), its sides read as A's are: a side reached a row by A, by B or both - its inside
   // is either, a and b say which.
   const groupsB = control ? (ranked ? groupsOf(control, signs) || ranked.map((g) => ({ ...g, inside: new Set(g.starts) })) : one(control)) : null;
+  // Which walk reached a member is asked of the member (lead verify 1cba190fe ①): a side that reached a hub reached its
+  // rows, whatever hub - or none - the member stands under in the other walk.
+  groupsA.forEach((g) => withRows(g.inside, given));
+  if (groupsB) groupsB.forEach((g) => withRows(g.inside, controlGiven));
   const groups = groupsB ? groupsA.map((g, i) => ({ ...g, inside: new Set([...g.inside, ...groupsB[i].inside]),
     a: g.inside, b: groupsB[i].inside })) : groupsA;
   // An addition's node joins the sides its starts stand on (lead 10-11 W addendum 6): a start + only its + cell, − only
@@ -557,7 +587,7 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
     return from.length ? from : adds[k].seeds;
   };
   adds.forEach((add, k) => ((add.answer && add.answer.nodes) || []).forEach((n) => {
-    for (const g of groups) if (seedsTo(k, n.id).some((s) => g.inside.has(s))) g.inside.add(n.id);
+    for (const g of groups) if (seedsTo(k, n.id).some((s) => g.inside.has(s))) withRows(g.inside.add(n.id), add.answer, n.id);
   }));
   // A far end the answer did not send (collect) is still a node of its type and keys - read off its id, as its source
   // words are (lead 10-11): a column group needs its type and name. It is no row: rows are the answer's nodes.
@@ -712,6 +742,8 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
       // are drawn.
       listed: [...ownAll.filter((c, i) => ownValued[i] && c.value.on !== 'key').map((column) => ({ key: columnKey(column), head: column.words.join(' · '),
         on: !off.has(columnKey(column)) })), ...folds.map((b) => ({ key: b.key, head: b.step, on: b.on }))],
+      // «+ Column» walks on from its rows (a hub's section has no row the walk stands on).
+      addable: true,
       // What Long reads (lead 10-11 W, addendum 8: «Long 은 그대로 다»): a line a record - the node's own a value each; a
       // group's its open cell, the edge's other attributes its point (the mockup B-ㄱ's Long).
       long: [...ownAll.filter((c, i) => ownValued[i] && saysValue(c)).map((column) => ({ column, head: column.words.join(' · '), own: true })),
@@ -723,12 +755,13 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
   const tables = (merged && merged.tables) || {};
   const heads = nodes.filter((n) => n.hub && tables[n.id]);
   const headOf = new Map(heads.map((n) => [n.id, n]));
-  const rowsOfHub = (id) => tables[id].rows.map((r) => Object.fromEntries(tables[id].columns.map((c, i) => [c, r[i]])));
+  const rowsOfHub = (id) => hubRowsOf(tables[id]);
   const declaredOf = (id) => tables[id].columns.filter((c) => !HUB_ROW_COLUMNS.includes(c));
   const cellOfRow = (v) => ({ text: v === null || v === undefined || v === '' ? EMPTY : valueWords(v) });
   const arrow = (h) => (h.direction === 'incoming' ? `← ${h.predicate}` : `${h.predicate} →`);
-  // A hub the answer did not send by name is read off its id: the node it starts from (lead QA 10-13 ⑪).
-  const nearWords = (id) => (nodes.find((n) => n.id === id) || {}).label || nodeWords(String(id).split('|')[0]);
+  // A hub the answer did not send by name is read off its id: the node it starts from (lead QA 10-13 ⑪); a hub of one
+  // there is its member (lead verify 1cba190fe ⑥).
+  const nearWords = (id) => (nodes.find((n) => n.id === id || n.hubOf === id) || {}).label || nodeWords(String(id).split('|')[0]);
   // One row of it under each row above, and none elsewhere - and the one above a section of its own: a hub under columns
   // has no row to stand beside (lead QA 10-13 ②, three deep).
   const oneEach = (sub) => {
@@ -743,9 +776,9 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
     return columnsOf.get(h.id);
   };
   const asColumns = new Set(heads.filter(asColumn).map((n) => n.id));
-  // A control walk (lead QA 10-13 ④): which walk holds each row, A's tables or B's.
-  const heldBy = (answer, hub) => new Set((((answer && answer.tables) || {})[hub] || { rows: [] }).rows
-    .map((r) => r[tables[hub].columns.indexOf('id')]));
+  // A control walk (lead QA 10-13 ④): which walk reached each row - the member, as a type's rows ask it.
+  const by = (side) => (id) => groups.some((g) => g[side].has(id));
+  const [inA, inB] = control ? [by('a'), by('b')] : [null, null];
   // The heads a section draws, each its own: a name met twice says which it is (lead QA 10-13 ⑩).
   const apart = (list) => list.map((h, i) => (list.indexOf(h) === i ? h : `${h} (${list.slice(0, i + 1).filter((x) => x === h).length})`));
   let total = members.length;
@@ -759,8 +792,6 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
     const above = head.hub.of && headOf.has(head.hub.of) ? headOf.get(head.hub.of) : null;
     const under = heads.filter((h) => asColumns.has(h.id) && h.hub.of === head.id)
       .map((h) => ({ h, by: new Map(rowsOfHub(h.id).map((r) => [r.parent_id, r])), own: declaredOf(h.id) }));
-    const inA = control ? heldBy(result, head.id) : null;
-    const inB = control ? heldBy(control, head.id) : null;
     const ownHeads = apart([head.type, ...own, ...(above ? [above.type] : []),
       ...under.flatMap((u) => [`${arrow(u.h.hub)} ${u.h.type}`, ...u.own.map((c) => `${u.h.type} · ${c}`)]),
       ...(control ? ['A · B'] : [])]);
@@ -772,7 +803,7 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
           const one = u.by.get(r.id) || {};
           return [{ text: one.id ? nodeWords(one.id) : EMPTY }, ...u.own.map((c) => cellOfRow(one[c]))];
         }),
-        ...(control ? [{ text: REACHED[reachedBy(inA.has(r.id), inB.has(r.id))] }] : []),
+        ...(control ? [{ text: REACHED[reachedBy(inA(r.id), inB(r.id))] }] : []),
         // The judgment is the head's: its rows are one value (lead QA 10-13 ⑧).
         ...(reaches ? [{ text: reachWords(judgedOf(head.id), reachTo.length > 1) }] : [])] }));
     sections.push({
@@ -794,6 +825,7 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
       rows: said,
       columns: [],
       listed: [],
+      addable: false,
       long: [],
       trendable: [],
       hidden: Math.max(head.count || 0, held.length) - rows.length,

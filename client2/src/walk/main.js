@@ -34,7 +34,7 @@ import {
   cutBudgets, stepAlong, sectionHeading,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView, applyPage, walkedRoutes, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
+import { walkTableView, applyPage, walkedRoutes, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, asideWords, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
 import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
@@ -1032,9 +1032,10 @@ export function boot(doc, host, deps) {
     const f = filterOf(section.type);
     const set = shown.columns.map((c, k) => ({ c, k, x: (f.columns || {})[c.key] })).filter(({ x }) => filterActive(x));
     const open = shown.columns.findIndex((c) => state.filterOpen === `${section.type}\u0000${c.key}`);
-    if (!set.length && open < 0 && !shown.aside.length) return null;
+    const aside = asideWords(shown.aside);
+    if (!set.length && open < 0 && !aside) return null;
     const row = el(doc, 'div', 'wk-filters');
-    if (shown.aside.length) row.append(el(doc, 'span', 'wk-note', `${unitText(shown.aside.length, 'filter')} set aside · column not drawn`));
+    if (aside) row.append(el(doc, 'span', 'wk-note', aside));
     for (const { c, k, x } of set) {
       const choices = filterKind(shown.all, k).choices;
       const said = [x.contains ? `contains ${x.contains}` : '', Number.isFinite(x.min) ? `≥ ${x.min}` : '', Number.isFinite(x.max) ? `≤ ${x.max}` : '',
@@ -1554,6 +1555,8 @@ export function boot(doc, host, deps) {
   /** Columns · k of n (lead 10-11 W): every column a row has a value in, each on or off - the viewer's, kept per type in
    *  this browser; «+ Column» at its foot. */
   function columnsMenu(section) {
+    // Nothing to list and nothing to add: no Columns (lead 10-13 - a hub's section).
+    if (!section.listed.length && !section.addable) return null;
     const wrap = el(doc, 'span', 'wk-colmenu');
     const on = section.listed.filter((x) => x.on).length;
     const b = el(doc, 'button', 'wk-act' + (state.columnsOpen === section.type ? ' is-on' : ''), `Columns · ${on} of ${section.listed.length} ▾`);
@@ -1644,7 +1647,7 @@ export function boot(doc, host, deps) {
     if (section.long.length) bar.append(segmented('wk-shape', 'data-shape', [['wide', 'Wide'], ['long', 'Long']], shapeOf(section.type),
       (value) => { state.shapes.set(section.type, value); render(); }));
     if (section.long.length && shapeOf(section.type) === 'long' && !trended) bar.append(longPick(section));
-    bar.append(sectionViews(section, trended, shown), columnsMenu(section), copyBar(section, view, shown), filterSeat(section));
+    bar.append(...[sectionViews(section, trended, shown), columnsMenu(section), copyBar(section, view, shown), filterSeat(section)].filter(Boolean));
     return bar;
   }
 

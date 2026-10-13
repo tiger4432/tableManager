@@ -299,11 +299,17 @@ export function cutBudgets(axes, limits) {
  *  is, how deep, who, under which row of the hub before, by which predicate, from which seed. */
 export const HUB_ROW_COLUMNS = Object.freeze(['type', 'depth', 'id', 'parent_id', 'via', 'seed']);
 
+/** A member's path the server did not walk to it: it stands under its hub, said so (lead verify 1cba190fe ④). */
+export const VIA_HUB = 'via hub';
+
 /** A hub's mark (lead 10-13): before its words in the picture and over its table, so a hub reads as one. */
 export const HUB_MARK = '▤';
 
 /** A node by its keys, read off its id - for a node the answer did not send (a hub's member, a reach's via). */
 export const nodeWords = (id) => { const n = entityOfId(id) || {}; return Object.values(n.keys || {}).map(valueWords).join(' / ') || id; };
+
+/** THE one reading of a hub's table (task/WALK_HUB_ANSWER_SHAPE.md): its rows, each {column: value} - `id` the member. */
+export const hubRowsOf = (table) => ((table && table.rows) || []).map((r) => Object.fromEntries((table.columns || []).map((c, i) => [c, r[i]])));
 
 /**
  * THE ONE SEAT that turns hubs back into their members (lead 10-13): every hub of one, and with `every` every hub - for
@@ -318,7 +324,7 @@ export function hubsAsMembers(answer, every = false) {
     .filter((n) => n.hub && tables[n.id] && Array.isArray(tables[n.id].rows) && (every || (n.count === 1 && tables[n.id].rows.length === 1)))
     .map((n) => [n.id, n]));
   if (!heads.size) return answer;
-  const rowsOf = new Map([...heads.keys()].map((hub) => [hub, tables[hub].rows.map((r) => Object.fromEntries(tables[hub].columns.map((c, i) => [c, r[i]])))]));
+  const rowsOf = new Map([...heads.keys()].map((hub) => [hub, hubRowsOf(tables[hub])]));
   const memberOf = (head, row) => ({ id: row.id, type: row.type, depth: row.depth, label: nodeWords(row.id),
     keys: (entityOfId(row.id) || {}).keys || {},
     attributes: Object.fromEntries(Object.entries(row).filter(([c, v]) => !HUB_ROW_COLUMNS.includes(c) && v !== null && v !== undefined)),
@@ -335,9 +341,16 @@ export function hubsAsMembers(answer, every = false) {
       edges.push({ id: `${hub}${'\u0000'}${row.id}`, source: end(source), target, predicate: row.via || head.hub.predicate });
     }
   }
+  // A member's line is the member's (lead verify 1cba190fe ④): its name, the paths the server walked to it - the hub's
+  // run through one member - and none walked to it, the hub's starts and «via hub», no path made up.
+  const lineOf = (r, row) => {
+    const own = (r.evidence || []).filter((ev) => { const hops = ev.hops || []; return hops.length && hops[hops.length - 1].id === row.id; });
+    return { ...r, id: row.id, label: nodeWords(row.id), tied_members: undefined,
+      evidence: own.length ? own : (r.evidence || []).map((ev) => ({ ...ev, hops: [...(ev.hops || []).slice(0, 1), { id: r.id, label: VIA_HUB, node_kind: 'hub', ref: null }] })) };
+  };
   const propagation = answer.propagation && Array.isArray(answer.propagation.ranked)
     ? { ...answer.propagation, ranked: answer.propagation.ranked.flatMap((r) => (heads.has(r.id)
-      ? rowsOf.get(r.id).map((row) => ({ ...r, id: row.id, tied_members: undefined })) : [r])) }
+      ? rowsOf.get(r.id).map((row) => lineOf(r, row)) : [r])) }
     : answer.propagation;
   return { ...answer, nodes: answer.nodes.flatMap((n) => (heads.has(n.id) ? rowsOf.get(n.id).map((row) => memberOf(n, row)) : [n])),
     edges, ...(propagation ? { propagation } : {}) };

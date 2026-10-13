@@ -1427,7 +1427,8 @@ const FLOORS = new Map([
   // Walk asks them as they are, an empty Positive keeps Walk off, Ctrl/Shift on Walk mark nothing. Floor = first run.
   ['start_baskets_harness.mjs', 24],   // -> 24: said beside + Add - B13, BM11 (lead b5cdcbc75)
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
-  ['node_search_harness.mjs', 45],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
+  ['node_search_harness.mjs', 47],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
+  //    -> 47: the box left, its line keeps its place - T27, NS16 (lead 10-13 «+ Positive» moved under the press)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
   ['reach_table_harness.mjs', 48],   // 38 -> 48: W 1 - the arrows, a group per far node or type: R10 R12 R17 R19 re-pointed, R22-R26; FM1 FM5 FM8 FM9 FM16 FM17 re-aimed, FM21-FM25 (lead 10-11 W)
   // New with lead f984ab01d: a column's trend - the walk's points and the server's time pages, a colour a group.
@@ -1488,7 +1489,10 @@ const FLOORS = new Map([
   // type - HB4 HB6 re-aimed, HB7 HB8, HBm12-HBm16; HBm8 L2m re-aimed.
   // 343 -> 349 (lead QA 10-13): a Next step's hub opened asks that step's own question (HB9, HBm17; HBm11 re-aimed), the facts
   // box's table to the table's cap (HB10, HBm18).
-  ['subgraph_view_harness.mjs', 349],
+  // 349 -> 360 (lead verify 1cba190fe): no question no «Open as nodes» (HB11, HBm19), an open laid over what More brought and
+  // the hubs under it gone (HB12, HBm20 HBm21), the counts by members (HB13, HBm22 HBm23); HBm8 HBm14 HBm18 U3m LA1m LA6m
+  // re-aimed.
+  ['subgraph_view_harness.mjs', 360],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's pure half - what a value reads as, the one start-branch
   // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b) - its Route a Next from its
   // owner's, its points the same in the edge and the event scheme (lead 10-11 E2c) - the one drawing.
@@ -1538,7 +1542,10 @@ const FLOORS = new Map([
   // the wire, the table's hub sections, a hub under a hub as columns or a section, a hub of one, a lump's table, no bundles reader (AST).
   // 7 -> 14 (lead QA 10-13): screens that draw no hubs get members, a server-made hub of one, three deep, A · B, heads
   // apart, filters set aside, a member walked on from (H8-H14).
-  ['walk_hub_harness.mjs', 14],
+  // 14 -> 18 (lead verify 1cba190fe): A and B merged before a hub turns into its member (H15), a member's candidate line
+  // its own (H16), the picture counts by members (H17), one reader of a hub's rows (H18); H8 runs the board's routes and
+  // finds who asks for hubs; H11 B only; H13 the words.
+  ['walk_hub_harness.mjs', 18],
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to

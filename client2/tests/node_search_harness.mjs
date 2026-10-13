@@ -94,6 +94,11 @@ async function seen(M) {
     type(s, 'zz');
     await settle();
     out.none = [shown(s).rows.length, shown(s).note];
+    // T27: the box left, its line keeps its place unsaid - what stands under it does not move (lead 10-13); back, said.
+    s.input.dispatch('blur', {});
+    out.left = [s.note.hidden, s.note._text, hasClass(s.note, 'is-held')];
+    s.input.dispatch('focus', {});
+    out.back = [s.note.hidden, hasClass(s.note, 'is-held')];
     // The ledger holds no node of the letters typed (lead b5cdcbc75): only letter for letter, only from a whole answer.
     type(s, 'nab115-w07');
     await settle();
@@ -264,6 +269,8 @@ function suite(out) {
   eq('T9 a press picks its row and closes the list', out.press, [['NAB115-W12'], 0]);
   eq('T10 no node starts with the letters: said, and what + Add does', out.none,
     [0, 'No node starts with zz · + Add takes it as typed']);
+  eq('T27 the box left, its line keeps its place unsaid - «+ Positive» under it does not move between a press\'s down and up; back in the box, said',
+    [out.left, out.back], [[false, 'No node starts with zz · + Add takes it as typed', true], [false, false]]);
   eq('T11 an older answer landing after a newer one is dropped', out.order,
     [['', 'nab115-w1', 'nab115-w2'], w(19, 25)]);
   eq('T12 a type the server cannot search by first letters: no box, its reason where the box was', out.refused,
@@ -320,6 +327,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'if (!this.isOpen || !n || now !== this.asked) return;', 'if (!this.isOpen || !n) return;') },
   { id: 'NS4', what: 'a refused search keeps its box', catches: 'T12', ...PART,
     mutate: (t) => swap(t, "this.cell.hidden = this.state === 'loading' || Boolean(refusal);", "this.cell.hidden = this.state === 'loading';") },
+  { id: 'NS16', what: 'the line gone with the box left - «+ Positive» moves up under the press (the code before)', catches: 'T27', ...PART,
+    mutate: (t) => swap(t, '    this.note.hidden = !(say || line);', '    this.note.hidden = !say;') },
   { id: 'NS5', what: 'read to the end and empty reads as not read to the end', catches: 'T14', ...PART,
     mutate: (t) => swap(t, 'say = got.scanTruncated ? SEARCH_WORDS.scanCut(got.scanned) : SEARCH_WORDS.empty;', 'say = SEARCH_WORDS.scanCut(got.scanned);') },
   { id: 'NS6', what: 'the pause is the module\'s, not the part\'s', catches: 'T16', ...PART,

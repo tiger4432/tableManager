@@ -98,6 +98,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
    inside itself past ten rows. */
 .wk-search { display: flex; flex-direction: column; gap: var(--space-1); }
 .wk-search [hidden] { display: none; }
+.wk-search .wk-note.is-held { visibility: hidden; }
 .wk-searchlist { display: flex; flex-direction: column; max-height: 440px; overflow-y: auto;
   background: var(--bg-surface); border: 1px solid var(--border); }
 .wk-searchitem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--wk-h); padding: 0 var(--space-3);

@@ -5,6 +5,7 @@
 import { walkTableView, walkedPaths } from './table_view.js';
 import { rowsPoints } from './trend.js';
 import { numberOf } from './reach_table.js';
+import { hubRowsOf } from './derive.js';
 
 /**
  * THE ONE «start branch» QUESTION (lead 83ff2c3e6 · 5ef260acf): the nodes the walk reached from its first start -
@@ -47,7 +48,7 @@ export function pathsAnswer(answer, rows) {
   // A hub's member follows its hub's paths, and a path through a member runs through its hub (lead QA 10-13 ⑨): the
   // server ranks a hub by its id and walks it through one member.
   const hubOf = new Map(Object.entries((answer && answer.tables) || {})
-    .flatMap(([hub, t]) => t.rows.map((r) => [r[t.columns.indexOf('id')], hub])));
+    .flatMap(([hub, t]) => hubRowsOf(t).map((r) => [r.id, hub])));
   const at = (id) => hubOf.get(id) || id;
   const paths = rows.flatMap((id) => walked.get(id) || walked.get(hubOf.get(id)) || []);
   const keep = new Set([...rows.map(at), ...paths.flatMap((p) => p.hops.map((h) => at(h.id)))]);

@@ -66,6 +66,56 @@ const ofOne = { ...OWNER, nodes: OWNER.nodes.filter((n) => n.depth <= 1).map((n)
   edges: OWNER.edges.filter((e) => e.target === ID.wafers).map((e) => ({ ...e, count: 1 })),
   tables: { [ID.wafers]: { ...OWNER.tables[ID.wafers], rows: [OWNER.tables[ID.wafers].rows[0]], count: 1 } } };
 
+/** A wafers row A's walk does not hold: W9, hanging where the others hang. */
+const W9_ROW = (() => { const t = OWNER.tables[ID.wafers]; const row = [...t.rows[0]]; row[t.columns.indexOf('id')] = `ledger-entity:v1:${Buffer.from(JSON.stringify(['wafer', { wafer: 'W9' }])).toString('base64url')}`; return row; })();
+
+/** Every client source file, as the census reads it (a mutant's text for the file it mutates). */
+function sources(mutate) {
+  const out = [];
+  const walk = (dir) => {
+    for (const f of readdirSync(dir)) {
+      const p = path.join(dir, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.m?js$/.test(f)) {
+        const rel = path.relative(SRC, p).split(path.sep).join('/');
+        const own = readSourceText(p).text;
+        out.push([rel, mutate ? mutate(rel, own) : own]);
+      }
+    }
+  };
+  walk(SRC);
+  return out;
+}
+/** Every call of the walk's two doors whose argument says `hubs: true` - the screens that draw hubs (the parser, not text). */
+function hubsAsked(mutate) {
+  const hits = [];
+  for (const [rel, text] of sources(mutate)) {
+    const visit = (n) => {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach(visit); return; }
+      if (n.type === 'CallExpression' && n.callee && ['fetchSubgraph', 'createWalkBoxWalk'].includes(n.callee.name)
+        && (n.arguments || []).some((a) => a.type === 'ObjectExpression' && a.properties.some((q) => q.key && (q.key.name || q.key.value) === 'hubs' && q.value && q.value.type === 'Literal' && q.value.value === true))) hits.push(rel);
+      for (const k of Object.keys(n)) if (k !== 'type' && n[k] && typeof n[k] === 'object') visit(n[k]);
+    };
+    visit(parseAst(text, { lang: 'js' }));
+  }
+  return hits;
+}
+/** A hub table's id column read by hand, or a row zipped with its columns by hand, outside the one seat; and the seat. */
+function rowReaders(mutate) {
+  const copies = [];
+  const seat = [];
+  for (const [rel, text] of sources(mutate)) {
+    if (/export const hubRowsOf = /.test(text)) seat.push(rel);
+    const lines = text.split('\n');
+    lines.forEach((line, i) => {
+      if (/export const hubRowsOf = /.test(line)) return;
+      if (/columns\.indexOf\('id'\)|columns\.map\(\(c, i\) => \[c, (r|row)\[i\]\]\)/.test(line)) copies.push(`${rel}:${i + 1}`);
+    });
+  }
+  return { copies, seat };
+}
+
 /** Every client source's member reads and property keys of one name, by the parser the bundler uses (not text). */
 function readersOf(key, mutate) {
   const files = [];
@@ -103,6 +153,7 @@ async function measure(mutate = {}) {
   const { module: tv } = await loadWithProbe(path.join(SRC, 'walk', 'table_view.js'), { expose: ['applyPage'], mutate: mutate['table_view.js'] });
   const { module: dv } = await loadWithProbe(path.join(SRC, 'walk', 'derive.js'), { mutate: mutate['derive.js'] });
   const { module: api } = await loadWithProbe(path.join(SRC, 'rnd_board', 'api.js'), { mutate: mutate['api.js'] });
+  const { module: sv, probe: svProbe } = await loadWithProbe(path.join(SRC, 'walk', 'subgraph_view.js'), { expose: ['lumpLabel'], mutate: mutate['subgraph_view.js'] });
   const out = {};
   out.pages = FIX.paged.map((s) => {
     const got = s.pages.reduce((was, page) => tv.applyPage(was, page), { nodes: [], edges: [] });
@@ -174,6 +225,61 @@ async function measure(mutate = {}) {
   const ab = tv.walkTableView({ ok: true, ...OWNER }, [], [], undefined, { positive: [ID.lot], negative: [] }, new Map(), {}, { ok: true, ...fewer })
     .sections.find((x) => x.type === ID.wafers);
   out.reached = ab ? [ab.centreHeads, ab.rows.map((r) => [name(r.id), r.centre[r.centre.length - 1].text]).sort()] : null;
+  // ...and B holding a row A lacks: that row says B only.
+  const plusW9 = { ...OWNER, tables: { ...OWNER.tables, [ID.wafers]: { ...OWNER.tables[ID.wafers], rows: [...OWNER.tables[ID.wafers].rows, W9_ROW], count: 4 } } };
+  const abB = tv.walkTableView({ ok: true, ...OWNER }, [], [], undefined, { positive: [ID.lot], negative: [] }, new Map(), {}, { ok: true, ...plusW9 })
+    .sections.find((x) => x.type === ID.wafers);
+  out.reachedB = abB ? abB.rows.filter((r) => nameOfAny(r.id) === 'W9').map((r) => r.centre[r.centre.length - 1].text) : null;
+  // A and B merged before a hub turns into its member (lead verify 1cba190fe ①, its probe p7): every wafer one word,
+  // wherever it stands - its type's section or a hub's.
+  const words = (A, B) => tv.walkTableView({ ok: true, ...A }, [], [], undefined, { positive: [ID.lot], negative: [] }, new Map(), {}, { ok: true, ...B })
+    .sections.flatMap((s) => { const at = s.centreHeads.indexOf('A · B');
+      return s.rows.filter((r) => typeOfAny(r.id) === 'wafer').map((r) => [s.type === 'wafer' ? 'wafer' : 'hub', nameOfAny(r.id),
+        at >= 0 ? (r.centre[at] || {}).text : (r.reached || []).map((k) => tv.REACHED[k]).join()]); }).map((x) => x.join(' ')).sort();
+  // (its head as the server words it - «wafer ×1»)
+  const wafersCut = (A, rows) => ({ ...A, nodes: A.nodes.map((n) => (n.id === ID.wafers ? { ...n, count: rows.length, label: `wafer ×${rows.length}` } : n)),
+    tables: { ...A.tables, [ID.wafers]: { ...A.tables[ID.wafers], rows, count: rows.length } } });
+  const allRows = OWNER.tables[ID.wafers].rows;
+  const otherValue = `${ID.wafers},none`;
+  const ren = (x) => (x === ID.wafers ? otherValue : x);
+  const underOther = { ...OWNER, nodes: OWNER.nodes.map((n) => ({ ...n, id: ren(n.id), ...(n.hub ? { hub: { ...n.hub, of: ren(n.hub.of), near: ren(n.hub.near) } } : {}) })),
+    edges: OWNER.edges.map((e) => ({ ...e, source: ren(e.source), target: ren(e.target) })),
+    tables: Object.fromEntries(Object.entries(OWNER.tables).map(([k, v]) => [ren(k), v])) };
+  out.mergedHead = tv.walkTableView({ ok: true, ...wafersCut(OWNER, allRows.slice(0, 1)) }, [], [], undefined, { positive: [ID.lot], negative: [] }, new Map(), {},
+    { ok: true, ...OWNER }).sections.filter((x) => x.type === ID.wafers).map((x) => x.heading);
+  out.merged = [words(OWNER, wafersCut(OWNER, allRows.slice(0, 1))), words(OWNER, plusW9), words(wafersCut(OWNER, allRows.slice(0, 1)), OWNER),
+    words(OWNER, underOther)];
+  // ④ the board's candidates over the contrast: a member's line its name, its own path, or the hub's starts «via hub».
+  // (the answer turned by the seat as this harness loads it - the route's own copy of the seat is the real one - and the
+  // route turns it again, a hub-less answer as it is)
+  const ranked = await api.LEGACY_ROUTES.candidate.run({ apiBase: '', nodeId: ID.P, positive: [ID.P], negative: [ID.N],
+    fetchImpl: reply(dv.hubsAsMembers(ONE_WALK.contrast, true)) });
+  out.candidates = ranked.candidates.filter((c) => /^W\d$/.test(c.quantity))
+    .map((c) => `${c.quantity} ${c.evidence.map((e) => `${e.sign}${e.hops.map((h) => h.label).join('>')}`).join(' ')}`).sort();
+  // H8's routes run as the board runs them, and every call of the walk that says `hubs` (the parser, not text).
+  const reach = await api.LEGACY_ROUTES.reach.run({ apiBase: '', nodeId: ID.lot, positive: [ID.lot], negative: [], fetchImpl: reply(OWNER) });
+  out.routes = { candidate: ranked.candidates.filter((c) => String(c.id).includes('|')).length,
+    reach: reach.rows.flatMap((r) => r.nodeIds).filter((id) => String(id).includes('|')).length, hubCalls: hubsAsked(mutate.census) };
+  // ⑤ the picture's counts: the legend a hub by its members; past the opened wafers, W0's defects a server hub of five -
+  // the pooled lump counts 9 and says its way.
+  const layoutOf = (answer) => sv.subgraphLayout([{ seeds: [ID.lot], positive: [ID.lot], negative: [], results: [answer] }], []);
+  const legend = layoutOf(OWNER).legend.map((l) => `${l.type} ${l.count}`);
+  const opened = ONE_WALK.wafers_opened;
+  const members = rowsOf(OWNER, ID.wafers).map((r) => r.id);
+  const fiveHub = `${members[0]}|observed|outgoing|defect|1,0`;
+  const w0Defects = new Set(opened.edges.filter((e) => e.source === members[0] && e.predicate === 'observed').map((e) => e.target));
+  const withFive = { ...opened,
+    nodes: [...opened.nodes.filter((n) => !w0Defects.has(n.id)), { id: fiveHub, type: 'defect', depth: 2, count: 5, label: 'defect ×5', node_kind: 'entity',
+      hub: { direction: 'outgoing', near: members[0], of: null, predicate: 'observed' } }],
+    edges: [...opened.edges.filter((e) => !w0Defects.has(e.target)), { id: 'five', source: members[0], target: fiveHub, predicate: 'observed', count: 5 }],
+    tables: { [fiveHub]: { columns: ['type', 'depth', 'id', 'parent_id', 'via', 'seed'], count: 5,
+      rows: [0, 1, 2, 3, 4].map((k) => ['defect', 2, entityId('defect', `X${k}`), members[0], 'observed', null]) } } };
+  const fiveLayout = layoutOf(withFive);
+  const fold = { big: new Map(members.map((m) => [m, sv.branchKeys(fiveLayout, m)])), lumped: new Map() };
+  const pooled = sv.lumpView(fiveLayout, fold, [ID.lot], [[ID.wafers, members]]).lumps.filter((l) => l.pooled);
+  out.counts = { legend, pooled: pooled.map((l) => [l.count, svProbe.lumpLabel(l)]) };
+  // ⑦ one reader of a hub's rows (the lead's command, and the copy the facts box held).
+  out.rowReaders = rowReaders(mutate.census);
   // Every section of every answer here: its heads each once, its heading no raw hub id (⑩ ⑪).
   const pagedHeld = FIX.paged.map((x) => x.pages.reduce((was, page) => tv.applyPage(was, page), { nodes: [], edges: [] }));
   // The bonded walk's dies bonded from dies, one a row; one row less, a section of its own - a die under a die.
@@ -187,7 +293,8 @@ async function measure(mutate = {}) {
     raw: every.filter((x) => /ledger-entity:|\|/.test(x.heading)).map((x) => x.heading) };
   // A filter and a sort on a column the section no longer draws (⑬): set aside, both said.
   const wafersSection = tv.walkTableView({ ok: true, ...OWNER }, [], [], undefined, { positive: [ID.lot], negative: [] }).sections.find((x) => x.type === ID.wafers);
-  out.aside = tv.shownOf(wafersSection, { columns: { 'own\u0000gone': { contains: 'x' } }, sort: { key: 'own\u0000gone', dir: 'asc' } }).aside;
+  const setAside = tv.shownOf(wafersSection, { columns: { 'own\u0000gone': { contains: 'x' } }, sort: { key: 'own\u0000gone', dir: 'asc' } }).aside;
+  out.aside = [setAside, tv.asideWords(setAside), tv.asideWords({ filters: ['a', 'b'], sort: null }), tv.asideWords({ filters: [], sort: null })];
   // A member's checked row walked on from (⑨): the step before keeps the hub its member hangs in, its line, its question.
   const narrowedTo = fv.pathsAnswer({ ...OWNER, ask: { positive: [ID.lot] } }, [rowsOf(OWNER, ID.wafers)[0].id]);
   out.narrowed = { hub: narrowedTo.nodes.some((n) => n.id === ID.wafers), lot: narrowedTo.nodes.some((n) => n.id === ID.lot),
@@ -225,8 +332,8 @@ const cells = (o) => [
   ['H7 a lump of the picture holding a hub, opened as a table: its owner and its member, hubs both, keep their tables - a section each',
     o.lumpTable, ['▤ wafer ×3 · L has_wafer →', '▤ defect ×6 · wafer ×3 observed →']],
   ['H8 the screens that draw no hubs - the board\'s routes, the test bed, the board\'s walk box - get each hub as its members: no head, every member, no hub id ranked, a line a row; the walk page keeps its hubs',
-    o.consumers, [{ heads: 0, members: [true, true], ranked: false, rows: 3 }, { heads: 0, members: [true, true], ranked: false, rows: 3 }, 2,
-      { heads: 0, members: [true, true], ranked: false, rows: 3 }]],
+    [o.consumers, o.routes], [[{ heads: 0, members: [true, true], ranked: false, rows: 3 }, { heads: 0, members: [true, true], ranked: false, rows: 3 }, 2,
+      { heads: 0, members: [true, true], ranked: false, rows: 3 }], { candidate: 0, reach: 0, hubCalls: ['walk/main.js'] }]],
   ['H9 a hub of one the server made, in a judged contrast: its member a row of its type, its sides, its head\'s judgment, its row\'s declared cell; nothing hidden',
     o.single, { server: true, heads: ['wafer', 'thickness', '→ R'], member: [{ thickness: 7.5 }, ONE_WALK.contrast_one.nodes.find((n) => n.hub && n.count === 1).aux, true],
       rows: [['W1', '7.5', 'reach']], sides: [1, 1], hidden: 0,
@@ -236,11 +343,23 @@ const cells = (o) => [
       ['▤ img ×3 · insp ×3 imaged →', 'img | insp', 'G0 / I0 ; G1 / I1 ; G2 / I2']], 0]],
   ['H11 a control walk holding fewer of a hub\'s rows: each row says which walk holds it',
     // B is the owner's walk without the wafers table's first row.
-    o.reached, [['wafer', 'A · B'], rowsOf(OWNER, ID.wafers).map((r, i) => [name(r.id), i === 0 ? 'A only' : 'A + B']).sort()]],
+    [o.reached, o.reachedB], [[['wafer', 'A · B'], rowsOf(OWNER, ID.wafers).map((r, i) => [name(r.id), i === 0 ? 'A only' : 'A + B']).sort()], ['B only']]],
+  ['H15 A and B merged before a hub turns into its member: each wafer one word wherever it stands - B a hub of one of A\'s three, B a row A lacks, A one of B\'s three, B\'s under another hub value (lead verify 1cba190fe ①)',
+    [o.mergedHead, o.merged], [['▤ wafer ×3 · L has_wafer →'], [
+      W(rowsOf(OWNER, ID.wafers).map((r) => r.id)).map((w, i) => `hub ${w} ${i === 0 ? 'A + B' : 'A only'}`).sort(),
+      [...W(rowsOf(OWNER, ID.wafers).map((r) => r.id)).map((w) => `hub ${w} A + B`), 'hub W9 B only'].sort(),
+      W(rowsOf(OWNER, ID.wafers).map((r) => r.id)).map((w, i) => `hub ${w} ${i === 0 ? 'A + B' : 'B only'}`).sort(),
+      W(rowsOf(OWNER, ID.wafers).map((r) => r.id)).flatMap((w) => [`hub ${w} A + B`, `hub ${w} A + B`]).sort()]]],
+  ['H16 the board\'s candidates over the contrast: a member\'s line its name, the path walked to it, or none walked - the hub\'s starts «via hub» (lead verify 1cba190fe ④)',
+    o.candidates, ['W1 +P>via hub -N>via hub', 'W2 +P>X>R>W2 -N>W2', 'W3 -N>via hub', 'W4 -N>W4', 'W5 +P>via hub -N>via hub', 'W6 +P>W6 -N>W1>R>X>P>W6']],
+  ['H17 the picture counts a hub by its members: the legend «wafer 3 · defect 6»; past the opened wafers a server hub of five among W0\'s defects - the pooled lump 9, its way said (lead verify 1cba190fe ⑤ ⑥)',
+    o.counts, { legend: ['lot 1', 'kind 2', 'wafer 3', 'defect 6'], pooled: [[9, 'defect ×9 · observed →']] }],
+  ['H18 one reader of a hub\'s rows - no copy of the id column read or the row zipped by hand, its one seat defined once (lead verify 1cba190fe ⑦)',
+    o.rowReaders, { copies: [], seat: ['walk/derive.js'] }],
   ['H12 every section of every answer here: its heads each once, its heading no raw hub id',
     [o.heads.sections > 20, o.heads.twice, o.heads.raw, o.heads.dieUnderDie], [true, [], [], ['die', 'die (2)']]],
-  ['H13 a filter and a sort on a column no longer drawn are set aside and said, not dropped',
-    o.aside, ['own\u0000gone', 'own\u0000gone']],
+  ['H13 a filter and a sort on a column no longer drawn are set aside and said, not dropped - each as what it is',
+    o.aside, [{ filters: ['own\u0000gone'], sort: 'own\u0000gone' }, '1 filter and the sort set aside · column not drawn', '2 filters set aside · column not drawn', '']],
   ['H14 a member\'s row walked on from: the step before keeps its hub, the lot, the line to it, and its question with what it was narrowed to',
     o.narrowed, { hub: true, lot: true, line: true, ask: JSON.stringify({ positive: [ID.lot] }), narrow: 1 }],
   ['H6 no client source reads an answer\'s bundles - its member nor a key of that name - while the parser reads every file and the hubs\' tables are read',
@@ -251,6 +370,10 @@ function nameOfAny(id) {
   const [, keys] = JSON.parse(Buffer.from(String(id).split(':').pop(), 'base64url').toString('utf8'));
   return Object.values(keys).join(' / ');
 }
+function typeOfAny(id) {
+  try { return JSON.parse(Buffer.from(String(id).split(':').pop(), 'base64url').toString('utf8'))[0]; } catch (e) { return null; }
+}
+const entityId = (type, key) => `ledger-entity:v1:${Buffer.from(JSON.stringify([type, { [type]: key }])).toString('base64url')}`;
 
 const DEFECTS = [
   ['D1 moved rows left where they were -> H1', 'H1', { 'table_view.js': (t) => t.replace('    if (cells) rowsOf(rows, to).set(row, cells);\n', '') }],
@@ -277,7 +400,8 @@ const DEFECTS = [
   ['D11 the edge to a hub of one left on the hub -> H5', 'H5', { 'derive.js': (t) => t.replace(
     '.map((e) => (heads.has(e.source) || heads.has(e.target) ? { ...e, source: end(e.source), target: end(e.target) } : e));', ';') }],
   ['D12 the table reads a hub of one as a hub -> H5', 'H5', { 'table_view.js': (t) => t.replace(
-    '  const result = hubsAsMembers(given);\n', '  const result = given;\n') }],
+    '  const merged = hubsAsMembers(addsGiven.reduce((graph, add) => mergeWalks(graph, add.answer), walked));',
+    '  const merged = addsGiven.reduce((graph, add) => mergeWalks(graph, add.answer), walked);') }],
   ['D14 a lump\'s answer drops its hubs\' tables -> H7', 'H7', { 'fold_views.js': (t) => t.replace(
     '    ...(Object.keys(tables).length ? { tables } : {}) };', '  };') }],
   ['D15 every screen gets the hubs -> H8', 'H8', { 'api.js': (t) => t.replace('body: body && !hubs ? hubsAsMembers(body, true) : body };', 'body };') }],
@@ -292,7 +416,7 @@ const DEFECTS = [
   ['D20 a hub under columns made columns again - the third lost -> H10', 'H10', { 'table_view.js': (t) => t.replace(
     'columnsOf.set(h.id, oneEach(h) && !asColumn(headOf.get(h.hub.of)));', 'columnsOf.set(h.id, oneEach(h));') }],
   ['D21 a hub row says no walk -> H11', 'H11', { 'table_view.js': (t) => t.replace(
-    "...(control ? [{ text: REACHED[reachedBy(inA.has(r.id), inB.has(r.id))] }] : []),", '') }],
+    "...(control ? [{ text: REACHED[reachedBy(inA(r.id), inB(r.id))] }] : []),", '') }],
   ['D22 a name met twice drawn twice -> H12', 'H12', { 'table_view.js': (t) => t.replace(
     "const apart = (list) => list.map((h, i) => (list.indexOf(h) === i ? h :", "const apart = (list) => list.map((h, i) => (true ? h :") }],
   ['D23 a filter on a column gone dropped in silence -> H13', 'H13', { 'table_view.js': (t) => t.replace(
@@ -301,6 +425,28 @@ const DEFECTS = [
   ['D24 a member walked on from has no path -> H14', 'H14', { 'fold_views.js': (t) => t.replace(
     'const paths = rows.flatMap((id) => walked.get(id) || walked.get(hubOf.get(id)) || []);', 'const paths = rows.flatMap((id) => walked.get(id) || []);') }],
   ['D25 the step before forgets its question -> H14', 'H14', { 'fold_views.js': (t) => t.replace('    ask: answer && answer.ask, narrow: rows };', '    narrow: rows };') }],
+  ['D26 A and B each turned into members before the merge (the code before) -> H15', 'H15', { 'table_view.js': (t) => t.replace(
+    '  const walked = controlGiven ? mergeWalks(given, controlGiven) : given;', '  const walked = control ? mergeWalks(result, control) : result;') }],
+  ['D36 a hub both walks hold keeps one walk\'s head - «wafer ×1» over three rows -> H15', 'H15', { 'table_view.js': (t) => t.replace(
+    '  return { ...a, nodes: once([...(b.nodes || []), ...(a.nodes || [])]).map(headed),', '  return { ...a, nodes: once([...(b.nodes || []), ...(a.nodes || [])]),') }],
+  ['D27 a side reaching a hub does not reach its rows -> H15', 'H15', { 'table_view.js': (t) => t.replace(
+    '  groupsA.forEach((g) => withRows(g.inside, given));\n', '') }],
+  ['D28 a member\'s line keeps the hub\'s label (the code before) -> H16', 'H16', { 'derive.js': (t) => t.replace(
+    "    return { ...r, id: row.id, label: nodeWords(row.id), tied_members: undefined,", "    return { ...r, id: row.id, tied_members: undefined,") }],
+  ['D29 a member\'s line copies the hub\'s paths, another member\'s end (the code before) -> H16', 'H16', { 'derive.js': (t) => t.replace(
+    'evidence: own.length ? own : (r.evidence || []).map(', 'evidence: r.evidence || [].map(') }],
+  ['D30 the test bed asks for hubs it does not draw -> H8', 'H8', { census: (file, t) => (file === 'testbed/main.js'
+    ? t.replace('fetchSubgraph({ apiBase, fetchImpl, ...params })', 'fetchSubgraph({ apiBase, fetchImpl, hubs: true, ...params })') : t) }],
+  ['D31 the board\'s walk box asks for hubs it does not draw -> H8', 'H8', { census: (file, t) => (file === 'rnd_board/main.js'
+    ? t.replace('createWalkBoxWalk({ apiBase, fetchImpl })', 'createWalkBoxWalk({ apiBase, fetchImpl, hubs: true })') : t) }],
+  ['D32 a lump counts a hub among its members as one -> H17', 'H17', { 'subgraph_view.js': (t) => t.replace(
+    'const many = (ids) => [...ids].reduce((sum, id) => sum + (weight.get(id) || 1), 0);', 'const many = (ids) => [...ids].length;') }],
+  ['D33 the pooled lump\'s way unsaid (the code before) -> H17', 'H17', { 'subgraph_view.js': (t) => t.replace(
+    '  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${arrowed(lump)}`;', '  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${lump.predicate}`;') }],
+  ['D34 a hub row read by hand again -> H18', 'H18', { census: (file, t) => (file === 'walk/fold_views.js'
+    ? `${t}\nexport const copy = (t) => t.rows.map((r) => r[t.columns.indexOf('id')]);\n` : t) }],
+  ['D35 the sort set aside said as a filter (the code before) -> H13', 'H13', { 'table_view.js': (t) => t.replace(
+    "aside.sort ? 'the sort' : ''", "aside.sort ? '1 filter' : ''") }],
   ['D13 a source reads an answer\'s bundles -> H6', 'H6', { census: (file, t) => (file === 'walk/main.js' ? `${t}\nexport const held = (answer) => answer.bundles;\n` : t) }],
 ];
 
@@ -327,7 +473,7 @@ for (const [label, names, edits] of DEFECTS) {
   let caught;
   try {
     const got = await measure(guarded);
-    caught = cells(got).some(([n, g, w]) => n.startsWith(names) && !eqText(g, w));
+    caught = cells(got).some(([n, g, w]) => n.startsWith(`${names} `) && !eqText(g, w));
   } catch (err) {
     if (/its anchor is gone/.test(String(err && err.message))) throw err;
     caught = false;

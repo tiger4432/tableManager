@@ -19,7 +19,7 @@
 
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
-import { staticTypes, cutBudgets, edgeQualifiers, qualifierWords, nodeWords, hubsAsMembers, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
+import { staticTypes, cutBudgets, edgeQualifiers, qualifierWords, nodeWords, hubsAsMembers, hubRowsOf, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { markingIntent } from '../rnd_board/panel.js';
 import { setDisabledReason } from '../disabled_reason.js';
@@ -27,7 +27,7 @@ import { FAILED, LOADING, unitText } from '../ui_words.js';
 import { localMinute } from '../server_time.js';
 // A folded lump opened as a step of the page's table, its numbers drawn in its place (leads 5ef260acf · 10-08 · 10-11).
 import { lumpAnswer, lumpPoints, pathsAnswer, pointsSvg, startBranch, svgAddress } from './fold_views.js';
-import { ROW_CAP } from './table_view.js';
+import { ROW_CAP, applyPage } from './table_view.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
 // The paths between two marked nodes (lead 55f854fc5): the one simple-path search, called from here.
@@ -157,7 +157,8 @@ export function subgraphLayout(walked, entities) {
     }
   });
   const counts = new Map();
-  for (const node of placed) counts.set(node.type, (counts.get(node.type) || 0) + 1);
+  // A hub counts its members (lead 10-13 «wafer 3»).
+  for (const node of placed) counts.set(node.type, (counts.get(node.type) || 0) + (node.hub ? node.hub.count || 1 : 1));
   const legend = [...counts.entries()]
     .sort((a, b) => colourOf.get(a[0]) - colourOf.get(b[0]))
     .map(([type, count]) => ({ type, count, colour: colourOf.get(type) % TYPE_COLOURS, static: statics.has(type) }));
@@ -301,6 +302,9 @@ export function lumpView(layout, fold, seeds, cohorts = []) {
   const hidden = new Set([...reach(() => false)].filter((id) => !kept.has(id)));
   const shown = (id) => ids.has(id) && !hidden.has(id);
   const typeOf = new Map(layout.nodes.map((n) => [n.id, n.type]));
+  // A hub among a lump's members counts its members (lead verify 1cba190fe ⑤: «defect ×5» held 4 and a hub of 5).
+  const weight = new Map(layout.nodes.filter((n) => n.hub).map((n) => [n.id, n.hub.count || 1]));
+  const many = (ids) => [...ids].reduce((sum, id) => sum + (weight.get(id) || 1), 0);
   /** Everything hidden that these members lead to, the members included. */
   const inside = (members) => {
     const seen = new Set(members);
@@ -339,7 +343,7 @@ export function lumpView(layout, fold, seeds, cohorts = []) {
     const inBig = big.get(node.id) || new Set();
     const groups = [...inBig].map((key) => {
       const members = membersOf(node.id, key);
-      return { key, ...keyParts(key), members, farType: typesOf(members), count: members.length };
+      return { key, ...keyParts(key), members, farType: typesOf(members), count: many(members) };
     }).filter((g) => g.count > 0);
     if (groups.length) {
       // «N next · M behind» (leads df11f9e81, 2f25c883a): next - the distinct nodes All -> Open draws; behind - what
@@ -347,11 +351,11 @@ export function lumpView(layout, fold, seeds, cohorts = []) {
       const firsts = new Set(groups.flatMap((g) => g.members));
       const held = inside([...firsts]);
       const mix = new Map();
-      for (const id of firsts) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + 1);
+      for (const id of firsts) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + many([id]));
       const statics = hanging(node.id, [...firsts]);
       lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, owners: [node.id], groups,
         parts: groups.map((g) => ({ owner: node.id, key: g.key, members: g.members })),
-        count: held.size, next: firsts.size, behind: held.size - firsts.size,
+        count: many(held), next: many(firsts), behind: many(held) - many(firsts),
         mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
         ...(statics.length ? { statics } : {}) });
     }
@@ -364,7 +368,7 @@ export function lumpView(layout, fold, seeds, cohorts = []) {
       // `more`: some of this fan-out is in sight - opened out of the lump.
       lumps.push({ id: `lump:${key}`, level: 'small', owner: node.id, owners: [node.id], parts: [{ owner: node.id, key, members }],
         key, ...keyParts(key), members,
-        farType: typesOf(members), count: members.length, more: lumped.get(key).size > 0,
+        farType: typesOf(members), count: many(members), more: lumped.get(key).size > 0,
         ...(statics.length ? { statics } : {}) });
     }
   }
@@ -387,7 +391,7 @@ export function lumpView(layout, fold, seeds, cohorts = []) {
     const owners = [...new Set(parts.map((x) => x.owner))];
     const statics = hanging(null, members);
     return { id: `pool:${p.at}`, level: 'small', pooled: true, owner: owners[0], owners, parts, key: '',
-      predicate: p.predicate, direction: p.direction, farType: p.farType, members, count: members.length,
+      predicate: p.predicate, direction: p.direction, farType: p.farType, members, count: many(members),
       more: parts.some((x) => lumped.has(x.key) && lumped.get(x.key).size > 0), ...(statics.length ? { statics } : {}) };
   });
   return {
@@ -446,8 +450,9 @@ function lumpLabel(lump) {
     const mix = lump.mix.slice(0, 3).map((m) => `${m.count} ${m.type}`).join(' · ');
     return `${nextWords(lump)}${mix ? `\n${mix}` : ''}`;
   }
-  // An opened hub's members' pooled lump says what the owner named (10-13 «<타입> ×<수> · <술어>»).
-  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${lump.predicate}`;
+  // An opened hub's members' pooled lump says what the owner named (10-13 «<타입> ×<수> · <술어>»), the way with its
+  // arrow (lead verify 1cba190fe ⑥: a lump out and a lump in said the same).
+  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${arrowed(lump)}`;
   return `${arrowed(lump)}\n${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;
 }
 const arrowed = (g) => (g.direction === 'incoming' ? `← ${g.predicate}` : `${g.predicate} →`);
@@ -678,23 +683,40 @@ export class SubgraphView {
 
   /** A hub opened as nodes (lead 10-12 «노드로 펼치기»): the step's own walk asked again with that hub's five-cell id in
    *  `expand` - the same answer with its members as nodes, standing where the hub stood, and what the walk went on
-   *  to from them. An opening changes no fold. */
+   *  to from them - its members' branches folded as the first picture's are. */
+  /** The answer a step drew a hub from, when it carries its question to ask again - the one judgment «Open as nodes»
+   *  is drawn by and pressed by (lead verify 1cba190fe ②: a lump's table step has none, and the press did nothing). */
+  _hubHeld(index, hubId) {
+    const step = this.steps[index];
+    const held = step && step.results.find((r) => ((r && r.nodes) || []).some((n) => n.id === hubId));
+    return held && held.ask ? held : null;
+  }
+
   async openHub(index, hubId) {
     const step = this.steps[index];
-    if (!step || this.state !== 'done' || (step.hubs || []).includes(hubId)) return;
+    const held = this._hubHeld(index, hubId);
+    if (!step || !held || this.state !== 'done' || (step.hubs || []).includes(hubId)) return;
     const hubs = [...(step.hubs || []), hubId];
     const at = this.pos.get(hubId);
     const before = new Set(this.layout.nodes.map((n) => n.id));
     const head = this.layout.nodes.find((n) => n.id === hubId);
     const t = head && head.hub && head.hub.table;
-    const members = t ? t.rows.map((r) => r[t.columns.indexOf('id')]) : [];
+    const members = hubRowsOf(t).map((r) => r.id);
     // The step's own question, as its answer carries it, with the hub opened (lead QA 10-13 ③) - a Next's one predicate
-    // stays one; a step narrowed to its paths is narrowed again.
-    const held = step.results.find((r) => ((r && r.nodes) || []).some((n) => n.id === hubId));
-    if (!held || !held.ask) return;
+    // stays one; a step narrowed to its paths is narrowed again. Its answer is laid over the one held as a next page is
+    // (lead verify 1cba190fe ③): the hub and every hub hanging under it go - the walk answers them anew from its members -
+    // their lines with them; what More brought stays.
+    const gone = new Set([hubId]);
+    const heads = (held.nodes || []).filter((n) => n.hub);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const n of heads) if (!gone.has(n.id) && gone.has(n.hub.of)) { gone.add(n.id); grew = true; }
+    }
+    const over = (res) => applyPage(held, { ...res, nodes: [...[...gone].map((id) => ({ id, count: 0 })), ...(res.nodes || [])],
+      edges: [...(held.edges || []).filter((e) => gone.has(e.source) || gone.has(e.target)).map((e) => ({ id: e.id, count: 0 })), ...(res.edges || [])] });
     await this._ask({ ...held.ask, expand: hubs }, [hubId],
       (res) => this.steps.map((s, i) => (i === index ? { ...s, hubs, cohorts: { ...(s.cohorts || {}), [hubId]: members },
-        results: [held.narrow ? pathsAnswer(res, held.narrow) : res] } : s)));
+        results: s.results.map((r) => (r !== held ? r : held.narrow ? pathsAnswer(over(res), held.narrow) : over(res))) } : s)));
     if (this.state !== 'done' || !at) return;
     // Past its members, folded as the first picture folds (owner «ㅇㅇ 1번»): each member's own fold, pooled in the view.
     for (const m of members) if (this.layout.nodes.some((n) => n.id === m)) this.fold.big.set(m, branchKeys(this.layout, m));
@@ -704,7 +726,7 @@ export class SubgraphView {
   }
 
   /** One walk - a step's marking, or a step asked again with a hub opened; `next` builds the steps from the answer.
-   *  A new step (`fresh`) draws its points' one step and folds the rest; an opening changes no fold.
+   *  A new step (`fresh`) draws its points' one step and folds the rest; an opening folds only its members' branches.
    *  `answer`: one the page holds already, landed the same way, not asked - a tick later, as a walk's: the page seats the
    *  picture's box first (drawn into a box not yet on the page, the library breaks - G-2 on the box, 10-11). */
   async _ask(asked, expanding, next, fresh, answer) {
@@ -846,7 +868,9 @@ export class SubgraphView {
     if (this.state === 'running') status.appendChild(this._el('div', 'sg-note', 'Walking'));
     if (!drawn) { this._swapFacts(); return; }
     const layout = this.layout;
-    status.appendChild(this._el('div', 'sg-counts', `Nodes ${layout.nodes.length} · Edges ${layout.edges.length}`));
+    // A hub is one node drawn; what it holds said apart (lead 10-13 «Nodes 5 · 9 in hubs»).
+    const inHubs = layout.nodes.reduce((sum, n) => sum + (n.hub ? n.hub.count || 0 : 0), 0);
+    status.appendChild(this._el('div', 'sg-counts', `Nodes ${layout.nodes.length}${inHubs ? ` · ${inHubs} in hubs` : ''} · Edges ${layout.edges.length}`));
     for (const one of layout.cut) {
       const where = this.steps.length > 1 ? `step ${one.step} · ` : '';
       status.appendChild(this._el('div', 'sg-trunc', truncatedWords(one.budgets, where)));
@@ -1355,7 +1379,7 @@ export class SubgraphView {
       if (on.addEventListener) on.addEventListener('click', () => { this.walkOn({ id, label, type, keys }); });
       acts.appendChild(on);
     }
-    if (facts.node.hub) {
+    if (facts.node.hub && this._hubHeld(facts.node.hub.step, id)) {
       const open = this._el('button', 'sg-tool sg-openhub', OPEN_HUB);
       open.setAttribute('type', 'button');
       open.setAttribute('data-open-hub', id);
@@ -1392,8 +1416,7 @@ export class SubgraphView {
     const head = this._el('tr', '');
     for (const c of ['', ...own]) head.appendChild(this._el('th', '', c));
     table.appendChild(head);
-    for (const row of t.rows.slice(0, ROW_CAP)) {
-      const cells = Object.fromEntries(t.columns.map((c, i) => [c, row[i]]));
+    for (const cells of hubRowsOf(t).slice(0, ROW_CAP)) {
       const tr = this._el('tr', '');
       tr.appendChild(this._el('td', '', nodeWords(cells.id)));
       for (const c of own) tr.appendChild(this._el('td', '', cells[c] === null || cells[c] === undefined ? '' : String(cells[c])));

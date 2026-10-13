@@ -175,15 +175,16 @@ export class NodeSearch {
     this.list.textContent = '';
     this.note.textContent = '';
     let say = '';
+    let line = '';
     if (this.state === 'loading') say = LOADING;
     else if (refusal) say = refusal;
     else if (got && !got.ok) say = SEARCH_WORDS.failed(got.message);
     // Nothing of this type to open a list on: said with the box closed.
     else if (got && !this._nodes().length && !this.asked) {
       say = got.scanTruncated ? SEARCH_WORDS.scanCut(got.scanned) : SEARCH_WORDS.empty;
-    } else if (got && this.isOpen) {
+    } else if (got) {
       const nodes = this._nodes();
-      nodes.forEach((node, i) => {
+      if (this.isOpen) nodes.forEach((node, i) => {
         const item = this._el('div', 'wk-searchitem' + (i === this.active ? ' is-active' : ''));
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', String(i === this.active));
@@ -195,11 +196,14 @@ export class NodeSearch {
         item.addEventListener('mousedown', (e) => { e.preventDefault(); this._pick(i); });
         this.list.append(item);
       });
-      if (!nodes.length) say = SEARCH_WORDS.none(this.asked);
-      else if (got.valuesTruncated) say = SEARCH_WORDS.more(nodes.length);
+      line = !nodes.length ? SEARCH_WORDS.none(this.asked) : got.valuesTruncated ? SEARCH_WORDS.more(nodes.length) : '';
+      if (this.isOpen) say = line;
     }
     this.list.hidden = !this.list.children.length;
-    this.note.textContent = say;
-    this.note.hidden = !say;
+    // The list's line keeps its place with the box left, unsaid (lead 10-13): what stands under it - «+ Positive» - does
+    // not move between a press's down and its up, which the box's blur falls between.
+    this.note.textContent = say || line;
+    this.note.hidden = !(say || line);
+    this.note.className = say || !line ? 'wk-note' : 'wk-note is-held';
   }
 }

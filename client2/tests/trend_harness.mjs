@@ -590,7 +590,7 @@ const MUTANTS = [
   { id: 'SCm8', what: 'a numeral in text not a number when the columns are ordered', catches: 'SC5', ...TABLE,
     mutate: (t) => swap(t, 'timed.every((p) => numberOf(p.value) !== null)', "timed.every((p) => typeof p.value === 'number')") },
   { id: 'SCm9', what: 'Columns - «+ Column» at its foot - hidden while the section shows its Trend', catches: 'SC6', ...PAGE_,
-    mutate: (t) => swap(t, 'bar.append(sectionViews(section, trended, shown), columnsMenu(section), ', 'bar.append(sectionViews(section, trended, shown), ...(trended ? [] : [columnsMenu(section)]), ') },
+    mutate: (t) => swap(t, 'bar.append(...[sectionViews(section, trended, shown), columnsMenu(section), ', 'bar.append(...[sectionViews(section, trended, shown), ...(trended ? [] : [columnsMenu(section)]), ') },
   { id: 'SCm3', what: 'the section' + "'" + 's Trend opens on a step' + "'" + 's column only', catches: 'SC2', ...PAGE_,
     mutate: (t) => swap(t, '    const first = section.trendable.find((x) => columnKey(x.column) === long) || section.trendable[0];',
       '    const first = section.columns.length ? { column: section.columns[0] } : null;') },

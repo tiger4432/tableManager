@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { makeDoc, byClass, flush } from './lib/board_dom.mjs';
 import { createWalkBoxWalk, entitySeedId } from '../src/rnd_board/api.js';
 import { MarkingStore, SIGN } from '../src/rnd_board/marking_store.js';
-import { walkTableView } from '../src/walk/table_view.js';
+import { walkTableView, applyPage } from '../src/walk/table_view.js';
 import { LOADING } from '../src/ui_words.js';
 import { lumpAnswer, lumpPoints } from '../src/walk/fold_views.js';
 import { pathKinds } from '../src/walk/paths.js';
@@ -1129,7 +1129,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[HB] a hub: the server\'s fold, one node with its table; opened, its members and what the walk went on to (lead 10-13)');
-  if (want(['HB1', 'HB2', 'HB3', 'HB4', 'HB5', 'HB6', 'HB7', 'HB8', 'HB9', 'HB10'])) {
+  if (want(['HB1', 'HB2', 'HB3', 'HB4', 'HB5', 'HB6', 'HB7', 'HB8', 'HB9', 'HB10', 'HB11', 'HB12', 'HB13'])) {
     const OWNER = HUBS.single.owner;
     const OPENED = HUBS.single.wafers_opened;
     const wafers = HUBS.ids.wafers;
@@ -1173,10 +1173,10 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const cameLumps = lumpsOf(s).filter((n) => !lumpsBefore.has(n.id()));
     const pool = cameLumps[0] || { id: () => '', data: () => '' };
     const linesTo = (t, lump, m) => (t.view.cy ? t.view.cy.edges('[kind = "lump"]').filter((e) => e.data('target') === lump && e.data('source') === m).length : 0);
-    say('HB4 opened (owner «ㅇㅇ 1번»): the hub gone, its three members drawn where it stood and nothing past them; what the walk went on to from them one lump a predicate, a way, a far type - «defect ×6 · observed», a line from each member - the control for the retired «not walked»',
+    say('HB4 opened (owner «ㅇㅇ 1번»): the hub gone, its three members drawn where it stood and nothing past them; what the walk went on to from them one lump a predicate, a way, a far type - «defect ×6 · observed →», a line from each member - the control for the retired «not walked»',
       s.view.cy.getElementById(wafers).empty() && members.length === 3 && JSON.stringify(cameNodes) === JSON.stringify([...members].sort())
         && members.every((id) => layerOf.get(id) === 1) && beyond.length === 8 && beyond.every((id) => s.view.cy.getElementById(id).empty())
-        && cameLumps.length === 1 && defects.length === 6 && pool.data('label') === 'defect ×6 · observed'
+        && cameLumps.length === 1 && defects.length === 6 && pool.data('label') === 'defect ×6 · observed →'
         && members.every((m) => linesTo(s, pool.id(), m) === 1) && s.urls.length === 1,
       JSON.stringify({ hub: s.view.cy.getElementById(wafers).nonempty(), came: cameNodes.length, lumps: cameLumps.map((n) => n.data('label')),
         lines: members.map((m) => linesTo(s, pool.id(), m)), asks: s.urls.length }));
@@ -1208,8 +1208,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const word2 = foldPress(back, members[0]);
     const after = poolOf(back).map((n) => n.data('label'));
     say('HB8 a member\'s Unfold lets its part out of the one lump (6 -> 4, its two drawn); its Fold branches puts them back (4 -> 6); nothing asked, the table as it was',
-      word1 === 'Unfold' && JSON.stringify(mid) === '["defect ×4 · observed"]' && out === 2
-        && word2 === 'Fold branches' && JSON.stringify(after) === '["defect ×6 · observed"]'
+      word1 === 'Unfold' && JSON.stringify(mid) === '["defect ×4 · observed →"]' && out === 2
+        && word2 === 'Fold branches' && JSON.stringify(after) === '["defect ×6 · observed →"]'
         && defects.every((id) => back.view.cy.getElementById(id).empty()) && back.urls.length === 0 && tableOf(back) === tableBack,
       JSON.stringify({ word1, mid, out, word2, after, asks: back.urls.length }));
     // No capture holds a hub of one: the owner's wafers hub cut to its first member.
@@ -1269,6 +1269,42 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     const wideNote = byClass(wideFacts, 'sg-note').map((n) => n.textContent);
     say('HB10 a hub of 205 rows pressed: its table draws 200 - the table\'s cap - and says 5 more not drawn',
       wideRows === 200 && wideNote.includes('5 more not drawn'), JSON.stringify({ wideRows, wideNote }));
+    // A step whose answer carries no question (a lump opened as a table, lead verify 1cba190fe ②): no press is drawn, so
+    // none does nothing.
+    const lotId = startId(OWNER);
+    const noAsk = { ...(await wire([OWNER], [])({ positive: [lotId] })) };
+    delete noAsk.ask;
+    const na = await seat([OPENED]);
+    await na.view.show({ given: { positive: [lotId], negative: [], answer: noAsk } });
+    na.urls.length = 0;
+    const drewOpen = openHub(na, wafers);
+    await settle();
+    say('HB11 a step whose answer carries no question: its hub pressed draws its facts and no «Open as nodes» - nothing to ask, nothing asked',
+      !drewOpen && byClass(na.host, 'sg-facts').length === 1 && na.urls.length === 0,
+      JSON.stringify({ drewOpen, facts: byClass(na.host, 'sg-facts').length, asks: na.urls.length }));
+    // More brought a second page (a kind K9 off the lot); the wafers opened: their members and K9 both stand, the hub and
+    // the defects hub under it gone (lead verify 1cba190fe ③ - the open's answer laid over, not replacing).
+    const k9 = entitySeedId('kind', { kind: 'K9' });
+    const wired = await wire([OWNER], [])({ positive: [lotId] });
+    const page2 = { nodes: [{ id: k9, type: 'kind', label: 'K9', depth: 1, keys: { kind: 'K9' } }],
+      edges: [{ id: 'more:k9', source: lotId, target: k9, predicate: 'of_kind' }] };
+    const paged = { ...wired, ...applyPage(wired, page2), ask: { positive: [lotId] }, pages: 2 };
+    const mp = await seat([OPENED]);
+    await mp.view.show({ given: { positive: [lotId], negative: [], answer: paged } });
+    const k9Before = mp.view.cy.getElementById(k9).nonempty();
+    mp.urls.length = 0;
+    openHub(mp, wafers);
+    await settle();
+    const has = (id) => mp.view.cy.getElementById(id).nonempty();
+    say('HB12 a step More continued, its hub opened: what More brought stays (K9), the members stand, the hub and the hub under it gone, one ask',
+      k9Before && has(k9) && members.every(has) && !has(wafers) && !has(HUBS.ids.defects) && mp.urls.length === 1,
+      JSON.stringify({ k9Before, k9: has(k9), members: members.filter(has).length, hub: has(wafers), defects: has(HUBS.ids.defects), asks: mp.urls.length }));
+    // The counts (lead 10-13): a hub one node drawn, what the hubs hold said beside; the legend a hub by its members.
+    const ct = await seat([OWNER]);
+    say('HB13 the status line «Nodes 5 · 9 in hubs», the legend a hub by its members in the declaration order - defect 6 · lot 1 · wafer 3 · kind 2',
+      JSON.stringify(textOf(ct.host, 'sg-counts').map((x) => x.split(' · Edges')[0])) === '["Nodes 5 · 9 in hubs"]'
+        && JSON.stringify(byClass(ct.host, 'sg-chip').map((c) => c.textContent)) === '["defect 6","lot 1","wafer 3","kind 2"]',
+      JSON.stringify({ counts: textOf(ct.host, 'sg-counts'), legend: byClass(ct.host, 'sg-chip').map((c) => c.textContent) }));
   }
 
   console.log('\n[S] a key let out of a big lump stands clear of it (owner 10-08)');
@@ -1715,21 +1751,29 @@ const failures = [];
     M('HBm7', 'Open as nodes sends the hub\'s node, not its five-cell id', 'HB3',
       'const hubs = [...(step.hubs || []), hubId];', "const hubs = [...(step.hubs || []), hubId.split('|')[0]];"),
     M('HBm8', 'the opened answer laid beside the folded one, not over it', 'HB4',
-      '        results: [held.narrow ? pathsAnswer(res, held.narrow) : res] } : s)));',
-      '        results: [...s.results, held.narrow ? pathsAnswer(res, held.narrow) : res] } : s)));'),
+      '        results: s.results.map((r) => (r !== held ? r : held.narrow ? pathsAnswer(over(res), held.narrow) : over(res))) } : s)));',
+      '        results: [...s.results, held.narrow ? pathsAnswer(over(res), held.narrow) : over(res)] } : s)));'),
     M('HBm11', 'Open as nodes asks without the page\'s ask - its typed cap lost', 'HB6',
       '    await this._ask({ ...held.ask, expand: hubs }, [hubId],',
       '    await this._ask({ positive: step.positive, negative: step.negative, expand: hubs }, [hubId],'),
     // A hub of one is one seat's (derive.hubsAsMembers - its own cells are walk_hub_harness H5): here, the graph reads it.
     M('HBm17', 'Open as nodes asks the form\'s walk, not the step\'s own', 'HB9',
       '    await this._ask({ ...held.ask, expand: hubs }, [hubId],', '    await this._ask({ ...this.ask({ positive: step.positive, negative: step.negative }), expand: hubs }, [hubId],'),
-    M('HBm18', 'the facts box draws every row of a hub', 'HB10', '    for (const row of t.rows.slice(0, ROW_CAP)) {', '    for (const row of t.rows) {'),
+    M('HBm19', 'a step with no question still draws «Open as nodes» (the code before: it pressed to nothing)', 'HB11',
+      '    return held && held.ask ? held : null;', '    return held || null;'),
+    M('HBm20', 'the open\'s answer replaces what More brought (the code before)', 'HB12',
+      '(r !== held ? r : held.narrow ? pathsAnswer(over(res), held.narrow) : over(res))', '(r !== held ? r : held.narrow ? pathsAnswer(res, held.narrow) : res)'),
+    M('HBm21', 'the hubs under the opened one kept - a stale hub beside its members', 'HB12',
+      '      for (const n of heads) if (!gone.has(n.id) && gone.has(n.hub.of)) { gone.add(n.id); grew = true; }\n', ''),
+    M('HBm22', 'the status line counts a hub as one node, its members unsaid', 'HB13', "${inHubs ? ` · ${inHubs} in hubs` : ''}", ''),
+    M('HBm23', 'the legend counts a hub as one', 'HB13', '(node.hub ? node.hub.count || 1 : 1)', '1'),
+    M('HBm18', 'the facts box draws every row of a hub', 'HB10', '    for (const cells of hubRowsOf(t).slice(0, ROW_CAP)) {', '    for (const cells of hubRowsOf(t)) {'),
     M('HBm12', 'an opened hub\'s members come out open - all past them drawn', 'HB4',
       '    for (const m of members) if (this.layout.nodes.some((n) => n.id === m)) this.fold.big.set(m, branchKeys(this.layout, m));\n', ''),
     M('HBm13', 'an opened hub\'s members each their own lump, not one pooled', 'HB4',
       '    lumps: [...lumps.filter((l) => !cohortOf.has(l.owner)), ...pooled],', '    lumps,'),
     M('HBm14', 'the pooled lump not in the owner\'s words', 'HB4',
-      '  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${lump.predicate}`;\n', ''),
+      '  if (lump.pooled) return `${lump.farType} ×${lump.count} · ${arrowed(lump)}`;\n', ''),
     M('HBm15', 'the pooled lump lets out one member\'s part only', 'HB7', '        for (const part of lump.parts) {', '        for (const part of lump.parts.slice(0, 1)) {'),
     M('HBm16', 'Fold branches holds nothing', 'HB8', '    else this.fold.big.set(id, branchKeys(this.layout, id));', '    else this.fold.big.set(id, new Set());'),
     M('HBm9', 'a hub of one drawn as a hub', 'HB5',
@@ -1847,8 +1891,8 @@ const failures = [];
       '    if (this.steps !== steps) return;   // a new start was asked meanwhile\n    this.expanding = [];\n',
       '    if (this.steps !== steps) return;   // a new start was asked meanwhile\n'),
     M('U3m', 'a hub pressed again on its way is asked again', 'U1',
-      "    if (!step || this.state !== 'done' || (step.hubs || []).includes(hubId)) return;\n",
-      '    if (!step || (step.hubs || []).includes(hubId)) return;\n'),
+      "    if (!step || !held || this.state !== 'done' || (step.hubs || []).includes(hubId)) return;\n",
+      '    if (!step || !held || (step.hubs || []).includes(hubId)) return;\n'),
     M('J0m', 'the window\'s rows read an empty start branch - the one question answered nowhere (lead 10-08)', 'OT2',
       'const lit = startBranch(this.steps);\n      const items = lump.groups.map(', 'const lit = new Set();\n      const items = lump.groups.map('),
     M('J8m', 'the lump\'s list does not light the start branch', 'OT2',
@@ -1861,7 +1905,7 @@ const failures = [];
       '    const step = this.steps.length - 1;'),
     M('OTm2', 'a big lump\'s row Open as table opens nothing', 'OT2', '        if (branch) this._openTable(branch);\n', ''),
     M('LA1m', 'a big lump\'s words count all it hides again, not what one Open draws', 'LM11',
-      'next: firsts.size, behind: held.size - firsts.size,', 'next: held.size, behind: 0,'),
+      'next: many(firsts), behind: many(held) - many(firsts),', 'next: many(held), behind: 0,'),
     M('PAm1', 'three marked open the Paths box too', 'PA3', '    if (marked.length !== 2) {\n', '    if (marked.length < 2) {\n'),
     M('PAm2', 'an unticked edge still walked', 'PA2', '.filter((p) => !this.pathOff.has(p))', ''),
     M('PAm3', 'a kind pressed unfolds nothing', 'PA4',
@@ -1872,8 +1916,8 @@ const failures = [];
       '    this.markings.subscribe(name, () => this._restyle());\n'),
     M('PAm6', 'the edge list without its counts', 'PA1', "this._el('span', '', `${predicate} ${count}`)", "this._el('span', '', predicate)"),
     M('LA6m', 'next summed over the branches, shared nodes twice', 'LM13',
-      'next: firsts.size, behind: held.size - firsts.size,',
-      'next: groups.reduce((n, g) => n + g.members.length, 0), behind: held.size - firsts.size,'),
+      'next: many(firsts), behind: many(held) - many(firsts),',
+      'next: groups.reduce((n, g) => n + g.members.length, 0), behind: many(held) - many(firsts),'),
     M('LA7m', 'Open counts the ticks, a shared node twice', 'LM13',
       '      const n = new Set(chosenOf().map((value) => value.split(PICK_SEP).pop())).size;', '      const n = chosenOf().length;'),
     M('LA9m', 'the window\'s sub line not the lump\'s words', 'LM13',
