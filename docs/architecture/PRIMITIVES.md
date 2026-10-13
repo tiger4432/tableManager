@@ -2342,13 +2342,19 @@
 - **함정**: 청과 짓기가 다른 프로세스다 — 체인 워커가 없으면 청만 쌓인다. 표마다 `auto_index_per_table`(기본 10).
 
 ### **Board 의 모든 종류가 나눠 쓰는 근원 칸 셋 — 색은 `color_by.colorsOf`, 행은 `route.routeOf`, 한 표시의 단위는 `units.unitsOf`** (2026-10-14 등록 · lead-board-2 `c0c4b3f9b`, 소유자 10-13 «COLOR BY 저런 거는 모든 근원부품이 공유하게 해»)
-- **어디**(🆕 10-14 `ea3a88523` 둘 더 — 툴팁 · 레이블 `tooltip.tipLines` · `labelOf`(선언 `labels`: none · marked · all), 누른 표시가 노드인지 허브인지 `hubs.nodesOfPress` 한 자리 — 종류는 묻지 않는다): `client2/src/testbed/color_by.js` — `colorsOf(rows, ctx)` 가 행마다 색을 한 번 정한다(선언 `colors` {범주: hex} 먼저, 없으면 팔레트를 나온 순서로); 허브(마커 · 칸)는 `colorOfIds`. `testbed/route.js` — `routesFor(vocabulary, from, to)` 가 시작 타입 → 행 타입 길 목록, `routeOf(decl, routes)` 가 부품의 길, `walkOfRoute` 가 그 길의 술어 · 걸음. `testbed/units.js` — `unitOf(decl)`(node · hub · record) · `unitsOf(rows, decl, keys, recordKey, marked)`.
+- **어디**(🆕 10-14 `fe7c8b64e` 그림 크기는 `VisualPart.watch(div, drawn)` 한 자리 — 그림 칸마다 ResizeObserver · 종류가 안 받는 기본 셋 칸은 종류의 `without`(Sheet: Top/Bottom by · Panel by 없음) · 누름이 허브인 까닭 `hubs.whyHub`) (🆕 10-14 `ea3a88523` 둘 더 — 툴팁 · 레이블 `tooltip.tipLines` · `labelOf`(선언 `labels`: none · marked · all), 누른 표시가 노드인지 허브인지 `hubs.nodesOfPress` 한 자리 — 종류는 묻지 않는다): `client2/src/testbed/color_by.js` — `colorsOf(rows, ctx)` 가 행마다 색을 한 번 정한다(선언 `colors` {범주: hex} 먼저, 없으면 팔레트를 나온 순서로); 허브(마커 · 칸)는 `colorOfIds`. `testbed/route.js` — `routesFor(vocabulary, from, to)` 가 시작 타입 → 행 타입 길 목록, `routeOf(decl, routes)` 가 부품의 길, `walkOfRoute` 가 그 길의 술어 · 걸음. `testbed/units.js` — `unitOf(decl)`(node · hub · record) · `unitsOf(rows, decl, keys, recordKey, marked)`.
 - **언제 재사용**: 새 종류(산점도 · 표 · 크로스 · 맵 다음)를 짓거나, 한 종류에 색 · 행 · 마커 규칙을 넣고 싶을 때 — 종류 안에 사본을 적지 않고 이 셋을 부른다. 종류는 그리기만 한다.
 - **함정**: 행은 «걸어서 닿은 그 타입 노드 전부»가 아니라 «그 길의 끝»이다 — 길이 안 잡히면(목록이 비면) 부품이 엉뚱한 노드를 행으로 받는다(18766 10-14: 코어 웨이퍼에서 계측으로 가는 C 가 본딩 웨이퍼의 계측 17 을 셈). 범주 색이 선언에 빈 칸이면 팔레트 첫 색이 붙는다.
+
+### **규칙이 행을 «받나»는 `chain.rule_run.gate_misses` 한 판정 — SQL 은 같은 판정의 `gate_conditions`** (2026-10-14 등록 · A `b29493bf3`, 총괄 63c747046)
+- **어디**: `gates_of(rule)` → `{require: [칸], exclude: [칸]}` · `gate_misses(gates, cells)` → 행이 걸린 `[(관문, 칸)]`(빈 목록 = 받음, `require` 는 찬 칸 · `exclude` 는 빈 칸, `crud.is_blank_value`) · `gate_conditions(gates, model)` → 같은 판정의 SQL 조건. 부르는 곳: `held_back`(규칙에 넘기기 전) · `enrichment/mapper.py`(decide 다시 세기) · `enrichment/analysis.py` · `enrichment/backfill.py` · `mappers/hold_copy.py`.
+- **언제 재사용**: 규칙이 받을 행을 고르거나 세는 새 자리 — «비었나»를 옆에 다시 적지 않는다.
+- **함정**: 파이썬 쪽과 SQL 쪽이 갈라지면 규칙이 받은 행과 다시 세기가 센 행이 달라진다(10-14 전: 다시 세기가 `require` 를 안 봐 받지 않은 행까지 셈).
 
 ### **규칙이 이 사건에 «깨어나나»는 `chain.ingestion_worker.wakes(rule, event)` 한 자리** (2026-10-14 등록 · B `d3c143d45`, 총괄 옛 키 ㄱ)
 - **어디**: `wakes(rule, event)` = `_is_trigger_event(event, rule)`(종류 — CREATE · EDIT, 지움은 규칙이 허락할 때) 그리고 `fires(rule, event)`(쌍). 규칙을 고르는 자리(`_rows_cap` · `_group_triggered_rules` …)가 전부 이것을 묻고, 묶기(`group_id`)만 `fires` 하나를 묻는다.
 - **언제 재사용**: 사건에 따라 규칙을 고르는 새 자리 — 종류 · 쌍 판정을 옆에 다시 적지 않는다(이 셋은 아홉 자리에 사본으로 있었다).
+- **같이 서는 자리**(🆕 10-14 `4abf68886` 다시 착지): 판단 키의 한 철자 `enrichment.mapper._clean_key` · 남의 층이 있는 행은 안 지움 `cell_layer.rows_others_wrote` · 지우기 실패 = 그룹 실패(`retry_count`, 상한 1 이면 첫 실패에 FAILED).
 - **함정**: decide 가 «행이 떠난 키»(편집으로 옮겨 감 · 지움)도 다시 세려면 그 사건에도 깨어나야 한다 — 종류 판정을 좁히면 옛 키의 수가 낡은 채 남는다.
 
 ### **표의 추정 행 수는 `ledger.column_stats.estimated_rows(db, relation)` 한 자리 — 이름이 아니라 `to_regclass` 로 찾는다** (2026-10-14 등록 · A `208d7cefc`)
