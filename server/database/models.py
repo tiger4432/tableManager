@@ -1046,8 +1046,15 @@ if not hasattr(sys, "_dynamic_tables_singleton"):
     sys._dynamic_tables_singleton = {}
 DYNAMIC_TABLES = sys._dynamic_tables_singleton
 
-from sqlalchemy.orm import registry
+from sqlalchemy.orm import column_property, registry
 mapper_registry = registry()
+
+
+def _mapped(column):
+    """A dynamic table's column as mapped: its value before a set is read at set time (active_history), so an edit's
+    event carries its old value even on a row expired by a commit and written without being read (총괄 10-14 -
+    `database._old` leaves out an old value that was never loaded; the old key and the row gates rest on it)."""
+    return column_property(column, active_history=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1183,7 +1190,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
                         
                     col_obj = Column(col_name, sql_type, nullable=True)
                     table_obj.append_column(col_obj)
-                    mapper.add_property(col_name, col_obj)
+                    mapper.add_property(col_name, _mapped(col_obj))
                     added = True
             continue
             
@@ -1367,7 +1374,8 @@ def init_dynamic_models(config_dict: dict, engine=None):
             "__table__": table_obj
         })
         
-        mapper_registry.map_imperatively(dynamic_class, table_obj)
+        mapper_registry.map_imperatively(dynamic_class, table_obj,
+                                         properties={column.key: _mapped(column) for column in table_obj.columns})
         DYNAMIC_TABLES[table_name] = dynamic_class
     if added and engine is not None:
         engine.clear_compiled_cache()
