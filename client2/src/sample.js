@@ -2,6 +2,8 @@
 // file only loads the two layers and flips the theme, so both halves of the tokens can be seen.
 import './tokens.css';
 import './base.css';
+// The Spotfire standard's parts (ui-design-system §9), drawn on this page too.
+import './spotfire.css';
 
 const root = document.documentElement;
 const button = document.getElementById('sample-theme');

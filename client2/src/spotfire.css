@@ -1,0 +1,135 @@
+/* SPOTFIRE STANDARD — the declaration UI's and the visual parts' base layer (owner 10-13 「선언 ui 같은 거는 스팟파이어
+   표준으로 스킬이랑 css 부품, 디자인 규격 만들어서 계속 써」, lead b72a0ea4f; ui-design-system §9). Measured on the
+   owner's Spotfire (task/SPOTFIRE_SCATTER_REFERENCE.md §11); every value a --sf-* token (tokens.css, both themes).
+
+   🔴 The parts' class names are their own (sf-*): a screen that uses none does not move; `.sf` on a screen's root gives it
+      the face, the text colour and the ground. One class of specificity, not the base layer's zero: on a page that loads
+      base.css too (the sample page, the Sheet, the R&D board) its element rules never win, whatever order the sheets
+      load in - and a part that is a button, a field, a table or a cell says every property base.css sets on those.
+      A part's own rule wins by being more specific (its container's class with the part's). sample.html draws each one.
+
+   Vocabulary
+     part       .sf-part (.is-active) · .sf-part__title · .sf-part__t · .sf-part__meta (the title row's words beside it) ·
+                .sf-part__body · .sf-say
+     pill       .sf-pill (.sf-pill--v) · .sf-pill__caret · .sf-plus · .sf-note
+     legend     .sf-legend · __ttl · __row · __v (.is-dim) · __plain · __ico · __name
+     table      .sf-table - a grid (head · cells with lines · .is-marked · __col · __row · __corner · __total);
+                .sf-table--rows - a list (striped, .is-num · .is-id · .is-member · .is-hub · __toggle)
+     status     .sf-status
+     panel      .sf-panel · __h - light in both themes; the properties panel .sf-props__* ; the filters panel .sf-filter__*
+     popover    .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __hr · __reds · __red (.is-on) · __why
+     button     .sf-btn */
+
+.sf { font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); color: var(--sf-text); background: var(--sf-page); }
+
+/* ── a part: its frame, its title, its body ── */
+.sf-part { position: relative; box-sizing: border-box; height: 100%; display: grid; grid-template-rows: var(--sf-title-h) minmax(0, 1fr);
+  padding: var(--sf-pad); background: var(--sf-bg); border: 2px solid transparent; color: var(--sf-text); }
+.sf-part.is-active { border-color: var(--sf-active); }
+.sf-part__title { display: flex; align-items: center; gap: 6px; padding: 4px; min-width: 0;
+  font: 300 var(--sf-fs-title)/var(--sf-lh-title) var(--sf-font); color: var(--sf-title); }
+.sf-part__t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-part__meta { flex: none; font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); color: var(--sf-text-2); white-space: nowrap; }
+.sf-part__body { position: relative; min-height: 0; }
+.sf-say { padding: 10px 4px; color: var(--sf-text-2); }
+
+/* ── a slot's pill: its border and caret on the part's hover, always in a panel ── */
+.sf-pill { display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; letter-spacing: normal; height: var(--sf-pill-h); max-width: 100%; padding: 2px 10px; box-sizing: border-box;
+  border: 1px solid transparent; border-radius: 100px; background: transparent; color: var(--sf-text); font: inherit; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.sf-pill__caret, .sf-plus { visibility: hidden; }
+.sf-pill__caret { font-size: var(--sf-fs-caret); }
+.sf-part:hover .sf-pill, .sf-panel .sf-pill { border-color: var(--sf-pill); }
+.sf-part:hover .sf-pill__caret, .sf-part:hover .sf-plus, .sf-panel .sf-pill__caret { visibility: visible; }
+.sf-pill--v { writing-mode: vertical-rl; transform: rotate(180deg); width: var(--sf-pill-h); height: auto; max-height: 100%; padding: 10px 2px; }
+.sf-plus { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; padding: 0; letter-spacing: normal; border: 1px solid var(--sf-pill); border-radius: 50%; background: transparent; color: var(--sf-text-2);
+  font: 400 13px/1 var(--sf-font); cursor: pointer; }
+.sf-note { color: var(--sf-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── a legend: its titles, its slot pickers, its values ── */
+.sf-legend { padding-left: 10px; min-height: 0; overflow: auto; }
+.sf-legend__ttl { height: var(--sf-cell-h); line-height: var(--sf-cell-h); }
+.sf-legend__row { display: flex; align-items: center; gap: 4px; margin: 0 0 8px -10px; }
+.sf-legend__v { display: flex; align-items: center; justify-content: flex-start; gap: 4px; letter-spacing: normal; width: 100%; height: var(--sf-legend-row); padding: 0; border: 0; background: transparent;
+  color: var(--sf-text); font: inherit; text-align: left; cursor: pointer; }
+.sf-legend__v.is-dim { color: var(--sf-dim); }
+.sf-legend__plain { cursor: default; padding-left: 18px; }
+.sf-legend__ico { flex: none; width: var(--sf-icon); height: var(--sf-icon); box-sizing: border-box; border: 1px solid; border-radius: 50%; }
+.sf-legend__name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── a table: a grid with lines (the cross table), or a striped list (the marked rows) ── */
+.sf-table { width: auto; border-collapse: collapse; font-size: inherit; font-variant-numeric: tabular-nums; }
+.sf-table th, .sf-table td { height: var(--sf-cell-h); padding: 0 var(--sf-cell-pad); border-bottom: 1px solid var(--sf-line); white-space: nowrap;
+  font-family: inherit; font-size: inherit; letter-spacing: normal; text-transform: none; color: inherit; }
+.sf-table tr:hover { background: transparent; }
+.sf-table td, .sf-table__col { border-left: 1px solid var(--sf-line); text-align: right; }
+.sf-table th { font-weight: 700; text-align: left; cursor: pointer; }
+.sf-table th.sf-table__col { text-align: right; }
+.sf-table th.sf-table__corner { text-align: right; cursor: default; }
+.sf-table td { min-width: 70px; cursor: pointer; }
+.sf-table td.is-marked { background: var(--sf-marked); color: var(--sf-marked-text); font-weight: 700; }
+.sf-table__total { font-weight: 700; }
+.sf-table--rows { width: 100%; }
+.sf-table--rows th, .sf-table--rows td { padding: 0 4px; border: 0; text-align: left; cursor: default; min-width: 0; }
+.sf-table--rows tr:nth-child(even) td { background: var(--sf-stripe); }
+.sf-table--rows .is-num { text-align: right; }
+.sf-table--rows .is-id { color: var(--sf-text-2); font-size: 11px; }
+.sf-table--rows .is-member { padding-left: 18px; }
+.sf-table--rows tr.is-hub td { font-weight: 500; }
+.sf-table__toggle { height: auto; padding: 0; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-text); font: inherit; cursor: pointer; }
+
+/* ── the status bar ── */
+.sf-status { height: 100%; display: flex; align-items: center; justify-content: flex-end; gap: 24px; padding: 0 16px; background: var(--sf-status);
+  color: var(--sf-status-text); white-space: nowrap; overflow: hidden; }
+
+/* ── a small button ── */
+.sf-btn { display: inline-flex; align-items: center; justify-content: center; height: var(--sf-pill-h); padding: 2px 10px; letter-spacing: normal; border: 1px solid var(--sf-pill); border-radius: 100px; background: transparent;
+  color: var(--sf-text); font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); cursor: pointer; }
+
+/* ── a panel (properties · filters): light in both themes ── */
+.sf-panel { height: 100%; box-sizing: border-box; overflow: auto; background: var(--sf-panel-bg); color: var(--sf-panel-text); border-radius: 8px 8px 0 0; }
+.sf-panel__h { display: flex; align-items: center; justify-content: space-between; height: 33px; padding: 0 16px; background: var(--sf-panel-head);
+  border-bottom: 1px solid var(--sf-panel-line-2); color: var(--sf-panel-muted); font-weight: 700; }
+.sf-panel .sf-say { color: var(--sf-panel-muted); padding: 10px 16px; }
+.sf-panel .sf-btn { border-color: var(--sf-panel-pill); color: var(--sf-panel-text); }
+.sf-panel .sf-pill { border-color: var(--sf-panel-pill); color: var(--sf-panel-text); background: var(--sf-panel-bg); }
+.sf-props__name { margin: 8px 0; padding: 4px 16px; background: var(--sf-panel-name-bg); color: var(--sf-panel-name-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-props__tabs { display: flex; gap: 40px; padding: 0 16px; border-bottom: 1px solid var(--sf-panel-line-2);
+  font: 500 var(--sf-fs-tab)/var(--sf-lh) var(--sf-font); color: var(--sf-panel-muted); }
+.sf-props__tabs span { padding: 10px 0; }
+.sf-props__tabs .is-on { color: var(--sf-panel-accent); box-shadow: inset 0 -2px var(--sf-panel-accent); }
+.sf-props__sec { padding: 12px 16px; border-bottom: 1px solid var(--sf-panel-line); }
+.sf-props__h { font-size: var(--sf-fs-tab); margin-bottom: 8px; }
+.sf-props__line { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 6px; margin: 4px 0; }
+.sf-props__lab { color: var(--sf-panel-muted); }
+.sf-props__sel { height: 22px; min-height: 0; min-width: 0; border: 1px solid var(--sf-panel-pill); border-radius: 100px; background: var(--sf-panel-bg);
+  color: var(--sf-panel-text); font: inherit; padding: 0 6px; }
+.sf-props__cond { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-top: 4px; padding: 0 8px; border: 1px solid var(--sf-panel-pill); }
+.sf-props__x { height: auto; padding: 0 2px; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-panel-muted); cursor: pointer; }
+.sf-props__add { height: auto; margin-top: 6px; padding: 0; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-panel-accent); font: inherit; cursor: pointer; }
+.sf-filter { padding: 8px 16px; border-bottom: 1px solid var(--sf-panel-line-2); }
+.sf-filter__h { font-weight: 500; margin-bottom: 4px; }
+.sf-filter__range { display: flex; gap: 6px; }
+/* a range end: the box the browser drew for it (90 x 22 inside, 98 x 28 whole), its line the panel's */
+.sf-filter__num { box-sizing: border-box; width: 98px; height: 28px; min-height: 0; padding: 1px 4px; border: 1px solid var(--sf-panel-line); border-radius: 0;
+  background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
+.sf-filter__v { display: flex; align-items: center; gap: 6px; height: 20px; }
+.sf-filter__n { margin-left: auto; color: var(--sf-panel-muted); }
+
+/* ── a popover (the slot picker): Spotfire's menu - white, items 31, text inset 40 ── */
+.sf-pop-host { position: fixed; z-index: 30; }
+.sf-pop { display: grid; grid-template-columns: 320px 240px 190px; width: 750px; padding: 6px 0; background: var(--sf-panel-bg); color: var(--sf-panel-text);
+  border: 1px solid var(--sf-panel-line); box-shadow: var(--sf-shadow); font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); }
+.sf-pop__col { max-height: 60vh; overflow: auto; min-width: 0; border-left: 1px solid var(--sf-panel-line-2); }
+.sf-pop__col:first-child { border-left: 0; }
+.sf-pop__lab { height: 24px; line-height: 24px; padding: 0 16px; color: var(--sf-panel-muted); font-weight: 700; }
+.sf-pop__it { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; height: auto; min-height: 31px; letter-spacing: normal; padding: 0 16px 0 40px; border: 0; background: transparent;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sf-pop__it.is-on { background: var(--sf-panel-pick); }
+.sf-pop__it:disabled { color: var(--sf-panel-muted); cursor: default; }
+.sf-pop__n { margin-left: auto; color: var(--sf-panel-muted); }
+.sf-pop__hr { border: 0; border-top: 1px solid var(--sf-panel-line-2); margin: 6px 0; }
+.sf-pop__reds { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 6px 16px; }
+.sf-pop__red { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; letter-spacing: normal; border: 1px solid var(--sf-panel-pill); border-radius: 100px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.sf-pop__red.is-on { background: var(--sf-panel-accent); border-color: var(--sf-panel-accent); color: var(--sf-panel-accent-text); }
+.sf-pop__why { padding: 4px 16px; color: var(--sf-panel-muted); }

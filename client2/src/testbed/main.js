@@ -18,7 +18,6 @@ import { PropertiesPart } from './properties_part.js';
 import { SlotPicker } from './picker.js';
 import { HubBook } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
-import { themeVars } from './palette.js';
 import { kind as scatterKind } from './kinds/scatter.js';
 import { kind as crossKind } from './kinds/cross_table.js';
 
@@ -74,9 +73,8 @@ export function bound(layout, shared) {
 export async function boot(deps) {
   const { doc, host, apiBase = '', fetchImpl, storage = null } = deps;
   const theme = deps.theme === 'light' ? 'light' : 'dark';
-  // On the page's root: the header and the picker (on the body) take them too.
+  // On the page's root: the Spotfire tokens (tokens.css) follow it, the header and the picker (on the body) too.
   const root = (doc.documentElement && doc.documentElement.style) ? doc.documentElement : host;
-  for (const [k, v] of Object.entries(themeVars(theme))) root.style.setProperty(k, v);
   root.setAttribute('data-tb-theme', theme);
   // The site's tokens the same way: the walk page's parts on this page (the start row, its picker) wear them (lead 10-13:
   // the open picker a white box on the dark page).
@@ -90,7 +88,7 @@ export async function boot(deps) {
   const declaration = await fetchDeclaration({ apiBase, fetchImpl });
   const entities = () => (declaration.ok ? declaration.entities : []);
   const pickerHost = doc.createElement('div');
-  pickerHost.className = 'tb-picker-host';
+  pickerHost.className = 'sf-pop-host';
   pickerHost.style.display = 'none';
   (doc.body || host).appendChild(pickerHost);
   const picker = new SlotPicker(pickerHost, { doc });
@@ -98,7 +96,7 @@ export async function boot(deps) {
   try { saved = storage ? JSON.parse(storage.getItem(SAVED) || 'null') : null; } catch (e) { saved = null; }
   const shell = new GridShell(host, { doc, markings, parts: PARTS });
   const shared = {
-    kinds: KINDS, filters, stats, active, hubs, names, theme, charts: deps.charts,
+    kinds: KINDS, filters, stats, active, hubs, names, charts: deps.charts,
     fetchWalk: (params) => fetchSubgraph({ apiBase, fetchImpl, ...params }),
     walkParams: {},
     oneValued: oneValuedBy(declaration.ok ? declaration.predicates : []),
@@ -118,7 +116,7 @@ export async function boot(deps) {
     doc.addEventListener('mousedown', (event) => {
       if (pickerHost.style.display === 'none') return;
       const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
-      if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.tb-pill, .tb-plus'))) picker.close();
+      if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.sf-pill, .sf-plus'))) picker.close();
     });
   }
   return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker };

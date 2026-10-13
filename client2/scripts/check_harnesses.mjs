@@ -1422,7 +1422,9 @@ const FLOORS = new Map([
   // 46 -> 66: the doc audit's fixes (lead 9e6223919) - T9c' marked rows, T9f a system filter change from its start side,
   //    T11 a third kind through the same root, T19 the root names no kind, T20 the walk page's seeds the same function,
   //    T21 one seedsOf, T22 no colour in testbed.css, T23 each kind's title; M14b M17b M22b M25-M34.
-  ['testbed_harness.mjs', 66],
+  // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
+  //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
+  ['testbed_harness.mjs', 74],
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)

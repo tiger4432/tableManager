@@ -30,25 +30,25 @@ export class PropertiesPart extends Panel {
   render() {
     const doc = this.doc;
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-    const root = el('aside', 'tb-side tb-props');
-    const head = el('div', 'tb-side__h');
+    const root = el('aside', 'sf-panel sf-props');
+    const head = el('div', 'sf-panel__h');
     head.append(el('span', '', 'Visualization properties'));
     root.append(head);
     const part = this.partOf(this.active.get('active'));
-    if (!part || !part.decl || part.decl.part !== 'visual') { root.append(el('div', 'tb-say', 'Click a visualization')); this.host.replaceChildren(root); return; }
+    if (!part || !part.decl || part.decl.part !== 'visual') { root.append(el('div', 'sf-say', 'Click a visualization')); this.host.replaceChildren(root); return; }
     const decl = part.declaration();
-    root.append(el('div', 'tb-props__name', part.titleWords()));
-    const tabs = el('div', 'tb-props__tabs');
+    root.append(el('div', 'sf-props__name', part.titleWords()));
+    const tabs = el('div', 'sf-props__tabs');
     tabs.append(el('span', 'is-on', 'Configuration'), el('span', '', 'Appearance'));
     root.append(tabs);
-    const section = (name) => { const s = el('div', 'tb-props__sec'); s.append(el('div', 'tb-props__h', name)); root.append(s); return s; };
+    const section = (name) => { const s = el('div', 'sf-props__sec'); s.append(el('div', 'sf-props__h', name)); root.append(s); return s; };
     const select = (label, options, value, onPick) => {
-      const line = el('label', 'tb-props__line');
-      const s = el('select', 'tb-props__sel');
+      const line = el('label', 'sf-props__line');
+      const s = el('select', 'sf-props__sel');
       for (const [v, words] of options) { const o = el('option', '', words); o.value = v === null ? '' : v; s.append(o); }
       s.value = value === null || value === undefined ? '' : value;
       s.addEventListener('change', () => onPick(s.value === '' ? null : s.value));
-      line.append(el('span', 'tb-props__lab', label), s);
+      line.append(el('span', 'sf-props__lab', label), s);
       return line;
     };
     // ── Data ──
@@ -58,26 +58,26 @@ export class PropertiesPart extends Panel {
     data.append(select('Route', this.entities().map((e) => [e.type, e.type]), decl.row, (v) => part.setDeclaration({ ...decl, row: v })));
     data.append(select('Filtering', [[null, '(None)'], ...this.filterNames.map((f) => [f.name, f.label])], decl.system,
       (v) => part.setDeclaration({ ...decl, system: v })));
-    data.append(el('div', 'tb-props__lab', 'Filter'));
+    data.append(el('div', 'sf-props__lab', 'Filter'));
     const stats = this.stats.get(decl.id);
     const totals = new Map(((stats && stats.slots) || []).map((s) => [conditionKey({ row: s.row, ...s.slot }), s]));
     for (const c of decl.filter || []) {
-      const line = el('div', 'tb-props__cond');
+      const line = el('div', 'sf-props__cond');
       line.append(el('span', '', conditionWords(c, (totals.get(conditionKey(c)) || { values: [] }).values.length)));
-      const x = el('button', 'tb-props__x', '×');
+      const x = el('button', 'sf-props__x', '×');
       x.type = 'button';
       x.setAttribute('aria-label', 'Remove the filter');
       x.addEventListener('click', () => part.setDeclaration({ ...decl, filter: (decl.filter || []).filter((d) => conditionKey(d) !== conditionKey(c)) }));
       line.append(x);
       data.append(line);
     }
-    const add = el('button', 'tb-props__add', '+ Add filter');
+    const add = el('button', 'sf-props__add', '+ Add filter');
     add.type = 'button';
     add.addEventListener('click', () => { this.editing = this.editing ? null : 'pick'; this.render(); });
     data.append(add);
     if (this.editing) {
       const slots = (stats && stats.slots) || [];
-      if (!slots.length) data.append(el('div', 'tb-say', 'Pick a slot value first'));
+      if (!slots.length) data.append(el('div', 'sf-say', 'Pick a slot value first'));
       for (const summary of slots) {
         const held = (decl.filter || []).find((c) => conditionKey(c) === conditionKey({ row: summary.row, ...summary.slot })) || null;
         data.append(drawCondition(doc, summary, held, (next) => {
