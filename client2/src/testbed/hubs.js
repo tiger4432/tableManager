@@ -2,9 +2,7 @@
 // cell or a legend value is the hub of the nodes it holds, marked whole, one line in the basket. A hub's id is its
 // DESCRIPTION - the row type and the values it takes - so two parts that describe the same hub mark the same one.
 // Until the server takes hubs as seeds (WALK_HUB_ANSWER_SHAPE), a walk from a marking opens them into their members here,
-// in one function: `seedsOf`.
-
-import { SIGN } from '../rnd_board/marking_store.js';
+// in one place: `HubBook.open`, handed to the marking store's `seedsOf`.
 
 const PREFIX = 'hub:';
 
@@ -25,25 +23,11 @@ export class HubBook {
   constructor() { this.members = new Map(); }
   put(id, members) { this.members.set(id, [...members]); return id; }
   membersOf(id) { return this.members.get(id) || []; }
-}
-
-/**
- * THE one place a marking's hubs open into nodes: its entries as the walk's signed seeds - a hub's members take its
- * sign, a node stands as itself, each id once (a node in a + hub and a − hub: the + wins, as a marking's own + does).
- * @returns {{positive: string[], negative: string[]}}
- */
-export function seedsOf(entries, book) {
-  const sign = new Map();
-  for (const [id, s] of entries || []) {
-    for (const node of isHubId(id) ? book.membersOf(id) : [id]) {
-      if (sign.get(node) !== SIGN.CASE) sign.set(node, s);
-    }
-  }
-  const of = (want) => [...sign].filter(([, s]) => s === want).map(([id]) => id);
-  return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };
+  /** THE one place a marking's entry opens into nodes: a hub its members, a node itself. */
+  open(id) { return isHubId(id) ? this.membersOf(id) : [id]; }
 }
 
 /** Whether a node is held by a marking - as itself or as a member of a hub it holds. */
 export function holds(entries, book, nodeId) {
-  return (entries || []).some(([id]) => id === nodeId || (isHubId(id) && book.membersOf(id).includes(nodeId)));
+  return (entries || []).some(([id]) => book.open(id).includes(nodeId));
 }

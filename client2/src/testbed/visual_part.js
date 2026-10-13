@@ -1,6 +1,8 @@
 // THE VISUAL PART - one root, kinds as declarations (lead aca803a7a ㄱ, owner 「근원 부품 만들어와」). The root does what
 // every kind needs: the walk from its marking, the rows of its row type, the two filters, each slot read, the marking it
-// writes and the one it shows; a kind says only its slots, its model and its picture.
+// writes and the one it shows; a kind says only its slots, its title, its model and its picture, and reads its own
+// fields off the declaration. The root never asks which kind it holds (owner: «kind 는 운영자가 적는 낱말이지 실행이
+// 갈리는 축이 아니다»).
 //
 // declaration  { id, part: 'visual', kind, title?, row, start: {marking: name|null}, system: name|null,
 //                filter: [conditions], encode: {slotKey: slot}, reads: name, writes: name }
@@ -14,7 +16,8 @@ import { indexGraph, readsOf } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
 import { readSlot, slotWords } from './slot.js';
 import { keepNodes } from './filter.js';
-import { hubId, seedsOf, holds } from './hubs.js';
+import { hubId, holds } from './hubs.js';
+import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes } from '../rnd_board/api.js';
 
 export class VisualPart extends Panel {
@@ -49,7 +52,8 @@ export class VisualPart extends Panel {
   mount() {
     super.mount();
     const off = [];
-    if (this.filters) off.push(this.filters.subscribe('*', (name) => { if (name === this.decl.system) this.refold(); }));
+    // The system filter changed: from its start side again - a node it let go comes back when it widens.
+    if (this.filters) off.push(this.filters.subscribe('*', (name) => { if (name === this.decl.system) this.load(); }));
     if (this.active) off.push(this.active.subscribe('active', () => this.paintActive()));
     this._offs = off;
     if (this.host && typeof this.host.addEventListener === 'function') {
@@ -70,7 +74,7 @@ export class VisualPart extends Panel {
 
   /** A changed declaration: a new start, row type or system filter walks again; anything else folds again. */
   setDeclaration(next) {
-    const walkAgain = JSON.stringify([next.start, next.row]) !== JSON.stringify([this.decl.start, this.decl.row]);
+    const walkAgain = JSON.stringify([next.start, next.row, next.system]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system]);
     const before = this.decl;
     this.decl = JSON.parse(JSON.stringify(next));
     this.start = this.decl.start || null;
@@ -111,7 +115,7 @@ export class VisualPart extends Panel {
   seeds() {
     const name = this.start && this.start.marking;
     if (!name) return this.decl.row ? { all: true } : null;
-    const got = seedsOf(this.markings.entries(name), this.hubs);
+    const got = seedsOf(this.markings.entries(name), (id) => this.hubs.open(id));
     return got.positive.length ? got : null;
   }
 
@@ -126,8 +130,12 @@ export class VisualPart extends Panel {
     this.state = 'walking';
     this.render();
     let positive = seeds.positive || [];
-    let res = await this.walkFrom(seeds);
+    // The walk from every seed does not hang on the system filter: one in hand for the same seeds is taken again (a
+    // filter changed), and only the start side is judged anew.
+    const asked = JSON.stringify([seeds, this.decl.row]);
+    let res = this.seedWalk && this.seedWalk.asked === asked ? this.seedWalk.res : await this.walkFrom(seeds);
     if (ticket !== this.walking) return;
+    if (res.ok) this.seedWalk = { asked, res };
     this.startDropped = 0;
     // The system filter's start side: the marking's nodes of a condition's type are kept first, and the walk is taken
     // again from the kept ones - a dropped wafer's dies do not come in (lead 5835e6714).
@@ -190,13 +198,13 @@ export class VisualPart extends Panel {
     });
     const entries = this.reads ? this.markings.entries(this.reads) : [];
     const marked = (id) => holds(entries, this.hubs, id);
-    this.model = this.kind.model(rows, { marked, theme: this.theme, reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct });
+    this.model = this.kind.model(rows, { marked, theme: this.theme, declaration: this.decl });
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
     // M - the rows the walk brought; a and b - what each layer took from them (lead 5835e6714). The start side's drops
     // are not among M: they were never walked from.
     this.counts = { rows: afterPart.kept.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
-      part: afterPart.dropped, marked: entries.length, hidden, columns: Object.keys(encode).length, source: this.decl.row,
+      part: afterPart.dropped, marked: received.filter(marked).length, hidden, columns: Object.keys(encode).length, source: this.decl.row,
       // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).
       cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };
     this.publish();
@@ -231,9 +239,7 @@ export class VisualPart extends Panel {
 
   titleWords() {
     if (this.decl.title) return this.decl.title;
-    const e = this.decl.encode || {};
-    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;
-    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;
+    return this.kind ? this.kind.title(this.decl.encode || {}) : '';
   }
 
   // ── marking, through the names the declaration gives ──
@@ -288,18 +294,19 @@ export class VisualPart extends Panel {
     });
   }
 
+  /** A slot's pill - pressed, its picker. `opts.words`: a pill that only says them (no slot of the kind, nothing to pick). */
   pill(key, opts = {}) {
     const doc = this.doc;
     const p = doc.createElement('button');
     p.type = 'button';
     p.className = `tb-pill${opts.vertical ? ' tb-pill--v' : ''}`;
     const slot = (this.decl.encode || {})[key];
-    p.textContent = key === 'marker' ? '(Node)' : slotWords(slot);
+    p.textContent = opts.words || slotWords(slot);
     const caret = doc.createElement('span');
     caret.className = 'tb-pill__caret';
     caret.textContent = '▾';
     p.append(caret);
-    if (key !== 'marker') p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p }));
+    if (this.kind.slots.some((s) => s.key === key)) p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p }));
     return p;
   }
 

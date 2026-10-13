@@ -12,7 +12,7 @@ export const THEMES = Object.freeze({
 });
 
 /** The properties and filters panels - light in both themes, as Spotfire's (measured 10-12). */
-export const PANEL = Object.freeze({ bg: '#FFFFFF', head: '#F2F5FC', text: '#313336', muted: '#6D7078', accent: '#3050EF',
+export const PANEL = Object.freeze({ bg: '#FFFFFF', head: '#F2F5FC', text: '#313336', muted: '#6D7078', accent: '#3050EF', accentText: '#FFFFFF',
   line: '#D1D4DE', line2: '#EDF0F7', pill: '#D0D0D0', pick: '#BDCDF5', nameBg: '#EBEFFF', nameText: '#000000' });
 
 /** The category colours, fill and border, in Spotfire's order; one value alone is ONE. */
@@ -46,7 +46,7 @@ export function themeVars(name) {
     '--tb-line': t.line, '--tb-stripe': t.stripe, '--tb-axis': t.axis, '--tb-pill': t.pill, '--tb-status': t.status,
     '--tb-status-text': t.statusText, '--tb-active': t.active, '--tb-marked': MARKED,
     '--tb-panel-bg': PANEL.bg, '--tb-panel-head': PANEL.head, '--tb-panel-text': PANEL.text, '--tb-panel-muted': PANEL.muted,
-    '--tb-panel-accent': PANEL.accent, '--tb-panel-line': PANEL.line, '--tb-panel-line-2': PANEL.line2, '--tb-panel-pill': PANEL.pill,
+    '--tb-panel-accent': PANEL.accent, '--tb-panel-accent-text': PANEL.accentText, '--tb-panel-line': PANEL.line, '--tb-panel-line-2': PANEL.line2, '--tb-panel-pill': PANEL.pill,
     '--tb-panel-pick': PANEL.pick, '--tb-panel-name-bg': PANEL.nameBg, '--tb-panel-name-text': PANEL.nameText,
     '--tb-marked-text': MARKED_TEXT };
 }

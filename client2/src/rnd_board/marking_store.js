@@ -32,6 +32,23 @@
 /** The sign axis. ABSENT is a THIRD value, not the falsy edge of a boolean. */
 export const SIGN = Object.freeze({ ABSENT: 0, CASE: 1, CONTROL: -1 });
 
+/**
+ * THE one reading of a marking's entries as a walk's signed seeds (the walk page and the test bed, lead 10-13): each id
+ * once; `open` turns an entry into the nodes it stands for (the test bed's hub its members), each taking its sign; a node
+ * under a + and a − - the + wins.
+ * @param {Array<[string, number]>} entries
+ * @param {(id: string) => string[]} [open]  none - each entry stands as itself
+ * @returns {{positive: string[], negative: string[]}}
+ */
+export function seedsOf(entries, open = (id) => [id]) {
+  const sign = new Map();
+  for (const [id, s] of entries || []) {
+    for (const node of open(id)) if (sign.get(node) !== SIGN.CASE) sign.set(node, s);
+  }
+  const of = (want) => [...sign].filter(([, s]) => s === want).map(([id]) => id);
+  return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };
+}
+
 function normaliseSign(sign) {
   if (sign === SIGN.CASE || sign === SIGN.CONTROL) return sign;
   if (sign === SIGN.ABSENT || sign === null || sign === undefined) return SIGN.ABSENT;

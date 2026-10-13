@@ -1,8 +1,9 @@
 // The scatter kind of the visual part: its slots, its model, its picture (ECharts, injected - the kind never imports it).
-// What the root hands in is the same for every kind: rows and their slots read, and what is marked.
+// What the root hands in is the same for every kind: rows and their slots read, what is marked, the declaration.
 
 import { numberOf } from '../../walk/reach_table.js';
 import { THEMES, ONE, categoryColor, mix, MARKER_PX, MARKER_PCT } from '../palette.js';
+import { slotWords } from '../slot.js';
 
 export const SLOTS = Object.freeze([
   { key: 'x', label: 'X-axis' },
@@ -24,7 +25,7 @@ export function axisKind(values) {
  * lead aca803a7a «N rows with several values»); its colour is its category's, mixed toward the background when something
  * else is marked and it is not.
  * @param {Array<{id, label, reads: Record<string, object>}>} rows
- * @param {{marked: (id) => boolean, theme?: string, markerPct?: number}} ctx
+ * @param {{marked: (id) => boolean, theme?: string, declaration?: object}} ctx  the declaration's markerPct - the marker size
  */
 export function scatterModel(rows, ctx) {
   const theme = THEMES[ctx.theme] || THEMES.dark;
@@ -51,7 +52,7 @@ export function scatterModel(rows, ctx) {
     dim: anyMarked && !points.some((p) => p.marked && String(p.category) === name) }));
   return { points, legend, anyMarked, notDrawn, several,
     xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
-    size: MARKER_PX * ((ctx.markerPct || MARKER_PCT) / MARKER_PCT) };
+    size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
 }
 
 /** A number as an axis says it - no unit added (mockup fix ③: «1.0 %» on a ratio was a wrong sentence). */
@@ -109,7 +110,7 @@ export function render(body, model, ctx) {
   const legend = el('div', 'tb-legend');
   const ttl = (words) => el('div', 'tb-legend__ttl', words);
   const row = (...kids) => { const r = el('div', 'tb-legend__row'); r.append(...kids); return r; };
-  legend.append(ttl('Marker by:'), row(ctx.pill('marker')), ttl('Color by:'), row(ctx.pill('color'), ctx.plus('color')));
+  legend.append(ttl('Marker by:'), row(ctx.pill(null, { words: '(Node)' })), ttl('Color by:'), row(ctx.pill('color'), ctx.plus('color')));
   if (model.legend.length) {
     for (const item of model.legend) {
       const v = el('button', `tb-legend__v${item.dim ? ' is-dim' : ''}`);
@@ -156,4 +157,7 @@ export function render(body, model, ctx) {
   return { resize: () => chart.resize(), dispose: () => chart.dispose() };
 }
 
-export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, model: scatterModel, render };
+/** The title when the declaration names none - «y vs. x». */
+export const title = (encode) => `${slotWords(encode.y)} vs. ${slotWords(encode.x)}`;
+
+export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, title, model: scatterModel, render };
