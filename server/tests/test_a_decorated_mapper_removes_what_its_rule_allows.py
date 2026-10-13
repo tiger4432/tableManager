@@ -59,14 +59,22 @@ def _build_without_job(df, db):
     return _build(df, db).drop(columns=["job"])
 
 
+def _build_unread(df, db):
+    """`_build` of the rows it can read; a row whose qty is «unread» is a job it could not read."""
+    out = _build(df[df["qty"] != "unread"], db)
+    out.attrs[mapper_sdk.UNREAD_JOBS] = sorted(df.loc[df["qty"] == "unread", "job"])
+    return out
+
+
 @pytest.fixture(autouse=True)
 def _mappers_and_tables():
     mapper_sdk.mapper(name="sdkm_build")(_build)
     mapper_sdk.mapper(name="sdkm_build_nojob")(_build_without_job)
+    mapper_sdk.mapper(name="sdkm_build_unread")(_build_unread)
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
     yield
-    for name in ("sdkm_build", "sdkm_build_nojob"):
+    for name in ("sdkm_build", "sdkm_build_nojob", "sdkm_build_unread"):
         mapper_sdk.MAPPER_REGISTRY.pop(name, None)
         mapper_sdk.MAPPER_PARAMS.pop(name, None)
     for name in TABLES:
@@ -272,3 +280,42 @@ def test_a_replacement_takes_a_whole_map_and_its_human_corrections_with_it():
     assert not [c for c in _left(db) if c[0] == "J-B"]
     assert not db.query(models.CellOverwrite).filter(
         models.CellOverwrite.table_name == TGT, models.CellOverwrite.row_id == corrected).count()
+
+
+# ---------------------------------------------------------------------------
+# a job the mapper could not read keeps its old cells (총괄 10-13 ①)
+# ---------------------------------------------------------------------------
+
+#: `_build`'s envelope for J-A (2 rows) · J-B (0) · J-C (0) under allow_retraction, as eb1ae8c9f wrote it -
+#: before `UNREAD_JOBS` existed.
+TODAY = '{"batches": [{"target_table": "sdkm_tgt", "updates": [{"updates": {"job": "J-A", "cell": "c0", "v": "new"}, "source_name": "chain_ingestion", "updated_by": "_build"}, {"updates": {"job": "J-A", "cell": "c1", "v": "new"}, "source_name": "chain_ingestion", "updated_by": "_build"}], "retract": {"source_column": "job", "source_value": "J-A"}}, {"target_table": "sdkm_tgt", "updates": [], "retract": {"source_column": "job", "source_value": "J-B"}}, {"target_table": "sdkm_tgt", "updates": [], "retract": {"source_column": "job", "source_value": "J-C"}}]}'
+THREE = [("T1", "J-A", 2), ("T2", "J-B", 0), ("T3", "J-C", "unread")]
+
+
+def test_without_the_cell_the_envelope_is_todays_byte_for_byte():
+    import json
+    run = mapper_sdk.MAPPER_REGISTRY["sdkm_build"]
+    envelope = run(None, [_payload("T1", "J-A", 2), _payload("T2", "J-B", 0), _payload("T3", "J-C", 0)],
+                   rule=_rule(allow_retraction=True))
+    assert json.dumps(envelope, ensure_ascii=False) == TODAY
+
+
+def test_a_job_the_mapper_could_not_read_gets_no_batch_and_one_line(caplog):
+    run = mapper_sdk.MAPPER_REGISTRY["sdkm_build_unread"]
+    with caplog.at_level(logging.INFO):
+        envelope = run(None, [_payload(*p) for p in THREE], rule=_rule(allow_retraction=True))
+    assert [(b["retract"]["source_value"], len(b["updates"])) for b in envelope["batches"]] == [("J-A", 2), ("J-B", 0)]
+    assert [r.getMessage() for r in caplog.records if r.name == "mapper_sdk"] == [
+        "[Chain] sdkm_rule: kept old cells of 1 job(s) the mapper could not read - J-C"]
+
+
+@pytest.mark.parametrize("path", ["worker", "replay"])
+def test_of_three_jobs_the_unread_one_keeps_its_old_cells_and_the_two_are_retracted_as_today(path):
+    """J-A made two of its three cells, J-B none, J-C could not be read: J-A loses c2, J-B all, J-C nothing."""
+    db = _db()
+    _push(db, TGT, [{"job": job, "cell": "c%d" % i, "v": "old"} for job in ("J-A", "J-B", "J-C") for i in range(3)])
+    _push(db, TRIG, [{"tk": tk, "job": job, "qty": str(qty)} for tk, job, qty in THREE])
+
+    _run(db, _rule("sdkm_build_unread", allow_retraction=True), path)
+
+    assert _left(db) == [("J-A", "c0"), ("J-A", "c1"), ("J-C", "c0"), ("J-C", "c1"), ("J-C", "c2")]

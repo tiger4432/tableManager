@@ -19,6 +19,7 @@ both dictionaries go to the longest, leftmost first; a phrase that starts or end
 letter or digit only matches where the text does not continue that word (void is not in avoid).
 """
 import logging
+import math
 import re
 from collections import Counter
 
@@ -190,25 +191,28 @@ def find_links(text, names, links):
     return out
 
 
-#: What the model is asked (총괄 b5b335f2e ②). It holds no word of any domain: the words come
-#: from the dictionary rows and the operator's instruction, put where the <<...>> marks stand.
-ASK_LINKS_PROMPT = """Read the text and list every statement that one thing causes another.
+#: What the model is asked (총괄 b5b335f2e ②) - one request, any number of texts (총괄 f7a79b242). It holds
+#: no word of any domain: the words come from the dictionary rows, the operator's instruction and the
+#: texts, put where the <<...>> marks stand.
+ASK_LINKS_PROMPT = """Read each text below and list every statement in it that one thing causes another.
 When one sentence names several causes or effects, list one link for each cause and effect pair - separate items, which may quote the same evidence.
-Answer with one JSON object and nothing else:
-{"links": [{"cause": "...", "cause_key": null, "cause_direction": null, "effect": "...", "effect_key": null, "effect_direction": null, "link": "...", "evidence": "...", "negated": false, "certainty": null}]}
+Answer with one JSON object and nothing else - one item for each text, its id as written between the brackets of its [id] line, without the brackets:
+{"texts": [{"id": "...", "links": [{"cause": "...", "cause_key": null, "cause_direction": null, "effect": "...", "effect_key": null, "effect_direction": null, "link": "...", "evidence": "...", "negated": false, "certainty": null}]}]}
 - cause, effect: the shortest noun phrase of the text that names the thing, copied from the text - a few words, never a clause or a whole sentence (the whole sentence goes in evidence)
 - cause_key, effect_key: the identifier of the dictionary node the cause or the effect is, written exactly as listed; null when no listed node fits
 - cause_direction, effect_direction: "up" when the text says that thing increases, rises or grows, "down" when it says it decreases, falls or shrinks, null when it says neither
 - link: the words of the text that join the cause to the effect
-- evidence: the sentence of the text that says it, copied exactly
+- evidence: the sentence of the text that says it, copied exactly from that same text
 - negated: true when the text says the cause does not lead to the effect
 - certainty: "confirmed" when the text says it is confirmed, "suspected" when it says it is suspected, null when it says neither
 Dictionary, one node per line - identifier (node type): the phrases that name it
 <<dictionary>>
 <<instruction>>
-Text:
-<<text>>"""
+Texts, each after its [id] line:
+<<texts>>"""
 INSTRUCTION_HEADING = "Instruction from the operator:"
+#: The id a single text (a str) is asked under.
+ONE_TEXT_ID = 1
 LLM_EXTRACTOR = "llm:%s"
 #: The only *_direction answers kept, spelled exactly (소유자 10-11 「증감 방향」).
 DIRECTIONS = ("up", "down")
@@ -243,10 +247,10 @@ def one_of(answer, listed):
     return kept, (answer if kept is None and not crud.is_blank_value(answer) else None)
 
 
-def _listing(names):
-    """({identifier: (node_type, node_key)}, the dictionary as the model sees it - one line per node,
+def _node_lines(names):
+    """({identifier: (node_type, node_key)}, {node: its dictionary line}) - one line per node,
     «<identifier> (<type>): <phrase> / <phrase>»; the identifier is the key, `<type>:<key>` for a
-    key two types share)."""
+    key two types share. Both in the order the nodes first appear."""
     from chain.mapper_call import without_missing
     from database import crud
 
@@ -258,49 +262,49 @@ def _listing(names):
     shared = Counter(str(key) for _type, key in phrases)
     by_id = {(str(key) if shared[str(key)] == 1 else "%s:%s" % (node_type, key)): (node_type, key)
              for node_type, key in phrases}
-    return by_id, "\n".join("%s (%s): %s" % (ident, node[0], " / ".join(phrases[node]))
-                            for ident, node in by_id.items())
+    return by_id, {node: "%s (%s): %s" % (ident, node[0], " / ".join(phrases[node])) for ident, node in by_id.items()}
 
 
-def ask_links(text, names, instruction=None, match_at=None):
-    """`find_links`' rows, read by the language model `mapper_sdk.ask_json` reaches. The model
-    sees `names` one node per line - its identifier (the key; `<type>:<key>` for a key two
-    types share) and all its phrases - and answers a node's identifier or null for a cause and
-    an effect, with the text's own words. A listed identifier gives that node's type and key;
-    null gives the node whose phrase its words hold (`phrase_bag`); an identifier not listed gives
-    none and is said in one warning line. *_phrase is always the words. `certainty` is what the
-    text says, `suspected` when it says nothing - nothing becomes a fact before a person confirms it.
-    Every «one of the listed» answer - an identifier, a direction, the certainty - is read by `one_of`
-    (spaces trimmed, case kept); an answer outside the list is said in one warning line.
-    `cause_direction` / `phenomenon_direction` is the answer when it is one of DIRECTIONS as
-    written (spaces trimmed, case kept), else None - an answer that is neither null nor one of
-    them is said in one warning line. `dir` is their sign (`_signed`).
+def _listing(names, only=None):
+    """({identifier: node}, the dictionary as the model sees it) - every node's line, or `only` those
+    nodes' (identifiers stay the whole dictionary's)."""
+    by_id, lines = _node_lines(names)
+    return by_id, "\n".join(line for node, line in lines.items() if only is None or node in only)
 
-    A link's evidence is looked for in the whole text (`_evidence`); its sentence runs from the
-    start of the sentence the quote starts in to the end of the one it ends in, and sentence_no is
-    the first's. A link whose evidence the text does not hold is dropped and said in one
-    warning line; the others are kept.
 
-    Refused by name (`LlmRefused`) when the answer has not this shape, or every link it gave
-    quotes evidence the text does not hold."""
+class AskedLinks(list):
+    """`ask_links`' rows - a list - and what it took: `requests` (calls made, a text asked again alone
+    counted) · `texts` (handed in) · `refused` ([{id, reason}] of the texts no rows came back for) ·
+    `known` (with `known` handed: per request {texts, seeds, links, kept, nodes, listed} - k of n links,
+    j of m dictionary nodes)."""
+
+    def __init__(self, rows=(), *, requests=0, texts=0, refused=(), known=()):
+        super().__init__(rows)
+        self.requests, self.texts, self.refused, self.known = requests, texts, list(refused), list(known)
+
+
+def _requests(texts, cap):
+    """`texts` [(id, text)] in order, cut into requests of at most `cap` characters of text - a text
+    longer than `cap` goes alone."""
+    out, size = [], 0
+    for item in texts:
+        if out and out[-1] and size + len(item[1]) <= cap:
+            out[-1].append(item)
+            size += len(item[1])
+        else:
+            out.append([item])
+            size = len(item[1])
+    return out
+
+
+def _read(text, links, names, by_id, match_at, extractor):
+    """The rows of one text's answered `links` - every check below, for this text alone. Refused by name
+    (`LlmRefused`) when a link has not the shape, or every link quotes evidence the text does not hold."""
     from database import crud
     from utils import llm, phrase_bag
 
-    names = list(names or ())
-    by_id, dictionary = _listing(names)
-    prompt = (ASK_LINKS_PROMPT
-              .replace("<<dictionary>>", dictionary)
-              .replace("<<instruction>>", "%s\n%s" % (INSTRUCTION_HEADING, instruction)
-                       if not crud.is_blank_value(instruction) else "")
-              .replace("<<text>>", str(text or "")))
-    answer = llm.ask_json(prompt)
-    links = answer.get("links")
-    if not isinstance(links, list):
-        raise llm.LlmRefused("the answer has no 'links' list: %s" % sorted(answer)[:10])
-    text = str(text or "")
     whole, where = _evidence(text)
     spans = _sentence_spans(text)
-    extractor = LLM_EXTRACTOR % llm.model()
     out, dropped = [], []
     for number, item in enumerate(links, 1):
         said = {name: (item.get(name) if isinstance(item, dict) else None)
@@ -359,6 +363,355 @@ def ask_links(text, names, instruction=None, match_at=None):
                              " - link %d: %r" % (len(dropped), dropped[0],
                                                  links[dropped[0] - 1]["evidence"][:120]))
     return out
+
+
+#: What a model may wrap an id in - taken off both ends before ids are compared.
+ID_WRAPPING = "[]\"'“”‘’«»「」 "
+
+
+def _text_id(value):
+    """An id as compared: its text (`crud.clean_str_value` - 7, 7.0 and "7" alike, "007" not), brackets and
+    quotes off both ends."""
+    from database import crud
+
+    return crud.clean_str_value(value).strip(ID_WRAPPING)
+
+
+def _ask(request, prompt_of, read):
+    """One request -> ({id: rows}, {id: why}) for its texts [(id, text)]: the answer's item of each id,
+    read by `read(text, links)` - ids compared as text, brackets and quotes off (`_text_id`). A request of one
+    text answered {"links": [...]} is that text's answer. An answer refused whole gives every text its
+    sentence; a call that failed (`LlmCallFailed`) is raised - the whole batch fails (`max_group_attempts`)."""
+    from database import crud
+    from utils import llm
+
+    try:
+        answer = llm.ask_json(prompt_of(request))
+        items = answer.get("texts")
+        if not isinstance(items, list) and len(request) == 1 and isinstance(answer.get("links"), list):
+            items = [{"id": request[0][0], "links": answer["links"]}]       # one text, answered the one-text way
+        if not isinstance(items, list):
+            raise llm.LlmRefused("the answer has no 'texts' list: %s" % sorted(answer)[:10])
+    except llm.LlmCallFailed:
+        raise
+    except llm.LlmRefused as exc:
+        return {}, {ident: str(exc) for ident, _text in request}
+    by_id = {}
+    for item in items:
+        if isinstance(item, dict):
+            by_id.setdefault(_text_id(item.get("id")), item)       # the first item of an id is its answer
+    rows, why = {}, {}
+    for ident, text in request:
+        item = by_id.get(_text_id(ident))
+        if item is None:
+            why[ident] = "the answer has no item for text %r" % (ident,)
+        elif not isinstance(item.get("links"), list):
+            why[ident] = "the answer's item for text %r has no 'links' list: %s" % (ident, sorted(item)[:10])
+        else:
+            try:
+                rows[ident] = read(text, item["links"])
+            except llm.LlmRefused as exc:
+                why[ident] = str(exc)
+    return rows, why
+
+
+#: What `known` adds under the dictionary (총괄 d7a27a758 · 423599fe9, 소유자 「모델링이 서로 연결이 되어야」):
+#: the links already known among the request's nodes, and three asks - no word of any domain.
+KNOWN_HEADING = "Known links, one per line: <cause id> -> <effect id>, <effect id> (<predicate>)"
+KNOWN_ASKS = (
+    "Where a node of the dictionary or of the known links is what a text names, link to that node - a new"
+    " node only when none fits.",
+    "When a text names a step between the two ends of a known link, link that step: one link into it and one"
+    " out of it.",
+    "When A causes B and B causes C, answer A -> B and B -> C as two links, and give one thing the same"
+    " identifier or the same words in every text of this request.",
+)
+
+
+def _walked(seeds, follow, hops):
+    """The operating world's walk from `seeds` [(node_type, node_key)] along `follow`, `hops` steps - the
+    screen's own walk (`trace_router._evidence_graph`, no bundles), called directly on a connection of its
+    own - a session's, so inside a chain group it runs under `chain_statement_timeout_seconds` like the
+    group's own reads (`database._set_statement_time_limits`). A seed of a type that does not declare
+    exactly one key has no id from one node_key - left out, one line. No source-event projection: the walk's
+    own 503 (`HTTPException`, source_event_projection_not_deployed) fails the call."""
+    from sqlalchemy.orm import Session
+
+    from database import database
+    from declaration_names import bare_name
+    from ledger import explorer, trace_router
+    from ledger_api import ledger_subgraph
+
+    ids, left = [], []
+    for node_type, key in seeds:
+        bare = bare_name(str(node_type))
+        order = ledger_subgraph._declared_key_order(bare) or ()
+        if len(order) == 1:
+            ids.append(explorer.entity_id(bare, {order[0]: key}))
+        else:
+            left.append(bare)
+    if left:
+        logger.warning("[LLM] known links: %d seed(s) not walked - type(s) %s do not declare exactly one key",
+                       len(left), ", ".join(sorted(set(left))))
+    if not ids:
+        return {"nodes": [], "edges": []}
+    with Session(bind=database.engine) as session:
+        return trace_router._evidence_graph(
+            session.connection(), node_id={"positive": ids, "negative": []}, hops=hops, direction="both",
+            node_limit=ledger_subgraph.DEFAULT_NODE_LIMIT, edge_limit=ledger_subgraph.DEFAULT_EDGE_LIMIT,
+            follow=list(follow))
+
+
+def _known_links(walk, node_of, follow, certainty=None):
+    """The walk's edges along `follow` both ends of which are dictionary nodes, as
+    {cause, effect, predicate, confirmed, support} - support = the edge's records, confirmed = a record's
+    qualifier `certainty` (the mapper names it in `known`) says CONFIRMED; no name: none is."""
+    from declaration_names import bare_name
+    from ledger_api import ledger_subgraph
+
+    wanted = {bare_name(str(name)) for name in follow}
+    by_ref = {(bare_name(str(node[0])), str(node[1])): node for node in node_of}
+
+    def node(node_id):
+        try:
+            found = ledger_subgraph.decode_node_id(node_id)
+        except ValueError:
+            return None
+        keys = list((found.get("keys") or {}).values())
+        return by_ref.get((bare_name(str(found["type"])), str(keys[0]))) if len(keys) == 1 else None
+
+    out = {}
+    for edge in walk.get("edges") or ():
+        predicate = bare_name(str(edge.get("predicate")))
+        cause, effect = node(edge.get("source")), node(edge.get("target"))
+        if predicate not in wanted or cause is None or effect is None:
+            continue
+        records = list(edge.get("records") or ())
+        link = out.setdefault((cause, effect, predicate), {"cause": cause, "effect": effect, "predicate": predicate,
+                                                           "confirmed": False, "support": 0})
+        link["support"] = max(link["support"], len(records) + int(edge.get("records_more") or 0))
+        link["confirmed"] = link["confirmed"] or certainty is not None and any(
+            (said.get("qualifiers") or {}).get(certainty) == CONFIRMED for said in [edge, *records])
+    return list(out.values())
+
+
+def _chosen(seeds, links, per_seed, node_of):
+    """`links` in the order they go in (총괄 423599fe9): bridges - on a shortest way between two seeds -
+    first; then by steps from the nearest seed (1, 2, ...), the seeds taking turns, at most `per_seed`
+    each (bridges not counted); within each, confirmed first, more records, then the identifiers. The
+    ways are the links' own, read both ways. A link no seed reaches through them is left out."""
+    from collections import deque
+
+    def order(link):
+        return (not link["confirmed"], -link["support"],
+                node_of[link["cause"]], node_of[link["effect"]], link["predicate"])
+
+    near = {}
+    for link in links:
+        near.setdefault(link["cause"], set()).add(link["effect"])
+        near.setdefault(link["effect"], set()).add(link["cause"])
+    far = {}
+    for seed in seeds:
+        far[seed], queue = {seed: 0}, deque([seed])
+        while queue:
+            at = queue.popleft()
+            for step in sorted(near.get(at, ()), key=node_of.__getitem__):
+                if step not in far[seed]:
+                    far[seed][step] = far[seed][at] + 1
+                    queue.append(step)
+
+    # a link is a bridge when, from some seed s, it steps one further from s onto a node a shortest way from s
+    # to another seed passes - `toward`, read from the farthest node back: once per seed, links x seeds
+    seed_set, bridged = set(seeds), set()
+    for seed in seeds:
+        steps = far[seed]
+        toward = {}
+        for at in sorted(steps, key=steps.__getitem__, reverse=True):
+            toward[at] = (at != seed and at in seed_set) or any(
+                toward.get(step, False) for step in near.get(at, ()) if steps.get(step) == steps[at] + 1)
+        for link in links:
+            for a, b in ((link["cause"], link["effect"]), (link["effect"], link["cause"])):
+                if a in steps and steps.get(b) == steps[a] + 1 and toward[b]:
+                    bridged.add(id(link))
+    out = sorted((link for link in links if id(link) in bridged), key=order)
+    by_step = {}
+    for link in links:
+        if id(link) in bridged:
+            continue
+        reach = [(min(far[s].get(link["cause"], math.inf), far[s].get(link["effect"], math.inf)), n)
+                 for n, s in enumerate(seeds)]
+        steps, owner = min(reach) if reach else (math.inf, None)
+        if steps != math.inf:
+            by_step.setdefault(steps + 1, {}).setdefault(seeds[owner], []).append(link)
+    taken = Counter()
+    for step in sorted(by_step):
+        queues = {seed: deque(sorted(by_step[step].get(seed, ()), key=order)) for seed in seeds}
+        while True:
+            moved = False
+            for seed in seeds:
+                if queues[seed] and taken[seed] < per_seed:
+                    out.append(queues[seed].popleft())
+                    taken[seed] += 1
+                    moved = True
+            if not moved:
+                break
+    return out
+
+
+def _known_lines(kept, node_of):
+    """«<cause id> -> <effect id>, <effect id> (<predicate>)» - one line per cause and predicate, in the
+    order the links were kept."""
+    grouped = {}
+    for link in kept:
+        grouped.setdefault((link["cause"], link["predicate"]), []).append(link["effect"])
+    return ["%s -> %s (%s)" % (node_of[cause], ", ".join(node_of[effect] for effect in effects), predicate)
+            for (cause, predicate), effects in grouped.items()]
+
+
+def _known(texts, names, known, cells, match_at):
+    """(the dictionary as this request lists it, the block under it, what was cut) for `known`: the seeds
+    are the nodes a phrase of which a text holds (`phrase_bag.held_nodes`), in identifier order; the walk
+    from them gives the known links, `_chosen` their order. Within `known_chars` - the dictionary lines and
+    the known-link lines together - the seeds go first, then the links in order, each with its nodes; the
+    first that does not fit ends it. The dictionary lists those nodes only."""
+    from utils import phrase_bag
+
+    by_id, lines = _node_lines(names)
+    node_of = {node: ident for ident, node in by_id.items()}
+    seeds = sorted(phrase_bag.held_nodes(texts, names, match_at), key=node_of.__getitem__)
+    links = (_known_links(_walked(seeds, known["follow"], known["hops"]), node_of, known["follow"],
+                          known.get("certainty")) if seeds else [])
+    cap = cells["known_chars"]
+
+    def size(listed, kept):
+        said = [lines[node] for node in listed] + ([KNOWN_HEADING] + _known_lines(kept, node_of) if kept else [])
+        return len("\n".join(said))
+
+    listed, kept = [], []
+    for seed in seeds:
+        if size(listed + [seed], kept) > cap:
+            break
+        listed.append(seed)
+    for link in _chosen(seeds, links, cells["known_per_seed"], node_of) if len(listed) == len(seeds) else ():
+        more = [node for node in dict.fromkeys((link["cause"], link["effect"])) if node not in listed]
+        if size(listed + more, kept + [link]) > cap:
+            break
+        listed += more
+        kept.append(link)
+    block = ([KNOWN_HEADING] + _known_lines(kept, node_of) if kept else []) + list(KNOWN_ASKS)
+    said = {"seeds": len(seeds), "links": len(links), "kept": len(kept), "nodes": len(by_id), "listed": len(listed),
+            "certainty": known.get("certainty")}
+    return "\n".join(line for node, line in lines.items() if node in listed), "\n".join(block), said
+
+
+def ask_links(text, names, instruction=None, match_at=None, known=None):
+    """`find_links`' rows, read by the language model `mapper_sdk.ask_json` reaches. `text` is one text
+    (a str) or many - [{"id": <row key>, "text": <text>}], ids unique; each row of many carries its
+    text's `text_id` first. Either way an `AskedLinks` comes back: the rows, the texts in their order,
+    and what it took.
+
+    `known` - {"follow": [<predicate>, ...], "hops": n}, the mapper's - puts the links already known
+    among a request's nodes under its dictionary, and the dictionary becomes those nodes only (`_known`);
+    `AskedLinks.known` says per request what was cut. Absent, the prompt is as without it.
+
+    One request holds the dictionary and the instruction once and the texts, each after its «[id]»
+    line, up to `batch_chars` characters of text (llm_config.json; a str is one text under id
+    ONE_TEXT_ID). The answer gives each id its links. A text the answer has no item for, or an item
+    that is not read (no links list, a link without cause, effect or evidence, every link's evidence
+    outside that text), is asked again alone once - one warning line says which, for the request -
+    then refused with its sentence: no rows, one warning line, `refused` - a mapper hands those ids on
+    as `mapper_sdk.UNREAD_JOBS` so their old rows are not retracted. A text alone in its request is not
+    asked again. Every text refused raises `LlmRefused` (a single text: its own sentence). A call that
+    failed (`LlmCallFailed`) is not asked again text by text: it is raised at once.
+
+    Each text's links are read in that text alone, as one text always was. The model sees `names`
+    one node per line - its identifier (the key; `<type>:<key>` for a key two types share) and all its
+    phrases - and answers a node's identifier or null for a cause and an effect, with the text's own
+    words. A listed identifier gives that node's type and key; null gives the node whose phrase its
+    words hold (`phrase_bag`); an identifier not listed gives none and is said in one warning line.
+    *_phrase is always the words. `certainty` is what the text says, `suspected` when it says nothing -
+    nothing becomes a fact before a person confirms it. Every «one of the listed» answer - an
+    identifier, a direction, the certainty - is read by `one_of` (spaces trimmed, case kept); an
+    answer outside the list is said in one warning line. `cause_direction` / `phenomenon_direction`
+    is the answer when it is one of DIRECTIONS as written, else None. `dir` is their sign (`_signed`).
+
+    A link's evidence is looked for in the whole of its text (`_evidence`); its sentence runs from the
+    start of the sentence the quote starts in to the end of the one it ends in, and sentence_no is the
+    first's. A link whose evidence its text does not hold is dropped and said in one warning line."""
+    from chain import control as chain_control
+    from database import crud
+    from database.context import request_chain_group
+    from utils import llm
+
+    many = isinstance(text, (list, tuple))
+    texts = ([(item["id"], str(item.get("text") or "")) for item in text] if many
+             else [(ONE_TEXT_ID, str(text or ""))])
+    if not texts:
+        return AskedLinks()
+    seen = Counter(_text_id(ident) for ident, _text in texts)
+    twice = sorted(ident for ident, count in seen.items() if count > 1)
+    if twice:
+        raise ValueError("ask_links: text ids must be unique - %s given twice" % ", ".join(map(repr, twice[:5])))
+    if known is not None and not (
+            isinstance(known, dict) and known.get("follow") and not isinstance(known["follow"], str)
+            and isinstance(known.get("hops"), int) and not isinstance(known["hops"], bool) and known["hops"] > 0
+            and (known.get("certainty") is None or isinstance(known["certainty"], str))):
+        raise ValueError("ask_links: known is {'follow': [<predicate>, ...], 'hops': <steps above 0>, 'certainty':"
+                         " <the qualifier that says confirmed, optional>}, got %r" % (known,))
+    cells = llm.settings()
+    names = list(names or ())
+    by_id, dictionary = _listing(names)
+    extractor = LLM_EXTRACTOR % llm.model()
+    instructed = ("%s\n%s" % (INSTRUCTION_HEADING, instruction)
+                  if not crud.is_blank_value(instruction) else "")
+    cut = []
+
+    def prompt_of(request):
+        if request_chain_group.get():
+            chain_control.raise_if_paused()           # a stage boundary of the group: a pause rewinds it here
+        listed = dictionary
+        if known is not None:
+            listed, block, said = _known([one for _ident, one in request], names, known, cells, match_at)
+            listed += "\n" + block
+            cut.append(dict(said, texts=[ident for ident, _one in request]))
+            logger.info("[LLM] known links for %d text(s): %d seed(s), %d of %d link(s), dictionary %d of %d node(s)",
+                        len(request), said["seeds"], said["kept"], said["links"], said["listed"], said["nodes"])
+        return (ASK_LINKS_PROMPT
+                .replace("<<dictionary>>", listed)
+                .replace("<<instruction>>", instructed)
+                .replace("<<texts>>", "\n\n".join("[%s]\n%s" % pair for pair in request)))
+
+    def read(one, links):
+        return _read(one, links, names, by_id, match_at, extractor)
+
+    rows, why, asked = {}, {}, 0
+    for request in _requests(texts, cells["batch_chars"]):
+        got, failed = _ask(request, prompt_of, read)
+        asked += 1
+        rows.update(got)
+        if failed and len(request) > 1:
+            logger.warning("[LLM] a request of %d texts left %d unread - each asked alone: %s", len(request),
+                           len(failed), "; ".join("%r: %s" % (ident, said[:160]) for ident, said in failed.items()))
+            for ident, one in request:
+                if ident in failed:
+                    got, failed_alone = _ask([(ident, one)], prompt_of, read)
+                    asked += 1
+                    rows.update(got)
+                    why.update(failed_alone)
+        else:
+            why.update(failed)
+    if not rows:
+        first, said = next(iter(why.items()))
+        raise llm.LlmRefused(said if not many else "every text (%d) was refused - text %r: %s"
+                             % (len(texts), first, said))
+    for ident, said in why.items():
+        logger.warning("[LLM] text %r refused - no rows (%s): %s", ident, extractor, said[:300])
+    logger.info("[LLM] ask_links: %d text(s) in %d request(s) - %d row(s), %d text(s) refused",
+                len(texts), asked, sum(len(found) for found in rows.values()), len(why))
+    return AskedLinks([{"text_id": ident, **row} if many else row
+                       for ident, _text in texts for row in rows.get(ident, ())],
+                      requests=asked, texts=len(texts),
+                      refused=[{"id": ident, "reason": said} for ident, said in why.items()], known=cut)
 
 
 def unknown_words(texts, names, links):

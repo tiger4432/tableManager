@@ -4,5 +4,8 @@
   "api_key": "",
   "timeout_s": 60,
   "headers": {},
-  "proxy": null
+  "proxy": null,
+  "batch_chars": 4000,
+  "known_chars": 4000,
+  "known_per_seed": 5
 }

@@ -1,5 +1,46 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **LLM 후보 뽑기 — 묶음 · 답이 없으면 1 분 안에서 다시 · 이미 아는 인과 (총괄 f7a79b242 · d7a27a758 · 423599fe9, 소유자 「다 단발성 모델링만 나옴」 · 「어차피 서버가 거절함」)** — 이주 «없음» · 재기동 «체인 워커»
+>
+> ```
+> 무엇     ask_links 가 묶음의 글을 한 요청에(글 길이 합 batch_chars 마다 한 요청) · 빠진 글만 혼자 한 번 더 · 그래도 안 되면 그 글만 거절
+>          답이 없거나(연결 · 시한 · 5xx · 408) 게이트웨이가 429 로 거절하면 그 요청을 다시 — 5 · 10 · 20 · 20 초 뒤(429 는 그 Retry-After),
+>            다음 시도가 첫 실패 뒤 60 초 안에 시작할 때만. 첫 실패 뒤 약 55 초 안에 살아나면 지나간다. 속도 조절은 게이트웨이 몫(이쪽은 세지 않음)
+>          맵퍼가 known 을 넘기면 요청마다 그 글이 부르는 노드 사이의 아는 링크를 싣고 사전은 그 노드만 (다리 -> 1 걸음 -> 2 걸음 · 씨앗마다 k 개)
+> 설정     server/config/llm_config.json  "batch_chars": 4000   (없으면 이 값 · 부를 때마다 읽음)
+>          맵퍼 ask_links(texts, names) — texts = [{"id": <글 id>, "text": <글>}] · 규칙 "rows_per_run": 20   (TEXT_LINKS_GUIDE §6)
+>          아는 인과: ask_links(texts, names, known={"follow": ["<인과 술어>"], "hops": 2, "certainty": "certainty"}) · "known_chars": 4000 · "known_per_seed": 5   (§6-2)
+> 잴 것    바꾸기 «전»에 한 번, 바꾸고 묶음이 돈 «뒤»에 한 번 — 읽기만
+>            conda run -n assy_manager python server/scripts/causal_graph_connectivity.py --predicate <인과 술어>
+>              nodes · links · pieces · largest piece · lone pairs
+> 볼 것    chain_worker.log
+>            [LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused
+>            [LLM] call failed (<사유>) - retrying in N s (K of 4)
+>            [LLM] a request of N texts left K unread - each asked alone: '<글 id>': the answer has no item for text '<글 id>'
+>            [LLM] text '<글 id>' refused - no rows (llm:<모델>): <사유>
+>            [Chain] <규칙>: kept old cells of N job(s) the mapper could not read - <글 id>
+>            [LLM] known links for N text(s): S seed(s), K of L link(s), dictionary J of M node(s)
+>          server/llm_requests.log — 부를 때마다 보냄 · 받음 두 줄
+> 답의 뜻   «in K request(s)» 의 K 가 글 수와 같다 -> 글마다 혼자 — batch_chars 가 글보다 작다. 값을 키운다
+>          «refused» 줄 -> 그 글은 이번에 후보 0 행. 바로 뒤 «kept old cells of N job(s) …» 가 있으면 옛 후보는 그대로
+>            그 줄이 없으면 맵퍼가 refused 를 attrs[UNREAD_JOBS] 에 안 싣는다(가이드 §6 예시) — 그 글의 손대지 않은 옛 후보가 지워졌다. replay 로 다시 읽힌다
+>          «call failed (…) - retrying in N s (K of 4)» -> 답이 없거나 429. 첫 실패 뒤 약 55 초 안에 살아나면 그 묶음은 그대로 지나간다
+>            기다리는 동안 그 묶음이 쥔 표의 다른 규칙 · 소급이 선다(한 요청에 최악 약 2 × timeout_s + 60 초). 기다림 중 Pause 는 1 초 안에 묶음을 되감는다
+>          «the language model call failed: …» 로 묶음 실패 -> 55 초 넘게 답이 없었다(또는 429 가 이어졌다). 글마다 다시 묻지 않고 한 번에 실패
+>            ⚠️ max_group_attempts 기본 1 이면 그 묶음은 FAILED(격리) — 게이트웨이가 돌아온 뒤 관리 화면에서 다시 돌린다(replay)
+>          «it asked to wait N s (Retry-After), more than 60 s» -> 게이트웨이가 1 분 넘게 막았다 — 기다리지 않고 실패시켰다
+>          «the gateway refused the key (401)» -> api_key · headers 를 고친다(llm_config.json, 다음 부름부터)
+>          429 로 실패가 잦다 -> 게이트웨이의 한도에 걸린다 — rows_per_run 을 줄이거나 batch_chars 를 키워 요청 수를 줄인다
+>          연결성: pieces 가 links 와 거의 같고 lone pairs 가 100 % 근처 -> 쌍의 집합(오늘의 모양). 뒤에 pieces 가 줄고 largest piece 가 커지면 이어지고 있다
+>          known 의 certainty 칸을 안 적으면 «확인된 것 먼저» 없이 근거 수로만 고른다(결과 known 의 certainty null)
+>          «known links … 0 seed(s)» 가 계속 -> 글에 사전 구절이 그대로 안 나온다 — 사전에 구절을 더하거나 match_at 을 낮춘다
+>          «K of L link(s)» 에서 K 가 늘 작다 -> known_chars 에 걸린다 — 값을 키우면 프롬프트가 커진다
+>          «seed(s) not walked - type(s) X do not declare exactly one key» -> 그 타입의 선언 키가 하나가 아니다(둘 이상이거나 선언에 없음) — 그 씨앗에서는 안 걷는다(나머지는 그대로)
+> 급할 때   맵퍼에서 known 을 빼면 아는 인과 없이 §6 모양 그대로 · 맵퍼를 글 하나씩 부르는 옛 모양(ask_links(text, names))으로 두어도 돈다 — 요청 = 글 수
+> 되돌리기  병합 때 총괄이 git revert -m 1 <병합 해시> 로 적음
+> 안 잰 것  진짜 모델이 묶음 답을 얼마나 잘 하나(글 id 를 섞는지) · 운영 게이트웨이의 실제 글자 한도 · 아는 인과를 실으면 운영 그래프가 실제로 이어지나(위 명령으로 소유자가 잼)
+> ```
+
 > ## [10-13] **decide 집계가 같은 이름의 확정 칸을 채운다 (총괄 3e5c9a69e ㄱ, 소유자 «그냥 호환되게»)** — 이주 «없음» · 재기동 «체인 워커»
 >
 > ```
@@ -1840,6 +1881,7 @@
 >                적지 않으면 지금 그대로(자르지 않음). 다른 표의 줄은 다른 슬롯에서 돈다
 >                ⚠️ 한 이벤트에 여러 행이 묶인 것(소급 · 삭제 등)은 쪼개지 않고 통째로 간다
 > 할 일           LLM 규칙의 "run_in": "operation" 은 지워도 되고 그대로 둬도 된다(거절 안 함). "rows_per_run": 1 은 남긴다
+>                 ⚠️ 10-13 부터 LLM 맵퍼는 묶음 — rows_per_run 은 묶음 크기(예: 20), 맵퍼는 글 여럿을 한 번에(맨 위 10-13 LLM 절)
 > 볼 줄          chain_worker.log (켜질 때 · 선언 내용이 바뀐 뒤 한 번):
 >                  [ChainRules] <규칙>: run_in is retired - this rule runs in the chain; rows_per_run splits its groups
 >                  = 그 규칙에 아직 run_in 이 적혀 있다. 체인에서 돈다

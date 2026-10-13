@@ -333,16 +333,19 @@ def progress(stage):
 WRITTEN_AT_ONCE = ("db_pid", "lock_db_pid")
 
 
-def note_work(**facts):
+def note_work(db_session=None, **facts):
     """Facts about this thread's open claims (the database pid the work is running on).
     Not progress - a note refreshes nothing; a `WRITTEN_AT_ONCE` fact that changed on an
-    `acted_on` claim rewrites the beat."""
+    `acted_on` claim rewrites the beat. `db_session`: the session the facts are of - a claim
+    whose `owner` is another session takes nothing from this note (최종 검수 2: a side session
+    begun on a chain group's thread - a walk, a probe - noted its pid over the group's, and a
+    pause cancels by that pid)."""
     now = time.time()
     with _state_lock:
         tid = threading.get_ident()
         changed = set()
         for c in _claims.values():
-            if c["thread"] == tid:
+            if c["thread"] == tid and (db_session is None or c.get("owner") in (None, db_session)):
                 if c.get("acted_on") and any(c["facts"].get(k) != v for k, v in facts.items()
                                              if k in WRITTEN_AT_ONCE):
                     changed.add(c["name"])
@@ -392,7 +395,7 @@ def stalled_lines(name, probe, shown=()):
 
 
 @contextmanager
-def work_claim(name, what, note=None, acted_on=False):
+def work_claim(name, what, note=None, acted_on=False, owner=None):
     """Declare a unit of real work in progress for worker ``name``.
 
     Wrap the whole unit (one file's ingestion), and call ``beat(name)`` or
@@ -404,6 +407,7 @@ def work_claim(name, what, note=None, acted_on=False):
     whose note is a channel of its own (the chain's drop counts) passes that instead.
     `acted_on`: another process acts on this claim's `WRITTEN_AT_ONCE` facts (a chain group -
     a pause and a set-aside cancel by its pids), so they reach the file when they change.
+    `owner`: the session the work runs on (`id(session)`) - only its notes reach this claim (`note_work`).
     """
     now = time.time()
     cid = next(_claim_seq)
@@ -411,7 +415,8 @@ def work_claim(name, what, note=None, acted_on=False):
         _claims[cid] = {"id": cid, "name": name, "what": str(what)[:200],
                         "thread": threading.get_ident(),
                         "started": now, "last_progress": now,
-                        "stage": None, "facts": {}, "stalled_on": None, "acted_on": acted_on}
+                        "stage": None, "facts": {}, "stalled_on": None, "acted_on": acted_on,
+                        "owner": owner}
     # Beat on entry so the claim is visible in the heartbeat file immediately,
     # rather than only after the next poller tick.
     beat(name, note=f"start: {what}" if note is None else note, force=True)

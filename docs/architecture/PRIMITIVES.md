@@ -2310,6 +2310,16 @@
 - **어디**: `server/utils/text_links.py` `one_of(answer, listed)` → (kept, unlisted) — 앞뒤 공백만 벗기고 목록 철자 그대로면 kept, 빈 값(`crud.is_blank_value`)도 목록도 아니면 unlisted. 부르는 곳 다섯 — `ask_links` 의 사전 식별자 · 증감 방향 · 확실성(목록 [confirmed, suspected], 밖이면 suspected + 한 줄) · `dictionary_suggest.ask_dictionary` 의 사전 식별자 · 새 노드 타입(10-11 셋을 모음). 경고 문장은 부르는 쪽마다.
 - **함정**: 대소문자를 접지 않는다 — 다르게 받고 싶으면 이 함수를 고친다. 셋째 사본을 적지 않는다.
 
+### **LLM 을 다시 묻는 것은 `utils.llm.ask_json` 한 자리 — 부름 수는 세지 않는다** (2026-10-13 등록 · 총괄 10-13 ④, 소유자 「어차피 서버가 거절함」)
+- **어디**: `server/utils/llm.py` `ask_json` — 답이 없음(`_no_answer`: 연결 · 시한 · 5xx · 408)과 429 를 `CALL_RETRY_WAITS`(5 · 10 · 20 · 20 초, 429 는 Retry-After) 뒤 다시, 다음 시도가 첫 실패 뒤 `CALL_RETRY_WINDOW_S`(60) 안일 때만 — 첫 실패 뒤 약 55 초 안에 살아나면 지나감. 실패 분류는 `_refused`. 기다림은 `_wait`(1 초 조각 — 조각마다 `heartbeat.progress`, 체인 묶음 안이면 `chain.control.raise_if_paused`).
+- **언제 재사용**: LLM 을 부르는 새 자리는 `ask_json`(맵퍼는 `mapper_sdk.ask_json`)을 부른다 — 옆에서 openai 를 직접 부르면 다시 묻기도 일시정지도 없다.
+- **함정**: 기다림은 부른 자리의 트랜잭션 안이다(체인이면 그 묶음의 표 잠금을 쥔 채). openai 클라이언트의 다시 시도는 0 — 다시 묻기는 이 자리만 한다.
+
+### **맵퍼가 «이번에 못 읽은 job» 은 `mapper_sdk.UNREAD_JOBS` — 회수에서 빠진다** (2026-10-13 등록 · 총괄 10-13 ①)
+- **어디**: 맵퍼 결과 DataFrame 의 `attrs[UNREAD_JOBS]`(job 값 목록) → `mapper_sdk._removal_batches` 가 `allow_retraction` 에서 그 job 의 배치를 안 만든다(옛 칸 그대로 · 그 job 의 행도 안 씀) · 줄 «[Chain] <규칙>: kept old cells of N job(s) the mapper could not read».
+- **언제 재사용**: 맵퍼가 어떤 입력을 «모름»으로 끝냈을 때(외부 호출 실패 · 모델이 못 읽음) — «아무것도 안 냄»과 가른다. `ask_links` 의 `refused` 가 그 경우.
+- **함정**: 값은 job 칸(`target_job_column`)의 값이어야 한다. `allow_replace_map` 에서는 안 읽는다.
+
 ### 교체 쓰기 전 수 대조 게이트 — 직렬화가 **원본 집합**보다 적으면 거부 (2026-07-28 등록 · 2026-07-30 대조축 정정)
 - **무엇**: 전량 교체(replace) 쓰기 직전에 **원본 집합(필터 이전)의 non-empty 개수 vs 직렬화 페이로드의 개수**를 대조해, 페이로드가 적으면 confirm 이전에 거부하고 **삭제될 개수를 메시지에 명시**한다. 교체 의미론에서 "빠짐 = 삭제"이므로, 이 한 줄 산술이 §1 replace_map의 "불완전한 집합을 보내면 전량 파괴" 함정의 **쓰기 쪽 집행 장치**다(읽기 쪽 짝은 위 "절단 응답은 실패로 강등").
 - **어디**: `client2/src/map_editor.js`의 `pushMapData`(`6db517d` H2) — 메타 미등록 맵을 기본 프레임으로 열어 유효 다이 마스크·격자 범위가 셀을 잘라내던 경로(실측 1293→379 삭제)를 막았다. 대조는 **원시 `gridData`의 non-empty 키 수 vs `eachSavableCell`이 낸 `updates.length`**다.

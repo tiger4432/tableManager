@@ -47,12 +47,18 @@ def _index(names):
     return phrases, by_gram
 
 
-def _pick(answer, index, match_at):
+def _scored(answer, index, match_at):
+    """[(score, position)] of the phrases scoring `match_at` (None: MATCH_AT) or more, in dictionary order."""
     phrases, by_gram = index
     at = MATCH_AT if match_at is None else float(match_at)
     hits = Counter(position for gram in _bag(answer) for position in by_gram.get(gram, ()))
     scored = [(hits[p] / len(phrases[p][2]), p) for p in sorted(hits)]
-    scored = [(score, p) for score, p in scored if score >= at]
+    return [(score, p) for score, p in scored if score >= at]
+
+
+def _pick(answer, index, match_at):
+    phrases = index[0]
+    scored = _scored(answer, index, match_at)
     if not scored:
         return None
     top = max(score for score, _p in scored)
@@ -74,6 +80,15 @@ def match_phrase(answer, names, match_at=MATCH_AT):
     phrase are None and `ambiguous` holds them. None when no node reaches `match_at` (None: MATCH_AT)."""
     names = list(names or ())
     return _pick(answer, _index(names), match_at)
+
+
+def held_nodes(texts, names, match_at=None):
+    """[(node_type, node_key)] of every node one of `texts` holds a phrase of, scored as `match_phrase`
+    scores, in the dictionary's order - `text_links.ask_links`' seeds. Every node at `match_at` or above,
+    not the top one: a text names many."""
+    index = _index(list(names or ()))
+    held = sorted({p for text in texts or () for _score, p in _scored(text, index, match_at)})
+    return list(dict.fromkeys(index[0][p][0] for p in held))
 
 
 def rematch_rows(rows, names, match_at=None):
