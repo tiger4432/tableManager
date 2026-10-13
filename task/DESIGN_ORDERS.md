@@ -39141,3 +39141,23 @@ land     on the branch that goes to main next (design-spotfire carries the test 
 할 것    CODE_MAP 해당 절 · RUN.md 맨 위 절들이 코드와 같은 말인지 · RELEASE_LOG 항목 하나씩 있는지 · 되돌리기 줄은 해시로 — 각 항목 «맞음/고침» 한 줄씩, 1 시간 안
 끝나면   .claude/doc_sync_pending 지움 · 한 줄 보고. 무거운 일 없음
 ```
+
+> **[총괄 -> 클라] 10-14 — 원장 선언 창을 걷기 문장 바 모양으로 (소유자 확정)**
+
+```
+소유자 원문  «창도 바꾸고 싶은데 우리 걷기 상단 배너 느낌으로 그냥 버튼 및 드롭다운 식으로 하면 좋을듯»
+            «2도 하게하고 1 안접어도 될듯 이대로 만들어» (2 = vocabulary · entities 도 이 창에서, 1 = with · when 안 접음)
+            «너가 아티팩트 만들어주는건 예쁜데 왜 실제로 구현하는건 못생김?» · «너 아티팩트 만드는 스킬로 만들게하면 안됨?»
+시안(정본)   task/design/LEDGER_DECLARATION_BAR.dc.html  (아티팩트 https://claude.ai/artifact/A6c8Eu6JgoyakTP2JyKRCL)
+짓는 법      🔴 짓기 전에 artifact-design 스킬을 불러 읽고, 시안의 마크업 · CSS(칩 모양 · 색 · 간격 · IBM Plex 글꼴 · 팝업 그림자)를 «그대로 옮긴다» — 다시 디자인하지 않는다
+            시안 hex 는 tokens.css 의 같은 값 변수로 바꿔 적기만(어두운 테마가 따라오게). 새 색 · 새 간격 금지
+무엇        원천 고르기 칩 · Read 줄(표 · 원자 시각 칸 · 시간대 · identity) · Attributes 줄(노드 타입마다 «속성 ← 칸») ·
+            Sentences(문장 한 줄 = 엣지 하나: 주어 노드 (키 ← 칸 …) — 술어 → 대상 노드 (키 ← 칸 …) · with 수식어 · when) · + Sentence ·
+            칸 칩 팝업 = 그 표의 칸 목록 + 형(text · number · datetime) + «Constant…» · Preview 표 · Save draft · Activate
+            + 같은 창에서 vocabulary(술어: 주어 타입 · 대상 종류/타입 · 수식어) · entities(노드 타입: 키 · 속성) 도 같은 바 모양으로
+자리        지금 원장 소스 선언 창(온톨로지 탐색기 어드민)의 그 자리를 이것으로 — 새 페이지를 옆에 만들지 않는다. 부품은 조립식(자기 div · deps 주입)
+데이터      B 의 짧은 꼴 착지 뒤 B 가 여는 문(짧은 꼴 소스 읽기 · 칸 목록과 형 · 초안 저장/활성화)으로. 그 전엔 견본 선언 픽스처로 화면부터
+게이트      🔴 «시안 | 산출물» 나란히 스샷(같은 데이터 · 1280 · 1024 · 390) + 칸 간격 · 칩 높이 · 글자 크기 재기 표 — 이 표 없으면 병합 안 함
+            screen_layout 에 이 창 · 팝업 열린 장면 · UI 문자열 영어 · 다섯 크기 초록
+보고        짓기 전에 «지금 창의 자리 · 바꿀 파일 · 시안과 다르게 해야 하는 곳(있으면 왜)»을 먼저
+```
