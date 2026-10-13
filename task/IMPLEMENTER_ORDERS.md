@@ -67177,3 +67177,14 @@ M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 
 RUN     한 줄: «코어 8 이상 · 메모리 여유 1 GB 이상이면 6(p50 0.49 s), 프로세스 하나 ~135 MB + PG 연결 2 — max_connections 를 같이 볼 것» · 되돌리기
 착지    짧은 검수 없이(값 하나) · RELEASE_LOG «바뀐 동작» 한 줄
 ```
+
+> **[총괄 -> 구현자 A] 10-14 아침 — decide 다시 세기가 원천 문(require · exclude)을 안 거름 (B 옛 키 착지 중 찾음)**
+
+```
+무엇    decide 의 다시 세기(_aggregate_affected_keys · 수식 집계 몸통)가 규칙의 on.require · exclude 를 안 걸러, 사건에서는 걸러지는 행도 집계에 듦
+        -> 집계가 읽는 원천 행 집합 = 규칙이 사건에서 받는 행 집합(같은 판정 한 자리 — rule_run.held_back 의 그 술어를 SQL/행 읽기 양쪽이 지남)
+        그러면 «채움 -> 빈칸» 편집으로 require 를 벗어난 행도 옛 키에서 빠짐(B 의 남는 것 a)
+게이트  require 있는 decide: 걸러지는 행이 집계에 안 듦 · 채움 -> 빈칸 편집 뒤 그 키 수가 줄어듦 · exclude 같은 두 칸 · 변이 하나
+순서    B 옛 키 착지(impl-b-oldkeys-land) 뒤 — 같은 mapper.py. 그 전엔 읽기 · 설계만
+착지    짧은 검수 · 바뀐 동작(집계 수가 줄 수 있음)은 RELEASE_LOG 와 RUN 에 «소급으로 다시 세는 법» 한 줄
+```
