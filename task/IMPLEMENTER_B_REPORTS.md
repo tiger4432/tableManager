@@ -461,3 +461,42 @@ DB 큰 것  쪽 열쇠 칸에 인덱스가 없는 소스(die_inspection run_uid)
 여쭐 것   ① 조각 수 기본값 — «코어 수의 절반, 4 이하»로 해도 되는지(운영 코어 수 모름)
           ② ㄱ 의 조각 자식이 같은 소급 실행 행 하나를 나눠 쓰는 것(실행 줄 하나 · 진행 하나) — 화면에 조각마다 줄을 따로 보일 필요가 있는지
 ```
+
+> **[구현자 B -> 총괄] 10-13 ㄱ 착지 9351a3580 — 원장 다시 번역 조각 N 개 + 검수 bdc08ec39 고칠 것 1~8 + 작은 ①**
+
+**무엇이 바뀌었나**
+```
+조각      소스 전체 다시 번역 = 쪽 열쇠 «값» 경계로 N 조각 · 조각마다 자식 프로세스(admin.retroactive_run --slice)
+          실행 행 하나(부모만 씀 — 5 초에 한 번과 조각이 끝날 때) · × = 실행 행으로 조각 전부
+          조각이 죽으면 나머지 stdin 닫힘 -> 쪽 경계에서 멈춤 -> failed + 조각마다 행 수 · 상태 · 부모가 죽어도 같은 길
+          한 조각으로 도는 때: 설정 1 · 쪽 열쇠 인덱스 없음(«… and the run goes in one slice» 줄) · 열쇠 NULL 행 · 뷰 · 실행 행 없는 실행
+          컷: 한 값이 컷 둘을 걸치면 하나, 마지막 값에는 컷 없음(빈 조각 안 생김)
+          설정 ingestion_settings "ledger_translate_slices"(없으면 코어 절반 · 4 이하) · 줄 «N slices (cores C)» · 조각 줄 앞 «[slice k/N pid P]»
+검수 1~8   1 남이 짓는 파티션은 «left to it» · 파티션 하나 실패가 나머지를 안 세움 · «짓는 중» 판정 = db_waits.index_builds 하나(models._building 도 이것)
+          2 원장 짓기는 다른 줄(_LEDGER_INDEX_LINE) · statement_timeout 0 · lock_timeout DDL_LOCK_TIMEOUT · 기다리는 동안 «waiting for … pid N (이름)» 줄 · /admin/indexes 원장 줄 building
+          3 단계 줄은 실행 기록을 안 고침(쪽 경계 한 번)   4 끄기 시험이 EXPLAIN 을 셈   5 쪽 열쇠 인덱스 실행에 한 번
+          6 뷰는 «declare» 줄 없음   7 박동은 그 실행 스레드가 쥔 연결만   8 시험 정리는 자기 스키마에 CONCURRENTLY 없이 · 시험 DDL 은 search_path 를 스크래치 하나로
+작은 ①    접기 키 색인 판정이 search 종류를 안 침
+문서      RUN.md 새 절 + 옛 두 절 낡은 줄 · RELEASE_LOG 새 항목 + 옛 두 항목 «고침» 칸 · CODE_MAP 넷
+```
+
+**잰 것** (박스 · 운영 주장 아님)
+```
+시험      착지 머리에서 비PG 111 passed · PG 34 passed(만진 파일과 그 seat 를 지나는 파일) — rebase 전 넓은 판 비PG 398 · PG 43
+변이      17 개 모두 빨강: 고침마다 되돌림(q1 둘 · q2 둘 · q3~q7) · 조각 규칙 깨기(s1~s7) · 작은 ①(r1)
+          처음 판에서 살아남은 셋은 시험을 고쳐 다시 빨강 — 원장 줄 둘이 겹쳐 지어지는 칸 · 원래 결함 줄 되돌리기 · 한 값이 컷 둘을 걸치는 판
+실제 판    런처 넷 · hold 판 3000 행 · 스크래치 assy_b_slices_1013 · 착지 머리 9351a3580:
+          N=1 · N=4 원자(id 뺀 칸 전부)+행 색인 같음 · 실행 몸통 9.1 s -> 6.1 s(조각 기동 약 3 s 포함)
+          원장 잠금 중 × -> 네 조각 «stopped» 뒤 cancelled · 잠금 중 조각 2 taskkill -> failed + 문장 · 다시 돌리면 처음과 같은 답
+          assy_retroactive 연결 남은 것 0 · public 행 변화 0
+public    시험 정리 코드(이번 판 처음 것)가 assy_test public.idx_audit_recent_groups 를 지웠고, 지시대로 다시 지음 — public 선언 인덱스 47 -> 48/49
+          남은 하나 idx_outbox_ledger_pending 은 public.database_outbox 에 ledger_state 칸이 없어 지을 수 없음(제 정리와 무관)
+```
+
+**모르는 것**
+```
+운영 크기에서 조각 N 개가 DB 를 얼마나 더 쓰나 · 어디서 DB 가 병목이 되나 — 안 잼
+원장 짓기의 기다림 상한은 짓기가 «끝난 뒤» 오는 기다림이라, 오래 쥔 트랜잭션이 있으면 기동마다 그 파티션 짓기 시간을 버림(RUN.md 에 적음)
+그리드 읽기의 검색 상태가 부르는 models._building 이 이제 질의 둘(현재 스키마 · index_builds) — 한 읽기에 왕복 하나 더, 안 잼
+```
+다음: ㄴ(분자마다 pandas 일 올리기 — 계약 그대로).
