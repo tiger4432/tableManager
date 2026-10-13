@@ -7,7 +7,6 @@
 .tb-head__sp { flex: 1; }
 .tb-page .rb-board { min-height: 0; background: var(--sf-page); gap: var(--sf-gap); }
 .tb-page .rb-panel { overflow: hidden; }
-.tb-page .rb-panel.tb-pops { overflow: visible; z-index: 3; }
 
 /* scatter: Y tray · plot · legend / X tray */
 .tb-scatter { display: grid; grid-template-columns: 22px minmax(0, 1fr) calc(var(--sf-legend-w) + 10px); grid-template-rows: minmax(0, 1fr) 24px; }
@@ -37,3 +36,5 @@
   --bg-surface: var(--sf-bg); --text: var(--sf-text); --border: var(--sf-pill); --border-strong: var(--sf-pill); }
 .tb-start__pick { display: flex; align-items: center; gap: 8px; }
 .tb-start__type { height: 24px; background: var(--sf-bg); color: var(--sf-text); border: 1px solid var(--sf-pill); }
+/* A start's × stands alone among its basket's words here (the walk page's bar has Walk beside it): as high as its line. */
+.tb-start .wk-basketremove { height: auto; }

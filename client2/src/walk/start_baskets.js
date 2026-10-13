@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
+import { fitUnder } from '../dropdown.js';
 
 export const BASKET_WORDS = Object.freeze({
   positive: 'Positive',
@@ -43,8 +44,14 @@ export class StartBaskets {
     this.adders = this._el('div', 'wk-adders');
     if (deps.pick) body.append(deps.pick);
     body.append(this.adders);
-    this.pop.append(this._el('summary', 'wk-barchip', BASKET_WORDS.addStart), body);
+    const chip = this._el('summary', 'wk-barchip', BASKET_WORDS.addStart);
+    this.pop.append(chip, body);
     this.root.append(this.list, this.pop);
+    // Open, its window takes the one placement (dropdown.js fitUnder, lead 72b2d7f8f): under the chip, above it at the
+    // foot of the page, cut and scrolled when neither fits; fixed, so a panel that clips its own box does not hide it.
+    // The gap is the stylesheet's --space-1.
+    this.place = () => { if (this.pop.open) fitUnder(body, chip, { align: 'left', gap: 3.4 }); };
+    if (this.pop.addEventListener) this.pop.addEventListener('toggle', this.place);
     mount.appendChild(this.root);
     // Whoever writes the marking, the baskets say it as it stands.
     this.unsubscribe = this.markings.subscribe(this.name, () => this.render());
@@ -106,5 +113,7 @@ export class StartBaskets {
       this.adders.append(add);
     }
     if (node && node.unheld) this.adders.append(this._el('div', 'wk-note wk-unheld', BASKET_WORDS.unheld));
+    // Its window grew or shrank (a node list came): placed again.
+    this.place();
   }
 }
