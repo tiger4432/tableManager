@@ -21,6 +21,8 @@ const REAL = {
   visual: await import('../src/testbed/visual_part.js'),
   table: await import('../src/testbed/kinds/table.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
+  trend: await import('../src/walk/trend.js'),
+  reach: await import('../src/walk/reach_table.js'),
 };
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
 const { HubBook, hubId } = await import('../src/testbed/hubs.js');
@@ -424,6 +426,37 @@ async function markerPress(M) {
   return { points, marked: markings.entries('marking:pick').map(([id]) => id), lines: table.model.lines.map((l) => l.id) };
 }
 
+// ── the walk screen's trend as one scatter declaration (owner 10-13 «트렌드 부품은 산점도로 대체») ──
+/** A trend's points (walk/trend.js rowsPoints) and the scatter's - X the time of Y's reads, a point a value record - on one
+ *  answer: [ms, value] each, sorted; and what a record pressed marks. */
+async function trendAsScatter(M) {
+  const at = (d) => `2026-01-0${d}T00:00:00Z`;
+  const reads = [['W1', '30', 1], ['W1', '32', 2], ['W1', '31', 4], ['W2', '10', 3], ['W3', '12', 5]];
+  const answer = { nodes: [wafer('W1'), wafer('W2'), wafer('W3'), ANSWER.nodes[4]],
+    edges: reads.map(([w, v, d], i) => ({ id: `e${i}`, claim_id: `c${i}`, source: w, target: 'QT', predicate: 'measures', qualifiers: { value: v }, occurred_at: at(d) })),
+    truncated: ANSWER.truncated };
+  const index = M.reach.indexGraph(answer);
+  const trend = M.trend.rowsPoints({ index, groups: [{ inside: M.visual.insideOf(answer) }] }, ['W1', 'W2', 'W3'], TEMP)
+    .map((p) => [p.t, p.value]).sort((a, b) => a[0] - b[0]);
+  const doc = makeDoc('dark');
+  const markings = new MarkingStore();
+  const handlers = {};
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on(name, fn) { handlers[name] = fn; }, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'wafer', start: { marking: null }, system: null, filter: [], writes: 'marking:pick',
+    markerBy: 'record', encode: { x: { ...TEMP, of: 'time' }, y: TEMP } };
+  const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl,
+    kinds: { scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(),
+    charts: stubCharts, fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+  part.mount();
+  await settle();
+  const scatter = part.model.points.map((p) => [Date.parse(p.x), p.y]).sort((a, b) => a[0] - b[0]);
+  const pill = walk(part.host).filter((n) => String(n.className).startsWith('sf-pill')).map((n) => n._text).find((w) => w.startsWith('('));
+  const second = part.model.points.find((p) => p.y === '32');
+  if (second) handlers.click({ data: { id: second.id }, event: { event: {} } });
+  return { same: JSON.stringify(trend) === JSON.stringify(scatter), n: [trend.length, scatter.length], times: scatter.map(([t]) => new Date(t).toISOString().slice(0, 10)),
+    xKind: part.model.xKind, pill, marked: markings.entries('marking:pick').map(([id]) => id) };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -444,6 +477,7 @@ async function suite(M) {
   const sc = await seatedChain(M);
   const mk = markerModels(M);
   const mp = await markerPress(M);
+  const ts = await trendAsScatter(M);
   const lines = [
     judge('S1 a part docked on each edge of another: side by side or stacked, on that side', m.dock,
       [['row', ['B', 'A']], ['row', ['A', 'B']], ['column', ['B', 'A']], ['column', ['A', 'B']]]),
@@ -511,6 +545,8 @@ async function suite(M) {
     judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
       [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
         [['x', 'y', 'color', 'marker1'], ['x*', 'y*', 'color', 'marker1', 'marker2']]]),
+    judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
+      ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -568,6 +604,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  if (slot.reduce) {', '  if (false) {') },
   { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
+  { id: 'M19', what: 'a value record reads the row\'s first read for every point - not its own', catches: 'R1 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, "{ state: 'one', value: raw[k].value }", "{ state: 'one', value: raw[0].value }") },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

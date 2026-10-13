@@ -61,10 +61,10 @@ export class VisualPart extends Panel {
 
   get kind() { return this.kinds[this.decl.kind] || null; }
 
-  /** Its kind's slots - a list, or what the kind makes of the declaration's encode (a table's columns). */
+  /** Its kind's slots - a list, or what the kind makes of the declaration (a table's columns, the scatter's Marker by). */
   slotList() {
     const listed = this.kind ? this.kind.slots : [];
-    return typeof listed === 'function' ? listed(this.decl.encode || {}) : listed;
+    return typeof listed === 'function' ? listed(this.decl.encode || {}, this.decl) : listed;
   }
 
   mount() {
