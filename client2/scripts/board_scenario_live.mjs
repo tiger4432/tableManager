@@ -6,10 +6,10 @@
 // the box's API, the document a stub. Prints what each part drew and the numbers the lead asked: the walks each part
 // asked, the layer's ms on a marking change, the walked graph's nodes. Not a pass/fail gate - the box's data.
 //
-//   node client2/tests/board_scenario_live.mjs [--api http://127.0.0.1:18766] [--wafer SYN-BW-103-11] [--save <file>]
+//   node client2/scripts/board_scenario_live.mjs [--api http://127.0.0.1:18766] [--wafer SYN-BW-103-11] [--save <file>]
 // CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
 import { writeFileSync } from 'node:fs';
-import { makeDoc } from './lib/board_dom.mjs';
+import { makeDoc } from '../tests/lib/board_dom.mjs';
 
 const argOf = (k, d) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : d);
 const API = argOf('--api', 'http://127.0.0.1:18766');
@@ -107,6 +107,7 @@ await until(ready(C));
 await until(ready(D));
 say(`B pressed ${b.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5} (C and D walk from the new marking)`);
 say(`D B wafers now: ${bWafers().join(', ')}; unknown ${stat(D).unknown || 0}`);
+const kept = page.save();
 // No relation: D's points all other
 page.relations.set('list', []);
 await settle();
@@ -115,5 +116,5 @@ for (const p of part(D).model.points) none[p.category] = (none[p.category] || 0)
 say(`no relations: D ${JSON.stringify(none)}`);
 say(`graph: ${page.layers.graph.nodes.size} nodes, ${page.layers.graph.edges.size} edges; walks in all ${walks() - step0}`);
 const save = argOf('--save', null);
-if (save) { writeFileSync(save, JSON.stringify({ kept: page.save(), start: entitySeedId('wafer', { wafer: WAFER }) }, null, 1)); say(`saved ${save}`); }
+if (save) { writeFileSync(save, JSON.stringify({ kept, wafer: WAFER, ids: { A, B, C, D } }, null, 1)); say(`saved ${save}`); }
 process.exit(0);

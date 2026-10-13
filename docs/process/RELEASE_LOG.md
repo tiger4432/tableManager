@@ -476,7 +476,7 @@
 - **R&D 보드** — 같은 나무 모양으로 바꿨고 잠금(`locked`, 스팟파이어 «Lock visualization area»)이라 끌기 · × 가 없습니다. 1920x1080 에서 띠 높이는 이전 px 그대로, 너비는 2 px 안쪽 차이(잰 값). walkBox 띠는 오늘 잰 2 px 그대로입니다 — 이전부터 접혀 있던 auto 행이고 이번에 고치지 않았습니다.
 - **스팟파이어에서 본 것 / 문서로 맞춘 것** — 본 것(10-13 소유자 웹 보기): 더하기는 가장 큰 그림을 나눔 · 새 그림 위치 · 닫으면 옆이 채움 · 최대화는 영역을 채우고 «Restore visualization layout» · 제목 단추 크기와 자리 · 왼쪽 띠 48 · 창 360 · 줄 48 · 선은 4 px 잡는 자리 위 2 px 틈 · 표의 줄 · 글 · 색. 문서로 맞춘 것(끌기가 자동화로 안 됨): 선 끌기의 동작 · 제목 끌기와 놓일 자리 표시 · 최소 크기 · Limit data using markings 의 문구 · 빈 곳 누르면 지움.
 - **필요한 조건** — 클라 빌드만.
-- **자세히** — `client2/tests/board_layout_harness.mjs`(나무 · 셸 · 두 Board · 저장 · 종류마다 더하기 · 제한 · Table · 마킹 선언 · 사슬 · 고리 · Marker by · 트렌드 = 산점도 · 마킹 층 · Marked · Map) · `testbed_harness` · `rnd_board_harness` · `screen_layout`(시험대를 페이지 제스처로 가장자리에 놓고 고르개) · `board_scenario_live.mjs`(A 맵 → B 코어 웨이퍼별 → C STEP → D 트렌드, 살아 있는 상자에서 수를 찍음 — 시험 아님).
+- **자세히** — `client2/tests/board_layout_harness.mjs`(나무 · 셸 · 두 Board · 저장 · 종류마다 더하기 · 제한 · Table · 마킹 선언 · 사슬 · 고리 · Marker by · 트렌드 = 산점도 · 마킹 층 · Marked · Map) · `testbed_harness` · `rnd_board_harness` · `screen_layout`(시험대를 페이지 제스처로 가장자리에 놓고 고르개) · `client2/scripts/board_scenario_live.mjs` · `board_scenario_shots.mjs`(A 맵 → B 코어 웨이퍼별 → C STEP → D 트렌드, 살아 있는 상자에서 수를 찍음 — 시험 아님).
 
 ## 2026-10-13 · 원장 번역이 한 행 소스에서 행당 약 1/4 ~ 1/3 빨라진다
 
