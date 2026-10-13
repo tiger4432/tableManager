@@ -47,7 +47,7 @@ more.resume               {"walk": "<열쇠>"} — 안을 읽지 않고 그대�
                           🆕 총괄 9752e91f7: 첫 쪽을 resumable=true(쿼리)로 물어야 온다 — 없으면 잘려도 null
                           열쇠는 쪽마다 바뀐다. 같은 열쇠를 다시 보내면 같은 쪽(× 한 번 뒤 More · 두 번 누름 · 다시 보냄)
                           × 두 번 뒤 More(앞앞 쪽의 열쇠)는 410 expired «a later page of this walk was asked»
-410                       {"detail": {"reason": "walk_expired", "why": "reloaded|restarted|expired|process ended",
+410                       {"detail": {"reason": "walk_expired", "why": "reloaded|restarted|expired|process ended|server updated",
                                       "message": "This walk expired (<why>[: <자세히>]) - walk again"}}
                           화면: message 한 줄 + «Walk again» 단추(첫 쪽부터). 저절로 다시 걷지 않는다
 nodes[]       새 노드 · 바뀐 허브 머리(count · value · aux 가 바뀌면 머리 전체가 다시 옴)

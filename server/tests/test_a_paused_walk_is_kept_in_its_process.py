@@ -171,6 +171,19 @@ def test_an_unused_walk_goes_after_its_minutes_by_the_process_s_clock(declared, 
     assert ledger_subgraph._GONE.get(walk, ("", ""))[0] == "expired" and key not in ledger_subgraph._KEPT
 
 
+def test_a_walk_asked_without_rest_outlives_its_minutes(declared, cut, monkeypatch):
+    """The minutes count from the walk's last use, not its first page (총괄 b47c7c8a3 2)."""
+    monkeypatch.setattr(process_pool, "live_minutes", lambda settings=None: 1.0 / 60)   # one second
+    first = _first(declared)
+    began = time.monotonic()
+    asked = 0
+    while time.monotonic() - began < 2.0:                  # twice its minutes, asked every 0.3 s
+        time.sleep(0.3)
+        assert _next(declared, first)["nodes"] is not None    # the same key: used again, the same page
+        asked += 1
+    assert asked >= 5, "canary: asked past its minutes"
+
+
 def test_a_walk_being_walked_is_not_swept(declared, cut, monkeypatch):
     key = _first(declared)["more"]["resume"]["walk"]
     walk = ledger_subgraph._KEPT[key]["walk"]
@@ -327,6 +340,31 @@ def test_a_table_config_save_ends_the_walks_kept_here(declared, cut, monkeypatch
     with pytest.raises(ledger_subgraph.WalkExpired) as gone:
         paged.walk(declared, paged.ATOMS, {"walk": key})
     assert gone.value.why == "reloaded"
+
+
+@pytest.mark.parametrize("failing, said", [("recycle", "walk pool NOT recycled"),
+                                            ("end_kept_walks", "walks kept in this process NOT ended")])
+def test_a_table_config_save_says_which_of_the_two_failed(monkeypatch, caplog, failing, said):
+    from database import config_watcher, crud, models
+
+    ended = []
+
+    def boom(*args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(process_pool, "recycle", boom if failing == "recycle" else lambda: None)
+    monkeypatch.setattr(ledger_subgraph, "end_kept_walks", boom if failing == "end_kept_walks" else ended.append)
+    monkeypatch.setattr(crud, "TABLE_CONFIG", {})
+    monkeypatch.setattr(crud, "load_table_config", lambda: {"t": {}})
+    monkeypatch.setattr(models, "init_dynamic_models", lambda config, engine=None: None)
+    monkeypatch.setattr(models, "create_missing_dynamic_tables", lambda engine: [])
+    monkeypatch.setattr(models, "sync_dynamic_tables_schema", lambda engine: None)
+    monkeypatch.setattr(config_watcher, "_report_unsearchable_declarations", lambda config: None)
+    with caplog.at_level("ERROR"):
+        config_watcher.ConfigChangeHandler(engine=object())._reload("table_config.json")
+    errors = [record.getMessage() for record in caplog.records if record.levelname == "ERROR"]
+    assert len(errors) == 1 and said in errors[0], errors
+    assert ended == ([] if failing == "end_kept_walks" else ["reloaded"]), "a failed recycle still ends the walks"
 
 
 def test_a_reload_ends_the_kept_walks(declared, cut):

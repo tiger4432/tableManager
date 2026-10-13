@@ -290,7 +290,7 @@ reachable   [관측 씨앗 몇이 이 «타입»에 닿았나, 대조군 쪽 같
 | 422 | `predicate_not_declared` | `unknown[]` 과 `declared[]` 을 같이 돌려준다. 🔴 **대조되는 것은 콜론 «왼쪽»** — `inspected:x,y` 는 선언된 `inspected` 에 제약이 걸린 것이라, 문자열 통째로 대조하면 정상 요청이 전부 422 가 된다 |
 | 503 | 원장 relation absent | 배포 부재를 «이름 대어» 답한다 |
 | 503 | 🆕 `walk_pool_busy` | 10-13 걷기 프로세스가 `walk_seconds_max` 안에 하나도 안 비었다 — 다시 시도하거나 `walk_processes` 를 올린다. 이어지는 쪽이면 «그 걷기를 쥔 프로세스»가 다른 걷기로 바빴다 — «The walk process keeping this walk stayed busy for N s with another walk - ask More again» |
-| 410 | 🆕 `walk_expired` | 10-13 이어지는 쪽의 걷기가 그 프로세스에 없다 — `why` reloaded · restarted · expired · process ended, `message` «This walk expired (<why>[: <자세히>]) - walk again». 처음부터 다시 걷는다 |
+| 410 | 🆕 `walk_expired` | 10-13 이어지는 쪽의 걷기가 그 프로세스에 없다 — `why` reloaded · restarted · expired · process ended · server updated(서버가 바뀌기 전 첫 쪽의 옛 포장 토큰), `message` «This walk expired (<why>[: <자세히>]) - walk again». 처음부터 다시 걷는다 |
 | 503 | 🆕 `walk_process_not_ready` | 걷기 프로세스가 그 시간 안에 못 떴다 |
 | 503 | 🆕 `walk_timed_out` | 걷기가 그 시간 안에 안 끝나 그 프로세스를 내렸다 — 걷기를 좁히거나 `walk_seconds_max` 를 올린다 |
 | 500 | 🆕 걷기 프로세스가 도중에 끝남 | 그 요청만 실패하고 다음 요청이 새로 띄운다(한도 셋은 하나의 마감을 나눠 쓴다) |

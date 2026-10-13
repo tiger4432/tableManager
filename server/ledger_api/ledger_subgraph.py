@@ -386,7 +386,7 @@ def walk_expired(why, said=None):
 _KEPT = OrderedDict()          # key -> {"state", "asked", "walk", "page"}
 _WALKS = OrderedDict()         # walk -> {"lock", "used", "keys", "nodes"}, least recently used first
 _GONE = OrderedDict()          # walk -> (why, said) for the last GONE_SAID walks that ended - a page turn is not one
-GONE_SAID = 200
+GONE_SAID = 200               # a walk that ended before the last 200 is told «process ended»
 _KEPT_LOCK = threading.Lock()
 #: How often the process sweeps what it keeps between pages - `walk_live_minutes` is a clock, not the next request.
 SWEEP_SECONDS = 30
@@ -398,7 +398,6 @@ def _gone_walk(walk, why, said):
     for key in _WALKS.pop(walk)["keys"]:
         _KEPT.pop(key, None)
     _GONE[walk] = (why, said)
-    _GONE.move_to_end(walk)
     while len(_GONE) > GONE_SAID:
         _GONE.popitem(last=False)
 

@@ -365,9 +365,13 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
           넘으면 가장 오래 안 쓴 걷기부터 · 리로드(그 프로세스의 선언 다시 읽기)는 멈춘 걷기를 다 reloaded 로
           walk_live_nodes(300,000) — 멈춘 걷기들이 함께 쥐는 노드 수 상한(열린 + 다 읽은 + 씨앗마다 닿은 노드)
           넘으면 가장 오래 안 쓴 걷기부터(«kept walks in this process hold N nodes - the oldest was let go»)
-          기본값은 센 노드당 1.9 KB(걷기 판 씨앗 하나 쪽 10: 20.7 MB ÷ 10,973)로 프로세스당 약 600 MB
-          개수 · 노드 둘 다 걷는 중 · 가장 새 걷기 · 지금 More 를 받는 걷기는 안 민다
+          기본값은 센 노드당 1.9 KB(걷기 판 씨앗 하나 쪽 10: 20.7 MB ÷ 10,973)로
+          가장 새 · 걷는 중 걷기를 뺀 나머지가 약 600 MB, 가장 새 걷기는 씨앗 수 × 닿음만큼(씨앗 500 · 4 쪽 걷기 하나 — 센 노드 1,253,000 · 455 MB, 총괄 b47c7c8a3 잼)
+          합계는 그 × walk_processes(walk_processes 0 이면 웹 프로세스 하나)
+          개수 · 노드 둘 다 걷는 중 · 가장 새 걷기 · 지금 More 를 받는 걷기는 안 민다 — 큰 걷기 하나는 상한을 낮춰도 남고,
+          더 새 걷기가 오거나 walk_live_minutes 가 지나야 간다
           410 의 why 는 걷기의 끝(쪽 넘김은 안 셈) — 앞 열쇠는 «a later page of this walk was asked»
+          끝난 걷기의 why 는 프로세스마다 마지막 200 개(GONE_SAID)만 — 그보다 먼저 끝난 걷기의 More 는 process ended
           표 설정 저장도 걷기 프로세스를 바꾼다(recycle) — 그때 멈춘 걷기는 전부 reloaded
           ⚠️ 쪽이 시한(walk_timed_out)을 넘으면 그 프로세스를 내린다 — 그 프로세스가 쥔 다른 걷기도 process ended
 만료      410 {reason: walk_expired, why, message} — why 다섯: reloaded(리로드 · 표 설정 저장이 걷기 프로세스를 바꿈) · restarted ·

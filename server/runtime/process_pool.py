@@ -35,8 +35,10 @@ DEFAULT_WAIT = 120
 LIVE_SETTING, LIVE_DEFAULT = "walk_live_walks", 4
 LIVE_MINUTES_SETTING, LIVE_MINUTES_DEFAULT = "walk_live_minutes", 10
 #: How many nodes the walks one process keeps may hold together - a walk's open, read-whole and each seed's reached
-#: nodes (총괄 10-13 · ea9142edd). 300,000 ~ 600 MB a process at 1.9 KB a counted node - the walk board's largest (one
-#: seed, page 10: 20.7 MB with the key before over 10,973; 121 seeds page 25: 0.69 KB) - WALK.md «이어 걷기».
+#: nodes (총괄 10-13 · ea9142edd). 300,000 ~ 600 MB at 1.9 KB a counted node - the walk board's largest (one seed,
+#: page 10: 20.7 MB with the key before over 10,973; 121 seeds page 25: 0.69 KB) - for the walks besides the newest
+#: and those being walked, which stay whatever they hold (총괄 b47c7c8a3: 500 seeds, page 4 - 1,253,000 nodes,
+#: 454.6 MB) - WALK.md «이어 걷기».
 LIVE_NODES_SETTING, LIVE_NODES_DEFAULT = "walk_live_nodes", 300_000
 #: Which server start a kept key was made under - set once in the server; every pool process it starts inherits it.
 BOOT_ENV = "ASSY_WALK_BOOT"
