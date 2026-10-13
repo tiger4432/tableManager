@@ -46,13 +46,42 @@ def test_the_index_work_builds_the_model_indexes_after_the_declared_keys(monkeyp
     """One task, one after the other - so two never build at once - on threads beside the loop."""
     ran = []
     monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda rules, factory: ran.append("keys"))
-    monkeypatch.setattr(worker, "_ensure_model_indexes_sync", lambda factory: ran.append("models"))
+    monkeypatch.setattr(worker, "_ensure_model_indexes_sync", lambda factory, sources: ran.append(sources))
 
     async def start():
         await worker._start_index_work([], None)
+        await worker._LEDGER_INDEX_LINE["task"]
 
     asyncio.run(start())
-    assert ran == ["keys", "models"]
+    assert [step for step in ran if step != ("ledger",)] == ["keys", ("model", "table")]
+    assert ran.count(("ledger",)) == 1
+
+
+def test_a_ledger_build_that_waits_holds_back_no_join_key(monkeypatch):
+    """총괄 bdc08ec39 ②: a reload's join keys are built while the ledger's partitions still wait - the ledger's own
+    line runs after its own last only."""
+    release, ran, began = threading.Event(), [], []
+
+    def build(factory, sources):
+        if sources == ("ledger",):
+            began.append(sources)
+            release.wait(10)
+        ran.append(sources)
+    monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda rules, factory: ran.append("keys"))
+    monkeypatch.setattr(worker, "_ensure_model_indexes_sync", build)
+
+    async def go():
+        first = worker._start_index_work([], None)
+        second = worker._start_index_work([], None, after=first)          # a reload while the ledger's build waits
+        await asyncio.wait_for(second, 5)
+        await asyncio.sleep(0.3)                                          # room for a second ledger build to begin
+        built = (ran.count("keys"), ran.count(("ledger",)), len(began))   # ... it must not: one at a time
+        release.set()
+        await worker._LEDGER_INDEX_LINE["task"]
+        return built
+
+    assert asyncio.run(go()) == (2, 0, 1)
+    assert ran.count(("ledger",)) == 2
 
 
 # ------------------------------------------------------------------------------------- PG
@@ -68,9 +97,17 @@ def _wait(predicate, seconds=30.0):
 
 
 def _ddl(engine, *statements):
+    """`statements` in `engine`'s own schema alone: the search path pinned to it, so a name the schema lacks is an error
+    and never public's (총괄 10-13: a DROP INDEX IF EXISTS of an index the scratch lacked dropped public's)."""
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
-        for statement in statements:
-            connection.execute(text(statement))
+        space = connection.execute(text("SELECT current_schema()")).scalar()
+        assert space and space != "public", space
+        connection.execute(text('SET search_path TO "%s"' % space))
+        try:
+            for statement in statements:
+                connection.execute(text(statement))
+        finally:
+            connection.execute(text("RESET search_path"))
 
 
 def _states(engine):
@@ -86,10 +123,24 @@ BREAK = ("DROP INDEX %s" % DROPPED,
 
 @pytest.fixture(name="scratch")
 def fixture_scratch(pg_engine):
-    """pg_engine's schema - what a case dropped or broke is built back after it."""
+    """pg_engine's schema - what a case dropped or broke is built back after it: plain builds of this schema's owed
+    indexes, not CONCURRENTLY - a concurrent build waits on the shared database's older transactions (23 min, 총괄
+    bdc08ec39 ⑧)."""
+    from ledger import schema
+
     yield pg_engine
     _ddl(pg_engine, "DROP INDEX IF EXISTS zz_outside_probe")
-    models.ensure_model_indexes(pg_engine, say=lambda *_a: None)
+    items = {name: item for _table, name, item in models.declared_indexes()}
+    for row in models.index_states(pg_engine)["declared"]:
+        if row["state"] not in (models.INDEX_MISSING, models.INDEX_INVALID) or row["constraint"]:
+            continue
+        if row["source"] == "ledger":
+            _ddl(pg_engine, "DROP INDEX IF EXISTS %s" % schema.REF_INDEX,
+                 "CREATE INDEX %s ON ledger_events %s" % (schema.REF_INDEX, schema.REF_INDEX_COLUMNS))
+            continue
+        statement = (models.model_index_ddl(items[row["name"]]) if row["source"] == "model"
+                     else models.table_index_ddl(row))
+        _ddl(pg_engine, 'DROP INDEX IF EXISTS "%s"' % row["name"], statement.replace(" CONCURRENTLY", "", 1))
     assert {row["state"] for row in _states(pg_engine).values()} == {models.INDEX_PRESENT}
 
 
@@ -163,7 +214,7 @@ def test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing(scratch
     _ddl(scratch, "DROP INDEX %s" % DROPPED)
     caplog.set_level("WARNING", logger=worker.logger.name)
 
-    worker._ensure_model_indexes_sync(sessionmaker(bind=scratch))
+    worker._ensure_model_indexes_sync(sessionmaker(bind=scratch), models.INDEX_SOURCES)
 
     said = [r.getMessage() for r in caplog.records if "[Indexes]" in r.getMessage()]
     assert len(said) == 1 and "not built: build_missing_indexes is off" in said[0], said
@@ -347,3 +398,74 @@ def test_the_ledgers_ref_index_is_named_and_built_a_partition_at_a_time(scratch)
     assert len([line for line in said if ": built ledger_events_" in line]) == row["partitions"], said
     row = _states(scratch)[name]
     assert (row["state"], row["partitions_missing"]) == ("present", 0)
+
+
+@pytest.mark.pg
+def test_a_partition_another_session_builds_is_left_to_it_and_a_wait_is_given_up(scratch, monkeypatch):
+    """총괄 bdc08ec39 ① ②: a second builder dropped the first's index in progress - a deadlock (9.3 -> 21.3 s at 3M).
+    Now that partition is left to its session and the route says building; a partition whose build waits on an older
+    transaction says whom, gives up at DDL_LOCK_TIMEOUT, and the next one is still tried; once the wait is gone the
+    next build attaches what the other session made and builds the rest."""
+    from datetime import datetime, timezone
+
+    import psycopg2
+
+    import db_safety
+    from ledger import schema
+
+    monkeypatch.setattr(db_safety, "DDL_LOCK_TIMEOUT", "2s")
+    monkeypatch.setattr(models, "LEDGER_WAIT_SAY_SECONDS", 0.5)
+    raw = scratch.raw_connection()
+    try:
+        schema.ensure_schema(raw)
+        raw.commit()
+        for month in (1, 2, 3):
+            schema.ensure_partition(raw, datetime(2026, month, 15, tzinfo=timezone.utc))
+    finally:
+        raw.close()
+    _ddl(scratch, "DROP INDEX IF EXISTS %s" % schema.REF_INDEX)
+    name = schema.in_space(schema.world_names(None), schema.REF_INDEX)
+    dsn = scratch.url.render_as_string(hide_password=False).replace("postgresql+psycopg2", "postgresql")
+    with scratch.connect() as conn:
+        space = conn.execute(text("SELECT current_schema()")).scalar()
+    holder = psycopg2.connect(dsn, application_name="b_old_snapshot")
+    holder.set_session(isolation_level="REPEATABLE READ")
+    with holder.cursor() as cur:
+        cur.execute("SELECT 1")                                          # an older snapshot, on nothing indexed here
+    holder_pid = holder.get_backend_pid()
+    other, ended = psycopg2.connect(dsn, application_name="b_other_builder"), {}
+    other.autocommit = True
+
+    def build_january():
+        try:
+            with other.cursor() as cur:
+                cur.execute('CREATE INDEX CONCURRENTLY ledger_events_2026_01_ref_hash ON "%s".ledger_events_2026_01 %s'
+                            % (space, schema.REF_INDEX_COLUMNS))
+            ended["ok"] = True
+        except Exception as exc:                                         # noqa: BLE001 - asserted below
+            ended["error"] = exc
+    january = threading.Thread(target=build_january)
+    said = []
+    try:
+        january.start()
+        assert _wait(lambda: _states(scratch)[name]["building"]), "the other session's build never showed"
+        assert models.ensure_model_indexes(scratch, say=said.append)[name] == models.INDEX_FAILED
+        row = _states(scratch)[name]
+    finally:
+        holder.rollback()
+        holder.close()
+        january.join(60)
+        other.close()
+    assert ended == {"ok": True}, ended                                   # its build was not dropped from under it
+    assert [line for line in said if line.startswith(
+        "[Indexes] ledger_events_2026_01: ledger_events_2026_01_ref_hash building - ") and "left to it" in line], said
+    waits = [line for line in said if "still building after" in line
+             and "waiting for transactions older than it: pid %s (b_old_snapshot)" % holder_pid in line]
+    gave_up = [line for line in said if ": ledger_events_2026_0" in line and " failed after " in line
+               and "the other partitions go on" in line]
+    assert waits and len(gave_up) == 2, said                             # February's and March's, one after the other
+    assert row["state"] == models.INDEX_MISSING and row["partitions_missing"] == 2
+    again = []
+    assert models.ensure_model_indexes(scratch, say=again.append)[name] == models.INDEX_BUILT
+    assert any("attached the ledger_events_2026_01_ref_hash already there" in line for line in again), again
+    assert _states(scratch)[name]["state"] == models.INDEX_PRESENT

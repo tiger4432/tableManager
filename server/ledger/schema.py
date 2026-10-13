@@ -619,7 +619,8 @@ def ref_index_parent_sql(names: WorldNames) -> str:
 
 def partitioned_index_states(engine) -> list:
     """-> a row per world's ledger and per `PARTITIONED_INDEXES` index: `world`, `name`, `table`, `columns`, `serves`,
-    `partitions`, `partitions_missing` (lacking it or not attached), `valid` (the parent's - every partition's attached) -
+    `partitions`, `partitions_missing` (lacking it or not attached), `building` (what each partition's build in progress
+    is doing), `valid` (the parent's - every partition's attached) -
     asked of `build_partitioned_index` without building, so the build and this answer are one judgment. A world whose
     ledger table is not there yet has no row."""
     rows = []
@@ -635,8 +636,10 @@ def partitioned_index_states(engine) -> list:
                                                say=lambda *_: None, child_name=child)
                 owed = done["would_build"] + done["would_attach"]
                 rows.append({"world": names.name, "name": in_space(names, index), "table": names.ledger,
-                             "columns": columns, "serves": serves, "partitions": done["already"] + owed,
-                             "partitions_missing": owed, "valid": bool(done["parent_valid"])})
+                             "columns": columns, "serves": serves,
+                             "partitions": done["already"] + owed + len(done["building"]),
+                             "partitions_missing": owed, "building": done["building"],
+                             "valid": bool(done["parent_valid"])})
         finally:
             connection.rollback()
             connection.close()
@@ -650,9 +653,14 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
     CONCURRENTLY on a partitioned parent, and a plain parent build scans and locks every partition.
     A partition that already has an index attached to the parent's (built here before, or made when
     the partition was) is left alone; an INVALID leftover of a stopped build is dropped and built
-    again, a valid one of that `child_name` is attached. `apply=False` says what it would do and
-    writes nothing. One line a partition.
-    -> {"built", "attached", "already", "would_build", "would_attach", "parent_valid"}"""
+    again, a valid one of that `child_name` is attached. 🔴 One a session is building NOW is left to it
+    (`db_waits.index_builds`) - dropping it was a deadlock between two builders (총괄 bdc08ec39 ①), and a
+    partition that fails is said and the others go on. `apply=False` says what it would do and writes
+    nothing. One line a partition.
+    -> {"built", "attached", "already", "would_build", "would_attach", "failed", "parent_valid",
+        "building": [what each build left to its session is doing]}"""
+    import db_waits
+
     space = in_space(names, "")
     ledger_name = names.ledger.rsplit(".", 1)[-1]
     parent = space + index
@@ -660,7 +668,8 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
     connection.commit()
     previous = driver.autocommit
     driver.autocommit = True                          # CONCURRENTLY cannot run in a transaction
-    out = {"built": 0, "attached": 0, "already": 0, "would_build": 0, "would_attach": 0, "parent_valid": None}
+    out = {"built": 0, "attached": 0, "already": 0, "would_build": 0, "would_attach": 0, "building": [], "failed": 0,
+           "parent_valid": None}
 
     def one(sql, params=()):
         with driver.cursor() as cursor:
@@ -672,6 +681,7 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
             cursor.execute(sql)
 
     try:
+        home = space[:-1] if space else one("SELECT current_schema()")[0]
         if one("SELECT to_regclass(%s)", (parent,))[0] is None:
             say(f"{names.ledger}: the index {index} on ONLY the parent " + ("made" if apply else "would be made"))
             if apply:
@@ -690,18 +700,31 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
             left = one("SELECT x.indisvalid FROM pg_index x WHERE x.indexrelid = to_regclass(%s)",
                        (space + child,))
             there = bool(left and left[0])                # made and not attached - a half-run, carried on
+            building = (db_waits.index_builds(driver).get((home, child))
+                        if left is not None and not there else None)
+            if building is not None:
+                out["building"].append(f"{child} {building[2]} by pid {building[0]}")
+                say(f"{partition}: {out['building'][-1]} - left to it")
+                continue
             if not apply:
                 out["would_attach" if there else "would_build"] += 1
                 say(f"{partition}: would attach the {child} already there" if there else
                     f"{partition}: would build {child} CONCURRENTLY and attach it")
                 continue
-            if left is not None and not there:
-                do(f"DROP INDEX CONCURRENTLY IF EXISTS {space}{child}")
             started = time.perf_counter()
-            if not there:
-                do(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {child} ON {space}{partition} {columns} "
-                   f"{predicate}")
-            do(f"ALTER INDEX {parent} ATTACH PARTITION {space}{child}")
+            try:
+                if left is not None and not there:
+                    do(f"DROP INDEX CONCURRENTLY IF EXISTS {space}{child}")
+                if not there:
+                    do(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {child} ON {space}{partition} {columns} "
+                       f"{predicate}")
+                do(f"ALTER INDEX {parent} ATTACH PARTITION {space}{child}")
+            except Exception as exc:                      # noqa: BLE001 - said; the next partition goes on
+                out["failed"] += 1
+                say(f"{partition}: {child} failed after {time.perf_counter() - started:.1f} s - "
+                    f"{type(exc).__name__}: {str(exc).strip().splitlines()[0] if str(exc).strip() else ''}; "
+                    f"the other partitions go on, this one is built at the next start")
+                continue
             size = one("SELECT pg_relation_size(to_regclass(%s))", (space + child,))[0]
             out["attached" if there else "built"] += 1
             say(f"{partition}: attached the {child} already there · {size} bytes" if there else

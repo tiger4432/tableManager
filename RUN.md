@@ -1,5 +1,39 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **원장 다시 번역을 조각 N 개로 · 원장 인덱스 짓기 고침 (총괄 fd550df13 ㄱ · 0cd396d3d · 검수 bdc08ec39)** — 이주 «없음» · 재기동 «체인 워커»(원장 인덱스 줄 · 체인 리플레이 박동) · 다시 번역은 다음 실행부터
+>
+> ```
+> 무엇     원장 다시 번역(소스 전체)이 쪽 열쇠 범위를 N 조각으로 나눠 프로세스 N 개가 같이 돈다 — 실행 행 하나 · 진행 수는 조각 합 · × 는 조각 전부에
+>          원장 ref 인덱스 짓기: 남이 짓는 중인 파티션은 손대지 않음 · 파티션 하나 실패가 나머지를 안 세움 · 오래된 트랜잭션 기다림 20 초 상한 · 조인 키 짓기와 다른 줄
+>          소급 박동은 그 실행이 쥔 연결만 말한다 · 단계 줄은 실행 기록을 안 고친다(쪽마다 한 번)
+> 설정     ingestion_settings.json "ledger_translate_slices": 4   없으면 코어 절반(4 이하) · 1 = 예전처럼 한 프로세스 · 실행마다 읽음
+> 볼 것    retroactive.log
+>            [ledger_rescope] 4 slices (cores 16)
+>            [ledger_rescope] page 3: 9000 rows · 5.0 s · 1800 rows/s · 12000 / 120000 · ~60 s left · slices 4: 4 working   <- 5 초에 한 번
+>            [Retroactive_slice2] … [slice 2/4 pid 5512] [ledger_rescope] beat: page 3 · write > insert atoms 1.2 s · …       <- 조각마다
+>            [ledger_rescope] slice 2/4 done: 30000 rows
+>          chain_worker.log [Indexes] 원장 줄
+>            … ledger_events_2026_09: ledger_events_2026_09_ref_hash building - … by pid N - left to it
+>            … ledger_events_2026_09_ref_hash still building after 10 s - building - waiting for transactions older than it: pid N (이름)
+>            … ledger_events_2026_09: ledger_events_2026_09_ref_hash failed after 21.0 s - LockNotAvailable: …; the other partitions go on, this one is built at the next start
+> 답의 뜻   «1 slice (cores C)» 다음 줄이 «page key … has no index - … the run goes in one slice; declare one …»
+>             -> 그 표 indexes 에 쪽 열쇠 칸을 적고 체인 워커 재기동 — 지어진 뒤 다음 실행부터 나뉜다
+>          «1 slice» 인데 그 줄이 없다 -> 설정이 1 이거나, 쪽 열쇠 칸이 빈(NULL) 행이 있거나, 소스가 뷰 — 예전처럼 한 프로세스
+>          실행이 failed 이고 오류가 «slice 2/4 ended without its answer - … (1/4 9000 rows stopped · 2/4 3000 rows failed · …)»
+>             -> 조각 2 의 줄([slice 2/4 pid …])에 까닭. 쓴 쪽은 남는다 — 그대로 다시 돌린다(같은 답)
+>          원장 인덱스 «failed after … LockNotAvailable» -> 그때 오래된 트랜잭션이 있었다(바로 앞 «waiting for … pid N (이름)» 줄이 누구인지)
+>             다음 기동 · Reload 에 그 파티션만 다시 짓는다. ⚠️ 이 기다림은 짓기가 «끝난 뒤»라 끊기면 그 파티션 짓기 시간을 버린다
+>             -> 오래 쥔 트랜잭션(idle in transaction)을 먼저 끝내고 Reload
+>          GET /admin/indexes 원장 줄 state building -> 다른 세션(손 명령 · 앞 기동이 남긴 DB 쪽 짓기)이 그 파티션을 짓는 중 — building 칸이 무엇을 기다리나
+> 급할 때   "ledger_translate_slices": 1 (재기동 없음 · 다음 실행부터 한 프로세스)
+> 재기동 뒤 chain_worker.log 의 [Indexes] — 원장 줄이 조인 키 · 표 인덱스 줄을 기다리지 않고 따로 나온다
+> 이 판에서 실제 런처 · hold 판 3000 행 · 스크래치 스키마: N=1 · N=4 의 원자(id 뺀 칸 전부)+행 색인 같음 · 실행 몸통 9.9 s -> 7.4 s
+>          (조각 기동 3.3 s 포함, 일 자체 약 2.9 배 — 박스 판, 운영 주장 아님) · 원장 잠금 중 × -> 네 조각 «stopped» 뒤 cancelled ·
+>          잠금 중 조각 2 를 taskkill -> 나머지 쪽 경계에서 멈춤 · failed 와 위 문장 · 다시 돌리면 처음과 같은 답 · public 행 변화 0
+> ⚠️ 안 잰 것  운영 크기에서 조각 N 개가 DB 를 얼마나 더 쓰나(쓰기 · 연결 N 배) · 어디서 DB 가 병목이 되나
+> 되돌리기  git revert $(git log -1 --format=%h --grep="re-translate in slices") $(git log -1 --format=%h --grep="QA bdc08ec39")
+> ```
+
 > ## [10-13] **소급 쪽이 제 행만 읽는다 — 표가 커져도 쪽이 느려지지 않는다 (총괄 5ad030347 · 2e8c6ac9c · 3eca39091 · QA 59c0bfb8c · ff4eb2cf0, 소유자 「알아서해」) — 이주 «없음» · 재기동 «체인 워커»(소급 · 명령줄은 다음 실행부터)**
 >
 > ```
@@ -79,9 +113,10 @@
 > 답의 뜻   present · partitions_missing 0 -> 거두기 셈 · DELETE 가 인덱스를 탈 수 있다(타는지는 다시 번역 로그의 withdrawal count 줄 plan)
 >          missing 이 남고 [Indexes] 줄에 «not built: build_missing_indexes is off» -> ingestion_settings.json 의 그 칸이 false. 손 명령으로 짓거나 칸을 지움
 >          «failed - …» -> 그 줄의 사유. 손 명령(맨 아래 절)으로 한 번 더
+>          building -> 다른 세션이 그 파티션을 짓는 중 — 건드리지 않는다(맨 위 절). building 칸이 무엇을 기다리나
 > 다시 번역  retroactive.log 에 실행마다 처음 한 번, retroactive_debug 를 꺼도:
 >          «idx_… missing or not valid - each page's withdrawal count and DELETE read the whole ledger; …» -> 위가 아직 안 끝남
->          «page key <칸> of <표> has no index - each page sorts the table; declare one on ["<칸>"] in that table's "indexes" …»
+>          «page key <칸> of <표> has no index - each page sorts the table and the run goes in one slice; declare one on ["<칸>"] in that table's "indexes" …»
 >             -> 그 표의 table_config "indexes" 에 그 칸을 적으면 체인 워커가 짓는다(10-11 표 인덱스 절)
 > 이 판에서  진짜 프로세스(런처 넷) · 원장 파티션 3 개의 ref 인덱스를 지우고 띄움: 체인 워커 기동 직후 [Indexes] «3 of 3 partition(s) lack it»
 >          -> 파티션마다 «built … · attached» -> GET /admin/indexes 원장 줄 present · 그 뒤 다시 번역(단계 줄 끔)에 결함 줄 0 · public 행 변화 0
@@ -89,7 +124,7 @@
 > ⚠️ 안 잰 것  운영 크기에서 파티션 하나 짓는 초
 > ```
 
-> ## [10-13] **원장 다시 번역이 지금 무엇을 하고 무엇을 기다리나 — retroactive.log 한 곳에 단계 줄 · 5 초 박동 · 느린 문장 (총괄 d9be013cb, 소유자 「재번역 디버그 로그 다띄워 실시간으로 뭐가돌고 뭘 기다리는지」)** — git pull 만 · 재기동 없음(소급 실행은 실행마다 새 프로세스라 다음 실행부터)
+> ## [10-13] **원장 다시 번역이 지금 무엇을 하고 무엇을 기다리나 — retroactive.log 한 곳에 단계 줄 · 5 초 박동 · 느린 문장 (총괄 d9be013cb, 소유자 「재번역 디버그 로그 다띄워 실시간으로 뭐가돌고 뭘 기다리는지」)** — git pull · 소급 실행은 실행마다 새 프로세스라 다음 실행부터, 체인 리플레이는 체인 워커 «안»이라 체인 워커 재기동
 >
 > ```
 > 볼 곳     retroactive.log (다시 번역 · 모든 소급 실행이 쓰는 그 파일) — [ledger_rescope] 로 시작하는 줄
@@ -104,6 +139,7 @@
 >             «(valid)» 인데 Seq Scan 이면 인덱스가 있는데 안 타는 것 -> 그 줄 그대로 총괄에게
 >          event frames · dry run 이 길다 -> 파이썬 번역 몫(박스 행당 3~6 ms). 박동이 «no busy backend - the time is in this process» 를 말한다 — DB 는 한가함
 >          박동이 «waiting Lock:… on pid N (<누구>, …)» -> 그 pid 의 연결이 잡고 있다. 누구 = assy_chain… 이면 체인 · 원장 따라가기, assy_server 면 화면 요청
+>             박동이 말하는 연결은 «그 실행이 쥔 것»뿐 — 체인 워커 안의 체인 리플레이도 체인 묶음 · 따라가기 연결을 자기 것으로 안 찍는다
 >          박동이 «its own query active N s (no lock)» -> DB 가 그 문장을 일하는 중(느림 줄이 그 문장 앞 400 자를 같이 찍는다)
 >          commit 이 길다 -> 디스크(박동의 wait 가 IO:WALSync · IO:DataFileWrite)
 > 끄기      ingestion_settings.json "retroactive_debug": false -> 단계 줄만 꺼짐(쪽 줄 · 박동 · 느림 줄은 남음). 다음 쪽부터
@@ -121,7 +157,8 @@
 >
 > ```
 > 🔴 체인 워커가 짓는 동안(기동 · Reload 직후, server.log 에 원장 인덱스 짓는 줄) build_ledger_ref_index.py --apply 를 «같이» 돌리지 않는다
->    두 짓는 쪽이 겹치면 교착 — 하나는 실패하고 다른 하나는 처음부터 다시 짓는다(박스 300만 행: 혼자 9.3 s -> 겹치면 21.3 s, 총괄 검수 10-13). 고침은 구현자 B 다음 커밋
+>    두 짓는 쪽이 겹치면 교착이었다(박스 300만 행: 혼자 9.3 s -> 겹치면 21.3 s, 총괄 검수 10-13). 맨 위 절의 고침 뒤로는 남이 짓는 파티션을
+>    «left to it» 으로 건너뛴다 — 그래도 둘이 같은 파티션을 차례로 다시 짓는 낭비는 남으니 같이 돌리지 않는다
 > 손 명령은 미리보기(--apply 없이)로 상태만 보는 데 쓴다 — «already» 면 끝, «would build» 면 체인 워커를 재기동(또는 Reload)해 맡긴다
 > ```
 

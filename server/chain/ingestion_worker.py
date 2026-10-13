@@ -2769,8 +2769,8 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
 BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
 
 
-def _ensure_model_indexes_sync(db_session_factory):
-    """The static models' declared indexes the database lacks or holds invalid: named, and built one
+def _ensure_model_indexes_sync(db_session_factory, sources):
+    """The declared indexes of `sources` the database lacks or holds invalid: named, and built one
     at a time unless `build_missing_indexes` is false (`models.ensure_model_indexes`). Contained: an
     index that cannot be compared or built is a line, never a worker that will not start."""
     from database import models
@@ -2783,21 +2783,34 @@ def _ensure_model_indexes_sync(db_session_factory):
         finally:
             db.close()
         build = load_ingestion_settings().get(BUILD_MISSING_INDEXES_SETTING, True) is not False
-        models.ensure_model_indexes(engine, build=build, say=logger.warning)
+        models.ensure_model_indexes(engine, build=build, say=logger.warning, sources=sources)
     except Exception as exc:                                            # noqa: BLE001
         logger.error("[Indexes] the declared indexes were not compared (the chain goes on): %s", exc)
+
+
+#: The ledger's line of index work - its last task (`_start_index_work`).
+_LEDGER_INDEX_LINE = {"task": None}
 
 
 def _start_index_work(rules, db_session_factory, after=None):
     """The index work as a task beside the loop - after `after` (the previous start's or
     reload's), so two never build the same index at once. On a thread: the loop - its slot
-    dispatcher too - goes on while an index builds."""
-    async def run():
-        if after is not None and not after.done():
-            await asyncio.wait({after})
-        await asyncio.to_thread(_ensure_declared_indexes_sync, rules, db_session_factory)
-        await asyncio.to_thread(_ensure_model_indexes_sync, db_session_factory)
-    return asyncio.create_task(run())
+    dispatcher too - goes on while an index builds. 🔴 The ledger's partitions on a line of their own,
+    after that line's last: their build waits on the database's older transactions, and a join key a
+    reload saves must not wait behind it (총괄 bdc08ec39 ②). -> the task of the declared keys' and models' line."""
+    from database import models
+
+    async def line(previous, *works):
+        if previous is not None and not previous.done():
+            await asyncio.wait({previous})
+        for work in works:
+            await asyncio.to_thread(*work)
+    _LEDGER_INDEX_LINE["task"] = asyncio.create_task(line(
+        _LEDGER_INDEX_LINE["task"], (_ensure_model_indexes_sync, db_session_factory, ("ledger",))))
+    return asyncio.create_task(line(
+        after, (_ensure_declared_indexes_sync, rules, db_session_factory),
+        (_ensure_model_indexes_sync, db_session_factory,
+         tuple(source for source in models.INDEX_SOURCES if source != "ledger"))))
 
 
 def _rules_for_group(events_in_tx, rules):

@@ -4650,7 +4650,9 @@ def resume_chain():
 @app.get("/admin/indexes", dependencies=[Depends(require_admin_token)])
 def get_declared_indexes(db: Session = Depends(get_db)):
     """The declared indexes beside the database - the static models' and each table's own in
-    table_config.json (`source` model · table) - name · table · columns · where · include · purpose ·
+    table_config.json (`source` model · table) and the ledger's partitioned ones per world (`source`
+    ledger: partitions · partitions_missing; building while a session builds a partition's, with what it
+    waits on) - name · table · columns · where · include · purpose ·
     serves · state (present · missing · invalid · building) · size · scans · what a build waits on ·
     why the last build failed - and the indexes on the models' tables nothing declares (총괄 d71f931c7:
     the declaration is the index master). The one comparison the chain worker's index work names

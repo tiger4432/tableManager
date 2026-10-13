@@ -33,18 +33,18 @@ ORDER BY a.pid, b.pid
 _BLOCKED = "a.datname = current_database() AND cardinality(pg_blocking_pids(a.pid)) > 0"
 
 
-#: A process's own backends that are not idle - a retroactive run's beat (총괄 d9be013cb); the probe asking is left out.
-_BUSY_OF = ("a.datname = current_database() AND a.application_name = %s "
+#: A run's own backends that are not idle - a retroactive run's beat (총괄 d9be013cb · bdc08ec39 ⑦); the probe asking is
+#: left out.
+_BUSY_OF = ("a.datname = current_database() AND a.pid = ANY(%s) "
             "AND a.state IS DISTINCT FROM 'idle' AND a.pid <> pg_backend_pid()")
 
 
-def backend_waits(dbapi_conn, pid=None, app=None, chars=60):
-    """One row per (backend, backend holding it up) - for `pid`; for every busy backend named `app` (a
-    process's own, `connection_name()`); or for every blocked backend of this database when both are None.
-    A backend nobody holds up is one row with `blocker` None; a pid that is not connected is no row at
-    all. `chars`: how much of each query is read."""
-    where = "a.pid = %s" if pid is not None else _BUSY_OF if app is not None else _BLOCKED
-    args = (int(pid),) if pid is not None else (app,) if app is not None else None
+def backend_waits(dbapi_conn, pid=None, pids=None, chars=60):
+    """One row per (backend, backend holding it up) - for `pid`; for every busy backend of `pids` (a run's own); or
+    for every blocked backend of this database when both are None. A backend nobody holds up is one row with `blocker`
+    None; a pid that is not connected is no row at all. `chars`: how much of each query is read."""
+    where = "a.pid = %s" if pid is not None else _BUSY_OF if pids is not None else _BLOCKED
+    args = (int(pid),) if pid is not None else ([int(p) for p in pids],) if pids is not None else None
     with dbapi_conn.cursor() as cur:
         cur.execute(_SQL.format(where=where, chars=int(chars)), args)
         rows = cur.fetchall()
@@ -83,6 +83,26 @@ def wait_sentence(row, pid=None):
         return "%s %s - the time is not in the database (last query: %s)" % (
             state, _age(row["state_age"]), row["query"])
     return "%s %s (last query: %s)" % (state, _age(row["state_age"]), row["query"])
+
+
+_INDEX_BUILDS = (
+    "SELECT n.nspname, c.relname, p.pid, p.phase, p.current_locker_pid, l.application_name"
+    "  FROM pg_stat_progress_create_index p JOIN pg_class c ON c.oid = p.index_relid"
+    "  JOIN pg_namespace n ON n.oid = c.relnamespace"
+    "  LEFT JOIN pg_stat_activity l ON l.pid = p.current_locker_pid"
+    " WHERE p.datid = (SELECT oid FROM pg_database WHERE datname = current_database())")
+
+
+def index_builds(dbapi_conn):
+    """-> {(schema, index): (the building backend's pid, the pid it waits for or None, what its build is doing)} - each
+    index of this database a session is building now; a waiting one names whom it waits for. The index master's
+    «building» and the ledger builder's «left to it» and its waits (총괄 bdc08ec39 ① ②)."""
+    with dbapi_conn.cursor() as cur:
+        cur.execute(_INDEX_BUILDS)
+        rows = cur.fetchall()
+    return {(space, name): (pid, locker or None, "building - waiting for transactions older than it: pid %s (%s)"
+                            % (locker, app or "no application_name") if locker else "building - %s" % phase)
+            for space, name, pid, phase, locker, app in rows}
 
 
 #: How long the stalled line's own question may run. It reads two system views and takes

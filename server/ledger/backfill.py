@@ -644,7 +644,7 @@ def _scope_row_ids(plan, frame):
 
 def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             withdraw=True, page_rows=None, checkpoint=None, whole_source=False,
-            world=None, until=None):
+            world=None, until=None, key_range=None):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
 
     `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
@@ -764,10 +764,12 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     #    only then is the checkpoint asked - so a stop leaves whole pages behind it and
     #    untouched ones ahead. `page_rows=None` is one page, the whole scope: the live
     #    follow-up path, whose receipt rides that one commit.
-    total = _table_rows(engine, plan) if whole_source and checkpoint is not None else None
-    if keyset_scan.RUN_CONTROL.get() is not None:
-        _say_what_every_page_pays(engine, plan, world, withdraw)
-    for frame in _scope_pages(engine, plan, scoped, page_rows):
+    # `key_range` (lo, hi]: one slice of a whole source (`slice_bounds`) - its pages only; the tail below is the
+    # run's, once, after every slice (`whole_source_tail`)
+    total = (_table_rows(engine, plan) if whole_source and checkpoint is not None and key_range is None else None)
+    if keyset_scan.RUN_CONTROL.get() is not None and key_range is None:
+        say_what_every_page_pays(engine, plan, world, withdraw)
+    for frame in _scope_pages(engine, plan, scoped, page_rows, key_range):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
         scope_row_ids = _scope_row_ids(plan, frame)
@@ -821,18 +823,8 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         if checkpoint is not None and checkpoint(result["rows_in_scope"], total):
             result["stopped"] = True
             break
-    if whole_source and not result.get("stopped"):
-        # 🔴 THE PAGES CAN ONLY REMAKE ROWS THAT ARE STILL THERE (총괄 3a109bfd9 ③). What the
-        #    relation lost is withdrawn the way a delete is: a live world's follow-up has
-        #    usually taken it already (then 0), a world switched off has not.
-        gone = rows_gone_from_the_source(engine, setup, source, world=world)
-        taken = withdraw_deleted_rows(engine, setup, plan.relation, gone, apply=True,
-                                      world=world)
-        result["gone_rows"] = len(gone)
-        result["gone_withdrawn"] = sum(item["withdrawn"] for item in taken["sources"].values())
-        # and what today's declaration no longer makes - a table it stopped reading (총괄 e027f669d)
-        result.update(withdraw_stale_atoms(engine, source, plan.relation, apply=True,
-                                           checkpoint=checkpoint, world=world))
+    if whole_source and key_range is None and not result.get("stopped"):
+        result.update(whole_source_tail(engine, setup, source, plan, checkpoint=checkpoint, world=world))
     if not result["rows_in_scope"]:
         # 🔴 AN EMPTY SCOPE IS AN ANSWER, NOT A FAULT (S-81) - the row can be gone by the
         # time it is read. Falling through handed an empty frame to the write boundary, which
@@ -842,7 +834,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     return result
 
 
-def _say_what_every_page_pays(engine, plan, world, withdraw):
+def say_what_every_page_pays(engine, plan, world, withdraw):
     """The two defects a run pays on every page, said once at its start whatever `retroactive_debug` says (총괄 10-13:
     a line that names a defect is not a debug line) - by the judgments the stage lines' notes use: the ledger's ref index
     missing or not valid (each page's withdrawal count and DELETE read the whole ledger), and no index on the page key
@@ -860,10 +852,62 @@ def _say_what_every_page_pays(engine, plan, world, withdraw):
     finally:
         connection.rollback()
         connection.close()
-    if not keyed:
-        keyset_scan.say('page key %s of %s has no index - each page sorts the table; declare one on ["%s"] in that '
-                        'table\'s "indexes" (table_config.json) and the chain worker builds it'
+    if not keyed and _table_rows(engine, plan, count=False):        # a view has no index of its own (총괄 bdc08ec39 ⑥)
+        keyset_scan.say('page key %s of %s has no index - each page sorts the table and the run goes in one slice '
+                        '(`slice_bounds`); declare one on ["%s"] in that table\'s "indexes" (table_config.json) and '
+                        'the chain worker builds it'
                         % (_page_key(plan), plan.relation, _page_key(plan)))
+
+
+def whole_source_tail(engine, setup, source, plan, checkpoint=None, world=None):
+    """What a whole source's re-translate does after its pages, once - by one process or after every slice.
+    🔴 THE PAGES CAN ONLY REMAKE ROWS THAT ARE STILL THERE (총괄 3a109bfd9 ③). What the relation lost is withdrawn
+    the way a delete is: a live world's follow-up has usually taken it already (then 0), a world switched off has
+    not. And what today's declaration no longer makes - a table it stopped reading (총괄 e027f669d)."""
+    gone = rows_gone_from_the_source(engine, setup, source, world=world)
+    taken = withdraw_deleted_rows(engine, setup, plan.relation, gone, apply=True, world=world)
+    out = {"gone_rows": len(gone),
+           "gone_withdrawn": sum(item["withdrawn"] for item in taken["sources"].values())}
+    out.update(withdraw_stale_atoms(engine, source, plan.relation, apply=True, checkpoint=checkpoint, world=world))
+    return out
+
+
+def slice_bounds(engine, plan, slices):
+    """-> `([(lo, hi), ...], rows)`: a whole source cut into at most `slices` ranges of its page key (`_page_key`), each
+    (lo, hi] (None: open), at the key's values at even row counts - and the relation's rows. A cut is a key VALUE, so a
+    group - one page-key value (`_page_key`'s invariant) - never falls on two sides; it is the value's text, the literal
+    a slice's read compares back in the key's own type. ONE range - the pages in one process - when one is asked, the
+    relation is not a table (each cut would run a view's query), the page key has no index (each slice would sort the
+    table, 총괄 0cd396d3d), or the key is NULL in a row (one process refuses it at its page; a range would skip it)."""
+    from psycopg2 import sql
+
+    whole = [(None, None)]
+    if slices <= 1 or not _table_rows(engine, plan, count=False):
+        return whole, None
+    key = sql.Identifier(_page_key(plan))
+    relation = sql.SQL(".").join(sql.Identifier(part) for part in str(plan.relation).split("."))
+    connection = engine.raw_connection()
+    try:
+        if not _page_key_index(connection, plan):
+            return whole, None
+        with connection.cursor() as cursor:
+            cursor.execute(sql.SQL("SELECT count(*), count({k}), max({k})::text FROM {r}").format(k=key, r=relation))
+            rows, keyed, top = cursor.fetchone()
+            if keyed < rows:
+                return whole, rows
+            cuts = []
+            for k in range(1, slices):
+                cursor.execute(sql.SQL("SELECT {k}::text FROM {r} ORDER BY {k} OFFSET %s LIMIT 1").format(
+                    k=key, r=relation), (rows * k // slices,))
+                found = cursor.fetchone()
+                # one value past two cuts is one cut; a cut at the last value would leave the range after it empty
+                if found is not None and found[0] != top and (not cuts or found[0] != cuts[-1]):
+                    cuts.append(found[0])
+    finally:
+        connection.rollback()
+        connection.close()
+    edges = [None] + cuts + [None]
+    return list(zip(edges, edges[1:])), rows
 
 
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
@@ -894,7 +938,7 @@ def _table_rows(engine, plan, count=True):
         connection.close()
 
 
-def _scope_pages(engine, plan, scoped, page_rows):
+def _scope_pages(engine, plan, scoped, page_rows, key_range=None):
     """The scope's rows a page at a time, in page-key order, each as a frame.
 
     🔴 A PAGE ENDS ON A PAGE-KEY BOUNDARY. The page key is constant within a group
@@ -905,6 +949,7 @@ def _scope_pages(engine, plan, scoped, page_rows):
 
     key = None if page_rows is None else _page_key(plan)
     after, size = None, None if page_rows is None else keyset_scan.PageSize(page_rows)
+    after, upper = key_range if key_range is not None else (None, None)
     readable = _readable_columns(engine, plan)
     keyed = None
     while True:
@@ -914,7 +959,7 @@ def _scope_pages(engine, plan, scoped, page_rows):
             with keyset_scan.stage("read", limit) as said:
                 planned = {} if keyset_scan.debugging() else None
                 rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=limit,
-                                              scope=scoped, planned=planned)
+                                              scope=scoped, planned=planned, upper=upper)
                 if limit is not None and len(rows) >= limit:
                     last = rows[-1][key]
                     rows = [row for row in rows if row[key] != last] + _fetch_v2_lineage_rows(
@@ -922,11 +967,13 @@ def _scope_pages(engine, plan, scoped, page_rows):
                 said["rows"] = len(rows)
                 if planned is not None:
                     # 🔴 THE PAGE KEY'S INDEX (총괄 d9be013cb ①): without one every page sorts the whole source -
-                    #    and the pages begin at one row, so the first pages are nearly all sort
-                    keyed = keyed or _page_key_index(read, plan) or ""
-                    said["note"] = "key %s · %s · plan: %s" % (
-                        _page_key(plan), keyed or "no index on it - each page sorts the table",
-                        planned.get("plan", "-"))
+                    #    and the pages begin at one row, so the first pages are nearly all sort. Asked once a run
+                    #    (총괄 bdc08ec39 ⑤); a view has no index of its own - its plan says how it reads (⑥)
+                    if keyed is None:
+                        keyed = _page_key_index(read, plan) or (
+                            "no index on it - each page sorts the table" if _table_rows(engine, plan, count=False)
+                            else "a view")
+                    said["note"] = "key %s · %s · plan: %s" % (_page_key(plan), keyed, planned.get("plan", "-"))
         finally:
             read.rollback()
             read.close()
@@ -2364,7 +2411,7 @@ def _readable_columns(engine, plan):
 
 
 def _fetch_v2_lineage_rows(connection, plan, columns, *, after=None, group_value=None,
-                           limit=None, scope=None, planned=None):
+                           limit=None, scope=None, planned=None, upper=None):
     """Read physical catalog columns with identifier-safe psycopg2 composition.
 
     🔴 `scope` NARROWS WHICH ROWS, AND IT IS NOT `limit`. `limit` bounds how much is read
@@ -2392,6 +2439,10 @@ def _fetch_v2_lineage_rows(connection, plan, columns, *, after=None, group_value
     elif after is not None:
         clauses.append(sql.SQL("{} > %s").format(sql.Identifier(page_key)))
         params.append(after)
+    if upper is not None and group_value is None:
+        # a slice's end (`slice_bounds`) - its last key's group is whole on this side
+        clauses.append(sql.SQL("{} <= %s").format(sql.Identifier(page_key)))
+        params.append(upper)
     if scoped is not None:
         clauses.append(sql.SQL("{} = ANY(%s)").format(sql.Identifier(scoped[0])))
         params.append(scoped[1])

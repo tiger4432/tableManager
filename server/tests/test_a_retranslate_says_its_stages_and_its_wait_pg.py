@@ -87,18 +87,131 @@ def test_each_stage_of_a_page_says_itself(world, monkeypatch):
     assert any(re.match(r"\[ledger_rescope\] page \d+: \d+ rows · ", line) for line in lines), lines[:5]
 
 
+def _sent(engine):
+    """Every statement this test's connections of `engine` send from now - its cursors count them."""
+    import psycopg2.extensions
+    from sqlalchemy import event
+
+    sent = []
+
+    class Counted(psycopg2.extensions.cursor):
+        def execute(self, query, params=None):
+            sent.append(query if isinstance(query, str) else query.decode() if isinstance(query, bytes)
+                        else query.as_string(self))
+            return super().execute(query, params)
+
+    def taken(dbapi_conn, _record, _proxy):
+        dbapi_conn.cursor_factory = Counted
+    event.listen(engine, "checkout", taken)
+    return sent, lambda: event.remove(engine, "checkout", taken)
+
+
 def test_off_leaves_the_page_lines_and_only_them(world, monkeypatch):
-    _settings(monkeypatch, retroactive_debug=False)
-    out, lines = _retranslate()
+    """... and sends no EXPLAIN (총괄 bdc08ec39 ④) - on, the same run sends some."""
+    sent, done = _sent(world["engine"])
+    try:
+        _settings(monkeypatch, retroactive_debug=True)
+        _retranslate()
+        explained_on = sum(statement.lstrip().startswith("EXPLAIN") for statement in sent)
+        sent.clear()
+        _settings(monkeypatch, retroactive_debug=False)
+        out, lines = _retranslate()
+    finally:
+        done()
+    assert explained_on > 0 and len(sent) > 10                       # canary: the cursors were counted
+    assert [statement for statement in sent if statement.lstrip().startswith("EXPLAIN")] == []
     assert out["result"]["rows_in_scope"] == ROWS
     assert _stage_lines(lines) == {}
     assert any(re.match(r"\[ledger_rescope\] page \d+: \d+ rows · ", line) for line in lines), lines[:5]
 
 
+def test_the_run_row_is_written_once_a_page_however_many_stages(world, monkeypatch):
+    """총괄 bdc08ec39 ③: a stage line is a line - the run row's time is stamped by the page boundary alone."""
+    _settings(monkeypatch, retroactive_debug=True)
+    stamped, progressed = [], []
+    real_progress = retroactive.RunControl.progress
+    monkeypatch.setattr(retroactive.RunControl, "_stamp", lambda self, values: stamped.append(values))
+    monkeypatch.setattr(retroactive.RunControl, "progress",
+                        lambda self, *a, **k: progressed.append(1) or real_progress(self, *a, **k))
+    lines = []
+    control = retroactive.RunControl("stamped-run", op="ledger_rescope", log=lines.append)
+    db = sessionmaker(bind=world["engine"])()
+    try:
+        with retroactive._beating(control, world["engine"]):
+            retroactive._rescope(db, {"source": hw.SOURCE, "whole_source": True}, control)
+    finally:
+        db.close()
+    assert len(_stage_lines(lines)) >= 5                              # canary: the stage lines ran
+    assert len(stamped) == len(progressed) > 0
+
+
+def test_the_page_key_is_asked_once_a_run(world, monkeypatch):
+    """총괄 bdc08ec39 ⑤: with no index on the page key, once for the run's line and once for the stage notes."""
+    from ledger import backfill
+    _settings(monkeypatch, retroactive_debug=True)
+    asked = []
+    monkeypatch.setattr(backfill, "_page_key_index", lambda connection, plan: asked.append(1))
+    out, lines = _retranslate()
+    assert len([line for line in lines if re.match(r"\[ledger_rescope\] page \d+: read · ", line)]) > 2
+    assert len(asked) == 2
+
+
+def test_a_view_is_not_told_to_declare_an_index(world, pg_engine):
+    """총괄 bdc08ec39 ⑥: a view has no index of its own - no «declare one» line; its table without one has it."""
+    from types import SimpleNamespace
+
+    from chain import keyset_scan
+    from ledger import backfill
+    with pg_engine.begin() as conn:
+        conn.execute(text('CREATE TABLE "%s".pk_t (k text)' % PG_TEST_SCHEMA))
+        conn.execute(text('CREATE VIEW "%s".pk_v AS SELECT k FROM "%s".pk_t' % (PG_TEST_SCHEMA, PG_TEST_SCHEMA)))
+    said = []
+    token = keyset_scan.RUN_CONTROL.set(SimpleNamespace(say=said.append))
+    try:
+        for name in ("pk_v", "pk_t"):
+            backfill.say_what_every_page_pays(pg_engine, SimpleNamespace(
+                relation="%s.%s" % (PG_TEST_SCHEMA, name), driver=SimpleNamespace(cursor_columns=("k",))), None, False)
+    finally:
+        keyset_scan.RUN_CONTROL.reset(token)
+        with pg_engine.begin() as conn:
+            conn.execute(text('DROP VIEW IF EXISTS "%s".pk_v' % PG_TEST_SCHEMA))
+            conn.execute(text('DROP TABLE IF EXISTS "%s".pk_t' % PG_TEST_SCHEMA))
+    assert [line.split(" has no index")[0] for line in said] == ["page key k of %s.pk_t" % PG_TEST_SCHEMA], said
+
+
+def test_the_beat_names_only_the_runs_own_backends(world, monkeypatch, pg_engine):
+    """총괄 bdc08ec39 ⑦: another connection of the same process - the same application_name - busy beside the run is
+    not the run's (a run inside the chain worker named every chain connection its own)."""
+    _settings(monkeypatch, retroactive_debug=True)
+    monkeypatch.setattr(retroactive, "BEAT_SECONDS", 0.5)
+    monkeypatch.setattr(retroactive, "LOOK_SECONDS", 0.2)
+    import psycopg2
+    dsn = pg_engine.url.render_as_string(hide_password=False).replace("postgresql+psycopg2", "postgresql")
+    holder = psycopg2.connect(dsn, application_name="b_lock_holder", **scratch_connect_args(PG_TEST_SCHEMA))
+
+    def beside():
+        with pg_engine.connect() as conn:
+            conn.execute(text("SELECT pg_sleep(3.5)"))
+    try:
+        with holder.cursor() as cur:
+            cur.execute("LOCK TABLE ledger_events IN ACCESS EXCLUSIVE MODE")
+        other = threading.Thread(target=beside)
+        other.start()
+        release = threading.Timer(3.0, holder.rollback)
+        release.start()
+        out, lines = _retranslate()
+        release.join()
+        other.join()
+    finally:
+        holder.close()
+    beats = [line for line in lines if line.startswith("[ledger_rescope] beat: page ")]
+    assert any("b_lock_holder" in line for line in beats), beats[:4]      # canary: the beat saw the run's wait
+    assert [line for line in lines if "pg_sleep" in line] == []
+
+
 def test_the_two_defects_are_said_once_with_the_lines_off(world, monkeypatch):
     """The ledger's ref index gone, and a page key with no index (hc_official pages on its primary key, so the
     page-key judgment is made to answer none): one line each at the run's start, with retroactive_debug off."""
-    from database import models
     from ledger import backfill, schema
     _settings(monkeypatch, retroactive_debug=False)
     with world["engine"].connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -107,7 +220,11 @@ def test_the_two_defects_are_said_once_with_the_lines_off(world, monkeypatch):
     try:
         out, lines = _retranslate()
     finally:
-        models.ensure_model_indexes(world["engine"], say=lambda *_a: None)
+        # 🔴 only the index this test dropped, and in its own schema without CONCURRENTLY - a concurrent build of
+        #    every owed index waited on the shared database's older transactions (23 min, 총괄 bdc08ec39 ⑧)
+        with world["engine"].begin() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS %s ON ledger_events %s"
+                              % (schema.REF_INDEX, schema.REF_INDEX_COLUMNS)))
     assert out["result"]["rows_in_scope"] == ROWS
     ref = [line for line in lines if line.startswith(
         "[ledger_rescope] idx_ledger_events_source_raw_ref_hash missing or not valid - each page's withdrawal count "

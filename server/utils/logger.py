@@ -204,6 +204,19 @@ def relayed(line):
     return None
 
 
+def relay_lines(stream, prefix, name):
+    """A relaying child's `stream` into this process's log, line by line - each under the logger that wrote it, after
+    `prefix`; a continuation line under the line before's (`name` at WARNING before any)."""
+    level = logging.WARNING
+    for raw in stream:
+        said = relayed(raw)
+        if said is not None:
+            level, name, message = said
+        else:
+            message = raw.rstrip("\r\n")
+        logging.getLogger(name).log(level, "%s %s", prefix, message)
+
+
 def get_process_logger(process_name: str, log_filename: str, relay=None) -> logging.Logger:
     """
     🆕 `relay` (a stream, 총괄 19f6a9277): the process writes NO file of its own - one handler

@@ -741,14 +741,21 @@ def _checkpoint(control):
     return hook
 
 
-def _run_ledger_rescope(db, params, log, control=None):
+def _rescope(db, params, control, key_range=None):
+    """The run's re-translate - the whole of it, or one slice's `key_range` (`run_slice`)."""
     from ledger import backfill
 
-    s = backfill.rescope(
+    return backfill.rescope(
         db.get_bind(), _ledger_setup(params), params["source"], params.get("scope_column"),
         params.get("scope_values") or [], apply=True,
         page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control),
-        whole_source=bool(params.get("whole_source")), world=_ledger_world(params))
+        whole_source=bool(params.get("whole_source")), world=_ledger_world(params), key_range=key_range)
+
+
+def _run_ledger_rescope(db, params, log, control=None):
+    s = _rescope_in_slices(db, params, control) if params.get("whole_source") else None
+    if s is None:
+        s = _rescope(db, params, control)
     # 🔴 a refused row was withdrawn and not remade - said beside «written», never left to read as a
     #    success (총괄 10-12: «rows 4, withdrawn 4, written 4 of 4» while 2 rows lost their atoms)
     refused = s.get("refused") or {}
@@ -764,6 +771,207 @@ def _run_ledger_rescope(db, params, log, control=None):
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"],
             "refused": sum(refused.values()), **({"refused_reasons": why} if why else {}),
             **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages") if key in s}}
+
+
+def _rescope_in_slices(db, params, control):
+    """A whole source's re-translate in `translate_slices` processes at once (총괄 fd550df13 ㄱ · 0cd396d3d) - or None:
+    one slice (`backfill.slice_bounds` says when), a source the declaration no longer has, or no run row for a slice to
+    read its run from - and this process runs it. The pages are the slices'; what runs once - the lines every page
+    pays, the rows the relation lost, the stale atoms - is this process's, before and after them."""
+    from ledger import backfill, schema
+
+    if control is None or control.run_id in (None, "?"):
+        return None
+    engine, setup, world = db.get_bind(), _ledger_setup(params), _ledger_world(params)
+    plan, _scoped = backfill.rescope_scope(setup, params["source"], None, None, whole_source=True)
+    if plan is None:
+        return None
+    wanted, cores = translate_slices()
+    bounds, total = backfill.slice_bounds(engine, plan, wanted)
+    control.say("%d slice%s (cores %d)" % (len(bounds), "s" if len(bounds) > 1 else "", cores))
+    if len(bounds) == 1:
+        return None
+    # the slices find the world made - none of them races another to make it
+    schema.ensure_world(engine, schema.world_names(world))
+    backfill.say_what_every_page_pays(engine, plan, world, True)
+    control.own_beat = False
+    try:
+        s = _summed(_run_slices(control, bounds, total))
+    finally:
+        control.own_beat = True
+    if s.get("rows_in_scope"):
+        s.pop("scope_empty", None)                 # empty only when every slice was
+    if s.get("stopped"):
+        control.stop_requested()                   # the × the slices stopped on - the run ends cancelled
+    else:
+        s.update(backfill.whole_source_tail(engine, setup, params["source"], plan,
+                                            checkpoint=_checkpoint(control), world=world))
+    return s
+
+
+def _run_slices(control, bounds, total):
+    """Each of `bounds` in a slice process of its own (`_spawn_slice`), all at once; -> their answers. The run row has
+    one writer: this process sums the slices' counts onto it, its page line saying their state. A × reaches each slice
+    through the row. A slice that ends without its answer lets the others go - their stdin closes and they stop at a
+    page boundary - and the run fails naming what each left."""
+    import queue
+
+    from utils.logger import relay_lines
+
+    count, said = len(bounds), queue.Queue()
+    procs, rows, answers, ended = {}, {}, {}, {}
+    moved = time.monotonic()
+    try:
+        for index, key_range in enumerate(bounds, 1):
+            proc = procs[index] = _spawn_slice(control.run_id, index, count)
+            rows[index] = 0
+            proc.stdin.write(json.dumps(key_range) + "\n")
+            proc.stdin.flush()
+            threading.Thread(target=_slice_answers, args=(index, proc, said), daemon=True,
+                             name="slice-%d-answers" % index).start()
+            threading.Thread(target=relay_lines, args=(
+                proc.stderr, "[slice %d/%d pid %d]" % (index, count, proc.pid), "Retroactive"),
+                daemon=True, name="slice-%d-log" % index).start()
+        while len(ended) < count:
+            try:
+                index, answer = said.get(timeout=LOOK_SECONDS)
+            except queue.Empty:
+                continue
+            if answer is None:
+                ended[index] = procs[index].wait()
+                state = _slice_state(index, answers, ended)
+                control.say("slice %d/%d %s: %d rows%s" % (index, count, state, rows[index], (
+                    " - exit code %s without its answer; letting the others go" % ended[index]
+                    if state == "failed" else "")))
+                if state == "failed":
+                    for other, proc in procs.items():
+                        if other not in ended:
+                            _let_go(proc)
+            elif "result" in answer:
+                answers[index] = answer["result"]
+                rows[index] = answers[index].get("rows_in_scope", rows[index])
+            else:
+                rows[index] = answer.get("rows", rows[index])
+            # the run's count and page line every BEAT_SECONDS at most and when a slice ends - each slice's pages are
+            # its own lines; a line a slice page was N lines a page and a run-row write each
+            if answer is None or time.monotonic() - moved >= BEAT_SECONDS:
+                states = [_slice_state(index, answers, ended) for index in procs]
+                control.progress(sum(rows.values()), total, note="slices %d: %s" % (count, " · ".join(
+                    "%d %s" % (states.count(state), state) for state in SLICE_STATES if state in states)))
+                moved = time.monotonic()
+    finally:
+        for proc in procs.values():                # a spawn or this loop that raised leaves no slice writing
+            _let_go(proc)
+    failed = [index for index in procs if index not in answers]
+    if failed:
+        raise RuntimeError(
+            "slice %s ended without its answer - its lines in retroactive.log say why; the slices' pages written "
+            "stay (%s), the rest of the source is not re-translated: run it again" % (
+                ", ".join("%d/%d" % (index, count) for index in failed),
+                " · ".join("%d/%d %d rows %s" % (index, count, rows[index], _slice_state(index, answers, ended))
+                           for index in procs)))
+    return [answers[index] for index in procs]
+
+
+#: A slice's state in its run's page line, in this order.
+SLICE_STATES = ("working", "done", "stopped", "failed")
+
+
+def _slice_state(index, answers, ended):
+    if index in answers:
+        return "stopped" if answers[index].get("stopped") else "done"
+    return "failed" if index in ended else "working"
+
+
+def _summed(answers):
+    """The slices' answers as one run's: numbers and `refused` reasons added, a flag set when any slice's is, anything
+    else the first slice's."""
+    out = {}
+    for answer in answers:
+        for key, value in answer.items():
+            if isinstance(value, bool):
+                out[key] = out.get(key, False) or value
+            elif isinstance(value, (int, float)):
+                out[key] = out.get(key, 0) + value
+            elif isinstance(value, dict):
+                into = out.setdefault(key, {})
+                for reason, n in value.items():
+                    into[reason] = into.get(reason, 0) + n
+            else:
+                out.setdefault(key, value)
+    return out
+
+
+def _spawn_slice(run_id, index, count):
+    """A slice process (`admin.retroactive_run --slice`) - its pipes utf-8 both ways."""
+    import subprocess
+    import sys
+
+    import paths
+
+    return subprocess.Popen(
+        [sys.executable, "-m", "admin.retroactive_run", "--slice", "%d/%d" % (index, count), run_id],
+        cwd=paths.SERVER_DIR, env=dict(os.environ, PYTHONIOENCODING="utf-8"), stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", bufsize=1,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def _slice_answers(index, proc, said):
+    """A slice's answers (`run_slice`), a JSON line each, onto `said` - then None: its stdout closed, it ended."""
+    for raw in proc.stdout:
+        try:
+            said.put((index, json.loads(raw)))
+        except ValueError:
+            continue
+    said.put((index, None))
+
+
+def _let_go(proc):
+    try:
+        proc.stdin.close()
+    except (OSError, ValueError):
+        pass
+
+
+def run_slice(run_id, asks, answer, log):
+    """One slice of a run's whole-source re-translate, in a process of its own (`_rescope_in_slices`): its key range the
+    first line of `asks`, its count and its answer through `answer` - never onto the run row. The rest of `asks` is the
+    run's process holding it: when it closes - that process gone, or a sibling dead - this stops at its next page
+    boundary. A × reaches it through the run row, as every run's does."""
+    from database import crud, models
+    from database.context import channel, retroactive_run
+    from database.database import SessionLocal
+
+    key_range = tuple(json.loads(asks.readline()))
+    session = SessionLocal()
+    try:
+        row = (session.query(models.RetroactiveRun)
+               .filter(models.RetroactiveRun.run_id == run_id).first())
+        if row is None:
+            raise RetroactiveRefused("run_id=%s is gone - no slice of it to run" % run_id)
+        op, params = row.op, json.loads(row.params) if row.params else {}
+    finally:
+        session.close()
+    models.init_dynamic_models(crud.TABLE_CONFIG)
+    params = validate(op, params)
+    control = RunControl(run_id, op=op, log=log, report=lambda processed: answer({"rows": processed}))
+
+    def held():
+        for _line in asks:
+            pass
+        if not control.stopped:
+            control.say("the run's process let this slice go - it stops at its page boundary")
+            control.stopped = True
+
+    threading.Thread(target=held, name="slice-held", daemon=True).start()
+    db = SessionLocal()
+    try:
+        with channel(ec.CHANNEL_RETROACTIVE), retroactive_run(run_id), _beating(control, db.get_bind()):
+            s = _rescope(db, params, control, key_range=key_range)
+    finally:
+        db.close()
+    answer({"result": s})
+    return s
 
 
 def _run_chain_replay(db, params, log, control=None):
@@ -2426,6 +2634,10 @@ BEAT_SECONDS = 5.0
 LOOK_SECONDS = 1.0
 #: How much of a statement a beat line shows, and a slow statement's line.
 BEAT_QUERY_CHARS, SLOW_QUERY_CHARS = 120, 400
+#: ingestion_settings.json - how many processes a whole source's re-translate runs in (`_rescope_in_slices`): a positive
+#: integer; absent or anything else half the cores, `TRANSLATE_SLICES_MOST` at most (총괄 0cd396d3d).
+TRANSLATE_SLICES_SETTING = "ledger_translate_slices"
+TRANSLATE_SLICES_MOST = 4
 _REFUSED_SETTINGS = set()
 
 
@@ -2457,18 +2669,45 @@ def slow_statement_seconds(settings=None):
     return float(value) if good else SLOW_STATEMENT_DEFAULT
 
 
+def translate_slices(settings=None):
+    """-> `(slices, cores)`: `ledger_translate_slices`, and the cores its default is half of."""
+    from ingestion.settings import read_ingestion_settings
+
+    cores = os.cpu_count() or 1
+    settings = read_ingestion_settings() if settings is None else settings
+    value = settings.get(TRANSLATE_SLICES_SETTING)
+    good = isinstance(value, int) and not isinstance(value, bool) and value > 0
+    return (value if good else min(TRANSLATE_SLICES_MOST, max(1, cores // 2))), cores
+
+
 @contextlib.contextmanager
-def _beating(control, url):
-    """The run's stage seat (`keyset_scan.RUN_CONTROL`) and its beat on the run's database `url`, around the run
-    (총괄 d9be013cb)."""
+def _beating(control, engine):
+    """The run's stage seat (`keyset_scan.RUN_CONTROL`) and its beat on the run's database `engine`, around the run
+    (총괄 d9be013cb). 🔴 The run's backends are the connections of `engine` its own thread holds - not its process's:
+    a run inside the chain worker named every chain connection its own (총괄 bdc08ec39 ⑦)."""
+    from sqlalchemy import event
+
     from chain import keyset_scan
+
+    here, held = threading.get_ident(), {}
+
+    def taken(dbapi_conn, record, _proxy):
+        if threading.get_ident() == here:
+            with contextlib.suppress(Exception):
+                held[id(record)] = dbapi_conn.get_backend_pid()
+
+    def given_back(_dbapi_conn, record):
+        held.pop(id(record), None)
 
     token = keyset_scan.RUN_CONTROL.set(control)
     stop = threading.Event()
     # pg_stat_activity is PostgreSQL's - another database runs with the stage lines alone
-    beat = (threading.Thread(target=_beat, args=(control, stop, url), name="retroactive-beat", daemon=True)
-            if url.get_backend_name() == "postgresql" else None)
+    beat = (threading.Thread(target=_beat, args=(control, stop, engine.url, held), name="retroactive-beat",
+                             daemon=True)
+            if engine.url.get_backend_name() == "postgresql" else None)
     if beat is not None:
+        event.listen(engine, "checkout", taken)
+        event.listen(engine, "checkin", given_back)
         beat.start()
     try:
         yield
@@ -2476,11 +2715,13 @@ def _beating(control, url):
         stop.set()
         keyset_scan.RUN_CONTROL.reset(token)
         if beat is not None:
+            event.remove(engine, "checkout", taken)
+            event.remove(engine, "checkin", given_back)
             beat.join(timeout=3 * LOOK_SECONDS)
 
 
 def _beat_said(control, rows, now):
-    """One beat line: the stage the page in progress is in and its seconds, then each busy backend of this process."""
+    """One beat line: the stage the page in progress is in and its seconds, then each busy backend of the run's."""
     stages = list(control.stages)
     where = ("%s %.1f s · %s rows" % (" > ".join(name for name, _since, _rows in stages), now - stages[-1][1],
                                        stages[-1][2] if stages[-1][2] is not None else "-")
@@ -2498,9 +2739,10 @@ def _beat_said(control, rows, now):
         " ; ".join(backends) if backends else "no busy backend - the time is in this process")
 
 
-def _beat(control, stop, url):
+def _beat(control, stop, url, held):
     """THE BEAT (총괄 d9be013cb, 소유자 「실시간으로 뭐가 돌고 뭘 기다리는지」): every BEAT_SECONDS one line (`_beat_said`);
-    every LOOK_SECONDS a look for a statement of this process past `retroactive_slow_statement_seconds` - a line when it
+    every LOOK_SECONDS a look for a statement of the run's `held` backends (`_beating`) past
+    `retroactive_slow_statement_seconds` - a line when it
     is seen running, one when it is gone. Asked over a read-only connection of its own (the run's are busy), a
     transaction a look (a snapshot of pg_stat_activity holds for its transaction).
     🔴 SILENT ONLY ABOUT ITSELF: whatever raises here says once what went quiet, and the run goes on."""
@@ -2517,7 +2759,7 @@ def _beat(control, stop, url):
         slow, seen, last = slow_statement_seconds(), {}, time.monotonic()
         while not stop.wait(LOOK_SECONDS):
             try:
-                rows = db_waits.backend_waits(conn, app=app, chars=SLOW_QUERY_CHARS)
+                rows = db_waits.backend_waits(conn, pids=list(held.values()), chars=SLOW_QUERY_CHARS)
             finally:
                 # the DBAPI connection's own transaction: a look inside the last one reads its snapshot again
                 conn.rollback()
@@ -2536,7 +2778,8 @@ def _beat(control, stop, url):
                 control._log("[%s] slow statement ended: pid %s after about %.1f s" % (
                     control.op, key[0], age + (now - at)))
             if now - last >= BEAT_SECONDS:
-                control._log(_beat_said(control, rows, now))
+                if control.own_beat:
+                    control._log(_beat_said(control, rows, now))
                 slow, last = slow_statement_seconds(), now
     except Exception as exc:                               # noqa: BLE001 - the beat's own failure, said below
         control._log("[%s] beat stopped - %s: %s; no more beat or slow-statement lines for this run, the run goes on"
@@ -2567,8 +2810,12 @@ class RunControl:
     could only be stopped by restarting the server, which takes every other job with it.
     """
 
-    def __init__(self, run_id, session_factory=None, op=None, log=None):
+    def __init__(self, run_id, session_factory=None, op=None, log=None, report=None):
         self.run_id = run_id
+        #: A slice's (`run_slice`): where its count goes - the run row's is the slices' sum, written by the run's process.
+        self.report = report
+        #: False while the run's slices beat for it (`_rescope_in_slices`) - this process has no page of its own then.
+        self.own_beat = True
         #: [S-37] 진행을 «말하려면» 무엇의 진행인지가 있어야 한다. run_id 만으로는
         #: 화면이 「무슨 일이 도는가」를 못 말한다 — S-36 이 대기열에서 고친 그 부족이다.
         self.op = op
@@ -2626,10 +2873,14 @@ class RunControl:
         self.stopped = state == RUN_CANCEL_REQUESTED
         return self.stopped
 
-    def progress(self, processed=None, total=None) -> None:
-        """Record how far this run has got. `total=None` stays NULL - unknown, not zero."""
-        self._page_line(processed, total)
+    def progress(self, processed=None, total=None, note=None) -> None:
+        """Record how far this run has got. `total=None` stays NULL - unknown, not zero. `note` ends the page line."""
+        self._page_line(processed, total, note)
         self.debug = retroactive_debug()
+        if self.report is not None:
+            self.report(processed)
+            self._moved = time.monotonic()
+            return
         if not self.run_id:
             return
         values = {}
@@ -2644,10 +2895,10 @@ class RunControl:
         self.announce(event_constants.PROGRESS_STATUS_RUNNING, processed=processed, total=total)
         self._moved = time.monotonic()      # the next step's seconds leave out this boundary's notice
 
-    def _page_line(self, processed, total) -> None:
+    def _page_line(self, processed, total, note=None) -> None:
         """THE PAGE LINE (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게」): at each page boundary that moved
-        the count, `[<op>] page k: <rows> rows · <seconds> s · <rows/s> rows/s · <done> / <total> · ~<left> left` - the
-        total and the time left only when the op counted its rows."""
+        the count, `[<op>] page k: <rows> rows · <seconds> s · <rows/s> rows/s · <done> / <total> · ~<left> left[ · note]`
+        - the total and the time left only when the op counted its rows."""
         # the total once told holds for the run's later lines (the op's headline at its end comes without it)
         total = self._total = total if total is not None else self._total
         if processed is None or processed == self._said:
@@ -2662,7 +2913,8 @@ class RunControl:
         self._pages += 1
         done = ("%d done" % processed if not total else "%d / %d · ~%s left" % (
             processed, total, _clock(max(total - processed, 0) * (now - self._began) / processed)))
-        self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s" % (self.op, self._pages, rows, seconds, rate, done))
+        self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s%s" % (
+            self.op, self._pages, rows, seconds, rate, done, " · %s" % note if note else ""))
         self._said, self._boundary = processed, now
 
     def step(self, name, page, pages, rows, seconds=None, note=None) -> None:
@@ -2673,12 +2925,14 @@ class RunControl:
         time where it was, and `in_flight` reads it stalled. `seconds`: the step's own (a `stage`), else since
         the last line."""
         seconds = time.monotonic() - self._moved if seconds is None else seconds
-        self._log("[%s] page %s: %s · %s rows · %.2f s%s" % (
-            self.op, page if not pages else "%d/%d" % (page, pages), name, rows, seconds,
-            " · %s" % note if note else ""))
+        self._step_line(name, page if not pages else "%d/%d" % (page, pages), rows, seconds, note)
         if self.run_id:
             self._stamp({})
         self._moved = time.monotonic()
+
+    def _step_line(self, name, page, rows, seconds, note):
+        self._log("[%s] page %s: %s · %s rows · %.2f s%s" % (
+            self.op, page, name, rows, seconds, " · %s" % note if note else ""))
 
     def say(self, sentence) -> None:
         """One line of this run's own - `[<op>] <sentence>` - on or off, whatever `debug` says."""
@@ -2687,8 +2941,9 @@ class RunControl:
     @contextlib.contextmanager
     def stage(self, name, rows=None):
         """A stage inside the page in progress (`keyset_scan.stage`, 총괄 d9be013cb): in `stages` while it runs - the
-        beat says the innermost and how long it has run - and its step line when it ends, while `debug` is on.
-        Yields a dict: a `note` ends the line, a `rows` there replaces the one given."""
+        beat says the innermost and how long it has run - and its step line when it ends, while `debug` is on: a
+        line only - the run row's time moves once a page, at its boundary (총괄 bdc08ec39 ③: it was an UPDATE and a
+        COMMIT a stage, 14 a page). Yields a dict: a `note` ends the line, a `rows` there replaces the one given."""
         entry = (name, time.monotonic(), rows)
         self.stages.append(entry)
         said = {}
@@ -2698,8 +2953,8 @@ class RunControl:
             if entry in self.stages:
                 self.stages.remove(entry)
             if self.debug:
-                self.step(name, self._pages + 1, None, said.get("rows", rows),
-                          seconds=time.monotonic() - entry[1], note=said.get("note"))
+                self._step_line(name, self._pages + 1, said.get("rows", rows), time.monotonic() - entry[1],
+                                said.get("note"))
 
     def _stamp(self, values) -> None:
         """`last_progress_at` = now, with `values`, on this control's own session."""
@@ -3478,7 +3733,7 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
         # 🔴 [총괄 b3a4334db] AND EVERY EVENT THEY STAGE SAYS WHICH RUN, so one job is one line
         #   in the queue whatever transactions its operations write in.
         from database.context import channel, retroactive_run
-        with channel(ec.CHANNEL_RETROACTIVE), retroactive_run(run_id), _beating(control, db.get_bind().url):
+        with channel(ec.CHANNEL_RETROACTIVE), retroactive_run(run_id), _beating(control, db.get_bind()):
             out["result"] = spec["run"](db, params, log, control)
         # 🔴 STOPPED AND FINISHED ARE DIFFERENT OUTCOMES. A cancelled run has committed
         # everything it wrote and has more left to do; reporting it as `done` would tell

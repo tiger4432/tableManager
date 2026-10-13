@@ -153,16 +153,9 @@ class _Slot:
 
     def _relay(self):
         """The slot's log lines, into this process's log - under the logger that wrote them."""
-        from utils.logger import relayed
+        from utils.logger import relay_lines
 
-        level, name = logging.WARNING, "Chain"
-        for raw in self.proc.stderr:
-            said = relayed(raw)
-            if said is not None:
-                level, name, message = said
-            else:
-                message = raw.rstrip("\r\n")
-            logging.getLogger(name).log(level, "[slot %d pid %d] %s", self.index, self.pid, message)
+        relay_lines(self.proc.stderr, "[slot %d pid %d]" % (self.index, self.pid), "Chain")
 
     def _send(self, ask):
         try:

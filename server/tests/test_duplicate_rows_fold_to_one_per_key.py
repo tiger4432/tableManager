@@ -387,6 +387,9 @@ def test_the_fold_names_the_declared_index_on_its_keys_or_says_where_to_declare_
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(TABLES[TABLE], indexes=[{"columns": ["ts", "wafer"]}]))
     assert replay.fold_duplicate_rows(db, TABLE, ["wafer"], "ts", log=lambda m: None)["key_index"].startswith(
         "none"), "an index that does not lead on the keys gives them in no order"
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(TABLES[TABLE], indexes=[{"columns": ["wafer"], "search": True}]))
+    assert replay.fold_duplicate_rows(db, TABLE, ["wafer"], "ts", log=lambda m: None)["key_index"].startswith(
+        "none"), "a search index on the keys gives them in no order either (총괄 10-13)"
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(TABLES[TABLE], indexes=[{"columns": ["wafer", "ts"]}]))
     said.clear()
     run = retroactive._run_fold_duplicate_rows(db, {"table": TABLE, "keys": ["wafer"], "order": "ts"}, log=said.append)
