@@ -17,6 +17,7 @@ import { snapshot, commitIfRecorded } from './effort_meter.js';
 //    evaluating admin's top level on every grid load (1 TypeError) and pulling ~197 KB of admin
 //    js+css nobody on that page used. Removing this one `import()` removed the helper itself.
 import { fetchData, copyRow } from './api.js';
+import { shiftCount } from './match_count.js';
 
 export function setupBeforeUnloadWarning() {
   window.onbeforeunload = (e) => {
@@ -322,7 +323,7 @@ export function updatePageCacheOnUpsert(items) {
 
     if (!foundAnywhere) {
       for (const [skip, cached] of state.pageCache.entries()) {
-        cached.total += 1;
+        cached.count = shiftCount(cached.count, 1);
 
         if (skip === 0 && isSortLatest) {
           const nowStr = getLocalTimeString();
@@ -353,12 +354,7 @@ export function updatePageCacheOnDelete(rowIds) {
       cached.data = cached.data.filter(r => r.row_id !== rowId);
 
       const removedCount = originalLength - cached.data.length;
-      if (removedCount > 0) {
-        cached.total -= removedCount;
-      } else {
-        cached.total -= 1;
-      }
-      if (cached.total < 0) cached.total = 0;
+      cached.count = shiftCount(cached.count, removedCount > 0 ? -removedCount : -1);
     }
   });
 }

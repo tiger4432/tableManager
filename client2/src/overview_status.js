@@ -16,6 +16,7 @@ import { errorText } from './body_error.js';
 import { absentPath } from './absent_listing.js';
 import { LOADING, unitText } from './ui_words.js';
 import { failedSince } from './chain_queue_panel.js';
+import { countNumberText } from './match_count.js';
 import { runtimeView } from './runtime_panel.js';
 import { sourcesView } from './ledger_sources_panel.js';
 import { isFailedStatus } from './retry_verdict.js';
@@ -98,13 +99,14 @@ export function autoRow({ auto, failed } = {}) {
   return row('auto', 'Auto Update', facts, tone);
 }
 
-/** admin.js `fetchEnrichmentStatus()` — `{ rules, totalMissing }`, or null when unread. */
+/** admin.js `fetchEnrichmentStatus()` — `{ rules, totalMissing, missingCapped }`, or null when unread. */
 export function enrichmentRow(enrich) {
   if (enrich === undefined) return pending('enrichment', 'Enrichment');
   if (!enrich) return row('enrichment', 'Enrichment', [], TONE.UNKNOWN);
   const rules = Array.isArray(enrich.rules) ? enrich.rules.length : 0;
   if (!rules) return row('enrichment', 'Enrichment', ['No rules'], TONE.UNKNOWN);
-  return row('enrichment', 'Enrichment', [unitText(rules, 'rule'), `missing ${countText(enrich.totalMissing)}`],
+  return row('enrichment', 'Enrichment', [unitText(rules, 'rule'),
+    `missing ${countNumberText({ total: enrich.totalMissing, capped: enrich.missingCapped === true })}`],
     enrich.totalMissing > 0 ? TONE.WARN : TONE.OK);
 }
 

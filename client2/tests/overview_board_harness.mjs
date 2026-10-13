@@ -84,6 +84,11 @@ async function suite({ status: S, board: B }) {
   eq('N1 no rules is grey, not OK', said(r(S.enrichmentRow({ rules: [], totalMissing: 0 }))), 'unknown|No rules');
   eq('N2 missing values are Warning', r(S.enrichmentRow({ rules: [{}], totalMissing: 3 })).tone, 'warn');
   eq('N3 NEGATIVE CONTROL: nothing missing is OK', r(S.enrichmentRow({ rules: [{}], totalMissing: 0 })).tone, 'ok');
+  // A rule's read counts up to 10,000 (ㄱ-1, lead 10-13): past it the sum is «at least» that.
+  eq('N4 a missing count past the cap says 10,000+', said(r(S.enrichmentRow({ rules: [{}, {}], totalMissing: 10050, missingCapped: true }))),
+    'warn|2 rules · missing 10,050+');
+  eq('N5 NEGATIVE CONTROL: under the cap the number as it is', said(r(S.enrichmentRow({ rules: [{}], totalMissing: 1234, missingCapped: false }))),
+    'warn|1 rule · missing 1,234');
 
   // ── L Ledger ──
   eq('L1 sources by the server\'s own state words', said(r(S.ledgerRow(LEDGER(0)))), 'ok|ran_and_wrote 1 · never_ran 1');
@@ -201,6 +206,8 @@ const MUTANTS = [
     load: onStatus((s) => s.replace('const counted = view.rows.filter((r) => !r.idle);', 'const counted = view.rows;')) },
   { id: 'S4', what: 'an unread chain total is OK', catches: ['H3'],
     load: onStatus((s) => s.replace('const tone = !failed.read ? TONE.UNKNOWN : failed.total > 0', 'const tone = !failed.read ? TONE.OK : failed.total > 0')) },
+  { id: 'S5b', what: 'a missing count past the cap is said as exact', catches: ['N4'],
+    load: onStatus((s) => s.replace('capped: enrich.missingCapped === true', 'capped: false')) },
   { id: 'S5', what: 'no enrichment rules is OK', catches: ['N1'],
     load: onStatus((s) => s.replace("['No rules'], TONE.UNKNOWN)", "['No rules'], TONE.OK)")) },
   { id: 'S6', what: 'refused molecules are ignored', catches: ['L2'],

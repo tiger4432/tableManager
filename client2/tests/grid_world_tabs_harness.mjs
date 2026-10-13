@@ -718,10 +718,11 @@ function suite(out, sent) {
     [{ pending: 0, said: true }, { pending: 0, sent: 0, said: true }]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
     out.left.atOnce, { value: 28, is_overwrite: false, priority_source: null });
-  eq('W9 census: the grid\'s reads of the open table go through the seat - api 4 (schema, data, count, Apply\'s read of the '
-    + 'staged rows), main 3 (load all twice, export), timeline 1 (row jump), value_suggest 1 (column values)',
+  eq('W9 census: the grid\'s reads of the open table go through the seat - api 6 (schema, data, count, Apply\'s read of the '
+    + 'staged rows, load all, export - the last two moved from main for the count ㄱ-1), main 0, timeline 1 (row jump), '
+    + 'value_suggest 1 (column values)',
     { api: callsIn('api.js'), main: callsIn('main.js'), timeline: callsIn('timeline.js'), suggest: callsIn('value_suggest.js') },
-    { api: 4, main: 3, timeline: 1, suggest: 1 });
+    { api: 6, main: 0, timeline: 1, suggest: 1 });
   return { ran: names.length, names, failures };
 }
 
@@ -775,7 +776,7 @@ const MUTANTS = [
   { id: 'G18', what: 'Apply sends a conflicted cell unasked - the code before', catches: 'W16', file: 'api.js',
     mutate: (t) => swap(t, '  if (conflicted.length && !answered) {\n', '  if (false) {\n') },
   { id: 'G22', what: 'the cache keeps the rows the grid draws - the code before', catches: 'W18', file: 'api.js',
-    mutate: (t) => swap(t, '{ data: copyRows(result.data), total: result.total }', '{ data: result.data, total: result.total }') },
+    mutate: (t) => swap(t, '{ data: copyRows(result.data), count }', '{ data: result.data, count }') },
   { id: 'G23', what: 'a page from the cache hands the grid the cache\'s own rows', catches: 'W18', file: 'api.js',
     mutate: (t) => swap(t, 'overlayStagedEdits(copyRows(cached.data))', 'overlayStagedEdits(cached.data)') },
   { id: 'G24', what: 'a broadcast adds a row the grid does not hold round the overlay - the code before', catches: 'W19', file: 'websocket.js',

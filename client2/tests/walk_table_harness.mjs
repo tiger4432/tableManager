@@ -1602,6 +1602,47 @@ async function suite(mod) {
       JSON.stringify([rowIds(), said(line()), go() && go().disabled, handle.state.result.generatedAt]));
   }
 
+  console.log(`${LF}-- More off while its walk runs: a second press asks nothing (lead 9752e91f7) --`);
+  for (const kind of ['More ▸', 'More']) {
+    const sent = [];
+    const held = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const PAGE = { ...SIGNED, more: { reach: { 'die@1': { complete: false, unexpanded: 2 } }, resume: { cursor: 'c2' } } };
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url, init) => {
+      const u = String(url);
+      if (!u.includes('/subgraph')) return { ok: true, status: 200, json: async () => DECL };
+      sent.push({ method: (init && init.method) || 'GET', body: init && init.body });
+      return new Promise((resolve) => held.push(() => resolve({ ok: true, status: 200,
+        json: async () => (kind === 'More' ? { ...SIGNED, truncated: { nodes: true, reason: 'nodes' }, limits: { nodes: 20, max_hops: 40 } } : PAGE) })));
+    } });
+    await settle();
+    const ASK = { type: 'die@1', keys: { mat_id: 'A' }, ...SIGNED_STARTS, collect: ['die@1'], node_limit: 10 };
+    handle.state.asked = { ...ASK };
+    handle.state.run = 'done';
+    handle.state.result = { ...SIGNED, ok: true, ask: ASK, generatedAt: '2026-10-12T05:00:00',
+      ...(kind === 'More' ? { cut: true, truncatedAxes: ['nodes'], limits: { nodes: 10, max_hops: 40 } } : { more: { reach: { 'die@1': { complete: false, unexpanded: 3 } }, resume: { cursor: 'c1' } } }) };
+    handle.render();
+    const btn = () => walkAll(host).find((e) => String(e.className || '').includes('wk-more') && e._text === kind);
+    // As a browser does: a disabled button's click does not fire.
+    const press = () => { const b = btn(); if (b && !b.disabled) for (const fn of b.listeners.click || []) fn({}); };
+    const live = Boolean(btn()) && btn().disabled === false;
+    press();
+    await settle();
+    const during = [Boolean(btn()) && btn().disabled, btn() && btn().getAttribute('title')];
+    press();
+    await settle();
+    const asked = sent.length;
+    for (const go of held.splice(0)) go();
+    await settle();
+    await settle();
+    const after = Boolean(btn()) && btn().disabled === false;
+    const id = kind === 'More' ? 'MR8' : 'MR7';
+    ok(`${id} ${kind}: off while its walk runs, its reason Walking…; a second press asks nothing; live again when the page lands`,
+      live && during[0] === true && during[1] === 'Walking…' && asked === 1 && after,
+      JSON.stringify([live, during, asked, after, sent.map((s) => s.method)]));
+  }
+
   console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
   {
     const doc = makeDoc();
@@ -2196,7 +2237,11 @@ const MUTANTS = [
   { id: 'MRm1', what: 'the next page replaces the step\'s answer, not merged into it', catches: 'MR2',
     from: '{ ...mergeWalks(res, was), ask: was.ask,', to: '{ ...res, ask: was.ask,' },
   { id: 'MRm2', what: 'More ▸ never off, all reached or not', catches: 'MR2',
-    from: "        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);", to: "        setDisabledReason(go, '');" },
+    from: "        setDisabledReason(go, r.more.resume ? busy : ALL_REACHED);", to: "        setDisabledReason(go, '');" },
+  { id: 'MRm7', what: 'More ▸ live while its walk runs - a second press posts the same resume', catches: 'MR7',
+    from: "        setDisabledReason(go, r.more.resume ? busy : ALL_REACHED);", to: "        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);" },
+  { id: 'MRm8', what: 'More live while its walk runs - a second press walks again', catches: 'MR8',
+    from: "          setDisabledReason(press, busy);\n", to: '' },
   { id: 'MRm5', what: 'a resume left does not say there is more to walk', catches: 'MR1',
     from: '          ...(r.more.resume ? [MORE_TO_WALK] : [])].join', to: '          ...[]].join' },
   { id: 'MRm3', what: 'the next page asked without its resume - the first page again, a GET', catches: 'MR1',

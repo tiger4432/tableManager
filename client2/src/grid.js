@@ -323,8 +323,8 @@ export function updateViewModeUI() {
 // 🔴 「몇 쪽인가」는 `match_count.js` 가 답합니다. 여기서 `Math.ceil(total / pageLimit) || 1` 을
 //    직접 쓰면 «아직 안 센 표»(total = null)가 「1쪽뿐」이 되어 다음 버튼이 꺼집니다 --
 //    세는 동안 다음 쪽으로 못 갑니다. 「모른다」와 「1쪽뿐」은 다른 상태입니다.
-export function updatePaginationUI(total) {
-  const view = pagingView(total, state.currentSkip, pageLimit);
+export function updatePaginationUI(count, shown) {
+  const view = pagingView(count, state.currentSkip, pageLimit, shown);
 
   if (elements.pageInput) {
     elements.pageInput.value = view.currentPage;

@@ -11,7 +11,7 @@ import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
 import { renderGrid, dropGridFilters, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
-import { setMatchCount } from './match_count.js';
+import { countOf, setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString, showToast } from './utils.js';
 // 거절·무응답의 문장은 그 좌석이 짓는다. 뜻을 두 번 짓지 않는다.
@@ -422,23 +422,81 @@ function narrowingParams() {
  * 🔴 못 가져오면 «세는 중»인 채로 둡니다. 0 으로 떨어뜨리면 「일치 없음」이라는 거짓이고,
  *    「모른다」는 못 세었을 때도 참입니다.
  */
-async function fillMatchCount(params, table) {
+/** 서버가 «아직 안 셌다»(counting)고 하면 다시 묻는 간격과 상한 (총괄 10-13 ②): 같은 질문(표 · 좁힘 · 세상)일 때만,
+ *  바뀌면 멈춤, 상한을 넘으면 «Counting rows…» 그대로 두고 더 안 묻습니다. */
+export const RECOUNT_ASK_MS = 3000;
+export const RECOUNT_ASK_FOR_MS = 120000;
+
+async function fillMatchCount(params, table, since = Date.now()) {
   const mine = ++countGeneration;
+  const world = state.gridWorld;
   const tail = params.toString();
   try {
     const res = await gridFetch(`${API_BASE}/tables/${table}/data/count${tail ? `?${tail}` : ''}`);
     const body = await res.json();
     // 늦게 온 답은 버립니다 -- 그 사이에 표나 필터가 바뀌었으면 이건 «다른 질문»의 답입니다.
     if (mine !== countGeneration || table !== state.currentTable) return;
-    if (!res.ok || !Number.isFinite(body.total)) return;
-    setMatchCount(elements.totalRowsCount, body.total);
-    updatePaginationUI(body.total);
+    if (!res.ok) return;
+    const count = countOf(body);
+    if (count.total === null) {
+      if (body.counting === true && Date.now() - since < RECOUNT_ASK_FOR_MS) {
+        setTimeout(() => {
+          if (mine === countGeneration && table === state.currentTable && world === state.gridWorld) fillMatchCount(params, table, since);
+        }, RECOUNT_ASK_MS);
+      }
+      return;
+    }
+    setMatchCount(elements.totalRowsCount, count);
+    const page = state.pageCache.get(state.currentSkip);
+    updatePaginationUI(count, page ? page.data.length : undefined);
     // 캐시된 쪽들은 «같은 좁힘»의 것들입니다 (필터가 바뀌면 캐시가 비워집니다).
     // 안 채우면 캐시 적중이 「세는 중」으로 되돌아갑니다.
-    state.pageCache.forEach((entry) => { entry.total = body.total; });
+    state.pageCache.forEach((entry) => { entry.count = count; });
   } catch (e) {
     console.error('Failed to fetch match count', e);
   }
+}
+
+/** 지금 그리드의 질문으로 미룬 수를 묻습니다 — 행 점프(timeline.js)처럼 수 없이 쪽을 그린 자리가 부릅니다. */
+export function askMatchCount() {
+  return fillMatchCount(narrowingParams(), state.currentTable);
+}
+
+/** Load All (main.js): every row of the grid's question, chunk by chunk. The end is a chunk shorter than `chunkLimit` -
+ *  a count is «as of» a time, 10,000+ past the cap or still counting (구현자 A 67e5e9ccd ㄱ-1), so it is not the end.
+ *  Only the first chunk is counted; the rest ask none (`defer_total`). `onProgress(rows so far, the exact count or
+ *  null)`. -> { rows, count } */
+export async function fetchAllRows(baseUrl, queryParams, chunkLimit, onProgress) {
+  const read = async (skip, deferTotal) => {
+    const res = await gridFetch(`${baseUrl}?skip=${skip}&limit=${chunkLimit}&${queryParams}${deferTotal ? '&defer_total=true' : ''}`);
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return res.json();
+  };
+  const first = await read(0, false);
+  const count = countOf(first);
+  const exact = count.total !== null && !count.capped ? count.total : null;
+  let rows = first.data || [];
+  let last = rows.length;
+  onProgress(rows.length, exact);
+  while (last === chunkLimit) {
+    // 브라우저 렌더링 프레임 양보하여 UI 갱신 보장
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const chunk = (await read(rows.length, true)).data || [];
+    if (!chunk.length) break;
+    rows = rows.concat(chunk);
+    last = chunk.length;
+    onProgress(rows.length, exact);
+  }
+  return { rows, count };
+}
+
+export const EXPORT_FAILED = '❌ CSV download failed';
+
+/** The CSV export's read: the response to stream, or the server's refusal sentence through the one refusal seat (413
+ *  past the export cap, 구현자 A 67e5e9ccd ㄱ-1). -> { res } | { refused } */
+export async function openExport(url) {
+  const res = await gridFetch(url);
+  return res.ok ? { res } : { refused: await refusalText(res, EXPORT_FAILED) };
 }
 
 // Fetch row data and render inside AG-Grid (Handles Pagination)
@@ -457,10 +515,10 @@ export async function fetchData(resetSkip = true) {
       state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
       updateGridSortState();
       updateLoadedCount(cached.data.length);
-      setMatchCount(elements.totalRowsCount, cached.total);
-      updatePaginationUI(cached.total);
+      setMatchCount(elements.totalRowsCount, cached.count);
+      updatePaginationUI(cached.count, cached.data.length);
       // 아직 안 센 쪽이 캐시에 있으면 «다시 묻습니다». 안 그러면 「세는 중」이 영영 남습니다.
-      if (!Number.isFinite(cached.total)) fillMatchCount(narrowingParams(), state.currentTable);
+      if (cached.count.total === null) fillMatchCount(narrowingParams(), state.currentTable);
       elements.performanceLog.textContent = `Loaded ${unitText(cached.data.length, 'row')} from client cache`;
       return;
     }
@@ -516,19 +574,20 @@ export async function fetchData(resetSkip = true) {
 
     // Update Counts (Zero-lag counter concept)
     updateLoadedCount();
-    setMatchCount(elements.totalRowsCount, result.total);
+    const count = countOf(result);
+    setMatchCount(elements.totalRowsCount, count);
 
     // Update Pagination UI
-    updatePaginationUI(result.total);
+    updatePaginationUI(count, result.data.length);
 
     elements.performanceLog.textContent = `Loaded ${unitText(result.data.length, 'row')} in ${fetchTime}ms`;
 
     // 행은 그려졌습니다. 이제 개수를 가지러 갑니다 -- «기다리지 않고» 돌려줍니다.
-    if (!Number.isFinite(result.total)) fillMatchCount(narrowing, table);
+    if (count.total === null) fillMatchCount(narrowing, table);
 
     // Save to Cache
     if (state.viewMode !== 'infinite') {
-      state.pageCache.set(state.currentSkip, { data: copyRows(result.data), total: result.total });
+      state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count });
     }
 
     state.isLoadingMore = false;

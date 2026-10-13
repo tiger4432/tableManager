@@ -56,6 +56,7 @@ import { FailureSummary, failureRecordCells, failureSummaryView } from './failur
 import { ruleOutcomeView } from './rule_outcome.js';
 // 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
 import { ageText } from './pickup_state.js';
+import { countOf } from './match_count.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
 // surface, not a correction surface, so nothing here carries an `effort` payload. What it
 // must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
@@ -4640,6 +4641,8 @@ async function fetchEnrichmentStatus(force = false) {
   // consumer into "every target blank" and undercount any rule with two targets.
   const perRule = [];
   let totalMissing = 0;
+  // A narrowed read counts up to 10,000 (ㄱ-1): past it the sum is «at least» - said «10,000+».
+  let missingCapped = false;
   for (const rule of rules) {
     // 큐 조건을 만들 수 없으면 missing = null(조회 실패 표기). 조건을 떼고 물으면
     // 파생 테이블 전체 행 수가 「결손」이라는 이름으로 카드에 실린다.
@@ -4652,14 +4655,16 @@ async function fetchEnrichmentStatus(force = false) {
         const cres = await fetch(url);
         if (cres.ok) {
           const cr = await cres.json();
-          missing = cr.total || 0;
+          const counted = countOf(cr);
+          missing = counted.total || 0;
+          missingCapped = missingCapped || counted.capped;
           totalMissing += missing;
         }
       } catch (e) { /* missing = null → 카드/배지에서 조회 실패 표기 */ }
     }
     perRule.push({ rule, missing });
   }
-  const data = { rules, perRule, totalMissing };
+  const data = { rules, perRule, totalMissing, missingCapped };
   enrichmentStatusCache = { ts: now, data };
   return data;
 }

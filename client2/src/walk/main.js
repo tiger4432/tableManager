@@ -1894,7 +1894,9 @@ export function boot(doc, host, deps) {
       // The walk as merged so far: More's latest answer, or the step's own (lead 10-12).
       const askedNow = state.at === 0 ? state.asked : shown.asked;
       // The server's continuation: each collected type reached or cut, its pages, and More ▸ for the next one; without it,
-      // today's More (each limit that cut it raised).
+      // today's More (each limit that cut it raised). Both off while a walk into this step runs (lead 9752e91f7: a second
+      // press posted the same resume).
+      const busy = adding && adding.at === state.at && adding.text === RUNNING ? RUNNING : '';
       if (r.more) {
         const reach = Object.entries(r.more.reach || {}).map(([type, x]) => (x && x.complete
           ? `${type}: all reached` : `${type}: cut · ${(x && x.unexpanded) || 0} not expanded`));
@@ -1903,7 +1905,7 @@ export function boot(doc, host, deps) {
           ...(r.more.resume ? [MORE_TO_WALK] : [])].join(' · '));
         const go = el(doc, 'button', 'wk-next-edge wk-more', MORE_ON);
         go.type = 'button';
-        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);
+        setDisabledReason(go, r.more.resume ? busy : ALL_REACHED);
         go.addEventListener('click', () => { if (r.more.resume) walkResume(); });
         line.append(go);
         box.append(line);
@@ -1915,6 +1917,7 @@ export function boot(doc, host, deps) {
         if (more.asked) {
           const press = el(doc, 'button', 'wk-next-edge wk-more', MORE);
           press.type = 'button';
+          setDisabledReason(press, busy);
           press.addEventListener('click', () => walkMore(more));
           cut.append(press);
         }
