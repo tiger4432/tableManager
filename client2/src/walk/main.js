@@ -382,7 +382,7 @@ export function boot(doc, host, deps) {
    *  goes as itself - its id exact, never rebuilt from its keys (a key the server wrote 9.0 came back 9, another node). */
   function askFrom(starts) {
     const signed = starts.positive.length > 0 && (starts.positive.length > 1 || starts.negative.length > 0);
-    const one = signed ? null : baskets.describe(starts.positive[0]);
+    const one = signed ? null : baskets.held(starts.positive[0]);
     return { ...spec(), ...(one ? { type: one.type, keys: { ...one.keys } } : {}), ...(signed || !one ? starts : {}) };
   }
 
