@@ -3452,12 +3452,12 @@ def _retract_deleted_rows(db, events):
             _retract_what_those_rows_fed(db, table, row_ids)
 
 
-def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), cells=None, **scope):
+def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=None, **scope):
     """Withdraw what `row_ids` of `from_table` fed, then one EDIT per row that lost a layer. `why` is
     「deleted」 or 「edited」; an edit passes the rule that ran (`declarations`) and narrows the
     withdrawal (`scope`: `table` · `columns` · `keep`, see `cell_layer.withdraw_by_origin`).
-    「blank」 passes `cells` [(row_id, column)] of `from_table` in place of origins: a recount that came back
-    blank takes back the layer its rule (`declarations`) wrote there (`cell_layer.cells_written_by`).
+    「blank」 passes the `layers` it found in place of origins: a recount that came back blank takes back the layer
+    its rule wrote there (`_withdraw_blanks` · `cell_layer.cells_written_by`).
     -> the withdrawal's stats."""
     from chain import cell_layer
     from database import crud
@@ -3468,8 +3468,7 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), cells=None
     #   own writes do - the cells it reveals and the EDIT below - so a self-filling rule is not
     #   woken by its own withdrawal. A deletion has no rule.
     with written_by(declarations):
-        layers = (cell_layer.cells_stamped_by(db, row_ids) if cells is None
-                  else cell_layer.cells_written_by(db, from_table, cells, declarations))
+        layers = cell_layer.cells_stamped_by(db, row_ids) if layers is None else layers
         stats = cell_layer.withdraw_layers(db, layers, apply=True, **scope)
         # 🔴 [총괄 e11bb4de0 (나)] A layer that was not the shown one goes without changing a
         #   cell, so no edit event left and a rule that counts layers (the hold recount)
@@ -3493,7 +3492,9 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), cells=None
 def _withdraw_blanks(db, table, blanks):
     """A recount that came back blank takes back what its rule wrote there (총괄 bc9710454 가): `blanks` are the
     batch's `(updated_by, row_id, business_key_val, columns)` whose items named columns in `withdraw` - left out of
-    the write. One withdrawal per rule, by the one door. -> the row ids that lost a layer."""
+    the write. One withdrawal per rule that wrote some of those cells last, by the one door - none, and no line, when
+    it wrote none of them. -> the row ids that lost a layer."""
+    from chain import cell_layer
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE
     from database import models
 
@@ -3512,8 +3513,11 @@ def _withdraw_blanks(db, table, blanks):
                 cells[writer].update((row_id, column) for column in columns)
     lost = set()
     for writer, wanted in sorted(cells.items()):
-        stats = _withdraw_and_tell(db, table, sorted({row_id for row_id, _column in wanted}), "blank",
-                                   declarations=(writer,), cells=sorted(wanted))
+        found = cell_layer.cells_written_by(db, table, sorted(wanted), (writer,))
+        if not found:
+            continue
+        stats = _withdraw_and_tell(db, table, sorted({layer[1] for layer in found}), "blank",
+                                   declarations=(writer,), layers=found)
         lost.update(row_id for _columns, rows in stats["lost_a_layer"].values() for row_id in rows)
     return lost
 

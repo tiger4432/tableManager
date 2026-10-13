@@ -115,6 +115,12 @@ def _confirm_may_write(db, job, column):
         db, INV, [row.row_id], [column])
 
 
+def _blank_lines(caplog):
+    """The withdrawal door's line for a blank recount on INV, up to its counts (`_withdraw_and_tell`)."""
+    return [r.getMessage().split("[ChainRetract] ")[1].split(" protected_skipped")[0] for r in caplog.records
+            if "[ChainRetract] table=%s blank_rows=" % INV in r.getMessage()]
+
+
 def _clear_lot(db, tx, log_id):
     _write(db, SRC, tx, crud.USER_SOURCE, [{"row_id": _source_row(db, log_id), "updates": {"lot": None}}])
     return _chain(db, tx)
@@ -154,15 +160,17 @@ def test_a_blank_aggregate_writes_no_layer_and_leaves_the_row_to_the_confirm(db)
     assert _row(db, "J2").lot == "AC"
 
 
-def test_a_blank_recount_takes_back_its_rules_layer_on_that_cell_only_and_the_grid_hears(db):
+def test_a_blank_recount_takes_back_its_rules_layer_on_that_cell_only_and_the_grid_hears(db, caplog):
     _write(db, SRC, "t1", "pipeline_parser", [
         {"updates": {"log_id": "L1", "job": "J3", "lot": "X", "t": "2026-10-02"}},
         {"updates": {"log_id": "L5", "job": "J5", "lot": "Y", "t": "2026-10-05"}}])
     _chain(db, "t1")
     assert _layers(db, "J3", "lot") == {crud.CHAIN_SOURCE: "X"} and not _in_queue(db, "J3")
 
+    caplog.set_level("INFO", logger="Chain")
     said = _clear_lot(db, "t2", "L1")
     assert _layers(db, "J3", "lot") == {}, "the rule's own layer of the blank aggregate goes"
+    assert _blank_lines(caplog) == ["table=%s blank_rows=1 groups=1 cells_withdrawn=1" % INV], "one line, what it took"
     assert _row(db, "J3").lot is None
     assert _in_queue(db, "J3") and _confirm_may_write(db, "J3", "lot")
     # the same rule's other columns on that row, and the same column on another row, stay
@@ -188,14 +196,17 @@ def test_a_joins_layer_on_the_cell_stays(db):
     assert _row(db, "J3").lot == "JOIN"
 
 
-def test_another_rule_that_wrote_the_cell_last_keeps_its_value(db):
+def test_another_rule_that_wrote_the_cell_last_keeps_its_value(db, caplog):
     _write(db, SRC, "t1", "pipeline_parser", [{"updates": {"log_id": "L1", "job": "J3", "lot": "X"}}])
     _chain(db, "t1")
+    assert _blank_lines(caplog) == [], "a new row's blank aggregate has nothing to take back - no line"
     _write(db, INV, "b1", crud.CHAIN_SOURCE, [{"business_key_val": "J3", "updates": {"lot": "B"}}], by="rule_b")
     assert _layers(db, "J3", "lot", by=True) == {crud.CHAIN_SOURCE: ("B", "rule_b")}
 
+    caplog.clear()
     _clear_lot(db, "t2", "L1")
     assert _layers(db, "J3", "lot", by=True) == {crud.CHAIN_SOURCE: ("B", "rule_b")}
+    assert _blank_lines(caplog) == [], "nothing of its rule's on the cell - no withdrawal, no line"
     assert _row(db, "J3").lot == "B"
 
 
