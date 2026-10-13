@@ -31,18 +31,32 @@ export const hubWords = (id) => { const h = hubOf(id); return h ? [h.row, ...h.w
  * @returns {string[]|null}
  */
 export function nodesOfPress(index, inside, encode, where, ids) {
-  const slots = Object.values(encode || {}).filter((s) => s && !isExpression(s));
-  const held = (where || []).map(([words, value]) => [new Map(slots.filter((s) => slotWords(s) === words).map((s) => [columnKey(s), s])), value])
-    .filter(([said, value]) => said.size || value !== '');
-  if (held.length !== 1 || held[0][0].size !== 1) return null;
-  const [said, value] = held[0];
-  const [slot] = said.values();
-  if (!slot.steps.length || (slot.value.on !== 'label' && slot.value.on !== 'key')) return null;
+  const held = conditionsOf(encode, where);
+  if (held.length !== 1 || !held[0].node) return null;
+  const { slot, value } = held[0];
   const ends = new Set();
   for (const id of ids) {
     for (const r of readsOf(index, inside, id, slot).reads) if ([].concat(r.value).map(String).includes(String(value))) ends.add(r.node);
   }
   return ends.size ? [...ends] : null;
+}
+
+/** A mark's conditions as a press reads them: each [words, value] a slot says (none - no condition) - its slot when one
+ *  says it, `node` when that slot reads another node's name or key along a way. nodesOfPress and whyHub ask this. */
+function conditionsOf(encode, where) {
+  const slots = Object.values(encode || {}).filter((s) => s && !isExpression(s));
+  return (where || []).map(([words, value]) => {
+    const said = [...new Map(slots.filter((s) => slotWords(s) === words).map((s) => [columnKey(s), s])).values()];
+    const slot = said.length === 1 ? said[0] : null;
+    return { words, value, said: said.length, slot, node: Boolean(slot && slot.steps.length && (slot.value.on === 'label' || slot.value.on === 'key')) };
+  }).filter((c) => c.said || c.value !== '');
+}
+
+/** Why a press with a node condition marked a hub, not the node: its conditions' words when there are more than one (a
+ *  second axis, a trellis panel - lead 10-14); else null. */
+export function whyHub(encode, where) {
+  const held = conditionsOf(encode, where);
+  return held.length > 1 && held.some((c) => c.node) ? held.map((c) => c.words) : null;
 }
 
 /** The page's hubs: each id's members as the part that drew it last counted them. Made by the page, handed to parts. */

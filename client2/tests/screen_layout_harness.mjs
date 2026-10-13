@@ -101,6 +101,35 @@ for (const [key, a] of Object.entries(ANSWERS)) {
       ledger_worlds_unread: i === 1 ? ['qa_unread'] : [] })) };
   }
 }
+// The test bed's board of dies (lead 10-14, the fourth 18766 look): its declaration saved the way the page's Save writes
+// it, then the page opened again - a scatter of SYN-CX-BW-001's dies in panels by step, labels on the marked one (the
+// die at x 12, the right edge), the tooltip's time and long id slots; a cross table by x. The dies' step, time and id
+// are laid on the captured walk here (as the Ledger column above): the box's dies carry none.
+const CX_WAFER = 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0';
+const CX_RIGHT_DIE = 'ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiU1lOLUNYLUJXLTAwMSIsIm1hdF90eXBlIjoiV2FmZXIiLCJ4IjoiMTIiLCJ5IjoiMyJ9XQ';
+const BOARD_SAVED = (() => {
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const attr = (name) => ({ steps: [], value: { on: 'node', name }, words: [name] });
+  const visual = { part: 'visual', row: 'die', start: { marking: 'marking:start' }, system: 'filter:1', filter: [], writes: 'marking:pick' };
+  return {
+    root: { split: 'row', children: [{ id: 'scatter-1', size: 1 }, { id: 'cross-1', size: 1 }] },
+    visuals: [
+      { ...visual, id: 'scatter-1', kind: 'scatter', labels: 'marked',
+        encode: { x: key('x'), y: key('y'), panel: attr('step'), shape: attr('step'), label: attr('meas_id'), tip1: attr('eventtime'), tip2: attr('meas_id') } },
+      { ...visual, id: 'cross-1', kind: 'crossTable', encode: { rows: key('x'), tip1: attr('eventtime') } },
+    ],
+    marks: { 'marking:start': [[CX_WAFER, 1]], 'marking:pick': [[CX_RIGHT_DIE, 1]] },
+  };
+})();
+const BOARD_EVENT = '2026-11-23T18:49:00Z';
+for (const [key, a] of Object.entries(ANSWERS)) {
+  if (!a || a.same_as || !a.body || !key.startsWith('/api/ledger/subgraph?') || !key.includes(`positive=${encodeURIComponent(CX_WAFER)}`) || !key.includes('hops=')) continue;
+  const b = bodyOf(a);
+  if (!Array.isArray(b.nodes)) continue;
+  a.body = { ...b, nodes: b.nodes.map((n) => (n.type !== 'die' ? n : { ...n, attributes: { ...(n.attributes || {}),
+    step: Number(n.keys.x) % 2 ? 'STEP-A' : 'STEP-B', eventtime: { $datetime: BOARD_EVENT },
+    meas_id: `fake-SYN-CX-BW-001-core_cmp_nonuniform-${n.keys.x}-${n.keys.y}` } })) };
+}
 const answerOf = (u) => {
   for (const [p, body] of Object.entries(QUEUE)) if (u.pathname === p) return { status: 200, type: 'application/json', body };
   const a = ANSWERS[u.pathname + u.search];
@@ -253,6 +282,27 @@ CELLS.push({ entry: 'index.html', after: 'right-most column filtered', rule: 'fi
   const asked = performance.getEntriesByType('resource').some((e) => e.startTime >= t.at && /\\/data\\?/.test(e.name)
     && decodeURIComponent(e.name).includes('"' + t.col + '"'));
   return asked ? null : 'the grid asked no read filtered by «' + t.col + '»';
+})()` });
+// The tooltip says a time as the grid does - no ISO «T … Z» (lead 10-14).
+CELLS.push({ entry: 'testbed.html', after: 'tooltip over a cell', rule: 'time as shown', at: 'sf-tip', expr: `(() => {
+  const tip = [...document.querySelectorAll('.sf-tip')].find((x) => x.getClientRects().length);
+  if (!tip) return 'no tooltip over the cross table cell';
+  const line = [...tip.children].map((x) => x.textContent).find((s) => s.startsWith('eventtime'));
+  if (!line) return 'the tooltip says no eventtime: ' + tip.textContent.slice(0, 60);
+  return /^eventtime: \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(line) ? null : 'the tooltip says «' + line + '»';
+})()` });
+// Every picture fills its div after the window shrank and grew (lead 10-14: 40 x 44 left in a 280 x 179 panel).
+CELLS.push({ entry: 'testbed.html', after: 'shrunk and grown', rule: 'picture fills its div', at: 'tb-plot', expr: `(() => {
+  const plots = [...document.querySelectorAll('.tb-plot')].filter((x) => x.getClientRects().length);
+  if (!plots.length) return 'no picture drawn';
+  for (const plot of plots) {
+    const canvas = plot.querySelector('canvas');
+    const r = plot.getBoundingClientRect();
+    if (!canvas) return 'a picture with no canvas';
+    const c = canvas.getBoundingClientRect();
+    if (Math.abs(c.width - r.width) > 2 || Math.abs(c.height - r.height) > 2) return 'a canvas ' + Math.round(c.width) + 'x' + Math.round(c.height) + ' in a ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' picture';
+  }
+  return null;
 })()` });
 for (const after of ['walked at the edge', 'light theme']) {
   CELLS.push({ entry: 'testbed.html', after, rule: 'pickers in view', at: 'sf-pop-host', expr: PICKERS_IN_VIEW });
@@ -1003,6 +1053,14 @@ const basket = (c, sign) => evaluate(c, `(() => { const b = document.querySelect
 // «+ Add start»: the start baskets' picker opened (walk/start_baskets.js - a details whose body hangs under the bar).
 const openStartPicker = (c) => evaluate(c, `(() => { const pop = document.querySelector('details.wk-barpop');
   if (pop && !pop.open) pop.querySelector('summary').click(); return Boolean(pop); })()`).then(() => sleep(300));
+// The page opened again (what it saved read anew): one navigation let through, the measuring put back.
+const openAgain = async (c, log) => {
+  log.opening = true;
+  await c.send('Page.navigate', { url: `${ORIGIN}/testbed.html` });
+  await sleep(1500);
+  await settle(c, log);
+  await evaluate(c, `(${screensLib})(${TOL})`);
+};
 const DRIVE = {
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
@@ -1064,7 +1122,12 @@ const DRIVE = {
   ],
   // The testbed's start row (lead 10-13, 18997: its picker hung clipped under a 44 px panel - no start could be picked).
   'testbed.html': [
-    ['Add start opened', openStartPicker],
+    // a board saved by a state before (the dies below, or Save pressed while panels were opened) - the page's own layout
+    ['Add start opened', async (c, log) => {
+      const had = await evaluate(c, "(() => { const had = localStorage.getItem('testbed:visuals') !== null; localStorage.removeItem('testbed:visuals'); return had; })()");
+      if (had) await openAgain(c, log);
+      await openStartPicker(c);
+    }],
     // The root part at the right edge and the foot of the grid, the start row at the foot (lead 72b2d7f8f): the page's
     // own gestures (lead 10-13) - the Marked table closed by its ×, the scatter's title dragged onto the area's right edge -
     // the right dock and the status bar hidden, the start row's dock written to the foot; then a wafer walked from there.
@@ -1105,6 +1168,30 @@ const DRIVE = {
     }],
     // The Spotfire standard's tokens in the other theme (lead b72a0ea4f: the sample and the test bed, dark and light).
     ['light theme', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'light'); true").then(() => sleep(300))],
+    // The board of dies (BOARD_SAVED): opened as saved - panels by step, the marked die's label at the right edge, the
+    // filters panel with the long ids and the times (lead 10-14).
+    ['dies in panels', async (c, log) => {
+      await evaluate(c, `localStorage.setItem('testbed:visuals', ${JSON.stringify(JSON.stringify(BOARD_SAVED))}); true`);
+      await openAgain(c, log);
+      await until(c, "document.querySelectorAll('.sf-trellis__panel canvas').length >= 2 && document.querySelectorAll('[data-panel=\"cross-1\"] td').length > 0", 15000);
+    }],
+    // The tooltip of a cross table cell - its time as the grid says it (lead 10-14: «2026-11-23T18:49:00.000Z»).
+    ['tooltip over a cell', async (c) => {
+      await evaluate(c, `(() => { const td = document.querySelector('[data-panel="cross-1"] td'); if (!td) return false;
+        const r = td.getBoundingClientRect();
+        td.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.left + 4, clientY: r.top + 4 })); return true; })()`);
+      await sleep(200);
+    }],
+    // The window shrunk and grown again (lead 10-14: a panel kept its 40 x 44 canvas after growing).
+    ['shrunk and grown', async (c) => {
+      const [w, h] = await evaluate(c, '[window.innerWidth, window.innerHeight]');
+      await c.send('Emulation.setDeviceMetricsOverride', { width: 800, height: 450, deviceScaleFactor: 1, mobile: false });
+      await sleep(800);
+      await c.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+      await sleep(800);
+    }],
+    // the next size opens the page's own layout
+    ['saved cleared', (c) => evaluate(c, "localStorage.removeItem('testbed:visuals'); true")],
   ],
   // The sample's Spotfire standard section (src/spotfire.css), in each theme.
   'sample.html': [

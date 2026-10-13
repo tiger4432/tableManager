@@ -56,7 +56,7 @@ export function scatterModel(units, ctx) {
 export const tickWords = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6)))) : String(v));
 
 /** The ECharts option for a model - pure, so the picture is scored without a canvas. */
-export function scatterOption(model, palette) {
+export function scatterOption(model, palette, width = null) {
   const t = palette;
   const axis = (kind, values, range = null) => ({
     type: kind, scale: kind === 'value', data: kind === 'category' ? [...new Set(values.map(String))].sort() : undefined,
@@ -73,10 +73,20 @@ export function scatterOption(model, palette) {
   const xs = model.points.map((p) => along(p.x)).filter((v) => v !== null && Number.isFinite(v));
   const mid = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0;
   const side = (p) => (along(p.x) > mid ? 'left' : 'right');
+  // the plot's width known (drawn): a label no longer than the room on its side, cut with «…» (its words in the tooltip),
+  // and the x ticks as many as the width holds - the axis range as it is (lead 10-14: narrow panels)
+  const GRID = { left: 60, right: 8 };
+  const plotW = width ? Math.max(0, width - GRID.left - GRID.right) : null;
+  const lo = xs.length ? Math.min(...xs) : 0;
+  const hi = xs.length ? Math.max(...xs) : 0;
+  const span = (model.range && model.range.x) || [lo, hi];
+  const fraction = (p) => (span[1] > span[0] ? (along(p.x) - span[0]) / (span[1] - span[0]) : 0.5);
+  const room = (p) => Math.max(0, Math.floor((side(p) === 'right' ? 1 - fraction(p) : fraction(p)) * plotW - model.size));
+  const fit = (p) => (plotW === null ? {} : { width: room(p), overflow: 'truncate', ellipsis: '…' });
   return {
     animation: false,
-    grid: { left: 60, right: 8, top: 16, bottom: 28, containLabel: false },
-    xAxis,
+    grid: { left: GRID.left, right: GRID.right, top: 16, bottom: 28, containLabel: false },
+    xAxis: plotW === null ? xAxis : { ...xAxis, splitNumber: Math.max(2, Math.floor(plotW / 110)), axisLabel: { ...xAxis.axisLabel, hideOverlap: true } },
     yAxis: axis(model.yKind, model.points.map((p) => p.y), model.range && model.range.y),
     brush: { toolbox: [], xAxisIndex: 0, brushType: 'rect', brushMode: 'single', transformable: false,
       brushStyle: { borderWidth: 1, color: t.brush, borderColor: t.active }, inBrush: {}, outOfBrush: {} },
@@ -84,7 +94,7 @@ export function scatterOption(model, palette) {
       type: 'scatter', symbolSize: model.size, cursor: 'pointer',
       data: ordered.map((p) => ({ value: [model.xKind === 'category' ? String(p.x) : p.x, model.yKind === 'category' ? String(p.y) : p.y],
         id: p.id, name: p.label, ...(p.shape ? { symbol: p.shape } : {}), itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 },
-        label: { show: p.tag !== null && p.tag !== undefined, formatter: String(p.tag), position: side(p), color: t.text, fontFamily: 'Roboto', fontSize: 12 } })),
+        label: { show: p.tag !== null && p.tag !== undefined, formatter: String(p.tag), position: side(p), ...fit(p), color: t.text, fontFamily: 'Roboto', fontSize: 12 } })),
       emphasis: { scale: false },
     }],
   };
@@ -111,7 +121,8 @@ export function render(area, model, ctx) {
   const plot = doc.createElement('div');
   plot.className = 'tb-plot';
   area.replaceChildren(plot);
-  const option = scatterOption(model, ctx.palette);
+  const widthOf = () => (chart.getWidth ? chart.getWidth() : null);
+  let option = null;
   // A point pressed or in a rectangle: a node or a value record marks its node; a Marker by marker marks its hub whole.
   const byId = new Map(model.points.map((p) => [p.id, p]));
   const markPoints = (ids, event) => {
@@ -119,6 +130,7 @@ export function render(area, model, ctx) {
     if (pts.some((p) => p.where)) ctx.markHubs(pts.map((p) => [p.where, p.ids]), event); else ctx.mark([...new Set(pts.flatMap((p) => p.ids))], event);
   };
   const chart = ctx.charts.init(plot);
+  option = scatterOption(model, ctx.palette, widthOf());
   chart.setOption(option, true);
   // The brush is always on: a drag draws a rectangle (Spotfire's), no toolbox button to arm it.
   chart.dispatchAction({ type: 'takeGlobalCursor', key: 'brush', brushOption: { brushType: 'rect', brushMode: 'single' } });
@@ -138,7 +150,9 @@ export function render(area, model, ctx) {
     zr.on('mousedown', (e) => ctx.remember(e && e.event));
     zr.on('click', (e) => { if (!e.target) ctx.clear(); });
   }
-  return { resize: () => chart.resize(), dispose: () => chart.dispose() };
+  // a new width: the labels' room and the tick count again
+  const resize = () => { chart.resize(); option = scatterOption(model, ctx.palette, widthOf()); chart.setOption({ xAxis: option.xAxis, series: option.series }); };
+  return { resize, dispose: () => chart.dispose() };
 }
 
 /** The title when the declaration names none - «y vs. x». */

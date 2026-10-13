@@ -31,7 +31,9 @@ const readWords = (read) => {
 function sharedReads(rows, keys) {
   return Object.fromEntries(keys.map((key) => {
     const said = [...new Map(rows.map((r) => r.reads[key]).filter((r) => r && r.state === 'one').map((r) => [JSON.stringify(r.value), r.value])).values()];
-    return [key, said.length === 1 ? { state: 'one', value: said[0] } : said.length ? { state: 'several', values: said } : { state: 'empty' }];
+    // a time the rows read stays a time (the screen gate's cross table cell, lead 10-14)
+    const time = rows.some((r) => isTimeRead(r.reads[key])) ? { time: true } : {};
+    return [key, said.length === 1 ? { state: 'one', value: said[0], ...time } : said.length ? { state: 'several', values: said } : { state: 'empty' }];
   }));
 }
 
@@ -45,7 +47,14 @@ export function tipLines(mark, ctx) {
   const keys = ctx.slots.map((s) => s.key).filter((k) => ctx.encode[k]);
   const reads = mark.reads || (rows.length === 1 ? rows[0].reads : sharedReads(rows, keys));
   const name = mark.label || (rows.length === 1 ? rows[0].label : `${rows.length} rows`);
-  return [name, ...keys.map((k) => [slotWords(ctx.encode[k]), readWords(reads[k])]).filter(([, w]) => w !== null).map(([s, w]) => `${s}: ${w}`)];
+  // a slot's words once - the same column on Y, Top/Bottom by and Panel by is one line (lead 10-14)
+  const lines = new Map();
+  for (const k of keys) {
+    const words = slotWords(ctx.encode[k]);
+    const said = readWords(reads[k]);
+    if (said !== null && !lines.has(words)) lines.set(words, `${words}: ${said}`);
+  }
+  return [name, ...lines.values()];
 }
 
 /** A mark's label: none, or for the marked marks only, or all - the Label by value, else the mark's name. */
