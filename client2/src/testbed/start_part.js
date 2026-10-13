@@ -24,9 +24,6 @@ export class StartPart extends Panel {
     // The walk page's pickers wear the walk page's styles.
     ensureWalkStyles(doc);
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-    // «+ Add start» drops its picker under this row: the row's panel lets it hang over the panels below, where a panel
-    // clipping its own box hid it - the type, the key and the + − pressed nothing (lead 10-13, 18997).
-    this.host.classList.add('tb-pops');
     const root = el('div', 'tb-start');
     root.append(el('span', 'tb-start__lab', 'Start'));
     const pick = el('div', 'tb-start__pick');

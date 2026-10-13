@@ -226,6 +226,9 @@ function makeSandbox({ dataset, tableName = 'bonding_map', onFetch }) {
     hidden: false,
   };
   const win = { innerHeight: 800, innerWidth: 1280, addEventListener() {}, removeEventListener() {} };
+  // What a browser has and the one placement reads (dropdown.js fitUnder): an element's document, its size the window's.
+  doc.documentElement = { get clientWidth() { return win.innerWidth; }, get clientHeight() { return win.innerHeight; } };
+  Object.defineProperty(El.prototype, 'ownerDocument', { get: () => doc, configurable: true });
 
   /**
    * WHAT THE SERVER WOULD ANSWER — and it HONOURS `limit`.
@@ -1901,9 +1904,8 @@ const MUTATIONS = [
   {
     name: 'M33 [MEDIUM] no horizontal clamp, so the list runs off the right edge',
     file: 'suggest',
-    find: `    if (vw > 0 && left + w > vw - EDGE) left = vw - EDGE - w;
-    if (left < EDGE) left = EDGE;`,
-    repl: `    /* MUTANT: left is whatever the cell rect says */`,
+    find: `    fitUnder(eList, cell, { align: 'left', gap: 2 });`,
+    repl: `    eList.style.left = \`\${Math.round(r.left)}px\`; /* MUTANT: left is whatever the cell rect says */`,
     breaks: 'the list\'s right edge is inside the viewport'
   },
   {

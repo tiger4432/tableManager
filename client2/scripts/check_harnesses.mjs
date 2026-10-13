@@ -1419,7 +1419,12 @@ const FLOORS = new Map([
   //    the one filter, hubs, the two kinds, the root part, two parts on one page, a kind added, save and reopen, the census,
   //    the bundle); M1-M23.
   // 44 -> 46: T18 the site's theme is the page's (lead 10-13: the start picker a white box on the dark page); M24.
-  ['testbed_harness.mjs', 46],
+  // 46 -> 66: the doc audit's fixes (lead 9e6223919) - T9c' marked rows, T9f a system filter change from its start side,
+  //    T11 a third kind through the same root, T19 the root names no kind, T20 the walk page's seeds the same function,
+  //    T21 one seedsOf, T22 no colour in testbed.css, T23 each kind's title; M14b M17b M22b M25-M34.
+  // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
+  //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
+  ['testbed_harness.mjs', 74],
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
@@ -1803,7 +1808,7 @@ const FLOORS = new Map([
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
   // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.
-  ['dropdown_place_harness.mjs', 10],
+  ['dropdown_place_harness.mjs', 20],   // 10 -> 20: P6-P9 R1 flipped above, cut on the roomier side, placed where it stands; DP6-DP10 (lead 72b2d7f8f)
   // The screens in real Chrome (lead 1343e5cca): 7 dist entries x 8 checks (clip · overflow · panel · text · size ·
   // columns · words · answers) at 1920x950, 1536x864 and 1280x720 + 8 mutants - the five that leaked on 10-08/09, the
   // ledger table's hand widths, Options and Menu inside the zoomed header, the Rules column's names broken (lead 10-09).

@@ -33,12 +33,12 @@ export function conditionWords(c, total) {
 export function drawCondition(doc, summary, condition, onChange) {
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const c = condition || conditionFor(summary);
-  const box = el('div', 'tb-cond');
-  box.append(el('div', 'tb-cond__h', summary.words));
+  const box = el('div', 'sf-filter');
+  box.append(el('div', 'sf-filter__h', summary.words));
   if (c.range) {
-    const line = el('div', 'tb-cond__range');
+    const line = el('div', 'sf-filter__range');
     for (const end of ['min', 'max']) {
-      const input = el('input', 'tb-cond__num');
+      const input = el('input', 'sf-filter__num');
       input.type = 'number';
       input.value = String(c.range[end]);
       input.setAttribute('aria-label', end === 'min' ? 'From' : 'To');
@@ -52,7 +52,7 @@ export function drawCondition(doc, summary, condition, onChange) {
   } else {
     const kept = new Set((c.values || []).map((v) => JSON.stringify(v)));
     for (const [v, n] of summary.values) {
-      const label = el('label', 'tb-cond__v');
+      const label = el('label', 'sf-filter__v');
       const check = el('input');
       check.type = 'checkbox';
       check.checked = kept.has(JSON.stringify(v));
@@ -60,16 +60,16 @@ export function drawCondition(doc, summary, condition, onChange) {
         const next = summary.values.map(([x]) => x).filter((x) => (JSON.stringify(x) === JSON.stringify(v) ? check.checked : kept.has(JSON.stringify(x))));
         onChange({ ...c, values: next });
       });
-      label.append(check, el('span', '', String(v)), el('span', 'tb-cond__n', String(n)));
+      label.append(check, el('span', '', String(v)), el('span', 'sf-filter__n', String(n)));
       box.append(label);
     }
   }
-  const empty = el('label', 'tb-cond__v');
+  const empty = el('label', 'sf-filter__v');
   const check = el('input');
   check.type = 'checkbox';
   check.checked = c.empty !== false;
   check.addEventListener('change', () => onChange({ ...c, empty: check.checked }));
-  empty.append(check, el('span', '', 'Include empty'), el('span', 'tb-cond__n', String(summary.empty || 0)));
+  empty.append(check, el('span', '', 'Include empty'), el('span', 'sf-filter__n', String(summary.empty || 0)));
   box.append(empty);
   return box;
 }

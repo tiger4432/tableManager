@@ -21,7 +21,7 @@
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
 import { staticTypes, cutBudgets, edgeQualifiers, qualifierWords, stepAlong } from './derive.js';
-import { SIGN } from '../rnd_board/marking_store.js';
+import { SIGN, seedsOf } from '../rnd_board/marking_store.js';
 import { markingIntent } from '../rnd_board/panel.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { FAILED, LOADING, unitText } from '../ui_words.js';
@@ -54,17 +54,6 @@ const READABLE_ZOOM = 0.8;
 /** How far (px) a press may wander and still be a press, not a node drag (owner 10-07 「노드 클릭이 불안정」, lead
  *  5f1eb137e: on the built page a press that moved a few px past the library's 4 dragged the node and picked nothing). */
 export const TAP_SLOP = 10;
-
-/** The signed ids of a marking, as the walk takes them. */
-export function seedsOf(entries) {
-  const positive = [];
-  const negative = [];
-  for (const [id, sign] of entries || []) {
-    if (sign === SIGN.CASE) positive.push(id);
-    else if (sign === SIGN.CONTROL) negative.push(id);
-  }
-  return { positive, negative };
-}
 
 /**
  * What the walks answered, decided from the answers and the declaration only.

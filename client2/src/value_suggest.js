@@ -77,6 +77,7 @@ import { API_BASE } from './config.js';
 import { state, gridFetch } from './state.js';
 import { saysTruncated, suggestTruncatedNote } from './truncation.js';
 import { slowReasonNote } from './slow_reason.js';
+import { fitUnder } from './dropdown.js';
 
 // ── Knobs ───────────────────────────────────────────────────────────────────────
 /**
@@ -898,20 +899,9 @@ export class SuggestCellEditor {
     // Clamped against `maxW` too, because in CSS `min-width` BEATS `max-width` — an unclamped
     // minimum would quietly reinstate the overflow it is meant to prevent.
     eList.style.minWidth = `${Math.min(Math.max(r.width, 160), maxW)}px`;
-    const w = eList.offsetWidth || Math.min(Math.max(r.width, 160), maxW);
-    let left = Math.round(r.left);
-    if (vw > 0 && left + w > vw - EDGE) left = vw - EDGE - w;
-    if (left < EDGE) left = EDGE;
-    eList.style.left = `${Math.round(left)}px`;
-    const below = window.innerHeight - r.bottom;
-    const h = eList.offsetHeight;
-    // Flip above only when there is genuinely no room below AND more room above, so the
-    // list does not jump between sides as rows scroll.
-    if (below < h + 8 && r.top > below) {
-      eList.style.top = `${Math.round(r.top - h - 2)}px`;
-    } else {
-      eList.style.top = `${Math.round(r.bottom + 2)}px`;
-    }
+    // Where it goes is the one placement every popover takes (dropdown.js fitUnder, lead 72b2d7f8f): under the cell,
+    // above it at the foot of the page, cut and scrolled when neither fits, shifted to stay on screen.
+    fitUnder(eList, cell, { align: 'left', gap: 2 });
   }
 
   scrollHighlightIntoView() {

@@ -2,7 +2,7 @@
 // rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its rows, marked whole.
 
 import { fold } from '../aggregate.js';
-import { categoriesOf } from '../slot.js';
+import { categoriesOf, slotWords } from '../slot.js';
 
 export const SLOTS = Object.freeze([
   { key: 'rows', label: 'Row axis', category: true },
@@ -18,10 +18,11 @@ export const cellWords = (v) => (v === null || v === undefined ? '-'
 
 /**
  * @param {Array<{id, reads: object, raw: object}>} rows  `raw.cells` - the cell slot's every value of the row, {value, t}
- * @param {{marked: (id) => boolean, reduce?: string}} ctx  the cell slot's reduce; none - Count
+ * @param {{marked: (id) => boolean, declaration?: object}} ctx  the declaration's cell slot's reduce; none - Count
  */
 export function crossModel(rows, ctx) {
-  const reduce = ctx.reduce || 'Count';
+  const cellSlot = ((ctx.declaration && ctx.declaration.encode) || {}).cells;
+  const reduce = (cellSlot && cellSlot.reduce) || 'Count';
   const cells = new Map();
   const keyOf = (r, c) => `${r}\u0000${c}`;
   const rowKeys = new Set();
@@ -70,26 +71,26 @@ export function crossModel(rows, ctx) {
 export function render(body, model, ctx) {
   const doc = ctx.doc;
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-  body.className = 'tb-body tb-cross';
+  body.className = 'sf-part__body tb-cross';
   const top = el('div', 'tb-cross__top');
   top.append(ctx.pill('columns'), ctx.plus('columns'));
   const left = el('div', 'tb-cross__left');
   left.append(ctx.pill('rows', { vertical: true }));
   const wrap = el('div', 'tb-cross__wrap');
-  const table = el('table', 'tb-ct');
+  const table = el('table', 'sf-table');
   const head = el('tr');
-  head.append(el('th', 'tb-ct__corner', ctx.words('rows')));
+  head.append(el('th', 'sf-table__corner', ctx.words('rows')));
   const words = { rows: ctx.words('rows'), columns: ctx.words('columns') };
   model.colKeys.forEach((c, j) => {
-    const th = el('th', 'tb-ct__col', c);
+    const th = el('th', 'sf-table__col', c);
     th.addEventListener('click', (event) => ctx.markHub([[words.columns, c]], model.colIds[j], event));
     head.append(th);
   });
-  head.append(el('th', 'tb-ct__col tb-ct__total', TOTAL));
+  head.append(el('th', 'sf-table__col sf-table__total', TOTAL));
   table.append(head);
   model.rowKeys.forEach((r, i) => {
     const tr = el('tr');
-    const th = el('th', 'tb-ct__row', r);
+    const th = el('th', 'sf-table__row', r);
     th.addEventListener('click', (event) => ctx.markHub([[words.rows, r]], model.rowIds[i], event));
     tr.append(th);
     model.grid[i].forEach((cell, j) => {
@@ -97,21 +98,24 @@ export function render(body, model, ctx) {
       if (cell.ids.length) td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
       tr.append(td);
     });
-    tr.append(el('td', 'tb-ct__total', cellWords(model.rowTotals[i])));
+    tr.append(el('td', 'sf-table__total', cellWords(model.rowTotals[i])));
     table.append(tr);
   });
-  const foot = el('tr', 'tb-ct__totals');
-  foot.append(el('th', 'tb-ct__row', TOTAL));
-  model.colTotals.forEach((v) => foot.append(el('td', 'tb-ct__total', cellWords(v))));
-  foot.append(el('td', 'tb-ct__total', cellWords(model.total)));
+  const foot = el('tr', 'sf-table__totals');
+  foot.append(el('th', 'sf-table__row', TOTAL));
+  model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellWords(v))));
+  foot.append(el('td', 'sf-table__total', cellWords(model.total)));
   table.append(foot);
   wrap.append(table);
   const bottom = el('div', 'tb-cross__bottom');
   bottom.append(ctx.pill('cells'), ctx.plus('cells'));
-  const legend = el('div', 'tb-legend');
-  legend.append(el('div', 'tb-legend__ttl', 'Colors:'), el('div', 'tb-legend__v tb-legend__plain', 'All values'));
+  const legend = el('div', 'sf-legend');
+  legend.append(el('div', 'sf-legend__ttl', 'Colors:'), el('div', 'sf-legend__v sf-legend__plain', 'All values'));
   body.replaceChildren(top, left, wrap, legend, bottom);
   return { resize: () => {}, dispose: () => {} };
 }
 
-export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, model: crossModel, render };
+/** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «Count». */
+export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : 'Count'} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
+
+export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, title, model: crossModel, render };

@@ -159,8 +159,6 @@ const ADMIN_TEXT = readFileSync(ADMIN_HTML, 'utf8');
 const TOKENS_TEXT = readFileSync(TOKENS, 'utf8');
 const WALK_STYLES = path.join(CLIENT, 'src', 'walk', 'styles.js');
 const WALK_TEXT = readFileSync(WALK_STYLES, 'utf8');
-const TESTBED_PALETTE = path.join(CLIENT, 'src', 'testbed', 'palette.js');
-const TESTBED_PALETTE_TEXT = readFileSync(TESTBED_PALETTE, 'utf8');
 const swap = (text, from, to) => {
   if (!text.includes(from)) {
     console.error(`HARNESS FAILURE: mutation anchor stopped matching: ${JSON.stringify(from)}`);
@@ -192,8 +190,8 @@ const DEFECTS = [
   ['M7 걷기 화면의 CSS 문자열에 지어진 이름 하나 -> T1',
    () => ({ [WALK_STYLES]: swap(WALK_TEXT, '.wk-trunc { color: var(--warning); }',
                                 '.wk-trunc { color: var(--nowhere, #fff); }') })],
-  ['M8 시험대 팔레트가 키 하나를 잃는다 -> T1 (testbed.css 가 부르는 자리가 고아가 된다)',
-   () => ({ [TESTBED_PALETTE]: swap(TESTBED_PALETTE_TEXT, " '--tb-dim': t.dim,", '') })],
+  ['M8 스팟파이어 토큰 하나가 사라진다 -> T1 (spotfire.css · testbed.css 가 부르는 자리가 고아가 된다)',
+   () => ({ [TOKENS]: swap(TOKENS_TEXT, '  --sf-legend-w: 150px;', '  --sf-legend-gone: 150px;') })],
 ];
 const CONTROLS = [
   // 🔴 «정의된» 이름의 대체값은 토큰이 안 실린 호스트를 위한 것입니다. 이것이 잡히면 게이트가 정당한 코드를 빨갛게 만듭니다.

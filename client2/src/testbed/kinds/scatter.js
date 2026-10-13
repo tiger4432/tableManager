@@ -1,8 +1,10 @@
 // The scatter kind of the visual part: its slots, its model, its picture (ECharts, injected - the kind never imports it).
-// What the root hands in is the same for every kind: rows and their slots read, and what is marked.
+// What the root hands in is the same for every kind: rows and their slots read, what is marked, the declaration, the
+// palette its tokens give (testbed/palette.js).
 
 import { numberOf } from '../../walk/reach_table.js';
-import { THEMES, ONE, categoryColor, mix, MARKER_PX, MARKER_PCT } from '../palette.js';
+import { categoryColor, mix, MARKER_PX, MARKER_PCT } from '../palette.js';
+import { slotWords } from '../slot.js';
 
 export const SLOTS = Object.freeze([
   { key: 'x', label: 'X-axis' },
@@ -24,10 +26,10 @@ export function axisKind(values) {
  * lead aca803a7a «N rows with several values»); its colour is its category's, mixed toward the background when something
  * else is marked and it is not.
  * @param {Array<{id, label, reads: Record<string, object>}>} rows
- * @param {{marked: (id) => boolean, theme?: string, markerPct?: number}} ctx
+ * @param {{marked: (id) => boolean, palette: object, declaration?: object}} ctx  the declaration's markerPct - the marker size
  */
 export function scatterModel(rows, ctx) {
-  const theme = THEMES[ctx.theme] || THEMES.dark;
+  const palette = ctx.palette;
   const drawable = [];
   let notDrawn = 0;
   let several = 0;
@@ -41,25 +43,25 @@ export function scatterModel(rows, ctx) {
   const anyMarked = drawable.some((p) => ctx.marked(p.id));
   const points = drawable.map((p) => {
     const k = p.category === null ? -1 : categories.indexOf(String(p.category));
-    const [fill, border] = k < 0 ? ONE : categoryColor(k);
+    const [fill, border] = k < 0 ? palette.one : categoryColor(palette, k);
     const marked = ctx.marked(p.id);
     const dim = anyMarked && !marked;
-    return { ...p, marked, fill: dim ? mix(fill, theme.bg) : fill, border: dim ? mix(border, theme.bg) : border };
+    return { ...p, marked, fill: dim ? mix(fill, palette.bg) : fill, border: dim ? mix(border, palette.bg) : border };
   });
-  const legend = categories.map((name, k) => ({ name, fill: categoryColor(k)[0], border: categoryColor(k)[1],
+  const legend = categories.map((name, k) => ({ name, fill: categoryColor(palette, k)[0], border: categoryColor(palette, k)[1],
     ids: points.filter((p) => String(p.category) === name).map((p) => p.id),
     dim: anyMarked && !points.some((p) => p.marked && String(p.category) === name) }));
-  return { points, legend, anyMarked, notDrawn, several,
+  return { points, legend, one: palette.one, anyMarked, notDrawn, several,
     xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
-    size: MARKER_PX * ((ctx.markerPct || MARKER_PCT) / MARKER_PCT) };
+    size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
 }
 
 /** A number as an axis says it - no unit added (mockup fix ③: «1.0 %» on a ratio was a wrong sentence). */
 export const tickWords = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6)))) : String(v));
 
 /** The ECharts option for a model - pure, so the picture is scored without a canvas. */
-export function scatterOption(model, theme = 'dark') {
-  const t = THEMES[theme] || THEMES.dark;
+export function scatterOption(model, palette) {
+  const t = palette;
   const axis = (kind, values) => ({
     type: kind, scale: kind === 'value', data: kind === 'category' ? [...new Set(values.map(String))].sort() : undefined,
     axisLine: { show: true, lineStyle: { color: t.axis, width: 1 } }, axisTick: { show: false }, splitLine: { show: false },
@@ -102,40 +104,40 @@ export function idsInRange(model, option, coordRange) {
 export function render(body, model, ctx) {
   const doc = ctx.doc;
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-  body.className = 'tb-body tb-scatter';
+  body.className = 'sf-part__body tb-scatter';
   const ytray = el('div', 'tb-ytray');
   ytray.append(ctx.plus('y'), ctx.pill('y', { vertical: true }));
   const plot = el('div', 'tb-plot');
-  const legend = el('div', 'tb-legend');
-  const ttl = (words) => el('div', 'tb-legend__ttl', words);
-  const row = (...kids) => { const r = el('div', 'tb-legend__row'); r.append(...kids); return r; };
-  legend.append(ttl('Marker by:'), row(ctx.pill('marker')), ttl('Color by:'), row(ctx.pill('color'), ctx.plus('color')));
+  const legend = el('div', 'sf-legend');
+  const ttl = (words) => el('div', 'sf-legend__ttl', words);
+  const row = (...kids) => { const r = el('div', 'sf-legend__row'); r.append(...kids); return r; };
+  legend.append(ttl('Marker by:'), row(ctx.pill(null, { words: '(Node)' })), ttl('Color by:'), row(ctx.pill('color'), ctx.plus('color')));
   if (model.legend.length) {
     for (const item of model.legend) {
-      const v = el('button', `tb-legend__v${item.dim ? ' is-dim' : ''}`);
+      const v = el('button', `sf-legend__v${item.dim ? ' is-dim' : ''}`);
       v.type = 'button';
-      const ico = el('span', 'tb-legend__ico');
+      const ico = el('span', 'sf-legend__ico');
       ico.style.background = item.fill;
       ico.style.borderColor = item.border;
-      v.append(ico, el('span', 'tb-legend__name', item.name));
+      v.append(ico, el('span', 'sf-legend__name', item.name));
       v.addEventListener('click', (event) => ctx.markHub([[ctx.words('color'), item.name]], item.ids, event));
       legend.append(v);
     }
   } else {
-    const v = el('div', 'tb-legend__v');
-    const ico = el('span', 'tb-legend__ico');
-    ico.style.background = ONE[0];
-    ico.style.borderColor = ONE[1];
-    v.append(ico, el('span', 'tb-legend__name', 'All values'));
+    const v = el('div', 'sf-legend__v');
+    const ico = el('span', 'sf-legend__ico');
+    ico.style.background = model.one[0];
+    ico.style.borderColor = model.one[1];
+    v.append(ico, el('span', 'sf-legend__name', 'All values'));
     legend.append(v);
   }
   const xtray = el('div', 'tb-xtray');
-  const note = el('span', 'tb-note', [model.notDrawn ? `${model.notDrawn} not drawn` : '',
+  const note = el('span', 'sf-note', [model.notDrawn ? `${model.notDrawn} not drawn` : '',
     model.several ? `${model.several} rows with several values` : ''].filter(Boolean).join(' · '));
   xtray.append(note, ctx.pill('x'), ctx.plus('x'));
   body.replaceChildren(ytray, plot, legend, xtray);
 
-  const option = scatterOption(model, ctx.theme);
+  const option = scatterOption(model, ctx.palette);
   const chart = ctx.charts.init(plot);
   chart.setOption(option, true);
   // The brush is always on: a drag draws a rectangle (Spotfire's), no toolbox button to arm it.
@@ -156,4 +158,7 @@ export function render(body, model, ctx) {
   return { resize: () => chart.resize(), dispose: () => chart.dispose() };
 }
 
-export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, model: scatterModel, render };
+/** The title when the declaration names none - «y vs. x». */
+export const title = (encode) => `${slotWords(encode.y)} vs. ${slotWords(encode.x)}`;
+
+export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, title, model: scatterModel, render };
