@@ -5,9 +5,10 @@ derived_table에 키당 1행을 upsert하는 체인 맵퍼다. `chain_rules.json
 선언이 서는 체인 규칙(`declared:enrich`)을 통해 체인 워커가 호출한다.
 
 핵심 불변식:
-- **target_fields는 절대 updates에 포함하지 않는다** (사람이 채운 값 보존 1차 방어).
-  2차 방어는 레이어링 자체 — 이 맵퍼의 source는 `chain_ingestion`(우선순위 99)이라
-  설령 값이 실리더라도 user(priority 0)를 이길 수 없다(crud.compute_priority_value).
+- **target_fields 는 같은 이름의 집계만 쓴다** (총괄 3e5c9a69e · bc9710454 가). 층은 체인의 것
+  (`chain_ingestion`, 순위 4)이라 사람 값(0)과 표가 더 위에 둔 층이 보인다(crud.compute_priority_value).
+- **맵퍼는 읽기만 한다.** 빈 집계는 층을 안 쓰고 그 아이템의 `withdraw` 에 칸 이름만 싣는다 —
+  거두기는 쓰기 뒤 워커의 한 문(`ingestion_worker._withdraw_and_tell`)이, 이 규칙이 쓴 층만 한다.
 - **증분 처리**: 이번 배치 payload의 행만 본다(원본 풀스캔 금지). count 집계만
   "영향받은 키 한정" 재계산(청킹된 GROUP BY)으로 수행해 재인제션에도 멱등이다.
 - **부분 판단키는 살아남은 키로 일한다** (2026-08-05 사용자 재정). 거절되는 것은
@@ -334,9 +335,9 @@ def map_enrichment_dedup(db, payloads, rule=None):
         aggregated = _aggregate_affected_keys(
             db, source_table, decision_key, key_raw_values, aggregations)
 
-    # 3) 키당 1행 upsert 아이템 구성 — target_fields는 절대 포함하지 않는다.
+    # 3) 키당 1행 upsert 아이템 구성 — target_fields 는 같은 이름의 집계만 쓴다. 빈 집계는 «withdraw» 에.
     #    기존 키: decision/list 컬럼 값이 동일하면 has_changed=False로 무변경 처리되고,
-    #    집계/단서만 실질 갱신된다. 신규 키: 행 생성 + target은 미설정(NULL)로 남는다.
+    #    집계/단서만 실질 갱신된다. 신규 키: 행 생성 + 집계 없는 target은 미설정(NULL)로 남는다.
     updates = []
     partial_keys = 0
     unaddressable = 0
@@ -370,18 +371,24 @@ def map_enrichment_dedup(db, payloads, rule=None):
         for col, v in g["reps"].items():
             if col in derived_cols and col not in target_fields:
                 upd_cols[col] = v
+        blank = []
         for col, spec in aggregations.items():
-            if col in derived_cols and col not in target_fields:
+            if col in derived_cols:
                 # ⚠️ count 가 없으면 «0», 값 집계(min/max/unique_concat)가 없으면 «None». 0 은 「그 키의
                 # 행이 없다」는 참인 답이지만, 값 집계에서 0 은 지어낸 값이다.
                 fn = spec["fn"] if isinstance(spec, dict) else spec
                 default = 0 if fn == "count" else None
-                upd_cols[col] = (aggregated.get(key) or {}).get(col, default)
+                value = (aggregated.get(key) or {}).get(col, default)
+                if crud.is_blank_value(value):
+                    blank.append(col)
+                else:
+                    upd_cols[col] = value
 
+        # `updated_by` 는 체인이 규칙의 선언 이름으로 찍는다(`rule_run.signed`)
         item = {
             "updates": upd_cols,
             "source_name": "chain_ingestion",
-            "updated_by": "chain_worker",
+            "withdraw": blank,
         }
         # business_key_val 선(先)조립 — apply_batch_updates의 벌크 프리페치(row/CellSource 캐시)가
         # business_key_val 기준이므로 여기서 확정해야 기존 행 조회가 N+1 없이 배치된다.
