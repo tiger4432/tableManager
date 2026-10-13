@@ -5,6 +5,7 @@ import { routesFrom, valuesAt, waysOf, WAYS_A_CELL } from '../walk/reach_table.j
 import { REDUCES } from './aggregate.js';
 import { readSlot } from './slot.js';
 import { setDisabledReason } from '../disabled_reason.js';
+import { fitUnder } from '../dropdown.js';
 
 /** The routes a part's rows take, its own values first (no step). */
 export function routeChoices(index, rows) {
@@ -49,9 +50,15 @@ export class SlotPicker {
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     const slot = (part.decl.encode || {})[key] || null;
     const rows = part.rowIds || [];
+    // Drawn again on every pick, so placed again: the one placement (dropdown.js fitUnder, lead 72b2d7f8f) - an axis
+    // pill at the foot of the page opens its picker above it.
+    const show = (box) => {
+      this.host.replaceChildren(box);
+      if (anchor && anchor.getBoundingClientRect) fitUnder(this.host, anchor, { align: 'left', gap: 4 });
+    };
     const draw = (chosen) => {
       const box = el('div', 'sf-pop');
-      if (!part.index) { box.append(el('div', 'sf-pop__why', 'Walk first - nothing to pick from')); this.host.replaceChildren(box); return; }
+      if (!part.index) { box.append(el('div', 'sf-pop__why', 'Walk first - nothing to pick from')); show(box); return; }
       // Three columns side by side - the route, then where it ends and its value, then how they fold.
       const [routes, at, folds] = [el('div', 'sf-pop__col'), el('div', 'sf-pop__col'), el('div', 'sf-pop__col')];
       box.append(routes, at, folds);
@@ -113,15 +120,9 @@ export class SlotPicker {
       custom.type = 'button';
       setDisabledReason(custom, 'Waits for contracts/expression/vectors.json');
       folds.append(none, custom);
-      this.host.replaceChildren(box);
+      show(box);
     };
-    draw(slot || { steps: [], value: null });
     this.host.style.display = '';
-    const spot = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
-    if (spot) {
-      const view = doc.documentElement ? doc.documentElement.clientWidth : 1440;
-      this.host.style.left = `${Math.max(8, Math.min(spot.left, view - 760))}px`;
-      this.host.style.top = `${spot.bottom + 4}px`;
-    }
+    draw(slot || { steps: [], value: null });
   }
 }

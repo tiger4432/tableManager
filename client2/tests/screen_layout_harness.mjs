@@ -43,7 +43,10 @@ const ORIGIN = 'http://screens.test';
 const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
 // Sizes one entry is seen at too: the walk page where the lead read its table (Edge 1568x775, lead 34d91c09d; Edge
 // 1896x907 with the demo pair, lead 10-10 after 517eb6c2c).
-const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]] };
+// The test bed and the main grid at the four sizes their pickers are asked at (lead 72b2d7f8f) - 1280x720 is SIZES'.
+const EDGE_SIZES = [[1920, 1080], [1440, 900], [1024, 768]];
+// The main grid at the two wide ones only (lead 10-13 ②): at 1024x768 its own layout is red before any picker - next.
+const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'testbed.html': EDGE_SIZES, 'index.html': EDGE_SIZES.slice(0, 2) };
 const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
 const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns', 'words'];
 const TOL = 12;
@@ -170,6 +173,74 @@ const PICKER_REACH = `(() => {
 })()`;
 for (const entry of ['walk.html', 'testbed.html']) {
   CELLS.push({ entry, after: 'Add start opened', rule: 'picker reachable', at: 'wk-barpopbody', expr: PICKER_REACH });
+}
+// Every picker of the root part opens inside the screen and takes a press (lead 72b2d7f8f, owner 10-13 «x축 선언창
+// 삐져나가서 안 보임»): each pill of the walked parts, then the start picker - its window's box inside the viewport, cut
+// with a scroll of its own when it is cut, and the centre of each control it shows reaching that control.
+const PICKERS_IN_VIEW = `(async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  const out = [];
+  const check = (win, name) => {
+    const r = win.getBoundingClientRect();
+    if (r.left < -0.5 || r.top < -0.5 || r.right > vw + 0.5 || r.bottom > vh + 0.5) {
+      return name + ' opens at ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',') + ', past the ' + vw + 'x' + vh + ' screen';
+    }
+    if (win.scrollHeight > win.clientHeight + 1 && !/auto|scroll/.test(getComputedStyle(win).overflowY)) return name + ' is cut with no scroll of its own';
+    for (const x of [...win.querySelectorAll('select, input, button')].filter((e) => e.getClientRects().length)) {
+      const b = x.getBoundingClientRect();
+      const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;
+      if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
+      const hit = document.elementFromPoint(cx, cy);
+      if (!hit || !(hit === x || x.contains(hit))) {
+        return name + ': a press on ' + x.tagName.toLowerCase() + ' «' + (x.textContent || x.value || '').trim().slice(0, 20) + '» reaches '
+          + (hit ? hit.tagName.toLowerCase() + (hit.className ? '.' + String(hit.className).split(' ')[0] : '') : 'nothing');
+      }
+    }
+    return null;
+  };
+  const pills = [...document.querySelectorAll('.rb-panel .sf-pill')].filter((p) => p.getClientRects().length);
+  if (!pills.length) return 'no pill drawn - the parts did not walk';
+  const host = document.querySelector('.sf-pop-host');
+  let opened = 0;
+  for (const p of pills) {
+    const name = 'the picker of «' + p.textContent.replace('▾', '').trim().slice(0, 24) + '»';
+    p.click();
+    await wait(300);
+    if (!host || host.style.display === 'none' || !host.getClientRects().length) continue;
+    opened += 1;
+    const why = check(host, name);
+    if (why) out.push(why);
+    p.click();
+    await wait(150);
+  }
+  if (!opened) out.push('no pill opened a picker');
+  const pop = document.querySelector('details.wk-barpop');
+  if (!pop) out.push('no start picker');
+  else {
+    pop.querySelector('summary').click();
+    await wait(400);
+    const body = pop.open ? pop.querySelector('.wk-barpopbody') : null;
+    const why = body ? check(body, 'the start picker') : 'the start picker did not open';
+    if (why) out.push(why);
+    pop.open = false;
+    await wait(150);
+  }
+  return out.length ? out.join(' | ') : null;
+})()`;
+// The right-most column's filter took its letter and the grid asked a read filtered by that column (lead 72b2d7f8f).
+CELLS.push({ entry: 'index.html', after: 'right-most column filtered', rule: 'filter typed', at: 'ag-floating-filter', expr: `(() => {
+  const t = window.__filterTyped;
+  if (!t) return 'the right-most filter was never typed';
+  if (t.why) return t.why;
+  const box = [...document.querySelectorAll('.ag-floating-filter input')].find((i) => i.closest('[col-id]') && i.closest('[col-id]').getAttribute('col-id') === t.col);
+  if (!box || box.value !== 'e') return 'the «' + t.col + '» filter box lost its letter';
+  const asked = performance.getEntriesByType('resource').some((e) => e.startTime >= t.at && /\\/data\\?/.test(e.name)
+    && decodeURIComponent(e.name).includes('"' + t.col + '"'));
+  return asked ? null : 'the grid asked no read filtered by «' + t.col + '»';
+})()` });
+for (const after of ['walked at the edge', 'light theme']) {
+  CELLS.push({ entry: 'testbed.html', after, rule: 'pickers in view', at: 'sf-pop-host', expr: PICKERS_IN_VIEW });
 }
 // The Ledger cell's first word whole at the column's own width (lead 10-12): the changed row starts «changed», the row no
 // world read took starts «Not yet» though a world was not read - the word's letters inside the cell, not under the ellipsis.
@@ -836,6 +907,11 @@ function screensLib(TOL) {
     if (below < -1 || below > TOL) lines.push({ rule: 'panel', path: pathOf(panel), what: `top ${Math.round(below)} px under «${label(now)}»` });
     if (edge > TOL && !atMargin) lines.push({ rule: 'panel', path: pathOf(panel), what: `no edge meets «${label(now)}» (nearest ${Math.round(edge)} px)` });
     if (p.left < 0 || p.right > innerWidth || p.bottom > innerHeight) lines.push({ rule: 'panel', path: pathOf(panel), what: `off the screen, opened by «${label(now)}»` });
+    if (p.top < 0) lines.push({ rule: 'panel', path: pathOf(panel), what: `above the screen, opened by «${label(now)}»` });
+    // Cut to the screen, it scrolls in its own box (lead 72b2d7f8f: one placement cuts a panel taller than the room).
+    if (panel.scrollHeight > panel.clientHeight + 1 && !/auto|scroll/.test(css(panel).overflowY)) {
+      lines.push({ rule: 'panel', path: pathOf(panel), what: `cut with no scroll of its own, opened by «${label(now)}»` });
+    }
     const first = panel.querySelector('button:not([disabled]), a[href], input, select, label, [role="menuitem"]');
     if (first && shown(first)) {
       const f = first.getBoundingClientRect();
@@ -973,6 +1049,21 @@ const DRIVE = {
   // The testbed's start row (lead 10-13, 18997: its picker hung clipped under a 44 px panel - no start could be picked).
   'testbed.html': [
     ['Add start opened', openStartPicker],
+    // The root part at the right edge and the foot of the grid, the start row at the foot (lead 72b2d7f8f): the grid's
+    // own placement written over (the layout is the page's, outside the parts), then a wafer walked from there.
+    ['walked at the edge', async (c) => {
+      await evaluate(c, `(() => {
+        const seat = (id, area) => { const p = document.querySelector('[data-panel="' + id + '"]'); if (p) p.style.gridArea = area; return Boolean(p); };
+        for (const id of ['properties', 'filters', 'basket', 'status']) { const p = document.querySelector('[data-panel="' + id + '"]'); if (p) p.style.display = 'none'; }
+        return seat('cross-1', '1 / 1 / 4 / 2') && seat('scatter-1', '1 / 2 / 5 / 4') && seat('start', '4 / 1 / 5 / 2'); })()`);
+      await openStartPicker(c);
+      await choose(c, '.tb-start__type', [0, "x.value === 'wafer'"]);
+      await pickKey(c, 'SYN-BW-103-11');
+      await sleep(300);
+      await basket(c, '+');
+      await evaluate(c, "(() => { const pop = document.querySelector('details.wk-barpop'); if (pop) pop.open = false; return true; })()");
+      await until(c, "document.querySelectorAll('[data-panel=\"scatter-1\"] .sf-pill').length > 0", 15000);
+    }],
     // The Spotfire standard's tokens in the other theme (lead b72a0ea4f: the sample and the test bed, dark and light).
     ['light theme', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'light'); true").then(() => sleep(300))],
   ],
@@ -1017,6 +1108,42 @@ const DRIVE = {
       const at = (t) => (t === 'mousedown' ? bar : document).dispatchEvent(new MouseEvent(t, { bubbles: true, clientX: innerWidth, clientY: 300 }));
       at('mousedown'); at('mousemove'); at('mouseup');
       return true; })()`).then(() => sleep(600))],
+    // The right-most column's own filter box takes a letter at every size and the grid reads by it (lead 72b2d7f8f:
+    // the owner's most used screen) - scrolled to the grid's right end, the box's centre reaching the box.
+    ['right-most column filtered', async (c, log) => {
+      await evaluate(c, `(async () => {
+        const v = document.querySelector('.ag-body-horizontal-scroll-viewport');
+        if (v) { v.scrollLeft = v.scrollWidth; v.dispatchEvent(new Event('scroll')); }
+        await new Promise((r) => setTimeout(r, 500));
+        const boxes = [...document.querySelectorAll('.ag-floating-filter input')].filter((i) => i.getClientRects().length && !i.disabled);
+        const box = boxes.sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right)[0];
+        const col = box && box.closest('[col-id]') ? box.closest('[col-id]').getAttribute('col-id') : null;
+        if (!box || !col) { window.__filterTyped = { why: 'no filter box at the right end' }; return false; }
+        const r = box.getBoundingClientRect();
+        const hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+        if (!(hit === box || box.contains(hit))) {
+          window.__filterTyped = { why: 'a press on the «' + col + '» filter box reaches ' + (hit ? hit.tagName.toLowerCase() + '.' + String(hit.className).split(' ')[0] : 'nothing') };
+          return false;
+        }
+        box.focus();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(box, 'e');
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+        window.__filterTyped = { col, at: performance.now() };
+        return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
+    // ... and its letter taken back, so the header panels opened next are the ones the grid had (no extra «✕»).
+    ['right-most filter cleared', async (c, log) => {
+      await evaluate(c, `(() => { const t = window.__filterTyped; if (!t || !t.col) return false;
+        const box = [...document.querySelectorAll('.ag-floating-filter input')].find((i) => i.closest('[col-id]') && i.closest('[col-id]').getAttribute('col-id') === t.col);
+        if (!box) return false; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(box, '');
+        box.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
   ],
   'admin.html': [
     ['Overview', async () => true],
@@ -1043,7 +1170,8 @@ async function runScreens(dist, label, one = only) {
   const chrome = await openChrome();
   try {
     const log = await servePage(chrome, dist);
-    for (const [w, h] of [...SIZES, ...Object.values(ENTRY_SIZES).flat()]) {
+    // Each size once, however many entries name it.
+    for (const [w, h] of new Map([...SIZES, ...Object.values(ENTRY_SIZES).flat()].map((s) => [s.join('x'), s])).values()) {
       await chrome.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
       for (const entry of entries.filter((e) => sizesOf(e).some(([a, b]) => a === w && b === h))) {
         const size = `${w}x${h}`;
@@ -1217,9 +1345,14 @@ const MUTANTS = [
     file: 'src/walk/styles.js', edits: [['line-height: 1.25; overflow-wrap: anywhere;', 'line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;']] },
   { name: 'the table cells back on 5 x 8 px', entry: 'walk.html', rule: 'spacing tokens', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['  padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }', '  padding: 5px 8px; text-align: left; vertical-align: top; }']] },
-  // The testbed's start picker clipped by its panel again (lead 10-13, 18997).
+  // The testbed's start picker clipped by its panel again (lead 10-13, 18997) - its window not placed by the one
+  // placement, so it hangs absolute in a panel that clips its own box (re-aimed 72b2d7f8f: tb-pops retired).
   { name: 'the start picker hung under a panel that clips it', entry: 'testbed.html', rule: 'picker reachable', at: 'wk-barpopbody',
-    file: 'src/testbed/start_part.js', edits: [["    this.host.classList.add('tb-pops');\n", '']] },
+    file: 'src/walk/start_baskets.js', edits: [["    this.place = () => { if (this.pop.open) fitUnder(body, chip, { align: 'left', gap: 3.4 }); };", '    this.place = () => {};']] },
+  // The owner's (72b2d7f8f): a pill's picker dropped under its pill whatever the room - the X axis at the foot of the page.
+  { name: 'the slot picker drops under its pill again, off the foot of the screen', entry: 'testbed.html', rule: 'pickers in view', at: 'sf-pop-host',
+    file: 'src/testbed/picker.js', edits: [["      if (anchor && anchor.getBoundingClientRect) fitUnder(this.host, anchor, { align: 'left', gap: 4 });",
+      "      if (anchor && anchor.getBoundingClientRect) { const s = anchor.getBoundingClientRect(); this.host.style.left = `${Math.max(8, Math.min(s.left, document.documentElement.clientWidth - 760))}px`; this.host.style.top = `${s.bottom + 4}px`; }"]] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-copyid { height: var(--wk-h-small);', '.wk-copyid { height: 20px;']] },
   { name: 'a 12 px line again', entry: 'walk.html', rule: 'three type sizes', at: 'wk-page',

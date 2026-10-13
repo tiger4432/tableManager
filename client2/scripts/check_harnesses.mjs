@@ -1808,7 +1808,7 @@ const FLOORS = new Map([
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
   // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.
-  ['dropdown_place_harness.mjs', 10],
+  ['dropdown_place_harness.mjs', 20],   // 10 -> 20: P6-P9 R1 flipped above, cut on the roomier side, placed where it stands; DP6-DP10 (lead 72b2d7f8f)
   // The screens in real Chrome (lead 1343e5cca): 7 dist entries x 8 checks (clip · overflow · panel · text · size ·
   // columns · words · answers) at 1920x950, 1536x864 and 1280x720 + 8 mutants - the five that leaked on 10-08/09, the
   // ledger table's hand widths, Options and Menu inside the zoomed header, the Rules column's names broken (lead 10-09).

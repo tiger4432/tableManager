@@ -43,8 +43,49 @@ const GAP = 8;
 const MARGIN = 8;
 
 /**
- * A panel just under the control that opened it, kept on screen - every panel a header control opens comes through
- * here: the filter fold, Replay chain / Re-translate, Options, Menu, the column selector, the account's keys.
+ * Where a panel opened from `anchor` goes on screen - the one placement every popover takes (lead 72b2d7f8f, owner 10-13
+ * «x축 선언창 삐져나가서 안 보임»): under the control when it fits; flipped above when it does not and above does; else
+ * on the roomier side, cut to that height with its own scroll; shifted left or right to stay on screen. `position:
+ * fixed` where the panel stands, so a box clipping its own content above it does not hide it. A document with no
+ * layout (a node stub) is left as it is.
+ *
+ * @param panel   shown - it needs a size to be measured
+ * @param anchor  the control it hangs from
+ * @param opts    `align`: which edges meet the control's ('right' default, or 'left'); `gap` between them
+ */
+export function fitUnder(panel, anchor, { align = 'right', gap = GAP } = {}) {
+  const doc = panel.ownerDocument;
+  if (!doc || !doc.documentElement || !anchor.getBoundingClientRect || !panel.getBoundingClientRect) return;
+  panel.style.position = 'fixed';
+  panel.style.right = 'auto';
+  panel.style.bottom = 'auto';
+  panel.style.maxHeight = '';
+  panel.style.overflowY = '';
+  const a = anchor.getBoundingClientRect();
+  const box = panel.getBoundingClientRect();
+  const width = panel.offsetWidth || box.width;
+  const height = panel.offsetHeight || box.height;
+  const vw = doc.documentElement.clientWidth || 0;
+  const vh = doc.documentElement.clientHeight || 0;
+  const below = vh - MARGIN - (a.bottom + gap);
+  const above = a.top - gap - MARGIN;
+  let top = a.bottom + gap;
+  if (vh && height > below) {
+    if (height <= above) top = a.top - gap - height;
+    else {
+      if (above > below) top = MARGIN;
+      panel.style.maxHeight = `${Math.floor(Math.max(above, below))}px`;
+      panel.style.overflowY = 'auto';
+    }
+  }
+  panel.style.top = `${Math.round(top)}px`;
+  const wanted = align === 'left' ? a.left : a.right - width;
+  panel.style.left = `${Math.round(Math.max(MARGIN, Math.min(wanted, vw - MARGIN - width)))}px`;
+}
+
+/**
+ * A panel just under the control that opened it, kept on screen (fitUnder) - every panel a header control opens comes
+ * through here: the filter fold, Replay chain / Re-translate, Options, Menu, the column selector, the account's keys.
  *
  * 🔴 It is drawn on the body, at the page's own size. Inside the header (drawn at --header-zoom) a panel's box shrank
  *    to 0.67 while its words were set back to 11px, and its rows broke in two (owner 10-09); its place had needed the
@@ -54,22 +95,14 @@ const MARGIN = 8;
  *
  * @param panel   shown - it needs a size to be measured
  * @param anchor  the control it hangs under
- * @param opts    `align`: which edges meet the control's ('right' default, or 'left'); `gap` under it
+ * @param opts    as fitUnder's
  */
-export function placeUnder(panel, anchor, { align = 'right', gap = GAP } = {}) {
+export function placeUnder(panel, anchor, opts) {
   const doc = panel.ownerDocument;
   if (!doc || !doc.body || !anchor.getBoundingClientRect || !panel.getBoundingClientRect) return;
   if (panel.parentNode !== doc.body) {
     panel.placedFrom = panel.parentNode;
     doc.body.appendChild(panel);
   }
-  panel.style.position = 'fixed';
-  panel.style.right = 'auto';
-  panel.style.bottom = 'auto';
-  const a = anchor.getBoundingClientRect();
-  panel.style.top = `${Math.round(a.bottom + gap)}px`;
-  const width = panel.getBoundingClientRect().width;
-  const wanted = align === 'left' ? a.left : a.right - width;
-  const most = (doc.documentElement.clientWidth || 0) - MARGIN - width;
-  panel.style.left = `${Math.round(Math.max(MARGIN, Math.min(wanted, most)))}px`;
+  fitUnder(panel, anchor, opts);
 }
