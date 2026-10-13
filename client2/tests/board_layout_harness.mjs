@@ -614,16 +614,18 @@ async function routed(M) {
       fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
     part.mount();
     await settle();
-    const said = statusWords(part.stats.get('B')).find((w) => w.startsWith('route from')) || null;
-    return { said, rows: part.model.rowKeys, total: part.model.total, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
+    const said = (statusWords(part.stats.get('B')) || []).find((w) => w.startsWith('route from')) || null;
+    return { state: part.state, refusal: part.refusal || null, said, rows: part.model ? part.model.rowKeys : null, total: part.model ? part.model.total : null, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
   };
   const base = { id: 'B', part: 'visual', kind: 'crossTable', start: { marking: 'marking:die' }, system: null, filter: [] };
   const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } });
   const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } });
   const wafers = await seat({ ...base, row: 'wafer', encode: {} });
   const core = await seat({ ...base, row: 'wafer', encode: {}, route: wafers.part.routes()[1] });
+  // a route named that does not start from the start's type: said, nothing walked, no other route instead
+  const named = await seat({ ...base, row: 'wafer', encode: {}, route: { hops: 1, follow: ['has_measurement'], chain: ['wafer', 'measurement'] } });
   const mixed = await seat({ ...base, row: 'die', encode: { rows: CORE }, walk: { node_limit: 1000, hops: 9 } }, true, true);
-  return { mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+  return { named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
 }
 
 /** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
@@ -813,6 +815,8 @@ async function suite(M) {
       [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
     judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
       rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
+    judge('W5 a route named that does not start from the start\'s type is said and nothing is walked - not the shortest route instead',
+      rt.named, ['refused', 'Route wafer → measurement · has_measurement does not start from die, the start', 0, null]),
     judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
       rt.mixed, [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
@@ -906,6 +910,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    if (colors.any && Object.keys(colors.assigned).length) this.decl =', '    if (false) this.decl =') },
   { id: 'M31', what: 'a start of another type walked from as if the route started there', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      if (other.length) {', '      if (false) {') },
+  { id: 'M32', what: 'a route named that is not offered walks the shortest instead (the 18766 run: the dies\' own wafer for the core)', catches: 'W5 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (!seeds.all && !this.walkedRoute && startType &&', '    if (false &&') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

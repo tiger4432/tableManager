@@ -41,7 +41,8 @@ const [die, core, step] = [book.add(), book.add(), book.add()];
 book.edit(die, { label: 'Die' });
 book.edit(core, { label: 'Core wafer' });
 book.edit(step, { label: 'Step' });
-page.relations.set('list', [{ from: 'die', predicate: 'bonded_from', to: 'die', both: false }, { from: 'die', predicate: 'in_container', to: 'wafer', both: false }]);
+page.relations.set('list', [{ from: 'die', predicate: 'bonded_from', to: 'die', both: false }, { from: 'die', predicate: 'in_container', to: 'wafer', both: false },
+  { from: 'wafer', predicate: 'has_measurement', to: 'measurement', both: false }]);
 const label = { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] };
 const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
 const out = (p) => ({ predicate: p, direction: 'outgoing' });
@@ -56,10 +57,15 @@ const C = page.add('crossTable');
 const D = page.add('scatter');
 declare(A, { row: 'die', start: { marking: 'marking:start' }, writes: die, encode: { x: key('x'), y: key('y') } });
 declare(B, { walk: WIDE, row: 'die', start: { marking: die }, writes: core, encode: { rows: { steps: [out('bonded_from'), out('in_container')], value: { on: 'label', name: 'name' }, words: ['core wafer'] } } });
-declare(C, { walk: WIDE, row: 'wafer', route: { hops: 2, follow: ['in_container', 'bonded_from'], chain: ['die', 'die', 'wafer'] }, start: { marking: core }, writes: step, encode: { rows: { steps: [out('measures')], value: { on: 'edge', name: 'step' }, words: ['step'] } } });
-declare(D, { walk: WIDE, row: 'wafer', start: { marking: step }, writes: 'marking:pick', markerBy: 'record',
-  encode: { x: { steps: [out('measures')], value: { on: 'edge', name: 'value' }, words: ['value'], of: 'time' },
-    y: { steps: [out('measures')], value: { on: 'edge', name: 'value' }, words: ['value'] }, color: { expr: 'If(Marked("Core wafer"), "B", "other")' } } });
+// C: the measurements of the core wafers its start's dies were bonded from - the start a hub of B's dies (die), the route
+// die -bonded_from-> die -in_container-> wafer -has_measurement-> measurement; its rows by their step.
+const attr = (name) => ({ steps: [], value: { on: 'node', name }, words: [name] });
+declare(C, { walk: WIDE, row: 'measurement', route: { hops: 3, follow: ['in_container', 'has_measurement', 'bonded_from'], chain: ['die', 'die', 'wafer', 'measurement'] },
+  start: { marking: core }, writes: step, encode: { rows: attr('step') } });
+// D: those measurements of the step pressed in C - a point a measurement, X its eventtime, Y its value, red where the
+// Core wafer marking reaches it along the relations, grey elsewhere (the declaration's colours).
+declare(D, { walk: WIDE, row: 'measurement', start: { marking: step }, writes: 'marking:pick', colors: { B: '#E8423F', other: '#8C8C8C' },
+  encode: { x: attr('eventtime'), y: attr('value'), color: { expr: 'If(Marked("Core wafer"), "B", "other")' } } });
 
 const say = (...x) => console.log(...x);
 // C's route: from the bonding dies through their bonded_from to the core dies' wafers (die -> die -> wafer).
@@ -119,6 +125,16 @@ for (const pt of d.points) byCat[catOf(pt)] = (byCat[catOf(pt)] || 0) + 1;
 say(`D scatter: ${d.points.length} points (${JSON.stringify(byCat)}), x ${d.xKind}, ${d.notDrawn} not drawn, ${d.several} several, unknown ${stat(D).unknown || 0}, walks ${walks() - s3}`);
 const bWafers = () => [...new Set(part(D).model.points.filter((pt) => catOf(pt) === 'B').map((pt) => pt.label))];
 say(`D B wafers: ${bWafers().join(', ')} (B pressed: ${b.rowKeys[coreRow]})`);
+const fills = () => JSON.stringify(Object.entries(part(D).model.points.reduce((acc, pt) => { acc[pt.fill] = (acc[pt.fill] || 0) + 1; return acc; }, {})));
+say(`D fills ${fills()} (declared B #E8423F, other #8C8C8C)`);
+// No relation: the Core wafer marking is its dies only - no measurement is in it, every point other
+const keptRelations = page.relations.get('list');
+page.relations.set('list', []);
+await settle();
+say(`no relations: D fills ${fills()}`);
+page.relations.set('list', keptRelations);
+await settle();
+say(`relations back: D fills ${fills()}`);
 // The numbers: the layer on a marking change (the other die's core wafer pressed in B), the graph
 const b2 = seen[0] ? await press(seen[0].cell) : b;
 const otherRow = b2.rowKeys.findIndex((k) => k !== '(Empty)');
@@ -131,12 +147,6 @@ await until(() => part(D).state !== 'walking');
 say(`B pressed ${b2.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5}`);
 say(`D after: ${part(D).state} (the Step marking pruned: ${page.markings.entries(step).length} entries); unknown ${stat(D).unknown || 0}`);
 const kept = page.save();
-// No relation: D's points all other
-page.relations.set('list', []);
-await settle();
-const none = {};
-for (const pt of part(D).model.points) none[catOf(pt)] = (none[catOf(pt)] || 0) + 1;
-say(`no relations: D ${JSON.stringify(none)}`);
 say(`graph: ${page.layers.graph.nodes.size} nodes, ${page.layers.graph.edges.size} edges; walks in all ${walks() - step0}`);
 const save = argOf('--save', null);
 // Saved on a two-by-two layout - A B over C D - so the shots show the four alike.

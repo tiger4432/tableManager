@@ -24,7 +24,7 @@ import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
-import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds } from './route.js';
+import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes } from '../rnd_board/api.js';
@@ -186,6 +186,13 @@ export class VisualPart extends Panel {
 
   route() { return routeOf(this.decl, this.routes()); }
 
+  /** Its start's node type - the first entry's (a hub its row type); none known - null. */
+  startType() {
+    const name = this.start && this.start.marking;
+    const first = name && this.markings ? this.markings.entries(name)[0] : null;
+    return first ? typeOfStart(first[0]) : null;
+  }
+
   /** Its rows in a walk's answer: the route's ends from the seeds it walked from; with no route, every node of its row
    *  type the walk reached. */
   rowsOf(answer) {
@@ -204,6 +211,19 @@ export class VisualPart extends Panel {
     this.state = 'walking';
     this.render();
     this.walkedRoute = seeds.all ? null : this.route();
+    // No route from its start to its rows - or the route it names does not start there: said, nothing drawn, no other
+    // start walked instead.
+    const startType = seeds.all ? null : this.startType();
+    if (!seeds.all && !this.walkedRoute && startType && (this.decl.route || this.vocabulary())) {
+      this.state = 'refused';
+      this.refusal = this.decl.route ? `Route ${routeWords(this.decl.route)} does not start from ${startType}, the start`
+        : `No route from ${startType} to ${this.decl.row}`;
+      this.answer = null;
+      this.publish();
+      this.render();
+      this.prune(new Set());
+      return;
+    }
     // A route starts from one type (its start's first): starts of another type are not walked, and said (QA 10-14).
     this.otherStarts = null;
     if (this.walkedRoute) {
