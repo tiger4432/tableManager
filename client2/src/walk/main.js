@@ -399,7 +399,12 @@ export function boot(doc, host, deps) {
     // The table walks the same signed starts: + as positive, - as negative (the wire takes the first + as the seed).
     // One + start alone is asked by its type and keys, as the form asked it (walk_layout L7 · L8: the request does not change).
     const starts = seedsOf(markings.entries(START));
-    const asked = askFrom(starts);
+    await walkForm(askFrom(starts), starts);
+  }
+
+  /** The form's walk - step 0 - asking `asked` from `starts`, its first page: a new start. A Walk press and the form's
+   *  Walk again go through here. */
+  async function walkForm(asked, starts) {
     state.run = 'running'; state.result = null; state.resultB = null; state.reason = '';
     // The table reads the walk's starts here whichever way the wire carried them: one + start alone goes by its type and
     // keys, and its table is a Next's from that node (owner 10-10 E1: the same as one basket walked).
@@ -530,6 +535,16 @@ export function boot(doc, host, deps) {
       // As of the first page (the server's resume.as_of): the pages are one walk at that time.
       setAnswer(at, { ...mergeWalks(res, was), ask: was.ask, pages: (was.pages || 1) + 1, generatedAt: was.generatedAt }, asked);
     });
+  }
+  /** Walk again (an expired page's, lead eb1ae8c9f): the step's first page as a new walk, through the seat its first page
+   *  went - the form's walk (step 0) or the step placed again (a child) - so its starts and its table are a Walk press's
+   *  and nothing of the pages before stays (18766, lead 10-13: walked as a More, the seed row read «—» and «+0 from More»
+   *  stayed). */
+  function walkAgain(at, asked) {
+    adding = null;
+    if (at === 0) return walkForm(asked, askedStarts(state.asked));
+    const step = stepOf(at);
+    return walkStep(step.parent, step.title, step.asked, asked);
   }
   function walkMore(more) {
     const at = state.at;
@@ -1937,7 +1952,8 @@ export function boot(doc, host, deps) {
           const again = el(doc, 'button', 'wk-next-edge wk-more', WALK_AGAIN);
           again.type = 'button';
           const ask = adding.again;
-          again.addEventListener('click', () => walkMore({ asked: ask }));
+          const at = adding.at;
+          again.addEventListener('click', () => { void walkAgain(at, ask); });
           said.append(again);
         }
         box.append(said);

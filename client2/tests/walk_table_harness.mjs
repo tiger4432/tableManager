@@ -1685,9 +1685,40 @@ async function suite(mod) {
     await settle();
     ok('EX2 Walk again asks the first page of the same question once - a GET, no resume - and that page stands in the step',
       sent.length === 2 && sent[1].method === 'GET' && !sent[1].body && !fail()
-        && handle.state.result.more && handle.state.result.more.resume && handle.state.result.more.resume.walk === 'k2'
+        && handle.state.result && handle.state.result.more && handle.state.result.more.resume && handle.state.result.more.resume.walk === 'k2'
         && Boolean(moreNow()) && moreNow().disabled === false,
-      JSON.stringify([sent.map((s) => [s.method, s.body || null]), Boolean(fail()), handle.state.result.more, moreNow() && moreNow().disabled]));
+      JSON.stringify([sent.map((s) => [s.method, s.body || null]), Boolean(fail()), handle.state.result && handle.state.result.more, moreNow() && moreNow().disabled]));
+  }
+  // Walk again is a new walk (18766, lead 10-13): one + start walked by its type and keys - the wire's ask carries no
+  // starts - so walked as a More its seed row read «—» and «+0 from More ×» stayed. Now: the seed row «start», no chip.
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url, init) => {
+      if (!String(url).includes('/subgraph')) return { ok: true, status: 200, json: async () => DECL };
+      if (init && init.method === 'POST') {
+        return { ok: false, status: 410, json: async () => ({ detail: { reason: 'walk_expired', why: 'reloaded', message: 'This walk expired (reloaded) - walk again' } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ ...SIGNED, more: { reach: { 'die@1': { complete: false, unexpanded: 3 } }, resume: { walk: 'k2' } } }) };
+    } });
+    await settle();
+    const WIRE = { type: 'wafer@1', keys: { wafer: 'A' }, collect: ['die@1'], node_limit: 1000 };
+    handle.state.asked = { ...WIRE, keys: { wafer: 'A' }, positive: ['s:a'], negative: [] };
+    handle.state.run = 'done';
+    handle.state.result = { ...SIGNED, ok: true, ask: WIRE, generatedAt: '2026-10-12T05:00:00',
+      more: { reach: { 'die@1': { complete: false, unexpanded: 3 } }, resume: { walk: 'k1' } } };
+    handle.render();
+    const press = (find) => { const b = find(); for (const fn of (b || { listeners: {} }).listeners.click || []) fn({}); };
+    press(() => walkAll(host).find((e) => String(e.className || '').includes('wk-more') && e._text === 'More ▸'));
+    await settle(); await settle();
+    press(() => walkAll(host).find((e) => e.tagName === 'button' && e._text === 'Walk again'));
+    await settle(); await settle();
+    const seedRow = walkAll(host).find((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id'] === 's:a');
+    const said = seedRow ? walkAll(seedRow).filter((k) => k._text).map((k) => k._text) : [];
+    const chips = walkAll(host).filter((e) => e.className === 'wk-addchip').map((e) => e._text);
+    ok('EX3 Walk again is a new walk: one + start by its type and keys - its row «start», its starts the step\'s, no «from More» chip',
+      said.includes('start') && JSON.stringify(handle.state.asked.positive) === '["s:a"]' && !chips.some((c) => c.includes('from More')),
+      JSON.stringify([said, handle.state.asked.positive, chips]));
   }
 
   console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
@@ -2297,7 +2328,9 @@ const MUTANTS = [
   { id: 'EXm2', what: 'Walk again sends the expired resume again', catches: 'EX2',
     from: "again: { ...asked, resume: undefined } }", to: "again: { ...asked } }" },
   { id: 'EXm3', what: 'Walk again drawn but does nothing', catches: 'EX2',
-    from: "          again.addEventListener('click', () => walkMore({ asked: ask }));\n", to: '' },
+    from: "          again.addEventListener('click', () => { void walkAgain(at, ask); });\n", to: '' },
+  { id: 'EXm5', what: 'Walk again lands as a More (the code before - 18766: the seed row «—», «+0 from More ×»)', catches: 'EX3',
+    from: "          again.addEventListener('click', () => { void walkAgain(at, ask); });", to: "          again.addEventListener('click', () => walkMore({ asked: ask }));" },
   { id: 'MRm1', what: 'the next page replaces the step\'s answer, not merged into it', catches: 'MR2',
     from: '{ ...mergeWalks(res, was), ask: was.ask,', to: '{ ...res, ask: was.ask,' },
   { id: 'MRm2', what: 'More ▸ never off, all reached or not', catches: 'MR2',
