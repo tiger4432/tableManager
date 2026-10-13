@@ -2858,11 +2858,12 @@ def _start_index_work(rules, db_session_factory, after=None, wanted=None):
 
 
 def _rules_for_group(events_in_tx, rules):
-    """The enabled rules this transaction group would wake, as a stable signature."""
+    """The enabled rules this transaction group would wake, as a stable signature - asked of `wakes`, the seat that
+    picks rules (a deletion is a rule's only through its cell)."""
     return tuple(sorted(
         str(r.get("name") or "")
         for r in rules
-        if any(fires(r, e) for e in events_in_tx)))
+        if any(wakes(r, e) for e in events_in_tx)))
 
 
 def _replay_ask(events):

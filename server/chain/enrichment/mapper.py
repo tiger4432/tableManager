@@ -165,10 +165,10 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                     .filter(and_(*conds)).group_by(*cols).all()) if exprs else []
             if by_rows:
                 for row in db.query(*cols, *[getattr(model, c) for c in read]).filter(and_(*conds)):
-                    key = tuple(crud.clean_str_value(v) for v in row[:len(cols)])
+                    key = _clean_key(source_table, decision_key, row[:len(cols)])
                     key_rows.setdefault(key, []).append(dict(zip(read, row[len(cols):])))
             for row in rows:
-                key = tuple(crud.clean_str_value(v) for v in row[:len(cols)])
+                key = _clean_key(source_table, decision_key, row[:len(cols)])
                 # FOLD, not assign. `NULL` and `''` are two SQL groups and one
                 # decision key: `clean_str_value` folds them, so a blank component
                 # makes the GROUP BY hand back two rows for the same key.
@@ -246,6 +246,16 @@ def _union(running, value):
     import json
 
     return (running or set()) | {v for v in json.loads(value or "[]") if v is not None}
+
+
+def _clean_key(table, columns, values) -> tuple:
+    """A decision key in its ONE spelling - each part as its column stores it (`crud.key_part`, what the business key's
+    composition reads), then `clean_str_value`; a blank part is ''. The batch's keys, the keys rows left (a time read
+    back as its ISO text) and the recount's answer (a time as the database gives it) all pass here (총괄 10-14 1)."""
+    from database import crud
+
+    parts = (crud.key_part(table, column, value) for column, value in zip(columns, values))
+    return tuple("" if part is None else crud.clean_str_value(part) for part in parts)
 
 
 def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty) -> set:
@@ -359,13 +369,14 @@ def map_enrichment_dedup(db, payloads, rule=None):
         data = p.get("data") or {}
         old = event_constants.old_values_of(p)
         if old.keys() & set(decision_key):
-            was = [crud.clean_str_value(old[k] if k in old else _cell_value(data, k)) for k in decision_key]
+            was = list(_clean_key(source_table, decision_key,
+                                  [old[k] if k in old else _cell_value(data, k) for k in decision_key]))
             if not enrichment.config.key_is_wholly_blank(enrich, dict(zip(decision_key, was))):
                 left.add(tuple(was))
                 key_raw_values.setdefault(tuple(was), raw_of(was))
         if not data:
             continue     # a deletion: its row has only the key it left
-        clean_vals = [crud.clean_str_value(_cell_value(data, k)) for k in decision_key]
+        clean_vals = list(_clean_key(source_table, decision_key, [_cell_value(data, k) for k in decision_key]))
         key_values = dict(zip(decision_key, clean_vals))
         if enrichment.config.key_is_wholly_blank(enrich, key_values):
             skipped += 1
