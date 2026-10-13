@@ -1053,16 +1053,22 @@ const DRIVE = {
     // own gestures (lead 10-13) - the Marked table closed by its ×, the scatter's title dragged onto the area's right edge -
     // the right dock and the status bar hidden, the start row's dock written to the foot; then a wafer walked from there.
     ['walked at the edge', async (c) => {
+      // The board seats its parts once the declaration is in: the gesture waits for the title it presses. A page that opens
+      // already laid at the edge - the measuring pressed the head's Save on the size before, and the page opens what was
+      // saved (lead 10-14: the five red sizes after the first) - is laid.
+      await until(c, "Boolean(document.querySelector('[data-cell=\"scatter-1\"] [data-part-title]'))", 15000);
       const laid = await evaluate(c, `(() => {
         const press = (type, target, x, y) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y,
           button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
         for (const sel of ['[data-dock="right"]', '[data-panel="status"]']) { const e = document.querySelector(sel); if (e) e.style.display = 'none'; }
         const top = document.querySelector('[data-dock="top"]');
         if (top) top.style.gridArea = 'bottom';
+        const cellsNow = () => [...document.querySelectorAll('[data-cell]')].map((x) => x.getAttribute('data-cell')).join(',');
+        if (cellsNow() === 'cross-1,scatter-1') return true;
         const close = document.querySelector('[data-cell="marked"] .sf-tool[title="Close"]');
         if (close) close.click();
         const title = document.querySelector('[data-cell="scatter-1"] [data-part-title]');
-        if (!title || !top || !close) return false;
+        if (!title || !top || !close) return 'title ' + Boolean(title) + ' start row ' + Boolean(top) + ' close ' + Boolean(close) + ' cells ' + cellsNow();
         const t = title.getBoundingClientRect();
         const area = document.querySelector('.rb-area').getBoundingClientRect();
         const y = (area.top + area.bottom) / 2;
@@ -1070,8 +1076,9 @@ const DRIVE = {
         press('pointermove', document, area.right - 40, y);
         press('pointermove', document, area.right - 4, y);
         press('pointerup', document, area.right - 4, y);
-        return [...document.querySelectorAll('[data-cell]')].map((x) => x.getAttribute('data-cell')).join(',') === 'cross-1,scatter-1'; })()`);
-      if (!laid) throw new Error('the scatter did not land on the area\'s right edge');
+        const cells = cellsNow();
+        return cells === 'cross-1,scatter-1' ? true : 'cells ' + cells + ' area ' + [area.left, area.right, y].map(Math.round) + ' title ' + [t.left, t.top].map(Math.round); })()`);
+      if (laid !== true) throw new Error(`the scatter did not land on the area's right edge: ${laid}`);
       await openStartPicker(c);
       await choose(c, '.tb-start__type', [0, "x.value === 'wafer'"]);
       await pickKey(c, 'SYN-BW-103-11');
