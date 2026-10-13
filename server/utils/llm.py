@@ -311,7 +311,7 @@ def ask_json(prompt, *, system=None):
             error = _masked(back["error"], key)
             asked = _retry_after(exc) if status == TOO_MANY_REQUESTS else None
             if client is not None and (status == TOO_MANY_REQUESTS or _no_answer(exc, status)) and (
-                    asked is None or asked <= CALL_RETRY_WINDOW_S) and failed < len(CALL_RETRY_WAITS):
+                    failed < len(CALL_RETRY_WAITS)):
                 failed_at = _steady() if failed_at is None else failed_at
                 wait = asked if asked is not None else CALL_RETRY_WAITS[failed]
                 if _steady() - failed_at + wait <= CALL_RETRY_WINDOW_S:
