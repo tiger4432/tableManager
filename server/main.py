@@ -2502,9 +2502,11 @@ QUERY_CANCELED = "57014"
 
 
 def grid_read(route):
-    """A grid read (rows · count · a search) under the grid's statement limit (`grid_read_timeout_seconds`, 총괄 d16033b63):
-    a statement past it is cancelled by PostgreSQL and answered as what stopped and what to do - not a wait without end
-    that holds a pool connection and a worker thread while every other request queues behind it."""
+    """A grid search (`q`, or a column filter's text pattern) under the grid's statement limit (`grid_read_timeout_seconds`,
+    총괄 d16033b63): a statement past it is cancelled by PostgreSQL and answered as what stopped and what to do - not a
+    wait without end that holds a pool connection and a worker thread while every other request queues behind it.
+    🔴 A read with neither runs without it (총괄 10-13): the map editor, the R&D board and the admin cards read the same
+    routes, and a large plain read is not a zero-hit search reading to the table's end."""
     import functools
     import inspect
 
@@ -2515,17 +2517,19 @@ def grid_read(route):
         from database.context import read_limit
         from parsers.directory_watcher import grid_read_timeout
 
-        seconds = grid_read_timeout()
+        asked = inspect.signature(route).bind_partial(*args, **kwargs).arguments
+        q = asked.get("q") if isinstance(asked.get("q"), str) else None     # a direct call leaves Query sentinels
+        filters = asked.get("filters")
+        seconds = grid_read_timeout() if q or pattern_filtered_columns(filters) else None
         try:
             with read_limit(seconds):
                 return route(*args, **kwargs)
         except OperationalError as exc:
             if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
                 raise
-            asked = inspect.signature(route).bind_partial(*args, **kwargs).arguments
             db = asked.get("db")
             raise HTTPException(status_code=503, detail=grid_read_stopped(
-                asked.get("table_name"), asked.get("q"), asked.get("cols"), seconds, asked.get("filters"),
+                asked.get("table_name"), q, asked.get("cols"), seconds, filters,
                 db.get_bind() if db is not None else None)) from None
     return read
 

@@ -135,7 +135,6 @@ def test_a_search_index_the_database_cannot_build_is_named_and_not_attempted(mon
      "transactions older than it)"),
     ("x", [{"columns": ["k"], "search": True}], models.INDEX_MISSING, None,
      "Search stopped after 7 s - the search index on k is declared, not built yet (built at the next Reload or restart)"),
-    (None, [], None, None, "Read stopped after 7 s - " + LIMIT),
 ])
 def test_a_stopped_read_says_what_stopped_and_what_to_do(q, declared, state, building, message, monkeypatch):
     """«Built» is the database's word (총괄 ad38ae9c6) - a declared index still building is not said as built."""
@@ -161,6 +160,27 @@ def test_a_stopped_read_never_asks_for_an_index_the_builder_cannot_make(monkeypa
     assert said["search_index"] == {"k": "cannot be built (a view cannot carry an index)"} and said["unindexed"] == []
 
 
+@pytest.mark.parametrize("asked,limited", [
+    ({}, False),
+    ({"filters": '{"n": {"filterType": "number", "type": "inRange", "filter": 1, "filterTo": 2}}'}, False),
+    ({"filters": '{"v": {"filterType": "text", "type": "contains", "filter": "x"}}'}, True),
+    ({"q": "x"}, True),
+])
+def test_the_limit_holds_a_search_and_a_pattern_filter_only(asked, limited, monkeypatch):
+    """The map editor, the R&D board and the admin cards read the same routes with neither (총괄 10-13)."""
+    import main
+    from database import context
+    from parsers import directory_watcher
+
+    monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: 7.0)
+    seen = []
+
+    def route(table_name, q=None, cols=None, filters=None, db=None):
+        seen.append(context.request_read_seconds.get())
+        return "read"
+    assert main.grid_read(route)(TABLE, **asked) == "read" and seen == [7.0 if limited else None]
+
+
 def test_a_cancel_with_the_limit_off_is_said_not_a_500():
     """`grid_read_timeout_seconds` 0 or null and a statement cancelled anyway (pg_cancel_backend, a database limit)."""
     import main
@@ -174,8 +194,6 @@ def test_a_cancel_with_the_limit_off_is_said_not_a_500():
      "Filter stopped after 7 s - add a search index on v in the table's indexes", ["v"]),
     ({"k": {"type": "contains", "filter": "x"}}, [{"columns": ["k"], "search": True}],
      "Filter stopped after 7 s - " + LIMIT, []),
-    ({"n": {"filterType": "number", "type": "inRange", "filter": 1, "filterTo": 2}}, [],
-     "Read stopped after 7 s - " + LIMIT, None),
 ])
 def test_a_stopped_filter_names_the_columns_it_narrowed_by_a_pattern(filters, declared, message, unindexed,
                                                                       monkeypatch):
@@ -292,10 +310,12 @@ def test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean(grid, m
                           params={"filters": '{"v": {"filterType": "text", "type": "contains", "filter": "x"}}'})
     assert filtered.status_code == 503 and filtered.json()["detail"]["message"] == (
         "Filter stopped after 0.05 s - add a search index on v in the table's indexes"), filtered.text
+    plain = client.get("/tables/%s/data/count" % TABLE)                   # neither: outside the limit (총괄 10-13)
+    assert plain.status_code == 200 and plain.json()["total"] == 2000, plain.text
     monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: None)
     monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
         text("(SELECT pg_cancel_backend(pg_backend_pid())) AND (SELECT true FROM pg_sleep(0.5))")))
-    cancelled = client.get("/tables/%s/data/count" % TABLE)
+    cancelled = client.get("/tables/%s/data?defer_total=true" % TABLE)              # a page: the count above is cached
     assert cancelled.status_code == 503 and cancelled.json()["detail"]["message"] == \
         "Read was cancelled by the database", cancelled.text
     monkeypatch.setattr(main, "apply_column_filters", slow)

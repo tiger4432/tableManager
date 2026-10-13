@@ -45,9 +45,8 @@
 >            선언 것이 «built» 줄을 낸 «뒤에» 손 것을 지운다:  DROP INDEX CONCURRENTLY tmp_search_<표>_<칸>;
 >            먼저 지우면 선언 것을 짓는 동안 검색이 다시 표 끝까지 읽는다
 > 상한       ingestion_settings.json "grid_read_timeout_seconds" — 기본 10 · 요청마다 읽어 재기동 없이 바뀐다 · 0 또는 null = 상한 없음(급할 때 끄는 스위치)
->            그리드의 행 읽기 · 세기 · 검색(GET /tables/<표>/data · /data/count)만 — 저장 · 체인 · 파일 쓰기는 각자 상한 그대로
->            ⚠️ 같은 라우트를 맵 에디터 · R&D 보드 · 어드민 카드도 쓴다 — 큰 표의 «검색 없는» 읽기 · 세기가 10 s 를 넘으면 그쪽도 503(바닥줄 총수 빈 칸 · 맵 셀 읽기 오류)
->            그런 줄이 검색 없이 나오면 이 칸을 올리거나 0 (재기동 없음). 그리드 화면 읽기로만 좁힐지는 총괄께 안으로 올림(아직 안 좁힘)
+>            그리드 읽기(GET /tables/<표>/data · /data/count) 중 «검색어 q 나 칸 무늬 필터(contains · startsWith · endsWith)가 있는» 것만
+>            — 맵 에디터 · R&D 보드 · 어드민 카드의 검색 없는 읽기 · 세기는 상한 밖(10-13 좁힘). 저장 · 체인 · 파일 쓰기는 각자 상한 그대로
 > ⚠️ 재기동    서버 «와» 체인 워커 둘 다 — 색인은 체인 워커가 짓는다
 > 끊겼을 때   HTTP 503, 답의 detail.message 가 다음 할 일
 >            칸마다 DB 가 «가진» 색인 그대로 말한다(선언만 보고 말하지 않는다)
@@ -55,8 +54,7 @@
 >              … - the search index on b_wx is declared, not built yet (<사유>)   -> 짓는 중 · Reload 기다림 · pg_trgm 없음 — 사유대로
 >              … - the limit is grid_read_timeout_seconds in the ingestion settings
 >                                                    -> 거른 칸의 색인이 다 지어짐. 상한을 올리거나 좁힌다 · 검색어 2 글자 이하는 색인이 있어도 느릴 수 있다
->              Read stopped after 10 s - the limit is …   -> 검색 · 칸 무늬 필터가 아닌 읽기(숫자 · 날짜 필터 · 정렬 · 전체 세기)
->              Read was cancelled by the database   -> 상한을 껐는데(0 · null) DB 쪽이 끊음(pg_cancel_backend · DB 의 statement_timeout)
+>              Read was cancelled by the database   -> 상한 밖의 읽기(검색 없음 · 상한 0/null)를 DB 쪽이 끊음(pg_cancel_backend · DB 의 statement_timeout)
 >            시각 칸 · 뷰의 칸에는 «add a search index» 를 안 시킨다 — 색인을 못 단다
 >            끊긴 문장은 DB 가 취소하고 연결은 풀로 돌아간다
 >            ⚠️ 화면은 아직 «Data fetch failed (HTTP 503)» 토스트만 그린다 — 문장은 클라 레인이 붙인다
