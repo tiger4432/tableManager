@@ -54,6 +54,7 @@ from chain import join_key_index
 from chain import ingestion_worker
 from chain import join_key_index
 from database import crud, models
+from tests.support.declaration import use_committed_catalogue
 
 # ---------------------------------------------------------------------------
 # Declarations. `dtderiv_test_` cannot collide with a user's live config - conftest
@@ -165,6 +166,9 @@ MISREAD_FRAME = "rot90_front"
 
 @pytest.fixture()
 def env(db_session, monkeypatch):
+    # `wafer_map_metadata` (the frame `_seed_meta` registers) is the shipped catalogue's - not the box's gitignored
+    # table_config.json, which a fresh checkout does not have (총괄 10-14)
+    use_committed_catalogue(monkeypatch)
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
     from database.database import Base
