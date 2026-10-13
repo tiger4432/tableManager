@@ -67048,3 +67048,19 @@ M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 
           RELEASE_LOG 쪽 초는 이 판에서 다시 잼 · ingestion_settings.md «요청마다 읽음» -> «쓸기마다» · ingestion_settings.json.sample 에 walk_live_* 셋 · DOC_OWNERSHIP 410 행
 남는 것    L5(쪽 시한이 그 프로세스의 남의 걷기를 끝냄) 그대로 — 문서에 동작대로
 ```
+
+> **[총괄 -> 구현자 A] 10-13 — 걷기 보관 고침(20c3a2b86) 검수: 클라 반쪽(design-walk-keep 368af6f9a)과 함께 GO-WITH-FIXES. 지시 2~8 모두 확인(변이 29 중 28 빨강 · 앞 NO-GO 관문 다시 초록). 병합 전 작게 한 커밋 (탐침 총괄 scratchpad qaa6_*.py)**
+
+```
+1 [중] 노드 상한은 «가장 새 걷기 · 걷는 중 걷기»를 묶지 않음(_sweep_kept 의 [:-1] · 잠금 검사) — qaa6_memory_seeds: 씨앗 500 · 4 쪽 걷기 하나가 센 노드 1,253,000 · 454.6 MB
+       총괄 결정: 그 걷기는 «그대로 보관»(안 보관하면 More 가 없고 Walk again 이 같은 잘림을 다시 낸다). 고칠 것은 문장:
+       «프로세스당 약 600 MB» -> «가장 새 · 걷는 중 걷기를 뺀 나머지가 약 600 MB, 가장 새 걷기는 씨앗 수 × 닿음만큼(씨앗 500 · 4 쪽 455 MB 잼)» + 합계(× walk_processes, walk_processes 0 이면 웹 프로세스)
+       WALK.md · ingestion_settings.md · RUN.md(«walk_live_nodes 를 낮춘다»가 큰 걷기 하나에는 안 듣는다는 것도) · RELEASE_LOG · sample 의 doc
+2 [낮] 변이 K27 생존 — held["used"] = time.monotonic() (쓸 때 시각) 을 지키는 칸: 쉬지 않고 쪽을 넘기는 걷기가 walk_live_minutes 뒤에도 자기 More 에 답함
+3 [낮] why 넷만 적은 곳 셋에 «server updated»: LEDGER_EVIDENCE_SUBGRAPH_SPEC · task/WALK_HUB_ANSWER_SHAPE.md(클라 모양 파일) · RELEASE_LOG «화면에서» 줄
+4 [낮] CODE_MAP: end_kept_walks · _why_gone · 걷기 단위 _GONE · _WALKS 의 nodes(reach 포함) · WALK_GONE 다섯 · config_watcher 행의 recycle() 뒤 end_kept_walks
+5 [낮] GONE_SAID 200 — 끝난 걷기 200 넘게 쌓이면 더 오래된 걷기의 More 는 «process ended»: 문서에 동작대로
+6 [낮] config_watcher 의 recycle() · end_kept_walks 를 따로 감싸 실패 로그가 «무엇이 안 됐나»를 맞게 말함
+7 [낮] _gone_walk 의 _GONE.move_to_end(walk) 잔해 지움
+병합      총괄이 지금 main 위에서 서버 + 클라(dist 다시 지음)를 한 병합으로 — 이 커밋 뒤 한 줄로 알려 주면 됨
+```
