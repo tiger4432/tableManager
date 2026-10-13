@@ -33,7 +33,7 @@ const REAL = {
   reach: await import('../src/walk/reach_table.js'),
 };
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
-const { HubBook, hubId, holds } = await import('../src/testbed/hubs.js');
+const { HubBook, hubId, holds, isHubId } = await import('../src/testbed/hubs.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
 const { Panel } = await import('../src/rnd_board/panel.js');
 const { statusWords } = await import('../src/testbed/status_part.js');
@@ -423,7 +423,7 @@ function markerModels(M) {
 }
 
 /** A scatter with Marker by lot and the Marked table limited by its pick, seated alone from M: a marker pressed - the
- *  table its members. */
+ *  lot node marked. */
 async function markerPress(M) {
   const doc = makeDoc('dark');
   const markings = new MarkingStore();
@@ -449,7 +449,8 @@ async function markerPress(M) {
   const points = scatter.model.points.map((p) => [p.label, p.x, p.y]);
   handlers.click({ data: { id: hubId('wafer', [['lot', 'L1']]) }, event: { event: {} } });
   await settle();
-  return { points, marked: markings.entries('marking:pick').map(([id]) => id), lines: table.model.lines.map((l) => l.id) };
+  const said = (statusWords(table.stats.get('T')) || []).find((w) => w.includes('marked row')) || null;
+  return { points, marked: markings.entries('marking:pick').map(([id]) => id), lines: table.model.lines.map((l) => l.id), said };
 }
 
 // ── the walk screen's trend as one scatter declaration (owner 10-13 «트렌드 부품은 산점도로 대체») ──
@@ -606,27 +607,49 @@ async function routed(M) {
   const vocabulary = { entities: [{ type: 'die' }, { type: 'wafer' }],
     predicates: [{ name: 'in_container', subjects: ['die'], object: { kind: 'entity_ref', types: ['wafer'] } }, { name: 'bonded_from', subjects: ['die'], object: { kind: 'entity_ref', types: ['die'] } }] };
   const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
-  const seat = async (decl, withVocabulary = true, alsoWafer = false) => {
+  const seat = async (decl, withVocabulary = true, alsoWafer = false, writes = null) => {
     const doc = makeDoc('dark');
     const markings = new MarkingStore();
     markings.set('marking:die', d1, SIGN.CASE);
     if (alsoWafer) markings.set('marking:die', BW, SIGN.CASE);
     const asked = [];
-    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: null, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
       kinds: { crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
       fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
     part.mount();
     await settle();
-    const said = statusWords(part.stats.get('B')).find((w) => w.startsWith('route from')) || null;
-    return { said, rows: part.model.rowKeys, total: part.model.total, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
+    const said = (statusWords(part.stats.get('B')) || []).find((w) => w.startsWith('route from')) || null;
+    return { markings, state: part.state, refusal: part.refusal || null, said, rows: part.model ? part.model.rowKeys : null, total: part.model ? part.model.total : null, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
   };
   const base = { id: 'B', part: 'visual', kind: 'crossTable', start: { marking: 'marking:die' }, system: null, filter: [] };
   const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } });
   const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } });
   const wafers = await seat({ ...base, row: 'wafer', encode: {} });
   const core = await seat({ ...base, row: 'wafer', encode: {}, route: wafers.part.routes()[1] });
+  // a route named that does not start from the start's type: said, nothing walked, no other route instead
+  const named = await seat({ ...base, row: 'wafer', encode: {}, route: { hops: 1, follow: ['has_measurement'], chain: ['wafer', 'measurement'] } });
   const mixed = await seat({ ...base, row: 'die', encode: { rows: CORE }, walk: { node_limit: 1000, hops: 9 } }, true, true);
-  return { mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+  // a cell pressed (hubs.js nodesOfPress, the one place): its one condition the core wafer, read off another node - that
+  // wafer, drawn marked; core wafer and the row's own name - the hub of its rows; the row's own name alone - the hub
+  const NAMED = { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] };
+  const held = (s) => s.markings.entries('marking:core').map(([x]) => (isHubId(x) ? 'hub' : label.get(x)));
+  const one = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE } }, true, false, 'marking:core');
+  one.part.markHub([['core wafer', one.part.model.rowKeys[0]], ['(None)', '']], one.part.model.grid[0][0].ids, {});
+  await settle();
+  const press = [held(one), one.part.model.grid[0][0].marked];
+  const pressed = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE, columns: NAMED } }, true, false, 'marking:core');
+  const g = pressed.part.model;
+  pressed.part.markHub([['core wafer', g.rowKeys[0]], ['name', g.colKeys[0]]], g.grid[0][0].ids, {});
+  await settle();
+  press.push(held(pressed));
+  // the row head of the same two-axis table - one condition again: the row's core wafer node
+  pressed.part.markHub([['core wafer', g.rowKeys[0]]], g.rowIds[0], {});
+  await settle();
+  press.push(held(pressed));
+  pressed.part.markHub([['name', g.colKeys[0]]], g.grid[0][0].ids, {});
+  await settle();
+  press.push(held(pressed));
+  return { press, named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
 }
 
 /** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
@@ -756,6 +779,44 @@ async function categoryColours(M) {
   return { seven: new Set(Object.values(first)).size, order: 'ABCDEFG'.split('').map((p) => first[p]).join(''), kept: 'ABCDEFG'.split('').every((p) => after[p] === first[p]), z: Boolean(after.Z) };
 }
 
+/** Tooltip, labels, description (base set 10, 9, 1) - the root's: a scatter and a cross table on three dies. */
+async function tipsAndLabels(M) {
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 4, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  const handlers = {};
+  const stubCharts = { init: () => ({ setOption(o) { handlers.option = o; }, dispatchAction() {}, on(name, fn) { handlers[name] = fn; }, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const markings = new MarkingStore();
+  markings.set('marking:pick', 'D2', SIGN.CASE);
+  const crossKind = (await import('../src/testbed/kinds/cross_table.js')).kind;
+  const seat = (kind, encode, extra = {}) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], writes: 'marking:pick', encode, ...extra };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind, crossTable: crossKind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    return part;
+  };
+  const tipText = (part) => walk(part.root).filter((n) => String(n.className).startsWith('sf-tip')).flatMap((n) => n.children.map((c) => c._text));
+  const scatter = seat('scatter', { x: key('x'), y: key('y'), tip1: key('p'), label: key('p') }, { labels: 'marked', description: 'Dies by x and y' });
+  await settle();
+  handlers.mouseover({ data: { id: 'D1' }, event: { event: { clientX: 5, clientY: 5 } } });
+  const pointTip = tipText(scatter);
+  handlers.mouseout();
+  const gone = tipText(scatter).length;
+  const tags = (labels) => { scatter.setDeclaration({ ...scatter.declaration(), labels }); return scatter.model.points.map((p) => [p.id, p.tag]); };
+  const marked = scatter.model.points.map((p) => [p.id, p.tag]);
+  const all = tags('all');
+  const none = tags('none');
+  const desc = walk(scatter.host).filter((n) => String(n.className) === 'sf-part__desc').map((n) => n._text);
+  const cross = seat('crossTable', { rows: key('x'), tip1: key('p') });
+  await settle();
+  walk(cross.host).find((n) => n.tagName === 'TH' && n._text === '3').parentNode.children[1].dispatch('mousemove', { clientX: 5, clientY: 5 });
+  const cellTip = tipText(cross);
+  return { pointTip, gone, marked, all, none, desc, cellTip };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -781,6 +842,7 @@ async function suite(M) {
   const ce = await colourEverywhere(M);
   const sh = await sheetRoot(M);
   const ks = await keptStart(M);
+  const tl = await tipsAndLabels(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -854,7 +916,7 @@ async function suite(M) {
       { points: [['L1', 26, 5, ['W1', 'W3'], false], ['L2', 40, 6, ['W2', 'W4'], false]], several: 0 }),
     judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
       [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
-        [['x', 'y', 'marker1', 'color'], ['x*', 'y*', 'marker1', 'marker2', 'color']]]),
+        [['x', 'y', 'marker1', 'color', 'label', 'tip1'], ['x*', 'y*', 'marker1', 'marker2', 'color', 'label', 'tip1']]]),
     judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
       ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
     judge('Y1 no relation: the layer of a marking is its members (a hub its members) - for every node the same as holds()', [ly.none, ly.same],
@@ -875,6 +937,10 @@ async function suite(M) {
       [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
     judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
       rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
+    judge('W5 a route named that does not start from the start\'s type is said and nothing is walked - not the shortest route instead',
+      rt.named, ['refused', 'Route wafer → measurement · has_measurement does not start from die, the start', 0, null]),
+    judge('W6 a cell whose one condition is read off another node marks that node (the core wafer), drawn marked; with a second axis the hub of its rows, its row head the node again; on the row\'s own value - the hub',
+      rt.press, [['CW1'], true, ['hub'], ['CW1'], ['hub']]),
     judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
       rt.mixed, [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
@@ -896,8 +962,13 @@ async function suite(M) {
     judge('K7 a start read back from a save is named by its id - its keys; an id that is not an entity\'s as it is', ks, ['SYN-BW-103-11', 'W1']),
     judge('C2 seven categories seven colours in the order the rows show them, kept in the declaration; one more seen first - the seven keep theirs',
       cc, { seven: 7, order: '#1#2#3#4#5#6#7', kept: true, z: true }),
-    judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
-      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
+    judge('TT1 a point under the pointer: the tooltip of the root - its name, the value of each slot, the Tooltip slot; gone when it leaves; a cross table cell - its rows, the value they share, how many they do not',
+      [tl.pointTip, tl.gone, tl.cellTip], [['D1', 'x: 1', 'y: 2', 'p: A', 'p: A'], 0, ['3', 'x: 3', 'p: 2 values']]),
+    judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
+      [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
+    judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
+    judge('P6 a marker by lot pressed marks the lot node it stands for (hubs.js nodesOfPress) - the Marked table of wafers holds none of it, no relation declared', mp,
+      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['L1'], lines: [], said: '0 marked rows - marking holds lot; no relation to wafer' }),
   ];
   return { lines, ran: names.length, names: [...names], failures: [...failures] };
 }
@@ -965,7 +1036,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, '{ fill: markColor || c.fill, line: markColor || c.line,', '{ fill: c.fill, line: c.line,') },
   { id: 'M17', what: 'a hub\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 '], file: 'testbed/units.js', key: 'units',
     mutate: (t) => swap(t, '  if (slot.reduce || isExpression(slot)) {', '  if (false) {') },
-  { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+  { id: 'M18', what: 'a marker pressed marks its rows one by one - not what the press stands for', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
   { id: 'M19', what: 'a value record reads the row\'s first record for every unit - not its own', catches: 'P7 ', file: 'testbed/units.js', key: 'units',
     mutate: (t) => swap(t, 'const items = picks.map((k) => raw[k]);', 'const items = picks.map(() => raw[0]);') },
@@ -991,6 +1062,20 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    if (colors.any && Object.keys(colors.assigned).length) this.decl =', '    if (false) this.decl =') },
   { id: 'M31', what: 'a start of another type walked from as if the route started there', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      if (other.length) {', '      if (false) {') },
+  { id: 'M32', what: 'a route named that is not offered walks the shortest instead (the 18766 run: the dies\' own wafer for the core)', catches: 'W5 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (!seeds.all && !this.walkedRoute && startType &&', '    if (false &&') },
+  { id: 'M33', what: 'the tooltip never put on the part', catches: 'TT1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (this.tip.parentNode !== this.root) this.root.appendChild(this.tip);', '') },
+  { id: 'M34', what: 'no label handed to the kind', catches: 'LB1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    const label = (mark) => labelOf(mark,', '    const label = () => null; const unused = (mark) => labelOf(mark,') },
+  { id: 'M35', what: 'the description not drawn', catches: 'DS1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, "...(said ? [el('div', 'sf-part__desc', said)] : [])", '...[]') },
+  { id: 'M36', what: 'a press always a hub of its rows (the 18766 run: a core wafer cell marked its dies, C walked 17 bonding measurements)', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '(this.index && nodesOfPress(this.index, this.inside, encode, where, ids))', '(false)') },
+  { id: 'M37', what: 'a mark whose press stands for nodes drawn by its rows only - never marked', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null)', 'painted(ids, null)') },
+  { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'P6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'marked: received.filter(marked).length, hidden, heldOnly,', 'marked: received.filter(marked).length, hidden,') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

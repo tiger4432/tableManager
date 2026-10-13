@@ -40,13 +40,14 @@ export function crossModel(rows, ctx) {
     return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);
   };
   const sort = (keys) => [...keys].sort((a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0));
+  const enc = (ctx.declaration && ctx.declaration.encode) || {};
   const R = sort(rowKeys);
   const C = sort(colKeys);
   const grid = R.map((r) => C.map((c) => {
     const cell = cells.get(keyOf(r, c));
     if (!cell) return { value: null, ids: [], marked: false };
     // its paint is the root's: marked, and its rows' Color by colour when one is declared
-    const p = ctx.paint(cell.ids);
+    const p = ctx.paint(cell.ids, [[slotWords(enc.rows), r], [slotWords(enc.columns), c]]);
     return { value: folded(cell.ids), ids: cell.ids, marked: p.marked, color: ctx.colored ? p.color : null };
   }));
   const rowIds = R.map((_, i) => grid[i].flatMap((cell) => cell.ids));
@@ -83,7 +84,11 @@ export function render(area, model, ctx) {
     model.grid[i].forEach((cell, j) => {
       const td = el('td', cell.marked ? 'is-marked' : '', cellWords(cell.value));
       if (cell.color && !cell.marked) td.style.background = cell.color;
-      if (cell.ids.length) td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
+      if (cell.ids.length) {
+        td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
+        td.addEventListener('mousemove', (event) => ctx.hover({ ids: cell.ids, label: model.colKeys[j] ? `${r} · ${model.colKeys[j]}` : r }, event));
+        td.addEventListener('mouseleave', () => ctx.hover(null));
+      }
       tr.append(td);
     });
     tr.append(el('td', 'sf-table__total', cellWords(model.rowTotals[i])));

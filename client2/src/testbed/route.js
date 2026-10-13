@@ -38,8 +38,10 @@ export function routesFor(vocabulary, from, to) {
 
 /** The route a declaration takes: the one it names when it is still a route, else the shortest. */
 export function routeOf(decl, routes) {
-  const named = decl && decl.route && routes.find((r) => routeKey(r) === routeKey(decl.route));
-  return named || routes[0] || null;
+  // a route it names that is not a route from its start is no route - never the shortest instead (the 18766 run: a
+  // wafer route named, the start dies - it walked the dies' own wafer and drew its measurements as the core's)
+  if (decl && decl.route) return routes.find((r) => routeKey(r) === routeKey(decl.route)) || null;
+  return routes[0] || null;
 }
 
 /** What a walk along a route asks: its predicates and the slots' (`follow`), its steps and the longest slot's (`hops`). */

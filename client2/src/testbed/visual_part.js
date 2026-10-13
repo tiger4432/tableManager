@@ -20,11 +20,12 @@ import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
 import { readSlot, readSlots, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
-import { hubId } from './hubs.js';
+import { hubId, nodesOfPress } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
+import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
-import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds } from './route.js';
+import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes, entitySeedId } from '../rnd_board/api.js';
@@ -81,7 +82,8 @@ export class VisualPart extends Panel {
     const unit = this.kind && this.kind.units ? unitOf(this.decl) : 'node';
     const read = unit === 'node' ? own : own.map((s) => ({ ...s, folds: true, records: unit === 'record' }));
     // Color by is the root's - every kind holds it (color_by.js).
-    return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT];
+    // Color by, Label by and the Tooltip slots too (tooltip.js) - the root's, every kind's.
+    return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, LABEL_SLOT, ...tipSlots(this.decl.encode)];
   }
 
   /** The slots it reads, by key: a slot the kind hands with its own (a sheet's cell) or the declaration's. */
@@ -214,6 +216,13 @@ export class VisualPart extends Panel {
 
   route() { return routeOf(this.decl, this.routes()); }
 
+  /** Its start's node type - the first entry's (a hub its row type); none known - null. */
+  startType() {
+    const name = this.start && this.start.marking;
+    const first = name && this.markings ? this.markings.entries(name)[0] : null;
+    return first ? typeOfStart(first[0]) : null;
+  }
+
   /** Its rows in a walk's answer: the route's ends from the seeds it walked from; with no route, every node of its row
    *  type the walk reached. */
   rowsOf(answer) {
@@ -237,6 +246,19 @@ export class VisualPart extends Panel {
     this.state = 'walking';
     this.render();
     this.walkedRoute = seeds.all ? null : this.route();
+    // No route from its start to its rows - or the route it names does not start there: said, nothing drawn, no other
+    // start walked instead.
+    const startType = seeds.all ? null : this.startType();
+    if (!seeds.all && !this.walkedRoute && startType && (this.decl.route || this.vocabulary())) {
+      this.state = 'refused';
+      this.refusal = this.decl.route ? `Route ${routeWords(this.decl.route)} does not start from ${startType}, the start`
+        : `No route from ${startType} to ${this.rowType()}`;
+      this.answer = null;
+      this.publish();
+      this.render();
+      this.prune(new Set());
+      return;
+    }
     // A route starts from one type (its start's first): starts of another type are not walked, and said (QA 10-14).
     this.otherStarts = null;
     if (this.walkedRoute) {
@@ -349,22 +371,33 @@ export class VisualPart extends Panel {
     });
     const marked = (id) => this.layers.marked(this.reads, id) === true;
     // Each row's colour and each mark's paint - the root's, once (color_by.js); the units a kind draws a mark of (units.js).
-    const { colors, colored, paint } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor() });
+    // a press that stands for nodes (hubs.js) marks no row - a mark is marked when what its press stands for is
+    const anyHeld = [...inside].some(marked);
+    const { colors, colored, paint: painted } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor(), anyHeld });
+    const paint = (ids, where) => painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null);
     this.colors = colors;
     // the colours given to categories not declared yet are kept in the declaration - Save keeps them, more categories
     // later leave them where they are (a declaration field, no walk)
     if (colors.any && Object.keys(colors.assigned).length) this.decl = { ...this.decl, colors: { ...(this.decl.colors || {}), ...colors.assigned } };
     const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record, askMarked) : rows;
+    // what a tooltip and a label read: the marks the kind draws (units) and the rows (a mark a kind groups itself)
+    this.rowsById = new Map(rows.map((r) => [r.id, r]));
+    this.unitsById = new Map(units.map((u) => [u.id, u]));
+    const label = (mark) => labelOf(mark, { decl: this.decl, rowsById: this.rowsById, marked: (ids) => ids.some(marked) });
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
-    this.model = this.kind.model(units, { paint, colored, askMarked, palette: this.palette(), declaration: this.decl, start });
+    this.model = this.kind.model(units, { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
+    // the marking holds nodes of other types only and no relation takes them to the row type - why no row is marked
+    const heldTypes = this.reads && this.markings ? [...new Set(this.markings.entries(this.reads).flatMap(([id]) => this.hubs.open(id))
+      .map((id) => this.layers.graph.typeOf(id)).filter(Boolean))] : [];
+    const heldOnly = heldTypes.length && !heldTypes.includes(this.rowType()) && !this.layers.layer(this.reads).types.has(this.rowType()) ? heldTypes : null;
     // M - the rows the walk brought; a, b and c - what each layer took from them (lead 5835e6714). The start side's drops
     // are not among M: they were never walked from.
     this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0, otherStarts: this.otherStarts,
-      part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden,
+      part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden, heldOnly,
       columns: Object.keys(encode).length, source: this.rowType(),
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
@@ -438,7 +471,11 @@ export class VisualPart extends Panel {
   markHub(where, ids, event) { this.markHubs([[where, ids]], event); }
 
   /** Hubs marked whole - each [where, its members], in one press. */
-  markHubs(list, event) { this.mark(list.map(([where, ids]) => this.hubs.put(hubId(this.rowType(), where), ids)), event); }
+  markHubs(list, event) {
+    const encode = this.decl.encode || {};
+    const press = ([where, ids]) => (this.index && nodesOfPress(this.index, this.inside, encode, where, ids)) || [this.hubs.put(hubId(this.rowType(), where), ids)];
+    this.mark([...new Set(list.flatMap(press))], event);
+  }
 
   clear() { if (this.writes) this.markings.clear(this.writes); }
 
@@ -455,8 +492,10 @@ export class VisualPart extends Panel {
     // The handle a page moves the part by (grid_shell: drag the title bar onto another part's edge).
     title.setAttribute('data-part-title', '');
     title.append(el('span', 'sf-part__t', this.titleWords()));
+    // its description - one line under the title (base set 1)
+    const said = (this.decl.description || '').trim();
     const body = el('div', 'sf-part__body');
-    root.append(title, body);
+    root.append(title, ...(said ? [el('div', 'sf-part__desc', said)] : []), body);
     this.host.replaceChildren(root);
     this.root = root;
     this.paintActive();
@@ -499,6 +538,8 @@ export class VisualPart extends Panel {
       doc, palette: this.palette(), charts: this.charts,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       plus: (key) => this.plus(key),
+      // what is under the pointer - {id} a mark it was handed, {ids} rows it grouped; null nothing (tooltip.js)
+      hover: (mark, event) => this.showTip(mark, event),
       mark: (ids, event) => this.mark(ids, event),
       markHub: (where, ids, event) => this.markHub(where, ids, event),
       markHubs: (list, event) => this.markHubs(list, event),
@@ -538,6 +579,20 @@ export class VisualPart extends Panel {
     const key = (event) => { if (event.key === 'Escape') this.closePalette(); };
     if (typeof doc.addEventListener === 'function') { doc.addEventListener('mousedown', outside); doc.addEventListener('keydown', key); }
     this._palette = { host, off: () => { if (typeof doc.removeEventListener === 'function') { doc.removeEventListener('mousedown', outside); doc.removeEventListener('keydown', key); } } };
+  }
+
+  /** The tooltip over the part for a mark under the pointer (base set 10); none - gone. */
+  showTip(mark, event) {
+    if (!this.root || !this.doc) return;
+    if (!this.tip) { this.tip = this.doc.createElement('div'); this.tip.className = 'sf-tip'; }
+    if (!mark || !event) { this.tip.remove ? this.tip.remove() : null; return; }
+    const unit = (mark.id !== undefined && this.unitsById && this.unitsById.get(mark.id)) || mark;
+    const lines = tipLines({ ...unit, ids: unit.ids || mark.ids || [] }, { rowsById: this.rowsById || new Map(), slots: this.slotList(), encode: this.decl.encode || {} });
+    this.tip.replaceChildren(...lines.map((line, k) => { const n = this.doc.createElement('div'); if (!k) n.className = 'sf-tip__h'; n.textContent = line; return n; }));
+    const box = this.root.getBoundingClientRect ? this.root.getBoundingClientRect() : { left: 0, top: 0 };
+    this.tip.style.left = `${(event.clientX || 0) - box.left + 12}px`;
+    this.tip.style.top = `${(event.clientY || 0) - box.top + 12}px`;
+    if (this.tip.parentNode !== this.root) this.root.appendChild(this.tip);
   }
 
   closePalette() {

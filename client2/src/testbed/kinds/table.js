@@ -82,6 +82,8 @@ export function render(area, model, ctx) {
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
     tr.append(el('td', 'sf-table__add'));
     tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
+    tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));
+    tr.addEventListener('mouseleave', () => ctx.hover(null));
     table.append(tr);
   }
   wrap.append(table);

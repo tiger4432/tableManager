@@ -63,23 +63,25 @@ export function colorOfIds(colors, ids) {
 /**
  * What a mark is painted (base set 5 and 7 - the root's, the kind draws it): its rows' colour; marked when a row of it is
  * marked - in the marking's colour (Spotfire's); the rest mixed toward the background while something is marked.
- * @returns {(ids: string[]) => {fill, line, color, marked: boolean, dim: boolean}}
+ * @param {boolean} [anyHeld]  something of the walk is marked though no row is (a press that stands for nodes, hubs.js)
+ * @returns {(ids: string[], held?: string[]) => {fill, line, color, marked: boolean, dim: boolean}}  held - the nodes the
+ *   mark's press stands for
  */
-export function painter({ colors, marked, markColor, palette, ids }) {
-  const anyMarked = ids.some(marked);
-  return (of) => {
+export function painter({ colors, marked, markColor, palette, ids, anyHeld = false }) {
+  const anyMarked = anyHeld || ids.some(marked);
+  return (of, held = null) => {
     const c = colorOfIds(colors, of);
     // color - the rows' own colour, unmarked and undimmed (a table line's band, a cross table cell)
-    if (of.some(marked)) return { fill: markColor || c.fill, line: markColor || c.line, color: c.fill, marked: true, dim: false };
+    if (of.some(marked) || (held && held.some(marked))) return { fill: markColor || c.fill, line: markColor || c.line, color: c.fill, marked: true, dim: false };
     if (anyMarked) return { fill: mix(c.fill, palette.bg), line: mix(c.line, palette.bg), color: c.fill, marked: false, dim: true };
     return { fill: c.fill, line: c.line, color: c.fill, marked: false, dim: false };
   };
 }
 
 /** The root's colours and paint for rows, together - what a kind's model is handed (`colors`, `paint`, `colored`). */
-export function paintRows(rows, { palette, declaration, marked = () => false, markColor = null }) {
+export function paintRows(rows, { palette, declaration, marked = () => false, markColor = null, anyHeld = false }) {
   const colors = colorsOf(rows, { palette, declaration, marked });
-  return { colors, colored: colors.any, paint: painter({ colors, marked, markColor, palette, ids: rows.map((r) => r.id) }) };
+  return { colors, colored: colors.any, paint: painter({ colors, marked, markColor, palette, ids: rows.map((r) => r.id), anyHeld }) };
 }
 
 /**

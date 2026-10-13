@@ -4,6 +4,9 @@
 // Until the server takes hubs as seeds (WALK_HUB_ANSWER_SHAPE), a walk from a marking opens them into their members here,
 // in one place: `HubBook.open`, handed to the marking store's `seedsOf`.
 
+import { readsOf, columnKey } from '../walk/reach_table.js';
+import { isExpression, slotWords } from './slot.js';
+
 const PREFIX = 'hub:';
 
 /** A hub's id: its row type and its conditions ([[slot words, value], ...]), spelled once. */
@@ -17,6 +20,30 @@ export function hubOf(id) {
 }
 /** A hub in words - «wafer · recipe = R-07 · equipment = EQ-02». */
 export const hubWords = (id) => { const h = hubOf(id); return h ? [h.row, ...h.where.map(([k, v]) => `${k} = ${v}`)].join(' · ') : ''; };
+
+/**
+ * What a press on a mark stands for - THE one place that says (lead 10-14: a cross table cell of core wafers marked a hub of
+ * its dies, so the next part walked from the dies and drew the bonding wafer's 17 measurements, not the core's 6). A mark
+ * whose one condition is read off another node along a way - its name or key - IS those nodes, the ones its rows read it
+ * from; any other condition beside it (two axes, the row's own value, an edge's, an expression) - null: the hub of its
+ * rows, no node set holding what both narrow to. Words no slot says (an axis not declared) are no condition.
+ * @param {Array<[string, string]>} where  the mark's conditions, [slot words, value]
+ * @returns {string[]|null}
+ */
+export function nodesOfPress(index, inside, encode, where, ids) {
+  const slots = Object.values(encode || {}).filter((s) => s && !isExpression(s));
+  const held = (where || []).map(([words, value]) => [new Map(slots.filter((s) => slotWords(s) === words).map((s) => [columnKey(s), s])), value])
+    .filter(([said, value]) => said.size || value !== '');
+  if (held.length !== 1 || held[0][0].size !== 1) return null;
+  const [said, value] = held[0];
+  const [slot] = said.values();
+  if (!slot.steps.length || (slot.value.on !== 'label' && slot.value.on !== 'key')) return null;
+  const ends = new Set();
+  for (const id of ids) {
+    for (const r of readsOf(index, inside, id, slot).reads) if ([].concat(r.value).map(String).includes(String(value))) ends.add(r.node);
+  }
+  return ends.size ? [...ends] : null;
+}
 
 /** The page's hubs: each id's members as the part that drew it last counted them. Made by the page, handed to parts. */
 export class HubBook {
