@@ -24,9 +24,10 @@
 
 /* ── a part: its frame, its title, its body ── */
 .sf-part { position: relative; box-sizing: border-box; height: 100%; display: grid; grid-template-rows: var(--sf-title-h) minmax(0, 1fr);
-  padding: var(--sf-pad); background: var(--sf-bg); border: 2px solid transparent; color: var(--sf-text); }
-.sf-part.is-active { border-color: var(--sf-active); }
-.sf-part__title { display: flex; align-items: center; gap: 6px; padding: 4px; min-width: 0;
+  padding: var(--sf-pad); background: var(--sf-bg); border: 0; outline: var(--sf-active-w) solid transparent; outline-offset: calc(-1 * var(--sf-active-w));
+  color: var(--sf-text); }
+.sf-part.is-active { outline-color: var(--sf-active); }
+.sf-part__title { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px var(--sf-title-inset); min-width: 0;
   font: 300 var(--sf-fs-title)/var(--sf-lh-title) var(--sf-font); color: var(--sf-title); }
 .sf-part__t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sf-part__meta { flex: none; font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); color: var(--sf-text-2); white-space: nowrap; }
@@ -48,7 +49,7 @@
 
 /* ── a legend: its titles, its slot pickers, its values ── */
 .sf-legend { padding-left: 10px; min-height: 0; overflow: auto; }
-.sf-legend__ttl { height: var(--sf-cell-h); line-height: var(--sf-cell-h); }
+.sf-legend__ttl { height: var(--sf-legend-ttl); line-height: var(--sf-legend-ttl); }
 .sf-legend__row { display: flex; align-items: center; gap: 4px; margin: 0 0 8px -10px; }
 .sf-legend__v { display: flex; align-items: center; justify-content: flex-start; gap: 4px; letter-spacing: normal; width: 100%; height: var(--sf-legend-row); padding: 0; border: 0; background: transparent;
   color: var(--sf-text); font: inherit; text-align: left; cursor: pointer; }
@@ -59,7 +60,7 @@
 
 /* ── a table: a grid with lines (the cross table), or a striped list (the marked rows) ── */
 .sf-table { width: auto; border-collapse: collapse; font-size: inherit; font-variant-numeric: tabular-nums; }
-.sf-table th, .sf-table td { height: var(--sf-cell-h); padding: 0 var(--sf-cell-pad); border-bottom: 1px solid var(--sf-line); white-space: nowrap;
+.sf-table th, .sf-table td { box-sizing: border-box; height: var(--sf-cell-h); padding: var(--sf-cell-pad); border-bottom: 1px solid var(--sf-line); white-space: nowrap;
   font-family: inherit; font-size: inherit; letter-spacing: normal; text-transform: none; color: inherit; }
 .sf-table tr:hover { background: transparent; }
 .sf-table td, .sf-table__col { border-left: 1px solid var(--sf-line); text-align: right; }
@@ -70,7 +71,7 @@
 .sf-table td.is-marked { background: var(--sf-marked); color: var(--sf-marked-text); font-weight: 700; }
 .sf-table__total { font-weight: 700; }
 .sf-table--rows { width: 100%; }
-.sf-table--rows th, .sf-table--rows td { padding: 0 4px; border: 0; text-align: left; cursor: default; min-width: 0; }
+.sf-table--rows th, .sf-table--rows td { height: var(--sf-row-h); padding: 0 4px; border: 0; text-align: left; cursor: default; min-width: 0; }
 .sf-table--rows tr:nth-child(even) td { background: var(--sf-stripe); }
 .sf-table--rows .is-num { text-align: right; }
 .sf-table--rows .is-id { color: var(--sf-text-2); font-size: 11px; }
