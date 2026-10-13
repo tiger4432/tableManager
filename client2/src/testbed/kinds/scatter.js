@@ -4,8 +4,7 @@
 
 import { numberOf } from '../../walk/reach_table.js';
 import { categoryColor, mix, MARKER_PX, MARKER_PCT } from '../palette.js';
-import { slotWords, combosOf } from '../slot.js';
-import { fold } from '../aggregate.js';
+import { slotWords, combosOf, foldRows, isExpression } from '../slot.js';
 import { hubId } from '../hubs.js';
 
 export const SLOTS = Object.freeze([
@@ -97,12 +96,12 @@ export function scatterModel(rows, ctx) {
     size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
 }
 
-/** A marker's rows read as one on a slot: with a reduce, every value of theirs folded (aggregate.fold - the cross table's
- *  rule); without, the value when they all say one and the same, several when not, empty when none says one. */
+/** A marker's rows read as one on a slot: with a reduce or an expression, every value of theirs folded (slot.foldRows - the
+ *  cross table's rule); without, the value when they all say one and the same, several when not, empty when none says one. */
 function foldedRead(rows, key, slot) {
   if (!slot) return undefined;
-  if (slot.reduce) {
-    const value = fold(slot.reduce, rows.flatMap((r) => (r.raw && r.raw[key]) || [])).value;
+  if (slot.reduce || isExpression(slot)) {
+    const value = foldRows(slot, rows.map((r) => r.raw && r.raw[key]));
     return value === null || value === undefined ? { state: 'empty' } : { state: 'one', value };
   }
   const reads = rows.map((r) => r.reads[key]).filter(Boolean);

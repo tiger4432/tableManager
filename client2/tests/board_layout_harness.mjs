@@ -601,7 +601,7 @@ const MUTANTS = [
   { id: 'M16', what: 'a marked point keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (marked && ctx.markColor) return', '    if (false) return') },
   { id: 'M17', what: 'a marker\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 ', 'P6 '], file: 'testbed/kinds/scatter.js', key: 'scatter',
-    mutate: (t) => swap(t, '  if (slot.reduce) {', '  if (false) {') },
+    mutate: (t) => swap(t, '  if (slot.reduce || isExpression(slot)) {', '  if (false) {') },
   { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
   { id: 'M19', what: 'a value record reads the row\'s first read for every point - not its own', catches: 'R1 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
