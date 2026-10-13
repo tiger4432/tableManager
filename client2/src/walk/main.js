@@ -249,7 +249,7 @@ export function boot(doc, host, deps) {
   const search = new NodeSearch(searchMount, { doc,
     ask: (prefix) => fetchKeyValues({ apiBase, fetchImpl, type: state.type, startsWith: prefix, limit: SEARCH_LIMIT }),
     onType: (text) => { if (search.axis) state.keys[search.axis] = text; baskets.render(); },
-    onPick: (node) => { state.keys = { ...node.keys }; render(); },
+    onPick: (node) => { state.keys = { ...node.keys }; render(); baskets.take(); },
     onAnswer: () => baskets.render() });
   /** The form's subject as the baskets' + takes it - picked from the list or typed; none until a type and a key. A key
    *  typed that the ledger names no node by says so (lead b5cdcbc75). */

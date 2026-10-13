@@ -114,6 +114,78 @@ async function seen(M) {
     out.dismiss = steps;
     void part;
   }
+  // ── a press whose target left the page during the press is inside (dropdown.js watchForDismiss, lead 10-14) ──
+  {
+    const heard = {};
+    const doc = { addEventListener: (type, fn) => { (heard[type] ||= []).push(fn); }, removeEventListener: () => {} };
+    const host = { parentNode: null };
+    const item = { parentNode: null };   // the list it sat in was redrawn - it is off the page now
+    const outside = { parentNode: null };
+    let closed = 0;
+    M.dropdown.watchForDismiss(doc, host, () => { closed += 1; });
+    const fire = (event) => { for (const fn of heard.mousedown || []) fn(event); };
+    fire({ target: item, composedPath: () => [item, host, doc] });
+    const afterInside = closed;
+    fire({ target: outside, composedPath: () => [outside, doc] });
+    out.leftPage = [afterInside, closed];
+  }
+  // ── a node picked from the start list goes in as Positive and «+ Add start» shuts (lead 10-14, 18766) ──
+  {
+    const doc = makeDoc('light');
+    doc.head = doc.createElement('head');
+    const heard = {};
+    doc.addEventListener = (type, fn) => { (heard[type] ||= []).push(fn); };
+    doc.removeEventListener = (type, fn) => { heard[type] = (heard[type] || []).filter((f) => f !== fn); };
+    const host = doc.createElement('div');
+    const page = M.page.boot(doc, host, { apiBase: '', fetchImpl: async (url) => ({ ok: true, status: 200, json: async () => (
+      String(url).includes('/declaration') ? DECL
+        : String(url).includes('/key-values') ? { nodes: [{ keys: { wafer: 'A' }, count: 2 }], prefix_axis: 'wafer' }
+          : { state: 'ok', seed: { id: 's' }, nodes: [], edges: [] }) }) });
+    await settle();
+    // The type picked as a person picks it: its change asks the box's first nodes.
+    const typeSel = walkAll(host).find((n) => n.tagName === 'SELECT' && walkAll(n).some((o) => o.tagName === 'OPTION' && o.value === 'wafer'));
+    if (typeSel) { typeSel.value = 'wafer'; typeSel.dispatch('change', {}); }
+    await settle();
+    const pop = walkAll(host).find((n) => hasClass(n, 'wk-barpop'));
+    const search = walkAll(host).find((n) => hasClass(n, 'wk-search'));
+    const box = search && walkAll(search).find((n) => n.tagName === 'INPUT');
+    // The page's own toggle measures the window (one dropdown at a time); this stub has no layout to measure.
+    pop.lastElementChild = { getBoundingClientRect: () => ({ right: 0 }) };
+    if (!doc.documentElement) doc.documentElement = { clientWidth: 1000 };
+    pop.open = true;
+    pop.dispatch('toggle');
+    if (box) box.dispatch('focus', {});
+    await settle();
+    const item = walkAll(host).find((n) => hasClass(n, 'wk-searchitem'));
+    // As a browser does: the path is fixed when the press begins, the item's own handler runs, then the page's.
+    const path = [];
+    for (let n = item; n; n = n.parentNode) path.push(n);
+    if (item) {
+      item.dispatch('mousedown', { preventDefault() {} });
+      for (const fn of [...(heard.mousedown || [])]) fn({ target: item, composedPath: () => [...path, doc] });
+    }
+    out.picked = [Boolean(item), shownOf(host)[0], pop.open];
+  }
+  // ── the test bed's start row: the same pick ──
+  {
+    const doc = makeDoc('light');
+    doc.head = doc.createElement('head');
+    const markings = new MarkingStore();
+    const host = doc.createElement('div');
+    const part = new M.start.StartPart(host, { doc, markings, writes: 'start', entities: () => [{ type: 'wafer', keys: ['wafer'] }],
+      askKeys: async () => ({ ok: true, nodes: [{ keys: { wafer: 'A' }, count: 2 }], prefixAxis: 'wafer' }) });
+    part.mount();
+    await settle();
+    const pop = walkAll(host).find((n) => hasClass(n, 'wk-barpop'));
+    pop.open = true;
+    pop.dispatch('toggle');
+    const search = walkAll(host).find((n) => hasClass(n, 'wk-search'));
+    const box = search && walkAll(search).find((n) => n.tagName === 'INPUT');
+    if (box) box.dispatch('focus', {});
+    const item = walkAll(host).find((n) => hasClass(n, 'wk-searchitem'));
+    if (item) item.dispatch('mousedown', { preventDefault() {} });
+    out.bedPicked = [Boolean(item), markings.entries('start'), pop.open];
+  }
   // ── the walk page ──
   {
     const urls = [];
@@ -220,6 +292,9 @@ function suite(out) {
   eq('B5 the baskets say the marking whoever writes it', out.other, [['1', [W('C')]], ['1', ['A']]]);
   eq('B14 «+ Add start»: a click inside keeps it open; put a start in, a click outside shuts it and the page is no longer heard; Escape shuts it too',
     out.dismiss, [true, false, 0, false, 0]);
+  eq('B15 a node picked from the start list goes in as Positive and «+ Add start» shuts', out.picked, [true, ['1', ['A']], false]);
+  eq('B17 the test bed start row: the same pick goes in as Positive and shuts', out.bedPicked, [true, [[W('A'), SIGN.CASE]], false]);
+  eq('B16 a press whose target left the page during the press is inside; one outside shuts', out.leftPage, [0, 1]);
   eq('B13 a node the ledger does not hold: under the adds «0 atoms · not in the ledger», + still on; held, nothing said',
     out.unheld, [['0 atoms · not in the ledger'], false, []]);
   eq('B6 two parts on one screen: one takes a node, the other and its marking do not move',
@@ -241,6 +316,8 @@ function suite(out) {
 const REAL = {
   baskets: await import('../src/walk/start_baskets.js'),
   page: await import('../src/walk/main.js'),
+  dropdown: await import('../src/dropdown.js'),
+  start: await import('../src/testbed/start_part.js'),
 };
 console.log('\n[1] start baskets');
 const base = suite(await seen(REAL));
@@ -267,6 +344,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'if (this.pop.open && !this.unwatch) this.unwatch = watchForDismiss(this.doc, this.pop, () => this.close());', 'if (false) this.unwatch = null;') },
   { id: 'BM13', what: 'shut, it still hears the page - the next click anywhere goes to a closed window', catches: 'B14', file: 'walk/start_baskets.js', key: 'baskets',
     mutate: (t) => swap(t, '    if (this.unwatch) { this.unwatch(); this.unwatch = null; }\n', '') },
+  { id: 'BM14', what: 'a node picked from the list only fills the box (the code before - 18766)', catches: 'B15', file: 'walk/main.js', key: 'page',
+    mutate: (t) => swap(t, 'render(); baskets.take(); },', 'render(); },') },
+  { id: 'BM16', what: 'the test bed pick only fills the box', catches: 'B17', file: 'testbed/start_part.js', key: 'start',
+    mutate: (t) => swap(t, 'this.baskets.render(); this.baskets.take(); },', 'this.baskets.render(); },') },
+  { id: 'BM15', what: 'a press whose target left the page is read as outside', catches: 'B16', file: 'dropdown.js', key: 'dropdown',
+    mutate: (t) => swap(t, 'if (inside(event && event.target) || path.some(inside)) return;', 'if (inside(event && event.target)) return;') },
   { id: 'BM6', what: 'Walk on with an empty Positive', catches: 'B7', file: 'walk/main.js', key: 'page',
     mutate: (t) => swap(t, "(seedsOf(markings.entries(START)).positive.length ? '' : BASKET_WORDS.noStart)", "''") },
   { id: 'BM7', what: 'Walk asks the form\'s node, not the baskets', catches: 'B9', file: 'walk/main.js', key: 'page',

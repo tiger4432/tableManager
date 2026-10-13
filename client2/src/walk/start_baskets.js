@@ -79,6 +79,12 @@ export class StartBaskets {
 
   remove(id) { this.markings.set(this.name, id, SIGN.ABSENT); }
 
+  /** A node picked from the list: into Positive, and «+ Add start» shut (lead 10-14). */
+  take(node = this.picked()) {
+    this.add(SIGN.CASE, node);
+    this.close();
+  }
+
   /** «+ Add start» shut, and the page no longer heard. */
   close() {
     this.pop.open = false;

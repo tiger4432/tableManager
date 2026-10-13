@@ -32,7 +32,7 @@ export class StartPart extends Panel {
     this.search = new NodeSearch(el('div', ''), { doc,
       ask: (prefix) => this.askKeys({ type: this.type, startsWith: prefix }),
       onType: (text) => { if (this.search.axis) this.keys = { [this.search.axis]: text }; this.baskets.render(); },
-      onPick: (node) => { this.keys = { ...node.keys }; this.search.setText(node.keys[this.search.axis] || ''); this.baskets.render(); },
+      onPick: (node) => { this.keys = { ...node.keys }; this.search.setText(node.keys[this.search.axis] || ''); this.baskets.render(); this.baskets.take(); },
       onAnswer: () => this.baskets.render() });
     pick.append(this.select, this.search.root);
     this.baskets = new StartBaskets(el('span', ''), { doc, markings: this.markings, name: this.writes, picked: () => this.picked(), pick });
