@@ -373,7 +373,7 @@
 - **트렐리스 (Panel by)** — «Panel by» 알약의 값마다 패널 하나, 패널마다 그 행들만의 같은 그림(값 둘인 행은 둘 다, 값 없으면 (Empty) 맨 끝). 패널마다 축 범위가 같고(산점도 축 · 맵 격자), 위 N 은 패널로 나누기 «전» 그림 전체에서 고릅니다. 패널 안 표시를 누르면 그 패널의 행만 찍히고 허브 조건에 패널 값이 붙습니다. 패널 수 상한 · 쪽 넘기기는 아직 없음. 선언 `encode.panel`.
 - **Shape by** — 점을 찍는 종류(지금은 산점도)에 «Shape by» 알약. 범주마다 모양(circle · rect · triangle · diamond · roundRect · pin · arrow 순), 선언 `shapes`(범주 → 모양)에 고정 — Color by 의 색과 같은 규칙 한 함수. 범례 «Shape by:» 가 같은 모양을 그리고 이름을 누르면 그 행들이 찍힙니다. 범주별 모양 고르개는 아직 없음(선언 `shapes` 에 적음). Map 은 좌표 칸을 그리는 종류라 점 레이어가 생기면 받습니다.
 - **필요한 조건** — 클라 빌드만.
-- **자세히** — `client2/tests/board_layout_harness.mjs`(SI1–SI3 · TR1–TR3 · SP1 · SP2, 변이 M39–M41 · M46–M53).
+- **자세히** — `client2/tests/board_layout_harness.mjs`(SI1–SI3 · TR1–TR4 · SP1 · SP2, 변이 M39–M41 · M46–M54).
 
 ---
 
