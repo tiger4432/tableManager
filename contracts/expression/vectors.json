@@ -3242,6 +3242,24 @@
       "expect": null,
       "basis": "decided",
       "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
+    },
+    {
+      "id": "time.max.bare.number",
+      "expr": "Max([t])",
+      "types": {
+        "t": "datetime"
+      },
+      "rows": [
+        {
+          "t": "2026-10-01T00:00:00Z"
+        },
+        {
+          "t": "5"
+        }
+      ],
+      "expect": "2026-10-01T00:00:00Z",
+      "basis": "decided",
+      "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first; a bare number text is not a time (ISO-8601 only)"
     }
   ],
   "ours": [
