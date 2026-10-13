@@ -123,6 +123,30 @@ export function categoriesOf(read) {
   return [];
 }
 
+/** A category saying none. */
+export const EMPTY = '(Empty)';
+
+/** The rows of every combination of categories some keys make - a row's categories on a key (none - (Empty), a key with
+ *  no slot - ''), a row with two on one key in both: [{values, ids}] in first-seen order. A cross table's cells and the
+ *  scatter's Marker by markers are these - each a hub of its rows. */
+export function combosOf(rows, keys) {
+  const out = new Map();
+  for (const row of rows) {
+    let combos = [[]];
+    for (const key of keys) {
+      const read = row.reads[key];
+      const cats = read ? (categoriesOf(read).length ? categoriesOf(read).map(String) : [EMPTY]) : [''];
+      combos = combos.flatMap((c) => cats.map((v) => [...c, v]));
+    }
+    for (const values of combos) {
+      const at = JSON.stringify(values);
+      if (!out.has(at)) out.set(at, { values, ids: [] });
+      out.get(at).ids.push(row.id);
+    }
+  }
+  return [...out.values()];
+}
+
 /** A slot in words - what a pill and an axis say: «Avg(void_ratio)», «Latest(bond_temp)», «recipe». */
 export function slotWords(slot) {
   if (!slot) return '(None)';

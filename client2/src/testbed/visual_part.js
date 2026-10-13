@@ -312,10 +312,10 @@ export class VisualPart extends Panel {
     this.markings.replace(this.writes, ids.map((id) => [id, sign]));
   }
 
-  markHub(where, ids, event) {
-    const id = this.hubs.put(hubId(this.decl.row, where), ids);
-    this.mark([id], event);
-  }
+  markHub(where, ids, event) { this.markHubs([[where, ids]], event); }
+
+  /** Hubs marked whole - each [where, its members], in one press. */
+  markHubs(list, event) { this.mark(list.map(([where, ids]) => this.hubs.put(hubId(this.decl.row, where), ids)), event); }
 
   clear() { if (this.writes) this.markings.clear(this.writes); }
 
@@ -350,6 +350,7 @@ export class VisualPart extends Panel {
       plus: (key) => { const p = el('button', 'sf-plus', '+'); p.type = 'button'; p.title = 'Add one more column'; p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p })); return p; },
       mark: (ids, event) => this.mark(ids, event),
       markHub: (where, ids, event) => this.markHub(where, ids, event),
+      markHubs: (list, event) => this.markHubs(list, event),
       clear: () => this.clear(),
       // A field of the kind's own (a table's sort), written into the declaration - Save keeps it.
       declare: (patch) => this.setDeclaration({ ...this.decl, ...patch }),

@@ -4,6 +4,7 @@
 
 import { Panel } from '../rnd_board/panel.js';
 import { drawCondition, conditionKey, conditionWords } from './condition_editor.js';
+import { markingsOf } from './visual_part.js';
 
 export class PropertiesPart extends Panel {
   constructor(host, deps) {
@@ -54,6 +55,7 @@ export class PropertiesPart extends Panel {
       return line;
     };
     const marks = this.markingList.get('list') || [];
+    const got = markingsOf(decl);
     const labelOf = (name) => (marks.find((m) => m.name === name) || { label: name }).label;
     // ── Data: the markings it receives (Start from, Limit by) and the one it emits (Marking) ──
     const data = section('Data');
@@ -61,7 +63,7 @@ export class PropertiesPart extends Panel {
       data.append(el('div', 'sf-say sf-props__refused',
         `Refused - a loop: ${part.loop.map((x, k) => (k % 2 ? (this.partOf(x) ? this.partOf(x).titleWords() : x) : labelOf(x))).join(' → ')}`));
     }
-    data.append(select('Start from', [[null, 'All'], ...marks.map((m) => [m.name, m.label])], decl.start && decl.start.marking,
+    data.append(select('Start from', [[null, 'All'], ...marks.map((m) => [m.name, m.label])], got.start,
       (v) => part.setDeclaration({ ...decl, start: { ...(decl.start || {}), marking: v } })));
     data.append(select('Route', this.entities().map((e) => [e.type, e.type]), decl.row, (v) => part.setDeclaration({ ...decl, row: v })));
     data.append(select('Filtering', [[null, '(None)'], ...this.filterNames.map((f) => [f.name, f.label])], decl.system,
@@ -96,7 +98,7 @@ export class PropertiesPart extends Panel {
     }
     // ── Limit data using markings (Spotfire's, the Data section's): the markings, all or any, when none is marked ──
     data.append(el('div', 'sf-props__lab', 'Limit by'));
-    const limit = decl.limit || { markings: [], must: 'all', none: 'all' };
+    const limit = { must: 'all', none: 'all', ...(decl.limit || {}), markings: got.limit };
     const limitTo = (next) => part.setDeclaration({ ...decl, limit: next.markings.length ? next : null });
     for (const m of marks) {
       const line = el('label', 'sf-props__check');
@@ -115,7 +117,7 @@ export class PropertiesPart extends Panel {
         (v) => limitTo({ ...limit, none: v })));
     }
     // The one it emits: a press marks it, and it is the marking drawn marked here (Spotfire's one «Marking»).
-    data.append(select('Marking', [[null, '(None)'], ...marks.map((m) => [m.name, m.label])], decl.writes,
+    data.append(select('Marking', [[null, '(None)'], ...marks.map((m) => [m.name, m.label])], got.emits,
       (v) => part.setDeclaration({ ...decl, writes: v })));
     // ── the kind's slots ──
     for (const s of part.slotList()) {

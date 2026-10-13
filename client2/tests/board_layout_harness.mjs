@@ -365,6 +365,65 @@ async function seatedChain(M) {
   return { walked: [...walked], held: [held('m1'), held('m2'), held('m3')] };
 }
 
+// ── the scatter's Marker by (owner 10-13): a marker a combination of the Marker by values - a hub of its rows ──
+const LOT = { steps: [{ predicate: 'in_lot', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['lot'] };
+const PRODUCT = { steps: [{ predicate: 'of_product', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['product'] };
+
+function markerModels(M) {
+  const one = (value) => ({ state: 'one', value });
+  const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: [['#6489FA', '#4B67BC']] };
+  // W3 reads two temps; W4's press differs from W2's
+  const DATA = [['W1', 'L1', 'A', [[30, 1]], 5], ['W2', 'L2', 'A', [[10, 1]], 5], ['W3', 'L1', 'B', [[20, 2], [26, 3]], 5], ['W4', 'L2', 'B', [[40, 2]], 7]];
+  const rows = DATA.map(([id, lot, product, temps, press]) => ({ id, label: id,
+    reads: { x: temps.length === 1 ? one(temps[0][0]) : { state: 'several', values: temps.map(([v]) => v) }, y: one(press), marker1: one(lot), marker2: one(product) },
+    raw: { x: temps.map(([value, t]) => ({ value, t })), y: [{ value: press, t: 1 }] } }));
+  const model = (encode, marked = () => false) => {
+    const m = M.scatter.scatterModel(rows.map((r) => ({ ...r, reads: Object.fromEntries(Object.entries(r.reads).filter(([k]) => encode[k])) })),
+      { marked, palette: pal, declaration: { row: 'wafer', encode } });
+    return { points: m.points.map((p) => [p.label, Math.round(p.x * 1000) / 1000, p.y, p.ids, p.marked]), several: m.several };
+  };
+  const X = (reduce) => ({ ...TEMP, reduce });
+  const Y = { steps: [], value: { on: 'attribute', name: 'press' }, words: ['press'] };
+  return {
+    none: model({ x: X(), y: Y }),
+    lot: model({ x: X('Avg'), y: Y, marker1: LOT }, (id) => id === 'W3'),
+    two: model({ x: X('Count'), y: Y, marker1: LOT, marker2: PRODUCT }),
+    latest: model({ x: X('Latest'), y: { ...Y, reduce: 'Avg' }, marker1: LOT }),
+    hub: M.scatter.scatterModel(rows, { marked: () => false, palette: pal, declaration: { row: 'wafer', encode: { x: X('Avg'), y: { ...Y, reduce: 'Avg' }, marker1: LOT } } }).points.map((p) => p.id),
+    slots: [M.scatter.kind.slots({}).map((s) => s.key), M.scatter.kind.slots({ marker1: LOT }).map((s) => `${s.key}${s.folds ? '*' : ''}`)],
+  };
+}
+
+/** A scatter with Marker by lot and the Marked table limited by its pick, seated alone from M: a marker pressed - the
+ *  table its members. */
+async function markerPress(M) {
+  const doc = makeDoc('dark');
+  const markings = new MarkingStore();
+  const hubs = new HubBook();
+  const handlers = {};
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on(name, fn) { handlers[name] = fn; }, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const lot = (id) => ({ id, type: 'lot', label: id, keys: { lot: id }, attributes: {} });
+  const answer = { nodes: [wafer('W1'), wafer('W2'), wafer('W3'), wafer('W4'), lot('L1'), lot('L2'), ANSWER.nodes[4]],
+    edges: [...ANSWER.edges, { source: 'W4', target: 'QT', predicate: 'measures', qualifiers: { value: '40' } },
+      ...[['W1', 'L1'], ['W2', 'L2'], ['W3', 'L1'], ['W4', 'L2']].map(([w, l]) => ({ source: w, target: l, predicate: 'in_lot', qualifiers: {} }))],
+    truncated: ANSWER.truncated };
+  const seat = (decl, kinds) => {
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: decl.writes, start: decl.start, declaration: decl, kinds,
+      filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs, names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    return part;
+  };
+  const base = { part: 'visual', row: 'wafer', start: { marking: null }, system: null, filter: [], writes: 'marking:pick' };
+  const scatter = seat({ ...base, id: 'S', kind: 'scatter', encode: { x: { ...TEMP, reduce: 'Avg' }, y: { ...TEMP, reduce: 'Max' }, marker1: LOT } }, { scatter: M.scatter.kind });
+  const table = seat({ ...base, id: 'T', kind: 'table', limit: { markings: ['marking:pick'], must: 'all', none: 'empty' }, encode: { col1: NAME } }, { table: M.table.kind });
+  await settle();
+  const points = scatter.model.points.map((p) => [p.label, p.x, p.y]);
+  handlers.click({ data: { id: hubId('wafer', [['lot', 'L1']]) }, event: { event: {} } });
+  await settle();
+  return { points, marked: markings.entries('marking:pick').map(([id]) => id), lines: table.model.lines.map((l) => l.id) };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -383,6 +442,8 @@ async function suite(M) {
   const one = await seated(M);
   const k = await chains(M);
   const sc = await seatedChain(M);
+  const mk = markerModels(M);
+  const mp = await markerPress(M);
   const lines = [
     judge('S1 a part docked on each edge of another: side by side or stacked, on that side', m.dock,
       [['row', ['B', 'A']], ['row', ['A', 'B']], ['column', ['B', 'A']], ['column', ['A', 'B']]]),
@@ -439,6 +500,19 @@ async function suite(M) {
         after: ['marking:start', 'marking:pick', 'marking:3', 'marking:5', 'marking:6'], b: ['marking:3', null], c: [null, 'marking:5'],
         limit: ['marking:pick'], walks: ['type:wafer'], kept: ['Not deleted - used by start'] }),
     judge('K6 a marking\'s colour is its marked lines\' and points\'', k.colour, { line: '#123456', unmarked: true, marked: '#123456' }),
+    judge('P1 Marker by none: a point a node; a node with several x and no reduce not drawn', mk.none,
+      { points: [['W1', 30, 5, ['W1'], false], ['W2', 10, 5, ['W2'], false], ['W4', 40, 7, ['W4'], false]], several: 1 }),
+    judge('P2 Marker by lot: a point a lot - x the Avg of every value of its rows (not of each row\'s); y without a reduce its one value, several not drawn; marked when a row of it is',
+      mk.lot, { points: [['L1', 25.333, 5, ['W1', 'W3'], true]], several: 1 }),
+    judge('P3 Marker by lot and product: a point each combination, its words both; x the Count', mk.two,
+      { points: [['L1 · A', 1, 5, ['W1'], false], ['L2 · A', 1, 5, ['W2'], false], ['L1 · B', 2, 5, ['W3'], false], ['L2 · B', 1, 7, ['W4'], false]], several: 0 }),
+    judge('P4 Latest: the newest value of the marker\'s rows; Avg on y', mk.latest,
+      { points: [['L1', 26, 5, ['W1', 'W3'], false], ['L2', 40, 6, ['W2', 'W4'], false]], several: 0 }),
+    judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
+      [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
+        [['x', 'y', 'color', 'marker1'], ['x*', 'y*', 'color', 'marker1', 'marker2']]]),
+    judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
+      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
   return { lines, ran: names.length, names: [...names], failures: [...failures] };
 }
@@ -490,6 +564,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      if (fixed.length) return', '      if (fixed.length && false) return') },
   { id: 'M16', what: 'a marked point keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (marked && ctx.markColor) return', '    if (false) return') },
+  { id: 'M17', what: 'a marker\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 ', 'P6 '], file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, '  if (slot.reduce) {', '  if (false) {') },
+  { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+    mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];
