@@ -81221,3 +81221,47 @@ RUN.md    «큰 표 검색» 절 고침 · RELEASE_LOG «고침 —» 항목(그
 **여쭐 것**
 1. ㄱ 으로 가도 될까요? 클라 몫이라 클라 레인 일인지, 제가 할지도 정해 주세요.
 2. ㄴ 은 자동 인덱스(ff7890892) · 그리드 풀(ㄴ) 뒤로 둘까요?
+
+
+---
+
+## [구현자 A -> 총괄] 10-13 밤 — 쓰이는 칸만 자동 인덱스(ff7890892) 착지 44089d122
+
+impl-auto-index 44089d122 입니다. main 11bae703e 위의 한 커밋이고, 문서도 같은 커밋에 있습니다.
+
+**무엇을 지었나**
+
+- 이름 `ix_auto_<표>_<칸>`, 모양 (칸, row_id). 짓는 자리는 체인 워커의 인덱스 줄이고, 선언 인덱스와 같은 `_build_one` 을 써서 하나씩 CONCURRENTLY 로 짓습니다. 둘째 짓는 자리는 없습니다.
+- 기록용 표는 따로 없습니다. DB 목록이 상태이고, 왜 지었는지는 인덱스 주석에 적힙니다(«auto: decide key · slow sort · slow filter»).
+- `index_states` 가 그 줄을 source auto 로 싣습니다. 그래서 /admin/indexes 에 «auto (왜)» 로 서고, 그리드 답의 sort_index 도 자동 인덱스를 «built» 로 칩니다.
+- decide 판단 키: 체인 워커가 기동 · 리로드 때 규칙(`enrich_declarations` 의 source_table · decision_key)에서 셉니다. 규칙에서 빠지면 그 자동 인덱스는 걷습니다.
+- 느린 그리드 칸: id 훑기가 `grid_auto_index_after_seconds`(기본 1)를 넘으면, 그 표 칸 정렬과 같음/범위 필터 칸을 물습니다.
+  - 요청 안에서는 기억 · 큐만 합니다. 답한 뒤 스레드가 DB 를 보고(이미 같은 일을 하는 인덱스? 상한? 같은 물음 대기 중?) `INDEX_WANTED` 한 행을 씁니다. 칸마다 한 번입니다.
+  - 체인 워커는 박동 때 그것을 집어 자동 인덱스 일만 돌립니다. 느린 칸의 자동 인덱스는 걷지 않습니다.
+- 「이미 같은 일」 판정: 정렬은 (칸, row_id) 순서를 주는 인덱스, 같음 · 범위 · 판단 키는 그 칸이 맨 앞인 인덱스입니다(`orders_rows_by` 하나). 선언 키의 인덱스가 판단 키를 이미 덮으면 짓지 않습니다.
+- 표마다 상한 `auto_index_per_table`(기본 10)은 DB 목록에서 셉니다. 넘으면 짓지 않고 한 줄을 남깁니다.
+- 필터 판정은 `column_filter.filtered_columns(filters, by)` 하나로 접었습니다. 검색 색인용 `pattern_filtered_columns` 와 새 `ordered_filtered_columns` 가 그것의 두 읽기입니다.
+
+**게이트**
+
+- PG 9 칸: decide 키가 지어지고 왜가 적힘 · 규칙이 안 바라는 decide 키는 걷고 느린 칸 것은 남음 · 이미 같은 일이면 안 지음 · 상한 한 줄 · sort_index 가 자동을 칩 · 같은 물음은 한 번 · 느린 그리드 읽기가 정렬 · 같음 필터를 묻고 contains 와 이름 정렬은 안 물음 · 체인 워커 줄.
+- 변이 8/8 빨강. 이웃 시험 223 초록이고, 그리드 SQLite 모집단 26 파일의 빨강은 test_api 둘뿐입니다(main 도 빨강).
+- 체인 루프의 글자 신탁 하나를 `_start_index_work(` 2 → 3 으로 고쳤습니다(기동 · 리로드 · INDEX_WANTED).
+- 실제 런처(400만 판 · API + 체인 워커 + 감시자 · 박스 판, 운영 주장 아님):
+
+| 순서 | 잰 것 |
+|---|---|
+| dt_lot 정렬 첫 쪽 | 1.54 s · sort_index not declared |
+| 서버 줄 | «asked for an automatic index on dt_log (dt_lot) - slow sort, the read took 1.1 s» |
+| 체인 워커 | 7 s 뒤 짓기 시작 → 23.0 s 에 지어짐 · 주석 «auto: slow sort» |
+| 같은 쪽 다시 | 0.30 · 0.42 · 0.30 s · sort_index built |
+
+- 이 판의 dt_lot 정렬은 첫 판에서 0.79 s 로 문턱 1 s 아래라 묻지 않았습니다. 그래서 게이트 판만 제 스크래치 설정에서 문턱을 0.5 s 로 낮췄습니다(끝난 뒤 되돌림). 인덱스와 INDEX_WANTED 행은 지웠고, public 은 351 → 351(pg_class 전체) 입니다.
+- decide 판단 키는 이 판 선언에 decide 규칙이 없어서 PG 칸으로만 쟀습니다.
+
+**알려 드릴 것**
+
+- ㄴ(그리드 풀)과 이 가지가 둘 다 `get_table_data` 의 id 훑기 바로 뒤를 고칩니다. 병합 순서대로 ㄴ 을 이 위로 다시 올리겠습니다. ㄴ 에서는 이 판정이 그리드 프로세스 안에서 돌고, 묻는 스레드도 그 프로세스에 섭니다.
+- ㄴ 의 합친 나무에서 test_ledger_worlds… 의 `test_the_grid_reads_the_atom_view_of_the_world_it_names` 가 빨강(world_unknown)이었습니다. 같은 칸이 main 에서도 혼자 돌리면 빨강(«None == 1»)이라 세기 착지 뒤 흔들리는 칸으로 보입니다. ㄴ 을 다시 올릴 때 원인을 갈라 보고드리겠습니다.
+
+**다음**: ㄴ(그리드 풀)을 main 위로 다시 올리고, 위 칸을 가른 뒤 보고드리겠습니다.
