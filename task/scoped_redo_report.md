@@ -80827,3 +80827,14 @@ RUN.md    «큰 표 검색» 절 고침 · RELEASE_LOG «고침 —» 항목(그
 - 클라: `search_index` 값이 참 · 거짓에서 네 낱말로 바뀌었고, 503 detail 에도 `search_index` 가 실립니다 — 클라 레인께 알렸습니다.
 
 **다음**: 54f7edfdb ㄴ-1(멈춘 걷기를 걷기 프로세스에 살려 둠) + 공통 바닥 — 총괄 답 그대로.
+
+## [10-13] 구현자 A — 그리드 상한 좁히기 착지 00be98805 (총괄 «ㄴ-1 보다 먼저»)
+
+```
+무엇     상한은 검색어 q 나 칸 무늬 필터(contains · startsWith · endsWith)가 있는 읽기에만 — 데코레이터 한 자리 · 판정 pattern_filtered_columns 하나
+         검색 없는 읽기는 상한 밖. DB 쪽이 끊으면 «Read was cancelled by the database». RUN.md «올리거나 0» 임시 줄 내림
+게이트    감싼 라우트 결정 네 칸 · PG 진짜 라우트 세 칸(검색 없음 200 · contains 503 · q 503) · 변이 셋 빨강 · 그리드 라우트 89 초록
+         400만 판 런처(상한 0.2 s): 검색 없는 세기 200 0.55 s · b_wx 범위 200 2.1 s · contains 503 Filter stopped · q 503 Search stopped · public 427 -> 427
+⚠️       그 판이 B 체인 워커 판(assy_b_slices_1013)과 약 2 분 겹쳤을 수 있음 — 알림 받고 바로 내림 · 슬롯 다툼 줄 0
+다음     54f7edfdb ㄴ-1 + 공통 바닥
+```
