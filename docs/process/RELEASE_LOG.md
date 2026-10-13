@@ -450,10 +450,10 @@
 
 - **무엇** — 총괄 e570dcda5 ㄱ(소유자 10-13 「서버가 다 느림」). 그리드의 쪽은 OFFSET 으로 읽어 400만 행 표의 깊은 쪽이 1~4 초였습니다. 이제 `GET /tables/<표>/data` 가 `after`(앞 쪽의 마지막 row_id) · `before`(뒤 쪽의 첫 row_id)를 받으면 그 행의 다음 · 앞 쪽을 키 순서로 읽어, 쪽 깊이와 상관없이 같은 비용입니다. 쪽 번호로 뛰는 것은 지금처럼 OFFSET 입니다.
 - **선언 예시** — 머리글로 정렬하는 칸마다 `table_config.json` 의 그 표에 `"indexes": [{"columns": ["dt_eqp", "row_id"]}]` — 칸 하나만은 그 정렬의 쪽 순서를 못 줘서 안 탑니다. 체인 워커가 Reload · 기동 때 짓습니다.
-- **화면에서** — 클라 반쪽(다음 · 앞 단추가 after · before 를 싣기)이 붙어야 화면이 탑니다. 그 전엔 화면 동작이 그대로입니다. 표 칸으로 정렬한 답에 `sort_index` — `built` · `declared, not built yet (<사유>)` · `not declared` · `cannot be built (<사유>)`.
+- **화면에서** — 메인 그리드의 Next 는 지금 쪽의 마지막 행을 `after` 로, Prev 는 첫 행을 `before` 로 `skip` 과 같이 보냅니다(클라 반쪽, 같은 날). 쪽 번호 칸으로 뛰기, 그리고 지금 쪽이 캐시에 없을 때(실시간 «다시 읽기» 뒤 등)는 `skip` 만. 무한 스크롤의 «더 받기»는 아직 `skip` 입니다. 표 칸으로 정렬한 답에 `sort_index` — `built` · `declared, not built yet (<사유>)` · `not declared` · `cannot be built (<사유>)`.
 - **필요한 조건** — 서버 재기동. 이주 없음.
 - **바뀐 동작** — after · before 의 행이 지워졌으면 같이 보낸 `skip` 으로 OFFSET 읽기. `row_id` 없는 관계(뷰)와 행으로 뛰기(`target_row_id`)는 OFFSET. 박스 판 수는 RUN.md 같은 절(운영 주장 아님).
-- **자세히** — RUN.md 「그리드 다음 · 앞 쪽을 열쇠로」 절 · 이 항목과 같은 커밋.
+- **자세히** — RUN.md 「그리드 다음 · 앞 쪽을 열쇠로」 절 · 이 항목과 같은 커밋 · 화면은 `client2/tests/grid_view_readonly_harness.mjs` K13.
 
 ## 2026-10-13 · 원장 다시 번역을 프로세스 여럿이 나눠 한다 — 조각 N 개
 

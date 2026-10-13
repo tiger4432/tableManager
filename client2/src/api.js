@@ -520,8 +520,36 @@ export async function openExport(url) {
   return res.ok ? { res } : { refused: await refusalText(res, EXPORT_FAILED) };
 }
 
-// Fetch row data and render inside AG-Grid (Handles Pagination)
-export async function fetchData(resetSkip = true) {
+/** The row a neighbouring page goes on from: the shown page's last (`after`) or first (`before`) row as the server sent
+ *  it - the page cache; none cached (or a table without row_id), none - that page goes by skip. */
+function pageKey(side) {
+  const page = state.pageCache.get(state.currentSkip);
+  const rows = (page && page.data) || [];
+  const row = side === 'after' ? rows[rows.length - 1] : rows[0];
+  return row && row.row_id != null ? { [side]: row.row_id } : null;
+}
+
+/** Next: the page after the shown one, asked from its last row (lead e570dcda5 - the server's key_page reads that page's
+ *  own rows however deep, and goes by skip when the row is gone). */
+export function nextPage() {
+  const key = pageKey('after');
+  state.currentSkip += pageLimit;
+  state.allDataLoaded = false;
+  return fetchData(false, key);
+}
+
+/** Prev: the page before the shown one, asked from its first row. */
+export function prevPage() {
+  if (state.currentSkip < pageLimit) return Promise.resolve();
+  const key = pageKey('before');
+  state.currentSkip -= pageLimit;
+  state.allDataLoaded = false;
+  return fetchData(false, key);
+}
+
+// Fetch row data and render inside AG-Grid (Handles Pagination). `key` - Next's {after} or Prev's {before}; a page-number
+// jump sends none (skip).
+export async function fetchData(resetSkip = true, key = null) {
   if (!state.currentTable || state.isLoadingMore) return;
 
   if (resetSkip) {
@@ -556,6 +584,7 @@ export async function fetchData(resetSkip = true) {
   // 🔴 `defer_total=true` -> 응답의 `total` 이 «null» 입니다. 행이 먼저 나오고 개수는
   //    두 번째 요청이 채웁니다. 세는 데 걸리는 시간이 첫 화면에서 빠집니다.
   let url = `${API_BASE}/tables/${table}/data?skip=${state.currentSkip}&limit=${pageLimit}`;
+  if (key) url += `&${new URLSearchParams(key)}`;
   // A-6. One spelling of the sort, shared with the row jump — see `grid.sortParams`.
   url += sortQueryTail();
   url += '&defer_total=true';

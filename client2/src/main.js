@@ -34,6 +34,8 @@ import {
   txToggled,
   fetchAllRows,
   showAllRows,
+  nextPage,
+  prevPage,
   openExport
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
@@ -467,22 +469,8 @@ function setupEventListeners() {
     });
   }
 
-  if (elements.prevPageBtn) {
-    elements.prevPageBtn.addEventListener('click', () => {
-      if (state.currentSkip >= pageLimit) {
-        state.currentSkip -= pageLimit;
-        state.allDataLoaded = false;
-        fetchData(false);
-      }
-    });
-  }
-  if (elements.nextPageBtn) {
-    elements.nextPageBtn.addEventListener('click', () => {
-      state.currentSkip += pageLimit;
-      state.allDataLoaded = false;
-      fetchData(false);
-    });
-  }
+  if (elements.prevPageBtn) elements.prevPageBtn.addEventListener('click', () => { prevPage(); });
+  if (elements.nextPageBtn) elements.nextPageBtn.addEventListener('click', () => { nextPage(); });
 
   if (elements.pageInput) {
     const handlePageJump = () => {
