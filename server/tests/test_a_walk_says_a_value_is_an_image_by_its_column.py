@@ -33,6 +33,9 @@ OTHER = "lot_slot_wafer_by_lot"
 COLUMN = {"kind": "column", "column": "event_type"}
 
 
+from ledger import worker as ledger_worker  # noqa: E402
+
+
 def _declared(*, as_qualifier=False, other_source=False):
     """`event_type` bound for the wafer on the source; as the qualifier `shot` of has_wafer (its own role, no attribute of that name); and a second
     source over the same table binding the name to the `lot` column."""
@@ -62,7 +65,7 @@ def fixture_declared(tmp_path, monkeypatch):
     column types are `types` (the live singleton, as a reload leaves it)."""
     def declare(document, **types):
         setup, atoms = _atoms(tmp_path, document, [_row(i) for i in range(2)])
-        monkeypatch.setattr(worker, "_compiled_setup", lambda world: setup)
+        monkeypatch.setattr(ledger_worker, "_compiled_setup", lambda world: setup)
         monkeypatch.setitem(crud.TABLE_CONFIG, SOURCE, {"column_types": dict(types)})
         # as the walk reads them back from the store
         return [ledger_subgraph.EvidenceAtom(
@@ -132,7 +135,7 @@ def test_one_name_bound_to_two_columns_of_two_types_in_one_source_says_none(decl
     document_registered["sources"][SOURCE]["bind"]["mappings"]["wafer-registered"]["bind"]["subject"]["attributes"] = {
         "event_type": {"kind": "column", "column": "lot"}}
     atoms = declared(document_registered, event_type="image", lot="TEXT")
-    setup = worker._compiled_setup(None)
+    setup = ledger_worker._compiled_setup(None)
     bound = {sentence: mapping.bindings for sentence, mapping in setup.snapshot.source_plans[SOURCE].profile.mappings.items()}
     assert (bound["seat-holds-wafer"]["target"]["attributes"]["event_type"]["column"],
             bound["wafer-registered"]["subject"]["attributes"]["event_type"]["column"]) == ("event_type", "lot"), \

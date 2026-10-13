@@ -27,6 +27,9 @@ from ledger import backfill, followup                            # noqa: E402
 
 # ------------------------------------------------------------------------------- fakes
 
+from ledger import worker as ledger_worker  # noqa: E402
+
+
 class FakeDriver:
     def __init__(self, cursor_columns, identity):
         self.cursor_columns = cursor_columns
@@ -344,12 +347,12 @@ def test_a_batch_failing_every_lap_is_said_on_the_1st_and_10th(monkeypatch, capl
 
     monkeypatch.setattr(worker.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(pacing, "job_pace", lambda job: (None, 0))
-    monkeypatch.setattr(worker, "_drain_ledger_followup_sync", boom)
+    monkeypatch.setattr(ledger_worker, "_drain_ledger_followup_sync", boom)
     caplog.set_level("WARNING", logger=worker.logger.name)
     loop = asyncio.new_event_loop()
     try:
         with pytest.raises(Stop):
-            loop.run_until_complete(worker.run_ledger_followup(None))
+            loop.run_until_complete(ledger_worker.run_ledger_followup(None))
     finally:
         loop.close()
     assert len(laps) == 15 and _counts_said(caplog, "batch failed") == [1, 10]
@@ -371,14 +374,38 @@ def test_the_queue_says_what_it_is_holding():
     assert "waiting=1" in said and "oldest=" in said
 
 
-def test_the_worker_heartbeat_carries_it():
-    """The digest rides the note the chain worker already sends, rather than a second
-    channel: `/health` reads that note across the process boundary today."""
-    from chain import ingestion_worker as worker
+def test_the_worker_heartbeat_carries_it(monkeypatch):
+    """The digest rides the note the ledger process's beat sends (총괄 7763dd6d0 - it rode the chain worker's
+    while the follow-up lived there), rather than a second channel: `/health` reads that note across the process
+    boundary."""
+    from database import models
 
-    assert worker.ledger_followup is followup
+    beats = []
+
+    async def nothing(factory):
+        return None
+
+    monkeypatch.setattr(ledger_worker, "_ensure_ledger_schema_sync", lambda factory: None)
+    monkeypatch.setattr(ledger_worker, "_restamp_moved_fingerprints_sync", lambda factory: None)
+    monkeypatch.setattr(ledger_worker, "run_ledger_followup", nothing)
+    monkeypatch.setattr(ledger_worker, "run_ledger_row_census", nothing)
+    monkeypatch.setattr(models, "ensure_model_indexes_sync", lambda factory, sources, say: None)
+    monkeypatch.setattr(ledger_worker.heartbeat, "another_process_beats", lambda name, now=None: None)
+    monkeypatch.setattr(ledger_worker.heartbeat, "beat", lambda name, note=None, **k: beats.append((name, note)))
     followup.enqueue("dt_log", ["r1"], "EDIT")
-    assert "ledger follow-up" in (worker._worker_note() or "")
+
+    async def go():
+        task = asyncio.ensure_future(ledger_worker.start_ledger_worker(None))
+        for _ in range(40):
+            await asyncio.sleep(0.05)
+            if len(beats) >= 2:
+                break
+        task.cancel()
+
+    asyncio.run(go())
+    assert ledger_worker.ledger_followup is followup
+    assert [name for name, _note in beats] == [ledger_worker.LEDGER_BEAT] * len(beats) and len(beats) >= 2
+    assert "ledger follow-up" in (beats[-1][1] or "")
 
 
 def test_a_full_queue_drops_loudly_rather_than_quietly(monkeypatch):
@@ -443,10 +470,10 @@ def test_an_empty_queue_never_becomes_a_hot_loop(monkeypatch):
     loop = asyncio.new_event_loop()
     try:
         with pytest.raises(Stop):
-            loop.run_until_complete(worker.run_ledger_followup(None))
+            loop.run_until_complete(ledger_worker.run_ledger_followup(None))
     finally:
         loop.close()
-    assert slept == [worker.FOLLOWUP_IDLE_SECONDS] and worker.FOLLOWUP_IDLE_SECONDS > 0
+    assert slept == [ledger_worker.FOLLOWUP_IDLE_SECONDS] and ledger_worker.FOLLOWUP_IDLE_SECONDS > 0
 
 
 # ------------------------------------------------------------------------------ the pace

@@ -44,6 +44,9 @@ EVENT_TIME = "2026-09-30 10:00:00"
 LATER = "2026-09-30 11:00:00"
 
 
+from ledger import worker as ledger_worker  # noqa: E402
+
+
 def _sample(name):
     with open(os.path.join(SAMPLE, name), encoding="utf-8") as fh:
         return json.load(fh)
@@ -349,7 +352,7 @@ def _follow(world):
         conn.execute(text('UPDATE "%s".database_outbox SET processed_chain = true '
                           "WHERE table_name IN ('wafer_process', 'lot_slot_wafer')" % PG_TEST_SCHEMA))
     for _ in range(200):
-        if ingestion_worker._drain_ledger_followup_sync(world["maker"]) is None:
+        if ledger_worker._drain_ledger_followup_sync(world["maker"]) is None:
             return
     raise AssertionError("the follow-up did not drain")
 
@@ -687,7 +690,7 @@ def test_the_census_the_panel_and_a_backfill_naming_no_world_are_the_operating_w
     a = _make(world, A, _only(KEPT, CHANGED), CHANGED, KEPT)
     _operate(world, A)
     for source in (CHANGED, KEPT):                                   # the paced tick
-        ingestion_worker._measure_one_source_sync(world["maker"], source)
+        ledger_worker._measure_one_source_sync(world["maker"], source)
     census = trace_router._row_census_by_source()
     assert {source: census[source]["world"] for source in census} == {CHANGED: A, KEPT: A}
     assert census_cli.main(["--source", KEPT, "--world", DEFAULT]) == 0
@@ -725,8 +728,8 @@ def test_the_boot_restamp_and_the_script_naming_no_world_move_the_operating_worl
     _make(world, A, _only(KEPT, CHANGED), CHANGED, KEPT)
     _operate(world, A)
     for source in (CHANGED, KEPT):                                   # the census makes the rows
-        ingestion_worker._measure_one_source_sync(world["maker"], source)
-    for restamp in (lambda: ingestion_worker._restamp_moved_fingerprints_sync(world["maker"]),
+        ledger_worker._measure_one_source_sync(world["maker"], source)
+    for restamp in (lambda: ledger_worker._restamp_moved_fingerprints_sync(world["maker"]),
                     lambda: ledger_restamp_cursor.main(["--apply"])):
         stamped, wanted = _stale_then_restamp(world, A, restamp)
         assert stamped and stamped == wanted
@@ -791,7 +794,7 @@ def _follow_up_refusals(world_name):
     from chain import ingestion_worker
 
     with pytest.raises(Exception) as refused:
-        ingestion_worker._compiled_setup(world_name)
+        ledger_worker._compiled_setup(world_name)
     return refused.value
 
 
@@ -813,7 +816,7 @@ def test_a_failure_to_compile_is_held_until_its_files_change(config, monkeypatch
     from chain import ingestion_worker
     from ledger import setup as ledger_setup
 
-    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
     _declare(A, _refused_everywhere())
     compiled = []
     real = ledger_setup.load_setup
@@ -831,7 +834,7 @@ def test_a_failure_to_compile_is_held_until_its_files_change(config, monkeypatch
 def test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike(config, monkeypatch):
     from chain import ingestion_worker
 
-    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
     _declare(A, _refused_everywhere())
     service = _screen(A, monkeypatch)
 
@@ -847,10 +850,10 @@ def test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike(
 def test_a_catalogue_change_reaches_the_screen_as_it_reaches_the_follow_up(config, monkeypatch):
     from chain import ingestion_worker
 
-    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
     _declare(A, _only(CHANGED))
     service = _screen(A, monkeypatch)
-    assert ingestion_worker._compiled_setup(A) is not None
+    assert ledger_worker._compiled_setup(A) is not None
     assert _screen_refusals(service) == ({}, True)                        # both compile it
 
     catalog_path = config / "table_config.json"
@@ -878,7 +881,7 @@ def test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_g
     from utils import heartbeat
 
     monkeypatch.setattr(backfill, "beat", lambda result: None)
-    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
     _seed(world)
     a = _make(world, A, _only(CHANGED), CHANGED)
     c = _make(world, C, _only(CHANGED), CHANGED)
@@ -893,13 +896,13 @@ def test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_g
     assert backfill.catch_up_command(A) in said[0]
     last = schema.layout()["history"][-1]
     assert (schema.live(A), schema.live(C), last["world"], last["live"]) == (False, True, A, False)
-    assert last["by"].startswith(ingestion_worker.FOLLOWUP_SWITCHED_OFF_BY + "world %s" % A)
+    assert last["by"].startswith(ledger_worker.FOLLOWUP_SWITCHED_OFF_BY + "world %s" % A)
     assert (_saying(world, schema.LEDGER_TABLE, "RCP-9"), _saying(world, c.ledger, "RCP-9"),
             _saying(world, a.ledger, "RCP-9")) == ({CHANGED}, {CHANGED}, set())
     assert followup.outbox_depth(world["engine"]) == 0                    # the event is done
     row = loops._lap_cells({"laps": heartbeat._laps.get("chain")}, "ledger_followup")
     assert row["state"] == "flowing" and [w["world"] for w in row["switched_off"]] == [A]
-    assert row["switched_off"][0]["said"] == last["by"][len(ingestion_worker.FOLLOWUP_SWITCHED_OFF_BY):]
+    assert row["switched_off"][0]["said"] == last["by"][len(ledger_worker.FOLLOWUP_SWITCHED_OFF_BY):]
 
     _declare(A, _only(CHANGED))
     answer = world["router"].set_world_live(
@@ -911,7 +914,7 @@ def test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_g
         held = "source_who, predicate, subject_keys::text, coalesce(object_payload::text, '')"
         assert _rows(world, a.ledger, held) == _rows(world, c.ledger, held)
         assert _saying(world, a.ledger, "RCP-9") == {CHANGED}
-        assert ingestion_worker._switched_off_by_the_follow_up() == []
+        assert ledger_worker._switched_off_by_the_follow_up() == []
     finally:
         with world["engine"].begin() as conn:
             conn.execute(text('DELETE FROM "%s".retroactive_runs WHERE run_id = :r'
@@ -929,8 +932,8 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
     from runtime import loops
     from utils import heartbeat
 
-    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
-    monkeypatch.setattr(ingestion_worker, "_FOLLOWUP_STOP", {})
+    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
+    monkeypatch.setattr(ledger_worker, "_FOLLOWUP_STOP", {})
     _seed(world)
     _make(world, A, _only(CHANGED), CHANGED)
     default_file = schema.world_names(DEFAULT).declaration_path
@@ -950,9 +953,9 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
         return loops._lap_cells({"laps": heartbeat._laps.get("chain")}, "ledger_followup")
 
     def stopped(now):
-        with pytest.raises(ingestion_worker.FollowUpStopped) as stop:
-            ingestion_worker._drain_ledger_followup_sync(world["maker"])
-        ingestion_worker._say_the_follow_up(stop.value, waiting, now=now)
+        with pytest.raises(ledger_worker.FollowUpStopped) as stop:
+            ledger_worker._drain_ledger_followup_sync(world["maker"])
+        ledger_worker._say_the_follow_up(stop.value, waiting, now=now)
         return stop.value
 
     stop = stopped(1000.0)
@@ -971,12 +974,12 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
         "[LedgerFollowUp] still stopped, 600 s: world %s" % DEFAULT), lines()
 
     Path(default_file).write_text(good, encoding="utf-8")
-    ingestion_worker._drain_ledger_followup_sync(world["maker"])
-    ingestion_worker._say_the_follow_up(None, waiting, now=1000.0 + 700)
+    ledger_worker._drain_ledger_followup_sync(world["maker"])
+    ledger_worker._say_the_follow_up(None, waiting, now=1000.0 + 700)
     assert len(lines()) == 3 and lines()[2].startswith(
         "[LedgerFollowUp] flowing again: world %s compiles, after 700 s stopped" % DEFAULT), lines()
     assert row()["state"] == "flowing"
-    ingestion_worker._say_the_follow_up(None, waiting, now=1000.0 + 800)
+    ledger_worker._say_the_follow_up(None, waiting, now=1000.0 + 800)
     assert len(lines()) == 3                                              # said once
     _follow(world)
     assert _saying(world, schema.LEDGER_TABLE, "RCP-9") == {CHANGED}

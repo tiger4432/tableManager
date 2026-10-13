@@ -24,6 +24,9 @@ SENTENCE = "seat-holds-wafer"
 CONTROL = os.path.join(os.path.dirname(__file__), "support", "registration_control_atoms.json")
 
 
+from ledger import worker as ledger_worker  # noqa: E402
+
+
 def _bound(document, *, own_role=False, register_lot_slot=False):
     """`event_type` bound for the wafer - on the source (`bind.entities`) or on the role itself."""
     document["entities"]["wafer@1"]["attributes"] = ["event_type"]
@@ -298,13 +301,13 @@ def test_the_boot_restamp_says_which_source_now_registers(tmp_path, monkeypatch,
         def restamp_cursor(self, source, *, expect, translator_ver):
             return True
 
-    monkeypatch.setattr(worker, "_compiled_setup", lambda world: setup)
+    monkeypatch.setattr(ledger_worker, "_compiled_setup", lambda world: setup)
     monkeypatch.setattr(ledger_store, "LedgerStore", _Store)
     monkeypatch.setattr(ledger_schema, "world_names",
                         lambda *a, **k: type("W", (), {"name": "default"})())
     session = type("S", (), {"get_bind": lambda self: None, "close": lambda self: None})
     with caplog.at_level(logging.INFO):
-        worker._restamp_moved_fingerprints_sync(lambda: session())
+        ledger_worker._restamp_moved_fingerprints_sync(lambda: session())
     said = " | ".join(r.getMessage() for r in caplog.records)
     lines = {source: [part for part in said.split(" | ") if f"{source} (default): " in part]
              for source in runs}
@@ -399,8 +402,8 @@ def test_a_source_re_stamped_only_keeps_its_position_and_its_atoms(ledger_engine
         raw.commit()
     finally:
         raw.close()
-    monkeypatch.setattr(worker, "_compiled_setup", lambda world: setup)
-    worker._restamp_moved_fingerprints_sync(lambda: Session(bind=ledger_engine))
+    monkeypatch.setattr(ledger_worker, "_compiled_setup", lambda world: setup)
+    ledger_worker._restamp_moved_fingerprints_sync(lambda: Session(bind=ledger_engine))
     raw = ledger_engine.raw_connection()
     try:
         cursor_row = store.LedgerStore(ledger_engine).read_cursor(raw, SOURCE)

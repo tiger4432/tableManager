@@ -208,27 +208,20 @@ def run_chain(world, rounds=12):
             for item in events:
                 event_constants.mark_processed(item, "SUCCESS")
             db.commit()
+            worker._retract_deleted_rows(db, events)
     else:
         raise AssertionError("the chain did not settle")
 
 
 def settle(world, rounds=12):
-    """The chain, then the ledger follow-up from the outbox until nothing is left - the two
-    loops the chain worker runs, with the worker's own withdrawal after a drained deletion."""
-    db = world["db"]
+    """The chain - which withdraws what deleted rows fed where it ends a group - then the ledger
+    follow-up from the outbox until nothing is left, as the chain worker and the ledger process run them."""
     run_chain(world, rounds)
-    retracted = False
     while True:
         done = followup.drain_outbox_once(world["engine"], world["setup"])
         if done is None:
             break
         assert not any("error" in (s or {}) for s in (done or {}).get("sources", {}).values()), done
-        if done and done.get("event_type") == "DELETE" and done.get("row_ids"):
-            worker._retract_what_those_rows_fed(db, done["table"], done["row_ids"])
-            db.commit()
-            retracted = True
-    if retracted:
-        settle(world, rounds)
 
 
 def official(world):
