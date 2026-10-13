@@ -2,7 +2,7 @@
   "$comment": [
     "SHARED CONTRACT -- the EXPRESSION seam: what does this expression answer over these rows?",
     "One grammar, two calculators (lead 0b7d84462): the server's (chain decide aggregations, walk measures) and the",
-    "screen's (the test bed's calculated values). Both read THIS file; neither is built yet.",
+    "screen's (the test bed's calculated values). Both read THIS file: server/expression.py and client2/src/expression.js.",
     "",
     "THE GRAMMAR is Spotfire's expression language (task/SPOTFIRE_FUNCTIONS.md, read from the owner's Spotfire",
     "Analyst 14.4.1) plus our [path] · type(\"key\") · Reach (afcb79f14). Only Spotfire's part is here; [x] is a",

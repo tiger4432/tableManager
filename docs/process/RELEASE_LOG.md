@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-14 [decide 집계를 수식 한 줄로 — 옛 선언은 같은 수식으로 읽히고, 옮기는 명령이 있다](#2026-10-14--decide-집계를-수식-한-줄로--옛-선언은-같은-수식으로-읽히고-옮기는-명령이-있다) — 명령 `scripts.migrate_decide_aggregations` · 적는 곳 `chain_rules.json` · 누르는 곳 체인 폼
 - 2026-10-13 [원장 일이 원장 프로세스로 — 원장이 서도 체인 결과는 써지고, 따라가기는 사건 여럿을 한 번에](#2026-10-13--원장-일이-원장-프로세스로--원장이-서도-체인-결과는-써지고-따라가기는-사건-여럿을-한-번에) — 누르는 곳 없음(런처 재기동)
 - 2026-10-13 [decide 집계가 같은 이름의 확정 칸을 채운다 — 사람 · 순위가 위인 층 아래에서](#2026-10-13--decide-집계가-같은-이름의-확정-칸을-채운다--사람--순위가-위인-층-아래에서) — 적는 곳 `chain_rules.json`
 - 2026-10-13 [LLM 후보 뽑기 — 이미 아는 인과를 프롬프트에 싣고, 연결성을 재는 명령](#2026-10-13--llm-후보-뽑기--이미-아는-인과를-프롬프트에-싣고-연결성을-재는-명령) — 명령 `python server/scripts/causal_graph_connectivity.py` · 적는 곳 `llm_config.json` · 맵퍼
@@ -430,6 +431,16 @@
 - **바뀐 동작** — 🆕 총괄 검수(9752e91f7) 뒤 다시 착지: 열쇠는 쪽마다 바뀌고, 같은 열쇠는 같은 쪽을 답합니다(× 뒤 More · 두 번 누름 · 다시 보냄). 앞앞 쪽의 열쇠(× 두 번 뒤 More)는 410 expired «a later page of this walk was asked» 입니다. 열쇠는 첫 쪽을 `resumable=true` 로 물은 걷기(걷기 화면)만 받습니다 — 보드 패널 · 시험대 · 체인 맵퍼 · rows 는 잘려도 `resume` 이 null 입니다. 멈춘 걷기를 쥔 걷기 프로세스가 다른 걷기로 바쁘면 이어지는 쪽은 그 프로세스를 `walk_seconds_max` 까지 따로 기다리고(넘으면 503 «The walk process keeping this walk stayed busy …»), 쪽은 새 시한입니다. `walk_live_minutes` 는 걷기 프로세스 안 시계가 30 초마다 지킵니다. 새 설정 `walk_live_nodes`(기본 300,000 — 열린 · 다 읽은 · 씨앗마다 닿은 노드를 셈) — 멈춘 걷기들이 함께 쥐는 노드 수 상한, 넘으면 가장 오래 안 쓴 걷기부터 410 expired «kept walks in this process hold N nodes - the oldest was let go»(기본값은 센 노드당 1.9 KB 로 가장 새 · 걷는 중 걷기를 뺀 나머지가 약 600 MB — 가장 새 걷기는 상한이 안 밀어 씨앗 수 × 닿음만큼, 씨앗 500 · 4 쪽 455 MB. 합계는 × `walk_processes`, 0 이면 웹 프로세스. 계산은 ingestion_settings.md). 서버가 바뀌기 전에 연 화면의 More 는 410 «server updated» 입니다. 표 설정 저장도 그 프로세스의 멈춘 걷기를 끝냅니다(reloaded). 쪽이 시한(walk_timed_out)을 넘으면 그 걷기 프로세스를 내려 그 프로세스가 쥔 다른 걷기도 process ended 입니다. 리로드 사이에 새 선언으로 이어 가던 것은 은퇴했습니다(그 걷기는 reloaded). 이어지는 쪽의 `propagation.top_set` 은 그 쪽에서 맨 윗층에 «든» id, 새 칸 `top_set_left` 는 «빠진» id 입니다 — 차례로 빼고 더하면 한 번 걸은 top set. 다음 쪽은 첫 쪽과 같은 질문(같은 인자)이어야 합니다(다르면 422). 쪽을 합친 답은 전과 같습니다(노드 · 엣지 · 순위). 늦은 쪽에 엣지가 상한(6,000)까지 오면 그 쪽은 내용만큼 깁니다(판: 7~8 초) — 쪽 번호 탓이 아닙니다. «지금까지 닿은 노드 전부 사이의 순위»는 계약이라 닿은 노드 수만큼 조금 자랍니다(쪽 40 에 0.6 초).
 - **필요한 조건** — 서버 재기동. 이주 없음. `ingestion_settings.json` `walk_live_walks`(기본 4 — 걷기 프로세스 하나가 살려 두는 수) · `walk_live_minutes`(기본 10). 걷기 하나가 노드 수만 개면 수십~수백 MB 를 쥡니다(박스 잼 하한 128 MB).
 - **자세히** — 이 항목과 같은 커밋 · WALK.md «이어 걷기» · `task/WALK_HUB_ANSWER_SHAPE.md` «쪽 = 델타».
+
+## 2026-10-14 · decide 집계를 수식 한 줄로 — 옛 선언은 같은 수식으로 읽히고, 옮기는 명령이 있다
+
+- **무엇** — 소유자 93b0c7a4b 「다만 수식 바꾸고 기존 수식 마이그레이션 할 수 있게」 · 총괄 5667ea0fe. decide 집계가 count · min · max · unique_concat 넷에서 스팟파이어 수식 한 줄이 됩니다. 서버 계산기(`server/expression.py`)는 화면 계산기와 같은 벡터 파일(`contracts/expression/vectors.json`)로 채점됩니다.
+- **선언 예시** — `chain_rules.json` 의 `derive.decide.aggregations`: `{"chip_count": "Count()", "first_bond": "Min([bonding_time])", "mean_n": "Avg([n])"}`.
+- **화면에서** — 체인 폼의 집계 칸이 글자 한 줄(수식)입니다. 수식으로 옮길 수 없는 옛 것은 `fn` · `column` · `separator` 칸 그대로입니다.
+- **필요한 조건** — 서버와 체인 워커 재기동. 이주 없음. 파일은 안 고쳐도 됩니다.
+- **바뀐 동작** — 옛 `"count"` · `{fn, column}` 은 같은 수식으로 읽혀 같은 칸을 씁니다. 글자 칸의 min/max 와 `", "` 아닌 구분자의 unique_concat 만 옛 SQL 그대로입니다. 로더는 값이 행마다인 수식 · 원천에 없는 칸 · `Latest`(원천 행 시각 선언이 아직 없음) · `Marked` · 길 `[a.b~.x]` 를 이름 대어 거절합니다. datetime 칸의 Min/Max 는 순간으로 견줍니다(우리 판정 — Spotfire 문서는 real 만 적음).
+- **명령** — `python -m scripts.migrate_decide_aggregations` 미리보기 · `--compare N` 옛 것과 수식의 칸을 키 N 개에서 견줌 · `--apply` 파일에 씀(백업).
+- **자세히** — RUN.md 「decide 집계를 수식 한 줄로」 절 · [enrichment_rules](../guide/config/enrichment_rules.md) `aggregations` 행 · 이 항목과 같은 커밋.
 
 ## 2026-10-13 · decide 집계가 같은 이름의 확정 칸을 채운다 — 사람 · 순위가 위인 층 아래에서
 

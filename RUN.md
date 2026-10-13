@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **decide 집계를 수식 한 줄로 — 서버 계산기 · 옛 선언 변환기 (총괄 5667ea0fe, 소유자 93b0c7a4b)** — git pull · 서버 «와» 체인 워커 재기동 · 이주 «없음»
+>
+> ```
+> 무엇     chain_rules.json 의 derive.decide.aggregations 값에 스팟파이어 수식 한 줄
+>            "chip_count": "Count()" · "first_bond": "Min([bonding_time])" · "mean_n": "Avg([n])"
+>          옛 모양("count" · {fn, column, separator})은 파일을 안 고쳐도 같은 수식으로 읽힌다(판 시험 SQLite · PG 에서 같은 칸)
+>          수식으로 같은 답이 안 나는 둘만 옛 SQL 그대로 — 글자 칸의 min/max · ", " 아닌 구분자의 unique_concat
+>          Count() 와 number 칸의 Sum · Min · Max 는 SQL 집계로, 나머지는 그 키의 원천 행을 읽어 계산기로(판정 한 자리 mapper._plan)
+>          datetime 칸의 Min/Max 는 순간으로 견주고 그 행 값 그대로 — Spotfire 문서는 real 만 적음, 우리 판정
+> 거절     로더가 이름 대어 거절: 값이 행마다인 수식([n] * 2) · 원천 표에 없는 칸 · Latest(원천 행 시각 선언이 아직 없음) · Marked · 길 [a.b~.x]
+> 명령     (server 폴더에서)
+>          python -m scripts.migrate_decide_aggregations                미리보기 — 규칙 · 이름마다 «옛 -> 수식» 또는 «stays (cannot move: …)»
+>          python -m scripts.migrate_decide_aggregations --compare 500  키 500 개에서 옛 레코드의 칸과 수식의 칸을 견줌(DB 읽기만)
+>          python -m scripts.migrate_decide_aggregations --apply        수식을 파일에 씀(백업을 남김) · 두 번 돌려도 같음
+> 답의 뜻   «compare … N of N keys the same» -> 옮겨도 칸이 안 바뀜
+>          다른 키가 찍힘 -> --apply 하지 말고 그 줄을 보낸다. 다를 수 있는 한 자리: 글자 앞뒤 공백 — 옛 unique_concat 은 깎아 잇고(clean_str_value) 수식은 값 그대로
+>          끝 줄 «N aggregation(s): A become expressions, K stay records, W as written»
+> 박스 견본  출하 견본 chain_rules.json.sample: decide 6 · 집계 1(cell_count "count" -> Count()) · 못 옮김 0 / 이 박스 설정: decide 1 · 집계 0 (운영 주장 아님)
+> 급할 때   --apply 뒤가 이상하면 백업 chain_rules.json.bak.<시각> 을 제자리에 — 로더는 옛 모양도 같은 답으로 읽는다
+> 볼 것    체인 폼: 집계 칸이 글자 한 줄(수식) · 못 옮기는 옛 것은 fn · column · separator 칸 그대로
+> ```
+>
+> ---
+>
 > ## [10-13] **그리드 쪽이 서버 밖 «그리드 프로세스»에서 — 열 명이 쪽을 넘겨도 다른 화면이 안 멈춤 (총괄 e570dcda5 ㄴ)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```
@@ -33,7 +57,8 @@
 >          작은 라우트 /tables  p50 2.05 s · p95 2.45 s          p50 0.006 s · p95 0.02 s
 >          웹 연결 최대        20~27                            9 (+ 그리드 프로세스 4)
 >          섞인 판(쪽 · 정렬 · 필터 · 수)은 쪽 p50 이 줄고 p95 는 늘었다(첫 쪽 2.63 -> 3.72 s) — 쪽이 그리드 프로세스 둘을 기다린 것
-> 되돌리기  git revert -m 1 6f34a1320 -> 서버 재기동 (혼자 되돌아감 — 10-13 잼. 급하면 위 «급할 때» 줄이 재기동 없이 같은 동작) (그 앞에 기다림 상한 a4e647ab6 를 먼저: git revert -m 1 a4e647ab6)
+> 되돌리기  git revert -m 1 6f34a1320 -> 서버 재기동 (혼자 되돌아감 — 10-13 잼. 급하면 위 «급할 때» 줄이 재기동 없이 같은 동작)
+ (그 앞에 기다림 상한 a4e647ab6 를 먼저: git revert -m 1 a4e647ab6)
 > ⚠️ 안 잰 것  grid_processes 2 넘는 값 · 운영 크기 · 그리드 프로세스 하나의 메모리
 > ```
 >
