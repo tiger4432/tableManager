@@ -20,7 +20,7 @@ import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
 import { readSlot, readSlots, slotWords, rawOf, isTimeRead } from './slot.js';
 import { keepNodes } from './filter.js';
-import { hubId, nodesOfPress } from './hubs.js';
+import { hubId, nodesOfPress, whyHub } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
@@ -86,9 +86,10 @@ export class VisualPart extends Panel {
     const folded = (s) => (unit === 'node' ? s : { ...s, folds: true, records: unit === 'record' });
     // Color by, Label by and the Tooltip slots (tooltip.js) - the root's, every kind's; Top/Bottom by (show_items.js) too,
     // read the way the kind's own slots are (a hub its rows folded)
-    // Shape by (shape_by.js) - a kind that draws points
+    // Shape by (shape_by.js) - a kind that draws points; a base set slot a kind says it takes not (`without`) left out
+    const without = (this.kind && this.kind.without) || [];
     return [...own.map(folded), ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, ...(this.kind && this.kind.points ? [SHAPE_SLOT] : []), LABEL_SLOT, ...tipSlots(this.decl.encode),
-      folded(SHOW_SLOT), PANEL_SLOT];
+      folded(SHOW_SLOT), PANEL_SLOT].filter((s) => !without.includes(s.key));
   }
 
   /** The slots it reads, by key: a slot the kind hands with its own (a sheet's cell) or the declaration's. */
@@ -395,13 +396,15 @@ export class VisualPart extends Panel {
     this.unitsById = new Map(units.map((u) => [u.id, u]));
     const label = (mark) => labelOf(mark, { decl: this.decl, rowsById: this.rowsById, marked: (ids) => ids.some(marked) });
     // the top or bottom N marks by the Top/Bottom by slot (show_items.js) - the rest not drawn, said in the status
-    const showing = showItems(units, this.decl);
+    // the base set slots its kind takes (a kind's `without` - the sheet takes no Top/Bottom by, no Panel by)
+    const takes = new Set(this.slotList().map((s) => s.key));
+    const showing = takes.has('show') ? showItems(units, this.decl) : { kept: units, hidden: 0, rule: null, n: 0 };
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
     const modelCtx = { paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start };
     this.model = this.kind.model(showing.kept, modelCtx);
     // Trellis (trellis.js): a panel a Panel by value - its rows' marks, the shown ones only, every panel on one extent
-    const split = panelsOf(rows, this.decl);
+    const split = takes.has('panel') ? panelsOf(rows, this.decl) : null;
     if (split) {
       const keep = new Set(showing.kept.map((u) => u.id));
       const keys = this.slotList().map((s) => s.key);
@@ -424,6 +427,7 @@ export class VisualPart extends Panel {
     // are not among M: they were never walked from.
     this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0, otherStarts: this.otherStarts,
       part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden, heldOnly,
+      hubWhy: this.pressSaid && this.writes && this.markings.entries(this.writes).some(([x]) => x === this.pressSaid.id) ? this.pressSaid : null,
       shown: showing.rule ? { rule: showing.rule, n: showing.n, by: slotWords(encode.show), hidden: showing.hidden } : null,
       columns: Object.keys(encode).length, source: this.rowType(),
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
@@ -502,8 +506,19 @@ export class VisualPart extends Panel {
   /** Hubs marked whole - each [where, its members], in one press. */
   markHubs(list, event) {
     const encode = this.decl.encode || {};
-    const press = ([where, ids]) => (this.index && nodesOfPress(this.index, this.inside, encode, where, ids)) || [this.hubs.put(hubId(this.rowType(), where), ids)];
-    this.mark([...new Set(list.flatMap(press))], event);
+    // a hub marked where a node condition stood beside another - why it is not the node, for the status (hubs.js whyHub)
+    let said = null;
+    const press = ([where, ids]) => {
+      const nodes = this.index && nodesOfPress(this.index, this.inside, encode, where, ids);
+      if (nodes) return nodes;
+      const id = this.hubs.put(hubId(this.rowType(), where), ids);
+      const why = whyHub(encode, where);
+      if (why) said = { id, n: ids.length, why };
+      return [id];
+    };
+    const marked = [...new Set(list.flatMap(press))];
+    this.pressSaid = said;
+    this.mark(marked, event);
   }
 
   clear() { if (this.writes) this.markings.clear(this.writes); }

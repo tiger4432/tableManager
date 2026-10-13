@@ -306,4 +306,5 @@ export const slots = (encode, declaration) => {
 export const icon = { tone: 'cat-2', paths: [['M3 3h18v18H3z', 0.25], ['M3 8h18v1H3zM3 13h18v1H3zM3 18h18v1H3zM9 3h1v18H9zM15 3h1v18h-1z', 1]] };
 
 // cells - a kind of cells: its slots name each other (A1, B1:B9) and it draws before its key is written (the root's).
-export const kind = { name: 'sheet', label: 'Sheet', slots, title, model: sheetModel, render, icon, cells: true };
+// a sheet is one table of cells: no Top/Bottom N of its rows, no panels (lead 10-14)
+export const kind = { name: 'sheet', label: 'Sheet', slots, title, model: sheetModel, render, icon, cells: true, without: ['show', 'panel'] };

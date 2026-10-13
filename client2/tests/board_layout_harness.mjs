@@ -922,7 +922,15 @@ async function trellisCases(M) {
   markings.replace('marking:pick', [['W1', SIGN.CASE]]);
   const byWafer = await seat('crossTable', { rows: { steps: [{ predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['wafer'] }, panel: key('p') });
   const waferCells = (byWafer.panels || []).map((pn) => [pn.name, pn.model.grid[0][0].marked]);
-  return { pure, drawnPanels, axes, marker, cell: cellHeld, waferCells };
+  // that cell pressed in panel A: a hub of its 2 rows there, and the status says why not the wafer
+  const tds = walk(byWafer.root).filter((n) => n.tagName === 'TD' && n.listeners && n.listeners.click);
+  if (tds.length) tds[0].listeners.click[0]({});
+  await settle();
+  const why = (statusWords(byWafer.stats.get('crossTable')) || []).find((w) => w.startsWith('marked a hub')) || null;
+  // a sheet takes no Top/Bottom by and no Panel by (its kind's `without`)
+  const sheetSlots = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), declaration: { id: 'SH', kind: 'sheet', row: 'die', encode: {} },
+    kinds: { sheet: M.sheet.kind } }).slotList().map((s) => s.key).filter((k) => k === 'show' || k === 'panel');
+  return { pure, drawnPanels, axes, marker, cell: cellHeld, waferCells, why, sheetSlots };
 }
 
 /** Shape by (base set 7-b, shape_by.js): a category's shape - declared, else the next one free (the colours' rule); a points
@@ -1126,6 +1134,8 @@ async function suite(M) {
     judge('TR3 a press in a panel marks its rows there - a marker of x 3 in A is D3, not D2; a cross table cell the same', [tr.marker, tr.cell],
       [[[[['x', '3'], ['p', 'A']], ['D3']]], [[[['x', '3'], ['(None)', ''], ['p', 'B']], ['D2']]]]),
     judge('TR4 a panel\'s cell is painted as it is pressed - a marking holding the wafer leaves the wafer\'s cells in panels unmarked (two conditions, the rows)', tr.waferCells, [['A', false], ['B', false]]),
+    judge('HW1 a press in a panel on a node slot marks a hub, and the status says why - its conditions', tr.why, 'marked a hub of 2 rows - the mark has 2 conditions (wafer, p)'),
+    judge('WO1 a kind says the base set slots it takes not - the sheet holds no Top/Bottom by, no Panel by', tr.sheetSlots, []),
     judge('TM1 a time the server sends is a time read; the tooltip and the filter say it as the grid does (local, no T · Z), a long value one line with its words in its tooltip',
       [sw.read, sw.tip, sw.filter], [['one', true], ['D1', `when: ${sw.stamp}`], [[[sw.stamp, sw.stamp, true]], [[sw.LONG, sw.LONG, true]]]]),
     judge('LB2 a label on the point\'s inner side - right in the left half, left in the right half (not under the legend)', sw.sides, [['a', 'right'], ['b', 'right'], ['c', 'left']]),
@@ -1237,7 +1247,7 @@ const MUTANTS = [
   { id: 'M35', what: 'the description not drawn', catches: 'DS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, "...(said ? [el('div', 'sf-part__desc', said)] : [])", '...[]') },
   { id: 'M36', what: 'a press always a hub of its rows (the 18766 run: a core wafer cell marked its dies, C walked 17 bonding measurements)', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '(this.index && nodesOfPress(this.index, this.inside, encode, where, ids))', '(false)') },
+    mutate: (t) => swap(t, 'const nodes = this.index && nodesOfPress(this.index, this.inside, encode, where, ids);', 'const nodes = null;') },
   { id: 'M37', what: 'a mark whose press stands for nodes drawn by its rows only - never marked', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null)', 'painted(ids, null)') },
   { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'P6 ', file: 'testbed/visual_part.js', key: 'visual',
@@ -1245,7 +1255,7 @@ const MUTANTS = [
   { id: 'M39', what: 'the kind handed every mark - Top/Bottom N not applied', catches: 'SI2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'this.kind.model(showing.kept,', 'this.kind.model(units,') },
   { id: 'M40', what: 'the Top/Bottom by slot not folded for a hub - a hub reads nothing and none is shown', catches: 'SI3 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '      folded(SHOW_SLOT), PANEL_SLOT];', '      SHOW_SLOT, PANEL_SLOT];') },
+    mutate: (t) => swap(t, '      folded(SHOW_SLOT), PANEL_SLOT]', '      SHOW_SLOT, PANEL_SLOT]') },
   { id: 'M41', what: 'equal values by id backwards', catches: 'SI1 ', file: 'testbed/show_items.js', key: 'show',
     mutate: (t) => swap(t, '(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)', '(a.id < b.id ? 1 : a.id > b.id ? -1 : 0)') },
   { id: 'M42', what: 'a time read not said a time', catches: 'TM1 ', file: 'testbed/slot.js', key: 'slot',
@@ -1257,13 +1267,17 @@ const MUTANTS = [
   { id: 'M45', what: 'every label right of its point', catches: 'LB2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, "(along(p.x) > mid ? 'left' : 'right')", "'right'") },
   { id: 'M46', what: 'no panels - Panel by drawn as one picture', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '    const split = panelsOf(rows, this.decl);', '    const split = null;') },
+    mutate: (t) => swap(t, "const split = takes.has('panel') ? panelsOf(rows, this.decl) : null;", 'const split = null;') },
   { id: 'M47', what: 'a press in a panel marks without the panel - a cross table cell of the same x in another panel the same hub', catches: 'TR3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),', 'markHub: (where, ids, event) => this.markHub(where, ids, event),') },
   { id: 'M48', what: 'each panel its own extent', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent,', 'this.kind.model(marks[i], { ...modelCtx,') },
   { id: 'M54', what: 'a panel\'s mark painted without the panel - pressed one way, drawn another', catches: 'TR4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));', '}) }));') },
+  { id: 'M55', what: 'a kind\'s without not read - the sheet offered Top/Bottom by and Panel by', catches: 'WO1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'PANEL_SLOT].filter((s) => !without.includes(s.key));', 'PANEL_SLOT];') },
+  { id: 'M56', what: 'a hub marked for a node condition beside another, nothing said', catches: 'HW1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '      if (why) said = { id, n: ids.length, why };', '') },
   { id: 'M49', what: 'the panel condition appended again on every pass', catches: 'TR1 ', file: 'testbed/trellis.js', key: 'trellis',
     mutate: (t) => swap(t, 'return where.some(([w]) => w === words) ? where : [...where, ...panel.where];', 'return [...where, ...panel.where];') },
   { id: 'M50', what: 'the kind handed no shape - every point the one shape', catches: 'SP2 ', file: 'testbed/visual_part.js', key: 'visual',

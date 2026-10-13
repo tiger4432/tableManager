@@ -22,6 +22,7 @@ export function statusWords(s) {
   if (s.shown) words.push(`${s.shown.rule === 'top' ? 'Top' : 'Bottom'} ${n(s.shown.n)} by ${s.shown.by} · ${n(s.shown.hidden)} not shown`);
   if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);
   if (s.unknown) words.push(`${unitText(n(s.unknown), 'row')} unknown`);
+  if (s.hubWhy) words.push(`marked a hub of ${unitText(n(s.hubWhy.n), 'row')} - the mark has ${s.hubWhy.why.length} conditions (${s.hubWhy.why.join(', ')})`);
   words.push(`${unitText(n(s.marked), 'marked row')}${!s.marked && s.heldOnly ? ` - marking holds ${s.heldOnly.join(', ')}; no relation to ${s.source}` : ''}${s.hidden ? ` · hidden ${n(s.hidden)}` : ''}`);
   words.push(`${n(s.columns)} columns`);
   if (s.source) words.push(s.source);
