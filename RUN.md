@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **걷기 답의 값마다 그 원천 칸의 형 — `column_type` · `column_types` (총괄 a411f0f50 병합)** — 이주 «없음» · 재기동 «서버»
+>
+> ```
+> 무엇     노드 records[<칸>][i] · attributes_by_world[<칸>][i] 에 column_type, 엣지 records[i] 에 column_types{<수식어>: <형>}
+>          형은 table_config 의 그 칸 낱말 그대로(datetime · number · string · image …) — 원장 선언이 그 값을 묶은 칸에서 읽음
+> 볼 것    GET /api/ledger/subgraph?id=<노드 id>&hops=1  -> nodes[].records.<칸>[0].column_type
+> 답의 뜻   칸이 없다 -> 그 값의 칸이 table_config 에 형이 없거나 코드 맵퍼의 수식어(묶인 칸이 없음)
+>          server.log «[walk] value types not said for world …» -> 그 세상의 선언이 컴파일되지 않아 형을 못 붙임(답은 그대로)
+> 되돌리기  git revert -m 1 a411f0f50 -> 서버 재기동 (혼자 되돌아감 — 10-14 잼)
+> ```
+>
+> ---
+>
 > ## [10-14] **decide 집계를 수식 한 줄로 — 서버 계산기 · 옛 선언 변환기 (총괄 5667ea0fe, 소유자 93b0c7a4b)** — git pull · 서버 «와» 체인 워커 재기동 · 이주 «없음»
 >
 > ```
