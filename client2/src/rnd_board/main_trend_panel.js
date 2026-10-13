@@ -22,7 +22,7 @@
 
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
-import { createWalk } from './api.js';
+import { createWalk, aggregateAxisOf } from './api.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO — 순간으로 읽고 보는 쪽 zone 으로 그린다.
 import { localMinute } from '../server_time.js';
 // ⚰️ C-99 ③. 「여기서는 `absent.js` 를 import 할 수 없습니다」가 이 파일 56행에 적혀 있었고
@@ -160,13 +160,11 @@ export class MainTrendPanel extends Panel {
     const wasAggregate = Boolean(this.axis);
     this.axis = null;
     // 🔴 `axis:agg:<집계>:<수식어>`. 쌍이 완성됐을 때만 축입니다 (control_bar_panel.js 와 같은 철자).
-    if (kind === 'agg' && id) {
-      const cut = id.indexOf(':');
-      if (cut > 0) {
-        this.axis = { aggregation: id.slice(0, cut), qualifier: id.slice(cut + 1) };
-        this.load();
-        return;
-      }
+    const pair = kind === 'agg' ? aggregateAxisOf(chosen) : null;
+    if (pair && pair.aggregation && pair.qualifier) {
+      this.axis = pair;
+      this.load();
+      return;
     }
     if (kind === 'ratio' && id && id !== this.kinds) {
       this.kinds = id;

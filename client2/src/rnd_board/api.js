@@ -1360,14 +1360,31 @@ export function peerCountFromWalk(answer, eqpId) {
  * 화면이 고른 것과 계산이 재는 것이 어긋날 수 없습니다.
  */
 export const AGGREGATIONS = Object.freeze([
-  { id: 'median', label: 'median', numericOnly: true },
-  { id: 'mean', label: 'mean', numericOnly: true },
-  { id: 'sum', label: 'sum', numericOnly: true },
-  { id: 'min', label: 'min', numericOnly: true },
-  { id: 'max', label: 'max', numericOnly: true },
-  { id: 'count', label: 'count', numericOnly: false },
-  { id: 'distinct', label: 'distinct', numericOnly: false },
+  { id: 'Median', label: 'Median', numericOnly: true },
+  { id: 'Avg', label: 'Avg', numericOnly: true },
+  { id: 'Sum', label: 'Sum', numericOnly: true },
+  { id: 'Min', label: 'Min', numericOnly: true },
+  { id: 'Max', label: 'Max', numericOnly: true },
+  { id: 'Count', label: 'Count', numericOnly: false },
+  { id: 'UniqueCount', label: 'UniqueCount', numericOnly: false },
 ]);
+
+/** The names before Spotfire's spelling (owner 10-12, lead fceba46a7), still on saved boards - the server's own pairs
+ *  (ledger_subgraph._OLD_MEASURE_NAMES). */
+const AGGREGATION_WAS = Object.freeze({ median: 'Median', mean: 'Avg', sum: 'Sum', min: 'Min', max: 'Max', count: 'Count', distinct: 'UniqueCount' });
+/** An aggregate's name in Spotfire's spelling - an old one read as its new one. */
+export function aggregationName(name) {
+  return AGGREGATION_WAS[name] || name;
+}
+/** The Y axis a marking names, `axis:agg:<aggregate>:<value>` -> { aggregation, qualifier } (qualifier null while only
+ *  the aggregate is chosen), or null for any other axis - the one reader the control bar and the trend share. */
+export function aggregateAxisOf(markingId) {
+  const parts = String(markingId || '').split(':');
+  if (parts[1] !== 'agg') return null;
+  const rest = parts.slice(2).join(':');
+  const cut = rest.indexOf(':');
+  return { aggregation: aggregationName(cut < 0 ? rest : rest.slice(0, cut)) || null, qualifier: cut < 0 ? null : rest.slice(cut + 1) };
+}
 
 // ⚰️ C-90 ②: THE CLIENT'S SEVEN FOLDS ARE GONE, and so is `aggregationIsNumericOnly` beside
 //    them. The server folds now (S-146) and this file READS the answer -- so a table here would

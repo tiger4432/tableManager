@@ -1611,7 +1611,8 @@ const FLOORS = new Map([
   // 46 -> 47 (lead 50c8d9469, M8): an empty cell draws the shared absent mark, not its own dash.
   ['rnd_board_composition_harness.mjs', 47],
   // the board part: control trend
-  ['rnd_board_control_trend_harness.mjs', 59],
+  // 59 -> 61 (lead fceba46a7): F8b an old saved aggregate name reads as its Spotfire name, M21 its mutant.
+  ['rnd_board_control_trend_harness.mjs', 61],
   // the board shell that seats the parts above
   ['rnd_board_harness.mjs', 176],
   // the board part: intersection

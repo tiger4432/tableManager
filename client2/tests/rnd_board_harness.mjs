@@ -748,7 +748,7 @@ async function suite(mods) {
       BOARD.panels.every((p) => Object.values(p.options || {})
         .every((v) => typeof v !== 'function')));
     // 🔴 The server folds a trend's values from a node's `predicates[].count`, matching the name AS ASKED, and
-    //    names are bare (f34f16892): a seat asking `sum:inspected@1` gets null values and draws no point.
+    //    names are bare (f34f16892): a seat asking `Sum:inspected@1` gets null values and draws no point.
     const trendSeats = BOARD.panels.filter((p) => p.measure || p.ratio);
     const trendNames = trendSeats.flatMap((p) => [...(p.measure || []), ...(p.ratio ? [p.ratio.found, p.ratio.of] : [])]);
     ok('H10 the trend seats ask by bare names, as the server names a node\'s predicates',
@@ -826,8 +826,8 @@ async function suite(mods) {
 const MUTANTS = [
   { id: 'M40', what: 'a trend seat asks by the retired @1 spelling, so its points come back empty',
     catches: 'H10',
-    mutate: { 'main.js': (s) => s.replace("      measure: ['sum:inspected', 'sum:observed'],",
-      "      measure: ['sum:inspected@1', 'sum:observed@1'],") } },
+    mutate: { 'main.js': (s) => s.replace("      measure: ['Sum:inspected', 'Sum:observed'],",
+      "      measure: ['Sum:inspected@1', 'Sum:observed@1'],") } },
   { id: 'M15', what: 'a map falls back to a bare die space, erasing which grid it is on',
     catches: 'H3b',
     mutate: { 'main.js': (s) => s.replace("        space: 'die:base',", '') } },
