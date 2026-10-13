@@ -2675,6 +2675,10 @@ class RunControl:
             self._stamp({})
         self._moved = time.monotonic()
 
+    def say(self, sentence) -> None:
+        """One line of this run's own - `[<op>] <sentence>` - on or off, whatever `debug` says."""
+        self._log("[%s] %s" % (self.op, sentence))
+
     @contextlib.contextmanager
     def stage(self, name, rows=None):
         """A stage inside the page in progress (`keyset_scan.stage`, 총괄 d9be013cb): in `stages` while it runs - the

@@ -1803,6 +1803,7 @@ def index_states(engine, tables=None):
                  for table, name, shape in table_declared_indexes(tables)]
     if engine.dialect.name != "postgresql":
         return {"declared": declared, "outside": []}
+    ledger = _ledger_index_rows(engine)
     models_tables = [table.name for table in model_tables()]
     with engine.connect() as connection:
         held = {row.name: row for row in connection.execute(
@@ -1821,7 +1822,35 @@ def index_states(engine, tables=None):
                 "size_bytes": row.size_bytes, "scans": row.scans}
                for name, row in sorted(held.items())
                if not row.is_primary and row.table_name in models_tables]
-    return {"declared": declared, "outside": outside}
+    return {"declared": declared + ledger, "outside": outside}
+
+
+def _ledger_index_rows(engine):
+    """The ledger's partitioned indexes in every world (`ledger.schema.partitioned_index_states`) as rows of the one
+    comparison, `source` ledger: present when every partition has it attached, else missing with how many partitions
+    lack it. A ledger that cannot be asked is one row, unknown, saying why."""
+    import re as _re
+
+    try:
+        from ledger import schema
+        states = schema.partitioned_index_states(engine)
+    except Exception as exc:                                            # noqa: BLE001 - said on the row
+        return [dict(name="ledger partitioned indexes", table="ledger_events", columns=[], where=None, include=[],
+                     using=None, unique=False, constraint=False, purpose=None, serves=None, source="ledger",
+                     world=None, partitions=None, partitions_missing=None, state=INDEX_UNKNOWN, building=None,
+                     failure="%s: %s" % (type(exc).__name__, exc), size_bytes=None, scans=None)]
+    rows = []
+    for row in states:
+        shape = _re.match(r"USING (\w+) \((.*)\)", row["columns"])
+        rows.append(dict(
+            name=row["name"], table=row["table"], world=row["world"],
+            columns=[c.strip() for c in shape.group(2).split(",")] if shape else [row["columns"]],
+            where=None, include=[], using=shape.group(1) if shape else None, unique=False, constraint=False,
+            purpose=row["serves"], serves=row["serves"], source="ledger", partitions=row["partitions"],
+            partitions_missing=row["partitions_missing"],
+            state=INDEX_PRESENT if row["valid"] and not row["partitions_missing"] else INDEX_MISSING,
+            building=None, failure=None, size_bytes=None, scans=None))
+    return rows
 
 
 def model_index_ddl(index):
@@ -1856,10 +1885,40 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
         if row["constraint"]:
             say("[Indexes] %s is a UNIQUE constraint - not built here" % row["name"])
             continue
+        if row["source"] == "ledger":
+            done[row["name"]] = _build_ledger_index(engine, row, say)
+            continue
         statement = (model_index_ddl(items[row["name"]]) if row["source"] == "model"
                      else table_index_ddl(row))
         done[row["name"]] = _build_one(engine, statement, row, say, say_every)
     return done
+
+
+def _build_ledger_index(engine, row, say):
+    """One world's partitioned ledger index, each partition CONCURRENTLY and attached, one at a time - the builder the
+    command `build_ledger_ref_index.py --apply` runs (`ledger.schema.build_partitioned_index`), a line a partition."""
+    import time
+
+    from ledger import schema
+
+    names = schema.world_names(row["world"])
+    index, columns, child, _serves = next(item for item in schema.PARTITIONED_INDEXES
+                                          if schema.in_space(names, item[0]) == row["name"])
+    say("[Indexes] building %s on %s - %d of %d partition(s) lack it" % (
+        row["name"], row["table"], row["partitions_missing"], row["partitions"]))
+    started = time.monotonic()
+    connection = engine.raw_connection()
+    try:
+        done = schema.build_partitioned_index(connection, names, index, columns, apply=True,
+                                              say=lambda line: say("[Indexes] " + line), child_name=child)
+    except Exception as exc:                                            # noqa: BLE001 - said, the rest go on
+        say("[Indexes] %s failed - %s: %s" % (row["name"], type(exc).__name__, exc))
+        return INDEX_FAILED
+    finally:
+        connection.close()
+    say("[Indexes] %s %s in %.1f s" % (row["name"], "built" if done["parent_valid"] else "NOT valid",
+                                      time.monotonic() - started))
+    return INDEX_BUILT if done["parent_valid"] else INDEX_FAILED
 
 
 def _build_one(engine, statement, row, say, say_every):

@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **원장 ref 인덱스를 체인 워커가 스스로 짓는다 — 인덱스 관리에 «ledger» 줄 · 다시 번역의 결함 두 줄은 늘 처음 한 번 (총괄 10-13 ①, 소유자 「재번역 5초에 1개도 안됨」)** — git pull · 재기동 «체인 워커»(기동 때 짓는다)
+>
+> ```
+> 무엇     원장 ref 인덱스(idx_ledger_events_source_raw_ref_hash)가 이제 인덱스 관리의 선언 목록에 든다 — 세상마다 한 줄, source "ledger"
+>          체인 워커가 기동(과 다시 읽기) 때 빠진 파티션만 하나씩 CONCURRENTLY 로 짓고 붙인다(쓰기를 안 막음) — 손 명령 build_ledger_ref_index.py 와 같은 빌더
+> 볼 것    GET /admin/indexes 의 declared 에서 source = "ledger" 줄: state present / missing · partitions · partitions_missing
+>          chain_worker.log 의 [Indexes] 줄 — «1 declared index(es) … idx_ledger_events_source_raw_ref_hash on ledger_events (missing)» 뒤에
+>          파티션마다 «ledger_events_YYYY_MM: built …_ref_hash in N s · B bytes · attached», 끝에 «… built in N s»
+> 답의 뜻   present · partitions_missing 0 -> 거두기 셈 · DELETE 가 인덱스를 탈 수 있다(타는지는 다시 번역 로그의 withdrawal count 줄 plan)
+>          missing 이 남고 [Indexes] 줄에 «not built: build_missing_indexes is off» -> ingestion_settings.json 의 그 칸이 false. 손 명령으로 짓거나 칸을 지움
+>          «failed - …» -> 그 줄의 사유. 손 명령(맨 아래 절)으로 한 번 더
+> 다시 번역  retroactive.log 에 실행마다 처음 한 번, retroactive_debug 를 꺼도:
+>          «idx_… missing or not valid - each page's withdrawal count and DELETE read the whole ledger; …» -> 위가 아직 안 끝남
+>          «page key <칸> of <표> has no index - each page sorts the table; declare one on ["<칸>"] in that table's "indexes" …»
+>             -> 그 표의 table_config "indexes" 에 그 칸을 적으면 체인 워커가 짓는다(10-11 표 인덱스 절)
+> 이 판에서  진짜 프로세스(런처 넷) · 원장 파티션 3 개의 ref 인덱스를 지우고 띄움: 체인 워커 기동 직후 [Indexes] «3 of 3 partition(s) lack it»
+>          -> 파티션마다 «built … · attached» -> GET /admin/indexes 원장 줄 present · 그 뒤 다시 번역(단계 줄 끔)에 결함 줄 0 · public 행 변화 0
+> 끄기      ingestion_settings.json "build_missing_indexes": false (모든 선언 인덱스 짓기를 끔 — 이름만 말함)
+> ⚠️ 안 잰 것  운영 크기에서 파티션 하나 짓는 초
+> ```
+
 > ## [10-13] **원장 다시 번역이 지금 무엇을 하고 무엇을 기다리나 — retroactive.log 한 곳에 단계 줄 · 5 초 박동 · 느린 문장 (총괄 d9be013cb, 소유자 「재번역 디버그 로그 다띄워 실시간으로 뭐가돌고 뭘 기다리는지」)** — git pull 만 · 재기동 없음(소급 실행은 실행마다 새 프로세스라 다음 실행부터)
 >
 > ```

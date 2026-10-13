@@ -100,6 +100,15 @@ def stage(name, rows=None):
         yield said
 
 
+def say(sentence) -> bool:
+    """One line in the log of the run this thread works for (`RunControl.say`) - whatever `retroactive_debug` says.
+    -> whether there was a run to say it to."""
+    control = RUN_CONTROL.get()
+    if control is not None:
+        control.say(sentence)
+    return control is not None
+
+
 def debugging() -> bool:
     """Are the stage lines on for the run this thread works for (`retroactive_debug`) - what a stage asks before it
     spends a statement on its note (an EXPLAIN)."""

@@ -765,6 +765,8 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     #    untouched ones ahead. `page_rows=None` is one page, the whole scope: the live
     #    follow-up path, whose receipt rides that one commit.
     total = _table_rows(engine, plan) if whole_source and checkpoint is not None else None
+    if keyset_scan.RUN_CONTROL.get() is not None:
+        _say_what_every_page_pays(engine, plan, world, withdraw)
     for frame in _scope_pages(engine, plan, scoped, page_rows):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
@@ -838,6 +840,30 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
     return result
+
+
+def _say_what_every_page_pays(engine, plan, world, withdraw):
+    """The two defects a run pays on every page, said once at its start whatever `retroactive_debug` says (총괄 10-13:
+    a line that names a defect is not a debug line) - by the judgments the stage lines' notes use: the ledger's ref index
+    missing or not valid (each page's withdrawal count and DELETE read the whole ledger), and no index on the page key
+    (each page sorts the source - and the pages begin at one row)."""
+    from chain import keyset_scan
+
+    if withdraw:
+        name, valid, build = ref_index_state(engine, world)
+        if not valid:
+            keyset_scan.say("%s missing or not valid - each page's withdrawal count and DELETE read the whole ledger; "
+                            "the chain worker builds it at its start (build_missing_indexes), or now: %s" % (name, build))
+    connection = engine.raw_connection()
+    try:
+        keyed = _page_key_index(connection, plan)
+    finally:
+        connection.rollback()
+        connection.close()
+    if not keyed:
+        keyset_scan.say('page key %s of %s has no index - each page sorts the table; declare one on ["%s"] in that '
+                        'table\'s "indexes" (table_config.json) and the chain worker builds it'
+                        % (_page_key(plan), plan.relation, _page_key(plan)))
 
 
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.

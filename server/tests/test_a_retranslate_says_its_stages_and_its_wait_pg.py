@@ -95,6 +95,29 @@ def test_off_leaves_the_page_lines_and_only_them(world, monkeypatch):
     assert any(re.match(r"\[ledger_rescope\] page \d+: \d+ rows · ", line) for line in lines), lines[:5]
 
 
+def test_the_two_defects_are_said_once_with_the_lines_off(world, monkeypatch):
+    """The ledger's ref index gone, and a page key with no index (hc_official pages on its primary key, so the
+    page-key judgment is made to answer none): one line each at the run's start, with retroactive_debug off."""
+    from database import models
+    from ledger import backfill, schema
+    _settings(monkeypatch, retroactive_debug=False)
+    with world["engine"].connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text("DROP INDEX %s" % schema.REF_INDEX))
+    monkeypatch.setattr(backfill, "_page_key_index", lambda connection, plan: None)
+    try:
+        out, lines = _retranslate()
+    finally:
+        models.ensure_model_indexes(world["engine"], say=lambda *_a: None)
+    assert out["result"]["rows_in_scope"] == ROWS
+    ref = [line for line in lines if line.startswith(
+        "[ledger_rescope] idx_ledger_events_source_raw_ref_hash missing or not valid - each page's withdrawal count "
+        "and DELETE read the whole ledger")]
+    key = [line for line in lines if line.startswith(
+        "[ledger_rescope] page key row_id of hc_official has no index - each page sorts the table")]
+    assert (len(ref), len(key)) == (1, 1), [line for line in lines if "index" in line][:6]
+    assert _stage_lines(lines) == {}
+
+
 def test_a_held_lock_is_named_by_the_beat(world, monkeypatch, pg_engine):
     _settings(monkeypatch, retroactive_debug=True, retroactive_slow_statement_seconds=0.5)
     monkeypatch.setattr(retroactive, "BEAT_SECONDS", 0.5)
