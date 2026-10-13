@@ -196,13 +196,23 @@ export class VisualPart extends Panel {
   }
 
   async load() {
-    const seeds = this.seeds();
+    let seeds = this.seeds();
     if (!seeds) { this.state = 'no-start'; this.answer = null; this.publish(); this.render(); this.prune(new Set()); return; }
     const ticket = (this.walking += 1);
     this.state = 'walking';
     this.render();
-    let positive = seeds.positive || [];
     this.walkedRoute = seeds.all ? null : this.route();
+    // A route starts from one type (its start's first): starts of another type are not walked, and said (QA 10-14).
+    this.otherStarts = null;
+    if (this.walkedRoute) {
+      const from = this.walkedRoute.chain[0];
+      const other = (seeds.positive || []).filter((id) => { const type = typeOfStart(id); return type && type !== from; });
+      if (other.length) {
+        this.otherStarts = { from, n: other.length };
+        seeds = { ...seeds, positive: seeds.positive.filter((id) => !other.includes(id)) };
+      }
+    }
+    let positive = seeds.positive || [];
     // The walk from every seed does not hang on the system filter: one in hand for the same seeds is taken again (a
     // filter changed), and only the start side is judged anew.
     const asked = JSON.stringify([seeds, this.decl.row, this.walkedRoute]);
@@ -256,7 +266,9 @@ export class VisualPart extends Panel {
 
   walkFrom(seeds) {
     // The walk's budget: the page's, then the declaration's own (`walk`: node_limit, hops - the server's names).
-    const base = { ...this.walkParams, ...(this.decl.walk || {}) };
+    // the steps are the route's (walkOfRoute) - a declaration's walk budget is its node_limit
+    const { hops: _steps, ...budget } = this.decl.walk || {};
+    const base = { ...this.walkParams, ...budget };
     // Along its route: the route's predicates and steps and its slots' (route.js walkOfRoute).
     const along = !seeds.all && this.walkedRoute ? walkOfRoute(this.walkedRoute, this.decl.encode) : {};
     const params = seeds.all ? { ...base, seed_type: this.decl.row }
@@ -307,6 +319,9 @@ export class VisualPart extends Panel {
     // Each row's colour and each mark's paint - the root's, once (color_by.js); the units a kind draws a mark of (units.js).
     const { colors, colored, paint } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor() });
     this.colors = colors;
+    // the colours given to categories not declared yet are kept in the declaration - Save keeps them, more categories
+    // later leave them where they are (a declaration field, no walk)
+    if (colors.any && Object.keys(colors.assigned).length) this.decl = { ...this.decl, colors: { ...(this.decl.colors || {}), ...colors.assigned } };
     const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record, askMarked) : rows;
     this.model = this.kind.model(units, { paint, colored, askMarked, palette: this.palette(), declaration: this.decl });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
@@ -314,7 +329,7 @@ export class VisualPart extends Panel {
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
     // M - the rows the walk brought; a, b and c - what each layer took from them (lead 5835e6714). The start side's drops
     // are not among M: they were never walked from.
-    this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
+    this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0, otherStarts: this.otherStarts,
       part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden,
       columns: Object.keys(encode).length, source: this.decl.row,
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)

@@ -495,7 +495,7 @@ function suite(out, page, saved, counted) {
   eq('T4 the one filter: a range; two conditions AND; checked values with empty kept; another type passes untouched; a period [from, to)',
     out.filter, [['W2', 'W3', 'W4'], ['W3', 'W4'], ['W1', 'W3', 'W4', 'W6'], ['L1'], true, false]);
   eq('T5 the scatter model: two values each drawn, several not drawn, nothing not drawn; a marked point its colour, the rest mixed 20 % toward the background; legend dim where nothing marked',
-    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 1, several: 1, kinds: ['value', 'value'], marked: '#FAA264', dimmed: '#544236',
+    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 1, several: 1, kinds: ['value', 'value'], marked: '#6489FA', dimmed: '#363D54',
       legend: [['A', false, ['W1', 'W4']], ['B', false, ['W2', 'W5']]] });
   eq('T6 a drag marks the points its rectangle holds - x and y both inside', out.drag, [['W2', 'W4'], ['W4'], []]);
   eq('T7 the cross table: a row with two values stands in both; a cell folds its rows\' values (Avg over the union, not of averages); totals; a cell with a marked row marked',
