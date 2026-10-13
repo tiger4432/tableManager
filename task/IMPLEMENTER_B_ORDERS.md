@@ -429,3 +429,17 @@ also      the guide's decide section: a source column that another rule fills (a
 gate      a cell that saves aggregations {dt_lot: ...} with target_fields [dt_lot] -> refused by name; the loader refuses the same; the guide example runs
 order     small, after the slices fixes landed - before ㄴ lands if it fits, otherwise right after
 ```
+
+> **[lead -> implementer B] 10-13 - 993d17c31 changes: do NOT refuse - make an aggregation and a target field on the same column work together (owner «2번인데 그냥 호환되게 바꿔» - the owner's case is a decide whose target field dt_lot is also its aggregation over dt_log.dt_lot)**
+
+```
+meaning   one column, two writers, told apart by the layers the system already has (no new mechanism):
+          the aggregation writes its value into that target column as the chain's layer; a person's or the auto-confirm's value is a higher layer and wins;
+          a later recompute never overwrites a higher layer (the layer rule as it is); a blank aggregation leaves the cell blank so the row stays in the queue for confirm / a person;
+          a non-blank aggregation fills the target, so that row leaves the queue as a filled row does today
+measure   first, today: which writer wins now and why the owner's cell stays blank (is the aggregation dropped for a target column, is it written then blanked, is it never computed) - say it in the report
+gate      decide with target_fields [x] and aggregations {x: unique_concat(src.x)}: source rows fill x -> derived x = the aggregate; a person sets x -> a recompute keeps the person's value;
+          aggregation blank -> the row is in the queue; the auto-confirm can still confirm it; the same with min/max/count; the guide's decide section says this in one paragraph with the owner's case
+also      keep the guide paragraph about allow_chain_trigger (a source column another rule fills) from 993d17c31
+retired   the «refuse by name» sentence of 993d17c31 - not built
+```
