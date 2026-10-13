@@ -80768,3 +80768,62 @@ RELEASE    «설정 파일» 주제 · 2026-10-13 항목
 4. 살려 둘 걷기 수 · 분의 기본값 — 걷기 하나가 하한 128 MB 이므로, 저는 «프로세스마다 4 개 · 10 분»을 제안합니다.
 
 수 출처: scratchpad g2/wall_single_1000.txt · wall_again.txt · resume_memory.py 출력.
+
+## [10-13] 구현자 A — 칸 필터 작은 일 + 검수 ad38ae9c6 고침, 한 커밋 착지 1aa7af331
+
+```
+착지      1aa7af331  rebase 후 push HEAD:main · 재기동(서버 · 체인 워커) · 이주 없음
+RUN.md    «큰 표 검색» 절 고침 · RELEASE_LOG «고침 —» 항목(그 기능 줄 밑에 들여씀)
+```
+
+**무엇이 바뀌었나**
+
+| 검수 칸 | 한 일 |
+|---|---|
+| 칸 필터 | contains · startsWith · endsWith 로 끊기면 «Filter stopped after N s - add a search index on <칸> …». 칸 필터도 `search_text` 한 함수. 무늬 표 `TEXT_PATTERNS` 하나 |
+| 1 «색인 있음» | 끊긴 문장 · 답의 `search_index` 가 칸마다 DB 가 가진 그대로 — `built` · `declared, not built yet (<사유>)` · `not declared` · `cannot be built (<사유>)`. `index_states` 를 그 표만 보는 범위로 넓혀(정적 · 원장 · «선언 밖» 없이) 요청마다 부름 — 이 박스 약 16 ms(전체 비교 약 80 ms). 선언만 읽던 `declared_search_columns` 는 은퇴 |
+| 2 못 짓는 색인 | `search_index_refusal` 한 판정 — 뷰 · 시각 칸. 저장이 거절하고, 손으로 적은 것은 체인이 안 짓고 사유를 말하고, 끊긴 문장은 그 칸을 안 시킴. 탐색기 저장이 `business_key_val` 을 앎(파일 + Reload 와 같은 답) |
+| 4 상한 끈 채 57014 | «Read was cancelled by the database» — 500 아님 |
+| 5 SET LOCAL | QueuePool(크기 1) 칸 — 같은 연결을 빌린 다음 요청에 상한 없음. SET 변이 빨강 |
+| 6 검색 식 철자 | column_filter 셋 → `search_text`. POST /row_ids/target 은퇴(클라 · 스크립트 · 설정 문자열 · 명령줄에서 부르는 곳 0) — 스키마 · 시험 줄 · 문서 넷 같이 |
+
+**게이트**
+- 그리드 시험 파일 30 개 초록입니다. 리베이스 뒤 핵심 다섯 파일 80 개 초록입니다.
+- 변이 스물 다 빨강입니다.
+  - 칸 필터 갈래 다섯
+  - 검수 고침 열
+  - 앞 착지의 리스너 · 데코레이터 · 색인 식 · unique 다섯
+- 회귀 25 파일: 22 초록입니다. 빨강 넷은 부모에서도 빨강이던 같은 칸입니다(잠금 시간 칸 · test_api 둘 · 원장 세상 하나).
+- 진짜 런처 · 400만 판, 상한 0.3 s:
+  - dt_event_id 필터 → 503 «Filter stopped after 0.3 s - add a search index on dt_event_id …»
+  - dt_job · b_wy 필터 → 200, 0.07~0.09 s, 둘 다 `built`
+  - updated_at 필터 → «cannot be built (updated_at is a time column …)»
+  - 화면은 그대로 토스트만 나옵니다(클라 일).
+  - ⚠️ 이 판 런처는 체인 워커까지 띄웠습니다. 아래 «정정»을 보십시오.
+
+**총괄 문서 정비(3e65e4f87)와 충돌을 풀며 고친 것**
+- table_config.md 와 CODE_MAP 의 «row_id · business_key_val 은 CAST 없이 읽어 그 칸의 검색 색인을 못 받는다»는 잰 것과 반대여서 고쳤습니다.
+  - PostgreSQL 이 varchar 칸의 CAST 를 접어, 색인 정의가 `row_id gin_trgm_ops` 로 저장됩니다.
+  - 그래서 맨 `row_id ILIKE` 도 그 색인을 탑니다(박스 임시 표 EXPLAIN 으로 잼).
+- ingestion_settings.md 의 같은 칸 행 둘은 하나로 합쳤습니다.
+
+**운영 위험 — 상한을 좁힐지 안 한 줄**
+- 추천: 상한을 «검색어 q 나 칸 무늬 필터가 있는 읽기»에만 겁니다.
+  - 0 건 검색이 표 끝까지 가는 자리가 바로 거기입니다.
+  - 맵 에디터 · R&D 보드 · 어드민 카드의 검색 없는 읽기는 상한 밖이 됩니다.
+  - 검색 없는 큰 세기는 세기 판정 ㄱ(미리 센 수)이 닫습니다.
+- 다른 길: 그리드 화면이 요청에 표시를 달게 합니다(클라 일이 생김).
+- 크기는 안 쟀다 — 데코레이터 한 자리입니다.
+
+**정정 · 확인 못 한 것**
+- 오늘 그리드 판 런처(`run_decoupled_app.py --server-only`)는 체인 워커 · 감시자 · 스케줄러를 다 띄웠습니다.
+  - `--server-only` 는 데스크톱 창만 뺍니다.
+  - 응용 레인께 «서버만 · 체인 워커 없음»이라 한 것은 틀렸고, 정정해 드렸습니다.
+- public.idx_audit_recent_groups 가 13:46~13:52 사이에 사라졌습니다(대조 428 → 427).
+  - 그 창에 assy_test 에서 돌던 것은 둘입니다.
+    - 제 판 스택: 그 런처 로그에 그 색인을 말하는 줄이 0 입니다.
+    - pid 68872 `pytest -m pg tests/test_the_server_names_and_builds_the_indexes_its_models_declare.py …`: 이 파일이 `DROP INDEX idx_audit_recent_groups` 를 합니다.
+  - 누가 지웠는지는 확정하지 못했습니다. public 은 제가 쓰는 자리가 아니라 다시 짓지 않았습니다.
+- 클라: `search_index` 값이 참 · 거짓에서 네 낱말로 바뀌었고, 503 detail 에도 `search_index` 가 실립니다 — 클라 레인께 알렸습니다.
+
+**다음**: 54f7edfdb ㄴ-1(멈춘 걷기를 걷기 프로세스에 살려 둠) + 공통 바닥 — 총괄 답 그대로.
