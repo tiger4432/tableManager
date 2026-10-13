@@ -834,7 +834,9 @@ def _partition_units(
     descriptor: MapperDescriptor,
 ) -> tuple[pd.DataFrame, ...]:
     kind = descriptor.unit_kind
-    if kind == "event":
+    # a one-row molecule of a row-unit source is its own one unit - the event's frame, not a sorted copy of its one row
+    # (ㄴ, 10-13: a one-row source read, sorted and copied every molecule for a unit equal to it)
+    if kind == "event" or (kind == "row" and len(frame) == 1):
         unit = frame.copy(deep=False)
         unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
         return (unit,)

@@ -154,6 +154,27 @@ def test_one_blank_row_refuses_one_molecule_and_the_others_land():
     assert refusals[0].addresses[0]["path"] == "event_frame.rows[1].target_id"
 
 
+def test_a_molecule_is_its_rows_with_the_two_engine_cells_of_its_own():
+    """ㄴ (10-13): the engine's two cells go on the page once and a molecule is its rows of it - the frame a molecule's
+    own copy made: the source's columns, then the row ref and the time; the ref text (never the "" a refused row keeps
+    on the page), the time an object cell; a RangeIndex; attrs a dict of its own."""
+    from ledger.roleframe import SOURCE_OCCURRED_AT_COLUMN, SOURCE_ROW_REF_COLUMN
+
+    base = base_rows(3)
+    base.loc[1, "target_id"] = None
+    events = prepare_v2_cursor_batch(snapshot(), "input_rows", base, refusals=[])
+
+    assert len(events) == 2
+    for event, row in zip(events, (0, 2)):
+        assert list(event.columns) == [*base.columns, SOURCE_ROW_REF_COLUMN, SOURCE_OCCURRED_AT_COLUMN]
+        assert isinstance(event.index, pd.RangeIndex) and len(event) == 1
+        assert event["source_id"].tolist() == [base.loc[row, "source_id"]]
+        assert event[SOURCE_ROW_REF_COLUMN].tolist()[0].strip()
+        assert event[SOURCE_OCCURRED_AT_COLUMN].dtype == object
+    assert events[0].attrs is not events[1].attrs
+    assert events[0].attrs["source_event_id"] != events[1].attrs["source_event_id"]
+
+
 def test_a_refusal_names_the_COLUMN_in_its_sentence_not_only_its_code():
     """⚠️ IT DOES NOT PROVE "names the molecule AND the row", and the first draft of this
     test claimed it did. On a row-unit source the molecule's handle IS `rows[N]` - the

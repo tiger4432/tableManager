@@ -722,7 +722,7 @@ def _event_frames(
         # first occurrence of each complete event so stateful kernel concerns such as
         # first-sight registration follow the same deterministic driver order.
         groups = list(grouped.values())
-    events = []
+    kept = []
     for positions in groups:
         refusal, occurred_values = _read_molecule(context, cells, positions)
         if refusal is not None:
@@ -730,7 +730,6 @@ def _event_frames(
             # caller decides whether this is recorded (execute) or reported (preview).
             context.refusals.append(refusal)
             continue
-        event = prepared.iloc[positions].copy(deep=True).reset_index(drop=True)
         identity: dict[str, Any] = {}
         for column in driver.identity:
             # The empty-value branch that stood here is gone rather than left unreachable:
@@ -790,35 +789,6 @@ def _event_frames(
                 "source_preparation_incomplete", "event_frame.source_row_refs",
                 "driver order_by columns do not uniquely identify source rows",
             )
-        event[SOURCE_ROW_REF_COLUMN] = row_refs
-        # Publish the event's time under ONE engine-owned name.  A mapper that had to ask
-        # `source_plan.driver.occurred_at.column` was reading a physical column name, so a
-        # source declaring `basis` moved the time out from under it; resolving a
-        # declaration to a column is this boundary's job, and now it is only this
-        # boundary's job.
-        #
-        # The published cell is the INTERPRETED instant, the same one the event id is
-        # minted from below.  🔴 THE DECLARED TIMEZONE READS A NAIVE COLUMN (owner ruling
-        # 2026-08-21): a value that writes its own offset keeps it, and `occurred_at
-        # .timezone` answers only for a value that carries none.
-        #
-        # Until that ruling this line published the value AS READ, and the two halves
-        # disagreed: the id below was ALREADY minted from `occurred_values[earliest]`, so
-        # the declared timezone was trusted to say WHICH instant an event happened at while
-        # the published cell kept the raw text and was refused outright by the Role
-        # validator ("time Role must be a timezone-aware datetime").  One assumption, good
-        # enough for identity and not for the value, is not a safeguard -- it is a source
-        # that cannot produce an atom at all, which is what `lot_event` did.
-        #
-        # The price is named on purpose: EVERY source whose time column carries no zone is
-        # now read through the timezone someone declared for it.  That is what the
-        # declaration is FOR -- if it were never allowed to decide this, the square would
-        # have had zero freedom and belonged out of the file entirely.
-        #
-        # object dtype so the exact value survives instead of being re-derived through a
-        # pandas datetime64 conversion.
-        event[SOURCE_OCCURRED_AT_COLUMN] = pd.Series(
-            [occurred_values[earliest]] * len(event), index=event.index, dtype=object)
         molecule_ref = _canonical(
             {"source": plan.source_id, "identity": identity},
             path="event_frame.molecule_ref",
@@ -832,13 +802,55 @@ def _event_frames(
             plan.source_id, occurred_values[earliest], molecule_ref=molecule_ref,
             source_raw_ref=source_raw_ref,
         )
-        event.attrs.update({
+        kept.append((positions, row_refs, occurred_values[earliest], {
             "source_id": plan.source_id,
             "source_event_id": event_id,
             "molecule_ref": molecule_ref,
             "source_raw_ref": source_raw_ref,
             "setup_snapshot_hash": context.snapshot.snapshot_sha256,
-        })
+        }))
+    if not kept:
+        return ()
+    # 🔴 THE TWO ENGINE CELLS GO ON THE PAGE ONCE, AND A MOLECULE IS ITS ROWS OF IT (ㄴ, 10-13): a deep copy and two
+    #    column writes a molecule were a fifth of a one-row source's translation (box, 2,000-row pages). A row of no
+    #    event keeps "" and None - no molecule takes it.
+    page = prepared.copy(deep=False)
+    refs, instants = [""] * len(page), [None] * len(page)
+    for positions, row_refs, instant, _attrs in kept:
+        for position, ref in zip(positions, row_refs):
+            refs[position], instants[position] = ref, instant
+    page[SOURCE_ROW_REF_COLUMN] = refs
+    # Publish the event's time under ONE engine-owned name.  A mapper that had to ask
+    # `source_plan.driver.occurred_at.column` was reading a physical column name, so a
+    # source declaring `basis` moved the time out from under it; resolving a
+    # declaration to a column is this boundary's job, and now it is only this
+    # boundary's job.
+    #
+    # The published cell is the INTERPRETED instant, the same one the event id is
+    # minted from above.  🔴 THE DECLARED TIMEZONE READS A NAIVE COLUMN (owner ruling
+    # 2026-08-21): a value that writes its own offset keeps it, and `occurred_at
+    # .timezone` answers only for a value that carries none.
+    #
+    # Until that ruling this line published the value AS READ, and the two halves
+    # disagreed: the id above was ALREADY minted from `occurred_values[earliest]`, so
+    # the declared timezone was trusted to say WHICH instant an event happened at while
+    # the published cell kept the raw text and was refused outright by the Role
+    # validator ("time Role must be a timezone-aware datetime").  One assumption, good
+    # enough for identity and not for the value, is not a safeguard -- it is a source
+    # that cannot produce an atom at all, which is what `lot_event` did.
+    #
+    # The price is named on purpose: EVERY source whose time column carries no zone is
+    # now read through the timezone someone declared for it.  That is what the
+    # declaration is FOR -- if it were never allowed to decide this, the square would
+    # have had zero freedom and belonged out of the file entirely.
+    #
+    # object dtype so the exact value survives instead of being re-derived through a
+    # pandas datetime64 conversion.
+    page[SOURCE_OCCURRED_AT_COLUMN] = pd.Series(instants, index=page.index, dtype=object)
+    events = []
+    for positions, _row_refs, _instant, attrs in kept:
+        event = page.iloc[positions].reset_index(drop=True)
+        event.attrs.update(attrs)
         missing_attrs = [name for name in EVENT_FRAME_REQUIRED_ATTRS
                          if name not in event.attrs]
         if missing_attrs:
