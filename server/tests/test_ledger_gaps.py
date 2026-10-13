@@ -109,15 +109,20 @@ def test_a_type_whose_only_way_into_existence_is_that_predicate_is_not_applicabl
     assert "lonely@1" not in str(gaps.questions(declared, names=table))
 
 
-def test_the_live_table_and_the_live_declaration_are_checked_against_each_other():
+def test_the_live_table_and_the_live_declaration_are_checked_against_each_other(monkeypatch, tmp_path):
     """Both authorities, as they actually are. Whichever way they drift, this goes red.
+
+    The declaration is the one the repository ships (총괄 388bcf201): this box's gitignored file is absent on a
+    fresh checkout, and `load()` refuses a missing file rather than answering empty - the skip below never ran.
 
     Not an assertion about a count: the spec grew from eleven names to fifteen in one
     evening, and a number here would have gone red for the right change while saying
     nothing about which name arrived.
     """
     from ledger import config as ledger_config
+    from tests.support.declaration import use_committed_declaration
 
+    use_committed_declaration(monkeypatch, tmp_path)
     names = gaps.load_names()
     assert names["pairs"] and names["subject_sides"]
     declared = ledger_config.load() or {}
@@ -233,7 +238,7 @@ def test_a_question_that_cannot_have_members_gets_no_count_rather_than_a_zero():
     assert not any("lonely" in str(params) for _sql, params in cursor.seen)
 
 
-def test_the_route_gives_the_names_for_free_and_charges_only_when_asked_for_one():
+def test_the_route_gives_the_names_for_free_and_charges_only_when_asked_for_one(monkeypatch, tmp_path):
     """🔴 THE SCREEN HAS THREE SECONDS AND ALL TWENTY TAKE THIRTY.
 
     So the two are one route with one argument, not two routes: the list comes from the
@@ -248,7 +253,9 @@ def test_the_route_gives_the_names_for_free_and_charges_only_when_asked_for_one(
     from fastapi.testclient import TestClient
 
     import main
+    from tests.support.declaration import use_committed_declaration
 
+    use_committed_declaration(monkeypatch, tmp_path)           # a fresh checkout skipped here (총괄 388bcf201)
     client = TestClient(main.app)
     listing = client.get("/api/ledger/gaps")
     if listing.status_code == 503:

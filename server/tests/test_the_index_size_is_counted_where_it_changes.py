@@ -133,10 +133,10 @@ def test_the_lap_line_separates_what_it_measured_from_what_it_rested():
     """
     import inspect
 
-    from chain import ingestion_worker as worker
+    from ledger import worker
 
-    body = inspect.getsource(worker._ledger_census_loop) if hasattr(
-        worker, "_ledger_census_loop") else inspect.getsource(worker)
+    # the census moved into the ledger process (10-13); this read the chain worker's whole source after it left
+    body = inspect.getsource(worker.run_ledger_row_census)
 
     assert "measured %.3fs" in body, "the lap line names the paused-excluded time"
     assert "measured_seconds += time.monotonic() - source_started" in body

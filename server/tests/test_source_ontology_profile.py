@@ -35,6 +35,15 @@ from ledger.source_profile import (
 from ledger.source_profile_builtins import default_profile_registries
 
 
+@pytest.fixture(autouse=True)
+def _committed_declaration(monkeypatch, tmp_path):
+    """The registered entity types are the declaration's (`declared_entities`) - the one the repository ships, not
+    this box's gitignored file (총괄 388bcf201: on a fresh checkout every type was unregistered)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path)
+
+
 def approved(column, *, relation=None):
     out = {"column": column, "status": MAPPING_STATUS_HUMAN_APPROVED}
     if relation is not None:
