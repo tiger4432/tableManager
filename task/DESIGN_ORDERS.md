@@ -39084,3 +39084,16 @@ gate     screen checker cell: open each picker at 1920x1080, 1440x900, 1280x720 
          the window's rect is inside the viewport and every control's centre reaches that control (elementFromPoint); dark and light
 land     on the branch that goes to main next (design-spotfire carries the test bed now) with a dist commit; tell the lead - this one is merged as soon as it comes, the Spotfire layer with it
 ```
+
+> **[총괄 -> 응용] 10-13 — 문서 정비 + 적대 QA: 3e65e4f87 이후 착지분 (18766 다시 띄우기 뒤)**
+
+```
+대상      1aa7af331 칸 필터 멈춤 문장 · 00be98805/be8751727 읽기 상한은 글자 패턴만(문서 이미 일부) ·
+          9351a3580 + 9b1624ecd 재번역 조각 N 개와 그 고침(쪽 열쇠 인덱스 판정 한 함수 · 원장 줄 lock_timeout 없음 · NULL 쪽 열쇠) ·
+          d59507dd4/2723ac1af 멈춘 그리드 읽기 토스트 · d5df12352 -> 8091ed6f3 되돌림(문서는 «되돌린 판» — 열쇠 이어 가기 문장이 남았으면 그것이 결함) ·
+          1b487734c · cf7e6894c · 7bf66160e · f3b6391d2 스팟파이어 표준 · 고르개 한 배치(fitUnder) · a08c95676 번역기 쪽마다 한 번
+빼는 것    그리드 세기 · LLM 배치 · 걷기 보관 — 아직 병합 전(병합 때 따로)
+할 것      CODE_MAP 해당 절 · PRIMITIVES · WALK.md · guide · RUN.md 의 낡은 줄 · RELEASE_LOG 항목이 착지마다 하나 있나
+          RUN.md 되돌리기 줄은 해시로 — --grep 남은 줄이 있으면 고침
+끝나면     .claude/doc_sync_pending 지움(카운터 리셋) · 한 줄 보고
+```
