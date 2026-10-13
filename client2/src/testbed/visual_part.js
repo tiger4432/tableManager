@@ -409,7 +409,9 @@ export class VisualPart extends Panel {
         .filter((u) => keep.has(u.id)), panel, this.rowType()));
       const extent = extentsOf(marks.flat());
       for (const u of marks.flat()) this.unitsById.set(u.id, u);
-      this.panels = split.map((panel, i) => ({ name: panel.name, where: panel.where, model: this.kind.model(marks[i], { ...modelCtx, extent }) }));
+      // a mark in a panel is painted as it is pressed - the panel's value among its conditions (hubs.js nodesOfPress)
+      this.panels = split.map((panel, i) => ({ name: panel.name, where: panel.where, model: this.kind.model(marks[i], { ...modelCtx, extent,
+        paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));
     } else this.panels = null;
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);

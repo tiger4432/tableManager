@@ -913,7 +913,16 @@ async function trellisCases(M) {
   const cell = walk(cross.root).filter((n) => n.tagName === 'TD' && n.listeners && n.listeners.click);
   cell[cell.length - 1].listeners.click[0]({});
   await settle();
-  return { pure, drawnPanels, axes, marker, cell: held() };
+  const cellHeld = held();
+  // a marking holding the wafer node (pressed in a part with no panels): a panel's cell of that wafer is its rows there,
+  // the panel's value a second condition - not the wafer, so not drawn marked (as a two-axis cell)
+  const wafer = (id, label) => ({ id, type: 'wafer', label, keys: {}, attributes: {} });
+  answer.nodes.push(wafer('W1', 'W1'));
+  answer.edges = ['D1', 'D2', 'D3'].map((d, i) => ({ id: `e${i}`, source: d, target: 'W1', predicate: 'in_container', qualifiers: {} }));
+  markings.replace('marking:pick', [['W1', SIGN.CASE]]);
+  const byWafer = await seat('crossTable', { rows: { steps: [{ predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['wafer'] }, panel: key('p') });
+  const waferCells = (byWafer.panels || []).map((pn) => [pn.name, pn.model.grid[0][0].marked]);
+  return { pure, drawnPanels, axes, marker, cell: cellHeld, waferCells };
 }
 
 /** Shape by (base set 7-b, shape_by.js): a category's shape - declared, else the next one free (the colours' rule); a points
@@ -1116,6 +1125,7 @@ async function suite(M) {
       [['A', 'B'], [['A', ['D1', 'D3'], 1, 3, 2, 9], ['B', ['D2'], 1, 3, 2, 9]]]),
     judge('TR3 a press in a panel marks its rows there - a marker of x 3 in A is D3, not D2; a cross table cell the same', [tr.marker, tr.cell],
       [[[[['x', '3'], ['p', 'A']], ['D3']]], [[[['x', '3'], ['(None)', ''], ['p', 'B']], ['D2']]]]),
+    judge('TR4 a panel\'s cell is painted as it is pressed - a marking holding the wafer leaves the wafer\'s cells in panels unmarked (two conditions, the rows)', tr.waferCells, [['A', false], ['B', false]]),
     judge('TM1 a time the server sends is a time read; the tooltip and the filter say it as the grid does (local, no T · Z), a long value one line with its words in its tooltip',
       [sw.read, sw.tip, sw.filter], [['one', true], ['D1', `when: ${sw.stamp}`], [[[sw.stamp, sw.stamp, true]], [[sw.LONG, sw.LONG, true]]]]),
     judge('LB2 a label on the point\'s inner side - right in the left half, left in the right half (not under the legend)', sw.sides, [['a', 'right'], ['b', 'right'], ['c', 'left']]),
@@ -1251,7 +1261,9 @@ const MUTANTS = [
   { id: 'M47', what: 'a press in a panel marks without the panel - a cross table cell of the same x in another panel the same hub', catches: 'TR3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),', 'markHub: (where, ids, event) => this.markHub(where, ids, event),') },
   { id: 'M48', what: 'each panel its own extent', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent })', 'this.kind.model(marks[i], modelCtx)') },
+    mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent,', 'this.kind.model(marks[i], { ...modelCtx,') },
+  { id: 'M54', what: 'a panel\'s mark painted without the panel - pressed one way, drawn another', catches: 'TR4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));', '}) }));') },
   { id: 'M49', what: 'the panel condition appended again on every pass', catches: 'TR1 ', file: 'testbed/trellis.js', key: 'trellis',
     mutate: (t) => swap(t, 'return where.some(([w]) => w === words) ? where : [...where, ...panel.where];', 'return [...where, ...panel.where];') },
   { id: 'M50', what: 'the kind handed no shape - every point the one shape', catches: 'SP2 ', file: 'testbed/visual_part.js', key: 'visual',
