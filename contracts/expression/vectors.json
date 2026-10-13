@@ -32,7 +32,13 @@
     "                with its basis; do not pick an answer in a calculator. Empty after the lead's 10-13 rulings.",
     "                An aggregate inside an If / Case branch folds only that branch's rows (the pages' worked examples).",
     "  ours          scored, the same shape - our functions with no Spotfire basis (task doc §7: Latest). A row's",
-    "                values carry that row's time in \"$at\" (ISO 8601); [x] never names it. basis = ours.",
+    "                values carry that row's time in \"$at\" (ISO 8601); [x] never names it. basis = ours, or decided.",
+    "                Rules both calculators keep (lead 10-13): Latest - with any timed row, the latest of the timed rows",
+    "                (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else",
+    "                empty; two different values at the latest time are empty. A list value (one read holding several)",
+    "                counts as its items. A text is a number when, trimmed, it is only sign, digits, a decimal point and",
+    "                an exponent (\"29.50\", \" 1 \", \"+2\", \"1e1\", \".5\"); anything else is text (\"29,50\", \"29 mm\", \"0x10\"),",
+    "                which a numeric fold leaves out; an empty text is empty.",
     "  out_of_edition  names not built in this edition, and why.",
     "Grow this file before a calculator grows (lead: a function with no vector is not built)."
   ],
@@ -3205,7 +3211,7 @@
       "cite": "lead 0b7d84462 B: an aggregation skips empty values - none left"
     },
     {
-      "id": "latest.no.time",
+      "id": "latest.time.mixed",
       "expr": "Latest([x])",
       "rows": [
         {
@@ -3218,10 +3224,179 @@
       ],
       "expect": 1,
       "basis": "decided",
-      "cite": "lead 10-13: a row with no \"$at\" is not a candidate - a value with no time cannot be the latest"
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty"
+    },
+    {
+      "id": "latest.untimed.one",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 5
+        }
+      ],
+      "expect": 5,
+      "basis": "decided",
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty - a node's own one value has no time and still reads"
+    },
+    {
+      "id": "latest.untimed.same",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 5,
+      "basis": "decided",
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty"
+    },
+    {
+      "id": "latest.untimed.differ",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        }
+      ],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty"
+    },
+    {
+      "id": "list.count",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": [
+            1,
+            2
+          ]
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "decided",
+      "cite": "lead 10-13: a list value (one read holding several) counts as its items"
+    },
+    {
+      "id": "list.sum",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": [
+            1,
+            2
+          ]
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 6,
+      "basis": "decided",
+      "cite": "lead 10-13: a list value (one read holding several) counts as its items"
+    },
+    {
+      "id": "list.uniquecount",
+      "expr": "UniqueCount([x])",
+      "rows": [
+        {
+          "x": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "x": "a"
+        }
+      ],
+      "expect": 2,
+      "basis": "decided",
+      "cite": "lead 10-13: a list value (one read holding several) counts as its items"
+    },
+    {
+      "id": "text.number.sum",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": "29.50"
+        },
+        {
+          "x": " 1 "
+        },
+        {
+          "x": "+2"
+        },
+        {
+          "x": "1e1"
+        },
+        {
+          "x": ".5"
+        }
+      ],
+      "expect": 43,
+      "basis": "decided",
+      "cite": "lead 10-13: a text is a number when, trimmed, it is only sign, digits, a decimal point and an exponent; else it is text"
+    },
+    {
+      "id": "text.not.number.sum",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": "29,50"
+        },
+        {
+          "x": "29 mm"
+        },
+        {
+          "x": "0x10"
+        },
+        {
+          "x": 1
+        }
+      ],
+      "expect": 1,
+      "basis": "decided",
+      "cite": "lead 10-13: a text is a number when, trimmed, it is only sign, digits, a decimal point and an exponent; else it is text - a numeric fold leaves a text out"
+    },
+    {
+      "id": "text.not.number.count",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": "29,50"
+        },
+        {
+          "x": "29 mm"
+        },
+        {
+          "x": ""
+        },
+        {
+          "x": 1
+        }
+      ],
+      "expect": 3,
+      "basis": "decided",
+      "cite": "lead 10-13: a text is a number when, trimmed, it is only sign, digits, a decimal point and an exponent; else it is text; an empty text is empty and is not counted"
     }
   ],
-  "unsettled": [],
+  "unsettled": [
+    {
+      "id": "text.arithmetic",
+      "expr": "[x] * 2 over \"29.50\" and \"29 mm\"",
+      "question": "a number-text takes part as its number (59); a text that is not one makes the row empty?",
+      "why": "the 10-13 text rule says what a number-text is, and a numeric fold leaves other text out; it does not say what arithmetic does with text"
+    }
+  ],
   "out_of_edition": [
     {
       "names": [
