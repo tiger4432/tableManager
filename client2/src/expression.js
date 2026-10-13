@@ -203,6 +203,8 @@ const NOT_YET = new Set(['normdist', 'norminv', 'tdist', 'tinv', 'chidist', 'chi
 const KEYWORDS = new Set(['and', 'or', 'xor', 'not', 'case', 'when', 'then', 'else', 'end', 'is', 'null', 'true', 'false', 'distinct']);
 const OPS = ['<=>', '<=', '>=', '<>', '!=', '<', '>', '=', '+', '-', '*', '/', '%', '^', '(', ')', ','];
 const NUMBER = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/;
+// A sheet's cell A1 and range B1:B9 (owner 10-13: the sheet's own grammar) - a name with digits before «(» is a call (P10).
+const CELL_TOKEN = /^([A-Za-z]{1,3}[0-9]{1,7})(?::([A-Za-z]{1,3}[0-9]{1,7}))?(?![A-Za-z0-9_])(?!\s*\()/;
 
 function tokens(text) {
   const out = [];
@@ -228,6 +230,12 @@ function tokens(text) {
       i = j + 1;
       continue;
     }
+    const cell = CELL_TOKEN.exec(text.slice(i));
+    if (cell) {
+      out.push(cell[2] ? { k: 'range', v: [cell[1].toUpperCase(), cell[2].toUpperCase()], at } : { k: 'cell', v: cell[1].toUpperCase(), at });
+      i += cell[0].length;
+      continue;
+    }
     const word = /^[A-Za-z_][A-Za-z0-9_]*/.exec(text.slice(i));
     if (word) {
       const lw = word[0].toLowerCase();
@@ -243,7 +251,7 @@ function tokens(text) {
   return out;
 }
 
-function parse(text) {
+function parse(text, nodes = {}) {
   const ts = tokens(text);
   let p = 0;
   const op = (v) => ts[p].k === 'op' && ts[p].v === v;
@@ -286,6 +294,8 @@ function parse(text) {
     const tk = ts[p];
     if (tk.k === 'num' || tk.k === 'str') { p += 1; return { t: 'lit', v: tk.v }; }
     if (tk.k === 'ref') { p += 1; return { t: 'ref', name: tk.v }; }
+    if (tk.k === 'cell') { p += 1; return { t: 'cell', at: tk.v }; }
+    if (tk.k === 'range') { p += 1; return { t: 'range', from: tk.v[0], to: tk.v[1] }; }
     if (kw('null')) { p += 1; return { t: 'lit', v: null }; }
     if (kw('true') || kw('false')) { p += 1; return { t: 'lit', v: tk.v === 'true' }; }
     if (kw('case')) return caseOf();
@@ -296,6 +306,7 @@ function parse(text) {
   const call = () => {
     const tk = ts[p]; p += 1;
     const name = BY_NAME.get(tk.v.toLowerCase());
+    if (!name && Object.prototype.hasOwnProperty.call(nodes, tk.v)) return nodeOf(tk.v);
     if (!name) throw new ExpressionError(NOT_YET.has(tk.v.toLowerCase()) ? `${tk.v} is not in this edition` : `No function named ${tk.v}`);
     need(() => op('('), `«(» after ${name}`);
     const distinct = kw('distinct');
@@ -306,6 +317,16 @@ function parse(text) {
     const node = { t: 'call', name, fn: FUNCTIONS[name], args, distinct };
     arity(node);
     return node;
+  };
+  // type("key", …) - the node of that type with those keys, in the order its entity declares them (owner 3b97fcfb9)
+  const nodeOf = (type) => {
+    const { keys, id } = nodes[type];
+    need(() => op('('), `«(» after ${type}`);
+    const args = [];
+    if (!op(')')) { args.push(or()); while (op(',')) { p += 1; args.push(or()); } }
+    need(() => op(')'), `«)» closing ${type}`);
+    if (args.length !== keys.length) throw new ExpressionError(`${type} takes ${keys.length} key${keys.length === 1 ? '' : 's'} (${keys.join(', ')}) - got ${args.length}`);
+    return { t: 'node', type, keys, id, args };
   };
   const caseOf = () => {
     p += 1;
@@ -349,11 +370,31 @@ const namesOf = (node, out = new Set()) => {
   return out;
 };
 
+const column = (letters) => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+const letters = (n) => (n > 0 ? letters(Math.floor((n - 1) / 26)) + String.fromCharCode(65 + ((n - 1) % 26)) : '');
+const place = (at) => { const m = /^([A-Z]+)(\d+)$/.exec(at); return { c: column(m[1]), r: Number(m[2]) }; };
+/** A range's cells, a row at a time (B1:C2 -> B1 C1 B2 C2). */
+export function rangeCells(from, to) {
+  const a = place(from); const b = place(to);
+  const out = [];
+  for (let r = Math.min(a.r, b.r); r <= Math.max(a.r, b.r); r += 1) {
+    for (let c = Math.min(a.c, b.c); c <= Math.max(a.c, b.c); c += 1) out.push(`${letters(c)}${r}`);
+  }
+  return out;
+}
+const cellsOf = (node, out = new Set()) => {
+  if (node.t === 'cell') out.add(node.at);
+  if (node.t === 'range') rangeCells(node.from, node.to).forEach((c) => out.add(c));
+  children(node).forEach((c) => cellsOf(c, out));
+  return out;
+};
+
 /** A text read once. @returns {{ok: true, tree, perRow: boolean, names: string[]} | {ok: false, why: string}} */
-export function compile(text) {
+export function compile(text, page = {}) {
   try {
-    const tree = parse(String(text || ''));
-    return { ok: true, tree, perRow: rowLevel(tree), names: [...namesOf(tree)] };
+    // nodes: the page's node types {type: {keys: [names in declared order], id(keys) -> node id}} - type("key") (screen only)
+    const tree = parse(String(text || ''), page.nodes || {});
+    return { ok: true, tree, perRow: rowLevel(tree), names: [...namesOf(tree)], cells: [...cellsOf(tree)] };
   } catch (e) {
     if (e instanceof ExpressionError) return { ok: false, why: e.message };
     throw e;
@@ -442,6 +483,12 @@ function value(node, ctx) {
       return node.negate ? !isBlank(v) : isBlank(v);
     }
     case 'case': return caseValue(node, ctx);
+    case 'cell': return sheetCell(ctx, node.at);
+    case 'range': return rangeCells(node.from, node.to).map((at) => sheetCell(ctx, at));
+    case 'node': {
+      const keys = node.args.map((a) => value(a, ctx));
+      return keys.some(isBlank) ? null : node.id(Object.fromEntries(node.keys.map((k, i) => [k, keys[i]])));
+    }
     case 'call':
       if (node.fn.kind === 'if') return ifValue(node, ctx);
       if (node.fn.kind === 'mark') return markedValue(node, ctx);
@@ -469,6 +516,13 @@ function markedValue(node, ctx) {
   return each.some((v) => v === true) ? true : each.every((v) => v === false) ? false : null;
 }
 
+/** A1 - the sheet answers its cells' values (ctx.cell); without it the name is refused - the sheet's grammar alone. */
+function sheetCell(ctx, at) {
+  if (typeof ctx.cell !== 'function') throw new ExpressionError(`Cell references are the sheet's - ${at} reads a sheet's cell`);
+  const v = ctx.cell(at);
+  return v === undefined ? null : v;
+}
+
 function foldValue(node, ctx) {
   const { fn, args } = node;
   if (fn.none && !args.length) return ctx.rows.length;   // Count(): the rows
@@ -483,7 +537,10 @@ function foldValue(node, ctx) {
     }
     return fn.fn(pairs).value;
   }
-  let items = ctx.rows.flatMap((r) => itemsOf(across(args[0], r), timeOfRow(r)));
+  // An argument that reads a sheet's cells and no row's value (Sum(B1:B9)) folds its own items once, not once a row.
+  const once = !rowLevel(args[0]) && cellsOf(args[0]).size > 0;
+  let items = once ? itemsOf(value(args[0], { ...ctx, row: null }), null)
+    : ctx.rows.flatMap((r) => itemsOf(across(args[0], r), timeOfRow(r)));
   if (node.distinct) items = [...new Map(items.map((it) => [spelling(it.value), it])).values()];
   const params = args.slice(1).map((a) => numberOf(value(a, { ...ctx, row: null })));
   if (BY_TIME[node.name] && args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime') return BY_TIME[node.name](items).value;
@@ -523,8 +580,10 @@ function caseValue(node, ctx) {
 export function run(compiled, rows, page = {}) {
   if (!compiled.ok) return { why: compiled.why };
   // notNumber: the rows an operator met a text that is not a number on - their answer is empty; marked: the page's
-  // markings (screen only), for Marked(); types: {column: "datetime"} (table_config's column_types words)
-  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), marked: page.marked, types: page.types || {} };
+  // markings (screen only), for Marked(); types: {column: "datetime"} (table_config's column_types words); cell: a
+  // sheet's cell values by address (A1), for cell references
+  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), marked: page.marked, types: page.types || {},
+    cell: page.cell };
   try {
     if (!compiled.perRow) { const v = finite(value(compiled.tree, ctx)); return { value: v, notNumber: ctx.notNumber.size }; }
     const values = ctx.rows.map((r) => finite(value(compiled.tree, { ...ctx, row: r })));

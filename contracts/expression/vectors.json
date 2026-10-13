@@ -18,6 +18,9 @@
     "                that graph from the row (a way: steps joined by «.», «~» backwards, the value's name last).",
     "  screen_only   Marked() reads the page's markings - `markings` fakes the page: {name: {in: [ids], unknown: [ids]}}, every other",
     "                node out. The server's calculator has no markings and refuses the name.",
+    "                `cells` {A1: value} fakes a sheet's cells (owner 3b97fcfb9: cell references A1 and ranges B1:B9 are the",
+    "                sheet's grammar); `nodes` {type: [its keys in declared order]} the page's node types for type(\"key\", ...),",
+    "                whose answer is the node's id (rnd_board/api.js entitySeedId). The server refuses both by name.",
     "  ours        our rule (the cite names the ruling) - only in `ours`",
     "  decided     no page settles it; the lead ruled it 10-13 from the nearest rule the cite names. «may differ from",
     "              Spotfire» in a cite marks a ruling Spotfire may answer otherwise, with no way left to measure it",
@@ -4211,6 +4214,140 @@
       "screen_only": true,
       "basis": "ours",
       "cite": "lead 10-13 (owner): Spotfire's Marked() - the page answers each node true, false or unknown from its marking layer; Marked(\"m\", [way]) - true when one end is, false when every end is out, else unknown; a way that reaches nothing from the row is unknown"
+    },
+    {
+      "id": "sheet.cell",
+      "expr": "A1 * 2 + B1",
+      "rows": [],
+      "cells": {
+        "A1": 2,
+        "B1": 3
+      },
+      "expect": 7,
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): a sheet's cell A1 and range B1:B9 - a range read a row at a time from its top left, an empty cell left out of a fold; a fold over cells and no row's value folds them once"
+    },
+    {
+      "id": "sheet.cell.empty",
+      "expr": "A1 + 1",
+      "rows": [],
+      "cells": {},
+      "expect": null,
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): a sheet's cell A1 and range B1:B9 - a range read a row at a time from its top left, an empty cell left out of a fold; a fold over cells and no row's value folds them once"
+    },
+    {
+      "id": "sheet.range.sum",
+      "expr": "Sum(B1:B3)",
+      "rows": [],
+      "cells": {
+        "B1": 1,
+        "B2": null,
+        "B3": "2.5"
+      },
+      "expect": 3.5,
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): a sheet's cell A1 and range B1:B9 - a range read a row at a time from its top left, an empty cell left out of a fold; a fold over cells and no row's value folds them once"
+    },
+    {
+      "id": "sheet.range.once",
+      "expr": "Sum(A1:B1)",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        }
+      ],
+      "cells": {
+        "A1": 2,
+        "B1": 3
+      },
+      "expect": 5,
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): a sheet's cell A1 and range B1:B9 - a range read a row at a time from its top left, an empty cell left out of a fold; a fold over cells and no row's value folds them once"
+    },
+    {
+      "id": "sheet.range.order",
+      "expr": "First(B2:A1)",
+      "rows": [],
+      "cells": {
+        "A1": null,
+        "B1": "b",
+        "A2": "c",
+        "B2": "d"
+      },
+      "expect": "b",
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): a sheet's cell A1 and range B1:B9 - a range read a row at a time from its top left, an empty cell left out of a fold; a fold over cells and no row's value folds them once"
+    },
+    {
+      "id": "sheet.range.count",
+      "expr": "Count(A1:B2)",
+      "rows": [],
+      "cells": {
+        "A1": 2,
+        "B1": 3,
+        "A2": null,
+        "B2": "4"
+      },
+      "expect": 3,
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): a sheet's cell A1 and range B1:B9 - a range read a row at a time from its top left, an empty cell left out of a fold; a fold over cells and no row's value folds them once"
+    },
+    {
+      "id": "node.one.key",
+      "expr": "wafer(\"W01\")",
+      "rows": [],
+      "nodes": {
+        "wafer": [
+          "wafer"
+        ]
+      },
+      "expect": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcwMSJ9XQ",
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): type(\"key\", ...) - the node of that type, its keys in the order its entity declares them; an empty key gives no node"
+    },
+    {
+      "id": "node.keys.declared.order",
+      "expr": "die(\"L1\", 5, 3)",
+      "rows": [],
+      "nodes": {
+        "die": [
+          "mat_id",
+          "x",
+          "y"
+        ]
+      },
+      "expect": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiTDEiLCJ4Ijo1LCJ5IjozfV0",
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): type(\"key\", ...) - the node of that type, its keys in the order its entity declares them; an empty key gives no node"
+    },
+    {
+      "id": "node.blank.key",
+      "expr": "wafer(null)",
+      "rows": [],
+      "nodes": {
+        "wafer": [
+          "wafer"
+        ]
+      },
+      "expect": null,
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "owner 3b97fcfb9 (lead 10-14): type(\"key\", ...) - the node of that type, its keys in the order its entity declares them; an empty key gives no node"
     }
   ],
   "unsettled": [],
