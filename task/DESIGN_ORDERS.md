@@ -39110,3 +39110,27 @@ land     on the branch that goes to main next (design-spotfire carries the test 
               왼쪽 띠 그래프 아이콘 -> 부품 더하기 창 · × 빼기 · 저장) — 총괄 가지 lead-board-layout 에서 지음.
               testbed/main.js · properties_part.js · visual_part.js · rnd_board/grid_shell.js 를 만짐 — ③ ④ 가 같은 파일을 만지면 rebase 로 받음
 ```
+
+> **[총괄 -> 구현자 A · 클라] 10-13 — 그리드 세기 두 반쪽(A impl-grid-count c53405f89 + 클라 design-grid-count-r2) 병합 전 검수: GO-WITH-FIXES. 필터 없는 요청이 읽는 행 0 · 변이 다섯 빨강 · dist 다시 지어 0 다름. 고칠 것 (탐침 총괄 scratchpad qagc_*.py · 30만 행 판)**
+
+```
+서버 (A — 걷기 보관 고침 b47c7c8a3 다음, 그리드 ㄱ 보다 먼저)
+1 [높음] 보관된 전체 수에 나이 상한이 없음 — invalidate_table_cache 를 안 지나는 쓰기(소급 fold-rows 의 delete_rows_batch · 원장 view 표 · alignment/confirm 등)
+       뒤로는 수가 영원히 옛 값(PROBE-B: 3 행 지운 뒤 /data/count 10 그대로) -> 쪽 끝이 조용히 틀림
+       -> 설정 칸 하나 count_max_age_seconds(기본 300): 최근 물어진 표의 보관 수가 그보다 늙으면 세는 일꾼의 차례에 넣음. 요청은 여전히 안 셈.
+          안 지나는 쓰기 자리를 찾아 invalidate 를 붙이는 것은 이번에 안 함(전수가 안 됨) — 나이 상한이 그 몫. RUN.md 진단 줄에 이 사실
+2 [중] 세기 실패 상태가 없음 — 한 번도 못 센 표의 세기가 계속 실패하면 요청마다 다시 차례에 들어감(PROBE-A 다섯 번 · ERROR 다섯 줄)
+       -> 실패도 count_recount_seconds 간격을 지킴 · /data/count 에 failed: {reason, at} 칸 — «counting» 으로 거짓말 안 함
+3 [중] 걸러진 세기는 «센 행» 10,001 에서 멈추지만 «훑은 행»은 끝까지(일치 0 등식 필터 = 30 만 전부 seq scan, 등식은 grid 읽기 상한 밖)
+       -> 총괄 결정: 걸러진 «세기» 문장은 필터 종류와 무관하게 grid_read_timeout_seconds 아래에서 — 넘으면 2 의 실패 칸(reason «count stopped after N s»)
+          행 읽기 쪽 상한 범위(00be98805: 글자 무늬만)는 그대로. 게이트 문장 «≤ 10,001 읽음»을 «≤ 10,001 셈, 훑기는 읽기 상한까지»로
+4 [낮] 다시 셀 때마다 count_seconds 0.59 -> 0.83 -> 1.05 -> 1.33 s — 원인 한 줄(쓰기 뒤 죽은 튜플 · 계획 · 그 밖)
+문서   api_documentation §5.1-bis 모양({total, capped, counted_at, counting, failed}) · frontend.md:192 · CODE_MAP match_count.js 절 ·
+       RELEASE_LOG 항목 둘을 하나로 · RUN.md «한 번도 못 센 표» 문장 · «재기동 뒤 열린 그리드 탭은 새로고침» 한 줄
+
+클라 (클라 레인 — 계산기 ③ 사이에 작게, design-grid-count-r2 위 한 커밋 · design-walk-keep 은 그 위로 다시)
+5 [중] 정확한 수가 있어도 쪽이 꽉 찼으면(shown === pageLimit) Next 를 켬 — 보관 수는 늙을 수 있음(간격 안 쓰기 117 번 중 116 번 지난 수). 하니스 D11 같이
+6 [중] /data/count 의 실패(서버 2 의 failed 칸 · 503)를 «Count failed (<reason>)» 한 줄로 — 지금 fillMatchCount 가 삼켜 «Counting rows…» 에 멈춤
+7 [낮] batch_refresh_required 에 쪽 캐시와 함께 수도 다시 물음(보관 수 읽기라 쌈) · map_editor.js 의 상한 10,000 을 «N 개 중»으로 그리는 자리 -> «10,000+»
+병합   두 반쪽이 오면 총괄이 한 병합 — 되돌리기 줄은 병합 해시로 총괄이
+```
