@@ -332,3 +332,19 @@ read 안의 행 제외(exclude_when)는 «행 하나»를 거르는 일이라 �
          감시 스레드를 일부러 터뜨려 번역이 끝까지 가는 칸 · 번역 답 바이트 같음
 문서      RUN.md 한 절: 로그 파일 자리 · 줄 모양 · 답의 뜻(단계별로 «이 단계가 길면 무엇») · 끄는 칸. 착지는 main 으로 바로(소유자 「푸시」)
 ```
+
+> **[총괄 -> 구현자 B] 10-13 — 큐 1 고침 확인 검수(39c7115ed): GO-WITH-FIXES — 1 · 3 · 4 · 5 · 7 확인(변이 14 중 12 잡힘), live 체인 결과 쓰기를 멈추는 새 갈래 0, withdraw 기점 대 HEAD 14/14 같음. 착지 전 셋 (디버그 로그 d9be013cb 뒤)**
+
+```
+6 [중] derived_pages 기점 읽기 — 한 문장 길이가 대기열의 «위치»(대기 행 사이 틈 길이)에 비례. 네 판 다섯은 밀도만 바꿈
+       4M 판 · 맨 앞 50 행만 대기: 기점 전체 14.66/7.17 s · 가장 긴 문장 8.68 s(5 초 규칙 어김) · 1,000 행 쪽 하나가 Parallel Seq Scan 3 × 1,333,317 행
+       걸리는 자리: 적용 스윕 analysis.py:772 · dry-run GET main.py:6841 · count 미리보기 retroactive.py:386(요청 경로)
+       -> 총괄 결정: 쪽은 «row_id 범위»로(같은 가지 53d9b65c8 표기 접기의 모양 — 한 문장이 읽는 범위가 정해짐). 기점의 «다음 N 대기 행» 모양은 은퇴. 게이트: 4M 앞 50 행 · 고른 1/1000 · 꼬리 몰림 세 판 모두 한 문장 < 5 s
+2 [중] VALUES 칸 CAST 가 잰 경우(파생 String · 참조 정수 · 글 키)를 못 고침 · 운영 두 자리(collect_rows · derived_pages)는 DB 형 값을 넘겨 CAST 가 바꾸는 운영 값 0 ·
+       새 칸은 운영에 안 나오는 값(Float 칸에 "3")이라 공허 · round(:x, 1) 뷰는 CAST 때문에 새로 묶음 실패
+       -> 총괄 결정: CAST 를 거둔다. 남은 몫(형이 다른 뷰는 묶음 실패 -> 키마다, 답은 같음)은 묶음 실패 줄이 이미 말한다 — 독스트링 · 커밋의 «compares as it does alone» 을 동작대로
+3 [중/낮] dry · 미리보기가 지울 행을 안 읽는다는 칸이 인자 모양만 잼 — _fold_read 가 losers 를 무시하는 변이가 31 passed 로 삶 -> dry · 미리보기에서 part 1 행이 0 이라는 칸(PG)
+문서      CODE_MAP :2114 · :2119 · :2127 · :2245(in_savepoint · _BIND_PARAM_RE 줄) · enrichment_rules.md:62 뷰 탈락 사유에 «write CAST(:x AS type)» · BACKFILL_GUIDE:62 «5 초»(기본 3 s, 5 s 는 상한) ·
+          cell_layer.py:331 «2-8x» -> 잰 수(3.0× · 4.4×, 최대 6.3×) · analysis.py:212 «every board» 거짓 · RELEASE_LOG 항목과 RUN.md 절이 아직 없음 — 착지 커밋에
+RUN.md    배포 뒤 볼 줄: «:x::type» 철자를 쓰는 운영 뷰는 적재 때 이름 대어 떨어진다 — 그 줄이 나오면 CAST(:x AS type) 로 고침, 안 고치면 그 자동확정이 멈춤
+```
