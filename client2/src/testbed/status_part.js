@@ -19,6 +19,7 @@ export function statusWords(s) {
   }
   if (s.cut) words.push('filter over a cut walk');
   if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);
+  if (s.unknown) words.push(`${unitText(n(s.unknown), 'row')} unknown`);
   words.push(`${unitText(n(s.marked), 'marked row')}${s.hidden ? ` · hidden ${n(s.hidden)}` : ''}`);
   words.push(`${n(s.columns)} columns`);
   if (s.source) words.push(s.source);

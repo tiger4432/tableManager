@@ -61,7 +61,11 @@ export class MarkingStore {
     // declared up front, because a declared roster is the hardcoded list wearing a hat.
     this._marks = new Map();
     this._listeners = new Map();
+    this._versions = new Map();
   }
+
+  /** How many times a name has changed - moved before its listeners hear, so what they read is keyed by it. */
+  version(name) { return this._versions.get(name) || 0; }
 
   /** `+1` | `-1` | `0`. The question every component asks, and the only one. */
   signOf(name, nodeId) {
@@ -168,6 +172,7 @@ export class MarkingStore {
   }
 
   _emit(name) {
+    this._versions.set(name, this.version(name) + 1);
     const set = this._listeners.get(name);
     if (!set) return;
     // Snapshot: a listener that unsubscribes itself mid-notify must not skip its neighbour.

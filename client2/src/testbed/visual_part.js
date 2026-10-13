@@ -19,7 +19,8 @@ import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph } from '../walk/reach_table.js';
 import { readSlot, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
-import { hubId, holds } from './hubs.js';
+import { hubId } from './hubs.js';
+import { MarkingLayers } from './marking_layer.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes } from '../rnd_board/api.js';
 import { paletteOf } from './palette.js';
@@ -44,6 +45,9 @@ export class VisualPart extends Panel {
     this.stats = d.stats;
     this.active = d.active;
     this.hubs = d.hubs;
+    // THE one place «is this marked» is asked (marking_layer.js): the page's layers, or its own over its markings.
+    this.layers = d.layers || new MarkingLayers({ markings: d.markings, hubs: d.hubs });
+    this.relationsStore = d.relations || null;
     this.names = d.names;
     this.charts = d.charts;
     // The colours a canvas draws with, read when it draws (testbed/palette.js); the page's tokens by default.
@@ -75,6 +79,8 @@ export class VisualPart extends Panel {
     if (this.active) off.push(this.active.subscribe('active', () => this.paintActive()));
     // A marking's colour changed: its marked points and lines.
     if (this.markingList) off.push(this.markingList.subscribe('list', () => this.refold()));
+    // The relations changed: every marking's layer is another.
+    if (this.relationsStore) off.push(this.relationsStore.subscribe('list', () => this.refold()));
     this._offs = off;
     this.listenLimit();
     if (this.host && typeof this.host.addEventListener === 'function') {
@@ -129,12 +135,12 @@ export class VisualPart extends Panel {
     }
   }
 
-  /** The markings its limit names and it does not hear already (the one it shows, the one it starts from): a change
-   *  folds again. */
+  /** The markings its limit names and its expressions asked (Marked) that it does not hear already (the one it shows,
+   *  the one it starts from): a change folds again. */
   listenLimit() {
     for (const off of this._limitOffs || []) off();
     const heard = new Set([this.reads, this.start && this.start.marking]);
-    const names = ((this.decl.limit && this.decl.limit.markings) || []).filter((n) => !heard.has(n));
+    const names = [...new Set([...((this.decl.limit && this.decl.limit.markings) || []), ...(this.askedMarkings || [])])].filter((n) => !heard.has(n));
     this._limitOffs = this.markings ? names.map((n) => this.markings.subscribe(n, () => this.refold())) : [];
   }
 
@@ -195,6 +201,7 @@ export class VisualPart extends Panel {
       this.render();
       return;
     }
+    this.layers.graph.add(res.body);
     this.answer = res.body;
     this.state = 'ready';
     this.refold();
@@ -237,8 +244,19 @@ export class VisualPart extends Panel {
     const afterPart = keepNodes(index, inside, afterSystem.kept, this.decl.filter || [], this.oneValued);
     // The picker's rows: the filters' - a limit takes rows out of the picture, not out of what a column can read.
     this.rowIds = afterPart.kept;
-    const limited = limitRows(afterPart.kept, this.decl.limit, (name) => this.markings.entries(name), this.hubs);
+    const limited = limitRows(afterPart.kept, this.decl.limit, this.layers);
     const encode = this.decl.encode || {};
+    // An expression's Marked("name"): the marking layer; a row it cannot know is counted, the markings asked heard.
+    const asked = new Set();
+    const unknown = new Set();
+    // The calculator asks (name, node) -> true · false · null (expression.js Marked; a way's ends one by one).
+    const askMarked = (words, id) => {
+      const name = this.markingNamed(words);
+      asked.add(name);
+      const v = this.layers.marked(name, id);
+      if (v === null) unknown.add(id);
+      return v;
+    };
     const rows = limited.map((id) => {
       const node = index.nodes.get(id) || {};
       const reads = {};
@@ -246,13 +264,12 @@ export class VisualPart extends Panel {
       for (const s of this.slotList()) {
         const slot = encode[s.key];
         if (!slot) continue;
-        reads[s.key] = readSlot(index, inside, id, slot, this.oneValued(slot));
+        reads[s.key] = readSlot(index, inside, id, slot, this.oneValued(slot), askMarked);
         if (s.folds) raw[s.key] = rawOf(index, inside, id, slot);
       }
       return { id, label: node.label || id, reads, raw };
     });
-    const entries = this.reads ? this.markings.entries(this.reads) : [];
-    const marked = (id) => holds(entries, this.hubs, id);
+    const marked = (id) => this.layers.marked(this.reads, id) === true;
     this.model = this.kind.model(rows, { marked, markColor: this.markColor(), palette: this.palette(), declaration: this.decl });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
@@ -264,10 +281,19 @@ export class VisualPart extends Panel {
       columns: Object.keys(encode).length, source: this.decl.row,
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
+      // the rows an expression's Marked could not answer - a relation's edge of theirs not walked yet
+      unknown: unknown.size,
       // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).
       cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };
+    if ([...asked].join() !== [...(this.askedMarkings || [])].join()) { this.askedMarkings = asked; this.listenLimit(); }
     this.publish();
     this.render();
+  }
+
+  /** A marking by the words an expression names it: its label (the people's) or its name. */
+  markingNamed(words) {
+    const m = ((this.markingList && this.markingList.get('list')) || []).find((x) => x.label === words || x.name === words);
+    return m ? m.name : words;
   }
 
   /** The part's counts for the status bar and the filters panel, under its id. */
@@ -384,19 +410,19 @@ export class VisualPart extends Panel {
 
 /**
  * Spotfire's «Limit data using markings»: the rows the named markings hold - in every one (`must: 'all'`) or in any
- * ('any'), a hub as its members (hubs.holds). When every one of them is empty: all the rows (`none: 'all'`) or none
- * ('empty'). No marking named: no limit.
+ * ('any'), each as its layer holds it (marking_layer.js - a hub its members, spread along the relations). When every one
+ * of them is empty: all the rows (`none: 'all'`) or none ('empty'). No marking named: no limit.
  * @param {string[]} ids
  * @param {{markings: string[], must?: 'all'|'any', none?: 'all'|'empty'}|null|undefined} limit
- * @param {(name: string) => Array<[string, number]>} entriesOf  @param {import('./hubs.js').HubBook} book
+ * @param {import('./marking_layer.js').MarkingLayers} layers
  */
-export function limitRows(ids, limit, entriesOf, book) {
+export function limitRows(ids, limit, layers) {
   const names = (limit && limit.markings) || [];
   if (!names.length) return ids;
-  const held = names.map(entriesOf);
-  if (held.every((entries) => !entries.length)) return limit.none === 'empty' ? [] : ids;
+  const held = names.map((name) => layers.layer(name));
+  if (held.every((layer) => !layer.members)) return limit.none === 'empty' ? [] : ids;
   const test = limit.must === 'any' ? 'some' : 'every';
-  return ids.filter((id) => held[test]((entries) => holds(entries, book, id)));
+  return ids.filter((id) => held[test]((layer) => layer.set.has(id)));
 }
 
 /** THE one place a declaration's markings are read: the ones it receives (`start` it walks from, `limit` it is limited

@@ -152,6 +152,9 @@
 .sf-mark__x { width: var(--sf-tool-w); min-height: 0; padding: 0; border: 0; background: transparent; color: var(--sf-tool); font-size: var(--sf-fs-flyout); cursor: pointer; }
 .sf-mark__ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sf-tool-gap); padding: 4px 12px 8px; color: var(--sf-panel-muted); }
 .sf-props__refused { color: var(--sf-panel-text); }
+/* the relations window: a line's words, then «Both ways» and × */
+.sf-mark__words { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-mark__pick { width: 100%; margin-top: var(--sf-tool-gap); }
 
 /* ── a popover (the slot picker): Spotfire's menu - white, items 31, text inset 40 ── */
 .sf-pop-host { position: fixed; z-index: 30; }

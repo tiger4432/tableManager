@@ -626,7 +626,7 @@ const MUTANTS = [
   { id: 'M27', what: 'a filter change walks from every seed again (the walk in hand not taken)', catches: 'T9f', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, 'this.seedWalk && this.seedWalk.asked === asked ? this.seedWalk.res', 'false ? this.seedWalk.res') },
   { id: 'M28', what: '«marked» counts the marking\'s entries - a hub one (the code before)', catches: "T9c'", file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, 'marked: received.filter(marked).length,', 'marked: entries.length,') },
+    mutate: (t) => swap(t, 'marked: received.filter(marked).length,', 'marked: this.markings.entries(this.reads).length,') },
   { id: 'M29', what: 'the root words the title by asking the kind (the code before)', catches: 'T19', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },

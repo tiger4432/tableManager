@@ -18,14 +18,16 @@ import { PropertiesPart } from './properties_part.js';
 import { SlotPicker } from './picker.js';
 import { HubBook } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
+import { GraphBook, MarkingLayers } from './marking_layer.js';
 import { kind as scatterKind } from './kinds/scatter.js';
 import { kind as crossKind } from './kinds/cross_table.js';
 import { kind as tableKind } from './kinds/table.js';
+import { kind as mapKind } from './kinds/map.js';
 
 export const PARTS = Object.freeze({ visual: VisualPart, start: StartPart, status: StatusPart, filters: FiltersPart,
   properties: PropertiesPart, banner: BannerPart });
 /** The kinds, in the add window's order (Spotfire's: Table, Cross table, …, Scatter plot). */
-export const KINDS = Object.freeze({ table: tableKind, crossTable: crossKind, scatter: scatterKind });
+export const KINDS = Object.freeze({ table: tableKind, crossTable: crossKind, scatter: scatterKind, map: mapKind });
 /** The page's markings when nothing is saved - a declaration the people add to, rename, colour and delete (Spotfire's
  *  Edit › Markings; Pick in Spotfire's default marking green). Its system filters. Each its people's name (mockup fix ④). */
 export const MARKINGS = Object.freeze([{ name: 'marking:start', label: 'Start', color: '#F08C00' },
@@ -119,6 +121,10 @@ export async function boot(deps) {
   try { saved = storage ? JSON.parse(storage.getItem(SAVED) || 'null') : null; } catch (e) { saved = null; }
   const shell = new GridShell(host, { doc, markings, parts: PARTS });
   const markingList = new KeyedStore({ list: ((saved && !Array.isArray(saved) && saved.markings) || MARKINGS).map((m) => ({ ...m })) });
+  // The page's relations (Spotfire's Relations: a node type, a predicate, a node type, one way or both) - what a marking
+  // spreads along; the graph its parts walked; the layers every part asks «is this marked» (marking_layer.js).
+  const relations = new KeyedStore({ list: ((saved && !Array.isArray(saved) && saved.relations) || []).map((r) => ({ ...r })) });
+  const layers = new MarkingLayers({ markings, hubs, graph: new GraphBook(), relations });
   /** The panels that name a marking - received or emitted (visual_part.markingsOf). */
   const usersOf = (name) => shell.layoutNow().panels.filter((p) => {
     const { start, limit, emits } = markingsOf(p);
@@ -157,7 +163,8 @@ export async function boot(deps) {
     oneValued: oneValuedBy(declaration.ok ? declaration.predicates : []),
     openPicker: (at) => picker.open(at),
     partOf: (id) => shell.partOf(id),
-    entities, markingList, markingBook, filterNames: FILTERS,
+    entities, markingList, markingBook, relations, layers, filterNames: FILTERS,
+    predicates: () => (declaration.ok ? declaration.predicates : []),
     peers: () => declarations(),
     askKeys: ({ type, startsWith }) => fetchKeyValues({ apiBase, fetchImpl, type, startsWith, limit: 20 }),
     onAdd: (kind) => add(kind),
@@ -179,7 +186,7 @@ export async function boot(deps) {
   const declarations = () => shell.layoutNow().panels.filter((p) => p.part === 'visual');
   /** What Save writes and the next boot lays over the layout: the tree, the visuals and the markings. */
   const save = () => {
-    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list') };
+    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list') };
     try { if (storage) storage.setItem(SAVED, JSON.stringify(kept)); } catch (e) { /* not kept */ }
     return kept;
   };
@@ -190,7 +197,7 @@ export async function boot(deps) {
       if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.sf-pill, .sf-plus'))) picker.close();
     });
   }
-  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add, markingBook };
+  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add, markingBook, relations, layers };
 }
 
 // ── the browser ──

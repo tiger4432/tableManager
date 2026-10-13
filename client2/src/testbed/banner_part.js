@@ -1,14 +1,16 @@
 // The left bar (lead 10-13, Spotfire's): its chart button opens the add window beside it - a line a kind of the visual
 // part, its picture and its name, in the kinds' order; a pick adds one (the page's `onAdd`) and the window closes, as a
 // press outside it or Escape does. Its marking button opens the markings window (Spotfire's Edit › Markings): a line a
-// marking - its colour, its name, × - and «+ New marking»; × on a marking parts use names them first. The windows hang
-// over the page, not inside the bar.
+// marking - its colour, its name, × - and «+ New marking»; × on a marking parts use names them first. Its relations button
+// opens the relations window (Spotfire's Relations): a line a relation - a node type, a predicate, a node type, «Both ways»,
+// × - and one picked from the declaration's predicates. The windows hang over the page, not inside the bar.
 
 import { Panel } from '../rnd_board/panel.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const CHART = 'M4 12h4v9H4zM10 7h4v14h-4zM16 3h4v18h-4z';
 const MARKING = 'M3 17l9-9 4 4-9 9H3zM14 6l2-2 4 4-2 2z';
+const RELATION = 'M4 5h6v6H4zM14 13h6v6h-6zM10 8h4v2h-2v5h2v2h-4z';
 
 export class BannerPart extends Panel {
   constructor(host, deps) {
@@ -17,6 +19,8 @@ export class BannerPart extends Panel {
     this.kinds = d.kinds || {};
     this.onAdd = d.onAdd || (() => {});
     this.book = d.markingBook || null;
+    this.relations = d.relations || null;
+    this.predicates = d.predicates || (() => []);
     /** The window open: 'types', 'markings' or null. */
     this.open = null;
     /** A marking whose × asks first (parts use it), or one a docked panel keeps: {name, users, removed}. */
@@ -97,12 +101,13 @@ export class BannerPart extends Panel {
     };
     this.buttons = [button('types', 'Visualization types', CHART)];
     if (this.book) this.buttons.push(button('markings', 'Markings', MARKING));
+    if (this.relations) this.buttons.push(button('relations', 'Relations', RELATION));
     this.button = this.buttons[0];
     this.flyout = null;
     if (this.open) {
       const fly = el('div', 'sf-flyout');
       fly.setAttribute('role', 'menu');
-      if (this.open === 'types') this.drawTypes(fly, el, icon); else this.drawMarkings(fly, el);
+      if (this.open === 'types') this.drawTypes(fly, el, icon); else if (this.open === 'relations') this.drawRelations(fly, el); else this.drawMarkings(fly, el);
       // Beside the bar, its height: the bar's box on the screen.
       if (this.host.getBoundingClientRect) {
         const box = this.host.getBoundingClientRect();
@@ -155,6 +160,42 @@ export class BannerPart extends Panel {
     add.type = 'button';
     add.addEventListener('click', () => this.book.add());
     fly.append(add);
+  }
+
+  /** The relations window: each relation a line - its words, «Both ways», × - and the declaration's predicates to add
+   *  one from (a subject type, the predicate, an object type). */
+  drawRelations(fly, el) {
+    fly.append(el('div', 'sf-flyout__h', 'Relations'));
+    const list = this.relations.get('list');
+    const set = (next) => { this.relations.set('list', next); this.render(); };
+    list.forEach((r, k) => {
+      const line = el('div', 'sf-mark');
+      line.setAttribute('data-relation', `${r.from} ${r.predicate} ${r.to}`);
+      const words = el('span', 'sf-mark__words', `${r.from} — ${r.predicate} → ${r.to}`);
+      words.setAttribute('data-clip-ok', '');
+      line.append(words);
+      const both = el('label', 'sf-props__check');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = Boolean(r.both);
+      box.addEventListener('change', () => set(list.map((x, i) => (i === k ? { ...x, both: box.checked } : x))));
+      both.append(box, el('span', '', 'Both ways'));
+      const x = el('button', 'sf-mark__x', '×');
+      x.type = 'button';
+      x.setAttribute('aria-label', 'Delete the relation');
+      x.addEventListener('click', () => set(list.filter((_, i) => i !== k)));
+      line.append(both, x);
+      fly.append(line);
+    });
+    const choices = this.predicates().flatMap((p) => ((p.object && p.object.types) || []).flatMap((to) => (p.subjects || []).map((from) => ({ from, predicate: p.name, to }))))
+      .filter((c) => !list.some((r) => r.from === c.from && r.predicate === c.predicate && r.to === c.to));
+    const pick = el('select', 'sf-props__sel sf-mark__pick');
+    pick.setAttribute('aria-label', 'Add a relation');
+    const head = el('option', '', '+ Add a relation');
+    head.value = '';
+    pick.append(head, ...choices.map((c, k) => { const o = el('option', '', `${c.from} — ${c.predicate} → ${c.to}`); o.value = String(k); return o; }));
+    pick.addEventListener('change', () => { if (pick.value !== '') set([...list, { ...choices[Number(pick.value)], both: false }]); });
+    fly.append(pick);
   }
 
   /** Under a marking whose × asked: who uses it, and Delete / Cancel - or who keeps it. */

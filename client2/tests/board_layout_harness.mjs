@@ -21,6 +21,8 @@ const REAL = {
   visual: await import('../src/testbed/visual_part.js'),
   table: await import('../src/testbed/kinds/table.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
+  layer: await import('../src/testbed/marking_layer.js'),
+  map: await import('../src/testbed/kinds/map.js'),
   trend: await import('../src/walk/trend.js'),
   reach: await import('../src/walk/reach_table.js'),
 };
@@ -107,9 +109,12 @@ async function measure(M) {
   const hub = book.put(hubId('wafer', [['lot', 'L1']]), ['W1', 'W3']);
   const marks = { P: [['W1', SIGN.CASE], ['W2', SIGN.CASE]], Q: [['W2', SIGN.CASE], ['W3', SIGN.CASE]], E: [], H: [[hub, SIGN.CASE]] };
   const ids = ['W1', 'W2', 'W3', 'W4'];
-  const lim = (markings, must, none) => M.visual.limitRows(ids, { markings, must, none }, (n) => marks[n], book);
+  const store = new MarkingStore();
+  for (const [name, entries] of Object.entries(marks)) store.replace(name, entries);
+  const layers = new M.layer.MarkingLayers({ markings: store, hubs: book });
+  const lim = (markings, must, none) => M.visual.limitRows(ids, { markings, must, none }, layers);
   out.limit = [lim(['P', 'Q'], 'all', 'all'), lim(['P', 'Q'], 'any', 'all'), lim(['E'], 'all', 'all'), lim(['E'], 'all', 'empty'),
-    lim(['E', 'Q'], 'all', 'all'), M.visual.limitRows(ids, null, (n) => marks[n], book)];
+    lim(['E', 'Q'], 'all', 'all'), M.visual.limitRows(ids, null, layers)];
   out.hub = [lim(['H'], 'all', 'empty'), lim(['H', 'P'], 'all', 'empty')];
   // T1: the table's model - its columns by the encode, sorted both ways, blanks last, numbers by number
   const read = (v) => (v === null ? { state: 'empty' } : { state: 'one', value: v });
@@ -507,8 +512,8 @@ async function suite(M) {
     judge('G2 Save keeps the tree and each visual (a table\'s sort too); a reopen draws them', p.save, { tree: true, visuals: true, sortKept: true }),
     judge('G2b an older save (visuals by id) opens on the layout\'s tree, its visuals laid over, the chrome docked', p.older, { tree: true, x: true, docks: true }),
     judge('G5 each kind added: its id and kind, the largest split (the scatter, stacked: new on top), the new one active and walked; the add window lists them in order',
-      p.add, { ids: ['table-1', 'crossTable-1', 'scatter-2'], kinds: ['table', 'crossTable', 'scatter'], active: 'scatter-2', firstPath: '[0,0]',
-        scatterPath: '[0,1]', walked: 3, flyout: ['Table', 'Cross table', 'Scatter plot'] }),
+      p.add, { ids: ['table-1', 'crossTable-1', 'scatter-2', 'map-1'], kinds: ['table', 'crossTable', 'scatter', 'map'], active: 'map-1', firstPath: '[0,0]',
+        scatterPath: '[0,1]', walked: 4, flyout: ['Table', 'Cross table', 'Scatter plot', 'Map'] }),
     judge('L3 the Marked table: empty while nothing is picked; a hub picked - its members; N of M and the limit\'s drop, none hidden; a line pressed re-marks to it; a head sorts; the ground clears',
       p.marked, { emptyFirst: 0, viaHub: ['W1', 'W3'], counts: [2, 4, 2, 0], afterPress: ['W3'], sort: { key: 'col1', desc: false }, cleared: 0, emptyAgain: 0 }),
     judge('L4 a limited part counts the limit\'s drop apart: a marked row it leaves out is not hidden; a limiting marking changed, it folds again',
@@ -576,16 +581,16 @@ const MUTANTS = [
   { id: 'M4', what: 'a closed part\'s neighbour forgets its parent\'s share', catches: 'S4 ', file: 'rnd_board/split_tree.js', key: 'tree',
     mutate: (t) => swap(t, 'if (children.length === 1) return { ...children[0], size: node.size };', 'if (children.length === 1) return children[0];') },
   { id: 'M5', what: 'the limit\'s «none marked» branch taken when any one marking is empty', catches: 'L1 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'if (held.every((entries) => !entries.length))', 'if (held.some((entries) => !entries.length))') },
-  { id: 'M6', what: 'the limit reads a marking\'s entries as nodes - a hub never its members', catches: 'L2 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'held[test]((entries) => holds(entries, book, id))', 'held[test]((entries) => entries.some(([e]) => e === id))') },
+    mutate: (t) => swap(t, 'if (held.every((layer) => !layer.members))', 'if (held.some((layer) => !layer.members))') },
+  { id: 'M6', what: 'a layer takes a marking\'s entries as nodes - a hub never its members', catches: 'L2 ', file: 'testbed/marking_layer.js', key: 'layer',
+    mutate: (t) => swap(t, 'this.markings.entries(name).flatMap(([id]) => this.hubs.open(id))', 'this.markings.entries(name).map(([id]) => id)') },
   { id: 'M7', what: 'blank cells follow the sort\'s direction (first when descending)', catches: 'T1 ', file: 'testbed/kinds/table.js', key: 'table',
     mutate: (t) => swap(t, '      if (blank) return blank;\n', '') },
   { id: 'M8', what: 'a dock seats every part again (the page drawn anew)', catches: 'G3 ', file: 'rnd_board/grid_shell.js', key: 'shell',
     mutate: (t) => swap(t, '    this.root = dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
       '    this.render({ ...this.layoutNow(), root: dockLeaf(this.root, id, targetId, edge) });') },
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
-    mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list') };", '    const kept = declarations();') },
+    mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list') };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',
     mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });",
       "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], {}); });") },
@@ -595,7 +600,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    if (!next.has(start)) next.set(start, []);',
       '    for (const from of markingsOf(d).limit) { if (!next.has(from)) next.set(from, []); next.get(from).push([d.id, emits]); }\n    if (!next.has(start)) next.set(start, []);') },
   { id: 'M14', what: 'Save leaves the markings out - a reopen has the default two', catches: 'K5 ', file: 'testbed/main.js', key: 'main',
-    mutate: (t) => swap(t, ", markings: markingList.get('list') };", ' };') },
+    mutate: (t) => swap(t, ", markings: markingList.get('list'), relations", ', relations') },
   { id: 'M15', what: 'a marking a docked panel writes is deleted too', catches: 'K4 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, '      if (fixed.length) return', '      if (fixed.length && false) return') },
   { id: 'M16', what: 'a marked point keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
