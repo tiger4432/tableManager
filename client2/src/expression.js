@@ -359,6 +359,9 @@ const oneOf = (v, name) => {
   return values.length ? values[0] : null;
 };
 const bool = (v) => (v === true || v === false ? v : null);
+/** A value an operator cannot take as a number: not empty, and not a number-text. Spotfire refuses text × number as an
+ *  expression (observed 10-13); our columns carry no type, so the row is empty and counted (lead 10-13 ①). */
+const notNumber = (v) => !isBlank(v) && numberOf(v) === null;
 const arith = (o, a, b) => {
   const x = numberOf(a); const y = numberOf(b);
   if (x === null || y === null) return null;
@@ -400,8 +403,12 @@ function value(node, ctx) {
     case 'ref':
       if (!ctx.row) throw new ExpressionError(`[${node.name}] is a row's value - fold it (Avg([${node.name}])) or use it row by row`);
       return oneOf(cellOf(ctx.row, node.name), node.name);
-    case 'neg': { const x = numberOf(value(node.a, ctx)); return x === null ? null : -x; }
-    case 'arith': return finite(arith(node.op, value(node.a, ctx), value(node.b, ctx)));
+    case 'neg': { const a = value(node.a, ctx); if (notNumber(a)) ctx.notNumber.add(ctx.row); const x = numberOf(a); return x === null ? null : -x; }
+    case 'arith': {
+      const a = value(node.a, ctx); const b = value(node.b, ctx);
+      if (notNumber(a) || notNumber(b)) ctx.notNumber.add(ctx.row);
+      return finite(arith(node.op, a, b));
+    }
     case 'cmp': return compare(node.op, value(node.a, ctx), value(node.b, ctx));
     case 'not': { const a = bool(value(node.a, ctx)); return a === null ? null : !a; }
     case 'and': { const a = bool(value(node.a, ctx)); const b = bool(value(node.b, ctx)); return a === false || b === false ? false : a && b ? true : null; }
@@ -473,10 +480,12 @@ function caseValue(node, ctx) {
  */
 export function run(compiled, rows) {
   if (!compiled.ok) return { why: compiled.why };
-  const ctx = { rows: rows || [], row: null, memo: new Map() };
+  // notNumber: the rows an operator met a text that is not a number on - their answer is empty
+  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set() };
   try {
-    if (!compiled.perRow) return { value: finite(value(compiled.tree, ctx)) };
-    return { values: ctx.rows.map((r) => finite(value(compiled.tree, { ...ctx, row: r }))) };
+    if (!compiled.perRow) { const v = finite(value(compiled.tree, ctx)); return { value: v, notNumber: ctx.notNumber.size }; }
+    const values = ctx.rows.map((r) => finite(value(compiled.tree, { ...ctx, row: r })));
+    return { values, notNumber: ctx.notNumber.size };
   } catch (e) {
     if (e instanceof SeveralValues) return { several: e.message };
     if (e instanceof ExpressionError) return { why: e.message };

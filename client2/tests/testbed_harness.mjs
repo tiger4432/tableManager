@@ -179,6 +179,8 @@ async function measure(M) {
   };
   out.exprCross = [exprCross(exprSlot('Count()')) === exprCross(null), exprCross(exprSlot('Count([product])')) === exprCross({ ...product, reduce: 'Count' }),
     M.cross.title({ rows: lot, columns: product, cells: exprSlot('Avg([wafer])') })];
+  // T30: an operator over a text that is not a number - the row empty and said so; a list is several, an empty value empty
+  out.notNumber = ['W1', 'W3', 'W6'].map((id) => { const r = readSlot(index, inside, id, exprSlot('[product] * 2')); return [r.state, Boolean(r.notNumber)]; });
   // T29: a filter condition on an expression slot carries the expression and is judged by it; two expression
   //      conditions on one row type stay two
   const cA = M.cond.conditionFor({ row: 'wafer', slot: isA, words: isA.expr, values: [[1, 2], [0, 2]], empty: 1 });
@@ -330,6 +332,11 @@ async function parts(M) {
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, startDropped: 2, marked: 1, columns: 1, source: 'wafer', cut: false })];
+  // T30: the bottom line counts the drawn rows an expression left empty on a text (W1 W2 W4 W5 - W3 several, W6 empty)
+  const nn = seat(M, scatterDecl({ id: 'S9', encode: { x: { expr: '[product] * 2', words: ['[product] * 2'] }, y: press } }));
+  await settle();
+  out.notNumberBar = [nn.stats.get('S9').notNumber, M.status.statusWords(nn.stats.get('S9')).filter((w) => w.includes('not a number')),
+    M.status.statusWords({ rows: 1, of: 1, notNumber: 1, marked: 0, columns: 1 }).filter((w) => w.includes('not a number'))];
   const cutAnswer = { ...ANSWER, truncated: { ...ANSWER.truncated, nodes: true } };
   const g = seat(M, scatterDecl(), { answer: cutAnswer });
   await settle();
@@ -474,6 +481,8 @@ function suite(out, page, saved, counted) {
   eq('T27 an expression slot reads through the calculator: a row\'s own value row by row (a list several, none empty, not walked missing); folded (a list its items); a cross cell as the table with no cell slot and as the slot counted; the title its text',
     [out.exprReads, out.exprFolds, out.exprCross],
     [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
+  eq('T30 an operator over a text that is not a number: the row empty and marked; a list several; an empty value empty, not marked; the bottom line counts the drawn rows so marked',
+    [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
@@ -626,6 +635,10 @@ MUTANTS.push(
     mutate: (t) => swap(t, "  if (has(node.attributes)) return { on: 'node', name };", "  if (has(node.attributes)) return { on: 'label', name: 'name' };") },
   { id: 'M42', what: 'the picker sets an expression it refused', catches: 'T28', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '        if (said) { why.textContent = said; return; }', '        if (said) { why.textContent = said; }') },
+  { id: 'M44', what: 'the part counts no row an expression could not take as a number', catches: 'T30', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,', '      notNumber: 0,') },
+  { id: 'M45', what: 'the bottom line does not say the rows that are not a number', catches: 'T30', file: 'testbed/status_part.js',
+    mutate: (t) => swap(t, "  if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);\n", '') },
   { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
     mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'a kind handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/kinds/scatter.js',

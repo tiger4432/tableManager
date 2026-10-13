@@ -3387,16 +3387,27 @@
       "expect": 3,
       "basis": "decided",
       "cite": "lead 10-13: a text is a number when, trimmed, it is only sign, digits, a decimal point and an exponent; else it is text; an empty text is empty and is not counted"
-    }
-  ],
-  "unsettled": [
+    },
     {
       "id": "text.arithmetic",
-      "expr": "[x] * 2 over \"29.50\" and \"29 mm\"",
-      "question": "a number-text takes part as its number (59); a text that is not one makes the row empty?",
-      "why": "the 10-13 text rule says what a number-text is, and a numeric fold leaves other text out; it does not say what arithmetic does with text"
+      "expr": "[x] * 2",
+      "rows": [
+        {
+          "x": "29.50"
+        },
+        {
+          "x": "29 mm"
+        }
+      ],
+      "expect_rows": [
+        59,
+        null
+      ],
+      "basis": "decided",
+      "cite": "observed 10-13 in the owner's Spotfire Analyst 14.4.1 (Add calculated column): [Country Code] * 2 (a String column) and \"29 mm\" * 2 are refused as expressions (#Error, OK off) while [Population] * 2 answers Real - Spotfire refuses by type. Our columns carry no type, so the refusal falls row by row (lead 10-13): a number-text takes part as its number, a text that is not one makes the row empty, and the screen counts those rows («N rows not a number»)"
     }
   ],
+  "unsettled": [],
   "out_of_edition": [
     {
       "names": [

@@ -545,11 +545,11 @@
 
 - **무엇** — 소유자 «문법 하나 · 계산기 둘»(총괄 0b7d84462 · afcb79f14, 안 ㄱ 10-13)의 화면 계산기입니다. 시험대 부품의 알약 고르개에서 «Custom expression…» 을 누르면 식 한 줄 칸이 열리고, 스팟파이어 식(집계 · If · Case · 비교 · 논리 · 기본 수학)을 적으면 점 · 칸 안에 든 행들로 계산해 그립니다. 시험 문제 `contracts/expression/vectors.json`(서버 계산기도 같은 파일로 채점)을 그대로 풀어 전부 맞습니다.
 - **화면에서** — 알약 → «Custom expression…» → 칸에 식 → Enter 또는 «OK». 못 읽는 식은 칸 밑에 사유 한 줄이고 칸은 그대로입니다 — 예 «The expression ends too soon» · «No value named nope on wafer» · «NormDist is not in this edition». 알약 · 제목에는 식 글이 그대로 나옵니다.
-- **쓰는 법** — `[이름]` 은 그 행 노드의 자기 값입니다(속성 · 키, `[name]` 은 이름표). 예 `Avg([void_ratio])` · `If([size] > 10, 1, 0)` · `case [recipe] when "A" then 1 else 0 end`. 산점도의 점은 그 행 하나로, 크로스 테이블의 칸 · 합계는 그 칸의 행 전부로 계산합니다. 값을 여럿 가진 행을 집계 없이 쓰면 그 점은 그리지 않습니다(값 여럿).
+- **쓰는 법** — `[이름]` 은 그 행 노드의 자기 값입니다(속성 · 키, `[name]` 은 이름표). 예 `Avg([void_ratio])` · `If([size] > 10, 1, 0)` · `case [recipe] when "A" then 1 else 0 end`. 산점도의 점은 그 행 하나로, 크로스 테이블의 칸 · 합계는 그 칸의 행 전부로 계산합니다. 값을 여럿 가진 행을 집계 없이 쓰면 그 점은 그리지 않습니다(값 여럿). 연산자(`+ - * / % ^`, 앞의 `-`)가 수가 아닌 글자(«29 mm»)를 만나면 그 행은 빈 값이고, 바닥줄에 «N rows not a number» 가 섭니다 — 스팟파이어는 글자 칸 × 수를 식에서 거절하지만(소유자 스팟파이어에서 관찰, 10-13) 우리 칸에는 타입이 없어 행마다 판단합니다. 수 글자(«29.50»)는 그 수로 셈합니다.
 - **필요한 조건** — 클라 빌드만.
 - **바뀐 동작** — 시험대의 접기(Count · UniqueCount · Sum · Avg · Min · Max · Median · Latest)는 계산기의 함수 표를 부릅니다 — 답은 같습니다. 글로 적힌 수는 앞뒤 빈칸을 떼고 «부호 · 숫자 · 소수점 · 지수»만일 때 수입니다(총괄 10-13). 전에 수로 읽히던 `0x10` 같은 글은 이제 글이고, 걷기 표 · 트렌드도 같은 함수(`numberOf`)라 같이 바뀝니다. R&D 보드의 집계 알약도 스팟파이어 철자입니다(Median · Avg · Sum · Min · Max · Count · UniqueCount, 소유자가 정한 이름 — 총괄 fceba46a7). 옛 이름(median · mean · sum · min · max · count · distinct)으로 적힌 선언 · 마킹은 새 이름으로 읽힙니다.
 - **아직 아님** — `[길.이름]` · 타입("키") · Reach · 칠 때 추천 목록은 다음 착지입니다. 분포 함수(NormDist 등)는 둘째 판입니다.
-- **자세히** — 이 항목과 같은 커밋 · `contracts/expression/vectors.json` · `task/SPOTFIRE_FUNCTIONS.md` · 하니스 `client2/tests/expression_vectors_harness.mjs` · `testbed_harness` T27 · T28.
+- **자세히** — 이 항목과 같은 커밋 · `contracts/expression/vectors.json` · `task/SPOTFIRE_FUNCTIONS.md` · 하니스 `client2/tests/expression_vectors_harness.mjs` · `testbed_harness` T27 · T28 · T30 · 스팟파이어 관찰 스샷은 클라 레인 보고(총괄 채널).
 
 ---
 
