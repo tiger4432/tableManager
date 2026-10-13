@@ -416,6 +416,13 @@ COUNT_RECOUNT_DEFAULT = 30.0
 #: `invalidate_table_cache` (총괄 0fd18ae19 1). null or 0: no age.
 COUNT_MAX_AGE_SETTING = "count_max_age_seconds"
 COUNT_MAX_AGE_DEFAULT = 300.0
+#: A grid read whose id scan took longer asks for an automatic index of its sort and equal/range filter columns
+#: (총괄 ff7890892). null or 0: none asked.
+GRID_AUTO_INDEX_SETTING = "grid_auto_index_after_seconds"
+GRID_AUTO_INDEX_DEFAULT = 1.0
+#: How many automatic indexes one table may hold - past it none is built, one line says so. 0: none.
+AUTO_INDEX_PER_TABLE_SETTING = "auto_index_per_table"
+AUTO_INDEX_PER_TABLE_DEFAULT = 10
 #: Seconds between two looks at every raws/ subfolder (총괄 2f487efb5). Not a positive number: the default.
 SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
 SUBFOLDER_RECHECK_DEFAULT = 30.0
@@ -457,6 +464,20 @@ def count_max_age_seconds(settings=None):
     """Seconds a kept whole count is read before it is due again, None = no age."""
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, COUNT_MAX_AGE_SETTING, COUNT_MAX_AGE_DEFAULT)
+
+
+def grid_auto_index_after(settings=None):
+    """Seconds a grid read's id scan may take before it asks for an automatic index, None = never."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, GRID_AUTO_INDEX_SETTING, GRID_AUTO_INDEX_DEFAULT)
+
+
+def auto_index_per_table(settings=None):
+    """How many automatic indexes one table may hold - a whole number from 0; anything else reads as the default."""
+    settings = load_ingestion_settings() if settings is None else settings
+    value = settings.get(AUTO_INDEX_PER_TABLE_SETTING, AUTO_INDEX_PER_TABLE_DEFAULT)
+    good = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    return value if good else AUTO_INDEX_PER_TABLE_DEFAULT
 
 
 def grid_read_timeout(settings=None):

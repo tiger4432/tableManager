@@ -1668,7 +1668,10 @@ INDEX_UNKNOWN = "unknown"
 _HELD = (
     "SELECT c.relname AS name, t.relname AS table_name, i.indisvalid AS valid,"
     "       i.indisprimary AS is_primary, pg_relation_size(c.oid) AS size_bytes, s.idx_scan AS scans,"
-    "       obj_description(c.oid, 'pg_class') AS said"
+    "       obj_description(c.oid, 'pg_class') AS said,"
+    "       ARRAY(SELECT a.attname FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, n)"
+    "             LEFT JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum"
+    "             WHERE k.n <= i.indnkeyatts ORDER BY k.n) AS columns"
     "  FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_class t ON t.oid = i.indrelid"
     "  LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.indexrelid"
     " WHERE t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
@@ -1765,9 +1768,9 @@ def sort_column_states(engine, table, columns, keys, tables=None):
 INDEX_NAME_LIMIT = 63
 
 
-def table_index_name(table, columns):
-    """idx_<table>_<columns> - the same declaration always gets the same name."""
-    name = "idx_%s_%s" % (table, "_".join(columns))
+def table_index_name(table, columns, prefix="idx_"):
+    """<prefix><table>_<columns> - the same declaration always gets the same name."""
+    name = "%s%s_%s" % (prefix, table, "_".join(columns))
     if len(name) <= INDEX_NAME_LIMIT:
         return name
     import hashlib
@@ -1928,9 +1931,12 @@ def index_states(engine, tables=None, static=True):
         return {"declared": declared, "outside": []}
     ledger = _ledger_index_rows(engine) if static else []
     models_tables = [table.name for table in model_tables()] if static else []
+    if tables is None:
+        from database import crud
+        tables = crud.TABLE_CONFIG
     with engine.connect() as connection:
         held = {row.name: row for row in connection.execute(
-            text(_HELD), {"tables": models_tables + sorted({row["table"] for row in declared})})}
+            text(_HELD), {"tables": models_tables + sorted({row["table"] for row in declared} | set(tables or {}))})}
         building = _building(connection)
         trigram = connection.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")).first() is not None
     for row in declared:
@@ -1944,11 +1950,18 @@ def index_states(engine, tables=None, static=True):
                 row["failure"] = found.said[len(INDEX_FAILED_SAID):]
         elif row.get("search") and (row.get("refused") or not trigram):
             row.update(failure=row.get("refused") or PG_TRGM_MISSING, unbuildable=True)
+    auto = [dict(name=name, table=row.table_name, columns=list(row.columns or ()), where=None, include=[], using=None,
+                 search=False, unique=False, constraint=False, purpose="auto (%s)" % auto_index_why(row.said),
+                 serves=None, source="auto", building=building.get(name),
+                 state=INDEX_BUILDING if building.get(name) else INDEX_PRESENT if row.valid else INDEX_INVALID,
+                 failure=(row.said or "")[len(INDEX_FAILED_SAID):] if (row.said or "").startswith(INDEX_FAILED_SAID)
+                 else None, size_bytes=row.size_bytes, scans=row.scans)
+            for name, row in sorted(held.items()) if name.startswith(AUTO_INDEX_PREFIX)]
     outside = [{"name": name, "table": row.table_name, "valid": row.valid, "building": building.get(name),
                 "size_bytes": row.size_bytes, "scans": row.scans}
                for name, row in sorted(held.items())
-               if not row.is_primary and row.table_name in models_tables]
-    return {"declared": declared + ledger, "outside": outside}
+               if not row.is_primary and row.table_name in models_tables and not name.startswith(AUTO_INDEX_PREFIX)]
+    return {"declared": declared + auto + ledger, "outside": outside}
 
 
 def _ledger_index_rows(engine):
@@ -2029,6 +2042,117 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
 #: ingestion_settings.json - whether the index work builds the static models' declared indexes the
 #: database lacks (the default) or only names them (총괄 e0e8020fb).
 BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
+
+# --------------------------------------------------------------- the product's automatic indexes
+# 🔴 THE COLUMNS IN USE, AND ONLY THEM (총괄 ff7890892, 소유자 「쓰이는 칸만」 - every column cost +14~17 % a chain write
+#    and 5.7 times the table's disk): a decide rule's judgment key, and a grid sort or equal/range filter that was slow.
+#    (columns, row_id), named `ix_auto_<table>_<columns>` and built by the chain worker's index line through
+#    `_build_one`, as a declared one is. No table records them: the database's list is the state - the prefix says the
+#    product built it, the comment says why («auto: decide key»).
+AUTO_INDEX_PREFIX = "ix_auto_"
+AUTO_SAID = "auto: "
+AUTO_DECIDE_KEY, AUTO_SLOW_SORT, AUTO_SLOW_FILTER = "decide key", "slow sort", "slow filter"
+
+
+def auto_index_name(table, columns):
+    return table_index_name(table, columns, AUTO_INDEX_PREFIX)
+
+
+def auto_index_ddl(table, columns):
+    """The automatic index over `columns` then `row_id`, CONCURRENTLY and IF NOT EXISTS."""
+    quoted = ['"%s"' % str(column).replace('"', '""') for column in [*columns, "row_id"]]
+    return 'CREATE INDEX CONCURRENTLY IF NOT EXISTS "%s" ON "%s" (%s)' % (
+        auto_index_name(table, columns), str(table).replace('"', '""'), ", ".join(quoted))
+
+
+def auto_index_why(said):
+    """What an automatic index's comment says it is for - «decide key» · «slow sort» · «slow filter», or «unknown»."""
+    return said[len(AUTO_SAID):] if (said or "").startswith(AUTO_SAID) else "unknown"
+
+
+def auto_index_serves(index, columns, why):
+    """Does `index` (a catalogue row) already serve what an automatic index over `columns` is wanted for: a sort needs
+    the rows in (columns, row_id) order (1M 판: the column alone 724 ms · with row_id 3.3 ms), an equal or range
+    lookup the columns leading."""
+    return orders_rows_by(index, [*columns, "row_id"] if why == AUTO_SLOW_SORT else list(columns))
+
+
+def decide_key_wants(known_tables=None):
+    """[(table, columns, AUTO_DECIDE_KEY)] - each decide rule's judgment key on its source table, from the rules as
+    the chain worker stands them (`enrich_declarations.declarations`)."""
+    from chain import enrich_declarations
+    from database import crud
+
+    wants = []
+    for rule in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG if known_tables is None
+                                                 else known_tables):
+        table, columns = str(rule.get("source_table") or "").strip(), [str(c) for c in rule.get("decision_key") or ()]
+        if table and columns and (table, columns, AUTO_DECIDE_KEY) not in wants:
+            wants.append((table, columns, AUTO_DECIDE_KEY))
+    return wants
+
+
+def ensure_auto_indexes(engine, wanted, say=print, say_every=INDEX_WAIT_SAY_SECONDS, decide_keys=None, cap=None):
+    """Each of `wanted` [(table, columns, why)] built as an automatic index, one at a time - unless an index already
+    serves it, its table is a view or has no row_id, or the table holds `cap` automatic indexes (one line). With
+    `decide_keys` (the whole set the rules want now) an automatic index made for a decide key no rule wants any more
+    is dropped; one made for a slow column stays - it is its own record (RUN.md says how to drop it).
+    -> {name: INDEX_BUILT | INDEX_PRESENT | INDEX_FAILED} of what was built."""
+    from database import crud
+    from parsers.directory_watcher import auto_index_per_table
+
+    if engine.dialect.name != "postgresql":
+        return {}
+    cap = auto_index_per_table() if cap is None else cap
+    done = {}
+    for table, columns, why in list(wanted) + list(decide_keys or ()):
+        entry = crud.TABLE_CONFIG.get(table) or {}
+        name = auto_index_name(table, columns)
+        if name in done or entry.get("kind") == "view":
+            continue
+        with engine.connect() as connection:
+            held = catalogue_indexes(connection.connection.dbapi_connection, table)
+            has_row_id = connection.execute(text(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :t "
+                "AND column_name = 'row_id'"), {"t": table}).first() is not None
+        if not has_row_id or any(auto_index_serves(index, columns, why) for index in held):
+            continue
+        made = sum(1 for index in held if index["name"].startswith(AUTO_INDEX_PREFIX))
+        if made >= cap:
+            say("[Indexes] %s on %s is not built: %s already holds %d automatic indexes (auto_index_per_table %d) - "
+                "%s on %s" % (name, table, table, made, cap, why, ", ".join(columns)))
+            continue
+        done[name] = _build_one(engine, auto_index_ddl(table, columns), {"name": name, "table": table}, say, say_every)
+        if done[name] == INDEX_BUILT:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                connection.execute(text('COMMENT ON INDEX "%s" IS :why' % name.replace('"', '""')),
+                                   {"why": AUTO_SAID + why})
+    if decide_keys is not None:
+        wanted_names = {auto_index_name(table, columns) for table, columns, _why in decide_keys}
+        with engine.connect() as connection:
+            stale = [row.name for row in connection.execute(text(_HELD), {"tables": sorted(crud.TABLE_CONFIG)})
+                     if row.name.startswith(AUTO_INDEX_PREFIX) and auto_index_why(row.said) == AUTO_DECIDE_KEY
+                     and row.name not in wanted_names]
+        for name in stale:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                connection.execute(text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name.replace('"', '""')))
+            say("[Indexes] %s dropped - no decide rule keys on it any more" % name)
+    return done
+
+
+def ensure_auto_indexes_sync(db_session_factory, wanted, say, decide=True):
+    """The automatic indexes (`ensure_auto_indexes`) on the chain worker's index line: `wanted` (a slow grid column's
+    INDEX_WANTED), and with `decide` every decide rule's key as the rules stand. Contained, as the declared ones' work."""
+    try:
+        db = db_session_factory()
+        try:
+            engine = db.get_bind()
+        finally:
+            db.close()
+        ensure_auto_indexes(engine, wanted or (), say=say, decide_keys=decide_key_wants() if decide else None)
+    except Exception as exc:                                            # noqa: BLE001
+        say("[Indexes] the automatic indexes were not compared (this process goes on): %s: %s"
+            % (type(exc).__name__, exc))
 
 
 def ensure_model_indexes_sync(db_session_factory, sources, say):
