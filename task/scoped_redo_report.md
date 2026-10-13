@@ -81073,3 +81073,37 @@ RUN.md    «큰 표 검색» 절 고침 · RELEASE_LOG «고침 —» 항목(그
 1. ㄱ 이면 화면의 «쪽 번호로 바로 가기»를 «앞 · 다음 쪽만»으로 바꿔도 될까요? 소유자 판정이 필요한 화면 동작입니다.
 2. ㄴ 의 풀 크기를 걷기 풀(walk_processes)과 같은 칸으로 둘까요, 따로 둘까요?
 3. 이번 재기에는 운영 모양 판의 «층 · 원장을 400만에 채운 판»이 없습니다. 층 문장은 박스 53.6만에서만 쟀습니다(쪽마다 행 1,000 개 몫, 행 수와 무관). 400만에 층까지 채워 다시 잴까요? cell_sources 약 2,560 만 행이라 판 짓기에 시간과 디스크가 듭니다.
+
+
+---
+
+## [구현자 A -> 총괄] 10-13 — 걷기 보관 고침(b47c7c8a3) 착지 c477b5745 · 그리드 세기 고침(0fd18ae19) 착지 796f64850
+
+**걷기 보관 — impl-walk-keep2 c477b5745 (b47c7c8a3 위로 다시 올림)**
+
+- 1: 코드는 그대로이고 문장만 고쳤습니다. 「가장 새 걷기와 걷는 중인 걷기를 뺀 나머지가 약 600 MB, 가장 새 걷기는 씨앗 수 × 닿음만큼(씨앗 500 · 4 쪽 455 MB)」, 합계는 × walk_processes(0 이면 웹 프로세스 하나)로 적었습니다. 「walk_live_nodes 를 낮춰도 큰 걷기 하나에는 안 듣는다」도 같이 적었습니다. 고친 곳은 WALK.md · ingestion_settings.md · RUN.md · RELEASE_LOG · sample 설명 · process_pool 상수 주석입니다.
+- 2: 칸 test_a_walk_asked_without_rest_outlives_its_minutes 를 넣었습니다. 변이 K27(물을 때 쓴 시각을 안 찍음)은 빨강입니다.
+- 3 · 4 · 5 · 7: server updated 를 문서 세 곳에, CODE_MAP 에 다섯 항목을, GONE_SAID 200 을 WALK.md · RUN.md 에 적었고, 잔해 한 줄을 지웠습니다.
+- 6: recycle() 과 end_kept_walks 를 따로 감쌌고, 실패 로그가 각자 자기 말로 나옵니다. 칸 하나에 변이 둘, 둘 다 빨강입니다.
+- 게이트: 걷기 세 파일 90 초록, 변이 3/3 빨강.
+
+**그리드 세기 — impl-grid-count 796f64850 (0fd18ae19 위로 다시 올림)**
+
+| 항목 | 한 것 | 게이트 |
+|---|---|---|
+| 1 나이 상한 | count_max_age_seconds(기본 300, null/0 = 없음). 요청이 읽는 표 전체 수가 이보다 늙었으면 일꾼 차례에 넣습니다. 요청은 안 셉니다. 안 물어지는 표는 다시 세지 않습니다 | 칸 하나 · 변이 빨강 |
+| 2 실패 상태 | 실패한 세기는 failed {reason, at} 로 남고, 지난 수(없으면 null)를 지킵니다. 세기처럼 간격을 지켜, 물어지면 count_recount_seconds 마다 다시 셉니다. [Count] 줄도 시도마다 한 줄입니다 | 칸 하나 · 변이 넷 빨강 |
+| 3 거른 세기 상한 | 거른 세기는 제 세션에서 read_limit(grid_read_timeout()) 아래로, 필터 종류와 무관하게 돕니다. 넘으면 failed «count stopped after N s» 이고 요청은 계속됩니다 | PG 칸 하나 · 변이 둘 빨강 |
+| 4 다시 셀수록 느림 | 원인은 autovacuum 전의 죽은 튜플과 쓰기가 끈 visibility map 칸입니다. 표 전체 세기가 Index Only Scan 이라 그 칸마다 heap 을 읽습니다 | 아래 잰 수 |
+
+- 4 의 잰 수(assy_test 스크래치, 30 만 행, 3 만 행 쓰기 네 번, autovacuum 끔 · 박스 판, 운영 주장 아님): heap fetches 0 → 31만 → 36만 → 39만 → 42만, 버퍼 239 → 49,209. VACUUM 뒤 0 · 382 입니다. 초는 이 판에서 고르게 늘지 않았습니다(0.19 → 0.73~0.94 s, 흔들림). RUN.md 「답의 뜻」에 한 줄로 넣었습니다.
+- 게이트: 세기 파일 + 그리드 읽기 파일 44 초록(PG 칸 포함), 변이 7/7 빨강. SQLite 그리드 모집단 20 파일에서 빨강은 test_api 둘뿐이고, main 에서도 빨강입니다.
+- 문서: api_documentation §5.1-bis(모양과 상태) · frontend §3.2 · CODE_MAP(table_total · /data/count · match_count.js) · backend · RUNTIME_MAP · ingestion_settings · RUN.md(「한 번도 못 센 표」 문장, 재기동 뒤 새로고침 한 줄, 게이트 문장 「세는 것은 10,001 까지, 훑기는 읽기 상한까지」) · RELEASE_LOG 항목 하나(서버와 화면).
+
+**알려 드릴 것**
+1. 3 때문에 바뀐 동작이 하나 있습니다. 검색 · 무늬 필터의 /data/count 가 상한을 넘으면 이제 503 이 아니라 200 + failed 입니다(결정 문장 「필터 종류와 무관하게 … 넘으면 실패 칸」대로). 행 읽기 503 과 「add a search index」 문장은 그대로입니다. 이것을 단언하던 PG 칸(test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean)을 그에 맞게 고쳤습니다.
+2. 내보내기의 세기는 그대로 그 요청 안에서 상한 없이 셉니다. 지시가 그리드 세기를 말해서 손대지 않았습니다.
+3. RELEASE_LOG 클라 「(화면)」 항목과 목차 줄은 클라 레인에 지워 달라고 했습니다. 화면 낱말 중 Next 와 Count failed 는 클라 5 · 6 이 지을 글자입니다.
+4. frontend §3.2 와 CODE_MAP match_count.js 절은 design-grid-count-r2 의 코드를 읽고 적었습니다. 클라 5 · 6 에서 이름이 바뀌면 클라 레인이 같이 고치기로 했습니다.
+
+다음은 그리드 ㄱ(impl-grid-keyset)입니다. 400만 판 재기와 문서까지는 끝났고, 묶어서 푸시한 뒤 보고드리겠습니다.
