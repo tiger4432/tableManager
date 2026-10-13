@@ -63,8 +63,11 @@ const wideNet = korean.filter((s) => WIDE.test(s));
 console.log('\n[1] the instrument can still see');
 {
   ok('the three files are read at all', all.length > 200, `saw ${all.length}`);
+  // ⚠️ English DOES shrink it (owner: UI strings in English): 41 -> 40 when the map-key list's lines went English
+  //    (63e6deda4). The lead's queued pass over the map editor's Korean takes this population toward 0 - re-aim this
+  //    harness at English failure copy in that pass; until then the floor is the count as measured.
   ok('failure copy is found, and fixing a shape does not shrink this',
-    failureCopy.length > 40, `saw ${failureCopy.length}`);
+    failureCopy.length >= 40, `saw ${failureCopy.length}`);
   ok('the imperative test fires on an instruction', IMPERATIVE.test('다시 시도해 주세요'));
   ok('...and not on a bare reason', !IMPERATIVE.test('확인 중에 실패했습니다'));
 }
