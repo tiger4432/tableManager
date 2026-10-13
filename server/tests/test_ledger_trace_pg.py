@@ -792,7 +792,8 @@ ATTACH_ROWS = [dict(row_id=1, die="D0", defect_id="F1", size=1.5, kind="void", s
                     seen_at=datetime(2026, 5, 1, 0, 0, 1, 500000, tzinfo=timezone.utc)),
                dict(row_id=3, die="D0", defect_id="F3", size=None, kind=" void ", slot=4.0),
                dict(row_id=4, die="D1", defect_id="F4", size=7.0, kind="void", slot=7.5),
-               dict(row_id=5, die="D1", defect_id=" ", size=1.0, kind="void", slot=3.0)]
+               dict(row_id=5, die="D1", defect_id=" ", size=1.0, kind="void", slot=3.0),
+               dict(row_id=6, die="D1", defect_id="F6", size=float("nan"), kind=" \t ", slot=9.0)]
 
 
 def _said(atoms):
@@ -821,15 +822,18 @@ def test_attached_rows_read_on_real_sql_are_the_atoms_the_rows_give(ledger):
             out = lookup.claims_for_entities([("die", {"die": "D1"}), ("other", {"die": "D0"}),
                                               ("slot_t", {"slot": "3"}), ("slot_t", {"slot": "7.5"})], "outgoing", 100)[0]
             back = lookup.claims_for_entities([("defect_row", {"defect_id": "F4"})], "incoming", 100)[0]
-            values = lookup.claims_for_entities([("defect_row", {"defect_id": d}) for d in ("F1", "F2", "F3", "F4")],
+            values = lookup.claims_for_entities([("defect_row", {"defect_id": d}) for d in ("F1", "F2", "F3", "F4", "F6")],
                                                 "outgoing", 100, follow=["register"])[0]
         asked = [{"die": "D1"}, {"slot": "3"}, {"slot": "7.5"}]
         edges = [a for a in python if a.predicate in ("has_defect", "in_slot") and a.subject_keys in asked]
-        assert len(out) == 4, "canary: D1 one, slot 3 two, slot 7.5 one - D0 is asked only as another type"
+        assert len(out) == 5, "canary: D1 two, slot 3 two, slot 7.5 one - D0 is asked only as another type"
         assert _said(out) == _said(edges)
         assert _said(back) == _said([a for a in edges if a.object_payload["keys"] == {"defect_id": "F4"}])
-        rows = [{"defect_id": d} for d in ("F1", "F2", "F3", "F4")]
+        rows = [{"defect_id": d} for d in ("F1", "F2", "F3", "F4", "F6")]
         assert _said(values) == _said([a for a in python if a.predicate == "register" and a.subject_keys in rows])
+        (blank,) = [a.object_payload["qualifiers"] for a in values
+                    if a.subject_keys == {"defect_id": "F6"} and a.source_who == "defects"]
+        assert blank == {"size": None, "kind": None, "seen_at": None}, "spaces only and NaN are blank, as the write door says"
     finally:
         with ledger.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS pg_attach_rows"))

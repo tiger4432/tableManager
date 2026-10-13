@@ -701,8 +701,11 @@ def attach_atoms(source_id, plan, rows, world=None):
 
 def _attached_value(value, kind):
     """A row's cell as its column's catalog type says (총괄 10-13): a number a number (whole, without its fraction), a time
-    the answer's instant (`_instant`), a blank null, text as stored. `_value_sql` says the same in SQL."""
-    if value is None or (isinstance(value, str) and not value.strip()):
+    the answer's instant (`_instant`), a blank null - blank as the write door says it (`crud.is_blank_key_part`: spaces
+    only, NaN, inf) - text as stored. `_value_sql` says the same in SQL."""
+    from database import crud
+
+    if crud.is_blank_key_part(value):
         return None
     if kind == "number":
         return int(value) if isinstance(value, float) and value.is_integer() else value
@@ -742,12 +745,13 @@ def _value_sql(column, kind):
     """`_attached_value` of a column of the row `r`, in SQL, as jsonb."""
     cell = "r." + _quoted(column)
     if kind == "number":
-        return f"to_jsonb({cell})"
+        return (f"CASE WHEN {cell} IN (CAST('NaN' AS float8), CAST('Infinity' AS float8), CAST('-Infinity' AS float8)) "
+                f"THEN NULL ELSE to_jsonb({cell}) END")
     if kind == "datetime":
         return (f"to_jsonb(to_char({cell} AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS') || CASE WHEN "
                 f"extract(microseconds FROM {cell})::bigint %% 1000000 <> 0 THEN to_char({cell} AT TIME ZONE 'UTC', '.US') "
                 f"ELSE '' END || '+00:00')")
-    return f"CASE WHEN btrim({cell}::text) = '' THEN NULL ELSE to_jsonb({cell}::text) END"
+    return f"CASE WHEN {cell}::text ~ '^[[:space:]]*$' THEN NULL ELSE to_jsonb({cell}::text) END"
 
 
 def _atom_from_row(row):
