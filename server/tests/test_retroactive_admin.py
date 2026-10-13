@@ -610,7 +610,8 @@ def _backfill_layer_rows(db):
 
     return db.query(models.CellSource).filter(
         models.CellSource.table_name == "retro_enrich_derived",
-        models.CellSource.source_name == enrichment.backfill.SOURCE_NAME).all()
+        models.CellSource.source_name == crud.CHAIN_SOURCE,
+        models.CellSource.updated_by == enrichment.config.synthesized_rule_names("retro_enrich_rule")[0]).all()
 
 
 class TestTheEnrichmentBackfillRouteIsReachable:
@@ -818,15 +819,13 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         db.expire_all()
         assert len(_derived_rows(db)) == 2
         assert _backfill_layer_rows(db), (
-            "rows exist but carry no enrichment_backfill layer")
+            "rows exist but carry no layer of the decide's rule")
 
     def test_the_backfill_layer_can_never_outrank_a_human(self, retro_enrich_env):
         """Provenance, asserted on the ADMIN path rather than only the CLI's.
 
-        `enrichment_backfill` is deliberately absent from `SOURCE_PRIORITY`, so it
-        resolves to 99 and loses to `user` (0). Routing the operation through an
-        admin button must not change that - the button is a new caller, not a new
-        privilege.
+        The backfill writes the chain's layer (4), which loses to `user` (0). Routing the operation through an
+        admin button must not change that - the button is a new caller, not a new privilege.
         """
         from chain import enrichment
 
@@ -839,9 +838,8 @@ class TestTheEnrichmentBackfillRouteIsReachable:
 
         layer = _backfill_layer_rows(db)
         assert layer, "non-vacuous: the run wrote no layer at all"
-        assert {s.source_name for s in layer} == {enrichment.backfill.SOURCE_NAME}
-        assert crud.get_source_priority(enrichment.backfill.SOURCE_NAME) == 99
-        assert crud.get_source_priority("user") == 0
+        assert {s.source_name for s in layer} == {crud.CHAIN_SOURCE}
+        assert crud.get_source_priority(crud.CHAIN_SOURCE) > crud.get_source_priority("user") == 0
 
     def test_a_failed_backfill_does_not_kill_the_scheduler(self, retro_enrich_env):
         out = retroactive.execute({"run_id": "x", "op": "enrichment_backfill",
