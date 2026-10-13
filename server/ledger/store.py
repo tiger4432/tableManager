@@ -36,6 +36,8 @@ from __future__ import annotations
 import json
 import logging
 
+from psycopg2 import errors
+
 from . import schema
 from .envelope import ROW_COLUMNS
 
@@ -82,6 +84,11 @@ _VERSION_GUARD_NEEDS_CURSOR = (
     "enforce_translator_version requires advance_cursor=True: the version guard is a "
     "condition on the cursor statement, so a write that skips that statement cannot "
     "honour it. A scoped redo re-translates on purpose and asks for neither.")
+
+
+class RowRefKeyTooLong(Exception):
+    """A row-index key over the database's index row limit - a group_by molecule's whole row list in `source_raw_ref`
+    (총괄 f7394bfdf). The source's refusal, not its event's failure (`followup`); the short form refuses group_by."""
 
 
 class CursorVersionConflict(RuntimeError):
@@ -664,12 +671,15 @@ class LedgerStore:
                     f"DELETE FROM {self.names.row_ref} "
                     "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
                     (relation, source, sorted(row_ids)))
-            execute_values(
-                cursor,
-                f"INSERT INTO {self.names.row_ref} "
-                "(relation, row_id, source_who, source_raw_ref) VALUES %s "
-                "ON CONFLICT DO NOTHING",
-                rows)
+            try:
+                execute_values(
+                    cursor,
+                    f"INSERT INTO {self.names.row_ref} "
+                    "(relation, row_id, source_who, source_raw_ref) VALUES %s "
+                    "ON CONFLICT DO NOTHING",
+                    rows)
+            except errors.ProgramLimitExceeded as exc:
+                raise RowRefKeyTooLong(str(exc).strip().splitlines()[0]) from exc
             # (나) the row as the source read it: `columns` are what it reads. Not given
             # (the index backfill) leaves the print NULL - unknown, counted apart.
             if columns:

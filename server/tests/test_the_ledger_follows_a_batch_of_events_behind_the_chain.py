@@ -154,6 +154,32 @@ def test_a_batch_reads_the_payload_of_only_the_events_its_rows_take(world):
     assert [len(ids) for ids in read] == [done["events"]], read
 
 
+def test_a_molecule_whose_row_list_overflows_the_row_index_key_is_its_sources_refusal(world, monkeypatch, caplog):
+    """총괄 f7394bfdf ㄷ: the database's own error for a row-index key over the btree limit (what a group_by molecule's
+    whole row list makes) - that source refused by name, the event followed, not failed."""
+    import json
+    import logging
+    import secrets
+    from ledger import roleframe
+
+    # the ref a molecule of thousands of rows makes - {"event", "rows": [every row's ref]}, too long for the index's key;
+    # the real translation and the real write say so
+    rows = [secrets.token_urlsafe(48) for _ in range(120)]
+    monkeypatch.setattr(roleframe, "_claim_source_raw_ref", lambda event_ref, row_refs: json.dumps(
+        {"event": event_ref, "rows": sorted(set(row_refs)) + rows}, sort_keys=True, separators=(",", ":")))
+    hw.push(world, [_row(1, 10)])
+    hw.run_chain(world)
+    caplog.set_level(logging.WARNING, logger=followup.logger.name)
+    done = followup.drain_outbox_once(world["engine"], world["setup"], rows=1000)
+    assert done["sources"][hw.SOURCE].get("refused"), done        # the database's own sentence, in its language
+    with world["engine"].connect() as conn:
+        states = {r[0] for r in conn.execute(text("SELECT ledger_state FROM database_outbox WHERE id <= :i AND "
+                                                  "ledger_state IS NOT NULL"), {"i": done["outbox_id"]})}
+    assert not any(s.startswith(followup.LEDGER_FAILED) for s in states), states
+    said = [r.getMessage() for r in caplog.records if "row-index key too long" in r.getMessage()]
+    assert len(said) == 1 and said[0].startswith("[LedgerFollowUp] %s refused" % hw.SOURCE), said
+
+
 def test_the_pause_holds_the_follow_up_and_resuming_lets_it_go(world, monkeypatch, tmp_path):
     import ledger.setup
 

@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **원장 행 색인 키가 넘치는 큰 묶음 — 사건 실패 대신 그 소스의 거절 한 줄 (총괄 f7394bfdf ㄷ)** — 재기동 «원장 프로세스»(런처)
+>
+> ```
+> 무엇     group_by 소스의 묶음(분자)이 커서 행 색인 키(그 묶음 행 참조 전부)가 DB 색인 한 줄 한도를 넘으면 — 전에는 그 사건이 통째로 failed,
+>          같은 행이면 다시 넣어도 또 실패. 이제 그 소스만 그 행들을 거절하고(원자 · 행 색인 안 씀) 사건은 done, 다른 소스는 그대로 따라감
+> 볼 줄    ledger.log «[LedgerFollowUp] <소스> refused N row(s) of <표> in world <세상>: a molecule's row list makes its row-index key
+>          too long (<DB 문장>) - move this group_by source to a table the chain writes row by row - #k of this source»
+>          (1 · 10 · 100 … 번째에 한 줄)
+> 뜻       그 소스가 그 묶음의 원자를 안 냄 — 걷기에서 그 행들이 안 나옴. 고칠 곳은 소스: 묶음을 체인이 행 단위 표로 쓰게 옮긴다
+>          (원장 선언 간소화는 group_by 소스를 이름 대어 거절함 — 소유자 10-13)
+>          이 판 전에 이 까닭으로 failed 가 된 사건은 그대로 failed — python -m ledger followup --requeue-failed 로 다시 넣으면 이번엔 거절 한 줄로 끝남
+> 되돌리기  git revert <이 커밋> -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-13] **그리드 쪽이 서버 밖 «그리드 프로세스»에서 — 열 명이 쪽을 넘겨도 다른 화면이 안 멈춤 (총괄 e570dcda5 ㄴ)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```

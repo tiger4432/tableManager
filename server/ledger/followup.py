@@ -455,6 +455,20 @@ def _follow(item, engine, setup, world=None, sources=None):
                 # its failures' episode ends here: one after this is said from #1 again (총괄 10-09)
                 count_cleared(REPEATS, ("source", source, table, _named(world)))
         except Exception as exc:  # named, counted, and NOT requeued -- see the docstring
+            said = _key_over_the_limit(exc)
+            if said:
+                # 🔴 [총괄 f7394bfdf ㄷ] the source's refusal, not the event's failure: a group_by molecule's every row ref
+                #   is in the row index's key - the short form refuses group_by sources (owner 10-13)
+                done["sources"][source] = {"refused": said}
+                with _lock:
+                    nth = count_crossed(REPEATS, ("source", source, table, _named(world), "key over the limit"))
+                if nth:
+                    logger.warning(
+                        "[LedgerFollowUp] %s refused %d row(s) of %s in world %s: a molecule's row list makes its "
+                        "row-index key too long (%s) - move this group_by source to a table the chain writes row by "
+                        "row - #%d of this source (said at the 1st, 10th, 100th ...)",
+                        source, len(row_ids), table, _named(world), said, nth)
+                continue
             with _lock:
                 _failed += 1
                 nth = count_crossed(REPEATS, ("source", source, table, _named(world), type(exc).__name__))
@@ -472,6 +486,20 @@ def _follow(item, engine, setup, world=None, sources=None):
                     "table and error (said at the 1st, 10th, 100th ...)",
                     source, table, len(row_ids), _named(world), exc, nth)
     return done
+
+
+def _key_over_the_limit(exc):
+    """The database's sentence when `exc` is - or was caused by - the row index refusing a key over its row limit
+    (`store.RowRefKeyTooLong`, 총괄 f7394bfdf), else None."""
+    from .store import RowRefKeyTooLong
+
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, RowRefKeyTooLong):
+            return str(exc)
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return None
 
 
 def _named(world):
