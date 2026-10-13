@@ -57,7 +57,7 @@ logger = logging.getLogger("Server")
 
 #: The grid page's pool (총괄 e570dcda5 ㄴ): its own size cell, and a wait for a process only (lead, after 6f34a1320:
 #: two processes stuck on plain reads, which have no statement limit, queued every grid request without end).
-GRID_SETTING, GRID_DEFAULT = "grid_processes", 2
+GRID_SETTING, GRID_DEFAULT = "grid_processes", 4                    # 총괄 f796a6b5e (ff60ded89: one ~135 MB + 2 connections)
 GRID_WAIT_SETTING, GRID_WAIT_DEFAULT = "grid_wait_seconds", 60
 
 

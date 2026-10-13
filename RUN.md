@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **그리드 프로세스 기본 2 → 4 (총괄 f796a6b5e)** — git pull · 서버 재기동 · 이주 «없음»
+>
+> ```
+> 무엇     ingestion_settings.json 에 "grid_processes" 가 없으면 이제 4(전에는 2). 값을 적어 둔 운영은 그 값 그대로
+> 정하는 법 코어 8 이상 · 메모리 여유 1 GB 이상이면 6. 그리드 프로세스 하나 = 메모리 ~135 MB + PG 연결 2 — max_connections 를 같이 본다
+> 박스 판   동시 10 명 · 400만 행: 첫 쪽 p50 2 개 1.47 s · 4 개 0.73 s · 6 개 0.49 s (A ff60ded89, 운영 주장 아님)
+> 볼 것    pg_stat_activity 의 assy_gridpool 연결이 쪽을 받은 뒤 최대 8(4 x 2)
+> 되돌리기  ingestion_settings.json 에 "grid_processes": 2 (재기동 없음 · 다음 쪽부터) — 코드째면 git revert <이 커밋> -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-14] **걷기 프로세스가 뜰 때 운영 세상의 원장 선언을 미리 컴파일 — 첫 걷기가 데운 걷기와 같은 시간 (총괄 8af4d378c ①)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```
@@ -85,14 +97,14 @@
 > ## [10-13] **그리드 쪽이 서버 밖 «그리드 프로세스»에서 — 열 명이 쪽을 넘겨도 다른 화면이 안 멈춤 (총괄 e570dcda5 ㄴ)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```
-> 무엇     /tables/<표>/data 의 쪽 몸(쪽 고르기 · 층 합치기 · 원장 칸 · 글자 변환)을 서버가 띄운 그리드 프로세스(기본 둘)가 한다
+> 무엇     /tables/<표>/data 의 쪽 몸(쪽 고르기 · 층 합치기 · 원장 칸 · 글자 변환)을 서버가 띄운 그리드 프로세스(기본 넷 — 10-14)가 한다
 >          수는 지금처럼 서버가 센다(보관 수 · 세는 일꾼 · 무효화가 서버에 있어서) — 라우트 하나가 수를 붙이고 쪽을 그리드 프로세스에 묻는다
 >          걷기 프로세스와 같은 자리(runtime/process_pool) · 같은 모양 — 크기 칸만 따로
-> 설정     ingestion_settings.json "grid_processes": 2   없으면 2 · 0 = 전처럼 서버 안(쉬는 그리드 프로세스는 다음 쪽이 올 때 내림) · 요청마다 읽음
+> 설정     ingestion_settings.json "grid_processes": 4   없으면 4(10-14 전 2) · 0 = 전처럼 서버 안(쉬는 그리드 프로세스는 다음 쪽이 올 때 내림) · 요청마다 읽음
 >                                  "grid_wait_seconds": 60   없으면 60 · 그리드 프로세스를 «얻는» 상한(빈 것을 기다림 · 새로 뜨기) · 요청마다 읽음
 >          넘으면 503 grid_pool_busy — 화면 토스트 «Every grid process stayed busy for N s - try again, or raise grid_processes in ingestion_settings.json»
 >          쪽의 «답»은 안 묶는다 — 평범한 읽기는 문장 상한이 없고(검색 · 무늬 필터만 grid_read_timeout_seconds), 쪽을 시한으로 끊으면 그 그리드 프로세스를 내려야 해서
-> 볼 것    작업 관리자에 python 이 넷 더(걷기 둘 + 그리드 둘) — 서버가 뜬 뒤 몇 초 안에. 그리드 프로세스 하나가 뜨는 데 약 5 s(main 을 읽음)
+> 볼 것    작업 관리자에 python 이 여섯 더(걷기 둘 + 그리드 넷) — 서버가 뜬 뒤 몇 초 안에. 그리드 프로세스 하나가 뜨는 데 약 5 s(main 을 읽음)
 >          pg_stat_activity 의 연결 이름 assy_gridpool
 > ⚠️ 로그 자리  그리드 쪽 줄 [get_table_data] Total … 은 이제 server\grid_pool.log(server.log 옆) — server.log 에는 안 나온다
 >            풀 프로세스의 줄 머리는 [GridPool.Server] · 걷기 프로세스는 [WalkPool.Server] (앞 = 프로세스, 뒤 = 로거)
@@ -100,7 +112,7 @@
 > 답의 뜻   재기동 직후 첫 쪽이 몇 초 더 -> 그리드 프로세스가 아직 뜨는 중
 >          server.log 에 «grid processes not started ahead» -> 미리 띄우기 실패, 첫 쪽이 띄움(서버는 정상)
 >          그리드 쪽이 500 이고 server.log 에 «the pool process running this request ended» -> 그 그리드 프로세스가 죽음, 다음 쪽은 새로
->          여럿이 쪽을 넘길 때 쪽 p95 가 길다 -> 그리드 프로세스가 다 바빠 차례를 기다림 — grid_processes 를 올린다(2 넘는 값은 안 잼)
+>          여럿이 쪽을 넘길 때 쪽 p95 가 길다 -> 그리드 프로세스가 다 바빠 차례를 기다림 — grid_processes 를 올린다(4 · 6 은 10-14 맨 위 절)
 >          그리드 쪽이 503 grid_pool_busy -> 그리드 프로세스가 grid_wait_seconds 동안 다 바빴음
 >            계속 나면 pg_stat_activity 에서 application_name = 'assy_gridpool' 이고 오래 도는 문장을 본다
 >            그 문장을 DB 에서 끊으면(pg_cancel_backend) 그 쪽만 거절되고 그 그리드 프로세스는 다음 쪽을 받는다(코드로 읽음 · 판에서 안 잼)
@@ -116,7 +128,7 @@
 >          웹 연결 최대        20~27                            9 (+ 그리드 프로세스 4)
 >          섞인 판(쪽 · 정렬 · 필터 · 수)은 쪽 p50 이 줄고 p95 는 늘었다(첫 쪽 2.63 -> 3.72 s) — 쪽이 그리드 프로세스 둘을 기다린 것
 > 되돌리기  git revert -m 1 6f34a1320 -> 서버 재기동 (혼자 되돌아감 — 10-13 잼. 급하면 위 «급할 때» 줄이 재기동 없이 같은 동작) (그 앞에 기다림 상한 a4e647ab6 를 먼저: git revert -m 1 a4e647ab6)
-> ⚠️ 안 잰 것  grid_processes 2 넘는 값 · 운영 크기 · 그리드 프로세스 하나의 메모리
+> ⚠️ 안 잰 것  운영 크기(4 · 6 과 하나의 메모리는 10-14 맨 위 절)
 > ```
 >
 > ---
