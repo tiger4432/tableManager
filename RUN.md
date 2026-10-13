@@ -1,5 +1,188 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] 🔴 **큰 표 검색 — 표 선언에 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다 (총괄 d16033b63, 소유자 「서버가 다 느림」 · 「400만행 표는 이제 검색 40초」)** — git pull · 재기동 · 되돌릴 수 있음
+>
+> ```
+> 선언       table_config.json 의 그 표에, 검색 칸마다 한 줄 (검색 칸이 무엇인지는 아래 «급한 손» 절의 «검색 칸» 순서 그대로)
+>              "indexes": [{"columns": ["dt_job"], "search": true},
+>                          {"columns": ["b_wx"], "search": true},
+>                          {"columns": ["b_wy"], "search": true}]
+>            저장한 뒤 어드민 Reload(POST /admin/reload-configs) · 온톨로지 탐색기의 활성화 · 재기동 중 하나 -> 체인 프로세스가 짓는다
+>            ⚠️ 파일만 고치고 Reload 를 안 하면 안 짓는다 — 표 모양은 바로 다시 읽지만 색인 일은 Reload 와 기동 때만 돈다
+> 짓는 동안   server.log 의 [Chain] 줄
+>              [Indexes] N declared index(es) the database lacks or holds invalid: … idx_<표>_<칸>_search on <표> (missing)
+>              [Indexes] building idx_<표>_<칸>_search on <표>
+>              [Indexes] idx_<표>_<칸>_search built in 3.2 s          <- 끝. CONCURRENTLY 라 표를 안 잠근다
+>              [Indexes] idx_<표>_<칸>_search on <표> is not built: it needs the pg_trgm extension …   <- 아래 pg_trgm
+> pg_trgm    없으면 위 줄이 그렇게 말하고 짓지 않는다. 슈퍼유저로 한 번  CREATE EXTENSION IF NOT EXISTS pg_trgm;  그다음 Reload
+> 손 인덱스   아래 «급한 손» 절의 tmp_search_<표>_<칸> 이 있어도 선언은 «또» 짓는다 — 색인을 이름으로 견주기 때문(식은 같은 문장)
+>            선언 것이 «built» 줄을 낸 «뒤에» 손 것을 지운다:  DROP INDEX CONCURRENTLY tmp_search_<표>_<칸>;
+>            먼저 지우면 선언 것을 짓는 동안 검색이 다시 표 끝까지 읽는다
+> 상한       ingestion_settings.json "grid_read_timeout_seconds" — 기본 10 · 요청마다 읽어 재기동 없이 바뀐다 · 0 또는 null = 상한 없음(급할 때 끄는 스위치)
+>            그리드의 행 읽기 · 세기 · 검색(GET /tables/<표>/data · /data/count)만 — 저장 · 체인 · 파일 쓰기는 각자 상한 그대로
+> 끊겼을 때   HTTP 503, 답의 detail.message 가 다음 할 일
+>              Search stopped after 10 s - add a search index on b_wy in the table's indexes   -> 그 칸에 위 선언
+>              Search stopped after 10 s - the limit is grid_read_timeout_seconds in the ingestion settings
+>                                                    -> 검색 칸은 다 색인됨. 상한을 올리거나 검색어를 좁힌다
+>              Read stopped after 10 s - the limit is …   -> 검색이 아닌 읽기(필터 · 정렬 · 전체 세기)
+>            끊긴 문장은 DB 가 취소하고 연결은 풀로 돌아간다
+>            ⚠️ 화면은 아직 «Data fetch failed (HTTP 503)» 토스트만 그린다 — 문장은 클라 레인이 붙인다
+> 답의 칸    검색한 /data 답에 "search_index": {"dt_job": true, "b_wy": false} — false 인 칸이 선언할 칸
+>            컬럼 필터의 contains 도 같은 색인을 탄다(같은 CAST 문장)
+> 박스 판 실측 (400만 행 dt_log · 운영 주장 아님)
+>            0 건 검색  쪽 2.30 s · 세기 2.17 s  ->  세 칸 다 색인 뒤 0.09 s · 0.03 s
+>            5 개 동시  하나에 4.4~8 s  ->  0.15~0.29 s
+>            상한 10 s 의 근거: 이 판에서 색인 없이 5 개 동시일 때 가장 긴 정상 읽기 8 s
+> ⚠️ 안 잰 것  운영 크기에서 짓는 시간(판: dt_job 51.8 s · b_wx · b_wy 2~3 s)
+>            쪽 크기 5 를 row_id 순으로 물으면 0 건일 때 색인이 있어도 끊긴다(판 10 s) — 화면은 1,000 행이라 안 닿음(0.01~0.05 s). 쪽 순서 일에서 다룬다
+> ```
+
+> ## [10-13] **원장 ref 인덱스를 체인 워커가 스스로 짓는다 — 인덱스 관리에 «ledger» 줄 · 다시 번역의 결함 두 줄은 늘 처음 한 번 (총괄 10-13 ①, 소유자 「재번역 5초에 1개도 안됨」)** — git pull · 재기동 «체인 워커»(기동 때 짓는다)
+>
+> ```
+> 무엇     원장 ref 인덱스(idx_ledger_events_source_raw_ref_hash)가 이제 인덱스 관리의 선언 목록에 든다 — 세상마다 한 줄, source "ledger"
+>          체인 워커가 기동(과 다시 읽기) 때 빠진 파티션만 하나씩 CONCURRENTLY 로 짓고 붙인다(쓰기를 안 막음) — 손 명령 build_ledger_ref_index.py 와 같은 빌더
+> 볼 것    GET /admin/indexes 의 declared 에서 source = "ledger" 줄: state present / missing · partitions · partitions_missing
+>          chain_worker.log 의 [Indexes] 줄 — «1 declared index(es) … idx_ledger_events_source_raw_ref_hash on ledger_events (missing)» 뒤에
+>          파티션마다 «ledger_events_YYYY_MM: built …_ref_hash in N s · B bytes · attached», 끝에 «… built in N s»
+> 답의 뜻   present · partitions_missing 0 -> 거두기 셈 · DELETE 가 인덱스를 탈 수 있다(타는지는 다시 번역 로그의 withdrawal count 줄 plan)
+>          missing 이 남고 [Indexes] 줄에 «not built: build_missing_indexes is off» -> ingestion_settings.json 의 그 칸이 false. 손 명령으로 짓거나 칸을 지움
+>          «failed - …» -> 그 줄의 사유. 손 명령(맨 아래 절)으로 한 번 더
+> 다시 번역  retroactive.log 에 실행마다 처음 한 번, retroactive_debug 를 꺼도:
+>          «idx_… missing or not valid - each page's withdrawal count and DELETE read the whole ledger; …» -> 위가 아직 안 끝남
+>          «page key <칸> of <표> has no index - each page sorts the table; declare one on ["<칸>"] in that table's "indexes" …»
+>             -> 그 표의 table_config "indexes" 에 그 칸을 적으면 체인 워커가 짓는다(10-11 표 인덱스 절)
+> 이 판에서  진짜 프로세스(런처 넷) · 원장 파티션 3 개의 ref 인덱스를 지우고 띄움: 체인 워커 기동 직후 [Indexes] «3 of 3 partition(s) lack it»
+>          -> 파티션마다 «built … · attached» -> GET /admin/indexes 원장 줄 present · 그 뒤 다시 번역(단계 줄 끔)에 결함 줄 0 · public 행 변화 0
+> 끄기      ingestion_settings.json "build_missing_indexes": false (모든 선언 인덱스 짓기를 끔 — 이름만 말함)
+> ⚠️ 안 잰 것  운영 크기에서 파티션 하나 짓는 초
+> ```
+
+> ## [10-13] **원장 다시 번역이 지금 무엇을 하고 무엇을 기다리나 — retroactive.log 한 곳에 단계 줄 · 5 초 박동 · 느린 문장 (총괄 d9be013cb, 소유자 「재번역 디버그 로그 다띄워 실시간으로 뭐가돌고 뭘 기다리는지」)** — git pull 만 · 재기동 없음(소급 실행은 실행마다 새 프로세스라 다음 실행부터)
+>
+> ```
+> 볼 곳     retroactive.log (다시 번역 · 모든 소급 실행이 쓰는 그 파일) — [ledger_rescope] 로 시작하는 줄
+> 줄 셋     단계  [ledger_rescope] page 3: withdrawal count · 4 rows · 2.84 s · 4 atoms by idx_… (valid) · plan: Bitmap Index Scan on ledger_events_*_… x8
+>          박동  [ledger_rescope] beat: page 3 · write > withdraw atoms 7.3 s · 4 rows · db: pid 1234 waiting Lock:relation on pid 999 (assy_chain, idle in transaction 30 s): …
+>          느림  [ledger_rescope] slow statement: pid 1234 running 2.1 s (Lock:relation): SELECT count(*) FROM ledger_events WHERE …   (끝나면 «ended … after about N s»)
+> 쪽의 단계  read(쪽 읽기) · translate = event frames + dry run + row refs(파이썬 번역) · withdrawal count(거둘 원자 세기) · index lines of the rows ·
+>          write = screen atoms + partitions + withdraw atoms + insert atoms + index lines + commit · forget index lines
+> 답의 뜻   read 가 길고 «no index on it - each page sorts the table» -> 쪽 열쇠 칸에 인덱스가 없어 쪽마다 원천 표를 통째로 정렬한다(쪽이 1 행부터라 첫 쪽들이 특히 느림)
+>             그 표의 table_config "indexes" 에 그 칸을 적는다 -> 체인 워커 기동 줄 [Indexes] 에서 지어짐
+>          withdrawal count · withdraw atoms 가 길고 plan 에 «Seq Scan on ledger_events_* xN» -> 원장 ref 인덱스를 안 탐. 줄에 «missing or not valid … build it: <명령>» 이 같이 나오면 그 명령(맨 위 절)
+>             «(valid)» 인데 Seq Scan 이면 인덱스가 있는데 안 타는 것 -> 그 줄 그대로 총괄에게
+>          event frames · dry run 이 길다 -> 파이썬 번역 몫(박스 행당 3~6 ms). 박동이 «no busy backend - the time is in this process» 를 말한다 — DB 는 한가함
+>          박동이 «waiting Lock:… on pid N (<누구>, …)» -> 그 pid 의 연결이 잡고 있다. 누구 = assy_chain… 이면 체인 · 원장 따라가기, assy_server 면 화면 요청
+>          박동이 «its own query active N s (no lock)» -> DB 가 그 문장을 일하는 중(느림 줄이 그 문장 앞 400 자를 같이 찍는다)
+>          commit 이 길다 -> 디스크(박동의 wait 가 IO:WALSync · IO:DataFileWrite)
+> 끄기      ingestion_settings.json "retroactive_debug": false -> 단계 줄만 꺼짐(쪽 줄 · 박동 · 느림 줄은 남음). 다음 쪽부터
+>          "retroactive_slow_statement_seconds": null -> 느림 줄 꺼짐 (기본 2 초). 박동은 끄는 칸이 없다 — 1 초에 pg_stat_activity 한 번
+> 이 판에서  진짜 프로세스(런처 넷 · hold 판 200 행) · 실행 START 에 원장 잠금 12 초:
+>          beat: page 1 · withdrawal count 5.0 s · 1 rows · db: pid … waiting Lock:relation on pid … (b_e2e_lock_holder,
+>          idle in transaction 5 s): LOCK TABLE ledger_events IN ACCESS EXCLUSIVE MODE  ·  느림 줄은 3.0 s 에, «ended» 는 12.1 s
+>          원자 200 개가 실행 전 · 잠금 판 뒤 · 빈 판 뒤 같음 · public 행 변화 0
+> ⚠️ 안 잰 것  운영 크기에서 쪽마다 EXPLAIN 둘(쪽 읽기 · 거두기 셈, 계획만 — 실행 안 함)이 더하는 초
+> 되돌리기  git revert $(git log -1 --format=%h --grep="re-translate says each stage")
+> ```
+
+> ## [10-13] 🔴 **원장 다시 번역이 쪽마다 원장 «통째»를 두 번 읽는다 — 원장 ref 인덱스가 파티션에 없으면 (구현자 B 실측, 소유자 「재번역 5초에 1개도 안됨」)** — 먼저 이것 · 재기동 없음 · 쓰기를 안 막음
+>
+> ```
+> 왜       다시 번역의 쪽 하나 = «거둘 원자 세기» + «거둔 원자 지우기» — 둘 다 source_who = … AND source_raw_ref = ANY(…) 로 원장을 친다
+>          그 문장이 타는 인덱스는 idx_ledger_events_source_raw_ref_hash 하나. 서버 기동은 부모 쪽 껍데기만 짓고(valid = false),
+>          이미 있는 파티션의 인덱스는 아래 명령으로만 생긴다 — 없으면 쪽마다 원장 전부를 두 번 훑는다(한 백엔드 = 코어 하나라 CPU 는 낮게 보임)
+> 박스 실측  원자 238만 · 파티션 8 개 모두 없음: 그 문장 하나가 ref 1 개에도 1.0~3.0 s(인덱스를 끈 대조군과 같은 초). 원자가 더 많으면 더 길다
+> 미리보기   python server/scripts/build_ledger_ref_index.py
+> 답의 뜻   파티션마다 «already» · 끝에 «the parent index is valid» -> 이미 있음 — 다시 번역이 느린 것은 다른 원인(아래 절 «무엇을 기다리나»)
+>          «would build N» -> 없는 것이 그 수만큼. 아래 --apply
+> 만들기    python server/scripts/build_ledger_ref_index.py --apply      (파티션마다 CONCURRENTLY · 한 줄씩 · 다시 돌려도 이미 있는 것은 안 지음)
+>          끝 줄 «the parent index is valid» 가 나오면 끝. 그다음 다시 번역을 다시 돌림
+> ⚠️ 안 잰 것  운영 크기에서 만드는 데 걸리는 시간 · 만든 뒤 쪽마다 몇 초가 되는지
+> ```
+
+> ## [10-13] **급한 손 — 400만 행 표 검색 40 초: 검색 칸에 글자 찾기 인덱스 (소유자 「400만행 표는 이제 검색 40초 걸린다」)** — 재기동 없음 · 되돌릴 수 있음
+>
+> ```
+> 왜       그리드 검색은 검색 칸마다 «CAST(칸 AS VARCHAR) ILIKE '%글%'» 을 OR 로 묶는다 — 인덱스가 없으면 표 끝까지 읽고, 결과 0 건이면 반드시 끝까지
+> 박스 실측  40만 행 · 0 건 검색: 인덱스 없음 748 ms(Seq Scan) -> 칸마다 아래 인덱스 0.12 ms(BitmapOr · Bitmap Index Scan) — 제품이 보내는 그 문장 그대로
+> 검색 칸   table_config.json 의 그 표: "search_columns" 가 있으면 그 칸들 / 없으면 "composite_key_source" 칸들 / 없으면 "business_key" / 없으면 row_id · business_key_val
+>          🔴 «전부»에 하나씩 — 하나라도 빠지면 다시 표 끝까지
+> 만들기    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+>          보통 칸:  CREATE INDEX CONCURRENTLY IF NOT EXISTS tmp_search_<표>_<칸> ON <표> USING gin ((CAST(<칸> AS VARCHAR)) gin_trgm_ops);
+>          row_id · business_key_val 는 CAST 없이:  CREATE INDEX CONCURRENTLY IF NOT EXISTS tmp_search_<표>_row_id ON <표> USING gin (row_id gin_trgm_ops);
+>          (CONCURRENTLY 라 표를 안 잠근다 · 트랜잭션 밖에서 한 줄씩 · 400만 행이면 칸마다 몇 분)
+> 답의 뜻   만든 뒤 같은 검색이 1 초 안 -> 됨 / 그대로 -> 검색 칸 하나가 빠졌다(위 순서로 다시 셈) · 글자 2 개 이하 검색은 이 인덱스로도 느릴 수 있다
+> 값       표 쓰기가 조금 느려진다(칸마다 인덱스 하나 더) · 디스크
+> 되돌리기  DROP INDEX CONCURRENTLY tmp_search_<표>_<칸>;
+>          구현자 A 의 «표 선언 indexes 의 검색 갈래»(d16033b63)가 착지하면 선언으로 옮기고 이 tmp_ 인덱스는 지운다
+> ⚠️ 안 잰 것  인덱스 관리(GET /admin/indexes)가 이 손 인덱스를 어떻게 보이는지
+> ```
+
+> ## [10-13] **원장 다시 번역이 × 로 안 멈출 때 (소유자 「원장 재번역 꺼지지도 않네 x 눌러도」)** — 순서대로, 앞에서 멈추면 거기까지
+>
+> ```
+> 왜       × 는 멈춤을 «적어 둘» 뿐이고, 실행은 쪽(page)과 쪽 «사이»에서 그것을 읽는다 — 쪽 하나가 느리면(잠금 대기 등) 그 쪽이 끝날 때까지 안 멈춘다
+> ① 그 실행의 DB 문장 끊기   위 절(무엇을 기다리나)의 읽기 줄에서 who = assy_retroactive 인 pid 를 찾아
+>          SELECT pg_cancel_backend(<pid>);      -> 지금 문장만 끊김. 실행이 그 실패를 받아 멈춤을 읽는다
+>          1 분 안에 안 멈추면  SELECT pg_terminate_backend(<pid>);
+> ② 그래도 돌면(파이썬이 DB 밖에서 돌고 있음) 그 프로세스를 끈다 — PowerShell:
+>          Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*retroactive_run*' } | select ProcessId,CommandLine
+>          taskkill /PID <그 ProcessId> /F
+> ③ 화면에 running 줄이 남으면  curl.exe --noproxy "*" -X POST "http://127.0.0.1:8080/admin/retroactive/runs/<run_id>/cancel" -H "X-Admin-Token: <토큰>"
+>          "released": true -> 풀림. 아니면 10-11 절의 최후 수단 UPDATE
+> ⚠️ 안 잰 것  끊긴 쪽이 원장에 반쯤 남는지(쪽 하나가 한 트랜잭션인지) — 다시 돌리면 이어서 하는지는 구현자 B 가 잰다. 끊은 뒤 다시 돌릴 때 같은 범위로
+> ```
+
+> ## [10-13] **원장 다시 번역이 «5 초에 1 개도 안 됨» — 무엇을 기다리나 (소유자 「5초에 1개도 안됨 · 재번역」)** — 읽기만 · 재기동 없음
+>
+> ```
+> 읽기만    SELECT a.pid, a.application_name AS who, a.state, a.wait_event_type, a.wait_event,
+>                 now() - a.query_start AS running, pg_blocking_pids(a.pid) AS blocked_by, left(a.query, 120) AS query
+>          FROM pg_stat_activity a WHERE a.datname = current_database() AND a.state <> 'idle' ORDER BY a.query_start;
+>          (다시 번역이 도는 동안 3~4 번)
+> 답의 뜻   assy_retroactive 줄 · wait_event_type = Lock · blocked_by 에 pid -> 다른 연결이 잡은 것을 기다림. 그 pid 의 who 를 본다
+>            who 가 assy_chain… -> 체인 · 원장 따라가기와 부딪힘 -> 아래 급할 때 ①
+>            who 가 assy_server -> 화면 요청(그리드 저장 · 검색)과 부딪힘
+>          assy_retroactive 줄 · wait_event_type = IO(DataFileRead 등) -> 디스크 읽기 대기 — 큰 표를 캐시 밖에서 읽음
+>          assy_retroactive 줄 · wait_event 비어 있고 active -> DB 가 계산 중 — query 칸이 그 문장
+>          assy_retroactive 줄이 거의 안 보임 -> 시간이 DB 가 아니라 번역 프로세스의 파이썬에 있음 — 구현자 B 최우선 일(fd550df13)이 받는다
+> 급할 때   ① server/pacing.json jobs.chain_followup 을 "trickle" — 따라가기를 다시 늦춰 다시 번역에 길을 비킴(재기동 없음, 다 끝나면 "fast" 로)
+> ```
+
+> ## [10-13] **PostgreSQL CPU 가 높을 때 — 누가 쓰고 있나 (소유자 「psql server가 cpu 점유율 70퍼」)** — 읽기만 · 재기동 없음
+>
+> ```
+> 읽기만    SELECT coalesce(nullif(application_name,''), backend_type) AS who, state, count(*) AS n,
+>                 max(now() - query_start) AS longest, left(min(query), 160) AS one_query
+>          FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle'
+>          GROUP BY 1, 2 ORDER BY n DESC;
+>          (1 초 간격으로 서너 번 — 한 번은 순간일 뿐)
+> 답의 뜻   assy_server · 질의가 큰 표의 ILIKE · count · ORDER BY -> 그리드 요청이 표를 통째로 읽는 것(검색 · 개수 · 정렬)
+>            — 구현자 A 최우선 일(ba2b33b46)이 받는다. 화면을 여러 명이 열어 둘수록 늘어남
+>          assy_chain(또는 assy_chain_slot…) -> 체인 · 원장 따라가기. 10-13 에 따라가기를 fast 로 바꿨다(e914303b7)
+>          assy_walkpool -> 걷기 프로세스의 걷기
+>          autovacuum worker -> 큰 표를 많이 고치거나 지운 뒤의 청소 — 끝나면 내려감
+>          assy_retroactive -> 소급 실행
+>          원장 다시 번역(Re-translate)이 도는 중 -> 그 실행이 표를 쪽마다 읽고 원장에 쓰는 몫. 혼자 돌려도 느린 것은 번역기의 행당 파이썬 비용
+>            (박스 단순 선언 판 약 6 ms/행 — 운영 선언은 안 잼) — 구현자 B 최우선 일이 받는다
+> 급할 때   assy_chain 이 대부분 -> server/pacing.json jobs.chain_followup 을 "slow"(재기동 없음)
+>          assy_walkpool 이 대부분 -> ingestion_settings.json "walk_processes": 0(재기동 없음)
+>          assy_server 의 그리드 질의가 대부분 -> 큰 표 그리드 탭을 닫아 둔 사람 수만큼 준다 — 고침은 A 착지
+> ```
+
+> ## [10-13] **원장 따라가기 «fast» — 지운 행 거두기 · 원장 번역이 쉬지 않고 흐름 (소유자 「fast」)** — git pull 만 · 재기동 없음(체인 워커가 바퀴마다 pacing.json 을 다시 읽음)
+>
+> ```
+> 무엇     server/pacing.json jobs.chain_followup trickle -> fast
+>          전: 한 바퀴에 사건 1 개 · 쉼 3 s(분당 약 20 사건) / 지금: 줄이 빌 때까지 쉬지 않음, 빈 줄은 1 s 마다 봄
+> 볼 것    chain_worker.log «[LedgerFollowUp] lap: N item(s) in X s, D left in the queue (rest 0s between)»
+> 답의 뜻   rest 0s · D 가 줄어듦 -> 바뀐 대로 흐름
+>          rest 3s 그대로 -> pull 이 덜 됐거나 운영 pacing.json 의 jobs.chain_followup 칸을 손으로 고친 판
+>          X/N 이 큼(사건 하나에 몇 초) -> 남은 몫은 번역 자체 — 다음 착지(사건 묶어 번역)가 받는다
+>          화면 · API 가 같이 느려짐 -> 따라가기가 DB 를 붐비게 하는 것 — 아래 급할 때
+> 급할 때   pacing.json jobs.chain_followup 을 "slow"(사건 5 개 · 쉼 1 s) — 재기동 없이 다음 바퀴부터
+> ```
+
 > ## [10-13] **메인 그리드 메뉴에 «Board» — 시각화 시험대 열기 (소유자 10-13, 총괄 전달)** — git pull · 재기동 없음
 >
 > ```

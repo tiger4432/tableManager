@@ -15,13 +15,13 @@ SELECT a.pid,
        EXTRACT(EPOCH FROM (now() - a.xact_start)),
        EXTRACT(EPOCH FROM (now() - a.query_start)),
        EXTRACT(EPOCH FROM (now() - a.state_change)),
-       left(regexp_replace(coalesce(a.query, ''), '\\s+', ' ', 'g'), 60),
+       left(regexp_replace(coalesce(a.query, ''), '\\s+', ' ', 'g'), {chars}),
        b.pid,
        coalesce(nullif(b.application_name, ''), b.backend_type),
        b.state,
        EXTRACT(EPOCH FROM (now() - b.xact_start)),
        EXTRACT(EPOCH FROM (now() - b.state_change)),
-       left(regexp_replace(coalesce(b.query, ''), '\\s+', ' ', 'g'), 60)
+       left(regexp_replace(coalesce(b.query, ''), '\\s+', ' ', 'g'), {chars})
 FROM pg_stat_activity a
 LEFT JOIN LATERAL unnest(pg_blocking_pids(a.pid)) AS held(pid) ON true
 LEFT JOIN pg_stat_activity b ON b.pid = held.pid
@@ -33,13 +33,20 @@ ORDER BY a.pid, b.pid
 _BLOCKED = "a.datname = current_database() AND cardinality(pg_blocking_pids(a.pid)) > 0"
 
 
-def backend_waits(dbapi_conn, pid=None):
-    """One row per (backend, backend holding it up) - for `pid`, or for every blocked
-    backend of this database when `pid` is None. A backend nobody holds up is one row with
-    `blocker` None; a pid that is not connected is no row at all."""
-    where = "a.pid = %s" if pid is not None else _BLOCKED
+#: A process's own backends that are not idle - a retroactive run's beat (총괄 d9be013cb); the probe asking is left out.
+_BUSY_OF = ("a.datname = current_database() AND a.application_name = %s "
+            "AND a.state IS DISTINCT FROM 'idle' AND a.pid <> pg_backend_pid()")
+
+
+def backend_waits(dbapi_conn, pid=None, app=None, chars=60):
+    """One row per (backend, backend holding it up) - for `pid`; for every busy backend named `app` (a
+    process's own, `connection_name()`); or for every blocked backend of this database when both are None.
+    A backend nobody holds up is one row with `blocker` None; a pid that is not connected is no row at
+    all. `chars`: how much of each query is read."""
+    where = "a.pid = %s" if pid is not None else _BUSY_OF if app is not None else _BLOCKED
+    args = (int(pid),) if pid is not None else (app,) if app is not None else None
     with dbapi_conn.cursor() as cur:
-        cur.execute(_SQL.format(where=where), (int(pid),) if pid is not None else None)
+        cur.execute(_SQL.format(where=where, chars=int(chars)), args)
         rows = cur.fetchall()
     out = []
     for r in rows:

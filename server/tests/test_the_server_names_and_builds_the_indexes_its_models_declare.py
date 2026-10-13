@@ -110,7 +110,7 @@ def test_the_route_shows_each_declared_index_beside_the_database(scratch):
 
     assert answer.status_code == 200, answer.text
     said = answer.json()
-    by_name = {row["name"]: row for row in said["declared"]}
+    by_name = {row["name"]: row for row in said["declared"] if row["source"] != "ledger"}
     assert len(by_name) == len(models.declared_indexes())
     assert {name: by_name[name]["state"] for name in (DROPPED, BROKEN, "idx_audit_row_history")} == {
         DROPPED: "missing", BROKEN: "invalid", "idx_audit_row_history": "present"}
@@ -309,10 +309,41 @@ def test_the_route_shows_a_table_index_beside_the_models(probe, monkeypatch):
         session.close()
 
     assert answer.status_code == 200, answer.text
-    rows = {row["name"]: row for row in answer.json()["declared"]}
+    rows = {row["name"]: row for row in answer.json()["declared"] if row["source"] != "ledger"}
     assert (rows["idx_%s_lot" % PROBE]["source"], rows["idx_%s_lot" % PROBE]["state"]) == ("table", "missing")
     assert rows["idx_%s_dt_wafer_id" % PROBE]["state"] == "present"
     assert {row["source"] for row in rows.values()} == {"model", "table"}
     # «outside» stays the models' tables - the catalogue's carry product indexes no declaration names
     assert {row["table"] for row in answer.json()["outside"]} <= {t.name for t in models.model_tables()}
     assert "zz_probe_undeclared" not in {row["name"] for row in answer.json()["outside"]}
+
+
+@pytest.mark.pg
+def test_the_ledgers_ref_index_is_named_and_built_a_partition_at_a_time(scratch):
+    """Lead 10-13: the ledger's ref index reached production only by a person's command - now the index master names
+    it per world (source ledger, how many partitions lack it) and its build makes it, a partition at a time."""
+    from datetime import datetime, timezone
+    from ledger import schema
+
+    raw = scratch.raw_connection()
+    try:
+        schema.ensure_schema(raw)
+        raw.commit()
+        for month in (1, 2):
+            schema.ensure_partition(raw, datetime(2026, month, 15, tzinfo=timezone.utc))
+    finally:
+        raw.close()
+    _ddl(scratch, "DROP INDEX IF EXISTS %s" % schema.REF_INDEX)          # every partition's goes with the parent's
+    name = schema.in_space(schema.world_names(None), schema.REF_INDEX)
+    row = _states(scratch)[name]
+    assert (row["source"], row["state"], row["using"], row["columns"]) == ("ledger", "missing", "hash", ["source_raw_ref"])
+    assert row["partitions_missing"] == row["partitions"] >= 2
+
+    off = []
+    assert models.ensure_model_indexes(scratch, build=False, say=off.append) == {}
+    assert len(off) == 1 and "%s on ledger_events (missing)" % name in off[0] and "build_missing_indexes is off" in off[0]
+    said = []
+    assert models.ensure_model_indexes(scratch, say=said.append)[name] == models.INDEX_BUILT
+    assert len([line for line in said if ": built ledger_events_" in line]) == row["partitions"], said
+    row = _states(scratch)[name]
+    assert (row["state"], row["partitions_missing"]) == ("present", 0)

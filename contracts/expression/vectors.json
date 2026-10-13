@@ -1,0 +1,3468 @@
+{
+  "$comment": [
+    "SHARED CONTRACT -- the EXPRESSION seam: what does this expression answer over these rows?",
+    "One grammar, two calculators (lead 0b7d84462): the server's (chain decide aggregations, walk measures) and the",
+    "screen's (the test bed's calculated values). Both read THIS file; neither is built yet.",
+    "",
+    "THE GRAMMAR is Spotfire's expression language (task/SPOTFIRE_FUNCTIONS.md, read from the owner's Spotfire",
+    "Analyst 14.4.1) plus our [path] · type(\"key\") · Reach (afcb79f14). Only Spotfire's part is here; [x] is a",
+    "column of `rows`.",
+    "",
+    "EVERY EXPECTATION IS A DOCUMENT'S, NOT A MEASUREMENT (lead 10-13). The owner's Spotfire web view opens its",
+    "expression windows on the owner's desktop, so the empty-value cases the dialog text leaves open were not",
+    "measured. `basis` says how each answer was reached:",
+    "  doc-stated  the cited page prints this result for this expression",
+    "  doc-rule    the cited page states the rule; the answer applies it (computed, not typed)",
+    "  measured    run in Spotfire - none in this edition",
+    "  ours        our rule (the cite names the ruling) - only in `ours`",
+    "  decided     no page settles it; the lead ruled it 10-13 from the nearest rule the cite names. «may differ from",
+    "              Spotfire» in a cite marks a ruling Spotfire may answer otherwise, with no way left to measure it",
+    "Pages (`sources`): Spotfire's «latest» online reference, read 2026-10-13 (Math Stat Ops Prec Logic Keys Lang Text), and the",
+    "7.0.1 statistics definitions (701), against the owner's 14.4.1. An invalid value (#NA, an error) is read as empty, as the",
+    "pages print 0/0 and Integer(\"0%\") - that reading is itself a doc-rule. A comparison the page prints only through",
+    "If(<it>, \"true\", \"false\") or a Case is scored bare: If gives true, false and null back one to one (Logic If).",
+    "",
+    "HOW TO SCORE",
+    "  vectors       scored. `expect` = the one answer over `rows` (an aggregation folds them; a constant needs none;",
+    "                a one-argument aggregate is a fold over `rows`, so it always carries at least one row);",
+    "                `expect_rows` = one answer per row, in row order. A vector carries exactly one of the two.",
+    "                null = empty. Numbers equal when |got - expect| <= 1e-9 * max(1, |expect|). Integer / Real /",
+    "                Decimal types are not scored.",
+    "  unsettled     NOT scored - where an open cell goes: what is open and why. To settle one, move it into vectors",
+    "                with its basis; do not pick an answer in a calculator. Empty after the lead's 10-13 rulings.",
+    "                An aggregate inside an If / Case branch folds only that branch's rows (the pages' worked examples).",
+    "  ours          scored, the same shape - our functions with no Spotfire basis (task doc §7: Latest). A row's",
+    "                values carry that row's time in \"$at\" (ISO 8601); [x] never names it. basis = ours, or decided.",
+    "                Rules both calculators keep (lead 10-13): Latest - with any timed row, the latest of the timed rows",
+    "                (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else",
+    "                empty; two different values at the latest time are empty. A list value (one read holding several)",
+    "                counts as its items. A text is a number when, trimmed, it is only sign, digits, a decimal point and",
+    "                an exponent (\"29.50\", \" 1 \", \"+2\", \"1e1\", \".5\"); anything else is text (\"29,50\", \"29 mm\", \"0x10\"),",
+    "                which a numeric fold leaves out; an empty text is empty.",
+    "  out_of_edition  names not built in this edition, and why.",
+    "Grow this file before a calculator grows (lead: a function with no vector is not built)."
+  ],
+  "sources": {
+    "701": "https://docs.tibco.com/pub/spotfire/7.0.1/doc/html/stat/stat_aggregations_overview.htm (and its stat_*.htm pages)",
+    "Math": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/math_functions.html",
+    "Stat": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/statistical_functions.html",
+    "Ops": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/operators.html",
+    "Prec": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/operator_precedence.html",
+    "Logic": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/logical_functions.html",
+    "Keys": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/keywords_in_expressions.html",
+    "Lang": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/expression_language_details.html",
+    "Text": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/text_functions.html"
+  },
+  "vectors": [
+    {
+      "id": "sum.args",
+      "expr": "Sum(1, 2, 3)",
+      "rows": [],
+      "expect": 6,
+      "basis": "doc-stated",
+      "cite": "Math Sum: Sum(1,2,3) → 6"
+    },
+    {
+      "id": "sum.args.mixed",
+      "expr": "Sum(1.5, -2, 3)",
+      "rows": [],
+      "expect": 2.5,
+      "basis": "doc-stated",
+      "cite": "Math Sum: Sum (1.5, -2, 3) → 2.5"
+    },
+    {
+      "id": "sum.args.null",
+      "expr": "Sum(1, null, 3)",
+      "rows": [],
+      "expect": 4,
+      "basis": "doc-stated",
+      "cite": "Math Sum: Sum (1, null, 3) → 4"
+    },
+    {
+      "id": "sum.null",
+      "expr": "Sum(null)",
+      "rows": [
+        {
+          "x": 0
+        }
+      ],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Math Sum: Sum (null) → (Empty)"
+    },
+    {
+      "id": "avg.args",
+      "expr": "Avg(2, -3, 4)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Stat Avg: Avg(2,-3,4) → 1"
+    },
+    {
+      "id": "avg.args.frac",
+      "expr": "Avg(1.5, -2, 3.5)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Stat Avg: Avg(1.5, -2, 3.5) → 1"
+    },
+    {
+      "id": "avg.args.null",
+      "expr": "Avg(1, null, 3)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "Stat Avg: Avg(1, null, 3) → 2"
+    },
+    {
+      "id": "avg.one",
+      "expr": "Avg(-1)",
+      "rows": [
+        {
+          "x": 0
+        }
+      ],
+      "expect": -1,
+      "basis": "doc-stated",
+      "cite": "Stat Avg: Avg(-1) → -1"
+    },
+    {
+      "id": "avg.null",
+      "expr": "Avg(null)",
+      "rows": [
+        {
+          "x": 0
+        }
+      ],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Stat Avg: Avg(null) → (Empty)"
+    },
+    {
+      "id": "min.args",
+      "expr": "Min(1.5, -2, 3)",
+      "rows": [],
+      "expect": -2,
+      "basis": "doc-stated",
+      "cite": "Stat Min: Min (1.5, -2, 3) → -2"
+    },
+    {
+      "id": "min.args.null",
+      "expr": "Min(1, null, 3)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Stat Min: Min (1, null, 3) → 1"
+    },
+    {
+      "id": "min.null",
+      "expr": "Min(null)",
+      "rows": [
+        {
+          "x": 0
+        }
+      ],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Stat Min: Min (null) → (Empty)"
+    },
+    {
+      "id": "max.args",
+      "expr": "Max(1.5, -2, 3)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "Stat Max: Max (1.5, -2, 3) → 3"
+    },
+    {
+      "id": "max.args.null",
+      "expr": "Max(1, null, 3)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "Stat Max: Max (1, null, 3) → 3"
+    },
+    {
+      "id": "max.null",
+      "expr": "Max(null)",
+      "rows": [
+        {
+          "x": 0
+        }
+      ],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Stat Max: Max (null) → (Empty)"
+    },
+    {
+      "id": "product.args",
+      "expr": "Product(1, 2, 3)",
+      "rows": [],
+      "expect": 6,
+      "basis": "doc-stated",
+      "cite": "Math Product: Product(1,2,3) → 6"
+    },
+    {
+      "id": "product.args.mixed",
+      "expr": "Product(1.5, -2, 3)",
+      "rows": [],
+      "expect": -9,
+      "basis": "doc-stated",
+      "cite": "Math Product: Product(1.5, -2, 3) → -9"
+    },
+    {
+      "id": "product.args.null",
+      "expr": "Product(1, null, 3)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "Math Product: Product(1, null, 3) → 3"
+    },
+    {
+      "id": "product.null",
+      "expr": "Product(null)",
+      "rows": [
+        {
+          "x": 0
+        }
+      ],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Math Product: Product(null) → (Empty)"
+    },
+    {
+      "id": "meandeviation.args",
+      "expr": "MeanDeviation(2, -3, 4)",
+      "rows": [],
+      "expect": 2.6666666666666665,
+      "basis": "doc-stated",
+      "cite": "Stat MeanDeviation: MeanDeviation(2,-3,4) → 2.67 (printed rounded; 701 «Mean Deviation»: the mean of |x - mean|)"
+    },
+    {
+      "id": "median.args",
+      "expr": "Median(2, -3, 4)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "Stat Median: the example Median(2,-3,4) with no printed answer; 701 «Median»: the middle value"
+    },
+    {
+      "id": "mad.args",
+      "expr": "MedianAbsoluteDeviation(2, -3, 4)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "Stat MedianAbsoluteDeviation: the example (2,-3,4) with no printed answer; 701 «Median Absolute Deviation»: the median of |x - median|"
+    },
+    {
+      "id": "count.col",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "Stat Count: the non-empty values of the argument"
+    },
+    {
+      "id": "count.col.doc",
+      "expr": "Count([a])",
+      "rows": [
+        {
+          "a": 1
+        },
+        {
+          "a": null
+        },
+        {
+          "a": 8
+        },
+        {
+          "a": 9
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "701 «Count»: Column A (1, empty, 8, 9) has a Count of 3"
+    },
+    {
+      "id": "count.col.doc.full",
+      "expr": "Count([b])",
+      "rows": [
+        {
+          "b": 4
+        },
+        {
+          "b": 7
+        },
+        {
+          "b": 3
+        },
+        {
+          "b": 6
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-stated",
+      "cite": "701 «Count»: Column B (4, 7, 3, 6) has a Count of 4"
+    },
+    {
+      "id": "count.rows",
+      "expr": "Count()",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Stat Count: no argument → the number of rows"
+    },
+    {
+      "id": "countbig.col",
+      "expr": "CountBig([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "Stat CountBig: as Count (a long integer)"
+    },
+    {
+      "id": "count.col.all.null",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "Stat Count: the non-empty values - none"
+    },
+    {
+      "id": "uniquecount.col.doc",
+      "expr": "UniqueCount([a])",
+      "rows": [
+        {
+          "a": 1
+        },
+        {
+          "a": null
+        },
+        {
+          "a": 1
+        },
+        {
+          "a": 9
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "701 «Unique Count»: column A (1, empty, 1, 9) has a unique count of two"
+    },
+    {
+      "id": "uniquecount.col.doc.full",
+      "expr": "UniqueCount([b])",
+      "rows": [
+        {
+          "b": 4
+        },
+        {
+          "b": 4
+        },
+        {
+          "b": 3
+        },
+        {
+          "b": 6
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "701 «Unique Count»: column B (4, 4, 3, 6) has a unique count of three"
+    },
+    {
+      "id": "count.distinct",
+      "expr": "Count(distinct [a])",
+      "rows": [
+        {
+          "a": 1
+        },
+        {
+          "a": null
+        },
+        {
+          "a": 1
+        },
+        {
+          "a": 9
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "Stat tip: UniqueCount([Column]) is the same as Count(DISTINCT [Column])"
+    },
+    {
+      "id": "sum.col",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 6,
+      "basis": "doc-rule",
+      "cite": "Math Sum: one argument → the whole column; Lang: aggregating within a column leaves an invalid value out"
+    },
+    {
+      "id": "sum.col.all.null",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math Sum: Sum (null) → (Empty) - nothing is left after the empty values"
+    },
+    {
+      "id": "avg.col",
+      "expr": "Avg([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Stat Avg: one argument → all rows; empty values left out (Lang)"
+    },
+    {
+      "id": "avg.col.all.null",
+      "expr": "Avg([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Stat Avg: Avg(null) → (Empty)"
+    },
+    {
+      "id": "avg.distinct",
+      "expr": "Avg(distinct [x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 2.5,
+      "basis": "doc-rule",
+      "cite": "Keys DISTINCT: the aggregation over the distinct values only"
+    },
+    {
+      "id": "min.col",
+      "expr": "Min([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Stat Min: one argument → the whole column; empty values left out (Lang)"
+    },
+    {
+      "id": "max.col",
+      "expr": "Max([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "Stat Max: one argument → the whole column; empty values left out (Lang)"
+    },
+    {
+      "id": "median.col.odd",
+      "expr": "Median([x])",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "701 «Median»: the middle of the sorted values"
+    },
+    {
+      "id": "median.col.even",
+      "expr": "Median([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 2.5,
+      "basis": "doc-rule",
+      "cite": "701 «Median»: an even count → the average of the two middle values"
+    },
+    {
+      "id": "product.col",
+      "expr": "Product([x])",
+      "rows": [
+        {
+          "x": 2
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 6,
+      "basis": "doc-rule",
+      "cite": "Math Product: one argument → the whole column; null arguments left out"
+    },
+    {
+      "id": "first.col",
+      "expr": "First([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 9
+        }
+      ],
+      "expect": 7,
+      "basis": "doc-rule",
+      "cite": "Stat First: the first valid value in the rows' physical order"
+    },
+    {
+      "id": "last.col",
+      "expr": "Last([x])",
+      "rows": [
+        {
+          "x": 7
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": 9,
+      "basis": "doc-rule",
+      "cite": "Stat Last: the last valid value in the rows' physical order"
+    },
+    {
+      "id": "stddev.col",
+      "expr": "StdDev([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 1.2909944487358056,
+      "basis": "doc-rule",
+      "cite": "701 «Standard Deviation»: n = 1 is an error (so it divides by n - 1); 701 «Variance»: the sample variance"
+    },
+    {
+      "id": "var.col",
+      "expr": "Var([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 1.6666666666666667,
+      "basis": "doc-rule",
+      "cite": "701 «Variance»: the sample variance s2"
+    },
+    {
+      "id": "stderr.col",
+      "expr": "StdErr([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 0.6454972243679028,
+      "basis": "doc-rule",
+      "cite": "701 «Standard Error»: the estimated standard deviation over the square root of the sample size"
+    },
+    {
+      "id": "stddev.col.one",
+      "expr": "StdDev([x])",
+      "rows": [
+        {
+          "x": 5
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "701 «Standard Deviation»: one value → an error; an invalid value shows as (Empty) (Ops 0/0 → (Empty))"
+    },
+    {
+      "id": "var.col.one",
+      "expr": "Var([x])",
+      "rows": [
+        {
+          "x": 5
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "701 «Variance»: one value → an error, shown as (Empty)"
+    },
+    {
+      "id": "range.col",
+      "expr": "Range([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        }
+      ],
+      "expect": 8,
+      "basis": "doc-rule",
+      "cite": "701 «Min and Max»: Range = Max - Min"
+    },
+    {
+      "id": "q3.col.doc",
+      "expr": "Q3([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 14.75,
+      "basis": "doc-stated",
+      "cite": "701 «Percentiles and Quartiles»: values 4, 8, 9, 11, 16, 17 → Q3 = 14.75"
+    },
+    {
+      "id": "q1.col.doc",
+      "expr": "Q1([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 8.25,
+      "basis": "doc-rule",
+      "cite": "701 «Percentiles and Quartiles»: f = (i - 1) / (n - 1), interpolated at 0.25 (the same table)"
+    },
+    {
+      "id": "iqr.col",
+      "expr": "IQR([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 6.5,
+      "basis": "doc-rule",
+      "cite": "Stat IQR: Q3 - Q1"
+    },
+    {
+      "id": "lif.col",
+      "expr": "LIF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": -1.5,
+      "basis": "doc-rule",
+      "cite": "Stat LIF: Q1 - (1.5*IQR)"
+    },
+    {
+      "id": "uif.col",
+      "expr": "UIF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 24.5,
+      "basis": "doc-rule",
+      "cite": "Stat UIF: Q3 + (1.5*IQR)"
+    },
+    {
+      "id": "lof.col",
+      "expr": "LOF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": -11.25,
+      "basis": "doc-rule",
+      "cite": "Stat LOF: Q1 - (3*IQR)"
+    },
+    {
+      "id": "uof.col",
+      "expr": "UOF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 34.25,
+      "basis": "doc-rule",
+      "cite": "Stat UOF: Q3 + (3*IQR)"
+    },
+    {
+      "id": "lav.col",
+      "expr": "LAV([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "701 «Adjacent Values and Outliers»: the smallest observation at or above the lower inner fence"
+    },
+    {
+      "id": "uav.col",
+      "expr": "UAV([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 17,
+      "basis": "doc-rule",
+      "cite": "701 «Adjacent Values and Outliers»: the largest observation at or below the upper inner fence"
+    },
+    {
+      "id": "lav.col.clamped",
+      "expr": "LAV([x])",
+      "rows": [
+        {
+          "x": 0
+        },
+        {
+          "x": 10
+        },
+        {
+          "x": 10
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 7.5,
+      "basis": "doc-rule",
+      "cite": "701 «Adjacent Values and Outliers»: the LAV is never greater than Q1"
+    },
+    {
+      "id": "outliers.col",
+      "expr": "Outliers([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        },
+        {
+          "x": 100
+        }
+      ],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "Stat Outliers: the values above the UAV or below the LAV"
+    },
+    {
+      "id": "outliers.col.none",
+      "expr": "Outliers([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "Stat Outliers: the values above the UAV or below the LAV - none"
+    },
+    {
+      "id": "p10.col",
+      "expr": "P10([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 1.9,
+      "basis": "doc-rule",
+      "cite": "701 «Percentiles and Quartiles»: any other percentile interpolated the same way"
+    },
+    {
+      "id": "p90.col",
+      "expr": "P90([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 9.1,
+      "basis": "doc-rule",
+      "cite": "701 «Percentiles and Quartiles»: any other percentile interpolated the same way"
+    },
+    {
+      "id": "percentile.col.doc",
+      "expr": "Percentile([x], 70)",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 8.2,
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Percentile(Col2, 70) over 4 … 10 → 8.2"
+    },
+    {
+      "id": "percentile.col.doc.short",
+      "expr": "Percentile([x], 70)",
+      "rows": [
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 8.8,
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Percentile(Col2, 70) over 6 … 10 → 8.8"
+    },
+    {
+      "id": "percent.col",
+      "expr": "Percent([x], 50)",
+      "rows": [
+        {
+          "x": 10
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 20
+        },
+        {
+          "x": 30
+        }
+      ],
+      "expect": 20,
+      "basis": "doc-rule",
+      "cite": "Stat Percent: the given percent of (max - min) above the minimum"
+    },
+    {
+      "id": "geometricmean.col",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "701 «Geometric Mean»: the nth root of the product"
+    },
+    {
+      "id": "geometricmean.col.negative",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": -4
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Stat GeometricMean: a negative input → Empty"
+    },
+    {
+      "id": "geometricmean.col.zero",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 0
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "Stat GeometricMean: an input equal to zero → zero"
+    },
+    {
+      "id": "geometricmean.col.null",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "Lang: aggregating within a column leaves an invalid value out"
+    },
+    {
+      "id": "trimmedmean.col",
+      "expr": "TrimmedMean([x], 20)",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 100
+        }
+      ],
+      "expect": 5.5,
+      "basis": "doc-rule",
+      "cite": "Stat TrimmedMean: a trim of 10 % leaves out the highest 5 % and the lowest 5 %"
+    },
+    {
+      "id": "weightedaverage.col",
+      "expr": "WeightedAverage([w], [x])",
+      "rows": [
+        {
+          "w": 1,
+          "x": 10
+        },
+        {
+          "w": 3,
+          "x": 20
+        }
+      ],
+      "expect": 17.5,
+      "basis": "doc-rule",
+      "cite": "Stat WeightedAverage: Arg1 is the weight column, Arg2 the value column"
+    },
+    {
+      "id": "nthlargest.col",
+      "expr": "NthLargest([x], 2)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 5,
+      "basis": "doc-rule",
+      "cite": "Stat NthLargest: the nth largest value"
+    },
+    {
+      "id": "nthlargest.col.past",
+      "expr": "NthLargest([x], 7)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "Stat NthLargest: n past the number of values → the smallest"
+    },
+    {
+      "id": "nthsmallest.col",
+      "expr": "NthSmallest([x], 2)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Stat NthSmallest: the nth smallest value"
+    },
+    {
+      "id": "nthsmallest.col.past",
+      "expr": "NthSmallest([x], 7)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 9,
+      "basis": "doc-rule",
+      "cite": "Stat NthSmallest: n past the number of values → the largest"
+    },
+    {
+      "id": "valueformax.col",
+      "expr": "ValueForMax([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 9,
+          "x": 20
+        },
+        {
+          "k": 9,
+          "x": 30
+        },
+        {
+          "k": 1,
+          "x": 40
+        }
+      ],
+      "expect": 20,
+      "basis": "doc-rule",
+      "cite": "Stat ValueForMax: column 2 at column 1's maximum; several maxima → the first max row"
+    },
+    {
+      "id": "lastvalueformax.col",
+      "expr": "LastValueForMax([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 9,
+          "x": 20
+        },
+        {
+          "k": 9,
+          "x": 30
+        },
+        {
+          "k": 1,
+          "x": 40
+        }
+      ],
+      "expect": 30,
+      "basis": "doc-rule",
+      "cite": "Stat LastValueForMax: several maxima → the last max row"
+    },
+    {
+      "id": "valueformin.col",
+      "expr": "ValueForMin([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 1,
+          "x": 20
+        },
+        {
+          "k": 1,
+          "x": 30
+        },
+        {
+          "k": 9,
+          "x": 40
+        }
+      ],
+      "expect": 20,
+      "basis": "doc-rule",
+      "cite": "Stat ValueForMin: several minima → the first min row"
+    },
+    {
+      "id": "lastvalueformin.col",
+      "expr": "LastValueForMin([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 1,
+          "x": 20
+        },
+        {
+          "k": 1,
+          "x": 30
+        },
+        {
+          "k": 9,
+          "x": 40
+        }
+      ],
+      "expect": 30,
+      "basis": "doc-rule",
+      "cite": "Stat LastValueForMin: several minima → the last min row"
+    },
+    {
+      "id": "l95.col",
+      "expr": "L95([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 1.2348486781389878,
+      "basis": "doc-rule",
+      "cite": "Stat L95: the static t-value 1.959964 in place of TInv in Avg - t*StdDev/Sqrt(Count())"
+    },
+    {
+      "id": "u95.col",
+      "expr": "U95([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 3.765151321861012,
+      "basis": "doc-rule",
+      "cite": "Stat U95: the static t-value 1.959964 in place of TInv in Avg + t*StdDev/Sqrt(Count())"
+    },
+    {
+      "id": "mostcommon.col",
+      "expr": "MostCommon([s])",
+      "rows": [
+        {
+          "s": "a"
+        },
+        {
+          "s": "b"
+        },
+        {
+          "s": null
+        },
+        {
+          "s": "b"
+        }
+      ],
+      "expect": "b",
+      "basis": "doc-rule",
+      "cite": "Text MostCommon: the most common value"
+    },
+    {
+      "id": "names.case",
+      "expr": "SUM([x]) + sum([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        }
+      ],
+      "expect": 6,
+      "basis": "doc-rule",
+      "cite": "Lang «Case sensitivity»: functions and keywords are not case sensitive"
+    },
+    {
+      "id": "abs",
+      "expr": "Abs(-2.5)",
+      "rows": [],
+      "expect": 2.5,
+      "basis": "doc-rule",
+      "cite": "Math Abs: the absolute value"
+    },
+    {
+      "id": "abs.null",
+      "expr": "Abs(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Lang «Expression results»: operations on null return null"
+    },
+    {
+      "id": "ceiling",
+      "expr": "Ceiling(1.01)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "Math Ceiling: Ceiling(1.01) → 2.0"
+    },
+    {
+      "id": "ceiling.negative",
+      "expr": "Ceiling(-1.99)",
+      "rows": [],
+      "expect": -1,
+      "basis": "doc-stated",
+      "cite": "Math Ceiling: Ceiling(-1.99) → -1.0"
+    },
+    {
+      "id": "floor",
+      "expr": "Floor(1.99)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Math Floor: Floor(1.99) → 1.0"
+    },
+    {
+      "id": "floor.negative",
+      "expr": "Floor(-1.01)",
+      "rows": [],
+      "expect": -2,
+      "basis": "doc-stated",
+      "cite": "Math Floor: Floor(-1.01) → -2.0"
+    },
+    {
+      "id": "round.pi",
+      "expr": "Round(PI(), 3)",
+      "rows": [],
+      "expect": 3.142,
+      "basis": "doc-stated",
+      "cite": "Math Round: Round(PI(), 3) → 3.142"
+    },
+    {
+      "id": "round.half.negative",
+      "expr": "Round(-0.5, 0)",
+      "rows": [],
+      "expect": -1,
+      "basis": "doc-stated",
+      "cite": "Math Round: Round(-0.5, 0) → -1"
+    },
+    {
+      "id": "round.tens",
+      "expr": "Round(25, -1)",
+      "rows": [],
+      "expect": 30,
+      "basis": "doc-stated",
+      "cite": "Math Round: Round(25, -1) → 30"
+    },
+    {
+      "id": "round.half",
+      "expr": "Round(2.5, 0)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Math Round: 0.5 goes to the higher magnitude"
+    },
+    {
+      "id": "round.digits.integer.part",
+      "expr": "Round(1.2345, 2.9)",
+      "rows": [],
+      "expect": 1.23,
+      "basis": "doc-rule",
+      "cite": "Math Round: only the integer part of Arg2 is used"
+    },
+    {
+      "id": "round.null",
+      "expr": "Round(null, 1)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Lang: operations on null return null"
+    },
+    {
+      "id": "sqrt",
+      "expr": "Sqrt(9)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Math Sqrt: the square root"
+    },
+    {
+      "id": "sqrt.negative",
+      "expr": "Sqrt(-1)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math Sqrt: a negative argument → #NA; an invalid value shows as (Empty) (Ops 0/0 → (Empty))"
+    },
+    {
+      "id": "exp.zero",
+      "expr": "Exp(0)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "Math Exp: e to the Arg1 power"
+    },
+    {
+      "id": "exp.one",
+      "expr": "Exp(1)",
+      "rows": [],
+      "expect": 2.718281828459045,
+      "basis": "doc-rule",
+      "cite": "Math Exp: e to the Arg1 power"
+    },
+    {
+      "id": "ln.one",
+      "expr": "Ln(1)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "Math Ln: the natural logarithm"
+    },
+    {
+      "id": "ln.zero",
+      "expr": "Ln(0)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math Ln: zero → #NA, shown as (Empty)"
+    },
+    {
+      "id": "ln.negative",
+      "expr": "Ln(-1)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math Ln: negative → #NA, shown as (Empty)"
+    },
+    {
+      "id": "log.base",
+      "expr": "Log(8, 2)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Math Log: Ln(Arg1)/Ln(Arg2)"
+    },
+    {
+      "id": "log10",
+      "expr": "Log10(1000)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Math Log10: Ln(Arg1)/Ln(10)"
+    },
+    {
+      "id": "log10.zero",
+      "expr": "Log10(0)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math Log10: as Ln for valid arguments - zero → #NA"
+    },
+    {
+      "id": "mod",
+      "expr": "Mod(7.5, 2)",
+      "rows": [],
+      "expect": 1.5,
+      "basis": "doc-rule",
+      "cite": "Math Mod: Arg1 - Arg2*Floor(Arg1/Arg2)"
+    },
+    {
+      "id": "mod.negative",
+      "expr": "Mod(-7, 3)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "Math Mod: Arg1 - Arg2*Floor(Arg1/Arg2)"
+    },
+    {
+      "id": "mod.zero",
+      "expr": "Mod(5, 0)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math Mod: Arg2 = 0 → #NA, shown as (Empty)"
+    },
+    {
+      "id": "pi",
+      "expr": "PI()",
+      "rows": [],
+      "expect": 3.141592653589793,
+      "basis": "doc-rule",
+      "cite": "Math PI: the constant π"
+    },
+    {
+      "id": "power",
+      "expr": "Power(10, 3)",
+      "rows": [],
+      "expect": 1000,
+      "basis": "doc-stated",
+      "cite": "Math Power: Power(10, 3) → 1000"
+    },
+    {
+      "id": "power.negative",
+      "expr": "Power(10, -3)",
+      "rows": [],
+      "expect": 0.001,
+      "basis": "doc-stated",
+      "cite": "Math Power: Power(10, -3) → 0.001"
+    },
+    {
+      "id": "power.zero.zero",
+      "expr": "Power(0, 0)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Math Power: Power(0, 0) → 1"
+    },
+    {
+      "id": "sin",
+      "expr": "Sin(0)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "Math Sin: radians"
+    },
+    {
+      "id": "cos",
+      "expr": "Cos(0)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "Math Cos: radians"
+    },
+    {
+      "id": "tan",
+      "expr": "Tan(0)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "Math Tan: radians"
+    },
+    {
+      "id": "asin",
+      "expr": "ASin(1)",
+      "rows": [],
+      "expect": 1.5707963267948966,
+      "basis": "doc-rule",
+      "cite": "Math ASin: radians in [-π/2, π/2]"
+    },
+    {
+      "id": "asin.outside",
+      "expr": "ASin(2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math ASin: outside [-1, 1] → #NA, shown as (Empty)"
+    },
+    {
+      "id": "acos",
+      "expr": "ACos(1)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "Math ACos: radians in [0, π]"
+    },
+    {
+      "id": "acos.outside",
+      "expr": "ACos(-2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Math ACos: outside [-1, 1] → #NA, shown as (Empty)"
+    },
+    {
+      "id": "atan",
+      "expr": "ATan(1)",
+      "rows": [],
+      "expect": 0.7853981633974483,
+      "basis": "doc-rule",
+      "cite": "Math ATan: radians in [-π/2, π/2]"
+    },
+    {
+      "id": "atan2",
+      "expr": "ATan2(0, -1)",
+      "rows": [],
+      "expect": 3.141592653589793,
+      "basis": "doc-stated",
+      "cite": "Math ATan2: ATan2(0, -1) → 3.14159265358979"
+    },
+    {
+      "id": "divide",
+      "expr": "7 / 2",
+      "rows": [],
+      "expect": 3.5,
+      "basis": "doc-stated",
+      "cite": "Ops /: 7/2 → 3.5"
+    },
+    {
+      "id": "divide.zero.zero",
+      "expr": "0 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Ops /: 0/0 → (Empty)"
+    },
+    {
+      "id": "divide.negative.zero",
+      "expr": "-1 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Ops /: -1/0 → (Empty)"
+    },
+    {
+      "id": "divide.zero",
+      "expr": "1 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Ops /: division by zero → an invalid value"
+    },
+    {
+      "id": "remainder",
+      "expr": "3.5 % 2.5",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Ops %: 3.5 % 2.5 → 1.00"
+    },
+    {
+      "id": "caret",
+      "expr": "2.5 ^ 3",
+      "rows": [],
+      "expect": 15.625,
+      "basis": "doc-rule",
+      "cite": "Ops ^: Arg1 raised to the Arg2 power (the example 2.5^3)"
+    },
+    {
+      "id": "negate",
+      "expr": "-(1 - 2)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "Lang: constants as arguments, the example -(1-2)"
+    },
+    {
+      "id": "precedence.multiply",
+      "expr": "39 + 12 * 3",
+      "rows": [],
+      "expect": 75,
+      "basis": "doc-rule",
+      "cite": "Prec: multiplicative before additive (Lang example 39+12*3)"
+    },
+    {
+      "id": "precedence.left.subtract",
+      "expr": "10 - 4 - 3",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "Prec: additive, left to right"
+    },
+    {
+      "id": "precedence.left.divide",
+      "expr": "8 / 4 / 2",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "Prec: multiplicative, left to right"
+    },
+    {
+      "id": "precedence.multiply.remainder",
+      "expr": "2 * 3 % 4",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "Prec: * and % equal, left to right"
+    },
+    {
+      "id": "precedence.unary",
+      "expr": "-2 * 3",
+      "rows": [],
+      "expect": -6,
+      "basis": "doc-rule",
+      "cite": "Prec: unary minus before multiplicative"
+    },
+    {
+      "id": "add.null",
+      "expr": "null + 1",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Lang: operations on null return null"
+    },
+    {
+      "id": "subtract.null",
+      "expr": "1 - null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Lang: operations on null return null"
+    },
+    {
+      "id": "multiply.null",
+      "expr": "null * 2",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Lang: operations on null return null"
+    },
+    {
+      "id": "multiply.rows",
+      "expr": "[x] * 2",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect_rows": [
+        2,
+        null,
+        6
+      ],
+      "basis": "doc-rule",
+      "cite": "Lang «Expression results»: [Column A]*2 is empty on the rows where Column A is empty"
+    },
+    {
+      "id": "less",
+      "expr": "1 < 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-stated",
+      "cite": "Ops <: If( 1 < 2, \"true\", \"false\" ) → true"
+    },
+    {
+      "id": "less.false",
+      "expr": "2 < 1",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-stated",
+      "cite": "Ops <: Case when 2 < 1 then \"true\" else \"false\" end → false"
+    },
+    {
+      "id": "less.null",
+      "expr": "1 < null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Ops <: If(1<null, \"true\", \"false\") → (Empty)"
+    },
+    {
+      "id": "less.invalid",
+      "expr": "1 < 1 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Ops <: If(1 < 1/0, \"true\", \"false\") → (Empty)"
+    },
+    {
+      "id": "greater",
+      "expr": "3 > 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops >: greater than"
+    },
+    {
+      "id": "less.equal",
+      "expr": "2 <= 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops <=: less than or equal"
+    },
+    {
+      "id": "greater.equal",
+      "expr": "3 >= 4",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops >=: greater than or equal"
+    },
+    {
+      "id": "equal.false",
+      "expr": "1 = 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-stated",
+      "cite": "Ops =: If(1 = 2, \"true\", \"false\" ) → false"
+    },
+    {
+      "id": "equal.true",
+      "expr": "2 = 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-stated",
+      "cite": "Ops =: Case when 2 = 2 then \"true\" else \"false\" end → true"
+    },
+    {
+      "id": "equal.text.case",
+      "expr": "\"Hello\" = \"hello\"",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-stated",
+      "cite": "Ops =: If(\"Hello\" = \"hello\", \"true\", \"false\" ) → false"
+    },
+    {
+      "id": "equal.null.null",
+      "expr": "null = null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Ops =: If(null = null, \"true\", \"false\" ) → (Empty)"
+    },
+    {
+      "id": "equal.null",
+      "expr": "1 = null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Ops =: any argument null → null"
+    },
+    {
+      "id": "not.equal.bang",
+      "expr": "1 != 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops !=: true when not equal"
+    },
+    {
+      "id": "not.equal.bang.false",
+      "expr": "2 != 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops !=: the example Case when 2 != 2 …"
+    },
+    {
+      "id": "not.equal",
+      "expr": "1 <> 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops <>: true when not equal"
+    },
+    {
+      "id": "not.equal.null",
+      "expr": "1 <> null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Ops <>: any argument invalid → invalid"
+    },
+    {
+      "id": "null.equal.both",
+      "expr": "null <=> null",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops <=>: true when equal or both null"
+    },
+    {
+      "id": "null.equal.same",
+      "expr": "1 <=> 1",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops <=>: true when equal or both null"
+    },
+    {
+      "id": "null.equal.one",
+      "expr": "1 <=> null",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops <=>: true only when equal or both null - one null is neither (the page prints no answer)"
+    },
+    {
+      "id": "null.equal.differ",
+      "expr": "1 <=> 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops <=>: neither equal nor both null"
+    },
+    {
+      "id": "and",
+      "expr": "1 < 2 and 2 < 3",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops And: true when both are true (the example 1 < 2 and 2 < 3)"
+    },
+    {
+      "id": "and.false",
+      "expr": "false and true",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops And: the example false and true"
+    },
+    {
+      "id": "or",
+      "expr": "false or true",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops Or: true when one is true (the example false or true)"
+    },
+    {
+      "id": "not",
+      "expr": "not true",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops Not: the example not true"
+    },
+    {
+      "id": "not.binds.after.compare",
+      "expr": "not 1 < 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops Not: the example If( not 1 < 2, … ) - not applies to the comparison"
+    },
+    {
+      "id": "xor.both",
+      "expr": "1 < 2 xor 2 < 3",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops Xor: true when exactly one is true (the example 1 < 2 xor 2 < 3)"
+    },
+    {
+      "id": "xor.one",
+      "expr": "true xor false",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Ops Xor: exactly one is true"
+    },
+    {
+      "id": "precedence.compare.equal",
+      "expr": "1 < 2 = true",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Prec: relational before equality"
+    },
+    {
+      "id": "if.null.branches",
+      "expr": "If(true, null, null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Logic If: If(true, null, null) -> (Empty)"
+    },
+    {
+      "id": "if.null.false.branch",
+      "expr": "If(true, 1, null)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Logic If: If(true, 1, null) -> 1"
+    },
+    {
+      "id": "if.null.true.branch",
+      "expr": "If(false, null, 2)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "Logic If: If(false, null, 2) -> 2"
+    },
+    {
+      "id": "if.null.condition",
+      "expr": "If(null, 1, 2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Logic If: If(null, 1, 2) -> (Empty)"
+    },
+    {
+      "id": "if.text",
+      "expr": "If(1 < 2, \"Small\", \"Big\")",
+      "rows": [],
+      "expect": "Small",
+      "basis": "doc-stated",
+      "cite": "Logic If: If(1 < 2, \"Small\", \"Big\")-> Small"
+    },
+    {
+      "id": "if.is.null.rows",
+      "expr": "If([x] Is Null, \"0\", \"has value\")",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect_rows": [
+        "0",
+        "has value"
+      ],
+      "basis": "doc-rule",
+      "cite": "Logic If: the example If([Column] Is Null,\"0\",\"has value\")"
+    },
+    {
+      "id": "is.null",
+      "expr": "null Is Null",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Logic Is Null: whether the expression yields an empty value"
+    },
+    {
+      "id": "is.null.value",
+      "expr": "1 Is Null",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Logic Is Null: whether the expression yields an empty value"
+    },
+    {
+      "id": "is.not.null",
+      "expr": "1 Is Not Null",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Logic Is Not Null: whether the expression yields a value"
+    },
+    {
+      "id": "is.null.aggregate",
+      "expr": "Avg([x]) Is Null",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Keys IS: the example Avg([Column]) Is Null; Stat Avg(null) → (Empty)"
+    },
+    {
+      "id": "case.searched",
+      "expr": "case when 1 < 2 then \"a\" when 1 < 3 then \"b\" else \"c\" end",
+      "rows": [],
+      "expect": "a",
+      "basis": "doc-rule",
+      "cite": "Logic Case: searched, left to right - the first true when"
+    },
+    {
+      "id": "case.searched.else",
+      "expr": "case when 2 < 1 then \"true\" else \"false\" end",
+      "rows": [],
+      "expect": "false",
+      "basis": "doc-stated",
+      "cite": "Ops <: Case when 2 < 1 then \"true\" else \"false\" end → false"
+    },
+    {
+      "id": "case.simple.rows",
+      "expr": "case [x] when 3 then \"a\" when 2 then \"b\" else \"c\" end",
+      "rows": [
+        {
+          "x": 3
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 7
+        }
+      ],
+      "expect_rows": [
+        "a",
+        "b",
+        "c"
+      ],
+      "basis": "doc-rule",
+      "cite": "Logic Case: simple - the first when equal to Arg1, else the else"
+    },
+    {
+      "id": "case.simple.single.quotes",
+      "expr": "case [x] when 10 then 'ten' else 'not ten' end",
+      "rows": [
+        {
+          "x": 10
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect_rows": [
+        "ten",
+        "not ten"
+      ],
+      "basis": "doc-rule",
+      "cite": "Logic: the example case [Column1] when 10 then 'ten' else 'not ten' end (single-quoted text)"
+    },
+    {
+      "id": "case.coalesce.rows",
+      "expr": "case when [x] is not null then [x] else [y] end",
+      "rows": [
+        {
+          "x": 1,
+          "y": 9
+        },
+        {
+          "x": null,
+          "y": 8
+        }
+      ],
+      "expect_rows": [
+        1,
+        8
+      ],
+      "basis": "doc-rule",
+      "cite": "Logic: the example case when Column1 is not null then Column1 else Column2 end"
+    },
+    {
+      "id": "median.args.null",
+      "expr": "Median(1, null, 3, 4)",
+      "rows": [],
+      "expect": 3,
+      "basis": "decided",
+      "cite": "lead 10-13: null left out, as Sum/Avg/Min/Max/Product state for the same several-argument form"
+    },
+    {
+      "id": "meandeviation.args.null",
+      "expr": "MeanDeviation(1, null, 3)",
+      "rows": [],
+      "expect": 1,
+      "basis": "decided",
+      "cite": "lead 10-13: null left out, as Sum/Avg/Min/Max/Product state for the same several-argument form"
+    },
+    {
+      "id": "mad.args.null",
+      "expr": "MedianAbsoluteDeviation(1, null, 3)",
+      "rows": [],
+      "expect": 1,
+      "basis": "decided",
+      "cite": "lead 10-13: null left out, as Sum/Avg/Min/Max/Product state for the same several-argument form"
+    },
+    {
+      "id": "remainder.negative",
+      "expr": "-7 % 3",
+      "rows": [],
+      "expect": 2,
+      "basis": "decided",
+      "cite": "lead 10-13: may differ from Spotfire - no way to measure (10-13). % as Mod: Arg1 - Arg2*Floor(Arg1/Arg2) - one answer for one meaning"
+    },
+    {
+      "id": "remainder.zero",
+      "expr": "5 % 0",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: empty, as Mod(5, 0) and 1 / 0"
+    },
+    {
+      "id": "and.null.true",
+      "expr": "null and true",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "and.null.false",
+      "expr": "null and false",
+      "rows": [],
+      "expect": false,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "and.true.null",
+      "expr": "true and null",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "and.false.null",
+      "expr": "false and null",
+      "rows": [],
+      "expect": false,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "or.null.true",
+      "expr": "null or true",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "or.null.false",
+      "expr": "null or false",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "or.true.null",
+      "expr": "true or null",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "or.false.null",
+      "expr": "false or null",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "not.null",
+      "expr": "not null",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic"
+    },
+    {
+      "id": "xor.null.true",
+      "expr": "null xor true",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic - xor can never be decided with a null"
+    },
+    {
+      "id": "xor.false.null",
+      "expr": "false xor null",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: SQL three-valued logic - xor can never be decided with a null"
+    },
+    {
+      "id": "case.null.condition",
+      "expr": "case when null then 1 else 2 end",
+      "rows": [],
+      "expect": 2,
+      "basis": "decided",
+      "cite": "lead 10-13: a when that is not true goes on, as SQL CASE (If(null, 1, 2) stays (Empty) as the page states)"
+    },
+    {
+      "id": "case.no.else",
+      "expr": "case when 1 = 2 then 1 end",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: no else and no true when → empty, as SQL's ELSE NULL"
+    },
+    {
+      "id": "case.simple.null",
+      "expr": "case null when null then 1 else 2 end",
+      "rows": [],
+      "expect": 2,
+      "basis": "decided",
+      "cite": "lead 10-13: null = null is null, not true, so the else"
+    },
+    {
+      "id": "less.text",
+      "expr": "\"a\" < \"b\"",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: text compares by character code, case-sensitive as = is"
+    },
+    {
+      "id": "less.text.case",
+      "expr": "\"B\" < \"a\"",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: text compares by character code - B (66) before a (97)"
+    },
+    {
+      "id": "less.text.case.false",
+      "expr": "\"a\" < \"B\"",
+      "rows": [],
+      "expect": false,
+      "basis": "decided",
+      "cite": "lead 10-13: text compares by character code - B (66) before a (97)"
+    },
+    {
+      "id": "precedence.caret.unary",
+      "expr": "-2 ^ 2",
+      "rows": [],
+      "expect": -4,
+      "basis": "decided",
+      "cite": "lead 10-13: may differ from Spotfire - no way to measure (10-13). ^ before unary minus"
+    },
+    {
+      "id": "precedence.caret.multiply",
+      "expr": "2 * 3 ^ 2",
+      "rows": [],
+      "expect": 18,
+      "basis": "decided",
+      "cite": "lead 10-13: ^ before * / %"
+    },
+    {
+      "id": "precedence.caret.right",
+      "expr": "2 ^ 3 ^ 2",
+      "rows": [],
+      "expect": 512,
+      "basis": "decided",
+      "cite": "lead 10-13: may differ from Spotfire - no way to measure (10-13). ^ from the right"
+    },
+    {
+      "id": "precedence.and.or",
+      "expr": "true or false and false",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: not before and before xor before or, all after comparison (MySQL's order)"
+    },
+    {
+      "id": "precedence.not.and",
+      "expr": "not false and false",
+      "rows": [],
+      "expect": false,
+      "basis": "decided",
+      "cite": "lead 10-13: not before and before xor before or, all after comparison (MySQL's order)"
+    },
+    {
+      "id": "precedence.xor.or",
+      "expr": "true xor true or true",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: not before and before xor before or, all after comparison (MySQL's order)"
+    },
+    {
+      "id": "precedence.or.xor",
+      "expr": "true or true xor true",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: not before and before xor before or, all after comparison (MySQL's order)"
+    },
+    {
+      "id": "precedence.and.xor",
+      "expr": "false and true xor true",
+      "rows": [],
+      "expect": true,
+      "basis": "decided",
+      "cite": "lead 10-13: not before and before xor before or, all after comparison (MySQL's order)"
+    },
+    {
+      "id": "pctoutliers.col",
+      "expr": "PctOutliers([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        },
+        {
+          "x": 100
+        }
+      ],
+      "expect": 14.285714285714286,
+      "basis": "decided",
+      "cite": "lead 10-13: a percent 0 … 100 - the name and Stat «percent of values»"
+    },
+    {
+      "id": "covariance.col",
+      "expr": "Covariance([x], [y])",
+      "rows": [
+        {
+          "x": 1,
+          "y": 2
+        },
+        {
+          "x": 2,
+          "y": 4
+        },
+        {
+          "x": 3,
+          "y": 7
+        }
+      ],
+      "expect": 2.5,
+      "basis": "decided",
+      "cite": "lead 10-13: divide by n - 1, as Var is the sample variance (701)"
+    },
+    {
+      "id": "covariance.col.null",
+      "expr": "Covariance([x], [y])",
+      "rows": [
+        {
+          "x": 1,
+          "y": 2
+        },
+        {
+          "x": 2,
+          "y": 4
+        },
+        {
+          "x": null,
+          "y": 9
+        },
+        {
+          "x": 3,
+          "y": 7
+        }
+      ],
+      "expect": 2.5,
+      "basis": "decided",
+      "cite": "lead 10-13: a pair aggregation leaves out a row with either side empty"
+    },
+    {
+      "id": "uniqueconcatenate.col",
+      "expr": "UniqueConcatenate([s])",
+      "rows": [
+        {
+          "s": "b"
+        },
+        {
+          "s": "a"
+        },
+        {
+          "s": null
+        },
+        {
+          "s": "b"
+        }
+      ],
+      "expect": "a, b",
+      "basis": "decided",
+      "cite": "lead 10-13: may differ from Spotfire - no way to measure (10-13). the distinct values in comparator order joined by \", \"; empty values left out"
+    },
+    {
+      "id": "mostcommon.col.tie",
+      "expr": "MostCommon([s])",
+      "rows": [
+        {
+          "s": "b"
+        },
+        {
+          "s": "a"
+        },
+        {
+          "s": "a"
+        },
+        {
+          "s": "b"
+        }
+      ],
+      "expect": "b",
+      "basis": "decided",
+      "cite": "lead 10-13: a tie goes to the value met first in row order, as First and ValueForMax take the first row"
+    },
+    {
+      "id": "weightedaverage.col.null",
+      "expr": "WeightedAverage([w], [x])",
+      "rows": [
+        {
+          "w": 1,
+          "x": 10
+        },
+        {
+          "w": null,
+          "x": 20
+        },
+        {
+          "w": 2,
+          "x": null
+        },
+        {
+          "w": 1,
+          "x": 30
+        }
+      ],
+      "expect": 20,
+      "basis": "decided",
+      "cite": "lead 10-13: a pair aggregation leaves out a row with either side empty"
+    },
+    {
+      "id": "trimmedmean.col.fraction.none",
+      "expr": "TrimmedMean([x], 10)",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 100
+        }
+      ],
+      "expect": 17.285714285714285,
+      "basis": "decided",
+      "cite": "lead 10-13: each end cuts Floor(n * p / 2) values - 7 at 10 % cuts none"
+    },
+    {
+      "id": "trimmedmean.col.fraction.one",
+      "expr": "TrimmedMean([x], 40)",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 100
+        }
+      ],
+      "expect": 4,
+      "basis": "decided",
+      "cite": "lead 10-13: each end cuts Floor(n * p / 2) values - 7 at 40 % cuts one"
+    },
+    {
+      "id": "if.branch.subset",
+      "expr": "If([x] < 2, Max([x]), Max([x]))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect_rows": [
+        1,
+        3,
+        3
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Col1 1, 2, 3 → 1, 3, 3"
+    },
+    {
+      "id": "if.branch.percentile",
+      "expr": "If([x] < 4, 0, Percentile([x], 70))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect_rows": [
+        0,
+        0,
+        0,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Col2 1 … 10 → 0 ×3, 8.2 ×7"
+    },
+    {
+      "id": "if.branch.percentile.later",
+      "expr": "If([x] < 6, 0, Percentile([x], 70))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect_rows": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        8.8,
+        8.8,
+        8.8,
+        8.8,
+        8.8
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Col2 1 … 10 → 0 ×5, 8.8 ×5"
+    },
+    {
+      "id": "case.then.subset.min",
+      "expr": "case when [x] < Avg([x]) then Min([x]) when [x] < (Avg([x]) + 1) then Min([x]) else Min([x]) end",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        }
+      ],
+      "expect_rows": [
+        1,
+        1,
+        1,
+        1,
+        5,
+        6,
+        6,
+        6
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using case»: Case Min 1 1 1 1 5 6 6 6"
+    },
+    {
+      "id": "case.then.subset.max",
+      "expr": "case when [x] < Avg([x]) then Max([x]) when [x] < (Avg([x]) + 1) then Max([x]) else Max([x]) end",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        }
+      ],
+      "expect_rows": [
+        4,
+        4,
+        4,
+        4,
+        5,
+        8,
+        8,
+        8
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using case»: Case Max 4 4 4 4 5 8 8 8"
+    }
+  ],
+  "ours": [
+    {
+      "id": "latest",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-03T00:00:00Z"
+        },
+        {
+          "x": 2,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": 3,
+      "basis": "ours",
+      "cite": "task doc §7: the value with the latest time"
+    },
+    {
+      "id": "latest.tie",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-02T00:00:00Z"
+        },
+        {
+          "x": 4,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": null,
+      "basis": "ours",
+      "cite": "task doc §7: two at the same time are not picked between (ruling 22ebdd153: no rule orders two facts at one instant)"
+    },
+    {
+      "id": "latest.tie.same",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-02T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": 3,
+      "basis": "ours",
+      "cite": "ledger_subgraph _read_attribute: the same value at two instants is one fact stated twice - nothing to pick between"
+    },
+    {
+      "id": "latest.null",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": null,
+          "$at": "2026-10-03T00:00:00Z"
+        }
+      ],
+      "expect": 1,
+      "basis": "ours",
+      "cite": "lead 0b7d84462 B: an aggregation skips empty values - the latest value, not the latest row"
+    },
+    {
+      "id": "latest.all.null",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": null,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": null,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": null,
+      "basis": "ours",
+      "cite": "lead 0b7d84462 B: an aggregation skips empty values - none left"
+    },
+    {
+      "id": "latest.time.mixed",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        }
+      ],
+      "expect": 1,
+      "basis": "decided",
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty"
+    },
+    {
+      "id": "latest.untimed.one",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 5
+        }
+      ],
+      "expect": 5,
+      "basis": "decided",
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty - a node's own one value has no time and still reads"
+    },
+    {
+      "id": "latest.untimed.same",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 5,
+      "basis": "decided",
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty"
+    },
+    {
+      "id": "latest.untimed.differ",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        }
+      ],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13: with any timed row, the latest of the timed rows (an untimed row is not a candidate); with none timed, the value when there is one or all agree, else empty"
+    },
+    {
+      "id": "list.count",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": [
+            1,
+            2
+          ]
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "decided",
+      "cite": "lead 10-13: a list value (one read holding several) counts as its items"
+    },
+    {
+      "id": "list.sum",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": [
+            1,
+            2
+          ]
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 6,
+      "basis": "decided",
+      "cite": "lead 10-13: a list value (one read holding several) counts as its items"
+    },
+    {
+      "id": "list.uniquecount",
+      "expr": "UniqueCount([x])",
+      "rows": [
+        {
+          "x": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "x": "a"
+        }
+      ],
+      "expect": 2,
+      "basis": "decided",
+      "cite": "lead 10-13: a list value (one read holding several) counts as its items"
+    },
+    {
+      "id": "text.number.sum",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": "29.50"
+        },
+        {
+          "x": " 1 "
+        },
+        {
+          "x": "+2"
+        },
+        {
+          "x": "1e1"
+        },
+        {
+          "x": ".5"
+        }
+      ],
+      "expect": 43,
+      "basis": "decided",
+      "cite": "lead 10-13: a text is a number when, trimmed, it is only sign, digits, a decimal point and an exponent; else it is text"
+    },
+    {
+      "id": "text.not.number.sum",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": "29,50"
+        },
+        {
+          "x": "29 mm"
+        },
+        {
+          "x": "0x10"
+        },
+        {
+          "x": 1
+        }
+      ],
+      "expect": 1,
+      "basis": "decided",
+      "cite": "lead 10-13: a text is a number when, trimmed, it is only sign, digits, a decimal point and an exponent; else it is text - a numeric fold leaves a text out"
+    },
+    {
+      "id": "text.not.number.count",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": "29,50"
+        },
+        {
+          "x": "29 mm"
+        },
+        {
+          "x": ""
+        },
+        {
+          "x": 1
+        }
+      ],
+      "expect": 3,
+      "basis": "decided",
+      "cite": "lead 10-13: a text is a number when, trimmed, it is only sign, digits, a decimal point and an exponent; else it is text; an empty text is empty and is not counted"
+    }
+  ],
+  "unsettled": [
+    {
+      "id": "text.arithmetic",
+      "expr": "[x] * 2 over \"29.50\" and \"29 mm\"",
+      "question": "a number-text takes part as its number (59); a text that is not one makes the row empty?",
+      "why": "the 10-13 text rule says what a number-text is, and a numeric fold leaves other text out; it does not say what arithmetic does with text"
+    }
+  ],
+  "out_of_edition": [
+    {
+      "names": [
+        "NormDist",
+        "NormInv",
+        "TDist",
+        "TInv",
+        "ChiDist",
+        "ChiInv",
+        "FDist",
+        "FInv"
+      ],
+      "why": "task doc §1-c: distribution functions, not aggregations - the second edition, right after the calculators' frame lands (lead 10-13)"
+    },
+    {
+      "names": [
+        "Lag",
+        "Lead",
+        "TERR_*",
+        "TERRAggregation_*"
+      ],
+      "why": "task doc §1-d: load order and the external R engine - not built"
+    },
+    {
+      "names": [
+        "Rand",
+        "RandBetween"
+      ],
+      "why": "a seeded generator the pages do not define - no answer to score"
+    },
+    {
+      "names": [
+        "AS",
+        "OVER",
+        "NEST",
+        "CROSS"
+      ],
+      "why": "axis and hierarchy keywords - a visualization's, not a value's"
+    },
+    {
+      "names": [
+        "&",
+        "Concatenate",
+        "text",
+        "date and time",
+        "conversion",
+        "binning",
+        "ranking",
+        "spatial",
+        "property"
+      ],
+      "why": "task doc §6: names only, not built"
+    },
+    {
+      "names": [
+        "[step.name]",
+        "type(\"key\")",
+        "Reach"
+      ],
+      "why": "ours, meaningful only over a walk answer (task doc §7; grammar afcb79f14 · 5ad030347) - the grammar harness scores them with walk-answer fixtures (lead 10-13); Latest is in `ours`"
+    },
+    {
+      "names": [
+        "\"\""
+      ],
+      "why": "an empty text is NULL at our write boundary - contracts/blank_predicate owns «is this cell empty»"
+    }
+  ]
+}

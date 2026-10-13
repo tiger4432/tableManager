@@ -506,12 +506,20 @@ class LedgerStore:
             raise TypeError(_REASONS_REQUIRED)
         if enforce_translator_version and not advance_cursor:
             raise TypeError(_VERSION_GUARD_NEEDS_CURSOR)
+        from chain.keyset_scan import stage
+
         connection = self.connection()
         try:
-            self.ensure_partitions(connection, {a.occurred_at for a in atoms})
-            withdrawn = self._withdraw_refs(connection, source, withdraw_refs)
-            attempted, inserted = self.insert_atoms(connection, atoms)
-            self._write_row_refs(connection, source, row_refs, row_ref_columns)
+            with stage("partitions", len(atoms)):
+                self.ensure_partitions(connection, {a.occurred_at for a in atoms})
+            with stage("withdraw atoms", len(withdraw_refs or ())) as said:
+                withdrawn = self._withdraw_refs(connection, source, withdraw_refs)
+                said["note"] = "%d atoms" % withdrawn
+            with stage("insert atoms", len(atoms)) as said:
+                attempted, inserted = self.insert_atoms(connection, atoms)
+                said["note"] = "%d new" % inserted
+            with stage("index lines", len(row_refs or ())):
+                self._write_row_refs(connection, source, row_refs, row_ref_columns)
             if advance_cursor:
                 self._advance_cursor(connection, source, translator_ver, cursor_value,
                                      molecules, inserted, attempted - inserted,
@@ -539,7 +547,8 @@ class LedgerStore:
             # of that, free to drift the day a column is added.
             if receipt is not None:
                 _insert_audit_row(connection, receipt(written))
-            connection.commit()
+            with stage("commit"):
+                connection.commit()
             return written
         except Exception:
             connection.rollback()
@@ -749,6 +758,22 @@ class LedgerStore:
             if own:
                 connection.rollback()
                 connection.close()
+
+    def refs_plan(self, source, refs):
+        """The plan of `atoms_for_refs` for these refs, in a few words (`backfill.plan_said`) - which partitions the ref
+        index answers and which are read whole; the withdrawal's DELETE asks the same predicate (총괄 d9be013cb ②)."""
+        from .backfill import plan_said
+
+        connection = self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"EXPLAIN SELECT count(*) FROM {self.names.ledger} "
+                    "WHERE source_who = %s AND source_raw_ref = ANY(%s)", (source, list(refs)))
+                return plan_said(row[0] for row in cursor.fetchall())
+        finally:
+            connection.rollback()
+            connection.close()
 
     def indexed_row_ids(self, relation, row_ids, source, connection=None):
         """Which of `row_ids` this source's index already names. READ ONLY.

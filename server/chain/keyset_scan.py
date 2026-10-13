@@ -23,6 +23,8 @@ WHY PAGES AND NOT ROWS
     would quietly invite N+1.
 """
 import logging
+import contextlib
+import contextvars
 import math
 import time
 
@@ -78,6 +80,40 @@ def step_of(checkpoint):
     """`step(name, page, pages, rows)` - the step seat on a run's checkpoint (`retroactive._checkpoint`, 총괄 e71f7d6f1):
     a line and the progress time inside a page; a no-op when there is none (a dry run, a direct call)."""
     return getattr(checkpoint, "step", None) or (lambda *_: None)
+
+
+#: The control of the retroactive run this thread works for, set around the run (`retroactive._run_to_the_end`) - so a
+#: stage below the page loop, where no checkpoint is handed (the translator, the ledger store), reaches that run's line.
+RUN_CONTROL = contextvars.ContextVar("retroactive_run_control", default=None)
+
+
+@contextlib.contextmanager
+def stage(name, rows=None):
+    """One stage inside a page (총괄 d9be013cb, 소유자 「내부 진행 코드마다 로그」): its line when it ends - the step line,
+    with its own seconds - and the stage the run's beat says it is in while it runs (`RunControl.stage`). Yields a dict:
+    a `note` written there ends the line. Outside a run (the ledger follow-up, a CLI's direct call) the dict alone."""
+    control = RUN_CONTROL.get()
+    if control is None:
+        yield {}
+        return
+    with control.stage(name, rows) as said:
+        yield said
+
+
+def say(sentence) -> bool:
+    """One line in the log of the run this thread works for (`RunControl.say`) - whatever `retroactive_debug` says.
+    -> whether there was a run to say it to."""
+    control = RUN_CONTROL.get()
+    if control is not None:
+        control.say(sentence)
+    return control is not None
+
+
+def debugging() -> bool:
+    """Are the stage lines on for the run this thread works for (`retroactive_debug`) - what a stage asks before it
+    spends a statement on its note (an EXPLAIN)."""
+    control = RUN_CONTROL.get()
+    return bool(control is not None and control.debug)
 
 
 def pages(items, start: int = 0):

@@ -39081,3 +39081,90 @@ d1 K1→K2   기대 0 또는 없음      실제 2.0 / 5.0 · 2.0    기대 3 / 5
 
 - 물음 2(모호한 디펙)는 후보 표 위 decide 로 맞게 섭니다 — 한 디펙이 두 kind 에 각 1, die 가 두 kind 에 닿음.
 - 물음 1 은 «더하기 쪽»만 맞습니다. 빼기 쪽(옛 키)은 고침에서도 지움에서도 안 따라와, 요약 표와 원장 엣지와 걷기가 «없는 디펙의 수»를 말합니다. 대조에서 die → K1 이 거짓으로 닿습니다.
+
+---
+
+## [C 응용] 10-13 — 허브 고침 90e2d5a51 에서 «쪽 합 == 한 번» 다시 — 같음
+
+같은 받는 쪽(scratchpad/hub_pages_receiver.py, 문서 규칙만으로 짠 것) · 같은 판(assy_impl_wm_1012 읽기만 · SYN-BW-101-16 · hops 6 · fanout_limit 20). 빼는 선 칸은 이제 응답 모양 문서(4eeffad0c)의 일곱. 창 10:04:28 ~ 10:13:42 — 구현자 B 의 pytest 판과 겹침(B 동의).
+
+```
+한 번   허브 없음               40.6 s · 노드 2905 · 선 6818 · 묶음 표 470 · 끊김 False
+쪽 합   허브 없음               쪽 29 · 끝까지 True · 같음 True · 노드 다름 0 · 선 다름 0 · 표 다름 0 · 한쪽에만 0
+한 번   허브 ['in_container'] 41.9 s · 노드 2905 · 선 6818 · 묶음 표 470 · 끊김 False
+쪽 합   허브 ['in_container'] 쪽 29 · 끝까지 True · 같음 True · 노드 다름 0 · 선 다름 0 · 표 다름 0 · 한쪽에만 0
+```
+
+- 이 견주기가 빈 게이트가 아닌 증거: 같은 받는 쪽이 031903979 에서 문서 밖 세 칸의 다름 1,435 를 잡았다(0a45c437f).
+
+## [C 응용] 10-13 — «체인 결과가 안 써진다» 재현: origin/main 진짜 런처, 체인 종류마다 추가 · 고침 · 지움 (총괄 a43734da3)
+
+박스 판. 트리(띄울 때의 origin/main, 둘 사이 server · client2 · 런처 변경 0) 판 2 6e994f74e · 판 3 d2c75428a · 런처 run_decoupled_app.py --no-client(서버 · 워처 · 체인 워커 · 자동 갱신) · 스크래치 스키마 assy_app_reread_chw(판마다 지움, public 행 변화 0) · 선언 셋: 조인 cw_ref→cw_item · decide cw_log→cw_job(파생행 + 오토컨펌 + count/max) · 맵퍼 cw_m. 쓰기는 그리드의 API(PUT /tables/<t>/data/updates · POST /tables/<t>/rows/batch_delete). 명령: scratchpad/run_chw.sh · chw_e2e.py · 이 절 report_1013_chw_gen.py.
+
+**1 추가 · 고침 — 세 판(띄운 그대로 · 어드민 표 설정 저장 뒤 · reload-configs 뒤) 모두 써짐**
+
+```
+판 2 (원장 선언 없음)
+  1 (as launched) after add                                      item ['i11=L11', 'i12=L12'] · job ['J11 n=2 vmax=20 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11!', 'k12=a12!']
+  1 (as launched) after edit (+ a new cw_item row on g11)        item ['i11=L11-edited', 'i12=L12', 'i13=L11-edited'] · job ['J11 n=2 vmax=90 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11-edited!', 'k12=a12!']
+  2 (after the admin table config save) after add                item ['i11=L11-while-cw_job-held', 'i12=L12', 'i13=L11-while-cw_job-held', 'i21=L21', 'i22=L22'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=20 grade=A', 'J22 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw_job-held!', 'k21=a21!', '
+  2 (after the admin table config save) after edit (+ a new cw_i item ['i11=L11-while-cw_job-held', 'i12=L12', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=L22', 'i23=L21-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw_
+  3 (after reload-configs) after add                             item ['i11=L11-while-cw_job-held', 'i12=L12', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=L22', 'i23=L21-edited', 'i31=L31', 'i32=L32'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B', '
+  3 (after reload-configs) after edit (+ a new cw_item row on g3 item ['i11=L11-while-cw_job-held', 'i12=L12', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=L22', 'i23=L21-edited', 'i31=L31-edited', 'i32=L32', 'i33=L31-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J2
+  체인 대기 0 까지(초): 7.1 · 6.4 · 5.2 · 6.1 · 5.8 · 6.8 · 10.0 · 5.1 · 5.6 · 5.2 · 4.5
+판 3 (원장 선언 컴파일됨)
+  1 (as launched) after add                                      item ['i11=L11', 'i12=L12'] · job ['J11 n=2 vmax=20 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11!', 'k12=a12!']
+  1 (as launched) after edit (+ a new cw_item row on g11)        item ['i11=L11-edited', 'i12=L12', 'i13=L11-edited'] · job ['J11 n=2 vmax=90 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11-edited!', 'k12=a12!']
+  2 (after the admin table config save) after add                item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held', 'i21=L21', 'i22=L22'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=20 grade=A', 'J22 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw_job-held!', 'k21=a21!', 
+  2 (after the admin table config save) after edit (+ a new cw_i item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=L22', 'i23=L21-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw
+  3 (after reload-configs) after add                             item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=None', 'i23=L21-edited', 'i31=L31', 'i32=L32'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B',
+  3 (after reload-configs) after edit (+ a new cw_item row on g3 item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=None', 'i23=L21-edited', 'i31=L31-edited', 'i32=L32', 'i33=L31-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', '
+  체인 대기 0 까지(초): 6.9 · 6.1 · 5.1 · 5.7 · 4.8 · 5.6 · 6.4 · 6.7 · 4.5 · 6.9 · 5.8 · 5.0
+```
+
+**2 지움 — 조인 칸 거두기는 «원장 따라가기» 줄 뒤에서, decide 셈은 안 바뀜**
+
+```
+판 2 (원장 선언 없음)           1 (as launched) after delete (cw_ref g12 · c item ['i11=L11-edited', 'i12=L12', 'i13=L11-edited'] · job ['J11 n=2 vmax=90 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11-edited!']
+판 2 (원장 선언 없음)           2 (after the admin table config save) after  item ['i11=L11-while-cw_job-held', 'i12=L12', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=L22', 'i23=L21-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw_job-held!', 'k21=a21-edited!']
+판 2 (원장 선언 없음)           3 (after reload-configs) after delete (cw_re item ['i11=L11-while-cw_job-held', 'i12=L12', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=L22', 'i23=L21-edited', 'i31=L31-edited', 'i32=L32', 'i33=L31-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B', 'J31 n=2 vmax=90
+판 3 (원장 선언 컴파일됨)         1 (as launched) after delete (cw_ref g12 · c item ['i11=L11-edited', 'i12=None', 'i13=L11-edited'] · job ['J11 n=2 vmax=90 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11-edited!']
+판 3 (원장 선언 컴파일됨)         2 (after the admin table config save) after  item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=None', 'i23=L21-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw_job-held!', 'k21=a21-edited!']
+판 3 (원장 선언 컴파일됨)         3 (after reload-configs) after delete (cw_re item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held', 'i21=L21-edited', 'i22=None', 'i23=L21-edited', 'i31=L31-edited', 'i32=None', 'i33=L31-edited'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B', 'J21 n=2 vmax=90 grade=A', 'J22 n=1 vmax=30 grade=B', 'J31 n=2 vmax
+판 3 지움 뒤 원장 따라가기가 큐를 다 받기까지: (ledger follow-up took every event) (45.6, 0)
+판 3 지움 뒤 원장 따라가기가 큐를 다 받기까지: (ledger follow-up took every event) (42.1, 0)
+판 3 지움 뒤 원장 따라가기가 큐를 다 받기까지: (ledger follow-up took every event) (42.7, 0)
+원장 따라가기 페이스(추적 파일 server/pacing.json): jobs.chain_followup = trickle = {"label": "Very slow - overnight", "when": "When staying out of the way matters more than when it finishes", "units_per_cycle": 1, "rest_seconds": 3.0}
+판 3 체인 워커 로그의 따라가기 바퀴 줄 75 개, 첫 줄: [LedgerFollowUp] lap: 1 item(s) in 0.000s, 7 left in the queue (rest 3s between)
+판 2 의 따라가기 줄(ERROR, 판 출력에 잘려 실린 것): ['[LedgerFollowUp] stopped: world default · declaration C:\\\\Users\\\\kk980\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-kk980-Developments-assyManager\\\\360']
+```
+
+- 지운 행이 먹인 칸을 거두는 자리(`_retract_what_those_rows_fed`)는 체인 규칙 고리가 아니라 `_drain_ledger_followup_sync` 안입니다. 그래서 (가) 운영 세상 원장 선언이 컴파일 안 되면(`[LedgerFollowUp] stopped`) 지움은 영영 안 거두고(판 2), (나) 컴파일되면 그 DELETE 앞에 쌓인 아웃박스 이벤트를 위 페이스로 다 지난 뒤에 거둡니다(판 3).
+- decide 원천 행 지움 → n · vmax 그대로: DELETE 가 규칙 고리에 안 들어감 — 알려진 a84e12f31(구현자 B 지시).
+
+**3 소급 실행 · 표 잠금 아래의 live 쓰기 (총괄 덧칸)**
+
+```
+LOCK a · a run row stands running with a dead runner [('appchwdead01', 'chain_replay', 'running', 'gonehost/999999')]
+LOCK a · live writes 200 200 200 (200, 1)
+LOCK a2 · a real replay queued while the dead row stands 200 {'status': 'queued', 'run_id': '5e37ec77e331', 'op': 'chain_replay', 'params': {'rule': 'enrichment_dedup:cw_decide'}, 'label': 'Replay chain rules over old data (R1)'}
+LOCK a2 · 15 s later [('5e37ec77e331', 'queued', None)] ['chain_worker.log: [Chain] [2026-10-13 10:56:55,813] INFO - [Chain] a queued replay is waiting for the gate: run_id=appchwdead01 op=chain_replay is held by runner=gonehost/999999, and whether that process is alive CANNOT BE JUDGED from her', 'chain_worker.log: [Chain] [202
+LOCK a2 · cancel the dead row by the API (200, {'run': 'cancel_requested', 'skipped_events': 0, 'already_processed': 0, 'slot_pid': None})
+LOCK a2 · 15 s after the cancel [('5e37ec77e331', 'queued', None)] [('appchwdead01', 'cancel_requested'), ('5e37ec77e331', 'queued')]
+LOCK b · cw_job held as a replay group holds it (pid 44268)
+LOCK b · live writes 200 200 200
+LOCK c · a real replay of cw_decide queued while cw_job is held 200 {'status': 'queued', 'run_id': '73d40c6ae264', 'op': 'chain_replay', 'params': {'rule': 'enrichment_dedup:cw_decide'}, 'label': 'Replay chain rules over old data (R1)'}
+LOCK b+c · 40 s into the hold · not chained 1
+LOCK b+c · beat ['chain-slot-1.json: {"name": "chain-slot-1", "pid": 56504, "ts": 1791856679.4632275, "beats": 176, "started_at": 1791856519.4957535, "note": null, "work": {"open": 1, "oldest_progress_ts": 1791856639.4583104, "oldest_started_ts": 1791856639.4432082, "oldest_what": "tx 01a132fa-7d90-7aec-955e-cd8675dde429 \\u00b7
+LOCK b · released
+LOCK c · the replay after the release [('73d40c6ae264', 'queued', None)]
+LOCK beat after no beat names a wait or a hold
+LOCK log lines naming wait or gate ['chain_worker.log: [Chain] [2026-10-13 10:58:10,799] INFO - [Chain] a queued replay is waiting for the gate: run_id=appchwdead01 op=chain_replay is held by runner=gonehost/999999, and whether that process is alive CANNOT BE JUDGED from her', 'chain_worker.log: [Chain] [2026-10-13 10:58:12,831]
+LOOK L a · under a dead running run row item ['i11=L11-under-dead-run', 'i12=None', 'i13=L11-under-dead-run'] · job ['J11 n=2 vmax=95 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11-under-dead-run!'] · 큐 waiting 0
+LOOK L b+c · 40 s into the hold         item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held'] · job ['J11 n=2 vmax=95 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw_job-held!'] · 큐 waiting cut
+LOOK L b+c · after the release          item ['i11=L11-while-cw_job-held', 'i12=None', 'i13=L11-while-cw_job-held'] · job ['J11 n=2 vmax=99 grade=A', 'J12 n=1 vmax=30 grade=B'] · m ['k11=a11-while-cw_job-held!'] · 큐 waiting 0
+판 3 마지막 LOOK(3 (after reload-configs) after delete (c)의 retroactive_runs: [['chain_replay', 'cancel_requested', 1], ['chain_replay', 'queued', 2]]
+```
+
+- 죽은 runner 의 chain_replay running 줄은 live 체인 쓰기를 막지 않습니다. 막는 것은 뒤에 선 리플레이뿐입니다(관문). 그 줄을 취소 API 로 부르면 답이 `cancel_requested` 이고 관문은 그대로였습니다. ⚠️ 제 가짜 줄의 runner 가 다른 호스트라 «살았는지 판단 불가» 갈래입니다 — 같은 호스트의 죽은 pid 는 안 쟀습니다.
+- 표 잠금(table_locks.hold, 기다림에 끝이 없음)은 그 표를 쓰는 그룹만 세웁니다. 다른 표의 조인 · 맵퍼는 다른 슬롯에서 써졌고, 풀자 곧바로 써졌습니다.

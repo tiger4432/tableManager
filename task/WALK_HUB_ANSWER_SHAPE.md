@@ -63,20 +63,43 @@ edges_pending [행 id …] — 혼자 선 행의 선을 이 쪽 원자 예산 �
              다음 일인 예산별 스트리밍은 묶음마다 전체 위에서 다시 흘려 값까지 맞춘다
 ```
 
-## 붙인 표의 행 — 행 붙이기 (총괄 0b7d84462 A · 10-13) — 짓는 중
+## 붙인 표의 행 — 행 붙이기 (총괄 0b7d84462 A · 14a486e8c · 10-13) — 걷기 쪽 지음(impl-row-attach d2b1bd92d)
 
 원장 소스의 `attach` 는 «문장» 하나입니다. 그 표의 행은 원자가 되지 않고, 걷기가 그 술어를 «걸을 때 표에서 읽는 선»으로 읽습니다.
+🔵 답에 새 칸은 하나뿐입니다(`truncated.rows_withheld`). 행 노드는 보통 노드, 행 허브는 위의 허브 모양 그대로입니다.
 
 ```
-선언      sources.<이름> = { relation, attach: { subject: <부모 노드 바인딩 kind=entity>, predicate: <어휘의 술어>,
-                                              target: <행 노드 바인딩 kind=entity, 그 표의 키 칸>, columns: [선택] } }
-          대상 타입은 entities 에, 술어는 vocabulary 에 운영자가 선언한다 — 없으면 «어디 · 무엇을 적으라» 한 줄로 거절
-          read · map · bind 는 없다. 원자는 0 (번역 · backfill · 소급 · 따라가기 어디서도)
-답        행 노드 = 대상 타입의 노드(값 = columns, 없으면 표의 칸 전부). 선 = 그 술어. 노드를 따로 저장하지 않는다
-          술어에 hub: true 면 허브 2 단계 그대로 접힌다 — id 도 보통 허브 id 다섯 칸 <노드>|<술어>|<방향>|<대상 타입>|<값>
-          허브 머리 count 는 쪽마다 GROUP BY 한 질의, 행은 expand(같은 문)로 열 때 · 행 예산을 넘으면 truncated + resume
-세상·시각  행은 표의 «지금». 운영 세상이 아니거나 since · until 을 준 걷기에는 그 선을 안 읽고 사유 한 줄
+선언      sources.<이름> = { relation, attach: { subject: <부모 노드>, predicate: <어휘의 술어>, target: <행 노드>, columns: [선택] } }
+          노드는 짧은 꼴의 {"node": <타입>, "keys": {<키>: <칸>}} (B 의 원장 선언 간소화 위에 앉는다 — 선언 칸은 아직)
+          대상 타입은 entities 에(keys · attributes), 술어는 vocabulary 에(entity_ref, 주어 타입 -> 대상 타입)
+          columns 를 안 적으면 그 표의 칸 전부(표 선언의 칸 목록), 적으면 좁힘 — 허브 표 열도 같은 목록(총괄 10-13 «행을 통째로»)
+          원자는 0 (번역 · backfill · 소급 · 따라가기)
+답        행 노드 = 대상 타입의 보통 노드(키 = 그 표의 키 칸, attributes = columns 의 값). 선 = 그 술어, 보통 선
+          값은 칸의 형 그대로 — 숫자 칸은 숫자(소수 없으면 정수), 시각 칸은 답의 시각 모양(UTC ISO), 빈 칸은 null, 글은 그대로
+          허브 표 rows 와 노드 attributes 가 같은 값
+          술어에 hub: true 면 허브로 접힌다(×1 도) — id 도 보통 허브 id <노드>|<술어>|<방향>|<대상 타입>|<값>, 표 = tables[허브 id]
+          fanout_limit 을 넘어도 같은 허브. expand · 예산 · 이어 걷기 · left/moved 모두 허브 그대로
+          거꾸로도 걷는다 — 행 노드에서 부모로(incoming)
+읽는 법   걷기의 같은 읽기 안에서 문장마다 갈래 하나 — 노드마다 질의 없음(PG 칸: 다이 3 · 30 같은 질의 수)
+세상·시각  행은 표의 «지금». 운영 세상을 빼고 걷거나 since · until 을 준 걷기에는 행이 안 실리고
+          truncated.rows_withheld = 사유 한 줄(그때만 있는 칸 — 없으면 «물을 것이 없었음»)
+          이어 걷기의 as_of 는 안 막는다: 붙인 행은 쪽마다 그때의 표 — as_of 에 안 묶임
+남음      시간 쪽(around · earlier · later)은 원장만 읽어 붙인 행이 안 나온다
 ```
+
+예시 — 다이 D1 의 결함 표 행 하나(`has_defect` 가 hub: true, attach 의 columns = size · kind)
+```json
+{"nodes": [{"id": "<D1>|has_defect|outgoing|defect_row|1,0", "type": "defect_row", "label": "defect_row ×1",
+            "depth": 2, "node_kind": "entity", "count": 1, "value": [1, 0],
+            "hub": {"near": "<D1>", "predicate": "has_defect", "direction": "outgoing", "of": null}}],
+ "edges": [{"id": "<선 id>", "source": "<D1>", "target": "<D1>|has_defect|outgoing|defect_row|1,0",
+            "predicate": "has_defect", "count": 1, "records": [], "records_more": 0, "worlds": ["default"]}],
+ "tables": {"<D1>|has_defect|outgoing|defect_row|1,0": {
+     "columns": ["type", "depth", "id", "parent_id", "via", "seed", "defect_id", "size", "kind"],
+     "rows": [["defect_row", 2, "<F4>", "<D1>", "has_defect", "<W>", "F4", 7, "void"]], "count": 1}},
+ "truncated": {"…": "…"}}
+```
+since · until 을 준 걷기 — `"truncated": {…, "rows_withheld": "rows are attached as their tables are now - a walk with since or until carries none"}`
 
 ## 예시 — 로트 하나 → 웨이퍼 ×100 → 디펙 ×3,000 → 종류 5 (노드 8 · 선 7)
 

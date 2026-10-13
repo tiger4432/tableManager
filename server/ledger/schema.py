@@ -590,6 +590,11 @@ OBJECT_ENTITY_INDEX_SQL = object_entity_index_sql(_DEFAULT)
 REF_INDEX = "idx_ledger_events_source_raw_ref_hash"
 REF_INDEX_CHILD = "{partition}_ref_hash"
 REF_INDEX_COLUMNS = "USING hash (source_raw_ref)"
+#: The ledger's indexes built a partition at a time (`build_partitioned_index`) - (index, columns, child name, what it
+#: serves). The index master names and builds them beside the models' and the tables' own (`models.index_states`,
+#: 총괄 10-13: an index the code lands must not need a person's command to reach production).
+PARTITIONED_INDEXES = ((REF_INDEX, REF_INDEX_COLUMNS, REF_INDEX_CHILD,
+                        "a withdrawal - a re-translate page, a deletion - finds a source's atoms by their refs"),)
 
 
 def in_space(names: WorldNames, name) -> str:
@@ -610,6 +615,32 @@ def ref_index_parent_sql(names: WorldNames) -> str:
     """The parent's half alone - metadata, no build: a partition made after it gets its own, and the
     partitions already there get theirs from `build_partitioned_index` (no write is blocked)."""
     return f"CREATE INDEX IF NOT EXISTS {REF_INDEX} ON ONLY {names.ledger} {REF_INDEX_COLUMNS}"
+
+
+def partitioned_index_states(engine) -> list:
+    """-> a row per world's ledger and per `PARTITIONED_INDEXES` index: `world`, `name`, `table`, `columns`, `serves`,
+    `partitions`, `partitions_missing` (lacking it or not attached), `valid` (the parent's - every partition's attached) -
+    asked of `build_partitioned_index` without building, so the build and this answer are one judgment. A world whose
+    ledger table is not there yet has no row."""
+    rows = []
+    for world in world_listing()["worlds"]:
+        names = world_names(world)
+        connection = engine.raw_connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT to_regclass(%s)", (names.ledger,))
+                there = cursor.fetchone()[0] is not None
+            for index, columns, child, serves in PARTITIONED_INDEXES if there else ():
+                done = build_partitioned_index(connection, names, index, columns, apply=False,
+                                               say=lambda *_: None, child_name=child)
+                owed = done["would_build"] + done["would_attach"]
+                rows.append({"world": names.name, "name": in_space(names, index), "table": names.ledger,
+                             "columns": columns, "serves": serves, "partitions": done["already"] + owed,
+                             "partitions_missing": owed, "valid": bool(done["parent_valid"])})
+        finally:
+            connection.rollback()
+            connection.close()
+    return rows
 
 
 def build_partitioned_index(connection, names: WorldNames, index, columns, predicate="",

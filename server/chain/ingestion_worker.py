@@ -2491,7 +2491,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
     what = "tx %s · %d row(s) of %s" % (
         tx_id, rows, ", ".join(sorted({str(e.table_name) for e in events})))
     from database.context import chain_group
-    from database.database import _set_file_and_chain_time_limits
+    from database.database import _set_statement_time_limits
 
     with heartbeat.work_claim(GROUP_BEAT, what, note=_worker_note(), acted_on=True), \
             alignment_batch_counts.interrupt_at_stages(chain_control.raise_if_paused), \
@@ -2502,7 +2502,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
         #    there. Not a commit: that expires the session, and every event of every group was read
         #    again, one SELECT each.
         if db.in_transaction():
-            _set_file_and_chain_time_limits(db, None, db.connection())
+            _set_statement_time_limits(db, None, db.connection())
         # The backend is read here once; a later transaction notes its own (database.py).
         try:
             heartbeat.note_work(

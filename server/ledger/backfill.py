@@ -89,6 +89,7 @@ from dataclasses import dataclass
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 import time
@@ -448,6 +449,7 @@ def preview_rescope(engine, setup, source, scope_column, scope_values, world=Non
 def _preview_frame(engine, setup, source, plan, frame, world=None):
     """`preview_rescope`'s three numbers for rows already read - a whole scope, or one page
     of a paged `rescope` (총괄 8d8abfb5d)."""
+    from chain import keyset_scan
     from .store import LedgerStore
     from .setup import preview_selected_cursor_batch
     from .runtime_v2 import _filtered_event_atoms, last_cursor
@@ -457,8 +459,9 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     # `()` - "nothing assumed already registered" - on every door: the preview counts what the
     # apply then writes, so the two ask on the same basis (the probe that could say otherwise
     # retired 10-07; nothing ever handed it a live set).
-    preview = preview_selected_cursor_batch(
-        setup, source, frame, cursor_value, known_registrations=())
+    with keyset_scan.stage("translate", len(frame)):
+        preview = preview_selected_cursor_batch(
+            setup, source, frame, cursor_value, known_registrations=())
     atoms = [atom for group in _filtered_event_atoms(preview.event_results, ())
              for atom in group]
     refs = sorted({str(atom.source_raw_ref) for atom in atoms})
@@ -466,7 +469,17 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     result["refs"] = refs
     result["preview"] = preview          # the remake writes this translation (6091a7ae3 ①)
 
-    result["withdraw"] = LedgerStore(engine, world=world).atoms_for_refs(source, refs)
+    store = LedgerStore(engine, world=world)
+    with keyset_scan.stage("withdrawal count", len(refs)) as said:
+        result["withdraw"] = store.atoms_for_refs(source, refs)
+        if refs and keyset_scan.debugging():
+            # 🔴 WHAT FINDS THE ATOMS TO WITHDRAW (총괄 d9be013cb ②): the ref index, or every partition read whole -
+            #    the write's DELETE asks the same predicate
+            name, valid, build = ref_index_state(engine, world)
+            said["note"] = "%d atoms by %s · plan: %s" % (
+                result["withdraw"], ("%s (valid)" % name) if valid else (
+                    "%s missing or not valid - each page's count and DELETE read the whole ledger; build it: %s"
+                    % (name, build)), store.refs_plan(source, refs))
     return result
 
 
@@ -685,6 +698,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     twice. Any register atom that is in fact still there collides with `uq_ledger_atom` and
     comes back as `deduped`, which is the mechanism that already exists for exactly this.
     """
+    from chain import keyset_scan
     from .runtime_v2 import _refusal_reasons
     from .store import LedgerStore
     from .setup import execute_selected_scoped_batch
@@ -751,6 +765,8 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     #    untouched ones ahead. `page_rows=None` is one page, the whole scope: the live
     #    follow-up path, whose receipt rides that one commit.
     total = _table_rows(engine, plan) if whole_source and checkpoint is not None else None
+    if keyset_scan.RUN_CONTROL.get() is not None:
+        _say_what_every_page_pays(engine, plan, world, withdraw)
     for frame in _scope_pages(engine, plan, scoped, page_rows):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
@@ -760,9 +776,11 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
             result["withdraw"] += previewed["withdraw"]
             result["remake"] += previewed["remake"]
-            indexed = {ref for who, ref
-                       in store.row_refs_for(plan.relation, scope_row_ids)
-                       if who == source}
+            with keyset_scan.stage("index lines of the rows", len(scope_row_ids)) as said:
+                indexed = {ref for who, ref
+                           in store.row_refs_for(plan.relation, scope_row_ids)
+                           if who == source}
+                said["note"] = "%d refs of this source" % len(indexed)
             result["indexed_refs"] += len(indexed)
             aimed = sorted(set(previewed["refs"]) | indexed)
         # Neither the new translation nor the index says anything about these rows: there
@@ -771,10 +789,11 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         if aimed is None or aimed:
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
-            executed = execute_selected_scoped_batch(
-                setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
-                known_registrations=(),
-                withdraw_refs=aimed, preview=previewed and previewed["preview"])
+            with keyset_scan.stage("write", len(frame)):
+                executed = execute_selected_scoped_batch(
+                    setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
+                    known_registrations=(),
+                    withdraw_refs=aimed, preview=previewed and previewed["preview"])
             written = executed.store_result
             for key in ("withdrawn", "attempted", "inserted", "deduped"):
                 result[key] += int(written.get(key, 0))
@@ -791,8 +810,9 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                 spoken = {str(row_id) for _relation, row_id, _ref in executed.preview.row_refs}
                 stale = [row_id for row_id in scope_row_ids if row_id not in spoken]
                 if stale:
-                    result["forgotten"] += store.forget_row_refs(
-                        plan.relation, stale, source=source)
+                    with keyset_scan.stage("forget index lines", len(stale)):
+                        result["forgotten"] += store.forget_row_refs(
+                            plan.relation, stale, source=source)
         # 🔴 what the page's read refused, by the gate's reason - a remake that refuses a row writes
         #    nothing for it and takes its old atoms with the withdrawal (총괄 10-12: it read as a success)
         read = executed.preview if executed is not None else previewed and previewed["preview"]
@@ -820,6 +840,30 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
     return result
+
+
+def _say_what_every_page_pays(engine, plan, world, withdraw):
+    """The two defects a run pays on every page, said once at its start whatever `retroactive_debug` says (총괄 10-13:
+    a line that names a defect is not a debug line) - by the judgments the stage lines' notes use: the ledger's ref index
+    missing or not valid (each page's withdrawal count and DELETE read the whole ledger), and no index on the page key
+    (each page sorts the source - and the pages begin at one row)."""
+    from chain import keyset_scan
+
+    if withdraw:
+        name, valid, build = ref_index_state(engine, world)
+        if not valid:
+            keyset_scan.say("%s missing or not valid - each page's withdrawal count and DELETE read the whole ledger; "
+                            "the chain worker builds it at its start (build_missing_indexes), or now: %s" % (name, build))
+    connection = engine.raw_connection()
+    try:
+        keyed = _page_key_index(connection, plan)
+    finally:
+        connection.rollback()
+        connection.close()
+    if not keyed:
+        keyset_scan.say('page key %s of %s has no index - each page sorts the table; declare one on ["%s"] in that '
+                        'table\'s "indexes" (table_config.json) and the chain worker builds it'
+                        % (_page_key(plan), plan.relation, _page_key(plan)))
 
 
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
@@ -862,16 +906,27 @@ def _scope_pages(engine, plan, scoped, page_rows):
     key = None if page_rows is None else _page_key(plan)
     after, size = None, None if page_rows is None else keyset_scan.PageSize(page_rows)
     readable = _readable_columns(engine, plan)
+    keyed = None
     while True:
         read = engine.raw_connection()
         try:
             limit = None if size is None else size.next()
-            rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=limit,
-                                          scope=scoped)
-            if limit is not None and len(rows) >= limit:
-                last = rows[-1][key]
-                rows = [row for row in rows if row[key] != last] + _fetch_v2_lineage_rows(
-                    read, plan, readable, group_value=last, scope=scoped)
+            with keyset_scan.stage("read", limit) as said:
+                planned = {} if keyset_scan.debugging() else None
+                rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=limit,
+                                              scope=scoped, planned=planned)
+                if limit is not None and len(rows) >= limit:
+                    last = rows[-1][key]
+                    rows = [row for row in rows if row[key] != last] + _fetch_v2_lineage_rows(
+                        read, plan, readable, group_value=last, scope=scoped)
+                said["rows"] = len(rows)
+                if planned is not None:
+                    # 🔴 THE PAGE KEY'S INDEX (총괄 d9be013cb ①): without one every page sorts the whole source -
+                    #    and the pages begin at one row, so the first pages are nearly all sort
+                    keyed = keyed or _page_key_index(read, plan) or ""
+                    said["note"] = "key %s · %s · plan: %s" % (
+                        _page_key(plan), keyed or "no index on it - each page sorts the table",
+                        planned.get("plan", "-"))
         finally:
             read.rollback()
             read.close()
@@ -1023,10 +1078,9 @@ STALE_PAGE_REFS = 1000
 STALE_PAGE_REFS_UNINDEXED = 50000
 
 
-def stale_page_refs(engine, world=None):
-    """(refs a page, the line that says why) - the one seat that picks it (총괄 7b ⓑ): 1,000 when the
-    ref index is valid (every partition's attached), 50,000 when it is not, with the command that
-    builds it."""
+def ref_index_state(engine, world=None):
+    """-> (the ledger's ref index name, is it valid - every partition's attached, the command that builds it): the one
+    judgment the stale withdrawal's page size and a re-translate page's withdrawal line both ask (총괄 7b ⓑ · d9be013cb)."""
     from . import schema
 
     names = schema.world_names(world)
@@ -1037,12 +1091,20 @@ def stale_page_refs(engine, world=None):
     finally:
         connection.rollback()
         connection.close()
+    return name, valid, ("python server/scripts/build_ledger_ref_index.py --apply --world %s"
+                         % (world or schema.operating_world()))
+
+
+def stale_page_refs(engine, world=None):
+    """(refs a page, the line that says why) - the one seat that picks it (총괄 7b ⓑ): 1,000 when the
+    ref index is valid (every partition's attached), 50,000 when it is not, with the command that
+    builds it."""
+    name, valid, build = ref_index_state(engine, world)
     if valid:
         return STALE_PAGE_REFS, "%s valid - %d refs a page" % (name, STALE_PAGE_REFS)
     return STALE_PAGE_REFS_UNINDEXED, (
-        "%s missing or not valid - %d refs a page, each reads the whole ledger; build it: "
-        "python server/scripts/build_ledger_ref_index.py --apply%s"
-        % (name, STALE_PAGE_REFS_UNINDEXED, " --world %s" % (world or schema.operating_world())))
+        "%s missing or not valid - %d refs a page, each reads the whole ledger; build it: %s"
+        % (name, STALE_PAGE_REFS_UNINDEXED, build))
 
 
 def _stale_atoms(engine, source, relation, world=None):
@@ -2302,7 +2364,7 @@ def _readable_columns(engine, plan):
 
 
 def _fetch_v2_lineage_rows(connection, plan, columns, *, after=None, group_value=None,
-                           limit=None, scope=None):
+                           limit=None, scope=None, planned=None):
     """Read physical catalog columns with identifier-safe psycopg2 composition.
 
     🔴 `scope` NARROWS WHICH ROWS, AND IT IS NOT `limit`. `limit` bounds how much is read
@@ -2343,9 +2405,46 @@ def _fetch_v2_lineage_rows(connection, plan, columns, *, after=None, group_value
         query += sql.SQL(" LIMIT %s")
         params.append(limit)
     with connection.cursor() as cursor:
+        if planned is not None:
+            # `planned`: the read's plan, asked before it runs (a re-translate page's line, 총괄 d9be013cb)
+            cursor.execute(sql.SQL("EXPLAIN ") + query, tuple(params))
+            planned["plan"] = plan_said(row[0] for row in cursor.fetchall())
         cursor.execute(query, tuple(params))
         names = [description[0] for description in cursor.description]
         return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+
+#: A monthly partition's name in a plan (`ledger_events_2026_09`, its `_ref_hash` index) - read as one kind of scan.
+_PARTITION_MONTH = re.compile(r"_\d{4}_\d{2}(?=_|$)")
+
+
+def plan_said(lines):
+    """An EXPLAIN in a few words - its scans and sorts top down, each kind once with how many times: every monthly
+    partition's `Seq Scan on ledger_events_2026_09 ledger_events_3` is `Seq Scan on ledger_events_* x8`."""
+    said, counted = [], {}
+    for line in lines:
+        node = line.strip().lstrip("->").strip().split("  (")[0]
+        if "Scan" not in node and "Sort" not in node:
+            continue
+        if " on " in node:
+            head, rest = node.split(" on ", 1)
+            node = "%s on %s" % (_PARTITION_MONTH.sub("_*", head), _PARTITION_MONTH.sub("_*", rest.split(" ")[0]))
+        if node not in counted:
+            said.append(node)
+        counted[node] = counted.get(node, 0) + 1
+    return " · ".join(node + (" x%d" % counted[node] if counted[node] > 1 else "") for node in said) or "-"
+
+
+def _page_key_index(connection, plan):
+    """The valid index on the source's relation whose first column is the page key, or None (총괄 d9be013cb ①)."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT i.relname FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid "
+            "JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = x.indkey[0] "
+            "WHERE x.indrelid = to_regclass(%s) AND a.attname = %s AND x.indisvalid ORDER BY 1 LIMIT 1",
+            (".".join('"%s"' % part for part in str(plan.relation).split(".")), _page_key(plan)))
+        row = cursor.fetchone()
+    return row[0] if row else None
 
 
 def beat(result):

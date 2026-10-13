@@ -259,18 +259,24 @@ def preview_cursor_batch(
     known_registrations: Any = None,
 ) -> CursorBatchPreview:
     """Compile the exact candidates execute will use, without gate/store writes."""
+    from chain.keyset_scan import stage
+
     source_plan = _source_plan(snapshot, source_id)
     normalized_cursor = _cursor_value(source_plan, base_rows, cursor_value)
     refusals: list = []
     excluded: list = []
-    event_frames = prepare_v2_cursor_batch(
-        snapshot, source_id, base_rows, refusals=refusals, excluded=excluded)
+    with stage("event frames", len(base_rows)) as said:
+        event_frames = prepare_v2_cursor_batch(
+            snapshot, source_id, base_rows, refusals=refusals, excluded=excluded)
+        said["note"] = "%d molecules · %d refused" % (len(event_frames), len(refusals))
     mapper_context = MapperContext(snapshot, source_plan)
-    event_results = tuple(
-        dry_run_event_frame(mapper_context, event_frame, mappers)
-        for event_frame in event_frames
-    )
-    row_refs = _row_ref_index(source_plan, event_frames, event_results)
+    with stage("dry run", len(event_frames)):
+        event_results = tuple(
+            dry_run_event_frame(mapper_context, event_frame, mappers)
+            for event_frame in event_frames
+        )
+    with stage("row refs", len(event_frames)):
+        row_refs = _row_ref_index(source_plan, event_frames, event_results)
     unsaid: dict = {}
     for result in event_results:
         for key in result.role_rows.attrs.get(UNIT_SAID_NOTHING_ATTR, ()):
@@ -369,7 +375,11 @@ def execute_scoped_batch(
         preview = preview_cursor_batch(
             snapshot, source_id, base_rows, unwritten_cursor, mappers,
             known_registrations=known_registrations)
-    kept_all = _screened_atoms(snapshot, source_id, preview)
+    from chain.keyset_scan import stage
+
+    with stage("screen atoms", len(preview.event_results)) as said:
+        kept_all = _screened_atoms(snapshot, source_id, preview)
+        said["note"] = "%d atoms" % len(kept_all)
     batch_id = str(uuid6.uuid7())
     try:
         written = store.write_batch(

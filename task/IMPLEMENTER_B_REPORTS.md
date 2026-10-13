@@ -274,3 +274,144 @@ auto_confirm 켠 판의 처음 채우기              재현 안 됨(1만, 한 �
           이주 뒤 RUN.md: requeue_failed 한 줄 + 답의 뜻 · 이 실패가 지금 운영자 화면 어디에 보이는지 열어서 적음
 여쭐 것   PRIMARY KEY 없이 유일 인덱스로 키를 지켜도 되는지(ㄱ) — 아니면 ㄴ / ㄷ 중 무엇
 ```
+
+> **[구현자 B -> 총괄] 10-13 큐 1 QA(59c0bfb8c) 고침 다 지음 — 가지 HEAD `39c7115ed`, 3ff350a46 위 커밋만 보시면 됩니다**
+
+| QA | 고침 | 커밋 | 지키는 칸 (변이) |
+|---|---|---|---|
+| 1 바인드 판정 둘 | 로더가 text() 의 바인드 정규식 «그 자체»를 씀(같은 객체) · 적재 때 `:x::type` 거절 «write CAST(:x AS type) instead of :x::type» | 0c941b2ee | 여섯 철자에서 두 파서가 같은 바인드 + 거절 문구 — 옛 파서에서 빨강 |
+| 2 묶음 실패가 조용함 · VALUES 형 | 제 문장 «candidate probe batch failed - each key asked alone»(제 throttle) · 경고 줄 «batch -> key by key for n key(s)» · 실행 결과 `probe_batch_fallbacks` · 미리보기 문장. VALUES 칸은 파생 표 그 칸 형으로 CAST | 0c941b2ee | PG: 숫자 칸 뷰가 되물림 0 으로 같은 답(CAST 빼면 빨강) · ERROR 줄 · 경고 줄 · 미리보기 문장(각 변이 빨강) |
+| 3 dry 가 지울 행을 받음 | 지울 행은 apply 때만 읽음, 셈은 같은 한 읽기 | ab175aef2 | dry · 미리보기 · apply 의 수가 같고 apply 만 받음(늘 받기 변이 빨강) |
+| 4 빈 행 지우기 한 트랜잭션 9.7 s | 읽기는 2만 행까지, 지우기는 쪽 시간 규칙의 조각마다 커밋 · 멈춤은 조각 사이 | 10240159e | PG: 일곱 껍데기가 3 + 3 + 1, 첫 조각 뒤 멈춤 남는 4(통째 지우기 · 조각 사이 멈춤 없음 변이 빨강) |
+| 5 M7 · M10 | 칸 둘: 범위 칸이 빈 행도 범위 밖으로 셈 · 범위 밖 행이 가장 일러도 남길 행으로 안 불림 | ab175aef2 | M7 · M10 각 빨강 |
+| 6 derived_pages 드문 대기열 | 같은 판 A/B -> 기점 읽기로 되돌림(아래 표) | 93f30957c | — |
+| 물음 2 다시 | withdraw 는 ㄱ(표 키 쪽)으로 — 총괄 결정. 기점 읽기는 hold 판을 지운 직후 첫 문장 10.44 s(아래) | 39c7115ed | M3 칸: claim 없는 표 행은 읽어도 수에 안 듦(M3 변이 빨강) |
+| 7 | 회수 사건 접기는 표시 맞는 사건의 목록(row_ids · written_by)만 받음 · `discarding` 은퇴(약속 든 자리: 모듈 독스트링 · CODE_MAP 표 · 호출자 수 · 시험 줄 · 문장 셋, 칸은 같은 커밋에서 걷고 증상 칸은 남김) · LATERAL_DIALECTS | f26ed1ab8 · 2b54a4001 · 0c941b2ee | M3 은 위 «물음 2 다시» 줄 |
+| 문서 | CODE_MAP remove_shell_rows 행 · BACKFILL_GUIDE «1,000 행씩» · count_withdrawable 독스트링 · RELEASE_LOG 문안에 빠진 주장 둘(체인 훅도 묶음 질의 · 키 하나 길도 값 순서) | 0e58b35e2 (+ 착지 커밋) | — |
+
+**6 — derived_pages 같은 판 A/B** (기점 30ed3b798 · 가지, 번갈아, 대기열 끝까지 / 미리보기 200 행)
+```
+판                                   기점 전체 s     가지 전체 s     기점 미리보기 · 가지
+100만 · 1,000 행에 1 행 대기          1.77 / 0.59     5.49 / 5.24     0.12 / 0.05 · 1.02 / 1.05
+100만 · 10 행에 1 행                  2.24 / 1.37     6.01 / 5.78     0.01 · 0.02
+100만 · 전부 대기                     10.50 / 10.64   10.90 / 11.31   0.01 · 0.01
+응용 판 모양(파생 25만, backfill) 전부   2.69 / 2.58     2.66 / 2.68     0.02 · 0.01
+응용 판 모양 · 296 행 대기              0.32 / 0.18     1.46 / 1.58     0.12 / 0.13 · 1.04 / 1.06
+기점의 가장 긴 한 문장 0.83 s — 응용 표 8 의 «쪽마다 Parallel Seq Scan» 은 이 판 다섯에서 재현 안 됨
+```
+
+**답이 같다** — 26/26 같음(기점 30ed3b798 대 가지 93f30957c, 1만). 새로 든 칸: hold 판 끝에 체인 · 원장 따라가기를 다 비운 뒤 원장 원자(무엇을 말하나로 묶음 500) · 공식 표. withdraw 의 지금 읽기(39c7115ed = d7b8826e0 읽기)는 그 읽기였던 3ff350a46 판에서 24/24 같음
+
+**100만 다시 잼** (가지 93f30957c, census 판 hold · outbox · confirm, `main -> 가지` · 응용 걷기 판 10:04~10:17 겹침)
+```
+빈 행 지우기      첫 쪽 0.25 s · seq 41.5M -> 57k · 45 초 안 26.7 s 에 끝(main 32.9 s) · 지운 행 50,142
+중복 접기(hold)   첫 쪽 9.91 s(main 첫 줄 10.58) · 45 초에 40,023 행(main 45,023, 다른 때 판) · seq 5.4M -> 1.1M
+                  같은 판 A/B 는 접기 판에서만(가지 ≥ 기점, 앞 보고)
+표기(hold)        seq 131M -> 1.05M · 45 초에 852,767 행(main 221,342)
+보강 확인 드라이  250,000 키를 41.4 s 에 끝(main 450.6 s 안 멈춤) · 첫 쪽 0.17 s
+회수 사건 접기    첫 줄 3.16 s(main 3.11) · 45 초에 921,408(main 806,385)
+withdraw          이 판에서 기점 읽기의 첫 문장 10.44 s -> 물음 2 다시 열어 ㄱ 으로(같은 판 번갈아: 기점 20,025 / 31,013 행 · ㄱ 43,023 / 38,023 행 · ㄱ 가장 긴 문장 0.60 s)
+                  대가: source 가 드문 표에서 전체 2~8 배(100만 · 층 900만 · 1,000 행에 1 행 19~27 s, 기점 4~9 s) — RELEASE_LOG · RUN.md 에 적음
+```
+
+**진짜 프로세스** (런처 넷, 빈 스키마 assy_b_pageread_1013, 소급 탭이 보내는 문 그대로 — HEAD 39c7115ed)
+```
+빈 행 지우기 7 행 · 쪽 3 · 중복 접기 10 키 표시(선언 인덱스 idx_b_log_job_x_y) · 회수 사건 25 -> 2 · withdraw 250 칸(쪽마다 read 줄)
+보강 확인: 체인 훅이 12 키 확정 · 묶음 실패 줄 0 · 값과 층을 지운 5 칸 -> 미리보기 5 · 적용 «confirmed 5» -> 12 / 12
+public 행 변화 0 · 스키마 지움
+```
+
+**시험 수** (passed 수) — 바뀐 시험 파일 11 개 `-m pg` 55 passed · 14 개 `-m "not pg"` 182 passed(1 skipped) · withdraw 경로 16 개 SQLite + PG 278 passed.
+이 워크트리에서 기점에서도 지는 셋은 이 일과 무관: test_ledger_trace · test_ledger_transfer_unit(확정 규칙 둘) · test_the_index_can_be_recovered…dry_run(워크트리에 table_config.json 없음)
+
+**물음** — 없음. 이 커밋들을 보시고 GO 면 RELEASE_LOG · RUN.md 와 함께 착지합니다.
+
+> **[구현자 B -> 총괄] 10-13 796f04605 원장 따라가기 · 체인 지움 · decide 옛 키 — 짓기 전 안 셋 (코드로 읽음, 잰 것 없음)**
+
+```
+지금 모양(origin/main 코드)
+  따라가기   run_ledger_followup 한 바퀴 = drain_outbox_once 를 units 번(fast: 큐가 빌 때까지) — 한 번에 «사건 하나»(가장 오래된 id),
+             그 사건의 행들로 소스마다 rescope 한 번, 표시 한 문장. 사건이 작으면 행당 고정비가 처리량을 정한다
+  체인 지움  DELETE 는 규칙 고리에 안 들어감(_is_trigger_event: CREATE · EDIT). 지운 행이 먹인 칸 거두기는
+             _drain_ledger_followup_sync 안(ingestion_worker 의 따라가기 배치) — 원장 선언이 컴파일 안 되면
+             FollowUpStopped 로 그 배치가 안 돌아 체인 지움도 안 거둠
+  decide     키를 payload 의 «지금» data 로만 지음(mapper.py) — 옛 키는 다시 안 셈(옛 그룹은 옛 수 N 그대로),
+             DELETE 는 안 닿음, 0 이 된 파생 행은 안 지움(빈 행 판정이 0 을 값으로 봄) -> 원장 엣지도 남음
+  옛 값      EDIT payload 에 없음(칸 «이름»만) · 같은 트랜잭션의 audit_logs 에 있음(사람 고침은 칸마다,
+             기계 쓰기는 «col: val, …» 한 줄 글) · DELETE 의 감사 줄은 old_value 없음
+묶음 번역의 계약  원자의 시각은 행 값(소스의 occurred_at)과 소스 선언의 basis 에서 온다 — 사건 시각(queued_at)은 «기다린 초»에만 쓰임
+             -> 같은 표 · 같은 종류 사건을 묶어 한 번 rescope 해도 원자 · 시각은 같다. 다만 영수증이 «한 트랜잭션 id» 를 싣는다
+             (following(tx) — 이력 화면이 «누구의 고침을 따라갔나»를 그 id 로 보임) -> 묶음은 트랜잭션별로
+```
+
+| 안 | 무엇을 | 운영자가 할 일 | 좋은 점 | 위험 |
+|---|---|---|---|---|
+| ㄱ 사건이 옛 값을 싣는다 | ① DELETE 사건을 체인 그룹 고리가 받아 거두기(_retract_what_those_rows_fed)를 «그 그룹 안»에서 — 따라가기에서 뺌. ④ EDIT 사건에 «바뀐 칸의 옛 값», DELETE 사건에 «지운 행의 값»을 싣는다(쓰기 문이 이미 아는 값: EDIT 는 스테이징 때 attr.history, DELETE 는 지우기 전 읽은 행). decide 는 지금 키 + 옛 키를 다시 세고, 0 이 된 파생 행은 그리드 지우기 문으로 지운다(-> DELETE -> 원장 엣지 거둠). ② 따라가기는 page_seconds 안에서 사건을 여럿 꺼내 (표 · 트랜잭션 · 종류)로 묶어 한 번 rescope, 표시 한 문장 | 없음. 이미 낡은 요약은 소급 탭의 «decide 다시 세기» 한 번 | 옛 값이 «사건 하나»에 있어 decide 말고 같은 성질 자리(조인 왼쪽 동반 · fold_by_unit)도 같은 값을 쓸 수 있다 · 감사 글을 파싱하지 않는다 | 사건 payload 가 커진다(EDIT 는 바뀐 칸만, DELETE 는 지운 행 전부 — 1,000 행 지우기면 그 행 값 1,000 개) · DELETE 가 규칙 고리에 «decide 만» 들어가는 문이 하나 생긴다(지금 «DELETE 는 안 깨운다» 판정을 좁혀 뒤집는 것 — 판정 435 ④ 인용해 올림) |
+| ㄴ decide 가 소속을 기억한다 | ④ decide 가 «원천 행 -> 그룹 키» 소속 표를 원장 행 색인처럼 같은 쓰기에 적는다. EDIT · DELETE 때 옛 키는 그 표에서 읽는다(사건에 옛 값 불필요). ① · ② 는 ㄱ 과 같다 | 이주(소속 표 · 기존 파생 행의 소속 채우기 한 번) | payload 가 안 커진다 · DELETE 도 지운 뒤에 옛 키를 안다 · 원장 행 색인과 같은 모양 | 표 하나 + decide 쓰기마다 원천 행 수만큼 줄 쓰기(1,000 행 그룹이면 1,000 줄) · decide 에만 맞는 답이라 같은 성질 자리(조인 · 접기)는 따로 남는다 |
+| ㄷ 옮기지 않고 앞세운다 | ① 거두기는 따라가기 배치에 두되 «원장 선언 컴파일 전»으로 올려 원장이 서도 돈다 · DELETE 사건을 먼저 집는다. ④ 옛 값은 같은 트랜잭션의 audit_logs 에서 읽고(기계 쓰기 줄을 구조로 바꿈), DELETE 감사 줄에 지운 행 값을 적는다. ② 는 ㄱ 과 같다 | 없음 | 체인 고리를 안 건드린다 — 판정 435 ④(DELETE 는 규칙 고리 밖) 그대로 | 체인 지움이 여전히 따라가기 «속도»에 묶인다(① 도착지 «원장과 무관하게» 를 반만 채움) · 감사 줄 모양을 바꾸는 것이 이력 화면 · 시험의 기대를 건드림 |
+
+```
+크기      안 잼. 손댈 자리 수(코드로 셈): ㄱ = 체인 그룹 고리 1 · 스테이징 2(auto_stage · stage_collapsed_event) · delete_rows_batch 1 · decide 맵퍼 1 · 따라가기 1 + 다시 세기 소급 1
+          ㄴ = ㄱ 에서 스테이징 2 · delete 1 대신 소속 표 1 + 그 쓰기 1 + 이주 1 · ㄷ = 따라가기 1 · 감사 쓰기 2 · decide 1 + 다시 세기 1
+내 추천   ㄱ — ① 도착지(«원장과 무관하게 체인 고리 안에서»)를 다 채우고, 옛 값을 «사건에서» 읽는 한 자리라 decide 뒤에 같은 성질 자리를 같은 값으로 넓힐 수 있다.
+          DELETE 를 규칙 고리에 들이는 것은 «decide 처럼 지운 행을 다시 세는 규칙»만(선언 칸이 아니라 규칙 종류가 이미 아는 성질)으로 좁힌다
+여쭐 것   ① 판정 435 ④(DELETE 는 규칙 고리에 안 들어감)를 «거두기 · 다시 세기만 그룹 고리 안»으로 좁혀 뒤집어도 되는지
+          ② DELETE 사건에 지운 행 값을 싣는 크기(1,000 행 지우기 = 값 1,000 행)를 받아도 되는지 — 아니면 ㄴ
+덧(작게)  표 잠금 기다림 · 빈 값 판정 둘(NaN) · 죽은 runner cancel 문장은 이 판 안에서 작게 — 지은 뒤 같은 보고에
+③         행 하나 번역 비용은 짓기 전에 운영 규격 판에서 잰다(질의 · 파이썬 · 쓰기 몫) — 같은 판 A/B(사건 크기 1 · 10 · 1000)의 기준선
+```
+
+> **[구현자 B -> 총괄] 10-13 d9be013cb 재번역 디버그 로그 착지 `85d7e1de1` — 단계 줄 · 5 초 박동 · 느린 문장, 그리고 재번역 비용 재기의 지금까지**
+
+```
+착지    85d7e1de1 (main) — RUN.md 맨 위 절 · RELEASE_LOG 항목 같은 커밋. pull 만, 재기동 없음(소급 실행은 실행마다 새 프로세스)
+볼 곳   retroactive.log 의 [ledger_rescope] 줄
+단계    쪽마다 read · event frames · dry run · row refs · translate · withdrawal count · index lines of the rows ·
+        screen atoms · partitions · withdraw atoms · insert atoms · index lines · commit · write · forget index lines
+        read 줄 = 쪽 열쇠 칸 + 그 칸의 인덱스(없으면 «no index on it - each page sorts the table») + 계획
+        withdrawal count 줄 = 원장 ref 인덱스 이름과 valid 여부(아니면 «missing or not valid … build it: <명령>») + 계획
+박동    5 초마다: 지금 단계 · 몇 초째 · 그 실행 프로세스의 DB 연결마다 «자기 문장 중 / 누구(pid · 이름)를 기다림 / DB 밖에서 일함»
+느림    2 초 넘게 도는 문장 한 줄(앞 400 자) · 끝날 때 한 줄
+칸      ingestion_settings retroactive_debug(기본 true — 끄면 단계 줄만 꺼짐) · retroactive_slow_statement_seconds(기본 2, null 꺼짐)
+```
+
+**게이트**
+```
+시험     test_a_retranslate_says_its_stages_and_its_wait_pg.py 5 passed — 단계 전부 · 끄면 쪽 줄만 · 잡힌 잠금을 박동이 이름으로 · 박동이 터져도 끝까지 · 켜고 끈 답 같음
+변이     m1 단계 하나 빠짐 · m2 박동 예외 안 잡음 · m3 박동이 연결을 안 말함 · m4 끄기 무시 · m5 조회마다 롤백 안 함 · m6 인덱스 이름 안 말함 — 여섯 다 그 칸 빨강
+진짜     런처 넷 · hold 판 200 행 · 실행 START 에 원장 잠금 12 초:
+         beat: page 1 · withdrawal count 5.0 s · 1 rows · db: pid … waiting Lock:relation on pid … (b_e2e_lock_holder, idle in transaction 5 s): LOCK TABLE ledger_events …
+         원자 200 개 실행 전 · 잠금 판 뒤 · 빈 판 뒤 같음 · public 행 변화 0
+기존     바뀐 자리를 지나는 시험 54 파일: not-pg 667 passed · pg 108 passed. 진 것 11 개는 기점에서도 같이 짐(워크트리에 table_config 없음 8 ·
+         박스 선언 없음 2 · 다른 스키마의 같은 이름 표 reltuples 를 읽는 worlds 시험 1 — 그 시험은 assy_test 에 wafer_process 가 여러 스키마에 있으면 진다)
+```
+
+**재번역 비용 — 지금까지 잰 것** (109c09396, 이 박스 수)
+```
+행당      hold 판 1만 행: 프로파일 켜고 6.8~7.3 ms(DB 문장 5%). 운영 선언 판(박스 행을 읽기만으로 베낀 스크래치): 프로파일 없이
+          wafer_process_recipe 3.3~3.6 ms(DB 10%) · lot_slot_wafer 3.8 ms · die_inspection 5.6~6.3 ms(DB 24% — 아래 쪽 열쇠)
+          파이썬 몫의 대부분 = 분자마다 pandas 표를 다시 짓고 복사(event_frames · _partition_units · 칸 넣기 둘)
+다툼      혼자 / 따라가기 · 그리드 저장 · 체인과 함께: 막힌 표본 0. 다시 번역은 대부분 «DB 쉼 · 파이썬 일함»
+거두기    박스 원장(원자 238만)에 ref 인덱스 없음 -> 쪽마다 셈 · DELETE 가 원장 통째(1~4.5 s). 운영은 인덱스 있음(총괄 확인)
+          복사본에 인덱스가 있으면 둘 다 탐: ref 1,000 개 셈 0.19~0.30 s · DELETE 0.07~0.49 s (없을 때 1.4~4.5 s)
+쪽 열쇠   die_inspection 의 run_uid 에 인덱스 없음(박스 원본도) -> 쪽마다 11.7만 행 표 정렬 0.3~2.0 s. 표 선언 indexes 로 적을 자리 — 값은 안 채움
+안 잰 것  운영 크기에서 쪽마다 EXPLAIN 둘이 더하는 초 · 운영의 «5 초에 1 개» 원인 — 이 로그가 운영에서 말해 줄 것
+```
+
+**사고 하나** — 운영 모양 판 재기에서 원장 영수증 255 행이 assy_test public.audit_logs 로 샜습니다(스크래치에 그 표가 없어서). 그 255 행만 지웠고 67 행으로 돌아왔습니다(앞 메시지).
+
+**다음** — ① 파티션 ref 인덱스를 기동 · 인덱스 관리가 스스로 짓고 GET /admin/indexes 에(총괄 지시) ② 쪽마다 «missing or not valid» 줄은 이 착지의 withdrawal count 줄이 같은 판정 함수(ref_index_state)로 이미 말합니다 — 단계 줄을 끄면 안 나오니, 꺼도 남겨야 하면 말씀 주세요 ③ ff4eb2cf0 큐 1 고침 ④ 번역기 행당 비용의 안 셋 ⑤ 796f04605 ①④.
+
+> **[구현자 B -> 총괄] 10-13 ① 착지 `17d8ea0d6` — 원장 ref 인덱스를 체인 워커가 기동 때 스스로 짓는다 · GET /admin/indexes 에 원장 줄 · 결함 두 줄은 늘 처음 한 번**
+
+```
+무엇     인덱스 관리의 선언 목록에 세상마다 원장 줄(source ledger · partitions · partitions_missing · state present/missing)
+         짓기 = build_missing_indexes 그 칸 아래, 손 명령과 같은 빌더(파티션 하나씩 CONCURRENTLY · 붙임) — 체인 워커 기동 · 다시 읽기 때
+         다시 번역: «ref 인덱스 missing or not valid» · «page key … has no index» 를 실행 처음 한 번, retroactive_debug 를 꺼도(같은 판정 함수)
+게이트   인덱스 관리 시험 8 passed(파티션 셋에서 지운 인덱스: missing 3/3 · 짓기 끔은 이름만 · 짓기 켬은 파티션마다 한 줄 · present)
+         다시 번역 시험 6 passed(결함 두 줄 한 번씩, 단계 줄 끈 채) · 변이 n1~n5 각 빨강
+진짜     런처 넷 · 파티션 셋의 ref 인덱스를 지우고 띄움 -> 체인 워커 기동 직후 [Indexes] «3 of 3 partition(s) lack it» · 파티션마다 built · attached
+         -> 라우트 원장 줄 present -> 그 뒤 다시 번역에 결함 줄 0 · public 행 변화 0
+안 잰 것 운영 크기에서 파티션 하나 짓는 초
+다음     ff4eb2cf0 큐 1 고침 -> 번역기 행당 비용 안 셋 -> 796f04605 ①④
+```

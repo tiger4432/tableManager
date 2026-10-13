@@ -14,9 +14,11 @@ All four write in bounded chunks. scan_limit bounds only previews and each
 response names whether its count is exact or sampled. Protected/user-pinned values
 remain guarded by the underlying operation.
 """
+import contextlib
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 
@@ -2408,6 +2410,141 @@ def in_flight(db, now=None, stall_after=None):
     }
 
 
+#: ingestion_settings.json - the stage lines inside a page (총괄 d9be013cb, 소유자 「재번역 디버그 로그 다 띄워」). Default on;
+#: off leaves the page lines and the beat. Read at every page boundary, so a change takes the next page.
+DEBUG_SETTING = "retroactive_debug"
+#: ingestion_settings.json - seconds a statement of the run's process runs before the beat says it; null or 0: never.
+SLOW_STATEMENT_SETTING = "retroactive_slow_statement_seconds"
+SLOW_STATEMENT_DEFAULT = 2.0
+#: Seconds between two beat lines of a running run (총괄 d9be013cb «5 초마다»), and between two looks for a slow statement.
+BEAT_SECONDS = 5.0
+LOOK_SECONDS = 1.0
+#: How much of a statement a beat line shows, and a slow statement's line.
+BEAT_QUERY_CHARS, SLOW_QUERY_CHARS = 120, 400
+_REFUSED_SETTINGS = set()
+
+
+def retroactive_debug(settings=None) -> bool:
+    """`retroactive_debug`: true or false, absent true - anything else says so once and reads true."""
+    import validation
+    from ingestion.settings import read_ingestion_settings
+
+    settings = read_ingestion_settings() if settings is None else settings
+    value = settings.get(DEBUG_SETTING, True)
+    why = validation.flag_refusal(DEBUG_SETTING, value)
+    if why is None:
+        return value
+    if DEBUG_SETTING not in _REFUSED_SETTINGS:
+        _REFUSED_SETTINGS.add(DEBUG_SETTING)
+        logger.warning("[Retroactive] ingestion_settings.json: %s - read as true", why)
+    return True
+
+
+def slow_statement_seconds(settings=None):
+    """`retroactive_slow_statement_seconds`: a positive number; null or 0 none; absent or anything else the default."""
+    from ingestion.settings import read_ingestion_settings
+
+    settings = read_ingestion_settings() if settings is None else settings
+    value = settings.get(SLOW_STATEMENT_SETTING, SLOW_STATEMENT_DEFAULT)
+    if value is None or value == 0:
+        return None
+    good = isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+    return float(value) if good else SLOW_STATEMENT_DEFAULT
+
+
+@contextlib.contextmanager
+def _beating(control, url):
+    """The run's stage seat (`keyset_scan.RUN_CONTROL`) and its beat on the run's database `url`, around the run
+    (총괄 d9be013cb)."""
+    from chain import keyset_scan
+
+    token = keyset_scan.RUN_CONTROL.set(control)
+    stop = threading.Event()
+    # pg_stat_activity is PostgreSQL's - another database runs with the stage lines alone
+    beat = (threading.Thread(target=_beat, args=(control, stop, url), name="retroactive-beat", daemon=True)
+            if url.get_backend_name() == "postgresql" else None)
+    if beat is not None:
+        beat.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        keyset_scan.RUN_CONTROL.reset(token)
+        if beat is not None:
+            beat.join(timeout=3 * LOOK_SECONDS)
+
+
+def _beat_said(control, rows, now):
+    """One beat line: the stage the page in progress is in and its seconds, then each busy backend of this process."""
+    stages = list(control.stages)
+    where = ("%s %.1f s · %s rows" % (" > ".join(name for name, _since, _rows in stages), now - stages[-1][1],
+                                       stages[-1][2] if stages[-1][2] is not None else "-")
+             if stages else "between stages")
+    import db_waits
+
+    backends = []
+    for row in rows:
+        shown = dict(row, query=(row["query"] or "")[:BEAT_QUERY_CHARS])
+        if row["blocker"] is not None:
+            shown["blocker"] = dict(row["blocker"], query=(row["blocker"]["query"] or "")[:BEAT_QUERY_CHARS])
+        backends.append("pid %s %s" % (row["pid"], db_waits.wait_sentence(shown)))
+    return "[%s] beat: page %d · %s · db: %s" % (
+        control.op, control._pages + 1, where,
+        " ; ".join(backends) if backends else "no busy backend - the time is in this process")
+
+
+def _beat(control, stop, url):
+    """THE BEAT (총괄 d9be013cb, 소유자 「실시간으로 뭐가 돌고 뭘 기다리는지」): every BEAT_SECONDS one line (`_beat_said`);
+    every LOOK_SECONDS a look for a statement of this process past `retroactive_slow_statement_seconds` - a line when it
+    is seen running, one when it is gone. Asked over a read-only connection of its own (the run's are busy), a
+    transaction a look (a snapshot of pg_stat_activity holds for its transaction).
+    🔴 SILENT ONLY ABOUT ITSELF: whatever raises here says once what went quiet, and the run goes on."""
+    import db_safety
+    import db_waits
+    from database.database import connection_name
+
+    probe = conn = None
+    try:
+        app = connection_name()
+        probe = db_safety.open_readonly_engine(url, application_name=app + "_probe",
+                                               statement_timeout_ms=db_waits.STALL_PROBE_TIMEOUT_MS)
+        conn = probe.raw_connection()
+        slow, seen, last = slow_statement_seconds(), {}, time.monotonic()
+        while not stop.wait(LOOK_SECONDS):
+            try:
+                rows = db_waits.backend_waits(conn, app=app, chars=SLOW_QUERY_CHARS)
+            finally:
+                # the DBAPI connection's own transaction: a look inside the last one reads its snapshot again
+                conn.rollback()
+            now = time.monotonic()
+            running = {}
+            for row in rows:
+                if slow and row["state"] == "active" and (row["query_age"] or 0) >= slow:
+                    running[(row["pid"], round(now - row["query_age"]))] = row
+            for key, row in running.items():
+                if key not in seen:
+                    control._log("[%s] slow statement: pid %s running %.1f s (%s): %s" % (
+                        control.op, row["pid"], row["query_age"], row["wait"] or "no wait", row["query"]))
+                seen[key] = (now, row["query_age"])
+            for key in [key for key in seen if key not in running]:
+                at, age = seen.pop(key)
+                control._log("[%s] slow statement ended: pid %s after about %.1f s" % (
+                    control.op, key[0], age + (now - at)))
+            if now - last >= BEAT_SECONDS:
+                control._log(_beat_said(control, rows, now))
+                slow, last = slow_statement_seconds(), now
+    except Exception as exc:                               # noqa: BLE001 - the beat's own failure, said below
+        control._log("[%s] beat stopped - %s: %s; no more beat or slow-statement lines for this run, the run goes on"
+                     % (control.op, type(exc).__name__, str(exc).strip().splitlines()[0] if str(exc).strip() else ""))
+    finally:
+        for closing in (conn, probe):
+            try:
+                if closing is not None:
+                    closing.close() if closing is conn else closing.dispose()
+            except Exception:                              # noqa: BLE001 - closing a probe that broke
+                pass
+
+
 class RunControl:
     """What an operation asks between batches: "should I stop" and "here is where I am".
 
@@ -2444,6 +2581,10 @@ class RunControl:
         #: run's start, whose rate the time left is told by (a page's own rate swings on a one-row page).
         self._said, self._boundary, self._pages = 0, time.monotonic(), 0
         self._began, self._total = self._boundary, None
+        #: The stages the page in progress is inside, outermost first - `(name, since, rows)` (`stage`, the beat reads it).
+        self.stages = []
+        #: The stage lines on or off - `retroactive_debug`, read again at every page boundary.
+        self.debug = retroactive_debug()
 
     def _session(self):
         if self._session_factory is not None:
@@ -2483,6 +2624,7 @@ class RunControl:
     def progress(self, processed=None, total=None) -> None:
         """Record how far this run has got. `total=None` stays NULL - unknown, not zero."""
         self._page_line(processed, total)
+        self.debug = retroactive_debug()
         if not self.run_id:
             return
         values = {}
@@ -2518,17 +2660,41 @@ class RunControl:
         self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s" % (self.op, self._pages, rows, seconds, rate, done))
         self._said, self._boundary = processed, now
 
-    def step(self, name, page, pages, rows) -> None:
+    def step(self, name, page, pages, rows, seconds=None, note=None) -> None:
         """A step of page `page` (of `pages`, None = unknown) returned (총괄 e71f7d6f1, 소유자 「죄다 stalled」 ·
-        「깜깜이」): one line `[<op>] page k/K: <step> · <rows> rows · <seconds> s`, then the progress time - no
-        count, no notice, no stop (a stop is safe only at the page boundary). Called by the op's own thread
+        「깜깜이」): one line `[<op>] page k/K: <step> · <rows> rows · <seconds> s[ · <note>]`, then the progress time -
+        no count, no notice, no stop (a stop is safe only at the page boundary). Called by the op's own thread
         when the step returns, never from a timer: a step that does not return - a lock wait - leaves the
-        time where it was, and `in_flight` reads it stalled."""
-        self._log("[%s] page %s: %s · %s rows · %.1f s" % (self.op, page if not pages else "%d/%d" % (page, pages),
-                                                          name, rows, time.monotonic() - self._moved))
+        time where it was, and `in_flight` reads it stalled. `seconds`: the step's own (a `stage`), else since
+        the last line."""
+        seconds = time.monotonic() - self._moved if seconds is None else seconds
+        self._log("[%s] page %s: %s · %s rows · %.2f s%s" % (
+            self.op, page if not pages else "%d/%d" % (page, pages), name, rows, seconds,
+            " · %s" % note if note else ""))
         if self.run_id:
             self._stamp({})
         self._moved = time.monotonic()
+
+    def say(self, sentence) -> None:
+        """One line of this run's own - `[<op>] <sentence>` - on or off, whatever `debug` says."""
+        self._log("[%s] %s" % (self.op, sentence))
+
+    @contextlib.contextmanager
+    def stage(self, name, rows=None):
+        """A stage inside the page in progress (`keyset_scan.stage`, 총괄 d9be013cb): in `stages` while it runs - the
+        beat says the innermost and how long it has run - and its step line when it ends, while `debug` is on.
+        Yields a dict: a `note` ends the line, a `rows` there replaces the one given."""
+        entry = (name, time.monotonic(), rows)
+        self.stages.append(entry)
+        said = {}
+        try:
+            yield said
+        finally:
+            if entry in self.stages:
+                self.stages.remove(entry)
+            if self.debug:
+                self.step(name, self._pages + 1, None, said.get("rows", rows),
+                          seconds=time.monotonic() - entry[1], note=said.get("note"))
 
     def _stamp(self, values) -> None:
         """`last_progress_at` = now, with `values`, on this control's own session."""
@@ -3307,7 +3473,7 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
         # 🔴 [총괄 b3a4334db] AND EVERY EVENT THEY STAGE SAYS WHICH RUN, so one job is one line
         #   in the queue whatever transactions its operations write in.
         from database.context import channel, retroactive_run
-        with channel(ec.CHANNEL_RETROACTIVE), retroactive_run(run_id):
+        with channel(ec.CHANNEL_RETROACTIVE), retroactive_run(run_id), _beating(control, db.get_bind().url):
             out["result"] = spec["run"](db, params, log, control)
         # 🔴 STOPPED AND FINISHED ARE DIFFERENT OUTCOMES. A cancelled run has committed
         # everything it wrote and has more left to do; reporting it as `done` would tell
