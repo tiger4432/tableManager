@@ -334,12 +334,10 @@ def map_enrichment_dedup(db, payloads, rule=None):
         aggregated = _aggregate_affected_keys(
             db, source_table, decision_key, key_raw_values, aggregations)
 
-    # 3) 키당 1행 upsert 아이템 구성 — target_fields 는 같은 이름의 집계만 쓴다(체인 층 — 사람 ·
-    #    표 선언 순위가 위면 그쪽이 보인다). 빈 집계는 층을 안 쓰고 앞선 체인 층을 거둔다(소유자 10-13 ㄱ).
+    # 3) 키당 1행 upsert 아이템 구성 — target_fields는 절대 포함하지 않는다.
     #    기존 키: decision/list 컬럼 값이 동일하면 has_changed=False로 무변경 처리되고,
-    #    집계/단서만 실질 갱신된다. 신규 키: 행 생성 + 집계 없는 target은 미설정(NULL)로 남는다.
+    #    집계/단서만 실질 갱신된다. 신규 키: 행 생성 + target은 미설정(NULL)로 남는다.
     updates = []
-    blank_aggregations = {}  # column -> [business_key_val] whose aggregate is blank
     partial_keys = 0
     unaddressable = 0
     for key, g in groups.items():
@@ -372,18 +370,13 @@ def map_enrichment_dedup(db, payloads, rule=None):
         for col, v in g["reps"].items():
             if col in derived_cols and col not in target_fields:
                 upd_cols[col] = v
-        blank_cols = []
         for col, spec in aggregations.items():
-            if col in derived_cols:
+            if col in derived_cols and col not in target_fields:
                 # ⚠️ count 가 없으면 «0», 값 집계(min/max/unique_concat)가 없으면 «None». 0 은 「그 키의
                 # 행이 없다」는 참인 답이지만, 값 집계에서 0 은 지어낸 값이다.
                 fn = spec["fn"] if isinstance(spec, dict) else spec
                 default = 0 if fn == "count" else None
-                value = (aggregated.get(key) or {}).get(col, default)
-                if crud.is_blank_value(value):
-                    blank_cols.append(col)
-                else:
-                    upd_cols[col] = value
+                upd_cols[col] = (aggregated.get(key) or {}).get(col, default)
 
         item = {
             "updates": upd_cols,
@@ -427,21 +420,6 @@ def map_enrichment_dedup(db, payloads, rule=None):
         if bk_col and bk_col in derived_cols and bk_col not in upd_cols and bk_col not in target_fields:
             upd_cols[bk_col] = joined
         updates.append(item)
-        for col in blank_cols:
-            blank_aggregations.setdefault(col, []).append(joined)
-
-    # 4) 빈 집계 — 그 칸의 앞선 체인 층을 거둔다. 문은 지운 행 거두기와 같은 `cell_layer` 것이고,
-    #    아래 층(파일 · 확정)이 드러난다. 새 키는 행이 아직 없어 거둘 것도 없다.
-    if blank_aggregations:
-        from chain import cell_layer
-        from database import models
-        model = models.DYNAMIC_TABLES[derived_table]
-        for col, keys in sorted(blank_aggregations.items()):
-            row_ids = [row_id for (row_id,) in
-                       db.query(model.row_id).filter(model.business_key_val.in_(keys))]
-            if row_ids:
-                cell_layer.withdraw_source(db, derived_table, crud.CHAIN_SOURCE, columns=[col],
-                                           row_ids=row_ids, apply=True, log=logger.debug)
 
     if unaddressable:
         logger.warning(

@@ -262,22 +262,6 @@ curl -s -H "$AUTH" "$API/admin/mappers/list"
 3. **`candidate_for`가 없는 뷰는 표시 전용입니다.** 컬럼명 유추는 하지 않습니다. 어떤 타깃도 선언 뷰를 갖지 못하면 자동 확정 프로브가 **SQL을 한 줄도 돌리지 않고** 종료하며 **로그도 남지 않습니다** ― 「기능이 꺼진 것」과 구별되지 않는 상태이고, 이 선언이 존재하는 이유가 바로 그 침묵을 없애는 것입니다.
 4. **`decision_key`의 일부만 바인딩하는 뷰는 문법상 합법이지만 `scope_unresolved`로 표시됩니다** ― 확정 하나가 더 넓은 범위 전체에 찍히기 때문입니다.
 
-**다른 규칙이 채우는 원본 칸은 이 규칙을 깨우지 않습니다.** `on.table` 의 칸을 조인이나 다른 결정의 자동 확정이 채우면 그 쓰기는 체인의 쓰기이고, 결정은 선언 맨 위에 `"allow_chain_trigger": true` 가 있을 때만 그것을 받습니다. 소유자 운영의 예: `dt_log` → `dt_inventory` 결정이 `dt_log.dt_lot` 을 집계하는데 그 `dt_lot` 을 다른 규칙이 채우면, 이 칸 없이는 집계가 비어 있습니다. 칸을 적은 뒤에 채워지는 행부터 깨우고, 이미 채워져 있던 행은 `dt_log` 그리드에서 골라 **Replay chain** 을 누르면 다시 계산됩니다.
-
-```json
-{
-  "name": "dt_inventory_from_log",
-  "on": { "table": "dt_log" },
-  "into": { "table": "dt_inventory" },
-  "allow_chain_trigger": true,
-  "derive": { "kind": "decide", "decide": {
-    "key": ["dt_job"], "fields": ["dt_lot"],
-    "aggregations": { "dt_lots": { "fn": "unique_concat", "column": "dt_lot" } } } }
-}
-```
-
-**집계와 확정 대상이 같은 칸이면 집계가 그 칸을 «체인 층»(`chain_ingestion`)으로 씁니다.** 보이는 값은 그 표의 층 순위가 고릅니다 — `table_config` 의 `source_priority`, 없으면 기본 순위(`user` 0 · `pipeline_parser` 2 · `chain_ingestion` 4 · 그 밖의 이름 99). 그래서 사람 값은 늘 보이고, 파일 이름으로 들어온 값과 자동 확정(둘 다 99)은 비지 않은 집계 아래에 깔립니다. 집계가 비면 층을 쓰지 않고 앞서 쓴 집계 층을 거두므로, 그 행은 큐로 돌아오고 자동 확정이 채울 수 있습니다. 소유자 운영의 예: `dt_inventory` 의 확정 대상 `dt_lot` 을 `"aggregations": { "dt_lot": { "fn": "unique_concat", "column": "dt_lot" } }` 로도 채우면, `dt_log` 에 랏이 있는 작업은 집계 값이, 없는 작업은 파일 · 확정 값이 보입니다.
-
 > **`auto_confirm`은 기본 OFF입니다.** 켜기 전에 반드시 측정하십시오 ― 드라이런은 노브를 무시하므로 **꺼 둔 채로도 전부 측정됩니다.**
 > ```bash
 > curl -s -H "$AUTH" "$API/admin/enrichment/auto-confirm/dry-run?rule=<규칙>&limit=500"
