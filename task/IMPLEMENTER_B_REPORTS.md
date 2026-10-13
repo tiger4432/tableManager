@@ -720,3 +720,52 @@ stop_line 원장 일은 큐 화면에 «줄»로 안 그려짐(개요의 /runtim
 **다른 PG 실패** — 세상 시험 test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up 은 ㄴ 이전부터 같은 사유로 실패(보고 6e8815ee9 의 여덟 중 하나). 이주 시험 둘(test_an_index_build_cut_off… · test_the_migration_names_the_session…)은 한 판에서 «다른 세션(assy_server, idle in transaction)이 outbox 를 쥠»으로 실패, 다시 돌리자 가지 · main 둘 다 통과 — 환경.
 
 다음: 가(decide 빈 집계 거두기를 워커 한 문으로) — 멈춤 동안 코드까지만, 시험 · 판은 풀어 주실 때. 그다음 다 · ④ 옛 키 ㄱ.
+
+> **[구현자 B -> 총괄] 10-13 가 착지 33f5cdac3 — decide 집계가 제 확정 칸을 채움 · 빈 집계는 «이 규칙이 쓴 층»만 쓰기 뒤 워커의 한 문으로 거둠 · 백필도 체인 층 (bc9710454 가 · 가-1 ㄱ · 옛 백필 ㄱ) · 76ad487be 실제 판**
+
+```
+무엇     규칙 이름 찍기   rule_run.signed — 규칙이 낸 행(updates · 지도 메타 · 묶음 행 · 뒤 쪽)의 updated_by = 선언 이름. run_rule 한 자리
+         맵퍼는 읽기만    빈 집계는 안 쓰고 아이템의 withdraw 에 칸 이름만
+         거두기           쓰기 문 안, 그 묶음을 쓴 직후 _withdraw_blanks -> _withdraw_and_tell(cells=) -> cell_layer.withdraw_layers
+                          고르기 cells_written_by: 그 칸의 맨 체인 층 중 updated_by 가 이 규칙인 것 + 옛 enrichment_backfill 층
+                          거둔 행은 그 묶음의 그리드 메시지에 실음(쓰기가 바꾼 것 없으면 results 에 없어서) · 키만 남은 행 검사에도 넣음
+         백필             chain_ingestion + decide 파생행 규칙 이름으로 씀 · 새 행만 · 거두는 것 없음
+문서     mapper.py · backfill.py 머리말 · enrichment_rules.md · chain_ingestion_guide 두 곳 · CONFIG_ROLLOUT_GUIDE ④ · BACKFILL_GUIDE 표 ·
+         CODE_MAP 넷 · RELEASE_LOG(되돌림 표시 걷고 새 본문, «화면에서»에 쓴이 = 규칙 이름 · 타임라인 색) · RUN.md 절
+```
+
+**잰 것**
+```
+게이트     test_a_blank_recount_takes_back_only_its_own_rules_layer 10 — sqlite 와 PG 스크래치 스키마 둘 다 통과
+           채움 + 규칙 이름 · 사람 위 · 빈 집계 층 없음 · 빈 집계는 그 칸의 이 규칙 층만(같은 행 다른 칸 · 다른 행 같은 칸 남음) + 그리드 메시지
+           조인 층 남음 · 마지막에 쓴 rule_b 값 남음 · 백필 값 -> 원천 지움 -> 다시 셈 -> 빈 칸 · 옛 enrichment_backfill 층 같이 거둠 ·
+           키만 남은 행 지워짐 · 파일 층은 순위대로
+변이       여덟 다 빨강 — 총괄 셋(행의 칸 전부 · 표 전체 행 · 다른 규칙 층) + 이름 안 찍음 · 거둔 행 껍데기 검사 빠짐 · 방송 빠짐 ·
+           백필 옛 이름 · 옛 백필 층 안 거둠
+손댄 자리   비PG 278 파일: 실패 61 = 기준 커밋(0b74ee529)에서도 따로 돌려 실패하는 57 + 옛 쓴이를 단언하던 넷(백필 2 · 소급 화면 2, 새 계약으로 고침)
+           PG 30 파일 223 통과 · 5 실패 = fold-units 둘(고침: 씨앗의 옛 표시에 규칙 이름 — 지금 체인이 그렇게 씀) · 세상 시험(전부터) ·
+           둘은 따로 돌리면 기준 · 가지 둘 다 통과(순서 잔여). 옮긴 뒤 핵심 284 통과
+실제 판     런처 · assy_test 스크래치 assy_b_ga_1013 · 원천 행은 감시 폴더 CSV:
+           채움 6.0 s(쓴이 enrichment_dedup:agt_rule) · 빈 집계 층 없음 · 사람 값 남음 · 빈 집계가 자기 층 거둠 0.2 s ·
+           rule_b 가 마지막에 쓴 값 남음 · 소급 화면 백필이 체인 층 + 규칙 이름으로 씀, 원천 지우고 남은 행 고치자 0.5 s 에 거둠 ·
+           Replay chain 1.9 s · chain_worker.log 에 [ChainRetract] … blank_rows= 줄 · public 0
+76ad487be  같은 HEAD 로 원장 판(행 단위 소스 hc_official — 한 행 분자 길): 3000 행 따라감 · 원자 · 행 색인 == 통째 다시 번역(3005) ·
+           원장 선 동안 체인 추가 · 고침 · 지움 거두기 · Pause · 다시 뜸 · public 0
+```
+
+**알릴 것**
+```
+게이트 문구  «원천 지움 -> 다시 셈»: 지움만으로는 decide 가 다시 안 셈 — 지움 사건 페이로드에 row_ids 만 있고 옛 키가 없음(탐침으로 확인, ④ 옛 키 ㄱ 의 일).
+            그래서 시험 · 실제 판 둘 다 «원천 지움 + 남은 원천 행 고침»으로 다시 셈
+한 번 다시 씀 착지 뒤 규칙이 처음 다시 쓰는 칸은 값이 같아도 층 줄을 한 번 다시 씀(쓴이가 바뀌어서). 보이는 값은 대개 그대로 — 단 같은 칸에 같은
+            순위(4)의 괄호 층(조인 등)이 있으면 다시 쓴 쪽이 최신이 되어 한 번 바뀔 수 있음. 접기 첫 판 «표시한 행»이 그만큼 늚(박스 시험 11 -> 12). RUN.md 에 적음
+로그 줄      새로 만든 행도 빈 집계면 묶음마다 «blank_rows=N groups=0 cells_withdrawn=0» 한 줄과 거두기 문 한 번(고를 것 0) — 결함은 아님.
+            소유자 dt_lot 처럼 랏 없는 작업이 많으면 묶음마다 이 줄. 새 행을 빼는 것 · withdraw 를 스키마 칸으로 올리는 것은 안 함(지시 밖)
+옛 층        이 착지 전 체인이 쓴 층(쓴이 chain_worker)은 그 집계가 비어도 안 거둬지고, 그 규칙이 값을 한 번 다시 쓴 뒤부터 — RUN.md
+            한 칸을 decide 둘이 쓰면 빈 집계가 다른 decide 의 옛 백필 층도 거둠 — RUN.md
+덤(소유자께) 파일 층 이름은 «들어온 파일의 이름»(directory_watcher 3521-3531, basename) — 파일 하나에 이름 하나라 열린 집합. 순위표(source_priority)는
+            이름 -> 순위(crud.resolve_priority_map · get_source_priority)라 «파일 전부»를 한 칸으로 적을 자리가 없음.
+            운영의 파일 층 이름 수는 모름 — 박스 사본 스키마 둘은 씨앗이라 1 · 2 개(규모를 말해 주지 못함), assy_test public 의 cell_sources 0 행
+```
+
+다음: 원장 프로세스 고침(fa5417c28) 여섯 -> 뷰 읽는 원장 소스 재기(짓지 않음).
