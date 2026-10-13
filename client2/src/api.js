@@ -56,11 +56,17 @@ function setBadge(el, text, className) {
  * @param {string} whenSilent 서버가 문장을 «안 보냈을» 때 화면이 댈 이름
  */
 export async function refusalText(res, whenSilent) {
+  const said = await refusalSaid(res);
+  return said || `${whenSilent} (HTTP ${res.status})`;
+}
+
+/** 거절에 서버가 실은 문장 — 없으면 ''. 미룬 수의 실패(fillMatchCount)도 이것을 읽습니다. */
+async function refusalSaid(res) {
   const body = await res.json().catch(() => null);
   const detail = body ? body.detail : null;
   const said = typeof detail === 'string' ? detail
     : (detail && typeof detail.message === 'string' ? detail.message : '');
-  return said || `${whenSilent} (HTTP ${res.status})`;
+  return said;
 }
 
 /**
@@ -419,8 +425,8 @@ function narrowingParams() {
 
 /** 미룬 개수를 가져와 채웁니다. 행은 «이미» 그려져 있습니다.
  *
- * 🔴 못 가져오면 «세는 중»인 채로 둡니다. 0 으로 떨어뜨리면 「일치 없음」이라는 거짓이고,
- *    「모른다」는 못 세었을 때도 참입니다.
+ * 🔴 못 세었으면(서버의 `failed` · 거절된 답) «Count failed (<사유>)» 입니다 — 0 은 「일치 없음」이라는 거짓이고,
+ *    «Counting rows…» 에 머물면 끝나지 않는 세기로 읽힙니다(총괄 0fd18ae19 6). 닿지 못한 요청은 «세는 중» 그대로.
  */
 /** 서버가 «아직 안 셌다»(counting)고 하면 다시 묻는 간격과 상한 (총괄 10-13 ②): 같은 질문(표 · 좁힘 · 세상)일 때만,
  *  바뀌면 멈춤, 상한을 넘으면 «Counting rows…» 그대로 두고 더 안 묻습니다. */
@@ -433,11 +439,14 @@ async function fillMatchCount(params, table, since = Date.now()) {
   const tail = params.toString();
   try {
     const res = await gridFetch(`${API_BASE}/tables/${table}/data/count${tail ? `?${tail}` : ''}`);
-    const body = await res.json();
+    const body = res.ok ? await res.json() : { failed: { reason: (await refusalSaid(res)) || `HTTP ${res.status}` } };
     // 늦게 온 답은 버립니다 -- 그 사이에 표나 필터가 바뀌었으면 이건 «다른 질문»의 답입니다.
     if (mine !== countGeneration || table !== state.currentTable) return;
-    if (!res.ok) return;
     const count = countOf(body);
+    if (count.failed) {
+      setMatchCount(elements.totalRowsCount, count);
+      return;
+    }
     if (count.total === null) {
       if (body.counting === true && Date.now() - since < RECOUNT_ASK_FOR_MS) {
         setTimeout(() => {

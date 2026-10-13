@@ -5,7 +5,7 @@ import {
 import { state } from './state.js';
 import { unitText } from './ui_words.js';
 import { elements } from './dom.js';
-import { checkServerHealth, loadTables, fetchData, overlayStagedEdits, dropStagedEditsOf, droppedText } from './api.js';
+import { checkServerHealth, loadTables, fetchData, overlayStagedEdits, dropStagedEditsOf, droppedText, askMatchCount } from './api.js';
 import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress,
          finishRetroactiveProgress, showToast, getLocalTimeString } from './utils.js';
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
@@ -553,8 +553,10 @@ export function handleWebSocketMessage(msg) {
   } else if (event === 'batch_refresh_required') {
     // This event has no row payload.  Invalidate the pagination cache so the
     // next explicit refresh reads current data, but do not auto-replace the
-    // on-screen grid merely because another actor changed the table.
+    // on-screen grid merely because another actor changed the table. The count is asked again with it - a kept count
+    // is a cheap read (총괄 0fd18ae19 7).
     state.pageCache.clear();
+    askMatchCount();
     // 🔴 C-9. 이 갈래는 형제들과 달리 «아무것도 안 보여 줍니다** — 위 두 갈래가 쓰는
     //    `flashCells`·`redrawRows` 도, 상태줄도 없습니다. 운영자에게는 「아무 일도
     //    없었다」와 «같은 모양»이고, 그래서 이 메시지가 «항상» 싣고 오는 행 수(0 포함)를

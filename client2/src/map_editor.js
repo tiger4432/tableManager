@@ -11,6 +11,7 @@ import { CELL_LIMIT, cellQuery, cellsTruncated as isCellsTruncated, cellsToDraw 
 import { createOpenTimer, timingText, duplicateTitle } from './map_open_timing.js';
 import { mapTablesFrom } from './map_table_list.js';
 import { changedRowsText } from './changed_rows.js';
+import { countOf, countNumberText } from './match_count.js';
 import { initTheme, THEME_CHANGE_EVENT } from './theme.js';
 import { getLocalTimeString, showToast, escapeHtml } from './utils.js';
 import { initTransferPlan, notifyMapContext, notifyLegendChanged, notifyPaintCounts, stageTargetTables } from './transfer_plan.js';
@@ -10208,7 +10209,7 @@ async function populateMapKeyDatalist(table, listEl, input) {
   const isCurrent = claimListFill(listEl);
   const cached = mapKeyListCache.get(table);
   if (cached) { markSuggestState(input, '', ''); fillDatalist(listEl, cached); return; }
-  let items, total, rowCount;
+  let items, total, counted, rowCount;
   try {
     const filters = { target_table: { filterType: 'text', type: 'equals', filter: String(table) } };
     // 🔴 `defer_total` 을 «안 붙입니다». 아래에서 `total > rowCount` 로 「등록된 맵 N개 중
@@ -10226,7 +10227,9 @@ async function populateMapKeyDatalist(table, listEl, input) {
     if (!isCurrent()) return;   // 이 목록에 대한 더 새로운 질문이 이미 있다
     const rows = (result && Array.isArray(result.data)) ? result.data : [];
     rowCount = rows.length;
-    total = Number(result && result.total);
+    // 좁힌 수는 서버 상한(10,000)에서 멈춥니다 — 넘으면 capped 라 «10,000+» 입니다(총괄 0fd18ae19 7).
+    counted = countOf(result);
+    total = counted.total;
     // 값(=키)과 라벨(=그 맵의 등록 규격)을 **같은 행에서** 만든다. 라벨을 위해 추가 조회를
     // 하지 않는다는 성질이 여기서 성립한다.
     items = rows.map(r => {
@@ -10245,7 +10248,7 @@ async function populateMapKeyDatalist(table, listEl, input) {
   if (Number.isFinite(total) && total > rowCount) {
     // 절단은 성공이 아니다(INV-④와 같은 규율): 목록이 모집단인 척하지 못하게 사실을 남긴다.
     markSuggestState(input, 'truncated',
-      `등록된 맵 ${total}개 중 ${items.length}개만 목록에 있습니다 — 없는 키도 직접 입력할 수 있습니다.`);
+      `등록된 맵 ${countNumberText(counted)}개 중 ${items.length}개만 목록에 있습니다 — 없는 키도 직접 입력할 수 있습니다.`);
   } else if (items.length === 0) {
     // [1-a] **성공했는데 0건**이다. 종전에는 이 자리가 `markSuggestState(input, '', '')` —
     // 즉 침묵이었고, 침묵은 「목록이 고장났다」와 구별되지 않는다. 상태는 여전히 완전

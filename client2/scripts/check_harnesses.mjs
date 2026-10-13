@@ -630,7 +630,7 @@ const FLOORS = new Map([
   // input otherwise ― plus the empty-but-successful wording), and the discovery round added
   // 13 (the candidate list is ordered, and each candidate carries its registered spec as an
   // option label). Taking either branch's figure would have quietly un-scored the other's.
-  ['map_key_datalist_harness.mjs', 84],   // 83 -> 84: the X/Y/Val pickers (lead e67ef53f3)
+  ['map_key_datalist_harness.mjs', 85],   // 83 -> 84: the X/Y/Val pickers (lead e67ef53f3); -> 85: the capped population says 10,000+ (lead 0fd18ae19)
   // New 2026-08-05 with Map Editor 2 (MAP_ALIGNMENT_SPEC 0.2 layers 4, 7 and 10, plus the
   // composition root). Floor is the count it reports on the commit that introduces it -- there
   // is no earlier tree to measure it against.
@@ -1392,7 +1392,7 @@ const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 84],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13)
+  ['grid_view_readonly_harness.mjs', 87],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],
@@ -1598,7 +1598,7 @@ const FLOORS = new Map([
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
   // how many matched, and the difference between 0 and unmeasured
-  ['match_count_harness.mjs', 34],   // 20 -> 34: D1-D14 the count as of a time, 10,000+, the paging end, a live row (ㄱ-1, lead 10-13)
+  ['match_count_harness.mjs', 37],   // 20 -> 34: D1-D14 the count as of a time, 10,000+, the paging end, a live row (ㄱ-1, lead 10-13); -> 37: D15-D17 a failed count (lead 0fd18ae19)
   // the banner that offers a re-run, and what it refuses to offer one for
   // 53 -> 57 (lead ece405110): the click replay sends cascade, the hand-off to the tab does not.
   // 57 -> 58 (lead QA 0056ebc9d): the panel placeUnder moved to the body is one panel however often it is drawn (L1, M20).

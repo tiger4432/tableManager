@@ -198,6 +198,7 @@ const REAL = {
   ui: await import('../src/ui.js'),
   rows: await import('../src/source_rows.js'),
   timeline: await import('../src/timeline.js'),
+  ws: await import('../src/websocket.js'),
 };
 const realState = REAL.state.state;
 
@@ -669,6 +670,42 @@ async function suite(M) {
       const moved2 = [...realState.pageCache.values()].map((e) => e.count.total);
       ok(JSON.stringify(moved) === '[7,10000]' && JSON.stringify(moved2) === '[8,10000]',
         `K8 a live row moves an exact cached count, not a 10,000+ one [${JSON.stringify([moved, moved2])}]`);
+      // A count the server could not make (lead 0fd18ae19 6): its `failed` field, or a refused /data/count, is said -
+      // not «Counting rows…» for ever - and not asked again by the screen (the server keeps the pace).
+      let countReply = () => answer(COUNTED);
+      globalThis.fetch = async (url) => {
+        const u = String(url);
+        asked.push(u);
+        if (u.includes('/data/count')) return countReply();
+        return answer({ data: [rowData()], total: null });
+      };
+      const FAILED = { table_name: 't', total: null, capped: false, counted_at: null, count_seconds: null, counting: false,
+        failed: { reason: 'count stopped after 10 s', at: AT } };
+      countReply = () => answer(FAILED);
+      realState.pageCache = new Map();
+      asked = []; later = [];
+      await M.api.fetchData(true);
+      await new Promise((r) => savedK.setTimeout(r, 0));
+      ok(line() === 'Count failed (count stopped after 10 s)' && counts() === 1 && later.length === 0,
+        `K10 the server's failed count: «Count failed (<reason>)», asked no more [${line()} ${counts()} ${later.length}]`);
+      const lines = [];
+      for (const reply of [() => answer({ detail: { reason: 'grid_read_stopped', seconds: 10, message: 'Filter stopped after 10 s' } }, 503),
+        () => ({ ok: false, status: 500, json: async () => { throw new SyntaxError('not JSON'); } })]) {
+        countReply = reply;
+        realState.pageCache = new Map();
+        await M.api.fetchData(true);
+        await new Promise((r) => savedK.setTimeout(r, 0));
+        lines.push(line());
+      }
+      ok(JSON.stringify(lines) === JSON.stringify(['Count failed (Filter stopped after 10 s)', 'Count failed (HTTP 500)']),
+        `K11 a refused count: the server's sentence, else its status [${JSON.stringify(lines)}]`);
+      // batch_refresh_required (lead 0fd18ae19 7): the page cache is dropped and the count asked again with it.
+      countReply = () => answer(COUNTED);
+      asked = [];
+      M.ws.handleWebSocketMessage({ event: 'batch_refresh_required', table_name: 't' });
+      await new Promise((r) => savedK.setTimeout(r, 0));
+      ok(counts() === 1 && line().startsWith('4,012,334 rows') && realState.pageCache.size === 0,
+        `K12 a batch refresh asks the count again [${counts()} ${line()} ${realState.pageCache.size}]`);
     } finally {
       globalThis.fetch = savedK.fetch;
       globalThis.setTimeout = savedK.setTimeout;
@@ -972,6 +1009,15 @@ const DEFECTS = [
     s => s.replace('const exact = count.total !== null && !count.capped ? count.total : null;', 'const exact = count.total;')],
   ['api.js: the export refusal is today\'s generic line', 'api',
     s => s.replace('{ refused: await refusalText(res, EXPORT_FAILED) }', '{ refused: EXPORT_FAILED }')],
+  ['api.js: a failed count stays «Counting rows…»', 'api',
+    s => s.replace('    if (count.failed) {\n      setMatchCount(elements.totalRowsCount, count);\n      return;\n    }\n', '')],
+  ['api.js: a refused count is swallowed again', 'api',
+    s => s.replace("const body = res.ok ? await res.json() : { failed: { reason: (await refusalSaid(res)) || `HTTP ${res.status}` } };",
+      'if (!res.ok) return;\n    const body = await res.json();')],
+  ['api.js: a refused count drops the server\'s sentence', 'api',
+    s => s.replace('{ failed: { reason: (await refusalSaid(res)) || ', '{ failed: { reason: ')],
+  ['websocket.js: a batch refresh asks no count', 'ws',
+    s => s.replace('    state.pageCache.clear();\n    askMatchCount();\n', '    state.pageCache.clear();\n')],
   ['timeline.js: a row jump onto an uncounted table never asks', 'timeline',
     s => s.replace('    if (count.total === null) askMatchCount();\n', '')],
   ['ui.js: a live row does not move the cached count', 'ui',
@@ -1001,7 +1047,7 @@ const CONTROLS = [
 ];
 
 const FILES = { state: 'state.js', api: 'api.js', grid: 'grid.js', clipboard: 'clipboard.js',
-                ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js', timeline: 'timeline.js' };
+                ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js', timeline: 'timeline.js', ws: 'websocket.js' };
 
 async function scoreMutant(key, mutate, tag) {
   try {
