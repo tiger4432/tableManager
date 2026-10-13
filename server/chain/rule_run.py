@@ -495,10 +495,15 @@ def held_back(rule, handed) -> tuple:
         return handed, {}
     from database import crud
 
+    import event_constants
+
     kept, empty, filled = [], collections.Counter(), collections.Counter()
     for payload in handed:
         data = payload.get("data") if isinstance(payload, dict) else None
-        cells = {column: ((data or {}).get(column) or {}).get("value") for column in wanted + shut}
+        # a deletion has no data - its row is judged as it was (총괄 355ee9840 3)
+        old = {} if data else event_constants.old_values_of(payload)
+        cells = {column: ((data or {}).get(column) or {}).get("value") if data else old.get(column)
+                 for column in wanted + shut}
         blank = [column for column in wanted if crud.is_blank_value(cells[column])]
         excluding = [column for column in shut if not crud.is_blank_value(cells[column])]
         if blank or excluding:

@@ -117,6 +117,43 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
 
 #: Who deleted a shell row - the history line's name, the chain's write seat and the sweep alike (5eee501eb).
 SHELL_DELETER = "chain_shell_rows"
+#: Who deleted a row whose key no source row holds any more - a decide's recount (총괄 옛 키).
+GONE_DELETER = "chain_no_source_rows"
+
+
+def rows_others_wrote(db, table_name: str, own) -> dict:
+    """{row_id: [layer names]} - of `own` {row_id: the rules whose rows they are}, the rows another writer has a layer
+    on (총괄 355ee9840 2): not a person's (`crud.layer_writer`), not those rules' chain or auto-confirm layer
+    (`updated_by` is the rule that wrote it), not the backfill's old name for that write."""
+    from chain.enrichment import backfill, candidates
+    from database import crud, models
+
+    S = models.CellSource
+    ids = list(own)
+    mine = (crud.CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY)
+    found = {}
+    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
+        for row_id, name, by in (db.query(S.row_id, S.source_name, S.updated_by)
+                                 .filter(S.table_name == table_name, S.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))):
+            writer = crud.layer_writer(name)
+            # by the writer the name folds to - a merge renames a layer «chain_ingestion (<key>)» (총괄 10-14 4)
+            if writer in (crud.USER_SOURCE, backfill.SOURCE_NAME) or (writer in mine and by in own[row_id]):
+                continue
+            found.setdefault(row_id, set()).add(name)
+    return {row_id: sorted(names) for row_id, names in found.items()}
+
+
+def person_rows(db, table_name: str, row_ids) -> set:
+    """The rows a person wrote a layer on, blank or not (`crud.layer_writer`) - what a gone row says by name."""
+    from database import crud
+
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    found = set()
+    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
+        layers, _pins = _load_cell_state(db, table_name, ids[i:i + DEFAULT_CHUNK_SIZE])
+        found.update(row_id for (row_id, _column), named in layers.items()
+                     if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named))
+    return found
 
 
 def key_columns(table_name: str) -> set:
@@ -619,7 +656,8 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
                      case((marked, p["row_ids"]), else_=null()),
                      p[event_constants.CHAIN_DEPTH_KEY].as_integer(), p[event_constants.CHANNEL_KEY].as_string(),
                      p[event_constants.CASCADE_KEY].as_boolean(), case((marked, p[event_constants.WRITTEN_BY_KEY]), else_=null()),
-                     p[event_constants.RUN_KEY].as_string(), p["updated_by"].as_string(), p["source_name"].as_string())
+                     p[event_constants.RUN_KEY].as_string(), p["updated_by"].as_string(), p["source_name"].as_string(),
+                     case((marked, p[event_constants.OLD_VALUES_KEY]), else_=null()))
             .filter(outbox.processed_chain == False))  # noqa: E712 - 부분 인덱스의 술어 철자
     out = {"by_table": {}, "rows": 0, "retrying": 0, "running": 0, "pages": 0, "stopped": False}
     after, folded, size, step = 0, 0, keyset_scan.PageSize(page), keyset_scan.step_of(checkpoint)
@@ -634,7 +672,7 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
         after, out["pages"] = found[-1][0], out["pages"] + 1
         step("read", out["pages"], None, len(found))
         chosen, lines = {}, running.chain_lines_running()
-        for event_id, table, kind, status, line, row_id, row_ids, depth, chan, casc, wrote, run, who, source in found:
+        for event_id, table, kind, status, line, row_id, row_ids, depth, chan, casc, wrote, run, who, source, old in found:
             if (who, source) != (R2_AUDIT_SOURCE, R1_SOURCE_NAME) or event_constants.is_collapsed_payload(
                     {"row_ids": row_ids}) or not row_id:
                 continue
@@ -645,7 +683,7 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
                 out["running"] += 1
             else:
                 chosen[event_id] = (table, kind, row_id,
-                                    (depth, chan, bool(casc), tuple(sorted(wrote or ())), run))
+                                    (depth, chan, bool(casc), tuple(sorted(wrote or ())), run), old)
         if apply and chosen:
             # 🔴 IN ID ORDER, ONLY WHAT STILL WAITS - a row a group ends meanwhile is waited for, then
             #    no longer waiting: it keeps that ending and stays out of the fold.
@@ -656,8 +694,9 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
                     .order_by(outbox.id).with_for_update()]
             chosen = {i: chosen[i] for i in held}
         groups = {}
-        for table, kind, row_id, envelope in chosen.values():
-            groups.setdefault((table, kind, envelope), {})[row_id] = None
+        for table, kind, row_id, envelope, old in chosen.values():
+            # a row's old values are its first event's - what it was before the withdrawals (총괄 10-14 3)
+            groups.setdefault((table, kind, envelope), {}).setdefault(row_id, old if isinstance(old, dict) else {})
             out["by_table"].setdefault(table, [0, 0])[0] += 1
         for (table, kind, (depth, chan, casc, wrote, run)), rows in groups.items():
             out["by_table"][table][1] += -(-len(rows) // chunk)
@@ -669,7 +708,7 @@ def fold_withdrawal_events(db, apply: bool = False, page: int = FOLD_PAGE_EVENTS
                     for door in (channel(chan), cascade(casc), written_by(wrote), retroactive_run(run)):
                         stack.enter_context(door)
                     stack.callback(request_chain_depth.reset, request_chain_depth.set(depth))
-                    stage_collapsed_event(db, kind, table, list(rows))
+                    stage_collapsed_event(db, kind, table, list(rows), old=list(rows.values()))
         if apply and chosen:
             ids = sorted(chosen)
             for start in range(0, len(ids), chunk):

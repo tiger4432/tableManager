@@ -131,6 +131,21 @@ def test_a_delete_row_is_not_listed_because_nothing_will_run_for_it(
     assert deleted.id not in by_id
 
 
+def test_a_delete_row_is_listed_for_a_rule_that_takes_deletions_and_the_other_says_why(
+        client, db_session, monkeypatch):
+    """총괄 옛 키 ㄱ: the same seat (`wakes`) - a rule that declares `allow_delete_trigger` runs on a deletion, one
+    that does not is listed with the reason."""
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [
+        {"name": "takes", "enabled": True, "trigger_table": "t", "target_table": "u", "allow_delete_trigger": True},
+        {"name": "skips", "enabled": True, "trigger_table": "t", "target_table": "u"}])
+    deleted = row(db_session, event_type="DELETE", table_name="t")
+    _body, by_id = rows_of(client)
+
+    listed = {r["name"]: r for r in by_id[deleted.id]["rules"]}
+    assert listed["takes"]["will_fire"] is True
+    assert (listed["skips"]["will_fire"], listed["skips"]["why_not"]) == (False, worker.FIRE_REFUSED_DELETE)
+
+
 def test_a_row_on_a_table_no_rule_watches_is_not_listed(client, db_session, monkeypatch):
     """소유자가 본 그 모양이다 — 규칙 없는 표가 쏟아낸 행이 대기열을 채웠다."""
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [

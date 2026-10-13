@@ -4330,27 +4330,28 @@ def purge_map_rows(db, table_model, table_name: str, row_ids):
     reason, and widening this signature would have moved the two call sites and the
     assertions that pin them for a fact both callers already carry.
 
-    🔵 A `DELETE` event cannot wake the chain: `chain_ingestion_worker` filters its
-    triggers to `CREATE`/`EDIT` in all three places it selects them, so this adds no
-    cascade. Measured before it was written rather than left to the depth limit, which
-    bounds an unbounded chain and would not have prevented a new one.
+    🔵 A `DELETE` event wakes only a rule that declares `allow_delete_trigger` (`ingestion_worker.wakes`, 총괄
+    옛 키) - it carries each row's values as its old values for that rule.
     """
-    from database.database import stage_collapsed_event
+    from database.database import row_values, stage_collapsed_event
 
     row_ids = list(row_ids or [])
     if not row_ids:
         return []
 
-    # Staged BEFORE the deletes so the event is added to the same flush that removes the
-    # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
-    stage_collapsed_event(db, "DELETE", table_name, row_ids)
-
     # 🔴 READ BEFORE THE DELETE, for the same reason `delete_rows_batch` reads first:
     # the business key lives on the row, and after the delete there is nothing to ask.
+    rows = db.query(table_model).filter(table_model.row_id.in_(row_ids)).all()
+    # Staged BEFORE the deletes so the event is added to the same flush that removes the
+    # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
+    # With each row's values as its old values (총괄 옛 키).
+    values = {row.row_id: row_values(row) for row in rows}
+    stage_collapsed_event(db, "DELETE", table_name, row_ids,
+                          old=[values.get(row_id, {}) for row_id in row_ids])
+
     from database.context import request_user, request_transaction_id
     record_row_deletions(
-        db, table_name,
-        db.query(table_model).filter(table_model.row_id.in_(row_ids)).all(),
+        db, table_name, rows,
         request_user.get() or "system",
         request_transaction_id.get() or str(uuid6.uuid7()))
 
@@ -5859,10 +5860,12 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
             # ⚠️ THE SAME CALL `purge_map_rows` ALREADY MAKES, not a second spelling of it.
             # And it stages the ids that were actually removed rather than the ids asked
             # for, so a delete of something already gone does not announce a deletion.
-            from database.database import stage_collapsed_event
+            from database.database import row_values, stage_collapsed_event
 
+            # with each row's values as its old values (총괄 옛 키)
             stage_collapsed_event(
-                db, "DELETE", table_name, [row.row_id for row in rows_to_delete])
+                db, "DELETE", table_name, [row.row_id for row in rows_to_delete],
+                old=[row_values(row) for row in rows_to_delete])
             logs_to_cache = record_row_deletions(
                 db, table_name, rows_to_delete, user_name, tx_id)
             db.commit()
