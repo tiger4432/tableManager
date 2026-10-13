@@ -14,7 +14,9 @@
      pill       .sf-pill (.sf-pill--v) · .sf-pill__caret · .sf-plus · .sf-note
      legend     .sf-legend · __ttl · __row · __v (.is-dim) · __plain · __ico · __name
      table      .sf-table - a grid (head · cells with lines · .is-marked · __col · __row · __corner · __total);
-                .sf-table--rows - a list (striped, .is-num · .is-id · .is-member · .is-hub · __toggle)
+                .sf-table--rows - the table part's lines (striped, .is-num · tr.is-marked · __sort · __add)
+     page       .sf-tools · .sf-tool (a part's title bar buttons) · .sf-splitter · .sf-drop · .sf-banner · __b ·
+                .sf-flyout · __h · __it · __ico
      status     .sf-status
      panel      .sf-panel · __h - light in both themes; the properties panel .sf-props__* ; the filters panel .sf-filter__*
      popover    .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __hr · __reds · __red (.is-on) · __why · __edit · __line · __expr
@@ -70,14 +72,14 @@
 .sf-table td { min-width: 70px; cursor: pointer; }
 .sf-table td.is-marked { background: var(--sf-marked); color: var(--sf-marked-text); font-weight: 700; }
 .sf-table__total { font-weight: 700; }
-.sf-table--rows { width: 100%; }
-.sf-table--rows th, .sf-table--rows td { height: var(--sf-row-h); padding: 0 4px; border: 0; text-align: left; cursor: default; min-width: 0; }
+.sf-table--rows th, .sf-table--rows td { height: var(--sf-row-h); width: var(--sf-col-w); max-width: var(--sf-col-w); padding: var(--sf-row-pad); border: 0; text-align: left;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .sf-table--rows tr:nth-child(even) td { background: var(--sf-stripe); }
 .sf-table--rows .is-num { text-align: right; }
-.sf-table--rows .is-id { color: var(--sf-text-2); font-size: 11px; }
-.sf-table--rows .is-member { padding-left: 18px; }
-.sf-table--rows tr.is-hub td { font-weight: 500; }
-.sf-table__toggle { height: auto; padding: 0; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-text); font: inherit; cursor: pointer; }
+.sf-table--rows td { cursor: pointer; }
+.sf-table--rows tr.is-marked td { background: var(--sf-marked); color: var(--sf-marked-row-text); }
+.sf-table__sort { margin-left: 4px; font-size: var(--sf-fs-caret); }
+.sf-table--rows .sf-table__add { width: auto; max-width: none; }
 
 /* ── the status bar ── */
 .sf-status { height: 100%; display: flex; align-items: center; justify-content: flex-end; gap: 24px; padding: 0 16px; background: var(--sf-status);
@@ -107,6 +109,7 @@
   color: var(--sf-panel-text); font: inherit; padding: 0 6px; }
 .sf-props__cond { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-top: 4px; padding: 0 8px; border: 1px solid var(--sf-panel-pill); }
 .sf-props__x { height: auto; padding: 0 2px; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-panel-muted); cursor: pointer; }
+.sf-props__check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
 .sf-props__add { height: auto; margin-top: 6px; padding: 0; letter-spacing: normal; border: 0; background: transparent; color: var(--sf-panel-accent); font: inherit; cursor: pointer; }
 .sf-filter { padding: 8px 16px; border-bottom: 1px solid var(--sf-panel-line-2); }
 .sf-filter__h { font-weight: 500; margin-bottom: 4px; }
@@ -116,6 +119,42 @@
   background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
 .sf-filter__v { display: flex; align-items: center; gap: 6px; height: 20px; }
 .sf-filter__n { margin-left: auto; color: var(--sf-panel-muted); }
+
+/* ── the page's editing (lead 10-13, Spotfire's): a part's title bar buttons on its hover, the line between two parts,
+      where a moved part lands, the left bar and the add window beside it ── */
+.sf-tools { position: absolute; top: var(--sf-tools-top); right: var(--sf-tools-right); display: flex; gap: var(--sf-tool-gap); opacity: 0; }
+.rb-frame:hover > .sf-tools { opacity: 1; }
+.sf-tool { display: block; width: var(--sf-tool-w); height: var(--sf-tool-h); min-height: 0; padding: 0; letter-spacing: normal; border: 0; background: transparent;
+  color: var(--sf-tool); cursor: pointer; }
+.sf-tool svg { display: block; width: var(--sf-tool-w); height: var(--sf-tool-w); margin: calc((var(--sf-tool-h) - var(--sf-tool-w)) / 2) 0; fill: currentColor; }
+[data-part-title] { user-select: none; }
+.sf-splitter { position: relative; z-index: 2; }
+.sf-splitter::before { content: ''; position: absolute; }
+.sf-splitter[data-dir="row"]::before { top: 0; bottom: 0; left: calc(var(--sf-splitter) / -2); width: var(--sf-splitter); cursor: col-resize; }
+.sf-splitter[data-dir="column"]::before { left: 0; right: 0; top: calc(var(--sf-splitter) / -2); height: var(--sf-splitter); cursor: row-resize; }
+.sf-drop { position: absolute; z-index: 3; box-sizing: border-box; background: var(--sf-brush); border: var(--sf-active-w) solid var(--sf-active); pointer-events: none; }
+.sf-banner { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; padding-top: 8px; background: var(--sf-panel-bg); }
+.sf-banner__b { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-height: 0; padding: 0; letter-spacing: normal; border: 0;
+  background: transparent; color: var(--sf-panel-muted); cursor: pointer; }
+.sf-banner__b.is-on { color: var(--sf-panel-accent); }
+.sf-banner__b svg, .sf-flyout__ico { width: var(--sf-banner-icon); height: var(--sf-banner-icon); fill: currentColor; }
+.sf-flyout { position: fixed; z-index: 30; box-sizing: border-box; width: var(--sf-flyout-w); padding: 0 24px 16px; overflow: auto; background: var(--sf-panel-bg);
+  color: var(--sf-panel-name-text); box-shadow: var(--sf-flyout-shadow); font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); }
+.sf-flyout__h { display: flex; align-items: center; height: 64px; color: var(--sf-panel-muted); font-size: var(--sf-fs-flyout); }
+.sf-flyout__it { display: flex; align-items: center; justify-content: flex-start; gap: 20px; width: 100%; height: var(--sf-flyout-row); min-height: 0; padding: 0 12px;
+  letter-spacing: normal; border: 0; background: transparent; color: inherit; font: 700 var(--sf-fs-flyout)/var(--sf-lh) var(--sf-font); text-align: left; cursor: pointer; }
+.sf-flyout__it:hover { background: var(--sf-panel-head); }
+/* the markings window: a line a marking - its colour, its name, × */
+.sf-mark { display: flex; align-items: center; gap: var(--sf-tool-gap); height: var(--sf-flyout-row); padding: 0 12px; }
+.sf-mark__color { width: var(--sf-banner-icon); height: var(--sf-banner-icon); min-height: 0; padding: 0; border: 1px solid var(--sf-panel-pill); background: transparent; cursor: pointer; }
+.sf-mark__name { flex: 1 1 auto; min-width: 0; height: var(--sf-pill-h); min-height: 0; padding: 0 8px; border: 1px solid var(--sf-panel-pill); border-radius: 100px;
+  background: var(--sf-panel-bg); color: inherit; font: 400 var(--sf-fs-flyout)/var(--sf-lh) var(--sf-font); }
+.sf-mark__x { width: var(--sf-tool-w); min-height: 0; padding: 0; border: 0; background: transparent; color: var(--sf-tool); font-size: var(--sf-fs-flyout); cursor: pointer; }
+.sf-mark__ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sf-tool-gap); padding: 4px 12px 8px; color: var(--sf-panel-muted); }
+.sf-props__refused { color: var(--sf-panel-text); }
+/* the relations window: a line's words, then «Both ways» and × */
+.sf-mark__words { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-mark__pick { width: 100%; margin-top: var(--sf-tool-gap); }
 
 /* ── a popover (the slot picker): Spotfire's menu - white, items 31, text inset 40 ── */
 .sf-pop-host { position: fixed; z-index: 30; }

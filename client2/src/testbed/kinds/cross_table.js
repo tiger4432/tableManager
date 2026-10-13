@@ -1,14 +1,14 @@
 // The cross table kind of the visual part (reference §8): a row axis, a column axis, the cell values folded over the
 // rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its rows, marked whole.
 
-import { categoriesOf, slotWords, foldRows } from '../slot.js';
+import { combosOf, slotWords, foldRows, EMPTY } from '../slot.js';
 
 export const SLOTS = Object.freeze([
   { key: 'rows', label: 'Row axis', category: true },
   { key: 'columns', label: 'Column axis', category: true },
   { key: 'cells', label: 'Cell values', folds: true },
 ]);
-export const EMPTY = '(Empty)';
+export { EMPTY };
 const TOTAL = 'Total';
 
 /** A cell's number as the table says it: thousands grouped, at most three decimals. */
@@ -25,18 +25,11 @@ export function crossModel(rows, ctx) {
   const keyOf = (r, c) => `${r}\u0000${c}`;
   const rowKeys = new Set();
   const colKeys = new Set();
-  for (const row of rows) {
-    // A row with two values on an axis stands in both (lead aca803a7a «counts twice»); none - (Empty).
-    const rs = row.reads.rows ? (categoriesOf(row.reads.rows).length ? categoriesOf(row.reads.rows) : [EMPTY]) : [''];
-    const cs = row.reads.columns ? (categoriesOf(row.reads.columns).length ? categoriesOf(row.reads.columns) : [EMPTY]) : [''];
-    for (const r of rs.map(String)) {
-      for (const c of cs.map(String)) {
-        rowKeys.add(r);
-        colKeys.add(c);
-        if (!cells.has(keyOf(r, c))) cells.set(keyOf(r, c), { ids: [] });
-        cells.get(keyOf(r, c)).ids.push(row.id);
-      }
-    }
+  // A row with two values on an axis stands in both (lead aca803a7a «counts twice»); none - (Empty).
+  for (const { values: [r, c], ids } of combosOf(rows, ['rows', 'columns'])) {
+    rowKeys.add(r);
+    colKeys.add(c);
+    cells.set(keyOf(r, c), { ids });
   }
   const byId = new Map(rows.map((row) => [row.id, row]));
   /** A set of rows folded: the cell slot's values of each row once (a row in two columns counts once in its row's total). */
@@ -116,4 +109,7 @@ export function render(body, model, ctx) {
 /** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «Count». */
 export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : 'Count'} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
 
-export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, title, model: crossModel, render };
+/** The add window's picture of it: a head, a row head, cells. */
+export const icon = { tone: 'cat-7', paths: [['M4 3h16v4H4zM4 9h4v12H4z', 1], ['M10 9h4v5h-4zM16 9h4v5h-4zM10 16h4v5h-4zM16 16h4v5h-4z', 0.6]] };
+
+export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, title, model: crossModel, render, icon };

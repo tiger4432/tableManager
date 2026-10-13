@@ -23,9 +23,9 @@ const spelling = (v) => JSON.stringify(v);
  */
 export function readSlot(index, inside, x, slot, oneValued = false, marked = null) {
   if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)], { marked })) : { state: 'missing' };
-  const got = readsOf(index, inside, x, slot, Infinity);
+  const got = readsAt(index, inside, x, slot);
   if (got.missing) return { state: 'missing' };
-  const reads = got.reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
+  const reads = got.reads;
   const reduce = slot.reduce || (oneValued ? 'Latest' : null);
   if (reduce) {
     const f = fold(reduce, reads);
@@ -90,7 +90,7 @@ export function calcRow(index, inside, x) {
     },
     get: (name) => {
       const { steps, value } = nameValue(index, inside, x, name);
-      return value ? new Reads(readsOf(index, inside, x, { steps, value }, Infinity).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }))) : null;
+      return value ? new Reads(readsAt(index, inside, x, { steps, value }).reads) : null;
     },
   };
 }
@@ -106,7 +106,7 @@ function answerOne(out) {
 export function rawOf(index, inside, x, slot) {
   if (isExpression(slot)) return calcRow(index, inside, x);
   // A calculation reads every way (lead 10-13: a fold over 50 of 2,199 is a wrong answer said as a right one).
-  return readsOf(index, inside, x, slot, Infinity).reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
+  return readsAt(index, inside, x, slot).reads;
 }
 
 /** A set of rows' raws folded - a cell, a total: the expression over the rows, or the reduce over their reads. */
@@ -123,10 +123,44 @@ export function categoriesOf(read) {
   return [];
 }
 
+/** Every read of a slot from row `x`: {value, t} - t its time (trend.js timeOf: its edge's or node record's occurred_at).
+ *  A slot `of: 'time'` reads the time itself (ISO, the trend's time axis), a read with none left out. */
+export function readsAt(index, inside, x, slot) {
+  const got = readsOf(index, inside, x, slot, Infinity);
+  if (got.missing) return { missing: true, reads: [] };
+  const reads = got.reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
+  return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ value: new Date(r.t).toISOString(), t: r.t })) : reads };
+}
+
+/** A category saying none. */
+export const EMPTY = '(Empty)';
+
+/** The rows of every combination of categories some keys make - a row's categories on a key (none - (Empty), a key with
+ *  no slot - ''), a row with two on one key in both: [{values, ids}] in first-seen order. A cross table's cells and the
+ *  scatter's Marker by markers are these - each a hub of its rows. */
+export function combosOf(rows, keys) {
+  const out = new Map();
+  for (const row of rows) {
+    let combos = [[]];
+    for (const key of keys) {
+      const read = row.reads[key];
+      const cats = read ? (categoriesOf(read).length ? categoriesOf(read).map(String) : [EMPTY]) : [''];
+      combos = combos.flatMap((c) => cats.map((v) => [...c, v]));
+    }
+    for (const values of combos) {
+      const at = JSON.stringify(values);
+      if (!out.has(at)) out.set(at, { values, ids: [] });
+      out.get(at).ids.push(row.id);
+    }
+  }
+  return [...out.values()];
+}
+
 /** A slot in words - what a pill and an axis say: «Avg(void_ratio)», «Latest(bond_temp)», «recipe». */
 export function slotWords(slot) {
   if (!slot) return '(None)';
   if (isExpression(slot)) return slot.expr;
-  const name = slot.words && slot.words.length ? slot.words[0] : slot.value.on === 'label' ? 'name' : slot.value.name;
+  const said = slot.words && slot.words.length ? slot.words[0] : slot.value.on === 'label' ? 'name' : slot.value.name;
+  const name = slot.of === 'time' ? `time · ${said}` : said;
   return slot.reduce ? `${slot.reduce}(${name})` : name;
 }

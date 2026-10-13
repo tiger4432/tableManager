@@ -110,8 +110,10 @@ files    tokens   client2/src/tokens.css  --sf-*  - both themes' blocks and the 
 part     .sf-part (.is-active) · .sf-part__title · .sf-part__t · .sf-part__meta · .sf-part__body · .sf-say
 pill     .sf-pill (.sf-pill--v) · .sf-pill__caret · .sf-plus · .sf-note        border and caret on the part's hover, always in a panel
 legend   .sf-legend · __ttl · __row · __v (.is-dim) · __plain · __ico · __name
-table    .sf-table (a grid: __col · __row · __corner · __total · td.is-marked) · .sf-table--rows (a striped list: .is-num ·
-         .is-id · .is-member · tr.is-hub · __toggle)
+table    .sf-table (a grid: __col · __row · __corner · __total · td.is-marked) · .sf-table--rows (the table part's lines:
+         .is-num · tr.is-marked · __sort · __add)
+page     .sf-tools · .sf-tool (a part's title bar buttons, on its hover) · .sf-splitter · .sf-drop · .sf-banner · __b ·
+         .sf-flyout · __h · __it · __ico   (lead 10-13: the page's editing, rnd_board/grid_shell.js)
 status   .sf-status                                                       panel   .sf-panel · __h - light in both themes
 props    .sf-props__name · __tabs (.is-on) · __sec · __h · __line · __lab · __sel · __cond · __x · __add
 filter   .sf-filter · __h · __range · __num · __v · __n
@@ -122,6 +124,8 @@ button   .sf-btn
 ```
 sizes    text 12/15 Roboto · title 19/23 Roboto Light, its text 16 from the part's top and 20 from its left · tabs 13 Medium ·
          pill 21 high, radius 100 · cell 18 high (a row 19 with its line), inset 2 · 8 · 1 · 1 (top right bottom left) ·
+         a table line 19, inset 0 · 8 · 0 · 7, marked #00A650 with #161616 regular text · title bar buttons 14 x 21, 10
+         apart, 17 from the part's top and 20 from its right · left bar 48 · add window 360, a line 48 ·
          a list row 19 · legend 150 wide, a value line 20, its icon 14 · part padding 12 · between parts 2 · status bar 32 ·
          the active line 2 drawn over the part's edge - it takes no room
 colours  dark ground #2A2A2A / page #232323 · marked cell #00A650 white bold · the seven category colours fill / line - all

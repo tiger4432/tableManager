@@ -2,9 +2,10 @@
 // THE COMPOSITION ROOT of the R&D board. The ONLY file that knows a URL, a lot number, or
 // where a panel sits.
 //
-// 🔴 THE SCREEN IS A LIST OF INSTANCE DECLARATIONS (below). Each entry names the part, its
-//    seat, the marking it READS, the marking it WRITES, and its question. Adding a chart is
-//    one entry; moving one when drag lands is a change to `at`. No part is edited either way.
+// 🔴 THE SCREEN IS A LIST OF INSTANCE DECLARATIONS (below) AND THE TREE THEY SIT IN (`root`).
+//    Each entry names the part, the marking it READS, the marking it WRITES, and its question;
+//    its seat is its leaf in the tree. Adding a chart is one entry and one leaf; moving one is a
+//    change to the tree. No part is edited either way.
 //
 // 🔴 THE DECLARATION IS DATA -- no functions in it -- so it can be serialised the day a
 //    layout is saved or dragged. `bindLoaders` is what turns a question into a fetch, and it
@@ -128,7 +129,7 @@ export const BOARD = Object.freeze({
   // 목업 2a: 전폭 단 둘이 위에, 그 아래 3열 띠 (맵 899 / 후보 508 / 순위 509).
   // 🔴 목업의 아래 띠는 «가로»입니다 — 본딩 맵 | 코어 맵 | 후보 | 순위 가 나란히. 우리가 맵을
   //    세로로 쌓아 두어서 「한눈에 보이는 차이」가 났습니다 (소유자 지적).
-  columns: 'minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr)',
+  // The columns' weights 1.15 · 1.15 · 1 · 1 are each band's shares below (lead 10-13: the page is a split tree).
   // 목업 2a 의 세로 차례: 신원 · 제어 · 메인 트렌드 · 구성 · (맵 / 후보 / 순위).
   // 🔴 THE HEIGHTS ARE THE SCREEN'S, NOT A PART'S. The mockup is a page that SCROLLS -- fitting
   //    six bands into one viewport is what made every panel too short to read.
@@ -146,8 +147,26 @@ export const BOARD = Object.freeze({
   //       below already overflow the viewport, so auto sinks to its own minimum.
   // 7행은 「닿는 곳」의 자리입니다. 앞 여섯 행은 목업의 띠이고 이건 그 «아래»에 붙습니다 --
   // 목업에 없는 부품이라 목업의 배치를 밀어내지 않는 것이 맞습니다.
-  rows: 'minmax(118px, auto) minmax(44px, auto) 190px 190px 360px 340px 240px',
+  // The bands, top to bottom, each its panels side by side - ONE layout form with the test bed's (lead 10-13). A band's
+  // share is its height in px and its gap (the frame's 5 above and below), the area the sum, so each band stands at the
+  // height the grid gave it: 118 · 44 (the `auto` floors, measured) · 190 · 190 · 360 · 340 · 240.
+  // ⚠️ walkBox's band is 2 px - its measured height today: an implicit `auto` row the bands above overflow. Kept as found.
   gap: '10px',
+  height: '1564px',
+  // Spotfire's «Lock visualization area»: this board's panels are not dragged, resized or closed.
+  locked: true,
+  root: { split: 'column', children: [
+    { size: 128, split: 'row', children: [{ id: 'head-summary', size: 3.3 }, { id: 'marking-status', size: 1 }] },
+    { size: 54, id: 'control-bar' },
+    { size: 200, split: 'row', children: [{ id: 'main-trend', size: 3.3 }, { id: 'trend-declaration', size: 1 }] },
+    { size: 200, split: 'row', children: [{ id: 'candidate-trend', size: 3.3 }, { id: 'chip-zoom', size: 1 }] },
+    { size: 370, split: 'row', children: [{ id: 'composition', size: 2.3 }, { id: 'expanded-layer', size: 1 },
+      { id: 'composition-declaration', size: 1 }] },
+    { size: 350, split: 'row', children: [{ id: 'map-bond-a', size: 1.15 }, { id: 'map-core', size: 1.15 },
+      { id: 'candidate-list', size: 1 }, { id: 'rank-list', size: 1 }] },
+    { size: 250, split: 'row', children: [{ id: 'reach', size: 2.3 }, { id: 'contrast-save', size: 2 }] },
+    { size: 12, id: 'walkBox' },
+  ] },
   // 🔴 마킹은 «둘»입니다 (소유자 도식 · MARKING_CONTRACT §3). 트렌드에서 찍은 것이 마킹 1 이고
   //    그것이 후보·자재정보·맵 «셋»의 시작점입니다. 후보에서 찍은 것이 마킹 2 입니다.
   //    `marking:0` 과 `marking:3` 은 «은퇴»했습니다 -- 0 은 1 과 같은 것을 다른 이름으로
@@ -162,7 +181,6 @@ export const BOARD = Object.freeze({
       //    문자열이라, 총괄이 클릭 뒤에 「머리가 안 따라온다」로 읽었습니다 -- 몸통은
       //    「씨앗 웨이퍼 …」로 바뀌고 있었고 «제목만» 옛 이름이었습니다.
       title: 'Summary',
-      at: { column: 1, row: 1, columnSpan: 3 },
       reads: 'marking:1',
       writes: null,
       // walk ④ — 「이 주어가 무엇으로 만들어졌나」. groupby 는 값이지 축이 아닙니다.
@@ -200,7 +218,6 @@ export const BOARD = Object.freeze({
       id: 'marking-status',
       part: 'markingStatus',
       title: 'Marking',
-      at: { column: 4, row: 1 },
       reads: null,
       writes: null,
       options: {
@@ -224,7 +241,6 @@ export const BOARD = Object.freeze({
       direction: 'outgoing',
       part: 'controlBar',
       title: 'Axis picker',
-      at: { column: 1, row: 2, columnSpan: 4 },
       reads: 'axis:y',
       writes: 'axis:y',
       // 🔴 `collect: 'trend_y'` 가 «떠났습니다» (라운드 ①-a, 2026-08-29). 이 한 줄이 화면에
@@ -259,7 +275,6 @@ export const BOARD = Object.freeze({
       id: 'main-trend',
       part: 'mainTrend',
       title: 'Main trend',
-      at: { column: 1, row: 3, columnSpan: 3 },
       // 🔴 트렌드에서 찍은 점이 «마킹 1» 입니다. 이 한 줄이 없어서 맵이 트렌드를 «안 따라왔습니다».
       reads: 'marking:1',
       writes: 'marking:1',
@@ -332,7 +347,6 @@ export const BOARD = Object.freeze({
       direction: 'outgoing',
       part: 'declaration',
       title: 'Axis',
-      at: { column: 4, row: 3 },
       reads: null,
       writes: null,
       options: {
@@ -357,7 +371,6 @@ export const BOARD = Object.freeze({
       id: 'candidate-trend',
       part: 'mainTrend',
       title: 'Marked candidate trend · marking 2',
-      at: { column: 1, row: 4, columnSpan: 3 },
       reads: 'marking:2',
       writes: 'marking:2',
       // walk ⑦ — 후보에서 찍은 것이 이 차트의 «주어»입니다. 비어 있으면 묻지 않습니다.
@@ -423,7 +436,6 @@ export const BOARD = Object.freeze({
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
       direction: 'outgoing',
       title: 'Composition · SYN-CX-CHIP-001',
-      at: { column: 1, row: 5, columnSpan: 2 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: { finalChipId: 'SYN-CX-CHIP-001' },
@@ -452,7 +464,6 @@ export const BOARD = Object.freeze({
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
       direction: 'outgoing',
       title: 'Bonding map',
-      at: { column: 1, row: 6 },
       reads: 'marking:1',
       writes: 'marking:1',
       options: {
@@ -492,7 +503,6 @@ export const BOARD = Object.freeze({
       cells: { type: 'die' },
       marks: { scanned: 'inspected', found: 'observed' },
       title: 'Chip zoom · marking 1',
-      at: { column: 4, row: 4 },
       reads: 'marking:1',
       writes: 'marking:1',
       start: { groupby: 'wafer', marking: 'marking:1' },
@@ -544,7 +554,6 @@ export const BOARD = Object.freeze({
       direction: 'outgoing',
       part: 'declaration',
       title: 'Axis · composition',
-      at: { column: 4, row: 5 },
       reads: null,
       writes: null,
       options: {
@@ -562,7 +571,6 @@ export const BOARD = Object.freeze({
       id: 'expanded-layer',
       part: 'expandedLayer',
       title: 'Expanded layers',
-      at: { column: 3, row: 5 },
       reads: 'marking:1',
       writes: null,
       // 🔴 씨앗이 «칩»에서 «마킹»으로 (round Z-3, 2026-08-28). 그 칩 id 는 원장에 «0건»이라
@@ -603,7 +611,6 @@ export const BOARD = Object.freeze({
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
       direction: 'outgoing',
       title: 'Core map · marking 2',
-      at: { column: 2, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
       options: {
@@ -634,7 +641,6 @@ export const BOARD = Object.freeze({
       // The board's one question, whole — its start and its walk arguments.
       ...LIST_QUESTION,
       title: 'Candidates',
-      at: { column: 3, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
     },
@@ -644,7 +650,6 @@ export const BOARD = Object.freeze({
       // The board's one question, whole — the same walk as the candidate list beside it.
       ...LIST_QUESTION,
       title: 'Rank',
-      at: { column: 4, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
     },
@@ -661,7 +666,6 @@ export const BOARD = Object.freeze({
       start: { marking: 'marking:1', groupby: 'wafer' },
       legacyRoute: 'reach',
       title: 'Reach · one hop from marking 1',
-      at: { column: 1, row: 7, columnSpan: 2 },
       reads: 'marking:1',
       writes: 'marking:2',
     },
@@ -671,7 +675,6 @@ export const BOARD = Object.freeze({
       id: 'contrast-save',
       part: 'contrastSave',
       title: 'Contrast',
-      at: { column: 3, row: 7, columnSpan: 2 },
       reads: 'marking:1',
       options: { candidateQuestion: LIST_QUESTION },
     },
@@ -686,7 +689,6 @@ export const BOARD = Object.freeze({
       id: 'walkBox',
       part: 'walkBox',
       title: 'Walk · type · key · predicates · collect',
-      at: { column: 1, row: 8, columnSpan: 2 },
       reads: null,
       writes: 'marking:2',
     },

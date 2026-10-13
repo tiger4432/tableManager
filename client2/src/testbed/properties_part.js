@@ -1,9 +1,10 @@
 // Visualization properties (reference §3, the mockup's panel): the active part's declaration, edited in place - Data
-// (the marking it walks from, its row type, the system filter it uses, its own filter), each slot of its kind, the marking
-// it writes. Names are the people's words (mockup fix ④), the store names stay inside.
+// (the marking it walks from, its row type, the system filter it uses, its own filter, the markings that limit it, the
+// marking it writes), each slot of its kind. Names are the people's words (mockup fix ④), the store names stay inside.
 
 import { Panel } from '../rnd_board/panel.js';
 import { drawCondition, conditionKey, conditionWords } from './condition_editor.js';
+import { markingsOf } from './visual_part.js';
 
 export class PropertiesPart extends Panel {
   constructor(host, deps) {
@@ -13,7 +14,8 @@ export class PropertiesPart extends Panel {
     this.stats = d.stats;
     this.partOf = d.partOf || (() => null);
     this.entities = d.entities || (() => []);
-    this.markingNames = d.markingNames || [];
+    // The page's declared markings ({list: [{name, label, color}]}): added, renamed or deleted, the panel draws again.
+    this.markingList = d.markingList;
     this.filterNames = d.filterNames || [];
     this.openPicker = d.openPicker || (() => {});
     this.editing = null;
@@ -21,7 +23,8 @@ export class PropertiesPart extends Panel {
 
   mount() {
     this._offs = [this.active.subscribe('active', () => { this.editing = null; this.render(); }),
-      this.stats.subscribe('*', (id) => { if (id === this.active.get('active')) this.render(); })];
+      this.stats.subscribe('*', (id) => { if (id === this.active.get('active')) this.render(); }),
+      this.markingList.subscribe('list', () => this.render())];
     this.render();
   }
 
@@ -51,9 +54,16 @@ export class PropertiesPart extends Panel {
       line.append(el('span', 'sf-props__lab', label), s);
       return line;
     };
-    // ── Data ──
+    const marks = this.markingList.get('list') || [];
+    const got = markingsOf(decl);
+    const labelOf = (name) => (marks.find((m) => m.name === name) || { label: name }).label;
+    // ── Data: the markings it receives (Start from, Limit by) and the one it emits (Marking) ──
     const data = section('Data');
-    data.append(select('Marking', [[null, 'All'], ...this.markingNames.map((m) => [m.name, m.label])], decl.start && decl.start.marking,
+    if (part.loop) {
+      data.append(el('div', 'sf-say sf-props__refused',
+        `Refused - a loop: ${part.loop.map((x, k) => (k % 2 ? (this.partOf(x) ? this.partOf(x).titleWords() : x) : labelOf(x))).join(' → ')}`));
+    }
+    data.append(select('Start from', [[null, 'All'], ...marks.map((m) => [m.name, m.label])], got.start,
       (v) => part.setDeclaration({ ...decl, start: { ...(decl.start || {}), marking: v } })));
     data.append(select('Route', this.entities().map((e) => [e.type, e.type]), decl.row, (v) => part.setDeclaration({ ...decl, row: v })));
     data.append(select('Filtering', [[null, '(None)'], ...this.filterNames.map((f) => [f.name, f.label])], decl.system,
@@ -86,17 +96,34 @@ export class PropertiesPart extends Panel {
         }));
       }
     }
+    // ── Limit data using markings (Spotfire's, the Data section's): the markings, all or any, when none is marked ──
+    data.append(el('div', 'sf-props__lab', 'Limit by'));
+    const limit = { must: 'all', none: 'all', ...(decl.limit || {}), markings: got.limit };
+    const limitTo = (next) => part.setDeclaration({ ...decl, limit: next.markings.length ? next : null });
+    for (const m of marks) {
+      const line = el('label', 'sf-props__check');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = limit.markings.includes(m.name);
+      box.addEventListener('change', () => limitTo({ ...limit,
+        markings: box.checked ? [...limit.markings, m.name] : limit.markings.filter((n) => n !== m.name) }));
+      line.append(box, el('span', '', m.label));
+      data.append(line);
+    }
+    if (limit.markings.length) {
+      data.append(select('Rows in', [['all', 'All markings'], ['any', 'Any marking']], limit.must || 'all',
+        (v) => limitTo({ ...limit, must: v })));
+      data.append(select('If none', [['all', 'Show all data'], ['empty', 'Show empty']], limit.none || 'all',
+        (v) => limitTo({ ...limit, none: v })));
+    }
+    // The one it emits: a press marks it, and it is the marking drawn marked here (Spotfire's one «Marking»).
+    data.append(select('Marking', [[null, '(None)'], ...marks.map((m) => [m.name, m.label])], got.emits,
+      (v) => part.setDeclaration({ ...decl, writes: v })));
     // ── the kind's slots ──
-    for (const s of (part.kind && part.kind.slots) || []) {
+    for (const s of part.slotList()) {
       const sec = section(s.label);
       sec.append(part.pill(s.key));
     }
-    // ── Marking ──
-    const marking = section('Marking');
-    marking.append(select('Writes', [[null, '(None)'], ...this.markingNames.map((m) => [m.name, m.label])], decl.writes,
-      (v) => { part.writes = v; part.setDeclaration({ ...part.declaration(), writes: v }); }));
-    marking.append(select('Shows', [[null, '(None)'], ...this.markingNames.map((m) => [m.name, m.label])], decl.reads,
-      (v) => part.showMarking(v)));
     this.host.replaceChildren(root);
   }
 }

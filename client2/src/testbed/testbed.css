@@ -1,11 +1,11 @@
 /* The testbed (lead aca803a7a) on the Spotfire base layer (src/spotfire.css, lead b72a0ea4f): the parts' look is the base
-   layer's; this file is the page's grid, its head and start row, the basket's own, and each kind's own layout (its trays,
-   its plot, its table box). Values are the --sf-* tokens (tokens.css). Roboto on this page only. */
+   layer's; this file is the page's grid, its head and start row, and each kind's own layout (its trays, its plot, its
+   table box). Values are the --sf-* tokens (tokens.css). Roboto on this page only. */
 .tb-page { height: 100vh; display: grid; grid-template-rows: 36px minmax(0, 1fr); }
 .tb-head { display: flex; align-items: center; gap: 10px; padding: 0 var(--sf-pad); background: var(--sf-bg); color: var(--sf-text-2); }
 .tb-head__title { font-weight: 500; color: var(--sf-text); }
 .tb-head__sp { flex: 1; }
-.tb-page .rb-board { min-height: 0; background: var(--sf-page); gap: var(--sf-gap); }
+.tb-page .rb-board { min-height: 0; background: var(--sf-page); }
 .tb-page .rb-panel { overflow: hidden; }
 
 /* scatter: Y tray · plot · legend / X tray */
@@ -26,8 +26,17 @@
 .tb-cross__bottom { grid-row: 3; grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .tb-cross .sf-legend { grid-row: 1 / span 3; grid-column: 3; }
 
-/* basket: its table scrolling in its box */
-.tb-basket__scroll { overflow: auto; min-height: 0; }
+/* table: its lines scrolling in its box, the ground below them a press that unmarks */
+.tb-table { display: grid; min-height: 0; }
+.tb-table__wrap { overflow: auto; min-height: 0; min-width: 0; }
+
+/* map: the grid filling its box, the X and Y pills under it */
+.tb-map { display: grid; grid-template-rows: minmax(0, 1fr) 24px; min-height: 0; }
+.tb-map__plot { min-height: 0; min-width: 0; }
+.tb-map__svg { display: block; width: 100%; height: 100%; }
+.tb-map__svg rect { cursor: pointer; }
+.tb-map .tb-xtray { grid-row: 2; grid-column: 1; }
+.tb-map .tb-xtray .sf-pill + .sf-pill { grid-column: 3; }
 
 /* start row */
 .tb-start { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 var(--sf-pad); background: var(--sf-bg); color: var(--sf-text-2);

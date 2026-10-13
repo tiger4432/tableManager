@@ -145,6 +145,14 @@ export class SlotPicker {
       const several = chosen.value ? severalCount(part, chosen) : 0;
       if (several) folds.append(el('div', 'sf-pop__why', `${several} rows with several values`));
       folds.append(el('hr', 'sf-pop__hr'));
+      // A slot's choices that are not a value (the scatter's Marker by: «(Node)», «(Value record)»): each a declaration field.
+      const desc = part.slotList().find((s) => s.key === key) || {};
+      for (const choice of desc.choices || []) {
+        const it = el('button', 'sf-pop__it', choice.words);
+        it.type = 'button';
+        it.addEventListener('click', () => { part.setDeclaration({ ...part.declaration(), ...choice.patch }); this.close(); });
+        folds.append(it);
+      }
       const none = el('button', 'sf-pop__it', '(None)');
       none.type = 'button';
       none.addEventListener('click', () => { part.setSlot(key, null); this.close(); });

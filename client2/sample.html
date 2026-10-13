@@ -26,6 +26,14 @@
     .sample-sf .sample-sf-legend { grid-row: 1 / span 2; grid-column: 3; }
     .sample-sf-cat1 { background: var(--sf-cat-1); border-color: var(--sf-cat-1-line); }
     .sample-sf-cat2 { background: var(--sf-cat-2); border-color: var(--sf-cat-2-line); }
+    .sample-sf-cat1-ink { color: var(--sf-cat-1); }
+    .sample-sf-cat7-ink { color: var(--sf-cat-7); }
+    /* The page's editing parts, held still: the title bar's buttons shown, a drop's mark over the part's right half, the
+       left bar with its add window beside it (in the page they hang fixed over the board). */
+    .sample-sf .sample-sf-tools { opacity: 1; }
+    .sample-sf .sample-sf-drop { left: 50%; top: 0; width: 50%; height: 100%; }
+    .sample-sf-left-bar { display: grid; grid-template-columns: var(--sf-banner-w) minmax(0, 1fr); min-height: 0; }
+    .sample-sf .sample-sf-flyout { position: static; width: auto; max-width: var(--sf-flyout-w); }
     .sample-sf .sample-sf-pop { grid-column: 1 / -1; width: auto; max-width: 750px; grid-template-columns: minmax(0, 320fr) minmax(0, 240fr) minmax(0, 190fr); }
     .sample-sf .sample-sf-status { height: var(--sf-status-h); margin-top: var(--sf-gap); }
     @media (max-width: 480px) {
@@ -151,17 +159,28 @@
               </div>
             </section>
             <section class="sf-part">
-              <div class="sf-part__title"><span class="sf-part__t">Marked</span><span class="sf-part__meta">3 nodes · 1 hubs</span><button type="button" class="sf-btn">Copy ids</button></div>
+              <div class="sf-part__title" data-part-title><span class="sf-part__t">Marked</span></div>
               <div class="sf-part__body">
                 <table class="sf-table sf-table--rows">
-                  <tr><th></th><th>Type</th><th>Node</th><th class="is-num">Members</th></tr>
-                  <tr class="is-hub"><td><button type="button" class="sf-table__toggle">▾</button></td><td>hub</td><td>wafer · lot = L1</td><td class="is-num">2</td></tr>
-                  <tr><td></td><td>wafer</td><td class="is-member">W1</td><td class="is-num"></td></tr>
-                  <tr><td></td><td>wafer</td><td class="is-member">W3</td><td class="is-num"></td></tr>
-                  <tr><td></td><td>wafer</td><td>W5 <span class="is-id">ledger-entity:v1:…</span></td><td class="is-num"></td></tr>
+                  <tr><th>name<span class="sf-table__sort">▲</span></th><th class="is-num">temp · value</th><th class="sf-table__add"><button type="button" class="sf-plus">+</button></th></tr>
+                  <tr><td>W1</td><td class="is-num">10</td><td class="sf-table__add"></td></tr>
+                  <tr class="is-marked"><td>W2</td><td class="is-num">20</td><td class="sf-table__add"></td></tr>
+                  <tr><td>W3</td><td class="is-num">30 · 34</td><td class="sf-table__add"></td></tr>
+                  <tr><td>W6</td><td class="is-num"></td><td class="sf-table__add"></td></tr>
                 </table>
               </div>
+              <div class="sf-tools sample-sf-tools"><button type="button" class="sf-tool" title="Maximize visualization"><svg viewBox="0 0 14 14"><path d="M8 1h5v5h-1.6V3.7L8.7 6.4 7.6 5.3l2.7-2.7H8z"/><path d="M6 13H1V8h1.6v2.3l2.7-2.7 1.1 1.1-2.7 2.7H6z"/></svg></button><button type="button" class="sf-tool" title="Close"><svg viewBox="0 0 14 14"><path d="M2.1.9l11 11-1.2 1.2-11-11z"/><path d="M11.9.9l1.2 1.2-11 11-1.2-1.2z"/></svg></button></div>
+              <div class="sf-drop sample-sf-drop"></div>
             </section>
+            <div class="sample-sf-left-bar">
+              <nav class="sf-banner"><button type="button" class="sf-banner__b is-on" title="Visualization types"><svg viewBox="0 0 24 24"><path d="M4 12h4v9H4zM10 7h4v14h-4zM16 3h4v18h-4z"/></svg></button></nav>
+              <div class="sf-flyout sample-sf-flyout">
+                <div class="sf-flyout__h">Visualization types</div>
+                <button type="button" class="sf-flyout__it"><svg class="sf-flyout__ico sample-sf-cat1-ink" viewBox="0 0 24 24"><path d="M4 3h16v4H4z"/><path d="M4 9h16v3H4zM4 14h16v3H4zM4 19h16v2H4z" opacity="0.6"/></svg><span>Table</span></button>
+                <button type="button" class="sf-flyout__it"><svg class="sf-flyout__ico sample-sf-cat7-ink" viewBox="0 0 24 24"><path d="M4 3h16v4H4zM4 9h4v12H4z"/><path d="M10 9h4v5h-4zM16 9h4v5h-4zM10 16h4v5h-4zM16 16h4v5h-4z" opacity="0.6"/></svg><span>Cross table</span></button>
+                <button type="button" class="sf-flyout__it"><svg class="sf-flyout__ico sample-sf-cat1-ink" viewBox="0 0 24 24"><path d="M4 16h3v3H4zM8 11h3v3H8zM13 13h3v3h-3zM12 6h3v3h-3zM17 3h3v3h-3zM18 9h3v3h-3z"/></svg><span>Scatter plot</span></button>
+              </div>
+            </div>
             <aside class="sf-panel">
               <div class="sf-panel__h"><span>Visualization properties</span></div>
               <div class="sf-props__name">Avg(press · value) per lot and product</div>

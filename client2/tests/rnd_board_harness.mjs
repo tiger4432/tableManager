@@ -41,6 +41,7 @@ import { loadBoardModules, BOARD_DIR } from './lib/board_modules.mjs';
 // C-99 ③. The spelling has one author; see the same note in the reach harness.
 import { UNPICKED } from '../src/absent.js';
 import { makeDoc, makeObserver, flush, walk, canvasIn, byClass } from './lib/board_dom.mjs';
+import { leafIds } from '../src/rnd_board/split_tree.js';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -165,23 +166,27 @@ async function suite(mods) {
   const markings = new MarkingStore();
   const observe = makeObserver();
   const layout = {
-    columns: 'minmax(0,1fr) minmax(0,1fr)',
-    rows: 'minmax(0,1fr) minmax(0,1fr)',
+    // a b / c d / e - three bands (the split tree, lead 10-13), e alone across its band.
+    root: { split: 'column', children: [
+      { size: 1, split: 'row', children: [{ id: 'a', size: 1 }, { id: 'b', size: 1 }] },
+      { size: 1, split: 'row', children: [{ id: 'c', size: 1 }, { id: 'd', size: 1 }] },
+      { size: 1, id: 'e' },
+    ] },
     panels: [
-      { id: 'a', part: 'map', title: 'A', at: { column: 1, row: 1 },
+      { id: 'a', part: 'map', title: 'A',
         reads: 'marking:1', writes: 'marking:1',
         options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
-      { id: 'b', part: 'map', title: 'B', at: { column: 2, row: 1 },
+      { id: 'b', part: 'map', title: 'B',
         reads: 'marking:2', writes: 'marking:2',
         options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_03) } },
-      { id: 'c', part: 'map', title: 'C', at: { column: 1, row: 2 },
+      { id: 'c', part: 'map', title: 'C',
         reads: 'marking:1', writes: null,
         options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
-      { id: 'd', part: 'map', title: 'D', at: { column: 2, row: 2 },
+      { id: 'd', part: 'map', title: 'D',
         reads: 'marking:2', writes: null,
         options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
       // 🔴 THE THIRD NAME. Nothing in any module knows this string exists.
-      { id: 'e', part: 'map', title: 'E', at: { column: 1, row: 3 },
+      { id: 'e', part: 'map', title: 'E',
         reads: 'marking:3', writes: 'marking:3',
         options: { axis: 'bond', space: 'die:base', load: () => Promise.resolve(FIX_07) } },
     ],
@@ -229,9 +234,12 @@ async function suite(mods) {
     const cb = canvasIn(elOf('b'));
     eq('B8 canvas A received A cells', ca.ops.filter((o) => o.op === 'fill').length, 141);
     eq('B9 canvas B received B cells', cb.ops.filter((o) => o.op === 'fill').length, 141);
+    // The cell around a panel is the shell's: its share in its band, its place in the tree.
+    const cellOf = (id) => elOf(id).parentNode.parentNode;
     ok('B10 the shell wrote placement, the part did not',
-      elOf('a').style.gridColumn === '1 / span 1'
-      && elOf('b').style.gridColumn === '2 / span 1');
+      cellOf('a').getAttribute('data-cell') === 'a' && cellOf('a').style.flex === '1 1 0px'
+      && cellOf('b').parentNode.getAttribute('data-split') === 'row'
+      && JSON.stringify(shell.pathOf('b')) === '[0,1]' && JSON.stringify(shell.pathOf('e')) === '[2]');
     ok('B11 a panel element carries its declaration id',
       elOf('b').getAttribute('data-panel') === 'b');
     ok('B12 both panels report ready', elOf('a') && byClass(elOf('a'), 'rb-map')
@@ -742,8 +750,8 @@ async function suite(mods) {
       maps.map((p) => `${p.id}:${p.reads}`).join(' | '));
     ok('H4 every declared part is registered',
       BOARD.panels.every((p) => Boolean(PARTS[p.part])));
-    ok('H5 placement is in the declaration, not in the part',
-      BOARD.panels.every((p) => p.at && p.at.column && p.at.row));
+    ok('H5 placement is in the declaration, not in the part - every panel a leaf of the tree, once',
+      JSON.stringify(leafIds(BOARD.root).sort()) === JSON.stringify(BOARD.panels.map((p) => p.id).sort()));
     ok('H6 the declaration is data, with no functions in it',
       BOARD.panels.every((p) => Object.values(p.options || {})
         .every((v) => typeof v !== 'function')));
@@ -966,8 +974,8 @@ const MUTANTS = [
       'grid_shell.js': (s) => s
         .replace('    this.panels = new Map();   // id -> {el, part, disconnect}',
           '    this.panels = new Map();\n    this._shared = null;')
-        .replace('      const el = doc.createElement(\'div\');',
-          '      const el = this._shared || (this._shared = doc.createElement(\'div\'));'),
+        .replace('    const el = doc.createElement(\'div\');',
+          '    const el = this._shared || (this._shared = doc.createElement(\'div\'));'),
     },
   },
   {

@@ -324,6 +324,23 @@
   --sf-icon: 14px;        /* a legend value's icon */
   --sf-gap: 2px;          /* between parts */
   --sf-status-h: 32px;
+  /* the table part and the page's editing (lead 10-13, measured on the owner's Spotfire, dark; light assumed the same) */
+  --sf-marked-row-text: #161616;  /* a marked table line's text: dark, regular, on --sf-marked */
+  --sf-row-pad: 0 8px 0 7px;      /* a table line's cell inset: top · right · bottom · left */
+  --sf-col-w: 100px;              /* a table column, its words cut past it */
+  --sf-tool: #7C7C7C;             /* a title bar button */
+  --sf-tool-w: 14px;
+  --sf-tool-h: 21px;
+  --sf-tool-gap: 10px;
+  --sf-tools-top: 17px;           /* the title bar's buttons from the part's top, centred on its title row */
+  --sf-tools-right: 20px;         /* the last one's right edge from the part's right */
+  --sf-splitter: 4px;             /* the line between two parts takes a press this wide */
+  --sf-banner-w: 48px;            /* the left bar */
+  --sf-banner-icon: 24px;
+  --sf-flyout-w: 360px;           /* the add window beside it */
+  --sf-flyout-row: 48px;
+  --sf-fs-flyout: 13px;
+  --sf-flyout-shadow: 0 4px 18px rgb(0 0 0 / .15);
 
   /* ── 레거시 별칭 (기존 변수명 → 시맨틱 토큰 브리지) ──
      인라인 style="" 등 잔존 참조가 테마를 따라오도록 유지. 신규 코드는 시맨틱 토큰 직접 참조. */
