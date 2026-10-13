@@ -59,6 +59,9 @@ request_run_id = sys._context_vars_cache.setdefault(
 #: transactions take the chain's statement limit (소유자 10-08 「체인 타임아웃 걸어」).
 request_chain_group = sys._context_vars_cache.setdefault(
     "request_chain_group", contextvars.ContextVar("request_chain_group", default=False))
+#: [GRID READ] The statement limit a grid read runs under, in seconds - None: none (총괄 d16033b63).
+request_read_seconds = sys._context_vars_cache.setdefault(
+    "request_read_seconds", contextvars.ContextVar("request_read_seconds", default=None))
 
 
 def _for_the_block(var, value):
@@ -95,6 +98,11 @@ def written_by(declarations):
 def retroactive_run(run_id):
     """Context manager: the writes inside are retroactive run `run_id`'s work (총괄 b3a4334db)."""
     return _for_the_block(request_run_id, run_id or None)
+
+
+def read_limit(seconds):
+    """A grid read's statements run at most `seconds` (None: no limit) - `database._set_statement_time_limits`."""
+    return _for_the_block(request_read_seconds, seconds)
 
 
 def chain_group():

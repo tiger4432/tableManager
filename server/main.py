@@ -2187,6 +2187,32 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
     return query.filter(cond)
 
 
+def search_scope_columns(table_name, cols):
+    """The columns a grid search reads: `?cols=` when sent, else the declared scope (`crud.resolve_search_columns`). One
+    answer for the search condition and for what a stopped search says to index (총괄 d16033b63)."""
+    if cols:
+        return [c.strip() for c in cols.split(",") if c.strip()]
+    col_types = (crud.TABLE_CONFIG.get(table_name, {}) or {}).get("column_types", {})
+    # 🔴 THE DECLARED SCOPE, DEFAULTING TO THE IDENTITY (S-125, 판정 255). This used to
+    # be every declared column UNIONED with every virtual-join column, which on
+    # `dt_log` meant 31 ILIKE arms over casts and SIX aliased LEFT JOINs to
+    # `dt_inventory` on one key - 2,174 ms for one keystroke's worth of search. The
+    # rule lives in `crud.resolve_search_columns` because the config load has to reach
+    # the same verdict from a different set of known columns.
+    col_list, unknown_declared = crud.resolve_search_columns(table_name, set(col_types))
+    col_list = list(col_list)
+    if unknown_declared:
+        # Named, not dropped: an entry nothing matches is a scope the operator
+        # believes is in force. WARNING rather than a refusal - the fallback already
+        # searched something, and a 500 here would take the grid down over a typo.
+        logger.warning(
+            f"[Search] Table '{table_name}' declares search_columns that nothing can "
+            f"search: {sorted(unknown_declared)}. They are not in column_types; the "
+            f"search used {col_list}."
+        )
+    return col_list
+
+
 def apply_search_filter(query, table_model, table_name, q, cols,
                         scope_report=None):
     """`?q=` (+ optional `?cols=` scope) -> query. Shared by the grid and the export.
@@ -2202,29 +2228,7 @@ def apply_search_filter(query, table_model, table_name, q, cols,
     from sqlalchemy import cast, String, or_
     safe_q = q.replace("%", "\\%").replace("_", "\\_")
 
-    col_types = (crud.TABLE_CONFIG.get(table_name, {}) or {}).get("column_types", {})
-
-    if cols:
-        col_list = [c.strip() for c in cols.split(",") if c.strip()]
-    else:
-        # 🔴 THE DECLARED SCOPE, DEFAULTING TO THE IDENTITY (S-125, 판정 255). This used to
-        # be every declared column UNIONED with every virtual-join column, which on
-        # `dt_log` meant 31 ILIKE arms over casts and SIX aliased LEFT JOINs to
-        # `dt_inventory` on one key - 2,174 ms for one keystroke's worth of search. The
-        # rule lives in `crud.resolve_search_columns` because the config load has to reach
-        # the same verdict from a different set of known columns.
-        col_list, unknown_declared = crud.resolve_search_columns(
-            table_name, set(col_types))
-        col_list = list(col_list)
-        if unknown_declared:
-            # Named, not dropped: an entry nothing matches is a scope the operator
-            # believes is in force. WARNING rather than a refusal - the fallback already
-            # searched something, and a 500 here would take the grid down over a typo.
-            logger.warning(
-                f"[Search] Table '{table_name}' declares search_columns that nothing can "
-                f"search: {sorted(unknown_declared)}. They are not in column_types; the "
-                f"search used {col_list}."
-            )
+    col_list = search_scope_columns(table_name, cols)
 
     conditions = []
     unsearchable = []
@@ -2233,7 +2237,7 @@ def apply_search_filter(query, table_model, table_name, q, cols,
         #   through to `unsearchable` below, like any other column the relation lacks.
         if col in ["created_at", "updated_at"] and getattr(table_model, col, None) is not None:
             target_col = table_model.created_at if col == "created_at" else table_model.updated_at
-            conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
+            conditions.append(models.search_text(target_col).ilike(f"%{safe_q}%", escape="\\"))
         elif col in ["row_id", "id"]:
             # 🔴 THE ROW'S IDENTITY, NOT A COLUMN NAMED row_id (총괄 4e508835a). The
             #   total-order key IS `row_id` wherever it exists - the same SQL - and a
@@ -2242,12 +2246,12 @@ def apply_search_filter(query, table_model, table_name, q, cols,
             #   say `string` over a uuid (`ledger_events.id`), and PostgreSQL refuses ILIKE.
             row_id = getattr(table_model, "row_id", None)
             for key in total_order_keys(table_model, table_name):
-                text_key = key if key is row_id else cast(key, String)
+                text_key = key if key is row_id else models.search_text(key)
                 conditions.append(text_key.ilike(f"%{safe_q}%", escape="\\"))
         elif col == "business_key_val" and getattr(table_model, col, None) is not None:
             conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
         elif hasattr(table_model, col):
-            conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
+            conditions.append(models.search_text(getattr(table_model, col)).ilike(f"%{safe_q}%", escape="\\"))
         else:
             unsearchable.append(col)
 
@@ -2270,6 +2274,8 @@ def apply_search_filter(query, table_model, table_name, q, cols,
             # timing line is always on; how MANY arms a search built is the
             # shape of the query, which is what a plan question needs.
             scope_report["arms"] = len(conditions)
+            # the columns searched - each said indexed or not in the answer (총괄 d16033b63), never in the log line
+            scope_report["columns"] = [col for col in col_list if col not in unsearchable]
         query = query.filter(or_(*conditions))
     return query
 
@@ -2491,6 +2497,53 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
     return query, build_count_cache_key(table_name, *cache_key_parts)
 
 
+#: PostgreSQL's query_canceled - what a statement_timeout's cancel raises.
+QUERY_CANCELED = "57014"
+
+
+def grid_read(route):
+    """A grid read (rows · count · a search) under the grid's statement limit (`grid_read_timeout_seconds`, 총괄 d16033b63):
+    a statement past it is cancelled by PostgreSQL and answered as what stopped and what to do - not a wait without end
+    that holds a pool connection and a worker thread while every other request queues behind it."""
+    import functools
+    import inspect
+
+    @functools.wraps(route)
+    def read(*args, **kwargs):
+        from sqlalchemy.exc import OperationalError
+
+        from database.context import read_limit
+        from parsers.directory_watcher import grid_read_timeout
+
+        seconds = grid_read_timeout()
+        try:
+            with read_limit(seconds):
+                return route(*args, **kwargs)
+        except OperationalError as exc:
+            if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
+                raise
+            asked = inspect.signature(route).bind_partial(*args, **kwargs).arguments
+            raise HTTPException(status_code=503, detail=grid_read_stopped(
+                asked.get("table_name"), asked.get("q"), asked.get("cols"), seconds)) from None
+    return read
+
+
+def grid_read_stopped(table_name, q, cols, seconds):
+    """A stopped grid read said as what stopped and the next thing to do (총괄 d16033b63) - for a search, the searched
+    columns no declared search index covers."""
+    from parsers.directory_watcher import GRID_READ_TIMEOUT_SETTING
+
+    unindexed = []
+    if q:
+        indexed = models.declared_search_columns(table_name)
+        unindexed = [col for col in search_scope_columns(table_name, cols) if col not in indexed]
+    then = ("add a search index on %s in the table's indexes" % ", ".join(unindexed) if unindexed
+            else "the limit is %s in the ingestion settings" % GRID_READ_TIMEOUT_SETTING)
+    return {"reason": "grid_read_stopped", "seconds": seconds,
+            "message": "%s stopped after %g s - %s" % ("Search" if q else "Read", seconds, then),
+            **({"unindexed": unindexed} if q else {})}
+
+
 def cached_table_count(query, cache_key):
     """The cached count, or one fresh `count()` stored under the same key. -> (count, seconds).
 
@@ -2531,6 +2584,7 @@ def _filtered_column_count(filters) -> int:
 
 # [Phase 73.12] 대량 데이터 조회 시 Pydantic 검증 오버헤드 제거를 위해 response_model 제거
 @app.get("/tables/{table_name}/data")
+@grid_read
 def get_table_data(
     table_name: str, 
     skip: int = 0, 
@@ -2802,10 +2856,14 @@ def get_table_data(
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset,
         # the worlds `ledger_rows` could not read on this page - absent when the rows carry no ledger keys at all
         **({} if unread is None else {"ledger_worlds_unread": unread}),
+        # a search: each searched column, and whether a declared search index covers it (총괄 d16033b63)
+        **({"search_index": {col: col in models.declared_search_columns(table_name)
+                             for col in search_scope.get("columns") or ()}} if q else {}),
     }, table_name)
 
 
 @app.get("/tables/{table_name}/data/count")
+@grid_read
 def get_table_data_count(
     table_name: str,
     q: str = None,

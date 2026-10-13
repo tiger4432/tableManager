@@ -128,7 +128,8 @@ def test_the_search_path_reads_the_resolver_and_not_column_types(monkeypatch):
 
     import main
 
-    body = inspect.getsource(main.apply_search_filter)
+    assert "search_scope_columns(" in inspect.getsource(main.apply_search_filter)
+    body = inspect.getsource(main.search_scope_columns)     # the scope, one seat (총괄 d16033b63)
     assert "crud.resolve_search_columns(" in body, body[:1200]
     assert "col_types.keys()" not in body, \
         "the unscoped default must not rebuild itself from column_types"

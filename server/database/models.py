@@ -1684,6 +1684,25 @@ def model_tables():
 # 🔴 table_config.json's "indexes" (총괄 06e8c22c3 · 98be7faf3, 소유자 「테이블 별로 특정 컬럼 인덱스」):
 #    {"columns": [...], "unique": bool, "purpose": "..."} - the shape the ledger catalogue already
 #    reads, plus a purpose. The same comparison and the same builder as the static models' indexes.
+#    {"columns": [...], "search": true}: an index a grid search's «part of a word» reads (총괄 d16033b63) - a trigram
+#    index over `search_text` of each column, the very expression the search condition is.
+
+#: Why a search index is not built where the trigram operator class is missing - said in its state.
+PG_TRGM_MISSING = ("needs the pg_trgm extension - run CREATE EXTENSION pg_trgm once as a superuser, then reload")
+
+
+def search_text(column):
+    """THE text a grid search reads a column as - `CAST(<column> AS VARCHAR)` - and the expression a search index is
+    built over (`table_index_ddl`). One function: two spellings and the planner meets two expressions, and the index is
+    never read (총괄 d16033b63)."""
+    from sqlalchemy import String, cast
+    return cast(column, String)
+
+
+def declared_search_columns(table, tables=None):
+    """The columns of `table` a declared search index covers - what a search answer says is indexed."""
+    return {column for name_table, _name, shape in table_declared_indexes(tables)
+            if name_table == table and shape["search"] for column in shape["columns"]}
 
 #: PostgreSQL's identifier length - a longer name keeps its first part and a hash tail.
 INDEX_NAME_LIMIT = 63
@@ -1706,7 +1725,7 @@ def table_index_refusal(table, entry):
         return None
     path = "tables.%s.indexes" % table
     if not isinstance(indexes, list):
-        return path, 'indexes must be a list of {"columns": [...], "unique": false, "purpose": "..."}'
+        return path, 'indexes must be a list of {"columns": [...], "unique": false, "search": false, "purpose": "..."}'
     if indexes and (entry or {}).get("kind") == "view":
         return path, "%s is a view - a view cannot carry an index" % table
     known = set((entry or {}).get("column_types") or {}) | set(FRAMEWORK_COLUMNS)
@@ -1719,15 +1738,20 @@ def table_index_refusal(table, entry):
         if missing:
             return ("%s[%d].columns" % (path, number),
                     "%s has no column %s" % (table, ", ".join(missing)))
-        if tuple(columns) in seen:
+        search = item.get("search", False)
+        if not isinstance(search, bool):
+            return "%s[%d].search" % (path, number), "search must be true or false"
+        if search and item.get("unique") is True:
+            return "%s[%d].unique" % (path, number), "a search index finds part of a word - it is never unique"
+        if (tuple(columns), search) in seen:
             return ("%s[%d].columns" % (path, number),
                     "(%s) is declared twice" % ", ".join(columns))
-        seen.add(tuple(columns))
+        seen.add((tuple(columns), search))
     return None
 
 
 def table_declared_indexes(tables=None):
-    """-> [(table, name, {"columns", "unique", "purpose"})] - every table's "indexes" in table_config.json
+    """-> [(table, name, {"columns", "unique", "search", "purpose"})] - every table's "indexes" in table_config.json
     (`tables`; None: this process's `crud.TABLE_CONFIG`). A view's are left out - the save refuses them."""
     if tables is None:
         from database import crud
@@ -1739,9 +1763,10 @@ def table_declared_indexes(tables=None):
         for item in entry.get("indexes") or ():
             columns = [str(c) for c in (item.get("columns") or ())] if isinstance(item, dict) else []
             if columns:
-                out.append((table, table_index_name(table, columns),
-                            {"columns": columns, "unique": item.get("unique") is True,
-                             "purpose": item.get("purpose")}))
+                search = item.get("search") is True
+                out.append((table, table_index_name(table, columns + (["search"] if search else [])),
+                            {"columns": columns, "unique": item.get("unique") is True and not search,
+                             "search": search, "purpose": item.get("purpose")}))
     return out
 
 
@@ -1749,6 +1774,13 @@ def table_index_ddl(row):
     """A table-declared index's CREATE statement, CONCURRENTLY and IF NOT EXISTS."""
     def quoted(identifier):
         return '"%s"' % str(identifier).replace('"', '""')
+    if row.get("search"):
+        from sqlalchemy import column
+        from sqlalchemy.dialects import postgresql
+        over = ", ".join("(%s) gin_trgm_ops" % search_text(column(name)).compile(dialect=postgresql.dialect())
+                         for name in row["columns"])
+        return "CREATE INDEX CONCURRENTLY IF NOT EXISTS %s ON %s USING gin (%s)" % (
+            quoted(row["name"]), quoted(row["table"]), over)
     return "CREATE %sINDEX CONCURRENTLY IF NOT EXISTS %s ON %s (%s)" % (
         "UNIQUE " if row["unique"] else "", quoted(row["name"]), quoted(row["table"]),
         ", ".join(quoted(column) for column in row["columns"]))
@@ -1797,7 +1829,8 @@ def index_states(engine, tables=None):
     declared = [dict(name=name, table=table.name, **_shape(item), purpose=item.info.get("purpose"),
                      serves=item.info.get("serves"), source="model", **unread)
                 for table, name, item in declared_indexes()]
-    declared += [dict(name=name, table=table, columns=shape["columns"], where=None, include=[], using=None,
+    declared += [dict(name=name, table=table, columns=shape["columns"], where=None, include=[],
+                      using="gin" if shape["search"] else None, search=shape["search"],
                       unique=shape["unique"], constraint=False, purpose=shape["purpose"], serves=None,
                       source="table", **unread)
                  for table, name, shape in table_declared_indexes(tables)]
@@ -1809,6 +1842,7 @@ def index_states(engine, tables=None):
         held = {row.name: row for row in connection.execute(
             text(_HELD), {"tables": models_tables + sorted({row["table"] for row in declared})})}
         building = _building(connection)
+        trigram = connection.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")).first() is not None
     for row in declared:
         found = held.pop(row["name"], None)
         row["building"] = building.get(row["name"])
@@ -1818,6 +1852,8 @@ def index_states(engine, tables=None):
             row.update(size_bytes=found.size_bytes, scans=found.scans)
             if not found.valid and (found.said or "").startswith(INDEX_FAILED_SAID):
                 row["failure"] = found.said[len(INDEX_FAILED_SAID):]
+        elif row.get("search") and not trigram:
+            row["failure"] = PG_TRGM_MISSING
     outside = [{"name": name, "table": row.table_name, "valid": row.valid, "building": building.get(name),
                 "size_bytes": row.size_bytes, "scans": row.scans}
                for name, row in sorted(held.items())
@@ -1874,6 +1910,9 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
     -> {name: INDEX_BUILT | INDEX_PRESENT | INDEX_FAILED} of what was built."""
     owed = [row for row in index_states(engine, tables)["declared"]
             if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
+    for row in [row for row in owed if row.get("failure") == PG_TRGM_MISSING]:
+        say("[Indexes] %s on %s is not built: it %s" % (row["name"], row["table"], PG_TRGM_MISSING))
+    owed = [row for row in owed if row.get("failure") != PG_TRGM_MISSING]
     if not owed:
         return {}
     say("[Indexes] %d declared index(es) the database lacks or holds invalid: %s - %s" % (

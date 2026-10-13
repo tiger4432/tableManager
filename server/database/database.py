@@ -141,23 +141,26 @@ def _note_the_backend(session, transaction, connection):
 
 
 @event.listens_for(Session, "after_begin")
-def _set_file_and_chain_time_limits(session, transaction, connection):
+def _set_statement_time_limits(session, transaction, connection):
     """A file's write waits for another session's lock at most `lock_timeout_seconds`, and a
     statement of it runs at most `statement_timeout_seconds` (ingestion_settings.json, 총괄
     10-07 ③) - on every transaction begun on the file channel, which only the watcher's work
     claims open. A chain group's statement runs at most `chain_statement_timeout_seconds` (소유자
     10-08 「체인 타임아웃 걸어」) - on every transaction begun inside a group, whatever channel
     its writes take (a replay's group writes on the retroactive one), and on the one a group finds
-    open (`ingestion_worker._claimed_group_sync` calls this). `SET LOCAL`: it ends with
-    the transaction, so the pooled connection goes back as it came."""
+    open (`ingestion_worker._claimed_group_sync` calls this). A grid read's statement runs at most
+    `grid_read_timeout_seconds` (총괄 d16033b63) - on every transaction begun inside `read_limit`.
+    `SET LOCAL`: it ends with the transaction, so the pooled connection goes back as it came."""
     import event_constants
-    from database.context import request_chain_group, request_channel
+    from database.context import request_chain_group, request_channel, request_read_seconds
     a_file = request_channel.get() == event_constants.CHANNEL_FILE
-    if not (a_file or request_chain_group.get()) or connection.dialect.name != "postgresql":
+    read_seconds = request_read_seconds.get()
+    if not (a_file or request_chain_group.get() or read_seconds) or connection.dialect.name != "postgresql":
         return
     from parsers.directory_watcher import chain_statement_timeout, file_write_timeouts
-    limits = (zip(("lock_timeout", "statement_timeout"), file_write_timeouts())
-              if a_file else [("statement_timeout", chain_statement_timeout())])
+    limits = (zip(("lock_timeout", "statement_timeout"), file_write_timeouts()) if a_file
+              else [("statement_timeout", chain_statement_timeout())] if request_chain_group.get()
+              else [("statement_timeout", read_seconds)])
     for setting, seconds in limits:
         if seconds:
             connection.exec_driver_sql("SET LOCAL %s = '%dms'" % (setting, int(seconds * 1000)))

@@ -406,6 +406,9 @@ STATEMENT_TIMEOUT_SETTING = "statement_timeout_seconds"
 #: Left out: the default; null or 0: no limit; not a positive number: the default.
 CHAIN_STATEMENT_TIMEOUT_SETTING = "chain_statement_timeout_seconds"
 CHAIN_STATEMENT_TIMEOUT_DEFAULT = 120.0
+#: A grid read's statement limit (총괄 d16033b63) - null or 0: none. The default is measured on the 4,000,000-row board.
+GRID_READ_TIMEOUT_SETTING = "grid_read_timeout_seconds"
+GRID_READ_TIMEOUT_DEFAULT = 10.0
 #: Seconds between two looks at every raws/ subfolder (총괄 2f487efb5). Not a positive number: the default.
 SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
 SUBFOLDER_RECHECK_DEFAULT = 30.0
@@ -422,7 +425,7 @@ def _timeout_seconds(settings, cell, absent):
 
 def file_write_timeouts(settings=None):
     """`(lock seconds, statement seconds)` for a file's write transactions, None = no limit.
-    Set on every transaction the file channel begins (`database._set_file_and_chain_time_limits`)."""
+    Set on every transaction the file channel begins (`database._set_statement_time_limits`)."""
     settings = load_ingestion_settings() if settings is None else settings
     return (_timeout_seconds(settings, LOCK_TIMEOUT_SETTING, heartbeat.DEFAULT_STALL_AFTER_SEC),
             _timeout_seconds(settings, STATEMENT_TIMEOUT_SETTING, None))
@@ -433,6 +436,13 @@ def chain_statement_timeout(settings=None):
     the same read as `file_write_timeouts`, set by the same listener."""
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, CHAIN_STATEMENT_TIMEOUT_SETTING, CHAIN_STATEMENT_TIMEOUT_DEFAULT)
+
+
+def grid_read_timeout(settings=None):
+    """Statement seconds for a grid read (rows · count · search), None = no limit - the same file and the same read as
+    `chain_statement_timeout`, set by the same listener (총괄 d16033b63: a search no row matches reads the whole table)."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, GRID_READ_TIMEOUT_SETTING, GRID_READ_TIMEOUT_DEFAULT)
 
 
 def subfolder_recheck_seconds(settings=None) -> float:

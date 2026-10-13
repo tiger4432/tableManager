@@ -1,5 +1,42 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] 🔴 **큰 표 검색 — 표 선언에 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다 (총괄 d16033b63, 소유자 「서버가 다 느림」 · 「400만행 표는 이제 검색 40초」)** — git pull · 재기동 · 되돌릴 수 있음
+>
+> ```
+> 선언       table_config.json 의 그 표에, 검색 칸마다 한 줄 (검색 칸이 무엇인지는 아래 «급한 손» 절의 «검색 칸» 순서 그대로)
+>              "indexes": [{"columns": ["dt_job"], "search": true},
+>                          {"columns": ["b_wx"], "search": true},
+>                          {"columns": ["b_wy"], "search": true}]
+>            저장한 뒤 어드민 Reload(POST /admin/reload-configs) · 온톨로지 탐색기의 활성화 · 재기동 중 하나 -> 체인 프로세스가 짓는다
+>            ⚠️ 파일만 고치고 Reload 를 안 하면 안 짓는다 — 표 모양은 바로 다시 읽지만 색인 일은 Reload 와 기동 때만 돈다
+> 짓는 동안   server.log 의 [Chain] 줄
+>              [Indexes] N declared index(es) the database lacks or holds invalid: … idx_<표>_<칸>_search on <표> (missing)
+>              [Indexes] building idx_<표>_<칸>_search on <표>
+>              [Indexes] idx_<표>_<칸>_search built in 3.2 s          <- 끝. CONCURRENTLY 라 표를 안 잠근다
+>              [Indexes] idx_<표>_<칸>_search on <표> is not built: it needs the pg_trgm extension …   <- 아래 pg_trgm
+> pg_trgm    없으면 위 줄이 그렇게 말하고 짓지 않는다. 슈퍼유저로 한 번  CREATE EXTENSION IF NOT EXISTS pg_trgm;  그다음 Reload
+> 손 인덱스   아래 «급한 손» 절의 tmp_search_<표>_<칸> 이 있어도 선언은 «또» 짓는다 — 색인을 이름으로 견주기 때문(식은 같은 문장)
+>            선언 것이 «built» 줄을 낸 «뒤에» 손 것을 지운다:  DROP INDEX CONCURRENTLY tmp_search_<표>_<칸>;
+>            먼저 지우면 선언 것을 짓는 동안 검색이 다시 표 끝까지 읽는다
+> 상한       ingestion_settings.json "grid_read_timeout_seconds" — 기본 10 · 요청마다 읽어 재기동 없이 바뀐다 · 0 또는 null = 상한 없음(급할 때 끄는 스위치)
+>            그리드의 행 읽기 · 세기 · 검색(GET /tables/<표>/data · /data/count)만 — 저장 · 체인 · 파일 쓰기는 각자 상한 그대로
+> 끊겼을 때   HTTP 503, 답의 detail.message 가 다음 할 일
+>              Search stopped after 10 s - add a search index on b_wy in the table's indexes   -> 그 칸에 위 선언
+>              Search stopped after 10 s - the limit is grid_read_timeout_seconds in the ingestion settings
+>                                                    -> 검색 칸은 다 색인됨. 상한을 올리거나 검색어를 좁힌다
+>              Read stopped after 10 s - the limit is …   -> 검색이 아닌 읽기(필터 · 정렬 · 전체 세기)
+>            끊긴 문장은 DB 가 취소하고 연결은 풀로 돌아간다
+>            ⚠️ 화면은 아직 «Data fetch failed (HTTP 503)» 토스트만 그린다 — 문장은 클라 레인이 붙인다
+> 답의 칸    검색한 /data 답에 "search_index": {"dt_job": true, "b_wy": false} — false 인 칸이 선언할 칸
+>            컬럼 필터의 contains 도 같은 색인을 탄다(같은 CAST 문장)
+> 박스 판 실측 (400만 행 dt_log · 운영 주장 아님)
+>            0 건 검색  쪽 2.30 s · 세기 2.17 s  ->  세 칸 다 색인 뒤 0.09 s · 0.03 s
+>            5 개 동시  하나에 4.4~8 s  ->  0.15~0.29 s
+>            상한 10 s 의 근거: 이 판에서 색인 없이 5 개 동시일 때 가장 긴 정상 읽기 8 s
+> ⚠️ 안 잰 것  운영 크기에서 짓는 시간(판: dt_job 51.8 s · b_wx · b_wy 2~3 s)
+>            쪽 크기 5 를 row_id 순으로 물으면 0 건일 때 색인이 있어도 끊긴다(판 10 s) — 화면은 1,000 행이라 안 닿음(0.01~0.05 s). 쪽 순서 일에서 다룬다
+> ```
+
 > ## [10-13] **원장 ref 인덱스를 체인 워커가 스스로 짓는다 — 인덱스 관리에 «ledger» 줄 · 다시 번역의 결함 두 줄은 늘 처음 한 번 (총괄 10-13 ①, 소유자 「재번역 5초에 1개도 안됨」)** — git pull · 재기동 «체인 워커»(기동 때 짓는다)
 >
 > ```
