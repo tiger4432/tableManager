@@ -14,6 +14,7 @@
     "  doc-stated  the cited page prints this result for this expression",
     "  doc-rule    the cited page states the rule; the answer applies it (computed, not typed)",
     "  measured    run in Spotfire - none in this edition",
+    "  ours        our rule (the cite names the ruling) - only in `ours`",
     "Pages (`sources`): Spotfire's «latest» online reference, read 2026-10-13 (Math Stat Ops Prec Logic Keys Lang Text), and the",
     "7.0.1 statistics definitions (701), against the owner's 14.4.1. An invalid value (#NA, an error) is read as empty, as the",
     "pages print 0/0 and Integer(\"0%\") - that reading is itself a doc-rule. A comparison the page prints only through",
@@ -27,8 +28,9 @@
     "                Decimal types are not scored.",
     "  unsettled     NOT scored - the pages leave it open or disagree. Each says what is open and why. To settle one,",
     "                move it into vectors with its basis; do not pick an answer in a calculator.",
-    "  lead_decides  NOT scored - the pages state the answers (doc_rows), but scoring them decides how the",
-    "                calculator evaluates an If / Case branch. The lead decides whether they move into vectors.",
+    "                An aggregate inside an If / Case branch folds only that branch's rows (the pages' worked examples).",
+    "  ours          scored, the same shape - our functions with no Spotfire basis (task doc §7: Latest). A row's",
+    "                values carry that row's time in \"$at\" (ISO 8601); [x] never names it. basis = ours.",
     "  out_of_edition  names not built in this edition, and why.",
     "Grow this file before a calculator grows (lead: a function with no vector is not built)."
   ],
@@ -2451,6 +2453,311 @@
       ],
       "basis": "doc-rule",
       "cite": "Logic: the example case when Column1 is not null then Column1 else Column2 end"
+    },
+    {
+      "id": "if.branch.subset",
+      "expr": "If([x] < 2, Max([x]), Max([x]))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect_rows": [
+        1,
+        3,
+        3
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Col1 1, 2, 3 → 1, 3, 3"
+    },
+    {
+      "id": "if.branch.percentile",
+      "expr": "If([x] < 4, 0, Percentile([x], 70))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect_rows": [
+        0,
+        0,
+        0,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Col2 1 … 10 → 0 ×3, 8.2 ×7"
+    },
+    {
+      "id": "if.branch.percentile.later",
+      "expr": "If([x] < 6, 0, Percentile([x], 70))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect_rows": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        8.8,
+        8.8,
+        8.8,
+        8.8,
+        8.8
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using if»: Col2 1 … 10 → 0 ×5, 8.8 ×5"
+    },
+    {
+      "id": "case.then.subset.min",
+      "expr": "case when [x] < Avg([x]) then Min([x]) when [x] < (Avg([x]) + 1) then Min([x]) else Min([x]) end",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        }
+      ],
+      "expect_rows": [
+        1,
+        1,
+        1,
+        1,
+        5,
+        6,
+        6,
+        6
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using case»: Case Min 1 1 1 1 5 6 6 6"
+    },
+    {
+      "id": "case.then.subset.max",
+      "expr": "case when [x] < Avg([x]) then Max([x]) when [x] < (Avg([x]) + 1) then Max([x]) else Max([x]) end",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        }
+      ],
+      "expect_rows": [
+        4,
+        4,
+        4,
+        4,
+        5,
+        8,
+        8,
+        8
+      ],
+      "basis": "doc-stated",
+      "cite": "Logic «More about using case»: Case Max 4 4 4 4 5 8 8 8"
+    }
+  ],
+  "ours": [
+    {
+      "id": "latest",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-03T00:00:00Z"
+        },
+        {
+          "x": 2,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": 3,
+      "basis": "ours",
+      "cite": "task doc §7: the value with the latest time"
+    },
+    {
+      "id": "latest.tie",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-02T00:00:00Z"
+        },
+        {
+          "x": 4,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": null,
+      "basis": "ours",
+      "cite": "task doc §7: two at the same time are not picked between (ruling 22ebdd153: no rule orders two facts at one instant)"
+    },
+    {
+      "id": "latest.tie.same",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-02T00:00:00Z"
+        },
+        {
+          "x": 3,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": 3,
+      "basis": "ours",
+      "cite": "ledger_subgraph _read_attribute: the same value at two instants is one fact stated twice - nothing to pick between"
+    },
+    {
+      "id": "latest.null",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": 1,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": null,
+          "$at": "2026-10-03T00:00:00Z"
+        }
+      ],
+      "expect": 1,
+      "basis": "ours",
+      "cite": "lead 0b7d84462 B: an aggregation skips empty values - the latest value, not the latest row"
+    },
+    {
+      "id": "latest.all.null",
+      "expr": "Latest([x])",
+      "rows": [
+        {
+          "x": null,
+          "$at": "2026-10-01T00:00:00Z"
+        },
+        {
+          "x": null,
+          "$at": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": null,
+      "basis": "ours",
+      "cite": "lead 0b7d84462 B: an aggregation skips empty values - none left"
     }
   ],
   "unsettled": [
@@ -2581,122 +2888,6 @@
       "why": "Stat TrimmedMean gives the percent split only"
     }
   ],
-  "lead_decides": [
-    {
-      "id": "if.branch.subset",
-      "expr": "If([x] < 2, Max([x]), Max([x]))",
-      "rows": [
-        {
-          "x": 1
-        },
-        {
-          "x": 2
-        },
-        {
-          "x": 3
-        }
-      ],
-      "doc_rows": [
-        1,
-        3,
-        3
-      ],
-      "question": "An aggregate inside an If branch folds only the rows that branch takes - scoring this makes the calculator evaluate per row with each branch's own rows",
-      "cite": "Logic «More about using if»: Col1 1, 2, 3 → 1, 3, 3"
-    },
-    {
-      "id": "if.branch.percentile",
-      "expr": "If([x] < 4, 0, Percentile([x], 70))",
-      "rows": [
-        {
-          "x": 1
-        },
-        {
-          "x": 2
-        },
-        {
-          "x": 3
-        },
-        {
-          "x": 4
-        },
-        {
-          "x": 5
-        },
-        {
-          "x": 6
-        },
-        {
-          "x": 7
-        },
-        {
-          "x": 8
-        },
-        {
-          "x": 9
-        },
-        {
-          "x": 10
-        }
-      ],
-      "doc_rows": [
-        0,
-        0,
-        0,
-        8.2,
-        8.2,
-        8.2,
-        8.2,
-        8.2,
-        8.2,
-        8.2
-      ],
-      "question": "the same, for Percentile",
-      "cite": "Logic «More about using if»: Col2 1 … 10 → 0 ×3, 8.2 ×7"
-    },
-    {
-      "id": "case.then.subset",
-      "expr": "case when [x] < Avg([x]) then Min([x]) when [x] < (Avg([x]) + 1) then Min([x]) else Min([x]) end",
-      "rows": [
-        {
-          "x": 1
-        },
-        {
-          "x": 2
-        },
-        {
-          "x": 3
-        },
-        {
-          "x": 4
-        },
-        {
-          "x": 5
-        },
-        {
-          "x": 6
-        },
-        {
-          "x": 7
-        },
-        {
-          "x": 8
-        }
-      ],
-      "doc_rows": [
-        1,
-        1,
-        1,
-        1,
-        5,
-        6,
-        6,
-        6
-      ],
-      "question": "a when is judged on the whole column, its then on the rows it and every earlier when leave",
-      "cite": "Logic «More about using case»: Case Min 1 1 1 1 5 6 6 6"
-    }
-  ],
   "out_of_edition": [
     {
       "names": [
@@ -2709,7 +2900,7 @@
         "FDist",
         "FInv"
       ],
-      "why": "task doc §1-c: distribution functions, not aggregations - the first edition is aggregations (lead to confirm)"
+      "why": "task doc §1-c: distribution functions, not aggregations - the second edition, right after the calculators' frame lands (lead 10-13)"
     },
     {
       "names": [
@@ -2752,12 +2943,11 @@
     },
     {
       "names": [
-        "Latest",
         "[step.name]",
         "type(\"key\")",
         "Reach"
       ],
-      "why": "ours, no Spotfire basis (task doc §7; grammar afcb79f14 · 5ad030347) - scored by the grammar's own harnesses"
+      "why": "ours, meaningful only over a walk answer (task doc §7; grammar afcb79f14 · 5ad030347) - the grammar harness scores them with walk-answer fixtures (lead 10-13); Latest is in `ours`"
     },
     {
       "names": [
