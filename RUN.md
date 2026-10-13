@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **원장 다시 번역이 «5 초에 1 개도 안 됨» — 무엇을 기다리나 (소유자 「5초에 1개도 안됨 · 재번역」)** — 읽기만 · 재기동 없음
+>
+> ```
+> 읽기만    SELECT a.pid, a.application_name AS who, a.state, a.wait_event_type, a.wait_event,
+>                 now() - a.query_start AS running, pg_blocking_pids(a.pid) AS blocked_by, left(a.query, 120) AS query
+>          FROM pg_stat_activity a WHERE a.datname = current_database() AND a.state <> 'idle' ORDER BY a.query_start;
+>          (다시 번역이 도는 동안 3~4 번)
+> 답의 뜻   assy_retroactive 줄 · wait_event_type = Lock · blocked_by 에 pid -> 다른 연결이 잡은 것을 기다림. 그 pid 의 who 를 본다
+>            who 가 assy_chain… -> 체인 · 원장 따라가기와 부딪힘 -> 아래 급할 때 ①
+>            who 가 assy_server -> 화면 요청(그리드 저장 · 검색)과 부딪힘
+>          assy_retroactive 줄 · wait_event_type = IO(DataFileRead 등) -> 디스크 읽기 대기 — 큰 표를 캐시 밖에서 읽음
+>          assy_retroactive 줄 · wait_event 비어 있고 active -> DB 가 계산 중 — query 칸이 그 문장
+>          assy_retroactive 줄이 거의 안 보임 -> 시간이 DB 가 아니라 번역 프로세스의 파이썬에 있음 — 구현자 B 최우선 일(fd550df13)이 받는다
+> 급할 때   ① server/pacing.json jobs.chain_followup 을 "trickle" — 따라가기를 다시 늦춰 다시 번역에 길을 비킴(재기동 없음, 다 끝나면 "fast" 로)
+> ```
+
 > ## [10-13] **PostgreSQL CPU 가 높을 때 — 누가 쓰고 있나 (소유자 「psql server가 cpu 점유율 70퍼」)** — 읽기만 · 재기동 없음
 >
 > ```
