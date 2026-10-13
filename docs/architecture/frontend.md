@@ -253,17 +253,17 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 📎 정본은 스킬 [`.claude/skills/ui-design-system/SKILL.md`](../../.claude/skills/ui-design-system/SKILL.md),
 캐논 파일은 `client2/src/ontology_explorer.css` 입니다. 아래 표는 «선언 자리와 오늘의 소비자»만 적습니다.
 
-| 토큰 | 값 | 선언 | 오늘 읽는 곳 (`git grep -c -e "var(<토큰>" -- client2 ':!client2/dist'`) — 🆕 **다시 셈 @`a5eeaabf2`(09-30)** |
+| 토큰 | 값 | 선언 (줄 번호 말고 이름으로 찾는다) | 오늘 읽는 곳 (`git grep -c -e "var(<토큰>" -- client2 ':!client2/dist'`) — 🆕 **다시 셈 @`a5eeaabf2`(09-30)** |
 |---|---|---|---|
-| `--space-1` | 3.4px | `tokens.css:184` | **32** — `admin.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
-| `--space-2` | 6.8px | `tokens.css:185` | **50** — `admin.html` · `sample.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
-| `--space-3` | 10.2px | `tokens.css:186` | **36** — `admin.html` · `sample.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
-| `--space-4` | 13.6px | `tokens.css:187` | **18** — `admin.html` · `sample.html` · `src/base.css` · `src/rnd_board/board.css` · `src/style.css` |
-| `--space-5` | 20.4px | `tokens.css:188` | **6** — `admin.html` · `sample.html` · `src/ontology_explorer.css` · `src/style.css` |
-| `--space-6` | 27.2px | `tokens.css:189` | **6** — `admin.html` · `sample.html` · `src/style.css` |
-| `--fs-label` | 12px | `tokens.css:208` | **114** — `admin.html` · `src/admin_rows.js` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` |
-| `--graph-max-height` | 420px | `tokens.css:214` | **1** — `admin.html` |
-| `--menu-max-height` | 50vh | `tokens.css:217` | **1** — `src/style.css` |
+| `--space-1` | 3.4px | `tokens.css` `--space-1:` | **32** — `admin.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
+| `--space-2` | 6.8px | `tokens.css` `--space-2:` | **50** — `admin.html` · `sample.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
+| `--space-3` | 10.2px | `tokens.css` `--space-3:` | **36** — `admin.html` · `sample.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
+| `--space-4` | 13.6px | `tokens.css` `--space-4:` | **18** — `admin.html` · `sample.html` · `src/base.css` · `src/rnd_board/board.css` · `src/style.css` |
+| `--space-5` | 20.4px | `tokens.css` `--space-5:` | **6** — `admin.html` · `sample.html` · `src/ontology_explorer.css` · `src/style.css` |
+| `--space-6` | 27.2px | `tokens.css` `--space-6:` | **6** — `admin.html` · `sample.html` · `src/style.css` |
+| `--fs-label` | 12px | `tokens.css` `--fs-label:` | **114** — `admin.html` · `src/admin_rows.js` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` |
+| `--graph-max-height` | 420px | `tokens.css` `--graph-max-height:` | **1** — `admin.html` |
+| `--menu-max-height` | 50vh | `tokens.css` `--menu-max-height:` | **1** — `src/style.css` |
 
 ⚰️ ~~`--space-5`·`--space-6` 은 선언돼 있고 아무도 안 읽는다 · `var(--space*)` 를 쓰는 `.css` 파일이 하나도 없다~~ — 🆕 **09-30 다시 셈: 여섯 칸 다 읽히고, `.css` 파일들(`base.css` · `style.css` · `ontology_explorer.css` · `rnd_board/board.css` · `transfer_plan.css`)이 읽는다**(위 표). 폼의 들여쓰기 `--oe-indent` 가 `--space-5` 가 됐다(`3cf207cd6`, 전엔 16px).
 
