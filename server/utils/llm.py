@@ -18,7 +18,8 @@ proxy are cells of one declaration file read on every call - a change reaches th
 Every call first waits for room under requests_per_minute - in the `llm_calls` table under an advisory
 lock on PostgreSQL, so the chain's slots, the retroactive run and the server count together; within
 the process on any other database - and says «[LLM] per-minute limit - waiting n s». A 429 answer is
-asked again after its Retry-After (else one window), RATE_LIMITED_TRIES times, each through the gate.
+asked again after its Retry-After (else one window), RATE_LIMITED_TRIES times, each through the gate; no
+answer (connection, time limit, 5xx) after CALL_RETRY_WAITS within a minute of the first failure, likewise.
 
 Every call writes two JSON lines to llm_requests.log beside the process logs - what is sent (before
 the call, so a call that hangs still shows) and what came back. The key is in neither.
@@ -63,6 +64,10 @@ RATE_LOCK = "llm_calls"
 #: How many times a 429 answer is asked again before the call is refused.
 RATE_LIMITED_TRIES = 3
 TOO_MANY_REQUESTS = 429
+#: No answer (connection, time limit, 5xx) is asked again after these waits, while the first such failure is within
+#: the window - a gateway that blinks for under a minute does not fail the group (총괄 10-13 ④).
+CALL_RETRY_WAITS = (5, 10, 20)
+CALL_RETRY_WINDOW_S = 60.0
 #: A gateway that refuses the key - the refusal says to check it.
 KEY_REFUSED = (401, 403)
 #: PostgreSQL's «relation does not exist».
@@ -308,8 +313,10 @@ def ask_json(prompt, *, system=None):
     """One call -> the JSON object the model answered. Refused by name when the file refuses, the
     call fails or the answer is not a JSON object (`_refused` says which class). `from None` keeps the
     client's own exception - which may quote the key - out of every traceback. Each try first takes a
-    turn under the per-minute limit; a 429 is tried again RATE_LIMITED_TRIES times, after its Retry-After
-    when that is at most one window."""
+    turn under the per-minute limit. A 429 is tried again RATE_LIMITED_TRIES times, after its Retry-After
+    when that is at most one window. No answer (connection, time limit, 5xx) is tried again after
+    CALL_RETRY_WAITS while the first such failure is within CALL_RETRY_WINDOW_S - a gateway's blink passes,
+    a longer stop is `LlmCallFailed` (총괄 10-13 ④)."""
     cells = settings()
     key = cells["api_key"]
     messages = ([{"role": "system", "content": system}] if system else []) + [
@@ -317,7 +324,8 @@ def ask_json(prompt, *, system=None):
     payload = {"model": cells["model"], "messages": messages}
     from internal_event_client import _redact_proxy
     proxy = _redact_proxy(cells["proxy"]) if cells["proxy"] else None
-    for tried in range(RATE_LIMITED_TRIES + 1):
+    limited, failed, failed_at = 0, 0, None
+    while True:
         _take_a_turn(cells["requests_per_minute"])
         back = {"id": uuid.uuid4().hex[:12], "status": None}
         client, again = None, None
@@ -336,15 +344,25 @@ def ask_json(prompt, *, system=None):
             if client is None:
                 # no sent line - where it was going, from the file (총괄 93570a1ea)
                 back.update(url=cells["base_url"].rstrip("/") + "/chat/completions", proxy=proxy)
-            back.update(status=back["status"] or getattr(exc, "status_code", None), error=_why(exc, cells["proxy"]))
-            if back["status"] == TOO_MANY_REQUESTS and tried < RATE_LIMITED_TRIES:
-                again = _retry_after(exc)
+            status = back["status"] or getattr(exc, "status_code", None)
+            back.update(status=status, error=_why(exc, cells["proxy"]))
+            error = _masked(back["error"], key)
+            if status == TOO_MANY_REQUESTS and limited < RATE_LIMITED_TRIES:
+                again, limited = _retry_after(exc), limited + 1
+                said = ("[LLM] the gateway answered 429 (too many requests) - waiting %d s, then try %d of %d"
+                        % (math.ceil(again), limited + 1, RATE_LIMITED_TRIES + 1))
+            elif client is not None and (status is None or status >= 500):
+                failed_at = _clock() if failed_at is None else failed_at
+                if failed < len(CALL_RETRY_WAITS) and (
+                        _clock() - failed_at + CALL_RETRY_WAITS[failed] <= CALL_RETRY_WINDOW_S):
+                    again, failed = CALL_RETRY_WAITS[failed], failed + 1
+                    said = "[LLM] call failed (%s) - retrying in %d s (%d of %d)" % (
+                        error[:300], again, failed, len(CALL_RETRY_WAITS))
             if again is None or again > RATE_WINDOW_S:
-                raise _refused(back["status"], client is not None, _masked(back["error"], key), again) from None
+                raise _refused(status, client is not None, error, again) from None
         finally:
             _log({"received": _now(), **back, "ms": round((time.monotonic() - started) * 1000)}, key)
         if again is None:
             return _object(content, key)
-        logger.warning("[LLM] the gateway answered 429 (too many requests) - waiting %d s, then try %d of %d",
-                       math.ceil(again), tried + 2, RATE_LIMITED_TRIES + 1)
+        logger.warning(said)
         _sleep(again)

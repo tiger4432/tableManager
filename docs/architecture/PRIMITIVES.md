@@ -2313,7 +2313,7 @@
 ### **LLM 을 부르는 모든 요청의 분당 상한은 `utils.llm.ask_json` 안의 `_take_a_turn` 한 자리** (2026-10-13 등록 · 총괄 ded29a831)
 - **어디**: `server/utils/llm.py` — `ask_json` 이 시도마다 `_take_a_turn(requests_per_minute)`. PostgreSQL 이면 `_shared_turn`(표 `llm_calls` + advisory lock — 프로세스 사이에 하나), 그 밖은 프로세스 안 `_recent`. 기다림 규칙은 `_wait_s` 하나. 실패 분류는 `_refused`(무응답 · 5xx · 다 쓴 429 → `LlmCallFailed`).
 - **언제 재사용**: LLM 을 부르는 새 자리는 `ask_json`(맵퍼는 `mapper_sdk.ask_json`)을 부른다 — 옆에서 openai 를 직접 부르면 상한 밖이다.
-- **함정**: 기다림은 부른 자리의 트랜잭션 안이다(체인이면 그 묶음의 표 잠금을 쥔 채). openai 클라이언트의 다시 시도는 0 — 다시 묻기는 이 자리만 한다.
+- **함정**: 기다림은 부른 자리의 트랜잭션 안이다(체인이면 그 묶음의 표 잠금을 쥔 채). openai 클라이언트의 다시 시도는 0 — 다시 묻기는 이 자리만 한다(429 는 Retry-After 로 세 번, 무응답 · 5xx 는 5 · 10 · 20 초 뒤 첫 실패부터 60 초 안).
 
 ### **맵퍼가 «이번에 못 읽은 job» 은 `mapper_sdk.UNREAD_JOBS` — 회수에서 빠진다** (2026-10-13 등록 · 총괄 10-13 ①)
 - **어디**: 맵퍼 결과 DataFrame 의 `attrs[UNREAD_JOBS]`(job 값 목록) → `mapper_sdk._removal_batches` 가 `allow_retraction` 에서 그 job 의 배치를 안 만든다(옛 칸 그대로 · 그 job 의 행도 안 씀) · 줄 «[Chain] <규칙>: kept old cells of N job(s) the mapper could not read».

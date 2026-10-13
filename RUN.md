@@ -24,8 +24,9 @@
 >          «waiting» 줄이 자주 -> 상한에 붙어 돈다(정상). 묶음이 그만큼 오래 슬롯을 쥔다 — rows_per_run 을 줄이면 묶음이 짧아진다
 >          «refused» 줄 -> 그 글은 이번에 후보 0 행. 바로 뒤 «[Chain] <규칙>: kept old cells of N job(s) the mapper could not read» 가 있으면 옛 후보는 그대로
 >            그 줄이 없으면 맵퍼가 refused 를 attrs[UNREAD_JOBS] 에 안 싣는다(가이드 §6 예시) — 그 글의 손대지 않은 옛 후보가 지워졌다. replay 로 다시 읽힌다
->          «the language model call failed: …» 로 묶음 실패 -> 답이 아예 안 왔다(연결 · 시한 · 5xx · 다 쓴 429). 글마다 다시 묻지 않고 한 번에 실패
->            ⚠️ max_group_attempts 기본 1 이면 그 묶음은 곧바로 FAILED(격리) — 관리 화면에서 다시 돌린다. 저절로 «나중에» 다시 하지 않는다
+>          «[LLM] call failed (…) - retrying in N s (K of 3)» -> 게이트웨이가 답을 안 한다. 5 · 10 · 20 초 뒤 다시(첫 실패부터 1 분 안) — 1 분 안의 깜빡임은 그대로 지나간다
+>          «the language model call failed: …» 로 묶음 실패 -> 1 분 넘게 답이 없었다(또는 다 쓴 429). 글마다 다시 묻지 않고 한 번에 실패
+>            ⚠️ max_group_attempts 기본 1 이면 그 묶음은 FAILED(격리) — 게이트웨이가 돌아온 뒤 관리 화면에서 다시 돌린다(replay)
 >          «the gateway refused the key (401)» -> api_key · headers 를 고친다(llm_config.json, 다음 부름부터)
 >          «it asked to wait N s (Retry-After), more than 60 s» -> 게이트웨이가 한 시간 단위로 막았다 — 기다리지 않고 실패시켰다
 >          기다림(«waiting» 줄) 동안 그 묶음이 쥔 표의 다른 규칙 · 소급이 선다 — 한 번에 60 초까지
@@ -38,8 +39,8 @@
 >          «K of L link(s)» 에서 K 가 늘 작다 -> known_chars 에 걸린다 — 값을 키우면 프롬프트가 커진다
 >          «seed(s) not walked - type(s) X do not declare exactly one key» -> 그 타입의 선언 키가 하나가 아니다(둘 이상이거나 선언에 없음) — 그 씨앗에서는 안 걷는다(나머지는 그대로)
 > 급할 때   맵퍼에서 known 을 빼면 아는 인과 없이 §6 모양 그대로 · 맵퍼를 글 하나씩 부르는 옛 모양(ask_links(text, names))으로 두어도 돈다 — 요청 = 글 수, 상한은 그대로
-> 되돌리기  git revert --no-edit $(git log --format=%h -F --grep="review fixes for the LLM batch" --grep="a text the model could not read keeps its old candidates" --grep="CONFIG_GUIDE's llm_config row names the four new cells" --grep="the per-minute table refusal quotes" --grep="the same-prompt gate hands the walk" --grep="the batch prompt carries the links already known" --grep="the lock gate forces the callers to overlap" --grep="ask_links takes a batch of texts in one request" --grep="byte snapshot of ask_links on one text before batching")
->            이 가지의 커밋 아홉을 최신부터 — 가지 끝(병합 전)에서 돌려 충돌 0 · 되돌린 뒤 가지 바닥(eb1ae8c9f)과 diff 0 을 잼
+> 되돌리기  git revert --no-edit $(git log --format=%h -F --grep="no answer is asked again within a minute" --grep="review fixes for the LLM batch" --grep="a text the model could not read keeps its old candidates" --grep="CONFIG_GUIDE's llm_config row names the four new cells" --grep="the per-minute table refusal quotes" --grep="the same-prompt gate hands the walk" --grep="the batch prompt carries the links already known" --grep="the lock gate forces the callers to overlap" --grep="ask_links takes a batch of texts in one request" --grep="byte snapshot of ask_links on one text before batching")
+>            이 가지의 커밋 열을 최신부터 — 가지 끝(병합 전)에서 돌려 충돌 0 · 되돌린 뒤 가지 바닥(eb1ae8c9f)과 diff 0 을 잼
 >            스쿼시로 병합했으면 그 병합 커밋 하나를 git revert. 병합 뒤 다른 커밋이 같은 줄을 고쳤으면 충돌은 그때 본다(안 잼)
 > 안 잰 것  진짜 모델이 묶음 답을 얼마나 잘 하나(글 id 를 섞는지) · 운영 게이트웨이의 실제 글자 한도 · 아는 인과를 실으면 운영 그래프가 실제로 이어지나(위 명령으로 소유자가 잼)
 > ```

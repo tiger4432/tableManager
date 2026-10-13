@@ -488,17 +488,69 @@ def test_a_call_that_failed_while_a_text_is_asked_alone_fails_the_batch(model):
     assert len(fake.prompts) == 2
 
 
-def test_a_dead_gateway_is_asked_once_for_the_whole_batch(root, clock, monkeypatch):
-    """The seat as shipped: the client cannot connect -> one request, refused as a call that failed."""
+REAL_WAITS = llm.CALL_RETRY_WAITS          # read before `root` turns the retries off for its one-try tests
+DOWN = "ConnectionError: connection refused · proxy: none (direct)"
+
+
+@pytest.fixture(name="retrying")
+def fixture_retrying(root, clock, monkeypatch):
+    """The seat's retries on no answer, as shipped, on the stopped clock."""
     _declare(root, **CELLS)
-    calls = _client_saying(monkeypatch, ConnectionError("connection refused"))
+    monkeypatch.setattr(llm, "CALL_RETRY_WAITS", REAL_WAITS)
+    return clock
+
+
+def _gateway_down_until(monkeypatch, clock, until, per_try=0.0):
+    """A gateway that refuses connections until the clock reaches `until`, then answers text 1; a try takes
+    `per_try` seconds. -> the instants the tries began."""
+    began, content = [], json.dumps({"texts": [{"id": 1, "links": LINKS[A][:1]}]})
+
+    class Client:
+        base_url, default_headers = "http://llm.test/v1/", {}
+
+        def __init__(self):
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(
+                with_raw_response=types.SimpleNamespace(create=self.create)))
+
+        def create(self, **_payload):
+            began.append(clock.now)
+            clock.now += per_try
+            if clock.now < until:
+                raise ConnectionError("connection refused")
+            return types.SimpleNamespace(status_code=200, text=content, parse=lambda: types.SimpleNamespace(
+                choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=content))]))
+    monkeypatch.setattr(llm, "_client", lambda cells: Client())
+    return began
+
+
+def test_a_gateway_down_for_30_s_is_waited_out_and_the_batch_reads(retrying, monkeypatch, caplog):
+    """총괄 10-13 ④: no answer is asked again after 5, 10, 20 s - each try a turn under the per-minute limit."""
+    began = _gateway_down_until(monkeypatch, retrying, until=1030)
+    caplog.set_level(logging.WARNING)
+    rows = text_links.ask_links(A, NAMES)
+    assert [row["cause_phrase"] for row in rows] == ["bond temperature"] and rows.requests == 1
+    assert began == [1000.0, 1005.0, 1015.0, 1035.0] and retrying.waits == [5, 10, 20]
+    assert len(llm._recent) == 4, "the limit counted every try"
+    assert [r.getMessage() for r in caplog.records if r.name == "utils.llm"] == [
+        "[LLM] call failed (%s) - retrying in %d s (%d of 3)" % (DOWN, wait, n)
+        for n, wait in enumerate((5, 10, 20), 1)]
+
+
+def test_a_gateway_down_for_90_s_fails_the_batch_once(retrying, monkeypatch):
+    began = _gateway_down_until(monkeypatch, retrying, until=1090)
     with pytest.raises(llm.LlmCallFailed) as refused:
         text_links.ask_links(BATCH, NAMES)
-    assert len(calls) == 1 and clock.waits == []
-    assert str(refused.value) == ("the language model call failed: ConnectionError: connection refused"
-                                  " · proxy: none (direct)")
-    assert [line.get("error") for line in _log_lines(root) if "received" in line] == [
-        "ConnectionError: connection refused · proxy: none (direct)"]
+    assert str(refused.value) == "the language model call failed: " + DOWN
+    assert began == [1000.0, 1005.0, 1015.0, 1035.0] and retrying.waits == [5, 10, 20]
+
+
+def test_tries_that_take_long_stop_at_the_minute(retrying, monkeypatch):
+    """The window counts from the first failure: tries of 25 s each fail at 1025 and 1055; a third wait (20 s)
+    would end past 1025 + 60, so the third try is the last."""
+    began = _gateway_down_until(monkeypatch, retrying, until=10_000, per_try=25)
+    with pytest.raises(llm.LlmCallFailed):
+        llm.ask_json("anything")
+    assert began == [1000.0, 1030.0, 1065.0] and retrying.waits == [5, 10]
 
 
 # ---------------------------------------------------------------------------- 총괄 검수 10-13: 1 · 3 · 5 · 7 · 8 · M4
@@ -559,15 +611,22 @@ def test_a_refused_key_says_to_check_it(root, clock, monkeypatch, status):
                                   " config/llm_config.json: Status: Error code: %d · proxy: none (direct)" % (status, status))
 
 
-@pytest.mark.parametrize("failure", [Status(500), Status(503), TimeoutError("timed out"), TooMany("1")],
+@pytest.mark.parametrize("failure,waits", [(Status(500), [5, 10, 20]), (Status(503), [5, 10, 20]),
+                                           (TimeoutError("timed out"), [5, 10, 20]), (TooMany("1"), [1.0, 1.0, 1.0])],
                          ids=["500", "503", "timeout", "429-past-its-tries"])
-def test_no_answer_fails_the_batch_in_one_request(root, clock, monkeypatch, failure):
-    _declare(root, **CELLS)
-    tries = llm.RATE_LIMITED_TRIES + 1 if isinstance(failure, TooMany) else 1
-    calls = _client_saying(monkeypatch, *[failure] * tries)
+def test_no_answer_fails_the_batch_once_after_its_tries(retrying, monkeypatch, failure, waits):
+    """Text by text never: four tries of the batch's one request, then `LlmCallFailed` - a spent 429 by its own count."""
+    calls = _client_saying(monkeypatch, *[failure] * 4)
     with pytest.raises(llm.LlmCallFailed):
         text_links.ask_links(BATCH, NAMES)
-    assert len(calls) == tries
+    assert len(calls) == 4 and retrying.waits == waits
+
+
+def test_a_key_refused_or_a_request_refused_is_not_asked_again(retrying, monkeypatch):
+    calls = _client_saying(monkeypatch, Status(401))
+    with pytest.raises(llm.LlmRefused):
+        llm.ask_json("anything")
+    assert len(calls) == 1 and retrying.waits == []
 
 
 def test_a_client_that_cannot_be_built_is_not_a_call_that_failed(root, clock, monkeypatch):
