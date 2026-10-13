@@ -371,6 +371,24 @@ fold     라우트는 늘 접는다. 걸은 것을 저장하는 직접 호출자
 ```
 ⚰️ 펼침 묶음(`bundles` · 「묶음은 노드가 아니다」, c9bf53033 ㄴ)은 은퇴 — fanout_limit 을 넘는 걸음도 같은 허브가 된다.
 
+## 🔵 행 붙이기 — 원장 소스가 표의 행을 노드 아래에 붙인다 (총괄 10-12 · 10-13 14a486e8c)
+```
+선언     sources.<이름> = {relation, attach: {subject, predicate, target, columns?}} — 주어 · 대상은 엔티티 바인딩, 술어는 어휘의
+          entity_ref(주어 타입 -> 대상 타입), 대상 타입은 엔티티(keys · attributes). columns 를 안 적으면 대상 타입의 attributes
+번역      없다 — `SourcePlan.attach` 가 있으면 `runs` 가 거짓(원자 0). 읽는 것은 걷기뿐
+걷는 법   `claims_for_entities` 의 같은 읽기 안에서 그 표를 원자 모양으로 읽는다(`_attach_reads`, 문장마다 갈래 하나) —
+          outgoing: 부모 노드 -> 술어 -> 행 노드 선 + 행 노드의 값(register, 수식어 = columns) · incoming: 행 노드 -> 부모 선
+          follow · exclude · skip · far · far_types · before · as_of · ends_only · per_step 이 그대로 걸린다. 노드마다 질의 없음
+원자      id = md5(소스:edge|register:row_id), 버전 칸 5(7 이 아니라 as_of 가 거르지 않음) · occurred_at 1970-01-01(읽기의 맨 뒤) ·
+          basis ingested(사건 시각 아님) · source_who 소스 이름 · world 운영 세상. 같은 규칙의 파이썬 = `attach_atoms`(메모리 lookup)
+키        번역기의 `canonical_key_value` 를 SQL 로(숫자 칸은 소수가 없으면 정수 글 · 글은 앞뒤 공백 자름 · 빈 값은 노드 없음).
+          맞출 때는 칸 그대로(글 칸 col::text = 키, 숫자 칸 col = 키::float8) — 표 선언 indexes(64eecbe0e)에 운영자가 적은 인덱스가 받는다
+접기      보통 노드 · 보통 선 — 술어가 hub: true 면 허브(×1 도), fanout_limit 을 넘어도. 대조값 · Reach 도 보통 기계(총괄 10-13)
+안 싣는 때 운영 세상을 빼고 걷거나 since · until 을 준 걷기 — truncated.rows_withheld 에 사유 한 줄(그때만 있는 칸, interval_excluded 옆)
+          이어 걷기의 as_of 는 안 막는다: 붙인 행은 쪽마다 그때의 표 — as_of 에 안 묶임
+남음      시간 쪽(around · earlier · later)은 원장만 읽어 붙인 행이 안 나온다 · 서술 씨앗(seed_type)은 원장의 노드만 센다
+```
+
 ## 🔵 이어 걷기 — `more` · `resume` (소유자 10-12, `2bdb44df7` … 병합 `c4b9b58a0`)
 
 ```

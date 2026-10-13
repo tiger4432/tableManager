@@ -757,3 +757,138 @@ def test_a_step_s_count_reads_one_far_node_past_the_limit_on_real_sql(ledger):
     assert {p: len(f) for p, f in far_nodes(capped).items()} == {"has_wafer": 3, "derived_from": 2}
     assert len(capped) == 5, "one end per far node"
     assert '{"wafer": "W1"}' not in far_nodes(apart)["has_wafer"] and len(far_nodes(apart)["has_wafer"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Rows a source attaches (총괄 10-13 행 붙이기) - read from their table in the walk's own read
+# ---------------------------------------------------------------------------
+
+def _attach_fixture(conn, dies, rows):
+    """`dies` under wafer W in the ledger; `rows` (row_id, die, defect_id, size, kind, slot) in a table of this scratch
+    schema. -> the attach plans: dies' defects by the die's text key, and the same rows by a number key (slot)."""
+    import json
+    from ledger.setup_registry import AttachPlan
+
+    insert(conn, [{"id": _uuid("hd-%s" % die), "st": "wafer", "sk": json.dumps({"wafer": "W"}), "p": "has_die",
+                   "ok": "entity_ref", "op": json.dumps({"type": "die", "keys": {"die": die}}), "oa": T0,
+                   "who": "t", "ver": "t/1", "raw": "t:%s" % die, "sup": None} for die in dies])
+    conn.execute(text("DROP TABLE IF EXISTS pg_attach_rows"))
+    conn.execute(text("CREATE TABLE pg_attach_rows (row_id bigint, die text, defect_id text, size double precision, "
+                      "kind text, slot double precision)"))
+    for row in rows:
+        conn.execute(text("INSERT INTO pg_attach_rows VALUES (:row_id, :die, :defect_id, :size, :kind, :slot)"), row)
+    by_die = AttachPlan(predicate="has_defect", subject_type="die", subject_keys=(("die", "die", False),),
+                        target_type="defect_row", target_keys=(("defect_id", "defect_id", False),),
+                        columns=("size", "kind"))
+    by_slot = AttachPlan(predicate="in_slot", subject_type="slot_t", subject_keys=(("slot", "slot", True),),
+                         target_type="defect_row", target_keys=(("defect_id", "defect_id", False),), columns=())
+    return by_die, by_slot
+
+
+ATTACH_ROWS = [dict(row_id=1, die="D0", defect_id="F1", size=1.5, kind="void", slot=3.0),
+               dict(row_id=2, die="D0", defect_id="F2", size=2.0, kind="crack", slot=3.0),
+               dict(row_id=3, die="D0", defect_id="F3", size=None, kind=" void ", slot=4.0),
+               dict(row_id=4, die="D1", defect_id="F4", size=7.0, kind="void", slot=7.5),
+               dict(row_id=5, die="D1", defect_id=" ", size=1.0, kind="void", slot=3.0)]
+
+
+def _said(atoms):
+    return sorted((a.id, a.subject_type, json_text(a.subject_keys), a.predicate, a.object_kind,
+                   json_text(a.object_payload), a.occurred_at, a.source_who, a.occurred_at_basis, a.world)
+                  for a in atoms)
+
+
+def json_text(value):
+    import json
+    return json.dumps(value, sort_keys=True)
+
+
+def test_attached_rows_read_on_real_sql_are_the_atoms_the_rows_give(ledger):
+    """The SQL arm and `attach_atoms` say the same atoms of the same rows: the edge from a die (text key) and from a slot
+    (number key: 3.0 meets '3', 7.5 meets '7.5'), the edge back to a row node, a row node's values - and a row with a
+    blank key gives none, nor a node of another type that has a key of the same name."""
+    try:
+        with ledger.begin() as conn:
+            by_die, by_slot = _attach_fixture(conn, ["D0", "D1"], ATTACH_ROWS)
+        python = ledger_subgraph.attach_atoms("defects", by_die, ATTACH_ROWS, "default") + \
+            ledger_subgraph.attach_atoms("slots", by_slot, ATTACH_ROWS, "default")
+        with ledger.connect() as conn:
+            lookup = ledger_subgraph.SqlEvidenceLookup(conn, attached=[("defects", "pg_attach_rows", by_die),
+                                                                       ("slots", "pg_attach_rows", by_slot)])
+            out = lookup.claims_for_entities([("die", {"die": "D1"}), ("other", {"die": "D0"}),
+                                              ("slot_t", {"slot": "3"}), ("slot_t", {"slot": "7.5"})], "outgoing", 100)[0]
+            back = lookup.claims_for_entities([("defect_row", {"defect_id": "F4"})], "incoming", 100)[0]
+            values = lookup.claims_for_entities([("defect_row", {"defect_id": d}) for d in ("F1", "F2", "F3", "F4")],
+                                                "outgoing", 100, follow=["register"])[0]
+        asked = [{"die": "D1"}, {"slot": "3"}, {"slot": "7.5"}]
+        edges = [a for a in python if a.predicate in ("has_defect", "in_slot") and a.subject_keys in asked]
+        assert len(out) == 4, "canary: D1 one, slot 3 two, slot 7.5 one - D0 is asked only as another type"
+        assert _said(out) == _said(edges)
+        assert _said(back) == _said([a for a in edges if a.object_payload["keys"] == {"defect_id": "F4"}])
+        rows = [{"defect_id": d} for d in ("F1", "F2", "F3", "F4")]
+        assert _said(values) == _said([a for a in python if a.predicate == "register" and a.subject_keys in rows])
+    finally:
+        with ledger.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS pg_attach_rows"))
+
+
+def _walk_attached(conn, plan, monkeypatch=None):
+    key = ("test:pg-attached",)
+    ledger_subgraph._declaration_facts[key] = (
+        {"defect_row": ["defect_id"]}, {}, {}, {}, {}, {}, frozenset({"has_defect"}),
+        {"defect_row": {"keys": ["defect_id"], "attributes": ["size", "kind"]}})
+    lookup = ledger_subgraph.SqlEvidenceLookup(conn, attached=[("defects", "pg_attach_rows", plan)])
+    queries = []
+    run = lookup._execute
+    lookup._execute = lambda sql, params: queries.append(sql) or run(sql, params)
+    try:
+        body = ledger_subgraph.subgraph(explorer.entity_id("wafer", {"wafer": "W"}), lookup, declaration_paths=key,
+                                        hops=2, backbone_hops=0, registration_follow={"register"})
+    finally:
+        ledger_subgraph._declaration_facts.pop(key, None)
+    return body, len(queries)
+
+
+def test_attached_rows_cost_the_same_reads_whatever_the_number_of_nodes(ledger):
+    """No query per node: the rows of every die a read holds come in that one read - three dies or thirty."""
+    counts = {}
+    try:
+        for n in (3, 30):
+            with ledger.begin() as conn:
+                conn.execute(text("TRUNCATE ledger_events"))
+                rows = [dict(row_id=i, die="D%d" % (i % n), defect_id="F%d" % i, size=1.0, kind="void", slot=1.0)
+                        for i in range(3 * n)]
+                plan, _ = _attach_fixture(conn, ["D%d" % d for d in range(n)], rows)
+            with ledger.connect() as conn:
+                body, counts[n] = _walk_attached(conn, plan)
+            assert sum(item.get("count", 0) for item in body["nodes"] if item.get("hub")) == 3 * n, \
+                "canary: every row in its die's hub"
+        assert counts[3] == counts[30]
+    finally:
+        with ledger.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS pg_attach_rows"))
+
+
+def test_a_row_s_cell_changed_is_the_next_walk_s_value(ledger):
+    """The rows are the table's now: a cell changed in the table is the value the next walk draws."""
+    def kind_of_f1(body):
+        (hub,) = [item for item in body["nodes"]
+                  if item.get("hub") and item["hub"]["near"] == explorer.entity_id("die", {"die": "D0"})]
+        table = body["tables"][hub["id"]]
+        (row,) = [dict(zip(table["columns"], row)) for row in table["rows"]
+                  if row[table["columns"].index("id")] == explorer.entity_id("defect_row", {"defect_id": "F1"})]
+        return row["kind"]
+
+    try:
+        with ledger.begin() as conn:
+            plan, _ = _attach_fixture(conn, ["D0", "D1"], ATTACH_ROWS)
+        with ledger.connect() as conn:
+            before = kind_of_f1(_walk_attached(conn, plan)[0])
+        with ledger.begin() as conn:
+            conn.execute(text("UPDATE pg_attach_rows SET kind = 'crack' WHERE defect_id = 'F1'"))
+        with ledger.connect() as conn:
+            after = kind_of_f1(_walk_attached(conn, plan)[0])
+        assert (before, after) == ("void", "crack")
+    finally:
+        with ledger.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS pg_attach_rows"))

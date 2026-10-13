@@ -683,6 +683,27 @@ def _declared_entities(world=None):
     return (_declaration(world) or {}).get("entities") or {}
 
 
+def _attached_rows(names, since, until):
+    """The attach sentences a walk of the worlds `names` reads (총괄 10-13 행 붙이기), and why it reads none - (attached,
+    withheld). Rows are the operating world's tables as they are now: a walk that leaves that world out, or asks a time
+    window, carries none and says so. A declaration that will not compile carries none, said in the log."""
+    try:
+        from chain.ingestion_worker import _compiled_setup
+        plans = _compiled_setup(None).snapshot.source_plans
+    except Exception as exc:                                              # noqa: BLE001 - what goes quiet is said
+        logger.warning("[walk] no rows attached - the operating world's declaration could not be compiled: %s", exc)
+        return (), None
+    attached = tuple((source_id, plan.relation, plan.attach) for source_id, plan in sorted(plans.items())
+                     if plan.attach is not None and plan.status == "active")
+    if not attached:
+        return (), None
+    if since is not None or until is not None:
+        return (), "rows are attached as their tables are now - a walk with since or until carries none"
+    if schema.DEFAULT_WORLD not in {each.name for each in names}:
+        return (), "rows are attached from the operating world's tables - a walk of other worlds carries none"
+    return attached, None
+
+
 def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
@@ -705,11 +726,13 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                         "server/migrations/add_ledger_source_events.py --apply"),
         })
     cardinalities = _predicate_cardinalities(world)
+    attached, rows_withheld = _attached_rows(names, since, until)
     lookup = ledger_subgraph.SqlEvidenceLookup(
         connection, worlds=names, since=since, until=until,
         one=ledger_subgraph.one_predicates(cardinalities),
         # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
-        current_only=not (include_superseded or page is not None))
+        current_only=not (include_superseded or page is not None),
+        attached=attached, rows_withheld=rows_withheld)
     if page is not None:
         return ledger_subgraph.subgraph(
             node_id, lookup, page=page, direction=direction, follow=follow,

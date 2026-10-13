@@ -421,6 +421,19 @@ class SourceDriverPlan:
 
 
 @dataclass(frozen=True)
+class AttachPlan:
+    """A source whose table's rows the walk reads as sentences and nothing translates (총괄 10-13 행 붙이기): from the
+    parent node (`subject_*`) `predicate` to a row node (`target_*`), whose values are the row's `columns`. A node's
+    keys are ((key, column, read as a number), ...) in the type's declared key order."""
+    predicate: str
+    subject_type: str
+    subject_keys: tuple
+    target_type: str
+    target_keys: tuple
+    columns: tuple
+
+
+@dataclass(frozen=True)
 class SourcePlan:
     source_id: str
     relation: str
@@ -462,6 +475,8 @@ class SourcePlan:
     planned: bool = True
     #: `{code, path, message}` when `planned` is False, else `None`.
     refusal: Any = None
+    #: The rows this source attaches under nodes, or `None` - such a source is read by the walk alone (`runs` False).
+    attach: AttachPlan | None = None
 
     @property
     def runs(self) -> bool:
@@ -471,9 +486,10 @@ class SourcePlan:
         or the loader could not plan it - so every reader that asked only about `status`
         would let a refused source through and meet `driver=None` three frames later.
         Spelled once here rather than `and plan.planned` at six call sites, because two
-        spellings of a gate is how one of them keeps letting something through.
+        spellings of a gate is how one of them keeps letting something through. A third: a source
+        that attaches rows (`attach`) - the walk reads it, nothing translates it (총괄 10-13).
         """
-        return self.status == "active" and self.planned
+        return self.status == "active" and self.planned and self.attach is None
 
 
 @dataclass(frozen=True)

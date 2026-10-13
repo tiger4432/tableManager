@@ -30,6 +30,7 @@ import base64
 import contextvars
 import bisect
 import copy
+import hashlib
 import json
 import logging
 import re
@@ -656,6 +657,62 @@ def _where(*conditions):
     return ("WHERE " + " AND ".join(kept)) if kept else ""
 
 
+#: An attached row's atoms (총괄 10-13 행 붙이기) are read from its table as the walk asks and written nowhere: their time is
+#: no event (`occurred_at_basis`), their instant one before every atom's - a read takes them last.
+ATTACHED_AT = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _attached_id(source_id, kind, row_id):
+    """An attached row's atom id - its source, its sentence (`edge` | `register`), its row - a uuid never of version 7, so a
+    continued walk's «as of» keeps it: the rows are the table's now. `_attach_reads` spells the same in SQL."""
+    digest = hashlib.md5(f"{source_id}:{kind}:{row_id}".encode("utf-8")).hexdigest()
+    return str(uuid.UUID(digest[:12] + "5" + digest[13:]))
+
+
+def attach_atoms(source_id, plan, rows, world=None):
+    """The atoms one attach sentence (`setup_registry.AttachPlan`) reads from `rows` (dicts with `row_id`): two a row - the
+    edge from its parent node, and its own values said of the row node (`register`, as the translator says a node's
+    bound attributes). A row whose node keys are blank gives none. The in-memory spelling of `_attach_reads`."""
+    import map_overlay
+    from ledger.setup_bundle import NOT_AN_EVENT_BASIS, REGISTER_PREDICATE
+
+    def keys(spec, row):
+        found = {key: map_overlay.canonical_key_value(row.get(column), "number" if number else None)
+                 for key, column, number in spec}
+        return found if all(value is not None for value in found.values()) else None
+
+    atoms = []
+    for row in rows:
+        subject, target = keys(plan.subject_keys, row), keys(plan.target_keys, row)
+        if subject is None or target is None:
+            continue
+        said = dict(occurred_at=ATTACHED_AT, source_who=source_id, source_translator_ver=None, source_raw_ref=None,
+                    supersedes=None, source_event_id=None, source_event_state=None,
+                    occurred_at_basis=NOT_AN_EVENT_BASIS, world=world)
+        values = {column: map_overlay.canonical_key_value(row.get(column), None) for column in plan.columns}
+        atoms.append(EvidenceAtom(id=_attached_id(source_id, "edge", row["row_id"]), subject_type=plan.subject_type,
+                                  subject_keys=subject, predicate=plan.predicate, object_kind="entity_ref",
+                                  object_payload={"type": plan.target_type, "keys": target}, **said))
+        atoms.append(EvidenceAtom(id=_attached_id(source_id, "register", row["row_id"]), subject_type=plan.target_type,
+                                  subject_keys=target, predicate=REGISTER_PREDICATE, object_kind=None,
+                                  object_payload={"qualifiers": {name: value for name, value in values.items()
+                                                                 if value is not None}}, **said))
+    return atoms
+
+
+def _quoted(name):
+    return ".".join('"%s"' % part.replace('"', '""') for part in str(name).split("."))
+
+
+def _key_text(column, number):
+    """`map_overlay.canonical_key_value` of a column of the row `r`, in SQL: a whole number without its fraction, text
+    trimmed, blank NULL."""
+    cell = "r." + _quoted(column)
+    if number:
+        return f"(CASE WHEN {cell} = trunc({cell}) THEN trunc({cell}::numeric)::text ELSE {cell}::text END)"
+    return f"NULLIF(btrim({cell}::text), '')"
+
+
 def _atom_from_row(row):
     keys = json.loads(row[2]) if isinstance(row[2], str) else row[2]
     payload = json.loads(row[5]) if isinstance(row[5], str) else row[5]
@@ -675,10 +732,15 @@ class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
     def __init__(self, connection, worlds=None, since=None, until=None,
-                 one=(), current_only=True):
+                 one=(), current_only=True, attached=(), rows_withheld=None):
         from ledger import schema
 
         self.connection = connection
+        #: The attach sentences this walk reads (총괄 10-13 행 붙이기): (source id, relation, `AttachPlan`) - and the world
+        #: their atoms are said in. `rows_withheld`: why a walk carries none (the caller's), said in the answer.
+        self.attached = tuple(attached)
+        self.attach_world = (worlds or (schema.world_names(schema.DEFAULT_WORLD),))[0].name
+        self.rows_withheld = rows_withheld
         # The ledgers of the worlds walked (`schema.walk_relation`; none: the default's) -
         # never a relation handed in.
         picked = worlds or (schema.world_names(schema.DEFAULT_WORLD),)
@@ -782,6 +844,72 @@ class SqlEvidenceLookup:
         selected = f"{EVIDENCE_COLUMNS}, {not_current or 'false'} AS not_current"
         return selected, (f"NOT {not_current}" if not_current and self.current_only else "")
 
+    def _attach_reads(self, arm, params, follow, exclude):
+        """Each attach sentence's rows as atoms, as one read arm reads them - outgoing: the edge from a parent node and a
+        row node's values (`register`); incoming: the edge to a row node. Joined to the frontier node `f` on its keys,
+        the column as it is (its index serves): text as text, a number as a number. `attach_atoms` spells the same."""
+        from ledger.setup_bundle import NOT_AN_EVENT_BASIS, REGISTER_PREDICATE
+
+        params.update({"attach_at": ATTACHED_AT, "attach_basis": NOT_AN_EVENT_BASIS, "attach_world": self.attach_world,
+                       "attach_register": REGISTER_PREDICATE})
+        reads = []
+        for i, (source_id, relation, plan) in enumerate(self.attached):
+            p = f"attach{i}_"
+            params.update({p + "who": source_id, p + "subject": plan.subject_type, p + "target": plan.target_type,
+                           p + "predicate": plan.predicate, p + "edge": f"{source_id}:edge:",
+                           p + "register": f"{source_id}:register:"})
+
+            for role, spec in (("s", plan.subject_keys), ("t", plan.target_keys)):
+                params.update({f"{p}{role}{k}": key for k, (key, _column, _number) in enumerate(spec)})
+
+            def node(spec, role):
+                return "jsonb_build_object(%s)" % ", ".join(
+                    f"CAST(%({p}{role}{k})s AS text), {_key_text(column, number)}"
+                    for k, (_key, column, number) in enumerate(spec))
+
+            def joined(spec, role):
+                kept = []
+                for k, (_key, column, number) in enumerate(spec):
+                    near = f"f.keys->>CAST(%({p}{role}{k})s AS text)"
+                    kept.append(f"r.{_quoted(column)} = CASE WHEN {near} ~ '^[+-]?[0-9]+(\\.[0-9]+)?$' "
+                                f"THEN CAST({near} AS float8) END" if number else f"r.{_quoted(column)}::text = {near}")
+                return " AND ".join(kept)
+
+            def blank(spec):
+                return " AND ".join(f"{_key_text(column, number)} IS NOT NULL" for _key, column, number in spec)
+
+            def atom(kind, subject, subject_keys, predicate, object_kind, payload):
+                return (f"SELECT CAST(overlay(md5(%({p}{kind})s || r.row_id::text) placing '5' from 13 for 1) AS uuid) AS id, "
+                        f"CAST(%({subject})s AS text) AS subject_type, {subject_keys} AS subject_keys, "
+                        f"CAST({predicate} AS text) AS predicate, CAST({object_kind} AS text) AS object_kind, "
+                        f"{payload} AS object_payload, CAST(%(attach_at)s AS timestamptz) AS occurred_at, "
+                        f"CAST(%({p}who)s AS text) AS source_who, CAST(NULL AS text) AS source_translator_ver, "
+                        f"CAST(NULL AS text) AS source_raw_ref, CAST(NULL AS uuid) AS supersedes, "
+                        f"CAST(NULL AS uuid) AS source_event_id, CAST(NULL AS text) AS source_event_state, "
+                        f"CAST(%(attach_basis)s AS text) AS occurred_at_basis, CAST(%(attach_world)s AS text) AS world "
+                        f"FROM {_quoted(relation)} r")
+
+            edge = atom("edge", p + "subject", node(plan.subject_keys, "s"), f"%({p}predicate)s", "'entity_ref'",
+                        f"jsonb_build_object('type', CAST(%({p}target)s AS text), 'keys', {node(plan.target_keys, 't')})")
+            followed = not follow or plan.predicate in follow
+            if followed and not (exclude and plan.predicate in exclude):
+                if arm == "outgoing":
+                    reads.append(f"{edge} WHERE f.type = %({p}subject)s AND {joined(plan.subject_keys, 's')} "
+                                 f"AND {blank(plan.target_keys)}")
+                else:
+                    reads.append(f"{edge} WHERE f.type = %({p}target)s AND {joined(plan.target_keys, 't')} "
+                                 f"AND {blank(plan.subject_keys)}")
+            if arm == "outgoing" and (not follow or REGISTER_PREDICATE in follow) \
+                    and not (exclude and REGISTER_PREDICATE in exclude):
+                values = " || ".join(
+                    "jsonb_build_object(%s)" % ", ".join(f"'{name.replace(chr(39), chr(39) * 2)}', {_key_text(name, False)}"
+                                                         for name in plan.columns[start:start + 40])
+                    for start in range(0, len(plan.columns), 40)) or "'{}'::jsonb"
+                register = atom("register", p + "target", node(plan.target_keys, "t"), "%(attach_register)s", "NULL",
+                                f"jsonb_build_object('qualifiers', jsonb_strip_nulls({values}))")
+                reads.append(f"{register} WHERE f.type = %({p}target)s AND {joined(plan.target_keys, 't')}")
+        return reads
+
     def claims_for_entities(self, entities, direction, limit, *,
                             follow=None, exclude=None, far=None, far_types=None, before=None, ends_only=False,
                             per_step=None):
@@ -842,13 +970,20 @@ class SqlEvidenceLookup:
                     step_cells = "" if per_step is None else (
                         f", f.type AS near_type, f.keys AS near_keys, '{arm}' AS arm, "
                         f"split_part({_FAR_TYPE[arm]}, '@', 1) AS far_type, {_FAR_KEYS[arm]} AS far_keys")
+                    kept = _where(follow_clause, extra_clause, current, _skip(arm), far and _far(arm, far[0]),
+                                  far_types and _far_types(arm, far_types[0]), after, recorded)
                     built.append(f"""
                     SELECT {selected}{step_cells} FROM frontier f
                     JOIN {self.relation} e
                       ON {ARM_JOIN[arm]}
-                    {_where(follow_clause, extra_clause, current, _skip(arm), far and _far(arm, far[0]),
-                            far_types and _far_types(arm, far_types[0]), after, recorded)}
+                    {kept}
                 """)
+                    # 🔴 THE ROWS A SOURCE ATTACHES ARE READ IN THE SAME READ (총괄 10-13): every filter above holds
+                    built += [f"""
+                    SELECT {selected}{step_cells} FROM frontier f
+                    JOIN LATERAL ({read}) e ON true
+                    {kept}
+                """ for read in self._attach_reads(arm, params, follow, exclude)]
             return " UNION ".join(built)
 
         if ends_only and per_step is not None:
@@ -996,8 +1131,11 @@ class _DescribedSeeds:
 class InMemoryEvidenceLookup:
     """Contract double used to prove traversal independently of PostgreSQL."""
 
-    def __init__(self, atoms, since=None, until=None, one=(), current_only=True):
-        self.atoms = list(atoms)
+    def __init__(self, atoms, since=None, until=None, one=(), current_only=True, attached=(), rows_withheld=None):
+        #: `attached`: (source id, `AttachPlan`, rows) - read as the SQL lookup reads its tables (`attach_atoms`)
+        self.atoms = list(atoms) + [atom for source_id, plan, rows in attached
+                                    for atom in attach_atoms(source_id, plan, rows)]
+        self.rows_withheld = rows_withheld
         self.one = frozenset(one)
         self.current_only = current_only
         # 🔴 THE SAME TWO ARGUMENTS AND THE SAME ACCUMULATOR AS THE SQL LOOKUP. A double
@@ -4022,6 +4160,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             # recover the difference from a zero.
             **({} if getattr(lookup, "interval_excluded", None) is None
                else {"interval_excluded": lookup.interval_excluded}),
+            # why this walk carries no attached rows - present only when it would have (총괄 10-13 행 붙이기)
+            **({} if getattr(lookup, "rows_withheld", None) is None else {"rows_withheld": lookup.rows_withheld}),
         },
         "message": None if found else "No ledger evidence is connected to the selected node",
     }
