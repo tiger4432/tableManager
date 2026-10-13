@@ -728,3 +728,32 @@ def test_an_index_can_serve_the_newest_atom_without_scanning_the_ledger(ledger):
         f"even with sequential scans disabled the newest-atom lookup will not use an "
         f"index — there is none it can use:\n{plan}")
 
+def test_a_step_s_count_reads_one_far_node_past_the_limit_on_real_sql(ledger):
+    """QA M1 (총괄 ed0da8452) on PostgreSQL: `ends_only` with `per_step` reads each step (near node, predicate, arm, far
+    type) to that many far nodes, one end each - a far node said twice is one - and leaves out a far node `far` names."""
+    import json
+
+    rows = [atom("hw-1a", "L-D", "has_wafer", {"slot": "1", "wafer": "W1"}),
+            atom("hw-1b", "L-D", "has_wafer", {"slot": "2", "wafer": "W1"}),
+            *[atom("hw-%d" % w, "L-D", "has_wafer", {"slot": str(w), "wafer": "W%d" % w}) for w in range(2, 6)],
+            atom("df-1", "L-D", "derived_from", {"lot": "L-C"}), atom("df-2", "L-D", "derived_from", {"lot": "L-B"})]
+    with ledger.begin() as conn:
+        insert(conn, rows)
+
+    def far_nodes(ends):
+        out = {}
+        for _type, _keys, predicate, _kind, payload in ends:
+            out.setdefault(predicate, set()).add(json.dumps(payload["keys"], sort_keys=True))
+        return out
+
+    entities = [("Lot", {"lot": "L-D"})]
+    with ledger.connect() as conn:
+        lookup = ledger_subgraph.SqlEvidenceLookup(conn)
+        whole, _ = lookup.claims_for_entities(entities, "outgoing", 0, ends_only=True)
+        capped, _ = lookup.claims_for_entities(entities, "outgoing", 0, ends_only=True, per_step=3)
+        apart, _ = lookup.claims_for_entities(entities, "outgoing", 0, ends_only=True, per_step=3,
+                                              far=("not_in", [("Wafer", {"wafer": "W1"})]))
+    assert len(whole) == 8, "canary: W1 said twice, eight ends"
+    assert {p: len(f) for p, f in far_nodes(capped).items()} == {"has_wafer": 3, "derived_from": 2}
+    assert len(capped) == 5, "one end per far node"
+    assert '{"wafer": "W1"}' not in far_nodes(apart)["has_wafer"] and len(far_nodes(apart)["has_wafer"]) == 3

@@ -6,6 +6,7 @@ of `tables[hub id]` - and the walk goes on from the members. A hub is one step A
 import os
 import sys
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -490,9 +491,9 @@ def test_a_step_s_count_reads_through_the_read_s_own_filters(filters):
     assert len(ends) < 7 or filters in {"none", "superseded"}, "canary: the filter left something out"
 
 
-def test_a_hub_seed_reads_as_of_the_first_page_and_within_its_budget(monkeypatch):
-    """QA F4 · F5: a hub id seed is read as every read of the page - as of the first page (an atom written after it is
-    not a seed of page 2) - and within the atom budget, a cut said as claims."""
+def test_a_hub_seed_is_read_as_of_the_first_page_and_a_cut_is_said(monkeypatch):
+    """QA F4 · F5 · H2: a hub id seed is read as of the first page (an atom written after it is not a seed of page 2) and
+    a read its ceiling cut is said as claims."""
     atoms = _atoms(*[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(8)],
                    *[("wafer", "W%d" % w, "observed", "defect", "D%d%d" % (w, d)) for w in range(8) for d in range(30)])
     first = _walk(WAFERS, atoms, hops=1, node_limit=10)
@@ -610,3 +611,168 @@ def test_a_hub_edge_carries_the_union_of_its_member_edges_worlds():
     body = _walk(LOT, atoms, hops=1)
     (edge,) = [e for e in body["edges"] if e["target"] == WAFERS]
     assert edge["worlds"] == ["w0", "w1"]
+
+
+#: the lead's cycle (qa3_cycle, 총괄 ed0da8452): a lot's 250 tools and three wafers (declared), each with a defect of 300
+#: kinds (declared), and a road X -> G -> W1 that reaches a wafer again - the rows read again spend a page's budget
+CYCLE = _atoms(*[("lot", "L", "made_by", "tool", "T%d" % i) for i in range(250)],
+               *[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(3)],
+               *[("wafer", "W%d" % w, "observed", "defect", "D%d" % w) for w in range(3)],
+               *[("defect", "D%d" % w, "of_kind", "kind", "K%d" % k) for w in range(3) for k in range(300)],
+               ("lot", "L", "checks", "tool", "X"), ("tool", "X", "feeds", "tool", "G"), ("tool", "G", "near", "wafer", "W1"))
+
+
+@pytest.mark.parametrize("edge_limit", [20, 100])
+def test_a_continued_walk_never_hands_out_a_state_it_handed_out_before(rows_declared, edge_limit, monkeypatch):
+    """QA H1: a page whose first read (the rows read again) spent its budget dropped the place it was handed and read its
+    depth from the start - a row left its hub again and the walk went round a cycle of several pages, forever. The place
+    is kept: no resume comes twice, and the pages laid over the last are the one walk."""
+    with monkeypatch.context() as lifted:
+        _uncapped(lifted)
+        whole = _walk(LOT, CYCLE, declaration=ROWS_DECLARED, hops=3, node_limit=10 ** 7, edge_limit=10 ** 7)
+    assert whole["more"]["resume"] is None, "canary: the one walk is whole"
+    pages, handed, body = [], set(), _walk(LOT, CYCLE, declaration=ROWS_DECLARED, hops=3, edge_limit=edge_limit)
+    for _ in range(100):
+        pages.append(body)
+        if body["more"]["resume"] is None:
+            break
+        state = json.dumps(body["more"]["resume"], sort_keys=True)
+        assert state not in handed, "page %d hands out a state a page before handed out" % len(pages)
+        handed.add(state)
+        body = _walk(LOT, CYCLE, declaration=ROWS_DECLARED, hops=3, edge_limit=edge_limit, resume=json.loads(state))
+    else:
+        raise AssertionError("the walk did not end in 100 pages")
+    assert "stalled" not in (body["truncated"]["reason"] or "")
+    assert any(page.get("edges_pending") for page in pages), "canary: reading rows again runs out of atoms"
+    assert _applied(pages) == _applied([whole])
+
+
+HAS_DIE = ("test:walk-hubs-dies",)
+DIES = _atoms(*[("wafer", "W", "has_die", "die", "D%04d" % d) for d in range(250)],
+              *[("die", "D%04d" % d, "observed", "defect", "F%04d" % d) for d in range(250)],
+              *[("wafer", "V", "has_die", "die", "E%d" % d) for d in range(3)])
+DIE_HUB, OTHER_DIE_HUB = (node("wafer", w) + "|has_die|outgoing|die|1,0" for w in ("W", "V"))
+
+
+def test_a_hub_seed_is_read_on_the_first_page_only_and_carried(monkeypatch):
+    """QA H2: a hub id seed was read again on every page within that page's budget - a continued walk spent its pages
+    on the seed and stalled. It is read once, on the first page, and the pages after walk from what it resolved."""
+    monkeypatch.setitem(ledger_subgraph._declaration_facts, HAS_DIE, _facts({"has_die"}))
+    seed_reads = []
+    read = ledger_subgraph.InMemoryEvidenceLookup.claims_for_entities
+
+    def spy(self, entities, direction, limit, **kwargs):
+        if kwargs.get("follow") == ["has_die"] and list(entities) == [("wafer", {"wafer": "W"})]:
+            seed_reads.append(page[0])
+        return read(self, entities, direction, limit, **kwargs)
+
+    monkeypatch.setattr(ledger_subgraph.InMemoryEvidenceLookup, "claims_for_entities", spy)
+    page = [0]
+    body = _walk(DIE_HUB, DIES, declaration=HAS_DIE, hops=1, edge_limit=20)
+    for _ in range(60):
+        assert len(body["seeds"]) == 250
+        assert "stalled" not in (body["truncated"]["reason"] or "")
+        if body["more"]["resume"] is None:
+            break
+        page[0] += 1
+        body = _walk(DIE_HUB, DIES, declaration=HAS_DIE, hops=1, edge_limit=20,
+                     resume=json.loads(json.dumps(body["more"]["resume"])))
+    else:
+        raise AssertionError("the walk did not end in 60 pages")
+    assert page[0] > 1, "canary: the walk takes pages"
+    assert seed_reads == [0]
+
+
+@pytest.mark.parametrize("positive,negative", [([DIE_HUB, OTHER_DIE_HUB], []), ([OTHER_DIE_HUB, DIE_HUB], []),
+                                               ([DIE_HUB], [OTHER_DIE_HUB])])
+def test_a_second_hub_seed_is_read_whatever_the_first_spent(positive, negative, monkeypatch):
+    """QA H2: two hub seeds shared one page's budget - the second read nothing and was refused, «names no node». Each
+    hub reads its step whole, up to the ceiling - here the first hub's whole count."""
+    monkeypatch.setitem(ledger_subgraph._declaration_facts, HAS_DIE, _facts({"has_die"}))
+    monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", 250)
+    body = _walk({"positive": positive, "negative": negative}, DIES, declaration=HAS_DIE, hops=1, edge_limit=20)
+    assert len(body["seeds"]) == 253
+
+
+def test_a_step_s_count_reads_one_far_node_past_the_fan_out_limit(monkeypatch):
+    """QA M1: counting a step read every far node of it - the question is only «more than fanout_limit». Each step is read
+    to fanout_limit + 1 far nodes, one end each (a far node said twice is one), and the pages are still the one walk."""
+    twice = ledger_subgraph.EvidenceAtom(**{**_atoms(("lot", "L", "has_wafer", "wafer", "W0"))[0].__dict__,
+                                            "id": str(uuid.UUID(int=99_999)),
+                                            "object_payload": {"type": "wafer", "keys": {"wafer": "W0"},
+                                                               "qualifiers": {"slot": "2"}}})
+    atoms = _atoms(*[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(10)],
+                   ("lot", "L", "made_by", "tool", "T0"), ("lot", "L", "made_by", "tool", "T1")) + [twice]
+    whole = _walk(LOT, atoms, declaration=PLAIN, hops=1, fanout_limit=2)
+    counted = []
+    read = ledger_subgraph.InMemoryEvidenceLookup.claims_for_entities
+
+    def spy(self, entities, direction, limit, **kwargs):
+        found = read(self, entities, direction, limit, **kwargs)
+        if kwargs.get("ends_only"):
+            counted.append((kwargs.get("per_step"), found[0]))
+        return found
+
+    monkeypatch.setattr(ledger_subgraph.InMemoryEvidenceLookup, "claims_for_entities", spy)
+    monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", 3)
+    pages = _paged(LOT, atoms, declaration=PLAIN, hops=1, fanout_limit=2)
+    assert counted, "canary: a read the budget cut counts its steps"
+    for per_step, ends in counted:
+        assert per_step == 3
+        far = defaultdict(set)
+        for _type, _keys, predicate, _kind, payload in ends:
+            far[predicate].add(json.dumps(payload["keys"], sort_keys=True))
+        assert far["has_wafer"] and all(len(nodes) <= 3 for nodes in far.values())
+        assert len([end for end in ends if end[2] == "has_wafer"]) == len(far["has_wafer"])
+    assert _applied(pages) == _applied([whole])
+
+
+def test_a_far_node_on_the_frontier_is_no_step_out_and_is_not_counted(monkeypatch):
+    """QA M1: a step read to fanout_limit + 1 far nodes counts only steps out - a far node the frontier holds is none (it
+    is walked between two near nodes), so it is left out of the read, or it would take a place and the step fold short."""
+    atoms = _atoms(*[("lot", "L", "made_by", "tool", "T%d" % t) for t in range(6)])
+    seeds = {"positive": [LOT, node("tool", "T0")], "negative": []}
+    whole = _walk(seeds, atoms, declaration=PLAIN, hops=1, fanout_limit=2)
+    assert any(item.get("count") == 5 for item in whole["nodes"]), "canary: T1..T5 fold, T0 is a seed"
+    monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", 3)
+    assert _applied(_paged(seeds, atoms, declaration=PLAIN, hops=1, fanout_limit=2)) == _applied([whole])
+
+
+def test_a_step_s_count_is_every_step_the_group_follows_not_the_opened_read_s(monkeypatch):
+    """QA L2: an opened step is read first - cut there, the near node's other steps are counted too, through the group's
+    follow (a near node is counted once; counted through the opened read's follow, its other step never was)."""
+    atoms = _atoms(*[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(5)],
+                   *[("lot", "L", "made_by", "tool", "T%d" % t) for t in range(10)])
+    whole = _walk(LOT, atoms, hops=1, fanout_limit=3, expand=[WAFERS])
+    monkeypatch.setattr(ledger_subgraph, "MAX_CLAIM_SCAN", 4)
+    pages = _paged(LOT, atoms, hops=1, fanout_limit=3, expand=[WAFERS])
+    assert len(pages) > 2, "canary: the opened read and the next are both cut"
+    assert _applied(pages) == _applied([whole])
+
+
+@pytest.mark.parametrize("forge", ["reread depth", "reread_at a number", "reread_at no instant",
+                                   "step count a word", "step row short"])
+def test_a_resume_cell_of_another_shape_is_refused_by_name(rows_declared, forge):
+    """QA L1: a resume cell of another shape was a TypeError three frames down - a 500. It is a refusal (the route's
+    422)."""
+    body = _walk(LOT, _rows_with_atoms(120, 60), declaration=ROWS_DECLARED, hops=3, fanout_limit=50)
+    for _ in range(20):
+        resume = body["more"]["resume"]
+        if resume is None or resume.get("reread"):
+            break
+        body = _walk(LOT, _rows_with_atoms(120, 60), declaration=ROWS_DECLARED, hops=3, fanout_limit=50,
+                     resume=json.loads(json.dumps(resume)))
+    assert resume and resume.get("reread") and resume.get("step_counts"), "canary: a resume with both cells"
+    resume = json.loads(json.dumps(resume))
+    if forge == "reread depth":
+        resume["reread"][0][1] = None
+    elif forge == "reread_at a number":
+        resume["reread_at"] = 5
+    elif forge == "reread_at no instant":
+        resume["reread_at"] = ["nope", "x"]
+    elif forge == "step count a word":
+        resume["step_counts"][0][4] = "many"
+    else:
+        resume["step_counts"] = [[0, "p"]]
+    with pytest.raises(ValueError, match="not a page this walk handed out"):
+        _walk(LOT, _rows_with_atoms(120, 60), declaration=ROWS_DECLARED, hops=3, fanout_limit=50, resume=resume)

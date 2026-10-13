@@ -379,6 +379,8 @@ def _packed(resume):
                 "row_edges": [[n(s), n(tg), p, w] for (s, tg, p), w in resume["row_edges"].items()]}),
             **({} if "reread" not in resume else {"reread": [[n(node_id), depth] for node_id, depth in resume["reread"]]}),
             **({} if "reread_at" not in resume else {"reread_at": resume["reread_at"]}),
+            **({} if "seeds" not in resume else {"seeds": {sign: [n(node_id) for node_id in resume["seeds"][sign]]
+                                                           for sign in ("positive", "negative")}}),
             **({} if "step_counts" not in resume else {"step_counts": [
                 [n(near), predicate, direction, far_type, count]
                 for (near, predicate, direction, far_type), count in resume["step_counts"].items()]}),
@@ -411,10 +413,12 @@ def _unpacked(resume):
                       "hubs": {mark[0]: list(mark[1:]) for mark in shown.get("hubs") or ()},
                       "edges": {mark[0]: list(mark[1:]) for mark in shown.get("edges") or ()}},
             "row_edges": {(ids[s], ids[tg], p): w for s, tg, p, w in resume.get("row_edges") or ()},
-            "reread": [[ids[i], depth] for i, depth in resume.get("reread") or ()],
-            "reread_at": resume.get("reread_at"),
-            "step_counts": {(ids[near], predicate, direction, far_type): count
+            "reread": [[ids[i], int(depth)] for i, depth in resume.get("reread") or ()],
+            "reread_at": _read_place(resume.get("reread_at")),
+            "step_counts": {(ids[near], predicate, direction, far_type): int(count)
                             for near, predicate, direction, far_type, count in resume.get("step_counts") or ()},
+            "seeds": (None if resume.get("seeds") is None else
+                      {sign: [ids[i] for i in resume["seeds"][sign]] for sign in ("positive", "negative")}),
             "cursor": cursor,
             "hubs": [[step_id, near, predicate, direction, far_type, depth,
                       [[ids[member], None if parent is None else ids[parent]] for member, parent in members]]
@@ -424,6 +428,17 @@ def _unpacked(resume):
                                        "arrived": {ids[node]: steps for node, steps in held["arrived"]},
                                        "kinds": held["kinds"]}
                       for seed, held in (resume.get("reach") or {}).items()}}
+
+
+def _read_place(at):
+    """A place a read stopped at, as a resume carries it - [instant, atom id] or None; anything else is no place this
+    walk handed out (QA L1: a TypeError three frames down answered 500)."""
+    if at is None:
+        return None
+    if not isinstance(at, list) or len(at) != 2 or not isinstance(at[1], str):
+        raise ValueError("a read's place is [instant, atom id]")
+    _parse_instant(at[0])
+    return at
 
 
 def _as_of_bound(instant):
@@ -595,6 +610,8 @@ _NAMES = {
 ARM_JOIN = {arm: text.format(f="f") for arm, text in _NAMES.items()}
 #: The far end's type, by the arm that reads the atom.
 _FAR_TYPE = {"outgoing": "e.object_payload->>'type'", "incoming": "e.subject_type"}
+#: ... and its keys.
+_FAR_KEYS = {"outgoing": "e.object_payload->'keys'", "incoming": "e.subject_keys"}
 
 
 def _skip(arm):
@@ -766,9 +783,12 @@ class SqlEvidenceLookup:
         return selected, (f"NOT {not_current}" if not_current and self.current_only else "")
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None, exclude=None, far=None, far_types=None, before=None, ends_only=False):
+                            follow=None, exclude=None, far=None, far_types=None, before=None, ends_only=False,
+                            per_step=None):
         """`ends_only`: not the atoms but their distinct (subject type, subject keys, predicate, object kind, object
         payload), uncut - a step's whole count, through THIS read's filters (QA F2: the fan-out limit is the step's).
+        `per_step`: with `ends_only`, one end per far node and at most this many far nodes per step (near node,
+        predicate, arm, far type) - «over the limit» asks no more (QA M1).
         `follow` narrows which predicates the walk fetches at all; `exclude` leaves some out -
         an opened bundle's predicate, already read first (총괄 11e5ea207). `far_types`: (`in` | `not_in`, bare
         types) of the far end (`_far_types`). `before`: (instant, atom id) - only the atoms after it in the read's own
@@ -819,8 +839,11 @@ class SqlEvidenceLookup:
             built = []
             for arm in ("outgoing", "incoming"):
                 if direction in (arm, "both"):
+                    step_cells = "" if per_step is None else (
+                        f", f.type AS near_type, f.keys AS near_keys, '{arm}' AS arm, "
+                        f"split_part({_FAR_TYPE[arm]}, '@', 1) AS far_type, {_FAR_KEYS[arm]} AS far_keys")
                     built.append(f"""
-                    SELECT {selected} FROM frontier f
+                    SELECT {selected}{step_cells} FROM frontier f
                     JOIN {self.relation} e
                       ON {ARM_JOIN[arm]}
                     {_where(follow_clause, extra_clause, current, _skip(arm), far and _far(arm, far[0]),
@@ -828,6 +851,18 @@ class SqlEvidenceLookup:
                 """)
             return " UNION ".join(built)
 
+        if ends_only and per_step is not None:
+            params["per_step"] = int(per_step)
+            return [tuple(row) for row in self._execute(f"""
+                {cte}
+                SELECT DISTINCT subject_type, subject_keys, predicate, object_kind, object_payload FROM (
+                    SELECT *, row_number() OVER (PARTITION BY near_type, near_keys, predicate, arm, far_type
+                                                 ORDER BY far_keys::text) AS place
+                    FROM (SELECT DISTINCT ON (near_type, near_keys, predicate, arm, far_type, far_keys) *
+                          FROM ({_arms(self._interval_clause(params))}) ends
+                          ORDER BY near_type, near_keys, predicate, arm, far_type, far_keys) one_per_far
+                ) ranked WHERE place <= %(per_step)s
+            """, params)], False
         if ends_only:
             return [tuple(row) for row in self._execute(f"""
                 {cte}
@@ -1015,7 +1050,8 @@ class InMemoryEvidenceLookup:
         return _DescribedSeeds(ids[:int(limit)], max(0, len(ids) - int(limit)))
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None, exclude=None, far=None, far_types=None, before=None, ends_only=False):
+                            follow=None, exclude=None, far=None, far_types=None, before=None, ends_only=False,
+                            per_step=None):
         ends = None if not far else {(t, _canonical(k)) for t, k in far[1]}
         far_mode = far and far[0]
         wanted = {(item[0], _canonical(item[1])): (item[2] if len(item) > 2 else {})
@@ -1041,10 +1077,14 @@ class InMemoryEvidenceLookup:
             payload = atom.object_payload or {}
             target = (str(payload.get("type")), _canonical(payload.get("keys") or {}))
             named = atom.object_kind == "entity_ref"
-            if ((direction in ("outgoing", "both") and subject in wanted
-                 and read("outgoing", subject, target if named else None, payload.get("type"), atom))
-                    or (direction in ("incoming", "both") and named and target in wanted
-                        and read("incoming", target, subject, atom.subject_type, atom))):
+            arms = [(arm, near, far_end) for arm, near, far_end, ok in (
+                ("outgoing", subject, target if named else None,
+                 direction in ("outgoing", "both") and subject in wanted
+                 and read("outgoing", subject, target if named else None, payload.get("type"), atom)),
+                ("incoming", target, subject,
+                 direction in ("incoming", "both") and named and target in wanted
+                 and read("incoming", target, subject, atom.subject_type, atom))) if ok]
+            if arms:
                 # Counted where it is skipped, so the census and the filter cannot come to
                 # disagree about which claims the interval left out.
                 if self._outside(atom):
@@ -1055,14 +1095,21 @@ class InMemoryEvidenceLookup:
                     if self.current_only:
                         continue
                     atom = replace(atom, not_current=True)
-                rows.append(atom)
-        if ends_only:                                   # `SqlEvidenceLookup`'s: distinct ends, uncut
-            seen = {}
-            for atom in rows:
+                rows.append((atom, arms))
+        if ends_only:                                   # `SqlEvidenceLookup`'s: distinct ends, uncut - or `per_step`
+            seen, steps = {}, defaultdict(dict)
+            for atom, arms in rows:
                 end = (atom.subject_type, atom.subject_keys, atom.predicate, atom.object_kind, atom.object_payload)
-                seen.setdefault(_canonical(list(end)), end)
+                if per_step is None:
+                    seen.setdefault(_canonical(list(end)), end)
+                for arm, near, far_end in arms if per_step is not None else ():
+                    far_type = _bare_name(str(far_end[0])) if far_end else None
+                    steps[(near, atom.predicate, arm, far_type)].setdefault(far_end and far_end[1], end)
+            for by_far in steps.values():
+                for far_keys in sorted(by_far, key=str)[:int(per_step)]:
+                    seen.setdefault(_canonical(list(by_far[far_keys])), by_far[far_keys])
             return list(seen.values()), False
-        return self._result(rows, limit)
+        return self._result([atom for atom, _arms in rows], limit)
 
     def _not_current(self, atom):
         """`SqlEvidenceLookup._not_current_clause` over the atoms held here - the same condition,
@@ -1773,8 +1820,9 @@ def _hub_view(visible, edges, folded, nodes, entities, seed_signs, shown, row_ed
 def _hub_seeds(lookup, seed_id, limit):
     """`seed_id` with each hub id in it read as the far nodes of the step it names (총괄 01a56c82d). ⚠️ THE STEP'S, every
     value: a hub's value belongs to the walk that drew it, and a walk from it has no other walk to ask.
-    🔴 Read through the walk's own lookup (as of its first page) and within its atom budget (QA F4). -> (seeds, atoms
-    read, whether the budget cut the read - said as a claims cut, QA F5)."""
+    🔴 Read ONCE, on a walk's first page, through its own lookup - each hub up to `limit` (QA H2: read again within
+    each page's budget, a continued walk stalled and a second hub read nothing, «names no node»). The walk carries what
+    this resolved in its resume (`seeds`). -> (seeds, atoms read, whether a read was cut - said as a claims cut, F5)."""
     spent = [0, False]
 
     def members(hub_id):
@@ -1782,10 +1830,10 @@ def _hub_seeds(lookup, seed_id, limit):
         near, predicate, direction, far_type = cells["near"], cells["predicate"], cells["direction"], cells["far_type"]
         nears = members(near) if hub_step(near) else [near]
         refs = [decode_node_id(item) for item in nears]
-        atoms, cut = lookup.claims_for_entities([(ref["type"], ref["keys"]) for ref in refs], direction,
-                                                max(limit - spent[0], 0), follow=[predicate])
+        atoms, cut = lookup.claims_for_entities([(ref["type"], ref["keys"]) for ref in refs], direction, limit,
+                                                follow=[predicate])
         spent[0] += len(atoms)
-        spent[1] = spent[1] or cut or limit - spent[0] <= 0
+        spent[1] = spent[1] or cut
         found = []
         for atom in atoms:
             if direction == "outgoing":
@@ -1799,7 +1847,7 @@ def _hub_seeds(lookup, seed_id, limit):
                 far = explorer.entity_id(atom.subject_type, atom.subject_keys)
             if far not in found:
                 found.append(far)
-        if not found:
+        if not found and not cut:
             raise ValueError(f"hub {hub_id!r} names no node - its step reaches nothing now")
         return found
 
@@ -2914,7 +2962,13 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         as_of = _parse_instant(resume["as_of"])
         lookup = copy.copy(lookup)
         lookup.recorded_before = _as_of_bound(as_of)
-    seed_id, seed_hub_read, seed_hub_cut = _hub_seeds(lookup, seed_id, claim_limit)
+    given_seed = seed_id
+    if resume is not None and resume["seeds"] is not None:
+        seed_id, seed_hub_read, seed_hub_cut = resume["seeds"], 0, False     # resolved on the first page (QA H2)
+    else:
+        seed_id, seed_hub_read, seed_hub_cut = _hub_seeds(lookup, seed_id, MAX_CLAIM_SCAN)
+    #: a hub id seed as it resolved - carried in the resume, so no page after reads it again (QA H2)
+    resolved_seeds = None if seed_id is given_seed else seed_id
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
@@ -2992,7 +3046,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: nodes that have spent the node budget -- see `carried` below
     budgeted = 0
     budgeted_edges = 0
-    claims_scanned = seed_hub_read                      # a hub id seed's read spends the page's atoms (QA F4)
+    claims_scanned = seed_hub_read                      # a hub id seed's read spends its first page's atoms
     actions_scanned = 0
 
     #: 🔴 THE BUDGET COUNTS WHAT THE ANSWER SHOWS: every node without `collect`, the collected
@@ -3393,11 +3447,17 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
     def _count_steps(entities, read_follow, read_exclude, depth, frontier_entities):
         """QA F2 (lead 0e24891ce): the steps of a read the budget cut, or one a page before began, counted whole - once,
-        through the read's own filters (`ends_only`) and `_step`'s own judgement - so «over fanout_limit» is the step's."""
+        through the read's own filters (`ends_only`) and `_step`'s own judgement - so «over fanout_limit» is the step's.
+        Each step is read to `fanout_limit + 1` far nodes (QA M1): `_step` passes a step's far nodes all or none, but
+        for a far node on this frontier (not a step out - left out of the read) and the seed's keys (`follow_keys`,
+        judged per far node - read whole)."""
         from types import SimpleNamespace
 
+        capped = {} if seed_key_sets else {
+            "per_step": fanout_limit + 1,
+            "far": ("not_in", [(refs[node_id]["type"], refs[node_id]["keys"]) for node_id in sorted(frontier_entities)])}
         ends = lookup.claims_for_entities(entities, direction, 0, follow=read_follow, ends_only=True,
-                                          **({"exclude": read_exclude} if read_exclude else {}))[0]
+                                          **({"exclude": read_exclude} if read_exclude else {}), **capped)[0]
         far_of = defaultdict(set)
         for subject_type, subject_keys, predicate, object_kind, object_payload in ends:
             step = _step(SimpleNamespace(subject_type=subject_type, subject_keys=subject_keys, predicate=predicate,
@@ -3566,7 +3626,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         remaining = claim_limit - claims_scanned
         if remaining <= 0:
             claim_cut = True
-            _pause({"depth": depth}, read_whole)
+            # the page's first read spent it all: the place it was handed is kept, not read again from the depth's
+            # start (QA H1 - a row read again left its hub again, a cycle of more than one page)
+            _pause(dict(cursor) if at_cursor else {"depth": depth}, read_whole)
             break
         entity_refs = [refs[item] for item in frontier_ids
                        if refs[item]["kind"] == "entity"]
@@ -3967,6 +4029,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             more["resume"].pop("reached", None)
             more["resume"].pop("hubs", None)
         more["resume"]["reach"] = reached              # where the next page's ranking goes on from
+        if resolved_seeds is not None:
+            more["resume"]["seeds"] = resolved_seeds
         more["resume"] = _packed(more["resume"])
         # 🔴 A PAGE ALWAYS MOVES ON (QA F1): one that hands out the very state it was given would be paged forever (the
         # reading-again once did: atoms read and thrown back, the same rows pending). The walk ends here and says so.

@@ -5,13 +5,16 @@
 > ```
 > 무엇     어휘 술어에 hub: true 를 적으면 걷기가 그 걸음의 먼 노드를 허브 하나(머리 «<타입> ×N» + 답의 tables 행)로 접는다 — 하나여도 ×1
 >          화면이 보내는 fanout_limit 을 «걸음 전체 수»로 넘는 걸음도 같은 허브. 이어 걷기의 다음 쪽은 바뀐 것만(left · moved · edges_pending)
-> 켜는 법   ledger_config.json 의 vocabulary.<술어>.hub: true — 원자가 «저장된» 이름에. 역 짝의 다른 이름에 적으면 저장 때 거절 문장이 이름을 알려 줌
+> 켜는 법   ledger_config.json 의 vocabulary.<술어>.hub: true — 원자가 «저장된» 이름에. 역 짝의 다른 이름에 적으면, 어느 소스가
+>          저장된 이름으로 쓸 때 저장이 거절되고 문장이 그 이름을 알려 줌 — 쓰는 소스가 없으면 거절 없이 아무것도 안 접힘
 > 끄는 법   그 hub 칸을 지우거나 false — 저장 뒤 시스템 리로드(POST /admin/reload-configs)부터, 재기동 없이(걷기 프로세스도 새로 뜸)
 >          자동 접기는 화면의 fan-out 칸을 비우면 안 함
 > 볼 것     걷기 화면에서 허브 머리 «wafer ×100» 과 그 표 · 펼치기(expand)로 다시 노드
 > 답의 뜻   truncated.reason 에 stalled -> 이어 걷기가 받은 상태를 그대로 다시 내주게 되어 멈춘 것 — 결함이다, 그 걷기의 seed 와 함께 알려 주세요
->          truncated.reason 에 claims -> 쪽의 원자 예산에 닿음, 다음 쪽이 그 자리에서 잇는다(허브 id 씨앗을 읽다 잘려도 같은 말)
+>          truncated.reason 에 claims -> 쪽의 원자 예산에 닿음, 다음 쪽이 그 자리에서 잇는다
+>             허브 id 씨앗은 첫 쪽에 한 번 읽는다 — 첫 쪽의 claims 는 씨앗 읽기가 허브마다 상한(원자 6,000)에 닿은 것일 수 있다
 >          422 «resume is not a page this walk handed out» -> 받은 more.resume 을 그대로 돌려보내지 않은 것
+>          이어 걷기에서 500 -> 결함이다 — 그 쪽의 more.resume 과 seed 를 같이 알려 주세요
 > 재기동    서버만. 원장 · 소급 없음(hub 칸은 걷기만 읽어 소스 지문이 안 움직인다)
 > ```
 
