@@ -128,6 +128,16 @@ function suite(F) {
   eq('R17 + Column\'s routes: what the rows take in this walk, either way, step by step',
     F.routesFrom(ev, ROWS, 2).map((r) => [r.words.join(' · '), r.to.join()]),
     [['of ← measurement', 'measurement'], ['of ← measurement · measured ← wafer', 'wafer'], ['of ← measurement · of → quantity', 'quantity']]);
+  // Four steps (lead 10-13, the owner's bonded wafer -> die -> core die -> core wafer -> measures); past 60, how many more.
+  const chain = F.indexGraph({ nodes: [node('bw', 'wafer'), node('d', 'die'), node('cd', 'die'), node('cw', 'wafer'), node('q', 'quantity')],
+    edges: [edge('d', 'in_wafer', 'bw', {}), edge('d', 'bonded_from', 'cd', {}), edge('cd', 'in_wafer', 'cw', {}), edge('cw', 'measures', 'q', { value: 1 })] });
+  const four = F.routesFrom(chain, ['bw']).map((r) => r.words.join(' · '));
+  const fan = F.indexGraph({ nodes: [node('r', 'row'), ...Array.from({ length: 70 }, (_, i) => node(`f${i}`, 'far'))],
+    edges: Array.from({ length: 70 }, (_, i) => edge('r', `p${String(i).padStart(2, '0')}`, `f${i}`, {})) });
+  const fanned = F.routesFrom(fan, ['r'], 1);
+  eq('R17b + Column reaches four steps - the bonded wafer to its core wafer\'s measures; a list of 70 shows 60 and says 10 more',
+    [four.includes('in_wafer ← die · bonded_from → die · in_wafer → wafer · measures → quantity'), fanned.length, fanned.more, fanned.moreFloor],
+    [true, 60, 10, false]);
   eq('R18 + Column\'s values at a route\'s end: the far node\'s attribute and its name - the event scheme\'s value',
     F.valuesAt(ev, ROWS, [{ predicate: 'of', direction: 'incoming' }]).map((v) => `${v.on} ${v.name}`), ['node value', 'label name']);
   eq('R19 a column judged once: a numeral in a string is a number, a time a string; a delta of numerals in strings their difference (lead 10-11: one answer to «is this a number»)',
@@ -222,6 +232,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, "${step.direction === 'incoming' ? '←' : '→'}", '→') },
   { id: 'FM11', what: 'differs read off the values only', catches: 'R15',
     mutate: (t) => swap(t, 'differs: reached.some((r) => r !== reached[0]) || ', 'differs: ') },
+  { id: 'FM13', what: 'routes three steps at most again (the code before)', catches: 'R17b', mutate: (t) => swap(t, 'export function routesFrom(index, rows, limit = 4, most = 60) {', 'export function routesFrom(index, rows, limit = 3, most = 60) {') },
+  { id: 'FM14', what: 'the routes past the list said none', catches: 'R17b', mutate: (t) => swap(t, '  shown.more = out.length - shown.length;', '  shown.more = 0;') },
   { id: 'FM12', what: 'the ways cap never said', catches: 'R9', mutate: (t) => swap(t, 'return { ends, more: total > ends.length, total };', 'return { ends, more: false, total };') },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => suite((await loadWithProbe(SUBJECT, { mutate: m.mutate })).module),

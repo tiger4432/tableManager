@@ -1546,12 +1546,26 @@ export function boot(doc, host, deps) {
     const route = routes[state.pickedRoute] || null;
     const ways = el(doc, 'select', 'wk-select');
     ways.append(el(doc, 'option', '', routes.length ? 'Route' : 'No route from these rows'));
+    // Grouped by how many steps (lead 10-13: four now); past the list's end, how many more.
+    const groups = new Map();
     routes.forEach((r, i) => {
+      const k = r.steps.length;
+      if (!groups.has(k)) {
+        const g = el(doc, 'optgroup');
+        g.setAttribute('label', unitText(k, 'step'));
+        groups.set(k, g);
+        ways.append(g);
+      }
       const o = el(doc, 'option', '', r.words.join(' · '));
       o.value = String(i);
       if (i === state.pickedRoute) o.selected = true;
-      ways.append(o);
+      groups.get(k).append(o);
     });
+    if (routes.more) {
+      const o = el(doc, 'option', 'wk-more-routes', `${routes.more.toLocaleString('en-US')}${routes.moreFloor ? '+' : ''} more routes`);
+      o.disabled = true;
+      ways.append(o);
+    }
     ways.addEventListener('change', () => { state.pickedRoute = ways.value === '' ? -1 : Number(ways.value); render(); });
     box.append(ways);
     if (route) {
