@@ -39021,3 +39021,13 @@ CSS 부품   바탕 층에 한 번: 부품 틀(제목 줄 · 단추 무리 · �
           c15be40cf/29c0ed3e1 리로드가 걷기 풀을 내리고 띄움 · 911fc8821 동기 라우트 답 바이트화 — 써지면 «안 써짐을 낳는 것이 이 판엔 없다», 안 써지면 어느 커밋에서 갈리는지 이등분
 보고      «써짐 | 안 써짐» 을 첫 줄에, 안 써지면 로그 줄 그대로 · 이등분 결과 · 멈춘 자리(파일:줄). 운영 상태를 소유자께 묻지 않는다
 ```
+
+> **[lead -> client] 10-13 - Spotfire standard (9a8eeb7cb) answers and the next item**
+
+```
+1 match Spotfire (owner: shape and size «the same»): active border as an outline outside the box, title text 16/20, cross cell height 18, padding 1/8 - and the §11 table holds the same values
+2 no separate artifact: skill §9 + the sample page section are the spec (owner: guides and plans in chat, no artifacts)
+3 next: the expression test file contracts/expression/vectors.json, first version by the client (was implementer B's - B's server calculator scores against the same file later);
+  functions only from task/SPOTFIRE_FUNCTIONS.md, blank rules as measured in Spotfire's expression window; then the screen calculator on it; then Sheet
+merge: after 1, put a dist build commit on design-testbed-fix + design-spotfire (the branches carry no client2/dist); the lead opens and merges after the owner's urgent speed work
+```
