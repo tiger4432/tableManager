@@ -242,6 +242,10 @@ def fixture_world(pg_engine, config, monkeypatch):
         assert conn.execute(text("SELECT count(*) FROM pg_namespace WHERE nspname = :s"),
                             {"s": PG_TEST_SCHEMA}).scalar() == 1
     monkeypatch.setattr(database_module, "engine", pg_engine)
+    # the product engine is this test's now, so a pooled body would go to a pool process - which reads the server's
+    # engine and data root, not this test's worlds (총괄 e570dcda5 ㄴ): the bodies run here
+    from runtime import process_pool
+    monkeypatch.setattr(process_pool, "_settings", lambda: {"walk_processes": 0, "grid_processes": 0})
     monkeypatch.setattr(explorer_router, "_services", {})
     sample = _sample("table_config.json.sample")
     declared = {name: sample[name] for name in (*TABLES, VIEW)}
@@ -749,6 +753,17 @@ def test_a_world_copied_starts_as_that_declaration_once_and_is_walked_before_it_
     assert {w for w, _, _ in _walk(world, [C, DEFAULT], "wafer", {"wafer": "W1"})} == {DEFAULT}
 
 
+def _counted(main, view, db, **world):
+    """A grid count of the table whole is the worker's (소유자 ㄱ · 총괄 67e5e9ccd: never counted in the request) - asked
+    until it has counted; a request waits for it half a second, a first count on a slow box takes longer."""
+    for _ in range(100):
+        got = main.get_table_data_count(view, db=db, **world)
+        if not got["counting"]:
+            return got["total"]
+        time.sleep(0.05)
+    return got["total"]
+
+
 @pytest.mark.pg
 def test_the_grid_reads_the_atom_view_of_the_world_it_names(world):
     import main
@@ -765,15 +780,15 @@ def test_the_grid_reads_the_atom_view_of_the_world_it_names(world):
     in_default = count(VIEW)
     assert in_a and in_default and in_a != in_default
     db = world["db"]
-    assert main.get_table_data_count(VIEW, world=A, db=db)["total"] == in_a
+    assert _counted(main, VIEW, db, world=A) == in_a
     page = json.loads(main.get_table_data(VIEW, order_by="atom_id", world=A, db=db).body)
     assert len(page["data"]) == in_a
-    assert main.get_table_data_count(VIEW, db=db)["total"] == in_default    # no world: operating
+    assert _counted(main, VIEW, db) == in_default    # no world: operating
     with pytest.raises(HTTPException) as refused:
         main.get_table_data_count(VIEW, world="nope", db=db)
     assert refused.value.status_code == 404 and refused.value.detail["reason"] == "world_unknown"
     _operate(world, A)
-    assert main.get_table_data_count(VIEW, db=db)["total"] == in_a
+    assert _counted(main, VIEW, db) == in_a
     listed = main.list_tables()
     assert (listed["operating"], A in listed["worlds"], listed["per_world"]) == (A, True, [VIEW])
 

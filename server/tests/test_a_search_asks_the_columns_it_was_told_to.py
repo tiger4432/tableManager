@@ -164,7 +164,7 @@ def test_the_timing_line_carries_the_arm_count_and_never_the_term():
 
     import main
 
-    body = inspect.getsource(main.get_table_data)
+    body = inspect.getsource(main.grid_page)
     assert "q={'set/' + str(search_scope.get('arms', 0)) if q else '-'}" in body, body[-1400:]
     assert "scope_report=search_scope" in body
     assert "q={q}" not in body
