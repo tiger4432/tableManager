@@ -5,7 +5,7 @@
 .tb-head { display: flex; align-items: center; gap: 10px; padding: 0 var(--sf-pad); background: var(--sf-bg); color: var(--sf-text-2); }
 .tb-head__title { font-weight: 500; color: var(--sf-text); }
 .tb-head__sp { flex: 1; }
-.tb-page .rb-board { min-height: 0; background: var(--sf-page); gap: var(--sf-gap); }
+.tb-page .rb-board { min-height: 0; background: var(--sf-page); }
 .tb-page .rb-panel { overflow: hidden; }
 
 /* scatter: Y tray · plot · legend / X tray */

@@ -1,6 +1,6 @@
 // THE TESTBED PAGE (lead aca803a7a ㄴ): the R&D board's frame - a layout of declarations, one marking store - holding
 // the visual part's kinds, the basket, the status bar, the filters panel and the properties panel. The layout is data;
-// Save keeps the visuals' declarations and a reopen draws the same picture from them.
+// Save keeps the tree and the visuals' declarations and a reopen draws the same picture from them.
 
 import * as echarts from 'echarts/core';
 import { ScatterChart } from 'echarts/charts';
@@ -29,19 +29,23 @@ export const MARKINGS = Object.freeze([{ name: 'marking:start', label: 'Start' }
 export const FILTERS = Object.freeze([{ name: 'filter:1', label: 'Filter' }]);
 const SAVED = 'testbed:visuals';
 
+// The page (lead 10-13, Spotfire's): the visualization area is a split tree of the visuals; the start row, the status
+// bar, the properties and the filters are docked chrome around it (rnd_board/grid_shell.js).
 export const LAYOUT = Object.freeze({
-  columns: 'minmax(0, 1fr) minmax(0, 1fr) 252px', rows: '44px minmax(0, 1fr) minmax(0, 1fr) 32px', gap: '2px',
+  gap: 'var(--sf-gap)',
   panels: [
-    { id: 'start', part: 'start', at: { column: 1, row: 1, columnSpan: 2 }, writes: 'marking:start' },
-    { id: 'scatter-1', part: 'visual', kind: 'scatter', at: { column: 1, row: 2, rowSpan: 2 }, row: null,
+    { id: 'start', part: 'start', dock: 'top', size: '44px', writes: 'marking:start' },
+    { id: 'scatter-1', part: 'visual', kind: 'scatter', row: null,
       start: { marking: 'marking:start' }, system: 'filter:1', filter: [], encode: {}, reads: 'marking:pick', writes: 'marking:pick' },
-    { id: 'cross-1', part: 'visual', kind: 'crossTable', at: { column: 2, row: 2 }, row: null,
+    { id: 'cross-1', part: 'visual', kind: 'crossTable', row: null,
       start: { marking: 'marking:start' }, system: 'filter:1', filter: [], encode: {}, reads: 'marking:pick', writes: 'marking:pick' },
-    { id: 'basket', part: 'basket', at: { column: 2, row: 3 }, reads: 'marking:pick', writes: 'marking:pick', title: 'Marked' },
-    { id: 'status', part: 'status', at: { column: 1, row: 4, columnSpan: 2 } },
-    { id: 'properties', part: 'properties', at: { column: 3, row: 1, rowSpan: 2 } },
-    { id: 'filters', part: 'filters', at: { column: 3, row: 3, rowSpan: 2 }, title: 'Filters', options: { name: 'filter:1' } },
+    { id: 'basket', part: 'basket', reads: 'marking:pick', writes: 'marking:pick', title: 'Marked' },
+    { id: 'status', part: 'status', dock: 'bottom', size: 'var(--sf-status-h)' },
+    { id: 'properties', part: 'properties', dock: 'right', size: '252px' },
+    { id: 'filters', part: 'filters', dock: 'right', size: '252px', title: 'Filters', options: { name: 'filter:1' } },
   ],
+  root: { split: 'row', children: [{ id: 'scatter-1', size: 1 },
+    { split: 'column', size: 1, children: [{ id: 'cross-1', size: 1 }, { id: 'basket', size: 1 }] }] },
 });
 
 /** Whether a slot's value is one-valued by declaration - its last step's predicate declared cardinality one. */
@@ -50,15 +54,20 @@ export function oneValuedBy(predicates) {
   return (slot) => Boolean(slot && slot.steps && slot.steps.length && one.has(slot.steps[slot.steps.length - 1].predicate));
 }
 
-/** The layout with the saved visuals laid over it (by id) and every visual's empty row type the first declared one. */
+/**
+ * The layout with a save laid over it, every visual's empty row type the first declared one. A save is { root, visuals }:
+ * the tree and each visual's declaration, the docked chrome staying the layout's; an older one - the visuals by id, an
+ * array - lays its visuals over the layout's own tree.
+ */
 export function laidOut(layout, saved, entities) {
-  const byId = new Map((saved || []).map((d) => [d.id, d]));
   const first = ((entities || [])[0] || {}).type || null;
-  return { ...layout, panels: layout.panels.map((p) => {
-    // A saved entry is a declaration; the page's dependencies (`options`) are the layout's, never the saved one's.
-    const d = byId.has(p.id) ? { ...p, ...byId.get(p.id), at: p.at, part: p.part, options: p.options } : p;
-    return d.part === 'visual' && !d.row ? { ...d, row: first } : d;
-  }) };
+  const typed = (d) => (d.part === 'visual' && !d.row ? { ...d, row: first } : d);
+  if (saved && !Array.isArray(saved) && saved.root !== undefined) {
+    return { ...layout, root: saved.root, panels: [...layout.panels.filter((p) => p.dock), ...(saved.visuals || []).map(typed)] };
+  }
+  const byId = new Map((saved || []).map((d) => [d.id, d]));
+  // A saved entry is a declaration; the page's dependencies (`options`) are the layout's, never the saved one's.
+  return { ...layout, panels: layout.panels.map((p) => typed(byId.has(p.id) ? { ...p, ...byId.get(p.id), part: p.part, options: p.options } : p)) };
 }
 
 /** Every entry its page dependencies (the board's bindLoaders, for this page): its own options win. */
@@ -109,9 +118,14 @@ export async function boot(deps) {
   shell.render(bound(layout, shared));
   const firstVisual = layout.panels.find((p) => p.part === 'visual');
   if (firstVisual) active.set('active', firstVisual.id);
-  /** The visuals' declarations as they stand - what Save writes and the next boot lays over the layout. */
-  const declarations = () => layout.panels.filter((p) => p.part === 'visual').map((p) => shell.partOf(p.id).declaration());
-  const save = () => { const all = declarations(); try { if (storage) storage.setItem(SAVED, JSON.stringify(all)); } catch (e) { /* not kept */ } return all; };
+  /** The visuals' declarations as they stand, in the tree as it stands. */
+  const declarations = () => shell.layoutNow().panels.filter((p) => p.part === 'visual');
+  /** What Save writes and the next boot lays over the layout: the tree and the visuals. */
+  const save = () => {
+    const kept = { root: shell.layoutNow().root, visuals: declarations() };
+    try { if (storage) storage.setItem(SAVED, JSON.stringify(kept)); } catch (e) { /* not kept */ }
+    return kept;
+  };
   if (typeof doc.addEventListener === 'function') {
     doc.addEventListener('mousedown', (event) => {
       if (pickerHost.style.display === 'none') return;

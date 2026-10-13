@@ -74,7 +74,8 @@ export async function loadBoardModules(mutate = {}) {
     .replaceAll("'./api.js'", `'${apiUrl}'`)
     .replaceAll("'../map2/painter.js'", `'${srcUrl('map2/painter.js')}'`)
     .replaceAll("'../map2/seating.js'", `'${srcUrl('map2/seating.js')}'`));
-  const shellUrl = moduleUrl(read('grid_shell.js'));
+  // The shell's tree edits (lead 10-13) are not under mutation here: the real file.
+  const shellUrl = moduleUrl(read('grid_shell.js').replaceAll("'./split_tree.js'", `'${srcUrl('rnd_board/split_tree.js')}'`));
   const interUrl = moduleUrl(read('marking_intersection.js')
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
   // Round 2's parts are imported by `main.js` too, so they have to be rewired here or the
