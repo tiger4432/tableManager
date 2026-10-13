@@ -628,7 +628,7 @@ async function runChecks(src, { strict = true } = {}) {
     capped.body = { ...capped.body, count: { total: 10000, capped: true, counted_at: null, count_seconds: null, counting: false } };
     const env = await build(src, { table: 'bonding_map', answers: [capped] });
     await env.sandbox.populateValidDieRefList();
-    r.vdCappedTitle = env.el.validDieRefKey.title.includes('10,000+개 중');
+    r.vdCappedTitle = env.el.validDieRefKey.title.includes('of 10,000+ registered maps');
     if (strict) check('past the count cap the population says 10,000+, not 10000', r.vdCappedTitle, true);
   }
 
@@ -1395,10 +1395,10 @@ const MUTATIONS = [
     // right reason. A mutation that does not mutate proves nothing; this one really silences
     // the branch and leaves the original call unreachable.
     find: `    markSuggestState(input, '',
-      \`\${table}에 등록된 맵이 아직 없습니다`,
+      \`No map registered on \${table} yet`,
     repl: `    markSuggestState(input, '', '');
     if (false) markSuggestState(input, '',
-      \`\${table}에 등록된 맵이 아직 없습니다`,
+      \`No map registered on \${table} yet`,
     breaks: '"genuinely zero" is distinguishable from a broken control',
   },
 
