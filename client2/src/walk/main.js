@@ -91,6 +91,7 @@ const MORE = 'More';
 const MORE_ON = 'More ▸';
 const ALL_REACHED = 'All reached';
 const MORE_TO_WALK = 'more to walk';
+const WALK_AGAIN = 'Walk again';
 const AT_SERVER_LIMIT = 'at the server limit';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
@@ -493,7 +494,10 @@ export function boot(doc, host, deps) {
     render();
     const res = await walk(asked);
     if (base !== answerAt(at).result) return;   // walked over meanwhile
-    adding = res && res.ok ? null : { at, text: `${FAILED} · ${(res && res.message) || UNKNOWN}` };
+    // A continued page the server no longer holds (lead eb1ae8c9f): its line as the server says it and «Walk again» - the
+    // first page of the same question, once; the pages drawn stay as they are. Nothing walks again by itself.
+    adding = res && res.ok ? null : res && res.expired ? { at, text: res.message, again: { ...asked, resume: undefined } }
+      : { at, text: `${FAILED} · ${(res && res.message) || UNKNOWN}` };
     if (res && res.ok) land(res);
     render();
   }
@@ -1903,7 +1907,9 @@ export function boot(doc, host, deps) {
           ...(r.more.resume ? [MORE_TO_WALK] : [])].join(' · '));
         const go = el(doc, 'button', 'wk-next-edge wk-more', MORE_ON);
         go.type = 'button';
-        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);
+        // Expired (lead eb1ae8c9f): the resume is gone from the server - off while its line stands; Walk again is the way.
+        const gone = adding && adding.at === state.at && adding.again ? adding.text : '';
+        setDisabledReason(go, r.more.resume ? gone : ALL_REACHED);
         go.addEventListener('click', () => { if (r.more.resume) walkResume(); });
         line.append(go);
         box.append(line);
@@ -1920,7 +1926,17 @@ export function boot(doc, host, deps) {
         }
         box.append(cut);
       }
-      if (adding && adding.at === state.at) box.append(el(doc, 'div', adding.text === RUNNING ? 'wk-note' : 'wk-fail', adding.text));
+      if (adding && adding.at === state.at) {
+        const said = el(doc, 'div', adding.text === RUNNING ? 'wk-note' : 'wk-fail', adding.text);
+        if (adding.again) {
+          const again = el(doc, 'button', 'wk-next-edge wk-more', WALK_AGAIN);
+          again.type = 'button';
+          const ask = adding.again;
+          again.addEventListener('click', () => walkMore({ asked: ask }));
+          said.append(again);
+        }
+        box.append(said);
+      }
       // 🔴 타입 분포 — 「collect 가 «먹었나»」가 «눈에» 보이는 자리입니다. ⚠️ 거르지 않고 세기만.
       if (r.nodes.length) {
         const byType = new Map();

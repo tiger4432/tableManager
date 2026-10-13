@@ -370,9 +370,13 @@ const countReached = (kinds) => ({ a: kinds.filter((k) => k === 'a').length, ab:
 export function mergeWalks(a, b) {
   const once = (list) => [...new Map(list.map((x) => [x.id, x])).values()];
   const ranked = (w) => ((w && w.propagation) || {}).ranked || [];
+  // A continued page's top set is a difference (implementer A d5df12352): top = (top - top_set_left) | top_set.
+  const { top_set_left: left, ...own } = a.propagation || {};
+  const top = (w) => ((w && w.propagation) || {}).top_set || [];
+  const topSet = Array.isArray(left) ? { top_set: [...new Set([...top(b).filter((id) => !left.includes(id)), ...top(a)])] } : {};
   return { ...a, nodes: once([...(b.nodes || []), ...(a.nodes || [])]), edges: once([...(b.edges || []), ...(a.edges || [])]),
     ...(a.propagation || b.propagation
-      ? { propagation: { ...(b.propagation || {}), ...(a.propagation || {}), ranked: once([...ranked(b), ...ranked(a)]) } } : {}) };
+      ? { propagation: { ...(b.propagation || {}), ...own, ranked: once([...ranked(b), ...ranked(a)]), ...topSet } } : {}) };
 }
 
 /** The server's most for node_limit (ledger_subgraph.MAX_NODE_LIMIT, the route's `le`). */

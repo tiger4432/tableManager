@@ -1946,6 +1946,10 @@ function refusalSentence(body, status, fallback = `Walk failed (${status})`) {
  *    안 실으면 서버 기본값이 답하고, 그건 「이 값을 안 골랐다」의 «정직한» 표현입니다.
  *    ⛔ 여기서 기본값을 «지어내지» 마십시오 -- 그 순간 두 번째 기본값 저자가 생깁니다.
  */
+/** A continued walk the server no longer holds (implementer A d5df12352): 410 walk_expired - its first page can be asked
+ *  again, its pages are gone from the server. */
+const walkExpired = (got) => got.status === 410 && Boolean(got.detail && got.detail.detail && got.detail.detail.reason === 'walk_expired');
+
 export function createWalkBoxWalk(deps) {
   const { apiBase, fetchImpl } = deps || {};
   const doFetch = fetchImpl || fetch;
@@ -1985,7 +1989,7 @@ export function createWalkBoxWalk(deps) {
         fanout_limit: fanoutLimit || undefined, expand, aux, resume,
       });
       if (!got.ok || !got.body) {
-        return { ok: false, message: refusalSentence(got.detail, got.status) };
+        return { ok: false, message: refusalSentence(got.detail, got.status), expired: walkExpired(got) };
       }
       const body = got.body;
       // 🔴 여기서 «거르지 않습니다». 거르는 것은 walk 이 할 일이고, 부품이 받은 것을
