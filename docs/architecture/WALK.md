@@ -363,6 +363,9 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
           같은 질문만(다르면 422 — worlds · since · until · current_only 포함)
           프로세스마다 walk_live_walks(4, 걷기 수) · walk_live_minutes(10) — 프로세스 안 시계가 30 초마다 쓸어 감
           넘으면 가장 오래 안 쓴 걷기부터 · 리로드(그 프로세스의 선언 다시 읽기)는 멈춘 걷기를 다 reloaded 로
+          walk_live_nodes(60,000) — 멈춘 걷기들이 함께 쥐는 노드 수 상한. 넘으면 가장 오래 안 쓴 걷기부터
+          («kept walks in this process hold N nodes - the oldest was let go») — 기본값은 노드당 9.6 KB 로 프로세스당 약 600 MB
+          (121 씨앗 쪽 25: 앞 열쇠까지 198 MB · 노드 20,666, 이 박스) · 개수 · 노드 둘 다 걷는 중 · 가장 새 걷기는 안 민다
           표 설정 저장도 걷기 프로세스를 바꾼다(recycle) — 그때 멈춘 걷기는 전부 reloaded
           ⚠️ 쪽이 시한(walk_timed_out)을 넘으면 그 프로세스를 내린다 — 그 프로세스가 쥔 다른 걷기도 process ended
 만료      410 {reason: walk_expired, why, message} — why 넷: reloaded(리로드가 걷기 프로세스를 바꿈) · restarted · expired · process ended

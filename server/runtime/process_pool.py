@@ -34,6 +34,10 @@ DEFAULT_WAIT = 120
 #: recently used goes first.
 LIVE_SETTING, LIVE_DEFAULT = "walk_live_walks", 4
 LIVE_MINUTES_SETTING, LIVE_MINUTES_DEFAULT = "walk_live_minutes", 10
+#: How many nodes the walks one process keeps may hold together (총괄 10-13): the count alone let four 121-seed walks hold
+#: 1.6 GB+. 60,000 ~ 600 MB a process at 9.6 KB a node - this box's largest measured (121 seeds, page 25: 198 MB with the
+#: key before, 20,666 nodes; one seed 3.7 KB a node) - WALK.md «이어 걷기».
+LIVE_NODES_SETTING, LIVE_NODES_DEFAULT = "walk_live_nodes", 60_000
 #: Which server start a kept key was made under - set once in the server; every pool process it starts inherits it.
 BOOT_ENV = "ASSY_WALK_BOOT"
 os.environ.setdefault(BOOT_ENV, uuid.uuid4().hex[:12])
@@ -97,6 +101,16 @@ def live_walks(settings=None):
         return value
     _say_once(LIVE_SETTING, value, str(LIVE_DEFAULT))
     return LIVE_DEFAULT
+
+
+def live_nodes(settings=None):
+    """How many nodes the paused walks of one process may hold together - a whole number from 1."""
+    settings = _settings() if settings is None else settings
+    value = settings.get(LIVE_NODES_SETTING, LIVE_NODES_DEFAULT)
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        return value
+    _say_once(LIVE_NODES_SETTING, value, str(LIVE_NODES_DEFAULT))
+    return LIVE_NODES_DEFAULT
 
 
 def live_minutes(settings=None):

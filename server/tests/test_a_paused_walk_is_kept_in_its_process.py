@@ -199,6 +199,27 @@ def test_past_the_count_a_walk_being_walked_and_the_newest_stay(declared, cut, m
     assert c in ledger_subgraph._KEPT and not {a, b} & set(ledger_subgraph._KEPT)
 
 
+def test_past_the_node_bound_the_least_recently_used_walk_goes(declared, cut, monkeypatch):
+    a = _first(declared)["more"]["resume"]["walk"]
+    held = ledger_subgraph._WALKS[ledger_subgraph._KEPT[a]["walk"]]["nodes"]
+    state = ledger_subgraph._KEPT[a]["state"]
+    assert held == len(state["built"]) + len(state["seen"]) > 0, "canary: a walk holds its newest page's nodes"
+    monkeypatch.setattr(process_pool, "live_nodes", lambda settings=None: held + 1)
+    b = _first(declared)["more"]["resume"]["walk"]
+    with pytest.raises(ledger_subgraph.WalkExpired) as gone:
+        paged.walk(declared, paged.ATOMS, {"walk": a})
+    assert (gone.value.why, gone.value.said) == (
+        "expired", "kept walks in this process hold %d nodes - the oldest was let go" % (2 * held))
+    assert b in ledger_subgraph._KEPT, "the newest stays"
+
+
+@pytest.mark.parametrize("value, read", [(60_000, 60_000), (1, 1), (0, 60_000), (2.5, 60_000), (True, 60_000),
+                                         ("9", 60_000)])
+def test_the_node_bound_reads_a_whole_number_from_1(value, read):
+    assert process_pool.live_nodes({"walk_live_nodes": value}) == read
+    assert process_pool.live_nodes({}) == process_pool.LIVE_NODES_DEFAULT == 60_000
+
+
 def test_a_reload_ends_the_kept_walks(declared, cut):
     first = _first(declared)
     ledger_subgraph.reset_declaration_cache()

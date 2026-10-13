@@ -405,19 +405,23 @@ def _gone_walk(walk, why, said):
 
 
 def _sweep_kept():
-    """Under `_KEPT_LOCK`: the walks unused past `walk_live_minutes` go, then the least recently used past
-    `walk_live_walks`; one being walked (its lock held) stays, and so does the newest."""
+    """Under `_KEPT_LOCK`: the walks unused past `walk_live_minutes` go, then the least recently used while more than
+    `walk_live_walks` are kept or they hold more than `walk_live_nodes` nodes; one being walked (its lock held) stays,
+    and so does the newest."""
     from runtime import process_pool
 
     now, minutes, most = time.monotonic(), process_pool.live_minutes(), process_pool.live_walks()
+    most_nodes = process_pool.live_nodes()
     for walk, held in list(_WALKS.items()):
         if now - held["used"] > minutes * 60 and not held["lock"].locked():
             _gone_walk(walk, "expired", "unused for more than %g min" % minutes)
     for walk, held in list(_WALKS.items())[:-1]:
-        if len(_WALKS) <= most:
+        nodes = sum(each["nodes"] for each in _WALKS.values())
+        if len(_WALKS) <= most and nodes <= most_nodes:
             break
         if not held["lock"].locked():
-            _gone_walk(walk, "expired", "%d newer walks are kept in its process" % most)
+            _gone_walk(walk, "expired", "%d newer walks are kept in its process" % most if len(_WALKS) > most
+                       else "kept walks in this process hold %d nodes - the oldest was let go" % nodes)
 
 
 def _sweeping():
@@ -474,7 +478,7 @@ def _keep_walk(entry, state, asked):
     with _KEPT_LOCK:
         if entry is None:
             walk, page = "%s.%s" % (process_pool.here(), secrets.token_hex(8)), 1
-            _WALKS[walk] = {"lock": threading.Lock(), "used": time.monotonic(), "keys": set()}
+            _WALKS[walk] = {"lock": threading.Lock(), "used": time.monotonic(), "keys": set(), "nodes": 0}
         else:
             walk, page = entry["walk"], entry["page"] + 1
         key = "%s.%d" % (walk, page)
@@ -483,6 +487,7 @@ def _keep_walk(entry, state, asked):
             return key
         _KEPT[key] = {"state": state, "asked": asked, "walk": walk, "page": page}
         _WALKS[walk]["keys"].add(key)
+        _WALKS[walk]["nodes"] = len(state["built"]) + len(state["seen"])         # its newest page's: open and read whole
         _GONE.pop(key, None)
         _sweep_kept()
         if _SWEEPER[0] is None:
