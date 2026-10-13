@@ -31,6 +31,7 @@ const REAL = {
   route: await import('../src/testbed/route.js'),
   trend: await import('../src/walk/trend.js'),
   reach: await import('../src/walk/reach_table.js'),
+  show: await import('../src/testbed/show_items.js'),
 };
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
 const { HubBook, hubId, holds, isHubId } = await import('../src/testbed/hubs.js');
@@ -817,6 +818,31 @@ async function tipsAndLabels(M) {
   return { pointTip, gone, marked, all, none, desc, cellTip };
 }
 
+/** Top/Bottom N (base set 11, show_items.js): the rule itself, then seated - a scatter's points, a hub's folded value. */
+async function showCases(M) {
+  const one = (value) => ({ reads: { show: { state: 'one', value } } });
+  const marks = [{ id: 'a', ...one(5) }, { id: 'b', ...one('7') }, { id: 'c', ...one(7) }, { id: 'd', reads: { show: { state: 'several', values: [1, 9] } } }, { id: 'e', ...one('x') }];
+  const ids = (rule, n) => M.show.showItems(marks, { encode: { show: {} }, show: { rule, n } }).kept.map((m) => m.id);
+  const rule = [ids('top', 2), ids('top', 1), ids('bottom', 1), ids('top', 9), ids('all', 1), M.show.showItems(marks, { show: { rule: 'top', n: 1 } }).kept.length];
+  const die = (id, x, y, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y), p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2, 'A'), die('D2', 3, 4, 'B'), die('D3', 3, 5, 'A')], edges: [], truncated: ANSWER.truncated };
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const doc = makeDoc('dark');
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const seat = async (encode, show) => {
+    const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'die', start: { marking: null }, system: null, filter: [], encode, show };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+      fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return [part.model.points.map((pt) => pt.label), (statusWords(part.stats.get('S')) || []).find((w) => w.includes('not shown')) || null];
+  };
+  const points = await seat({ x: key('x'), y: key('y'), show: key('x') }, { rule: 'top', n: 1 });
+  const hubs = await seat({ x: { ...key('x'), reduce: 'Avg' }, y: { ...key('y'), reduce: 'Avg' }, marker1: key('p'), show: { ...key('x'), reduce: 'Avg' } }, { rule: 'top', n: 1 });
+  return { rule, points, hubs };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -843,6 +869,7 @@ async function suite(M) {
   const sh = await sheetRoot(M);
   const ks = await keptStart(M);
   const tl = await tipsAndLabels(M);
+  const si = await showCases(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -916,7 +943,7 @@ async function suite(M) {
       { points: [['L1', 26, 5, ['W1', 'W3'], false], ['L2', 40, 6, ['W2', 'W4'], false]], several: 0 }),
     judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
       [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
-        [['x', 'y', 'marker1', 'color', 'label', 'tip1'], ['x*', 'y*', 'marker1', 'marker2', 'color', 'label', 'tip1']]]),
+        [['x', 'y', 'marker1', 'color', 'label', 'tip1', 'show'], ['x*', 'y*', 'marker1', 'marker2', 'color', 'label', 'tip1', 'show*']]]),
     judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
       ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
     judge('Y1 no relation: the layer of a marking is its members (a hub its members) - for every node the same as holds()', [ly.none, ly.same],
@@ -967,6 +994,10 @@ async function suite(M) {
     judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
+    judge('SI1 Top/Bottom N: the highest or lowest N by the slot, a number written as text a number, equal values by id, no number not among them; all or no slot - every mark',
+      si.rule, [['b', 'c'], ['b'], ['a'], ['a', 'b', 'c'], ['a', 'b', 'c', 'd', 'e'], 5]),
+    judge('SI2 a scatter showing the top 1 by x draws that point only and the status says how many are not shown', si.points, [['D2'], 'Top 1 by x · 2 not shown']),
+    judge('SI3 a Marker by hub ranked by its rows folded (Avg of x: A 2, B 3)', si.hubs, [['B'], 'Top 1 by Avg(x) · 1 not shown']),
     judge('P6 a marker by lot pressed marks the lot node it stands for (hubs.js nodesOfPress) - the Marked table of wafers holds none of it, no relation declared', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['L1'], lines: [], said: '0 marked rows - marking holds lot; no relation to wafer' }),
   ];
@@ -1076,6 +1107,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null)', 'painted(ids, null)') },
   { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'P6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'marked: received.filter(marked).length, hidden, heldOnly,', 'marked: received.filter(marked).length, hidden,') },
+  { id: 'M39', what: 'the kind handed every mark - Top/Bottom N not applied', catches: 'SI2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'this.kind.model(showing.kept,', 'this.kind.model(units,') },
+  { id: 'M40', what: 'the Top/Bottom by slot not folded for a hub - a hub reads nothing and none is shown', catches: 'SI3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '      folded(SHOW_SLOT)];', '      SHOW_SLOT];') },
+  { id: 'M41', what: 'equal values by id backwards', catches: 'SI1 ', file: 'testbed/show_items.js', key: 'show',
+    mutate: (t) => swap(t, '(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)', '(a.id < b.id ? 1 : a.id > b.id ? -1 : 0)') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

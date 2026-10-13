@@ -7,6 +7,7 @@ import { drawCondition, conditionKey, conditionWords } from './condition_editor.
 import { markingsOf } from './visual_part.js';
 import { routeKey, routeWords } from './route.js';
 import { LABEL_SHOWS } from './tooltip.js';
+import { SHOW_RULES } from './show_items.js';
 
 export class PropertiesPart extends Panel {
   constructor(host, deps) {
@@ -148,6 +149,12 @@ export class PropertiesPart extends Panel {
       last.sec.append(part.pill(s.key));
       // Label by: what it shows labels for (Spotfire's «Show labels for»)
       if (s.key === 'label') last.sec.append(select('Show for', LABEL_SHOWS, decl.labels || 'none', (v) => part.setDeclaration({ ...decl, labels: v })));
+      // Top/Bottom by: the rule and how many (Spotfire's Show/Hide items)
+      if (s.key === 'show') {
+        const show = decl.show || {};
+        last.sec.append(select('Show', SHOW_RULES, show.rule || 'all', (v) => part.setDeclaration({ ...decl, show: { n: 10, ...show, rule: v } })),
+          text('How many', show.n === undefined ? '10' : String(show.n), (v) => part.setDeclaration({ ...decl, show: { rule: 'all', ...show, n: Number(v) || 0 } })));
+      }
     }
     this.host.replaceChildren(root);
   }

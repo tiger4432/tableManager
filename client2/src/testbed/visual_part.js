@@ -24,6 +24,7 @@ import { hubId, nodesOfPress } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
+import { SHOW_SLOT, showItems } from './show_items.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
 import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
 import { fitUnder } from '../dropdown.js';
@@ -80,10 +81,11 @@ export class VisualPart extends Panel {
     const own = typeof listed === 'function' ? listed(this.decl.encode || {}, this.decl) : listed;
     // A kind drawing a mark a unit holds Marker by (units.js); a hub folds its rows' reads, a value record reads records.
     const unit = this.kind && this.kind.units ? unitOf(this.decl) : 'node';
-    const read = unit === 'node' ? own : own.map((s) => ({ ...s, folds: true, records: unit === 'record' }));
-    // Color by is the root's - every kind holds it (color_by.js).
-    // Color by, Label by and the Tooltip slots too (tooltip.js) - the root's, every kind's.
-    return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, LABEL_SLOT, ...tipSlots(this.decl.encode)];
+    const folded = (s) => (unit === 'node' ? s : { ...s, folds: true, records: unit === 'record' });
+    // Color by, Label by and the Tooltip slots (tooltip.js) - the root's, every kind's; Top/Bottom by (show_items.js) too,
+    // read the way the kind's own slots are (a hub its rows folded)
+    return [...own.map(folded), ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT, LABEL_SLOT, ...tipSlots(this.decl.encode),
+      folded(SHOW_SLOT)];
   }
 
   /** The slots it reads, by key: a slot the kind hands with its own (a sheet's cell) or the declaration's. */
@@ -384,9 +386,11 @@ export class VisualPart extends Panel {
     this.rowsById = new Map(rows.map((r) => [r.id, r]));
     this.unitsById = new Map(units.map((u) => [u.id, u]));
     const label = (mark) => labelOf(mark, { decl: this.decl, rowsById: this.rowsById, marked: (ids) => ids.some(marked) });
+    // the top or bottom N marks by the Top/Bottom by slot (show_items.js) - the rest not drawn, said in the status
+    const showing = showItems(units, this.decl);
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
-    this.model = this.kind.model(units, { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start });
+    this.model = this.kind.model(showing.kept, { paint, colored, askMarked, label, palette: this.palette(), declaration: this.decl, start });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -398,6 +402,7 @@ export class VisualPart extends Panel {
     // are not among M: they were never walked from.
     this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0, otherStarts: this.otherStarts,
       part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden, heldOnly,
+      shown: showing.rule ? { rule: showing.rule, n: showing.n, by: slotWords(encode.show), hidden: showing.hidden } : null,
       columns: Object.keys(encode).length, source: this.rowType(),
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
