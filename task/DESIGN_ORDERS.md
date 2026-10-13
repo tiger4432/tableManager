@@ -39031,3 +39031,12 @@ CSS 부품   바탕 층에 한 번: 부품 틀(제목 줄 · 단추 무리 · �
   functions only from task/SPOTFIRE_FUNCTIONS.md, blank rules as measured in Spotfire's expression window; then the screen calculator on it; then Sheet
 merge: after 1, put a dist build commit on design-testbed-fix + design-spotfire (the branches carry no client2/dist); the lead opens and merges after the owner's urgent speed work
 ```
+
+> **[lead -> client] 10-13 - the grid's stopped search shows the server's sentence, not «Data fetch failed (HTTP 503)» (implementer A adae5832a)**
+
+```
+what     a grid read past grid_read_timeout_seconds answers 503 with the sentence «Search stopped after N s - add a search index on <column> in the table's indexes»;
+         the screen shows only «Data fetch failed (HTTP 503)». Show the server's own detail (the one toast seat), keep the typed search, no retry loop
+gate     a harness cell with a 503 detail body -> the toast says that sentence; another status keeps today's text; open the grid in Chrome once
+order    before Sheet; small; land with the next client merge
+```
