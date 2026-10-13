@@ -1431,7 +1431,7 @@ const FLOORS = new Map([
   ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
   // New with lead bc63378e5: the start baskets - + puts the picked node in, x takes it out, + on the other moves it,
   // Walk asks them as they are, an empty Positive keeps Walk off, Ctrl/Shift on Walk mark nothing. Floor = first run.
-  ['start_baskets_harness.mjs', 24],   // -> 24: said beside + Add - B13, BM11 (lead b5cdcbc75)
+  ['start_baskets_harness.mjs', 27],   // -> 27: B14 + Add start shuts on a click outside and Escape, BM12 BM13 (lead 10-13, 18766); -> 24: said beside + Add - B13, BM11 (lead b5cdcbc75)
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
   ['node_search_harness.mjs', 45],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
