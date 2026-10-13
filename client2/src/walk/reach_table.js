@@ -195,11 +195,14 @@ export function valuesAt(index, rows, steps) {
 }
 
 /** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing - the one
- *  answer to «is this a number» (lead 10-11: a numeral in text is a number - the trend's axis, a column's kind, Δ). */
+ *  answer to «is this a number» (lead 10-11: a numeral in text is a number - the trend's axis, a column's kind, Δ; the
+ *  expression calculator's folds). A numeral is, trimmed, only sign · digits · point · exponent (lead 10-13): '29,50',
+ *  '29 mm' and '0x10' are text. */
+const NUMERAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 export function numberOf(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const n = Number(value);
+  if (typeof value !== 'string' || !NUMERAL.test(value.trim())) return null;
+  const n = Number(value.trim());
   return Number.isFinite(n) ? n : null;
 }
 

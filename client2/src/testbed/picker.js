@@ -1,9 +1,11 @@
 // The slot picker - a pill's dropdown (lead b19236b03): the walk table's «+ Column» choice (reach_table routesFrom ·
-// valuesAt, the same functions - no second list), then how the values fold. One open at a time, made by the page.
+// valuesAt, the same functions - no second list), then how the values fold, or a Custom expression (src/expression.js,
+// lead 10-13). One open at a time, made by the page.
 
 import { routesFrom, valuesAt, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { REDUCES } from './aggregate.js';
-import { readSlot } from './slot.js';
+import { readSlot, isExpression, ownValue } from './slot.js';
+import { compile, ExpressionError } from '../expression.js';
 import { setDisabledReason } from '../disabled_reason.js';
 
 /** The routes a part's rows take, its own values first (no step). */
@@ -28,6 +30,23 @@ export function severalCount(part, slot) {
 
 const sameSteps = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
 
+/** Why an expression cannot stand for a part's slot, or '' - the calculator's sentence, or a [name] none of the rows has
+ *  as its own value. */
+export function expressionRefusal(part, text) {
+  const compiled = compile(text);
+  if (!compiled.ok) return compiled.why;
+  const nodes = (part.rowIds || []).map((id) => part.index.nodes.get(id) || {});
+  for (const name of compiled.names) {
+    try {
+      if (!nodes.some((node) => ownValue(node, name))) return `No value named ${name} on ${part.decl.row}`;
+    } catch (e) {
+      if (e instanceof ExpressionError) return e.message;
+      throw e;
+    }
+  }
+  return '';
+}
+
 export class SlotPicker {
   constructor(host, deps) {
     this.host = host;
@@ -49,9 +68,11 @@ export class SlotPicker {
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     const slot = (part.decl.encode || {})[key] || null;
     const rows = part.rowIds || [];
-    const draw = (chosen) => {
+    const draw = (current, writing) => {
       const box = el('div', 'sf-pop');
       if (!part.index) { box.append(el('div', 'sf-pop__why', 'Walk first - nothing to pick from')); this.host.replaceChildren(box); return; }
+      // An expression slot picks no route: the columns start empty, the expression row stands open.
+      const chosen = isExpression(current) ? { steps: [], value: null } : current;
       // Three columns side by side - the route, then where it ends and its value, then how they fold.
       const [routes, at, folds] = [el('div', 'sf-pop__col'), el('div', 'sf-pop__col'), el('div', 'sf-pop__col')];
       box.append(routes, at, folds);
@@ -109,11 +130,36 @@ export class SlotPicker {
       const none = el('button', 'sf-pop__it', '(None)');
       none.type = 'button';
       none.addEventListener('click', () => { part.setSlot(key, null); this.close(); });
-      const custom = el('button', 'sf-pop__it', 'Custom expression…');
+      const custom = el('button', `sf-pop__it${isExpression(current) ? ' is-on' : ''}`, 'Custom expression…');
       custom.type = 'button';
-      setDisabledReason(custom, 'Waits for contracts/expression/vectors.json');
+      custom.addEventListener('click', () => draw(current, isExpression(current) ? current.expr : ''));
       folds.append(none, custom);
+      if (isExpression(current) || writing !== undefined) box.append(expressionRow(writing !== undefined ? writing : current.expr));
       this.host.replaceChildren(box);
+    };
+    const expressionRow = (text) => {
+      const row = el('div', 'sf-pop__edit');
+      const line = el('div', 'sf-pop__line');
+      const input = el('input', 'sf-pop__expr');
+      input.type = 'text';
+      input.value = text;
+      input.spellcheck = false;
+      input.setAttribute('aria-label', 'Expression');
+      const why = el('div', 'sf-pop__why');
+      const apply = () => {
+        const said = expressionRefusal(part, input.value);
+        if (said) { why.textContent = said; return; }
+        const next = { expr: input.value.trim(), words: [input.value.trim()] };
+        part.setSlot(key, next);
+        draw(next);
+      };
+      input.addEventListener('keydown', (event) => { if (event.key === 'Enter') apply(); });
+      const ok = el('button', 'sf-btn', 'OK');
+      ok.type = 'button';
+      ok.addEventListener('click', apply);
+      line.append(input, ok);
+      row.append(el('div', 'sf-pop__lab', 'Expression'), line, why);
+      return row;
     };
     draw(slot || { steps: [], value: null });
     this.host.style.display = '';
