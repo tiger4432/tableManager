@@ -107,7 +107,8 @@ export class PropertiesPart extends Panel {
     // ── Limit data using markings (Spotfire's, the Data section's): the markings, all or any, when none is marked ──
     data.append(el('div', 'sf-props__lab', 'Limit by'));
     const limit = { must: 'all', none: 'all', ...(decl.limit || {}), markings: got.limit };
-    const limitTo = (next) => part.setDeclaration({ ...decl, limit: next.markings.length ? next : null });
+    // all/any and «if none» kept even before a marking is checked - no marking checked is no limit (limitRows)
+    const limitTo = (next) => part.setDeclaration({ ...decl, limit: next });
     for (const m of marks) {
       const line = el('label', 'sf-props__check');
       const box = el('input');
@@ -118,12 +119,10 @@ export class PropertiesPart extends Panel {
       line.append(box, el('span', '', m.label));
       data.append(line);
     }
-    if (limit.markings.length) {
-      data.append(select('Rows in', [['all', 'All markings'], ['any', 'Any marking']], limit.must || 'all',
-        (v) => limitTo({ ...limit, must: v })));
-      data.append(select('If none', [['all', 'Show all data'], ['empty', 'Show empty']], limit.none || 'all',
-        (v) => limitTo({ ...limit, none: v })));
-    }
+    data.append(select('Rows in', [['all', 'All markings'], ['any', 'Any marking']], limit.must || 'all',
+      (v) => limitTo({ ...limit, must: v })));
+    data.append(select('If none', [['all', 'Show all data'], ['empty', 'Show empty']], limit.none || 'all',
+      (v) => limitTo({ ...limit, none: v })));
     // The one it emits: a press marks it, and it is the marking drawn marked here (Spotfire's one «Marking»).
     data.append(select('Marking', [[null, '(None)'], ...marks.map((m) => [m.name, m.label])], got.emits,
       (v) => part.setDeclaration({ ...decl, writes: v })));

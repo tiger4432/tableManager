@@ -6,6 +6,7 @@
 
 import { readsOf, recordsOf, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
+import { parseServerInstant } from '../server_time.js';
 import { isBlank } from '../absent.js';
 import { compile, run, Reads, ExpressionError } from '../expression.js';
 import { fold } from './aggregate.js';
@@ -130,9 +131,17 @@ export function readsAt(index, inside, x, slot, records = false) {
   const got = readsOf(index, inside, x, slot, Infinity);
   if (got.missing) return { missing: true, reads: [] };
   // records - each read spread into its records (reach_table.recordsOf: an edge's every atom), `read` the read it is of
-  const reads = records ? got.reads.flatMap((r, read) => recordsOf(index, slot, r).map((rec) => ({ value: rec.value, t: timeOf(rec.when), read })))
-    : got.reads.map((r) => ({ value: r.value, t: timeOf(r.when) }));
+  const reads = records ? got.reads.flatMap((r, read) => recordsOf(index, slot, r).map((rec) => ({ value: plainValue(rec.value), t: timeOf(rec.when), read })))
+    : got.reads.map((r) => ({ value: plainValue(r.value), t: timeOf(r.when) }));
   return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ ...r, value: new Date(r.t).toISOString() })) : reads };
+}
+
+/** A value as a slot reads it: a time the server sends as {"$datetime": iso} (ledger roleframe) its instant in ISO -
+ *  the one reading of the server's time (server_time.js parseServerInstant); the rest as it came. */
+export function plainValue(v) {
+  if (!v || typeof v !== 'object' || typeof v.$datetime !== 'string') return v;
+  const at = parseServerInstant(v.$datetime);
+  return at ? at.toISOString() : v.$datetime;
 }
 
 /** A category saying none. */

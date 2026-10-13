@@ -139,12 +139,18 @@ export async function boot(deps) {
     add() {
       const list = markingList.get('list');
       let n = list.length + 1;
-      while (list.some((m) => m.name === `marking:${n}`)) n += 1;
+      while (list.some((m) => m.name === `marking:${n}` || m.label === `Marking (${n})`)) n += 1;
       const color = MARKING_COLORS.find((c) => !list.some((m) => m.color === c)) || MARKING_COLORS[0];
       markingList.set('list', [...list, { name: `marking:${n}`, label: `Marking (${n})`, color }]);
       return `marking:${n}`;
     },
-    edit(name, patch) { markingList.set('list', markingList.get('list').map((m) => (m.name === name ? { ...m, ...patch } : m))); },
+    /** A label or colour changed - a label another marking has is refused, the reply naming it. */
+    edit(name, patch) {
+      const list = markingList.get('list');
+      if (patch.label !== undefined && list.some((m) => m.name !== name && m.label === patch.label)) return { refused: `Another marking is named ${patch.label}` };
+      markingList.set('list', list.map((m) => (m.name === name ? { ...m, ...patch } : m)));
+      return { refused: null };
+    },
     users: (name) => usersOf(name).map(titleOf),
     remove(name) {
       const users = usersOf(name);
@@ -211,7 +217,9 @@ if (typeof document !== 'undefined' && document.getElementById('tb-board')) {
     charts: { init: (el) => echarts.init(el, null, { renderer: 'canvas' }) }, storage, theme: params.get('theme') })).then((page) => {
     const save = document.getElementById('tb-save');
     save.addEventListener('click', () => { page.save(); save.textContent = 'Saved'; setTimeout(() => { save.textContent = 'Save'; }, 1200); });
-    document.getElementById('tb-reset').addEventListener('click', () => {
+    // Reset - back to what was saved (Spotfire's «Reset to saved»); Clear saved - forget it, the page's own layout next.
+    document.getElementById('tb-reset').addEventListener('click', () => window.location.reload());
+    document.getElementById('tb-clear').addEventListener('click', () => {
       try { if (storage) storage.removeItem(SAVED); } catch (e) { /* nothing kept */ }
       window.location.reload();
     });

@@ -328,6 +328,12 @@ export class VisualPart extends Panel {
     this.render();
   }
 
+  /** A marking's people's name. */
+  markingLabel(name) {
+    const m = ((this.markingList && this.markingList.get('list')) || []).find((x) => x.name === name);
+    return m ? m.label : name;
+  }
+
   /** A marking by the words an expression names it: its label (the people's) or its name. */
   markingNamed(words) {
     const m = ((this.markingList && this.markingList.get('list')) || []).find((x) => x.label === words || x.name === words);
@@ -403,7 +409,8 @@ export class VisualPart extends Panel {
     this.paintActive();
     if (!this.kind) { body.append(el('div', 'sf-say', `Unknown kind: ${this.decl.kind}`)); return; }
     if (this.state !== 'ready' || !this.model) {
-      const words = { 'no-start': 'Mark a start', walking: 'Walking…', refused: this.refusal || 'Walk refused', idle: '' }[this.state] || '';
+      const from = this.start && this.start.marking;
+      const words = { 'no-start': from ? `Mark ${this.markingLabel(from)}` : 'Mark a start', walking: 'Walking…', refused: this.refusal || 'Walk refused', idle: '' }[this.state] || '';
       body.append(el('div', 'sf-say', words));
       return;
     }
@@ -412,7 +419,10 @@ export class VisualPart extends Panel {
     // the legend beside it: Marker by (a kind drawing a mark a unit), Color by.
     body.classList.add('sf-frame');
     const trays = Object.fromEntries(['top', 'left', 'bottom'].map((side) => [side, el('div', `sf-frame__tray sf-frame__${side}`)]));
-    if (this.model.note) trays.bottom.append(el('span', 'sf-note', this.model.note));
+    // a hub whose rows say several values on a slot with no reduce: what to do about it
+    const hint = this.kind.units && unitOf(this.decl) === 'hub' && this.model.several ? 'pick a reduce (Avg · Count · Latest …)' : '';
+    const note = [this.model.note, hint].filter(Boolean).join(' - ');
+    if (note) trays.bottom.append(el('span', 'sf-note', note));
     const pills = Object.fromEntries(Object.entries(trays).map(([side, tray]) => { const g = el('div', 'sf-frame__pills'); tray.append(g); return [side, g]; }));
     for (const s of this.slotList().filter((x) => x.tray)) {
       pills[s.tray].append(this.pill(s.key, { vertical: s.tray === 'left' }));

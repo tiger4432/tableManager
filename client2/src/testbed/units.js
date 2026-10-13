@@ -15,12 +15,15 @@ export const nextMarker = (encode) => { const keys = markersOf(encode); return `
 
 /** A unit: a hub when a Marker by is held; else a value record (`markerBy: 'record'`); else a node. */
 export const unitOf = (decl) => (markersOf((decl || {}).encode).length ? 'hub' : (decl || {}).markerBy === 'record' ? 'record' : 'node');
-/** The Marker by choices that are not a slot - the next one's picker lists them. */
-const CHOICES = Object.freeze([{ words: '(Node)', patch: { markerBy: null } }, { words: '(Value record)', patch: { markerBy: 'record' } }]);
+/** The Marker by choices that are not a slot - every Marker by pill lists them: a node, a value record, no Marker by
+ *  slot held. */
+const choices = (encode) => {
+  const rest = Object.fromEntries(Object.entries(encode || {}).filter(([k]) => !MARKER.test(k)));
+  return [{ words: '(Node)', patch: { markerBy: null, encode: rest } }, { words: '(Value record)', patch: { markerBy: 'record', encode: rest } }];
+};
 
-/** The Marker by slots: each held and the next one, its choices (Node, Value record). */
-export const markerSlots = (encode) => [...markersOf(encode).map((key) => ({ key, label: 'Marker by', category: true })),
-  { key: nextMarker(encode), label: 'Marker by', category: true, choices: CHOICES }];
+/** The Marker by slots: each held and the next one, each with the choices (Node, Value record). */
+export const markerSlots = (encode) => [...markersOf(encode), nextMarker(encode)].map((key) => ({ key, label: 'Marker by', category: true, choices: choices(encode) }));
 
 /** The pill's words when no Marker by is held. */
 export const unitWords = (decl) => (unitOf(decl) === 'record' ? '(Value record)' : '(Node)');
