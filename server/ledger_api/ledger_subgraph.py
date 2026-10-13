@@ -700,6 +700,20 @@ def attach_atoms(source_id, plan, rows, world=None):
     return atoms
 
 
+def _attached_specs(specs, lookup):
+    """Entity specs as a table's columns read them, each attach sentence's columns among its row type's names - the table
+    declaration names them (총괄 10-13 행 붙이기: a row comes whole)."""
+    attached = getattr(lookup, "attached", ())
+    if not attached or specs is None:
+        return specs
+    out = dict(specs)
+    for _source, _relation, plan in attached:
+        spec = dict(out.get(plan.target_type) or {})
+        names = list(spec.get("attributes") or ())
+        out[plan.target_type] = {**spec, "attributes": names + [name for name in plan.columns if name not in names]}
+    return out
+
+
 def _quoted(name):
     return ".".join('"%s"' % part.replace('"', '""') for part in str(name).split("."))
 
@@ -1135,6 +1149,7 @@ class InMemoryEvidenceLookup:
         #: `attached`: (source id, `AttachPlan`, rows) - read as the SQL lookup reads its tables (`attach_atoms`)
         self.atoms = list(atoms) + [atom for source_id, plan, rows in attached
                                     for atom in attach_atoms(source_id, plan, rows)]
+        self.attached = tuple((source_id, None, plan) for source_id, plan, _rows in attached)
         self.rows_withheld = rows_withheld
         self.one = frozenset(one)
         self.current_only = current_only
@@ -4068,7 +4083,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         not (depth_cut or node_cut or edge_cut or claim_cut or action_cut or seed_cut),
         static_types, (resume or {}).get("reach"), reached, hubs=hubs, folded=folded, aux_before=aux_before)
     answer_nodes, answer_edges, tables, delta = _hub_view(
-        visible_nodes, ordered_edges, folded, nodes, _read_entity_declaration()[7], seed_signs, shown, row_edges,
+        visible_nodes, ordered_edges, folded, nodes, _attached_specs(_read_entity_declaration()[7], lookup), seed_signs,
+        shown, row_edges,
         lambda kind: collected_types is None or _bare_name(kind) in collected_types)
     payload = {
         # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
@@ -4193,7 +4209,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.
         payload["rows"] = rows_projection(
-            dict(payload, nodes=visible_nodes), nodes, ordered_edges, seed_signs, entities, static_types or (), (resume or {}).get("reach"))
+            dict(payload, nodes=visible_nodes), nodes, ordered_edges, seed_signs, _attached_specs(entities, lookup),
+            static_types or (), (resume or {}).get("reach"))
     if aux_block is not None:
         payload["aux"] = aux_block                  # last, where the walk put it before hubs (QA F9)
     return payload

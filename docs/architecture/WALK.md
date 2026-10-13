@@ -374,7 +374,8 @@ fold     라우트는 늘 접는다. 걸은 것을 저장하는 직접 호출자
 ## 🔵 행 붙이기 — 원장 소스가 표의 행을 노드 아래에 붙인다 (총괄 10-12 · 10-13 14a486e8c)
 ```
 선언     sources.<이름> = {relation, attach: {subject, predicate, target, columns?}} — 주어 · 대상은 엔티티 바인딩, 술어는 어휘의
-          entity_ref(주어 타입 -> 대상 타입), 대상 타입은 엔티티(keys · attributes). columns 를 안 적으면 대상 타입의 attributes
+          entity_ref(주어 타입 -> 대상 타입), 대상 타입은 엔티티(keys). columns 를 안 적으면 그 표의 칸 전부(표 선언의 칸 목록 —
+          이름을 가진 자리), 적으면 좁힘. 허브 표 열도 같은 목록(`_attached_specs`, 총괄 10-13 «행을 통째로»)
 번역      없다 — `SourcePlan.attach` 가 있으면 `runs` 가 거짓(원자 0). 읽는 것은 걷기뿐
 걷는 법   `claims_for_entities` 의 같은 읽기 안에서 그 표를 원자 모양으로 읽는다(`_attach_reads`, 문장마다 갈래 하나) —
           outgoing: 부모 노드 -> 술어 -> 행 노드 선 + 행 노드의 값(register, 수식어 = columns) · incoming: 행 노드 -> 부모 선

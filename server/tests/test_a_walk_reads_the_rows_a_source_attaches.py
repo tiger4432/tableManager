@@ -31,7 +31,7 @@ ROWS = [{"row_id": 1, "die": "D0", "defect_id": "F1", "size": 1.5, "kind": "void
 def declared():
     ledger_subgraph._declaration_facts[ATTACHED] = (
         {"defect_row": ["defect_id"]}, {}, {}, {}, {}, {}, frozenset({"has_defect"}),
-        {"defect_row": {"keys": ["defect_id"], "attributes": ["size", "kind"]}})
+        {"defect_row": {"keys": ["defect_id"]}})
     yield
     ledger_subgraph._declaration_facts.pop(ATTACHED, None)
 
@@ -74,7 +74,8 @@ def test_each_die_s_rows_are_one_hub_counted_as_the_table_holds_them():
 
 def test_a_hub_s_table_rows_carry_the_row_s_columns_as_its_node_s_values():
     """The row node's values are its row's columns - said as the translator says a node's bound attributes (register),
-    a number as its text, a blank left out, text trimmed."""
+    a number as its text, a blank left out, text trimmed - and the table draws them though the row type declares no
+    attribute: the table declaration names them (lead 10-13, a row comes whole)."""
     body = _walk()
     table = body["tables"][_hubs(body)[node("die", "D0")]["id"]]
     rows = {row[table["columns"].index("id")]: dict(zip(table["columns"], row)) for row in table["rows"]}
