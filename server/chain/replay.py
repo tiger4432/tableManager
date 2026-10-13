@@ -1514,53 +1514,23 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
         crud.bulk_delete_cell_overwrites(db, list(ow_gone))
         crud.bulk_delete_cell_sources(db, [key for key in folded if key not in layers])
         for names, shown in moved.items():
-            _update_by_arrays(db, model.__table__, sorted(names), shown, batch_now)
+            crud.update_by_arrays(db, model.__table__, sorted(names), shown, batch_now)
         db.commit()
     counts["rows_marked"] += counts["rows_to_mark"]
     return counts, batch.updates
 
 
-def _arrays(db, columns, rows):
-    """`(params, casts)` - one PostgreSQL array per column, each value through its column's bind processor."""
-    dialect = db.get_bind().dialect
-    params, casts = {}, []
-    for i, (column, values) in enumerate(zip(columns, zip(*rows))):
-        bind = column.type.bind_processor(dialect)
-        params["a%d" % i] = [bind(value) if bind else value for value in values]
-        casts.append("CAST(:a%d AS %s[])" % (i, column.type.compile(dialect=dialect)))
-    return params, casts
-
-
 def _insert_by_arrays(db, table, mappings):
     """The rows of `mappings` (every column but the key) into `table` in one statement."""
     from sqlalchemy import text
+    from database import crud
 
     if not mappings:
         return
     columns = [column for column in table.columns if not column.primary_key]
-    params, casts = _arrays(db, columns, [[one.get(column.name) for column in columns] for one in mappings])
+    params, casts = crud.array_params(db, columns, [[one.get(column.name) for column in columns] for one in mappings])
     db.execute(text('INSERT INTO "%s" (%s) SELECT * FROM unnest(%s)' % (
         table.name, ", ".join('"%s"' % column.name for column in columns), ", ".join(casts))), params)
-
-
-def _update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
-    """`rows` [[key, a value per name but updated_at]] into `table` in one statement - updated_at, when
-    named, is the batch's instant as the door stamps it (`crud.batch_write_instant`, else now())."""
-    from sqlalchemy import text
-
-    valued = [name for name in names if name != "updated_at"]
-    columns = [table.c[key]] + [table.c[name] for name in valued]
-    params, casts = _arrays(db, columns, rows)
-    sets = ['"%s" = v.a%d' % (name, i) for i, name in enumerate(valued, start=1)]
-    if "updated_at" in names:
-        sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
-        params["updated_at"] = batch_now
-    # the key's own `= ANY(keys)` bounds the table side to the page by its key index: without it a
-    # 1M-row table was hash-joined by a scan of the whole table, every page (box dt_map, 총괄 10-11)
-    db.execute(text('UPDATE "%s" SET %s FROM unnest(%s) AS v(%s) WHERE "%s"."%s" = v.a0 AND "%s"."%s" = ANY(%s)'
-                    % (table.name, ", ".join(sets), ", ".join(casts),
-                       ", ".join("a%d" % i for i in range(len(columns))),
-                       table.name, key, table.name, key, casts[0])), params)
 
 
 #: The writer of the history line a notation backfill leaves on each cell it folds.
@@ -1989,7 +1959,7 @@ def _write_by_values(db, table_name, model, values, tx_id):
     from database.context import request_outbox_mode
 
     if values["layers"]:
-        _update_by_arrays(db, models.CellSource.__table__, ["value"],
+        crud.update_by_arrays(db, models.CellSource.__table__, ["value"],
                           [[layer_id, new] for layer_id, new in values["layers"].items()], None, key="id")
     by_row = {}
     for (row_id, column), cell in values["cells"].items():
@@ -2008,7 +1978,7 @@ def _write_by_values(db, table_name, model, values, tx_id):
                 db, table_name, row_id, column, old, new, NOTATION_BACKFILL_SOURCE, NOTATION_BACKFILL_SOURCE,
                 transaction_id=tx_id, business_key=key, add_to_cache=False))
     for names, rows in shown.items():
-        _update_by_arrays(db, model.__table__, sorted(names), rows, None)
+        crud.update_by_arrays(db, model.__table__, sorted(names), rows, None)
     _insert_by_arrays(db, models.AuditLog.__table__, history)
     if not by_row:
         return

@@ -365,6 +365,51 @@ def notify_on_outbox_change(session, flush_context, instances):
                 return
 
 
+@event.listens_for(Session, "before_flush")
+def write_changed_rows_by_shape(session, flush_context, instances):
+    """[PostgreSQL] The changed rows of each dynamic table, ONE array UPDATE per set of changed columns
+    (`crud.update_by_arrays`), then those values marked committed so the flush writes them no more (총괄 8af4d378c ㄱ).
+
+    🔴 THE ORM BATCHES ONLY ROWS THAT CHANGE THE SAME COLUMNS AND STAND NEXT TO EACH OTHER in key order. A chain group
+       whose two rules change different columns on different rows of one table (a join's two, a fold's mark - box c1,
+       2,000 rows) interleaved them, and the flush sent ~1,000 UPDATEs, 1.4 s. Grouped by shape it sends one each.
+    ⚠️ AFTER `auto_stage_database_outbox` - registered below it, so the events and their old values read the
+       history first. Only the columns a row changed are written, as the ORM writes them. A value the ORM would
+       compute in SQL (an expression) and a changed key stay with the flush. Each statement must touch every row it
+       names - fewer is a row gone from under the write, refused as the ORM refuses it (its row count check).
+    """
+    from .models import DYNAMIC_TABLES
+    dynamic = tuple(DYNAMIC_TABLES.values())
+    if not dynamic or not session.dirty or session.get_bind().dialect.name != "postgresql":
+        return
+    from sqlalchemy import inspect
+    from sqlalchemy.orm.attributes import set_committed_value
+    from sqlalchemy.sql import ClauseElement
+
+    shapes = {}
+    for obj in session.dirty:
+        if not isinstance(obj, dynamic):
+            continue
+        state = inspect(obj)
+        changed = {attr.key: attr.value for attr in state.attrs if attr.history.has_changes()}
+        if (not state.persistent or not changed or "row_id" in changed
+                or any(isinstance(value, ClauseElement) for value in changed.values())):
+            continue
+        stamp = changed.get("updated_at")
+        shapes.setdefault((obj.__table__, tuple(sorted(changed)), stamp), []).append((obj, changed))
+    from database import crud
+
+    for (table, names, stamp), rows in shapes.items():
+        written = crud.update_by_arrays(session, table, names, [
+            [obj.row_id] + [changed[name] for name in names if name != "updated_at"] for obj, changed in rows], stamp)
+        if written.rowcount != len(rows):
+            raise RuntimeError("[WriteByShape] %s: an UPDATE of %d row(s) changing %s touched %d - a row went from "
+                               "under the write" % (table.name, len(rows), ", ".join(names), written.rowcount))
+        for obj, changed in rows:
+            for name, value in changed.items():
+                set_committed_value(obj, name, value)
+
+
 def _outbox_envelope():
     """The (tx_id, user, source, timestamp) every outbox payload carries.
 
