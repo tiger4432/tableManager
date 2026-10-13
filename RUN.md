@@ -45,10 +45,14 @@
 >            먼저 지우면 선언 것을 짓는 동안 검색이 다시 표 끝까지 읽는다
 > 상한       ingestion_settings.json "grid_read_timeout_seconds" — 기본 10 · 요청마다 읽어 재기동 없이 바뀐다 · 0 또는 null = 상한 없음(급할 때 끄는 스위치)
 >            그리드의 행 읽기 · 세기 · 검색(GET /tables/<표>/data · /data/count)만 — 저장 · 체인 · 파일 쓰기는 각자 상한 그대로
+>            ⚠️ 같은 라우트를 맵 에디터 · R&D 보드 · 어드민 카드도 쓴다 — 큰 표의 «검색 없는» 읽기 · 세기가 10 s 를 넘으면 그쪽도 503(바닥줄 총수 빈 칸 · 맵 셀 읽기 오류)
+>            그런 줄이 검색 없이 나오면 이 칸을 올리거나 0 (재기동 없음). 화면 읽기로만 좁히는 고침은 구현자 A 다음 커밋
+> ⚠️ 재기동    서버 «와» 체인 워커 둘 다 — 색인은 체인 워커가 짓는다
 > 끊겼을 때   HTTP 503, 답의 detail.message 가 다음 할 일
 >              Search stopped after 10 s - add a search index on b_wy in the table's indexes   -> 그 칸에 위 선언
 >              Search stopped after 10 s - the limit is grid_read_timeout_seconds in the ingestion settings
->                                                    -> 검색 칸은 다 색인됨. 상한을 올리거나 검색어를 좁힌다
+>                                                    -> 검색 칸이 다 «선언»됨 — 아직 짓는 중일 수 있다(server.log 의 [Indexes] … built 줄이 그 칸마다 났나 먼저 본다).
+>                                                       다 지어졌으면 상한을 올리거나 검색어를 좁힌다 · 검색어 2 글자 이하는 색인이 있어도 느릴 수 있다
 >              Read stopped after 10 s - the limit is …   -> 검색이 아닌 읽기(필터 · 정렬 · 전체 세기)
 >            끊긴 문장은 DB 가 취소하고 연결은 풀로 돌아간다
 >            ⚠️ 화면은 아직 «Data fetch failed (HTTP 503)» 토스트만 그린다 — 문장은 클라 레인이 붙인다

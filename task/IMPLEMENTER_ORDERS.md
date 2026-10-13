@@ -66974,3 +66974,23 @@ M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 
 짓기 전    안 셋 — reach 를 토큰에 싣지 않고 다시 셈 / 서버 쪽에 두고 토큰은 열쇠만 / 압축 · 차분. 각각 다중 프로세스(걷기 풀)에서 참인지 · 세상 · as_of 가 맞는지 · 크기
 게이트     씨앗 1 · 121 · 허브 씨앗에서 쪽마다 토큰 바이트 · 쪽 초 표(쪽 1 · 10 · 25) · 쪽 합 == 한 번 · 순위 같음
 ```
+
+> **[총괄 -> 구현자 A] 10-13 — 그리드 급한 둘 착지 뒤 검수(adae5832a): GO-WITH-FIXES — 상한은 두 라우트에만 · 끊긴 뒤 정리 깨끗 · 식 일치(EXPLAIN) 확인. 운영자에게 하는 말이 거짓이 되는 자리 넷. 칸 필터 작은 일과 «한 커밋», resume(ㄴ-1)보다 앞 (probe 총괄 scratchpad qaa3_*.py)**
+
+```
+1 [중] «색인 있음»이 실제로는 «선언됨» — main.py:2538 · :2860 이 models.declared_search_columns(설정 파일)만 읽음
+       짓는 중 · 오래된 트랜잭션 뒤 대기(이 박스 18 분+) · pg_trgm 없음 · 짓기 실패 동안 503 이 «the limit is … — 검색 칸은 다 색인됨, 상한을 올려라»를 말함 = 이 라운드가 막으려던 길
+       -> «지어짐»은 index_states(같은 이름 비교, 그 한 자리)로. 셋째 상태 «declared, not built yet (<사유>)» 를 503 문장 · search_index 답에
+2 [중] 503 이 따를 수 없는 다음 행동을 시킴(models.py:1730 · main.py:2538) — 빌더가 지을 수 없는 색인을 시키지 않는다(value_suggest.suggest_index_definition 의 같은 교훈)
+       view: «add a search index on a» -> 저장 거절(a view cannot carry an index) — view 에는 그 사실과 다른 다음 행동
+       datetime 칸: CAST(timestamptz AS VARCHAR) 가 IMMUTABLE 아님 -> PG 가 짓기 거절, 무효 잔재가 없어 index_states 에 사유 없음(:1852) — 저장 때 거절하거나 사유를 상태에 남기고, 503 은 그 칸을 안 시킴
+       키 없는 표(row_id · business_key_val): 파일 + Reload 는 지어지는데 탐색기 저장은 «has no column business_key_val» 로 거절(ledger/admin.py:254) — 문 둘이 답이 갈림 -> 같은 판정 함수 하나
+4 [저~중] 상한을 끈 상태(0/null)에서 57014(pg_cancel_backend · DB 쪽 statement_timeout)가 오면 "%g" % None 으로 TypeError -> 원래 사유를 가린 500(main.py:2543)
+5 [저] SET LOCAL -> SET 변이가 4 passed 로 삶 — conftest 엔진이 NullPool 이라 연결 누수를 못 봄 -> QueuePool 엔진으로 «다음에 그 연결을 빌린 요청이 상한을 물려받지 않음» 칸
+6 [저] 검색 식 철자 둘 더(column_filter.py:116/119/135 · POST /row_ids/target main.py:3034/3041) — 이미 지시한 «search_text 한 함수로» 에 포함
+운영 위험(RUN.md 에 지금) 같은 라우트(/data · /data/count)를 맵 에디터 · rnd_board · 어드민 카드도 씀 — 운영에서 검색 아닌 읽기가 10 s 를 넘는 표가 있으면 세기 503 이 매번 · 맵 에디터 셀 읽기 · 존재 확인이 오류로
+          -> RUN.md 에 «Read stopped 가 검색 없이 나오면 grid_read_timeout_seconds 를 올리거나 0» 줄(총괄이 지금 올림). 고침에서 상한을 «그리드 화면의 읽기»로만 좁힐지는 안으로
+문서      ingestion_settings.md 에 grid_read_timeout_seconds 행 · RUN.md «검색 칸은 다 색인됨» · «false 인 칸이 선언할 칸» · table_config.md:138 을 1 의 셋 상태로 · CODE_MAP(search_text · declared_search_columns · search_scope_columns · 인덱스 마스터 절 검색 갈래) ·
+          RELEASE_LOG «재기동 — 서버» 에 «체인 워커도(짓는 쪽)» · 3 글자 미만 검색어는 색인 있어도 표 행을 다시 확인(1M 0.70 s) 한 줄
+화면      3(detail 이 객체라 클라가 문장을 못 그림 · 세기 실패가 조용히 빈 칸)은 클라 87dfa71d7 이 받음 — 답 모양(detail.message) 그대로 두고 클라에 한 줄 알림
+```
