@@ -2340,6 +2340,21 @@
 - **언제 재사용**: 화면 · 체인이 «이 칸이 느렸다»를 알았을 때 — CREATE INDEX 를 직접 하지 않고 청한다.
 - **함정**: 청과 짓기가 다른 프로세스다 — 체인 워커가 없으면 청만 쌓인다. 표마다 `auto_index_per_table`(기본 10).
 
+### **Board 의 모든 종류가 나눠 쓰는 근원 칸 셋 — 색은 `color_by.colorsOf`, 행은 `route.routeOf`, 한 표시의 단위는 `units.unitsOf`** (2026-10-14 등록 · lead-board-2 `c0c4b3f9b`, 소유자 10-13 «COLOR BY 저런 거는 모든 근원부품이 공유하게 해»)
+- **어디**: `client2/src/testbed/color_by.js` — `colorsOf(rows, ctx)` 가 행마다 색을 한 번 정한다(선언 `colors` {범주: hex} 먼저, 없으면 팔레트를 나온 순서로); 허브(마커 · 칸)는 `colorOfIds`. `testbed/route.js` — `routesFor(vocabulary, from, to)` 가 시작 타입 → 행 타입 길 목록, `routeOf(decl, routes)` 가 부품의 길, `walkOfRoute` 가 그 길의 술어 · 걸음. `testbed/units.js` — `unitOf(decl)`(node · hub · record) · `unitsOf(rows, decl, keys, recordKey, marked)`.
+- **언제 재사용**: 새 종류(산점도 · 표 · 크로스 · 맵 다음)를 짓거나, 한 종류에 색 · 행 · 마커 규칙을 넣고 싶을 때 — 종류 안에 사본을 적지 않고 이 셋을 부른다. 종류는 그리기만 한다.
+- **함정**: 행은 «걸어서 닿은 그 타입 노드 전부»가 아니라 «그 길의 끝»이다 — 길이 안 잡히면(목록이 비면) 부품이 엉뚱한 노드를 행으로 받는다(18766 10-14: 코어 웨이퍼에서 계측으로 가는 C 가 본딩 웨이퍼의 계측 17 을 셈). 범주 색이 선언에 빈 칸이면 팔레트 첫 색이 붙는다.
+
+### **규칙이 이 사건에 «깨어나나»는 `chain.ingestion_worker.wakes(rule, event)` 한 자리** (2026-10-14 등록 · B `d3c143d45`, 총괄 옛 키 ㄱ)
+- **어디**: `wakes(rule, event)` = `_is_trigger_event(event, rule)`(종류 — CREATE · EDIT, 지움은 규칙이 허락할 때) 그리고 `fires(rule, event)`(쌍). 규칙을 고르는 자리(`_rows_cap` · `_group_triggered_rules` …)가 전부 이것을 묻고, 묶기(`group_id`)만 `fires` 하나를 묻는다.
+- **언제 재사용**: 사건에 따라 규칙을 고르는 새 자리 — 종류 · 쌍 판정을 옆에 다시 적지 않는다(이 셋은 아홉 자리에 사본으로 있었다).
+- **함정**: decide 가 «행이 떠난 키»(편집으로 옮겨 감 · 지움)도 다시 세려면 그 사건에도 깨어나야 한다 — 종류 판정을 좁히면 옛 키의 수가 낡은 채 남는다.
+
+### **표의 추정 행 수는 `ledger.column_stats.estimated_rows(db, relation)` 한 자리 — 이름이 아니라 `to_regclass` 로 찾는다** (2026-10-14 등록 · A `208d7cefc`)
+- **어디**: `SELECT reltuples FROM pg_class WHERE oid = to_regclass(:relation)` — 부르는 곳: `ledger/backfill.py` · `value_suggest.py` · `ledger/config_explorer_service.py` · `scripts/list_undeclared_tables.py`. 음수(아직 통계 없음)는 None.
+- **언제 재사용**: «이 표가 얼마나 큰가»를 공짜로 알고 싶을 때(정확한 수가 필요하면 `population` — 표를 한 번 훑는다).
+- **함정**: 전에 자리마다 `pg_class.relname = <이름>` 으로 찾았다 — 스크래치 스키마와 public 에 같은 이름 표가 있으면 엉뚱한 표의 추정을 읽는다. `to_regclass` 는 search_path 를 따라 그 연결이 보는 표 하나를 고른다. 추정이라는 것을 화면 · 로그에 붙인다.
+
 ### 교체 쓰기 전 수 대조 게이트 — 직렬화가 **원본 집합**보다 적으면 거부 (2026-07-28 등록 · 2026-07-30 대조축 정정)
 - **무엇**: 전량 교체(replace) 쓰기 직전에 **원본 집합(필터 이전)의 non-empty 개수 vs 직렬화 페이로드의 개수**를 대조해, 페이로드가 적으면 confirm 이전에 거부하고 **삭제될 개수를 메시지에 명시**한다. 교체 의미론에서 "빠짐 = 삭제"이므로, 이 한 줄 산술이 §1 replace_map의 "불완전한 집합을 보내면 전량 파괴" 함정의 **쓰기 쪽 집행 장치**다(읽기 쪽 짝은 위 "절단 응답은 실패로 강등").
 - **어디**: `client2/src/map_editor.js`의 `pushMapData`(`6db517d` H2) — 메타 미등록 맵을 기본 프레임으로 열어 유효 다이 마스크·격자 범위가 셀을 잘라내던 경로(실측 1293→379 삭제)를 막았다. 대조는 **원시 `gridData`의 non-empty 키 수 vs `eachSavableCell`이 낸 `updates.length`**다.
