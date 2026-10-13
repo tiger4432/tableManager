@@ -69,8 +69,10 @@ const TOKENS = {
  *  `makeWalk` is the wire's own factory - a mutant of api.js swaps it. */
 const wireWith = (makeWalk) => (bodies, urls) => {
   let i = 0;
+  // As the walk page asks: it draws the hubs.
   return makeWalk({
     apiBase: '',
+    hubs: true,
     fetchImpl: async (u) => {
       urls.push(String(u));
       const body = bodies[Math.min(i, bodies.length - 1)];
@@ -1127,7 +1129,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[HB] a hub: the server\'s fold, one node with its table; opened, its members and what the walk went on to (lead 10-13)');
-  if (want(['HB1', 'HB2', 'HB3', 'HB4', 'HB5', 'HB6', 'HB7', 'HB8'])) {
+  if (want(['HB1', 'HB2', 'HB3', 'HB4', 'HB5', 'HB6', 'HB7', 'HB8', 'HB9', 'HB10'])) {
     const OWNER = HUBS.single.owner;
     const OPENED = HUBS.single.wafers_opened;
     const wafers = HUBS.ids.wafers;
@@ -1244,6 +1246,29 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
         && members.every((id) => capped.view.cy.getElementById(id).nonempty()) && cameOn.length === 6
         && cappedPool.length === 1 && JSON.stringify(cappedListed) === JSON.stringify([...cameOn].sort()),
       JSON.stringify({ wasHub, asked: [...cappedAsk.entries()], pools: cappedPool.length, listed: cappedListed.length }));
+    // A Next of the page's table handed in (lead QA 10-13 ③): its own question - one predicate, one hop - not the form's.
+    const NEXT = { positive: [startId(OWNER)], follow: ['has_wafer'], direction: 'both', hops: 1 };
+    const nextAnswer = { ...(await wire([OWNER], [])(NEXT)), ask: NEXT };
+    const nx = await seat([OPENED]);
+    await nx.view.show({ given: { positive: [startId(OWNER)], negative: [], answer: nextAnswer } });
+    nx.urls.length = 0;
+    openHub(nx, wafers);
+    await settle();
+    const nextAsk = paramsOf(nx.urls[0] || '');
+    say('HB9 a hub on a Next step handed in: Open as nodes asks that step\'s own question - its one predicate, its one hop - with the hub id, nothing of the form',
+      nx.urls.length === 1 && JSON.stringify(nextAsk.getAll('follow')) === '["has_wafer"]' && nextAsk.get('hops') === '1'
+        && nextAsk.get('direction') === 'both' && JSON.stringify(nextAsk.getAll('expand')) === JSON.stringify([wafers]),
+      JSON.stringify([...nextAsk.entries()]));
+    // A hub of more rows than the table draws (⑦, the owner's wafers ×205 by hand): the facts box draws as many, says the rest.
+    const wide = { ...OWNER, nodes: OWNER.nodes.map((n) => (n.id === wafers ? { ...n, count: 205, label: 'wafer ×205' } : n)),
+      tables: { ...OWNER.tables, [wafers]: { ...table, rows: Array.from({ length: 205 }, (_, k) => table.rows[k % 3].map((v, i) => (i === col('id') ? `${v}~${k}` : v))), count: 205 } } };
+    const wd = await seat([wide]);
+    press(wd, wafers);
+    const wideFacts = byClass(wd.host, 'sg-facts')[0] || { children: [] };
+    const wideRows = (byClass(wideFacts, 'sg-hubtable')[0] || { children: [] }).children.length - 1;
+    const wideNote = byClass(wideFacts, 'sg-note').map((n) => n.textContent);
+    say('HB10 a hub of 205 rows pressed: its table draws 200 - the table\'s cap - and says 5 more not drawn',
+      wideRows === 200 && wideNote.includes('5 more not drawn'), JSON.stringify({ wideRows, wideNote }));
   }
 
   console.log('\n[S] a key let out of a big lump stands clear of it (owner 10-08)');
@@ -1690,11 +1715,15 @@ const failures = [];
     M('HBm7', 'Open as nodes sends the hub\'s node, not its five-cell id', 'HB3',
       'const hubs = [...(step.hubs || []), hubId];', "const hubs = [...(step.hubs || []), hubId.split('|')[0]];"),
     M('HBm8', 'the opened answer laid beside the folded one, not over it', 'HB4',
-      '        results: [res] } : s)));', '        results: [...s.results, res] } : s)));'),
+      '        results: [held.narrow ? pathsAnswer(res, held.narrow) : res] } : s)));',
+      '        results: [...s.results, held.narrow ? pathsAnswer(res, held.narrow) : res] } : s)));'),
     M('HBm11', 'Open as nodes asks without the page\'s ask - its typed cap lost', 'HB6',
-      '    await this._ask({ ...this.ask({ positive: step.positive, negative: step.negative }), expand: hubs }, [hubId],',
+      '    await this._ask({ ...held.ask, expand: hubs }, [hubId],',
       '    await this._ask({ positive: step.positive, negative: step.negative, expand: hubs }, [hubId],'),
-    // A hub of one is one seat's (derive.oneMemberHubs - its own cells are walk_hub_harness H5): here, the graph reads it.
+    // A hub of one is one seat's (derive.hubsAsMembers - its own cells are walk_hub_harness H5): here, the graph reads it.
+    M('HBm17', 'Open as nodes asks the form\'s walk, not the step\'s own', 'HB9',
+      '    await this._ask({ ...held.ask, expand: hubs }, [hubId],', '    await this._ask({ ...this.ask({ positive: step.positive, negative: step.negative }), expand: hubs }, [hubId],'),
+    M('HBm18', 'the facts box draws every row of a hub', 'HB10', '    for (const row of t.rows.slice(0, ROW_CAP)) {', '    for (const row of t.rows) {'),
     M('HBm12', 'an opened hub\'s members come out open - all past them drawn', 'HB4',
       '    for (const m of members) if (this.layout.nodes.some((n) => n.id === m)) this.fold.big.set(m, branchKeys(this.layout, m));\n', ''),
     M('HBm13', 'an opened hub\'s members each their own lump, not one pooled', 'HB4',
@@ -1704,7 +1733,7 @@ const failures = [];
     M('HBm15', 'the pooled lump lets out one member\'s part only', 'HB7', '        for (const part of lump.parts) {', '        for (const part of lump.parts.slice(0, 1)) {'),
     M('HBm16', 'Fold branches holds nothing', 'HB8', '    else this.fold.big.set(id, branchKeys(this.layout, id));', '    else this.fold.big.set(id, new Set());'),
     M('HBm9', 'a hub of one drawn as a hub', 'HB5',
-      '  const steps = (walked || []).map((step) => ({ ...step, results: (step.results || []).map(oneMemberHubs) }));\n',
+      '  const steps = (walked || []).map((step) => ({ ...step, results: (step.results || []).map((r) => hubsAsMembers(r)) }));\n',
       '  const steps = walked || [];\n'),
     { ...M('W3', 'the wire drops the fan-out cap', 'D2',
       "  if (fanoutLimit !== undefined && fanoutLimit !== null) query.set('fanout_limit', String(fanoutLimit));\n", ''), file: WIRE },

@@ -13,7 +13,7 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets, nodeWords, oneMemberHubs, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
+import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets, nodeWords, hubsAsMembers, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
 import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, recordsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointWords } from './reach_table.js';
@@ -51,6 +51,8 @@ export const EMPTY = '—';
 export const REACH_WORDS = Object.freeze({ head: '→', reach: 'reach', none: 'none', unknown: 'unknown', only: 'Reaches only' });
 export function reachWords(judged, several) {
   if (!judged) return EMPTY;
+  // A hub's head says found and no hops - its members' hops differ (server 10-13).
+  if (judged.state === 'found' && !Number.isFinite(judged.hops)) return REACH_WORDS.reach;
   if (judged.state === 'found') return `${judged.hops} ${judged.hops === 1 ? 'hop' : 'hops'}${several && judged.via ? ` → ${nodeWords(judged.via)}` : ''}`;
   return judged.state === 'none' ? REACH_WORDS.none : REACH_WORDS.unknown;
 }
@@ -234,7 +236,12 @@ export function shownOf(section, f = {}, lines = null) {
       return a.blank || b.blank ? Number(a.blank) - Number(b.blank) : sign * compareCells(a, b);
     });
   }
-  return { columns: grid.columns, lines: shown, all: grid.lines, filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) };
+  // A filter or a sort on a column this table no longer draws (a hub turned from columns to a section, lead QA 10-13 ⑬):
+  // set aside, said, not dropped.
+  const aside = [...Object.entries(f.columns || {}).filter(([key, x]) => !at.has(key) && filterActive(x)).map(([key]) => key),
+    ...(f.sort && !at.has(f.sort.key) ? [f.sort.key] : [])];
+  return { columns: grid.columns, lines: shown, all: grid.lines, aside,
+    filtering: filter !== 'all' || Boolean(find) || tests.length > 0 || Boolean(f.reaches) };
 }
 
 /** A cell on the clipboard - Copy's, and a node's keys' (owner 10-12): several «; », none empty, a side that did not
@@ -485,14 +492,14 @@ export function deltaWords(delta) {
  * a member - its name, its declared columns - its sides its head's value. A hub under another (`of`) is that one's
  * columns when every row there holds exactly one of it, else its own section with a column for the row it hangs from
  * (lead 10-13 Q2) - judged again from every answer held, so a page can turn columns into a section. A hub of one is
- * its member, a row of its type (`oneMemberHubs`).
+ * its member, a row of its type (`hubsAsMembers`).
  * @returns {{sections: Array, shown: number, hidden: number, groups: Array, unsplit: boolean}}
  */
 export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
   fold = {}, controlGiven = null, addsGiven = []) {
-  const result = oneMemberHubs(given);
-  const control = controlGiven && oneMemberHubs(controlGiven);
-  const adds = addsGiven.map((add) => ({ ...add, answer: oneMemberHubs(add.answer) }));
+  const result = hubsAsMembers(given);
+  const control = controlGiven && hubsAsMembers(controlGiven);
+  const adds = addsGiven.map((add) => ({ ...add, answer: hubsAsMembers(add.answer) }));
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
   const walked = control ? mergeWalks(result, control) : result;
   // The walk's judgment for each node it walked (owner 10-12): the answer's «aux» names the auxiliary node(s) (seeds), each
@@ -718,17 +725,29 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
   const headOf = new Map(heads.map((n) => [n.id, n]));
   const rowsOfHub = (id) => tables[id].rows.map((r) => Object.fromEntries(tables[id].columns.map((c, i) => [c, r[i]])));
   const declaredOf = (id) => tables[id].columns.filter((c) => !HUB_ROW_COLUMNS.includes(c));
-  const said = (v) => ({ text: v === null || v === undefined || v === '' ? EMPTY : valueWords(v) });
+  const cellOfRow = (v) => ({ text: v === null || v === undefined || v === '' ? EMPTY : valueWords(v) });
   const arrow = (h) => (h.direction === 'incoming' ? `← ${h.predicate}` : `${h.predicate} →`);
-  const nearWords = (id) => (nodes.find((n) => n.id === id) || {}).label || nodeWords(id);
-  // One row of it under each row above, and none elsewhere.
+  // A hub the answer did not send by name is read off its id: the node it starts from (lead QA 10-13 ⑪).
+  const nearWords = (id) => (nodes.find((n) => n.id === id) || {}).label || nodeWords(String(id).split('|')[0]);
+  // One row of it under each row above, and none elsewhere - and the one above a section of its own: a hub under columns
+  // has no row to stand beside (lead QA 10-13 ②, three deep).
   const oneEach = (sub) => {
     if (!sub.hub.of || !headOf.has(sub.hub.of)) return false;
     const above = new Set(rowsOfHub(sub.hub.of).map((r) => r.id));
     const under = rowsOfHub(sub.id).map((r) => r.parent_id);
     return under.length === above.size && new Set(under).size === under.length && under.every((p) => above.has(p));
   };
-  const asColumns = new Set(heads.filter(oneEach).map((n) => n.id));
+  const columnsOf = new Map();
+  const asColumn = (h) => {
+    if (!columnsOf.has(h.id)) columnsOf.set(h.id, oneEach(h) && !asColumn(headOf.get(h.hub.of)));
+    return columnsOf.get(h.id);
+  };
+  const asColumns = new Set(heads.filter(asColumn).map((n) => n.id));
+  // A control walk (lead QA 10-13 ④): which walk holds each row, A's tables or B's.
+  const heldBy = (answer, hub) => new Set((((answer && answer.tables) || {})[hub] || { rows: [] }).rows
+    .map((r) => r[tables[hub].columns.indexOf('id')]));
+  // The heads a section draws, each its own: a name met twice says which it is (lead QA 10-13 ⑩).
+  const apart = (list) => list.map((h, i) => (list.indexOf(h) === i ? h : `${h} (${list.slice(0, i + 1).filter((x) => x === h).length})`));
   let total = members.length;
   for (const head of heads) {
     if (asColumns.has(head.id)) continue;
@@ -740,8 +759,22 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
     const above = head.hub.of && headOf.has(head.hub.of) ? headOf.get(head.hub.of) : null;
     const under = heads.filter((h) => asColumns.has(h.id) && h.hub.of === head.id)
       .map((h) => ({ h, by: new Map(rowsOfHub(h.id).map((r) => [r.parent_id, r])), own: declaredOf(h.id) }));
-    const centreHeads = [head.type, ...own, ...(above ? [above.type] : []),
-      ...under.flatMap((u) => [`${arrow(u.h.hub)} ${u.h.type}`, ...u.own.map((c) => `${u.h.type} · ${c}`)])];
+    const inA = control ? heldBy(result, head.id) : null;
+    const inB = control ? heldBy(control, head.id) : null;
+    const ownHeads = apart([head.type, ...own, ...(above ? [above.type] : []),
+      ...under.flatMap((u) => [`${arrow(u.h.hub)} ${u.h.type}`, ...u.own.map((c) => `${u.h.type} · ${c}`)]),
+      ...(control ? ['A · B'] : [])]);
+    const centreHeads = [...ownHeads, ...(reaches ? [reachHead] : [])];
+    const said = rows.map((r) => ({ id: r.id, label: nodeWords(r.id), differs: false, missing: false, reached: null, cells: [],
+      reach: reaches ? judgedOf(head.id) : null, routes: [],
+      centre: [{ text: nodeWords(r.id) }, ...own.map((c) => cellOfRow(r[c])), ...(above ? [{ text: nodeWords(r.parent_id) }] : []),
+        ...under.flatMap((u) => {
+          const one = u.by.get(r.id) || {};
+          return [{ text: one.id ? nodeWords(one.id) : EMPTY }, ...u.own.map((c) => cellOfRow(one[c]))];
+        }),
+        ...(control ? [{ text: REACHED[reachedBy(inA.has(r.id), inB.has(r.id))] }] : []),
+        // The judgment is the head's: its rows are one value (lead QA 10-13 ⑧).
+        ...(reaches ? [{ text: reachWords(judgedOf(head.id), reachTo.length > 1) }] : [])] }));
     sections.push({
       type: head.id,
       name: `${HUB_MARK} ${head.label}`,
@@ -754,17 +787,11 @@ export function walkTableView(given, entities, predicates = [], cap = ROW_CAP, s
       columnHeads: [],
       parts: [],
       centreHeads,
-      centreLines: centreHeads.map((h) => [h]),
-      judged: false,
-      tally: '',
+      centreLines: [...ownHeads.map((h) => [h]), ...(reaches ? [reachLines] : [])],
+      judged: Boolean(reaches),
+      tally: reaches ? reachTally(reachHead, said) : '',
       centre: [],
-      rows: rows.map((r) => ({ id: r.id, label: nodeWords(r.id), differs: false, missing: false, reached: null, cells: [],
-        reach: null, routes: [],
-        centre: [{ text: nodeWords(r.id) }, ...own.map((c) => said(r[c])), ...(above ? [{ text: nodeWords(r.parent_id) }] : []),
-          ...under.flatMap((u) => {
-            const one = u.by.get(r.id) || {};
-            return [{ text: one.id ? nodeWords(one.id) : EMPTY }, ...u.own.map((c) => said(one[c]))];
-          })] })),
+      rows: said,
       columns: [],
       listed: [],
       long: [],

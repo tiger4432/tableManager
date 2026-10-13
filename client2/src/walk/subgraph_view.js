@@ -19,14 +19,15 @@
 
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
-import { staticTypes, cutBudgets, edgeQualifiers, qualifierWords, nodeWords, oneMemberHubs, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
+import { staticTypes, cutBudgets, edgeQualifiers, qualifierWords, nodeWords, hubsAsMembers, HUB_MARK, HUB_ROW_COLUMNS } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { markingIntent } from '../rnd_board/panel.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { FAILED, LOADING, unitText } from '../ui_words.js';
 import { localMinute } from '../server_time.js';
 // A folded lump opened as a step of the page's table, its numbers drawn in its place (leads 5ef260acf · 10-08 · 10-11).
-import { lumpAnswer, lumpPoints, pointsSvg, startBranch, svgAddress } from './fold_views.js';
+import { lumpAnswer, lumpPoints, pathsAnswer, pointsSvg, startBranch, svgAddress } from './fold_views.js';
+import { ROW_CAP } from './table_view.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
 // The paths between two marked nodes (lead 55f854fc5): the one simple-path search, called from here.
@@ -78,7 +79,7 @@ export function seedsOf(entries) {
  */
 export function subgraphLayout(walked, entities) {
   // A hub of one stands as that one member (lead 10-13): a node like any other, its hub id kept inside.
-  const steps = (walked || []).map((step) => ({ ...step, results: (step.results || []).map(oneMemberHubs) }));
+  const steps = (walked || []).map((step) => ({ ...step, results: (step.results || []).map((r) => hubsAsMembers(r)) }));
   const statics = staticTypes(entities);
   // Colour follows the declaration's order, so a type keeps its colour from walk to walk; a type the
   // declaration does not name takes the next index in the order it first appears.
@@ -687,9 +688,13 @@ export class SubgraphView {
     const head = this.layout.nodes.find((n) => n.id === hubId);
     const t = head && head.hub && head.hub.table;
     const members = t ? t.rows.map((r) => r[t.columns.indexOf('id')]) : [];
-    await this._ask({ ...this.ask({ positive: step.positive, negative: step.negative }), expand: hubs }, [hubId],
+    // The step's own question, as its answer carries it, with the hub opened (lead QA 10-13 ③) - a Next's one predicate
+    // stays one; a step narrowed to its paths is narrowed again.
+    const held = step.results.find((r) => ((r && r.nodes) || []).some((n) => n.id === hubId));
+    if (!held || !held.ask) return;
+    await this._ask({ ...held.ask, expand: hubs }, [hubId],
       (res) => this.steps.map((s, i) => (i === index ? { ...s, hubs, cohorts: { ...(s.cohorts || {}), [hubId]: members },
-        results: [res] } : s)));
+        results: [held.narrow ? pathsAnswer(res, held.narrow) : res] } : s)));
     if (this.state !== 'done' || !at) return;
     // Past its members, folded as the first picture folds (owner «ㅇㅇ 1번»): each member's own fold, pooled in the view.
     for (const m of members) if (this.layout.nodes.some((n) => n.id === m)) this.fold.big.set(m, branchKeys(this.layout, m));
@@ -1387,7 +1392,7 @@ export class SubgraphView {
     const head = this._el('tr', '');
     for (const c of ['', ...own]) head.appendChild(this._el('th', '', c));
     table.appendChild(head);
-    for (const row of t.rows) {
+    for (const row of t.rows.slice(0, ROW_CAP)) {
       const cells = Object.fromEntries(t.columns.map((c, i) => [c, row[i]]));
       const tr = this._el('tr', '');
       tr.appendChild(this._el('td', '', nodeWords(cells.id)));
@@ -1395,6 +1400,8 @@ export class SubgraphView {
       table.appendChild(tr);
     }
     box.appendChild(table);
+    // As many rows as the table draws (lead QA 10-13 ⑦), the rest said as the table says it.
+    if (t.rows.length > ROW_CAP) box.appendChild(this._el('div', 'sg-note', `${t.rows.length - ROW_CAP} more not drawn`));
   }
 
   /** The info box holding a lump (lead 10-08): what it is, and «Open as table» when the page opens lumps (lead 10-11). */

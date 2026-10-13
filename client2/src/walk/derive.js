@@ -306,24 +306,41 @@ export const HUB_MARK = '▤';
 export const nodeWords = (id) => { const n = entityOfId(id) || {}; return Object.values(n.keys || {}).map(valueWords).join(' / ') || id; };
 
 /**
- * An answer with every hub of one member as that member (lead 10-13 «×1 허브는 노드처럼»): the head a node - its row's
- * type, depth and id, its keys its name, `hubOf` the hub it came as, which a later page moves or takes it by - and
- * every edge to the hub run to it. The graph and the table read an answer through this.
+ * THE ONE SEAT that turns hubs back into their members (lead 10-13): every hub of one, and with `every` every hub - for
+ * a screen that draws no hubs (`fetchSubgraph`). A member is a node: its row's type, depth and id, its keys its name,
+ * its row's declared cells its attributes, its head's `aux`, `hubOf` the hub it came as (a later page moves or takes it
+ * by that). The head's ranked line becomes the member's, a line each. A hub of one keeps every edge, run to its member;
+ * a hub of many, an edge a row from the row it hangs from - what the hub's edges onward folded no row says.
  */
-export function oneMemberHubs(answer) {
+export function hubsAsMembers(answer, every = false) {
   const tables = (answer && answer.tables) || {};
-  const one = new Map();
-  for (const head of (answer && Array.isArray(answer.nodes) ? answer.nodes : [])) {
-    const t = head.hub && head.count === 1 ? tables[head.id] : null;
-    if (!t || !Array.isArray(t.rows) || t.rows.length !== 1) continue;
-    const row = Object.fromEntries(t.columns.map((c, i) => [c, t.rows[0][i]]));
-    one.set(head.id, { id: row.id, type: row.type, depth: row.depth, label: nodeWords(row.id),
-      keys: (entityOfId(row.id) || {}).keys || {}, hubOf: head.id });
+  const heads = new Map((answer && Array.isArray(answer.nodes) ? answer.nodes : [])
+    .filter((n) => n.hub && tables[n.id] && Array.isArray(tables[n.id].rows) && (every || (n.count === 1 && tables[n.id].rows.length === 1)))
+    .map((n) => [n.id, n]));
+  if (!heads.size) return answer;
+  const rowsOf = new Map([...heads.keys()].map((hub) => [hub, tables[hub].rows.map((r) => Object.fromEntries(tables[hub].columns.map((c, i) => [c, r[i]])))]));
+  const memberOf = (head, row) => ({ id: row.id, type: row.type, depth: row.depth, label: nodeWords(row.id),
+    keys: (entityOfId(row.id) || {}).keys || {},
+    attributes: Object.fromEntries(Object.entries(row).filter(([c, v]) => !HUB_ROW_COLUMNS.includes(c) && v !== null && v !== undefined)),
+    ...(head.aux ? { aux: head.aux } : {}), hubOf: head.id });
+  const one = (hub) => rowsOf.get(hub).length === 1;
+  const end = (id) => (heads.has(id) && one(id) ? rowsOf.get(id)[0].id : id);
+  const edges = (Array.isArray(answer.edges) ? answer.edges : [])
+    .filter((e) => [e.source, e.target].every((id) => !heads.has(id) || one(id)))
+    .map((e) => (heads.has(e.source) || heads.has(e.target) ? { ...e, source: end(e.source), target: end(e.target) } : e));
+  for (const [hub, head] of heads) {
+    if (one(hub)) continue;
+    for (const row of rowsOf.get(hub)) {
+      const [source, target] = head.hub.direction === 'incoming' ? [row.id, row.parent_id] : [row.parent_id, row.id];
+      edges.push({ id: `${hub}${'\u0000'}${row.id}`, source: end(source), target, predicate: row.via || head.hub.predicate });
+    }
   }
-  if (!one.size) return answer;
-  const end = (id) => (one.has(id) ? one.get(id).id : id);
-  return { ...answer, nodes: answer.nodes.map((n) => one.get(n.id) || n),
-    edges: (Array.isArray(answer.edges) ? answer.edges : []).map((e) => ({ ...e, source: end(e.source), target: end(e.target) })) };
+  const propagation = answer.propagation && Array.isArray(answer.propagation.ranked)
+    ? { ...answer.propagation, ranked: answer.propagation.ranked.flatMap((r) => (heads.has(r.id)
+      ? rowsOf.get(r.id).map((row) => ({ ...r, id: row.id, tied_members: undefined })) : [r])) }
+    : answer.propagation;
+  return { ...answer, nodes: answer.nodes.flatMap((n) => (heads.has(n.id) ? rowsOf.get(n.id).map((row) => memberOf(n, row)) : [n])),
+    edges, ...(propagation ? { propagation } : {}) };
 }
 
 /** One step from some nodes along one predicate, to one type when named: the walk's arguments (lead 53050a4ec). The

@@ -36,6 +36,17 @@ def paged(name, seed, atoms, **kwargs):
     return {"name": name, "pages": [clean(p) for p in pages], "applied": json.loads(t._applied(pages))}
 
 
+# A contrast whose step splits by value into a hub of two and a hub of ONE (lead QA 10-13 ①: the screens had none): + P,
+# - N; of N's three wafers only W1 shares P's recipe. Judged against the recipe, so the heads carry `aux`.
+CONTRAST_ONE = t._atoms(("lot", "P", "has_wafer", "wafer", "W5"), ("lot", "P", "has_wafer", "wafer", "W6"),
+                        ("lot", "P", "uses_tool", "tool", "X"), ("tool", "X", "feeds", "recipe", "R"),
+                        *[("lot", "N", "has_wafer", "wafer", "W%d" % w) for w in range(1, 4)],
+                        ("wafer", "W1", "uses", "recipe", "R"))
+# Three hubs deep, each one a row (lead QA 10-13 ②): a lot -> wafers x3 -> one inspection each -> one image each.
+CHAIN = t._atoms(*[("lot", "L", "has_wafer", "wafer", "W%d" % w) for w in range(3)],
+                 *[("wafer", "W%d" % w, "inspected", "insp", "I%d" % w) for w in range(3)],
+                 *[("insp", "I%d" % w, "imaged", "img", "G%d" % w) for w in range(3)])
+
 head = subprocess.run(["git", "-C", SERVER, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 out = {
     "source": "server/tests/test_a_walk_folds_a_declared_step_into_a_hub.py on impl-walk-hub " + head,
@@ -48,6 +59,9 @@ out = {
         "capped_opened": clean(t._walk(t.LOT, t.OWNER, declaration=t.PLAIN, hops=3, fanout_limit=2, expand=[t.WAFERS])),
         "plain": clean(t._walk(t.LOT, t.OWNER, declaration=t.PLAIN, hops=3)),
         "contrast": clean(t._walk({"positive": [t.P], "negative": [t.N]}, t.CONTRAST, hops=2)),
+        "contrast_one": clean(t._walk({"positive": [t.P], "negative": [t.N]}, CONTRAST_ONE, hops=2,
+                                      aux=[t.node("recipe", "R")])),
+        "chain": clean(t._walk(t.LOT, CHAIN, hops=3)),
     },
     "paged": [
         paged("paged", t.LOT, t.PAGED, hops=2, node_limit=10),

@@ -109,7 +109,9 @@ async function measure(mutate = {}) {
     return [s.name, canon(held(got)) === canon(reference(s.applied))];
   });
   // The wire: every page of every continued walk, and the owner's answer with a bundles key beside its hubs.
-  const wired = async (body) => api.createWalkBoxWalk({ apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => body }) })({ positive: [ID.lot] });
+  // As the walk page asks it (it draws the hubs).
+  const reply = (body) => async () => ({ ok: true, status: 200, json: async () => body });
+  const wired = async (body) => api.createWalkBoxWalk({ apiBase: '', hubs: true, fetchImpl: reply(body) })({ positive: [ID.lot] });
   const pass = (got, body) => ['tables', 'left', 'moved', 'edges_pending'].every((k) => canon(got[k] || null) === canon(body[k] || null))
     && canon(got.nodes.filter((n) => n.hub)) === canon((body.nodes || []).filter((n) => n.hub))
     && canon(got.edges.filter((e) => 'count' in e)) === canon((body.edges || []).filter((e) => 'count' in e));
@@ -127,7 +129,7 @@ async function measure(mutate = {}) {
   out.oneEach = sections(firstEach, { positive: [ID.lot], negative: [] });
   out.oneMore = sections(tv.applyPage({ ...firstEach, edges: firstEach.edges }, oneMore), { positive: [ID.lot], negative: [] });
   // A hub of one: its member, a row of its type, the edge to it run to it.
-  const asMember = dv.oneMemberHubs(ofOne);
+  const asMember = dv.hubsAsMembers(ofOne);
   const member = rowsOf(ofOne, ID.wafers)[0].id;
   out.ofOne = { node: asMember.nodes.filter((n) => n.depth === 1).map((n) => [n.id === member, n.type, n.label, n.hubOf === ID.wafers]),
     edges: asMember.edges.map((e) => e.target === member), table: sections(ofOne, { positive: [ID.lot], negative: [] }) };
@@ -135,6 +137,61 @@ async function measure(mutate = {}) {
   const { module: fv } = await loadWithProbe(path.join(SRC, 'walk', 'fold_views.js'), { mutate: mutate['fold_views.js'] });
   const lumped = fv.lumpAnswer([OWNER], { owner: ID.wafers, owners: [ID.wafers], members: [ID.defects], predicate: 'observed' });
   out.lumpTable = sections(lumped, { positive: [ID.wafers], negative: [] }).map((s) => s[0]);
+  // The screens that draw no hubs (lead QA 10-13 ⑥) - the board's three routes and the test bed through fetchSubgraph,
+  // the board's walk box through the walk box's walk: each hub its members, no head, no hub id ranked.
+  const plain = (got) => {
+    const ids = new Set(got.nodes.map((n) => n.id));
+    return { heads: got.nodes.filter((n) => n.hub).length, members: [ID.wafers, ID.defects].map((h) => rowsOf(OWNER, h).every((r) => ids.has(r.id))),
+      ranked: got.propagation.ranked.some((r) => String(r.id).includes('|')),
+      rows: got.edges.filter((e) => e.predicate === 'has_wafer').length };
+  };
+  out.consumers = [
+    plain((await api.fetchSubgraph({ apiBase: '', nodeId: ID.lot, fetchImpl: reply(OWNER) })).body),
+    plain(await api.createWalkBoxWalk({ apiBase: '', fetchImpl: reply(OWNER) })({ positive: [ID.lot] })),
+    (await wired(OWNER)).nodes.filter((n) => n.hub).length,
+    // ...and the one seat itself, as this harness loads it.
+    plain(dv.hubsAsMembers(OWNER, true)),
+  ];
+  // A hub of one the server made, in a contrast judged against an aux node (lead QA 10-13 ①): its member a row of its type
+  // - its sides, its head's judgment, a declared cell of its row (added here: no capture declares a column).
+  const one = ONE_WALK.contrast_one;
+  const single = one.nodes.find((n) => n.hub && n.count === 1);
+  const thick = { ...one, tables: { ...one.tables, [single.id]: { ...one.tables[single.id], columns: [...one.tables[single.id].columns, 'thickness'],
+    rows: one.tables[single.id].rows.map((r) => [...r, 7.5]) } } };
+  const contrastStarts = { positive: [ID.P], negative: [ID.N] };
+  const view = tv.walkTableView({ ok: true, ...thick }, [], [], undefined, contrastStarts);
+  const waferRows = (view.sections.find((x) => x.type === 'wafer') || { rows: [], centreHeads: [] });
+  const theMember = dv.hubsAsMembers(thick).nodes.find((n) => n.hubOf === single.id) || {};
+  out.single = { server: Boolean(single) && one.tables[single.id].rows.length === 1, heads: waferRows.centreHeads,
+    member: [theMember.attributes, theMember.aux, dv.hubsAsMembers(thick).propagation.ranked.some((r) => r.id === theMember.id)],
+    rows: waferRows.rows.map((r) => r.centre.map((c) => c.text)), sides: (view.sections.find((x) => x.type === 'wafer') || { groups: [] }).groups.map((g) => g.count),
+    hidden: view.hidden, judged: view.sections.filter((x) => x.type.includes('|')).map((x) => x.rows.map((r) => r.centre[r.centre.length - 1].text)) };
+  // Three hubs deep, each one a row (②): the second the first's columns, the third its own section - none lost.
+  out.chain = sections(ONE_WALK.chain, { positive: [ID.lot], negative: [] }).map((x) => [x[0], x[2], x[3]]);
+  out.chainHidden = tv.walkTableView({ ok: true, ...ONE_WALK.chain }, [], [], undefined, { positive: [ID.lot], negative: [] }).hidden;
+  // A control walk B holding fewer of a hub's rows (④): each row says which walk holds it.
+  const fewer = { ...OWNER, tables: { ...OWNER.tables, [ID.wafers]: { ...OWNER.tables[ID.wafers], rows: OWNER.tables[ID.wafers].rows.slice(1), count: 2 } } };
+  const ab = tv.walkTableView({ ok: true, ...OWNER }, [], [], undefined, { positive: [ID.lot], negative: [] }, new Map(), {}, { ok: true, ...fewer })
+    .sections.find((x) => x.type === ID.wafers);
+  out.reached = ab ? [ab.centreHeads, ab.rows.map((r) => [name(r.id), r.centre[r.centre.length - 1].text]).sort()] : null;
+  // Every section of every answer here: its heads each once, its heading no raw hub id (⑩ ⑪).
+  const pagedHeld = FIX.paged.map((x) => x.pages.reduce((was, page) => tv.applyPage(was, page), { nodes: [], edges: [] }));
+  // The bonded walk's dies bonded from dies, one a row; one row less, a section of its own - a die under a die.
+  const bonded = pagedHeld[FIX.paged.findIndex((x) => x.name === 'bonded')];
+  const bondedHub = Object.keys(bonded.tables).find((h) => h.includes('|bonded_from|'));
+  const dieUnderDie = { ...bonded, tables: { ...bonded.tables, [bondedHub]: { ...bonded.tables[bondedHub], rows: bonded.tables[bondedHub].rows.slice(1) } } };
+  const every = [...Object.values(ONE_WALK), ...pagedHeld, dieUnderDie]
+    .flatMap((a) => tv.walkTableView({ ok: true, ...a }, [], [], undefined, { positive: [ID.lot, ID.P, ID.wafer], negative: [ID.N] }).sections);
+  out.heads = { sections: every.length, twice: every.filter((x) => new Set(x.centreHeads).size !== x.centreHeads.length).map((x) => x.centreHeads),
+    dieUnderDie: (every.find((x) => x.type === bondedHub) || { centreHeads: [] }).centreHeads,
+    raw: every.filter((x) => /ledger-entity:|\|/.test(x.heading)).map((x) => x.heading) };
+  // A filter and a sort on a column the section no longer draws (⑬): set aside, both said.
+  const wafersSection = tv.walkTableView({ ok: true, ...OWNER }, [], [], undefined, { positive: [ID.lot], negative: [] }).sections.find((x) => x.type === ID.wafers);
+  out.aside = tv.shownOf(wafersSection, { columns: { 'own\u0000gone': { contains: 'x' } }, sort: { key: 'own\u0000gone', dir: 'asc' } }).aside;
+  // A member's checked row walked on from (⑨): the step before keeps the hub its member hangs in, its line, its question.
+  const narrowedTo = fv.pathsAnswer({ ...OWNER, ask: { positive: [ID.lot] } }, [rowsOf(OWNER, ID.wafers)[0].id]);
+  out.narrowed = { hub: narrowedTo.nodes.some((n) => n.id === ID.wafers), lot: narrowedTo.nodes.some((n) => n.id === ID.lot),
+    line: narrowedTo.edges.some((e) => e.target === ID.wafers), ask: JSON.stringify(narrowedTo.ask), narrow: narrowedTo.narrow.length };
   // No client source reads an answer's `bundles`; the parser reads members, and the hubs' own key is read.
   const bundles = readersOf('bundles', mutate.census);
   const tables = readersOf('tables');
@@ -167,6 +224,25 @@ const cells = (o) => [
       table: [['lot · 1', '+1', 'lot', 'L'], ['wafer · 1', '+1', 'wafer', name(rowsOf(ofOne, ID.wafers)[0].id)]] }],
   ['H7 a lump of the picture holding a hub, opened as a table: its owner and its member, hubs both, keep their tables - a section each',
     o.lumpTable, ['▤ wafer ×3 · L has_wafer →', '▤ defect ×6 · wafer ×3 observed →']],
+  ['H8 the screens that draw no hubs - the board\'s routes, the test bed, the board\'s walk box - get each hub as its members: no head, every member, no hub id ranked, a line a row; the walk page keeps its hubs',
+    o.consumers, [{ heads: 0, members: [true, true], ranked: false, rows: 3 }, { heads: 0, members: [true, true], ranked: false, rows: 3 }, 2,
+      { heads: 0, members: [true, true], ranked: false, rows: 3 }]],
+  ['H9 a hub of one the server made, in a judged contrast: its member a row of its type, its sides, its head\'s judgment, its row\'s declared cell; nothing hidden',
+    o.single, { server: true, heads: ['wafer', 'thickness', '→ R'], member: [{ thickness: 7.5 }, ONE_WALK.contrast_one.nodes.find((n) => n.hub && n.count === 1).aux, true],
+      rows: [['W1', '7.5', 'reach']], sides: [1, 1], hidden: 0,
+      judged: [['reach', 'reach'], ['reach', 'reach']] }],
+  ['H10 three hubs deep, each one a row: the second the first\'s columns, the third a section of its own with the row it hangs from; nothing hidden',
+    [o.chain.slice(1), o.chainHidden], [[['▤ wafer ×3 · L has_wafer →', 'wafer | inspected → insp', 'W0 / I0 ; W1 / I1 ; W2 / I2'],
+      ['▤ img ×3 · insp ×3 imaged →', 'img | insp', 'G0 / I0 ; G1 / I1 ; G2 / I2']], 0]],
+  ['H11 a control walk holding fewer of a hub\'s rows: each row says which walk holds it',
+    // B is the owner's walk without the wafers table's first row.
+    o.reached, [['wafer', 'A · B'], rowsOf(OWNER, ID.wafers).map((r, i) => [name(r.id), i === 0 ? 'A only' : 'A + B']).sort()]],
+  ['H12 every section of every answer here: its heads each once, its heading no raw hub id',
+    [o.heads.sections > 20, o.heads.twice, o.heads.raw, o.heads.dieUnderDie], [true, [], [], ['die', 'die (2)']]],
+  ['H13 a filter and a sort on a column no longer drawn are set aside and said, not dropped',
+    o.aside, ['own\u0000gone', 'own\u0000gone']],
+  ['H14 a member\'s row walked on from: the step before keeps its hub, the lot, the line to it, and its question with what it was narrowed to',
+    o.narrowed, { hub: true, lot: true, line: true, ask: JSON.stringify({ positive: [ID.lot] }), narrow: 1 }],
   ['H6 no client source reads an answer\'s bundles - its member nor a key of that name - while the parser reads every file and the hubs\' tables are read',
     o.census, { files: true, members: true, bundles: [], tablesRead: true }],
 ];
@@ -194,16 +270,37 @@ const DEFECTS = [
   ['D8 a hub under a hub without the row it hangs from -> H3', 'H3', { 'table_view.js': (t) => t.replace(
     '...(above ? [{ text: nodeWords(r.parent_id) }] : [])', '...[]') }],
   ['D9 a hub one row a row never the columns -> H4', 'H4', { 'table_view.js': (t) => t.replace(
-    'const asColumns = new Set(heads.filter(oneEach).map((n) => n.id));', 'const asColumns = new Set();') }],
+    'const asColumns = new Set(heads.filter(asColumn).map((n) => n.id));', 'const asColumns = new Set();') }],
   ['D10 the columns kept when a row holds two -> H4', 'H4', { 'table_view.js': (t) => t.replace(
     'return under.length === above.size && new Set(under).size === under.length && under.every((p) => above.has(p));',
     'return under.every((p) => above.has(p));') }],
   ['D11 the edge to a hub of one left on the hub -> H5', 'H5', { 'derive.js': (t) => t.replace(
-    '.map((e) => ({ ...e, source: end(e.source), target: end(e.target) }))', '') }],
+    '.map((e) => (heads.has(e.source) || heads.has(e.target) ? { ...e, source: end(e.source), target: end(e.target) } : e));', ';') }],
   ['D12 the table reads a hub of one as a hub -> H5', 'H5', { 'table_view.js': (t) => t.replace(
-    '  const result = oneMemberHubs(given);\n', '  const result = given;\n') }],
+    '  const result = hubsAsMembers(given);\n', '  const result = given;\n') }],
   ['D14 a lump\'s answer drops its hubs\' tables -> H7', 'H7', { 'fold_views.js': (t) => t.replace(
     '    ...(Object.keys(tables).length ? { tables } : {}) };', '  };') }],
+  ['D15 every screen gets the hubs -> H8', 'H8', { 'api.js': (t) => t.replace('body: body && !hubs ? hubsAsMembers(body, true) : body };', 'body };') }],
+  ['D16 a hub of many left as its head for a screen that draws none -> H8', 'H8', { 'derive.js': (t) => t.replace(
+    '&& (every || (n.count === 1 && tables[n.id].rows.length === 1)))', '&& n.count === 1 && tables[n.id].rows.length === 1)') }],
+  ['D17 a hub of one\'s ranked line keeps the hub id -> H9', 'H9', { 'derive.js': (t) => t.replace(
+    'ranked: answer.propagation.ranked.flatMap((r) => (heads.has(r.id)', 'ranked: answer.propagation.ranked.flatMap((r) => (false') }],
+  ['D18 a member without its row\'s declared cells -> H9', 'H9', { 'derive.js': (t) => t.replace(
+    'attributes: Object.fromEntries(Object.entries(row).filter(', 'attributes: Object.fromEntries([].filter(') }],
+  ['D19 a hub\'s judgment not said on its rows -> H9', 'H9', { 'table_view.js': (t) => t.replace(
+    "...(reaches ? [{ text: reachWords(judgedOf(head.id), reachTo.length > 1) }] : [])] }));", "] }));") }],
+  ['D20 a hub under columns made columns again - the third lost -> H10', 'H10', { 'table_view.js': (t) => t.replace(
+    'columnsOf.set(h.id, oneEach(h) && !asColumn(headOf.get(h.hub.of)));', 'columnsOf.set(h.id, oneEach(h));') }],
+  ['D21 a hub row says no walk -> H11', 'H11', { 'table_view.js': (t) => t.replace(
+    "...(control ? [{ text: REACHED[reachedBy(inA.has(r.id), inB.has(r.id))] }] : []),", '') }],
+  ['D22 a name met twice drawn twice -> H12', 'H12', { 'table_view.js': (t) => t.replace(
+    "const apart = (list) => list.map((h, i) => (list.indexOf(h) === i ? h :", "const apart = (list) => list.map((h, i) => (true ? h :") }],
+  ['D23 a filter on a column gone dropped in silence -> H13', 'H13', { 'table_view.js': (t) => t.replace(
+    "...(f.sort && !at.has(f.sort.key) ? [f.sort.key] : [])];", '];').replace(
+    '.filter(([key, x]) => !at.has(key) && filterActive(x)).map(([key]) => key),', '.filter(() => false).map(([key]) => key),') }],
+  ['D24 a member walked on from has no path -> H14', 'H14', { 'fold_views.js': (t) => t.replace(
+    'const paths = rows.flatMap((id) => walked.get(id) || walked.get(hubOf.get(id)) || []);', 'const paths = rows.flatMap((id) => walked.get(id) || []);') }],
+  ['D25 the step before forgets its question -> H14', 'H14', { 'fold_views.js': (t) => t.replace('    ask: answer && answer.ask, narrow: rows };', '    narrow: rows };') }],
   ['D13 a source reads an answer\'s bundles -> H6', 'H6', { census: (file, t) => (file === 'walk/main.js' ? `${t}\nexport const held = (answer) => answer.bundles;\n` : t) }],
 ];
 

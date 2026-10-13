@@ -44,16 +44,23 @@ export function lumpAnswer(results, lump) {
  */
 export function pathsAnswer(answer, rows) {
   const walked = walkedPaths(answer);
-  const paths = rows.flatMap((id) => walked.get(id) || []);
-  const keep = new Set([...rows, ...paths.flatMap((p) => p.hops.map((h) => h.id))]);
+  // A hub's member follows its hub's paths, and a path through a member runs through its hub (lead QA 10-13 ⑨): the
+  // server ranks a hub by its id and walks it through one member.
+  const hubOf = new Map(Object.entries((answer && answer.tables) || {})
+    .flatMap(([hub, t]) => t.rows.map((r) => [r[t.columns.indexOf('id')], hub])));
+  const at = (id) => hubOf.get(id) || id;
+  const paths = rows.flatMap((id) => walked.get(id) || walked.get(hubOf.get(id)) || []);
+  const keep = new Set([...rows.map(at), ...paths.flatMap((p) => p.hops.map((h) => at(h.id)))]);
   const took = new Set();
   for (const p of paths) {
     p.hops.slice(1).forEach((hop, i) => {
-      const from = p.hops[i].id;
-      for (const predicate of hop.predicates || ['']) took.add(`${from}|${hop.id}|${predicate}`).add(`${hop.id}|${from}|${predicate}`);
+      const [from, to] = [at(p.hops[i].id), at(hop.id)];
+      for (const predicate of hop.predicates || ['']) took.add(`${from}|${to}|${predicate}`).add(`${to}|${from}|${predicate}`);
     });
   }
-  return narrowed([answer], keep, (e) => took.has(`${e.source}|${e.target}|${e.predicate}`) || took.has(`${e.source}|${e.target}|`));
+  // Its question and what it was narrowed to ride with it, so a hub opened on it asks that and is narrowed again (③).
+  return { ...narrowed([answer], keep, (e) => took.has(`${e.source}|${e.target}|${e.predicate}`) || took.has(`${e.source}|${e.target}|`)),
+    ask: answer && answer.ask, narrow: rows };
 }
 
 /** What `results` brought, narrowed to the nodes in `keep` and the edges `keepEdge` takes, each once. */

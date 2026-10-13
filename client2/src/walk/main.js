@@ -142,7 +142,8 @@ export function boot(doc, host, deps) {
   // THE WALK'S ONE WORLD SEAT (lead 99032248f), as the board's: every request goes through this fetch.
   let worlds = worldList(options.world);
   const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);
-  const walk = createWalkBoxWalk({ apiBase, fetchImpl });
+  // The walk page draws the hubs (lead 10-13): its table and its graph read them.
+  const walk = createWalkBoxWalk({ apiBase, fetchImpl, hubs: true });
   // The one clipboard writer (plain HTTP in operation: clipboard_write.js), the page's to hand in as it hands its fetch.
   const writeClip = options.writeClipboard || writeClipboardRich;
 
@@ -951,7 +952,7 @@ export function boot(doc, host, deps) {
   /** What a section shows (lead 10-11 W addendum 7, «보이는 것 = 하는 것»): Wide's rows or Long's lines through its filter,
    *  in its order - the table, Copy, Trend, Walk on and the head check read this; `ids` its rows, as drawn. */
   function shownFor(view, section) {
-    const long = shapeOf(section.type) === 'long';
+    const long = section.long.length > 0 && shapeOf(section.type) === 'long';
     const name = state.longNames.get(section.type) || '';
     const got = shownOf(section, filterOf(section.type), long ? longRecords(view, section, longLines(view, section, { column: name || undefined })) : null);
     return { ...got, long, ids: [...new Set(got.lines.map((line) => line.id))] };
@@ -1031,8 +1032,9 @@ export function boot(doc, host, deps) {
     const f = filterOf(section.type);
     const set = shown.columns.map((c, k) => ({ c, k, x: (f.columns || {})[c.key] })).filter(({ x }) => filterActive(x));
     const open = shown.columns.findIndex((c) => state.filterOpen === `${section.type}\u0000${c.key}`);
-    if (!set.length && open < 0) return null;
+    if (!set.length && open < 0 && !shown.aside.length) return null;
     const row = el(doc, 'div', 'wk-filters');
+    if (shown.aside.length) row.append(el(doc, 'span', 'wk-note', `${unitText(shown.aside.length, 'filter')} set aside · column not drawn`));
     for (const { c, k, x } of set) {
       const choices = filterKind(shown.all, k).choices;
       const said = [x.contains ? `contains ${x.contains}` : '', Number.isFinite(x.min) ? `≥ ${x.min}` : '', Number.isFinite(x.max) ? `≤ ${x.max}` : '',
@@ -1638,9 +1640,10 @@ export function boot(doc, host, deps) {
     const bar = el(doc, 'div', 'wk-secbar');
     const of = shown.long ? unitText(shown.all.length, 'line') : shown.all.length;
     bar.append(el(doc, 'span', 'wk-sechead', shown.filtering ? sectionHeading(section.name, `${shown.lines.length} of ${of}`) : section.heading));
-    bar.append(segmented('wk-shape', 'data-shape', [['wide', 'Wide'], ['long', 'Long']], shapeOf(section.type),
+    // Long where something lies long (lead QA 10-13 ⑫: a hub's section has no records to lay).
+    if (section.long.length) bar.append(segmented('wk-shape', 'data-shape', [['wide', 'Wide'], ['long', 'Long']], shapeOf(section.type),
       (value) => { state.shapes.set(section.type, value); render(); }));
-    if (shapeOf(section.type) === 'long' && !trended) bar.append(longPick(section));
+    if (section.long.length && shapeOf(section.type) === 'long' && !trended) bar.append(longPick(section));
     bar.append(sectionViews(section, trended, shown), columnsMenu(section), copyBar(section, view, shown), filterSeat(section));
     return bar;
   }

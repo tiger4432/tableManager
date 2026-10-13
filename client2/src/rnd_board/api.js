@@ -44,7 +44,7 @@
 //    로더들의 누락이었습니다: `board_modules.mjs` 가 바깥 import 를 다시 쓰는 일반 규칙을 이미
 //    들고 있었는데 `api.js` 한 줄만 그 문을 안 지났고, 개인 로더 여섯이 같은 줄을 각자 들고
 //    있었습니다. 이제 일곱이 «한 문»(`moduleUrl`)을 지납니다.
-import { declaredKeys } from '../walk/derive.js';
+import { declaredKeys, hubsAsMembers } from '../walk/derive.js';
 import { simplePaths } from '../walk/paths.js';
 import { UNPICKED, isBlank } from '../absent.js';
 import { SERVER_REFUSED } from '../ui_words.js';
@@ -365,7 +365,9 @@ export async function fetchSubgraph(params) {
           // The auxiliary node(s) the walk judges its nodes against (owner 10-12) - none, nothing sent.
           aux,
           // The next page of the same walk (owner 10-12 «이어 걷기»): the answer's more.resume, sent as the body of a POST.
-          resume } = params || {};
+          resume,
+          // A screen that draws the walk's hubs says so (the walk page); any other gets each hub as its members (lead 10-13).
+          hubs } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -472,8 +474,8 @@ export async function fetchSubgraph(params) {
   //    이미 `!body` 를 「거절」로 다루고 있고(`subgraphModel`), 던지면 그 갈래가 «처리되지 않은
   //    거부»가 됩니다 — 걷기 상자가 자기 생성기를 들고 있을 때 그 자리를 이렇게 막고
   //    있었고, 생성기를 접으면서 그 보호까지 같이 접히면 «합치기가 갈래를 하나 죽이는» 것입니다.
-  return { ok: true, status: res.status, detail: null,
-           body: await res.json().catch(() => null) };
+  const body = await res.json().catch(() => null);
+  return { ok: true, status: res.status, detail: null, body: body && !hubs ? hubsAsMembers(body, true) : body };
 }
 
 /**
@@ -1948,7 +1950,7 @@ function refusalSentence(body, status, fallback = `Walk failed (${status})`) {
  *    ⛔ 여기서 기본값을 «지어내지» 마십시오 -- 그 순간 두 번째 기본값 저자가 생깁니다.
  */
 export function createWalkBoxWalk(deps) {
-  const { apiBase, fetchImpl } = deps || {};
+  const { apiBase, fetchImpl, hubs } = deps || {};
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
     const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
@@ -1983,7 +1985,7 @@ export function createWalkBoxWalk(deps) {
         hops: hops || undefined,
         node_limit: nodeLimit || undefined,
         since, until,
-        fanout_limit: fanoutLimit || undefined, expand, aux, resume,
+        fanout_limit: fanoutLimit || undefined, expand, aux, resume, hubs,
       });
       if (!got.ok || !got.body) {
         return { ok: false, message: refusalSentence(got.detail, got.status) };
