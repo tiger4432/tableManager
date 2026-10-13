@@ -24,8 +24,11 @@ export function watchForDismiss(doc, host, close) {
     // 자기 div 안을 누른 것은 «바깥»이 아닙니다 -- 줄을 누르는 것도 클릭이라,
     // 이 걸음이 없으면 열자마자 자기가 자기를 닫습니다. placeUnder 가 body 로 옮긴 판은
     // 그 판이 열린 자리(placedFrom)를 거쳐 올라갑니다.
-    let node = event && event.target;
-    while (node) { if (node === host) return; node = node.placedFrom || node.parentNode; }
+    // A press whose target the press itself took off the page (a list redrawn on mousedown) is still inside: the path the
+    // browser fixed when the press began says where it was (lead 10-14, 18766: a node picked from the start list shut it).
+    const inside = (start) => { let node = start; while (node) { if (node === host) return true; node = node.placedFrom || node.parentNode; } return false; };
+    const path = event && typeof event.composedPath === 'function' ? event.composedPath() : [];
+    if (inside(event && event.target) || path.some(inside)) return;
     close();
   };
   doc.addEventListener('keydown', onKey);
