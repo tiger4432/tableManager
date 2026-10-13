@@ -4,7 +4,7 @@ same read, and nothing is written. Folding, counting and expanding are the hub's
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -18,13 +18,15 @@ NOW = datetime(2026, 5, 1, tzinfo=timezone.utc)
 ATTACHED = ("test:walk-attached-rows",)
 DEFECTS = AttachPlan(predicate="has_defect", subject_type="die", subject_keys=(("die", "die", False),),
                      target_type="defect_row", target_keys=(("defect_id", "defect_id", False),),
-                     columns=("size", "kind"))
+                     columns=(("size", "number"), ("kind", "string"), ("seen_at", "datetime")))
+KST = timezone(timedelta(hours=9))
 #: D0 three rows, D1 one, D2 none - and a row with no key, which names no node
-ROWS = [{"row_id": 1, "die": "D0", "defect_id": "F1", "size": 1.5, "kind": "void"},
-        {"row_id": 2, "die": "D0", "defect_id": "F2", "size": 2.0, "kind": "crack"},
-        {"row_id": 3, "die": "D0", "defect_id": "F3", "size": None, "kind": " void "},
-        {"row_id": 4, "die": "D1", "defect_id": "F4", "size": 7, "kind": "void"},
-        {"row_id": 5, "die": "D1", "defect_id": " ", "size": 1, "kind": "void"}]
+ROWS = [{"row_id": 1, "die": "D0", "defect_id": "F1", "size": 1.5, "kind": "void", "seen_at": datetime(2026, 5, 1, 9, tzinfo=KST)},
+        {"row_id": 2, "die": "D0", "defect_id": "F2", "size": 2.0, "kind": "crack",
+         "seen_at": datetime(2026, 5, 1, 0, 0, 1, 500000, tzinfo=timezone.utc)},
+        {"row_id": 3, "die": "D0", "defect_id": "F3", "size": None, "kind": " void ", "seen_at": None},
+        {"row_id": 4, "die": "D1", "defect_id": "F4", "size": 7, "kind": "void", "seen_at": None},
+        {"row_id": 5, "die": "D1", "defect_id": " ", "size": 1, "kind": "void", "seen_at": None}]
 
 
 @pytest.fixture(autouse=True)
@@ -74,14 +76,15 @@ def test_each_die_s_rows_are_one_hub_counted_as_the_table_holds_them():
 
 def test_a_hub_s_table_rows_carry_the_row_s_columns_as_its_node_s_values():
     """The row node's values are its row's columns - said as the translator says a node's bound attributes (register),
-    a number as its text, a blank left out, text trimmed - and the table draws them though the row type declares no
-    attribute: the table declaration names them (lead 10-13, a row comes whole)."""
+    each as its column's type: a number a number, a time the answer's instant, a blank null, text as stored (lead 10-13)
+    - and the table draws them though the row type declares no attribute: the table declaration names them."""
     body = _walk()
     table = body["tables"][_hubs(body)[node("die", "D0")]["id"]]
     rows = {row[table["columns"].index("id")]: dict(zip(table["columns"], row)) for row in table["rows"]}
-    assert {key: (row["size"], row["kind"]) for key, row in rows.items()} == {
-        row_node("F1"): ("1.5", "void"), row_node("F2"): ("2", "crack"),
-        row_node("F3"): (None, "void")}
+    assert {key: (row["size"], row["kind"], row["seen_at"]) for key, row in rows.items()} == {
+        row_node("F1"): (1.5, "void", "2026-05-01T00:00:00+00:00"),
+        row_node("F2"): (2, "crack", "2026-05-01T00:00:01.500000+00:00"),
+        row_node("F3"): (None, " void ", None)}
 
 
 def test_an_opened_hub_s_rows_stand_as_nodes_with_their_values():
@@ -90,7 +93,8 @@ def test_an_opened_hub_s_rows_stand_as_nodes_with_their_values():
     opened = _walk(expand=[_hubs(folded)[node("die", "D0")]["id"]])
     rows = {item["id"]: item for item in opened["nodes"] if item["type"] == "defect_row"}
     assert set(rows) >= {row_node("F%d" % i) for i in (1, 2, 3)}
-    assert rows[row_node("F2")]["attributes"] == {"size": "2", "kind": "crack"}
+    assert rows[row_node("F2")]["attributes"] == {"size": 2, "kind": "crack",
+                                                   "seen_at": "2026-05-01T00:00:01.500000+00:00"}
 
 
 def test_a_walk_from_a_row_node_reads_back_to_its_parent():

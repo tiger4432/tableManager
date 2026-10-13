@@ -774,19 +774,22 @@ def _attach_fixture(conn, dies, rows):
                    "who": "t", "ver": "t/1", "raw": "t:%s" % die, "sup": None} for die in dies])
     conn.execute(text("DROP TABLE IF EXISTS pg_attach_rows"))
     conn.execute(text("CREATE TABLE pg_attach_rows (row_id bigint, die text, defect_id text, size double precision, "
-                      "kind text, slot double precision)"))
+                      "kind text, slot double precision, seen_at timestamptz)"))
     for row in rows:
-        conn.execute(text("INSERT INTO pg_attach_rows VALUES (:row_id, :die, :defect_id, :size, :kind, :slot)"), row)
+        conn.execute(text("INSERT INTO pg_attach_rows VALUES (:row_id, :die, :defect_id, :size, :kind, :slot, :seen_at)"),
+                     {"seen_at": None, **row})
     by_die = AttachPlan(predicate="has_defect", subject_type="die", subject_keys=(("die", "die", False),),
                         target_type="defect_row", target_keys=(("defect_id", "defect_id", False),),
-                        columns=("size", "kind"))
+                        columns=(("size", "number"), ("kind", "string"), ("seen_at", "datetime")))
     by_slot = AttachPlan(predicate="in_slot", subject_type="slot_t", subject_keys=(("slot", "slot", True),),
                          target_type="defect_row", target_keys=(("defect_id", "defect_id", False),), columns=())
     return by_die, by_slot
 
 
-ATTACH_ROWS = [dict(row_id=1, die="D0", defect_id="F1", size=1.5, kind="void", slot=3.0),
-               dict(row_id=2, die="D0", defect_id="F2", size=2.0, kind="crack", slot=3.0),
+ATTACH_ROWS = [dict(row_id=1, die="D0", defect_id="F1", size=1.5, kind="void", slot=3.0,
+                    seen_at=datetime(2026, 5, 1, 9, tzinfo=KST)),
+               dict(row_id=2, die="D0", defect_id="F2", size=2.0, kind="crack", slot=3.0,
+                    seen_at=datetime(2026, 5, 1, 0, 0, 1, 500000, tzinfo=timezone.utc)),
                dict(row_id=3, die="D0", defect_id="F3", size=None, kind=" void ", slot=4.0),
                dict(row_id=4, die="D1", defect_id="F4", size=7.0, kind="void", slot=7.5),
                dict(row_id=5, die="D1", defect_id=" ", size=1.0, kind="void", slot=3.0)]

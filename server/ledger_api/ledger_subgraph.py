@@ -689,15 +689,26 @@ def attach_atoms(source_id, plan, rows, world=None):
         said = dict(occurred_at=ATTACHED_AT, source_who=source_id, source_translator_ver=None, source_raw_ref=None,
                     supersedes=None, source_event_id=None, source_event_state=None,
                     occurred_at_basis=NOT_AN_EVENT_BASIS, world=world)
-        values = {column: map_overlay.canonical_key_value(row.get(column), None) for column in plan.columns}
         atoms.append(EvidenceAtom(id=_attached_id(source_id, "edge", row["row_id"]), subject_type=plan.subject_type,
                                   subject_keys=subject, predicate=plan.predicate, object_kind="entity_ref",
                                   object_payload={"type": plan.target_type, "keys": target}, **said))
         atoms.append(EvidenceAtom(id=_attached_id(source_id, "register", row["row_id"]), subject_type=plan.target_type,
                                   subject_keys=target, predicate=REGISTER_PREDICATE, object_kind=None,
-                                  object_payload={"qualifiers": {name: value for name, value in values.items()
-                                                                 if value is not None}}, **said))
+                                  object_payload={"qualifiers": {column: _attached_value(row.get(column), kind)
+                                                                 for column, kind in plan.columns}}, **said))
     return atoms
+
+
+def _attached_value(value, kind):
+    """A row's cell as its column's catalog type says (총괄 10-13): a number a number (whole, without its fraction), a time
+    the answer's instant (`_instant`), a blank null, text as stored. `_value_sql` says the same in SQL."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if kind == "number":
+        return int(value) if isinstance(value, float) and value.is_integer() else value
+    if kind == "datetime":
+        return _instant(value)
+    return str(value)
 
 
 def _attached_specs(specs, lookup):
@@ -710,7 +721,7 @@ def _attached_specs(specs, lookup):
     for _source, _relation, plan in attached:
         spec = dict(out.get(plan.target_type) or {})
         names = list(spec.get("attributes") or ())
-        out[plan.target_type] = {**spec, "attributes": names + [name for name in plan.columns if name not in names]}
+        out[plan.target_type] = {**spec, "attributes": names + [name for name, _kind in plan.columns if name not in names]}
     return out
 
 
@@ -725,6 +736,18 @@ def _key_text(column, number):
     if number:
         return f"(CASE WHEN {cell} = trunc({cell}) THEN trunc({cell}::numeric)::text ELSE {cell}::text END)"
     return f"NULLIF(btrim({cell}::text), '')"
+
+
+def _value_sql(column, kind):
+    """`_attached_value` of a column of the row `r`, in SQL, as jsonb."""
+    cell = "r." + _quoted(column)
+    if kind == "number":
+        return f"to_jsonb({cell})"
+    if kind == "datetime":
+        return (f"to_jsonb(to_char({cell} AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS') || CASE WHEN "
+                f"extract(microseconds FROM {cell})::bigint %% 1000000 <> 0 THEN to_char({cell} AT TIME ZONE 'UTC', '.US') "
+                f"ELSE '' END || '+00:00')")
+    return f"CASE WHEN btrim({cell}::text) = '' THEN NULL ELSE to_jsonb({cell}::text) END"
 
 
 def _atom_from_row(row):
@@ -916,11 +939,11 @@ class SqlEvidenceLookup:
             if arm == "outgoing" and (not follow or REGISTER_PREDICATE in follow) \
                     and not (exclude and REGISTER_PREDICATE in exclude):
                 values = " || ".join(
-                    "jsonb_build_object(%s)" % ", ".join(f"'{name.replace(chr(39), chr(39) * 2)}', {_key_text(name, False)}"
-                                                         for name in plan.columns[start:start + 40])
+                    "jsonb_build_object(%s)" % ", ".join(f"'{name.replace(chr(39), chr(39) * 2)}', {_value_sql(name, kind)}"
+                                                         for name, kind in plan.columns[start:start + 40])
                     for start in range(0, len(plan.columns), 40)) or "'{}'::jsonb"
                 register = atom("register", p + "target", node(plan.target_keys, "t"), "%(attach_register)s", "NULL",
-                                f"jsonb_build_object('qualifiers', jsonb_strip_nulls({values}))")
+                                f"jsonb_build_object('qualifiers', {values})")
                 reads.append(f"{register} WHERE f.type = %({p}target)s AND {joined(plan.target_keys, 't')}")
         return reads
 

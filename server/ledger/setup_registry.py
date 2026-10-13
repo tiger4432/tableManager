@@ -424,7 +424,8 @@ class SourceDriverPlan:
 class AttachPlan:
     """A source whose table's rows the walk reads as sentences and nothing translates (총괄 10-13 행 붙이기): from the
     parent node (`subject_*`) `predicate` to a row node (`target_*`), whose values are the row's `columns`. A node's
-    keys are ((key, column, read as a number), ...) in the type's declared key order."""
+    keys are ((key, column, read as a number), ...) in the type's declared key order; `columns` ((column, its catalog
+    type), ...) - a value keeps its column's type."""
     predicate: str
     subject_type: str
     subject_keys: tuple

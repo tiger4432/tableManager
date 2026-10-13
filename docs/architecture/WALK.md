@@ -379,6 +379,8 @@ fold     라우트는 늘 접는다. 걸은 것을 저장하는 직접 호출자
 번역      없다 — `SourcePlan.attach` 가 있으면 `runs` 가 거짓(원자 0). 읽는 것은 걷기뿐
 걷는 법   `claims_for_entities` 의 같은 읽기 안에서 그 표를 원자 모양으로 읽는다(`_attach_reads`, 문장마다 갈래 하나) —
           outgoing: 부모 노드 -> 술어 -> 행 노드 선 + 행 노드의 값(register, 수식어 = columns) · incoming: 행 노드 -> 부모 선
+          값은 칸의 형 그대로(`_attached_value` · `_value_sql` 한 규칙) — 숫자는 숫자(소수 없으면 정수), 시각은 답의 instant,
+          빈 칸은 null, 글은 저장된 그대로. 허브 표 rows 와 노드 attributes 가 같은 값을 읽는다
           follow · exclude · skip · far · far_types · before · as_of · ends_only · per_step 이 그대로 걸린다. 노드마다 질의 없음
 원자      id = md5(소스:edge|register:row_id), 버전 칸 5(7 이 아니라 as_of 가 거르지 않음) · occurred_at 1970-01-01(읽기의 맨 뒤) ·
           basis ingested(사건 시각 아님) · source_who 소스 이름 · world 운영 세상. 같은 규칙의 파이썬 = `attach_atoms`(메모리 lookup)
