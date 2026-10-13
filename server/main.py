@@ -957,12 +957,14 @@ def store_table_count(cache_key: str, count: int, seconds=None) -> None:
 
 #: 🔴 A TABLE'S WHOLE COUNT IS COUNTED OUTSIDE THE REQUEST (소유자 ㄱ · 총괄 67e5e9ccd ㄱ-1): one worker counts the
 #:    tables `invalidate_table_cache` says changed, one at a time and each at most once per `count_recount_seconds`; a
-#:    request reads what it last counted and when. Narrowed (a search, a filter), a count stops past COUNT_CAP.
+#:    request reads what it last counted and when. A count asked older than `count_max_age_seconds`, or one that
+#:    failed, is due again too - the writes that do not pass that seat (총괄 0fd18ae19 1 · 2). Narrowed (a search, a
+#:    filter), a count stops past COUNT_CAP and its statement runs under the grid read limit.
 COUNT_CAP = 10_000
 #: How long a request waits for a count due now (never counted, or changed and past its pacing) - a small table's then
 #: comes back counted; a large one's is said `counting`, or its last count with its time.
 COUNT_WAIT_SECONDS = 0.5
-_WHOLE = {}                     # whole key -> {"total", "counted_at", "count_seconds", "began", "asked"}
+_WHOLE = {}                     # whole key -> {"total", "counted_at", "count_seconds", "began", "asked", "failed"}
 _DUE = {}                       # whole key -> (table_name, world, bind) to count (again) - on the request's database
 _COUNT_COND = threading.Condition()
 _COUNTER = [None]
@@ -1000,7 +1002,7 @@ def _whole_counter():
                     break
                 waits = [pacing - (now - _WHOLE[key]["began"]) for key in _DUE if key in _WHOLE]
                 _COUNT_COND.wait(max(min(waits), 0.05) if waits else None)
-        began, total = time.monotonic(), None
+        began, total, failed = time.monotonic(), None, None
         table_name, world, bind = asked
         db = Session(bind=bind)
         try:
@@ -1008,21 +1010,29 @@ def _whole_counter():
             total = narrowed_table_query(db, table_name, model)[0].count() if model is not None else 0
         except Exception as exc:                                    # noqa: BLE001 - one line, the next count goes on
             logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, exc)
+            failed = {"reason": ("%s: %s" % (type(exc).__name__, str(exc).strip().split("\n")[0]))[:200],
+                      "at": datetime.now(timezone.utc).isoformat()}
         finally:
             db.close()
         with _COUNT_COND:
-            if total is not None:
-                _WHOLE[key] = {"total": total, "count_seconds": round(time.monotonic() - began, 3), "began": began,
-                               "counted_at": datetime.now(timezone.utc).isoformat(), "asked": asked}
+            # a failed count keeps the last one and is paced as a count (총괄 0fd18ae19 2) - asked again, it is due again
+            kept = _WHOLE.get(key) or {"total": None, "counted_at": None, "count_seconds": None}
+            if failed is None:
+                kept = {"total": total, "count_seconds": round(time.monotonic() - began, 3),
+                        "counted_at": datetime.now(timezone.utc).isoformat()}
+            _WHOLE[key] = dict(kept, began=began, asked=asked, failed=failed)
             _NOW[0] = None
             _COUNT_COND.notify_all()
 
 
 def table_total(db, table_name, world, model, query, cache_key, cap=None, here=False):
     """🔴 THE COUNT EVERY PLACE SHOWS (소유자 ㄱ · 총괄 67e5e9ccd): /data, /data/count, the export's header and refusal,
-    the paging end. The table whole -> what the worker last counted and when (never counted: `counting`); narrowed, or
-    `here` -> counted in this request up to `cap`, `capped` past it.
-    -> {"total", "capped", "counted_at", "count_seconds", "counting"}"""
+    the paging end. The table whole -> what the worker last counted and when (never counted: `counting`; its count
+    failed: `failed`); narrowed -> counted up to `cap`, `capped` past it, under the grid read limit (past it: `failed`);
+    `here` -> counted in this request up to `cap`.
+    -> {"total", "capped", "counted_at", "count_seconds", "counting", "failed": None or {"reason", "at"}}"""
+    from parsers import directory_watcher
+
     cap = COUNT_CAP if cap is None else cap
     if here or cache_key != narrowed_table_query(db, table_name, model)[1]:
         capped_query = query.order_by(None).limit(cap + 1)                   # the count needs no order
@@ -1031,14 +1041,34 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
             total = capped_query.count()
             seconds, at = time.time() - began, time.time()
         else:
-            total, seconds, at = cached_table_count(capped_query, build_count_cache_key(cache_key, "cap:%d" % cap))
+            # 🔴 UNDER THE GRID READ LIMIT WHATEVER NARROWS IT (총괄 0fd18ae19 3): it stops counting past the cap, not
+            #    reading - an equal filter no row matches reads the table to its end. Its own transaction, begun under
+            #    the limit (the one SET LOCAL seat); past it, the count says so and the request goes on.
+            from sqlalchemy.exc import OperationalError
+
+            from database.context import read_limit
+
+            limit, own = directory_watcher.grid_read_timeout(), Session(bind=db.get_bind())
+            try:
+                with read_limit(limit):
+                    total, seconds, at = cached_table_count(capped_query.with_session(own),
+                                                            build_count_cache_key(cache_key, "cap:%d" % cap))
+            except OperationalError as exc:
+                if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
+                    raise
+                return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": False,
+                        "failed": {"reason": "count stopped after %g s" % limit if limit else
+                                   "count was cancelled by the database", "at": datetime.now(timezone.utc).isoformat()}}
+            finally:
+                own.close()
         return {"total": min(total, cap), "capped": total > cap,
                 "counted_at": datetime.fromtimestamp(at, timezone.utc).isoformat(),
-                "count_seconds": None if seconds is None else round(seconds, 3), "counting": False}
-    from parsers import directory_watcher
+                "count_seconds": None if seconds is None else round(seconds, 3), "counting": False, "failed": None}
 
+    oldest, now = directory_watcher.count_max_age_seconds(), time.monotonic()
     with _COUNT_COND:
-        if cache_key not in _WHOLE:
+        held = _WHOLE.get(cache_key)
+        if held is None or held["failed"] or (oldest and now - held["began"] >= oldest):
             _DUE.setdefault(cache_key, (table_name, world, db.get_bind()))
         if _COUNTER[0] is None:
             _COUNTER[0] = threading.Thread(target=_whole_counter, name="whole-counter", daemon=True)
@@ -1049,9 +1079,10 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
             _COUNT_COND.wait_for(lambda: (_WHOLE.get(cache_key) or {}).get("began") != began, COUNT_WAIT_SECONDS)
         held = _WHOLE.get(cache_key)
     if held is None:
-        return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True}
+        return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True,
+                "failed": None}
     return {"total": held["total"], "capped": False, "counted_at": held["counted_at"],
-            "count_seconds": held["count_seconds"], "counting": False}
+            "count_seconds": held["count_seconds"], "counting": False, "failed": held["failed"]}
 
 
 def invalidate_table_cache(table_name: str):

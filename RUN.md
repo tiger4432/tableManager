@@ -7,23 +7,33 @@
 >          표마다 최소 count_recount_seconds 간격 · 한 번에 한 표 · 다시 세는 동안 지난 수와 그 시각이 나간다
 >          «바뀌었다»는 invalidate_table_cache — 그리드 쓰기 · 감시자 적재(/internal/events/batch-refresh) · 체인 워커 · 소급(/internal/events/broadcast)
 >          거른 수(검색 · 필터 · 큐 · 트랜잭션)는 그 요청에서 10,000 까지 — 넘으면 capped. 내보내기는 그 요청에서 1,000,000 까지
+>          거른 세기는 필터 종류와 무관하게 grid_read_timeout_seconds(10) 아래 — 넘으면 503 이 아니라 failed «count stopped after N s»
+>          물어진 표의 보관 수가 count_max_age_seconds 보다 늙었거나 실패한 수면 일꾼이 다시 센다(요청은 안 셈) — «바뀌었다»를
+>            안 지나는 쓰기(소급 Fold duplicate rows 의 지우기 · 원장 view 표 · alignment/confirm 등)는 이 나이가 따라잡는다
 > 설정     ingestion_settings.json "count_recount_seconds": 30   없으면 30 · 0 = 바뀔 때마다 곧바로 · 요청마다 읽음
+>                                  "count_max_age_seconds": 300  없으면 300 · 0/null = 나이 없음 · 요청마다 읽음
+> ⚠️ 재기동 뒤  이미 열려 있던 그리드 탭은 새로고침 — 옛 화면 코드가 남아 수 묶음을 옛 모양으로 그린다
 > 볼 것    GET /tables/<표>/data/count   (어드민 토큰 없음)
 >            {"table_name": "dt_log", "total": 4000000, "capped": false, "counted_at": "2026-10-13T06:55:12.722417+00:00",
->             "count_seconds": 0.203, "counting": false}
+>             "count_seconds": 0.203, "counting": false, "failed": null}
 >          server.log 의 [Count] 줄 — 세기가 실패했을 때만
 >            [Count] the whole count of <표>|total_count was not counted: <오류 이름>: <오류>
 > 답의 뜻   counting true · total null -> 이 프로세스가 그 표를 아직 한 번도 못 셈(재기동 직후 · 처음 연 표). 0.5 s 안에 세어지는 표는 첫 답부터 수
->          표는 바뀌었는데 counted_at 이 count_recount_seconds 보다 오래 그대로 -> «바뀌었다»가 이 프로세스에 안 닿음
+>          표는 바뀌었는데 counted_at 이 count_recount_seconds 보다 오래 그대로(count_max_age_seconds 안) -> «바뀌었다»가 이 프로세스에 안 닿음
 >             감시자 · 체인 워커 로그에서 /internal/events 실패 줄을 본다
->          [Count] 줄이 나온다 -> 그 표의 세기가 실패. 지난 수가 남고, 다음 «바뀌었다» 때 다시 센다
+>          failed {reason, at} · [Count] 줄 -> 그 표의 세기가 실패. 지난 수가 있으면 total 에 그대로, 한 번도 못 센 표면
+>             total null · counting false. 그 표가 물어지는 동안 count_recount_seconds 마다 다시 센다(줄도 그만큼만)
+>          failed «count stopped after 10 s» -> 거른 세기가 읽기 상한을 넘음(일치 0 인 등식 필터는 표 끝까지 읽는다). 더 좁힌다
 >          count_seconds 가 크다 -> 그 표를 통째로 세는 데 그만큼 걸린다. 쓰기가 계속되면 간격마다 그만큼 DB 를 쓴다 — 간격을 늘린다
+>          쓰기 뒤 다시 셀수록 count_seconds 가 는다 -> autovacuum 전 죽은 튜플 · 쓰기가 끈 visibility map 칸. 세기(Index Only
+>             Scan)가 그 칸마다 표를 읽는다 — VACUUM(autovacuum) 뒤 돌아온다. 판 30 만 행 · 3 만 행 쓰기 네 번: heap fetches
+>             0 -> 31 만 -> 36 만 -> 39 만 -> 42 만 · 버퍼 239 -> 49,209, VACUUM 뒤 0 · 382 (박스 판, 운영 주장 아님)
 >          capped true -> 거른 행이 10,000 을 넘음. 정확한 수는 더 좁혀야 나온다
 >          내보내기 413 «More than 1,000,000 rows match - over the export cap. …» -> 그 조건이 상한을 넘음(정확한 수는 안 셈)
 > 급할 때   "count_recount_seconds" 를 크게(예 300) — 재기동 없음 · 다음 세기부터
 > 재기동 뒤 큰 표의 첫 /data/count 가 counting -> 몇 초 안에 수 · server.log 에 [Count] 줄이 없음
 > 이 판에서 400만 행 dt_log · 실제 런처(API + 체인 워커 + 감시자) · 박스 판, 운영 주장 아님
->          필터 없는 세기 요청 20 번 5~29 ms · 그 요청이 읽은 행 0 · 필터 10,000 넘음 0.05 s(센 행 10,001 · 지나며 읽은 행 10,006)
+>          필터 없는 세기 요청 20 번 5~29 ms · 그 요청이 읽은 행 0 · 필터 10,000 넘음 0.05 s(센 행 10,001 · 지나며 읽은 행 10,006 — 일치가 많은 필터. 세는 것은 10,001 까지, 훑기는 읽기 상한까지)
 >          쓰기 뒤 수가 따라옴: 간격 밖 1.6 s · 간격 안 28.7 s(그동안 읽기 111 번이 다 지난 수와 그 시각) · 한 번 세기 0.2~1.3 s
 >          재기동 직후: 세기 0.33 s 라 첫 답부터 수 — counting 은 시험 칸으로만 잼
 > ⚠️ 안 잰 것  색인 없는 드문 검색은 10,000 이 «센 행»만 묶는다 — 표 끝까지 훑는 것은 grid_read_timeout_seconds 가 묶는다

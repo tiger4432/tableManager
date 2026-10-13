@@ -412,6 +412,10 @@ GRID_READ_TIMEOUT_DEFAULT = 10.0
 #: How soon a table's whole count is counted again after it changed, at the most (소유자 ㄱ · 총괄 67e5e9ccd) - 0: at once.
 COUNT_RECOUNT_SETTING = "count_recount_seconds"
 COUNT_RECOUNT_DEFAULT = 30.0
+#: How old a kept whole count may be when a request reads it before it is counted again - the writes that do not pass
+#: `invalidate_table_cache` (총괄 0fd18ae19 1). null or 0: no age.
+COUNT_MAX_AGE_SETTING = "count_max_age_seconds"
+COUNT_MAX_AGE_DEFAULT = 300.0
 #: Seconds between two looks at every raws/ subfolder (총괄 2f487efb5). Not a positive number: the default.
 SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
 SUBFOLDER_RECHECK_DEFAULT = 30.0
@@ -447,6 +451,12 @@ def count_recount_seconds(settings=None):
     value = settings.get(COUNT_RECOUNT_SETTING, COUNT_RECOUNT_DEFAULT)
     good = isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
     return float(value) if good else COUNT_RECOUNT_DEFAULT
+
+
+def count_max_age_seconds(settings=None):
+    """Seconds a kept whole count is read before it is due again, None = no age."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, COUNT_MAX_AGE_SETTING, COUNT_MAX_AGE_DEFAULT)
 
 
 def grid_read_timeout(settings=None):

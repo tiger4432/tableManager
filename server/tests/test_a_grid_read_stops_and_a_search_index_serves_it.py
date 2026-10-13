@@ -305,10 +305,11 @@ def test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean(grid, m
     slow = main.apply_column_filters
     monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
         text("(SELECT true FROM pg_sleep(0.5))")))
-    for path in ("/tables/%s/data?q=K1" % TABLE, "/tables/%s/data/count?q=K1" % TABLE):
-        answer = client.get(path)
-        assert answer.status_code == 503 and answer.json()["detail"]["reason"] == "grid_read_stopped"
-    filtered = client.get("/tables/%s/data/count" % TABLE,
+    answer = client.get("/tables/%s/data?q=K1" % TABLE)
+    assert answer.status_code == 503 and answer.json()["detail"]["reason"] == "grid_read_stopped"
+    counted = client.get("/tables/%s/data/count?q=K1" % TABLE)      # a count says it failed (총괄 0fd18ae19 3)
+    assert counted.status_code == 200 and counted.json()["failed"]["reason"] == "count stopped after 0.05 s"
+    filtered = client.get("/tables/%s/data?defer_total=true" % TABLE,
                           params={"filters": '{"v": {"filterType": "text", "type": "contains", "filter": "x"}}'})
     assert filtered.status_code == 503 and filtered.json()["detail"]["message"] == (
         "Filter stopped after 0.05 s - add a search index on v in the table's indexes"), filtered.text
@@ -327,6 +328,35 @@ def test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean(grid, m
         "Read was cancelled by the database", cancelled.text
     monkeypatch.setattr(main, "apply_column_filters", slow)
     assert client.get("/tables/%s/data/count?q=K1" % TABLE).json()["total"] == 1111      # K1 · K10-19 · K100-199 · K1000-1999
+
+
+@pytest.mark.pg
+def test_a_narrowed_count_runs_under_the_limit_whatever_narrows_it(grid, monkeypatch):
+    """총괄 0fd18ae19 3: an equal filter no row matches counts nothing past the cap and reads the table to its end -
+    its count stops at the limit and says so; its rows stay outside the limit (00be98805)."""
+    from sqlalchemy import text
+
+    import main
+    from parsers import directory_watcher
+
+    client, _made = grid
+    monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: 0.05)
+    slow = main.apply_column_filters
+    monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
+        text("(SELECT true FROM pg_sleep(0.5))")))
+    equal = {"filters": '{"n": {"filterType": "number", "type": "equals", "filter": 5}}'}
+    counted = client.get("/tables/%s/data/count" % TABLE, params=equal)
+    rows = client.get("/tables/%s/data?defer_total=true" % TABLE, params=equal)
+    page = client.get("/tables/%s/data" % TABLE, params=equal)
+    monkeypatch.setattr(main, "apply_column_filters", slow)
+    after = client.get("/tables/%s/data/count" % TABLE, params=equal)
+
+    assert counted.status_code == 200, counted.text
+    assert counted.json()["failed"]["reason"] == "count stopped after 0.05 s" and counted.json()["total"] is None
+    assert counted.json()["counting"] is False and counted.json()["failed"]["at"]
+    assert rows.status_code == 200 and [row["row_id"] for row in rows.json()["data"]] == ["r5"], rows.text
+    assert page.status_code == 200 and page.json()["count"]["failed"]["reason"] == "count stopped after 0.05 s"
+    assert after.json()["total"] == 1 and after.json()["failed"] is None, "the next count is clean"
 
 
 @pytest.mark.pg

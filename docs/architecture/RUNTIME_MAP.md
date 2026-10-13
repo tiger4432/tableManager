@@ -150,7 +150,7 @@ Resume   POST /admin/chain/resume — 남은 대기열이 다시 흐름. 멈춤�
 ```
 server/pacing.json                     ④⑤ 의 pace. 바퀴마다 다시 읽음 → 재기동 없음
 server/config/ingestion_settings.json  ② analyze_after_rows · heavy 임계 · 파일 경계 핫리로드 → 재기동 없음
-                                       🆕 10-13 ① grid_read_timeout_seconds(검색 · 무늬 필터 그리드 읽기마다 읽음) · ①-b count_recount_seconds(세기마다 읽음) · ⑥-b retroactive_debug ·
+                                       🆕 10-13 ① grid_read_timeout_seconds(검색 · 무늬 필터 그리드 읽기마다 읽음) · ①-b count_recount_seconds(세기마다 읽음) · count_max_age_seconds(요청마다 읽음) · ⑥-b retroactive_debug ·
                                        retroactive_slow_statement_seconds(쪽마다 읽음) · ledger_translate_slices(실행마다) · ③ build_missing_indexes(색인 일 — 기동 · SYSTEM_RELOAD)
 server/config/chain_rules.json         ③ 규칙 enabled · max_group_attempts · max_rows_not_visible_defers
                                           🆕 [S-221 `fc0914a7`] `max_group_attempts` 는 «규칙 칸이 먼저», 문서 칸은 «기본값»이다

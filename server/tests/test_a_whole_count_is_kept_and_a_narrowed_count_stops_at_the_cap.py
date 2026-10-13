@@ -88,7 +88,7 @@ def test_right_after_a_restart_it_says_counting_then_the_count(client, monkeypat
     then = _count(client)
 
     assert first == {"table_name": TABLE, "total": None, "capped": False, "counted_at": None,
-                     "count_seconds": None, "counting": True}
+                     "count_seconds": None, "counting": True, "failed": None}
     assert then["total"] == 10 and then["counting"] is False
 
 
@@ -145,23 +145,60 @@ def test_a_table_not_changed_is_not_counted_again(client, monkeypatch):
     assert "raw_table_1" in seen[0][1]
 
 
-def test_a_count_that_fails_leaves_the_worker_counting_the_next(client, monkeypatch, caplog):
-    real = main_mod.grid_model
+def test_a_count_that_fails_says_so_and_keeps_its_pacing(client, monkeypatch, caplog):
+    """총괄 0fd18ae19 2: not «counting» for ever, and not counted again on every request."""
+    _pacing(monkeypatch, 1.0)
+    real, tried = main_mod.grid_model, []
 
     def broken(table_name, world=None):
         if threading.current_thread().name == WORKER:
+            tried.append(table_name)
             raise RuntimeError("count broken on purpose")
         return real(table_name, world)
 
     monkeypatch.setattr(main_mod, "grid_model", broken)
     failed = _count(client)
+    for _ in range(100):
+        if failed["failed"]:
+            break
+        time.sleep(0.02)
+        failed = _count(client)
+    again = [_count(client) for _ in range(3)]               # inside the pacing
     monkeypatch.setattr(main_mod, "grid_model", real)
-    counted = _count(client)
+    time.sleep(1.1)
+    _count(client)                                           # past it: asked, it is due again
+    counted = _until_counted(TABLE, 10)
 
-    assert failed["counting"] is True and failed["total"] is None
-    assert any("the whole count of" in r.getMessage() and "count broken on purpose" in r.getMessage()
-               for r in caplog.records), [r.getMessage() for r in caplog.records]
-    assert counted["total"] == 10 and counted["counting"] is False
+    assert failed["counting"] is False and failed["total"] is None and failed["failed"]["at"]
+    assert failed["failed"]["reason"] == "RuntimeError: count broken on purpose", failed
+    assert tried == [TABLE] and again == [failed] * 3, "a failed count keeps its pacing: %s" % tried
+    assert [r.getMessage() for r in caplog.records if "the whole count of" in r.getMessage()] == [
+        "[Count] the whole count of %s|total_count was not counted: RuntimeError: count broken on purpose" % TABLE]
+    assert counted["failed"] is None and _count(client)["failed"] is None
+
+
+def test_a_count_older_than_its_age_is_counted_again_when_its_table_is_asked(client, db_session, monkeypatch):
+    """총괄 0fd18ae19 1: a write that does not pass invalidate_table_cache is followed by the age - the asked table's."""
+    from parsers import directory_watcher
+
+    _pacing(monkeypatch, 0)
+    monkeypatch.setattr(directory_watcher, "count_max_age_seconds", lambda settings=None: 1.0)
+    _count(client)
+    _count(client, OTHER)
+    _until_counted(TABLE, 10)
+    for _ in range(100):
+        if _held(OTHER):
+            break
+        time.sleep(0.02)
+    _add(db_session, 2)                                      # no invalidate_table_cache
+    young = _count(client)
+    time.sleep(1.1)
+    seen = _counts_by_thread(monkeypatch)
+    _count(client)
+    _until_counted(TABLE, 12)
+
+    assert young["total"] == 10, "inside its age the kept count"
+    assert [name for name, _ in seen] == [WORKER] and "raw_table_1" in seen[0][1], "only the asked table: %s" % seen
 
 
 # ── narrowed ────────────────────────────────────────────────────────────────────────────────────────────────────
