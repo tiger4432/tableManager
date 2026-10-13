@@ -5,6 +5,8 @@ rows that held a pool connection and a worker thread while every other request q
   seat) and a read past it is answered as what stopped and what to do;
 ② a table's declared indexes take a search kind - a trigram index over `models.search_text`, the very expression the
   search condition is - so the planner can read it."""
+import time
+
 import pytest
 
 from database import crud, models
@@ -311,6 +313,11 @@ def test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean(grid, m
     assert filtered.status_code == 503 and filtered.json()["detail"]["message"] == (
         "Filter stopped after 0.05 s - add a search index on v in the table's indexes"), filtered.text
     plain = client.get("/tables/%s/data/count" % TABLE)                   # neither: outside the limit (총괄 10-13)
+    for _ in range(50):                                                     # the table whole: its worker counts (소유자 ㄱ)
+        if not plain.json().get("counting"):
+            break
+        time.sleep(0.1)
+        plain = client.get("/tables/%s/data/count" % TABLE)
     assert plain.status_code == 200 and plain.json()["total"] == 2000, plain.text
     monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: None)
     monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(

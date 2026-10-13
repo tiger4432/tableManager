@@ -15,6 +15,7 @@ import uuid
 import os
 import io
 import csv
+import threading
 import time
 from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -902,7 +903,7 @@ import time
 
 # [성능 최적화] 테이블별 count 캐시. 키는 `build_count_cache_key`가 만들고
 # `invalidate_table_cache`가 같은 함수로 되읽는다 - 아래 주석 참고.
-TABLE_COUNT_CACHE = {}  # {cache_key: (count, timestamp)}
+TABLE_COUNT_CACHE = {}  # {cache_key: (count, timestamp, seconds the count took)}
 
 #: Count 캐시 TTL. 읽는 쪽(`get_table_data`)과 이 파일의 설명이 갈라지지 않도록
 #: 여기 한 번만 선언한다. (오래된 주석은 2초라고 적혀 있었고 실제 값은 5초였다.)
@@ -934,7 +935,7 @@ def count_cache_table_of(cache_key: str) -> str:
     return cache_key.split(COUNT_CACHE_KEY_SEP, 1)[0]
 
 
-def store_table_count(cache_key: str, count: int) -> None:
+def store_table_count(cache_key: str, count: int, seconds=None) -> None:
     """count 하나를 캐시에 넣되 캐시를 **유한하게** 유지한다.
 
     TTL이 지난 엔트리는 정의상 죽은 값이므로(다시 읽히면 무조건 미스) 그것부터
@@ -944,14 +945,113 @@ def store_table_count(cache_key: str, count: int) -> None:
     """
     now = time.time()
     if len(TABLE_COUNT_CACHE) >= COUNT_CACHE_MAX_ENTRIES:
-        for k, (_, at) in list(TABLE_COUNT_CACHE.items()):
-            if now - at >= COUNT_CACHE_TTL:
+        for k, held in list(TABLE_COUNT_CACHE.items()):
+            if now - held[1] >= COUNT_CACHE_TTL:
                 TABLE_COUNT_CACHE.pop(k, None)
         if len(TABLE_COUNT_CACHE) >= COUNT_CACHE_MAX_ENTRIES:
             oldest = sorted(TABLE_COUNT_CACHE.items(), key=lambda kv: kv[1][1])
             for k, _ in oldest[:max(1, COUNT_CACHE_MAX_ENTRIES // 4)]:
                 TABLE_COUNT_CACHE.pop(k, None)
-    TABLE_COUNT_CACHE[cache_key] = (count, now)
+    TABLE_COUNT_CACHE[cache_key] = (count, now, seconds)
+
+
+#: 🔴 A TABLE'S WHOLE COUNT IS COUNTED OUTSIDE THE REQUEST (소유자 ㄱ · 총괄 67e5e9ccd ㄱ-1): one worker counts the
+#:    tables `invalidate_table_cache` says changed, one at a time and each at most once per `count_recount_seconds`; a
+#:    request reads what it last counted and when. Narrowed (a search, a filter), a count stops past COUNT_CAP.
+COUNT_CAP = 10_000
+#: How long a request waits for a count due now (never counted, or changed and past its pacing) - a small table's then
+#: comes back counted; a large one's is said `counting`, or its last count with its time.
+COUNT_WAIT_SECONDS = 0.5
+_WHOLE = {}                     # whole key -> {"total", "counted_at", "count_seconds", "began", "asked"}
+_DUE = {}                       # whole key -> (table_name, world, bind) to count (again) - on the request's database
+_COUNT_COND = threading.Condition()
+_COUNTER = [None]
+_NOW = [None]                   # (whole key, asked) the worker is counting - a first count is not in _WHOLE yet
+
+
+def _count_again(table_name):
+    """Every whole count of `table_name` is due again (its pacing still holds) - the one being counted too: its
+    snapshot may be from before the change."""
+    with _COUNT_COND:
+        for key, asked in [(key, held["asked"]) for key, held in _WHOLE.items()] + ([_NOW[0]] if _NOW[0] else []):
+            if count_cache_table_of(key) == table_name:
+                _DUE[key] = asked
+        _COUNT_COND.notify_all()
+
+
+def _due_now(key, pacing, now):
+    held = _WHOLE.get(key)
+    return held is None or now - held["began"] >= pacing
+
+
+def _whole_counter():
+    """The one worker: the due count whose pacing allows, counted on its own session, then the next."""
+    from parsers import directory_watcher
+
+    while True:
+        with _COUNT_COND:
+            while True:
+                pacing, now = directory_watcher.count_recount_seconds(), time.monotonic()
+                ready = [key for key in _DUE if _due_now(key, pacing, now)]
+                if ready:
+                    key = ready[0]
+                    asked = _DUE.pop(key)
+                    _NOW[0] = (key, asked)
+                    break
+                waits = [pacing - (now - _WHOLE[key]["began"]) for key in _DUE if key in _WHOLE]
+                _COUNT_COND.wait(max(min(waits), 0.05) if waits else None)
+        began, total = time.monotonic(), None
+        table_name, world, bind = asked
+        db = Session(bind=bind)
+        try:
+            model = grid_model(table_name, world)
+            total = narrowed_table_query(db, table_name, model)[0].count() if model is not None else 0
+        except Exception as exc:                                    # noqa: BLE001 - one line, the next count goes on
+            logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, exc)
+        finally:
+            db.close()
+        with _COUNT_COND:
+            if total is not None:
+                _WHOLE[key] = {"total": total, "count_seconds": round(time.monotonic() - began, 3), "began": began,
+                               "counted_at": datetime.now(timezone.utc).isoformat(), "asked": asked}
+            _NOW[0] = None
+            _COUNT_COND.notify_all()
+
+
+def table_total(db, table_name, world, model, query, cache_key, cap=None, here=False):
+    """🔴 THE COUNT EVERY PLACE SHOWS (소유자 ㄱ · 총괄 67e5e9ccd): /data, /data/count, the export's header and refusal,
+    the paging end. The table whole -> what the worker last counted and when (never counted: `counting`); narrowed, or
+    `here` -> counted in this request up to `cap`, `capped` past it.
+    -> {"total", "capped", "counted_at", "count_seconds", "counting"}"""
+    cap = COUNT_CAP if cap is None else cap
+    if here or cache_key != narrowed_table_query(db, table_name, model)[1]:
+        capped_query = query.order_by(None).limit(cap + 1)                   # the count needs no order
+        if here:
+            began = time.time()
+            total = capped_query.count()
+            seconds, at = time.time() - began, time.time()
+        else:
+            total, seconds, at = cached_table_count(capped_query, build_count_cache_key(cache_key, "cap:%d" % cap))
+        return {"total": min(total, cap), "capped": total > cap,
+                "counted_at": datetime.fromtimestamp(at, timezone.utc).isoformat(),
+                "count_seconds": None if seconds is None else round(seconds, 3), "counting": False}
+    from parsers import directory_watcher
+
+    with _COUNT_COND:
+        if cache_key not in _WHOLE:
+            _DUE.setdefault(cache_key, (table_name, world, db.get_bind()))
+        if _COUNTER[0] is None:
+            _COUNTER[0] = threading.Thread(target=_whole_counter, name="whole-counter", daemon=True)
+            _COUNTER[0].start()
+        _COUNT_COND.notify_all()
+        if cache_key in _DUE and _due_now(cache_key, directory_watcher.count_recount_seconds(), time.monotonic()):
+            began = (_WHOLE.get(cache_key) or {}).get("began")
+            _COUNT_COND.wait_for(lambda: (_WHOLE.get(cache_key) or {}).get("began") != began, COUNT_WAIT_SECONDS)
+        held = _WHOLE.get(cache_key)
+    if held is None:
+        return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True}
+    return {"total": held["total"], "capped": False, "counted_at": held["counted_at"],
+            "count_seconds": held["count_seconds"], "counting": False}
 
 
 def invalidate_table_cache(table_name: str):
@@ -960,8 +1060,10 @@ def invalidate_table_cache(table_name: str):
 
     판정은 `count_cache_table_of` 하나로 한다 - 키의 첫 구획이 곧 테이블명이므로
     `startswith` 같은 접두 비교와 달리 이름이 겹치는 테이블을 오탐/누락하지 않는다.
+    The table's whole count is due again - its worker recounts it (`table_total`).
     """
     if not table_name: return
+    _count_again(table_name)
 
     # dictionary size changed error 방지를 위해 list로 변환하여 순회
     all_keys = list(TABLE_COUNT_CACHE.keys())
@@ -2563,7 +2665,8 @@ def grid_read_stopped(table_name, q, cols, seconds, filters=None, bind=None):
 
 
 def cached_table_count(query, cache_key):
-    """The cached count, or one fresh `count()` stored under the same key. -> (count, seconds).
+    """The cached count, or one fresh `count()` stored under the same key.
+    -> (count, the seconds that count took, the time it was counted).
 
     Both routes read the cache through this, so `?defer_total=true` on one and a call to
     the other cannot end up looking at two different caches - and the TTL and the
@@ -2571,12 +2674,12 @@ def cached_table_count(query, cache_key):
     """
     hit = TABLE_COUNT_CACHE.get(cache_key)
     if hit is not None and (time.time() - hit[1] < COUNT_CACHE_TTL):
-        return hit[0], 0.0
+        return hit[0], hit[2], hit[1]
     t_tmp = time.time()
     total = query.count()
     elapsed = time.time() - t_tmp
-    store_table_count(cache_key, total)
-    return total, elapsed
+    store_table_count(cache_key, total, elapsed)
+    return total, elapsed, t_tmp + elapsed
 
 
 def _filtered_column_count(filters) -> int:
@@ -2630,13 +2733,14 @@ def get_table_data(
 
     🔴 `defer_total=true`는 개수를 **덜 정확하게** 만들지 않는다. 개수가 **언제 오는가**만
     바꾼다: `total`이 `null`로 나가고 `count()`는 한 번도 불리지 않으며, 같은 수를
-    `GET /tables/{table_name}/data/count`가 **같은 필터로** 답한다. 근사치도 TTL 연장도
-    아니다 - 첫 페인트가 전수 count를 기다리지 않게 하는 것뿐이다.
+    `GET /tables/{table_name}/data/count`가 **같은 필터로** 답한다 - 같은 `table_total` 의 수다.
+    첫 페인트가 세기를 기다리지 않게 하는 것뿐이다.
 
     🔴 `null`은 `0`이 아니다. `0`은 「일치하는 행이 없다」이고 화면은 그렇게 읽는다.
     아직 모르는 것과 정말 없는 것이 같은 픽셀이 되면 이 라운드는 실패한 것이다.
 
-    인자를 주지 않으면 응답은 지금과 **완전히 같다** - `total`이 실려 나간다.
+    인자를 주지 않으면 `total`과 그 말 `count`가 실려 나간다 - `table_total` 하나의 수다
+    (표 전체는 일꾼이 마지막으로 센 수와 그 시각, 좁히면 COUNT_CAP 까지).
     """
     t_total_start = time.time()
     t_target = 0.0
@@ -2757,9 +2861,11 @@ def get_table_data(
     # 🔴 `defer_total`이면 캐시도 보지 않는다. 히트를 먼저 보면 「보통은 빠르고 가끔
     #    2초」라는 지금 그 진동이 그대로 남고, 이 라운드가 없애려는 것이 바로 그것이다.
     #    `None`으로 나가고 `/data/count`가 같은 키로 답한다.
-    total_count = None
+    total_count, counted = None, None
     if not defer_total:
-        total_count, t_count = cached_table_count(query, cache_key)
+        t_tmp = time.time()
+        counted = table_total(db, table_name, world, table_model, query, cache_key)
+        total_count, t_count = counted["total"], time.time() - t_tmp
     
     from sqlalchemy.sql import func
     # `final_sort` 는 [Step 0] 에서 이미 해석됐다 — 이름을 «한 자리**에서만 읽는다.
@@ -2872,6 +2978,8 @@ def get_table_data(
     looked = text_looked_columns(search_scope.get("columns") or () if q else (), filters)
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
+        # the count's word beside it - capped past COUNT_CAP, when counted, or still counting (소유자 ㄱ)
+        **({"count": counted} if counted is not None else {}),
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset,
         # the worlds `ledger_rows` could not read on this page - absent when the rows carry no ledger keys at all
         **({} if unread is None else {"ledger_worlds_unread": unread}),
@@ -2893,13 +3001,14 @@ def get_table_data_count(
     world: str = None,
     db: Session = Depends(get_db)
 ):
-    """`GET .../data?defer_total=true`가 미룬 그 수. **정확한 전수 count다.**
+    """`GET .../data?defer_total=true`가 미룬 그 수 - `table_total` 하나: 표 전체는 일꾼이 마지막으로 센 수와 그 시각
+    (한 번도 안 셌으면 counting), 좁히면 COUNT_CAP 까지 (넘으면 capped).
 
     🔴 이 라우트는 필터를 **두 번째로 해석하지 않는다.** `narrowed_table_query`가 그리드
     요청에도 이 요청에도 같은 질의를 만든다. 두 벌이 되는 순간 두 수가 갈리고, 그것은
     오류를 내지 않는다 - 화면은 없다는 행을 그리고 바닥글은 없다고 말한다.
 
-    캐시도 **같은 것**이다. 키가 `narrowed_table_query`에서 나오므로 그리드가 방금 채운
+    좁힌 수의 캐시도 **같은 것**이다. 키가 `narrowed_table_query`에서 나오므로 그리드가 방금 채운
     값이 여기 히트하고, 쓰기 하나가 `invalidate_table_cache`로 **둘 다** 비운다. 키를
     따로 지었으면 캐시가 반으로 갈려 무효화가 한쪽만 지웠을 것이다.
 
@@ -2915,10 +3024,8 @@ def get_table_data_count(
         db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
         filters=filters, enrichment_queue=enrichment_queue,
         enrichment_queue_scope=enrichment_queue_scope)
-    total, seconds = cached_table_count(query, cache_key)
-    logger.debug(f"[get_table_data_count] '{table_name}' total={total} "
-                 f"count={seconds:.3f}s cached={seconds == 0.0} q={q}")
-    return {"table_name": table_name, "total": total}
+    counted = table_total(db, table_name, world, table_model, query, cache_key)
+    return {"table_name": table_name, **counted}
 
 import json
 from fastapi import HTTPException
@@ -3155,19 +3262,20 @@ def export_table_csv(
     avg_row_size = sample_bytes / len(sample_rows) if sample_rows else 150
     header_size = len("\ufeff".encode("utf-8")) + len(",".join(header).encode("utf-8")) + 2
     
-    # [Performance Optimization] 빠른 카운트(SELECT COUNT(*))만 실행하여 헤더 준비 속도 극대화
-    total_count = query.count()
+    # 🔴 THE GRID'S COUNT, COUNTED HERE UP TO THE CAP (소유자 ㄱ · 총괄 67e5e9ccd): past it the export is refused anyway
+    counted = table_total(db, table_name, world, table_model, query, None, cap=EXPORT_MAX_ROWS, here=True)
+    total_count = counted["total"]
 
     # 🔴 상한 집행. 여기가 **스트리밍 시작 전**이라는 점이 이 위치의 전부다 -
     #    StreamingResponse가 나가고 나면 브라우저는 이미 파일을 만들었고, 그 뒤에
     #    「사실 잘렸습니다」를 말할 채널이 CSV 본문밖에 없다. 본문에 적은 경고는
     #    엑셀에서 그냥 마지막 데이터 행처럼 보인다.
-    #    자르지 않고 거절하는 이유는 docstring 참고.
-    if total_count > EXPORT_MAX_ROWS:
+    #    자르지 않고 거절하는 이유는 docstring 참고. 수는 상한에서 멈춰 세므로 거절은 «넘는다»만 말한다.
+    if counted["capped"]:
         raise HTTPException(
             status_code=413,
-            detail=(f"추출 상한 {EXPORT_MAX_ROWS:,}행을 넘습니다 (현재 조건 {total_count:,}행). "
-                    f"잘린 CSV를 내보내지 않습니다 - 검색어나 필터로 범위를 좁혀 주십시오."))
+            detail=(f"More than {EXPORT_MAX_ROWS:,} rows match - over the export cap. "
+                    f"No CSV is cut short: narrow the search or the filter."))
 
     # 여기 도달하면 total_count <= EXPORT_MAX_ROWS이므로 추산치는 실제 송신량과 같다.
     # (예전의 `min(total_count, 1000000)`은 이 수를 깎아 진행률이 100%를 넘게 만들었다.)

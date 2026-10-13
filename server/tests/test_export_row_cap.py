@@ -50,9 +50,8 @@ def test_over_the_cap_is_refused_and_nothing_is_streamed(client, monkeypatch):
     r = _export(client)
 
     assert r.status_code == 413, f"expected a refusal, got {r.status_code}"
-    # The refusal must NAME both numbers - "too big" without the actual size leaves
-    # the operator guessing how far to narrow the filter.
-    assert "10" in r.text and "4" in r.text, r.text
+    # The refusal names the cap. The count stops past it (소유자 ㄱ: `table_total`), so it says «more than».
+    assert "More than 4 rows" in r.text, r.text
     # 🔴 And it must not have handed over a file. A 413 carrying CSV would be the
     #    silent truncation this refusal exists to avoid, wearing an error code.
     assert "text/csv" not in r.headers.get("content-type", "")

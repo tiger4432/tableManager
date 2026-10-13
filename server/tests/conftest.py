@@ -94,6 +94,18 @@ def doubling_pages(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _the_whole_counts_are_forgotten():
+    """A table's whole count one test's database answered must not answer for the next test's (소유자 ㄱ · 총괄
+    67e5e9ccd: the count is kept, not counted per request). Only when main is already imported."""
+    main = sys.modules.get("main")
+    if main is not None and hasattr(main, "_WHOLE"):
+        with main._COUNT_COND:
+            main._WHOLE.clear()
+            main._DUE.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _the_loaded_chain_rules_are_forgotten():
     """A rule set one test loaded must not answer for the next, whose fake `load_chain_rules`
     would otherwise never be asked. Only when the module is already imported - forgetting
