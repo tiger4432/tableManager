@@ -585,6 +585,40 @@ async function recordPoints(M) {
     latest: await seatWith({ x: { ...TEMP, of: 'time', reduce: 'Latest' }, y: { ...TEMP, reduce: 'Latest' } }) };
 }
 
+/** The route (lead 10-14 «다른 다이라»): a bonding die d1 of BW (its sibling d2), bonded from c1 on CW1 (d2 from c2 on
+ *  CW2). A part starting from d1 walks only its route, and its rows are the route's ends. */
+async function routed(M) {
+  const { entitySeedId } = await import('../src/rnd_board/api.js');
+  const id = (type, key) => entitySeedId(type, { [type]: key });
+  const [BW, CW1, CW2, d1, d2, c1, c2] = [['wafer', 'BW'], ['wafer', 'CW1'], ['wafer', 'CW2'], ['die', 'd1'], ['die', 'd2'], ['die', 'c1'], ['die', 'c2']].map(([t, k]) => id(t, k));
+  const label = new Map([[BW, 'BW'], [CW1, 'CW1'], [CW2, 'CW2'], [d1, 'd1'], [d2, 'd2'], [c1, 'c1'], [c2, 'c2']]);
+  const node = (nid) => ({ id: nid, type: nid === BW || nid === CW1 || nid === CW2 ? 'wafer' : 'die', label: label.get(nid), keys: {}, attributes: {} });
+  const answer = { nodes: [BW, CW1, CW2, d1, d2, c1, c2].map(node),
+    edges: [[d1, 'in_container', BW], [d2, 'in_container', BW], [d1, 'bonded_from', c1], [d2, 'bonded_from', c2], [c1, 'in_container', CW1], [c2, 'in_container', CW2]]
+      .map(([source, predicate, target], i) => ({ id: `r${i}`, source, target, predicate, qualifiers: {} })), truncated: ANSWER.truncated };
+  const vocabulary = { entities: [{ type: 'die' }, { type: 'wafer' }],
+    predicates: [{ name: 'in_container', subjects: ['die'], object: { kind: 'entity_ref', types: ['wafer'] } }, { name: 'bonded_from', subjects: ['die'], object: { kind: 'entity_ref', types: ['die'] } }] };
+  const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
+  const seat = async (decl, withVocabulary = true) => {
+    const doc = makeDoc('dark');
+    const markings = new MarkingStore();
+    markings.set('marking:die', d1, SIGN.CASE);
+    const asked = [];
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes: null, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
+      kinds: { crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
+    part.mount();
+    await settle();
+    return { rows: part.model.rowKeys, total: part.model.total, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
+  };
+  const base = { id: 'B', part: 'visual', kind: 'crossTable', start: { marking: 'marking:die' }, system: null, filter: [] };
+  const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } });
+  const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } });
+  const wafers = await seat({ ...base, row: 'wafer', encode: {} });
+  const core = await seat({ ...base, row: 'wafer', encode: {}, route: wafers.part.routes()[1] });
+  return { dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -606,6 +640,7 @@ async function suite(M) {
   const mk = markerModels(M);
   const mp = await markerPress(M);
   const ts = await trendAsScatter(M);
+  const rt = await routed(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
   const cRel = await markedColour(M, true);
@@ -696,6 +731,11 @@ async function suite(M) {
         latest: [['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']] }),
     judge('P7 the units of a value record: a record a unit, X its own record; a reduce - an edge a unit, folded', mk.records,
       [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
+    judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
+      rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2]], ['die']]),
+    judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
+    judge('W3 die to wafer: the shortest route its own wafer; the route with the bonded_from loop the core wafer, the walk asking that route',
+      [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['in_container', 'bonded_from'], 2]]]]),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -765,6 +805,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, "!this.steps().touched.has(id) ? null : false;", '!this.steps().touched.has(id) ? false : false;') },
   { id: 'M23', what: 'a map cell a die, not a coordinate - its press marks one', catches: 'Y6 ', file: 'testbed/kinds/map.js', key: 'map',
     mutate: (t) => swap(t, "  for (const { values, ids } of combosOf(rows, ['x', 'y'])) {", "  for (const { values, ids } of rows.flatMap((r) => combosOf([r], ['x', 'y']))) {") },
+  { id: 'M25', what: 'the rows every node of the row type the walk reached - not the route\'s ends', catches: 'W1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (this.walkedRoute && this.walkedSeeds) return routeEnds(', '    if (false) return routeEnds(') },
+  { id: 'M26', what: 'the walk asks no route - every predicate, the default steps', catches: ['W1 ', 'W3 '], file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '{ ...base, ...along, nodeId:', '{ ...base, nodeId:') },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

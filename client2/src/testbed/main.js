@@ -166,6 +166,7 @@ export async function boot(deps) {
     entities, markingList, markingBook, relations, layers, filterNames: FILTERS,
     predicates: () => (declaration.ok ? declaration.predicates : []),
     peers: () => declarations(),
+    vocabulary: () => (declaration.ok ? declaration : null),
     askKeys: ({ type, startsWith }) => fetchKeyValues({ apiBase, fetchImpl, type, startsWith, limit: 20 }),
     onAdd: (kind) => add(kind),
   };

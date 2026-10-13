@@ -23,6 +23,7 @@ import { hubId } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
 import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
+import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds } from './route.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes } from '../rnd_board/api.js';
@@ -50,6 +51,8 @@ export class VisualPart extends Panel {
     this.hubs = d.hubs;
     // THE one place «is this marked» is asked (marking_layer.js): the page's layers, or its own over its markings.
     this.layers = d.layers || new MarkingLayers({ markings: d.markings, hubs: d.hubs });
+    // The page's declaration (types and predicates) - the routes from a start to the rows (route.js).
+    this.vocabulary = d.vocabulary || (() => null);
     this.relationsStore = d.relations || null;
     this.names = d.names;
     this.charts = d.charts;
@@ -111,13 +114,13 @@ export class VisualPart extends Panel {
   /** The declaration as it stands - what Save writes and a reopen reads back. */
   declaration() { return JSON.parse(JSON.stringify(this.decl)); }
 
-  /** A changed declaration: a new start, row type or system filter walks again; anything else folds again. One that
+  /** A changed declaration: a new start, row type, route or system filter walks again; anything else folds again. One that
    *  closes a loop of markings with the page's other visuals is refused and the loop named (`this.loop`). */
   setDeclaration(asked) {
     const { reads: _shown, ...next } = asked;
     this.loop = chainLoop([...this.peers().filter((d) => d.id !== next.id), next]);
     if (this.loop) { this.publish(); return false; }
-    const walkAgain = JSON.stringify([next.start, next.row, next.system]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system]);
+    const walkAgain = JSON.stringify([next.start, next.row, next.system, next.route || null]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system, this.decl.route || null]);
     const before = this.decl;
     this.decl = JSON.parse(JSON.stringify(next));
     this.start = this.decl.start || null;
@@ -171,6 +174,23 @@ export class VisualPart extends Panel {
     return got.positive.length ? got : null;
   }
 
+  /** The routes from the start's type to the row type, and the one it takes (route.js) - none when it starts from All or
+   *  no route is known. */
+  routes() {
+    const name = this.start && this.start.marking;
+    const first = name && this.markings ? this.markings.entries(name)[0] : null;
+    return first ? routesFor(this.vocabulary(), typeOfStart(first[0]), this.decl.row) : [];
+  }
+
+  route() { return routeOf(this.decl, this.routes()); }
+
+  /** Its rows in a walk's answer: the route's ends from the seeds it walked from; with no route, every node of its row
+   *  type the walk reached. */
+  rowsOf(answer) {
+    if (this.walkedRoute && this.walkedSeeds) return routeEnds(answer, this.walkedSeeds, this.walkedRoute);
+    return ((answer && answer.nodes) || []).filter((n) => n.type === this.decl.row).map((n) => n.id);
+  }
+
   systemConditions() {
     return (this.decl.system && this.filters && this.filters.get(this.decl.system)) || [];
   }
@@ -182,9 +202,10 @@ export class VisualPart extends Panel {
     this.state = 'walking';
     this.render();
     let positive = seeds.positive || [];
+    this.walkedRoute = seeds.all ? null : this.route();
     // The walk from every seed does not hang on the system filter: one in hand for the same seeds is taken again (a
     // filter changed), and only the start side is judged anew.
-    const asked = JSON.stringify([seeds, this.decl.row]);
+    const asked = JSON.stringify([seeds, this.decl.row, this.walkedRoute]);
     let res = this.seedWalk && this.seedWalk.asked === asked ? this.seedWalk.res : await this.walkFrom(seeds);
     if (ticket !== this.walking) return;
     if (res.ok) this.seedWalk = { asked, res };
@@ -210,6 +231,7 @@ export class VisualPart extends Panel {
       this.render();
       return;
     }
+    this.walkedSeeds = positive;
     this.layers.graph.add(res.body);
     this.answer = res.body;
     this.state = 'ready';
@@ -235,8 +257,10 @@ export class VisualPart extends Panel {
   walkFrom(seeds) {
     // The walk's budget: the page's, then the declaration's own (`walk`: node_limit, hops - the server's names).
     const base = { ...this.walkParams, ...(this.decl.walk || {}) };
+    // Along its route: the route's predicates and steps and its slots' (route.js walkOfRoute).
+    const along = !seeds.all && this.walkedRoute ? walkOfRoute(this.walkedRoute, this.decl.encode) : {};
     const params = seeds.all ? { ...base, seed_type: this.decl.row }
-      : { ...base, nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [] };
+      : { ...base, ...along, nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [] };
     return this.fetchWalk(params);
   }
 
@@ -247,7 +271,7 @@ export class VisualPart extends Panel {
     const inside = insideOf(this.answer);
     this.index = index;
     this.inside = inside;
-    const received = (this.answer.nodes || []).filter((n) => n.type === this.decl.row).map((n) => n.id);
+    const received = this.rowsOf(this.answer);
     if (this.names) for (const n of this.answer.nodes || []) this.names.set(n.id, { type: n.type, label: n.label || n.id });
     const sys = this.systemConditions().filter((c) => c.row === this.decl.row);
     const afterSystem = keepNodes(index, inside, received, sys, this.oneValued);
@@ -321,7 +345,7 @@ export class VisualPart extends Panel {
   slotSummaries() {
     if (!this.index || !this.kind) return [];
     const encode = this.decl.encode || {};
-    const received = (this.answer.nodes || []).filter((n) => n.type === this.decl.row).map((n) => n.id);
+    const received = this.rowsOf(this.answer);
     return this.slotList().filter((s) => encode[s.key]).map((s) => {
       const slot = encode[s.key];
       const counts = new Map();
