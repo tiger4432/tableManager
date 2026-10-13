@@ -21,6 +21,7 @@ const REAL = {
   filter: await import('../src/testbed/filter.js'),
   hubs: await import('../src/testbed/hubs.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
+  color: await import('../src/testbed/color_by.js'),
   cross: await import('../src/testbed/kinds/cross_table.js'),
   visual: await import('../src/testbed/visual_part.js'),
   status: await import('../src/testbed/status_part.js'),
@@ -151,18 +152,21 @@ async function measure(M) {
   // T5 / T6: the scatter model, its option, a drag
   const rowsOf = (ids, slots) => ids.map((id) => ({ id, label: id, reads: Object.fromEntries(Object.entries(slots).map(([k, s]) => [k, readSlot(index, inside, id, s)])) }));
   const marked = new Set(['W1', 'W2']);
-  const model = M.scatter.scatterModel(rowsOf(WAFERS, { x: temp, y: press, color: product }), { marked: (id) => marked.has(id), palette: DARK });
+  // the root's colours and paint (color_by.js), the kind's model on them
+  const t5rows = rowsOf(WAFERS, { x: temp, y: press, color: product });
+  const t5paint = M.color.paintRows(t5rows, { marked: (id) => marked.has(id), palette: DARK, declaration: { encode: { color: product } } });
+  const model = M.scatter.scatterModel(t5rows, { ...t5paint, palette: DARK });
   const p1 = model.points.find((p) => p.id === 'W1');
   const p4 = model.points.find((p) => p.id === 'W4');
   out.scatter = { drawn: model.points.map((p) => p.id), notDrawn: model.notDrawn, several: model.several, kinds: [model.xKind, model.yKind],
-    marked: p1.fill, dimmed: p4.fill, legend: model.legend.map((l) => [l.name, l.dim, l.ids]) };
+    marked: p1.fill, dimmed: p4.fill, legend: t5paint.colors.categories.map((l) => [l.name, l.dim, l.ids]) };
   const option = M.scatter.scatterOption(model, DARK);
   out.drag = [M.scatter.idsInRange(model, option, [[15, 45], [1.5, 4.5]]), M.scatter.idsInRange(model, option, [[15, 45], [3.5, 4.5]]),
     M.scatter.idsInRange(model, option, [[0, 5], [0, 1]])];
   // T7: the cross table
   const crossRows = WAFERS.map((id) => ({ id, reads: { rows: readSlot(index, inside, id, lot), columns: readSlot(index, inside, id, product) },
     raw: { cells: index.out.get(id) ? index.out.get(id).filter((e) => e.target === 'QP').map((e) => ({ value: e.qualifiers.value, t: null })) : [] } }));
-  const ct = M.cross.crossModel(crossRows, { marked: (id) => id === 'W1', declaration: crossDecl() });
+  const ct = M.cross.crossModel(crossRows, { ...M.color.paintRows(crossRows, { marked: (id) => id === 'W1', palette: DARK, declaration: crossDecl() }), declaration: crossDecl() });
   out.cross = { rows: ct.rowKeys, cols: ct.colKeys, grid: ct.grid.map((line) => line.map((c) => [c.value, c.ids, c.marked])), rowTotals: ct.rowTotals, colTotals: ct.colTotals, total: ct.total };
   // T27: an expression slot - the calculator over the row's own values (src/expression.js)
   const exprSlot = (expr) => ({ expr, words: [expr] });
@@ -174,7 +178,7 @@ async function measure(M) {
     const decl = crossDecl({ encode: { rows: lot, columns: product, ...(cells ? { cells } : {}) } });
     const xs = WAFERS.map((id) => ({ id, reads: { rows: readSlot(index, inside, id, lot), columns: readSlot(index, inside, id, product) },
       raw: cells ? { cells: M.slot.rawOf(index, inside, id, cells) } : {} }));
-    const m = M.cross.crossModel(xs, { marked: () => false, declaration: decl });
+    const m = M.cross.crossModel(xs, { ...M.color.paintRows(xs, { palette: DARK, declaration: decl }), declaration: decl });
     return JSON.stringify([m.grid.map((line) => line.map((c) => c.value)), m.rowTotals, m.colTotals, m.total]);
   };
   out.exprCross = [exprCross(exprSlot('Count()')) === exprCross(null), exprCross(exprSlot('Count([product])')) === exprCross({ ...product, reduce: 'Count' }),
@@ -301,14 +305,14 @@ async function parts(M) {
   out.twoParts = [Object.keys(s1.part.declaration().encode).sort(), Object.keys(s2.part.declaration().encode).sort(),
     oneCharts.made.length - before, Boolean(s1Chart.disposed), Boolean(s2Chart.disposed), s1Chart.el !== s2Chart.el];
   // T11: a third kind - the root draws it with no change of its own: the kind's title, the field it reads off its own
-  // declaration, its own slot's reduce, a pill that only says words (nothing to pick) beside its slot's pill
-  const stub = { name: 'list', label: 'List', slots: [{ key: 'v', label: 'Value' }],
+  // declaration, its own slot's reduce; the template's pills - its slot on the tray it names, Color by in the legend
+  const stub = { name: 'list', label: 'List', slots: [{ key: 'v', label: 'Value', tray: 'bottom' }],
     title: (encode) => `List of ${M.slot.slotWords(encode.v)}`,
     model: (rows, ctx) => { const d = ctx.declaration || {}; return { n: rows.length, every: d.every, reduce: d.encode && d.encode.v && d.encode.v.reduce }; },
-    render: (body, model, ctx) => {
+    render: (area, model, ctx) => {
       const p = ctx.doc.createElement('p');
       p.textContent = `rows ${model.n} · every ${model.every} · ${model.reduce}`;
-      body.append(p, ctx.pill(null, { words: 'Each row' }), ctx.pill('v'));
+      area.append(p);
       return { resize() {}, dispose() {} };
     } };
   const k = seat(M, { ...scatterDecl({ id: 'K1', kind: 'list', every: 3 }), encode: { v: { ...temp, reduce: 'Max' } } }, { kinds: { list: stub } });
@@ -332,7 +336,7 @@ async function parts(M) {
   custom.push(exprWhy());
   enter('If([product] = "A", "is A", "not A")');
   await settle();
-  custom.push(xp.part.declaration().encode.color, (xp.part.model.legend || []).map((l) => l.name).filter((n) => n === 'is A' || n === 'not A').sort());
+  custom.push(xp.part.declaration().encode.color, (xp.part.colors ? xp.part.colors.categories : []).map((l) => l.name).filter((n) => n === 'is A' || n === 'not A').sort());
   out.custom = custom;
   // T31: Custom expression starts from the route chosen; the check reads a way's names the way the row does
   const wp = seat(M, scatterDecl({ id: 'X2', encode: { x: temp, y: { ...press, reduce: 'Avg' }, color: lot } }));
@@ -537,9 +541,9 @@ function suite(out, page, saved, counted) {
     { rows: 3, of: 6, system: 2, part: 1, hidden: 1 });
   eq('T10 two scatters on one page: a slot changed in one stays there - it alone draws again and lets its old chart go; the other one stands',
     page.twoParts, [['x', 'y'], ['x', 'y'], 1, true, false, true]);
-  eq('T11 a third kind draws through the same root: its title, its own declaration\'s field and slot reduce, a words-only pill that opens nothing',
+  eq('T11 a third kind draws through the same root: its title, its own declaration\'s field and slot reduce; the template\'s pills - its slot on its tray, Color by in the legend',
     page.kindAdd, { drawn: ['rows 6 · every 3 · Max'], title: ['List of Max(temp · value)'], statTitle: 'List of Max(temp · value)',
-      pills: [['Each row', false], ['Max(temp · value)', true]] });
+      pills: [['Max(temp · value)', true], ['(None)', true]] });
   eq('T19 census: the root names no kind - no kind name or slot key as a string, no .kind compared, no slot read off encode by name',
     [counted.rootAsks, counted.canary], [[], [true, true, true]]);
   eq('T21 census: one seedsOf in the client - the marking store\'s', counted.seeds, ['rnd_board/marking_store.js']);
@@ -584,10 +588,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'list.every((c) => nodePasses(', 'list.some((c) => nodePasses(') },
   { id: 'M8', what: 'a period closed at its end', catches: 'T4', file: 'testbed/filter.js',
     mutate: (t) => swap(t, '!(Number.isFinite(to) && t >= to)', '!(Number.isFinite(to) && t > to)') },
-  { id: 'M9', what: 'a dimmed point keeps its colour (no mix)', catches: 'T5', file: 'testbed/kinds/scatter.js',
-    mutate: (t) => swap(t, 'fill: dim ? mix(fill, palette.bg) : fill', 'fill: fill') },
+  { id: 'M9', what: 'a dimmed mark keeps its colour (no mix)', catches: 'T5', file: 'testbed/color_by.js',
+    mutate: (t) => swap(t, 'return { fill: mix(c.fill, palette.bg), line: mix(c.line, palette.bg),', 'return { fill: c.fill, line: c.line,') },
   { id: 'M10', what: 'a several drawn - not counted apart', catches: 'T5', file: 'testbed/kinds/scatter.js',
-    mutate: (t) => swap(t, "    if ([x, y, color].some((r) => r && r.state === 'several')) { several += 1; continue; }\n", '') },
+    mutate: (t) => swap(t, "    if ([x, y].some((r) => r && r.state === 'several')) { several += 1; continue; }\n", '') },
   { id: 'M11', what: 'a drag tests only x', catches: 'T6', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, ' && inside(coordRange[1], at(model.yKind, option.yAxis, p.y)))', ')') },
   { id: 'M12', what: 'a row with two values counted in its first only', catches: 'T3', file: 'testbed/slot.js',
@@ -631,9 +635,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '{ marked, markColor: this.markColor(), palette: this.palette(), declaration: this.decl }', '{ marked, markColor: this.markColor(), palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
-  { id: 'M31', what: 'a words-only pill opens the picker too', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '    if (this.slotList().some((s) => s.key === key)) p.addEventListener(', '    if (true) p.addEventListener(') },
+    mutate: (t) => swap(t, '{ paint, colored, palette: this.palette(), declaration: this.decl }', '{ paint, colored, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
+  // M31 (a words-only pill opens the picker) retired 10-14: the template draws a pill only for a slot it holds.
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
     mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells));', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells));') },
 
@@ -671,12 +674,13 @@ MUTANTS.push(
     mutate: (t) => swap(t, '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name).value))', '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name.split(\'.\').pop()).value))') },
   { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
     mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
-  { id: 'M39', what: 'a kind handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/kinds/scatter.js',
+  { id: 'M39', what: 'the colours handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, '  const palette = ctx.palette;\n', "  const palette = { bg: '#000000', one: ['#000000', '#000000'], cat: [['#000000', '#000000']] };\n") },
 );
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
-  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker', 'testbed/condition_editor.js': 'cond' };
+  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker', 'testbed/condition_editor.js': 'cond',
+  'testbed/color_by.js': 'color' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   // A stylesheet is no module: its mutant is the census's text alone.
   if (m.file.endsWith('.css')) return run(REAL, { [m.file]: m.mutate(readFileSync(join(SRC, m.file), 'utf8')) });

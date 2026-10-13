@@ -1,24 +1,22 @@
-// The map kind of the visual part (owner 10-13 scenario A «본딩 웨이퍼 다이맵»): a cell a row at its X and Y - a die at its
-// keys x and y - on a grid the rows' own coordinates span (the map editor's meta as the background is not wired: the
-// owner's «메타가 없으면 데이터 좌표로 격자»). A cell is a coordinate: the hub of the rows at it (two wafers' dies at one
-// x, y - one cell), pressed it marks them whole (a press replaces, Ctrl adds); a press on the ground clears; marked cells
-// in their marking's colour, the rest dimmed while something is marked.
+// The map kind - its visible area only (ROOT_PART_BASE_SET: the root is the template; owner 10-13 scenario A «본딩 웨이퍼
+// 다이맵»): a cell at X and Y - a die at its keys x and y - on a grid the rows' own coordinates span (the map editor's meta
+// as the background is not wired: the owner's «메타가 없으면 데이터 좌표로 격자»). A cell is a coordinate: the hub of the
+// rows at it (two wafers' dies at one x, y - one cell), given back whole when pressed; a press on the ground clears. Its
+// paint is the root's.
 
 import { numberOf } from '../../walk/reach_table.js';
-import { mix } from '../palette.js';
 import { combosOf } from '../slot.js';
-import { colorOfIds } from '../color_by.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
 export const SLOTS = Object.freeze([
-  { key: 'x', label: 'X' },
-  { key: 'y', label: 'Y' },
+  { key: 'x', label: 'X', tray: 'bottom' },
+  { key: 'y', label: 'Y', tray: 'bottom' },
 ]);
 
 /**
  * @param {Array<{id, label, reads: object}>} rows
- * @param {{marked: (id) => boolean, markColor?: string|null, palette: object}} ctx
+ * @param {{paint: (ids) => {fill, line, marked}}} ctx  the root's paint
  */
 export function mapModel(rows, ctx) {
   const cells = [];
@@ -26,24 +24,18 @@ export function mapModel(rows, ctx) {
   for (const { values, ids } of combosOf(rows, ['x', 'y'])) {
     const [x, y] = values.map(numberOf);
     if (x === null || y === null) { notDrawn += ids.length; continue; }
-    cells.push({ ids, where: values, x, y, marked: ids.some(ctx.marked) });
-  }
-  const anyMarked = cells.some((c) => c.marked);
-  for (const c of cells) {
-    // its rows' Color by colour (the root's; the one colour when none is declared)
-    const { fill, line } = ctx.colors ? colorOfIds(ctx.colors, c.ids) : { fill: ctx.palette.one[0], line: ctx.palette.one[1] };
-    c.fill = c.marked ? (ctx.markColor || fill) : anyMarked ? mix(fill, ctx.palette.bg) : fill;
-    c.line = c.marked ? (ctx.markColor || line) : anyMarked ? mix(line, ctx.palette.bg) : line;
+    // its paint is the root's
+    const p = ctx.paint(ids);
+    cells.push({ ids, where: values, x, y, marked: p.marked, fill: p.fill, line: p.line });
   }
   const span = (k) => (cells.length ? [Math.min(...cells.map((c) => c[k])), Math.max(...cells.map((c) => c[k]))] : [0, 0]);
-  return { cells, notDrawn, anyMarked, x: span('x'), y: span('y') };
+  return { cells, notDrawn, note: notDrawn ? `${notDrawn} not drawn` : '', x: span('x'), y: span('y') };
 }
 
-/** Draw a model: the grid (an SVG, a cell a rect), the X and Y pills under it. */
-export function render(body, model, ctx) {
+/** Draw a model into the template's area: the grid (an SVG, a cell a rect). */
+export function render(area, model, ctx) {
   const doc = ctx.doc;
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-  body.className = 'sf-part__body tb-map';
   const plot = el('div', 'tb-map__plot');
   const svg = doc.createElementNS(SVG, 'svg');
   const [x0, x1] = model.x;
@@ -69,11 +61,7 @@ export function render(body, model, ctx) {
   }
   svg.addEventListener('click', (event) => { if (event.target === svg) ctx.clear(); });
   plot.append(svg);
-  const tray = el('div', 'tb-xtray');
-  tray.append(el('span', 'sf-note', model.notDrawn ? `${model.notDrawn} not drawn` : ''), ctx.pill('x'), ctx.pill('y'));
-  const legend = el('div', 'sf-legend');
-  legend.append(ctx.legend());
-  body.replaceChildren(plot, legend, tray);
+  area.replaceChildren(plot);
   return { resize: () => {}, dispose: () => {} };
 }
 

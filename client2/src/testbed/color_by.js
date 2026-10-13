@@ -4,7 +4,7 @@
 // it (a scatter point, a table line, a cross table cell, a map cell). The legend and its palette are drawn here too.
 // The one seat a colour is asked: colorsOf; a hub (a marker, a cell) asks colorOfIds.
 
-import { categoryColor } from './palette.js';
+import { categoryColor, mix } from './palette.js';
 
 /** The Color by slot every kind of the root holds. */
 export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true });
@@ -42,6 +42,28 @@ export function colorOfIds(colors, ids) {
   const seen = [...new Set(ids.map((id) => (colors.of.get(id) || {}).category))];
   const first = colors.of.get(ids[0]);
   return seen.length === 1 && first ? first : { fill: colors.one[0], line: colors.one[1], category: null };
+}
+
+/**
+ * What a mark is painted (base set 5 and 7 - the root's, the kind draws it): its rows' colour; marked when a row of it is
+ * marked - in the marking's colour (Spotfire's); the rest mixed toward the background while something is marked.
+ * @returns {(ids: string[]) => {fill, line, color, marked: boolean, dim: boolean}}
+ */
+export function painter({ colors, marked, markColor, palette, ids }) {
+  const anyMarked = ids.some(marked);
+  return (of) => {
+    const c = colorOfIds(colors, of);
+    // color - the rows' own colour, unmarked and undimmed (a table line's band, a cross table cell)
+    if (of.some(marked)) return { fill: markColor || c.fill, line: markColor || c.line, color: c.fill, marked: true, dim: false };
+    if (anyMarked) return { fill: mix(c.fill, palette.bg), line: mix(c.line, palette.bg), color: c.fill, marked: false, dim: true };
+    return { fill: c.fill, line: c.line, color: c.fill, marked: false, dim: false };
+  };
+}
+
+/** The root's colours and paint for rows, together - what a kind's model is handed (`colors`, `paint`, `colored`). */
+export function paintRows(rows, { palette, declaration, marked = () => false, markColor = null }) {
+  const colors = colorsOf(rows, { palette, declaration, marked });
+  return { colors, colored: colors.any, paint: painter({ colors, marked, markColor, palette, ids: rows.map((r) => r.id) }) };
 }
 
 /**

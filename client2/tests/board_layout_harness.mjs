@@ -21,6 +21,8 @@ const REAL = {
   visual: await import('../src/testbed/visual_part.js'),
   table: await import('../src/testbed/kinds/table.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
+  units: await import('../src/testbed/units.js'),
+  color: await import('../src/testbed/color_by.js'),
   layer: await import('../src/testbed/marking_layer.js'),
   map: await import('../src/testbed/kinds/map.js'),
   trend: await import('../src/walk/trend.js'),
@@ -119,7 +121,8 @@ async function measure(M) {
   // T1: the table's model - its columns by the encode, sorted both ways, blanks last, numbers by number
   const read = (v) => (v === null ? { state: 'empty' } : { state: 'one', value: v });
   const rows = [['W1', '30'], ['W2', '10'], ['W3', null], ['W4', '9']].map(([id, t]) => ({ id, label: id, reads: { col1: read(id), col3: read(t) } }));
-  const model = (sort) => M.table.tableModel(rows, { marked: (id) => id === 'W2', declaration: { encode: { col3: TEMP, col1: NAME }, sort } });
+  const tdecl = (sort) => ({ encode: { col3: TEMP, col1: NAME }, sort });
+  const model = (sort) => M.table.tableModel(rows, { ...M.color.paintRows(rows, { palette: { one: ['#111111', '#222222'], bg: '#000000', cat: [] }, declaration: tdecl(sort), marked: (id) => id === 'W2' }), declaration: tdecl(sort) });
   const order = (m) => m.lines.map((l) => l.id);
   out.table = { keys: model().keys, next: model().next, numeric: model().numeric, asc: order(model({ key: 'col3', desc: false })),
     desc: order(model({ key: 'col3', desc: true })), marked: model().lines.filter((l) => l.marked).map((l) => l.id), stale: order(model({ key: 'col9' })) };
@@ -335,8 +338,8 @@ async function chains(M) {
   await settle();
   const sec = walk(part(a).host).find((n) => n.tagName === 'SECTION');
   const pal = { bg: '#000000', one: ['#111111', '#222222'], cat: [['#6489FA', '#4B67BC']] };
-  const pts = M.scatter.scatterModel([{ id: 'W1', label: 'W1', reads: { x: { state: 'one', value: 1 }, y: { state: 'one', value: 2 } } },
-    { id: 'W2', label: 'W2', reads: { x: { state: 'one', value: 3 }, y: { state: 'one', value: 4 } } }], { marked: (id) => id === 'W2', markColor: '#123456', palette: pal }).points;
+  const two = [{ id: 'W1', label: 'W1', reads: { x: { state: 'one', value: 1 }, y: { state: 'one', value: 2 } } }, { id: 'W2', label: 'W2', reads: { x: { state: 'one', value: 3 }, y: { state: 'one', value: 4 } } }];
+  const pts = M.scatter.scatterModel(two, { ...M.color.paintRows(two, { marked: (id) => id === 'W2', markColor: '#123456', palette: pal }), palette: pal }).points;
   out.colour = { line: sec.style._props['--sf-marked'], unmarked: pts[0].fill !== '#123456', marked: pts[1].fill };
   return out;
 }
@@ -385,8 +388,9 @@ function markerModels(M) {
     reads: { x: temps.length === 1 ? one(temps[0][0]) : { state: 'several', values: temps.map(([v]) => v) }, y: one(press), marker1: one(lot), marker2: one(product) },
     raw: { x: temps.map(([value, t]) => ({ value, t })), y: [{ value: press, t: 1 }] } }));
   const model = (encode, marked = () => false) => {
-    const m = M.scatter.scatterModel(rows.map((r) => ({ ...r, reads: Object.fromEntries(Object.entries(r.reads).filter(([k]) => encode[k])) })),
-      { marked, palette: pal, declaration: { row: 'wafer', encode } });
+    const own = rows.map((r) => ({ ...r, reads: Object.fromEntries(Object.entries(r.reads).filter(([k]) => encode[k])) }));
+    const decl = { row: 'wafer', encode };
+    const m = M.scatter.scatterModel(M.units.unitsOf(own, decl, Object.keys(encode), 'y'), { ...M.color.paintRows(own, { marked, palette: pal, declaration: decl }), palette: pal, declaration: decl });
     return { points: m.points.map((p) => [p.label, Math.round(p.x * 1000) / 1000, p.y, p.ids, p.marked]), several: m.several };
   };
   const X = (reduce) => ({ ...TEMP, reduce });
@@ -396,8 +400,18 @@ function markerModels(M) {
     lot: model({ x: X('Avg'), y: Y, marker1: LOT }, (id) => id === 'W3'),
     two: model({ x: X('Count'), y: Y, marker1: LOT, marker2: PRODUCT }),
     latest: model({ x: X('Latest'), y: { ...Y, reduce: 'Avg' }, marker1: LOT }),
-    hub: M.scatter.scatterModel(rows, { marked: () => false, palette: pal, declaration: { row: 'wafer', encode: { x: X('Avg'), y: { ...Y, reduce: 'Avg' }, marker1: LOT } } }).points.map((p) => p.id),
-    slots: [M.scatter.kind.slots({}).map((s) => s.key), M.scatter.kind.slots({ marker1: LOT }).map((s) => `${s.key}${s.folds ? '*' : ''}`)],
+    hub: M.units.unitsOf(rows, { row: 'wafer', encode: { x: X('Avg'), y: { ...Y, reduce: 'Avg' }, marker1: LOT } }, ['x', 'y', 'marker1'], 'y').map((p) => p.id),
+    // value records: W9's two edges, three records then one - a unit a record; Latest on Y - a unit an edge
+    records: (() => {
+      const rec = (value, t, read) => ({ value, t, read });
+      const row = { id: 'W9', label: 'W9', reads: { y: { state: 'several', values: ['1', '2', '3', '7'] } },
+        raw: { y: [rec('1', 1, 0), rec('2', 2, 0), rec('3', 3, 0), rec('7', 4, 1)], x: [rec('t1', 1, 0), rec('t2', 2, 0), rec('t3', 3, 0), rec('t4', 4, 1)] } };
+      const read = (decl) => M.units.unitsOf([row], decl, ['x', 'y'], 'y').map((u) => [u.id, u.reads.x.state === 'one' ? u.reads.x.value : u.reads.x.state, u.reads.y.value]);
+      return [read({ markerBy: 'record', encode: { x: TEMP, y: TEMP } }), read({ markerBy: 'record', encode: { x: { ...TEMP, reduce: 'Latest' }, y: { ...TEMP, reduce: 'Latest' } } })];
+    })(),
+    // the root's slot list for a scatter: its axes, Marker by held and the next, Color by
+    slots: [{}, { marker1: LOT }].map((encode) => new M.visual.VisualPart(makeDoc('dark').createElement('div'), { doc: makeDoc('dark'), markings: new MarkingStore(),
+      declaration: { id: 'S', kind: 'scatter', row: 'wafer', encode }, kinds: { scatter: M.scatter.kind } }).slotList().map((s) => `${s.key}${s.folds ? '*' : ''}`)),
   };
 }
 
@@ -520,7 +534,7 @@ async function markedColour(M, withRelations) {
     fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(LAYER_GRAPH)) }) });
   part.mount();
   await settle();
-  const colours = () => Object.fromEntries(part.model.points.map((p) => [p.label, p.category]));
+  const colours = () => Object.fromEntries(part.model.points.map((p) => [p.label, part.colors.of.get(p.ids[0]).category]));
   const first = { colours: colours(), unknown: stats.get('D').unknown };
   // the core wafer marking moved to CW2's die: D folds again (it asked that marking) - CW2 now
   markings.replace('marking:core', [['d2', SIGN.CASE]]);
@@ -663,7 +677,7 @@ async function suite(M) {
       { points: [['L1', 26, 5, ['W1', 'W3'], false], ['L2', 40, 6, ['W2', 'W4'], false]], several: 0 }),
     judge('P5 a marker is the hub the cross table names (hubId of the row type and the values by their words); the slots - Marker by held and the next, the axes folding',
       [mk.hub, mk.slots], [[hubId('wafer', [['lot', 'L1']]), hubId('wafer', [['lot', 'L2']])],
-        [['x', 'y', 'color', 'marker1'], ['x*', 'y*', 'color', 'marker1', 'marker2']]]),
+        [['x', 'y', 'marker1', 'color'], ['x*', 'y*', 'marker1', 'marker2', 'color']]]),
     judge('R1 the trend as one scatter declaration (X the time of Y\'s reads, Marker by a value record): the trend\'s points, their times and values, on a time axis; the pill says the unit; a record pressed marks its node',
       ts, { same: true, n: [5, 5], times: ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'], xKind: 'time', pill: '(Value record)', marked: ['W1'] }),
     judge('Y1 no relation: the layer of a marking is its members (a hub its members) - for every node the same as holds()', [ly.none, ly.same],
@@ -680,6 +694,8 @@ async function suite(M) {
     judge('R2 a value record a point: an edge of three records three points, of one one; Latest on X and Y - a point an edge, its newest record',
       rp, { all: [['W1', '2026-02-01', '1'], ['W1', '2026-02-02', '2'], ['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']],
         latest: [['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']] }),
+    judge('P7 the units of a value record: a record a unit, X its own record; a reduce - an edge a unit, folded', mk.records,
+      [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
     judge('P6 a marker pressed marks its hub whole - the Marked table its members', mp,
       { points: [['L1', 25, 30], ['L2', 25, 40]], marked: [hubId('wafer', [['lot', 'L1']])], lines: ['W1', 'W3'] }),
   ];
@@ -731,16 +747,16 @@ const MUTANTS = [
     mutate: (t) => swap(t, ", markings: markingList.get('list'), relations", ', relations') },
   { id: 'M15', what: 'a marking a docked panel writes is deleted too', catches: 'K4 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, '      if (fixed.length) return', '      if (fixed.length && false) return') },
-  { id: 'M16', what: 'a marked point keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
-    mutate: (t) => swap(t, '    if (marked && ctx.markColor) return', '    if (false) return') },
-  { id: 'M17', what: 'a marker\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 ', 'P6 '], file: 'testbed/kinds/scatter.js', key: 'scatter',
+  { id: 'M16', what: 'a marked mark keeps its category colour, not its marking\'s', catches: 'K6 ', file: 'testbed/color_by.js', key: 'color',
+    mutate: (t) => swap(t, '{ fill: markColor || c.fill, line: markColor || c.line,', '{ fill: c.fill, line: c.line,') },
+  { id: 'M17', what: 'a hub\'s axis reads its rows without the reduce - no fold', catches: ['P2 ', 'P3 ', 'P4 '], file: 'testbed/units.js', key: 'units',
     mutate: (t) => swap(t, '  if (slot.reduce || isExpression(slot)) {', '  if (false) {') },
   { id: 'M18', what: 'a marker pressed marks its id as a node - the hub never put, the Marked table empty', catches: 'P6 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
     mutate: (t) => swap(t, '    if (pts.some((p) => p.where)) ctx.markHubs(', '    if (false) ctx.markHubs(') },
-  { id: 'M19', what: 'a value record reads the row\'s first read for every point - not its own', catches: 'R1 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
+  { id: 'M19', what: 'a value record reads the row\'s first record for every unit - not its own', catches: 'P7 ', file: 'testbed/units.js', key: 'units',
     mutate: (t) => swap(t, 'const items = picks.map((k) => raw[k]);', 'const items = picks.map(() => raw[0]);') },
-  { id: 'M24', what: 'a value record with a reduce on Y still a point a record - not folded by its edge', catches: 'R2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
-    mutate: (t) => swap(t, '  if (!(ySlot && ySlot.reduce)) return ys.map((_, k) => [k]);', '  return ys.map((_, k) => [k]);') },
+  { id: 'M24', what: 'a value record with a reduce still a unit a record - not folded by its edge', catches: 'P7 ', file: 'testbed/units.js', key: 'units',
+    mutate: (t) => swap(t, '  if (!(recordSlot && recordSlot.reduce)) return ys.map((_, k) => [k]);', '  return ys.map((_, k) => [k]);') },
   { id: 'M20', what: 'a layer that does not spread - the members only', catches: ['Y2 ', 'Y4 '], file: 'testbed/marking_layer.js', key: 'layer',
     mutate: (t) => swap(t, '      for (const to of ways.next.get(queue.pop()) || [])', '      for (const to of (queue.pop(), []))') },
   { id: 'M21', what: 'a layer computed on every ask - no cache', catches: 'Y3 ', file: 'testbed/marking_layer.js', key: 'layer',

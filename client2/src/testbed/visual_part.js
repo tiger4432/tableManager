@@ -21,7 +21,8 @@ import { readSlot, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
-import { COLOR_SLOT, colorsOf, legendBlock, paletteBox } from './color_by.js';
+import { COLOR_SLOT, legendBlock, paletteBox, paintRows } from './color_by.js';
+import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
 import { truncationAxes } from '../rnd_board/api.js';
@@ -71,8 +72,11 @@ export class VisualPart extends Panel {
   slotList() {
     const listed = this.kind ? this.kind.slots : [];
     const own = typeof listed === 'function' ? listed(this.decl.encode || {}, this.decl) : listed;
+    // A kind drawing a mark a unit holds Marker by (units.js); a hub folds its rows' reads, a value record reads records.
+    const unit = this.kind && this.kind.units ? unitOf(this.decl) : 'node';
+    const read = unit === 'node' ? own : own.map((s) => ({ ...s, folds: true, records: unit === 'record' }));
     // Color by is the root's - every kind holds it (color_by.js).
-    return [...own, COLOR_SLOT];
+    return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT];
   }
 
   mount() {
@@ -276,9 +280,11 @@ export class VisualPart extends Panel {
       return { id, label: node.label || id, reads, raw };
     });
     const marked = (id) => this.layers.marked(this.reads, id) === true;
-    // Each row's colour - the root's, once; the kind draws with it.
-    this.colors = colorsOf(rows, { palette: this.palette(), declaration: this.decl, marked });
-    this.model = this.kind.model(rows, { marked, markColor: this.markColor(), palette: this.palette(), declaration: this.decl, colors: this.colors });
+    // Each row's colour and each mark's paint - the root's, once (color_by.js); the units a kind draws a mark of (units.js).
+    const { colors, colored, paint } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor() });
+    this.colors = colors;
+    const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record) : rows;
+    this.model = this.kind.model(units, { paint, colored, palette: this.palette(), declaration: this.decl });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -377,15 +383,35 @@ export class VisualPart extends Panel {
       body.append(el('div', 'sf-say', words));
       return;
     }
-    this.drawn = this.kind.render(body, this.model, {
+    // THE TEMPLATE (ROOT_PART_BASE_SET: the root is the template, a kind the visible area): the pill trays round the
+    // area - each slot a kind puts on a tray (`tray`: top, left, bottom; `plus`: one more), the kind's note under it - and
+    // the legend beside it: Marker by (a kind drawing a mark a unit), Color by.
+    body.classList.add('sf-frame');
+    const trays = Object.fromEntries(['top', 'left', 'bottom'].map((side) => [side, el('div', `sf-frame__tray sf-frame__${side}`)]));
+    if (this.model.note) trays.bottom.append(el('span', 'sf-note', this.model.note));
+    const pills = Object.fromEntries(Object.entries(trays).map(([side, tray]) => { const g = el('div', 'sf-frame__pills'); tray.append(g); return [side, g]; }));
+    for (const s of this.slotList().filter((x) => x.tray)) {
+      pills[s.tray].append(this.pill(s.key, { vertical: s.tray === 'left' }));
+      if (s.plus) pills[s.tray].append(this.plus(s.key));
+    }
+    const area = el('div', 'sf-frame__area');
+    const legend = el('div', 'sf-legend');
+    if (this.kind.units) {
+      const encode = this.decl.encode || {};
+      const held = markersOf(encode);
+      const line = el('div', 'sf-legend__row');
+      if (held.length) line.append(...held.map((k) => this.pill(k)), this.plus(nextMarker(encode)));
+      else line.append(this.pill(nextMarker(encode), { words: unitWords(this.decl) }));
+      legend.append(el('div', 'sf-legend__ttl', 'Marker by:'), line);
+    }
+    legend.append(legendBlock(this.colors, { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
+      words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
+      openPalette: (category, anchor) => this.openPalette(category, anchor) }));
+    body.append(trays.top, trays.left, area, trays.bottom, legend);
+    this.drawn = this.kind.render(area, this.model, {
       doc, palette: this.palette(), charts: this.charts,
       words: (key) => slotWords((this.decl.encode || {})[key]),
-      pill: (key, opts) => this.pill(key, opts),
       plus: (key) => this.plus(key),
-      // the legend's Color by block - the root's, every kind's
-      legend: () => legendBlock(this.colors, { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
-        words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
-        openPalette: (category, anchor) => this.openPalette(category, anchor) }),
       mark: (ids, event) => this.mark(ids, event),
       markHub: (where, ids, event) => this.markHub(where, ids, event),
       markHubs: (list, event) => this.markHubs(list, event),
