@@ -161,4 +161,7 @@ export function render(body, model, ctx) {
 /** The title when the declaration names none - «y vs. x». */
 export const title = (encode) => `${slotWords(encode.y)} vs. ${slotWords(encode.x)}`;
 
-export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, title, model: scatterModel, render };
+/** The add window's picture of it: points. */
+export const icon = { tone: 'cat-1', paths: [['M4 16h3v3H4zM8 11h3v3H8zM13 13h3v3h-3zM12 6h3v3h-3zM17 3h3v3h-3zM18 9h3v3h-3z', 1]] };
+
+export const kind = { name: 'scatter', label: 'Scatter plot', slots: SLOTS, title, model: scatterModel, render, icon };

@@ -1,6 +1,6 @@
 // Visualization properties (reference §3, the mockup's panel): the active part's declaration, edited in place - Data
-// (the marking it walks from, its row type, the system filter it uses, its own filter), each slot of its kind, the marking
-// it writes. Names are the people's words (mockup fix ④), the store names stay inside.
+// (the marking it walks from, its row type, the system filter it uses, its own filter, the markings that limit it), each
+// slot of its kind, the marking it writes. Names are the people's words (mockup fix ④), the store names stay inside.
 
 import { Panel } from '../rnd_board/panel.js';
 import { drawCondition, conditionKey, conditionWords } from './condition_editor.js';
@@ -86,8 +86,28 @@ export class PropertiesPart extends Panel {
         }));
       }
     }
+    // ── Limit data using markings (Spotfire's, the Data section's): the markings, all or any, when none is marked ──
+    data.append(el('div', 'sf-props__lab', 'Limit data using markings'));
+    const limit = decl.limit || { markings: [], must: 'all', none: 'all' };
+    const limitTo = (next) => part.setDeclaration({ ...decl, limit: next.markings.length ? next : null });
+    for (const m of this.markingNames) {
+      const line = el('label', 'sf-props__check');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = limit.markings.includes(m.name);
+      box.addEventListener('change', () => limitTo({ ...limit,
+        markings: box.checked ? [...limit.markings, m.name] : limit.markings.filter((n) => n !== m.name) }));
+      line.append(box, el('span', '', m.label));
+      data.append(line);
+    }
+    if (limit.markings.length) {
+      data.append(select('Rows in', [['all', 'All markings'], ['any', 'Any marking']], limit.must || 'all',
+        (v) => limitTo({ ...limit, must: v })));
+      data.append(select('If none', [['all', 'Show all data'], ['empty', 'Show empty']], limit.none || 'all',
+        (v) => limitTo({ ...limit, none: v })));
+    }
     // ── the kind's slots ──
-    for (const s of (part.kind && part.kind.slots) || []) {
+    for (const s of part.slotList()) {
       const sec = section(s.label);
       sec.append(part.pill(s.key));
     }

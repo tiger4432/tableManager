@@ -5,11 +5,13 @@
 // 갈리는 축이 아니다»).
 //
 // declaration  { id, part: 'visual', kind, title?, row, start: {marking: name|null}, system: name|null,
-//                filter: [conditions], encode: {slotKey: slot}, reads: name, writes: name }
+//                filter: [conditions], limit: {markings, must, none} | null, encode: {slotKey: slot}, reads: name, writes: name }
 //   start.marking null - «All»: every node of the row type (seed_type)
 //   system - the system filter it uses (Spotfire «Use filtering from page»), null none; filter - its own final conditions
+//   limit - Spotfire's «Limit data using markings» (owner 10-13): only the rows the named markings hold (limitRows)
 //
-// Flow (owner 10-12): system marking + system filter -> the part walks from the marking -> its own filter -> drawn.
+// Flow (owner 10-12): system marking + system filter -> the part walks from the marking -> its own filter -> the
+// markings' limit -> drawn.
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph } from '../walk/reach_table.js';
@@ -50,6 +52,12 @@ export class VisualPart extends Panel {
 
   get kind() { return this.kinds[this.decl.kind] || null; }
 
+  /** Its kind's slots - a list, or what the kind makes of the declaration's encode (a table's columns). */
+  slotList() {
+    const listed = this.kind ? this.kind.slots : [];
+    return typeof listed === 'function' ? listed(this.decl.encode || {}) : listed;
+  }
+
   mount() {
     super.mount();
     const off = [];
@@ -57,6 +65,7 @@ export class VisualPart extends Panel {
     if (this.filters) off.push(this.filters.subscribe('*', (name) => { if (name === this.decl.system) this.load(); }));
     if (this.active) off.push(this.active.subscribe('active', () => this.paintActive()));
     this._offs = off;
+    this.listenLimit();
     if (this.host && typeof this.host.addEventListener === 'function') {
       this.host.addEventListener('mousedown', () => { if (this.active) this.active.set('active', this.decl.id); });
     }
@@ -65,6 +74,9 @@ export class VisualPart extends Panel {
 
   destroy() {
     for (const off of this._offs || []) off();
+    for (const off of this._limitOffs || []) off();
+    // Closed while it was the active one: no part is.
+    if (this.active && this.active.get('active') === this.decl.id) this.active.set('active', null);
     if (this.drawn) this.drawn.dispose();
     this.drawn = null;
     super.destroy();
@@ -81,6 +93,7 @@ export class VisualPart extends Panel {
     this.start = this.decl.start || null;
     this.writes = this.decl.writes || null;
     this.listen(before);
+    this.listenLimit();
     if (walkAgain) this.load(); else this.refold();
   }
 
@@ -98,6 +111,15 @@ export class VisualPart extends Panel {
       if (this._startOff) this._startOff();
       this._startOff = now && now !== this.reads ? this.markings.subscribe(now, () => this.onStartChanged()) : null;
     }
+  }
+
+  /** The markings its limit names and it does not hear already (the one it shows, the one it starts from): a change
+   *  folds again. */
+  listenLimit() {
+    for (const off of this._limitOffs || []) off();
+    const heard = new Set([this.reads, this.start && this.start.marking]);
+    const names = ((this.decl.limit && this.decl.limit.markings) || []).filter((n) => !heard.has(n));
+    this._limitOffs = this.markings ? names.map((n) => this.markings.subscribe(n, () => this.refold())) : [];
   }
 
   showMarking(name) { this.setDeclaration({ ...this.decl, reads: name }); }
@@ -183,13 +205,15 @@ export class VisualPart extends Panel {
     const sys = this.systemConditions().filter((c) => c.row === this.decl.row);
     const afterSystem = keepNodes(index, inside, received, sys, this.oneValued);
     const afterPart = keepNodes(index, inside, afterSystem.kept, this.decl.filter || [], this.oneValued);
+    // The picker's rows: the filters' - a limit takes rows out of the picture, not out of what a column can read.
     this.rowIds = afterPart.kept;
+    const limited = limitRows(afterPart.kept, this.decl.limit, (name) => this.markings.entries(name), this.hubs);
     const encode = this.decl.encode || {};
-    const rows = afterPart.kept.map((id) => {
+    const rows = limited.map((id) => {
       const node = index.nodes.get(id) || {};
       const reads = {};
       const raw = {};
-      for (const s of this.kind.slots) {
+      for (const s of this.slotList()) {
         const slot = encode[s.key];
         if (!slot) continue;
         reads[s.key] = readSlot(index, inside, id, slot, this.oneValued(slot));
@@ -200,12 +224,14 @@ export class VisualPart extends Panel {
     const entries = this.reads ? this.markings.entries(this.reads) : [];
     const marked = (id) => holds(entries, this.hubs, id);
     this.model = this.kind.model(rows, { marked, palette: this.palette(), declaration: this.decl });
+    // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
-    // M - the rows the walk brought; a and b - what each layer took from them (lead 5835e6714). The start side's drops
+    // M - the rows the walk brought; a, b and c - what each layer took from them (lead 5835e6714). The start side's drops
     // are not among M: they were never walked from.
-    this.counts = { rows: afterPart.kept.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
-      part: afterPart.dropped, marked: received.filter(marked).length, hidden, columns: Object.keys(encode).length, source: this.decl.row,
+    this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
+      part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden,
+      columns: Object.keys(encode).length, source: this.decl.row,
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
       // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).
@@ -226,7 +252,7 @@ export class VisualPart extends Panel {
     if (!this.index || !this.kind) return [];
     const encode = this.decl.encode || {};
     const received = (this.answer.nodes || []).filter((n) => n.type === this.decl.row).map((n) => n.id);
-    return this.kind.slots.filter((s) => encode[s.key]).map((s) => {
+    return this.slotList().filter((s) => encode[s.key]).map((s) => {
       const slot = encode[s.key];
       const counts = new Map();
       let empty = 0;
@@ -242,7 +268,7 @@ export class VisualPart extends Panel {
 
   titleWords() {
     if (this.decl.title) return this.decl.title;
-    return this.kind ? this.kind.title(this.decl.encode || {}) : '';
+    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';
   }
 
   // ── marking, through the names the declaration gives ──
@@ -272,6 +298,8 @@ export class VisualPart extends Panel {
     const root = el('section', 'sf-part');
     root.setAttribute('data-kind', this.decl.kind || '');
     const title = el('div', 'sf-part__title');
+    // The handle a page moves the part by (grid_shell: drag the title bar onto another part's edge).
+    title.setAttribute('data-part-title', '');
     title.append(el('span', 'sf-part__t', this.titleWords()));
     const body = el('div', 'sf-part__body');
     root.append(title, body);
@@ -292,6 +320,8 @@ export class VisualPart extends Panel {
       mark: (ids, event) => this.mark(ids, event),
       markHub: (where, ids, event) => this.markHub(where, ids, event),
       clear: () => this.clear(),
+      // A field of the kind's own (a table's sort), written into the declaration - Save keeps it.
+      declare: (patch) => this.setDeclaration({ ...this.decl, ...patch }),
       remember: (event) => this.remember(event),
       lastEvent: () => this.lastEvent(),
     });
@@ -309,7 +339,7 @@ export class VisualPart extends Panel {
     caret.className = 'sf-pill__caret';
     caret.textContent = '▾';
     p.append(caret);
-    if (this.kind.slots.some((s) => s.key === key)) p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p }));
+    if (this.slotList().some((s) => s.key === key)) p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p }));
     return p;
   }
 
@@ -318,6 +348,23 @@ export class VisualPart extends Panel {
     const on = Boolean(this.active && this.active.get('active') === this.decl.id);
     if (on) this.root.classList.add('is-active'); else this.root.classList.remove('is-active');
   }
+}
+
+/**
+ * Spotfire's «Limit data using markings»: the rows the named markings hold - in every one (`must: 'all'`) or in any
+ * ('any'), a hub as its members (hubs.holds). When every one of them is empty: all the rows (`none: 'all'`) or none
+ * ('empty'). No marking named: no limit.
+ * @param {string[]} ids
+ * @param {{markings: string[], must?: 'all'|'any', none?: 'all'|'empty'}|null|undefined} limit
+ * @param {(name: string) => Array<[string, number]>} entriesOf  @param {import('./hubs.js').HubBook} book
+ */
+export function limitRows(ids, limit, entriesOf, book) {
+  const names = (limit && limit.markings) || [];
+  if (!names.length) return ids;
+  const held = names.map(entriesOf);
+  if (held.every((entries) => !entries.length)) return limit.none === 'empty' ? [] : ids;
+  const test = limit.must === 'any' ? 'some' : 'every';
+  return ids.filter((id) => held[test]((entries) => holds(entries, book, id)));
 }
 
 /** Every node the walk holds - its nodes and its edges' ends (a type the answer did not carry still stands on a way). */

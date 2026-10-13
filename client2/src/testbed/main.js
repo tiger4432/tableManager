@@ -1,6 +1,6 @@
 // THE TESTBED PAGE (lead aca803a7a ㄴ): the R&D board's frame - a layout of declarations, one marking store - holding
-// the visual part's kinds, the basket, the status bar, the filters panel and the properties panel. The layout is data;
-// Save keeps the tree and the visuals' declarations and a reopen draws the same picture from them.
+// the visual part's kinds, the status bar, the filters panel, the properties panel and the left bar that adds a visual.
+// The layout is data; Save keeps the tree and the visuals' declarations and a reopen draws the same picture from them.
 
 import * as echarts from 'echarts/core';
 import { ScatterChart } from 'echarts/charts';
@@ -11,7 +11,7 @@ import { MarkingStore } from '../rnd_board/marking_store.js';
 import { fetchSubgraph, fetchDeclaration, fetchKeyValues } from '../rnd_board/api.js';
 import { VisualPart } from './visual_part.js';
 import { StartPart } from './start_part.js';
-import { BasketPart } from './basket_part.js';
+import { BannerPart } from './banner_part.js';
 import { StatusPart } from './status_part.js';
 import { FiltersPart } from './filters_part.js';
 import { PropertiesPart } from './properties_part.js';
@@ -20,32 +20,42 @@ import { HubBook } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
 import { kind as scatterKind } from './kinds/scatter.js';
 import { kind as crossKind } from './kinds/cross_table.js';
+import { kind as tableKind } from './kinds/table.js';
 
-export const PARTS = Object.freeze({ visual: VisualPart, start: StartPart, basket: BasketPart, status: StatusPart,
-  filters: FiltersPart, properties: PropertiesPart });
-export const KINDS = Object.freeze({ scatter: scatterKind, crossTable: crossKind });
+export const PARTS = Object.freeze({ visual: VisualPart, start: StartPart, status: StatusPart, filters: FiltersPart,
+  properties: PropertiesPart, banner: BannerPart });
+/** The kinds, in the add window's order (Spotfire's: Table, Cross table, …, Scatter plot). */
+export const KINDS = Object.freeze({ table: tableKind, crossTable: crossKind, scatter: scatterKind });
 /** The page's markings and system filters, each its people's name (mockup fix ④). */
 export const MARKINGS = Object.freeze([{ name: 'marking:start', label: 'Start' }, { name: 'marking:pick', label: 'Pick' }]);
 export const FILTERS = Object.freeze([{ name: 'filter:1', label: 'Filter' }]);
 const SAVED = 'testbed:visuals';
 
-// The page (lead 10-13, Spotfire's): the visualization area is a split tree of the visuals; the start row, the status
-// bar, the properties and the filters are docked chrome around it (rnd_board/grid_shell.js).
+/** A visual as the page seats one - the layout's and one the left bar adds: walked from the start, the page's filter,
+ *  showing and writing the pick. Its kind, id and row type are its own. */
+export const VISUAL = Object.freeze({ part: 'visual', row: null, start: { marking: 'marking:start' }, system: 'filter:1', filter: [],
+  encode: {}, reads: 'marking:pick', writes: 'marking:pick' });
+
+// The page (lead 10-13, Spotfire's): the visualization area is a split tree of the visuals; the left bar, the start row,
+// the status bar, the properties and the filters are docked chrome around it (rnd_board/grid_shell.js).
 export const LAYOUT = Object.freeze({
   gap: 'var(--sf-gap)',
   panels: [
+    { id: 'banner', part: 'banner', dock: 'left', size: 'var(--sf-banner-w)' },
     { id: 'start', part: 'start', dock: 'top', size: '44px', writes: 'marking:start' },
-    { id: 'scatter-1', part: 'visual', kind: 'scatter', row: null,
-      start: { marking: 'marking:start' }, system: 'filter:1', filter: [], encode: {}, reads: 'marking:pick', writes: 'marking:pick' },
-    { id: 'cross-1', part: 'visual', kind: 'crossTable', row: null,
-      start: { marking: 'marking:start' }, system: 'filter:1', filter: [], encode: {}, reads: 'marking:pick', writes: 'marking:pick' },
-    { id: 'basket', part: 'basket', reads: 'marking:pick', writes: 'marking:pick', title: 'Marked' },
+    { ...VISUAL, id: 'scatter-1', kind: 'scatter' },
+    { ...VISUAL, id: 'cross-1', kind: 'crossTable' },
+    // The marked rows (owner 10-13 «ㄴ 은 근원부품 테이블에 마킹제한 적용한것»): a table of the pick - limited by it, empty
+    // while nothing is picked - over every row the start reaches, no filter.
+    { ...VISUAL, id: 'marked', kind: 'table', title: 'Marked', system: null,
+      limit: { markings: ['marking:pick'], must: 'all', none: 'empty' },
+      encode: { col1: { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] } } },
     { id: 'status', part: 'status', dock: 'bottom', size: 'var(--sf-status-h)' },
     { id: 'properties', part: 'properties', dock: 'right', size: '252px' },
     { id: 'filters', part: 'filters', dock: 'right', size: '252px', title: 'Filters', options: { name: 'filter:1' } },
   ],
   root: { split: 'row', children: [{ id: 'scatter-1', size: 1 },
-    { split: 'column', size: 1, children: [{ id: 'cross-1', size: 1 }, { id: 'basket', size: 1 }] }] },
+    { split: 'column', size: 1, children: [{ id: 'cross-1', size: 1 }, { id: 'marked', size: 1 }] }] },
 });
 
 /** Whether a slot's value is one-valued by declaration - its last step's predicate declared cardinality one. */
@@ -113,11 +123,21 @@ export async function boot(deps) {
     partOf: (id) => shell.partOf(id),
     entities, markingNames: MARKINGS, filterNames: FILTERS,
     askKeys: ({ type, startsWith }) => fetchKeyValues({ apiBase, fetchImpl, type, startsWith, limit: 20 }),
+    onAdd: (kind) => add(kind),
   };
   const layout = laidOut(LAYOUT, saved, entities());
   shell.render(bound(layout, shared));
   const firstVisual = layout.panels.find((p) => p.part === 'visual');
   if (firstVisual) active.set('active', firstVisual.id);
+  /** A visual of a kind added where Spotfire adds one (the largest split in two), the active one now. */
+  const add = (kind) => {
+    let n = 1;
+    while (shell.panels.has(`${kind}-${n}`)) n += 1;
+    const decl = { ...VISUAL, id: `${kind}-${n}`, kind, row: ((entities()[0] || {}).type) || null };
+    shell.add(bound({ panels: [decl] }, shared).panels[0]);
+    active.set('active', decl.id);
+    return decl.id;
+  };
   /** The visuals' declarations as they stand, in the tree as it stands. */
   const declarations = () => shell.layoutNow().panels.filter((p) => p.part === 'visual');
   /** What Save writes and the next boot lays over the layout: the tree and the visuals. */
@@ -133,7 +153,7 @@ export async function boot(deps) {
       if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.sf-pill, .sf-plus'))) picker.close();
     });
   }
-  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker };
+  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add };
 }
 
 // ── the browser ──

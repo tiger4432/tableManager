@@ -402,7 +402,9 @@ async function reopen(M) {
 /** What the root names of the kinds it is handed: a kind's name or a slot key as a string, a `.kind` compared, a slot
  *  read off the encode by name (`encode.cells`) - each where it stands. */
 function kindAsks(text) {
-  const names = new Set([...Object.keys(REAL.main.KINDS), ...Object.values(REAL.main.KINDS).flatMap((k) => k.slots.map((s) => s.key))]);
+  // A kind's slots - a list, or (the table) what it makes of an encode: two columns as a declaration names them.
+  const slotsOf = (k) => (typeof k.slots === 'function' ? k.slots({ col1: {}, col2: {} }) : k.slots);
+  const names = new Set([...Object.keys(REAL.main.KINDS), ...Object.values(REAL.main.KINDS).flatMap((k) => slotsOf(k).map((s) => s.key))]);
   const found = [];
   const isKind = (n) => n && n.type === 'MemberExpression' && !n.computed && n.property.name === 'kind';
   const isEncode = (n) => n && ((n.type === 'Identifier' && n.name === 'encode') || (n.type === 'MemberExpression' && !n.computed && n.property.name === 'encode'));
@@ -613,7 +615,7 @@ const MUTANTS = [
   { id: 'M21', what: 'a cut walk read as «truncated is there»', catches: 'T17', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, 'cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };', 'cut: Boolean(this.answer.truncated) };') },
   { id: 'M22', what: 'the status bar leaves out the drops', catches: 'T13', file: 'testbed/status_part.js',
-    mutate: (t) => swap(t, '  if (s.startDropped || s.system || s.part) {', '  if (false) {') },
+    mutate: (t) => swap(t, '  if (s.startDropped || s.system || s.part || s.limit) {', '  if (false) {') },
   { id: 'M22b', what: 'the status bar leaves out the start side\'s drop (the code before)', catches: 'T13', file: 'testbed/status_part.js',
     mutate: (t) => swap(t, "s.startDropped ? `start −${n(s.startDropped)}` : null, ", '') },
   { id: 'M25', what: 'a system filter change folds again only - the start side not judged again (the code before)', catches: 'T9f', file: 'testbed/visual_part.js',
@@ -626,14 +628,15 @@ const MUTANTS = [
   { id: 'M28', what: '«marked» counts the marking\'s entries - a hub one (the code before)', catches: "T9c'", file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, 'marked: received.filter(marked).length,', 'marked: entries.length,') },
   { id: 'M29', what: 'the root words the title by asking the kind (the code before)', catches: 'T19', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}) : '';",
+    mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '{ marked, palette: this.palette(), declaration: this.decl }', '{ marked, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
   { id: 'M31', what: 'a words-only pill opens the picker too', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '    if (this.kind.slots.some((s) => s.key === key)) p.addEventListener(', '    if (true) p.addEventListener(') },
+    mutate: (t) => swap(t, '    if (this.slotList().some((s) => s.key === key)) p.addEventListener(', '    if (true) p.addEventListener(') },
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
     mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells));', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells));') },
+
   { id: 'M33', what: 'the scatter\'s title y and x swapped', catches: 'T23', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '`${slotWords(encode.y)} vs. ${slotWords(encode.x)}`', '`${slotWords(encode.x)} vs. ${slotWords(encode.y)}`') },
   { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not Count', catches: 'T23', file: 'testbed/kinds/cross_table.js',

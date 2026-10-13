@@ -116,4 +116,7 @@ export function render(body, model, ctx) {
 /** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «Count». */
 export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : 'Count'} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
 
-export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, title, model: crossModel, render };
+/** The add window's picture of it: a head, a row head, cells. */
+export const icon = { tone: 'cat-7', paths: [['M4 3h16v4H4zM4 9h4v12H4z', 1], ['M10 9h4v5h-4zM16 9h4v5h-4zM10 16h4v5h-4zM16 16h4v5h-4z', 0.6]] };
+
+export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, title, model: crossModel, render, icon };
