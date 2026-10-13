@@ -37,7 +37,7 @@ import {
 import { walkTableView, mergeWalks, walkedRoutes, nextRoutes, REACHED, REACH_WORDS, DELTA, shownOf, filterKind, filterActive, sheetOf, sheetHtml, longLines, longRecords, longRow, longSheet, moreAsk, SERVER_NODE_LIMIT, copyWords, farEnd, lettersOf, columnWidth, COLUMN_CH } from './table_view.js';
 import { serializeTsv } from '../tsv.js';
 // «+ Column»'s choices, read off the walk (lead 5cf5c3401 answer 2); a column and its group by what they read.
-import { routesFrom, valuesAt, columnKey, numberOf } from './reach_table.js';
+import { routesFrom, valuesAt, columnKey, numberOf, WAYS_A_CELL } from './reach_table.js';
 // The trend of a column (lead f984ab01d): the model and the part that draws it.
 import { rowsPoints, pagePoints, mergePoints, trendModel, walkedTime, windowOf, pageAnchor, pointsSheet, splitNames, PAGE_ROWS } from './trend.js';
 import { TrendView } from './trend_view.js';
@@ -92,6 +92,7 @@ const MORE_ON = 'More ▸';
 const ALL_REACHED = 'All reached';
 const MORE_TO_WALK = 'more to walk';
 const WALK_AGAIN = 'Walk again';
+const SHOW_ALL_WAYS = 'Show all';
 const AT_SERVER_LIMIT = 'at the server limit';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
@@ -919,8 +920,18 @@ export function boot(doc, host, deps) {
   function renderTable(box, r, starts, control) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
     const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || [], undefined, starts,
-      state.added, hiddenColumns(), control, addsNow());
+      state.added, hiddenColumns(), control, addsNow(), state.allWays ? Infinity : undefined);
     if (view.unsplit) box.append(el(doc, 'div', 'wk-note', 'One table for both signs: the answer does not say which start reached a node'));
+    // A cell past its ways says «50 of 2,199»; Show all reads every way on this screen - its table, Long and the trend
+    // (lead 10-13, the owner's «values cut»).
+    if (view.waysCut) {
+      const line = el(doc, 'div', 'wk-note wk-waycut', `Cells cut at ${WAYS_A_CELL} ways`);
+      const all = el(doc, 'button', 'wk-next-edge wk-more', SHOW_ALL_WAYS);
+      all.type = 'button';
+      all.addEventListener('click', () => { state.allWays = true; render(); });
+      line.append(all);
+      box.append(line);
+    }
     const secs = el(doc, 'div', 'wk-secs');
     renderSections(secs, view, r);
     box.append(secs);

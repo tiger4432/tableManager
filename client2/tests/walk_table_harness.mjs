@@ -302,6 +302,14 @@ async function render(mod, result = RESULT) {
 const has = (e, cls) => String(e.className || '').split(/\s+/).includes(cls);
 const TABLE = await import('../src/walk/table_view.js');
 
+// 60 ways from one wafer to one quantity, then two from it on (lead 10-13, the owner's «values cut»: 50 of 2,199 drawn).
+const WIDE = { nodes: [{ id: 'w', type: 'wafer', label: 'W', depth: 0 }, { id: 'q', type: 'quantity', label: 'temp', depth: 1 },
+  { id: 'u1', type: 'unit', label: 'U1', depth: 2 }, { id: 'u2', type: 'unit', label: 'U2', depth: 2 }],
+edges: [...Array.from({ length: 60 }, (_, i) => ({ id: `m${i}`, source: 'w', target: 'q', predicate: 'measures', qualifiers: { value: i },
+  occurred_at: `2026-10-01T00:00:${String(i).padStart(2, '0')}Z` })),
+  { id: 'k1', source: 'q', target: 'u1', predicate: 'in_unit', qualifiers: {} }, { id: 'k2', source: 'q', target: 'u2', predicate: 'in_unit', qualifiers: {} }] };
+const WIDE_STARTS = { positive: ['w'], negative: [] };
+
 async function suite(mod) {
   const { host } = await render(mod);
   const view = walkTableView(RESULT, DECL.entities);
@@ -1721,6 +1729,26 @@ async function suite(mod) {
       JSON.stringify([said, handle.state.asked.positive, chips]));
   }
 
+  console.log(`${LF}-- a cell past its ways: the screen says so, and Show all reads every way (lead 10-13) --`);
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+    await settle();
+    handle.state.asked = { type: 'wafer', keys: { wafer: 'W' }, ...WIDE_STARTS };
+    handle.state.run = 'done';
+    handle.state.result = { ...WIDE, ok: true, ask: { type: 'wafer', keys: { wafer: 'W' } } };
+    handle.render();
+    const line = () => walkAll(host).find((e) => String(e.className || '').includes('wk-waycut'));
+    const before = line() && [walkAll(line()).filter((k) => k._text).map((k) => k._text).join('|')];
+    const all = line() && walkAll(line()).find((e) => e.tagName === 'button' && e._text === 'Show all');
+    for (const fn of (all || { listeners: {} }).listeners.click || []) fn({});
+    await settle();
+    ok('WC2 the screen says its cells were cut, with Show all; pressed, every way is read and the line goes',
+      Boolean(before) && before[0].includes('Cells cut at 50 ways') && Boolean(all) && !line() && handle.state.allWays === true,
+      JSON.stringify([before, Boolean(all), Boolean(line()), handle.state.allWays]));
+  }
+
   console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
   {
     const doc = makeDoc();
@@ -1931,10 +1959,10 @@ const sideSuite = (TV) => {
   ok('Z18 an added column: its route\'s far node, a cell of each group',
     cell(more, 'die@1', 'd:3', ADDED_HEAD, 0) === 'A' && cell(more, 'die@1', 'd:3', ADDED_HEAD, 1) === 'B',
     `${cell(more, 'die@1', 'd:3', ADDED_HEAD, 0)} ${cell(more, 'die@1', 'd:3', ADDED_HEAD, 1)}`);
-  const capped = TV.cellWords({ missing: false, values: [1, 2], more: true });
-  ok('Z19 words: several values past the cap, and a difference without its float tail',
+  const capped = TV.cellWords({ missing: false, values: [1, 2], more: true, read: 2, total: 2199 });
+  ok('Z19 words: past the cap, how many ways read of how many - and a difference without its float tail',
     JSON.stringify([capped.text, capped.rest, TV.deltaWords(0.22 - 0.3305), TV.deltaWords(19.5)])
-      === JSON.stringify(['1', '+1+', '−0.1105', '+19.5']), JSON.stringify(capped));
+      === JSON.stringify(['1', '2 of 2,199', '−0.1105', '+19.5']), JSON.stringify(capped));
   const moreDie = more.sections.find((x) => x.type === 'die@1') || { rows: [] };
   const m1 = moreDie.rows.find((r) => r.id === 'd:1') || { cells: [] };
   const m3 = moreDie.rows.find((r) => r.id === 'd:3') || { cells: [] };
@@ -2106,6 +2134,20 @@ const sideSuite = (TV) => {
   const perType = { nodes: [{ id: 'w', type: 'wafer', depth: 0 }, ...Array.from({ length: 250 }, (_, i) => ({ id: `d${i}`, type: 'die', depth: 1 })),
     ...Array.from({ length: 50 }, (_, i) => ({ id: `f${i}`, type: 'defect', depth: 2 }))], edges: [] };
   const capView = TV.walkTableView(perType, [], [], undefined, { positive: ['w'], negative: [] });
+  // A cut cell (lead 10-13): the cell says 50 of 60 and the view is cut; every way read (the screen's Show all) - the cell
+  // holds 60, Long 60 lines, the view not cut.
+  {
+    const cutView = TV.walkTableView(WIDE, [], [], undefined, WIDE_STARTS);
+    const allView = TV.walkTableView(WIDE, [], [], undefined, WIDE_STARTS, new Map(), {}, null, [], Infinity);
+    const wSec = (v) => v.sections.find((s) => s.type === 'wafer');
+    const sidesOf = (v) => (((wSec(v) || { rows: [] }).rows.find((r) => r.id === 'w') || { cells: [] }).cells || []).flatMap((c) => c.sides || []);
+    const cutSide = sidesOf(cutView).find((s) => s && s.rest && s.rest.includes(' of '));
+    const longN = (v) => TV.longLines(v, wSec(v)).filter((l) => String(l.column).includes('"measures"')).length;
+    ok('WC1 a cell past its ways says «50 of 60» and the view is cut; every way read - the cell holds 60, Long 60 lines, not cut',
+      Boolean(cutSide) && cutSide.rest === '50 of 60' && cutView.waysCut === true
+        && sidesOf(allView).some((s) => s && s.rest === '+59') && allView.waysCut === false && longN(cutView) === 50 && longN(allView) === 60,
+      JSON.stringify([cutSide && cutSide.rest, cutView.waysCut, sidesOf(allView).map((s) => s && s.rest), allView.waysCut, longN(cutView), longN(allView)]));
+  }
   ok('CAP1 each section its own 200: die 200 and «50 more» under it, the defect section all 50, the wafer its 1',
     JSON.stringify([capView.sections.map((s) => [s.type, s.rows.length, s.hidden]), capView.shown, capView.hidden])
       === JSON.stringify([[['wafer', 1, 0], ['die', 200, 50], ['defect', 50, 0]], 251, 50]),
@@ -2251,6 +2293,22 @@ const filterSuite = (TV) => {
 };
 // ── Split by (lead 10-11 W addendum 2 ⑭): a point - Long's read - splits the trend; a dot's title says it ──
 const splitSuite = (R, TR, TVW) => {
+  // Every way counted, by node (lead 10-13): 60 then 2 on is 120 ways - 50 kept, cut; read all, 60 and 120; the trend
+  // reads as many as it is asked.
+  {
+    const gi = R.indexGraph(WIDE);
+    const inside = new Set(gi.nodes.keys());
+    const col = { steps: [{ predicate: 'measures', direction: 'outgoing' }], value: { on: 'edge', name: 'value' } };
+    const two = { steps: [{ predicate: 'measures', direction: 'outgoing' }, { predicate: 'in_unit', direction: 'outgoing' }], value: { on: 'label', name: 'name' } };
+    const cut = R.readsOf(gi, inside, 'w', col);
+    const all = R.readsOf(gi, inside, 'w', col, Infinity);
+    const far = R.readsOf(gi, inside, 'w', two);
+    const pts = [TR.walkPoints(gi, [{ inside }], 'w', col).length, TR.walkPoints(gi, [{ inside }], 'w', col, Infinity).length];
+    ok('RC1 every way counted: 60 - 50 read and cut; read all 60, not cut; two steps on 120 ways; the trend 50, then 60',
+      JSON.stringify([cut.reads.length, cut.read, cut.total, cut.more, all.reads.length, all.more, far.total, far.read, pts])
+        === JSON.stringify([50, 50, 60, true, 60, false, 120, 50, [50, 60]]),
+      JSON.stringify([cut.reads.length, cut.read, cut.total, cut.more, all.reads.length, all.more, far.total, far.read, pts]));
+  }
   const column = { steps: [{ predicate: 'inspected', direction: 'incoming' }], endTypes: ['wafer@1'], value: { on: 'edge', name: 'gate' } };
   const e = { qualifiers: { gate: 10, point: 'C', note: '', side: 'top' } };
   ok('SP1 a read\'s point: its edge\'s other attributes, the value and blanks out; a node\'s own value none',
@@ -2323,6 +2381,10 @@ const MUTANTS = [
     from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
   { id: 'RSm1', what: 'the walk screen does not ask resumable - its cut walks come back with no key', catches: 'MR1',
     from: '  const walk = createWalkBoxWalk({ apiBase, fetchImpl, resumable: true });', to: '  const walk = createWalkBoxWalk({ apiBase, fetchImpl });' },
+  { id: 'WCm4', what: 'Show all does nothing', catches: 'WC2',
+    from: "      all.addEventListener('click', () => { state.allWays = true; render(); });", to: "      all.addEventListener('click', () => { render(); });" },
+  { id: 'WCm5', what: 'a cut table says nothing (the code before)', catches: 'WC2',
+    from: '    if (view.waysCut) {', to: '    if (false) {' },
   { id: 'EXm1', what: 'an expired page says Failed and offers nothing', catches: 'EX1 reloaded',
     from: '    adding = res && res.ok ? null : res && res.expired ? {', to: '    adding = res && res.ok ? null : false ? {' },
   { id: 'EXm2', what: 'Walk again sends the expired resume again', catches: 'EX2',
@@ -2590,6 +2652,12 @@ const TV_MUTANTS = [
     from: "const reachedBy = (inA, inB) => (inA && inB ? 'ab' : inB ? 'b' : 'a');", to: "const reachedBy = (inA, inB) => (inA ? 'a' : inB ? 'b' : 'ab');" },
   { id: 'DM2', what: 'B\'s nodes not merged into the rows', catches: 'ZD1',
     from: '  const walked = control ? mergeWalks(result, control) : result;', to: '  const walked = result;' },
+  { id: 'WCm1', what: 'a cut cell says «+49+» again (the code before)', catches: 'WC1',
+    from: "rest: cell.more ? `${count(cell.read)} of ${count(cell.total)}` : `+${values.length - 1}`", to: "rest: `+${values.length - 1}${cell.more ? '+' : ''}`" },
+  { id: 'WCm2', what: 'Show all leaves the table at 50 ways', catches: 'WC1',
+    from: '    const tableAll = tableOf(index, groups, ids, sideAll, ways);', to: '    const tableAll = tableOf(index, groups, ids, sideAll);' },
+  { id: 'WCm3', what: 'Show all leaves Long at 50 ways', catches: 'WC1',
+    from: 'readsOf(view.index, inside, row.id, column, view.ways)', to: 'readsOf(view.index, inside, row.id, column)' },
   { id: 'CAPm1', what: 'one cap over every section: the first 200 of the answer, a later type dropped', catches: 'CAP1',
     from: '  for (const [type, typed] of sectionsByType(members)) {', to: '  for (const [type, typed] of sectionsByType(members.slice(0, cap))) {' },
   { id: 'AHM1', what: 'an Add here or More answer overwrites the step instead of merging', catches: 'AH1',
@@ -2715,6 +2783,10 @@ const tv = await scoreMutants(TV_MUTANTS, async (m) => {
 
 // Split by and the point it reads (lead 10-11 W addendum 2 ⑭): reach_table · trend · trend_view, each mutated alone.
 const SPLIT_MUTANTS = [
+  { id: 'RCm1', what: 'only the ways kept are counted - a cut cell says 50 of 50', catches: 'RC1', file: 'reach_table.js',
+    from: '  const total = [...counts.values()].reduce((a, b) => a + b, 0);', to: '  const total = ends.length;' },
+  { id: 'RCm2', what: 'the trend reads 50 whatever it is asked', catches: 'RC1', file: 'trend.js',
+    from: 'readsOf(index, g.inside, x, column, ways)', to: 'readsOf(index, g.inside, x, column)' },
   { id: 'SPm1', what: 'a point keeps the value itself', catches: 'SP1 ', file: 'reach_table.js',
     from: '.filter(([name, v]) => name !== column.value.name && !isBlank(v))', to: '.filter(([, v]) => !isBlank(v))' },
   { id: 'SPm2', what: 'a walked point carries no point', catches: 'SP2 ', file: 'trend.js',

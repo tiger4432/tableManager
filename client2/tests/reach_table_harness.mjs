@@ -182,10 +182,10 @@ const MUTANTS = [
   { id: 'FM22', what: 'an edge\'s value given by its far end', catches: 'R23',
     mutate: (t) => swap(t, "giver: column.value.on === 'edge' && end.edge ? end.edge.source : end.node", 'giver: end.node') },
   { id: 'FM2', what: 'a row its group did not reach drawn empty, not missing', catches: 'R1 ',
-    mutate: (t) => swap(t, "  if (!inside.has(x)) return { missing: true, reads: [], more: false };\n", '') },
+    mutate: (t) => swap(t, "  if (!inside.has(x)) return { missing: true, reads: [], more: false, read: 0, total: 0 };\n", '') },
   { id: 'FM3', what: 'every step taken outgoing', catches: 'R1 ',
-    mutate: (t) => swap(t, "const edges = (step.direction === 'incoming' ? index.into : index.out).get(end.node) || [];",
-      'const edges = index.out.get(end.node) || [];') },
+    mutate: (t) => swap(t, "((step.direction === 'incoming' ? index.into : index.out).get(node) || [])",
+      '(index.out.get(node) || [])') },
   { id: 'FM4', what: 'a node attribute read off the last edge, as if every value rode on an edge', catches: 'R2 ',
     mutate: (t) => swap(t, '  const said = (node.attributes || {})[value.name];', '  const said = end.edge ? ((end.edge.qualifiers || {})[value.name]) : undefined;') },
   { id: 'FM5', what: 'delta from the first value of several', catches: 'R6',
@@ -222,7 +222,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, "${step.direction === 'incoming' ? '←' : '→'}", '→') },
   { id: 'FM11', what: 'differs read off the values only', catches: 'R15',
     mutate: (t) => swap(t, 'differs: reached.some((r) => r !== reached[0]) || ', 'differs: ') },
-  { id: 'FM12', what: 'the ways cap never said', catches: 'R9', mutate: (t) => swap(t, '{ more = true; break; }', '{ break; }') },
+  { id: 'FM12', what: 'the ways cap never said', catches: 'R9', mutate: (t) => swap(t, 'return { ends, more: total > ends.length, total };', 'return { ends, more: false, total };') },
 ];
 const scored = await scoreMutants(MUTANTS, async (m) => suite((await loadWithProbe(SUBJECT, { mutate: m.mutate })).module),
   { baselineRan: base.ran, baselineNames: base.names, title: '\n  [1] mutants - each must be caught by the check it names.' });

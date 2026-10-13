@@ -16,7 +16,7 @@
 import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, staticTypes, cutBudgets } from './derive.js';
 import { typeGraph, entityOfId } from '../rnd_board/api.js';
 // The table is the formula (lead 5cf5c3401; one side for a + only walk, E1): rows, groups and columns in, cells out.
-import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, recordsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointWords } from './reach_table.js';
+import { indexGraph, groupsOf, defaultColumns, tableOf, cellOf, readsOf, recordsOf, valueKind, valueWords, saysValue, columnKey, groupKey, stepWords, numberOf, pointWords, WAYS_A_CELL } from './reach_table.js';
 import { isBlank } from '../absent.js';
 import { walkPoints } from './trend.js';
 import { localStamp } from '../server_time.js';
@@ -296,7 +296,7 @@ export function longLines(view, section, only = {}) {
       const groups = mine ? [null] : view.groups.map((g, i) => ({ g, i }));
       for (const at of groups) {
         const inside = at ? at.g.inside : new Set([row.id]);
-        for (const r of readsOf(view.index, inside, row.id, column).reads.flatMap((read) => recordsOf(view.index, column, read))) {
+        for (const r of readsOf(view.index, inside, row.id, column, view.ways).reads.flatMap((read) => recordsOf(view.index, column, read))) {
           const point = pointWords(r.point);
           const t = r.when && Date.parse(r.when.occurred_at);
           lines.push({ id: row.id, node: row.label, name: head, value: r.value, words: valueWords(r.value), image: Boolean(r.image), point,
@@ -356,7 +356,9 @@ export function cellWords(cell, kind = valueKind(cell.values || [])) {
   // The first value an image reference (reach_table's `images`): the value as it came, for the image cell to draw.
   const image = cell.images && cell.images[0] ? { image: cell.values[0] } : {};
   if (values.length === 1 && !cell.more) return { text: values[0], numeric: kind === 'number', ...image };
-  return { text: values[0], rest: `+${values.length - 1}${cell.more ? '+' : ''}`, values, ...image };
+  // Cut (lead 10-13): how many ways it read of how many there are - «50 of 2,199».
+  const count = (x) => Number(x).toLocaleString('en-US');
+  return { text: values[0], rest: cell.more ? `${count(cell.read)} of ${count(cell.total)}` : `+${values.length - 1}`, values, ...image };
 }
 
 /** Which walk reached a row, a control walk B gone too (lead 99ed68cb7 D): A alone, both, or B alone. */
@@ -432,7 +434,7 @@ export function deltaWords(delta) {
  * @returns {{sections: Array, shown: number, hidden: number, groups: Array, unsplit: boolean}}
  */
 export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, starts = null, added = new Map(),
-  fold = {}, control = null, adds = []) {
+  fold = {}, control = null, adds = [], ways = WAYS_A_CELL) {
   // A control walk B (lead 99ed68cb7 D): the rows and values are both answers' graph; which walk reached a row, each its own.
   const walked = control ? mergeWalks(result, control) : result;
   // The walk's judgment for each node it walked (owner 10-12): the answer's «aux» names the auxiliary node(s) (seeds), each
@@ -530,6 +532,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
   // of 32 quantities): each type draws up to `cap` of its rows, in its order, and says what it did not.
   const sections = [];
   let shown = 0;
+  let waysCut = false;
   for (const [type, typed] of sectionsByType(members)) {
     const rows = typed.slice(0, cap);
     shown += rows.length;
@@ -542,7 +545,8 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     const ownAll = all.filter((c) => !c.steps.length);
     const ownCells = rows.map((node) => ownAll.map((c) => cellOf(index, new Set([node.id]), node.id, c)));
     const sideAll = all.filter((c) => c.steps.length);
-    const tableAll = tableOf(index, groups, ids, sideAll);
+    const tableAll = tableOf(index, groups, ids, sideAll, ways);
+    if (tableAll.some((row) => row.cells.some((byGroup) => byGroup.some((c) => c.more)))) waysCut = true;
     // Each column judged once by its values' JSON type (lead a2eb4a516); a mixed one says so in its head.
     const kindsAll = sideAll.map((_, c) => valueKind(tableAll.flatMap((row) => row.cells[c].flatMap((cell) => cell.values))));
     const headOf = (c) => `${sideAll[c].words.join(' · ')}${kindsAll[c] === 'mixed' ? ' (mixed)' : ''}`;
@@ -583,7 +587,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     const valued = [...folds.filter((b) => b.on).flatMap((b) => b.at).map((c) => ({ column: sideAll[c], head: headOf(c) })),
       ...centre.map((column) => ({ column, head: column.words.join(' · ') }))].filter(({ column }) => saysValue(column))
       .map((x) => {
-        const timed = ids.flatMap((id) => walkPoints(index, groups, id, x.column)).filter((p) => p.t !== null);
+        const timed = ids.flatMap((id) => walkPoints(index, groups, id, x.column, ways)).filter((p) => p.t !== null);
         return { ...x, timed: timed.length > 0, number: timed.length > 0 && timed.every((p) => numberOf(p.value) !== null) };
       }).filter((x) => x.timed);
     const trendable = [...valued.filter((x) => x.number), ...valued.filter((x) => !x.number)].map(({ column, head }) => ({ column, head }));
@@ -653,7 +657,7 @@ export function walkTableView(result, entities, predicates = [], cap = ROW_CAP, 
     });
   }
   return { sections, shown, hidden: members.length - shown, groups,
-    unsplit: !ranked && negative.length > 0, index, sources };
+    unsplit: !ranked && negative.length > 0, index, sources, ways, waysCut };
 }
 
 // ⚰️ reachBySign retired 10-10 (lead 5cf5c3401): the reach is read in one seat, reach_table.groupsOf - a group a start

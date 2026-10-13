@@ -12,7 +12,7 @@
 import { isBlank } from '../absent.js';
 import { IMAGE_TYPE } from '../grid_image_column.js';
 
-/** The ways one cell follows at most; past them the cell says it has more. */
+/** The ways one cell draws at most; past them the cell says «read of total» and the walk screen offers Show all. */
 export const WAYS_A_CELL = 50;
 
 /** The walk's graph, indexed once: nodes by id, each node's edges out and in. */
@@ -79,19 +79,19 @@ export const saysValue = (column) => column.value.on === 'edge' || column.value.
 export function cellOf(index, inside, x, column, cap = WAYS_A_CELL) {
   const got = readsOf(index, inside, x, column, cap);
   return { missing: got.missing, values: got.reads.map((r) => r.value), nodes: got.reads.map((r) => r.giver), more: got.more,
-    images: got.reads.map((r) => Boolean(r.image)) };
+    read: got.read, total: got.total, images: got.reads.map((r) => Boolean(r.image)) };
 }
 
 /** What a cell reads, way by way - its value, what says when, its last edge, its end node, and who gave it: an edge's value
  *  its subject's (the atom's), a node's its own (lead 10-11 W 11: a source line one meaning); the trend's points are these
  *  (lead f984ab01d). */
 export function readsOf(index, inside, x, column, cap = WAYS_A_CELL) {
-  if (!inside.has(x)) return { missing: true, reads: [], more: false };
-  const { ends, more } = waysOf(index, inside, [x], column.steps, cap, column);
+  if (!inside.has(x)) return { missing: true, reads: [], more: false, read: 0, total: 0 };
+  const { ends, more, total } = waysOf(index, inside, [x], column.steps, cap, column);
   const reads = ends.map((end) => ({ ...valueAt(index, end, column.value), edge: end.edge, node: end.node,
     giver: column.value.on === 'edge' && end.edge ? end.edge.source : end.node }))
     .filter((r) => !isBlank(r.value));
-  return { missing: false, reads, more };
+  return { missing: false, reads, more, read: ends.length, total };
 }
 
 /** A read's records (lead 10-12 C3: Long a line a record) - its edge's every atom (`records`, server e5e0a87e2), its end
@@ -126,23 +126,36 @@ export const pointWords = (point) => point.map(([name, v]) => `${name} ${valueWo
 export function waysOf(index, inside, starts, steps, cap, last = null) {
   const lastId = last && last.end;
   const lastTypes = last && last.endTypes;
+  /** The edges `step` takes from `node`: its predicate and direction, the far end inside, the last step's at the column's end. */
+  const taken = (node, step, isLast) => ((step.direction === 'incoming' ? index.into : index.out).get(node) || []).filter((e) => {
+    const far = farOf(e, step.direction);
+    if (e.predicate !== step.predicate || (inside && !inside.has(far))) return false;
+    return !(isLast && ((lastId && far !== lastId) || (lastTypes && !lastTypes.includes((index.nodes.get(far) || {}).type || ''))));
+  });
   let ends = starts.map((node) => ({ node, edge: null }));
-  let more = false;
+  // Every way counted - by node, so a wide frontier costs its nodes, not its ways - the first `cap` kept (lead 10-13:
+  // a cut cell says «50 of 2,199»).
+  let counts = new Map();
+  for (const node of starts) counts.set(node, (counts.get(node) || 0) + 1);
   for (const [k, step] of steps.entries()) {
+    const isLast = k === steps.length - 1;
+    const tally = new Map();
+    for (const [node, n] of counts) {
+      for (const e of taken(node, step, isLast)) { const far = farOf(e, step.direction); tally.set(far, (tally.get(far) || 0) + n); }
+    }
     const next = [];
     for (const end of ends) {
-      const edges = (step.direction === 'incoming' ? index.into : index.out).get(end.node) || [];
-      for (const e of edges) {
-        const far = farOf(e, step.direction);
-        if (e.predicate !== step.predicate || (inside && !inside.has(far))) continue;
-        if (k === steps.length - 1 && ((lastId && far !== lastId) || (lastTypes && !lastTypes.includes((index.nodes.get(far) || {}).type || '')))) continue;
-        if (next.length >= cap) { more = true; break; }
+      for (const e of taken(end.node, step, isLast)) {
+        if (next.length >= cap) break;
         next.push({ node: farOf(e, step.direction), edge: e });
       }
+      if (next.length >= cap) break;
     }
     ends = next;
+    counts = tally;
   }
-  return { ends, more };
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  return { ends, more: total > ends.length, total };
 }
 
 /** The routes the rows take in this walk, up to `limit` steps, each its steps and the words that say them. */
