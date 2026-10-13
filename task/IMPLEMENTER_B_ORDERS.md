@@ -243,3 +243,26 @@ map      declarative-role 하나 — implementation_id 를 적지 않는다
 read 안의 행 제외(exclude_when)는 «행 하나»를 거르는 일이라 소스 칸 exclude_when 으로 가져온다(총괄 판단 — 소유자께 한 줄로 알림)
 게이트   전수 표 하나: 오늘 문법의 칸마다(public_bundle_schema · _validate_* 가 받는 칸 전부, AST 로 셈) «짧은 꼴의 어느 칸 | 은퇴(소유자 문장)» — 빈 칸 0
 ```
+
+> **[총괄 -> 구현자 B] 10-13 — 원장 선언 짧은 꼴: 넣고 뺄 칸 확정(소유자 「좀 나랑 뭐넣고 뭐뺄지 정하고 하자」 -> 「추천대로」 · 「virtual join 도 빼」). 보류 풀림 — 이 절이 b9d33d6f6 · 640631bf0 · 571685e7f 의 칸 목록을 대신한다**
+
+```
+넣음      table · attributes{타입: {속성: 값}} · sentences[{sentence(오늘 매핑 이름) · predicate · subject · target · value · occurred_at · 그 밖 수식어 · when}]
+          값: 글 = 컬럼 · {"const": ...} = 상수 · 노드 = {"node": 타입, "keys": {키: 값}}
+          소스 끄기 "status": "retired"
+          시각 덧칸 — 시간대 · 글 모양은 그 값만 객체로: "occurred_at": {"column": "event_time", "timezone": "Asia/Seoul", "format": ...}
+          행마다 노드 타입을 컬럼에서: "node": {"column": "type_col"} (오늘 entity_type {kind: column} 그대로)
+          when 에 «빈 칸» 조건 하나 더함(오늘 exclude_when 의 blank 를 받는 자리)
+뺌        read 전부 — 묶기 · 순서 · 커서 · 단위 · identity · 사건 시각 없는 소스의 기준 시각(저장 시각 자동) · exclude_when
+          map 의 사용자 맵퍼(implementation_id) · virtual_joins 절 · 노드 칸 «안»의 attributes(소스 attributes 하나로)
+그대로    vocabulary · entities (이번 범위 밖)
+옛 것 옮기기(변환기 = upgrade_setup v6 -> v7 한 자리)
+          exclude_when -> 그 소스 문장마다 when 에 «아님» 조건으로. when 으로 못 적는 모양(예: 여러 칸 묶은 제외 = «또는»)은 이름 대어 거절
+          노드 칸 안 attributes -> 소스 attributes. 한 행에 같은 타입 노드가 둘이라 어느 것인지 못 가리면 이름 대어 거절
+          virtual_joins — 비었으면 버림, 규칙이 있으면 이름 대어 거절 + 다음 행동(«체인 조인이 표에 쓰게»). 은퇴 약속 든 자리 전수(transfer_explorer 견본 · FEATURE_CHECKLIST · config_explorer · 스켈레톤 · README)
+          group_by · 사용자 맵퍼 · 기본과 다른 순서 -> 이름 대어 거절(앞 지시 그대로)
+          못 옮김이 하나라도 있으면 파일을 안 쓴다 · dry-run 기본 · 옮겨지는 소스는 펼친 번들 == 오늘 번들(해시) — 다시 돌 것 0
+게이트    전수 표: 오늘 문법의 칸마다(_validate_* · public_bundle_schema 가 받는 칸, AST 로 셈) «짧은 꼴의 어느 칸 | 뺌(위 줄)» — 빈 칸 0
+          나머지 게이트 · 자리 전수 · 문서는 b9d33d6f6 그대로
+순서      큐 1 착지 -> 원장 행 색인 키 -> 이것 -> decide 옛 키 -> LLM 묶음 -> 큐 2
+```
