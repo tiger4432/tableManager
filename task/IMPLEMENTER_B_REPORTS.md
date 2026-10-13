@@ -500,3 +500,30 @@ public    시험 정리 코드(이번 판 처음 것)가 assy_test public.idx_au
 그리드 읽기의 검색 상태가 부르는 models._building 이 이제 질의 둘(현재 스키마 · index_builds) — 한 읽기에 왕복 하나 더, 안 잼
 ```
 다음: ㄴ(분자마다 pandas 일 올리기 — 계약 그대로).
+
+> **[구현자 B -> 총괄] 10-13 검수 9752e91f7 고침 착지 9b1624ecd (ㄴ 보다 앞, 한 커밋)**
+
+```
+1 쪽 열쇠 인덱스 판정 = models.orders_rows_by(btree · WHERE 없음 · 앞 칸이 열쇠) 한 함수
+   두 자리가 부름: replay._key_index(선언 줄) · backfill._page_key_index(카탈로그 줄, models.catalogue_indexes)
+   hash · gin · 부분 인덱스면 한 조각 + «has no index» 줄
+2 원장 짓기 lock_timeout 0(statement_timeout 처럼) — 기다림은 끝날 때까지, 누구를 기다리는지는 파티션 · 상대마다 한 번
+3 원자 같음 시험이 두 판 사이 원장(그 소스의 원자 · 행 색인)을 비움
+4 RUN.md 되돌리기 = git revert 9b1624ecd 9351a3580 (이 보고 커밋에서 해시를 적음)
+5 쪽 열쇠 NULL 행을 실행 끝(whole_source_tail — 두 길 공통)에서 셈: 결과 칸 rows_without_page_key · 실행 줄 · retroactive.log 한 줄
+6 원장 짓기 시험은 시험마다 자기 스키마(<pytest 스키마>_lx) · 자기 파티션 · 원장 줄만 지음
+낮  ledger_translate_slices 1~코어 수, 그 밖은 한 줄 + 기본값 · 설정 견본에 칸 · 컷은 값으로 견줌(1.0 · 1.00) ·
+    자르기 전후 줄(«cutting … - counting its rows» · «… - cut in N s») · RUN.md 멈춤 문장(qab3_orphan_driver 인용) · 판 수를 착지 머리 것으로
+안 한 것  _ledger_setup N+1 — 조각마다 제 프로세스라 하나씩은 피할 수 없음. 부모 안 두 번(한 조각으로 갈 때)만 남음, 안 고침
+```
+
+**잰 것** (박스)
+```
+시험      만진 파일 PG 21 passed(조각 · 인덱스) + 앞 판 PG 34 · 비PG 432 passed
+변이      10 개 모두 빨강 — 처음 판에 살아남은 둘(상한 다시 걸기 · 매 번 말하기)은 시험이 3 월 파티션 기다림을 3 초 쥐게 고쳐 빨강
+실제 판    9b1624ecd 앞의 로컬 커밋(내용 같음)으로 런처 넷 · hold 3000 행: N=1 · N=4 같은 답 · × cancelled · 조각 죽이기 failed + 문장 · 다시 같은 답 · public 행 변화 0
+```
+
+**5 번 판정에 대해 한 줄** — 한 프로세스도 NULL 쪽 열쇠 행을 «거절로 드러내지» 않습니다: 첫 쪽은 쪽 크기 1 행부터 가장 작은 열쇠를 읽고 다음 쪽은 `> after` 라 NULL 은 어느 쪽에도 안 들어옴(표 전체가 첫 쪽에 들 만큼 작을 때만 NULL 행이 읽혀 거절). 그래서 세는 자리를 두 길이 같이 지나는 꼬리에 두었습니다.
+
+다음: ㄴ(행당 비용) — 첫 층은 짓고 쟀음(이벤트 프레임 26,917 개 · 소스 다섯 원자 같음, 한 행 소스 행당 약 25~28 % 줄임), 이 착지 위로 다시 올려 시험 · 착지.
