@@ -455,9 +455,10 @@ def end_connections(db, index):
 
 def main(argv=None):
     index = int((sys.argv[1:] if argv is None else argv)[0])
-    from utils.logger import answers_on_stdout, get_process_logger
-
-    answers = answers_on_stdout()
+    answers = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8", buffering=1)
+    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+    sys.stdout = sys.stderr
+    from utils.logger import get_process_logger
 
     # FIRST, before anything opens a log of its own: no file here - the lines go up stderr and the
     # dispatcher writes them into the file it names (its own).

@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import os
 import uuid6
 import logging
 import threading
@@ -442,8 +441,10 @@ def _follow(item, engine, setup, world=None, sources=None):
             # The scope the receipt inside that write is stamped with. Opened here
             # because this is the one loop that knows which event a batch is following.
             with following(transaction_id):
-                result = _rescope(engine, setup, source, column, values, event_type != "CREATE", world,
-                                  len(row_ids), transaction_id)
+                result = backfill.rescope(engine, setup, source, column, values,
+                                          apply=True,
+                                          withdraw=(event_type != "CREATE"),
+                                          world=world)
             done["sources"][source] = {
                 "scope_values": len(values),
                 "withdrawn": result.get("withdrawn", 0),
@@ -471,93 +472,6 @@ def _follow(item, engine, setup, world=None, sources=None):
                     "table and error (said at the 1st, 10th, 100th ...)",
                     source, table, len(row_ids), _named(world), exc, nth)
     return done
-
-
-#: The rows a follow-up batch holds before a source's scope values are translated by slice processes
-#: (`ledger_translate_slices`, 총괄 7763dd6d0) rather than here - a slice process starts in seconds, so a smaller batch
-#: is done sooner in this one.
-FOLLOW_SLICE_ROWS = 4000
-
-
-def _rescope(engine, setup, source, column, values, withdraw, world, rows, transactions):
-    """One source's re-translation of a batch's scope `values` - here, or cut by value into the slices' processes when
-    the batch holds `FOLLOW_SLICE_ROWS` rows and more than one value (disjoint values: no two slices touch one scope)."""
-    from . import backfill
-
-    pieces = 1
-    if rows >= FOLLOW_SLICE_ROWS and len(values) > 1:
-        from admin.retroactive import translate_slices
-
-        pieces = min(translate_slices()[0], len(values))
-    if pieces <= 1:
-        return backfill.rescope(engine, setup, source, column, values, apply=True, withdraw=withdraw, world=world)
-    return _rescope_in_slices(source, column, list(values), withdraw, world, transactions, pieces)
-
-
-def _rescope_in_slices(source, column, values, withdraw, world, transactions, pieces):
-    """`values` in `pieces` slice processes (`python -m ledger.worker --slice`): each its share, its own commits and
-    receipts, its lines relayed into this log; -> the summed counts. A slice that ends without its answer fails the
-    batch - the rows the others wrote stay and the batch is followed again (`rescope` is idempotent)."""
-    import base64
-    import json
-    import pickle
-    import subprocess
-    import sys
-    import threading
-
-    import paths
-    from utils.logger import relay_lines
-
-    size = -(-len(values) // pieces)
-    procs = []
-    for index in range(pieces):
-        share = values[index * size:(index + 1) * size]
-        if not share:
-            break
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "ledger.worker", "--slice", "%d/%d" % (index + 1, pieces)],
-            cwd=paths.SERVER_DIR, env=dict(os.environ, PYTHONIOENCODING="utf-8"), stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", bufsize=1,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        proc.stdin.write(base64.b64encode(pickle.dumps({
-            "source": source, "column": column, "values": share, "withdraw": withdraw, "world": world,
-            "transactions": transactions})).decode("ascii") + "\n")
-        proc.stdin.close()
-        threading.Thread(target=relay_lines, args=(
-            proc.stderr, "[follow slice %d/%d pid %d]" % (index + 1, pieces, proc.pid), "Ledger"),
-            daemon=True, name="follow-slice-%d-log" % (index + 1)).start()
-        procs.append(proc)
-    summed, failed = {"withdrawn": 0, "inserted": 0, "deduped": 0}, []
-    for index, proc in enumerate(procs, 1):
-        answers = [json.loads(line) for line in proc.stdout if line.strip().startswith("{")]
-        proc.wait()
-        result = next((answer["result"] for answer in answers if "result" in answer), None)
-        if result is None:
-            failed.append("%d/%d (exit %s)" % (index, len(procs), proc.returncode))
-            continue
-        for key in summed:
-            summed[key] += result.get(key, 0) or 0
-    if failed:
-        raise RuntimeError("follow slice %s ended without its answer - its lines in ledger.log say why; the rows "
-                           "the others wrote stay and the batch is followed again" % ", ".join(failed))
-    return summed
-
-
-def follow_slice(ask, answer):
-    """One follow slice's work (`_rescope_in_slices`), in a process of its own: `ask` the parent's line."""
-    import base64
-    import pickle
-
-    from database.database import engine
-
-    from . import backfill
-    from .worker import _compiled_setup
-
-    said = pickle.loads(base64.b64decode(ask))
-    with following(said["transactions"]):
-        result = backfill.rescope(engine, _compiled_setup(said["world"]), said["source"], said["column"],
-                                  said["values"], apply=True, withdraw=said["withdraw"], world=said["world"])
-    answer({"result": {key: result.get(key, 0) for key in ("withdrawn", "inserted", "deduped")}})
 
 
 def _named(world):
@@ -629,7 +543,8 @@ MAX_EVENTS_A_BATCH = 1000
 def _runs(events):
     """`events` - (outbox row, payload, row ids) in id order - as the follows they fold into: per table, each run of
     one kind in id order (deletions apart from additions and edits, so a row deleted then added back is followed in
-    that order). -> [(item, outbox ids)], an item as `_follow` reads it."""
+    that order). A run with an addition is never skipped by its columns - an addition alone is not. -> [(item, outbox
+    ids)], an item as `_follow` reads it."""
     import event_constants
 
     runs, by_table = [], {}
@@ -657,7 +572,7 @@ def _runs(events):
         queued_at = first.created_at.timestamp() if first.created_at is not None else time.time()
         out.append(((str(first.table_name), tuple(rows), kind, queued_at, tuple(transactions),
                      max(depths) if depths else None,
-                     sorted(columns) if columns is not None and kind == "EDIT" else None),
+                     sorted(columns) if columns is not None and kinds == {"EDIT"} else None),
                     [row.id for row, _payload, _ids, _kind in run["events"]]))
     return out
 

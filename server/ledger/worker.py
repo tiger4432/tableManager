@@ -5,9 +5,7 @@ unchanged, so the chain writes on when the ledger stops. The chain's Pause holds
 source is taken while it lasts, and the one running finishes (소유자 10-08 «Pause 만 전부»). `start_ledger_worker` runs them; the launcher starts it as its
 own process (`run_ledger_worker.py`), and a server run alone starts it beside the chain loop (`main.py`)."""
 import asyncio
-import json
 import logging
-import sys
 import time
 
 from chain import control as chain_control
@@ -569,24 +567,3 @@ async def start_ledger_worker(db_session_factory):
     while True:
         heartbeat.beat(LEDGER_BEAT, note=ledger_followup.note())
         await asyncio.sleep(heartbeat.HEARTBEAT_SLICE_SECONDS)
-
-
-def _slice_main(args):
-    """`python -m ledger.worker --slice <k>/<N>` - one follow slice (`followup._rescope_in_slices`): its ask on stdin,
-    its answer on stdout, its lines up stderr into the ledger's log. Exit 0 answered · 1 failed."""
-    from utils.logger import answers_on_stdout, get_process_logger
-
-    answers = answers_on_stdout()
-    log = get_process_logger("Ledger_slice" + (args[0].split("/")[0] if args else ""), "ledger.log", relay=sys.stderr)
-    try:
-        ledger_followup.follow_slice(sys.stdin.readline().strip(),
-                                     lambda said: answers.write(json.dumps(said, default=str) + "\n"))
-        return 0
-    except Exception:                                            # noqa: BLE001
-        log.exception("[LedgerFollowUp] follow slice %s failed", args[0] if args else "?")
-        return 1
-
-
-if __name__ == "__main__":
-    if sys.argv[1:2] == ["--slice"]:
-        sys.exit(_slice_main(sys.argv[2:]))
