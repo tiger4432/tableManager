@@ -513,10 +513,10 @@
 ## 2026-10-14 · Board — 근원 부품이 틀(트레이 · 범례 · 팔레트 · 칠 · 행 단위 · 길), 종류는 보이는 영역만
 
 - **무엇** — 정본 `docs/architecture/ROOT_PART_BASE_SET.md`(소유자 10-13 «이 표 정본으로»). 근원 부품이 축 알약 트레이(위 · 왼쪽 · 아래) · 바닥 메모 · 범례(Marker by · Color by) · 팔레트 · 칠(색 · 찍힘 · 흐림) · 행 단위(Marker by) · 길을 한 자리에서 하고, 산점도 · Table · 크로스 테이블 · Map 은 그 안 그림 영역만 그립니다.
-- **Color by** — 모든 종류에 같은 칸. 범례 동그라미를 누르면 팔레트(범주 색 일곱 · 빨강 · 회색 · More colors), 고른 색은 선언 `colors`(범주 → 색)에 남습니다. 범주 색은 선언 색 먼저, 없으면 값이 정하는 색이라 범주가 늘고 줄어도 같은 값은 같은 색입니다. Table 은 줄 앞 띠, 크로스 테이블은 칸 바탕, Map 은 칸.
+- **Color by** — 모든 종류에 같은 칸. 범례 동그라미를 누르면 팔레트(범주 색 일곱 · 빨강 · 회색 · More colors), 고른 색은 선언 `colors`(범주 → 색)에 남습니다. 범주 색은 선언 색 먼저, 없으면 아직 아무 범주도 안 쓴 팔레트 다음 색을 행에 나온 순서로 주고 선언 `colors`에 고정합니다(스팟파이어 방식) — 일곱 범주 일곱 색, 저장 뒤 범주가 늘어도 있던 색 그대로. Table 은 줄 앞 띠, 크로스 테이블은 칸 바탕, Map 은 칸.
 - **값 기록 하나 = 기록 하나** — 엣지에 기록이 넷이면 점 넷. Y 에 집계(Latest 등)를 고르면 엣지마다 하나로 접습니다(축마다 제 집계).
-- **길** — 속성 Data 에 «Rows»(행 타입)와 «Route»(시작 타입 → 행 타입의 길, 걷기 화면 길 목록 + 고리). 부품은 그 길과 슬롯의 술어 · 걸음만 걷고, 행은 길 끝의 노드입니다. 시작이 행 타입이면 행 = 시작. 18766: 본딩 다이를 바꾸면 B 의 코어 웨이퍼가 그 다이의 것 하나(0,6 → SYN-CW-103-01, 1,6 → SYN-CW-103-13 — 전엔 웨이퍼의 다이 전부를 지나 30 개).
-- **그 밖** — 노드 속성 시각(`{"$datetime": …}`)을 시각으로 · Marked() 가 접기 · 필터에도 · 같은 이름 마킹 거절 · «Mark <받는 마킹>» · 허브가 값 여럿이면 «pick a reduce» · Marker by 알약마다 (Node) · (Value record) · Limit by 의 all/any · if none 늘 보임 · Reset = 저장본으로, «Clear saved» 따로 · Save 가 찍힌 것(시작 포함, 허브 구성원)도 둡니다 · «+ Add filter» 가 행의 키 · 속성도.
+- **길** — 속성 Data 에 «Rows»(행 타입)와 «Route»(시작 타입 → 행 타입의 길, 걷기 화면 길 목록 + 고리). 부품은 그 길과 슬롯의 술어 · 걸음만 걷고, 행은 길 끝의 노드입니다. 시작이 행 타입이면 행 = 시작. 길은 시작 첫 항목의 타입에서 나가고, 다른 타입의 시작은 걷지 않고 바닥줄에 «route from <type>; N starts of other types not walked». 걸음 수는 길이 정합니다 — 선언 `walk` 는 `node_limit` 만 읽습니다(옛 `hops` 는 읽지 않음). 18766: 본딩 다이를 바꾸면 B 의 코어 웨이퍼가 그 다이의 것 하나(0,6 → SYN-CW-103-01, 1,6 → SYN-CW-103-13 — 전엔 웨이퍼의 다이 전부를 지나 30 개).
+- **그 밖** — 저장본에서 되살린 시작은 id 안의 키로 이름(원시 id 대신) · 1024 바닥 메모 줄바꿈 · 노드 속성 시각(`{"$datetime": …}`)을 시각으로 · Marked() 가 접기 · 필터에도 · 같은 이름 마킹 거절 · «Mark <받는 마킹>» · 허브가 값 여럿이면 «pick a reduce» · Marker by 알약마다 (Node) · (Value record) · Limit by 의 all/any · if none 늘 보임 · Reset = 저장본으로, «Clear saved» 따로 · Save 가 찍힌 것(시작 포함, 허브 구성원)도 둡니다 · «+ Add filter» 가 행의 키 · 속성도.
 - **필요한 조건** — 클라 빌드만. 화면 게이트(screen_layout)의 기록 답에 시험대 산점도의 길 걷기 요청 하나(`hops=2&follow=in_container&follow=observed`)가 아직 없음 — capture_screens.py.
 - **자세히** — `client2/tests/board_layout_harness.mjs`(R2 · P7 · W1–W3 · C1 · F1 · K5) · `testbed_harness` · `client2/scripts/board_scenario_live.mjs`.
 
