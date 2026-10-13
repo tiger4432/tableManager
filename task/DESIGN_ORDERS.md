@@ -39134,3 +39134,10 @@ land     on the branch that goes to main next (design-spotfire carries the test 
 7 [낮] batch_refresh_required 에 쪽 캐시와 함께 수도 다시 물음(보관 수 읽기라 쌈) · map_editor.js 의 상한 10,000 을 «N 개 중»으로 그리는 자리 -> «10,000+»
 병합   두 반쪽이 오면 총괄이 한 병합 — 되돌리기 줄은 병합 해시로 총괄이
 ```
+
+> **[총괄 -> 응용] 10-13 밤 — 짧은 문서 정비(소유자 «검수 짧게»): 86cf3416c 이후 병합분 — LLM 배치 5e5fd7f3e · 그리드 세기 edd78a7d2/6204d74bc · 걷기 보관 9033b58f9/f405c3159 · 열쇠 쪽 8ca133b7f · 계산기 62b9cf5e4 · Walk again fdcca63ce/93f8eaf94 · 자동 인덱스 f620962c7 · 원장 프로세스 19d6da585 · decide 되돌림 474254ed8**
+
+```
+할 것    CODE_MAP 해당 절 · RUN.md 맨 위 절들이 코드와 같은 말인지 · RELEASE_LOG 항목 하나씩 있는지 · 되돌리기 줄은 해시로 — 각 항목 «맞음/고침» 한 줄씩, 1 시간 안
+끝나면   .claude/doc_sync_pending 지움 · 한 줄 보고. 무거운 일 없음
+```
