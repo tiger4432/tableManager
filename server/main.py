@@ -5285,8 +5285,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     #    ⚠️ RETRYING 은 `processed_chain=false` 라 «그대로» 든다. 다시 돌 것이므로 맞다.
 
     # 🔴 [소유자 2026-09-23 「빼. 안 돌거는 다빼」] 모집단에서 «돌지 않을 행»이 빠진다.
-    #    판정은 아래 좌석 «둘»이 한다 — `_is_trigger_event`(사건 혼자의 성질)와
-    #    `fires`(규칙·사건 쌍의 성질). 술어를 여기서 다시 적지 않는다.
+    #    판정은 좌석 `wakes` 가 한다 — 사건 종류(`_is_trigger_event`, DELETE 는 규칙이
+    #    `allow_delete_trigger` 를 적었을 때만 · 총괄 옛 키)와 쌍(`fires`). 술어를 여기서 다시 적지 않는다.
     #    ⚠️ 총괄 지시는 「`any(fires)` 하나로 DELETE 까지 빠진다」였는데 «그렇지 않다» —
     #       `fires` 의 독스트링이 적고 있다: 「event_type 은 여기 «없다». 그것은 이벤트
     #       혼자의 성질이고(`_is_trigger_event`)」. 두 좌석 다 이 라우트가 이미 부른다.
@@ -5356,18 +5356,17 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             #    체인 규칙을 지나지 않습니다」를 달았는데, 앞 절반은 「주인」의 사본이고
             #    뒤 절반은 리플레이가 체인 워커로 옮겨온 2026-09-23 에 «거짓»이 됐다.
             pass
-        elif not worker._is_trigger_event(r):
-            runs = False
         else:
             for rule in rules:
                 if rule.get("trigger_table") != r.table_name:
                     continue
                 # ⛔ 술어를 여기서 «다시 적지 않는다». 판정은 그 좌석의 것이고,
                 #    아래 사유는 그 False 를 «설명»할 뿐이다.
-                will_fire = bool(worker.fires(rule, r))
+                will_fire = bool(worker.wakes(rule, r))
                 entry = {"name": rule.get("name"), "will_fire": will_fire}
                 if not will_fire:
-                    entry["why_not"] = ("declaration is switched off (`enabled: false`)"
+                    entry["why_not"] = (worker.FIRE_REFUSED_DELETE if not worker._is_trigger_event(r, rule) else
+                                        "declaration is switched off (`enabled: false`)"
                                         if rule_shape.is_switched_off(rule) else
                                         "chain-produced event; this rule does not declare "
                                         "`allow_chain_trigger`")

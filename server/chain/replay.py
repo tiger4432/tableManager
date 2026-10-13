@@ -1971,7 +1971,12 @@ class _RowAsWritten:
         self.__table__, self._row, self._cells = table, row, cells
 
     def __getattr__(self, name):
-        return self._cells[name] if name in self._cells else getattr(self._row, name)
+        # by the row's names, not its attributes - a column named `t` or `count` is a Row method (총괄 10-14 e)
+        if name in self._cells:
+            return self._cells[name]
+        if name in self._row._mapping:
+            return self._row._mapping[name]
+        raise AttributeError(name)
 
 
 def _write_by_values(db, table_name, model, values, tx_id):
@@ -2007,12 +2012,17 @@ def _write_by_values(db, table_name, model, values, tx_id):
     _insert_by_arrays(db, models.AuditLog.__table__, history)
     if not by_row:
         return
+    # what each row's cells were - the event's old values, as the flush hook stages an edit's (총괄 355ee9840 4)
+    was = {row_id: {column: database.json_value(old) for column, (old, _new) in cells.items()}
+           for row_id, cells in by_row.items()}
     if request_outbox_mode.get() == event_constants.OUTBOX_MODE_COLLAPSED:
         database.stage_collapsed_event(db, "EDIT", table_name, list(by_row),
-                                       {column for now in written.values() for column in now})
+                                       {column for now in written.values() for column in now},
+                                       old=[was[row_id] for row_id in by_row])
         return
     db.execute(models.DatabaseOutbox.__table__.insert(), [
-        database.row_event("EDIT", table_name, _RowAsWritten(model.__table__, values["rows"][row_id], now))
+        database.row_event("EDIT", table_name, _RowAsWritten(model.__table__, values["rows"][row_id], now),
+                           old=was[row_id])
         for row_id, now in written.items()])
     database._notify_outbox_once(db)
 

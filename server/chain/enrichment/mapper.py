@@ -26,6 +26,8 @@ logger = logging.getLogger("Chain.enrichment_dedup")
 
 # 재계산 쿼리 키 청킹 (헌장: 1000만 행 테이블 기준 — 키 IN 목록 상한)
 RECOUNT_KEY_CHUNK = 500
+#: The recount's own row count of a key a source row left (총괄 옛 키) - not a column, so nothing writes it.
+_SOURCE_ROWS = " source rows"
 
 
 def _install_distinct_values_json():
@@ -163,10 +165,10 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                     .filter(and_(*conds)).group_by(*cols).all()) if exprs else []
             if by_rows:
                 for row in db.query(*cols, *[getattr(model, c) for c in read]).filter(and_(*conds)):
-                    key = tuple(crud.clean_str_value(v) for v in row[:len(cols)])
+                    key = _clean_key(source_table, decision_key, row[:len(cols)])
                     key_rows.setdefault(key, []).append(dict(zip(read, row[len(cols):])))
             for row in rows:
-                key = tuple(crud.clean_str_value(v) for v in row[:len(cols)])
+                key = _clean_key(source_table, decision_key, row[:len(cols)])
                 # FOLD, not assign. `NULL` and `''` are two SQL groups and one
                 # decision key: `clean_str_value` folds them, so a blank component
                 # makes the GROUP BY hand back two rows for the same key.
@@ -246,6 +248,35 @@ def _union(running, value):
     return (running or set()) | {v for v in json.loads(value or "[]") if v is not None}
 
 
+def _clean_key(table, columns, values) -> tuple:
+    """A decision key in its ONE spelling - each part as its column stores it (`crud.key_part`, what the business key's
+    composition reads), then `clean_str_value`; a blank part is ''. The batch's keys, the keys rows left (a time read
+    back as its ISO text) and the recount's answer (a time as the database gives it) all pass here (총괄 10-14 1)."""
+    from database import crud
+
+    parts = (crud.key_part(table, column, value) for column, value in zip(columns, values))
+    return tuple("" if part is None else crud.clean_str_value(part) for part in parts)
+
+
+def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty) -> set:
+    """Of `empty` (decision keys with no source row), those whose derived row's identity - `composite_key_source`,
+    else `business_key` - no source row holds either (총괄 355ee9840 1). The identity is the decision key when they
+    are the same columns, so nothing more is asked; a key whose identity is all blank has no row to delete."""
+    from database import crud
+
+    derived = crud.TABLE_CONFIG.get(enrich["derived_table"], {})
+    identity = list(derived.get("composite_key_source") or ([derived["business_key"]] if derived.get("business_key")
+                                                            else []))
+    if not empty or not identity or set(identity) == set(decision_key):
+        return set(empty)
+    at = [decision_key.index(column) for column in identity]
+    of = {key: tuple(key[i] for i in at) for key in empty if any(key[i] != "" for i in at)}
+    held = _aggregate_affected_keys(db, source_table, identity, {of[key]: tuple(key_raw_values[key][i] for i in at)
+                                                                 for key in of},
+                                    {_SOURCE_ROWS: {"expression": "Count()"}})
+    return {key for key in of if not (held.get(of[key]) or {}).get(_SOURCE_ROWS)}
+
+
 def _result(updates, skipped_no_key: int, partial_keys: int,
             skipped_blank_identity: int = 0) -> dict:
     """맵퍼의 반환 계약 — **가산적**이다(체인 워커는 `updates`만 읽는다).
@@ -321,27 +352,38 @@ def map_enrichment_dedup(db, payloads, rule=None):
     # 「담지 못하는 부분 키」는 문법 안에 없다. 빈 성분은 자리를 지킨다.
     from chain import enrichment
 
+    import event_constants
+
+    def raw_of(clean_vals):
+        # 빈 컬럼의 raw는 None이다 — 타입 캐스트를 태우지 않는다. 재계산 쿼리가 그
+        # 컬럼을 동등 비교가 아니라 공백 술어로 묻기 때문이며(`_aggregate_affected_keys`),
+        # 빈 문자열을 number 컬럼 타입으로 캐스트하는 무의미한 경로도 함께 사라진다.
+        return tuple(None if sv == "" else crud.cast_value_by_type(sv, source_col_types.get(k, "string"), k)
+                     for k, sv in zip(decision_key, clean_vals))
+
     groups = {}          # clean_key_tuple -> {"reps": {list_col: 값}}
     key_raw_values = {}  # clean_key_tuple -> typed_raw_tuple (count 재계산 바인딩용)
+    left = set()         # 총괄 옛 키: keys a source row left - an edit moved it off, a deletion took it
     skipped = 0
     for p in payloads:
         data = p.get("data") or {}
-        clean_vals = [crud.clean_str_value(_cell_value(data, k)) for k in decision_key]
+        old = event_constants.old_values_of(p)
+        if old.keys() & set(decision_key):
+            was = list(_clean_key(source_table, decision_key,
+                                  [old[k] if k in old else _cell_value(data, k) for k in decision_key]))
+            if not enrichment.config.key_is_wholly_blank(enrich, dict(zip(decision_key, was))):
+                left.add(tuple(was))
+                key_raw_values.setdefault(tuple(was), raw_of(was))
+        if not data:
+            continue     # a deletion: its row has only the key it left
+        clean_vals = list(_clean_key(source_table, decision_key, [_cell_value(data, k) for k in decision_key]))
         key_values = dict(zip(decision_key, clean_vals))
         if enrichment.config.key_is_wholly_blank(enrich, key_values):
             skipped += 1
             continue
-        # 빈 컬럼의 raw는 None이다 — 타입 캐스트를 태우지 않는다. 재계산 쿼리가 그
-        # 컬럼을 동등 비교가 아니라 공백 술어로 묻기 때문이며(`_aggregate_affected_keys`),
-        # 빈 문자열을 number 컬럼 타입으로 캐스트하는 무의미한 경로도 함께 사라진다.
-        raw_vals = [
-            None if sv == ""
-            else crud.cast_value_by_type(sv, source_col_types.get(k, "string"), k)
-            for k, sv in zip(decision_key, clean_vals)
-        ]
         key = tuple(clean_vals)
         g = groups.setdefault(key, {"reps": {}})
-        key_raw_values.setdefault(key, tuple(raw_vals))
+        key_raw_values.setdefault(key, raw_of(clean_vals))
         # 표시 단서(list_columns): 배치 내 마지막 non-blank 값을 대표값으로
         for col in list_columns:
             if col in aggregations or col in target_fields:
@@ -354,6 +396,9 @@ def map_enrichment_dedup(db, payloads, rule=None):
             f"[Enrichment:{enrich.get('name')}] {skipped} row(s) skipped: "
             f"NO decision_key value at all (every key column blank — nothing to match on)"
         )
+    left -= set(groups)
+    for key in left:     # recounted like any key - and asked how many source rows it still has
+        groups[key] = {"reps": {}}
     if not groups:
         return _result([], skipped, 0)
 
@@ -361,9 +406,15 @@ def map_enrichment_dedup(db, payloads, rule=None):
     #    🔴 모집단은 «그 키의 커밋된 소스 행 전체»다 (S-129 ②) — 배치는 「어느 키를」만
     #    정하고, 세는 것은 소스 표를 직접 읽는다. 그래서 늦게 온 더 이른 행이 min 을 내린다.
     aggregated = {}
-    if aggregations:
+    counted = dict(aggregations, **({_SOURCE_ROWS: {"expression": "Count()"}} if left else {}))
+    if counted:
         aggregated = _aggregate_affected_keys(
-            db, source_table, decision_key, key_raw_values, aggregations)
+            db, source_table, decision_key, key_raw_values, counted)
+    # 총괄 옛 키: a key a row left with no source row of its own. Whether its derived row goes is asked of the
+    # columns that BUILD that row's identity (355ee9840 1): a decision key wider than them shares the row with
+    # others, and the row goes only when no source row holds its identity. One that still has some writes nothing.
+    empty = {key for key in left if not (aggregated.get(key) or {}).get(_SOURCE_ROWS)}
+    gone = _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty)
 
     # 3) 키당 1행 upsert 아이템 구성 — target_fields 는 같은 이름의 집계만 쓴다. 빈 집계는 «withdraw» 에.
     #    기존 키: decision/list 컬럼 값이 동일하면 has_changed=False로 무변경 처리되고,
@@ -372,6 +423,8 @@ def map_enrichment_dedup(db, payloads, rule=None):
     partial_keys = 0
     unaddressable = 0
     for key, g in groups.items():
+        if key in empty and key not in gone:
+            continue
         key_map = dict(zip(decision_key, key))
         # 같은 술어 하나 — 아래 정체성 조립과 `partial_keys` 회계가 이것을 공유한다.
         blank_key_cols = enrichment.config.blank_key_columns(enrich, key_map)
@@ -451,6 +504,9 @@ def map_enrichment_dedup(db, payloads, rule=None):
             #    «다섯째 철자»가 아니라 «닿지 않는 같은 철자»다.
             joined = comp_sep.join(key)
         item["business_key_val"] = joined
+        if key in gone:     # the worker deletes it unless another writer is on it - this declaration's halves are not
+            item = {"business_key_val": joined, "updates": {}, "source_name": "chain_ingestion", "gone": True,
+                    "own": list(enrichment.config.synthesized_rule_names(enrich["name"]))}
         if bk_col and bk_col in derived_cols and bk_col not in upd_cols and bk_col not in target_fields:
             upd_cols[bk_col] = joined
         updates.append(item)
