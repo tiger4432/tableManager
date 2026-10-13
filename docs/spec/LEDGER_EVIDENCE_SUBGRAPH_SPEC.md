@@ -134,6 +134,7 @@ GET /api/ledger/subgraph
 | `negative` | 아니오 | — | 노드 id, 반복 가능 | 대조군 씨앗. **목록에 없는 주어는 미검사이지 대조군이 아니다** |
 | `follow` | 아니오 | — | `술어` 또는 `술어:키1,키2`, **반복 가능** | 이 술어만 따라간다. 없으면 전부. **SQL 에서 좁힌다**(§5 규칙 ①). 🆕 콜론 뒤에 키를 대면 **그 엣지는 씨앗과 그 키가 같은 노드로만** 걷는다(§5 규칙 ④) |
 | `backbone_hops` | 아니오 | 0 | 0..40 | 같은 자재에 머무는 걸음에 주는 «둘째» 예산. **양 끝이 둘 다 dynamic 인 걸음만** 여기서 빠진다 |
+| `resumable` | 아니오 | false | true·false | 🆕 10-13 이어 걸을 호출(걷기 화면)만 true — 잘린 걷기를 걷기 프로세스에 남기고 `more.resume` 열쇠를 준다. 없으면 잘려도 `resume` 은 null(`unexpanded` · `reach` 는 그대로 잘렸다고 말함). `format=rows` 는 남기지 않는다 |
 
 🔴 **`backbone_hops` 는 「어느 술어가 공짜냐」를 «묻지» 않는다.** 그 판정은 선언의
 **엔터티 `class`** 가 하고 요청은 예산만 준다. 종전 철자 `continues_hops`(술어마다
@@ -237,7 +238,7 @@ subgraph({"positive": [id, ...], "negative": [id, ...]}, lookup)
 | `complete` | bool | 어느 예산도 안 끊겼나. **끊긴 그래프 위의 순위는 잠정**이다 |
 | `state` | `ranked` \| `empty` | `empty` 는 씨앗 밖 노드에 한 번도 안 닿았다 |
 | `ranked[]` | 아래 | **씨앗을 뺀, 걸어서 «닿은» 노드 전부.** 타입 필터가 없다 |
-| `top_set[]` | 노드 id | 1층(dominance 최상위) 전원. 「1등」이 하나라는 보장은 없다 |
+| `top_set[]` | 노드 id | 1층(dominance 최상위) 전원. 「1등」이 하나라는 보장은 없다. 🆕 10-13 이어지는 쪽은 그 쪽에서 1층에 «든» id, `top_set_left[]` 는 «빠진» id — 차례로 빼고 더하면 한 번 걸은 1층 |
 
 **`ranked[]` 항목 하나가 드는 것** — `id` · `type`(선언된 엔터티 타입) · `label` ·
 `reach` · `reachable` · `rank` · `top` · `tied` · `incomparable` · `evidence[]`.
@@ -288,7 +289,8 @@ reachable   [관측 씨앗 몇이 이 «타입»에 닿았나, 대조군 쪽 같
 | 422 | `subgraph_request_invalid` | id 철자·방향·범위 오류, 그리고 🆕 **`follow` 가 요구한 키를 씨앗이 못 드는 경우**를 이름 대어 표시. 메시지가 «어느 술어·어느 키·어느 씨앗 타입»인지 다 댄다. 🔴 **여기서 0 을 돌려주지 않는 이유**: 못 맞추는 제약과 「여기 아무것도 없다」가 같은 그림으로 렌더돼 호출자가 둘을 못 가른다 |
 | 422 | `predicate_not_declared` | `unknown[]` 과 `declared[]` 을 같이 돌려준다. 🔴 **대조되는 것은 콜론 «왼쪽»** — `inspected:x,y` 는 선언된 `inspected` 에 제약이 걸린 것이라, 문자열 통째로 대조하면 정상 요청이 전부 422 가 된다 |
 | 503 | 원장 relation absent | 배포 부재를 «이름 대어» 답한다 |
-| 503 | 🆕 `walk_pool_busy` | 10-13 걷기 프로세스가 `walk_seconds_max` 안에 하나도 안 비었다 — 다시 시도하거나 `walk_processes` 를 올린다 |
+| 503 | 🆕 `walk_pool_busy` | 10-13 걷기 프로세스가 `walk_seconds_max` 안에 하나도 안 비었다 — 다시 시도하거나 `walk_processes` 를 올린다. 이어지는 쪽이면 «그 걷기를 쥔 프로세스»가 다른 걷기로 바빴다 — «The walk process keeping this walk stayed busy for N s with another walk - ask More again» |
+| 410 | 🆕 `walk_expired` | 10-13 이어지는 쪽의 걷기가 그 프로세스에 없다 — `why` reloaded · restarted · expired · process ended · server updated(서버가 바뀌기 전 첫 쪽의 옛 포장 토큰), `message` «This walk expired (<why>[: <자세히>]) - walk again». 처음부터 다시 걷는다 |
 | 503 | 🆕 `walk_process_not_ready` | 걷기 프로세스가 그 시간 안에 못 떴다 |
 | 503 | 🆕 `walk_timed_out` | 걷기가 그 시간 안에 안 끝나 그 프로세스를 내렸다 — 걷기를 좁히거나 `walk_seconds_max` 를 올린다 |
 | 500 | 🆕 걷기 프로세스가 도중에 끝남 | 그 요청만 실패하고 다음 요청이 새로 띄운다(한도 셋은 하나의 마감을 나눠 쓴다) |

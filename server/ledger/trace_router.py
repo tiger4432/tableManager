@@ -200,6 +200,9 @@ def evidence_subgraph(
     later: str | None = Query(None, description="Time page: a page's `page.later`, as it came"),
     page: int = Query(ledger_subgraph.TIME_PAGE_DEFAULT, ge=1, le=ledger_subgraph.TIME_PAGE_MAX,
                       description="Time page: points per page"),
+    resumable: bool = Query(
+        False, description=("This caller asks the next page with `more.resume` (the walk screen) - only then is a "
+                            "cut walk kept and its key handed back")),
     resume: dict | None = Body(
         None, embed=True,
         description=("A page's `more.resume`, as it came: the next page of the same walk, within the same caps, "
@@ -335,6 +338,8 @@ def evidence_subgraph(
             expand=list(expand) if isinstance(expand, (list, tuple)) else None,
             aux=list(aux) if isinstance(aux, (list, tuple)) else None,
             resume=resume if isinstance(resume, dict) else None,
+            # a direct call leaves the Query sentinel; a rows read is not continued
+            resumable=resumable is True and wants == "json",
             page=time_page, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -342,6 +347,10 @@ def evidence_subgraph(
             return PlainTextResponse(payload.get("rows") or "",
                                      media_type="text/tab-separated-values")
         return payload
+    except ledger_subgraph.WalkExpired as exc:
+        # 🔴 A CONTINUED PAGE WHOSE WALK IS GONE (총괄 54f7edfdb): said with why, never walked again on its own - the
+        #    screen offers «Walk again».
+        raise HTTPException(status_code=410, detail=ledger_subgraph.walk_expired(exc.why, exc.said))
     except ledger_subgraph.AggregateRefused as exc:
         # 🔴 NAMED, WITH THE CHOICES (S-146, 판정 331). `subgraph_request_invalid` would tell
         # a caller their request was wrong and not which word -- and a screen that offers
@@ -362,7 +371,15 @@ def evidence_subgraph(
 
 # 🔴 THE ROUTE RUNS IN THE WALK POOL, THE NAME DOES NOT (총괄 QA on b47388fde): code that calls `evidence_subgraph`
 # itself - `mappers/contrast_walk.py` in a chain slot - gets the answer as a dict, as before.
-router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(evidence_subgraph))
+def _kept_walk_key(kwargs):
+    """The key of the paused walk a continued page goes on from - the walk pool sends it to the process that keeps it."""
+    resume = kwargs.get("resume")
+    return resume.get("walk") if isinstance(resume, dict) else None
+
+
+router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(
+    evidence_subgraph, pinned_by=_kept_walk_key,
+    gone=lambda why: HTTPException(status_code=410, detail=ledger_subgraph.walk_expired(why))))
 
 
 def _given(value):
@@ -693,7 +710,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
-                    fanout_limit=None, expand=None, page=None, aux=None, resume=None):
+                    fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -717,7 +734,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
             cardinalities=cardinalities,
             declaration_paths=tuple(each.declaration_path for each in names))
     return ledger_subgraph.subgraph(
-        node_id, lookup, aux=aux, resume=resume,
+        node_id, lookup, aux=aux, resume=resume, resumable=resumable,
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,

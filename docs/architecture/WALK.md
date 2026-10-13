@@ -69,7 +69,7 @@ client2/src/rnd_board/walk_box_panel.js
 ## 3. 라우트 — 데이터에 답하는 것은 «하나»
 
 ```
-GET /api/ledger/subgraph     걷기. 아래 인자 «열넷» · 🆕 10-12 POST 도 — 본문 `resume`(아래 «이어 걷기»)
+GET /api/ledger/subgraph     걷기. 아래 인자 «열다섯» · 🆕 10-12 POST 도 — 본문 `resume`(아래 «이어 걷기»)
                              🆕 10-13 HTTP 로 온 걷기는 걷기 프로세스에서 돈다(`runtime/process_pool.in_pool`, 설정 `walk_processes` 기본 2 · `walk_seconds_max` 기본 120 초) — 못 받으면 503 `walk_pool_busy` · `walk_process_not_ready` · `walk_timed_out`
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
                              🆕 그리고 「어느 술어가 «검사»인가」 — `absence_confirmed_by` (S-216 `09217e2e`)
@@ -81,6 +81,7 @@ edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 
 since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「구간 걷기」 절
 include_superseded  기본 false. `one` 술어의 «지금 아닌» 사실도 그릴지 — 그 엣지엔 `not_current` (총괄 22ebdd153)
 format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-183, 09-11)
+resumable           기본 false. 이어 걸을 호출(걷기 화면)만 true — 잘린 걷기를 남기고 more.resume 열쇠를 준다(아래 «이어 걷기», 총괄 9752e91f7)
 ```
 ⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
 셈이 하나 어긋난 채로, S-98 이 더한 `since`·`until` 이 «둘 다» 빠져 있었습니다 —
@@ -348,8 +349,36 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 
 ```
 묻는 것   상한(원자 · 노드 · 엣지)에 잘린 걷기를, 상한은 그대로 둔 채 이어서 끝까지
-답        more = {unexpanded · reach{타입: complete · unexpanded} · resume}  — 더 있는지는 resume 하나가 답한다
-이어 걷기  resume 을 POST 본문으로 돌려준다 -> 같은 상한 · 첫 쪽 시각(as_of)으로 다음 쪽
+답        more = {unexpanded · reach{타입: complete · unexpanded} · resume}  — 더 있는지는 unexpanded · reach 가 답한다
+이어 걷기  첫 쪽을 resumable=true 로 묻고(걷기 화면) resume 을 POST 본문으로 돌려준다 -> 같은 상한 · 첫 쪽 시각(as_of)으로 다음 쪽
+          resumable 없는 걷기(보드 패널 · 시험대 · contrast_walk · rows)는 잘려도 resume null — 남기는 것 없음(총괄 9752e91f7)
+🆕 10-13  멈춘 걷기는 그 걷기 프로세스에 산다(총괄 54f7edfdb ㄴ-1) — resume = {"walk": "<서버 시작>.<pid>.<걷기>.<쪽>"} 열쇠 하나
+          열린 노드(지은 그대로, 쪽마다 사본으로 꺼냄) · 다 읽은 노드 · 커서 · 씨앗마다 닿음 · top set 이 그 프로세스에
+          — 다음 쪽은 싸고 풀고 다시 짓지 않는다
+          열쇠는 쪽마다 바뀐다 · 같은 열쇠 = 같은 쪽(× 뒤 More · 두 번 누름 · 다시 보냄 — 다른 칸은 generated_at 뿐)
+          앞 열쇠는 그 다음 열쇠가 물어질 때 간다 — × 두 번 뒤 More 는 410 expired «a later page of this walk was asked»
+          마지막 쪽을 낸 열쇠는 쓸어 갈 때까지 남는다(다시 물으면 같은 마지막 쪽)
+          걷기 풀은 열쇠의 pid 로 그 프로세스에 보낸다 — 바쁘면 walk_seconds_max 까지 따로 기다리고(넘으면 503 «The walk
+          process keeping this walk stayed busy …»), 그 뒤 쪽도 walk_seconds_max
+          같은 질문만(다르면 422 — worlds · since · until · current_only 포함)
+          프로세스마다 walk_live_walks(4, 걷기 수) · walk_live_minutes(10) — 프로세스 안 시계가 30 초마다 쓸어 감
+          넘으면 가장 오래 안 쓴 걷기부터 · 리로드(그 프로세스의 선언 다시 읽기)는 멈춘 걷기를 다 reloaded 로
+          walk_live_nodes(300,000) — 멈춘 걷기들이 함께 쥐는 노드 수 상한(열린 + 다 읽은 + 씨앗마다 닿은 노드)
+          넘으면 가장 오래 안 쓴 걷기부터(«kept walks in this process hold N nodes - the oldest was let go»)
+          기본값은 센 노드당 1.9 KB(걷기 판 씨앗 하나 쪽 10: 20.7 MB ÷ 10,973)로
+          가장 새 · 걷는 중 걷기를 뺀 나머지가 약 600 MB, 가장 새 걷기는 씨앗 수 × 닿음만큼(씨앗 500 · 4 쪽 걷기 하나 — 센 노드 1,253,000 · 455 MB, 총괄 b47c7c8a3 잼)
+          합계는 그 × walk_processes(walk_processes 0 이면 웹 프로세스 하나)
+          개수 · 노드 둘 다 걷는 중 · 가장 새 걷기 · 지금 More 를 받는 걷기는 안 민다 — 큰 걷기 하나는 상한을 낮춰도 남고,
+          더 새 걷기가 오거나 walk_live_minutes 가 지나야 간다
+          410 의 why 는 걷기의 끝(쪽 넘김은 안 셈) — 앞 열쇠는 «a later page of this walk was asked»
+          끝난 걷기의 why 는 프로세스마다 마지막 200 개(GONE_SAID)만 — 그보다 먼저 끝난 걷기의 More 는 process ended
+          표 설정 저장도 걷기 프로세스를 바꾼다(recycle) — 그때 멈춘 걷기는 전부 reloaded
+          ⚠️ 쪽이 시한(walk_timed_out)을 넘으면 그 프로세스를 내린다 — 그 프로세스가 쥔 다른 걷기도 process ended
+만료      410 {reason: walk_expired, why, message} — why 다섯: reloaded(리로드 · 표 설정 저장이 걷기 프로세스를 바꿈) · restarted ·
+          expired · process ended · server updated(서버가 바뀌기 전 첫 쪽의 옛 포장 토큰)
+          화면 «This walk expired (<why>) - Walk again» 한 줄과 단추 — 클라 착지 때. 저절로 다시 걷지 않는다
+          ⚰️ 리로드 사이에 새 선언으로 이어 가던 것은 은퇴 — 그 걷기는 reloaded
+쪽 = 델타  이어지는 쪽의 propagation.top_set 은 그 쪽에서 맨 윗층에 든 id, top_set_left 는 빠진 id — 빼고 더하면 한 번의 top set
 불변      쪽을 합치면 상한 없이 한 번 걸은 답 — 노드 · 엣지 · 순위(ranked) · 노드마다 reach
           (시험 test_a_walk_continued_page_by_page_is_the_walk_without_caps.py)
 순위      이어지는 쪽의 ranked 는 그 쪽에서 새로 닿은 노드만, 순위는 지금까지 닿은 노드 전부 사이에서
@@ -357,7 +386,7 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 화면      More ▸ 가 다음 쪽을 그 걸음에 합친다(뒤 쪽 순위가 이김) · «N pages» · 타입마다 «<타입>: all reached» / «cut · N not expanded» · 마지막에 More 꺼짐(꺼진 까닭 «All reached»)
 ```
 
-코드 자리는 CODE_MAP 의 `ledger_subgraph.py`(`_still_reaches` · `_reach` · `_packed`) · `trace_router.py`(POST `resume`) · `rnd_board/api.js`(`fetchSubgraph`) · `walk/main.js`(`walkResume`) 행.
+코드 자리는 CODE_MAP 의 `ledger_subgraph.py`(`_still_reaches` · `_reach` · `_kept_walk` · `_keep_walk`) · `runtime/process_pool.py`(`in_pool(pinned_by, gone)` · `here` · `owner_of`) · `trace_router.py`(POST `resume`) · `rnd_board/api.js`(`fetchSubgraph`) · `walk/main.js`(`walkResume`) 행.
 
 ## 🔵 보조 판정 — `aux` (소유자 10-12, `3c4e5a778`)
 

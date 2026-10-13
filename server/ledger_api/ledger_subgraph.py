@@ -33,8 +33,11 @@ import copy
 import json
 import logging
 import re
+import secrets
+import threading
+import time
 import uuid
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
@@ -352,46 +355,164 @@ def _instant(value):
     return value.astimezone(timezone.utc).isoformat()
 
 
-def _packed(resume):
-    """`resume` with each node id written once, in `ids`, and named by its place there everywhere else (총괄 10-12: the
-    frontier and the reach wrote every node again - 2 to 6 MB a page on a seed of 20,000 atoms). `_unpacked` reads it."""
-    ids, at = [], {}
-
-    def n(node_id):
-        if node_id not in at:
-            at[node_id] = len(ids)
-            ids.append(node_id)
-        return at[node_id]
-    cursor = dict(resume.get("cursor") or {})
-    if cursor.get("frontier") is not None:
-        cursor["frontier"] = [n(node_id) for node_id in cursor["frontier"]]
-    return {"as_of": resume["as_of"],
-            "frontier": [[n(item["id"]), item["depth"], item["cost"], item["arrivals"]] for item in resume["frontier"]],
-            "seen": [n(node_id) for node_id in resume["seen"]],
-            "cursor": cursor,
-            "reach": {str(n(seed)): {"parents": [[n(node), n(step[0]), *step[1:]] for node, step in held["parents"].items()],
-                                     "arrived": [[n(node), steps] for node, steps in held["arrived"].items()],
-                                     "kinds": held["kinds"]}
-                      for seed, held in (resume.get("reach") or {}).items()},
-            "ids": ids}
+#: Why a paused walk is gone - the word its 410 carries (총괄 54f7edfdb): the walk processes reloaded, the server
+#: restarted, it went unused too long or was the least recently used past the count, or its process ended; a page
+#: before the kept walk handed back its packed state (총괄 ea9142edd 8).
+WALK_GONE = ("reloaded", "restarted", "expired", "process ended", "server updated")
 
 
-def _unpacked(resume):
-    """The `resume` `_packed` wrote, as the walk reads it."""
-    ids = resume["ids"]
-    cursor = dict(resume.get("cursor") or {})
-    if cursor.get("frontier") is not None:
-        cursor["frontier"] = [ids[i] for i in cursor["frontier"]]
-    return {"as_of": resume["as_of"],
-            "frontier": [{"id": ids[i], "depth": depth, "cost": cost, "arrivals": arrivals}
-                         for i, depth, cost, arrivals in resume["frontier"]],
-            "seen": [ids[i] for i in resume["seen"]],
-            "cursor": cursor,
-            "reach": {ids[int(seed)]: {"parents": {ids[node]: [ids[before], *rest]
-                                                   for node, before, *rest in held["parents"]},
-                                       "arrived": {ids[node]: steps for node, steps in held["arrived"]},
-                                       "kinds": held["kinds"]}
-                      for seed, held in (resume.get("reach") or {}).items()}}
+class WalkExpired(Exception):
+    """A continued page whose paused walk this process no longer keeps - `why` one of WALK_GONE, `said` the detail."""
+
+    def __init__(self, why, said=None):
+        super().__init__(why)
+        self.why, self.said = why, said
+
+
+def walk_expired(why, said=None):
+    """A 410's detail for a continued page whose walk is gone - the one spelling the pool and the walk both raise."""
+    return {"reason": "walk_expired", "why": why,
+            "message": "This walk expired (%s) - walk again" % ("%s: %s" % (why, said) if said else why)}
+
+
+# 🔴 A PAUSED WALK STAYS IN ITS PROCESS (MORE, 총괄 54f7edfdb ㄴ-1): its state - the open nodes as built, the nodes read
+#    whole, the cursor, each seed's reach, the top set - is kept here under a key, and `more.resume` is that key alone.
+#    The next page goes on from it: nothing packed, sent, parsed or built again (page 40 of a 37,000-node walk spent
+#    2.6 s on its 9 MB token and 2.4 s rebuilding its open nodes). The key begins with `process_pool.here()`, so the
+#    walk pool sends the next page to this process.
+# 🔴 SAME KEY, SAME PAGE (총괄 9752e91f7 (i)): every page has a key of its own - `<here>.<walk>.<page>` - and the state
+#    it names is only read by the next page, so asking it again (× then More, More twice, a retry) answers the same
+#    bytes. The key before goes when its next is asked; the last page's key stays until the walk is swept.
+_KEPT = OrderedDict()          # key -> {"state", "asked", "walk", "page"}
+_WALKS = OrderedDict()         # walk -> {"lock", "used", "keys", "nodes"}, least recently used first
+_GONE = OrderedDict()          # walk -> (why, said) for the last GONE_SAID walks that ended - a page turn is not one
+GONE_SAID = 200               # a walk that ended before the last 200 is told «process ended»
+_KEPT_LOCK = threading.Lock()
+#: How often the process sweeps what it keeps between pages - `walk_live_minutes` is a clock, not the next request.
+SWEEP_SECONDS = 30
+_SWEEPER = [None]
+
+
+def _gone_walk(walk, why, said):
+    """`walk` ends - its keys go and why is kept for the walk."""
+    for key in _WALKS.pop(walk)["keys"]:
+        _KEPT.pop(key, None)
+    _GONE[walk] = (why, said)
+    while len(_GONE) > GONE_SAID:
+        _GONE.popitem(last=False)
+
+
+def _why_gone(key):
+    """Why the page `key` names is not kept: its walk went on past it, the walk ended (why), or this process never kept
+    it."""
+    walk = key.rsplit(".", 1)[0]
+    if walk in _WALKS:
+        return "expired", "a later page of this walk was asked"
+    return _GONE.get(walk, ("process ended", None))
+
+
+def end_kept_walks(why):
+    """Every walk this process keeps ends - a reload, a table config save (총괄 ea9142edd 6: with walk_processes 0 the
+    walks live in the web process, which no pool recycle renews)."""
+    with _KEPT_LOCK:
+        for walk in list(_WALKS):
+            _gone_walk(walk, why, None)
+
+
+def _sweep_kept():
+    """Under `_KEPT_LOCK`: the walks unused past `walk_live_minutes` go, then the least recently used while more than
+    `walk_live_walks` are kept or they hold more than `walk_live_nodes` nodes; one being walked (its lock held) stays,
+    and so does the newest."""
+    from runtime import process_pool
+
+    now, minutes, most = time.monotonic(), process_pool.live_minutes(), process_pool.live_walks()
+    most_nodes = process_pool.live_nodes()
+    for walk, held in list(_WALKS.items()):
+        if now - held["used"] > minutes * 60 and not held["lock"].locked():
+            _gone_walk(walk, "expired", "unused for more than %g min" % minutes)
+    for walk, held in list(_WALKS.items())[:-1]:
+        nodes = sum(each["nodes"] for each in _WALKS.values())
+        if len(_WALKS) <= most and nodes <= most_nodes:
+            break
+        if not held["lock"].locked():
+            _gone_walk(walk, "expired", "%d newer walks are kept in its process" % most if len(_WALKS) > most
+                       else "kept walks in this process hold %d nodes - the oldest was let go" % nodes)
+
+
+def _sweeping():
+    while True:
+        time.sleep(SWEEP_SECONDS)
+        try:
+            with _KEPT_LOCK:
+                _sweep_kept()
+        except Exception as exc:                            # noqa: BLE001 - the clock goes on; the next sweep tries again
+            logging.getLogger(__name__).error("[Walk] kept walks not swept: %s: %s", type(exc).__name__, exc)
+
+
+def _asked(seed_id, lookup, declaration_paths, aux, arguments):
+    """The question a page answered - a continued page asks it again to go on (worlds and interval are the lookup's; an
+    argument given as None is one not given)."""
+    return json.dumps([seed_id, declaration_paths, aux, {name: value for name, value in arguments.items()
+                                                          if value is not None}, getattr(lookup, "worlds", None),
+                       getattr(lookup, "since", None), getattr(lookup, "until", None),
+                       getattr(lookup, "current_only", None)], sort_keys=True, default=str)
+
+
+def _kept_walk(token, asked):
+    """-> (entry, walk) of the page `token` names, the walk's lock held for this page; the walk's keys before it go.
+    WalkExpired when this process does not keep it; ValueError when `token` is not a page's `more.resume` or the
+    question is not the walk's own."""
+    key = token.get("walk") if isinstance(token, dict) else None
+    if not isinstance(key, str):
+        if isinstance(token, dict) and "as_of" in token:   # a page from before the kept walk, its state packed
+            raise WalkExpired("server updated", "the server was updated since this walk's first page")
+        raise ValueError("resume must be a page's more.resume as it came")
+    with _KEPT_LOCK:
+        entry = _KEPT.get(key)
+        if entry is not None:                               # used first - a sweep lets the others go before it
+            if entry["asked"] != asked:
+                raise ValueError("resume belongs to another walk - ask its next page with the question of its first")
+            held = _WALKS[entry["walk"]]
+            held["used"] = time.monotonic()
+            _WALKS.move_to_end(entry["walk"])
+        _sweep_kept()
+        if _KEPT.get(key) is None:
+            raise WalkExpired(*_why_gone(key))
+    held["lock"].acquire()
+    with _KEPT_LOCK:
+        entry = _KEPT.get(key)                              # read again: the same page asked twice kept it again
+        if entry is None:                                   # gone while this page waited (a sweep, a reload)
+            held["lock"].release()
+            raise WalkExpired(*_why_gone(key))
+        for older in [each for each in held["keys"] if _KEPT[each]["page"] < entry["page"]]:
+            held["keys"].discard(older)
+            _KEPT.pop(older, None)
+    return entry, held
+
+
+def _keep_walk(entry, state, asked):
+    """`state` kept under the next page's key of `entry`'s walk (None: a new walk) -> that key."""
+    from runtime import process_pool
+
+    with _KEPT_LOCK:
+        if entry is None:
+            walk, page = "%s.%s" % (process_pool.here(), secrets.token_hex(8)), 1
+            _WALKS[walk] = {"lock": threading.Lock(), "used": time.monotonic(), "keys": set(), "nodes": 0}
+        else:
+            walk, page = entry["walk"], entry["page"] + 1
+        key = "%s.%d" % (walk, page)
+        if walk not in _WALKS:                              # ended while this page was walked - its key says why
+            return key
+        _KEPT[key] = {"state": state, "asked": asked, "walk": walk, "page": page}
+        _WALKS[walk]["keys"].add(key)
+        # its newest page's: open, read whole, and what each seed reached - the bulk of a many-seed walk (ea9142edd 2)
+        _WALKS[walk]["nodes"] = len(state["built"]) + len(state["seen"]) + sum(
+            len(reach["parents"]) for reach in (state.get("reach") or {}).values())
+        _sweep_kept()
+        if _SWEEPER[0] is None:
+            _SWEEPER[0] = threading.Thread(target=_sweeping, name="kept-walk-sweep", daemon=True)
+            _SWEEPER[0].start()
+    return key
 
 
 def _as_of_bound(instant):
@@ -1243,6 +1364,7 @@ def reset_declaration_cache():
     order came from the new one - the split this module's 「one read」 note exists to stop.
     """
     _declaration_facts.clear()
+    end_kept_walks("reloaded")                              # a paused walk read the declarations it was walked under
 
 
 def _declared_plural_attributes(entity_type):
@@ -2282,7 +2404,19 @@ def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, aux=None, **
     try:
         if page is not None:
             return _time_page(seed_id, lookup, page, **arguments)
-        payload = _walk(seed_id, lookup, **arguments)
+        resume = arguments.pop("resume", None)
+        resumable = arguments.pop("resumable", False) or resume is not None
+        asked = _asked(seed_id, lookup, declaration_paths, aux, arguments)
+        entry, held = _kept_walk(resume, asked) if resume is not None else (None, None)
+        try:
+            payload = _walk(seed_id, lookup, resume=entry["state"] if entry else None, **arguments)
+            kept = payload["more"]["resume"]
+            # 🔴 KEPT ONLY FOR A CALLER THAT WILL ASK THE NEXT PAGE (총괄 9752e91f7): the walk screen says so; a board
+            #    panel, the test bed, a mapper or a rows read gets the cut answer without a key, as before.
+            payload["more"]["resume"] = {"walk": _keep_walk(entry, kept, asked)} if kept and resumable else None
+        finally:
+            if held is not None:
+                held["lock"].release()
         if aux:
             _judge_aux(payload, aux, lookup, arguments.get("edge_limit", DEFAULT_EDGE_LIMIT),
                        arguments.get("static_types"))
@@ -3025,16 +3159,17 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #    paused and continued: before the seeds, so a seed the page before answered is not counted again.
     done, cursor, as_of = set(), None, datetime.now(timezone.utc)
     if resume is not None:
-        resume = _unpacked(resume)
         as_of = _parse_instant(resume["as_of"])
         lookup = copy.copy(lookup)
         lookup.recorded_before = _as_of_bound(as_of)
         taken_back = {str(item["id"]): item for item in resume.get("frontier") or ()}
-        done.update(str(item) for item in resume.get("seen") or ())
+        done.update(resume.get("seen") or ())
         known.update(done, taken_back)
         for node_id, item in taken_back.items():
-            ref = decode_node_id(node_id)
-            nodes[node_id], refs[node_id] = _entity_node(ref["type"], ref["keys"]), ref
+            # as the page before built them - a copy: this page stamps the seeds again, and the state its key names
+            # answers the same page when asked again (총괄 9752e91f7)
+            node, refs[node_id] = resume["built"][node_id]
+            nodes[node_id] = dict(node)
             depths[node_id], dep_cost[node_id] = int(item["depth"]), int(item["cost"])
             arrivals[node_id] = {tuple(step) for step in item.get("arrivals") or ()}
         cursor = resume.get("cursor")
@@ -3063,7 +3198,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                                            "arrivals": sorted((list(step) for step in arrivals.get(node_id, ())),
                                                               key=str)}
                                           for node_id in open_ids],
-                             "seen": sorted(whole), "cursor": at}}
+                             "seen": whole, "cursor": at}}
 
     def _reads(group, group_follow):
         """What one frontier group reads, in order: an opened bundle's predicate first, then the
@@ -3295,14 +3430,18 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # Those carry a BORROWED `original_predicate` (mostly "observed"), so counting them would
     # report observations nobody recorded.  `claim_id` is the discriminant because it is the
     # atom's own id: no name matching, and nothing to keep in step with a rename.
-    attached_claims = {node_id: {} for node_id in nodes}
+    # 🔴 THIS PAGE'S NODES (MORE, 총괄 54f7edfdb): a node a page before drew and handed on is not tallied, registered nor
+    #    judged again on every page after (page 40 of a 37,000-node walk: 2.3 of its 11.1 s). The seeds are drawn every page.
+    page = {node_id: node for node_id, node in nodes.items() if node_id not in known or node_id in seed_signs}
+    attached_claims = {node_id: {} for node_id in page}
     for edge in edges.values():
         claim_id = edge.get("claim_id")
         if not claim_id:
             continue
         for endpoint in (edge["source"], edge["target"]):
-            attached_claims[endpoint][claim_id] = edge["predicate"]
-    for node_id, node in nodes.items():
+            if endpoint in attached_claims:
+                attached_claims[endpoint][claim_id] = edge["predicate"]
+    for node_id, node in page.items():
         node["depth"] = depths[node_id]
         if node.get("node_kind") in {"entity", "event"}:
             node["claim_count"] = len(attached_claims[node_id])
@@ -3337,7 +3476,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # caller's, not this module's: `ledger_subgraph` reads no declaration at all.
     registration_refs = []
     if registration_follow:
-        for node in nodes.values():
+        for node in page.values():
             try:
                 ref = decode_node_id(node["id"])
             except ValueError:
@@ -3367,9 +3506,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # different answers.
     from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
 
-    _apply_registrations(nodes, registrations, order)
-    _apply_current_conflicts(nodes, fetched, cardinalities)
-    ordered_nodes = sorted(nodes.values(), key=lambda item: (
+    _apply_registrations(page, registrations, order)
+    _apply_current_conflicts(page, fetched, cardinalities)
+    ordered_nodes = sorted(page.values(), key=lambda item: (
         item["depth"], item["node_kind"], item["label"], item["id"]))
     # 🔴 THE LAST STEP, AND ONLY ON THIS LIST. `nodes` (the dict) still holds everything
     # reached, so `seed` and `propagation` below read the full population - which is the
@@ -3379,7 +3518,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     visible_nodes = [item for item in ordered_nodes if carried(item)]
     for edge_id, edge in edges.items():
         edge["records"], edge["records_more"] = _newest_records(edge_records[edge_id].values())
-    _say_image_values(nodes.values(), edges.values())
+    _say_image_values(page.values(), edges.values())
     ordered_edges = sorted(edges.values(), key=lambda item: (
         min(depths[item["source"]], depths[item["target"]]),
         item["predicate"], item["id"]))
@@ -3399,7 +3538,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     if seed_cut: reasons.append("seeds")
     # 🔴 THE VERDICTS NEED THE CUTS, so they are folded once the budget is known — the same
     # walk, no second pass over the store.
-    _absence_verdicts(nodes, not reasons, reasons[0] if reasons else None)
+    _absence_verdicts(page, not reasons, reasons[0] if reasons else None)
     payload = {
         # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
         #    하니스·계약·서버 시험 전수), 「다를 때 무엇을 하나」가 «어디에도» 안 적혀 있었으며,
@@ -3492,9 +3631,17 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # ㄴ - present only when `fanout_limit` was asked, as `groups` is for `group_by`.
         **({} if fanout_limit is None else {"bundles": bundles}),
     }
+    # 🔴 A PAGE IS A DELTA (총괄 54f7edfdb, 소유자 «쪽은 차이»): a continued page's top_set is the nodes that came into the
+    #    top set on it, `top_set_left` the ones that left it - the pages read in turn are the one walk's top set.
+    top_now = list((payload.get("propagation") or {}).get("top_set") or ())
+    if resume is not None and "top_set" in (payload.get("propagation") or {}):
+        before = resume.get("top_set") or set()
+        payload["propagation"]["top_set"] = [node_id for node_id in top_now if node_id not in before]
+        payload["propagation"]["top_set_left"] = sorted(before - set(top_now))
     if more["resume"] is not None:
-        more["resume"]["reach"] = reached              # where the next page's ranking goes on from
-        more["resume"] = _packed(more["resume"])
+        more["resume"].update(reach=reached, top_set=set(top_now),                 # where the next page goes on from
+                              built={item["id"]: (nodes[item["id"]], refs[item["id"]])
+                                     for item in more["resume"]["frontier"]})
     if rows:
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.

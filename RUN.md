@@ -1,5 +1,45 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **걷기 이어 가기 다시 착지 — 같은 열쇠 = 같은 쪽 · 이어 갈 화면만 남김 · 시계로 쓸기 (총괄 9752e91f7, d5df12352 NO-GO 뒤)** — 이주 «없음» · 재기동 «서버» · 클라 반쪽(resumable)과 같이 병합
+>
+> ```
+> 무엇     멈춘 걷기의 열쇠가 쪽마다 바뀐다 — 같은 열쇠를 다시 물으면 같은 쪽(× 뒤 More · 두 번 누름 · 다시 보냄)
+>          앞 열쇠는 그 다음 열쇠가 물어질 때 간다 · 마지막 쪽 열쇠는 쓸어 갈 때까지 남음
+>          남기는 것은 첫 쪽을 resumable=true 로 물은 걷기(걷기 화면)만 — 보드 패널 · 시험대 · 체인 맵퍼 · rows 는 잘려도 resume null
+>          walk_live_minutes 는 걷기 프로세스 안 시계(30 초)가 지킨다 · 리로드는 그 프로세스의 멈춘 걷기를 다 reloaded
+>          이어지는 쪽이 그 걷기를 쥔 프로세스를 기다리는 것은 walk_seconds_max 따로, 쪽은 그 뒤 새 시한
+> 볼 것    걷기 화면 More — 410 의 detail.why · message
+>            This walk expired (expired: a later page of this walk was asked) - walk again   <- × 두 번 뒤 More
+>            This walk expired (expired: unused for more than 10 min) - walk again
+>            This walk expired (expired: 4 newer walks are kept in its process) - walk again
+>            This walk expired (expired: kept walks in this process hold N nodes - the oldest was let go) - walk again
+>          503 walk_pool_busy «The walk process keeping this walk stayed busy for N s with another walk - ask More again»
+> 답의 뜻   × 한 번 뒤 More 가 같은 쪽 -> 정상(같은 열쇠)
+>          × 두 번 뒤 More 가 410 «a later page …» -> 정상. Walk again 으로 처음부터
+>          «4 newer walks …» · «… hold N nodes …» 가 잦다 -> 상한을 올리기 전에 아래 메모리 줄을 본다
+>          쪽이 walk_timed_out 이면 그 걷기 프로세스를 내린다 — 그 프로세스가 쥔 다른 걷기도 process ended
+>          process ended 인데 내린 프로세스가 없었다 -> 그 걷기가 끝난 뒤 그 프로세스에서 걷기 200 개가 더 끝남(why 를 잊음)
+>          This walk expired (server updated: …) -> 서버를 바꾸기 전에 연 걷기. Walk again
+> 설정     ingestion_settings.json walk_live_walks(4) · walk_live_nodes(300000) · walk_live_minutes(10) · walk_seconds_max(120)
+>          — 요청 · 쓸기마다 읽음. 메모리가 모자라면 walk_live_nodes 를 낮춘다(다음 쓸기부터 · 재기동 없음)
+>          ⚠️ 큰 걷기 하나에는 안 듣는다 — 가장 새 걷기 · 걷는 중 걷기는 상한이 안 민다. 더 새 걷기가 오거나
+>             walk_live_minutes 가 지나야 간다
+> 이 판에서 assy_impl_wm_1012 읽기 전용 · 이 프로세스 안 걷기 라우트 · node_limit 1000 · hops 12 · 박스 판, 운영 주장 아님
+>          씨앗 1(웨이퍼)    48 쪽 · 다시 물음 47/47 같은 쪽 · 토큰 48~49 바이트 · 쪽 1 2.5 s · 쪽 10 3.2 s · 쪽 25 3.4 s · 쪽 40 4.2 s
+>          씨앗 121(웨이퍼 1 + 다이 120)  25 쪽까지 · 다시 물음 24/24 같은 쪽 · 토큰 48~49 바이트 · 쪽 1 3.3 s · 쪽 10 8.0 s · 쪽 25 7.5 s
+>          보관 크기(쪽 열쇠가 닿는 객체, 공유는 한 번 — 하한)
+>            씨앗 1   쪽 10 이 열쇠 16 MB · 앞 열쇠까지 21 MB · 쪽 25 이 열쇠 57 MB · 앞 열쇠까지 74 MB · 쪽 40 이 열쇠 97 MB · 앞 열쇠까지 130 MB
+>            씨앗 121 쪽 10 이 열쇠 36 MB · 앞 열쇠까지 45 MB · 쪽 25 이 열쇠 149 MB · 앞 열쇠까지 198 MB
+>          121 씨앗 걷기 하나가 쪽 25 에 198 MB — 개수 4 만으로는 걷기 프로세스 2 에 하한 1.6 GB
+>          그래서 노드 수 상한 — 센 노드 = 열린 + 다 읽은 + 씨앗마다 닿은 노드. 씨앗 하나 쪽 10 이 노드당 1.9 KB(20.7 MB ÷ 10,973)로
+>          가장 커서 600 MB ≈ 300,000 노드(121 씨앗 쪽 25 는 0.69 KB)
+>          메모리  가장 새 · 걷는 중 걷기를 뺀 나머지가 약 600 MB, 가장 새 걷기는 씨앗 수 × 닿음만큼(씨앗 500 · 4 쪽 걷기 하나 — 센 노드 1,253,000 · 455 MB, 총괄 b47c7c8a3 잼)
+>                  합계는 그 × walk_processes(walk_processes 0 이면 웹 프로세스 하나)
+> ⚠️ 안 잰 것  허브 씨앗(허브 가지 — main 밖) · 걷기 풀 경유 초(이 판은 프로세스 안) · 쪽 25 넘은 121 씨앗
+> ```
+>
+> ---
+>
 > ## [10-13] **그리드 행 수 — 표 전체는 일꾼이 미리 센 수와 그 시각 · 거르면 10,000 까지 (소유자 ㄱ · 총괄 67e5e9ccd ㄱ-1)** — 이주 «없음» · 재기동 «서버» · 클라 반쪽과 같이 병합
 >
 > ```
@@ -111,16 +151,6 @@
 > ```
 > 지금      확정 칸과 같은 이름의 집계는 다시 «쓰이지 않음»(전과 같음 — 그 칸은 확정 · 사람 값만). 다시 짓는 중(구현자 B)
 > 이미 쓰인 값 4bb3b4d85 로 체인이 쓴 그 칸 값은 남음 — 다시 지은 것이 착지하면 다시 셈
-> ```
->
-> ---
->
-> ## [10-13] ⚠️ **걷기 More «걷기 프로세스가 들고 있기»(d5df12352) 되돌림 — 같은 More 를 다시 누르면 쪽이 조용히 빠졌다 (총괄 착지 뒤 검수 NO-GO)** — git pull · 서버 재기동
->
-> ```
-> 무엇     More 가 10-12 방식(쪽마다 토큰을 주고받음)으로 돌아감 — 늦은 쪽이 느리고 토큰이 크지만 답은 맞다. 410 «walk expired» 는 이제 안 나온다
-> 왜       같은 열쇠를 다시 물으면(× 뒤 More · More 두 번 · 다시 보내기) 다음 쪽이 와서 그 쪽이 빠지고, 마지막 쪽은 «complete» 라고 말했다
-> 다음     구현자 A 가 «같은 열쇠 = 같은 쪽»으로 고쳐 다시 착지
 > ```
 >
 > ---
@@ -591,7 +621,7 @@
 >
 > ```
 > 무엇     이어 걷기 다음 쪽이 앞 쪽에서 걸은 걸음의 술어를 [] 로 보내 « →  → in_container » 처럼 비던 것 — 이제 «in_container → bonded_from → in_container»
->          같이: 이어 걷기의 되돌려 보내는 정보(resume)가 절반 크기(노드 id 를 한 번만 적음) — 화면은 그대로
+>          같이: 이어 걷기의 되돌려 보내는 정보(resume)가 절반 크기(노드 id 를 한 번만 적음) — 화면은 그대로 (⚰️ 10-13: resume 은 이제 열쇠 하나)
 > 볼 것    걷기에서 More ▸ 를 눌러도 표 행의 경로 줄에 술어 이름이 남으면 끝
 > ```
 
@@ -614,6 +644,8 @@
 > 뜻      more.reach.<타입>.complete false = 그 타입에 닿을 노드가 남음 · resume null = 다 걸음 · 쪽마다 상한은 그대로
 >          원자 수만 개 씨앗: 첫 쪽 노드 0 이어도 complete false 면 이어 걷기로 닿는다(2만 원자 판: 4 쪽째)
 > 끄는 법  스위치 없음 — resume 을 안 보내면 답은 오늘과 같다(more 칸 하나 더)
+> 🆕 10-13  resume 은 열쇠 하나 — 멈춘 걷기는 그 걷기 프로세스에 산다. 리로드 · 재기동 · 오래 안 씀 · 프로세스 끝이면 More 가 410 walk_expired
+>          resumable=true 로 물은 첫 쪽만 열쇠를 받는다 · 열쇠는 쪽마다 · 같은 열쇠 = 같은 쪽 (총괄 9752e91f7)
 > 볼 것    서버 로그에 새 줄 없음
 > ```
 
