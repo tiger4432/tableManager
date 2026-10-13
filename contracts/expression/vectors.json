@@ -32,6 +32,8 @@
     "                `expect_rows` = one answer per row, in row order. A vector carries exactly one of the two.",
     "                null = empty. Numbers equal when |got - expect| <= 1e-9 * max(1, |expect|). Integer / Real /",
     "                Decimal types are not scored.",
+    "                `types` {column: \"datetime\"} (table_config's column_types words): Min and Max over a datetime",
+    "                column compare instants and answer the row's value as written (lead 10-13, basis decided).",
     "  unsettled     NOT scored - where an open cell goes: what is open and why. To settle one, move it into vectors",
     "                with its basis; do not pick an answer in a calculator. Empty after the lead's 10-13 rulings.",
     "                An aggregate inside an If / Case branch folds only that branch's rows (the pages' worked examples).",
@@ -3114,6 +3116,132 @@
       ],
       "basis": "doc-stated",
       "cite": "Logic «More about using case»: Case Max 4 4 4 4 5 8 8 8"
+    },
+    {
+      "id": "time.min",
+      "expr": "Min([t])",
+      "types": {
+        "t": "datetime"
+      },
+      "rows": [
+        {
+          "t": "2026-10-03T00:00:00Z"
+        },
+        {
+          "t": "2026-10-01T00:00:00Z"
+        },
+        {
+          "t": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": "2026-10-01T00:00:00Z",
+      "basis": "decided",
+      "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
+    },
+    {
+      "id": "time.max",
+      "expr": "Max([t])",
+      "types": {
+        "t": "datetime"
+      },
+      "rows": [
+        {
+          "t": "2026-10-03T00:00:00Z"
+        },
+        {
+          "t": "2026-10-01T00:00:00Z"
+        },
+        {
+          "t": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": "2026-10-03T00:00:00Z",
+      "basis": "decided",
+      "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
+    },
+    {
+      "id": "time.min.blank",
+      "expr": "Min([t])",
+      "types": {
+        "t": "datetime"
+      },
+      "rows": [
+        {
+          "t": null
+        },
+        {
+          "t": "2026-10-02T00:00:00Z"
+        },
+        {
+          "t": ""
+        },
+        {
+          "t": "2026-10-05T00:00:00Z"
+        }
+      ],
+      "expect": "2026-10-02T00:00:00Z",
+      "basis": "decided",
+      "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
+    },
+    {
+      "id": "time.min.offset.same.instant",
+      "expr": "Min([t])",
+      "types": {
+        "t": "datetime"
+      },
+      "rows": [
+        {
+          "t": "2026-10-01T09:00:00+09:00"
+        },
+        {
+          "t": "2026-10-01T00:00:00Z"
+        },
+        {
+          "t": "2026-10-01T05:00:00Z"
+        }
+      ],
+      "expect": "2026-10-01T09:00:00+09:00",
+      "basis": "decided",
+      "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
+    },
+    {
+      "id": "time.max.not.a.time",
+      "expr": "Max([t])",
+      "types": {
+        "t": "datetime"
+      },
+      "rows": [
+        {
+          "t": "2026-10-01T00:00:00Z"
+        },
+        {
+          "t": "late"
+        },
+        {
+          "t": "2026-10-02T00:00:00Z"
+        }
+      ],
+      "expect": "2026-10-02T00:00:00Z",
+      "basis": "decided",
+      "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
+    },
+    {
+      "id": "time.min.all.blank",
+      "expr": "Min([t])",
+      "types": {
+        "t": "datetime"
+      },
+      "rows": [
+        {
+          "t": null
+        },
+        {
+          "t": null
+        }
+      ],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
     }
   ],
   "ours": [
