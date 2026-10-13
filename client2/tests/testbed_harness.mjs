@@ -603,7 +603,7 @@ const MUTANTS = [
   { id: 'M14b', what: 'the walk page\'s reading keeps an absent sign as a control (the - list every not-+)', catches: 'T20', file: 'rnd_board/marking_store.js',
     mutate: (t) => swap(t, '  return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };', '  return { positive: of(SIGN.CASE), negative: [...sign].filter(([, s]) => s !== SIGN.CASE).map(([id]) => id) };') },
   { id: 'M15', what: 'All walks with no seed', catches: 'T9a', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, "    const params = seeds.all ? { ...base, seed_type: this.decl.row }", '    const params = seeds.all ? { ...base }') },
+    mutate: (t) => swap(t, "    const params = seeds.all ? { ...base, seed_type: this.rowType() }", '    const params = seeds.all ? { ...base }') },
   { id: 'M16', what: 'a drag adds instead of replacing', catches: 'T9b', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, "    if (mode === 'add') { for (const id of ids) this.markings.set(this.writes, id, sign); return; }", '    { for (const id of ids) this.markings.set(this.writes, id, sign); return; }') },
   { id: 'M17', what: 'a hub not opened into its members when the marking is shown', catches: 'T8', file: 'testbed/hubs.js',
@@ -635,7 +635,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '{ paint, colored, askMarked, palette: this.palette(), declaration: this.decl }', '{ paint, colored, askMarked, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
+    mutate: (t) => swap(t, '{ paint, colored, askMarked, palette: this.palette(), declaration: this.decl, start }', '{ paint, colored, askMarked, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start }') },
   // M31 (a words-only pill opens the picker) retired 10-14: the template draws a pill only for a slot it holds.
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
     mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);') },

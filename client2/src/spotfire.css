@@ -20,7 +20,9 @@
      status     .sf-status
      panel      .sf-panel · __h - light in both themes; the properties panel .sf-props__* ; the filters panel .sf-filter__*
      popover    .sf-pop-host · .sf-pop · __col · __lab · __it (.is-on) · __n · __hr · __reds · __red (.is-on) · __why · __edit · __line · __expr
-     button     .sf-btn */
+     button     .sf-btn
+     sheet      .sf-sheet · __bar · __name · __input · __lab · __fmt · __fmtx · __say · __wrap · __grid (td .is-num · .is-sel ·
+                .is-key · .is-err) · __edit */
 
 .sf { font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); color: var(--sf-text); background: var(--sf-page); }
 
@@ -202,3 +204,24 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-pop__line { display: flex; gap: 8px; padding: 0 16px; }
 .sf-pop__expr { flex: 1; min-width: 0; box-sizing: border-box; height: 28px; padding: 1px 6px; border: 1px solid var(--sf-panel-line);
   background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
+
+/* ── a sheet (owner 10-13): the formula bar - the cell picked, its input, its format, Key - a line for a reason, the A1
+   grid on the table's lines; a cell picked is drawn with the active line, the key with the marked colour's edge ── */
+.sf-sheet { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 4px; min-height: 0; }
+.sf-sheet__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.sf-sheet__name { flex: none; min-width: 48px; height: var(--sf-pill-h); line-height: calc(var(--sf-pill-h) - 2px); padding: 0 6px; box-sizing: border-box;
+  border: 1px solid var(--sf-pill); color: var(--sf-text); white-space: nowrap; }
+.sf-sheet__input, .sf-sheet__fmt, .sf-sheet__fmtx, .sf-sheet__edit { box-sizing: border-box; min-height: 0; margin: 0; border: 1px solid var(--sf-pill); border-radius: 0;
+  background: var(--sf-bg); color: var(--sf-text); font: inherit; letter-spacing: normal; }
+.sf-sheet__input { flex: 1 1 160px; min-width: 0; height: var(--sf-pill-h); padding: 1px 6px; }
+.sf-sheet__lab { flex: none; color: var(--sf-text-2); }
+.sf-sheet__fmt { flex: none; height: var(--sf-pill-h); padding: 0 4px; }
+.sf-sheet__fmtx { flex: none; width: 80px; height: var(--sf-pill-h); padding: 1px 6px; }
+.sf-sheet__say { min-height: var(--sf-lh); color: var(--sf-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-sheet__wrap { overflow: auto; min-height: 0; min-width: 0; }
+.sf-sheet__grid td { text-align: left; }
+.sf-sheet__grid td.is-num { text-align: right; }
+.sf-sheet__grid td.is-sel { outline: var(--sf-active-w) solid var(--sf-active); outline-offset: calc(-1 * var(--sf-active-w)); }
+.sf-sheet__grid td.is-key { padding-left: 6px; font-weight: 700; box-shadow: inset 3px 0 0 var(--sf-sheet-key, var(--sf-one)); }   /* its row's Color by, the root's */
+.sf-sheet__grid td.is-err { color: var(--sf-error); }
+.sf-sheet__edit { width: 100%; height: 100%; padding: 0 2px; border: 0; }

@@ -8,7 +8,8 @@
 //                filter: [conditions], limit: {markings, must, none} | null, encode: {slotKey: slot}, writes: name }
 //   the markings it RECEIVES - start.marking (walked from) and limit.markings; the one it EMITS - writes, the one a press
 //   marks and the one it shows marked (Spotfire's one «Marking»). markingsOf is the one place that reads the three.
-//   start.marking null - «All»: every node of the row type (seed_type)
+//   start.marking null - «All»: every node of the row type (seed_type); start.node - one node written, «type("key", …)»
+//   (a sheet's key cell, owner 3b97fcfb9), its type the row type when the declaration names none
 //   system - the system filter it uses (Spotfire «Use filtering from page»), null none; filter - its own final conditions
 //   limit - Spotfire's «Limit data using markings» (owner 10-13): only the rows the named markings hold (limitRows)
 //
@@ -17,7 +18,7 @@
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
-import { readSlot, slotWords, rawOf } from './slot.js';
+import { readSlot, readSlots, slotWords, rawOf } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
@@ -26,7 +27,8 @@ import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from '
 import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds } from './route.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
-import { truncationAxes } from '../rnd_board/api.js';
+import { truncationAxes, entitySeedId } from '../rnd_board/api.js';
+import { compile, run } from '../expression.js';
 import { paletteOf } from './palette.js';
 
 export class VisualPart extends Panel {
@@ -80,6 +82,12 @@ export class VisualPart extends Panel {
     const read = unit === 'node' ? own : own.map((s) => ({ ...s, folds: true, records: unit === 'record' }));
     // Color by is the root's - every kind holds it (color_by.js).
     return [...read, ...(this.kind && this.kind.units ? markerSlots(this.decl.encode) : []), COLOR_SLOT];
+  }
+
+  /** The slots it reads, by key: a slot the kind hands with its own (a sheet's cell) or the declaration's. */
+  slotsHeld() {
+    const encode = this.decl.encode || {};
+    return Object.fromEntries(this.slotList().map((s) => [s.key, s.slot || encode[s.key]]).filter(([, slot]) => slot));
   }
 
   mount() {
@@ -166,10 +174,31 @@ export class VisualPart extends Panel {
   onMarkingChanged() { this.refold(); }
   onResize() { if (this.drawn) this.drawn.resize(); else this.render(); }
 
-  /** The seeds: «All» - the row type described; else the start marking's entries, a hub its members. */
+  /** A start written as one node (`start.node`): its id by the page's node types (expression.js type("key")), or why not. */
+  startNode() {
+    const text = this.start && this.start.node;
+    if (!text) return null;
+    const entities = ((this.vocabulary() || {}).entities) || [];
+    const nodes = Object.fromEntries(entities.filter((e) => e && e.type).map((e) => [e.type, { keys: e.keys || [], id: (k) => entitySeedId(e.type, k) }]));
+    const c = compile(text, { nodes });
+    if (!c.ok) return { why: c.why };
+    const out = run(c, []);
+    return typeof out.value === 'string' ? { id: out.value } : { why: out.why || `${text} names no node` };
+  }
+
+  /** Its row type: the declaration's, else a written start's own type. */
+  rowType() {
+    if (this.decl.row) return this.decl.row;
+    const s = this.startNode();
+    return s && s.id ? typeOfStart(s.id) : null;
+  }
+
+  /** The seeds: a written start - that node; «All» - the row type described; else the start marking's entries, a hub
+   *  its members. */
   seeds() {
+    if (this.start && this.start.node) { const s = this.startNode(); return s && s.id ? { positive: [s.id] } : null; }
     const name = this.start && this.start.marking;
-    if (!name) return this.decl.row ? { all: true } : null;
+    if (!name) return this.rowType() ? { all: true } : null;
     const got = seedsOf(this.markings.entries(name), (id) => this.hubs.open(id));
     return got.positive.length ? got : null;
   }
@@ -178,8 +207,9 @@ export class VisualPart extends Panel {
    *  no route is known. */
   routes() {
     const name = this.start && this.start.marking;
-    const first = name && this.markings ? this.markings.entries(name)[0] : null;
-    return first ? routesFor(this.vocabulary(), typeOfStart(first[0]), this.decl.row) : [];
+    const written = this.start && this.start.node ? (this.startNode() || {}).id : null;
+    const first = written || (name && this.markings ? (this.markings.entries(name)[0] || [])[0] : null);
+    return first ? routesFor(this.vocabulary(), typeOfStart(first), this.rowType()) : [];
   }
 
   route() { return routeOf(this.decl, this.routes()); }
@@ -188,7 +218,7 @@ export class VisualPart extends Panel {
    *  type the walk reached. */
   rowsOf(answer) {
     if (this.walkedRoute && this.walkedSeeds) return routeEnds(answer, this.walkedSeeds, this.walkedRoute);
-    return ((answer && answer.nodes) || []).filter((n) => n.type === this.decl.row).map((n) => n.id);
+    return ((answer && answer.nodes) || []).filter((n) => n.type === this.rowType()).map((n) => n.id);
   }
 
   systemConditions() {
@@ -197,6 +227,11 @@ export class VisualPart extends Panel {
 
   async load() {
     const seeds = this.seeds();
+    // A kind of cells (the sheet) draws before it has a start - its key is one of its cells.
+    if (!seeds && this.kind && this.kind.cells) {
+      this.walking += 1; this.walkedSeeds = []; this.walkedRoute = null; this.answer = { nodes: [], edges: [] }; this.state = 'ready';
+      this.refold(); this.prune(new Set()); return;
+    }
     if (!seeds) { this.state = 'no-start'; this.answer = null; this.publish(); this.render(); this.prune(new Set()); return; }
     const ticket = (this.walking += 1);
     this.state = 'walking';
@@ -205,7 +240,7 @@ export class VisualPart extends Panel {
     this.walkedRoute = seeds.all ? null : this.route();
     // The walk from every seed does not hang on the system filter: one in hand for the same seeds is taken again (a
     // filter changed), and only the start side is judged anew.
-    const asked = JSON.stringify([seeds, this.decl.row, this.walkedRoute]);
+    const asked = JSON.stringify([seeds, this.rowType(), this.walkedRoute]);
     let res = this.seedWalk && this.seedWalk.asked === asked ? this.seedWalk.res : await this.walkFrom(seeds);
     if (ticket !== this.walking) return;
     if (res.ok) this.seedWalk = { asked, res };
@@ -258,8 +293,8 @@ export class VisualPart extends Panel {
     // The walk's budget: the page's, then the declaration's own (`walk`: node_limit, hops - the server's names).
     const base = { ...this.walkParams, ...(this.decl.walk || {}) };
     // Along its route: the route's predicates and steps and its slots' (route.js walkOfRoute).
-    const along = !seeds.all && this.walkedRoute ? walkOfRoute(this.walkedRoute, this.decl.encode) : {};
-    const params = seeds.all ? { ...base, seed_type: this.decl.row }
+    const along = !seeds.all && this.walkedRoute ? walkOfRoute(this.walkedRoute, this.slotsHeld()) : {};
+    const params = seeds.all ? { ...base, seed_type: this.rowType() }
       : { ...base, ...along, nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [] };
     return this.fetchWalk(params);
   }
@@ -284,23 +319,20 @@ export class VisualPart extends Panel {
       if (v === null) unknown.add(id);
       return v;
     };
-    const sys = this.systemConditions().filter((c) => c.row === this.decl.row);
+    const sys = this.systemConditions().filter((c) => c.row === this.rowType());
     const afterSystem = keepNodes(index, inside, received, sys, this.oneValued, askMarked);
     const afterPart = keepNodes(index, inside, afterSystem.kept, this.decl.filter || [], this.oneValued, askMarked);
     // The picker's rows: the filters' - a limit takes rows out of the picture, not out of what a column can read.
     this.rowIds = afterPart.kept;
     const limited = limitRows(afterPart.kept, this.decl.limit, this.layers);
     const encode = this.decl.encode || {};
+    const held = this.slotsHeld();
+    const listed = this.slotList();
     const rows = limited.map((id) => {
       const node = index.nodes.get(id) || {};
-      const reads = {};
+      const reads = readSlots(index, inside, id, Object.entries(held), this.oneValued, askMarked, Boolean(this.kind.cells));
       const raw = {};
-      for (const s of this.slotList()) {
-        const slot = encode[s.key];
-        if (!slot) continue;
-        reads[s.key] = readSlot(index, inside, id, slot, this.oneValued(slot), askMarked);
-        if (s.folds) raw[s.key] = rawOf(index, inside, id, slot, Boolean(s.records));
-      }
+      for (const s of listed) if (held[s.key] && s.folds) raw[s.key] = rawOf(index, inside, id, held[s.key], Boolean(s.records));
       return { id, label: node.label || id, reads, raw };
     });
     const marked = (id) => this.layers.marked(this.reads, id) === true;
@@ -308,7 +340,9 @@ export class VisualPart extends Panel {
     const { colors, colored, paint } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor() });
     this.colors = colors;
     const units = this.kind.units ? unitsOf(rows, this.decl, this.slotList().map((s) => s.key), this.kind.units.record, askMarked) : rows;
-    this.model = this.kind.model(units, { paint, colored, askMarked, palette: this.palette(), declaration: this.decl });
+    // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
+    const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
+    this.model = this.kind.model(units, { paint, colored, askMarked, palette: this.palette(), declaration: this.decl, start });
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);
     const hidden = new Set([...received.filter((id) => !shown.has(id) && marked(id))]).size;
@@ -316,7 +350,7 @@ export class VisualPart extends Panel {
     // are not among M: they were never walked from.
     this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
       part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden,
-      columns: Object.keys(encode).length, source: this.decl.row,
+      columns: Object.keys(encode).length, source: this.rowType(),
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
       // the rows an expression's Marked could not answer - a relation's edge of theirs not walked yet
@@ -344,7 +378,7 @@ export class VisualPart extends Panel {
   publish() {
     if (!this.stats) return;
     this.stats.set(this.decl.id, this.state === 'ready' && this.counts ? { ...this.counts, title: this.titleWords(), slots: this.slotSummaries() }
-      : { rows: 0, of: 0, system: 0, part: 0, marked: 0, hidden: 0, columns: 0, source: this.decl.row, state: this.state, title: this.titleWords(), slots: [] });
+      : { rows: 0, of: 0, system: 0, part: 0, marked: 0, hidden: 0, columns: 0, source: this.rowType(), state: this.state, title: this.titleWords(), slots: [] });
   }
 
   /** Each slot's values over the received rows - what the filters panel offers a condition over. */
@@ -366,7 +400,7 @@ export class VisualPart extends Panel {
         if (!values.length) empty += 1;
         for (const v of values) counts.set(JSON.stringify(v), [v, (counts.get(JSON.stringify(v)) || [v, 0])[1] + 1]);
       }
-      return { key, words: slotWords(slot), slot, row: this.decl.row, values: [...counts.values()], empty };
+      return { key, words: slotWords(slot), slot, row: this.rowType(), values: [...counts.values()], empty };
     });
   }
 
@@ -389,7 +423,7 @@ export class VisualPart extends Panel {
   markHub(where, ids, event) { this.markHubs([[where, ids]], event); }
 
   /** Hubs marked whole - each [where, its members], in one press. */
-  markHubs(list, event) { this.mark(list.map(([where, ids]) => this.hubs.put(hubId(this.decl.row, where), ids)), event); }
+  markHubs(list, event) { this.mark(list.map(([where, ids]) => this.hubs.put(hubId(this.rowType(), where), ids)), event); }
 
   clear() { if (this.writes) this.markings.clear(this.writes); }
 

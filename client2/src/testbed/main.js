@@ -23,11 +23,12 @@ import { kind as scatterKind } from './kinds/scatter.js';
 import { kind as crossKind } from './kinds/cross_table.js';
 import { kind as tableKind } from './kinds/table.js';
 import { kind as mapKind } from './kinds/map.js';
+import { kind as sheetKind } from './kinds/sheet.js';
 
 export const PARTS = Object.freeze({ visual: VisualPart, start: StartPart, status: StatusPart, filters: FiltersPart,
   properties: PropertiesPart, banner: BannerPart });
 /** The kinds, in the add window's order (Spotfire's: Table, Cross table, …, Scatter plot). */
-export const KINDS = Object.freeze({ table: tableKind, crossTable: crossKind, scatter: scatterKind, map: mapKind });
+export const KINDS = Object.freeze({ table: tableKind, crossTable: crossKind, scatter: scatterKind, map: mapKind, sheet: sheetKind });
 /** The page's markings when nothing is saved - a declaration the people add to, rename, colour and delete (Spotfire's
  *  Edit › Markings; Pick in Spotfire's default marking green). Its system filters. Each its people's name (mockup fix ④). */
 export const MARKINGS = Object.freeze([{ name: 'marking:start', label: 'Start', color: '#F08C00' },

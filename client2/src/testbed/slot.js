@@ -2,7 +2,8 @@
 // column (walk/reach_table) plus how its values fold. A row reads it the way the table reads a cell; the reduce folds
 // what it read, and no reduce takes one value only. Or an expression slot { expr, words } (Custom expression…, lead
 // 10-13 plan a): the calculator (src/expression.js) answers it over the rows a point or a cell holds, [name] the row's
-// own value. This file is the one place that asks which of the two a slot is.
+// own value. Or { self: true } - the row's own node (a sheet's key cell), or { constant } - a value as written (a
+// sheet's cell). This file is the one place that asks which a slot is.
 
 import { readsOf, recordsOf, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
@@ -22,8 +23,10 @@ const spelling = (v) => JSON.stringify(v);
  *   one - a value to draw; several - values that differ and no reduce, so not drawn; empty - nothing said (notNumber:
  *   an expression's operator met a text that is not a number); missing - the row is not in the walk
  */
-export function readSlot(index, inside, x, slot, oneValued = false, marked = null) {
-  if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)], { marked })) : { state: 'missing' };
+export function readSlot(index, inside, x, slot, oneValued = false, marked = null, cell = undefined) {
+  if (isExpression(slot)) return inside.has(x) ? answerOne(run(compile(slot.expr), [calcRow(index, inside, x)], { marked, cell })) : { state: 'missing' };
+  if (slot.self) return inside.has(x) ? { state: 'one', value: x, n: 1 } : { state: 'missing' };
+  if ('constant' in slot) return isBlank(slot.constant) ? { state: 'empty', n: 0 } : { state: 'one', value: slot.constant, n: 1 };
   const got = readsAt(index, inside, x, slot);
   if (got.missing) return { state: 'missing' };
   const reads = got.reads;
@@ -35,6 +38,38 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
   const values = [...new Map(reads.flatMap((r) => [].concat(r.value)).map((v) => [spelling(v), v])).values()];
   if (!values.length) return { state: 'empty', n: 0 };
   return values.length === 1 ? { state: 'one', value: values[0], n: reads.length } : { state: 'several', values, n: reads.length };
+}
+
+/**
+ * Every slot of a row, `pairs` [key, slot]. With `cells` (a kind of cells - the sheet, owner 3b97fcfb9) an expression
+ * that names another slot's key (A1, B1:B9) reads that one's value: each read once, in the order they name each other;
+ * a ring of them is a cycle, each of its slots {state: 'cycle', ring}. Without, a cell reference is refused by name.
+ */
+export function readSlots(index, inside, x, pairs, oneValued, marked, cells = false) {
+  const bySlot = new Map(pairs);
+  const out = {};
+  if (!cells) { for (const [k, s] of pairs) out[k] = readSlot(index, inside, x, s, oneValued(s), marked); return out; }
+  const busy = [];
+  const need = (k) => {
+    if (out[k]) return out[k];
+    const at = busy.indexOf(k);
+    if (at >= 0) return { state: 'cycle', ring: [...busy.slice(at), k] };
+    const s = bySlot.get(k);
+    if (!s) return null;
+    busy.push(k);
+    let ring = null;
+    const value = (ref) => {
+      const r = need(ref);
+      if (r && r.state === 'cycle') { ring = ring || r.ring; return null; }
+      return r && r.state === 'one' ? r.value : null;
+    };
+    const read = readSlot(index, inside, x, s, oneValued(s), marked, value);
+    busy.pop();
+    out[k] = ring ? { state: 'cycle', ring } : read;
+    return out[k];
+  };
+  for (const [k] of pairs) need(k);
+  return out;
 }
 
 /** Is this slot an expression - the one place that asks. */
