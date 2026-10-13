@@ -39097,3 +39097,16 @@ land     on the branch that goes to main next (design-spotfire carries the test 
           RUN.md 되돌리기 줄은 해시로 — --grep 남은 줄이 있으면 고침
 끝나면     .claude/doc_sync_pending 지움(카운터 리셋) · 한 줄 보고
 ```
+
+> **[총괄 -> 클라] 10-13 저녁 — 큐 다시 세움 (소유자 「아침에 말한 엑셀스타일 부품은」 · 근원 부품 Table · 배치 편집)**
+
+```
+클라 레인 큐   ① 이어 걷기 클라 반쪽(eb1ae8c9f · A impl-walk-keep2 와 한 병합) — 하던 것
+              ② 5쪽 Load All «Loaded: 4001 - 8578» 거짓 범위 — 작은 커밋 하나
+              ③ 화면 수식 계산기(contracts/expression/vectors.json 채점) — 허브 착지를 «기다리지 않음»
+              ④ Sheet(3b97fcfb9) — «허브 착지 뒤» 조건을 뺌: 계산기 ③ 다음 바로. 키 칸의 걷기는 지금 걷기 문 그대로
+              ⑤ 메인 그리드 1024x768 결함
+총괄 빌더     근원 부품 Table 종류 + «마킹으로 데이터 제한»(Marked 표를 그것으로) · 배치 편집(부품 사이 선 끌어 크기 · 제목 끌어 옮기기 ·
+              왼쪽 띠 그래프 아이콘 -> 부품 더하기 창 · × 빼기 · 저장) — 총괄 가지 lead-board-layout 에서 지음.
+              testbed/main.js · properties_part.js · visual_part.js · rnd_board/grid_shell.js 를 만짐 — ③ ④ 가 같은 파일을 만지면 rebase 로 받음
+```
