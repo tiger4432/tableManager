@@ -67140,3 +67140,11 @@ M1 [중]   _count_steps 끝 읽기(:831-835 SELECT DISTINCT *)에 상한 없음 
 착지    한 커밋 묶음 · 짧은 검수 · RELEASE_LOG 는 ①만(제품 동작)
 다음    끝나면 보고 — 다음 일은 그때 지시서에
 ```
+
+> **[총괄 -> 구현자 A] 10-14 새벽 — main 에 남은 빨강 10 (source_ontology_profile 8 · ledger_gaps 1 · index_size 1) 갈래 + 고침 (568388892 착지 208d7cefc 다음)**
+
+```
+같은 방식  하나씩 따로 돌려 «환경 · 순서 · 제품 결함 · 시험 결함» 으로 가르고, 결함은 고침. 환경이면 저장소 안 선언(tests/support/declaration)으로
+보고      갈래 표 한 장 + 결함마다 자리 · 원인 · 운영에 닿는 조건 · 변이 하나
+착지      한 착지 · 짧은 검수. 제품 동작이 바뀌면 RELEASE_LOG
+```
