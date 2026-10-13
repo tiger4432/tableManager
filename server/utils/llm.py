@@ -13,7 +13,7 @@ proxy are cells of one declaration file read on every call - a change reaches th
     proxy       a proxy URL; absent or null = straight to base_url, the system proxy is not read
     requests_per_minute   calls in any 60 s, every process that asks together (default 20 - the
                           gateway's own limit, 소유자 10-13)
-    batch_chars           `text_links.ask_links`' (NUMBER_CELLS)
+    batch_chars · known_chars · known_per_seed   `text_links.ask_links`' (NUMBER_CELLS)
 
 Every call first waits for room under requests_per_minute - in the `llm_calls` table under an advisory
 lock on PostgreSQL, so the chain's slots, the retroactive run and the server count together; within
@@ -48,10 +48,14 @@ DEFAULT_TIMEOUT_S = 60.0
 #: Cells that are a number above 0: (default for an absent or null cell, whole number, what it counts).
 #: batch_chars - the texts one ask_links request carries, counted as len(text) (a longer text goes alone):
 #: the answer copies each link's sentence, so it grows with the texts; 4,000 keeps it far under a
-#: 4k-token answer cap.
+#: 4k-token answer cap. known_chars - the dictionary lines and known links one request carries when the
+#: mapper hands `known` (the same 4,000 - their sum is a second text block). known_per_seed - known links
+#: drawn for each seed, bridges between seeds not counted.
 NUMBER_CELLS = {"timeout_s": (DEFAULT_TIMEOUT_S, False, "a number of seconds"),
                 "requests_per_minute": (20, True, "a whole number of requests"),
-                "batch_chars": (4000, True, "a whole number of characters")}
+                "batch_chars": (4000, True, "a whole number of characters"),
+                "known_chars": (4000, True, "a whole number of characters"),
+                "known_per_seed": (5, True, "a whole number of links")}
 RETIRED_ENV = ("ASSY_LLM_BASE_URL", "ASSY_LLM_MODEL", "ASSY_LLM_API_KEY", "ASSY_LLM_TIMEOUT_S")
 #: The per-minute limit's window, and the advisory lock its table is read and written under.
 RATE_WINDOW_S = 60.0

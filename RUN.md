@@ -1,26 +1,36 @@
 # 지금 돌리면 되는 것
 
-> ## [10-13] **LLM 후보 뽑기 — 묶음 · 분당 상한 (총괄 f7a79b242 · ded29a831, 소유자 「분당 20 회 제한 있음」)** — 이주 «없음»(새 표는 웹 서버 기동이 만듦) · 재기동 «웹 서버 -> 체인 워커»
+> ## [10-13] **LLM 후보 뽑기 — 묶음 · 분당 상한 · 이미 아는 인과 (총괄 f7a79b242 · ded29a831 · d7a27a758 · 423599fe9, 소유자 「분당 20 회 제한 있음」 · 「다 단발성 모델링만 나옴」)** — 이주 «없음»(새 표는 웹 서버 기동이 만듦) · 재기동 «웹 서버 -> 체인 워커»
 >
 > ```
 > 무엇     ask_links 가 묶음의 글을 한 요청에(글 길이 합 batch_chars 마다 한 요청) · 빠진 글만 혼자 한 번 더 · 그래도 안 되면 그 글만 거절
 >          LLM 부름은 분당 requests_per_minute 번 — 체인 슬롯 · 소급 실행 · 서버가 표 llm_calls 하나를 같이 씀 · 429 는 기다렸다 세 번까지 다시
+>          맵퍼가 known 을 넘기면 요청마다 그 글이 부르는 노드 사이의 아는 링크를 싣고 사전은 그 노드만 (다리 -> 1 걸음 -> 2 걸음 · 씨앗마다 k 개)
 > 설정     server/config/llm_config.json  "requests_per_minute": 20 · "batch_chars": 4000   (없으면 이 값 · 부를 때마다 읽음)
 >          맵퍼 ask_links(texts, names) — texts = [{"id": <글 id>, "text": <글>}] · 규칙 "rows_per_run": 20   (TEXT_LINKS_GUIDE §6)
+>          아는 인과: ask_links(texts, names, known={"follow": ["<인과 술어>"], "hops": 2}) · "known_chars": 4000 · "known_per_seed": 5   (§6-2)
+> 잴 것    바꾸기 «전»에 한 번, 바꾸고 묶음이 돈 «뒤»에 한 번 — 읽기만
+>            conda run -n assy_manager python server/scripts/causal_graph_connectivity.py --predicate <인과 술어>
+>              nodes · links · pieces · largest piece · lone pairs
 > 순서     웹 서버 재기동(기동이 llm_calls 를 만듦) -> 체인 워커 재기동
 > 볼 것    chain_worker.log
->            [LLM] ask_links: 20 text(s) in 3 request(s) - 41 row(s), 0 text(s) refused
->            [LLM] per-minute limit - waiting 12 s (20 requests a minute)
->            [LLM] a request of 7 texts left 1 unread - each asked alone: 'D17': the answer has no item for text 'D17'
->            [LLM] text 'D17' refused - no rows (llm:<모델>): the answer has no item for text 'D17'
+>            [LLM] ask_links: N text(s) in K request(s) - R row(s), M text(s) refused
+>            [LLM] per-minute limit - waiting N s (20 requests a minute)
+>            [LLM] a request of N texts left K unread - each asked alone: '<글 id>': the answer has no item for text '<글 id>'
+>            [LLM] text '<글 id>' refused - no rows (llm:<모델>): <사유>
+>            [LLM] known links for N text(s): S seed(s), K of L link(s), dictionary J of M node(s)
 >          server/llm_requests.log — 부를 때마다 보냄 · 받음 두 줄(429 면 받은 줄 status 429)
 > 답의 뜻   «in K request(s)» 의 K 가 글 수와 같다 -> 글마다 혼자 — batch_chars 가 글보다 작다. 값을 키운다
 >          «waiting» 줄이 자주 -> 상한에 붙어 돈다(정상). 묶음이 그만큼 오래 슬롯을 쥔다 — rows_per_run 을 줄이면 묶음이 짧아진다
 >          «refused» 줄 -> 그 글은 이번에 후보 0 행. ⚠️ allow_retraction 규칙이면 그 글의 손대지 않은 옛 후보가 지워진 것 — replay 로 다시 읽힌다
 >          «the per-minute limit could not use table llm_calls» -> 웹 서버를 이 코드로 아직 안 띄웠다 — 띄우면 표가 생긴다
 >          «the gateway answered 429» 가 이어진다 -> 같은 키를 다른 곳도 쓴다 — requests_per_minute 를 낮춘다
-> 급할 때   맵퍼를 글 하나씩 부르는 옛 모양(ask_links(text, names))으로 두어도 돈다 — 요청 = 글 수, 상한은 그대로
-> 안 잰 것  진짜 모델이 묶음 답을 얼마나 잘 하나(글 id 를 섞는지) · 운영 게이트웨이의 실제 글자 한도
+>          연결성: pieces 가 links 와 거의 같고 lone pairs 가 100 % 근처 -> 쌍의 집합(오늘의 모양). 뒤에 pieces 가 줄고 largest piece 가 커지면 이어지고 있다
+>          «known links … 0 seed(s)» 가 계속 -> 글에 사전 구절이 그대로 안 나온다 — 사전에 구절을 더하거나 match_at 을 낮춘다
+>          «K of L link(s)» 에서 K 가 늘 작다 -> known_chars 에 걸린다 — 값을 키우면 프롬프트가 커진다
+>          «seed(s) not walked - type(s) X do not declare exactly one key» -> 그 타입의 선언 키가 하나가 아니다(둘 이상이거나 선언에 없음) — 그 씨앗에서는 안 걷는다(나머지는 그대로)
+> 급할 때   맵퍼에서 known 을 빼면 아는 인과 없이 §6 모양 그대로 · 맵퍼를 글 하나씩 부르는 옛 모양(ask_links(text, names))으로 두어도 돈다 — 요청 = 글 수, 상한은 그대로
+> 안 잰 것  진짜 모델이 묶음 답을 얼마나 잘 하나(글 id 를 섞는지) · 운영 게이트웨이의 실제 글자 한도 · 아는 인과를 실으면 운영 그래프가 실제로 이어지나(위 명령으로 소유자가 잼)
 > ```
 
 > ## [10-13] **원장 다시 번역을 조각 N 개로 · 원장 인덱스 짓기 고침 (총괄 fd550df13 ㄱ · 0cd396d3d · 검수 bdc08ec39)** — 이주 «없음» · 재기동 «체인 워커»(원장 인덱스 줄 · 체인 리플레이 박동) · 다시 번역은 다음 실행부터

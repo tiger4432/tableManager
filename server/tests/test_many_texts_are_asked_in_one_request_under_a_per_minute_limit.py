@@ -343,8 +343,8 @@ def test_the_number_cells_default_and_a_bad_one_is_refused(root):
     _declare(root, **CELLS)
     cells = llm.settings()
     assert {name: cells[name] for name in llm.NUMBER_CELLS} == {
-        "timeout_s": 60.0, "requests_per_minute": 20, "batch_chars": 4000}
-    for name, bad in (("requests_per_minute", 0), ("batch_chars", 1.5), ("batch_chars", "9"), ("requests_per_minute", True)):
+        "timeout_s": 60.0, "requests_per_minute": 20, "batch_chars": 4000, "known_chars": 4000, "known_per_seed": 5}
+    for name, bad in (("requests_per_minute", 0), ("batch_chars", 1.5), ("known_chars", "9"), ("known_per_seed", True)):
         _declare(root, **CELLS, **{name: bad})
         with pytest.raises(llm.LlmRefused, match="%s in config/llm_config.json is not a whole number" % name):
             llm.settings()

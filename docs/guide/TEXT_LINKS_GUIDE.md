@@ -1,6 +1,6 @@
 # 글에서 «원인 -> 현상» 후보 뽑기
 
-> **대상:** `@mapper` 를 쓰는 운영자 | **최종 검증:** 2026-10-13 (코드 대조 — `server/utils/text_links.py` · `llm.py` · `phrase_bag.py` · `dictionary_suggest.py` · 시험 `server/tests/test_a_sentence_names_its_cause_and_phenomenon.py` · `test_a_phrase_with_modifiers_finds_its_node_by_its_bag.py` · `test_many_texts_are_asked_in_one_request_under_a_per_minute_limit.py`) | **관련:** [MAPPING_GUIDE](../../authoring/MAPPING_GUIDE.md) · [config/chain_rules.md](./config/chain_rules.md)
+> **대상:** `@mapper` 를 쓰는 운영자 | **최종 검증:** 2026-10-13 (코드 대조 — `server/utils/text_links.py` · `llm.py` · `phrase_bag.py` · `dictionary_suggest.py` · `server/scripts/causal_graph_connectivity.py` · 시험 `server/tests/test_a_sentence_names_its_cause_and_phenomenon.py` · `test_a_phrase_with_modifiers_finds_its_node_by_its_bag.py` · `test_many_texts_are_asked_in_one_request_under_a_per_minute_limit.py` · `test_a_batch_prompt_carries_the_links_already_known_among_its_nodes.py` · `test_the_causal_graph_connectivity_command_counts_pieces_and_lone_pairs.py`) | **관련:** [MAPPING_GUIDE](../../authoring/MAPPING_GUIDE.md) · [config/chain_rules.md](./config/chain_rules.md)
 
 회의록 · 8D 같은 글에서 «무엇이 무엇의 원인이라고 적혔나»를 후보 행으로 뽑는다. 낱말은 전부 당신이 적은 사전 행에서 온다 — 코드에는 어느 언어의 낱말도 없다.
 
@@ -87,7 +87,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <규�
 ## 6. LLM 으로 뽑기
 
 1. 맵퍼가 `find_links` 대신 `ask_links(글들, 부르는 말 행)` 을 부른다 — 체인이 넘긴 묶음의 글을 «한 번에» 넘긴다. 규칙에 `"rows_per_run": 20` 처럼 묶음 크기를 적는다
-2. LLM 은 선언 파일 하나로 고른다 — `server/config/llm_config.json`(모양: `server/config/sample/llm_config.json.sample`): `base_url` · `model` · `api_key` · `timeout_s`(초, 기본 60) · `headers`(덧붙일 요청 머리) · `proxy`(없거나 null 이면 시스템 프록시를 안 읽고 바로 간다) · `requests_per_minute`(기본 20) · `batch_chars`(기본 4000). 부를 때마다 읽으므로 고친 값은 다음 부름부터 쓰인다. 코드에는 어느 값도 없다. ⚰️ 환경변수 `ASSY_LLM_*` 는 은퇴했다 — 파일 없이 환경변수만 있으면 옮기라는 거절 문장이 난다
+2. LLM 은 선언 파일 하나로 고른다 — `server/config/llm_config.json`(모양: `server/config/sample/llm_config.json.sample`): `base_url` · `model` · `api_key` · `timeout_s`(초, 기본 60) · `headers`(덧붙일 요청 머리) · `proxy`(없거나 null 이면 시스템 프록시를 안 읽고 바로 간다) · `requests_per_minute`(기본 20) · `batch_chars`(기본 4000) · `known_chars`(기본 4000) · `known_per_seed`(기본 5) — 뒤의 둘은 §6-2. 부를 때마다 읽으므로 고친 값은 다음 부름부터 쓰인다. 코드에는 어느 값도 없다. ⚰️ 환경변수 `ASSY_LLM_*` 는 은퇴했다 — 파일 없이 환경변수만 있으면 옮기라는 거절 문장이 난다
 3. 부를 때마다 `server/llm_requests.log` 에 JSON 두 줄 — 보낸 것(시각 · id · URL · 모델 · 머리 · 페이로드 · 프록시)과 받은 것(같은 id · 상태 · ms · 답 또는 오류). 키는 `***` 로 가린다
 4. `devenv bootstrap` 이 이 파일도 복사한다 — 격리 스택도 같은 모델을 부른다
 
@@ -136,6 +136,46 @@ def text_cause_links_llm(df, db):
 - 근거(evidence)는 글 전체에서 찾는다 — 두 문장에 걸쳐도 찾고(문장 칸은 시작한 문장부터 끝난 문장까지, 문장 번호는 시작한 문장), 따옴표 12 자(`"'“”‘’«»「」『』`)와 말줄임(… ...)은 양쪽 다 견주지 않는다(`text_links.EVIDENCE_MARKS` — 목록 밖 따옴표는 견줌). 근거를 못 찾은 링크는 버리고 로그에 한 줄 `[LLM] link N of M quotes evidence the text does not hold - dropped (llm:<모델>): '<근거>'` — 나머지 링크는 그대로 후보가 된다.
 - 묶음의 모든 글이 거절되면(위) `LlmRefused` 로 이름 대어 거절된다 — 글 하나면 그 글의 사유 그대로, 여럿이면 `every text (N) was refused - text <id>: <사유>`. 그 묶음이 실패하고(`max_group_attempts` 만큼 다시 시도한 뒤 FAILED), 사건의 `error_log` 에 체인 격리 기록이 남는다. 관리 화면에서 실패한 사건을 다시 돌린다.
 - LLM 을 한 번 더 부르는 다른 쓰임새는 `ask_json(프롬프트)` — 답한 JSON 객체를 준다. 분당 상한 · 429 다시 묻기는 여기서도 같다.
+
+### 6-2. 이미 아는 인과를 프롬프트에 — `known`
+
+맵퍼가 `known={"follow": [<술어>, …], "hops": <걸음 수>}` 를 넘기면, 요청마다 프롬프트가 «그 요청의 글이 부르는 노드 사이에 이미 아는 링크»를 싣고 사전은 그 노드들만 싣는다 — 모델이 쌍을 따로따로 내지 않고 아는 그래프에 이어 붙이게(소유자 「그래프가 아니라 그냥 쌍의 집합」). 안 넘기면 프롬프트는 §6 그대로다.
+
+```python
+import pandas as pd
+from mapper_sdk import ask_links, mapper, sql
+
+@mapper()
+def text_cause_links_llm(df, db):
+    names = sql(db, "SELECT <타입 칸> AS node_type, <키 칸> AS node_key, <말 칸> AS phrase "
+                    "FROM <부르는 말 표>").to_dict("records")
+    texts = [{"id": text_id, "text": text} for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])]
+    found = ask_links(texts, names, known={"follow": ["<인과 술어>"], "hops": 2})
+    return pd.DataFrame(found).rename(columns={"text_id": "<글 id 칸>"})
+```
+
+1. 씨앗 — 요청의 글이 구절을 품은 사전 노드(낱말 주머니 §8-1, `match_at` 같음). 식별자 순
+2. 걷기 — 씨앗에서 운영 세상의 원장을 `follow` 술어로 `hops` 걸음. 화면의 걷기를 그대로 부른다(HTTP 없이 · 묶음 없이). 양 끝이 다 사전 노드인 링크만 쓴다 — 사전에 없는 노드는 모델이 식별자로 답할 수 없다. 씨앗의 타입이 키를 정확히 하나 선언해야 그 씨앗에서 걷는다(아니면 그 씨앗은 빼고 한 줄 `[LLM] known links: N seed(s) not walked - type(s) <타입> do not declare exactly one key`)
+3. 고르는 차례 — ① 다리: 두 씨앗을 잇는 가장 짧은 길 위의 링크 ② 씨앗에서 1 걸음 ③ 2 걸음 … 같은 차례 안에서는 확인된 것(한정자 `certainty` 가 `confirmed`, §7) · 근거 원자가 많은 것 · 식별자 순. 걸음 링크는 씨앗을 돌아가며 씨앗마다 `known_per_seed`(기본 5) 개까지 — 다리는 안 센다. 무작위가 없어 같은 묶음은 같은 프롬프트다
+4. 상한 — 사전 줄과 아는 링크 줄의 글자 합 `known_chars`(기본 4,000) 안에서 씨앗 먼저, 그다음 링크를 차례대로(그 링크 양 끝의 사전 줄과 함께), 안 들어가는 첫 링크에서 멈춘다
+5. 적는 모양 — 사전 아래에 원인 하나에 결과를 모아:
+   ```
+   Known links, one per line: <cause id> -> <effect id>, <effect id> (<predicate>)
+   N1 -> N2, N4 (leads_to)
+   ```
+   그 아래 지시 셋 — 새 링크의 양 끝은 있는 노드로 · 아는 링크 두 끝 사이의 단계를 글이 말하면 그 단계를 잇는 링크 둘로 · A 가 B 를, B 가 C 를 일으키면 A -> B 와 B -> C 를 따로, 같은 것은 같은 식별자나 같은 말로(요청 안 글 사이에서도). 답 모양은 그대로(쌍 목록) — 사슬은 «가운데 노드를 같이 쓰는 쌍들»로 온다
+6. 씨앗이 없는 요청 — 아는 링크 절이 없고 사전이 빈다(지시 셋은 남음). 걷지 않는다
+7. 결과의 `known` — 요청마다 `{texts, seeds, links, kept, nodes, listed}`: 닿은 링크 `links` 중 실은 `kept` · 사전 노드 `nodes` 중 실은 `listed`. 같은 수를 로그 한 줄 `[LLM] known links for N text(s): S seed(s), K of L link(s), dictionary J of M node(s)`
+8. 대가 — 사전을 줄이므로 글에 구절이 그대로 안 나오는 동의어 노드는 빠진다 — 모델은 null 을 답하고 낱말 주머니가 받는다
+9. `known` 의 모양이 틀리면(`follow` 가 비거나 글자 하나 · `hops` 가 1 이상 정수가 아님) 묻기 전에 `ValueError`
+
+연결성 재기 — 바꾸기 전과 후에 같은 명령을 돌려 견준다(읽기만):
+
+```bash
+conda run -n assy_manager python server/scripts/causal_graph_connectivity.py --predicate <인과 술어>
+```
+
+`nodes` · `links`(서로 다른 원인 · 결과 · 술어) · `pieces`(이어진 덩어리 수) · `largest piece`(가장 큰 덩어리의 노드와 그 몫) · `lone pairs`(양 끝이 다른 노드에 안 닿는 링크와 그 몫). 쌍만 쌓이면 `pieces` 가 `links` 와 같고 `lone pairs` 가 100 % 에 가깝다 — 이어지면 `pieces` 가 줄고 `largest piece` 가 커진다. `--predicate` 여럿 · `--world <세상>` 여럿(없으면 운영 세상). PostgreSQL 이 읽기 전용임을 확인한 연결로 읽고, 그 술어의 원자를 원장에서 한 번 훑는다(술어 색인이 없어 원장 전체를 지난다 — 이 박스 원장 약 275만 행(통계 추정)에서 1.6 초).
 
 ## 7. 원장으로 — 확정한 후보만 `leads_to`
 

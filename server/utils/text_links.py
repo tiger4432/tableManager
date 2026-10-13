@@ -19,6 +19,7 @@ both dictionaries go to the longest, leftmost first; a phrase that starts or end
 letter or digit only matches where the text does not continue that word (void is not in avoid).
 """
 import logging
+import math
 import re
 from collections import Counter
 
@@ -246,10 +247,10 @@ def one_of(answer, listed):
     return kept, (answer if kept is None and not crud.is_blank_value(answer) else None)
 
 
-def _listing(names):
-    """({identifier: (node_type, node_key)}, the dictionary as the model sees it - one line per node,
+def _node_lines(names):
+    """({identifier: (node_type, node_key)}, {node: its dictionary line}) - one line per node,
     «<identifier> (<type>): <phrase> / <phrase>»; the identifier is the key, `<type>:<key>` for a
-    key two types share)."""
+    key two types share. Both in the order the nodes first appear."""
     from chain.mapper_call import without_missing
     from database import crud
 
@@ -261,17 +262,25 @@ def _listing(names):
     shared = Counter(str(key) for _type, key in phrases)
     by_id = {(str(key) if shared[str(key)] == 1 else "%s:%s" % (node_type, key)): (node_type, key)
              for node_type, key in phrases}
-    return by_id, "\n".join("%s (%s): %s" % (ident, node[0], " / ".join(phrases[node]))
-                            for ident, node in by_id.items())
+    return by_id, {node: "%s (%s): %s" % (ident, node[0], " / ".join(phrases[node])) for ident, node in by_id.items()}
+
+
+def _listing(names, only=None):
+    """({identifier: node}, the dictionary as the model sees it) - every node's line, or `only` those
+    nodes' (identifiers stay the whole dictionary's)."""
+    by_id, lines = _node_lines(names)
+    return by_id, "\n".join(line for node, line in lines.items() if only is None or node in only)
 
 
 class AskedLinks(list):
     """`ask_links`' rows - a list - and what it took: `requests` (calls made, a text asked again alone
-    counted) · `texts` (handed in) · `refused` ([{id, reason}] of the texts no rows came back for)."""
+    counted) · `texts` (handed in) · `refused` ([{id, reason}] of the texts no rows came back for) ·
+    `known` (with `known` handed: per request {texts, seeds, links, kept, nodes, listed} - k of n links,
+    j of m dictionary nodes)."""
 
-    def __init__(self, rows=(), *, requests=0, texts=0, refused=()):
+    def __init__(self, rows=(), *, requests=0, texts=0, refused=(), known=()):
         super().__init__(rows)
-        self.requests, self.texts, self.refused = requests, texts, list(refused)
+        self.requests, self.texts, self.refused, self.known = requests, texts, list(refused), list(known)
 
 
 def _requests(texts, cap):
@@ -388,11 +397,195 @@ def _ask(request, prompt_of, read):
     return rows, why
 
 
-def ask_links(text, names, instruction=None, match_at=None):
+#: What `known` adds under the dictionary (총괄 d7a27a758 · 423599fe9, 소유자 「모델링이 서로 연결이 되어야」):
+#: the links already known among the request's nodes, and three asks - no word of any domain.
+KNOWN_HEADING = "Known links, one per line: <cause id> -> <effect id>, <effect id> (<predicate>)"
+KNOWN_ASKS = (
+    "Where a node of the dictionary or of the known links is what a text names, link to that node - a new"
+    " node only when none fits.",
+    "When a text names a step between the two ends of a known link, link that step: one link into it and one"
+    " out of it.",
+    "When A causes B and B causes C, answer A -> B and B -> C as two links, and give one thing the same"
+    " identifier or the same words in every text of this request.",
+)
+#: The qualifier a known link is confirmed by - the cell `ask_links` rows carry, bound to the ledger as such.
+CERTAINTY = "certainty"
+
+
+def _walked(seeds, follow, hops):
+    """The operating world's walk from `seeds` [(node_type, node_key)] along `follow`, `hops` steps - the
+    screen's own walk (`trace_router._evidence_graph`, no bundles), called directly on a connection of its
+    own. A seed of a type that does not declare exactly one key has no id from one node_key - left out,
+    one line."""
+    from database import database
+    from declaration_names import bare_name
+    from ledger import explorer, trace_router
+    from ledger_api import ledger_subgraph
+
+    ids, left = [], []
+    for node_type, key in seeds:
+        bare = bare_name(str(node_type))
+        order = ledger_subgraph._declared_key_order(bare) or ()
+        if len(order) == 1:
+            ids.append(explorer.entity_id(bare, {order[0]: key}))
+        else:
+            left.append(bare)
+    if left:
+        logger.warning("[LLM] known links: %d seed(s) not walked - type(s) %s do not declare exactly one key",
+                       len(left), ", ".join(sorted(set(left))))
+    if not ids:
+        return {"nodes": [], "edges": []}
+    with database.engine.connect() as connection:
+        return trace_router._evidence_graph(
+            connection, node_id={"positive": ids, "negative": []}, hops=hops, direction="both",
+            node_limit=ledger_subgraph.DEFAULT_NODE_LIMIT, edge_limit=ledger_subgraph.DEFAULT_EDGE_LIMIT,
+            follow=list(follow))
+
+
+def _known_links(walk, node_of, follow):
+    """The walk's edges along `follow` both ends of which are dictionary nodes, as
+    {cause, effect, predicate, confirmed, support} - support = the edge's records, confirmed = a record
+    says certainty confirmed (the qualifier `ask_links` rows carry)."""
+    from declaration_names import bare_name
+    from ledger_api import ledger_subgraph
+
+    wanted = {bare_name(str(name)) for name in follow}
+    by_ref = {(bare_name(str(node[0])), str(node[1])): node for node in node_of}
+
+    def node(node_id):
+        try:
+            found = ledger_subgraph.decode_node_id(node_id)
+        except ValueError:
+            return None
+        keys = list((found.get("keys") or {}).values())
+        return by_ref.get((bare_name(str(found["type"])), str(keys[0]))) if len(keys) == 1 else None
+
+    out = {}
+    for edge in walk.get("edges") or ():
+        predicate = bare_name(str(edge.get("predicate")))
+        cause, effect = node(edge.get("source")), node(edge.get("target"))
+        if predicate not in wanted or cause is None or effect is None:
+            continue
+        records = list(edge.get("records") or ())
+        link = out.setdefault((cause, effect, predicate), {"cause": cause, "effect": effect, "predicate": predicate,
+                                                           "confirmed": False, "support": 0})
+        link["support"] = max(link["support"], len(records) + int(edge.get("records_more") or 0))
+        link["confirmed"] = link["confirmed"] or any(
+            (said.get("qualifiers") or {}).get(CERTAINTY) == CONFIRMED for said in [edge, *records])
+    return list(out.values())
+
+
+def _chosen(seeds, links, per_seed, node_of):
+    """`links` in the order they go in (총괄 423599fe9): bridges - on a shortest way between two seeds -
+    first; then by steps from the nearest seed (1, 2, ...), the seeds taking turns, at most `per_seed`
+    each (bridges not counted); within each, confirmed first, more records, then the identifiers. The
+    ways are the links' own, read both ways. A link no seed reaches through them is left out."""
+    from collections import deque
+
+    def order(link):
+        return (not link["confirmed"], -link["support"],
+                node_of[link["cause"]], node_of[link["effect"]], link["predicate"])
+
+    near = {}
+    for link in links:
+        near.setdefault(link["cause"], set()).add(link["effect"])
+        near.setdefault(link["effect"], set()).add(link["cause"])
+    far = {}
+    for seed in seeds:
+        far[seed], queue = {seed: 0}, deque([seed])
+        while queue:
+            at = queue.popleft()
+            for step in sorted(near.get(at, ()), key=node_of.__getitem__):
+                if step not in far[seed]:
+                    far[seed][step] = far[seed][at] + 1
+                    queue.append(step)
+
+    def bridges(link):
+        a, b = link["cause"], link["effect"]
+        return any(s != t and t in far[s] and (
+            (a in far[s] and b in far[t] and far[s][a] + 1 + far[t][b] == far[s][t])
+            or (b in far[s] and a in far[t] and far[s][b] + 1 + far[t][a] == far[s][t]))
+            for s in seeds for t in seeds)
+
+    out = sorted((link for link in links if bridges(link)), key=order)
+    bridged = {id(link) for link in out}
+    by_step = {}
+    for link in links:
+        if id(link) in bridged:
+            continue
+        reach = [(min(far[s].get(link["cause"], math.inf), far[s].get(link["effect"], math.inf)), n)
+                 for n, s in enumerate(seeds)]
+        steps, owner = min(reach) if reach else (math.inf, None)
+        if steps != math.inf:
+            by_step.setdefault(steps + 1, {}).setdefault(seeds[owner], []).append(link)
+    taken = Counter()
+    for step in sorted(by_step):
+        queues = {seed: deque(sorted(by_step[step].get(seed, ()), key=order)) for seed in seeds}
+        while True:
+            moved = False
+            for seed in seeds:
+                if queues[seed] and taken[seed] < per_seed:
+                    out.append(queues[seed].popleft())
+                    taken[seed] += 1
+                    moved = True
+            if not moved:
+                break
+    return out
+
+
+def _known_lines(kept, node_of):
+    """«<cause id> -> <effect id>, <effect id> (<predicate>)» - one line per cause and predicate, in the
+    order the links were kept."""
+    grouped = {}
+    for link in kept:
+        grouped.setdefault((link["cause"], link["predicate"]), []).append(link["effect"])
+    return ["%s -> %s (%s)" % (node_of[cause], ", ".join(node_of[effect] for effect in effects), predicate)
+            for (cause, predicate), effects in grouped.items()]
+
+
+def _known(texts, names, known, cells, match_at):
+    """(the dictionary as this request lists it, the block under it, what was cut) for `known`: the seeds
+    are the nodes a phrase of which a text holds (`phrase_bag.held_nodes`), in identifier order; the walk
+    from them gives the known links, `_chosen` their order. Within `known_chars` - the dictionary lines and
+    the known-link lines together - the seeds go first, then the links in order, each with its nodes; the
+    first that does not fit ends it. The dictionary lists those nodes only."""
+    from utils import phrase_bag
+
+    by_id, lines = _node_lines(names)
+    node_of = {node: ident for ident, node in by_id.items()}
+    seeds = sorted(phrase_bag.held_nodes(texts, names, match_at), key=node_of.__getitem__)
+    links = _known_links(_walked(seeds, known["follow"], known["hops"]), node_of, known["follow"]) if seeds else []
+    cap = cells["known_chars"]
+
+    def size(listed, kept):
+        said = [lines[node] for node in listed] + ([KNOWN_HEADING] + _known_lines(kept, node_of) if kept else [])
+        return len("\n".join(said))
+
+    listed, kept = [], []
+    for seed in seeds:
+        if size(listed + [seed], kept) > cap:
+            break
+        listed.append(seed)
+    for link in _chosen(seeds, links, cells["known_per_seed"], node_of) if len(listed) == len(seeds) else ():
+        more = [node for node in dict.fromkeys((link["cause"], link["effect"])) if node not in listed]
+        if size(listed + more, kept + [link]) > cap:
+            break
+        listed += more
+        kept.append(link)
+    block = ([KNOWN_HEADING] + _known_lines(kept, node_of) if kept else []) + list(KNOWN_ASKS)
+    said = {"seeds": len(seeds), "links": len(links), "kept": len(kept), "nodes": len(by_id), "listed": len(listed)}
+    return "\n".join(line for node, line in lines.items() if node in listed), "\n".join(block), said
+
+
+def ask_links(text, names, instruction=None, match_at=None, known=None):
     """`find_links`' rows, read by the language model `mapper_sdk.ask_json` reaches. `text` is one text
     (a str) or many - [{"id": <row key>, "text": <text>}], ids unique; each row of many carries its
     text's `text_id` first. Either way an `AskedLinks` comes back: the rows, the texts in their order,
     and what it took.
+
+    `known` - {"follow": [<predicate>, ...], "hops": n}, the mapper's - puts the links already known
+    among a request's nodes under its dictionary, and the dictionary becomes those nodes only (`_known`);
+    `AskedLinks.known` says per request what was cut. Absent, the prompt is as without it.
 
     One request holds the dictionary and the instruction once and the texts, each after its «[id]»
     line, up to `batch_chars` characters of text (llm_config.json; a str is one text under id
@@ -428,16 +621,28 @@ def ask_links(text, names, instruction=None, match_at=None):
     twice = sorted(ident for ident, count in seen.items() if count > 1)
     if twice:
         raise ValueError("ask_links: text ids must be unique - %s given twice" % ", ".join(map(repr, twice[:5])))
+    if known is not None and not (
+            isinstance(known, dict) and known.get("follow") and not isinstance(known["follow"], str)
+            and isinstance(known.get("hops"), int) and not isinstance(known["hops"], bool) and known["hops"] > 0):
+        raise ValueError("ask_links: known is {'follow': [<predicate>, ...], 'hops': <steps above 0>}, got %r" % (known,))
     cells = llm.settings()
     names = list(names or ())
     by_id, dictionary = _listing(names)
     extractor = LLM_EXTRACTOR % llm.model()
     instructed = ("%s\n%s" % (INSTRUCTION_HEADING, instruction)
                   if not crud.is_blank_value(instruction) else "")
+    cut = []
 
     def prompt_of(request):
+        listed = dictionary
+        if known is not None:
+            listed, block, said = _known([one for _ident, one in request], names, known, cells, match_at)
+            listed += "\n" + block
+            cut.append(dict(said, texts=[ident for ident, _one in request]))
+            logger.info("[LLM] known links for %d text(s): %d seed(s), %d of %d link(s), dictionary %d of %d node(s)",
+                        len(request), said["seeds"], said["kept"], said["links"], said["listed"], said["nodes"])
         return (ASK_LINKS_PROMPT
-                .replace("<<dictionary>>", dictionary)
+                .replace("<<dictionary>>", listed)
                 .replace("<<instruction>>", instructed)
                 .replace("<<texts>>", "\n\n".join("[%s]\n%s" % pair for pair in request)))
 
@@ -471,7 +676,7 @@ def ask_links(text, names, instruction=None, match_at=None):
     return AskedLinks([{"text_id": ident, **row} if many else row
                        for ident, _text in texts for row in rows.get(ident, ())],
                       requests=asked, texts=len(texts),
-                      refused=[{"id": ident, "reason": said} for ident, said in why.items()])
+                      refused=[{"id": ident, "reason": said} for ident, said in why.items()], known=cut)
 
 
 def unknown_words(texts, names, links):
