@@ -169,6 +169,17 @@ def _fold_identity_key(value: Any) -> Any:
     return None if is_blank_key_part(value) else value
 
 
+def _key_spelling(keys: Mapping[str, Any]) -> dict:
+    """An entity's keys in the ledger's ONE spelling (`map_overlay.canonical_key_value`, 총괄 7233a7a31): an integer-
+    valued number is its integer's text (1.0 -> «1»), a text keeps its letters («01»). A declared binding's keys are
+    folded already, by their column's type (`_evaluate_binding`); a code mapper's keys and a reference's constant
+    arrive as they came, and are folded here, where every atom's keys are written (총괄 112293f73 ①, 소유자 «접어,
+    정수변환» - forward only: an atom written before keeps its spelling)."""
+    import map_overlay
+
+    return {key: map_overlay.canonical_key_value(value, None) for key, value in (keys or {}).items()}
+
+
 def _is_missing(value: Any) -> bool:
     if value is None:
         return True
@@ -1777,7 +1788,7 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
             object_kind = "entity_ref"
             object_payload = {
                 "type": bare_name(obj_value["type"]),
-                "keys": _plain(obj_value["keys"]),
+                "keys": _plain(_key_spelling(obj_value["keys"])),
             }
         elif emission.object_kind == "value":
             object_kind = "value"
@@ -1807,7 +1818,7 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
             "source_event_id": expected_id,
             "source_event_state": event_state,
             "subject_type": bare_name(subject["type"]),
-            "subject_keys": _plain(subject["keys"]),
+            "subject_keys": _plain(_key_spelling(subject["keys"])),
             "predicate": plan.predicate_runtime_id,
             "object_kind": object_kind,
             "object_payload": object_payload,
@@ -1820,10 +1831,10 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
             "molecule_ref": molecule_ref,
             "derivation": row["sentence"],
         })
-        named.append((subject["type"], subject["keys"], rows[-1], row["source_row_refs"],
+        named.append((subject["type"], _key_spelling(subject["keys"]), rows[-1], row["source_row_refs"],
                       _registered(context, row, emission.subject.role_id)))
         if emission.object_kind == "entity_ref":
-            named.append((obj_value["type"], obj_value["keys"], rows[-1], row["source_row_refs"],
+            named.append((obj_value["type"], _key_spelling(obj_value["keys"]), rows[-1], row["source_row_refs"],
                           _registered(context, row, emission.object_role.role_id)))
     rows.extend(_reference_rows(context, named, rows, source_raw_ref, translator_prefix))
     return validate_ledger_rows(LedgerRows(
@@ -1884,7 +1895,7 @@ def _reference_rows(context: MapperContext, named, rows, source_raw_ref: str,
                 if is_blank_key_part(part):
                     target = None
                     break
-                target[target_key] = _plain(part)
+                target[target_key] = _key_spelling({target_key: part})[target_key]
             if target is None:
                 continue
             payload = {"type": bare_name(ref.target_type), "keys": target}
