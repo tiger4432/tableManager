@@ -691,6 +691,11 @@ async function sheetRoot(M) {
   const textOf = (part, at) => { const c = part.model && part.model.grid.flat().find((x) => x.at === at); return c ? c.text : null; };
   const base = { id: 'S', part: 'visual', kind: 'sheet', row: null, system: null, filter: [], writes: 'marking:pick', encode: {}, key: 'A1', cells };
   const one = await seat({ ...base, start: { node: 'lot_slot("L1", "05")' } });
+  // Saved and reopened (the page's laidOut over a save, 18766 10-14): its row type left to its key, the same cells drawn.
+  const saved = one.part.declaration();
+  const reopened = M.main.laidOut(M.main.LAYOUT, { root: null, visuals: [saved] }, [{ type: 'quantity' }]).panels.find((p) => p.id === 'S');
+  const back = await seat(reopened);
+  const reopen = { row: reopened.row, cells: ['A1', 'B1', 'B3'].map((at) => textOf(back.part, at)) };
   const walked = { asked: one.asked.slice(), row: one.part.rowType(), cells: Object.fromEntries(['A1', 'B1', 'B2', 'B3', 'C1', 'C2', 'D1', 'E1'].map((at) => [at, textOf(one.part, at)])) };
   const ringCell = one.part.model.grid.flat().find((x) => x.at === 'D1');
   const other = await seat({ id: 'X', part: 'visual', kind: 'scatter', row: 'lot_slot', start: { node: 'lot_slot("L1", "05")' }, system: null, filter: [], writes: null,
@@ -712,7 +717,7 @@ async function sheetRoot(M) {
   const again = { walks, seeds: one.asked.slice(1).map((a) => a[2]), refused: [keyCell.text, keyCell.why] };
   const none = await seat({ ...base, start: null });
   const empty = { state: none.part.state, walks: none.asked.length, cells: { C1: textOf(none.part, 'C1'), B1: textOf(none.part, 'B1') } };
-  return { walked, ring: { why: ringCell.why, other: otherWhy }, again, empty };
+  return { walked, ring: { why: ringCell.why, other: otherWhy }, again, empty, reopen };
 }
 
 /** A start read back from a save (QA 10-14: a reload showed «ledger-entity:v1:Wy…»): the basket names it by its id - its
@@ -884,6 +889,8 @@ async function suite(M) {
       { why: 'A cycle: D1 → D2 → D1', other: "Cell references are the sheet's - A1 reads a sheet's cell" }),
     judge('SH3 the key written anew walks once from the new node; written the same, no walk; a type the page has not - #NAME? and its reason, no walk',
       sh.again, { walks: [1, 2, 2, 2], seeds: ['ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMiIsInNsb3QiOiIwNiJ9XQ'], refused: ['#NAME?', 'No function named nope'] }),
+    judge('SH5 a sheet saved and reopened: its row type left to its key (not the first declared type), the same cells drawn', sh.reopen,
+      { row: null, cells: ['L1 · 05', '2', '6'] }),
     judge('SH4 a sheet with no key yet draws its grid - its values written, the formulas empty - and walks nothing', sh.empty,
       { state: 'ready', walks: 0, cells: { C1: '4', B1: '' } }),
     judge('K7 a start read back from a save is named by its id - its keys; an id that is not an entity\'s as it is', ks, ['SYN-BW-103-11', 'W1']),
@@ -909,6 +916,8 @@ const swap = (text, from, to) => {
   return text.split(from).join(to);
 };
 const MUTANTS = [
+  { id: 'SR6', what: 'a reopened visual walked from a written node given the first declared row type (the code before, 18766)', catches: 'SH5 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, "!d.row && !(d.start && d.start.node) ? { ...d, row: first } : d", "!d.row ? { ...d, row: first } : d") },
   { id: 'SR1', what: 'a written start is not walked - the marking only', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (this.start && this.start.node) { const s = this.startNode(); return s && s.id ? { positive: [s.id] } : null; }\n', '') },
   { id: 'SR2', what: 'a kind of cells read like any other - a cell naming another refused', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',

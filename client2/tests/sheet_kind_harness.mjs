@@ -12,6 +12,7 @@ import { makeDoc, walk as walkAll } from './lib/board_dom.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { entitySeedId } from '../src/rnd_board/api.js';
+import { localStamp } from '../src/server_time.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
@@ -35,6 +36,13 @@ function seen(M) {
   const node = { label: 'L1 · 05', keys: { lot: 'L1', slot: '05' } };
   out.nodes = [f(KEY, null, node), f(KEY, 'name', node), f(KEY, 'key', node), f(KEY, 'key:slot', node),
     S.formatValue(KEY, 'key:nope', node).why || null];
+  // A datetime answer (the read says the column it read is datetime): as the grid draws a datetime cell, local; a format
+  // still its own; a text read from no datetime column as written.
+  const ISO = '2026-11-23T18:49:00.000Z';
+  const timed = (types, format) => S.sheetModel([{ id: KEY, label: 'L1 · 05', reads: { B1: { state: 'one', value: ISO, ...(types ? { types } : {}) } } }],
+    { declaration: { cells: { B1: { input: '=Max([has_measurement.eventtime])', ...(format ? { format } : {}) } } } }).grid[0][1].text;
+  out.time = [timed({ 'has_measurement.eventtime': 'datetime' }) === localStamp(ISO) && localStamp(ISO) !== ISO,
+    timed({ 'has_measurement.eventtime': 'datetime' }, 'yyyy-mm-dd').length, timed(null), timed({ 'has_measurement.eventtime': 'string' })];
   out.unknown = [S.formatValue(7, 'abc').text, S.formatValue(7, 'abc').why || null, S.formatValue(7, '0').why || null];
   // ── a cell: the key's node, formula reads, literals ──
   const decl = { key: 'A1', start: { node: 'lot_slot("L1", "05")' }, cells: { B1: { input: '=Avg([measures.value])', format: '0.00' },
@@ -153,6 +161,8 @@ function suite(out) {
   eq('S4 time formats: the day, the day and minute; not a time stays as written', out.times, ['2026-10-01', '2026-10-01 09:30', 'late']);
   eq('S5 a node: its name by default and by «name», its keys, one key by name; a key it has not is said', out.nodes,
     ['L1 · 05', 'L1 · 05', 'L1 · 05', '05', 'No key nope on this node']);
+  eq('S22 a datetime column\'s answer with no format: local, as the grid draws a datetime cell; a format still its own; not datetime as written',
+    out.time, [true, 10, '2026-11-23T18:49:00.000Z', '2026-11-23T18:49:00.000Z']);
   eq('S6 a format not in the table: the value as it is and «unknown format»; one in the table says nothing', out.unknown, ['7', 'unknown format', null]);
   eq('S7 cells: the key its node\'s walk label, a formula its read formatted, several #MANY, no name #NAME?, a ring #CYCLE, a literal as written',
     out.cells, [['A1', 'L1 · 05', null, false], ['B1', '3.14', null, true], ['B2', '#MANY', '3 values — wrap in an aggregate', false],
@@ -213,6 +223,8 @@ const MUTANTS = [
   { id: 'SM11', what: 'the pick lives on the module, not the part', catches: 'S18',
     mutate: (t) => swap(t, '  const own = body.sheetPick || (body.sheetPick = { sel: [\'A1\'], anchor: \'A1\', say: \'\' });',
       '  const own = SHARED;').replace('export function render(', "const SHARED = { sel: ['A1'], anchor: 'A1', say: '' };\nexport function render(") },
+  { id: 'SM15', what: 'a datetime answer drawn as the server wrote it (the code before, 18766)', catches: 'S22',
+    mutate: (t) => swap(t, "    if (read && read.types) time = Object.values(read.types).includes('datetime');\n", '') },
   { id: 'SM12', what: 'the grid does not grow past the cells written', catches: 'S1 the grid', mutate: (t) => swap(t, 'const MARGIN = { c: 2, r: 5 };', 'const MARGIN = { c: 0, r: 0 };') },
 ];
 const scored = await scoreMutants(MUTANTS.map((m) => ({ ...m, file: F })), async (m) => {

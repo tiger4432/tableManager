@@ -196,7 +196,7 @@ async function measure(M) {
     const g = (typed) => indexGraph({ nodes: [{ id: 'TW', type: 'wafer', label: 'TW', keys: {}, attributes: {} }, { id: 'TQ', type: 'quantity', label: 'TQ', keys: {}, attributes: {} }],
       edges: ['2026-10-01T00:00:00Z', '2026-10-03T00:00:00Z', '2026-10-02T00:00:00Z'].map((v) => at(v, typed)) });
     const inside = new Set(['TW', 'TQ']);
-    out.typed = [true, false].map((typed) => { const r = readSlot(g(typed), inside, 'TW', exprSlot('Max([measures.at])')); return [r.state, r.value === undefined ? null : r.value]; });
+    out.typed = [true, false].map((typed) => { const r = readSlot(g(typed), inside, 'TW', exprSlot('Max([measures.at])')); return [r.state, r.value === undefined ? null : r.value, r.types || null]; });
   }
   // T30: an operator over a text that is not a number - the row empty and said so; a list is several, an empty value empty
   out.notNumber = ['W1', 'W3', 'W6'].map((id) => { const r = readSlot(index, inside, id, exprSlot('[product] * 2')); return [r.state, Boolean(r.notNumber)]; });
@@ -522,7 +522,7 @@ function suite(out, page, saved, counted) {
       ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer', '']]);
   eq('T32 Marked() in a slot: the page answer for the row - true, false, unknown empty', out.marked, [['one', true], ['one', false], ['empty', null]]);
   eq('T33 a column the walk declares datetime: Max the latest instant, as written; undeclared - a number fold, nothing', out.typed,
-    [['one', '2026-10-03T00:00:00Z'], ['empty', null]]);
+    [['one', '2026-10-03T00:00:00Z', { 'measures.at': 'datetime' }], ['empty', null, null]]);
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',

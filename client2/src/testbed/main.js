@@ -78,7 +78,9 @@ export function oneValuedBy(predicates) {
  */
 export function laidOut(layout, saved, entities) {
   const first = ((entities || [])[0] || {}).type || null;
-  const typed = (d) => (d.part === 'visual' && !d.row ? { ...d, row: first } : d);
+  // A visual walked from a written node (a sheet's key) takes its row type from that node - not the first declared one
+  // (18766 10-14: a sheet saved and reopened walked from its key to the first type and drew every cell empty).
+  const typed = (d) => (d.part === 'visual' && !d.row && !(d.start && d.start.node) ? { ...d, row: first } : d);
   if (saved && !Array.isArray(saved) && saved.root !== undefined) {
     return { ...layout, root: saved.root, panels: [...layout.panels.filter((p) => p.dock), ...(saved.visuals || []).map(typed)] };
   }

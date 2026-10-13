@@ -7,7 +7,7 @@
 // A format is drawing alone - changing one computes nothing here.
 
 import { numberOf, valueWords } from '../../walk/reach_table.js';
-import { parseServerInstant } from '../../server_time.js';
+import { parseServerInstant, localStamp, NO_TIME } from '../../server_time.js';
 import { entityOfId } from '../../rnd_board/api.js';
 import { place, address, letters } from '../../expression.js';
 
@@ -40,13 +40,15 @@ const grouped = (text) => text.replace(/^(-?)(\d+)/, (_, s, n) => s + n.replace(
 const pad = (n) => String(n).padStart(2, '0');
 
 /**
- * A value as a format says it. `node` {label, keys} when the value is a node.
+ * A value as a format says it. `node` {label, keys} when the value is a node; `time` when it was read from a column the
+ * walk declares datetime - with no format it is drawn as the grid draws a datetime cell (server_time localStamp).
  * @returns {{text: string, why?: string}}
  */
-export function formatValue(value, format, node = null) {
+export function formatValue(value, format, node = null, time = false) {
   if (value === null || value === undefined || value === '') return { text: '' };
   const why = knownFormat(format) ? undefined : SHEET_WORDS.unknownFormat;
   const f = why ? null : format;
+  if (time && !f && localStamp(value) !== NO_TIME) return { text: localStamp(value), why };
   if (node) {
     const keys = node.keys || {};
     const m = f && KEY_FORMAT.exec(f);
@@ -90,6 +92,7 @@ function cellOf(at, spec, decl, row, ctx) {
   const out = { at, input, format: spec.format || null, isKey, text: '', why: undefined, error: null, num: false, color: null, marked: false };
   let value = null;
   let node = null;
+  let time = false;
   if (out.isKey) {
     if (start && start.why) { out.error = '#NAME?'; out.why = start.why; out.text = out.error; return out; }
     if (row) {
@@ -101,6 +104,7 @@ function cellOf(at, spec, decl, row, ctx) {
   } else if (input.startsWith('=')) {
     const read = row && row.reads ? row.reads[at] : null;
     if (read && read.state === 'one') value = read.value;
+    if (read && read.types) time = Object.values(read.types).includes('datetime');
     else if (read && read.state === 'several') { out.error = '#MANY'; out.why = SHEET_WORDS.several(read.n || (read.values || []).length); }
     else if (read && read.state === 'cycle') { out.error = '#CYCLE'; out.why = SHEET_WORDS.cycle(read.ring || []); }
     else if (read && read.why) { out.error = /^No (value|function) named/.test(read.why) ? '#NAME?' : '#ERROR'; out.why = read.why; }
@@ -109,7 +113,7 @@ function cellOf(at, spec, decl, row, ctx) {
     value = numberOf(input) !== null ? numberOf(input) : input;
   }
   if (out.error) { out.text = out.error; return out; }
-  const said = formatValue(value, out.format, node);
+  const said = formatValue(value, out.format, node, time);
   out.text = said.text;
   out.why = said.why;
   out.num = !node && numberOf(value) !== null;
