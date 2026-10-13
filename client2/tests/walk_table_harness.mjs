@@ -1588,11 +1588,11 @@ async function suite(mod) {
     for (const fn of (go() || { listeners: {} }).listeners.click || []) fn({});
     await settle();
     const q = new URLSearchParams((sent[0] && sent[0].u.split('?')[1]) || '');
-    ok('MR1 the head says each collected type cut or reached; More ▸ asks the same walk again, a POST with its resume',
+    ok('MR1 the head says each collected type cut or reached; More ▸ asks the same walk again, a POST with its resume - resumable, as this screen asks every walk (implementer A fe2b894f0)',
       before[0].includes('die@1: cut · 3 not expanded') && before[0].includes('more to walk') && before[1] === false
         && sent.length === 1 && sent[0].method === 'POST'
         && sent[0].body === JSON.stringify({ resume: { cursor: 'c1' } }) && q.getAll('positive').join() === 's:a,s:c'
-        && q.getAll('negative').join() === 's:b' && q.getAll('collect').join() === 'die@1',
+        && q.getAll('negative').join() === 's:b' && q.getAll('collect').join() === 'die@1' && q.get('resumable') === 'true',
       JSON.stringify([before, sent.map((s) => [s.method, s.body, s.u.slice(0, 120)])]));
     ok('MR2 the next page merged into the step - the rows of both, each once - its pages said; all reached, More ▸ off and says so',
       rowIds() === [...before[2].split(','), 'd:20'].sort().join() && said(line()).includes('die@1: all reached')
@@ -1641,6 +1641,53 @@ async function suite(mod) {
     ok(`${id} ${kind}: off while its walk runs, its reason Walking…; a second press asks nothing; live again when the page lands`,
       live && during[0] === true && during[1] === 'Walking…' && asked === 1 && after,
       JSON.stringify([live, during, asked, after, sent.map((s) => s.method)]));
+  }
+
+  console.log(`${LF}-- a continued page the server no longer holds: 410 walk_expired - its line and Walk again (lead eb1ae8c9f) --`);
+  for (const why of ['reloaded', 'restarted', 'expired', 'process ended', 'server updated']) {
+    const sent = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const FIRST = { ...SIGNED, more: { reach: { 'die@1': { complete: false, unexpanded: 3 } }, resume: { walk: 'k2' } } };
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url, init) => {
+      const u = String(url);
+      if (!u.includes('/subgraph')) return { ok: true, status: 200, json: async () => DECL };
+      sent.push({ method: (init && init.method) || 'GET', body: init && init.body });
+      if (init && init.method === 'POST') {
+        return { ok: false, status: 410, json: async () => ({ detail: { reason: 'walk_expired', why, message: `This walk expired (${why}) - walk again` } }) };
+      }
+      return { ok: true, status: 200, json: async () => FIRST };
+    } });
+    await settle();
+    const ASK = { type: 'die@1', keys: { mat_id: 'A' }, ...SIGNED_STARTS, collect: ['die@1'], node_limit: 1000 };
+    handle.state.asked = { ...ASK };
+    handle.state.run = 'done';
+    handle.state.result = { ...SIGNED, ok: true, ask: ASK, generatedAt: '2026-10-12T05:00:00',
+      more: { reach: { 'die@1': { complete: false, unexpanded: 3 } }, resume: { walk: 'k1' } } };
+    handle.render();
+    const rowIds = () => walkAll(host).filter((e) => e.tagName === 'tr' && e.attrs && e.attrs['data-row-id']).map((e) => e.attrs['data-row-id']).sort().join();
+    const said = (e) => walkAll(e).filter((k) => k._text).map((k) => k._text).join('|');
+    const fail = () => walkAll(host).find((e) => e.className === 'wk-fail');
+    const again = () => fail() && walkAll(fail()).find((e) => e.tagName === 'button' && e._text === 'Walk again');
+    const before = rowIds();
+    const moreNow = () => walkAll(host).find((e) => String(e.className || '').includes('wk-more') && e._text === 'More ▸');
+    for (const fn of (moreNow() || { listeners: {} }).listeners.click || []) fn({});
+    await settle();
+    await settle();
+    ok(`EX1 ${why}: the server's line and «Walk again»; the rows drawn stay; More ▸ off (its resume is gone); nothing asked again by itself`,
+      Boolean(fail()) && said(fail()).includes(`This walk expired (${why}) - walk again`) && Boolean(again())
+        && rowIds() === before && before.length > 0 && sent.length === 1 && sent[0].method === 'POST'
+        && Boolean(moreNow()) && moreNow().disabled === true,
+      JSON.stringify([fail() && said(fail()), Boolean(again()), rowIds() === before, sent.map((s) => s.method), moreNow() && moreNow().disabled]));
+    if (why !== 'reloaded') continue;
+    for (const fn of (again() || { listeners: {} }).listeners.click || []) fn({});
+    await settle();
+    await settle();
+    ok('EX2 Walk again asks the first page of the same question once - a GET, no resume - and that page stands in the step',
+      sent.length === 2 && sent[1].method === 'GET' && !sent[1].body && !fail()
+        && handle.state.result.more && handle.state.result.more.resume && handle.state.result.more.resume.walk === 'k2'
+        && Boolean(moreNow()) && moreNow().disabled === false,
+      JSON.stringify([sent.map((s) => [s.method, s.body || null]), Boolean(fail()), handle.state.result.more, moreNow() && moreNow().disabled]));
   }
 
   console.log(`${LF}-- the Route panel: the ways the walk took, or before it the shortest route suggested (owner 10-12) --`);
@@ -2052,6 +2099,15 @@ const filterSuite = (TV) => {
       { nodes: [{ id: 'x' }], edges: [], propagation: { ranked: [{ id: 'x', reach: [1, 0] }] } });
     ok('MR4 a node ranked on two pages: the later page\'s row (its reach grown) stands', JSON.stringify(again.propagation.ranked)
       === JSON.stringify([{ id: 'x', reach: [2, 0] }]), JSON.stringify(again.propagation));
+    // A continued page's top set is a difference (implementer A d5df12352): merged over pages = one walk's top set.
+    const p1 = { nodes: [], edges: [], propagation: { ranked: [], top_set: ['a', 'b', 'c'] } };
+    const p2 = { nodes: [], edges: [], propagation: { ranked: [], top_set: ['d'], top_set_left: ['b'] } };
+    const p3 = { nodes: [], edges: [], propagation: { ranked: [], top_set: ['b', 'e'], top_set_left: ['a'] } };
+    const pages = TV.mergeWalks(p3, TV.mergeWalks(p2, p1));
+    const control = TV.mergeWalks({ nodes: [], edges: [], propagation: { ranked: [], top_set: ['x'] } }, p1);
+    ok('TS1 a continued page\'s top set is a difference: three pages merged = one walk\'s top set, no difference left in it; a walk with none (a control walk) keeps its own',
+      JSON.stringify([[...pages.propagation.top_set].sort(), 'top_set_left' in pages.propagation, control.propagation.top_set])
+        === JSON.stringify([['b', 'c', 'd', 'e'], false, ['x']]), JSON.stringify([pages.propagation, control.propagation]));
     // The ways a walk took to the collected types (owner 10-12): a line a way, its nodes counted, the most first.
     const ways = TV.walkedRoutes(WALKED, new Set(['die@1']));
     ok('RT1 the walked routes to die, the most first: wafer —in→ lot —has→ die for two, wafer —inspected→ die for one; the lot not counted',
@@ -2234,12 +2290,22 @@ const MUTANTS = [
     from: "      const th = el(doc, 'th', 'wk-centre', lines.length > 1 ? '' : h);\n      if (lines.length > 1) {", to: "      const th = el(doc, 'th', 'wk-centre', h);\n      if (false) {" },
   { id: 'AXm6', what: 'the judgments\' counts not drawn', catches: 'AX7',
     from: "      seat.append(el(doc, 'span', 'wk-reachtally', section.tally));", to: '' },
+  { id: 'RSm1', what: 'the walk screen does not ask resumable - its cut walks come back with no key', catches: 'MR1',
+    from: '  const walk = createWalkBoxWalk({ apiBase, fetchImpl, resumable: true });', to: '  const walk = createWalkBoxWalk({ apiBase, fetchImpl });' },
+  { id: 'EXm1', what: 'an expired page says Failed and offers nothing', catches: 'EX1 reloaded',
+    from: '    adding = res && res.ok ? null : res && res.expired ? {', to: '    adding = res && res.ok ? null : false ? {' },
+  { id: 'EXm2', what: 'Walk again sends the expired resume again', catches: 'EX2',
+    from: "again: { ...asked, resume: undefined } }", to: "again: { ...asked } }" },
+  { id: 'EXm3', what: 'Walk again drawn but does nothing', catches: 'EX2',
+    from: "          again.addEventListener('click', () => walkMore({ asked: ask }));\n", to: '' },
   { id: 'MRm1', what: 'the next page replaces the step\'s answer, not merged into it', catches: 'MR2',
     from: '{ ...mergeWalks(res, was), ask: was.ask,', to: '{ ...res, ask: was.ask,' },
   { id: 'MRm2', what: 'More ▸ never off, all reached or not', catches: 'MR2',
-    from: "        setDisabledReason(go, r.more.resume ? busy : ALL_REACHED);", to: "        setDisabledReason(go, '');" },
+    from: "        setDisabledReason(go, r.more.resume ? held : ALL_REACHED);", to: "        setDisabledReason(go, '');" },
   { id: 'MRm7', what: 'More ▸ live while its walk runs - a second press posts the same resume', catches: 'MR7',
-    from: "        setDisabledReason(go, r.more.resume ? busy : ALL_REACHED);", to: "        setDisabledReason(go, r.more.resume ? '' : ALL_REACHED);" },
+    from: "        const held = adding && adding.at === state.at && adding.again ? adding.text : busy;", to: "        const held = adding && adding.at === state.at && adding.again ? adding.text : '';" },
+  { id: 'EXm4', what: 'More ▸ stays live under the expired line - the dead resume sent again', catches: 'EX1 reloaded',
+    from: "        const held = adding && adding.at === state.at && adding.again ? adding.text : busy;", to: "        const held = busy;" },
   { id: 'MRm8', what: 'More live while its walk runs - a second press walks again', catches: 'MR8',
     from: "          setDisabledReason(press, busy);\n", to: '' },
   { id: 'MRm5', what: 'a resume left does not say there is more to walk', catches: 'MR1',
@@ -2465,6 +2531,10 @@ const controls = await scoreMutants(MUTANTS.filter((m) => m.control), runMutant,
 // table_view.js's own: the fold of several edges into one node.
 const TV_SRC = path.join(HERE, '..', 'src', 'walk', 'table_view.js');
 const TV_MUTANTS = [
+  { id: 'TSm1', what: 'a continued page\'s top set replaces the one before', catches: 'TS1',
+    from: '  const topSet = Array.isArray(left) ? { top_set: [...new Set([...top(b).filter((id) => !left.includes(id)), ...top(a)])] } : {};', to: '  const topSet = {};' },
+  { id: 'TSm2', what: 'the ids that left the top stay in it', catches: 'TS1',
+    from: '...top(b).filter((id) => !left.includes(id))', to: '...top(b)' },
   { id: 'MRm4', what: 'the pages merged without their ranked rows - a later page\'s row drawn in no sign', catches: 'MR3',
     from: 'ranked: once([...ranked(b), ...ranked(a)])', to: 'ranked: ranked(a)' },
   { id: 'MRm6', what: 'a node ranked on two pages keeps the earlier row - the reach a later page grew lost', catches: 'MR4',

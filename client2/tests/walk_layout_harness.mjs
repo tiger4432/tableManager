@@ -179,14 +179,15 @@ async function suite(mod, css = REAL_CSS) {
   await page.act.plus();
   await page.act.walk();
   const sent = page.asked.filter((u) => u.includes('/subgraph'));
-  eq('L7 the full set of choices: the same request as before the layout', sent[0], BEFORE.full);
+  // The walk screen asks every walk resumable (implementer A fe2b894f0, lead eb1ae8c9f): the request before, and that.
+  eq('L7 the full set of choices: the same request as before the layout, asked resumable', sent[0], `${BEFORE.full}&resumable=true`);
   const bare = await stand(mod);
   await bare.act.type('die');
   bare.act.key('mat_id', 'M-1');
   await bare.act.plus();
   await bare.act.walk();
   eq('L8 a type and a key, nothing else: the same request as before, and node_limit at the server\'s most (lead 34d91c09d 9)',
-    bare.asked.filter((u) => u.includes('/subgraph'))[0], `${BEFORE.bare}&node_limit=${mod.NODE_LIMIT}`);
+    bare.asked.filter((u) => u.includes('/subgraph'))[0], `${BEFORE.bare}&node_limit=${mod.NODE_LIMIT}&resumable=true`);
   // fanout_limit (lead 5d946a639): typed, it goes with the walk; blank (the bare walk above), it does not.
   page.act.key('fanout_limit', '50');
   await page.act.walk();

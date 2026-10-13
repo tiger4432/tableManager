@@ -1392,7 +1392,7 @@ const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 87],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19)
+  ['grid_view_readonly_harness.mjs', 88],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19); -> 88: K9 Load All from page 5 says 1 - N (lead ba39f4ef7)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],
@@ -1523,8 +1523,9 @@ const FLOORS = new Map([
   // 289 -> 297 (the auxiliary judgment (main 3c4e5a778) with Walk ▸: askAlong and spec keep reachArg, Walk ▸ and Continue go by askFrom, so they carry reaching too; walk_table counted).
   // 297 -> 303 (RT1-RT3 the Route panel the ways walked, RTm1-RTm3; owner 10-12).
   // 303 -> 313 (main 27e976128 (the Route panel) with More ▸: main.js imports both mergeWalks and walkedRoutes, the harness keeps both blocks and lists; MR4 a node ranked on two pages keeps the later row (the server's continuation, 581c60c00), MRm6).
-  // 313 -> 317: MR7 MR8 More off while its walk runs, MRm7 MRm8 (lead 9752e91f7).
-  ['walk_table_harness.mjs', 317],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
+  // 313 -> 317: MR7 MR8 More off while its walk runs, MRm7 MRm8 (lead 9752e91f7); -> 331: EX1 an expired page for each of the five whys,
+  // EX2 Walk again, TS1 the top set over pages, EXm1-EXm4 TSm1 TSm2 RSm1, MR1 resumable (lead eb1ae8c9f).
+  ['walk_table_harness.mjs', 331],   // 181 -> 184: W 1 - Wide: Z9 Z13 Z24 Z26 Z27 Z32 re-pointed, ZW1 Z44 Z45; NZ1 NZ2 NZ5 NZ7-NZ9 NZ11 NZ13 NZ15 NZ16 CPm2 CPm4 CPm5 M1 M2 ZM4 ZM7 ZM10-ZM16 VS1 VS3 RM5 re-aimed or new; NZ4 NZ12 NZ14 Z28 retired with the mirrored sides (lead 10-11 W)
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
@@ -1642,7 +1643,7 @@ const FLOORS = new Map([
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
-  ['walk_wire_harness.mjs', 95],
+  ['walk_wire_harness.mjs', 98],   // 95 -> 98: F9 a 410 walk_expired marked expired, F10 no other refusal, F11 resumable only when made so (lead eb1ae8c9f)
   // a cut-off count says it was cut off -- 「끊김 != 없음」
   // 12 -> 32. The floor had not been raised since the file was written; the gate has been
   // naming it as running above its floor for a while. The new assertions are 클라 7 ㉯ — the

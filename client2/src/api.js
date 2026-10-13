@@ -499,6 +499,18 @@ export async function fetchAllRows(baseUrl, queryParams, chunkLimit, onProgress)
   return { rows, count };
 }
 
+/** Load All's rows on the grid - every row from the first, so the place is the first row and «Loaded: 1 - N» says
+ *  what is drawn (lead ba39f4ef7: from page 5 it said «4001 - 8578»); the bottom line their count. */
+export function showAllRows(rows) {
+  state.allDataLoaded = true;
+  state.hasMoreData = false;
+  state.currentSkip = 0;
+  state.gridApi.setGridOption('rowData', overlayStagedEdits(rows));
+  updateGridSortState();
+  updateLoadedCount(rows.length);
+  setMatchCount(elements.totalRowsCount, rows.length);
+}
+
 export const EXPORT_FAILED = '❌ CSV download failed';
 
 /** The CSV export's read: the response to stream, or the server's refusal sentence through the one refusal seat (413

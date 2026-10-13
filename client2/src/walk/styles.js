@@ -233,7 +233,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-adds { display: flex; flex-wrap: wrap; gap: var(--space-2); font-size: var(--wk-fs-line); }
 .wk-addchip { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-radius: 999px;
   color: var(--accent); background: var(--accent-weak); border: 1px solid var(--accent); }
-.wk-trunc > .wk-more { margin-left: var(--space-2); font-family: var(--wk-font); }
+.wk-trunc > .wk-more, .wk-fail > .wk-more { margin-left: var(--space-2); font-family: var(--wk-font); }
 /* The steps walked; a press shows that step's table, the shown one lit. */
 .wk-steps { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-2) 0; }
 .wk-steprow { display: flex; flex-wrap: wrap; gap: var(--space-2); }
