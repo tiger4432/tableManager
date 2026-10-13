@@ -858,6 +858,8 @@ async function shownWords(M) {
   const when = { steps: [], value: { on: 'node', name: 'when' }, words: ['when'] };
   const read = M.slot.readSlot(index, inside, 'D1', when);
   const tip = M.tooltip.tipLines({ id: 'D1', ids: ['D1'] }, { rowsById: new Map([['D1', { id: 'D1', label: 'D1', reads: { tip1: read } }]]), slots: [{ key: 'tip1' }], encode: { tip1: when } });
+  // a cross table cell of two rows reading the same time
+  const cellTip = M.tooltip.tipLines({ ids: ['D1', 'D2'] }, { rowsById: new Map(['D1', 'D2'].map((id) => [id, { id, label: id, reads: { tip1: read } }])), slots: [{ key: 'tip1' }], encode: { tip1: when } });
   const doc = makeDoc('dark');
   const spans = (summary) => walk(M.cond.drawCondition(doc, summary, null, () => {})).filter((n) => String(n.className) === 'sf-filter__t')
     .map((n) => [n._text, n.title, n.getAttribute('data-clip-ok') !== null]);
@@ -868,7 +870,7 @@ async function shownWords(M) {
   const pt = (id, x) => ({ id, ids: [id], label: id, tag: id, x, y: 1, fill: '#111111', border: '#222222', marked: false });
   const option = M.scatter.scatterOption({ points: [pt('a', 1), pt('b', 2), pt('c', 3)], xKind: 'value', yKind: 'value', size: 6 }, pal);
   const sides = option.series[0].data.map((d) => [d.id, d.label.position]);
-  return { read: [read.state, read.time], tip, stamp: localStamp(ISO), filter, sides, LONG };
+  return { read: [read.state, read.time], tip, cellTip, stamp: localStamp(ISO), filter, sides, LONG };
 }
 
 /** Trellis (base set 12, trellis.js): the rows split by Panel by, each panel the kind's picture of its rows; one extent
@@ -1178,6 +1180,7 @@ async function suite(M) {
     judge('LB4 the x ticks as many as the width holds, overlapping ones hidden; unknown width - as ECharts picks', fl.ticks, [2, true, true]),
     judge('TM1 a time the server sends is a time read; the tooltip and the filter say it as the grid does (local, no T · Z), a long value one line with its words in its tooltip',
       [sw.read, sw.tip, sw.filter], [['one', true], ['D1', `when: ${sw.stamp}`], [[[sw.stamp, sw.stamp, true]], [[sw.LONG, sw.LONG, true]]]]),
+    judge('TM2 a cross table cell\'s rows reading one time - the tooltip says it as the grid does', sw.cellTip, ['2 rows', `when: ${sw.stamp}`]),
     judge('LB2 a label on the point\'s inner side - right in the left half, left in the right half (not under the legend)', sw.sides, [['a', 'right'], ['b', 'right'], ['c', 'left']]),
     judge('SI1 Top/Bottom N: the highest or lowest N by the slot, a number written as text a number, equal values by id, no number not among them; all or no slot - every mark',
       si.rule, [['b', 'c'], ['b'], ['a'], ['a', 'b', 'c'], ['a', 'b', 'c', 'd', 'e'], 5]),
@@ -1318,6 +1321,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'PANEL_SLOT].filter((s) => !without.includes(s.key));', 'PANEL_SLOT];') },
   { id: 'M56', what: 'a hub marked for a node condition beside another, nothing said', catches: 'HW1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      if (why) said = { id, n: ids.length, why };', '') },
+  { id: 'M61', what: 'rows grouped in a cell lose their time - the tooltip says the UTC text', catches: 'TM2 ', file: 'testbed/tooltip.js', key: 'tooltip',
+    mutate: (t) => swap(t, "const time = rows.some((r) => isTimeRead(r.reads[key])) ? { time: true } : {};", 'const time = {};') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      this.watch(at, one);', '') },
   { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',

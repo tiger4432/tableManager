@@ -31,7 +31,9 @@ const readWords = (read) => {
 function sharedReads(rows, keys) {
   return Object.fromEntries(keys.map((key) => {
     const said = [...new Map(rows.map((r) => r.reads[key]).filter((r) => r && r.state === 'one').map((r) => [JSON.stringify(r.value), r.value])).values()];
-    return [key, said.length === 1 ? { state: 'one', value: said[0] } : said.length ? { state: 'several', values: said } : { state: 'empty' }];
+    // a time the rows read stays a time (the screen gate's cross table cell, lead 10-14)
+    const time = rows.some((r) => isTimeRead(r.reads[key])) ? { time: true } : {};
+    return [key, said.length === 1 ? { state: 'one', value: said[0], ...time } : said.length ? { state: 'several', values: said } : { state: 'empty' }];
   }));
 }
 
