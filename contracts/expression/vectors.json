@@ -1,0 +1,2743 @@
+{
+  "$comment": [
+    "SHARED CONTRACT -- the EXPRESSION seam: what does this expression answer over these rows?",
+    "One grammar, two calculators (lead 0b7d84462): the server's (chain decide aggregations, walk measures) and the",
+    "screen's (the test bed's calculated values). Both read THIS file; neither is built yet.",
+    "",
+    "THE GRAMMAR is Spotfire's expression language (task/SPOTFIRE_FUNCTIONS.md, read from the owner's Spotfire",
+    "Analyst 14.4.1) plus our [path] · type(\"key\") · Reach (afcb79f14). Only Spotfire's part is here; [x] is a",
+    "column of `rows`.",
+    "",
+    "EVERY EXPECTATION IS A DOCUMENT'S, NOT A MEASUREMENT (lead 10-13). The owner's Spotfire web view opens its",
+    "expression windows on the owner's desktop, so the empty-value cases the dialog text leaves open were not",
+    "measured. `basis` says how each answer was reached:",
+    "  doc-stated  the cited page prints this result for this expression",
+    "  doc-rule    the cited page states the rule; the answer applies it (computed, not typed)",
+    "  measured    run in Spotfire - none in this edition",
+    "Pages (`sources`): Spotfire 15.0 online reference (M15 S15 O15 P15 L15 K15 E15 T15) and the 7.0.1 statistics",
+    "definitions (701), against the owner's 14.4.1. An invalid value (#NA, an error) is read as empty, as the",
+    "pages print 0/0 and Integer(\"0%\") - that reading is itself a doc-rule.",
+    "",
+    "HOW TO SCORE",
+    "  vectors       scored. `expect` = the one answer over `rows` (an aggregation folds them; a constant needs none);",
+    "                `expect_rows` = one answer per row, in row order. A vector carries exactly one of the two.",
+    "                null = empty. Numbers equal when |got - expect| <= 1e-9 * max(1, |expect|). Integer / Real /",
+    "                Decimal types are not scored.",
+    "  unsettled     NOT scored - the pages leave it open or disagree. Each says what is open and why. To settle one,",
+    "                move it into vectors with its basis; do not pick an answer in a calculator.",
+    "  lead_decides  NOT scored - the pages state the answers (doc_rows), but scoring them decides how the",
+    "                calculator evaluates an If / Case branch. The lead decides whether they move into vectors.",
+    "  out_of_edition  names not built in this edition, and why.",
+    "Grow this file before a calculator grows (lead: a function with no vector is not built)."
+  ],
+  "sources": {
+    "701": "https://docs.tibco.com/pub/spotfire/7.0.1/doc/html/stat/stat_aggregations_overview.htm (and its stat_*.htm pages)",
+    "M15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/math_functions.html",
+    "S15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/statistical_functions.html",
+    "O15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/operators.html",
+    "P15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/operator_precedence.html",
+    "L15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/logical_functions.html",
+    "K15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/keywords_in_expressions.html",
+    "E15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/expression_language_details.html",
+    "T15": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/text_functions.html"
+  },
+  "vectors": [
+    {
+      "id": "sum.args",
+      "expr": "Sum(1, 2, 3)",
+      "rows": [],
+      "expect": 6,
+      "basis": "doc-stated",
+      "cite": "M15 Sum: Sum(1,2,3) → 6"
+    },
+    {
+      "id": "sum.args.mixed",
+      "expr": "Sum(1.5, -2, 3)",
+      "rows": [],
+      "expect": 2.5,
+      "basis": "doc-stated",
+      "cite": "M15 Sum: Sum (1.5, -2, 3) → 2.5"
+    },
+    {
+      "id": "sum.args.null",
+      "expr": "Sum(1, null, 3)",
+      "rows": [],
+      "expect": 4,
+      "basis": "doc-stated",
+      "cite": "M15 Sum: Sum (1, null, 3) → 4"
+    },
+    {
+      "id": "sum.null",
+      "expr": "Sum(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "M15 Sum: Sum (null) → (Empty)"
+    },
+    {
+      "id": "avg.args",
+      "expr": "Avg(2, -3, 4)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "S15 Avg: Avg(2,-3,4) → 1"
+    },
+    {
+      "id": "avg.args.frac",
+      "expr": "Avg(1.5, -2, 3.5)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "S15 Avg: Avg(1.5, -2, 3.5) → 1"
+    },
+    {
+      "id": "avg.args.null",
+      "expr": "Avg(1, null, 3)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "S15 Avg: Avg(1, null, 3) → 2"
+    },
+    {
+      "id": "avg.one",
+      "expr": "Avg(-1)",
+      "rows": [],
+      "expect": -1,
+      "basis": "doc-stated",
+      "cite": "S15 Avg: Avg(-1) → -1"
+    },
+    {
+      "id": "avg.null",
+      "expr": "Avg(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "S15 Avg: Avg(null) → (Empty)"
+    },
+    {
+      "id": "min.args",
+      "expr": "Min(1.5, -2, 3)",
+      "rows": [],
+      "expect": -2,
+      "basis": "doc-stated",
+      "cite": "S15 Min: Min (1.5, -2, 3) → -2"
+    },
+    {
+      "id": "min.args.null",
+      "expr": "Min(1, null, 3)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "S15 Min: Min (1, null, 3) → 1"
+    },
+    {
+      "id": "min.null",
+      "expr": "Min(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "S15 Min: Min (null) → (Empty)"
+    },
+    {
+      "id": "max.args",
+      "expr": "Max(1.5, -2, 3)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "S15 Max: Max (1.5, -2, 3) → 3"
+    },
+    {
+      "id": "max.args.null",
+      "expr": "Max(1, null, 3)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "S15 Max: Max (1, null, 3) → 3"
+    },
+    {
+      "id": "max.null",
+      "expr": "Max(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "S15 Max: Max (null) → (Empty)"
+    },
+    {
+      "id": "product.args",
+      "expr": "Product(1, 2, 3)",
+      "rows": [],
+      "expect": 6,
+      "basis": "doc-stated",
+      "cite": "M15 Product: Product(1,2,3) → 6"
+    },
+    {
+      "id": "product.args.mixed",
+      "expr": "Product(1.5, -2, 3)",
+      "rows": [],
+      "expect": -9,
+      "basis": "doc-stated",
+      "cite": "M15 Product: Product(1.5, -2, 3) → -9"
+    },
+    {
+      "id": "product.args.null",
+      "expr": "Product(1, null, 3)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "M15 Product: Product(1, null, 3) → 3"
+    },
+    {
+      "id": "product.null",
+      "expr": "Product(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "M15 Product: Product(null) → (Empty)"
+    },
+    {
+      "id": "meandeviation.args",
+      "expr": "MeanDeviation(2, -3, 4)",
+      "rows": [],
+      "expect": 2.6666666666666665,
+      "basis": "doc-stated",
+      "cite": "S15 MeanDeviation: MeanDeviation(2,-3,4) → 2.67 (printed rounded; 701 «Mean Deviation»: the mean of |x - mean|)"
+    },
+    {
+      "id": "median.args",
+      "expr": "Median(2, -3, 4)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "S15 Median: the example Median(2,-3,4) with no printed answer; 701 «Median»: the middle value"
+    },
+    {
+      "id": "mad.args",
+      "expr": "MedianAbsoluteDeviation(2, -3, 4)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "S15 MedianAbsoluteDeviation: the example (2,-3,4) with no printed answer; 701 «Median Absolute Deviation»: the median of |x - median|"
+    },
+    {
+      "id": "count.col",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "S15 Count: the non-empty values of the argument"
+    },
+    {
+      "id": "count.col.doc",
+      "expr": "Count([a])",
+      "rows": [
+        {
+          "a": 1
+        },
+        {
+          "a": null
+        },
+        {
+          "a": 8
+        },
+        {
+          "a": 9
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "701 «Count»: Column A (1, empty, 8, 9) has a Count of 3"
+    },
+    {
+      "id": "count.col.doc.full",
+      "expr": "Count([b])",
+      "rows": [
+        {
+          "b": 4
+        },
+        {
+          "b": 7
+        },
+        {
+          "b": 3
+        },
+        {
+          "b": 6
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-stated",
+      "cite": "701 «Count»: Column B (4, 7, 3, 6) has a Count of 4"
+    },
+    {
+      "id": "count.rows",
+      "expr": "Count()",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "S15 Count: no argument → the number of rows"
+    },
+    {
+      "id": "countbig.col",
+      "expr": "CountBig([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "S15 CountBig: as Count (a long integer)"
+    },
+    {
+      "id": "count.col.all.null",
+      "expr": "Count([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "S15 Count: the non-empty values - none"
+    },
+    {
+      "id": "uniquecount.col.doc",
+      "expr": "UniqueCount([a])",
+      "rows": [
+        {
+          "a": 1
+        },
+        {
+          "a": null
+        },
+        {
+          "a": 1
+        },
+        {
+          "a": 9
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "701 «Unique Count»: column A (1, empty, 1, 9) has a unique count of two"
+    },
+    {
+      "id": "uniquecount.col.doc.full",
+      "expr": "UniqueCount([b])",
+      "rows": [
+        {
+          "b": 4
+        },
+        {
+          "b": 4
+        },
+        {
+          "b": 3
+        },
+        {
+          "b": 6
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "701 «Unique Count»: column B (4, 4, 3, 6) has a unique count of three"
+    },
+    {
+      "id": "count.distinct",
+      "expr": "Count(distinct [a])",
+      "rows": [
+        {
+          "a": 1
+        },
+        {
+          "a": null
+        },
+        {
+          "a": 1
+        },
+        {
+          "a": 9
+        }
+      ],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "S15 tip: UniqueCount([Column]) is the same as Count(DISTINCT [Column])"
+    },
+    {
+      "id": "sum.col",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 6,
+      "basis": "doc-rule",
+      "cite": "M15 Sum: one argument → the whole column; E15: aggregating within a column leaves an invalid value out"
+    },
+    {
+      "id": "sum.col.all.null",
+      "expr": "Sum([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 Sum: Sum (null) → (Empty) - nothing is left after the empty values"
+    },
+    {
+      "id": "avg.col",
+      "expr": "Avg([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "S15 Avg: one argument → all rows; empty values left out (E15)"
+    },
+    {
+      "id": "avg.col.all.null",
+      "expr": "Avg([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "S15 Avg: Avg(null) → (Empty)"
+    },
+    {
+      "id": "avg.distinct",
+      "expr": "Avg(distinct [x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 2.5,
+      "basis": "doc-rule",
+      "cite": "K15 DISTINCT: the aggregation over the distinct values only"
+    },
+    {
+      "id": "min.col",
+      "expr": "Min([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "S15 Min: one argument → the whole column; empty values left out (E15)"
+    },
+    {
+      "id": "max.col",
+      "expr": "Max([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "S15 Max: one argument → the whole column; empty values left out (E15)"
+    },
+    {
+      "id": "median.col.odd",
+      "expr": "Median([x])",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "701 «Median»: the middle of the sorted values"
+    },
+    {
+      "id": "median.col.even",
+      "expr": "Median([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 2.5,
+      "basis": "doc-rule",
+      "cite": "701 «Median»: an even count → the average of the two middle values"
+    },
+    {
+      "id": "product.col",
+      "expr": "Product([x])",
+      "rows": [
+        {
+          "x": 2
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 6,
+      "basis": "doc-rule",
+      "cite": "M15 Product: one argument → the whole column; null arguments left out"
+    },
+    {
+      "id": "first.col",
+      "expr": "First([x])",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 9
+        }
+      ],
+      "expect": 7,
+      "basis": "doc-rule",
+      "cite": "S15 First: the first valid value in the rows' physical order"
+    },
+    {
+      "id": "last.col",
+      "expr": "Last([x])",
+      "rows": [
+        {
+          "x": 7
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": 9,
+      "basis": "doc-rule",
+      "cite": "S15 Last: the last valid value in the rows' physical order"
+    },
+    {
+      "id": "stddev.col",
+      "expr": "StdDev([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 1.2909944487358056,
+      "basis": "doc-rule",
+      "cite": "701 «Standard Deviation»: n = 1 is an error (so it divides by n - 1); 701 «Variance»: the sample variance"
+    },
+    {
+      "id": "var.col",
+      "expr": "Var([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 1.6666666666666667,
+      "basis": "doc-rule",
+      "cite": "701 «Variance»: the sample variance s2"
+    },
+    {
+      "id": "stderr.col",
+      "expr": "StdErr([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 0.6454972243679028,
+      "basis": "doc-rule",
+      "cite": "701 «Standard Error»: the estimated standard deviation over the square root of the sample size"
+    },
+    {
+      "id": "stddev.col.one",
+      "expr": "StdDev([x])",
+      "rows": [
+        {
+          "x": 5
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "701 «Standard Deviation»: one value → an error; an invalid value shows as (Empty) (O15 0/0 → (Empty))"
+    },
+    {
+      "id": "var.col.one",
+      "expr": "Var([x])",
+      "rows": [
+        {
+          "x": 5
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "701 «Variance»: one value → an error, shown as (Empty)"
+    },
+    {
+      "id": "range.col",
+      "expr": "Range([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        }
+      ],
+      "expect": 8,
+      "basis": "doc-rule",
+      "cite": "701 «Min and Max»: Range = Max - Min"
+    },
+    {
+      "id": "q3.col.doc",
+      "expr": "Q3([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 14.75,
+      "basis": "doc-stated",
+      "cite": "701 «Percentiles and Quartiles»: values 4, 8, 9, 11, 16, 17 → Q3 = 14.75"
+    },
+    {
+      "id": "q1.col.doc",
+      "expr": "Q1([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 8.25,
+      "basis": "doc-rule",
+      "cite": "701 «Percentiles and Quartiles»: f = (i - 1) / (n - 1), interpolated at 0.25 (the same table)"
+    },
+    {
+      "id": "iqr.col",
+      "expr": "IQR([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 6.5,
+      "basis": "doc-rule",
+      "cite": "S15 IQR: Q3 - Q1"
+    },
+    {
+      "id": "lif.col",
+      "expr": "LIF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": -1.5,
+      "basis": "doc-rule",
+      "cite": "S15 LIF: Q1 - (1.5*IQR)"
+    },
+    {
+      "id": "uif.col",
+      "expr": "UIF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 24.5,
+      "basis": "doc-rule",
+      "cite": "S15 UIF: Q3 + (1.5*IQR)"
+    },
+    {
+      "id": "lof.col",
+      "expr": "LOF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": -11.25,
+      "basis": "doc-rule",
+      "cite": "S15 LOF: Q1 - (3*IQR)"
+    },
+    {
+      "id": "uof.col",
+      "expr": "UOF([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 34.25,
+      "basis": "doc-rule",
+      "cite": "S15 UOF: Q3 + (3*IQR)"
+    },
+    {
+      "id": "lav.col",
+      "expr": "LAV([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "701 «Adjacent Values and Outliers»: the smallest observation at or above the lower inner fence"
+    },
+    {
+      "id": "uav.col",
+      "expr": "UAV([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 17,
+      "basis": "doc-rule",
+      "cite": "701 «Adjacent Values and Outliers»: the largest observation at or below the upper inner fence"
+    },
+    {
+      "id": "lav.col.clamped",
+      "expr": "LAV([x])",
+      "rows": [
+        {
+          "x": 0
+        },
+        {
+          "x": 10
+        },
+        {
+          "x": 10
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 7.5,
+      "basis": "doc-rule",
+      "cite": "701 «Adjacent Values and Outliers»: the LAV is never greater than Q1"
+    },
+    {
+      "id": "outliers.col",
+      "expr": "Outliers([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        },
+        {
+          "x": 100
+        }
+      ],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "S15 Outliers: the values above the UAV or below the LAV"
+    },
+    {
+      "id": "outliers.col.none",
+      "expr": "Outliers([x])",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 11
+        },
+        {
+          "x": 16
+        },
+        {
+          "x": 17
+        }
+      ],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "S15 Outliers: the values above the UAV or below the LAV - none"
+    },
+    {
+      "id": "p10.col",
+      "expr": "P10([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 1.9,
+      "basis": "doc-rule",
+      "cite": "701 «Percentiles and Quartiles»: any other percentile interpolated the same way"
+    },
+    {
+      "id": "p90.col",
+      "expr": "P90([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 9.1,
+      "basis": "doc-rule",
+      "cite": "701 «Percentiles and Quartiles»: any other percentile interpolated the same way"
+    },
+    {
+      "id": "percentile.col.doc",
+      "expr": "Percentile([x], 70)",
+      "rows": [
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 8.2,
+      "basis": "doc-stated",
+      "cite": "L15 «More about using if»: Percentile(Col2, 70) over 4 … 10 → 8.2"
+    },
+    {
+      "id": "percentile.col.doc.short",
+      "expr": "Percentile([x], 70)",
+      "rows": [
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "expect": 8.8,
+      "basis": "doc-stated",
+      "cite": "L15 «More about using if»: Percentile(Col2, 70) over 6 … 10 → 8.8"
+    },
+    {
+      "id": "percent.col",
+      "expr": "Percent([x], 50)",
+      "rows": [
+        {
+          "x": 10
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 20
+        },
+        {
+          "x": 30
+        }
+      ],
+      "expect": 20,
+      "basis": "doc-rule",
+      "cite": "S15 Percent: the given percent of (max - min) above the minimum"
+    },
+    {
+      "id": "geometricmean.col",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "701 «Geometric Mean»: the nth root of the product"
+    },
+    {
+      "id": "geometricmean.col.negative",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": -4
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "S15 GeometricMean: a negative input → Empty"
+    },
+    {
+      "id": "geometricmean.col.zero",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 0
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "S15 GeometricMean: an input equal to zero → zero"
+    },
+    {
+      "id": "geometricmean.col.null",
+      "expr": "GeometricMean([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 16
+        }
+      ],
+      "expect": 4,
+      "basis": "doc-rule",
+      "cite": "E15: aggregating within a column leaves an invalid value out"
+    },
+    {
+      "id": "trimmedmean.col",
+      "expr": "TrimmedMean([x], 20)",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 100
+        }
+      ],
+      "expect": 5.5,
+      "basis": "doc-rule",
+      "cite": "S15 TrimmedMean: a trim of 10 % leaves out the highest 5 % and the lowest 5 %"
+    },
+    {
+      "id": "weightedaverage.col",
+      "expr": "WeightedAverage([w], [x])",
+      "rows": [
+        {
+          "w": 1,
+          "x": 10
+        },
+        {
+          "w": 3,
+          "x": 20
+        }
+      ],
+      "expect": 17.5,
+      "basis": "doc-rule",
+      "cite": "S15 WeightedAverage: Arg1 is the weight column, Arg2 the value column"
+    },
+    {
+      "id": "nthlargest.col",
+      "expr": "NthLargest([x], 2)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 5,
+      "basis": "doc-rule",
+      "cite": "S15 NthLargest: the nth largest value"
+    },
+    {
+      "id": "nthlargest.col.past",
+      "expr": "NthLargest([x], 7)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "S15 NthLargest: n past the number of values → the smallest"
+    },
+    {
+      "id": "nthsmallest.col",
+      "expr": "NthSmallest([x], 2)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "S15 NthSmallest: the nth smallest value"
+    },
+    {
+      "id": "nthsmallest.col.past",
+      "expr": "NthSmallest([x], 7)",
+      "rows": [
+        {
+          "x": 5
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect": 9,
+      "basis": "doc-rule",
+      "cite": "S15 NthSmallest: n past the number of values → the largest"
+    },
+    {
+      "id": "valueformax.col",
+      "expr": "ValueForMax([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 9,
+          "x": 20
+        },
+        {
+          "k": 9,
+          "x": 30
+        },
+        {
+          "k": 1,
+          "x": 40
+        }
+      ],
+      "expect": 20,
+      "basis": "doc-rule",
+      "cite": "S15 ValueForMax: column 2 at column 1's maximum; several maxima → the first max row"
+    },
+    {
+      "id": "lastvalueformax.col",
+      "expr": "LastValueForMax([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 9,
+          "x": 20
+        },
+        {
+          "k": 9,
+          "x": 30
+        },
+        {
+          "k": 1,
+          "x": 40
+        }
+      ],
+      "expect": 30,
+      "basis": "doc-rule",
+      "cite": "S15 LastValueForMax: several maxima → the last max row"
+    },
+    {
+      "id": "valueformin.col",
+      "expr": "ValueForMin([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 1,
+          "x": 20
+        },
+        {
+          "k": 1,
+          "x": 30
+        },
+        {
+          "k": 9,
+          "x": 40
+        }
+      ],
+      "expect": 20,
+      "basis": "doc-rule",
+      "cite": "S15 ValueForMin: several minima → the first min row"
+    },
+    {
+      "id": "lastvalueformin.col",
+      "expr": "LastValueForMin([k], [x])",
+      "rows": [
+        {
+          "k": 3,
+          "x": 10
+        },
+        {
+          "k": 1,
+          "x": 20
+        },
+        {
+          "k": 1,
+          "x": 30
+        },
+        {
+          "k": 9,
+          "x": 40
+        }
+      ],
+      "expect": 30,
+      "basis": "doc-rule",
+      "cite": "S15 LastValueForMin: several minima → the last min row"
+    },
+    {
+      "id": "l95.col",
+      "expr": "L95([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 1.2348486781389878,
+      "basis": "doc-rule",
+      "cite": "S15 L95: the static t-value 1.959964 in place of TInv in Avg - t*StdDev/Sqrt(Count())"
+    },
+    {
+      "id": "u95.col",
+      "expr": "U95([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ],
+      "expect": 3.765151321861012,
+      "basis": "doc-rule",
+      "cite": "S15 U95: the static t-value 1.959964 in place of TInv in Avg + t*StdDev/Sqrt(Count())"
+    },
+    {
+      "id": "mostcommon.col",
+      "expr": "MostCommon([s])",
+      "rows": [
+        {
+          "s": "a"
+        },
+        {
+          "s": "b"
+        },
+        {
+          "s": null
+        },
+        {
+          "s": "b"
+        }
+      ],
+      "expect": "b",
+      "basis": "doc-rule",
+      "cite": "T15 MostCommon: the most common value"
+    },
+    {
+      "id": "names.case",
+      "expr": "SUM([x]) + sum([x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        }
+      ],
+      "expect": 6,
+      "basis": "doc-rule",
+      "cite": "E15 «Case sensitivity»: functions and keywords are not case sensitive"
+    },
+    {
+      "id": "abs",
+      "expr": "Abs(-2.5)",
+      "rows": [],
+      "expect": 2.5,
+      "basis": "doc-rule",
+      "cite": "M15 Abs: the absolute value"
+    },
+    {
+      "id": "abs.null",
+      "expr": "Abs(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "E15 «Expression results»: operations on null return null"
+    },
+    {
+      "id": "ceiling",
+      "expr": "Ceiling(1.01)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "M15 Ceiling: Ceiling(1.01) → 2.0"
+    },
+    {
+      "id": "ceiling.negative",
+      "expr": "Ceiling(-1.99)",
+      "rows": [],
+      "expect": -1,
+      "basis": "doc-stated",
+      "cite": "M15 Ceiling: Ceiling(-1.99) → -1.0"
+    },
+    {
+      "id": "floor",
+      "expr": "Floor(1.99)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "M15 Floor: Floor(1.99) → 1.0"
+    },
+    {
+      "id": "floor.negative",
+      "expr": "Floor(-1.01)",
+      "rows": [],
+      "expect": -2,
+      "basis": "doc-stated",
+      "cite": "M15 Floor: Floor(-1.01) → -2.0"
+    },
+    {
+      "id": "round.pi",
+      "expr": "Round(PI(), 3)",
+      "rows": [],
+      "expect": 3.142,
+      "basis": "doc-stated",
+      "cite": "M15 Round: Round(PI(), 3) → 3.142"
+    },
+    {
+      "id": "round.half.negative",
+      "expr": "Round(-0.5, 0)",
+      "rows": [],
+      "expect": -1,
+      "basis": "doc-stated",
+      "cite": "M15 Round: Round(-0.5, 0) → -1"
+    },
+    {
+      "id": "round.tens",
+      "expr": "Round(25, -1)",
+      "rows": [],
+      "expect": 30,
+      "basis": "doc-stated",
+      "cite": "M15 Round: Round(25, -1) → 30"
+    },
+    {
+      "id": "round.half",
+      "expr": "Round(2.5, 0)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "M15 Round: 0.5 goes to the higher magnitude"
+    },
+    {
+      "id": "round.digits.integer.part",
+      "expr": "Round(1.2345, 2.9)",
+      "rows": [],
+      "expect": 1.23,
+      "basis": "doc-rule",
+      "cite": "M15 Round: only the integer part of Arg2 is used"
+    },
+    {
+      "id": "round.null",
+      "expr": "Round(null, 1)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "E15: operations on null return null"
+    },
+    {
+      "id": "sqrt",
+      "expr": "Sqrt(9)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "M15 Sqrt: the square root"
+    },
+    {
+      "id": "sqrt.negative",
+      "expr": "Sqrt(-1)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 Sqrt: a negative argument → #NA; an invalid value shows as (Empty) (O15 0/0 → (Empty))"
+    },
+    {
+      "id": "exp.zero",
+      "expr": "Exp(0)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "M15 Exp: e to the Arg1 power"
+    },
+    {
+      "id": "exp.one",
+      "expr": "Exp(1)",
+      "rows": [],
+      "expect": 2.718281828459045,
+      "basis": "doc-rule",
+      "cite": "M15 Exp: e to the Arg1 power"
+    },
+    {
+      "id": "ln.one",
+      "expr": "Ln(1)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "M15 Ln: the natural logarithm"
+    },
+    {
+      "id": "ln.zero",
+      "expr": "Ln(0)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 Ln: zero → #NA, shown as (Empty)"
+    },
+    {
+      "id": "ln.negative",
+      "expr": "Ln(-1)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 Ln: negative → #NA, shown as (Empty)"
+    },
+    {
+      "id": "log.base",
+      "expr": "Log(8, 2)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "M15 Log: Ln(Arg1)/Ln(Arg2)"
+    },
+    {
+      "id": "log10",
+      "expr": "Log10(1000)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "M15 Log10: Ln(Arg1)/Ln(10)"
+    },
+    {
+      "id": "log10.zero",
+      "expr": "Log10(0)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 Log10: as Ln for valid arguments - zero → #NA"
+    },
+    {
+      "id": "mod",
+      "expr": "Mod(7.5, 2)",
+      "rows": [],
+      "expect": 1.5,
+      "basis": "doc-rule",
+      "cite": "M15 Mod: Arg1 - Arg2*Floor(Arg1/Arg2)"
+    },
+    {
+      "id": "mod.negative",
+      "expr": "Mod(-7, 3)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "M15 Mod: Arg1 - Arg2*Floor(Arg1/Arg2)"
+    },
+    {
+      "id": "mod.zero",
+      "expr": "Mod(5, 0)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 Mod: Arg2 = 0 → #NA, shown as (Empty)"
+    },
+    {
+      "id": "pi",
+      "expr": "PI()",
+      "rows": [],
+      "expect": 3.141592653589793,
+      "basis": "doc-rule",
+      "cite": "M15 PI: the constant π"
+    },
+    {
+      "id": "power",
+      "expr": "Power(10, 3)",
+      "rows": [],
+      "expect": 1000,
+      "basis": "doc-stated",
+      "cite": "M15 Power: Power(10, 3) → 1000"
+    },
+    {
+      "id": "power.negative",
+      "expr": "Power(10, -3)",
+      "rows": [],
+      "expect": 0.001,
+      "basis": "doc-stated",
+      "cite": "M15 Power: Power(10, -3) → 0.001"
+    },
+    {
+      "id": "power.zero.zero",
+      "expr": "Power(0, 0)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "M15 Power: Power(0, 0) → 1"
+    },
+    {
+      "id": "sin",
+      "expr": "Sin(0)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "M15 Sin: radians"
+    },
+    {
+      "id": "cos",
+      "expr": "Cos(0)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "M15 Cos: radians"
+    },
+    {
+      "id": "tan",
+      "expr": "Tan(0)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "M15 Tan: radians"
+    },
+    {
+      "id": "asin",
+      "expr": "ASin(1)",
+      "rows": [],
+      "expect": 1.5707963267948966,
+      "basis": "doc-rule",
+      "cite": "M15 ASin: radians in [-π/2, π/2]"
+    },
+    {
+      "id": "asin.outside",
+      "expr": "ASin(2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 ASin: outside [-1, 1] → #NA, shown as (Empty)"
+    },
+    {
+      "id": "acos",
+      "expr": "ACos(1)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-rule",
+      "cite": "M15 ACos: radians in [0, π]"
+    },
+    {
+      "id": "acos.outside",
+      "expr": "ACos(-2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "M15 ACos: outside [-1, 1] → #NA, shown as (Empty)"
+    },
+    {
+      "id": "atan",
+      "expr": "ATan(1)",
+      "rows": [],
+      "expect": 0.7853981633974483,
+      "basis": "doc-rule",
+      "cite": "M15 ATan: radians in [-π/2, π/2]"
+    },
+    {
+      "id": "atan2",
+      "expr": "ATan2(0, -1)",
+      "rows": [],
+      "expect": 3.141592653589793,
+      "basis": "doc-stated",
+      "cite": "M15 ATan2: ATan2(0, -1) → 3.14159265358979"
+    },
+    {
+      "id": "divide",
+      "expr": "7 / 2",
+      "rows": [],
+      "expect": 3.5,
+      "basis": "doc-stated",
+      "cite": "O15 /: 7/2 → 3.5"
+    },
+    {
+      "id": "divide.zero.zero",
+      "expr": "0 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "O15 /: 0/0 → (Empty)"
+    },
+    {
+      "id": "divide.negative.zero",
+      "expr": "-1 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "O15 /: -1/0 → (Empty)"
+    },
+    {
+      "id": "divide.zero",
+      "expr": "1 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "O15 /: division by zero → an invalid value"
+    },
+    {
+      "id": "remainder",
+      "expr": "3.5 % 2.5",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "O15 %: 3.5 % 2.5 → 1.00"
+    },
+    {
+      "id": "caret",
+      "expr": "2.5 ^ 3",
+      "rows": [],
+      "expect": 15.625,
+      "basis": "doc-rule",
+      "cite": "O15 ^: Arg1 raised to the Arg2 power (the example 2.5^3)"
+    },
+    {
+      "id": "negate",
+      "expr": "-(1 - 2)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "E15: constants as arguments, the example -(1-2)"
+    },
+    {
+      "id": "precedence.multiply",
+      "expr": "39 + 12 * 3",
+      "rows": [],
+      "expect": 75,
+      "basis": "doc-rule",
+      "cite": "P15: multiplicative before additive (E15 example 39+12*3)"
+    },
+    {
+      "id": "precedence.left.subtract",
+      "expr": "10 - 4 - 3",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-rule",
+      "cite": "P15: additive, left to right"
+    },
+    {
+      "id": "precedence.left.divide",
+      "expr": "8 / 4 / 2",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-rule",
+      "cite": "P15: multiplicative, left to right"
+    },
+    {
+      "id": "precedence.multiply.remainder",
+      "expr": "2 * 3 % 4",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-rule",
+      "cite": "P15: * and % equal, left to right"
+    },
+    {
+      "id": "precedence.unary",
+      "expr": "-2 * 3",
+      "rows": [],
+      "expect": -6,
+      "basis": "doc-rule",
+      "cite": "P15: unary minus before multiplicative"
+    },
+    {
+      "id": "add.null",
+      "expr": "null + 1",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "E15: operations on null return null"
+    },
+    {
+      "id": "subtract.null",
+      "expr": "1 - null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "E15: operations on null return null"
+    },
+    {
+      "id": "multiply.null",
+      "expr": "null * 2",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "E15: operations on null return null"
+    },
+    {
+      "id": "multiply.rows",
+      "expr": "[x] * 2",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": null
+        },
+        {
+          "x": 3
+        }
+      ],
+      "expect_rows": [
+        2,
+        null,
+        6
+      ],
+      "basis": "doc-rule",
+      "cite": "E15 «Expression results»: [Column A]*2 is empty on the rows where Column A is empty"
+    },
+    {
+      "id": "less",
+      "expr": "1 < 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-stated",
+      "cite": "O15 <: If( 1 < 2, \"true\", \"false\" ) → true"
+    },
+    {
+      "id": "less.false",
+      "expr": "2 < 1",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-stated",
+      "cite": "O15 <: Case when 2 < 1 then \"true\" else \"false\" end → false"
+    },
+    {
+      "id": "less.null",
+      "expr": "1 < null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "O15 <: If(1<null, \"true\", \"false\") → (Empty)"
+    },
+    {
+      "id": "less.invalid",
+      "expr": "1 < 1 / 0",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "O15 <: If(1 < 1/0, \"true\", \"false\") → (Empty)"
+    },
+    {
+      "id": "greater",
+      "expr": "3 > 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 >: greater than"
+    },
+    {
+      "id": "less.equal",
+      "expr": "2 <= 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 <=: less than or equal"
+    },
+    {
+      "id": "greater.equal",
+      "expr": "3 >= 4",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 >=: greater than or equal"
+    },
+    {
+      "id": "equal.false",
+      "expr": "1 = 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-stated",
+      "cite": "O15 =: If(1 = 2, \"true\", \"false\" ) → false"
+    },
+    {
+      "id": "equal.true",
+      "expr": "2 = 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-stated",
+      "cite": "O15 =: Case when 2 = 2 then \"true\" else \"false\" end → true"
+    },
+    {
+      "id": "equal.text.case",
+      "expr": "\"Hello\" = \"hello\"",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-stated",
+      "cite": "O15 =: If(\"Hello\" = \"hello\", \"true\", \"false\" ) → false"
+    },
+    {
+      "id": "equal.null.null",
+      "expr": "null = null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "O15 =: If(null = null, \"true\", \"false\" ) → (Empty)"
+    },
+    {
+      "id": "equal.null",
+      "expr": "1 = null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "O15 =: any argument null → null"
+    },
+    {
+      "id": "not.equal.bang",
+      "expr": "1 != 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 !=: true when not equal"
+    },
+    {
+      "id": "not.equal.bang.false",
+      "expr": "2 != 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 !=: the example Case when 2 != 2 …"
+    },
+    {
+      "id": "not.equal",
+      "expr": "1 <> 2",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 <>: true when not equal"
+    },
+    {
+      "id": "not.equal.null",
+      "expr": "1 <> null",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "O15 <>: any argument invalid → invalid"
+    },
+    {
+      "id": "null.equal.both",
+      "expr": "null <=> null",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 <=>: true when equal or both null"
+    },
+    {
+      "id": "null.equal.same",
+      "expr": "1 <=> 1",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 <=>: true when equal or both null"
+    },
+    {
+      "id": "null.equal.one",
+      "expr": "1 <=> null",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 <=>: true only when equal or both null - one null is neither (the page prints no answer)"
+    },
+    {
+      "id": "null.equal.differ",
+      "expr": "1 <=> 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 <=>: neither equal nor both null"
+    },
+    {
+      "id": "and",
+      "expr": "1 < 2 and 2 < 3",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 And: true when both are true (the example 1 < 2 and 2 < 3)"
+    },
+    {
+      "id": "and.false",
+      "expr": "false and true",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 And: the example false and true"
+    },
+    {
+      "id": "or",
+      "expr": "false or true",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 Or: true when one is true (the example false or true)"
+    },
+    {
+      "id": "not",
+      "expr": "not true",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 Not: the example not true"
+    },
+    {
+      "id": "not.binds.after.compare",
+      "expr": "not 1 < 2",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 Not: the example If( not 1 < 2, … ) - not applies to the comparison"
+    },
+    {
+      "id": "xor.both",
+      "expr": "1 < 2 xor 2 < 3",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "O15 Xor: true when exactly one is true (the example 1 < 2 xor 2 < 3)"
+    },
+    {
+      "id": "xor.one",
+      "expr": "true xor false",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "O15 Xor: exactly one is true"
+    },
+    {
+      "id": "precedence.compare.equal",
+      "expr": "1 < 2 = true",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "P15: relational before equality"
+    },
+    {
+      "id": "if.null.branches",
+      "expr": "If(true, null, null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "L15 If: If(true, null, null) -> (Empty)"
+    },
+    {
+      "id": "if.null.false.branch",
+      "expr": "If(true, 1, null)",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "L15 If: If(true, 1, null) -> 1"
+    },
+    {
+      "id": "if.null.true.branch",
+      "expr": "If(false, null, 2)",
+      "rows": [],
+      "expect": 2,
+      "basis": "doc-stated",
+      "cite": "L15 If: If(false, null, 2) -> 2"
+    },
+    {
+      "id": "if.null.condition",
+      "expr": "If(null, 1, 2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "L15 If: If(null, 1, 2) -> (Empty)"
+    },
+    {
+      "id": "if.text",
+      "expr": "If(1 < 2, \"Small\", \"Big\")",
+      "rows": [],
+      "expect": "Small",
+      "basis": "doc-stated",
+      "cite": "L15 If: If(1 < 2, \"Small\", \"Big\")-> Small"
+    },
+    {
+      "id": "if.is.null.rows",
+      "expr": "If([x] Is Null, \"0\", \"has value\")",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect_rows": [
+        "0",
+        "has value"
+      ],
+      "basis": "doc-rule",
+      "cite": "L15 If: the example If([Column] Is Null,\"0\",\"has value\")"
+    },
+    {
+      "id": "is.null",
+      "expr": "null Is Null",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "L15 Is Null: whether the expression yields an empty value"
+    },
+    {
+      "id": "is.null.value",
+      "expr": "1 Is Null",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "L15 Is Null: whether the expression yields an empty value"
+    },
+    {
+      "id": "is.not.null",
+      "expr": "1 Is Not Null",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "L15 Is Not Null: whether the expression yields a value"
+    },
+    {
+      "id": "is.null.aggregate",
+      "expr": "Avg([x]) Is Null",
+      "rows": [
+        {
+          "x": null
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "K15 IS: the example Avg([Column]) Is Null; S15 Avg(null) → (Empty)"
+    },
+    {
+      "id": "case.searched",
+      "expr": "case when 1 < 2 then \"a\" when 1 < 3 then \"b\" else \"c\" end",
+      "rows": [],
+      "expect": "a",
+      "basis": "doc-rule",
+      "cite": "L15 Case: searched, left to right - the first true when"
+    },
+    {
+      "id": "case.searched.else",
+      "expr": "case when 2 < 1 then \"true\" else \"false\" end",
+      "rows": [],
+      "expect": "false",
+      "basis": "doc-stated",
+      "cite": "O15 <: Case when 2 < 1 then \"true\" else \"false\" end → false"
+    },
+    {
+      "id": "case.simple.rows",
+      "expr": "case [x] when 3 then \"a\" when 2 then \"b\" else \"c\" end",
+      "rows": [
+        {
+          "x": 3
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 7
+        }
+      ],
+      "expect_rows": [
+        "a",
+        "b",
+        "c"
+      ],
+      "basis": "doc-rule",
+      "cite": "L15 Case: simple - the first when equal to Arg1, else the else"
+    },
+    {
+      "id": "case.simple.single.quotes",
+      "expr": "case [x] when 10 then 'ten' else 'not ten' end",
+      "rows": [
+        {
+          "x": 10
+        },
+        {
+          "x": 5
+        }
+      ],
+      "expect_rows": [
+        "ten",
+        "not ten"
+      ],
+      "basis": "doc-rule",
+      "cite": "L15: the example case [Column1] when 10 then 'ten' else 'not ten' end (single-quoted text)"
+    },
+    {
+      "id": "case.coalesce.rows",
+      "expr": "case when [x] is not null then [x] else [y] end",
+      "rows": [
+        {
+          "x": 1,
+          "y": 9
+        },
+        {
+          "x": null,
+          "y": 8
+        }
+      ],
+      "expect_rows": [
+        1,
+        8
+      ],
+      "basis": "doc-rule",
+      "cite": "L15: the example case when Column1 is not null then Column1 else Column2 end"
+    }
+  ],
+  "unsettled": [
+    {
+      "id": "median.args.null",
+      "expr": "Median(1, null, 3, 4)",
+      "question": "null left out (the median of 1, 3, 4 = 3) or the row invalid?",
+      "why": "E15 says a row-wise calculation is invalid when one involved value is; Sum/Avg/Min/Max/Product say a null argument is ignored. This function states neither"
+    },
+    {
+      "id": "meandeviation.args.null",
+      "expr": "MeanDeviation(1, null, 3)",
+      "question": "null left out or the row invalid?",
+      "why": "E15 says a row-wise calculation is invalid when one involved value is; Sum/Avg/Min/Max/Product say a null argument is ignored. This function states neither"
+    },
+    {
+      "id": "mad.args.null",
+      "expr": "MedianAbsoluteDeviation(1, null, 3)",
+      "question": "null left out or the row invalid?",
+      "why": "E15 says a row-wise calculation is invalid when one involved value is; Sum/Avg/Min/Max/Product say a null argument is ignored. This function states neither"
+    },
+    {
+      "id": "remainder.negative",
+      "expr": "-7 % 3",
+      "question": "-1 (the sign of Arg1) or 2 (as Mod)?",
+      "why": "O15 % states no sign rule; only Mod states its definition"
+    },
+    {
+      "id": "remainder.zero",
+      "expr": "5 % 0",
+      "question": "empty?",
+      "why": "O15 % says invalid values propagate but not that a zero divisor makes one"
+    },
+    {
+      "id": "and.null",
+      "expr": "null and true · null and false",
+      "question": "three-valued (null · false) or null for both?",
+      "why": "O15 And/Or/Xor/Not state nothing about null"
+    },
+    {
+      "id": "or.null",
+      "expr": "null or true · null or false",
+      "question": "three-valued (true · null) or null for both?",
+      "why": "O15 And/Or/Xor/Not state nothing about null"
+    },
+    {
+      "id": "not.null",
+      "expr": "not null",
+      "question": "null?",
+      "why": "O15 Not states nothing about null"
+    },
+    {
+      "id": "xor.null",
+      "expr": "null xor true",
+      "question": "null?",
+      "why": "O15 Xor states nothing about null"
+    },
+    {
+      "id": "case.null.condition",
+      "expr": "case when null then 1 else 2 end",
+      "question": "2 (a null when is not true) or null (as If(null, 1, 2))?",
+      "why": "L15 Case states nothing about a null when; If states (Empty)"
+    },
+    {
+      "id": "case.no.else",
+      "expr": "case when 1 = 2 then 1 end",
+      "question": "null?",
+      "why": "L15 Case states nothing about a case without else and no true when"
+    },
+    {
+      "id": "case.simple.null",
+      "expr": "case null when null then 1 else 2 end",
+      "question": "2 (null = null is null) or 1?",
+      "why": "L15 Case says «Arg1 equal to Arg2»; O15 = gives null for null = null"
+    },
+    {
+      "id": "less.text",
+      "expr": "\"a\" < \"b\"",
+      "question": "true, or invalid?",
+      "why": "O15 < takes any type of one kind, then says it is defined for normal numbers and other combinations are invalid"
+    },
+    {
+      "id": "precedence.caret",
+      "expr": "-2 ^ 2 · 2 * 3 ^ 2",
+      "question": "where ^ sits",
+      "why": "P15 lists no ^"
+    },
+    {
+      "id": "precedence.logic",
+      "expr": "true or false and false",
+      "question": "where and · or · xor · not sit against each other",
+      "why": "P15 lists no logical operator"
+    },
+    {
+      "id": "pctoutliers.scale",
+      "expr": "PctOutliers([x])",
+      "question": "14.29 (percent) or 0.1429 (a fraction) for one outlier in seven?",
+      "why": "S15 says «percent of values»; 701 says the count of outliers divided by the total count"
+    },
+    {
+      "id": "covariance.divisor",
+      "expr": "Covariance([x], [y])",
+      "question": "divide by n - 1 (sample) or n?",
+      "why": "S15 Covariance states no divisor"
+    },
+    {
+      "id": "uniqueconcatenate.separator",
+      "expr": "UniqueConcatenate([s])",
+      "question": "the separator between values",
+      "why": "T15 says the values are ordered by the comparator, not what joins them"
+    },
+    {
+      "id": "mostcommon.tie",
+      "expr": "MostCommon([s]) over a, b",
+      "question": "«the first one» in the rows' order or in the sort order?",
+      "why": "T15 says the first one is used, not first by what"
+    },
+    {
+      "id": "weightedaverage.null",
+      "expr": "WeightedAverage([w], [x]) with a null weight or value in a row",
+      "question": "that row left out, or only the null side?",
+      "why": "S15 WeightedAverage states nothing about null"
+    },
+    {
+      "id": "trimmedmean.fraction",
+      "expr": "TrimmedMean([x], 10) over seven values",
+      "question": "how 0.35 of a value is cut",
+      "why": "S15 TrimmedMean gives the percent split only"
+    }
+  ],
+  "lead_decides": [
+    {
+      "id": "if.branch.subset",
+      "expr": "If([x] < 2, Max([x]), Max([x]))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        }
+      ],
+      "doc_rows": [
+        1,
+        3,
+        3
+      ],
+      "question": "An aggregate inside an If branch folds only the rows that branch takes - scoring this makes the calculator evaluate per row with each branch's own rows",
+      "cite": "L15 «More about using if»: Col1 1, 2, 3 → 1, 3, 3"
+    },
+    {
+      "id": "if.branch.percentile",
+      "expr": "If([x] < 4, 0, Percentile([x], 70))",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        },
+        {
+          "x": 9
+        },
+        {
+          "x": 10
+        }
+      ],
+      "doc_rows": [
+        0,
+        0,
+        0,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2,
+        8.2
+      ],
+      "question": "the same, for Percentile",
+      "cite": "L15 «More about using if»: Col2 1 … 10 → 0 ×3, 8.2 ×7"
+    },
+    {
+      "id": "case.then.subset",
+      "expr": "case when [x] < Avg([x]) then Min([x]) when [x] < (Avg([x]) + 1) then Min([x]) else Min([x]) end",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        },
+        {
+          "x": 5
+        },
+        {
+          "x": 6
+        },
+        {
+          "x": 7
+        },
+        {
+          "x": 8
+        }
+      ],
+      "doc_rows": [
+        1,
+        1,
+        1,
+        1,
+        5,
+        6,
+        6,
+        6
+      ],
+      "question": "a when is judged on the whole column, its then on the rows it and every earlier when leave",
+      "cite": "L15 «More about using case»: Case Min 1 1 1 1 5 6 6 6"
+    }
+  ],
+  "out_of_edition": [
+    {
+      "names": [
+        "NormDist",
+        "NormInv",
+        "TDist",
+        "TInv",
+        "ChiDist",
+        "ChiInv",
+        "FDist",
+        "FInv"
+      ],
+      "why": "task doc §1-c: distribution functions, not aggregations - the first edition is aggregations (lead to confirm)"
+    },
+    {
+      "names": [
+        "Lag",
+        "Lead",
+        "TERR_*",
+        "TERRAggregation_*"
+      ],
+      "why": "task doc §1-d: load order and the external R engine - not built"
+    },
+    {
+      "names": [
+        "Rand",
+        "RandBetween"
+      ],
+      "why": "a seeded generator the pages do not define - no answer to score"
+    },
+    {
+      "names": [
+        "AS",
+        "OVER",
+        "NEST",
+        "CROSS"
+      ],
+      "why": "axis and hierarchy keywords - a visualization's, not a value's"
+    },
+    {
+      "names": [
+        "&",
+        "Concatenate",
+        "text",
+        "date and time",
+        "conversion",
+        "binning",
+        "ranking",
+        "spatial",
+        "property"
+      ],
+      "why": "task doc §6: names only, not built"
+    },
+    {
+      "names": [
+        "Latest",
+        "[step.name]",
+        "type(\"key\")",
+        "Reach"
+      ],
+      "why": "ours, no Spotfire basis (task doc §7; grammar afcb79f14 · 5ad030347) - scored by the grammar's own harnesses"
+    },
+    {
+      "names": [
+        "\"\""
+      ],
+      "why": "an empty text is NULL at our write boundary - contracts/blank_predicate owns «is this cell empty»"
+    }
+  ]
+}
