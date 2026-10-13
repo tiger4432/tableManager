@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-13] **원장 다시 번역이 × 로 안 멈출 때 (소유자 「원장 재번역 꺼지지도 않네 x 눌러도」)** — 순서대로, 앞에서 멈추면 거기까지
+>
+> ```
+> 왜       × 는 멈춤을 «적어 둘» 뿐이고, 실행은 쪽(page)과 쪽 «사이»에서 그것을 읽는다 — 쪽 하나가 느리면(잠금 대기 등) 그 쪽이 끝날 때까지 안 멈춘다
+> ① 그 실행의 DB 문장 끊기   위 절(무엇을 기다리나)의 읽기 줄에서 who = assy_retroactive 인 pid 를 찾아
+>          SELECT pg_cancel_backend(<pid>);      -> 지금 문장만 끊김. 실행이 그 실패를 받아 멈춤을 읽는다
+>          1 분 안에 안 멈추면  SELECT pg_terminate_backend(<pid>);
+> ② 그래도 돌면(파이썬이 DB 밖에서 돌고 있음) 그 프로세스를 끈다 — PowerShell:
+>          Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*retroactive_run*' } | select ProcessId,CommandLine
+>          taskkill /PID <그 ProcessId> /F
+> ③ 화면에 running 줄이 남으면  curl.exe --noproxy "*" -X POST "http://127.0.0.1:8080/admin/retroactive/runs/<run_id>/cancel" -H "X-Admin-Token: <토큰>"
+>          "released": true -> 풀림. 아니면 10-11 절의 최후 수단 UPDATE
+> ⚠️ 안 잰 것  끊긴 쪽이 원장에 반쯤 남는지(쪽 하나가 한 트랜잭션인지) — 다시 돌리면 이어서 하는지는 구현자 B 가 잰다. 끊은 뒤 다시 돌릴 때 같은 범위로
+> ```
+
 > ## [10-13] **원장 다시 번역이 «5 초에 1 개도 안 됨» — 무엇을 기다리나 (소유자 「5초에 1개도 안됨 · 재번역」)** — 읽기만 · 재기동 없음
 >
 > ```
