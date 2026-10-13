@@ -45,14 +45,14 @@ import { TrendView } from './trend_view.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { localStamp } from '../server_time.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
-import { SubgraphView, seedsOf } from './subgraph_view.js';
+import { SubgraphView } from './subgraph_view.js';
 import { pathsAnswer } from './fold_views.js';
 // The start baskets (lead bc63378e5) - the start marking's editor, a part with its own div in the right panel.
 import { StartBaskets, BASKET_WORDS } from './start_baskets.js';
 // PICK A NODE by first letters (lead bccbdd601) - a part with its own div.
 import { NodeSearch, SEARCH_LIMIT } from './node_search.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
-import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
+import { MarkingStore, SIGN, seedsOf } from '../rnd_board/marking_store.js';
 // Copy key (lead 5cf5c3401): the one clipboard seat - the operating server is plain HTTP.
 import { writeClipboardRich } from '../clipboard_write.js';
 import { entitySeedId } from '../rnd_board/api.js';

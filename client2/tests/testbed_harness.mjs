@@ -6,7 +6,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { loadWithProbe } from './lib/probe.mjs';
+import { loadWithProbe, readSourceText } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { makeDoc, walk } from './lib/board_dom.mjs';
 
@@ -28,7 +28,9 @@ const REAL = {
   main: await import('../src/testbed/main.js'),
   palette: await import('../src/testbed/palette.js'),
 };
-const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
+REAL.store = await import('../src/rnd_board/marking_store.js');
+const { MarkingStore, SIGN } = REAL.store;
+const { parseAst } = await import('rolldown/parseAst');
 const { indexGraph, routesFrom } = await import('../src/walk/reach_table.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
 
@@ -146,12 +148,17 @@ async function measure(M) {
   // T7: the cross table
   const crossRows = WAFERS.map((id) => ({ id, reads: { rows: readSlot(index, inside, id, lot), columns: readSlot(index, inside, id, product) },
     raw: { cells: index.out.get(id) ? index.out.get(id).filter((e) => e.target === 'QP').map((e) => ({ value: e.qualifiers.value, t: null })) : [] } }));
-  const ct = M.cross.crossModel(crossRows, { marked: (id) => id === 'W1', reduce: 'Avg' });
+  const ct = M.cross.crossModel(crossRows, { marked: (id) => id === 'W1', declaration: crossDecl() });
   out.cross = { rows: ct.rowKeys, cols: ct.colKeys, grid: ct.grid.map((line) => line.map((c) => [c.value, c.ids, c.marked])), rowTotals: ct.rowTotals, colTotals: ct.colTotals, total: ct.total };
+  // T23: each kind words its own title
+  out.titles = [M.scatter.title(scatterDecl().encode), M.cross.title(crossDecl().encode), M.cross.title({ rows: lot, columns: product })];
   // T8: hubs
   const book = new M.hubs.HubBook();
   const h = book.put(M.hubs.hubId('wafer', [['lot', 'L1']]), ['W1', 'W2', 'W3']);
-  out.hubs = [M.hubs.seedsOf([[h, SIGN.CASE], ['W2', SIGN.CONTROL], ['W9', SIGN.CONTROL]], book), M.hubs.holds([[h, SIGN.CASE]], book, 'W3'), M.hubs.holdsOf ? 1 : 0, M.hubs.hubWords(h)];
+  out.hubs = [M.store.seedsOf([[h, SIGN.CASE], ['W2', SIGN.CONTROL], ['W9', SIGN.CONTROL]], (id) => book.open(id)), M.hubs.holds([[h, SIGN.CASE]], book, 'W3'),
+    M.hubs.holdsOf ? 1 : 0, M.hubs.hubWords(h)];
+  // T20: the walk page's reading - no opener, each entry itself, in the marking's order
+  out.walkSeeds = M.store.seedsOf([['A', SIGN.CASE], ['B', SIGN.CONTROL], ['C', SIGN.CASE], ['D', SIGN.ABSENT]]);
   // T16: the picker's routes are the walk table's
   out.routes = JSON.stringify(M.picker.routeChoices(index, WAFERS).slice(1)) === JSON.stringify(routesFrom(index, WAFERS));
   return out;
@@ -183,6 +190,8 @@ async function parts(M) {
   out.hubMark = [held.length, M.hubs.isHubId(held[0][0]), a.hubs.membersOf(held[0][0]).sort()];
   const again = a.charts.made[a.charts.made.length - 1].option.series[0].data.filter((d) => d.itemStyle.color === M.palette.categoryColor(0)[0] || d.itemStyle.color === M.palette.categoryColor(1)[0]).map((d) => d.id).sort();
   out.hubShown = again;
+  // T9c': the status bar's «K marked rows» counts the part's rows the marking holds - a hub of two is two, not one entry
+  out.hubCounted = [held.length, a.stats.get('S1').marked];
   // T9d: the system filter's start side - a dropped start node, the walk taken again from the kept ones
   const markings = new MarkingStore();
   markings.set('marking:start', 'W1', SIGN.CASE);
@@ -191,6 +200,33 @@ async function parts(M) {
   const d = seat(M, scatterDecl({ start: { marking: 'marking:start' } }), { markings, filters });
   await settle();
   out.startSide = { asked: d.asked.map((p) => p.positive), startDropped: d.stats.get('S1').startDropped, system: d.stats.get('S1').system };
+  // T9f: the system filter changed - its start side judged again: widened, the start node it let go comes back; narrowed
+  // past every start, none walked. The walk from every seed is the one in hand (no walk asked again for it). A
+  // declaration that names another system filter walks again from its start side as well.
+  const reach = (params) => {
+    const seeds = new Set(params.positive || []);
+    const nodes = ANSWER.nodes.filter((n) => n.type !== 'wafer' || seeds.has(n.id));
+    const ids = new Set(nodes.map((n) => n.id));
+    return { ...ANSWER, nodes, edges: ANSWER.edges.filter((e) => ids.has(e.source) && ids.has(e.target)) };
+  };
+  const m3 = new MarkingStore();
+  m3.set('marking:start', 'W1', SIGN.CASE);
+  m3.set('marking:start', 'W4', SIGN.CASE);
+  const f3 = new KeyedStore({ 'filter:1': [{ row: 'wafer', ...press, range: { min: 3 }, empty: false }], 'filter:2': [] });
+  const w = seat(M, scatterDecl({ start: { marking: 'marking:start' } }), { markings: m3, filters: f3, answer: reach });
+  await settle();
+  const now = () => ({ rows: w.stats.get('S1').rows, startDropped: w.stats.get('S1').startDropped, asked: w.asked.length });
+  const filterSteps = [now()];
+  f3.set('filter:1', []);
+  await settle();
+  filterSteps.push(now());
+  f3.set('filter:1', [{ row: 'wafer', ...press, range: { min: 5 }, empty: false }]);
+  await settle();
+  filterSteps.push(now());
+  w.part.setDeclaration({ ...w.part.declaration(), system: 'filter:2' });
+  await settle();
+  filterSteps.push(now());
+  out.filterChanged = filterSteps;
   // T9e: received side and the part's own filter count apart; a marked node they hide is said
   const m2 = new MarkingStore();
   m2.set('marking:pick', 'W4', SIGN.CASE);
@@ -212,15 +248,27 @@ async function parts(M) {
   await settle();
   out.twoParts = [Object.keys(s1.part.declaration().encode).sort(), Object.keys(s2.part.declaration().encode).sort(),
     oneCharts.made.length - before, Boolean(s1Chart.disposed), Boolean(s2Chart.disposed), s1Chart.el !== s2Chart.el];
-  // T11: a kind added - the root draws it with no change of its own
-  const stub = { name: 'list', label: 'List', slots: [{ key: 'v', label: 'Value' }], model: (rows) => ({ n: rows.length }),
-    render: (body, model, ctx) => { const p = ctx.doc.createElement('p'); p.textContent = `rows ${model.n}`; body.append(p); return { resize() {}, dispose() {} }; } };
-  const k = seat(M, { ...scatterDecl({ id: 'K1', kind: 'list' }), encode: { v: temp } }, { kinds: { list: stub } });
+  // T11: a third kind - the root draws it with no change of its own: the kind's title, the field it reads off its own
+  // declaration, its own slot's reduce, a pill that only says words (nothing to pick) beside its slot's pill
+  const stub = { name: 'list', label: 'List', slots: [{ key: 'v', label: 'Value' }],
+    title: (encode) => `List of ${M.slot.slotWords(encode.v)}`,
+    model: (rows, ctx) => { const d = ctx.declaration || {}; return { n: rows.length, every: d.every, reduce: d.encode && d.encode.v && d.encode.v.reduce }; },
+    render: (body, model, ctx) => {
+      const p = ctx.doc.createElement('p');
+      p.textContent = `rows ${model.n} · every ${model.every} · ${model.reduce}`;
+      body.append(p, ctx.pill(null, { words: 'Each row' }), ctx.pill('v'));
+      return { resize() {}, dispose() {} };
+    } };
+  const k = seat(M, { ...scatterDecl({ id: 'K1', kind: 'list', every: 3 }), encode: { v: { ...temp, reduce: 'Max' } } }, { kinds: { list: stub } });
   await settle();
-  out.kindAdd = walk(k.host).filter((n) => n.tagName === 'P').map((n) => n.textContent);
+  const pills = walk(k.host).filter((n) => n.className && String(n.className).startsWith('tb-pill') && n.tagName === 'BUTTON');
+  out.kindAdd = { drawn: walk(k.host).filter((n) => n.tagName === 'P').map((n) => n.textContent),
+    title: walk(k.host).filter((n) => n.className === 'tb-title__t').map((n) => n.textContent), statTitle: k.stats.get('K1').title,
+    pills: pills.map((n) => [n.textContent.replace('▾', ''), Boolean(n.listeners && n.listeners.click)]) };
   // T13 / T17: the status words, a cut walk only when an axis says so
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
-    M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true })];
+    M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
+    M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, startDropped: 2, marked: 1, columns: 1, source: 'wafer', cut: false })];
   const cutAnswer = { ...ANSWER, truncated: { ...ANSWER.truncated, nodes: true } };
   const g = seat(M, scatterDecl(), { answer: cutAnswer });
   await settle();
@@ -264,10 +312,49 @@ async function reopen(M) {
     siteTheme: [await themed('light', 'dark'), await themed('dark', 'light')] };
 }
 
-/** T14 / T15: the census and the bundle. */
-function census() {
-  const files = readdirSync(TB).filter((f) => f.endsWith('.js')).map((f) => [f, readFileSync(join(TB, f), 'utf8')])
-    .concat(readdirSync(join(TB, 'kinds')).map((f) => [`kinds/${f}`, readFileSync(join(TB, 'kinds', f), 'utf8')]));
+/** What the root names of the kinds it is handed: a kind's name or a slot key as a string, a `.kind` compared, a slot
+ *  read off the encode by name (`encode.cells`) - each where it stands. */
+function kindAsks(text) {
+  const names = new Set([...Object.keys(REAL.main.KINDS), ...Object.values(REAL.main.KINDS).flatMap((k) => k.slots.map((s) => s.key))]);
+  const found = [];
+  const isKind = (n) => n && n.type === 'MemberExpression' && !n.computed && n.property.name === 'kind';
+  const isEncode = (n) => n && ((n.type === 'Identifier' && n.name === 'encode') || (n.type === 'MemberExpression' && !n.computed && n.property.name === 'encode'));
+  const visit = (n) => {
+    if (!n || typeof n.type !== 'string') return;
+    if (n.type === 'Literal' && typeof n.value === 'string' && names.has(n.value)) found.push(`'${n.value}'`);
+    if (n.type === 'BinaryExpression' && /^[!=]==?$/.test(n.operator) && (isKind(n.left) || isKind(n.right))) found.push('.kind compared');
+    if (n.type === 'MemberExpression' && !n.computed && isEncode(n.object) && names.has(n.property.name)) found.push(`encode.${n.property.name}`);
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) v.forEach(visit);
+      else if (v && typeof v === 'object' && typeof v.type === 'string') visit(v);
+    }
+  };
+  visit(parseAst(text, { lang: 'js' }));
+  return found;
+}
+
+/** Every `seedsOf` the client defines - a function or a const of that name, file by file. */
+function seedsOfSeats() {
+  const out = [];
+  const each = (dir) => {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) each(p);
+      else if (f.endsWith('.js') && /(?:function|const|let)\s+seedsOf\b/.test(readFileSync(p, 'utf8'))) out.push(p.slice(SRC.length + 1).split('\\').join('/'));
+    }
+  };
+  each(SRC);
+  return out;
+}
+
+/** T14 / T15 / T19 / T21 / T22: the census and the bundle. `texts` - a file's text as a mutant has it, by its src path. */
+function census(texts = {}) {
+  const read = (rel) => (texts[`testbed/${rel}`] !== undefined ? texts[`testbed/${rel}`] : readFileSync(join(TB, rel), 'utf8'));
+  const files = readdirSync(TB).filter((f) => f.endsWith('.js')).map((f) => [f, read(f)])
+    .concat(readdirSync(join(TB, 'kinds')).map((f) => [`kinds/${f}`, read(`kinds/${f}`)]));
+  const rootAsks = kindAsks(read('visual_part.js'));
+  const css = read('testbed.css');
+  const cssColours = [...css.matchAll(/#[0-9A-Fa-f]{3,8}\b|rgba?\([^)]*\)/g)].map((m) => m[0]);
   const callers = files.filter(([f, t]) => f !== 'filter.js' && /\bkeepNodes\(/.test(t)).map(([f]) => f);
   const kindsFilter = files.filter(([f, t]) => f.startsWith('kinds/') && /from '\.\.\/filter\.js'/.test(t)).map(([f]) => f);
   const dist = join(HERE, '..', 'dist', 'assets');
@@ -278,7 +365,9 @@ function census() {
     const others = all.filter((f) => !/^testbed-/.test(f) && /zrender|echarts/.test(readFileSync(join(dist, f), 'utf8'))).length;
     bundle = { testbedUnder700k: tb.length > 0 && Math.max(...tb) < 700 * 1024, chartsElsewhere: others };
   }
-  return { callers, kindsFilter, bundle };
+  return { callers, kindsFilter, bundle, rootAsks, seeds: seedsOfSeats(), cssColours,
+    // the canaries: the walk reads real text - the scatter kind names its own slots; the css has its colours by var()
+    canary: [kindAsks(read('kinds/scatter.js')).length > 0, (css.match(/var\(--tb-/g) || []).length > 0] };
 }
 
 function suite(out, page, saved, counted) {
@@ -307,24 +396,39 @@ function suite(out, page, saved, counted) {
       grid: [[[2, ['W1', 'W3'], true], [2.5, ['W2', 'W3'], false], [null, [], false]], [[4, ['W4'], false], [5, ['W5'], false], [null, [], false]],
         [[null, [], false], [null, [], false], [null, ['W6'], false]]],
       rowTotals: [2, 4.5, null], colTotals: [2.6666666666666665, 3.3333333333333335, null], total: 3 });
+  eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
+    out.titles, ['press · value vs. temp · value', 'Avg(press · value) per lot and product', 'Count per lot and product']);
   eq('T8 hubs: members take the hub\'s sign, a + wins over a -, a node stands as itself; a hub holds its members; said in words',
     out.hubs, [{ positive: ['W1', 'W2', 'W3'], negative: ['W9'] }, true, 0, 'wafer · lot = L1']);
+  eq('T20 the walk page\'s reading of a marking is the same function - no opener: each entry itself, the marking\'s order, an absent sign no seed',
+    out.walkSeeds, { positive: ['A', 'C'], negative: ['B'] });
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
   eq('T9a All walks the row type described; the rows and counts; every drawable point drawn',
     [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null]], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);
   eq('T9b a drag marks what the rectangle holds, replacing; the status bar counts it', [page.dragMarked, page.dragStats], [['W2', 'W4'], 2]);
   eq('T9c a cross table cell marks its hub whole; the scatter draws its members marked', [page.hubMark, page.hubShown],
     [[1, true, ['W1', 'W3']], ['W1']]);
+  eq('T9c\' «K marked rows» counts the part\'s rows the marking holds - one hub entry of two members is 2', page.hubCounted, [1, 2]);
   eq('T9d the system filter\'s start side keeps the start nodes first and walks again from the kept ones', page.startSide,
     { asked: [['W1', 'W4'], ['W4']], startDropped: 1, system: 3 });
+  eq('T9f the system filter changed: its start side judged again - widened, the dropped start comes back; narrowed past all, none; no new walk for the seeds; another system filter named walks again',
+    page.filterChanged, [{ rows: 1, startDropped: 1, asked: 2 }, { rows: 2, startDropped: 0, asked: 2 }, { rows: 0, startDropped: 2, asked: 2 },
+      { rows: 2, startDropped: 0, asked: 2 }]);
   eq('T9e the received side (system) and the part\'s own filter count apart; a marked node they hide is said', page.twoLayers,
     { rows: 3, of: 6, system: 2, part: 1, hidden: 1 });
   eq('T10 two scatters on one page: a slot changed in one stays there - it alone draws again and lets its old chart go; the other one stands',
     page.twoParts, [['x', 'y'], ['x', 'y'], 1, true, false, true]);
-  eq('T11 a kind added draws through the same root, the root unchanged', page.kindAdd, ['rows 6']);
-  eq('T13 the status words: N of M, the two drops, marked and hidden, columns, the row type; a cut walk said',
-    page.status, [['4 of 6 rows', 'system −1 · part −1', '2 marked · hidden 1', '3 columns', 'wafer'],
-      ['1 of 1 rows', 'filter over a cut walk', '0 marked', '0 columns', 'wafer']]);
+  eq('T11 a third kind draws through the same root: its title, its own declaration\'s field and slot reduce, a words-only pill that opens nothing',
+    page.kindAdd, { drawn: ['rows 6 · every 3 · Max'], title: ['List of Max(temp · value)'], statTitle: 'List of Max(temp · value)',
+      pills: [['Each row', false], ['Max(temp · value)', true]] });
+  eq('T19 census: the root names no kind - no kind name or slot key as a string, no .kind compared, no slot read off encode by name',
+    [counted.rootAsks, counted.canary], [[], [true, true]]);
+  eq('T21 census: one seedsOf in the client - the marking store\'s', counted.seeds, ['rnd_board/marking_store.js']);
+  eq('T22 census: testbed.css writes no colour - every one a --tb-* token (the picker\'s shadow the one literal left)', counted.cssColours, ['rgb(0 0 0 / .25)']);
+  eq('T13 the status words: N of M, the drops (the start side\'s when not 0), marked rows and hidden, columns, the row type; a cut walk said',
+    page.status, [['4 of 6 rows', 'system −1 · part −1', '2 marked rows · hidden 1', '3 columns', 'wafer'],
+      ['1 of 1 rows', 'filter over a cut walk', '0 marked rows', '0 columns', 'wafer'],
+      ['1 of 1 rows', 'start −2 · system −0 · part −0', '1 marked row', '1 columns', 'wafer']]);
   eq('T17 a cut walk is the board\'s reading of truncated (an axis true), not «truncated is there»', page.cut, [false, true]);
   eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 4 });
   eq('T18 the site\'s theme is the page\'s - the walk page\'s parts on it (the start picker) wear the same tokens', saved.siteTheme, ['dark', 'light']);
@@ -334,7 +438,7 @@ function suite(out, page, saved, counted) {
 }
 
 console.log('\n[1] the visual testbed');
-const run = async (M) => suite(await measure(M), await parts(M), await reopen(M), census());
+const run = async (M, texts) => suite(await measure(M), await parts(M), await reopen(M), census(texts));
 const base = await run(REAL);
 let ran = base.ran;
 let failed = base.failures.length;
@@ -371,14 +475,18 @@ const MUTANTS = [
     mutate: (t) => swap(t, "  if (read.state === 'several') return read.values;", "  if (read.state === 'several') return read.values.slice(0, 1);") },
   { id: 'M13', what: 'a total folded over its cells\' rows twice (a row in two cells)', catches: 'T7', file: 'testbed/kinds/cross_table.js',
     mutate: (t) => swap(t, '    const once = [...new Set(ids)];', '    const once = [...ids];') },
-  { id: 'M14', what: 'a - beats a + for a node in two hubs', catches: 'T8', file: 'testbed/hubs.js',
-    mutate: (t) => swap(t, '      if (sign.get(node) !== SIGN.CASE) sign.set(node, s);', '      sign.set(node, s);') },
+  { id: 'M14', what: 'a - beats a + for a node in two hubs', catches: 'T8', file: 'rnd_board/marking_store.js',
+    mutate: (t) => swap(t, '    for (const node of open(id)) if (sign.get(node) !== SIGN.CASE) sign.set(node, s);', '    for (const node of open(id)) sign.set(node, s);') },
+  { id: 'M14b', what: 'the walk page\'s reading keeps an absent sign as a control (the - list every not-+)', catches: 'T20', file: 'rnd_board/marking_store.js',
+    mutate: (t) => swap(t, '  return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };', '  return { positive: of(SIGN.CASE), negative: [...sign].filter(([, s]) => s !== SIGN.CASE).map(([id]) => id) };') },
   { id: 'M15', what: 'All walks with no seed', catches: 'T9a', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, "    const params = seeds.all ? { ...base, seed_type: this.decl.row }", '    const params = seeds.all ? { ...base }') },
   { id: 'M16', what: 'a drag adds instead of replacing', catches: 'T9b', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, "    if (mode === 'add') { for (const id of ids) this.markings.set(this.writes, id, sign); return; }", '    { for (const id of ids) this.markings.set(this.writes, id, sign); return; }') },
   { id: 'M17', what: 'a hub not opened into its members when the marking is shown', catches: 'T8', file: 'testbed/hubs.js',
-    mutate: (t) => swap(t, "(isHubId(id) && book.membersOf(id).includes(nodeId))", 'false') },
+    mutate: (t) => swap(t, '  return (entries || []).some(([id]) => book.open(id).includes(nodeId));', '  return (entries || []).some(([id]) => id === nodeId);') },
+  { id: 'M17b', what: 'the book opens a hub as itself - its members never seeds', catches: 'T8', file: 'testbed/hubs.js',
+    mutate: (t) => swap(t, '  open(id) { return isHubId(id) ? this.membersOf(id) : [id]; }', '  open(id) { return [id]; }') },
   { id: 'M18', what: 'the start side not walked again', catches: 'T9d', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '      if (dropped) {', '      if (false) {') },
   { id: 'M19', what: 'the part\'s own filter not applied', catches: 'T9e', file: 'testbed/visual_part.js',
@@ -388,7 +496,31 @@ const MUTANTS = [
   { id: 'M21', what: 'a cut walk read as «truncated is there»', catches: 'T17', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, 'cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };', 'cut: Boolean(this.answer.truncated) };') },
   { id: 'M22', what: 'the status bar leaves out the drops', catches: 'T13', file: 'testbed/status_part.js',
-    mutate: (t) => swap(t, '  if (s.system || s.part) words.push(', '  if (false) words.push(') },
+    mutate: (t) => swap(t, '  if (s.startDropped || s.system || s.part) {', '  if (false) {') },
+  { id: 'M22b', what: 'the status bar leaves out the start side\'s drop (the code before)', catches: 'T13', file: 'testbed/status_part.js',
+    mutate: (t) => swap(t, "s.startDropped ? `start −${n(s.startDropped)}` : null, ", '') },
+  { id: 'M25', what: 'a system filter change folds again only - the start side not judged again (the code before)', catches: 'T9f', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, "(name) => { if (name === this.decl.system) this.load(); }", "(name) => { if (name === this.decl.system) this.refold(); }") },
+  { id: 'M26', what: 'another system filter named folds again only - the comment\'s «system filter walks again» untrue (the code before)', catches: 'T9f', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, 'JSON.stringify([next.start, next.row, next.system]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system])',
+      'JSON.stringify([next.start, next.row]) !== JSON.stringify([this.decl.start, this.decl.row])') },
+  { id: 'M27', what: 'a filter change walks from every seed again (the walk in hand not taken)', catches: 'T9f', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, 'this.seedWalk && this.seedWalk.asked === asked ? this.seedWalk.res', 'false ? this.seedWalk.res') },
+  { id: 'M28', what: '«marked» counts the marking\'s entries - a hub one (the code before)', catches: "T9c'", file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, 'marked: received.filter(marked).length,', 'marked: entries.length,') },
+  { id: 'M29', what: 'the root words the title by asking the kind (the code before)', catches: 'T19', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}) : '';",
+      "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
+  { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '{ marked, theme: this.theme, declaration: this.decl }', '{ marked, theme: this.theme, reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct }') },
+  { id: 'M31', what: 'a words-only pill opens the picker too', catches: 'T11', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    if (this.kind.slots.some((s) => s.key === key)) p.addEventListener(', '    if (true) p.addEventListener(') },
+  { id: 'M32', what: 'the cross table reads no reduce off its declaration - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, "  const reduce = (cellSlot && cellSlot.reduce) || 'Count';", "  const reduce = 'Count';") },
+  { id: 'M33', what: 'the scatter\'s title y and x swapped', catches: 'T23', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, '`${slotWords(encode.y)} vs. ${slotWords(encode.x)}`', '`${slotWords(encode.x)} vs. ${slotWords(encode.y)}`') },
+  { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not Count', catches: 'T23', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, "${encode.cells ? slotWords(encode.cells) : 'Count'}", '${slotWords(encode.cells)}') },
   { id: 'M23', what: 'a saved page reopens on the layout, not on what was saved', catches: 'T12', file: 'testbed/main.js',
     mutate: (t) => swap(t, '  const layout = laidOut(LAYOUT, saved, entities());', '  const layout = laidOut(LAYOUT, null, entities());') },
   { id: 'M24', what: 'the site\'s theme left as it came (the code before: a white picker on the dark page)', catches: 'T18', file: 'testbed/main.js',
@@ -396,10 +528,11 @@ const MUTANTS = [
 ];
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
-  'testbed/main.js': 'main' };
+  'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;
-  return run({ ...REAL, [KEY[m.file]]: copy });
+  // The census reads the mutant's text too: a mutant that asks the kind again is counted where it asks.
+  return run({ ...REAL, [KEY[m.file]]: copy }, { [m.file]: m.mutate(readSourceText(join(SRC, m.file)).text) });
 }, { baselineRan: base.ran, baselineNames: base.names, title: '\n  [1] mutants - each must be caught by the check it names.' });
 ran += MUTANTS.length;
 failed += scored.wrong;

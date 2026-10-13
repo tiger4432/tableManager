@@ -2,7 +2,7 @@
 // rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its rows, marked whole.
 
 import { fold } from '../aggregate.js';
-import { categoriesOf } from '../slot.js';
+import { categoriesOf, slotWords } from '../slot.js';
 
 export const SLOTS = Object.freeze([
   { key: 'rows', label: 'Row axis', category: true },
@@ -18,10 +18,11 @@ export const cellWords = (v) => (v === null || v === undefined ? '-'
 
 /**
  * @param {Array<{id, reads: object, raw: object}>} rows  `raw.cells` - the cell slot's every value of the row, {value, t}
- * @param {{marked: (id) => boolean, reduce?: string}} ctx  the cell slot's reduce; none - Count
+ * @param {{marked: (id) => boolean, declaration?: object}} ctx  the declaration's cell slot's reduce; none - Count
  */
 export function crossModel(rows, ctx) {
-  const reduce = ctx.reduce || 'Count';
+  const cellSlot = ((ctx.declaration && ctx.declaration.encode) || {}).cells;
+  const reduce = (cellSlot && cellSlot.reduce) || 'Count';
   const cells = new Map();
   const keyOf = (r, c) => `${r}\u0000${c}`;
   const rowKeys = new Set();
@@ -114,4 +115,7 @@ export function render(body, model, ctx) {
   return { resize: () => {}, dispose: () => {} };
 }
 
-export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, model: crossModel, render };
+/** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «Count». */
+export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : 'Count'} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
+
+export const kind = { name: 'crossTable', label: 'Cross table', slots: SLOTS, title, model: crossModel, render };

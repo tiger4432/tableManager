@@ -1,8 +1,10 @@
-// The status bar (lead 950448e5a): the active part's counts in Spotfire's bottom band - «N of M rows · K marked · C
-// columns · source», and for now the two filters' drops (lead 5835e6714 «system −a · part −b»), a cut walk, the marked
-// nodes the filters hide. It reads a stats store, so any page whose parts publish there can seat it.
+// The status bar (lead 950448e5a): the active part's counts in Spotfire's bottom band - «N of M rows · K marked rows · C
+// columns · source», and for now the filters' drops (lead 5835e6714 «system −a · part −b»; the system filter's start side
+// «start −c», lead 10-13), a cut walk, the marked rows the filters hide. A drop is said when one of them is not 0. It reads
+// a stats store, so any page whose parts publish there can seat it.
 
 import { Panel } from '../rnd_board/panel.js';
+import { unitText } from '../ui_words.js';
 
 const n = (x) => Number(x || 0).toLocaleString('en-US');
 
@@ -10,9 +12,11 @@ const n = (x) => Number(x || 0).toLocaleString('en-US');
 export function statusWords(s) {
   if (!s) return ['No active visualization'];
   const words = [`${n(s.rows)} of ${n(s.of)} rows`];
-  if (s.system || s.part) words.push(`system −${n(s.system)} · part −${n(s.part)}`);
+  if (s.startDropped || s.system || s.part) {
+    words.push([s.startDropped ? `start −${n(s.startDropped)}` : null, `system −${n(s.system)}`, `part −${n(s.part)}`].filter(Boolean).join(' · '));
+  }
   if (s.cut) words.push('filter over a cut walk');
-  words.push(`${n(s.marked)} marked${s.hidden ? ` · hidden ${n(s.hidden)}` : ''}`);
+  words.push(`${unitText(n(s.marked), 'marked row')}${s.hidden ? ` · hidden ${n(s.hidden)}` : ''}`);
   words.push(`${n(s.columns)} columns`);
   if (s.source) words.push(s.source);
   return words;
