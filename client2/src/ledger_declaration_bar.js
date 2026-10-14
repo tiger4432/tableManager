@@ -29,7 +29,7 @@ export const BAR_WORDS = Object.freeze({
   run: (draft) => `Test run · ${draft ? 'draft' : 'active declaration'}`, runSummary: (r) => `first ${r.rows} rows → ${r.edges} edges · ${r.refused} refused`, runNone: 'Not run yet',
   constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', unset: '?', mixed: 'mixed', timesDiffer: 'sentences differ: one row, one time',
   nodeType: 'Node type', keys: 'keys', addKey: '+ Key', predicate: 'Predicate', from: 'from', addSubject: '+ Subject', addType: '+ Type',
-  more: 'More', json: 'JSON',
+  more: 'More', json: 'JSON', columnsUnavailable: (why) => `Column lists unavailable: ${why}`,
 });
 /** The fields a node type's and a predicate's bar draws itself; every other field of the declaration is on its More line. */
 export const BAR_FIELDS = Object.freeze({ entity: Object.freeze(['keys', 'attributes']), predicate: Object.freeze(['subjects', 'object']) });
@@ -67,7 +67,9 @@ const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
 /**
  * The declaration with one edit: `set` a value at a path (a node type's name - path `attributes.@<old>` - renames it),
  * `add` one more of what the path holds, `remove` what is at it. A node picked for a sentence's end takes that node
- * type's keys, each unset. @param {object} ctx  {entities: [{type, keys, attributes}], predicates: [{name, qualifiers}]}
+ * type's keys, each unset. A predicate picked for a sentence gives it the end its object kind takes (implementer B 10-14:
+ * entity_ref a target of its first type, value a value, none neither); a kind not said leaves the end as it is.
+ * @param {object} ctx  {entities: [{type, keys, attributes}], predicates: [{name, qualifiers, object?: {kind, types}}]}
  */
 export function editDeclaration(raw, op, ctx = {}) {
   const out = clone(raw) || {};
@@ -94,6 +96,22 @@ export function editDeclaration(raw, op, ctx = {}) {
       const kept = Object.entries(box).map(([k, v]) => (k === old ? [op.value, v] : [k, v]));
       for (const k of Object.keys(box)) delete box[k];
       for (const [k, v] of kept) box[k] = v;
+    } else if (last === 'predicate' && box && typeof box === 'object' && !Array.isArray(box)) {
+      box.predicate = op.value;
+      const object = ((ctx.predicates || []).find((p) => p.name === op.value) || {}).object || {};
+      const types = Array.isArray(object.types) ? object.types : [];
+      const endOf = (type) => { const e = entity(type); return { node: type, keys: Object.fromEntries(((e && e.keys) || []).map((k) => [k, ''])) }; };
+      if (object.kind === 'entity_ref') {
+        delete box.value;
+        const node = box.target && typeof box.target.node === 'string' ? box.target.node : null;
+        if (!box.target || (types.length && !types.includes(node))) box.target = endOf(types[0] || '');
+      } else if (object.kind === 'value') {
+        delete box.target;
+        if (box.value === undefined) box.value = '';
+      } else if (object.kind === 'none') {
+        delete box.target;
+        delete box.value;
+      }
     } else if (last === 'node' && box && typeof box === 'object') {
       box.node = op.value;
       const e = entity(op.value);
@@ -153,6 +171,24 @@ export function barRun(run) {
   return { rows: count(run.rows_read), edges: count(run.atoms), refused: count(refused.count), refusals, lines, draft: Boolean(run.draft_id) };
 }
 
+/**
+ * The draft's refusals by the chip they belong to: the server says a short body's refusal on its short path
+ * (implementer B 10-14, `bundle.sources.<id>.sentences[0].subject.keys.lot`), which is the chip's own path once the
+ * source's prefix goes and `[n]` reads `.n`. A path that is not a source's names no chip and is left out.
+ */
+export function chipErrors(errors) {
+  const out = {};
+  for (const e of Array.isArray(errors) ? errors : []) {
+    const m = /^bundle\.sources\.[^.]+\.(.+)$/.exec(String((e && e.path) || ''));
+    if (!m) continue;
+    const at = m[1].replace(/\[(\d+)\]/g, '.$1');
+    (out[at] = out[at] || []).push(String(e.message || e.code || ''));
+  }
+  return out;
+}
+/** The refusals said on one path, each a pill beside what it is about. */
+const said = (el, view, path) => (((view.errors || {})[path]) || []).map((m) => el('span', 'ldb-pill is-bad', m));
+
 /** «edited N min ago» off the draft's `updated_at` - the words the mockup draws. */
 export function draftAge(updatedAt, now = Date.now()) {
   const t = Date.parse(updatedAt || '');
@@ -181,7 +217,7 @@ function chip(el, view, c) {
   b.append(' ', el('span', 'ldb-caret', '▾'));
   // the chip sits in its wrapper open or shut, so opening adds the list and moves nothing
   const wrap = el('div', 'ldb-at');
-  if (!open) { wrap.append(b); return wrap; }
+  if (!open) { wrap.append(b, ...said(el, view, c.path)); return wrap; }
   const pop = el('div', 'ldb-pop');
   pop.setAttribute('role', 'listbox');
   for (const o of c.options || []) {
@@ -207,7 +243,7 @@ function chip(el, view, c) {
       line.dataset.path = c.path;
       line.append(el('span', '', c.kind === 'name' ? 'Name…' : BAR_WORDS.constant), el('span', 'ldb-type', c.hint || ''));
       pop.append(line);
-      wrap.append(b, pop);
+      wrap.append(b, pop, ...said(el, view, c.path));
       return wrap;
     }
     const input = el('input', 'ldb-opt-input');
@@ -220,7 +256,7 @@ function chip(el, view, c) {
     if (c.typed !== undefined) input.value = c.typed;
     pop.append(input);
   }
-  wrap.append(b, pop);
+  wrap.append(b, pop, ...said(el, view, c.path));
   return wrap;
 }
 
@@ -263,6 +299,8 @@ function readBar(el, view, raw) {
     el('span', 'ldb-chip', (((view.catalog || {}).keys || {})[raw.table] || []).length
       ? `${BAR_WORDS.tableKey} (${view.catalog.keys[raw.table].join(' · ')})` : BAR_WORDS.tableKey));
   if (time.column === BAR_WORDS.mixed || time.timezone === BAR_WORDS.mixed) bar.append(el('span', 'ldb-pill is-bad', BAR_WORDS.timesDiffer));
+  // the server could not read the tables: no column lists, and why (implementer B 10-14 tables_unavailable)
+  if (view.tablesUnavailable) bar.append(el('span', 'ldb-pill is-bad', BAR_WORDS.columnsUnavailable(view.tablesUnavailable)));
   return bar;
 }
 
@@ -312,6 +350,7 @@ function sentenceBar(el, view, raw, at, from = null) {
   // another source's sentence on the same table: drawn as one, not this draft's to edit
   if (from) bar.setAttribute('inert', '');
   const name = el('span', 'ldb-sname', s.sentence);
+  if (!from) name.append(...said(el, view, `sentences.${at}`).map((p) => { p.style.marginLeft = '8px'; return p; }));
   if (from) name.append(' ', el('span', 'ldb-sname-from', BAR_WORDS.fromSource(from)));
   bar.append(name, ...end(el, view, raw, at, 'subject'), el('span', 'ldb-arrow', '—'),
     chip(el, view, { kind: 'pred', path: `sentences.${at}.predicate`, cls: 'is-pred', text: words(s.predicate),

@@ -2,6 +2,7 @@
 // short form (implementer B 10-14), its drawing, the test run's answer as its table, the explorer's editor that hands
 // a short-form source / node type / predicate to it, the controller's chips through the one draft text, and the
 // store's column-list refresh on a table save. Imports only; each layer has a defect that must go red at its line.
+import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,6 +17,9 @@ const SAMPLE = path.join(SRC, 'ledger_declaration_sample.js');
 const STORE = path.join(SRC, 'ontology_explorer_store.js');
 const VIEW = path.join(SRC, 'ontology_explorer_view.js');
 const SCREEN = path.join(SRC, 'ontology_explorer.js');
+// Implementer B's own answers (impl-b-window): /authoring/schema and a short source's draft, from its service on the sample
+// declaration converted to v7 - the shapes the window is drawn from, not written by hand.
+const REAL = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'declaration_window_real.json'), 'utf8'));
 
 function element(tag) {
   const node = {
@@ -100,6 +104,19 @@ async function suite(d) {
     && same(added.sentences[2].occurred_at, RAW.sentences[1].occurred_at) && added.sentences[2].subject && added.sentences[2].target, JSON.stringify(added.sentences[2]));
   const qual = bar.editDeclaration(RAW, { op: 'add', path: 'sentences.0' }, CTX);
   ok('A7 + Qualifier names the predicate\'s next free qualifier', qual.sentences[0].chamber === '', JSON.stringify(qual.sentences[0]));
+  const OBJ = { entities: [...CTX.entities, { type: 'recipe', keys: ['recipe'] }], predicates: [{ name: 'counted', qualifiers: [], object: { kind: 'value', types: [] } },
+    { name: 'made_with', qualifiers: [], object: { kind: 'entity_ref', types: ['recipe', 'die'] } }, { name: 'ran_on', qualifiers: [], object: { kind: 'entity_ref', types: ['die'] } },
+    { name: 'registered', qualifiers: [], object: { kind: 'none', types: [] } }, { name: 'unsaid', qualifiers: [] }] };
+  const toValue = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'counted' }, OBJ).sentences[0];
+  ok('A9 a value predicate picked: the node end goes, a value end comes', toValue.predicate === 'counted' && toValue.target === undefined && toValue.value === '', JSON.stringify(toValue));
+  const back = bar.editDeclaration({ table: 't', sentences: [toValue] }, { op: 'set', path: 'sentences.0.predicate', value: 'ran_on' }, OBJ).sentences[0];
+  ok('A10 a node predicate picked: a target of its first type with that type\'s keys', back.value === undefined && same(back.target, { node: 'die', keys: { mat_id: '', x: '', y: '' } }), JSON.stringify(back));
+  const kept = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'made_with' }, OBJ).sentences[0];
+  ok('A11 ...a target its types allow is kept as it is', same(kept.target, RAW.sentences[0].target), JSON.stringify(kept.target));
+  const noObject = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'registered' }, OBJ).sentences[0];
+  ok('A12 a predicate with no object: neither end', noObject.target === undefined && noObject.value === undefined, JSON.stringify(noObject));
+  const unsaid = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'unsaid' }, OBJ).sentences[0];
+  ok('A13 a predicate whose kind is not said leaves the end as it is', same(unsaid.target, RAW.sentences[0].target) && unsaid.predicate === 'unsaid');
   const removed = bar.editDeclaration(RAW, { op: 'remove', path: 'sentences.0' }, CTX);
   ok('A8 × takes that sentence out', removed.sentences.length === 1 && removed.sentences[0].sentence === 's2');
 
@@ -178,6 +195,10 @@ async function suite(d) {
   const long = view.renderRaw({ ...base, editorText: JSON.stringify({ relation: 't', bind: {} }) });
   ok('D3 a source not in the short form keeps today\'s editor', byClass(long, 'ldb').length === 0 && byAction(long, 'edit-raw').length === 1);
   const dv = view.declarationView(base, 'source');
+  const withObject = view.declarationView({ ...base, authoringSchema: { ...base.authoringSchema,
+    vocabulary: { counted: { qualifiers: ['unit'], object: { kind: 'value', types: [] } } } } }, 'source');
+  ok('D6 a predicate carries its object kind and types from the schema', same(withObject.predicates, [{ name: 'counted', qualifiers: ['unit'], object: { kind: 'value', types: [] } }]),
+    JSON.stringify(withObject.predicates));
   ok('D4 the column list is built from the schema the screen holds', same(dv.catalog.tables.wafer_process_recipe, [{ name: 'wafer_id', type: 'string' }, { name: 'eventtime', type: 'datetime' }])
     && same(dv.catalog.keys, { wafer_process_recipe: ['proc_id'] }) && dv.draftAge === 'edited 5 min ago' && dv.sources[0].id === 'wafer_process_recipe', JSON.stringify(dv.catalog));
 
@@ -241,6 +262,49 @@ async function suite(d) {
   await eFire({ action: 'decl-const', path: 'label', chip: 'json' }, '{"en": ');
   ok('G4 a JSON that does not parse writes nothing', same(JSON.parse(eScreen.getState().editorText).label, { en: 'Wafer' }));
 
+  console.log('\n── H. the server\'s real answers ──');
+  const real = { ...store.initialExplorerState, draft: { ...REAL.draft, preview_valid: true, validation_errors: [] }, editorText: JSON.stringify(REAL.draft.raw),
+    items: [{ key: REAL.draft.target_key, kind: 'source_plan', canonical_id: REAL.draft.target_id }], authoringSchema: REAL.schema };
+  const rv = view.declarationView(real, 'source');
+  const table = REAL.draft.raw.table;
+  ok('H1 the schema\'s answer gives the columns, the table key and each predicate\'s far end',
+    (rv.catalog.tables[table] || []).length === Object.keys(REAL.schema.tables[table].columns).length && same(rv.catalog.keys[table], REAL.schema.tables[table].key)
+      && rv.predicates.every((p) => p.object && ['entity_ref', 'value', 'none'].includes(p.object.kind)), JSON.stringify(rv.catalog.keys));
+  const realEditor = view.renderRaw(real);
+  const realText = realEditor.textContent;
+  ok('H2 the real short draft is the bar: no unset chip, no «object» or «undefined», its table key named',
+    byClass(realEditor, 'ldb').length === 1 && !/\[object|undefined|NaN/.test(realText) && !byClass(realEditor, 'ldb-chip').some((c) => /^\?|← \?/.test(c.textContent))
+      && realText.includes(`table key (${REAL.schema.tables[table].key.join(' · ')})`), realText.slice(0, 300));
+  const noneName = Object.keys(REAL.schema.vocabulary).find((n) => (REAL.schema.vocabulary[n].object || {}).kind === 'none');
+  const realPicked = bar.editDeclaration(REAL.draft.raw, { op: 'set', path: 'sentences.0.predicate', value: noneName }, { entities: rv.entities, predicates: rv.predicates });
+  ok('H3 a no-object predicate of the real vocabulary picked: the sentence loses its end', Boolean(noneName) && realPicked.sentences[0].target === undefined
+    && realPicked.sentences[0].value === undefined, `${noneName} ${JSON.stringify(realPicked.sentences[0])}`);
+  ok('H4 the saved short body comes back as it went', same(REAL.saved.raw, REAL.draft.raw) && REAL.saved.preview_valid === true);
+
+  console.log('\n── I. B\'s review fixes on the screen ──');
+  // a body the short form would drop a cell of comes long (the server's shows_short is false; the record says it by the raw's shape)
+  const longDraft = view.renderRaw({ ...base, draft: { ...DRAFT }, editorText: JSON.stringify({ relation: 'wafer_process_recipe', read: { identity: ['row_id'] }, bind: {} }) });
+  ok('I1 a draft the server shows long (shows_short false) opens today\'s form', byClass(longDraft, 'ldb').length === 0 && byAction(longDraft, 'edit-raw').length === 1);
+  const refusals = [{ code: 'unknown_column', path: 'bundle.sources.wafer_process_recipe.sentences[0].subject.keys.wafer', message: 'no column nope' },
+    { code: 'unknown_predicate', path: 'bundle.sources.wafer_process_recipe.sentences[1]', message: 'no such sentence shape' },
+    { code: 'unknown_table', path: 'bundle.sources.wafer_process_recipe.table', message: 'no table t' }, { code: 'x', path: 'bundle.vocabulary.processed_with.table', message: 'elsewhere' }];
+  const erroredView = view.declarationView({ ...base, draft: { ...DRAFT, validation_errors: refusals } }, 'source');
+  ok('I5 the explorer hands the refusals of the draft to the bar by chip path', same(Object.keys(erroredView.errors || {}).sort(), ['sentences.0.subject.keys.wafer', 'sentences.1', 'table']),
+    JSON.stringify(erroredView.errors));
+  const errored = bar.renderDeclarationBar(document, RAW, { ...erroredView, errors: bar.chipErrors(refusals) });
+  const pillBy = (path) => { const chipNode = walk(errored).find((n) => n.dataset?.path === path && n._classes.includes('ldb-chip'));
+    const wrap = chipNode && walk(errored).find((n) => n._classes?.includes('ldb-at') && n.children.includes(chipNode));
+    return wrap ? byClass(wrap, 'is-bad').map((p) => p.textContent) : null; };
+  const names = byClass(errored, 'ldb-sname');
+  ok('I2 a refusal on a short path sits beside its chip - a key, the table, a whole sentence by its name',
+    same(pillBy('sentences.0.subject.keys.wafer'), ['no column nope']) && same(pillBy('table'), ['no table t'])
+      && names.length > 1 && byClass(names[1], 'is-bad').map((p) => p.textContent).join() === 'no such sentence shape' && byClass(names[0], 'is-bad').length === 0,
+    JSON.stringify([pillBy('sentences.0.subject.keys.wafer'), pillBy('table')]));
+  ok('I3 ...and a path that is not this source\'s names no chip', !byClass(byClass(errored, 'ldb')[0], 'is-bad').some((p) => p.textContent === 'elsewhere'));
+  const blind = view.renderRaw({ ...base, authoringSchema: { tables: {}, tables_unavailable: 'FileNotFoundError: table_config.json is gone' } });
+  ok('I4 tables the server could not read: the Read line says so, with the reason', (byClass(blind, 'ldb-bar')[0] || { textContent: '' }).textContent.includes('Column lists unavailable: FileNotFoundError: table_config.json is gone'),
+    (byClass(blind, 'ldb-bar')[0] || { textContent: '' }).textContent);
+
   console.log('\n── F. a table save reads the column lists again ──');
   const held = { ...store.initialExplorerState, authoringSchema: { tables: {} } };
   ok('F1 a table save clears the schema', store.reduceExplorerState(held, { type: 'AUTHORING_INVALIDATED', tables: true }).authoringSchema === null);
@@ -300,6 +364,20 @@ const MUTANTS = [
   { name: 'a value end not drawn', catches: ['B13'], file: 'bar', mutate: swap('  else if (s.value !== undefined) {', '  else if (false) {') },
   { name: 'a door though every qualifier is used', catches: ['B15'], file: 'bar', mutate: swap('    if (free) bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));', '    bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));') },
   { name: 'no door in the with group', catches: ['B15'], file: 'bar', mutate: swap('    if (free) bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));', '') },
+  { name: 'a value predicate keeps its node end', catches: ['A9'], file: 'bar', mutate: swap("      } else if (object.kind === 'value') {\n        delete box.target;", "      } else if (object.kind === 'value') {") },
+  { name: 'a node predicate gets no target', catches: ['A10'], file: 'bar', mutate: swap('        if (!box.target || (types.length && !types.includes(node))) box.target = endOf(types[0] || \'\');', '') },
+  { name: 'an allowed target is replaced', catches: ['A11'], file: 'bar', mutate: swap('(types.length && !types.includes(node))', 'types.length') },
+  { name: 'a no-object predicate keeps its ends', catches: ['A12'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else if (false) {") },
+  { name: 'an unsaid kind is read as none', catches: ['A13'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else {") },
+  { name: 'the schema\'s object kind is dropped', catches: ['D6'], file: 'view', mutate: swap(', object: (p && p.object) || null }))', ' }))') },
+  { name: 'the table key read off another field', catches: ['H1', 'D4'], file: 'view', mutate: swap('Array.isArray(v.key)).map(([t, v]) => [t, v.key])', 'Array.isArray(v.keys)).map(([t, v]) => [t, v.keys])') },
+  { name: 'a refusal\'s [n] read as is', catches: ['I2'], file: 'bar', mutate: swap(".replace(/\\[(\\d+)\\]/g, '.$1')", '') },
+  { name: 'refusals beside no chip', catches: ['I2'], file: 'bar', mutate: swap('  if (!open) { wrap.append(b, ...said(el, view, c.path)); return wrap; }', '  if (!open) { wrap.append(b); return wrap; }') },
+  { name: 'a sentence\'s refusal not by its name', catches: ['I2'], file: 'bar', mutate: swap("  if (!from) name.append(...said(", "  if (false) name.append(...said(") },
+  { name: 'any path names a chip', catches: ['I3'], file: 'bar', mutate: swap("/^bundle\\.sources\\.[^.]+\\.(.+)$/", "/^bundle\\.[^.]+\\.[^.]+\\.(.+)$/") },
+  { name: 'the refusals left behind', catches: ['I5'], file: 'view', mutate: swap('    errors: chipErrors(draft.validation_errors),', '    errors: {},') },
+  { name: 'unread tables said nothing', catches: ['I4'], file: 'view', mutate: swap(", tablesUnavailable: schema.tables_unavailable || '',", ',') },
+  { name: 'the long body sent to the bar', catches: ['I1', 'D3'], file: 'view', mutate: swap("kind === 'source' && !isShortForm(raw) ? null : ", '') },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
   { name: 'every invalidation drops the schema', catches: ['F2'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', 'authoringSchema: null') },
 ];
