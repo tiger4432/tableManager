@@ -1,5 +1,5 @@
 {
- "_note": "implementer B service (impl-b-window) on the sample declaration converted to v7; source wafer_process_recipe",
+ "_note": "implementer B service (main 8471773f6) on the sample declaration converted to v7; source wafer_process_recipe",
  "schema": {
   "tables": {
    "wafer_process": {
@@ -262,7 +262,7 @@
   }
  },
  "draft": {
-  "draft_id": "9492bf379d1f4688b2b4c7b5fc8588b5",
+  "draft_id": "0f1d4014c0f2421d8b8531e00737f9e1",
   "target_key": "source_plan|wafer_process_recipe",
   "target_id": "wafer_process_recipe",
   "target_kind": "source_plan",
@@ -321,7 +321,7 @@
     }
    ]
   },
-  "updated_at": "2026-10-14T01:15:22.123809+00:00"
+  "updated_at": "2026-10-14T01:32:18.960475+00:00"
  },
  "saved": {
   "revision": 1,

@@ -27,7 +27,7 @@ import { MarkingStore, SIGN } from './rnd_board/marking_store.js';
 import { TablePart } from './rnd_board/table_part.js';
 import { verificationNote } from './verification_note.js';
 import { backlogCells, hasBacklog, censusRefusal } from './source_backlog.js';
-import { renderDeclarationBar, isShortForm, barRun, draftAge, BAR_FIELDS } from './ledger_declaration_bar.js';
+import { renderDeclarationBar, isShortForm, barRun, draftAge, BAR_FIELDS, chipErrors } from './ledger_declaration_bar.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -738,6 +738,7 @@ export function declarationView(state, kind, json = null) {
     sources: items.filter((i) => i.kind === 'source_plan').map((i) => ({ key: i.key, id: i.canonical_id })),
     active: !draft.creates_declaration, draftAge: draftAge(draft.updated_at),
     run: barRun(state.testRun), cost: cost ? { before: cost } : null, more,
+    errors: chipErrors(draft.validation_errors), tablesUnavailable: schema.tables_unavailable || '',
   };
 }
 

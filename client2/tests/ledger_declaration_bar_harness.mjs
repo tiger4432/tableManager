@@ -281,6 +281,30 @@ async function suite(d) {
     && realPicked.sentences[0].value === undefined, `${noneName} ${JSON.stringify(realPicked.sentences[0])}`);
   ok('H4 the saved short body comes back as it went', same(REAL.saved.raw, REAL.draft.raw) && REAL.saved.preview_valid === true);
 
+  console.log('\n── I. B\'s review fixes on the screen ──');
+  // a body the short form would drop a cell of comes long (the server's shows_short is false; the record says it by the raw's shape)
+  const longDraft = view.renderRaw({ ...base, draft: { ...DRAFT }, editorText: JSON.stringify({ relation: 'wafer_process_recipe', read: { identity: ['row_id'] }, bind: {} }) });
+  ok('I1 a draft the server shows long (shows_short false) opens today\'s form', byClass(longDraft, 'ldb').length === 0 && byAction(longDraft, 'edit-raw').length === 1);
+  const refusals = [{ code: 'unknown_column', path: 'bundle.sources.wafer_process_recipe.sentences[0].subject.keys.wafer', message: 'no column nope' },
+    { code: 'unknown_predicate', path: 'bundle.sources.wafer_process_recipe.sentences[1]', message: 'no such sentence shape' },
+    { code: 'unknown_table', path: 'bundle.sources.wafer_process_recipe.table', message: 'no table t' }, { code: 'x', path: 'bundle.vocabulary.processed_with.table', message: 'elsewhere' }];
+  const erroredView = view.declarationView({ ...base, draft: { ...DRAFT, validation_errors: refusals } }, 'source');
+  ok('I5 the explorer hands the refusals of the draft to the bar by chip path', same(Object.keys(erroredView.errors || {}).sort(), ['sentences.0.subject.keys.wafer', 'sentences.1', 'table']),
+    JSON.stringify(erroredView.errors));
+  const errored = bar.renderDeclarationBar(document, RAW, { ...erroredView, errors: bar.chipErrors(refusals) });
+  const pillBy = (path) => { const chipNode = walk(errored).find((n) => n.dataset?.path === path && n._classes.includes('ldb-chip'));
+    const wrap = chipNode && walk(errored).find((n) => n._classes?.includes('ldb-at') && n.children.includes(chipNode));
+    return wrap ? byClass(wrap, 'is-bad').map((p) => p.textContent) : null; };
+  const names = byClass(errored, 'ldb-sname');
+  ok('I2 a refusal on a short path sits beside its chip - a key, the table, a whole sentence by its name',
+    same(pillBy('sentences.0.subject.keys.wafer'), ['no column nope']) && same(pillBy('table'), ['no table t'])
+      && names.length > 1 && byClass(names[1], 'is-bad').map((p) => p.textContent).join() === 'no such sentence shape' && byClass(names[0], 'is-bad').length === 0,
+    JSON.stringify([pillBy('sentences.0.subject.keys.wafer'), pillBy('table')]));
+  ok('I3 ...and a path that is not this source\'s names no chip', !byClass(byClass(errored, 'ldb')[0], 'is-bad').some((p) => p.textContent === 'elsewhere'));
+  const blind = view.renderRaw({ ...base, authoringSchema: { tables: {}, tables_unavailable: 'FileNotFoundError: table_config.json is gone' } });
+  ok('I4 tables the server could not read: the Read line says so, with the reason', (byClass(blind, 'ldb-bar')[0] || { textContent: '' }).textContent.includes('Column lists unavailable: FileNotFoundError: table_config.json is gone'),
+    (byClass(blind, 'ldb-bar')[0] || { textContent: '' }).textContent);
+
   console.log('\n── F. a table save reads the column lists again ──');
   const held = { ...store.initialExplorerState, authoringSchema: { tables: {} } };
   ok('F1 a table save clears the schema', store.reduceExplorerState(held, { type: 'AUTHORING_INVALIDATED', tables: true }).authoringSchema === null);
@@ -347,6 +371,13 @@ const MUTANTS = [
   { name: 'an unsaid kind is read as none', catches: ['A13'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else {") },
   { name: 'the schema\'s object kind is dropped', catches: ['D6'], file: 'view', mutate: swap(', object: (p && p.object) || null }))', ' }))') },
   { name: 'the table key read off another field', catches: ['H1', 'D4'], file: 'view', mutate: swap('Array.isArray(v.key)).map(([t, v]) => [t, v.key])', 'Array.isArray(v.keys)).map(([t, v]) => [t, v.keys])') },
+  { name: 'a refusal\'s [n] read as is', catches: ['I2'], file: 'bar', mutate: swap(".replace(/\\[(\\d+)\\]/g, '.$1')", '') },
+  { name: 'refusals beside no chip', catches: ['I2'], file: 'bar', mutate: swap('  if (!open) { wrap.append(b, ...said(el, view, c.path)); return wrap; }', '  if (!open) { wrap.append(b); return wrap; }') },
+  { name: 'a sentence\'s refusal not by its name', catches: ['I2'], file: 'bar', mutate: swap("  if (!from) name.append(...said(", "  if (false) name.append(...said(") },
+  { name: 'any path names a chip', catches: ['I3'], file: 'bar', mutate: swap("/^bundle\\.sources\\.[^.]+\\.(.+)$/", "/^bundle\\.[^.]+\\.[^.]+\\.(.+)$/") },
+  { name: 'the refusals left behind', catches: ['I5'], file: 'view', mutate: swap('    errors: chipErrors(draft.validation_errors),', '    errors: {},') },
+  { name: 'unread tables said nothing', catches: ['I4'], file: 'view', mutate: swap(", tablesUnavailable: schema.tables_unavailable || '',", ',') },
+  { name: 'the long body sent to the bar', catches: ['I1', 'D3'], file: 'view', mutate: swap("kind === 'source' && !isShortForm(raw) ? null : ", '') },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
   { name: 'every invalidation drops the schema', catches: ['F2'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', 'authoringSchema: null') },
 ];
