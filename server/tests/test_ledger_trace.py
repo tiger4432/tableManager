@@ -29,6 +29,14 @@ from database import crud
 #: Asia/Seoul, and a suite whose every instant was UTC could not tell a
 #: correct implementation from one that silently normalises to UTC - the
 #: two agree on exactly the inputs a UTC fixture provides.
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 KST = timezone(timedelta(hours=9))
 T0 = datetime(2026, 8, 1, 12, 0, 0, tzinfo=KST)
 

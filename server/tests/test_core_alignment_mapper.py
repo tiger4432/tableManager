@@ -5,6 +5,7 @@ import importlib
 from types import SimpleNamespace
 
 import map_alignment
+from conftest import requires_live
 
 
 mapper = importlib.import_module("mappers.core_alignment_mapper")
@@ -66,6 +67,7 @@ def test_anchor_placement_keeps_the_valid_die_geometry_for_equations():
         {"placement": map_alignment.PLACEMENT_ANCHOR}, meta, cells) == (meta, cells)
 
 
+@requires_live("server/mappers/core_alignment_mapper.py to be BYTE-IDENTICAL to the tracked sample beside it")
 def test_live_mapper_and_tracked_sample_are_byte_identical():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1] / "mappers"

@@ -30,6 +30,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import validation                                                  # noqa: E402
 from ledger import setup_bundle                                    # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 PREDICATE = {"status": "active", "subjects": ["wafer@1"],
              "object": {"kind": "none", "qualifiers": {"required": [], "optional": []}}}
 
@@ -150,11 +158,11 @@ def test_the_explorer_refuses_an_undeclared_name_by_NAME(tmp_path):
     """
     from admin.auth import require_admin_token, require_admin_token_strict
     from ledger.config_explorer_service import OntologyExplorerService
-    from ledger.setup import DEFAULT_ONTOLOGY_ROOT
+    import paths
     from ledger_api import ontology_config_explorer_router as explorer_router
 
     root = tmp_path / "ontology"
-    shutil.copytree(DEFAULT_ONTOLOGY_ROOT, root)
+    shutil.copytree(paths.config_path("ontology"), root)                 # the shipped one (`_shipped_declaration`)
     service = OntologyExplorerService(config_root=root, draft_root=tmp_path / "drafts")
     saved_service = explorer_router._services[None]
     explorer_router.configure_service(service)

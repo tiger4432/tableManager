@@ -1,6 +1,7 @@
 import json
 from types import SimpleNamespace
 
+from conftest import requires_live
 from mappers import core_usage_mapper as mapper
 
 
@@ -56,6 +57,7 @@ def test_usage_metadata_is_always_the_standard_front_zero_origin(monkeypatch):
     assert metadata["valid_die_ref"]["map_id"] == "CORE_DT"
 
 
+@requires_live("server/mappers/core_usage_mapper.py to be BYTE-IDENTICAL to the tracked sample beside it")
 def test_live_mapper_and_tracked_sample_are_byte_identical():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1] / "mappers"

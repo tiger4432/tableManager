@@ -309,7 +309,8 @@ def test_the_sample_is_written_in_the_one_format_both_writers_use():
 
     path = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                         "ledger_config.json.sample")
-    raw = io.open(path, encoding="utf-8", newline="").read()
+    # line ends are the checkout's (core.autocrlf writes the committed LF as CRLF on disk), not the file's format
+    raw = io.open(path, encoding="utf-8", newline="").read().replace("\r\n", "\n")
 
     assert raw == _json.dumps(_json.loads(raw), indent=2, ensure_ascii=False), (
         "the sample must be byte-identical to what both writers emit")

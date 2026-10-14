@@ -22,6 +22,14 @@ if server_dir not in sys.path:
 import config_resolve_report as crr                                   # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 def _domain(report, name):
     return next((d for d in report["domains"] if d["domain"] == name), None)
 

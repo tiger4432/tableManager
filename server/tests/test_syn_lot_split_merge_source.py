@@ -91,7 +91,7 @@ def test_writer_keeps_exact_source_columns(tmp_path):
 
 
 def test_columns_match_current_source_table_config():
-    config_path = Path(__file__).parents[1] / "config" / "table_config.json"
+    config_path = Path(__file__).parents[1] / "config" / "sample" / "table_config.json.sample"   # the shipped one
     table_config = json.loads(config_path.read_text(encoding="utf-8"))
 
     assert tuple(table_config["lot_event"]["display_columns"]) == LOT_EVENT_COLUMNS

@@ -24,6 +24,16 @@ from ledger.setup_bundle import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    root = use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+    # this file's DEFAULT_ONTOLOGY_ROOT means the operating root - bound at import, it would still name the box's
+    monkeypatch.setitem(globals(), "DEFAULT_ONTOLOGY_ROOT", root / "ontology")
+
+
 def _a_planned_source() -> str:
     """A source THIS box's declaration plans and reads from a table - the subject the
     cases below used to spell as `lot_event`, which retired (setup_version 6)."""

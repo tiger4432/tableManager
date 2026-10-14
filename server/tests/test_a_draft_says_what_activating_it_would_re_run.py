@@ -36,6 +36,14 @@ from ledger import config_drafts                                      # noqa: E4
 #: What the counter would answer. 🔴 A SENTINEL OBJECT, so "verbatim" can be asserted by
 #: IDENTITY - a test comparing field by field would pass on a copy that renamed nothing today
 #: and something tomorrow.
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 COUNTER_ANSWER = {"op": "ledger_backfill", "affected": 1234,
                   "affected_label": "아직 번역되지 않은 행", "absence": None,
                   "scan_limit": None, "blocked_reason": None,
@@ -220,7 +228,7 @@ def test_the_view_route_takes_the_request_session_and_opens_no_second_one():
         assert opened not in source, opened
 
 
-def test_the_route_still_answers_after_gaining_the_dependency(client):
+def test_the_route_still_answers_after_gaining_the_dependency(client, monkeypatch):
     """⚠️ CALLED FOR REAL, not asserted about. Adding `Depends(get_db)` to a handler is
     exactly the change that 422s every request when it goes wrong - a decorator binding to
     the wrong callable, a parameter read as a required query field - and none of that shows
@@ -232,6 +240,13 @@ def test_the_route_still_answers_after_gaining_the_dependency(client):
     answers 200 unauthenticated in a test env with no token configured, which is that
     suite's contract and not this one's to restate.
     """
+    import paths
+    from ledger.config_explorer_service import OntologyExplorerService
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    # the router's default explorer was built at import, on the box's root - this test's is the shipped one
+    monkeypatch.setitem(explorer_router._services, None,
+                        OntologyExplorerService(config_root=paths.config_path("ontology")))
     answer = client.get("/admin/ontology-explorer/view")
 
     assert answer.status_code == 200, answer.text
@@ -244,17 +259,17 @@ def test_the_route_still_answers_after_gaining_the_dependency(client):
 # ---------------------------------------------------------------------------
 
 def _copied_ontology(tmp_path):
-    """A private copy of the live ontology root.
+    """A private copy of the ontology root (the shipped one, `_shipped_declaration`).
 
     ⛔ NEVER THE LIVE ONE. A draft written into the owner's config directory is the
     「내 시험이 소유자의 파일에 썼다」 failure, and this test creates one.
     """
     import shutil
 
-    from ledger.setup import DEFAULT_ONTOLOGY_ROOT
+    import paths
 
     target = tmp_path / "ontology"
-    shutil.copytree(DEFAULT_ONTOLOGY_ROOT, target)
+    shutil.copytree(paths.config_path("ontology"), target)
     return target
 
 

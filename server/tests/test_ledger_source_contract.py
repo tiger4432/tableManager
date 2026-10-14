@@ -6,6 +6,8 @@ import os
 import sys
 from datetime import datetime
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger.backfill import fetch_page                                      # noqa: E402
@@ -44,12 +46,21 @@ def lineage_declaration():
 #: to - so what died is the fixture's premise, not the property. Rewriting the fixtures onto
 #: the declaration's subjects would restore all three, and that is a round of its own.
 
+
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 def test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_rule():
     source = {
         "kind": "declared",
         "occurred_at_basis": "claim_time",
         "subject_types": ["wafer"],
-        "register_entity_types": ["wafer"],
+        "register_entity_types": [],         # registers nothing: `register`'s subjects are each declaration's own
         "columns": {"row_identity": "id"},
         "emit": [{
             "rule": "bad_subject",

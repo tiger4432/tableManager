@@ -137,6 +137,25 @@ def test_a_want_is_queued_once_a_process(monkeypatch):
 def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeypatch):
     from parsers import directory_watcher
     from runtime import index_wants
+    from tests.support.pools import bodies_here
+
+    bodies_here(monkeypatch)                     # the page body reads this test's patches, not a pool process's
+    import main
+    import time as real_time
+
+    class _Clock:
+        """Each read a second later: the id scan is «slow» however fast this box answers - time.time() steps by
+        ~1-15 ms here, so a warm SQLite scan read 0.0 s and asked for nothing (red only late in the full suite)."""
+        now = real_time.time()
+
+        def time(self):
+            _Clock.now += 1.0
+            return _Clock.now
+
+        def __getattr__(self, name):
+            return getattr(real_time, name)
+
+    monkeypatch.setattr(main, "time", _Clock())
 
     wanted = []
     monkeypatch.setattr(directory_watcher, "grid_auto_index_after", lambda settings=None: 1e-9)

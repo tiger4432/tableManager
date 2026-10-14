@@ -19,6 +19,15 @@ import sys
 
 import pytest
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_catalogue, use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+    use_committed_catalogue(monkeypatch)                     # dt_log and dt_inventory's models
+
+
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)

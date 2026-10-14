@@ -38,6 +38,14 @@ import map_overlay
 from map_meta_registrar import compose_map_id, synthesize_grid_meta, META_TABLE
 from product_tables import PRODUCT_TABLES
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 MAP_TABLE = "mmrauto_test_map"
 REGISTRY_TABLE = "mmrauto_test_registry"
 

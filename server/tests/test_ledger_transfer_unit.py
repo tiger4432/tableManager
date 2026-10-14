@@ -31,6 +31,14 @@ from ledger import backfill                            # noqa: E402
 from ledger import config as ledger_config             # noqa: E402
 from ledger import gate                                # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 SOURCE = "dt_log"
 EVENT_TIME = "2026-05-11 00:00:00"
 

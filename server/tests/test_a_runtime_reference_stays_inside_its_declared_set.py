@@ -36,9 +36,10 @@ def test_the_declared_set_holds_the_table_the_spec_will_name():
     assert "valid_die_ref" in cb.rule_tables(RULE, cb.TABLE_ROLE_READ)
 
 
-def test_the_runtime_half_is_the_map_id_never_the_table():
+def test_the_runtime_half_is_the_map_id_never_the_table(monkeypatch):
     """🔴 판정 65 의 조건 그 자체 — 실행 시점 값이 무엇이든 «표»는 선언된 그것이다."""
-    sys.path.insert(0, os.path.join(SERVER, "mappers"))
+    # undone after this test: left in place, a pool process spawned later imports mappers/utils.py as `utils`
+    monkeypatch.syspath_prepend(os.path.join(SERVER, "mappers"))
     import importlib
     mod = importlib.import_module("mappers.core_alignment_mapper")
 

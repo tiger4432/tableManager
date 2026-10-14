@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 def test_get_tables_data(client):
@@ -51,7 +52,7 @@ def test_put_batch_update(client):
     assert mutated_row["data"]["EQP_ID"]["is_overwrite"] is True
 
 
-def test_chained_ingestion(client, db_session):
+def test_chained_ingestion(client, db_session, monkeypatch):
     # 1. Trigger Table에 데이터 인제션 시뮬레이션
     from database import models
     import uuid
@@ -95,7 +96,12 @@ def test_chained_ingestion(client, db_session):
     assert len(events) > 0
     
     # 3. 체인 워커 수동 트리거링 (트랜잭션 그룹 단위 호출)
+    from chain import ingestion_worker
     from chain.ingestion_worker import process_chain_transaction_group, load_chain_rules
+    # the shipped rules (production_plan -> inventory_master is in them, for this test) - the box's gitignored
+    # chain_rules.json is not in a fresh checkout and reads as no rules (총괄 10-14)
+    monkeypatch.setattr(ingestion_worker, "RULES_PATH",
+                        os.path.join(os.path.dirname(__file__), "..", "config", "sample", "chain_rules.json.sample"))
     rules = load_chain_rules()
     
     import anyio
@@ -124,7 +130,8 @@ def test_chained_ingestion(client, db_session):
         models.CellSource.column_name == "stock_qty"
     ).first()
     assert src is not None
-    assert src.updated_by == "chain_worker"
+    # the layer is signed by the rule that wrote it (총괄 bc9710454 가-1 ㄱ, `rule_run.signed`)
+    assert src.updated_by == "production_to_inventory_reservation_batch"
     
 
 def test_cell_sources_api(client):
@@ -314,7 +321,7 @@ def test_audit_log_no_redundant_logs(client, db_session):
     db_session.commit()
 
 
-def test_file_ingestion_callback_direct(db_session, tmp_path):
+def test_file_ingestion_callback_direct(db_session, tmp_path, monkeypatch):
     """아카이브 재처리 → on_file_processed_callback 통지.
 
     [격리] 이전 판은 워크스페이스 루트를 `dirname(__file__)/..`로 잡아 **라이브**
@@ -330,6 +337,16 @@ def test_file_ingestion_callback_direct(db_session, tmp_path):
     """
     from database import models
     from directory_watcher import IngestionHandler
+    import paths
+    from database import crud as _crud
+    # the watcher re-reads table_config.json: this test's tables, in a config root of its own - the box's
+    # gitignored one is not in a fresh checkout (총괄 10-14)
+    (tmp_path / "config_root").mkdir()
+    (tmp_path / "config_root" / "table_config.json").write_text(json.dumps(dict(_crud.TABLE_CONFIG)), encoding="utf-8")
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(tmp_path / "config_root"))
+    # and its write session is this test's - the watcher opens its own `SessionLocal`, another database here
+    import directory_watcher
+    monkeypatch.setattr(directory_watcher, "SessionLocal", lambda: db_session)
     import os
 
     # 1. Setup mock workspace (폴더명=테이블명 규약을 보존해야 해석 경로가 같다)

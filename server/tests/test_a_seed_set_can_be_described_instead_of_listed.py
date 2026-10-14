@@ -27,6 +27,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger import explorer                                             # noqa: E402
 from ledger_api import ledger_subgraph                             # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 NOW = datetime(2026, 9, 13, 2, 0, tzinfo=timezone.utc)
 
 
