@@ -1,0 +1,384 @@
+{
+ "_note": "implementer B service (impl-b-window) on the sample declaration converted to v7; source wafer_process_recipe",
+ "schema": {
+  "tables": {
+   "wafer_process": {
+    "columns": {
+     "proc_id": "string",
+     "wafer_id": "string",
+     "lot": "string",
+     "slot": "string",
+     "lot_id": "string",
+     "slot_no": "string",
+     "step": "string",
+     "eqp_id": "string",
+     "start_time": "string",
+     "end_time": "string",
+     "result": "string",
+     "eventtime": "string",
+     "recipe_id": "string",
+     "knobs": "string",
+     "mat_type": "string",
+     "row_id": "string"
+    },
+    "key": [
+     "proc_id"
+    ]
+   }
+  },
+  "entities": {
+   "quantity": {
+    "keys": [
+     "quantity"
+    ],
+    "attributes": []
+   },
+   "defect_kind": {
+    "keys": [
+     "defect_kind"
+    ],
+    "attributes": []
+   },
+   "defect": {
+    "keys": [
+     "void_uid"
+    ],
+    "attributes": []
+   },
+   "dtjob": {
+    "keys": [
+     "dt_job"
+    ],
+    "attributes": [
+     "dt_eqp"
+    ]
+   },
+   "lot": {
+    "keys": [
+     "lot"
+    ],
+    "attributes": []
+   },
+   "wafer": {
+    "keys": [
+     "wafer"
+    ],
+    "attributes": []
+   },
+   "dtwafer": {
+    "keys": [
+     "wafer"
+    ],
+    "attributes": []
+   },
+   "die": {
+    "keys": [
+     "mat_id",
+     "x",
+     "y",
+     "mat_type"
+    ],
+    "attributes": []
+   },
+   "recipe": {
+    "keys": [
+     "recipe"
+    ],
+    "attributes": []
+   },
+   "lot_slot": {
+    "keys": [
+     "lot",
+     "slot"
+    ],
+    "attributes": []
+   }
+  },
+  "vocabulary": {
+   "measures": {
+    "qualifiers": [
+     "value",
+     "value_text",
+     "role",
+     "step",
+     "eqp_id"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity"
+     ]
+    }
+   },
+   "leads_to": {
+    "qualifiers": [
+     "dir",
+     "model"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "quantity",
+      "defect_kind"
+     ]
+    }
+   },
+   "has_netdie": {
+    "qualifiers": [],
+    "object": {
+     "kind": "value",
+     "types": []
+    }
+   },
+   "register": {
+    "qualifiers": [
+     "dt_eqp"
+    ],
+    "object": {
+     "kind": "none",
+     "types": []
+    }
+   },
+   "has_wafer": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "wafer"
+     ]
+    }
+   },
+   "derived_from": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot"
+     ]
+    }
+   },
+   "slot_map": {
+    "qualifiers": [
+     "event_type"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot_slot"
+     ]
+    }
+   },
+   "transfer": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "die"
+     ]
+    }
+   },
+   "inspected": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "die"
+     ]
+    }
+   },
+   "of_kind": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "defect_kind"
+     ]
+    }
+   },
+   "observed": {
+    "qualifiers": [
+     "radius_x",
+     "inchip_x",
+     "inchip_y",
+     "radius_y",
+     "unit",
+     "gate",
+     "run_uid"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "defect"
+     ]
+    }
+   },
+   "processed_with": {
+    "qualifiers": [
+     "step"
+    ],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "recipe"
+     ]
+    }
+   },
+   "bonded_from": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "die"
+     ]
+    }
+   },
+   "in_container": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "wafer"
+     ]
+    }
+   },
+   "split_from": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot"
+     ]
+    }
+   },
+   "merged_into": {
+    "qualifiers": [],
+    "object": {
+     "kind": "entity_ref",
+     "types": [
+      "lot"
+     ]
+    }
+   }
+  }
+ },
+ "draft": {
+  "draft_id": "9492bf379d1f4688b2b4c7b5fc8588b5",
+  "target_key": "source_plan|wafer_process_recipe",
+  "target_id": "wafer_process_recipe",
+  "target_kind": "source_plan",
+  "revision": 0,
+  "lifecycle_status": "editing",
+  "raw": {
+   "table": "wafer_process",
+   "sentences": [
+    {
+     "sentence": "dtwafer-processed-with-recipe",
+     "predicate": "processed_with",
+     "when": {
+      "mat_type": "DT"
+     },
+     "subject": {
+      "node": "dtwafer",
+      "keys": {
+       "wafer": "wafer_id"
+      }
+     },
+     "target": {
+      "node": "recipe",
+      "keys": {
+       "recipe": "recipe_id"
+      }
+     },
+     "occurred_at": {
+      "column": "eventtime",
+      "timezone": "Asia/Seoul"
+     },
+     "step": "step"
+    },
+    {
+     "sentence": "wafer-processed-with-recipe",
+     "predicate": "processed_with",
+     "when": {
+      "mat_type": ""
+     },
+     "subject": {
+      "node": "wafer",
+      "keys": {
+       "wafer": "wafer_id"
+      }
+     },
+     "target": {
+      "node": "recipe",
+      "keys": {
+       "recipe": "recipe_id"
+      }
+     },
+     "occurred_at": {
+      "column": "eventtime",
+      "timezone": "Asia/Seoul"
+     },
+     "step": "step"
+    }
+   ]
+  },
+  "updated_at": "2026-10-14T01:15:22.123809+00:00"
+ },
+ "saved": {
+  "revision": 1,
+  "raw": {
+   "table": "wafer_process",
+   "sentences": [
+    {
+     "sentence": "dtwafer-processed-with-recipe",
+     "predicate": "processed_with",
+     "when": {
+      "mat_type": "DT"
+     },
+     "subject": {
+      "node": "dtwafer",
+      "keys": {
+       "wafer": "wafer_id"
+      }
+     },
+     "target": {
+      "node": "recipe",
+      "keys": {
+       "recipe": "recipe_id"
+      }
+     },
+     "occurred_at": {
+      "column": "eventtime",
+      "timezone": "Asia/Seoul"
+     },
+     "step": "step"
+    },
+    {
+     "sentence": "wafer-processed-with-recipe",
+     "predicate": "processed_with",
+     "when": {
+      "mat_type": ""
+     },
+     "subject": {
+      "node": "wafer",
+      "keys": {
+       "wafer": "wafer_id"
+      }
+     },
+     "target": {
+      "node": "recipe",
+      "keys": {
+       "recipe": "recipe_id"
+      }
+     },
+     "occurred_at": {
+      "column": "eventtime",
+      "timezone": "Asia/Seoul"
+     },
+     "step": "step"
+    }
+   ]
+  },
+  "preview_valid": true,
+  "validation_errors": []
+ }
+}
