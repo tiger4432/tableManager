@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import setup_bundle as sb                                      # noqa: E402
+from ledger import config_explorer_service as service_module                # noqa: E402
 from ledger.config_explorer_service import OntologyExplorerService         # noqa: E402
 from ledger.setup import load_setup                                        # noqa: E402
 from scripts import migrate_ledger_config_to_v7 as v7                      # noqa: E402
@@ -84,9 +85,14 @@ def test_a_test_run_on_a_draft_runs_the_draft_and_records_nothing(tmp_path, monk
 
     def preview_first_batch(engine, setup, source, **_kw):
         ran.append((setup.mappers is not None, sorted(setup.snapshot.source_plans[source].profile.mappings)))
-        return SimpleNamespace(rows_read=0, preview=None, pages=0, excluded_rows=None)
+        # one molecule, so the answer reaches «passed» - the step that records an active run
+        return SimpleNamespace(rows_read=1, pages=1, excluded_rows=None, refusals=(), rows_sample=(),
+                               page_keys=(), preview=SimpleNamespace(molecule_count=1, incomplete_count=0,
+                                                                     atom_count=1))
 
     monkeypatch.setattr(backfill, "preview_first_batch", preview_first_batch)
+    monkeypatch.setattr(service_module, "_atoms_per_sentence", lambda preview, plan: [])
+    monkeypatch.setattr(service, "_atoms_sample", lambda *a: None)
     monkeypatch.setattr(service, "_record_test_run", recorded.append)
 
     answer = service.test_run(None, source_id="transfer_event", draft_id=draft["draft_id"])
@@ -94,7 +100,8 @@ def test_a_test_run_on_a_draft_runs_the_draft_and_records_nothing(tmp_path, monk
 
     assert answer["draft_id"] == draft["draft_id"] and "draft_id" not in active
     assert ran[0] == (True, ["said-by-the-draft"]) and "said-by-the-draft" not in ran[1][1]
-    assert recorded == []
+    assert (answer["status"], active["status"]) == ("passed", "passed")
+    assert [run["source_id"] for run in recorded] == ["transfer_event"]      # the active run only
 
 
 def test_the_schema_carries_what_the_window_draws_from(tmp_path):
