@@ -2361,6 +2361,11 @@
 - **언제 재사용**: 많은 행을 칸 몇 개씩 고치는 새 자리 — 행마다 UPDATE 를 짓지 않는다.
 - **함정**: flush 에 남는 넷 — SQL 식 값 · 바뀐 키 · 한 칸에 두 형(배열은 형 하나) · `updated_at` 이 None 인 행. 아웃박스 기록(`auto_stage_database_outbox`) «뒤»에 걸려야 사건이 옛 값을 먼저 읽는다. 문장이 이름 댄 행을 다 못 건드리면 ORM 처럼 거절.
 
+### **원장 선언 파일의 짧은 꼴(v7)은 읽을 때 «긴 꼴로 펼쳐» 같은 번들이 된다 — 펼치기 `expand_short_form` · 줄이기 `shorten_setup` 한 쌍** (2026-10-14 등록 · B `bbfa4d11b`, 소유자 «ㄹ»)
+- **어디**: `ledger/setup_bundle.py` — 소스 = `{table, status?, attributes?, sentences: [{sentence, predicate, when?, 역할: 값}]}`. 읽기는 `expand_short_form`(read · map 은 표의 가장 짧은 유일 키 · 문장들의 occurred_at 이 기본), 쓰기는 `shorten_setup`/`shorten_source`, 줄일 때 바뀌는 칸은 `short_form_moves`. 파일을 쓰는 둘(탐색기 활성화 · `scripts/migrate_ledger_config_to_v7.py`)은 `config_drafts.activation_lock` 하나를 쥔다.
+- **언제 재사용**: 선언을 다른 꼴로 적거나 옮길 때 — 해석기를 새로 짓지 않고 펼쳐서 한 번들로 읽는다.
+- **함정**: v6 파일은 그대로 읽힌다(로그 한 줄 «setup_version 6 read as it is»). 묶어 읽기(`read.group_by`) · 자기 맵퍼 · `virtual_joins` 는 짧게 못 적는다(refused — 파일을 안 씀). 줄여서 identity · order_by 가 바뀐 소스는 «mixes» — 이제부터 번역되는 행만 새 신원이다.
+
 ### **원장 선언 창은 «문장 막대» 한 모듈 — `ledger_declaration_bar.js` 는 그리고 고치기만, 선언은 탐색기 초안 글** (2026-10-14 등록 · `dff9283c2`, 소유자 10-14 «이대로 만들어»)
 - **어디**: `client2/src/ledger_declaration_bar.js` — `renderDeclarationBar` · `editDeclaration(raw, op, ctx)` · `barRun(run)`. 컨트롤은 `data-action` 하나씩이고 탐색기 컨트롤러가 듣는다(DOM 은 `dom_patch` 로 제자리 고침). 시안 정본은 `task/design/LEDGER_DECLARATION_BAR.dc.html`.
 - **언제 재사용**: 선언(소스 · 술어 · 노드 타입)을 문장으로 고치는 화면 — 폼을 또 짓지 않고 이 막대에 칸을 더한다.
