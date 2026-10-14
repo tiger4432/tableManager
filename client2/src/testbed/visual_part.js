@@ -713,7 +713,9 @@ export class VisualPart extends Panel {
     p.setAttribute('data-slot', key);
     p.setAttribute('data-part', this.decl.id || '');
     const slot = (this.decl.encode || {})[key];
-    p.textContent = opts.words || slotWords(slot);
+    // a slot nothing is declared in says what the kind does without it, when the kind says (the cross table's cells)
+    const empty = slot ? '' : ((this.slotList().find((s) => s.key === key) || {}).empty || '');
+    p.textContent = opts.words || empty || slotWords(slot);
     const caret = doc.createElement('span');
     caret.className = 'sf-pill__caret';
     caret.textContent = '▾';

@@ -360,6 +360,14 @@ async function parts(M) {
   };
   out.wayStart = [startOf('x'), startOf('y'), startOf('color'), M.picker.expressionRefusal(wp.part, '[in_lot.name]'),
     M.picker.expressionRefusal(wp.part, '[in_lot.nope]'), M.picker.expressionRefusal(wp.part, '[measures.value]')];
+  // T35: a cross table with no cell slot - its Cell values pill says what the cells hold (owner 10-14 «행수»: UniqueCount(rows));
+  // one declared - its own words
+  const pillOf = (p) => { const n = walk(p.host).find((x) => x.tagName === 'BUTTON' && x.getAttribute && x.getAttribute('data-slot') === 'cells');
+    return n ? String(n.textContent).replace('▾', '') : null; };
+  const noCells = seat(M, crossDecl({ id: 'C9', encode: { rows: lot, columns: product } }));
+  const withCells = seat(M, crossDecl({ id: 'C8' }));
+  await settle();
+  out.cellsPill = [pillOf(noCells), pillOf(withCells)];
   // T34: «time» in the picker's Value list (lead 10-14 ③ ㄱ): on a route, the slot reads the time of what it reads (its last
   // edge's) - of 'time', the same value; on «(row)» it is off with its reason
   const timeOf = (part, key) => {
@@ -534,6 +542,7 @@ function suite(out, page, saved, counted) {
     [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
   eq('T30 an operator over a text that is not a number: the row empty and marked; a list several; an empty value empty, not marked; the bottom line counts the drawn rows so marked',
     [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
+  eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
   eq('T34 «time» in the picker: on a route the slot reads its last edge\'s time (of time, the value kept); on «(row)» off with its reason',
     page.timePick, ['time', JSON.stringify(temp.value), JSON.stringify(temp.steps), 'one', new Date(T0).toISOString(), true, true, 'No time on this route']);
   eq('T31 a way in the brackets: its end node\'s name; a row it does not reach empty; folded over its ends; two ends several - and Custom expression starts from the route chosen (its reduce around it), the check reading a way as the row does',
@@ -545,7 +554,7 @@ function suite(out, page, saved, counted) {
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
-    out.titles, ['press · value vs. temp · value', 'Avg(press · value) per lot and product', 'Count per lot and product']);
+    out.titles, ['press · value vs. temp · value', 'Avg(press · value) per lot and product', 'UniqueCount(rows) per lot and product']);
   eq('T8 hubs: members take the hub\'s sign, a + wins over a -, a node stands as itself; a hub holds its members; said in words',
     out.hubs, [{ positive: ['W1', 'W2', 'W3'], negative: ['W9'] }, true, 0, 'wafer · lot = L1']);
   eq('T20 the walk page\'s reading of a marking is the same function - no opener: each entry itself, the marking\'s order, an absent sign no seed',
@@ -672,8 +681,10 @@ const MUTANTS = [
 
   { id: 'M33', what: 'the scatter\'s title y and x swapped', catches: 'T23', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '`${slotWords(encode.y)} vs. ${slotWords(encode.x)}`', '`${slotWords(encode.x)} vs. ${slotWords(encode.y)}`') },
-  { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not Count', catches: 'T23', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, "${encode.cells ? slotWords(encode.cells) : 'Count'}", '${slotWords(encode.cells)}') },
+  { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not UniqueCount(rows)', catches: 'T23', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, "${encode.cells ? slotWords(encode.cells) : ROWS_COUNT}", '${slotWords(encode.cells)}') },
+  { id: 'M52', what: 'an empty Cell values pill says (None) though the cells count their rows', catches: 'T35', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    p.textContent = opts.words || empty || slotWords(slot);', '    p.textContent = opts.words || slotWords(slot);') },
   { id: 'M23', what: 'a saved page reopens on the layout, not on what was saved', catches: 'T12', file: 'testbed/main.js',
     mutate: (t) => swap(t, '  const layout = laidOut(LAYOUT, saved, entities());', '  const layout = laidOut(LAYOUT, null, entities());') },
   { id: 'M24', what: 'the site\'s theme left as it came (the code before: a white picker on the dark page)', catches: 'T18', file: 'testbed/main.js',

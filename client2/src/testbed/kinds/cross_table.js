@@ -4,10 +4,13 @@
 
 import { combosOf, slotWords, foldRows, EMPTY, PART_SEP } from '../slot.js';
 
+/** What a cell holds with no cell slot: its rows, each once (owner 10-14 «ㅇㅇ 행수») - said as the fold it is. */
+export const ROWS_COUNT = 'UniqueCount(rows)';
+
 export const SLOTS = Object.freeze([
   { key: 'rows', label: 'Row axis', category: true, tray: 'left', many: true },
   { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true, many: true },
-  { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true },
+  { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true, empty: ROWS_COUNT },
 ]);
 export { EMPTY };
 const TOTAL = 'Total';
@@ -143,8 +146,8 @@ export function render(area, model, ctx) {
   return { resize: () => {}, dispose: () => {} };
 }
 
-/** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «Count». */
-export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : 'Count'} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
+/** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «UniqueCount(rows)». */
+export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : ROWS_COUNT} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
 
 /** The add window's picture of it: a head, a row head, cells. */
 export const icon = { tone: 'cat-7', paths: [['M4 3h16v4H4zM4 9h4v12H4z', 1], ['M10 9h4v5h-4zM16 9h4v5h-4zM10 16h4v5h-4zM16 16h4v5h-4z', 0.6]] };
