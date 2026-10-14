@@ -39275,3 +39275,13 @@ B          execute_reference_view 한 자리가 시간을 재고, 느리면 그 
 할 일       화면 낱말을 영어로(empty · deleted), 옛 줄의 한국어 낱말도 같은 영어로 그림. client2/src 전체에서 화면에 그려지는 한국어 문자열 수를 세어 보고(명령 · 수) — 고치는 것은 이 둘만, 나머지는 목록으로
 순서        지금 판(13) 뒤 · 14 앞
 ```
+
+> **[총괄 -> 응용] 10-14 — 문서 정비 (doc-sync-1014k 뒤 누적)**
+
+```
+범위        A 4f1bc5c7e(파티션 autovacuum_analyze_scale_factor · 원장 프로세스 index line · autovacuum 줄) · B fc8bd99bf(이력 줄 영어)
+            README 경영진 발표 줄 · exec_deck.html 삭제(e313ac2c3 · 573c5b29d) — 그 파일을 가리키던 문서 문장이 남았는지
+            그 사이 착지하는 것(impl-b-walkpy · impl-a-datefns)이 들어오면 같이
+할 일       CODE_MAP 해당 절 · PRIMITIVES · 적대 QA 하며 같이
+끝나면      .claude/doc_sync_pending 지우고 커밋 · 푸시, 해시 한 줄
+```
