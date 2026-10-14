@@ -29,9 +29,9 @@ export function colorsOf(rows, ctx) {
   // continuous (the root's scale): a row's colour its value's place between the least and the most - a ramp, no categories
   if (ctx.scale && ctx.scale.scale === 'continuous' && decl.encode && decl.encode.color) return rampOf(rows, palette, ctx.scale.time);
   const own = decl.colors || {};
-  const categoryOf = (row) => (row.reads.color && row.reads.color.state === 'one' ? String(row.reads.color.value) : null);
+  const categoryOf = (row) => paintCategoryOf(row.reads.color);
   const seen = [...new Set(rows.map(categoryOf).filter((c) => c !== null))];
-  const names = [...seen].sort();
+  const names = categoryNames(seen);
   const marked = ctx.marked || (() => false);
   const anyMarked = rows.some((r) => marked(r.id));
   // A category not declared yet: the palette's next colour no category holds, in the order the rows show them (QA 10-14:
@@ -76,6 +76,13 @@ function rampOf(rows, palette, time) {
 /** A category's look not declared yet - THE one rule for Color by's colours and Shape by's shapes: the pool's next one no
  *  category holds, in the order the rows show them (all held - round the pool again); handed back for the declaration to
  *  keep, so a value keeps its look as more come (Spotfire's). */
+/** The category a paint slot (Color by, Shape by) gives a row: its one value; several - one «(Multiple)», a mark being
+ *  painted one look (lead 10-15; the slots that place or group - units.js spreadUnits - stand a row in each value); none - null. */
+export const MULTIPLE = '(Multiple)';
+export const paintCategoryOf = (read) => (!read ? null : read.state === 'one' ? String(read.value) : read.state === 'several' ? MULTIPLE : null);
+/** A legend's categories in order: as text, «(Multiple)» last. */
+export const categoryNames = (seen) => [...seen].sort((a, b) => (a === MULTIPLE) - (b === MULTIPLE) || (a < b ? -1 : a > b ? 1 : 0));
+
 export function assignLooks(seen, own, pool) {
   const held = new Set(Object.values(own));
   const assigned = {};

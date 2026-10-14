@@ -79,8 +79,9 @@ export const HUB_MANY_WORDS = 'several values - pick a reduce (Avg · Count · L
  * sheet) the rows with several refused; a Marker by (a hub, a value record - `record` the slot a record spreads) its units,
  * one with several left out; else the marks (marksOf). Every kind's root and its tests ask this one.
  * `drawn` - the slots the kind draws a mark's value of (its own: a scatter's x and y, a table's columns); the root's own
- * slots keep their row's reading - Panel by splits rows (a row in two panels), Marker by makes the hubs, Color by and
- * Shape by paint several as the one look.
+ * slots keep their row's reading. THE rule (lead 10-15): a slot that places or groups (an axis, Panel by, Marker by, a
+ * cross table's rows and columns) stands a row in each of its values; a slot that paints (Color by, Shape by) can paint
+ * one look only, so several is «(Multiple)» (color_by paintCategoryOf).
  * @returns {{units: Array, dropped: Array<{id, why}>}}
  */
 export function spreadUnits(rows, decl, keys, { cells = false, record = null, recordsOf = () => null, words = (k) => k, marked = null, drawn = keys } = {}) {

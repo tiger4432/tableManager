@@ -4,7 +4,7 @@
 // declaration as Color by keeps its colours (color_by.js assignLooks, the one rule for both). The kind draws the shape
 // it is handed; the legend draws the same names.
 
-import { assignLooks } from './color_by.js';
+import { assignLooks, paintCategoryOf, categoryNames } from './color_by.js';
 
 /** The Shape by slot a points kind holds. */
 export const SHAPE_SLOT = Object.freeze({ key: 'shape', label: 'Shape by', category: true, many: true });
@@ -23,16 +23,16 @@ export const SHAPE_LEGEND = Object.freeze({
 });
 
 /**
- * Each row's shape by the declaration's Shape by: a row reading one value is in that category; none, several or no slot -
- * the one shape.
+ * Each row's shape by the declaration's Shape by: a row reading one value is in that category, several «(Multiple)»
+ * (color_by paintCategoryOf); none or no slot - the one shape.
  * @returns {{any: boolean, of: Map<string, {shape, category}>, categories: Array<{name, shape, ids}>, assigned: Record<string, string>}}
  */
 export function shapesOf(rows, decl) {
   const own = (decl && decl.shapes) || {};
-  const categoryOf = (row) => (row.reads.shape && row.reads.shape.state === 'one' ? String(row.reads.shape.value) : null);
+  const categoryOf = (row) => paintCategoryOf(row.reads.shape);
   const seen = [...new Set(rows.map(categoryOf).filter((c) => c !== null))];
   const assigned = assignLooks(seen, own, SHAPES);
-  const categories = [...seen].sort().map((name) => ({ name, shape: own[name] || assigned[name], ids: rows.filter((r) => categoryOf(r) === name).map((r) => r.id) }));
+  const categories = categoryNames(seen).map((name) => ({ name, shape: own[name] || assigned[name], ids: rows.filter((r) => categoryOf(r) === name).map((r) => r.id) }));
   const byName = new Map(categories.map((c) => [c.name, c]));
   const of = new Map(rows.map((r) => { const c = byName.get(categoryOf(r)); return [r.id, c ? { shape: c.shape, category: c.name } : { shape: ONE, category: null }]; }));
   return { any: Boolean(decl && decl.encode && decl.encode.shape), of, categories, assigned };
