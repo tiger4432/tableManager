@@ -95,6 +95,10 @@
 .sf-legend__row { display: flex; align-items: center; gap: 4px; margin: 0 0 8px -10px; }
 .sf-legend__v { display: flex; align-items: center; justify-content: flex-start; gap: 4px; letter-spacing: normal; width: 100%; height: var(--sf-legend-row); padding: 0; border: 0; background: transparent;
   color: var(--sf-text); font: inherit; text-align: left; cursor: pointer; }
+/* a continuous Color by (lead-board-13 ①): the band from the least to the most, its two ends' values beside it */
+.sf-legend__ramp { display: flex; align-items: center; gap: 4px; width: 100%; height: var(--sf-legend-row); }
+.sf-legend__band { flex: 1 1 auto; min-width: 40px; height: 8px; border-radius: 2px; }
+.sf-legend__end { flex: none; color: var(--sf-text-2); white-space: nowrap; }
 .sf-legend__v.is-dim { color: var(--sf-dim); }
 .sf-legend__plain { cursor: default; padding-left: 18px; }
 .sf-legend__ico { flex: none; width: var(--sf-icon); height: var(--sf-icon); box-sizing: border-box; border: 1px solid; border-radius: 50%; }

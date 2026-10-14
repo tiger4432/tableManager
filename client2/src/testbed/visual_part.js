@@ -18,7 +18,7 @@
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
-import { readSlot, readSlots, slotWords, rawOf, isTimeRead, columnsOf } from './slot.js';
+import { readSlot, readSlots, slotWords, rawOf, isTimeRead, columnsOf, scaleOf, valueText } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId, nodesOfPress, whyHub } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
@@ -393,7 +393,11 @@ export class VisualPart extends Panel {
     // Each row's colour and each mark's paint - the root's, once (color_by.js); the units a kind draws a mark of (units.js).
     // a press that stands for nodes (hubs.js) marks no row - a mark is marked when what its press stands for is
     const anyHeld = [...inside].some(marked);
-    const { colors, colored, paint: painted } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor(), anyHeld });
+    // each slot's scale - THE one seat (slot.js scaleOf, lead-board-13 ①): the declaration's pick, else the declared type,
+    // else the values; the kind draws by it and so does Color by
+    const scales = Object.fromEntries(listed.filter((s) => held[s.key]).map((s) => [s.key, scaleOf(rows.map((r) => r.reads[s.key]), (this.decl.scale || {})[s.key])]));
+    this.scales = scales;
+    const { colors, colored, paint: painted } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor(), anyHeld, scale: scales.color || null });
     const paint = (ids, where) => painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null);
     this.colors = colors;
     // the colours given to categories not declared yet are kept in the declaration - Save keeps them, more categories
@@ -415,7 +419,8 @@ export class VisualPart extends Panel {
     const showing = takes.has('show') ? showItems(units, this.decl) : { kept: units, hidden: 0, rule: null, n: 0 };
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
-    const modelCtx = { paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start };
+    const modelCtx = { paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start,
+      scale: (key) => scales[key] || scaleOf([], (this.decl.scale || {})[key]) };
     this.model = this.kind.model(showing.kept, modelCtx);
     // Trellis (trellis.js): a panel a Panel by value - its rows' marks, the shown ones only, every panel on one extent
     const split = takes.has('panel') ? panelsOf(rows, this.decl) : null;
@@ -608,7 +613,7 @@ export class VisualPart extends Panel {
       else line.append(this.pill(nextMarker(encode), { words: unitWords(this.decl) }));
       legend.append(el('div', 'sf-legend__ttl', 'Marker by:'), line);
     }
-    const legendCtx = { doc, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
+    const legendCtx = { doc, valueText, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
       words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
       openPalette: (category, anchor) => this.openPalette(category, anchor) };
     legend.append(legendBlock(this.colors, legendCtx));

@@ -249,6 +249,21 @@ export class SlotPicker {
       folds.append(el('hr', 'sf-pop__hr'));
       // A slot's choices that are not a value (the scatter's Marker by: «(Node)», «(Value record)»): each a declaration field.
       const desc = part.slotList().find((s) => s.key === key) || {};
+      // Categorical / Continuous (lead-board-13 ①): a slot the kind draws either way - whatever its type declares; the one
+      // lit is the scale the root draws it on now (slot.js scaleOf), a pick the declaration's `scale`
+      if (desc.scalable) {
+        folds.append(el('div', 'sf-pop__lab', 'Scale'));
+        const scales = el('div', 'sf-pop__reds');
+        const now = ((part.scales || {})[key] || {}).scale || null;
+        for (const [scale, words] of [['categorical', 'Categorical'], ['continuous', 'Continuous']]) {
+          const chip = el('button', `sf-pop__red${now === scale ? ' is-on' : ''}`, words);
+          chip.type = 'button';
+          chip.setAttribute('data-scale', scale);
+          chip.addEventListener('click', () => { const d = part.declaration(); part.setDeclaration({ ...d, scale: { ...(d.scale || {}), [key]: scale } }); draw(chosen); });
+          scales.append(chip);
+        }
+        folds.append(scales, el('hr', 'sf-pop__hr'));
+      }
       for (const choice of desc.choices || []) {
         const it = el('button', 'sf-pop__it', choice.words);
         it.type = 'button';

@@ -158,6 +158,19 @@ async function measure(M) {
   const model = M.scatter.scatterModel(t5rows, { ...t5paint, palette: DARK });
   const p1 = model.points.find((p) => p.id === 'W1');
   const p4 = model.points.find((p) => p.id === 'W4');
+  // T36: a slot's scale - the one seat (lead-board-13 ①, owner 10-14 ㄱ)
+  const one = (value, declared) => ({ state: 'one', value, ...(declared ? { declared } : {}) });
+  const sc = (reads, chosen) => { const s = M.slot.scaleOf(reads, chosen); return `${s.scale}${s.time ? '+time' : ''}`; };
+  out.scales = [sc([one('S1', 'number')]), sc([one('2026-10-01', 'datetime')]), sc([one('10', 'string'), one('20', 'string')]),
+    sc([one('A', 'string')]), sc([one('10'), one('x')]), sc([one('2026-10-01T00:00:00+09:00'), one('2026-10-02T00:00:00Z')]),
+    sc([one('2026-10-01', 'datetime')], 'categorical'), sc([one('A')], 'continuous'), sc([])];
+  out.timeOrder = M.scatter.categoryOrder(['2026-10-01T20:00:00Z', '2026-10-02T01:00:00+09:00'], true);
+  // T38: a continuous Color by - a ramp from the first category colour, the least and the most its ends; no categories
+  const pal = { bg: '#ffffff', one: ['#888888', '#666666'], cat: [['#1060c0', '#0a4a90']] };
+  const rampRows = [['W1', '10'], ['W2', '20'], ['W3', '30'], ['W4', null]].map(([id, v]) => ({ id, reads: { color: v === null ? { state: 'empty' } : { state: 'one', value: v } } }));
+  const ramp = M.color.colorsOf(rampRows, { palette: pal, declaration: { encode: { color: temp } }, scale: { scale: 'continuous', time: false } });
+  out.ramp = [ramp.categories.length, ramp.ramp && ramp.ramp.min, ramp.ramp && ramp.ramp.max, ramp.ramp && ramp.ramp.high, ramp.of.get('W3').fill, ramp.of.get('W1').fill,
+    ramp.of.get('W1').fill !== ramp.of.get('W2').fill, ramp.of.get('W4').fill];
   out.scatter = { drawn: model.points.map((p) => p.id), notDrawn: model.notDrawn, several: model.several, kinds: [model.xKind, model.yKind],
     marked: p1.fill, dimmed: p4.fill, legend: t5paint.colors.categories.map((l) => [l.name, l.dim, l.ids]) };
   const option = M.scatter.scatterOption(model, DARK);
@@ -360,6 +373,15 @@ async function parts(M) {
   };
   out.wayStart = [startOf('x'), startOf('y'), startOf('color'), M.picker.expressionRefusal(wp.part, '[in_lot.name]'),
     M.picker.expressionRefusal(wp.part, '[in_lot.nope]'), M.picker.expressionRefusal(wp.part, '[measures.value]')];
+  // T37: the root's scale on a part - a pick in the declaration draws x as categories; the picker's Scale chips on X · Y ·
+  // Color whatever the type (owner 10-14), and none on a slot the kind draws one way only
+  const picked = seat(M, scatterDecl({ id: 'X4', scale: { x: 'categorical' } }));
+  await settle();
+  const chipsOf = (p, key) => { const host = wp.doc.createElement('div'); new M.picker.SlotPicker(host, { doc: wp.doc }).open({ part: p.part, key, anchor: null });
+    return walk(host).filter((n) => n.tagName === 'BUTTON' && n.getAttribute && n.getAttribute('data-scale')).map((n) => `${n.getAttribute('data-scale')}${String(n.className).includes('is-on') ? '*' : ''}`); };
+  const cross = seat(M, crossDecl({ id: 'C7' }));
+  await settle();
+  out.partScale = [picked.part.model.xKind, picked.part.model.yKind, chipsOf(picked, 'x'), chipsOf(picked, 'y'), chipsOf(picked, 'color'), chipsOf(cross, 'rows')];
   // T35: a cross table with no cell slot - its Cell values pill says what the cells hold (owner 10-14 «행수»: UniqueCount(rows));
   // one declared - its own words
   const pillOf = (p) => { const n = walk(p.host).find((x) => x.tagName === 'BUTTON' && x.getAttribute && x.getAttribute('data-slot') === 'cells');
@@ -528,6 +550,11 @@ function suite(out, page, saved, counted) {
     out.reads, ['one', 'several', '34', 34, 'empty', 'missing', 'several', ['A', 'B']]);
   eq('T4 the one filter: a range; two conditions AND; checked values with empty kept; another type passes untouched; a period [from, to)',
     out.filter, [['W2', 'W3', 'W4'], ['W3', 'W4'], ['W1', 'W3', 'W4', 'W6'], ['L1'], true, false]);
+  eq('T36 a slot\'s scale: declared number / datetime continuous; a string or no type by its values (all numbers, all times continuous); the pick wins - a datetime categorical in time order; nothing categorical',
+    [out.scales, out.timeOrder], [['continuous', 'continuous+time', 'continuous', 'categorical', 'categorical', 'continuous+time', 'categorical+time', 'continuous', 'categorical'],
+      ['2026-10-02T01:00:00+09:00', '2026-10-01T20:00:00Z']]);
+  eq('T38 a continuous Color by: a ramp of the first category colour - the most itself, the least toward the background, no categories; no value the one colour',
+    out.ramp, [0, '10', '30', '#1060C0', '#1060C0', '#CFDFF2', true, '#888888']);
   eq('T5 the scatter model: two values each drawn, several not drawn, nothing not drawn; a marked point its colour, the rest mixed 20 % toward the background; legend dim where nothing marked',
     out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 1, several: 1, kinds: ['value', 'value'], marked: '#6489FA', dimmed: '#363D54',
       legend: [['A', false, ['W1', 'W4']], ['B', false, ['W2', 'W5']]] });
@@ -542,6 +569,8 @@ function suite(out, page, saved, counted) {
     [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
   eq('T30 an operator over a text that is not a number: the row empty and marked; a list several; an empty value empty, not marked; the bottom line counts the drawn rows so marked',
     [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
+  eq('T37 a pick in the declaration draws its axis so; the Scale chips on X · Y · Color whatever the type (the lit one the scale drawn), none on a role-fixed slot',
+    page.partScale, ['category', 'value', ['categorical*', 'continuous'], ['categorical', 'continuous*'], ['categorical*', 'continuous'], []]);
   eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
   eq('T34 «time» in the picker: on a route the slot reads its last edge\'s time (of time, the value kept); on «(row)» off with its reason',
     page.timePick, ['time', JSON.stringify(temp.value), JSON.stringify(temp.steps), 'one', new Date(T0).toISOString(), true, true, 'No time on this route']);
@@ -674,7 +703,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '{ paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start }', '{ paint, colored, askMarked, label, shape, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start }') },
+    mutate: (t) => swap(t, '{ paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start,', '{ paint, colored, askMarked, label, shape, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start,') },
   // M31 (a words-only pill opens the picker) retired 10-14: the template draws a pill only for a slot it holds.
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
     mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);') },
@@ -719,6 +748,18 @@ MUTANTS.push(
     mutate: (t) => swap(t, "const next = { steps: chosen.steps || [], end: chosen.end, value, of: 'time',", 'const next = { steps: chosen.steps || [], end: chosen.end, value,') },
   { id: 'M51', what: 'the time pick is on for «(row)»', catches: 'T34', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '        setDisabledReason(it, (chosen.steps || []).length ? null : NO_TIME_HERE);\n', '') },
+  { id: 'M53', what: 'the declaration\'s pick is not read', catches: 'T36', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '  if (SCALES.includes(chosen)) return { scale: chosen, time };\n', '') },
+  { id: 'M54', what: 'a declared number is read by its values', catches: 'T36', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, "  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time };\n", '') },
+  { id: 'M55', what: 'categories of times sorted as text', catches: 'T36', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, '  if (time) return distinct.sort((a, b) => Date.parse(a) - Date.parse(b));\n', '') },
+  { id: 'M56', what: 'the scatter ignores the root\'s scale', catches: 'T37', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, '  const s = ctx.scale ? ctx.scale(key) : scaleOf(', '  const s = false ? ctx.scale(key) : scaleOf(') },
+  { id: 'M57', what: 'the Scale chips shown on every slot', catches: 'T37', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '      if (desc.scalable) {', '      if (true) {') },
+  { id: 'M58', what: 'a continuous Color by still paints categories', catches: 'T38', file: 'testbed/color_by.js',
+    mutate: (t) => swap(t, "  if (ctx.scale && ctx.scale.scale === 'continuous' && decl.encode && decl.encode.color) return rampOf(rows, palette, ctx.scale.time);\n", '') },
   { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
     mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'the colours handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/color_by.js',
