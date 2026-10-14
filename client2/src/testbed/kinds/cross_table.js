@@ -30,18 +30,17 @@ export function crossModel(rows, ctx) {
   const rowKeys = new Set();
   const colKeys = new Set();
   // A row with two values on an axis stands in both (lead aca803a7a «counts twice»); none - (Empty).
-  for (const { values: [r, c], ids } of combosOf(rows, ['rows', 'columns'])) {
+  for (const { values: [r, c], ids, marks } of combosOf(rows, ['rows', 'columns'])) {
     rowKeys.add(r);
     colKeys.add(c);
-    cells.set(keyOf(r, c), { ids });
+    cells.set(keyOf(r, c), { ids, marks });
   }
-  // a cell holds rows (a mark its row's - units.js marksOf; a row's marks fold its cell values once)
-  const byId = new Map(rows.map((row) => [row.row || row.id, row]));
-  /** A set of rows folded: the cell slot's values of each row once (a row in two columns counts once in its row's total). */
-  const folded = (ids) => {
-    const once = [...new Set(ids)];
-    if (!rows.some((row) => row.raw && row.raw.cells)) return once.length;
-    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);
+  /** A set of marks folded (lead 10-15 ②: in the cell, not in the row): each mark's own values of the cell slot - its record's
+   *  (units.js marksOf), a row's once when its marks share them (a row in two columns counts once in its row's total);
+   *  no cell slot - the rows. */
+  const folded = (marks) => {
+    if (!rows.some((row) => row.raw && row.raw.cells)) return new Set(marks.map((m) => m.row || m.id)).size;
+    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);
   };
   // An axis of several columns - its keys' values column by column (slot.js readSlot `parts`), sorted level by level,
   // (Empty) last in each; one column - each key itself.
@@ -65,16 +64,18 @@ export function crossModel(rows, ctx) {
   const C = sort(colKeys, 'columns');
   const grid = R.map((r) => C.map((c) => {
     const cell = cells.get(keyOf(r, c));
-    if (!cell) return { value: null, ids: [], marked: false };
+    if (!cell) return { value: null, ids: [], marks: [], marked: false };
     // its paint is the root's: marked, and its rows' Color by colour when one is declared
     const p = ctx.paint(cell.ids, [[slotWords(enc.rows), r], [slotWords(enc.columns), c]]);
-    return { value: folded(cell.ids), ids: cell.ids, marked: p.marked, color: ctx.colored ? p.color : null };
+    return { value: folded(cell.marks), ids: cell.ids, marks: cell.marks, marked: p.marked, color: ctx.colored ? p.color : null };
   }));
   const rowIds = R.map((_, i) => grid[i].flatMap((cell) => cell.ids));
   const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
+  const rowMarks = R.map((_, i) => grid[i].flatMap((cell) => cell.marks));
+  const colMarks = C.map((_, j) => grid.flatMap((line) => line[j].marks));
   return {
     rowKeys: R, colKeys: C, rowParts: R.map(parts), colParts: C.map(parts), grid,
-    rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.row || row.id)),
+    rowTotals: rowMarks.map(folded), colTotals: colMarks.map(folded), total: folded(rows),
     rowIds, colIds,
   };
 }

@@ -557,13 +557,14 @@ export class VisualPart extends Panel {
     const recorded = (id, key) => {
       const s = held[key];
       if (!s || Array.isArray(s) || isExpression(s) || s.self || 'constant' in s) return null;
-      return readsAt(index, inside, id, s).reads.map((r) => ({ value: r.value, record: r.edge ? (r.edge.claim_id ?? r.edge.id ?? `${r.edge.source} ${r.edge.predicate} ${r.edge.target}`) : r.node }));
+      return readsAt(index, inside, id, s).reads.map((r) => ({ value: r.value, record: r.record }));
     };
     // the slots the kind draws a mark's value of - its own (a scatter's x and y, a table's columns), not the root's
     const own = typeof this.kind.slots === 'function' ? this.kind.slots(encode) : (this.kind.slots || []);
     const drawn = own.map((s) => s.key).filter((k) => keysRead.includes(k));
     const spread = (some) => spreadUnits(some, this.decl, keysRead, { cells: Boolean(this.kind.cells), record: this.kind.units ? this.kind.units.record : null,
-      recordsOf: recorded, words: (key) => slotWords(encode[key]), marked: askMarked, drawn });
+      recordsOf: recorded, words: (key) => slotWords(encode[key]), marked: askMarked, drawn,
+      folds: listed.filter((s) => s.folds && held[s.key]).map((s) => s.key) });
     const spreadAll = spread(rows);
     const units = spreadAll.units;
     this.dropped = spreadAll.dropped;

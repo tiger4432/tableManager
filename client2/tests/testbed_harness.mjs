@@ -430,6 +430,26 @@ async function parts(M) {
     (mp.part.panels || []).map((p) => [p.name, p.model.points.some((q) => q.ids.includes('W3'))]),
     mm.part.model.points.filter((q) => q.ids.includes('W3')).map((q) => q.label).sort(),
     M.color.paintCategoryOf({ state: 'several', values: ['A', 'B'] }), M.slot.categoryOrder(['B', '(Multiple)', 'A'])];
+  // T51: a cross table's cell folds its own marks (lead 10-15 ②, the lens scene on 18769): rows the wafer, columns the
+  // quantity its measures reach, cells Median of the measures' value - W01's void_area and warpage each its own median,
+  // the row's total over all six once
+  {
+    const q = (id, name) => ({ id, type: 'quantity', label: name, keys: { quantity: name }, attributes: {} });
+    const m = (target, value) => ({ source: 'W01', target, predicate: 'measures', qualifiers: { value }, occurred_at: T0 });
+    const lensAnswer = { nodes: [wafer('W01'), q('QV', 'void_area'), q('QW', 'warpage')],
+      edges: [m('QV', '9.90'), m('QV', '9.914'), m('QV', '9.93'), m('QW', '10.05'), m('QW', '10.0695'), m('QW', '10.08')], truncated: ANSWER.truncated };
+    const measured = { steps: [{ predicate: 'measures', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['quantity'] };
+    const value = { steps: [{ predicate: 'measures', direction: 'outgoing' }], value: { on: 'edge', name: 'value' }, reduce: 'Median', words: ['value'] };
+    const lens = seat(M, crossDecl({ id: 'LZ', encode: { rows: lot, columns: measured, cells: value } }), { answer: lensAnswer });
+    const byRow = seat(M, crossDecl({ id: 'LW', encode: { rows: { steps: [], value: { on: 'label', name: 'name' }, words: ['wafer'] }, columns: measured, cells: value } }), { answer: lensAnswer });
+    await settle();
+    const mdl = byRow.part.model;
+    // ...and the spreading itself: a mark keeps its record's values of the folded slot
+    const raw = [{ value: '1', record: 'e1' }, { value: '2', record: 'e2' }];
+    const spread = M.units.marksOf([{ id: 'R', reads: { c: { state: 'several', values: ['a', 'b'] } }, raw: { v: raw } }], ['c'],
+      () => [{ value: 'a', record: 'e1' }, { value: 'b', record: 'e2' }], (k) => k, ['v']).marks.map((mk) => mk.raw.v.map((r) => r.value));
+    out.lens = [mdl.colKeys, mdl.grid[0].map((c) => c.value), mdl.rowTotals, lens.part.model ? lens.part.model.colKeys : null, spread];
+  }
   // T45: one order of categories (lead 10-15) - numbers by their value before text, (Empty) and (Multiple) last; the cross
   // table's row heads, a category axis, the legend and the panels all in it
   const numAnswer = { nodes: ['1', '2', '10', '11'].map((v) => wafer(`N${v}`, { n: v, product: 'A' })), edges: [], truncated: ANSWER.truncated };
@@ -677,6 +697,8 @@ function suite(out, page, saved, counted) {
   eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
   eq('T44 several on a paint slot (Color by, Shape by) one «(Multiple)» category, last, its own colour, a press marking its rows; on a placing slot (Panel by, Marker by) the row in each value',
     page.multiple, [['A', 'B', '(Multiple)'], 2, true, 1, ['W3'], ['W3'], ['A', 'B', '(Multiple)'], [['A', true], ['B', true], ['(Empty)', false]], ['A', 'B'], '(Multiple)', ['A', 'B', '(Multiple)']]);
+  eq('T51 a cross table\'s cell folds its own marks - a wafer\'s two quantities each their median (not the row\'s six mixed), the row\'s total over all six once',
+    page.lens, [['void_area', 'warpage'], [9.914, 10.0695], [9.99], ['void_area', 'warpage'], [['1'], ['2']]]);
   eq('T45 one order of categories - numbers by their value before text, (Empty) and (Multiple) last; the cross table\'s row heads, a category axis, the legend and the panels in it',
     page.order, [['1', '2', '10', '11', 'A', 'B', '(Empty)', '(Multiple)'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11']]);
   eq('T43 a slot of days says its days - every time the page zone\'s midnight: «YYYY-MM-DD» on the cross row heads, the category ticks, the legend, the tooltip, the hub\'s value the time itself; one not midnight - every time as the grid says it',
@@ -789,7 +811,13 @@ const MUTANTS = [
   { id: 'M61', what: 'two several slots paired by order, not by record', catches: 'T40', file: 'testbed/units.js',
     mutate: (t) => swap(swap(t, '      if (!same) { dropped.push({ id: row.id, why: PAIR_WORDS(words(many[0]), words(many[1])) }); continue; }', '      if (false) { continue; }'), '      picks = recs[0].map((rec) => lists.map((l) => l.find((r) => r.record === rec).value));', '      picks = lists[0].map((_, i) => lists.map((l) => l[i].value));') },
   { id: 'M62', what: 'a mark forgets its row - a press marks nothing', catches: 'T40', file: 'testbed/units.js',
-    mutate: (t) => swap(t, '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads });', '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [`${row.id}#${k}`], row: row.id, reads });') },
+    mutate: (t) => swap(t, '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads, raw });', '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [`${row.id}#${k}`], row: row.id, reads, raw });') },
+  { id: 'M86', what: 'a mark keeps its row\'s all values of a folded slot - the cell folds the row', catches: 'T51', file: 'testbed/units.js',
+    mutate: (t) => swap(t, '        if (mine && mine.length) raw[f] = mine;\n', '') },
+  { id: 'M87', what: 'the root names no folded slot', catches: 'T51', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '      folds: listed.filter((s) => s.folds && held[s.key]).map((s) => s.key) });', '      folds: [] });') },
+  { id: 'M88', what: 'a total folds one mark a row - the first', catches: 'T51', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, '    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);', '    return foldRows(cellSlot, [...new Map(marks.map((m) => [m.row || m.id, m.raw.cells])).values()], ctx.askMarked);') },
   { id: 'M72', what: 'several on a paint slot the one look, no category', catches: 'T44', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, "read.state === 'several' ? MULTIPLE : null);", 'null);') },
   { id: 'M73', what: '«(Multiple)» sorted as text - first', catches: 'T44', file: 'testbed/slot.js',
@@ -822,7 +850,7 @@ const MUTANTS = [
   { id: 'M12', what: 'a row with two values counted in its first only', catches: 'T3', file: 'testbed/slot.js',
     mutate: (t) => swap(t, "  if (read.state === 'several') return read.values;", "  if (read.state === 'several') return read.values.slice(0, 1);") },
   { id: 'M13', what: 'a total folded over its cells\' rows twice (a row in two cells)', catches: 'T7', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, '    const once = [...new Set(ids)];', '    const once = [...ids];') },
+    mutate: (t) => swap(t, '    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);', '    return foldRows(cellSlot, marks.map((m) => m.raw.cells), ctx.askMarked);') },
   { id: 'M14', what: 'a - beats a + for a node in two hubs', catches: 'T8', file: 'rnd_board/marking_store.js',
     mutate: (t) => swap(t, '    for (const node of open(id)) if (sign.get(node) !== SIGN.CASE) sign.set(node, s);', '    for (const node of open(id)) sign.set(node, s);') },
   { id: 'M14b', what: 'the walk page\'s reading keeps an absent sign as a control (the - list every not-+)', catches: 'T20', file: 'rnd_board/marking_store.js',
@@ -863,7 +891,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, '{ paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start,', '{ paint, colored, askMarked, label, shape, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start,') },
   // M31 (a words-only pill opens the picker) retired 10-14: the template draws a pill only for a slot it holds.
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);') },
+    mutate: (t) => swap(t, '    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);') },
 
   { id: 'M33', what: 'the scatter\'s title y and x swapped', catches: 'T23', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '`${slotWords(encode.y)} vs. ${slotWords(encode.x)}`', '`${slotWords(encode.x)} vs. ${slotWords(encode.y)}`') },
