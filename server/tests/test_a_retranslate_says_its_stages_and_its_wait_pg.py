@@ -290,3 +290,25 @@ def test_the_answer_is_the_same_with_the_lines_on_and_off(world, monkeypatch):
     _settings(monkeypatch, retroactive_debug=False)
     _retranslate()
     assert on == _atoms(world) == before
+
+
+def test_the_insert_says_its_blocks_with_the_lines_on_and_asks_nothing_with_them_off(world, monkeypatch):
+    """총괄 b513f0d27: the insert's blocks read from disk and found in the cache, its partition and each index by name -
+    two counts asked around the INSERT with the stage lines on, none with them off."""
+    from ledger import store
+
+    asked = []
+    real = store._blocks
+    monkeypatch.setattr(store, "_blocks", lambda connection, partitions: asked.append(partitions) or real(
+        connection, partitions))
+    _settings(monkeypatch, retroactive_debug=True)
+    _out, lines = _retranslate()
+    said = _stage_lines(lines)["insert atoms"]
+    assert asked and len(asked) == 2 * len(said), (len(asked), len(said))
+    assert all(" · blocks read/hit: " in line for line in said), said[:2]
+    assert any(re.search(r"ledger_events_\d{4}_\d\d \d+/\d+", line) for line in said), said[:2]
+    assert any(re.search(r"ledger_events_\d{4}_\d\d_\w+ \d+/\d+", line) for line in said), said[:2]   # an index
+    asked.clear()
+    _settings(monkeypatch, retroactive_debug=False)
+    _retranslate()
+    assert asked == [], "with the lines off the insert asks nothing more"
