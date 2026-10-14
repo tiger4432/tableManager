@@ -169,7 +169,7 @@ def test_a_long_body_activated_into_a_short_file_is_written_short(tmp_path):
     path = _root(tmp_path, short) / sb.CONFIG_FILENAME
     body = fold_versions(_sample())["sources"]["transfer_event"]
     store = OntologyDraftStore(tmp_path / "drafts")
-    store._activate_file(path, [(("sources", "transfer_event"), body)])
+    store._activate_file(path, [(("sources", "transfer_event"), body)], catalog=CATALOG)
 
     assert json.loads(path.read_text(encoding="utf-8"))["sources"]["transfer_event"] == \
         short["sources"]["transfer_event"]
@@ -222,3 +222,49 @@ def test_the_explorer_s_authoring_reads_a_short_file_as_the_loader_does(tmp_path
     relation = [f for f in plan["fields"] if f["path"] == "bundle.sources.transfer_event.relation"]
     assert [f.get("value") for f in relation] == ["dt_transfer_log"]
     assert "declarative-role" in json.dumps(service.authoring_schema())
+
+
+def test_a_read_cell_the_short_form_would_drop_refuses_the_activation_by_its_name(tmp_path):
+    """검수 1: an identity the operator wrote is not dropped in silence - the file stays as it was."""
+    from ledger.config_drafts import OntologyDraftStore
+    from ledger.config_explorer import ConfigExplorerError
+
+    short, _lines, _ = v7.convert(_sample(), CATALOG)
+    path = _root(tmp_path, short) / sb.CONFIG_FILENAME
+    before = path.read_text(encoding="utf-8")
+    body = copy.deepcopy(fold_versions(_sample())["sources"]["transfer_event"])
+    body["read"].update({"identity": ["row_id"], "order_by": ["row_id"]})
+
+    with pytest.raises(ConfigExplorerError) as refused:
+        OntologyDraftStore(tmp_path / "drafts")._activate_file(
+            path, [(("sources", "transfer_event"), body)], catalog=CATALOG)
+    assert refused.value.code == "not_writable_short" and "read.identity" in str(refused.value)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_a_source_the_loader_refuses_today_that_the_short_file_reads_starts():
+    """검수 2: refused on a cell the short form does not write - said as starting, not as refused after."""
+    document = _sample()
+    document["sources"]["transfer_event"]["read"]["order_by"] = ["no_such_column"]
+    _short, lines, written = v7.convert(document, CATALOG)
+    assert written and [line.split()[1] for line in lines if line.split()[0] == "transfer_event"] == ["starts"]
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), "", "  ", "x", 0])
+def test_a_blank_row_is_judged_the_same_before_and_after_the_conversion(value):
+    """검수 3: `exclude_when` blank and the sentence's when {"not": ""} - one judgement of empty."""
+    from ledger.event_frame import row_excluded
+    from ledger.roleframe import _unit_says
+
+    excluded = row_excluded([{"column": "c", "blank": True}], lambda column: value)
+    assert _unit_says({"c": (value,)}, {"c": {"not": ""}}) is (not excluded)
+
+
+def test_a_node_typed_from_a_column_with_attributes_is_refused_by_name():
+    """검수 4: a draft that would not compile is a named refusal, not a 500."""
+    source = copy.deepcopy(fold_versions(_sample())["sources"]["transfer_event"])
+    mapping = next(iter(source["bind"]["mappings"].values()))
+    mapping["bind"]["subject"]["entity_type"] = {"kind": "column", "column": "kind"}
+    mapping["bind"]["subject"]["attributes"] = {"a": {"kind": "column", "column": "a"}}
+    short, why = sb.shorten_source(source)
+    assert short is None and "read from a column" in why

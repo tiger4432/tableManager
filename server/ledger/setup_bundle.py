@@ -1520,6 +1520,28 @@ def shorten_setup(document: Any) -> tuple[dict[str, Any], dict[str, tuple[str, s
     return document, verdicts
 
 
+#: The read and map cells a short source does not write - the product answers them.
+_PRODUCT_CELLS = (("read", "unit"), ("read", "identity"), ("read", "group_by"), ("read", "order_by"),
+                  ("read", "occurred_at"), ("read", "registration_probe"),
+                  ("map", "implementation_id"), ("map", "implementation_version"), ("map", "unit"))
+
+
+def short_form_moves(source: Mapping[str, Any], short: Mapping[str, Any],
+                     catalog: Mapping[str, Any]) -> list[tuple[str, Any, Any]]:
+    """`(cell, written, answered)` for each read or map cell a long source declares that its short
+    form answers otherwise - both read with the product's defaults. ONE comparer (총괄 10-14 ②
+    검수 1): activating into a short file refuses on it, the converter names a mixing source's
+    cells with it. `exclude_when` is not here - it moves into the sentences' `when`."""
+    written, answered = (source_defaults(item, catalog) for item in (source, expand_source(short)))
+    moves = []
+    for clause, cell in _PRODUCT_CELLS:
+        was = (written.get(clause) or {}).get(cell)
+        now = (answered.get(clause) or {}).get(cell)
+        if was != now and not (was in (None, [], ()) and now in (None, [], ())):
+            moves.append((f"{clause}.{cell}", was, now))
+    return moves
+
+
 #: The order a short sentence lists its roles in - the ones every reader looks for first.
 _ROLE_ORDER = (SUBJECT_ROLE, TARGET_ROLE, VALUE_ROLE, OCCURRED_AT_ROLE)
 
@@ -1555,6 +1577,9 @@ def shorten_source(source: Mapping[str, Any]) -> tuple[Any, str]:
                 binding = {**binding, **{k: occurred[k] for k in ("timezone", "format")
                                          if k in occurred and k not in binding}}
             own = binding.get("attributes") if isinstance(binding, Mapping) else None
+            if own and isinstance(binding.get("entity_type"), Mapping):
+                return None, (f"sentence {sentence!r} gives attributes to its {role} node whose type is "
+                              f"read from a column - an attribute belongs to one named type")
             if own:
                 kind = binding.get("entity_type")
                 moved = {attribute: _short_value(part) for attribute, part in own.items()}

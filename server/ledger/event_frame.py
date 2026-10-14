@@ -30,6 +30,7 @@ from .roleframe import (
     SOURCE_ROW_REF_COLUMN,
     _is_missing,
     _unit_says,
+    is_blank_source_value,
     read_columns_once,
     unit_positions,
 )
@@ -147,22 +148,6 @@ def _canonical(value: Any, *, path: str) -> str:
             "source_preparation_incomplete", path,
             f"value is not deterministic JSON: {exc}",
         ) from exc
-
-
-def is_blank_source_value(value: Any) -> bool:
-    """"Empty" as this seam spells it: missing, or a string with nothing but space.
-
-    🔴 ONE FUNCTION BECAUSE TWO SPELLINGS DISAGREE EXACTLY WHERE THE QUESTION LIVES
-    (판정 194 ㉢). `count_rows_missing` already wrote `_is_missing(v) or (isinstance(v, str)
-    and not v.strip())` at its own call site, and `exclude_when` needs the same sentence.
-    Left as two, the day one of them learns about a new empty shape is the day an operator
-    is told "3 of 200 rows are blank" by one and "0" by the other, about the same rows.
-
-    ⚠️ WHITESPACE IS NOT `_is_missing`'S JOB. That one answers "is this value absent",
-    which a `"  "` is not - it is a present string. This is the IDENTITY question layered
-    on top: a key part made of spaces names nothing.
-    """
-    return _is_missing(value) or (isinstance(value, str) and not value.strip())
 
 
 def row_excluded(clauses: Sequence[Mapping[str, Any]], value_of) -> bool:

@@ -69,19 +69,11 @@ def _without_retired_words(document: dict) -> dict:
     return {**document, "sources": strip(document.get("sources") or {})}
 
 
-def _read_moves(before, after) -> list[tuple[str, Any, Any]]:
-    """The read cells an atom's identity is made of that the short form answers differently."""
-    out = []
-    for cell in ("identity", "order_by", "occurred_at"):
-        was, now = (getattr(plan.driver, cell, None) for plan in (before, after))
-        if was != now:
-            out.append((cell, _spoken(was), _spoken(now)))
-    return out
-
-
 def _spoken(value) -> str:
-    if hasattr(value, "basis"):                          # the read's time: a basis or a column
-        return f"stored {value.basis}" if value.basis else value.column
+    if isinstance(value, dict) and "basis" in value:     # the read's time: a basis or a column
+        return f"stored {value['basis']}"
+    if isinstance(value, dict) and "column" in value:
+        return value["column"]
     if isinstance(value, (list, tuple)):
         return "+".join(map(str, value))
     return json.dumps(value, ensure_ascii=False, default=str) if value is not None else "-"
@@ -96,7 +88,7 @@ def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
     """(the short document, one line per source, written?) - `written` False is a refusal."""
     from declaration_names import fold_versions
     from ledger.setup_bundle import (DROPPED, REFUSED, SHORT_FORM_VERSION, LedgerSetupValidationError,
-                                     shorten_setup, upgrade_setup)
+                                     short_form_moves, shorten_setup, upgrade_setup)
 
     document = fold_versions(upgrade_setup(document))
     short, verdicts = shorten_setup(document)
@@ -116,16 +108,21 @@ def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
     if stopped:
         return short, lines + [f"  {name:<{width}} refused  - the short file stops it: "
                                f"{_refusal(written.source_plans[name])}" for name in stopped], False
+    refused_today = sorted(name for name in set(today.source_plans) - set(before)
+                           if today.source_plans[name].status == "active")
     lines += [f"  {name:<{width}} loader   - refused by the loader today, and after: "
-              f"{_refusal(today.source_plans[name])}"
-              for name in sorted(set(today.source_plans) - set(before))
-              if today.source_plans[name].status == "active"]
+              f"{_refusal(today.source_plans[name])}" for name in refused_today if name not in after]
+    # 검수 2: refused today on a cell the short form does not write (an order_by naming no column)
+    lines += [f"  {name:<{width}} starts   - refused by the loader today ({_refusal(today.source_plans[name])}); "
+              f"the short file reads it on the table's key - it starts translating"
+              for name in refused_today if name in after]
     for name in sorted(before):
         if before[name] == after.get(name):
             lines.append(f"  {name:<{width}} same     - its atoms keep their identity")
             continue
-        moved = ", ".join(f"{cell} {was} -> {now}" for cell, was, now in _read_moves(
-            today.source_plans[name], written.source_plans[name])) or "its declaration"
+        moved = ", ".join(f"{cell.split('.', 1)[1]} {_spoken(was)} -> {_spoken(now)}"
+                          for cell, was, now in short_form_moves(
+                              document["sources"][name], short["sources"][name], catalog)) or "its declaration"
         lines.append(f"  {name:<{width}} mixes    - {moved}: rows from here on are named so, atoms "
                      f"written before stay. At once: python server/ledger/backfill.py --source "
                      f"{name} --whole-source")
@@ -160,7 +157,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.apply:
         print("Preview only. Next: run again with --apply")
         return 0
-    backup = admin._atomic_write(path, short)
+    from pathlib import Path
+
+    from ledger.config_drafts import activation_lock
+
+    with activation_lock(Path(path)):                     # the explorer's lock (검수 5)
+        backup = admin._atomic_write(path, short)
     print(f"wrote {path}" + (f" (backup {backup})" if backup else ""))
     print("Next: restart the launcher (the ledger process reads the file at start)")
     return 0

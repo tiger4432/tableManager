@@ -16,13 +16,19 @@
 >            mixes    <바뀌는 칸 was -> now> — 이제부터 번역되는 행은 새 신원, 이미 있는 원자는 그대로(섞여 감, 소유자 «ㄹ»)
 >                     고쳐지는 행은 옛 원자가 거둬지고 새로 한 번 쓰임 — 같은 사실이 둘 생기지 않음
 >                     한 번에 맞추려면 그 소스만: python server/ledger/backfill.py --source <소스> --whole-source (미리보기) -> --apply --pace slow
+>                     먼저 볼 것(읽기 전용, 그 소스 원자를 한 번 훑음) — 행 색인 줄이 없는 원자 수:
+>                       SELECT count(*) FROM ledger_events e LEFT JOIN ledger_source_row_ref r ON r.source_who = e.source_who
+>                         AND r.source_raw_ref = e.source_raw_ref WHERE e.source_who = '<소스>' AND r.source_raw_ref IS NULL;
+>                       0 -> 고친 행의 옛 원자가 거둬짐(섞여 가도 둘 안 생김) · > 0 -> 그 원자는 고쳐도 안 거둬짐: 그 소스만 위 명령으로 다시 번역
 >            dropped  은퇴했고 짧은 꼴로 못 적는 소스 — 파일에서 빠짐, 원자는 남음
 >            loader   오늘도 로더가 거절하는 소스(사유 그대로, 예: 뷰를 읽음) — 옮긴 뒤에도 같은 거절, 파일은 씀
+>            starts   오늘 로더가 거절하는 소스인데 짧은 꼴에선 표의 키로 읽혀 «번역이 시작됨» — 원하지 않으면 status retired
 >            retired  은퇴 소스 — 짧게 옮기고 은퇴 그대로
 >            refused  못 옮김(묶어 읽기 · 자기 맵퍼 · 여러 칸 묶은 제외 · virtual_joins) + Next. 하나라도 있으면 «파일을 안 씀»
 >          --apply 뒤 «same» 소스도 지문 글자는 바뀜(은퇴한 approval_status 낱말이 빠져서) — 재기동 때 부팅 재도장이 위치를 안 건드리고 옮김
 > 선언 창   아직 긴 꼴로 그림. 짧은 파일의 소스를 열면 펼친 긴 꼴, 활성화하면 그 소스를 짧게 다시 씀
->          못 줄이면 «not_writable_short» + 사유, 소스 일부만 활성화는 «short_file_takes_a_source» 로 거절
+>          거절 «not_writable_short» + 칸 이름 — read 칸(identity · order_by · 시각 · unit)이나 map 칸을 짧은 꼴의 기본과
+>          다르게 고친 활성화(그 편집이 소리 없이 버려지지 않게), 못 줄이는 소스. 소스 일부만 활성화는 «short_file_takes_a_source»
 > 되돌리기  변환 전이면 안 돌리면 됨. 변환 뒤에는 config/backup 의 백업 파일을 제자리에 -> 런처 재기동
 >          코드: git revert <착지 커밋> -> 런처 재기동 (v7 파일은 그 코드로 안 읽힘 — 백업 파일을 먼저 되돌릴 것)
 > ```
