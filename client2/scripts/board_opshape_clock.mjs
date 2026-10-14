@@ -43,8 +43,6 @@ declare(A, { walk: WIDE, row: 'die', start: { marking: 'marking:start' }, writes
 declare(T, { walk: WIDE, row: 'die', start: { marking: 'marking:start' }, writes: null, encode: { col1: key('x'), col2: key('y'), col3: measured('warpage') } });
 declare(B, { walk: WIDE, row: 'die', start: { marking: dies }, writes: null, encode: { x: measured('void_area'), y: measured('warpage') } });
 declare(C, { walk: WIDE, row: 'die', start: { marking: dies }, writes: null, encode: { rows: CORE } });
-// A and T take the route wafer -> die along inspected (this box's wafers name their dies so)
-for (const id of [A, T]) declare(id, { route: { hops: 1, follow: ['inspected'], chain: ['wafer', 'die'], loops: [] } });
 
 const clocks = new Map();
 const watch = (id) => {
@@ -82,7 +80,7 @@ const timed = async (name, press, ids) => {
 };
 
 await timed('ten wafers marked -> A, T', () => page.markings.replace('marking:start', WAFERS.map((w) => [entitySeedId('wafer', { wafer: w }), SIGN.CASE])), [A, T]);
-say('A', part(A).state, part(A).refusal || '', JSON.stringify(part(A).walkedRoute), JSON.stringify(part(A).rowWalk && part(A).rowWalk.ask)); const cells = part(A).model.cells;
+say('A', part(A).state, part(A).refusal || '', JSON.stringify(part(A).startTypes()), JSON.stringify(part(A).rowWalk && part(A).rowWalk.ask)); const cells = part(A).model.cells;
 say(`A map: ${cells.length} cells, T rows ${(page.stats.get(T) || {}).of}, walks so far`);
 for (const cell of [cells[Math.floor(cells.length / 2)], cells[1]]) {
   await timed(`A pressed (${cell.where}, ${cell.ids.length} dies) -> B, C`, () => part(A).markHub([['x', cell.where[0]], ['y', cell.where[1]]], cell.ids, {}), [B, C]);

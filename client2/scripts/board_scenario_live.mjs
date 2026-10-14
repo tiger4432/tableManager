@@ -42,8 +42,10 @@ const [die, core, step] = [book.add(), book.add(), book.add()];
 book.edit(die, { label: 'Die' });
 book.edit(core, { label: 'Core wafer' });
 book.edit(step, { label: 'Step' });
-page.relations.set('list', [{ from: 'die', predicate: 'bonded_from', to: 'die', both: false }, { from: 'die', predicate: 'in_container', to: 'wafer', both: false },
-  { from: 'wafer', predicate: 'has_measurement', to: 'measurement', both: false }]);
+// The Core wafer marking reaches its measurements (D's colour). No die relation (lead-board-11): a part starts from its
+// marking's spread layer, so a die relation would start B from the whole bonding wafer - B is to read the pressed die's
+// one core wafer.
+page.relations.set('list', [{ from: 'wafer', predicate: 'has_measurement', to: 'measurement', both: false }]);
 const label = { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] };
 const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
 const out = (p) => ({ predicate: p, direction: 'outgoing' });
@@ -54,12 +56,15 @@ const declare = (id, patch) => part(id).setDeclaration({ ...part(id).declaration
 for (const id of ['scatter-1', 'cross-1', 'marked']) page.shell.remove(id);
 const A = page.add('map');
 const B = page.add('crossTable');
+const W = page.add('table');
 const C = page.add('crossTable');
 const D = page.add('scatter');
 declare(A, { row: 'die', start: { marking: 'marking:start' }, writes: die, encode: { x: key('x'), y: key('y') } });
-declare(B, { walk: WIDE, row: 'die', start: { marking: die }, writes: core, encode: { rows: { steps: [out('bonded_from'), out('in_container')], value: { on: 'label', name: 'name' }, words: ['core wafer'] } } });
-// C: the measurements of the core wafer pressed in B - a B cell stands for the core wafer node (hubs.js nodesOfPress), the
-// route the shortest wafer -has_measurement-> measurement, no route named; its rows by their step.
+declare(B, { walk: WIDE, row: 'die', start: { marking: die }, writes: null, encode: { rows: { steps: [out('bonded_from'), out('in_container')], value: { on: 'label', name: 'name' }, words: ['core wafer'] } } });
+// W: the wafers the pressed die reaches (its own and its core) - a row pressed marks that wafer (owner 10-14: narrowing is
+// a press in a part whose rows are that type)
+declare(W, { walk: WIDE, row: 'wafer', start: { marking: die }, writes: core, encode: { col1: label } });
+// C: the measurements of the wafer pressed in W; its rows by their step.
 const attr = (name) => ({ steps: [], value: { on: 'node', name }, words: [name] });
 declare(C, { walk: WIDE, row: 'measurement',
   start: { marking: core }, writes: step, encode: { rows: attr('step') } });
@@ -103,8 +108,6 @@ const timed = async (name, press, ids) => {
   }
   report.push({ step: name, ms: Math.round(clocks.get(ids[ids.length - 1]).drawn - t0) });
 };
-// C's route: from the bonding dies through their bonded_from to the core dies' wafers (die -> die -> wafer).
-const takeRoute = (id, chain) => { const r = part(id).routes().find((x) => x.chain.join('>') === chain); if (r) declare(id, { ...part(id).declaration(), route: r }); return Boolean(r); };
 const walks = () => asked.length;
 const stat = (id) => page.stats.get(id) || {};
 const step0 = walks();
@@ -132,7 +135,7 @@ for (const cell of cells) {
     else if (coresOf(b).join() !== first.cores.join()) { seen.push({ cell, cores: coresOf(b) }); break; }
   }
 }
-say(`B route ${JSON.stringify(part(B).walkedRoute)} asked follow/hops ${(() => { const q = new URL(asked[asked.length - 1]).searchParams; return JSON.stringify([q.getAll('follow'), q.get('hops')]); })()}`);
+say(`B start types ${JSON.stringify(part(B).startTypes())} asked follow/hops ${(() => { const q = new URL(asked[asked.length - 1]).searchParams; return JSON.stringify([q.getAll('follow'), q.get('hops')]); })()}`);
 say(`B die ${first.cell.where} -> core wafers ${first.cores.join(', ')}; die ${seen[0] ? seen[0].cell.where : '-'} -> ${seen[0] ? seen[0].cores.join(', ') : '-'}`);
 // a die not pressed yet - no walk of B's in hand for it; then the first die again - B's walk in hand
 const fresh = cells[cells.length - 1];
@@ -141,14 +144,16 @@ await timed('A pressed (a die pressed before) -> B', () => part(A).markHub([['x'
 b = part(B).model;
 say(`B cross: rows ${b.rowKeys.length} (${b.rowKeys.slice(0, 4).join(', ')}...), total ${b.total}, walks ${walks() - s1}, ${Date.now() - t1} ms, layer ${JSON.stringify(page.layers.last)}`);
 report.push({ step: 'A->B', walks: walks() - s1 });
-// B: a core wafer's cell pressed - it stands for the core wafer node, not a hub of B's dies
+// W: the core wafer's row pressed - that wafer node
 const coreRow = b.rowKeys.findIndex((k) => k !== '(Empty)');
 const s2 = walks();
-say(`C routes before B is pressed: ${part(C).routes().length}`);
-part(B).markHub([['core wafer', b.rowKeys[coreRow]], ['(None)', '']], b.grid[coreRow][0].ids, {});
+await until(ready(W));
+const lineOf = (name) => part(W).model.lines.find((l) => l.cells[0].text === name);
+say(`W rows: ${part(W).model.lines.map((l) => l.cells[0].text).join(', ')}`);
+part(W).mark([lineOf(b.rowKeys[coreRow]).id], {});
 await until(ready(C));
-say(`B marking: ${JSON.stringify(page.markings.entries(core).map(([id]) => [id, (page.layers.graph.nodes.get(id) || {}).type || 'hub']))}; B cell marked ${part(B).model.grid[coreRow][0].marked}`);
-say(`C routes: ${part(C).routes().map((r) => r.chain.join('>') + ' ' + r.follow.join('+')).join(' | ')}; taken ${JSON.stringify(part(C).walkedRoute)}`);
+say(`Core wafer marking: ${JSON.stringify(page.markings.entries(core).map(([id]) => [(page.layers.graph.nodes.get(id) || {}).label || id, (page.layers.graph.nodes.get(id) || {}).type || 'hub']))}`);
+say(`C routes: ${part(C).routes().map((r) => r.chain.join('>') + ' ' + r.follow.join('+')).join(' | ')}; start types ${JSON.stringify(part(C).startTypes())}`);
 const c = part(C).model;
 say(`C cross: steps ${c.rowKeys.length} (${c.rowKeys.join(', ')}), total ${c.total}, walks ${walks() - s2}, layer ${JSON.stringify(page.layers.last)}`);
 // C: a step pressed
@@ -161,10 +166,10 @@ const catOf = (pt) => part(D).colors.of.get(pt.ids[0]).category;
 for (const pt of d.points) byCat[catOf(pt)] = (byCat[catOf(pt)] || 0) + 1;
 say(`D scatter: ${d.points.length} points (${JSON.stringify(byCat)}), x ${d.xKind}, ${d.notDrawn} not drawn, ${d.several} several, unknown ${stat(D).unknown || 0}, walks ${walks() - s3}`);
 const bWafers = () => [...new Set(part(D).model.points.filter((pt) => catOf(pt) === 'B').map((pt) => pt.label))];
-say(`D B wafers: ${bWafers().join(', ')} (B pressed: ${b.rowKeys[coreRow]})`);
+say(`D B wafers: ${bWafers().join(', ')} (W pressed: ${b.rowKeys[coreRow]})`);
 const fills = () => JSON.stringify(Object.entries(part(D).model.points.reduce((acc, pt) => { acc[pt.fill] = (acc[pt.fill] || 0) + 1; return acc; }, {})));
 say(`D fills ${fills()} (declared B #E8423F, other #8C8C8C)`);
-// No relation: the Core wafer marking is its dies only - no measurement is in it, every point other
+// No relation: the Core wafer marking is the wafer only - no measurement is in it, every point other
 const keptRelations = page.relations.get('list');
 page.relations.set('list', []);
 await settle();
@@ -172,20 +177,21 @@ say(`no relations: D fills ${fills()}`);
 page.relations.set('list', keptRelations);
 await settle();
 say(`relations back: D fills ${fills()}`);
-// The numbers: the layer on a marking change (the other die's core wafer pressed in B), the graph
+// The numbers: the layer on a marking change (the other die's core wafer pressed in W), the graph
 const b2 = seen[0] ? await press(seen[0].cell) : b;
 const otherRow = b2.rowKeys.findIndex((k) => k !== '(Empty)');
+await until(ready(W));
 const computed0 = page.layers.computed;
 const s5 = walks();
-await timed('B pressed -> C -> D', () => part(B).markHub([['core wafer', b2.rowKeys[otherRow]]], b2.rowIds[otherRow], {}), [C, D]);
-say(`B pressed ${b2.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5}`);
+await timed('W pressed -> C -> D', () => part(W).mark([lineOf(b2.rowKeys[otherRow]).id], {}), [C, D]);
+say(`W pressed ${b2.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5}`);
 say(`D after: ${part(D).state} (the Step marking pruned: ${page.markings.entries(step).length} entries); unknown ${stat(D).unknown || 0}`);
 const kept = page.save();
 say(`CLOCK report ${JSON.stringify(report)}`);
 say(`graph: ${page.layers.graph.nodes.size} nodes, ${page.layers.graph.edges.size} edges; walks in all ${walks() - step0}`);
 const save = argOf('--save', null);
-// Saved on a two-by-two layout - A B over C D - so the shots show the four alike.
+// Saved on a two-row layout - A B W over C D.
 const leaf = (pid) => ({ id: pid, size: 1 });
-const grid = { split: 'column', children: [{ split: 'row', size: 1, children: [leaf(A), leaf(B)] }, { split: 'row', size: 1, children: [leaf(C), leaf(D)] }] };
-if (save) { writeFileSync(save, JSON.stringify({ kept: { ...kept, root: grid }, wafer: WAFER, ids: { A, B, C, D } }, null, 1)); say(`saved ${save}`); }
+const grid = { split: 'column', children: [{ split: 'row', size: 1, children: [leaf(A), leaf(B), leaf(W)] }, { split: 'row', size: 1, children: [leaf(C), leaf(D)] }] };
+if (save) { writeFileSync(save, JSON.stringify({ kept: { ...kept, root: grid }, wafer: WAFER, ids: { A, B, W, C, D } }, null, 1)); say(`saved ${save}`); }
 process.exit(0);

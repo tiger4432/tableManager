@@ -5,7 +5,6 @@
 import { Panel } from '../rnd_board/panel.js';
 import { drawCondition, conditionKey, conditionWords } from './condition_editor.js';
 import { markingsOf } from './visual_part.js';
-import { routeKey, routeWords } from './route.js';
 import { LABEL_SHOWS } from './tooltip.js';
 import { SHOW_RULES } from './show_items.js';
 
@@ -81,14 +80,7 @@ export class PropertiesPart extends Panel {
     }
     data.append(select('Start from', [[null, 'All'], ...marks.map((m) => [m.name, m.label])], got.start,
       (v) => part.setDeclaration({ ...decl, start: { ...(decl.start || {}), marking: v } })));
-    data.append(select('Rows', this.entities().map((e) => [e.type, e.type]), decl.row, (v) => part.setDeclaration({ ...decl, row: v, route: null })));
-    // the route from the start to the rows (route.js) - the rows are its ends
-    const routes = part.routes();
-    if (routes.length) {
-      const taken = part.route();
-      data.append(select('Route', routes.map((r) => [routeKey(r), routeWords(r)]), routeKey(taken),
-        (v) => part.setDeclaration({ ...decl, route: routes.find((r) => routeKey(r) === v) || null })));
-    }
+    data.append(select('Rows', this.entities().map((e) => [e.type, e.type]), decl.row, (v) => part.setDeclaration({ ...decl, row: v })));
     data.append(select('Filtering', [[null, '(None)'], ...this.filterNames.map((f) => [f.name, f.label])], decl.system,
       (v) => part.setDeclaration({ ...decl, system: v })));
     data.append(el('div', 'sf-props__lab', 'Filter'));
