@@ -2893,7 +2893,8 @@ class RunControl:
         self._page_line(processed, total, note)
         self.debug = retroactive_debug()
         if self.report is not None:
-            self.report(processed)
+            if processed is not None:                  # a step that only asks to go on moves no slice's count
+                self.report(processed)
             self._moved = time.monotonic()
             return
         if not self.run_id:

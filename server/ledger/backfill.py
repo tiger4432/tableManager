@@ -1250,12 +1250,20 @@ def withdraw_stale_atoms(engine, source, relation, apply=False, checkpoint=None,
                         most = size.next()
                     page.append(ref)
                     if len(page) >= most:
+                        withdrawn = page
                         result["stale_withdrawn"] += store.withdraw(source, page)
                         result["stale_pages"] += 1
                         page = []
-                        if checkpoint is not None and checkpoint(result["stale_withdrawn"]):
-                            result["stopped"] = True
-                            return result
+                        # 총괄 10-14: the run's count is the rows it translates, and this step does not move
+                        # it - «98046 / 50000» counted atoms against rows. Its own line, then only the stop.
+                        if checkpoint is not None:
+                            said = getattr(checkpoint, "step", None)
+                            if said is not None:
+                                said("withdraw atoms of a table it no longer reads", result["stale_pages"], None,
+                                     len(withdrawn), note="withdrew %d" % result["stale_withdrawn"])
+                            if checkpoint(None):
+                                result["stopped"] = True
+                                return result
         if until is not None and time.monotonic() >= until:
             if next(atoms, None) is not None:              # the last atom is not a cut read
                 result["stale_cut"] = True
