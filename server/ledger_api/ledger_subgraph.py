@@ -1003,8 +1003,9 @@ class SqlEvidenceLookup:
     # ⚰️ `claims_by_ids` (and the in-memory one) - no caller, and it fetched past
     # `_not_current_clause` (총괄 10-01).
 
-    def subjects_of_type(self, entity_type, limit):
-        """Every node of one declared type — a described seed set (S-148-a).
+    def subjects_of_type(self, entity_type, limit, after=None):
+        """Every node of one declared type — a described seed set (S-148-a); `after` (keys): only those past it in the
+        key order, the next page of a type's every node (총괄 6eb3f8e76).
 
         🔴 [총괄 819726624 ㄹ] A NODE IS ANY ATOM NAMING IT, ON EITHER SIDE — `gaps.
         _nodes_of_type_sql`, the one answer to 「what is a node of this type」. This REVERSES
@@ -1030,17 +1031,18 @@ class SqlEvidenceLookup:
         # Keys only: the walk does not read the first instant, and selecting just `keys`
         # leaves its per-key lookups out of the plan.
         rows = self._execute(
-            "SELECT keys FROM (%s) n" % gaps._nodes_of_type_sql().format(table=self.relation),
-            {"bare": bare, "scan": int(limit) + 1})
+            "SELECT keys FROM (%s) n" % gaps._nodes_of_type_sql(after=after is not None).format(table=self.relation),
+            {"bare": bare, "scan": int(limit) + 1, **({"after": json.dumps(after)} if after is not None else {})})
         cut = max(0, len(rows) - int(limit))
         # ⚠️ ROWS ARE POSITIONAL, as `_atom_from_row` beside this reads them, and the keys
         # arrive as text on one driver and as a mapping on the other -- the same two-shaped
         # handling that function already does.
-        out = []
+        out, last = [], None
         for row in rows[:int(limit)]:
             keys = json.loads(row[0]) if isinstance(row[0], str) else row[0]
             out.append(explorer.entity_id(bare, dict(keys or {})))
-        return _DescribedSeeds(out, cut)
+            last = dict(keys or {})
+        return _DescribedSeeds(out, cut, last)
 
 
 class _DescribedSeeds:
@@ -1050,11 +1052,13 @@ class _DescribedSeeds:
     truncated list cannot carry the second one about itself.
     """
 
-    __slots__ = ("ids", "cut")
+    __slots__ = ("ids", "cut", "last")
 
-    def __init__(self, ids, cut):
+    def __init__(self, ids, cut, last=None):
         self.ids = list(ids)
         self.cut = int(cut)
+        #: the keys of the last one - where the next page of the type goes on (`subjects_of_type(after=)`)
+        self.last = last
 
 
 class InMemoryEvidenceLookup:
@@ -1090,8 +1094,8 @@ class InMemoryEvidenceLookup:
         ordered = sorted(rows, key=lambda atom: (atom.occurred_at, atom.id), reverse=True)
         return ordered[:limit], len(ordered) > limit
 
-    def subjects_of_type(self, entity_type, limit):
-        """The same question over the atoms held in memory. ⚠️ THE SAME RULE as
+    def subjects_of_type(self, entity_type, limit, after=None):
+        """The same question over the atoms held in memory (`after`: past those keys, in this lookup's own order). ⚠️ THE SAME RULE as
         `gaps._nodes_of_type_sql`, not a looser one: a node is any atom naming it, subject
         side or an `entity_ref` object (총괄 819726624 ㄹ - reverses S-148-a / 판정 337
         「registered subjects only」)."""
@@ -1110,8 +1114,12 @@ class InMemoryEvidenceLookup:
             if node_id in seen:
                 continue
             seen.add(node_id)
-            ids.append(node_id)
-        return _DescribedSeeds(ids[:int(limit)], max(0, len(ids) - int(limit)))
+            ids.append((node_id, dict(keys or {})))
+        if after is not None:
+            ids = ids[next((i + 1 for i, (_n, keys) in enumerate(ids) if keys == after), len(ids)):]
+        page = ids[:int(limit)]
+        return _DescribedSeeds([node_id for node_id, _k in page], max(0, len(ids) - int(limit)),
+                               page[-1][1] if page else None)
 
     def claims_for_entities(self, entities, direction, limit, *,
                             follow=None, exclude=None, far=None, far_types=None, before=None):
@@ -2770,7 +2778,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # measured: a bare truthiness test sent a walk that asked for no description off to
     # enumerate subjects, against a connection the caller never opened.
     seed_type = seed_type if isinstance(seed_type, str) and seed_type.strip() else None
-    seed_cut = 0
+    seed_cut, seed_after = 0, None
     # `expand` names bundles to draw past `fanout_limit`: `<node id>|<predicate>|<direction>`.
     expand_keys = set()
     for item in expand or ():
@@ -2783,7 +2791,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     if seed_type:
         # ⛔ An undeclared type is refused before this, by name, at the route's one seat for a
         # request's names (`trace_router._declared_or_refused`, 총괄 17b6337e4).
-        described = lookup.subjects_of_type(seed_type, seed_limit)
+        # the page of the type this walk is on - its first, or where the page before left the type (총괄 6eb3f8e76)
+        seed_after = (resume or {}).get("seed_after")
+        described = lookup.subjects_of_type(seed_type, seed_limit, after=seed_after)
         seed_cut = described.cut
         if not described.ids:
             raise ValueError(
@@ -3195,8 +3205,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         for node_id in (cursor or {}).get("frontier") or ():
             refs.setdefault(node_id, decode_node_id(node_id))
 
+    #: seeds the node budget left out on this page - the next page takes them (총괄 6eb3f8e76, 소유자 «끝까지»)
+    waiting = []
     for item, ref in seed_refs.items():
-        add_node(_seed_node(item, ref, action_lookup), ref, 0)
+        if not add_node(_seed_node(item, ref, action_lookup), ref, 0):
+            waiting.append(item)
         dep_cost[item] = 0
 
     #: nodes this page read whole; `paused` - the walk's state where its first cap stopped it, what `more` says
@@ -3218,6 +3231,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                                                               key=str)}
                                           for node_id in open_ids],
                              "seen": whole, "cursor": at}}
+
+    if waiting:                                     # the first cap is the seeds' own: the walk is kept from here
+        _pause(cursor or {"depth": 0}, read_whole)
 
     def _reads(group, group_follow):
         """What one frontier group reads, in order: an opened bundle's predicate first, then the
@@ -3432,12 +3448,23 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     still = _still_reaches([(_bare(nodes[node_id].get("type")), node_id in seed_signs) for node_id in left], wanted,
                            follow, static_follow,
                            static_types, direction)
+    for item in waiting:                            # a seed not taken yet is a node of its type still to come
+        kind = _bare((seed_refs.get(item) or {}).get("type"))
+        if kind in still:
+            still[kind] += 1
+    # a type's every node, page by page: this page's batch walked to its end, more of the type - the next batch
+    if seed_type and seed_cut and paused is None:
+        paused = {"left": [], "resume": {"as_of": _instant(as_of), "frontier": [], "seen": set(nodes) | done,
+                                         "cursor": None, "seed_after": described.last}}
+    elif seed_type and paused is not None:
+        paused["resume"]["seed_after"] = seed_after             # cut inside this batch: the same batch goes on
+    paged = bool(left or waiting or (paused and paused["resume"].get("seed_after") != seed_after))
     #: each seed's reach after this page - the ranking's (`_propagation`), handed on in `resume` (MORE)
     reached = {}
     # a continued page says the first page's instant it reads as of; a first page carries it in its `resume`
-    more = {"unexpanded": len(left),
+    more = {"unexpanded": len(left) + len(waiting),
             "reach": {kind: {"complete": not still[kind], "unexpanded": still[kind]} for kind in wanted},
-            "resume": paused["resume"] if left else None, **({"as_of": _instant(as_of)} if resume is not None else {})}
+            "resume": paused["resume"] if paged else None, **({"as_of": _instant(as_of)} if resume is not None else {})}
     # 🔴 ONE EDGE IS ONE CLAIM, so the predicate is read off the edge rather than off a node
     # that no longer exists.  This used to walk edge -> claim NODE -> its predicate; claims
     # stopped being nodes when a fact became an edge, so `claim_id` was ALWAYS None here and

@@ -245,14 +245,15 @@ def prefix_case(connection) -> str:
     return PREFIX_INSENSITIVE if connection.exec_driver_sql("SELECT 'a' < 'B'").scalar() else PREFIX_EXACT
 
 
-def _nodes_of_type_sql(prefix=None):
+def _nodes_of_type_sql(prefix=None, after=False):
     """Nodes of one type, from BOTH sides, with the moment each was first named.
 
     `prefix` (`PREFIX_INSENSITIVE` · `PREFIX_EXACT`, 총괄 bccbdd601): only the keys whose `%(axis)s`
     starts with `%(p)s` (`%(plen)s` characters) - each side's step starts at the least such node
     (`%(nulls)s`, every declared key JSON null, with the prefix set in that axis) and stops at the
     first key past the prefix, so it reads the matching keys and one more, wherever they stand in
-    the type. No prefix: the statement as it always was.
+    the type. No prefix: the statement as it always was. `after`: only the keys past `%(after)s` (a JSON object) - a walk of a
+    type's every node going on page by page (총괄 6eb3f8e76); both sides start past it.
 
     🔴 SUBJECT *AND* OBJECT, because a node is not stored - it is derived from an atom's
     keys - so it begins to exist the moment any atom names it, on either side. Measured on
@@ -281,6 +282,9 @@ def _nodes_of_type_sql(prefix=None):
         bound = "jsonb_set(%(nulls)s::jsonb, ARRAY[%(axis)s], to_jsonb(CAST(" + least + " AS text)))"
         start_s, start_o = " AND subject_keys >= " + bound, " AND object_payload->'keys' >= " + bound
         keep_s, keep_o, pick = match("subject_side.keys"), match("object_side.keys"), match("keys")
+    if after:
+        start_s += " AND subject_keys > CAST(%(after)s AS jsonb)"
+        start_o += " AND object_payload->'keys' > CAST(%(after)s AS jsonb)"
     return """
         WITH RECURSIVE subject_side(keys, n) AS (
             (SELECT subject_keys, 1 FROM {table} f WHERE subject_type = %(bare)s""" + start_s + """

@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-15] **걷기 씨앗을 쪽으로 끝까지 · 씨앗은 POST 본문으로 (총괄 6eb3f8e76, 소유자 «collect 걸고 끝까지 가져오기»)** — git pull · 서버 재기동 · 이주 «없음»
+>
+> ```
+> 원인     걷기 GET 주소가 64 KB 를 넘으면 씨앗 id 가 깨져 422 — 서버의 URL 파서가 쿼리 위치 · 길이를 16 비트로 담는다:
+>            python -c "import httptools; print(len(httptools.parse_url(b'/x?' + b'a'*70000).query))"   -> 4464 (= 70000 - 65536)
+>          같은 uvicorn 의 빈 앱도 쿼리의 끝 «64 KB 나머지»만 받는다(재 봄). 걷기 코드 탓이 아니다 — 64 KB 넘는 GET 은 앞으로도 깨진다
+> 무엇     POST /api/ledger/subgraph 본문 {"seeds": {"id": "...", "positive": [...], "negative": []}} — 쿼리의 id · positive · negative 와 같은 질문
+>            이어 받기 쪽도 본문에 같은 seeds + {"resume": 앞 쪽의 more.resume}. 쿼리에도 씨앗이 있으면 422 seeds_defined_twice
+>          씨앗이 node_limit 보다 많으면 · seed_type 의 노드가 seed_limit 보다 많으면 more.resume 로 다음 쪽 — 쪽마다 한 번씩, 끝까지
+>            (resumable=true 일 때. 아니면 열쇠 없이 more.unexpanded 가 남은 씨앗 수를 센다)
+> 뜻       more.resume 가 null 이 될 때까지 이어 받으면 씨앗 전부 · 타입의 노드 전부
+>          쪽 사이에 그 타입의 노드가 새로 들어오면 그 경계가 밀릴 수 있다(타입 목록은 쪽마다 읽음 — as_of 를 안 탐)
+> 박스 판 실측 (② 판 assy_impl_opshape_1014 · 다이 8,000 · 실제 서버 HTTP — 박스 판, 운영 주장 아님)
+>          다이 전부 seed_type=die · hops 0 · seed_limit 2000 · node_limit 1000   8 쪽 · 3.4 초 · 8,000 개 한 번씩
+>          다이 5,000 개 POST 본문 · hops 0 · node_limit 1000                      5 쪽 · 2.3 초 · 5,000 개 한 번씩
+>          200 개 GET 과 POST 본문 · hops 1                                         답이 같다
+>          (측정용 프로세스) 다이 5,000 · hops 1 · node_limit 1000: 6 쪽 · 87 초, propagation=false 면 9.2 초 · 두 번 실린 노드 0
+>            87 초의 대부분은 순위 계산(_reach 가 씨앗마다 공유 허브를 훑음) — 순위를 안 읽는 호출은 propagation=false
+> 재기만   (측정용 프로세스, 서버 상한은 그대로 1,000) 웨이퍼 10 장 -> 다이 4,000 행 걷기를 쪽 끝까지
+>          node_limit 1000: 2.0 초 · 5 쪽   2000: 1.6 초 · 3 쪽   4000: 1.3 초 · 2 쪽   (답 10.8 MB 그대로)
+> 되돌리기  git revert <착지> -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-15] **걷기 hops=0 — 씨앗의 자기 기록만 (총괄 77eb0d06f, 빌더 물음 1 · 2)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```

@@ -216,6 +216,11 @@ def evidence_subgraph(
         None, embed=True,
         description=("A page's `more.resume`, as it came: the next page of the same walk, within the same caps, "
                      "as of the first page")),
+    seeds: dict | None = Body(
+        None, embed=True,
+        description=("The seeds in the body, POST - {id, positive, negative} as the query names them - for a list a URL "
+                     "cannot carry (the server's URL parser keeps a query's last 64 KB only). Every page sends them "
+                     "the same way; seeds in the query too are refused")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -232,6 +237,19 @@ def evidence_subgraph(
         raise HTTPException(status_code=422, detail={
             "reason": "format_unknown", "argument": "format", "value": response_format,
             "message": f"Unknown format: {response_format} - use json or rows"})
+    # the seeds in the body (POST, 총괄 6eb3f8e76): the three the query names, read here once, so every seat below and
+    # the question a next page asks again are the same whichever door they came through
+    if isinstance(seeds, dict):
+        if _given(node_id) or _given(positive) or _given(negative):
+            raise HTTPException(status_code=422, detail={
+                "reason": "seeds_defined_twice",
+                "message": "The seeds are in the body and in the query - send them in one of the two"})
+        node_id, positive, negative = seeds.get("id"), seeds.get("positive"), seeds.get("negative")
+        if not all(isinstance(each, list) and all(isinstance(item, str) for item in each)
+                   for each in (positive or [], negative or [])) or not isinstance(node_id, (str, type(None))):
+            raise HTTPException(status_code=422, detail={
+                "reason": "subgraph_request_invalid",
+                "message": "seeds must be {id: text, positive: [text], negative: [text]}"})
     # 🔴 AN UNDECLARED PREDICATE IS REFUSED, NOT ANSWERED WITH AN EMPTY GRAPH. A filter that
     # can never match returns exactly what "there is nothing here" returns, and the caller
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four

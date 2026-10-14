@@ -82,6 +82,10 @@ since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「
 include_superseded  기본 false. `one` 술어의 «지금 아닌» 사실도 그릴지 — 그 엣지엔 `not_current` (총괄 22ebdd153)
 format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-183, 09-11)
 resumable           기본 false. 이어 걸을 호출(걷기 화면 · 시험대 부품 part_walks.walkToEnd)만 true — 잘린 걷기를 남기고 more.resume 열쇠를 준다(아래 «이어 걷기», 총괄 9752e91f7)
+seeds (본문)        🆕 10-15 POST 본문 {"seeds": {"id", "positive": [...], "negative": [...]}} — 쿼리의 세 칸과 같은 질문(총괄 6eb3f8e76).
+                    주소가 64 KB 를 넘으면 서버의 URL 파서(httptools.parse_url, 위치 · 길이 16 비트)가 쿼리의 끝 «64 KB 나머지»만 넘긴다 —
+                    씨앗이 많으면 쪽마다 본문으로. 쿼리에도 씨앗이 있으면 422 seeds_defined_twice
+                    씨앗이 node_limit 보다 많거나 seed_type 의 노드가 seed_limit 보다 많으면 이어 받기 쪽으로 끝까지(쪽마다 한 번씩)
 propagation         기본 true. false 면 순위를 계산하지 않고 답에 `propagation` 칸이 없다 — 순위를 안 읽는 호출(시험대 근원 부품,
                     client2/src/testbed 의 fetchWalk)용(총괄 9166099d4). R&D 보드 · 걷기 화면은 순위를 읽으니 안 보낸다(기본 true)
                     다음 쪽도 같은 값으로 — 다르면 422 «resume belongs to another walk»
