@@ -380,8 +380,8 @@ export class VisualPart extends Panel {
     this.aborts.set(ROW_WALK, control);
     const params = seeds.all ? { ...this.budget(), seed_type: this.rowType(), collect: ask.collect }
       : { ...this.budget(), nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [], follow: ask.follow, hops: ask.hops, collect: ask.collect };
-    this.rowReceiving = 0;
-    const got = await walkToEnd(this.fetchWalk, params, control.signal, (answers) => { this.rowReceiving = answers.length; });
+    // the rows are drawn when their walk is in (a value walk draws each page)
+    const got = await walkToEnd(this.fetchWalk, params, control.signal, null);
     if (got.aborted || ticket !== this.walking) return null;
     this.aborts.delete(ROW_WALK);
     if (got.refused) return { ok: false, why: refusalWords(got.res) };

@@ -815,6 +815,14 @@ async function partWalks(M) {
   await settle();
   out.abort = [Boolean(inFlight.signal && inFlight.signal.aborted), held2.part.answer.nodes.some((n) => n.id === 'LATE'), held2.part.model.lines.map((l) => l.cells[0].text)];
 
+  // PW8 two slots of different ways walk at once - both asked before either is answered
+  const both = { when: (p) => ['measures', 'at_step'].some((f) => (p.follow || []).includes(f)), release: [] };
+  const pair = await seat({ ...base, encode: { col1: TEMP_V, col2: STEP } }, { hold: both });
+  const atOnce = both.release.length;
+  for (const r of both.release) r();
+  await settle();
+  out.together = [atOnce, pair.part.model.lines.map((l) => l.cells.map((c) => c.text))[0]];
+
   // PW7 core dies (lead 10-14, 18766): the value walk carries wafers only, its edges every way it walked - each die reads
   // its own core wafer through its edges (a die it did not carry stands by its id), never its own wafer BW
   const core = await seat({ ...base, kind: 'crossTable', encode: { rows: CORE } });
@@ -1424,6 +1432,7 @@ async function suite(M) {
       pw.chunks, [[['d1', 'd2'], ['d3']], ['1', '2', '3']]),
     judge('PW6 a walk in flight dropped by the next for its slot - its request aborted, its late answer not drawn, the newest drawn',
       pw.abort, [true, false, ['t1', 't1', 't1']]),
+    judge('PW8 two slots of different ways walk at once - both asked before either is answered', pw.together, [2, ['1', 's1']]),
     judge('PW7 core dies (18766): a value walk carrying wafers only read by its edges - each die its own core wafer, the dies it did not carry by their ids',
       pw.core, [['CW1', 'CW2', '(Empty)'], [['d1'], ['d2'], ['d3']], ['c1', 'c2', 'd1', 'd2', 'd3']]),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
@@ -1672,6 +1681,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'chunks(ask.seeds, this.seedChunk)', '[ask.seeds]') },
   { id: 'PWM10', what: 'a slot\'s walk in flight not dropped by the next', catches: 'PW6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '  async walkValues(key) {\n    this.abortWalk(key);', '  async walkValues(key) {') },
+  { id: 'PWM12', what: 'the slots of a load walked one after another', catches: 'PW8 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'await Promise.all(Object.keys(this.slotsHeld()).map((key) => this.walkValues(key)));', 'for (const key of Object.keys(this.slotsHeld())) await this.walkValues(key);') },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M72', what: 'a press reads a slot of a list as one slot - a list of one never a node', catches: 'W8 ', file: 'testbed/hubs.js', key: 'hubs',
