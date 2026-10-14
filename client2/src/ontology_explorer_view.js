@@ -733,7 +733,7 @@ export function declarationView(state, kind, json = null) {
     keys: Object.fromEntries(Object.entries(tables).filter(([, v]) => v && Array.isArray(v.key)).map(([t, v]) => [t, v.key])) },
     entities: ents ? Object.entries(ents).map(([type, e]) => ({ type, keys: (e && e.keys) || [], attributes: (e && e.attributes) || [] }))
       : named('entity').map((type) => ({ type, keys: [], attributes: [] })),
-    predicates: vocab ? Object.entries(vocab).map(([name, p]) => ({ name, qualifiers: (p && p.qualifiers) || [] }))
+    predicates: vocab ? Object.entries(vocab).map(([name, p]) => ({ name, qualifiers: (p && p.qualifiers) || [], object: (p && p.object) || null }))
       : named('predicate').map((name) => ({ name, qualifiers: [] })),
     sources: items.filter((i) => i.kind === 'source_plan').map((i) => ({ key: i.key, id: i.canonical_id })),
     active: !draft.creates_declaration, draftAge: draftAge(draft.updated_at),
