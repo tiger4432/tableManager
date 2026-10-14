@@ -594,8 +594,10 @@ async function parts(M) {
   new M.thumb.Thumb(vdoc.createElement('span'), { doc: vdoc, loader: loaderOf(M, vMade) }).show(['z'], 48);
   const unseen = vMade.length;
   watchers[0].cb([{ isIntersecting: true }]);
+  // the size the server takes (B 9b1de54a9): before - none sent, the original; after - the drawn size, kept in 16..1024
   out.loads = [atOnce, lMade.length, unseen, vMade.length,
-    M.preview.imageRefUrl('B', 'a', 64), M.preview.imageRefUrl('B', 'a'), held.url('a', 64)];
+    M.preview.imageRefUrl('B', 'a', 64), M.preview.imageRefUrl('B', 'a'), held.url('a', 64),
+    M.preview.imageRefUrl('B', 'a', 8), M.preview.imageRefUrl('B', 'a', 2000), M.preview.imageRefUrl('B', 'a', 47.6)];
   }
   // T45: one order of categories (lead 10-15) - numbers by their value before text, (Empty) and (Multiple) last; the cross
   // table's row heads, a category axis, the legend and the panels all in it
@@ -864,17 +866,18 @@ function suite(out, page, saved, counted) {
   eq('T51 a cross table\'s cell folds its own marks - a wafer\'s two quantities each their median (not the row\'s six mixed), the row\'s total over all six once',
     page.lens, [['void_area', 'warpage'], [9.914, 10.0695], [9.99], ['void_area', 'warpage'], [['1'], ['2']]]);
   eq('T46 a column the walk declares image is a slot of images - no Scale pick over it; a Shape by of images: a mark a point (P1\'s two pictures one point), its picture at its size once loaded, only the pictures drawn asked; the tooltip\'s «1/2» turned by the wheel, the point with it',
-    page.pictured, ['image', 3, 'image://http://box/api/image?ref=p1.png', 'image://http://box/api/image?ref=p3.png', false, true,
-      ['http://box/api/image?ref=p1.png', 'http://box/api/image?ref=p3.png'], '1/2', '2/2', 'image://http://box/api/image?ref=p2.png', 'image']);
+    page.pictured, ['image', 3, 'image://http://box/api/image?ref=p1.png&px=32', 'image://http://box/api/image?ref=p3.png&px=32', false, true,
+      ['http://box/api/image?ref=p1.png&px=32', 'http://box/api/image?ref=p3.png&px=32'], '1/2', '2/2', 'image://http://box/api/image?ref=p2.png&px=32', 'image']);
   eq('T47 images refused where a category paints or places (Color by, a cross axis) - said, nothing read; a Label by of images shown with no «Show labels for» written, None written not; a table\'s column of images - the line one height, the cell its thumbnail with ‹ › and «1/2»; a map\'s Label by of images fills a cell big enough, a small one asks for none',
-    page.placed, [true, 0, true, true, 'http://box/api/image?ref=p3.png', false, true, ['‹', '›'], '1/2',
-      ['http://box/api/image?ref=p1.png', 'http://box/api/image?ref=p3.png'], 0, 0]);
+    page.placed, [true, 0, true, true, 'http://box/api/image?ref=p3.png&px=24', false, true, ['‹', '›'], '1/2',
+      ['http://box/api/image?ref=p1.png&px=20', 'http://box/api/image?ref=p3.png&px=20'], 0, 0]);
   eq('T48 a thumbnail turned by hand - ‹ › (marking nothing), the wheel, the arrow keys while hovered (not after), the preview with it; the first at the start',
-    page.turned, ['1/3', 'http://box/api/image?ref=a', '2/3', 'http://box/api/image?ref=b', 2, '3/3', '1/3', '2/3', ['a', 'b'], '2/3']);
+    page.turned, ['1/3', 'http://box/api/image?ref=a&px=48', '2/3', 'http://box/api/image?ref=b&px=48', 2, '3/3', '1/3', '2/3', ['a', 'b'], '2/3']);
   eq('T49 a place too small asks for no picture - its mark (one) or «1/2» (several), the preview turned by the keys',
     page.small, [false, '▣', false, '2/2', ['a', 'b'], 0]);
-  eq('T50 the loader: a few at once (4), a picture asked once, the next when one is in; a place out of view asks when it comes in; the size sent only when given (the server\'s px - not yet)',
-    page.loads, [4, 5, 0, 1, 'B/api/image?ref=a&px=64', 'B/api/image?ref=a', 'http://box/api/image?ref=a']);
+  eq('T50 the loader: a few at once (4), a picture asked once, the next when one is in; a place out of view asks when it comes in; a thumbnail asked at its drawn size (the server\'s px, 16..1024), none given - the original',
+    page.loads, [4, 5, 0, 1, 'B/api/image?ref=a&px=64', 'B/api/image?ref=a', 'http://box/api/image?ref=a&px=64',
+      'B/api/image?ref=a&px=16', 'B/api/image?ref=a&px=1024', 'B/api/image?ref=a&px=48']);
   eq('T45 one order of categories - numbers by their value before text, (Empty) and (Multiple) last; the cross table\'s row heads, a category axis, the legend and the panels in it',
     page.order, [['1', '2', '10', '11', 'A', 'B', '(Empty)', '(Multiple)'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11']]);
   eq('T43 a slot of days says its days - every time the page zone\'s midnight: «YYYY-MM-DD» on the cross row heads, the category ticks, the legend, the tooltip, the hub\'s value the time itself; one not midnight - every time as the grid says it',
@@ -1021,7 +1024,11 @@ const MUTANTS = [
   { id: 'M84', what: 'every picture asked at once', catches: 'T50', file: 'image_thumb.js',
     mutate: (t) => swap(t, '    while (this.out.size < this.atOnce && this.waiting.length) {', '    while (this.waiting.length) {') },
   { id: 'M85', what: 'the size never sent', catches: 'T50', file: 'image_preview.js',
-    mutate: (t) => swap(t, "${px ? `&px=${Math.round(px)}` : ''}", '') },
+    mutate: (t) => swap(t, "${size ? `&px=${size}` : ''}", '') },
+  { id: 'M89', what: 'the thumbnails ask the original (the switch off)', catches: 'T50', file: 'image_thumb.js',
+    mutate: (t) => swap(t, 'export const SEND_PX = true;', 'export const SEND_PX = false;') },
+  { id: 'M90', what: 'a size outside the server\'s range sent as it is - refused 422', catches: 'T50', file: 'image_preview.js',
+    mutate: (t) => swap(t, '  const size = px ? Math.min(IMAGE_PX.max, Math.max(IMAGE_PX.min, Math.round(px))) : null;', '  const size = px ? Math.round(px) : null;') },
   { id: 'M73', what: '«(Multiple)» sorted as text - first', catches: 'T44', file: 'testbed/slot.js',
     mutate: (t) => swap(t, '    if (tail(a) || tail(b)) return tail(a) - tail(b);\n', '') },
   { id: 'M74', what: 'numbers sorted as text', catches: 'T45', file: 'testbed/slot.js',

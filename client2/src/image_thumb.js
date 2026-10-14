@@ -17,8 +17,8 @@ export const LABEL_IMAGE_PX = 24;
 export const TIP_IMAGE_PX = 96;
 /** Pictures asked at once - the rest wait their turn. */
 export const LOADS_AT_ONCE = 4;
-/** GET /api/image's `px` (implementer B, not landed yet): off - the original is asked and fitted here. */
-export const SEND_PX = false;
+/** GET /api/image's `px` (implementer B 9b1de54a9): on - a thumbnail is asked at the size it is drawn; off - the original. */
+export const SEND_PX = true;
 /** Where an image cannot be drawn (Color by, a cross table's axes). */
 export const IMAGES_REFUSED = 'Images draw in Shape by or Label by';
 export const IMAGE_MARK = '▣';

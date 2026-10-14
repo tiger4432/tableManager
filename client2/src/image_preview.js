@@ -60,10 +60,14 @@ export function placeBeside(rect, width, height, view, edge) {
   return { left, top };
 }
 
+/** The size range GET /api/image takes for `px` (implementer B 9b1de54a9 - outside it the server refuses, 422). */
+export const IMAGE_PX = Object.freeze({ min: 16, max: 1024 });
+
 /** The one address of a ref, for the preview, the new window and a thumbnail alike. The value goes as written; `px` - the
- *  size a thumbnail asks for (image_thumb.js, once the server takes it). */
+ *  longer side a thumbnail is drawn at (image_thumb.js), kept inside the range the server takes; none - the original. */
 export function imageRefUrl(base, ref, px = null) {
-  return `${base || ''}${IMAGE_ROUTE}?ref=${encodeURIComponent(String(ref))}${px ? `&px=${Math.round(px)}` : ''}`;
+  const size = px ? Math.min(IMAGE_PX.max, Math.max(IMAGE_PX.min, Math.round(px))) : null;
+  return `${base || ''}${IMAGE_ROUTE}?ref=${encodeURIComponent(String(ref))}${size ? `&px=${size}` : ''}`;
 }
 
 /** What the screen says when the picture did not come, from the one extra request. */
