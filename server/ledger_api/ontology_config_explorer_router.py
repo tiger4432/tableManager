@@ -301,7 +301,7 @@ def test_run(payload: dict[str, Any] = Body(...), world: str | None = Query(defa
             sample_rows = _service_for(world).DEFAULT_SAMPLE_ROWS
         return _service_for(world).test_run(
             engine, source_id=str(payload.get("source_id", "")),
-            sample_rows=sample_rows)
+            sample_rows=sample_rows, draft_id=payload.get("draft_id") or None)
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
 

@@ -40,6 +40,7 @@ from .setup_bundle import (
     CONFIG_FILENAME,
     SHORT_FORM_VERSION,
     LedgerSetupValidationError,
+    expand_source,
     is_long_source,
     require_ready_bundle,
     short_form_moves,
@@ -300,6 +301,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
             bundle=bundle,
             snapshot=snapshot,
             catalog=catalog,
+            mappers=getattr(active_setup, "mappers", None),     # a test run on the draft translates
         )
         # ⚠️ THE COST RIDES ONLY ON A PREVIEW THAT COMPILED. A draft that does not compile
         # has no cost to state - it will not be activated - and answering one anyway would
@@ -373,7 +375,7 @@ def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
     if not isinstance(raw, Mapping):
         raise ConfigExplorerError(
             "invalid_json_type", "raw", "definition must be a JSON object")
-    return raw
+    return expand_source(raw)            # a source written short is held long (총괄 10-14 창 문)
 
 
 def with_unsaved_body(document: Mapping[str, Any], active_setup: Any,
@@ -471,8 +473,9 @@ class OntologyDraftStore:
         self._lock = RLock()
 
     def create(self, active_setup: Any, index: ExplorerIndex, target_key: str,
-               document: Mapping[str, Any]) -> dict[str, Any]:
-        """`document` is the declaration file the draft starts from (its node only says where)."""
+               document: Mapping[str, Any], short_file: bool = False) -> dict[str, Any]:
+        """`document` is the declaration file the draft starts from (its node only says where);
+        `short_file` - it is written short, so a source's body is shown short (`public`)."""
         node = index.node(target_key)
         if node.config_file != _EDITABLE_FILE:
             raise ConfigExplorerError(
@@ -495,6 +498,7 @@ class OntologyDraftStore:
             "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": node.definition_hash,
             "creates_declaration": False,
+            "short_file": short_file,
             "revision": 0,
             "lifecycle_status": "editing",
             "raw": json.loads(json.dumps(raw, ensure_ascii=False)),
@@ -512,7 +516,7 @@ class OntologyDraftStore:
         return self.public(record)
 
     def create_new(self, active_setup: Any, index: ExplorerIndex,
-                   kind: str, canonical_id: str) -> dict[str, Any]:
+                   kind: str, canonical_id: str, short_file: bool = False) -> dict[str, Any]:
         """Open a draft for a declaration that does not exist yet.
 
         Two refusals, and each one is a different mistake:
@@ -549,12 +553,14 @@ class OntologyDraftStore:
             "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": None,
             "creates_declaration": True,
+            "short_file": short_file,
             "revision": 0,
             "lifecycle_status": "editing",
             # Not `{}`.  The skeleton says which containers the grammar requires, and those
             # exist from the start -- see `empty_declaration`.  A person who wants no
             # qualifiers could otherwise only make the key by adding one and removing it.
-            "raw": _empty_declaration(section),
+            "raw": (expand_source({"table": "", "sentences": []})
+                    if short_file and kind == SOURCE_NODE_KIND else _empty_declaration(section)),
             "preview_snapshot_hash": None,
             "preview_valid": False,
             "validation_errors": [],
@@ -881,7 +887,7 @@ class OntologyDraftStore:
         # missing. `creates_declaration` is what lets the client tell "authoring a new
         # declaration" from "editing a live one", which is the difference between the
         # confirm saying 새로 만듦 and 덮어씀.
-        return {key: record.get(key) for key in (
+        out = {key: record.get(key) for key in (
             "draft_id", "target_key", "target_id", "target_kind",
             "target_bundle_path", "creates_declaration",
             "base_snapshot_hash", "base_definition_hash", "revision",
@@ -890,6 +896,14 @@ class OntologyDraftStore:
             "review_revision", "review_history", "activated_snapshot_hash",
             "created_at", "updated_at",
         )}
+        # 총괄 10-14 창 문: a source of a short file is shown short - held long, so every reader
+        # of the record (preview, fill, activation) reads the grammar it always read
+        if (record.get("short_file") and record.get("target_kind") == SOURCE_NODE_KIND
+                and is_long_source(out["raw"])):
+            written, _why = shorten_source(out["raw"])
+            if written is not None:
+                out["raw"] = written
+        return out
 
     @classmethod
     def activation_blockers(cls, record: Mapping[str, Any],
