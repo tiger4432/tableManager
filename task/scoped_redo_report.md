@@ -81432,3 +81432,28 @@ impl-expr 는 main 459ff93fa 위의 커밋 아홉입니다(wip 포함). 문서�
 - 걷기 판(assy_impl_mix_1012) 은 503: problems 「undelivered broadcasts are not being swept: the oldest row written but never announced is 4222s old」. 일꾼 · 감독은 전부 ok.
 - 원인: 내 드라이버가 API_BASE_URL=http://127.0.0.1:9 를 런처에 물려 체인 워커의 알림이 :9 로 감(chain_worker.log 「Failed to send API notification … port=9」) → 그 판에 쓴 행(가장 오래된 것이 약 03:12, 내가 그 판에서 쓰기 재기를 돌린 무렵)의 알림이 못 나가 남았다. 그리드 판엔 쓴 행이 없어서 200. 어느 재기가 그 행을 썼는지까지는 안 맞춰 봤다.
 - 제품의 health 가 «알림 못 나감»을 옳게 503 으로 말한 것이다.
+
+---
+
+## 10-14 구현자 A — 원장 번역 안쪽 크기 (총괄 판정: 지금은 안 지음 · 다음에 번역을 만질 때 1 부터)
+
+판: assy_impl_mix_1012(박스 원장 사본) die_inspection, 읽기만. 박스 수이고 운영 주장 아님.
+
+```
+쪽 단위 한 번 부르기 (접음)   분자마다 dry_run_event_frame 한 번 vs 쪽을 이은 프레임 한 번, 7 번 중앙값
+   134 행   112.5 ms -> 119.6 ms (-7 ms)      1,000 행   1,006 ms -> 955 ms (51 ms · 5 %)
+   몫이 «부르는 횟수» 가 아니라 «행 수» 에 붙음. event frames(분자마다 프레임 만들기) 134 행 36.7 ms · 1,000 행 297 ms 는 따로
+안쪽 손잡이 셋                 134 행 한 쪽 번역 198 ms(1.48 ms/행). ms 는 cProfile 값을 실측에 맞춰 줄인 «몫»(x0.40), 셋이 일부 겹침
+ 1 pandas attrs 깊은 복사      약 14 ms (7 %) · deepcopy 행마다 60 번, 전부 __finalize__
+                               자리: runtime_v2._row_ref_index frame[칸] 행마다 2 · roleframe._frame_row_refs 1 ·
+                                     roleframe._partition_units copy 1 · reset_index 1
+                               위험 낮음 — 읽기만. 다만 attrs 를 복사본으로 믿고 고치는 자리가 있는지 전수가 먼저
+ 2 출처 이벤트 id 거듭 계산    약 10 ms (5 %) · envelope.source_event_identity 행마다 6 번
+                               (ledger_frame._validate_ledger_records 4 · compile_role_rows 1 · _event_frames 1)
+                               위험 중간 — 검증의 4 번은 다시 지어 견주는 것일 수 있음. 판정이 먼저
+ 3 역할 행 정규형 거듭          약 6~8 ms (3~4 %) · roleframe._canonical 행마다 6 번
+                               (validate_role_frame 1 · _row_sort_token 1 · _evaluate_binding 4)
+                               위험 낮음 — 같은 입력의 결과를 나눔. 정렬이 정규형에 달려 있음
+합                             약 15 % 안팎(198 -> 170 ms 언저리). isinstance 행마다 약 980 번 등은 _plain · 검증 안에 고르게 퍼짐
+잰 스크립트                    세션 스크래치 g13/size_batched_dry_run.py · g13/profile_handles.py
+```
