@@ -39299,3 +39299,13 @@ B          execute_reference_view 한 자리가 시간을 재고, 느리면 그 
    시험: 렌즈 모양 픽스처(한 다이가 두 퀀티티를 measures 엣지로) — 두 열 값이 각각 맞음 + 변이
 순서        ① → ② → 14
 ```
+
+> **[총괄 -> 응용] 10-15 — 문서 정비 (doc-sync-1014l 뒤 누적 ~29)**
+
+```
+범위        lead-board-10 · 10b · 10c · 11 (part_walks · GraphBook.walks · Route 은퇴 · Relations 걷기 · 누름 = 아래 행) · design-board-13 · cat-order · grid-switch
+            A 7bd0cb88f 날짜 함수 · 36cc6e78c 세상 루프 / B 9a3eab253 걷기 선언 도장 · propagation
+            지울 ⚠️ 문장: «보내는 호출자 0» 셋 · «기본 세상 파티션 안 맞춤»
+할 일       CODE_MAP 해당 절 · PRIMITIVES · WALK · 적대 QA 하며 같이
+끝나면      .claude/doc_sync_pending 지우고 커밋 · 푸시, 해시 한 줄
+```
