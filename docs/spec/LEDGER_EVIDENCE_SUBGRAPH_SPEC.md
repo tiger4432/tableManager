@@ -225,10 +225,10 @@ subgraph({"positive": [id, ...], "negative": [id, ...]}, lookup)
   씨앗 하나와 설명을 그대로 돌려준다.
 - 승자만 남기는 해결기를 이 경로는 부르지 않는다. 정정 전 원자가 그대로 보인다.
 
-#### 4.2-bis `propagation` — 대조 블록 (🔴 «항상» 계산된다)
+#### 4.2-bis `propagation` — 대조 블록 (🔴 기본으로 계산된다 — 🆕 10-14 `9a3eab253` `propagation=false` 로 물으면 계산도 칸도 없다)
 
 ⚠️ **종전 이 자리는 「`propagation` 은 오늘 항상 `not_requested` 다 — 깨울 인자가 없다」였고,
-그것은 거짓이 됐다.** 응답 조립이 `_propagation(...)` 을 **무조건** 부른다. 깨우는 인자는
+그것은 거짓이 됐다.** 응답 조립이 `_propagation(...)` 을 **무조건** 부른다(🆕 10-14: 요청이 `propagation=false` 가 아니면). 깨우는 인자는
 없고, 있을 필요도 없다 — 씨앗이 하나뿐이면 `contrast: "unexamined"` 로 «대조를 안 했다»고
 말할 뿐 블록은 그대로 나온다.
 

@@ -642,7 +642,7 @@
 ### ⭐⭐ **`0` 을 보고할 때 «분모»를 같이 보내라 — 「길이 없었다」와 「길은 있었는데 아니었다」는 같은 0 으로 렌더된다** (2026-08-29 등록 · `propagation.ranked[].reachable`)
 
 - **무엇**: 두 집단을 대조하고 「이쪽엔 있고 저쪽엔 0」이라고 말하는 순간, 그 `0` 이 **두 가지 서로 다른 사실**을 같은 바이트로 말한다 — ① **길은 있었는데** 그 요인을 안 이고 있었다(**진짜 차이**) ② **그 종류까지 갈 길이 아예 없었다**(**미검사**). ②를 ①로 읽으면 화면이 **없는 발견을 만들어 낸다.** 처방은 값 옆에 **그 값이 성립할 «기회»가 몇 번 있었는지**를 같이 내보내는 것이다 — 분자 옆의 분모.
-- **어디**: `server/ledger_api/ledger_subgraph.py` `_propagation` 의 `_reachable(node_type)`. 응답 항목마다 `reach: [관측, 대조]` 와 `reachable: [관측, 대조]` 가 **쌍으로** 나간다. 계약 [LEDGER_EVIDENCE_SUBGRAPH_SPEC §4.2-bis](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md).
+- **어디**: `server/ledger_api/ledger_subgraph.py` `_propagation` 의 `_reachable(node_type)`(🆕 10-14 `9a3eab253` 걷기 요청이 `propagation=false` 면 이 블록이 통째로 없다 — 순위를 읽는 R&D 보드 · 걷기 화면은 안 보냄 · 보내는 호출자는 아직 0 — `rnd_board/api.js` `fetchSubgraph` 가 받는 인자 목록에 `propagation` 이 없어 시험대 `fetchWalk` 도 못 보낸다). 응답 항목마다 `reach: [관측, 대조]` 와 `reachable: [관측, 대조]` 가 **쌍으로** 나간다. 계약 [LEDGER_EVIDENCE_SUBGRAPH_SPEC §4.2-bis](../spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md).
 - **언제 재사용**: **비교·대조·차분·「A 에는 있고 B 에는 없다」를 내보내는 모든 응답.** 그리고 화면이 「0」을 빨갛게 칠하려 할 때마다. 짝은 §7 의 「대조군은 «관측 부재»가 아니라 «검사됨 MINUS 발견됨»이다」 — 그쪽이 **모집단**을 셋으로 가르고, 이쪽은 **항목마다** 같은 구분을 나른다.
 - **함정**:
   - 🔴 **분모가 무엇을 세는지 한 문장으로 적어라 — 안 적으면 다음 사람이 더 강한 뜻으로 읽는다.** 여기 분모는 **「그 «타입»에 한 번이라도 닿은 씨앗 수」**이지 「그 «항목»을 볼 기회」가 아니다. 그래서 대조군이 물리량 열여섯을 쟀으면 그쪽도 `quantity` 에 닿은 것이라, **한 번도 안 잰 그 물리량**이 `0/2` 로 나와 진짜 차이처럼 보인다. **덮지 못하는 것을 옆에 «적는 것»까지가 이 프리미티브다.**
@@ -2360,6 +2360,11 @@
 - **어디**: flush 앞(PostgreSQL)에서 동적 표의 바뀐 행을 (표, 바뀐 칸 묶음)마다 `crud.update_by_arrays` 문장 하나로 쓰고 그 값을 커밋된 것으로 표시한다. 배열 쓰개는 이 하나 — 표기 접기 · 단위 표시도 부른다.
 - **언제 재사용**: 많은 행을 칸 몇 개씩 고치는 새 자리 — 행마다 UPDATE 를 짓지 않는다.
 - **함정**: flush 에 남는 넷 — SQL 식 값 · 바뀐 키 · 한 칸에 두 형(배열은 형 하나) · `updated_at` 이 None 인 행. 아웃박스 기록(`auto_stage_database_outbox`) «뒤»에 걸려야 사건이 옛 값을 먼저 읽는다. 문장이 이름 댄 행을 다 못 건드리면 ORM 처럼 거절.
+
+### **선언 «문서»는 파일이 바뀔 때만 다시 읽는다 — `ledger.worker._stamped(key, paths, build)` 한 규칙** (2026-10-14 등록 · B `9a3eab253`, 총괄 9166099d4)
+- **어디**: `paths` 의 `file_stamp` 가 그대로면 잡아 둔 값을 돌려준다. 부르는 곳: `_compiled_setup`(세상의 선언 + 카탈로그 — 따라가기 · `ledger_time` 등) · 걷기 라우트의 `trace_router._declaration_and_whose`(세상마다 선언 파일 + 카탈로그).
+- **언제 재사용**: 요청 · 묶음마다 선언 파일을 읽는 새 자리 — 옆에 캐시를 따로 짓지 않는다.
+- **함정**: 실패도 같은 도장 동안 잡아 둔다 — 같은 파일은 같게 실패하므로 바뀌기 전엔 다시 안 읽는다. 잡는 것은 예외 객체가 아니라 (클래스 · args · 속성)이고 부를 때마다 새로 raise 한다(두 스레드가 한 객체를 던지지 않게). 잡아 둔 dict 는 읽기 전용. ⚠️ 걷기의 키 순서 · 이름표 · 역술어 · 걸음 사실은 `ledger_subgraph._declaration_facts` 가 따로 들고 도장을 안 본다 — SYSTEM_RELOAD(`reset_declaration_cache`)에서만 비워, 파일을 고친 뒤 리로드 전엔 걷기 라우트의 선언과 다른 판을 읽을 수 있다. 시험은 앞 시험이 잡아 둔 선언을 물려받지 않는다 — conftest 가 시험마다 `_COMPILED` 를 비운다.
 
 ### **원장 선언 파일의 짧은 꼴(v7)은 읽을 때 «긴 꼴로 펼쳐» 같은 번들이 된다 — 펼치기 `expand_short_form` · 줄이기 `shorten_setup` 한 쌍** (2026-10-14 등록 · B `bbfa4d11b`, 소유자 «ㄹ»)
 - **어디**: `ledger/setup_bundle.py` — 소스 = `{table, status?, attributes?, sentences: [{sentence, predicate, when?, 역할: 값}]}`. 읽기는 `expand_short_form`(read · map 은 표의 가장 짧은 유일 키 · 문장들의 occurred_at 이 기본), 쓰기는 `shorten_setup`/`shorten_source`, 줄일 때 바뀌는 칸은 `short_form_moves`. 파일을 쓰는 둘(탐색기 활성화 · `scripts/migrate_ledger_config_to_v7.py`)은 `config_drafts.activation_lock` 하나를 쥔다.
