@@ -39161,3 +39161,19 @@ land     on the branch that goes to main next (design-spotfire carries the test 
             screen_layout 에 이 창 · 팝업 열린 장면 · UI 문자열 영어 · 다섯 크기 초록
 보고        짓기 전에 «지금 창의 자리 · 바꿀 파일 · 시안과 다르게 해야 하는 곳(있으면 왜)»을 먼저
 ```
+
+> **[총괄 -> Board 빌더 · 클라] 10-14 — 근원 부품 프레임 표준 하나 (소유자 지적)**
+
+```
+소유자 원문  «스팟파이어 부품 크로스테이블 등 다 막 틀어지고 좌우 버튼과 내부 내용물 마진도 막 틀어지는데? 표준 부품 레이아웃 체계적으로 지정해. 한문으로, 아티팩트 처럼»
+시안(정본)   task/design/BOARD_PART_FRAME_BOARD.dc.html (1920 · 다섯 종류가 한 프레임) · task/design/BOARD_PART_FRAME_ANATOMY.dc.html (영역 1–10 과 잰 값)
+             아티팩트 https://claude.ai/artifact/RWHxf3KgN6ei5UQWDcvQbM
+값          tokens.css 의 --sf-* 그대로(재어 둔 스팟파이어 값) — 새 값은 시안이 쓰는 셋뿐: 왼쪽 트레이 ↔ 영역 8 · 트레이 ↔ 영역 4 · 범례 열 160(150+10)
+규칙        근원(visual_part.js · spotfire.css .sf-part/.sf-frame)이 1–6 · 8–10 을 그린다. 종류는 7(영역) 안만 그리고, 5 · 6 · 9 에 «어느 알약»만 말한다
+            영역 안에 안쪽 여백 0 · 표는 영역 안에서 스크롤 · 머리 줄/행 머리 sticky · 맵은 정사각형 가운데 · 빈 상태 문장은 영역 가운데
+            제목 도구(최대화 · 닫기)는 모든 종류에서 같은 자리 · 칸이 없는 트레이 · 범례는 0 을 차지
+종류별      Map: 9 = x · y, 영역 왼쪽 위 Layers · 오른쪽 위 줌 / 크로스 테이블: 5 = 열 축 · 6 = 행 축(세로) · 9 = 칸 값 · 범례 없음
+            Table: 9 = + Column, 범례 없음 / 산점도: 6 = Y · 9 = X · 10 = Color · Shape · Marker by / Sheet: 5 = 식 줄(이름 칸 · 식 · Key, 폭 전부)
+짓는 법      🔴 artifact-design 스킬을 읽고 시안 마크업 · CSS 를 그대로 옮김. 종류 파일 안의 여백 · 정렬 손 px 는 지움(근원 한 자리로)
+게이트       1920 «시안 | 산출물» 나란히(라이트 · 다크) + 영역 1–10 재기 표(종류 다섯 × 영역) · screen_layout 다섯 크기 · 종류마다 «영역 밖에 그리는 요소 0» 칸
+```
