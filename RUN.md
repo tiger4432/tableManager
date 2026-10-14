@@ -1,5 +1,65 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **원장 다시 번역이 묶음 하나에 죽지 않는다 — 행 색인 키가 넘치는 값 · order_by 가 행을 못 가르는 묶음은 거절 한 줄, 나머지는 끝까지 (총괄 e2f112f02, 소유자 «ㅇㅇ 그렇게해» · «ㅇㅇ ㄱ»)** — git pull · 소급 실행은 실행마다 새 프로세스라 다음 실행부터 · 원장 따라가기는 런처 재기동 뒤
+>
+> ```
+> 무엇     whole_source 다시 번역이 묶음 하나에서 조각째 죽고 실행 failed «run it again» -> 다시 돌려도 같은 묶음에서 또 실패. 두 가지:
+>          ① group_by 묶음의 행 목록이 행 색인 키 한도(2704 바이트)를 넘음 -> 이제 그 쪽만 page key 값 하나씩 다시 하고(따라가기와 같은 호출 · 같은 판정)
+>             넘치는 값만 거절
+>          ② order_by 칸들이 묶음 안 두 행을 같게 적음(선언한 키가 실제로는 겹침) -> 이제 그 묶음만 거절(order_not_unique) — 시각이 안 읽히는 묶음과 같은 자리.
+>             원장 따라가기도 같은 답: 그 사건이 failed 로 남던 것이 그 묶음 거절로 끝남
+> 볼 줄    retroactive.log
+>          ① page k: write · N rows · … · a row-index key over the limit - this page's key values one at a time
+>            refused <소스> <page key> = <값>: a molecule's row list makes its row-index key too long (<DB 문장 — 키 바이트 수가 들어 있음>)
+>               - move this group_by source to a table the chain writes row by row
+>          ② [LedgerGate] source=<소스> refused (order_not_unique), N row(s): molecule {"<group_by>":"<값>"}: driver order_by columns [...] do not uniquely identify source rows
+>          끝 줄 [rescope] … refused N (… order_not_unique N, row_index_key_too_long N key values, old atoms kept)
+> 뜻       ① 그 값의 묶음은 이번에 다시 번역되지 않음 — 옛 원자 · 옛 행 색인 그대로(그 값의 회수도 같이 되돌림). 수는 묶음이 아니라 page key 값 하나에 1
+>             뿌리는 그 group_by 소스: 결정 규칙이 묶음마다 한 행을 쓰는 표로 옮기고 짧은 소스(행 단위)로 읽는다 — 행 색인 키가 행 하나가 됨
+>             거절 줄이 많다 -> 그 소스의 묶음이 대부분 큼. 다시 번역이 쪽마다 값 하나씩 도느라 느려짐 — 소스를 옮기는 것이 답
+>          ② 그 묶음은 원자가 없음(옛 원자는 회수됨 — 다른 거절과 같음). 고칠 곳은 데이터 또는 order_by: 표의 선언 키가 실제로 유일한지,
+>             아니면 order_by 에 행을 가르는 칸(row_id 등)을 더한다
+> 이 판에서  mix 판(박스 원장 사본) dt_job 565,559 행 통째, 진짜 소급 자식 프로세스:
+>          조각 4  done 543.7 s · refused 25 (row_index_key_too_long 20 · order_not_unique 2 · no_raw_ref 3) · 쪽 12 개가 값 하나씩으로 다시 돎
+>                  넘침 20 은 MIXJOB_users_… 키 4464 · 4496 바이트, order_not_unique 2 는 박스 탐침 job(PROBE-S124 12,000 행 · PROBE-S119 400 행)
+>          조각 1  done 1,541.0 s · refused 같은 25 · 원자 977,166 · 행 색인 543,015 의 md5 가 조각 4 판 뒤와 같음(조각 수와 무관하게 같은 답)
+>          이 판 전: 같은 판이 277k(조각 4) · 493k(조각 1) 행에서 failed
+> 되돌리기  git revert b36e55833 (재기동 없음, 따라가기는 런처 재기동)
+> ```
+>
+> ---
+>
+> ## [10-14] **원장 다시 번역 — 쪽 끝마다 제가 쓴 파티션을 다시 분석 · 디버그면 원자 쓰기 줄에 디스크/캐시 블록 (총괄 dcccc914b · b513f0d27, 소유자 «ㄱ으로해» · «ㅇㅇ»)** — git pull · 소급 실행은 실행마다 새 프로세스라 다음 실행부터 · 재기동 없음
+>
+> ```
+> 볼 곳     retroactive.log 의 [ledger_rescope] 줄 — 이제 실행 «중간»에도 분석 줄이 찍힌다
+>          analyzing 1 partition: ledger_events_2026_10 -> analyzed 1 partition in 1.4 s: ledger_events_2026_10
+>          analyzed 0 partitions in 0.0 s: - · not analyzed: ledger_events_2026_09 (<DB 의 «잠금을 얻을 수 없음» 문장>)
+>          analyzed 1 partition in <초>: ledger_events_2026_09 after <N> skips · <M> s     (또는 analyzed 0 partitions … · analyzed elsewhere: <파티션> after <N> skips · <M> s)
+>          page 264: insert atoms · 1832 rows · 0.30 s · 1832 new · blocks read/hit: idx_ledger_source_event_2026_09 799/4697 · ledger_events_2026_09 166/3996 · ledger_events_2026_09_occurred_at_predicate_subject_type_md_idx 62/14722 · …
+> 답의 뜻   analyzed 줄이 실행 중간에 몇 번 = 정상. 이 실행이 쓴 파티션이 지난 분석 뒤 ledger_analyze_changed_share(기본 0.2) 넘게 바뀌어 다시 분석
+>             (조각 여럿이면 각 조각이 묻되, 잠금을 잡은 뒤 다시 확인해 한 파티션을 두 번 분석하지 않음)
+>          not analyzed … (잠금 문장) -> 다른 조각 · 자동 청소 · 색인 짓기가 쥐고 있어 안 기다림. 같은 파티션 · 같은 사유는 실행(조각)마다 처음 한 번만 찍고,
+>             다음 쪽들이 조용히 다시 봄 -> 결국 분석되면 «after N skips · M s» 한 줄(이 실행이 했으면 analyzed 칸, 자동 청소 등이 했으면 analyzed elsewhere). 손댈 것 없음
+>          not analyzed 뒤 after 줄이 끝내 안 나온다 -> 그 실행 내내 누가 쥐고 있었음. 박동 줄 · pg_stat_activity 의 autovacuum 줄로 누구인지
+>          쪽마다 analyzed 줄 -> 쪽이 큰 파티션을 기준 넘게 바꾸는 중. 분석 초가 쪽 시간을 먹으면 기준을 올린다(아래 설정)
+>          insert atoms 가 긴 쪽에서 blocks 의 read 가 크다 -> 디스크에서 읽음(캐시 밖). 줄이 표 · 색인 이름째로, 많이 읽은 것부터 말함
+>          read 는 작고 hit 이 크다 -> 디스크가 아닌 다른 원인. 같은 쪽의 박동 줄 wait(Lock · IO:WALSync …)를 같이 본다
+>          blocks 부분이 없다 -> retroactive_debug 가 꺼짐(꺼지면 질의를 하나도 더하지 않음)
+> 설정     ingestion_settings.json "ledger_analyze_changed_share": 0.2 — 쪽 끝 판정도 이 칸. 크게(예 1000) 적으면 쪽 끝 분석은 사실상 안 함
+>             (한 번도 분석 안 된 파티션은 그래도 분석). "retroactive_debug": true — blocks 부분
+> 이 판에서  mix 판(박스 원장 사본 · 파티션 8 · 자동 청소 끔) die_inspection 117,742 행 통째를 두 번 연달아, 진짜 소급 자식 프로세스:
+>          옛  실행당 분석 0 번 · 1 번(4.9 s, 시작 때) · 354.5 / 348.9 s
+>          새  실행당 분석 11 번 · 11 번(파티션 하나씩, 합 13 초 남짓) · 343.4 / 356.5 s · 쪽 끝 확인 질의 하나(넘긴 파티션이 있는 동안 둘) 중앙 11 ms
+>          회수 plan 은 넷 다 첫 쪽 · 끝 쪽이 같은 모양(큰 파티션 Bitmap, Seq Scan 은 작은 파티션뿐) — 실행 중간에 계획이 뒤집히는 것은 이 판에서 재현 안 됨
+>          dt_job 565,559 행 조각 4(자동 청소 켬): 자동 청소가 2026_09 를 4 분 쥔 동안 넘김마다 줄을 찍던 판이 not analyzed 204 줄 — 이 판의 시험 칸: 넘김 셋 -> not analyzed 한 줄 + after 한 줄 · 자동 청소 대신 다른 세션 ANALYZE -> analyzed elsewhere 한 줄
+>          blocks 줄: 박스 한 프로세스 판 쪽마다 찍힘(위 page 264 가 그 판의 줄) · 켬/끔 원자 같음 · 끔이면 더한 질의 0 (시험 칸)
+> ⚠️ 안 잰 것  운영 크기에서 쪽 끝 분석 하나의 초(박스 큰 파티션 1.4~1.6 s) · 운영에서 실행이 갈수록 느려지는 것이 이것으로 풀리는지 — blocks 줄이 다음 실행에서 말해 줌
+> 되돌리기  git revert b36e55833 (설정 칸 그대로 · 재기동 없음)
+> ```
+>
+> ---
+>
 > ## [10-14] **느린 참조뷰도 자동 인덱스를 묻는다 — 통째 훑으며 거르는 칸: 같음 · IN 은 필터, 글자 일부(LIKE · ILIKE)는 트라이그램 (총괄 76704b7f2, 소유자 «넓혀»)** — git pull · 서버 «와» 체인 워커 재기동 · 이주 «없음»
 >
 > ```
@@ -50,7 +110,7 @@
 > 화면      GET /admin/retroactive/runs 의 진행 중 행: phase(지금 단계) · phase_seconds · rows_per_second · seconds_left (끝난 행은 null)
 >          진행 알림(웹소켓)에도 같은 네 낱말, 첫 쪽 전에도 5 초마다. 토스트 · 소급 탭에 그리는 것은 클라 착지 뒤
 > 답의 뜻   회수 plan 이 «Seq Scan on ledger_events_*» 인데 «(valid)» -> analyzed 줄이 그 파티션을 말했는지 본다. 안 말했으면 psql 로 ANALYZE ledger_events;
->          «not analyzed: <파티션> (… lock timeout)» -> 그 파티션을 다른 일(색인 짓기 등)이 잡고 있었음 - 다음 실행에서 다시
+>          «not analyzed: <파티션> (…)» -> 그 파티션을 다른 일(자동 청소 · 색인 짓기 등)이 잡고 있었음 - 안 기다리고 다음 쪽이 다시 봄(위 «쪽 끝마다» 절)
 >          phase 가 한 단계에 오래 머문다 -> 그 단계가 일하는 중. 박동 줄이 무엇을 기다리는지 말함
 >          «run_id=… : its stage could not be written - none more for this run: …» (retroactive.log) -> 칸 더하기가 다른 트랜잭션 뒤에서 5 s 를 넘겼거나 실패. 그 실행은 단계 없이 끝까지 돌고 목록의 단계는 null, 다음 실행이 다시 더함. 계속되면 그 줄 그대로 총괄에게
 > 설정     ingestion_settings.json "ledger_analyze_changed_share": 0.2  (지난 분석 뒤 바뀐 몫이 이 이상이면 다시 분석)
@@ -848,7 +908,7 @@
 > 답의 뜻   read 가 길고 «no index on it - each page sorts the table» -> 쪽 열쇠 칸에 인덱스가 없어 쪽마다 원천 표를 통째로 정렬한다(쪽이 1 행부터라 첫 쪽들이 특히 느림)
 >             그 표의 table_config "indexes" 에 그 칸을 적는다 -> 체인 워커 기동 줄 [Indexes] 에서 지어짐
 >          withdraw atoms 가 길고 write 줄 plan 에 «Seq Scan on ledger_events_* xN» -> 원장 ref 인덱스를 안 탐. 줄에 «missing or not valid … build it: <명령>» 이 같이 나오면 체인 워커 재기동 또는 Reload — 체인 워커가 짓는다(손 명령 --apply 는 그것이 짓는 중엔 금지, 아래 ⚰️ 절)
->             «(valid)» 인데 Seq Scan 이면 통계 없는(분석 안 된) 파티션 -> 10-14 판부터 실행이 시작 때 · 새 파티션 뒤 저절로 ANALYZE
+>             «(valid)» 인데 Seq Scan 이면 통계 없는(분석 안 된) 파티션 -> 10-14 판부터 실행이 시작 때 · 쪽 끝마다 저절로 ANALYZE
 >             («analyzed N partitions in X s: …» 줄). 그 전 판이면 psql 로 ANALYZE ledger_events;
 >          event frames · dry run 이 길다 -> 파이썬 번역 몫(박스 행당 3~6 ms). 박동이 «no busy backend - the time is in this process» 를 말한다 — DB 는 한가함
 >          박동이 «waiting Lock:… on pid N (<누구>, …)» -> 그 pid 의 연결이 잡고 있다. 누구 = assy_chain… 이면 체인 · 원장 따라가기, assy_server 면 화면 요청
