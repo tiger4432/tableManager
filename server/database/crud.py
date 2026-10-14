@@ -4192,12 +4192,14 @@ def apply_row_update_internal(
         # existing row, and that path's collision merge is still needed.
         if is_src_changed:
             new_bk_val = rebuilt_business_key(table_name, row)
-            if new_bk_val is None and is_new and update_item.business_key_val:
-                # 조합 소스 컬럼들이 누락되었으나 신규 생성 시 business_key_val이 유효하게 주어져 있다면 폴백 사용
-                new_bk_val = update_item.business_key_val
-
+            # 🔴 A KEY THAT CANNOT BE REBUILT (a part blank) IS NOT PUT (총괄 10-14): put(None) cleared
+            #   `business_key_val` and the key column - a person blanking one part in the grid erased a
+            #   live row's identity, and a new row lost the key it was given. The row keeps what it
+            #   holds: a new row the key this write gave (`business_key_val` or the key column, set
+            #   above by `_update_row_business_key`), an existing row its key - the stale-but-unique
+            #   trade that function's docstring makes for a blank key cell.
             current_bk = getattr(row, "business_key_val", None)
-            if current_bk != new_bk_val:
+            if new_bk_val is not None and current_bk != new_bk_val:
                 if new_bk_val is not None:
                     conflict_row = _find_business_key_conflict(
                         db, table_model, new_bk_val, row, row_cache, probed_identity)
