@@ -6,6 +6,7 @@ base snapshot hash, revision, full Bundle compile, and an atomic file replacemen
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -37,8 +38,12 @@ from .config_explorer import (
 from .implementations import trusted_implementations
 from .setup_bundle import (
     CONFIG_FILENAME,
+    SHORT_FORM_VERSION,
     LedgerSetupValidationError,
+    is_long_source,
     require_ready_bundle,
+    short_form_moves,
+    shorten_source,
     validate_bundle,
     validate_bundle_errors,
 )
@@ -437,6 +442,29 @@ def _delete_path(document: Any, path: Sequence[Any]) -> None:
 #: own note said they were: 「every method here is today's code, moved」. Moving it back is the
 #: same edit in reverse, and the draft-lifecycle suite is what says so.
 
+@contextmanager
+def activation_lock(path: Path):
+    """THE lock a writer of a declaration file holds - the explorer's activation and the v7
+    converter (총괄 10-14 ② 검수 5), so neither replaces the file under the other."""
+    lock_path = Path(path).with_name(f".{Path(path).name}.ontology-explorer.lock")
+    try:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as exc:
+        raise ConfigExplorerError(
+            "activation_locked", "active_config",
+            "another ontology activation is in progress",
+        ) from exc
+    try:
+        os.write(lock_fd, str(os.getpid()).encode("ascii"))
+        os.close(lock_fd)
+        yield
+    finally:
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 class OntologyDraftStore:
     def __init__(self, root: str | Path):
         self.root = Path(root)
@@ -778,7 +806,8 @@ class OntologyDraftStore:
 
             config_path = Path(active_setup.config_root) / node.config_file
             backup = self._activate_file(
-                config_path, [(node.bundle_path, record["raw"])])
+                config_path, [(node.bundle_path, record["raw"])],
+                catalog=getattr(active_setup, "catalog", None))
             # 🔴 THE WRITE STAYS, EVEN IF WHAT FOLLOWS FAILS. This used to restore the
             # backup and reload on any exception. Under the new model that would throw away
             # the operator's work for the ordinary case -- a declaration that does not
@@ -910,7 +939,8 @@ class OntologyDraftStore:
         )
 
     def _activate_file(self, path: Path,
-                       operations: Sequence[tuple[Sequence[Any], Any]]) -> Path:
+                       operations: Sequence[tuple[Sequence[Any], Any]],
+                       catalog: Mapping[str, Any] | None = None) -> Path:
         """Apply every operation to one document in ONE replace.
 
         Operations rather than a single value because a RENAME is a removal and a write
@@ -918,28 +948,42 @@ class OntologyDraftStore:
         declaration exists twice, or not at all, and a reader arriving in that window
         would see a config that no author ever wrote.
         """
-        lock_path = path.with_name(f".{path.name}.ontology-explorer.lock")
-        try:
-            lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError as exc:
-            raise ConfigExplorerError(
-                "activation_locked", "active_config",
-                "another ontology activation is in progress",
-            ) from exc
-        try:
-            os.write(lock_fd, str(os.getpid()).encode("ascii"))
-            os.close(lock_fd)
+        with activation_lock(path):
             # 🔴 folded BEFORE the operations: their paths are the bare names the explorer
             # reads, and an old `x@1` key left beside a new `x` is two spellings of one
             # name - refused at the next load (4eb1fe98f). The file is written bare.
             with path.open("r", encoding="utf-8") as handle:
                 document = fold_versions(json.load(handle))
+            short = document.get("setup_version") == SHORT_FORM_VERSION
             for op_path, op_value in operations:
+                if short and op_path[0] == "sources" and len(op_path) > 2:
+                    raise ConfigExplorerError(
+                        "short_file_takes_a_source", ".".join(map(str, op_path)),
+                        "the ledger file is written short - activate the whole source, not a part")
                 if isinstance(op_value, _Remove):
                     _delete_path(document, op_path)
                 else:
                     _set_path(document, op_path, op_value)
             document = fold_versions(document)    # and the bodies the operations brought
+            # 🔴 [총괄 10-14 ②] a long body the explorer brings into a short file is written short,
+            # so one save does not leave the file in two grammars - or refused, by its reason
+            for name in {op_path[1] for op_path, _value in operations
+                         if short and op_path[0] == "sources"}:
+                body = (document.get("sources") or {}).get(name)
+                if is_long_source(body):
+                    written, why = shorten_source(body)
+                    # 검수 1: a read or map cell the operator wrote that the short form answers
+                    # otherwise would be dropped in silence - refused by the cell instead
+                    moves = short_form_moves(body, written, catalog or {}) if written is not None else ()
+                    if moves:
+                        why = "writes " + "; ".join(
+                            f"{cell} {json.dumps(was, ensure_ascii=False)} where a short source reads "
+                            f"{json.dumps(now, ensure_ascii=False)}" for cell, was, now in moves)
+                    if written is None or moves:
+                        raise ConfigExplorerError(
+                            "not_writable_short", f"sources.{name}",
+                            f"the ledger file is written short and this source {why}")
+                    document["sources"][name] = written
             backup_dir = Path(config_backup.backup_dir_for(str(path)))
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup = backup_dir / (
@@ -959,15 +1003,6 @@ class OntologyDraftStore:
                 if os.path.exists(temp_name):
                     os.unlink(temp_name)
             return backup
-        finally:
-            try:
-                os.close(lock_fd)
-            except OSError:
-                pass
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
 
     def _record_path(self, draft_id: str) -> Path:
         if not _DRAFT_ID.fullmatch(str(draft_id)):

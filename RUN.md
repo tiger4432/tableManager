@@ -1,5 +1,40 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **원장 선언 짧은 꼴 — 표 이름과 문장마다 «역할: 컬럼» (setup_version 7) · 옛 선언은 변환 명령 한 번 (총괄 b9d33d6f6 · fdb3a630c · 112293f73 ②, 소유자 «ㄹ»)** — git pull · 런처 재기동, 그다음 변환은 운영자가 고를 때
+>
+> ```
+> 무엇     원장 선언 파일을 짧은 꼴로 적을 수 있음: 소스 = {table, status?, attributes?, sentences: [{sentence, predicate, when?, 역할: 값}]}
+>          값 "칸" = 컬럼 · {"const": v} = 상수 · {"column","timezone","format"} = 시각 · {"node": 타입, "keys": {...}} = 노드
+>          read · map · virtual_joins 는 안 적음 — 표의 가장 짧은 유일 키 · 문장들의 occurred_at 이 기본 (가이드 2.5)
+> 그대로   v6 파일은 오늘처럼 읽힘(같은 번들 · 다시 번역 0). 서버 로그 한 줄:
+>            [Ledger] setup_version 6 read as it is - Next: scripts/migrate_ledger_config_to_v7.py writes it short (preview first)
+> 옮기기   cd server
+>          python -m scripts.migrate_ledger_config_to_v7              (미리보기 — 파일 안 씀)
+>          python -m scripts.migrate_ledger_config_to_v7 --apply      (백업을 남기고 씀) -> 런처 재기동
+> 답의 뜻  소스마다 한 줄
+>            same     원자 신원 그대로 — 할 일 없음
+>            mixes    <바뀌는 칸 was -> now> — 이제부터 번역되는 행은 새 신원, 이미 있는 원자는 그대로(섞여 감, 소유자 «ㄹ»)
+>                     고쳐지는 행은 옛 원자가 거둬지고 새로 한 번 쓰임 — 같은 사실이 둘 생기지 않음
+>                     한 번에 맞추려면 그 소스만: python server/ledger/backfill.py --source <소스> --whole-source (미리보기) -> --apply --pace slow
+>                     먼저 볼 것(읽기 전용, 그 소스 원자를 한 번 훑음) — 행 색인 줄이 없는 원자 수:
+>                       SELECT count(*) FROM ledger_events e LEFT JOIN ledger_source_row_ref r ON r.source_who = e.source_who
+>                         AND r.source_raw_ref = e.source_raw_ref WHERE e.source_who = '<소스>' AND r.source_raw_ref IS NULL;
+>                       0 -> 고친 행의 옛 원자가 거둬짐(섞여 가도 둘 안 생김) · > 0 -> 그 원자는 고쳐도 안 거둬짐: 그 소스만 위 명령으로 다시 번역
+>            dropped  은퇴했고 짧은 꼴로 못 적는 소스 — 파일에서 빠짐, 원자는 남음
+>            loader   오늘도 로더가 거절하는 소스(사유 그대로, 예: 뷰를 읽음) — 옮긴 뒤에도 같은 거절, 파일은 씀
+>            starts   오늘 로더가 거절하는 소스인데 짧은 꼴에선 표의 키로 읽혀 «번역이 시작됨» — 원하지 않으면 status retired
+>            retired  은퇴 소스 — 짧게 옮기고 은퇴 그대로
+>            refused  못 옮김(묶어 읽기 · 자기 맵퍼 · 여러 칸 묶은 제외 · virtual_joins) + Next. 하나라도 있으면 «파일을 안 씀»
+>          --apply 뒤 «same» 소스도 지문 글자는 바뀜(은퇴한 approval_status 낱말이 빠져서) — 재기동 때 부팅 재도장이 위치를 안 건드리고 옮김
+> 선언 창   아직 긴 꼴로 그림. 짧은 파일의 소스를 열면 펼친 긴 꼴, 활성화하면 그 소스를 짧게 다시 씀
+>          거절 «not_writable_short» + 칸 이름 — read 칸(identity · order_by · 시각 · unit)이나 map 칸을 짧은 꼴의 기본과
+>          다르게 고친 활성화(그 편집이 소리 없이 버려지지 않게), 못 줄이는 소스. 소스 일부만 활성화는 «short_file_takes_a_source»
+> 되돌리기  변환 전이면 안 돌리면 됨. 변환 뒤에는 config/backup 의 백업 파일을 제자리에 -> 런처 재기동
+>          코드: git revert <착지 커밋> -> 런처 재기동 (v7 파일은 그 코드로 안 읽힘 — 백업 파일을 먼저 되돌릴 것)
+> ```
+>
+> ---
+>
 > ## [10-14] **서버 거절 문장 13 개가 영어로 — main.py (총괄 10-14)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```

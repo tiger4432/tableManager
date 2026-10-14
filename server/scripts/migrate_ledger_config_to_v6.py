@@ -228,6 +228,11 @@ def main(argv: list[str] | None = None) -> int:
     for key, path in paths.items():
         with open(path, encoding="utf-8") as handle:
             documents[key] = json.load(handle)
+    from ledger.setup_bundle import SETUP_VERSION
+    if (documents["ledger"].get("setup_version") or 0) > SETUP_VERSION:
+        # a later file - this script would write it back as v6 (총괄 10-14 ②)
+        print(f"Already v{documents['ledger']['setup_version']} - nothing to change.")
+        return 0
     before = {key: json.dumps(value, sort_keys=True) for key, value in documents.items()}
     try:
         changes = migrate(documents["ledger"], documents["tables"], documents["rules"])

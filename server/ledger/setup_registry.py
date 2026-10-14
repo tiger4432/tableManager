@@ -28,6 +28,7 @@ from .setup_bundle import (
     _profile_binding_columns,
     bundle_readiness_errors,
     entity_references,
+    expand_source,
     is_retired,
     predicate_claim,
     read_group_by,
@@ -1158,7 +1159,7 @@ def _compile_source_plans(
     for source_id in sorted(refused or {}):
         entry = refused[source_id]
         raw = entry.get("raw") if isinstance(entry, Mapping) else {}
-        raw = raw if isinstance(raw, Mapping) else {}
+        raw = expand_source(raw) if isinstance(raw, Mapping) else {}    # written short or long
         builder.add(source_id, SourcePlan(
             source_id=source_id,
             status=raw.get("status", DEFAULT_LIFECYCLE),

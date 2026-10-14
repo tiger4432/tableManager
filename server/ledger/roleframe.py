@@ -180,6 +180,23 @@ def _key_spelling(keys: Mapping[str, Any]) -> dict:
     return {key: map_overlay.canonical_key_value(value, None) for key, value in (keys or {}).items()}
 
 
+def is_blank_source_value(value: Any) -> bool:
+    """"Empty" as this seam spells it: missing, or a string with nothing but space.
+
+    🔴 ONE FUNCTION BECAUSE TWO SPELLINGS DISAGREE EXACTLY WHERE THE QUESTION LIVES
+    (판정 194 ㉢). `count_rows_missing` already wrote `_is_missing(v) or (isinstance(v, str)
+    and not v.strip())` at its own call site, and `exclude_when` needs the same sentence.
+    Left as two, the day one of them learns about a new empty shape is the day an operator
+    is told "3 of 200 rows are blank" by one and "0" by the other, about the same rows.
+
+    ⚠️ WHITESPACE IS NOT `_is_missing`'S JOB. That one answers "is this value absent",
+    which a `"  "` is not - it is a present string. This is the IDENTITY question layered
+    on top: a key part made of spaces names nothing.
+    (Here beside `_is_missing` since 10-14 so a sentence's `when` asks it too; `event_frame` keeps the name.)
+    """
+    return _is_missing(value) or (isinstance(value, str) and not value.strip())
+
+
 def _is_missing(value: Any) -> bool:
     if value is None:
         return True
@@ -944,7 +961,9 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
             return False
         negated = isinstance(expected, Mapping)
         target = clean_str_value(expected["not"] if negated else expected)
-        if any((clean_str_value(value) == target) == negated for value in values):
+        # a blank cell - missing, NaN, spaces - is "" as `exclude_when`'s blank is (총괄 10-14 ② 검수 3)
+        if any((("" if is_blank_source_value(value) else clean_str_value(value)) == target) == negated
+               for value in values):
             return False
     return True
 

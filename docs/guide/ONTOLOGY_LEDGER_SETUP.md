@@ -257,6 +257,63 @@ mapping이 가져간 문장에 걸리면 **그 id와 사유를 찍고 파일은 
 아예 없는 mapper(`declarative-role@1`)의 mapping은 원래 이름을 그대로 키로 쓴다 — 틀릴 문장이
 없다는 관찰이지 추측이 아니다.
 
+### 2.5 짧은 꼴 — `setup_version` 7 (소유자 10-13 「read 관련 다 빼고 소스 맵핑만」, 10-14 «ㄹ»)
+
+```
+「운영에서는 원장 선언 sources 에 표 이름을 적고, 문장마다 «역할: 컬럼» 을 적으면 됩니다.
+  옛 선언은 변환 명령 한 번으로 이 꼴이 됩니다」
+```
+
+```json
+"dt_job": {
+  "table": "dt_job_rollup",
+  "attributes": {"dtjob": {"dt_eqp": "dt_eqp"}},
+  "sentences": [
+    {"sentence": "counted", "predicate": "has_netdie",
+     "subject": {"node": "dtjob", "keys": {"dt_job": "dt_job"}},
+     "value": "netdie_count",
+     "occurred_at": {"column": "event_time", "timezone": "Asia/Seoul"}}
+  ]
+}
+```
+
+| 적는 것 | 뜻 |
+|---|---|
+| `"칸"` | 그 컬럼 |
+| `{"const": 값}` | 상수 (키 안에서도 같음) |
+| `{"column", "timezone", "format"}` | 시각 컬럼 — 시간대 · 글 모양이 붙는 값만 객체 |
+| `{"node": 타입, "keys": {키: 값}}` | 노드. 행마다 타입을 컬럼에서 읽으면 `"node": {"column": "칸"}` |
+| `sentence` | 문장 이름 — 원자의 신원이라 옛 매핑 이름 그대로 |
+| `when` | 그 문장을 말하는 행 — `{칸: 값}` · `{칸: {"not": 값}}`, 빈 칸은 `""` |
+| `attributes` | 타입마다 속성 한 번 — 소스에 하나 |
+| `status: "retired"` | 소스 끄기 |
+
+적지 않는 것: `read`(단위 · 신원 · 순서 · 커서 — 표의 가장 짧은 유일 키가 기본, 시각은 문장들의
+`occurred_at`) · `map`(선언 맵퍼 하나) · `virtual_joins`(체인 조인이 표에 쓴다) · 노드 «안»의
+attributes.
+
+옛 파일 옮기기 (`server/`에서, 미리보기가 기본):
+
+```powershell
+conda run -n assy_manager python -m scripts.migrate_ledger_config_to_v7
+conda run -n assy_manager python -m scripts.migrate_ledger_config_to_v7 --apply
+```
+
+| 줄 | 뜻 | 할 일 |
+|---|---|---|
+| `same` | 펼친 선언이 같은 지문 — 원자 신원 그대로 | 없음 |
+| `mixes` | 신원 · 순서 · 시각을 기본으로 읽게 됨(바뀌는 칸을 적음). 이제부터 번역되는 행은 새 신원, 이미 있는 원자는 그대로. 고쳐지는 행은 옛 원자가 거둬지고 새로 한 번 쓰임 | 한 번에 맞추려면 그 소스만 `python server/ledger/backfill.py --source <소스> --whole-source` (미리보기) → `--apply --pace slow` |
+| `dropped` | 은퇴했고 짧은 꼴로 못 적는 소스 — 파일에서 빠짐, 원자는 남음 | 없음 |
+| `loader` | 오늘도 로더가 거절하는 소스(예: 뷰를 읽음) — 옮긴 뒤에도 같은 사유로 거절, 파일은 씀 | 그 사유대로 |
+| `starts` | 오늘 로더가 거절하는데 짧은 꼴에선 표의 키로 읽혀 번역이 시작되는 소스 | 원하지 않으면 `status: "retired"` |
+| `retired` | 은퇴 소스 — 짧게 옮기고 은퇴 그대로 | 없음 |
+| `refused` | 못 옮김(묶어 읽기 · 자기 맵퍼 · 여러 칸 제외 · virtual_joins). **파일을 안 씀** | 줄의 Next — 체인이 행 단위 표를 쓰게 옮긴 뒤 다시 |
+
+- v6 파일은 그대로 읽힌다(같은 번들) — 로그 `[Ledger] setup_version 6 read as it is - Next: …` 한 줄.
+- 선언 창은 아직 긴 꼴로 그린다. 짧은 파일의 소스를 창에서 열면 펼친 긴 꼴이 보이고, 활성화하면
+  그 소스를 다시 짧게 써 넣는다. read · map 칸(신원 · 순서 · 시각)을 짧은 꼴의 기본과 다르게 고친 활성화는
+  버려지지 않게 그 칸 이름으로 거절하고, 못 줄이는 소스와 소스 «일부»만의 활성화도 거절한다.
+
 ---
 
 ## 3. 작성 전 준비 사항

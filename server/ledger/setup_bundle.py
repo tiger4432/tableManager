@@ -1055,10 +1055,10 @@ def _event_edge_time(profile: Any) -> Any:
 
 def validate_bundle(value: Mapping[str, Any], *,
                     catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
-    value = fold_versions(upgrade_setup(value))
     issues = validate_bundle_errors(value, catalog=catalog)
     if issues:
         raise issues[0]
+    value = fold_versions(upgrade_setup(value))
     value = with_read_defaults(value, catalog)
     filled = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
     normalized = _normalize(_derived_cursor(filled))
@@ -1084,6 +1084,10 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
     It is a parameter for the same reason `trusted_implementations()` is a parameter on
     `compile_setup_snapshot`: the caller states which world it is judging against.  Production resolves it once, in `ledger.setup`.
     """
+    if isinstance(value, Mapping) and value.get("setup_version") == SHORT_FORM_VERSION:
+        short = _short_form_errors(value)
+        if short:
+            return short
     value = fold_versions(upgrade_setup(value))
     problems = _Problems()
     if catalog is None:
@@ -1206,11 +1210,15 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             f"the setup is one file ({config_name}); this root also contains "
             f"{relative!r} — move it outside the config root")
 
-    document = fold_versions(upgrade_setup(_read_json(config_path, "ledger_config")))
-    issues = _root_document_errors(document)
+    written = _read_json(config_path, "ledger_config")
+    if isinstance(written, Mapping) and written.get("setup_version") == SETUP_VERSION and not _V7_SAID:
+        _V7_SAID.add(SETUP_VERSION)
+        logger.info("[Ledger] setup_version %d read as it is - Next: "
+                    "scripts/migrate_ledger_config_to_v7.py writes it short (preview first)", SETUP_VERSION)
+    issues = _root_document_errors(fold_versions(upgrade_setup(written)))
     if issues:
         raise issues[0]
-    return validate_bundle(document, catalog=catalog)
+    return validate_bundle(written, catalog=catalog)
 
 
 #: The setup version the last grammar change came from, and the ones its in-memory reading
@@ -1230,8 +1238,15 @@ def upgrade_setup(document: Any) -> Any:
     the validator then refuses that source by name (`prepare_retired`) - its computation has
     to move to the chain first, which is the migration's job, not a reader's.
 
-    Anything that is not a v5 document comes back as it came.
+    A setup_version 7 document - sources written short - is read by `expand_short_form`. A v6
+    document is read as it is (총괄 10-14 ㄹ: its sources keep their identity until the operator
+    writes the file short) - the loader says so once, because only it knows the file was WRITTEN
+    v6: an expanded v7 document is v6 too, and comes back through here.
+
+    Anything else comes back as it came.
     """
+    if isinstance(document, Mapping) and document.get("setup_version") == SHORT_FORM_VERSION:
+        return expand_short_form(document)
     if not isinstance(document, Mapping) or document.get("setup_version") != UPGRADED_FROM:
         return document
     upgraded = copy.deepcopy(dict(document))
@@ -1254,6 +1269,359 @@ def upgrade_setup(document: Any) -> Any:
                     "scripts/migrate_ledger_config_to_v6.py to write it",
                     UPGRADED_FROM, SETUP_VERSION, dropped)
     return upgraded
+
+
+#: A file whose sources are written SHORT (총괄 b9d33d6f6 · fdb3a630c, 소유자 10-13 「read 관련 다 빼고
+#: 소스 맵핑만」 · 「그냥 컬럼 맵핑 느낌으로」): a source is {table, status?, attributes?, sentences}.
+#: `expand_short_form` reads it as the long grammar this module validates and compiles, under
+#: SETUP_VERSION - a source written short and the same source written long are one fingerprint.
+#: `shorten_setup` is its pair, the converter's (scripts/migrate_ledger_config_to_v7.py).
+SHORT_FORM_VERSION = 7
+_SHORT_SOURCE_REQUIRED = ("table", "sentences")
+_SHORT_SOURCE_OPTIONAL = ("status", "attributes")
+#: The long clauses a short source does not write - read and map are the product's, bind is
+#: `sentences` and `attributes`.
+_LONG_SOURCE_FIELDS = ("relation", "read", "map", "bind")
+#: A sentence's own words; every other key of a sentence is a role it binds.
+_SENTENCE_WORDS = ("sentence", "predicate", "when")
+_SHORT_VALUE = ('a value is a column name, {"const": <value>}, {"column", "timezone", "format"} '
+                'for a time, or {"node": <type> | {"column": <c>}, "keys": {<key>: <value>}}')
+_V7_SAID: set = set()
+
+
+def _long_binding(value: Any) -> Any:
+    """A short value as the binding it stands for. A shape that is none of the four comes back as
+    it came, and `_short_form_errors` has already named it."""
+    if isinstance(value, str):
+        return {"kind": "column", "column": value}
+    if not isinstance(value, Mapping):
+        return value
+    if set(value) == {"const"}:
+        return {"kind": "constant", "value": value["const"]}
+    if "node" in value:
+        node, keys = value.get("node"), value.get("keys")
+        return {"kind": "entity",
+                "entity_type": {"kind": "column", **node} if isinstance(node, Mapping) else node,
+                "keys": ({key: _long_binding(part) for key, part in keys.items()}
+                         if isinstance(keys, Mapping) else keys)}
+    if "column" in value:
+        return {"kind": "column", **value}
+    return value
+
+
+def _short_value(binding: Any) -> Any:
+    """`_long_binding` read backwards - the converter's half. None: no short spelling."""
+    if not isinstance(binding, Mapping):
+        return None
+    binding = {k: v for k, v in binding.items() if k not in _RETIRED_BINDING_FIELDS}
+    kind = binding.get("kind")
+    if kind == "column" and set(binding) <= {"kind", "column", "timezone", "format"}:
+        rest = {k: v for k, v in binding.items() if k != "kind"}
+        return rest["column"] if set(rest) == {"column"} else rest
+    if kind == "constant" and set(binding) == {"kind", "value"}:
+        return {"const": binding["value"]}
+    if kind == "entity" and set(binding) == {"kind", "entity_type", "keys"}:
+        named = binding["entity_type"]
+        keys = {key: _short_value(part) for key, part in (binding["keys"] or {}).items()}
+        if any(part is None for part in keys.values()):
+            return None
+        return {"node": {"column": named["column"]} if isinstance(named, Mapping) else named,
+                "keys": keys}
+    return None
+
+
+def expand_short_form(document: Any) -> Any:
+    """A setup_version 7 document as the long grammar (SETUP_VERSION) - read and map are the
+    product's defaults (`with_read_defaults`), each sentence a mapping under its name.
+
+    The time: sentences that all read ONE time column and say its zone have that column, zone and
+    format as `read.occurred_at` and bind the column alone - the long spelling every tracked
+    declaration uses, so a converted source keeps its fingerprint. Sentences reading different
+    times keep their zones on their bindings, and the read's default then names the cell to write.
+    Anything that is not a v7 document comes back as it came."""
+    if not isinstance(document, Mapping) or document.get("setup_version") != SHORT_FORM_VERSION:
+        return document
+    expanded = copy.deepcopy(dict(document))
+    expanded["setup_version"] = SETUP_VERSION
+    sources = expanded.get("sources")
+    if isinstance(sources, Mapping):
+        expanded["sources"] = {name: expand_source(source) for name, source in sources.items()}
+    return expanded
+
+
+def is_long_source(source: Any) -> bool:
+    """A source written in the long grammar, which a v7 file may still hold - the explorer splices
+    a long body into the file it previews. Decided per source, by its clauses."""
+    return isinstance(source, Mapping) and any(name in source for name in _LONG_SOURCE_FIELDS)
+
+
+def expand_source(source: Any) -> Any:
+    """One source as the long grammar - a long one as it is. Readers of a source's body as written
+    (a refused source's relation, its predicates) read it through here."""
+    if not isinstance(source, Mapping) or is_long_source(source):
+        return source
+    mappings: dict[str, Any] = {}
+    sentences = source.get("sentences")
+    for item in sentences if isinstance(sentences, list) else ():
+        if not isinstance(item, Mapping):
+            continue
+        mapping = {"predicate": item.get("predicate"),
+                   "bind": {role: _long_binding(value) for role, value in item.items()
+                            if role not in _SENTENCE_WORDS}}
+        if "when" in item:
+            mapping["when"] = item["when"]
+        mappings[item.get("sentence")] = mapping
+    read: dict[str, Any] = {}
+    times = [m["bind"][OCCURRED_AT_ROLE] for m in mappings.values() if OCCURRED_AT_ROLE in m["bind"]]
+    spelled = {json.dumps(time, sort_keys=True, default=str) for time in times}
+    if (len(spelled) == 1 and isinstance(times[0], Mapping) and times[0].get("kind") == "column"
+            and "timezone" in times[0]):
+        read["occurred_at"] = {k: times[0][k] for k in ("column", "timezone", "format") if k in times[0]}
+        for mapping in mappings.values():
+            if OCCURRED_AT_ROLE in mapping["bind"]:
+                mapping["bind"][OCCURRED_AT_ROLE] = {"kind": "column", "column": times[0]["column"]}
+    bind: dict[str, Any] = {"mappings": mappings}
+    attributes = source.get("attributes")
+    if isinstance(attributes, Mapping) and attributes:
+        bind["entities"] = {name: {"attributes": {attribute: _long_binding(value)
+                                                  for attribute, value in own.items()}
+                                   if isinstance(own, Mapping) else own}
+                            for name, own in attributes.items()}
+    long = {"relation": source.get("table"), "read": read,
+            "map": {"implementation_id": DECLARATIVE_ROLE, "implementation_version": 1},
+            "bind": bind}
+    if "status" in source:
+        long["status"] = source["status"]
+    return long
+
+
+def _short_form_errors(document: Mapping[str, Any]) -> tuple[LedgerSetupValidationError, ...]:
+    """A v7 file's SHORT shape, on its own paths - before `expand_short_form` reads it. What a
+    sentence says (a declared predicate, a column the table has, a `when`) is the long
+    validator's after the expansion, in the same words."""
+    problems = _Problems()
+    if "virtual_joins" in document:
+        problems.add("virtual_joins_retired", "ledger_config.virtual_joins",
+                     "a short file has no virtual_joins (소유자 10-13) - a chain join writes the "
+                     "table a source reads. Next: delete the section")
+    sources = document.get("sources")
+    for name in sorted(sources, key=str) if isinstance(sources, Mapping) else ():
+        path, source = f"bundle.sources.{name}", sources[name]
+        if is_long_source(source):
+            continue            # read as it is - the long validator judges it
+        if not problems.exact(source, path, required=_SHORT_SOURCE_REQUIRED,
+                              optional=_SHORT_SOURCE_OPTIONAL):
+            continue
+        _nonblank_text(source.get("table"), f"{path}.table", problems)
+        attributes = source.get("attributes")
+        if "attributes" in source and not isinstance(attributes, Mapping):
+            problems.add("invalid_type", f"{path}.attributes", "must be {<type>: {<attribute>: <value>}}")
+        for kind in sorted(attributes, key=str) if isinstance(attributes, Mapping) else ():
+            own = attributes[kind]
+            if not isinstance(own, Mapping) or not own:
+                problems.add("invalid_type", f"{path}.attributes.{kind}",
+                             "must be a non-empty {<attribute>: <value>}")
+                continue
+            for attribute in sorted(own, key=str):
+                _short_value_errors(own[attribute], f"{path}.attributes.{kind}.{attribute}",
+                                    problems, node=False)
+        sentences = source.get("sentences")
+        if not isinstance(sentences, list) or not sentences:
+            problems.add("invalid_type", f"{path}.sentences", "must be a non-empty list of sentences")
+            continue
+        seen = set()
+        for index, item in enumerate(sentences):
+            spot = f"{path}.sentences[{index}]"
+            if not isinstance(item, Mapping):
+                problems.add("invalid_type", spot, "must be an object")
+                continue
+            for word in ("sentence", "predicate"):
+                if word not in item:
+                    problems.add("missing_field", f"{spot}.{word}", "field is required")
+            said = item.get("sentence")
+            _nonblank_id(said, f"{spot}.sentence", problems)
+            if said in seen:
+                problems.add("duplicate_sentence", f"{spot}.sentence",
+                             f"sentence {said!r} is named twice in this source - a sentence's name "
+                             f"is its atoms' identity, so each is said once")
+            seen.add(said)
+            for role in sorted(item, key=str):
+                if role not in _SENTENCE_WORDS:
+                    _short_value_errors(item[role], f"{spot}.{role}", problems, node=True)
+    return problems.finish()
+
+
+def _short_value_errors(value: Any, path: str, problems: _Problems, *, node: bool) -> None:
+    if isinstance(value, str):
+        _nonblank_text(value, path, problems)
+        return
+    if not isinstance(value, Mapping):
+        problems.add("invalid_binding", path, _SHORT_VALUE)
+    elif set(value) == {"const"}:
+        _deterministic_json(value["const"], f"{path}.const", problems)
+    elif "node" in value:
+        if not node:
+            problems.add("invalid_binding", path, "a node is not a value here - " + _SHORT_VALUE)
+            return
+        problems.exact(value, path, required=("node", "keys"))
+        named = value.get("node")
+        if isinstance(named, Mapping):
+            if problems.exact(named, f"{path}.node", required=("column",)):
+                _nonblank_text(named.get("column"), f"{path}.node.column", problems)
+        else:
+            _nonblank_text(named, f"{path}.node", problems)
+        keys = value.get("keys")
+        if not isinstance(keys, Mapping) or not keys:
+            problems.add("invalid_entity_ref", f"{path}.keys", "must be non-empty")
+            return
+        for key in sorted(keys, key=str):
+            _short_value_errors(keys[key], f"{path}.keys.{key}", problems, node=False)
+    elif "column" in value:
+        problems.exact(value, path, required=("column",), optional=("timezone", "format"))
+    else:
+        problems.add("invalid_binding", path, _SHORT_VALUE)
+
+
+#: A verdict per source from `shorten_setup`: written short, or why not.
+SHORTENED, DROPPED, REFUSED = "short", "dropped", "refused"
+
+
+def shorten_setup(document: Any) -> tuple[dict[str, Any], dict[str, tuple[str, str]]]:
+    """A long (SETUP_VERSION) document written SHORT - `expand_short_form` read backwards - and
+    each source's verdict: (SHORTENED, ""), (DROPPED, why) or (REFUSED, why + Next).
+
+    Refused, by name: a group_by read, a mapper of its own, an `exclude_when` clause a sentence's
+    `when` cannot say (several columns ANDed, or a column a sentence already conditions), and two
+    nodes of one type with different attributes on a role. A RETIRED source that cannot be
+    written short is dropped instead - it reads nothing, and its atoms stay (총괄 10-14 ㄹ).
+    A read whose order or time is not the product's default IS written short: its new rows are
+    translated on the default identity, old atoms stay as they are (소유자 10-14 «ㄹ»); which
+    sources those are is the converter's fingerprint comparison, not a rule here.
+    `virtual_joins` with a rule refuses the file; an empty one is dropped."""
+    document = copy.deepcopy(dict(document))
+    verdicts: dict[str, tuple[str, str]] = {}
+    joins = document.pop("virtual_joins", None)
+    if joins:
+        verdicts["virtual_joins"] = (REFUSED, f"{len(joins)} rule(s) - a chain join writes the table "
+                                              f"a source reads. Next: move each to a chain rule")
+    sources = {}
+    for name, source in (document.get("sources") or {}).items():
+        short, why = shorten_source(source)
+        if short is not None:
+            sources[name] = short
+            verdicts[name] = (SHORTENED, "")
+        elif is_retired(source):
+            verdicts[name] = (DROPPED, why)
+        else:
+            sources[name] = source
+            verdicts[name] = (REFUSED, why)
+    document["sources"] = sources
+    document["setup_version"] = SHORT_FORM_VERSION
+    return document, verdicts
+
+
+#: The read and map cells a short source does not write - the product answers them.
+_PRODUCT_CELLS = (("read", "unit"), ("read", "identity"), ("read", "group_by"), ("read", "order_by"),
+                  ("read", "occurred_at"), ("read", "registration_probe"),
+                  ("map", "implementation_id"), ("map", "implementation_version"), ("map", "unit"))
+
+
+def short_form_moves(source: Mapping[str, Any], short: Mapping[str, Any],
+                     catalog: Mapping[str, Any]) -> list[tuple[str, Any, Any]]:
+    """`(cell, written, answered)` for each read or map cell a long source declares that its short
+    form answers otherwise - both read with the product's defaults. ONE comparer (총괄 10-14 ②
+    검수 1): activating into a short file refuses on it, the converter names a mixing source's
+    cells with it. `exclude_when` is not here - it moves into the sentences' `when`."""
+    written, answered = (source_defaults(item, catalog) for item in (source, expand_source(short)))
+    moves = []
+    for clause, cell in _PRODUCT_CELLS:
+        was = (written.get(clause) or {}).get(cell)
+        now = (answered.get(clause) or {}).get(cell)
+        if was != now and not (was in (None, [], ()) and now in (None, [], ())):
+            moves.append((f"{clause}.{cell}", was, now))
+    return moves
+
+
+#: The order a short sentence lists its roles in - the ones every reader looks for first.
+_ROLE_ORDER = (SUBJECT_ROLE, TARGET_ROLE, VALUE_ROLE, OCCURRED_AT_ROLE)
+
+
+def _role_order(role: str) -> tuple:
+    return (_ROLE_ORDER.index(role) if role in _ROLE_ORDER else len(_ROLE_ORDER), role)
+
+
+def shorten_source(source: Mapping[str, Any]) -> tuple[Any, str]:
+    """One long source written short, or (None, why + Next) - `shorten_setup`'s per-source half,
+    and the explorer's when it activates a long body into a short file."""
+    read, mapper, bind = (source.get(name) or {} for name in ("read", "map", "bind"))
+    if read.get("unit") == "group" or read_group_by(read):
+        return None, ("reads rows in groups (read.group_by) - a short source says one row's facts. "
+                      "Next: a chain rule writes one row per group into a table this source reads")
+    if mapper.get("implementation_id", DECLARATIVE_ROLE) != DECLARATIVE_ROLE:
+        return None, (f"is translated by its own mapper {mapper.get('implementation_id')!r} - a short "
+                      f"source is its declaration. Next: a chain rule writes the rows the mapper read "
+                      f"them as, and this source binds that table")
+    occurred = read.get("occurred_at") or {}
+    attributes = {kind: {attribute: _short_value(binding)
+                         for attribute, binding in (own.get("attributes") or {}).items()}
+                  for kind, own in (bind.get("entities") or {}).items()}
+    sentences = []
+    for sentence in sorted(bind.get("mappings") or {}, key=str):
+        mapping = bind["mappings"][sentence]
+        item: dict[str, Any] = {"sentence": sentence, "predicate": mapping.get("predicate")}
+        if mapping.get("when"):
+            item["when"] = dict(mapping["when"])
+        for role in sorted(mapping.get("bind") or {}, key=_role_order):
+            binding = mapping["bind"][role]
+            if role == OCCURRED_AT_ROLE and isinstance(binding, Mapping) and binding.get("kind") == "column":
+                binding = {**binding, **{k: occurred[k] for k in ("timezone", "format")
+                                         if k in occurred and k not in binding}}
+            own = binding.get("attributes") if isinstance(binding, Mapping) else None
+            if own and isinstance(binding.get("entity_type"), Mapping):
+                return None, (f"sentence {sentence!r} gives attributes to its {role} node whose type is "
+                              f"read from a column - an attribute belongs to one named type")
+            if own:
+                kind = binding.get("entity_type")
+                moved = {attribute: _short_value(part) for attribute, part in own.items()}
+                held = attributes.setdefault(kind, {})
+                if any(held.get(attribute, value) != value for attribute, value in moved.items()):
+                    return None, (f"sentence {sentence!r} gives its {role} node attributes of its own "
+                                  f"that differ from another {kind!r} node's - a short source says "
+                                  f"a type's attributes once. Next: one value per attribute")
+                held.update(moved)
+                binding = {k: v for k, v in binding.items() if k != "attributes"}
+            value = _short_value(binding)
+            if value is None:
+                return None, (f"sentence {sentence!r} binds {role} in a shape the short form does "
+                              f"not write: {json.dumps(binding, ensure_ascii=False, default=str)[:160]}")
+            item[role] = value
+        sentences.append(item)
+    for clause in read.get("exclude_when") or ():
+        if "when" in clause:
+            if len(clause["when"]) != 1:
+                return None, ("excludes rows on several columns at once (read.exclude_when) - a "
+                              "sentence's when cannot say «not this and that». Next: one column per clause")
+            column, value = next(iter(clause["when"].items()))
+            negated = value["not"] if isinstance(value, Mapping) else {"not": value}
+        else:
+            column, negated = clause.get("column"), {"not": ""}
+        for item in sentences:
+            if column in item.get("when", {}):
+                return None, (f"sentence {item['sentence']!r} already asks {column!r} in its when, "
+                              f"and read.exclude_when asks it too. Next: write the one condition")
+            item.setdefault("when", {})[column] = negated
+    if any(value is None for own in attributes.values() for value in own.values()):
+        return None, "binds an attribute in a shape the short form does not write"
+    # a sentence's own words first - its name, predicate and condition - then its roles
+    sentences = [{**{word: item[word] for word in _SENTENCE_WORDS if word in item}, **item}
+                 for item in sentences]
+    short: dict[str, Any] = {"table": source.get("relation")}
+    if "status" in source:
+        short["status"] = source["status"]
+    if attributes:
+        short["attributes"] = attributes
+    short["sentences"] = sentences
+    return short, ""
 
 
 def _root_document_errors(document: Mapping[str, Any]
@@ -1295,13 +1663,13 @@ def setup_bundle_errors(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             "invalid_config_root", "config_root", "must be a directory")
     config_path = _resolve_config_path(
         root_path, config_name, "config_root", require_json=True)
-    document = fold_versions(upgrade_setup(_read_json(config_path, "ledger_config")))
-    root_issues = _root_document_errors(document)
+    written = _read_json(config_path, "ledger_config")
+    root_issues = _root_document_errors(fold_versions(upgrade_setup(written)))
     if root_issues:
         # The section-level validator would read sections this one just called absent or
         # misspelled, and report a second wave of consequences rather than causes.
         return root_issues
-    return validate_bundle_errors(document, catalog=catalog)
+    return validate_bundle_errors(written, catalog=catalog)
 
 
 def _resolve_config_path(root: Path, relative: Any, path: str, *, require_json: bool) -> Path:
@@ -1964,6 +2332,7 @@ def emitted_predicates(source, entities, vocabulary) -> list:
     ONE answer, so the declaration screen does not list less than the ledger receives. A role
     whose type is read from a column names every type it can carry (`column_typed_entity_types`
     on the compiled `vocabulary`)."""
+    source = expand_source(source)                       # a body as written may be short
     mappings = ((source or {}).get("bind") or {}).get("mappings") or {}
     found = {mapping.get("predicate") for mapping in mappings.values()
              if isinstance(mapping, Mapping) and mapping.get("predicate")}
