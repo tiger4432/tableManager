@@ -1737,7 +1737,7 @@ const MUTANTS = [
   { id: 'PWM14', what: 'the ranking asked on every walk', catches: 'PW9 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'return { ...this.walkParams, ...own, propagation: false };', 'return { ...this.walkParams, ...own };') },
   { id: 'PWM15', what: 'the runs of a value walk asked one after another', catches: 'PW10 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(this.fetchWalk,', 'chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(k ? (p) => new Promise((r) => setTimeout(r, 3000)).then(() => this.fetchWalk(p)) : this.fetchWalk,') },
+    mutate: (t) => swap(t, 'chunks(ask.seeds, this.seedChunk).map((some) => walkToEnd(this.fetchWalk,', 'chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(k ? (p) => new Promise((r) => setTimeout(r, 3000)).then(() => this.fetchWalk(p)) : this.fetchWalk,') },
   { id: 'PWM16', what: 'every walk asks no ranking - the walk box loses its ranked list', catches: 'PW11 ', file: 'rnd_board/api.js', key: 'api',
     mutate: (t) => swap(t, "if (propagation === false) query.set('propagation', 'false');", "query.set('propagation', 'false');") },
   { id: 'PWM17', what: 'a value walk folds again on every page', catches: 'PW12 ', file: 'testbed/visual_part.js', key: 'visual',
