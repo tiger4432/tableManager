@@ -126,7 +126,7 @@ def test_every_page_asks_after_the_partitions_the_run_has_written(world, monkeyp
     it has written so far."""
     asked = []
     monkeypatch.setattr(backfill, "analyze_stale_partitions",
-                        lambda engine, world, only=None: asked.append(sorted(only)) or [])
+                        lambda engine, world, only=None, skips=None: asked.append(sorted(only)) or [])
     out, _lines = _run(world, key_range=(None, None))
     assert out["pages"] >= 3
     assert len(asked) == out["pages"], (len(asked), out["pages"])
@@ -156,6 +156,58 @@ def test_a_partition_another_session_holds_is_not_waited_for(world, far):
     assert done == [] and took < 2, (done, took)
     assert any(" · not analyzed: " in line and far in line for line in lines), lines
     assert far in _stale(world["engine"], share=1e9), "still never analyzed - the next page asks again"
+
+
+def test_one_put_off_again_is_said_once_and_its_analysis_once(world, far):
+    """Held over three pages: one «not analyzed», the next two silent; then «analyzed … after 3 skips» - by the run, or
+    «analyzed elsewhere … after 1 skip» when autovacuum (here another session) did it meanwhile."""
+    lines, skips = [], {}
+    control = retroactive.RunControl(None, op="ledger_rescope", log=lines.append)
+    token = keyset_scan.RUN_CONTROL.set(control)
+    try:
+        holder = world["engine"].raw_connection()
+        try:
+            with holder.cursor() as cursor:
+                cursor.execute('LOCK TABLE "%s".%s IN SHARE UPDATE EXCLUSIVE MODE' % (S, far))
+            for _ in range(3):
+                assert backfill.analyze_stale_partitions(world["engine"], None, [far], skips=skips) == []
+        finally:
+            holder.rollback()
+            holder.close()
+        assert [line for line in lines if far in line and "not analyzed" in line] == lines[1:2] and len(lines) == 2, lines
+        assert backfill.analyze_stale_partitions(world["engine"], None, [far], skips=skips) == [far]
+        assert len(lines) == 3 and far + " after 3 skips · " in lines[2] and "not analyzed" not in lines[2], lines
+        assert skips == {}
+    finally:
+        keyset_scan.RUN_CONTROL.reset(token)
+
+
+def _held_once(world, far, skips):
+    holder = world["engine"].raw_connection()
+    try:
+        with holder.cursor() as cursor:
+            cursor.execute('LOCK TABLE "%s".%s IN SHARE UPDATE EXCLUSIVE MODE' % (S, far))
+        assert backfill.analyze_stale_partitions(world["engine"], None, [far], skips=skips) == []
+    finally:
+        holder.rollback()
+        holder.close()
+
+
+def test_one_put_off_then_analyzed_elsewhere_is_said_so(world, far):
+    """The case the box showed: autovacuum held it, then analyzed it - the run's next page says so once."""
+    lines, skips = [], {}
+    control = retroactive.RunControl(None, op="ledger_rescope", log=lines.append)
+    token = keyset_scan.RUN_CONTROL.set(control)
+    try:
+        _held_once(world, far, skips)
+        with world["engine"].begin() as conn:
+            conn.execute(text('ANALYZE "%s".%s' % (S, far)))
+        assert backfill.analyze_stale_partitions(world["engine"], None, [far], skips=skips) == []
+        assert backfill.analyze_stale_partitions(world["engine"], None, [far], skips=skips) == []
+    finally:
+        keyset_scan.RUN_CONTROL.reset(token)
+    assert len(lines) == 3 and " · analyzed elsewhere: " + far + " after 1 skip · " in lines[2], lines
+    assert skips == {}
 
 
 def test_one_analyzed_meanwhile_is_not_analyzed_twice(world, far, monkeypatch):

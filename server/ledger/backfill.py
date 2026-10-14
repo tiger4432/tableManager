@@ -780,10 +780,11 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         keyset_scan.say("counting the rows of %s" % plan.relation)            # the run's stage meanwhile (`tell`)
         total = _table_rows(engine, plan)
     run = keyset_scan.RUN_CONTROL.get() is not None
+    skips = {}                                   # the partitions put off this run (`analyze_stale_partitions`)
     if run and key_range is None:
         say_what_every_page_pays(engine, plan, world, withdraw)
         if withdraw:
-            analyze_stale_partitions(engine, world)
+            analyze_stale_partitions(engine, world, skips=skips)
     for frame in _scope_pages(engine, plan, scoped, page_rows, key_range):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
@@ -823,7 +824,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                 # 🔴 EVERY PAGE (총괄 dcccc914b, 소유자 «ㄱ으로해»): the partitions this run has written, analyzed when their
                 #    statistics are gone or the run's own writes changed their share since - production read faster after a
                 #    hand ANALYZE and slower again as the run went on
-                analyze_stale_partitions(engine, world, store._known_partitions)
+                analyze_stale_partitions(engine, world, store._known_partitions, skips=skips)
             if withdraw and scope_row_ids:
                 # 🔴 THE INDEX ROWS GO LAST, for the reason `withdraw_deleted_rows` states:
                 # while they are still here the withdrawal can be run again, and a run that
@@ -888,13 +889,15 @@ def say_what_every_page_pays(engine, plan, world, withdraw):
 ANALYZE_SHARE_SETTING, ANALYZE_SHARE_DEFAULT = "ledger_analyze_changed_share", 0.2
 
 
-def analyze_stale_partitions(engine, world, only=None):
+def analyze_stale_partitions(engine, world, only=None, skips=None):
     """ANALYZE the ledger partitions `schema.stale_partitions` names (of `only`, partition names, when given) - before a
     re-translate's first page and at the end of each of its pages, of the partitions it has written - one line when it
     did any (총괄 10-14: a partition never analyzed answered the withdrawal by Seq Scan beside a valid ref index - 27 rows
     a page, 1.56 s). Each in a transaction of its own: its lock taken NOWAIT and its staleness asked again under it, so
     one another session holds - another slice analyzing it, autovacuum, an index build - is said and left to the next
-    page, and one analyzed meanwhile is not analyzed twice."""
+    page, and one analyzed meanwhile is not analyzed twice. `skips` (the run's, {name: [times, first, reason]}): one
+    put off again for the same reason is not said again, and once analyzed - here or elsewhere, autovacuum - one line
+    says after how many skips and seconds (총괄 10-14: four slices said one held partition 204 times in 4 min)."""
     from chain import keyset_scan
     from ingestion.settings import read_ingestion_settings
 
@@ -905,15 +908,22 @@ def analyze_stale_partitions(engine, world, only=None):
         logger.warning("[Ledger] ingestion_settings.json: %s is %r - a number above 0; read as %s",
                        ANALYZE_SHARE_SETTING, share, ANALYZE_SHARE_DEFAULT)
         share = ANALYZE_SHARE_DEFAULT
-    started, done, skipped = time.monotonic(), [], []
+    skips = {} if skips is None else skips
+    started, done, said, skipped = time.monotonic(), [], [], []
     connection = engine.raw_connection()
     try:
         names = schema.world_names(world)
         stale = schema.stale_partitions(connection, names, share, only)
         connection.commit()
-        if stale:                                   # the run's stage meanwhile (`tell`)
-            keyset_scan.say("analyzing %d partition%s: %s" % (len(stale), "" if len(stale) == 1 else "s",
-                                                             ", ".join(stale)))
+        # put off before and no longer stale: analyzed elsewhere (asked by their own names - `only` may spell them
+        # otherwise, and one the start put off may be outside this page's `only`)
+        still = schema.stale_partitions(connection, names, share, sorted(skips)) if skips else []
+        connection.commit()
+        elsewhere = [name for name in sorted(skips) if name not in still]
+        fresh = [name for name in stale if name not in skips]
+        if fresh:                                   # the run's stage meanwhile (`tell`)
+            keyset_scan.say("analyzing %d partition%s: %s" % (len(fresh), "" if len(fresh) == 1 else "s",
+                                                             ", ".join(fresh)))
         for name in stale:
             try:
                 with connection.cursor() as cursor:
@@ -924,16 +934,30 @@ def analyze_stale_partitions(engine, world, only=None):
                     cursor.execute("ANALYZE %s" % name)
                 connection.commit()
                 done.append(name)
+                said.append(name + _after_skips(skips.pop(name, None)))
             except Exception as exc:                                    # noqa: BLE001 - said, the run goes on
                 connection.rollback()
-                skipped.append("%s (%s)" % (name, str(exc).strip().splitlines()[0]))
+                reason = str(exc).strip().splitlines()[0]
+                before = skips.get(name)
+                if before and before[2] == reason:
+                    before[0] += 1
+                else:
+                    skips[name] = [1, time.monotonic(), reason]
+                    skipped.append("%s (%s)" % (name, reason))
     finally:
         connection.close()
-    if done or skipped:
-        keyset_scan.say("analyzed %d partition%s in %.1f s: %s%s" % (
-            len(done), "" if len(done) == 1 else "s", time.monotonic() - started, ", ".join(done) or "-",
-            " · not analyzed: %s" % ", ".join(skipped) if skipped else ""))
+    elsewhere = [name + _after_skips(skips.pop(name)) for name in elsewhere]
+    if said or skipped or elsewhere:
+        keyset_scan.say("analyzed %d partition%s in %.1f s: %s%s%s" % (
+            len(done), "" if len(done) == 1 else "s", time.monotonic() - started, ", ".join(said) or "-",
+            " · not analyzed: %s" % ", ".join(skipped) if skipped else "",
+            " · analyzed elsewhere: %s" % ", ".join(elsewhere) if elsewhere else ""))
     return done
+
+
+def _after_skips(skip):
+    """` after N skips · M s` of a partition `analyze_stale_partitions` put off, or nothing."""
+    return " after %d skip%s · %.0f s" % (skip[0], "" if skip[0] == 1 else "s", time.monotonic() - skip[1]) if skip else ""
 
 
 def whole_source_tail(engine, setup, source, plan, checkpoint=None, world=None):
