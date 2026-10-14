@@ -35,7 +35,8 @@ export function crossModel(rows, ctx) {
     colKeys.add(c);
     cells.set(keyOf(r, c), { ids });
   }
-  const byId = new Map(rows.map((row) => [row.id, row]));
+  // a cell holds rows (a mark its row's - units.js marksOf; a row's marks fold its cell values once)
+  const byId = new Map(rows.map((row) => [row.row || row.id, row]));
   /** A set of rows folded: the cell slot's values of each row once (a row in two columns counts once in its row's total). */
   const folded = (ids) => {
     const once = [...new Set(ids)];
@@ -70,7 +71,7 @@ export function crossModel(rows, ctx) {
   const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
   return {
     rowKeys: R, colKeys: C, rowParts: R.map(parts), colParts: C.map(parts), grid,
-    rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.id)),
+    rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.row || row.id)),
     rowIds, colIds,
   };
 }

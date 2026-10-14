@@ -18,11 +18,14 @@ const ROOT = join(HERE, '..', '..');
 const REAL = {
   aggregate: await import('../src/testbed/aggregate.js'),
   slot: await import('../src/testbed/slot.js'),
+  units: await import('../src/testbed/units.js'),
   filter: await import('../src/testbed/filter.js'),
   hubs: await import('../src/testbed/hubs.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
   color: await import('../src/testbed/color_by.js'),
   cross: await import('../src/testbed/kinds/cross_table.js'),
+  table: await import('../src/testbed/kinds/table.js'),
+  map: await import('../src/testbed/kinds/map.js'),
   visual: await import('../src/testbed/visual_part.js'),
   status: await import('../src/testbed/status_part.js'),
   picker: await import('../src/testbed/picker.js'),
@@ -158,6 +161,15 @@ async function measure(M) {
   const model = M.scatter.scatterModel(t5rows, { ...t5paint, palette: DARK });
   const p1 = model.points.find((p) => p.id === 'W1');
   const p4 = model.points.find((p) => p.id === 'W4');
+  // T40: the marks (lead-board-13 ②) - several spread a mark each; two several slots from the same records paired, from
+  // different records the row dropped with why; one value the same on every mark; a mark is its row's
+  const mk = (id, reads) => ({ id, label: id, reads, raw: {} });
+  const sev = (values) => ({ state: 'several', values, n: values.length });
+  const recordsOf = (id, key) => ({ R1: { x: [{ value: '1', record: 'e1' }, { value: '2', record: 'e2' }], y: [{ value: 'a', record: 'e1' }, { value: 'b', record: 'e2' }] },
+    R2: { x: [{ value: '1', record: 'e1' }, { value: '2', record: 'e2' }], y: [{ value: 'a', record: 'e3' }, { value: 'b', record: 'e4' }] } }[id] || {})[key] || null;
+  const got = M.units.marksOf([mk('R0', { x: { state: 'one', value: '5' }, y: sev(['p', 'q']) }), mk('R1', { x: sev(['1', '2']), y: sev(['a', 'b']) }),
+    mk('R2', { x: sev(['1', '2']), y: sev(['a', 'b']) })], ['x', 'y'], recordsOf, (k) => k.toUpperCase());
+  out.marks = [got.marks.map((m) => [m.id, m.row, m.ids.join(), m.reads.x.value, m.reads.y.value]), got.dropped.map((d) => [d.id, d.why])];
   // T36: a slot's scale - the one seat (lead-board-13 ①, owner 10-14 ㄱ)
   const one = (value, declared) => ({ state: 'one', value, ...(declared ? { declared } : {}) });
   const sc = (reads, chosen) => { const s = M.slot.scaleOf(reads, chosen); return `${s.scale}${s.time ? '+time' : ''}`; };
@@ -171,7 +183,7 @@ async function measure(M) {
   const ramp = M.color.colorsOf(rampRows, { palette: pal, declaration: { encode: { color: temp } }, scale: { scale: 'continuous', time: false } });
   out.ramp = [ramp.categories.length, ramp.ramp && ramp.ramp.min, ramp.ramp && ramp.ramp.max, ramp.ramp && ramp.ramp.high, ramp.of.get('W3').fill, ramp.of.get('W1').fill,
     ramp.of.get('W1').fill !== ramp.of.get('W2').fill, ramp.of.get('W4').fill];
-  out.scatter = { drawn: model.points.map((p) => p.id), notDrawn: model.notDrawn, several: model.several, kinds: [model.xKind, model.yKind],
+  out.scatter = { drawn: model.points.map((p) => p.id), notDrawn: model.notDrawn, kinds: [model.xKind, model.yKind],
     marked: p1.fill, dimmed: p4.fill, legend: t5paint.colors.categories.map((l) => [l.name, l.dim, l.ids]) };
   const option = M.scatter.scatterOption(model, DARK);
   out.drag = [M.scatter.idsInRange(model, option, [[15, 45], [1.5, 4.5]]), M.scatter.idsInRange(model, option, [[15, 45], [3.5, 4.5]]),
@@ -390,6 +402,17 @@ async function parts(M) {
   const withCells = seat(M, crossDecl({ id: 'C8' }));
   await settle();
   out.cellsPill = [pillOf(noCells), pillOf(withCells)];
+  // T42: one walk, four kinds on the same two slots (lead-board-13 ② gate): the root makes the same marks for each - W3's
+  // two temps two marks, W6 with none one; the table a line a mark, W3's second line W3's
+  const k4 = [seat(M, scatterDecl({ id: 'K4', encode: { x: temp, y: press } })), seat(M, scatterDecl({ id: 'K5', kind: 'table', encode: { col1: temp, col2: press } }), { kinds: { table: M.table.kind } }),
+    seat(M, crossDecl({ id: 'K6', encode: { rows: temp, columns: press } })), seat(M, scatterDecl({ id: 'K7', kind: 'map', encode: { x: temp, y: press } }), { kinds: { map: M.map.kind } })];
+  await settle();
+  const second = (k4[1].part.model.lines || []).find((l) => l.id === 'W3#1');
+  out.sameMarks = [...k4.map((k) => (k.part.unitsById ? k.part.unitsById.size : null)), (k4[1].part.model.lines || []).length, second ? second.ids : null];
+  // T41: a kind that draws one value a place - the root's refusal (#MANY and why); a cross cell holds a row's two marks once
+  const refused = M.units.refuseMany([{ id: 'W9', label: 'W9', reads: { a: { state: 'several', values: ['1', '2'], n: 2 } }, raw: {} }])[0].reads.a;
+  const cells = M.slot.combosOf([{ id: 'W9#0', ids: ['W9'], reads: { r: { state: 'one', value: 'L' } } }, { id: 'W9#1', ids: ['W9'], reads: { r: { state: 'one', value: 'L' } } }], ['r']);
+  out.rootRefusal = [refused.state, refused.error, refused.why, cells.map((c) => c.ids)];
   // T34: «time» in the picker's Value list (lead 10-14 ③ ㄱ): on a route, the slot reads the time of what it reads (its last
   // edge's) - of 'time', the same value; on «(row)» it is off with its reason
   const timeOf = (part, key) => {
@@ -554,13 +577,16 @@ function suite(out, page, saved, counted) {
     out.reads, ['one', 'several', '34', 34, 'empty', 'missing', 'several', ['A', 'B']]);
   eq('T4 the one filter: a range; two conditions AND; checked values with empty kept; another type passes untouched; a period [from, to)',
     out.filter, [['W2', 'W3', 'W4'], ['W3', 'W4'], ['W1', 'W3', 'W4', 'W6'], ['L1'], true, false]);
+  eq('T40 the marks: several a mark each, the one value the same on all; two several from the same records paired; from different records the row not drawn and why; a mark its row\'s',
+    out.marks, [[['R0#0', 'R0', 'R0', '5', 'p'], ['R0#1', 'R0', 'R0', '5', 'q'], ['R1#0', 'R1', 'R1', '1', 'a'], ['R1#1', 'R1', 'R1', '2', 'b']],
+      [['R2', 'X and Y come from different records — pick a reduce']]]);
   eq('T36 a slot\'s scale: declared number / datetime continuous; a string or no type by its values (all numbers, all times continuous); the pick wins - a datetime categorical in time order; nothing categorical',
     [out.scales, out.timeOrder], [['continuous', 'continuous+time', 'continuous', 'categorical', 'categorical', 'continuous+time', 'categorical+time', 'continuous', 'categorical'],
       ['2026-10-02T01:00:00+09:00', '2026-10-01T20:00:00Z']]);
   eq('T38 a continuous Color by: a ramp of the first category colour - the most itself, the least toward the background, no categories; no value the one colour',
     out.ramp, [0, '10', '30', '#1060C0', '#1060C0', '#CFDFF2', true, '#888888']);
-  eq('T5 the scatter model: two values each drawn, several not drawn, nothing not drawn; a marked point its colour, the rest mixed 20 % toward the background; legend dim where nothing marked',
-    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 1, several: 1, kinds: ['value', 'value'], marked: '#6489FA', dimmed: '#363D54',
+  eq('T5 the scatter model: two values each drawn, a mark of none or not one value not drawn (the root spreads several - T40); a marked point its colour, the rest mixed 20 % toward the background; legend dim where nothing marked',
+    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 2, kinds: ['value', 'value'], marked: '#6489FA', dimmed: '#363D54',
       legend: [['A', false, ['W1', 'W4']], ['B', false, ['W2', 'W5']]] });
   eq('T6 a drag marks the points its rectangle holds - x and y both inside', out.drag, [['W2', 'W4'], ['W4'], []]);
   eq('T7 the cross table: a row with two values stands in both; a cell folds its rows\' values (Avg over the union, not of averages); totals; a cell with a marked row marked',
@@ -577,6 +603,10 @@ function suite(out, page, saved, counted) {
     page.partScale, ['category', 'value', ['categorical*', 'continuous'], ['categorical', 'continuous*'], ['categorical*', 'continuous'], []]);
   eq('T39 the rows not a time said where «not a number» is said; none counted, nothing said', page.notTimeWords, [['2 rows not a number', '1 row not a time'], ['2 rows not a number']]);
   eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
+  eq('T42 the same walk on four kinds (scatter, table, cross table, map) on the same slots: the root\'s marks the same; the table a line a mark, a line its row\'s',
+    page.sameMarks, [7, 7, 7, 7, 7, ['W3']]);
+  eq('T41 the sheet draws the root\'s refusal (#MANY and why); a cell holds a row\'s two marks once (its count the rows)',
+    page.rootRefusal, ['empty', '#MANY', '2 values — wrap in an aggregate', [['W9']]]);
   eq('T34 «time» in the picker: on a route the slot reads its last edge\'s time (of time, the value kept); on «(row)» off with its reason',
     page.timePick, ['time', JSON.stringify(temp.value), JSON.stringify(temp.steps), 'one', new Date(T0).toISOString(), true, true, 'No time on this route']);
   eq('T31 a way in the brackets: its end node\'s name; a row it does not reach empty; folded over its ends; two ends several - and Custom expression starts from the route chosen (its reduce around it), the check reading a way as the row does',
@@ -628,7 +658,7 @@ function suite(out, page, saved, counted) {
       ['1 of 1 rows', 'filter over a cut walk', '0 marked rows', '0 columns', 'wafer'],
       ['1 of 1 rows', 'start −2 · system −0 · part −0', '1 marked row', '1 columns', 'wafer']]);
   eq('T17 a cut walk is the board\'s reading of truncated (an axis true), not «truncated is there»', page.cut, [false, true]);
-  eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 4 });
+  eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 6 });
   eq('T18 the site\'s theme is the page\'s - the walk page\'s parts on it (the start picker) wear the same tokens', saved.siteTheme, ['dark', 'light']);
   eq('T14 census: the visual part is the one caller of the filter; no kind imports it', [counted.callers, counted.kindsFilter], [['visual_part.js'], []]);
   if (counted.bundle) eq('T15 the bundle: the testbed chunk under 700 kB, ECharts in no other page\'s chunk', counted.bundle, { testbedUnder700k: true, chartsElsewhere: 0 });
@@ -663,8 +693,19 @@ const MUTANTS = [
     mutate: (t) => swap(t, '!(Number.isFinite(to) && t >= to)', '!(Number.isFinite(to) && t > to)') },
   { id: 'M9', what: 'a dimmed mark keeps its colour (no mix)', catches: 'T5', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, 'return { fill: mix(c.fill, palette.bg), line: mix(c.line, palette.bg),', 'return { fill: c.fill, line: c.line,') },
-  { id: 'M10', what: 'a several drawn - not counted apart', catches: 'T5', file: 'testbed/kinds/scatter.js',
-    mutate: (t) => swap(t, "    if ([x, y].some((r) => r && r.state === 'several')) { several += 1; continue; }\n", '') },
+  // M10 (a several drawn by the scatter) retired 10-14: the root spreads several into marks (units.js marksOf) - T40's mutants
+  { id: 'M60', what: 'a several read not spread - the row drawn as one', catches: 'T40', file: 'testbed/units.js',
+    mutate: (t) => swap(t, "    if (!many.length) { marks.push({ ...row, ids: [row.id], row: row.id }); continue; }", "    if (true) { marks.push({ ...row, ids: [row.id], row: row.id }); continue; }") },
+  { id: 'M61', what: 'two several slots paired by order, not by record', catches: 'T40', file: 'testbed/units.js',
+    mutate: (t) => swap(swap(t, '      if (!same) { dropped.push({ id: row.id, why: PAIR_WORDS(words(many[0]), words(many[1])) }); continue; }', '      if (false) { continue; }'), '      picks = recs[0].map((rec) => lists.map((l) => l.find((r) => r.record === rec).value));', '      picks = lists[0].map((_, i) => lists.map((l) => l[i].value));') },
+  { id: 'M62', what: 'a mark forgets its row - a press marks nothing', catches: 'T40', file: 'testbed/units.js',
+    mutate: (t) => swap(t, '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads });', '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [`${row.id}#${k}`], row: row.id, reads });') },
+  { id: 'M65', what: 'the root spreads a points kind only - a table, a cross table, a map draw rows', catches: 'T42', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '      const got = marksOf(some, keysRead, recorded, (key) => slotWords(encode[key]));', '      const got = this.kind.units ? marksOf(some, keysRead, recorded, (key) => slotWords(encode[key])) : { marks: some.map((r) => ({ ...r, ids: [r.id], row: r.id })), dropped: [] };') },
+  { id: 'M63', what: 'the sheet keeps its own «several» - no root refusal', catches: 'T41', file: 'testbed/units.js',
+    mutate: (t) => swap(t, "  for (const [k, r] of many) reads[k] = { state: 'empty', n: 0, error: '#MANY', why: MANY_WORDS(r.n || (r.values || []).length) };", '') },
+  { id: 'M64', what: 'a cell counts a row\'s two marks twice', catches: 'T41', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '      for (const id of row.ids || [row.id]) if (!cell.seen.has(id)) { cell.seen.add(id); cell.ids.push(id); }', '      for (const id of row.ids || [row.id]) cell.ids.push(id);') },
   { id: 'M11', what: 'a drag tests only x', catches: 'T6', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, ' && inside(coordRange[1], at(model.yKind, option.yAxis, p.y)))', ')') },
   { id: 'M12', what: 'a row with two values counted in its first only', catches: 'T3', file: 'testbed/slot.js',
@@ -775,7 +816,7 @@ MUTANTS.push(
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
   'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker', 'testbed/condition_editor.js': 'cond',
-  'testbed/color_by.js': 'color' };
+  'testbed/color_by.js': 'color', 'testbed/units.js': 'units' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   // A stylesheet is no module: its mutant is the census's text alone.
   if (m.file.endsWith('.css')) return run(REAL, { [m.file]: m.mutate(readFileSync(join(SRC, m.file), 'utf8')) });

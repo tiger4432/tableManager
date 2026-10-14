@@ -295,11 +295,13 @@ export function combosOf(rows, keys) {
     }
     for (const values of combos) {
       const at = JSON.stringify(values);
-      if (!out.has(at)) out.set(at, { values, ids: [] });
-      out.get(at).ids.push(row.id);
+      if (!out.has(at)) out.set(at, { values, ids: [], seen: new Set() });
+      // a mark gathers its row (units.js marksOf): two marks of one row in one cell are the row once
+      const cell = out.get(at);
+      for (const id of row.ids || [row.id]) if (!cell.seen.has(id)) { cell.seen.add(id); cell.ids.push(id); }
     }
   }
-  return [...out.values()];
+  return [...out.values()].map(({ values, ids }) => ({ values, ids }));
 }
 
 /** A slot's columns - THE one place an older one-column slot reads as a list of one (owner 10-14: a pill of several

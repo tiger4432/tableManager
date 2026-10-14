@@ -18,10 +18,9 @@ export const slots = (encode) => {
   return [...keys.map((key) => ({ key, label: `Column ${order(key)}` })), { key: nextOf(keys), label: 'Add a column', tray: 'bottom', words: '+ Column' }];
 };
 
-/** A read as a cell says it: one value, several joined (the walk table's words), nothing blank. */
+/** A read as a cell says it: a mark's one value (the root spreads several into marks - units.js marksOf), nothing blank. */
 function cellOf(read) {
-  if (!read || read.state === 'empty' || read.state === 'missing') return { text: '', value: null };
-  if (read.state === 'several') return { text: read.values.map(valueWords).join(' · '), value: read.values[0] };
+  if (!read || read.state !== 'one') return { text: '', value: null };
   return { text: valueWords(read.value), value: read.value };
 }
 
@@ -42,8 +41,9 @@ export function tableModel(rows, ctx) {
   const decl = ctx.declaration || {};
   const keys = slots(decl.encode).filter((s) => !s.tray).map((s) => s.key);
   // a line's paint is the root's: marked, and its row's Color by colour when one is declared
-  let lines = rows.map((row) => { const p = ctx.paint([row.id]);
-    return { id: row.id, cells: keys.map((k) => cellOf(row.reads[k])), marked: p.marked, color: ctx.colored ? p.color : null }; });
+  // a line a mark - its row's (`ids`): the lines of one row painted together, a press marks the row
+  let lines = rows.map((row) => { const ids = row.ids || [row.id]; const p = ctx.paint(ids);
+    return { id: row.id, ids, cells: keys.map((k) => cellOf(row.reads[k])), marked: p.marked, color: ctx.colored ? p.color : null }; });
   const sort = decl.sort && keys.includes(decl.sort.key) ? decl.sort : null;
   if (sort) {
     const at = keys.indexOf(sort.key);
@@ -82,7 +82,7 @@ export function render(area, model, ctx) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
-    tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
+    tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark(line.ids || [line.id], event); });
     tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));
     tr.addEventListener('mouseleave', () => ctx.hover(null));
     table.append(tr);

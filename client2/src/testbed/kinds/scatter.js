@@ -20,8 +20,8 @@ function axisOf(ctx, key, values) {
 }
 
 /**
- * The picture's model. A point is a unit whose x and y each hold one value (a several without a reduce is not drawn -
- * lead aca803a7a «N rows with several values»); its paint is the root's (`ctx.paint(ids)`: colour, marked, dimmed).
+ * The picture's model. A point is a mark the root made (units.js marksOf - one value a slot; what it could not spread it
+ * left out and said); its paint is the root's (`ctx.paint(ids)`: colour, marked, dimmed).
  * @param {Array<{id, ids?, where?, label, reads: Record<string, object>}>} units
  * @param {{paint?: (ids) => {fill, line, marked}, palette: object, declaration?: object}} ctx  the declaration's markerPct -
  *   the marker size
@@ -30,10 +30,9 @@ export function scatterModel(units, ctx) {
   const paint = ctx.paint || (() => ({ fill: ctx.palette.one[0], line: ctx.palette.one[1], marked: false }));
   const points = [];
   let notDrawn = 0;
-  let several = 0;
+  // a mark the root made (units.js marksOf) - one value a slot, or none to draw
   for (const u of units) {
     const { x, y } = u.reads;
-    if ([x, y].some((r) => r && r.state === 'several')) { several += 1; continue; }
     if (!x || !y || x.state !== 'one' || y.state !== 'one') { notDrawn += 1; continue; }
     const ids = u.ids || [u.id];
     const p = paint(ids, u.where || null);
@@ -45,7 +44,7 @@ export function scatterModel(units, ctx) {
   }
   const ax = axisOf(ctx, 'x', points.map((p) => p.x));
   const ay = axisOf(ctx, 'y', points.map((p) => p.y));
-  return { points, notDrawn, several, note: [notDrawn ? `${notDrawn} not drawn` : '', several ? `${several} rows with several values` : ''].filter(Boolean).join(' · '),
+  return { points, notDrawn, note: notDrawn ? `${notDrawn} not drawn` : '',
     xKind: ax.kind, yKind: ay.kind, xTime: ax.time, yTime: ay.time,
     // a trellis panel's axes: the extents over every panel (the root's)
     range: ctx.extent ? { x: ctx.extent('x'), y: ctx.extent('y') } : null,
