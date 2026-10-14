@@ -53,7 +53,7 @@
 .sf-thumb:hover .sf-thumb__nav, .sf-thumb--many:hover .sf-thumb__n { visibility: visible; }
 .sf-tip__img .sf-thumb__at { display: inline-block; vertical-align: top; }
 .sf-tip__img .sf-thumb--many .sf-thumb__n { visibility: visible; }
-.sf-table--images td { height: var(--sf-image-row); }
+.sf-table.sf-table--images td { height: var(--sf-image-row); }
 .sf-part__title { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px var(--sf-title-inset); min-width: 0;
   font: 300 var(--sf-fs-title)/var(--sf-lh-title) var(--sf-font); color: var(--sf-title); }
 .sf-part__t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
