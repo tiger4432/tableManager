@@ -22,7 +22,8 @@ body{margin:0;background:#232323}
 /* body: left tray · area · legend column / top tray · area · bottom tray */
 .pb{display:grid;grid-template-columns:auto minmax(0,1fr) 160px;grid-template-rows:auto minmax(0,1fr) auto;column-gap:12px;row-gap:4px;min-height:0;min-width:0}
 .pb.nolegend{grid-template-columns:auto minmax(0,1fr) 0}
-.tt{grid-row:1;grid-column:2;display:flex;justify-content:center;align-items:center;gap:6px;min-height:21px}
+.tt{grid-row:1;grid-column:2;display:flex;justify-content:center;align-items:center;gap:6px;min-height:21px;margin-bottom:8px}
+.tt:empty{margin-bottom:0}
 .tl{grid-row:2;grid-column:1;display:flex;align-items:center;justify-content:center}
 .tb{grid-row:3;grid-column:2;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;min-height:21px}
 .tb .pills{grid-column:2;display:flex;gap:6px}
