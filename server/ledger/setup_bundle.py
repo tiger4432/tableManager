@@ -1589,7 +1589,8 @@ def shorten_source(source: Mapping[str, Any]) -> tuple[Any, str]:
     read, mapper, bind = (source.get(name) or {} for name in ("read", "map", "bind"))
     if read.get("unit") == "group" or read_group_by(read):
         return None, ("reads rows in groups (read.group_by) - a short source says one row's facts. "
-                      "Next: a chain rule writes one row per group into a table this source reads")
+                      "Next: a decide chain rule writes one row per group into a table (one writer of it), "
+                      "this source reads that table short, then re-translate it once (--whole-source) - RUN.md")
     if mapper.get("implementation_id", DECLARATIVE_ROLE) != DECLARATIVE_ROLE:
         return None, (f"is translated by its own mapper {mapper.get('implementation_id')!r} - a short "
                       f"source is its declaration. Next: a chain rule writes the rows the mapper read "

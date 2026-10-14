@@ -40,7 +40,7 @@
 >            same     원자 신원 그대로 — 할 일 없음
 >            mixes    <바뀌는 칸 was -> now> — 이제부터 번역되는 행은 새 신원, 이미 있는 원자는 그대로(섞여 감, 소유자 «ㄹ»)
 >                     고쳐지는 행은 옛 원자가 거둬지고 새로 한 번 쓰임 — 같은 사실이 둘 생기지 않음
->                     한 번에 맞추려면 그 소스만: python server/ledger/backfill.py --source <소스> --whole-source (미리보기) -> --apply --pace slow
+>                     한 번에 맞추려면 그 소스만: cd server && python -m ledger.backfill --source <소스> --whole-source (미리보기) -> --apply --pace slow
 >                     먼저 볼 것(읽기 전용, 그 소스 원자를 한 번 훑음) — 행 색인 줄이 없는 원자 수:
 >                       SELECT count(*) FROM ledger_events e LEFT JOIN ledger_source_row_ref r ON r.source_who = e.source_who
 >                         AND r.source_raw_ref = e.source_raw_ref WHERE e.source_who = '<소스>' AND r.source_raw_ref IS NULL;
@@ -51,7 +51,17 @@
 >            retired  은퇴 소스 — 짧게 옮기고 은퇴 그대로
 >            refused  못 옮김(묶어 읽기 · 자기 맵퍼 · 여러 칸 묶은 제외 · virtual_joins) + Next. 하나라도 있으면 «파일을 안 씀»
 >                     나머지 소스 판정도 다 찍힘(마지막 줄 REFUSED, 종료 코드 2)
->                     묶어 읽는 소스(read.group_by, 예: dt_job)는 Next: 체인 규칙이 묶음마다 한 행을 쓰는 표를 만들고 이 소스가 그 표를 읽게
+>                     묶어 읽는 소스(read.group_by, 예: dt_job)는 Next 셋(박스에서 dt_job 5 만 개로 잼, 아래 수):
+>                       ① table_config 에 묶음마다 한 행 표(견본 dt_job_rollup) · chain_rules 에 decide 규칙 하나 —
+>                          {"on": {"table": "dt_log", "require": ["dt_job"]}, "into": {"table": "dt_job_rollup"}, "derive": {"kind": "decide",
+>                           "decide": {"key": ["dt_job"], "fields": [], "aggregations": {"netdie_count": "count", ...}}}}
+>                          그 표를 쓰는 규칙은 둘 중 하나만 — 견본의 코드 맵퍼 규칙 dt_log_to_dt_job_rollup 이 켜져 있으면 끄거나 그것을 씀
+>                          그다음 체인 재생: cd server && python scripts/chain_replay_cli.py replay "enrichment_dedup:<규칙 이름>" --apply
+>                       ② 이 소스를 그 표를 읽는 짧은 소스로(문장 · 속성은 그대로) -> 변환 명령 다시
+>                       ③ 그 소스를 한 번 다시 번역 — cd server && python -m ledger.backfill --source <소스> --whole-source (미리보기) -> --apply
+>                          옛 원자(옛 표를 가리킴)가 거둬지고 새 원자 = 표 행 × 문장. 안 하면 옛 원자가 남아 같은 사실이 둘
+>                       잰 수(이 박스): rollup 쓰기 dt_log 58,599 행 -> 50,000 행 51.6 s · 다시 번역 54 s(새 원자 100,000 · 거둔 옛 원자 99,996)
+>                       -> 잡 100 만 개면 대략 각 17 분 · 18 분(이 박스 · fast · 비례 가정, 5 만 넘어선 안 잼). 원자 id 는 전부 새로(시각이 rollup 행의 저장 시각)
 >          --apply 뒤 «same» 소스도 지문 글자는 바뀜(은퇴한 approval_status 낱말이 빠져서) — 재기동 때 부팅 재도장이 위치를 안 건드리고 옮김
 > 선언 창   아직 긴 꼴로 그림. 짧은 파일의 소스를 열면 펼친 긴 꼴, 활성화하면 그 소스를 짧게 다시 씀
 >          거절 «not_writable_short» + 칸 이름 — read 칸(identity · order_by · 시각 · unit)이나 map 칸을 짧은 꼴의 기본과
@@ -106,7 +116,7 @@
 >            WHERE jsonb_typeof(k.value) IN ('number','boolean')) OR (jsonb_typeof(a.object_payload->'keys') = 'object' AND EXISTS
 >            (SELECT 1 FROM jsonb_each(a.object_payload->'keys') k WHERE jsonb_typeof(k.value) IN ('number','boolean'))) GROUP BY 1;
 > 뜻       줄 0 -> 앞으로만으로 충분(할 일 없음)
->          어떤 소스가 > 0 -> 그 소스만 다시 번역: python server/ledger/backfill.py --source <소스> --whole-source (미리보기)
+>          어떤 소스가 > 0 -> 그 소스만 다시 번역: cd server && python -m ledger.backfill --source <소스> --whole-source (미리보기)
 >                         -> 같은 줄 --apply --pace slow
 > 되돌리기  git revert 7e990be28 -> 런처 재기동
 > ```
@@ -3020,8 +3030,8 @@
 >              read.registration_probe 은퇴 — 읽는 곳이 없다. 적혀 있어도 거절하지 않는다
 > 돌릴 명령     재기동 — run_app.bat 전체
 >              부류 1 소스만, 이미 읽은 행에도 싣고 싶으면 (whole_source 는 화면 폼에 없어 명령줄):
->                 python server/ledger/backfill.py --source <소스> --whole-source              (미리보기 — 행 · 잃은 행 · 그 원자, 안 씀)
->                 python server/ledger/backfill.py --source <소스> --whole-source --apply --pace slow
+>                 cd server && python -m ledger.backfill --source <소스> --whole-source              (미리보기 — 행 · 잃은 행 · 그 원자, 안 씀)
+>                 cd server && python -m ledger.backfill --source <소스> --whole-source --apply --pace slow
 >                 가지면 --world <가지> — 아래 재기동 줄의 (<세상>) 칸
 > 재기동 뒤 볼 줄  [Ledger] re-stamped N cursor(s) whose declaration did not change: <소스> (<세상>): <옛> -> <새> (position stays …) | …
 >                 부류 1  그 소스 항목이 " - the translator registers the bound attributes of <타입들>: rows read before carry none of them until this source is rescoped whole" 로 끝남
@@ -4248,8 +4258,8 @@
 > 돌릴 명령     재기동 — run_app.bat 전체
 >              ② 표마다: 어드민 Retroactive 탭 "Fold stored values into the declared spelling" -> table -> Count 먼저, 그다음 Run
 >              ③ 소스마다 (whole_source 는 화면 폼에 없어 명령줄):
->                 python server/ledger/backfill.py --source <소스> --whole-source              (미리보기 — 행 · 잃은 행 · 그 원자, 안 씀)
->                 python server/ledger/backfill.py --source <소스> --whole-source --apply --pace slow
+>                 cd server && python -m ledger.backfill --source <소스> --whole-source              (미리보기 — 행 · 잃은 행 · 그 원자, 안 씀)
+>                 cd server && python -m ledger.backfill --source <소스> --whole-source --apply --pace slow
 >                 대상 = number 칸을 엔티티 키에 묶는 소스: bonded_from · bw_dt_seat · die_inspection · dt_transfer · transfer_event · void_observation
 > 뜻           ② Count: affected = 보이는 값이 바뀌는 칸 · layers_folded = 바뀌는 층 · keys_not_rebuilt = 키가 저장 키와 이미 어긋나 건너뛰는 행(그 행은 한 칸도 안 접음, 신원 그대로)
 >              ③ 다시 번역 전에는 같은 다이가 옛 꼴(7.0)과 새 꼴('7')로 갈려 걷기에서 둘로 보일 수 있음 — 소스를 다시 번역하면 옛 꼴이 빠지고 새 꼴만 남음

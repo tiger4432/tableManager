@@ -3887,7 +3887,7 @@ def copy_one_row(db, payload, rule=None):
 - **무엇** — 문자 칸(number · datetime 이 아닌 칸)에 숫자가 오면 한 철자로 저장됩니다(1.0 → `1`). 층과 보이는 칸이 같은 글자입니다. 원장 엔티티 키는 그 칼럼의 선언 타입으로 접혀, number 칸의 1 · 1.0 · 01 이 한 키가 됩니다.
 - **선언 예시** — 없음. 문자 칸의 `1.0` 을 접고 싶으면 그 칸을 `table_config` 에서 `number` 로 선언합니다.
 - **화면에서** — 이미 저장된 칸은 표마다 어드민 `Retroactive` 탭의 `Fold stored values into the declared spelling` → 표 고르기 → `Count` 로 먼저 세고 `Run`.
-- **필요한 조건** — 서버 재기동. 원장의 옛 꼴 키는 소스마다 다시 번역할 때 빠집니다(server 폴더에서 `python ledger/backfill.py --source <소스> --whole-source --apply --pace slow`, `--apply` 없이 미리보기).
+- **필요한 조건** — 서버 재기동. 원장의 옛 꼴 키는 소스마다 다시 번역할 때 빠집니다(server 폴더에서 `python -m ledger.backfill --source <소스> --whole-source --apply --pace slow`, `--apply` 없이 미리보기).
 - **바뀐 동작** — 다이 x · y 가 1 과 1.0 으로 두 노드가 되던 것이 한 노드가 됩니다. 다시 번역하기 전에는 옛 꼴과 새 꼴이 걷기에서 둘로 보일 수 있습니다. 코드 맵퍼가 직접 만든 키는 이 접기를 지나지 않습니다.
 - **자세히** — [BACKFILL_GUIDE](../guide/BACKFILL_GUIDE.md) · `RUN.md` · 커밋 7350027a6
 

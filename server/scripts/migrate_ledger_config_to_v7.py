@@ -126,7 +126,7 @@ def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
                           for cell, was, now in short_form_moves(
                               document["sources"][name], short["sources"][name], catalog)) or "its declaration"
         lines.append(f"  {name:<{width}} mixes    - {moved}: rows from here on are named so, atoms "
-                     f"written before stay. At once: python server/ledger/backfill.py --source "
+                     f"written before stay. At once: cd server && python -m ledger.backfill --source "
                      f"{name} --whole-source")
     lines += [f"  {name:<{width}} retired  - written short, still retired"
               for name, source in sorted(short["sources"].items())

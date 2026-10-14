@@ -302,7 +302,7 @@ conda run -n assy_manager python -m scripts.migrate_ledger_config_to_v7 --apply
 | 줄 | 뜻 | 할 일 |
 |---|---|---|
 | `same` | 펼친 선언이 같은 지문 — 원자 신원 그대로 | 없음 |
-| `mixes` | 신원 · 순서 · 시각을 기본으로 읽게 됨(바뀌는 칸을 적음). 이제부터 번역되는 행은 새 신원, 이미 있는 원자는 그대로. 고쳐지는 행은 옛 원자가 거둬지고 새로 한 번 쓰임 | 한 번에 맞추려면 그 소스만 `python server/ledger/backfill.py --source <소스> --whole-source` (미리보기) → `--apply --pace slow` |
+| `mixes` | 신원 · 순서 · 시각을 기본으로 읽게 됨(바뀌는 칸을 적음). 이제부터 번역되는 행은 새 신원, 이미 있는 원자는 그대로. 고쳐지는 행은 옛 원자가 거둬지고 새로 한 번 쓰임 | 한 번에 맞추려면 그 소스만 `cd server && python -m ledger.backfill --source <소스> --whole-source` (미리보기) → `--apply --pace slow` |
 | `dropped` | 은퇴했고 짧은 꼴로 못 적는 소스 — 파일에서 빠짐, 원자는 남음 | 없음 |
 | `loader` | 오늘도 로더가 거절하는 소스(예: 뷰를 읽음) — 옮긴 뒤에도 같은 사유로 거절, 파일은 씀 | 그 사유대로 |
 | `starts` | 오늘 로더가 거절하는데 짧은 꼴에선 표의 키로 읽혀 번역이 시작되는 소스 | 원하지 않으면 `status: "retired"` |
