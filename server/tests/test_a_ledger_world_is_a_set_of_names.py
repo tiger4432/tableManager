@@ -75,17 +75,21 @@ class _Connection:
 
 def record(names=None):
     """Every statement one world's `ensure_schema` + one month's `ensure_partition` issue,
-    in both catalogue states."""
+    in both catalogue states - with the settings' defaults, never this box's settings file (a partition's
+    autoanalyze factor is read from it, 총괄 검수 of 53338e99b)."""
+    from unittest import mock
+
     out = {}
-    for label, state in STATES.items():
-        connection = _Connection(state)
-        if names is None:
-            schema.ensure_schema(connection)
-            schema.ensure_partition(connection, WHEN)
-        else:
-            schema.ensure_schema(connection, names=names)
-            schema.ensure_partition(connection, WHEN, names=names)
-        out[label] = connection.log
+    with mock.patch("ingestion.settings.read_ingestion_settings", lambda path=None: {}):
+        for label, state in STATES.items():
+            connection = _Connection(state)
+            if names is None:
+                schema.ensure_schema(connection)
+                schema.ensure_partition(connection, WHEN)
+            else:
+                schema.ensure_schema(connection, names=names)
+                schema.ensure_partition(connection, WHEN, names=names)
+            out[label] = connection.log
     return out
 
 

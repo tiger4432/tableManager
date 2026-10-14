@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **원장 파티션에 PostgreSQL 자동 분석 기준 0.02 — 행이 2 % 바뀌면 PG 가 스스로 분석 (총괄 53338e99b, 소유자 «오토 애널라이즈를 걸면 되지 않나» · «ㅇㅇ»)** — git pull · 런처 재기동(원장 프로세스가 뜰 때 한 번 맞춤)
+>
+> ```
+> 볼 줄    ledger.log (원장 프로세스) 뜰 때
+>          [Ledger] autovacuum runs (autovacuum=on, track_counts=on)
+>          [Ledger] autovacuum_analyze_scale_factor 0.02 set on 8 partition(s): ledger_events_2025_12, …     <- 처음 한 번. 다음 기동부터는 줄 없음(이미 같음)
+> 답의 뜻   «autovacuum does NOT run (autovacuum=off …) - only the re-translate's every-page analysis keeps …»
+>             -> DB 의 자동 청소가 꺼져 있음: 이 설정은 아무 일도 안 함. 원장 다시 번역의 쪽마다 분석만 남음 — 켜는 것은 DBA(postgresql.conf)
+>          «<파티션>: autovacuum_analyze_scale_factor not set - <DB 문장>» -> 그 파티션을 다른 일이 20 s 넘게 쥐고 있었음. 다음 기동이 다시 맞춤
+>          새 파티션은 만들 때 붙음 — 줄 없음. 확인: SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'ledger_events_%';
+> 값의 뜻   파티션의 행이 이 몫만큼 바뀌면(+ PG 기본 문턱 50 행) PG 자동 청소가 그 파티션을 분석. PG 기본은 0.1 — 큰 파티션은 그만큼 늦게 분석됨
+>          0.02 는 지시서 값, 운영에서의 효과는 안 쟀다
+> 설정     ingestion_settings.json "ledger_autoanalyze_scale_factor": 0.02 (0 ~ 100) · null = 손 안 댐: 새 파티션만 PG 기본, 이미 붙은 것은 남음(아래 RESET)
+>             새 파티션은 만드는 순간 설정을 읽음 · 있는 파티션은 원장 프로세스 재기동부터
+>          이미 0.02 가 붙은 파티션을 PG 기본으로 되돌리려면: ALTER TABLE <파티션> RESET (autovacuum_analyze_scale_factor);
+> 이 판에서  mix 판(박스 원장 사본 · 파티션 8, 내 스크래치 스키마) 원장 프로세스의 그 함수 두 번: 처음 8 개 붙음 · 두 번째 0(줄 없음) · autovacuum runs 줄
+> 되돌리기  git revert 9125d0ac9 -> 런처 재기동 (붙은 값은 남음 — 위 RESET)
+> ```
+>
+> ---
+>
 > ## [10-14] **원장 다시 번역이 묶음 하나에 죽지 않는다 — 행 색인 키가 넘치는 값 · order_by 가 행을 못 가르는 묶음은 거절 한 줄, 나머지는 끝까지 (총괄 e2f112f02, 소유자 «ㅇㅇ 그렇게해» · «ㅇㅇ ㄱ»)** — git pull · 소급 실행은 실행마다 새 프로세스라 다음 실행부터 · 원장 따라가기는 런처 재기동 뒤
 >
 > ```

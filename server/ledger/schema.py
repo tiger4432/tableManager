@@ -936,11 +936,80 @@ def owns_table(name: str) -> bool:
     return name in FIXED_TABLES or name.startswith(PARTITION_PREFIX)
 
 
-def create_partition_sql(when: datetime, names: WorldNames = _DEFAULT):
+def create_partition_sql(when: datetime, names: WorldNames = _DEFAULT, scale_factor=None):
     start, end, _ = month_bounds(when)
     name = partition_name(when, names)
     return (f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {names.ledger} "
-            f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}')")
+            f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}')"
+            + ("" if scale_factor is None else f" WITH (autovacuum_analyze_scale_factor = {scale_factor})"))
+
+
+#: ingestion_settings.json - the ledger partitions' `autovacuum_analyze_scale_factor` (총괄 53338e99b, 소유자 «ㅇㅇ»):
+#: PostgreSQL analyzes a partition by itself once that share of its rows changed (its own default 0.1). Absent: 0.02,
+#: the order's value - its effect is not measured. null: the partitions' own setting is left alone.
+AUTOANALYZE_SETTING, AUTOANALYZE_DEFAULT = "ledger_autoanalyze_scale_factor", 0.02
+
+
+def autoanalyze_scale_factor():
+    """`ledger_autoanalyze_scale_factor`: a number from 0 to 100 (PostgreSQL's range), None when it is null; anything
+    else is said and read as the default."""
+    from ingestion.settings import read_ingestion_settings
+
+    value = read_ingestion_settings().get(AUTOANALYZE_SETTING, AUTOANALYZE_DEFAULT)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
+        logger.warning("[Ledger] ingestion_settings.json: %s is %r - a number from 0 to 100, or null to leave the "
+                       "partitions alone; read as %s", AUTOANALYZE_SETTING, value, AUTOANALYZE_DEFAULT)
+        return AUTOANALYZE_DEFAULT
+    return float(value)
+
+
+def set_partitions_autoanalyze(connection):
+    """At the ledger process's start, on its index line: whether autovacuum runs at all (one line), and every world's
+    ledger partitions given `autoanalyze_scale_factor` where theirs differs - each in a transaction of its own, its
+    lock waited for at most DDL_LOCK_TIMEOUT, a failure one line; one that already has it is not touched (no lock).
+    -> the partitions set."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT name, setting FROM pg_settings WHERE name IN ('autovacuum', 'track_counts')")
+        running = dict(cursor.fetchall())
+    connection.commit()
+    if running.get("autovacuum") == "on" and running.get("track_counts") == "on":
+        logger.info("[Ledger] autovacuum runs (autovacuum=on, track_counts=on)")
+    else:
+        logger.warning("[Ledger] autovacuum does NOT run (autovacuum=%s, track_counts=%s) - only the re-translate's "
+                       "every-page analysis keeps the ledger partitions' statistics",
+                       running.get("autovacuum"), running.get("track_counts"))
+    factor = autoanalyze_scale_factor()
+    if factor is None:
+        return []
+    done = []
+    for world in [None, *worlds()]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT c.oid::regclass::text, c.reloptions FROM pg_inherits i "
+                           "JOIN pg_class c ON c.oid = i.inhrelid WHERE i.inhparent = to_regclass(%s) ORDER BY 1",
+                           (world_names(world).ledger,))
+            partitions = cursor.fetchall()
+        connection.commit()
+        for name, options in partitions:
+            held = [float(option.split("=", 1)[1]) for option in options or ()
+                    if option.startswith("autovacuum_analyze_scale_factor=")]
+            if held == [factor]:
+                continue
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
+                    cursor.execute("ALTER TABLE %s SET (autovacuum_analyze_scale_factor = %s)" % (name, factor))
+                connection.commit()
+                done.append(name)
+            except Exception as exc:                                    # noqa: BLE001 - said, the rest go on
+                connection.rollback()
+                logger.warning("[Ledger] %s: autovacuum_analyze_scale_factor not set - %s", name,
+                               str(exc).strip().splitlines()[0])
+    if done:
+        logger.info("[Ledger] autovacuum_analyze_scale_factor %s set on %d partition(s): %s", factor, len(done),
+                    ", ".join(done))
+    return done
 
 
 def _relation_exists(cursor, name: str) -> bool:
@@ -1252,7 +1321,7 @@ def ensure_partition(connection, when: datetime, known=None,
             # blind under its own fault is this project's own 2026-08-11 lesson).
             cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
             if not _relation_exists(cursor, name):
-                cursor.execute(create_partition_sql(when, names))
+                cursor.execute(create_partition_sql(when, names, autoanalyze_scale_factor()))
                 logger.info("[Ledger] created partition %s for %s", name,
                             when.astimezone(timezone.utc).date())
         connection.commit()
