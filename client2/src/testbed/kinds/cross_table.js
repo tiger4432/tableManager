@@ -4,10 +4,13 @@
 
 import { combosOf, slotWords, foldRows, EMPTY, PART_SEP } from '../slot.js';
 
+/** What a cell holds with no cell slot: its rows, each once (owner 10-14 «ㅇㅇ 행수») - said as the fold it is. */
+export const ROWS_COUNT = 'UniqueCount(rows)';
+
 export const SLOTS = Object.freeze([
   { key: 'rows', label: 'Row axis', category: true, tray: 'left', many: true },
   { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true, many: true },
-  { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true },
+  { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true, empty: ROWS_COUNT },
 ]);
 export { EMPTY };
 const TOTAL = 'Total';
@@ -32,7 +35,8 @@ export function crossModel(rows, ctx) {
     colKeys.add(c);
     cells.set(keyOf(r, c), { ids });
   }
-  const byId = new Map(rows.map((row) => [row.id, row]));
+  // a cell holds rows (a mark its row's - units.js marksOf; a row's marks fold its cell values once)
+  const byId = new Map(rows.map((row) => [row.row || row.id, row]));
   /** A set of rows folded: the cell slot's values of each row once (a row in two columns counts once in its row's total). */
   const folded = (ids) => {
     const once = [...new Set(ids)];
@@ -67,7 +71,7 @@ export function crossModel(rows, ctx) {
   const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
   return {
     rowKeys: R, colKeys: C, rowParts: R.map(parts), colParts: C.map(parts), grid,
-    rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.id)),
+    rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.row || row.id)),
     rowIds, colIds,
   };
 }
@@ -80,6 +84,9 @@ export function render(area, model, ctx) {
   const wrap = el('div', 'tb-cross__wrap');
   const table = el('table', 'sf-table');
   const words = { rows: ctx.words('rows'), columns: ctx.words('columns') };
+  // a value as the slot says it (the root's one place - a slot of days its days); the hub keeps the value itself
+  const said = (key, v) => (ctx.text && v !== '' && typeof v !== 'number' && v !== null && v !== undefined ? ctx.text(key, v) : v);
+  const cellSaid = (v) => (ctx.text && typeof v === 'string' ? ctx.text('cells', v) : cellWords(v));
   // An axis of several columns is a hierarchy (Spotfire's): a head a level, an outer value the same along its run told
   // once (colspan / rowspan), the inner one each time; a head pressed marks the rows under it.
   const rowParts = model.rowParts || model.rowKeys.map((k) => [k]);
@@ -97,7 +104,7 @@ export function render(area, model, ctx) {
       head.append(corner);
     }
     for (const run of runs(colParts, lv)) {
-      const th = el('th', 'sf-table__col', run.word);
+      const th = el('th', 'sf-table__col', said('columns', run.word));
       th.colSpan = run.n;
       const ids = model.colIds.slice(run.from, run.from + run.n).flat();
       th.addEventListener('click', (event) => ctx.markHub([[words.columns, run.at]], ids, event));
@@ -112,14 +119,14 @@ export function render(area, model, ctx) {
     for (let lv = 0; lv < rowLevels; lv += 1) {
       const run = rowRuns[lv].get(i);
       if (!run) continue;
-      const th = el('th', lv === 0 ? 'sf-table__row' : 'sf-table__row sf-table__row--in', run.word);
+      const th = el('th', lv === 0 ? 'sf-table__row' : 'sf-table__row sf-table__row--in', said('rows', run.word));
       th.rowSpan = run.n;
       const ids = model.rowIds.slice(run.from, run.from + run.n).flat();
       th.addEventListener('click', (event) => ctx.markHub([[words.rows, run.at]], ids, event));
       tr.append(th);
     }
     model.grid[i].forEach((cell, j) => {
-      const td = el('td', cell.marked ? 'is-marked' : '', cellWords(cell.value));
+      const td = el('td', cell.marked ? 'is-marked' : '', cellSaid(cell.value));
       if (cell.color && !cell.marked) td.style.background = cell.color;
       if (cell.ids.length) {
         td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
@@ -128,23 +135,23 @@ export function render(area, model, ctx) {
       }
       tr.append(td);
     });
-    tr.append(el('td', 'sf-table__total', cellWords(model.rowTotals[i])));
+    tr.append(el('td', 'sf-table__total', cellSaid(model.rowTotals[i])));
     table.append(tr);
   });
   const foot = el('tr', 'sf-table__totals');
   const totalHead = el('th', 'sf-table__row', TOTAL);
   totalHead.colSpan = rowLevels;
   foot.append(totalHead);
-  model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellWords(v))));
-  foot.append(el('td', 'sf-table__total', cellWords(model.total)));
+  model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellSaid(v))));
+  foot.append(el('td', 'sf-table__total', cellSaid(model.total)));
   table.append(foot);
   wrap.append(table);
   area.replaceChildren(wrap);
   return { resize: () => {}, dispose: () => {} };
 }
 
-/** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «Count». */
-export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : 'Count'} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
+/** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «UniqueCount(rows)». */
+export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : ROWS_COUNT} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
 
 /** The add window's picture of it: a head, a row head, cells. */
 export const icon = { tone: 'cat-7', paths: [['M4 3h16v4H4zM4 9h4v12H4z', 1], ['M10 9h4v5h-4zM16 9h4v5h-4zM10 16h4v5h-4zM16 16h4v5h-4z', 0.6]] };

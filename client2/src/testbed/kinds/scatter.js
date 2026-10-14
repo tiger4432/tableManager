@@ -4,26 +4,24 @@
 
 import { numberOf } from '../../walk/reach_table.js';
 import { MARKER_PX, MARKER_PCT } from '../palette.js';
-import { slotWords } from '../slot.js';
+import { slotWords, scaleOf } from '../slot.js';
 
 /** Its slots: the axes on the template's trays - Y on the left, X under. */
 export const SLOTS = Object.freeze([
-  { key: 'x', label: 'X-axis', tray: 'bottom', plus: true },
-  { key: 'y', label: 'Y-axis', tray: 'left', plus: true },
+  { key: 'x', label: 'X-axis', tray: 'bottom', plus: true, scalable: true },
+  { key: 'y', label: 'Y-axis', tray: 'left', plus: true, scalable: true },
 ]);
 
-const ISO_TIME = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
-/** An axis by what its values are: all numbers a value axis, all ISO times a time axis, else categories. */
-export function axisKind(values) {
-  const said = values.filter((v) => v !== null && v !== undefined && v !== '');
-  if (said.length && said.every((v) => numberOf(v) !== null)) return 'value';
-  if (said.length && said.every((v) => typeof v === 'string' && ISO_TIME.test(v.trim()))) return 'time';
-  return 'category';
+/** An axis by its slot's scale - the root's (slot.js scaleOf, lead-board-13 ①): categorical a category axis, continuous a
+ *  time axis for times, else a value axis. With no root (a model scored alone), the same seat over its values. */
+function axisOf(ctx, key, values) {
+  const s = ctx.scale ? ctx.scale(key) : scaleOf(values.map((value) => ({ state: 'one', value })));
+  return { kind: s.scale === 'categorical' ? 'category' : s.time ? 'time' : 'value', time: s.time };
 }
 
 /**
- * The picture's model. A point is a unit whose x and y each hold one value (a several without a reduce is not drawn -
- * lead aca803a7a «N rows with several values»); its paint is the root's (`ctx.paint(ids)`: colour, marked, dimmed).
+ * The picture's model. A point is a mark the root made (units.js marksOf - one value a slot; what it could not spread it
+ * left out and said); its paint is the root's (`ctx.paint(ids)`: colour, marked, dimmed).
  * @param {Array<{id, ids?, where?, label, reads: Record<string, object>}>} units
  * @param {{paint?: (ids) => {fill, line, marked}, palette: object, declaration?: object}} ctx  the declaration's markerPct -
  *   the marker size
@@ -32,10 +30,9 @@ export function scatterModel(units, ctx) {
   const paint = ctx.paint || (() => ({ fill: ctx.palette.one[0], line: ctx.palette.one[1], marked: false }));
   const points = [];
   let notDrawn = 0;
-  let several = 0;
+  // a mark the root made (units.js marksOf) - one value a slot, or none to draw
   for (const u of units) {
     const { x, y } = u.reads;
-    if ([x, y].some((r) => r && r.state === 'several')) { several += 1; continue; }
     if (!x || !y || x.state !== 'one' || y.state !== 'one') { notDrawn += 1; continue; }
     const ids = u.ids || [u.id];
     const p = paint(ids, u.where || null);
@@ -45,11 +42,24 @@ export function scatterModel(units, ctx) {
     const shape = ctx.shape ? ctx.shape(ids) : null;
     points.push({ id: u.id, ids, where: u.where || null, label: u.label, tag, shape, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });
   }
-  return { points, notDrawn, several, note: [notDrawn ? `${notDrawn} not drawn` : '', several ? `${several} rows with several values` : ''].filter(Boolean).join(' · '),
-    xKind: axisKind(points.map((p) => p.x)), yKind: axisKind(points.map((p) => p.y)),
+  const ax = axisOf(ctx, 'x', points.map((p) => p.x));
+  const ay = axisOf(ctx, 'y', points.map((p) => p.y));
+  return { points, notDrawn, note: notDrawn ? `${notDrawn} not drawn` : '',
+    xKind: ax.kind, yKind: ay.kind, xTime: ax.time, yTime: ay.time,
+    // a category tick as the slot says it (the root's one place - a slot of days its days)
+    xText: ctx.text ? (v) => ctx.text('x', v) : null, yText: ctx.text ? (v) => ctx.text('y', v) : null,
     // a trellis panel's axes: the extents over every panel (the root's)
     range: ctx.extent ? { x: ctx.extent('x'), y: ctx.extent('y') } : null,
     size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
+}
+
+/** A category axis's values in order: times by their instant (a datetime picked categorical - owner 10-14), numbers by
+ *  their value, the rest as text. */
+export function categoryOrder(values, time = false) {
+  const distinct = [...new Set(values.map(String))];
+  if (time) return distinct.sort((a, b) => Date.parse(a) - Date.parse(b));
+  if (distinct.length && distinct.every((v) => numberOf(v) !== null)) return distinct.sort((a, b) => numberOf(a) - numberOf(b));
+  return distinct.sort();
 }
 
 /** A number as an axis says it - no unit added (mockup fix ③: «1.0 %» on a ratio was a wrong sentence). */
@@ -58,15 +68,15 @@ export const tickWords = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? 
 /** The ECharts option for a model - pure, so the picture is scored without a canvas. */
 export function scatterOption(model, palette, width = null) {
   const t = palette;
-  const axis = (kind, values, range = null) => ({
-    type: kind, scale: kind === 'value', data: kind === 'category' ? [...new Set(values.map(String))].sort() : undefined,
+  const axis = (kind, values, range = null, time = false, text = null) => ({
+    type: kind, scale: kind === 'value', data: kind === 'category' ? categoryOrder(values, time) : undefined,
     ...(kind === 'value' && range ? { min: range[0], max: range[1] } : {}),
     axisLine: { show: true, lineStyle: { color: t.axis, width: 1 } }, axisTick: { show: false }, splitLine: { show: false },
-    axisLabel: { color: t.text, fontFamily: 'Roboto', fontSize: 12, formatter: kind === 'value' ? tickWords : undefined },
+    axisLabel: { color: t.text, fontFamily: 'Roboto', fontSize: 12, formatter: kind === 'value' ? tickWords : kind === 'category' && text ? text : undefined },
   });
   // Marked points last, so they stand over the dimmed ones as Spotfire draws them.
   const ordered = [...model.points].sort((a, b) => Number(a.marked) - Number(b.marked));
-  const xAxis = axis(model.xKind, model.points.map((p) => p.x), model.range && model.range.x);
+  const xAxis = axis(model.xKind, model.points.map((p) => p.x), model.range && model.range.x, model.xTime, model.xText);
   // a label on the point's inner side - right of a point in the left half, left of one in the right half - so it stays
   // in the plot, not under the legend beside it (lead 10-14)
   const along = (v) => (model.xKind === 'category' ? xAxis.data.indexOf(String(v)) : model.xKind === 'time' ? Date.parse(v) : numberOf(v));
@@ -87,7 +97,7 @@ export function scatterOption(model, palette, width = null) {
     animation: false,
     grid: { left: GRID.left, right: GRID.right, top: 16, bottom: 28, containLabel: false },
     xAxis: plotW === null ? xAxis : { ...xAxis, splitNumber: Math.max(2, Math.floor(plotW / 110)), axisLabel: { ...xAxis.axisLabel, hideOverlap: true } },
-    yAxis: axis(model.yKind, model.points.map((p) => p.y), model.range && model.range.y),
+    yAxis: axis(model.yKind, model.points.map((p) => p.y), model.range && model.range.y, model.yTime, model.yText),
     brush: { toolbox: [], xAxisIndex: 0, brushType: 'rect', brushMode: 'single', transformable: false,
       brushStyle: { borderWidth: 1, color: t.brush, borderColor: t.active }, inBrush: {}, outOfBrush: {} },
     series: [{

@@ -4,7 +4,7 @@
 // pressed sorts by it, again the other way. Its columns and its sort are its declaration's: encode.col1 … and `sort`.
 
 import { numberOf, valueWords } from '../../walk/reach_table.js';
-import { slotWords } from '../slot.js';
+import { slotWords, isTimeRead } from '../slot.js';
 
 const COLUMN = /^col(\d+)$/;
 const order = (key) => Number(COLUMN.exec(key)[1]);
@@ -18,11 +18,11 @@ export const slots = (encode) => {
   return [...keys.map((key) => ({ key, label: `Column ${order(key)}` })), { key: nextOf(keys), label: 'Add a column', tray: 'bottom', words: '+ Column' }];
 };
 
-/** A read as a cell says it: one value, several joined (the walk table's words), nothing blank. */
-function cellOf(read) {
-  if (!read || read.state === 'empty' || read.state === 'missing') return { text: '', value: null };
-  if (read.state === 'several') return { text: read.values.map(valueWords).join(' · '), value: read.values[0] };
-  return { text: valueWords(read.value), value: read.value };
+/** A read as a cell says it: a mark's one value (the root spreads several into marks - units.js marksOf), nothing blank. */
+function cellOf(read, key, ctx) {
+  if (!read || read.state !== 'one') return { text: '', value: null };
+  // as the slot says it (the root's one place - a time, a slot of days its days)
+  return { text: ctx.text ? ctx.text(key, read.value, isTimeRead(read)) : valueWords(read.value), value: read.value };
 }
 
 /** Two cells in a sort's order: numbers as numbers, the rest as text; a blank last either way. */
@@ -42,8 +42,9 @@ export function tableModel(rows, ctx) {
   const decl = ctx.declaration || {};
   const keys = slots(decl.encode).filter((s) => !s.tray).map((s) => s.key);
   // a line's paint is the root's: marked, and its row's Color by colour when one is declared
-  let lines = rows.map((row) => { const p = ctx.paint([row.id]);
-    return { id: row.id, cells: keys.map((k) => cellOf(row.reads[k])), marked: p.marked, color: ctx.colored ? p.color : null }; });
+  // a line a mark - its row's (`ids`): the lines of one row painted together, a press marks the row
+  let lines = rows.map((row) => { const ids = row.ids || [row.id]; const p = ctx.paint(ids);
+    return { id: row.id, ids, cells: keys.map((k) => cellOf(row.reads[k], k, ctx)), marked: p.marked, color: ctx.colored ? p.color : null }; });
   const sort = decl.sort && keys.includes(decl.sort.key) ? decl.sort : null;
   if (sort) {
     const at = keys.indexOf(sort.key);
@@ -82,7 +83,7 @@ export function render(area, model, ctx) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
-    tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
+    tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark(line.ids || [line.id], event); });
     tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));
     tr.addEventListener('mouseleave', () => ctx.hover(null));
     table.append(tr);

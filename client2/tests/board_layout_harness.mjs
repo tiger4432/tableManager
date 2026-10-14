@@ -428,8 +428,10 @@ function markerModels(M) {
   const model = (encode, marked = () => false) => {
     const own = rows.map((r) => ({ ...r, reads: Object.fromEntries(Object.entries(r.reads).filter(([k]) => encode[k])) }));
     const decl = { row: 'wafer', encode };
-    const m = M.scatter.scatterModel(M.units.unitsOf(own, decl, Object.keys(encode), 'y'), { ...M.color.paintRows(own, { marked, palette: pal, declaration: decl }), palette: pal, declaration: decl });
-    return { points: m.points.map((p) => [p.label, Math.round(p.x * 1000) / 1000, p.y, p.ids, p.marked]), several: m.several };
+    // the root's one spreading (units.js spreadUnits, lead-board-13 ②): a node's several x its marks, a hub of several left out
+    const spread = M.units.spreadUnits(own, decl, Object.keys(encode), { record: 'y', drawn: ['x', 'y'] });
+    const m = M.scatter.scatterModel(spread.units, { ...M.color.paintRows(own, { marked, palette: pal, declaration: decl }), palette: pal, declaration: decl });
+    return { points: m.points.map((p) => [p.label, Math.round(p.x * 1000) / 1000, p.y, p.ids, p.marked]), several: spread.dropped.length };
   };
   const X = (reduce) => ({ ...TEMP, reduce });
   const Y = { steps: [], value: { on: 'attribute', name: 'press' }, words: ['press'] };
@@ -1441,8 +1443,8 @@ async function suite(M) {
         after: ['marking:start', 'marking:pick', 'marking:3', 'marking:5', 'marking:6'], b: ['marking:3', null], c: [null, 'marking:5'],
         limit: ['marking:pick'], walks: ['type:wafer'], kept: ['Not deleted - used by start'] }),
     judge('K6 a marking\'s colour is its marked lines\' and points\'', k.colour, { line: '#123456', unmarked: true, marked: '#123456' }),
-    judge('P1 Marker by none: a point a node; a node with several x and no reduce not drawn', mk.none,
-      { points: [['W1', 30, 5, ['W1'], false], ['W2', 10, 5, ['W2'], false], ['W4', 40, 7, ['W4'], false]], several: 1 }),
+    judge('P1 Marker by none: a point a mark - a node with several x and no reduce a point each (lead-board-13 ②), each its node\'s', mk.none,
+      { points: [['W1', 30, 5, ['W1'], false], ['W2', 10, 5, ['W2'], false], ['W3', 20, 5, ['W3'], false], ['W3', 26, 5, ['W3'], false], ['W4', 40, 7, ['W4'], false]], several: 0 }),
     judge('P2 Marker by lot: a point a lot - x the Avg of every value of its rows (not of each row\'s); y without a reduce its one value, several not drawn; marked when a row of it is',
       mk.lot, { points: [['L1', 25.333, 5, ['W1', 'W3'], true]], several: 1 }),
     judge('P3 Marker by lot and product: a point each combination, its words both; x the Count', mk.two,
@@ -1625,8 +1627,8 @@ const MUTANTS = [
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',
-    mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });",
-      "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], {}); });") },
+    mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark(line.ids || [line.id], event); });",
+      "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark(line.ids || [line.id], {}); });") },
   { id: 'M12', what: 'a part walked anew leaves its marking alone - the chain does not follow', catches: 'K2b ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (kept.length !== entries.length) this.markings.replace(this.writes, kept);', '') },
   { id: 'M13', what: 'a limit counted as a step of the chain - the Marked table a loop', catches: 'K3 ', file: 'testbed/visual_part.js', key: 'visual',
@@ -1689,9 +1691,9 @@ const MUTANTS = [
   { id: 'M41', what: 'equal values by id backwards', catches: 'SI1 ', file: 'testbed/show_items.js', key: 'show',
     mutate: (t) => swap(t, '(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)', '(a.id < b.id ? 1 : a.id > b.id ? -1 : 0)') },
   { id: 'M42', what: 'a time read not said a time', catches: 'TM1 ', file: 'testbed/slot.js', key: 'slot',
-    mutate: (t) => swap(t, "=== 'string') return { time: true };", "=== 'string') return {};") },
+    mutate: (t) => swap(t, "  const time = (r.value && typeof r.value === 'object' && typeof r.value.$datetime === 'string') || declared === 'datetime';", "  const time = false;") },
   { id: 'M43', what: 'the tooltip says a value as it came - the UTC text', catches: 'TM1 ', file: 'testbed/tooltip.js', key: 'tooltip',
-    mutate: (t) => swap(t, 'return valueText(read.value, isTimeRead(read));', 'return String(read.value);') },
+    mutate: (t) => swap(t, 'return ctx.text ? ctx.text(key, read.value, isTimeRead(read)) : valueText(read.value, isTimeRead(read));', 'return String(read.value);') },
   { id: 'M44', what: 'a filter value as it came, no tooltip', catches: 'TM1 ', file: 'testbed/condition_editor.js', key: 'cond',
     mutate: (t) => swap(t, '      words.title = said;', '      words.title = \'\';') },
   { id: 'M45', what: 'every label right of its point', catches: 'LB2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',

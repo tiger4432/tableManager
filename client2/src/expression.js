@@ -87,6 +87,13 @@ function wallOf(v, zone) {
   return moved.y < 1 || moved.y > 9999 ? null : { ...moved, ms, off: offsetAt(instant, zone) };
 }
 const pad2 = (n) => String(n).padStart(2, '0');
+/** A time's day on the page zone's wall clock («YYYY-MM-DD») when it is that day's midnight there; else - not a time, a
+ *  zone that is none - null. What the screen says a time of a slot of days as (testbed slot.js valueText, lead 10-15). */
+export function dayText(v) {
+  let w = null;
+  try { w = wallOf(v, pageZone || ZONE_DEFAULT); } catch (e) { if (!(e instanceof RangeError)) throw e; }
+  return w && !w.h && !w.mi && !w.s && !w.ms ? `${String(w.y).padStart(4, '0')}-${pad2(w.M)}-${pad2(w.d)}` : null;
+}
 /** A time as both calculators spell it: its wall clock and offset, «Z» at offset 0, milliseconds when not 0. */
 const timeText = (w) => `${String(w.y).padStart(4, '0')}-${pad2(w.M)}-${pad2(w.d)}T${pad2(w.h)}:${pad2(w.mi)}:${pad2(w.s)}`
   + (w.ms ? `.${String(w.ms).padStart(3, '0')}` : '')

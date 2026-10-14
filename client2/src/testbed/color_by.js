@@ -5,9 +5,13 @@
 // The one seat a colour is asked: colorsOf; a hub (a marker, a cell) asks colorOfIds.
 
 import { mix } from './palette.js';
+import { numberOf } from '../walk/reach_table.js';
 
 /** The Color by slot every kind of the root holds. */
-export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true, many: true });
+export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true, many: true, scalable: true });
+/** A continuous Color by's ramp (lead-board-13 ①): the palette's first category colour, from mixed 20 % toward the
+ *  background (low) to itself (high) - no colour of its own. */
+export const RAMP_LOW_SHARE = 0.2;
 
 /**
  * Each row's colour by the declaration's Color by: a row reading one value is in that category (categories in their
@@ -22,10 +26,12 @@ export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', categ
 export function colorsOf(rows, ctx) {
   const palette = ctx.palette;
   const decl = ctx.declaration || {};
+  // continuous (the root's scale): a row's colour its value's place between the least and the most - a ramp, no categories
+  if (ctx.scale && ctx.scale.scale === 'continuous' && decl.encode && decl.encode.color) return rampOf(rows, palette, ctx.scale.time);
   const own = decl.colors || {};
-  const categoryOf = (row) => (row.reads.color && row.reads.color.state === 'one' ? String(row.reads.color.value) : null);
+  const categoryOf = (row) => paintCategoryOf(row.reads.color);
   const seen = [...new Set(rows.map(categoryOf).filter((c) => c !== null))];
-  const names = [...seen].sort();
+  const names = categoryNames(seen);
   const marked = ctx.marked || (() => false);
   const anyMarked = rows.some((r) => marked(r.id));
   // A category not declared yet: the palette's next colour no category holds, in the order the rows show them (QA 10-14:
@@ -46,9 +52,37 @@ export function colorsOf(rows, ctx) {
   return { any: Boolean(decl.encode && decl.encode.color), of, categories, one: palette.one, assigned };
 }
 
+/** A continuous Color by: each row reading one number (or time) at its place on the ramp, the rest the one colour. */
+function rampOf(rows, palette, time) {
+  const at = (row) => { const r = row.reads.color; if (!r || r.state !== 'one') return null; const v = time ? Date.parse(r.value) : numberOf(r.value); return Number.isFinite(v) ? v : null; };
+  const vals = rows.map(at);
+  const known = vals.filter((v) => v !== null);
+  const min = known.length ? Math.min(...known) : null;
+  const max = known.length ? Math.max(...known) : null;
+  const [high, highLine] = palette.cat[0];
+  const shade = (t) => ({ fill: mix(high, palette.bg, RAMP_LOW_SHARE + (1 - RAMP_LOW_SHARE) * t), line: mix(highLine, palette.bg, RAMP_LOW_SHARE + (1 - RAMP_LOW_SHARE) * t) });
+  const of = new Map(rows.map((row, i) => {
+    const v = vals[i];
+    if (v === null) return [row.id, { fill: palette.one[0], line: palette.one[1], category: null }];
+    const look = shade(max > min ? (v - min) / (max - min) : 1);
+    return [row.id, { ...look, category: look.fill }];
+  }));
+  const lowEnd = rows.find((_, i) => vals[i] === min);
+  const highEnd = rows.find((_, i) => vals[i] === max);
+  return { any: true, of, categories: [], one: palette.one, assigned: {},
+    ramp: known.length ? { low: shade(0).fill, high: shade(1).fill, min: lowEnd.reads.color.value, max: highEnd.reads.color.value, time } : null };
+}
+
 /** A category's look not declared yet - THE one rule for Color by's colours and Shape by's shapes: the pool's next one no
  *  category holds, in the order the rows show them (all held - round the pool again); handed back for the declaration to
  *  keep, so a value keeps its look as more come (Spotfire's). */
+/** The category a paint slot (Color by, Shape by) gives a row: its one value; several - one «(Multiple)», a mark being
+ *  painted one look (lead 10-15; the slots that place or group - units.js spreadUnits - stand a row in each value); none - null. */
+export const MULTIPLE = '(Multiple)';
+export const paintCategoryOf = (read) => (!read ? null : read.state === 'one' ? String(read.value) : read.state === 'several' ? MULTIPLE : null);
+/** A legend's categories in order: as text, «(Multiple)» last. */
+export const categoryNames = (seen) => [...seen].sort((a, b) => (a === MULTIPLE) - (b === MULTIPLE) || (a < b ? -1 : a > b ? 1 : 0));
+
 export function assignLooks(seen, own, pool) {
   const held = new Set(Object.values(own));
   const assigned = {};
@@ -87,8 +121,8 @@ export function painter({ colors, marked, markColor, palette, ids, anyHeld = fal
 }
 
 /** The root's colours and paint for rows, together - what a kind's model is handed (`colors`, `paint`, `colored`). */
-export function paintRows(rows, { palette, declaration, marked = () => false, markColor = null, anyHeld = false }) {
-  const colors = colorsOf(rows, { palette, declaration, marked });
+export function paintRows(rows, { palette, declaration, marked = () => false, markColor = null, anyHeld = false, scale = null }) {
+  const colors = colorsOf(rows, { palette, declaration, marked, scale });
   return { colors, colored: colors.any, paint: painter({ colors, marked, markColor, palette, ids: rows.map((r) => r.id), anyHeld }) };
 }
 
@@ -120,6 +154,16 @@ export function legendBlock(looks, ctx, look = COLOR_LEGEND) {
   const row = el('div', 'sf-legend__row');
   row.append(ctx.pill(look.key), ctx.plus(look.key));
   block.append(el('div', 'sf-legend__ttl', look.title), row);
+  // continuous: a band from the least to the most, its two ends' values (lead-board-13 ①)
+  if (looks.ramp) {
+    const v = el('div', 'sf-legend__ramp');
+    const band = el('span', 'sf-legend__band');
+    if (band.style) band.style.background = `linear-gradient(to right, ${looks.ramp.low}, ${looks.ramp.high})`;
+    v.append(el('span', 'sf-legend__end', ctx.text ? ctx.text(look.key, looks.ramp.min, looks.ramp.time) : String(looks.ramp.min)), band,
+      el('span', 'sf-legend__end', ctx.text ? ctx.text(look.key, looks.ramp.max, looks.ramp.time) : String(looks.ramp.max)));
+    block.append(v);
+    return block;
+  }
   if (!looks.categories.length) {
     const v = el('div', 'sf-legend__v');
     v.append(look.icon(null, at, el), el('span', 'sf-legend__name', 'All values'));
@@ -130,7 +174,8 @@ export function legendBlock(looks, ctx, look = COLOR_LEGEND) {
     const v = el('div', `sf-legend__v${c.dim ? ' is-dim' : ''}`);
     v.setAttribute('data-category', c.name);
     const ico = look.icon(c, at, el);
-    const name = el('button', 'sf-legend__name', c.name);
+    // its name as the slot says it (a slot of days its days); the hub's value the category itself
+    const name = el('button', 'sf-legend__name', ctx.text ? ctx.text(look.key, c.name) : c.name);
     name.type = 'button';
     name.addEventListener('click', (event) => ctx.markHub([[ctx.words(look.key), c.name]], c.ids, event));
     v.append(ico, name);

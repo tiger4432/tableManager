@@ -16,7 +16,6 @@ import { setDisabledReason } from '../../disabled_reason.js';
 export const SHEET_WORDS = Object.freeze({
   oneKey: 'one key per sheet',
   unknownFormat: 'unknown format',
-  several: (n) => `${n ? `${n} values` : 'Several values'} — wrap in an aggregate`,
   cycle: (ring) => `A cycle: ${ring.join(' → ')}`,
   key: 'Key',
   general: 'General',
@@ -109,9 +108,9 @@ function cellOf(at, spec, decl, row, ctx) {
     const read = row && row.reads ? row.reads[at] : null;
     if (read && read.state === 'one') value = read.value;
     if (read && read.types) time = isTimeRead(read);
-    else if (read && read.state === 'several') { out.error = '#MANY'; out.why = SHEET_WORDS.several(read.n || (read.values || []).length); }
     else if (read && read.state === 'cycle') { out.error = '#CYCLE'; out.why = SHEET_WORDS.cycle(read.ring || []); }
-    else if (read && read.why) { out.error = /^No (value|function) named/.test(read.why) ? '#NAME?' : '#ERROR'; out.why = read.why; }
+    // a refusal - the calculator's, or the root's (units.js refuseMany: #MANY and why) - drawn as it says
+    else if (read && read.why) { out.error = read.error || (/^No (value|function) named/.test(read.why) ? '#NAME?' : '#ERROR'); out.why = read.why; }
     if (value !== null && typeof value === 'string') node = nodeOf(value, read && read.label);
   } else if (input.trim() !== '') {
     value = numberOf(input) !== null ? numberOf(input) : input;

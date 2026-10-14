@@ -5,11 +5,11 @@
 // own value. Or { self: true } - the row's own node (a sheet's key cell), or { constant } - a value as written (a
 // sheet's cell). This file is the one place that asks which a slot is.
 
-import { readsOf, recordsOf, waysOf, WAYS_A_CELL, valueWords } from '../walk/reach_table.js';
+import { readsOf, recordsOf, waysOf, WAYS_A_CELL, valueWords, numberOf } from '../walk/reach_table.js';
 import { timeOf } from '../walk/trend.js';
 import { parseServerInstant, localStamp, NO_TIME } from '../server_time.js';
 import { isBlank } from '../absent.js';
-import { compile, run, Reads, ExpressionError } from '../expression.js';
+import { compile, run, Reads, ExpressionError, dayText } from '../expression.js';
 import { fold } from './aggregate.js';
 
 const spelling = (v) => JSON.stringify(v);
@@ -54,8 +54,9 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
   if (got.missing) return { state: 'missing' };
   const reads = got.reads;
   const reduce = slot.reduce || (oneValued ? 'Latest' : null);
-  // a time read (readsAt) - said as a time wherever it is shown (valueText)
-  const time = reads.some((r) => r.time) ? { time: true } : {};
+  // a time read (readsAt) - said as a time wherever it is shown (valueText); the type its reads declare when they say one
+  const declaredTypes = [...new Set(reads.map((r) => r.declared).filter(Boolean))];
+  const time = { ...(reads.some((r) => r.time) ? { time: true } : {}), ...(declaredTypes.length === 1 ? { declared: declaredTypes[0] } : {}) };
   if (reduce) {
     const f = fold(reduce, reads);
     return f.value === null ? { state: 'empty', n: f.n, tied: f.tied } : { state: 'one', value: f.value, n: f.n, ...time };
@@ -65,14 +66,46 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
   return values.length === 1 ? { state: 'one', value: values[0], n: reads.length, ...time } : { state: 'several', values, n: reads.length, ...time };
 }
 
+/** The scales a slot may be drawn on (lead-board-13 ①, owner 10-14 «카테고리컬, 컨티뉴어스 별로»). */
+export const SCALES = Object.freeze(['categorical', 'continuous']);
+const CONTINUOUS_DECLARED = new Set(['number', 'datetime']);
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+/** A value written as an ISO time (a date, a date and time, an offset or Z). */
+export const isTimeText = (v) => typeof v === 'string' && ISO_TIME.test(v.trim());
+
+/**
+ * A slot's scale - THE one seat (lead-board-13 ①): the declaration's pick (`scale[key]`) when it makes one; else the walk's
+ * declared type - number or datetime continuous (owner 10-14 «ㄱ») -, else its values - all numbers or all times
+ * continuous, any other categorical. `time`: its values are times (declared datetime, or all written as times) - a
+ * continuous time axis, or categories in time order.
+ * @param {Array<{state, value?, values?, declared?}>} reads  the slot's reads, a row each
+ * @param {'categorical'|'continuous'|null} [chosen]
+ * @returns {{scale: 'categorical'|'continuous', time: boolean}}
+ */
+export function scaleOf(reads, chosen = null) {
+  const said = (reads || []).filter((r) => r && (r.state === 'one' || r.state === 'several'));
+  const values = said.flatMap((r) => (r.state === 'one' ? [r.value] : r.values || [])).filter((v) => !isBlank(v));
+  const declared = [...new Set(said.map((r) => r.declared).filter(Boolean))];
+  const one = declared.length === 1 ? declared[0] : null;
+  const allTimes = values.length > 0 && values.every(isTimeText);
+  const time = one === 'datetime' || allTimes;
+  // every time the page zone's midnight - a slot of days, said as days (valueText)
+  const day = time && values.length > 0 && values.every((v) => dayText(v) !== null);
+  if (SCALES.includes(chosen)) return { scale: chosen, time, day };
+  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time, day };
+  const allNumbers = values.length > 0 && values.every((v) => numberOf(v) !== null);
+  return { scale: allNumbers || allTimes ? 'continuous' : 'categorical', time, day };
+}
+
 /** Whether a read is a time: the walk says so - its column declared datetime (an edge's `column_types`, a node record's
  *  `column_type`), or a calculator's name of that type (`types`) - or it reads the time itself. */
 export const isTimeRead = (read) => Boolean(read && (read.time || (read.types && Object.values(read.types).includes('datetime'))));
 
-/** A value as it is shown - THE one place (tooltip, label, filter, Sheet): a time in the viewer's zone as the grid shows a
- *  datetime cell (server_time localStamp), the rest valueWords. */
-export function valueText(value, time = false) {
-  return (time && timeText(value)) || valueWords(value);
+/** A value as it is shown - THE one place (tooltip, label, filter, Sheet, heads, ticks, legends): a time of a slot of days
+ *  (`day`, scaleOf) its day in the page zone, another time in the viewer's zone as the grid shows a datetime cell
+ *  (server_time localStamp), the rest valueWords. */
+export function valueText(value, time = false, day = false) {
+  return (day && dayText(value)) || (time && timeText(value)) || valueWords(value);
 }
 
 /** A time value in the viewer's zone (server_time localStamp); not a time - null. */
@@ -188,7 +221,8 @@ export function calcRow(index, inside, x) {
 function answerOne(out) {
   if (out.several) return { state: 'several', values: [] };
   const v = 'values' in out ? out.values[0] : out.value;
-  return isBlank(v) ? { state: 'empty', n: 0, why: out.why, notNumber: out.notNumber > 0 } : { state: 'one', value: v, n: 1 };
+  // notTime (the calculator's date functions, implementer A): a text that is not a time - counted as notNumber is
+  return isBlank(v) ? { state: 'empty', n: 0, why: out.why, notNumber: out.notNumber > 0, notTime: out.notTime > 0 } : { state: 'one', value: v, n: 1 };
 }
 
 /** What a folding slot keeps of a row: its reads {value, t} (`records` - each read spread into its records), or the row
@@ -224,13 +258,19 @@ export function readsAt(index, inside, x, slot, records = false) {
   return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ ...r, value: new Date(r.t).toISOString(), time: true })) : reads };
 }
 
-/** A read a time: the server's {"$datetime"}, or a column the walk declares datetime - {time: true}; else {}. */
-function timeOfRead(index, slot, r) {
-  if (r.value && typeof r.value === 'object' && typeof r.value.$datetime === 'string') return { time: true };
+/** A read's declared column type as the walk says it - an edge's `column_types`, a node record's `column_type` - or null. */
+function declaredOf(index, slot, r) {
   const name = slot.value && slot.value.name;
   const said = slot.value && slot.value.on === 'edge' ? r.edge && (r.edge.column_types || {})[name]
     : ((((index.nodes.get(r.node) || {}).records || {})[name] || [])[0] || {}).column_type;
-  return said === 'datetime' ? { time: true } : {};
+  return typeof said === 'string' && said ? said : null;
+}
+
+/** A read a time: the server's {"$datetime"}, or a column the walk declares datetime - {time: true}; and its declared type. */
+function timeOfRead(index, slot, r) {
+  const declared = declaredOf(index, slot, r);
+  const time = (r.value && typeof r.value === 'object' && typeof r.value.$datetime === 'string') || declared === 'datetime';
+  return { ...(time ? { time: true } : {}), ...(declared ? { declared } : {}) };
 }
 
 /** A value as a slot reads it: a time the server sends as {"$datetime": iso} (ledger roleframe) its instant in ISO -
@@ -258,11 +298,13 @@ export function combosOf(rows, keys) {
     }
     for (const values of combos) {
       const at = JSON.stringify(values);
-      if (!out.has(at)) out.set(at, { values, ids: [] });
-      out.get(at).ids.push(row.id);
+      if (!out.has(at)) out.set(at, { values, ids: [], seen: new Set() });
+      // a mark gathers its row (units.js marksOf): two marks of one row in one cell are the row once
+      const cell = out.get(at);
+      for (const id of row.ids || [row.id]) if (!cell.seen.has(id)) { cell.seen.add(id); cell.ids.push(id); }
     }
   }
-  return [...out.values()];
+  return [...out.values()].map(({ values, ids }) => ({ values, ids }));
 }
 
 /** A slot's columns - THE one place an older one-column slot reads as a list of one (owner 10-14: a pill of several

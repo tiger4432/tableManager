@@ -18,11 +18,14 @@ const ROOT = join(HERE, '..', '..');
 const REAL = {
   aggregate: await import('../src/testbed/aggregate.js'),
   slot: await import('../src/testbed/slot.js'),
+  units: await import('../src/testbed/units.js'),
   filter: await import('../src/testbed/filter.js'),
   hubs: await import('../src/testbed/hubs.js'),
   scatter: await import('../src/testbed/kinds/scatter.js'),
   color: await import('../src/testbed/color_by.js'),
   cross: await import('../src/testbed/kinds/cross_table.js'),
+  table: await import('../src/testbed/kinds/table.js'),
+  map: await import('../src/testbed/kinds/map.js'),
   visual: await import('../src/testbed/visual_part.js'),
   status: await import('../src/testbed/status_part.js'),
   picker: await import('../src/testbed/picker.js'),
@@ -35,6 +38,7 @@ const { MarkingStore, SIGN } = REAL.store;
 const { parseAst } = await import('rolldown/parseAst');
 const { indexGraph, routesFrom } = await import('../src/walk/reach_table.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
+const { localStamp } = await import('../src/server_time.js');
 const EXPR = await import('../src/expression.js');
 
 // ── the walk: six wafers, two lots, two measured quantities ──
@@ -159,7 +163,29 @@ async function measure(M) {
   const model = M.scatter.scatterModel(t5rows, { ...t5paint, palette: DARK });
   const p1 = model.points.find((p) => p.id === 'W1');
   const p4 = model.points.find((p) => p.id === 'W4');
-  out.scatter = { drawn: model.points.map((p) => p.id), notDrawn: model.notDrawn, several: model.several, kinds: [model.xKind, model.yKind],
+  // T40: the marks (lead-board-13 ②) - several spread a mark each; two several slots from the same records paired, from
+  // different records the row dropped with why; one value the same on every mark; a mark is its row's
+  const mk = (id, reads) => ({ id, label: id, reads, raw: {} });
+  const sev = (values) => ({ state: 'several', values, n: values.length });
+  const recordsOf = (id, key) => ({ R1: { x: [{ value: '1', record: 'e1' }, { value: '2', record: 'e2' }], y: [{ value: 'a', record: 'e1' }, { value: 'b', record: 'e2' }] },
+    R2: { x: [{ value: '1', record: 'e1' }, { value: '2', record: 'e2' }], y: [{ value: 'a', record: 'e3' }, { value: 'b', record: 'e4' }] } }[id] || {})[key] || null;
+  const got = M.units.marksOf([mk('R0', { x: { state: 'one', value: '5' }, y: sev(['p', 'q']) }), mk('R1', { x: sev(['1', '2']), y: sev(['a', 'b']) }),
+    mk('R2', { x: sev(['1', '2']), y: sev(['a', 'b']) })], ['x', 'y'], recordsOf, (k) => k.toUpperCase());
+  out.marks = [got.marks.map((m) => [m.id, m.row, m.ids.join(), m.reads.x.value, m.reads.y.value]), got.dropped.map((d) => [d.id, d.why])];
+  // T36: a slot's scale - the one seat (lead-board-13 ①, owner 10-14 ㄱ)
+  const one = (value, declared) => ({ state: 'one', value, ...(declared ? { declared } : {}) });
+  const sc = (reads, chosen) => { const s = M.slot.scaleOf(reads, chosen); return `${s.scale}${s.time ? '+time' : ''}`; };
+  out.scales = [sc([one('S1', 'number')]), sc([one('2026-10-01', 'datetime')]), sc([one('10', 'string'), one('20', 'string')]),
+    sc([one('A', 'string')]), sc([one('10'), one('x')]), sc([one('2026-10-01T00:00:00+09:00'), one('2026-10-02T00:00:00Z')]),
+    sc([one('2026-10-01', 'datetime')], 'categorical'), sc([one('A')], 'continuous'), sc([])];
+  out.timeOrder = M.scatter.categoryOrder(['2026-10-01T20:00:00Z', '2026-10-02T01:00:00+09:00'], true);
+  // T38: a continuous Color by - a ramp from the first category colour, the least and the most its ends; no categories
+  const pal = { bg: '#ffffff', one: ['#888888', '#666666'], cat: [['#1060c0', '#0a4a90']] };
+  const rampRows = [['W1', '10'], ['W2', '20'], ['W3', '30'], ['W4', null]].map(([id, v]) => ({ id, reads: { color: v === null ? { state: 'empty' } : { state: 'one', value: v } } }));
+  const ramp = M.color.colorsOf(rampRows, { palette: pal, declaration: { encode: { color: temp } }, scale: { scale: 'continuous', time: false } });
+  out.ramp = [ramp.categories.length, ramp.ramp && ramp.ramp.min, ramp.ramp && ramp.ramp.max, ramp.ramp && ramp.ramp.high, ramp.of.get('W3').fill, ramp.of.get('W1').fill,
+    ramp.of.get('W1').fill !== ramp.of.get('W2').fill, ramp.of.get('W4').fill];
+  out.scatter = { drawn: model.points.map((p) => p.id), notDrawn: model.notDrawn, kinds: [model.xKind, model.yKind],
     marked: p1.fill, dimmed: p4.fill, legend: t5paint.colors.categories.map((l) => [l.name, l.dim, l.ids]) };
   const option = M.scatter.scatterOption(model, DARK);
   out.drag = [M.scatter.idsInRange(model, option, [[15, 45], [1.5, 4.5]]), M.scatter.idsInRange(model, option, [[15, 45], [3.5, 4.5]]),
@@ -361,10 +387,102 @@ async function parts(M) {
   };
   out.wayStart = [startOf('x'), startOf('y'), startOf('color'), M.picker.expressionRefusal(wp.part, '[in_lot.name]'),
     M.picker.expressionRefusal(wp.part, '[in_lot.nope]'), M.picker.expressionRefusal(wp.part, '[measures.value]')];
+  // T37: the root's scale on a part - a pick in the declaration draws x as categories; the picker's Scale chips on X · Y ·
+  // Color whatever the type (owner 10-14), and none on a slot the kind draws one way only
+  const picked = seat(M, scatterDecl({ id: 'X4', scale: { x: 'categorical' } }));
+  await settle();
+  const chipsOf = (p, key) => { const host = wp.doc.createElement('div'); new M.picker.SlotPicker(host, { doc: wp.doc }).open({ part: p.part, key, anchor: null });
+    return walk(host).filter((n) => n.tagName === 'BUTTON' && n.getAttribute && n.getAttribute('data-scale')).map((n) => `${n.getAttribute('data-scale')}${String(n.className).includes('is-on') ? '*' : ''}`); };
+  const cross = seat(M, crossDecl({ id: 'C7' }));
+  await settle();
+  out.partScale = [picked.part.model.xKind, picked.part.model.yKind, chipsOf(picked, 'x'), chipsOf(picked, 'y'), chipsOf(picked, 'color'), chipsOf(cross, 'rows')];
+  // T35: a cross table with no cell slot - its Cell values pill says what the cells hold (owner 10-14 «행수»: UniqueCount(rows));
+  // one declared - its own words
+  const pillOf = (p) => { const n = walk(p.host).find((x) => x.tagName === 'BUTTON' && x.getAttribute && x.getAttribute('data-slot') === 'cells');
+    return n ? String(n.textContent).replace('▾', '') : null; };
+  const noCells = seat(M, crossDecl({ id: 'C9', encode: { rows: lot, columns: product } }));
+  const withCells = seat(M, crossDecl({ id: 'C8' }));
+  await settle();
+  out.cellsPill = [pillOf(noCells), pillOf(withCells)];
+  // T42: one walk, four kinds on the same two slots (lead-board-13 ② gate): the root makes the same marks for each - W3's
+  // two temps two marks, W6 with none one; the table a line a mark, W3's second line W3's
+  const k4 = [seat(M, scatterDecl({ id: 'K4', encode: { x: temp, y: press } })), seat(M, scatterDecl({ id: 'K5', kind: 'table', encode: { col1: temp, col2: press } }), { kinds: { table: M.table.kind } }),
+    seat(M, crossDecl({ id: 'K6', encode: { rows: temp, columns: press } })), seat(M, scatterDecl({ id: 'K7', kind: 'map', encode: { x: temp, y: press } }), { kinds: { map: M.map.kind } })];
+  await settle();
+  const second = (k4[1].part.model.lines || []).find((l) => l.id === 'W3#1');
+  out.sameMarks = [...k4.map((k) => (k.part.unitsById ? k.part.unitsById.size : null)), (k4[1].part.model.lines || []).length, second ? second.ids : null];
+  // T44: several on a slot of the root's (lead 10-15) - a paint slot (Color by, Shape by) one «(Multiple)» category, last,
+  // its own look, a press on it marking its rows; a placing slot (Panel by, Marker by) the row in each of its values
+  const mc = seat(M, scatterDecl({ id: 'MC' }));
+  const ms = seat(M, scatterDecl({ id: 'MS', encode: { x: temp, y: press, shape: product } }));
+  const mp = seat(M, scatterDecl({ id: 'MP', encode: { x: temp, y: press, panel: product } }));
+  const mm = seat(M, scatterDecl({ id: 'MM', encode: { x: { ...temp, reduce: 'Avg' }, y: { ...press, reduce: 'Avg' }, marker1: product } }));
+  await settle();
+  const w3 = mc.part.model.points.filter((p) => p.ids.includes('W3'));
+  const many = mc.part.colors.categories.find((c) => c.name === '(Multiple)') || {};
+  const manyPress = walk(mc.host).find((n) => n.tagName === 'BUTTON' && String(n.className) === 'sf-legend__name' && n.textContent === '(Multiple)');
+  for (const fn of (manyPress || { listeners: {} }).listeners.click || []) fn({});
+  await settle();
+  const pressed = mc.markings.entries('marking:pick').flatMap(([id]) => mc.hubs.open(id)).sort();
+  out.multiple = [mc.part.colors.categories.map((c) => c.name), w3.length, [...new Set(w3.map((p) => p.fill))].length === 1 && w3[0].fill === many.fill,
+    mc.part.colors.categories.filter((c) => c.fill === many.fill).length, many.ids || null, pressed,
+    ms.part.shapes.categories.map((c) => c.name),
+    (mp.part.panels || []).map((p) => [p.name, p.model.points.some((q) => q.ids.includes('W3'))]),
+    mm.part.model.points.filter((q) => q.ids.includes('W3')).map((q) => q.label).sort(),
+    M.color.paintCategoryOf({ state: 'several', values: ['A', 'B'] }), M.color.categoryNames(['B', '(Multiple)', 'A'])];
+  // T43: a slot of days says its days (lead 10-15): every time of it the page zone's (Asia/Seoul) midnight - «YYYY-MM-DD»
+  // on the cross table's row heads, the scatter's category ticks, the legend's names and the tooltip, the hub's value the
+  // time itself; one 09:00 there (00:00Z) - every time as the grid says it (localStamp)
+  const [D1, D2, DZ] = ['2026-11-24T00:00:00+09:00', '2026-11-25T00:00:00+09:00', '2026-11-24T00:00:00Z'];
+  const made = { steps: [], value: { on: 'node', name: 'made' }, words: ['made'] };
+  const dayAnswer = (times) => ({ nodes: times.map((v, i) => wafer(`D${i + 1}`, { made: v, product: 'A' })), edges: [], truncated: ANSWER.truncated });
+  const daysOf = async (times) => {
+    const answer = dayAnswer(times);
+    const cross = seat(M, crossDecl({ id: `DC${times.length}`, encode: { rows: made, columns: product } }), { answer });
+    const sc = seat(M, scatterDecl({ id: `DS${times.length}`, encode: { x: made, y: product, color: made }, scale: { x: 'categorical', color: 'categorical' } }), { answer });
+    await settle();
+    const heads = walk(cross.host).filter((n) => n.tagName === 'TH' && String(n.className) === 'sf-table__row').map((n) => n.textContent).filter((w) => w !== 'Total');
+    const chart = sc.charts.made[sc.charts.made.length - 1];
+    const fmt = chart.option.xAxis.axisLabel.formatter;
+    const ticks = (chart.option.xAxis.data || []).map((v) => (fmt ? fmt(v) : v));
+    const names = walk(sc.host).filter((n) => n.tagName === 'BUTTON' && String(n.className) === 'sf-legend__name');
+    sc.part.showTip({ id: 'D1' }, { clientX: 0, clientY: 0 });
+    const tip = sc.part.tip ? (sc.part.tip.children || []).map((n) => n.textContent) : [];
+    return [heads, ticks, names.map((n) => n.textContent), names.map((n) => n.getAttribute('data-category') || (n.parentNode && n.parentNode.getAttribute && n.parentNode.getAttribute('data-category'))), tip.find((l) => l.startsWith('made')) || null];
+  };
+  out.days = [await daysOf([D1, D2]), await daysOf([D1, D2, DZ])];
+  // ...and the one place itself: the slot's scale says day, valueText says a day of it
+  out.dayText = [M.slot.scaleOf([{ state: 'one', value: D1 }, { state: 'one', value: D2 }]).day, M.slot.scaleOf([{ state: 'one', value: D1 }, { state: 'one', value: DZ }]).day,
+    M.slot.valueText(D1, true, true), M.slot.valueText(DZ, true, true), M.slot.valueText(D1, true, false)];
+  // T41: a kind that draws one value a place - the root's refusal (#MANY and why); a cross cell holds a row's two marks once
+  const refused = M.units.refuseMany([{ id: 'W9', label: 'W9', reads: { a: { state: 'several', values: ['1', '2'], n: 2 } }, raw: {} }])[0].reads.a;
+  const cells = M.slot.combosOf([{ id: 'W9#0', ids: ['W9'], reads: { r: { state: 'one', value: 'L' } } }, { id: 'W9#1', ids: ['W9'], reads: { r: { state: 'one', value: 'L' } } }], ['r']);
+  out.rootRefusal = [refused.state, refused.error, refused.why, cells.map((c) => c.ids)];
+  // T34: «time» in the picker's Value list (lead 10-14 ③ ㄱ): on a route, the slot reads the time of what it reads (its last
+  // edge's) - of 'time', the same value; on «(row)» it is off with its reason
+  const timeOf = (part, key) => {
+    const host = part.doc ? part.doc.createElement('div') : wp.doc.createElement('div');
+    new M.picker.SlotPicker(host, { doc: wp.doc }).open({ part, key, anchor: null });
+    return walk(host).find((n) => n.tagName === 'BUTTON' && String(n.textContent).startsWith('time'));
+  };
+  const onRoute = timeOf(wp.part, 'x');
+  for (const fn of (onRoute || { listeners: {} }).listeners.click || []) fn({});
+  await settle();
+  const timed = wp.part.declaration().encode.x || {};
+  const read = M.slot.readSlot(wp.part.index, wp.part.inside, 'W1', timed);
+  const rowPart = seat(M, scatterDecl({ id: 'X3', encode: { x: temp, y: press, color: product } }));
+  await settle();
+  const onRow = timeOf(rowPart.part, 'color');
+  out.timePick = [timed.of, JSON.stringify(timed.value), JSON.stringify(timed.steps), read.state, read.value, Boolean(read.time),
+    Boolean(onRow && onRow.disabled), (onRow && (onRow.title || onRow.getAttribute && onRow.getAttribute('title'))) || ''];
   // T13 / T17: the status words, a cut walk only when an axis says so
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, startDropped: 2, marked: 1, columns: 1, source: 'wafer', cut: false })];
+  // T39: the rows a date function met a text that is not a time on - said where «not a number» is said; a calculator that
+  // counts none (no such key) says nothing
+  const said = (s) => M.status.statusWords({ rows: 3, of: 3, system: 0, part: 0, marked: 0, columns: 1, source: 'wafer', cut: false, ...s }).filter((w) => /not a (number|time)/.test(w));
+  out.notTimeWords = [said({ notNumber: 2, notTime: 1 }), said({ notNumber: 2 })];
   // T30: the bottom line counts the drawn rows an expression left empty on a text (W1 W2 W4 W5 - W3 several, W6 empty)
   const nn = seat(M, scatterDecl({ id: 'S9', encode: { x: { expr: '[product] * 2', words: ['[product] * 2'] }, y: press } }));
   await settle();
@@ -519,9 +637,17 @@ function suite(out, page, saved, counted) {
     out.reads, ['one', 'several', '34', 34, 'empty', 'missing', 'several', ['A', 'B']]);
   eq('T4 the one filter: a range; two conditions AND; checked values with empty kept; another type passes untouched; a period [from, to)',
     out.filter, [['W2', 'W3', 'W4'], ['W3', 'W4'], ['W1', 'W3', 'W4', 'W6'], ['L1'], true, false]);
-  eq('T5 the scatter model: two values each drawn, several not drawn, nothing not drawn; a marked point its colour, the rest mixed 20 % toward the background; legend dim where nothing marked',
-    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 1, several: 1, kinds: ['value', 'value'], marked: '#6489FA', dimmed: '#363D54',
-      legend: [['A', false, ['W1', 'W4']], ['B', false, ['W2', 'W5']]] });
+  eq('T40 the marks: several a mark each, the one value the same on all; two several from the same records paired; from different records the row not drawn and why; a mark its row\'s',
+    out.marks, [[['R0#0', 'R0', 'R0', '5', 'p'], ['R0#1', 'R0', 'R0', '5', 'q'], ['R1#0', 'R1', 'R1', '1', 'a'], ['R1#1', 'R1', 'R1', '2', 'b']],
+      [['R2', 'X and Y come from different records — pick a reduce']]]);
+  eq('T36 a slot\'s scale: declared number / datetime continuous; a string or no type by its values (all numbers, all times continuous); the pick wins - a datetime categorical in time order; nothing categorical',
+    [out.scales, out.timeOrder], [['continuous', 'continuous+time', 'continuous', 'categorical', 'categorical', 'continuous+time', 'categorical+time', 'continuous', 'categorical'],
+      ['2026-10-02T01:00:00+09:00', '2026-10-01T20:00:00Z']]);
+  eq('T38 a continuous Color by: a ramp of the first category colour - the most itself, the least toward the background, no categories; no value the one colour',
+    out.ramp, [0, '10', '30', '#1060C0', '#1060C0', '#CFDFF2', true, '#888888']);
+  eq('T5 the scatter model: two values each drawn, a mark of none or not one value not drawn (the root spreads several - T40); a marked point its colour, the rest mixed 20 % toward the background; legend dim where nothing marked',
+    out.scatter, { drawn: ['W1', 'W2', 'W4', 'W5'], notDrawn: 2, kinds: ['value', 'value'], marked: '#6489FA', dimmed: '#363D54',
+      legend: [['A', false, ['W1', 'W4']], ['B', false, ['W2', 'W5']], ['(Multiple)', true, ['W3']]] });
   eq('T6 a drag marks the points its rectangle holds - x and y both inside', out.drag, [['W2', 'W4'], ['W4'], []]);
   eq('T7 the cross table: a row with two values stands in both; a cell folds its rows\' values (Avg over the union, not of averages); totals; a cell with a marked row marked',
     out.cross, { rows: ['L1', 'L2', '(Empty)'], cols: ['A', 'B', '(Empty)'],
@@ -533,6 +659,25 @@ function suite(out, page, saved, counted) {
     [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
   eq('T30 an operator over a text that is not a number: the row empty and marked; a list several; an empty value empty, not marked; the bottom line counts the drawn rows so marked',
     [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
+  eq('T37 a pick in the declaration draws its axis so; the Scale chips on X · Y · Color whatever the type (the lit one the scale drawn), none on a role-fixed slot',
+    page.partScale, ['category', 'value', ['categorical*', 'continuous'], ['categorical', 'continuous*'], ['categorical*', 'continuous'], []]);
+  eq('T39 the rows not a time said where «not a number» is said; none counted, nothing said', page.notTimeWords, [['2 rows not a number', '1 row not a time'], ['2 rows not a number']]);
+  eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
+  eq('T44 several on a paint slot (Color by, Shape by) one «(Multiple)» category, last, its own colour, a press marking its rows; on a placing slot (Panel by, Marker by) the row in each value',
+    page.multiple, [['A', 'B', '(Multiple)'], 2, true, 1, ['W3'], ['W3'], ['A', 'B', '(Multiple)'], [['A', true], ['B', true], ['(Empty)', false]], ['A', 'B'], '(Multiple)', ['A', 'B', '(Multiple)']]);
+  eq('T43 a slot of days says its days - every time the page zone\'s midnight: «YYYY-MM-DD» on the cross row heads, the category ticks, the legend, the tooltip, the hub\'s value the time itself; one not midnight - every time as the grid says it',
+    [page.days, page.dayText],
+    [[[['2026-11-24', '2026-11-25'], ['2026-11-24', '2026-11-25'], ['2026-11-24', '2026-11-25'], ['2026-11-24T00:00:00+09:00', '2026-11-25T00:00:00+09:00'], 'made: 2026-11-24'],
+      [['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'].map(localStamp), ['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'].map(localStamp),
+        ['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'].map(localStamp),
+        ['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'], `made: ${localStamp('2026-11-24T00:00:00+09:00')}`]],
+      [true, false, '2026-11-24', localStamp('2026-11-24T00:00:00Z'), localStamp('2026-11-24T00:00:00+09:00')]]);
+  eq('T42 the same walk on four kinds (scatter, table, cross table, map) on the same slots: the root\'s marks the same; the table a line a mark, a line its row\'s',
+    page.sameMarks, [7, 7, 7, 7, 7, ['W3']]);
+  eq('T41 the sheet draws the root\'s refusal (#MANY and why); a cell holds a row\'s two marks once (its count the rows)',
+    page.rootRefusal, ['empty', '#MANY', '2 values — wrap in an aggregate', [['W9']]]);
+  eq('T34 «time» in the picker: on a route the slot reads its last edge\'s time (of time, the value kept); on «(row)» off with its reason',
+    page.timePick, ['time', JSON.stringify(temp.value), JSON.stringify(temp.steps), 'one', new Date(T0).toISOString(), true, true, 'No time on this route']);
   eq('T31 a way in the brackets: its end node\'s name; a row it does not reach empty; folded over its ends; two ends several - and Custom expression starts from the route chosen (its reduce around it), the check reading a way as the row does',
     [out.ways, page.wayStart], [[['one', 'L1'], ['empty', null], ['one', 5.5], ['several', null]],
       ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer', '']]);
@@ -542,7 +687,7 @@ function suite(out, page, saved, counted) {
   eq('T29 a condition on an expression slot carries the expression and is judged by it; two on one row type stay two',
     out.exprCondition, ['If([product] = "A", 1, 0)', ['W1', 'W4'], true]);
   eq('T23 each kind words its own title: the scatter «y vs. x»; the cross table its cells per rows and columns, no cell slot Count',
-    out.titles, ['press · value vs. temp · value', 'Avg(press · value) per lot and product', 'Count per lot and product']);
+    out.titles, ['press · value vs. temp · value', 'Avg(press · value) per lot and product', 'UniqueCount(rows) per lot and product']);
   eq('T8 hubs: members take the hub\'s sign, a + wins over a -, a node stands as itself; a hub holds its members; said in words',
     out.hubs, [{ positive: ['W1', 'W2', 'W3'], negative: ['W9'] }, true, 0, 'wafer · lot = L1']);
   eq('T20 the walk page\'s reading of a marking is the same function - no opener: each entry itself, the marking\'s order, an absent sign no seed',
@@ -553,12 +698,13 @@ function suite(out, page, saved, counted) {
     page.custom, ['The expression ends too soon', true, 'No value named nope on wafer',
       [{ expr: 'If([product] = "A", "is A", "not A")', words: ['If([product] = "A", "is A", "not A")'] }], ['is A', 'not A']]);
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
-  // the row walk, then one value walk for x and y together (both measures, one step - the second waits for the first)
-  eq('T9a All walks the row type described; the rows and counts; every drawable point drawn',
-    [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null], [null, 'W1']], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);
-  eq('T9b a drag marks what the rectangle holds, replacing; the status bar counts it', [page.dragMarked, page.dragStats], [['W2', 'W4'], 2]);
+  // the row walk, then one value walk for x and y together (both measures, one step - the second waits for the first);
+  // W3's two temps two points (x and y the scatter's own slots; its two products the one look of Color by) - W6 none
+  eq('T9a All walks the row type described; the rows and counts; every drawable point drawn - a several x a point each',
+    [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null], [null, 'W1']], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 6]);
+  eq('T9b a drag marks what the rectangle holds, replacing; the status bar counts it (W3 a row)', [page.dragMarked, page.dragStats], [['W2', 'W3', 'W4'], 3]);
   eq('T9c a cross table cell marks its hub whole; the scatter draws its members marked', [page.hubMark, page.hubShown],
-    [[1, true, ['W1', 'W3']], ['W1']]);
+    [[1, true, ['W1', 'W3']], ['W1', 'W3#0', 'W3#1']]);
   eq('T9c\' «K marked rows» counts the part\'s rows the marking holds - one hub entry of two members is 2', page.hubCounted, [1, 2]);
   eq('T9d the system filter\'s start side keeps the start nodes first and walks again from the kept ones', page.startSide,
     { asked: [['W1', 'W4'], ['W4'], WAFERS], startDropped: 1, system: 3 });
@@ -585,7 +731,7 @@ function suite(out, page, saved, counted) {
       ['1 of 1 rows', 'filter over a cut walk', '0 marked rows', '0 columns', 'wafer'],
       ['1 of 1 rows', 'start −2 · system −0 · part −0', '1 marked row', '1 columns', 'wafer']]);
   eq('T17 a cut walk is the board\'s reading of truncated (an axis true), not «truncated is there»', page.cut, [false, true]);
-  eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 4 });
+  eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 6 });
   eq('T18 the site\'s theme is the page\'s - the walk page\'s parts on it (the start picker) wear the same tokens', saved.siteTheme, ['dark', 'light']);
   eq('T34 the page\'s start gives the declaration\'s zone to the calculator - a day cut in New York, not Seoul', saved.zoned, '2026-10-13T00:00:00-04:00');
   eq('T14 census: the visual part is the one caller of the filter; no kind imports it', [counted.callers, counted.kindsFilter], [['visual_part.js'], []]);
@@ -623,8 +769,36 @@ const MUTANTS = [
     mutate: (t) => swap(t, '!(Number.isFinite(to) && t >= to)', '!(Number.isFinite(to) && t > to)') },
   { id: 'M9', what: 'a dimmed mark keeps its colour (no mix)', catches: 'T5', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, 'return { fill: mix(c.fill, palette.bg), line: mix(c.line, palette.bg),', 'return { fill: c.fill, line: c.line,') },
-  { id: 'M10', what: 'a several drawn - not counted apart', catches: 'T5', file: 'testbed/kinds/scatter.js',
-    mutate: (t) => swap(t, "    if ([x, y].some((r) => r && r.state === 'several')) { several += 1; continue; }\n", '') },
+  // M10 (a several drawn by the scatter) retired 10-14: the root spreads several into marks (units.js marksOf) - T40's mutants
+  { id: 'M60', what: 'a several read not spread - the row drawn as one', catches: 'T40', file: 'testbed/units.js',
+    mutate: (t) => swap(t, "    if (!many.length) { marks.push({ ...row, ids: [row.id], row: row.id }); continue; }", "    if (true) { marks.push({ ...row, ids: [row.id], row: row.id }); continue; }") },
+  { id: 'M61', what: 'two several slots paired by order, not by record', catches: 'T40', file: 'testbed/units.js',
+    mutate: (t) => swap(swap(t, '      if (!same) { dropped.push({ id: row.id, why: PAIR_WORDS(words(many[0]), words(many[1])) }); continue; }', '      if (false) { continue; }'), '      picks = recs[0].map((rec) => lists.map((l) => l.find((r) => r.record === rec).value));', '      picks = lists[0].map((_, i) => lists.map((l) => l[i].value));') },
+  { id: 'M62', what: 'a mark forgets its row - a press marks nothing', catches: 'T40', file: 'testbed/units.js',
+    mutate: (t) => swap(t, '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads });', '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [`${row.id}#${k}`], row: row.id, reads });') },
+  { id: 'M72', what: 'several on a paint slot the one look, no category', catches: 'T44', file: 'testbed/color_by.js',
+    mutate: (t) => swap(t, "read.state === 'several' ? MULTIPLE : null);", 'null);') },
+  { id: 'M73', what: '«(Multiple)» sorted as text - first', catches: 'T44', file: 'testbed/color_by.js',
+    mutate: (t) => swap(t, '[...seen].sort((a, b) => (a === MULTIPLE) - (b === MULTIPLE) || (a < b ? -1 : a > b ? 1 : 0));', '[...seen].sort();') },
+  { id: 'M67', what: 'a slot of days never said - the scale has no day', catches: 'T43', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '  const day = time && values.length > 0 && values.every((v) => dayText(v) !== null);', '  const day = time && values.length > 0;') },
+  { id: 'M68', what: 'the one place says a time of a slot of days as any time', catches: 'T43', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '  return (day && dayText(value)) || (time && timeText(value)) || valueWords(value);', '  return (time && timeText(value)) || valueWords(value);') },
+  { id: 'M69', what: 'the root hands the kinds no day', catches: 'T43', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    return valueText(value, Boolean(time || s.time), Boolean(s.day));', '    return valueText(value, Boolean(time || s.time), false);') },
+  { id: 'M70', what: 'the cross table draws a row head as it came', catches: 'T43', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, "sf-table__row sf-table__row--in', said('rows', run.word));", "sf-table__row sf-table__row--in', run.word);") },
+  { id: 'M71', what: 'a category tick as it came', catches: 'T43', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, "formatter: kind === 'value' ? tickWords : kind === 'category' && text ? text : undefined },", "formatter: kind === 'value' ? tickWords : undefined },") },
+  { id: 'M66', what: 'the root\'s own slots (Color by) split a row too - W3 left out for its two products', catches: 'T9a', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    const drawn = own.map((s) => s.key).filter((k) => keysRead.includes(k));', '    const drawn = keysRead;') },
+  // in the root's call: a units.js copy reaches M.units only - the root imports the original
+  { id: 'M65', what: 'the root spreads a points kind only - a table, a cross table, a map draw rows', catches: 'T42', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    const spread = (some) => spreadUnits(', '    const spread = (some) => (!this.kind.units && !this.kind.cells) ? { units: some.map((r) => ({ ...r, ids: [r.id], row: r.id })), dropped: [] } : spreadUnits(') },
+  { id: 'M63', what: 'the sheet keeps its own «several» - no root refusal', catches: 'T41', file: 'testbed/units.js',
+    mutate: (t) => swap(t, "  for (const [k, r] of many) reads[k] = { state: 'empty', n: 0, error: '#MANY', why: MANY_WORDS(r.n || (r.values || []).length) };", '') },
+  { id: 'M64', what: 'a cell counts a row\'s two marks twice', catches: 'T41', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '      for (const id of row.ids || [row.id]) if (!cell.seen.has(id)) { cell.seen.add(id); cell.ids.push(id); }', '      for (const id of row.ids || [row.id]) cell.ids.push(id);') },
   { id: 'M11', what: 'a drag tests only x', catches: 'T6', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, ' && inside(coordRange[1], at(model.yKind, option.yAxis, p.y)))', ')') },
   { id: 'M12', what: 'a row with two values counted in its first only', catches: 'T3', file: 'testbed/slot.js',
@@ -668,15 +842,17 @@ const MUTANTS = [
     mutate: (t) => swap(t, "    return this.kind ? this.kind.title(this.decl.encode || {}, this.decl) : '';",
       "    const e = this.decl.encode || {};\n    if (this.decl.kind === 'scatter') return `${slotWords(e.y)} vs. ${slotWords(e.x)}`;\n    return `${slotWords(e.cells) === '(None)' ? 'Count' : slotWords(e.cells)} per ${slotWords(e.rows)} and ${slotWords(e.columns)}`;") },
   { id: 'M30', what: 'the root hands every kind the cell slot\'s reduce and the marker size, not the declaration (the code before)', catches: 'T11', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '{ paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start }', '{ paint, colored, askMarked, label, shape, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start }') },
+    mutate: (t) => swap(t, '{ paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start,', '{ paint, colored, askMarked, label, shape, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start,') },
   // M31 (a words-only pill opens the picker) retired 10-14: the template draws a pill only for a slot it holds.
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
     mutate: (t) => swap(t, '    return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);') },
 
   { id: 'M33', what: 'the scatter\'s title y and x swapped', catches: 'T23', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '`${slotWords(encode.y)} vs. ${slotWords(encode.x)}`', '`${slotWords(encode.x)} vs. ${slotWords(encode.y)}`') },
-  { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not Count', catches: 'T23', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, "${encode.cells ? slotWords(encode.cells) : 'Count'}", '${slotWords(encode.cells)}') },
+  { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not UniqueCount(rows)', catches: 'T23', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, "${encode.cells ? slotWords(encode.cells) : ROWS_COUNT}", '${slotWords(encode.cells)}') },
+  { id: 'M52', what: 'an empty Cell values pill says (None) though the cells count their rows', catches: 'T35', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    p.textContent = opts.words || empty || slotWords(slot);', '    p.textContent = opts.words || slotWords(slot);') },
   { id: 'M23', what: 'a saved page reopens on the layout, not on what was saved', catches: 'T12', file: 'testbed/main.js',
     mutate: (t) => swap(t, '  const layout = laidOut(LAYOUT, saved, entities());', '  const layout = laidOut(LAYOUT, null, entities());') },
   { id: 'M24', what: 'the site\'s theme left as it came (the code before: a white picker on the dark page)', catches: 'T18', file: 'testbed/main.js',
@@ -707,6 +883,24 @@ MUTANTS.push(
     mutate: (t) => swap(t, 'isExpression(current) ? current.expr : startingExpression(chosen)', "isExpression(current) ? current.expr : ''") },
   { id: 'M47', what: 'the check reads a way as the row\'s own name, so a way the row reads is refused', catches: 'T31', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name).value))', '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name.split(\'.\').pop()).value))') },
+  { id: 'M50', what: 'the time pick reads the value, not its time', catches: 'T34', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, "const next = { steps: chosen.steps || [], end: chosen.end, value, of: 'time',", 'const next = { steps: chosen.steps || [], end: chosen.end, value,') },
+  { id: 'M51', what: 'the time pick is on for «(row)»', catches: 'T34', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '        setDisabledReason(it, (chosen.steps || []).length ? null : NO_TIME_HERE);\n', '') },
+  { id: 'M53', what: 'the declaration\'s pick is not read', catches: 'T36', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '  if (SCALES.includes(chosen)) return { scale: chosen, time, day };\n', '') },
+  { id: 'M54', what: 'a declared number is read by its values', catches: 'T36', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, "  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time, day };\n", '') },
+  { id: 'M55', what: 'categories of times sorted as text', catches: 'T36', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, '  if (time) return distinct.sort((a, b) => Date.parse(a) - Date.parse(b));\n', '') },
+  { id: 'M56', what: 'the scatter ignores the root\'s scale', catches: 'T37', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, '  const s = ctx.scale ? ctx.scale(key) : scaleOf(', '  const s = false ? ctx.scale(key) : scaleOf(') },
+  { id: 'M57', what: 'the Scale chips shown on every slot', catches: 'T37', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '      if (desc.scalable) {', '      if (true) {') },
+  { id: 'M58', what: 'a continuous Color by still paints categories', catches: 'T38', file: 'testbed/color_by.js',
+    mutate: (t) => swap(t, "  if (ctx.scale && ctx.scale.scale === 'continuous' && decl.encode && decl.encode.color) return rampOf(rows, palette, ctx.scale.time);\n", '') },
+  { id: 'M59', what: 'the rows not a time are not said', catches: 'T39', file: 'testbed/status_part.js',
+    mutate: (t) => swap(t, "  if (s.notTime) words.push(`${unitText(n(s.notTime), 'row')} not a time`);\n", '') },
   { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
     mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'the colours handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/color_by.js',
@@ -715,7 +909,7 @@ MUTANTS.push(
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
   'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker', 'testbed/condition_editor.js': 'cond',
-  'testbed/color_by.js': 'color' };
+  'testbed/color_by.js': 'color', 'testbed/units.js': 'units' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   // A stylesheet is no module: its mutant is the census's text alone.
   if (m.file.endsWith('.css')) return run(REAL, { [m.file]: m.mutate(readFileSync(join(SRC, m.file), 'utf8')) });

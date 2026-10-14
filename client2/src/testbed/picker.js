@@ -30,6 +30,9 @@ export function severalCount(part, slot) {
 }
 
 const sameSteps = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+/** «time» with no value picked reads the name's - the way's last edge. */
+const NAME_VALUE = Object.freeze({ on: 'label', name: 'name' });
+const NO_TIME_HERE = 'No time on this route';
 
 /** Why an expression cannot stand for a part's slot, or '' - the calculator's sentence, or a [name] none of the rows has
  *  as its own value. */
@@ -209,6 +212,24 @@ export class SlotPicker {
         });
         at.append(it);
       }
+      // «time» (lead 10-14 ③ ㄱ): the time of what the slot reads - the route's last edge's for its name, a node value's own
+      // record's - the reading slot.js already does for `of: 'time'`; none made up. «(row)» has no edge: off.
+      if (values.length) {
+        const timed = chosen.of === 'time';
+        const it = el('button', `sf-pop__it${timed ? ' is-on' : ''}`, 'time');
+        it.type = 'button';
+        it.append(el('span', 'sf-pop__n', 'when'));
+        setDisabledReason(it, (chosen.steps || []).length ? null : NO_TIME_HERE);
+        it.addEventListener('click', () => {
+          const value = chosen.value || NAME_VALUE;
+          const far = chosen.end ? (part.index.nodes.get(chosen.end) || {}).label || chosen.end : null;
+          const next = { steps: chosen.steps || [], end: chosen.end, value, of: 'time', reduce: chosen.reduce || undefined,
+            words: [far ? `${far} · ${value.name}` : value.name] };
+          put(next);
+          draw(next);
+        });
+        at.append(it);
+      }
       folds.append(el('div', 'sf-pop__lab', 'Reduce'));
       const chips = el('div', 'sf-pop__reds');
       for (const r of [null, ...REDUCES]) {
@@ -228,6 +249,21 @@ export class SlotPicker {
       folds.append(el('hr', 'sf-pop__hr'));
       // A slot's choices that are not a value (the scatter's Marker by: «(Node)», «(Value record)»): each a declaration field.
       const desc = part.slotList().find((s) => s.key === key) || {};
+      // Categorical / Continuous (lead-board-13 ①): a slot the kind draws either way - whatever its type declares; the one
+      // lit is the scale the root draws it on now (slot.js scaleOf), a pick the declaration's `scale`
+      if (desc.scalable) {
+        folds.append(el('div', 'sf-pop__lab', 'Scale'));
+        const scales = el('div', 'sf-pop__reds');
+        const now = ((part.scales || {})[key] || {}).scale || null;
+        for (const [scale, words] of [['categorical', 'Categorical'], ['continuous', 'Continuous']]) {
+          const chip = el('button', `sf-pop__red${now === scale ? ' is-on' : ''}`, words);
+          chip.type = 'button';
+          chip.setAttribute('data-scale', scale);
+          chip.addEventListener('click', () => { const d = part.declaration(); part.setDeclaration({ ...d, scale: { ...(d.scale || {}), [key]: scale } }); draw(chosen); });
+          scales.append(chip);
+        }
+        folds.append(scales, el('hr', 'sf-pop__hr'));
+      }
       for (const choice of desc.choices || []) {
         const it = el('button', 'sf-pop__it', choice.words);
         it.type = 'button';
