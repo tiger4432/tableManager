@@ -326,6 +326,14 @@ CELLS.push({ entry: 'testbed.html', after: 'shrunk and grown', rule: 'picture fi
   }
   return null;
 })()` });
+// A table shows each cell's whole words - its columns as wide as their words, the table scrolling when wider than its
+// area (lead 10-14: «SYN-CX-BW-0…» cut beside empty x · y).
+CELLS.push({ entry: 'testbed.html', after: 'every kind', rule: 'table words whole', at: 'sf-table--rows', expr: `(() => {
+  const cells = [...document.querySelectorAll('.sf-table--rows td, .sf-table--rows th')].filter((c) => c.getClientRects().length);
+  if (!cells.length) return 'no table drawn';
+  const cut = cells.find((c) => c.scrollWidth > c.clientWidth + 1);
+  return cut ? '«' + cut.textContent.slice(0, 30) + '» ' + cut.scrollWidth + ' px of words in a ' + cut.clientWidth + ' px cell' : null;
+})()` });
 // A kind draws inside its area only (lead 10-14, the part frame standard): every shown element in a part's area inside
 // the area's box - or inside a box between them that scrolls or cuts it.
 CELLS.push({ entry: 'testbed.html', after: 'every kind', rule: 'kind inside its area', at: 'sf-frame__area', expr: `(() => {

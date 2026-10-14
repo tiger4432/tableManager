@@ -565,8 +565,10 @@ export class VisualPart extends Panel {
     // unit), Color by, Shape by. Drawn before a walk too: its empty line in the area's centre.
     const ready = this.state === 'ready' && Boolean(this.model);
     body.classList.add('sf-frame');
-    // a kind with no legend (`without`: the cross table, the table, the sheet) - its column takes nothing
-    const legendHeld = !(this.kind.without || []).includes('legend');
+    // the legend column when the legend has something to draw - Marker by (a kind drawing a mark a unit), a Color by or a
+    // Shape by declared; nothing - the column takes nothing (lead 10-14)
+    const encodeNow = this.decl.encode || {};
+    const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));
     if (!legendHeld) body.classList.add('sf-frame--nolegend');
     const trays = Object.fromEntries(['top', 'left', 'bottom'].map((side) => [side, el('div', `sf-frame__tray sf-frame__${side}`)]));
     // a hub whose rows say several values on a slot with no reduce: what to do about it

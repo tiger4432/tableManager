@@ -818,9 +818,16 @@ async function tipsAndLabels(M) {
   const desc = walk(scatter.host).filter((n) => String(n.className) === 'sf-part__desc').map((n) => n._text);
   const cross = seat('crossTable', { rows: key('x'), tip1: key('p') });
   await settle();
+  // the legend column: nothing to draw - none (the frame column 0); a Color by declared - its categories there (lead 10-14)
+  const legendOf = (part) => [String(part.root.children[part.root.children.length - 1].className).includes('sf-frame--nolegend'),
+    walk(part.root).filter((n) => String(n.className).startsWith('sf-legend__name')).map((n) => n._text)];
+  const bare = legendOf(cross);
+  const coloured = seat('crossTable', { rows: key('x'), color: key('p') });
+  await settle();
+  const legends = [bare, legendOf(coloured)];
   walk(cross.host).find((n) => n.tagName === 'TH' && n._text === '3').parentNode.children[1].dispatch('mousemove', { clientX: 5, clientY: 5 });
   const cellTip = tipText(cross);
-  return { pointTip, gone, marked, all, none, desc, cellTip };
+  return { pointTip, gone, marked, all, none, desc, cellTip, legends };
 }
 
 /** Top/Bottom N (base set 11, show_items.js): the rule itself, then seated - a scatter's points, a hub's folded value. */
@@ -1160,6 +1167,8 @@ async function suite(M) {
     judge('LB1 labels: the Label by value on the marked only, on all, on none', [tl.marked, tl.all, tl.none],
       [[['D1', null], ['D2', 'B'], ['D3', null]], [['D1', 'A'], ['D2', 'B'], ['D3', 'A']], [['D1', null], ['D2', null], ['D3', null]]]),
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
+    judge('LG1 the legend column only when the legend has something to draw - a cross table with no Color by none, with one its categories', tl.legends,
+      [[true, []], [false, ['A', 'B']]]),
     judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
       shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
     judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows; a cross table holds no Shape by',
@@ -1323,6 +1332,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      if (why) said = { id, n: ids.length, why };', '') },
   { id: 'M61', what: 'rows grouped in a cell lose their time - the tooltip says the UTC text', catches: 'TM2 ', file: 'testbed/tooltip.js', key: 'tooltip',
     mutate: (t) => swap(t, "const time = rows.some((r) => isTimeRead(r.reads[key])) ? { time: true } : {};", 'const time = {};') },
+  { id: 'M62', what: 'the legend column by the kind - a cross table with a Color by draws no categories', catches: 'LG1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));', 'const legendHeld = Boolean(this.kind.units);') },
+  { id: 'M63', what: 'the legend column always - 160 empty beside a cross table', catches: 'LG1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));', 'const legendHeld = true;') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      this.watch(at, one);', '') },
   { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',

@@ -317,4 +317,4 @@ export const icon = { tone: 'cat-2', paths: [['M3 3h18v18H3z', 0.25], ['M3 8h18v
 
 // cells - a kind of cells: its slots name each other (A1, B1:B9) and it draws before its key is written (the root's).
 // a sheet is one table of cells: no Top/Bottom N of its rows, no panels (lead 10-14)
-export const kind = { name: 'sheet', label: 'Sheet', slots, title, model: sheetModel, render, icon, cells: true, without: ['show', 'panel', 'legend'] };
+export const kind = { name: 'sheet', label: 'Sheet', slots, title, model: sheetModel, render, icon, cells: true, without: ['show', 'panel'] };

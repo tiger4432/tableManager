@@ -81,8 +81,7 @@ export function render(area, model, ctx) {
   for (const line of model.lines) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
-    // a cell its column's width, cut - its words in its tooltip (Spotfire's table)
-    line.cells.forEach((cell, k) => { const td = el('td', model.numeric[k] ? 'is-num' : '', cell.text); td.title = cell.text; td.setAttribute('data-clip-ok', ''); tr.append(td); });
+    line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
     tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
     tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));
     tr.addEventListener('mouseleave', () => ctx.hover(null));
@@ -101,5 +100,4 @@ export const title = (encode, declaration) => (declaration && declaration.row) |
 /** The add window's picture of it: a head and lines. */
 export const icon = { tone: 'cat-1', paths: [['M4 3h16v4H4z', 1], ['M4 9h16v3H4zM4 14h16v3H4zM4 19h16v2H4z', 0.6]] };
 
-// no legend (the frame standard 10): its colours are its lines' bands
-export const kind = { name: 'table', label: 'Table', slots, title, model: tableModel, render, icon, without: ['legend'] };
+export const kind = { name: 'table', label: 'Table', slots, title, model: tableModel, render, icon };

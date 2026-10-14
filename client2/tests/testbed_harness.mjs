@@ -552,9 +552,9 @@ function suite(out, page, saved, counted) {
     { rows: 3, of: 6, system: 2, part: 1, hidden: 1 });
   eq('T10 two scatters on one page: a slot changed in one stays there - it alone draws again and lets its old chart go; the other one stands',
     page.twoParts, [['x', 'y'], ['x', 'y'], 1, true, false, true]);
-  eq('T11 a third kind draws through the same root: its title, its own declaration\'s field and slot reduce; the template\'s pills - its slot on its tray, Color by in the legend',
+  eq('T11 a third kind draws through the same root: its title, its own declaration\'s field and slot reduce; the template\'s pills - its slot on its tray; no legend with nothing in it (no Marker by, Color by or Shape by - lead 10-14)',
     page.kindAdd, { drawn: ['rows 6 · every 3 · Max'], title: ['List of Max(temp · value)'], statTitle: 'List of Max(temp · value)',
-      pills: [['Max(temp · value)', true], ['(None)', true]] });
+      pills: [['Max(temp · value)', true]] });
   eq('T19 census: the root names no kind - no kind name or slot key as a string, no .kind compared, no slot read off encode by name',
     [counted.rootAsks, counted.canary], [[], [true, true, true]]);
   eq('T21 census: one seedsOf in the client - the marking store\'s', counted.seeds, ['rnd_board/marking_store.js']);
