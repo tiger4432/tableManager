@@ -411,6 +411,8 @@ async function reshapeWalk(create, { refuse = false } = {}) {
   await controller.refresh();
   await settle();
   await click('create-draft');
+  // A node type is drawn as the declaration bar (owner 10-14): its draft text is behind the bar's JSON button.
+  await click('decl-json');
   const keysNow = () => ((controller.getState().authoring || {}).fields || [])
     .map((r) => r.path).filter((p) => p.includes('.keys.')).map((p) => p.split('.').pop()).join(',');
   const out = { opened: posts.length };
@@ -887,7 +889,7 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
       for (const fn of inputs) fn({ target: { dataset: { action: 'edit-raw' }, value: '{"class": 4}' } });
       const pick = part('branch-picker__select');
       if (pick) { pick.value = 'w1'; fire(pick, 'change'); }
-      const backdrop = walkAll(root).find((n) => n._classes.includes('oe-dirty-dialog-backdrop')) || null;
+      const backdrop = walkAll(root).find((n) => n._classes?.includes('oe-dirty-dialog-backdrop')) || null;
       if (backdrop) backdrop.remove = () => {};
       const answer = backdrop && walkAll(backdrop).find((n) => n.dataset.dirtyChoice === typed);
       if (answer) fire(answer, 'click');

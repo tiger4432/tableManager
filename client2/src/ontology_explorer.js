@@ -1,4 +1,5 @@
 import './ontology_explorer.css';
+import './ledger_declaration_bar.css';
 import {
   initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
   reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
@@ -1520,6 +1521,10 @@ No effect`;
       try { raw = JSON.parse(state.editorText); } catch { return; }
       let value = typed;
       if (chip === 'col') value = { const: typed };
+      else if (chip === 'json') {
+        // that one field's JSON; a text that does not parse writes nothing and says so
+        try { value = JSON.parse(typed); } catch (error) { showToast(`Not JSON: ${error.message}`, 'error'); return; }
+      }
       else if (chip === 'when') {
         const segs = path.split('.');
         const now = segs.reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), raw);

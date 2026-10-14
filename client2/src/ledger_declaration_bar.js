@@ -15,8 +15,9 @@
 // A source in the short form (implementer B 10-14): { table, status?, attributes?: {type: {attribute: value}},
 //   sentences: [{sentence, predicate, when?, <role>: value}] } - the roles subject · target · value · occurred_at and the
 //   qualifiers. A value is a column's name, {const: v}, a time {column, timezone, format} or an end {node: type|{column}, keys}.
-//   A when is {column: condition}: null blank, {not: null} not blank, v equals, {not: v} differs.
+//   A when is {column: condition}, its columns «and»: "" blank, {not: ""} not blank, v equals, {not: v} differs.
 // The atom time is each sentence's occurred_at; the Read line's chips write it on every sentence (path `sentences.*.…`).
+// Sentences that state it must state the same one - the server refuses a source whose sentences differ (missing_time).
 
 export const BAR_WORDS = Object.freeze({
   title: 'Ledger declaration', source: 'Source', active: 'active', draft: (age) => `draft · ${age}`,
@@ -26,9 +27,12 @@ export const BAR_WORDS = Object.freeze({
   sentences: 'Sentences', perRow: 'one row → one edge per sentence', with: '· with', when: '· when', addQualifier: '+ Qualifier',
   addSentence: '+ Sentence', remove: 'Remove sentence', fromSource: (s) => `— from source ${s}`,
   run: 'Test run · draft', runSummary: (r) => `first ${r.rows} rows → ${r.edges} edges · ${r.refused} refused`, runNone: 'Not run yet',
-  constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', unset: '?', mixed: 'mixed',
+  constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', unset: '?', mixed: 'mixed', timesDiffer: 'sentences differ: one row, one time',
   nodeType: 'Node type', keys: 'keys', addKey: '+ Key', predicate: 'Predicate', from: 'from', addSubject: '+ Subject', addType: '+ Type',
+  more: 'More', json: 'JSON',
 });
+/** The fields a node type's and a predicate's bar draws itself; every other field of the declaration is on its More line. */
+export const BAR_FIELDS = Object.freeze({ entity: Object.freeze(['keys', 'attributes']), predicate: Object.freeze(['subjects', 'object']) });
 const RESERVED = new Set(['sentence', 'subject', 'predicate', 'target', 'value', 'when', 'occurred_at']);
 const KINDS = Object.freeze(['entity_ref', 'value', 'none']);
 
@@ -44,13 +48,14 @@ function whenWords(w) {
   const c = whenColumn(w);
   if (!c) return BAR_WORDS.unset;
   const v = w[c];
-  if (v === null) return `${c} ${BAR_WORDS.blank}`;
-  if (isObj(v) && 'not' in v) return v.not === null ? `${c} ${BAR_WORDS.notBlank}` : `${c} ≠ ${JSON.stringify(v.not)}`;
+  if (v === '') return `${c} ${BAR_WORDS.blank}`;
+  if (isObj(v) && 'not' in v) return v.not === '' ? `${c} ${BAR_WORDS.notBlank}` : `${c} ≠ ${JSON.stringify(v.not)}`;
   return `${c} = ${JSON.stringify(v)}`;
 }
-/** Every sentence's one atom time - the sentences' common column (or timezone), `mixed` when they differ. */
+/** The sentences' one atom time - the column (or timezone) every sentence that states one states, `mixed` when they differ. */
 function sharedTime(raw, part) {
-  const seen = [...new Set((raw.sentences || []).map((s) => (isObj(s.occurred_at) ? s.occurred_at[part] : s.occurred_at) || ''))];
+  const seen = [...new Set((raw.sentences || []).filter((s) => s.occurred_at !== undefined && s.occurred_at !== null)
+    .map((s) => (isObj(s.occurred_at) ? s.occurred_at[part] : s.occurred_at) || ''))];
   return seen.length > 1 ? BAR_WORDS.mixed : seen[0] || '';
 }
 const qualifiersOf = (s) => Object.keys(s || {}).filter((k) => !RESERVED.has(k));
@@ -210,6 +215,7 @@ function chip(el, view, c) {
     input.dataset.action = 'decl-const';
     input.dataset.path = c.path;
     input.dataset.chip = c.kind;
+    if (c.typed !== undefined) input.value = c.typed;
     pop.append(input);
   }
   wrap.append(b, pop);
@@ -250,8 +256,11 @@ function readBar(el, view, raw) {
     el('span', 'ldb-word', BAR_WORDS.atomTime),
     chip(el, view, { kind: 'col', path: 'sentences.*.occurred_at.column', cls: 'is-col', text: words(time.column), options: columnOptions(view, raw.table, time.column) }),
     chip(el, view, { kind: 'tz', path: 'sentences.*.occurred_at.timezone', text: words(time.timezone), options: zones.map((z) => ({ value: z, words: z, on: z === time.timezone })) }),
-    // the short form has no identity: the table's own key (implementer B 10-14)
-    el('span', 'ldb-word', BAR_WORDS.identity), el('span', 'ldb-chip', BAR_WORDS.tableKey));
+    // the short form has no identity: the table's own key (implementer B 10-14), named when the schema says it
+    el('span', 'ldb-word', BAR_WORDS.identity),
+    el('span', 'ldb-chip', (((view.catalog || {}).keys || {})[raw.table] || []).length
+      ? `${BAR_WORDS.tableKey} (${view.catalog.keys[raw.table].join(' · ')})` : BAR_WORDS.tableKey));
+  if (time.column === BAR_WORDS.mixed || time.timezone === BAR_WORDS.mixed) bar.append(el('span', 'ldb-pill is-bad', BAR_WORDS.timesDiffer));
   return bar;
 }
 
@@ -321,8 +330,8 @@ function sentenceBar(el, view, raw, at, from = null) {
     bar.append(el('span', 'ldb-word', BAR_WORDS.when), chip(el, view, { kind: 'when', path: `sentences.${at}.when`, cls: 'is-col', constant: true, text: whenWords(s.when),
       hint: wc ? `${wc} = …` : '',
       options: columnOptions(view, raw.table, wc).flatMap((o) => [
-        { ...o, value: { [o.value]: null }, words: `${o.words} ${BAR_WORDS.blank}`, on: o.on && s.when[wc] === null },
-        { ...o, value: { [o.value]: { not: null } }, words: `${o.words} ${BAR_WORDS.notBlank}`, on: o.on && isObj(s.when[wc]) && s.when[wc].not === null }]) }));
+        { ...o, value: { [o.value]: '' }, words: `${o.words} ${BAR_WORDS.blank}`, on: o.on && s.when[wc] === '' },
+        { ...o, value: { [o.value]: { not: '' } }, words: `${o.words} ${BAR_WORDS.notBlank}`, on: o.on && isObj(s.when[wc]) && s.when[wc].not === '' }]) }));
   }
   const x = el('button', 'ldb-x', '×');
   x.type = 'button';
@@ -366,6 +375,30 @@ function preview(el, view) {
   return box;
 }
 
+/**
+ * The declaration's other fields (the lead 10-14 ㄱ), as the form's skeleton lists them: one value picked from its
+ * closed list (`options`), a typed one (`free`), or a list or object opened as that field's JSON (`json`).
+ * @param {Array<{name, kind: 'options'|'free'|'json', options?: Array<{value, words}>}>} view.more
+ */
+function moreBar(el, view, raw) {
+  const bar = el('section', 'ldb-bar');
+  bar.setAttribute('aria-label', BAR_WORDS.more);
+  bar.append(el('span', 'ldb-label is-row', BAR_WORDS.more));
+  for (const f of view.more || []) {
+    const v = raw[f.name];
+    if (f.kind === 'json') {
+      bar.append(chip(el, view, { kind: 'json', path: f.name, cls: 'is-col', constant: true, hint: v === undefined ? '' : JSON.stringify(v),
+        typed: v === undefined ? '' : JSON.stringify(v), text: `${f.name} · ${BAR_WORDS.json}` }));
+    } else {
+      bar.append(chip(el, view, { kind: f.kind === 'free' ? 'name' : 'kind', path: f.name, cls: 'is-col', constant: f.kind === 'free',
+        text: `${f.name} = ${v === undefined ? BAR_WORDS.unset : typeof v === 'string' ? v : JSON.stringify(v)}`,
+        options: (f.options || []).map((o) => ({ ...o, on: same(o.value, v) })) }));
+    }
+  }
+  return bar;
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 /** A node type: its keys and its attributes, each a chip; a name typed in the chip's list. */
 function entityBar(el, view, raw) {
   const bar = el('section', 'ldb-bar');
@@ -408,7 +441,7 @@ function predicateBar(el, view, raw) {
  * @param {{kind: 'source'|'entity'|'predicate', name, sourceId?, open?: string, picked?: number, catalog?: {tables: {[t]: Array<{name, type}>}},
  *          entities?: Array<{type, keys, attributes}>, predicates?: Array<{name, qualifiers}>, sources?: Array<{key, id}>, zones?: string[],
  *          active?: boolean, draftAge?: string, run?: object, cost?: {before, strong, after}, json?: Node,
- *          others?: Array<{source, sentence}>, draftId?: string}} view   others: other sources' sentences on this table, drawn inert
+ *          others?: Array<{source, sentence}>, draftId?: string, more?: Array<{name, kind, options?}>}} view   others: other sources' sentences on this table, drawn inert
  */
 export function renderDeclarationBar(doc, raw, view) {
   const el = make(doc);
@@ -416,8 +449,8 @@ export function renderDeclarationBar(doc, raw, view) {
   root.setAttribute('data-decl-kind', view.kind);
   root.append(head(el, view, raw || {}));
   if (view.json) { const j = el('div', 'ldb-json'); j.append(view.json); root.append(j); }
-  if (view.kind === 'entity') root.append(entityBar(el, view, raw || {}));
-  else if (view.kind === 'predicate') root.append(predicateBar(el, view, raw || {}));
+  if (view.kind === 'entity') root.append(entityBar(el, view, raw || {}), moreBar(el, view, raw || {}));
+  else if (view.kind === 'predicate') root.append(predicateBar(el, view, raw || {}), moreBar(el, view, raw || {}));
   else {
     root.append(readBar(el, view, raw), attributesBar(el, view, raw));
     const list = el('div', 'ldb-sentences');

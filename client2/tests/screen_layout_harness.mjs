@@ -1198,6 +1198,10 @@ const DRIVE = {
     ['Spotfire standard, light', (c) => evaluate(c, `(() => { document.documentElement.setAttribute('data-theme', 'light');
       const s = document.querySelector('.sample-sf'); if (s) s.scrollIntoView({ block: 'start' }); return Boolean(s); })()`).then(() => sleep(300))],
     ['Spotfire standard, dark', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'dark'); true").then(() => sleep(300))],
+    // The ledger declaration window (owner 10-14), one chip's list open as the mockup draws it, in each theme.
+    ['Ledger declaration, list open, dark', (c) => evaluate(c, `(() => { const s = document.getElementById('sample-decl-bar');
+      if (s) s.scrollIntoView({ block: 'start' }); return Boolean(s && s.querySelector('.ldb-pop')); })()`).then(() => sleep(300))],
+    ['Ledger declaration, list open, light', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'light'); true").then(() => sleep(300))],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],

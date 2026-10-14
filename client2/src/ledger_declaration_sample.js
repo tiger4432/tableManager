@@ -7,7 +7,7 @@ export const SAMPLE_RAW = Object.freeze({
   attributes: { wafer: { lot: 'lot_id', step: 'step' } },
   sentences: [
     { sentence: 'wafer-processed-with-recipe', subject: { node: 'wafer', keys: { wafer: 'wafer_id' } }, predicate: 'processed_with',
-      target: { node: 'recipe', keys: { recipe: 'recipe_id' } }, step: 'step', when: { mat_type: null },
+      target: { node: 'recipe', keys: { recipe: 'recipe_id' } }, step: 'step', when: { mat_type: '' },
       occurred_at: { column: 'eventtime', timezone: 'Asia/Seoul' } },
     { sentence: 'dtwafer-processed-with-recipe', subject: { node: 'dt_wafer', keys: { dt_wafer: 'wafer_id' } }, predicate: 'processed_with',
       target: { node: 'recipe', keys: { recipe: 'recipe_id' } }, when: { mat_type: 'DT' }, occurred_at: { column: 'eventtime', timezone: 'Asia/Seoul' } },
@@ -17,7 +17,7 @@ export const SAMPLE_RAW = Object.freeze({
 export const SAMPLE_VIEW = Object.freeze({
   kind: 'source', name: 'wafer_process_recipe', sourceId: 'wafer_process_recipe', open: 'sentences.0.subject.keys.wafer', picked: 0,
   active: true, draftAge: 'edited 2 min ago',
-  catalog: { tables: { wafer_process_recipe: [
+  catalog: { keys: { wafer_process_recipe: ['row_id'] }, tables: { wafer_process_recipe: [
     { name: 'wafer_id', type: 'text' }, { name: 'lot_id', type: 'text' }, { name: 'recipe_id', type: 'text' },
     { name: 'step', type: 'text' }, { name: 'slot', type: 'number' }, { name: 'eventtime', type: 'datetime' }] } },
   entities: [{ type: 'wafer', keys: ['wafer'], attributes: ['lot', 'step'] }, { type: 'dt_wafer', keys: ['dt_wafer'] }, { type: 'recipe', keys: ['recipe'] },
