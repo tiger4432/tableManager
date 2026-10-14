@@ -53,10 +53,15 @@ def _worlds(world):
 
 def _declaration_and_whose(world=None):
     """The declaration of the worlds asked, merged in the order asked (`config.merged`), and which
-    world each name came from."""
+    world each name came from - each world's file read and checked again only when it or the catalogue changed
+    (`worker._stamped`; a walk asked it four to six times a request, 총괄 9166099d4). Read only: the dicts are held."""
     from ledger import config as _config
+    from ledger.setup import physical_catalog_path
+    from ledger.worker import _stamped
 
-    return _config.merged([(names.name, _config.load(names.declaration_path) or {})
+    return _config.merged([(names.name, _stamped(("declaration", names.declaration_path),
+                                                 (names.declaration_path, physical_catalog_path()),
+                                                 lambda path=names.declaration_path: _config.load(path) or {}))
                            for names in _worlds(world)])
 
 
@@ -203,6 +208,9 @@ def evidence_subgraph(
     resumable: bool = Query(
         False, description=("This caller asks the next page with `more.resume` (the walk screen) - only then is a "
                             "cut walk kept and its key handed back")),
+    propagation: bool = Query(
+        True, description=("false: the answer carries no `propagation` (the ranking) - a caller that reads only nodes "
+                           "and edges (the Board) is not made to wait for it. The next page asks with the same value")),
     resume: dict | None = Body(
         None, embed=True,
         description=("A page's `more.resume`, as it came: the next page of the same walk, within the same caps, "
@@ -340,6 +348,8 @@ def evidence_subgraph(
             resume=resume if isinstance(resume, dict) else None,
             # a direct call leaves the Query sentinel; a rows read is not continued
             resumable=resumable is True and wants == "json",
+            # a direct call leaves the Query sentinel - the ranking, as before
+            propagation=propagation is not False,
             page=time_page, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -711,7 +721,8 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
-                    fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False):
+                    fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False,
+                    propagation=True):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -751,7 +762,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         group_by=group_by, measure=measure,
         # S-148-a. The description resolves INSIDE the walk, on the same connection.
         seed_type=seed_type, seed_limit=seed_limit,
-        fanout_limit=fanout_limit, expand=expand,
+        fanout_limit=fanout_limit, expand=expand, propagation=propagation,
         # the worlds' own declarations, for the walk's key order and plural names
         declaration_paths=tuple(each.declaration_path for each in names))
 

@@ -33,6 +33,10 @@ def _walk_response_keys():
         if not isinstance(node, ast.Dict):
             continue
         keys = {k.value for k in node.keys if isinstance(k, ast.Constant)}
+        # a key the answer carries only when asked (`**({...} if asked else {})`) is one of its keys too
+        keys |= {k.value for k, v in zip(node.keys, node.values) if k is None
+                 for inner in ast.walk(v) if isinstance(inner, ast.Dict)
+                 for k in inner.keys if isinstance(k, ast.Constant)}
         if {"state", "seed", "nodes", "edges"} <= keys:
             best = keys
     assert best is not None, "the walk response dict moved; this file must follow it"
