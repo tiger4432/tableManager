@@ -138,6 +138,13 @@ async function suite(d) {
   const none = bar.renderDeclarationBar(document, RAW, { kind: 'source', catalog: CATALOG, predicates: [{ name: 'processed_with', qualifiers: [] }] });
   const s2none = byClass(byClass(none, 'ldb-sentences')[0], 'ldb-bar')[1];
   ok('B12 ...and none when its predicate takes none', !byAction(s2none, 'decl-add').some((n) => n.dataset.path === 'sentences.1'), s2none.textContent);
+  const ENDS = { table: 't', sentences: [
+    { sentence: 'counted', predicate: 'has_netdie', subject: { node: 'job', keys: { job: 'job' } }, value: 'netdie_count' },
+    { sentence: 'register', predicate: 'register', subject: { node: 'job', keys: { job: 'job' } } }] };
+  const endBars = byClass(byClass(bar.renderDeclarationBar(document, ENDS, { kind: 'source', catalog: CATALOG }), 'ldb-sentences')[0], 'ldb-bar');
+  ok('B13 a sentence ending in a value draws «value ← column», not a node', endBars[0].textContent.includes('value ← netdie_count')
+    && !byClass(endBars[0], 'is-node').some((n) => n.dataset.path === 'sentences.0.target.node'), endBars[0].textContent);
+  ok('B14 a sentence with no object draws nothing past its predicate', !endBars[1].textContent.includes('→') && !endBars[1].textContent.includes('?'), endBars[1].textContent);
   const full = bar.renderDeclarationBar(document, sample.SAMPLE_RAW, sample.SAMPLE_VIEW);
   const hangul = walk(full).map((n) => n._text || '').concat(walk(full).map((n) => n.attrs?.['aria-label'] || '')).filter((s) => /[가-힣]/.test(s));
   ok('B9 every word drawn is English', hangul.length === 0, hangul.join(' | '));
@@ -284,6 +291,8 @@ const MUTANTS = [
   { name: 'the door drawn though the predicate takes none', catches: ['B12'], file: 'bar', mutate: swap('  if (!quals.length && free) {', '  if (!quals.length) {') },
   { name: 'every run called the draft\'s', catches: ['C4', 'C5'], file: 'bar', mutate: swap('draft: Boolean(run.draft_id) };', 'draft: true };') },
   { name: 'the title ignores what ran', catches: ['C5'], file: 'bar', mutate: swap("top.append(el('span', 'ldb-label', BAR_WORDS.run(Boolean(run && run.draft))),", "top.append(el('span', 'ldb-label', BAR_WORDS.run(true)),") },
+  { name: 'a value end drawn as a node end', catches: ['B13', 'B14'], file: 'bar', mutate: swap('  if (s.target !== undefined) bar.append(', '  if (true) bar.append(') },
+  { name: 'a value end not drawn', catches: ['B13'], file: 'bar', mutate: swap('  else if (s.value !== undefined) {', '  else if (false) {') },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
   { name: 'every invalidation drops the schema', catches: ['F2'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', 'authoringSchema: null') },
 ];
