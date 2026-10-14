@@ -677,7 +677,7 @@ async function routed(M) {
     const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: on.markings, hubs: on.hubs, layers: on.layers, relations: on.relations,
       writes: decl.writes || null, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
       kinds: KINDS, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), names: new Map(), charts: charts(),
-      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: serve(params) }; } });
+      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops ?? null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: serve(params) }; } });
     part.mount();
     await settle();
     return { state: part.state, refusal: part.refusal || null, rows: part.model ? part.model.rowKeys : null, asked, part,
@@ -1004,7 +1004,7 @@ async function sheetRoot(M) {
     const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), writes: decl.writes, start: decl.start, declaration: decl,
       vocabulary: () => vocabulary, kinds: { sheet: M.sheet.kind, scatter: M.scatter.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(),
       hubs: new HubBook(), names: new Map(), charts: charts(),
-      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, params.nodeId]); return { ok: true, body: answerFor(params.nodeId) }; } });
+      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops ?? null, params.nodeId]); return { ok: true, body: answerFor(params.nodeId) }; } });
     part.mount();
     await settle();
     void kind;
@@ -1564,8 +1564,8 @@ async function suite(M) {
       [pw.onePage[0].reduce((a, b) => a + b, 0), pw.onePage[1], pw.onePage[2]], [2, 0, [3, 3, 3]]),
     judge('PW7 core dies (18766): a value walk carrying wafers only read by its edges - each die its own core wafer, the dies it did not carry by their ids',
       pw.core, [['CW1', 'CW2', '(Empty)'], [['d1'], ['d2'], ['d3']], ['c1', 'c2', 'd1', 'd2', 'd3']]),
-    judge('W1 a start of the row type is its own row: d1 alone - its record walked (one step, its type), no row reached through it; then the slot\'s value walk; its one core wafer',
-      rt.dies, [['CW1'], [[[], 1, ['d1']], [['bonded_from', 'in_container'], 2, ['d1']]], ['d1']]),
+    judge('W1 a start of the row type is its own row: d1 alone - its own record read (hops 0), no row reached through it; then the slot\'s value walk; its one core wafer',
+      rt.dies, [['CW1'], [[[], 0, ['d1']], [['bonded_from', 'in_container'], 2, ['d1']]], ['d1']]),
     judge('W2 from All every die of the type', rt.all, [['CW1', 'CW2', '(Empty)'], ['c1', 'c2', 'd1', 'd2']]),
     judge('W3 die to wafer: every route\'s predicates together, the longest route\'s steps - every wafer the walk reached is a row',
       rt.wafers, [['BW', 'CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]]]),
@@ -1586,7 +1586,7 @@ async function suite(M) {
     judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
       ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456', '#123456'] }),
     judge('SH1 the sheet\'s written start: walked from that node alone, along the ways its cells name (measures), its row its type; the cells read in the order they name each other',
-      sh.walked, { asked: [[[], 1, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ'], [['measures'], 1, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ']], row: 'lot_slot',
+      sh.walked, { asked: [[[], 0, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ'], [['measures'], 1, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ']], row: 'lot_slot',
         cells: { A1: 'L1 · 05', B1: '2', B2: '4', B3: '6', C1: '4', C2: '2', D1: '#CYCLE', E1: 'L1 · 05' } }),
     judge('SH2 a ring of cells: each #CYCLE and the ring; another kind\'s cell reference refused by name', sh.ring,
       { why: 'A cycle: D1 → D2 → D1', other: "Cell references are the sheet's - A1 reads a sheet's cell" }),
@@ -1837,6 +1837,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'if (walkAgain || this.reachTargets().join() !== reachBefore) {', 'if (walkAgain) {') },
   { id: 'RM4', what: 'two nodes Reached in one walk - the nearest answers for both', catches: 'RC2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '(targets.length ? targets : [null]).map((to) => ({ side, aux: to ? [to] : [] }))', '[{ side, aux: targets }]') },
+  { id: 'HM1', what: 'the start own records walked a step - every predicate, its neighbours carried', catches: 'W1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'hops: seeds.all || own ? 0 : Math.max(', 'hops: seeds.all || own ? 1 : Math.max(') },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',

@@ -856,7 +856,7 @@ const MUTANTS = [
   { id: 'M14b', what: 'the walk page\'s reading keeps an absent sign as a control (the - list every not-+)', catches: 'T20', file: 'rnd_board/marking_store.js',
     mutate: (t) => swap(t, '  return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };', '  return { positive: of(SIGN.CASE), negative: [...sign].filter(([, s]) => s !== SIGN.CASE).map(([id]) => id) };') },
   { id: 'M15', what: 'All walks with no seed', catches: 'T9a', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, 'const params = seeds.all ? { ...this.budget(), seed_type: rows, collect: ask.collect,', 'const params = seeds.all ? { ...this.budget(), collect: ask.collect,') },
+    mutate: (t) => swap(t, 'const params = seeds.all ? { ...this.budget(), seed_type: rows, hops: ask.hops,', 'const params = seeds.all ? { ...this.budget(), hops: ask.hops,') },
   { id: 'M16', what: 'a drag adds instead of replacing', catches: 'T9b', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, "    if (mode === 'add') { for (const id of ids) this.markings.set(this.writes, id, sign); return; }", '    { for (const id of ids) this.markings.set(this.writes, id, sign); return; }') },
   { id: 'M17', what: 'a hub not opened into its members when the marking is shown', catches: 'T8', file: 'testbed/hubs.js',

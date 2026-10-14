@@ -413,7 +413,8 @@ export class VisualPart extends Panel {
     const routes = seeds.all || own ? [] : this.routes();
     const types = seeds.all ? [] : [...new Set(seeds.positive.map(typeOfStart).filter(Boolean))];
     const ask = { seeds: seeds.all ? [`all:${rows}`] : [...seeds.positive].sort(), follow: [...new Set(routes.flatMap((r) => r.follow))].sort(),
-      hops: Math.max(1, ...routes.map((r) => r.hops)), collect: [...new Set([rows, ...types].filter(Boolean))].sort(), aux: seeds.aux || [] };
+      // the start's own (a start of the row type, «All») - its seeds' records alone, no step (hops 0, B c9bcefb35)
+      hops: seeds.all || own ? 0 : Math.max(1, ...routes.map((r) => r.hops)), collect: [...new Set([rows, ...types].filter(Boolean))].sort(), aux: seeds.aux || [] };
     // the page's row walks: one in flight that will cover it waited for, one in hand that covers it taken (any part's)
     const walks = this.layers.graph.walks;
     const same = (w) => JSON.stringify(w.negative || []) === JSON.stringify(seeds.negative || []);
@@ -434,7 +435,7 @@ export class VisualPart extends Panel {
     walks.unshift(record);
     walks.splice(KEPT_WALKS);
     const leave = () => { record.receiving = false; const at = walks.indexOf(record); if (at >= 0) walks.splice(at, 1); finished(); };
-    const params = seeds.all ? { ...this.budget(), seed_type: rows, collect: ask.collect, ...(ask.aux.length ? { aux: ask.aux } : {}) }
+    const params = seeds.all ? { ...this.budget(), seed_type: rows, hops: ask.hops, collect: ask.collect, ...(ask.aux.length ? { aux: ask.aux } : {}) }
       : { ...this.budget(), nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [], follow: ask.follow, hops: ask.hops, collect: ask.collect,
         ...(ask.aux.length ? { aux: ask.aux } : {}) };
     // the rows are drawn when their walk is in

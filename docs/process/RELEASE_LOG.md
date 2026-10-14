@@ -411,7 +411,7 @@
 - **화면에서** — 그 칸에 ✓(닿음) · ✗(안 닿음) · 빈칸(모름). 모름은 바닥줄 «N rows unknown» 에 Marked 의 모름과 함께 셉니다. 칸의 식을 바꿔 Reach 노드가 바뀌면 행을 다시 걷습니다.
 - **선언 예시** — 칸 `{ "expr": "Reach(defect_kind(\"dela\"))" }` (선언 `encode` 의 칸).
 - **필요한 조건** — 클라 빌드만(서버 aux 판정은 이미 있음). 서버 계산기(체인 집계)는 Reach 를 «the walk's judgment» 라고 이름 대어 거절합니다 — Marked 와 같은 자리.
-- **바뀐 동작** — Reach 노드가 둘이면(`Reach(a) or Reach(b)`) 노드마다 행 걷기 한 번 — 한 걷기에 둘을 실으면 «가장 가까운 것» 하나로 답하기 때문. 같은 노드는 한 번. Rows 타입인 시작이라도 Reach 가 있으면 판정을 받으러 걷습니다. 한 load 의 행 걷기들은 서로를 취소하지 않습니다(전에는 함께 날던 행 걷기가 앞의 것을 취소할 수 있었음).
+- **바뀐 동작** — Reach 노드가 둘이면(`Reach(a) or Reach(b)`) 노드마다 행 걷기 한 번 — 한 걷기에 둘을 실으면 «가장 가까운 것» 하나로 답하기 때문. 같은 노드는 한 번. Rows 타입인 시작이라도 Reach 가 있으면 판정을 받으러 걷습니다. 한 load 의 행 걷기들은 서로를 취소하지 않습니다(전에는 함께 날던 행 걷기가 앞의 것을 취소할 수 있었음). Rows 타입인 시작(손으로 적은 시작 포함)과 «All» 은 행 걷기가 `hops=0` — 씨앗의 자기 기록(키 · 이름표 · 속성)만 받습니다(B c9bcefb35, 다이 200 개 445 ms · 1.96 MB → 34 ms · 91 KB). 시험대는 그 답의 `claim_count` · `predicates` 를 읽지 않습니다.
 - **자세히** — `client2/src/expression.js` Reach · `contracts/expression/vectors.json` `reach.row` · `board_layout_harness` RC1–RC3(변이 RM1–RM4) · `expression_vectors_harness` X50 · X51 · `client2/scripts/board_reach_live.mjs`.
 
 ---
