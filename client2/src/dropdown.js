@@ -59,6 +59,9 @@ const MARGIN = 8;
 export function fitUnder(panel, anchor, { align = 'right', gap = GAP } = {}) {
   const doc = panel.ownerDocument;
   if (!doc || !doc.documentElement || !anchor.getBoundingClientRect || !panel.getBoundingClientRect) return;
+  // a control drawn away (its part drawn again) measures 0,0 - never placed under it (owner 10-14: the pill's picker flew
+  // to the screen's top left after a pick)
+  if (anchor.isConnected === false) return;
   panel.style.position = 'fixed';
   panel.style.right = 'auto';
   panel.style.bottom = 'auto';

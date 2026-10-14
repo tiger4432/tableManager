@@ -68,6 +68,8 @@ export class SlotPicker {
 
   close() {
     this.openFor = null;
+    if (this.unplace) this.unplace();
+    this.unplace = null;
     this.host.replaceChildren();
     this.host.style.display = 'none';
   }
@@ -82,9 +84,34 @@ export class SlotPicker {
     const rows = part.rowIds || [];
     // Drawn again on every pick, so placed again: the one placement (dropdown.js fitUnder, lead 72b2d7f8f) - an axis
     // pill at the foot of the page opens its picker above it.
+    // The pill it hangs under, alive: a pick draws the part and its pills again (owner 10-14: the picker flew to the top
+    // left, placed under the pill drawn away) - the same part's same slot's pill nearest where the old one was.
+    let at = anchor;
+    let was = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+    const live = () => {
+      if (!at || at.isConnected !== false) return at;
+      const id = (part.decl && part.decl.id) || '';
+      const same = doc && doc.querySelectorAll ? [...doc.querySelectorAll('.sf-pill')].filter((p) => p.getAttribute('data-slot') === key && p.getAttribute('data-part') === id) : [];
+      const gap = (p) => { const r = p.getBoundingClientRect ? p.getBoundingClientRect() : null; return r && was ? Math.abs(r.left - was.left) + Math.abs(r.top - was.top) : 0; };
+      if (same.length) at = same.sort((a, b) => gap(a) - gap(b))[0];
+      return at;
+    };
+    const place = () => {
+      const pill = live();
+      if (!pill || !pill.getBoundingClientRect) return;
+      fitUnder(this.host, pill, { align: 'left', gap: 4 });
+      if (pill.isConnected !== false) was = pill.getBoundingClientRect();
+    };
+    // the window resized while it stands open - under its pill again
+    if (this.unplace) this.unplace();
+    const view = doc && doc.defaultView;
+    if (view && view.addEventListener) {
+      view.addEventListener('resize', place);
+      this.unplace = () => view.removeEventListener('resize', place);
+    }
     const show = (box) => {
       this.host.replaceChildren(box);
-      if (anchor && anchor.getBoundingClientRect) fitUnder(this.host, anchor, { align: 'left', gap: 4 });
+      place();
     };
     const draw = (current, writing) => {
       const box = el('div', 'sf-pop');

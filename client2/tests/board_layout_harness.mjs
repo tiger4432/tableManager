@@ -36,6 +36,7 @@ const REAL = {
   cond: await import('../src/testbed/condition_editor.js'),
   trellis: await import('../src/testbed/trellis.js'),
   shape: await import('../src/testbed/shape_by.js'),
+  picker: await import('../src/testbed/picker.js'),
 };
 const { localStamp } = await import('../src/server_time.js');
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
@@ -1012,6 +1013,56 @@ async function fourthLook(M) {
   return { resize, tip, labels: [label(narrow), label(loose)], ticks: [narrow.xAxis.splitNumber, narrow.xAxis.axisLabel.hideOverlap, loose.xAxis.splitNumber === undefined] };
 }
 
+/** A pill's picker under its pill (owner 10-14 «알약 선언창 자꾸 화면 좌상단으로 날아가는데»): the pill drawn again
+ *  (a pick redraws the part, the properties panel on every pick) - the picker placed under the new pill, never at 0,0. A
+ *  stub with a layout: an element in the document a box by when it was made, one drawn away 0,0 (the browser's). */
+async function pickerFollows(M) {
+  const doc = makeDoc('dark');
+  let made = 0;
+  const create = doc.createElement.bind(doc);
+  const inDoc = (n) => { for (let up = n; up; up = up.parentNode) if (up === doc.documentElement) return true; return false; };
+  doc.createElement = (tag) => {
+    const n = create(tag);
+    const at = (made += 1);
+    Object.defineProperty(n, 'isConnected', { get: () => inDoc(n) });
+    n.getBoundingClientRect = () => (inDoc(n) ? { left: 100 + (at % 50) * 10, top: 300, right: 160 + (at % 50) * 10, bottom: 321, width: 60, height: 21 }
+      : { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+    n.offsetWidth = 200;
+    n.offsetHeight = 100;
+    return n;
+  };
+  doc.documentElement.clientWidth = 1920;
+  doc.documentElement.clientHeight = 950;
+  const pickerHost = doc.createElement('div');
+  doc.body.appendChild(pickerHost);
+  const picker = new M.picker.SlotPicker(pickerHost, { doc });
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const die = (id, x, y) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y) }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2), die('D2', 3, 4)], edges: [], truncated: ANSWER.truncated };
+  const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'die', start: { marking: null }, system: null, filter: [], encode: { x: key('x'), y: key('y') } };
+  const host = doc.createElement('div');
+  doc.body.appendChild(host);
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const part = new M.visual.VisualPart(host, { doc, markings: new MarkingStore(), start: decl.start, declaration: decl, kinds: { scatter: M.scatter.kind },
+    filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+    openPicker: (at) => picker.open(at), fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+  part.mount();
+  await settle();
+  const pillX = () => walk(part.root).find((n) => n.attrs && n.attrs['data-slot'] === 'x');
+  const placed = () => [pickerHost.style.left, pickerHost.style.top];
+  const under = (pill) => { const r = pill.getBoundingClientRect(); return [`${r.left}px`, `${r.bottom + 4}px`]; };
+  const first = pillX();
+  first.listeners.click[0]({});
+  const opened = [placed(), under(first)];
+  // the part drawn again (a walk's answer, a pick before) - its pills are new
+  part.render();
+  const again = pillX();
+  const value = walk(pickerHost).find((n) => n.tagName === 'BUTTON' && String(n.className).startsWith('sf-pop__it') && n._text && n._text.startsWith('y'));
+  if (value) value.listeners.click[0]({});
+  const picked = [placed(), under(pillX() || again)];
+  return { opened, picked, moved: again !== first };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -1043,6 +1094,7 @@ async function suite(M) {
   const tr = await trellisCases(M);
   const fl = await fourthLook(M);
   const shp = await shapeCases(M);
+  const pf = await pickerFollows(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -1169,6 +1221,8 @@ async function suite(M) {
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
     judge('LG1 the legend column only when the legend has something to draw - a cross table with no Color by none, with one its categories', tl.legends,
       [[true, []], [false, ['A', 'B']]]),
+    judge('PK1 a pill\'s picker under its pill - opened, and after the part drew its pills again and a value was picked: under the new pill, not at 0,0',
+      [pf.opened[0], pf.picked[0], pf.moved], [pf.opened[1], pf.picked[1], true]),
     judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
       shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
     judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows; a cross table holds no Shape by',
@@ -1336,6 +1390,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));', 'const legendHeld = Boolean(this.kind.units);') },
   { id: 'M63', what: 'the legend column always - 160 empty beside a cross table', catches: 'LG1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));', 'const legendHeld = true;') },
+  { id: 'M64', what: 'the picker placed under the pill it opened from, drawn away or not - 0,0 after the part redraws', catches: 'PK1 ', file: 'testbed/picker.js', key: 'picker',
+    mutate: (t) => swap(t, '      if (!at || at.isConnected !== false) return at;', '      return at;') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      this.watch(at, one);', '') },
   { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',
