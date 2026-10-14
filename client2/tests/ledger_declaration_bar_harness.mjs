@@ -100,6 +100,19 @@ async function suite(d) {
     && same(added.sentences[2].occurred_at, RAW.sentences[1].occurred_at) && added.sentences[2].subject && added.sentences[2].target, JSON.stringify(added.sentences[2]));
   const qual = bar.editDeclaration(RAW, { op: 'add', path: 'sentences.0' }, CTX);
   ok('A7 + Qualifier names the predicate\'s next free qualifier', qual.sentences[0].chamber === '', JSON.stringify(qual.sentences[0]));
+  const OBJ = { entities: [...CTX.entities, { type: 'recipe', keys: ['recipe'] }], predicates: [{ name: 'counted', qualifiers: [], object: { kind: 'value', types: [] } },
+    { name: 'made_with', qualifiers: [], object: { kind: 'entity_ref', types: ['recipe', 'die'] } }, { name: 'ran_on', qualifiers: [], object: { kind: 'entity_ref', types: ['die'] } },
+    { name: 'registered', qualifiers: [], object: { kind: 'none', types: [] } }, { name: 'unsaid', qualifiers: [] }] };
+  const toValue = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'counted' }, OBJ).sentences[0];
+  ok('A9 a value predicate picked: the node end goes, a value end comes', toValue.predicate === 'counted' && toValue.target === undefined && toValue.value === '', JSON.stringify(toValue));
+  const back = bar.editDeclaration({ table: 't', sentences: [toValue] }, { op: 'set', path: 'sentences.0.predicate', value: 'ran_on' }, OBJ).sentences[0];
+  ok('A10 a node predicate picked: a target of its first type with that type\'s keys', back.value === undefined && same(back.target, { node: 'die', keys: { mat_id: '', x: '', y: '' } }), JSON.stringify(back));
+  const kept = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'made_with' }, OBJ).sentences[0];
+  ok('A11 ...a target its types allow is kept as it is', same(kept.target, RAW.sentences[0].target), JSON.stringify(kept.target));
+  const noObject = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'registered' }, OBJ).sentences[0];
+  ok('A12 a predicate with no object: neither end', noObject.target === undefined && noObject.value === undefined, JSON.stringify(noObject));
+  const unsaid = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'unsaid' }, OBJ).sentences[0];
+  ok('A13 a predicate whose kind is not said leaves the end as it is', same(unsaid.target, RAW.sentences[0].target) && unsaid.predicate === 'unsaid');
   const removed = bar.editDeclaration(RAW, { op: 'remove', path: 'sentences.0' }, CTX);
   ok('A8 × takes that sentence out', removed.sentences.length === 1 && removed.sentences[0].sentence === 's2');
 
@@ -178,6 +191,10 @@ async function suite(d) {
   const long = view.renderRaw({ ...base, editorText: JSON.stringify({ relation: 't', bind: {} }) });
   ok('D3 a source not in the short form keeps today\'s editor', byClass(long, 'ldb').length === 0 && byAction(long, 'edit-raw').length === 1);
   const dv = view.declarationView(base, 'source');
+  const withObject = view.declarationView({ ...base, authoringSchema: { ...base.authoringSchema,
+    vocabulary: { counted: { qualifiers: ['unit'], object: { kind: 'value', types: [] } } } } }, 'source');
+  ok('D6 a predicate carries its object kind and types from the schema', same(withObject.predicates, [{ name: 'counted', qualifiers: ['unit'], object: { kind: 'value', types: [] } }]),
+    JSON.stringify(withObject.predicates));
   ok('D4 the column list is built from the schema the screen holds', same(dv.catalog.tables.wafer_process_recipe, [{ name: 'wafer_id', type: 'string' }, { name: 'eventtime', type: 'datetime' }])
     && same(dv.catalog.keys, { wafer_process_recipe: ['proc_id'] }) && dv.draftAge === 'edited 5 min ago' && dv.sources[0].id === 'wafer_process_recipe', JSON.stringify(dv.catalog));
 
@@ -300,6 +317,12 @@ const MUTANTS = [
   { name: 'a value end not drawn', catches: ['B13'], file: 'bar', mutate: swap('  else if (s.value !== undefined) {', '  else if (false) {') },
   { name: 'a door though every qualifier is used', catches: ['B15'], file: 'bar', mutate: swap('    if (free) bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));', '    bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));') },
   { name: 'no door in the with group', catches: ['B15'], file: 'bar', mutate: swap('    if (free) bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));', '') },
+  { name: 'a value predicate keeps its node end', catches: ['A9'], file: 'bar', mutate: swap("      } else if (object.kind === 'value') {\n        delete box.target;", "      } else if (object.kind === 'value') {") },
+  { name: 'a node predicate gets no target', catches: ['A10'], file: 'bar', mutate: swap('        if (!box.target || (types.length && !types.includes(node))) box.target = endOf(types[0] || \'\');', '') },
+  { name: 'an allowed target is replaced', catches: ['A11'], file: 'bar', mutate: swap('(types.length && !types.includes(node))', 'types.length') },
+  { name: 'a no-object predicate keeps its ends', catches: ['A12'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else if (false) {") },
+  { name: 'an unsaid kind is read as none', catches: ['A13'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else {") },
+  { name: 'the schema\'s object kind is dropped', catches: ['D6'], file: 'view', mutate: swap(', object: (p && p.object) || null }))', ' }))') },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
   { name: 'every invalidation drops the schema', catches: ['F2'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', 'authoringSchema: null') },
 ];

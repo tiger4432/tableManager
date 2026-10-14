@@ -67,7 +67,9 @@ const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
 /**
  * The declaration with one edit: `set` a value at a path (a node type's name - path `attributes.@<old>` - renames it),
  * `add` one more of what the path holds, `remove` what is at it. A node picked for a sentence's end takes that node
- * type's keys, each unset. @param {object} ctx  {entities: [{type, keys, attributes}], predicates: [{name, qualifiers}]}
+ * type's keys, each unset. A predicate picked for a sentence gives it the end its object kind takes (implementer B 10-14:
+ * entity_ref a target of its first type, value a value, none neither); a kind not said leaves the end as it is.
+ * @param {object} ctx  {entities: [{type, keys, attributes}], predicates: [{name, qualifiers, object?: {kind, types}}]}
  */
 export function editDeclaration(raw, op, ctx = {}) {
   const out = clone(raw) || {};
@@ -94,6 +96,22 @@ export function editDeclaration(raw, op, ctx = {}) {
       const kept = Object.entries(box).map(([k, v]) => (k === old ? [op.value, v] : [k, v]));
       for (const k of Object.keys(box)) delete box[k];
       for (const [k, v] of kept) box[k] = v;
+    } else if (last === 'predicate' && box && typeof box === 'object' && !Array.isArray(box)) {
+      box.predicate = op.value;
+      const object = ((ctx.predicates || []).find((p) => p.name === op.value) || {}).object || {};
+      const types = Array.isArray(object.types) ? object.types : [];
+      const endOf = (type) => { const e = entity(type); return { node: type, keys: Object.fromEntries(((e && e.keys) || []).map((k) => [k, ''])) }; };
+      if (object.kind === 'entity_ref') {
+        delete box.value;
+        const node = box.target && typeof box.target.node === 'string' ? box.target.node : null;
+        if (!box.target || (types.length && !types.includes(node))) box.target = endOf(types[0] || '');
+      } else if (object.kind === 'value') {
+        delete box.target;
+        if (box.value === undefined) box.value = '';
+      } else if (object.kind === 'none') {
+        delete box.target;
+        delete box.value;
+      }
     } else if (last === 'node' && box && typeof box === 'object') {
       box.node = op.value;
       const e = entity(op.value);
