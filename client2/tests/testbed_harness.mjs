@@ -360,6 +360,23 @@ async function parts(M) {
   };
   out.wayStart = [startOf('x'), startOf('y'), startOf('color'), M.picker.expressionRefusal(wp.part, '[in_lot.name]'),
     M.picker.expressionRefusal(wp.part, '[in_lot.nope]'), M.picker.expressionRefusal(wp.part, '[measures.value]')];
+  // T34: «time» in the picker's Value list (lead 10-14 ③ ㄱ): on a route, the slot reads the time of what it reads (its last
+  // edge's) - of 'time', the same value; on «(row)» it is off with its reason
+  const timeOf = (part, key) => {
+    const host = part.doc ? part.doc.createElement('div') : wp.doc.createElement('div');
+    new M.picker.SlotPicker(host, { doc: wp.doc }).open({ part, key, anchor: null });
+    return walk(host).find((n) => n.tagName === 'BUTTON' && String(n.textContent).startsWith('time'));
+  };
+  const onRoute = timeOf(wp.part, 'x');
+  for (const fn of (onRoute || { listeners: {} }).listeners.click || []) fn({});
+  await settle();
+  const timed = wp.part.declaration().encode.x || {};
+  const read = M.slot.readSlot(wp.part.index, wp.part.inside, 'W1', timed);
+  const rowPart = seat(M, scatterDecl({ id: 'X3', encode: { x: temp, y: press, color: product } }));
+  await settle();
+  const onRow = timeOf(rowPart.part, 'color');
+  out.timePick = [timed.of, JSON.stringify(timed.value), JSON.stringify(timed.steps), read.state, read.value, Boolean(read.time),
+    Boolean(onRow && onRow.disabled), (onRow && (onRow.title || onRow.getAttribute && onRow.getAttribute('title'))) || ''];
   // T13 / T17: the status words, a cut walk only when an axis says so
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
@@ -517,6 +534,8 @@ function suite(out, page, saved, counted) {
     [[['one', 1], ['one', 0], ['several', null], ['empty', null], ['missing', null]], [1, 2, 0], [true, true, 'Avg([wafer]) per lot and product']]);
   eq('T30 an operator over a text that is not a number: the row empty and marked; a list several; an empty value empty, not marked; the bottom line counts the drawn rows so marked',
     [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
+  eq('T34 «time» in the picker: on a route the slot reads its last edge\'s time (of time, the value kept); on «(row)» off with its reason',
+    page.timePick, ['time', JSON.stringify(temp.value), JSON.stringify(temp.steps), 'one', new Date(T0).toISOString(), true, true, 'No time on this route']);
   eq('T31 a way in the brackets: its end node\'s name; a row it does not reach empty; folded over its ends; two ends several - and Custom expression starts from the route chosen (its reduce around it), the check reading a way as the row does',
     [out.ways, page.wayStart], [[['one', 'L1'], ['empty', null], ['one', 5.5], ['several', null]],
       ['[measures.value]', 'Avg([measures.value])', '[in_lot.name]', '', 'No value named in_lot.nope on wafer', '']]);
@@ -685,6 +704,10 @@ MUTANTS.push(
     mutate: (t) => swap(t, 'isExpression(current) ? current.expr : startingExpression(chosen)', "isExpression(current) ? current.expr : ''") },
   { id: 'M47', what: 'the check reads a way as the row\'s own name, so a way the row reads is refused', catches: 'T31', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name).value))', '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name.split(\'.\').pop()).value))') },
+  { id: 'M50', what: 'the time pick reads the value, not its time', catches: 'T34', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, "const next = { steps: chosen.steps || [], end: chosen.end, value, of: 'time',", 'const next = { steps: chosen.steps || [], end: chosen.end, value,') },
+  { id: 'M51', what: 'the time pick is on for «(row)»', catches: 'T34', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '        setDisabledReason(it, (chosen.steps || []).length ? null : NO_TIME_HERE);\n', '') },
   { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
     mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'the colours handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/color_by.js',

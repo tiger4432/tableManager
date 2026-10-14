@@ -30,6 +30,9 @@ export function severalCount(part, slot) {
 }
 
 const sameSteps = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+/** «time» with no value picked reads the name's - the way's last edge. */
+const NAME_VALUE = Object.freeze({ on: 'label', name: 'name' });
+const NO_TIME_HERE = 'No time on this route';
 
 /** Why an expression cannot stand for a part's slot, or '' - the calculator's sentence, or a [name] none of the rows has
  *  as its own value. */
@@ -204,6 +207,24 @@ export class SlotPicker {
         it.addEventListener('click', () => {
           const far = chosen.end ? (part.index.nodes.get(chosen.end) || {}).label || chosen.end : null;
           const next = { steps: chosen.steps || [], end: chosen.end, value, reduce: chosen.reduce || undefined, words: [far ? `${far} · ${value.name}` : value.name] };
+          put(next);
+          draw(next);
+        });
+        at.append(it);
+      }
+      // «time» (lead 10-14 ③ ㄱ): the time of what the slot reads - the route's last edge's for its name, a node value's own
+      // record's - the reading slot.js already does for `of: 'time'`; none made up. «(row)» has no edge: off.
+      if (values.length) {
+        const timed = chosen.of === 'time';
+        const it = el('button', `sf-pop__it${timed ? ' is-on' : ''}`, 'time');
+        it.type = 'button';
+        it.append(el('span', 'sf-pop__n', 'when'));
+        setDisabledReason(it, (chosen.steps || []).length ? null : NO_TIME_HERE);
+        it.addEventListener('click', () => {
+          const value = chosen.value || NAME_VALUE;
+          const far = chosen.end ? (part.index.nodes.get(chosen.end) || {}).label || chosen.end : null;
+          const next = { steps: chosen.steps || [], end: chosen.end, value, of: 'time', reduce: chosen.reduce || undefined,
+            words: [far ? `${far} · ${value.name}` : value.name] };
           put(next);
           draw(next);
         });
