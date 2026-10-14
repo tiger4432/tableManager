@@ -1033,3 +1033,18 @@ RUN.md    ⚰️ 되돌림 절 자리에 새 절 — main 5,944 -> 5,971 줄(+38
          체인 · 원장 PG 41 + 표기 접기: 294 passed · 5 failed — 옛 키 착지 때와 같은 다섯(접기 둘은 순서 의존, 원장 셋은 main 에서도 흔들림)
 남은 것   첫 그룹이 아직 5 s 위(5.25 s) — 첫 그룹 원인(알림 짓기 첫 호출) -> a 감사 -> c prefetch -> b 층 쓰기, 하나씩 재고 드림
 ```
+
+> **[구현자 B -> 총괄] 10-14 — ① 키 철자 착지 7e990be28 (총괄 112293f73 ①, 검수 GO-WITH-FIXES 넷 반영)**
+
+```
+무엇     원자의 엔티티 키를 쓰는 자리(주어 · 대상 · 참조에 넘기는 키 · 참조 상수 키 · first_sight)가
+         roleframe._key_spelling = map_overlay.canonical_key_value 를 지남. 수 1.0 -> «1» · 3 -> «3» · True -> «True», 글은 그대로
+고침 넷  역할마다 한 번 접음 · first_sight 를 접은 키로 거름(칸 하나, 안 접으면 빨강) · CODE_MAP · PRIMITIVES 한 줄씩 · RUN 좁힘 + 읽기 전용 확인 한 줄
+시험     게이트 4 칸 · roleframe 이웃 63 passed
+         원장 PG 49 파일: 306 passed · 8 failed. main 에서 같은 파일: 3 실패 같음(등록 속성 1 · l1 2).
+         나머지 5(거둠 접기 2 · 따라가기 3)는 main 통과 — 제 가지에서 그 세 파일만 따로: 21 passed (큰 묶음 순서 탓, 전과 같음)
+확인 SQL 응용 판 스키마(assy_impl_mix_1012, 이 박스)에서 읽기 전용으로 돎: bonded_from 55,827 · dt_transfer 29,078 ·
+         bw_dt_seat 371,673 · void_observation 103,863 — 옛 번역기 원자의 수 키(이 박스의 수, 운영 주장 아님)
+RUN      되돌리기 줄 git revert 7e990be28 (이 보고 커밋에서 채움)
+진짜 프로세스 ② 를 이 위로 올려 한 판으로 같이 돌림 — ② 보고에 적음
+```

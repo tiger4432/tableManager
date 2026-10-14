@@ -17,7 +17,7 @@
 > 뜻       줄 0 -> 앞으로만으로 충분(할 일 없음)
 >          어떤 소스가 > 0 -> 그 소스만 다시 번역: python server/ledger/backfill.py --source <소스> --whole-source (미리보기)
 >                         -> 같은 줄 --apply --pace slow
-> 되돌리기  git revert <착지 커밋> -> 런처 재기동
+> 되돌리기  git revert 7e990be28 -> 런처 재기동
 > ```
 >
 > ---
