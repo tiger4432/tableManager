@@ -1048,3 +1048,18 @@ RUN.md    ⚰️ 되돌림 절 자리에 새 절 — main 5,944 -> 5,971 줄(+38
 RUN      되돌리기 줄 git revert 7e990be28 (이 보고 커밋에서 채움)
 진짜 프로세스 ② 를 이 위로 올려 한 판으로 같이 돌림 — ② 보고에 적음
 ```
+
+> **[구현자 B -> 총괄] 10-14 — ② 원장 선언 짧은 꼴 착지 bbfa4d11b (총괄 b9d33d6f6 · fdb3a630c · 112293f73 ②, 소유자 «ㄹ», 검수 GO-WITH-FIXES 다섯 반영)**
+
+```
+무엇     setup_version 7 = 소스가 {table, status?, attributes?, sentences}. 펼치기 · 줄이기 한 모듈 짝(setup_bundle), 펼친 내부는 6(지문 그대로)
+         v6 파일은 그대로(로더 안내 한 줄) · 변환 명령 migrate_ledger_config_to_v7.py(미리보기 기본, 운영 로더로 앞뒤 지문 견줌)
+         short_form_moves 한 함수 — 활성화가 버려질 read · map 편집을 칸 이름으로 거절, 변환기 mixes 사유
+         when 비교의 빈 칸 = is_blank_source_value(_is_missing 옆으로 옮김) · 변환기 쓰기도 탐색기 잠금
+시험     비PG 26 칸 · 변이 13 빨강 · PG ㄹ 칸 1 passed · 이웃 123 파일 main 대비 새 실패 0
+진짜 프로세스 assy_test 응용 판(assy_impl_mix_1012): 변환 same 3 · mixes 1 · dropped 2(판 사본에서만 retired) · loader 9 ·
+         새 행 -> 새 신원 원자(1~4 s), 옛 신원 행 고침 -> 원자 하나(3 s), public 행 변화 0. 판에서 찾은 결함 하나(v7 인데 v6 안내) 고침
+선언 창   짧은 소스를 펼친 긴 꼴로 엶. 초안 · 활성화는 토큰 있는 서버에서만 — 서비스 시험 칸으로 잼
+RUN      되돌리기 줄 git revert bbfa4d11b (이 보고 커밋에서 채움)
+다음      선언 창 서버 문(짧은 꼴 초안 열기 · PUT 펼치기 · test-run draft_id · /authoring/schema tables · entities · vocabulary)
+```

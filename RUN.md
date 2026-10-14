@@ -30,7 +30,7 @@
 >          거절 «not_writable_short» + 칸 이름 — read 칸(identity · order_by · 시각 · unit)이나 map 칸을 짧은 꼴의 기본과
 >          다르게 고친 활성화(그 편집이 소리 없이 버려지지 않게), 못 줄이는 소스. 소스 일부만 활성화는 «short_file_takes_a_source»
 > 되돌리기  변환 전이면 안 돌리면 됨. 변환 뒤에는 config/backup 의 백업 파일을 제자리에 -> 런처 재기동
->          코드: git revert <착지 커밋> -> 런처 재기동 (v7 파일은 그 코드로 안 읽힘 — 백업 파일을 먼저 되돌릴 것)
+>          코드: git revert bbfa4d11b -> 런처 재기동 (v7 파일은 그 코드로 안 읽힘 — 백업 파일을 먼저 되돌릴 것)
 > ```
 >
 > ---
