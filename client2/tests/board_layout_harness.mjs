@@ -37,6 +37,7 @@ const REAL = {
   trellis: await import('../src/testbed/trellis.js'),
   shape: await import('../src/testbed/shape_by.js'),
   picker: await import('../src/testbed/picker.js'),
+  cross: await import('../src/testbed/kinds/cross_table.js'),
 };
 const { localStamp } = await import('../src/server_time.js');
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
@@ -1083,6 +1084,47 @@ async function pickerFollows(M) {
   return { opened, picked, moved: again !== first };
 }
 
+/** A pill of several columns (owner 10-14): the slot's value a list of columns, an older one-column slot a list of one
+ *  (slot.js columnsOf); a cross table axis a hierarchy (an outer value told once along its run); Color by a combination
+ *  one category; the picker's «+ Column» writes the list. */
+async function manyColumns(M) {
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const die = (id, x, p) => ({ id, type: 'die', label: id, keys: { x: String(x), y: '1', p }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 'A'), die('D2', 3, 'B'), die('D3', 3, 'A')], edges: [], truncated: ANSWER.truncated };
+  const index = M.reach.indexGraph(answer);
+  const inside = new Set(['D1', 'D2', 'D3']);
+  const read = M.slot.readSlot(index, inside, 'D1', [key('p'), key('x')]);
+  const pure = [[read.state, read.value, read.parts], M.slot.slotWords([key('p'), key('x')]), M.slot.columnsOf(key('p')).length,
+    JSON.stringify(M.slot.readSlot(index, inside, 'D1', [key('p')])) === JSON.stringify(M.slot.readSlot(index, inside, 'D1', key('p')))];
+  const doc = makeDoc('dark');
+  const pickerHost = doc.createElement('div');
+  const picker = new M.picker.SlotPicker(pickerHost, { doc });
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const seat = async (kind, encode) => {
+    const decl = { id: kind, part: 'visual', kind, row: 'die', start: { marking: null }, system: null, filter: [], encode };
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: new MarkingStore(), start: decl.start, declaration: decl,
+      kinds: { scatter: M.scatter.kind, crossTable: M.cross.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+      openPicker: (at) => picker.open(at), fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+    part.mount();
+    await settle();
+    return part;
+  };
+  const cross = await seat('crossTable', { rows: [key('p'), key('x')] });
+  const heads = walk(cross.root).filter((n) => n.tagName === 'TH' && String(n.className).startsWith('sf-table__row') && n._text !== 'Total').map((n) => [n._text, n.rowSpan || 1]);
+  const scatter = await seat('scatter', { x: key('x'), y: key('y'), color: [key('p'), key('x')] });
+  const colours = scatter.colors.categories.map((c) => c.name);
+  // the picker on the row axis: «+ Column», then a value - the slot a list of two
+  const one = await seat('crossTable', { rows: key('p') });
+  walk(one.root).find((n) => n.attrs && n.attrs['data-slot'] === 'rows').listeners.click[0]({});
+  const plus = walk(pickerHost).find((n) => n.tagName === 'BUTTON' && n._text === '+ Column');
+  if (plus) plus.listeners.click[0]({});
+  const value = walk(pickerHost).find((n) => n.tagName === 'BUTTON' && String(n.className).startsWith('sf-pop__it') && n._text === 'x');
+  if (value) value.listeners.click[0]({});
+  await settle();
+  const written = (one.declaration().encode.rows || []).map ? one.declaration().encode.rows.map((c) => c.value.name) : null;
+  return { pure, heads, rowKeys: cross.model.rowKeys, colours, written };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -1115,6 +1157,7 @@ async function suite(M) {
   const fl = await fourthLook(M);
   const shp = await shapeCases(M);
   const pf = await pickerFollows(M);
+  const mc = await manyColumns(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -1248,6 +1291,12 @@ async function suite(M) {
       [[true, []], [false, ['A', 'B']]]),
     judge('PK1 a pill\'s picker under its pill - opened, and after the part drew its pills again and a value was picked: under the new pill, not at 0,0',
       [pf.opened[0], pf.picked[0], pf.moved], [pf.opened[1], pf.picked[1], true]),
+    judge('MC1 a slot of several columns: its values\' combination one category, column by column; an older one-column slot reads as a list of one', mc.pure,
+      [['one', 'A, 1', ['A', '1']], 'p › x', 1, true]),
+    judge('MC2 a cross table axis of two columns is a hierarchy: an outer value once along its run (rowspan), the inner each row', [mc.rowKeys, mc.heads],
+      [['A, 1', 'A, 3', 'B, 3'], [['A', 2], ['1', 1], ['3', 1], ['B', 1], ['3', 1]]]),
+    judge('MC3 Color by of two columns: a category a combination', mc.colours, ['A, 1', 'A, 3', 'B, 3']),
+    judge('MC4 the picker\'s «+ Column» then a value writes the slot as its list of columns', mc.written, ['p', 'x']),
     judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
       shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
     judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows; a cross table holds no Shape by',
@@ -1421,6 +1470,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));', 'const legendHeld = true;') },
   { id: 'M64', what: 'the picker placed under the pill it opened from, drawn away or not - 0,0 after the part redraws', catches: 'PK1 ', file: 'testbed/picker.js', key: 'picker',
     mutate: (t) => swap(t, '      if (!at || at.isConnected !== false) return at;', '      return at;') },
+  { id: 'M67', what: 'a slot of several columns read as its first only', catches: 'MC1 ', file: 'testbed/slot.js', key: 'slot',
+    mutate: (t) => swap(t, '    if (cols.length === 1) return readSlot(index, inside, x, cols[0], oneValued, marked, cell);', '    if (cols.length >= 1) return readSlot(index, inside, x, cols[0], oneValued, marked, cell);') },
+  { id: 'M68', what: 'a hierarchy\'s outer value told every row', catches: 'MC2 ', file: 'testbed/kinds/cross_table.js', key: 'cross',
+    mutate: (t) => swap(t, '    if (last && last.at === at) last.n += 1; else', '    if (false) last.n += 1; else') },
+  { id: 'M69', what: 'the picker writes one column over the slot - «+ Column» adds none', catches: 'MC4 ', file: 'testbed/picker.js', key: 'picker',
+    mutate: (t) => swap(t, '      if (!many) { part.setSlot(key, col); return; }', '      { part.setSlot(key, col); return; }') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      this.watch(at, one);', '') },
   { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',

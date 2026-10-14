@@ -24,6 +24,22 @@ const spelling = (v) => JSON.stringify(v);
  *   an expression's operator met a text that is not a number); missing - the row is not in the walk
  */
 export function readSlot(index, inside, x, slot, oneValued = false, marked = null, cell = undefined) {
+  // A slot of several columns (owner 10-14 «알약 여러 컬럼»): each column read, their values' combination one category
+  // («A, B» - Spotfire's), `parts` its values column by column (a cross table's levels); one column - that column.
+  if (Array.isArray(slot)) {
+    const cols = columnsOf(slot);
+    if (cols.length === 1) return readSlot(index, inside, x, cols[0], oneValued, marked, cell);
+    if (!cols.length) return { state: 'empty', n: 0 };
+    const reads = cols.map((c) => readSlot(index, inside, x, c, false, marked, cell));
+    if (reads.some((r) => r.state === 'missing')) return { state: 'missing' };
+    let tuples = [[]];
+    for (const r of reads) {
+      const cats = categoriesOf(r).map(String);
+      tuples = tuples.flatMap((t) => (cats.length ? cats : [EMPTY]).map((v) => [...t, v]));
+    }
+    const values = tuples.map((t) => t.join(PART_SEP));
+    return values.length === 1 ? { state: 'one', value: values[0], parts: tuples[0], n: 1 } : { state: 'several', values, parts: tuples, n: values.length };
+  }
   if (isExpression(slot)) {
     if (!inside.has(x)) return { state: 'missing' };
     const c = compile(slot.expr);
@@ -249,8 +265,16 @@ export function combosOf(rows, keys) {
   return [...out.values()];
 }
 
-/** A slot in words - what a pill and an axis say: «Avg(void_ratio)», «Latest(bond_temp)», «recipe». */
+/** A slot's columns - THE one place an older one-column slot reads as a list of one (owner 10-14: a pill of several
+ *  columns; the declaration's slot value [column …]). */
+export const columnsOf = (slot) => (Array.isArray(slot) ? slot.filter(Boolean) : slot ? [slot] : []);
+/** A combination of several columns' values, as one category says it (Spotfire's «A, B»). */
+export const PART_SEP = ', ';
+
+/** A slot in words - what a pill and an axis say: «Avg(void_ratio)», «Latest(bond_temp)», «recipe»; several columns
+ *  outer to inner, «lot › product». */
 export function slotWords(slot) {
+  if (Array.isArray(slot)) { const cols = columnsOf(slot); return cols.length ? cols.map(slotWords).join(' › ') : '(None)'; }
   if (!slot) return '(None)';
   if (isExpression(slot)) return slot.expr;
   const said = slot.words && slot.words.length ? slot.words[0] : slot.value.on === 'label' ? 'name' : slot.value.name;

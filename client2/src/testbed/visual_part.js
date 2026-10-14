@@ -18,7 +18,7 @@
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
-import { readSlot, readSlots, slotWords, rawOf, isTimeRead } from './slot.js';
+import { readSlot, readSlots, slotWords, rawOf, isTimeRead, columnsOf } from './slot.js';
 import { keepNodes } from './filter.js';
 import { hubId, nodesOfPress, whyHub } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
@@ -481,10 +481,11 @@ export class VisualPart extends Panel {
     const received = this.rowsOf(this.answer);
     // its slots, then the rows' own values (keys, attributes - the walk table's «+ Column» values at no step) a filter can
     // take too (the 18766 run: «+ Add filter» offered the axes only)
-    const held = new Set(Object.values(encode).filter((s) => s && Array.isArray(s.steps) && !s.steps.length && s.value).map((s) => `${s.value.on}:${s.value.name}`));
+    const held = new Set(Object.values(encode).flatMap(columnsOf).filter((s) => Array.isArray(s.steps) && !s.steps.length && s.value).map((s) => `${s.value.on}:${s.value.name}`));
     const own = valuesAt(this.index, received, []).filter((v) => !held.has(`${v.on}:${v.name}`))
       .map((value) => ({ key: `own:${value.on}:${value.name}`, slot: { steps: [], value, words: [value.on === 'label' ? 'name' : value.name] } }));
-    return [...this.slotList().filter((s) => encode[s.key]).map((s) => ({ key: s.key, slot: encode[s.key] })), ...own].map(({ key, slot }) => {
+    // a slot of several columns - a filter a column
+    return [...this.slotList().filter((s) => encode[s.key]).flatMap((s) => columnsOf(encode[s.key]).map((slot, k) => ({ key: k ? `${s.key}#${k}` : s.key, slot }))), ...own].map(({ key, slot }) => {
       const counts = new Map();
       let empty = 0;
       let time = false;

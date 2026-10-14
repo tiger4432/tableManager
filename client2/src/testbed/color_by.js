@@ -7,7 +7,7 @@
 import { mix } from './palette.js';
 
 /** The Color by slot every kind of the root holds. */
-export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true });
+export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true, many: true });
 
 /**
  * Each row's colour by the declaration's Color by: a row reading one value is in that category (categories in their
