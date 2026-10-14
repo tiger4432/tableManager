@@ -3,7 +3,8 @@
 > ## [10-14] **느린 참조뷰도 자동 인덱스를 묻는다 — 통째 훑으며 거르는 칸: 같음 · IN 은 필터, 글자 일부(LIKE · ILIKE)는 트라이그램 (총괄 76704b7f2, 소유자 «넓혀»)** — git pull · 서버 «와» 체인 워커 재기동 · 이주 «없음»
 >
 > ```
-> 무엇     참조뷰 한 번 읽기가 grid_auto_index_after_seconds 를 넘으면(그리드와 같은 칸) 그 뷰의 계획을 프로세스마다 한 번 읽는다
+> 무엇     참조뷰 읽기(화면의 보기 · 자동 확정의 후보 프로브)가 grid_auto_index_after_seconds 를 넘으면(그리드와 같은 칸) 그 뷰의 계획을
+>          프로세스마다 한 번 읽는다
 >          (EXPLAIN — 뷰를 다시 돌리지 않음, 답한 «뒤» 따로 스레드에서). 표를 통째 훑으며 거르는 칸마다 그리드와 같은 INDEX_WANTED 한 행
 >          같음 · IN              -> slow filter   (칸, row_id)
 >          글자 일부 LIKE · ILIKE  -> slow search   트라이그램 ix_auto_<표>_<칸>_search
@@ -11,9 +12,9 @@
 >          OR 로 묶인 거르기는 묻지 않는다 · 표마다 상한 auto_index_per_table 에 같이 센다
 > 설정     새 칸 없음 — "grid_auto_index_after_seconds"(없으면 1 · 0/null = 안 물음) · "auto_index_per_table"(없으면 10)
 > 볼 것    어드민 Overview «Indexes» 표 — purpose «auto (slow search)», 칸 이름, using gin
->          server.log
+>          server.log — 후보 프로브는 체인 워커에서 돌아 chain_worker.log 에 «[Server] … [slot N pid …]» 로
 >            [Indexes] asked for an automatic index on <표> (<칸>) - slow search, the read took N s
->          안 물었으면 그 까닭이 그 줄에 (server.log)
+>          안 물었으면 그 까닭이 그 줄에 (같은 로그)
 >            [Indexes] reference view <이름> took N s - <표> (<칸>) not asked for a slow search: the pattern '%ab%' has under 3 characters between its wildcards - a trigram index cannot narrow it
 >            [Indexes] reference view <이름> took N s - <표> (<칸>) not asked for a slow filter: not a table the product declares
 >            [Indexes] an automatic index on <표> (<칸>) is not asked for a slow search: the pg_trgm extension is missing - …
@@ -21,17 +22,19 @@
 >          chain_worker.log
 >            [Indexes] building ix_auto_<표>_<칸>_search on <표>  ·  [Indexes] ix_auto_<표>_<칸>_search built in N s
 > 뜻       «asked» 뒤 «built» 가 없다 -> 체인 워커가 안 돌거나, 그 표가 상한(chain_worker.log 에 «already holds N automatic indexes»)
->          같은 뷰는 서버 프로세스마다 «처음 느렸던 읽기»에서 한 번만 계획을 읽는다 — 그 뒤 어떤 글자로 찾아도 다시 안 묻는다
->          «3 characters» -> 그 처음 읽기가 세 글자 미만으로 찾은 것. 안 물었고, 다시 물으려면 서버 재기동 뒤 세 글자 이상으로 한 번 읽는다
+>          같은 뷰는 프로세스마다(서버 · 체인 슬롯 따로) 계획을 한 번 읽는다 — 판단을 낸 뒤에는 다시 안 묻는다(다시 보려면 재기동)
+>          «3 characters» -> 그 읽기가 세 글자 미만으로 찾은 것. 판단을 못 냈으니 그 한 번을 안 쓴다 — 다음 느린 읽기가 다시 본다
 >          «pg_trgm» -> DB 에 CREATE EXTENSION pg_trgm (슈퍼유저로 한 번) 뒤 서버 재기동 · 그 뷰를 한 번 읽는다
 > 지우기   DROP INDEX CONCURRENTLY ix_auto_<표>_<칸>_search;
 > 급할 때   "grid_auto_index_after_seconds": 0 -> 그리드 · 참조뷰 둘 다 안 물음(재기동 없음)
 > 박스 판 실측 (100 만 행 표 · 실제 런처 API + 체인 워커 · 문턱 0.3 s 로 낮춰서 — 박스 판, 운영 주장 아님)
 >          참조뷰 lot_id ILIKE '%zzzq%' HTTP 0.50 · 0.66 s -> 서버 줄 «asked … slow search, the read took 0.5 s» -> 체인 워커가 16.7 s 에 지음
 >          같은 뷰 다시 0.016 · 0.031 s · 계획 Bitmap Index Scan on ix_auto_rv_src_lot_id_search · 화면 줄 auto (slow search) · public 표 행 변화 0
+>          후보 프로브 판 (같은 100 만 행 · 20 행을 감시자로 넣어 체인이 자동 확정 프로브를 돎 · 뷰 note ILIKE '%' || :k || '%')
+>          프로브 읽기 3.7 s(그 시각 같은 DB 에서 다른 레인의 원장 다시 번역이 돌고 있었음) -> 체인 슬롯 줄 «asked … rv_src (note) - slow search»
+>          -> 체인 워커가 15.5 s 에 지음 · 화면 줄 auto (slow search) · public 표 행 변화 0 · 지어진 뒤 프로브 초는 안 잼
 > ⚠️ 안 잰 것  운영 크기에서 짓는 시간 · 트라이그램 인덱스의 쓰기 비용 · 조인 · 하위 질의가 든 운영 뷰의 계획
->          후보 프로브(자동 컨펌이 후보를 세는 GROUP BY 읽기)는 이 자리를 안 지난다 — 참조뷰 «보기» 읽기만 묻는다
-> 되돌리기  git revert 83eac7ccc -> 서버 · 체인 워커 재기동(지어진 ix_auto_ 인덱스는 남음 — 지우는 법은 위)
+> 되돌리기  git revert <착지2> 83eac7ccc -> 서버 · 체인 워커 재기동(지어진 ix_auto_ 인덱스는 남음 — 지우는 법은 위)
 > ```
 >
 > ---

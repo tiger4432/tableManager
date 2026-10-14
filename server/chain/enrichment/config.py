@@ -1654,15 +1654,21 @@ def execute_reference_view(db, view: dict, bind_params: dict = None,
         # person is usually mid-repair. See `_reference_view_failure`.
         raise _reference_view_failure(SITE_REFERENCE_VIEW, e,
                                       follow_up=follow_up) from e
-    # a slow view asks for the indexes its whole-table filters want - its plan read after, on its own thread, through
-    # the grid's door and threshold (`runtime.index_wants`, 소유자 10-14 «넓혀»)
+    _ask_if_slow(db, view, stmt, exec_params, started)
+    return columns, [list(r) for r in raw_rows]
+
+
+def _ask_if_slow(db, view: dict, stmt, params: dict, started: float) -> None:
+    """A read of `view` (its display, a candidate probe) slower than the grid's threshold asks for the indexes its
+    whole-table filters want - the plan read after, on its own thread, through the grid's door (`runtime.index_wants`,
+    소유자 10-14 «넓혀»)."""
     seconds = time.monotonic() - started
     from parsers.directory_watcher import grid_auto_index_after
     slow = grid_auto_index_after()
     if slow and seconds > slow:
         from runtime import index_wants
-        index_wants.want_plan(view.get("label") or "(unnamed)", stmt.text, exec_params, seconds, db.get_bind())
-    return columns, [list(r) for r in raw_rows]
+        index_wants.want_plan(view.get("label") or "(unnamed)", view["query"], stmt.text, params, seconds,
+                              db.get_bind())
 
 
 def _probe_params(view: dict, supplied: dict, needed: set, caps: dict = None) -> dict:
@@ -1740,6 +1746,7 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
     exec_params["__enrichment_limit"] = distinct_cap + 1
     exec_params["__enrichment_scan_rows"] = scan_rows
     stmt = text(CANDIDATE_GROUP_WRAP_SQL.format(query=view["query"], column=column))
+    started = time.monotonic()
     try:
         _, raw = _isolated_execute(db, stmt, exec_params)
     except Exception as e:
@@ -1750,6 +1757,7 @@ def execute_candidate_probe(db, view: dict, column: str, bind_params: dict = Non
         # THROTTLED: the worker probes up to 200 keys per unit per declaring
         # view, continuously, and nothing bounds that but this flag.
         raise _reference_view_failure(SITE_CANDIDATE_PROBE, e, throttle=True) from e
+    _ask_if_slow(db, view, stmt, exec_params, started)
 
     # `__scanned`는 바깥 LIMIT이 그룹을 자르기 **전**의 전체 행수다. 반환된 그룹의
     # count 합으로 대신하면, 그룹이 잘린 순간 `scanned`가 과소 보고되고 `row_truncated`가
@@ -1813,11 +1821,13 @@ def execute_candidate_probes(db, view: dict, column: str, keys: list, caps: dict
                                   for i in range(len(keys))),
                         "".join(', "%s"' % name for name in needed),
                         CANDIDATE_GROUP_WRAP_SQL.format(query=query, column=column)))
+        started = time.monotonic()
         try:
             _, raw = _isolated_execute(db, stmt, params)
         except Exception as e:                                       # noqa: BLE001
             failed = str(_reference_view_failure(SITE_CANDIDATE_PROBE_BATCH, e, throttle=True))
         else:
+            _ask_if_slow(db, view, stmt, params, started)
             by_key = {}
             for row in raw:
                 by_key.setdefault(row[0], []).append(row[1:])

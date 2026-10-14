@@ -35,6 +35,11 @@ def _plan(*scans):
     ("(n = m)", []),
     ("((lot_id)::text !~~ '%abc%'::text)", []),
     ("(n >= 5)", []),
+    # a candidate probe's LATERAL over its keys: the right side is each key's value
+    ("(((lot_id)::text = \"*VALUES*\".column2) AND (n = \"*VALUES*\".column3))",
+     [("t", "lot_id", "slow filter", None), ("t", "n", "slow filter", None)]),
+    ("((lot_id)::text ~~* (('%'::text || \"*VALUES*\".column2) || '%'::text))", [("t", "lot_id", "slow search", None)]),
+    ("(t.n = t.m)", []),
 ])
 def test_a_scan_s_filter_reads_as_its_wants(condition, found):
     assert index_wants.scanned_filters(_plan(_scan("t", "t", condition))) == found
@@ -72,19 +77,36 @@ def test_a_view_s_plan_is_queued_once_a_process_and_never_off_postgresql(monkeyp
     monkeypatch.setattr(index_wants, "_ASKED", set())
     monkeypatch.setattr(index_wants, "_plan_wants", lambda *a: read.append(a[:2]))
     pg, lite = (SimpleNamespace(dialect=SimpleNamespace(name=name)) for name in ("postgresql", "sqlite"))
-    for _ in range(3):
-        index_wants.want_plan("v", "SELECT 1", {}, 2.0, pg)
-    index_wants.want_plan("v", "SELECT 2", {}, 2.0, lite)
+    for statement in ("SELECT 1", "SELECT 1", "SELECT 2"):              # another wrap of the same view: still once
+        index_wants.want_plan("v", "Q", statement, {}, 2.0, pg)
+    index_wants.want_plan("w", "Q2", "SELECT 3", {}, 2.0, lite)
     for _ in range(50):
         if read:
             break
         import time
         time.sleep(0.02)
-    assert read == [("v", "SELECT 1")]
+    assert read == [("v", "Q")]
 
 
+VIEW = {"label": "lots", "query": "SELECT a FROM t WHERE a = :k", "limit": 5}
+
+
+def _display(config, db):
+    assert config.execute_reference_view(db, VIEW, {"k": "x", "other": 1}) == (["a"], [[1]])
+
+
+def _probe(config, db):
+    config.execute_candidate_probe(db, VIEW, "a", {"k": "x"}, caps=None)
+
+
+def _probes(config, db):
+    answers, failed = config.execute_candidate_probes(db, VIEW, "a", [{"k": "x"}, {"k": "y"}], caps=None)
+    assert failed is None and len(answers) == 2
+
+
+@pytest.mark.parametrize("read", [_display, _probe, _probes])
 @pytest.mark.parametrize("after, asked", [(1e-9, True), (1e9, False), (None, False)])
-def test_execute_reference_view_asks_only_past_the_grid_s_threshold(monkeypatch, after, asked):
+def test_every_read_of_a_view_asks_only_past_the_grid_s_threshold(monkeypatch, read, after, asked):
     from types import SimpleNamespace
 
     from chain.enrichment import config
@@ -92,14 +114,17 @@ def test_execute_reference_view_asks_only_past_the_grid_s_threshold(monkeypatch,
 
     wanted, ticks = [], iter(range(100))
     monkeypatch.setattr(config, "time", SimpleNamespace(monotonic=lambda: float(next(ticks))))  # a second a read
-    monkeypatch.setattr(config, "_isolated_execute", lambda db, stmt, params: (["a"], [(1,)]))
+    monkeypatch.setattr(config, "_isolated_execute", lambda db, stmt, params: (["a"], (
+        [(0, "v", 1, 1), (1, "v", 1, 1)] if "LATERAL" in stmt.text else [("v", 1, 1)] if "__scanned" in stmt.text
+        else [(1,)])))
     monkeypatch.setattr(directory_watcher, "grid_auto_index_after", lambda settings=None: after)
     monkeypatch.setattr(index_wants, "want_plan", lambda *a: wanted.append(a))
-    view = {"label": "lots", "query": "SELECT a FROM t WHERE a = :k", "limit": 5}
-    db = SimpleNamespace(get_bind=lambda: "bind")
-    assert config.execute_reference_view(db, view, {"k": "x", "other": 1}) == (["a"], [[1]])
-    assert wanted == ([("lots", config.REFERENCE_LIMIT_WRAP_SQL.format(query=view["query"]),
-                        {"k": "x", "__enrichment_limit": 5}, 1.0, "bind")] if asked else []), wanted
+    bind =SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    read(config, SimpleNamespace(get_bind=lambda: bind))
+    assert [(w[0], w[1], w[4], w[5]) for w in wanted] == ([("lots", VIEW["query"], 1.0, bind)] if asked else []), wanted
+    if asked and read is _display:
+        assert wanted[0][2:4] == (config.REFERENCE_LIMIT_WRAP_SQL.format(query=VIEW["query"]),
+                                  {"k": "x", "__enrichment_limit": 5})
 
 
 # ------------------------------------------------------------------------------------------------- on PostgreSQL
@@ -137,7 +162,7 @@ def _read_plan(engine, monkeypatch, where, params, caplog):
     asked = []
     monkeypatch.setattr(index_wants, "want", lambda t, c, w, s, b: asked.append((t, c, w, index_wants.ask(t, c, w, s, b))))
     with caplog.at_level(logging.INFO, logger="Server"):
-        index_wants._plan_wants("lots", _statement(where), dict(params, __enrichment_limit=100), 2.5, engine)
+        index_wants._plan_wants("lots", where, _statement(where), dict(params, __enrichment_limit=100), 2.5, engine)
     return asked
 
 
@@ -198,11 +223,39 @@ def test_a_search_counts_toward_the_table_s_cap(table):
 
 
 @pytest.mark.pg
+def test_a_candidate_probe_s_lateral_read_asks_for_its_key_column(table, monkeypatch, caplog):
+    from sqlalchemy.orm import Session
+
+    from chain.enrichment import config
+    from parsers import directory_watcher
+
+    caught = []
+    monkeypatch.setattr(directory_watcher, "grid_auto_index_after", lambda settings=None: 1e-9)
+    monkeypatch.setattr(index_wants, "want_plan", lambda *a: caught.append(a))
+    view = {"label": "by n", "query": "SELECT s FROM %s WHERE n = :n" % TABLE, "limit": 50}
+    with Session(bind=table) as db:
+        answers, failed = config.execute_candidate_probes(db, view, "s", [{"n": 7}, {"n": 8}], caps=None)
+    assert failed is None and [a["scanned"] for a in answers] == [1, 1]
+    [(label, query, statement, params, seconds, bind)] = caught
+    assert "CROSS JOIN LATERAL" in statement
+    asked = []
+    monkeypatch.setattr(index_wants, "want", lambda t, c, w, s, b: asked.append((t, c, w, index_wants.ask(t, c, w, s, b))))
+    index_wants._plan_wants(label, query, statement, params, seconds, bind)
+    assert asked == [(TABLE, ["n"], "slow filter", True)], asked
+
+
+@pytest.mark.pg
 def test_a_short_pattern_and_an_undeclared_table_are_said_not_asked(table, monkeypatch, caplog):
-    asked = _read_plan(table, monkeypatch, "s ILIKE '%' || :key || '%'", {"key": "ab"}, caplog)
+    where = "s ILIKE '%' || :key || '%'"
+    monkeypatch.setattr(index_wants, "_ASKED", {("plan", where)})
+    asked = _read_plan(table, monkeypatch, where, {"key": "ab"}, caplog)
     assert asked == [] and _waiting(table) == []
     assert any("auto_search_probe (s) not asked for a slow search: the pattern '%ab%' has under 3 characters" in m
                for m in caplog.messages), caplog.messages
+    assert ("plan", where) not in index_wants._ASKED, "judged nothing - the next slow read looks again"
+    index_wants._ASKED.add(("plan", where))
+    assert _read_plan(table, monkeypatch, where, {"key": "abc"}, caplog) == [(TABLE, ["s"], "slow search", True)]
+    assert ("plan", where) in index_wants._ASKED, "judged - the view's once is used"
     monkeypatch.delitem(crud.TABLE_CONFIG, TABLE)
     caplog.clear()
     assert _read_plan(table, monkeypatch, "n = :n", {"n": 7}, caplog) == []
