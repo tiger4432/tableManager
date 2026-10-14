@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 import contextlib
 import logging
+import weakref
 
 # Same channel as `database/crud.py` - one process, one logger name, so a schema
 # repair failure lands where every other server line does rather than on stdout.
@@ -416,6 +417,9 @@ class RetroactiveRun(Base):
     runner = Column(String(160), nullable=True)
     # 배치마다 갱신된다 — 「살아 있나」를 이 값의 나이로 판단할 수 있게.
     last_progress_at = Column(DateTime(timezone=True), nullable=True)
+    # ⚠️ phase · phase_at (the run's stage, `RunControl.tell`) are columns of this table and NOT of this model: mapped,
+    # an INSERT names them (deferred leaves only the SELECT, QA 10-14 on 2.0.49) and every run row's writer breaks on a
+    # database they are not yet added to. `ensure_run_phase_columns` adds them; `tell` writes and `runs` reads them.
     finished_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
@@ -427,6 +431,34 @@ class RetroactiveRun(Base):
         Index("ix_retroactive_runs_state", "state",
               info={"purpose": "runs in one state", "serves": "runs in flight, queued runs"}),
     )
+
+
+def ensure_run_phase_columns(engine):
+    """`retroactive_runs.phase` · `phase_at`, the run's stage (`RetroactiveRun` does not map them), on a database
+    without them. ONE SEAT: their writer (`RunControl.tell`) asks here before it writes; their reader (`runs`) reads
+    them null where they are not. Looked up first, so a database that has them takes no lock - once a process and
+    database, after which it asks nothing."""
+    if engine in _PHASE_COLUMNS:
+        return
+    from sqlalchemy import inspect
+
+    with engine.begin() as conn:
+        missing = [name for name in ("phase", "phase_at")
+                   if name not in {c["name"] for c in inspect(conn).get_columns("retroactive_runs")}]
+        if missing:
+            postgres = engine.dialect.name == "postgresql"
+            if postgres:
+                conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+            for name in missing:
+                kind = "VARCHAR(200)" if name == "phase" else ("TIMESTAMPTZ" if postgres else "TIMESTAMP")
+                conn.execute(text("ALTER TABLE retroactive_runs ADD COLUMN %s%s %s"
+                                  % ("IF NOT EXISTS " if postgres else "", name, kind)))
+            logger.info("[Retroactive] retroactive_runs: %s added", " and ".join(missing))
+    _PHASE_COLUMNS.add(engine)
+
+
+#: The databases `ensure_run_phase_columns` found or made the two columns on, in this process.
+_PHASE_COLUMNS = weakref.WeakSet()
 
 
 class FileRereadMark(Base):

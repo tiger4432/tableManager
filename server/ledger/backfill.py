@@ -440,17 +440,26 @@ def preview_rescope(engine, setup, source, scope_column, scope_values, world=Non
               "scope_values": len(scoped[1]), "rows_in_scope": len(rows),
               "withdraw": 0, "remake": 0, "refs": []}
     if rows:
+        from chain import keyset_scan
+        from .store import LedgerStore
+
         previewed = _preview_frame(engine, setup, source, plan, _v2_frame(rows), world=world)
         previewed.pop("preview")                 # the translation itself is not an answer
         result.update(previewed)
+        # what the withdrawal would take - a preview's count; an apply's is its DELETE's (총괄 10-14)
+        with keyset_scan.stage("withdrawal count", len(result["refs"])) as said:
+            result["withdraw"] = LedgerStore(engine, world=world).atoms_for_refs(source, result["refs"])
+            if result["refs"] and keyset_scan.debugging():
+                said["note"] = "%d atoms %s" % (result["withdraw"],
+                                                _withdrawal_aim(engine, world, source, result["refs"]))
     return result
 
 
 def _preview_frame(engine, setup, source, plan, frame, world=None):
-    """`preview_rescope`'s three numbers for rows already read - a whole scope, or one page
-    of a paged `rescope` (총괄 8d8abfb5d)."""
+    """The translation of rows already read - a whole scope, or one page of a paged `rescope` (총괄 8d8abfb5d): the
+    atoms it remakes and their refs. What the withdrawal takes is counted by `preview_rescope` alone - a page's
+    DELETE says it (총괄 10-14: the same search ran twice a page)."""
     from chain import keyset_scan
-    from .store import LedgerStore
     from .setup import preview_selected_cursor_batch
     from .runtime_v2 import _filtered_event_atoms, last_cursor
 
@@ -468,19 +477,19 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     result["remake"] = len(atoms)
     result["refs"] = refs
     result["preview"] = preview          # the remake writes this translation (6091a7ae3 ①)
-
-    store = LedgerStore(engine, world=world)
-    with keyset_scan.stage("withdrawal count", len(refs)) as said:
-        result["withdraw"] = store.atoms_for_refs(source, refs)
-        if refs and keyset_scan.debugging():
-            # 🔴 WHAT FINDS THE ATOMS TO WITHDRAW (총괄 d9be013cb ②): the ref index, or every partition read whole -
-            #    the write's DELETE asks the same predicate
-            name, valid, build = ref_index_state(engine, world)
-            said["note"] = "%d atoms by %s · plan: %s" % (
-                result["withdraw"], ("%s (valid)" % name) if valid else (
-                    "%s missing or not valid - each page's count and DELETE read the whole ledger; build it: %s"
-                    % (name, build)), store.refs_plan(source, refs))
     return result
+
+
+def _withdrawal_aim(engine, world, source, refs):
+    """🔴 WHAT FINDS THE ATOMS TO WITHDRAW (총괄 d9be013cb ②), for a debug line: the ref index, or every partition read
+    whole - the preview's count and the write's DELETE ask the same predicate."""
+    from .store import LedgerStore
+
+    name, valid, build = ref_index_state(engine, world)
+    return "by %s · plan: %s" % (
+        ("%s (valid)" % name) if valid else (
+            "%s missing or not valid - each page's withdrawal reads the whole ledger; build it: %s" % (name, build)),
+        LedgerStore(engine, world=world).refs_plan(source, refs))
 
 
 #: How many distinct refs the orphan sweep reads before it calls itself a sample. A source
@@ -766,17 +775,23 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     #    follow-up path, whose receipt rides that one commit.
     # `key_range` (lo, hi]: one slice of a whole source (`slice_bounds`) - its pages only; the tail below is the
     # run's, once, after every slice (`whole_source_tail`)
-    total = (_table_rows(engine, plan) if whole_source and checkpoint is not None and key_range is None else None)
-    if keyset_scan.RUN_CONTROL.get() is not None and key_range is None:
+    total = None
+    if whole_source and checkpoint is not None and key_range is None:
+        keyset_scan.say("counting the rows of %s" % plan.relation)            # the run's stage meanwhile (`tell`)
+        total = _table_rows(engine, plan)
+    run = keyset_scan.RUN_CONTROL.get() is not None
+    if run and key_range is None:
         say_what_every_page_pays(engine, plan, world, withdraw)
+        if withdraw:
+            analyze_stale_partitions(engine, world)
     for frame in _scope_pages(engine, plan, scoped, page_rows, key_range):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
         scope_row_ids = _scope_row_ids(plan, frame)
         aimed = previewed = None
+        touched = set(store._known_partitions) if run and withdraw else None     # the partitions written so far
         if withdraw:
             previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
-            result["withdraw"] += previewed["withdraw"]
             result["remake"] += previewed["remake"]
             with keyset_scan.stage("index lines of the rows", len(scope_row_ids)) as said:
                 indexed = {ref for who, ref
@@ -791,15 +806,23 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         if aimed is None or aimed:
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
-            with keyset_scan.stage("write", len(frame)):
+            with keyset_scan.stage("write", len(frame)) as said:
                 executed = execute_selected_scoped_batch(
                     setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
                     known_registrations=(),
                     withdraw_refs=aimed, preview=previewed and previewed["preview"])
+                if aimed and keyset_scan.debugging():
+                    said["note"] = "withdrew %d atoms %s" % (int(executed.store_result.get("withdrawn", 0)),
+                                                             _withdrawal_aim(engine, world, source, aimed))
             written = executed.store_result
             for key in ("withdrawn", "attempted", "inserted", "deduped"):
                 result[key] += int(written.get(key, 0))
+            if withdraw:
+                result["withdraw"] += int(written.get("withdrawn", 0))      # the DELETE's count (총괄 10-14)
             result["applied"] = True
+            if touched is not None and store._known_partitions - touched:
+                # this page wrote into a partition the run had not - analyzed now if it has no statistics yet
+                analyze_stale_partitions(engine, world, store._known_partitions - touched)
             if withdraw and scope_row_ids:
                 # 🔴 THE INDEX ROWS GO LAST, for the reason `withdraw_deleted_rows` states:
                 # while they are still here the withdrawal can be run again, and a run that
@@ -837,14 +860,14 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
 def say_what_every_page_pays(engine, plan, world, withdraw):
     """The two defects a run pays on every page, said once at its start whatever `retroactive_debug` says (총괄 10-13:
     a line that names a defect is not a debug line) - by the judgments the stage lines' notes use: the ledger's ref index
-    missing or not valid (each page's withdrawal count and DELETE read the whole ledger), and no index on the page key
+    missing or not valid (each page's withdrawal reads the whole ledger), and no index on the page key
     (each page sorts the source - and the pages begin at one row)."""
     from chain import keyset_scan
 
     if withdraw:
         name, valid, build = ref_index_state(engine, world)
         if not valid:
-            keyset_scan.say("%s missing or not valid - each page's withdrawal count and DELETE read the whole ledger; "
+            keyset_scan.say("%s missing or not valid - each page's withdrawal reads the whole ledger; "
                             "the ledger process builds it at its start (build_missing_indexes), or now: %s" % (name, build))
     connection = engine.raw_connection()
     try:
@@ -857,6 +880,54 @@ def say_what_every_page_pays(engine, plan, world, withdraw):
                         '(`slice_bounds`); declare one on ["%s"] in that table\'s "indexes" (table_config.json) and '
                         'the chain worker builds it'
                         % (_page_key(plan), plan.relation, _page_key(plan)))
+
+
+#: `ingestion_settings.json`: the share of a ledger partition's rows changed since its last ANALYZE from which a
+#: re-translate analyzes it again (`schema.stale_partitions`)
+ANALYZE_SHARE_SETTING, ANALYZE_SHARE_DEFAULT = "ledger_analyze_changed_share", 0.2
+
+
+def analyze_stale_partitions(engine, world, only=None):
+    """ANALYZE the ledger partitions `schema.stale_partitions` names (of `only`, partition names, when given) - before a
+    re-translate's first page and after a page that wrote into a partition the run had not - one line when it did any
+    (총괄 10-14: a partition never analyzed answered the withdrawal by Seq Scan beside a valid ref index - 27 rows a page,
+    1.56 s). Each in a transaction of its own under the DDL lock limit: one an index build holds is said and skipped."""
+    import db_safety
+    from chain import keyset_scan
+    from ingestion.settings import read_ingestion_settings
+
+    from . import schema
+
+    share = read_ingestion_settings().get(ANALYZE_SHARE_SETTING, ANALYZE_SHARE_DEFAULT)
+    if isinstance(share, bool) or not isinstance(share, (int, float)) or share <= 0:
+        logger.warning("[Ledger] ingestion_settings.json: %s is %r - a number above 0; read as %s",
+                       ANALYZE_SHARE_SETTING, share, ANALYZE_SHARE_DEFAULT)
+        share = ANALYZE_SHARE_DEFAULT
+    started, done, skipped = time.monotonic(), [], []
+    connection = engine.raw_connection()
+    try:
+        stale = schema.stale_partitions(connection, schema.world_names(world), share, only)
+        connection.commit()
+        if stale:                                   # the run's stage meanwhile (`tell`)
+            keyset_scan.say("analyzing %d partition%s: %s" % (len(stale), "" if len(stale) == 1 else "s",
+                                                             ", ".join(stale)))
+        for name in stale:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
+                    cursor.execute("ANALYZE %s" % name)
+                connection.commit()
+                done.append(name)
+            except Exception as exc:                                    # noqa: BLE001 - said, the run goes on
+                connection.rollback()
+                skipped.append("%s (%s)" % (name, str(exc).strip().splitlines()[0]))
+    finally:
+        connection.close()
+    if done or skipped:
+        keyset_scan.say("analyzed %d partition%s in %.1f s: %s%s" % (
+            len(done), "" if len(done) == 1 else "s", time.monotonic() - started, ", ".join(done) or "-",
+            " · not analyzed: %s" % ", ".join(skipped) if skipped else ""))
+    return done
 
 
 def whole_source_tail(engine, setup, source, plan, checkpoint=None, world=None):

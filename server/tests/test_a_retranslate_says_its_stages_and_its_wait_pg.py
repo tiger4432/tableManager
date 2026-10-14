@@ -3,7 +3,7 @@
 Re-translate button's op) on the hold world's ledger source.
 
   stages   each stage of a page ends in a line: the read (its page key's index, its plan), the translation's three, the
-           withdrawal count (which index finds the atoms, its plan), the write's six
+           write's six - its own line names what found the atoms it withdrew (the index, its plan; 총괄 10-14: one search)
   off      `retroactive_debug: false` leaves the page lines and only them
   wait     a lock held on the ledger is named by the beat - the holder's pid and name - and the blocked statement by
            the slow-statement line
@@ -25,7 +25,7 @@ from conftest import PG_TEST_SCHEMA
 
 pytestmark = pytest.mark.pg
 ROWS = 30
-STAGES = ("read", "event frames", "dry run", "row refs", "translate", "withdrawal count", "index lines of the rows",
+STAGES = ("read", "event frames", "dry run", "row refs", "translate", "index lines of the rows",
           "screen atoms", "partitions", "withdraw atoms", "insert atoms", "index lines", "commit", "write")
 
 
@@ -80,9 +80,10 @@ def test_each_stage_of_a_page_says_itself(world, monkeypatch):
     assert set(STAGES) <= set(said), sorted(set(STAGES) - set(said))
     # the read names its page key, the index that serves it, and its plan
     assert any(re.search(r" · key row_id · \S+ · plan: \S", line) for line in said["read"]), said["read"][:3]
-    # the withdrawal count names what finds the atoms - the ref index by name, valid or not - and its plan
-    assert any("by idx_ledger_events_source_raw_ref_hash" in line and " · plan: " in line
-               for line in said["withdrawal count"]), said["withdrawal count"][:3]
+    # the write names what found the atoms it withdrew - the ref index by name, valid or not - and its plan
+    assert any(" · withdrew " in line and "by idx_ledger_events_source_raw_ref_hash" in line and " · plan: " in line
+               for line in said["write"]), said["write"][:3]
+    assert "withdrawal count" not in said, "an apply searches the withdrawal once - its DELETE"
     # the page lines are still there
     assert any(re.match(r"\[ledger_rescope\] page \d+: \d+ rows · ", line) for line in lines), lines[:5]
 
@@ -227,8 +228,8 @@ def test_the_two_defects_are_said_once_with_the_lines_off(world, monkeypatch):
                               % (schema.REF_INDEX, schema.REF_INDEX_COLUMNS)))
     assert out["result"]["rows_in_scope"] == ROWS
     ref = [line for line in lines if line.startswith(
-        "[ledger_rescope] idx_ledger_events_source_raw_ref_hash missing or not valid - each page's withdrawal count "
-        "and DELETE read the whole ledger")]
+        "[ledger_rescope] idx_ledger_events_source_raw_ref_hash missing or not valid - each page's withdrawal reads "
+        "the whole ledger")]
     key = [line for line in lines if line.startswith(
         "[ledger_rescope] page key row_id of hc_official has no index - each page sorts the table")]
     assert (len(ref), len(key)) == (1, 1), [line for line in lines if "index" in line][:6]

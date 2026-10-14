@@ -1289,6 +1289,28 @@ def ensure_partitions_for_range(connection, first: datetime, last: datetime):
     return names
 
 
+def stale_partitions(connection, names: WorldNames, share, only=None):
+    """The ledger's partitions whose statistics the planner should not be given: never analyzed (reltuples -1, or no
+    last_analyze nor last_autoanalyze) or changed since by `share` of their rows - on such a partition `= ANY(refs)`
+    reads a default selectivity and a valid ref index loses to a Seq Scan (총괄 10-14). `only`: these partition names
+    (as `partition_name` spells them). -> their names as ANALYZE takes them."""
+    if only is not None and not only:
+        return []
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT c.oid::regclass::text
+              FROM pg_inherits i
+              JOIN pg_class c ON c.oid = i.inhrelid
+              LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
+             WHERE i.inhparent = to_regclass(%s)
+               AND (%s::text[] IS NULL OR c.oid = ANY (SELECT to_regclass(x) FROM unnest(%s::text[]) x))
+               AND (c.reltuples < 0 OR (s.last_analyze IS NULL AND s.last_autoanalyze IS NULL)
+                    OR s.n_mod_since_analyze >= %s * greatest(c.reltuples, s.n_live_tup, 1))
+             ORDER BY 1""", (names.ledger, None if only is None else sorted(only),
+                             None if only is None else sorted(only), share))
+        return [row[0] for row in cursor.fetchall()]
+
+
 def partitions(connection, names: WorldNames = _DEFAULT):
     """The ledger's partitions, by name. For the report and for a health check."""
     with connection.cursor() as cursor:
