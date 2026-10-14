@@ -14,7 +14,7 @@
 > 캐시       서버 프로세스 메모리, 크기별 · 상한 64 MB(image_sources.THUMB_CACHE_BYTES, 넘으면 오래된 것부터) — 원본이 바뀌면 열쇠가 바뀜
 >             (폴더 파일은 수정 시각 · 크기, db · url 은 읽은 바이트의 해시). Cache-Control 은 오늘 그대로(1 시간)
 > 줄지 않은 것  Pillow 가 못 읽는 그림(예: SVG)은 원본 그대로 · server.log 한 줄 «… is sent as it is - it did not shrink»
-> 되돌리기   git revert <착지> -> 서버 재기동 (Pillow 는 남아도 됨)
+> 되돌리기   git revert 9b1de54a9 -> 서버 재기동 (Pillow 는 남아도 됨)
 > ```
 >
 > ---
