@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **원장 다시 번역 — 통계 없는 원장 파티션 분석 · 회수 찾기 쪽마다 한 번 · 실행이 «지금 단계 · 경과 초 · 초당 행 · 남은 시간»을 5 초마다 (총괄 10-14, 소유자 «원장 재번역은 여전히 느린데» · «러닝은 뜨는데 토스트 진행 상황이 안 나옴»)** — git pull · 서버 재기동 · 소급 실행은 다음 실행부터 (실행 기록 칸 둘은 실행이 단계를 처음 쓸 때 스스로 더함)
+>
+> ```
+> 볼 곳     retroactive.log 실행 첫 줄들
+>          [ledger_rescope] counting the rows of <표>                                  <- 분모 세는 중
+>          [ledger_rescope] analyzing N partitions: … -> analyzed N partitions in X s: …   <- 통계 없던 파티션을 분석(없으면 줄 없음)
+>          [ledger_rescope] N slice processes started - waiting for their first pages   <- 조각으로 돌 때
+>          쪽 줄  page k: write · … · withdrew N atoms by … · plan: …   (withdrawal count 단계는 없음 - 회수는 DELETE 한 번)
+> 화면      GET /admin/retroactive/runs 의 진행 중 행: phase(지금 단계) · phase_seconds · rows_per_second · seconds_left (끝난 행은 null)
+>          진행 알림(웹소켓)에도 같은 네 낱말, 첫 쪽 전에도 5 초마다. 토스트 · 소급 탭에 그리는 것은 클라 착지 뒤
+> 답의 뜻   회수 plan 이 «Seq Scan on ledger_events_*» 인데 «(valid)» -> analyzed 줄이 그 파티션을 말했는지 본다. 안 말했으면 psql 로 ANALYZE ledger_events;
+>          «not analyzed: <파티션> (… lock timeout)» -> 그 파티션을 다른 일(색인 짓기 등)이 잡고 있었음 - 다음 실행에서 다시
+>          phase 가 한 단계에 오래 머문다 -> 그 단계가 일하는 중. 박동 줄이 무엇을 기다리는지 말함
+>          «run_id=… : its stage could not be written - none more for this run: …» (retroactive.log) -> 칸 더하기가 다른 트랜잭션 뒤에서 5 s 를 넘겼거나 실패. 그 실행은 단계 없이 끝까지 돌고 목록의 단계는 null, 다음 실행이 다시 더함. 계속되면 그 줄 그대로 총괄에게
+> 설정     ingestion_settings.json "ledger_analyze_changed_share": 0.2  (지난 분석 뒤 바뀐 몫이 이 이상이면 다시 분석)
+> 이 판에서  mix 판(박스 원장 사본 240 만 원자 · 파티션 8) die_inspection 117,742 행 통째, 진짜 소급 자식 프로세스:
+>          옛 354.7 s · 새 338.7 s · 원자 235,484 · 행 색인 117,742 의 md5 전후 같음 · 회수 몫(세기+DELETE) 22.7 -> 10.9 s
+>          시작 -> 첫 쪽 줄 3.7 -> 2.8 s · 실행 기록 phase 마지막 «Page 130 done»
+>          스크래치 판(파티션 넷, 자동 청소 끔): 분석 안 된 파티션만 valid hash 색인인데 refs 200 부터 Seq Scan - 분석 뒤 Bitmap
+> ⚠️ 안 잰 것  운영 크기에서 큰 파티션 ANALYZE 의 초 · 운영의 «누름 -> 첫 진행 1 분»의 몫(박스 재현 안 됨 - 이 판의 시작 줄 · phase 가 다음 로그에서 보여 줌)
+> 되돌리기  git revert 9fa295e95 -> 서버 재기동 (칸 둘은 남아도 무해)
+> ```
+>
+> ---
+>
 > ## [10-14] **시험만 — 새로 뽑은 나무에서 시험 전체가 초록 (총괄 10-14 「main 에 남은 빨강」)** — 운영 변화 없음 · 재기동 없음
 >
 > ```
@@ -758,12 +783,12 @@
 > 볼 것    GET /admin/indexes 의 declared 에서 source = "ledger" 줄: state present / missing · partitions · partitions_missing
 >          chain_worker.log 의 [Indexes] 줄 — «1 declared index(es) … idx_ledger_events_source_raw_ref_hash on ledger_events (missing)» 뒤에
 >          파티션마다 «ledger_events_YYYY_MM: built …_ref_hash in N s · B bytes · attached», 끝에 «… built in N s»
-> 답의 뜻   present · partitions_missing 0 -> 거두기 셈 · DELETE 가 인덱스를 탈 수 있다(타는지는 다시 번역 로그의 withdrawal count 줄 plan)
+> 답의 뜻   present · partitions_missing 0 -> 회수 DELETE 가 인덱스를 탈 수 있다(타는지는 다시 번역 로그의 write 줄 «withdrew N atoms by … · plan: …»)
 >          missing 이 남고 [Indexes] 줄에 «not built: build_missing_indexes is off» -> ingestion_settings.json 의 그 칸이 false. 손 명령으로 짓거나 칸을 지움
 >          «failed - …» -> 그 줄의 사유. 손 명령(맨 아래 절)으로 한 번 더
 >          building -> 다른 세션이 그 파티션을 짓는 중 — 건드리지 않는다(맨 위 절). building 칸이 무엇을 기다리나
 > 다시 번역  retroactive.log 에 실행마다 처음 한 번, retroactive_debug 를 꺼도:
->          «idx_… missing or not valid - each page's withdrawal count and DELETE read the whole ledger; …» -> 위가 아직 안 끝남
+>          «idx_… missing or not valid - each page's withdrawal reads the whole ledger; …» -> 위가 아직 안 끝남
 >          «page key <칸> of <표> has no index - each page sorts the table and the run goes in one slice; declare one on ["<칸>"] in that table's "indexes" …»
 >             -> 그 표의 table_config "indexes" 에 그 칸을 적으면 체인 워커가 짓는다(10-11 표 인덱스 절)
 > 이 판에서  진짜 프로세스(런처 넷) · 원장 파티션 3 개의 ref 인덱스를 지우고 띄움: 체인 워커 기동 직후 [Indexes] «3 of 3 partition(s) lack it»
@@ -776,15 +801,16 @@
 >
 > ```
 > 볼 곳     retroactive.log (다시 번역 · 모든 소급 실행이 쓰는 그 파일) — [ledger_rescope] 로 시작하는 줄
-> 줄 셋     단계  [ledger_rescope] page 3: withdrawal count · 4 rows · 2.84 s · 4 atoms by idx_… (valid) · plan: Bitmap Index Scan on ledger_events_*_… x8
+> 줄 셋     단계  [ledger_rescope] page 3: write · 4 rows · 2.84 s · withdrew 4 atoms by idx_… (valid) · plan: Bitmap Index Scan on ledger_events_*_… x8
 >          박동  [ledger_rescope] beat: page 3 · write > withdraw atoms 7.3 s · 4 rows · db: pid 1234 waiting Lock:relation on pid 999 (assy_chain, idle in transaction 30 s): …
 >          느림  [ledger_rescope] slow statement: pid 1234 running 2.1 s (Lock:relation): SELECT count(*) FROM ledger_events WHERE …   (끝나면 «ended … after about N s»)
-> 쪽의 단계  read(쪽 읽기) · translate = event frames + dry run + row refs(파이썬 번역) · withdrawal count(거둘 원자 세기) · index lines of the rows ·
+> 쪽의 단계  read(쪽 읽기) · translate = event frames + dry run + row refs(파이썬 번역) · index lines of the rows ·
 >          write = screen atoms + partitions + withdraw atoms + insert atoms + index lines + commit · forget index lines
 > 답의 뜻   read 가 길고 «no index on it - each page sorts the table» -> 쪽 열쇠 칸에 인덱스가 없어 쪽마다 원천 표를 통째로 정렬한다(쪽이 1 행부터라 첫 쪽들이 특히 느림)
 >             그 표의 table_config "indexes" 에 그 칸을 적는다 -> 체인 워커 기동 줄 [Indexes] 에서 지어짐
->          withdrawal count · withdraw atoms 가 길고 plan 에 «Seq Scan on ledger_events_* xN» -> 원장 ref 인덱스를 안 탐. 줄에 «missing or not valid … build it: <명령>» 이 같이 나오면 체인 워커 재기동 또는 Reload — 체인 워커가 짓는다(손 명령 --apply 는 그것이 짓는 중엔 금지, 아래 ⚰️ 절)
->             «(valid)» 인데 Seq Scan 이면 인덱스가 있는데 안 타는 것 -> 그 줄 그대로 총괄에게
+>          withdraw atoms 가 길고 write 줄 plan 에 «Seq Scan on ledger_events_* xN» -> 원장 ref 인덱스를 안 탐. 줄에 «missing or not valid … build it: <명령>» 이 같이 나오면 체인 워커 재기동 또는 Reload — 체인 워커가 짓는다(손 명령 --apply 는 그것이 짓는 중엔 금지, 아래 ⚰️ 절)
+>             «(valid)» 인데 Seq Scan 이면 통계 없는(분석 안 된) 파티션 -> 10-14 판부터 실행이 시작 때 · 새 파티션 뒤 저절로 ANALYZE
+>             («analyzed N partitions in X s: …» 줄). 그 전 판이면 psql 로 ANALYZE ledger_events;
 >          event frames · dry run 이 길다 -> 파이썬 번역 몫(박스 행당 3~6 ms). 박동이 «no busy backend - the time is in this process» 를 말한다 — DB 는 한가함
 >          박동이 «waiting Lock:… on pid N (<누구>, …)» -> 그 pid 의 연결이 잡고 있다. 누구 = assy_chain… 이면 체인 · 원장 따라가기, assy_server 면 화면 요청
 >             박동이 말하는 연결은 «그 실행이 쥔 것»뿐 — 체인 워커 안의 체인 리플레이도 체인 묶음 · 따라가기 연결을 자기 것으로 안 찍는다
@@ -796,7 +822,7 @@
 >          beat: page 1 · withdrawal count 5.0 s · 1 rows · db: pid … waiting Lock:relation on pid … (b_e2e_lock_holder,
 >          idle in transaction 5 s): LOCK TABLE ledger_events IN ACCESS EXCLUSIVE MODE  ·  느림 줄은 3.0 s 에, «ended» 는 12.1 s
 >          원자 200 개가 실행 전 · 잠금 판 뒤 · 빈 판 뒤 같음 · public 행 변화 0
-> ⚠️ 안 잰 것  운영 크기에서 쪽마다 EXPLAIN 둘(쪽 읽기 · 거두기 셈, 계획만 — 실행 안 함)이 더하는 초
+> ⚠️ 안 잰 것  운영 크기에서 쪽마다 EXPLAIN 둘(쪽 읽기 · 회수, 계획만 — 실행 안 함)이 더하는 초
 > 되돌리기  단계 줄만 끄려면 ingestion_settings "retroactive_debug": false (박동은 스위치 없음)
 >          ⚠️ 이 커밋만 revert 하면 안 된다 — 뒤의 원장 ref 인덱스 착지(17d8ea0d6)와 큐 1(97617bf8e)이 같은 함수를 부름. 되돌리려면 그 셋을 같이
 > ```
