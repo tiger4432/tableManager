@@ -319,7 +319,8 @@ export function retroactiveKey(runId) {
   return `retroactive-${String(runId ?? '').replace(/[^a-zA-Z0-9]/g, '_')}`;
 }
 
-export function showRetroactiveProgress(runId, op, progress, processedRows, totalRows) {
+export function showRetroactiveProgress(runId, op, progress, processedRows, totalRows, beat = null) {
+  const b = beat || {};
   showProgressCard({
     key: retroactiveKey(runId),
     title: '♻️ Retroactive apply running',
@@ -331,6 +332,11 @@ export function showRetroactiveProgress(runId, op, progress, processedRows, tota
     //    카드는 「0 중 12」라는 «불가능한 말»을 합니다. 서버가 None 을 싣는 이유가 그것입니다.
     total: totalRows,
     statsSuffix: ' rows processed',
+    // before its pages: the step the server is in, the same words as the run's queue line
+    stats: runProgressWords({ phase: b.phase, phaseSeconds: b.phase_seconds, processed: processedRows, total: totalRows,
+      rowsPerSecond: b.rows_per_second, secondsLeft: b.seconds_left }),
+    // a page's event carries no beat (implementer A): the card keeps the last beat's line until the next (5 s)
+    keepStats: !beat,
     doneTitle: '✅ Retroactive apply done',
     doneStats: '',
   });
@@ -365,5 +371,6 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
 //    붙습니다. window 가 «없는» 곳(node)에서 이 한 줄이 파일 전체를 import 불가로 만들고,
 import { showProgressCard, finishProgressCard } from './progress_card.js';
 import { fileEndView } from './retry_verdict.js';
+import { runProgressWords } from './retroactive_view.js';
 //    그래서 utils.js 를 재던 하니스가 텍스트 잘라쓰기를 쓸 수밖에 없었습니다.
 if (typeof window !== 'undefined') window.showToast = showToast;

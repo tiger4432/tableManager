@@ -998,7 +998,7 @@ const FLOORS = new Map([
   // the ingestion key built from two undefined fields is the same key for every run, so two runs
   // fought over one card, under a title that named a file the run does not have. What this
   // floor holds is the FORK - and, just as much, that the ingestion side did not move.
-  ['retroactive_progress_harness.mjs', 11],
+  ['retroactive_progress_harness.mjs', 23],
   //
   // ── The four that had no floor at all. Each is recorded with WHAT IT PROTECTS, because a
   //    bare number tells the next person nothing about why it may not drop, and a floor whose

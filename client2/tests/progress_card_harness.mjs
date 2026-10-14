@@ -17,7 +17,7 @@
 const byId = Object.create(null);
 function makeEl(tag) {
   const el = {
-    tagName: String(tag).toUpperCase(), _id: '', className: '', style: {},
+    tagName: String(tag).toUpperCase(), _id: '', className: '', style: {}, dataset: {},
     children: [], innerHTML: '', textContent: '', parentElement: null,
     get id() { return this._id; },
     set id(v) { this._id = String(v); byId[this._id] = this; },

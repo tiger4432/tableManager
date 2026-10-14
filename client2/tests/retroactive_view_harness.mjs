@@ -62,7 +62,8 @@ const BASE_URL = pathToFileURL(BASE_PATH).href;
  *  The relative import is rewritten to an absolute file URL so a data: module can resolve it. */
 async function loadView(source) {
   const rewritten = source.replaceAll("'./config_resolve_view.js'", `'${BASE_URL}'`)
-    .replaceAll("'./failure_summary.js'", `'${pathToFileURL(join(SRC, 'failure_summary.js')).href}'`);
+    .replaceAll("'./failure_summary.js'", `'${pathToFileURL(join(SRC, 'failure_summary.js')).href}'`)
+    .replaceAll("'./absent.js'", `'${pathToFileURL(join(SRC, 'absent.js')).href}'`);
   return import(`data:text/javascript;base64,${Buffer.from(rewritten, 'utf8').toString('base64')}`);
 }
 

@@ -25,7 +25,8 @@ export function runLineView(row) {
     who: textOf(r.who),
     bar: bar ? 'known' : 'unknown',
     percent: bar ? Number(progress.percent) || 0 : null,
-    number: bar ? `${Number(progress.percent) || 0}%` : String(progress.text || ''),
+    // the run's own words, when it has them, say more than its percent (the bar still draws the percent)
+    number: bar && !progress.words ? `${Number(progress.percent) || 0}%` : String(progress.text || ''),
     elapsed: String(progress.elapsed || ''),
     state: textOf(r.stateName),
     finished: Boolean(r.finished),

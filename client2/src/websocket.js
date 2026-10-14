@@ -349,13 +349,16 @@ export function handleWebSocketMessage(msg) {
     //    SAME key for every run, so two concurrent runs would fight over one card.
     // ⚠️ The fork is on `run_id` because that is the field that exists on exactly one of them.
     if (msg.run_id != null) {
+      // a beat (every 5 s) carries the step, the rate and the time left; a page's event does not (implementer A 10-14)
+      const BEAT = ['phase', 'phase_seconds', 'rows_per_second', 'seconds_left'];
+      const beatOf = (m) => (BEAT.some((k) => k in m) ? Object.fromEntries(BEAT.map((k) => [k, m[k] === undefined ? null : m[k]])) : null);
       // 🔴 A run also ENDS on this event — there is no second "completed" name for it. The
       //    status word is the server's, and it is the only thing that can say which end it was.
       if (msg.status === 'FINISHED' || msg.status === 'CANCELLED') {
         finishRetroactiveProgress(msg.run_id, msg.status);
       } else {
         showRetroactiveProgress(msg.run_id, msg.op, msg.progress,
-          msg.processed_rows, msg.total_rows);
+          msg.processed_rows, msg.total_rows, beatOf(msg));
       }
       return;
     }
