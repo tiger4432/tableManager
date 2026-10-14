@@ -336,6 +336,18 @@ CELLS.push({ entry: 'testbed.html', after: 'parts swapped by a drop', rule: 'dro
   const want = s.before.split(',').map((id) => (id === 'scatter-1' ? 'table-1' : id === 'table-1' ? 'scatter-1' : id)).join(',');
   return s.after === want ? null : 'after the drop ' + s.after + ', not ' + want;
 })()` });
+// Each part's walks on the status line (owner 10-14 «행 걷기 + 값 걷기»): every part that walked says its rows'
+// walk, and a part with a value walk says its slot's - none refused, none expired.
+CELLS.push({ entry: 'testbed.html', after: 'walks on the status line', rule: 'walks said', at: 'sf-status', expr: `(() => {
+  const all = window.__walkLine || [];
+  if (!all.length) return 'no part activated';
+  const rows = all.filter((p) => p.words.some((w) => /^Rows [0-9,]+ · complete$/.test(w)));
+  const values = all.filter((p) => p.words.some((w) => !w.startsWith('Rows ') && / · (complete|cached)$/.test(w)));
+  const bad = all.flatMap((p) => p.words.filter((w) => /expired|refused/i.test(w)).map((w) => p.id + ': ' + w));
+  if (bad.length) return bad.join('; ');
+  if (rows.length < 2) return 'rows walk said by ' + rows.length + ' parts: ' + JSON.stringify(all);
+  return values.length ? null : 'no value walk said: ' + JSON.stringify(all);
+})()` });
 // A column chip dragged onto another reorders the pill's columns - the hierarchy's levels follow (lead 10-14).
 CELLS.push({ entry: 'testbed.html', after: 'columns reordered by a drag', rule: 'chips reorder columns', at: 'sf-pop__cols', expr: `(() => {
   const s = window.__chipOrder;
@@ -1279,6 +1291,22 @@ const DRIVE = {
       await evaluate(c, `localStorage.setItem('testbed:visuals', ${JSON.stringify(JSON.stringify(KINDS_SAVED))}); true`);
       await openAgain(c, log);
       await until(c, "document.querySelectorAll('.sf-part').length >= 6 && document.querySelectorAll('[data-panel=\"table-1\"] td').length > 0", 15000);
+    }],
+    // Each part made active in turn - its status line read (the walks it says)
+    ['walks on the status line', async (c) => {
+      await evaluate(c, `(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const out = [];
+        for (const el of document.querySelectorAll('[data-panel]')) {
+          const inner = el.querySelector('.sf-frame');
+          if (!inner) continue;
+          inner.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          await wait(150);
+          out.push({ id: el.getAttribute('data-panel'), words: [...document.querySelectorAll('.sf-status span')].map((s) => s.textContent) });
+        }
+        window.__walkLine = out;
+        return true;
+      })()`);
     }],
     // A pill of two columns: its second column's chip dragged onto the first in the picker - the hierarchy's levels change
     // places (lead 10-14).

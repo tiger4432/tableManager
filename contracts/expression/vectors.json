@@ -49,7 +49,13 @@
     "                an exponent (\"29.50\", \" 1 \", \"+2\", \"1e1\", \".5\"); anything else is text (\"29,50\", \"29 mm\", \"0x10\"),",
     "                which a numeric fold leaves out; an empty text is empty.",
     "  out_of_edition  names not built in this edition, and why.",
-    "Grow this file before a calculator grows (lead: a function with no vector is not built)."
+    "Grow this file before a calculator grows (lead: a function with no vector is not built).",
+    "",
+    "DATES (lead fe2ba4b1f): a vector with `zone` (an IANA name) is answered with the dates cut on that zone's wall clock -",
+    "the product reads it from ingestion_settings \"expression_time_zone\", Asia/Seoul (owner «ㅇㅇ kst»). A time with an",
+    "offset is moved into the zone; one without is that zone's wall clock. Date and DateTime answer a time text",
+    "(«2026-10-14T00:00:00+09:00», «Z» at offset 0). `expect_not_time`: the rows a date function met a value that is not",
+    "a time on (an empty value is not counted)."
   ],
   "sources": {
     "701": "https://docs.tibco.com/pub/spotfire/7.0.1/doc/html/stat/stat_aggregations_overview.htm (and its stat_*.htm pages)",
@@ -60,7 +66,9 @@
     "Logic": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/logical_functions.html",
     "Keys": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/keywords_in_expressions.html",
     "Lang": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/expression_language_details.html",
-    "Text": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/text_functions.html"
+    "Text": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/text_functions.html",
+    "Conv": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/conversion_functions.html",
+    "DT": "https://docs.tibco.com/pub/sfire-analyst/latest/doc/html/en-US/TIB_sfire_client/client/topics/en-US/date_and_time_functions.html"
   },
   "vectors": [
     {
@@ -3263,6 +3271,427 @@
       "expect": "2026-10-01T00:00:00Z",
       "basis": "decided",
       "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first; a bare number text is not a time (ISO-8601 only)"
+    },
+    {
+      "id": "date.removes.the.time",
+      "expr": "Date(\"2003-03-21 11:37:00\")",
+      "zone": "Asia/Seoul",
+      "rows": [],
+      "expect": "2003-03-21T00:00:00+09:00",
+      "basis": "doc-rule",
+      "cite": "Conv Date: «the time part is removed» - Date(\"2003-03-21 11:37:00\") → 3/21/2003; a time without an offset is the zone's wall clock"
+    },
+    {
+      "id": "datetime.reads.a.text",
+      "expr": "DateTime(\"2003-03-21 11:37:00\")",
+      "zone": "Asia/Seoul",
+      "rows": [],
+      "expect": "2003-03-21T11:37:00+09:00",
+      "basis": "doc-rule",
+      "cite": "Conv DateTime: DateTime(\"2003-03-21 11:37:00\") → 3/21/2003 11:37:00 AM"
+    },
+    {
+      "id": "datetime.of.a.date",
+      "expr": "DateTime(\"2003-03-21\")",
+      "zone": "Asia/Seoul",
+      "rows": [],
+      "expect": "2003-03-21T00:00:00+09:00",
+      "basis": "doc-rule",
+      "cite": "Conv DateTime: given a Date «the time part is set to 00:00:00»"
+    },
+    {
+      "id": "date.kst.morning.is.the.utc.evening",
+      "expr": "Date([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-10-13T23:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        "2026-10-14T00:00:00+09:00"
+      ],
+      "basis": "decided",
+      "cite": "owner «ㅇㅇ kst» (lead fe2ba4b1f): dates are cut on Asia/Seoul's wall clock - KST 08:00 is UTC 23:00 the day before; its date is the KST one"
+    },
+    {
+      "id": "date.utc.zone",
+      "expr": "Date([t])",
+      "zone": "UTC",
+      "rows": [
+        {
+          "t": "2026-10-13T23:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        "2026-10-13T00:00:00Z"
+      ],
+      "basis": "decided",
+      "cite": "the same time cut on UTC's wall clock (a zone the setting may name) - offset 0 is written Z"
+    },
+    {
+      "id": "date.midnight.edges",
+      "expr": "Date([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-10-14T00:00:00+09:00"
+        },
+        {
+          "t": "2026-10-14T23:59:59+09:00"
+        },
+        {
+          "t": "2026-10-14T15:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        "2026-10-14T00:00:00+09:00",
+        "2026-10-14T00:00:00+09:00",
+        "2026-10-15T00:00:00+09:00"
+      ],
+      "basis": "decided",
+      "cite": "owner «ㅇㅇ kst» (lead fe2ba4b1f): dates are cut on Asia/Seoul's wall clock - midnight is its own day, a second before the next is still that day"
+    },
+    {
+      "id": "date.blank.and.not.a.time",
+      "expr": "Date([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": null
+        },
+        {
+          "t": ""
+        },
+        {
+          "t": "29 mm"
+        },
+        {
+          "t": "2023-02-29"
+        },
+        {
+          "t": "2026-10-14"
+        }
+      ],
+      "expect_rows": [
+        null,
+        null,
+        null,
+        null,
+        "2026-10-14T00:00:00+09:00"
+      ],
+      "expect_not_time": 2,
+      "basis": "decided",
+      "cite": "lead fe2ba4b1f: an empty value and one that is not a time (or not a real day - 2023 is not a leap year) are empty, not refused; the not-times are counted"
+    },
+    {
+      "id": "year.crosses.at.kst.midnight",
+      "expr": "Year([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-12-31T14:59:59Z"
+        },
+        {
+          "t": "2026-12-31T15:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        2026,
+        2027
+      ],
+      "basis": "decided",
+      "cite": "owner «ㅇㅇ kst» (lead fe2ba4b1f): dates are cut on Asia/Seoul's wall clock - DT Year: the year of the date"
+    },
+    {
+      "id": "year.utc",
+      "expr": "Year([t])",
+      "zone": "UTC",
+      "rows": [
+        {
+          "t": "2026-12-31T15:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        2026
+      ],
+      "basis": "decided",
+      "cite": "the same time on UTC's wall clock"
+    },
+    {
+      "id": "day.leap.year",
+      "expr": "Day([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2024-02-29T12:00:00+09:00"
+        },
+        {
+          "t": "2024-02-29T15:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        29,
+        1
+      ],
+      "basis": "decided",
+      "cite": "owner «ㅇㅇ kst» (lead fe2ba4b1f): dates are cut on Asia/Seoul's wall clock - DT Day: the day of month, 1 to 31; 2024 is a leap year"
+    },
+    {
+      "id": "month.and.quarter",
+      "expr": "Month([t]) * 10 + Quarter([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-03-31"
+        },
+        {
+          "t": "2026-04-01"
+        },
+        {
+          "t": "2026-10-14"
+        },
+        {
+          "t": "2026-12-31"
+        }
+      ],
+      "expect_rows": [
+        31,
+        42,
+        104,
+        124
+      ],
+      "basis": "doc-rule",
+      "cite": "DT Month: 1 to 12 · DT Quarter: 1 to 4"
+    },
+    {
+      "id": "hour.moves.into.the.zone",
+      "expr": "Hour([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-10-14T00:30:00-05:30"
+        },
+        {
+          "t": "2026-10-14T23:59:59"
+        },
+        {
+          "t": "2026-10-14"
+        }
+      ],
+      "expect_rows": [
+        15,
+        23,
+        0
+      ],
+      "basis": "decided",
+      "cite": "owner «ㅇㅇ kst» (lead fe2ba4b1f): dates are cut on Asia/Seoul's wall clock - DT Hour: 0 to 23; 00:30 at -05:30 is 06:00 UTC, 15:00 KST"
+    },
+    {
+      "id": "dayofweek.sunday.is.zero",
+      "expr": "DayOfWeek([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-10-18"
+        },
+        {
+          "t": "2026-10-17"
+        },
+        {
+          "t": "2026-10-14"
+        },
+        {
+          "t": "2026-10-17T15:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        0,
+        6,
+        3,
+        0
+      ],
+      "basis": "doc-rule",
+      "cite": "DT DayOfWeek: «an integer between 0 (Sunday) and 6 (Saturday)»; 2026-10-17 15:00 UTC is Sunday in KST"
+    },
+    {
+      "id": "week.first.and.last",
+      "expr": "Week([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-01-01"
+        },
+        {
+          "t": "2026-01-03"
+        },
+        {
+          "t": "2026-01-04"
+        },
+        {
+          "t": "2016-12-31"
+        },
+        {
+          "t": "2000-12-31"
+        }
+      ],
+      "expect_rows": [
+        1,
+        1,
+        2,
+        53,
+        54
+      ],
+      "basis": "decided",
+      "cite": "DT Week: «the first week of year is dependent on the regional settings», 1 to 54 - read for the owner's Korean settings: weeks start on Sunday (DT DayOfWeek: 0 Sunday) and the first holds January 1 (lead fe2ba4b1f). DT YearAndWeek's own example (2005-10-13 -> 200541) is another region's first week - 2026-01-03 a Saturday, 01-04 a Sunday; 2000 a leap year that starts on a Saturday reaches 54"
+    },
+    {
+      "id": "datepart.names",
+      "expr": "DatePart(\"yy\", [t]) * 100 + DatePart(\"Month\", [t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-12-31T15:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        202701
+      ],
+      "basis": "doc-rule",
+      "cite": "DT DatePart: Arg1 a part name - «year» or «yy», «month» or «mm» (any case)"
+    },
+    {
+      "id": "datepart.day.of.week",
+      "expr": "DatePart(\"day of week\", [t]) + DatePart(\"dw\", [t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-10-17"
+        }
+      ],
+      "expect_rows": [
+        12
+      ],
+      "basis": "doc-rule",
+      "cite": "DT DatePart: «day of week» · «dw» are DayOfWeek"
+    },
+    {
+      "id": "datepart.week.and.hour",
+      "expr": "DatePart(\"wk\", [t]) * 100 + DatePart(\"hh\", [t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-01-04T07:00:00"
+        }
+      ],
+      "expect_rows": [
+        207
+      ],
+      "basis": "doc-rule",
+      "cite": "DT DatePart: «week» or «wk», «hour» or «hh»"
+    },
+    {
+      "id": "date.edge.no.offset.or.no.year",
+      "expr": "Date([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "2026-10-14T12:00:00+24:00"
+        },
+        {
+          "t": "9999-12-31T23:00:00-05:00"
+        },
+        {
+          "t": "0001-01-01T00:00:00+09:30"
+        }
+      ],
+      "expect_rows": [
+        null,
+        null,
+        null
+      ],
+      "expect_not_time": 3,
+      "basis": "decided",
+      "cite": "lead's review of fe2ba4b1f ①: an offset past ±23:59 is no offset, and a time the zone moves outside the years 1 to 9999 cannot be held - not times, counted, never a stopped run"
+    },
+    {
+      "id": "date.edge.a.wall.clock.the.zone.skips",
+      "expr": "DateTime([t])",
+      "zone": "Europe/Berlin",
+      "rows": [
+        {
+          "t": "2026-03-29T02:30:00"
+        }
+      ],
+      "expect_rows": [
+        "2026-03-29T02:30:00+01:00"
+      ],
+      "basis": "decided",
+      "cite": "lead's review of fe2ba4b1f ②: a wall clock the zone skips (Berlin's spring change) takes the offset before the change"
+    },
+    {
+      "id": "date.edge.a.wall.clock.the.zone.repeats",
+      "expr": "DateTime([t])",
+      "zone": "Europe/Berlin",
+      "rows": [
+        {
+          "t": "2026-10-25T02:30:00"
+        }
+      ],
+      "expect_rows": [
+        "2026-10-25T02:30:00+02:00"
+      ],
+      "basis": "decided",
+      "cite": "lead's review of fe2ba4b1f ②: a wall clock the zone repeats (Berlin's autumn change) is the first of the two"
+    },
+    {
+      "id": "date.edge.seoul.summer.time.1988",
+      "expr": "DateTime([t])",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "t": "1988-05-08T02:30:00"
+        }
+      ],
+      "expect_rows": [
+        "1988-05-08T02:30:00+09:00"
+      ],
+      "basis": "decided",
+      "cite": "lead's review of fe2ba4b1f ②: Seoul kept summer time in 1988 - its skipped hour takes the offset before the change"
+    },
+    {
+      "id": "date.edge.the.years.1.to.99",
+      "expr": "Date([t])",
+      "zone": "UTC",
+      "rows": [
+        {
+          "t": "0050-06-15"
+        },
+        {
+          "t": "0001-01-01T00:00:00Z"
+        }
+      ],
+      "expect_rows": [
+        "0050-06-15T00:00:00Z",
+        "0001-01-01T00:00:00Z"
+      ],
+      "basis": "decided",
+      "cite": "lead's review of fe2ba4b1f ⑤: the years 1 to 99 are themselves (not 1900 to 1999)"
+    },
+    {
+      "id": "date.edge.the.year.50.parts",
+      "expr": "Year([t]) * 10000 + Week([t]) * 10 + DayOfWeek([t])",
+      "zone": "UTC",
+      "rows": [
+        {
+          "t": "0050-06-15"
+        }
+      ],
+      "expect_rows": [
+        500253
+      ],
+      "basis": "decided",
+      "cite": "lead's review of fe2ba4b1f ⑤: the year 50's parts - week 25, a Wednesday (3)"
     }
   ],
   "ours": [

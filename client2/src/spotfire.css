@@ -53,7 +53,7 @@
 .sf-frame__top { grid-row: 1; grid-column: 2; }
 .sf-frame__left { grid-row: 2; grid-column: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
 .sf-frame__bottom { grid-row: 3; grid-column: 2; }
-.sf-frame__top, .sf-frame__bottom { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; min-height: var(--sf-pill-h); }
+.sf-frame__top, .sf-frame__bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); align-items: center; min-height: var(--sf-pill-h); }
 .sf-frame__top { margin-bottom: var(--sf-frame-gap-top); }
 .sf-frame__top:not(:has(.sf-frame__pills > *, .sf-sheet__bar)) { margin-bottom: 0; }
 .sf-frame__top .sf-frame__pills, .sf-frame__bottom .sf-frame__pills { grid-column: 2; }
@@ -61,7 +61,9 @@
 .sf-frame__bottom .sf-note { grid-column: 1; min-width: 0; }
 /* the sheet's formula bar in the top tray, full width (the frame standard 5) */
 .sf-frame__top > .sf-sheet__bar { grid-column: 1 / -1; }
-.sf-frame__pills { display: flex; align-items: center; justify-content: center; gap: 6px; }
+/* pills wider than their tray each cut with «…» (lead-board-10: two Count(mat_id) under a narrow map ran 5 px past it) */
+.sf-frame__pills { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
+.sf-frame__pills > .sf-pill:not(.sf-pill--v) { min-width: 0; }
 .sf-frame__left .sf-frame__pills { flex-direction: column; }
 .sf-frame__pills:empty { display: none; }
 .sf-frame__area { grid-row: 2; grid-column: 2; position: relative; display: grid; min-height: 0; min-width: 0; }

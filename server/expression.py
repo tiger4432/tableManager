@@ -9,6 +9,9 @@ value). `types` ({column: "datetime"}, the words of table_config's column_types)
 compare instants and answer the row's value as it is (lead 10-13).
 Refused by name here: Marked (the page's markings are the screen's) and ways - a name holding «.» or «~» ([a.b~.x])
 is a walk from the row, not read on the server yet.
+Dates (lead fe2ba4b1f): a time is cut into its date and parts on the wall clock of `zone` - run's argument, else
+ingestion_settings "expression_time_zone" (Asia/Seoul, owner «ㅇㅇ kst»). A time with an offset is moved there; one
+without is read as that wall clock. Date · DateTime answer a time text («2026-10-14T00:00:00+09:00», «Z» at offset 0).
 """
 import json
 import math
@@ -112,6 +115,126 @@ def _instant(v):
     from utils.time_format import instant_key
 
     return None if is_blank(v) else instant_key(v)
+
+
+# ── dates ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+#: ingestion_settings.json - the zone a time is cut into its date and parts in (lead fe2ba4b1f, owner «ㅇㅇ kst»).
+ZONE_SETTING, ZONE_DEFAULT = "expression_time_zone", "Asia/Seoul"
+#: The one shape a time is read in - the screen's TIME (expression.js) is the same pattern.
+TIME = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?\s*"
+                  r"(Z|[+-]\d{2}:?\d{2})?$")
+#: DatePart's part names (Date and Time «DatePart») this edition answers - the others are refused by name.
+PARTS = {**dict.fromkeys(("year", "yy"), "Year"), **dict.fromkeys(("quarter", "qq"), "Quarter"),
+         **dict.fromkeys(("month", "mm"), "Month"),
+         **dict.fromkeys(("day", "day of month", "dayofmonth", "dd"), "Day"),
+         **dict.fromkeys(("week", "wk"), "Week"),
+         **dict.fromkeys(("day of week", "dayofweek", "weekday", "dw"), "DayOfWeek"),
+         **dict.fromkeys(("hour", "hh"), "Hour")}
+#: Spotfire's other part names - not in this edition.
+OTHER_PARTS = {"minute", "mi", "second", "ss", "millisecond", "ms", "day of year", "dayofyear", "dy", "year and week",
+               "yearandweek", "yywk", "isoyear", "isoweek"}
+
+
+#: [the settings file's stamp, its zone] - read again when the file changes (`ledger.setup.file_stamp`, the stamp the
+#: declaration reads take; `ledger.worker._stamped` is the ledger process's cache and pulls that runtime in).
+_ZONE_READ = [object(), None]
+#: The names already said to be no zone - each once a process.
+_ZONE_REFUSED = set()
+
+
+def time_zone():
+    """`expression_time_zone` (an IANA name), or the default - one that does not name a zone is said (once a process)
+    and read as it. Read again only when the settings file changed."""
+    from zoneinfo import ZoneInfo
+
+    from ingestion.settings import INGESTION_SETTINGS_PATH, read_ingestion_settings
+    from ledger.setup import file_stamp
+
+    stamp = file_stamp(INGESTION_SETTINGS_PATH)
+    if _ZONE_READ[0] != stamp:
+        name = read_ingestion_settings().get(ZONE_SETTING, ZONE_DEFAULT)
+        try:
+            zone = ZoneInfo(str(name))
+        except (ValueError, KeyError, OSError):
+            if str(name) not in _ZONE_REFUSED:
+                _ZONE_REFUSED.add(str(name))
+                import logging
+
+                logging.getLogger("Expression").warning("ingestion_settings.json: %s is %r - not a time zone; read as %s",
+                                                        ZONE_SETTING, name, ZONE_DEFAULT)
+            zone = ZoneInfo(ZONE_DEFAULT)
+        _ZONE_READ[:] = [stamp, zone]
+    return _ZONE_READ[1]
+
+
+def _wall(v, zone):
+    """`v` on `zone`'s wall clock (an aware datetime), or None - empty, or not a time (`TIME`, a real day)."""
+    from datetime import datetime, timedelta, timezone
+
+    if is_blank(v) or not isinstance(v, str):
+        return None
+    m = TIME.match(v.strip())
+    if not m:
+        return None
+    y, mo, d, h, mi, s, frac, off = m.groups()
+    try:
+        moment = datetime(int(y), int(mo), int(d), int(h or 0), int(mi or 0), int(s or 0),
+                          int((frac or "0").ljust(6, "0")[:3]) * 1000)
+        if off is None:
+            return moment.replace(tzinfo=zone)          # fold 0: a wall clock the zone skips or repeats - the offset before
+        digits = "0000" if off == "Z" else off[1:].replace(":", "")
+        if int(digits[:2]) > 23 or int(digits[2:]) > 59:
+            return None
+        sign = -1 if off[0] == "-" else 1
+        return moment.replace(tzinfo=timezone(sign * timedelta(hours=int(digits[:2]), minutes=int(digits[2:])))
+                              ).astimezone(zone)
+    except (ValueError, OverflowError):                 # not a real day, or moved outside the years 1 to 9999
+        return None
+
+
+def _time_text(moment):
+    """A time as both calculators spell it: its wall clock and offset, «Z» at offset 0, milliseconds when not 0."""
+    text = "%04d-%02d-%02dT%02d:%02d:%02d" % (moment.year, moment.month, moment.day, moment.hour, moment.minute,
+                                               moment.second) + (".%03d" % (moment.microsecond // 1000)
+                                                                 if moment.microsecond else "")
+    minutes = int(moment.utcoffset().total_seconds() // 60)                 # an old local mean time's seconds dropped
+    return text + ("Z" if minutes == 0 else "%s%02d:%02d" % ("-" if minutes < 0 else "+", abs(minutes) // 60,
+                                                            abs(minutes) % 60))
+
+
+def _week(moment):
+    """The week of the year, weeks starting on Sunday and the first holding January 1 - Spotfire's «first week of year
+    is dependent on the regional settings», read for the owner's (Korean) ones; 1 to 54."""
+    jan1 = moment.replace(month=1, day=1)
+    return (moment.timetuple().tm_yday - 1 + (jan1.weekday() + 1) % 7) // 7 + 1
+
+
+PART_OF = {"Year": lambda t: t.year, "Quarter": lambda t: (t.month - 1) // 3 + 1, "Month": lambda t: t.month,
+           "Day": lambda t: t.day, "Hour": lambda t: t.hour, "Week": _week,
+           "DayOfWeek": lambda t: (t.weekday() + 1) % 7}
+
+
+def _dated(f):
+    """A function of one time: the time on the zone's wall clock, else empty - a value that is not a time is counted
+    (the run's not_time), an empty one is not."""
+    def one(v, ctx):
+        moment = _wall(v, ctx.zone())
+        if moment is None:
+            if not is_blank(v):
+                ctx.not_time.add(id(ctx.row))
+            return None
+        return f(moment)
+    return {"kind": "row", "arity": 1, "fn": one, "zoned": True}
+
+
+def _date_part(part, v, ctx):
+    name = PARTS.get(str(part).strip().lower()) if isinstance(part, str) else None
+    if name is None:
+        said = str(part).strip().lower() if isinstance(part, str) else part
+        raise ExpressionError("DatePart «%s» is not in this edition" % said if said in OTHER_PARTS
+                              else "DatePart takes a part name (year · quarter · month · day · week · day of week · "
+                                   "hour) - got %s" % _text(part))
+    return _dated(PART_OF[name])["fn"](v, ctx)
 
 
 # ── the function table ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -391,6 +514,11 @@ FUNCTIONS = {
     "ATan": _num1(math.atan),
     "ATan2": _num2(math.atan2),
     "If": {"kind": "if"},
+    # dates (lead fe2ba4b1f) - on the zone's wall clock
+    "Date": _dated(lambda t: _time_text(t.replace(hour=0, minute=0, second=0, microsecond=0))),
+    "DateTime": _dated(_time_text),
+    **{name: _dated(f) for name, f in PART_OF.items()},
+    "DatePart": {"kind": "row", "arity": 2, "fn": _date_part, "zoned": True},
 }
 _BY_NAME = {name.lower(): name for name in FUNCTIONS}
 #: The screen's alone - the page's markings.
@@ -781,13 +909,21 @@ def _compare(o, a, b):
 
 
 class _Ctx:
-    def __init__(self, rows, types, row=None, memo=None, not_number=None):
+    def __init__(self, rows, types, row=None, memo=None, not_number=None, not_time=None, zones=None):
         self.rows, self.types, self.row = rows, types, row
         self.memo = {} if memo is None else memo
         self.not_number = set() if not_number is None else not_number
+        self.not_time = set() if not_time is None else not_time
+        self.zones = zones                       # [zone or None] - one per run, the setting read once when asked
 
     def at(self, row=None, rows=None):
-        return _Ctx(self.rows if rows is None else rows, self.types, row, self.memo, self.not_number)
+        return _Ctx(self.rows if rows is None else rows, self.types, row, self.memo, self.not_number, self.not_time,
+                    self.zones)
+
+    def zone(self):
+        if self.zones[0] is None:
+            self.zones[0] = time_zone()
+        return self.zones[0]
 
 
 def _column_of(node, ctx, test):
@@ -853,7 +989,8 @@ def _value(node, ctx):
     if kind == "if":
         return _if_value(node, ctx)
     if kind == "row":
-        return _finite(node["fn"]["fn"](*[_value(a, ctx) for a in node["args"]]))
+        return _finite(node["fn"]["fn"](*[_value(a, ctx) for a in node["args"]],
+                                        *([ctx] if node["fn"].get("zoned") else [])))
     return _finite(_fold_value(node, ctx))
 
 
@@ -922,19 +1059,28 @@ def _case_value(node, ctx):
     return _value(branch, ctx.at(row=ctx.row, rows=[r for r, f in zip(ctx.rows, first_true) if f == k]))
 
 
-def run(compiled, rows, types=None):
+def run(compiled, rows, types=None, zone=None):
     """Answer a compiled expression over rows: {"value"} once, or {"values"} one per row when it reads a row's value
-    outside a fold - each with "not_number" (the rows an operator met a text that is not a number on); or
-    {"several": name} · {"why": sentence}."""
+    outside a fold - each with "not_number" (the rows an operator met a text that is not a number on) and "not_time"
+    (the rows a date function met a value that is not a time on); or {"several": name} · {"why": sentence}. `zone`: an
+    IANA name the dates are cut in, else the setting (`time_zone`)."""
     if not compiled["ok"]:
         return {"why": compiled["why"]}
-    ctx = _Ctx(list(rows or []), types or {})
+    zones = [None]
+    if zone is not None:
+        from zoneinfo import ZoneInfo
+
+        try:
+            zones[0] = ZoneInfo(str(zone))
+        except (ValueError, KeyError, OSError):
+            return {"why": "«%s» is not a time zone" % zone}
+    ctx = _Ctx(list(rows or []), types or {}, zones=zones)
     try:
         if not compiled["per_row"]:
             value = _finite(_value(compiled["tree"], ctx))
-            return {"value": value, "not_number": len(ctx.not_number)}
+            return {"value": value, "not_number": len(ctx.not_number), "not_time": len(ctx.not_time)}
         values = [_finite(_value(compiled["tree"], ctx.at(row=r))) for r in ctx.rows]
-        return {"values": values, "not_number": len(ctx.not_number)}
+        return {"values": values, "not_number": len(ctx.not_number), "not_time": len(ctx.not_time)}
     except SeveralValues as exc:
         return {"several": str(exc)}
     except ExpressionError as exc:

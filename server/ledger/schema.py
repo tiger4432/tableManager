@@ -984,7 +984,9 @@ def set_partitions_autoanalyze(connection):
     if factor is None:
         return []
     done = []
-    for world in [None, *worlds()]:
+    # every world once, as the index work walks them (`partitioned_index_states`) - no name is the operating world,
+    # not the default (총괄 127139997)
+    for world in world_listing()["worlds"]:
         with connection.cursor() as cursor:
             cursor.execute("SELECT c.oid::regclass::text, c.reloptions FROM pg_inherits i "
                            "JOIN pg_class c ON c.oid = i.inhrelid WHERE i.inhparent = to_regclass(%s) ORDER BY 1",

@@ -1,5 +1,62 @@
 # 지금 돌리면 되는 것
 
+> ## [10-15] **고침 — 원장 파티션 자동 분석 기준이 운영 세상이 브랜치여도 기본 세상까지 (총괄 127139997)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     원장 프로세스가 뜰 때 파티션 autovacuum_analyze_scale_factor 맞추기가 기본 세상 + 브랜치를 각 한 번 돎 (색인 일과 같은 목록)
+>          전에는 운영 세상이 브랜치면 기본 세상 파티션을 건너뛰고 그 브랜치를 두 번
+> 볼 줄    ledger.log  [Ledger] autovacuum_analyze_scale_factor 0.02 set on N partition(s): …  — 운영 세상이 브랜치였다면 재기동 뒤 기본 세상 파티션(ledger_events_*)이 이 줄에 처음 나옴
+>          운영 세상이 기본이면 달라지는 것 없음(줄 없음 = 이미 같음)
+> 되돌리기  git revert 2c331bdb9 -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-14] **식에 날짜 함수 — Date · DateTime · Year · Quarter · Month · Day · Hour · Week · DayOfWeek · DatePart, KST 날짜로 자름 (총괄 fe2ba4b1f, 소유자 «스팟파이어에 date …» · «ㅇㅇ kst»)** — git pull · 화면 새로 고침 · 체인 워커 재기동(서버 계산기 = 체인 decide 집계)
+>
+> ```
+> 써 볼 것   시험대 값 칸에 Date([t]) · Week([t]) · DatePart("dw", [t])
+> 답의 뜻   Date([t]) = 그날 KST 자정의 시각 글자 2026-10-14T00:00:00+09:00 (설정이 UTC 면 …Z) — 산점도 축은 기본 연속 시각, Categorical 고르면 날마다 한 범주
+>          원장의 2026-10-13T23:00:00Z 는 KST 10-14 08:00 -> Date 는 10-14 (UTC 날짜가 아님)
+>          Year · Quarter · Month · Day · Hour · Week · DayOfWeek = 정수. DayOfWeek 0 = 일요일 · 6 = 토요일
+>          Week = 일요일에 시작, 1 월 1 일을 담은 주가 1 주(1 ~ 54) — 스팟파이어 설명서 YearAndWeek 예(2005-10-13 -> 41 주)는 다른 지역 설정이라 우리는 42
+>          빈 답 -> 빈 값이거나 시각이 아닌 값(없는 날 2023-02-29 포함). 시각이 아닌 값의 수는 계산 결과의 not_time(화면 notTime)
+>          «DatePart «minute» is not in this edition» -> 분 · 초 · ISO 주 같은 조각은 이번 판에 없음
+> 설정     ingestion_settings.json "expression_time_zone": "Asia/Seoul" (IANA 이름) — 서버 계산기가 읽음(시간대가 아닌 값은 한 줄 남기고 기본값)
+>          시험대(화면 계산기)는 GET /api/ledger/declaration 의 expression_time_zone 으로 같은 값을 받음 — 바꾸면 서버는 다음 실행, 화면은 시험대 다시 열 때부터
+> 시간대 자료  서버 파이썬으로: python -c "import zoneinfo; zoneinfo.ZoneInfo('Asia/Seoul'); print('ok')"
+>          ok -> 됨. ZoneInfoNotFoundError -> 이 윈도우 파이썬에 시간대 자료가 없음: pip install tzdata 뒤 서버 재기동
+>             없으면 날짜 함수가 시간대를 못 읽고 GET /api/ledger/declaration 이 500 (시험대가 선언을 못 받음)
+> 이 판에서  계약 벡터 17 칸(자정 · 해 바뀜 · 윤년 · 일요일 시작 · KST 08:00 = UTC 전날 23:00)을 두 계산기가 같은 답 · 변이 8 개 빨강
+> 되돌리기  git revert 9a3f1fcf7 (화면 새로 고침 · 체인 워커 재기동)
+> ```
+>
+> ---
+>
+> ## [10-14] **걷기 요청이 선언을 파일이 바뀔 때만 다시 읽는다 · 순위를 안 읽는 호출은 propagation=false (총괄 9166099d4, 소유자 «ㅇㅇ 진행해»)** — git pull · 서버 재기동 · 이주 «없음»
+>
+> ```
+> 무엇     ① 걷기 요청이 선언(ontology/ledger_config.json)을 요청마다 4~6 번 다시 읽고 검증하던 것을, 원장 따라가기 컴파일과 같은 도장 규칙으로
+>             — 선언 파일 · table_config.json 의 (수정 시각, 크기)가 바뀔 때만 다시 읽는다. 활성화(파일 쓰기)는 다음 걷기에 바로 보인다
+>          ② GET /api/ledger/subgraph?propagation=false — 순위를 계산하지 않고 답에 propagation 칸이 없다. 기본 true = 오늘과 같은 답
+>             이어 받기(POST resume)는 첫 쪽과 같은 값으로. 다르면 422 subgraph_request_invalid «resume belongs to another walk»
+> 뜻       선언을 고쳤는데 걷기가 옛 선언으로 답한다 -> 파일이 정말 바뀌었나(수정 시각) · 서버 재기동이면 새로 읽는다
+>          propagation 을 안 보내는 화면(R&D 보드 · 걷기 화면 — 순위를 읽음)은 오늘과 같다. false 를 보내는 것은 시험대 근원 부품(빌더 착지 뒤)
+> 급할 때   ① 은 끄는 스위치 없음 — 되돌리기로. ② 는 안 보내면 오늘과 같다
+> 박스 판 실측 (② 판 assy_impl_opshape_1014 · 실제 서버 HTTP · 쪽 끝까지 · 셋 중 빠른 값 · 박스 판, 운영 주장 아님)
+>          요청                          main ms   이 착지   + propagation=false
+>          다이 하나(행 = 시작)            50        14        16
+>          웨이퍼 -> 다이 400              176       118       98
+>          다이 200 -> 측정(값 걷기)        226       208       97
+>          다이 200 -> 코어 다이 측정       296       269       137
+>          요청 8 개 모두 답이 main 과 같다(순위 칸 · 시각 말고). false 는 순위 칸만 없다 · 답 크기 1.0 MB -> 0.72 MB(웨이퍼 -> 다이)
+> ⚠️ 안 잰 것  운영 원장 크기 · 운영 선언 크기에서의 몫(선언 다시 읽기는 선언이 클수록 컸다 — 18766 판 선언으로 요청마다 약 110 ms)
+>          순위 계산이 씨앗 수에 곱해지는 것(_reach)은 이번에 안 고침
+> 되돌리기  git revert 9a3eab253 -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-14] **원장 파티션에 PostgreSQL 자동 분석 기준 0.02 — 행이 2 % 바뀌면 PG 가 스스로 분석 (총괄 53338e99b, 소유자 «오토 애널라이즈를 걸면 되지 않나» · «ㅇㅇ»)** — git pull · 런처 재기동(원장 프로세스가 뜰 때 한 번 맞춤)
 >
 > ```

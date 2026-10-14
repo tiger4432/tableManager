@@ -2722,7 +2722,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              cardinalities=None, rows=False,
              entities=None, group_by=None, measure=None,
              seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
-             registration_follow=None, fanout_limit=None, expand=None, resume=None):
+             registration_follow=None, fanout_limit=None, expand=None, resume=None, propagation=True):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     🔴 MORE (총괄 ad3c03e71 · df746abf6 ㄴ, 소유자 「원하는 걸 다 얻었는지 파악하고 계속 추가 걷기」 · 「상한은 그대로」):
@@ -3605,11 +3605,12 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         },
         "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
                    "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
-        "propagation": _propagation(
+        # the ranking, unless the caller said it does not read it (총괄 9166099d4 - 70 % of a 200-seed value walk)
+        **({"propagation": _propagation(
             nodes, ordered_edges, seed_signs,
             not (depth_cut or node_cut or edge_cut or claim_cut or action_cut
                  or seed_cut),
-            static_types, (resume or {}).get("reach"), reached),
+            static_types, (resume or {}).get("reach"), reached)} if propagation else {}),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
             "start": {

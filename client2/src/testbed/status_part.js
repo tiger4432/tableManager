@@ -1,7 +1,7 @@
 // The status bar (lead 950448e5a): the active part's counts in Spotfire's bottom band - «N of M rows · K marked rows · C
 // columns · source», and for now the filters' drops (lead 5835e6714 «system −a · part −b»; the system filter's start side
 // «start −c», lead 10-13; a markings' limit «marking −d», lead 10-13), a cut walk, the rows an expression could not take as
-// numbers, the marked rows the filters hide. A drop is said when one of them is not 0. It reads
+// numbers, the marked rows the filters hide, its walks. A drop is said when one of them is not 0. It reads
 // a stats store, so any page whose parts publish there can seat it.
 
 import { Panel } from '../rnd_board/panel.js';
@@ -13,6 +13,9 @@ const n = (x) => Number(x || 0).toLocaleString('en-US');
 export function statusWords(s) {
   if (!s) return ['No active visualization'];
   const words = [`${n(s.rows)} of ${n(s.of)} rows`];
+  // its walks (owner 10-14): «Rows N · complete» and a slot's «Color by · cached»
+  if (s.walks && s.walks.rows) words.push(`Rows ${n(s.of)} · ${s.walks.rows}`);
+  for (const v of (s.walks && s.walks.values) || []) words.push(`${v.name} · ${v.state}`);
   if (s.startDropped || s.system || s.part || s.limit) {
     words.push([s.startDropped ? `start −${n(s.startDropped)}` : null, `system −${n(s.system)}`, `part −${n(s.part)}`,
       s.limit ? `marking −${n(s.limit)}` : null].filter(Boolean).join(' · '));

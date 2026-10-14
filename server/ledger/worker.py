@@ -66,26 +66,38 @@ def _drain_ledger_followup_sync(db_session_factory, rows=None):
 _COMPILED = {}
 
 
-def _compiled_setup(world):
-    """A world's declaration, compiled again only when its file or the catalogue changed -
-    not every batch (총괄 86d5061a0). A failure is held the same way: the same files fail the
-    same way, so they are not compiled again until one changes (총괄 558a46ef1)."""
-    from ledger import schema
-    from ledger.setup import file_stamp, load_setup, physical_catalog_path
+def _stamped(key, paths, build):
+    """`build()` again only when one of `paths` changed (`file_stamp`) - THE one rule for a declaration read from its
+    files, not every batch nor every walk request (총괄 86d5061a0 · 9166099d4). A failure is held the same way: the same
+    files fail the same way, so they are not read again until one changes (총괄 558a46ef1) - held as its class, words and
+    attributes and raised anew each time, so two threads never raise one object nor keep its frames."""
+    from ledger.setup import file_stamp
 
-    names = schema.world_names(world)
-    stamp = tuple(file_stamp(path)
-                  for path in (names.declaration_path, physical_catalog_path()))
-    held = _COMPILED.get(names.declaration_root)
+    stamp = tuple(file_stamp(path) for path in paths)
+    held = _COMPILED.get(key)
     if held is None or held[0] != stamp:
         try:
-            held = (stamp, load_setup(names.declaration_root))
+            held = (stamp, build(), None)
         except Exception as exc:                            # noqa: BLE001 - raised below
-            held = (stamp, exc)
-        _COMPILED[names.declaration_root] = held
-    if isinstance(held[1], Exception):
-        raise held[1].with_traceback(None)
+            held = (stamp, None, (type(exc), exc.args, dict(vars(exc))))
+        _COMPILED[key] = held
+    if held[2] is not None:
+        kind, args, attributes = held[2]
+        failure = kind.__new__(kind)
+        failure.args = args
+        failure.__dict__.update(attributes)
+        raise failure
     return held[1]
+
+
+def _compiled_setup(world):
+    """A world's declaration, compiled again only when its file or the catalogue changed (`_stamped`)."""
+    from ledger import schema
+    from ledger.setup import load_setup, physical_catalog_path
+
+    names = schema.world_names(world)
+    return _stamped(names.declaration_root, (names.declaration_path, physical_catalog_path()),
+                    lambda: load_setup(names.declaration_root))
 
 
 #: How many sources' refusals a stop sentence names before it counts the rest.

@@ -5,6 +5,9 @@
 //
 // Rows: plain objects ({x: 1, $at: '2026-…'}) or {get(name), at} - a cell's value may be a list or a Reads (several
 // reads, each with its own time); a fold counts their items, a row-by-row use needs one value.
+// Dates (lead fe2ba4b1f): a time is cut into its date and parts on the wall clock of run's page.zone (an IANA name,
+// ZONE_DEFAULT the server setting's default, owner «ㅇㅇ kst»). A time with an offset is moved there; one without is
+// read as that wall clock. Date · DateTime answer a time text («2026-10-14T00:00:00+09:00», «Z» at offset 0).
 
 import { isBlank } from './absent.js';
 import { numberOf } from './walk/reach_table.js';
@@ -20,6 +23,98 @@ export class Reads {
 }
 
 const spelling = (v) => JSON.stringify(v);
+
+// ── dates ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+/** The server's ingestion_settings "expression_time_zone" default (server/expression.py ZONE_DEFAULT). */
+export const ZONE_DEFAULT = 'Asia/Seoul';
+/** The server's setting as the page read it (GET /api/ledger/declaration's expression_time_zone) - one per page, as the
+ *  server has one; a run's page.zone before it, ZONE_DEFAULT when neither (lead fe2ba4b1f ①). */
+let pageZone = null;
+export function useZone(name) { pageZone = typeof name === 'string' && name.trim() ? name.trim() : null; }
+/** The one shape a time is read in - the server's TIME (expression.py) is the same pattern. */
+const TIME = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/;
+const PARTS = Object.freeze({
+  year: 'Year', yy: 'Year', quarter: 'Quarter', qq: 'Quarter', month: 'Month', mm: 'Month',
+  day: 'Day', 'day of month': 'Day', dayofmonth: 'Day', dd: 'Day', week: 'Week', wk: 'Week',
+  'day of week': 'DayOfWeek', dayofweek: 'DayOfWeek', weekday: 'DayOfWeek', dw: 'DayOfWeek', hour: 'Hour', hh: 'Hour',
+});
+const OTHER_PARTS = new Set(['minute', 'mi', 'second', 'ss', 'millisecond', 'ms', 'day of year', 'dayofyear', 'dy',
+  'year and week', 'yearandweek', 'yywk', 'isoyear', 'isoweek']);
+const clocks = new Map();
+/** `zone`'s wall clock of an instant (ms): {y, M, d, h, mi, s}. */
+const clockOf = (ms, zone) => {
+  if (!clocks.has(zone)) {
+    clocks.set(zone, new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit',
+      day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', era: 'short' }));
+  }
+  const p = Object.fromEntries(clocks.get(zone).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  const year = Number(p.year);
+  // an era'd year: 1 BC is the year 0 (outside 1 to 9999 - not a time, as the server)
+  return { y: p.era === 'BC' ? 1 - year : year, M: Number(p.month), d: Number(p.day), h: Number(p.hour), mi: Number(p.minute),
+    s: Number(p.second) };
+};
+/** A wall clock as UTC milliseconds - setUTCFullYear, so the years 1 to 99 are themselves (Date.UTC reads 0-99 as 19xx). */
+const utcOf = (w) => { const at = new Date(0); at.setUTCFullYear(w.y, w.M - 1, w.d); at.setUTCHours(w.h || 0, w.mi || 0, w.s || 0, 0); return at.getTime(); };
+/** The zone's offset (whole minutes - an old local mean time's seconds dropped, as the server) at an instant. */
+const offsetAt = (ms, zone) => Math.floor((utcOf(clockOf(ms, zone)) - Math.floor(ms / 1000) * 1000) / 60000);
+const sameWall = (a, b) => a.y === b.y && a.M === b.M && a.d === b.d && a.h === b.h && a.mi === b.mi && a.s === b.s;
+/** A wall clock read in the zone: its offset there - the server's fold 0: a wall clock the zone repeats is the first,
+ *  one it skips takes the offset before the change. */
+const offsetOfWall = (w, zone) => {
+  const guess = utcOf(w);
+  const before = offsetAt(guess - 86400000, zone);
+  const after = offsetAt(guess + 86400000, zone);
+  const fits = [before, after].filter((o) => sameWall(clockOf(guess - o * 60000, zone), w));
+  return fits.length ? Math.max(...fits) : before;    // the larger offset is the earlier instant
+};
+/** `v` on `zone`'s wall clock ({y, M, d, h, mi, s, ms, off}), or null - empty, or not a time (TIME, a real day). */
+function wallOf(v, zone) {
+  if (typeof v !== 'string' || isBlank(v)) return null;
+  const m = TIME.exec(v.trim());
+  if (!m) return null;
+  const [y, M, d, h, mi, s] = [1, 2, 3, 4, 5, 6].map((i) => Number(m[i] || 0));
+  const ms = Number((m[7] || '0').padEnd(6, '0').slice(0, 3));
+  const at = new Date(utcOf({ y, M, d, h: 0, mi: 0, s: 0 }));
+  if (y < 1 || at.getUTCFullYear() !== y || at.getUTCMonth() !== M - 1 || at.getUTCDate() !== d || h > 23 || mi > 59 || s > 59) return null;
+  const wall = { y, M, d, h, mi, s };
+  if (!m[8]) return { ...wall, ms, off: offsetOfWall(wall, zone) };
+  const digits = m[8] === 'Z' ? '0000' : m[8].slice(1).replace(':', '');
+  if (Number(digits.slice(0, 2)) > 23 || Number(digits.slice(2)) > 59) return null;           // ±24:00 is no offset
+  const given = m[8] === 'Z' ? 0 : (m[8][0] === '-' ? -1 : 1) * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2)));
+  const instant = utcOf(wall) - given * 60000;
+  const moved = clockOf(instant, zone);
+  // moved outside the years 1 to 9999 - the server's datetime cannot hold it: not a time
+  return moved.y < 1 || moved.y > 9999 ? null : { ...moved, ms, off: offsetAt(instant, zone) };
+}
+const pad2 = (n) => String(n).padStart(2, '0');
+/** A time as both calculators spell it: its wall clock and offset, «Z» at offset 0, milliseconds when not 0. */
+const timeText = (w) => `${String(w.y).padStart(4, '0')}-${pad2(w.M)}-${pad2(w.d)}T${pad2(w.h)}:${pad2(w.mi)}:${pad2(w.s)}`
+  + (w.ms ? `.${String(w.ms).padStart(3, '0')}` : '')
+  + (w.off === 0 ? 'Z' : `${w.off < 0 ? '-' : '+'}${pad2(Math.floor(Math.abs(w.off) / 60))}:${pad2(Math.abs(w.off) % 60)}`);
+const weekdayOf = (w) => new Date(utcOf({ y: w.y, M: w.M, d: w.d })).getUTCDay();
+/** The week of the year, weeks starting on Sunday and the first holding January 1 - Spotfire's «first week of year is
+ *  dependent on the regional settings», read for the owner's (Korean) ones; 1 to 54. */
+const weekOf = (w) => Math.floor(((utcOf({ y: w.y, M: w.M, d: w.d }) - utcOf({ y: w.y, M: 1, d: 1 })) / 86400000
+  + weekdayOf({ y: w.y, M: 1, d: 1 })) / 7) + 1;
+const PART_OF = Object.freeze({ Year: (w) => w.y, Quarter: (w) => Math.floor((w.M - 1) / 3) + 1, Month: (w) => w.M,
+  Day: (w) => w.d, Hour: (w) => w.h, Week: weekOf, DayOfWeek: weekdayOf });
+/** A function of one time: the time on the zone's wall clock, else empty - a value that is not a time is counted (the
+ *  run's notTime), an empty one is not. */
+const dated = (f) => ({ kind: 'row', arity: 1, zoned: true,
+  fn: (v, ctx) => {
+    const w = wallOf(v, ctx.zone);
+    if (!w) { if (!isBlank(v)) ctx.notTime.add(ctx.row); return null; }
+    return f(w, ctx);
+  } });
+const datePart = (part, v, ctx) => {
+  const name = typeof part === 'string' ? PARTS[part.trim().toLowerCase()] : undefined;
+  if (!name) {
+    const said = typeof part === 'string' ? part.trim().toLowerCase() : part;
+    throw new ExpressionError(OTHER_PARTS.has(said) ? `DatePart «${said}» is not in this edition`
+      : `DatePart takes a part name (year · quarter · month · day · week · day of week · hour) - got ${part}`);
+  }
+  return dated(PART_OF[name]).fn(v, ctx);
+};
 const finite = (v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v === undefined ? null : v);
 
 // ── the function table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -191,6 +286,11 @@ export const FUNCTIONS = Object.freeze({
   ATan: num1(Math.atan),
   ATan2: num2((y, x) => Math.atan2(y, x)),
   If: { kind: 'if' },
+  // dates (lead fe2ba4b1f) - on the zone's wall clock
+  Date: dated((w, ctx) => { const mid = { y: w.y, M: w.M, d: w.d, h: 0, mi: 0, s: 0 }; return timeText({ ...mid, ms: 0, off: offsetOfWall(mid, ctx.zone) }); }),
+  DateTime: dated(timeText),
+  ...Object.fromEntries(Object.entries(PART_OF).map(([name, f]) => [name, dated(f)])),
+  DatePart: { kind: 'row', arity: 2, zoned: true, fn: datePart },
   // Spotfire's Marked() (lead 10-13): the page's marking - screen only, the markings come in ctx.
   Marked: { kind: 'mark' },
 });
@@ -497,7 +597,7 @@ function value(node, ctx) {
     case 'call':
       if (node.fn.kind === 'if') return ifValue(node, ctx);
       if (node.fn.kind === 'mark') return markedValue(node, ctx);
-      if (node.fn.kind === 'row') return finite(node.fn.fn(...node.args.map((a) => value(a, ctx))));
+      if (node.fn.kind === 'row') return finite(node.fn.fn(...node.args.map((a) => value(a, ctx)), ...(node.fn.zoned ? [ctx] : [])));
       return finite(foldValue(node, ctx));
     default: throw new ExpressionError(`Cannot answer ${node.t}`);
   }
@@ -587,12 +687,16 @@ export function run(compiled, rows, page = {}) {
   // notNumber: the rows an operator met a text that is not a number on - their answer is empty; marked: the page's
   // markings (screen only), for Marked(); types: {column: "datetime"} (table_config's column_types words); cell: a
   // sheet's cell values by address (A1), for cell references
-  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), marked: page.marked, types: page.types || {},
-    cell: page.cell };
+  // zone: the IANA name dates are cut in (ZONE_DEFAULT when the page gives none); notTime: the rows a date function met
+  // a value that is not a time on
+  const zone = page.zone || pageZone || ZONE_DEFAULT;
+  try { clockOf(0, zone); } catch (e) { if (e instanceof RangeError) return { why: `«${zone}» is not a time zone` }; throw e; }
+  const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), notTime: new Set(), marked: page.marked,
+    types: page.types || {}, cell: page.cell, zone };
   try {
-    if (!compiled.perRow) { const v = finite(value(compiled.tree, ctx)); return { value: v, notNumber: ctx.notNumber.size }; }
+    if (!compiled.perRow) { const v = finite(value(compiled.tree, ctx)); return { value: v, notNumber: ctx.notNumber.size, notTime: ctx.notTime.size }; }
     const values = ctx.rows.map((r) => finite(value(compiled.tree, { ...ctx, row: r })));
-    return { values, notNumber: ctx.notNumber.size };
+    return { values, notNumber: ctx.notNumber.size, notTime: ctx.notTime.size };
   } catch (e) {
     if (e instanceof SeveralValues) return { several: e.message };
     if (e instanceof ExpressionError) return { why: e.message };

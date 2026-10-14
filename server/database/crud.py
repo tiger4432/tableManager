@@ -4284,12 +4284,12 @@ def row_update_line(db, table_name, row_id, changed_cols, new_values, old_values
                     transaction_id, business_key, add_to_cache=True):
     """The `ROW_UPDATE` history line a machine write leaves on a row it changed - the write door's, and
     `replay.fold_units`' for the cells whose answer is already decided (총괄 10-11)."""
-    new_parts = ["%s: %s" % (col, "비어있음" if new_values.get(col) is None else new_values.get(col))
+    new_parts = ["%s: %s" % (col, "empty" if new_values.get(col) is None else new_values.get(col))
                  for col in changed_cols]
     if is_new:
-        old_summary, summary_msg = None, "신규 데이터 생성: " + ", ".join(new_parts)
+        old_summary, summary_msg = None, "New row: " + ", ".join(new_parts)
     else:
-        old_summary = ", ".join("%s: %s" % (col, "비어있음" if old_values.get(col) is None else old_values.get(col))
+        old_summary = ", ".join("%s: %s" % (col, "empty" if old_values.get(col) is None else old_values.get(col))
                                 for col in changed_cols)
         summary_msg = ", ".join(new_parts)
     return create_audit_log(db, table_name, row_id, "ROW_UPDATE", old_summary, summary_msg, source_name,

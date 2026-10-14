@@ -91,6 +91,40 @@ def test_the_ones_there_take_it_once_and_a_new_one_is_made_with_it(world, monkey
     assert _options(engine)[name] == 0.05
 
 
+def test_every_world_once_when_a_branch_operates(monkeypatch):
+    """총괄 127139997: the default world and each branch, each once, whichever world operates - [None, *worlds()] read
+    the operating branch twice and the default never. (No database: the parents asked are the claim.)"""
+    asked = []
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def execute(self, sql, params=None):
+            if "pg_inherits" in sql:
+                asked.append(params[0])
+
+        def fetchall(self):
+            return []
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            pass
+
+    _settings(monkeypatch)
+    monkeypatch.setattr(schema, "worlds", lambda: ["b1"])
+    monkeypatch.setattr(schema, "operating_world", lambda: "b1")
+    assert schema.set_partitions_autoanalyze(Connection()) == []
+    assert sorted(asked) == sorted([schema.world_names(schema.DEFAULT_WORLD).ledger,
+                                    schema.world_names("b1").ledger]), asked
+
+
 def test_null_writes_nothing(world, monkeypatch):
     engine = world["engine"]
     _made_before_this(engine)

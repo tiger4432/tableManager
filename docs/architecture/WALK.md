@@ -69,7 +69,7 @@ client2/src/rnd_board/walk_box_panel.js
 ## 3. 라우트 — 데이터에 답하는 것은 «하나»
 
 ```
-GET /api/ledger/subgraph     걷기. 아래 인자 «열다섯» · 🆕 10-12 POST 도 — 본문 `resume`(아래 «이어 걷기»)
+GET /api/ledger/subgraph     걷기. 쿼리 인자 «스물여덟»(10-14 `evidence_subgraph` 시그니처에서 셈 — «열다섯»은 낡은 수였다) · 🆕 10-12 POST 도 — 본문 `resume`(아래 «이어 걷기»)
                              🆕 10-13 HTTP 로 온 걷기는 걷기 프로세스에서 돈다(`runtime/process_pool.in_pool`, 설정 `walk_processes` 기본 2 · `walk_seconds_max` 기본 120 초) — 못 받으면 503 `walk_pool_busy` · `walk_process_not_ready` · `walk_timed_out`
 GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates · sources)
                              🆕 그리고 「어느 술어가 «검사»인가」 — `absence_confirmed_by` (S-216 `09217e2e`)
@@ -82,6 +82,9 @@ since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「
 include_superseded  기본 false. `one` 술어의 «지금 아닌» 사실도 그릴지 — 그 엣지엔 `not_current` (총괄 22ebdd153)
 format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-183, 09-11)
 resumable           기본 false. 이어 걸을 호출(걷기 화면)만 true — 잘린 걷기를 남기고 more.resume 열쇠를 준다(아래 «이어 걷기», 총괄 9752e91f7)
+propagation         기본 true. false 면 순위를 계산하지 않고 답에 `propagation` 칸이 없다 — 순위를 안 읽는 호출(시험대 근원 부품,
+                    client2/src/testbed 의 fetchWalk)용(총괄 9166099d4). ⚠️ 보내는 호출자 아직 0 — fetchSubgraph 가 propagation 을 안 실음. R&D 보드 · 걷기 화면은 순위를 읽으니 안 보낸다(기본 true)
+                    다음 쪽도 같은 값으로 — 다르면 422 «resume belongs to another walk»
 ```
 ⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
 셈이 하나 어긋난 채로, S-98 이 더한 `since`·`until` 이 «둘 다» 빠져 있었습니다 —
@@ -149,6 +152,7 @@ edges        {id, source, target, predicate, predicate_label, original_predicate
               넷째의 빈 집합은 「어느 노드도 자기 컬럼을 안 나른다」이다
 seeds        씨앗과 «부호»(+/-)
 propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로 순위 매긴다
+             🆕 10-14 `propagation=false` 로 물으면 칸이 «없다»(계산도 안 함 — 씨앗 200 값 걷기의 70 %, 총괄 9166099d4)
              🆕 10-12 이어 걸은 쪽의 `ranked` 는 그 쪽에서 새로 닿은 노드만 싣는다 — 순위는 지금까지 닿은 노드 전부 사이에서
              모집단이 전부인 것은 «소유자 판정»(2026-08-28)이다 — 한 타입으로 거르면
              묻고 있는 것보다 «좁은» 질문에 답하게 된다. `collect` 는 «짐»만 거르고

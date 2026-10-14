@@ -29,6 +29,8 @@ const REAL = {
   sheet: await import('../src/testbed/kinds/sheet.js'),
   slot: await import('../src/testbed/slot.js'),
   route: await import('../src/testbed/route.js'),
+  walks: await import('../src/testbed/part_walks.js'),
+  api: await import('../src/rnd_board/api.js'),
   trend: await import('../src/walk/trend.js'),
   reach: await import('../src/walk/reach_table.js'),
   show: await import('../src/testbed/show_items.js'),
@@ -684,14 +686,184 @@ async function routed(M) {
   // carries its steps as the one-column pill's does, and its value is read
   const single = await seat({ ...base, row: 'die', encode: { rows: CORE } });
   const pair = await seat({ ...base, row: 'die', encode: { rows: [NAMED, CORE] } });
-  const R = { hops: 0, follow: [], chain: ['die'] };
-  const twoColumns = [pair.asked, single.asked, pair.rows, JSON.stringify(M.route.walkOfRoute(R, { rows: [NAMED, CORE] })) === JSON.stringify(M.route.walkOfRoute(R, { rows: CORE }))];
+  const twoColumns = [pair.asked, single.asked, pair.rows, JSON.stringify(M.walks.valueAsk([NAMED, CORE], 'die', vocabulary)) === JSON.stringify(M.walks.valueAsk(CORE, 'die', vocabulary))];
   // a list of one column is that column to a press: the core wafer node (hubs.js conditionsOf)
   const listed = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: [CORE] } }, true, false, 'marking:core');
   listed.part.markHub([['core wafer', listed.part.model.rowKeys[0]], ['(None)', '']], listed.part.model.grid[0][0].ids, {});
   await settle();
   const listPress = [held(listed), M.hubs.whyHub({ rows: [CORE], columns: NAMED }, [['core wafer', 'CW1'], ['name', 'd1']])];
   return { twoColumns, listPress, press, named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+}
+
+/** A part's walks (owner 10-14 «행 걷기 + 값 걷기», part_walks.js): a row walk from the start to its end, a value walk a
+ *  slot from the rows; a slot changed walks that slot alone; a walk in hand that covers it not asked again; a walk in
+ *  flight dropped by the next of its kind; the rows a value walk starts from by the seed cap; the answer read by its
+ *  edges (core dies: a die reads its own core wafer, not one an undirected evidence would give it). */
+async function partWalks(M) {
+  const { entitySeedId } = await import('../src/rnd_board/api.js');
+  const id = (type, key) => entitySeedId(type, { [type]: key });
+  const [BW, CW1, CW2, d1, d2, d3, c1, c2, Q, S1, T1, X1] = [['wafer', 'BW'], ['wafer', 'CW1'], ['wafer', 'CW2'], ['die', 'd1'], ['die', 'd2'], ['die', 'd3'],
+    ['die', 'c1'], ['die', 'c2'], ['quantity', 'temp'], ['step', 's1'], ['tool', 't1'], ['xray', 'x1']].map(([t, k]) => id(t, k));
+  const label = new Map([[BW, 'BW'], [CW1, 'CW1'], [CW2, 'CW2'], [d1, 'd1'], [d2, 'd2'], [d3, 'd3'], [c1, 'c1'], [c2, 'c2'], [Q, 'temp'], [S1, 's1'], [T1, 't1'], [X1, 'x1']]);
+  const node = (nid, attributes = {}) => ({ id: nid, type: M.route.typeOfStart(nid), label: label.get(nid), keys: {}, attributes });
+  const edge = (source, predicate, target, qualifiers = {}) => ({ id: `${source}|${predicate}|${target}`, source, target, predicate, qualifiers });
+  const OK = { nodes: false, edges: false, depth: false, claims: false, actions: false, reason: null };
+  const vocabulary = { entities: ['die', 'wafer', 'quantity', 'step', 'tool', 'xray'].map((type) => ({ type })),
+    predicates: [['in_container', 'wafer'], ['bonded_from', 'die'], ['measures', 'quantity'], ['at_step', 'step'], ['at_tool', 'tool'], ['xrayed', 'xray']]
+      .map(([name, type]) => ({ name, subjects: ['die'], object: { kind: 'entity_ref', types: [type] } })) };
+  const way = (predicate, value, words) => ({ steps: [{ predicate, direction: 'outgoing' }], value, words: [words] });
+  const TEMP_V = way('measures', { on: 'edge', name: 'value' }, 'temp');
+  const TEMP_NAME = way('measures', { on: 'label', name: 'name' }, 'temp name');
+  const STEP = way('at_step', { on: 'label', name: 'name' }, 'step');
+  const TOOL = way('at_tool', { on: 'label', name: 'name' }, 'tool');
+  const XRAY = way('xrayed', { on: 'label', name: 'name' }, 'xray');
+  const XRAY_ATTR = way('xrayed', { on: 'node', name: 'grade' }, 'xray grade');
+  const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
+  const DIES = [d1, d2, d3];
+  // the answers by what is asked: the row walk two pages; a value walk the types it carries and every edge it walked
+  const byFollow = {
+    in_container: (p) => (p.resume === 'r2' ? { nodes: [node(d3)], edges: [edge(d3, 'in_container', BW)], truncated: OK }
+      : { nodes: [node(BW), node(d1), node(d2)], edges: [edge(d1, 'in_container', BW), edge(d2, 'in_container', BW)], truncated: OK, more: { resume: 'r2' } }),
+    bonded_from: () => ({ nodes: [node(BW), node(CW1), node(CW2)], truncated: OK,
+      edges: [edge(d1, 'bonded_from', c1), edge(d2, 'bonded_from', c2), edge(c1, 'in_container', CW1), edge(c2, 'in_container', CW2), ...DIES.map((d) => edge(d, 'in_container', BW))] }),
+    measures: () => ({ nodes: [node(Q)], edges: DIES.map((d, i) => edge(d, 'measures', Q, { value: String(i + 1) })), truncated: OK }),
+    at_step: () => ({ nodes: [node(S1)], edges: DIES.map((d) => edge(d, 'at_step', S1)), truncated: OK }),
+    at_tool: () => ({ nodes: [node(T1)], edges: DIES.map((d) => edge(d, 'at_tool', T1)), truncated: OK }),
+    // cut: an axis true and no next page
+    xrayed: () => ({ nodes: [node(X1, { grade: 'A' })], edges: [edge(d1, 'xrayed', X1)], truncated: { ...OK, nodes: true } }),
+  };
+  const seat = async (decl, { seedChunk, hold } = {}) => {
+    const doc = makeDoc('dark');
+    const markings = new MarkingStore();
+    markings.set('marking:start', BW, SIGN.CASE);
+    const asked = [];
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, start: decl.start, declaration: decl, vocabulary: () => vocabulary, seedChunk,
+      kinds: { table: M.table.kind, scatter: M.scatter.kind, crossTable: M.cross.kind, map: M.map.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(),
+      hubs: new HubBook(), names: new Map(), charts: charts(),
+      fetchWalk: async (params) => {
+        asked.push(params);
+        const answer = (byFollow[(params.follow || []).find((f) => byFollow[f])] || (() => ({ nodes: [], edges: [], truncated: OK })))(params);
+        if (hold && hold.when(params)) return new Promise((resolve) => hold.release.push(() => resolve({ ok: true, body: { ...answer, nodes: [...answer.nodes, node('LATE')] } })));
+        return { ok: true, body: answer };
+      } });
+    part.mount();
+    await settle();
+    return { part, asked, words: () => statusWords(part.stats.get('P')) };
+  };
+  const base = { id: 'P', part: 'visual', kind: 'table', row: 'die', start: { marking: 'marking:start' }, system: null, filter: [] };
+  const brief = (p) => [(p.follow || []).join('+'), (p.positive || []).map((x) => label.get(x)), p.resume || null];
+  const out = {};
+
+  // PW1 the row walk to its end: two pages, the second asked with the first's resume; its rows every die; then one
+  // value walk for the column (one step: measures)
+  const one = await seat({ ...base, encode: { col1: TEMP_V } });
+  out.resume = [one.asked.map(brief), one.part.rowsOf().map((x) => label.get(x)).sort(),
+    one.part.model.lines.map((l) => l.cells[0].text)];
+  // the pure loop: a page with a resume asks the next; an expired resume (410) is said with its reason, the walk cut
+  const pages = [];
+  const two = await M.walks.walkToEnd(async (p) => { pages.push(p.resume || null); return p.resume ? { ok: false, status: 410, detail: { detail: { reason: 'resume expired' } } }
+    : { ok: true, body: { nodes: [], edges: [], truncated: OK, more: { resume: 'k1' } } }; }, {}, null);
+  out.expired = [pages, two.complete, two.why, two.answers.length];
+
+  // PW2 the one judgment (part_walks.js covers): a column taken off - covered; another attribute of a type walked - the
+  // same ask, covered; a new type - not (a new way, or a type the same way did not carry); a cut walk - not; other rows, a predicate more, a step more - not
+  const held = { seeds: ['a', 'b'], follow: ['at_step', 'measures'], hops: 1, collect: ['quantity', 'step'], complete: true };
+  const ask = (patch) => ({ seeds: ['b', 'a'], follow: ['measures'], hops: 1, collect: ['quantity'], ...patch });
+  out.covers = [M.walks.covers(held, ask({})), M.walks.covers(held, ask({ collect: ['quantity'] })), M.walks.covers(held, ask({ collect: ['tool'], follow: ['at_tool'] })), M.walks.covers(held, ask({ collect: ['wafer'] })),
+    M.walks.covers({ ...held, complete: false }, ask({})), M.walks.covers(held, ask({ seeds: ['a'] })), M.walks.covers(held, ask({ follow: ['measures', 'xrayed'] })),
+    M.walks.covers(held, ask({ hops: 2 })), M.walks.covers({ ...held, collect: null }, ask({ collect: ['tool'] }))];
+
+  // PW3 the cache in a part: a slot of two columns walked; a column taken off - no request, said cached; another
+  // attribute of the type walked - none; a new type - one; a cut walk does not cover - its slot asked again
+  const cache = await seat({ ...base, encode: { col1: [TEMP_V, STEP] } });
+  const n0 = cache.asked.length;
+  const set = async (encode) => { const before = cache.asked.length; cache.part.setDeclaration({ ...cache.part.declaration(), encode }); await settle(); return cache.asked.length - before; };
+  const said = (w) => cache.words().filter((x) => x.startsWith('Column')).join(' / ');
+  const first = said();
+  out.cache = [n0, first, cache.words().find((x) => x.startsWith('Rows')) || null,
+    await set({ col1: [TEMP_V] }), said(), await set({ col1: [TEMP_NAME] }), await set({ col1: [TOOL] }), said(),
+    await set({ col1: [TOOL], col2: XRAY }), said(), await set({ col1: [TOOL], col2: XRAY_ATTR })];
+
+  // PW4 a slot changed walks that slot alone - every slot of every kind (one function): a new way on it, one request,
+  // asking that way
+  const oneSlot = async (kindName) => {
+    const s = await seat({ ...base, kind: kindName, encode: {} });
+    const keys = s.part.slotList().map((x) => x.key);
+    const got = [];
+    for (const key of keys) {
+      const before = s.asked.length;
+      const pred = `p_${key}`;
+      s.part.setDeclaration({ ...s.part.declaration(), encode: { ...s.part.declaration().encode, [key]: way(pred, { on: 'label', name: 'name' }, pred) } });
+      await settle();
+      got.push([key, s.asked.length - before, s.asked.slice(before).map((p) => (p.follow || []).join('+'))]);
+    }
+    return { keys: keys.length, wrong: got.filter(([key, n, follows]) => n !== 1 || follows[0] !== `p_${key}`) };
+  };
+  out.everySlot = await Promise.all(['table', 'scatter', 'crossTable', 'map'].map(async (k) => [k, await oneSlot(k)]));
+
+  // PW5 the rows a value walk starts from by the seed cap: three rows, a cap of two - two requests
+  const chunked = await seat({ ...base, encode: { col1: TEMP_V } }, { seedChunk: 2 });
+  out.chunks = [chunked.asked.filter((p) => (p.follow || []).includes('measures')).map((p) => (p.positive || []).map((x) => label.get(x))),
+    chunked.part.model.lines.map((l) => l.cells[0].text)];
+
+  // PW6 a walk in flight dropped by the next for its slot: its request's signal aborted, its late answer not drawn
+  const hold = { when: (p) => (p.follow || []).includes('at_step'), release: [] };
+  const held2 = await seat({ ...base, encode: { col1: TEMP_V } }, { hold });
+  held2.part.setDeclaration({ ...held2.part.declaration(), encode: { col1: STEP } });
+  await settle();
+  const inFlight = held2.asked[held2.asked.length - 1];
+  held2.part.setDeclaration({ ...held2.part.declaration(), encode: { col1: TOOL } });
+  await settle();
+  for (const r of hold.release) r();
+  await settle();
+  out.abort = [Boolean(inFlight.signal && inFlight.signal.aborted), held2.part.answer.nodes.some((n) => n.id === 'LATE'), held2.part.model.lines.map((l) => l.cells[0].text)];
+
+  // PW8 two slots of different ways walk at once - both asked before either is answered
+  const both = { when: (p) => ['measures', 'at_step'].some((f) => (p.follow || []).includes(f)), release: [] };
+  const pair = await seat({ ...base, encode: { col1: TEMP_V, col2: STEP } }, { hold: both });
+  const atOnce = both.release.length;
+  for (const r of both.release) r();
+  await settle();
+  out.together = [atOnce, pair.part.model.lines.map((l) => l.cells.map((c) => c.text))[0]];
+
+  // PW9 a start of the row type whose nodes a walk on the page carried walks no rows - the value walk only; one written
+  // by hand (none carried) is walked for its records. Every request asks no ranking (propagation=false)
+  const ofDies = await seat({ ...base, start: { marking: 'marking:dies' }, encode: { col1: TEMP_V } });
+  ofDies.part.markings.set('marking:dies', d1, SIGN.CASE);
+  ofDies.part.markings.set('marking:dies', d2, SIGN.CASE);
+  await settle();
+  const handWritten = ofDies.asked.length;
+  ofDies.part.layers.graph.add({ nodes: [node(d3)], edges: [] });
+  ofDies.part.markings.replace('marking:dies', [[d3, SIGN.CASE]]);
+  await settle();
+  const carried = ofDies.asked.slice(handWritten).map((p) => (p.follow || []).join('+') || '(all)');
+  out.startIsRow = [handWritten > 0, carried, ofDies.part.rowsOf().map((x) => label.get(x)), [...new Set([...one.asked, ...ofDies.asked].map((p) => p.propagation))]];
+
+  // PW10 a value walk's runs by the seed cap asked together - both in flight before either is answered
+  const runsHeld = { when: (p) => (p.follow || []).includes('measures'), release: [] };
+  const runs = await seat({ ...base, encode: { col1: TEMP_V } }, { seedChunk: 2, hold: runsHeld });
+  const inFlightRuns = runsHeld.release.length;
+  for (const r of runsHeld.release) r();
+  await settle();
+  out.runsTogether = [inFlightRuns, runs.part.model.lines.map((l) => l.cells[0].text)];
+
+  // PW11 the ranking left out only where asked: a walk that names no propagation (the walk box, rnd_board) sends none;
+  // the part's walk sends propagation=false - its resumed page too
+  const { fetchSubgraph } = M.api;
+  const urls = [];
+  const capture = async (url, init) => { urls.push([url, (init && init.method) || 'GET']); return { ok: true, status: 200, json: async () => ({ nodes: [], edges: [] }) }; };
+  await fetchSubgraph({ apiBase: '', nodeId: 'n', fetchImpl: capture });
+  await fetchSubgraph({ apiBase: '', nodeId: 'n', fetchImpl: capture, propagation: false, resumable: true });
+  await fetchSubgraph({ apiBase: '', nodeId: 'n', fetchImpl: capture, propagation: false, resumable: true, resume: 'k' });
+  out.ranking = urls.map(([u, m]) => [m, new URL(u, 'http://x').searchParams.get('propagation')]);
+
+  // PW7 core dies (lead 10-14, 18766): the value walk carries wafers only, its edges every way it walked - each die reads
+  // its own core wafer through its edges (a die it did not carry stands by its id), never its own wafer BW
+  const core = await seat({ ...base, kind: 'crossTable', encode: { rows: CORE } });
+  const read = M.walks.readable([byFollow.bonded_from()]);
+  out.core = [core.part.model.rowKeys, core.part.model.grid.map((r) => r[0].ids.map((x) => label.get(x)).sort()),
+    read.nodes.filter((n) => n.carried === false).map((n) => label.get(n.id)).sort()];
+  return out;
 }
 
 /** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
@@ -779,7 +951,7 @@ async function sheetRoot(M) {
   await settle();
   walks.push(one.asked.length);
   const keyCell = one.part.model ? one.part.model.grid.flat().find((x) => x.at === 'A1') : {};
-  const again = { walks, seeds: one.asked.slice(1).map((a) => a[2]), refused: [keyCell.text, keyCell.why] };
+  const again = { walks, seeds: one.asked.slice(2).map((a) => a[2]), refused: [keyCell.text, keyCell.why] };
   const none = await seat({ ...base, start: null });
   const empty = { state: none.part.state, walks: none.asked.length, cells: { C1: textOf(none.part, 'C1'), B1: textOf(none.part, 'B1') } };
   return { walked, ring: { why: ringCell.why, other: otherWhy }, again, empty, reopen };
@@ -814,7 +986,7 @@ async function categoryColours(M) {
   await settle();
   const first = { ...part.declaration().colors };
   answer = { ...answer, nodes: [node('Z0', 'Z'), ...answer.nodes] };
-  part.seedWalk = null;
+  part.rowWalks = [];
   part.load();
   await settle();
   const after = part.declaration().colors || {};
@@ -1169,6 +1341,7 @@ async function suite(M) {
   const mp = await markerPress(M);
   const ts = await trendAsScatter(M);
   const rt = await routed(M);
+  const pw = await partWalks(M);
   const ce = await colourEverywhere(M);
   const sh = await sheetRoot(M);
   const ks = await keptStart(M);
@@ -1278,7 +1451,29 @@ async function suite(M) {
     judge('P7 the units of a value record: a record a unit, X its own record; a reduce - an edge a unit, folded', mk.records,
       [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
     judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
-      rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
+      // the row walk (the start of the row type: one step, its type carried), then the slot's value walk
+      rt.dies, [['CW1'], 1, [[[], 1, ['d1']], [['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
+    judge('PW1 the row walk to its end: two pages, the second with the first\'s resume; its rows every die; one value walk for the column; an expired resume said with its reason, the walk cut',
+      [pw.resume, pw.expired], [[[['in_container', ['BW'], null], ['in_container', ['BW'], 'r2'], ['measures', ['d1', 'd2', 'd3'], null]], ['d1', 'd2', 'd3'], ['1', '2', '3']],
+        [[null, 'k1'], false, 'resume expired', 1]]),
+    judge('PW2 covers (the one judgment): a column taken off, another attribute of a type walked - covered; a new type, a cut walk, other rows, a predicate more, a step more - not; a walk that carried every type covers any',
+      pw.covers, [true, true, false, false, false, false, false, false, true]),
+    judge('PW3 the cache in a part: a column taken off - no request, said cached; another attribute of the type walked - none; a new type - one; a cut walk does not cover its slot',
+      pw.cache, [3, 'Column 1 · complete', 'Rows 3 · complete', 0, 'Column 1 · cached', 0, 1, 'Column 1 · complete', 1, 'Column 1 · complete / Column 2 · cut', 1]),
+    judge('PW4 a slot changed walks that slot alone - every slot of the table, the scatter, the cross table and the map: one request, asking its way',
+      pw.everySlot.map(([k, r]) => [k, r.keys > 1, r.wrong]), [['table', true, []], ['scatter', true, []], ['crossTable', true, []], ['map', true, []]]),
+    judge('PW5 a value walk starts from its rows by the seed cap - three rows, a cap of two: two requests, every row read',
+      pw.chunks, [[['d1', 'd2'], ['d3']], ['1', '2', '3']]),
+    judge('PW6 a walk in flight dropped by the next for its slot - its request aborted, its late answer not drawn, the newest drawn',
+      pw.abort, [true, false, ['t1', 't1', 't1']]),
+    judge('PW8 two slots of different ways walk at once - both asked before either is answered', pw.together, [2, ['1', 's1']]),
+    judge('PW9 a start of the row type a walk on the page carried walks no rows (the value walk only); written by hand, walked for its records; every request asks no ranking',
+      pw.startIsRow, [true, ['measures'], ['d3'], [false]]),
+    judge('PW10 the runs of a value walk by the seed cap asked together', pw.runsTogether, [2, ['1', '2', '3']]),
+    judge('PW11 the ranking left out only where asked: the walk box sends no propagation; the part sends false, its resumed page too', pw.ranking,
+      [['GET', null], ['GET', 'false'], ['POST', 'false']]),
+    judge('PW7 core dies (18766): a value walk carrying wafers only read by its edges - each die its own core wafer, the dies it did not carry by their ids',
+      pw.core, [['CW1', 'CW2', '(Empty)'], [['d1'], ['d2'], ['d3']], ['c1', 'c2', 'd1', 'd2', 'd3']]),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
       [rt.twoColumns[0], rt.twoColumns[2], rt.twoColumns[3]], [rt.twoColumns[1], ['d1, CW1'], true]),
     judge('W8 a pill holding a list of one column presses as that column: the core wafer node', rt.listPress, [['CW1'], ['core wafer', 'name']]),
@@ -1287,19 +1482,20 @@ async function suite(M) {
     judge('W6 a cell whose one condition is read off another node marks that node (the core wafer), drawn marked; with a second axis the hub of its rows, its row head the node again; on the row\'s own value - the hub',
       rt.press, [['CW1'], true, ['hub'], ['CW1'], ['hub']]),
     judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
-      rt.mixed, [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
+      rt.mixed, [['CW1'], [[[], 1, ['d1']], [['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
     judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
     judge('W3 die to wafer: the shortest route its own wafer; the route with the bonded_from loop the core wafer, the walk asking that route',
-      [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['in_container', 'bonded_from'], 2, ['d1']]]]]),
+      [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]]]]),
     judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
       ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456', '#123456'] }),
     judge('SH1 the sheet\'s written start: walked from that node alone, along the ways its cells name (measures), its row its type; the cells read in the order they name each other',
-      sh.walked, { asked: [[['measures'], 1, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ']], row: 'lot_slot',
+      sh.walked, { asked: [[[], 1, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ'], [['measures'], 1, 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMSIsInNsb3QiOiIwNSJ9XQ']], row: 'lot_slot',
         cells: { A1: 'L1 · 05', B1: '2', B2: '4', B3: '6', C1: '4', C2: '2', D1: '#CYCLE', E1: 'L1 · 05' } }),
     judge('SH2 a ring of cells: each #CYCLE and the ring; another kind\'s cell reference refused by name', sh.ring,
       { why: 'A cycle: D1 → D2 → D1', other: "Cell references are the sheet's - A1 reads a sheet's cell" }),
     judge('SH3 the key written anew walks once from the new node; written the same, no walk; a type the page has not - #NAME? and its reason, no walk',
-      sh.again, { walks: [1, 2, 2, 2], seeds: ['ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMiIsInNsb3QiOiIwNiJ9XQ'], refused: ['#NAME?', 'No function named nope'] }),
+      // a walk is two: the row walk and the cells' value walk
+      sh.again, { walks: [2, 4, 4, 4], seeds: ['ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMiIsInNsb3QiOiIwNiJ9XQ', 'ledger-entity:v1:WyJsb3Rfc2xvdCIseyJsb3QiOiJMMiIsInNsb3QiOiIwNiJ9XQ'], refused: ['#NAME?', 'No function named nope'] }),
     judge('SH5 a sheet saved and reopened: its row type left to its key (not the first declared type), the same cells drawn', sh.reopen,
       { row: null, cells: ['L1 · 05', '2', '6'] }),
     judge('SH4 a sheet with no key yet draws its grid - its values written, the formulas empty - and walks nothing', sh.empty,
@@ -1377,8 +1573,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'this.oneValued, askMarked, Boolean(this.kind.cells));', 'this.oneValued, askMarked, false);') },
   { id: 'SR3', what: 'a sheet with no key yet draws nothing (Mark a start)', catches: 'SH4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (!seeds && this.kind && this.kind.cells) {', '    if (false) {') },
-  { id: 'SR4', what: 'the walk asks no way an expression names', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'walkOfRoute(this.walkedRoute, this.slotsHeld())', 'walkOfRoute(this.walkedRoute, this.decl.encode)') },
+  { id: 'SR4', what: 'the value walks read the declaration\'s encode - a sheet\'s cells (the ways they name) not walked', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'const slot = this.slotsHeld()[key];', 'const slot = (this.decl.encode || {})[key];') },
   { id: 'SR5', what: 'the kind\'s own slots not read - the declaration\'s encode only', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '[s.key, s.slot || encode[s.key]]', '[s.key, encode[s.key]]') },
   { id: 'M1', what: 'an added part splits the first one, not the largest', catches: ['S5 ', 'G5 '], file: 'rnd_board/split_tree.js', key: 'tree',
@@ -1437,9 +1633,9 @@ const MUTANTS = [
   { id: 'M23', what: 'a map cell a die, not a coordinate - its press marks one', catches: 'Y6 ', file: 'testbed/kinds/map.js', key: 'map',
     mutate: (t) => swap(t, "  for (const { values, ids } of combosOf(rows, ['x', 'y'])) {", "  for (const { values, ids } of rows.flatMap((r) => combosOf([r], ['x', 'y']))) {") },
   { id: 'M25', what: 'the rows every node of the row type the walk reached - not the route\'s ends', catches: 'W1 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '    if (this.walkedRoute && this.walkedSeeds) return routeEnds(', '    if (false) return routeEnds(') },
-  { id: 'M26', what: 'the walk asks no route - every predicate, the default steps', catches: ['W1 ', 'W3 '], file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '{ ...base, ...along, nodeId:', '{ ...base, nodeId:') },
+    mutate: (t) => swap(t, 'this.rowIds0 = this.walkedRoute ? routeEnds(', 'this.rowIds0 = false ? routeEnds(') },
+  { id: 'M26', what: 'the row walk asks no route - every predicate', catches: 'W3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'follow: route ? [...route.follow].sort() : []', 'follow: []') },
   { id: 'M28', what: 'the root hands the colours no declared category colour - the palette colour always', catches: 'C1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'paintRows(rows, { palette: this.palette(), declaration: this.decl,', 'paintRows(rows, { palette: this.palette(), declaration: { ...this.decl, colors: {} },') },
   { id: 'M29', what: 'a start no basket was handed is its raw id', catches: 'K7 ', file: 'walk/start_baskets.js', key: 'baskets',
@@ -1504,8 +1700,38 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      if (!many) { part.setSlot(key, col); return; }', '      { part.setSlot(key, col); return; }') },
   { id: 'M70', what: 'a chip dropped on another moves nothing', catches: 'MC5 ', file: 'testbed/picker.js', key: 'picker',
     mutate: (t) => swap(t, '          moved.splice(k, 0, it);', '          moved.splice(from, 0, it);') },
-  { id: 'M71', what: 'the walk reads a slot of several columns as one slot - its columns\' steps not asked', catches: 'W7 ', file: 'testbed/route.js', key: 'route',
-    mutate: (t) => swap(t, 'const slots = Object.values(encode || {}).flatMap(columnsOf).flatMap(', 'const slots = Object.values(encode || {}).filter(Boolean).flatMap(') },
+  { id: 'PWM1', what: 'a walk asks its first page only - the resume not followed', catches: 'PW1 ', file: 'testbed/part_walks.js', key: 'walks',
+    mutate: (t) => swap(t, 'resume = res.body && res.body.more && res.body.more.resume;', 'resume = null;') },
+  { id: 'PWM2', what: 'a cut walk in hand covers', catches: 'PW2 ', file: 'testbed/part_walks.js', key: 'walks',
+    mutate: (t) => swap(t, 'if (!held || !held.complete) return false;', 'if (!held) return false;') },
+  { id: 'PWM3', what: 'a walk in hand covers a type it did not carry', catches: 'PW2 ', file: 'testbed/part_walks.js', key: 'walks',
+    mutate: (t) => swap(t, 'if (held.collect && (!ask.collect || !ask.collect.every((t) => held.collect.includes(t)))) return false;', '') },
+  { id: 'PWM4', what: 'an edge end the answer did not carry left out - the way through it broken', catches: 'PW7 ', file: 'testbed/part_walks.js', key: 'walks',
+    mutate: (t) => swap(t, 'if (id && !nodes.has(id)) nodes.set(', 'if (false) nodes.set(') },
+  { id: 'PWM5', what: 'a slot of several columns asks one column\'s way', catches: 'W7 ', file: 'testbed/part_walks.js', key: 'walks',
+    mutate: (t) => swap(t, 'for (const col of columnsOf(slot)) {', 'for (const col of [slot]) {') },
+  { id: 'PWM6', what: 'a slot changed walks nothing - folded again only', catches: 'PW4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'for (const key of changedSlots(slotsBefore, this.slotsHeld())) this.walkValues(key);', '') },
+  { id: 'PWM7', what: 'a slot changed walks every slot again', catches: 'PW4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'for (const key of changedSlots(slotsBefore, this.slotsHeld())) this.walkValues(key);', 'this.values = new Map(); this.valueWalks = []; for (const key of Object.keys(this.slotsHeld())) this.walkValues(key);') },
+  { id: 'PWM8', what: 'the walks in hand not looked at - every slot change asks', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '[...this.values.values(), ...this.valueWalks].find((h) => covers(h, ask))', 'null') },
+  { id: 'PWM9', what: 'the rows asked in one request past the seed cap', catches: 'PW5 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'chunks(ask.seeds, this.seedChunk)', '[ask.seeds]') },
+  { id: 'PWM10', what: 'a slot\'s walk in flight not dropped by the next', catches: 'PW6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '  async walkValues(key) {\n    this.abortWalk(key);', '  async walkValues(key) {') },
+  { id: 'PWM12', what: 'the slots of a load walked one after another', catches: 'PW8 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'await Promise.all(Object.keys(this.slotsHeld()).map((key) => this.walkValues(key)));', 'for (const key of Object.keys(this.slotsHeld())) await this.walkValues(key);') },
+  { id: 'PWM13', what: 'a start of the row type walked though the page holds its nodes', catches: 'PW9 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'if (route && !route.hops && !seeds.all && seeds.positive.every(', 'if (false && seeds.positive.every(') },
+  { id: 'PWM14', what: 'the ranking asked on every walk', catches: 'PW9 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'return { ...this.walkParams, ...own, propagation: false };', 'return { ...this.walkParams, ...own };') },
+  { id: 'PWM15', what: 'the runs of a value walk asked one after another', catches: 'PW10 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(this.fetchWalk,', 'chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(k ? (p) => new Promise((r) => setTimeout(r, 3000)).then(() => this.fetchWalk(p)) : this.fetchWalk,') },
+  { id: 'PWM16', what: 'every walk asks no ranking - the walk box loses its ranked list', catches: 'PW11 ', file: 'rnd_board/api.js', key: 'api',
+    mutate: (t) => swap(t, "if (propagation === false) query.set('propagation', 'false');", "query.set('propagation', 'false');") },
+  { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M72', what: 'a press reads a slot of a list as one slot - a list of one never a node', catches: 'W8 ', file: 'testbed/hubs.js', key: 'hubs',
     mutate: (t) => swap(t, 'const slots = Object.values(encode || {}).flatMap(columnsOf).filter((s) => !isExpression(s));', 'const slots = Object.values(encode || {}).filter((s) => s && !isExpression(s));') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
