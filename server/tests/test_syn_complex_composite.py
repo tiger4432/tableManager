@@ -14,6 +14,15 @@ import seed_syn_complex_composite as fixture  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
+def _shipped_catalogue(monkeypatch):
+    """The world's tables (`inspection_run` and its composite key among them) as the shipped catalogue declares
+    them - not the box's gitignored table_config.json, which a fresh checkout does not have (총괄 10-14)."""
+    from tests.support.declaration import use_committed_catalogue
+
+    use_committed_catalogue(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
 def _fixture_finding_kinds():
     """This world's finding kinds, declared BY THE FIXTURE.
 

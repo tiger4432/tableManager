@@ -86,13 +86,13 @@ def test_all_nine_loops_are_answered_for():
 
 
 def test_the_loop_and_the_process_are_two_columns():
-    """Six loops live in ONE process. Collapsing them would make 「the chain process is
+    """Several loops live in ONE process. Collapsing them would make 「the ledger process is
     alive」 read as 「the census loop is turning」, which is the false green this exists to
-    prevent."""
+    prevent. The ledger's two loops beat in a ledger process of their own (19d6da585)."""
     payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
-    in_chain = [i["loop"] for i in payload["loops"] if i["process"] == "chain"]
-    assert in_chain == ["chain", "outbox_purge", "listen", "replay_sweep", "ledger_followup",
-                        "ledger_census"]
+    by_process = lambda name: [i["loop"] for i in payload["loops"] if i["process"] == name]
+    assert by_process("chain") == ["chain", "outbox_purge", "listen", "replay_sweep"]
+    assert by_process("ledger") == ["ledger_followup", "ledger_census"]
 
 
 # ---------------------------------------------------------------------------
@@ -165,12 +165,12 @@ def test_web_is_alive_and_claims_no_lap():
 def test_a_recorded_lap_reaches_the_route_with_its_own_numbers():
     """End to end through the real carrier: record as the loop does, read as the route
     does, and the numbers are the ones the log line had."""
-    heartbeat.record_lap("chain", "ledger_followup", seconds=1.25, depth=7,
+    heartbeat.record_lap("ledger", "ledger_followup", seconds=1.25, depth=7,
                          items=3, pace=60.0, at=1000.0)
     entry = {"age_seconds": 0.5, "stale": False,
-             "laps": {"ledger_followup": dict(heartbeat._laps["chain"]["ledger_followup"],
+             "laps": {"ledger_followup": dict(heartbeat._laps["ledger"]["ledger_followup"],
                                               age_seconds=2.0)}}
-    payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={"chain": entry})
+    payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={"ledger": entry})
 
     followup = by_loop(payload)["ledger_followup"]
     assert followup["last_seconds"] == 1.25
@@ -202,7 +202,7 @@ def test_alive_is_the_processs_and_the_lap_age_is_the_loops():
              "laps": {"ledger_census": {"at": 10.0, "age_seconds": 3600.0,
                                         "seconds": 0.4}}}
     census = by_loop(runtime.loops.runtime_loops(
-        _FakeDb(), heartbeats={"chain": entry}))["ledger_census"]
+        _FakeDb(), heartbeats={"ledger": entry}))["ledger_census"]
     assert census["alive"] is True, "the process is beating"
     assert census["last_age_seconds"] == 3600.0, "and the loop has not turned in an hour"
 

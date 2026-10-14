@@ -17,6 +17,14 @@ import pytest
 # C-2: outbox 이중 발행 근절
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 def test_before_flush_listener_registered_once(db_session):
     """directory_watcher(웹서버/워처의 import 그래프)를 로드해도 database.database 모듈이
     단일 정체성으로 유지되고 before_flush 리스너가 Session에 1개만 등록되어야 한다.

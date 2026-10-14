@@ -28,6 +28,14 @@ def catalogue():
     return trace_router.ledger_declaration_catalog()
 
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 def test_every_entity_carries_the_key_even_when_it_is_empty():
     """🔴 THE KEY IS ALWAYS THERE. An absent key would make "no class declared"
     indistinguishable from "this server does not publish classes" - the same shape the

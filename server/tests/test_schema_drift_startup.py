@@ -23,6 +23,7 @@ HOW A STARTUP PATH GETS TESTED WITHOUT RESTARTING ANYTHING
        startup path genuinely exercised end to end without a restart.
 """
 import os
+import shutil
 import subprocess
 import sys
 
@@ -114,7 +115,11 @@ def drifted_dynamic_db(db_session, tmp_path):
         f"{DYN_TABLE} is not a dynamic table in this process, so this fixture "
         f"cannot exercise the self-healing path at all")
     declared = Base.metadata.tables[DYN_TABLE]
-    drop = [c.name for c in declared.columns][-2:]
+    # two declared columns by NAME, never `stock_qty`: it has to stay behind as VARCHAR under a numeric declaration
+    # (the type mismatch the prediction test asserts). «The last two» is stock_qty · unit_price today - the declared
+    # order ends with the user columns (총괄 10-14).
+    drop = ["category", "unit_price"]
+    assert set(drop) <= {c.name for c in declared.columns}, drop
     engine = create_engine(f"sqlite:///{tmp_path / 'dyn.db'}")
     _narrow_copy(engine, DYN_TABLE, drop)
     return engine, drop
@@ -820,7 +825,7 @@ def test_the_check_does_not_leave_TESTING_set_in_the_calling_process():
         f"the check leaked TESTING into the process environment:\n{out}"
 
 
-def test_dynamic_tables_are_in_scope_of_the_check():
+def test_dynamic_tables_are_in_scope_of_the_check(tmp_path):
     """The config-driven tables are most of the schema and every operator screen
     sits on one. `import database.models` registers the SYSTEM tables only - the
     rest arrive through `init_dynamic_models`, which every entry point calls for
@@ -842,9 +847,14 @@ def test_dynamic_tables_are_in_scope_of_the_check():
         "dyn = set(models.DYNAMIC_TABLES);"
         "print('DYN=%d MISSING=%r' % (len(dyn), sorted(dyn - set(decl))))"
     )
+    # a data root of its own holding the shipped catalogue - the box's gitignored table_config.json is not in a
+    # fresh checkout, and with none the process maps no dynamic table at all (총괄 10-14)
+    (tmp_path / "config").mkdir()
+    shutil.copyfile(os.path.join(SERVER, "config", "sample", "table_config.json.sample"),
+                    tmp_path / "config" / "table_config.json")
     res = subprocess.run([sys.executable, "-c", probe], cwd=ROOT,
                          capture_output=True, timeout=300,
-                         env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                         env={**os.environ, "PYTHONIOENCODING": "utf-8", "ASSY_DATA_ROOT": str(tmp_path)})
     out = (res.stdout + res.stderr).decode("utf-8", "replace")
     assert "MISSING=[]" in out, f"dynamic tables are invisible to the check:\n{out}"
     count = int(out.split("DYN=")[1].split(" ")[0])

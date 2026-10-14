@@ -470,12 +470,22 @@ def test_k_only_a_table_that_has_row_id_is_asked_for_its_rows(monkeypatch):
 def _a_failure_receipt(world):
     """The value the drain's failure receipt carries - taken from its writer, not typed here."""
     from database import crud
-    from ledger import followup
+    from ledger import followup, store
 
     said = []
+
+    class _Connection:
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    engine = type("Engine", (), {"raw_connection": lambda self: _Connection()})()
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(crud, "create_audit_log", lambda *args, **kwargs: said.append(args[5]))
-        followup._write_failure_receipt(None, TABLE, "src", "edit-tx", ValueError("x"), world)
+        patch.setattr(store, "_insert_audit_row", lambda connection, row: None)
+        followup._write_failure_receipt(engine, TABLE, "src", "edit-tx", ValueError("x"), world)
     (value,) = said
     return value
 

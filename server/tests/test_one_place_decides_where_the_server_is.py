@@ -72,7 +72,7 @@ def test_the_server_dir_is_the_server_directory():
 
 def test_the_repo_root_is_one_above_it():
     assert paths.REPO_ROOT == os.path.dirname(paths.SERVER_DIR)
-    assert os.path.isdir(os.path.join(paths.REPO_ROOT, ".git")), paths.REPO_ROOT
+    assert os.path.exists(os.path.join(paths.REPO_ROOT, ".git")), paths.REPO_ROOT      # a linked worktree's .git is a file
 
 
 def test_the_data_root_falls_back_to_the_server_directory():

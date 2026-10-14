@@ -19,6 +19,14 @@ from ledger import explorer  # noqa: E402
 from ledger_api import ledger_subgraph  # noqa: E402
 from tests.test_ledger_trace_pg import ledger_engine  # noqa: E402,F401 - the shipped ledger schema
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 NOW = datetime(2026, 5, 1, tzinfo=timezone.utc)
 DIES = 25
 WAFER = explorer.entity_id("wafer", {"w": "W"})

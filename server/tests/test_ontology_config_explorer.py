@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
+import paths
+
 from admin.auth import require_admin_token, require_admin_token_strict
 from declaration_names import fold_versions
 from ledger.config_explorer import (
@@ -26,7 +28,7 @@ from ledger.config_explorer import (
     reference_diff,
 )
 from ledger.config_explorer_service import OntologyExplorerService
-from ledger.setup import DEFAULT_ONTOLOGY_ROOT, load_setup
+from ledger.setup import load_setup
 from ledger.implementations import trusted_implementations
 from ledger.setup_bundle import (
     SETUP_VERSION, require_ready_bundle, validate_bundle)
@@ -35,15 +37,26 @@ from ledger_api import ontology_config_explorer_router as explorer_router
 from tests.support.ontology_explorer_sample import load_transfer_sample_setup
 
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 @pytest.fixture(scope="module")
-def active_setup():
-    return load_setup()
+def active_setup(tmp_path_factory):
+    """The shipped declaration, loaded once for the module - not the box's gitignored root (총괄 10-14)."""
+    root = tmp_path_factory.mktemp("active")
+    shutil.copyfile(SHIPPED / "ledger_config.json.sample", root / "ledger_config.json")
+    return load_setup(root, catalog=shipped_catalog())
 
 
 @pytest.fixture
 def copied_root(tmp_path):
     target = tmp_path / "ontology"
-    shutil.copytree(DEFAULT_ONTOLOGY_ROOT, target)
+    shutil.copytree(paths.config_path("ontology"), target)               # the shipped one (`_shipped_declaration`)
     return target
 
 
@@ -494,15 +507,17 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
     occurred_at = dt_job["register"]["bind"]["occurred_at"]
     key_binding = dt_job["register"]["bind"]["subject"]["keys"]["dt_job"]
 
-    def entity(entity_type, key):
+    def entity(entity_type, key, binding=key_binding):
         return {"kind": "entity", "entity_type": entity_type,
-                "keys": {key: dict(key_binding)}, "approval_status": "approved"}
+                "keys": {key: dict(binding)}, "approval_status": "approved"}
 
+    # the target reads another column: where the source's bindings are executed (the shipped sample's dt_job), two
+    # ends on one key column are refused as an edge to its own start (setup_bundle, `_entity_key_columns`)
     dt_job["material_to_cell"] = {
         "predicate": "transferred_to@1",
         "bind": {
             "subject": entity("CoreDie@1", "core"),
-            "target": entity("ProcessCell@1", "cell"),
+            "target": entity("ProcessCell@1", "cell", occurred_at),
             "occurred_at": dict(occurred_at),
         },
     }
@@ -1937,7 +1952,7 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
 
     catalog = live_physical_catalog()
     bundle = json.loads(
-        (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+        Path(paths.config_path("ontology", "ledger_config.json")).read_text(encoding="utf-8"))
     # lot_event as the v6 migration leaves it: retired. Before that migration THIS BOX reads
     # its working preparer and refuses it by name (`prepare_retired`) - a refusal about the
     # source, not about the dt_job holes this test makes.
@@ -1986,7 +2001,7 @@ def test_identity_and_order_by_offer_the_same_relation_columns(active_setup):
 
     catalog = live_physical_catalog()
     bundle = json.loads(
-        (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+        Path(paths.config_path("ontology", "ledger_config.json")).read_text(encoding="utf-8"))
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
     identity = by_path["bundle.sources.dt_job.read.identity"]

@@ -30,6 +30,14 @@ import run_watcher                                               # noqa: E402
 from database import models                                      # noqa: E402
 from utils import heartbeat                                      # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _shipped_declaration(monkeypatch, tmp_path_factory):
+    """The repository's declaration and catalogue, not the box's gitignored files - a fresh checkout has none (총괄 10-14)."""
+    from tests.support.declaration import use_committed_declaration
+
+    use_committed_declaration(monkeypatch, tmp_path_factory.mktemp("shipped"))
+
+
 OLD = datetime.now(timezone.utc) - timedelta(seconds=100_000)
 NOW = datetime.now(timezone.utc)
 

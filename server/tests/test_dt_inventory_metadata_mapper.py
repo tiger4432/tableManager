@@ -46,6 +46,7 @@ def test_skips_other_metadata_targets_invalid_json_and_duplicate_jobs():
     assert result["updates"][0]["updates"]["dt_frame"] == '{"ncols": 12}'
 
 
+@requires_live("server/mappers/dt_inventory_metadata_mapper.py to be BYTE-IDENTICAL to the tracked sample beside it")
 def test_live_mapper_matches_tracked_sample():
     mapper_dir = Path(__file__).parents[1] / "mappers"
     assert filecmp.cmp(

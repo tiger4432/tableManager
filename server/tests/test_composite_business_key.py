@@ -85,6 +85,14 @@ def test_composite_business_key_ingestion(tmp_path, sqlite_db, monkeypatch):
     original_session_local = directory_watcher.SessionLocal
     directory_watcher.SessionLocal = lambda: db
     
+    # the table this test declares, in a config root of its own - the watcher re-reads table_config.json, and the
+    # box's gitignored one is not in a fresh checkout (총괄 10-14)
+    import paths
+    config_root = tmp_path / "config_root"
+    config_root.mkdir()
+    (config_root / "table_config.json").write_text(json.dumps(test_table_config), encoding="utf-8")
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(config_root))
+
     original_json_load = json.load
     def mock_json_load(fp, *args, **kwargs):
         if hasattr(fp, 'name') and 'table_config.json' in fp.name:

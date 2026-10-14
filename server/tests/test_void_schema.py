@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "parsers")))
 
 import void_sat_format as vsf                                      # noqa: E402
+from conftest import requires_live                                 # noqa: E402
 from database import crud, schemas                                 # noqa: E402
 
 VOID, RUN = "void_obs", "inspection_run"
@@ -36,8 +37,11 @@ VOID, RUN = "void_obs", "inspection_run"
 # suite for exactly that reason. Reading the file removes the dependency on test
 # ORDER, and reading it during collection (before any test body runs) removes
 # the dependency on whoever mutates the singleton first.
+# The SHIPPED declaration (config/sample) - the box's gitignored table_config.json is not in a fresh checkout and
+# failed this module at collection (총괄 10-14); whether a live one agrees is the test below.
 _CONFIG_PATH = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "..", "config", "table_config.json"))
+    os.path.dirname(__file__), "..", "config", "sample", "table_config.json.sample"))
+_LIVE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "table_config.json"))
 DECLARED = {t: cfg for t, cfg in
             json.load(io.open(_CONFIG_PATH, encoding="utf-8")).items()
             if t in (VOID, RUN)}
@@ -163,16 +167,14 @@ def test_map_key_columns_are_deliberately_absent_so_R3_cannot_bite():
         assert all(c in source for c in (declared or []))
 
 
+@requires_live("config/table_config.json to declare void_obs and inspection_run as the shipped sample does")
 def test_the_sample_declares_the_same_thing_as_the_live_config():
-    """`server/config/*` is gitignored, so `.sample` is what actually ships."""
-    here = os.path.join(os.path.dirname(__file__), "..", "config")
-    sample = json.load(io.open(os.path.join(
-        here, "sample", "table_config.json.sample"),
-        encoding="utf-8"))
+    """`server/config/*` is gitignored, so `.sample` is what actually ships - and a box's live file agrees with it."""
+    live = json.load(io.open(_LIVE_PATH, encoding="utf-8"))
     for table in (VOID, RUN):
-        assert table in sample, f"{table} is missing from table_config.json.sample"
-        assert sample[table]["column_types"] == DECLARED[table]["column_types"]
-        assert sample[table]["composite_key_source"] == \
+        assert table in live, f"{table} is missing from the live table_config.json"
+        assert live[table]["column_types"] == DECLARED[table]["column_types"]
+        assert live[table]["composite_key_source"] == \
             DECLARED[table]["composite_key_source"]
 
 

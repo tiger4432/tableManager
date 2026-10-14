@@ -12,6 +12,7 @@ SAMPLE = os.path.join(paths.SERVER_DIR, "config", "sample")
 def use_committed_declaration(monkeypatch, tmp_path):
     """The config root becomes `tmp_path/config`: ontology/ledger_config.json and table_config.json are the shipped
     samples. Returns that root."""
+    from database import crud
     from ledger_api import declared_entities, ledger_subgraph
 
     root = tmp_path / "config"
@@ -19,6 +20,7 @@ def use_committed_declaration(monkeypatch, tmp_path):
     shutil.copyfile(os.path.join(SAMPLE, "ledger_config.json.sample"), root / "ontology" / "ledger_config.json")
     shutil.copyfile(os.path.join(SAMPLE, "table_config.json.sample"), root / "table_config.json")
     monkeypatch.setattr(paths, "CONFIG_DIR", str(root))
+    monkeypatch.setattr(crud, "CONFIG_PATH", str(root / "table_config.json"))    # bound at import, from CONFIG_DIR
     ledger_subgraph.reset_declaration_cache()
     monkeypatch.setattr(declared_entities, "_cache", None)     # read once per process - again for this root
     monkeypatch.setattr(declared_entities, "_keys", None)
