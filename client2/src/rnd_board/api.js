@@ -367,7 +367,9 @@ export async function fetchSubgraph(params) {
           resume,
           // A caller that asks the next page (the walk screen): only then does the server keep the walk and hand a
           // more.resume (implementer A fe2b894f0). Not asked, nothing sent - cut or not, the answer's resume is null.
-          resumable } = params || {};
+          resumable,
+          // a caller that drops a walk it no longer wants (a part's newer ask, owner 10-14 «연달아 찍는 건 앞 요청 취소»)
+          signal } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -464,8 +466,8 @@ export async function fetchSubgraph(params) {
   if (direction) query.set('direction', direction);
   if (resumable === true) query.set('resumable', 'true');
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
-  const res = await (fetchImpl || fetch)(url, ...(resume ? [{ method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ resume }) }] : []));
+  const init = resume ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resume }) } : null;
+  const res = await (fetchImpl || fetch)(url, ...(init || signal ? [{ ...(init || {}), ...(signal ? { signal } : {}) }] : []));
   if (!res.ok) {
     let detail = null;
     try { detail = await res.json(); } catch (e) { detail = null; }
