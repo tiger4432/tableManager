@@ -73,7 +73,7 @@ const MEASURED = {
     '--sf-line': '#404040', '--sf-stripe': '#404040', '--sf-status': '#61646B' },
   light: { '--sf-bg': '#FFFFFF', '--sf-page': '#F7F9FF', '--sf-text': '#61646B', '--sf-title': '#313336', '--sf-axis': '#D1D4DE', '--sf-line': '#F0F1F2',
     '--sf-stripe': '#F7F9FF', '--sf-status': '#EDF0F7' },
-  both: { '--sf-cell-h': '18px', '--sf-cell-pad': '2px 8px 1px 1px', '--sf-title-inset': '8px', '--sf-active': '#7188F8', '--sf-marked': '#00A650', '--sf-panel-head': '#F2F5FC', '--sf-panel-accent': '#3050EF', '--sf-one': '#A0A0A0',
+  both: { '--sf-cell-h': '18px', '--sf-cell-pad': '2px 8px 1px 6px', '--sf-title-inset': '8px', '--sf-active': '#7188F8', '--sf-marked': '#00A650', '--sf-panel-head': '#F2F5FC', '--sf-panel-accent': '#3050EF', '--sf-one': '#A0A0A0',
     ...Object.fromEntries(CAT.flatMap(([fill, line], k) => [[`--sf-cat-${k + 1}`, fill], [`--sf-cat-${k + 1}-line`, line]])) },
 };
 const DARK = { bg: '#2A2A2A', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: 'rgba(113, 136, 248, 0.15)', one: ['#A0A0A0', '#787878'], cat: CAT };

@@ -185,7 +185,6 @@ export function render(body, model, ctx) {
   const commit = (at, input) => declare(at === model.key ? startPatch(input) : { cells: withCell(model.cells, at, { input }) });
   const redraw = () => render(body, model, ctx);
 
-  body.className = 'sf-part__body sf-sheet';
   const bar = el('div', 'sf-sheet__bar');
   const name = el('span', 'sf-sheet__name', own.sel.length > 1 ? `${own.sel.length} cells` : own.sel[0]);
   const input = el('input', 'sf-sheet__input');
@@ -284,7 +283,16 @@ export function render(body, model, ctx) {
     table.append(tr);
   });
   wrap.append(table);
-  body.replaceChildren(bar, say, wrap);
+  // the formula bar in the root's top tray (the frame standard 5, full width); the grid in the area
+  const top = ctx.tray ? ctx.tray('top') : null;
+  const sheet = el('div', top ? 'sf-sheet' : 'sf-sheet sf-sheet--bar');
+  if (top) {
+    if (top.sheetBar && top.sheetBar.parentNode) top.sheetBar.parentNode.removeChild(top.sheetBar);
+    top.sheetBar = bar;
+    top.append(bar);
+    sheet.append(say, wrap);
+  } else sheet.append(bar, say, wrap);
+  body.replaceChildren(sheet);
   return { resize: () => {}, dispose: () => {} };
 }
 
@@ -309,4 +317,4 @@ export const icon = { tone: 'cat-2', paths: [['M3 3h18v18H3z', 0.25], ['M3 8h18v
 
 // cells - a kind of cells: its slots name each other (A1, B1:B9) and it draws before its key is written (the root's).
 // a sheet is one table of cells: no Top/Bottom N of its rows, no panels (lead 10-14)
-export const kind = { name: 'sheet', label: 'Sheet', slots, title, model: sheetModel, render, icon, cells: true, without: ['show', 'panel'] };
+export const kind = { name: 'sheet', label: 'Sheet', slots, title, model: sheetModel, render, icon, cells: true, without: ['show', 'panel', 'legend'] };

@@ -160,7 +160,7 @@ async function seated(M) {
   await settle();
   const after = part.model.lines.map((l) => l.id);
   // A line pressed: with Ctrl it joins the pick, without it is the pick.
-  const press = (id, ctrlKey) => walk(part.host).filter((n) => n.tagName === 'TR' && n.children.length > 1)
+  const press = (id, ctrlKey) => walk(part.host).filter((n) => n.tagName === 'TR' && n.children.length > 0)
     .find((tr) => tr.children[0]._text === id).dispatch('click', { ctrlKey, stopPropagation() {} });
   const picked = () => markings.entries('marking:pick').map(([id]) => id).sort();
   press('W4', true);
@@ -682,7 +682,7 @@ async function colourEverywhere(M) {
   const drawn = () => parts.map((part) => {
     const k = part.decl.kind;
     if (k === 'scatter') return part.model.points.find((p) => p.id === 'D1').fill;
-    if (k === 'table') return walk(part.host).find((n) => n.tagName === 'TR' && n.children.length > 1 && n.children[0]._text === 'D1').attrs['data-color'];
+    if (k === 'table') return walk(part.host).find((n) => n.tagName === 'TR' && n.children.length > 0 && n.children[0]._text === 'D1').attrs['data-color'];
     if (k === 'crossTable') return walk(part.host).find((n) => n.tagName === 'TH' && n._text === '0').parentNode.children[1].style.background;
     // the sheet's key cell, its row D1 (the first the walk brought)
     if (k === 'sheet') return walk(part.host).find((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-at'] === 'A1').attrs['data-color'];
