@@ -31,7 +31,7 @@
 >          같은 뷰 다시 0.016 · 0.031 s · 계획 Bitmap Index Scan on ix_auto_rv_src_lot_id_search · 화면 줄 auto (slow search) · public 표 행 변화 0
 > ⚠️ 안 잰 것  운영 크기에서 짓는 시간 · 트라이그램 인덱스의 쓰기 비용 · 조인 · 하위 질의가 든 운영 뷰의 계획
 >          후보 프로브(자동 컨펌이 후보를 세는 GROUP BY 읽기)는 이 자리를 안 지난다 — 참조뷰 «보기» 읽기만 묻는다
-> 되돌리기  git revert <착지> -> 서버 · 체인 워커 재기동(지어진 ix_auto_ 인덱스는 남음 — 지우는 법은 위)
+> 되돌리기  git revert 83eac7ccc -> 서버 · 체인 워커 재기동(지어진 ix_auto_ 인덱스는 남음 — 지우는 법은 위)
 > ```
 >
 > ---
