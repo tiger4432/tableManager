@@ -1364,8 +1364,7 @@ async function suite(M) {
     judge('K1b a chain declared: B walks from what A marks, C from what B marks', k.built,
       { b: ['W2', 'W3'], c: ['W2', 'W3', 'W4'], held: [['W2'], ['W2', 'W3'], ['W3', 'W4']] }),
     judge('K2 A marks again: B walks once from it, its marking keeps what its new data holds, so C walks once from that - and its marking the same',
-      // B's row walk from W1 is in hand (it walked from W1 when the page opened - part_walks.js covers): C's only
-      k.chain, { walks: ['W2'], b: ['W1', 'W2'], c: ['W2', 'W3'], held: [['W1'], ['W2'], ['W3']] }),
+      k.chain, { walks: ['W1', 'W2'], b: ['W1', 'W2'], c: ['W2', 'W3'], held: [['W1'], ['W2'], ['W3']] }),
     judge('K2b the same chain seated alone: B and C walk once each, in turn; each marking keeps what its part\'s new data holds',
       sc, { walked: ['B:W1', 'C:W2'], held: [['W1'], ['W2'], ['W3']] }),
     judge('K3 a loop of markings refused and named, the declaration kept; a part walking from what it writes is one; a limit is not a step',
