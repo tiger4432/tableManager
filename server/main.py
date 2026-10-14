@@ -2306,11 +2306,11 @@ def apply_column_filters(query, table_model, table_name, filters):
         # ⚠️ ONE RULE, BOTH REASONS. This used to be paired with a 400 one block above for a
         # virtual-join column whose expression could not be built; that block is gone with
         # the read-time join (S-283), and this refusal - the general one - is what remains.
-        where = (f"'{failing_item}' 항목" if failing_item else "filters 파라미터")
+        where = (f"item '{failing_item}'" if failing_item else "the filters parameter")
         raise HTTPException(
             status_code=400,
-            detail=(f"'{table_name}'의 필터를 만들 수 없습니다 ({where}): {e}. "
-                    f"필터 없이 전체를 돌려주지 않습니다.")) from e
+            detail=(f"The filter for '{table_name}' cannot be built ({where}): {e}. "
+                    f"Nothing is returned rather than the unfiltered table.")) from e
     return query
 
 
@@ -2345,15 +2345,15 @@ def apply_enrichment_queue_predicate(query, table_model, table_name, rule_name, 
     if rule is None:
         raise HTTPException(
             status_code=400,
-            detail=(f"enrichment 규칙 '{rule_name}'을(를) 찾을 수 없습니다. "
-                    f"큐 조건을 만들 수 없으므로 전체를 돌려주지 않습니다."))
+            detail=(f"Enrichment rule '{rule_name}' was not found - no queue condition can be built, "
+                    f"so nothing is returned."))
     if rule["derived_table"] != table_name:
         # The predicate is composed from THIS rule's target fields; against any
         # other table those columns mean nothing (or do not exist).
         raise HTTPException(
             status_code=400,
-            detail=(f"규칙 '{rule_name}'의 큐는 '{rule['derived_table']}' 테이블의 "
-                    f"것입니다 (요청: '{table_name}')."))
+            detail=(f"Rule '{rule_name}' keeps its queue in table '{rule['derived_table']}' "
+                    f"(asked: '{table_name}')."))
     try:
         cond = enrichment.config.queue_predicate_condition(
             table_model, rule, scope=scope or enrichment.config.QUEUE_SCOPE_QUEUE)
@@ -2436,9 +2436,8 @@ def apply_search_filter(query, table_model, table_name, q, cols,
     if unsearchable and not conditions:
         raise HTTPException(
             status_code=400,
-            detail=(f"'{table_name}' 테이블에서 검색할 수 없는 컬럼입니다: "
-                    f"{', '.join(unsearchable)}. 이 컬럼들은 이 테이블에 존재하지 "
-                    f"않습니다. 전체를 돌려주면 검색한 것처럼 보이므로 거부합니다."))
+            detail=(f"Table '{table_name}' cannot be searched by {', '.join(unsearchable)} - "
+                    f"those columns are not in it. Nothing is returned rather than an unsearched list."))
     if unsearchable:
         logger.warning("[Search] '%s': ignoring unsearchable column(s) %s in ?cols=",
                        table_name, ", ".join(unsearchable))
@@ -3362,8 +3361,8 @@ def export_table_csv(
     if len(header) != len(select_entities):
         raise HTTPException(
             status_code=500,
-            detail=(f"'{table_name}' 추출 헤더({len(header)})와 컬럼({len(select_entities)}) "
-                    f"수가 다릅니다. 컬럼이 밀린 CSV를 내보내지 않습니다."))
+            detail=(f"Export of '{table_name}': {len(header)} header(s) and {len(select_entities)} column(s) "
+                    f"differ - the CSV would be shifted, so it is not written."))
 
     # 2. 크기 샘플링 예측 (초기 10행 기반 정밀 추산)
     # [Performance Optimization] 전체 테이블을 읽지 않고 limit(10)만 지정하여 메모리 로드 비용 격감
@@ -3966,9 +3965,8 @@ async def apply_batch_updates_endpoint(
             raise
         raise HTTPException(
             status_code=409,
-            detail=f"'{table_name}'에 이미 같은 업무 키를 쓰는 행이 있습니다. "
-                   f"다른 프로세스가 방금 같은 키를 저장했을 수 있습니다 — "
-                   f"새로고침 후 다시 시도하세요."
+            detail=f"Another row of '{table_name}' already holds this business key - another process "
+                   f"may have just saved it. Refresh and try again."
         )
 
     # [adopt] Decided HERE, before the response is built, not inside the background
@@ -4303,9 +4301,8 @@ async def upload_file(request: Request, table_name: str, user: str = "Unknown",
     if not contained or os.path.basename(norm_dest) != unique_name:
         raise HTTPException(
             status_code=400,
-            detail=("업로드 경로를 안전하게 정규화하지 못했습니다 — "
-                    f"파일명·업로더 이름·상대 경로에서 상위 디렉터리 참조를 제거한 뒤 "
-                    f"다시 시도하십시오."),
+            detail=("The upload path could not be made safe - remove parent-directory parts from the file "
+                    "name, uploader name and relative path, then try again."),
         )
 
     # 3. 파일 저장
@@ -6569,9 +6566,8 @@ def get_replayable_chain_rules(table: str, row_scoped: bool = False):
     if wanted not in crud.TABLE_CONFIG:
         raise HTTPException(
             status_code=404,
-            detail=("표 '%s' 가 카탈로그에 없습니다 — 「규칙이 없다」가 아니라 「그런 표가 "
-                    "없다」입니다. table_config.json 에 등록된 이름인지 확인하십시오"
-                    % wanted))
+            detail=("Table '%s' is not in the catalogue - not 'no rules' but 'no such table'. "
+                    "Check it is a name registered in table_config.json" % wanted))
     return {"status": "success",
             "data": replay.replayable_rules_for(wanted, row_scoped=row_scoped)}
 
@@ -7010,7 +7006,7 @@ def preview_notation_fold(table: str = None, column: str = None,
         previews = [notation_norm.fold_preview(db, table, column, limit=cap)]
     elif table or column:
         raise HTTPException(status_code=400,
-                            detail="table 과 column 은 함께 주거나 둘 다 생략하세요.")
+                            detail="Give table and column together, or leave both out.")
     else:
         previews = notation_norm.declared_previews(db, limit=cap)
     for p in previews:
@@ -7177,7 +7173,7 @@ def get_retroactive_count(op: str, request: Request, scan_limit: int = None,
         db.rollback()
         logger.warning(f"[Retroactive] count failed for op={op}: {e}")
         raise HTTPException(status_code=400,
-                            detail=f"이 연산의 건수를 계산할 수 없습니다: {e}")
+                            detail=f"The count for this operation cannot be computed: {e}")
 
 
 # [STRICT] 쓰기를 촉발한다. `POST /admin/auto-update/run-now`와 **같은 형태**:
@@ -7213,7 +7209,7 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
     except Exception as e:
         db.rollback()
         logger.error(f"[Retroactive] failed to queue op={op}: {e}")
-        raise HTTPException(status_code=500, detail=f"실행 요청을 큐에 넣지 못했습니다: {e}")
+        raise HTTPException(status_code=500, detail=f"The run request could not be queued: {e}")
 
 
 @app.get("/admin/retroactive/runs", dependencies=[Depends(require_admin_token)])
@@ -7237,7 +7233,7 @@ def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         logger.error(f"[Retroactive] failed to list runs: {e}")
-        raise HTTPException(status_code=500, detail=f"실행 목록을 읽지 못했습니다: {e}")
+        raise HTTPException(status_code=500, detail=f"The run list could not be read: {e}")
 
 
 @app.post("/admin/retroactive/runs/{run_id}/cancel",
@@ -7965,7 +7961,8 @@ if os.path.exists(client2_dist_path):
         # can never produce this file. The route stays so a bookmark gets an answer
         # instead of the static catch-all's index.html.
         raise HTTPException(status_code=404,
-                            detail="Enrichment 페이지 폐지됨 · 참조뷰 → 메인 화면 이력 사이드바 탭")
+                            detail="The Enrichment page is retired - reference views are in the main screen's history "
+                                   "sidebar tab")
 
     @app.get("/{file_name:path}")
     async def serve_static_or_index(file_name: str):
