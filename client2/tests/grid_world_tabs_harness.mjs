@@ -238,6 +238,7 @@ async function leftovers(M) {
   left.conflict = await conflicts(M);
   left.cacheTrip = await cacheTrip(M);
   left.addedRows = await addedRows(M);
+  left.lateReads = await lateReads(M);
   S.gridApi = gridApi;
   return left;
 }
@@ -595,6 +596,71 @@ async function addedRows(M) {
   return out;
 }
 
+// A read answered late (lead 6fa4c5094, the app's box): the first table's rows still coming when the table is switched -
+// the new table's read goes at once, the old one is cut and its late answer not drawn; a socket coming back while a page
+// read is out reads from the top the same way (lead 10-15). The server here answers when told, cut or not.
+async function lateReads(M) {
+  const out = {};
+  reset();
+  let drawn = null;
+  S.viewMode = 'pagination';
+  S.gridApi = { ...gridApi, setGridOption: (key, value) => { if (key === 'rowData') drawn = value; } };
+  const keep = globalThis.fetch;
+  const held = [];
+  globalThis.fetch = (url, init = {}) => {
+    const u = String(url);
+    if (!u.includes('/data?')) return keep(url, init);
+    const sp = new URL(u, 'http://box').searchParams;
+    const table = u.split('/tables/')[1].split('/')[0];
+    return new Promise((resolve) => {
+      held.push({ table, skip: Number(sp.get('skip') || 0), signal: init.signal || null,
+        answer: () => resolve({ ok: true, status: 200, text: async () => '', json: async () => ({ data: [{ row_id: `${table}@${sp.get('skip')}`, data: {} }], total: null }) }) });
+    });
+  };
+  const rowsOf = () => (drawn || []).map((r) => r.row_id);
+  const answer = (k) => (held[k] ? held[k].answer() : null);
+  const keepWs = globalThis.WebSocket;
+  const keepQuery = document.querySelector;
+  try {
+  // boot's first table still reading; the dropdown switches
+  S.currentTable = 'dt_log';
+  const first = M.api.fetchData(true);
+  await settle();
+  S.currentTable = 'ledger_atom_rows';
+  const second = M.api.fetchData(true);
+  await settle();
+  out.switchAsked = held.map((h) => h.table);
+  out.firstCut = Boolean(held[0] && held[0].signal && held[0].signal.aborted);
+  answer(1); await second; await settle();
+  answer(0); await first; await settle();
+  out.switchDrawn = rowsOf();
+  out.switchLatch = S.isLoadingMore;
+  // a page read out when the socket comes back: onopen reads from the top
+  held.length = 0; drawn = null;
+  S.currentSkip = 100;
+  const page = M.api.fetchData(false);
+  await settle();
+  let socket = null;
+  globalThis.WebSocket = class { constructor() { socket = this; } close() {} send() {} };
+  document.querySelector = () => fakeNode('div');
+  document.getElementById('table-select').value = 'ledger_atom_rows';
+  try { M.ws.initWebSocket(); await socket.onopen(); } catch (e) { out.socketError = String(e); }
+  await settle();
+  out.socketAsked = held.map((h) => h.skip);
+  out.pageCut = Boolean(held[0] && held[0].signal && held[0].signal.aborted);
+  answer(1); await settle();
+  answer(0); await page; await settle();
+  out.socketDrawn = rowsOf();
+  } finally {
+    held.forEach((h) => h.answer());
+    globalThis.WebSocket = keepWs;
+    document.querySelector = keepQuery;
+    globalThis.fetch = keep;
+    S.gridApi = gridApi;
+  }
+  return out;
+}
+
 // The seat itself, on the state module under test (a state.js copy carries its own state object).
 async function seat(stateModule) {
   const sent = [];
@@ -716,6 +782,12 @@ function suite(out, sent) {
   eq('W25 a deleted row\'s staged edit is dropped and the bottom line says so - a broadcast delete, and a row Apply\'s read no longer finds',
     [out.left.conflict.deleted, out.left.conflict.goneOnRead],
     [{ pending: 0, said: true }, { pending: 0, sent: 0, said: true }]);
+  eq('W36 a table switched while the first table\'s rows still come: the new table\'s read goes at once, the old one is cut, its late answer not drawn, the latch let go (lead 6fa4c5094)',
+    [out.left.lateReads.switchAsked, out.left.lateReads.firstCut, out.left.lateReads.switchDrawn, out.left.lateReads.switchLatch],
+    [['dt_log', 'ledger_atom_rows'], true, ['ledger_atom_rows@0'], false]);
+  eq('W37 the socket back while a page read is out: it reads from the top at once, the page read cut and its late answer not drawn (lead 10-15)',
+    [out.left.lateReads.socketError || null, out.left.lateReads.socketAsked, out.left.lateReads.pageCut, out.left.lateReads.socketDrawn],
+    [null, [100, 0], true, ['ledger_atom_rows@0']]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
     out.left.atOnce, { value: 28, is_overwrite: false, priority_source: null });
   eq('W9 census: the grid\'s reads of the open table go through the seat - api 6 (schema, data, count, Apply\'s read of the '
@@ -736,6 +808,12 @@ const swap = (text, from, to) => {
   return text.split(from).join(to);
 };
 const MUTANTS = [
+  { id: 'G51', what: 'a read from the top waits for the one out - the code before: a switch asks nothing', catches: 'W36', file: 'api.js',
+    mutate: (t) => swap(t, '  if (!state.currentTable || (state.isLoadingMore && !resetSkip)) return;', '  if (!state.currentTable || state.isLoadingMore) return;') },
+  { id: 'G52', what: 'a late answer is drawn - no generation', catches: 'W36', file: 'api.js',
+    mutate: (t) => swap(t, '  const stale = () => mine !== dataGeneration || table !== state.currentTable;', '  const stale = () => false;') },
+  { id: 'G53', what: 'the older read is not cut', catches: 'W37', file: 'api.js',
+    mutate: (t) => swap(t, '  if (dataAbort) dataAbort.abort();\n', '') },
   { id: 'G1', what: 'the seat sends the picked world on any table', catches: 'W0', file: 'state.js',
     mutate: (t) => swap(t, '  () => (tableIsPerWorld() ? state.gridWorld : null));', '  () => state.gridWorld);') },
   { id: 'G2', what: 'a switch keeps the picked world', catches: 'W7', file: 'api.js',
@@ -745,7 +823,7 @@ const MUTANTS = [
   { id: 'G4', what: 'a pick does not read again', catches: 'W5', file: 'api.js',
     mutate: (t) => swap(t, '  drawWorldTabs();\n  await fetchData(true);\n}', '  drawWorldTabs();\n}') },
   { id: 'G5', what: 'the page read goes round the seat', catches: 'W6', file: 'api.js',
-    mutate: (t) => swap(t, '    const res = await gridFetch(url);\n    // ', '    const res = await fetch(url);\n    // ') },
+    mutate: (t) => swap(t, '    const res = await gridFetch(url, { signal: abort.signal });\n', '    const res = await fetch(url, { signal: abort.signal });\n') },
   { id: 'G6', what: 'the list load drops per_world', catches: 'W3 ', file: 'api.js',
     mutate: (t) => swap(t, 'perWorld: data.per_world,', 'perWorld: undefined,') },
   { id: 'G7', what: 'the row jump goes round the seat', catches: 'W6', file: 'timeline.js',
