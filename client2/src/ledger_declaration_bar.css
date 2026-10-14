@@ -32,7 +32,9 @@
 .ldb-arrow { font-family: var(--font-decl-mono); color: var(--text-dim); font-size: 13px; }
 .ldb-at { position: relative; }
 .ldb-pop { position: absolute; top: 34px; left: 0; z-index: 5; width: 300px; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-strong);
-  border-radius: 8px; box-shadow: var(--decl-pop-shadow); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+  border-radius: 8px; box-shadow: var(--decl-pop-shadow); padding: 8px; display: flex; flex-direction: column; gap: 2px;
+  /* a real table's columns (dozens) scroll inside the list; the mockup's six stay under the cap */
+  max-height: min(420px, 60vh); overflow-y: auto; }
 .ldb-opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; padding: 0 10px; border-radius: 6px; font-size: 13px;
   border: 0; background: transparent; color: inherit; font-family: inherit; font-weight: 400; text-align: left; cursor: pointer; letter-spacing: normal; height: auto; }
 .ldb-opt.is-on { background: var(--accent-weak); color: var(--decl-accent-ink); }
