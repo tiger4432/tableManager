@@ -1840,6 +1840,9 @@ const FLOORS = new Map([
   // the account part and its keys, the socket's 4401.
   // 29 -> 30 (lead QA 0056ebc9d): the keys window on the body is one window however often it is drawn (B11 and its mutant).
   ['auth_sso_harness.mjs', 30],
+  // New 2026-10-14 (lead 4c7b42b0a, owner 10-14). The ledger declaration window as sentence bars: its edits on the
+  // short form, its drawing, the test run as its table, the explorer handing it the draft, its chips, the column lists.
+  ['ledger_declaration_bar_harness.mjs', 41],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

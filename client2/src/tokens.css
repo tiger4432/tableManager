@@ -124,6 +124,17 @@
   --sf-pill: #BDBFC5;
   --sf-status: #EDF0F7;
   --sf-status-text: #313336;
+  /* The ledger declaration window (owner 10-14 «이대로 만들어», task/design/LEDGER_DECLARATION_BAR.dc.html) - the
+     mockup's colours the tokens above did not hold, at its values. */
+  --decl-accent-ink: #124e9f;       /* a node chip's text, an open option's */
+  --decl-pred: #7a4bb8;             /* a predicate chip's line */
+  --decl-pred-ink: #5a2f96;
+  --decl-pred-weak: #f2ecfa;
+  --decl-ok-weak: #e3f4e8;          /* the «active» pill */
+  --decl-ok-ink: #1e6b3a;
+  --decl-draft-weak: #fff4e0;       /* the «draft» pill, its text --warning */
+  --decl-bad-ink: #a42a2a;          /* a refusal pill's text, its ground --danger-weak */
+  --decl-pop-shadow: 0 10px 30px rgba(30, 41, 59, 0.18);
 }
 
 /* ── 값 세트 2: Dark (진한 다크 — 지면 L* 9.2, 탈네온 유지) ──
@@ -208,6 +219,16 @@
   --sf-pill: rgba(255, 255, 255, 0.45);
   --sf-status: #61646B;
   --sf-status-text: #FFFFFF;
+  /* The ledger declaration window - the same hues on the dark ground (proposed 10-14, seen in the side-by-side shots). */
+  --decl-accent-ink: #8cc3f7;
+  --decl-pred: #a785de;
+  --decl-pred-ink: #d0bcf2;
+  --decl-pred-weak: rgba(122, 75, 184, 0.24);
+  --decl-ok-weak: rgba(51, 214, 143, 0.16);
+  --decl-ok-ink: #7fe0b2;
+  --decl-draft-weak: rgba(246, 189, 53, 0.16);
+  --decl-bad-ink: #f6a3a3;
+  --decl-pop-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 /* ── 테마 무관 공통 ───────────────────────────────────────── */
@@ -219,6 +240,9 @@
      map_editor2.css and the toast; the grid, the map editor (style.css) and AG-Grid read --font-body. */
   --font-head: "Barlow Condensed", system-ui, sans-serif;
   --font-body: "Barlow", system-ui, sans-serif;
+  /* The ledger declaration window's faces (the owner's mockup) - its page loads them. */
+  --font-decl-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-decl-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
   /* One control height — inputs, selects and buttons stand in one line (mockup ㄱ). */
   --control-h: 36px;

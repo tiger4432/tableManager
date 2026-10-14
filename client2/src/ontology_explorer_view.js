@@ -27,6 +27,7 @@ import { MarkingStore, SIGN } from './rnd_board/marking_store.js';
 import { TablePart } from './rnd_board/table_part.js';
 import { verificationNote } from './verification_note.js';
 import { backlogCells, hasBacklog, censusRefusal } from './source_backlog.js';
+import { renderDeclarationBar, isShortForm, barRun, draftAge, BAR_FIELDS } from './ledger_declaration_bar.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -682,6 +683,64 @@ function renderEntityKeys(state) {
 // The removal becomes safe when a new declaration is offered its fields before it has any.
 // The material for that already exists -- the validator emits `missing_field` with the
 // exact path, and the plan already carries them in `unattached_refusals`.
+const BAR_KIND = Object.freeze({ source_plan: 'source', entity: 'entity', predicate: 'predicate' });
+
+/** The draft's declaration when the bar draws it (a short-form source, a node type, a predicate), else null. */
+function barDeclaration(state) {
+  const kind = BAR_KIND[state.draft && state.draft.target_kind];
+  if (!kind) return null;
+  let raw;
+  try { raw = JSON.parse(state.editorText); } catch { return null; }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return kind === 'source' && !isShortForm(raw) ? null : { kind, raw };
+}
+
+/**
+ * What the bar is handed: the lists out of the answers the screen already holds - the tree's items, and
+ * `/authoring/schema` (implementer B adds `tables` · `entities` · `vocabulary`; absent, the names alone).
+ * The context editDeclaration needs is the same `entities` · `predicates`.
+ */
+export function declarationView(state, kind, json = null) {
+  const schema = state.authoringSchema || {};
+  const items = state.items || [];
+  const named = (k) => items.filter((i) => i.kind === k).map((i) => i.canonical_id);
+  const ents = schema.entities && typeof schema.entities === 'object' ? schema.entities : null;
+  const vocab = schema.vocabulary && typeof schema.vocabulary === 'object' ? schema.vocabulary : null;
+  const tables = schema.tables && typeof schema.tables === 'object' ? schema.tables : {};
+  const draft = state.draft || {};
+  const decl = state.decl || {};
+  const cost = redoCostText(draft.redo);
+  // The More line: the declaration's fields the bar does not draw, read off the form's skeleton - a choice leaf offers
+  // its closed list, a flag true/false, a ref the declarations of its section; a list or object is its JSON.
+  const kinds = schema.authorable_kinds || [];
+  const section = (kinds.find((k) => k.id === draft.target_kind) || {}).section;
+  const shape = schema.skeleton && section ? declarationShape(schema.skeleton, section) : null;
+  const more = ((shape && shape.fields) || []).filter((f) => !(BAR_FIELDS[kind] || []).includes(f.key)).map((f) => {
+    const n = f.node || {};
+    if (n.kind !== 'leaf') return { name: f.key, kind: 'json' };
+    if (n.hint === 'flag') return { name: f.key, kind: 'options', options: [true, false].map((b) => ({ value: b, words: String(b) })) };
+    if (n.hint === 'choice') return { name: f.key, kind: 'options', options: (Array.isArray(schema[n.list]) ? schema[n.list] : []).map((x) => ({ value: x, words: String(x) })) };
+    if (n.hint === 'ref') {
+      const id = (kinds.find((k) => k.section === n.section) || {}).id;
+      return { name: f.key, kind: 'options', options: named(id).map((x) => ({ value: x, words: x })) };
+    }
+    return { name: f.key, kind: 'free' };
+  });
+  return {
+    kind, name: draft.target_id, sourceId: draft.target_id, draftId: draft.draft_id, open: decl.open, typing: decl.typing, json,
+    catalog: { tables: Object.fromEntries(Object.entries(tables).map(([t, v]) => [t, Object.entries((v && v.columns) || {})
+      .map(([name, type]) => ({ name, type: String(type) }))])),
+    keys: Object.fromEntries(Object.entries(tables).filter(([, v]) => v && Array.isArray(v.key)).map(([t, v]) => [t, v.key])) },
+    entities: ents ? Object.entries(ents).map(([type, e]) => ({ type, keys: (e && e.keys) || [], attributes: (e && e.attributes) || [] }))
+      : named('entity').map((type) => ({ type, keys: [], attributes: [] })),
+    predicates: vocab ? Object.entries(vocab).map(([name, p]) => ({ name, qualifiers: (p && p.qualifiers) || [] }))
+      : named('predicate').map((name) => ({ name, qualifiers: [] })),
+    sources: items.filter((i) => i.kind === 'source_plan').map((i) => ({ key: i.key, id: i.canonical_id })),
+    active: !draft.creates_declaration, draftAge: draftAge(draft.updated_at),
+    run: barRun(state.testRun), cost: cost ? { before: cost } : null, more,
+  };
+}
+
 function renderRaw(state) {
   // 🔴 A CREATE DRAFT HAS NO SELECTION TO MATCH. Its target is not in the snapshot --
   // that is what create means -- so it can never equal a selection, and this guard hid the
@@ -757,7 +816,8 @@ function renderRaw(state) {
     // that saving is the write. `Activate` and `Discard` are gone: the first was a second
     // name for what Save already does, and the second was a control nobody asked for.
     const controls = h('div', 'oe-editor-controls');
-    controls.append(button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary'));
+    const bar = barDeclaration(state);
+    if (!bar) controls.append(button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary'));
     // 🔴 WHAT WOULD REFUSE THIS SAVE, BY NAME. An empty list is the answer the screen
     //    never had: it could see a red test run and nothing else, so a draft that was
     //    writable looked blocked.
@@ -793,6 +853,15 @@ function renderRaw(state) {
         || state.invalid?.[state.draft.target_key]) {
       controls.append(button('Delete', 'delete-declaration', state.draft.target_key,
                              'oe-editor-action oe-editor-action-danger'));
+    }
+    // 🔴 THE BAR TAKES THE MIDDLE (owner 10-14 «이대로 만들어», task/design/LEDGER_DECLARATION_BAR.dc.html): a short-form
+    //    source, a node type or a predicate is edited as its sentence bars; the draft's JSON sits behind its JSON button.
+    if (bar) {
+      const json = h('div', 'oe-decl-json');
+      json.append(context, label);
+      editor.append(...saveNotices(state), renderDeclarationBar(document, bar.raw, declarationView(state, bar.kind, state.decl && state.decl.json ? json : null)),
+        validation, controls);
+      return editor;
     }
     if (state.draft.target_kind === 'entity') {
       const keysForm = renderEntityKeys(state);
@@ -2290,6 +2359,32 @@ function renderSkeletonLeaf(context, node, path, value) {
 }
 
 
+/** What the last save said about the declaration on screen - at the head of its form, or of its bar. */
+function saveNotices(state) {
+  const out = [];
+  // 🔴 SAVED BUT NOT APPLIED (order af991aae5): the file holds it and the loader left it out.
+  //    Said at the head of the form it concerns, with the save's own reasons.
+  const shownKey = state.draft?.target_key || state.selection?.key;
+  if (state.notApplied && state.notApplied.key === shownKey) {
+    const line = h('div', 'oe-warning oe-not-applied');
+    line.append(h('b', '', 'Saved but not applied'));
+    for (const e of state.notApplied.errors) line.append(h('div', '', reasonText(e)));
+    out.push(line);
+  }
+  // The fields the server took out because this declaration's own choice switched them off
+  // (lead 8771e43ac) — in the declaration's path words, with the value that went.
+  if (state.droppedFields && state.droppedFields.key === shownKey) {
+    const line = h('div', 'oe-note oe-dropped');
+    line.append(h('b', '', state.droppedFields.saved ? 'Dropped' : 'Dropped on save'));
+    for (const f of state.droppedFields.fields) {
+      line.append(h('div', 'oe-dropped-field',
+        `${splitBundlePath(f.path).join(' › ')} = ${JSON.stringify(f.value)}`));
+    }
+    out.push(line);
+  }
+  return out;
+}
+
 function renderAuthoring(state) {
   const wrap = h('div', 'oe-authoring');
   const plan = state.authoring;
@@ -2631,26 +2726,7 @@ function renderAuthoring(state) {
       return names.length ? { ...row, candidates: names } : row;
     },
   };
-  // 🔴 SAVED BUT NOT APPLIED (order af991aae5): the file holds it and the loader left it out.
-  //    Said at the head of the form it concerns, with the save's own reasons.
-  const shownKey = state.draft?.target_key || state.selection?.key;
-  if (state.notApplied && state.notApplied.key === shownKey) {
-    const line = h('div', 'oe-warning oe-not-applied');
-    line.append(h('b', '', 'Saved but not applied'));
-    for (const e of state.notApplied.errors) line.append(h('div', '', reasonText(e)));
-    wrap.append(line);
-  }
-  // The fields the server took out because this declaration's own choice switched them off
-  // (lead 8771e43ac) — in the declaration's path words, with the value that went.
-  if (state.droppedFields && state.droppedFields.key === shownKey) {
-    const line = h('div', 'oe-note oe-dropped');
-    line.append(h('b', '', state.droppedFields.saved ? 'Dropped' : 'Dropped on save'));
-    for (const f of state.droppedFields.fields) {
-      line.append(h('div', 'oe-dropped-field',
-        `${splitBundlePath(f.path).join(' › ')} = ${JSON.stringify(f.value)}`));
-    }
-    wrap.append(line);
-  }
+  wrap.append(...saveNotices(state));
   if (bodyNode && draftRaw) {
     const body = h('section', 'oe-bucket oe-bucket--form');
     // ㄱ The path bar's seat (lead 619befe8c): the bar is its own part, seated here by the controller.
