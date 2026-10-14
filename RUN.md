@@ -1,5 +1,34 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **원장 다시 번역이 묶음 하나에 죽지 않는다 — 행 색인 키가 넘치는 값 · order_by 가 행을 못 가르는 묶음은 거절 한 줄, 나머지는 끝까지 (총괄 e2f112f02, 소유자 «ㅇㅇ 그렇게해» · «ㅇㅇ ㄱ»)** — git pull · 소급 실행은 실행마다 새 프로세스라 다음 실행부터 · 원장 따라가기는 런처 재기동 뒤
+>
+> ```
+> 무엇     whole_source 다시 번역이 묶음 하나에서 조각째 죽고 실행 failed «run it again» -> 다시 돌려도 같은 묶음에서 또 실패. 두 가지:
+>          ① group_by 묶음의 행 목록이 행 색인 키 한도(2704 바이트)를 넘음 -> 이제 그 쪽만 page key 값 하나씩 다시 하고(따라가기와 같은 호출 · 같은 판정)
+>             넘치는 값만 거절
+>          ② order_by 칸들이 묶음 안 두 행을 같게 적음(선언한 키가 실제로는 겹침) -> 이제 그 묶음만 거절(order_not_unique) — 시각이 안 읽히는 묶음과 같은 자리.
+>             원장 따라가기도 같은 답: 그 사건이 failed 로 남던 것이 그 묶음 거절로 끝남
+> 볼 줄    retroactive.log
+>          ① page k: write · N rows · … · a row-index key over the limit - this page's key values one at a time
+>            refused <소스> <page key> = <값>: a molecule's row list makes its row-index key too long (<DB 문장 — 키 바이트 수가 들어 있음>)
+>               - move this group_by source to a table the chain writes row by row
+>          ② [LedgerGate] source=<소스> refused (order_not_unique), N row(s): molecule {"<group_by>":"<값>"}: driver order_by columns [...] do not uniquely identify source rows
+>          끝 줄 [rescope] … refused N (… order_not_unique N, row-index key too long N)
+> 뜻       ① 그 값의 묶음은 이번에 다시 번역되지 않음 — 옛 원자 · 옛 행 색인 그대로(그 값의 회수도 같이 되돌림)
+>             뿌리는 그 group_by 소스: 결정 규칙이 묶음마다 한 행을 쓰는 표로 옮기고 짧은 소스(행 단위)로 읽는다 — 행 색인 키가 행 하나가 됨
+>             거절 줄이 많다 -> 그 소스의 묶음이 대부분 큼. 다시 번역이 쪽마다 값 하나씩 도느라 느려짐 — 소스를 옮기는 것이 답
+>          ② 그 묶음은 원자가 없음(옛 원자는 회수됨 — 다른 거절과 같음). 고칠 곳은 데이터 또는 order_by: 표의 선언 키가 실제로 유일한지,
+>             아니면 order_by 에 행을 가르는 칸(row_id 등)을 더한다
+> 이 판에서  mix 판(박스 원장 사본) dt_job 565,559 행 통째, 진짜 소급 자식 프로세스:
+>          조각 4  done 543.7 s · refused 25 (row-index key too long 20 · order_not_unique 2 · no_raw_ref 3) · 쪽 12 개가 값 하나씩으로 다시 돎
+>                  넘침 20 은 MIXJOB_users_… 키 4464 · 4496 바이트, order_not_unique 2 는 박스 탐침 job(PROBE-S124 12,000 행 · PROBE-S119 400 행)
+>          조각 1  done 1,541.0 s · refused 같은 25 · 원자 977,166 · 행 색인 543,015 의 md5 가 조각 4 판 뒤와 같음(조각 수와 무관하게 같은 답)
+>          이 판 전: 같은 판이 277k(조각 4) · 493k(조각 1) 행에서 failed
+> 되돌리기  git revert __REVERT__ (재기동 없음, 따라가기는 런처 재기동)
+> ```
+>
+> ---
+>
 > ## [10-14] **원장 다시 번역 — 쪽 끝마다 제가 쓴 파티션을 다시 분석 · 디버그면 원자 쓰기 줄에 디스크/캐시 블록 (총괄 dcccc914b · b513f0d27, 소유자 «ㄱ으로해» · «ㅇㅇ»)** — git pull · 소급 실행은 실행마다 새 프로세스라 다음 실행부터 · 재기동 없음
 >
 > ```
