@@ -4,11 +4,13 @@
 // DOM - so every edit is scored on data; the shell (grid_shell.js) draws the tree and calls these.
 //
 // node   { id }  a leaf  |  { split: 'row' | 'column', children: [node & { size }] }
-// edge   'left' | 'right' | 'top' | 'bottom'
+// edge   'left' | 'right' | 'top' | 'bottom' | 'center' (a drop on a part's middle - the two swap places)
 
 const DIR = { left: 'row', right: 'row', top: 'column', bottom: 'column' };
 /** A panel keeps its title row and a little of its body (a Spotfire title row is 43 with its padding). */
 export const MIN_SIZE = 60;
+/** A drop this near a part's side (a share of the side across it) lands on that edge; farther in, on its middle. */
+export const DROP_EDGE = 0.25;
 
 /** Every leaf's id, left to right, top to bottom. */
 export function leafIds(node) {
@@ -84,6 +86,17 @@ export function dockLeaf(node, movingId, targetId, edge) {
 }
 
 /**
+ * Two leaves' places swapped - each takes the other's place and share, the tree's shape kept (Spotfire: a visual's title
+ * dropped on the middle of another, the two change places).
+ */
+export function swapLeaves(node, a, b) {
+  const ids = leafIds(node);
+  if (a === b || !ids.includes(a) || !ids.includes(b)) return node;
+  const swap = (n) => (n.split ? { ...n, children: n.children.map(swap) } : { ...n, id: n.id === a ? b : n.id === b ? a : n.id });
+  return swap(node);
+}
+
+/**
  * Where Spotfire puts an added visual: it splits the largest one (by area; the first of equals) in two halves - side by
  * side, the new one on the right, when it is wider than high; stacked, the new one on top, otherwise (observed 10-13).
  * @param {Record<string, {width: number, height: number}>} boxes  each leaf's box
@@ -121,11 +134,13 @@ export function withSizes(node, path, sizes) {
 
 /**
  * The edge of a box a point is nearest to (normalised by the box's sides, so a wide box's top and bottom are not
- * favoured) - where a dragged part lands when dropped there.
+ * favoured) - where a dragged part lands when dropped there; `middle` given, a point at least that far in from every
+ * side is the box's middle ('center').
  */
-export function edgeAt(box, x, y) {
+export function edgeAt(box, x, y, middle = 0) {
   const fx = box.width ? (x - box.left) / box.width : 0.5;
   const fy = box.height ? (y - box.top) / box.height : 0.5;
   const near = [['left', fx], ['right', 1 - fx], ['top', fy], ['bottom', 1 - fy]];
-  return near.reduce((best, e) => (e[1] < best[1] ? e : best))[0];
+  const best = near.reduce((b, e) => (e[1] < b[1] ? e : b));
+  return middle > 0 && best[1] >= middle ? 'center' : best[0];
 }

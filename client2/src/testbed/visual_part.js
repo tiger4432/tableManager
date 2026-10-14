@@ -704,6 +704,9 @@ export class VisualPart extends Panel {
     const p = doc.createElement('button');
     p.type = 'button';
     p.className = `sf-pill${opts.vertical ? ' sf-pill--v' : ''}`;
+    // which part's which slot - the picker finds the pill again when the part is drawn again
+    p.setAttribute('data-slot', key);
+    p.setAttribute('data-part', this.decl.id || '');
     const slot = (this.decl.encode || {})[key];
     p.textContent = opts.words || slotWords(slot);
     const caret = doc.createElement('span');

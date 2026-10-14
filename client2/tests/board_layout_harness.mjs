@@ -36,6 +36,7 @@ const REAL = {
   cond: await import('../src/testbed/condition_editor.js'),
   trellis: await import('../src/testbed/trellis.js'),
   shape: await import('../src/testbed/shape_by.js'),
+  picker: await import('../src/testbed/picker.js'),
 };
 const { localStamp } = await import('../src/server_time.js');
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
@@ -117,6 +118,11 @@ async function measure(M) {
   // S6: the edge a drop is nearest, by the box's own proportions
   const box = { left: 0, top: 0, width: 1000, height: 100 };
   out.edges = [T.edgeAt(box, 50, 50), T.edgeAt(box, 950, 50), T.edgeAt(box, 500, 10), T.edgeAt(box, 500, 90)];
+  // S7: a drop on a part's middle (owner 10-14, Spotfire's): the two swap places - shares and the tree's shape kept;
+  // near a side (a quarter of the side across) that edge as before; onto itself or a part not there - nothing moves
+  const tree3 = { split: 'row', children: [leaf('A', 2), { split: 'column', size: 1, children: [leaf('B'), leaf('C', 3)] }] };
+  out.swap = [json(T.swapLeaves(tree3, 'A', 'C')), json(T.swapLeaves(tree3, 'A', 'A')) === json(tree3), json(T.swapLeaves(tree3, 'A', 'Z')) === json(tree3),
+    T.edgeAt(box, 500, 50, T.DROP_EDGE), T.edgeAt(box, 200, 50, T.DROP_EDGE), T.edgeAt(box, 500, 20, T.DROP_EDGE)];
   // L1-L2: the markings' limit
   const book = new HubBook();
   const hub = book.put(hubId('wafer', [['lot', 'L1']]), ['W1', 'W3']);
@@ -188,6 +194,14 @@ async function shells(M) {
   shell.maximize(null);
   out.redraw = { mounts: seen.mounts, same: ['A', 'B', 'C'].every((id, k) => shell.partOf(id) === parts[k]), maxed, cells: cells(),
     root: json(shell.root), docked: walk(host).some((n) => n.attrs && n.attrs['data-dock'] === 'right' && n.children.some((c) => c.attrs['data-panel'] === 'D')) };
+  // G3s: a drop on a middle - A and B swap places, nothing seated again
+  const order = M.tree.leafIds(shell.root);
+  const mountsNow = seen.mounts;
+  const [one, , last] = order;
+  const shape = (r) => json(r).replace(/"id":"[A-C]"/g, 'id');
+  const shapeBefore = shape(shell.root);
+  shell.dock(one, last, 'center');
+  out.swapShell = [M.tree.leafIds(shell.root).join() + (shape(shell.root) === shapeBefore ? ' same shape' : ' other shape'), [last, order[1], one].join() + ' same shape', seen.mounts === mountsNow, cells().length];
   // G4: the last area part closed - the area says so; one added is the tree; a docked panel is not closed
   for (const id of ['A', 'B', 'C']) shell.remove(id);
   shell.remove('D');
@@ -221,6 +235,13 @@ async function pages(M) {
   const visuals = (p) => json(p.declarations().map((d) => [d.id, d.kind, d.sort || null]).sort());
   out.save = { tree: json(second.shell.root) === json(kept.root), visuals: visuals(second) === visuals(first), sortKept: (second.shell.partOf('marked').decl.sort || {}).desc };
   const old = memoryStorage();
+  // G2c: a part dropped on another's middle - the two swap; Save keeps it, a reopen draws it so
+  const swapped = await page(M, memoryStorage());
+  const was = swapped.shell.root;
+  swapped.shell.dock('scatter-1', 'marked', 'center');
+  const keptSwap = swapped.save();
+  out.swapSaved = [M.tree.leafIds(was).join(), M.tree.leafIds(swapped.shell.root).join(), json(keptSwap.root) === json(swapped.shell.root),
+    json(was).replace(/"scatter-1"|"marked"/g, '"_"') === json(swapped.shell.root).replace(/"scatter-1"|"marked"/g, '"_"')];
   old.setItem('testbed:visuals', json([{ ...first.shell.partOf('scatter-1').declaration(), encode: { x: TEMP } }]));
   const third = await page(M, old);
   out.older = { tree: json(third.shell.root) === json(M.main.LAYOUT.root), x: Boolean(third.shell.partOf('scatter-1').decl.encode.x), docks: ['banner', 'start', 'status', 'properties', 'filters'].every((id) => third.shell.partOf(id)) };
@@ -1012,6 +1033,56 @@ async function fourthLook(M) {
   return { resize, tip, labels: [label(narrow), label(loose)], ticks: [narrow.xAxis.splitNumber, narrow.xAxis.axisLabel.hideOverlap, loose.xAxis.splitNumber === undefined] };
 }
 
+/** A pill's picker under its pill (owner 10-14 «알약 선언창 자꾸 화면 좌상단으로 날아가는데»): the pill drawn again
+ *  (a pick redraws the part, the properties panel on every pick) - the picker placed under the new pill, never at 0,0. A
+ *  stub with a layout: an element in the document a box by when it was made, one drawn away 0,0 (the browser's). */
+async function pickerFollows(M) {
+  const doc = makeDoc('dark');
+  let made = 0;
+  const create = doc.createElement.bind(doc);
+  const inDoc = (n) => { for (let up = n; up; up = up.parentNode) if (up === doc.documentElement) return true; return false; };
+  doc.createElement = (tag) => {
+    const n = create(tag);
+    const at = (made += 1);
+    Object.defineProperty(n, 'isConnected', { get: () => inDoc(n) });
+    n.getBoundingClientRect = () => (inDoc(n) ? { left: 100 + (at % 50) * 10, top: 300, right: 160 + (at % 50) * 10, bottom: 321, width: 60, height: 21 }
+      : { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+    n.offsetWidth = 200;
+    n.offsetHeight = 100;
+    return n;
+  };
+  doc.documentElement.clientWidth = 1920;
+  doc.documentElement.clientHeight = 950;
+  const pickerHost = doc.createElement('div');
+  doc.body.appendChild(pickerHost);
+  const picker = new M.picker.SlotPicker(pickerHost, { doc });
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const die = (id, x, y) => ({ id, type: 'die', label: id, keys: { x: String(x), y: String(y) }, attributes: {} });
+  const answer = { nodes: [die('D1', 1, 2), die('D2', 3, 4)], edges: [], truncated: ANSWER.truncated };
+  const decl = { id: 'S', part: 'visual', kind: 'scatter', row: 'die', start: { marking: null }, system: null, filter: [], encode: { x: key('x'), y: key('y') } };
+  const host = doc.createElement('div');
+  doc.body.appendChild(host);
+  const stubCharts = { init: () => ({ setOption() {}, dispatchAction() {}, on() {}, getZr() { return { on() {} }; }, resize() {}, dispose() {} }) };
+  const part = new M.visual.VisualPart(host, { doc, markings: new MarkingStore(), start: decl.start, declaration: decl, kinds: { scatter: M.scatter.kind },
+    filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: stubCharts,
+    openPicker: (at) => picker.open(at), fetchWalk: async () => ({ ok: true, body: JSON.parse(JSON.stringify(answer)) }) });
+  part.mount();
+  await settle();
+  const pillX = () => walk(part.root).find((n) => n.attrs && n.attrs['data-slot'] === 'x');
+  const placed = () => [pickerHost.style.left, pickerHost.style.top];
+  const under = (pill) => { const r = pill.getBoundingClientRect(); return [`${r.left}px`, `${r.bottom + 4}px`]; };
+  const first = pillX();
+  first.listeners.click[0]({});
+  const opened = [placed(), under(first)];
+  // the part drawn again (a walk's answer, a pick before) - its pills are new
+  part.render();
+  const again = pillX();
+  const value = walk(pickerHost).find((n) => n.tagName === 'BUTTON' && String(n.className).startsWith('sf-pop__it') && n._text && n._text.startsWith('y'));
+  if (value) value.listeners.click[0]({});
+  const picked = [placed(), under(pillX() || again)];
+  return { opened, picked, moved: again !== first };
+}
+
 const names = [];
 const failures = [];
 function judge(name, got, want) {
@@ -1043,6 +1114,7 @@ async function suite(M) {
   const tr = await trellisCases(M);
   const fl = await fourthLook(M);
   const shp = await shapeCases(M);
+  const pf = await pickerFollows(M);
   const cc = await categoryColours(M);
   const rp = await recordPoints(M);
   const ly = await layered(M);
@@ -1062,6 +1134,8 @@ async function suite(M) {
       [json({ split: 'row', children: [leaf('A'), { split: 'column', children: [leaf('N'), leaf('B')], size: 1 }] }),
         json({ split: 'row', children: [{ split: 'row', children: [leaf('A'), leaf('N')], size: 1 }, leaf('B')] })]),
     judge('S6 a drop\'s edge is the nearest by the box\'s own proportions', m.edges, ['left', 'right', 'top', 'bottom']),
+    judge('S7 a drop on a part\'s middle: the two swap places, shares and shape kept; near a side that edge; onto itself or a part not there nothing moves', m.swap,
+      ['{"split":"row","children":[{"id":"C","size":2},{"split":"column","size":1,"children":[{"id":"B","size":1},{"id":"A","size":3}]}]}', true, true, 'center', 'left', 'top']),
     judge('L1 the limit: in all of the markings, in any; all empty - every row or none; one empty of two under all - none (not the empty branch); no limit - every row',
       m.limit, [['W2'], ['W1', 'W2', 'W3'], ['W1', 'W2', 'W3', 'W4'], [], [], ['W1', 'W2', 'W3', 'W4']]),
     judge('L2 a hub in a limiting marking counts as its members', m.hub, [['W1', 'W3'], ['W1']]),
@@ -1076,6 +1150,9 @@ async function suite(M) {
     judge('G1 two Boards side by side: one\'s dock and pick leave the other\'s tree and table alone', p.two,
       { otherTree: true, mine: ['W1'], other: [], trees: true }),
     judge('G2 Save keeps the tree and each visual (a table\'s sort too); a reopen draws them', p.save, { tree: true, visuals: true, sortKept: true }),
+    judge('G3s a drop on a part\'s middle swaps the two in the shell, nothing seated again', [s.swapShell[0], s.swapShell[2], s.swapShell[3]], [s.swapShell[1], true, 3]),
+    judge('G2c a part dropped on another\'s middle swaps with it - the tree\'s shape the same, Save keeps it', p.swapSaved,
+      ['scatter-1,cross-1,marked', 'marked,cross-1,scatter-1', true, true]),
     judge('G2b an older save (visuals by id) opens on the layout\'s tree, its visuals laid over, the chrome docked', p.older, { tree: true, x: true, docks: true }),
     judge('G5 each kind added: its id and kind, the largest split (the scatter, stacked: new on top), the new one active and walked; the add window lists them in order',
       p.add, { ids: ['table-1', 'crossTable-1', 'scatter-2', 'map-1', 'sheet-1'], kinds: ['table', 'crossTable', 'scatter', 'map', 'sheet'], active: 'sheet-1', firstPath: '[0,0]',
@@ -1169,6 +1246,8 @@ async function suite(M) {
     judge('DS1 a description under the title', tl.desc, ['Dies by x and y']),
     judge('LG1 the legend column only when the legend has something to draw - a cross table with no Color by none, with one its categories', tl.legends,
       [[true, []], [false, ['A', 'B']]]),
+    judge('PK1 a pill\'s picker under its pill - opened, and after the part drew its pills again and a value was picked: under the new pill, not at 0,0',
+      [pf.opened[0], pf.picked[0], pf.moved], [pf.opened[1], pf.picked[1], true]),
     judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
       shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
     judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows; a cross table holds no Shape by',
@@ -1242,8 +1321,12 @@ const MUTANTS = [
   { id: 'M7', what: 'blank cells follow the sort\'s direction (first when descending)', catches: 'T1 ', file: 'testbed/kinds/table.js', key: 'table',
     mutate: (t) => swap(t, '      if (blank) return blank;\n', '') },
   { id: 'M8', what: 'a dock seats every part again (the page drawn anew)', catches: 'G3 ', file: 'rnd_board/grid_shell.js', key: 'shell',
-    mutate: (t) => swap(t, '    this.root = dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
+    mutate: (t) => swap(t, '    this.root = edge === \'center\' ? swapLeaves(this.root, id, targetId) : dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
       '    this.render({ ...this.layoutNow(), root: dockLeaf(this.root, id, targetId, edge) });') },
+  { id: 'M65', what: 'a drop on a middle docks on an edge - no swap', catches: 'G3s ', file: 'rnd_board/grid_shell.js', key: 'shell',
+    mutate: (t) => swap(t, "this.root = edge === 'center' ? swapLeaves(this.root, id, targetId) : dockLeaf(this.root, id, targetId, edge);", "this.root = dockLeaf(this.root, id, targetId, edge === 'center' ? 'right' : edge);") },
+  { id: 'M66', what: 'a box has no middle - every drop an edge', catches: 'S7 ', file: 'rnd_board/split_tree.js', key: 'tree',
+    mutate: (t) => swap(t, "return middle > 0 && best[1] >= middle ? 'center' : best[0];", 'return best[0];') },
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',
@@ -1336,6 +1419,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));', 'const legendHeld = Boolean(this.kind.units);') },
   { id: 'M63', what: 'the legend column always - 160 empty beside a cross table', catches: 'LG1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));', 'const legendHeld = true;') },
+  { id: 'M64', what: 'the picker placed under the pill it opened from, drawn away or not - 0,0 after the part redraws', catches: 'PK1 ', file: 'testbed/picker.js', key: 'picker',
+    mutate: (t) => swap(t, '      if (!at || at.isConnected !== false) return at;', '      return at;') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      this.watch(at, one);', '') },
   { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',

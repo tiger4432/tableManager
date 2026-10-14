@@ -326,6 +326,24 @@ CELLS.push({ entry: 'testbed.html', after: 'shrunk and grown', rule: 'picture fi
   }
   return null;
 })()` });
+// A drop on a part's middle swaps the two (lead 10-14): Escape - nothing moves; the mark covers the whole part over its middle.
+CELLS.push({ entry: 'testbed.html', after: 'parts swapped by a drop', rule: 'drop on a middle swaps', at: 'sf-drop', expr: `(() => {
+  const s = window.__swapped;
+  if (!s) return 'no drag made';
+  if (s.afterEscape !== s.before) return 'Escape moved the parts: ' + s.before + ' -> ' + s.afterEscape;
+  if (!s.escCovers || !s.covers) return 'the drop mark did not cover the part under the pointer';
+  const want = s.before.split(',').map((id) => (id === 'scatter-1' ? 'table-1' : id === 'table-1' ? 'scatter-1' : id)).join(',');
+  return s.after === want ? null : 'after the drop ' + s.after + ', not ' + want;
+})()` });
+// The picker under its pill each time (lead 10-14): its left at the pill's, its top 4 under it - or flipped, its foot 4 above.
+CELLS.push({ entry: 'testbed.html', after: 'pickers under their pills', rule: 'picker under its pill', at: 'sf-pop-host', expr: `(() => {
+  const all = window.__pickPlaced || [];
+  if (!all.length) return 'no pill picker opened';
+  // its left at the pill's - or held 8 in from the right edge (fitUnder's shift); 4 under it - or flipped, 4 above
+  const offs = all.filter((x) => x.why || !(Math.abs(x.dx) <= 1 || Math.abs(x.atRight - 8) <= 1) || !(Math.abs(x.below - 4) <= 1 || Math.abs(x.above - 4) <= 1));
+  return offs.length ? offs.slice(0, 6).map((off) => (off.why ? off.when + ': ' + off.why
+    : off.kind + ' ' + off.when + ': ' + off.dx + ' px from the pill\\'s left, ' + off.below + ' below it')).join(' | ') : null;
+})()` });
 // A table shows each cell's whole words - its columns as wide as their words, the table scrolling when wider than its
 // area (lead 10-14: «SYN-CX-BW-0…» cut beside empty x · y).
 CELLS.push({ entry: 'testbed.html', after: 'every kind', rule: 'table words whole', at: 'sf-table--rows', expr: `(() => {
@@ -1250,6 +1268,86 @@ const DRIVE = {
       await evaluate(c, `localStorage.setItem('testbed:visuals', ${JSON.stringify(JSON.stringify(KINDS_SAVED))}); true`);
       await openAgain(c, log);
       await until(c, "document.querySelectorAll('.sf-part').length >= 6 && document.querySelectorAll('[data-panel=\"table-1\"] td').length > 0", 15000);
+    }],
+    // A pill's picker stays under its pill (owner 10-14 «알약 선언창 자꾸 화면 좌상단으로 날아가는데»): opened, after a
+    // value picked (the part drawn again), after the window resized - each kind's tray pills; where it stood each time.
+    ['pickers under their pills', async (c) => {
+      const placed = async (when) => evaluate(c, `(() => {
+        const host = document.querySelector('.sf-pop-host');
+        const pill = window.__pickPill && window.__pickPill();
+        if (!host || host.style.display === 'none' || !pill) return { when: ${JSON.stringify(when)}, why: 'no picker or no pill' };
+        const h = host.getBoundingClientRect(), r = pill.getBoundingClientRect();
+        return { when: ${JSON.stringify(when)}, kind: window.__pickKind, dx: Math.round(h.left - r.left), atRight: Math.round(document.documentElement.clientWidth - h.right), below: Math.round(h.top - r.bottom), above: Math.round(r.top - h.bottom) };
+      })()`);
+      const out = [];
+      // each tray pill, then the properties panel's first three (that panel is drawn again on every pick)
+      const trays = await evaluate(c, `[...document.querySelectorAll('.sf-frame__tray .sf-pill')].filter((p) => p.getClientRects().length)
+        .map((p) => [p.closest('[data-panel]').getAttribute('data-panel') + ' ' + [...p.closest('.sf-frame__tray').classList].pop(),
+          "document.querySelector('[data-panel=\\"" + p.closest('[data-panel]').getAttribute('data-panel') + "\\"] ." + [...p.closest('.sf-frame__tray').classList].pop()
+          + " .sf-frame__pills').children[" + [...p.parentNode.children].indexOf(p) + "]"])`);
+      const props = [0, 1, 2].map((i) => [`properties pill ${i}`, `[...document.querySelectorAll('[data-panel="properties"] .sf-pill')][${i}]`]);
+      for (const [label, findExpr] of [...trays, ...props]) {
+        const opened = await evaluate(c, `(() => {
+          const find = () => ${findExpr};
+          window.__pickPill = find; window.__pickKind = ${JSON.stringify(label)};
+          if (!find()) return false; find().click(); return true; })()`);
+        if (!opened) continue;
+        await sleep(300);
+        out.push(await placed('opened'));
+        // a value picked: the part drawn again
+        await evaluate(c, `(() => { const it = [...document.querySelectorAll('.sf-pop-host .sf-pop__col')][1];
+          const b = it && [...it.querySelectorAll('button.sf-pop__it')].find((x) => !x.classList.contains('is-on'));
+          if (b) b.click(); return Boolean(b); })()`);
+        await sleep(600);
+        out.push(await placed('after a pick'));
+        // a second pick in the same picker - the part was drawn again after the first
+        await evaluate(c, `(() => { const b = [...document.querySelectorAll('.sf-pop-host .sf-pop__red')].find((x) => !x.classList.contains('is-on') && !x.disabled);
+          if (b) b.click(); return Boolean(b); })()`);
+        await sleep(600);
+        out.push(await placed('after a second pick'));
+        const [w, h] = await evaluate(c, '[window.innerWidth, window.innerHeight]');
+        await c.send('Emulation.setDeviceMetricsOverride', { width: w - 120, height: h, deviceScaleFactor: 1, mobile: false });
+        await sleep(400);
+        out.push(await placed('window narrowed'));
+        await c.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+        await sleep(400);
+        await evaluate(c, "(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return true; })()");
+        await sleep(200);
+      }
+      await evaluate(c, `window.__pickPlaced = ${JSON.stringify(out)}; true`);
+    }],
+    // A part's title dropped on another's middle - the two swap (owner 10-14, Spotfire's); dragged there and Escape - nothing
+    // moves; while over the middle the drop mark covers the whole part.
+    ['parts swapped by a drop', async (c) => {
+      const got = await evaluate(c, `(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const fire = (type, target, x, y) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y,
+          button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        const cells = () => [...document.querySelectorAll('[data-cell]')].map((x) => x.getAttribute('data-cell')).join(',');
+        const drag = async (from, to, end) => {
+          const title = document.querySelector('[data-cell="' + from + '"] [data-part-title]');
+          const box = document.querySelector('[data-cell="' + to + '"]').getBoundingClientRect();
+          const t0 = title.getBoundingClientRect();
+          const [x, y] = [(box.left + box.right) / 2, (box.top + box.bottom) / 2];
+          fire('pointerdown', title, t0.left + 30, t0.top + 10);
+          fire('pointermove', document, t0.left + 60, t0.top + 30);
+          fire('pointermove', document, x, y);
+          await wait(100);
+          const mark = document.querySelector('.sf-drop');
+          const m = mark ? mark.getBoundingClientRect() : null;
+          const covers = Boolean(m) && Math.abs(m.width - box.width) <= 2 && Math.abs(m.height - box.height) <= 2;
+          if (end === 'escape') document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          else fire('pointerup', document, x, y);
+          await wait(300);
+          return covers;
+        };
+        const before = cells();
+        const escCovers = await drag('scatter-1', 'table-1', 'escape');
+        const afterEscape = cells();
+        const covers = await drag('scatter-1', 'table-1', 'drop');
+        return { before, afterEscape, escCovers, covers, after: cells() };
+      })()`);
+      await evaluate(c, `window.__swapped = ${JSON.stringify(got)}; true`);
     }],
     // the next size opens the page's own layout
     ['saved cleared', (c) => evaluate(c, "localStorage.removeItem('testbed:visuals'); true")],

@@ -27,7 +27,7 @@
 // `document` and the size observer are DEPENDENCIES, so the shell is scorable under bare node.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { leafIds, pathTo, nodeAt, removeLeaf, dockLeaf, addLeaf, resizePair, withSizes, edgeAt, MIN_SIZE } from './split_tree.js';
+import { leafIds, pathTo, nodeAt, removeLeaf, dockLeaf, swapLeaves, addLeaf, resizePair, withSizes, edgeAt, MIN_SIZE, DROP_EDGE } from './split_tree.js';
 
 /**
  * The default observer: the platform's, when there is a platform. A shell running under bare
@@ -310,9 +310,9 @@ export class GridShell {
     this.drawArea();
   }
 
-  /** A panel moved onto an edge of another (`targetId`) or of the page (null). */
+  /** A panel moved onto an edge of another (`targetId`) or of the page (null); onto another's middle - the two swap. */
   dock(id, targetId, edge) {
-    this.root = dockLeaf(this.root, id, targetId, edge);
+    this.root = edge === 'center' ? swapLeaves(this.root, id, targetId) : dockLeaf(this.root, id, targetId, edge);
     this.drawArea();
   }
 
@@ -425,10 +425,10 @@ export class GridShell {
     const cell = under && under.closest ? under.closest('[data-cell]') : null;
     if (!cell || cell.getAttribute('data-cell') === id) return null;
     const box = cell.getBoundingClientRect();
-    return { target: cell.getAttribute('data-cell'), edge: edgeAt(box, x, y), box };
+    return { target: cell.getAttribute('data-cell'), edge: edgeAt(box, x, y, DROP_EDGE), box };
   }
 
-  /** The drop's mark: the half of the target the part would take. */
+  /** The drop's mark: the half of the target the part would take - all of it, its middle (the two swap). */
   showDrop(landing) {
     if (!landing) { if (this.drop) this.drop.remove(); this.drop = null; return; }
     if (!this.drop) {
@@ -437,7 +437,7 @@ export class GridShell {
     }
     const area = this.area.getBoundingClientRect();
     const b = landing.box;
-    const half = { left: [0, 0, 0.5, 1], right: [0.5, 0, 0.5, 1], top: [0, 0, 1, 0.5], bottom: [0, 0.5, 1, 0.5] }[landing.edge];
+    const half = { left: [0, 0, 0.5, 1], right: [0.5, 0, 0.5, 1], top: [0, 0, 1, 0.5], bottom: [0, 0.5, 1, 0.5], center: [0, 0, 1, 1] }[landing.edge];
     Object.assign(this.drop.style, { left: `${b.left - area.left + b.width * half[0]}px`, top: `${b.top - area.top + b.height * half[1]}px`,
       width: `${b.width * half[2]}px`, height: `${b.height * half[3]}px` });
     this.area.appendChild(this.drop);
