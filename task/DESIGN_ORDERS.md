@@ -39192,3 +39192,11 @@ land     on the branch that goes to main next (design-spotfire carries the test 
 게이트       board_layout 칸(② 계층 머리 · 조합 범주 · 옛 선언 읽기 / ③ 맞바꿈 · 붙임 · Esc · 저장 뒤 다시 열기) + 변이 · screen_layout 장면 · 1920 스샷
 순서        ① → ③ → ② (작은 것부터), 항목마다 wip 푸시 · 착지 커밋에 RELEASE_LOG/CODE_MAP
 ```
+
+> **[총괄 -> 응용] 10-14 — 문서 정비 (커밋 29 건 누적)**
+
+```
+범위        lead-board-8 · lead-board-9 (칸 여럿 알약 · columnsOf · 칩 순서) · impl-a-withdraw (파티션 분석 · 회수 한 번 · 단계 칸, 칸은 쓰는 tell 이 더함) · design-run-phase (진행 말)
+할 일       CODE_MAP 해당 절 · PRIMITIVES · 적대 QA 하며 같이 — 문장이 오늘 코드에서 참인지
+끝나면      .claude/doc_sync_pending 지우고 커밋 · 푸시, 해시 한 줄
+```
