@@ -24,7 +24,7 @@ export const SAMPLE_VIEW = Object.freeze({
     { type: 'die', keys: ['mat_id', 'mat_type', 'x', 'y'] }],
   predicates: [{ name: 'processed_with', qualifiers: ['step'] }, { name: 'transferred_to', qualifiers: [] }],
   sources: [{ key: 'source_plan|wafer_process_recipe', id: 'wafer_process_recipe' }, { key: 'source_plan|transfer_event', id: 'transfer_event' }],
-  run: { rows: 3, edges: 3, refused: 1, refusals: ['row 1204: recipe_id is blank — no target'], lines: [
+  run: { draft: true, rows: 3, edges: 3, refused: 1, refusals: ['row 1204: recipe_id is blank — no target'], lines: [
     { row: '1201', sentence: 'wafer-processed-with-recipe', subject: { node: 'wafer', key: 'SYN-BW-103-11' }, predicate: 'processed_with',
       target: { node: 'recipe', key: 'RCP-BOND-07' }, with: { name: 'step', value: 'BOND' }, at: '2026-10-14 09:12:00' },
     { row: '1202', sentence: 'wafer-processed-with-recipe', subject: { node: 'wafer', key: 'SYN-BW-103-12' }, predicate: 'processed_with',

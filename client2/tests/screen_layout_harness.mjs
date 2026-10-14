@@ -46,7 +46,9 @@ const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
 // The test bed and the main grid at the four sizes their pickers are asked at (lead 72b2d7f8f) - 1280x720 is SIZES'.
 const EDGE_SIZES = [[1920, 1080], [1440, 900], [1024, 768]];
 // The main grid at all three too: its counts at 1024x768 were 0 wide under «‹ Prev» (lead 10-14).
-const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'testbed.html': EDGE_SIZES, 'index.html': EDGE_SIZES };
+// The sample page at 1024 and a phone's 390 too: the ledger declaration window's gate is five sizes (lead 4c7b42b0a).
+const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'testbed.html': EDGE_SIZES, 'index.html': EDGE_SIZES,
+  'sample.html': [[1024, 768], [390, 844]] };
 // At 1024x768 the main grid is driven to its first state only: past it (a filter typed at the right end) the run loses
 // Chrome and ends unsettled - not chased (lead 10-14 «그 밖의 1024 결함은 찾아 나서지 말 것»).
 const FIRST_STATE_ONLY = { 'index.html': ['1024x768'] };

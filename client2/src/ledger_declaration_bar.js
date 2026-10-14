@@ -26,7 +26,7 @@ export const BAR_WORDS = Object.freeze({
   attributes: 'Attributes', has: 'has', addAttribute: '+ Attribute', addNodeType: '+ Node type',
   sentences: 'Sentences', perRow: 'one row → one edge per sentence', with: '· with', when: '· when', addQualifier: '+ Qualifier',
   addSentence: '+ Sentence', remove: 'Remove sentence', fromSource: (s) => `— from source ${s}`,
-  run: 'Test run · draft', runSummary: (r) => `first ${r.rows} rows → ${r.edges} edges · ${r.refused} refused`, runNone: 'Not run yet',
+  run: (draft) => `Test run · ${draft ? 'draft' : 'active declaration'}`, runSummary: (r) => `first ${r.rows} rows → ${r.edges} edges · ${r.refused} refused`, runNone: 'Not run yet',
   constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', unset: '?', mixed: 'mixed', timesDiffer: 'sentences differ: one row, one time',
   nodeType: 'Node type', keys: 'keys', addKey: '+ Key', predicate: 'Predicate', from: 'from', addSubject: '+ Subject', addType: '+ Type',
   more: 'More', json: 'JSON',
@@ -149,7 +149,8 @@ export function barRun(run) {
       predicate: a.predicate || '', target, with: quals.length ? { name: quals[0][0], value: String(quals[0][1]) } : null, at: a.occurred_at || '' };
   });
   const count = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-  return { rows: count(run.rows_read), edges: count(run.atoms), refused: count(refused.count), refusals, lines };
+  // ran the draft = the answer names the draft it ran (implementer B's door); else it ran the active declaration
+  return { rows: count(run.rows_read), edges: count(run.atoms), refused: count(refused.count), refusals, lines, draft: Boolean(run.draft_id) };
 }
 
 /** «edited N min ago» off the draft's `updated_at` - the words the mockup draws. */
@@ -317,6 +318,8 @@ function sentenceBar(el, view, raw, at, from = null) {
       options: (view.predicates || []).map((p) => ({ value: p.name, words: p.name, on: p.name === s.predicate })) }),
     el('span', 'ldb-arrow', '→'), ...end(el, view, raw, at, 'target'));
   const quals = qualifiersOf(s);
+  const pred = (view.predicates || []).find((p) => p.name === s.predicate);
+  const free = ((pred && pred.qualifiers) || []).some((q) => !quals.includes(q));
   if (quals.length) {
     bar.append(el('span', 'ldb-word', BAR_WORDS.with));
     for (const q of quals) {
@@ -335,6 +338,11 @@ function sentenceBar(el, view, raw, at, from = null) {
         { ...o, value: { [o.value]: '' }, words: `${o.words} ${BAR_WORDS.blank}`, on: o.on && s.when[wc] === '' },
         { ...o, value: { [o.value]: { not: '' } }, words: `${o.words} ${BAR_WORDS.notBlank}`, on: o.on && isObj(s.when[wc]) && s.when[wc].not === '' }]) }));
   }
+  if (!quals.length && free) {
+    // the predicate takes a qualifier this sentence has none of yet: «· with + Qualifier» (lead 10-14), after the when so a
+    // narrow bar wraps it beside a chip
+    bar.append(el('span', 'ldb-word', BAR_WORDS.with), addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));
+  }
   const x = el('button', 'ldb-x', '×');
   x.type = 'button';
   x.dataset.action = 'decl-remove';
@@ -347,9 +355,9 @@ function sentenceBar(el, view, raw, at, from = null) {
 function preview(el, view) {
   const run = view.run || null;
   const box = el('section', 'ldb-preview');
-  box.setAttribute('aria-label', BAR_WORDS.run);
+  box.setAttribute('aria-label', BAR_WORDS.run(Boolean(run && run.draft)));
   const top = el('div', 'ldb-preview-head');
-  top.append(el('span', 'ldb-label', BAR_WORDS.run), el('span', 'ldb-word', run ? BAR_WORDS.runSummary(run) : BAR_WORDS.runNone));
+  top.append(el('span', 'ldb-label', BAR_WORDS.run(Boolean(run && run.draft))), el('span', 'ldb-word', run ? BAR_WORDS.runSummary(run) : BAR_WORDS.runNone));
   for (const r of (run && run.refusals) || []) top.append(el('span', 'ldb-pill is-bad', r));
   top.append(el('div', 'ldb-grow'));
   // What this save would run again (the explorer's redo cost) - its answer in bold, as the mockup.

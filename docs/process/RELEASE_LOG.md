@@ -381,13 +381,13 @@
 - 머리: **Source ▾**(왼쪽 트리의 Sources 목록과 같음) · 상태 알약 «active» · «draft · edited N min ago» · **JSON** · **Test run** · **Save draft** · **Activate**
 - **Read** 줄: 표 · 원자 시각 칸 · 시간대 · 신원(표의 키). 시각 칩은 시각을 적은 문장 «전부»에 한 번에 적습니다. 문장끼리 시각이 다르면 «mixed» 옆에 거절 알약이 섭니다(서버가 그 소스를 missing_time 으로 거절합니다).
 - **Attributes** 줄: 노드 타입마다 «속성 ← 칸».
-- **Sentences**: 문장 하나가 막대 하나 — 주어 노드 ( 키 ← 칸 ) — 술어 → 대상 노드 ( 키 ← 칸 ) · with 수식어 · when 조건 · ×. 칸 칩 목록 끝의 **Constant…** 를 누르면 상수를 적습니다(Enter).
-- **Test run · draft** 표: 읽은 행 → 엣지 · 거절 수, 거절마다 알약(«row N: 사유»), 원자마다 한 줄. 빨간 결과가 Activate 를 막지 않습니다.
+- **Sentences**: 문장 하나가 막대 하나 — 주어 노드 ( 키 ← 칸 ) — 술어 → 대상 노드 ( 키 ← 칸 ) · with 수식어 · when 조건 · ×. 칸 칩 목록 끝의 **Constant…** 를 누르면 상수를 적습니다(Enter). 수식어가 아직 없는 문장은 그 술어가 받는 수식어가 남았으면 «· with + Qualifier» 가 섭니다.
+- **Test run** 표(제목이 무엇을 돌렸는지 말함 — «Test run · draft» 또는 «Test run · active declaration»): 읽은 행 → 엣지 · 거절 수, 거절마다 알약(«row N: 사유»), 원자마다 한 줄. 빨간 결과가 Activate 를 막지 않습니다.
 - 노드 타입 · 술어: 키 · 속성 / 주어 타입 · 대상 종류 · 수식어 막대, 그 아래 **More** 줄에 나머지 칸 — 정해진 값은 고르기, 목록 · 객체 값은 «이름 · JSON» 칩이 그 칸의 JSON 만 엽니다.
 
 **필요한 조건** 짧은 꼴 소스(문장이 목록 `sentences: [...]`). 옛 꼴 소스는 오늘의 폼 그대로입니다. 칸 목록은 창을 열 때 받는 `/authoring/schema` 의 `tables` 에서 만들고(구현자 B 가 싣는 중 — 그 전엔 칸 목록이 빕니다), 표 선언을 저장하면 그 목록만 다시 읽습니다.
 
-**바뀐 동작** 이 화면의 초안은 **Save draft** 가 초안만 저장하고, **Activate** 가 저장 + 설정 파일 반영입니다(소유자 10-14 「초안 따로 둬 테스트런 결과 보고 수정하고 다시 활성화할수 있게」). **Test run** 은 초안 id 를 실어 보냅니다 — 초안 설정으로 도는 서버 문은 구현자 B 가 여는 중이고, 그 전까지는 활성 설정으로 돕니다.
+**바뀐 동작** 이 화면의 초안은 **Save draft** 가 초안만 저장하고, **Activate** 가 저장 + 설정 파일 반영입니다(소유자 10-14 「초안 따로 둬 테스트런 결과 보고 수정하고 다시 활성화할수 있게」). **Test run** 은 초안 id 를 실어 보냅니다 — 초안 설정으로 도는 서버 문은 구현자 B 가 여는 중이고, 그 전까지는 활성 설정으로 돌며 표 제목이 «Test run · active declaration» 입니다.
 
 **자세히** `client2/src/ledger_declaration_bar.js`(그리기 · 고치기) · `ledger_declaration_bar.css`(시안 CSS, 색은 `tokens.css` 변수) · 시험 `client2/tests/ledger_declaration_bar_harness.mjs`.
 

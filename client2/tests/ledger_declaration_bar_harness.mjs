@@ -132,6 +132,12 @@ async function suite(d) {
   const run = byAction(root, 'test-run')[0];
   ok('B8 Test run names the source and the draft; Save draft and Activate are there', run?.dataset.value === 'wafer_process_recipe' && run?.dataset.draft === 'd-1'
     && byAction(root, 'save-draft-only').length === 1 && byAction(root, 'save-draft')[0]?.textContent === 'Activate');
+  const s2 = bars[1];
+  ok('B11 a sentence with no qualifier yet opens its with group on + Qualifier (its predicate takes one)',
+    byAction(s2, 'decl-add').some((n) => n.dataset.path === 'sentences.1') && s2.textContent.includes('· with'), s2.textContent);
+  const none = bar.renderDeclarationBar(document, RAW, { kind: 'source', catalog: CATALOG, predicates: [{ name: 'processed_with', qualifiers: [] }] });
+  const s2none = byClass(byClass(none, 'ldb-sentences')[0], 'ldb-bar')[1];
+  ok('B12 ...and none when its predicate takes none', !byAction(s2none, 'decl-add').some((n) => n.dataset.path === 'sentences.1'), s2none.textContent);
   const full = bar.renderDeclarationBar(document, sample.SAMPLE_RAW, sample.SAMPLE_VIEW);
   const hangul = walk(full).map((n) => n._text || '').concat(walk(full).map((n) => n.attrs?.['aria-label'] || '')).filter((s) => /[가-힣]/.test(s));
   ok('B9 every word drawn is English', hangul.length === 0, hangul.join(' | '));
@@ -143,6 +149,10 @@ async function suite(d) {
   ok('C2 an atom: its row, its ends by type and key, its qualifier', same(mapped.lines[0], { row: '1201', sentence: 's1', subject: { node: 'wafer', key: 'W-1' },
     predicate: 'processed_with', target: { node: 'recipe', key: 'R-7' }, with: { name: 'step', value: 'BOND' }, at: '2026-10-14 09:12:00' }), JSON.stringify(mapped.lines[0]));
   ok('C3 no run, no table', bar.barRun(null) === null);
+  ok('C4 the run is the draft\'s only when the answer names the draft', mapped.draft === false && bar.barRun({ ...SERVER_RUN, draft_id: 'd-1' }).draft === true);
+  const titled = (r) => byClass(bar.renderDeclarationBar(document, RAW, { kind: 'source', catalog: CATALOG, run: r }), 'ldb-preview-head')[0].textContent;
+  ok('C5 the table\'s title says what ran', titled(mapped).includes('Test run · active declaration') && titled({ ...mapped, draft: true }).includes('Test run · draft'),
+    titled(mapped));
 
   console.log('\n── D. the explorer\'s editor hands the draft to the bar ──');
   const base = { ...store.initialExplorerState, draft: DRAFT, editorText: JSON.stringify(RAW), items: [{ key: 'source_plan|wafer_process_recipe', kind: 'source_plan', canonical_id: 'wafer_process_recipe' }],
@@ -270,6 +280,10 @@ const MUTANTS = [
   { name: 'a node type has no More line', catches: ['G2'], file: 'bar', mutate: swap('root.append(entityBar(el, view, raw || {}), moreBar(el, view, raw || {}));', 'root.append(entityBar(el, view, raw || {}));') },
   { name: 'a field\'s JSON lands as text', catches: ['G3'], file: 'screen', mutate: swap('try { value = JSON.parse(typed); } catch (error)', 'try { value = typed; } catch (error)') },
   { name: 'a broken JSON writes anyway', catches: ['G4'], file: 'screen', mutate: swap("showToast(`Not JSON: ${error.message}`, 'error'); return; }", "value = typed; }") },
+  { name: 'a sentence with no qualifier has no door', catches: ['B11'], file: 'bar', mutate: swap('  if (!quals.length && free) {', '  if (false) {') },
+  { name: 'the door drawn though the predicate takes none', catches: ['B12'], file: 'bar', mutate: swap('  if (!quals.length && free) {', '  if (!quals.length) {') },
+  { name: 'every run called the draft\'s', catches: ['C4', 'C5'], file: 'bar', mutate: swap('draft: Boolean(run.draft_id) };', 'draft: true };') },
+  { name: 'the title ignores what ran', catches: ['C5'], file: 'bar', mutate: swap("top.append(el('span', 'ldb-label', BAR_WORDS.run(Boolean(run && run.draft))),", "top.append(el('span', 'ldb-label', BAR_WORDS.run(true)),") },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
   { name: 'every invalidation drops the schema', catches: ['F2'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', 'authoringSchema: null') },
 ];
