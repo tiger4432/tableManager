@@ -134,7 +134,7 @@ GET /api/ledger/subgraph
 | `negative` | 아니오 | — | 노드 id, 반복 가능 | 대조군 씨앗. **목록에 없는 주어는 미검사이지 대조군이 아니다** |
 | `follow` | 아니오 | — | `술어` 또는 `술어:키1,키2`, **반복 가능** | 이 술어만 따라간다. 없으면 전부. **SQL 에서 좁힌다**(§5 규칙 ①). 🆕 콜론 뒤에 키를 대면 **그 엣지는 씨앗과 그 키가 같은 노드로만** 걷는다(§5 규칙 ④) |
 | `backbone_hops` | 아니오 | 0 | 0..40 | 같은 자재에 머무는 걸음에 주는 «둘째» 예산. **양 끝이 둘 다 dynamic 인 걸음만** 여기서 빠진다 |
-| `resumable` | 아니오 | false | true·false | 🆕 10-13 이어 걸을 호출(걷기 화면)만 true — 잘린 걷기를 걷기 프로세스에 남기고 `more.resume` 열쇠를 준다. 없으면 잘려도 `resume` 은 null(`unexpanded` · `reach` 는 그대로 잘렸다고 말함). `format=rows` 는 남기지 않는다 |
+| `resumable` | 아니오 | false | true·false | 🆕 10-13 이어 걸을 호출(걷기 화면 · 🆕 10-15 시험대 부품 `part_walks.walkToEnd`)만 true — 잘린 걷기를 걷기 프로세스에 남기고 `more.resume` 열쇠를 준다. 없으면 잘려도 `resume` 은 null(`unexpanded` · `reach` 는 그대로 잘렸다고 말함). `format=rows` 는 남기지 않는다 |
 
 🔴 **`backbone_hops` 는 「어느 술어가 공짜냐」를 «묻지» 않는다.** 그 판정은 선언의
 **엔터티 `class`** 가 하고 요청은 예산만 준다. 종전 철자 `continues_hops`(술어마다
