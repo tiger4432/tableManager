@@ -2766,8 +2766,11 @@ def warmup_worker(rules, db_session_factory=None):
             logger.warning(f"[Warmup] DB connection prime failed: {e}")
     t2 = time.monotonic()
     # 3) HTTP 클라이언트 준비 — requests 모듈 import(전역 캐시)로 첫 통지의 import 비용 제거.
+    #    그리고 통지 항목 하나를 지어 둔다 — `event_constants.upsert_item` 이 첫 호출에 인코더
+    #    (fastapi) 를 import 해, 슬롯마다 첫 그룹의 broadcast build 가 0.31 s 였다(총괄 10-14, c1 판).
     try:
         internal_event_client.internal_event_session()
+        event_constants.upsert_item("warmup", {}, None, None)
     except Exception as e:
         logger.warning(f"[Warmup] HTTP session init failed: {e}")
     t3 = time.monotonic()
