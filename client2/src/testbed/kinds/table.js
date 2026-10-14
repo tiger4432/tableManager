@@ -9,9 +9,14 @@ import { slotWords } from '../slot.js';
 const COLUMN = /^col(\d+)$/;
 const order = (key) => Number(COLUMN.exec(key)[1]);
 
-/** The table's slots: one a column the declaration holds, in their order. */
-export const slots = (encode) => Object.keys(encode || {}).filter((k) => COLUMN.test(k)).sort((a, b) => order(a) - order(b))
-  .map((key) => ({ key, label: `Column ${order(key)}` }));
+/** The next column's key. */
+const nextOf = (keys) => `col${keys.length ? Math.max(...keys.map(order)) + 1 : 1}`;
+/** The table's slots: one a column the declaration holds, in their order; the next one «+ Column» in the bottom tray (the
+ *  frame standard 9). */
+export const slots = (encode) => {
+  const keys = Object.keys(encode || {}).filter((k) => COLUMN.test(k)).sort((a, b) => order(a) - order(b));
+  return [...keys.map((key) => ({ key, label: `Column ${order(key)}` })), { key: nextOf(keys), label: 'Add a column', tray: 'bottom', words: '+ Column' }];
+};
 
 /** A read as a cell says it: one value, several joined (the walk table's words), nothing blank. */
 function cellOf(read) {
@@ -35,7 +40,7 @@ function compare(a, b) {
  */
 export function tableModel(rows, ctx) {
   const decl = ctx.declaration || {};
-  const keys = slots(decl.encode).map((s) => s.key);
+  const keys = slots(decl.encode).filter((s) => !s.tray).map((s) => s.key);
   // a line's paint is the root's: marked, and its row's Color by colour when one is declared
   let lines = rows.map((row) => { const p = ctx.paint([row.id]);
     return { id: row.id, cells: keys.map((k) => cellOf(row.reads[k])), marked: p.marked, color: ctx.colored ? p.color : null }; });
@@ -53,7 +58,7 @@ export function tableModel(rows, ctx) {
     const said = lines.map((l) => l.cells[k].value).filter((v) => v !== null);
     return said.length > 0 && said.every((v) => numberOf(v) !== null);
   });
-  const next = `col${keys.length ? Math.max(...keys.map(order)) + 1 : 1}`;
+  const next = nextOf(keys);
   return { keys, lines, sort, numeric, next };
 }
 
@@ -72,15 +77,11 @@ export function render(area, model, ctx) {
     th.addEventListener('click', () => ctx.declare({ sort: { key, desc: on ? !model.sort.desc : false } }));
     head.append(th);
   });
-  const plus = el('th', 'sf-table__add');
-  plus.append(ctx.plus(model.next));
-  head.append(plus);
   table.append(head);
   for (const line of model.lines) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
-    tr.append(el('td', 'sf-table__add'));
     tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark([line.id], event); });
     tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));
     tr.addEventListener('mouseleave', () => ctx.hover(null));

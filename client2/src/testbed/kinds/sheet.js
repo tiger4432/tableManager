@@ -185,7 +185,6 @@ export function render(body, model, ctx) {
   const commit = (at, input) => declare(at === model.key ? startPatch(input) : { cells: withCell(model.cells, at, { input }) });
   const redraw = () => render(body, model, ctx);
 
-  body.className = 'sf-part__body sf-sheet';
   const bar = el('div', 'sf-sheet__bar');
   const name = el('span', 'sf-sheet__name', own.sel.length > 1 ? `${own.sel.length} cells` : own.sel[0]);
   const input = el('input', 'sf-sheet__input');
@@ -284,7 +283,16 @@ export function render(body, model, ctx) {
     table.append(tr);
   });
   wrap.append(table);
-  body.replaceChildren(bar, say, wrap);
+  // the formula bar in the root's top tray (the frame standard 5, full width); the grid in the area
+  const top = ctx.tray ? ctx.tray('top') : null;
+  const sheet = el('div', top ? 'sf-sheet' : 'sf-sheet sf-sheet--bar');
+  if (top) {
+    if (top.sheetBar && top.sheetBar.parentNode) top.sheetBar.parentNode.removeChild(top.sheetBar);
+    top.sheetBar = bar;
+    top.append(bar);
+    sheet.append(say, wrap);
+  } else sheet.append(bar, say, wrap);
+  body.replaceChildren(sheet);
   return { resize: () => {}, dispose: () => {} };
 }
 

@@ -559,28 +559,42 @@ export class VisualPart extends Panel {
     this.root = root;
     this.paintActive();
     if (!this.kind) { body.append(el('div', 'sf-say', `Unknown kind: ${this.decl.kind}`)); return; }
-    if (this.state !== 'ready' || !this.model) {
-      const from = this.start && this.start.marking;
-      const words = { 'no-start': from ? `Mark ${this.markingLabel(from)}` : 'Mark a start', walking: 'Walking…', refused: this.refusal || 'Walk refused', idle: '' }[this.state] || '';
-      body.append(el('div', 'sf-say', words));
-      return;
-    }
-    // THE TEMPLATE (ROOT_PART_BASE_SET: the root is the template, a kind the visible area): the pill trays round the
-    // area - each slot a kind puts on a tray (`tray`: top, left, bottom; `plus`: one more), the kind's note under it - and
-    // the legend beside it: Marker by (a kind drawing a mark a unit), Color by.
+    // THE TEMPLATE (ROOT_PART_BASE_SET: the root is the template, a kind the visible area - the part frame standard,
+    // task/design/BOARD_PART_FRAME_*.dc.html): the pill trays round the area - each slot a kind puts on a tray (`tray`: top,
+    // left, bottom; `plus`: one more), the note under it - and the legend beside it: Marker by (a kind drawing a mark a
+    // unit), Color by, Shape by. Drawn before a walk too: its empty line in the area's centre.
+    const ready = this.state === 'ready' && Boolean(this.model);
     body.classList.add('sf-frame');
+    // the legend column when the legend has something to draw - Marker by (a kind drawing a mark a unit), a Color by or a
+    // Shape by declared; nothing - the column takes nothing (lead 10-14)
+    const encodeNow = this.decl.encode || {};
+    const legendHeld = Boolean(this.kind.units || encodeNow.color || (this.kind.points && encodeNow.shape));
+    if (!legendHeld) body.classList.add('sf-frame--nolegend');
     const trays = Object.fromEntries(['top', 'left', 'bottom'].map((side) => [side, el('div', `sf-frame__tray sf-frame__${side}`)]));
     // a hub whose rows say several values on a slot with no reduce: what to do about it
-    const hint = this.kind.units && unitOf(this.decl) === 'hub' && this.model.several ? 'pick a reduce (Avg · Count · Latest …)' : '';
-    const note = [this.model.note, hint].filter(Boolean).join(' - ');
-    if (note) trays.bottom.append(el('span', 'sf-note', note));
+    const hint = ready && this.kind.units && unitOf(this.decl) === 'hub' && this.model.several ? 'pick a reduce (Avg · Count · Latest …)' : '';
+    const note = [ready ? this.model.note : '', hint].filter(Boolean).join(' - ');
+    if (note) {
+      // one line, cut - its words in its tooltip (the frame standard 8)
+      const n = el('span', 'sf-note', note);
+      n.title = note;
+      n.setAttribute('data-clip-ok', '');
+      trays.bottom.append(n);
+    }
     const pills = Object.fromEntries(Object.entries(trays).map(([side, tray]) => { const g = el('div', 'sf-frame__pills'); tray.append(g); return [side, g]; }));
     for (const s of this.slotList().filter((x) => x.tray)) {
-      pills[s.tray].append(this.pill(s.key, { vertical: s.tray === 'left' }));
+      pills[s.tray].append(this.pill(s.key, { vertical: s.tray === 'left', ...(s.words ? { words: s.words } : {}) }));
       if (s.plus) pills[s.tray].append(this.plus(s.key));
     }
     const area = el('div', 'sf-frame__area');
     const legend = el('div', 'sf-legend');
+    if (!ready) {
+      const from = this.start && this.start.marking;
+      const words = { 'no-start': from ? `Mark ${this.markingLabel(from)}` : 'Mark a start', walking: 'Walking…', refused: this.refusal || 'Walk refused', idle: '' }[this.state] || '';
+      area.append(el('div', 'sf-say', words));
+      body.append(trays.top, trays.left, area, trays.bottom, ...(legendHeld ? [legend] : []));
+      return;
+    }
     if (this.kind.units) {
       const encode = this.decl.encode || {};
       const held = markersOf(encode);
@@ -594,9 +608,11 @@ export class VisualPart extends Panel {
       openPalette: (category, anchor) => this.openPalette(category, anchor) };
     legend.append(legendBlock(this.colors, legendCtx));
     if (this.shapes) legend.append(legendBlock(this.shapes, legendCtx, SHAPE_LEGEND));
-    body.append(trays.top, trays.left, area, trays.bottom, legend);
+    body.append(trays.top, trays.left, area, trays.bottom, ...(legendHeld ? [legend] : []));
     const drawCtx = {
       doc, palette: this.palette(), charts: this.charts,
+      // a tray the kind draws in itself (the sheet's formula bar in the top one - the frame standard 5)
+      tray: (side) => trays[side] || null,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       plus: (key) => this.plus(key),
       // what is under the pointer - {id} a mark it was handed, {ids} rows it grouped; null nothing (tooltip.js)

@@ -45,17 +45,28 @@
 .sf-part__body { position: relative; min-height: 0; }
 /* the root's template round a kind's visible area: the pill trays (top, left, bottom - the note at the bottom's start),
    the area, the legend beside (ROOT_PART_BASE_SET) */
-.sf-part__body.sf-frame { display: grid; grid-template-columns: auto minmax(0, 1fr) calc(var(--sf-legend-w) + 10px); grid-template-rows: auto minmax(0, 1fr) auto; }
+/* the part frame standard (task/design/BOARD_PART_FRAME_*.dc.html): left tray · area · legend / top tray · area · bottom tray,
+   left tray ↔ area 8, tray ↔ area 4; a kind with no legend - its column 0 */
+.sf-part__body.sf-frame { display: grid; grid-template-columns: auto minmax(0, 1fr) calc(var(--sf-legend-w) + 10px); grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: var(--sf-frame-gap-x); row-gap: var(--sf-frame-gap-y); }
+.sf-part__body.sf-frame.sf-frame--nolegend { grid-template-columns: auto minmax(0, 1fr) 0; }
 .sf-frame__top { grid-row: 1; grid-column: 2; }
 .sf-frame__left { grid-row: 2; grid-column: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
 .sf-frame__bottom { grid-row: 3; grid-column: 2; }
-.sf-frame__top, .sf-frame__bottom { display: grid; grid-template-columns: minmax(min-content, 1fr) auto 1fr; align-items: center; min-height: var(--sf-pill-h); padding: 2px 0; }
+.sf-frame__top, .sf-frame__bottom { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; min-height: var(--sf-pill-h); }
+.sf-frame__top { margin-bottom: var(--sf-frame-gap-top); }
+.sf-frame__top:not(:has(.sf-frame__pills > *, .sf-sheet__bar)) { margin-bottom: 0; }
 .sf-frame__top .sf-frame__pills, .sf-frame__bottom .sf-frame__pills { grid-column: 2; }
-.sf-frame__bottom .sf-note { grid-column: 1; min-width: 0; white-space: normal; } /* wraps between words at a narrow width, not cut (QA 10-14 at 1024) */
+/* one line, cut with its words in its tooltip (the frame standard 8 - QA 10-14's wrap at 1024 turned back) */
+.sf-frame__bottom .sf-note { grid-column: 1; min-width: 0; }
+/* the sheet's formula bar in the top tray, full width (the frame standard 5) */
+.sf-frame__top > .sf-sheet__bar { grid-column: 1 / -1; }
 .sf-frame__pills { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .sf-frame__left .sf-frame__pills { flex-direction: column; }
 .sf-frame__pills:empty { display: none; }
-.sf-frame__area { grid-row: 2; grid-column: 2; display: grid; min-height: 0; min-width: 0; }
+.sf-frame__area { grid-row: 2; grid-column: 2; position: relative; display: grid; min-height: 0; min-width: 0; }
+/* the empty line in the area's centre */
+.sf-frame__area > .sf-say { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0; text-align: center; }
 /* trellis (base set 12): panels in a grid, each its value's band over its own picture */
 .sf-trellis { grid-auto-rows: minmax(0, 1fr); gap: var(--space-1); }
 .sf-trellis__panel { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; border: 1px solid var(--sf-line); }
@@ -119,15 +130,20 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-table th.sf-table__corner { text-align: right; cursor: default; }
 .sf-table td { min-width: 70px; cursor: pointer; }
 .sf-table td.is-marked { background: var(--sf-marked); color: var(--sf-marked-text); font-weight: 700; }
+/* the heads stay while the table scrolls in its area: the head row on top, the row heads at the left */
+.sf-table tr:first-child > th { position: sticky; top: 0; z-index: 1; background: var(--sf-bg); }
+.sf-table th.sf-table__row { position: sticky; left: 0; background: var(--sf-bg); }
+.sf-table tr:first-child > th.sf-table__corner { left: 0; z-index: 2; }
 .sf-table__total { font-weight: 700; }
-.sf-table--rows th, .sf-table--rows td { height: var(--sf-row-h); width: var(--sf-col-w); max-width: var(--sf-col-w); padding: var(--sf-row-pad); border: 0; text-align: left;
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+/* the table's columns as wide as their words (head and values), the table the area's width at least - wider, it scrolls
+   sideways in its area (lead 10-14: a name cut beside empty x · y) */
+.sf-table.sf-table--rows { width: 100%; }
+.sf-table--rows th, .sf-table--rows td { height: var(--sf-row-h); padding: var(--sf-cell-pad); border: 0; text-align: left; cursor: default; }
 .sf-table--rows tr:nth-child(even) td { background: var(--sf-stripe); }
 .sf-table--rows .is-num { text-align: right; }
 .sf-table--rows td { cursor: pointer; }
 .sf-table--rows tr.is-marked td { background: var(--sf-marked); color: var(--sf-marked-row-text); }
 .sf-table__sort { margin-left: 4px; font-size: var(--sf-fs-caret); }
-.sf-table--rows .sf-table__add { width: auto; max-width: none; }
 
 /* ── the status bar ── */
 .sf-status { height: 100%; display: flex; align-items: center; justify-content: flex-end; gap: 24px; padding: 0 16px; background: var(--sf-status);
@@ -231,8 +247,9 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 
 /* ── a sheet (owner 10-13): the formula bar - the cell picked, its input, its format, Key - a line for a reason, the A1
    grid on the table's lines; a cell picked is drawn with the active line, the key with the marked colour's edge ── */
-.sf-sheet { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 4px; min-height: 0; }
-.sf-sheet__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.sf-sheet { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 4px; min-height: 0; min-width: 0; }
+.sf-sheet.sf-sheet--bar { grid-template-rows: auto auto minmax(0, 1fr); }
+.sf-sheet__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }   /* wraps at a narrow part - its format controls beside the canon's name · formula · Key */
 .sf-sheet__name { flex: none; min-width: 48px; height: var(--sf-pill-h); line-height: calc(var(--sf-pill-h) - 2px); padding: 0 6px; box-sizing: border-box;
   border: 1px solid var(--sf-pill); color: var(--sf-text); white-space: nowrap; }
 .sf-sheet__input, .sf-sheet__fmt, .sf-sheet__fmtx, .sf-sheet__edit { box-sizing: border-box; min-height: 0; margin: 0; border: 1px solid var(--sf-pill); border-radius: 0;

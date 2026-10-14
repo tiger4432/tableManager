@@ -123,6 +123,26 @@ const BOARD_SAVED = (() => {
     marks: { 'marking:start': [[CX_WAFER, 1]], 'marking:pick': [[CX_RIGHT_DIE, 1]] },
   };
 })();
+// Every kind in one board (lead 10-14, the part frame standard - task/design/BOARD_PART_FRAME_BOARD.dc.html): a map, a
+// cross table with a description, one with no start yet (its empty line), a table, a scatter, a sheet - the canon's six.
+const KINDS_SAVED = (() => {
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const visual = { part: 'visual', row: 'die', start: { marking: 'marking:start' }, system: 'filter:1', filter: [], writes: 'marking:pick' };
+  const row = (ids) => ({ split: 'row', size: 1, children: ids.map((id) => ({ id, size: 1 })) });
+  return {
+    root: { split: 'column', children: [row(['map-1', 'cross-1', 'cross-2']), row(['table-1', 'scatter-1', 'sheet-1'])] },
+    visuals: [
+      { ...visual, id: 'map-1', kind: 'map', title: 'Die map', encode: { x: key('x'), y: key('y') } },
+      { ...visual, id: 'cross-1', kind: 'crossTable', title: 'Dies per row', description: 'Rows: y of the dies the start reached', encode: { rows: key('y') } },
+      { ...visual, id: 'cross-2', kind: 'crossTable', title: 'Picked dies', start: { marking: 'marking:pick' }, encode: { rows: key('x') } },
+      { ...visual, id: 'table-1', kind: 'table', title: 'Dies', encode: { col1: { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] }, col2: key('x'), col3: key('y') } },
+      { ...visual, id: 'scatter-1', kind: 'scatter', encode: { x: key('x'), y: key('y') } },
+      { ...visual, id: 'sheet-1', kind: 'sheet', title: 'Wafer summary', row: null, key: 'A1', start: { node: 'wafer("SYN-CX-BW-001")' },
+        cells: { A2: { input: 'Dies' }, B2: { input: '=Count([in_container~.x])' } }, encode: {} },
+    ],
+    marks: { 'marking:start': [[CX_WAFER, 1]] },
+  };
+})();
 const BOARD_EVENT = '2026-11-23T18:49:00Z';
 for (const [key, a] of Object.entries(ANSWERS)) {
   if (!a || a.same_as || !a.body || !key.startsWith('/api/ledger/subgraph?') || !key.includes(`positive=${encodeURIComponent(CX_WAFER)}`) || !key.includes('hops=')) continue;
@@ -303,6 +323,39 @@ CELLS.push({ entry: 'testbed.html', after: 'shrunk and grown', rule: 'picture fi
     if (!canvas) return 'a picture with no canvas';
     const c = canvas.getBoundingClientRect();
     if (Math.abs(c.width - r.width) > 2 || Math.abs(c.height - r.height) > 2) return 'a canvas ' + Math.round(c.width) + 'x' + Math.round(c.height) + ' in a ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' picture';
+  }
+  return null;
+})()` });
+// A table shows each cell's whole words - its columns as wide as their words, the table scrolling when wider than its
+// area (lead 10-14: «SYN-CX-BW-0…» cut beside empty x · y).
+CELLS.push({ entry: 'testbed.html', after: 'every kind', rule: 'table words whole', at: 'sf-table--rows', expr: `(() => {
+  const cells = [...document.querySelectorAll('.sf-table--rows td, .sf-table--rows th')].filter((c) => c.getClientRects().length);
+  if (!cells.length) return 'no table drawn';
+  const cut = cells.find((c) => c.scrollWidth > c.clientWidth + 1);
+  return cut ? '«' + cut.textContent.slice(0, 30) + '» ' + cut.scrollWidth + ' px of words in a ' + cut.clientWidth + ' px cell' : null;
+})()` });
+// A kind draws inside its area only (lead 10-14, the part frame standard): every shown element in a part's area inside
+// the area's box - or inside a box between them that scrolls or cuts it.
+CELLS.push({ entry: 'testbed.html', after: 'every kind', rule: 'kind inside its area', at: 'sf-frame__area', expr: `(() => {
+  const areas = [...document.querySelectorAll('.sf-frame__area')].filter((a) => a.getClientRects().length);
+  if (areas.length < 6) return 'only ' + areas.length + ' areas drawn';
+  for (const area of areas) {
+    const a = area.getBoundingClientRect();
+    for (const e of area.querySelectorAll('*')) {
+      if (!e.getClientRects().length) continue;
+      let box = a;
+      for (let up = e.parentElement; up && up !== area; up = up.parentElement) {
+        if (/auto|scroll|hidden|clip/.test(getComputedStyle(up).overflow)) { box = up.getBoundingClientRect(); break; }
+      }
+      const r = e.getBoundingClientRect();
+      const inside = (x) => r.left >= x.left - 1 && r.top >= x.top - 1 && r.right <= x.right + 1 && r.bottom <= x.bottom + 1;
+      if (box !== a && !inside(box)) continue;
+      if (!inside(a)) {
+        const kind = (area.closest('.sf-part') || {}).getAttribute ? area.closest('.sf-part').getAttribute('data-kind') : '?';
+        return kind + ': ' + e.tagName.toLowerCase() + (e.className && e.className.baseVal === undefined ? '.' + String(e.className).split(' ')[0] : '')
+          + ' at ' + [r.left, r.top, r.right, r.bottom].map(Math.round) + ' outside its area ' + [a.left, a.top, a.right, a.bottom].map(Math.round);
+      }
+    }
   }
   return null;
 })()` });
@@ -1191,6 +1244,12 @@ const DRIVE = {
       await sleep(800);
       await c.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
       await sleep(800);
+    }],
+    // Every kind in one board (KINDS_SAVED): the part frame the same round each kind's area (lead 10-14)
+    ['every kind', async (c, log) => {
+      await evaluate(c, `localStorage.setItem('testbed:visuals', ${JSON.stringify(JSON.stringify(KINDS_SAVED))}); true`);
+      await openAgain(c, log);
+      await until(c, "document.querySelectorAll('.sf-part').length >= 6 && document.querySelectorAll('[data-panel=\"table-1\"] td').length > 0", 15000);
     }],
     // the next size opens the page's own layout
     ['saved cleared', (c) => evaluate(c, "localStorage.removeItem('testbed:visuals'); true")],

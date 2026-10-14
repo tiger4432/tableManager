@@ -73,7 +73,7 @@ const MEASURED = {
     '--sf-line': '#404040', '--sf-stripe': '#404040', '--sf-status': '#61646B' },
   light: { '--sf-bg': '#FFFFFF', '--sf-page': '#F7F9FF', '--sf-text': '#61646B', '--sf-title': '#313336', '--sf-axis': '#D1D4DE', '--sf-line': '#F0F1F2',
     '--sf-stripe': '#F7F9FF', '--sf-status': '#EDF0F7' },
-  both: { '--sf-cell-h': '18px', '--sf-cell-pad': '2px 8px 1px 1px', '--sf-title-inset': '8px', '--sf-active': '#7188F8', '--sf-marked': '#00A650', '--sf-panel-head': '#F2F5FC', '--sf-panel-accent': '#3050EF', '--sf-one': '#A0A0A0',
+  both: { '--sf-cell-h': '18px', '--sf-cell-pad': '2px 8px 1px 6px', '--sf-title-inset': '8px', '--sf-active': '#7188F8', '--sf-marked': '#00A650', '--sf-panel-head': '#F2F5FC', '--sf-panel-accent': '#3050EF', '--sf-one': '#A0A0A0',
     ...Object.fromEntries(CAT.flatMap(([fill, line], k) => [[`--sf-cat-${k + 1}`, fill], [`--sf-cat-${k + 1}-line`, line]])) },
 };
 const DARK = { bg: '#2A2A2A', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: 'rgba(113, 136, 248, 0.15)', one: ['#A0A0A0', '#787878'], cat: CAT };
@@ -552,9 +552,9 @@ function suite(out, page, saved, counted) {
     { rows: 3, of: 6, system: 2, part: 1, hidden: 1 });
   eq('T10 two scatters on one page: a slot changed in one stays there - it alone draws again and lets its old chart go; the other one stands',
     page.twoParts, [['x', 'y'], ['x', 'y'], 1, true, false, true]);
-  eq('T11 a third kind draws through the same root: its title, its own declaration\'s field and slot reduce; the template\'s pills - its slot on its tray, Color by in the legend',
+  eq('T11 a third kind draws through the same root: its title, its own declaration\'s field and slot reduce; the template\'s pills - its slot on its tray; no legend with nothing in it (no Marker by, Color by or Shape by - lead 10-14)',
     page.kindAdd, { drawn: ['rows 6 · every 3 · Max'], title: ['List of Max(temp · value)'], statTitle: 'List of Max(temp · value)',
-      pills: [['Max(temp · value)', true], ['(None)', true]] });
+      pills: [['Max(temp · value)', true]] });
   eq('T19 census: the root names no kind - no kind name or slot key as a string, no .kind compared, no slot read off encode by name',
     [counted.rootAsks, counted.canary], [[], [true, true, true]]);
   eq('T21 census: one seedsOf in the client - the marking store\'s', counted.seeds, ['rnd_board/marking_store.js']);
