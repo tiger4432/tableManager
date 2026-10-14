@@ -31,6 +31,7 @@ def _plan(*scans):
     ("((lot_id)::text = ANY ('{a,b}'::text[]))", [("t", "lot_id", "slow filter", None)]),
     ("((\"Odd Col\")::text ~~* '%abc%'::text)", [("t", "Odd Col", "slow search", None)]),
     ("(((\"Odd Col\")::text ~~* '%abc%'::text) OR (n = ANY ('{1,2}'::integer[])))", []),
+    ("((n = 1) OR ((k)::text = 'x'::text))", []),
     ("(n = m)", []),
     ("((lot_id)::text !~~ '%abc%'::text)", []),
     ("(n >= 5)", []),
@@ -166,6 +167,26 @@ def test_a_slow_search_is_asked_built_said_and_then_served(table, monkeypatch, c
     assert models.ensure_auto_indexes(table, [(TABLE, ["s"], "slow search")], say=said.append) == {}, "built once"
     assert models.search_column_states(table, TABLE, ["s"], {TABLE: ENTRY}) == {"s": "built"}, \
         "a grid search's state counts it, as a sort's counts an automatic sort index"
+
+
+@pytest.mark.pg
+def test_a_search_over_a_number_names_its_column(table):
+    """CAST of a number is an expression key (a varchar's folds to the column) - the screen still names the column."""
+    models.ensure_auto_indexes(table, [(TABLE, ["n"], "slow search")], say=lambda line: None)
+    name = models.auto_index_name(TABLE, ["n"], models.AUTO_SLOW_SEARCH)
+    [row] = [r for r in models.index_states(table, {TABLE: ENTRY}, static=False)["declared"] if r["name"] == name]
+    assert (row["columns"], row["search"], row["purpose"]) == (["n"], True, "auto (slow search)")
+    assert index_wants.ask(TABLE, ["n"], "slow search", 2.5, table) is False
+
+
+@pytest.mark.pg
+def test_a_btree_on_the_column_does_not_serve_a_search(table):
+    from sqlalchemy import text
+
+    with table.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text('CREATE INDEX hand_s ON "%s" (s)' % TABLE))
+    assert index_wants.ask(TABLE, ["s"], "slow search", 2.5, table) is True
+    assert index_wants.ask(TABLE, ["s"], "slow filter", 2.5, table) is False, "it serves the equal one"
 
 
 @pytest.mark.pg

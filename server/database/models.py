@@ -1705,8 +1705,8 @@ INDEX_INVALID = "invalid"
 INDEX_BUILDING = "building"
 INDEX_UNKNOWN = "unknown"
 
-#: The columns a trigram index reads (its keys are `search_text` expressions - their columns are in pg_depend), or
-#: none: `{x}` is the pg_index row's alias. Both catalogue reads below carry it.
+#: The columns a trigram index reads, or none - from pg_depend: a key is a column (a varchar's `search_text` folds to
+#: it) or an expression (indkey 0). `{x}` is the pg_index row's alias; both catalogue reads below carry it.
 _TRIGRAM_READS = (
     "ARRAY(SELECT a.attname FROM pg_depend d JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid"
     "      WHERE d.classid = 'pg_class'::regclass AND d.objid = {x}.indexrelid AND d.refobjsubid > 0"
