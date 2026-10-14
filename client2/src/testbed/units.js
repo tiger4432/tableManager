@@ -71,6 +71,29 @@ export function marksOf(rows, keys, recordsOf, words) {
   return { marks, dropped };
 }
 
+/** A hub (or a value record) whose rows say several values on a slot with no reduce - why it is not drawn. */
+export const HUB_MANY_WORDS = 'several values - pick a reduce (Avg · Count · Latest …)';
+
+/**
+ * What a kind draws, from rows - THE root's one spreading (lead-board-13 ②): a kind of one value a cell (`cells`, the
+ * sheet) the rows with several refused; a Marker by (a hub, a value record - `record` the slot a record spreads) its units,
+ * one with several left out; else the marks (marksOf). Every kind's root and its tests ask this one.
+ * `drawn` - the slots the kind draws a mark's value of (its own: a scatter's x and y, a table's columns); the root's own
+ * slots keep their row's reading - Panel by splits rows (a row in two panels), Marker by makes the hubs, Color by and
+ * Shape by paint several as the one look.
+ * @returns {{units: Array, dropped: Array<{id, why}>}}
+ */
+export function spreadUnits(rows, decl, keys, { cells = false, record = null, recordsOf = () => null, words = (k) => k, marked = null, drawn = keys } = {}) {
+  if (cells) return { units: refuseMany(rows), dropped: [] };
+  if (record && unitOf(decl) !== 'node') {
+    const all = unitsOf(rows, decl, keys, record, marked);
+    const one = all.filter((u) => !drawn.some((k) => u.reads[k] && u.reads[k].state === 'several'));
+    return { units: one, dropped: all.filter((u) => !one.includes(u)).map((u) => ({ id: u.id, why: HUB_MANY_WORDS })) };
+  }
+  const got = marksOf(rows, drawn, recordsOf, words);
+  return { units: got.marks, dropped: got.dropped };
+}
+
 /** A kind that draws one value a place (the sheet): a row's several read is the root's refusal - #MANY and why. */
 export const refuseMany = (rows) => rows.map((row) => {
   const many = Object.entries(row.reads).filter(([, r]) => r && r.state === 'several');

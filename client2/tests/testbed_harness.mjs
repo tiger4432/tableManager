@@ -629,9 +629,10 @@ function suite(out, page, saved, counted) {
     page.custom, ['The expression ends too soon', true, 'No value named nope on wafer',
       [{ expr: 'If([product] = "A", "is A", "not A")', words: ['If([product] = "A", "is A", "not A")'] }], ['is A', 'not A']]);
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
-  eq('T9a All walks the row type described; the rows and counts; every drawable point drawn',
-    [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null]], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);
-  eq('T9b a drag marks what the rectangle holds, replacing; the status bar counts it', [page.dragMarked, page.dragStats], [['W2', 'W4'], 2]);
+  // W3's two temps two points (x and y the scatter's own slots; its two products the one look of Color by) - W6 none
+  eq('T9a All walks the row type described; the rows and counts; every drawable point drawn - a several x a point each',
+    [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null]], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 6]);
+  eq('T9b a drag marks what the rectangle holds, replacing; the status bar counts it (W3 a row)', [page.dragMarked, page.dragStats], [['W2', 'W3', 'W4'], 3]);
   eq('T9c a cross table cell marks its hub whole; the scatter draws its members marked', [page.hubMark, page.hubShown],
     [[1, true, ['W1', 'W3']], ['W1']]);
   eq('T9c\' «K marked rows» counts the part\'s rows the marking holds - one hub entry of two members is 2', page.hubCounted, [1, 2]);
@@ -700,8 +701,11 @@ const MUTANTS = [
     mutate: (t) => swap(swap(t, '      if (!same) { dropped.push({ id: row.id, why: PAIR_WORDS(words(many[0]), words(many[1])) }); continue; }', '      if (false) { continue; }'), '      picks = recs[0].map((rec) => lists.map((l) => l.find((r) => r.record === rec).value));', '      picks = lists[0].map((_, i) => lists.map((l) => l[i].value));') },
   { id: 'M62', what: 'a mark forgets its row - a press marks nothing', catches: 'T40', file: 'testbed/units.js',
     mutate: (t) => swap(t, '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads });', '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [`${row.id}#${k}`], row: row.id, reads });') },
+  { id: 'M66', what: 'the root\'s own slots (Color by) split a row too - W3 left out for its two products', catches: 'T9a', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    const drawn = own.map((s) => s.key).filter((k) => keysRead.includes(k));', '    const drawn = keysRead;') },
+  // in the root's call: a units.js copy reaches M.units only - the root imports the original
   { id: 'M65', what: 'the root spreads a points kind only - a table, a cross table, a map draw rows', catches: 'T42', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '      const got = marksOf(some, keysRead, recorded, (key) => slotWords(encode[key]));', '      const got = this.kind.units ? marksOf(some, keysRead, recorded, (key) => slotWords(encode[key])) : { marks: some.map((r) => ({ ...r, ids: [r.id], row: r.id })), dropped: [] };') },
+    mutate: (t) => swap(t, '    const spread = (some) => spreadUnits(', '    const spread = (some) => (!this.kind.units && !this.kind.cells) ? { units: some.map((r) => ({ ...r, ids: [r.id], row: r.id })), dropped: [] } : spreadUnits(') },
   { id: 'M63', what: 'the sheet keeps its own «several» - no root refusal', catches: 'T41', file: 'testbed/units.js',
     mutate: (t) => swap(t, "  for (const [k, r] of many) reads[k] = { state: 'empty', n: 0, error: '#MANY', why: MANY_WORDS(r.n || (r.values || []).length) };", '') },
   { id: 'M64', what: 'a cell counts a row\'s two marks twice', catches: 'T41', file: 'testbed/slot.js',

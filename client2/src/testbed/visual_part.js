@@ -27,7 +27,7 @@ import { LABEL_SLOT, tipSlots, tipLines, labelOf } from './tooltip.js';
 import { SHOW_SLOT, showItems } from './show_items.js';
 import { PANEL_SLOT, panelsOf, inPanel, withPanel, extentsOf } from './trellis.js';
 import { SHAPE_SLOT, SHAPE_LEGEND, shapesOf, shapeOfIds } from './shape_by.js';
-import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker, marksOf, refuseMany } from './units.js';
+import { markerSlots, unitOf, unitWords, markersOf, nextMarker, spreadUnits } from './units.js';
 import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
@@ -417,16 +417,11 @@ export class VisualPart extends Panel {
       if (!s || Array.isArray(s) || isExpression(s) || s.self || 'constant' in s) return null;
       return readsAt(index, inside, id, s).reads.map((r) => ({ value: r.value, record: r.edge ? (r.edge.claim_id ?? r.edge.id ?? `${r.edge.source} ${r.edge.predicate} ${r.edge.target}`) : r.node }));
     };
-    const spread = (some) => {
-      if (this.kind.cells) return { units: refuseMany(some), dropped: [] };
-      if (this.kind.units && unitOf(this.decl) !== 'node') {
-        const all = unitsOf(some, this.decl, keysRead, this.kind.units.record, askMarked);
-        const one = all.filter((u) => !Object.values(u.reads).some((r) => r && r.state === 'several'));
-        return { units: one, dropped: all.filter((u) => !one.includes(u)).map((u) => ({ id: u.id, why: 'several values - pick a reduce (Avg · Count · Latest …)' })) };
-      }
-      const got = marksOf(some, keysRead, recorded, (key) => slotWords(encode[key]));
-      return { units: got.marks, dropped: got.dropped };
-    };
+    // the slots the kind draws a mark's value of - its own (a scatter's x and y, a table's columns), not the root's
+    const own = typeof this.kind.slots === 'function' ? this.kind.slots(encode) : (this.kind.slots || []);
+    const drawn = own.map((s) => s.key).filter((k) => keysRead.includes(k));
+    const spread = (some) => spreadUnits(some, this.decl, keysRead, { cells: Boolean(this.kind.cells), record: this.kind.units ? this.kind.units.record : null,
+      recordsOf: recorded, words: (key) => slotWords(encode[key]), marked: askMarked, drawn });
     const spreadAll = spread(rows);
     const units = spreadAll.units;
     this.dropped = spreadAll.dropped;
