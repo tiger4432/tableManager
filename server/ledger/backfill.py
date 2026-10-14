@@ -789,7 +789,6 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         result["pages"] += 1
         scope_row_ids = _scope_row_ids(plan, frame)
         aimed = previewed = None
-        touched = set(store._known_partitions) if run and withdraw else None     # the partitions written so far
         if withdraw:
             previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
             result["remake"] += previewed["remake"]
@@ -820,9 +819,11 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             if withdraw:
                 result["withdraw"] += int(written.get("withdrawn", 0))      # the DELETE's count (총괄 10-14)
             result["applied"] = True
-            if touched is not None and store._known_partitions - touched:
-                # this page wrote into a partition the run had not - analyzed now if it has no statistics yet
-                analyze_stale_partitions(engine, world, store._known_partitions - touched)
+            if run and withdraw:
+                # 🔴 EVERY PAGE (총괄 dcccc914b, 소유자 «ㄱ으로해»): the partitions this run has written, analyzed when their
+                #    statistics are gone or the run's own writes changed their share since - production read faster after a
+                #    hand ANALYZE and slower again as the run went on
+                analyze_stale_partitions(engine, world, store._known_partitions)
             if withdraw and scope_row_ids:
                 # 🔴 THE INDEX ROWS GO LAST, for the reason `withdraw_deleted_rows` states:
                 # while they are still here the withdrawal can be run again, and a run that
@@ -889,10 +890,11 @@ ANALYZE_SHARE_SETTING, ANALYZE_SHARE_DEFAULT = "ledger_analyze_changed_share", 0
 
 def analyze_stale_partitions(engine, world, only=None):
     """ANALYZE the ledger partitions `schema.stale_partitions` names (of `only`, partition names, when given) - before a
-    re-translate's first page and after a page that wrote into a partition the run had not - one line when it did any
-    (총괄 10-14: a partition never analyzed answered the withdrawal by Seq Scan beside a valid ref index - 27 rows a page,
-    1.56 s). Each in a transaction of its own under the DDL lock limit: one an index build holds is said and skipped."""
-    import db_safety
+    re-translate's first page and at the end of each of its pages, of the partitions it has written - one line when it
+    did any (총괄 10-14: a partition never analyzed answered the withdrawal by Seq Scan beside a valid ref index - 27 rows
+    a page, 1.56 s). Each in a transaction of its own: its lock taken NOWAIT and its staleness asked again under it, so
+    one another session holds - another slice analyzing it, autovacuum, an index build - is said and left to the next
+    page, and one analyzed meanwhile is not analyzed twice."""
     from chain import keyset_scan
     from ingestion.settings import read_ingestion_settings
 
@@ -906,7 +908,8 @@ def analyze_stale_partitions(engine, world, only=None):
     started, done, skipped = time.monotonic(), [], []
     connection = engine.raw_connection()
     try:
-        stale = schema.stale_partitions(connection, schema.world_names(world), share, only)
+        names = schema.world_names(world)
+        stale = schema.stale_partitions(connection, names, share, only)
         connection.commit()
         if stale:                                   # the run's stage meanwhile (`tell`)
             keyset_scan.say("analyzing %d partition%s: %s" % (len(stale), "" if len(stale) == 1 else "s",
@@ -914,7 +917,10 @@ def analyze_stale_partitions(engine, world, only=None):
         for name in stale:
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
+                    cursor.execute("LOCK TABLE %s IN SHARE UPDATE EXCLUSIVE MODE NOWAIT" % name)
+                    if not schema.stale_partitions(connection, names, share, [name]):
+                        connection.rollback()               # analyzed meanwhile - by another slice
+                        continue
                     cursor.execute("ANALYZE %s" % name)
                 connection.commit()
                 done.append(name)

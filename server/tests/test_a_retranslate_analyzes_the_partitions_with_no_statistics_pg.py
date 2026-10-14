@@ -1,10 +1,14 @@
 """A re-translate's withdrawal finds atoms by `source_who = %s AND source_raw_ref = ANY(%s)` (총괄 10-14): on a ledger
 partition never analyzed that reads a default selectivity, and the valid ref index lost to a Seq Scan - 27 rows a page,
-1.56 s in production. The run analyzes the partitions with no statistics before its first page and after a page that
-wrote into one it had not, and searches once a page: the DELETE; the count is a preview's.
+1.56 s in production. The run analyzes the partitions with no statistics before its first page and, at the end of every
+page, the ones it has written that its own writes changed by the share (총괄 dcccc914b: production slowed again as a run
+went on); and it searches once a page: the DELETE; the count is a preview's.
 
   stale     never analyzed · analyzed · changed by the share since (a share above that: not) · `only` narrows
-  the run   a run analyzes the never-analyzed one and says «analyzed N partition(s) in X s: …»
+  the run   a run analyzes the never-analyzed one and says «analyzed N partition(s) in X s: …»; every page asks after
+            the partitions the run has written
+  held      a partition another session holds is not waited for - said, left to the next page; one analyzed meanwhile
+            (asked again under its lock) is not analyzed twice - two slices never analyze one partition
   the page  one withdrawal search a page - the DELETE - and the run's «withdraw» is what it took; a preview still counts
   setting   anything but a number above 0 reads the default, said
 """
@@ -117,15 +121,55 @@ def test_a_run_analyzes_a_partition_never_analyzed_and_says_so(world, far):
                             {"p": '"%s".%s' % (S, far)}).scalar() >= 0
 
 
-def test_a_page_asks_after_the_partitions_the_run_had_not_written_into(world, monkeypatch):
-    """A slice (`key_range`) has no start check - the run's process did it; its pages ask after the partitions they
-    are the first to write into, once each."""
+def test_every_page_asks_after_the_partitions_the_run_has_written(world, monkeypatch):
+    """A slice (`key_range`) has no start check - the run's process did it; each of its pages asks after the partitions
+    it has written so far."""
     asked = []
     monkeypatch.setattr(backfill, "analyze_stale_partitions",
-                        lambda engine, world, only=None: asked.append(only) or [])
+                        lambda engine, world, only=None: asked.append(sorted(only)) or [])
     out, _lines = _run(world, key_range=(None, None))
     assert out["pages"] >= 3
-    assert len(asked) == 1 and asked[0] and all(name.startswith("ledger_events_") for name in asked[0]), asked
+    assert len(asked) == out["pages"], (len(asked), out["pages"])
+    assert all(names and all(name.startswith("ledger_events_") for name in names) for names in asked), asked
+
+
+def test_a_partition_another_session_holds_is_not_waited_for(world, far):
+    """Another slice analyzing it (or autovacuum, an index build) holds its SHARE UPDATE EXCLUSIVE lock."""
+    import time
+
+    holder = world["engine"].raw_connection()
+    try:
+        with holder.cursor() as cursor:
+            cursor.execute('LOCK TABLE "%s".%s IN SHARE UPDATE EXCLUSIVE MODE' % (S, far))
+        lines = []
+        control = retroactive.RunControl(None, op="ledger_rescope", log=lines.append)
+        token = keyset_scan.RUN_CONTROL.set(control)
+        try:
+            started = time.monotonic()
+            done = backfill.analyze_stale_partitions(world["engine"], None, [far])
+            took = time.monotonic() - started
+        finally:
+            keyset_scan.RUN_CONTROL.reset(token)
+    finally:
+        holder.rollback()
+        holder.close()
+    assert done == [] and took < 2, (done, took)
+    assert any(" · not analyzed: " in line and far in line for line in lines), lines
+    assert far in _stale(world["engine"], share=1e9), "still never analyzed - the next page asks again"
+
+
+def test_one_analyzed_meanwhile_is_not_analyzed_twice(world, far, monkeypatch):
+    """The partition was stale when asked and is not once its lock is held - another slice analyzed it in between."""
+    real, calls = schema.stale_partitions, []
+
+    def asked(connection, names, share, only=None):
+        calls.append(only)
+        return real(connection, names, share, only) if len(calls) == 1 else []
+    monkeypatch.setattr(schema, "stale_partitions", asked)
+    assert backfill.analyze_stale_partitions(world["engine"], None, [far]) == []
+    assert len(calls) == 2 and calls[1] == [far], calls
+    monkeypatch.setattr(schema, "stale_partitions", real)
+    assert far in _stale(world["engine"], share=1e9), "not analyzed by this one"
 
 
 def test_one_withdrawal_search_a_page_and_withdraw_is_what_it_took(world, monkeypatch):
