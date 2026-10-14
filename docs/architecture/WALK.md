@@ -83,7 +83,7 @@ include_superseded  기본 false. `one` 술어의 «지금 아닌» 사실도 �
 format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-183, 09-11)
 resumable           기본 false. 이어 걸을 호출(걷기 화면)만 true — 잘린 걷기를 남기고 more.resume 열쇠를 준다(아래 «이어 걷기», 총괄 9752e91f7)
 propagation         기본 true. false 면 순위를 계산하지 않고 답에 `propagation` 칸이 없다 — 순위를 안 읽는 호출(시험대 근원 부품,
-                    client2/src/testbed 의 fetchWalk)용(총괄 9166099d4). R&D 보드 · 걷기 화면은 순위를 읽으니 안 보낸다(기본 true)
+                    client2/src/testbed 의 fetchWalk)용(총괄 9166099d4). ⚠️ 보내는 호출자 아직 0 — fetchSubgraph 가 propagation 을 안 실음. R&D 보드 · 걷기 화면은 순위를 읽으니 안 보낸다(기본 true)
                     다음 쪽도 같은 값으로 — 다르면 422 «resume belongs to another walk»
 ```
 ⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
