@@ -1008,7 +1008,7 @@ const MUTANTS = [
   { id: 'M76', what: 'a column declared image read by its values', catches: 'T46', file: 'testbed/slot.js',
     mutate: (t) => swap(t, "  if (one === 'image') return { scale: 'image', time: false, day: false };\n", '') },
   { id: 'M77', what: 'a slot of images spreads marks - the table P1 two lines of one picture each', catches: 'T47', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, 'marked: askMarked, drawn, pictures });', 'marked: askMarked, drawn, pictures: [] });') },
+    mutate: (t) => swap(t, 'marked: askMarked, drawn, pictures,', 'marked: askMarked, drawn, pictures: [],') },
   { id: 'M78', what: 'images taken where a category paints', catches: 'T47', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    const refused = listed.filter((s) => s.noImages && pictures.includes(s.key)).map((s) => s.key);', '    const refused = [];') },
   { id: 'M79', what: 'a Label by of images hidden until «Show labels for» is written', catches: 'T47', file: 'testbed/visual_part.js',

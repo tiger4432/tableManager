@@ -92,7 +92,8 @@ export function scatterOption(model, palette, width = null, picture = null) {
     if (!p.shape) return {};
     if (typeof p.shape !== 'object') return { symbol: p.shape };
     const url = pictured(p.shape, imagePx);
-    return url ? { symbol: `image://${url}`, symbolSize: imagePx } : {};
+    // a picture fitted in its square with its ratio kept (the owner's «비율은 보존»)
+    return url ? { symbol: `image://${url}`, symbolSize: imagePx, symbolKeepAspect: true } : {};
   };
   const labelOf = (p) => {
     const url = pictured(p.tag, LABEL_IMAGE_PX);
