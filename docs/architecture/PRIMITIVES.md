@@ -2361,6 +2361,11 @@
 - **언제 재사용**: 많은 행을 칸 몇 개씩 고치는 새 자리 — 행마다 UPDATE 를 짓지 않는다.
 - **함정**: flush 에 남는 넷 — SQL 식 값 · 바뀐 키 · 한 칸에 두 형(배열은 형 하나) · `updated_at` 이 None 인 행. 아웃박스 기록(`auto_stage_database_outbox`) «뒤»에 걸려야 사건이 옛 값을 먼저 읽는다. 문장이 이름 댄 행을 다 못 건드리면 ORM 처럼 거절.
 
+### **원장 선언 창은 «문장 막대» 한 모듈 — `ledger_declaration_bar.js` 는 그리고 고치기만, 선언은 탐색기 초안 글** (2026-10-14 등록 · `dff9283c2`, 소유자 10-14 «이대로 만들어»)
+- **어디**: `client2/src/ledger_declaration_bar.js` — `renderDeclarationBar` · `editDeclaration(raw, op, ctx)` · `barRun(run)`. 컨트롤은 `data-action` 하나씩이고 탐색기 컨트롤러가 듣는다(DOM 은 `dom_patch` 로 제자리 고침). 시안 정본은 `task/design/LEDGER_DECLARATION_BAR.dc.html`.
+- **언제 재사용**: 선언(소스 · 술어 · 노드 타입)을 문장으로 고치는 화면 — 폼을 또 짓지 않고 이 막대에 칸을 더한다.
+- **함정**: 짧은 꼴(`sentences`) 소스만 막대가 뜨고 옛 꼴은 예전 폼이다. 칩 목록은 `/authoring/schema` 의 `tables` · `entities` · `vocabulary` 를 읽는데, 서버가 아직 안 주면 이름만 나온다. 막대 안에 상태를 두면 `dom_patch` 가 덮는다.
+
 ### **규칙이 이 사건에 «깨어나나»는 `chain.ingestion_worker.wakes(rule, event)` 한 자리** (2026-10-14 등록 · B `d3c143d45`, 총괄 옛 키 ㄱ)
 - **어디**: `wakes(rule, event)` = `_is_trigger_event(event, rule)`(종류 — CREATE · EDIT, 지움은 규칙이 허락할 때) 그리고 `fires(rule, event)`(쌍). 규칙을 고르는 자리(`_rows_cap` · `_group_triggered_rules` …)가 전부 이것을 묻고, 묶기(`group_id`)만 `fires` 하나를 묻는다.
 - **언제 재사용**: 사건에 따라 규칙을 고르는 새 자리 — 종류 · 쌍 판정을 옆에 다시 적지 않는다(이 셋은 아홉 자리에 사본으로 있었다).
