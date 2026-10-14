@@ -537,17 +537,20 @@ function suite(out, page, saved, counted) {
     page.custom, ['The expression ends too soon', true, 'No value named nope on wafer',
       [{ expr: 'If([product] = "A", "is A", "not A")', words: ['If([product] = "A", "is A", "not A")'] }], ['is A', 'not A']]);
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
+  // the row walk, then one value walk for x and y together (both measures, one step - the second waits for the first)
   eq('T9a All walks the row type described; the rows and counts; every drawable point drawn',
-    [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null]], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);
+    [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null], [null, 'W1']], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);
   eq('T9b a drag marks what the rectangle holds, replacing; the status bar counts it', [page.dragMarked, page.dragStats], [['W2', 'W4'], 2]);
   eq('T9c a cross table cell marks its hub whole; the scatter draws its members marked', [page.hubMark, page.hubShown],
     [[1, true, ['W1', 'W3']], ['W1']]);
   eq('T9c\' «K marked rows» counts the part\'s rows the marking holds - one hub entry of two members is 2', page.hubCounted, [1, 2]);
   eq('T9d the system filter\'s start side keeps the start nodes first and walks again from the kept ones', page.startSide,
-    { asked: [['W1', 'W4'], ['W4']], startDropped: 1, system: 3 });
+    { asked: [['W1', 'W4'], ['W4'], WAFERS], startDropped: 1, system: 3 });
   eq('T9f the system filter changed: its start side judged again - widened, the dropped start comes back; narrowed past all, none; no new walk for the seeds; another system filter named walks again',
-    page.filterChanged, [{ rows: 1, startDropped: 1, asked: 2 }, { rows: 2, startDropped: 0, asked: 2 }, { rows: 0, startDropped: 2, asked: 2 },
-      { rows: 2, startDropped: 0, asked: 2 }]);
+    // asked: the row walks two, then a value walk a set of rows - the rows of the widened filter once (the last step
+    // has the same rows: the value walk in hand)
+    page.filterChanged, [{ rows: 1, startDropped: 1, asked: 3 }, { rows: 2, startDropped: 0, asked: 4 }, { rows: 0, startDropped: 2, asked: 4 },
+      { rows: 2, startDropped: 0, asked: 4 }]);
   eq('T9e the received side (system) and the part\'s own filter count apart; a marked node they hide is said', page.twoLayers,
     { rows: 3, of: 6, system: 2, part: 1, hidden: 1 });
   eq('T10 two scatters on one page: a slot changed in one stays there - it alone draws again and lets its old chart go; the other one stands',
@@ -614,7 +617,7 @@ const MUTANTS = [
   { id: 'M14b', what: 'the walk page\'s reading keeps an absent sign as a control (the - list every not-+)', catches: 'T20', file: 'rnd_board/marking_store.js',
     mutate: (t) => swap(t, '  return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };', '  return { positive: of(SIGN.CASE), negative: [...sign].filter(([, s]) => s !== SIGN.CASE).map(([id]) => id) };') },
   { id: 'M15', what: 'All walks with no seed', catches: 'T9a', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, "    const params = seeds.all ? { ...base, seed_type: this.rowType() }", '    const params = seeds.all ? { ...base }') },
+    mutate: (t) => swap(t, 'const params = seeds.all ? { ...this.budget(), seed_type: this.rowType(), collect: ask.collect }', 'const params = seeds.all ? { ...this.budget(), collect: ask.collect }') },
   { id: 'M16', what: 'a drag adds instead of replacing', catches: 'T9b', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, "    if (mode === 'add') { for (const id of ids) this.markings.set(this.writes, id, sign); return; }", '    { for (const id of ids) this.markings.set(this.writes, id, sign); return; }') },
   { id: 'M17', what: 'a hub not opened into its members when the marking is shown', catches: 'T8', file: 'testbed/hubs.js',
@@ -628,7 +631,7 @@ const MUTANTS = [
   { id: 'M20', what: 'a redraw keeps its old chart (two charts on one box)', catches: 'T10', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    if (this.drawn) { this.drawn.dispose(); this.drawn = null; }\n', '') },
   { id: 'M21', what: 'a cut walk read as «truncated is there»', catches: 'T17', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, 'cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };', 'cut: Boolean(this.answer.truncated) };') },
+    mutate: (t) => swap(t, 'cut: [this.rowWalk, ...this.values.values()].some((w) => w && !w.complete && !w.receiving),', 'cut: Boolean(this.answer.truncated),') },
   { id: 'M22', what: 'the status bar leaves out the drops', catches: 'T13', file: 'testbed/status_part.js',
     mutate: (t) => swap(t, '  if (s.startDropped || s.system || s.part || s.limit) {', '  if (false) {') },
   { id: 'M22b', what: 'the status bar leaves out the start side\'s drop (the code before)', catches: 'T13', file: 'testbed/status_part.js',
@@ -639,7 +642,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'JSON.stringify([next.start, next.row, next.system, next.route || null]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system, this.decl.route || null])',
       'JSON.stringify([next.start, next.row, next.route || null]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.route || null])') },
   { id: 'M27', what: 'a filter change walks from every seed again (the walk in hand not taken)', catches: 'T9f', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, 'this.seedWalk && this.seedWalk.asked === asked ? this.seedWalk.res', 'false ? this.seedWalk.res') },
+    mutate: (t) => swap(t, 'const held = this.rowWalks.find(', 'const held = false && this.rowWalks.find(') },
   { id: 'M28', what: '«marked» counts the marking\'s entries - a hub one (the code before)', catches: "T9c'", file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, 'marked: received.filter(marked).length,', 'marked: this.markings.entries(this.reads).length,') },
   { id: 'M29', what: 'the root words the title by asking the kind (the code before)', catches: 'T19', file: 'testbed/visual_part.js',

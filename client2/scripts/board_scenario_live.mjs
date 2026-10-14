@@ -33,7 +33,8 @@ const host = doc.createElement('div');
 doc.body.appendChild(host);
 const page = await main.boot({ doc, host, apiBase: API, fetchImpl, charts, storage: null, theme: 'dark' });
 const part = (id) => page.shell.partOf(id);
-const ready = (id) => () => part(id).state === 'ready' || part(id).state === 'refused';
+// ready: walked, and no walk of its in flight (a value walk comes after the rows - lead-board-10)
+const ready = (id) => () => (part(id).state === 'ready' || part(id).state === 'refused') && !(part(id).aborts && part(id).aborts.size);
 
 // The markings and the relations - the declarations the scenario names.
 const book = page.markingBook;
@@ -68,15 +69,47 @@ declare(D, { walk: WIDE, row: 'measurement', start: { marking: step }, writes: '
   encode: { x: attr('eventtime'), y: attr('value'), color: { expr: 'If(Marked("Core wafer"), "B", "other")' } } });
 
 const say = (...x) => console.log(...x);
+const report = [];
+// THE CLOCK (lead 10-14 «누름 → 연쇄 마지막 부품 그림 끝 ≤ 1 s»): each part's requests (asked · first answer · every
+// answer in), its fold and its draw, from a press. The draw is the stub document's - not a browser's paint.
+const clocks = new Map();
+const watch = (id) => {
+  const p = part(id);
+  const c = { requests: 0, inFlight: 0, together: 0, fetchMs: 0, foldMs: 0, drawMs: 0 };
+  clocks.set(id, c);
+  const f = p.fetchWalk;
+  p.fetchWalk = async (params) => {
+    const t = performance.now();
+    c.requests += 1; c.inFlight += 1; c.together = Math.max(c.together, c.inFlight);
+    if (c.asked == null) c.asked = t;
+    try { return await f(params); } finally { const e = performance.now(); c.inFlight -= 1; c.fetchMs += e - t; if (c.first == null) c.first = e; c.received = e; }
+  };
+  const fold = p.refold.bind(p);
+  const draw = p.render.bind(p);
+  p.render = (...a) => { const t = performance.now(); const r = draw(...a); const e = performance.now(); c.drawMs += e - t; c.drawn = e; return r; };
+  p.refold = (...a) => { const t = performance.now(); const d0 = c.drawMs; const r = fold(...a); c.foldMs += performance.now() - t - (c.drawMs - d0); return r; };
+};
+const timed = async (name, press, ids) => {
+  for (const id of ids) watch(id);
+  const t0 = performance.now();
+  await press();
+  // each in turn: drawn since the press and nothing of its in flight (a walk in hand asks nothing; a start pruned empty draws none)
+  for (const id of ids) await until(() => clocks.get(id).drawn != null && part(id).state !== 'walking' && !(part(id).aborts && part(id).aborts.size));
+  const ms = (x) => (x == null ? '-' : String(Math.round(x - t0)));
+  say(`CLOCK ${name} (ms from the press): part | asked | first answer | all in | drawn | requests (at once) | fetch | fold | draw`);
+  for (const id of ids) {
+    const c = clocks.get(id);
+    say(`CLOCK   ${id} | ${ms(c.asked)} | ${ms(c.first)} | ${ms(c.received)} | ${ms(c.drawn)} | ${c.requests} (${c.together}) | ${Math.round(c.fetchMs)} | ${Math.round(c.foldMs)} | ${Math.round(c.drawMs)}`);
+  }
+  report.push({ step: name, ms: Math.round(clocks.get(ids[ids.length - 1]).drawn - t0) });
+};
 // C's route: from the bonding dies through their bonded_from to the core dies' wafers (die -> die -> wafer).
 const takeRoute = (id, chain) => { const r = part(id).routes().find((x) => x.chain.join('>') === chain); if (r) declare(id, { ...part(id).declaration(), route: r }); return Boolean(r); };
 const walks = () => asked.length;
 const stat = (id) => page.stats.get(id) || {};
-const report = [];
 const step0 = walks();
 // A: the bonding wafer the start - the map walks from it
-page.markings.set('marking:start', entitySeedId('wafer', { wafer: WAFER }), SIGN.CASE);
-await until(ready(A));
+await timed('start marked -> A', () => page.markings.set('marking:start', entitySeedId('wafer', { wafer: WAFER }), SIGN.CASE), [A]);
 const cells = part(A).model.cells;
 say(`A map: ${cells.length} cells drawn, ${part(A).model.notDrawn} not drawn, walks ${walks() - step0}`);
 // A coordinate pressed - B walks from its die along B's route (die to die: the die itself) and counts its core wafer.
@@ -101,7 +134,11 @@ for (const cell of cells) {
 }
 say(`B route ${JSON.stringify(part(B).walkedRoute)} asked follow/hops ${(() => { const q = new URL(asked[asked.length - 1]).searchParams; return JSON.stringify([q.getAll('follow'), q.get('hops')]); })()}`);
 say(`B die ${first.cell.where} -> core wafers ${first.cores.join(', ')}; die ${seen[0] ? seen[0].cell.where : '-'} -> ${seen[0] ? seen[0].cores.join(', ') : '-'}`);
-b = await press(first.cell);
+// a die not pressed yet - no walk of B's in hand for it; then the first die again - B's walk in hand
+const fresh = cells[cells.length - 1];
+await timed('A pressed (a new die) -> B', () => part(A).markHub([['x', fresh.where[0]], ['y', fresh.where[1]]], fresh.ids, {}), [B]);
+await timed('A pressed (a die pressed before) -> B', () => part(A).markHub([['x', first.cell.where[0]], ['y', first.cell.where[1]]], first.cell.ids, {}), [B]);
+b = part(B).model;
 say(`B cross: rows ${b.rowKeys.length} (${b.rowKeys.slice(0, 4).join(', ')}...), total ${b.total}, walks ${walks() - s1}, ${Date.now() - t1} ms, layer ${JSON.stringify(page.layers.last)}`);
 report.push({ step: 'A->B', walks: walks() - s1 });
 // B: a core wafer's cell pressed - it stands for the core wafer node, not a hub of B's dies
@@ -117,8 +154,7 @@ say(`C cross: steps ${c.rowKeys.length} (${c.rowKeys.join(', ')}), total ${c.tot
 // C: a step pressed
 const stepRow = c.rowKeys.findIndex((k) => k !== '(Empty)');
 const s3 = walks();
-part(C).markHub([['step', c.rowKeys[stepRow]]], c.rowIds[stepRow], {});
-await until(ready(D));
+await timed('C pressed -> D', () => part(C).markHub([['step', c.rowKeys[stepRow]]], c.rowIds[stepRow], {}), [D]);
 const d = part(D).model;
 const byCat = {};
 const catOf = (pt) => part(D).colors.of.get(pt.ids[0]).category;
@@ -141,13 +177,11 @@ const b2 = seen[0] ? await press(seen[0].cell) : b;
 const otherRow = b2.rowKeys.findIndex((k) => k !== '(Empty)');
 const computed0 = page.layers.computed;
 const s5 = walks();
-part(B).markHub([['core wafer', b2.rowKeys[otherRow]]], b2.rowIds[otherRow], {});
-await settle();
-await until(ready(C));
-await until(() => part(D).state !== 'walking');
+await timed('B pressed -> C -> D', () => part(B).markHub([['core wafer', b2.rowKeys[otherRow]]], b2.rowIds[otherRow], {}), [C, D]);
 say(`B pressed ${b2.rowKeys[otherRow]}: layers computed ${page.layers.computed - computed0}, last ${JSON.stringify(page.layers.last)}, walks ${walks() - s5}`);
 say(`D after: ${part(D).state} (the Step marking pruned: ${page.markings.entries(step).length} entries); unknown ${stat(D).unknown || 0}`);
 const kept = page.save();
+say(`CLOCK report ${JSON.stringify(report)}`);
 say(`graph: ${page.layers.graph.nodes.size} nodes, ${page.layers.graph.edges.size} edges; walks in all ${walks() - step0}`);
 const save = argOf('--save', null);
 // Saved on a two-by-two layout - A B over C D - so the shots show the four alike.

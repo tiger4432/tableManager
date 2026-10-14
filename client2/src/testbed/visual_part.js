@@ -28,12 +28,18 @@ import { SHOW_SLOT, showItems } from './show_items.js';
 import { PANEL_SLOT, panelsOf, inPanel, withPanel, extentsOf } from './trellis.js';
 import { SHAPE_SLOT, SHAPE_LEGEND, shapesOf, shapeOfIds } from './shape_by.js';
 import { markerSlots, unitsOf, unitOf, unitWords, markersOf, nextMarker } from './units.js';
-import { routesFor, routeOf, typeOfStart, walkOfRoute, routeEnds, routeWords } from './route.js';
+import { routesFor, routeOf, typeOfStart, routeEnds, routeWords } from './route.js';
+import { readable, valueAsk, covers, changedSlots, chunks, walkToEnd, SEED_CHUNK } from './part_walks.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
-import { truncationAxes, entitySeedId } from '../rnd_board/api.js';
+import { entitySeedId } from '../rnd_board/api.js';
 import { compile, run } from '../expression.js';
 import { paletteOf } from './palette.js';
+
+/** The row walk's key among its walks in flight. */
+const ROW_WALK = Symbol('row walk');
+/** The value walks it keeps in hand after their slot moved on. */
+const KEPT_WALKS = 8;
 
 export class VisualPart extends Panel {
   constructor(host, deps) {
@@ -67,6 +73,13 @@ export class VisualPart extends Panel {
     this.openPicker = d.openPicker || (() => {});
     this.oneValued = d.oneValued || (() => false);
     this.walkParams = d.walkParams || {};
+    // its walks (part_walks.js): the row walk in hand (and the one before a system filter's start side), a value walk a
+    // slot (and the value walks in hand, the last few); a request each may drop (the next of its kind); how many rows a value walk starts from at once
+    this.rowWalks = [];
+    this.values = new Map();
+    this.valueWalks = [];
+    this.aborts = new Map();
+    this.seedChunk = d.seedChunk || SEED_CHUNK;
     this.start = this.decl.start || null;
     this.state = 'idle';
     this.answer = null;
@@ -139,12 +152,17 @@ export class VisualPart extends Panel {
     if (this.loop) { this.publish(); return false; }
     const walkAgain = JSON.stringify([next.start, next.row, next.system, next.route || null]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system, this.decl.route || null]);
     const before = this.decl;
+    const slotsBefore = this.slotsHeld();
     this.decl = JSON.parse(JSON.stringify(next));
     this.start = this.decl.start || null;
     this.writes = this.decl.writes || null;
     this.listen(before);
     this.listenLimit();
-    if (walkAgain) this.load(); else this.refold();
+    if (walkAgain) { this.load(); return true; }
+    // THE SLOT SEAT (owner 10-14 «값 받는 것 바뀔 때마다 다»): each slot whose declaration changed walks its values
+    // again - any slot of any kind, the kind not asked
+    for (const key of changedSlots(slotsBefore, this.slotsHeld())) this.walkValues(key);
+    this.refold();
     return true;
   }
 
@@ -245,10 +263,8 @@ export class VisualPart extends Panel {
 
   /** Its rows in a walk's answer: the route's ends from the seeds it walked from; with no route, every node of its row
    *  type the walk reached. */
-  rowsOf(answer) {
-    if (this.walkedRoute && this.walkedSeeds) return routeEnds(answer, this.walkedSeeds, this.walkedRoute);
-    return ((answer && answer.nodes) || []).filter((n) => n.type === this.rowType()).map((n) => n.id);
-  }
+  /** Its rows - the row walk's (a value walk's nodes of the row type are not rows). */
+  rowsOf() { return this.rowIds0 || []; }
 
   systemConditions() {
     return (this.decl.system && this.filters && this.filters.get(this.decl.system)) || [];
@@ -258,11 +274,13 @@ export class VisualPart extends Panel {
     let seeds = this.seeds();
     // A kind of cells (the sheet) draws before it has a start - its key is one of its cells.
     if (!seeds && this.kind && this.kind.cells) {
-      this.walking += 1; this.walkedSeeds = []; this.walkedRoute = null; this.answer = { nodes: [], edges: [] }; this.state = 'ready';
+      this.walking += 1; this.abortWalk(); this.walkedSeeds = []; this.rowIds0 = []; this.rowWalk = null; this.values = new Map(); this.walkedRoute = null; this.answer = { nodes: [], edges: [] }; this.state = 'ready';
       this.refold(); this.prune(new Set()); return;
     }
-    if (!seeds) { this.state = 'no-start'; this.answer = null; this.publish(); this.render(); this.prune(new Set()); return; }
+    if (!seeds) { this.walking += 1; this.abortWalk(); this.state = 'no-start'; this.answer = null; this.publish(); this.render(); this.prune(new Set()); return; }
+    // a load drops the walks in flight - their rows are the last load's
     const ticket = (this.walking += 1);
+    this.abortWalk();
     this.state = 'walking';
     this.render();
     this.walkedRoute = seeds.all ? null : this.route();
@@ -290,40 +308,152 @@ export class VisualPart extends Panel {
       }
     }
     let positive = seeds.positive || [];
-    // The walk from every seed does not hang on the system filter: one in hand for the same seeds is taken again (a
-    // filter changed), and only the start side is judged anew.
-    const asked = JSON.stringify([seeds, this.rowType(), this.walkedRoute]);
-    let res = this.seedWalk && this.seedWalk.asked === asked ? this.seedWalk.res : await this.walkFrom(seeds);
-    if (ticket !== this.walking) return;
-    if (res.ok) this.seedWalk = { asked, res };
+    // THE ROW WALK (owner 10-14): from the start along the route only, carrying the row type and the start's, to its end
+    let rows = await this.walkRows(seeds, ticket);
+    if (!rows) return;
     this.startDropped = 0;
-    // The system filter's start side: the marking's nodes of a condition's type are kept first, and the walk is taken
+    // The system filter's start side: the marking's nodes of a condition's type are kept first, and the row walk is taken
     // again from the kept ones - a dropped wafer's dies do not come in (lead 5835e6714).
-    if (res.ok && !seeds.all) {
-      const index = indexGraph(res.body);
-      const inside = insideOf(res.body);
-      const { kept, dropped } = keepNodes(index, inside, positive, this.systemConditions(), this.oneValued, (words, id) => this.layers.marked(this.markingNamed(words), id));
+    if (rows.ok && !seeds.all) {
+      const held = readable(rows.answers);
+      const { kept, dropped } = keepNodes(indexGraph(held), insideOf(held), positive, this.systemConditions(), this.oneValued, (words, id) => this.layers.marked(this.markingNamed(words), id));
       if (dropped) {
         this.startDropped = dropped;
         positive = kept;
-        res = kept.length ? await this.walkFrom({ positive: kept, negative: seeds.negative }) : { ok: true, body: { nodes: [], edges: [] } };
-        if (ticket !== this.walking) return;
+        rows = kept.length ? await this.walkRows({ positive: kept, negative: seeds.negative }, ticket) : { ok: true, answers: [], complete: true, ask: null };
+        if (!rows) return;
       }
     }
-    if (!res.ok) {
+    if (!rows.ok) {
       this.state = 'refused';
-      this.refusal = refusalWords(res);
+      this.refusal = rows.why;
       this.answer = null;
       this.publish();
       this.render();
       return;
     }
     this.walkedSeeds = positive;
-    this.layers.graph.add(res.body);
-    this.answer = res.body;
+    this.rowWalk = rows;
+    const rowAnswer = readable(rows.answers);
+    this.rowIds0 = this.walkedRoute ? routeEnds(rowAnswer, positive, this.walkedRoute)
+      : rowAnswer.nodes.filter((n) => n.type === this.rowType()).map((n) => n.id);
+    this.values = new Map();
     this.state = 'ready';
+    this.answerAgain();
     this.refold();
-    this.prune(insideOf(res.body));
+    // then a value walk a slot; the marking it writes is pruned when they are in
+    await Promise.all(Object.keys(this.slotsHeld()).map((key) => this.walkValues(key)));
+    if (ticket !== this.walking) return;
+    this.prune(insideOf(this.answer));
+  }
+
+  /** The answer it reads: the row walk's and every value walk's (part_walks.js readable). */
+  answerAgain() {
+    this.answer = readable([...((this.rowWalk && this.rowWalk.answers) || []), ...[...this.values.values()].flatMap((v) => v.answers || [])]);
+    // the page's graph takes the nodes a walk carried - one standing by its id would hide its record when it comes
+    this.layers.graph.add({ ...this.answer, nodes: this.answer.nodes.filter((n) => n.carried !== false) });
+  }
+
+  /** The walk's budget: the page's, then the declaration's own (`walk`: node_limit - the steps are the route's or the slot's). */
+  budget() {
+    const { hops: _steps, ...own } = this.decl.walk || {};
+    // a part reads nodes and edges - no ranking asked (propagation)
+    return { ...this.walkParams, ...own, propagation: false };
+  }
+
+  /** Drop a walk in flight (`key`: the row walk or a slot's), or every one. */
+  abortWalk(key) {
+    for (const [k, control] of this.aborts) if (key === undefined || k === key) { control.abort(); this.aborts.delete(k); }
+  }
+
+  /**
+   * The row walk from `seeds`: a row walk in hand that covers it is taken again (part_walks.js covers), else asked to its
+   * end, a walk in flight dropped. Null - a newer load took over.
+   */
+  async walkRows(seeds, ticket) {
+    const route = seeds.all ? null : this.walkedRoute;
+    // A start of the row type walks none (lead 10-14) when a walk on the page carried its nodes: they are the rows, read
+    // off the page's graph (a start written by hand is walked for its records)
+    if (route && !route.hops && !seeds.all && seeds.positive.every((id) => this.layers.graph.nodes.has(id))) {
+      const nodes = seeds.positive.map((id) => this.layers.graph.nodes.get(id));
+      return { ok: true, answers: [{ nodes, edges: [], truncated: null }], complete: true, why: null, ask: null, negative: seeds.negative || [] };
+    }
+    const start = seeds.all ? null : this.startType();
+    const ask = { seeds: seeds.all ? [`all:${this.rowType()}`] : [...seeds.positive].sort(), follow: route ? [...route.follow].sort() : [],
+      hops: route ? Math.max(1, route.hops) : 1, collect: [...new Set([this.rowType(), start].filter(Boolean))].sort() };
+    const held = this.rowWalks.find((w) => covers(w.ask, ask) && JSON.stringify(w.negative || []) === JSON.stringify(seeds.negative || []));
+    if (held) return { ...held, cached: true };
+    this.abortWalk();
+    const control = new AbortController();
+    this.aborts.set(ROW_WALK, control);
+    const params = seeds.all ? { ...this.budget(), seed_type: this.rowType(), collect: ask.collect }
+      : { ...this.budget(), nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [], follow: ask.follow, hops: ask.hops, collect: ask.collect };
+    // the rows are drawn when their walk is in (a value walk draws each page)
+    const got = await walkToEnd(this.fetchWalk, params, control.signal, null);
+    if (got.aborted || ticket !== this.walking) return null;
+    this.aborts.delete(ROW_WALK);
+    if (got.refused) return { ok: false, why: refusalWords(got.res) };
+    const out = { ok: true, answers: got.answers, complete: got.complete, why: got.why, ask: { ...ask, complete: got.complete }, negative: seeds.negative || [] };
+    this.rowWalks = [out, ...this.rowWalks].slice(0, 2);
+    return out;
+  }
+
+  /**
+   * A slot's value walk (part_walks.js valueAsk) from the rows: none when it reads the rows' own values; not asked when a
+   * walk in hand covers it; else asked to its end, its rows by the seed cap, each page drawn as it comes, the slot's walk
+   * in flight dropped.
+   */
+  async walkValues(key) {
+    this.abortWalk(key);
+    const slot = this.slotsHeld()[key];
+    const asked = slot && this.rowIds0 ? valueAsk(slot, this.rowType(), this.vocabulary()) : null;
+    if (!asked || !this.rowIds0.length) {
+      if (this.values.delete(key)) { this.answerAgain(); this.refold(); }
+      return;
+    }
+    const ask = { ...asked, seeds: [...this.rowIds0].sort() };
+    // another slot's walk in flight that will cover it - waited for, not asked twice (a load walks every slot at once)
+    const ticket = this.walking;
+    const coming = [...this.values.entries()].find(([k, h]) => k !== key && h.receiving && covers({ ...h, complete: true }, ask));
+    if (coming) {
+      await coming[1].done;
+      if (ticket !== this.walking || this.aborts.has(key)) return;
+    }
+    // its own walk before (a column taken off) or another slot's (another attribute of a type walked) - the answers kept
+    const holder = [...this.values.values(), ...this.valueWalks].find((h) => covers(h, ask));
+    if (holder) {
+      this.values.set(key, { ...ask, answers: holder.answers, complete: true, cached: true });
+      this.answerAgain();
+      this.refold();
+      return;
+    }
+    const control = new AbortController();
+    this.aborts.set(key, control);
+    let finished;
+    const record = { ...ask, answers: [], complete: false, receiving: true, why: null, done: new Promise((r) => { finished = r; }) };
+    this.values.set(key, record);
+    // its rows by the seed cap, the runs asked together (lead 10-14); each page drawn as it comes
+    const runs = chunks(ask.seeds, this.seedChunk).map(() => []);
+    const gots = await Promise.all(chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(this.fetchWalk,
+      { ...this.budget(), nodeId: some[0], positive: some, negative: [], follow: ask.follow, hops: ask.hops, ...(ask.collect ? { collect: ask.collect } : {}) },
+      control.signal, (answers) => {
+        if (control.signal.aborted || ticket !== this.walking) return;
+        runs[k] = answers;
+        record.answers = runs.flat();
+        this.answerAgain();
+        this.refold();
+      })));
+    if (gots.some((got) => got.aborted) || ticket !== this.walking || this.aborts.get(key) !== control) { finished(); return; }
+    const done = gots.flatMap((got) => got.answers);
+    const cut = gots.find((got) => !got.complete);
+    const complete = !cut;
+    if (cut) record.why = cut.why;
+    this.aborts.delete(key);
+    Object.assign(record, { answers: done, complete, receiving: false });
+    if (complete) this.valueWalks = [record, ...this.valueWalks].slice(0, KEPT_WALKS);
+    finished();
+    this.answerAgain();
+    this.refold();
   }
 
   /** Its data walked anew: what its marking holds that the new data does not hold leaves the marking (Spotfire: rows
@@ -341,18 +471,6 @@ export class VisualPart extends Panel {
     return (m && m.color) || null;
   }
 
-  walkFrom(seeds) {
-    // The walk's budget: the page's, then the declaration's own (`walk`: node_limit, hops - the server's names).
-    // the steps are the route's (walkOfRoute) - a declaration's walk budget is its node_limit
-    const { hops: _steps, ...budget } = this.decl.walk || {};
-    const base = { ...this.walkParams, ...budget };
-    // Along its route: the route's predicates and steps and its slots' (route.js walkOfRoute).
-    const along = !seeds.all && this.walkedRoute ? walkOfRoute(this.walkedRoute, this.slotsHeld()) : {};
-    const params = seeds.all ? { ...base, seed_type: this.rowType() }
-      : { ...base, ...along, nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [] };
-    return this.fetchWalk(params);
-  }
-
   /** Rows, filters, slots and the kind's model again from the walk in hand - a filter, a marking or a slot changed. */
   refold() {
     if (!this.answer || !this.kind) { this.render(); return; }
@@ -360,7 +478,7 @@ export class VisualPart extends Panel {
     const inside = insideOf(this.answer);
     this.index = index;
     this.inside = inside;
-    const received = this.rowsOf(this.answer);
+    const received = this.rowsOf();
     if (this.names) for (const n of this.answer.nodes || []) this.names.set(n.id, { type: n.type, label: n.label || n.id });
     // An expression's Marked("name") - in a slot, a fold, a filter: the marking layer; a row it cannot know is counted,
     // the markings asked heard. The calculator asks (name, node) -> true · false · null (expression.js Marked).
@@ -448,11 +566,22 @@ export class VisualPart extends Panel {
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
       // the rows an expression's Marked could not answer - a relation's edge of theirs not walked yet
       unknown: unknown.size,
-      // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).
-      cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0 };
+      // a walk of its came back cut - the one judgment (part_walks.js walkToEnd: an axis of the last page; its steps are
+      // asked, the depth reached is no cut)
+      cut: [this.rowWalk, ...this.values.values()].some((w) => w && !w.complete && !w.receiving),
+      // its walks (owner 10-14): the row walk's rows, and each slot's value walk - complete, receiving, cached or why not
+      walks: this.walkWords() };
     if ([...asked].join() !== [...(this.askedMarkings || [])].join()) { this.askedMarkings = asked; this.listenLimit(); }
     this.publish();
     this.render();
+  }
+
+  /** Its walks' words: the row walk, then a value walk a slot by its label. */
+  walkWords() {
+    const said = (w) => (w.cached ? 'cached' : w.receiving ? 'receiving' : w.complete ? 'complete' : (w.why || 'cut'));
+    const label = new Map(this.slotList().map((s) => [s.key, s.label || s.key]));
+    return { rows: this.rowWalk ? said(this.rowWalk) : null,
+      values: [...this.values.entries()].map(([key, w]) => ({ name: label.get(key) || key, state: said(w) })) };
   }
 
   /** A marking's people's name. */
@@ -478,7 +607,7 @@ export class VisualPart extends Panel {
   slotSummaries() {
     if (!this.index || !this.kind) return [];
     const encode = this.decl.encode || {};
-    const received = this.rowsOf(this.answer);
+    const received = this.rowsOf();
     // its slots, then the rows' own values (keys, attributes - the walk table's «+ Column» values at no step) a filter can
     // take too (the 18766 run: «+ Add filter» offered the axes only)
     const held = new Set(Object.values(encode).flatMap(columnsOf).filter((s) => Array.isArray(s.steps) && !s.steps.length && s.value).map((s) => `${s.value.on}:${s.value.name}`));
@@ -714,6 +843,9 @@ export class VisualPart extends Panel {
     p.setAttribute('data-part', this.decl.id || '');
     const slot = (this.decl.encode || {})[key];
     p.textContent = opts.words || slotWords(slot);
+    // a pill its tray cuts says its words whole in its tooltip
+    p.title = p.textContent;
+    p.setAttribute('data-clip-ok', '');
     const caret = doc.createElement('span');
     caret.className = 'sf-pill__caret';
     caret.textContent = '▾';
