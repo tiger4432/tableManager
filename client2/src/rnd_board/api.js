@@ -369,7 +369,9 @@ export async function fetchSubgraph(params) {
           // more.resume (implementer A fe2b894f0). Not asked, nothing sent - cut or not, the answer's resume is null.
           resumable,
           // a caller that drops a walk it no longer wants (a part's newer ask, owner 10-14 «연달아 찍는 건 앞 요청 취소»)
-          signal } = params || {};
+          signal,
+          // the walk's ranking not computed (lead 10-14, B 9166099d4) - false only; a resumed page carries it too
+          propagation } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -465,6 +467,7 @@ export async function fetchSubgraph(params) {
   for (const id of Array.isArray(aux) ? aux : []) query.append('aux', String(id));
   if (direction) query.set('direction', direction);
   if (resumable === true) query.set('resumable', 'true');
+  if (propagation === false) query.set('propagation', 'false');
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
   const init = resume ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resume }) } : null;
   const res = await (fetchImpl || fetch)(url, ...(init || signal ? [{ ...(init || {}), ...(signal ? { signal } : {}) }] : []));

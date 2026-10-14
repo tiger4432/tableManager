@@ -350,13 +350,15 @@ export class VisualPart extends Panel {
   /** The answer it reads: the row walk's and every value walk's (part_walks.js readable). */
   answerAgain() {
     this.answer = readable([...((this.rowWalk && this.rowWalk.answers) || []), ...[...this.values.values()].flatMap((v) => v.answers || [])]);
-    this.layers.graph.add(this.answer);
+    // the page's graph takes the nodes a walk carried - one standing by its id would hide its record when it comes
+    this.layers.graph.add({ ...this.answer, nodes: this.answer.nodes.filter((n) => n.carried !== false) });
   }
 
   /** The walk's budget: the page's, then the declaration's own (`walk`: node_limit - the steps are the route's or the slot's). */
   budget() {
     const { hops: _steps, ...own } = this.decl.walk || {};
-    return { ...this.walkParams, ...own };
+    // a part reads nodes and edges - no ranking asked (propagation)
+    return { ...this.walkParams, ...own, propagation: false };
   }
 
   /** Drop a walk in flight (`key`: the row walk or a slot's), or every one. */
@@ -370,6 +372,12 @@ export class VisualPart extends Panel {
    */
   async walkRows(seeds, ticket) {
     const route = seeds.all ? null : this.walkedRoute;
+    // A start of the row type walks none (lead 10-14) when a walk on the page carried its nodes: they are the rows, read
+    // off the page's graph (a start written by hand is walked for its records)
+    if (route && !route.hops && !seeds.all && seeds.positive.every((id) => this.layers.graph.nodes.has(id))) {
+      const nodes = seeds.positive.map((id) => this.layers.graph.nodes.get(id));
+      return { ok: true, answers: [{ nodes, edges: [], truncated: null }], complete: true, why: null, ask: null, negative: seeds.negative || [] };
+    }
     const start = seeds.all ? null : this.startType();
     const ask = { seeds: seeds.all ? [`all:${this.rowType()}`] : [...seeds.positive].sort(), follow: route ? [...route.follow].sort() : [],
       hops: route ? Math.max(1, route.hops) : 1, collect: [...new Set([this.rowType(), start].filter(Boolean))].sort() };
@@ -424,20 +432,22 @@ export class VisualPart extends Panel {
     let finished;
     const record = { ...ask, answers: [], complete: false, receiving: true, why: null, done: new Promise((r) => { finished = r; }) };
     this.values.set(key, record);
-    const done = [];
-    let complete = true;
-    for (const some of chunks(ask.seeds, this.seedChunk)) {
-      const params = { ...this.budget(), nodeId: some[0], positive: some, negative: [], follow: ask.follow, hops: ask.hops, ...(ask.collect ? { collect: ask.collect } : {}) };
-      const got = await walkToEnd(this.fetchWalk, params, control.signal, (answers) => {
+    // its rows by the seed cap, the runs asked together (lead 10-14); each page drawn as it comes
+    const runs = chunks(ask.seeds, this.seedChunk).map(() => []);
+    const gots = await Promise.all(chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(this.fetchWalk,
+      { ...this.budget(), nodeId: some[0], positive: some, negative: [], follow: ask.follow, hops: ask.hops, ...(ask.collect ? { collect: ask.collect } : {}) },
+      control.signal, (answers) => {
         if (control.signal.aborted || ticket !== this.walking) return;
-        record.answers = [...done, ...answers];
+        runs[k] = answers;
+        record.answers = runs.flat();
         this.answerAgain();
         this.refold();
-      });
-      if (got.aborted || ticket !== this.walking || this.aborts.get(key) !== control) { finished(); return; }
-      done.push(...got.answers);
-      if (!got.complete) { complete = false; record.why = got.why; break; }
-    }
+      })));
+    if (gots.some((got) => got.aborted) || ticket !== this.walking || this.aborts.get(key) !== control) { finished(); return; }
+    const done = gots.flatMap((got) => got.answers);
+    const cut = gots.find((got) => !got.complete);
+    const complete = !cut;
+    if (cut) record.why = cut.why;
     this.aborts.delete(key);
     Object.assign(record, { answers: done, complete, receiving: false });
     if (complete) this.valueWalks = [record, ...this.valueWalks].slice(0, KEPT_WALKS);
