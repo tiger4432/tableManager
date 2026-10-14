@@ -39209,3 +39209,14 @@ land     on the branch that goes to main next (design-spotfire carries the test 
 문구       영어 · 짧게. 이유는 한 줄, 넘치면 툴팁
 게이트     B 와 응답 모양 한 벌 먼저 · 하니스 칸(제안 줄 · 누름 · 거절 · 다 지어진 뒤 사라짐) + 변이 · 1920 스샷 · RELEASE_LOG
 ```
+
+> **[총괄 -> 구현자 B · 클라] 10-14 — e4106bafb 고침: 참조뷰 인덱스는 «있는 자동 인덱스 문을 넓힌다» (소유자 «ㄱ 넓혀»)**
+
+```
+바뀜       제안 -> Declare -> 선언(e4106bafb) 은 짓지 않는다. 그리드의 느린 읽기 -> index_wants.want -> INDEX_WANTED -> 체인 워커 자동 인덱스(ix_auto_*, 표마다 상한) 문 하나를 넓힌다
+B          execute_reference_view 한 자리가 시간을 재고, 느리면 그 뷰마다 프로세스당 한 번 EXPLAIN(ANALYZE 아님) -> 통째 훑으며 거르는 칸을 같은 want 로
+           글자 일부(LIKE/ILIKE '%..%') -> 트라이그램(search_text 식 그대로 — 재기에서 planner 가 읽음 확인), 같음 · IN -> 지금 갈래. 자동 짓기 DDL 에 트라이그램 한 갈래
+           3 자 미만 덫 · pg_trgm 없음은 그 줄의 사유로. 느림 기준은 그리드가 쓰는 값과 같은 한 자리
+게이트     스크래치: 통째 훑는 참조뷰 -> auto 줄 하나 -> 지어짐 -> 같은 뷰 초 전후 · 상한 그대로 · 변이 · RUN.md · RELEASE_LOG
+클라       일 없음 (auto 줄이 이미 그려짐) — 「auto (slow search)」 낱말이 화면에 맞는지만 확인
+```
