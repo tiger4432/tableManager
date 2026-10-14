@@ -2337,7 +2337,7 @@
 - **함정**: 풀 안에서 찍는 줄은 그 풀의 로그로 간다(server.log 가 아님). 프로세스가 다 바쁘면 기다림 상한 뒤 503 `<풀>_pool_busy`. 크기 0 이면 서버 안에서 돈다.
 
 ### **«쓰이는 칸만» 인덱스는 청하는 자리와 짓는 자리가 따로 — `runtime.index_wants.want` · `models.ensure_auto_indexes`** (2026-10-14 등록 · `f620962c7`)
-- **어디**: 화면 쪽 `want(table, columns, why, seconds, bind)` — 프로세스마다 처음 한 번 큐에 넣고, 스레드가 `ask` 로 `INDEX_WANTED` 행 하나를 쓴다(이미 그 일을 하는 인덱스가 있거나, 표가 상한이거나, 같은 청이 기다리면 안 씀). 지금 부르는 곳: `grid_page` 의 느린 정렬 · 같음/범위 필터. decide 판단 키는 `models.decide_key_wants`(규칙에서). 체인 워커가 `index_wants.taken(db)` 으로 받아 `ensure_auto_indexes` 로 `ix_auto_` 인덱스를 짓는다.
+- **어디**: 화면 쪽 `want(table, columns, why, seconds, bind)` — 프로세스마다 처음 한 번 큐에 넣고, 스레드가 `ask` 로 `INDEX_WANTED` 행 하나를 쓴다(이미 그 일을 하는 인덱스가 있거나, 표가 상한이거나, 같은 청이 기다리면 안 씀). 지금 부르는 곳: `grid_page` 의 느린 정렬 · 같음/범위 필터, 🆕 10-14 느린 참조 뷰(`enrichment.config._ask_if_slow` → `want_plan` — 그 계획의 통째 훑기 필터마다, LIKE 는 트라이그램 · 글자 3 미만 패턴은 판정 안 함, `83eac7ccc` · `174a5bfb8`). decide 판단 키는 `models.decide_key_wants`(규칙에서). 체인 워커가 `index_wants.taken(db)` 으로 받아 `ensure_auto_indexes` 로 `ix_auto_` 인덱스를 짓는다.
 - **언제 재사용**: 화면 · 체인이 «이 칸이 느렸다»를 알았을 때 — CREATE INDEX 를 직접 하지 않고 청한다.
 - **함정**: 청과 짓기가 다른 프로세스다 — 체인 워커가 없으면 청만 쌓인다. 표마다 `auto_index_per_table`(기본 10).
 
