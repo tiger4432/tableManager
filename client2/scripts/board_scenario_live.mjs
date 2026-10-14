@@ -93,7 +93,8 @@ const timed = async (name, press, ids) => {
   for (const id of ids) watch(id);
   const t0 = performance.now();
   await press();
-  for (const id of ids) await until(() => clocks.get(id).asked != null && ready(id)());
+  // each in turn: drawn since the press and nothing of its in flight (a walk in hand asks nothing; a start pruned empty draws none)
+  for (const id of ids) await until(() => clocks.get(id).drawn != null && part(id).state !== 'walking' && !(part(id).aborts && part(id).aborts.size));
   const ms = (x) => (x == null ? '-' : String(Math.round(x - t0)));
   say(`CLOCK ${name} (ms from the press): part | asked | first answer | all in | drawn | requests (at once) | fetch | fold | draw`);
   for (const id of ids) {
@@ -108,8 +109,7 @@ const walks = () => asked.length;
 const stat = (id) => page.stats.get(id) || {};
 const step0 = walks();
 // A: the bonding wafer the start - the map walks from it
-page.markings.set('marking:start', entitySeedId('wafer', { wafer: WAFER }), SIGN.CASE);
-await until(ready(A));
+await timed('start marked -> A', () => page.markings.set('marking:start', entitySeedId('wafer', { wafer: WAFER }), SIGN.CASE), [A]);
 const cells = part(A).model.cells;
 say(`A map: ${cells.length} cells drawn, ${part(A).model.notDrawn} not drawn, walks ${walks() - step0}`);
 // A coordinate pressed - B walks from its die along B's route (die to die: the die itself) and counts its core wafer.
@@ -134,8 +134,10 @@ for (const cell of cells) {
 }
 say(`B route ${JSON.stringify(part(B).walkedRoute)} asked follow/hops ${(() => { const q = new URL(asked[asked.length - 1]).searchParams; return JSON.stringify([q.getAll('follow'), q.get('hops')]); })()}`);
 say(`B die ${first.cell.where} -> core wafers ${first.cores.join(', ')}; die ${seen[0] ? seen[0].cell.where : '-'} -> ${seen[0] ? seen[0].cores.join(', ') : '-'}`);
-// the die last pressed is another's (seen) - the first one pressed again walks B anew
-await timed('A pressed -> B', () => part(A).markHub([['x', first.cell.where[0]], ['y', first.cell.where[1]]], first.cell.ids, {}), [B]);
+// a die not pressed yet - no walk of B's in hand for it; then the first die again - B's walk in hand
+const fresh = cells[cells.length - 1];
+await timed('A pressed (a new die) -> B', () => part(A).markHub([['x', fresh.where[0]], ['y', fresh.where[1]]], fresh.ids, {}), [B]);
+await timed('A pressed (a die pressed before) -> B', () => part(A).markHub([['x', first.cell.where[0]], ['y', first.cell.where[1]]], first.cell.ids, {}), [B]);
 b = part(B).model;
 say(`B cross: rows ${b.rowKeys.length} (${b.rowKeys.slice(0, 4).join(', ')}...), total ${b.total}, walks ${walks() - s1}, ${Date.now() - t1} ms, layer ${JSON.stringify(page.layers.last)}`);
 report.push({ step: 'A->B', walks: walks() - s1 });
@@ -152,8 +154,7 @@ say(`C cross: steps ${c.rowKeys.length} (${c.rowKeys.join(', ')}), total ${c.tot
 // C: a step pressed
 const stepRow = c.rowKeys.findIndex((k) => k !== '(Empty)');
 const s3 = walks();
-part(C).markHub([['step', c.rowKeys[stepRow]]], c.rowIds[stepRow], {});
-await until(ready(D));
+await timed('C pressed -> D', () => part(C).markHub([['step', c.rowKeys[stepRow]]], c.rowIds[stepRow], {}), [D]);
 const d = part(D).model;
 const byCat = {};
 const catOf = (pt) => part(D).colors.of.get(pt.ids[0]).category;
