@@ -16,6 +16,7 @@ import { StatusPart } from './status_part.js';
 import { FiltersPart } from './filters_part.js';
 import { PropertiesPart } from './properties_part.js';
 import { SlotPicker } from './picker.js';
+import { columnsOf } from './slot.js';
 import { HubBook, isHubId } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
 import { GraphBook, MarkingLayers } from './marking_layer.js';
@@ -68,7 +69,9 @@ export const LAYOUT = Object.freeze({
 /** Whether a slot's value is one-valued by declaration - its last step's predicate declared cardinality one. */
 export function oneValuedBy(predicates) {
   const one = new Set((predicates || []).filter((p) => p && (p.cardinality === 'one' || (p.object && p.object.cardinality === 'one'))).map((p) => p.name));
-  return (slot) => Boolean(slot && slot.steps && slot.steps.length && one.has(slot.steps[slot.steps.length - 1].predicate));
+  // a list of one is that column; several columns are read each on its own (slot.js readSlot)
+  return (slots) => { const cols = columnsOf(slots); const slot = cols.length === 1 ? cols[0] : null;
+    return Boolean(slot && slot.steps && slot.steps.length && one.has(slot.steps[slot.steps.length - 1].predicate)); };
 }
 
 /**

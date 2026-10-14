@@ -5,7 +5,7 @@
 // in one place: `HubBook.open`, handed to the marking store's `seedsOf`.
 
 import { readsOf, columnKey } from '../walk/reach_table.js';
-import { isExpression, slotWords } from './slot.js';
+import { isExpression, slotWords, columnsOf } from './slot.js';
 
 const PREFIX = 'hub:';
 
@@ -44,7 +44,9 @@ export function nodesOfPress(index, inside, encode, where, ids) {
 /** A mark's conditions as a press reads them: each [words, value] a slot says (none - no condition) - its slot when one
  *  says it, `node` when that slot reads another node's name or key along a way. nodesOfPress and whyHub ask this. */
 function conditionsOf(encode, where) {
-  const slots = Object.values(encode || {}).filter((s) => s && !isExpression(s));
+  // each column of each slot - a list of one is that column (a node condition as before); a list of several says its
+  // words only as a whole, no column says them: a condition that is no node
+  const slots = Object.values(encode || {}).flatMap(columnsOf).filter((s) => !isExpression(s));
   return (where || []).map(([words, value]) => {
     const said = [...new Map(slots.filter((s) => slotWords(s) === words).map((s) => [columnKey(s), s])).values()];
     const slot = said.length === 1 ? said[0] : null;
