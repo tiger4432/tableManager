@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-15] **이미지 썸네일 — GET /api/image?ref=…&px=64 · 비율 보존, 긴 변을 px 로 (총괄 1084b4bfd, 소유자 «썸네일은 주어진 칸에 딱 맞게 비율은 보존»)** — 운영에 Pillow 설치 한 번 · git pull · 서버 재기동 · 이주 «없음»
+>
+> ```
+> 운영 설치   서버를 돌리는 파이썬 환경에서 (서버 파이썬만 시스템 프록시를 탄다 — 막히면 그 프록시로)
+>             python -m pip install Pillow==12.3.0
+> 깔렸나      python -c "import PIL; print(PIL.__version__)"        <- 12.3.0 이면 됨 · ModuleNotFoundError 면 안 깔림
+> 없을 때     서버는 안 멈춘다 — px 를 무시하고 원본을 보내고, server.log 에 한 번:
+>               [Image] Pillow is not installed - px is ignored and the original is sent (RUN.md: pip install Pillow)
+>             깐 뒤 서버 재기동
+> 무엇       px 16~1024(image_sources.PX_MIN/PX_MAX, 밖이면 422). 긴 변이 px 이하인 원본은 그대로. JPEG 는 JPEG, 나머지는 PNG
+>             출처 셋(폴더 · db · url) 모두 같은 resolve 뒤 같은 줄이기 한 함수. px 없으면 오늘과 똑같이 원본
+> 캐시       서버 프로세스 메모리, 크기별 · 상한 64 MB(image_sources.THUMB_CACHE_BYTES, 넘으면 오래된 것부터) — 원본이 바뀌면 열쇠가 바뀜
+>             (폴더 파일은 수정 시각 · 크기, db · url 은 읽은 바이트의 해시). Cache-Control 은 오늘 그대로(1 시간)
+> 줄지 않은 것  Pillow 가 못 읽는 그림(예: SVG)은 원본 그대로 · server.log 한 줄 «… is sent as it is - it did not shrink»
+> 되돌리기   git revert <착지> -> 서버 재기동 (Pillow 는 남아도 됨)
+> ```
+>
+> ---
+>
 > ## [10-15] **고침 — 원장 파티션 자동 분석 기준이 운영 세상이 브랜치여도 기본 세상까지 (총괄 127139997)** — git pull · 런처 재기동
 >
 > ```

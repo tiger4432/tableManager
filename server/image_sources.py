@@ -16,12 +16,19 @@ Every image is read by the server - an http(s) cell and a url source are fetched
 never handed to the browser (총괄 f087403fe); `_fetch` holds the guards that makes safe.
 `resolve` is the one seat that asks a source's kind; it reads and never writes.
 """
+import hashlib
+import io
 import json
+import logging
 import mimetypes
 import os
 import re
+import threading
+from collections import OrderedDict
 
 import paths
+
+logger = logging.getLogger("Server")
 
 CONFIG_PATH = paths.config_path("image_sources.json")
 #: The column type word a cell holds an image reference under - the server's one spelling of it (the walk says a
@@ -38,6 +45,15 @@ CACHE_CONTROL = "private, max-age=%d" % CACHE_SECONDS
 MAX_BYTES = 20 * 1024 * 1024
 _ADDRESS = re.compile(r"^https?://", re.IGNORECASE)
 _ENGINES = {}
+#: [총괄 1084b4bfd] The sizes a thumbnail may be asked at (`px`, its longer side): below 16 a picture is a dot the
+#: screen draws without one; above 1,024 the original is the cheaper answer.
+PX_MIN, PX_MAX = 16, 1024
+#: The thumbnails one server process keeps, by bytes - in memory, newest kept, the oldest let go: a board of a few
+#: hundred cells at 64 px is a few MB, so 64 MB holds every size a screen asks in a day without a disk to clean.
+THUMB_CACHE_BYTES = 64 * 1024 * 1024
+_THUMBS = OrderedDict()
+_THUMBS_LOCK = threading.Lock()
+_SAID_NO_PILLOW = []
 
 
 class ImageRefused(Exception):
@@ -78,6 +94,56 @@ def resolve(ref, sources=None, _hops=0):
         return _url(name, source, rest)
     raise ImageRefused(500, "image source %r has kind %r; a source is one of %s"
                        % (name, kind, ", ".join(KINDS)))
+
+
+def shrink(answer, px):
+    """`resolve`'s answer with its longer side at `px` - the ratio kept, never made larger - as ("bytes", data,
+    media type); a JPEG stays one, anything else comes back PNG. Kept by (the original as it is now, px): a file by its
+    path and stamp, read bytes by their hash - a changed original is another key. What Pillow cannot read, and every
+    answer when Pillow is not installed (said once), comes back as it was."""
+    if answer[0] == "file":
+        status = os.stat(answer[1])
+        key = ("file", answer[1], status.st_mtime_ns, status.st_size, px)
+    else:
+        key = ("bytes", hashlib.sha1(answer[1]).hexdigest(), px)
+    with _THUMBS_LOCK:
+        held = _THUMBS.get(key)
+        if held is not None:
+            _THUMBS.move_to_end(key)
+            return held
+    try:
+        from PIL import Image
+    except ImportError:
+        if not _SAID_NO_PILLOW:
+            _SAID_NO_PILLOW.append(True)
+            logger.warning("[Image] Pillow is not installed - px is ignored and the original is sent "
+                           "(RUN.md: pip install Pillow)")
+        return answer
+    try:
+        if answer[0] == "file":
+            with open(answer[1], "rb") as handle:
+                data = handle.read()
+        else:
+            data = answer[1]
+        image = Image.open(io.BytesIO(data))
+        if max(image.size) <= px:
+            return answer
+        jpeg = image.format == "JPEG"
+        image.thumbnail((px, px))
+        out = io.BytesIO()
+        if jpeg:
+            image.convert("RGB").save(out, "JPEG", quality=85)
+        else:
+            image.save(out, "PNG")
+    except Exception as exc:                                    # noqa: BLE001 - the original still answers
+        logger.info("[Image] %s is sent as it is - it did not shrink: %s: %s", key[1], type(exc).__name__, exc)
+        return answer
+    thumb = ("bytes", out.getvalue(), "image/jpeg" if jpeg else "image/png")
+    with _THUMBS_LOCK:
+        _THUMBS[key] = thumb
+        while sum(len(each[1]) for each in _THUMBS.values()) > THUMB_CACHE_BYTES and len(_THUMBS) > 1:
+            _THUMBS.popitem(last=False)
+    return thumb
 
 
 def _folder(name, source, rest):

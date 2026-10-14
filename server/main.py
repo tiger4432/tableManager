@@ -17,7 +17,7 @@ import io
 import csv
 import threading
 import time
-from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks, Response
+from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks, Response, Query
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -886,9 +886,14 @@ def download_desktop_bundle():
     )
 
 
+from image_sources import PX_MAX as _IMAGE_PX_MAX, PX_MIN as _IMAGE_PX_MIN  # noqa: E402 - the route's bounds
+
+
 @app.get("/api/image")
-def get_image(ref: str):
-    """One image reference read from its declared source (`image_sources`). Reads only."""
+def get_image(ref: str, px: int | None = Query(None, ge=_IMAGE_PX_MIN, le=_IMAGE_PX_MAX,
+                                               description="the longer side of a thumbnail, the ratio kept "
+                                                           "(image_sources.PX_MIN..PX_MAX); none: the original")):
+    """One image reference read from its declared source (`image_sources`), shrunk to `px` when asked. Reads only."""
     import image_sources
     from fastapi.responses import Response
 
@@ -896,6 +901,8 @@ def get_image(ref: str):
         answer = image_sources.resolve(ref)
     except image_sources.ImageRefused as refused:
         raise HTTPException(status_code=refused.status, detail=str(refused))
+    if isinstance(px, int):
+        answer = image_sources.shrink(answer, px)
     if answer[0] == "file":
         response = FileResponse(answer[1])
     else:

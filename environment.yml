@@ -34,4 +34,7 @@ dependencies:
     - beautifulsoup4
     # Company SSO (OIDC) login - owner 10-07. Brings cryptography and joserfc.
     - authlib==1.8.0
+    # GET /api/image?px= - a thumbnail, the ratio kept (lead 1084b4bfd, owner 10-15). Absent, the server sends the
+    # original and says so once (image_sources.shrink) - it does not stop.
+    - Pillow==12.3.0
 
