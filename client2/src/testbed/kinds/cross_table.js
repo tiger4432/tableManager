@@ -2,11 +2,11 @@
 // the cell values folded over the rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its
 // rows, given back whole; its paint (marked, Color by) is the root's.
 
-import { combosOf, slotWords, foldRows, EMPTY } from '../slot.js';
+import { combosOf, slotWords, foldRows, EMPTY, PART_SEP } from '../slot.js';
 
 export const SLOTS = Object.freeze([
-  { key: 'rows', label: 'Row axis', category: true, tray: 'left' },
-  { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true },
+  { key: 'rows', label: 'Row axis', category: true, tray: 'left', many: true },
+  { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true, many: true },
   { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true },
 ]);
 export { EMPTY };
@@ -39,7 +39,20 @@ export function crossModel(rows, ctx) {
     if (!rows.some((row) => row.raw && row.raw.cells)) return once.length;
     return foldRows(cellSlot, once.map((id) => byId.get(id).raw.cells), ctx.askMarked);
   };
-  const sort = (keys) => [...keys].sort((a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0));
+  // An axis of several columns - its keys' values column by column (slot.js readSlot `parts`), sorted level by level,
+  // (Empty) last in each; one column - each key itself.
+  const partsOf = new Map();
+  for (const row of rows) {
+    for (const key of ['rows', 'columns']) {
+      const read = row.reads[key];
+      if (!read || !read.parts) continue;
+      if (read.state === 'one') partsOf.set(read.value, read.parts);
+      else read.values.forEach((v, k) => partsOf.set(v, read.parts[k]));
+    }
+  }
+  const parts = (k) => partsOf.get(k) || [k];
+  const level = (a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0);
+  const sort = (keys) => [...keys].sort((a, b) => { const [p, q] = [parts(a), parts(b)]; for (let i = 0; i < Math.max(p.length, q.length); i += 1) { const d = level(p[i] || '', q[i] || ''); if (d) return d; } return 0; });
   const enc = (ctx.declaration && ctx.declaration.encode) || {};
   const R = sort(rowKeys);
   const C = sort(colKeys);
@@ -53,7 +66,7 @@ export function crossModel(rows, ctx) {
   const rowIds = R.map((_, i) => grid[i].flatMap((cell) => cell.ids));
   const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
   return {
-    rowKeys: R, colKeys: C, grid,
+    rowKeys: R, colKeys: C, rowParts: R.map(parts), colParts: C.map(parts), grid,
     rowTotals: rowIds.map(folded), colTotals: colIds.map(folded), total: folded(rows.map((row) => row.id)),
     rowIds, colIds,
   };
@@ -66,21 +79,45 @@ export function render(area, model, ctx) {
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const wrap = el('div', 'tb-cross__wrap');
   const table = el('table', 'sf-table');
-  const head = el('tr');
-  head.append(el('th', 'sf-table__corner', ctx.words('rows')));
   const words = { rows: ctx.words('rows'), columns: ctx.words('columns') };
-  model.colKeys.forEach((c, j) => {
-    const th = el('th', 'sf-table__col', c);
-    th.addEventListener('click', (event) => ctx.markHub([[words.columns, c]], model.colIds[j], event));
-    head.append(th);
-  });
-  head.append(el('th', 'sf-table__col sf-table__total', TOTAL));
-  table.append(head);
+  // An axis of several columns is a hierarchy (Spotfire's): a head a level, an outer value the same along its run told
+  // once (colspan / rowspan), the inner one each time; a head pressed marks the rows under it.
+  const rowParts = model.rowParts || model.rowKeys.map((k) => [k]);
+  const colParts = model.colParts || model.colKeys.map((k) => [k]);
+  const rowLevels = Math.max(1, ...rowParts.map((p) => p.length));
+  const colLevels = Math.max(1, ...colParts.map((p) => p.length));
+  const runs = (list, lv) => { const out = []; list.forEach((p, k) => { const at = p.slice(0, lv + 1).join(PART_SEP); const last = out[out.length - 1];
+    if (last && last.at === at) last.n += 1; else out.push({ at, word: p[lv] === undefined ? '' : p[lv], from: k, n: 1 }); }); return out; };
+  for (let lv = 0; lv < colLevels; lv += 1) {
+    const head = el('tr');
+    if (lv === 0) {
+      const corner = el('th', 'sf-table__corner', words.rows);
+      corner.colSpan = rowLevels;
+      corner.rowSpan = colLevels;
+      head.append(corner);
+    }
+    for (const run of runs(colParts, lv)) {
+      const th = el('th', 'sf-table__col', run.word);
+      th.colSpan = run.n;
+      const ids = model.colIds.slice(run.from, run.from + run.n).flat();
+      th.addEventListener('click', (event) => ctx.markHub([[words.columns, run.at]], ids, event));
+      head.append(th);
+    }
+    if (lv === 0) { const total = el('th', 'sf-table__col sf-table__total', TOTAL); total.rowSpan = colLevels; head.append(total); }
+    table.append(head);
+  }
+  const rowRuns = Array.from({ length: rowLevels }, (_, lv) => new Map(runs(rowParts, lv).map((run) => [run.from, run])));
   model.rowKeys.forEach((r, i) => {
     const tr = el('tr');
-    const th = el('th', 'sf-table__row', r);
-    th.addEventListener('click', (event) => ctx.markHub([[words.rows, r]], model.rowIds[i], event));
-    tr.append(th);
+    for (let lv = 0; lv < rowLevels; lv += 1) {
+      const run = rowRuns[lv].get(i);
+      if (!run) continue;
+      const th = el('th', lv === 0 ? 'sf-table__row' : 'sf-table__row sf-table__row--in', run.word);
+      th.rowSpan = run.n;
+      const ids = model.rowIds.slice(run.from, run.from + run.n).flat();
+      th.addEventListener('click', (event) => ctx.markHub([[words.rows, run.at]], ids, event));
+      tr.append(th);
+    }
     model.grid[i].forEach((cell, j) => {
       const td = el('td', cell.marked ? 'is-marked' : '', cellWords(cell.value));
       if (cell.color && !cell.marked) td.style.background = cell.color;
@@ -95,7 +132,9 @@ export function render(area, model, ctx) {
     table.append(tr);
   });
   const foot = el('tr', 'sf-table__totals');
-  foot.append(el('th', 'sf-table__row', TOTAL));
+  const totalHead = el('th', 'sf-table__row', TOTAL);
+  totalHead.colSpan = rowLevels;
+  foot.append(totalHead);
   model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellWords(v))));
   foot.append(el('td', 'sf-table__total', cellWords(model.total)));
   table.append(foot);

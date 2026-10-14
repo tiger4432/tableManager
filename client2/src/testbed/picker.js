@@ -4,7 +4,7 @@
 
 import { routesFrom, valuesAt, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
 import { REDUCES } from './aggregate.js';
-import { readSlot, isExpression, nameValue, wayWords } from './slot.js';
+import { readSlot, isExpression, nameValue, wayWords, columnsOf, slotWords } from './slot.js';
 import { compile, ExpressionError } from '../expression.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { fitUnder } from '../dropdown.js';
@@ -113,8 +113,56 @@ export class SlotPicker {
       this.host.replaceChildren(box);
       place();
     };
+    // A slot of several columns (`many`: a cross table's axes, Color by, Shape by - owner 10-14): the columns a row of
+    // chips over the picker - one pressed is the one edited, × takes it out, dragged onto another they change places,
+    // «+ Column» edits a new one; a pick writes the slot as its list of columns.
+    const many = Boolean((part.slotList().find((s) => s.key === key) || {}).many);
+    let index = 0;
+    const columns = () => columnsOf((part.decl.encode || {})[key]);
+    const put = (col) => {
+      if (!many) { part.setSlot(key, col); return; }
+      const list = columns();
+      const next = col ? [...list.slice(0, index), col, ...list.slice(index + 1)] : list.filter((_, k) => k !== index);
+      part.setSlot(key, next.length ? next : null);
+    };
+    const columnsRow = () => {
+      const row = el('div', 'sf-pop__cols');
+      const list = columns();
+      let from = null;
+      list.forEach((col, k) => {
+        const chip = el('span', `sf-pop__red sf-pop__colchip${k === index ? ' is-on' : ''}`);
+        chip.setAttribute('draggable', 'true');
+        chip.setAttribute('data-column', String(k));
+        const name = el('button', 'sf-pop__colname', slotWords(col));
+        name.type = 'button';
+        name.addEventListener('click', () => { index = k; draw(col); });
+        const x = el('button', 'sf-pop__colx', '×');
+        x.type = 'button';
+        x.setAttribute('aria-label', `Remove ${slotWords(col)}`);
+        x.addEventListener('click', () => { const rest = columns().filter((_, j) => j !== k); part.setSlot(key, rest.length ? rest : null); index = 0; draw(rest[0] || { steps: [], value: null }); });
+        chip.addEventListener('dragstart', () => { from = k; });
+        chip.addEventListener('dragover', (event) => { if (event.preventDefault) event.preventDefault(); });
+        chip.addEventListener('drop', () => {
+          if (from === null || from === k) return;
+          const moved = [...columns()];
+          const [it] = moved.splice(from, 1);
+          moved.splice(k, 0, it);
+          part.setSlot(key, moved);
+          index = k;
+          draw(moved[k]);
+        });
+        chip.append(name, x);
+        row.append(chip);
+      });
+      const add = el('button', `sf-pop__red${index >= list.length ? ' is-on' : ''}`, '+ Column');
+      add.type = 'button';
+      add.addEventListener('click', () => { index = columns().length; draw({ steps: [], value: null }); });
+      row.append(add);
+      return row;
+    };
     const draw = (current, writing) => {
       const box = el('div', 'sf-pop');
+      if (many) box.append(columnsRow());
       if (!part.index) { box.append(el('div', 'sf-pop__why', 'Walk first - nothing to pick from')); show(box); return; }
       // An expression slot picks no route: the columns start empty, the expression row stands open.
       const chosen = isExpression(current) ? { steps: [], value: null } : current;
@@ -150,7 +198,7 @@ export class SlotPicker {
         it.addEventListener('click', () => {
           const far = chosen.end ? (part.index.nodes.get(chosen.end) || {}).label || chosen.end : null;
           const next = { steps: chosen.steps || [], end: chosen.end, value, reduce: chosen.reduce || undefined, words: [far ? `${far} · ${value.name}` : value.name] };
-          part.setSlot(key, next);
+          put(next);
           draw(next);
         });
         at.append(it);
@@ -163,7 +211,7 @@ export class SlotPicker {
         setDisabledReason(chip, chosen.value ? null : 'Pick a value first');
         chip.addEventListener('click', () => {
           const next = { ...chosen, reduce: r || undefined };
-          part.setSlot(key, next);
+          put(next);
           draw(next);
         });
         chips.append(chip);
@@ -182,7 +230,7 @@ export class SlotPicker {
       }
       const none = el('button', 'sf-pop__it', '(None)');
       none.type = 'button';
-      none.addEventListener('click', () => { part.setSlot(key, null); this.close(); });
+      none.addEventListener('click', () => { put(null); this.close(); });
       const custom = el('button', `sf-pop__it${isExpression(current) ? ' is-on' : ''}`, 'Custom expression…');
       custom.type = 'button';
       custom.addEventListener('click', () => draw(current, isExpression(current) ? current.expr : startingExpression(chosen)));
@@ -203,7 +251,7 @@ export class SlotPicker {
         const said = expressionRefusal(part, input.value);
         if (said) { why.textContent = said; return; }
         const next = { expr: input.value.trim(), words: [input.value.trim()] };
-        part.setSlot(key, next);
+        put(next);
         draw(next);
       };
       input.addEventListener('keydown', (event) => { if (event.key === 'Enter') apply(); });
@@ -215,6 +263,6 @@ export class SlotPicker {
       return row;
     };
     this.host.style.display = '';
-    draw(slot || { steps: [], value: null });
+    draw((many ? columns()[0] : slot) || { steps: [], value: null });
   }
 }

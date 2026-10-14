@@ -7,7 +7,7 @@
 import { assignLooks } from './color_by.js';
 
 /** The Shape by slot a points kind holds. */
-export const SHAPE_SLOT = Object.freeze({ key: 'shape', label: 'Shape by', category: true });
+export const SHAPE_SLOT = Object.freeze({ key: 'shape', label: 'Shape by', category: true, many: true });
 /** The shapes, in the order categories are given them - ECharts' symbol names; the legend's glyphs are these. */
 export const SHAPES = Object.freeze(['circle', 'rect', 'triangle', 'diamond', 'roundRect', 'pin', 'arrow']);
 const ONE = SHAPES[0];

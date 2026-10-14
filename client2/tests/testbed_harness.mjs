@@ -533,9 +533,9 @@ function suite(out, page, saved, counted) {
     out.walkSeeds, { positive: ['A', 'C'], negative: ['B'] });
   eq('T26 the palette a canvas draws with is the document root\'s tokens - each by its name, trimmed; the categories repeat past the seventh; a short hex mixed as its long one',
     out.palette, ['#111111', '#222222', '#333333', '#444444', 'rgba(1, 2, 3, 0.5)', ['#555555', '#666666'], ['#000001', '#111111'], ['#000007', '#111117'], 7, ['#000002', '#111112'], '#E0E7FE', '#E0E7FE']);
-  eq('T28 Custom expression: a text that does not read says why and the slot stays; a name the rows do not have says so; a valid one is the slot and its values drawn',
+  eq('T28 Custom expression: a text that does not read says why and the slot stays; a name the rows do not have says so; a valid one is the slot (Color by: its list of columns, one) and its values drawn',
     page.custom, ['The expression ends too soon', true, 'No value named nope on wafer',
-      { expr: 'If([product] = "A", "is A", "not A")', words: ['If([product] = "A", "is A", "not A")'] }, ['is A', 'not A']]);
+      [{ expr: 'If([product] = "A", "is A", "not A")', words: ['If([product] = "A", "is A", "not A")'] }], ['is A', 'not A']]);
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
   eq('T9a All walks the row type described; the rows and counts; every drawable point drawn',
     [page.allAsked, page.allStats, page.drawnPoints], [[['wafer', null]], { rows: 6, of: 6, system: 0, part: 0, marked: 0, columns: 3, source: 'wafer', cut: false }, 4]);

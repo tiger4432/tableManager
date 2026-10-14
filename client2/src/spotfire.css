@@ -133,6 +133,7 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 /* the heads stay while the table scrolls in its area: the head row on top, the row heads at the left */
 .sf-table tr:first-child > th { position: sticky; top: 0; z-index: 1; background: var(--sf-bg); }
 .sf-table th.sf-table__row { position: sticky; left: 0; background: var(--sf-bg); }
+.sf-table th.sf-table__row--in { position: static; }   /* an inner level of a hierarchy scrolls with the cells */
 .sf-table tr:first-child > th.sf-table__corner { left: 0; z-index: 2; }
 .sf-table__total { font-weight: 700; }
 /* the table's columns as wide as their words (head and values), the table the area's width at least - wider, it scrolls
@@ -239,6 +240,10 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-pop__reds { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 6px 16px; }
 .sf-pop__red { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; letter-spacing: normal; border: 1px solid var(--sf-panel-pill); border-radius: 100px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .sf-pop__red.is-on { background: var(--sf-panel-accent); border-color: var(--sf-panel-accent); color: var(--sf-panel-accent-text); }
+/* a slot's columns over its picker (several columns in one pill): a chip a column - its name, its × - and «+ Column» */
+.sf-pop__cols { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 6px 16px; border-bottom: 1px solid var(--sf-panel-line-2); }
+.sf-pop__colchip { gap: 6px; cursor: grab; }
+.sf-pop__colname, .sf-pop__colx { height: auto; min-height: 0; padding: 0; letter-spacing: normal; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .sf-pop__why { padding: 4px 16px; color: var(--sf-panel-muted); }
 .sf-pop__edit { grid-column: 1 / -1; padding: 6px 0 0 0; border-top: 1px solid var(--sf-panel-line-2); }
 .sf-pop__line { display: flex; gap: 8px; padding: 0 16px; }

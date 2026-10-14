@@ -133,10 +133,11 @@ const KINDS_SAVED = (() => {
     root: { split: 'column', children: [row(['map-1', 'cross-1', 'cross-2']), row(['table-1', 'scatter-1', 'sheet-1'])] },
     visuals: [
       { ...visual, id: 'map-1', kind: 'map', title: 'Die map', encode: { x: key('x'), y: key('y') } },
-      { ...visual, id: 'cross-1', kind: 'crossTable', title: 'Dies per row', description: 'Rows: y of the dies the start reached', encode: { rows: key('y') } },
+      // its row axis two columns - a hierarchy (lead 10-14)
+      { ...visual, id: 'cross-1', kind: 'crossTable', title: 'Dies per row', description: 'Rows: type › y of the dies the start reached', encode: { rows: [key('mat_type'), key('y')] } },
       { ...visual, id: 'cross-2', kind: 'crossTable', title: 'Picked dies', start: { marking: 'marking:pick' }, encode: { rows: key('x') } },
       { ...visual, id: 'table-1', kind: 'table', title: 'Dies', encode: { col1: { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] }, col2: key('x'), col3: key('y') } },
-      { ...visual, id: 'scatter-1', kind: 'scatter', encode: { x: key('x'), y: key('y') } },
+      { ...visual, id: 'scatter-1', kind: 'scatter', encode: { x: key('x'), y: key('y'), color: [key('mat_type'), key('x')] } },
       { ...visual, id: 'sheet-1', kind: 'sheet', title: 'Wafer summary', row: null, key: 'A1', start: { node: 'wafer("SYN-CX-BW-001")' },
         cells: { A2: { input: 'Dies' }, B2: { input: '=Count([in_container~.x])' } }, encode: {} },
     ],
@@ -927,6 +928,8 @@ function screensLib(TOL) {
       return bottom > top ? { top, bottom, height: bottom - top } : null;
     };
     for (const b of all.filter((e) => isButton(e) && e.textContent.trim())) {
+      // a vertical pill (a left tray's axis) runs along its words - its height is its length, not its size
+      if (/^vertical/.test(css(b).writingMode)) continue;
       const r = b.getBoundingClientRect();
       let bar = b.parentElement;
       while (bar && bar.parentElement && bar.parentElement !== document.body && bar.parentElement.getBoundingClientRect().height < r.height * 3) bar = bar.parentElement;

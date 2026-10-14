@@ -48,7 +48,7 @@ function conditionsOf(encode, where) {
   return (where || []).map(([words, value]) => {
     const said = [...new Map(slots.filter((s) => slotWords(s) === words).map((s) => [columnKey(s), s])).values()];
     const slot = said.length === 1 ? said[0] : null;
-    return { words, value, said: said.length, slot, node: Boolean(slot && slot.steps.length && (slot.value.on === 'label' || slot.value.on === 'key')) };
+    return { words, value, said: said.length, slot, node: Boolean(slot && Array.isArray(slot.steps) && slot.steps.length && (slot.value.on === 'label' || slot.value.on === 'key')) };
   }).filter((c) => c.said || c.value !== '');
 }
 
