@@ -88,6 +88,14 @@ ANCHORS = {
 }
 
 
+#: The short file's own shape (setup_version 7, 총괄 112293f73 ②) - the window draws the long
+#: grammar this round, and the short form's window is its own round (소유자 «창도 이대로 만들어»,
+#: 총괄 4c7b42b0a). Named here so the day it is drawn these move to ANCHORS, and asserted to be
+#: exactly these so no other site hides behind them.
+SHORT_FORM_SITES = {("_short_form_errors", "path"), ("_short_value_errors", "path"),
+                    ("_short_value_errors", "f'{path}.node'")}
+
+
 # --------------------------------------------------------------- the validator's side
 
 def _name_names(node, scope):
@@ -157,6 +165,7 @@ def validator_fields() -> dict[str, set[str]]:
 
     named: dict[str, set[str]] = {}
     unplaced: list[tuple[str, str]] = []
+    short: set[tuple[str, str]] = set()
     for call in ast.walk(tree):
         if not isinstance(call, ast.Call):
             continue
@@ -168,6 +177,9 @@ def validator_fields() -> dict[str, set[str]]:
         keywords = {kw.arg: kw.value for kw in call.keywords}
         path_argument = call.args[1] if len(call.args) > 1 else keywords.get("path")
         site = (scope.name if scope else "<module>", ast.unparse(path_argument))
+        if site in SHORT_FORM_SITES:
+            short.add(site)
+            continue
         if site not in ANCHORS:
             unplaced.append(site)
             continue
@@ -179,6 +191,7 @@ def validator_fields() -> dict[str, set[str]]:
     assert not unplaced, (
         "the validator states field names at a site the skeleton has not been placed "
         f"against: {unplaced}. Add it to ANCHORS and to the skeleton.")
+    assert short == SHORT_FORM_SITES, short
     return named
 
 

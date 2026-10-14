@@ -37,8 +37,11 @@ from .config_explorer import (
 from .implementations import trusted_implementations
 from .setup_bundle import (
     CONFIG_FILENAME,
+    SHORT_FORM_VERSION,
     LedgerSetupValidationError,
+    is_long_source,
     require_ready_bundle,
+    shorten_source,
     validate_bundle,
     validate_bundle_errors,
 )
@@ -934,12 +937,29 @@ class OntologyDraftStore:
             # name - refused at the next load (4eb1fe98f). The file is written bare.
             with path.open("r", encoding="utf-8") as handle:
                 document = fold_versions(json.load(handle))
+            short = document.get("setup_version") == SHORT_FORM_VERSION
             for op_path, op_value in operations:
+                if short and op_path[0] == "sources" and len(op_path) > 2:
+                    raise ConfigExplorerError(
+                        "short_file_takes_a_source", ".".join(map(str, op_path)),
+                        "the ledger file is written short - activate the whole source, not a part")
                 if isinstance(op_value, _Remove):
                     _delete_path(document, op_path)
                 else:
                     _set_path(document, op_path, op_value)
             document = fold_versions(document)    # and the bodies the operations brought
+            # 🔴 [총괄 10-14 ②] a long body the explorer brings into a short file is written short,
+            # so one save does not leave the file in two grammars - or refused, by its reason
+            for name in {op_path[1] for op_path, _value in operations
+                         if short and op_path[0] == "sources"}:
+                body = (document.get("sources") or {}).get(name)
+                if is_long_source(body):
+                    written, why = shorten_source(body)
+                    if written is None:
+                        raise ConfigExplorerError(
+                            "not_writable_short", f"sources.{name}",
+                            f"the ledger file is written short and this source {why}")
+                    document["sources"][name] = written
             backup_dir = Path(config_backup.backup_dir_for(str(path)))
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup = backup_dir / (

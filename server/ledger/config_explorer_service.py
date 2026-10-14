@@ -1007,7 +1007,8 @@ class OntologyExplorerService:
         blank the form that would fix it.
         """
         try:
-            sources = read_config_document(self.config_root).get("sources")
+            # as the loader reads it - a short (v7) file's sources expanded (총괄 10-14 ②)
+            sources = upgrade_setup(read_config_document(self.config_root)).get("sources")
         except LedgerSetupValidationError:
             sources = None
         return closed_lists(sources)
@@ -1051,7 +1052,8 @@ class OntologyExplorerService:
             source = {"file": str(path), "state": "absent"}
         else:
             try:
-                bundle = read_config_document(self.config_root)
+                # as the loader reads it - a short (v7) file's sources expanded (총괄 10-14 ②)
+                bundle = upgrade_setup(read_config_document(self.config_root))
             except LedgerSetupValidationError as exc:
                 raise _setup_refusal(exc) from exc
             source = {"file": str(path), "state": "present"}
