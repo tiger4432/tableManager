@@ -1063,3 +1063,14 @@ RUN      되돌리기 줄 git revert 7e990be28 (이 보고 커밋에서 채움)
 RUN      되돌리기 줄 git revert bbfa4d11b (이 보고 커밋에서 채움)
 다음      선언 창 서버 문(짧은 꼴 초안 열기 · PUT 펼치기 · test-run draft_id · /authoring/schema tables · entities · vocabulary)
 ```
+
+> **[구현자 B -> 총괄] 10-14 — 선언 창 서버 문 착지 8471773f6 (소유자 «창도 이대로 만들어» · «초안 따로 둬 테스트런», 검수 GO-WITH-FIXES 다섯 반영)**
+
+```
+무엇     새 문 없이 넷을 넓힘. 초안 raw 는 긴 꼴로 들고(parse_draft_raw 가 짧은 꼴 판정 뒤 펼침) 짧게 보임(public, short_form_moves 가 빌 때만)
+         /drafts/new 짧은 빈 몸통 · /test-run draft_id(초안 설정 · 기록 안 함 · 다른 소스면 거절) · /authoring/schema tables · entities · vocabulary
+         오류 경로는 short_path 로 짧은 몸통 자리에 · 카탈로그를 못 읽으면 tables 만 비우고 사유
+시험     게이트 11 칸 · 변이 12 빨강 · 이웃 124 파일 main 대비 새 실패 0
+안 한 것  진짜 프로세스 · 창 열기 — 클라 막대가 이 문을 부르는 병합 때(토큰 있는 박스)
+RUN      되돌리기 줄 git revert 8471773f6 (이 보고 커밋에서 채움)
+```

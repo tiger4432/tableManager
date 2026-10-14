@@ -10,7 +10,7 @@
 >            POST /test-run            {source_id, draft_id?} — draft_id 가 있으면 그 초안 설정으로 돌리고 응답에 draft_id, 기록 안 남김
 >            GET  /authoring/schema    tables{표: {columns, key}} · entities{타입: {keys, attributes}} · vocabulary{술어: {qualifiers, object{kind, types}}}
 > 확인     선언 창이 클라에 착지하기 전엔 화면 변화 없음. 서버 응답만: GET /admin/ontology-explorer/authoring/schema 에 tables · entities · vocabulary 키
-> 되돌리기  git revert <착지 커밋> -> 런처 재기동
+> 되돌리기  git revert 8471773f6 -> 런처 재기동
 > ```
 >
 > ---
