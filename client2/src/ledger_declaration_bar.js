@@ -334,8 +334,8 @@ function sentenceBar(el, view, raw, at, from = null) {
         text: isConst(s[q]) ? `${q} = ${JSON.stringify(s[q].const)}` : `${q} ← ${words(s[q])}`, options: columnOptions(view, raw.table, s[q]),
         parts: isConst(s[q]) ? undefined : [q, ' ', el('span', 'ldb-arrow', '←'), ' ', words(s[q])] }));
     }
-    // + Qualifier closes the with group, as the mockup draws it
-    bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));
+    // + Qualifier closes the with group while the predicate still takes one (lead 10-14: a door to a nameless cell is untrue)
+    if (free) bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));
   }
   if (s.when !== undefined) {
     const wc = whenColumn(s.when);
