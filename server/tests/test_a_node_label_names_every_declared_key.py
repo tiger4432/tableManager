@@ -15,14 +15,13 @@ DECLARED = {"die": ["mat_id", "mat_type", "x", "y"], "wafer": ["wafer"]}
 
 
 @pytest.fixture(autouse=True)
-def declaration():
+def declaration(monkeypatch):
     fake = "test:label-every-key"
     token = ledger_subgraph._WALK_DECLARATION.set(fake)
-    ledger_subgraph._declaration_facts[fake] = (DECLARED, {}, {}, {}, {}, {})
+    monkeypatch.setattr(ledger_subgraph, "_read_entity_declaration", lambda: (DECLARED, {}, {}, {}, {}, {}))
     try:
         yield
     finally:
-        ledger_subgraph._declaration_facts.pop(fake, None)
         ledger_subgraph._WALK_DECLARATION.reset(token)
 
 

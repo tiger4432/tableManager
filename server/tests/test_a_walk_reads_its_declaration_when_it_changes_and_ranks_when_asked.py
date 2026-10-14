@@ -180,3 +180,16 @@ def test_the_route_reads_the_argument_as_it_came(root, monkeypatch, asked, hande
                 propagation=params["propagation"].default if asked == "sentinel" else asked)
     trace_router.evidence_subgraph(**call)
     assert got["propagation"] is handed
+
+
+def test_one_walk_reads_the_declaration_facts_once(root, monkeypatch):
+    """The walk's facts (key order, labels, plural names, steps) - read once at its start by the stamp rule and held for
+    that walk (`_WALK_FACTS`): not a stat per node, and one revision for the whole walk. Outside a walk: the rule."""
+    asked = []
+    real = worker._stamped
+    monkeypatch.setattr(worker, "_stamped", lambda key, paths, build: asked.append(key[0]) or real(key, paths, build))
+    body = _walk(MANY)
+    assert body["nodes"] and asked.count("facts") == 1, asked
+    assert ledger_subgraph._WALK_FACTS.get() is None, "unbound after the walk"
+    ledger_subgraph._read_entity_declaration()
+    assert asked.count("facts") == 2

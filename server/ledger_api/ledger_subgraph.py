@@ -1170,12 +1170,10 @@ class InMemoryEvidenceLookup:
                    for other in self.atoms)
 
 
-#: {declaration file: (key order per entity type, plural attributes per bare entity type
-#: (S-144), absence confirmers (S-149), inverse pairs, label names per entity type)} - facts
-#: from ONE read of one file, so they can never come from different revisions. The confirmers: 「이 술어가 안 보이는 것이 무슨 뜻인가」
-#: — bare finding predicate -> (bare examination predicate, whether that examination is itself
-#: declared); the population of `node["absence"]` is THAT MAP, not the data.
-_declaration_facts = {}
+#: The declaration's facts the walk in progress reads (`_read_entity_declaration`) - read once at its start, by the
+#: stamp rule, so one walk answers from one revision and pays no stat per node (총괄 10-15: a second cache, emptied
+#: only on reload, could answer from another revision than the route's `_stamped` one). Unbound: read by the rule.
+_WALK_FACTS = contextvars.ContextVar("ledger_walk_facts", default=None)
 
 #: The declaration the walk in progress reads - its world's file, bound by `subgraph` for the
 #: length of ONE walk (총괄 60d7e8e42). A context value, not a global swapped per walk: two
@@ -1201,6 +1199,22 @@ def _declared_key_order(entity_type):
 
 
 def _read_entity_declaration():
+    """The declaration's facts - (key order per entity type, plural attributes per bare entity type (S-144), absence
+    confirmers (S-149), inverse pairs, label names per entity type, steps) - the walk's own (`_WALK_FACTS`), else read
+    by the stamp rule (`worker._stamped`, its files' stamps): again only when a file changed. The confirmers: 「이 술어가
+    안 보이는 것이 무슨 뜻인가」 — bare finding predicate -> (bare examination predicate, whether that examination is
+    itself declared); the population of `node["absence"]` is THAT MAP, not the data."""
+    held = _WALK_FACTS.get()
+    if held is not None:
+        return held
+    from ledger.schema import world_names
+    from ledger.worker import _stamped
+
+    paths = _WALK_DECLARATION.get() or (world_names().declaration_path,)
+    return _stamped(("facts", paths), paths, lambda: _entity_facts(paths))
+
+
+def _entity_facts(paths):
     """Read the entity declaration ONCE, filling everything this module takes from it.
 
     🔴 ONE READ, TWO FACTS (S-144). Key order and attribute cardinality come from the same
@@ -1212,15 +1226,10 @@ def _read_entity_declaration():
     as they are today rather than taking the walk down with it. The `@version` suffix is
     stripped the way `ledger/roleframe.py` strips it.
     """
-    from ledger.schema import world_names
     from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
 
     from ledger.config import merged
 
-    paths = _WALK_DECLARATION.get() or (world_names().declaration_path,)
-    facts = _declaration_facts.get(paths)
-    if facts is not None:
-        return facts
     order, plural_by_type, confirmers, inverses, labels, steps = {}, {}, {}, {}, {}, {}
     try:
         documents = []
@@ -1270,8 +1279,7 @@ def _read_entity_declaration():
                     plural_by_type[bare] = plural
     except Exception:
         order, plural_by_type, confirmers, inverses, labels, steps = {}, {}, {}, {}, {}, {}
-    facts = _declaration_facts[paths] = (order, plural_by_type, confirmers, inverses, labels, steps)
-    return facts
+    return order, plural_by_type, confirmers, inverses, labels, steps
 
 
 def _held_to_names(kind, starts_here, static_types):
@@ -1368,21 +1376,9 @@ def _back_down_steps(arrived):
 
 
 def reset_declaration_cache():
-    """Forget the entity declaration so the next walk reads it again (S-206, 판정 330).
-
-    🔴 THE SENTINEL ABOVE IS PROCESS-LIFETIME, and that is a reload hole rather than a
-    design: an operator who declares `attribute_cardinality: many` and activates it gets
-    `one` from the walk until somebody RESTARTS the server. 「빌드했다고 로드된 건 아니다」.
-
-    ⚠️ THE HOLE PREDATES THE PLURAL CELL - key order was already cached this way - but the
-    same cache now carries a fact the operator wrote MINUTES ago, which is what makes the
-    staleness visible instead of theoretical.
-
-    🔴 BOTH GLOBALS GO TOGETHER, because one read fills them both. Clearing only the
-    sentinel would leave the plural map from the previous revision standing while the key
-    order came from the new one - the split this module's 「one read」 note exists to stop.
-    """
-    _declaration_facts.clear()
+    """A reload (S-206, 판정 330): the kept walks end - a paused walk read the declaration it was walked under. The
+    facts are not forgotten here: `_read_entity_declaration` reads them again when a file changes (the stamp rule),
+    so a reload and an activation both reach the next walk."""
     end_kept_walks("reloaded")                              # a paused walk read the declarations it was walked under
 
 
@@ -2420,6 +2416,8 @@ def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, aux=None, **
     other worlds reads their own files. `page`: the walk widened to time, `_time_page`. `aux`: node ids each walked
     node is judged against (`_judge_aux`)."""
     token = _WALK_DECLARATION.set(declaration_paths)
+    facts = _WALK_FACTS.set(None)
+    _WALK_FACTS.set(_read_entity_declaration())
     try:
         if page is not None:
             return _time_page(seed_id, lookup, page, **arguments)
@@ -2441,6 +2439,7 @@ def subgraph(seed_id, lookup, *, declaration_paths=None, page=None, aux=None, **
                        arguments.get("static_types"))
         return payload
     finally:
+        _WALK_FACTS.reset(facts)
         _WALK_DECLARATION.reset(token)
 
 

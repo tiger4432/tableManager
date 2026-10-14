@@ -43,14 +43,13 @@ def test_a_name_the_entity_does_not_carry_is_refused_by_name():
 
 
 @pytest.fixture(autouse=True)
-def declaration():
+def declaration(monkeypatch):
     fake = "test:entity-label"
     token = ledger_subgraph._WALK_DECLARATION.set(fake)
-    ledger_subgraph._declaration_facts[fake] = (ORDER, {}, {}, {}, LABELS, {})
+    monkeypatch.setattr(ledger_subgraph, "_read_entity_declaration", lambda: (ORDER, {}, {}, {}, LABELS, {}))
     try:
         yield
     finally:
-        ledger_subgraph._declaration_facts.pop(fake, None)
         ledger_subgraph._WALK_DECLARATION.reset(token)
 
 
