@@ -67257,3 +67257,15 @@ RUN     한 줄: «코어 8 이상 · 메모리 여유 1 GB 이상이면 6(p50 0
 보고        스키마 이름 · 띄우는 명령 · 노드/원자 수 · 18766 같은 서버로 그 판을 보는 법 — 빌더 · B 가 그대로 쓰게
             끝나면 판은 지우지 말고 남김(재기용) · public 표 행 변화 0 대조
 ```
+
+> **[총괄 -> 구현자 A] 10-14 — 식에 날짜 함수: Date 와 날짜 조각 (소유자 «스팟파이어에 date 라고 datetime 에서 날짜만 뽑는 거 있으니 그거 있어야 해»)**
+
+```
+지금        화면 계산기(client2/src/expression.js) · 서버 계산기(server/expression.py) 둘 다 날짜 함수 0 (task/SPOTFIRE_FUNCTIONS.md 의 Conversion · Date and Time 목록 중 없음)
+할 일       두 계산기에 같은 이름 · 같은 답으로(contracts/expression/vectors.json 한 벌로 둘 다 채점):
+            Date(시각) -> 날짜만 · DateTime(글자) -> 시각 · Year · Quarter · Month · Day · Hour · Week · DayOfWeek · DatePart("단위", 시각)
+            🔴 시간대: 원장 시각은 UTC. «날짜를 어느 시간대로 자르나» 는 소유자께 여쭙는 중 — 설정 한 칸으로 두고 기본값은 답 오면 넣음(그 전엔 칸 · 시험만)
+            Date 의 결과 타입은 시각(자정)이라 산점도 축 판단(클라 lead-board-13 의 scale)이 연속 · 범주 둘 다로 받게 — 클라와 한 줄 맞춤
+            빈 값 · 못 읽는 시각은 빈 값(거절 말고), 그 수는 계산기의 not_number 처럼 셈
+게이트      계약 벡터(경계: 자정 · 해 바뀜 · 윤년 · 주 시작 요일 = 스팟파이어 설명서 근거 cite) · 두 계산기 같은 답 · 변이 · RELEASE_LOG
+```
