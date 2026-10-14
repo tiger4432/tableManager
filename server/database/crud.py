@@ -3243,7 +3243,9 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
     rows by `row_id`, and the live database carries them today (measured 2026-08-07:
     11 in `wafer_map_metadata`, 10 in `production_plan`, all from manual merges).
 
-    🔴 A BLANK VALUE WRITES NOTHING AT ALL - it does not clear an existing key either.
+    🔴 A BLANK VALUE WRITES NOTHING AT ALL - it does not clear an existing key either. That is the KEY
+    COLUMN's own value arriving blank (818c9c0); a blanked composite key PART is another write - the
+    rebuild below clears the key then (a61d32f4f: 「이 행의 키는 이제 없다」, 총괄 10-14 kept it).
     A new row therefore keeps its NULL, and a row that already has a key keeps it. The
     first draft of this cleared to NULL on blank, which is what the old `''` write
     effectively did too, and it was WRONG for the reason the old code never had to
@@ -4192,9 +4194,11 @@ def apply_row_update_internal(
         # existing row, and that path's collision merge is still needed.
         if is_src_changed:
             new_bk_val = rebuilt_business_key(table_name, row)
-            if new_bk_val is None and is_new and update_item.business_key_val:
-                # 조합 소스 컬럼들이 누락되었으나 신규 생성 시 business_key_val이 유효하게 주어져 있다면 폴백 사용
-                new_bk_val = update_item.business_key_val
+            if new_bk_val is None and is_new:
+                # 조각이 빈 새 행은 이 쓰기가 넘긴 키를 지킨다 - business_key_val 이든 키 칸이든, 위
+                # `_update_row_business_key` 가 이미 행에 올렸다(총괄 10-14: 키 칸으로 넘긴 키가 None 에 덮였음).
+                # 기존 행의 조각 비움은 키 NULL 그대로(a61d32f4f).
+                new_bk_val = getattr(row, "business_key_val", None)
 
             current_bk = getattr(row, "business_key_val", None)
             if current_bk != new_bk_val:
