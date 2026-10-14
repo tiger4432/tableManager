@@ -81,9 +81,9 @@ edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 
 since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「구간 걷기」 절
 include_superseded  기본 false. `one` 술어의 «지금 아닌» 사실도 그릴지 — 그 엣지엔 `not_current` (총괄 22ebdd153)
 format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-183, 09-11)
-resumable           기본 false. 이어 걸을 호출(걷기 화면)만 true — 잘린 걷기를 남기고 more.resume 열쇠를 준다(아래 «이어 걷기», 총괄 9752e91f7)
+resumable           기본 false. 이어 걸을 호출(걷기 화면 · 시험대 부품 part_walks.walkToEnd)만 true — 잘린 걷기를 남기고 more.resume 열쇠를 준다(아래 «이어 걷기», 총괄 9752e91f7)
 propagation         기본 true. false 면 순위를 계산하지 않고 답에 `propagation` 칸이 없다 — 순위를 안 읽는 호출(시험대 근원 부품,
-                    client2/src/testbed 의 fetchWalk)용(총괄 9166099d4). ⚠️ 보내는 호출자 아직 0 — fetchSubgraph 가 propagation 을 안 실음. R&D 보드 · 걷기 화면은 순위를 읽으니 안 보낸다(기본 true)
+                    client2/src/testbed 의 fetchWalk)용(총괄 9166099d4). R&D 보드 · 걷기 화면은 순위를 읽으니 안 보낸다(기본 true)
                     다음 쪽도 같은 값으로 — 다르면 422 «resume belongs to another walk»
 ```
 ⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
@@ -355,7 +355,7 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 묻는 것   상한(원자 · 노드 · 엣지)에 잘린 걷기를, 상한은 그대로 둔 채 이어서 끝까지
 답        more = {unexpanded · reach{타입: complete · unexpanded} · resume}  — 더 있는지는 unexpanded · reach 가 답한다
 이어 걷기  첫 쪽을 resumable=true 로 묻고(걷기 화면) resume 을 POST 본문으로 돌려준다 -> 같은 상한 · 첫 쪽 시각(as_of)으로 다음 쪽
-          resumable 없는 걷기(보드 패널 · 시험대 · contrast_walk · rows)는 잘려도 resume null — 남기는 것 없음(총괄 9752e91f7)
+          resumable 없는 걷기(보드 패널 · contrast_walk · rows)는 잘려도 resume null — 남기는 것 없음(총괄 9752e91f7)
 🆕 10-13  멈춘 걷기는 그 걷기 프로세스에 산다(총괄 54f7edfdb ㄴ-1) — resume = {"walk": "<서버 시작>.<pid>.<걷기>.<쪽>"} 열쇠 하나
           열린 노드(지은 그대로, 쪽마다 사본으로 꺼냄) · 다 읽은 노드 · 커서 · 씨앗마다 닿음 · top set 이 그 프로세스에
           — 다음 쪽은 싸고 풀고 다시 짓지 않는다
