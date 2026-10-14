@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-15] **고침 — 원장 파티션 자동 분석 기준이 운영 세상이 브랜치여도 기본 세상까지 (총괄 127139997)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     원장 프로세스가 뜰 때 파티션 autovacuum_analyze_scale_factor 맞추기가 기본 세상 + 브랜치를 각 한 번 돎 (색인 일과 같은 목록)
+>          전에는 운영 세상이 브랜치면 기본 세상 파티션을 건너뛰고 그 브랜치를 두 번
+> 볼 줄    ledger.log  [Ledger] autovacuum_analyze_scale_factor 0.02 set on N partition(s): …  — 운영 세상이 브랜치였다면 재기동 뒤 기본 세상 파티션(ledger_events_*)이 이 줄에 처음 나옴
+>          운영 세상이 기본이면 달라지는 것 없음(줄 없음 = 이미 같음)
+> 되돌리기  git revert 2c331bdb9 -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-14] **식에 날짜 함수 — Date · DateTime · Year · Quarter · Month · Day · Hour · Week · DayOfWeek · DatePart, KST 날짜로 자름 (총괄 fe2ba4b1f, 소유자 «스팟파이어에 date …» · «ㅇㅇ kst»)** — git pull · 화면 새로 고침 · 체인 워커 재기동(서버 계산기 = 체인 decide 집계)
 >
 > ```
