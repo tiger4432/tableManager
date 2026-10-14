@@ -1356,9 +1356,11 @@ def is_long_source(source: Any) -> bool:
 
 
 def expand_source(source: Any) -> Any:
-    """One source as the long grammar - a long one as it is. Readers of a source's body as written
-    (a refused source's relation, its predicates) read it through here."""
-    if not isinstance(source, Mapping) or is_long_source(source):
+    """One source as the long grammar - a long one, or a body that is not a source's, as it is.
+    Readers of a body as written (a refused source's relation, its predicates, a draft's body)
+    read it through here."""
+    if (not isinstance(source, Mapping) or is_long_source(source)
+            or not set(_SHORT_SOURCE_REQUIRED) & set(source)):
         return source
     mappings: dict[str, Any] = {}
     sentences = source.get("sentences")
