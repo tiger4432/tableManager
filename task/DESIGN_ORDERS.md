@@ -39220,3 +39220,13 @@ B          execute_reference_view 한 자리가 시간을 재고, 느리면 그 
 게이트     스크래치: 통째 훑는 참조뷰 -> auto 줄 하나 -> 지어짐 -> 같은 뷰 초 전후 · 상한 그대로 · 변이 · RUN.md · RELEASE_LOG
 클라       일 없음 (auto 줄이 이미 그려짐) — 「auto (slow search)」 낱말이 화면에 맞는지만 확인
 ```
+
+> **[총괄 -> 응용] 10-14 — 문서 정비 (doc-sync-1014j 뒤 누적)**
+
+```
+범위        B 참조뷰 자동 인덱스 83eac7ccc · 174a5bfb8 (index_wants.want_plan · enrichment config._ask_if_slow · slow search 트라이그램 · 3 자 미만 한 번 안 씀)
+            A 재번역 6259b7398 (쪽마다 분석 · blocks 줄 SAVEPOINT · row_index_key_too_long · order_not_unique 분자 거절 · skips)
+            낡은 줄: backfill.py «첫 쪽 앞 · 새 파티션 쪽 뒤 분석» -> 쪽마다
+할 일       CODE_MAP 해당 절 · PRIMITIVES · 적대 QA 하며 같이
+끝나면      .claude/doc_sync_pending 지우고 커밋 · 푸시, 해시 한 줄
+```
