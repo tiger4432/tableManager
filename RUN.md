@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **시험만 — 새로 뽑은 나무에서 시험 전체가 초록 (총괄 10-14 「main 에 남은 빨강」)** — 운영 변화 없음 · 재기동 없음
+>
+> ```
+> 명령     cd server && API_BASE_URL=http://127.0.0.1:9 python -m pytest -q tests
+> 답의 뜻   failed 0 이면 끝. 박스의 gitignore 된 설정(table_config · ledger_config · chain_rules)이 없어도 같은 답 - 그 시험들은 config/sample 견본을 읽음
+>          failed 가 «no ledger configuration at» · «table_config.json, which does not exist» 를 말하면 그 시험이 아직 박스 파일을 읽는 것 -> tests/support/declaration 의 두 도우미로
+> 박스 파일 재기  ASSY_TEST_LIVE=1 을 붙이면 «박스 파일이 견본과 같은가» 시험(살아 있는 맵퍼 셋 · void_schema 하나)도 돎. 빨강이면 그 박스 파일이 견본과 다른 것이지 제품 결함이 아님
+> 되돌리기  git revert cec180328
+> ```
+>
+> ---
+>
 > ## [10-14] **다시 번역의 진행 줄 — «번역한 행 / 전체 행»만 세고, 옛 표 원자 거두기는 따로 «withdrew N» (총괄 10-14, 소유자 «도는지 굳었는지 모르겠다»)** — git pull · 런처 재기동
 >
 > ```
