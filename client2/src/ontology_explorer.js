@@ -9,7 +9,7 @@ import {
   draftReshapesPlan,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer, nodeTrail, placePopover, declarationView } from './ontology_explorer_view.js';
-import { editDeclaration } from './ledger_declaration_bar.js';
+import { editDeclaration, refusalIssues, BAR_WORDS } from './ledger_declaration_bar.js';
 import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
 import { CURRENT_USER } from './config.js';
@@ -1013,6 +1013,15 @@ No effect`;
     }
   };
 
+  // A refused save's rows on the source's paths go to the bar, beside their chips; the toast only counts them (lead 10-14).
+  const refusedToBar = (error) => {
+    const rows = refusalIssues(error);
+    if (!rows.length) return false;
+    dispatch({ type: 'DECL_UI', decl: { refused: rows } });
+    showToast(BAR_WORDS.problems(rows.length), 'error');
+    return true;
+  };
+
   // One edit of the bar on the draft's text - the same EDITOR_CHANGED every form writer ends in; the list it came from closes.
   const editBar = (op) => {
     let raw;
@@ -1173,9 +1182,10 @@ No effect`;
       // Save draft: the draft's record only - the config file is written by Activate (owner 10-14 «초안 따로 둬»)
       try {
         const saved = await putDraft();
+        dispatch({ type: 'DECL_UI', decl: { refused: [] } });
         dispatch({ type: 'DRAFT_SAVED', draft: saved.draft || saved });
         showToast('Draft saved', 'success');
-      } catch (error) { showToast(errorMessage(error), 'error'); }
+      } catch (error) { if (!refusedToBar(error)) showToast(errorMessage(error), 'error'); }
     }
     else if (action === 'bootstrap-config') {
       // A refusal is kept on the offer, not floated as a toast: the next move is to read it and act.
@@ -1438,6 +1448,7 @@ No effect`;
       try {
         const saved = await putDraft();
         const record = saved.draft || saved;
+        dispatch({ type: 'DECL_UI', decl: { refused: [] } });
         dispatch({ type: 'DRAFT_SAVED', draft: record });
         await jsonRequest(`/drafts/${draftId}/activate`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1471,7 +1482,7 @@ No effect`;
         // read, awaited, so the restore lands on the panel the operator will see.
         await loadAuthoring(targetKey);
         restoreScroll(place);
-      } catch (error) { showToast(errorMessage(error), 'error'); }
+      } catch (error) { if (target.dataset.from !== 'bar' || !refusedToBar(error)) showToast(errorMessage(error), 'error'); }
     } else if (action === 'review-draft') {
       if (state.dirty) { showToast('Save the draft first', 'warning'); return; }
       await mutateDraft(`/drafts/${state.draft.draft_id}/review`, {

@@ -305,6 +305,38 @@ async function suite(d) {
   ok('I4 tables the server could not read: the Read line says so, with the reason', (byClass(blind, 'ldb-bar')[0] || { textContent: '' }).textContent.includes('Column lists unavailable: FileNotFoundError: table_config.json is gone'),
     (byClass(blind, 'ldb-bar')[0] || { textContent: '' }).textContent);
 
+  console.log('\n── J. a refused save is said in the bar ──');
+  const REFUSED_SAVE = { code: 'duplicate_sentence', path: 'bundle.sources.wafer_process_recipe.sentences[1].sentence', message: 'sentence named twice',
+    details: [{ code: 'duplicate_sentence', path: 'bundle.sources.wafer_process_recipe.sentences[1].sentence', message: 'sentence named twice' },
+      { code: 'unknown_field', path: 'bundle.sources.wafer_process_recipe.atributes', message: 'no such field' }] };
+  const toasts = [];
+  let refuse = true;
+  const jHost = element('div');
+  const jScreen = makeController({ root: jHost, apiBase: '', showToast: (m) => toasts.push(String(m)),
+    adminFetch: async (url, init) => {
+      if (url.includes('/drafts/') && init && init.method === 'PUT' && refuse) return { ok: false, status: 400, json: async () => ({ detail: REFUSED_SAVE }) };
+      return { ok: true, status: 200, json: async () => answer(url, init) };
+    } });
+  await jScreen.refresh();
+  const jClick = async (dataset) => { for (const fn of jHost._on.click || []) await fn({ target: { closest: () => ({ dataset }), dataset } }); };
+  await jClick({ action: 'save-draft-only', from: 'bar' });
+  ok('J1 a refused Save draft: its rows go to the bar, the toast only counts them', same(jScreen.getState().decl.refused.map((r) => r.code), ['duplicate_sentence', 'unknown_field'])
+    && toasts[toasts.length - 1] === '2 problems — see the bar', JSON.stringify(toasts));
+  const jv = view.declarationView(jScreen.getState(), 'source');
+  const jDrawn = bar.renderDeclarationBar(document, RAW, { ...jv, errors: bar.chipErrors(jScreen.getState().decl.refused) });
+  const jNames = byClass(jDrawn, 'ldb-sname');
+  ok('J2 each row said once in the bar: by its sentence name, and a path no chip has on the line under the head',
+    jNames.length > 1 && byClass(jNames[1], 'is-bad').map((n) => n.textContent).join() === 'sentence named twice'
+      && byClass(byClass(jDrawn, 'ldb-unplaced')[0] || element('i'), 'is-bad').map((n) => n.textContent).join() === 'atributes — no such field'
+      && byClass(jDrawn, 'is-bad').length === 2, JSON.stringify(byClass(jDrawn, 'is-bad').map((n) => n.textContent)));
+  const jEditor = view.renderRaw({ ...jScreen.getState(), draft: { ...jScreen.getState().draft, validation_errors: [] } });
+  ok('J3 the line under the bar counts them and does not say them again', byClass(jEditor, 'oe-editor-validation')[0].textContent === '2 problems — see the bar',
+    byClass(jEditor, 'oe-editor-validation')[0].textContent);
+  refuse = false;
+  await jClick({ action: 'save-draft-only', from: 'bar' });
+  ok('J4 a save that goes through clears them', jScreen.getState().decl.refused.length === 0 && toasts[toasts.length - 1] === 'Draft saved', JSON.stringify(toasts));
+  ok('J5 a refusal with no source path is the toast it always was', bar.refusalIssues({ detail: { code: 'stale_revision', path: 'expected_revision', message: 'stale' } }).length === 0);
+
   console.log('\n── F. a table save reads the column lists again ──');
   const held = { ...store.initialExplorerState, authoringSchema: { tables: {} } };
   ok('F1 a table save clears the schema', store.reduceExplorerState(held, { type: 'AUTHORING_INVALIDATED', tables: true }).authoringSchema === null);
@@ -373,9 +405,15 @@ const MUTANTS = [
   { name: 'the table key read off another field', catches: ['H1', 'D4'], file: 'view', mutate: swap('Array.isArray(v.key)).map(([t, v]) => [t, v.key])', 'Array.isArray(v.keys)).map(([t, v]) => [t, v.keys])') },
   { name: 'a refusal\'s [n] read as is', catches: ['I2'], file: 'bar', mutate: swap(".replace(/\\[(\\d+)\\]/g, '.$1')", '') },
   { name: 'refusals beside no chip', catches: ['I2'], file: 'bar', mutate: swap('  if (!open) { wrap.append(b, ...said(el, view, c.path)); return wrap; }', '  if (!open) { wrap.append(b); return wrap; }') },
-  { name: 'a sentence\'s refusal not by its name', catches: ['I2'], file: 'bar', mutate: swap("  if (!from) name.append(...said(", "  if (false) name.append(...said(") },
+  { name: 'a sentence\'s refusal not by its name', catches: ['I2'], file: 'bar', mutate: swap("  if (!from) name.append(...[...said(", "  if (false) name.append(...[...said(") },
   { name: 'any path names a chip', catches: ['I3'], file: 'bar', mutate: swap("/^bundle\\.sources\\.[^.]+\\.(.+)$/", "/^bundle\\.[^.]+\\.[^.]+\\.(.+)$/") },
-  { name: 'the refusals left behind', catches: ['I5'], file: 'view', mutate: swap('    errors: chipErrors(draft.validation_errors),', '    errors: {},') },
+  { name: 'the refusals left behind', catches: ['I5'], file: 'view', mutate: swap('    errors: chipErrors([...(draft.validation_errors || []), ...(decl.refused || [])]),', '    errors: {},') },
+  { name: 'a refused save stays a toast', catches: ['J1'], file: 'screen', mutate: swap('      } catch (error) { if (!refusedToBar(error)) showToast(errorMessage(error), \'error\'); }', '      } catch (error) { showToast(errorMessage(error), \'error\'); }') },
+  { name: 'a path no chip has is dropped', catches: ['J2'], file: 'bar', mutate: swap("    if (!view.said.has(path)) for (const m of rows) unplaced.append(", "    if (false) for (const m of rows) unplaced.append(") },
+  { name: 'placed rows said twice', catches: ['J2'], file: 'bar', mutate: swap("    if (!view.said.has(path)) for (const m of rows) unplaced.append(", "    for (const m of rows) unplaced.append(") },
+  { name: 'the line under the bar says them again', catches: ['J3'], file: 'view', mutate: swap('      if (refusals) validation.textContent = BAR_WORDS.problems(refusals);', '') },
+  { name: 'a good save keeps the old refusals', catches: ['J4'], file: 'screen', mutate: swap("        dispatch({ type: 'DECL_UI', decl: { refused: [] } });\n        dispatch({ type: 'DRAFT_SAVED', draft: saved.draft || saved });", "        dispatch({ type: 'DRAFT_SAVED', draft: saved.draft || saved });") },
+  { name: 'any refusal taken to the bar', catches: ['J5'], file: 'bar', mutate: swap(".filter((r) => r && /^bundle\\.sources\\./.test(String(r.path || '')));", ".filter(Boolean);") },
   { name: 'unread tables said nothing', catches: ['I4'], file: 'view', mutate: swap(", tablesUnavailable: schema.tables_unavailable || '',", ',') },
   { name: 'the long body sent to the bar', catches: ['I1', 'D3'], file: 'view', mutate: swap("kind === 'source' && !isShortForm(raw) ? null : ", '') },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
