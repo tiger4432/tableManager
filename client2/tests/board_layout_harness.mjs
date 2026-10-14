@@ -626,73 +626,108 @@ async function recordPoints(M) {
     latest: await seatWith({ x: { ...TEMP, of: 'time', reduce: 'Latest' }, y: { ...TEMP, reduce: 'Latest' } }) };
 }
 
-/** The route (lead 10-14 «다른 다이라»): a bonding die d1 of BW (its sibling d2), bonded from c1 on CW1 (d2 from c2 on
- *  CW2). A part starting from d1 walks only its route, and its rows are the route's ends. */
+/** The marking walk (owner 10-14 «마킹 걷기는 아까대로»): a bonding die d1 of BW (its sibling d2), bonded from c1 on CW1
+ *  (d2 from c2 on CW2). The stub walks as the server does - from the seeds along `follow` (none - every predicate) both
+ *  ways, `hops` steps, carrying the `collect` types, every edge it took. */
 async function routed(M) {
   const { entitySeedId } = await import('../src/rnd_board/api.js');
   const id = (type, key) => entitySeedId(type, { [type]: key });
   const [BW, CW1, CW2, d1, d2, c1, c2] = [['wafer', 'BW'], ['wafer', 'CW1'], ['wafer', 'CW2'], ['die', 'd1'], ['die', 'd2'], ['die', 'c1'], ['die', 'c2']].map(([t, k]) => id(t, k));
   const label = new Map([[BW, 'BW'], [CW1, 'CW1'], [CW2, 'CW2'], [d1, 'd1'], [d2, 'd2'], [c1, 'c1'], [c2, 'c2']]);
-  const node = (nid) => ({ id: nid, type: nid === BW || nid === CW1 || nid === CW2 ? 'wafer' : 'die', label: label.get(nid), keys: {}, attributes: {} });
-  const answer = { nodes: [BW, CW1, CW2, d1, d2, c1, c2].map(node),
-    edges: [[d1, 'in_container', BW], [d2, 'in_container', BW], [d1, 'bonded_from', c1], [d2, 'bonded_from', c2], [c1, 'in_container', CW1], [c2, 'in_container', CW2]]
-      .map(([source, predicate, target], i) => ({ id: `r${i}`, source, target, predicate, qualifiers: {} })), truncated: ANSWER.truncated };
+  const node = (nid) => ({ id: nid, type: M.route.typeOfStart(nid), label: label.get(nid), keys: {}, attributes: {} });
+  const EDGES = [[d1, 'in_container', BW], [d2, 'in_container', BW], [d1, 'bonded_from', c1], [d2, 'bonded_from', c2], [c1, 'in_container', CW1], [c2, 'in_container', CW2]]
+    .map(([source, predicate, target], i) => ({ id: `r${i}`, source, target, predicate, qualifiers: {} }));
+  const serve = (p) => {
+    if (p.seed_type) return { nodes: [...label.keys()].filter((x) => M.route.typeOfStart(x) === p.seed_type).map(node), edges: [], truncated: ANSWER.truncated };
+    const follow = p.follow && p.follow.length ? new Set(p.follow) : null;
+    let at = new Set(p.positive || []);
+    const seen = new Set(at);
+    const took = new Set();
+    for (let k = 0; k < (p.hops || 1); k += 1) {
+      const next = new Set();
+      for (const e of EDGES) {
+        if (follow && !follow.has(e.predicate)) continue;
+        for (const [a, b] of [[e.source, e.target], [e.target, e.source]]) if (at.has(a)) { took.add(e); if (!seen.has(b)) { seen.add(b); next.add(b); } }
+      }
+      at = next;
+    }
+    const collect = p.collect && p.collect.length ? new Set(p.collect) : null;
+    return { nodes: [...seen].map(node).filter((n) => !collect || collect.has(n.type)), edges: [...took], truncated: ANSWER.truncated };
+  };
   const vocabulary = { entities: [{ type: 'die' }, { type: 'wafer' }],
     predicates: [{ name: 'in_container', subjects: ['die'], object: { kind: 'entity_ref', types: ['wafer'] } }, { name: 'bonded_from', subjects: ['die'], object: { kind: 'entity_ref', types: ['die'] } }] };
   const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
-  const seat = async (decl, withVocabulary = true, alsoWafer = false, writes = null) => {
-    const doc = makeDoc('dark');
+  const NAMED = { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] };
+  const KINDS = { crossTable: M.cross.kind, table: M.table.kind };
+  // a page: its markings, its hubs, its graph and relations (a part seated on it shares them)
+  const page = (relations = []) => {
     const markings = new MarkingStore();
-    markings.set('marking:die', d1, SIGN.CASE);
-    if (alsoWafer) markings.set('marking:die', BW, SIGN.CASE);
+    const hubs = new HubBook();
+    const rel = new KeyedStore({ list: relations });
+    return { markings, hubs, relations: rel, layers: new M.layer.MarkingLayers({ markings, hubs, relations: rel }) };
+  };
+  const seat = async (decl, on = page(), withVocabulary = true) => {
+    const doc = makeDoc('dark');
     const asked = [];
-    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, writes, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
-      kinds: { crossTable: (await import('../src/testbed/kinds/cross_table.js')).kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), hubs: new HubBook(), names: new Map(), charts: charts(),
-      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: JSON.parse(JSON.stringify(answer)) }; } });
+    const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings: on.markings, hubs: on.hubs, layers: on.layers, relations: on.relations,
+      writes: decl.writes || null, start: decl.start, declaration: decl, vocabulary: withVocabulary ? () => vocabulary : undefined,
+      kinds: KINDS, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(), names: new Map(), charts: charts(),
+      fetchWalk: async (params) => { asked.push([params.follow || null, params.hops || null, (params.positive || []).map((x) => label.get(x))]); return { ok: true, body: serve(params) }; } });
     part.mount();
     await settle();
-    const said = (statusWords(part.stats.get('B')) || []).find((w) => w.startsWith('route from')) || null;
-    return { markings, state: part.state, refusal: part.refusal || null, said, rows: part.model ? part.model.rowKeys : null, total: part.model ? part.model.total : null, asked, routes: part.routes().map((r) => r.chain.join('>')), part, labels: (part.rowIds || []).map((x) => label.get(x)).sort() };
+    return { state: part.state, refusal: part.refusal || null, rows: part.model ? part.model.rowKeys : null, asked, part,
+      labels: () => part.rowsOf().map((x) => label.get(x)).sort() };
   };
   const base = { id: 'B', part: 'visual', kind: 'crossTable', start: { marking: 'marking:die' }, system: null, filter: [] };
-  const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } });
-  const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } });
-  const wafers = await seat({ ...base, row: 'wafer', encode: {} });
-  const core = await seat({ ...base, row: 'wafer', encode: {}, route: wafers.part.routes()[1] });
-  // a route named that does not start from the start's type: said, nothing walked, no other route instead
-  const named = await seat({ ...base, row: 'wafer', encode: {}, route: { hops: 1, follow: ['has_measurement'], chain: ['wafer', 'measurement'] } });
-  const mixed = await seat({ ...base, row: 'die', encode: { rows: CORE }, walk: { node_limit: 1000, hops: 9 } }, true, true);
-  // a cell pressed (hubs.js nodesOfPress, the one place): its one condition the core wafer, read off another node - that
-  // wafer, drawn marked; core wafer and the row's own name - the hub of its rows; the row's own name alone - the hub
-  const NAMED = { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] };
-  const held = (s) => s.markings.entries('marking:core').map(([x]) => (isHubId(x) ? 'hub' : label.get(x)));
-  const one = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE } }, true, false, 'marking:core');
-  one.part.markHub([['core wafer', one.part.model.rowKeys[0]], ['(None)', '']], one.part.model.grid[0][0].ids, {});
+  const withD1 = (relations) => { const p = page(relations); p.markings.set('marking:die', d1, SIGN.CASE); return p; };
+  // W1 a start of the row type is its own row: d1 alone (its record walked, no row reached through it), its core wafer
+  const dies = await seat({ ...base, row: 'die', encode: { rows: CORE } }, withD1());
+  // W2 All: every die of the type
+  const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } }, withD1());
+  // W3 die to wafer: every route's predicates together - its own wafer and its core wafer, the longest route's steps
+  const wafers = await seat({ ...base, row: 'wafer', encode: {} }, withD1());
+  // W4 the start's spread layer, of two types together: d1 marked, the relation die -in_container-> wafer on the page -
+  // the start d1 and BW; rows of die: d1 itself and the dies BW holds
+  const spreadPage = withD1([{ from: 'die', predicate: 'in_container', to: 'wafer', both: false }]);
+  spreadPage.layers.graph.add({ nodes: [node(d1), node(BW)], edges: [EDGES[0]] });
+  const spread = await seat({ ...base, row: 'die', encode: {} }, spreadPage);
+  // W5 no route from the start's type to the rows: said, nothing walked
+  const none = await seat({ ...base, row: 'lot', encode: {} }, withD1());
+  // W6 a press (hubs.js nodesOfPress): a cell of one row - that row's node (d1, not the core wafer it reads); a cell of
+  // several - the hub of its rows; a row of a part whose rows are wafers - that wafer (narrowing)
+  const held = (on) => on.markings.entries('marking:core').map(([x]) => (isHubId(x) ? 'hub' : label.get(x)));
+  const onePage = withD1();
+  const one = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE } }, onePage);
+  one.part.markHub([['core wafer', one.part.model.rowKeys[0]]], one.part.model.rowIds[0], {});
   await settle();
-  const press = [held(one), one.part.model.grid[0][0].marked];
-  const pressed = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: CORE, columns: NAMED } }, true, false, 'marking:core');
-  const g = pressed.part.model;
-  pressed.part.markHub([['core wafer', g.rowKeys[0]], ['name', g.colKeys[0]]], g.grid[0][0].ids, {});
+  const press = [held(onePage), one.part.model.grid[0][0].marked];
+  const shows = await seat({ ...base, id: 'S', row: 'wafer', writes: 'marking:core', start: { marking: 'marking:die' }, encode: {} }, onePage);
+  press.push((statusWords(shows.part.stats.get('S')) || []).find((w) => w.includes('marked row')) || null);
+  const manyPage = page();
+  manyPage.markings.set('marking:die', BW, SIGN.CASE);
+  const many = await seat({ ...base, row: 'die', writes: 'marking:core', encode: {} }, manyPage);
+  many.part.markHub([], many.part.model.grid[0][0].ids, {});
   await settle();
-  press.push(held(pressed));
-  // the row head of the same two-axis table - one condition again: the row's core wafer node
-  pressed.part.markHub([['core wafer', g.rowKeys[0]]], g.rowIds[0], {});
+  press.push(held(manyPage));
+  const narrow = await seat({ ...base, row: 'wafer', writes: 'marking:core', encode: { rows: NAMED } }, withD1());
+  const cw1 = narrow.part.model.rowKeys.indexOf('CW1');
+  narrow.part.markHub([['name', 'CW1']], narrow.part.model.rowIds[cw1], {});
   await settle();
-  press.push(held(pressed));
-  pressed.part.markHub([['name', g.colKeys[0]]], g.grid[0][0].ids, {});
+  press.push(narrow.part.markings.entries('marking:core').map(([x]) => label.get(x) || 'hub'));
+  // W9 a part that writes a marking walks the page's relations from its rows - the edges its marking spreads along
+  const writerPage = withD1([{ from: 'die', predicate: 'bonded_from', to: 'die', both: false }]);
+  const writer = await seat({ ...base, row: 'die', writes: 'marking:core', encode: {} }, writerPage);
+  const reader = await seat({ ...base, id: 'R', row: 'die', start: { marking: 'marking:core' }, encode: {} }, writerPage);
+  writer.part.markHub([], [d1], {});
   await settle();
-  press.push(held(pressed));
-  // a pill of two columns, its inner one with steps (lead 10-14, 18766: the inner core wafer read (Empty)): the walk
-  // carries its steps as the one-column pill's does, and its value is read
-  const single = await seat({ ...base, row: 'die', encode: { rows: CORE } });
-  const pair = await seat({ ...base, row: 'die', encode: { rows: [NAMED, CORE] } });
+  const relationWalk = [writer.asked.slice(1), (statusWords(writer.part.stats.get('B')) || []).filter((w) => w.startsWith('Relations')), reader.labels()];
+  // W7 a pill of two columns, its inner one with steps: the walk carries its steps as the one-column pill's does
+  const single = await seat({ ...base, row: 'die', encode: { rows: CORE } }, withD1());
+  const pair = await seat({ ...base, row: 'die', encode: { rows: [NAMED, CORE] } }, withD1());
   const twoColumns = [pair.asked, single.asked, pair.rows, JSON.stringify(M.walks.valueAsk([NAMED, CORE], 'die', vocabulary)) === JSON.stringify(M.walks.valueAsk(CORE, 'die', vocabulary))];
-  // a list of one column is that column to a press: the core wafer node (hubs.js conditionsOf)
-  const listed = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: [CORE] } }, true, false, 'marking:core');
-  listed.part.markHub([['core wafer', listed.part.model.rowKeys[0]], ['(None)', '']], listed.part.model.grid[0][0].ids, {});
-  await settle();
-  const listPress = [held(listed), M.hubs.whyHub({ rows: [CORE], columns: NAMED }, [['core wafer', 'CW1'], ['name', 'd1']])];
-  return { twoColumns, listPress, press, named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+  return { twoColumns, press, relationWalk, pure: [M.hubs.nodesOfPress(['a']), M.hubs.nodesOfPress(['a', 'b'])],
+    dies: [dies.rows, dies.asked, dies.labels()], all: [all.rows, all.labels()], wafers: [wafers.labels(), wafers.asked],
+    spread: [spread.part.startTypes(), spread.labels(), spread.asked], none: [none.state, none.refusal, none.asked.length] };
 }
 
 /** A part's walks (owner 10-14 «행 걷기 + 값 걷기», part_walks.js): a row walk from the start to its end, a value walk a
@@ -1472,9 +1507,6 @@ async function suite(M) {
         latest: [['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']] }),
     judge('P7 the units of a value record: a record a unit, X its own record; a reduce - an edge a unit, folded', mk.records,
       [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
-    judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
-      // the row walk (the start of the row type: one step, its type carried), then the slot's value walk
-      rt.dies, [['CW1'], 1, [[[], 1, ['d1']], [['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
     judge('PW1 the row walk to its end: two pages, the second with the first\'s resume; its rows every die; one value walk for the column; an expired resume said with its reason, the walk cut',
       [pw.resume, pw.expired], [[[['in_container', ['BW'], null], ['in_container', ['BW'], 'r2'], ['measures', ['d1', 'd2', 'd3'], null]], ['d1', 'd2', 'd3'], ['1', '2', '3']],
         [[null, 'k1'], false, 'resume expired', 1]]),
@@ -1500,18 +1532,20 @@ async function suite(M) {
       [pw.onePage[0].reduce((a, b) => a + b, 0), pw.onePage[1], pw.onePage[2]], [2, 0, [3, 3, 3]]),
     judge('PW7 core dies (18766): a value walk carrying wafers only read by its edges - each die its own core wafer, the dies it did not carry by their ids',
       pw.core, [['CW1', 'CW2', '(Empty)'], [['d1'], ['d2'], ['d3']], ['c1', 'c2', 'd1', 'd2', 'd3']]),
+    judge('W1 a start of the row type is its own row: d1 alone - its record walked (one step, its type), no row reached through it; then the slot\'s value walk; its one core wafer',
+      rt.dies, [['CW1'], [[[], 1, ['d1']], [['bonded_from', 'in_container'], 2, ['d1']]], ['d1']]),
+    judge('W2 from All every die of the type', rt.all, [['CW1', 'CW2', '(Empty)'], ['c1', 'c2', 'd1', 'd2']]),
+    judge('W3 die to wafer: every route\'s predicates together, the longest route\'s steps - every wafer the walk reached is a row',
+      rt.wafers, [['BW', 'CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]]]),
+    judge('W4 the start is the marking\'s spread layer - d1 and the wafer the page\'s relation takes it to, two types together: d1 its own row, the rest walked from BW',
+      rt.spread, [['die', 'wafer'], ['d1', 'd2'], [[['in_container'], 1, ['BW']]]]),
+    judge('W5 no route from the start\'s type to the rows: said, nothing walked', rt.none, ['refused', 'No route from die to lot', 0]),
+    judge('W6 a press: one row - its node (d1, not the core wafer it reads), drawn marked; several rows - their hub; a part whose rows are wafers narrows - the wafer',
+      [rt.pure, rt.press], [[['a'], null], [['d1'], true, '0 marked rows - marking holds die; no relation to wafer', ['hub'], ['CW1']]]),
+    judge('W9 a part that writes a marking walks the page\'s relations from its rows (said on its walk line); a part starting from that marking starts from its spread layer',
+      rt.relationWalk, [[[['bonded_from'], 1, ['d1']]], ['Relations · complete'], ['c1', 'd1']]),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
       [rt.twoColumns[0], rt.twoColumns[2], rt.twoColumns[3]], [rt.twoColumns[1], ['d1, CW1'], true]),
-    judge('W8 a pill holding a list of one column presses as that column: the core wafer node', rt.listPress, [['CW1'], ['core wafer', 'name']]),
-    judge('W5 a route named that does not start from the start\'s type is said and nothing is walked - not the shortest route instead',
-      rt.named, ['refused', 'Route wafer → measurement · has_measurement does not start from die, the start', 0, null]),
-    judge('W6 a cell whose one condition is read off another node marks that node (the core wafer), drawn marked; with a second axis the hub of its rows, its row head the node again; on the row\'s own value - the hub',
-      rt.press, [['CW1'], true, ['hub'], ['CW1'], ['hub']]),
-    judge('W4 a start of another type than the route\'s is not walked and is said; a declaration\'s walk steps are the route\'s (its hops not read)',
-      rt.mixed, [['CW1'], [[[], 1, ['d1']], [['bonded_from', 'in_container'], 2, ['d1']]], 'route from die; 1 start of other types not walked']),
-    judge('W2 from All every die of the type (the route only from a start)', rt.all, [['CW1', 'CW2', '(Empty)'], 4]),
-    judge('W3 die to wafer: the shortest route its own wafer; the route with the bonded_from loop the core wafer, the walk asking that route',
-      [rt.wafers, rt.core], [[['die>wafer', 'die>die>wafer'], ['BW']], [['CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]]]]),
     judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
       ce, { first: [1, true], declared: ['#123456', '#123456', '#123456', '#123456', '#123456'] }),
     judge('SH1 the sheet\'s written start: walked from that node alone, along the ways its cells name (measures), its row its type; the cells read in the order they name each other',
@@ -1547,16 +1581,15 @@ async function suite(M) {
     judge('MC4 the picker\'s «+ Column» then a value writes the slot as its list of columns', mc.written, ['p', 'x']),
     judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
       shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
-    judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows; a cross table holds no Shape by',
-      [shp.drawn, shp.glyphs, shp.kept, shp.pressed, shp.crossSlots], [[['D1', 'circle'], ['D2', 'rect'], ['D3', 'circle']], ['circle', 'rect'], { A: 'circle', B: 'rect' }, [[['p', 'B']]], false]),
+    judge('SP2 a scatter draws each point its category\'s shape, the legend the same names, the shapes kept in the declaration; a legend name pressed marks its rows (one row - its node); a cross table holds no Shape by',
+      [shp.drawn, shp.glyphs, shp.kept, shp.pressed, shp.crossSlots], [[['D1', 'circle'], ['D2', 'rect'], ['D3', 'circle']], ['circle', 'rect'], { A: 'circle', B: 'rect' }, ['D2'], false]),
     judge('TR1 Panel by splits the rows - two values in both, none (Empty) last; a hub in a panel carries the panel\'s value once; no slot - no panels',
       tr.pure, [[['A', ['r2']], ['B', ['r1', 'r2']], ['(Empty)', ['r3']]], [['lot', 'L1'], ['p', 'A']], [true, [['lot', 'L1'], ['p', 'A']]], null]),
     judge('TR2 a scatter in panels: a panel a value, its rows\' points, every panel on the same x and y extent', [tr.drawnPanels, tr.axes],
       [['A', 'B'], [['A', ['D1', 'D3'], 1, 3, 2, 9], ['B', ['D2'], 1, 3, 2, 9]]]),
-    judge('TR3 a press in a panel marks its rows there - a marker of x 3 in A is D3, not D2; a cross table cell the same', [tr.marker, tr.cell],
-      [[[[['x', '3'], ['p', 'A']], ['D3']]], [[[['x', '3'], ['(None)', ''], ['p', 'B']], ['D2']]]]),
+    judge('TR3 a press in a panel marks its rows there - a marker of x 3 in A is D3, not D2; a cross table cell the same (one row - its node)', [tr.marker, tr.cell],
+      [[['D3', []]], [['D2', []]]]),
     judge('TR4 a panel\'s cell is painted as it is pressed - a marking holding the wafer leaves the wafer\'s cells in panels unmarked (two conditions, the rows)', tr.waferCells, [['A', false], ['B', false]]),
-    judge('HW1 a press in a panel on a node slot marks a hub, and the status says why - its conditions', tr.why, 'marked a hub of 2 rows - the mark has 2 conditions (wafer, p)'),
     judge('WO1 a kind says the base set slots it takes not - the sheet holds no Top/Bottom by, no Panel by', tr.sheetSlots, []),
     judge('RS1 a picture follows its own div: each trellis panel watched, its chart resized when its div changes', fl.resize, [2, 2]),
     judge('TT2 a tooltip says a slot\'s words once - the same column on Y and Top/Bottom by one line', fl.tip, ['M1', 'value: 4', 'step: S1']),
@@ -1571,8 +1604,9 @@ async function suite(M) {
       si.rule, [['b', 'c'], ['b'], ['a'], ['a', 'b', 'c'], ['a', 'b', 'c', 'd', 'e'], 5]),
     judge('SI2 a scatter showing the top 1 by x draws that point only and the status says how many are not shown', si.points, [['D2'], 'Top 1 by x · 2 not shown']),
     judge('SI3 a Marker by hub ranked by its rows folded (Avg of x: A 2, B 3)', si.hubs, [['B'], 'Top 1 by Avg(x) · 1 not shown']),
-    judge('P6 a marker by lot pressed marks the lot node it stands for (hubs.js nodesOfPress) - the Marked table of wafers holds none of it, no relation declared', mp,
-      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['L1'], lines: [], said: '0 marked rows - marking holds lot; no relation to wafer' }),
+    // owner 10-14 «누르면 그 아래 행이 마킹»: the lot's rows, not the lot node (the 10-14 exception retired)
+    judge('P6 a marker by lot pressed marks its rows - the hub of its wafers; the Marked table of wafers holds them', mp,
+      { points: [['L1', 25, 30], ['L2', 25, 40]], marked: ['hub:["wafer",[["lot","L1"]]]'], lines: ['W1', 'W3'], said: '2 marked rows' }),
   ];
   return { lines, ran: names.length, names: [...names], failures: [...failures] };
 }
@@ -1658,31 +1692,31 @@ const MUTANTS = [
     mutate: (t) => swap(t, "!this.steps().touched.has(id) ? null : false;", '!this.steps().touched.has(id) ? false : false;') },
   { id: 'M23', what: 'a map cell a die, not a coordinate - its press marks one', catches: 'Y6 ', file: 'testbed/kinds/map.js', key: 'map',
     mutate: (t) => swap(t, "  for (const { values, ids } of combosOf(rows, ['x', 'y'])) {", "  for (const { values, ids } of rows.flatMap((r) => combosOf([r], ['x', 'y']))) {") },
-  { id: 'M25', what: 'the rows every node of the row type the walk reached - not the route\'s ends', catches: 'W1 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'this.rowIds0 = this.walkedRoute ? routeEnds(', 'this.rowIds0 = false ? routeEnds(') },
+  { id: 'M25', what: 'the start\'s own walk brings rows through it - its record walk\'s other dies', catches: 'W1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'if (own.length) got[0] = ', 'if (false) got[0] = ') },
   { id: 'M26', what: 'the row walk asks no route - every predicate', catches: 'W3 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'follow: route ? [...route.follow].sort() : []', 'follow: []') },
+    mutate: (t) => swap(t, 'follow: [...new Set(routes.flatMap((r) => r.follow))].sort(),', 'follow: [],') },
   { id: 'M28', what: 'the root hands the colours no declared category colour - the palette colour always', catches: 'C1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'paintRows(rows, { palette: this.palette(), declaration: this.decl,', 'paintRows(rows, { palette: this.palette(), declaration: { ...this.decl, colors: {} },') },
   { id: 'M29', what: 'a start no basket was handed is its raw id', catches: 'K7 ', file: 'walk/start_baskets.js', key: 'baskets',
     mutate: (t) => swap(t, '    const said = entityOfId(id);', '    const said = null;') },
   { id: 'M30', what: 'the colours given are not kept in the declaration - more categories deal them again', catches: 'C2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (colors.any && Object.keys(colors.assigned).length) this.decl =', '    if (false) this.decl =') },
-  { id: 'M31', what: 'a start of another type walked from as if the route started there', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '      if (other.length) {', '      if (false) {') },
-  { id: 'M32', what: 'a route named that is not offered walks the shortest instead (the 18766 run: the dies\' own wafer for the core)', catches: 'W5 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '    if (!seeds.all && !this.walkedRoute && startType &&', '    if (false &&') },
+  { id: 'M31', what: 'the start is the marking\'s members only - its spread layer not taken', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'const spread = [...this.layers.layer(name).set].filter((id) => !negative.has(id));', 'const spread = [];') },
+  { id: 'M32', what: 'no route from the start\'s type walked anyway, not said', catches: 'W5 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'if (away.length && !this.routes().length && this.vocabulary()) {', 'if (false) {') },
   { id: 'M33', what: 'the tooltip never put on the part', catches: 'TT1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (this.tip.parentNode !== this.root) this.root.appendChild(this.tip);', '') },
   { id: 'M34', what: 'no label handed to the kind', catches: 'LB1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const label = (mark) => labelOf(mark,', '    const label = () => null; const unused = (mark) => labelOf(mark,') },
   { id: 'M35', what: 'the description not drawn', catches: 'DS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, "...(said ? [el('div', 'sf-part__desc', said)] : [])", '...[]') },
-  { id: 'M36', what: 'a press always a hub of its rows (the 18766 run: a core wafer cell marked its dies, C walked 17 bonding measurements)', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'const nodes = this.index && nodesOfPress(this.index, this.inside, encode, where, ids);', 'const nodes = null;') },
-  { id: 'M37', what: 'a mark whose press stands for nodes drawn by its rows only - never marked', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(index, inside, encode, where, ids) : null)', 'painted(ids, null)') },
-  { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'P6 ', file: 'testbed/visual_part.js', key: 'visual',
+  { id: 'M36', what: 'a press always a hub of its rows - one row never its node', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'const press = ([where, ids]) => nodesOfPress(ids) ||', 'const press = ([where, ids]) => null ||') },
+  { id: 'M37', what: 'a mark whose press stands for its node drawn by its rows only - never marked', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(ids) : null)', 'painted(ids, null)') },
+  { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'marked: received.filter(marked).length, hidden, heldOnly,', 'marked: received.filter(marked).length, hidden,') },
   { id: 'M39', what: 'the kind handed every mark - Top/Bottom N not applied', catches: 'SI2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'this.kind.model(showing.kept,', 'this.kind.model(units,') },
@@ -1708,8 +1742,6 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));', '}) }));') },
   { id: 'M55', what: 'a kind\'s without not read - the sheet offered Top/Bottom by and Panel by', catches: 'WO1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'PANEL_SLOT].filter((s) => !without.includes(s.key));', 'PANEL_SLOT];') },
-  { id: 'M56', what: 'a hub marked for a node condition beside another, nothing said', catches: 'HW1 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '      if (why) said = { id, n: ids.length, why };', '') },
   { id: 'M61', what: 'rows grouped in a cell lose their time - the tooltip says the UTC text', catches: 'TM2 ', file: 'testbed/tooltip.js', key: 'tooltip',
     mutate: (t) => swap(t, "const time = rows.some((r) => isTimeRead(r.reads[key])) ? { time: true } : {};", 'const time = {};') },
   { id: 'M62', what: 'the legend column by the kind - a cross table with a Color by draws no categories', catches: 'LG1 ', file: 'testbed/visual_part.js', key: 'visual',
@@ -1764,8 +1796,6 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'const held = walks.find(', 'const held = false && walks.find(') },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
-  { id: 'M72', what: 'a press reads a slot of a list as one slot - a list of one never a node', catches: 'W8 ', file: 'testbed/hubs.js', key: 'hubs',
-    mutate: (t) => swap(t, 'const slots = Object.values(encode || {}).flatMap(columnsOf).filter((s) => !isExpression(s));', 'const slots = Object.values(encode || {}).filter((s) => s && !isExpression(s));') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      this.watch(at, one);', '') },
   { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',

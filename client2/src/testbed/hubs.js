@@ -4,9 +4,6 @@
 // Until the server takes hubs as seeds (WALK_HUB_ANSWER_SHAPE), a walk from a marking opens them into their members here,
 // in one place: `HubBook.open`, handed to the marking store's `seedsOf`.
 
-import { readsOf, columnKey } from '../walk/reach_table.js';
-import { isExpression, slotWords, columnsOf } from './slot.js';
-
 const PREFIX = 'hub:';
 
 /** A hub's id: its row type and its conditions ([[slot words, value], ...]), spelled once. */
@@ -22,43 +19,13 @@ export function hubOf(id) {
 export const hubWords = (id) => { const h = hubOf(id); return h ? [h.row, ...h.where.map(([k, v]) => `${k} = ${v}`)].join(' · ') : ''; };
 
 /**
- * What a press on a mark stands for - THE one place that says (lead 10-14: a cross table cell of core wafers marked a hub of
- * its dies, so the next part walked from the dies and drew the bonding wafer's 17 measurements, not the core's 6). A mark
- * whose one condition is read off another node along a way - its name or key - IS those nodes, the ones its rows read it
- * from; any other condition beside it (two axes, the row's own value, an edge's, an expression) - null: the hub of its
- * rows, no node set holding what both narrow to. Words no slot says (an axis not declared) are no condition.
- * @param {Array<[string, string]>} where  the mark's conditions, [slot words, value]
+ * What a press on a mark stands for - THE one place that says (owner 10-14 «누르면 그 아래 행이 마킹»): one row - that
+ * row's node; several - null, the hub of its rows. A value read off another node is no node of its own any more (the
+ * 10-14 exception retired: the marking spreads along the page's relations, and a part whose rows are that type narrows).
  * @returns {string[]|null}
  */
-export function nodesOfPress(index, inside, encode, where, ids) {
-  const held = conditionsOf(encode, where);
-  if (held.length !== 1 || !held[0].node) return null;
-  const { slot, value } = held[0];
-  const ends = new Set();
-  for (const id of ids) {
-    for (const r of readsOf(index, inside, id, slot).reads) if ([].concat(r.value).map(String).includes(String(value))) ends.add(r.node);
-  }
-  return ends.size ? [...ends] : null;
-}
-
-/** A mark's conditions as a press reads them: each [words, value] a slot says (none - no condition) - its slot when one
- *  says it, `node` when that slot reads another node's name or key along a way. nodesOfPress and whyHub ask this. */
-function conditionsOf(encode, where) {
-  // each column of each slot - a list of one is that column (a node condition as before); a list of several says its
-  // words only as a whole, no column says them: a condition that is no node
-  const slots = Object.values(encode || {}).flatMap(columnsOf).filter((s) => !isExpression(s));
-  return (where || []).map(([words, value]) => {
-    const said = [...new Map(slots.filter((s) => slotWords(s) === words).map((s) => [columnKey(s), s])).values()];
-    const slot = said.length === 1 ? said[0] : null;
-    return { words, value, said: said.length, slot, node: Boolean(slot && Array.isArray(slot.steps) && slot.steps.length && (slot.value.on === 'label' || slot.value.on === 'key')) };
-  }).filter((c) => c.said || c.value !== '');
-}
-
-/** Why a press with a node condition marked a hub, not the node: its conditions' words when there are more than one (a
- *  second axis, a trellis panel - lead 10-14); else null. */
-export function whyHub(encode, where) {
-  const held = conditionsOf(encode, where);
-  return held.length > 1 && held.some((c) => c.node) ? held.map((c) => c.words) : null;
+export function nodesOfPress(ids) {
+  return ids && ids.length === 1 ? [ids[0]] : null;
 }
 
 /** The page's hubs: each id's members as the part that drew it last counted them. Made by the page, handed to parts. */
