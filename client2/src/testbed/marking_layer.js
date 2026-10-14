@@ -11,6 +11,9 @@ export class GraphBook {
     this.nodes = new Map();
     this.edges = new Map();
     this.version = 0;
+    // the row walks the page's parts took (and one in flight) - a part whose ask one covers takes it, not a walk of its
+    // own (part_walks.js covers, lead-board-10c)
+    this.walks = [];
   }
 
   add(answer) {
