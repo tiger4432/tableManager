@@ -1842,7 +1842,7 @@ const FLOORS = new Map([
   ['auth_sso_harness.mjs', 30],
   // New 2026-10-14 (lead 4c7b42b0a, owner 10-14). The ledger declaration window as sentence bars: its edits on the
   // short form, its drawing, the test run as its table, the explorer handing it the draft, its chips, the column lists.
-  ['ledger_declaration_bar_harness.mjs', 50],
+  ['ledger_declaration_bar_harness.mjs', 54],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

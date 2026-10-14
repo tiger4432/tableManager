@@ -2,6 +2,7 @@
 // short form (implementer B 10-14), its drawing, the test run's answer as its table, the explorer's editor that hands
 // a short-form source / node type / predicate to it, the controller's chips through the one draft text, and the
 // store's column-list refresh on a table save. Imports only; each layer has a defect that must go red at its line.
+import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,6 +17,9 @@ const SAMPLE = path.join(SRC, 'ledger_declaration_sample.js');
 const STORE = path.join(SRC, 'ontology_explorer_store.js');
 const VIEW = path.join(SRC, 'ontology_explorer_view.js');
 const SCREEN = path.join(SRC, 'ontology_explorer.js');
+// Implementer B's own answers (impl-b-window): /authoring/schema and a short source's draft, from its service on the sample
+// declaration converted to v7 - the shapes the window is drawn from, not written by hand.
+const REAL = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'declaration_window_real.json'), 'utf8'));
 
 function element(tag) {
   const node = {
@@ -258,6 +262,25 @@ async function suite(d) {
   await eFire({ action: 'decl-const', path: 'label', chip: 'json' }, '{"en": ');
   ok('G4 a JSON that does not parse writes nothing', same(JSON.parse(eScreen.getState().editorText).label, { en: 'Wafer' }));
 
+  console.log('\n── H. the server\'s real answers ──');
+  const real = { ...store.initialExplorerState, draft: { ...REAL.draft, preview_valid: true, validation_errors: [] }, editorText: JSON.stringify(REAL.draft.raw),
+    items: [{ key: REAL.draft.target_key, kind: 'source_plan', canonical_id: REAL.draft.target_id }], authoringSchema: REAL.schema };
+  const rv = view.declarationView(real, 'source');
+  const table = REAL.draft.raw.table;
+  ok('H1 the schema\'s answer gives the columns, the table key and each predicate\'s far end',
+    (rv.catalog.tables[table] || []).length === Object.keys(REAL.schema.tables[table].columns).length && same(rv.catalog.keys[table], REAL.schema.tables[table].key)
+      && rv.predicates.every((p) => p.object && ['entity_ref', 'value', 'none'].includes(p.object.kind)), JSON.stringify(rv.catalog.keys));
+  const realEditor = view.renderRaw(real);
+  const realText = realEditor.textContent;
+  ok('H2 the real short draft is the bar: no unset chip, no «object» or «undefined», its table key named',
+    byClass(realEditor, 'ldb').length === 1 && !/\[object|undefined|NaN/.test(realText) && !byClass(realEditor, 'ldb-chip').some((c) => /^\?|← \?/.test(c.textContent))
+      && realText.includes(`table key (${REAL.schema.tables[table].key.join(' · ')})`), realText.slice(0, 300));
+  const noneName = Object.keys(REAL.schema.vocabulary).find((n) => (REAL.schema.vocabulary[n].object || {}).kind === 'none');
+  const realPicked = bar.editDeclaration(REAL.draft.raw, { op: 'set', path: 'sentences.0.predicate', value: noneName }, { entities: rv.entities, predicates: rv.predicates });
+  ok('H3 a no-object predicate of the real vocabulary picked: the sentence loses its end', Boolean(noneName) && realPicked.sentences[0].target === undefined
+    && realPicked.sentences[0].value === undefined, `${noneName} ${JSON.stringify(realPicked.sentences[0])}`);
+  ok('H4 the saved short body comes back as it went', same(REAL.saved.raw, REAL.draft.raw) && REAL.saved.preview_valid === true);
+
   console.log('\n── F. a table save reads the column lists again ──');
   const held = { ...store.initialExplorerState, authoringSchema: { tables: {} } };
   ok('F1 a table save clears the schema', store.reduceExplorerState(held, { type: 'AUTHORING_INVALIDATED', tables: true }).authoringSchema === null);
@@ -323,6 +346,7 @@ const MUTANTS = [
   { name: 'a no-object predicate keeps its ends', catches: ['A12'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else if (false) {") },
   { name: 'an unsaid kind is read as none', catches: ['A13'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else {") },
   { name: 'the schema\'s object kind is dropped', catches: ['D6'], file: 'view', mutate: swap(', object: (p && p.object) || null }))', ' }))') },
+  { name: 'the table key read off another field', catches: ['H1', 'D4'], file: 'view', mutate: swap('Array.isArray(v.key)).map(([t, v]) => [t, v.key])', 'Array.isArray(v.keys)).map(([t, v]) => [t, v.keys])') },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
   { name: 'every invalidation drops the schema', catches: ['F2'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', 'authoringSchema: null') },
 ];
