@@ -30,6 +30,8 @@
   "ledger_analyze_changed_share": 0.2,
   "_ledger_autoanalyze_scale_factor_doc": "원장 파티션마다 PostgreSQL 자동 분석 기준(autovacuum_analyze_scale_factor) — 행이 이 몫만큼 바뀌면 PG 가 스스로 분석. 새 파티션은 만들 때, 있는 것은 원장 프로세스가 뜰 때 한 번. null 이면 손 안 댐.",
   "ledger_autoanalyze_scale_factor": 0.02,
+  "_expression_time_zone_doc": "식 계산기의 날짜 함수(Date · Year · Week …)가 시각을 자르는 시간대(IANA 이름). 원장 시각은 UTC — KST 08:00 은 UTC 전날 23:00 이고 KST 날짜로 잘림.",
+  "expression_time_zone": "Asia/Seoul",
   "_walk_processes_doc": "걷기(걷기 화면 · 보드)를 도는 걷기 프로세스 수. 서버가 뜬 뒤 미리 띄우고, 걷기 하나가 하나를 씁니다. 0 이면 전처럼 서버 안에서 돕니다(급할 때 끄는 법). 0 이상의 정수만 읽고 그 밖은 0. 요청마다 읽어 재기동 없이 바뀝니다.",
   "walk_processes": 2,
   "_walk_seconds_max_doc": "걷기 하나가 걷기 프로세스를 기다리고 그 답을 기다리는 상한(초). 넘으면 503 으로 답하고 안 끝난 걷기 프로세스를 내립니다.",

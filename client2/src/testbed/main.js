@@ -17,6 +17,7 @@ import { FiltersPart } from './filters_part.js';
 import { PropertiesPart } from './properties_part.js';
 import { SlotPicker } from './picker.js';
 import { columnsOf } from './slot.js';
+import { useZone } from '../expression.js';
 import { HubBook, isHubId } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
 import { GraphBook, MarkingLayers } from './marking_layer.js';
@@ -117,6 +118,7 @@ export async function boot(deps) {
   const hubs = new HubBook();
   const names = new Map();
   const declaration = await fetchDeclaration({ apiBase, fetchImpl });
+  useZone(declaration.ok ? declaration.zone : null);              // the calculators cut dates in the server's zone
   const entities = () => (declaration.ok ? declaration.entities : []);
   const pickerHost = doc.createElement('div');
   pickerHost.className = 'sf-pop-host';

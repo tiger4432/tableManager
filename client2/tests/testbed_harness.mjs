@@ -35,6 +35,7 @@ const { MarkingStore, SIGN } = REAL.store;
 const { parseAst } = await import('rolldown/parseAst');
 const { indexGraph, routesFrom } = await import('../src/walk/reach_table.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
+const EXPR = await import('../src/expression.js');
 
 // ── the walk: six wafers, two lots, two measured quantities ──
 const T0 = '2026-10-01T00:00:00Z';
@@ -408,8 +409,23 @@ async function reopen(M) {
     await settle();
     return doc.documentElement.getAttribute('data-theme');
   };
+  // T34 (lead fe2ba4b1f ①): the page's start gives the declaration's zone to the calculator - a zone not Seoul's.
+  const zoned = async () => {
+    const elsewhere = { ...declaration, expression_time_zone: 'America/New_York' };
+    const zoneFetch = async (url) => {
+      const u = String(url);
+      const body = u.includes('/api/ledger/declaration') ? elsewhere : u.includes('/api/ledger/subgraph') ? ANSWER : { nodes: [] };
+      return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)) };
+    };
+    const doc = makeDoc('dark');
+    await M.main.boot({ doc, host: doc.createElement('div'), apiBase: '', fetchImpl: zoneFetch, charts: chartsRecorder(), storage: null, theme: 'dark' });
+    await settle();
+    const day = EXPR.run(EXPR.compile('Date("2026-10-14T02:00:00Z")'), []).value;
+    EXPR.useZone(null);
+    return day;
+  };
   return { same: picture(s) === picture(t), points: t.model ? t.model.points.length : -1,
-    siteTheme: [await themed('light', 'dark'), await themed('dark', 'light')] };
+    siteTheme: [await themed('light', 'dark'), await themed('dark', 'light')], zoned: await zoned() };
 }
 
 /** What the root names of the kinds it is handed: a kind's name or a slot key as a string, a `.kind` compared, a slot
@@ -571,6 +587,7 @@ function suite(out, page, saved, counted) {
   eq('T17 a cut walk is the board\'s reading of truncated (an axis true), not «truncated is there»', page.cut, [false, true]);
   eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 4 });
   eq('T18 the site\'s theme is the page\'s - the walk page\'s parts on it (the start picker) wear the same tokens', saved.siteTheme, ['dark', 'light']);
+  eq('T34 the page\'s start gives the declaration\'s zone to the calculator - a day cut in New York, not Seoul', saved.zoned, '2026-10-13T00:00:00-04:00');
   eq('T14 census: the visual part is the one caller of the filter; no kind imports it', [counted.callers, counted.kindsFilter], [['visual_part.js'], []]);
   if (counted.bundle) eq('T15 the bundle: the testbed chunk under 700 kB, ECharts in no other page\'s chunk', counted.bundle, { testbedUnder700k: true, chartsElsewhere: 0 });
   return { ran: names.length, names, failures };
@@ -600,6 +617,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  if (!node || node.type !== condition.row) return true;', '  if (!node) return true;') },
   { id: 'M7', what: 'conditions OR, not AND', catches: 'T4', file: 'testbed/filter.js',
     mutate: (t) => swap(t, 'list.every((c) => nodePasses(', 'list.some((c) => nodePasses(') },
+  { id: 'M50', what: 'the page\'s start does not give the declaration\'s zone to the calculator', catches: 'T34', file: 'testbed/main.js',
+    mutate: (t) => swap(t, '  useZone(declaration.ok ? declaration.zone : null);', '  void 0;') },
   { id: 'M8', what: 'a period closed at its end', catches: 'T4', file: 'testbed/filter.js',
     mutate: (t) => swap(t, '!(Number.isFinite(to) && t >= to)', '!(Number.isFinite(to) && t > to)') },
   { id: 'M9', what: 'a dimmed mark keeps its colour (no mix)', catches: 'T5', file: 'testbed/color_by.js',

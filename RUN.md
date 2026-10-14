@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **식에 날짜 함수 — Date · DateTime · Year · Quarter · Month · Day · Hour · Week · DayOfWeek · DatePart, KST 날짜로 자름 (총괄 fe2ba4b1f, 소유자 «스팟파이어에 date …» · «ㅇㅇ kst»)** — git pull · 화면 새로 고침 · 체인 워커 재기동(서버 계산기 = 체인 decide 집계)
+>
+> ```
+> 써 볼 것   시험대 값 칸에 Date([t]) · Week([t]) · DatePart("dw", [t])
+> 답의 뜻   Date([t]) = 그날 KST 자정의 시각 글자 2026-10-14T00:00:00+09:00 (설정이 UTC 면 …Z) — 산점도 축은 기본 연속 시각, Categorical 고르면 날마다 한 범주
+>          원장의 2026-10-13T23:00:00Z 는 KST 10-14 08:00 -> Date 는 10-14 (UTC 날짜가 아님)
+>          Year · Quarter · Month · Day · Hour · Week · DayOfWeek = 정수. DayOfWeek 0 = 일요일 · 6 = 토요일
+>          Week = 일요일에 시작, 1 월 1 일을 담은 주가 1 주(1 ~ 54) — 스팟파이어 설명서 YearAndWeek 예(2005-10-13 -> 41 주)는 다른 지역 설정이라 우리는 42
+>          빈 답 -> 빈 값이거나 시각이 아닌 값(없는 날 2023-02-29 포함). 시각이 아닌 값의 수는 계산 결과의 not_time(화면 notTime)
+>          «DatePart «minute» is not in this edition» -> 분 · 초 · ISO 주 같은 조각은 이번 판에 없음
+> 설정     ingestion_settings.json "expression_time_zone": "Asia/Seoul" (IANA 이름) — 서버 계산기가 읽음(시간대가 아닌 값은 한 줄 남기고 기본값)
+>          시험대(화면 계산기)는 GET /api/ledger/declaration 의 expression_time_zone 으로 같은 값을 받음 — 바꾸면 서버는 다음 실행, 화면은 시험대 다시 열 때부터
+> 시간대 자료  서버 파이썬으로: python -c "import zoneinfo; zoneinfo.ZoneInfo('Asia/Seoul'); print('ok')"
+>          ok -> 됨. ZoneInfoNotFoundError -> 이 윈도우 파이썬에 시간대 자료가 없음: pip install tzdata 뒤 서버 재기동
+>             없으면 날짜 함수가 시간대를 못 읽고 GET /api/ledger/declaration 이 500 (시험대가 선언을 못 받음)
+> 이 판에서  계약 벡터 17 칸(자정 · 해 바뀜 · 윤년 · 일요일 시작 · KST 08:00 = UTC 전날 23:00)을 두 계산기가 같은 답 · 변이 8 개 빨강
+> 되돌리기  git revert 9a3f1fcf7 (화면 새로 고침 · 체인 워커 재기동)
+> ```
+>
+> ---
+>
 > ## [10-14] **걷기 요청이 선언을 파일이 바뀔 때만 다시 읽는다 · 순위를 안 읽는 호출은 propagation=false (총괄 9166099d4, 소유자 «ㅇㅇ 진행해»)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```
