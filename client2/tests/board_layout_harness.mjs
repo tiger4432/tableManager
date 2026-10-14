@@ -763,10 +763,10 @@ async function partWalks(M) {
   out.expired = [pages, two.complete, two.why, two.answers.length];
 
   // PW2 the one judgment (part_walks.js covers): a column taken off - covered; another attribute of a type walked - the
-  // same ask, covered; a new type - not; a cut walk - not; other rows, a predicate more, a step more - not
+  // same ask, covered; a new type - not (a new way, or a type the same way did not carry); a cut walk - not; other rows, a predicate more, a step more - not
   const held = { seeds: ['a', 'b'], follow: ['at_step', 'measures'], hops: 1, collect: ['quantity', 'step'], complete: true };
   const ask = (patch) => ({ seeds: ['b', 'a'], follow: ['measures'], hops: 1, collect: ['quantity'], ...patch });
-  out.covers = [M.walks.covers(held, ask({})), M.walks.covers(held, ask({ collect: ['quantity'] })), M.walks.covers(held, ask({ collect: ['tool'], follow: ['at_tool'] })),
+  out.covers = [M.walks.covers(held, ask({})), M.walks.covers(held, ask({ collect: ['quantity'] })), M.walks.covers(held, ask({ collect: ['tool'], follow: ['at_tool'] })), M.walks.covers(held, ask({ collect: ['wafer'] })),
     M.walks.covers({ ...held, complete: false }, ask({})), M.walks.covers(held, ask({ seeds: ['a'] })), M.walks.covers(held, ask({ follow: ['measures', 'xrayed'] })),
     M.walks.covers(held, ask({ hops: 2 })), M.walks.covers({ ...held, collect: null }, ask({ collect: ['tool'] }))];
 
@@ -1416,7 +1416,7 @@ async function suite(M) {
       [pw.resume, pw.expired], [[[['in_container', ['BW'], null], ['in_container', ['BW'], 'r2'], ['measures', ['d1', 'd2', 'd3'], null]], ['d1', 'd2', 'd3'], ['1', '2', '3']],
         [[null, 'k1'], false, 'resume expired', 1]]),
     judge('PW2 covers (the one judgment): a column taken off, another attribute of a type walked - covered; a new type, a cut walk, other rows, a predicate more, a step more - not; a walk that carried every type covers any',
-      pw.covers, [true, true, false, false, false, false, false, true]),
+      pw.covers, [true, true, false, false, false, false, false, false, true]),
     judge('PW3 the cache in a part: a column taken off - no request, said cached; another attribute of the type walked - none; a new type - one; a cut walk does not cover its slot',
       pw.cache, [3, 'Column 1 · complete', 'Rows 3 · complete', 0, 'Column 1 · cached', 0, 1, 'Column 1 · complete', 1, 'Column 1 · complete / Column 2 · cut', 1]),
     judge('PW4 a slot changed walks that slot alone - every slot of the table, the scatter, the cross table and the map: one request, asking its way',

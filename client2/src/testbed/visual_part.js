@@ -32,7 +32,7 @@ import { routesFor, routeOf, typeOfStart, routeEnds, routeWords } from './route.
 import { readable, valueAsk, covers, changedSlots, chunks, walkToEnd, SEED_CHUNK } from './part_walks.js';
 import { fitUnder } from '../dropdown.js';
 import { seedsOf } from '../rnd_board/marking_store.js';
-import { truncationAxes, entitySeedId } from '../rnd_board/api.js';
+import { entitySeedId } from '../rnd_board/api.js';
 import { compile, run } from '../expression.js';
 import { paletteOf } from './palette.js';
 
@@ -556,8 +556,9 @@ export class VisualPart extends Panel {
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
       // the rows an expression's Marked could not answer - a relation's edge of theirs not walked yet
       unknown: unknown.size,
-      // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).
-      cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0,
+      // a walk of its came back cut - the one judgment (part_walks.js walkToEnd: an axis of the last page; its steps are
+      // asked, the depth reached is no cut)
+      cut: [this.rowWalk, ...this.values.values()].some((w) => w && !w.complete && !w.receiving),
       // its walks (owner 10-14): the row walk's rows, and each slot's value walk - complete, receiving, cached or why not
       walks: this.walkWords() };
     if ([...asked].join() !== [...(this.askedMarkings || [])].join()) { this.askedMarkings = asked; this.listenLimit(); }
@@ -832,6 +833,9 @@ export class VisualPart extends Panel {
     p.setAttribute('data-part', this.decl.id || '');
     const slot = (this.decl.encode || {})[key];
     p.textContent = opts.words || slotWords(slot);
+    // a pill its tray cuts says its words whole in its tooltip
+    p.title = p.textContent;
+    p.setAttribute('data-clip-ok', '');
     const caret = doc.createElement('span');
     caret.className = 'sf-pill__caret';
     caret.textContent = '▾';

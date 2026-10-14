@@ -631,7 +631,7 @@ const MUTANTS = [
   { id: 'M20', what: 'a redraw keeps its old chart (two charts on one box)', catches: 'T10', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    if (this.drawn) { this.drawn.dispose(); this.drawn = null; }\n', '') },
   { id: 'M21', what: 'a cut walk read as «truncated is there»', catches: 'T17', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, 'cut: (truncationAxes(this.answer.truncated, { hopsChosen: false }) || []).length > 0,', 'cut: Boolean(this.answer.truncated),') },
+    mutate: (t) => swap(t, 'cut: [this.rowWalk, ...this.values.values()].some((w) => w && !w.complete && !w.receiving),', 'cut: Boolean(this.answer.truncated),') },
   { id: 'M22', what: 'the status bar leaves out the drops', catches: 'T13', file: 'testbed/status_part.js',
     mutate: (t) => swap(t, '  if (s.startDropped || s.system || s.part || s.limit) {', '  if (false) {') },
   { id: 'M22b', what: 'the status bar leaves out the start side\'s drop (the code before)', catches: 'T13', file: 'testbed/status_part.js',
