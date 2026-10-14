@@ -40,7 +40,10 @@ from .setup_bundle import (
     CONFIG_FILENAME,
     SHORT_FORM_VERSION,
     LedgerSetupValidationError,
+    expand_source,
     is_long_source,
+    short_form_errors,
+    short_path,
     require_ready_bundle,
     short_form_moves,
     shorten_source,
@@ -300,6 +303,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
             bundle=bundle,
             snapshot=snapshot,
             catalog=catalog,
+            mappers=getattr(active_setup, "mappers", None),     # a test run on the draft translates
         )
         # ⚠️ THE COST RIDES ONLY ON A PREVIEW THAT COMPILED. A draft that does not compile
         # has no cost to state - it will not be activated - and answering one anyway would
@@ -362,7 +366,7 @@ def draft_target(record: Mapping[str, Any], index: ExplorerIndex) -> Any:
     )
 
 
-def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
+def parse_draft_raw(raw_text: Any, name: str | None = None) -> Mapping[str, Any]:
     """The editor's text as a declaration body - the save and the unsaved plan read refuse
     the same text by the same names."""
     try:
@@ -373,7 +377,14 @@ def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
     if not isinstance(raw, Mapping):
         raise ConfigExplorerError(
             "invalid_json_type", "raw", "definition must be a JSON object")
-    return raw
+    if not is_long_source(raw) and {"table", "sentences"} & set(raw):
+        # 총괄 10-14 창 문 검수 1: a short body is judged in its own shape - a sentence named twice,
+        # a misspelt key - before it is read long, or the long reading drops it without a word
+        issues = short_form_errors({"setup_version": SHORT_FORM_VERSION, "sources": {name or "draft": raw}})
+        if issues:
+            raise ConfigExplorerError(issues[0].code, issues[0].path, issues[0].message,
+                                      details=[issue.to_mapping() for issue in issues])
+    return expand_source(raw)            # a source written short is held long (총괄 10-14 창 문)
 
 
 def with_unsaved_body(document: Mapping[str, Any], active_setup: Any,
@@ -386,7 +397,7 @@ def with_unsaved_body(document: Mapping[str, Any], active_setup: Any,
     The fill is the save's own `_filled_declaration`, over the active setup the save fills
     against - not `document`, which is the authoring file (총괄 d4a949a8c ⑦)."""
     node = draft_target(record, index)
-    body, dropped = _filled_declaration(active_setup, node, parse_draft_raw(raw_text))
+    body, dropped = _filled_declaration(active_setup, node, parse_draft_raw(raw_text, node.canonical_id))
     out = json.loads(json.dumps(document, ensure_ascii=False))
     try:
         _set_path(out, node.bundle_path, body)
@@ -471,8 +482,9 @@ class OntologyDraftStore:
         self._lock = RLock()
 
     def create(self, active_setup: Any, index: ExplorerIndex, target_key: str,
-               document: Mapping[str, Any]) -> dict[str, Any]:
-        """`document` is the declaration file the draft starts from (its node only says where)."""
+               document: Mapping[str, Any], short_file: bool = False) -> dict[str, Any]:
+        """`document` is the declaration file the draft starts from (its node only says where);
+        `short_file` - it is written short, so a source's body is shown short (`public`)."""
         node = index.node(target_key)
         if node.config_file != _EDITABLE_FILE:
             raise ConfigExplorerError(
@@ -495,6 +507,7 @@ class OntologyDraftStore:
             "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": node.definition_hash,
             "creates_declaration": False,
+            "short_file": short_file,
             "revision": 0,
             "lifecycle_status": "editing",
             "raw": json.loads(json.dumps(raw, ensure_ascii=False)),
@@ -507,12 +520,13 @@ class OntologyDraftStore:
             "created_at": now,
             "updated_at": now,
         }
+        self._show_short(record, getattr(active_setup, "catalog", None))
         with self._lock:
             self._write_record(record)
         return self.public(record)
 
     def create_new(self, active_setup: Any, index: ExplorerIndex,
-                   kind: str, canonical_id: str) -> dict[str, Any]:
+                   kind: str, canonical_id: str, short_file: bool = False) -> dict[str, Any]:
         """Open a draft for a declaration that does not exist yet.
 
         Two refusals, and each one is a different mistake:
@@ -549,12 +563,14 @@ class OntologyDraftStore:
             "base_snapshot_hash": index.snapshot_hash,
             "base_definition_hash": None,
             "creates_declaration": True,
+            "short_file": short_file,
             "revision": 0,
             "lifecycle_status": "editing",
             # Not `{}`.  The skeleton says which containers the grammar requires, and those
             # exist from the start -- see `empty_declaration`.  A person who wants no
             # qualifiers could otherwise only make the key by adding one and removing it.
-            "raw": _empty_declaration(section),
+            "raw": (expand_source({"table": "", "sentences": []})
+                    if short_file and kind == SOURCE_NODE_KIND else _empty_declaration(section)),
             "preview_snapshot_hash": None,
             "preview_valid": False,
             "validation_errors": [],
@@ -564,6 +580,7 @@ class OntologyDraftStore:
             "created_at": now,
             "updated_at": now,
         }
+        self._show_short(record, getattr(active_setup, "catalog", None))
         with self._lock:
             self._write_record(record)
         return self.public(record)
@@ -581,7 +598,7 @@ class OntologyDraftStore:
         active_setup: Any,
         active_index: ExplorerIndex,
     ) -> tuple[dict[str, Any], DraftPreview]:
-        raw = parse_draft_raw(raw_text)
+        raw = parse_draft_raw(raw_text, self.get(draft_id).get("target_id"))
 
         with self._lock:
             record = self._read_record(draft_id)
@@ -620,6 +637,7 @@ class OntologyDraftStore:
             record["lifecycle_status"] = "saved" if preview.valid else "invalid"
             record["review_revision"] = None
             record["updated_at"] = _now()
+            self._show_short(record, getattr(active_setup, "catalog", None))
             self._write_record(record)
             return {**self.public(record), "dropped_fields": dropped}, preview
 
@@ -881,7 +899,7 @@ class OntologyDraftStore:
         # missing. `creates_declaration` is what lets the client tell "authoring a new
         # declaration" from "editing a live one", which is the difference between the
         # confirm saying 새로 만듦 and 덮어씀.
-        return {key: record.get(key) for key in (
+        out = {key: record.get(key) for key in (
             "draft_id", "target_key", "target_id", "target_kind",
             "target_bundle_path", "creates_declaration",
             "base_snapshot_hash", "base_definition_hash", "revision",
@@ -890,6 +908,30 @@ class OntologyDraftStore:
             "review_revision", "review_history", "activated_snapshot_hash",
             "created_at", "updated_at",
         )}
+        # 총괄 10-14 창 문: a source of a short file is shown short - held long, so every reader
+        # of the record (preview, fill, activation) reads the grammar it always read
+        if record.get("shows_short"):
+            written, _why = shorten_source(out["raw"])
+            out["raw"] = written
+            # 검수 3: a refusal said where the short body writes it
+            out["validation_errors"] = [
+                {**issue, "path": short_path(str(issue.get("path", "")), written),
+                 "json_pointer": _error_pointer(short_path(str(issue.get("path", "")), written))}
+                for issue in (out.get("validation_errors") or [])]
+        return out
+
+    @staticmethod
+    def _show_short(record: dict[str, Any], catalog: Mapping[str, Any] | None) -> None:
+        """Shown short when the file is and the body says nothing the short form drops - else long,
+        so a cell only the long form holds (an identity) is not hidden and then lost on the next save
+        (검수 2; the same comparer the activation refuses on)."""
+        raw = record.get("raw")
+        shows = bool(record.get("short_file") and record.get("target_kind") == SOURCE_NODE_KIND
+                     and is_long_source(raw))
+        if shows:
+            written, _why = shorten_source(raw)
+            shows = written is not None and not short_form_moves(raw, written, catalog or {})
+        record["shows_short"] = shows
 
     @classmethod
     def activation_blockers(cls, record: Mapping[str, Any],

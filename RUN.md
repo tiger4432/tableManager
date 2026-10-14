@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **선언 창의 서버 문 — 짧은 파일의 소스를 짧게 열고 저장 · 초안 Test run · 칩 목록(표 칸 · 엔티티 · 술어) (총괄 10-14 창 문, 소유자 «창도 이대로 만들어» · «초안 따로 둬 테스트런 결과 보고 수정하고 다시 활성화»)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     /admin/ontology-explorer 의 문 넷이 짧은 꼴(setup_version 7) 파일을 받음 — 선언 창(클라)이 부를 문
+>            POST /drafts              짧은 파일의 소스를 열면 raw 가 짧은 몸통
+>            POST /drafts/new          짧은 파일에 새 소스 = {"table": "", "sentences": []}
+>            PUT  /drafts/{id}          짧은 몸통을 받음(초안 기록 안에는 긴 꼴로 둠 — 미리보기 · 활성화는 전과 같음)
+>            POST /test-run            {source_id, draft_id?} — draft_id 가 있으면 그 초안 설정으로 돌리고 응답에 draft_id, 기록 안 남김
+>            GET  /authoring/schema    tables{표: {columns, key}} · entities{타입: {keys, attributes}} · vocabulary{술어: {qualifiers, object{kind, types}}}
+> 확인     선언 창이 클라에 착지하기 전엔 화면 변화 없음. 서버 응답만: GET /admin/ontology-explorer/authoring/schema 에 tables · entities · vocabulary 키
+> 되돌리기  git revert <착지 커밋> -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-14] **서버가 던지는 한국어 거절 36 개가 영어로 (총괄 10-14)** — git pull · 서버 재기동 · 이주 «없음»
 >
 > ```

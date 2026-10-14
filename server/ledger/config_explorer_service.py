@@ -36,8 +36,8 @@ from .setup import (
     setup_from_document,
 )
 from .setup_bundle import (
-    CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, LedgerSetupValidationError,
-    _read_json, _resolve_config_path, upgrade_setup,
+    CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, SHORT_FORM_VERSION, LedgerSetupValidationError,
+    _read_json, _resolve_config_path, default_ordering_key, predicate_claim, upgrade_setup,
 )
 
 
@@ -700,7 +700,8 @@ class OntologyExplorerService:
     MAX_SAMPLE_ROWS = 100
 
     def test_run(self, engine: Any, *, source_id: str,
-                 sample_rows: int = DEFAULT_SAMPLE_ROWS) -> dict[str, Any]:
+                 sample_rows: int = DEFAULT_SAMPLE_ROWS,
+                 draft_id: str | None = None) -> dict[str, Any]:
         """Run one write-free batch for `source_id` and report what it produced.
 
         Never raises for a declaration problem -- a refusal is the ANSWER this endpoint
@@ -711,10 +712,21 @@ class OntologyExplorerService:
         from . import backfill
 
         setup, index, _ = self.active()
+        draft_errors: tuple = ()
+        if draft_id is not None:
+            # 총괄 10-14 창 문 (소유자 «초안 따로 둬 테스트런 결과 보고 수정하고 다시 활성화»): the
+            # draft's compiled setup, the one its preview shows - nothing recorded
+            record = self.draft_store.get(draft_id)
+            if record.get("target_id") != source_id:
+                raise ConfigExplorerError(
+                    "draft_not_this_source", "draft_id",
+                    f"draft {draft_id!r} is a draft of {record.get('target_id')!r}, not of {source_id!r}")
+            drafted = self.draft_store.preview(record, setup, index)
+            setup, draft_errors = (drafted.setup, ()) if drafted.valid else (setup, drafted.errors)
         key = f"source_plan|{source_id}"
         node = index.nodes.get(key)
         declared = source_id in getattr(setup.snapshot, "source_plans", {})
-        if not declared and key not in self._invalid:
+        if not declared and key not in self._invalid and not draft_errors:
             raise ConfigExplorerError(
                 "unknown_source", "source_id",
                 f"no source declaration named {source_id!r}")
@@ -744,6 +756,12 @@ class OntologyExplorerService:
             # here would be a second place for that wording to live.
             "blocks_activation": False,
         }
+        if draft_id is not None:
+            result["draft_id"] = draft_id
+        if draft_errors:
+            result["refusal"] = self._test_run_refusal(dict(draft_errors[0]))
+            result["status"] = "refused"
+            return result
         # 🔴 A DECLARATION THAT DID NOT LOAD IS ITS OWN ANSWER. It is not in the compiled
         # snapshot, so there is nothing to run -- and the reason it was dropped is already
         # measured. Reporting "unknown source" here would send the operator looking for a
@@ -751,7 +769,7 @@ class OntologyExplorerService:
         # 🔴 REFUSED, NOT 「NOT COMPILED」 (총괄 558a46ef1). When every source is refused the
         #    resolved setup still carries their plans, and running one answered an AttributeError
         #    where the screen and the follow-up both hold the refusal.
-        if key in self._invalid:
+        if draft_id is None and key in self._invalid:
             reasons = self._invalid[key]["reasons"]
             result["refusal"] = self._test_run_refusal(
                 reasons[0] if reasons else {
@@ -878,7 +896,8 @@ class OntologyExplorerService:
         self._atoms_sample(setup, source_id, preview, result)
         if preview.molecule_count:
             result["status"] = "passed"
-            self._record_test_run(result)
+            if draft_id is None:                       # a draft's run is not the declaration's
+                self._record_test_run(result)
             return result
         # Read in full and refused in full. Not an exception - the values above say
         # exactly that - but not a pass either: nothing was compiled from this
@@ -1008,10 +1027,38 @@ class OntologyExplorerService:
         """
         try:
             # as the loader reads it - a short (v7) file's sources expanded (총괄 10-14 ②)
-            sources = upgrade_setup(read_config_document(self.config_root)).get("sources")
+            document = upgrade_setup(read_config_document(self.config_root))
         except LedgerSetupValidationError:
-            sources = None
-        return closed_lists(sources)
+            document = {}
+        payload = closed_lists(document.get("sources"))
+        # 총괄 10-14 창 문: what the window draws chips from - every table's columns and the
+        # identity a short source reads (its shortest unique key), each entity's keys and
+        # attributes, each predicate's qualifiers (the validator's own derivation)
+        try:
+            catalog = self._catalog_loader()
+        except Exception as exc:                       # noqa: BLE001 - the lists answer without it
+            catalog = {}
+            payload["tables_unavailable"] = f"{type(exc).__name__}: {exc}"[:300]
+        payload["tables"] = {name: {"columns": dict(table.get("columns") or {}),
+                                    "key": list(default_ordering_key(catalog, name))}
+                             for name, table in catalog.items()}
+        entities = document.get("entities") if isinstance(document.get("entities"), Mapping) else {}
+        payload["entities"] = {name: {"keys": list(item.get("keys") or ()),
+                                      "attributes": list(item.get("attributes") or ())}
+                               for name, item in entities.items() if isinstance(item, Mapping)}
+        vocabulary = document.get("vocabulary") if isinstance(document.get("vocabulary"), Mapping) else {}
+        payload["vocabulary"] = {}
+        for name, item in vocabulary.items():
+            try:
+                roles = predicate_claim(name, item, entities)["roles"]
+            except Exception:                          # noqa: BLE001 - a broken entry is the validator's to name
+                continue
+            spoken = item.get("object") if isinstance(item.get("object"), Mapping) else {}
+            payload["vocabulary"][name] = {
+                "qualifiers": [role for role, spec in roles.items() if spec.get("kind") == "attribute"],
+                # what a sentence's far end is - a node of these types, a value, or nothing (총괄 10-14)
+                "object": {"kind": spoken.get("kind") or "none", "types": list(spoken.get("types") or ())}}
+        return payload
 
     @staticmethod
     def authoring_prefix(selection: str | None) -> str | None:
@@ -1135,8 +1182,9 @@ class OntologyExplorerService:
         # 총괄 04cecc30f (가): the draft starts from the FILE as the loader reads it, not from the
         # index's node - that is the bundle whose left-out cells the product already filled, so
         # saving it wrote every default into the file.
-        return self.draft_store.create(setup, index, target_key,
-                                       upgrade_setup(read_config_document(self.config_root)))
+        written = read_config_document(self.config_root)
+        return self.draft_store.create(setup, index, target_key, upgrade_setup(written),
+                                       short_file=written.get("setup_version") == SHORT_FORM_VERSION)
 
     def create_declaration_draft(self, *, kind: str, canonical_id: str,
                                  base_snapshot_hash: str) -> dict[str, Any]:
@@ -1154,7 +1202,11 @@ class OntologyExplorerService:
                 "stale_base_snapshot", "base_snapshot_hash",
                 "active snapshot changed before draft creation",
             )
-        return self.draft_store.create_new(setup, index, kind, canonical_id)
+        try:
+            short_file = read_config_document(self.config_root).get("setup_version") == SHORT_FORM_VERSION
+        except LedgerSetupValidationError:
+            short_file = False
+        return self.draft_store.create_new(setup, index, kind, canonical_id, short_file=short_file)
 
     def save_draft(self, draft_id: str, *, expected_revision: int, raw: str
                    ) -> dict[str, Any]:
