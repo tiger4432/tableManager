@@ -708,6 +708,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     comes back as `deduped`, which is the mechanism that already exists for exactly this.
     """
     from chain import keyset_scan
+    from . import followup
     from .runtime_v2 import _refusal_reasons
     from .store import LedgerStore
     from .setup import execute_selected_scoped_batch
@@ -802,18 +803,57 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             aimed = sorted(set(previewed["refs"]) | indexed)
         # Neither the new translation nor the index says anything about these rows: there
         # is nothing to withdraw and nothing to put in its place.
-        executed = None
+        executed = over = None
         if aimed is None or aimed:
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
             with keyset_scan.stage("write", len(frame)) as said:
-                executed = execute_selected_scoped_batch(
-                    setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
-                    known_registrations=(),
-                    withdraw_refs=aimed, preview=previewed and previewed["preview"])
-                if aimed and keyset_scan.debugging():
+                try:
+                    executed = execute_selected_scoped_batch(
+                        setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
+                        known_registrations=(),
+                        withdraw_refs=aimed, preview=previewed and previewed["preview"])
+                except Exception as exc:
+                    # 🔴 A KEY OVER THE ROW INDEX'S LIMIT IS ONE MOLECULE'S REFUSAL, NOT THE RUN'S DEATH (총괄 e2f112f02,
+                    #    소유자 «ㅇㅇ»): a group_by molecule's row list in the key - the slice died, the run failed, and the
+                    #    same molecule failed it again. Judged as the follow-up judges it; one page (`page_rows=None`, the
+                    #    follow-up's own call) raises for the follow-up to refuse its source
+                    over = followup._key_over_the_limit(exc) if page_rows is not None else None
+                    if over is None:
+                        raise
+                    said["note"] = "a row-index key over the limit - this page's key values one at a time"
+                if executed is not None and aimed and keyset_scan.debugging():
                     said["note"] = "withdrew %d atoms %s" % (int(executed.store_result.get("withdrawn", 0)),
                                                              _withdrawal_aim(engine, world, source, aimed))
+        if over is not None:
+            # the page rolled back whole; its key values as the follow-up scopes an event - a key value holds whole
+            # molecules (`_scope_pages`) - and the one over the limit refused by name, the rest written
+            key = followup.scope_column(plan)
+            connection = engine.raw_connection()
+            try:
+                values = followup._scope_values_from(connection, plan.relation, key, scope_row_ids)
+            finally:
+                connection.rollback()
+                connection.close()
+            for value in values:
+                try:
+                    one = rescope(engine, setup, source, key, [value], apply=True, withdraw=withdraw, world=world,
+                                  key_range=(None, None))             # (None, None): no run start - this run did it
+                except Exception as exc:
+                    why = followup._key_over_the_limit(exc)
+                    if why is None:
+                        raise
+                    keyset_scan.say("refused %s %s = %s: %s" % (source, key, value, followup.KEY_OVER_THE_LIMIT % why))
+                    result["refused"][KEY_OVER_THE_LIMIT_REASON] = result["refused"].get(KEY_OVER_THE_LIMIT_REASON, 0) + 1
+                    continue
+                for count in ("withdrawn", "attempted", "inserted", "deduped", "forgotten"):
+                    result[count] += int(one.get(count, 0))
+                if withdraw:
+                    result["withdraw"] += int(one.get("withdrawn", 0))
+                for reason, count in one["refused"].items():
+                    result["refused"][reason] = result["refused"].get(reason, 0) + count
+            result["applied"] = True
+        if executed is not None:
             written = executed.store_result
             for key in ("withdrawn", "attempted", "inserted", "deduped"):
                 result[key] += int(written.get(key, 0))
@@ -842,7 +882,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                             plan.relation, stale, source=source)
         # 🔴 what the page's read refused, by the gate's reason - a remake that refuses a row writes
         #    nothing for it and takes its old atoms with the withdrawal (총괄 10-12: it read as a success)
-        read = executed.preview if executed is not None else previewed and previewed["preview"]
+        read = executed.preview if executed is not None else over is None and previewed and previewed["preview"]
         for reason, count in _refusal_reasons(getattr(read, "refusals", ())).items():
             result["refused"][reason] = result["refused"].get(reason, 0) + count
         if checkpoint is not None and checkpoint(result["rows_in_scope"], total):
@@ -1043,6 +1083,8 @@ def slice_bounds(engine, plan, slices):
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
 #: A collapsed event's worth, the unit the live path already translates in one commit.
 RESCOPE_PAGE_ROWS = 1000
+#: A re-translate's `refused` reason for a key value refused over the row index's limit - one a key value (총괄 e2f112f02).
+KEY_OVER_THE_LIMIT_REASON = "row-index key too long"
 
 
 def _table_rows(engine, plan, count=True):
