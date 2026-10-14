@@ -756,10 +756,14 @@ def _run_ledger_rescope(db, params, log, control=None):
     s = _rescope_in_slices(db, params, control) if params.get("whole_source") else None
     if s is None:
         s = _rescope(db, params, control)
-    # 🔴 a refused row was withdrawn and not remade - said beside «written», never left to read as a
-    #    success (총괄 10-12: «rows 4, withdrawn 4, written 4 of 4» while 2 rows lost their atoms)
+    # 🔴 a refused molecule was withdrawn and not remade - said beside «written», never left to read as a
+    #    success (총괄 10-12: «rows 4, withdrawn 4, written 4 of 4» while 2 rows lost their atoms). A key value
+    #    refused over the row index's limit is counted by key value and keeps its old atoms (gate's reason says)
+    from ledger.gate import REFUSE_ROW_INDEX_KEY_TOO_LONG
+
     refused = s.get("refused") or {}
-    why = ", ".join("%s %d" % pair for pair in sorted(refused.items()))
+    why = ", ".join("%s %d%s" % (reason, n, " key values, old atoms kept" if reason == REFUSE_ROW_INDEX_KEY_TOO_LONG
+                                 else "") for reason, n in sorted(refused.items()))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
         f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}, "
         f"refused {sum(refused.values())}" + (f" ({why})" if why else "")

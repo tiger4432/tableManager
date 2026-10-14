@@ -770,10 +770,17 @@ def _event_frames(
             row_refs.append(
                 f"{plan.relation}:" + _canonical(order, path="source_row_ref"))
         if len(set(row_refs)) != len(row_refs):
-            raise SourcePreparationError(
-                "source_preparation_incomplete", "event_frame.source_row_refs",
-                "driver order_by columns do not uniquely identify source rows",
-            )
+            # 🔴 THAT MOLECULE, NOT THE PAGE (총괄 10-14, 소유자 «ㅇㅇ ㄱ»): one job of rows its order_by spells alike
+            #    stopped a whole re-translate, and the follow-up's event failed on it every time
+            from .gate import REFUSE_ORDER_NOT_UNIQUE
+
+            context.refusals.append(MoleculeRefusal(
+                reason=REFUSE_ORDER_NOT_UNIQUE,
+                detail=f"molecule {_molecule_key(driver, cells, positions)}: driver order_by columns "
+                       f"{list(driver.order_by)} do not uniquely identify source rows",
+                rows=len(positions),
+                addresses=({"code": "source_preparation_incomplete", "path": "event_frame.source_row_refs"},)))
+            continue
         molecule_ref = _canonical(
             {"source": plan.source_id, "identity": identity},
             path="event_frame.molecule_ref",

@@ -26,7 +26,7 @@
   "retroactive_slow_statement_seconds": 2,
   "_ledger_translate_slices_doc": "원장 다시 번역(Re-translate, 소스 전체)을 나눠 돌리는 프로세스 수. 1 부터 코어 수까지의 정수 · 적지 않으면 코어 수의 절반(4 이하) · 1 이면 한 프로세스. 그 밖의 값은 retroactive.log 에 한 줄 남기고 기본값으로 읽음. 그 표의 쪽 열쇠 칸에 순서를 주는 인덱스(btree, WHERE 없음)가 없으면 한 조각. 실행마다 읽음 · 재기동 없음.",
   "ledger_translate_slices": 4,
-  "_ledger_analyze_changed_share_doc": "원장 다시 번역이 시작할 때와 새 파티션에 처음 쓴 쪽 뒤에, 통계가 없는(한 번도 ANALYZE 안 된) 원장 파티션과 지난 ANALYZE 뒤 바뀐 행이 행 수의 이 몫을 넘은 파티션을 ANALYZE 합니다. 통계가 없으면 회수가 ref 인덱스를 두고 파티션을 통째로 훑습니다(10-14). 0 보다 큰 수 · 적지 않으면 0.2. 그 밖의 값은 한 줄 남기고 0.2. 실행마다 읽음 · 재기동 없음.",
+  "_ledger_analyze_changed_share_doc": "원장 다시 번역이 시작할 때와 쪽 끝마다(그 실행이 쓴 파티션만), 통계가 없는(한 번도 ANALYZE 안 된) 원장 파티션과 지난 ANALYZE 뒤 바뀐 행이 행 수의 이 몫을 넘은 파티션을 ANALYZE 합니다. 통계가 없으면 회수가 ref 인덱스를 두고 파티션을 통째로 훑습니다(10-14). 0 보다 큰 수 · 적지 않으면 0.2. 그 밖의 값은 한 줄 남기고 0.2. 실행마다 읽음 · 재기동 없음.",
   "ledger_analyze_changed_share": 0.2,
   "_walk_processes_doc": "걷기(걷기 화면 · 보드)를 도는 걷기 프로세스 수. 서버가 뜬 뒤 미리 띄우고, 걷기 하나가 하나를 씁니다. 0 이면 전처럼 서버 안에서 돕니다(급할 때 끄는 법). 0 이상의 정수만 읽고 그 밖은 0. 요청마다 읽어 재기동 없이 바뀝니다.",
   "walk_processes": 2,
