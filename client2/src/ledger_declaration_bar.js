@@ -315,8 +315,15 @@ function sentenceBar(el, view, raw, at, from = null) {
   if (from) name.append(' ', el('span', 'ldb-sname-from', BAR_WORDS.fromSource(from)));
   bar.append(name, ...end(el, view, raw, at, 'subject'), el('span', 'ldb-arrow', '—'),
     chip(el, view, { kind: 'pred', path: `sentences.${at}.predicate`, cls: 'is-pred', text: words(s.predicate),
-      options: (view.predicates || []).map((p) => ({ value: p.name, words: p.name, on: p.name === s.predicate })) }),
-    el('span', 'ldb-arrow', '→'), ...end(el, view, raw, at, 'target'));
+      options: (view.predicates || []).map((p) => ({ value: p.name, words: p.name, on: p.name === s.predicate })) }));
+  // the end the sentence holds: a node (target), a value read off a column (value), or none (a predicate with no object)
+  if (s.target !== undefined) bar.append(el('span', 'ldb-arrow', '→'), ...end(el, view, raw, at, 'target'));
+  else if (s.value !== undefined) {
+    bar.append(el('span', 'ldb-arrow', '→'), chip(el, view, { kind: 'col', path: `sentences.${at}.value`, constant: true, cls: isConst(s.value) ? 'is-const' : 'is-col',
+      hint: isConst(s.value) ? JSON.stringify(s.value.const) : '', text: isConst(s.value) ? `value = ${JSON.stringify(s.value.const)}` : `value ← ${words(s.value)}`,
+      options: columnOptions(view, raw.table, isConst(s.value) ? null : s.value),
+      parts: isConst(s.value) ? undefined : ['value', ' ', el('span', 'ldb-arrow', '←'), ' ', words(s.value)] }));
+  }
   const quals = qualifiersOf(s);
   const pred = (view.predicates || []).find((p) => p.name === s.predicate);
   const free = ((pred && pred.qualifiers) || []).some((q) => !quals.includes(q));
