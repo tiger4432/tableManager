@@ -36,8 +36,6 @@ import { entitySeedId } from '../rnd_board/api.js';
 import { compile, run } from '../expression.js';
 import { paletteOf } from './palette.js';
 
-/** The row walk's key among its walks in flight. */
-const ROW_WALK = Symbol('row walk');
 /** The relations walk's key among its value walks - the walk line's words. */
 const RELATION_WALK = 'Relations';
 /** The value walks it keeps in hand after their slot moved on. */
@@ -154,12 +152,14 @@ export class VisualPart extends Panel {
     const walkAgain = JSON.stringify([next.start, next.row, next.system, next.route || null]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system, this.decl.route || null]);
     const before = this.decl;
     const slotsBefore = this.slotsHeld();
+    const reachBefore = this.reachTargets().join();
     this.decl = JSON.parse(JSON.stringify(next));
     this.start = this.decl.start || null;
     this.writes = this.decl.writes || null;
     this.listen(before);
     this.listenLimit();
-    if (walkAgain) { this.load(); return true; }
+    // another node Reached - the rows walked again, judged against it (lead 10-12)
+    if (walkAgain || this.reachTargets().join() !== reachBefore) { this.load(); return true; }
     // THE SLOT SEAT (owner 10-14 «값 받는 것 바뀔 때마다 다»): each slot whose declaration changed walks its values
     // again - any slot of any kind, the kind not asked
     for (const key of changedSlots(slotsBefore, this.slotsHeld())) this.walkValues(key);
@@ -216,12 +216,23 @@ export class VisualPart extends Panel {
   unwatch() { for (const ro of this.watches || []) ro.disconnect(); this.watches = []; }
 
   /** A start written as one node (`start.node`): its id by the page's node types (expression.js type("key")), or why not. */
+  /** The page's node types for type("key") - the declared entities, each its keys in order and its id. */
+  nodeTypes() {
+    const entities = ((this.vocabulary() || {}).entities) || [];
+    return Object.fromEntries(entities.filter((e) => e && e.type).map((e) => [e.type, { keys: e.keys || [], id: (k) => entitySeedId(e.type, k) }]));
+  }
+
+  /** The nodes its slots' expressions Reach - the row walk is asked to judge its rows against each (aux, lead 10-12). */
+  reachTargets() {
+    const nodes = this.nodeTypes();
+    const held = Object.values(this.slotsHeld()).flatMap(columnsOf).filter(isExpression);
+    return [...new Set(held.flatMap((s) => { const c = compile(s.expr, { nodes }); return c.ok ? c.reaches : []; }))].sort();
+  }
+
   startNode() {
     const text = this.start && this.start.node;
     if (!text) return null;
-    const entities = ((this.vocabulary() || {}).entities) || [];
-    const nodes = Object.fromEntries(entities.filter((e) => e && e.type).map((e) => [e.type, { keys: e.keys || [], id: (k) => entitySeedId(e.type, k) }]));
-    const c = compile(text, { nodes });
+    const c = compile(text, { nodes: this.nodeTypes() });
     if (!c.ok) return { why: c.why };
     const out = run(c, []);
     return typeof out.value === 'string' ? { id: out.value } : { why: out.why || `${text} names no node` };
@@ -365,20 +376,25 @@ export class VisualPart extends Panel {
    * end, a walk in flight dropped. Null - a newer load took over.
    */
   async walkRows(seeds, ticket) {
-    if (seeds.all) return this.walkRowsOf(seeds, ticket);
-    // a start of the row type is its own row; the rest walk to the rows - asked together, read as one
-    const own = seeds.positive.filter((id) => typeOfStart(id) === this.rowType());
-    const away = seeds.positive.filter((id) => typeOfStart(id) !== this.rowType());
-    const sides = [own, away].filter((ids) => ids.length);
-    const got = await Promise.all(sides.map((ids) => this.walkRowsOf({ positive: ids, negative: seeds.negative }, ticket)));
-    if (got.some((g) => !g)) return null;
-    const refused = got.find((g) => !g.ok);
+    // a start of the row type is its own row; the rest walk to the rows - asked together, read as one («All» one side)
+    const own = seeds.all ? [] : seeds.positive.filter((id) => typeOfStart(id) === this.rowType());
+    const sides = seeds.all ? [seeds] : [own, seeds.positive.filter((id) => typeOfStart(id) !== this.rowType())]
+      .filter((ids) => ids.length).map((ids) => ({ positive: ids, negative: seeds.negative }));
+    // a node its Reach names judged by the walk that brings the rows (aux, lead 10-12) - one walk a node, the same node once
+    const targets = this.reachTargets();
+    const asks = sides.flatMap((side) => (targets.length ? targets : [null]).map((to) => ({ side, aux: to ? [to] : [] })));
+    const all = await Promise.all(asks.map((a) => this.walkRowsOf({ ...a.side, aux: a.aux }, ticket)));
+    if (all.some((g) => !g)) return null;
+    const refused = all.find((g) => !g.ok);
     if (refused) return refused;
+    const judged = {};
+    all.forEach((g, k) => { for (const to of asks[k].aux) for (const n of g.answers.flatMap((a) => (a && a.nodes) || [])) if (n.aux) (judged[to] = judged[to] || {})[n.id] = n.aux.state; });
+    const got = sides.map((side) => all[asks.findIndex((a) => a.side === side)]);
     // the start's own rows are those nodes only - their walk brings their records, not rows
     const mine = new Set(own);
     if (own.length) got[0] = { ...got[0], answers: [{ nodes: readable(got[0].answers).nodes.filter((n) => mine.has(n.id)), edges: [], truncated: null }] };
-    return { ok: true, answers: got.flatMap((g) => g.answers), complete: got.every((g) => g.complete), why: (got.find((g) => g.why) || {}).why || null,
-      cached: got.every((g) => g.cached), negative: seeds.negative || [] };
+    return { ok: true, answers: got.flatMap((g) => g.answers), complete: all.every((g) => g.complete), why: (all.find((g) => g.why) || {}).why || null,
+      cached: all.every((g) => g.cached), negative: seeds.negative || [], judged };
   }
 
   /** One row walk from seeds of one side: of the row type - none when the page holds them, else their records; of other
@@ -389,14 +405,15 @@ export class VisualPart extends Panel {
     const own = !seeds.all && seeds.positive.every((id) => typeOfStart(id) === rows);
     // A start of the row type walks none (lead 10-14) when a walk on the page carried its nodes: they are the rows, read
     // off the page's graph (a start written by hand is walked for its records)
-    if (own && seeds.positive.every((id) => this.layers.graph.nodes.has(id))) {
+    // (a judgment asked - Reach - is a walk's: its records are walked)
+    if (own && !(seeds.aux || []).length && seeds.positive.every((id) => this.layers.graph.nodes.has(id))) {
       const nodes = seeds.positive.map((id) => this.layers.graph.nodes.get(id));
       return { ok: true, answers: [{ nodes, edges: [], truncated: null }], complete: true, why: null, ask: null, negative: seeds.negative || [] };
     }
     const routes = seeds.all || own ? [] : this.routes();
     const types = seeds.all ? [] : [...new Set(seeds.positive.map(typeOfStart).filter(Boolean))];
     const ask = { seeds: seeds.all ? [`all:${rows}`] : [...seeds.positive].sort(), follow: [...new Set(routes.flatMap((r) => r.follow))].sort(),
-      hops: Math.max(1, ...routes.map((r) => r.hops)), collect: [...new Set([rows, ...types].filter(Boolean))].sort() };
+      hops: Math.max(1, ...routes.map((r) => r.hops)), collect: [...new Set([rows, ...types].filter(Boolean))].sort(), aux: seeds.aux || [] };
     // the page's row walks: one in flight that will cover it waited for, one in hand that covers it taken (any part's)
     const walks = this.layers.graph.walks;
     const same = (w) => JSON.stringify(w.negative || []) === JSON.stringify(seeds.negative || []);
@@ -407,21 +424,23 @@ export class VisualPart extends Panel {
     }
     const held = walks.find((w) => !w.receiving && same(w) && covers(w.ask, ask));
     if (held) return { ...held, cached: true };
-    this.abortWalk();
+    // its own key - the row walks of one load fly together (its sides, a Reached node each); the load before dropped them all
     const control = new AbortController();
-    this.aborts.set(ROW_WALK, control);
+    const key = Symbol('row walk');
+    this.aborts.set(key, control);
     let finished;
     const record = { ok: true, answers: [], complete: false, why: null, ask: { ...ask, complete: false }, negative: seeds.negative || [], receiving: true,
       done: new Promise((r) => { finished = r; }) };
     walks.unshift(record);
     walks.splice(KEPT_WALKS);
     const leave = () => { record.receiving = false; const at = walks.indexOf(record); if (at >= 0) walks.splice(at, 1); finished(); };
-    const params = seeds.all ? { ...this.budget(), seed_type: rows, collect: ask.collect }
-      : { ...this.budget(), nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [], follow: ask.follow, hops: ask.hops, collect: ask.collect };
+    const params = seeds.all ? { ...this.budget(), seed_type: rows, collect: ask.collect, ...(ask.aux.length ? { aux: ask.aux } : {}) }
+      : { ...this.budget(), nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [], follow: ask.follow, hops: ask.hops, collect: ask.collect,
+        ...(ask.aux.length ? { aux: ask.aux } : {}) };
     // the rows are drawn when their walk is in
     const got = await walkToEnd(this.fetchWalk, params, control.signal, null);
     if (got.aborted || ticket !== this.walking) { leave(); return null; }
-    this.aborts.delete(ROW_WALK);
+    this.aborts.delete(key);
     if (got.refused) { leave(); return { ok: false, why: refusalWords(got.res) }; }
     Object.assign(record, { answers: got.answers, complete: got.complete, why: got.why, ask: { ...ask, complete: got.complete }, receiving: false });
     finished();
@@ -507,6 +526,15 @@ export class VisualPart extends Panel {
     // the markings asked heard. The calculator asks (name, node) -> true · false · null (expression.js Marked).
     const asked = new Set();
     const unknown = new Set();
+    // Reach(node): the row walk's judgment - found · none · unknown (counted with Marked's)
+    const judged = (this.rowWalk && this.rowWalk.judged) || {};
+    const askReach = (to, id) => {
+      const state = (judged[to] || {})[id];
+      if (state === 'found') return true;
+      if (state === 'none') return false;
+      unknown.add(id);
+      return null;
+    };
     const askMarked = (words, id) => {
       const name = this.markingNamed(words);
       asked.add(name);
@@ -523,9 +551,10 @@ export class VisualPart extends Panel {
     const encode = this.decl.encode || {};
     const held = this.slotsHeld();
     const listed = this.slotList();
+    const calc = { nodes: this.nodeTypes(), reach: askReach };
     const rows = limited.map((id) => {
       const node = index.nodes.get(id) || {};
-      const reads = readSlots(index, inside, id, Object.entries(held), this.oneValued, askMarked, Boolean(this.kind.cells));
+      const reads = readSlots(index, inside, id, Object.entries(held), this.oneValued, askMarked, Boolean(this.kind.cells), calc);
       const raw = {};
       for (const s of listed) if (held[s.key] && s.folds) raw[s.key] = rawOf(index, inside, id, held[s.key], Boolean(s.records));
       return { id, label: node.label || id, reads, raw };

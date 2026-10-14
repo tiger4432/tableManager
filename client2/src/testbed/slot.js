@@ -23,14 +23,14 @@ const spelling = (v) => JSON.stringify(v);
  *   one - a value to draw; several - values that differ and no reduce, so not drawn; empty - nothing said (notNumber:
  *   an expression's operator met a text that is not a number); missing - the row is not in the walk
  */
-export function readSlot(index, inside, x, slot, oneValued = false, marked = null, cell = undefined) {
+export function readSlot(index, inside, x, slot, oneValued = false, marked = null, cell = undefined, calc = {}) {
   // A slot of several columns (owner 10-14 «알약 여러 컬럼»): each column read, their values' combination one category
   // («A, B» - Spotfire's), `parts` its values column by column (a cross table's levels); one column - that column.
   if (Array.isArray(slot)) {
     const cols = columnsOf(slot);
-    if (cols.length === 1) return readSlot(index, inside, x, cols[0], oneValued, marked, cell);
+    if (cols.length === 1) return readSlot(index, inside, x, cols[0], oneValued, marked, cell, calc);
     if (!cols.length) return { state: 'empty', n: 0 };
-    const reads = cols.map((c) => readSlot(index, inside, x, c, false, marked, cell));
+    const reads = cols.map((c) => readSlot(index, inside, x, c, false, marked, cell, calc));
     if (reads.some((r) => r.state === 'missing')) return { state: 'missing' };
     let tuples = [[]];
     for (const r of reads) {
@@ -42,10 +42,11 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
   }
   if (isExpression(slot)) {
     if (!inside.has(x)) return { state: 'missing' };
-    const c = compile(slot.expr);
+    // calc: the page's node types (type("key")) and the walk's judgment (Reach) - the calculator's page beside the markings
+    const c = compile(slot.expr, { nodes: calc.nodes });
     // Each name's declared column type, as the walk says it (a datetime's Min and Max compare instants - lead 10-13).
     const types = c.ok ? Object.fromEntries(c.names.map((n) => [n, typeOfName(index, inside, x, n)]).filter(([, t]) => t)) : {};
-    const read = answerOne(run(c, [calcRow(index, inside, x)], { marked, cell, types }));
+    const read = answerOne(run(c, [calcRow(index, inside, x)], { marked, cell, types, reach: calc.reach }));
     return Object.keys(types).length ? { ...read, types } : read;
   }
   if (slot.self) return inside.has(x) ? { state: 'one', value: x, n: 1 } : { state: 'missing' };
@@ -116,10 +117,10 @@ export const timeText = (value) => (localStamp(value) !== NO_TIME ? localStamp(v
  * that names another slot's key (A1, B1:B9) reads that one's value: each read once, in the order they name each other;
  * a ring of them is a cycle, each of its slots {state: 'cycle', ring}. Without, a cell reference is refused by name.
  */
-export function readSlots(index, inside, x, pairs, oneValued, marked, cells = false) {
+export function readSlots(index, inside, x, pairs, oneValued, marked, cells = false, calc = {}) {
   const bySlot = new Map(pairs);
   const out = {};
-  if (!cells) { for (const [k, s] of pairs) out[k] = readSlot(index, inside, x, s, oneValued(s), marked); return out; }
+  if (!cells) { for (const [k, s] of pairs) out[k] = readSlot(index, inside, x, s, oneValued(s), marked, undefined, calc); return out; }
   const busy = [];
   const need = (k) => {
     if (out[k]) return out[k];
@@ -134,7 +135,7 @@ export function readSlots(index, inside, x, pairs, oneValued, marked, cells = fa
       if (r && r.state === 'cycle') { ring = ring || r.ring; return null; }
       return r && r.state === 'one' ? r.value : null;
     };
-    const read = readSlot(index, inside, x, s, oneValued(s), marked, value);
+    const read = readSlot(index, inside, x, s, oneValued(s), marked, value, calc);
     busy.pop();
     out[k] = ring ? { state: 'cycle', ring } : read;
     return out[k];

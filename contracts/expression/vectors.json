@@ -21,6 +21,8 @@
     "                `cells` {A1: value} fakes a sheet's cells (owner 3b97fcfb9: cell references A1 and ranges B1:B9 are the",
     "                sheet's grammar); `nodes` {type: [its keys in declared order]} the page's node types for type(\"key\", ...),",
     "                whose answer is the node's id (rnd_board/api.js entitySeedId). The server refuses both by name.",
+    "                Reach(node) reads the walk's judgment - `reach` fakes it: {to: {type, keys}, found: [ids], unknown: [ids]};",
+    "                a row not listed false, a node not `to` unknown. The server refuses the name.",
     "  ours        our rule (the cite names the ruling) - only in `ours`",
     "  decided     no page settles it; the lead ruled it 10-13 from the nearest rule the cite names. «may differ from",
     "              Spotfire» in a cite marks a ruling Spotfire may answer otherwise, with no way left to measure it",
@@ -4643,6 +4645,129 @@
       "screen_only": true,
       "basis": "ours",
       "cite": "lead 10-13 (owner): Spotfire's Marked() - the page answers each node true, false or unknown from its marking layer; Marked(\"m\", [way]) - true when one end is, false when every end is out, else unknown; a way that reaches nothing from the row is unknown"
+    },
+    {
+      "id": "reach.row",
+      "expr": "Reach(core(\"cA\"))",
+      "rows": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "expect_rows": [
+        true,
+        false,
+        null
+      ],
+      "graph": {
+        "nodes": [
+          {
+            "id": "c1",
+            "type": "core",
+            "label": "c1",
+            "keys": {
+              "core": "c1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "c2",
+            "type": "core",
+            "label": "c2",
+            "keys": {
+              "core": "c2"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "c3",
+            "type": "core",
+            "label": "c3",
+            "keys": {
+              "core": "c3"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w1",
+            "type": "wafer",
+            "label": "w1",
+            "keys": {
+              "wafer": "w1"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w2",
+            "type": "wafer",
+            "label": "w2",
+            "keys": {
+              "wafer": "w2"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w3",
+            "type": "wafer",
+            "label": "w3",
+            "keys": {
+              "wafer": "w3"
+            },
+            "attributes": {}
+          },
+          {
+            "id": "w4",
+            "type": "wafer",
+            "label": "w4",
+            "keys": {
+              "wafer": "w4"
+            },
+            "attributes": {}
+          }
+        ],
+        "edges": [
+          {
+            "source": "w1",
+            "target": "c1",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          },
+          {
+            "source": "w2",
+            "target": "c2",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          },
+          {
+            "source": "w3",
+            "target": "c3",
+            "predicate": "bonded_to",
+            "qualifiers": {}
+          }
+        ]
+      },
+      "nodes": {
+        "core": [
+          "core"
+        ]
+      },
+      "reach": {
+        "to": {
+          "type": "core",
+          "keys": {
+            "core": "cA"
+          }
+        },
+        "found": [
+          "c1"
+        ],
+        "unknown": [
+          "c3"
+        ]
+      },
+      "screen_only": true,
+      "basis": "ours",
+      "cite": "lead 10-12 (owner «reach(modelnode) 실시간 요청으로 판정»): Reach(node) is the walk's aux judgment of the row - found true, none false, unknown empty; the walk that brings the rows carries the node, nothing walked apart"
     },
     {
       "id": "sheet.cell",

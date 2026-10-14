@@ -7,7 +7,7 @@ answered over rows (`run`). One grammar, one function table, no eval.
 Rows: dicts ({"x": 1, "$at": "2026-...Z"}) - a value may be a list (a fold counts its items, a row-by-row use needs one
 value). `types` ({column: "datetime"}, the words of table_config's column_types): Min and Max over a datetime column
 compare instants and answer the row's value as it is (lead 10-13).
-Refused by name here: Marked (the page's markings are the screen's) and ways - a name holding «.» or «~» ([a.b~.x])
+Refused by name here: Marked and Reach (the page's markings and the walk's judgment are the screen's) and ways - a name holding «.» or «~» ([a.b~.x])
 is a walk from the row, not read on the server yet.
 Dates (lead fe2ba4b1f): a time is cut into its date and parts on the wall clock of `zone` - run's argument, else
 ingestion_settings "expression_time_zone" (Asia/Seoul, owner «ㅇㅇ kst»). A time with an offset is moved there; one
@@ -521,11 +521,11 @@ FUNCTIONS = {
     "DatePart": {"kind": "row", "arity": 2, "fn": _date_part, "zoned": True},
 }
 _BY_NAME = {name.lower(): name for name in FUNCTIONS}
-#: The screen's alone - the page's markings.
-SCREEN_ONLY = {"marked": "Marked"}
+#: The screen's alone - the page's markings (Marked), the judgment of the walk that brought the rows (Reach).
+SCREEN_ONLY = {"marked": ("Marked", "the page's markings"), "reach": ("Reach", "the walk's judgment")}
 #: task/SPOTFIRE_FUNCTIONS.md names this edition does not build (the vectors' out_of_edition) - refused by name.
 NOT_YET = {"normdist", "norminv", "tdist", "tinv", "chidist", "chiinv", "fdist", "finv", "lag", "lead", "rand",
-           "randbetween", "concatenate", "reach"}
+           "randbetween", "concatenate"}
 #: A sheet's cell (A1) or range (B1:B9) - the screen's Sheet (lead 10-14, owner 3b97fcfb9).
 CELL = re.compile(r"^[A-Za-z]+[0-9]+$")
 #: A name holding one of these is a way from the row ([a.b~.x]) - not read on the server yet (lead 5667ea0fe).
@@ -730,7 +730,7 @@ def _parse(text):
         p[0] += 1
         lw = word.lower()
         if lw in SCREEN_ONLY:
-            raise ExpressionError("%s is the screen's - it reads the page's markings" % SCREEN_ONLY[lw])
+            raise ExpressionError("%s is the screen's - it reads %s" % SCREEN_ONLY[lw])
         name = _BY_NAME.get(lw)
         if not name:
             raise ExpressionError("%s is not in this edition" % word if lw in NOT_YET else

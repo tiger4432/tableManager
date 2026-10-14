@@ -57,6 +57,11 @@ function suite(M, quiet = false) {
     if (v.types) page.types = v.types;
     if (v.zone) page.zone = v.zone;
     if (v.cells) page.cell = (at) => v.cells[at];
+    // Screen only (Reach): the vector fakes the walk's judgment of each row against its node - another node unknown
+    if (v.reach) {
+      const to = entitySeedId(v.reach.to.type, v.reach.to.keys);
+      page.reach = (node, id) => (node !== to ? null : (v.reach.found || []).includes(id) ? true : (v.reach.unknown || []).includes(id) ? null : false);
+    }
     const out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page);
     const rows = 'expect_rows' in v;
     const good = rows
@@ -197,7 +202,11 @@ const MUTANTS = [
   { id: 'X28', what: 'a way that reaches nothing is out, not unknown', catches: 'O[marked.way]', file: E,
     mutate: (t) => swap(t, '  if (!ends || !ends.length) return null;', '  if (!ends || !ends.length) return false;') },
   { id: 'X29', what: 'Marked folded once over the rows, not row by row', catches: 'O[marked.row]', file: E,
-    mutate: (t) => swap(t, "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'mark')", "const rowLevel = (node) => node.t === 'ref'") },
+    mutate: (t) => swap(t, "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && (node.fn.kind === 'mark' || node.fn.kind === 'reach'))", "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'reach')") },
+  { id: 'X50', what: 'Reach folded once over the rows, not row by row', catches: 'O[reach.row]', file: E,
+    mutate: (t) => swap(t, "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && (node.fn.kind === 'mark' || node.fn.kind === 'reach'))", "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'mark')") },
+  { id: 'X51', what: 'a row the walk could not judge read as not reaching', catches: 'O[reach.row]', file: E,
+    mutate: (t) => swap(t, 'const v = ctx.reach(to, ctx.row.id);', 'const v = ctx.reach(to, ctx.row.id) || false;') },
   { id: 'X30', what: 'a datetime column folded as numbers - its types not read', catches: 'V[time.min]', file: E,
     mutate: (t) => swap(t, "  if (BY_TIME[node.name] && args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime') return BY_TIME[node.name](items).value;\n", '') },
   { id: 'X31', what: 'the same instant twice: the one met last', catches: 'V[time.min.offset.same.instant]', file: E,

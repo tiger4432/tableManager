@@ -300,11 +300,14 @@ export const FUNCTIONS = Object.freeze({
   DatePart: { kind: 'row', arity: 2, zoned: true, fn: datePart },
   // Spotfire's Marked() (lead 10-13): the page's marking - screen only, the markings come in ctx.
   Marked: { kind: 'mark' },
+  // Reach(node) (ours, lead 10-12): does this row reach that node - the judgment of the walk that brought the rows (aux),
+  // screen only, it comes in ctx
+  Reach: { kind: 'reach' },
 });
 const BY_NAME = new Map(Object.keys(FUNCTIONS).map((name) => [name.toLowerCase(), name]));
 // task/SPOTFIRE_FUNCTIONS.md names this edition does not build (the vectors' out_of_edition) - refused by name.
 const NOT_YET = new Set(['normdist', 'norminv', 'tdist', 'tinv', 'chidist', 'chiinv', 'fdist', 'finv', 'lag', 'lead',
-  'rand', 'randbetween', 'concatenate', 'reach']);
+  'rand', 'randbetween', 'concatenate']);
 
 // ── reading the text ──────────────────────────────────────────────────────────────────────────────────────────────
 const KEYWORDS = new Set(['and', 'or', 'xor', 'not', 'case', 'when', 'then', 'else', 'end', 'is', 'null', 'true', 'false', 'distinct']);
@@ -468,7 +471,7 @@ function arity({ name, fn, args, distinct }) {
 const children = (node) => [node.a, node.b, node.subject, node.otherwise, ...(node.args || []),
   ...(node.whens || []).flatMap((w) => [w.when, w.then])].filter(Boolean);
 /** Does `node` read a row's value outside any fold - then the answer is one per row. */
-const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'mark')
+const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && (node.fn.kind === 'mark' || node.fn.kind === 'reach'))
   || (!(node.t === 'call' && node.fn.kind === 'fold') && children(node).some(rowLevel));
 // Marked's way is steps, not a value's name - not among the names a row must have.
 const namesOf = (node, out = new Set()) => {
@@ -506,7 +509,7 @@ export function compile(text, page = {}) {
   try {
     // nodes: the page's node types {type: {keys: [names in declared order], id(keys) -> node id}} - type("key") (screen only)
     const tree = parse(String(text || ''), page.nodes || {});
-    return { ok: true, tree, perRow: rowLevel(tree), names: [...namesOf(tree)], cells: [...cellsOf(tree)] };
+    return { ok: true, tree, perRow: rowLevel(tree), names: [...namesOf(tree)], cells: [...cellsOf(tree)], reaches: [...reachesOf(tree)] };
   } catch (e) {
     if (e instanceof ExpressionError) return { ok: false, why: e.message };
     throw e;
@@ -604,6 +607,7 @@ function value(node, ctx) {
     case 'call':
       if (node.fn.kind === 'if') return ifValue(node, ctx);
       if (node.fn.kind === 'mark') return markedValue(node, ctx);
+      if (node.fn.kind === 'reach') return reachValue(node, ctx);
       if (node.fn.kind === 'row') return finite(node.fn.fn(...node.args.map((a) => value(a, ctx)), ...(node.fn.zoned ? [ctx] : [])));
       return finite(foldValue(node, ctx));
     default: throw new ExpressionError(`Cannot answer ${node.t}`);
@@ -627,6 +631,29 @@ function markedValue(node, ctx) {
   const each = ends.map(said);
   return each.some((v) => v === true) ? true : each.every((v) => v === false) ? false : null;
 }
+
+/** Reach(node) - does this row reach that node: the walk that brought the rows judged each against it (its aux) - true ·
+ *  false · unknown (null). The page answers (ctx.reach); without it the name is refused - the server's calculator walks none. */
+function reachValue(node, ctx) {
+  if (typeof ctx.reach !== 'function') throw new ExpressionError("Reach is the screen's - it reads the walk's judgment");
+  if (!ctx.row) throw new ExpressionError('Reach is a row\'s - use it row by row');
+  const to = value(node.args[0], { ...ctx, row: null });
+  if (typeof to !== 'string' || !to) throw new ExpressionError('Reach takes a node - type("key")');
+  const v = ctx.reach(to, ctx.row.id);
+  return v === true || v === false ? v : null;
+}
+
+/** The nodes an expression's Reach names - what the walk that brings the rows is asked to judge them against (its aux). */
+const reachesOf = (node, out = new Set()) => {
+  if (node.t === 'call' && node.fn.kind === 'reach') {
+    try {
+      const to = value(node.args[0], { rows: [], row: null, memo: new Map(), notNumber: new Set(), notTime: new Set(), types: {}, zone: ZONE_DEFAULT });
+      if (typeof to === 'string' && to) out.add(to);
+    } catch (e) { if (!(e instanceof ExpressionError)) throw e; }
+  }
+  children(node).forEach((c) => reachesOf(c, out));
+  return out;
+};
 
 /** A1 - the sheet answers its cells' values (ctx.cell); without it the name is refused - the sheet's grammar alone. */
 function sheetCell(ctx, at) {
@@ -692,14 +719,15 @@ function caseValue(node, ctx) {
 export function run(compiled, rows, page = {}) {
   if (!compiled.ok) return { why: compiled.why };
   // notNumber: the rows an operator met a text that is not a number on - their answer is empty; marked: the page's
-  // markings (screen only), for Marked(); types: {column: "datetime"} (table_config's column_types words); cell: a
+  // markings (screen only), for Marked(); reach: (node, row id) -> true · false · null, the walk's judgment (screen only), for
+  // Reach(); types: {column: "datetime"} (table_config's column_types words); cell: a
   // sheet's cell values by address (A1), for cell references
   // zone: the IANA name dates are cut in (ZONE_DEFAULT when the page gives none); notTime: the rows a date function met
   // a value that is not a time on
   const zone = page.zone || pageZone || ZONE_DEFAULT;
   try { clockOf(0, zone); } catch (e) { if (e instanceof RangeError) return { why: `«${zone}» is not a time zone` }; throw e; }
   const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), notTime: new Set(), marked: page.marked,
-    types: page.types || {}, cell: page.cell, zone };
+    reach: page.reach, types: page.types || {}, cell: page.cell, zone };
   try {
     if (!compiled.perRow) { const v = finite(value(compiled.tree, ctx)); return { value: v, notNumber: ctx.notNumber.size, notTime: ctx.notTime.size }; }
     const values = ctx.rows.map((r) => finite(value(compiled.tree, { ...ctx, row: r })));

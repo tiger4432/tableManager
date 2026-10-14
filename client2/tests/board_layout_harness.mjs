@@ -639,6 +639,7 @@ async function routed(M) {
   const node = (nid) => ({ id: nid, type: M.route.typeOfStart(nid), label: label.get(nid), keys: {}, attributes: {} });
   const EDGES = [[d1, 'in_container', BW], [d2, 'in_container', BW], [d1, 'bonded_from', c1], [d2, 'bonded_from', c2], [c1, 'in_container', CW1], [c2, 'in_container', CW2]]
     .map(([source, predicate, target], i) => ({ id: `r${i}`, source, target, predicate, qualifiers: {} }));
+  const JUDGED = { [CW1]: { [d1]: 'found', [d2]: 'none' }, [CW2]: { [d2]: 'found' } };
   const serve = (p) => {
     if (p.seed_type) return { nodes: [...label.keys()].filter((x) => M.route.typeOfStart(x) === p.seed_type).map(node), edges: [], truncated: ANSWER.truncated };
     const follow = p.follow && p.follow.length ? new Set(p.follow) : null;
@@ -654,9 +655,11 @@ async function routed(M) {
       at = next;
     }
     const collect = p.collect && p.collect.length ? new Set(p.collect) : null;
-    return { nodes: [...seen].map(node).filter((n) => !collect || collect.has(n.type)), edges: [...took], truncated: ANSWER.truncated };
+    // aux (Reach): each node judged against the one node asked - the server's found · none · unknown, a table here
+    const judge = (n) => (p.aux && p.aux.length ? { ...n, aux: { state: (JUDGED[p.aux[0]] || {})[n.id] || 'unknown' } } : n);
+    return { nodes: [...seen].map(node).filter((n) => !collect || collect.has(n.type)).map(judge), edges: [...took], truncated: ANSWER.truncated };
   };
-  const vocabulary = { entities: [{ type: 'die' }, { type: 'wafer' }],
+  const vocabulary = { entities: [{ type: 'die', keys: ['die'] }, { type: 'wafer', keys: ['wafer'] }],
     predicates: [{ name: 'in_container', subjects: ['die'], object: { kind: 'entity_ref', types: ['wafer'] } }, { name: 'bonded_from', subjects: ['die'], object: { kind: 'entity_ref', types: ['die'] } }] };
   const CORE = { steps: [{ predicate: 'bonded_from', direction: 'outgoing' }, { predicate: 'in_container', direction: 'outgoing' }], value: { on: 'label', name: 'name' }, words: ['core wafer'] };
   const NAMED = { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] };
@@ -727,7 +730,32 @@ async function routed(M) {
   const single = await seat({ ...base, row: 'die', encode: { rows: CORE } }, withD1());
   const pair = await seat({ ...base, row: 'die', encode: { rows: [NAMED, CORE] } }, withD1());
   const twoColumns = [pair.asked, single.asked, pair.rows, JSON.stringify(M.walks.valueAsk([NAMED, CORE], 'die', vocabulary)) === JSON.stringify(M.walks.valueAsk(CORE, 'die', vocabulary))];
-  return { twoColumns, press, relationWalk, pure: [M.hubs.nodesOfPress(['a']), M.hubs.nodesOfPress(['a', 'b'])],
+  // R1 Reach(node) in a column: the row walk asks the server to judge its rows against that node (aux) - found true, none
+  // false, unknown empty and counted on the status line; R2 two nodes Reached - a row walk each; R3 a column that
+  // Reaches a node added - the rows walked again with it, the same node again none
+  const wafersPage = page();
+  wafersPage.markings.set('marking:die', BW, SIGN.CASE);
+  const reachCol = (text) => ({ expr: text, words: [text] });
+  const reachTable = await seat({ ...base, kind: 'table', row: 'die', encode: { col1: NAMED, col2: reachCol('Reach(wafer("CW1"))'), col3: reachCol('Reach(wafer("CW2"))') } }, wafersPage);
+  const lines = reachTable.part.model.lines.map((l) => l.cells.map((c) => c.text)).sort();
+  const auxSent = reachTable.part.layers.graph.walks.map((w) => (w.ask.aux || []).map((x) => label.get(x)).join()).sort();
+  const reach = [lines, (statusWords(reachTable.part.stats.get('B')) || []).filter((w) => w.includes('unknown')), auxSent];
+  const twoPage = page();
+  twoPage.markings.set('marking:die', BW, SIGN.CASE);
+  const two = await seat({ ...base, kind: 'table', row: 'die', encode: { col1: reachCol('Reach(wafer("CW1")) or Reach(wafer("CW2"))') } }, twoPage);
+  reach.push(two.part.layers.graph.walks.map((w) => (w.ask.aux || []).map((x) => label.get(x)).join()).sort());
+  const addPage = page();
+  addPage.markings.set('marking:die', BW, SIGN.CASE);
+  const added = await seat({ ...base, kind: 'table', row: 'die', encode: { col1: NAMED } }, addPage);
+  const n0 = added.asked.length;
+  added.part.setDeclaration({ ...added.part.declaration(), encode: { col1: NAMED, col2: reachCol('Reach(wafer("CW1"))') } });
+  await settle();
+  const n1 = added.asked.length;
+  added.part.setDeclaration({ ...added.part.declaration(), encode: { col1: NAMED, col2: reachCol('Reach(wafer("CW1"))'), col3: NAMED } });
+  await settle();
+  reach.push([n1 - n0, added.asked.length - n1, added.part.model.lines.map((l) => l.cells[1].text).sort(),
+    M.walks.covers({ seeds: ['a'], follow: [], hops: 1, collect: null, complete: true }, { seeds: ['a'], follow: [], hops: 1, collect: ['die'], aux: ['X'] })]);
+  return { reach, twoColumns, press, relationWalk, pure: [M.hubs.nodesOfPress(['a']), M.hubs.nodesOfPress(['a', 'b'])],
     dies: [dies.rows, dies.asked, dies.labels()], all: [all.rows, all.labels()], wafers: [wafers.labels(), wafers.asked],
     spread: [spread.part.startTypes(), spread.labels(), spread.asked], none: [none.state, none.refusal, none.asked.length] };
 }
@@ -1548,6 +1576,11 @@ async function suite(M) {
       [rt.pure, rt.press], [[['a'], null], [['d1'], true, '0 marked rows - marking holds die; no relation to wafer', ['hub'], ['CW1']]]),
     judge('W9 a part that writes a marking walks the page\'s relations from its rows (said on its walk line); a part starting from that marking starts from its spread layer',
       rt.relationWalk, [[[['bonded_from'], 1, ['d1']]], ['Relations · complete'], ['c1', 'd1']]),
+    judge('RC1 Reach(node) in a column: the row walk carries the node (aux) and each row reads its judgment - found true, none false, unknown empty and said',
+      rt.reach.slice(0, 3), [[['d1', '✓', ''], ['d2', '✗', '✓']], ['1 row unknown'], ['CW1', 'CW2']]),
+    judge('RC2 two nodes Reached in one expression - a row walk each, the same node once', rt.reach[3], ['CW1', 'CW2']),
+    judge('RC3 a column that Reaches a node added: the rows walked again judged against it; another column after - no row walk', rt.reach[4],
+      [1, 0, ['✓', '✗'], false]),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
       [rt.twoColumns[0], rt.twoColumns[2], rt.twoColumns[3]], [rt.twoColumns[1], ['d1, CW1'], true]),
     judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
@@ -1796,6 +1829,14 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'const held = walks.find(', 'const held = false && walks.find(') },
   { id: 'PWM20', what: 'a part that writes a marking walks no relations - the edges its marking spreads along not on the page', catches: 'W9 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'return this.writes && columns.length ? columns : null;', 'return null;') },
+  { id: 'RM1', what: 'the node a Reach names not sent to the walk - every row unknown', catches: 'RC1 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'collect: ask.collect,\n        ...(ask.aux.length ? { aux: ask.aux } : {}) };', 'collect: ask.collect };') },
+  { id: 'RM2', what: 'a walk judged against nothing covers a Reach - the judgment never asked', catches: 'RC3 ', file: 'testbed/part_walks.js', key: 'walks',
+    mutate: (t) => swap(t, 'if ((ask.aux || []).length && !same(held.aux || [], ask.aux)) return false;', '') },
+  { id: 'RM3', what: 'a column that Reaches a node added folds again only - its rows never judged', catches: 'RC3 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'if (walkAgain || this.reachTargets().join() !== reachBefore) {', 'if (walkAgain) {') },
+  { id: 'RM4', what: 'two nodes Reached in one walk - the nearest answers for both', catches: 'RC2 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '(targets.length ? targets : [null]).map((to) => ({ side, aux: to ? [to] : [] }))', '[{ side, aux: targets }]') },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',

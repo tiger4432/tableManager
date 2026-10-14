@@ -17,7 +17,8 @@ SCORED = FILE["vectors"] + FILE["ours"]
 #: A vector the screen alone answers (`screen_only`: markings, a sheet's cells, node constructors) or that walks a graph.
 REFUSED = [v for v in SCORED if v.get("screen_only") or "graph" in v]
 ANSWERED = [v for v in SCORED if v not in REFUSED]
-SAID = {"markings": "is the screen's - it reads the page's markings", "cells": "is the screen's - a sheet's cells",
+SAID = {"reach": "Reach is the screen's - it reads the walk's judgment",
+        "markings": "is the screen's - it reads the page's markings", "cells": "is the screen's - a sheet's cells",
         "nodes": "node constructors (type(\"key\")) are the screen's",
         "graph": "is a way from the row - ways are not read on the server yet"}
 

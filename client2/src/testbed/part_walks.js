@@ -78,6 +78,8 @@ export function covers(held, ask) {
   if (!same(held.seeds, ask.seeds)) return false;
   if (held.collect && (!ask.collect || !ask.collect.every((t) => held.collect.includes(t)))) return false;
   if (!(ask.follow || []).every((p) => (held.follow || []).includes(p))) return false;
+  // a judgment asked (aux - Reach) is the held walk's own: the same nodes (a walk judged against more answers the nearest)
+  if ((ask.aux || []).length && !same(held.aux || [], ask.aux)) return false;
   return ask.hops <= held.hops;
 }
 
