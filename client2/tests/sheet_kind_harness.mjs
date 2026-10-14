@@ -24,6 +24,9 @@ const ROW = (reads = {}) => ({ id: KEY, label: 'L1 · 05', reads });
 function seen(M) {
   const S = M.sheet;
   const out = {};
+  // the rows as the root hands them (lead-board-13 ②): several on a cell is the root's refusal - #MANY and why
+  // (units.js refuseMany); the sheet draws what it is given
+  const rooted = (rows) => M.units.refuseMany(rows);
   const textOf = (model, at) => model.grid.flat().find((c) => c.at === at);
   // ── the grid's size ──
   out.size = [S.sheetModel([], { declaration: {} }), S.sheetModel([], { declaration: { cells: { C12: { input: 'x' } } } }),
@@ -53,13 +56,13 @@ function seen(M) {
   // The root's: the start it walked from (the key's input), and its paint - the key's row colour, marked or not.
   const START = { text: 'lot_slot("L1", "05")', id: KEY };
   const PAINT = (marked) => (ids) => ({ fill: '#abcdef', line: '#abcdef', color: '#abcdef', marked: marked && ids.includes(KEY), dim: false });
-  const model = S.sheetModel([ROW(reads)], { declaration: decl, start: START, paint: PAINT(false) });
+  const model = S.sheetModel(rooted([ROW(reads)]), { declaration: decl, start: START, paint: PAINT(false) });
   out.cells = ['A1', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2'].map((at) => { const c = textOf(model, at); return [at, c.text, c.why || null, c.num]; });
   out.keyNoRow = textOf(S.sheetModel([], { declaration: decl }), 'A1').text;
   const refused = textOf(S.sheetModel([], { declaration: decl, start: { text: 'nope("x")', why: 'No function named nope' } }), 'A1');
   out.keyRefused = [refused.text, refused.why, refused.input];
   out.keyPaint = [textOf(model, 'A1').color, textOf(model, 'A1').marked,
-    textOf(S.sheetModel([ROW(reads)], { declaration: decl, start: START, paint: PAINT(true) }), 'A1').marked];
+    textOf(S.sheetModel(rooted([ROW(reads)]), { declaration: decl, start: START, paint: PAINT(true) }), 'A1').marked];
   // ── the slots the root reads: the formula cells, the key aside ──
   out.slots = S.slots({}, decl).map((s) => [s.key, s.slot]);
   // ── one key a sheet ──
@@ -74,7 +77,7 @@ function seen(M) {
   const draw = (body, d, rows, declared) => {
     const ctx = { doc, declaration: d, start: d.start && d.start.node ? { text: d.start.node, id: KEY } : null, paint: PAINT(false),
       declare: (patch) => { declared.push(patch); }, mark: (ids) => { marks.push(ids); } };
-    S.render(body, S.sheetModel(rows, ctx), ctx);
+    S.render(body, S.sheetModel(rooted(rows), ctx), ctx);
   };
   const cellTd = (body, at) => walkAll(body).find((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-at'] === at);
   const bar = (body) => walkAll(body).find((n) => hasClass(n, 'sf-sheet__input'));
@@ -140,7 +143,7 @@ function seen(M) {
   }
   // ── saved and opened: the same cells, the same picture ──
   const back = JSON.parse(JSON.stringify(decl));
-  const again = S.sheetModel([ROW(reads)], { declaration: back, start: START, paint: PAINT(false) });
+  const again = S.sheetModel(rooted([ROW(reads)]), { declaration: back, start: START, paint: PAINT(false) });
   out.round = JSON.stringify(again.grid.flat().map((c) => [c.at, c.input, c.text])) === JSON.stringify(model.grid.flat().map((c) => [c.at, c.input, c.text]))
     && JSON.stringify(back.cells) === JSON.stringify(decl.cells);
   return out;
@@ -200,7 +203,7 @@ function suite(out) {
   return { ran: names.length, names, failures };
 }
 
-const REAL = { sheet: await import('../src/testbed/kinds/sheet.js') };
+const REAL = { sheet: await import('../src/testbed/kinds/sheet.js'), units: await import('../src/testbed/units.js') };
 console.log('\n[1] the sheet kind');
 const base = suite(seen(REAL));
 let ran = base.ran;
@@ -220,7 +223,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'declare(at === model.key ? startPatch(input) : { cells: withCell(model.cells, at, { input }) })', 'declare({ cells: withCell(model.cells, at, { input }) })') },
   { id: 'SM14', what: 'the key cell paints its own colour, not the root\'s', catches: 'S8c', mutate: (t) => swap(t, '      if (paint) { out.color = paint.color; out.marked = paint.marked; }', '') },
   { id: 'SM6', what: 'a second key replaces the first', catches: 'S10', mutate: (t) => swap(t, '  if (decl.key) return { refused: SHEET_WORDS.oneKey };\n', '') },
-  { id: 'SM7', what: 'several values drawn as the first', catches: 'S7', mutate: (t) => swap(t, "    else if (read && read.state === 'several') {", "    else if (read && read.state === 'several' && false) {") },
+  // the judgment is the root's since lead-board-13 ② - the mutant on its one place
+  { id: 'SM7', what: 'several values drawn as the first', catches: 'S7', file: 'testbed/units.js', key: 'units',
+    mutate: (t) => swap(t, "  for (const [k, r] of many) reads[k] = { state: 'empty', n: 0, error: '#MANY', why: MANY_WORDS(r.n || (r.values || []).length) };",
+      "  for (const [k, r] of many) reads[k] = { state: 'one', value: (r.values || [])[0] };") },
   { id: 'SM8', what: 'the key not read as the row itself', catches: 'S9', mutate: (t) => swap(t, "  return d.key ? [{ key: d.key, label: d.key, slot: { self: true } }, ...out] : out;", '  return out;') },
   { id: 'SM9', what: 'a format change writes inputs too (the formula bar\'s text into every picked cell)', catches: 'S14',
     mutate: (t) => swap(t, '    for (const at of own.sel) cells = withCell(cells, at, { format: format || null });', '    for (const at of own.sel) cells = withCell(cells, at, { format: format || null, input: input.value });') },
@@ -234,9 +240,9 @@ const MUTANTS = [
     mutate: (t) => swap(t, "  setDisabledReason(key, own.sel.length === 1 ? '' : SHEET_WORDS.pickOne);", '  key.disabled = own.sel.length !== 1;') },
   { id: 'SM12', what: 'the grid does not grow past the cells written', catches: 'S1 the grid', mutate: (t) => swap(t, 'const MARGIN = { c: 2, r: 5 };', 'const MARGIN = { c: 0, r: 0 };') },
 ];
-const scored = await scoreMutants(MUTANTS.map((m) => ({ ...m, file: F })), async (m) => {
-  const copy = (await loadWithProbe(join(SRC, F), { mutate: m.mutate })).module;
-  return suite(seen({ sheet: copy }));
+const scored = await scoreMutants(MUTANTS.map((m) => ({ key: 'sheet', ...m, file: m.file || F })), async (m) => {
+  const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;
+  return suite(seen({ ...REAL, [m.key]: copy }));
 }, { baselineRan: base.ran, baselineNames: base.names, title: '\n  [1] mutants - each must be caught by the check it names.' });
 ran += MUTANTS.length;
 failed += scored.wrong;
