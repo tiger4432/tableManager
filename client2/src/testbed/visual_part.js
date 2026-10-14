@@ -388,7 +388,7 @@ export class VisualPart extends Panel {
     this.aborts.set(ROW_WALK, control);
     const params = seeds.all ? { ...this.budget(), seed_type: this.rowType(), collect: ask.collect }
       : { ...this.budget(), nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [], follow: ask.follow, hops: ask.hops, collect: ask.collect };
-    // the rows are drawn when their walk is in (a value walk draws each page)
+    // the rows are drawn when their walk is in
     const got = await walkToEnd(this.fetchWalk, params, control.signal, null);
     if (got.aborted || ticket !== this.walking) return null;
     this.aborts.delete(ROW_WALK);
@@ -400,7 +400,7 @@ export class VisualPart extends Panel {
 
   /**
    * A slot's value walk (part_walks.js valueAsk) from the rows: none when it reads the rows' own values; not asked when a
-   * walk in hand covers it; else asked to its end, its rows by the seed cap, each page drawn as it comes, the slot's walk
+   * walk in hand covers it; else asked to its end, its rows by the seed cap, drawn when every run is in, the slot's walk
    * in flight dropped.
    */
   async walkValues(key) {
@@ -432,17 +432,11 @@ export class VisualPart extends Panel {
     let finished;
     const record = { ...ask, answers: [], complete: false, receiving: true, why: null, done: new Promise((r) => { finished = r; }) };
     this.values.set(key, record);
-    // its rows by the seed cap, the runs asked together (lead 10-14); each page drawn as it comes
-    const runs = chunks(ask.seeds, this.seedChunk).map(() => []);
-    const gots = await Promise.all(chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(this.fetchWalk,
+    // its rows by the seed cap, the runs asked together (lead 10-14); folded once, when every run is in (lead-board-10b:
+    // a fold a page was 5 s of 8.7 on the operating-shape board)
+    const gots = await Promise.all(chunks(ask.seeds, this.seedChunk).map((some) => walkToEnd(this.fetchWalk,
       { ...this.budget(), nodeId: some[0], positive: some, negative: [], follow: ask.follow, hops: ask.hops, ...(ask.collect ? { collect: ask.collect } : {}) },
-      control.signal, (answers) => {
-        if (control.signal.aborted || ticket !== this.walking) return;
-        runs[k] = answers;
-        record.answers = runs.flat();
-        this.answerAgain();
-        this.refold();
-      })));
+      control.signal, null)));
     if (gots.some((got) => got.aborted) || ticket !== this.walking || this.aborts.get(key) !== control) { finished(); return; }
     const done = gots.flatMap((got) => got.answers);
     const cut = gots.find((got) => !got.complete);

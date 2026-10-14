@@ -13,8 +13,9 @@ import { truncationAxes } from '../rnd_board/api.js';
  *  reached is not a cut) - with no next page to take it on. */
 const cutPage = (a) => Boolean(a) && !(a.more && a.more.resume) && (truncationAxes(a.truncated, { hopsChosen: true }) || []).length > 0;
 
-/** How many rows a value walk starts from at once - the server's seed cap. */
-export const SEED_CHUNK = 200;
+/** How many rows a value walk starts from at once - the request's query stays under 64 KB (lead-board-10b: past it
+ *  the box read seed ids broken, 422; 500 die ids are 56 KB). */
+export const SEED_CHUNK = 500;
 /** The pages one walk asks at most - past it, cut. */
 export const MAX_PAGES = 50;
 
