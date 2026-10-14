@@ -653,7 +653,7 @@ def _scope_row_ids(plan, frame):
 
 def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             withdraw=True, page_rows=None, checkpoint=None, whole_source=False,
-            world=None, until=None, key_range=None):
+            world=None, until=None, key_range=None, skips=None):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
 
     `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
@@ -708,6 +708,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     comes back as `deduped`, which is the mechanism that already exists for exactly this.
     """
     from chain import keyset_scan
+    from . import followup, gate
     from .runtime_v2 import _refusal_reasons
     from .store import LedgerStore
     from .setup import execute_selected_scoped_batch
@@ -780,16 +781,16 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         keyset_scan.say("counting the rows of %s" % plan.relation)            # the run's stage meanwhile (`tell`)
         total = _table_rows(engine, plan)
     run = keyset_scan.RUN_CONTROL.get() is not None
+    skips = {} if skips is None else skips      # the partitions put off this run (`analyze_stale_partitions`)
     if run and key_range is None:
         say_what_every_page_pays(engine, plan, world, withdraw)
         if withdraw:
-            analyze_stale_partitions(engine, world)
+            analyze_stale_partitions(engine, world, skips=skips)
     for frame in _scope_pages(engine, plan, scoped, page_rows, key_range):
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
         scope_row_ids = _scope_row_ids(plan, frame)
         aimed = previewed = None
-        touched = set(store._known_partitions) if run and withdraw else None     # the partitions written so far
         if withdraw:
             previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
             result["remake"] += previewed["remake"]
@@ -802,27 +803,69 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             aimed = sorted(set(previewed["refs"]) | indexed)
         # Neither the new translation nor the index says anything about these rows: there
         # is nothing to withdraw and nothing to put in its place.
-        executed = None
+        executed = over = None
         if aimed is None or aimed:
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
             with keyset_scan.stage("write", len(frame)) as said:
-                executed = execute_selected_scoped_batch(
-                    setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
-                    known_registrations=(),
-                    withdraw_refs=aimed, preview=previewed and previewed["preview"])
-                if aimed and keyset_scan.debugging():
+                try:
+                    executed = execute_selected_scoped_batch(
+                        setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
+                        known_registrations=(),
+                        withdraw_refs=aimed, preview=previewed and previewed["preview"])
+                except Exception as exc:
+                    # 🔴 A KEY OVER THE ROW INDEX'S LIMIT IS ONE MOLECULE'S REFUSAL, NOT THE RUN'S DEATH (총괄 e2f112f02,
+                    #    소유자 «ㅇㅇ»): a group_by molecule's row list in the key - the slice died, the run failed, and the
+                    #    same molecule failed it again. Judged as the follow-up judges it; one page (`page_rows=None`, the
+                    #    follow-up's own call) raises for the follow-up to refuse its source
+                    over = followup._key_over_the_limit(exc) if page_rows is not None else None
+                    if over is None:
+                        raise
+                    said["note"] = "a row-index key over the limit - this page's key values one at a time"
+                if executed is not None and aimed and keyset_scan.debugging():
                     said["note"] = "withdrew %d atoms %s" % (int(executed.store_result.get("withdrawn", 0)),
                                                              _withdrawal_aim(engine, world, source, aimed))
+        if over is not None:
+            # the page rolled back whole; its key values as the follow-up scopes an event - a key value holds whole
+            # molecules (`_scope_pages`) - and the one over the limit refused by name, the rest written
+            key = followup.scope_column(plan)
+            connection = engine.raw_connection()
+            try:
+                values = followup._scope_values_from(connection, plan.relation, key, scope_row_ids)
+            finally:
+                connection.rollback()
+                connection.close()
+            for value in values:
+                try:
+                    one = rescope(engine, setup, source, key, [value], apply=True, withdraw=withdraw, world=world,
+                                  key_range=(None, None), skips=skips)  # (None, None): no run start - this run did it
+                except Exception as exc:
+                    why = followup._key_over_the_limit(exc)
+                    if why is None:
+                        raise
+                    keyset_scan.say("refused %s %s = %s: %s" % (source, key, value, followup.KEY_OVER_THE_LIMIT % why))
+                    result["refused"][gate.REFUSE_ROW_INDEX_KEY_TOO_LONG] = (
+                        result["refused"].get(gate.REFUSE_ROW_INDEX_KEY_TOO_LONG, 0) + 1)       # a key value
+                    continue
+                for count in ("withdrawn", "attempted", "inserted", "deduped", "forgotten"):
+                    result[count] += int(one.get(count, 0))
+                if withdraw:
+                    result["withdraw"] += int(one.get("withdrawn", 0))
+                for reason, count in one["refused"].items():
+                    result["refused"][reason] = result["refused"].get(reason, 0) + count
+            result["applied"] = True
+        if executed is not None:
             written = executed.store_result
             for key in ("withdrawn", "attempted", "inserted", "deduped"):
                 result[key] += int(written.get(key, 0))
             if withdraw:
                 result["withdraw"] += int(written.get("withdrawn", 0))      # the DELETE's count (총괄 10-14)
             result["applied"] = True
-            if touched is not None and store._known_partitions - touched:
-                # this page wrote into a partition the run had not - analyzed now if it has no statistics yet
-                analyze_stale_partitions(engine, world, store._known_partitions - touched)
+            if run and withdraw:
+                # 🔴 EVERY PAGE (총괄 dcccc914b, 소유자 «ㄱ으로해»): the partitions this run has written, analyzed when their
+                #    statistics are gone or the run's own writes changed their share since - production read faster after a
+                #    hand ANALYZE and slower again as the run went on
+                analyze_stale_partitions(engine, world, store._known_partitions, skips=skips)
             if withdraw and scope_row_ids:
                 # 🔴 THE INDEX ROWS GO LAST, for the reason `withdraw_deleted_rows` states:
                 # while they are still here the withdrawal can be run again, and a run that
@@ -840,7 +883,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                             plan.relation, stale, source=source)
         # 🔴 what the page's read refused, by the gate's reason - a remake that refuses a row writes
         #    nothing for it and takes its old atoms with the withdrawal (총괄 10-12: it read as a success)
-        read = executed.preview if executed is not None else previewed and previewed["preview"]
+        read = executed.preview if executed is not None else over is None and previewed and previewed["preview"]
         for reason, count in _refusal_reasons(getattr(read, "refusals", ())).items():
             result["refused"][reason] = result["refused"].get(reason, 0) + count
         if checkpoint is not None and checkpoint(result["rows_in_scope"], total):
@@ -887,12 +930,15 @@ def say_what_every_page_pays(engine, plan, world, withdraw):
 ANALYZE_SHARE_SETTING, ANALYZE_SHARE_DEFAULT = "ledger_analyze_changed_share", 0.2
 
 
-def analyze_stale_partitions(engine, world, only=None):
+def analyze_stale_partitions(engine, world, only=None, skips=None):
     """ANALYZE the ledger partitions `schema.stale_partitions` names (of `only`, partition names, when given) - before a
-    re-translate's first page and after a page that wrote into a partition the run had not - one line when it did any
-    (총괄 10-14: a partition never analyzed answered the withdrawal by Seq Scan beside a valid ref index - 27 rows a page,
-    1.56 s). Each in a transaction of its own under the DDL lock limit: one an index build holds is said and skipped."""
-    import db_safety
+    re-translate's first page and at the end of each of its pages, of the partitions it has written - one line when it
+    did any (총괄 10-14: a partition never analyzed answered the withdrawal by Seq Scan beside a valid ref index - 27 rows
+    a page, 1.56 s). Each in a transaction of its own: its lock taken NOWAIT and its staleness asked again under it, so
+    one another session holds - another slice analyzing it, autovacuum, an index build - is said and left to the next
+    page, and one analyzed meanwhile is not analyzed twice. `skips` (the run's, {name: [times, first, reason]}): one
+    put off again for the same reason is not said again, and once analyzed - here or elsewhere, autovacuum - one line
+    says after how many skips and seconds (총괄 10-14: four slices said one held partition 204 times in 4 min)."""
     from chain import keyset_scan
     from ingestion.settings import read_ingestion_settings
 
@@ -903,31 +949,56 @@ def analyze_stale_partitions(engine, world, only=None):
         logger.warning("[Ledger] ingestion_settings.json: %s is %r - a number above 0; read as %s",
                        ANALYZE_SHARE_SETTING, share, ANALYZE_SHARE_DEFAULT)
         share = ANALYZE_SHARE_DEFAULT
-    started, done, skipped = time.monotonic(), [], []
+    skips = {} if skips is None else skips
+    started, done, said, skipped = time.monotonic(), [], [], []
     connection = engine.raw_connection()
     try:
-        stale = schema.stale_partitions(connection, schema.world_names(world), share, only)
+        names = schema.world_names(world)
+        stale = schema.stale_partitions(connection, names, share, only)
         connection.commit()
-        if stale:                                   # the run's stage meanwhile (`tell`)
-            keyset_scan.say("analyzing %d partition%s: %s" % (len(stale), "" if len(stale) == 1 else "s",
-                                                             ", ".join(stale)))
+        # put off before and no longer stale: analyzed elsewhere (asked by their own names - `only` may spell them
+        # otherwise, and one the start put off may be outside this page's `only`)
+        still = schema.stale_partitions(connection, names, share, sorted(skips)) if skips else []
+        connection.commit()
+        elsewhere = [name for name in sorted(skips) if name not in still]
+        fresh = [name for name in stale if name not in skips]
+        if fresh:                                   # the run's stage meanwhile (`tell`)
+            keyset_scan.say("analyzing %d partition%s: %s" % (len(fresh), "" if len(fresh) == 1 else "s",
+                                                             ", ".join(fresh)))
         for name in stale:
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
+                    cursor.execute("LOCK TABLE %s IN SHARE UPDATE EXCLUSIVE MODE NOWAIT" % name)
+                    if not schema.stale_partitions(connection, names, share, [name]):
+                        connection.rollback()               # analyzed meanwhile - by another slice
+                        continue
                     cursor.execute("ANALYZE %s" % name)
                 connection.commit()
                 done.append(name)
+                said.append(name + _after_skips(skips.pop(name, None)))
             except Exception as exc:                                    # noqa: BLE001 - said, the run goes on
                 connection.rollback()
-                skipped.append("%s (%s)" % (name, str(exc).strip().splitlines()[0]))
+                reason = str(exc).strip().splitlines()[0]
+                before = skips.get(name)
+                if before and before[2] == reason:
+                    before[0] += 1
+                else:
+                    skips[name] = [1, time.monotonic(), reason]
+                    skipped.append("%s (%s)" % (name, reason))
     finally:
         connection.close()
-    if done or skipped:
-        keyset_scan.say("analyzed %d partition%s in %.1f s: %s%s" % (
-            len(done), "" if len(done) == 1 else "s", time.monotonic() - started, ", ".join(done) or "-",
-            " · not analyzed: %s" % ", ".join(skipped) if skipped else ""))
+    elsewhere = [name + _after_skips(skips.pop(name, None)) for name in elsewhere]
+    if said or skipped or elsewhere:
+        keyset_scan.say("analyzed %d partition%s in %.1f s: %s%s%s" % (
+            len(done), "" if len(done) == 1 else "s", time.monotonic() - started, ", ".join(said) or "-",
+            " · not analyzed: %s" % ", ".join(skipped) if skipped else "",
+            " · analyzed elsewhere: %s" % ", ".join(elsewhere) if elsewhere else ""))
     return done
+
+
+def _after_skips(skip):
+    """` after N skips · M s` of a partition `analyze_stale_partitions` put off, or nothing."""
+    return " after %d skip%s · %.0f s" % (skip[0], "" if skip[0] == 1 else "s", time.monotonic() - skip[1]) if skip else ""
 
 
 def whole_source_tail(engine, setup, source, plan, checkpoint=None, world=None):

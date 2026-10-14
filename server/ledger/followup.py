@@ -485,9 +485,8 @@ def _follow(item, engine, setup, world=None, sources=None):
                     nth = count_crossed(REPEATS, ("source", source, table, _named(world), "key over the limit"))
                 if nth:
                     logger.warning(
-                        "[LedgerFollowUp] %s refused %d row(s) of %s in world %s: a molecule's row list makes its "
-                        "row-index key too long (%s) - move this group_by source to a table the chain writes row by "
-                        "row - #%d of this source (said at the 1st, 10th, 100th ...)",
+                        "[LedgerFollowUp] %s refused %d row(s) of %s in world %s: " + KEY_OVER_THE_LIMIT
+                        + " - #%d of this source (said at the 1st, 10th, 100th ...)",
                         source, len(row_ids), table, _named(world), said, nth)
                 continue
             with _lock:
@@ -507,6 +506,12 @@ def _follow(item, engine, setup, world=None, sources=None):
                     "table and error (said at the 1st, 10th, 100th ...)",
                     source, table, len(row_ids), _named(world), exc, nth)
     return done
+
+
+#: What a refusal for a key over the row index's limit says, the database's sentence in it - the follow-up's line and
+#: the re-translate's (총괄 f7394bfdf ㄷ · e2f112f02).
+KEY_OVER_THE_LIMIT = ("a molecule's row list makes its row-index key too long (%s) - move this group_by source to a "
+                      "table the chain writes row by row")
 
 
 def _key_over_the_limit(exc):

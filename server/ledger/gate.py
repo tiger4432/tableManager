@@ -203,6 +203,14 @@ REFUSE_TYPE_NOT_ADMITTED = "type_not_admitted"
 #: the operator fixes a different thing: the value or the format, not an empty cell. That
 #: molecule is refused; the others land - it used to stop the whole page.
 REFUSE_UNREADABLE_OCCURRED_AT = "unreadable_occurred_at"
+#: A molecule two of whose rows the source's `order_by` spells alike - its rows cannot each be named, so neither can its
+#: atoms' rows (총괄 10-14, 소유자 «ㅇㅇ ㄱ»). That molecule is refused; the others land - it used to stop the whole page,
+#: and the follow-up's event failed on it every time.
+REFUSE_ORDER_NOT_UNIQUE = "order_not_unique"
+#: A re-translate's page-key value whose molecule's row list makes a row-index key over the database's limit (총괄
+#: e2f112f02) - counted a KEY VALUE at a time, not a molecule (a value holds whole molecules, one or more), and its old
+#: atoms stay: the value's withdrawal rolled back with its write. The follow-up refuses the whole source for the event.
+REFUSE_ROW_INDEX_KEY_TOO_LONG = "row_index_key_too_long"
 
 #: Every reason this gate can give. A test asserts the set is closed, for the same
 #: reason the predicate vocabulary is closed: a reason invented at a call site is a
@@ -213,6 +221,7 @@ REFUSAL_REASONS = frozenset({
     REFUSE_ATOMICITY, REFUSE_UNDECLARED_DERIVATION, REFUSE_NO_RAW_REF,
     REFUSE_PAYLOAD_NOT_PRESERVABLE, REFUSE_AMBIGUOUS_PAIR,
     REFUSE_UNDECLARED_SUBJECT_TYPE, REFUSE_TYPE_NOT_ADMITTED, REFUSE_UNREADABLE_OCCURRED_AT,
+    REFUSE_ORDER_NOT_UNIQUE, REFUSE_ROW_INDEX_KEY_TOO_LONG,
 })
 
 #: What each reason is CALLED on a screen, shipped with the translator's ledger
@@ -232,6 +241,8 @@ REFUSAL_REASON_NAMES = {
     REFUSE_UNDECLARED_SUBJECT_TYPE: "Undeclared subject type",
     REFUSE_TYPE_NOT_ADMITTED: "Type not admitted",
     REFUSE_UNREADABLE_OCCURRED_AT: "Time unreadable",
+    REFUSE_ORDER_NOT_UNIQUE: "Rows not told apart",
+    REFUSE_ROW_INDEX_KEY_TOO_LONG: "Row index key too long",
 }
 
 # Detail is capped, counts never are - every detail string here derives from SOURCE

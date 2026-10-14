@@ -57,6 +57,42 @@ def row_fingerprint_sql(columns, alias):
     return "md5(jsonb_build_array(%s)::text)" % ", ".join(parts)
 
 
+_BLOCKS_SQL = (
+    "SELECT c.relname, pg_stat_get_xact_blocks_fetched(c.oid) - pg_stat_get_xact_blocks_hit(c.oid), "
+    "       pg_stat_get_xact_blocks_hit(c.oid) "
+    "  FROM pg_class c "
+    " WHERE c.oid IN (SELECT to_regclass(p) FROM unnest(%s::text[]) p "
+    "                 UNION SELECT x.indexrelid FROM pg_index x "
+    "                        WHERE x.indrelid IN (SELECT to_regclass(p) FROM unnest(%s::text[]) p))")
+
+
+def _blocks(connection, partitions):
+    """{relation: (blocks read, blocks hit)} of `partitions` and their indexes so far in this transaction -
+    `pg_stat_get_xact_blocks_*`, this backend's own counts: read = fetched and not found in the cache. In a savepoint
+    of the write's transaction: a failure is its reason (a str), and the write goes on (총괄 검수 ①)."""
+    with connection.cursor() as cursor:
+        cursor.execute("SAVEPOINT ledger_blocks")
+        try:
+            cursor.execute(_BLOCKS_SQL, (list(partitions), list(partitions)))
+            read = {name: (read, hit) for name, read, hit in cursor.fetchall()}
+        except Exception as exc:                                        # noqa: BLE001 - said in the note
+            cursor.execute("ROLLBACK TO SAVEPOINT ledger_blocks")
+            return str(exc).strip().splitlines()[0]
+        cursor.execute("RELEASE SAVEPOINT ledger_blocks")
+        return read
+
+
+def _blocks_said(before, after):
+    """`blocks read/hit: <relation> R/H · …` - what the statement between `before` and `after` touched, most read first;
+    `blocks: not read (<reason>)` when either read failed."""
+    failed = next((one for one in (before, after) if isinstance(one, str)), None)
+    if failed is not None:
+        return "blocks: not read (%s)" % failed
+    moved = sorted(((name, read - before.get(name, (0, 0))[0], hit - before.get(name, (0, 0))[1])
+                    for name, (read, hit) in after.items()), key=lambda one: (-one[1], -one[2], one[0]))
+    return "blocks read/hit: " + (" · ".join("%s %d/%d" % one for one in moved if one[1] or one[2]) or "none")
+
+
 def _relation_sql(relation):
     return ".".join('"%s"' % part for part in str(relation).split("."))
 
@@ -513,7 +549,7 @@ class LedgerStore:
             raise TypeError(_REASONS_REQUIRED)
         if enforce_translator_version and not advance_cursor:
             raise TypeError(_VERSION_GUARD_NEEDS_CURSOR)
-        from chain.keyset_scan import stage
+        from chain.keyset_scan import debugging, stage
 
         connection = self.connection()
         try:
@@ -523,8 +559,14 @@ class LedgerStore:
                 withdrawn = self._withdraw_refs(connection, source, withdraw_refs)
                 said["note"] = "%d atoms" % withdrawn
             with stage("insert atoms", len(atoms)) as said:
+                # the blocks it read from disk and found in the cache, table and each index - with the stage lines only
+                # (총괄 b513f0d27: production 3.75 ms an atom, the box 0.17)
+                partitions = sorted({schema.partition_name(a.occurred_at, self.names) for a in atoms}) if (
+                    atoms and debugging()) else ()
+                before = _blocks(connection, partitions) if partitions else None
                 attempted, inserted = self.insert_atoms(connection, atoms)
-                said["note"] = "%d new" % inserted
+                said["note"] = "%d new" % inserted + (
+                    " · " + _blocks_said(before, _blocks(connection, partitions)) if partitions else "")
             with stage("index lines", len(row_refs or ())):
                 self._write_row_refs(connection, source, row_refs, row_ref_columns)
             if advance_cursor:
