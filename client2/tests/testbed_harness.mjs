@@ -411,6 +411,10 @@ async function parts(M) {
   out.status = [M.status.statusWords({ rows: 4, of: 6, system: 1, part: 1, marked: 2, hidden: 1, columns: 3, source: 'wafer', cut: false }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, marked: 0, columns: 0, source: 'wafer', cut: true }),
     M.status.statusWords({ rows: 1, of: 1, system: 0, part: 0, startDropped: 2, marked: 1, columns: 1, source: 'wafer', cut: false })];
+  // T39: the rows a date function met a text that is not a time on - said where «not a number» is said; a calculator that
+  // counts none (no such key) says nothing
+  const said = (s) => M.status.statusWords({ rows: 3, of: 3, system: 0, part: 0, marked: 0, columns: 1, source: 'wafer', cut: false, ...s }).filter((w) => /not a (number|time)/.test(w));
+  out.notTimeWords = [said({ notNumber: 2, notTime: 1 }), said({ notNumber: 2 })];
   // T30: the bottom line counts the drawn rows an expression left empty on a text (W1 W2 W4 W5 - W3 several, W6 empty)
   const nn = seat(M, scatterDecl({ id: 'S9', encode: { x: { expr: '[product] * 2', words: ['[product] * 2'] }, y: press } }));
   await settle();
@@ -571,6 +575,7 @@ function suite(out, page, saved, counted) {
     [out.notNumber, page.notNumberBar], [[['empty', true], ['several', false], ['empty', false]], [4, ['4 rows not a number'], ['1 row not a number']]]);
   eq('T37 a pick in the declaration draws its axis so; the Scale chips on X · Y · Color whatever the type (the lit one the scale drawn), none on a role-fixed slot',
     page.partScale, ['category', 'value', ['categorical*', 'continuous'], ['categorical', 'continuous*'], ['categorical*', 'continuous'], []]);
+  eq('T39 the rows not a time said where «not a number» is said; none counted, nothing said', page.notTimeWords, [['2 rows not a number', '1 row not a time'], ['2 rows not a number']]);
   eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
   eq('T34 «time» in the picker: on a route the slot reads its last edge\'s time (of time, the value kept); on «(row)» off with its reason',
     page.timePick, ['time', JSON.stringify(temp.value), JSON.stringify(temp.steps), 'one', new Date(T0).toISOString(), true, true, 'No time on this route']);
@@ -760,6 +765,8 @@ MUTANTS.push(
     mutate: (t) => swap(t, '      if (desc.scalable) {', '      if (true) {') },
   { id: 'M58', what: 'a continuous Color by still paints categories', catches: 'T38', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, "  if (ctx.scale && ctx.scale.scale === 'continuous' && decl.encode && decl.encode.color) return rampOf(rows, palette, ctx.scale.time);\n", '') },
+  { id: 'M59', what: 'the rows not a time are not said', catches: 'T39', file: 'testbed/status_part.js',
+    mutate: (t) => swap(t, "  if (s.notTime) words.push(`${unitText(n(s.notTime), 'row')} not a time`);\n", '') },
   { id: 'M43', what: 'a condition on an expression slot drops the expression', catches: 'T29', file: 'testbed/condition_editor.js',
     mutate: (t) => swap(t, '    reduce: summary.slot.reduce, expr: summary.slot.expr, words: summary.words, empty: true };', '    reduce: summary.slot.reduce, words: summary.words, empty: true };') },
   { id: 'M39', what: 'the colours handed no palette - the page\'s tokens never reach the canvas', catches: 'T5', file: 'testbed/color_by.js',

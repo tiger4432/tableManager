@@ -451,6 +451,8 @@ export class VisualPart extends Panel {
       columns: Object.keys(encode).length, source: this.rowType(),
       // the drawn rows an expression slot left empty because an operator met a text that is not a number (lead 10-13 ①)
       notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,
+      // ...and those a date function met a text that is not a time on (the same count, lead 10-14)
+      notTime: rows.filter((r) => Object.values(r.reads).some((read) => read.notTime)).length,
       // the rows an expression's Marked could not answer - a relation's edge of theirs not walked yet
       unknown: unknown.size,
       // The board's one reading of a cut walk (rnd_board/api.js truncationAxes).

@@ -1467,7 +1467,7 @@ const MUTANTS = [
   { id: 'M41', what: 'equal values by id backwards', catches: 'SI1 ', file: 'testbed/show_items.js', key: 'show',
     mutate: (t) => swap(t, '(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)', '(a.id < b.id ? 1 : a.id > b.id ? -1 : 0)') },
   { id: 'M42', what: 'a time read not said a time', catches: 'TM1 ', file: 'testbed/slot.js', key: 'slot',
-    mutate: (t) => swap(t, "=== 'string') return { time: true };", "=== 'string') return {};") },
+    mutate: (t) => swap(t, "  const time = (r.value && typeof r.value === 'object' && typeof r.value.$datetime === 'string') || declared === 'datetime';", "  const time = false;") },
   { id: 'M43', what: 'the tooltip says a value as it came - the UTC text', catches: 'TM1 ', file: 'testbed/tooltip.js', key: 'tooltip',
     mutate: (t) => swap(t, 'return valueText(read.value, isTimeRead(read));', 'return String(read.value);') },
   { id: 'M44', what: 'a filter value as it came, no tooltip', catches: 'TM1 ', file: 'testbed/condition_editor.js', key: 'cond',

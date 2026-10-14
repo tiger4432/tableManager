@@ -218,7 +218,8 @@ export function calcRow(index, inside, x) {
 function answerOne(out) {
   if (out.several) return { state: 'several', values: [] };
   const v = 'values' in out ? out.values[0] : out.value;
-  return isBlank(v) ? { state: 'empty', n: 0, why: out.why, notNumber: out.notNumber > 0 } : { state: 'one', value: v, n: 1 };
+  // notTime (the calculator's date functions, implementer A): a text that is not a time - counted as notNumber is
+  return isBlank(v) ? { state: 'empty', n: 0, why: out.why, notNumber: out.notNumber > 0, notTime: out.notTime > 0 } : { state: 'one', value: v, n: 1 };
 }
 
 /** What a folding slot keeps of a row: its reads {value, t} (`records` - each read spread into its records), or the row
