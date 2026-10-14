@@ -152,8 +152,8 @@ export function legendBlock(looks, ctx, look = COLOR_LEGEND) {
     const v = el('div', 'sf-legend__ramp');
     const band = el('span', 'sf-legend__band');
     if (band.style) band.style.background = `linear-gradient(to right, ${looks.ramp.low}, ${looks.ramp.high})`;
-    v.append(el('span', 'sf-legend__end', ctx.valueText ? ctx.valueText(looks.ramp.min, looks.ramp.time) : String(looks.ramp.min)), band,
-      el('span', 'sf-legend__end', ctx.valueText ? ctx.valueText(looks.ramp.max, looks.ramp.time) : String(looks.ramp.max)));
+    v.append(el('span', 'sf-legend__end', ctx.text ? ctx.text(look.key, looks.ramp.min, looks.ramp.time) : String(looks.ramp.min)), band,
+      el('span', 'sf-legend__end', ctx.text ? ctx.text(look.key, looks.ramp.max, looks.ramp.time) : String(looks.ramp.max)));
     block.append(v);
     return block;
   }
@@ -167,7 +167,8 @@ export function legendBlock(looks, ctx, look = COLOR_LEGEND) {
     const v = el('div', `sf-legend__v${c.dim ? ' is-dim' : ''}`);
     v.setAttribute('data-category', c.name);
     const ico = look.icon(c, at, el);
-    const name = el('button', 'sf-legend__name', c.name);
+    // its name as the slot says it (a slot of days its days); the hub's value the category itself
+    const name = el('button', 'sf-legend__name', ctx.text ? ctx.text(look.key, c.name) : c.name);
     name.type = 'button';
     name.addEventListener('click', (event) => ctx.markHub([[ctx.words(look.key), c.name]], c.ids, event));
     v.append(ico, name);

@@ -1667,7 +1667,7 @@ const MUTANTS = [
   { id: 'M42', what: 'a time read not said a time', catches: 'TM1 ', file: 'testbed/slot.js', key: 'slot',
     mutate: (t) => swap(t, "  const time = (r.value && typeof r.value === 'object' && typeof r.value.$datetime === 'string') || declared === 'datetime';", "  const time = false;") },
   { id: 'M43', what: 'the tooltip says a value as it came - the UTC text', catches: 'TM1 ', file: 'testbed/tooltip.js', key: 'tooltip',
-    mutate: (t) => swap(t, 'return valueText(read.value, isTimeRead(read));', 'return String(read.value);') },
+    mutate: (t) => swap(t, 'return ctx.text ? ctx.text(key, read.value, isTimeRead(read)) : valueText(read.value, isTimeRead(read));', 'return String(read.value);') },
   { id: 'M44', what: 'a filter value as it came, no tooltip', catches: 'TM1 ', file: 'testbed/condition_editor.js', key: 'cond',
     mutate: (t) => swap(t, '      words.title = said;', '      words.title = \'\';') },
   { id: 'M45', what: 'every label right of its point', catches: 'LB2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',

@@ -84,6 +84,9 @@ export function render(area, model, ctx) {
   const wrap = el('div', 'tb-cross__wrap');
   const table = el('table', 'sf-table');
   const words = { rows: ctx.words('rows'), columns: ctx.words('columns') };
+  // a value as the slot says it (the root's one place - a slot of days its days); the hub keeps the value itself
+  const said = (key, v) => (ctx.text && v !== '' && typeof v !== 'number' && v !== null && v !== undefined ? ctx.text(key, v) : v);
+  const cellSaid = (v) => (ctx.text && typeof v === 'string' ? ctx.text('cells', v) : cellWords(v));
   // An axis of several columns is a hierarchy (Spotfire's): a head a level, an outer value the same along its run told
   // once (colspan / rowspan), the inner one each time; a head pressed marks the rows under it.
   const rowParts = model.rowParts || model.rowKeys.map((k) => [k]);
@@ -101,7 +104,7 @@ export function render(area, model, ctx) {
       head.append(corner);
     }
     for (const run of runs(colParts, lv)) {
-      const th = el('th', 'sf-table__col', run.word);
+      const th = el('th', 'sf-table__col', said('columns', run.word));
       th.colSpan = run.n;
       const ids = model.colIds.slice(run.from, run.from + run.n).flat();
       th.addEventListener('click', (event) => ctx.markHub([[words.columns, run.at]], ids, event));
@@ -116,14 +119,14 @@ export function render(area, model, ctx) {
     for (let lv = 0; lv < rowLevels; lv += 1) {
       const run = rowRuns[lv].get(i);
       if (!run) continue;
-      const th = el('th', lv === 0 ? 'sf-table__row' : 'sf-table__row sf-table__row--in', run.word);
+      const th = el('th', lv === 0 ? 'sf-table__row' : 'sf-table__row sf-table__row--in', said('rows', run.word));
       th.rowSpan = run.n;
       const ids = model.rowIds.slice(run.from, run.from + run.n).flat();
       th.addEventListener('click', (event) => ctx.markHub([[words.rows, run.at]], ids, event));
       tr.append(th);
     }
     model.grid[i].forEach((cell, j) => {
-      const td = el('td', cell.marked ? 'is-marked' : '', cellWords(cell.value));
+      const td = el('td', cell.marked ? 'is-marked' : '', cellSaid(cell.value));
       if (cell.color && !cell.marked) td.style.background = cell.color;
       if (cell.ids.length) {
         td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
@@ -132,15 +135,15 @@ export function render(area, model, ctx) {
       }
       tr.append(td);
     });
-    tr.append(el('td', 'sf-table__total', cellWords(model.rowTotals[i])));
+    tr.append(el('td', 'sf-table__total', cellSaid(model.rowTotals[i])));
     table.append(tr);
   });
   const foot = el('tr', 'sf-table__totals');
   const totalHead = el('th', 'sf-table__row', TOTAL);
   totalHead.colSpan = rowLevels;
   foot.append(totalHead);
-  model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellWords(v))));
-  foot.append(el('td', 'sf-table__total', cellWords(model.total)));
+  model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellSaid(v))));
+  foot.append(el('td', 'sf-table__total', cellSaid(model.total)));
   table.append(foot);
   wrap.append(table);
   area.replaceChildren(wrap);

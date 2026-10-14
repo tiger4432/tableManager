@@ -9,7 +9,7 @@ import { readsOf, recordsOf, waysOf, WAYS_A_CELL, valueWords, numberOf } from '.
 import { timeOf } from '../walk/trend.js';
 import { parseServerInstant, localStamp, NO_TIME } from '../server_time.js';
 import { isBlank } from '../absent.js';
-import { compile, run, Reads, ExpressionError } from '../expression.js';
+import { compile, run, Reads, ExpressionError, dayText } from '../expression.js';
 import { fold } from './aggregate.js';
 
 const spelling = (v) => JSON.stringify(v);
@@ -89,20 +89,23 @@ export function scaleOf(reads, chosen = null) {
   const one = declared.length === 1 ? declared[0] : null;
   const allTimes = values.length > 0 && values.every(isTimeText);
   const time = one === 'datetime' || allTimes;
-  if (SCALES.includes(chosen)) return { scale: chosen, time };
-  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time };
+  // every time the page zone's midnight - a slot of days, said as days (valueText)
+  const day = time && values.length > 0 && values.every((v) => dayText(v) !== null);
+  if (SCALES.includes(chosen)) return { scale: chosen, time, day };
+  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time, day };
   const allNumbers = values.length > 0 && values.every((v) => numberOf(v) !== null);
-  return { scale: allNumbers || allTimes ? 'continuous' : 'categorical', time };
+  return { scale: allNumbers || allTimes ? 'continuous' : 'categorical', time, day };
 }
 
 /** Whether a read is a time: the walk says so - its column declared datetime (an edge's `column_types`, a node record's
  *  `column_type`), or a calculator's name of that type (`types`) - or it reads the time itself. */
 export const isTimeRead = (read) => Boolean(read && (read.time || (read.types && Object.values(read.types).includes('datetime'))));
 
-/** A value as it is shown - THE one place (tooltip, label, filter, Sheet): a time in the viewer's zone as the grid shows a
- *  datetime cell (server_time localStamp), the rest valueWords. */
-export function valueText(value, time = false) {
-  return (time && timeText(value)) || valueWords(value);
+/** A value as it is shown - THE one place (tooltip, label, filter, Sheet, heads, ticks, legends): a time of a slot of days
+ *  (`day`, scaleOf) its day in the page zone, another time in the viewer's zone as the grid shows a datetime cell
+ *  (server_time localStamp), the rest valueWords. */
+export function valueText(value, time = false, day = false) {
+  return (day && dayText(value)) || (time && timeText(value)) || valueWords(value);
 }
 
 /** A time value in the viewer's zone (server_time localStamp); not a time - null. */

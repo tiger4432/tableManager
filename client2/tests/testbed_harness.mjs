@@ -38,6 +38,7 @@ const { MarkingStore, SIGN } = REAL.store;
 const { parseAst } = await import('rolldown/parseAst');
 const { indexGraph, routesFrom } = await import('../src/walk/reach_table.js');
 const { KeyedStore } = await import('../src/testbed/keyed_store.js');
+const { localStamp } = await import('../src/server_time.js');
 const EXPR = await import('../src/expression.js');
 
 // ── the walk: six wafers, two lots, two measured quantities ──
@@ -410,6 +411,30 @@ async function parts(M) {
   await settle();
   const second = (k4[1].part.model.lines || []).find((l) => l.id === 'W3#1');
   out.sameMarks = [...k4.map((k) => (k.part.unitsById ? k.part.unitsById.size : null)), (k4[1].part.model.lines || []).length, second ? second.ids : null];
+  // T43: a slot of days says its days (lead 10-15): every time of it the page zone's (Asia/Seoul) midnight - «YYYY-MM-DD»
+  // on the cross table's row heads, the scatter's category ticks, the legend's names and the tooltip, the hub's value the
+  // time itself; one 09:00 there (00:00Z) - every time as the grid says it (localStamp)
+  const [D1, D2, DZ] = ['2026-11-24T00:00:00+09:00', '2026-11-25T00:00:00+09:00', '2026-11-24T00:00:00Z'];
+  const made = { steps: [], value: { on: 'node', name: 'made' }, words: ['made'] };
+  const dayAnswer = (times) => ({ nodes: times.map((v, i) => wafer(`D${i + 1}`, { made: v, product: 'A' })), edges: [], truncated: ANSWER.truncated });
+  const daysOf = async (times) => {
+    const answer = dayAnswer(times);
+    const cross = seat(M, crossDecl({ id: `DC${times.length}`, encode: { rows: made, columns: product } }), { answer });
+    const sc = seat(M, scatterDecl({ id: `DS${times.length}`, encode: { x: made, y: product, color: made }, scale: { x: 'categorical', color: 'categorical' } }), { answer });
+    await settle();
+    const heads = walk(cross.host).filter((n) => n.tagName === 'TH' && String(n.className) === 'sf-table__row').map((n) => n.textContent).filter((w) => w !== 'Total');
+    const chart = sc.charts.made[sc.charts.made.length - 1];
+    const fmt = chart.option.xAxis.axisLabel.formatter;
+    const ticks = (chart.option.xAxis.data || []).map((v) => (fmt ? fmt(v) : v));
+    const names = walk(sc.host).filter((n) => n.tagName === 'BUTTON' && String(n.className) === 'sf-legend__name');
+    sc.part.showTip({ id: 'D1' }, { clientX: 0, clientY: 0 });
+    const tip = sc.part.tip ? (sc.part.tip.children || []).map((n) => n.textContent) : [];
+    return [heads, ticks, names.map((n) => n.textContent), names.map((n) => n.getAttribute('data-category') || (n.parentNode && n.parentNode.getAttribute && n.parentNode.getAttribute('data-category'))), tip.find((l) => l.startsWith('made')) || null];
+  };
+  out.days = [await daysOf([D1, D2]), await daysOf([D1, D2, DZ])];
+  // ...and the one place itself: the slot's scale says day, valueText says a day of it
+  out.dayText = [M.slot.scaleOf([{ state: 'one', value: D1 }, { state: 'one', value: D2 }]).day, M.slot.scaleOf([{ state: 'one', value: D1 }, { state: 'one', value: DZ }]).day,
+    M.slot.valueText(D1, true, true), M.slot.valueText(DZ, true, true), M.slot.valueText(D1, true, false)];
   // T41: a kind that draws one value a place - the root's refusal (#MANY and why); a cross cell holds a row's two marks once
   const refused = M.units.refuseMany([{ id: 'W9', label: 'W9', reads: { a: { state: 'several', values: ['1', '2'], n: 2 } }, raw: {} }])[0].reads.a;
   const cells = M.slot.combosOf([{ id: 'W9#0', ids: ['W9'], reads: { r: { state: 'one', value: 'L' } } }, { id: 'W9#1', ids: ['W9'], reads: { r: { state: 'one', value: 'L' } } }], ['r']);
@@ -619,6 +644,13 @@ function suite(out, page, saved, counted) {
     page.partScale, ['category', 'value', ['categorical*', 'continuous'], ['categorical', 'continuous*'], ['categorical*', 'continuous'], []]);
   eq('T39 the rows not a time said where «not a number» is said; none counted, nothing said', page.notTimeWords, [['2 rows not a number', '1 row not a time'], ['2 rows not a number']]);
   eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
+  eq('T43 a slot of days says its days - every time the page zone\'s midnight: «YYYY-MM-DD» on the cross row heads, the category ticks, the legend, the tooltip, the hub\'s value the time itself; one not midnight - every time as the grid says it',
+    [page.days, page.dayText],
+    [[[['2026-11-24', '2026-11-25'], ['2026-11-24', '2026-11-25'], ['2026-11-24', '2026-11-25'], ['2026-11-24T00:00:00+09:00', '2026-11-25T00:00:00+09:00'], 'made: 2026-11-24'],
+      [['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'].map(localStamp), ['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'].map(localStamp),
+        ['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'].map(localStamp),
+        ['2026-11-24T00:00:00+09:00', '2026-11-24T00:00:00Z', '2026-11-25T00:00:00+09:00'], `made: ${localStamp('2026-11-24T00:00:00+09:00')}`]],
+      [true, false, '2026-11-24', localStamp('2026-11-24T00:00:00Z'), localStamp('2026-11-24T00:00:00+09:00')]]);
   eq('T42 the same walk on four kinds (scatter, table, cross table, map) on the same slots: the root\'s marks the same; the table a line a mark, a line its row\'s',
     page.sameMarks, [7, 7, 7, 7, 7, ['W3']]);
   eq('T41 the sheet draws the root\'s refusal (#MANY and why); a cell holds a row\'s two marks once (its count the rows)',
@@ -723,6 +755,16 @@ const MUTANTS = [
     mutate: (t) => swap(swap(t, '      if (!same) { dropped.push({ id: row.id, why: PAIR_WORDS(words(many[0]), words(many[1])) }); continue; }', '      if (false) { continue; }'), '      picks = recs[0].map((rec) => lists.map((l) => l.find((r) => r.record === rec).value));', '      picks = lists[0].map((_, i) => lists.map((l) => l[i].value));') },
   { id: 'M62', what: 'a mark forgets its row - a press marks nothing', catches: 'T40', file: 'testbed/units.js',
     mutate: (t) => swap(t, '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads });', '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [`${row.id}#${k}`], row: row.id, reads });') },
+  { id: 'M67', what: 'a slot of days never said - the scale has no day', catches: 'T43', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '  const day = time && values.length > 0 && values.every((v) => dayText(v) !== null);', '  const day = time && values.length > 0;') },
+  { id: 'M68', what: 'the one place says a time of a slot of days as any time', catches: 'T43', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '  return (day && dayText(value)) || (time && timeText(value)) || valueWords(value);', '  return (time && timeText(value)) || valueWords(value);') },
+  { id: 'M69', what: 'the root hands the kinds no day', catches: 'T43', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    return valueText(value, Boolean(time || s.time), Boolean(s.day));', '    return valueText(value, Boolean(time || s.time), false);') },
+  { id: 'M70', what: 'the cross table draws a row head as it came', catches: 'T43', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, "sf-table__row sf-table__row--in', said('rows', run.word));", "sf-table__row sf-table__row--in', run.word);") },
+  { id: 'M71', what: 'a category tick as it came', catches: 'T43', file: 'testbed/kinds/scatter.js',
+    mutate: (t) => swap(t, "formatter: kind === 'value' ? tickWords : kind === 'category' && text ? text : undefined },", "formatter: kind === 'value' ? tickWords : undefined },") },
   { id: 'M66', what: 'the root\'s own slots (Color by) split a row too - W3 left out for its two products', catches: 'T9a', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    const drawn = own.map((s) => s.key).filter((k) => keysRead.includes(k));', '    const drawn = keysRead;') },
   // in the root's call: a units.js copy reaches M.units only - the root imports the original
@@ -821,9 +863,9 @@ MUTANTS.push(
   { id: 'M51', what: 'the time pick is on for «(row)»', catches: 'T34', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '        setDisabledReason(it, (chosen.steps || []).length ? null : NO_TIME_HERE);\n', '') },
   { id: 'M53', what: 'the declaration\'s pick is not read', catches: 'T36', file: 'testbed/slot.js',
-    mutate: (t) => swap(t, '  if (SCALES.includes(chosen)) return { scale: chosen, time };\n', '') },
+    mutate: (t) => swap(t, '  if (SCALES.includes(chosen)) return { scale: chosen, time, day };\n', '') },
   { id: 'M54', what: 'a declared number is read by its values', catches: 'T36', file: 'testbed/slot.js',
-    mutate: (t) => swap(t, "  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time };\n", '') },
+    mutate: (t) => swap(t, "  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time, day };\n", '') },
   { id: 'M55', what: 'categories of times sorted as text', catches: 'T36', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '  if (time) return distinct.sort((a, b) => Date.parse(a) - Date.parse(b));\n', '') },
   { id: 'M56', what: 'the scatter ignores the root\'s scale', catches: 'T37', file: 'testbed/kinds/scatter.js',

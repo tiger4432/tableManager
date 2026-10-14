@@ -554,7 +554,7 @@ export class VisualPart extends Panel {
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
     const modelCtx = { paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start,
-      scale: (key) => scales[key] || scaleOf([], (this.decl.scale || {})[key]) };
+      scale: (key) => scales[key] || scaleOf([], (this.decl.scale || {})[key]), text: (key, v, time) => this.text(key, v, time) };
     this.model = this.kind.model(showing.kept, modelCtx);
     // Trellis (trellis.js): a panel a Panel by value - its rows' marks, the shown ones only, every panel on one extent
     const split = takes.has('panel') ? panelsOf(rows, this.decl) : null;
@@ -758,7 +758,7 @@ export class VisualPart extends Panel {
       else line.append(this.pill(nextMarker(encode), { words: unitWords(this.decl) }));
       legend.append(el('div', 'sf-legend__ttl', 'Marker by:'), line);
     }
-    const legendCtx = { doc, valueText, pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
+    const legendCtx = { doc, text: (key, v, time) => this.text(key, v, time), pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
       words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
       openPalette: (category, anchor) => this.openPalette(category, anchor) };
     legend.append(legendBlock(this.colors, legendCtx));
@@ -769,6 +769,7 @@ export class VisualPart extends Panel {
       // a tray the kind draws in itself (the sheet's formula bar in the top one - the frame standard 5)
       tray: (side) => trays[side] || null,
       words: (key) => slotWords((this.decl.encode || {})[key]),
+      text: (key, v, time) => this.text(key, v, time),
       plus: (key) => this.plus(key),
       // what is under the pointer - {id} a mark it was handed, {ids} rows it grouped; null nothing (tooltip.js)
       hover: (mark, event) => this.showTip(mark, event),
@@ -787,7 +788,7 @@ export class VisualPart extends Panel {
     if (area.style) area.style.gridTemplateColumns = `repeat(${Math.ceil(Math.sqrt(this.panels.length))}, minmax(0, 1fr))`;
     const drawn = this.panels.map((panel) => {
       const box = el('div', 'sf-trellis__panel');
-      const head = el('div', 'sf-trellis__h', panel.name);
+      const head = el('div', 'sf-trellis__h', this.text('panel', panel.name));
       head.title = panel.name;
       head.setAttribute('data-clip-ok', '');
       const at = el('div', 'sf-trellis__area');
@@ -833,12 +834,20 @@ export class VisualPart extends Panel {
   }
 
   /** The tooltip over the part for a mark under the pointer (base set 10); none - gone. */
+  /** A value as this part shows it on a slot - the slot's scale (a time, a slot of days) through slot.js valueText, the one
+   *  place every kind's heads, ticks, legends and cells say a value by; `time` a read's own say-so (isTimeRead). */
+  text(key, value, time = false) {
+    const s = (this.scales || {})[key] || {};
+    return valueText(value, Boolean(time || s.time), Boolean(s.day));
+  }
+
   showTip(mark, event) {
     if (!this.root || !this.doc) return;
     if (!this.tip) { this.tip = this.doc.createElement('div'); this.tip.className = 'sf-tip'; }
     if (!mark || !event) { this.tip.remove ? this.tip.remove() : null; return; }
     const unit = (mark.id !== undefined && this.unitsById && this.unitsById.get(mark.id)) || mark;
-    const lines = tipLines({ ...unit, ids: unit.ids || mark.ids || [] }, { rowsById: this.rowsById || new Map(), slots: this.slotList(), encode: this.decl.encode || {} });
+    const lines = tipLines({ ...unit, ids: unit.ids || mark.ids || [] }, { rowsById: this.rowsById || new Map(), slots: this.slotList(), encode: this.decl.encode || {},
+      text: (key, v, time) => this.text(key, v, time) });
     this.tip.replaceChildren(...lines.map((line, k) => { const n = this.doc.createElement('div'); if (!k) n.className = 'sf-tip__h'; n.textContent = line; return n; }));
     const box = this.root.getBoundingClientRect ? this.root.getBoundingClientRect() : { left: 0, top: 0 };
     this.tip.style.left = `${(event.clientX || 0) - box.left + 12}px`;

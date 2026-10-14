@@ -4,7 +4,7 @@
 // pressed sorts by it, again the other way. Its columns and its sort are its declaration's: encode.col1 … and `sort`.
 
 import { numberOf, valueWords } from '../../walk/reach_table.js';
-import { slotWords } from '../slot.js';
+import { slotWords, isTimeRead } from '../slot.js';
 
 const COLUMN = /^col(\d+)$/;
 const order = (key) => Number(COLUMN.exec(key)[1]);
@@ -19,9 +19,10 @@ export const slots = (encode) => {
 };
 
 /** A read as a cell says it: a mark's one value (the root spreads several into marks - units.js marksOf), nothing blank. */
-function cellOf(read) {
+function cellOf(read, key, ctx) {
   if (!read || read.state !== 'one') return { text: '', value: null };
-  return { text: valueWords(read.value), value: read.value };
+  // as the slot says it (the root's one place - a time, a slot of days its days)
+  return { text: ctx.text ? ctx.text(key, read.value, isTimeRead(read)) : valueWords(read.value), value: read.value };
 }
 
 /** Two cells in a sort's order: numbers as numbers, the rest as text; a blank last either way. */
@@ -43,7 +44,7 @@ export function tableModel(rows, ctx) {
   // a line's paint is the root's: marked, and its row's Color by colour when one is declared
   // a line a mark - its row's (`ids`): the lines of one row painted together, a press marks the row
   let lines = rows.map((row) => { const ids = row.ids || [row.id]; const p = ctx.paint(ids);
-    return { id: row.id, ids, cells: keys.map((k) => cellOf(row.reads[k])), marked: p.marked, color: ctx.colored ? p.color : null }; });
+    return { id: row.id, ids, cells: keys.map((k) => cellOf(row.reads[k], k, ctx)), marked: p.marked, color: ctx.colored ? p.color : null }; });
   const sort = decl.sort && keys.includes(decl.sort.key) ? decl.sort : null;
   if (sort) {
     const at = keys.indexOf(sort.key);

@@ -20,9 +20,9 @@ export const LABEL_SLOT = Object.freeze({ key: 'label', label: 'Label by' });
 export const LABEL_SHOWS = Object.freeze([['none', 'None'], ['marked', 'Marked rows'], ['all', 'All']]);
 
 /** A read in words: one value, several (how many), nothing - null. */
-const readWords = (read) => {
+const readWords = (read, key = null, ctx = {}) => {
   if (!read) return null;
-  if (read.state === 'one') return valueText(read.value, isTimeRead(read));
+  if (read.state === 'one') return ctx.text ? ctx.text(key, read.value, isTimeRead(read)) : valueText(read.value, isTimeRead(read));
   if (read.state === 'several') return `${(read.values || []).length || 'several'} values`;
   return null;
 };
@@ -51,7 +51,7 @@ export function tipLines(mark, ctx) {
   const lines = new Map();
   for (const k of keys) {
     const words = slotWords(ctx.encode[k]);
-    const said = readWords(reads[k]);
+    const said = readWords(reads[k], k, ctx);
     if (said !== null && !lines.has(words)) lines.set(words, `${words}: ${said}`);
   }
   return [name, ...lines.values()];

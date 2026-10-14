@@ -46,6 +46,8 @@ export function scatterModel(units, ctx) {
   const ay = axisOf(ctx, 'y', points.map((p) => p.y));
   return { points, notDrawn, note: notDrawn ? `${notDrawn} not drawn` : '',
     xKind: ax.kind, yKind: ay.kind, xTime: ax.time, yTime: ay.time,
+    // a category tick as the slot says it (the root's one place - a slot of days its days)
+    xText: ctx.text ? (v) => ctx.text('x', v) : null, yText: ctx.text ? (v) => ctx.text('y', v) : null,
     // a trellis panel's axes: the extents over every panel (the root's)
     range: ctx.extent ? { x: ctx.extent('x'), y: ctx.extent('y') } : null,
     size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
@@ -66,15 +68,15 @@ export const tickWords = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? 
 /** The ECharts option for a model - pure, so the picture is scored without a canvas. */
 export function scatterOption(model, palette, width = null) {
   const t = palette;
-  const axis = (kind, values, range = null, time = false) => ({
+  const axis = (kind, values, range = null, time = false, text = null) => ({
     type: kind, scale: kind === 'value', data: kind === 'category' ? categoryOrder(values, time) : undefined,
     ...(kind === 'value' && range ? { min: range[0], max: range[1] } : {}),
     axisLine: { show: true, lineStyle: { color: t.axis, width: 1 } }, axisTick: { show: false }, splitLine: { show: false },
-    axisLabel: { color: t.text, fontFamily: 'Roboto', fontSize: 12, formatter: kind === 'value' ? tickWords : undefined },
+    axisLabel: { color: t.text, fontFamily: 'Roboto', fontSize: 12, formatter: kind === 'value' ? tickWords : kind === 'category' && text ? text : undefined },
   });
   // Marked points last, so they stand over the dimmed ones as Spotfire draws them.
   const ordered = [...model.points].sort((a, b) => Number(a.marked) - Number(b.marked));
-  const xAxis = axis(model.xKind, model.points.map((p) => p.x), model.range && model.range.x, model.xTime);
+  const xAxis = axis(model.xKind, model.points.map((p) => p.x), model.range && model.range.x, model.xTime, model.xText);
   // a label on the point's inner side - right of a point in the left half, left of one in the right half - so it stays
   // in the plot, not under the legend beside it (lead 10-14)
   const along = (v) => (model.xKind === 'category' ? xAxis.data.indexOf(String(v)) : model.xKind === 'time' ? Date.parse(v) : numberOf(v));
@@ -95,7 +97,7 @@ export function scatterOption(model, palette, width = null) {
     animation: false,
     grid: { left: GRID.left, right: GRID.right, top: 16, bottom: 28, containLabel: false },
     xAxis: plotW === null ? xAxis : { ...xAxis, splitNumber: Math.max(2, Math.floor(plotW / 110)), axisLabel: { ...xAxis.axisLabel, hideOverlap: true } },
-    yAxis: axis(model.yKind, model.points.map((p) => p.y), model.range && model.range.y, model.yTime),
+    yAxis: axis(model.yKind, model.points.map((p) => p.y), model.range && model.range.y, model.yTime, model.yText),
     brush: { toolbox: [], xAxisIndex: 0, brushType: 'rect', brushMode: 'single', transformable: false,
       brushStyle: { borderWidth: 1, color: t.brush, borderColor: t.active }, inBrush: {}, outOfBrush: {} },
     series: [{
