@@ -22,7 +22,10 @@ import { entitySeedId } from '../src/rnd_board/api.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
 const FILE = JSON.parse(readFileSync(join(HERE, '..', '..', 'contracts', 'expression', 'vectors.json'), 'utf8'));
-const REAL = { expr: await import('../src/expression.js'), reach: await import('../src/walk/reach_table.js'), slot: await import('../src/testbed/slot.js') };
+const REAL = { expr: await import('../src/expression.js'), reach: await import('../src/walk/reach_table.js'), slot: await import('../src/testbed/slot.js'),
+  api: await import('../src/rnd_board/api.js') };
+// The declaration answer a page reads, its zone another than Seoul's (E10).
+const TOLD = await REAL.api.fetchDeclaration({ fetchImpl: async () => ({ ok: true, json: async () => ({ expression_time_zone: 'America/New_York' }) }) });
 
 const near = (got, want) => (typeof want === 'number'
   ? typeof got === 'number' && Math.abs(got - want) <= 1e-9 * Math.max(1, Math.abs(want))
@@ -52,13 +55,15 @@ function suite(M, quiet = false) {
     // Screen only (Marked): the vector fakes the page's marking layer. `types`: the columns' type words, as the server's run takes them.
     const page = v.markings ? { marked: (name, id) => { const m = v.markings[name] || {}; return (m.in || []).includes(id) ? true : (m.unknown || []).includes(id) ? null : false; } } : {};
     if (v.types) page.types = v.types;
+    if (v.zone) page.zone = v.zone;
     if (v.cells) page.cell = (at) => v.cells[at];
     const out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page);
     const rows = 'expect_rows' in v;
     const good = rows
       ? Array.isArray(out.values) && out.values.length === v.expect_rows.length && out.values.every((x, i) => near(x, v.expect_rows[i]))
       : 'value' in out && near(out.value, v.expect);
-    ok(`${tag}[${v.id}]`, good, `got ${ascii(out)} want ${ascii(rows ? v.expect_rows : v.expect)}`);
+    ok(`${tag}[${v.id}]`, good && (!('expect_not_time' in v) || out.notTime === v.expect_not_time),
+      `got ${ascii(out)} want ${ascii(rows ? v.expect_rows : v.expect)}`);
   };
   for (const v of FILE.vectors) score('V', v);
   for (const v of FILE.ours) score('O', v);
@@ -99,6 +104,24 @@ function suite(M, quiet = false) {
   const twoKeys = M.expr.compile('wafer("W01", 2)', { nodes: wafer });
   ok('E6 a type the page did not give is no function; the wrong number of keys says the keys',
     /No function named wafer/.test(String(noTypes.why)) && /wafer takes 1 key \(wafer\) - got 2/.test(String(twoKeys.why)), ascii([noTypes, twoKeys]));
+  // Dates (lead fe2ba4b1f): a part name this edition does not answer, one Spotfire has not, a zone that is none - by name.
+  const part = M.expr.run(M.expr.compile('DatePart("minute", "2026-10-14")'), []);
+  const noPart = M.expr.run(M.expr.compile('DatePart("fortnight", "2026-10-14")'), []);
+  const noZone = M.expr.run(M.expr.compile('Date("2026-10-14")'), [], { zone: 'Nowhere/Zone' });
+  ok('E8 a date refusal said by name - a part not in this edition, no part, no zone',
+    /DatePart «minute» is not in this edition/.test(String(part.why)) && /DatePart takes a part name/.test(String(noPart.why))
+    && /«Nowhere\/Zone» is not a time zone/.test(String(noZone.why)), ascii([part, noPart, noZone]));
+  ok('E9 with no zone the server setting\'s default (Asia/Seoul)',
+    M.expr.run(M.expr.compile('Date("2026-10-13T23:00:00Z")'), []).value === '2026-10-14T00:00:00+09:00');
+  // Lead fe2ba4b1f ①: the page reads the server's zone from the declaration answer (fetchDeclaration -> useZone), and
+  // its runs cut dates there - the server's half: test_the_declaration_answer_carries_the_setting_the_screen_cuts_by.
+  const told = TOLD;
+  M.expr.useZone(told.zone);
+  const elsewhere = M.expr.run(M.expr.compile('Date("2026-10-14T02:00:00Z")'), []).value;
+  M.expr.useZone(null);
+  ok('E10 the declaration\'s zone is the page\'s - the same day as the server cuts', told.zone === 'America/New_York'
+    && elsewhere === '2026-10-13T00:00:00-04:00' && M.expr.run(M.expr.compile('Date("2026-10-14T02:00:00Z")'), []).value
+    === '2026-10-14T00:00:00+09:00', ascii([told.zone, elsewhere]));
   // P10 before «(» is a call, not the cell P10.
   ok('E7 a name with digits before «(» is a call', M.expr.run(M.expr.compile('P10([x])'), [{ x: 1 }, { x: 3 }]).value === 1.2);
   const met = M.expr.run(M.expr.compile('[x] * 2 + [x]'), [{ x: '29 mm' }, { x: '29.50' }, { x: null }, { x: 'a' }, { x: 3 }]);

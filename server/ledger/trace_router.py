@@ -1336,6 +1336,11 @@ def ledger_declaration_catalog(
     # 총괄 8d10633ae ㉢ · e51e3e417: the worlds there are and the operating one ride the
     # response the screen already reads.
     catalogue.update(schema.world_listing())
+    # 총괄 fe2ba4b1f ①: the zone both calculators cut dates in (ingestion_settings "expression_time_zone") - the screen's
+    # reads it here, so a changed setting moves both
+    import expression
+
+    catalogue["expression_time_zone"] = expression.time_zone().key
     return catalogue
 
 

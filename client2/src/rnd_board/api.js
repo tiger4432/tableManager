@@ -1827,7 +1827,9 @@ export async function fetchDeclaration(params) {
     }
     return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
              worlds: body.worlds || [],
-             operating: typeof body.operating === 'string' ? body.operating : null };
+             operating: typeof body.operating === 'string' ? body.operating : null,
+             // the zone the calculators cut dates in - the server's setting (expression.useZone)
+             zone: typeof body.expression_time_zone === 'string' ? body.expression_time_zone : null };
   } catch (err) {
     return { ok: false, message: `Declaration unreachable — ${err && err.message}` };
   }
