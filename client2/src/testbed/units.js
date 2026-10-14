@@ -98,8 +98,10 @@ export const HUB_MANY_WORDS = 'several values - pick a reduce (Avg · Count · L
  * one look only, so several is «(Multiple)» (color_by paintCategoryOf).
  * @returns {{units: Array, dropped: Array<{id, why}>}}
  */
-export function spreadUnits(rows, decl, keys, { cells = false, record = null, recordsOf = () => null, words = (k) => k, marked = null, drawn = keys, folds = [] } = {}) {
-  if (cells) return { units: refuseMany(rows), dropped: [] };
+export function spreadUnits(rows, decl, keys, { cells = false, record = null, recordsOf = () => null, words = (k) => k, marked = null, drawn = keys, pictures = [], folds = [] } = {}) {
+  // a slot of images (`pictures`, lead-board-14) gives a mark its images to turn in place - it spreads no marks, no #MANY
+  drawn = drawn.filter((k) => !pictures.includes(k));
+  if (cells) return { units: refuseMany(rows, pictures), dropped: [] };
   if (record && unitOf(decl) !== 'node') {
     const all = unitsOf(rows, decl, keys, record, marked);
     const one = all.filter((u) => !drawn.some((k) => u.reads[k] && u.reads[k].state === 'several'));
@@ -111,8 +113,8 @@ export function spreadUnits(rows, decl, keys, { cells = false, record = null, re
 }
 
 /** A kind that draws one value a place (the sheet): a row's several read is the root's refusal - #MANY and why. */
-export const refuseMany = (rows) => rows.map((row) => {
-  const many = Object.entries(row.reads).filter(([, r]) => r && r.state === 'several');
+export const refuseMany = (rows, pictures = []) => rows.map((row) => {
+  const many = Object.entries(row.reads).filter(([k, r]) => r && r.state === 'several' && !pictures.includes(k));
   if (!many.length) return { ...row, ids: [row.id], row: row.id };
   const reads = { ...row.reads };
   for (const [k, r] of many) reads[k] = { state: 'empty', n: 0, error: '#MANY', why: MANY_WORDS(r.n || (r.values || []).length) };

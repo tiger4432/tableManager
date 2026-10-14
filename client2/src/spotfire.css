@@ -38,6 +38,22 @@
 .sf-tip { position: absolute; z-index: 20; pointer-events: none; padding: 6px 8px; border: 1px solid var(--sf-panel-line); background: var(--sf-panel-bg);
   color: var(--sf-panel-text); box-shadow: var(--sf-shadow); font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); white-space: nowrap; }
 .sf-tip__h { font-weight: 700; }
+/* a picture in its place (image_thumb.js, lead-board-14): fitted with its ratio kept; several - turned by hand, ‹ › and
+   «k/n» on a hover; a place too small - its mark or «k/n» only */
+.sf-thumb__at { display: block; width: 100%; height: 100%; }
+.sf-thumb { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; min-width: 0; }
+.sf-thumb__img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.sf-thumb__img:not([src]) { visibility: hidden; }
+.sf-thumb__n { color: var(--sf-text-2); font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); }
+.sf-thumb--many:not(.sf-thumb--small) .sf-thumb__n { position: absolute; right: 2px; bottom: 0; visibility: hidden; background: var(--sf-panel-bg); padding: 0 2px; }
+.sf-thumb__nav { position: absolute; top: 50%; transform: translateY(-50%); visibility: hidden; padding: 0 2px; border: 1px solid var(--sf-panel-line);
+  background: var(--sf-panel-bg); color: var(--sf-panel-text); font: 400 var(--sf-fs)/var(--sf-lh) var(--sf-font); cursor: pointer; }
+.sf-thumb__nav:first-child { left: 2px; }
+.sf-thumb__nav:last-child { right: 2px; }
+.sf-thumb:hover .sf-thumb__nav, .sf-thumb--many:hover .sf-thumb__n { visibility: visible; }
+.sf-tip__img .sf-thumb__at { display: inline-block; vertical-align: top; }
+.sf-tip__img .sf-thumb--many .sf-thumb__n { visibility: visible; }
+.sf-table--images td { height: var(--sf-image-row); }
 .sf-part__title { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px var(--sf-title-inset); min-width: 0;
   font: 300 var(--sf-fs-title)/var(--sf-lh-title) var(--sf-font); color: var(--sf-title); }
 .sf-part__t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

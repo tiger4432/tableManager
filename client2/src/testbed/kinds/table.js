@@ -6,6 +6,7 @@
 import { numberOf, valueWords } from '../../walk/reach_table.js';
 import { dragMarks } from '../drag_mark.js';
 import { slotWords, isTimeRead } from '../slot.js';
+import { IMAGE_ROW_PX } from '../../image_thumb.js';
 
 const COLUMN = /^col(\d+)$/;
 const order = (key) => Number(COLUMN.exec(key)[1]);
@@ -21,6 +22,9 @@ export const slots = (encode) => {
 
 /** A read as a cell says it: a mark's one value (the root spreads several into marks - units.js marksOf), nothing blank. */
 function cellOf(read, key, ctx) {
+  // a slot of images (the root's): the cell's pictures, turned in place
+  const images = ctx.images ? ctx.images(key, read) : null;
+  if (images) return { text: '', value: null, images };
   if (!read || read.state !== 'one') return { text: '', value: null };
   // as the slot says it (the root's one place - a time, a slot of days its days)
   return { text: ctx.text ? ctx.text(key, read.value, isTimeRead(read)) : valueWords(read.value), value: read.value };
@@ -61,7 +65,9 @@ export function tableModel(rows, ctx) {
     return said.length > 0 && said.every((v) => numberOf(v) !== null);
   });
   const next = nextOf(keys);
-  return { keys, lines, sort, numeric, next };
+  // a column of images makes every line one height - IMAGE_ROW_PX (lead 10-15 ③)
+  const pictured = lines.some((l) => l.cells.some((c) => c.images));
+  return { keys, lines, sort, numeric, next, pictured };
 }
 
 /** Draw a model into the template's area: the column heads (each sorts; «+» adds one), a line a row, the marked ones
@@ -70,7 +76,8 @@ export function render(area, model, ctx) {
   const doc = ctx.doc;
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const wrap = el('div', 'tb-table__wrap');
-  const table = el('table', 'sf-table sf-table--rows');
+  const table = el('table', `sf-table sf-table--rows${model.pictured ? ' sf-table--images' : ''}`);
+  if (model.pictured && table.style && table.style.setProperty) table.style.setProperty('--sf-image-row', `${IMAGE_ROW_PX}px`);
   const head = el('tr');
   model.keys.forEach((key, k) => {
     const on = model.sort && model.sort.key === key;
@@ -85,7 +92,11 @@ export function render(area, model, ctx) {
   for (const line of model.lines) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
-    line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
+    line.cells.forEach((cell, k) => {
+      const td = el('td', model.numeric[k] ? 'is-num' : '', cell.text);
+      if (cell.images && ctx.thumb) { const holder = el('span', 'sf-thumb__at'); td.append(holder); ctx.thumb(holder, cell.images, IMAGE_ROW_PX); }
+      tr.append(td);
+    });
     tr.addEventListener('click', (event) => { event.stopPropagation(); if (!drag.ended()) ctx.mark(line.ids || [line.id], event); });
     drag.add(tr, model.lines.indexOf(line), 0, line);
     tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));

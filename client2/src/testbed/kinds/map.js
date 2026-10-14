@@ -48,6 +48,9 @@ export function render(area, model, ctx) {
   svg.setAttribute('viewBox', `${x0 - 0.5} ${y0 - 0.5} ${x1 - x0 + 2} ${y1 - y0 + 2}`);
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   svg.setAttribute('class', 'tb-map__svg');
+  // a cell's size on the screen (the grid fitted with its ratio): a Label by of images fills a cell big enough
+  const box = area.getBoundingClientRect ? area.getBoundingClientRect() : null;
+  const cellPx = box && box.width ? Math.min(box.width / (x1 - x0 + 2), box.height / (y1 - y0 + 2)) : NaN;
   for (const c of model.cells) {
     const rect = doc.createElementNS(SVG, 'rect');
     rect.setAttribute('x', String(c.x));
@@ -67,7 +70,20 @@ export function render(area, model, ctx) {
       ctx.markHub([[ctx.words('x'), c.where[0]], [ctx.words('y'), c.where[1]]], c.ids, event);
     });
     svg.appendChild(rect);
-    if (c.tag !== null && c.tag !== undefined) {
+    if (c.tag && typeof c.tag === 'object') {
+      const url = ctx.picture ? ctx.picture(c.tag, cellPx) : null;
+      if (url) {
+        const pic = doc.createElementNS(SVG, 'image');
+        pic.setAttribute('href', url);
+        pic.setAttribute('x', String(c.x));
+        pic.setAttribute('y', String(c.y));
+        pic.setAttribute('width', '0.9');
+        pic.setAttribute('height', '0.9');
+        pic.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        pic.setAttribute('pointer-events', 'none');
+        svg.appendChild(pic);
+      }
+    } else if (c.tag !== null && c.tag !== undefined) {
       const text = doc.createElementNS(SVG, 'text');
       text.setAttribute('x', String(c.x + 0.45));
       text.setAttribute('y', String(c.y + 0.6));

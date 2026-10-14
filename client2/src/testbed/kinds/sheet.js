@@ -106,6 +106,9 @@ function cellOf(at, spec, decl, row, ctx) {
     }
   } else if (input.startsWith('=')) {
     const read = row && row.reads ? row.reads[at] : null;
+    // a slot of images (the root's): the cell's pictures - a line too small to show one, its mark and the preview
+    const images = ctx && ctx.images ? ctx.images(at, read) : null;
+    if (images) { out.images = images; return out; }
     if (read && read.state === 'one') value = read.value;
     if (read && read.types) time = isTimeRead(read);
     else if (read && read.state === 'cycle') { out.error = '#CYCLE'; out.why = SHEET_WORDS.cycle(read.ring || []); }
@@ -254,6 +257,7 @@ export function render(body, model, ctx) {
       const cls = [cell.num ? 'is-num' : '', own.sel.includes(cell.at) ? 'is-sel' : '', cell.isKey ? 'is-key' : '', cell.error ? 'is-err' : '',
         cell.marked ? 'is-marked' : ''].filter(Boolean).join(' ');
       const td = el('td', cls, cell.text);
+      if (cell.images && ctx.thumb) { const holder = el('span', 'sf-thumb__at'); td.append(holder); ctx.thumb(holder, cell.images, 0); }
       td.setAttribute('data-at', cell.at);
       if (cell.color) { td.setAttribute('data-color', cell.color); if (td.style && td.style.setProperty) td.style.setProperty('--sf-sheet-key', cell.color); }
       if (cell.why) td.title = cell.why;

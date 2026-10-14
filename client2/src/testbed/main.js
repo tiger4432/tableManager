@@ -19,6 +19,7 @@ import { FiltersPart } from './filters_part.js';
 import { PropertiesPart } from './properties_part.js';
 import { SlotPicker } from './picker.js';
 import { columnsOf } from './slot.js';
+import { ImageLoader } from '../image_thumb.js';
 import { useZone } from '../expression.js';
 import { HubBook, isHubId } from './hubs.js';
 import { KeyedStore } from './keyed_store.js';
@@ -181,6 +182,8 @@ export async function boot(deps) {
   };
   const shared = {
     kinds: KINDS, filters, stats, active, hubs, names, charts: deps.charts,
+    // the page's pictures - one loader, a few at once (image_thumb.js)
+    images: new ImageLoader({ base: apiBase }),
     fetchWalk: (params) => fetchSubgraph({ apiBase, fetchImpl, ...params }),
     walkParams: {},
     oneValued: (slots) => oneValued(slots),

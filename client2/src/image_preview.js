@@ -60,9 +60,10 @@ export function placeBeside(rect, width, height, view, edge) {
   return { left, top };
 }
 
-/** The one address of a ref, for the preview and the new window alike. The value goes as written. */
-export function imageRefUrl(base, ref) {
-  return `${base || ''}${IMAGE_ROUTE}?ref=${encodeURIComponent(String(ref))}`;
+/** The one address of a ref, for the preview, the new window and a thumbnail alike. The value goes as written; `px` - the
+ *  size a thumbnail asks for (image_thumb.js, once the server takes it). */
+export function imageRefUrl(base, ref, px = null) {
+  return `${base || ''}${IMAGE_ROUTE}?ref=${encodeURIComponent(String(ref))}${px ? `&px=${Math.round(px)}` : ''}`;
 }
 
 /** What the screen says when the picture did not come, from the one extra request. */

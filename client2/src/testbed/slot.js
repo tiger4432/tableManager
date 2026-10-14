@@ -87,6 +87,8 @@ export function scaleOf(reads, chosen = null) {
   const values = said.flatMap((r) => (r.state === 'one' ? [r.value] : r.values || [])).filter((v) => !isBlank(v));
   const declared = [...new Set(said.map((r) => r.declared).filter(Boolean))];
   const one = declared.length === 1 ? declared[0] : null;
+  // a column the walk declares image - drawn as pictures, no pick of the scale over it (lead-board-14)
+  if (one === 'image') return { scale: 'image', time: false, day: false };
   const allTimes = values.length > 0 && values.every(isTimeText);
   const time = one === 'datetime' || allTimes;
   // every time the page zone's midnight - a slot of days, said as days (valueText)
