@@ -6,9 +6,10 @@ thread here asks the database whether an index already serves it, whether the ta
 INDEX_WANTED row - the outbox control event the chain worker's index line takes and builds
 (`models.ensure_auto_indexes`). Nothing is written in the read's own path.
 
-A slow reference view (소유자 10-14 «넓혀») asks through the same `want`: its plan is read once a process on the same
-thread (`want_plan` - EXPLAIN, not run), and each table it scans whole through a filter is wanted - an equal or IN
-column as a slow filter, a LIKE or ILIKE one as a slow search (the declared search index's trigram).
+A slow reference view (소유자 10-14 «넓혀») - its display read or a candidate probe - asks through the same `want`: its
+plan is read once a process on the same thread (`want_plan` - EXPLAIN, not run), and each table it scans whole through
+a filter is wanted - an equal or IN column as a slow filter, a LIKE or ILIKE one as a slow search (the declared search
+index's trigram). A read whose pattern was too short to judge does not use the view's once (총괄 10-14).
 """
 import json
 import logging
@@ -45,12 +46,12 @@ def want(table, columns, why, seconds, bind):
                     lambda: ask(table, columns, why, seconds, bind)))
 
 
-def want_plan(label, statement, params, seconds, bind):
-    """A slow reference view's `statement`: its plan read once a process, then `want` for each filter it scans a table
-    whole through (`scanned_filters`)."""
-    if bind.dialect.name == "postgresql" and _first(("plan", statement)):
+def want_plan(label, view, statement, params, seconds, bind):
+    """A slow read (`statement`, any wrap) of the reference view whose query is `view`: its plan read once a process for
+    that view, then `want` for each filter it scans a table whole through (`scanned_filters`)."""
+    if bind.dialect.name == "postgresql" and _first(("plan", view)):
         _QUEUE.put(("the plan of reference view %s was not read" % label,
-                    lambda: _plan_wants(label, statement, dict(params), seconds, bind)))
+                    lambda: _plan_wants(label, view, statement, dict(params), seconds, bind)))
 
 
 def _asking():
@@ -62,7 +63,7 @@ def _asking():
             logger.error("[Indexes] %s: %s: %s", what, type(exc).__name__, exc)
 
 
-def _plan_wants(label, statement, params, seconds, bind):
+def _plan_wants(label, view, statement, params, seconds, bind):
     from sqlalchemy import text
 
     from database import crud
@@ -70,6 +71,9 @@ def _plan_wants(label, statement, params, seconds, bind):
     with bind.connect() as connection:
         plan = connection.execute(text("EXPLAIN (FORMAT JSON) " + statement), params).scalar()
     found = scanned_filters(json.loads(plan) if isinstance(plan, str) else plan)
+    if any(reason for _table, _column, _why, reason in found):     # judged nothing there - the next slow read looks
+        with _LOCK:
+            _ASKED.discard(("plan", view))
     if not found:
         logger.info("[Indexes] reference view %s took %.1f s - its plan scans no table whole through an equal, IN or "
                     "LIKE filter; no index asked", label, seconds)
@@ -83,9 +87,12 @@ def _plan_wants(label, statement, params, seconds, bind):
 
 
 #: One condition of a scan's Filter as EXPLAIN prints it: [alias.]column, a cast, the operator, the rest.
+#: The right side of an equal is one value a scan: a literal, a parameter, or another relation's column (a LATERAL's
+#: key - `"*VALUES*".column2`) - not this scan's own column.
 _CONDITION = re.compile(r'^\(?(?:(?:"(?:[^"]|"")+"|\w+)\.)?(?P<column>"(?:[^"]|"")+"|\w+)\)?(?:::[\w ]+(?:\[\])?)?'
                         r'\s+(?P<op>~~\*|~~|=)\s+(?P<rhs>.+)$', re.S)
-_CONSTANT = re.compile(r"^(?:ANY \()?(?:'|-?\d)")
+_CONSTANT = re.compile(r"^(?:ANY \()?(?:'|-?\d|\$\d)")
+_OUTER = re.compile(r'^\(?(?P<alias>"(?:[^"]|"")+"|\w+)\.')
 _LITERAL = re.compile(r"^'((?:[^']|'')*)'")
 #: A trigram index reads three characters in a row - a pattern with fewer between its wildcards is not narrowed.
 TRIGRAM_LETTERS = 3
@@ -93,8 +100,8 @@ TRIGRAM_LETTERS = 3
 
 def scanned_filters(plan) -> list:
     """[(table, column, why, reason or None)] - each column a Seq Scan of `plan` (EXPLAIN FORMAT JSON) filters on, ANDed
-    (an OR filter is left whole): equal or IN -> `AUTO_SLOW_FILTER`, LIKE or ILIKE -> `AUTO_SLOW_SEARCH`, with a reason
-    when a trigram index cannot narrow its pattern."""
+    (an OR filter is left whole): equal or IN -> `AUTO_SLOW_FILTER`, LIKE or ILIKE -> `AUTO_SLOW_SEARCH`. A reason is a
+    judgment not reached: a pattern a trigram index cannot narrow."""
     from database import models
 
     found = []
@@ -108,8 +115,9 @@ def scanned_filters(plan) -> list:
                 column = match["column"]
                 column = column[1:-1].replace('""', '"') if column.startswith('"') else column
                 rhs = match["rhs"].strip()
+                outer = _OUTER.match(rhs)
                 if match["op"] == "=":
-                    if _CONSTANT.match(rhs):
+                    if _CONSTANT.match(rhs) or (outer and outer["alias"].strip('"') != node.get("Alias")):
                         found.append((node["Relation Name"], column, models.AUTO_SLOW_FILTER, None))
                     continue
                 literal = _LITERAL.match(rhs)
