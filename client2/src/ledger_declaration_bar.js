@@ -30,6 +30,7 @@ export const BAR_WORDS = Object.freeze({
   constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', unset: '?', mixed: 'mixed', timesDiffer: 'sentences differ: one row, one time',
   nodeType: 'Node type', keys: 'keys', addKey: '+ Key', predicate: 'Predicate', from: 'from', addSubject: '+ Subject', addType: '+ Type',
   more: 'More', json: 'JSON', columnsUnavailable: (why) => `Column lists unavailable: ${why}`,
+  problems: (n) => `${n} problem${n === 1 ? '' : 's'} — see the bar`,
 });
 /** The fields a node type's and a predicate's bar draws itself; every other field of the declaration is on its More line. */
 export const BAR_FIELDS = Object.freeze({ entity: Object.freeze(['keys', 'attributes']), predicate: Object.freeze(['subjects', 'object']) });
@@ -186,8 +187,22 @@ export function chipErrors(errors) {
   }
   return out;
 }
-/** The refusals said on one path, each a pill beside what it is about. */
-const said = (el, view, path) => (((view.errors || {})[path]) || []).map((m) => el('span', 'ldb-pill is-bad', m));
+/**
+ * A refused save's rows on this source's paths (the server's ConfigExplorerError: `details`, or the refusal itself when it
+ * names one path) - what the bar draws beside its chips; anything else is not the bar's and stays the caller's to say.
+ */
+export function refusalIssues(error) {
+  const detail = error && error.detail && typeof error.detail === 'object' ? error.detail : null;
+  if (!detail) return [];
+  const rows = Array.isArray(detail.details) && detail.details.length ? detail.details : [detail];
+  return rows.filter((r) => r && /^bundle\.sources\./.test(String(r.path || '')));
+}
+/** The refusals said on one path, each a pill beside what it is about; the path is marked said for this drawing. */
+const said = (el, view, path) => {
+  const rows = ((view.errors || {})[path]) || [];
+  if (rows.length && view.said) view.said.add(path);
+  return rows.map((m) => el('span', 'ldb-pill is-bad', m));
+};
 
 /** «edited N min ago» off the draft's `updated_at` - the words the mockup draws. */
 export function draftAge(updatedAt, now = Date.now()) {
@@ -279,7 +294,12 @@ function head(el, view, raw) {
   const btn = (words, action, cls = '', value) => { const b = el('button', `ldb-btn${cls}`, words); b.type = 'button'; b.dataset.action = action; if (value !== undefined) b.dataset.value = value; return b; };
   top.append(btn(BAR_WORDS.json, 'decl-json'));
   if (view.kind === 'source') { const run = btn(BAR_WORDS.testRun, 'test-run', '', view.sourceId || ''); if (view.draftId) run.dataset.draft = view.draftId; top.append(run); }
-  top.append(btn(BAR_WORDS.saveDraft, 'save-draft-only'), btn(BAR_WORDS.activate, 'save-draft', ' is-primary'));
+  // from the bar: a refused save's rows come back to the bar, not to a toast (lead 10-14)
+  const save = btn(BAR_WORDS.saveDraft, 'save-draft-only');
+  const activate = btn(BAR_WORDS.activate, 'save-draft', ' is-primary');
+  save.dataset.from = 'bar';
+  activate.dataset.from = 'bar';
+  top.append(save, activate);
   return top;
 }
 
@@ -350,7 +370,7 @@ function sentenceBar(el, view, raw, at, from = null) {
   // another source's sentence on the same table: drawn as one, not this draft's to edit
   if (from) bar.setAttribute('inert', '');
   const name = el('span', 'ldb-sname', s.sentence);
-  if (!from) name.append(...said(el, view, `sentences.${at}`).map((p) => { p.style.marginLeft = '8px'; return p; }));
+  if (!from) name.append(...[...said(el, view, `sentences.${at}`), ...said(el, view, `sentences.${at}.sentence`)].map((p) => { p.style.marginLeft = '8px'; return p; }));
   if (from) name.append(' ', el('span', 'ldb-sname-from', BAR_WORDS.fromSource(from)));
   bar.append(name, ...end(el, view, raw, at, 'subject'), el('span', 'ldb-arrow', '—'),
     chip(el, view, { kind: 'pred', path: `sentences.${at}.predicate`, cls: 'is-pred', text: words(s.predicate),
@@ -499,11 +519,14 @@ function predicateBar(el, view, raw) {
  *          active?: boolean, draftAge?: string, run?: object, cost?: {before, strong, after}, json?: Node,
  *          others?: Array<{source, sentence}>, draftId?: string, more?: Array<{name, kind, options?}>}} view   others: other sources' sentences on this table, drawn inert
  */
-export function renderDeclarationBar(doc, raw, view) {
+export function renderDeclarationBar(doc, raw, viewIn) {
   const el = make(doc);
+  // which refusals found their chip this drawing; the rest go on one line under the head - each said once, in the bar
+  const view = { ...viewIn, said: new Set() };
   const root = el('div', 'ldb');
   root.setAttribute('data-decl-kind', view.kind);
-  root.append(head(el, view, raw || {}));
+  const unplaced = el('div', 'ldb-unplaced');
+  root.append(head(el, view, raw || {}), unplaced);
   if (view.json) { const j = el('div', 'ldb-json'); j.append(view.json); root.append(j); }
   if (view.kind === 'entity') root.append(entityBar(el, view, raw || {}), moreBar(el, view, raw || {}));
   else if (view.kind === 'predicate') root.append(predicateBar(el, view, raw || {}), moreBar(el, view, raw || {}));
@@ -519,6 +542,9 @@ export function renderDeclarationBar(doc, raw, view) {
     add.append(addChip(el, 'sentences', BAR_WORDS.addSentence, ' is-big'));
     list.append(add);
     root.append(list, preview(el, view));
+  }
+  for (const [path, rows] of Object.entries(view.errors || {})) {
+    if (!view.said.has(path)) for (const m of rows) unplaced.append(el('span', 'ldb-pill is-bad', `${path} — ${m}`));
   }
   return root;
 }

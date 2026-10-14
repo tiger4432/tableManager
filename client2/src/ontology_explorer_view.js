@@ -27,7 +27,7 @@ import { MarkingStore, SIGN } from './rnd_board/marking_store.js';
 import { TablePart } from './rnd_board/table_part.js';
 import { verificationNote } from './verification_note.js';
 import { backlogCells, hasBacklog, censusRefusal } from './source_backlog.js';
-import { renderDeclarationBar, isShortForm, barRun, draftAge, BAR_FIELDS, chipErrors } from './ledger_declaration_bar.js';
+import { renderDeclarationBar, isShortForm, barRun, draftAge, BAR_FIELDS, chipErrors, BAR_WORDS } from './ledger_declaration_bar.js';
 
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
@@ -738,7 +738,8 @@ export function declarationView(state, kind, json = null) {
     sources: items.filter((i) => i.kind === 'source_plan').map((i) => ({ key: i.key, id: i.canonical_id })),
     active: !draft.creates_declaration, draftAge: draftAge(draft.updated_at),
     run: barRun(state.testRun), cost: cost ? { before: cost } : null, more,
-    errors: chipErrors(draft.validation_errors), tablesUnavailable: schema.tables_unavailable || '',
+    // the draft's refusals and a refused save's rows, one map - the bar is the one place they are drawn
+    errors: chipErrors([...(draft.validation_errors || []), ...(decl.refused || [])]), tablesUnavailable: schema.tables_unavailable || '',
   };
 }
 
@@ -858,6 +859,9 @@ function renderRaw(state) {
     // 🔴 THE BAR TAKES THE MIDDLE (owner 10-14 «이대로 만들어», task/design/LEDGER_DECLARATION_BAR.dc.html): a short-form
     //    source, a node type or a predicate is edited as its sentence bars; the draft's JSON sits behind its JSON button.
     if (bar) {
+      // the bar draws each refusal by its chip; this line only counts them, so none is said twice
+      const refusals = errors.length + ((state.decl && state.decl.refused) || []).length;
+      if (refusals) validation.textContent = BAR_WORDS.problems(refusals);
       const json = h('div', 'oe-decl-json');
       json.append(context, label);
       editor.append(...saveNotices(state), renderDeclarationBar(document, bar.raw, declarationView(state, bar.kind, state.decl && state.decl.json ? json : null)),

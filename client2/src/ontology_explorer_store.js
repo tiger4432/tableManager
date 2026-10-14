@@ -63,7 +63,7 @@ export const initialExplorerState = Object.freeze({
   authoringAll: null,
   authoringError: null,
   // The declaration bar (ledger_declaration_bar.js): the chip whose list is open, the constant being typed, JSON shown.
-  decl: Object.freeze({ open: null, typing: null, json: false }),
+  decl: Object.freeze({ open: null, typing: null, json: false, refused: [] }),
   // The declaration being NAMED, before the server has a draft for it. Local only, and
   // deliberately not merged into `items`: `items` mirrors what the server has, and a name
   // nobody has accepted yet is not that. Conflating them is how a create that was refused
