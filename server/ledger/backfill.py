@@ -301,7 +301,7 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
             raise LedgerSetupError(
                 "retired_cursor_argument", f"run().{name}",
                 f"{name!r} named a position in the cursor path, which no longer reads "
-                f"anything (판정 163). Use `rescope` to redo a named set of rows.")
+                f"anything (ruling 163). Use `rescope` to redo a named set of rows.")
     report = _run_via_events(
         engine, cutover, source=source, page_rows=fetch_rows,
         max_pages=max_batches, checkpoint=checkpoint, pace=pace, world=world)

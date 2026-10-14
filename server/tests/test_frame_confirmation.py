@@ -279,7 +279,7 @@ def test_a_confirmation_that_names_no_frame_at_all_is_refused(db_session):
         fc.record_confirmation(db_session, OTHER_RULE, {"dt_job": "SYN-NOFRAME"},
                                [_contrib("source", "dt_map", "user")],
                                confirmed_by="tester", frames={})
-    assert "프레임" in str(e.value)
+    assert "frame" in str(e.value)
     assert fc.live_confirmation(
         db_session, OTHER_RULE["name"],
         fc.compose_unit_key(OTHER_RULE, {"dt_job": "SYN-NOFRAME"})) is None

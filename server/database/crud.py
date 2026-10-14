@@ -1050,8 +1050,7 @@ def refuse_write_to_view(table_name):
 
     if catalog_kind(TABLE_CONFIG.get(table_name)) == "view":
         raise ReadOnlyRelation(
-            "'%s' 는 읽기 전용입니다 (kind: view). 이 관계는 카탈로그에 뷰로 선언돼 "
-            "있어 쓰기를 받지 않습니다." % table_name)
+            "'%s' is read-only (kind: view) - the catalogue declares it a view, so it takes no writes." % table_name)
 
 
 def normalize_stored_text(value: Any) -> Any:
@@ -5316,9 +5315,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # purge and this runs after, so it raises: `transaction_context` unwinds and
             # the map is left exactly as it was.
             raise ValueError(
-                f"'{table_name}' 에 보낸 {len(vjoin_refusals)}개 행이 모두 조인 선언의 "
-                f"오른쪽 유일성을 어겨 쓸 수 있는 행이 없습니다. 맵을 비우지 않기 위해 "
-                f"이 요청 전체를 취소했습니다. "
+                f"All {len(vjoin_refusals)} row(s) sent to '{table_name}' break the join declaration's right-side "
+                f"uniqueness, so none can be written. The whole request was cancelled so the map is not emptied. "
                 + " / ".join(r.get("message", "") for r in vjoin_refusals[:3]))
 
         with alignment_batch_counts.write_step("prefetch"):

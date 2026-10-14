@@ -106,7 +106,7 @@ def test_min_prefix_length_refuses_explicitly(client, parts_env, monkeypatch):
     res = client.get("/tables/inventory_master/columns/category/values",
                      params={"prefix": "C"})
     assert res.status_code == 400
-    assert "2자" in res.json()["detail"]
+    assert "2 character" in res.json()["detail"]
 
     ok = client.get("/tables/inventory_master/columns/category/values",
                     params={"prefix": "CH"})

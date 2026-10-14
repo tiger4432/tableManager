@@ -747,12 +747,12 @@ def suggest_values(db, table: str, column: str, prefix: str = "", limit=None,
     min_len = settings["min_prefix_length"]
     if len(prefix) < min_len:
         raise SuggestValidationError(
-            400, f"제안을 받으려면 최소 {min_len}자를 입력해야 합니다 (입력 {len(prefix)}자).")
+            400, f"Type at least {min_len} character(s) to get suggestions (typed {len(prefix)}).")
 
     try:
         limit = settings["default_limit"] if limit is None else int(limit)
     except (TypeError, ValueError):
-        raise SuggestValidationError(400, f"limit은 정수여야 합니다: {limit!r}")
+        raise SuggestValidationError(400, f"limit must be an integer: {limit!r}")
     limit = max(1, min(limit, settings["max_limit"]))
 
     result = {

@@ -1428,7 +1428,7 @@ def make_frame_transform(source_meta: dict, target_meta: dict,
     if (s_phys["cols"], s_phys["rows"]) != (t_phys["cols"], t_phys["rows"]):
         raise ValueError(
             f"physical grid dims differ: source {s_phys['cols']}x{s_phys['rows']} vs "
-            f"target {t_phys['cols']}x{t_phys['rows']} — 같은 웨이퍼 규격이 아니다")
+            f"target {t_phys['cols']}x{t_phys['rows']} - not the same wafer spec")
     # [D1] 양쪽 다 **이름을 대고** 거절한다. 어느 쪽 맵을 고쳐야 하는지가 조작자에게
     # 필요한 유일한 정보이고, 빈 결과나 그럴듯한 결과는 에러보다 나쁘다.
     refusals = [f"{role} 맵: {why}"
@@ -1437,10 +1437,9 @@ def make_frame_transform(source_meta: dict, target_meta: dict,
                 if why is not None]
     if refusals:
         raise ValueError(
-            " · ".join(refusals)
-            + " ― 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어 정렬을 보증할 수 "
-              "없습니다. 해당 맵의 물리 규격(칩 크기·웨이퍼 지름)을 선언한 뒤 다시 "
-              "시도하십시오.")
+            " · ".join(refusals) + " - the wafer bounding box the cell coordinates are measured from cannot be "
+            "reproduced, so the alignment cannot be guaranteed. Declare the map's physical spec (chip size, wafer "
+            "diameter) and try again.")
 
     src_tf = _frame_transformer(source_meta, s_phys, box=source_box)
     dst_tf = _frame_transformer(target_meta, t_phys, box=target_box)
@@ -1545,8 +1544,8 @@ def make_physical_transform(source_meta: dict):
     why = geometry_computable(source_meta)
     if why is not None:
         raise ValueError(
-            "소스 맵: %s ― 셀 좌표의 기준인 웨이퍼 바운딩박스를 재현할 수 없어 순번을 "
-            "보증할 수 없습니다." % why)
+            "Source map: %s - the wafer bounding box the cell coordinates are measured from cannot be reproduced, "
+            "so the order cannot be guaranteed." % why)
     src_tf = _frame_transformer(source_meta, s_phys)
 
     def to_physical(x, y):

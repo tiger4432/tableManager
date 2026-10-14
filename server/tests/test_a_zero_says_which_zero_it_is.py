@@ -244,7 +244,7 @@ def test_an_unreadable_binding_is_not_reported_as_an_empty_key(monkeypatch):
     """
     import map_alignment
     code, text = _no_cells(monkeypatch,
-                           ValueError("맵 테이블 'z_map'에 map_key_columns 선언이 없습니다"))
+                           ValueError("Map table 'z_map' declares no map_key_columns"))
 
     assert code == map_alignment.REF_REFUSAL_BINDING, (
         "바인딩을 못 읽은 것이 「셀이 없다」로 나갔습니다: %s" % code)

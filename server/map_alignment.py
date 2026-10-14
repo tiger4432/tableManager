@@ -4839,7 +4839,7 @@ def geometry_basis_of(meta: dict | None, excluded_reason: str = None,
 def _binding_of(cfg: dict, table: str):
     b = map_overlay.resolve_binding(cfg, table)
     if b is None:
-        raise ValueError("테이블 '%s'의 맵 좌표 바인딩을 유도할 수 없습니다" % table)
+        raise ValueError("Cannot derive the map coordinate binding of table '%s'" % table)
     return b
 
 
@@ -4906,8 +4906,7 @@ def resolve_source_columns(cfg: dict, table: str, model, x_col: str = None,
 
     def _named(col, role):
         if getattr(model, col, None) is None:
-            raise ValueError("테이블 '%s'에 컬럼 '%s'이 없습니다 - %s 좌표로 쓸 수 없습니다"
-                             % (table, col, role))
+            raise ValueError("Table '%s' has no column '%s' - it cannot be the %s coordinate" % (table, col, role))
         return col
 
     out = {}
@@ -5112,15 +5111,15 @@ def _cells_of(db, cfg: dict, table: str, map_id: str, cap: int, known_count: int
     from database import models
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
-        raise ValueError("테이블 '%s'을 찾을 수 없습니다" % table)
+        raise ValueError("Table '%s' was not found" % table)
     b = _binding_of(cfg, table)
     x_col = getattr(model, b.get("x", "x"), None)
     y_col = getattr(model, b.get("y", "y"), None)
     if x_col is None or y_col is None:
-        raise ValueError("테이블 '%s'에 좌표 컬럼이 없습니다" % table)
+        raise ValueError("Table '%s' has no coordinate columns" % table)
     filters = map_overlay.build_key_filters(model, b, map_id)
     if filters is None:
-        raise ValueError("맵 키 '%s'을 '%s'의 컬럼에 바인딩하지 못했습니다" % (map_id, table))
+        raise ValueError("Could not bind map key '%s' to the columns of '%s'" % (map_id, table))
     # 값 컬럼이 **바인딩에 선언돼 있고 실재하면** 값을 싣는다. 이 사실이 곧 `reference_kind`이고,
     # 서버가 아는 것을 클라가 모양으로 추론하게 두지 않는다.
     val_col = getattr(model, b.get("val", "val"), None) if b.get("val") else None
@@ -5477,7 +5476,7 @@ def _map_key_columns(cfg: dict, table: str):
     info = crud.TABLE_CONFIG.get(table) or {}
     cols = info.get("map_key_columns")
     if not cols:
-        raise ValueError("맵 테이블 '%s'에 map_key_columns 선언이 없습니다" % table)
+        raise ValueError("Map table '%s' declares no map_key_columns" % table)
     return list(cols)
 
 
@@ -5748,9 +5747,9 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     src_table = rule["source_table"]
     src_model = models.DYNAMIC_TABLES.get(src_table)
     if src_model is None:
-        raise ValueError("소스 테이블 '%s'을 찾을 수 없습니다" % src_table)
+        raise ValueError("Source table '%s' was not found" % src_table)
     if models.DYNAMIC_TABLES.get(map_table) is None:
-        raise ValueError("맵 테이블 '%s'을 찾을 수 없습니다" % map_table)
+        raise ValueError("Map table '%s' was not found" % map_table)
 
     # 맵 단위는 **맵 테이블이 선언한 것**을 쓴다 — 여기 컬럼명을 적으면 네 번째 철자가 된다.
     map_key_cols = _map_key_columns(cfg, map_table)
@@ -5759,7 +5758,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     for col, val in (key_values or {}).items():
         attr = getattr(src_model, col, None)
         if attr is None:
-            raise ValueError("소스 테이블 '%s'에 결정키 컬럼 '%s'이 없습니다" % (src_table, col))
+            raise ValueError("Source table '%s' has no decision key column '%s'" % (src_table, col))
         filters.append(attr == val)
     # A chain can score one material subset of a decision unit without storing
     # an extra derived map.  Restrict this to validated equality predicates;
@@ -5775,8 +5774,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
 
     key_attrs = [getattr(src_model, c, None) for c in map_key_cols]
     if any(a is None for a in key_attrs):
-        raise ValueError("소스 테이블 '%s'이 맵 키 컬럼 %s을 갖고 있지 않습니다"
-                         % (src_table, map_key_cols))
+        raise ValueError("Source table '%s' does not have the map key columns %s" % (src_table, map_key_cols))
     # The raw key tuples are kept, not just their composed ids: the batched cell
     # read below has to prove it groups rows the same way the per-map predicate
     # matched them, and a composed id cannot always be taken apart again.
@@ -5803,8 +5801,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
         columns = resolve_source_columns(cfg, src_table, src_model, x_col, y_col, value_col,
                                          index_col)
     if not columns["x"]["column"] or not columns["y"]["column"]:
-        raise ValueError("소스 테이블 '%s'의 좌표 컬럼을 정할 수 없습니다 - x/y를 "
-                         "지정하십시오" % src_table)
+        raise ValueError("Cannot tell the coordinate columns of source table '%s' - give x/y" % src_table)
     x_attr = getattr(src_model, columns["x"]["column"])
     y_attr = getattr(src_model, columns["y"]["column"])
 
@@ -6861,18 +6858,18 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     rule_name = rule.get("name")
     decision_key = list(rule.get("decision_key") or [])
     if not decision_key:
-        raise ValueError("규칙 '%s'에 decision_key 선언이 없습니다" % rule_name)
+        raise ValueError("Rule '%s' declares no decision_key" % rule_name)
     src_table = rule["source_table"]
     derived_table = rule.get("derived_table")
 
     src_model = models.DYNAMIC_TABLES.get(src_table)
     if src_model is None:
-        raise ValueError("소스 테이블 '%s'을 찾을 수 없습니다" % src_table)
+        raise ValueError("Source table '%s' was not found" % src_table)
     derived_model = models.DYNAMIC_TABLES.get(derived_table)
     if derived_model is None:
-        raise ValueError("파생 테이블 '%s'을 찾을 수 없습니다" % derived_table)
+        raise ValueError("Derived table '%s' was not found" % derived_table)
     if models.DYNAMIC_TABLES.get(map_table) is None:
-        raise ValueError("맵 테이블 '%s'을 찾을 수 없습니다" % map_table)
+        raise ValueError("Map table '%s' was not found" % map_table)
 
     map_key_cols = _map_key_columns(cfg, map_table)
     missing_key = [c for c in map_key_cols if getattr(src_model, c, None) is None]
@@ -6882,8 +6879,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     for c in decision_key:
         a = getattr(derived_model, c, None)
         if a is None:
-            raise ValueError("파생 테이블 '%s'에 결정키 컬럼 '%s'이 없습니다"
-                             % (derived_table, c))
+            raise ValueError("Derived table '%s' has no decision key column '%s'" % (derived_table, c))
         key_attrs.append(a)
     list_cols = [c for c in (rule.get("list_columns") or [])
                  if getattr(derived_model, c, None) is not None]
@@ -6893,8 +6889,7 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     for col, val in (key_values or {}).items():
         a = getattr(derived_model, col, None)
         if a is None:
-            raise ValueError("파생 테이블 '%s'에 결정키 컬럼 '%s'이 없습니다"
-                             % (derived_table, col))
+            raise ValueError("Derived table '%s' has no decision key column '%s'" % (derived_table, col))
         filters.append(a == val)
     needle = (q or "").strip()
     if needle:

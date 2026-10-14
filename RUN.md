@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [10-14] **서버가 던지는 한국어 거절 36 개가 영어로 (총괄 10-14)** — git pull · 서버 재기동 · 이주 «없음»
+>
+> ```
+> 무엇     map_alignment 17 · maps/frame_confirmation 10 · map_overlay 3 · database/crud 2 · value_suggest 2 · ledger 2 의 raise 문장 -> 영어
+> 볼 것    맵 편집기에서 확정이 거절되면 띠가 영어(예 «The decision unit is not complete - … Missing decision key(s): …»)
+> 되돌리기  git revert <이 커밋> -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-14] **원장 선언 짧은 꼴 — 표 이름과 문장마다 «역할: 컬럼» (setup_version 7) · 옛 선언은 변환 명령 한 번 (총괄 b9d33d6f6 · fdb3a630c · 112293f73 ②, 소유자 «ㄹ»)** — git pull · 런처 재기동, 그다음 변환은 운영자가 고를 때
 >
 > ```

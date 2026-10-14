@@ -811,8 +811,8 @@ function throws(fn, what) {
   //    The assertion is on the SENTENCE, BYTE FOR BYTE. A "some error is shown" check would
   //    pass on a generic 「확정 실패」, and a generic is precisely the defect: ten refusals exist
   //    so the operator knows WHICH one, and the repair differs for each.
-  const REFUSAL = '결정 단위가 덜 채워졌습니다 - 확정은 단위 전체에 대해서만 성립합니다. '
-    + '빠진 결정키: product';
+  const REFUSAL = 'The decision unit is not complete - a confirmation holds only for the whole unit. '
+    + 'Missing decision key(s): product';
   const docR = makeDocument();
   const apiR = {
     counters: { reads: 0, writes: 0 },
@@ -1263,11 +1263,11 @@ function throws(fn, what) {
      'H10 alongside the ruling, which is a different field and not a substitute for it');
 
   // ── H11-H13. THE SERVER'S REFUSAL SENTENCE SURVIVES THE TRANSPORT ────────────
-  // 🔴 TEN DISTINCT KOREAN REFUSALS EXIST IN `frame_confirmation`, each returned as a 400 with
+  // 🔴 TEN DISTINCT REFUSALS EXIST IN `frame_confirmation`, each returned as a 400 with
   //    the sentence inside FastAPI's `{"detail": ...}`. Lifting it out belongs at the transport
   //    -- a caller that had to know the envelope would be a second place that knows the wire
   //    format -- and the callers get the sentence, never a category of ours.
-  const REF = '확정된 프레임이 없습니다 - 무엇을 확정했는지가 이 기록의 내용입니다';
+  const REF = 'No confirmed frame - what was confirmed is what this record says';
   const failing = createApiClient({
     baseUrl: 'http://127.0.0.1:8080',
     fetchImpl: () => Promise.resolve({

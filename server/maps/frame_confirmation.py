@@ -103,7 +103,7 @@ def weakest_contributor(contributors: list, table_name: str = None) -> tuple:
 
     names = [c.get("source_name") or "unknown" for c in contributors]
     if not names:
-        raise ConfirmationRefused("기여 소스가 없어 확정할 수 없습니다")
+        raise ConfirmationRefused("No contributing source - nothing to confirm")
     weakest = max(names, key=lambda s: (crud.get_source_priority(s, table_name), s))
     return weakest, crud.get_source_priority(weakest, table_name)
 
@@ -120,13 +120,12 @@ def compose_unit_key(rule: dict, decision_key: dict) -> str:
 
     cols = list(rule.get("decision_key") or [])
     if not cols:
-        raise ConfirmationRefused("규칙 '%s'에 decision_key 선언이 없습니다"
-                                  % rule.get("name"))
+        raise ConfirmationRefused("Rule '%s' declares no decision_key" % rule.get("name"))
     missing = [c for c in cols if crud.clean_str_value(decision_key.get(c)) == ""]
     if missing:
         raise ConfirmationRefused(
-            "결정 단위가 덜 채워졌습니다 - 확정은 단위 전체에 대해서만 성립합니다. "
-            "빠진 결정키: %s" % ", ".join(missing))
+            "The decision unit is not complete - a confirmation holds only for the whole unit. "
+            "Missing decision key(s): %s" % ", ".join(missing))
     derived = rule.get("derived_table")
     sep = (crud.TABLE_CONFIG.get(derived) or {}).get("composite_key_separator", "_")
     return sep.join(crud.clean_str_value(decision_key.get(c)) for c in cols)
@@ -382,12 +381,12 @@ def resolve_ruling_state(ruling: dict, state=None) -> str:
     if given:
         if given not in accepted_ruling_states():
             raise ConfirmationRefused(
-                "판정 상태 '%s'는 선언된 어휘가 아닙니다. 허용: %s"
+                "Ruling state '%s' is not in the declared vocabulary. Allowed: %s"
                 % (given, ", ".join(sorted(accepted_ruling_states()))))
         if winner and given != map_alignment.STATE_SCORED:
             raise ConfirmationRefused(
-                "판정이 승자 '%s'를 지명했는데 상태가 '%s'입니다 - 한 기록이 서로를 "
-                "부정하는 두 문장을 실을 수 없습니다" % (winner, given))
+                "The ruling names winner '%s' but its state is '%s' - one record cannot carry two sentences "
+                "that deny each other" % (winner, given))
         return given
     if winner:
         return map_alignment.STATE_SCORED
@@ -423,8 +422,8 @@ def _reject_unreadable_frame(where: str, value):
         return None
     if map_alignment.parse_frame(val) is None:
         raise ConfirmationRefused(
-            "%s '%s'은 프레임이 아닙니다 - 회전은 0/90/180/270, 면은 front/back이며 "
-            "철자는 'rot<각도>_<면>'입니다" % (where, val))
+            "%s '%s' is not a frame - rotation is 0/90/180/270, side is front/back, spelled "
+            "'rot<angle>_<side>'" % (where, val))
     return val
 
 
@@ -447,19 +446,16 @@ def _resolve_frames(rule: dict, frames: dict, frame: str) -> dict:
     unknown = sorted(k for k in (frames or {}) if k not in allowed)
     if unknown:
         raise ConfirmationRefused(
-            "규칙 '%s'이 선언하지 않은 확정 대상입니다: %s"
-            % (rule.get("name"), ", ".join(unknown)))
+            "Confirmation target(s) rule '%s' does not declare: %s" % (rule.get("name"), ", ".join(unknown)))
     for k, v in (frames or {}).items():
         val = crud.clean_str_value(v)
         if val == "":
             # 필드 이름만 대고 답을 비우는 것은 같은 구멍에 열쇠만 꽂은 것이다.
             raise ConfirmationRefused(
-                "확정 대상 '%s'의 프레임이 비었습니다 - 이름만으로는 무엇을 확정했는지 "
-                "말하지 못합니다" % k)
+                "Confirmation target '%s' has an empty frame - a name alone does not say what was confirmed" % k)
         out[k] = val
     if not out and crud.is_blank_value(frame):
-        raise ConfirmationRefused(
-            "확정된 프레임이 없습니다 - 무엇을 확정했는지가 이 기록의 내용입니다")
+        raise ConfirmationRefused("No confirmed frame - what was confirmed is what this record says")
     return out
 
 
@@ -509,8 +505,7 @@ def record_confirmation(db, rule: dict, decision_key: dict, contributors: list,
     unit_key = compose_unit_key(rule, decision_key or {})
 
     if len(contributors or []) < MIN_CONTRIBUTORS:
-        raise ConfirmationRefused(
-            "합의에 올린 소스가 없습니다 - 어느 소스들을 합쳤는지가 이 기록의 내용입니다")
+        raise ConfirmationRefused("No source in the agreement - which sources were joined is what this record says")
 
     frames = _resolve_frames(rule, frames, frame)
     # [D9] 기록 A가 기록 B가 거절하는 프레임을 담지 못하게 한다 — 두 기록이 갈리는 자리

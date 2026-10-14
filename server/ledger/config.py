@@ -964,7 +964,7 @@ def _validate_emit_rule(rule: dict, where: str, seen_rules: set):
     if rule_class not in EMIT_CLASSES:
         raise LedgerConfigError(
             f"{where}.class must be declared as '{EMIT_CLASS_OBSERVATION}' or "
-            f"'{EMIT_CLASS_INFERENCE}' (design §6: 2 관측 / 3 추론); got "
+            f"'{EMIT_CLASS_INFERENCE}' (design §6: 2 observation / 3 inference); got "
             f"{rule_class!r}. Ask one question about the atom this rule makes: does its "
             f"content come from the ROW IN FRONT OF YOU, or from a convention or default "
             f"that the row never uttered? The row -> '{EMIT_CLASS_OBSERVATION}'. A "
