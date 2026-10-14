@@ -444,6 +444,29 @@ def _ensure_ledger_schema_sync(db_session_factory):
         db.close()
 
 
+def _set_partitions_autoanalyze_sync(db_session_factory):
+    """`schema.set_partitions_autoanalyze` on the ledger's database (총괄 53338e99b). Contained: a line, never a process
+    that will not start."""
+    from ledger import schema
+
+    try:
+        db = db_session_factory()
+        try:
+            engine = db.get_bind()
+        finally:
+            db.close()
+        if engine.dialect.name != "postgresql":
+            return
+        connection = engine.raw_connection()
+        try:
+            schema.set_partitions_autoanalyze(connection)
+        finally:
+            connection.close()
+    except Exception as exc:                                            # noqa: BLE001
+        logger.warning("[Ledger] the partitions' autoanalyze setting was not compared (this process goes on): %s: %s",
+                       type(exc).__name__, exc)
+
+
 def _restamp_moved_fingerprints_sync(db_session_factory):
     """Move the stored fingerprint of every cursor whose DECLARATION did not change.
 
@@ -555,9 +578,12 @@ async def start_ledger_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Ledger] cursor fingerprints could not be re-stamped, so a source "
                      "whose declaration did not change may still refuse to run: %s", exc)
-    # The partitions' build waits on the database's older transactions - beside the loops, on a thread.
-    asyncio.create_task(asyncio.to_thread(models.ensure_model_indexes_sync, db_session_factory, ("ledger",),
-                                          logger.warning))
+    # The partitions' build waits on the database's older transactions - beside the loops, on a thread. Their
+    # autoanalyze setting first, on the same line, so its ALTER and a CONCURRENTLY build never wait on each other.
+    async def index_line():
+        await asyncio.to_thread(_set_partitions_autoanalyze_sync, db_session_factory)
+        await asyncio.to_thread(models.ensure_model_indexes_sync, db_session_factory, ("ledger",), logger.warning)
+    asyncio.create_task(index_line())
     asyncio.create_task(run_ledger_followup(db_session_factory))
     # 🔴 ITS OWN LOOP, NOT A BRANCH OF THE FOLLOW-UP'S IDLE ARM. Two jobs sharing one
     # loop share one pace, and these two want opposite ones: the follow-up is latency
