@@ -539,7 +539,8 @@ export class VisualPart extends Panel {
     const scales = Object.fromEntries(listed.filter((s) => held[s.key]).map((s) => [s.key, scaleOf(rows.map((r) => r.reads[s.key]), (this.decl.scale || {})[s.key])]));
     this.scales = scales;
     const { colors, colored, paint: painted } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor(), anyHeld, scale: scales.color || null });
-    const paint = (ids, where) => painted(ids, where ? nodesOfPress(ids) : null);
+    // a mark is painted by its rows (a press marks them - hubs.js nodesOfPress)
+    const paint = (ids) => painted(ids);
     this.colors = colors;
     // the colours given to categories not declared yet are kept in the declaration - Save keeps them, more categories
     // later leave them where they are (a declaration field, no walk)
@@ -586,9 +587,7 @@ export class VisualPart extends Panel {
       const marks = split.map((panel) => inPanel(spread(panel.rows).units.filter((u) => keep.has(u.id)), panel, this.rowType()));
       const extent = extentsOf(marks.flat());
       for (const u of marks.flat()) this.unitsById.set(u.id, u);
-      // a mark in a panel is painted as it is pressed - the panel's value among its conditions (hubs.js nodesOfPress)
-      this.panels = split.map((panel, i) => ({ name: panel.name, where: panel.where, model: this.kind.model(marks[i], { ...modelCtx, extent,
-        paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));
+      this.panels = split.map((panel, i) => ({ name: panel.name, where: panel.where, model: this.kind.model(marks[i], { ...modelCtx, extent }) }));
     } else this.panels = null;
     // Hidden - the marked rows the FILTERS hide; one the limit leaves out is the limit's, not hidden.
     const shown = new Set(afterPart.kept);

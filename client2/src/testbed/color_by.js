@@ -109,10 +109,10 @@ export function colorOfIds(colors, ids) {
  */
 export function painter({ colors, marked, markColor, palette, ids, anyHeld = false }) {
   const anyMarked = anyHeld || ids.some(marked);
-  return (of, held = null) => {
+  return (of) => {
     const c = colorOfIds(colors, of);
     // color - the rows' own colour, unmarked and undimmed (a table line's band, a cross table cell)
-    if (of.some(marked) || (held && held.some(marked))) return { fill: markColor || c.fill, line: markColor || c.line, color: c.fill, marked: true, dim: false };
+    if (of.some(marked)) return { fill: markColor || c.fill, line: markColor || c.line, color: c.fill, marked: true, dim: false };
     if (anyMarked) return { fill: mix(c.fill, palette.bg), line: mix(c.line, palette.bg), color: c.fill, marked: false, dim: true };
     return { fill: c.fill, line: c.line, color: c.fill, marked: false, dim: false };
   };

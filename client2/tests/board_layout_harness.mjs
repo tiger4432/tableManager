@@ -1177,6 +1177,7 @@ async function trellisCases(M) {
   const drawnPanels = walk(sc.root).filter((n) => String(n.className) === 'sf-trellis__h').map((n) => n._text);
   const axes = (sc.panels || []).map((pn) => { const o = M.scatter.scatterOption(pn.model, { bg: '#000000', text: '#FFFFFF', axis: '#666666', active: '#7188F8', brush: '#000000', one: ['#111111', '#222222'], cat: [] });
     return [pn.name, pn.model.points.map((pt) => pt.id), o.xAxis.min, o.xAxis.max, o.yAxis.min, o.yAxis.max]; });
+  answer.nodes.push(die('D4', 3, 9, 'B'));
   const hubsSeat = await seat('scatter', { x: { ...key('x'), reduce: 'Avg' }, y: { ...key('y'), reduce: 'Avg' }, marker1: key('x'), panel: key('p') });
   const aThree = hubsSeat.panels ? hubsSeat.panels[0].model.points.find((pt) => pt.label === '3') : null;
   const held = () => markings.entries('marking:pick').map(([id]) => [hubOf(id) ? hubOf(id).where : id, hubs.membersOf(id)]);
@@ -1590,8 +1591,8 @@ async function suite(M) {
       tr.pure, [[['A', ['r2']], ['B', ['r1', 'r2']], ['(Empty)', ['r3']]], [['lot', 'L1'], ['p', 'A']], [true, [['lot', 'L1'], ['p', 'A']]], null]),
     judge('TR2 a scatter in panels: a panel a value, its rows\' points, every panel on the same x and y extent', [tr.drawnPanels, tr.axes],
       [['A', 'B'], [['A', ['D1', 'D3'], 1, 3, 2, 9], ['B', ['D2'], 1, 3, 2, 9]]]),
-    judge('TR3 a press in a panel marks its rows there - a marker of x 3 in A is D3, not D2; a cross table cell the same (one row - its node)', [tr.marker, tr.cell],
-      [[['D3', []]], [['D2', []]]]),
+    judge('TR3 a press in a panel marks its rows there - a marker of x 3 in A is D3, not D2; a cross table cell of two rows - their hub, the panel among its conditions (one row - its node)', [tr.marker, tr.cell],
+      [[['D3', []]], [[[['x', '3'], ['(None)', ''], ['p', 'B']], ['D2', 'D4']]]]),
     judge('TR4 a panel\'s cell is painted as it is pressed - a marking holding the wafer leaves the wafer\'s cells in panels unmarked (two conditions, the rows)', tr.waferCells, [['A', false], ['B', false]]),
     judge('WO1 a kind says the base set slots it takes not - the sheet holds no Top/Bottom by, no Panel by', tr.sheetSlots, []),
     judge('RS1 a picture follows its own div: each trellis panel watched, its chart resized when its div changes', fl.resize, [2, 2]),
@@ -1637,7 +1638,7 @@ const MUTANTS = [
   { id: 'SR3', what: 'a sheet with no key yet draws nothing (Mark a start)', catches: 'SH4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (!seeds && this.kind && this.kind.cells) {', '    if (false) {') },
   { id: 'SR4', what: 'the value walks read the declaration\'s encode - a sheet\'s cells (the ways they name) not walked', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'const slot = this.slotsHeld()[key];', 'const slot = (this.decl.encode || {})[key];') },
+    mutate: (t) => swap(t, 'async walkValues(key, slot = this.slotsHeld()[key]) {', 'async walkValues(key, slot = (this.decl.encode || {})[key]) {') },
   { id: 'SR5', what: 'the kind\'s own slots not read - the declaration\'s encode only', catches: 'SH1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '[s.key, s.slot || encode[s.key]]', '[s.key, encode[s.key]]') },
   { id: 'M1', what: 'an added part splits the first one, not the largest', catches: ['S5 ', 'G5 '], file: 'rnd_board/split_tree.js', key: 'tree',
@@ -1717,8 +1718,6 @@ const MUTANTS = [
     mutate: (t) => swap(t, "...(said ? [el('div', 'sf-part__desc', said)] : [])", '...[]') },
   { id: 'M36', what: 'a press always a hub of its rows - one row never its node', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'const press = ([where, ids]) => nodesOfPress(ids) ||', 'const press = ([where, ids]) => null ||') },
-  { id: 'M37', what: 'a mark whose press stands for its node drawn by its rows only - never marked', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'painted(ids, where ? nodesOfPress(ids) : null)', 'painted(ids, null)') },
   { id: 'M38', what: 'no reason said when the marking holds another type only and no relation reaches the rows', catches: 'W6 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'marked: received.filter(marked).length, hidden, heldOnly,', 'marked: received.filter(marked).length, hidden,') },
   { id: 'M39', what: 'the kind handed every mark - Top/Bottom N not applied', catches: 'SI2 ', file: 'testbed/visual_part.js', key: 'visual',
@@ -1741,8 +1740,6 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),', 'markHub: (where, ids, event) => this.markHub(where, ids, event),') },
   { id: 'M48', what: 'each panel its own extent', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent,', 'this.kind.model(marks[i], { ...modelCtx,') },
-  { id: 'M54', what: 'a panel\'s mark painted without the panel - pressed one way, drawn another', catches: 'TR4 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'paint: (ids, where) => paint(ids, where ? withPanel(where, panel) : null) }) }));', '}) }));') },
   { id: 'M55', what: 'a kind\'s without not read - the sheet offered Top/Bottom by and Panel by', catches: 'WO1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'PANEL_SLOT].filter((s) => !without.includes(s.key));', 'PANEL_SLOT];') },
   { id: 'M61', what: 'rows grouped in a cell lose their time - the tooltip says the UTC text', catches: 'TM2 ', file: 'testbed/tooltip.js', key: 'tooltip',
@@ -1780,11 +1777,11 @@ const MUTANTS = [
   { id: 'PWM9', what: 'the rows asked in one request past the seed cap', catches: 'PW5 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'chunks(ask.seeds, this.seedChunk)', '[ask.seeds]') },
   { id: 'PWM10', what: 'a slot\'s walk in flight not dropped by the next', catches: 'PW6 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, '  async walkValues(key) {\n    this.abortWalk(key);', '  async walkValues(key) {') },
+    mutate: (t) => swap(t, '  async walkValues(key, slot = this.slotsHeld()[key]) {\n    this.abortWalk(key);', '  async walkValues(key, slot = this.slotsHeld()[key]) {') },
   { id: 'PWM12', what: 'the slots of a load walked one after another', catches: 'PW8 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'await Promise.all(Object.keys(this.slotsHeld()).map((key) => this.walkValues(key)));', 'for (const key of Object.keys(this.slotsHeld())) await this.walkValues(key);') },
+    mutate: (t) => swap(t, 'await Promise.all([...Object.keys(this.slotsHeld()).map((key) => this.walkValues(key)), this.walkValues(RELATION_WALK, this.relationSlot())]);', 'for (const key of Object.keys(this.slotsHeld())) await this.walkValues(key);') },
   { id: 'PWM13', what: 'a start of the row type walked though the page holds its nodes', catches: 'PW9 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'if (route && !route.hops && !seeds.all && seeds.positive.every(', 'if (false && seeds.positive.every(') },
+    mutate: (t) => swap(t, 'if (own && seeds.positive.every((id) => this.layers.graph.nodes.has(id))) {', 'if (false) {') },
   { id: 'PWM14', what: 'the ranking asked on every walk', catches: 'PW9 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'return { ...this.walkParams, ...own, propagation: false };', 'return { ...this.walkParams, ...own };') },
   { id: 'PWM15', what: 'the runs of a value walk asked one after another', catches: 'PW10 ', file: 'testbed/visual_part.js', key: 'visual',
