@@ -202,12 +202,15 @@ def test_one_read_answers_both_questions(declared):
     declared({"wafer@1": {"keys": ["wid", "slot"], "attributes": ["product"],
                           "attribute_cardinality": {"product": "many"}}})
 
-    assert ledger_subgraph._declaration_facts == {}, "nothing has read it yet"
+    from ledger import worker
+
+    assert not [key for key in worker._COMPILED if key[0] == "facts"], "nothing has read it yet"
 
     assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}
 
     # The key order arrived in the SAME read, without a second open().
-    (order, _plural, _confirmers, _inverses, _labels, _steps), = ledger_subgraph._declaration_facts.values()
+    (order, _plural, _confirmers, _inverses, _labels, _steps), = [
+        held[1] for key, held in worker._COMPILED.items() if key[0] == "facts"]
     assert order["wafer"] == ["wid", "slot"]
 
 
@@ -278,16 +281,16 @@ def test_the_envelope_uses_the_declarations_own_word_and_its_own_default(declare
 # 🔴 S-206 — a declaration the operator just activated is the one the walk reads
 # ---------------------------------------------------------------------------
 
-def test_the_walk_keeps_answering_from_the_declaration_it_already_read(declared):
-    """⚠️ THE CACHE IS DELIBERATE. Re-reading the file per walk would open it on every
-    request; what must be true is that something FORGETS it, not that nothing caches it."""
+def test_a_changed_file_is_read_again_without_a_reload(declared):
+    """⚠️ REVERSED 10-15 (총괄 10-15, the stamp rule): this used to keep the old answer until a reload, and that second
+    cache could answer from another revision than the route's. Held still - but only until a file changes."""
     declared({"wafer@1": {"keys": ["wid"], "attributes": ["product"]}})
     assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset()
+    assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset(), "held, not read again"
 
     _redeclare_product_as_many()
 
-    assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset(), (
-        "nothing asked it to forget, so the old answer is the right answer")
+    assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}, "the next read is the new file"
 
 
 def test_activating_a_declaration_makes_the_walk_read_it_again(declared):
@@ -313,12 +316,13 @@ def test_forgetting_drops_both_halves_of_the_one_read(declared):
     declared({"wafer@1": {"keys": ["wid", "slot"], "attributes": ["product"],
                           "attribute_cardinality": {"product": "many"}}})
     assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}
-    (order, _plural, _confirmers, _inverses, _labels, _steps), = ledger_subgraph._declaration_facts.values()
-    assert order["wafer"] == ["wid", "slot"]
+    assert ledger_subgraph._read_entity_declaration()[0]["wafer"] == ["wid", "slot"]
 
-    ledger_subgraph.reset_declaration_cache()
-
-    assert ledger_subgraph._declaration_facts == {}
+    # the file changed - the next read is the new revision, both halves (총괄 10-15: the stamp rule, no reload)
+    declared({"wafer@1": {"keys": ["wid"], "attributes": ["product", "lot"],
+                          "attribute_cardinality": {"lot": "many"}}})
+    assert ledger_subgraph._read_entity_declaration()[0]["wafer"] == ["wid"]
+    assert ledger_subgraph._declared_plural_attributes("wafer") == {"lot"}
 
 
 def test_the_reload_seat_names_this_cache_beside_the_others():

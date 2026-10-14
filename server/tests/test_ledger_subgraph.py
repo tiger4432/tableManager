@@ -296,7 +296,7 @@ def test_an_undeclared_follow_predicate_is_refused_by_walking_the_refusal(monkey
     assert "processed_with" in detail["declared"]
 
 
-def test_entity_label_takes_its_key_order_from_the_live_declaration():
+def test_entity_label_takes_its_key_order_from_the_live_declaration(monkeypatch):
     """A type declared after v1 has no entry in `ENTITY_TYPES`, so the label falls back
     to payload insertion order — which for `die` leads with x and y and pushes the only
     key that names the material out of a two-value label."""
@@ -306,12 +306,12 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
     token = ledger_subgraph._WALK_DECLARATION.set(fake)
     try:
         # Declaration read, and this type is not in it: the label stays what it was.
-        ledger_subgraph._declaration_facts[fake] = ({}, {}, {}, {}, {}, {})
+        monkeypatch.setattr(ledger_subgraph, "_read_entity_declaration", lambda: ({}, {}, {}, {}, {}, {}))
         assert ledger_subgraph._entity_node("die", keys)["label"] == "1.0 / 10.0"
         # Declared: the order is the declaration's, the material name leads, and every key
         # is named, a number spelled as the key is (총괄 1d07f1dae).
-        ledger_subgraph._declaration_facts[fake] = (
-            {"die": ["mat_id", "x", "y", "mat_type"]}, {}, {}, {}, {}, {})
+        monkeypatch.setattr(ledger_subgraph, "_read_entity_declaration", lambda: (
+            {"die": ["mat_id", "x", "y", "mat_type"]}, {}, {}, {}, {}, {}))
         assert (ledger_subgraph._entity_node("die", keys)["label"]
                 == "SYN-XFER-CORE-W07 / 1 / 10 / Wafer")
         # A type the declaration does not name is untouched, declared in v1 or not.
@@ -321,7 +321,6 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
         assert node["node_kind"] == "entity" and node["keys"] == keys
         assert node["id"] == explorer.entity_id("die", keys)
     finally:
-        ledger_subgraph._declaration_facts.pop(fake, None)
         ledger_subgraph._WALK_DECLARATION.reset(token)
 
 
