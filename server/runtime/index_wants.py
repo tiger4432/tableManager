@@ -5,10 +5,15 @@ thread here asks the database whether an index already serves it, whether the ta
 `auto_index_per_table` automatic indexes, and whether the same ask is already waiting; if none, it writes one
 INDEX_WANTED row - the outbox control event the chain worker's index line takes and builds
 (`models.ensure_auto_indexes`). Nothing is written in the read's own path.
+
+A slow reference view (소유자 10-14 «넓혀») asks through the same `want`: its plan is read once a process on the same
+thread (`want_plan` - EXPLAIN, not run), and each table it scans whole through a filter is wanted - an equal or IN
+column as a slow filter, a LIKE or ILIKE one as a slow search (the declared search index's trigram).
 """
 import json
 import logging
 import queue
+import re
 import threading
 import uuid
 
@@ -20,27 +25,156 @@ _THREAD = [None]
 _LOCK = threading.Lock()
 
 
-def want(table, columns, why, seconds, bind):
-    """Queue the ask - the first time this process sees it."""
-    key = (table, tuple(columns), why)
+def _first(key):
+    """Has this process not seen `key` yet - and the thread that takes the queue is up."""
     with _LOCK:
         if key in _ASKED:
-            return
+            return False
         _ASKED.add(key)
         if _THREAD[0] is None:
             _THREAD[0] = threading.Thread(target=_asking, name="index-wants", daemon=True)
             _THREAD[0].start()
-    _QUEUE.put((table, list(columns), why, seconds, bind))
+    return True
+
+
+def want(table, columns, why, seconds, bind):
+    """Queue the ask - the first time this process sees it."""
+    columns = list(columns)
+    if _first((table, tuple(columns), why)):
+        _QUEUE.put(("an automatic index on %s (%s) was not asked" % (table, ", ".join(columns)),
+                    lambda: ask(table, columns, why, seconds, bind)))
+
+
+def want_plan(label, statement, params, seconds, bind):
+    """A slow reference view's `statement`: its plan read once a process, then `want` for each filter it scans a table
+    whole through (`scanned_filters`)."""
+    if bind.dialect.name == "postgresql" and _first(("plan", statement)):
+        _QUEUE.put(("the plan of reference view %s was not read" % label,
+                    lambda: _plan_wants(label, statement, dict(params), seconds, bind)))
 
 
 def _asking():
     while True:
-        table, columns, why, seconds, bind = _QUEUE.get()
+        what, job = _QUEUE.get()
         try:
-            ask(table, columns, why, seconds, bind)
+            job()
         except Exception as exc:                                    # noqa: BLE001 - the next ask goes on
-            logger.error("[Indexes] an automatic index on %s (%s) was not asked: %s: %s",
-                         table, ", ".join(columns), type(exc).__name__, exc)
+            logger.error("[Indexes] %s: %s: %s", what, type(exc).__name__, exc)
+
+
+def _plan_wants(label, statement, params, seconds, bind):
+    from sqlalchemy import text
+
+    from database import crud
+
+    with bind.connect() as connection:
+        plan = connection.execute(text("EXPLAIN (FORMAT JSON) " + statement), params).scalar()
+    found = scanned_filters(json.loads(plan) if isinstance(plan, str) else plan)
+    if not found:
+        logger.info("[Indexes] reference view %s took %.1f s - its plan scans no table whole through an equal, IN or "
+                    "LIKE filter; no index asked", label, seconds)
+    for table, column, why, reason in found:
+        reason = reason or (None if table in crud.TABLE_CONFIG else "not a table the product declares")
+        if reason:
+            logger.info("[Indexes] reference view %s took %.1f s - %s (%s) not asked for a %s: %s",
+                        label, seconds, table, column, why, reason)
+        else:
+            want(table, [column], why, seconds, bind)
+
+
+#: One condition of a scan's Filter as EXPLAIN prints it: [alias.]column, a cast, the operator, the rest.
+_CONDITION = re.compile(r'^\(?(?:(?:"(?:[^"]|"")+"|\w+)\.)?(?P<column>"(?:[^"]|"")+"|\w+)\)?(?:::[\w ]+(?:\[\])?)?'
+                        r'\s+(?P<op>~~\*|~~|=)\s+(?P<rhs>.+)$', re.S)
+_CONSTANT = re.compile(r"^(?:ANY \()?(?:'|-?\d)")
+_LITERAL = re.compile(r"^'((?:[^']|'')*)'")
+#: A trigram index reads three characters in a row - a pattern with fewer between its wildcards is not narrowed.
+TRIGRAM_LETTERS = 3
+
+
+def scanned_filters(plan) -> list:
+    """[(table, column, why, reason or None)] - each column a Seq Scan of `plan` (EXPLAIN FORMAT JSON) filters on, ANDed
+    (an OR filter is left whole): equal or IN -> `AUTO_SLOW_FILTER`, LIKE or ILIKE -> `AUTO_SLOW_SEARCH`, with a reason
+    when a trigram index cannot narrow its pattern."""
+    from database import models
+
+    found = []
+
+    def walk(node):
+        if node.get("Node Type") == "Seq Scan" and node.get("Filter") and node.get("Relation Name"):
+            for term in _terms(node["Filter"]):
+                match = _CONDITION.match(term.strip())
+                if not match:
+                    continue
+                column = match["column"]
+                column = column[1:-1].replace('""', '"') if column.startswith('"') else column
+                rhs = match["rhs"].strip()
+                if match["op"] == "=":
+                    if _CONSTANT.match(rhs):
+                        found.append((node["Relation Name"], column, models.AUTO_SLOW_FILTER, None))
+                    continue
+                literal = _LITERAL.match(rhs)
+                pattern = literal.group(1).replace("''", "'") if literal else None
+                short = pattern is not None and max(
+                    (len(run) for run in re.split(r"(?<!\\)[%_]", pattern)), default=0) < TRIGRAM_LETTERS
+                found.append((node["Relation Name"], column, models.AUTO_SLOW_SEARCH,
+                              "the pattern '%s' has under %d characters between its wildcards - a trigram index "
+                              "cannot narrow it" % (pattern, TRIGRAM_LETTERS) if short else None))
+        for child in node.get("Plans") or ():
+            walk(child)
+
+    for each in plan or ():
+        walk(each.get("Plan") or {})
+    out = []
+    for item in found:
+        if item not in out:
+            out.append(item)
+    return out
+
+
+def _terms(expression):
+    """`expression`'s ANDed terms, unwrapped - none when it ORs at its top."""
+    expression = expression.strip()
+    while _wrapped(expression):
+        expression = expression[1:-1].strip()
+    parts, depth, quote, start, i = [], 0, None, 0, 0
+    while i < len(expression):
+        ch = expression[i]
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and expression.startswith(" OR ", i):
+            return []
+        elif depth == 0 and expression.startswith(" AND ", i):
+            parts.append(expression[start:i])
+            start = i = i + 5
+            continue
+        i += 1
+    parts.append(expression[start:])
+    return parts if len(parts) == 1 else [term for part in parts for term in _terms(part)]
+
+
+def _wrapped(expression):
+    """Does the parenthesis `expression` opens with close at its very end."""
+    if not expression.startswith("("):
+        return False
+    depth, quote = 0, None
+    for i, ch in enumerate(expression):
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i == len(expression) - 1
+    return False
 
 
 def ask(table, columns, why, seconds, bind):
@@ -55,6 +189,10 @@ def ask(table, columns, why, seconds, bind):
         return False
     db = Session(bind=bind)
     try:
+        if why == models.AUTO_SLOW_SEARCH and not models.has_trigram(db.connection()):
+            logger.info("[Indexes] an automatic index on %s (%s) is not asked for a %s: %s",
+                        table, ", ".join(columns), why, models.PG_TRGM_MISSING)
+            return False
         held = models.catalogue_indexes(db.connection().connection.dbapi_connection, table)
         if any(models.auto_index_serves(index, columns, why) for index in held):
             return False
