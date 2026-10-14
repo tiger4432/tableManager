@@ -73,9 +73,8 @@ export class VisualPart extends Panel {
     this.openPicker = d.openPicker || (() => {});
     this.oneValued = d.oneValued || (() => false);
     this.walkParams = d.walkParams || {};
-    // its walks (part_walks.js): the row walk in hand (and the one before a system filter's start side), a value walk a
-    // slot (and the value walks in hand, the last few); a request each may drop (the next of its kind); how many rows a value walk starts from at once
-    this.rowWalks = [];
+    // its walks (part_walks.js): a value walk a slot (and the value walks in hand, the last few) - its row walks are the
+    // page's (GraphBook.walks); a request each may drop (the next of its kind); how many rows a value walk starts from at once
     this.values = new Map();
     this.valueWalks = [];
     this.aborts = new Map();
@@ -381,21 +380,35 @@ export class VisualPart extends Panel {
     const start = seeds.all ? null : this.startType();
     const ask = { seeds: seeds.all ? [`all:${this.rowType()}`] : [...seeds.positive].sort(), follow: route ? [...route.follow].sort() : [],
       hops: route ? Math.max(1, route.hops) : 1, collect: [...new Set([this.rowType(), start].filter(Boolean))].sort() };
-    const held = this.rowWalks.find((w) => covers(w.ask, ask) && JSON.stringify(w.negative || []) === JSON.stringify(seeds.negative || []));
+    // the page's row walks: one in flight that will cover it waited for, one in hand that covers it taken (any part's)
+    const walks = this.layers.graph.walks;
+    const same = (w) => JSON.stringify(w.negative || []) === JSON.stringify(seeds.negative || []);
+    const coming = walks.find((w) => w.receiving && same(w) && covers({ ...w.ask, complete: true }, ask));
+    if (coming) {
+      await coming.done;
+      if (ticket !== this.walking) return null;
+    }
+    const held = walks.find((w) => !w.receiving && same(w) && covers(w.ask, ask));
     if (held) return { ...held, cached: true };
     this.abortWalk();
     const control = new AbortController();
     this.aborts.set(ROW_WALK, control);
+    let finished;
+    const record = { ok: true, answers: [], complete: false, why: null, ask: { ...ask, complete: false }, negative: seeds.negative || [], receiving: true,
+      done: new Promise((r) => { finished = r; }) };
+    walks.unshift(record);
+    walks.splice(KEPT_WALKS);
+    const leave = () => { record.receiving = false; const at = walks.indexOf(record); if (at >= 0) walks.splice(at, 1); finished(); };
     const params = seeds.all ? { ...this.budget(), seed_type: this.rowType(), collect: ask.collect }
       : { ...this.budget(), nodeId: seeds.positive[0], positive: seeds.positive, negative: seeds.negative || [], follow: ask.follow, hops: ask.hops, collect: ask.collect };
     // the rows are drawn when their walk is in
     const got = await walkToEnd(this.fetchWalk, params, control.signal, null);
-    if (got.aborted || ticket !== this.walking) return null;
+    if (got.aborted || ticket !== this.walking) { leave(); return null; }
     this.aborts.delete(ROW_WALK);
-    if (got.refused) return { ok: false, why: refusalWords(got.res) };
-    const out = { ok: true, answers: got.answers, complete: got.complete, why: got.why, ask: { ...ask, complete: got.complete }, negative: seeds.negative || [] };
-    this.rowWalks = [out, ...this.rowWalks].slice(0, 2);
-    return out;
+    if (got.refused) { leave(); return { ok: false, why: refusalWords(got.res) }; }
+    Object.assign(record, { answers: got.answers, complete: got.complete, why: got.why, ask: { ...ask, complete: got.complete }, receiving: false });
+    finished();
+    return record;
   }
 
   /**

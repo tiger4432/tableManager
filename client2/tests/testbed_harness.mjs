@@ -661,7 +661,7 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'JSON.stringify([next.start, next.row, next.system, next.route || null]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.system, this.decl.route || null])',
       'JSON.stringify([next.start, next.row, next.route || null]) !== JSON.stringify([this.decl.start, this.decl.row, this.decl.route || null])') },
   { id: 'M27', what: 'a filter change walks from every seed again (the walk in hand not taken)', catches: 'T9f', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, 'const held = this.rowWalks.find(', 'const held = false && this.rowWalks.find(') },
+    mutate: (t) => swap(t, 'const held = walks.find(', 'const held = false && walks.find(') },
   { id: 'M28', what: '«marked» counts the marking\'s entries - a hub one (the code before)', catches: "T9c'", file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, 'marked: received.filter(marked).length,', 'marked: this.markings.entries(this.reads).length,') },
   { id: 'M29', what: 'the root words the title by asking the kind (the code before)', catches: 'T19', file: 'testbed/visual_part.js',

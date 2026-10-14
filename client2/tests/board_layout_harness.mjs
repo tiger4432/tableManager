@@ -730,12 +730,13 @@ async function partWalks(M) {
     // cut: an axis true and no next page
     xrayed: () => ({ nodes: [node(X1, { grade: 'A' })], edges: [edge(d1, 'xrayed', X1)], truncated: { ...OK, nodes: true } }),
   };
-  const seat = async (decl, { seedChunk, hold } = {}) => {
+  const seat = async (decl, { seedChunk, hold, page } = {}) => {
     const doc = makeDoc('dark');
-    const markings = new MarkingStore();
+    const markings = page ? page.markings : new MarkingStore();
     markings.set('marking:start', BW, SIGN.CASE);
     const asked = [];
     const part = new M.visual.VisualPart(doc.createElement('div'), { doc, markings, start: decl.start, declaration: decl, vocabulary: () => vocabulary, seedChunk,
+      ...(page ? { layers: page.layers } : {}),
       kinds: { table: M.table.kind, scatter: M.scatter.kind, crossTable: M.cross.kind, map: M.map.kind }, filters: new KeyedStore(), stats: new KeyedStore(), active: new KeyedStore(),
       hubs: new HubBook(), names: new Map(), charts: charts(),
       fetchWalk: async (params) => {
@@ -864,6 +865,15 @@ async function partWalks(M) {
   once.part.setDeclaration({ ...once.part.declaration(), encode: { col1: STEP } });
   await settle();
   out.foldOnce = [once.asked.length - asked0, folds, once.part.model.lines.map((l) => l.cells[0].text)];
+
+  // PW13 one row walk a page (lead-board-10c): two parts opened together asking the same row walk - one request, the
+  // second waits for the first in flight; a third opened after takes the page's walk in hand
+  const shared = new MarkingStore();
+  const page = { markings: shared, layers: new M.layer.MarkingLayers({ markings: shared, hubs: new HubBook() }) };
+  const rowWalks = (s) => s.asked.filter((p) => (p.follow || []).includes('in_container')).length;
+  const together = await Promise.all([seat({ ...base, id: 'P1', encode: { col1: TEMP_V } }, { page }), seat({ ...base, id: 'P2', kind: 'map', encode: {} }, { page })]);
+  const third = await seat({ ...base, id: 'P3', encode: { col1: STEP } }, { page });
+  out.onePage = [together.map(rowWalks), rowWalks(third), [...together, third].map((s) => s.part.rowsOf().length)];
 
   // PW7 core dies (lead 10-14, 18766): the value walk carries wafers only, its edges every way it walked - each die reads
   // its own core wafer through its edges (a die it did not carry stands by its id), never its own wafer BW
@@ -994,7 +1004,7 @@ async function categoryColours(M) {
   await settle();
   const first = { ...part.declaration().colors };
   answer = { ...answer, nodes: [node('Z0', 'Z'), ...answer.nodes] };
-  part.rowWalks = [];
+  part.layers.graph.walks.length = 0;
   part.load();
   await settle();
   const after = part.declaration().colors || {};
@@ -1400,9 +1410,10 @@ async function suite(M) {
     judge('G2c a part dropped on another\'s middle swaps with it - the tree\'s shape the same, Save keeps it', p.swapSaved,
       ['scatter-1,cross-1,marked', 'marked,cross-1,scatter-1', true, true]),
     judge('G2b an older save (visuals by id) opens on the layout\'s tree, its visuals laid over, the chrome docked', p.older, { tree: true, x: true, docks: true }),
-    judge('G5 each kind added: its id and kind, the largest split (the scatter, stacked: new on top), the new one active and walked; the add window lists them in order',
+    // walked: 0 - each new part's row walk is the page's in hand (lead-board-10c)
+    judge('G5 each kind added: its id and kind, the largest split (the scatter, stacked: new on top), the new one active, its rows the page\'s walk in hand; the add window lists them in order',
       p.add, { ids: ['table-1', 'crossTable-1', 'scatter-2', 'map-1', 'sheet-1'], kinds: ['table', 'crossTable', 'scatter', 'map', 'sheet'], active: 'sheet-1', firstPath: '[0,0]',
-        scatterPath: '[0,1]', walked: 5, flyout: ['Table', 'Cross table', 'Scatter plot', 'Map', 'Sheet'] }),
+        scatterPath: '[0,1]', walked: 0, flyout: ['Table', 'Cross table', 'Scatter plot', 'Map', 'Sheet'] }),
     judge('L3 the Marked table: empty while nothing is picked; a hub picked - its members; N of M and the limit\'s drop, none hidden; a line pressed re-marks to it; a head sorts; the ground clears',
       p.marked, { emptyFirst: 0, viaHub: ['W1', 'W3'], counts: [2, 4, 2, 0], afterPress: ['W3'], sort: { key: 'col1', desc: false }, cleared: 0, emptyAgain: 0 }),
     judge('L4 a limited part counts the limit\'s drop apart: a marked row it leaves out is not hidden; a limiting marking changed, it folds again',
@@ -1414,7 +1425,8 @@ async function suite(M) {
     judge('K1b a chain declared: B walks from what A marks, C from what B marks', k.built,
       { b: ['W2', 'W3'], c: ['W2', 'W3', 'W4'], held: [['W2'], ['W2', 'W3'], ['W3', 'W4']] }),
     judge('K2 A marks again: B walks once from it, its marking keeps what its new data holds, so C walks once from that - and its marking the same',
-      k.chain, { walks: ['W1', 'W2'], b: ['W1', 'W2'], c: ['W2', 'W3'], held: [['W1'], ['W2'], ['W3']] }),
+      // no request: B's walk from W1 and C's from W2 are the page's in hand (lead-board-10c)
+      k.chain, { walks: [], b: ['W1', 'W2'], c: ['W2', 'W3'], held: [['W1'], ['W2'], ['W3']] }),
     judge('K2b the same chain seated alone: B and C walk once each, in turn; each marking keeps what its part\'s new data holds',
       sc, { walked: ['B:W1', 'C:W2'], held: [['W1'], ['W2'], ['W3']] }),
     judge('K3 a loop of markings refused and named, the declaration kept; a part walking from what it writes is one; a limit is not a step',
@@ -1423,7 +1435,7 @@ async function suite(M) {
         self: ['marking:3', 'S', 'marking:3'], limitIsNoStep: null }),
     judge('K5 Save keeps the markings and the chain; a new page from it follows the chain; an older save opens on the default markings',
       { ...k.reopen, olderSave: k.olderSave }, { labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'],
-        chain: [['marking:start', 'marking:3'], ['marking:3', 'marking:4'], ['marking:4', 'marking:5']], walks: ['W2'], marksKept: [['W1'], ['W2'], ['W3']], olderSave: ['Start', 'Pick'] }),
+        chain: [['marking:start', 'marking:3'], ['marking:3', 'marking:4'], ['marking:4', 'marking:5']], walks: [], marksKept: [['W1'], ['W2'], ['W3']], olderSave: ['Start', 'Pick'] }),
     judge('K4 a marking deleted: its users named first; the part writing it writes none, the part walking from it walks from All (once), a limit loses it; the start row\'s marking not deleted, named; a new one takes the next free name',
       k.deleted, { shown: ['marking:start', 'marking:pick', 'marking:3', 'marking:4', 'marking:5'], ask: ['Used by Marked, wafer, wafer'],
         after: ['marking:start', 'marking:pick', 'marking:3', 'marking:5', 'marking:6'], b: ['marking:3', null], c: [null, 'marking:5'],
@@ -1482,6 +1494,8 @@ async function suite(M) {
       [['GET', null], ['GET', 'false'], ['POST', 'false']]),
     judge('PW12 a value walk folds once when every run is in - three runs asked, two folds (the slot changed, the walk in)', pw.foldOnce,
       [3, 2, ['s1', 's1', 's1']]),
+    judge('PW13 one row walk a page: two parts opened together - one request, the second waits for it; a third opened after - none; each its three rows',
+      [pw.onePage[0].reduce((a, b) => a + b, 0), pw.onePage[1], pw.onePage[2]], [2, 0, [3, 3, 3]]),
     judge('PW7 core dies (18766): a value walk carrying wafers only read by its edges - each die its own core wafer, the dies it did not carry by their ids',
       pw.core, [['CW1', 'CW2', '(Empty)'], [['d1'], ['d2'], ['d3']], ['c1', 'c2', 'd1', 'd2', 'd3']]),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
@@ -1742,6 +1756,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, "if (propagation === false) query.set('propagation', 'false');", "query.set('propagation', 'false');") },
   { id: 'PWM17', what: 'a value walk folds again on every page', catches: 'PW12 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'control.signal, null)));', 'control.signal, () => this.refold())));') },
+  { id: 'PWM18', what: 'a row walk in flight on the page not waited for - each part asks its own', catches: 'PW13 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'const coming = walks.find(', 'const coming = false && walks.find(') },
+  { id: 'PWM19', what: 'the page\'s row walk in hand not taken by another part', catches: 'PW13 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'const held = walks.find(', 'const held = false && walks.find(') },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M72', what: 'a press reads a slot of a list as one slot - a list of one never a node', catches: 'W8 ', file: 'testbed/hubs.js', key: 'hubs',
