@@ -283,6 +283,25 @@ export function plainValue(v) {
 
 /** A category saying none. */
 export const EMPTY = '(Empty)';
+/** A paint slot's category for a row of several values (color_by paintCategoryOf). */
+export const MULTIPLE = '(Multiple)';
+
+/** THE order of a slot's categories (lead 10-15) - a cross table's heads, a category axis, a legend, the panels:
+ *  (Empty) then (Multiple) last; two times by their instant (`time`, the slot's scale); numbers by their value, before
+ *  text; the rest as text. */
+export function categoryCompare(time = false) {
+  const tail = (v) => (v === EMPTY ? 1 : v === MULTIPLE ? 2 : 0);
+  return (a, b) => {
+    if (tail(a) || tail(b)) return tail(a) - tail(b);
+    if (time && isTimeText(a) && isTimeText(b) && Date.parse(a) !== Date.parse(b)) return Date.parse(a) - Date.parse(b);
+    const [x, y] = [numberOf(a), numberOf(b)];
+    if (x !== null && y !== null && x !== y) return x - y;
+    if ((x === null) !== (y === null)) return x === null ? 1 : -1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  };
+}
+/** A slot's distinct categories in that order. */
+export const categoryOrder = (values, time = false) => [...new Set(values.map(String))].sort(categoryCompare(time));
 
 /** The rows of every combination of categories some keys make - a row's categories on a key (none - (Empty), a key with
  *  no slot - ''), a row with two on one key in both: [{values, ids}] in first-seen order. A cross table's cells and the

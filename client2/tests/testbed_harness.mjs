@@ -178,7 +178,7 @@ async function measure(M) {
   out.scales = [sc([one('S1', 'number')]), sc([one('2026-10-01', 'datetime')]), sc([one('10', 'string'), one('20', 'string')]),
     sc([one('A', 'string')]), sc([one('10'), one('x')]), sc([one('2026-10-01T00:00:00+09:00'), one('2026-10-02T00:00:00Z')]),
     sc([one('2026-10-01', 'datetime')], 'categorical'), sc([one('A')], 'continuous'), sc([])];
-  out.timeOrder = M.scatter.categoryOrder(['2026-10-01T20:00:00Z', '2026-10-02T01:00:00+09:00'], true);
+  out.timeOrder = M.slot.categoryOrder(['2026-10-01T20:00:00Z', '2026-10-02T01:00:00+09:00'], true);
   // T38: a continuous Color by - a ramp from the first category colour, the least and the most its ends; no categories
   const pal = { bg: '#ffffff', one: ['#888888', '#666666'], cat: [['#1060c0', '#0a4a90']] };
   const rampRows = [['W1', '10'], ['W2', '20'], ['W3', '30'], ['W4', null]].map(([id, v]) => ({ id, reads: { color: v === null ? { state: 'empty' } : { state: 'one', value: v } } }));
@@ -429,7 +429,19 @@ async function parts(M) {
     ms.part.shapes.categories.map((c) => c.name),
     (mp.part.panels || []).map((p) => [p.name, p.model.points.some((q) => q.ids.includes('W3'))]),
     mm.part.model.points.filter((q) => q.ids.includes('W3')).map((q) => q.label).sort(),
-    M.color.paintCategoryOf({ state: 'several', values: ['A', 'B'] }), M.color.categoryNames(['B', '(Multiple)', 'A'])];
+    M.color.paintCategoryOf({ state: 'several', values: ['A', 'B'] }), M.slot.categoryOrder(['B', '(Multiple)', 'A'])];
+  // T45: one order of categories (lead 10-15) - numbers by their value before text, (Empty) and (Multiple) last; the cross
+  // table's row heads, a category axis, the legend and the panels all in it
+  const numAnswer = { nodes: ['1', '2', '10', '11'].map((v) => wafer(`N${v}`, { n: v, product: 'A' })), edges: [], truncated: ANSWER.truncated };
+  const nAttr = { steps: [], value: { on: 'node', name: 'n' }, words: ['n'] };
+  const nc = seat(M, crossDecl({ id: 'NC', encode: { rows: nAttr, columns: product } }), { answer: numAnswer });
+  const ns = seat(M, scatterDecl({ id: 'NS', encode: { x: nAttr, y: product, color: nAttr, panel: nAttr }, scale: { x: 'categorical', color: 'categorical' } }), { answer: numAnswer });
+  const nx = seat(M, scatterDecl({ id: 'NX', encode: { x: nAttr, y: product }, scale: { x: 'categorical' } }), { answer: numAnswer });
+  await settle();
+  const nChart = nx.charts.made[nx.charts.made.length - 1];
+  out.order = [M.slot.categoryOrder(['10', 'B', '2', '(Empty)', '1', '(Multiple)', 'A', '11']),
+    walk(nc.host).filter((n) => n.tagName === 'TH' && String(n.className) === 'sf-table__row').map((n) => n.textContent).filter((w) => w !== 'Total'),
+    nChart ? nChart.option.xAxis.data : null, ns.part.colors.categories.map((c) => c.name), (ns.part.panels || []).map((q) => q.name)];
   // T43: a slot of days says its days (lead 10-15): every time of it the page zone's (Asia/Seoul) midnight - «YYYY-MM-DD»
   // on the cross table's row heads, the scatter's category ticks, the legend's names and the tooltip, the hub's value the
   // time itself; one 09:00 there (00:00Z) - every time as the grid says it (localStamp)
@@ -665,6 +677,8 @@ function suite(out, page, saved, counted) {
   eq('T35 a cross table with no cell slot: its Cell values pill says UniqueCount(rows); one declared, its own words', page.cellsPill, ['UniqueCount(rows)', 'Avg(press · value)']);
   eq('T44 several on a paint slot (Color by, Shape by) one «(Multiple)» category, last, its own colour, a press marking its rows; on a placing slot (Panel by, Marker by) the row in each value',
     page.multiple, [['A', 'B', '(Multiple)'], 2, true, 1, ['W3'], ['W3'], ['A', 'B', '(Multiple)'], [['A', true], ['B', true], ['(Empty)', false]], ['A', 'B'], '(Multiple)', ['A', 'B', '(Multiple)']]);
+  eq('T45 one order of categories - numbers by their value before text, (Empty) and (Multiple) last; the cross table\'s row heads, a category axis, the legend and the panels in it',
+    page.order, [['1', '2', '10', '11', 'A', 'B', '(Empty)', '(Multiple)'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11']]);
   eq('T43 a slot of days says its days - every time the page zone\'s midnight: «YYYY-MM-DD» on the cross row heads, the category ticks, the legend, the tooltip, the hub\'s value the time itself; one not midnight - every time as the grid says it',
     [page.days, page.dayText],
     [[[['2026-11-24', '2026-11-25'], ['2026-11-24', '2026-11-25'], ['2026-11-24', '2026-11-25'], ['2026-11-24T00:00:00+09:00', '2026-11-25T00:00:00+09:00'], 'made: 2026-11-24'],
@@ -778,8 +792,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads });', '      marks.push({ ...row, id: `${row.id}#${k}`, ids: [`${row.id}#${k}`], row: row.id, reads });') },
   { id: 'M72', what: 'several on a paint slot the one look, no category', catches: 'T44', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, "read.state === 'several' ? MULTIPLE : null);", 'null);') },
-  { id: 'M73', what: '«(Multiple)» sorted as text - first', catches: 'T44', file: 'testbed/color_by.js',
-    mutate: (t) => swap(t, '[...seen].sort((a, b) => (a === MULTIPLE) - (b === MULTIPLE) || (a < b ? -1 : a > b ? 1 : 0));', '[...seen].sort();') },
+  { id: 'M73', what: '«(Multiple)» sorted as text - first', catches: 'T44', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '    if (tail(a) || tail(b)) return tail(a) - tail(b);\n', '') },
+  { id: 'M74', what: 'numbers sorted as text', catches: 'T45', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '    if (x !== null && y !== null && x !== y) return x - y;\n', '') },
+  { id: 'M75', what: 'the cross table sorts its heads its own way - as text', catches: 'T45', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, '    const level = categoryCompare(Boolean(ctx.scale && ctx.scale(key).time));', '    const level = (a, b) => (a < b ? -1 : a > b ? 1 : 0);') },
   { id: 'M67', what: 'a slot of days never said - the scale has no day', catches: 'T43', file: 'testbed/slot.js',
     mutate: (t) => swap(t, '  const day = time && values.length > 0 && values.every((v) => dayText(v) !== null);', '  const day = time && values.length > 0;') },
   { id: 'M68', what: 'the one place says a time of a slot of days as any time', catches: 'T43', file: 'testbed/slot.js',
@@ -891,8 +909,8 @@ MUTANTS.push(
     mutate: (t) => swap(t, '  if (SCALES.includes(chosen)) return { scale: chosen, time, day };\n', '') },
   { id: 'M54', what: 'a declared number is read by its values', catches: 'T36', file: 'testbed/slot.js',
     mutate: (t) => swap(t, "  if (one && CONTINUOUS_DECLARED.has(one)) return { scale: 'continuous', time, day };\n", '') },
-  { id: 'M55', what: 'categories of times sorted as text', catches: 'T36', file: 'testbed/kinds/scatter.js',
-    mutate: (t) => swap(t, '  if (time) return distinct.sort((a, b) => Date.parse(a) - Date.parse(b));\n', '') },
+  { id: 'M55', what: 'categories of times sorted as text', catches: 'T36', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, '    if (time && isTimeText(a) && isTimeText(b) && Date.parse(a) !== Date.parse(b)) return Date.parse(a) - Date.parse(b);\n', '') },
   { id: 'M56', what: 'the scatter ignores the root\'s scale', catches: 'T37', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '  const s = ctx.scale ? ctx.scale(key) : scaleOf(', '  const s = false ? ctx.scale(key) : scaleOf(') },
   { id: 'M57', what: 'the Scale chips shown on every slot', catches: 'T37', file: 'testbed/picker.js',

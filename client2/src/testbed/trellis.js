@@ -5,7 +5,7 @@
 // draws one picture; the root lays the panels out, gives every panel the same axis extents and appends the panel's
 // condition to what a press in it marks.
 
-import { categoriesOf, slotWords, EMPTY } from './slot.js';
+import { categoriesOf, slotWords, EMPTY, categoryCompare } from './slot.js';
 import { hubId } from './hubs.js';
 import { numberOf } from '../walk/reach_table.js';
 
@@ -26,7 +26,7 @@ export function panelsOf(rows, decl) {
     const values = read && categoriesOf(read).length ? categoriesOf(read).map(String) : [EMPTY];
     for (const v of new Set(values)) { if (!groups.has(v)) groups.set(v, []); groups.get(v).push(row); }
   }
-  const names = [...groups.keys()].sort((a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0));
+  const names = [...groups.keys()].sort(categoryCompare());
   return names.map((name) => ({ name, rows: groups.get(name), where: [[words, name]] }));
 }
 

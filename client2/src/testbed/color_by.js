@@ -6,6 +6,7 @@
 
 import { mix } from './palette.js';
 import { numberOf } from '../walk/reach_table.js';
+import { MULTIPLE, categoryOrder } from './slot.js';
 
 /** The Color by slot every kind of the root holds. */
 export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true, many: true, scalable: true });
@@ -31,7 +32,7 @@ export function colorsOf(rows, ctx) {
   const own = decl.colors || {};
   const categoryOf = (row) => paintCategoryOf(row.reads.color);
   const seen = [...new Set(rows.map(categoryOf).filter((c) => c !== null))];
-  const names = categoryNames(seen);
+  const names = categoryOrder(seen, Boolean(ctx.scale && ctx.scale.time));
   const marked = ctx.marked || (() => false);
   const anyMarked = rows.some((r) => marked(r.id));
   // A category not declared yet: the palette's next colour no category holds, in the order the rows show them (QA 10-14:
@@ -73,16 +74,13 @@ function rampOf(rows, palette, time) {
     ramp: known.length ? { low: shade(0).fill, high: shade(1).fill, min: lowEnd.reads.color.value, max: highEnd.reads.color.value, time } : null };
 }
 
+/** The category a paint slot (Color by, Shape by) gives a row: its one value; several - one «(Multiple)», a mark being
+ *  painted one look (lead 10-15; the slots that place or group - units.js spreadUnits - stand a row in each value); none - null. */
+export const paintCategoryOf = (read) => (!read ? null : read.state === 'one' ? String(read.value) : read.state === 'several' ? MULTIPLE : null);
+
 /** A category's look not declared yet - THE one rule for Color by's colours and Shape by's shapes: the pool's next one no
  *  category holds, in the order the rows show them (all held - round the pool again); handed back for the declaration to
  *  keep, so a value keeps its look as more come (Spotfire's). */
-/** The category a paint slot (Color by, Shape by) gives a row: its one value; several - one «(Multiple)», a mark being
- *  painted one look (lead 10-15; the slots that place or group - units.js spreadUnits - stand a row in each value); none - null. */
-export const MULTIPLE = '(Multiple)';
-export const paintCategoryOf = (read) => (!read ? null : read.state === 'one' ? String(read.value) : read.state === 'several' ? MULTIPLE : null);
-/** A legend's categories in order: as text, «(Multiple)» last. */
-export const categoryNames = (seen) => [...seen].sort((a, b) => (a === MULTIPLE) - (b === MULTIPLE) || (a < b ? -1 : a > b ? 1 : 0));
-
 export function assignLooks(seen, own, pool) {
   const held = new Set(Object.values(own));
   const assigned = {};
