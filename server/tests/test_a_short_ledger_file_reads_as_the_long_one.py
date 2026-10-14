@@ -55,7 +55,9 @@ def _verdicts(lines):
       "lot_event": "dropped"}, True),
     (("config", "sample", "ontology", "transfer_explorer", "ledger_config.json"),
      {"virtual_joins": "refused", "dt_log": "refused"}, False),
-    (("tests", "support", "v5_setup", "ledger_config.json"), {"lot_event": "refused"}, False),
+    (("tests", "support", "v5_setup", "ledger_config.json"),
+     {"lot_event": "refused", "die_inspection": "same", "dt_job": "mixes", "transfer_event": "same",
+      "wafer_process_recipe": "mixes", "lot_slot_wafer": "same"}, False),
 ])
 def test_each_tracked_declaration_s_sources_are_said_one_way(parts, said, written):
     _short, lines, wrote = v7.convert(_read(*parts), CATALOG)

@@ -87,6 +87,7 @@ def _refusal(plan) -> str:
 def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
     """(the short document, one line per source, written?) - `written` False is a refusal."""
     from declaration_names import fold_versions
+    from ledger.setup import LedgerSetupError
     from ledger.setup_bundle import (DROPPED, REFUSED, SHORT_FORM_VERSION, LedgerSetupValidationError,
                                      short_form_moves, shorten_setup, upgrade_setup)
 
@@ -97,18 +98,19 @@ def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
              if verdict == REFUSED]
     lines += [f"  {name:<{width}} dropped  - retired and {why.split(' - ')[0]}; its atoms stay"
               for name, (verdict, why) in verdicts.items() if verdict == DROPPED]
-    if any(verdict == REFUSED for verdict, _why in verdicts.values()):
-        return short, lines, False
+    # 총괄 10-14: one refusal does not hide the other sources' answers - all are said, then the refusal
+    refused = {name for name, (verdict, _why) in verdicts.items() if verdict == REFUSED}
     try:
         today, written = _snapshot(_without_retired_words(document), catalog), _snapshot(short, catalog)
-    except LedgerSetupValidationError as exc:
-        return short, lines + [f"  the short file does not load: {exc}"], False
+    except (LedgerSetupValidationError, LedgerSetupError) as exc:
+        # every source refused: nothing left to compare - the refused lines are the answer
+        return short, lines + ([] if refused else [f"  the short file does not load: {exc}"]), False
     before, after = _stamps(today), _stamps(written)
-    stopped = sorted(set(before) - set(after))
+    stopped = sorted(set(before) - set(after) - refused)
     if stopped:
         return short, lines + [f"  {name:<{width}} refused  - the short file stops it: "
                                f"{_refusal(written.source_plans[name])}" for name in stopped], False
-    refused_today = sorted(name for name in set(today.source_plans) - set(before)
+    refused_today = sorted(name for name in set(today.source_plans) - set(before) - refused
                            if today.source_plans[name].status == "active")
     lines += [f"  {name:<{width}} loader   - refused by the loader today, and after: "
               f"{_refusal(today.source_plans[name])}" for name in refused_today if name not in after]
@@ -116,7 +118,7 @@ def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
     lines += [f"  {name:<{width}} starts   - refused by the loader today ({_refusal(today.source_plans[name])}); "
               f"the short file reads it on the table's key - it starts translating"
               for name in refused_today if name in after]
-    for name in sorted(before):
+    for name in sorted(set(before) - refused):
         if before[name] == after.get(name):
             lines.append(f"  {name:<{width}} same     - its atoms keep their identity")
             continue
@@ -127,9 +129,10 @@ def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
                      f"written before stay. At once: python server/ledger/backfill.py --source "
                      f"{name} --whole-source")
     lines += [f"  {name:<{width}} retired  - written short, still retired"
-              for name, source in sorted(short["sources"].items()) if source.get("status") == "retired"]
+              for name, source in sorted(short["sources"].items())
+              if source.get("status") == "retired" and name not in refused]
     assert short["setup_version"] == SHORT_FORM_VERSION
-    return short, lines, True
+    return short, lines, not refused
 
 
 def main(argv: list[str] | None = None) -> int:

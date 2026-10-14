@@ -25,6 +25,8 @@
 >            starts   오늘 로더가 거절하는 소스인데 짧은 꼴에선 표의 키로 읽혀 «번역이 시작됨» — 원하지 않으면 status retired
 >            retired  은퇴 소스 — 짧게 옮기고 은퇴 그대로
 >            refused  못 옮김(묶어 읽기 · 자기 맵퍼 · 여러 칸 묶은 제외 · virtual_joins) + Next. 하나라도 있으면 «파일을 안 씀»
+>                     나머지 소스 판정도 다 찍힘(마지막 줄 REFUSED, 종료 코드 2)
+>                     묶어 읽는 소스(read.group_by, 예: dt_job)는 Next: 체인 규칙이 묶음마다 한 행을 쓰는 표를 만들고 이 소스가 그 표를 읽게
 >          --apply 뒤 «same» 소스도 지문 글자는 바뀜(은퇴한 approval_status 낱말이 빠져서) — 재기동 때 부팅 재도장이 위치를 안 건드리고 옮김
 > 선언 창   아직 긴 꼴로 그림. 짧은 파일의 소스를 열면 펼친 긴 꼴, 활성화하면 그 소스를 짧게 다시 씀
 >          거절 «not_writable_short» + 칸 이름 — read 칸(identity · order_by · 시각 · unit)이나 map 칸을 짧은 꼴의 기본과
