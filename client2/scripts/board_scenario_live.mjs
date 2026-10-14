@@ -103,8 +103,6 @@ const timed = async (name, press, ids) => {
   }
   report.push({ step: name, ms: Math.round(clocks.get(ids[ids.length - 1]).drawn - t0) });
 };
-// C's route: from the bonding dies through their bonded_from to the core dies' wafers (die -> die -> wafer).
-const takeRoute = (id, chain) => { const r = part(id).routes().find((x) => x.chain.join('>') === chain); if (r) declare(id, { ...part(id).declaration(), route: r }); return Boolean(r); };
 const walks = () => asked.length;
 const stat = (id) => page.stats.get(id) || {};
 const step0 = walks();
@@ -132,7 +130,7 @@ for (const cell of cells) {
     else if (coresOf(b).join() !== first.cores.join()) { seen.push({ cell, cores: coresOf(b) }); break; }
   }
 }
-say(`B route ${JSON.stringify(part(B).walkedRoute)} asked follow/hops ${(() => { const q = new URL(asked[asked.length - 1]).searchParams; return JSON.stringify([q.getAll('follow'), q.get('hops')]); })()}`);
+say(`B start types ${JSON.stringify(part(B).startTypes())} asked follow/hops ${(() => { const q = new URL(asked[asked.length - 1]).searchParams; return JSON.stringify([q.getAll('follow'), q.get('hops')]); })()}`);
 say(`B die ${first.cell.where} -> core wafers ${first.cores.join(', ')}; die ${seen[0] ? seen[0].cell.where : '-'} -> ${seen[0] ? seen[0].cores.join(', ') : '-'}`);
 // a die not pressed yet - no walk of B's in hand for it; then the first die again - B's walk in hand
 const fresh = cells[cells.length - 1];
@@ -148,7 +146,7 @@ say(`C routes before B is pressed: ${part(C).routes().length}`);
 part(B).markHub([['core wafer', b.rowKeys[coreRow]], ['(None)', '']], b.grid[coreRow][0].ids, {});
 await until(ready(C));
 say(`B marking: ${JSON.stringify(page.markings.entries(core).map(([id]) => [id, (page.layers.graph.nodes.get(id) || {}).type || 'hub']))}; B cell marked ${part(B).model.grid[coreRow][0].marked}`);
-say(`C routes: ${part(C).routes().map((r) => r.chain.join('>') + ' ' + r.follow.join('+')).join(' | ')}; taken ${JSON.stringify(part(C).walkedRoute)}`);
+say(`C routes: ${part(C).routes().map((r) => r.chain.join('>') + ' ' + r.follow.join('+')).join(' | ')}; start types ${JSON.stringify(part(C).startTypes())}`);
 const c = part(C).model;
 say(`C cross: steps ${c.rowKeys.length} (${c.rowKeys.join(', ')}), total ${c.total}, walks ${walks() - s2}, layer ${JSON.stringify(page.layers.last)}`);
 // C: a step pressed

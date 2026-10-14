@@ -1739,7 +1739,7 @@ const MUTANTS = [
   { id: 'M47', what: 'a press in a panel marks without the panel - a cross table cell of the same x in another panel the same hub', catches: 'TR3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),', 'markHub: (where, ids, event) => this.markHub(where, ids, event),') },
   { id: 'M48', what: 'each panel its own extent', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent,', 'this.kind.model(marks[i], { ...modelCtx,') },
+    mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent })', 'this.kind.model(marks[i], { ...modelCtx })') },
   { id: 'M55', what: 'a kind\'s without not read - the sheet offered Top/Bottom by and Panel by', catches: 'WO1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'PANEL_SLOT].filter((s) => !without.includes(s.key));', 'PANEL_SLOT];') },
   { id: 'M61', what: 'rows grouped in a cell lose their time - the tooltip says the UTC text', catches: 'TM2 ', file: 'testbed/tooltip.js', key: 'tooltip',
