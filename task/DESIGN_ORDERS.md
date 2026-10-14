@@ -39200,3 +39200,12 @@ land     on the branch that goes to main next (design-spotfire carries the test 
 할 일       CODE_MAP 해당 절 · PRIMITIVES · 적대 QA 하며 같이 — 문장이 오늘 코드에서 참인지
 끝나면      .claude/doc_sync_pending 지우고 커밋 · 푸시, 해시 한 줄
 ```
+
+> **[총괄 -> 클라] 10-14 — 인덱스 화면에 «제안» 줄과 Declare 버튼 (소유자 안 ㄴ 승인, 서버는 구현자 B)**
+
+```
+무엇       admin 인덱스 화면(index_table_panel.js)에 B 가 내는 제안 줄: 표 · 칸 · 종류(Index / Search) · 이유(어느 참조뷰 · 몇 초 · 어떤 걸러냄)
+           Declare 를 누르면 그 선언 한 줄을 저장(있는 저장 문) -> 줄이 «declared · building» 으로 -> 지어지면 present. 거절은 서버 문장 그대로
+문구       영어 · 짧게. 이유는 한 줄, 넘치면 툴팁
+게이트     B 와 응답 모양 한 벌 먼저 · 하니스 칸(제안 줄 · 누름 · 거절 · 다 지어진 뒤 사라짐) + 변이 · 1920 스샷 · RELEASE_LOG
+```
