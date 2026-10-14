@@ -30,6 +30,7 @@ const REAL = {
   slot: await import('../src/testbed/slot.js'),
   route: await import('../src/testbed/route.js'),
   walks: await import('../src/testbed/part_walks.js'),
+  api: await import('../src/rnd_board/api.js'),
   trend: await import('../src/walk/trend.js'),
   reach: await import('../src/walk/reach_table.js'),
   show: await import('../src/testbed/show_items.js'),
@@ -844,6 +845,16 @@ async function partWalks(M) {
   await settle();
   out.runsTogether = [inFlightRuns, runs.part.model.lines.map((l) => l.cells[0].text)];
 
+  // PW11 the ranking left out only where asked: a walk that names no propagation (the walk box, rnd_board) sends none;
+  // the part's walk sends propagation=false - its resumed page too
+  const { fetchSubgraph } = M.api;
+  const urls = [];
+  const capture = async (url, init) => { urls.push([url, (init && init.method) || 'GET']); return { ok: true, status: 200, json: async () => ({ nodes: [], edges: [] }) }; };
+  await fetchSubgraph({ apiBase: '', nodeId: 'n', fetchImpl: capture });
+  await fetchSubgraph({ apiBase: '', nodeId: 'n', fetchImpl: capture, propagation: false, resumable: true });
+  await fetchSubgraph({ apiBase: '', nodeId: 'n', fetchImpl: capture, propagation: false, resumable: true, resume: 'k' });
+  out.ranking = urls.map(([u, m]) => [m, new URL(u, 'http://x').searchParams.get('propagation')]);
+
   // PW7 core dies (lead 10-14, 18766): the value walk carries wafers only, its edges every way it walked - each die reads
   // its own core wafer through its edges (a die it did not carry stands by its id), never its own wafer BW
   const core = await seat({ ...base, kind: 'crossTable', encode: { rows: CORE } });
@@ -1457,6 +1468,8 @@ async function suite(M) {
     judge('PW9 a start of the row type a walk on the page carried walks no rows (the value walk only); written by hand, walked for its records; every request asks no ranking',
       pw.startIsRow, [true, ['measures'], ['d3'], [false]]),
     judge('PW10 the runs of a value walk by the seed cap asked together', pw.runsTogether, [2, ['1', '2', '3']]),
+    judge('PW11 the ranking left out only where asked: the walk box sends no propagation; the part sends false, its resumed page too', pw.ranking,
+      [['GET', null], ['GET', 'false'], ['POST', 'false']]),
     judge('PW7 core dies (18766): a value walk carrying wafers only read by its edges - each die its own core wafer, the dies it did not carry by their ids',
       pw.core, [['CW1', 'CW2', '(Empty)'], [['d1'], ['d2'], ['d3']], ['c1', 'c2', 'd1', 'd2', 'd3']]),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
@@ -1713,6 +1726,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'return { ...this.walkParams, ...own, propagation: false };', 'return { ...this.walkParams, ...own };') },
   { id: 'PWM15', what: 'the runs of a value walk asked one after another', catches: 'PW10 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(this.fetchWalk,', 'chunks(ask.seeds, this.seedChunk).map((some, k) => walkToEnd(k ? (p) => new Promise((r) => setTimeout(r, 3000)).then(() => this.fetchWalk(p)) : this.fetchWalk,') },
+  { id: 'PWM16', what: 'every walk asks no ranking - the walk box loses its ranked list', catches: 'PW11 ', file: 'rnd_board/api.js', key: 'api',
+    mutate: (t) => swap(t, "if (propagation === false) query.set('propagation', 'false');", "query.set('propagation', 'false');") },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M72', what: 'a press reads a slot of a list as one slot - a list of one never a node', catches: 'W8 ', file: 'testbed/hubs.js', key: 'hubs',
