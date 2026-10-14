@@ -145,6 +145,11 @@ async function suite(d) {
   ok('B13 a sentence ending in a value draws «value ← column», not a node', endBars[0].textContent.includes('value ← netdie_count')
     && !byClass(endBars[0], 'is-node').some((n) => n.dataset.path === 'sentences.0.target.node'), endBars[0].textContent);
   ok('B14 a sentence with no object draws nothing past its predicate', !endBars[1].textContent.includes('→') && !endBars[1].textContent.includes('?'), endBars[1].textContent);
+  const s1 = bars[0];
+  const used = byClass(byClass(bar.renderDeclarationBar(document, RAW, { kind: 'source', catalog: CATALOG, predicates: [{ name: 'processed_with', qualifiers: ['step'] }] }),
+    'ldb-sentences')[0], 'ldb-bar')[0];
+  ok('B15 + Qualifier closes the with group while the predicate takes another, and not once all are used',
+    byAction(s1, 'decl-add').some((n) => n.dataset.path === 'sentences.0') && !byAction(used, 'decl-add').some((n) => n.dataset.path === 'sentences.0'), used.textContent);
   const full = bar.renderDeclarationBar(document, sample.SAMPLE_RAW, sample.SAMPLE_VIEW);
   const hangul = walk(full).map((n) => n._text || '').concat(walk(full).map((n) => n.attrs?.['aria-label'] || '')).filter((s) => /[가-힣]/.test(s));
   ok('B9 every word drawn is English', hangul.length === 0, hangul.join(' | '));
@@ -293,6 +298,8 @@ const MUTANTS = [
   { name: 'the title ignores what ran', catches: ['C5'], file: 'bar', mutate: swap("top.append(el('span', 'ldb-label', BAR_WORDS.run(Boolean(run && run.draft))),", "top.append(el('span', 'ldb-label', BAR_WORDS.run(true)),") },
   { name: 'a value end drawn as a node end', catches: ['B13', 'B14'], file: 'bar', mutate: swap('  if (s.target !== undefined) bar.append(', '  if (true) bar.append(') },
   { name: 'a value end not drawn', catches: ['B13'], file: 'bar', mutate: swap('  else if (s.value !== undefined) {', '  else if (false) {') },
+  { name: 'a door though every qualifier is used', catches: ['B15'], file: 'bar', mutate: swap('    if (free) bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));', '    bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));') },
+  { name: 'no door in the with group', catches: ['B15'], file: 'bar', mutate: swap('    if (free) bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));', '') },
   { name: 'a table save keeps the old column lists', catches: ['F1'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', '') },
   { name: 'every invalidation drops the schema', catches: ['F2'], file: 'store', mutate: swap('...(action.tables ? { authoringSchema: null } : {})', 'authoringSchema: null') },
 ];
