@@ -658,3 +658,14 @@ B          execute_reference_view 한 자리가 시간을 재고, 느리면 그 
 결함        ledger_subgraph._declaration_facts(키 순서 · 이름표 · 역술어)가 따로 들고 있고 파일 도장을 안 봄(SYSTEM_RELOAD 때만 비움) — 9a3eab253 의 _stamped 와 판이 갈릴 수 있음
 할 일       _declaration_facts 도 _stamped 를 지나게(같은 도장 · 같은 열쇠 공간) — 둘째 캐시 없앰. 파일 수정 뒤 다음 요청이 새 사실을 보는 시험 칸 + 변이
 ```
+
+> **[총괄 -> 구현자 B] 10-14 밤 — 걷기 «씨앗만 읽기» (hops=0) (빌더 lead-board-10 물음 1 · 2, 총괄 판단 — 야간 위임)**
+
+```
+왜          시험대가 «행 = 시작 노드» 인데 그 노드 기록이 페이지에 없을 때(손으로 적은 시작 · Sheet) 와 «타입 전부(All)» 에서 노드 «자기 기록» 만 필요한데,
+            지금 hops 는 1 이상이라 한 걸음 · 모든 술어로 걷는다(Sheet 983 KB) · All 은 key-values(키만 · 500 끊김) 아니면 seed_type 한 걸음 모든 술어
+할 일       GET /api/ledger/subgraph 의 hops 에 0 을 허용: 씨앗(또는 seed_type 의 노드들)의 자기 기록만 · 엣지 0 · 노드 상한 · 이어 받기(resumable) 그대로
+            새 라우트 · 새 인자 금지 — hops 의 범위만 넓힘. 오늘 hops≥1 호출자는 그대로(수 · 명령으로 셈)
+게이트      hops=0 답 = 같은 씨앗 hops=1 답의 «씨앗 노드 기록» 과 같음 · seed_type + hops 0 으로 타입 전부 쪽 끝까지 · 변이 · RUN.md · RELEASE_LOG — 빌더에게 인자 한 줄
+순서        지금 하는 썸네일 · _declaration_facts 접기 뒤
+```
