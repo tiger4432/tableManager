@@ -354,8 +354,16 @@ CELLS.push({ entry: 'testbed.html', after: 'images', rule: 'picture in its place
   }
   const lines = [...document.querySelectorAll('.sf-table--images tr')].filter((tr) => tr.querySelector('td'));
   if (lines.some((tr) => Math.abs(tr.getBoundingClientRect().height - 48) > 2)) return 'a line of the table of pictures not 48 px';
-  const cells = document.querySelectorAll('.tb-map__svg image').length;
-  return cells ? null : 'the map drew no picture in a cell';
+  // the map's cells: a picture in each of those big enough (16 px - image_thumb THUMB_MIN_PX), none asked under it
+  const svg = document.querySelector('.tb-map__svg');
+  if (!svg) return 'no map';
+  const r = svg.getBoundingClientRect();
+  const vb = svg.viewBox.baseVal;
+  const cellPx = Math.min(r.width / vb.width, r.height / vb.height);
+  const pics = svg.querySelectorAll('image').length;
+  if (cellPx >= 17 && !pics) return 'cells of ' + Math.round(cellPx) + ' px with no picture';
+  if (cellPx < 15 && pics) return 'cells of ' + Math.round(cellPx) + ' px drew pictures';
+  return null;
 })()` });
 // Every picture fills its div after the window shrank and grew (lead 10-14: 40 x 44 left in a 280 x 179 panel).
 CELLS.push({ entry: 'testbed.html', after: 'shrunk and grown', rule: 'picture fills its div', at: 'tb-plot', expr: `(() => {
