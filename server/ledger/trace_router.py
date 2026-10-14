@@ -117,8 +117,8 @@ def evidence_subgraph(
                          description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
     world: list[str] | None = Query(
         None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
-    hops: int = Query(ledger_subgraph.DEFAULT_HOPS, ge=1, le=ledger_subgraph.MAX_HOPS,
-                      description="증거 그래프 탐색 깊이"),
+    hops: int = Query(ledger_subgraph.DEFAULT_HOPS, ge=0, le=ledger_subgraph.MAX_HOPS,
+                      description="증거 그래프 탐색 깊이 - 0: 씨앗의 자기 기록만(걸음 · 엣지 없음)"),
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
                            description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
     since: str | None = Query(

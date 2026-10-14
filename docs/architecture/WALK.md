@@ -76,7 +76,7 @@ GET /api/ledger/declaration  무엇을 물을 수 있나 (entities · predicates
 GET /api/ledger/gaps
 ```
 ```
-id(alias)  hops 1–40 (기본 12)  direction outgoing|incoming|both  node_limit 10–1000
+id(alias)  hops 0–40 (기본 12 · 🆕 10-15 0 = 씨앗의 자기 기록만, 엣지 0)  direction outgoing|incoming|both  node_limit 10–1000
 edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 0–40
 since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「구간 걷기」 절
 include_superseded  기본 false. `one` 술어의 «지금 아닌» 사실도 그릴지 — 그 엣지엔 `not_current` (총괄 22ebdd153)

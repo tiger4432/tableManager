@@ -2805,7 +2805,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}
     primary = next(iter(seed_signs))
-    hops = max(1, min(int(hops), MAX_HOPS))
+    # hops 0: the seeds alone - their own record, no step, no edge (총괄 77eb0d06f: a start written by hand, a type's all)
+    hops = max(0, min(int(hops), MAX_HOPS))
     # 🔴 THE CLASSES COME FROM THE CALLER, WHICH READ THEM FROM THE DECLARATION.
     # No type is spelled in this file: an entity becomes a name rather than a happening by
     # being declared `class: "static"`, and nothing here has to be edited for that.  Bare
