@@ -11,7 +11,7 @@
 >          다이 200 개   hops 0: 34 ms · 91 KB · 엣지 0   |   hops 1 · follow 없음(오늘 시험대의 «행 = 시작»): 445 ms · 1.96 MB · 엣지 807
 >          씨앗 기록(키 · 이름표 · 속성)은 둘이 같다
 >          다이 전부(seed_type=die, seed_limit 2000, node_limit 1000): 387 ms · 노드 1,000 에서 잘림 · 이어 받기 없음
-> 되돌리기  git revert <착지> -> 서버 재기동
+> 되돌리기  git revert c9bcefb35 -> 서버 재기동
 > ```
 >
 > ---
