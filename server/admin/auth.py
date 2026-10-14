@@ -84,12 +84,10 @@ ADMIN_TOKEN_ENV = "ASSY_ADMIN_TOKEN"
 #: X-User / X-Transaction-ID / X-Source names the context middleware consumes.
 ADMIN_TOKEN_HEADER = "X-Admin-Token"
 
-_UNSET_DETAIL = (
-    "이 기능은 관리자 토큰이 설정되어야 사용할 수 있습니다. "
-    f"서버 환경변수 {ADMIN_TOKEN_ENV}를 설정한 뒤 서버를 재시작하세요."
-)
-_MISSING_DETAIL = "관리자 토큰이 필요합니다."
-_MISMATCH_DETAIL = "관리자 토큰이 올바르지 않습니다."
+#: What the admin screens draw in their red band - English, as every screen string (owner, 총괄 10-14).
+_UNSET_DETAIL = f"This needs an admin token set on the server: set {ADMIN_TOKEN_ENV} and restart the server."
+_MISSING_DETAIL = "An admin token is required."
+_MISMATCH_DETAIL = "The admin token does not match."
 
 #: Sent with every rejection the gate itself produces, so a client can tell an
 #: AUTH failure from a same-status failure raised by a handler for its own

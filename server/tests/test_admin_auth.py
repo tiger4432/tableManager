@@ -268,6 +268,14 @@ class TestConfiguredTokenIsEnforced:
         res = client.get("/admin/chain/rules", headers={HEADER: ""})
         assert res.status_code == 401
 
+    def test_the_refusals_read_in_english(self, client, token_set, monkeypatch):
+        """The admin screens draw `detail` in their red band - English, as every screen string (총괄 10-14)."""
+        assert client.get("/admin/chain/rules").json()["detail"] == "An admin token is required."
+        assert client.get("/admin/chain/rules", headers={HEADER: TOKEN + "x"}).json()["detail"] ==             "The admin token does not match."
+        monkeypatch.delenv(ENV, raising=False)
+        said = client.post("/admin/auto-update/run-now", json={"table_name": "t", "script_name": "s.py"}).json()["detail"]
+        assert said == "This needs an admin token set on the server: set %s and restart the server." % ENV, said
+
     def test_a_prefix_of_the_token_is_rejected(self, client, token_set):
         """compare_digest is a full comparison, not a startswith."""
         res = client.get("/admin/chain/rules", headers={HEADER: TOKEN[:-1]})
